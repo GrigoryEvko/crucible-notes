@@ -61,3 +61,6 @@ vgcore.*
 /docs/_build/
 *.pyc
 __pycache__/
+
+# Decompiled code (289 MB, 80k+ files - keep local, don't push)
+cicc/decompiled/
