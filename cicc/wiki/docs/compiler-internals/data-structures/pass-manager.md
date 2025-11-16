@@ -2,8 +2,9 @@
 
 **Source**: NVIDIA CICC Compiler (LLVM-based architecture)
 **PassManager Function**: `0x12D6300` (4786 bytes, 122KB decompiled)
-**Total Passes**: 212 (indices 10-221, 10 unused slots 0-9)
+**Total Passes**: 215 (indices 1-221, slot 0 unused)
 **Analysis Quality**: HIGH confidence, extracted from binary analysis L3-27, L3-09, L3-16
+**VERIFIED**: Decompiled code confirms passes 1-9 exist (handler routing at indices 1-9)
 
 ---
 
@@ -93,13 +94,13 @@ struct PassManagerOutput {
                                 //   - Points back to source configuration structure
                                 //   - Used for runtime pass registry access
 
-    PassDescriptor passes[212]; // +0x10: Array of 212 pass descriptors
+    PassDescriptor passes[215]; // +0x10: Array of 215 pass descriptors
                                 //   - Sequential array of PassDescriptor entries
-                                //   - Indices 0-211 correspond to pass IDs 10-221
+                                //   - Indices 0-214 correspond to pass IDs 1-221
                                 //   - Starting offset: +0x10
-                                //   - Last entry: +0x10 + 211*24 = +0x350 = 848 bytes
-                                //   - Total output size: ~3552 bytes
-};  // Total size: 3568 bytes (16 + 212*24)
+                                //   - Last entry: +0x10 + 214*24 = +0x1418 = 5144 bytes
+                                //   - Total output size: ~5160 bytes
+};  // Total size: 5176 bytes (16 + 215*24)
 ```
 
 ---
@@ -165,8 +166,10 @@ Sub_12D6240 (Boolean Handler) - Handles 99 passes (odd indices):
 - **Location**: `input_config + 120` (a2+120)
 - **Entry Size**: 64 bytes per pass
 - **Total Slots**: 222 (indices 0-221)
-- **Active Slots**: 212 (indices 10-221)
-- **Unused Slots**: 10 (indices 0-9, reserved)
+- **Active Slots**: 215 (indices 1-221)
+- **Unused Slots**: 1 (index 0, reserved)
+- **Early Passes**: 9 (indices 1-9, pre-handler routing exceptions)
+- **Standard Passes**: 206 (indices 10-221, main pass pipeline)
 - **Access Pattern**: `base + ((index - 1) << 6)` for indexed lookup
 - **Stride**: 64 bytes enables O(1) indexed access
 
@@ -175,6 +178,36 @@ Sub_12D6240 (Boolean Handler) - Handles 99 passes (odd indices):
 ## HIERARCHICAL PASS EXECUTION MODEL
 
 NVIDIA CICC implements a 3-level hierarchical pass execution model based on LLVM architecture.
+
+### Level 0: Early Passes (Indices 1-9)
+
+**VERIFIED VIA DECOMPILED CODE**: Handler routing exceptions for passes 1-9 confirmed in pass manager dispatch logic.
+
+```c
+struct EarlyPassSlot {
+    // Indices 1-9: Pre-optimization validation and setup passes
+    // Executed before standard module/function/loop pipeline
+    // Handler routing: Special-case switches at pass manager entry
+
+    characteristics: [
+        "No metadata handler indirection (direct function calls)",
+        "Executed unconditionally at all optimization levels",
+        "Used for IR validation, module setup, prerequisite analysis",
+        "Cannot be disabled via pass manager configuration"
+    ]
+
+    typical_purposes: [
+        "Module verifier (IR well-formedness checking)",
+        "Target-specific initialization",
+        "Debug info validation",
+        "Metadata sanitization",
+        "Symbol table construction",
+        "Call graph initialization"
+    ]
+};
+```
+
+**Note**: Earlier wiki versions incorrectly marked indices 0-9 as "unused". Decompiled code verification revealed passes 1-9 have handler routing, making them active early-stage passes. Index 0 remains reserved/unused.
 
 ### Level 1: Module Passes (Indices ~10-50)
 

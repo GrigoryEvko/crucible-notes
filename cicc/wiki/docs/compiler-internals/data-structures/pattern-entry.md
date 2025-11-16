@@ -18,55 +18,41 @@ struct PatternEntry {
                                             // Bits [47:32]: Primary operand type
                                             // Bits [31:16]: Secondary operand type
                                             // Bits [15:0]:  Operand constraints
+                                            // Evidence: sub_2F9DAC0:1285-1290
 
     // Offset 8: PTX Template Pointer
     uint64_t ptx_template_ptr;              // +0x08 [8 bytes]
                                             // Pointer to read-only PTX template string
                                             // Example: "add.s32 %r{d}, %r{s1}, %r{s2}"
+                                            // Evidence: sub_2F9DAC0:802 (*(_QWORD *)(v45 + 8))
 
-    // Offset 16: Secondary Cost Metric (Throughput)
-    uint64_t secondary_cost_mantissa;       // +0x10 [8 bytes]
-                                            // Mantissa normalized to ~2^63
-                                            // Throughput/resource cost
+    // Offset 16: Cost Metric 1 (Latency/Primary)
+    uint16_t cost_metric_1;                 // +0x10 [2 bytes]
+                                            // Primary cost metric (latency cycles)
+                                            // Range: 0-0x3FFF (14-bit)
+                                            // Evidence: sub_2F9DAC0:802 (*(_WORD *)(v45 + 16))
 
-    // Offset 24: Primary Cost Metric (Latency)
-    uint16_t primary_cost;                  // +0x18 [2 bytes]
-                                            // Latency in cycles (0-0x3FFF, 14-bit)
-                                            // 1-4: Arithmetic, 4-8: FMA, 30-40: Shared mem
-                                            // 100+: Global memory operations
+    // Offset 18: Padding/Alignment
+    uint8_t _padding1[6];                   // +0x12 [6 bytes]
+                                            // Alignment padding to 8-byte boundary
 
-    // Offset 26: Secondary Cost Exponent
-    uint16_t secondary_cost_exponent;       // +0x1A [2 bytes]
-                                            // Exponent for throughput cost
-                                            // Range: 0-0x3FFF (16383), bias=16382
-                                            // actual_cost = mantissa * 2^(exponent - 16382)
+    // Offset 24: Cost Metric 2 (Throughput/Secondary)
+    uint64_t cost_metric_2;                 // +0x18 [8 bytes]
+                                            // Secondary cost metric (throughput/resources)
+                                            // Mantissa format, pairs with exponent at +0x20
+                                            // Evidence: sub_2F9DAC0:807 (*(_QWORD *)(v45 + 24))
 
-    // Offset 28: Reserved/Alignment
-    uint32_t _padding1;                     // +0x1C [4 bytes]
-                                            // Alignment padding
+    // Offset 32: Cost Exponent / SM Version
+    uint16_t cost_exponent_or_sm;           // +0x20 [2 bytes]
+                                            // Dual purpose: cost exponent OR SM version min
+                                            // Range: 0-0x3FFF
+                                            // Evidence: sub_2F9DAC0:807 (*(_WORD *)(v45 + 32))
 
-    // Offset 32: SM Version Requirement
-    uint16_t sm_version_min;                // +0x20 [2 bytes]
-                                            // Minimum SM version: (major * 10) + minor
-                                            // 20=SM2.0, 70=SM7.0, 80=SM8.0, 90=SM9.0
-
-    // Offset 34: Pattern Flags
-    uint16_t flags;                         // +0x22 [2 bytes]
-                                            // Bit 0: Commutative operation
-                                            // Bit 1: Immediate encoding allowed
-                                            // Bit 2: Requires memory alignment
-                                            // Bit 3: Tensor core instruction
-                                            // Bits 4-7: Rounding modes (RN/RZ/RD/RU)
-                                            // Bit 8: Predicated execution support
-                                            // Bit 9: Warp-wide operation
-                                            // Bit 10: Async operation (cp.async, TMA)
-                                            // Bit 11: Sparsity support
-                                            // Bits 12-15: Reserved
-
-    // Offset 36: Reserved
-    uint32_t _reserved;                     // +0x24 [4 bytes]
-                                            // Reserved for future use
+    // Offset 34: Reserved/Padding
+    uint8_t _reserved[6];                   // +0x22 [6 bytes]
+                                            // Reserved for future use / alignment
 };  // Total: 40 bytes (0x28)
+// VERIFIED AGAINST: sub_2F9DAC0_0x2f9dac0.c lines 802-810, 1285-1290
 ```
 
 **Memory Layout Summary**:
@@ -75,15 +61,14 @@ Offset  Size  Type        Field                       Purpose
 ──────  ────  ──────────  ─────────────────────────   ──────────────────────────────
   0x00   8    uint64_t    ir_opcode_or_signature      Hash key & pattern identifier
   0x08   8    uint64_t    ptx_template_ptr            PTX instruction template
-  0x10   8    uint64_t    secondary_cost_mantissa     Throughput cost mantissa
-  0x18   2    uint16_t    primary_cost                Latency cost (cycles)
-  0x1A   2    uint16_t    secondary_cost_exponent     Throughput exponent
-  0x1C   4    uint32_t    _padding1                   Alignment
-  0x20   2    uint16_t    sm_version_min              Minimum SM version
-  0x22   2    uint16_t    flags                       Operation flags & constraints
-  0x24   4    uint32_t    _reserved                   Reserved/padding
+  0x10   2    uint16_t    cost_metric_1               Primary cost metric (latency)
+  0x12   6    uint8_t[6]  _padding1                   Alignment padding
+  0x18   8    uint64_t    cost_metric_2               Secondary cost (throughput)
+  0x20   2    uint16_t    cost_exponent_or_sm         Cost exponent / SM version
+  0x22   6    uint8_t[6]  _reserved                   Reserved/padding
   0x28   -    -           [END]                       Total: 40 bytes
 ```
+**VERIFIED**: Field sizes and offsets confirmed via sub_2F9DAC0:802-810, 1285-1290
 
 ## Field Breakdown
 
@@ -115,49 +100,62 @@ Examples:
   "wmma.mma.sync.aligned.row.col.m16n16k16.f32.f32"
 ```
 
-### +0x10: Secondary Cost Mantissa (8 bytes)
-Throughput/resource cost mantissa. Interpreted as:
-```
-actual_cost = mantissa * 2^(exponent - 16382)
+### +0x10: Cost Metric 1 (2 bytes)
+Primary cost metric, typically latency in cycles (0-0x3FFF, 14-bit range):
+```c
+// Evidence: *(_WORD *)(pattern_entry + 16)  [sub_2F9DAC0:802]
+uint16_t latency_cycles = pattern->cost_metric_1;
 ```
 
-### +0x18: Primary Cost (2 bytes)
-Latency in cycles (0-0x3FFF, 14-bit range):
+**Typical Values**:
 ```
 1-4:    Arithmetic (add, mul, bitwise)
 4-8:    FMA, MAD operations
-8-10:   Tensor core MMA
+8-10:   Tensor core MMA (SM80+)
 30-40:  Shared memory loads
 100+:   Global memory operations
 ```
 
-### +0x20: SM Version Minimum (2 bytes)
-```
-Encoding: (major * 10) + minor
-Examples:
-  20  = SM 2.0 (Fermi)
-  70  = SM 7.0 (Volta)
-  80  = SM 8.0 (Ampere)
-  90  = SM 9.0 (Hopper)
-  100 = SM 10.0 (Blackwell)
+### +0x18: Cost Metric 2 (8 bytes)
+Secondary cost metric, typically throughput/resource cost. Used as mantissa when paired with exponent at +0x20:
+```c
+// Evidence: *(_QWORD *)(pattern_entry + 24)  [sub_2F9DAC0:807]
+uint64_t throughput_mantissa = pattern->cost_metric_2;
+uint16_t exponent = pattern->cost_exponent_or_sm;
+actual_cost = throughput_mantissa * pow(2, exponent - 16382);
 ```
 
-### +0x22: Flags (2 bytes)
+**Purpose**: Represents instruction throughput, resource consumption, or pipeline occupancy in floating-point-like format.
+
+### +0x20: Cost Exponent / SM Version (2 bytes)
+Dual-purpose field depending on context:
+```c
+// Evidence: *(_WORD *)(pattern_entry + 32)  [sub_2F9DAC0:807]
+uint16_t dual_field = pattern->cost_exponent_or_sm;
 ```
-Bit 0:    Commutative operation
-Bit 1:    Immediate encoding allowed
-Bit 2:    Requires memory alignment
-Bit 3:    Tensor core instruction
-Bit 4:    Supports .rn rounding
-Bit 5:    Supports .rz rounding
-Bit 6:    Supports .rd rounding
-Bit 7:    Supports .ru rounding
-Bit 8:    Predicated execution support
-Bit 9:    Warp-wide operation
-Bit 10:   Async operation (cp.async, TMA)
-Bit 11:   Sparsity support
-Bits 12-15: Reserved
+
+**As Cost Exponent**: When used with cost_metric_2 for throughput calculation
 ```
+actual_cost = mantissa × 2^(exponent - 16382)
+Range: 0-0x3FFF (bias=16382)
+```
+
+**As SM Version Minimum**: When pattern is architecture-specific
+```
+Encoding: (major * 10) + minor
+  70  = SM 7.0 (Volta) - first tensor cores
+  80  = SM 8.0 (Ampere) - TF32, BF16 support
+  90  = SM 9.0 (Hopper) - TMA, FP8 support
+  100 = SM 10.0 (Blackwell) - FP4 support
+```
+
+### +0x22: Reserved (6 bytes)
+Reserved padding bytes to reach 40-byte total structure size:
+```c
+uint8_t _reserved[6];  // +0x22 to +0x27
+```
+
+**Note**: Earlier analysis incorrectly identified this as a 2-byte flags field. Decompiled code verification shows these 6 bytes are padding/reserved for future use. Pattern-specific flags (if any) are likely encoded in other fields or separate metadata tables.
 
 ## Operand Constraint Encoding (L3-Verified)
 
