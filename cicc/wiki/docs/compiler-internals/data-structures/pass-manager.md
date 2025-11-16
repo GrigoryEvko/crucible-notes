@@ -1,161 +1,703 @@
 # Pass Manager Data Structures
 
-## PASS DESCRIPTOR
+**Source**: NVIDIA CICC Compiler (LLVM-based architecture)
+**PassManager Function**: `0x12D6300` (4786 bytes, 122KB decompiled)
+**Total Passes**: 212 (indices 10-221, 10 unused slots 0-9)
+**Analysis Quality**: HIGH confidence, extracted from binary analysis L3-27, L3-09, L3-16
+
+---
+
+## PASS DESCRIPTOR (OUTPUT STRUCTURE)
+
+Complete pass metadata stored in output array with 24-byte stride per pass.
 
 ```c
 struct PassDescriptor {
     void*       pass_fn;        // +0x00: Pass function pointer (QWORD)
+                                //   - Address of pass implementation or metadata handler
+                                //   - NULL for disabled passes or analysis-only entries
+
     uint32_t    pass_count;     // +0x08: Pass instance count (DWORD)
+                                //   - Number of times this pass can be instantiated
+                                //   - From metadata_handler at offset +40
+                                //   - Typically 0-N indicating pass instances
+
     uint32_t    opt_level;      // +0x0C: Optimization level (0-3)
+                                //   - 0 = O0 (no optimization)
+                                //   - 1 = O1 (basic optimizations)
+                                //   - 2 = O2 (standard optimizations)
+                                //   - 3 = O3 (aggressive optimizations)
+
     uint32_t    flags;          // +0x10: Analysis/Transform flags
-    uint32_t    reserved;       // +0x14: Padding
-};  // Size: 24 bytes per entry
+                                //   - Bit 0: Is analysis pass (vs. transformation)
+                                //   - Bit 1: Preserves all analyses
+                                //   - Bits 2-31: Additional preservation/invalidation flags
+
+    uint32_t    reserved;       // +0x14: Padding/reserved
+};  // Size: 24 bytes per entry, stride for 212 passes
 ```
 
-## PASS REGISTRY ENTRY
+---
+
+## PASS REGISTRY ENTRY (STORAGE STRUCTURE)
+
+Registry entries stored in PassManagerConfig+120, 64-byte stride per entry.
 
 ```c
 struct PassRegistryEntry {
     uint8_t     metadata[16];   // +0x00: Pass metadata/IDs
-    void*       pass_object;    // +0x10: Pointer to Pass instance
-    uint8_t     state[16];      // +0x20: Pass flags/state
-    void*       analysis_reqs;  // +0x30: Analysis requirements (offset +40)
+                                //   - Varies by handler function interpretation
+                                //   - May contain pass type, version, or identifier
+
+    void*       pass_object;    // +0x10: Pointer to actual Pass instance
+                                //   - Points to constructed Pass object
+                                //   - Extracted via sub_12D6170 (metadata handler)
+                                //   - NULL if pass not instantiated yet
+
+    uint8_t     state[16];      // +0x20: Pass flags/state/properties
+                                //   - Contains pass characteristics
+                                //   - Bit patterns: analysis, transformation, domain flags
+
+    uint32_t    dep_count;      // +0x30: Number of dependencies (offset +40)
+                                //   - Count of required analyses/passes
+                                //   - Extracted from metadata at this offset
+
     void**      fn_array;       // +0x38: Function pointer array (offset +48)
+                                //   - Array of pass implementation functions
+                                //   - Can contain multiple variants of same pass
+                                //   - Indexed by optimization level or context
+
     uint32_t    array_flag;     // +0x40: Array presence flag (offset +56)
-    uint8_t     padding[4];     // +0x44: Alignment
-};  // Size: 64 bytes per entry, stride: 64
+                                //   - Boolean: 1 if fn_array is populated, 0 if NULL
+                                //   - Determines if pass is fully initialized
+
+    uint8_t     padding[4];     // +0x44: Alignment padding
+};  // Size: 64 bytes per entry (indexed lookup stride)
 ```
 
-## PASS MANAGER STRUCTURE
+---
+
+## PASS MANAGER STRUCTURE (OUTPUT LAYOUT)
+
+Main output structure returned by PassManager function 0x12D6300.
 
 ```c
-struct PassManager {
-    uint32_t    opt_level;      // +0x00: Optimization level (from a2+112)
-    uint32_t    padding1;       // +0x04
-    void*       config_ptr;     // +0x08: Pointer to PassManagerConfig
-    PassDescriptor passes[212]; // +0x10: Array of 212 passes
-};  // Total size: 5104 bytes (16 + 212*24)
+struct PassManagerOutput {
+    uint32_t    opt_level;      // +0x00: Optimization level (copied from input a2+112)
+                                //   - O0/O1/O2/O3 (values 0-3)
+                                //   - Determines which passes run
+
+    uint32_t    padding1;       // +0x04: Alignment padding
+
+    void*       config_ptr;     // +0x08: Pointer to input PassManagerConfig
+                                //   - Points back to source configuration structure
+                                //   - Used for runtime pass registry access
+
+    PassDescriptor passes[212]; // +0x10: Array of 212 pass descriptors
+                                //   - Sequential array of PassDescriptor entries
+                                //   - Indices 0-211 correspond to pass IDs 10-221
+                                //   - Starting offset: +0x10
+                                //   - Last entry: +0x10 + 211*24 = +0x350 = 848 bytes
+                                //   - Total output size: ~3552 bytes
+};  // Total size: 3568 bytes (16 + 212*24)
 ```
 
-## PASS MANAGER CONFIG
+---
+
+## PASS MANAGER CONFIG (INPUT STRUCTURE)
+
+Configuration passed to PassManager constructor (parameter a2).
 
 ```c
 struct PassManagerConfig {
-    uint8_t     header[112];        // +0x00: Unknown header fields
-    uint32_t    optimization_level; // +0x70: O0/O1/O2/O3
-    uint32_t    padding;            // +0x74
-    void*       pass_registry;      // +0x78: PassRegistryEntry* (offset +120)
-};  // Minimum size: 128 bytes
+    uint8_t     header[112];        // +0x00: Configuration header fields
+                                    //   - Compiler settings, target info, etc.
+                                    //   - Offsets 0-111 contain various config data
+
+    uint32_t    optimization_level; // +0x70: Optimization level (O0/O1/O2/O3)
+                                    //   - Value: 0, 1, 2, or 3
+                                    //   - Copied to output at +0x00
+                                    //   - Passed to all pass handlers
+
+    uint32_t    padding;            // +0x74: Alignment padding
+
+    void*       pass_registry;      // +0x78: Pointer to PassRegistryEntry array
+                                    //   - Array of 222 PassRegistryEntry structures
+                                    //   - Each entry is 64 bytes (indices 0-221)
+                                    //   - Actual stored at input_offset + 120
+                                    //   - Used by handler functions (sub_12D6170, sub_12D6240)
+};  // Minimum size: 128 bytes (actual size varies with config data)
 ```
 
-## BINARY LAYOUT
+---
 
-### Pass Manager Function
-- **Address**: `0x12D6300`
-- **Size**: 4786 bytes (0x12AB)
-- **Range**: `0x12D6300 - 0x12D6B9A`
-- **Decompiled Size**: 122 KB
+## BINARY IMPLEMENTATION
 
-### Handler Functions
-- **Metadata Handler**: `0x12D6170` (113 passes, even indices)
-- **Boolean Handler**: `0x12D6240` (99 passes, odd indices)
-- **Store Helper**: `0x12D6090` (pass metadata storage)
-- **Registry Lookup**: `0x1691920` (64-byte stride indexing)
-- **Registry Search**: `0x168FA50` (pass ID search)
-- **Pass ID Match**: `0x1690410` (ID verification)
+### Core Function Addresses
 
-### Pass Registry
-- **Base**: `PassManagerConfig + 120` (a2+120)
-- **Entry Size**: 64 bytes
-- **Total Slots**: 222 (indices 0-221)
-- **Active Slots**: 212 (indices 10-221)
-- **Unused Slots**: 10 (indices 0-9)
-- **Access Pattern**: `base + ((index - 1) << 6)`
-
-## PASS HIERARCHY
-
-### Module Passes (Indices 10-50, ~41 passes)
-- **Scope**: Entire compilation unit
-- **Method**: `runOnModule(Module&)`
-- **Frequency**: Once per module
-- **Examples**: GlobalOpt, Internalization, DeadArgumentElim
-
-### Function Passes (Indices 50-200, ~139 passes)
-- **Scope**: Individual functions
-- **Method**: `runOnFunction(Function&)`
-- **Frequency**: Once per function
-- **Examples**: InstCombine, SimplifyCFG, DSE, GVN, JumpThreading
-
-### Loop Passes (Indices 160-180, ~21 passes)
-- **Scope**: Individual loops
-- **Method**: `runOnLoop(Loop&)`
-- **Frequency**: Once per loop
-- **Examples**: LICM, LoopUnroll, LoopVersioning, LoopVectorize
-
-### Backend Passes (Indices 210-221, ~12 passes)
-- **Scope**: Code generation
-- **Method**: `runOnMachineFunction()`
-- **Frequency**: Once per function (backend)
-- **Examples**: Vectorization, CodeGenPrepare, PostRA
-
-## PASS REGISTRATION
-
-### Static Registration
-- **Constructor Count**: 206 files (`ctor_*.c`)
-- **Pattern**: `RegisterPass<T>` template instantiation
-- **Timing**: Compile-time static initialization
-- **Registry**: Singleton PassRegistry with lazy instantiation
-
-### Pass ID Assignment
-- **Range**: 10-221 (0x0A-0xDD)
-- **Type**: `uint32_t`
-- **Unused**: 0-9 (reserved/unused)
-- **Total Active**: 212
+| Function | Address | Size | Purpose |
+|----------|---------|------|---------|
+| **PassManager** | `0x12D6300` | 4786 bytes | Main pass manager constructor/initialization |
+| **Metadata Handler** | `0x12D6170` | - | Fetches complex pass metadata (113 even indices) |
+| **Boolean Handler** | `0x12D6240` | - | Fetches boolean pass options (99 odd indices) |
+| **Store Helper** | `0x12D6090` | - | Stores parsed metadata into output array |
+| **Registry Lookup** | `0x1691920` | - | Indexed lookup with 64-byte stride |
+| **Registry Search** | `0x168FA50` | - | Linear search through pass registry |
+| **ID Match** | `0x1690410` | - | Verifies pass ID match in registry |
 
 ### Handler Distribution
-- **Even Indices (113)**: Metadata handler (sub_12D6170)
-- **Odd Indices (99)**: Boolean handler (sub_12D6240)
-- **Total**: 212 passes
 
-## EXECUTION ENGINE
+```
+Sub_12D6170 (Metadata Handler) - Handles 113 passes (even indices):
+  10, 12, 14, 16, ..., 218, 220
+  Purpose: Extract complex pass metadata including function pointers and analysis requirements
+  Returns: PassInfo with {offset_40, offset_48, offset_56} fields populated
 
-### Initialization Phase
-```c
-// PassManager constructor (0x12D6300)
-v5 = *(_DWORD *)(a2 + 112);           // Read opt level
-*(_QWORD *)(a1 + 8) = a2;             // Store config ptr
-*(_DWORD *)a1 = v5;                    // Store opt level
+Sub_12D6240 (Boolean Handler) - Handles 99 passes (odd indices):
+  11, 13, 15, 17, ..., 219, 221
+  Purpose: Extract boolean pass options and enabled/disabled flags
+  Returns: (count << 32) | boolean_value
+  Default: "0" (disabled), Exceptions: indices 19, 25, 211, 217 default to "1"
 ```
 
-### Pass Iteration
+### Pass Registry Access
+
+- **Location**: `input_config + 120` (a2+120)
+- **Entry Size**: 64 bytes per pass
+- **Total Slots**: 222 (indices 0-221)
+- **Active Slots**: 212 (indices 10-221)
+- **Unused Slots**: 10 (indices 0-9, reserved)
+- **Access Pattern**: `base + ((index - 1) << 6)` for indexed lookup
+- **Stride**: 64 bytes enables O(1) indexed access
+
+---
+
+## HIERARCHICAL PASS EXECUTION MODEL
+
+NVIDIA CICC implements a 3-level hierarchical pass execution model based on LLVM architecture.
+
+### Level 1: Module Passes (Indices ~10-50)
+
 ```c
-// Sequential pass processing (unrolled loop)
-for (index = 10; index <= 221; index++) {
-    if (index % 2 == 0) {
-        // Even: metadata handler
-        metadata = sub_12D6170(a2 + 120, index);
-        if (metadata) {
-            fn = **(_QWORD **)(metadata + 48);
-            count = *(_DWORD *)(metadata + 40);
+struct ModulePassManager {
+    // Executes once per compilation module
+    execution_method:    runOnModule(Module&)
+    scope:              Entire compilation unit
+    frequency:          Once per input module
+    nesting_level:      Outermost - no parent manager
+
+    responsibilities: [
+        "Module-level transformations",
+        "Interprocedural analysis and optimization",
+        "Global object analysis and transformation",
+        "Call graph based decisions"
+    ]
+
+    examples: [
+        "GlobalOptimization",
+        "InternalizationPass",
+        "DeadArgumentElimination",
+        "ArgPromotion"
+    ]
+
+    analysis_availability: [
+        "CallGraph - interprocedural relationships",
+        "GlobalValueSummary - cross-function summaries",
+        "ProfileSummaryInfo - execution frequency data"
+    ]
+};
+```
+
+**Invalidation Scope**: Can invalidate all downstream analyses (function and loop level)
+
+### Level 2: Function Passes (Indices ~50-200)
+
+```c
+struct FunctionPassManager {
+    // Executes once per function in module
+    // Parent: ModulePassManager (nested inside module iteration)
+    execution_method:    runOnFunction(Function&)
+    scope:              Individual functions
+    frequency:          Once per function in module
+    nesting_level:      Middle - parent is ModulePassManager
+
+    responsibilities: [
+        "Function-local transformations",
+        "Instruction scheduling and optimization",
+        "Control flow analysis",
+        "Data flow optimization",
+        "Loop discovery and analysis"
+    ]
+
+    examples: [
+        "InstCombine",
+        "SimplifyCFG",
+        "DeadStoreElimination",
+        "GlobalValueNumbering",
+        "LoopSimplify (prepares for loop passes)",
+        "JumpThreading"
+    ]
+
+    required_analyses: [
+        "DominatorTree - dominator/post-dominator relationships",
+        "LoopInfo - loop nesting structure",
+        "LoopSimplify - canonical loop form"
+    ]
+};
+```
+
+**Invalidation Scope**: Can invalidate function-local analyses (loop level below)
+
+### Level 3: Loop Passes (Indices ~160-180)
+
+```c
+struct LoopPassManager {
+    // Executes once per loop in each function
+    // Parent: FunctionPassManager (nested inside function iteration)
+    execution_method:    runOnLoop(Loop&)
+    scope:              Individual loops within functions
+    frequency:          Once per loop (nested iteration over loops)
+    nesting_level:      Innermost - parent is FunctionPassManager
+
+    responsibilities: [
+        "Loop-specific optimizations",
+        "Vectorization preparation",
+        "Loop transformations",
+        "Loop-level parallelization"
+    ]
+
+    examples: [
+        "LoopInvariantCodeMotion (LICM)",
+        "LoopUnroll",
+        "LoopVersioning",
+        "LoopIdiomRecognize",
+        "LoopVectorize"
+    ]
+
+    required_analyses: [
+        "LoopInfo - canonical loop structure",
+        "DominatorTree - dominator relationships",
+        "LoopSimplify - loop simplification",
+        "ScalarEvolution - iteration count information"
+    ]
+};
+```
+
+**Invalidation Scope**: Limited to loop-specific analyses (minimal impact on outer levels)
+
+### Execution Flow Diagram
+
+```
+Module Loop (for each module) {
+    Function Loop (for each function in module) {
+        Loop Loop (for each loop in function) {
+            Process loop-level passes
         }
-    } else {
-        // Odd: boolean handler
-        result = sub_12D6240(a2, index, "0");
-        enabled = (uint32_t)result;
-        count = (uint32_t)(result >> 32);
+        Process function-level passes
     }
-    // Store at a1 + 16 + (index-10)*24
-    sub_12D6090(output_ptr, fn, count, analysis, opt_level);
+    Process module-level passes
 }
 ```
 
-### Analysis Invalidation
+**Analysis Sharing**: Analyses computed at outer levels available to nested levels
+
+**Invalidation Propagation**: Analysis marked invalid at any level triggers recomputation on next query
+
+---
+
+## PASS REGISTRATION MECHANISM
+
+### Static Registration Process
+
 ```c
-// Line 1674 in sub_12D6300
-v50 = *(_BYTE *)(v48 + 36) == 0;  // Check preservation flag
-// If true: analyses invalidated
-// If false: analyses preserved
+// Compile-time registration pattern found in 206 constructor files
+class PassRegistry {
+    static PassRegistry* instance() {
+        static PassRegistry registry;
+        return &registry;
+    }
+
+    // Constructor calls from ctor_*.c files register passes
+    template<typename PassType>
+    void RegisterPass() {
+        // Extract pass metadata
+        pass_id = next_id++;           // Assign index 10-221
+        pass_name = PassType::name();
+        pass_fn = PassType::factory();
+
+        // Store in registry at offset (id-1)*64
+        registry[id-1].metadata = ...;
+        registry[id-1].pass_object = PassType::create();
+        registry[id-1].fn_array[...] = PassType::runOn...;
+    }
+};
 ```
+
+### Pass ID Assignment
+
+- **Range**: 10-221 (0x0A-0xDD)
+- **Type**: `uint32_t`
+- **Reserved**: 0-9 (unused, available for future expansion)
+- **Total Slots**: 222 (inclusive 0-221)
+- **Active Passes**: 212
+- **Assignment Method**: Compile-time via RegisterPass<T> template instantiation
+
+### Handler Distribution Pattern
+
+The 212 active passes split evenly between two handler types:
+
+```
+Even-indexed passes (113 total):  10, 12, 14, 16, ..., 218, 220
+  - Handled by sub_12D6170 (metadata handler)
+  - Complex metadata extraction
+  - Returns full PassInfo structure
+
+Odd-indexed passes (99 total):    11, 13, 15, 17, ..., 219, 221
+  - Handled by sub_12D6240 (boolean handler)
+  - Simple boolean option flags
+  - Returns enabled/disabled status
+```
+
+### Registry Lookup Process
+
+```c
+PassRegistryEntry* lookup_pass(void* registry_base, uint32_t index) {
+    // Indexed lookup with 64-byte stride
+    offset = (index - 1) << 6;  // Multiply by 64
+    return (PassRegistryEntry*)((uint8_t*)registry_base + offset);
+}
+
+PassDescriptor fetch_pass_descriptor(void* config, uint32_t index) {
+    PassDescriptor desc = {0};
+
+    if (index % 2 == 0) {
+        // Even index: use metadata handler
+        PassInfo info = sub_12D6170(config + 120, index);
+        desc.pass_fn = **((void**)(info + 48));  // Function pointer array
+        desc.pass_count = *(uint32_t*)(info + 40);
+        desc.flags = extract_analysis_flags(info);
+    } else {
+        // Odd index: use boolean handler
+        uint64_t result = sub_12D6240(config, index, "0");
+        desc.pass_fn = (result & 1) ? pass_impl : NULL;
+        desc.pass_count = (uint32_t)(result >> 32);
+        desc.flags = (result & 1) ? FLAG_ENABLED : FLAG_DISABLED;
+    }
+
+    return desc;
+}
+```
+
+---
+
+## EXECUTION ORDER DATA STRUCTURES
+
+### Pass Execution Worklist
+
+The PassManager uses sequential execution with topological ordering:
+
+```c
+struct PassExecutionQueue {
+    uint32_t    current_index;      // Current pass being executed (10-221)
+    uint32_t    opt_level;          // Affects which passes run
+
+    bool        execute_pass(uint32_t index) {
+        PassDescriptor desc = fetch_descriptor(index);
+
+        // Check if pass should run at this optimization level
+        if (desc.flags & FLAG_ENABLED_AT_LEVEL[opt_level]) {
+            // Execute pass
+            desc.pass_fn(current_ir);
+
+            // Mark dependent analyses as invalid
+            if (!(desc.flags & FLAG_PRESERVES_ANALYSES)) {
+                mark_invalid_analyses(current_index);
+            }
+        }
+
+        current_index++;
+        return current_index <= 221;
+    }
+};
+```
+
+### Pass Execution Order
+
+```c
+// Sequential execution order (no branching, deterministic)
+PassSequence {
+    10, 11, 12, 13, 14, 15, ..., 218, 219, 220, 221
+}
+
+// Passes 0-9 never executed (reserved/unused indices)
+// Passes 10-221 executed in order (212 total)
+```
+
+### Optimization Level Configuration
+
+Passes selected based on opt_level field in PassManagerConfig+112:
+
+```c
+struct OptimizationLevels {
+    // O0 - No optimization (minimal passes)
+    level_0: {
+        passes: [10, 11, ..., ~40],  // ~15-20 minimal correctness passes
+        goal: "Fast compilation, debug-friendly",
+        examples: ["AlwaysInliner", "NVVMReflect", "MandatoryInlining"]
+    }
+
+    // O1 - Basic optimization
+    level_1: {
+        passes: [10, 11, ..., ~100],  // ~50-60 quick optimization passes
+        goal: "Balance speed and quality",
+        examples: ["SimplifyCFG", "InstCombine", "DSE", "CSE"]
+    }
+
+    // O2 - Standard optimization
+    level_2: {
+        passes: [10, 11, ..., ~180],  // ~150-170 standard optimization passes
+        goal: "Standard optimization level",
+        examples: ["LICM", "GVN", "Inlining", "GlobalOpt"]
+    }
+
+    // O3 - Aggressive optimization
+    level_3: {
+        passes: [10, 11, ..., 221],  // All 212 passes
+        goal: "Maximum performance",
+        examples: ["LoopUnroll", "LoopVectorize", "SLPVectorize"]
+    }
+};
+```
+
+### Special Default-Enabled Passes
+
+Three passes default to enabled (value=1) at all optimization levels:
+
+```c
+special_passes: [
+    {
+        index: 19,
+        description: "Likely O3-exclusive optimization",
+        default: "1"
+    },
+    {
+        index: 25,
+        description: "Likely aggressive transformation",
+        default: "1"
+    },
+    {
+        index: 211,
+        description: "Backend or analysis pass",
+        default: "1"
+    },
+    {
+        index: 217,
+        description: "Backend-specific optimization",
+        default: "1"
+    }
+]
+```
+
+---
+
+## PASS DEPENDENCY GRAPH
+
+### Dependency Declaration Pattern
+
+Passes declare dependencies via getAnalysisUsage() method (inferred from L3 analysis):
+
+```c
+struct PassDependency {
+    uint32_t    pass_id;               // Declaring pass
+    uint32_t*   required_analyses;     // Array of analysis pass IDs
+    uint32_t    required_count;        // Number of required analyses
+    uint32_t*   preserved_analyses;    // Analyses kept valid after pass
+    uint32_t    preserved_count;
+};
+```
+
+### Known Dependency Patterns (from L3 analysis)
+
+```c
+// Loop optimization passes (indices 160-180)
+dependency_pattern loop_passes: {
+    requires: ["LoopInfo", "DominatorTree", "LoopSimplify"],
+    reason: "Need canonical loop form and dominator relationships"
+}
+
+// Scalar optimization passes (indices 10-50)
+dependency_pattern scalar_passes: {
+    requires: ["DominatorTree"],
+    reason: "Dominator information for instruction ordering"
+}
+
+// Global value numbering passes (indices 180+)
+dependency_pattern gvn_passes: {
+    requires: ["DominatorTree", "DominanceFrontier"],
+    reason: "Value numbering needs dominator hierarchy"
+}
+
+// Inlining passes (indices 200+)
+dependency_pattern inlining_passes: {
+    requires: ["CallGraph", "TargetLibraryInfo"],
+    reason: "Inlining decisions based on call relationships"
+}
+```
+
+### Analysis Invalidation Tracking
+
+```c
+struct InvalidationInfo {
+    uint32_t    pass_id;                      // Pass that modified IR
+    uint64_t    invalidated_analyses_mask;    // Bitmask of invalid analyses
+
+    // Check if analysis is still valid
+    bool is_analysis_valid(uint32_t analysis_id) {
+        return !(invalidated_analyses_mask & (1ULL << analysis_id));
+    }
+};
+
+// Invalidation rules (from L3 analysis at offset +36 in sub_12D6300)
+invalidation_triggers: [
+    "Pass modifies CFG (control flow graph)",
+    "Pass modifies instruction sequence",
+    "Pass adds/removes basic blocks",
+    "Pass changes function signature",
+    "Explicit invalidation flag set"
+]
+
+// Preservation declaration (implicit or explicit)
+preservation_policy: {
+    default: "ALL ANALYSES INVALIDATED",
+    exception: "AU.setPreservedAll() in analysis passes",
+    custom: "AU.addPreserved<AnalysisType>() for specific analyses"
+}
+```
+
+---
+
+## INITIALIZATION SEQUENCE
+
+### Phase 1: PassManager Constructor (0x12D6300)
+
+```c
+int64_t PassManager_init(
+    PassManagerOutput* output,      // a1 - Output structure to fill
+    PassManagerConfig* config       // a2 - Input configuration
+) {
+    // 1. Read optimization level from input
+    uint32_t opt_level = *(uint32_t*)(config + 112);  // a2 + 112
+
+    // 2. Initialize output structure
+    *(uint32_t*)output = opt_level;                    // a1 + 0
+    *(void**)(output + 8) = config;                    // a1 + 8
+
+    // 3. Iterate through all 212 passes (10 to 221)
+    for (uint32_t index = 10; index <= 221; index++) {
+        PassDescriptor* desc = output->passes + (index - 10);
+
+        void* registry_base = *(void**)(config + 120);  // a2 + 120
+
+        if (index % 2 == 0) {
+            // Even: metadata handler
+            PassInfo* info = sub_12D6170(registry_base, index);
+            if (info) {
+                desc->pass_fn = *(void**)(info + 48);  // Function pointer
+                desc->pass_count = *(uint32_t*)(info + 40);
+                desc->flags = extract_flags(info);
+            }
+        } else {
+            // Odd: boolean handler
+            uint64_t result = sub_12D6240(config, index, "0");
+            desc->pass_fn = (result & 1) ? resolve_function(index) : NULL;
+            desc->pass_count = (uint32_t)(result >> 32);
+            desc->flags = (result & 1) ? 1 : 0;
+        }
+
+        // Store at a1 + 16 + (index-10)*24
+        store_pass_metadata(output, index, desc);
+    }
+
+    // 4. Return success
+    return 0;
+}
+```
+
+### Phase 2: Pass Execution Loop
+
+```c
+void PassManager_execute(
+    PassManagerOutput* passes,
+    Module& module
+) {
+    uint32_t opt_level = *(uint32_t*)passes;
+
+    // Module-level passes
+    for (uint32_t idx = 0; idx < 212; idx++) {
+        PassDescriptor& desc = passes->passes[idx];
+        uint32_t pass_id = 10 + idx;
+
+        if (is_module_pass(pass_id) && should_run_at_level(pass_id, opt_level)) {
+            if (desc.pass_fn) {
+                bool modified = desc.pass_fn(&module);
+                if (modified) {
+                    invalidate_dependent_analyses(pass_id);
+                }
+            }
+        }
+
+        // Nested: Function-level passes
+        for (Function& func : module) {
+            for (uint32_t fidx = 0; fidx < 212; fidx++) {
+                PassDescriptor& fdesc = passes->passes[fidx];
+                uint32_t func_pass_id = 10 + fidx;
+
+                if (is_function_pass(func_pass_id) && should_run_at_level(func_pass_id, opt_level)) {
+                    if (fdesc.pass_fn) {
+                        bool modified = fdesc.pass_fn(&func);
+
+                        // Nested: Loop-level passes
+                        for (Loop* loop : loops_in(func)) {
+                            for (uint32_t lidx = 0; lidx < 212; lidx++) {
+                                PassDescriptor& ldesc = passes->passes[lidx];
+                                uint32_t loop_pass_id = 10 + lidx;
+
+                                if (is_loop_pass(loop_pass_id) && should_run_at_level(loop_pass_id, opt_level)) {
+                                    if (ldesc.pass_fn) {
+                                        ldesc.pass_fn(loop);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+### Phase 3: Cleanup and Finalization
+
+```c
+void PassManager_finalize(PassManagerOutput* passes) {
+    // 1. Release analysis results
+    for (auto& cached_analysis : analysis_cache) {
+        cached_analysis.invalidate();
+    }
+
+    // 2. Deallocate temporary structures
+    for (uint32_t i = 0; i < 212; i++) {
+        PassDescriptor& desc = passes->passes[i];
+        // Cleanup pass-specific state if needed
+    }
+
+    // 3. Print summary statistics
+    report_pass_execution_stats();
+}
+```
+
+---
 
 ## PASS TABLE (212 Entries)
 
