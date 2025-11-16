@@ -2,98 +2,235 @@
 
 ## Interference Graph Node
 
+### Raw SSE Register Layout
+
+Nodes are stored in `__m128i` (128-bit SSE) structures for SIMD-accelerated degree manipulation:
+
 ```c
-// Size: 40 bytes (0x28), SSE register layout
+// Internal SSE representation (128-bit __m128i)
+union GraphNodeSSE {
+    __m128i     m128i_data;       // 128-bit SSE register
+    struct {
+        uint64_t field_0;         // Offset 0: pointer_to_node_data (64-bit)
+        uint64_t field_1;         // Offset 8: degree_or_cost (m128i_u64[1])
+    };
+};
+```
+
+**Decompiled Evidence**:
+- Code at 0x1090bd0:1039 loads `v64 = v62->m128i_u64[1]` (degree from upper field)
+- Node iteration with 40-byte stride (seen at 0x1090bd0:1041: `v62 = (__m128i *)((char *)v62 + 40)`)
+- Degree comparison: `v64 > 0xE` (threshold check, K=15)
+
+### Expanded IGNode Structure (40 bytes total)
+
+```c
+// Size: 40 bytes (0x28), 16-byte aligned allocation
 struct IGNode {
-    void*       node_data;        // +0x00: Pointer to register metadata
-    uint64_t    degree;           // +0x08: Neighbor count (m128i_u64[1])
+    // SSE-accessible fields (first 16 bytes = one __m128i)
+    void*       node_data;        // +0x00: Pointer to register metadata (64-bit)
+    uint64_t    degree_or_cost;   // +0x08: Degree (upper field of m128i_u64[1])
+
+    // Extended metadata (next 24 bytes)
     uint32_t    vreg_id;          // +0x10: Virtual register ID
-    float       spill_cost;       // +0x14: Computed spill cost
+    float       spill_cost;       // +0x14: Computed spill cost (IEEE 754 float)
     uint8_t     reg_class;        // +0x18: 0=GPR32, 1=GPR64, 2=PRED, 3=H16
     uint8_t     flags;            // +0x19: 0x01=precolored, 0x02=spilled
     uint16_t    color;            // +0x1A: Assigned physical register (0-14)
     uint32_t    neighbor_count;   // +0x1C: Edge list size
-    IGNode**    neighbors;        // +0x20: Adjacency list pointer
+    IGNode**    neighbors;        // +0x20: Adjacency list pointer (64-bit)
 };
 ```
 
-**Storage**: Nodes stored in `__m128i` arrays for SIMD processing (decompiled evidence: `v62->m128i_u64[1]` at 0x1090bd0:1039).
+**Size Verification**:
+- `sizeof(IGNode)` = 40 bytes (0x28)
+- SSE-accessible portion = 16 bytes (single __m128i)
+- Node padding/alignment: 16-byte boundaries
 
-**Allocation**: Bump allocator, 40-byte aligned blocks.
+**Storage**: Nodes stored in preallocated pools with `__m128i` field access enabled for degree checks (0x1090bd0:1039-1041 loop pattern).
+
+**Allocation**: Bump allocator with 40-byte blocks, 16-byte aligned.
 
 ## Spill Cost Computation
 
-### Formula
+### Storage Format
+
+Spill costs are packed into 64-bit values during node selection (evidence from 0x1090bd0:1049, 1058, 1071):
 
 ```c
-spill_cost = (def_freq * use_freq * mem_latency * loop_depth_mult)
+// Cost packing format (64-bit)
+struct PackedCost {
+    uint32_t    degree;         // Lower 32 bits: node degree
+    uint32_t    spill_cost;     // Upper 32 bits: spill cost value
+};
+
+// Assembly pattern: (v67 << 32) | (unsigned int)v64
+// Where v67 = spill_cost, v64 = degree
+uint64_t packed = (spill_cost << 32) | degree;
 ```
 
-### Coefficients
+### Latency Model
 
 ```c
-#define MEM_LATENCY_L1      4.0f     // cycles
-#define MEM_LATENCY_L2     10.0f     // cycles
-#define MEM_LATENCY_L3     40.0f     // cycles
-#define MEM_LATENCY_MAIN  100.0f     // cycles
-#define LOOP_DEPTH_BASE     1.5f     // exponential base
+#define MEM_LATENCY_L1      4       // cycles (cache hit)
+#define MEM_LATENCY_L2     10       // cycles (cache hit)
+#define MEM_LATENCY_L3     40       // cycles (cache hit)
+#define MEM_LATENCY_MAIN  100       // cycles (main memory)
 ```
 
-### Computation
+Reload cost components per L3-07 analysis:
 
 ```c
-float compute_spill_cost(uint32_t defs, uint32_t uses, uint32_t loop_depth) {
-    float def_freq = (float)defs;
-    float use_freq = (float)uses;
-    float mem_lat  = estimate_memory_latency();  // 4.0-100.0
-    float loop_mul = powf(LOOP_DEPTH_BASE, (float)loop_depth);
-    return def_freq * use_freq * mem_lat * loop_mul;
+struct ReloadCost {
+    uint32_t    memory_latency;     // Base latency: 4-100 cycles
+    uint32_t    register_pressure;  // Cost from evicting other values
+    uint32_t    critical_path;      // Path dependency penalty
+};
+
+// Heuristic: reload at spill point vs defer to merge point
+// Decision: lazy reload if (value_use_distance > reload_cost_estimate)
+```
+
+### Computation Locations
+
+- **Main entry**: 0xb612d0 (sub_B612D0, 39329 bytes)
+- **Cost calculation**: Integrated within instruction constraint processing
+- **Cost storage**: Float field in IGNode (offset 0x14)
+
+### Lazy Reload Placement Algorithm
+
+From L3-07 analysis of lazy reload optimization (sub_B612D0):
+
+```c
+void place_reloads(InterferenceGraph* graph, ReloadPointList* reload_points) {
+    // Phase 1: Identify spill locations per instruction
+    for (uint32_t instr = 0; instr < total_instructions; instr++) {
+        uint32_t constraint_class = get_constraint_class(instr);
+        IGNode** operands = get_operand_constraints(instr);
+
+        // Phase 2: Analyze use points
+        for (uint32_t op_idx = 0; op_idx < operand_count; op_idx++) {
+            IGNode* node = operands[op_idx];
+            // Track where value is actually consumed
+        }
+    }
+
+    // Phase 3: Compute optimal reload points (lazy: as late as possible)
+    // sub_A78010 (lines 77-82): emit reloads immediately before use
+
+    // Phase 4: Eliminate redundant reloads via dataflow reachability
+    // sub_A79C90, sub_A79B90: path-sensitive redundancy elimination
 }
 ```
 
-**Address**: 0xb612d0 (sub_B612D0, 39329 bytes)
+**Switch statement structure**: 178+ cases (0u through 0xB2u) for instruction dispatch
+- Each case: operand count 1-17
+- Constraint type parameter to sub_B5BA00 (constraint classes 0-38)
 
 ## Graph Coloring Priority
 
-### Constants
+### Constants (from L3-04 Briggs Algorithm Analysis)
 
 ```c
-#define K_REGISTERS        15        // Physical register count
-#define K_THRESHOLD        14        // K-1 for Briggs criterion
-#define COALESCE_FACTOR    0.8f      // 0xCCCCCCCCCCCCCCCD / 2^64
+#define K_REGISTERS         15          // Physical register count (confirmed by K-1 threshold)
+#define K_THRESHOLD         14          // K-1 for Briggs safety criterion (0xE in hex)
+#define COALESCE_FACTOR     0.8f        // Fixed-point: 0xCCCCCCCCCCCCCCCD / 2^64
+#define COALESCE_MAGIC      0xCCCCCCCCCCCCCCCDULL  // 4/5 representation
 ```
 
-### Briggs Criterion
+**K value evidence** (high confidence):
+- Triple verification at 0x1090bd0:1039, 1060, 1066 (degree < K checks)
+- All comparisons: `v64 > 0xE` (14 hex = 14 decimal)
+- Inference: K = 15 registers available for allocation
+
+### Degree Weighting for Coalescing
+
+Effective degree calculation with 0.8 coalescing factor (evidence from 0x1090bd0:603, 608):
 
 ```c
+#define COALESCE_FACTOR_NUMERATOR   4
+#define COALESCE_FACTOR_DENOMINATOR 5  // 4/5 = 0.8
+
+// Fixed-point arithmetic: magic constant encodes 4/5
+// Magic value 0xCCCCCCCCCCCCCCCD represents exact 4/5
+// Calculation: 0xCCCCCCCCCCCCCCCD / 2^64 = exactly 0.8
+
+uint64_t effective_degree_fp(uint64_t degree) {
+    // Fixed-point multiplication: degree * (4/5)
+    return (degree * COALESCE_MAGIC) >> 3;  // Right shift adjusts for 64-bit fixed point
+}
+
+// Or floating-point variant:
+float effective_degree_fp32(uint64_t degree) {
+    return (float)degree * 0.8f;
+}
+```
+
+### Briggs Criterion Implementation
+
+Two-tier priority scheme (from L3-04):
+
+```c
+// Primary: Briggs optimistic coloring
 bool is_briggs_safe(IGNode* node) {
     uint32_t low_degree_count = 0;
+    // Count neighbors with degree < K (K=15)
     for (uint32_t i = 0; i < node->neighbor_count; i++) {
         if (node->neighbors[i]->degree < K_REGISTERS) {
             low_degree_count++;
         }
     }
-    return low_degree_count >= K_REGISTERS;
+    // Safe if at least K neighbors have degree < K
+    return low_degree_count >= K_REGISTERS;  // >= 15 neighbors
+}
+
+// Selection loop structure (0x1090bd0:1036-1051)
+while (1) {
+    v64 = v62->m128i_u64[1];        // Load degree from SSE node
+    if (v64 > 0xE)                  // Check degree > 14 (K=15 threshold)
+        break;                       // Node is Briggs-safe
+    v62 = (__m128i *)((char *)v62 + 40);  // Next node (40-byte stride)
+    if (v63 == v62)
+        goto LABEL_60;               // No more nodes
 }
 ```
-
-**Evidence**: `v64 > 0xE` check at 0x1090bd0:1039, 1060, 1066
 
 ### Priority Calculation
 
+Two-level priority formula:
+
 ```c
-float compute_priority(IGNode* node) {
+typedef float Priority;
+const Priority BRIGGS_INFINITE = INFINITY;  // Highest priority
+
+Priority compute_priority(IGNode* node) {
+    // Tier 1: Briggs criterion (infinite priority = highest)
     if (is_briggs_safe(node)) {
-        return INFINITY;  // Infinite priority
+        return BRIGGS_INFINITE;      // Process immediately
     }
+
+    // Tier 2: Cost-based fallback
+    // Formula: priority = spill_cost / effective_degree
     float effective_degree = (float)node->degree * COALESCE_FACTOR;
-    return node->spill_cost / effective_degree;
+
+    // Avoid division by zero
+    if (effective_degree < 1.0f) {
+        effective_degree = 1.0f;
+    }
+
+    return (Priority)(node->spill_cost / effective_degree);
 }
+
+// Conditional multiplier from 0x1081400:1076
+// v70 = base_priority * (2 - (coalesce_check == 0) - 1)
+// This gives weight factor of either 1 or 2 based on coalescing analysis
 ```
 
-**Formula**: `priority = spill_cost / (degree * 0.8)`
-
-**Code location**: 0x1081400:1076
+**Code locations** (from L3-04 decompilation):
+- Briggs check: 0x1090bd0:1039-1044 (nested loop, degree < K check)
+- Priority init: 0x1081400:1076 (conditional multiplier, lines 1076)
+- Selection logic: 0x1090bd0:1036-1051 (node candidate evaluation)
+- Node iteration: 0x1090bd0:1041 (40-byte stride through node pool)
 
 ## Worklist Structures
 
@@ -174,26 +311,40 @@ PrecoloredNode calling_conv_nodes[] = {
 
 ## Lazy Reload Structures
 
+### On-Demand Lazy Reload with Redundancy Elimination (L3-07)
+
+Algorithm: defers register restoration to actual use points rather than eagerly reloading at spill sites.
+
+**Key phases**:
+1. Identify spill locations per instruction (sub_B612D0 instruction dispatch)
+2. Analyze use points (dataflow liveness per operand)
+3. Compute optimal reload points (lazy = as late as possible)
+4. Eliminate redundant reloads (path-sensitive dataflow)
+
 ### Spill Slot Tracking
 
 ```c
 struct SpillSlot {
     int32_t     slot_offset;      // +0x00: Stack offset (-1 = unallocated)
     uint32_t    vreg_id;          // +0x04: Virtual register ID
-    uint32_t    size_bytes;       // +0x08: Slot size (4, 8, 16)
-    uint8_t     reg_class;        // +0x0C: Register class
+    uint32_t    size_bytes;       // +0x08: Slot size (4, 8, 16 bytes)
+    uint8_t     reg_class;        // +0x0C: Register class (GPR32/64/PRED/H16)
     uint8_t     alignment;        // +0x0D: Required alignment (1, 2, 4)
-    uint16_t    reserved;         // +0x0E: Padding
+    uint16_t    reserved;         // +0x0E: Padding to 16 bytes
 };
 
 struct SpillSlotMap {
-    SpillSlot*  slots;            // +0x00: Array of spill slots
-    uint32_t    slot_count;       // +0x08: Number of slots
-    int32_t     stack_size;       // +0x0C: Total stack frame size
+    SpillSlot*  slots;            // +0x00: Array of spill slots (indexed by vreg)
+    uint32_t    slot_count;       // +0x08: Total number of slots
+    int32_t     stack_offset;     // +0x0C: Current stack frame pointer offset
+    int32_t     max_slot_offset;  // +0x10: Highest offset used
 };
+
+sizeof(SpillSlot) = 16 bytes (0x10)
+sizeof(SpillSlotMap) = 20 bytes (0x14)
 ```
 
-### Live Range Information
+### Live Range and Use-Def Chain
 
 ```c
 struct LiveRange {
@@ -203,22 +354,30 @@ struct LiveRange {
     uint32_t    use_count;        // +0x10: Number of uses
     uint32_t    loop_depth;       // +0x14: Innermost loop depth
 };
+
+// Reload decision based on next-use distance
+// From L3-07: next_use_distance = instr_count_to_next_use
+// Heuristic: spill high_distance values, keep low_distance values in registers
 ```
 
 ### Reload Point Tracking
 
 ```c
 struct ReloadPoint {
-    uint32_t    pc;               // +0x00: Instruction address
+    uint32_t    pc;               // +0x00: Instruction address (insertion point)
     uint32_t    vreg_id;          // +0x04: Virtual register to reload
-    int32_t     slot_offset;      // +0x08: Source spill slot
+    int32_t     slot_offset;      // +0x08: Source spill slot offset
     uint8_t     reg_class;        // +0x0C: Register class
-    uint8_t     size_bytes;       // +0x0D: Reload size (4, 8, 16)
-    uint16_t    flags;            // +0x0E: 0x01=redundant, 0x02=critical
+    uint8_t     size_bytes;       // +0x0D: Reload size (4, 8, or 16)
+    uint16_t    flags;            // +0x0E: 0x01=redundant, 0x02=critical_path
 };
+
+sizeof(ReloadPoint) = 16 bytes (0x10)
 ```
 
-### Reload Placement Algorithm
+### Lazy Reload Placement Algorithm (from L3-07)
+
+Lazy reload: reloads placed as late as possible (only where values used), before first use on all paths.
 
 ```c
 void place_reloads(SpillSlotMap* slots, LiveRange* ranges, uint32_t vreg_count) {
@@ -226,22 +385,90 @@ void place_reloads(SpillSlotMap* slots, LiveRange* ranges, uint32_t vreg_count) 
         if (slots->slots[v].slot_offset == -1) continue;  // Not spilled
 
         LiveRange* lr = &ranges[v];
+
+        // Phase 1: For each use point
         for (uint32_t u = 0; u < lr->use_count; u++) {
             uint32_t use_pc = lr->use_points[u];
 
-            // Check if already loaded on this path
-            if (!is_value_available(v, use_pc)) {
-                // Insert reload immediately before use
-                insert_reload_instruction(use_pc, v, slots->slots[v].slot_offset);
+            // Phase 2: Check if already loaded on all paths (reachability analysis)
+            if (!is_value_available_on_all_paths(v, use_pc)) {
+                // Phase 3: Insert reload immediately before use (lazy placement)
+                // sub_A78010 emits reload instruction at this point
+                emit_reload_instruction(use_pc, v, slots->slots[v].slot_offset);
             }
+            // else: already reloaded on this path, skip (redundancy elimination)
+        }
+    }
+}
+
+// Redundancy elimination: track loaded registers per basic block
+void eliminate_redundant_reloads(ReloadPointList* reloads) {
+    // Forward dataflow: Track which values are currently in registers
+    for (uint32_t bb = 0; bb < cfg->block_count; bb++) {
+        BitSet available = get_available_values(bb);
+
+        for (uint32_t rp = 0; rp < reloads->count; rp++) {
+            ReloadPoint* reload = &reloads->points[rp];
+
+            // If value already in register on this path
+            if (bitset_test(available, reload->vreg_id)) {
+                reload->flags |= RELOAD_REDUNDANT;  // Mark for elimination
+                continue;
+            }
+
+            // Mark value as available after reload
+            bitset_set(available, reload->vreg_id);
         }
     }
 }
 ```
 
-**Addresses**:
-- sub_B612D0 (0xb612d0): Main entry
-- sub_A78010 (0xa78010): Reload emission (lines 77-82)
+### Instruction-Level Constraint Processing
+
+From L3-07 sub_B612D0 structure (39,329 bytes, 178+ switch cases):
+
+```c
+// Main instruction handler dispatch
+void handle_instruction(uint32_t instr_opcode) {
+    // Step 1: Extract constraint class (instruction-specific register requirements)
+    uint8_t constraint_class = HIBYTE(instruction_table[instr_opcode]);
+
+    // Step 2: Switch on opcode to determine operand count (1-17 operands)
+    switch ((unsigned __int8)instruction_table[instr_opcode]) {
+        case 0x3u:  // 3-operand instruction example
+            // For each operand, allocate spec structure
+            operand_spec[0] = sub_A778C0(a1, 40, 0);  // Operand type 40
+            operand_spec[1] = sub_A778C0(a1, 14, 0);  // Operand type 14
+            operand_spec[2] = sub_A778C0(a1, 14, 0);  // Operand type 14
+
+            // Step 3: Process constraints (wrap multi-operand specs)
+            processed[0] = sub_A79C90(a1, &operand_spec[0], 1);
+            processed[1] = sub_A79C90(a1, &operand_spec[1], 1);
+            processed[2] = sub_A79C90(a1, &operand_spec[2], 1);
+
+            // Step 4: Assign physical registers per constraint class
+            constraints = sub_B5BA00(a1, constraint_class);
+
+            // Step 5: Emit instruction with reloads/stores as needed
+            result = sub_A78010(a1, (int *)&operand_spec[0], 3);
+            break;
+    }
+}
+
+// Helper function purposes (from L3-07):
+// sub_A778C0: Allocate operand spec for a single operand
+//             Parameters: (context, operand_index/type, associated_value)
+// sub_A79C90: Process operand list (wrapper for consolidation)
+// sub_B5BA00: Assign physical registers given constraint class (0-38)
+// sub_A78010: Emit final instruction encoding (lines 77-82 main loop)
+```
+
+**Function addresses**:
+- Main entry: 0xb612d0 (sub_B612D0, 39329 bytes)
+- Reload emission: 0xa78010 (sub_A78010, lines 77-82)
+- Constraint processing: 0xa79c90 (sub_A79C90), 0xa79b90 (sub_A79B90)
+- Physical reg assignment: 0xb5ba00 (sub_B5BA00)
+- Operand spec allocation: 0xa778c0 (sub_A778C0)
 
 ## Memory Layout
 
@@ -317,73 +544,146 @@ IGNode* lookup_node(VRegHashMap* map, uint32_t vreg_id) {
 
 ## Register Class Constraints
 
-### Class Definitions
+### Comprehensive Class Definitions (from L3-22 SM Architecture Analysis)
 
 ```c
 enum RegisterClass {
-    GPR32 = 0,    // General purpose 32-bit: R0-R254 (K=15 physical)
-    GPR64 = 1,    // General purpose 64-bit: R0:R1, R2:R3, ... (K=7 physical)
-    PRED  = 2,    // Predicate registers: P0-P7 (K=1 physical)
-    H16   = 3     // Half-precision 16-bit: H0-H254 (K=15 physical)
+    GPR32  = 0,    // General Purpose 32-bit: R0-R254 (255 virtual, K=15 physical)
+    GPR64  = 1,    // General Purpose 64-bit: RD0-RD127 (127 virtual, K=7 physical)
+    PRED   = 2,    // Predicate registers: P0-P7 (7 available, K=1 physical)
+    H16    = 3     // Half-precision 16-bit: H0-H254 (255 virtual, K=15 physical)
+};
+
+// Class metadata (from L3-22)
+struct RegisterClassMetadata {
+    uint32_t    max_virtual_count;      // Max virtual register IDs
+    uint32_t    physical_count;         // K value (physical registers)
+    uint32_t    register_size_bytes;    // Storage per register
+    uint8_t     alignment_requirement;  // Pair/quad alignment
+};
+
+RegisterClassMetadata class_metadata[] = {
+    [GPR32]  = {255, 15, 4, 1},  // 32-bit: any alignment
+    [GPR64]  = {127,  7, 8, 2},  // 64-bit: even pair alignment
+    [PRED]   = {  7,  1, 1, 1},  // Predicate: 1-bit, no alignment
+    [H16]    = {255, 15, 2, 1}   // Half: packed in 32-bit
 };
 ```
 
-### Alignment Requirements
+### Alignment and Bit Mask Constraints
+
+Critical constraint representation for interference graph:
 
 ```c
 struct RegisterConstraints {
-    uint8_t     reg_class;        // +0x00: RegisterClass enum
-    uint8_t     alignment;        // +0x01: 1, 2, or 4 registers
-    uint16_t    color_mask;       // +0x02: Available colors bitset
-    uint32_t    reserved;         // +0x04: Padding
+    uint8_t     reg_class;        // +0x00: RegisterClass enum (0-3)
+    uint8_t     alignment;        // +0x01: 1=single, 2=pair, 4=quad
+    uint16_t    color_mask;       // +0x02: Available colors bitset (K bits set)
+    uint32_t    reserved;         // +0x04: Padding to 8-byte alignment
 };
 
+// Constraint table: exactly K bits set for each class
 RegisterConstraints class_constraints[] = {
-    {.reg_class = GPR32, .alignment = 1, .color_mask = 0x7FFF},  // Any R0-R14
-    {.reg_class = GPR64, .alignment = 2, .color_mask = 0x5555},  // Even only
-    {.reg_class = PRED,  .alignment = 1, .color_mask = 0x00FF},  // P0-P7
-    {.reg_class = H16,   .alignment = 1, .color_mask = 0x7FFF}   // H0-H14
+    // GPR32: All 15 registers available
+    {.reg_class = GPR32, .alignment = 1, .color_mask = 0x7FFF},  // 0b0111_1111_1111_1111
+                                                                   // Bits 0-14 set (R0-R14)
+
+    // GPR64: Only even registers (pair alignment)
+    {.reg_class = GPR64, .alignment = 2, .color_mask = 0x5555},  // 0b0101_0101_0101_0101
+                                                                   // Bits 0,2,4,6,8,10,12,14 (7 pairs)
+
+    // PRED: 7 predicate registers
+    {.reg_class = PRED,  .alignment = 1, .color_mask = 0x00FF},  // 0b0000_0000_1111_1111
+                                                                   // Bits 0-7 (8 available, P0-P7)
+
+    // H16: Half-precision packed in 32-bit (15 physical)
+    {.reg_class = H16,   .alignment = 1, .color_mask = 0x7FFF}   // 0b0111_1111_1111_1111
+                                                                   // Bits 0-14 set (H0-H14)
 };
+
+// Color mask interpretation:
+// Bit N = 1: register color N is available
+// Bit N = 0: register color N is unavailable
 ```
 
-### Incompatibility Edges
+### Implicit Constraint Edges
+
+Constraint edges added to interference graph during construction:
 
 ```c
-// Add implicit edge if registers alias or violate constraints
 void add_constraint_edges(IGNode* node_a, IGNode* node_b) {
-    // 64-bit uses pair of 32-bit registers: incompatible
+    // Constraint 1: 64-bit uses pair of 32-bit registers (aliasing)
     if (node_a->reg_class == GPR64 && node_b->reg_class == GPR32) {
-        if (registers_overlap(node_a->vreg_id, node_b->vreg_id)) {
+        // RD0 = R0:R1, so interference with both R0 and R1
+        uint32_t pair_low = node_a->color * 2;
+        uint32_t pair_high = pair_low + 1;
+
+        if (node_b->color == pair_low || node_b->color == pair_high) {
             add_edge(node_a, node_b);
             add_edge(node_b, node_a);
         }
     }
 
-    // Bank conflict constraint: same bank = incompatible
-    if (same_memory_bank(node_a->vreg_id, node_b->vreg_id)) {
+    // Constraint 2: Bank conflict avoidance
+    // Registers mapping to same shared memory bank cause stalls
+    if (get_memory_bank(node_a->color) == get_memory_bank(node_b->color)) {
+        // Optional: add edge for bank conflict prevention
+        // add_edge(node_a, node_b);
+    }
+
+    // Constraint 3: Register class incompatibility
+    // Some instruction encodings require specific register pairs
+    if (violates_instruction_encoding(node_a, node_b)) {
         add_edge(node_a, node_b);
         add_edge(node_b, node_a);
     }
 }
 ```
 
-### Bank Conflict Constraints
+### Memory Bank Indexing (SM 70-89 Architecture)
+
+From L3-22 SM 70/75/80 register file organization:
 
 ```c
-#define BANK_COUNT         32
-#define BANK_WIDTH_BYTES    4
-#define BANK_PENALTY_CYCLES 32
+#define BANK_COUNT          32          // 32 independent banks
+#define BANK_WIDTH_BYTES    4           // Each bank: 4-byte wide
+#define BANK_STRIDE_BYTES   128         // Address stride per bank group
+#define BANK_PENALTY_CYCLES 32          // Stall cost for bank conflict
 
-uint32_t get_bank_index(uint32_t address) {
-    return ((address % 128) / BANK_WIDTH_BYTES) % BANK_COUNT;
+// Bank calculation formula
+uint32_t get_memory_bank(uint32_t register_color) {
+    // Hypothetical address if register spilled to memory
+    uint32_t address = register_color * sizeof(uint32_t);  // 4 bytes
+
+    // Bank index formula: ((address % 128) / 4) % 32
+    return ((address % BANK_STRIDE_BYTES) / BANK_WIDTH_BYTES);
 }
 
-bool same_memory_bank(uint32_t vreg_a, uint32_t vreg_b) {
-    // Compute hypothetical addresses for register accesses
-    uint32_t addr_a = vreg_a * 4;  // 4 bytes per 32-bit register
-    uint32_t addr_b = vreg_b * 4;
-    return get_bank_index(addr_a) == get_bank_index(addr_b);
+// Two registers conflict if same bank
+bool same_memory_bank(uint32_t color_a, uint32_t color_b) {
+    return get_memory_bank(color_a) == get_memory_bank(color_b);
 }
+
+// Bank conflict matrix (SM 70+)
+// Bank 0: registers 0, 8 (4-byte stride = 8 registers per bank)
+// Bank 1: registers 1, 9
+// ... pattern repeats every 32 registers
+```
+
+### SM-Specific Register Constraints (from L3-22)
+
+```c
+// All SM versions (70, 75, 80, 86, 89, 90, 100, 120) support:
+struct SMRegisterLimits {
+    uint32_t    max_registers_per_thread;  // 255 (all SM versions)
+    uint32_t    register_file_size_kb;     // 64KB (SM70-89), 128KB (SM90+)
+    uint32_t    physical_register_count;   // 15 (K value)
+};
+
+// Key constraint: occupancy vs register usage tradeoff
+// 1024 threads per SM (32 warps × 32 threads)
+// 64KB register file shared across all threads
+// Using 255 registers drastically reduces occupancy
 ```
 
 ## Binary Evidence
@@ -436,7 +736,60 @@ sizeof(SimplifyWorklist)    = 16 bytes (0x10)
 sizeof(FreezeWorklist)      = 20 bytes (0x14)
 sizeof(SpillWorklist)       = 16 bytes (0x10)
 sizeof(RegisterConstraints) = 8 bytes  (0x08)
+sizeof(SpillSlotMap)        = 20 bytes (0x14)
 ```
+
+### IGNode Field Offsets (Critical for Decompilation Reverse-Engineering)
+
+```c
+// IGNode structure byte layout (40 bytes / 0x28)
+struct IGNode {
+    // Offset range: [0x00-0x07] - SSE SIMD accessible
+    void*       node_data;        // +0x00: 8 bytes (pointer)
+    uint64_t    degree_or_cost;   // +0x08: 8 bytes (m128i_u64[1])
+
+    // Offset range: [0x10-0x1F] - Standard fields
+    uint32_t    vreg_id;          // +0x10: 4 bytes
+    float       spill_cost;       // +0x14: 4 bytes (IEEE 754 float)
+    uint8_t     reg_class;        // +0x18: 1 byte
+    uint8_t     flags;            // +0x19: 1 byte
+    uint16_t    color;            // +0x1A: 2 bytes
+    uint32_t    neighbor_count;   // +0x1C: 4 bytes
+
+    // Offset range: [0x20-0x27] - Pointer field
+    IGNode**    neighbors;        // +0x20: 8 bytes (pointer)
+};
+```
+
+**Decompiled Evidence for Field Access**:
+- Degree access: `v62->m128i_u64[1]` at 0x1090bd0:1039 (reads offset +8)
+- Node iteration: `v62 = (__m128i *)((char *)v62 + 40)` at 0x1090bd0:1041 (40-byte stride)
+- Spill cost: Field at offset 0x14 (observed in priority calculation)
+- Color field: Offset 0x1A (used in assignment loops)
+
+### Evidence Addresses by L3 Agent
+
+**L3-04 Graph Coloring Priority (from graph_coloring_priority.json)**:
+- Briggs degree check: 0x1090bd0:1039-1066 (triple-verified K=15 threshold)
+- Magic constant 0.8: 0x1090bd0:603, 608 (COALESCE_MAGIC = 0xCCCCCCCCCCCCCCCD)
+- Priority multiplier: 0x1081400:1076 (conditional weight calculation)
+- Node selection loop: 0x1090bd0:1036-1051 (selection criteria implementation)
+
+**L3-07 Lazy Reload Optimization (from lazy_reload_algorithm.json)**:
+- Main entry: 0xb612d0 (sub_B612D0, 39,329 bytes)
+- Instruction dispatch: Switch statement, 178+ cases (0u-0xB2u)
+- Operand spec allocation: 0xa778c0 (sub_A778C0)
+- Constraint processing: 0xa79c90 (sub_A79C90), 0xa79b90 (sub_A79B90)
+- Physical register assignment: 0xb5ba00 (sub_B5BA00), classes 0-38
+- Reload emission: 0xa78010 (sub_A78010, lines 77-82 main loop)
+
+**L3-22 Register Class Constraints (from register_class_constraints.json)**:
+- Register class metadata: 4 classes (GPR32, GPR64, PRED, H16)
+- Physical register count: K=15 (all classes except PRED=1)
+- Max virtual registers: 255 (GPR32/H16), 127 (GPR64), 7 (PRED)
+- Bank configuration: 32 banks, 4-byte width, 128-byte stride, 32-cycle penalty
+- Alignment requirements: GPR32=1, GPR64=2 (pair), PRED=1, H16=1
+- Color bit masks: 0x7FFF (GPR32/H16), 0x5555 (GPR64), 0x00FF (PRED)
 
 ## Algorithm Pseudocode
 

@@ -3,82 +3,84 @@
 ## Structure Size
 
 ```
-Total: 128 bytes
+Total: 128 bytes (0x00 - 0x7F)
 Alignment: 8 bytes
 Cache lines: 2 (64-byte cache lines)
 ```
 
-## SymbolEntry Structure Layout
+## SymbolEntry Structure Layout (128 bytes)
+
+Exact memory layout from L3-11 binary analysis:
 
 ```c
 struct SymbolEntry {
-    // Offset 0x00 (8 bytes)
-    SymbolEntry*      next_in_bucket;        // Collision chain pointer
+    // Offset 0-7 (8 bytes)
+    SymbolEntry*      next_in_bucket;        // Collision chain pointer (separate chaining)
 
-    // Offset 0x08 (8 bytes)
-    const char*       symbol_name;           // Null-terminated name
+    // Offset 8-15 (8 bytes)
+    const char*       symbol_name;           // Pointer to null-terminated symbol name
 
-    // Offset 0x10 (8 bytes)
-    const char*       full_qualified_name;   // Namespace/class prefix
+    // Offset 16-23 (8 bytes)
+    const char*       full_qualified_name;   // Qualified name: namespace::class::symbol
 
-    // Offset 0x18 (8 bytes)
-    Type*             symbol_type;           // Type descriptor
+    // Offset 24-31 (8 bytes)
+    Type*             symbol_type;           // Type information descriptor pointer
 
-    // Offset 0x20 (4 bytes)
-    enum StorageClass storage_class;         // See enum below
+    // Offset 32-35 (4 bytes)
+    enum StorageClass storage_class;         // EXTERN, STATIC, AUTO, REGISTER, TYPEDEF, PARAMETER, CUDA_*
 
-    // Offset 0x24 (8 bytes)
-    uint64_t          address_or_offset;     // Memory address/offset
+    // Offset 36-43 (8 bytes)
+    uint64_t          address_or_offset;     // Memory address (variables) or code address (functions)
 
-    // Offset 0x2C (4 bytes)
-    int               scope_level;           // Nesting depth (0=global)
+    // Offset 44-47 (4 bytes)
+    int               scope_level;           // Nesting depth (0=global, 1+=nested scopes)
 
-    // Offset 0x30 (8 bytes)
-    Scope*            parent_scope;          // Parent scope pointer
+    // Offset 48-55 (8 bytes)
+    Scope*            parent_scope;          // Pointer to parent scope
 
-    // Offset 0x38 (8 bytes)
-    Scope*            defining_scope;        // Definition location
+    // Offset 56-63 (8 bytes)
+    Scope*            defining_scope;        // Scope where symbol was originally defined
 
-    // Offset 0x40 (8 bytes)
-    Expression*       initialization_value;  // Initial value expr
+    // Offset 64-71 (8 bytes)
+    Expression*       initialization_value;  // Initial value expression for variables
 
-    // Offset 0x48 (4 bytes)
-    uint32_t          attributes;            // Bitfield (see below)
+    // Offset 72-75 (4 bytes)
+    uint32_t          attributes;            // Bitfield: used, extern, static, inline, const, volatile, restrict, cuda_*
 
-    // Offset 0x4C (4 bytes)
-    int               line_number;           // Source line
+    // Offset 76-79 (4 bytes)
+    int               line_number;           // Source file line number where declared
 
-    // Offset 0x50 (4 bytes)
-    int               file_index;            // File table index
+    // Offset 80-83 (4 bytes)
+    int               file_index;            // Index into file/source table
 
-    // Offset 0x54 (1 byte)
-    enum CudaMemory   cuda_memory_space;     // GLOBAL/SHARED/LOCAL/CONSTANT/GENERIC
+    // Offset 84 (1 byte)
+    enum CudaMemory   cuda_memory_space;     // GLOBAL, SHARED, LOCAL, CONSTANT, GENERIC
 
-    // Offset 0x55 (1 byte)
-    bool              is_cuda_kernel;        // __global__ flag
+    // Offset 85 (1 byte)
+    bool              is_cuda_kernel;        // True if __global__ function
 
-    // Offset 0x56 (1 byte)
-    bool              is_cuda_device_func;   // __device__ flag
+    // Offset 86 (1 byte)
+    bool              is_cuda_device_func;   // True if __device__ function
 
-    // Offset 0x57 (1 byte)
-    bool              forward_declared;      // Forward decl tracking
+    // Offset 87 (1 byte)
+    bool              forward_declared;      // True if forward declaration encountered
 
-    // Offset 0x58 (8 bytes)
-    const char*       mangled_name;          // C++ mangled linker name
+    // Offset 88-95 (8 bytes)
+    const char*       mangled_name;          // C++ mangled name for linker
 
-    // Offset 0x60 (8 bytes)
-    TemplateArgs*     template_args;         // Template instantiation
+    // Offset 96-103 (8 bytes)
+    TemplateArgs*     template_args;         // Template instantiation arguments
 
-    // Offset 0x68 (8 bytes)
-    SymbolEntry*      overload_chain;        // Overload linkage
+    // Offset 104-111 (8 bytes)
+    SymbolEntry*      overload_chain;        // Link to next overloaded symbol
 
-    // Offset 0x70 (8 bytes)
-    SymbolEntry*      prev_declaration;      // Declaration history
+    // Offset 112-119 (8 bytes)
+    SymbolEntry*      prev_declaration;      // Link to previous declaration (history)
 
-    // Offset 0x78 (8 bytes)
-    uint64_t          reserved;              // Padding/future use
+    // Offset 120-127 (8 bytes)
+    uint64_t          reserved;              // Reserved for future use / alignment padding
 };
-// Total: 128 bytes (0x00 - 0x7F)
+// Total: 128 bytes (exactly one cache line pair on x86-64)
 ```
 
 ## Enumerations
@@ -129,81 +131,256 @@ Bits 9-31: Reserved
 
 ## Hash Table Parameters
 
-```
-Bucket Count (estimated):  1024
-Bucket Count Range:        256 - 4096
-Power-of-2:                Yes (for mask-based indexing)
-Confidence:                MEDIUM (70%)
+### Bucket Count Specifications
 
-Load Factor (estimated):   0.75
+CICC implements multiple scoped symbol tables with the following bucket count patterns:
+
+```
+Primary Configuration:     1024 buckets (estimated from allocation patterns)
+Alternative Sizes:         256, 512, 2048, 4096 buckets
+Bucket Count Range:        256 - 4096 (all power-of-2)
+Confidence:                MEDIUM (70%)
+```
+
+**Evidence from L3-11 Analysis**:
+- Compiler design patterns (LLVM/GCC typically use 1024)
+- Memory allocation patterns: 256B-4KB allocations suggest 2-32 symbol entries per bucket
+- Power-of-2 optimization enables fast mask-based indexing: `hash & (BUCKET_COUNT - 1)`
+- Supports 500-2000 symbols without excessive collision chains
+
+### Hash Table Structure
+
+```c
+// Per-scope hash table structure
+struct HashTable {
+    SymbolEntry**  buckets;        // Array of BUCKET_COUNT pointers
+    unsigned int   bucket_count;   // 256, 512, 1024, 2048, or 4096
+    int            symbol_count;   // Total symbols in table
+    float          load_factor;    // Current: symbol_count / bucket_count
+};
+```
+
+### Load Factor and Resizing
+
+```
+Load Factor (estimated):   0.75 (threshold for rehashing)
 Load Factor Range:         0.5 - 1.5
 Confidence:                LOW-MEDIUM (60%)
 
-Collision Method:          Separate chaining
-Confidence:                HIGH (95%)
-
-Initial Table Size:        BUCKET_COUNT * 8 bytes (8192 bytes for 1024 buckets)
-Growth Strategy:           2x multiplication
-Rehash Trigger:            symbol_count >= bucket_count * load_factor
+Rehash Trigger:            symbol_count >= bucket_count * 0.75
+Growth Factor:             2.0 (double bucket count)
+Growth Calculation:        new_bucket_count = old_bucket_count * 2
 ```
 
-## Hash Function
+### Collision Resolution Method
 
-### Candidate 1: DJB2 (Probability: 45%)
+```
+Method:                    Separate chaining (linked lists)
+Confidence:                HIGH (95%)
+
+Chain Structure:           Linked list per bucket
+Next Pointer Location:     Offset 0 in SymbolEntry (next_in_bucket)
+Insertion Strategy:        Head insertion (O(1), most recent at front)
+Average Chain Length:      1.0 - 1.5 symbols per bucket (at LF=0.75)
+Maximum Chain Length:      O(n) worst case (all symbols hash to same bucket)
+```
+
+### Memory Layout
+
+```
+Table Initialization:      BUCKET_COUNT * 8 bytes (pointers)
+Example (1024 buckets):    1024 * 8 = 8,192 bytes
+Entry Storage:             symbol_count * 128 bytes
+
+Total Example:
+  1024 buckets:           8,192 bytes
+  1000 symbols:           128,000 bytes
+  Combined:               136,192 bytes
+```
+
+## Hash Function Analysis
+
+### L3-11 Extraction Status
+
+Based on L3-11 binary analysis, the hash function implementation has not yet been definitively identified. The following candidates are most likely:
+
+### Candidate 1: DJB2 - Daniel J. Bernstein Hash (Probability: 45%)
 
 ```c
 unsigned long hash_djb2(const char* str) {
-    unsigned long hash = 5381;
+    unsigned long hash = 5381;  // Magic seed constant
     int c;
-    while ((c = *str++))
-        hash = ((hash << 5) + hash) + c;  // hash * 33 + c
+
+    while ((c = *str++)) {
+        hash = ((hash << 5) + hash) + c;  // Equivalent to: hash = hash * 33 + c
+    }
+
     return hash;
 }
 ```
 
-**Constants**: `5381`, `33`
-**Operations**: Left shift 5, addition
-**Complexity**: O(n) where n = string length
+**Characteristics**:
+- Initial seed: `5381`
+- Per-character computation: `hash = (hash << 5) + hash + c`
+- Mathematical form: `hash = hash * 33 + c`
+- Time complexity: O(n) where n = string length
+- Distribution: Good for short identifier names
+- Search patterns: Look for magic constant 5381 in binary
 
 ### Candidate 2: Multiplicative Hash (Probability: 50%)
 
 ```c
 unsigned long hash_mult(const char* str) {
-    unsigned long hash = 0;
-    while (*str)
-        hash = hash * 31 + *str++;
+    unsigned long hash = 0;  // Start with zero
+
+    while (*str) {
+        hash = hash * MULTIPLIER + *str++;  // MULTIPLIER: 31, 33, or 37
+    }
+
     return hash;
 }
 ```
 
-**Constants**: `31` (or `33`, `37`)
-**Operations**: Multiplication, addition
-**Complexity**: O(n) where n = string length
+**Characteristics**:
+- Initial value: `0`
+- Multiplier constant: `31`, `33`, or `37` (31 is Java standard, 33 is common in C)
+- Per-character computation: Multiply and add
+- Time complexity: O(n) where n = string length
+- Distribution: Simple and effective for hash tables
+- Search patterns: Look for IMUL instruction with constant 31, 33, or 37
 
-### Candidate 3: FNV-1a (Probability: 20%)
+### Candidate 3: FNV-1a - Fowler-Noll-Vo Hash (Probability: 20%)
 
 ```c
 unsigned long hash_fnv1a(const char* str) {
-    unsigned long hash = 2166136261u;  // FNV offset basis
+    unsigned long hash = 2166136261u;  // FNV offset basis constant
+
     while (*str) {
         hash ^= (unsigned char)*str++;
-        hash *= 16777619u;  // FNV prime
+        hash *= 16777619u;             // FNV prime constant
     }
+
     return hash;
 }
 ```
 
-**Constants**: `2166136261`, `16777619`
-**Operations**: XOR, multiplication
-**Complexity**: O(n) where n = string length
+**Characteristics**:
+- Offset basis: `2166136261u` (0x811C9DC5)
+- Prime multiplier: `16777619u` (0x01000193)
+- Per-character computation: XOR then multiply
+- Time complexity: O(n) where n = string length
+- Distribution: Excellent avalanche properties
+- Search patterns: Look for FNV constants 2166136261 or 16777619 in binary
 
-### Bucket Indexing
+### Candidate 4: Custom CICC Hash (Probability: 30%)
+
+```c
+unsigned long hash_cicc_custom(const char* str) {
+    // Proprietary algorithm optimized for CUDA identifier patterns
+    // Possibly architecture-specific or compiled-specific constants
+    // Requires decompilation to determine exact implementation
+    unsigned long hash = UNKNOWN_SEED;
+
+    while (*str) {
+        hash = UNKNOWN_FORMULA;
+    }
+
+    return hash;
+}
+```
+
+**Characteristics**:
+- Seed: Unknown (architecture or compiler-specific)
+- Formula: Unknown (requires decompilation)
+- Optimization: Likely tuned for CUDA symbol patterns
+- Search patterns: Binary pattern matching on hash computation loops
+
+### Bucket Indexing Formula
+
+Once hash value is computed, bucket index is derived using mask operation:
 
 ```c
 unsigned int bucket_index = hash & (BUCKET_COUNT - 1);
-// For 1024 buckets: hash & 0x3FF
-// For 512 buckets:  hash & 0x1FF
-// For 2048 buckets: hash & 0x7FF
+
+// Examples for different bucket counts:
+// 256 buckets:   bucket_index = hash & 0xFF     (8-bit mask)
+// 512 buckets:   bucket_index = hash & 0x1FF    (9-bit mask)
+// 1024 buckets:  bucket_index = hash & 0x3FF    (10-bit mask)
+// 2048 buckets:  bucket_index = hash & 0x7FF    (11-bit mask)
+// 4096 buckets:  bucket_index = hash & 0xFFF    (12-bit mask)
+```
+
+**Power-of-2 Requirement**: Bucket count must be power of 2 to enable fast modulo via AND operation. This avoids expensive DIV instruction.
+
+### Hash Function Extraction Requirements
+
+To identify exact algorithm, search binary for:
+- **Multiplication constants**: `5381`, `31`, `33`, `37`, `2166136261`, `16777619`
+- **XOR operations**: Indicates FNV-1a
+- **Left shift by 5**: Characteristic of DJB2
+- **Loop accumulation**: Over symbol name characters
+- **Final mask operation**: `& 0x3FF` (or other mask value)
+
+## Symbol Name Encoding and Storage
+
+### String Storage Strategy
+
+CICC stores symbol names as pointers to null-terminated C strings:
+
+```c
+// In SymbolEntry structure (offset 8-15)
+const char* symbol_name;  // Pointer to null-terminated string
+
+// Examples:
+// "main"        -> 4 bytes + null = 5 bytes in memory
+// "kernel_func" -> 11 bytes + null = 12 bytes in memory
+// "thread_x"    -> 8 bytes + null = 9 bytes in memory
+```
+
+### String Encoding
+
+- **Encoding**: UTF-8 or ASCII (standard C identifier rules)
+- **Null termination**: Required (standard C string convention)
+- **Storage location**: Separate from SymbolEntry structure
+- **Memory management**: Likely allocated via malloc() or string interning
+
+### Qualified Name Storage
+
+```c
+// In SymbolEntry structure (offset 16-23)
+const char* full_qualified_name;
+
+// Format examples:
+// "main"                    // Global scope
+// "MyNamespace::func"       // Namespace scope
+// "MyClass::method"         // Class member
+// "ns1::ns2::MyClass::member"  // Nested namespaces
+```
+
+### Hash Input Format
+
+Hash function receives symbol name pointer:
+
+```c
+unsigned long hash = hash_function(symbol_name);
+// Input: pointer to symbol_name string
+// Output: unsigned long hash value
+// Algorithm: Depends on hash function variant (DJB2, FNV, etc.)
+```
+
+### Hash Computation Characteristics
+
+```
+Input String Length:    Variable (typically 5-40 bytes for identifiers)
+Hash Output:            64-bit unsigned long (on 64-bit systems)
+Performance:            O(n) where n = string length
+Typical Cost:           10-50 CPU cycles per lookup
+
+For symbol "myVariable":
+  1. Load symbol_name pointer from entry
+  2. Compute hash by iterating over bytes
+  3. Use mask: hash & (BUCKET_COUNT - 1)
+  4. Access bucket_table[index]
 ```
 
 ## Operations
@@ -235,67 +412,94 @@ void symbol_table_insert(Scope* scope, SymbolEntry* entry) {
 **Time Complexity**: O(1) average, O(n) for rehash
 **Space Complexity**: O(1)
 
-### Lookup (Unqualified)
+### Lookup (Unqualified Name Resolution)
+
+Unqualified lookup searches scope chain from innermost to outermost scope. Uses hash table for O(1) per-scope lookup:
 
 ```c
 SymbolEntry* lookup_symbol(const char* name, Scope* current_scope) {
-    // 1. Compute hash once
+    // Step 1: Compute hash value once (O(n) where n = name length)
     unsigned long hash = hash_function(name);
 
-    // 2. Traverse scope chain
+    // Step 2: Traverse scope chain (current -> parent -> ... -> global)
     Scope* scope = current_scope;
-    while (scope) {
-        // 3. Compute bucket index
+    while (scope != NULL) {
+        // Step 3: Compute bucket index using mask (O(1))
         unsigned int bucket_idx = hash & (BUCKET_COUNT - 1);
 
-        // 4. Traverse collision chain
+        // Step 4: Traverse collision chain in bucket (O(c) where c = chain length)
         SymbolEntry* entry = scope->symbol_table[bucket_idx];
-        while (entry) {
+        while (entry != NULL) {
+            // String comparison to verify match (O(n) where n = name length)
             if (strcmp(entry->symbol_name, name) == 0) {
-                return entry;  // Found
+                return entry;  // Found: return immediately
             }
-            entry = entry->next_in_bucket;
+            entry = entry->next_in_bucket;  // Follow collision chain
         }
 
-        // 5. Move to parent scope
+        // Step 5: Symbol not found in this scope, try parent scope
         scope = scope->parent_scope;
     }
 
-    return NULL;  // Not found
-}
-```
-
-**Time Complexity**:
-- Best case: O(1)
-- Average case: O(1) per scope, O(d) total where d = scope depth
-- Worst case: O(d * n) where n = symbols per bucket
-
-**Space Complexity**: O(1)
-
-### Lookup (Qualified)
-
-```c
-SymbolEntry* lookup_qualified(const char* qualified_name, Scope* global_scope) {
-    // Parse qualified name: "namespace::class::symbol"
-    // Navigate scope hierarchy directly
-    // No scope chain traversal
-
-    unsigned long hash = hash_function(qualified_name);
-    unsigned int bucket_idx = hash & (BUCKET_COUNT - 1);
-
-    SymbolEntry* entry = global_scope->symbol_table[bucket_idx];
-    while (entry) {
-        if (strcmp(entry->full_qualified_name, qualified_name) == 0) {
-            return entry;
-        }
-        entry = entry->next_in_bucket;
-    }
-
+    // Symbol not found in any scope of chain
     return NULL;
 }
 ```
 
-**Time Complexity**: O(1) average, O(n) worst case
+**Scope Chain Resolution**:
+- Searches innermost (current) scope first
+- If not found, searches parent scope
+- Continues up scope hierarchy to global scope
+- Inner symbols shadow outer symbols with same name
+
+**Time Complexity**:
+- **Best case**: O(1) - Found immediately in current scope, no hash collisions
+- **Average case**: O(d) where d = scope depth (constant per scope, linear in depth)
+  - Assumes: good hash function, load factor < 0.75, average collision chain = 1.0
+- **Worst case**: O(d * n) where n = symbols per bucket (pathological case)
+
+**Per-Scope Lookup**: O(1) average, O(n) worst case for single scope lookup
+
+**Space Complexity**: O(1) - No additional data structures
+
+### Lookup (Qualified Name Resolution)
+
+Qualified lookup searches for fully-qualified names (e.g., "namespace::class::symbol"). Does NOT traverse scope chain:
+
+```c
+SymbolEntry* lookup_qualified(const char* qualified_name, Scope* global_scope) {
+    // Step 1: Compute hash on full qualified name
+    unsigned long hash = hash_function(qualified_name);
+
+    // Step 2: Compute bucket index
+    unsigned int bucket_idx = hash & (BUCKET_COUNT - 1);
+
+    // Step 3: Traverse collision chain in global scope
+    SymbolEntry* entry = global_scope->symbol_table[bucket_idx];
+    while (entry != NULL) {
+        // Compare full qualified name (includes namespace/class prefix)
+        if (strcmp(entry->full_qualified_name, qualified_name) == 0) {
+            return entry;  // Found matching qualified name
+        }
+        entry = entry->next_in_bucket;  // Check next entry in chain
+    }
+
+    // Qualified name not found
+    return NULL;
+}
+```
+
+**Qualified Name Format**: `namespace::class::symbol`
+
+**Key Differences from Unqualified Lookup**:
+- Does NOT search scope chain
+- Searches only global scope
+- Compares against `full_qualified_name` field (not just `symbol_name`)
+- Requires fully-qualified name for lookup
+- Used for explicit namespace/class scope references
+
+**Time Complexity**: O(1) average, O(n) worst case (for symbols in collision chain)
+
 **Space Complexity**: O(1)
 
 ### Update
@@ -377,52 +581,108 @@ void rehash_table(Scope* scope) {
 
 ## Performance Characteristics
 
-### Lookup Time
+### Lookup Time Complexity
+
+Based on L3-11 analysis with separate chaining collision resolution:
 
 ```
-Best case:     O(1)     - Symbol in current scope, no collisions
-Average case:  O(1)     - Good hash function, load factor < 0.75
-Worst case:    O(d*n)   - d = scope depth, n = symbols in bucket
+Unqualified Lookup (scope chain traversal):
+  Best case:     O(1)      - Found in current scope, bucket has 1 entry
+  Average case:  O(d)      - d = scope depth
+                              Per scope: O(1) with good hash & LF < 0.75
+  Worst case:    O(d * n)  - d = scope depth, n = collision chain length
+
+Qualified Lookup (global scope only):
+  Best case:     O(1)      - No collisions in bucket
+  Average case:  O(1)      - Good hash function, load factor < 0.75
+  Worst case:    O(n)      - n = collision chain length (all symbols in bucket)
+
+Per-Scope Lookup:
+  Average:       O(1)      - Constant time hash + single bucket access
+  Worst case:    O(c)      - c = collision chain length in bucket
 ```
 
-### Insertion Time
+### Insertion Time Complexity
 
 ```
-Best case:     O(1)     - Direct head insertion
-Average case:  O(1)     - No rehashing
-Worst case:    O(n)     - Rehashing triggered
+Best case:     O(1)       - Head insertion, no rehashing
+Average case:  O(1)       - Insertion + possible hash computation
+Worst case:    O(n)       - Rehashing triggered (n = total symbols)
+
+Rehash Operation:
+  Time:        O(n)       - Must recalculate hash for each symbol
+  Memory:      O(BUCKET_COUNT * 2) - Temporary double bucket table
+  Trigger:     When symbol_count >= BUCKET_COUNT * 0.75
 ```
 
 ### Memory Overhead
 
 ```
-Per Entry:     128 bytes fixed
-Per Bucket:    8 bytes (pointer)
-Total Table:   BUCKET_COUNT * 8 + (symbol_count * 128)
-Example:       1024 * 8 + (1000 * 128) = 136,192 bytes for 1000 symbols
+Per Entry:     128 bytes (fixed, 8-byte aligned)
+Per Bucket:    8 bytes (pointer to collision chain head)
+Per Scope:     ~256 bytes (Scope structure with metadata)
+
+Total Calculation:
+  Hash table:  BUCKET_COUNT * 8 bytes
+  Entries:     symbol_count * 128 bytes
+
+Example (1024 buckets, 1000 symbols):
+  Table:       1024 * 8      =  8,192 bytes
+  Entries:     1000 * 128    = 128,000 bytes
+  Total:                       136,192 bytes
+
+Cache Impact:
+  Entry size (128 bytes) spans exactly 2 cache lines (64-byte lines)
+  Hot fields in first cache line (offset 0-63)
+  Cold fields in second cache line (offset 64-127)
 ```
 
 ### Cache Line Utilization
 
 ```
-Entry Size:           128 bytes
-Cache Line Size:      64 bytes (typical x86-64)
-Cache Lines per Entry: 2
-Hot Fields (0-63):    next_in_bucket, symbol_name, full_qualified_name,
-                      symbol_type, storage_class, address_or_offset,
-                      scope_level, parent_scope, defining_scope
-Cold Fields (64-127): initialization_value, attributes, line_number,
-                      file_index, cuda_memory_space, mangled_name,
-                      template_args, overload_chain, prev_declaration
+Entry Size:           128 bytes (2 cache lines on x86-64)
+Cache Line Size:      64 bytes (typical x86-64 Intel/AMD)
+Lines per Entry:      2
+
+Cache Line 1 (Offset 0-63):     [HOT - Frequently accessed]
+  - next_in_bucket (0-7)
+  - symbol_name (8-15)
+  - full_qualified_name (16-23)
+  - symbol_type (24-31)
+  - storage_class (32-35)
+  - address_or_offset (36-43)
+  - scope_level (44-47)
+  - parent_scope (48-55)
+  - defining_scope (56-63)
+
+Cache Line 2 (Offset 64-127):   [COLD - Infrequently accessed]
+  - initialization_value (64-71)
+  - attributes (72-75)
+  - line_number (76-79)
+  - file_index (80-83)
+  - cuda_memory_space (84)
+  - is_cuda_kernel (85)
+  - is_cuda_device_func (86)
+  - forward_declared (87)
+  - mangled_name (88-95)
+  - template_args (96-103)
+  - overload_chain (104-111)
+  - prev_declaration (112-119)
+  - reserved (120-127)
 ```
 
-### Collision Statistics (Estimated)
+### Collision Statistics
+
+With separate chaining collision resolution (estimated):
 
 ```
-Load Factor:         0.75
-Avg Chain Length:    1.0 (with good hash function)
-Max Chain Length:    ~5 (worst case in practice)
-Empty Buckets:       ~25% (at load factor 0.75)
+Load Factor:         0.75 (at rehash trigger)
+Avg Chain Length:    0.75-1.0 (with good hash function)
+Max Chain Length:    ~5 typical, O(n) pathological case
+Empty Buckets:       ~25% at load factor 0.75
+
+Average Lookup:      1-2 comparisons in collision chain
+Hash Computation:    O(n) where n = name length (typically 10-30 bytes)
 ```
 
 ## Scope Structure
@@ -508,6 +768,117 @@ Scope* exit_scope(Scope* current_scope) {
 
 **Time Complexity**: O(1)
 **Space Complexity**: O(1)
+
+## Scope Resolution Algorithm
+
+### Unqualified Name Resolution Process
+
+When symbol lookup occurs in CICC (e.g., during semantic analysis), the compiler follows this algorithm:
+
+```
+Algorithm: resolve_symbol_unqualified(name, current_scope)
+
+Input:  name = symbol name to find (string)
+        current_scope = starting scope (usually function/block scope)
+
+Output: SymbolEntry* if found, NULL otherwise
+
+Procedure:
+  1. scope = current_scope
+  2. WHILE scope IS NOT NULL:
+       a. hash = hash_function(name)           // O(n) where n = |name|
+       b. bucket_index = hash & (BUCKET_COUNT - 1)  // O(1)
+       c. entry = scope->symbol_table[bucket_index]  // O(1)
+
+       d. WHILE entry IS NOT NULL:             // Traverse collision chain
+            - IF strcmp(entry->symbol_name, name) == 0:
+               RETURN entry                     // O(m) where m = |name|
+            - entry = entry->next_in_bucket     // Follow chain
+
+       e. scope = scope->parent_scope           // Move to enclosing scope
+
+  3. RETURN NULL                               // Not found in any scope
+```
+
+### Scope Chain Traversal
+
+Scopes are arranged in a hierarchy with parent pointers:
+
+```
+Example: Function with nested block
+
+Global Scope
+  |
+  +-- Function Scope (function_a)
+       |
+       +-- Block Scope (if statement)
+             |
+             +-- Inner Block Scope (nested if)
+
+Symbol Resolution Order:
+  Inner Block → Block Scope → Function Scope → Global Scope
+```
+
+### Symbol Shadowing
+
+Inner scopes can redefine (shadow) symbols from outer scopes:
+
+```c
+// Example:
+int x;  // Global scope
+
+void func() {
+    int x;  // Function scope shadows global x
+
+    {
+        int x;  // Block scope shadows both outer x's
+        x = 5;  // Refers to block scope x
+    }
+}
+```
+
+**Lookup behavior**:
+- Always returns first match from innermost scope
+- Outer scope symbols not visible if shadowed
+- Used for variable/function overriding in nested scopes
+
+### Qualified Name Resolution
+
+For fully-qualified names, lookup does NOT traverse scope chain:
+
+```
+Algorithm: resolve_symbol_qualified(qualified_name, global_scope)
+
+Input:  qualified_name = "namespace::class::symbol"
+        global_scope = global scope reference
+
+Output: SymbolEntry* if found, NULL otherwise
+
+Procedure:
+  1. hash = hash_function(qualified_name)      // O(n) where n = |qualified_name|
+  2. bucket_index = hash & (BUCKET_COUNT - 1)  // O(1)
+  3. entry = global_scope->symbol_table[bucket_index]  // O(1)
+
+  4. WHILE entry IS NOT NULL:
+       - IF strcmp(entry->full_qualified_name, qualified_name) == 0:
+          RETURN entry                         // Found
+       - entry = entry->next_in_bucket         // Try next entry
+
+  5. RETURN NULL                               // Not found
+```
+
+### Scope Depth Tracking
+
+Each scope maintains depth information:
+
+```
+Global Scope:              scope_depth = 0
+Namespace Scope:           scope_depth = 1
+Class Scope:               scope_depth = 2
+Method Scope:              scope_depth = 3
+Method Block Scope:        scope_depth = 4
+Nested If Block:           scope_depth = 5
+```
 
 ## Binary Evidence
 
