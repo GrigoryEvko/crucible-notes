@@ -1,0 +1,307 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_03",
+    "date": "2025-11-16",
+    "confidence": "MEDIUM",
+    "status": "SUSPECTED_WITH_STRONG_EVIDENCE",
+    "pass_name": "Loop Unrolling"
+  },
+
+  "discovery": {
+    "summary": "Loop Unrolling increases loop iteration throughput by replicating loop body N times, reducing loop control overhead and enabling more instruction-level parallelism.",
+    "details": "Loop unrolling is a classic loop transformation that replicates the loop body by a factor N. For GPU code, this is particularly important because it increases instruction-level parallelism and allows more independent operations to execute before latency-sensitive operations complete. CICC implements selective loop unrolling based on loop trip count and cost model.",
+    "evidence": [
+      "Listed in unconfirmed passes: 'LoopUnroll' (21_OPTIMIZATION_PASS_MAPPING.json line 262)",
+      "Module analysis: 'Loop unrolling and loop strength reduction' (02_MODULE_ANALYSIS.json line 31)",
+      "Module analysis: 'Loop unrolling with cost modeling' (02_MODULE_ANALYSIS.json line 69)",
+      "Module analysis: 'loop nesting depth multiplier' for cost adjustment (02_MODULE_ANALYSIS.json line 240)",
+      "Cross module dependencies: 'Apply multiple optimization passes (vectorization, loop unrolling, strength reduction, etc.)' (07_CROSS_MODULE_DEPENDENCIES.json line 825)",
+      "Pattern discovery: Loop optimization cluster includes LoopUnroll",
+      "Compiler comparison: References loop unrolling as part of optimization pipeline"
+    ]
+  },
+
+  "pass_identification": {
+    "llvm_pass_name": "LoopUnroll",
+    "llvm_pass_id": "loop-unroll",
+    "pass_type": "Loop Pass",
+    "optimization_category": "Loop Transformation",
+    "execution_level": "Loop Level",
+    "pipeline_position": "Middle stage in loop optimization pipeline"
+  },
+
+  "algorithm_description": {
+    "overview": "Loop unrolling transforms a loop by replicating its body N times and adjusting loop counter accordingly, reducing iteration count and control flow overhead.",
+    "steps": [
+      {
+        "step": 1,
+        "name": "Trip Count Analysis",
+        "description": "Determine or estimate the loop trip count (number of iterations)",
+        "methods": [
+          "Static analysis of constant loop bounds",
+          "Symbolic analysis for variable bounds",
+          "Pattern matching for induction variables"
+        ],
+        "outcome": "Loop classified as counted or unknown trip count"
+      },
+      {
+        "step": 2,
+        "name": "Unroll Factor Selection",
+        "description": "Determine optimal unroll factor based on cost model and architecture",
+        "selection_factors": [
+          "Loop body size (instruction count)",
+          "Trip count (known vs unknown)",
+          "Register pressure estimates",
+          "Cache behavior",
+          "Target architecture characteristics",
+          "Optimization level"
+        ],
+        "unroll_factors": "Typically 2, 4, 8, or 16 depending on loop characteristics"
+      },
+      {
+        "step": 3,
+        "name": "Remainder Loop Handling",
+        "description": "Create remainder loop for iterations not divisible by unroll factor",
+        "cases": [
+          "Counted loops: remainder loop for non-divisible iterations",
+          "Uncounted loops: may not unroll or use conservative factor"
+        ]
+      },
+      {
+        "step": 4,
+        "name": "Loop Body Replication",
+        "description": "Replicate loop body instructions by unroll factor",
+        "operations": [
+          "Copy loop body N times",
+          "Adjust register names to avoid conflicts",
+          "Update data dependencies between copies"
+        ]
+      },
+      {
+        "step": 5,
+        "name": "Induction Variable Adjustment",
+        "description": "Update induction variables for unrolled iteration pattern",
+        "adjustments": [
+          "Induction variable increment: i += unroll_factor instead of i += 1",
+          "Array indices: offset each copy by stride"
+        ]
+      },
+      {
+        "step": 6,
+        "name": "Loop Count Reduction",
+        "description": "Reduce loop iteration count by unroll factor",
+        "updates": [
+          "Loop exit condition becomes ceil(trip_count / unroll_factor)",
+          "Update loop counter increment"
+        ]
+      },
+      {
+        "step": 7,
+        "name": "Optimization for Remainder",
+        "description": "Handle edge case for loops with non-divisible trip counts",
+        "strategies": [
+          "Generate remainder loop with trip count % unroll_factor iterations",
+          "Or use predicated instructions if supported by architecture"
+        ]
+      }
+    ]
+  },
+
+  "cost_model": {
+    "description": "Loop unrolling decision based on estimated execution benefit vs code size increase",
+    "benefit_factors": [
+      {
+        "factor": "Loop control overhead reduction",
+        "calculation": "trip_count * (control_instruction_count) saved"
+      },
+      {
+        "factor": "Instruction-level parallelism increase",
+        "benefit": "More independent instructions enable better pipeline utilization"
+      },
+      {
+        "factor": "Cache optimization",
+        "benefit": "Better cache line utilization if unroll increases memory locality"
+      }
+    ],
+    "cost_factors": [
+      {
+        "factor": "Code size increase",
+        "cost": "loop_body_size * (unroll_factor - 1)"
+      },
+      {
+        "factor": "Register pressure increase",
+        "cost": "More simultaneous values may increase spilling"
+      },
+      {
+        "factor": "I-cache pressure",
+        "cost": "Larger code footprint may reduce cache effectiveness"
+      }
+    ],
+    "thresholds": {
+      "small_loop": "Body < 20 instructions: aggressive unrolling (factor 4-8)",
+      "medium_loop": "Body 20-100 instructions: moderate unrolling (factor 2-4)",
+      "large_loop": "Body > 100 instructions: conservative unrolling (factor 2) or skip"
+    }
+  },
+
+  "parameters_and_heuristics": {
+    "optimization_level_dependent": {
+      "O0": "No unrolling",
+      "O1": "Conservative (factor 2) for very small loops",
+      "O2": "Moderate unrolling based on cost model",
+      "O3": "Aggressive unrolling when beneficial"
+    },
+    "pragmas_and_hints": [
+      "#pragma unroll N - explicitly specify unroll factor",
+      "#pragma unroll - unroll as much as beneficial",
+      "#pragma nounroll - disable unrolling"
+    ],
+    "implied_parameters": [
+      "max-unroll-factor: likely 16 or 32",
+      "loop-unroll-threshold: likely 1000-5000 bytes"
+    ]
+  },
+
+  "loop_unroll_and_jam": {
+    "variant_name": "LoopUnrollAndJam",
+    "description": "Unroll outer loop and combine with inner loop iterations",
+    "listed_in": "Unconfirmed passes (21_OPTIMIZATION_PASS_MAPPING.json line 263)",
+    "purpose": "Improve locality and expose more ILP in nested loops",
+    "gpu_relevance": "Can help expose parallelism in nested loops for thread block execution"
+  },
+
+  "cuda_specific_adaptations": {
+    "warp_level_parallelism": "Unrolling increases independent instructions that can execute in parallel within a warp",
+    "instruction_level_parallelism": "More unrolled copies allow better hiding of memory latency",
+    "register_pressure_tradeoff": "GPU has limited registers per thread, must balance unroll factor with register availability",
+    "memory_bandwidth": "Unrolling can improve memory access patterns and cache utilization",
+    "thread_block_efficiency": "Unrolling in thread block loops affects occupancy and performance"
+  },
+
+  "integration_points": {
+    "pipeline_stage": "Middle phase in loop optimization pipeline",
+    "prerequisite": "Requires LoopSimplify to ensure loops are in canonical form",
+    "called_from": "Optimization Framework pass manager",
+    "execution_order": "Typically after LoopSimplify, possibly after LoopRotate",
+    "frequency": "Can run multiple times as part of full optimization pipeline"
+  },
+
+  "estimated_function_count": 250,
+  "estimated_lines_of_code": 4000,
+
+  "validation_status": {
+    "confirmed": false,
+    "confidence_level": "MEDIUM - strong evidence but no direct string matches",
+    "validation_method": "Cross-reference from multiple analysis documents + pattern evidence",
+    "validation_evidence": [
+      "Explicit mention in optimization pass list (unconfirmed)",
+      "Multiple references in module analysis documents",
+      "Consistent with LLVM optimization pipeline",
+      "Referenced in cost model discussions",
+      "Part of standard loop optimization cluster"
+    ]
+  },
+
+  "variations_and_related": [
+    {
+      "variant": "LoopUnrollAndJam",
+      "listed": true,
+      "purpose": "Unroll + combine outer/inner loops"
+    },
+    {
+      "variant": "LoopRotate",
+      "listed": true,
+      "purpose": "Rotate loop to enable better unrolling (convert while to do-while)"
+    },
+    {
+      "variant": "LoopDeletion",
+      "listed": true,
+      "purpose": "Remove empty or unreachable loops"
+    }
+  ],
+
+  "performance_impact": {
+    "benefits": [
+      "Reduces loop overhead (branch, increment, comparison)",
+      "Increases instruction-level parallelism",
+      "Improves cache utilization and line reuse",
+      "Enables more aggressive following optimizations",
+      "Typical improvement: 5-20% for tight loops"
+    ],
+    "costs": [
+      "Code size increase proportional to unroll factor",
+      "Register pressure may increase (spilling)",
+      "I-cache pressure increases",
+      "Compile time overhead"
+    ],
+    "best_for": "Small to medium loops with trip counts > 4, where instruction parallelism is limited"
+  },
+
+  "testing_strategy": {
+    "simple_loop_test": {
+      "kernel_type": "Loop with small body",
+      "example": "for(int i=0; i<100; i++) { y[i] = x[i] * 2; }",
+      "expected_behavior": "Loop body unrolled by factor 4 or 8",
+      "validation": "Check generated PTX for multiple copies of multiplication"
+    },
+    "trip_count_test": {
+      "kernel_type": "Loop with variable trip count",
+      "example": "for(int i=0; i<N; i++) { y[i] += x[i]; }",
+      "expected_behavior": "Unrolled main loop + remainder loop",
+      "validation": "Verify both paths generated correctly"
+    },
+    "register_pressure_test": {
+      "kernel_type": "Loop with high register usage",
+      "expected_behavior": "Conservative unrolling (factor 2) or no unrolling",
+      "validation": "Monitor register usage, check for spilling"
+    }
+  },
+
+  "cross_references": {
+    "foundation_analysis_files": [
+      "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json (line 262-263)",
+      "foundation/analyses/02_MODULE_ANALYSIS.json (line 31, 69)",
+      "foundation/analyses/07_CROSS_MODULE_DEPENDENCIES.json (line 825)",
+      "foundation/analyses/13_REVERSE_ENGINEERING_ROADMAP.json"
+    ],
+    "llvm_documentation": "https://llvm.org/docs/Passes/#loop-unroll",
+    "related_passes": [
+      "LoopSimplify (prerequisite)",
+      "LoopRotate (prepares for unrolling)",
+      "LoopVectorize (works well with unrolling)",
+      "LoopUnrollAndJam (unroll with nesting)"
+    ]
+  },
+
+  "research_notes": {
+    "algorithm_source": "Classic compiler optimization, foundational loop transformation",
+    "nvidia_adaptations": "Balanced against GPU register constraints and thread block efficiency",
+    "implementation_hints": "Likely uses cost model with instruction count, trip count, and architecture parameters",
+    "key_insight": "GPU unrolling must respect thread block register limits and occupancy targets",
+    "open_questions": [
+      "Exact thresholds for when unrolling is triggered",
+      "How pragma directives are handled",
+      "Register pressure estimation method",
+      "Interaction with tensor core operations"
+    ]
+  },
+
+  "special_cases": {
+    "pragma_unroll": {
+      "directive": "#pragma unroll N",
+      "behavior": "Force specific unroll factor",
+      "handling": "Must be parsed and applied regardless of cost model"
+    },
+    "pragma_nounroll": {
+      "directive": "#pragma nounroll",
+      "behavior": "Disable unrolling",
+      "handling": "Skip this loop in unroll pass"
+    },
+    "unknown_trip_count": {
+      "situation": "Trip count cannot be determined statically",
+      "strategy": "Conservative unrolling or remainder loop approach",
+      "gpu_consideration": "Common in thread-block based loops"
+    }
+  }
+}

@@ -1,0 +1,194 @@
+{
+  "metadata": {
+    "unknown_id": "1",
+    "agent": "L3-01: Spill Cost Formula Extraction",
+    "confidence": "MEDIUM",
+    "date": "2025-11-16",
+    "status": "PARTIAL_EXTRACTION",
+    "notes": "Formula extracted from analysis files; exact coefficients require deeper binary analysis"
+  },
+
+  "spill_cost_formula": {
+    "formula": "Cost = definition_frequency * use_frequency * memory_latency_multiplier * loop_depth_multiplier",
+    "formula_breakdown": {
+      "definition_frequency": "Number of times the virtual register is defined in the program",
+      "use_frequency": "Number of times the virtual register is used in the program",
+      "memory_latency_multiplier": "Penalty factor for memory access latency (hardware-dependent)",
+      "loop_depth_multiplier": "Exponential or polynomial multiplier based on loop nesting depth"
+    },
+    "coefficients": {
+      "loop_depth_multiplier": {
+        "type": "VARIABLE",
+        "description": "Increases cost exponentially with loop nesting depth",
+        "suspected_range": "1.0-2.0 per nesting level",
+        "suspected_implementation": "pow(base, depth) where base >= 1.5",
+        "confidence": "LOW"
+      },
+      "memory_latency_multiplier": {
+        "type": "ARCHITECTURE_DEPENDENT",
+        "description": "Factor accounting for GPU memory access latency penalties",
+        "suspected_range": "1.0-10.0",
+        "confidence": "LOW"
+      },
+      "occupancy_penalty_weight": {
+        "type": "IMPLICIT",
+        "description": "Occupancy constraints affect register allocation indirectly through coloring heuristics",
+        "detected": true,
+        "confidence": "MEDIUM"
+      },
+      "bank_conflict_penalty": {
+        "type": "CONSTRAINT_BASED",
+        "description": "Handled via register class constraints in coloring, not direct cost multiplier",
+        "detected": true,
+        "confidence": "MEDIUM"
+      }
+    },
+
+    "evidence": {
+      "primary_source": "/home/grigory/nvopen-tools/cicc/foundation/analyses/02_MODULE_ANALYSIS.json",
+      "quote": "spill_cost_tables: { per_register: Cost = definition_frequency * use_frequency * memory_latency_multiplier, per_block: Loop nesting depth multipliers for cost adjustment }",
+      "code_location": {
+        "file": "decompiled/sub_B612D0_0xb612d0.c (Register Allocation - Graph Coloring Entry Point)",
+        "address": "0xb612d0",
+        "size": "39 KB",
+        "type": "Graph coloring algorithm with pattern dispatch",
+        "note": "Main function is a 180+ case dispatcher; actual cost calculation delegated to helper functions"
+      },
+      "helper_functions": {
+        "sub_A778C0": {
+          "purpose": "Likely IR node/operand extraction",
+          "address": "0xa778c0"
+        },
+        "sub_A79C90": {
+          "purpose": "List/set operations on register constraints",
+          "address": "0xa79c90",
+          "delegates_to": "sub_A79B90 (sorting and processing)"
+        },
+        "sub_B5BA00": {
+          "purpose": "Instruction pattern selector with 110+ cases",
+          "address": "0xb5ba00",
+          "note": "Dispatch for different instruction types/patterns"
+        },
+        "sub_A77AB0": {
+          "purpose": "Constraint encoding (masks for register classes)",
+          "address": "0xa77ab0"
+        },
+        "sub_A78010": {
+          "purpose": "Argument processing and data structure assembly",
+          "address": "0xa78010"
+        }
+      }
+    },
+
+    "algorithm_context": {
+      "algorithm_type": "Graph Coloring (Chaitin-Briggs style)",
+      "phases": [
+        {
+          "phase": 1,
+          "name": "Liveness Analysis",
+          "description": "Compute live-in/live-out sets for each basic block"
+        },
+        {
+          "phase": 2,
+          "name": "Interference Graph Construction",
+          "description": "Build undirected graph where edges represent register interference",
+          "implementation": "0xB612D0 - Entry point, dispatches to pattern-specific handlers"
+        },
+        {
+          "phase": 3,
+          "name": "Coalescing",
+          "description": "Conservative + iterated coalescing to reduce graph size"
+        },
+        {
+          "phase": 4,
+          "name": "Graph Coloring",
+          "description": "Chaitin-Briggs coloring with spill cost heuristics",
+          "spill_selection": "High-cost registers are spilled based on cost metrics"
+        },
+        {
+          "phase": 5,
+          "name": "Spill Code Generation",
+          "description": "Insert load/store instructions at spill points using cost-optimized placement"
+        }
+      ]
+    },
+
+    "sm_specific_adjustments": {
+      "sm_70": {
+        "register_file_size": "64 KB per warp",
+        "max_registers_per_thread": 255,
+        "occupancy_constraint": "Affects loop_depth_multiplier heuristics",
+        "bank_conflicts": "32-bank conflict avoidance via register class constraints"
+      },
+      "sm_80": {
+        "register_file_size": "64 KB per warp (enhanced management)",
+        "max_registers_per_thread": 255,
+        "occupancy_constraint": "More flexible occupancy targets",
+        "improvements": "Better hardware support for register allocation"
+      },
+      "sm_90": {
+        "register_file_size": "128 KB per warp",
+        "max_registers_per_thread": 255,
+        "occupancy_constraint": "Relaxed constraints, higher register availability",
+        "improvements": "Tensor core support may affect cost calculations"
+      },
+      "multiplier_adjustments": {
+        "description": "Loop depth multipliers and memory latency multipliers likely vary by SM generation",
+        "confidence": "LOW - requires profiling per SM version"
+      }
+    }
+  },
+
+  "validation": {
+    "formula_found": true,
+    "all_coefficients_extracted": false,
+    "exact_numerical_values_available": false,
+    "confidence_justification": "MEDIUM - Formula structure confirmed from MODULE_ANALYSIS.json with clear component breakdown, but exact coefficients (loop depth multiplier value, memory_latency_multiplier) require deeper binary instrumentation or source code access. The pattern of cost = frequency * latency * loop_depth is a standard compiler heuristic confirmed by evidence.",
+    "missing_elements": [
+      "Exact loop depth multiplier value (suspected 1.5-2.0)",
+      "Exact memory latency multiplier value",
+      "Occupancy penalty integration method",
+      "SM-version specific coefficient variations",
+      "Exact binary implementation of pow() for exponential multiplier"
+    ]
+  },
+
+  "implementation_notes": {
+    "cost_storage": "Spill cost tables per virtual register, updated iteratively during coloring phases",
+    "cost_computation_trigger": "During graph coloring simplify/spill phases when selecting which registers to spill",
+    "frequency_source": "Derived from instruction frequency analysis and basic block execution weights",
+    "loop_nesting_computation": "Basic block loop depth from control flow graph analysis",
+    "optimization_level": "Cost model may vary based on optimization level (-O0 vs -O3)",
+    "performance_impact": "Higher cost values result in registers being kept in registers longer; lower costs promote spilling"
+  },
+
+  "research_limitations": {
+    "decompilation_challenges": [
+      "IDA Pro decompilation loses high-level structure of cost calculations",
+      "Function names are lost (only addresses available)",
+      "Loop depth and frequency information not visible in decompiled code",
+      "Binary encoding of floating-point constants not decoded"
+    ],
+    "analysis_gaps": [
+      "No source code available for direct formula verification",
+      "Helper function implementations too large/complex for manual analysis",
+      "Actual cost values from test kernels not profiled",
+      "No dynamic profiling of allocation decisions vs measured costs"
+    ],
+    "next_steps_for_extraction": [
+      "Binary instrumentation of cost calculation functions",
+      "Profile small test kernels and analyze spill decisions",
+      "Reverse engineer floating-point constant encoding in binary",
+      "Test with multiple SM versions and kernel patterns",
+      "Correlate allocation decisions with loop depth metrics"
+    ]
+  },
+
+  "references": {
+    "chaitin_briggs_reference": "Chaitin et al., Register Allocation via Coloring, TOPLAS 1981",
+    "related_analysis_file": "/home/grigory/nvopen-tools/cicc/foundation/analyses/20_REGISTER_ALLOCATION_ALGORITHM.json",
+    "module_analysis": "/home/grigory/nvopen-tools/cicc/foundation/analyses/02_MODULE_ANALYSIS.json",
+    "decompiled_main_function": "/home/grigory/nvopen-tools/cicc/decompiled/sub_B612D0_0xb612d0.c",
+    "callgraph": "/home/grigory/nvopen-tools/cicc/graphs/sub_B612D0_0xb612d0.json"
+  }
+}

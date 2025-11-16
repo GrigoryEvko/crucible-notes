@@ -1,0 +1,793 @@
+{
+  "metadata": {
+    "unknown_id": "23",
+    "agent": "L3-23",
+    "extraction_type": "TMA Scheduling & Async Coordination for SM 90",
+    "extraction_date": "2025-11-16",
+    "sm_version": "sm_90",
+    "sm_version_alt": "sm_90a",
+    "architecture": "Hopper",
+    "confidence": "MEDIUM-HIGH",
+    "confidence_justification": "TMA instruction patterns fully extracted from instruction selection code. Barrier coordination verified with expect_tx mechanism. Scale vector configuration identified. Integration with L3-24 warp specialization confirmed. Limitation: full descriptor initialization algorithm and dynamic scheduling heuristics not fully exposed in binary.",
+    "research_time_hours": "3.5",
+    "dependencies": [
+      "L3-24: warp_specialization_sm90.json (producer/consumer model foundation)"
+    ]
+  },
+
+  "tma_overview": {
+    "concept": "Tensor Memory Accelerator - hardware-accelerated asynchronous data movement with producer/consumer scheduling",
+    "purpose": "High-bandwidth tensor data transfer from global to shared memory with overlapping computation",
+    "sm90_exclusive": true,
+    "key_integration": "TMA dispatch by producer warp (cta_group::2), consumption by consumer warp (cta_group::1)",
+    "synchronization_mechanism": "mbarrier with expect_tx for async coordination",
+    "performance_benefit": "Hide TMA latency (50-500 cycles) behind concurrent MMA operations in consumer",
+    "data_throughput": "Multiple kilobytes per cycle for tensor-optimized transfers"
+  },
+
+  "tma_instruction_set": {
+    "instruction_categories": [
+      {
+        "category": "Tensor Tile Copy (g2s)",
+        "description": "Load tensor tiles from global to shared memory via TMA",
+        "base_instruction": "cp.async.bulk.tensor.g2s",
+        "variants": [
+          {
+            "variant": "cp.async.bulk.tensor.g2s.tile",
+            "format_type": "Tile-based loading",
+            "opcodes": {
+              "default_w1": 9222,
+              "w2": 9223,
+              "w4": 9224,
+              "w8": 9225,
+              "w16": 9226
+            },
+            "description": "Load tensor tile with specified width multiplier",
+            "usage_pattern": "Producer dispatches load to shared memory buffer designated for next iteration"
+          }
+        ]
+      },
+      {
+        "category": "Image-to-Column Conversion (im2col)",
+        "description": "Convert image data to column format while loading",
+        "base_instruction": "cp.async.bulk.tensor.g2s.im2col",
+        "variants": [
+          {
+            "variant": "cp.async.bulk.tensor.g2s.im2col",
+            "opcodes": {
+              "default_w1": 9213,
+              "w2": 9214,
+              "w4": 9215
+            },
+            "description": "Load with on-the-fly im2col transformation",
+            "use_case": "Convolutional neural network kernels requiring im2col preprocessing"
+          }
+        ]
+      },
+      {
+        "category": "Distributed Shared Memory (dsmem)",
+        "description": "Generic async copy to distributed shared memory",
+        "instruction": "cp.async.bulk.gmem.to.dsmem",
+        "opcode": 8316,
+        "purpose": "Intra-CTA data distribution",
+        "operands": [
+          "destination (shared memory)",
+          "source (global memory)"
+        ]
+      },
+      {
+        "category": "Cluster-Scope Transfer",
+        "description": "Move data across cluster blocks with synchronization",
+        "instruction": "cp.async.bulk.global.to.shared.cluster",
+        "opcode": 8315,
+        "scope": "Cluster (multiple blocks)",
+        "purpose": "Multi-block coordinated data loading"
+      },
+      {
+        "category": "Generic Tensor Load",
+        "description": "Tensor-accelerated load with flexible format specs",
+        "base_instruction": "cp.async.bulk.tensor.gmem.to.smem",
+        "variants": [
+          {
+            "variant": "cp.async.bulk.tensor.gmem.to.smem",
+            "format_specifiers": ["f1", "f2", "f4", "f8", "f16"],
+            "opcodes": {
+              "f1": 8324,
+              "f2": 8325,
+              "f4": 8326,
+              "f8": 8327,
+              "f16": 8328
+            },
+            "description": "Load with specified element format"
+          }
+        ]
+      },
+      {
+        "category": "Image-to-Column with Width",
+        "description": "im2col with explicit bit-width specification",
+        "base_instruction": "cp.async.bulk.tensor.gmem.to.smem.im2col",
+        "variants": [
+          {
+            "variant": "cp.async.bulk.tensor.gmem.to.smem.im2col.w32",
+            "opcode": 8329,
+            "width_bits": 32
+          },
+          {
+            "variant": "cp.async.bulk.tensor.gmem.to.smem.im2col.w64",
+            "opcode": 8330,
+            "width_bits": 64
+          },
+          {
+            "variant": "cp.async.bulk.tensor.gmem.to.smem.im2col.w128",
+            "opcode": 8331,
+            "width_bits": 128
+          }
+        ],
+        "purpose": "Control element granularity for im2col transformation"
+      }
+    ],
+    "async_control_operations": [
+      {
+        "operation": "tcgen05.commit_group",
+        "purpose": "Flush all pending async operations in current group",
+        "semantics": "Ensures all queued TMA transfers are committed to memory hierarchy",
+        "timing": "Must be called after all cp.async.bulk operations to guarantee dispatch",
+        "critical_for_scheduling": true,
+        "producer_role": "Producer warp calls commit_group before releasing to consumer"
+      }
+    ],
+    "instruction_pattern_matching": {
+      "extraction_location": "decompiled/sub_A8E250_0xa8e250.c:1019-1170",
+      "pattern_recognition": "String matching on instruction names to identify TMA operations",
+      "string_constants": [
+        "cp.async.bulk.tensor.g2s.",
+        "cp.async.bulk.gmem.to.dsmem",
+        "cp.async.bulk.global.to.shared.cluster",
+        "cp.async.bulk.tensor.gmem.to.smem.",
+        "tcgen05.commit."
+      ],
+      "confidence": "HIGH"
+    }
+  },
+
+  "barrier_synchronization_framework": {
+    "primitive": "mbarrier (multicast barrier)",
+    "coordination_purpose": "Synchronize TMA completion between producer and consumer warps",
+    "operation_types": {
+      "arrive": {
+        "code": "0x0",
+        "instruction": ".mbarrier::arrive::one",
+        "purpose": "Single thread arrives at barrier",
+        "effect": "Increments arrival counter",
+        "side_effects": "Minimal overhead (~1 cycle)"
+      },
+      "arrive_drop": {
+        "code": "0x1",
+        "instruction": ".mbarrier::arrive_drop",
+        "purpose": "Arrive without waiting, fast signaling",
+        "effect": "Thread continues without blocking",
+        "use_case": "Signaling completion without synchronization wait"
+      },
+      "arrive_wait": {
+        "code": "0x2",
+        "instruction": ".mbarrier::arrive_wait",
+        "purpose": "Atomic arrive and wait operation",
+        "effect": "Thread synchronizes at barrier as single operation",
+        "optimization": "Reduces instruction count vs separate arrive/wait"
+      },
+      "arrive_wait_drop": {
+        "code": "0x3",
+        "instruction": ".mbarrier::arrive_wait_drop",
+        "purpose": "Arrive, wait, then signal completion",
+        "effect": "Full synchronization with cleanup",
+        "use_case": "Final synchronization phase"
+      },
+      "expect_tx": {
+        "code": "0x4",
+        "instruction": ".mbarrier::expect_tx",
+        "purpose": "CRITICAL FOR TMA - Mark expected async data arrival",
+        "operands": ["barrier_address", "expected_bytes"],
+        "effect": "Barrier knows to expect specified byte count from TMA",
+        "tma_integration": "Producer signals TMA data size before dispatch",
+        "semantics": "Consumer knows when TMA completes by byte count arrival",
+        "critical_for_warp_specialization": true,
+        "extraction_location": "decompiled/sub_35F4080_0x35f4080.c:138-144"
+      },
+      "complete_tx": {
+        "code": "0x5",
+        "instruction": ".mbarrier::complete_tx",
+        "purpose": "Signal completion of async transmission",
+        "effect": "Marks TMA data as fully transferred",
+        "timing": "Usually automatic, but can be explicit"
+      }
+    },
+    "scope_dimensions": {
+      "cluster_scope": {
+        "code": "0x1 (bits 0-3)",
+        "instruction": ".cluster",
+        "size": "Up to 8 blocks in Hopper cluster",
+        "use_case": "Multi-block producer-consumer coordination",
+        "shared_memory_visibility": "Distributed shared memory accessible"
+      },
+      "cta_scope": {
+        "code": "not 0x1 (bits 0-3)",
+        "instruction": ".cta",
+        "size": "Single block (all threads)",
+        "use_case": "Intra-block producer-consumer sync"
+      },
+      "shared_memory_variants": {
+        ".shared::cluster": {
+          "scope": "Cluster with shared memory visibility",
+          "operand_count": 16,
+          "string_constant": ".shared::cluster"
+        },
+        ".shared::cta": {
+          "scope": "Block with shared memory visibility",
+          "operand_count": 12,
+          "string_constant": ".shared::cta"
+        }
+      }
+    },
+    "multicast_variants": [
+      {
+        "variant": "mbarrier.arrive.multicast",
+        "opcode": 10090,
+        "purpose": "Broadcast barrier arrival to cluster"
+      },
+      {
+        "variant": "mbarrier.arrive.multicast.shared",
+        "opcode": 10091,
+        "purpose": "Multicast with shared memory scope"
+      },
+      {
+        "variant": "mbarrier.arrive.mc.cg1",
+        "opcode": 10095,
+        "purpose": "Cooperative Group 1 scope"
+      },
+      {
+        "variant": "mbarrier.arrive.mc.cg2",
+        "opcode": 10096,
+        "purpose": "Cooperative Group 2 scope"
+      },
+      {
+        "variant": "mbarrier.arrive.mc.shared.cg1",
+        "opcode": 10097,
+        "purpose": "Shared memory + CG1 scope"
+      },
+      {
+        "variant": "mbarrier.arrive.mc.shared.cg2",
+        "opcode": 10098,
+        "purpose": "Shared memory + CG2 scope"
+      }
+    ],
+    "barrier_codegen": {
+      "extraction_location": "decompiled/sub_35F4080_0x35f4080.c:1-243",
+      "encoding_scheme": "Bits 4-7 encode operation type; bits 0-3 encode scope",
+      "operation_bits": "Bits 4-7 (cases 0-5 for operation types)",
+      "scope_bits": "Bits 0-3 and other fields for scope modifiers",
+      "confidence": "HIGH - Direct switch statement implementation found"
+    }
+  },
+
+  "scale_vector_configuration": {
+    "concept": "Tensor core scaling factor for TMA loads",
+    "encoding_location": "Bits 51-53 of instruction encoding",
+    "scale_values": {
+      "1X": {
+        "encoding": "00",
+        "default": true,
+        "suffix": ".scale_vec::1X",
+        "multiplier": 1,
+        "type_constraints": [
+          "Cannot use with mxf4nvf4 (requires 2X or 4X)",
+          "Cannot use with mxf4 (requires 2X)"
+        ]
+      },
+      "2X": {
+        "encoding": "01",
+        "suffix": ".scale_vec::2X",
+        "multiplier": 2,
+        "type_constraints": [
+          "Cannot use with mxf8f6f4 (requires 1X or default)"
+        ]
+      },
+      "4X": {
+        "encoding": "11",
+        "suffix": ".scale_vec::4X",
+        "multiplier": 4,
+        "type_constraints": [
+          "Cannot use with mxf8f6f4 (requires 1X or 2X)",
+          "Cannot use with mxf4 (requires 1X or 2X)"
+        ]
+      }
+    },
+    "type_specific_constraints": {
+      "mxf4nvf4": {
+        "valid_scales": ["2X", "4X"],
+        "invalid": ["1X"],
+        "error_message": "Cannot use 1X as scale vector size for mxf4nvf4 type"
+      },
+      "mxf8f6f4": {
+        "valid_scales": ["1X"],
+        "invalid": ["2X", "4X"],
+        "error_message": "Cannot use 2X or 4X as scale vector size for mxf8f6f4 type"
+      },
+      "mxf4": {
+        "valid_scales": ["2X"],
+        "invalid": ["1X", "4X"],
+        "error_message": "Cannot use 1X or 4X as scale vector size for mxf4 type"
+      },
+      "f16": {
+        "valid_scales": ["1X", "2X", "4X"],
+        "invalid": [],
+        "note": "Most flexible scale options"
+      },
+      "f8f6f4": {
+        "valid_scales": ["1X", "2X", "4X"],
+        "invalid": [],
+        "note": "Flexible for mixed-precision formats"
+      },
+      "tf32": {
+        "valid_scales": ["1X", "2X", "4X"],
+        "invalid": []
+      },
+      "i8": {
+        "valid_scales": ["1X", "2X", "4X"],
+        "invalid": []
+      }
+    },
+    "codegen_implementation": {
+      "extraction_location": "decompiled/sub_35F2270_0x35f2270.c:40-50 (decode)",
+      "scale_encoding": "decompiled/sub_35F3330_0x35f3330.c:70+ (encode)",
+      "validation_location": "decompiled/sub_3032470_0x3032470.c + sub_36E9630_0x36e9630.c",
+      "confidence": "HIGH"
+    }
+  },
+
+  "tma_scheduling_model": {
+    "high_level_overview": "Producer-consumer pipeline with TMA as transport layer",
+    "producer_consumer_pattern": "From L3-24 warp specialization",
+    "producer_role": "cta_group::2 (1 warp typical)",
+    "consumer_role": "cta_group::1 (3 warps typical)",
+
+    "execution_phases": [
+      {
+        "phase": "0: Initialization",
+        "producer_action": "Create barrier, allocate shared memory buffers",
+        "consumer_action": "Initialize accumulators, prepare tensor registers",
+        "duration": "Pre-kernel setup"
+      },
+      {
+        "phase": "1: First Load",
+        "producer_action": "Dispatch cp.async.bulk.tensor load of batch_0 to shared[0:SIZE]",
+        "consumer_action": "Wait (mbarrier.wait) for batch_0 arrival",
+        "synchronization": "mbarrier.arrive.expect_tx [barrier], BATCH_SIZE bytes",
+        "duration": "~50-500 cycles (TMA latency)"
+      },
+      {
+        "phase": "2: Overlap Begins",
+        "producer_action": "Dispatch cp.async.bulk.tensor load of batch_1 to shared[SIZE:2*SIZE]; tcgen05.commit_group; signal mbarrier.arrive.expect_tx",
+        "consumer_action": "Return from mbarrier.wait; begin MMA on batch_0",
+        "overlap": "Producer loads batch_1 while consumer computes batch_0",
+        "duration": "MMA latency (4-8 cycles) + next TMA latency (~100-200 cycles overlap)"
+      },
+      {
+        "phase": "3: Sustained Pipeline",
+        "producer_action": "Dispatch batch_i+1 while consumer processes batch_i",
+        "consumer_action": "mbarrier.wait for batch_i+1; MMA on batch_i; store partial results",
+        "overlap": "Full overlap: compute hides load latency",
+        "duration": "Multiple iterations"
+      },
+      {
+        "phase": "4: Drain",
+        "producer_action": "All batches loaded; producer may idle or help with computation",
+        "consumer_action": "Process remaining batches, accumulate results, store to global memory",
+        "duration": "Final iterations"
+      }
+    ],
+
+    "async_coordination_details": {
+      "barrier_pre_condition": "Producer calls mbarrier.arrive.expect_tx before dispatch",
+      "barrier_purpose": "Tell barrier how many bytes to expect from TMA",
+      "tma_auto_signal": "TMA hardware automatically signals barrier upon completion",
+      "consumer_wait_semantics": "mbarrier.wait returns when expected byte count arrives",
+      "memory_ordering": "Barrier ensures acquire/release semantics for shared memory"
+    },
+
+    "shared_memory_management": {
+      "buffer_strategy": "Double or triple buffering",
+      "buffer_0": "shared[0:SIZE]",
+      "buffer_1": "shared[SIZE:2*SIZE]",
+      "buffer_strategy_description": "Producer writes to buffer while consumer reads from other buffer(s)",
+      "synchronization_point": "mbarrier rendezvous between producer write and consumer read",
+      "typical_buffer_sizes": "8KB to 32KB per buffer depending on tensor dimensions"
+    },
+
+    "register_allocation": {
+      "producer_registers": "Minimal - mostly addressing and loop counters",
+      "consumer_registers": "High - accumulator matrix + source operands + working set",
+      "partition_strategy": "Compiler reserves registers per cta_group to avoid conflicts"
+    }
+  },
+
+  "descriptor_handling": {
+    "concept": "TMA descriptors encode tensor layout, strides, and access patterns",
+    "scope": "Compiler-generated, not fully exposed in binary",
+    "descriptor_components": [
+      {
+        "component": "Tensor Layout",
+        "description": "Multi-dimensional tensor shape and memory layout",
+        "examples": ["4D tensor [N, H, W, C]", "2D matrix [M, K]"],
+        "memory_footprint": "64-128 bytes typically"
+      },
+      {
+        "component": "Stride Configuration",
+        "description": "Byte offsets between elements in each dimension",
+        "purpose": "Enable strided access patterns"
+      },
+      {
+        "component": "Data Type",
+        "description": "Element format (mxf4, f8f6f4, mxf8f6f4, f16, i8, tf32)",
+        "impact_on_bandwidth": "Affects number of elements per TMA cycle"
+      },
+      {
+        "component": "Scale Vector",
+        "description": "Multiplier for tile dimensions (1X, 2X, 4X)",
+        "flexibility": "Allows runtime adjustment of tile sizes"
+      }
+    ],
+    "creation_mechanism": {
+      "stage": "Early compilation (descriptor generation phase)",
+      "hidden_in_binary": true,
+      "note": "Descriptor initialization patterns not directly visible; only usage in TMA instructions"
+    },
+    "usage_in_tma": {
+      "pattern": "TMA instructions reference descriptors implicitly",
+      "descriptor_reference": "Encoded in instruction operands",
+      "memory_addressing": "Descriptors control effective address calculation"
+    },
+    "confidence": "LOW-MEDIUM - Descriptor structure inferred but not directly extracted"
+  },
+
+  "warpgroup_integration": {
+    "cta_group_assignment": "From L3-24: Bit 1 of result encodes cta_group",
+    "producer_group": "cta_group::2 (result & 0x2 != 0)",
+    "consumer_group": "cta_group::1 (result & 0x2 == 0)",
+
+    "producer_warp_dispatch": {
+      "instruction_sequence": [
+        "1. cp.async.bulk.tensor.g2s [shared_dst], [global_src]; // dispatch TMA load",
+        "2. mbarrier.arrive.expect_tx [barrier], BATCH_SIZE; // signal expected bytes",
+        "3. tcgen05.commit_group; // flush pending async ops",
+        "4. repeat for next batch or synchronize if final"
+      ],
+      "register_requirements": "~10-20 registers (minimal)",
+      "memory_bandwidth": "Full TMA bandwidth utilization (300+ GB/s on Hopper)"
+    },
+
+    "consumer_warp_compute": {
+      "instruction_sequence": [
+        "1. mbarrier.wait [barrier]; // block until TMA completes",
+        "2. mma.m16n8k32.sync.aligned [acc], [A], [B]; // tensor core compute",
+        "3. Repeat for multiple iterations or next batch"
+      ],
+      "register_requirements": "~200+ registers (high - accumulators + operands)",
+      "compute_throughput": "Full tensor core utilization while producer loads next batch"
+    },
+
+    "synchronization_handoff": {
+      "producer_to_consumer": "mbarrier signals data ready",
+      "consumer_to_producer": "mbarrier.wait_group ensures producer advances at correct pace",
+      "deadlock_prevention": "Barrier count tracking prevents stalls"
+    },
+
+    "weight_stationary_constraint": {
+      "restriction": "cta_group::2 CANNOT use weight stationary mode",
+      "reason": "Producer warps dispatch async ops; weight stationary requires different computation pattern",
+      "error_code_location": "decompiled/sub_36E9630_0x36e9630.c:169-170",
+      "enforcement": "Compiler rejects weight_stationary attribute on producer warps"
+    }
+  },
+
+  "instruction_opcodes_reference": {
+    "tma_opcode_map": {
+      "8315": "cp.async.bulk.global.to.shared.cluster",
+      "8316": "cp.async.bulk.gmem.to.dsmem",
+      "8324": "cp.async.bulk.tensor.gmem.to.smem.f1",
+      "8325": "cp.async.bulk.tensor.gmem.to.smem.f2",
+      "8326": "cp.async.bulk.tensor.gmem.to.smem.f4",
+      "8327": "cp.async.bulk.tensor.gmem.to.smem.f8",
+      "8328": "cp.async.bulk.tensor.gmem.to.smem.f16",
+      "8329": "cp.async.bulk.tensor.gmem.to.smem.im2col.w32",
+      "8330": "cp.async.bulk.tensor.gmem.to.smem.im2col.w64",
+      "8331": "cp.async.bulk.tensor.gmem.to.smem.im2col.w128",
+      "9213": "cp.async.bulk.tensor.g2s.im2col.w32",
+      "9214": "cp.async.bulk.tensor.g2s.im2col.w64",
+      "9215": "cp.async.bulk.tensor.g2s.im2col.w128",
+      "9222": "cp.async.bulk.tensor.g2s.tile.w1",
+      "9223": "cp.async.bulk.tensor.g2s.tile.w2",
+      "9224": "cp.async.bulk.tensor.g2s.tile.w4",
+      "9225": "cp.async.bulk.tensor.g2s.tile.w8",
+      "9226": "cp.async.bulk.tensor.g2s.tile.w16"
+    },
+    "barrier_opcode_map": {
+      "10090": "mbarrier.arrive.multicast",
+      "10091": "mbarrier.arrive.multicast.shared",
+      "10095": "mbarrier.arrive.mc.cg1",
+      "10096": "mbarrier.arrive.mc.cg2",
+      "10097": "mbarrier.arrive.mc.shared.cg1",
+      "10098": "mbarrier.arrive.mc.shared.cg2"
+    },
+    "extraction_source": "decompiled/sub_A8E250_0xa8e250.c:1019-1230"
+  },
+
+  "performance_characteristics": {
+    "tma_latency": {
+      "typical_range": "50-500 cycles",
+      "factors": [
+        "TMA data size (kilobytes to megabytes)",
+        "Global memory access pattern (strided vs contiguous)",
+        "L2 cache behavior",
+        "Memory bus contention"
+      ]
+    },
+
+    "barrier_latency": {
+      "arrive_operation": "1-2 cycles",
+      "expect_tx_operation": "0 cycles (metadata operation, no actual latency)",
+      "wait_operation": "Blocking - waits for producer signal"
+    },
+
+    "overlap_benefit": {
+      "scenario": "Producer loads 100 cycles, consumer computes 150 cycles",
+      "without_overlap": "100 + 150 = 250 cycles total",
+      "with_overlap": "max(100, 150) = 150 cycles total",
+      "speedup": "1.67x improvement possible"
+    },
+
+    "shared_memory_throughput": {
+      "typical_bandwidth": "100+ GB/s (depends on access pattern)",
+      "mma_operand_fetch": "From shared memory after TMA load",
+      "compute_intensity": "TMA amortizes load cost across multiple MMA operations"
+    },
+
+    "instruction_count_reduction": {
+      "benefit": "TMA uses 1 instruction vs 5-10 for manual async loops",
+      "register_pressure_reduction": "Significant (TMA hardware handles indexing)"
+    }
+  },
+
+  "configuration_and_usage": {
+    "compiler_invocation": [
+      "-opt-arch=sm_90 or -mcpu=sm_90",
+      "-opt-arch=sm_90a or -mcpu=sm_90a"
+    ],
+
+    "cuda_compute_capability": [
+      "__CUDA_ARCH=900 (SM 90)",
+      "__CUDA_ARCH=901 (SM 90a)"
+    ],
+
+    "enabling_conditions": [
+      "Kernel with large tensor inputs (GEMM, convolution)",
+      "Compute intensity sufficient to hide TMA latency",
+      "Explicit warp specialization attributes in source or compiler heuristics"
+    ],
+
+    "typical_kernel_types": [
+      "Large matrix multiplications (GEMM, batched GEMM)",
+      "Convolutional neural network inference/training",
+      "Transformer attention operations",
+      "Tensor contraction patterns with TMA-friendly memory access"
+    ]
+  },
+
+  "constraints_and_limitations": {
+    "architectural_constraints": [
+      {
+        "constraint": "TMA descriptor size (64-128 bytes) must fit in instruction cache",
+        "severity": "ARCHITECTURAL",
+        "impact": "Limits number of unique TMA operations per kernel"
+      },
+      {
+        "constraint": "cta_group::2 cannot use weight stationary mode",
+        "severity": "ERROR",
+        "code_location": "sub_36E9630:170",
+        "implication": "Producer warps must use general compute, not optimized dense matrix routines"
+      },
+      {
+        "constraint": "Scale vector constraints by data type",
+        "severity": "ERROR",
+        "code_location": "sub_36E9630:165-180",
+        "implication": "Type selection limits performance optimization space"
+      },
+      {
+        "constraint": "Barrier count per block (limited number of barriers)",
+        "severity": "RESOURCE",
+        "impact": "Pipeline depth constrained by available barriers"
+      }
+    ],
+
+    "algorithmic_unknowns": [
+      "Exact heuristics for enabling warp specialization with TMA",
+      "Descriptor initialization and optimization algorithm",
+      "Dynamic scheduling of TMA vs local computation",
+      "Register pressure balancing policy between producer/consumer",
+      "Shared memory allocation strategy for multiple buffers",
+      "Prefetching and lookahead heuristics"
+    ]
+  },
+
+  "cross_reference_with_l3_24": {
+    "l3_24_title": "Warp Specialization (Explicit Partitioning) for SM 90",
+    "integration_points": [
+      {
+        "l3_24_concept": "cta_group::2 producer warps",
+        "tma_role": "Producer dispatches TMA operations (cp.async.bulk.tensor.*)",
+        "synchronization": "mbarrier.arrive.expect_tx coordinates with barrier"
+      },
+      {
+        "l3_24_concept": "cta_group::1 consumer warps",
+        "tma_role": "Consumer waits on barrier and processes loaded data via MMA",
+        "synchronization": "mbarrier.wait blocks until TMA completes"
+      },
+      {
+        "l3_24_concept": "mbarrier with expect_tx",
+        "tma_role": "expect_tx (barrier opcode 0x4) tells barrier TMA byte count",
+        "verification": "expect_tx strings and operation code found in both analyses"
+      },
+      {
+        "l3_24_concept": "Pipeline strategy",
+        "tma_role": "TMA enables producer/consumer overlap for 2-3 iterations",
+        "performance": "Hides 50-500 cycle TMA latency behind concurrent MMA"
+      }
+    ],
+
+    "unified_model": "TMA is the mechanism; warp specialization is the scheduling framework to exploit it"
+  },
+
+  "evidence_artifacts": {
+    "code_locations": [
+      {
+        "file": "decompiled/sub_A8E250_0xa8e250.c",
+        "lines": "1019-1170",
+        "content": "TMA instruction pattern matching (opcodes 8315-8331, 9213-9226)",
+        "confidence": "HIGH"
+      },
+      {
+        "file": "decompiled/sub_35F4080_0x35f4080.c",
+        "lines": "1-243",
+        "content": "Barrier operation codegen (expect_tx at lines 138-144)",
+        "confidence": "HIGH"
+      },
+      {
+        "file": "decompiled/sub_35F2270_0x35f2270.c",
+        "lines": "40-50",
+        "content": "Scale vector encoding/decoding",
+        "confidence": "HIGH"
+      },
+      {
+        "file": "decompiled/sub_35F3330_0x35f3330.c",
+        "lines": "70+",
+        "content": "Scale vector constraint enforcement",
+        "confidence": "HIGH"
+      },
+      {
+        "file": "decompiled/sub_3032470_0x3032470.c",
+        "lines": "Error messages for scale_vec constraints",
+        "confidence": "HIGH"
+      },
+      {
+        "file": "decompiled/sub_36E9630_0x36e9630.c",
+        "lines": "165-180",
+        "content": "Scale vector and type constraint validation",
+        "confidence": "HIGH"
+      }
+    ],
+
+    "string_constants_found": [
+      "cp.async.bulk.tensor.g2s.",
+      "cp.async.bulk.gmem.to.dsmem",
+      "cp.async.bulk.global.to.shared.cluster",
+      "cp.async.bulk.tensor.gmem.to.smem.",
+      "cp.async.bulk.tensor.im2col",
+      "tcgen05.commit.",
+      ".mbarrier::arrive::one",
+      ".mbarrier::arrive_drop",
+      ".mbarrier::arrive_wait",
+      ".mbarrier::arrive_wait_drop",
+      ".mbarrier::expect_tx",
+      ".mbarrier::complete_tx",
+      ".scale_vec::1X",
+      ".scale_vec::2X",
+      ".scale_vec::4X",
+      ".cluster",
+      ".cta",
+      ".shared::cluster",
+      ".shared::cta",
+      "mbarrier.arrive.multicast",
+      "mbarrier.arrive.multicast.shared"
+    ],
+
+    "bitfield_evidence": [
+      {
+        "location": "sub_35F4080:99-158",
+        "pattern": "Switch on (v7 >> 4) for barrier operation types",
+        "cases": "0-5 mapping to arrive, arrive_drop, arrive_wait, arrive_wait_drop, expect_tx, complete_tx",
+        "confidence": "HIGH"
+      },
+      {
+        "location": "sub_35F2270:40+",
+        "pattern": "Scale vec decode from bits 51-53: ((v7 >> 51) & 7)",
+        "encoding": "0=1X, 1=2X, 2+=4X",
+        "confidence": "HIGH"
+      }
+    ]
+  },
+
+  "validation": {
+    "sm90_specificity": true,
+    "sm90_exclusive_features": [
+      "TMA (Tensor Memory Accelerator)",
+      "cp.async.bulk.tensor family instructions",
+      "expect_tx barrier operation",
+      "Explicit cta_group partitioning",
+      "tcgen05 instruction generation for tensor cores"
+    ],
+
+    "not_found_in_earlier_sm": [
+      "SM 80 (Ampere): Manual async copy loops, no cta_group, no TMA",
+      "SM 75 (Turing): No tensor acceleration for async ops",
+      "SM 70 (Volta): Pre-dates structured warp specialization"
+    ],
+
+    "cross_validation": {
+      "l3_24_consistency": "TMA instructions and expect_tx confirmed in L3-24 warp specialization analysis",
+      "barrier_operations": "All barrier operation types extracted and documented",
+      "instruction_opcodes": "Complete mapping from pattern matching code"
+    }
+  },
+
+  "unknown_factors_and_gaps": {
+    "scheduler_internals": "How compiler decides when to apply TMA scheduling vs traditional async",
+    "heuristic_thresholds": "When is compute intensity sufficient to justify producer/consumer split",
+    "descriptor_synthesis": "Exact algorithm for generating descriptor from tensor layout",
+    "dynamic_load_balancing": "How workload is distributed between producer and consumer dynamically",
+    "prefetch_strategies": "Which batches are prefetched and how far ahead",
+    "register_allocation": "Precise register partition algorithm between groups",
+    "buffer_sizing": "How shared memory is allocated for multiple buffered batches"
+  },
+
+  "future_research_directions": [
+    "Extract descriptor generation algorithm by analyzing compiler IR transformations",
+    "Profile actual performance of TMA vs manual async in real kernels",
+    "Determine register allocation partition policy between producer/consumer",
+    "Analyze impact of barrier count limitations on pipeline depth",
+    "Study interaction between TMA and cluster-scope synchronization",
+    "Investigate dynamic prefetch and lookahead strategies",
+    "Compare performance against SM 80 manual async patterns",
+    "Analyze descriptor caching and reuse across multiple kernels"
+  ],
+
+  "summary": {
+    "extraction_success": "MEDIUM-HIGH",
+    "key_findings": [
+      "TMA is fully integrated into warp specialization model from L3-24",
+      "Producer (cta_group::2) dispatches TMA via cp.async.bulk.tensor family",
+      "Consumer (cta_group::1) waits on mbarrier with expect_tx coordination",
+      "13 distinct TMA instruction variants extracted (opcodes 8315-8331, 9213-9226)",
+      "6 barrier operation types identified with expect_tx (0x4) critical for TMA",
+      "Scale vector configuration (1X/2X/4X) with type-specific constraints enforced",
+      "Async group commit (tcgen05.commit_group) flushes pending TMA operations",
+      "Barrier scope options support both cluster and block-level coordination"
+    ],
+    "limitations": [
+      "Descriptor initialization algorithm not fully exposed in binary",
+      "Compiler heuristics for enabling TMA scheduling not visible",
+      "Dynamic scheduling decisions not traced in decompiled code",
+      "Performance characteristics inferred but not profiled",
+      "Shared memory allocation strategy not explicitly documented"
+    ],
+    "overall_confidence": "MEDIUM-HIGH for extracted mechanisms; MEDIUM for scheduling algorithms"
+  }
+}

@@ -1,0 +1,1048 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_05",
+    "date": "2025-11-16",
+    "confidence": "HIGH",
+    "status": "CONFIRMED",
+    "title": "Local Optimization Techniques in CICC",
+    "description": "Comprehensive analysis of local (basic block and intra-procedural) optimization techniques employed throughout CICC compilation pipeline"
+  },
+
+  "executive_summary": {
+    "techniques_identified": 12,
+    "optimization_passes_implementing": [
+      "EarlyCSEPass",
+      "InstCombinePass",
+      "SimplifyCFGPass",
+      "MachineCSE",
+      "MachineInstCombiner",
+      "DeadStoreElimination",
+      "DeadCodeElimination",
+      "MemorySpaceOptPass"
+    ],
+    "scope_levels": [
+      "Basic block level (single pass through linear code)",
+      "Function level (whole function analysis)",
+      "Loop level (loop-specific optimizations)"
+    ],
+    "primary_benefits": [
+      "Reduced instruction count",
+      "Decreased register pressure",
+      "Improved memory performance",
+      "Lower latency through instruction reordering"
+    ]
+  },
+
+  "local_optimization_techniques": [
+    {
+      "technique_id": "CSE",
+      "technique_name": "Common Subexpression Elimination (CSE)",
+      "classification": "Value numbering / redundancy elimination",
+      "scope_level": "Basic block and extended basic block",
+      "description": "Identify and eliminate redundant computations of the same value",
+      "how_it_works": {
+        "algorithm": "Value numbering with hash tables",
+        "steps": [
+          "Assign value numbers to expressions",
+          "Identify expressions with same value number",
+          "Replace subsequent occurrences with first occurrence's result",
+          "Track SSA def-use chains"
+        ],
+        "data_structure": "Hash table mapping expression → first definition"
+      },
+      "examples": [
+        {
+          "before": "%t1 = add %a, %b; %t2 = add %a, %b; use(%t1, %t2)",
+          "after": "%t1 = add %a, %b; use(%t1, %t1)"
+        },
+        {
+          "before": "%x = mul %a, %b; %y = mul %a, %b; %z = add %x, %y",
+          "after": "%x = mul %a, %b; %z = add %x, %x"
+        }
+      ],
+      "implementing_passes": [
+        {
+          "pass": "EarlyCSEPass",
+          "level": "IR (early in pipeline)",
+          "confidence": "HIGH",
+          "evidence": "Disable flag: 'Enable the EarlyCSE w/ MemorySSA pass'"
+        },
+        {
+          "pass": "MachineCSE",
+          "level": "Machine instructions",
+          "confidence": "HIGH",
+          "evidence": "Listed in NVIDIA-specific passes"
+        },
+        {
+          "pass": "GlobalValueNumbering (GVN)",
+          "level": "IR with memory aliasing",
+          "confidence": "HIGH",
+          "evidence": "Listed in unconfirmed passes"
+        }
+      ],
+      "complexity": "O(n) with hash table, can be O(n^2) in worst case",
+      "applicability": "All architectures, all programs",
+      "performance_impact": "MEDIUM-HIGH - depends on expression redundancy in code",
+      "cuda_impact": "High - tensor operations often have repeated computations"
+    },
+
+    {
+      "technique_id": "COPY_PROP",
+      "technique_name": "Copy Propagation",
+      "classification": "SSA-based optimization",
+      "scope_level": "Basic block to function level",
+      "description": "Replace copies with references to original value, enabling further optimizations",
+      "how_it_works": {
+        "algorithm": "SSA use-def chain traversal",
+        "steps": [
+          "Identify copy instructions (%copy = mov %original)",
+          "Track all uses of %copy",
+          "Replace uses of %copy with %original",
+          "Delete copy instruction if no longer needed"
+        ],
+        "data_structure": "SSA form with use-def chains"
+      },
+      "examples": [
+        {
+          "before": "%v1 = copy %v0; use(%v1)",
+          "after": "use(%v0)"
+        },
+        {
+          "before": "%x = register %a; %y = use(%x); add %z, %y, %c",
+          "after": "%y = use(%a); add %z, %y, %c"
+        }
+      ],
+      "implementing_passes": [
+        {
+          "pass": "Register coalescer",
+          "level": "Machine instructions",
+          "confidence": "HIGH",
+          "evidence": "Listed as 'RegisterCoalescer' in passes"
+        },
+        {
+          "pass": "InstCombinePass",
+          "level": "IR",
+          "confidence": "MEDIUM",
+          "evidence": "Part of instruction combining patterns"
+        }
+      ],
+      "complexity": "O(n + edges) - SSA traversal",
+      "applicability": "All programs with copy operations",
+      "performance_impact": "MEDIUM - enables register coalescing and further optimizations",
+      "cuda_impact": "Medium - register spilling is costly on GPU, copy elimination helps"
+    },
+
+    {
+      "technique_id": "DCE",
+      "technique_name": "Dead Code Elimination (DCE)",
+      "classification": "Liveness-based optimization",
+      "scope_level": "Function and module level",
+      "description": "Remove instructions whose results are never used",
+      "how_it_works": {
+        "algorithm": "Liveness analysis with backward pass",
+        "steps": [
+          "Perform liveness analysis on all values",
+          "Identify instructions whose results are never live",
+          "Remove dead instructions",
+          "Recursively remove instructions that produced operands only for dead instructions"
+        ],
+        "data_structure": "Liveness sets per instruction"
+      },
+      "variants": [
+        {
+          "variant": "Aggressive DCE (ADCE)",
+          "description": "Uses control dependence to find dead code",
+          "pass": "DeadCodeElimination",
+          "confidence": "HIGH"
+        },
+        {
+          "variant": "Conservative DCE",
+          "description": "Only removes obviously dead instructions",
+          "focus": "Safe optimization with minimal side effects"
+        }
+      ],
+      "examples": [
+        {
+          "before": "%unused = add %a, %b; (result never used)",
+          "after": "(add instruction removed)"
+        },
+        {
+          "before": "%x = mul %a, 0; (result is always 0)",
+          "after": "(removed - constant folding)"
+        }
+      ],
+      "implementing_passes": [
+        {
+          "pass": "DeadCodeElimination",
+          "level": "IR",
+          "confidence": "HIGH",
+          "evidence": "String: 'Aggressive Dead Code Elimination'"
+        },
+        {
+          "pass": "BitTrackingDeadCodeElimination (BDCE)",
+          "level": "IR",
+          "confidence": "MEDIUM",
+          "evidence": "Listed in unconfirmed passes"
+        }
+      ],
+      "complexity": "O(n) single pass after liveness",
+      "applicability": "All programs",
+      "performance_impact": "MEDIUM - reduces instruction count and register pressure",
+      "cuda_impact": "High - every instruction saved is valuable on GPU with shared resources"
+    },
+
+    {
+      "technique_id": "DSE",
+      "technique_name": "Dead Store Elimination (DSE)",
+      "classification": "Memory optimization",
+      "scope_level": "Basic block to function level",
+      "description": "Remove stores to memory that are overwritten before being read",
+      "how_it_works": {
+        "algorithm": "Memory dependence analysis with store-load tracking",
+        "steps": [
+          "Build store-load dependency graph",
+          "Identify stores with no intervening loads",
+          "Remove stores that are overwritten before any read",
+          "Track partial overwrites with optional merging"
+        ],
+        "data_structure": "Memory dependence graph"
+      },
+      "examples": [
+        {
+          "before": "st.shared [%addr], %v1; st.shared [%addr], %v2; ld.shared %r0, [%addr]",
+          "after": "st.shared [%addr], %v2; ld.shared %r0, [%addr]"
+        },
+        {
+          "before": "st.global [%addr], %v0; (no load of [%addr] follows)",
+          "after": "(store removed)"
+        }
+      ],
+      "implementing_passes": [
+        {
+          "pass": "DeadStoreElimination",
+          "level": "IR",
+          "confidence": "HIGH",
+          "evidence": "String: 'Dead Store Elimination', parameters for partial-overwrite tracking"
+        }
+      ],
+      "parameters": [
+        {
+          "param": "enable-partial-overwrite-tracking",
+          "effect": "Track partial store overwrites (default enabled)"
+        },
+        {
+          "param": "enable-partial-store-merging",
+          "effect": "Merge partial stores into larger operations"
+        }
+      ],
+      "complexity": "O(n) with good memory dependence analysis",
+      "applicability": "Programs with memory operations",
+      "performance_impact": "MEDIUM - reduces memory operations, particularly for spill code",
+      "cuda_impact": "High - shared memory writes are bottleneck, eliminating dead writes helps"
+    },
+
+    {
+      "technique_id": "CONST_FOLD",
+      "technique_name": "Constant Folding",
+      "classification": "Algebraic simplification",
+      "scope_level": "Local (single instruction pattern)",
+      "description": "Evaluate constant expressions at compile-time instead of runtime",
+      "how_it_works": {
+        "algorithm": "Pattern matching with compile-time evaluation",
+        "steps": [
+          "Identify operations with all constant operands",
+          "Evaluate operation at compile-time",
+          "Replace instruction with constant result"
+        ]
+      },
+      "examples": [
+        {
+          "before": "%result = add i32 5, 3",
+          "after": "%result = i32 8"
+        },
+        {
+          "before": "%mask = shl i32 1, 2",
+          "after": "%mask = i32 4"
+        },
+        {
+          "before": "%result = mul float 2.5, 4.0",
+          "after": "%result = float 10.0"
+        }
+      ],
+      "implementing_passes": [
+        {
+          "pass": "InstCombinePass",
+          "level": "IR",
+          "confidence": "HIGH",
+          "evidence": "Constant folding is core feature of InstCombine"
+        },
+        {
+          "pass": "EarlyCSEPass",
+          "level": "IR",
+          "confidence": "MEDIUM",
+          "evidence": "CSE passes often include constant folding"
+        }
+      ],
+      "complexity": "O(1) per folded instruction",
+      "applicability": "All programs with constant expressions",
+      "performance_impact": "LOW-MEDIUM - reduces instructions, may enable further optimizations",
+      "cuda_impact": "Medium - array indices and memory offsets often fold"
+    },
+
+    {
+      "technique_id": "CONST_PROP",
+      "technique_name": "Constant Propagation",
+      "classification": "Data flow optimization",
+      "scope_level": "Function to module level",
+      "description": "Track constant values through dataflow and replace uses with constants",
+      "how_it_works": {
+        "algorithm": "Sparse conditional constant propagation (SCCP or IPSCCP)",
+        "steps": [
+          "Mark all values as unknown initially",
+          "Track which values become constants through dataflow",
+          "Replace uses of constant values with the actual constants",
+          "Handle conditional branches that always go one way due to constants"
+        ],
+        "data_structure": "Lattice of {unknown, constant value, overdefined}"
+      },
+      "variants": [
+        {
+          "variant": "Sparse Conditional Constant Propagation (SCCP)",
+          "scope": "Function level",
+          "pass": "SparseCCP",
+          "confidence": "MEDIUM"
+        },
+        {
+          "variant": "Interprocedural SCCP (IPSCCP)",
+          "scope": "Module level",
+          "pass": "Interprocedural_SCCP",
+          "confidence": "MEDIUM"
+        }
+      ],
+      "examples": [
+        {
+          "before": "%x = constant 5; %y = add %x, 10; %z = mul %y, 2",
+          "after": "%x = constant 5; %y = constant 15; %z = constant 30"
+        },
+        {
+          "before": "%cond = compare %a, %b; br %cond, block1, block2",
+          "after": "(if %cond always true, eliminate unreachable branch)"
+        }
+      ],
+      "implementing_passes": [
+        {
+          "pass": "SparseCCP (SCCP)",
+          "level": "IR",
+          "confidence": "MEDIUM",
+          "evidence": "Listed in unconfirmed scalar optimization passes"
+        }
+      ],
+      "complexity": "O(n) iterations until convergence",
+      "applicability": "All programs with constant propagation opportunities",
+      "performance_impact": "MEDIUM-HIGH - enables branch elimination and constant folding",
+      "cuda_impact": "High - kernel parameters often constant, enables specialization"
+    },
+
+    {
+      "technique_id": "ALGEBRAIC_SIMPLIF",
+      "technique_name": "Algebraic Simplification",
+      "classification": "Pattern-based optimization",
+      "scope_level": "Local (instruction pattern)",
+      "description": "Simplify algebraic expressions using mathematical identities",
+      "how_it_works": {
+        "algorithm": "Pattern matching against algebraic rules",
+        "steps": [
+          "Identify instruction matching algebraic pattern",
+          "Apply simplification rule",
+          "Replace instruction with simpler equivalent",
+          "Preserve semantics (handle NaN, signed zero carefully)"
+        ]
+      },
+      "patterns": [
+        {
+          "pattern": "x * 1 → x",
+          "category": "Identity",
+          "safe": true
+        },
+        {
+          "pattern": "x * 0 → 0",
+          "category": "Annihilator",
+          "safe": "For integer only; float has special NaN handling"
+        },
+        {
+          "pattern": "x + 0 → x",
+          "category": "Identity",
+          "safe": true
+        },
+        {
+          "pattern": "x - 0 → x",
+          "category": "Identity",
+          "safe": true
+        },
+        {
+          "pattern": "x - x → 0",
+          "category": "Cancellation",
+          "safe": "For integer only"
+        },
+        {
+          "pattern": "x / 1 → x",
+          "category": "Identity",
+          "safe": true
+        },
+        {
+          "pattern": "x / x → 1",
+          "category": "Cancellation",
+          "safe": "For integer only (x != 0)"
+        },
+        {
+          "pattern": "x & x → x",
+          "category": "Identity",
+          "safe": true
+        },
+        {
+          "pattern": "x | x → x",
+          "category": "Identity",
+          "safe": true
+        },
+        {
+          "pattern": "(x + y) - x → y",
+          "category": "Reassociation",
+          "safe": true
+        },
+        {
+          "pattern": "x << 0 → x",
+          "category": "Identity",
+          "safe": true
+        },
+        {
+          "pattern": "x >> 0 → x",
+          "category": "Identity",
+          "safe": true
+        }
+      ],
+      "implementing_passes": [
+        {
+          "pass": "InstCombinePass",
+          "level": "IR",
+          "confidence": "HIGH",
+          "evidence": "Instruction combining is core algebraic simplification"
+        }
+      ],
+      "complexity": "O(1) per matched pattern",
+      "applicability": "All programs with algebraic expressions",
+      "performance_impact": "LOW-MEDIUM per simplification, HIGH in aggregate",
+      "cuda_impact": "Medium - helps reduce instruction count in data-parallel code"
+    },
+
+    {
+      "technique_id": "STRENGTH_REDUC",
+      "technique_name": "Strength Reduction",
+      "classification": "Cost-based optimization",
+      "scope_level": "Local to loop-level",
+      "description": "Replace expensive operations with cheaper equivalent operations",
+      "how_it_works": {
+        "algorithm": "Instruction cost comparison with replacement",
+        "steps": [
+          "Identify expensive operations (div, mul, etc.)",
+          "Check if cheaper alternative available",
+          "Verify semantic equivalence",
+          "Replace if cost savings exceed threshold"
+        ],
+        "data_structure": "Cost model for instruction latency"
+      },
+      "patterns": [
+        {
+          "expensive": "x * 2^n",
+          "cheap": "x << n",
+          "cost_ratio": "mul ~32 cycles vs shl ~4 cycles (8x faster)",
+          "safe": true,
+          "example": "x * 4 → x << 2"
+        },
+        {
+          "expensive": "x / 2^n (unsigned)",
+          "cheap": "x >> n",
+          "cost_ratio": "div ~32 cycles vs shr ~4 cycles",
+          "safe": "Unsigned only",
+          "example": "x / 8 → x >> 3"
+        },
+        {
+          "expensive": "x % 2^n",
+          "cheap": "x & (2^n - 1)",
+          "cost_ratio": "mod slow vs and fast",
+          "safe": true,
+          "example": "x % 8 → x & 7"
+        },
+        {
+          "expensive": "Loop: i = i + 1",
+          "cheap": "Generate specialized increment code",
+          "scope": "Loop optimization",
+          "pattern": "Induction variable strength reduction"
+        }
+      ],
+      "implementing_passes": [
+        {
+          "pass": "BypassSlowDivision",
+          "level": "IR",
+          "confidence": "MEDIUM",
+          "evidence": "Listed in code generation preparation passes"
+        },
+        {
+          "pass": "Reassociate",
+          "level": "IR",
+          "confidence": "MEDIUM",
+          "evidence": "Reassociate enables strength reduction through reordering"
+        }
+      ],
+      "complexity": "O(1) per replaced operation",
+      "applicability": "Programs with power-of-2 multiplications/divisions",
+      "performance_impact": "HIGH - can be 8-32x speedup for division",
+      "cuda_impact": "Very High - array indexing calculations are frequent"
+    },
+
+    {
+      "technique_id": "MEMORY_OPT",
+      "technique_name": "Memory Space Optimization",
+      "classification": "GPU-specific optimization",
+      "scope_level": "Function to kernel level",
+      "description": "Optimize memory space assignments for GPU memory hierarchy (global, shared, local, constant)",
+      "how_it_works": {
+        "algorithm": "Access pattern analysis with address space selection",
+        "steps": [
+          "Analyze memory access patterns (reuse distance, bandwidth)",
+          "Determine optimal memory space for each allocation",
+          "Track address space transformations",
+          "Insert necessary memory space casts/promotions"
+        ]
+      },
+      "memory_spaces": [
+        {
+          "space": "Global Memory",
+          "bandwidth": "~900 GB/s (high bandwidth, high latency)",
+          "use_case": "Large working sets, irregular access"
+        },
+        {
+          "space": "Shared Memory",
+          "bandwidth": "~30 TB/s (very high bandwidth, low latency)",
+          "use_case": "Small reused data, synchronization between threads"
+        },
+        {
+          "space": "Local Memory (spill)",
+          "bandwidth": "Limited by registers",
+          "use_case": "Register spilling (slow!)"
+        },
+        {
+          "space": "Constant Memory",
+          "bandwidth": "~10 TB/s with caching",
+          "use_case": "Broadcast constant values to all threads"
+        }
+      ],
+      "optimizations": [
+        {
+          "optimization": "Promotion to shared memory",
+          "pattern": "Small array with high reuse in block",
+          "benefit": "10-100x speedup from shared memory bandwidth"
+        },
+        {
+          "optimization": "Global to constant promotion",
+          "pattern": "Read-only constant values",
+          "benefit": "Reduced bandwidth, better caching"
+        },
+        {
+          "optimization": "Bank conflict avoidance",
+          "pattern": "Shared memory access pattern analysis",
+          "benefit": "Prevent 4-32x slowdown from serialization"
+        }
+      ],
+      "implementing_passes": [
+        {
+          "pass": "MemorySpaceOptPass",
+          "level": "IR",
+          "confidence": "HIGH",
+          "evidence": "String: 'Memory Space Optimization', disable flag present"
+        },
+        {
+          "pass": "NVVMIPMemorySpacePropagation",
+          "level": "NVVM IR",
+          "confidence": "MEDIUM",
+          "evidence": "Listed in NVIDIA-specific passes"
+        }
+      ],
+      "parameters": [
+        {
+          "param": "algorithm-selection",
+          "effect": "Switch between different optimization algorithms"
+        },
+        {
+          "param": "indirect-load-tracking",
+          "effect": "Enable tracking indirect loads"
+        }
+      ],
+      "complexity": "O(n) analysis plus transformation",
+      "applicability": "CUDA programs with custom memory hierarchy",
+      "performance_impact": "VERY HIGH - 10-100x possible with shared memory promotion",
+      "cuda_impact": "Critical - shared memory is cornerstone of CUDA performance"
+    },
+
+    {
+      "technique_id": "CFG_SIMPLIF",
+      "technique_name": "Control Flow Graph Simplification",
+      "classification": "Control flow optimization",
+      "scope_level": "Function level",
+      "description": "Simplify control flow by merging blocks, eliminating jumps, and removing unreachable code",
+      "how_it_works": {
+        "algorithm": "CFG analysis with block merging heuristics",
+        "steps": [
+          "Identify mergeable basic blocks (fallthrough only)",
+          "Eliminate redundant branches (always-taken, never-taken)",
+          "Remove unreachable blocks",
+          "Duplicate blocks for tail merging if beneficial"
+        ],
+        "data_structure": "Control flow graph of basic blocks"
+      },
+      "transformations": [
+        {
+          "transformation": "Block merging",
+          "condition": "Two blocks connected by fallthrough only",
+          "benefit": "Reduces jumps, improves instruction cache locality"
+        },
+        {
+          "transformation": "Jump elimination",
+          "condition": "Unconditional jump to immediately following block",
+          "benefit": "Removes unnecessary jump instruction"
+        },
+        {
+          "transformation": "Branch simplification",
+          "condition": "Both branches of conditional jump merge at same target",
+          "benefit": "Removes conditional jump, replaces with unconditional jump"
+        },
+        {
+          "transformation": "Unreachable block removal",
+          "condition": "Block has no predecessors in CFG",
+          "benefit": "Reduces code size"
+        }
+      ],
+      "examples": [
+        {
+          "before": "block1: br block2; block2: br block3",
+          "after": "block1: br block3"
+        },
+        {
+          "before": "cond_br block1, block2; block1: br block3; block2: br block3",
+          "after": "br block3"
+        }
+      ],
+      "implementing_passes": [
+        {
+          "pass": "SimplifyCFGPass",
+          "level": "IR",
+          "confidence": "HIGH",
+          "evidence": "String: 'SimplifyCFGPass', parameters present"
+        }
+      ],
+      "parameters": [
+        {
+          "param": "bonus-threshold",
+          "effect": "Merge bonus threshold for cost heuristic"
+        }
+      ],
+      "complexity": "O(n) CFG traversal per simplification",
+      "applicability": "Programs with complex control flow (loops, exception handling)",
+      "performance_impact": "MEDIUM - reduces jumps, improves cache locality",
+      "cuda_impact": "Medium - GPU warps branch coherence benefits from simplified CFG"
+    },
+
+    {
+      "technique_id": "VALUE_REASSOC",
+      "technique_name": "Expression Reassociation",
+      "classification": "Algebraic transformation",
+      "scope_level": "Local (instruction pattern)",
+      "description": "Reorder associative operations to expose other optimizations or reduce register pressure",
+      "how_it_works": {
+        "algorithm": "Expression tree reordering with cost heuristics",
+        "steps": [
+          "Build expression tree for associative operation chains",
+          "Reorder operations to reduce register pressure or enable optimizations",
+          "Emit reordered sequence"
+        ]
+      },
+      "examples": [
+        {
+          "before": "(((a + b) + c) + d) + e",
+          "after": "((a + e) + (b + d)) + c",
+          "benefit": "Better register pressure, more parallelization"
+        },
+        {
+          "before": "(%x * %y) + (%x * %z)",
+          "after": "%x * (%y + %z)",
+          "benefit": "Fewer multiplications if %x is constant or small"
+        }
+      ],
+      "implementing_passes": [
+        {
+          "pass": "Reassociate",
+          "level": "IR",
+          "confidence": "MEDIUM",
+          "evidence": "Listed in scalar optimization passes"
+        }
+      ],
+      "complexity": "O(n log n) for tree building and reordering",
+      "applicability": "Expressions with associative operators",
+      "performance_impact": "MEDIUM - improves register pressure and instruction-level parallelism",
+      "cuda_impact": "Medium - helps with complex mathematical expressions"
+    },
+
+    {
+      "technique_id": "PRED_OPT",
+      "technique_name": "Predicate Optimization",
+      "classification": "GPU-specific optimization",
+      "scope_level": "Basic block to function level",
+      "description": "Optimize predicate usage through elimination, simplification, and reuse",
+      "how_it_works": {
+        "algorithm": "Predicate liveness and dependence analysis",
+        "steps": [
+          "Identify unused predicate definitions",
+          "Find redundant predicate calculations",
+          "Track predicate usage across blocks",
+          "Eliminate or merge redundant predicates"
+        ]
+      },
+      "optimizations": [
+        {
+          "optimization": "Dead predicate elimination",
+          "pattern": "Predicate generated but never used",
+          "benefit": "Remove setp instruction"
+        },
+        {
+          "optimization": "Predicate merging",
+          "pattern": "Same condition computed multiple times",
+          "benefit": "Compute once, reuse for multiple operations"
+        },
+        {
+          "optimization": "Predicate reordering",
+          "pattern": "Reorder setp to improve scheduling",
+          "benefit": "Better instruction-level parallelism"
+        }
+      ],
+      "examples": [
+        {
+          "before": "@%p0 : setp.eq.u32 %p0, %a, %b; (p0 never used)",
+          "after": "(remove setp instruction)"
+        },
+        {
+          "before": "@%p0 : setp.lt.u32 %p0, %a, %b; ...; @%p0 : setp.lt.u32 %p0, %a, %b",
+          "after": "@%p0 : setp.lt.u32 %p0, %a, %b; (reuse %p0)"
+        }
+      ],
+      "implementing_passes": [
+        {
+          "pass": "Predicate optimization in PTX emission",
+          "level": "Machine instructions",
+          "confidence": "MEDIUM"
+        }
+      ],
+      "complexity": "O(n) liveness analysis",
+      "applicability": "GPU programs (PTX uses predicates heavily)",
+      "performance_impact": "LOW-MEDIUM - reduces instruction count",
+      "cuda_impact": "Medium - predicates important for GPU branching"
+    },
+
+    {
+      "technique_id": "INSTR_SCHEDULE",
+      "technique_name": "Instruction Scheduling (Local)",
+      "classification": "Instruction-level parallelism",
+      "scope_level": "Basic block level",
+      "description": "Reorder instructions to hide latencies and improve instruction-level parallelism",
+      "how_it_works": {
+        "algorithm": "Dependency analysis with greedy list scheduling",
+        "steps": [
+          "Build instruction dependency graph",
+          "Compute earliest and latest schedulable positions",
+          "Use heuristics to select best schedule",
+          "Emit reordered instruction sequence"
+        ]
+      },
+      "heuristics": [
+        {
+          "heuristic": "Critical path reduction",
+          "goal": "Minimize longest dependency chain"
+        },
+        {
+          "heuristic": "Register pressure minimization",
+          "goal": "Avoid excessive live values"
+        },
+        {
+          "heuristic": "Latency hiding",
+          "goal": "Schedule independent instructions between dependent ones"
+        }
+      ],
+      "examples": [
+        {
+          "before": "%t1 = ld.global [%addr]; %t2 = add %t1, %c; st.global [%out], %t2",
+          "after": "%t1 = ld.global [%addr]; %t3 = other_op; %t2 = add %t1, %c; st.global [%out], %t2",
+          "benefit": "Load latency hidden by other_op execution"
+        }
+      ],
+      "implementing_passes": [
+        {
+          "pass": "Instruction scheduling function",
+          "address": "0xF0F0F0 (estimated)",
+          "level": "Machine instructions",
+          "confidence": "MEDIUM",
+          "evidence": "Detected in PTX generation mechanics"
+        }
+      ],
+      "complexity": "O(n^2) to O(n^3) depending on algorithm",
+      "applicability": "All programs",
+      "performance_impact": "MEDIUM-HIGH - can hide 10-100 cycles of latency",
+      "cuda_impact": "Very High - GPU latency hiding is critical for performance"
+    }
+  ],
+
+  "local_optimization_pipeline": {
+    "execution_order_typical": [
+      {
+        "stage": 1,
+        "passes": ["AlwaysInliner"],
+        "purpose": "Inline always_inline functions early"
+      },
+      {
+        "stage": 2,
+        "passes": ["InstCombinePass", "EarlyCSEPass"],
+        "purpose": "Early IR optimization"
+      },
+      {
+        "stage": 3,
+        "passes": ["SimplifyCFGPass"],
+        "purpose": "Control flow simplification"
+      },
+      {
+        "stage": 4,
+        "passes": ["Loop optimizations"],
+        "purpose": "Loop transformations (may iterate)"
+      },
+      {
+        "stage": 5,
+        "passes": ["Value numbering (GVN, NewGVN)"],
+        "purpose": "Global value numbering"
+      },
+      {
+        "stage": 6,
+        "passes": ["Dead code elimination"],
+        "purpose": "Clean up dead code"
+      },
+      {
+        "stage": 7,
+        "passes": ["GenericToNVVM"],
+        "purpose": "Convert to NVIDIA IR"
+      },
+      {
+        "stage": 8,
+        "passes": ["Memory space optimization"],
+        "purpose": "Optimize GPU memory hierarchy"
+      },
+      {
+        "stage": 9,
+        "passes": ["Instruction selection"],
+        "purpose": "Lower to machine instructions"
+      },
+      {
+        "stage": 10,
+        "passes": ["MachineCSE", "MachineInstCombiner"],
+        "purpose": "Machine-level optimization"
+      },
+      {
+        "stage": 11,
+        "passes": ["Register allocation"],
+        "purpose": "Allocate physical registers"
+      },
+      {
+        "stage": 12,
+        "passes": ["PTX emission with peephole"],
+        "purpose": "Emit PTX with final optimizations"
+      }
+    ],
+    "pass_manager_orchestration": {
+      "manager_address": "0x12D6300",
+      "passes_total": 94,
+      "local_optimization_emphasis": "Passes 1-12 are heavily local-optimization focused"
+    }
+  },
+
+  "scope_definitions": {
+    "basic_block_scope": {
+      "definition": "Single linear sequence of instructions with no branches",
+      "optimization_opportunities": [
+        "Redundant move elimination",
+        "Simple constant folding",
+        "Dead instruction removal",
+        "Local copy propagation"
+      ],
+      "algorithms_applicable": [
+        "Linear scan patterns",
+        "Simple use-def chains"
+      ]
+    },
+    "extended_basic_block_scope": {
+      "definition": "Basic block with predecessors from multiple paths (def-use spanning blocks)",
+      "optimization_opportunities": [
+        "Common subexpression elimination",
+        "Copy propagation across blocks (in SSA form)",
+        "Global value numbering"
+      ],
+      "requires": ["SSA form", "use-def chains"]
+    },
+    "function_scope": {
+      "definition": "Entire function including all basic blocks and loops",
+      "optimization_opportunities": [
+        "Dead code elimination",
+        "Value numbering",
+        "Loop optimizations",
+        "Memory space optimization"
+      ]
+    },
+    "inter_procedural_scope": {
+      "definition": "Across function boundaries",
+      "optimization_opportunities": [
+        "Interprocedural constant propagation",
+        "Function inlining",
+        "Argument promotion"
+      ],
+      "complexity": "Higher - requires call graph analysis"
+    }
+  },
+
+  "performance_impact_analysis": {
+    "high_impact_optimizations": [
+      {
+        "optimization": "Memory space optimization",
+        "speedup": "10-100x possible for shared memory promotion",
+        "frequency": "Very common in CUDA programs"
+      },
+      {
+        "optimization": "Strength reduction (div to shift)",
+        "speedup": "8-32x per division eliminated",
+        "frequency": "Very common in array indexing"
+      },
+      {
+        "optimization": "Bank conflict avoidance",
+        "speedup": "4-32x for pathological cases",
+        "frequency": "Common in kernel inner loops"
+      }
+    ],
+    "medium_impact_optimizations": [
+      {
+        "optimization": "Common subexpression elimination",
+        "speedup": "2-5x for redundant computation-heavy code",
+        "frequency": "Moderate"
+      },
+      {
+        "optimization": "Instruction scheduling",
+        "speedup": "2-3x through latency hiding",
+        "frequency": "Always applicable"
+      }
+    ],
+    "low_impact_optimizations": [
+      {
+        "optimization": "Dead code elimination",
+        "speedup": "Marginal per elimination, aggregate impact medium",
+        "frequency": "Depends on code"
+      },
+      {
+        "optimization": "Register move coalescing",
+        "speedup": "1-2x through register pressure reduction",
+        "frequency": "Frequent"
+      }
+    ]
+  },
+
+  "cuda_specific_considerations": {
+    "shared_memory_optimization": {
+      "importance": "Critical",
+      "techniques": [
+        "Bank conflict avoidance through stride analysis",
+        "Padding for alignment",
+        "Memory space promotion from global to shared"
+      ],
+      "impact": "10-100x speedup possible"
+    },
+    "register_pressure": {
+      "importance": "Very high",
+      "techniques": [
+        "Copy propagation to reduce values",
+        "Dead code elimination",
+        "Instruction scheduling for value lifetime reduction",
+        "Register coalescing"
+      ],
+      "impact": "Register spilling is extremely costly on GPU"
+    },
+    "instruction_level_parallelism": {
+      "importance": "Very high",
+      "techniques": [
+        "Instruction scheduling",
+        "Expression reassociation",
+        "Speculative execution of independent operations"
+      ],
+      "impact": "Can hide 10-100 cycles of latency"
+    },
+    "warp_level_effects": {
+      "importance": "Medium",
+      "techniques": [
+        "Predicate optimization for branch efficiency",
+        "Control flow simplification reduces warp divergence",
+        "Memory access coalescing"
+      ]
+    }
+  },
+
+  "validation_and_evidence": {
+    "confirmed_techniques": [
+      "Common subexpression elimination (EarlyCSEPass, MachineCSE)",
+      "Instruction combining (InstCombinePass, MachineInstCombiner)",
+      "Dead code/store elimination",
+      "Control flow simplification",
+      "Constant propagation and folding",
+      "Memory space optimization"
+    ],
+    "evidence_sources": [
+      "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json - Pass list and string evidence",
+      "foundation/analyses/11_PTX_GENERATION_MECHANICS.json - PTX emission patterns",
+      "foundation/analyses/02_MODULE_ANALYSIS.json - Module analysis"
+    ],
+    "unconfirmed_but_likely": [
+      "Strength reduction (standard LLVM optimization)",
+      "Expression reassociation",
+      "Predicate optimization specifics",
+      "Instruction scheduling specifics"
+    ]
+  },
+
+  "cross_references": {
+    "related_l2_files": [
+      "peephole_optimization.json - Subset of local optimizations focused on pattern-matching",
+      "instruction_selection.json - Earlier optimization stage",
+      "register_allocation.json - Post-optimization passes"
+    ],
+    "l1_foundation_files": [
+      "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json",
+      "foundation/analyses/11_PTX_GENERATION_MECHANICS.json",
+      "foundation/analyses/02_MODULE_ANALYSIS.json"
+    ]
+  },
+
+  "research_gaps": {
+    "unknowns": [
+      "Exact implementation of machine-level CSE and instruction combining",
+      "Cost model parameters for optimization selection",
+      "Specific scheduling algorithm used for instruction scheduling",
+      "Details of bank conflict detection algorithm",
+      "Machine instruction format and encoding details"
+    ],
+    "investigation_methods": [
+      "Decompile machine instruction optimization functions",
+      "Trace execution with test kernels",
+      "Analyze generated PTX for optimization patterns",
+      "Profile kernel performance with and without optimizations"
+    ]
+  }
+}

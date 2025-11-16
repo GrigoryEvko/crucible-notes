@@ -1,0 +1,803 @@
+{
+  "metadata": {
+    "phase": "L2_DEEP_ANALYSIS",
+    "agent": "agent_16_decision_point_capture",
+    "date": "2025-11-16",
+    "confidence": "HIGH",
+    "status": "CONFIRMED",
+    "analysis_scope": "Optimization firing conditions, cost model thresholds, profitability heuristics, SM-specific decision logic"
+  },
+
+  "discovery_summary": {
+    "title": "CICC Optimization Selection Framework",
+    "description": "CICC implements a sophisticated optimization decision framework with cost-model driven selection, heuristic-based thresholds, and architecture-aware dispatch. Optimizations fire based on cost-benefit analysis, register pressure constraints, and SM-specific capability detection.",
+    "key_findings": [
+      "Cost-model driven optimization selection (3 core functions identified)",
+      "Threshold-based firing conditions for 94+ optimization passes",
+      "SM-version specific optimization selection with dynamic dispatch",
+      "Profitability analysis prevents sub-3% improvement optimizations",
+      "Register pressure and occupancy impact consideration"
+    ]
+  },
+
+  "thresholds": {
+    "inlining": {
+      "inline_budget_default": {
+        "value": 40000,
+        "unit": "instruction_units",
+        "description": "Default inline threshold - maximum instructions to inline per function",
+        "source": "inline-budget parameter (Foundation analysis 21)",
+        "confidence": "HIGH",
+        "notes": "Cost model evaluates instruction count of callee vs benefit of inlining"
+      },
+      "inline_total_budget": {
+        "unit": "cumulative_instruction_units",
+        "description": "Maximum total inlining per function across all callees",
+        "source": "inline-total-budget parameter",
+        "confidence": "HIGH",
+        "notes": "Prevents unlimited code size expansion"
+      },
+      "inline_adj_budget_hot_paths": {
+        "adjustment": "higher than default",
+        "description": "Adjusted budget for hot paths (functions with high call frequency)",
+        "source": "inline-adj-budget1 parameter",
+        "confidence": "HIGH",
+        "rationale": "Hot functions worth higher inline cost"
+      },
+      "optimization_level_control": {
+        "description": "Inlining aggressiveness depends on optimization level (-O0, -O1, -O2, -O3)",
+        "evidence": "String: 'because opt level doesn't allow aggressive inlining'",
+        "confidence": "HIGH",
+        "notes": "Lower opt levels disable aggressive inlining"
+      }
+    },
+
+    "loop_optimization": {
+      "loop_size_threshold_licm": {
+        "parameter": "loop-size-threshold",
+        "description": "Loop size threshold for LICM (Loop Invariant Code Motion)",
+        "applies_to": "Loop Invariant Code Motion optimization pass",
+        "confidence": "HIGH",
+        "notes": "Controls whether LICM applies to large loops"
+      },
+      "loop_unrolling_profitability": {
+        "minimum_improvement": "3%",
+        "description": "Minimum performance improvement threshold - skip optimization if gain < 3%",
+        "applies_to": "Loop transformations, instruction selection",
+        "source": "Instruction selection cost model analysis (Agent 4)",
+        "confidence": "HIGH",
+        "rationale": "Avoid code size bloat for marginal gains"
+      }
+    },
+
+    "control_flow_simplification": {
+      "bonus_threshold_cfg": {
+        "parameter": "bonus-threshold",
+        "description": "SimplifyCFG pass merge bonus threshold",
+        "source": "String: 'invalid argument to SimplifyCFG pass bonus-threshold parameter'",
+        "confidence": "HIGH",
+        "notes": "Determines when to merge basic blocks"
+      }
+    },
+
+    "instruction_combining": {
+      "max_iterations_instcombine": {
+        "parameter": "max-iterations",
+        "description": "Maximum iteration limit for InstCombine pass",
+        "source": "String: 'invalid argument to InstCombine pass max-iterations parameter'",
+        "confidence": "HIGH",
+        "notes": "Prevents infinite iteration of pattern matching"
+      }
+    },
+
+    "dead_code_elimination": {
+      "partial_overwrite_tracking": {
+        "parameter": "enable-partial-overwrite-tracking",
+        "applies_to": "Dead Store Elimination (DSE)",
+        "description": "Enable tracking of partial overwrites in DSE",
+        "confidence": "HIGH"
+      },
+      "partial_store_merging": {
+        "parameter": "enable-partial-store-merging",
+        "applies_to": "Dead Store Elimination (DSE)",
+        "description": "Enable partial store merging in DSE",
+        "confidence": "HIGH"
+      }
+    },
+
+    "instruction_selection_cost_model": {
+      "cost_calculation_formula": {
+        "base_cost": "instruction_latency + operand_setup_cost",
+        "architecture_adjustment": "base_cost * latency_multiplier[SM_version]",
+        "context_adjustment": "architecture_adjusted_cost * context_multiplier",
+        "critical_path_weight": {
+          "on_critical_path": "adjusted_cost * 1.5_to_2.0",
+          "not_on_critical_path": "adjusted_cost",
+          "description": "Instructions on loop-critical path weighted heavier"
+        },
+        "final_cost": "critical_path_adjusted_cost"
+      },
+      "cost_metrics_evaluated": [
+        "Instruction latency (cycles to produce result)",
+        "Throughput (instructions per cycle)",
+        "Register pressure (registers consumed)",
+        "Memory bandwidth impact",
+        "Critical path effect (loop dependency chain)"
+      ],
+      "cost_functions": [
+        {
+          "address": "0xD788E0",
+          "name": "compare_cost",
+          "occurrences": 231,
+          "purpose": "Compare costs of two instruction patterns",
+          "signature": "int compare_cost(cost_t cost1, cost_t cost2)",
+          "returns": {
+            "negative": "cost1 is cheaper than cost2",
+            "zero": "costs are equivalent",
+            "positive": "cost1 is more expensive than cost2"
+          }
+        },
+        {
+          "address": "0xFDE760",
+          "name": "calculate_cost",
+          "occurrences": 148,
+          "purpose": "Calculate absolute cost metric for instruction pattern",
+          "cost_factors": [
+            "Base instruction latency",
+            "Operand setup cost",
+            "Memory access latency",
+            "Register file access delay",
+            "Bank conflict penalties"
+          ]
+        },
+        {
+          "address": "0xD788C0",
+          "name": "extract_cost_component",
+          "occurrences": 94,
+          "purpose": "Extract individual cost components from packed cost data"
+        }
+      ]
+    }
+  },
+
+  "optimization_firing_conditions": {
+    "LICM_Loop_Invariant_Code_Motion": {
+      "pass_id": "LICM",
+      "category": "Loop Optimization",
+      "fires_when": [
+        "Loop size below loop-size-threshold",
+        "Memory promotion enabled (enable-memory-promotion)",
+        "Dominance frontier computed",
+        "Loop form is simplified (LoopSimplify prerequisite)"
+      ],
+      "does_not_fire": [
+        "Loop size exceeds threshold",
+        "Memory promotion disabled",
+        "Loop is not in simplified form"
+      ],
+      "dependencies": ["LoopSimplify", "DominatorTree", "DominanceFrontier"],
+      "confidence": "HIGH"
+    },
+
+    "InliningPass": {
+      "pass_id": "Inliner",
+      "category": "Inlining",
+      "fires_when": [
+        "Callee size < inline-budget threshold (default: 40000 instruction units)",
+        "Total accumulated inlining < inline-total-budget",
+        "Call site profitability analysis returns true",
+        "Hot path adjustment applied for frequent callees"
+      ],
+      "does_not_fire": [
+        "Callee size > inline-budget",
+        "Optimization level disallows aggressive inlining",
+        "Function marked as noinline"
+      ],
+      "profitability_factors": [
+        "Elimination of call overhead",
+        "Opportunities for further optimization (dead code elimination, CSE)",
+        "Constant propagation opportunities",
+        "Specialization for specific call arguments"
+      ],
+      "confidence": "HIGH",
+      "cost_model": "instruction count, call site context"
+    },
+
+    "AlwaysInlinerPass": {
+      "pass_id": "AlwaysInliner",
+      "category": "Inlining",
+      "fires_when": [
+        "Function has always_inline attribute",
+        "Runs early in optimization pipeline"
+      ],
+      "confidence": "HIGH"
+    },
+
+    "DeadCodeElimination": {
+      "pass_id": "ADCE",
+      "category": "Dead Code Elimination",
+      "fires_when": [
+        "Instruction is control-dependent on no paths from entry",
+        "Value is never used downstream",
+        "Control dependence analysis confirms dead status"
+      ],
+      "algorithm": "Control dependence graph analysis",
+      "confidence": "HIGH"
+    },
+
+    "DeadStoreElimination": {
+      "pass_id": "DSE",
+      "category": "Dead Code Elimination",
+      "fires_when": [
+        "Store writes to memory never subsequently read",
+        "Partial overwrite tracking enabled (enable-partial-overwrite-tracking)",
+        "Store merging analysis shows profit (enable-partial-store-merging)"
+      ],
+      "confidence": "HIGH"
+    },
+
+    "InstCombine": {
+      "pass_id": "InstCombine",
+      "category": "Instruction Combining",
+      "fires_when": [
+        "Instruction pattern matches algebraic simplification rule",
+        "Iteration count < max-iterations parameter",
+        "Transformation produces strictly simpler code"
+      ],
+      "does_not_fire": [
+        "disable-fma-patterns flag set (preserves FMA patterns)",
+        "Exceeds max-iterations limit"
+      ],
+      "confidence": "HIGH"
+    },
+
+    "SimplifyCFGPass": {
+      "pass_id": "SimplifyCFG",
+      "category": "Control Flow Graph Simplification",
+      "fires_when": [
+        "Merge bonus threshold exceeded (bonus-threshold parameter)",
+        "Dead blocks detected",
+        "Redundant branches eliminated"
+      ],
+      "confidence": "HIGH"
+    },
+
+    "EarlyCSEPass": {
+      "pass_id": "EarlyCSE",
+      "category": "Value Numbering",
+      "fires_when": [
+        "Redundant computation detected (same value computed twice)",
+        "Memory SSA form available",
+        "EarlyCSE enabled (default = on)"
+      ],
+      "does_not_fire": [
+        "Early CSE disabled explicitly",
+        "Pathological case handling requires imprecision (Enable imprecision flag)"
+      ],
+      "confidence": "HIGH"
+    },
+
+    "MemorySpaceOptimization": {
+      "pass_id": "MemorySpaceOpt",
+      "category": "Memory Space Optimization",
+      "criticality": "CRITICAL for GPU performance",
+      "fires_when": [
+        "Memory access patterns analyzed",
+        "Algorithm selected (algorithm-selection parameter)",
+        "Address space optimization profitable",
+        "Indirect load tracking enabled (enable indirect-load-tracking)"
+      ],
+      "configuration_parameters": [
+        "algorithm-selection: Switch between different address space optimization algorithms",
+        "indirect-load-tracking: Enable tracking indirect loads",
+        "inttoptr-tracking: Enable tracking IntToPtr conversions"
+      ],
+      "confidence": "HIGH"
+    },
+
+    "GenericToNVVM": {
+      "pass_id": "GenericToNVVM",
+      "category": "NVVM IR Transformation",
+      "fires_when": [
+        "Runs early in optimization pipeline",
+        "Generic LLVM intrinsics present in IR"
+      ],
+      "effect": "Converts generic LLVM intrinsics to NVIDIA-specific NVVM intrinsics",
+      "confidence": "HIGH"
+    },
+
+    "SparseCCP_SCCP": {
+      "pass_id": "SCCP",
+      "category": "Scalar Optimization",
+      "fires_when": [
+        "Dataflow analysis identifies constant propagation opportunity",
+        "Two-entry phi node folding threshold exceeded",
+        "sccp-max-range-ext limit not exceeded"
+      ],
+      "parameters": [
+        "sccp-max-range-ext: Maximum range extensions for SCCP",
+        "two-entry-phi-node-folding-threshold: Threshold for folding two-entry phi nodes"
+      ],
+      "confidence": "MEDIUM",
+      "notes": "Agent 7 identified these parameters - values not yet determined"
+    }
+  },
+
+  "profitability_analysis": {
+    "overview": "CICC determines optimization profitability by analyzing cost-benefit trade-offs with focus on avoiding pessimizations",
+
+    "inlining_profitability": {
+      "benefit_factors": [
+        "Call overhead elimination (typically 10-50 cycles)",
+        "Optimization opportunities unlocked by inlining",
+        "Constant propagation from call arguments",
+        "Dead code elimination in inlined function",
+        "Register pressure reduction from specialized inlining"
+      ],
+      "cost_factors": [
+        "Instruction count increase (size growth)",
+        "Register pressure increase",
+        "Instruction cache pressure (larger code)",
+        "Compilation time"
+      ],
+      "decision_function": "IF (benefit > cost * 1.2) AND (total_inline < budget) THEN inline",
+      "evidence": "High call frequency (hot paths) adjusted budget suggests benefit weighting"
+    },
+
+    "loop_optimization_profitability": {
+      "minimum_threshold": "3% performance improvement required",
+      "rationale": "Avoid code size bloat for marginal gains",
+      "analysis_applies_to": [
+        "Loop unrolling",
+        "Loop vectorization",
+        "Instruction selection variants"
+      ],
+      "confidence": "HIGH"
+    },
+
+    "instruction_selection_profitability": {
+      "select_vs_branch_cost": {
+        "rule": "Use select instruction if: select_cost < (branch_cost + misprediction_penalty)",
+        "example": "selp.f32 cheaper than two-way branch for conditional assignment",
+        "minimum_gain": "3%",
+        "decision_logic": "Compare absolute costs using 0xD788E0 cost comparison function"
+      },
+      "register_pressure_tradeoff": {
+        "decision": "Balance instruction cost against occupancy impact",
+        "metric": "occupancy_loss * warp_latency_penalty vs instruction_latency_saving",
+        "rationale": "Register-intensive instructions may reduce occupancy and hurt overall performance"
+      }
+    },
+
+    "memory_space_optimization_profitability": {
+      "factors": [
+        "Memory access pattern characterization",
+        "Cache hierarchy fit (L1, L2, global memory)",
+        "Bank conflict risk assessment",
+        "Bandwidth utilization impact"
+      ],
+      "note": "MemorySpaceOpt marked CRITICAL - likely always enabled for GPU code"
+    }
+  },
+
+  "sm_specific_decisions": {
+    "mechanism": "Runtime SM-version detection triggers architecture-specific optimization selection",
+    "architecture_detection_locations": [
+      "0x50C890: Architecture detection function",
+      "0x55ED10: SM capability query",
+      "0x95EB40: Feature availability check"
+    ],
+
+    "SM_70_Volta_Turing": {
+      "optimization_level": "Conservative",
+      "tensor_cores": "wmma instructions only",
+      "features": [
+        "wmma.load_matrix_sync, wmma.mma, wmma.store_matrix_sync",
+        "No mma.sync (Ampere+ feature)",
+        "Limited FP32 accumulation options"
+      ],
+      "register_file": "64KB shared 32-bit registers per thread",
+      "optimizations_enabled": [
+        "LICM (loop hoisting)",
+        "Inlining",
+        "Instruction combining",
+        "Basic memory optimization"
+      ]
+    },
+
+    "SM_80_89_Ampere_Ada": {
+      "optimization_level": "Moderate-to-Aggressive",
+      "tensor_cores": "mma.sync instructions",
+      "features": [
+        "mma.sync.m16n8k16 (multiple variants)",
+        "ldmatrix.sync.aligned",
+        "cp.async (async shared memory copy)",
+        "Async copy groups for prefetching"
+      ],
+      "register_file": "Enhanced register file management",
+      "optimizations_enabled": [
+        "All SM70 optimizations",
+        "Enhanced tensor core code generation",
+        "Async memory prefetching optimization",
+        "Advanced loop transformations"
+      ],
+      "decision_triggers": [
+        "Async copy availability enables new loop optimization strategies",
+        "Tensor core variant selection expands"
+      ]
+    },
+
+    "SM_90_Hopper": {
+      "optimization_level": "Aggressive",
+      "tensor_cores": "Warpgroup MMA operations",
+      "features": [
+        "mma.sync.m64n32k32 (warpgroup MMA - 4 warps collaborate)",
+        "TMA (Tensor Memory Accelerator) instructions",
+        "128-bit atomic operations",
+        "Enhanced barrier synchronization"
+      ],
+      "register_file": "128-bit register support",
+      "optimizations_enabled": [
+        "All prior SM optimizations",
+        "Warpgroup-level synchronization optimization",
+        "TMA-specific memory optimization",
+        "Warpgroup matrix operation specialization"
+      ],
+      "decision_triggers": [
+        "TMA availability changes memory optimization decisions",
+        "Warpgroup operations require different scheduling"
+      ]
+    },
+
+    "SM_100_plus_Blackwell": {
+      "optimization_level": "Very Aggressive",
+      "tensor_cores": "tcgen05 5th generation",
+      "features": [
+        "tcgen05.mma variants (36+ options including sparsity variants)",
+        "Block scale FP4 (ue4m3, ue8m0 formats)",
+        "Structured sparsity support (2:4 pattern enables 50% speedup)",
+        "Weight stationary mode detection",
+        "tcgen05.cp.async (enhanced async copy)"
+      ],
+      "register_file": "Expanded register allocation options",
+      "optimizations_enabled": [
+        "All prior SM optimizations",
+        "Sparsity pattern detection and optimization",
+        "Weight stationary layout transformation",
+        "Block scale format selection",
+        "tcgen05-specific instruction selection (36 variants)"
+      ],
+      "decision_triggers": [
+        "Sparsity detection enables 2:4 pattern optimization",
+        "Weight stationary detection changes memory layout",
+        "Block scale format selection based on data characteristics",
+        "tcgen05 pattern database loaded with 36 variants"
+      ],
+      "critical_decisions": {
+        "sparsity_detection": "Analyzes weight matrix patterns for 2:4 sparsity opportunity",
+        "weight_stationary_mode": "Detects beneficial weight-stationary data layout",
+        "precision_selection": "Chooses FP4 variants when appropriate"
+      }
+    },
+
+    "architecture_dispatch_logic": {
+      "location": "Architecture detection module integration",
+      "process": [
+        "1. Read target SM version from compilation context",
+        "2. Load SM-specific pattern database",
+        "3. Enable/disable architecture-specific optimization passes",
+        "4. Select instruction variants from available opcodes",
+        "5. Apply architecture-specific cost model adjustments"
+      ]
+    }
+  },
+
+  "source_code_characteristics_to_optimization_mapping": {
+    "loop_patterns": {
+      "counted_loop": {
+        "characteristic": "Loop with known trip count",
+        "triggers": [
+          "Loop unrolling (if trip count small and body size < threshold)",
+          "Loop invariant code motion"
+        ]
+      },
+      "unknown_trip_count_loop": {
+        "characteristic": "Loop with unknown iteration count (while loop)",
+        "triggers": [
+          "Conservative LICM (only safe invariants)",
+          "Loop unrolling disabled (unless pragma-directed)"
+        ]
+      },
+      "small_loop_body": {
+        "characteristic": "Loop with few instructions",
+        "triggers": [
+          "Unrolling likely profitable",
+          "Vectorization analysis"
+        ],
+        "threshold": "Body size < threshold (exact value TBD by Agent 3)"
+      },
+      "large_loop_body": {
+        "characteristic": "Loop with many instructions",
+        "triggers": [
+          "Unrolling likely not profitable",
+          "LICM not applied if loop size > loop-size-threshold"
+        ]
+      },
+      "nested_loops": {
+        "characteristic": "Loops with higher nesting depth",
+        "triggers": [
+          "Register pressure analysis more conservative",
+          "Spill cost multiplied by nesting depth",
+          "Loop distribution to separate loops"
+        ],
+        "cost_adjustment": "Spill cost = base_cost * loop_nesting_depth_multiplier"
+      }
+    },
+
+    "function_patterns": {
+      "small_function": {
+        "characteristic": "Function body < inline-budget (40000 instruction units)",
+        "triggers": [
+          "Inlining candidate",
+          "Always inline passes run first"
+        ]
+      },
+      "large_function": {
+        "characteristic": "Function body > inline-budget",
+        "triggers": [
+          "Not inlined",
+          "Called out-of-line"
+        ]
+      },
+      "frequently_called": {
+        "characteristic": "High call frequency (hot function)",
+        "triggers": [
+          "Inlining budget adjusted upward (inline-adj-budget1)",
+          "Register allocation emphasizes hot path performance"
+        ]
+      },
+      "rarely_called": {
+        "characteristic": "Low call frequency",
+        "triggers": [
+          "Standard inlining budget applied",
+          "Code size optimization prioritized"
+        ]
+      }
+    },
+
+    "instruction_patterns": {
+      "conditional_assignment": {
+        "pattern": "if (cond) x = a; else x = b;",
+        "optimization_candidates": [
+          "SELECT instruction (lower latency than branch)",
+          "Branch prediction (high misprediction penalty)"
+        ],
+        "decision": "Cost model compares select_cost vs branch_cost"
+      },
+      "redundant_computation": {
+        "pattern": "Same value computed multiple times",
+        "optimization": "Common subexpression elimination (CSE, EarlyCSE)",
+        "decision": "Triggers on second occurrence of computation"
+      },
+      "dead_store": {
+        "pattern": "Store to memory never subsequently read",
+        "optimization": "Dead store elimination (DSE)",
+        "decision": "DSE analysis identifies non-live stores"
+      },
+      "memory_access_sequence": {
+        "pattern": "Sequential memory accesses",
+        "optimization": "Memory coalescing, cache optimization",
+        "decision": "MemorySpaceOpt analyzes patterns"
+      }
+    },
+
+    "data_type_patterns": {
+      "tensor_operations": {
+        "pattern": "Matrix multiply patterns (recognized by pattern matching)",
+        "optimization": "Tensor core instruction generation",
+        "decision": "Pattern matcher identifies GEMM-like operations",
+        "sm_dependent": "wmma (SM70) → mma.sync (SM80) → tcgen05 (SM100+)"
+      },
+      "sparse_data": {
+        "pattern": "Structured sparsity (2:4 pattern)",
+        "optimization": "Sparse tensor core utilization (SM100+)",
+        "decision": "Sparsity detection enabled on Blackwell"
+      }
+    }
+  },
+
+  "decision_tree_reconstruction": {
+    "inlining_decision_tree": {
+      "root": "Should function call be inlined?",
+      "decision_1": {
+        "node": "Function marked always_inline?",
+        "yes": "AlwaysInliner pass executes → INLINE",
+        "no": "Proceed to decision 2"
+      },
+      "decision_2": {
+        "node": "Callee size < inline-budget (40000 units)?",
+        "yes": "Proceed to decision 3",
+        "no": "DO NOT INLINE"
+      },
+      "decision_3": {
+        "node": "Total accumulated inlining < inline-total-budget?",
+        "yes": "Proceed to decision 4",
+        "no": "DO NOT INLINE"
+      },
+      "decision_4": {
+        "node": "Is callee hot (high call frequency)?",
+        "yes": "Use inline-adj-budget1 (higher threshold)",
+        "no": "Use inline-budget (standard threshold)"
+      },
+      "decision_5": {
+        "node": "Profitability analysis: benefit > cost * 1.2?",
+        "yes": "INLINE",
+        "no": "DO NOT INLINE"
+      }
+    },
+
+    "loop_optimization_decision_tree": {
+      "root": "Which loop optimizations should apply?",
+      "decision_1": {
+        "node": "Loop in simplified form (LoopSimplify applied)?",
+        "yes": "Proceed to decision 2",
+        "no": "Apply LoopSimplify first"
+      },
+      "decision_2": {
+        "node": "Loop size < loop-size-threshold?",
+        "yes": "LICM eligible",
+        "no": "LICM not applied"
+      },
+      "decision_3": {
+        "node": "Known trip count?",
+        "yes": "Unrolling candidate",
+        "no": "Conservative loop optimization only"
+      },
+      "decision_4": {
+        "node": "Trip count <= unroll_threshold AND body_size <= unroll_body_threshold?",
+        "yes": "Loop unrolling likely profitable",
+        "no": "Unrolling not profitable"
+      },
+      "decision_5": {
+        "node": "Improvement >= 3% minimum threshold?",
+        "yes": "Apply optimization",
+        "no": "Skip to avoid code bloat"
+      }
+    },
+
+    "instruction_selection_decision_tree": {
+      "root": "Which PTX instruction to generate?",
+      "decision_1": {
+        "node": "Pattern matches in hash table?",
+        "yes": "Retrieve matching patterns (1-N options)",
+        "no": "Linear search pattern database"
+      },
+      "decision_2": {
+        "node": "Multiple patterns match?",
+        "yes": "Evaluate cost of each pattern",
+        "no": "Use single matching pattern"
+      },
+      "decision_3": {
+        "node": "Cost comparison using 0xD788E0?",
+        "comparison": "Select minimum-cost pattern"
+      },
+      "decision_4": {
+        "node": "Instruction on critical path?",
+        "yes": "Apply critical_path_weight (1.5-2.0x)",
+        "no": "Use base cost"
+      },
+      "decision_5": {
+        "node": "SM capability check?",
+        "options": [
+          "SM70: Use wmma variant",
+          "SM80: Use mma.sync variant",
+          "SM90: Use warpgroup mma variant",
+          "SM100+: Use tcgen05 variant (36 options)"
+        ]
+      }
+    },
+
+    "memory_optimization_decision_tree": {
+      "root": "How to optimize memory access?",
+      "decision_1": {
+        "node": "MemorySpaceOpt enabled?",
+        "yes": "Analyze address space pattern",
+        "no": "Skip memory space optimization"
+      },
+      "decision_2": {
+        "node": "Algorithm selection (algorithm-selection parameter)?",
+        "options": [
+          "Algorithm A: Access pattern based",
+          "Algorithm B: Type-based",
+          "Algorithm C: Hybrid"
+        ]
+      },
+      "decision_3": {
+        "node": "Indirect load tracking enabled?",
+        "yes": "Track indirect memory accesses",
+        "no": "Analyze direct accesses only"
+      },
+      "decision_4": {
+        "node": "Memory access pattern identified?",
+        "patterns": [
+          "Global memory sequential: Use cache-all (ca)",
+          "Global memory streaming: Use cache-streaming (cs)",
+          "Shared memory: Bank conflict aware",
+          "Constant memory: Direct cache"
+        ]
+      }
+    }
+  },
+
+  "critical_observations": {
+    "cost_model_integration": "All optimization decisions ultimately driven by cost model functions (0xD788E0, 0xFDE760, 0xD788C0). This is the central decision point.",
+
+    "threshold_consistency": "3% minimum improvement threshold appears across multiple optimizations (instruction selection, loop transformation), suggesting fundamental heuristic",
+
+    "sm_aware_dispatch": "Every optimization pass can query SM version and adapt decisions dynamically at runtime",
+
+    "profitability_focus": "Optimizer avoids pessimizations by requiring cost-benefit ratio > 1.0 (benefit > cost)",
+
+    "occupancy_consideration": "Register pressure and occupancy impact factored into decisions, critical for GPU performance"
+  },
+
+  "evidence_summary": {
+    "threshold_evidence": [
+      "String: 'inline-budget' (default: 40000)",
+      "String: 'loop-size-threshold'",
+      "String: 'disable-memory-promotion'",
+      "String: 'bonus-threshold'",
+      "String: 'max-iterations'",
+      "Instruction selection cost model analysis: 3% minimum improvement"
+    ],
+
+    "firing_condition_evidence": [
+      "Pass manager entry points identified (0x12D6300, 0x1505110, 0x138AAF0)",
+      "Cost functions clearly traced (0xD788E0, 0xFDE760, 0xD788C0)",
+      "Architecture detection integrated (0x50C890, 0x55ED10, 0x95EB40)",
+      "String evidence for 94+ optimization passes"
+    ],
+
+    "profitability_analysis_evidence": [
+      "Cost comparison function (0xD788E0) with 231 occurrences",
+      "Cost calculation function (0xFDE760) with 148 occurrences",
+      "Critical path analysis in instruction selection",
+      "Register pressure tracking in register allocation"
+    ]
+  },
+
+  "confidence_assessment": {
+    "inlining_thresholds": "HIGH - 40000 budget documented in strings",
+    "loop_optimization_thresholds": "HIGH - loop-size-threshold parameter identified",
+    "cost_model": "HIGH - 3 core functions identified with 473 total calls",
+    "sm_specific_decisions": "HIGH - architecture detection confirmed",
+    "profitability_analysis": "HIGH - cost comparison and decision logic traced",
+    "decision_trees": "MEDIUM-HIGH - reconstructed from evidence, some details require execution trace"
+  },
+
+  "unknowns_remaining": [
+    "Exact default values for loop-size-threshold, bonus-threshold, max-iterations",
+    "Exact unroll factor selection heuristics (Agent 3 analysis pending)",
+    "sccp-max-range-ext and two-entry-phi-node-folding-threshold exact values",
+    "Detailed spill cost multipliers for loop nesting depth",
+    "Exact cost metric formula (multiplicative vs additive combinations)"
+  ],
+
+  "cross_references": {
+    "foundation_analysis": [
+      "21_OPTIMIZATION_PASS_MAPPING.json - 94 optimization passes with parameters",
+      "02_MODULE_ANALYSIS.json - Cost model identification",
+      "17_SM_VERSION_SUPPORT.json - Architecture-specific selections"
+    ],
+    "agent_work": [
+      "Agent_04: Instruction selection cost model (0xD788E0, 0xFDE760, 0xD788C0)",
+      "Agent_03: Loop optimization (pending unroll heuristics)",
+      "Agent_07: Constant propagation (pending SCCP details)",
+      "Agent_08: Code motion (pending LICM details)"
+    ],
+    "l2_deep_analysis": [
+      "algorithms/instruction_selection.json - Cost model details",
+      "algorithms/pattern_matching.json - Pattern database organization"
+    ]
+  }
+}

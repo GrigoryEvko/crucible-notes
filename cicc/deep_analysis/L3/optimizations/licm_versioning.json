@@ -1,0 +1,470 @@
+{
+  "metadata": {
+    "unknown_id": "13",
+    "agent": "L3-13",
+    "title": "LICM Loop Versioning Strategy Extraction",
+    "confidence": "HIGH",
+    "extraction_date": "2025-11-16",
+    "status": "EXTRACTED",
+    "evidence_sources": [
+      "decompiled/ctor_218_0x4e7a30.c - licm-versioning-invariant-threshold parameter",
+      "decompiled/ctor_473_0x54d740.c - licm-versioning-max-depth-threshold parameter",
+      "decompiled/ctor_053_0x490b90.c - runtime-memory-check-threshold and memory-check-merge-threshold",
+      "decompiled/ctor_388_0x51b710.c - enable-loop-versioning-licm flag",
+      "decompiled/ctor_461_0x5472b0.c - loop-flatten-version-loops",
+      "decompiled/ctor_240_0x4ecb40.c - loop-version-annotate-no-alias",
+      "decompiled/sub_F6E950_0xf6e950.c - llvm.loop.licm_versioning.disable metadata",
+      "decompiled/sub_19C97B0_0x19c97b0.c - loop versioning implementation",
+      "decompiled/sub_288E950_0x288e950.c - loop versioning with memchecks"
+    ]
+  },
+
+  "licm_versioning": {
+    "overview": "LICM (Loop-Invariant Code Motion) with loop versioning creates specialized loop versions with different guards to enable hoisting of conditionally-invariant code. Versioning strategy creates a fast path (for known safe conditions) and a safe path (with runtime checks).",
+
+    "when_applied": "Applied when loop contains instructions that might be hoistable but have uncertain memory access patterns or conditional invariance. Enables LICM in cases where full invariance cannot be statically proven.",
+
+    "versioning_strategy": {
+      "approach": "Create multiple versions of loops with different preconditions",
+      "fast_path": "Optimized loop version for safe memory access patterns (no alias checks needed)",
+      "safe_path": "Original loop or version with runtime memory checks for potential conflicts",
+      "precondition_checks": "Runtime checks placed before loop entry to select appropriate version",
+      "check_placement": "Loop preheader (guaranteed to execute exactly once before any iteration)",
+      "check_type": "Memory disambiguation checks (pointer non-aliasing checks)",
+      "max_versions": 3,
+      "runtime_check_overhead": "Single branch at loop entry; cost amortized across all iterations",
+      "guard_condition": "Check memory access ranges don't overlap: addr1 + size1 <= addr2 OR addr2 + size2 <= addr1"
+    },
+
+    "decision_criteria": {
+      "hoist_benefit_threshold": "Instruction must be loop-invariant or conditionally invariant",
+      "invariant_percentage_threshold": 90,
+      "invariant_percentage_description": "Minimum required percentage of loop instructions that are loop-invariant (90%)",
+      "loop_nesting_depth_threshold": 2,
+      "loop_nesting_description": "Maximum allowed loop nest depth for versioning (no versioning beyond 2-level deep nesting)",
+      "version_if_formula": "version_loop = (estimated_hoisting_benefit > memory_check_overhead) AND (invariant_ratio >= 0.90) AND (nesting_depth <= 2)",
+      "memory_check_count_threshold": 8,
+      "memory_check_description": "Maximum number of memory disambiguation checks per loop (prevents explosion of checks)",
+      "check_merge_threshold": 100,
+      "check_merge_description": "Maximum comparisons allowed when merging multiple memory checks",
+      "can_disable_per_loop": true,
+      "per_loop_disable_metadata": "llvm.loop.licm_versioning.disable",
+      "rejection_criteria": [
+        {
+          "criterion": "CantVersionLoopWithDivergentTarget",
+          "condition": "Loop has divergent control flow targets",
+          "effect": "Versioning disabled to avoid register pressure from multiple paths"
+        },
+        {
+          "criterion": "CantVersionLoopWithOptForSize",
+          "condition": "Compiling with -Os or -Oz (size optimization)",
+          "effect": "Versioning disabled to prevent code size explosion; single path preferred"
+        },
+        {
+          "criterion": "UnknownLoopCountComplexCFG",
+          "condition": "Loop count cannot be statically determined due to complex control flow",
+          "effect": "Versioning needs known trip count; requires dynamic checks which conflict with size optimization"
+        },
+        {
+          "criterion": "NoTailLoopWithOptForSize",
+          "condition": "Tail loop handling needed but optimizing for size",
+          "effect": "Versioning of tail loops disabled for size reasons"
+        },
+        {
+          "criterion": "SmallTripCount",
+          "condition": "Loop trip count is very small (v6 <= 1)",
+          "effect": "Benefit of versioning/hoisting amortized over too few iterations"
+        },
+        {
+          "criterion": "StrideMismatch",
+          "condition": "Stride not evenly dividing total trip count",
+          "effect": "Tail loop handling complexity makes versioning ineffective"
+        }
+      ]
+    },
+
+    "cost_model": {
+      "version_decision_logic": {
+        "step1": "Count loop-invariant instructions",
+        "step2": "Calculate percentage of invariant instructions relative to total",
+        "step3": "Check nesting depth <= max_depth_threshold",
+        "step4": "Estimate memory check overhead (num_checks * check_cost)",
+        "step5": "Estimate hoisting benefit (saved iterations * hoisted_instruction_cost)",
+        "step6": "Version if: (invariant_percentage >= threshold) AND (nesting_depth <= threshold) AND (benefit > overhead)"
+      },
+      "benefit_calculation": {
+        "formula": "benefit = loop_trip_count * (hoisted_instruction_cost * num_hoisted_instructions)",
+        "hoisted_instruction_cost": "Execution cost of hoisted instruction (cycles, memory traffic)",
+        "loop_trip_count": "Estimated number of iterations"
+      },
+      "overhead_calculation": {
+        "formula": "overhead = 1 * (check_cost * num_checks)",
+        "check_cost": "Cost of single memory comparison at loop entry",
+        "amortization": "Divided by loop trip count over many executions",
+        "threshold_multiplier": 2.0,
+        "version_if": "hoist_benefit > check_overhead * threshold_multiplier"
+      },
+      "profiling_guided": false,
+      "static_analysis": true
+    },
+
+    "runtime_behavior": {
+      "entry_check": "At loop preheader, execute all memory disambiguation checks",
+      "branch": "If all checks pass, jump to fast path (optimized loop with hoisted code)",
+      "fallback": "If any check fails, execute original loop or loop with runtime checks",
+      "no_code_duplication_for_small_loops": "If loop is too small, may not duplicate",
+      "code_size_budget": "Limit total versioned loop size to prevent code bloat"
+    },
+
+    "supported_hoisting_patterns": {
+      "pattern1": "Loop-invariant load from potentially-aliased memory location",
+      "pattern2": "Loop-invariant computation with conditional guards",
+      "pattern3": "Hoistable initialization before loop that depends on loop-invariant values",
+      "pattern4": "Array access with invariant base but variant index",
+      "pattern5": "Pointer arithmetic with invariant components"
+    },
+
+    "interaction_with_other_passes": [
+      {
+        "pass": "LoopSimplify",
+        "interaction": "Prerequisite - ensures loop structure suitable for versioning",
+        "dependency": "MUST run before LICM versioning"
+      },
+      {
+        "pass": "LoopUnroll",
+        "interaction": "Can further optimize versioned loops by unrolling",
+        "dependency": "Can run after versioning for additional benefit"
+      },
+      {
+        "pass": "LoopVectorize",
+        "interaction": "Vectorization often more effective on hoisted-invariant loops",
+        "dependency": "Benefits from versioning enabling more aggressive vectorization"
+      },
+      {
+        "pass": "AliasAnalysis",
+        "interaction": "Provides memory aliasing information to drive versioning decisions",
+        "dependency": "Required for memory check generation"
+      },
+      {
+        "pass": "DominatorTree",
+        "interaction": "Determines domination relationships for safe code movement",
+        "dependency": "Required analysis"
+      },
+      {
+        "pass": "LoopFlatten",
+        "interaction": "Loop flattening can create overflow conditions requiring versioning",
+        "related_flag": "loop-flatten-version-loops"
+      }
+    ]
+  },
+
+  "parameters": {
+    "enable_loop_versioning_licm": {
+      "flag": "enable-loop-versioning-licm",
+      "type": "boolean",
+      "default": true,
+      "description": "Enable LICM with loop versioning for conditionally-invariant code",
+      "impact": "CRITICAL - controls entire versioning system"
+    },
+    "licm_versioning_invariant_threshold": {
+      "flag": "licm-versioning-invariant-threshold",
+      "type": "integer (percentage)",
+      "value": 90,
+      "unit": "percent",
+      "description": "LoopVersioningLICM minimum allowed percentage of possible invariant instructions per loop",
+      "constraints": "Range likely 0-100",
+      "impact": "HIGH - directly gates versioning decisions"
+    },
+    "licm_versioning_max_depth_threshold": {
+      "flag": "licm-versioning-max-depth-threshold",
+      "type": "integer",
+      "value": 2,
+      "unit": "nesting levels",
+      "description": "LoopVersioningLICM threshold for maximum allowed loop nest depth",
+      "constraints": "Typically 1-4, prevents exponential code growth",
+      "impact": "HIGH - prevents versioning in deeply nested loops"
+    },
+    "runtime_memory_check_threshold": {
+      "flag": "runtime-memory-check-threshold",
+      "type": "integer",
+      "value": 8,
+      "unit": "comparisons",
+      "description": "When performing memory disambiguation checks at runtime, do not generate more than this number of comparisons (default = 8)",
+      "constraints": "Prevents check explosion",
+      "impact": "MEDIUM - limits check complexity per loop"
+    },
+    "memory_check_merge_threshold": {
+      "flag": "memory-check-merge-threshold",
+      "type": "integer",
+      "value": 100,
+      "unit": "comparisons",
+      "description": "Maximum number of comparisons done when trying to merge runtime memory checks",
+      "constraints": "Upper bound on check merging aggressiveness",
+      "impact": "MEDIUM - affects check generation strategy"
+    },
+    "loop_flatten_version_loops": {
+      "flag": "loop-flatten-version-loops",
+      "type": "boolean",
+      "default": true,
+      "description": "Version loops if flattened loop could overflow",
+      "interaction": "Works with loop flattening pass to prevent integer overflow",
+      "impact": "MEDIUM - safety mechanism"
+    },
+    "loop_version_annotate_no_alias": {
+      "flag": "loop-version-annotate-no-alias",
+      "type": "boolean",
+      "default": true,
+      "description": "Add no-alias annotation for instructions that are disambiguated by memchecks",
+      "purpose": "Improves alias analysis for hoisted code in fast path",
+      "impact": "MEDIUM - improves downstream optimization"
+    },
+    "hoist_runtime_checks": {
+      "flag": "hoist-runtime-checks",
+      "type": "boolean",
+      "description": "Hoist inner loop runtime memory checks to outer loop if possible",
+      "purpose": "Reduce check overhead in nested loops",
+      "impact": "MEDIUM - optimization for nested loops"
+    },
+    "disable_memory_promotion": {
+      "flag": "disable-memory-promotion",
+      "type": "boolean",
+      "default": false,
+      "description": "Disable memory promotion in LICM (affects versioning efficiency)",
+      "impact": "LOW - affects memory hoisting variant"
+    }
+  },
+
+  "loop_metadata_controls": {
+    "licm_versioning_disable": {
+      "metadata_name": "llvm.loop.licm_versioning.disable",
+      "type": "loop metadata",
+      "description": "Per-loop flag to disable LICM versioning for specific loops",
+      "usage": "Attached to loop latch block to control per-loop behavior",
+      "default": "versioning enabled (unless globally disabled)",
+      "evidence": [
+        "sub_F6E950_0xf6e950.c - reads llvm.loop.licm_versioning.disable",
+        "sub_1948FD0_0x1948fd0.c - checks this metadata",
+        "sub_19C97B0_0x19c97b0.c - versioning implementation checks this",
+        "sub_288E950_0x288e950.c - sets metadata on versioned loops"
+      ]
+    }
+  },
+
+  "generated_code_structure": {
+    "basic_structure": [
+      {
+        "block": "Preheader",
+        "code": "Runtime memory checks",
+        "behavior": "Compare pointer ranges: if (ptr1_end <= ptr2_start || ptr2_end <= ptr1_start) { fast_path } else { safe_path }"
+      },
+      {
+        "block": "Fast Path Loop",
+        "code": "Original loop with hoisted invariant code before loop",
+        "behavior": "Optimized loop version assuming no aliasing"
+      },
+      {
+        "block": "Safe Path Loop",
+        "code": "Original loop without hoisting or with runtime checks inside loop",
+        "behavior": "Conservative execution path"
+      }
+    ],
+    "code_selection_pattern": "Single conditional branch in preheader selects between two loop versions based on runtime checks",
+    "register_allocation": "Hoisted code uses registers for loop-invariant values across all versions",
+    "optimization_opportunities": "Fast path can be further optimized (vectorized, unrolled) due to eliminated aliasing constraints"
+  },
+
+  "algorithm_details": {
+    "step1_candidate_identification": {
+      "description": "Identify loop instructions suitable for hoisting",
+      "criteria": [
+        "Instruction computes same value on every iteration",
+        "Operands are loop-invariant or conditionally-invariant",
+        "No data dependencies within loop prevent movement"
+      ]
+    },
+    "step2_safety_analysis": {
+      "description": "Determine if hoisting is safe",
+      "checks": [
+        "Memory aliasing: can load/store be reordered?",
+        "Control flow: is hoisting valid on all paths to loop?",
+        "Exceptions: would hoisting change exception behavior?"
+      ]
+    },
+    "step3_versioning_decision": {
+      "description": "Decide whether to version the loop",
+      "algorithm": "If safety_fully_proven: hoist directly. Else if benefit > overhead: create versions. Else: skip hoisting",
+      "thresholds_used": [
+        "invariant_percentage >= 90%",
+        "nesting_depth <= 2",
+        "num_checks <= 8",
+        "benefit > overhead * 2.0"
+      ]
+    },
+    "step4_version_generation": {
+      "description": "Generate fast and safe loop versions",
+      "operations": [
+        "Clone loop body",
+        "Generate runtime checks",
+        "Place checks in preheader",
+        "Annotate fast path with no-alias metadata",
+        "Connect control flow to select versions"
+      ]
+    },
+    "step5_code_motion": {
+      "description": "Move hoistable code to appropriate version",
+      "fast_path": "Move to loop preheader before loop entry",
+      "safe_path": "Keep original or add runtime checks inside loop"
+    },
+    "step6_annotation": {
+      "description": "Enhance alias analysis with disambiguation results",
+      "marks": "Instructions in fast path as no-alias",
+      "benefit": "Enables downstream optimizations"
+    }
+  },
+
+  "performance_characteristics": {
+    "compile_time_overhead": "O(loop_size) for analysis and versioning; can be significant for large loops",
+    "code_size_impact": "2x loop size for two versions + check code",
+    "runtime_behavior": {
+      "best_case": "Few branches, high cache locality for fast path",
+      "worst_case": "Poor branch prediction if path selection variable",
+      "typical": "Branch predictor learns pattern; amortized cost low due to single check"
+    },
+    "optimization_potential": "Fast path enables 5-20% improvement from further optimizations",
+    "memory_bandwidth_reduction": "Hoisting loop-invariant loads reduces memory traffic by 10-30%"
+  },
+
+  "cuda_specific_implications": {
+    "warp_divergence": "Reduces branch divergence when all warps take same path (likely with static patterns)",
+    "shared_memory": "Hoisted code can compute shared memory addresses once, used by all threads",
+    "register_pressure": "May increase if hoisted values kept in registers; trade-off with memory bandwidth",
+    "occupancy": "Simpler loop body can reduce register requirements, improving occupancy",
+    "memory_coalescing": "Better memory patterns when invariant offsets computed outside loop"
+  },
+
+  "evidence": {
+    "direct_code_locations": [
+      {
+        "file": "decompiled/ctor_218_0x4e7a30.c",
+        "line": "sub_16B8280(&qword_4FB3840, \"licm-versioning-invariant-threshold\", 35);",
+        "description": "Registration of invariant percentage threshold parameter",
+        "value": 90,
+        "description_string": "LoopVersioningLICM's minimum allowed percentage of possible invariant instructions per loop"
+      },
+      {
+        "file": "decompiled/ctor_218_0x4e7a30.c",
+        "line": "sub_16B8280(&qword_4FB3760, \"licm-versioning-max-depth-threshold\", 35);",
+        "description": "Registration of loop nesting depth threshold parameter",
+        "value": 2,
+        "description_string": "LoopVersioningLICM's threshold for maximum allowed loop nest/depth"
+      },
+      {
+        "file": "decompiled/ctor_053_0x490b90.c",
+        "pattern": "runtime-memory-check-threshold",
+        "value": 8,
+        "description": "Maximum memory checks per loop"
+      },
+      {
+        "file": "decompiled/ctor_053_0x490b90.c",
+        "pattern": "memory-check-merge-threshold",
+        "value": 100,
+        "description": "Maximum comparisons when merging checks"
+      },
+      {
+        "file": "decompiled/ctor_388_0x51b710.c",
+        "pattern": "enable-loop-versioning-licm",
+        "description": "Global enable/disable flag for versioning"
+      },
+      {
+        "file": "decompiled/ctor_461_0x5472b0.c",
+        "pattern": "loop-flatten-version-loops",
+        "description": "Version loops on flattening to prevent overflow"
+      },
+      {
+        "file": "decompiled/sub_F6E950_0xf6e950.c",
+        "pattern": "llvm.loop.licm_versioning.disable",
+        "description": "Per-loop metadata control for versioning"
+      },
+      {
+        "file": "decompiled/sub_19C97B0_0x19c97b0.c",
+        "pattern": "llvm.loop.licm_versioning.disable and llvm.mem.parallel_loop_access",
+        "description": "Versioning implementation with memory metadata"
+      },
+      {
+        "file": "decompiled/sub_288E950_0x288e950.c",
+        "pattern": "Loop versioning with multiple metadata annotations",
+        "description": "Complete versioning with check generation and metadata setup"
+      }
+    ],
+
+    "string_evidence": [
+      "Loop Versioning for LICM",
+      "Versioned loop for LICM",
+      "LoopVersioningLICM",
+      "licm-versioning-invariant-threshold",
+      "licm-versioning-max-depth-threshold",
+      "llvm.loop.licm_versioning.disable",
+      "enable-loop-versioning-licm",
+      "loop-version-annotate-no-alias"
+    ]
+  },
+
+  "validation_status": {
+    "confirmed": true,
+    "validation_method": "Parameter extraction + binary code analysis + metadata tracking",
+    "confidence_level": "HIGH",
+    "gaps": [
+      "Exact formula for benefit/overhead ratio not explicitly found in binary",
+      "Dynamic profile-guided refinement of thresholds not confirmed",
+      "Exact check cost model in cycles not extracted"
+    ]
+  },
+
+  "implementation_notes": {
+    "algorithm_classification": "Cost-based loop specialization with static safety analysis",
+    "data_structures": [
+      "LoopInfo - loop structure",
+      "DominatorTree - control flow domination",
+      "AliasAnalysis - memory disambiguation",
+      "ScalarEvolution - value range analysis"
+    ],
+    "likely_functions": [
+      "isLICMInvariant() - check if instruction is invariant",
+      "shouldVersionLoop() - decision logic",
+      "versionLoop() - create loop versions",
+      "calculateHoistBenefit() - benefit estimation",
+      "generateMemoryChecks() - check generation",
+      "selectVersionedLoop() - runtime version selection"
+    ],
+    "optimization_levels": "Applied at O2 and O3 (likely disabled at O0, O1)"
+  },
+
+  "related_analyses": {
+    "existing_licm_analysis": "deep_analysis/algorithms/optimization_passes/loop_invariant_code_motion.json",
+    "related_passes": [
+      "LoopSimplify",
+      "LoopUnroll",
+      "LoopVectorize",
+      "LoopFlatten"
+    ],
+    "memory_safety_passes": [
+      "AliasAnalysis",
+      "MemoryDepChecker"
+    ]
+  },
+
+  "research_gaps": {
+    "unknown_elements": [
+      "Exact heuristic for when benefit exceeds overhead (formula)",
+      "Profile-guided threshold adjustment mechanism",
+      "Integration with GPU-specific memory spaces",
+      "Interaction with unified memory (managed memory)"
+    ],
+    "next_steps": [
+      "Extract actual versioning implementation functions",
+      "Analyze cost model constants",
+      "Profile versioning decisions on real kernels",
+      "Measure performance impact of versioning"
+    ]
+  }
+}

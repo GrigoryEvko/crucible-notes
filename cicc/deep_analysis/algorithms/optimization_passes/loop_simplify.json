@@ -1,0 +1,270 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_03",
+    "date": "2025-11-16",
+    "confidence": "MEDIUM-HIGH",
+    "status": "INFERRED_FROM_DEPENDENCIES",
+    "pass_name": "Loop Simplify"
+  },
+
+  "discovery": {
+    "summary": "Loop Simplify transforms loops into canonical form required by other loop optimization passes.",
+    "details": "LoopSimplify is a critical prerequisite pass that ensures all loops are in simplified form: single entry preheader, single latch block, and proper loop structure. This normalization enables subsequent loop passes to operate uniformly on loop structures.",
+    "evidence": [
+      "Listed as dependency for LICM: 'dependencies: [LoopSimplify, DominatorTree, DominanceFrontier]' (21_OPTIMIZATION_PASS_MAPPING.json line 69)",
+      "Pipeline constraint: 'LoopSimplify before loop optimizations' (21_OPTIMIZATION_PASS_MAPPING.json line 448)",
+      "Pass ordering: 'LoopSimplify -> LoopRotate -> LoopUnroll -> LoopVectorize' (21_OPTIMIZATION_PASS_MAPPING.json line 812)",
+      "Loop optimization cluster: Lists LoopSimplify (line 268)",
+      "Listed as cluster characteristic: 'Share LoopSimplify and LoopInfo analyses' (line 483)",
+      "Loop analysis infrastructure: Required by all loop passes"
+    ]
+  },
+
+  "pass_identification": {
+    "llvm_pass_name": "LoopSimplify",
+    "llvm_pass_id": "loop-simplify",
+    "pass_type": "Loop Pass / Transform Pass",
+    "optimization_category": "Loop Normalization",
+    "execution_level": "Loop Level",
+    "pipeline_position": "Very early in loop optimization pipeline, prerequisite to all other loop passes"
+  },
+
+  "algorithm_description": {
+    "overview": "LoopSimplify normalizes loop structure by ensuring canonical form: single preheader block and single latch block.",
+    "canonical_form_requirements": [
+      "All loop edges enter from preheader block only",
+      "All loop exit edges go through latch block",
+      "Preheader guaranteed to execute before loop",
+      "Latch block guaranteed to execute last"
+    ],
+    "steps": [
+      {
+        "step": 1,
+        "name": "Loop Identification",
+        "description": "Use LoopInfo to identify all loops in the function",
+        "data_structures": ["LoopInfo", "Loop tree"]
+      },
+      {
+        "step": 2,
+        "name": "Preheader Insertion",
+        "description": "Ensure each loop has exactly one preheader block",
+        "checks": [
+          "If no preheader exists: create new block that branches to loop entry",
+          "If multiple predecessors to loop entry: create preheader to merge them",
+          "Redirect all external loop entries through preheader"
+        ],
+        "purpose": "Safe location for code hoisting and loop invariant placement"
+      },
+      {
+        "step": 3,
+        "name": "Latch Block Identification",
+        "description": "Identify or create single latch block (block containing back edge)",
+        "definition": "Latch block is the unique block that has edge back to loop header",
+        "checks": [
+          "If multiple back edges exist: must be merged into single latch",
+          "Latch must be in loop but not header"
+        ]
+      },
+      {
+        "step": 4,
+        "name": "Exit Block Normalization",
+        "description": "Ensure all loop exits go through consistent structure",
+        "operations": [
+          "Identify all loop exit edges",
+          "May create exit block to consolidate exits (optional variant)"
+        ]
+      },
+      {
+        "step": 5,
+        "name": "Irreducible Loop Handling",
+        "description": "Handle complex loop structures",
+        "cases": [
+          "Irreducible loops (multiple entries from same predecessor): may require transformation",
+          "Nested loops: recursively simplify inner loops first"
+        ]
+      },
+      {
+        "step": 6,
+        "name": "Control Flow Graph Update",
+        "description": "Update CFG edges and dominance information",
+        "updates": [
+          "Update predecessor/successor lists",
+          "Maintain dominator tree",
+          "Update loop info structures"
+        ]
+      }
+    ]
+  },
+
+  "structural_transformations": {
+    "multiple_entry_handling": {
+      "problem": "Loop has multiple external edges entering at different blocks",
+      "solution": "Insert preheader block that all external edges feed into",
+      "example": "Before: A->LoopEntry, B->LoopEntry → After: A->Preheader->LoopEntry, B->Preheader->LoopEntry"
+    },
+    "multiple_latch_handling": {
+      "problem": "Multiple blocks branch back to loop header",
+      "solution": "Insert single latch block, redirect all back edges through it",
+      "example": "Before: A->Header, B->Header → After: A->Latch->Header, B->Latch->Header"
+    },
+    "nested_loop_handling": {
+      "problem": "Nested loops may have complex relationships",
+      "strategy": "Process loops in reverse depth order (innermost first)"
+    }
+  },
+
+  "data_structures": {
+    "loop_tree": {
+      "purpose": "Hierarchical representation of loop nesting",
+      "root": "Function block",
+      "nodes": "Each loop is a node",
+      "edges": "Parent is immediately containing loop"
+    },
+    "preheader_block": {
+      "purpose": "Single entry point to loop",
+      "structure": "Simple block with single successor (loop header)",
+      "guaranteed": "Always executes exactly once before loop"
+    },
+    "latch_block": {
+      "purpose": "Single loop back edge source",
+      "structure": "Block in loop that branches back to header",
+      "property": "Unique block with back edge to header"
+    }
+  },
+
+  "preservation_and_analysis": {
+    "preserved_analyses": [
+      "Dominator Tree (updated)",
+      "Loop Info (updated)"
+    ],
+    "analysis_updates": [
+      "Preheader information in LoopInfo",
+      "Latch block in LoopInfo",
+      "Loop nesting depth"
+    ],
+    "important_note": "LoopSimplify is a transform pass (modifies IR) not just analysis pass"
+  },
+
+  "cuda_specific_considerations": {
+    "thread_block_structure": "Thread blocks correspond to loops in CUDA kernels, simplification helps structure thread block execution",
+    "loop_unrolling_preparation": "Simplified form required for unroll factor calculation",
+    "memory_space_optimization": "Simplified structure helps memory space analysis in loops",
+    "control_divergence": "Canonical form helps analyze branch divergence in loops"
+  },
+
+  "integration_points": {
+    "pipeline_stage": "Very first loop optimization pass, before any other loop transforms",
+    "called_from": "Optimization Framework pass manager",
+    "calls_to": [
+      "LoopInfo analysis",
+      "DominatorTree analysis",
+      "CFG manipulation utilities"
+    ],
+    "execution_order": "Must run before all other loop optimization passes",
+    "frequency": "Runs once per optimization cycle (may invalidate subsequent analyses)"
+  },
+
+  "estimated_function_count": 120,
+  "estimated_lines_of_code": 1500,
+
+  "validation_status": {
+    "confirmed": false,
+    "confidence_level": "MEDIUM-HIGH - strong indirect evidence through dependencies",
+    "validation_method": "Dependency tracking and LLVM standard pipeline",
+    "validation_evidence": [
+      "Explicit dependency in LICM pass specification",
+      "Pipeline ordering constraints consistently mention LoopSimplify first",
+      "Required by loop optimization cluster (shared by all)",
+      "Standard LLVM pipeline includes LoopSimplify as first loop pass"
+    ]
+  },
+
+  "related_passes": {
+    "LoopSimplifyCFG": {
+      "name": "LoopSimplifyCFG",
+      "listed": true,
+      "relation": "Variant or related pass for CFG simplification within loops",
+      "evidence": "Line 269 in 21_OPTIMIZATION_PASS_MAPPING.json"
+    }
+  },
+
+  "error_cases": {
+    "irreducible_loops": {
+      "definition": "Loops with multiple entries from same external block",
+      "handling": "May require loop splitting or special handling"
+    },
+    "self_loops": {
+      "definition": "Block with edge to itself (while(true) or similar)",
+      "handling": "Simplified by marking block as both header and latch"
+    }
+  },
+
+  "performance_impact": {
+    "direct_performance": "No direct performance benefit (normalization pass)",
+    "indirect_benefits": [
+      "Enables better code generation in subsequent passes",
+      "Reduces complexity for downstream passes",
+      "Improves compile-time by simplifying analysis"
+    ],
+    "code_size_impact": "Minimal - may add preheader/latch blocks but these are small"
+  },
+
+  "testing_strategy": {
+    "simple_loop_test": {
+      "kernel_type": "Standard for loop",
+      "example": "for(int i=0; i<N; i++) { ... }",
+      "expected_behavior": "Already in simplified form, no changes",
+      "validation": "Loop structure remains identical"
+    },
+    "multiple_entry_test": {
+      "kernel_type": "Loop with multiple external entries",
+      "example": "if(cond) goto loop; else goto loop;",
+      "expected_behavior": "Preheader block created and entries merged",
+      "validation": "Single entry point verified"
+    },
+    "multiple_exit_test": {
+      "kernel_type": "Loop with break/return in middle",
+      "example": "for(...) { if(cond) break; ... }",
+      "expected_behavior": "Simplified form with single latch",
+      "validation": "All back edges go through single latch"
+    }
+  },
+
+  "cross_references": {
+    "foundation_analysis_files": [
+      "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json (lines 69, 268, 448, 472, 812)",
+      "foundation/analyses/02_MODULE_ANALYSIS.json (loop analysis infrastructure)",
+      "foundation/analyses/19_DATA_STRUCTURE_LAYOUTS.json (CFG structure)"
+    ],
+    "llvm_documentation": "https://llvm.org/docs/Passes/#loop-simplify",
+    "related_passes": [
+      "LoopInfo analysis (required)",
+      "DominatorTree analysis (required)",
+      "All subsequent loop passes (dependent)"
+    ]
+  },
+
+  "research_notes": {
+    "algorithm_source": "Standard compiler technique for loop normalization",
+    "nvidia_adaptations": "Essential preprocessing for GPU loop analysis and thread block structure verification",
+    "critical_insight": "Without LoopSimplify, subsequent loop passes cannot assume canonical structure",
+    "implementation_complexity": "Medium - requires CFG manipulation but straightforward algorithm",
+    "verification_importance": "Critical that simplification preserves loop semantics"
+  },
+
+  "notes_for_reverse_engineering": {
+    "function_identification": "Look for functions that modify CFG and create/insert blocks",
+    "evidence_patterns": [
+      "String references to 'preheader', 'latch'",
+      "Block creation and insertion operations",
+      "CFG edge manipulation",
+      "Loop structure verification loops"
+    ],
+    "data_structures_to_find": [
+      "PreheaderBlock cache or lookup",
+      "Block insertion utilities",
+      "Loop iteration data structures"
+    ]
+  }
+}

@@ -1,0 +1,453 @@
+{
+  "phase": "L2_DEEP_ANALYSIS",
+  "status": "NOT_STARTED",
+  "total_agents": 20,
+  "agents_launched": 0,
+  "agents_completed": 0,
+
+  "agent_assignments": {
+    "algorithm_team": {
+      "agent_01": {
+        "responsibility": "Register allocation algorithm identification",
+        "output_dir": "algorithms/",
+        "primary_files": [
+          "register_allocation.json",
+          "graph_coloring_variant.json"
+        ],
+        "input_data": [
+          "foundation/analyses/20_REGISTER_ALLOCATION_ALGORITHM.json",
+          "foundation/priorities/critical_functions_top_100.json"
+        ],
+        "focus": [
+          "Identify exact graph coloring variant (Chaitin, Briggs, optimistic)",
+          "Map 7,730 register_allocation functions to algorithm steps",
+          "Document interference graph construction",
+          "Identify spilling strategy"
+        ],
+        "estimated_hours": 40,
+        "status": "PENDING"
+      },
+
+      "agent_02": {
+        "responsibility": "SSA construction and destruction algorithms",
+        "output_dir": "algorithms/",
+        "primary_files": [
+          "ssa_construction.json",
+          "phi_placement.json"
+        ],
+        "input_data": [
+          "foundation/analyses/02_MODULE_ANALYSIS.json",
+          "foundation/analyses/07_CROSS_MODULE_DEPENDENCIES.json"
+        ],
+        "focus": [
+          "Identify SSA construction algorithm (minimal, pruned, semi-pruned)",
+          "Document phi node placement strategy",
+          "Map SSA destruction to register allocation"
+        ],
+        "estimated_hours": 35,
+        "status": "PENDING"
+      },
+
+      "agent_03": {
+        "responsibility": "Loop optimization algorithms",
+        "output_dir": "algorithms/optimization_passes/",
+        "primary_files": [
+          "loop_invariant_code_motion.json",
+          "loop_unrolling.json",
+          "loop_fusion.json"
+        ],
+        "input_data": [
+          "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json",
+          "foundation/analyses/09_PATTERN_DISCOVERY.json"
+        ],
+        "focus": [
+          "Identify loop analysis passes (natural loops, dominators)",
+          "Document loop transformation algorithms",
+          "Map loop optimization to CUDA kernels"
+        ],
+        "estimated_hours": 38,
+        "status": "PENDING"
+      },
+
+      "agent_04": {
+        "responsibility": "Instruction selection algorithm",
+        "output_dir": "algorithms/",
+        "primary_files": [
+          "instruction_selection.json",
+          "pattern_matching.json"
+        ],
+        "input_data": [
+          "foundation/analyses/02_MODULE_ANALYSIS.json",
+          "foundation/callgraph/module_instruction_selection.json"
+        ],
+        "focus": [
+          "Identify instruction selection method (tree pattern matching, DAG)",
+          "Document cost model for instruction choice",
+          "Map IR operations to PTX instructions"
+        ],
+        "estimated_hours": 32,
+        "status": "PENDING"
+      },
+
+      "agent_05": {
+        "responsibility": "Peephole and local optimization",
+        "output_dir": "algorithms/optimization_passes/",
+        "primary_files": [
+          "peephole_optimization.json",
+          "local_optimizations.json"
+        ],
+        "input_data": [
+          "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json"
+        ],
+        "focus": [
+          "Identify peephole patterns (algebraic simplification)",
+          "Document local optimization techniques",
+          "Map to PTX emission stage"
+        ],
+        "estimated_hours": 28,
+        "status": "PENDING"
+      },
+
+      "agent_06": {
+        "responsibility": "Dead code elimination algorithms",
+        "output_dir": "algorithms/optimization_passes/",
+        "primary_files": [
+          "dead_code_elimination.json",
+          "unreachable_code.json"
+        ],
+        "input_data": [
+          "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json"
+        ],
+        "focus": [
+          "Identify DCE algorithm (aggressive, conservative)",
+          "Document liveness analysis integration",
+          "Map to optimization framework"
+        ],
+        "estimated_hours": 30,
+        "status": "PENDING"
+      },
+
+      "agent_07": {
+        "responsibility": "Constant propagation and folding",
+        "output_dir": "algorithms/optimization_passes/",
+        "primary_files": [
+          "constant_propagation.json",
+          "constant_folding.json"
+        ],
+        "input_data": [
+          "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json"
+        ],
+        "focus": [
+          "Identify constant propagation algorithm (sparse, dense)",
+          "Document constant folding rules",
+          "Map to early optimization stages"
+        ],
+        "estimated_hours": 30,
+        "status": "PENDING"
+      },
+
+      "agent_08": {
+        "responsibility": "Code motion and scheduling",
+        "output_dir": "algorithms/optimization_passes/",
+        "primary_files": [
+          "code_motion.json",
+          "instruction_scheduling.json"
+        ],
+        "input_data": [
+          "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json",
+          "foundation/analyses/17_SM_VERSION_SUPPORT.json"
+        ],
+        "focus": [
+          "Identify code motion strategies (LICM, GCM)",
+          "Document instruction scheduling for different SMs",
+          "Map to architecture-specific optimizations"
+        ],
+        "estimated_hours": 35,
+        "status": "PENDING"
+      }
+    },
+
+    "data_structure_team": {
+      "agent_09": {
+        "responsibility": "IR format reconstruction",
+        "output_dir": "data_structures/",
+        "primary_files": [
+          "ir_format.json",
+          "instruction_encoding.json"
+        ],
+        "input_data": [
+          "foundation/analyses/09_PATTERN_DISCOVERY.json",
+          "foundation/analyses/19_DATA_STRUCTURE_LAYOUTS.json"
+        ],
+        "focus": [
+          "Reconstruct IR instruction format",
+          "Document SSA representation details",
+          "Identify operand encoding",
+          "Map IR to PTX translation"
+        ],
+        "estimated_hours": 45,
+        "status": "PENDING"
+      },
+
+      "agent_10": {
+        "responsibility": "Symbol table and scope analysis",
+        "output_dir": "data_structures/",
+        "primary_files": [
+          "symbol_table.json",
+          "scope_management.json"
+        ],
+        "input_data": [
+          "foundation/analyses/19_DATA_STRUCTURE_LAYOUTS.json"
+        ],
+        "focus": [
+          "Reconstruct symbol table layout",
+          "Document scope nesting implementation",
+          "Identify type information storage",
+          "Map to name resolution"
+        ],
+        "estimated_hours": 40,
+        "status": "PENDING"
+      },
+
+      "agent_11": {
+        "responsibility": "Control flow graph representation",
+        "output_dir": "data_structures/",
+        "primary_files": [
+          "cfg_representation.json",
+          "basic_block_structure.json"
+        ],
+        "input_data": [
+          "foundation/analyses/19_DATA_STRUCTURE_LAYOUTS.json",
+          "foundation/callgraph/"
+        ],
+        "focus": [
+          "Reconstruct CFG node structure",
+          "Document edge types (fallthrough, branch, etc.)",
+          "Identify dominator tree storage",
+          "Map to optimization passes that use CFG"
+        ],
+        "estimated_hours": 38,
+        "status": "PENDING"
+      },
+
+      "agent_12": {
+        "responsibility": "Type system and CUDA types",
+        "output_dir": "data_structures/",
+        "primary_files": [
+          "type_system.json",
+          "cuda_type_mapping.json"
+        ],
+        "input_data": [
+          "foundation/analyses/19_DATA_STRUCTURE_LAYOUTS.json"
+        ],
+        "focus": [
+          "Reconstruct internal type representation",
+          "Document CUDA type mappings (float4, etc.)",
+          "Identify type checking implementation",
+          "Map tensor core types"
+        ],
+        "estimated_hours": 35,
+        "status": "PENDING"
+      }
+    },
+
+    "dynamic_analysis_team": {
+      "agent_13": {
+        "responsibility": "Execution tracing (sm_70, sm_80)",
+        "output_dir": "execution_traces/",
+        "primary_files": [
+          "trace_sm_70.json",
+          "trace_sm_80.json"
+        ],
+        "input_data": [
+          "foundation/analyses/17_SM_VERSION_SUPPORT.json",
+          "foundation/analyses/22_EXECUTION_TRACING_GUIDE.json"
+        ],
+        "focus": [
+          "Trace compilation of simple CUDA kernels",
+          "Capture optimization decisions for Volta/Ampere",
+          "Document function call sequences",
+          "Identify conditional compilation paths"
+        ],
+        "estimated_hours": 50,
+        "status": "PENDING"
+      },
+
+      "agent_14": {
+        "responsibility": "Execution tracing (sm_90, sm_100+)",
+        "output_dir": "execution_traces/",
+        "primary_files": [
+          "trace_sm_90.json",
+          "trace_sm_100_hopper.json",
+          "trace_sm_120_blackwell.json"
+        ],
+        "input_data": [
+          "foundation/analyses/17_SM_VERSION_SUPPORT.json",
+          "foundation/analyses/22_EXECUTION_TRACING_GUIDE.json"
+        ],
+        "focus": [
+          "Trace compilation for Hopper/Blackwell",
+          "Capture tensor core code generation",
+          "Document new instruction selection",
+          "Identify architecture-specific optimizations"
+        ],
+        "estimated_hours": 50,
+        "status": "PENDING"
+      },
+
+      "agent_15": {
+        "responsibility": "Memory profiling and allocation patterns",
+        "output_dir": "execution_traces/memory_snapshots/",
+        "primary_files": [
+          "heap_analysis.json",
+          "allocation_patterns.json"
+        ],
+        "input_data": [
+          "foundation/analyses/22_EXECUTION_TRACING_GUIDE.json"
+        ],
+        "focus": [
+          "Profile memory allocations during compilation",
+          "Identify data structure sizes",
+          "Document allocation hotspots",
+          "Map memory usage to compilation phases"
+        ],
+        "estimated_hours": 42,
+        "status": "PENDING"
+      },
+
+      "agent_16": {
+        "responsibility": "Decision point capture and optimization selection",
+        "output_dir": "execution_traces/",
+        "primary_files": [
+          "optimization_decisions.json",
+          "decision_points.json"
+        ],
+        "input_data": [
+          "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json",
+          "foundation/analyses/22_EXECUTION_TRACING_GUIDE.json"
+        ],
+        "focus": [
+          "Identify why optimizations fire or don't fire",
+          "Capture heuristic thresholds",
+          "Document cost model evaluations",
+          "Map decisions to source code characteristics"
+        ],
+        "estimated_hours": 45,
+        "status": "PENDING"
+      }
+    },
+
+    "symbol_recovery_team": {
+      "agent_17": {
+        "responsibility": "Critical function naming (top 200)",
+        "output_dir": "symbol_recovery/",
+        "primary_files": [
+          "recovered_functions_critical.json",
+          "critical_name_mappings.csv"
+        ],
+        "input_data": [
+          "foundation/analyses/06_CRITICAL_FUNCTIONS_CORRECTED.json",
+          "foundation/analyses/18_SYMBOL_RECOVERY.json"
+        ],
+        "focus": [
+          "Recover names for top 200 critical functions",
+          "Use string references, call patterns, signatures",
+          "Document confidence scores (HIGH/MEDIUM/LOW)",
+          "Cross-reference with LLVM/GCC naming"
+        ],
+        "estimated_hours": 60,
+        "status": "PENDING"
+      },
+
+      "agent_18": {
+        "responsibility": "Optimization framework function naming",
+        "output_dir": "symbol_recovery/",
+        "primary_files": [
+          "recovered_functions_optimization.json"
+        ],
+        "input_data": [
+          "foundation/analyses/02_MODULE_ANALYSIS.json",
+          "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json"
+        ],
+        "focus": [
+          "Name functions in optimization_framework module",
+          "Focus on 94 optimization passes",
+          "Use pass name strings as hints",
+          "Map PassManager-like functions"
+        ],
+        "estimated_hours": 55,
+        "status": "PENDING"
+      },
+
+      "agent_19": {
+        "responsibility": "Register allocation function naming",
+        "output_dir": "symbol_recovery/",
+        "primary_files": [
+          "recovered_functions_regalloc.json"
+        ],
+        "input_data": [
+          "foundation/analyses/20_REGISTER_ALLOCATION_ALGORITHM.json",
+          "algorithms/register_allocation.json"
+        ],
+        "focus": [
+          "Name register_allocation module functions",
+          "Map to algorithm steps (interference, coloring, spilling)",
+          "Cross-reference with research papers",
+          "Use execution traces to validate names"
+        ],
+        "estimated_hours": 45,
+        "status": "PENDING"
+      }
+    },
+
+    "synthesis_team": {
+      "agent_20": {
+        "responsibility": "Consolidate all L2 findings",
+        "output_dir": "findings/",
+        "primary_files": [
+          "MASTER_FINDINGS.md",
+          "algorithm_discoveries.json",
+          "critical_insights.md",
+          "unknowns_remaining.json"
+        ],
+        "input_data": [
+          "deep_analysis/algorithms/",
+          "deep_analysis/data_structures/",
+          "deep_analysis/execution_traces/",
+          "deep_analysis/symbol_recovery/"
+        ],
+        "focus": [
+          "Aggregate all agent discoveries",
+          "Synthesize cross-cutting insights",
+          "Document confidence levels for all claims",
+          "Identify remaining critical unknowns",
+          "Create executive summary of L2 achievements"
+        ],
+        "estimated_hours": 48,
+        "dependencies": ["agent_01-19"],
+        "status": "PENDING",
+        "note": "Launch LAST after all other agents complete"
+      }
+    }
+  },
+
+  "total_estimated_hours": 821,
+  "critical_dependencies": {
+    "agent_19": "Requires agent_01 (register allocation algorithm)",
+    "agent_20": "Requires all agents 01-19"
+  },
+
+  "parallel_execution_groups": {
+    "group_1_algorithms": ["agent_01", "agent_02", "agent_03", "agent_04", "agent_05", "agent_06", "agent_07", "agent_08"],
+    "group_2_data_structures": ["agent_09", "agent_10", "agent_11", "agent_12"],
+    "group_3_dynamic": ["agent_13", "agent_14", "agent_15", "agent_16"],
+    "group_4_symbols": ["agent_17", "agent_18"],
+    "group_5_synthesis": ["agent_20"]
+  },
+
+  "launch_order": [
+    "Launch group_1, group_2, group_3, group_4 in parallel (agents 1-18)",
+    "Wait for agent_01 to complete before launching agent_19",
+    "Wait for all agents 1-19 to complete before launching agent_20"
+  ]
+}

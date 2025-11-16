@@ -1,0 +1,534 @@
+{
+  "metadata": {
+    "phase": "L2_DEEP_ANALYSIS",
+    "agent": "agent_20_synthesis",
+    "date": "2025-11-16",
+    "title": "CICC L3 Priorities: Remaining Unknowns",
+    "purpose": "Identify critical gaps for L3 Implementation phase",
+    "total_unknowns": 25,
+    "high_priority_count": 8,
+    "medium_priority_count": 12,
+    "low_priority_count": 5
+  },
+
+  "critical_unknowns": [
+    {
+      "id": "1",
+      "category": "Register Allocation",
+      "question": "Exact spill cost multiplier formula and coefficients?",
+      "priority": "CRITICAL",
+      "impact": "Register allocation quality directly affects occupancy",
+      "current_knowledge": "Spill cost = base_cost × loop_depth_multiplier^depth × occupancy_penalty",
+      "missing_details": [
+        "Exact values of loop_depth_multiplier (suspected 1.5-2.0)",
+        "Occupancy penalty weight (unknown)",
+        "Bank conflict penalty factors",
+        "SM-version specific adjustments"
+      ],
+      "validation_method": "Decompile 0xB612D0 and trace spill cost calculations",
+      "estimated_effort_hours": 20,
+      "related_algorithms": ["register_allocation"],
+      "dependencies": ["0xB612D0 decompilation"]
+    },
+
+    {
+      "id": "2",
+      "category": "Instruction Selection",
+      "question": "What is the complete cost model formula for pattern selection?",
+      "priority": "CRITICAL",
+      "impact": "Instruction selection quality directly affects code performance",
+      "current_knowledge": "Multi-factor cost: latency + operand_setup + memory_latency + critical_path + reg_pressure",
+      "missing_details": [
+        "Exact weights for each factor",
+        "How critical path detection works",
+        "Memory access latency prediction algorithm",
+        "Register pressure scaling per SM"
+      ],
+      "validation_method": "Extract cost calculation functions (0xFDE760, 0xD788E0), trace on test inputs",
+      "estimated_effort_hours": 25,
+      "related_algorithms": ["instruction_selection", "pattern_matching"],
+      "dependencies": ["0xFDE760 and 0xD788E0 decompilation"]
+    },
+
+    {
+      "id": "3",
+      "category": "Instruction Selection",
+      "question": "Complete PTX pattern database - all 500-2000 patterns per SM?",
+      "priority": "CRITICAL",
+      "impact": "Pattern database is core to instruction selection",
+      "current_knowledge": "Hash-table based, 500-2000 entries per SM version, patterns for all IR operations",
+      "missing_details": [
+        "IR operation → PTX instruction mappings",
+        "Cost parameters per pattern",
+        "SM-version specific variations",
+        "Operand constraints for each pattern",
+        "Fallback patterns when primary unavailable"
+      ],
+      "validation_method": "Binary analysis of pattern_table data structure and loading functions",
+      "estimated_effort_hours": 40,
+      "related_algorithms": ["instruction_selection"],
+      "dependencies": ["0x2F9DAC0 pattern database structure analysis"]
+    },
+
+    {
+      "id": "4",
+      "category": "Register Allocation",
+      "question": "Exact graph coloring node priority formula for Briggs criterion?",
+      "priority": "CRITICAL",
+      "impact": "Priority-based node selection determines register allocation quality",
+      "current_knowledge": "Briggs priority selection with cost-based weighting (not pure Chaitin)",
+      "missing_details": [
+        "Priority calculation formula",
+        "How spill cost factors into priority",
+        "Tie-breaking strategy when priorities equal",
+        "Degree-based vs cost-based weighting ratio"
+      ],
+      "validation_method": "Decompile coloring phase functions (0x1081400, 0x1090BD0, 0x12E1EF0)",
+      "estimated_effort_hours": 15,
+      "related_algorithms": ["register_allocation"],
+      "dependencies": ["Coloring phase function decompilation"]
+    },
+
+    {
+      "id": "5",
+      "category": "Instruction Scheduling",
+      "question": "Complete list scheduling heuristic implementations for all 9 variants?",
+      "priority": "HIGH",
+      "impact": "Scheduling affects both ILP and register pressure",
+      "current_knowledge": "9 list scheduling variants identified but not detailed",
+      "missing_details": [
+        "Standard Converging heuristic",
+        "Max ILP variant priority function",
+        "Min ILP variant strategy",
+        "BURR register reduction formula",
+        "BURR+Latency weighting",
+        "BURR+Throughput weighting"
+      ],
+      "validation_method": "Scheduling pass framework analysis and function tracing",
+      "estimated_effort_hours": 30,
+      "related_algorithms": ["instruction_scheduling"],
+      "dependencies": ["Scheduling pass decompilation"]
+    },
+
+    {
+      "id": "6",
+      "category": "Data Structures",
+      "question": "Exact IR node field layout and sizes?",
+      "priority": "HIGH",
+      "impact": "Understanding IR structure needed for optimization pass implementation",
+      "current_knowledge": "Estimated 56 bytes per SSA value node, fields identified approximately",
+      "missing_details": [
+        "Exact field offsets",
+        "Padding and alignment details",
+        "Operand list encoding",
+        "Use-def chain structure",
+        "Metadata field layout"
+      ],
+      "validation_method": "Memory dump analysis during IR construction",
+      "estimated_effort_hours": 20,
+      "related_algorithms": ["ssa_construction"],
+      "dependencies": ["Memory trace of IR construction"]
+    },
+
+    {
+      "id": "7",
+      "category": "Register Allocation",
+      "question": "How exactly does lazy reload optimization work?",
+      "priority": "HIGH",
+      "impact": "Register spill code quality directly affects performance",
+      "current_knowledge": "Optimizes load placement to only load where actually needed",
+      "missing_details": [
+        "Reachability analysis for lazy loading",
+        "Interaction with liveness analysis",
+        "Cost model for reload placement",
+        "Redundant reload elimination strategy"
+      ],
+      "validation_method": "Trace spill code generation on test kernels",
+      "estimated_effort_hours": 15,
+      "related_algorithms": ["register_allocation"],
+      "dependencies": ["Spill code generation function analysis"]
+    },
+
+    {
+      "id": "8",
+      "category": "SSA",
+      "question": "Does CICC use iterative phi insertion with worklist or batch computation?",
+      "priority": "HIGH",
+      "impact": "Phi placement algorithm correctness",
+      "current_knowledge": "Likely iterative worklist based on evidence",
+      "missing_details": [
+        "Exact worklist iteration order",
+        "Termination condition",
+        "Phi closure detection",
+        "Performance optimizations (if any)"
+      ],
+      "validation_method": "Trace phi insertion on test CFGs",
+      "estimated_effort_hours": 10,
+      "related_algorithms": ["phi_placement"],
+      "dependencies": ["Phi insertion function decompilation"]
+    },
+
+    {
+      "id": "9",
+      "category": "Pass Framework",
+      "question": "Exact pass ordering and inter-pass dependencies?",
+      "priority": "MEDIUM",
+      "impact": "Pass ordering affects optimization quality",
+      "current_knowledge": "94+ passes documented, ordering partially known from strings",
+      "missing_details": [
+        "Complete pass ordering (which pass must run before which)",
+        "Analysis pass invalidation rules",
+        "Pass enablement conditions (based on optimization level)",
+        "Special case handling for specific code patterns"
+      ],
+      "validation_method": "Trace pass execution on representative kernels",
+      "estimated_effort_hours": 20,
+      "related_algorithms": ["optimization_framework"],
+      "dependencies": ["Pass manager instrumentation or tracing"]
+    },
+
+    {
+      "id": "10",
+      "category": "CUDA-Specific",
+      "question": "Complete divergence analysis algorithm and integration with DCE?",
+      "priority": "MEDIUM",
+      "impact": "Correctness of optimization on divergent code",
+      "current_knowledge": "ADCE integrated with divergence analysis, marks non-divergent code",
+      "missing_details": [
+        "Divergence analysis algorithm details",
+        "How convergence points are detected",
+        "Integration with ADCE decision making",
+        "Bank conflict analysis in register allocation"
+      ],
+      "validation_method": "Test ADCE on kernels with divergent code",
+      "estimated_effort_hours": 15,
+      "related_algorithms": ["dead_code_elimination"],
+      "dependencies": ["Divergence analysis function decompilation"]
+    },
+
+    {
+      "id": "11",
+      "category": "Data Structures",
+      "question": "Symbol table exact layout and hash function?",
+      "priority": "MEDIUM",
+      "impact": "Understanding symbol resolution performance",
+      "current_knowledge": "Hash table with separate chaining, ~128 bytes per entry",
+      "missing_details": [
+        "Hash function algorithm (djb2? FNV?)",
+        "Bucket count and load factor",
+        "Scope stack implementation details",
+        "Type information storage structure"
+      ],
+      "validation_method": "Binary analysis of symbol table initialization",
+      "estimated_effort_hours": 12,
+      "related_algorithms": ["symbol_table"],
+      "dependencies": ["Symbol table data structure analysis"]
+    },
+
+    {
+      "id": "12",
+      "category": "Memory Optimization",
+      "question": "Complete DSE (Dead Store Elimination) algorithm with partial overwrite tracking?",
+      "priority": "MEDIUM",
+      "impact": "Dead store elimination quality",
+      "current_knowledge": "Uses MemorySSA, has partial overwrite tracking with configurable limits",
+      "missing_details": [
+        "Partial overwrite detection algorithm",
+        "Bit-vector tracking implementation",
+        "Store merging strategy",
+        "Threshold values for partial tracking (dse-memoryssa-partial-store-limit)",
+        "Cost/benefit analysis for tracking decisions"
+      ],
+      "validation_method": "Trace DSE on memory-heavy kernels",
+      "estimated_effort_hours": 15,
+      "related_algorithms": ["dead_code_elimination"],
+      "dependencies": ["DSE pass function decompilation"]
+    },
+
+    {
+      "id": "13",
+      "category": "Code Motion",
+      "question": "LICM loop versioning implementation details?",
+      "priority": "MEDIUM",
+      "impact": "LICM effectiveness on conditional loop-invariant code",
+      "current_knowledge": "LICM supports loop versioning for conditional invariants",
+      "missing_details": [
+        "Versioning strategy (when to version, when not)",
+        "Cost model for versioning decision",
+        "Generated code structure (two versions of loop)",
+        "Interaction with other passes after versioning"
+      ],
+      "validation_method": "Test LICM on conditionally loop-invariant code",
+      "estimated_effort_hours": 12,
+      "related_algorithms": ["code_motion"],
+      "dependencies": ["LICM pass function decompilation"]
+    },
+
+    {
+      "id": "14",
+      "category": "SM-Specific",
+      "question": "Complete tensor core instruction cost tables per SM version?",
+      "priority": "MEDIUM",
+      "impact": "Tensor core instruction selection quality",
+      "current_knowledge": "SM-specific cost models for wmma, mma.sync, tcgen05",
+      "missing_details": [
+        "Latency values for each tensor instruction per SM",
+        "Throughput and execution unit occupancy",
+        "Precision-specific costs (FP32 vs FP16 vs TF32 vs F8)",
+        "Sparsity-related cost adjustments",
+        "Block scale format selection costs"
+      ],
+      "validation_method": "Extract cost tables from binary via pattern matching",
+      "estimated_effort_hours": 18,
+      "related_algorithms": ["instruction_selection"],
+      "dependencies": ["Cost table data structure analysis"]
+    },
+
+    {
+      "id": "15",
+      "category": "CUDA-Specific",
+      "question": "Complete shared memory bank conflict analysis and avoidance strategy?",
+      "priority": "MEDIUM",
+      "impact": "Shared memory access pattern optimization",
+      "current_knowledge": "Bank conflict awareness in register class constraints and scheduling",
+      "missing_details": [
+        "Bank conflict detection algorithm",
+        "Register class constraint encoding",
+        "Penalty formula for potential conflicts",
+        "Interaction with instruction scheduling"
+      ],
+      "validation_method": "Test kernels with known bank conflict patterns",
+      "estimated_effort_hours": 15,
+      "related_algorithms": ["register_allocation", "instruction_scheduling"],
+      "dependencies": ["Bank conflict analysis function decompilation"]
+    }
+  ],
+
+  "medium_priority_unknowns": [
+    {
+      "id": "16",
+      "question": "Exact function addresses for all 94+ optimization passes?",
+      "priority": "MEDIUM",
+      "impact": "Detailed L3 implementation planning",
+      "current_knowledge": "Pass names identified, some addresses known",
+      "validation_method": "Binary search and pattern matching for pass entry points"
+    },
+
+    {
+      "id": "17",
+      "question": "How does out-of-SSA elimination work and where does it insert copies?",
+      "priority": "MEDIUM",
+      "impact": "Understanding SSA → non-SSA transition",
+      "current_knowledge": "Runs after optimizations before register allocation",
+      "validation_method": "Trace SSA elimination phase"
+    },
+
+    {
+      "id": "18",
+      "question": "Complete GVN (Global Value Numbering) hash function and value numbering scheme?",
+      "priority": "MEDIUM",
+      "impact": "GVN pass quality",
+      "validation_method": "GVN pass function analysis"
+    },
+
+    {
+      "id": "19",
+      "question": "Exact instruction scheduling DAG construction and edge weight computation?",
+      "priority": "MEDIUM",
+      "impact": "Scheduling effectiveness",
+      "validation_method": "Scheduling pass tracing"
+    },
+
+    {
+      "id": "20",
+      "question": "Loop analysis algorithms - detection of natural loops, nesting levels?",
+      "priority": "MEDIUM",
+      "impact": "Loop optimization effectiveness",
+      "validation_method": "Loop detection on test CFGs"
+    },
+
+    {
+      "id": "21",
+      "question": "How exactly does critical path detection work for cost weighting?",
+      "priority": "MEDIUM",
+      "impact": "Instruction selection and scheduling decisions",
+      "validation_method": "Trace critical path computation"
+    },
+
+    {
+      "id": "22",
+      "question": "Register class constraint definitions per SM version?",
+      "priority": "MEDIUM",
+      "impact": "Register allocation correctness for all SM types",
+      "validation_method": "Extract constraint tables from binary"
+    },
+
+    {
+      "id": "23",
+      "question": "TMA (Tensor Memory Accelerator) scheduling for SM 90+?",
+      "priority": "MEDIUM",
+      "impact": "Hopper tensor core optimization",
+      "validation_method": "Analyze SM 90 execution traces"
+    },
+
+    {
+      "id": "24",
+      "question": "Warp specialization support details (producer/consumer warp patterns)?",
+      "priority": "MEDIUM",
+      "impact": "SM 90 specific optimizations",
+      "validation_method": "SM 90 kernel analysis"
+    },
+
+    {
+      "id": "25",
+      "question": "Sparsity support algorithm for SM 100+ (2:4 structured patterns)?",
+      "priority": "MEDIUM",
+      "impact": "Blackwell tensor optimization",
+      "validation_method": "Pattern matching on sparse tensor kernels"
+    },
+
+    {
+      "id": "26",
+      "question": "Block scale FP4 format selection and precision handling?",
+      "priority": "MEDIUM",
+      "impact": "Blackwell precision support",
+      "validation_method": "Analyze FP4 instruction variants"
+    },
+
+    {
+      "id": "27",
+      "question": "Complete ModulePass, FunctionPass, LoopPass manager implementations?",
+      "priority": "MEDIUM",
+      "impact": "Pass framework understanding",
+      "validation_method": "PassManager framework analysis"
+    }
+  ],
+
+  "validation_requirements_by_priority": {
+    "critical": [
+      {
+        "unknown_id": "1",
+        "validation_type": "Code Decompilation",
+        "method": "Disassemble and decompile 0xB612D0",
+        "expected_findings": "Spill cost calculations, multiplier values, occupancy tracking"
+      },
+      {
+        "unknown_id": "2",
+        "validation_type": "Code Decompilation",
+        "method": "Decompile cost functions 0xFDE760 and 0xD788E0",
+        "expected_findings": "Cost formula, factor weights, latency tables"
+      },
+      {
+        "unknown_id": "3",
+        "validation_type": "Data Structure Analysis",
+        "method": "Binary pattern matching on pattern_table",
+        "expected_findings": "Pattern database layout, IR→PTX mappings, cost per pattern"
+      },
+      {
+        "unknown_id": "4",
+        "validation_type": "Code Decompilation",
+        "method": "Decompile graph coloring functions",
+        "expected_findings": "Priority formula, node selection criteria"
+      }
+    ],
+
+    "high": [
+      {
+        "unknown_id": "5",
+        "validation_type": "Code Analysis",
+        "method": "Analyze scheduling pass implementations"
+      },
+      {
+        "unknown_id": "6",
+        "validation_type": "Memory Analysis",
+        "method": "Capture IR construction memory layout"
+      },
+      {
+        "unknown_id": "7",
+        "validation_type": "Code Analysis",
+        "method": "Trace spill code generation"
+      },
+      {
+        "unknown_id": "8",
+        "validation_type": "Code Analysis",
+        "method": "Trace phi insertion on test CFGs"
+      }
+    ]
+  },
+
+  "implementation_roadmap_l3": {
+    "phase_1_critical": {
+      "duration_weeks": 2,
+      "goal": "Establish core algorithms",
+      "tasks": [
+        "Decompile 0xB612D0 (register allocation)",
+        "Extract cost model functions",
+        "Recreate SSA construction",
+        "Implement graph coloring"
+      ]
+    },
+
+    "phase_2_high": {
+      "duration_weeks": 3,
+      "goal": "Implement optimization framework",
+      "tasks": [
+        "Recreate PassManager framework",
+        "Implement top 10 critical passes",
+        "Establish pass ordering",
+        "Test individual pass correctness"
+      ]
+    },
+
+    "phase_3_medium": {
+      "duration_weeks": 2,
+      "goal": "Complete instruction selection and scheduling",
+      "tasks": [
+        "Extract pattern database",
+        "Implement pattern matching engine",
+        "Implement scheduling algorithms",
+        "Add SM-specific dispatch"
+      ]
+    },
+
+    "phase_4_validation": {
+      "duration_weeks": 2,
+      "goal": "Comprehensive testing",
+      "tasks": [
+        "Test against CICC outputs",
+        "Validate optimization quality",
+        "Profile compilation performance",
+        "Complete unknowns via decompilation"
+      ]
+    }
+  },
+
+  "effort_estimates": {
+    "total_hours_critical": 75,
+    "total_hours_high": 120,
+    "total_hours_medium": 150,
+    "total_hours_all": 345,
+    "equivalent_weeks": 8.6,
+    "note": "Assumes 40-hour work week with parallel decompilation and implementation"
+  },
+
+  "success_criteria_l3": {
+    "minimum": [
+      "SSA construction working correctly",
+      "Graph coloring register allocation functional",
+      "Instruction selection producing valid PTX",
+      "Compilation pipeline end-to-end"
+    ],
+    "target": [
+      "All criteria above PLUS",
+      "Optimization passes working and ordered correctly",
+      "Code output correctness verified",
+      "Performance within 10% of CICC"
+    ],
+    "stretch": [
+      "All criteria above PLUS",
+      "Full parameter extraction (cost models, thresholds)",
+      "SM-specific variants functional",
+      "Advanced optimizations (LICM versioning, tensor core patterns)"
+    ]
+  }
+}

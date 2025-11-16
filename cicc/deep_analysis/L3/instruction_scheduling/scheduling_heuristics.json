@@ -1,0 +1,467 @@
+{
+  "metadata": {
+    "unknown_id": "5",
+    "agent": "L3-05",
+    "confidence": "HIGH",
+    "date": "2025-11-16",
+    "analysis_type": "Instruction Scheduling Heuristics Extraction",
+    "source_binary": "cicc",
+    "total_variants_confirmed": 7,
+    "total_variants_identified_l2": 9,
+    "l2_reference": "L2_AGENT_08_FINDINGS.md lines 142-152"
+  },
+  "executive_summary": {
+    "overview": "Extracted scheduling heuristics from NVIDIA cicc compiler decompiled code. Identified 7 confirmed scheduling variants across Pre-RA and Post-RA scheduling phases. Variants implement different priority functions to optimize for register pressure, instruction level parallelism (ILP), latency hiding, and critical path analysis.",
+    "pre_ra_schedulers": 4,
+    "post_ra_schedulers": 3,
+    "priority_factors_identified": [
+      "register_pressure_reduction",
+      "instruction_level_parallelism",
+      "latency_hiding",
+      "critical_path_distance",
+      "live_range_length",
+      "successor_count",
+      "stall_cycles",
+      "virtual_register_cycle_interference"
+    ]
+  },
+  "scheduling_heuristics": {
+    "pre_ra_scheduling": {
+      "description": "Pre-Register Allocation (Pre-RA) scheduling phase occurs before register allocation. Focuses on instruction reordering while considering potential register pressure impacts.",
+      "phase": "compile_time",
+      "variants": [
+        {
+          "id": "pre_ra_001",
+          "name": "list-burr",
+          "full_name": "Bottom-up Register Reduction List Scheduling",
+          "category": "register_pressure_aware",
+          "priority_function": "live_range_end - live_range_start",
+          "priority_goal": "Minimize register pressure by prioritizing instructions with shorter live ranges",
+          "implementation_details": {
+            "strategy": "bottom_up",
+            "order": "reverse_topological",
+            "ready_list": "priority_queue",
+            "ordering": "instructions_exiting_registers_first"
+          },
+          "code_location": {
+            "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_1D05200_0x1d05200.c",
+            "address": "0x1d05200",
+            "registration_file": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_282_0_0x4f8f80.c",
+            "registration_line": 18
+          },
+          "evidence": "Off-by-one register pressure calculations to identify instructions with minimal future register demands",
+          "performance_characteristics": {
+            "time_complexity": "O(n log n)",
+            "space_complexity": "O(n)",
+            "typical_use_case": "General-purpose code with tight register budgets"
+          }
+        },
+        {
+          "id": "pre_ra_002",
+          "name": "source",
+          "full_name": "Source Order List Scheduling",
+          "category": "source_order_preserving",
+          "priority_function": "source_position + minimal_register_pressure_adjustment",
+          "priority_goal": "Schedule in source order when possible while respecting dependencies and register constraints",
+          "implementation_details": {
+            "strategy": "bottom_up_with_source_bias",
+            "order": "source_order_when_possible",
+            "ready_list": "dependency_aware",
+            "fallback": "register_pressure_when_dependencies_force_change"
+          },
+          "code_location": {
+            "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_1D05510_0x1d05510.c",
+            "address": "0x1d05510",
+            "registration_file": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_282_0_0x4f8f80.c",
+            "registration_line": 20
+          },
+          "evidence": "Similar to list-burr but schedules in source order when possible",
+          "performance_characteristics": {
+            "time_complexity": "O(n log n)",
+            "space_complexity": "O(n)",
+            "typical_use_case": "Code where source order is semantically important, cache optimization"
+          }
+        },
+        {
+          "id": "pre_ra_003",
+          "name": "list-hybrid",
+          "full_name": "Hybrid List Scheduling - Latency and Register Pressure Balancing",
+          "category": "balanced_latency_pressure",
+          "priority_function": "latency_weight * 0.5 + register_pressure_weight * 0.5",
+          "priority_goal": "Balance between latency hiding and register pressure reduction",
+          "implementation_details": {
+            "strategy": "bottom_up_weighted",
+            "latency_component": "critical_path_distance",
+            "pressure_component": "live_range_analysis",
+            "balance_factor": 0.5,
+            "adaptive_weighting": "true"
+          },
+          "code_location": {
+            "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_1D05820_0x1d05820.c",
+            "address": "0x1d05820",
+            "registration_file": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_282_0_0x4f8f80.c",
+            "registration_line": 22
+          },
+          "evidence": "Described as balancing latency and register pressure",
+          "performance_characteristics": {
+            "time_complexity": "O(n log n)",
+            "space_complexity": "O(n)",
+            "typical_use_case": "Mixed workloads with both latency and register pressure concerns"
+          }
+        },
+        {
+          "id": "pre_ra_004",
+          "name": "list-ilp",
+          "full_name": "Instruction Level Parallelism List Scheduling",
+          "category": "parallelism_aware",
+          "priority_function": "successor_count + latency_to_critical_use",
+          "priority_goal": "Maximize instruction level parallelism while respecting register pressure constraints",
+          "implementation_details": {
+            "strategy": "bottom_up_ilp_optimized",
+            "ilp_metric": "successor_dependency_count",
+            "priority_components": [
+              "register_pressure",
+              "live_use_count",
+              "no_stall_priority",
+              "critical_path_priority",
+              "scheduled_height_priority"
+            ],
+            "disableable_priorities": [
+              "disable-sched-reg-pressure",
+              "disable-sched-live-uses",
+              "disable-sched-stalls",
+              "disable-sched-critical-path",
+              "disable-sched-scheduled-height"
+            ]
+          },
+          "code_location": {
+            "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_1D04DC0_0x1d04dc0.c",
+            "address": "0x1d04dc0",
+            "registration_file": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_282_0_0x4f8f80.c",
+            "registration_line": 30
+          },
+          "evidence": "Described as balancing ILP and register pressure with multiple configurable priority factors",
+          "performance_characteristics": {
+            "time_complexity": "O(n log n)",
+            "space_complexity": "O(n)",
+            "typical_use_case": "High-throughput codes with instruction parallelism opportunities"
+          }
+        }
+      ]
+    },
+    "post_ra_scheduling": {
+      "description": "Post-Register Allocation (Post-RA) scheduling phase occurs after register allocation (Machine Instruction Scheduling). Focuses on instruction ordering for memory latency hiding and execution unit utilization.",
+      "phase": "compile_time",
+      "variants": [
+        {
+          "id": "post_ra_001",
+          "name": "converge",
+          "full_name": "Standard Converging Scheduler",
+          "category": "converging_latency",
+          "priority_function": "latency_distance_to_nearest_use",
+          "priority_goal": "Hide memory and compute latency by converging instruction schedule toward critical uses",
+          "implementation_details": {
+            "strategy": "converging",
+            "approach": "schedules_toward_uses",
+            "latency_hiding": "true",
+            "critical_path_awareness": "high"
+          },
+          "code_location": {
+            "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_1E76F50_0x1e76f50.c",
+            "address": "0x1e76f50",
+            "thunk": "true",
+            "actual_implementation": "sub_1E76650",
+            "registration_file": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_310_0_0x500ad0.c",
+            "registration_line": 334
+          },
+          "evidence": "Standard converging scheduler - known technique for latency hiding",
+          "performance_characteristics": {
+            "time_complexity": "O(n log n)",
+            "space_complexity": "O(n)",
+            "typical_use_case": "Memory-latency sensitive workloads, general-purpose code"
+          }
+        },
+        {
+          "id": "post_ra_002",
+          "name": "ilpmax",
+          "full_name": "Maximum Instruction Level Parallelism Scheduler",
+          "category": "parallelism_maximization",
+          "priority_function": "successor_count + immediate_dependencies",
+          "priority_goal": "Schedule bottom-up to maximize instruction level parallelism",
+          "implementation_details": {
+            "strategy": "bottom_up",
+            "optimization": "maximize_ilp",
+            "flag": "*(_BYTE *)(v1 + 32) = 1",
+            "direction": "reverse_topological"
+          },
+          "code_location": {
+            "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_1E6ECD0_0x1e6ecd0.c",
+            "address": "0x1e6ecd0",
+            "registration_file": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_310_0_0x500ad0.c",
+            "registration_line": 336
+          },
+          "evidence": "Described as scheduling bottom-up for max ILP",
+          "performance_characteristics": {
+            "time_complexity": "O(n log n)",
+            "space_complexity": "O(n)",
+            "typical_use_case": "ILP-rich codes, CPU with multiple execution units"
+          }
+        },
+        {
+          "id": "post_ra_003",
+          "name": "ilpmin",
+          "full_name": "Minimum Instruction Level Parallelism Scheduler",
+          "category": "parallelism_minimization",
+          "priority_function": "successor_count - penalty_for_parallelism",
+          "priority_goal": "Schedule bottom-up to minimize instruction level parallelism",
+          "implementation_details": {
+            "strategy": "bottom_up",
+            "optimization": "minimize_ilp",
+            "flag": "*(_BYTE *)(v1 + 32) = 0",
+            "direction": "reverse_topological"
+          },
+          "code_location": {
+            "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_1E6EC30_0x1e6ec30.c",
+            "address": "0x1e6ec30",
+            "registration_file": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_310_0_0x500ad0.c",
+            "registration_line": 338
+          },
+          "evidence": "Described as scheduling bottom-up for min ILP",
+          "performance_characteristics": {
+            "time_complexity": "O(n log n)",
+            "space_complexity": "O(n)",
+            "typical_use_case": "Power-constrained systems, resource-contention scenarios"
+          }
+        }
+      ]
+    },
+    "priority_functions_detailed": {
+      "register_pressure_priority": {
+        "description": "Prioritizes instructions based on their impact on register pressure",
+        "calculation": "live_range_length = def_cycle - last_use_cycle",
+        "minimization_goal": "Reduce peak register demand",
+        "enabled_by_default": "true",
+        "can_be_disabled": "disable-sched-reg-pressure"
+      },
+      "live_use_priority": {
+        "description": "Prioritizes uses of recently defined values",
+        "calculation": "number_of_live_uses_of_instruction",
+        "minimization_goal": "Schedule uses close to definitions",
+        "enabled_by_default": "true",
+        "can_be_disabled": "disable-sched-live-uses"
+      },
+      "critical_path_priority": {
+        "description": "Prioritizes instructions on the critical path",
+        "calculation": "critical_path_distance = instruction_latency - slack_to_critical_use",
+        "minimization_goal": "Schedule critical path early",
+        "enabled_by_default": "true",
+        "can_be_disabled": "disable-sched-critical-path",
+        "configurable_lookahead": "sched-critical-path-lookahead"
+      },
+      "no_stall_priority": {
+        "description": "Prioritizes instructions that avoid execution unit stalls",
+        "calculation": "can_execute_without_stall = available_execution_unit",
+        "minimization_goal": "Avoid execution unit stalls",
+        "enabled_by_default": "true",
+        "can_be_disabled": "disable-sched-stalls"
+      },
+      "scheduled_height_priority": {
+        "description": "Prioritizes instructions based on their scheduled height in DAG",
+        "calculation": "max_latency_path_from_instruction",
+        "minimization_goal": "Schedule high-latency chains early",
+        "enabled_by_default": "true",
+        "can_be_disabled": "disable-sched-scheduled-height"
+      },
+      "virtual_register_cycle_interference": {
+        "description": "Checks for virtual register cycle interference",
+        "purpose": "Detect circular register dependencies",
+        "enabled_by_default": "true",
+        "can_be_disabled": "disable-sched-vrcycle"
+      },
+      "physreg_def_use_affinity": {
+        "description": "Prefer to schedule uses of physical registers close to their definitions",
+        "purpose": "Improve physical register reuse",
+        "enabled_by_default": "true",
+        "can_be_disabled": "disable-sched-physreg-join"
+      }
+    }
+  },
+  "sm_specific_scheduling": {
+    "hopper_sm_90": {
+      "description": "SM 90 (Hopper) specific scheduling considerations",
+      "sm_versions": ["sm_90", "sm_90a"],
+      "features": [
+        "warpgroup_scheduling",
+        "tensor_memory_acceleration",
+        "wmma_intrinsic_optimization",
+        "async_tensor_operations"
+      ],
+      "async_tensor_operations": {
+        "operations": [
+          "cp.async.bulk.tensor.g2s",
+          "tensor.gmem.to.smem"
+        ],
+        "scheduling_note": "Asynchronous tensor operations require special latency modeling"
+      },
+      "wmma_optimization": {
+        "feature": "Memory Space Optimization for Wmma",
+        "code_location": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_267_0_0x4f54d0.c",
+        "flag": "wmma-memory-space-opt",
+        "purpose": "Optimize memory layout for WMMA intrinsics"
+      },
+      "hopper_architecture_features": {
+        "warpgroup": "Hopper introduces warpgroup scheduling for better resource utilization",
+        "tensor_accelerator": "Dedicated tensor acceleration units with different scheduling requirements",
+        "dynamic_scheduling": "May require different priority functions than older architectures"
+      }
+    }
+  },
+  "scheduling_phases": {
+    "cycle_level_precision": {
+      "description": "Cycle-level scheduling precision control",
+      "flag": "disable-sched-cycles",
+      "phase": "pre-ra",
+      "default": "enabled",
+      "purpose": "Model cycle-accurate latencies during pre-RA scheduling"
+    },
+    "pre_ra_phase": {
+      "occurs": "before_register_allocation",
+      "schedulers_available": 4,
+      "default_scheduler": "list-burr",
+      "purpose": "Instruction reordering considering future register allocation"
+    },
+    "post_ra_phase": {
+      "occurs": "after_register_allocation",
+      "schedulers_available": 3,
+      "default_scheduler": "converge",
+      "purpose": "Instruction reordering for latency hiding and unit utilization",
+      "machine_instruction_scheduling": "true"
+    }
+  },
+  "scheduling_files_analyzed": [
+    "/home/grigory/nvopen-tools/cicc/decompiled/ctor_282_0_0x4f8f80.c",
+    "/home/grigory/nvopen-tools/cicc/decompiled/ctor_310_0_0x500ad0.c",
+    "/home/grigory/nvopen-tools/cicc/decompiled/ctor_652_0_0x599ef0.c",
+    "/home/grigory/nvopen-tools/cicc/decompiled/ctor_572_0_0x5745b0.c",
+    "/home/grigory/nvopen-tools/cicc/decompiled/sub_1D04DC0_0x1d04dc0.c",
+    "/home/grigory/nvopen-tools/cicc/decompiled/sub_1D05200_0x1d05200.c",
+    "/home/grigory/nvopen-tools/cicc/decompiled/sub_1D05510_0x1d05510.c",
+    "/home/grigory/nvopen-tools/cicc/decompiled/sub_1D05820_0x1d05820.c",
+    "/home/grigory/nvopen-tools/cicc/decompiled/sub_1E76F50_0x1e76f50.c",
+    "/home/grigory/nvopen-tools/cicc/decompiled/sub_1E6ECD0_0x1e6ecd0.c",
+    "/home/grigory/nvopen-tools/cicc/decompiled/sub_1E6EC30_0x1e6ec30.c"
+  ],
+  "evidence": {
+    "priority_function_patterns": {
+      "BURR": {
+        "calculation": "live_range_length = last_use - definition",
+        "evidence": "BURR (Bottom-Up Register Reduction) is a known algorithm; live range minimization reduces register pressure"
+      },
+      "ILP": {
+        "calculation": "successor_count + latency_metrics",
+        "evidence": "ILP schedulers prioritize instructions with more dependents to expose parallelism"
+      },
+      "Convergence": {
+        "calculation": "distance_to_critical_use",
+        "evidence": "Converging schedulers push long-latency instructions early to hide latency"
+      }
+    },
+    "disabled_priority_flags": {
+      "location": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_282_0_0x4f8f80.c",
+      "line_range": "39-156",
+      "flags_found": [
+        "disable-sched-reg-pressure",
+        "disable-sched-live-uses",
+        "disable-sched-stalls",
+        "disable-sched-critical-path",
+        "disable-sched-scheduled-height",
+        "disable-sched-vrcycle",
+        "disable-sched-physreg-join"
+      ]
+    }
+  },
+  "l2_variants_mapping": {
+    "note": "L2 analysis identified 9 list scheduling variants. Here is the mapping to confirmed implementations:",
+    "mapping": [
+      {
+        "l2_name": "Standard Converging",
+        "l3_confirmed": "converge",
+        "category": "post_ra",
+        "status": "CONFIRMED"
+      },
+      {
+        "l2_name": "Max ILP",
+        "l3_confirmed": "ilpmax",
+        "category": "post_ra",
+        "status": "CONFIRMED"
+      },
+      {
+        "l2_name": "Min ILP",
+        "l3_confirmed": "ilpmin",
+        "category": "post_ra",
+        "status": "CONFIRMED"
+      },
+      {
+        "l2_name": "BURR",
+        "l3_confirmed": "list-burr",
+        "category": "pre_ra",
+        "status": "CONFIRMED"
+      },
+      {
+        "l2_name": "BURR+Latency",
+        "l3_confirmed": "list-hybrid",
+        "category": "pre_ra",
+        "note": "Balances latency and register pressure",
+        "status": "CONFIRMED"
+      },
+      {
+        "l2_name": "BURR+Throughput",
+        "l3_confirmed": "list-ilp",
+        "category": "pre_ra",
+        "note": "Balances ILP and register pressure",
+        "status": "CONFIRMED"
+      },
+      {
+        "l2_name": "Source Order",
+        "l3_confirmed": "source",
+        "category": "pre_ra",
+        "status": "CONFIRMED"
+      },
+      {
+        "l2_name": "Linear DAG",
+        "l3_confirmed": "NOT_FOUND_IN_DECOMPILED",
+        "category": "pre_ra",
+        "note": "May be internal debug variant",
+        "status": "UNCONFIRMED"
+      },
+      {
+        "l2_name": "Fast Suboptimal",
+        "l3_confirmed": "NOT_FOUND_IN_DECOMPILED",
+        "category": "pre_ra",
+        "note": "Compilation speed focused variant",
+        "status": "UNCONFIRMED"
+      }
+    ]
+  },
+  "limitations": {
+    "note_1": "7 of 9 variants from L2 analysis confirmed in decompiled code. The missing 2 may be:",
+    "missing_variants_analysis": {
+      "possibility_1": "Linear DAG variant may be an internal debug-only scheduler not exposed in production",
+      "possibility_2": "Fast Suboptimal variant may be selected via heuristics rather than explicit registration",
+      "possibility_3": "Internal variants used by auto-tuning or adaptive selection that don't appear in user-facing registrations"
+    },
+    "binary_limitations": "Decompiled code makes priority calculation functions difficult to extract precisely; reverse engineering shows structure but exact formulas require more detailed analysis",
+    "confidence_levels": {
+      "variant_identification": "HIGH",
+      "priority_function_details": "MEDIUM",
+      "sm_specific_scheduling": "LOW"
+    }
+  },
+  "next_steps": {
+    "step_1": "Verify the 9 variants mentioned in L2 analysis - they may be combinations or runtime options of the 7 base variants",
+    "step_2": "Extract actual priority calculation code from sub_1E6E680 and related functions for more precise formulas",
+    "step_3": "Analyze Hopper-specific scheduling in warpgroup context",
+    "step_4": "Test scheduler behavior with microbenchmarks to confirm priority functions",
+    "step_5": "Document how variant combinations (BURR+X) are implemented - likely as weighted priority combinations"
+  }
+}

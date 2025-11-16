@@ -1,0 +1,368 @@
+{
+  "metadata": {
+    "title": "Register Constraint Validation and Practical Examples",
+    "agent": "L3-22 (continued)",
+    "companion_document": "register_class_constraints.json",
+    "purpose": "Provide practical validation approach and usage examples for register constraints",
+    "date": "2025-11-16"
+  },
+
+  "constraint_validation_methodology": {
+    "phase_1_compile_test_kernels": {
+      "objective": "Generate PTX output with explicit register annotations",
+      "approach": [
+        "Compile known CUDA kernels with -keep -ptx flags",
+        "Capture PTX register declarations (.reg directives)",
+        "Analyze register assignments in .kernel sections",
+        "Compare with constraints documented in register_class_constraints.json"
+      ],
+      "expected_findings": [
+        "Verify .reg .b32 R0-254 declarations match maximum 255",
+        "Confirm .reg .pred P0-7 count (8 registers available, P0 may be used by compiler)",
+        "Validate register pair alignment for .reg .b64 operations",
+        "Document actual spill register usage patterns"
+      ],
+      "test_kernels_needed": [
+        "Simple register-heavy kernel (high register pressure)",
+        "Kernel with 64-bit operations (test alignment)",
+        "Tensor core WMMA kernel (SM70+)",
+        "Tensor core mma.sync kernel (SM80+)",
+        "Warpgroup GEMM kernel (SM90+)"
+      ]
+    },
+
+    "phase_2_binary_constraint_analysis": {
+      "objective": "Extract constraint tables from compiled CICC binary",
+      "approach": [
+        "Search decompiled code for constraint table definitions",
+        "Identify SM version dispatch logic",
+        "Extract exact constraint values per SM version",
+        "Map constraint implementation to algorithm logic"
+      ],
+      "binary_signatures_to_search": [
+        "Register count constants (255, 127, 7 for different register classes)",
+        "SM version switch statements (if/else or jump tables)",
+        "Constraint table initializations (arrays of constraint pairs)",
+        "Register class enumeration values"
+      ],
+      "key_functions_to_analyze": [
+        "Sub_B612D0 (graph construction - main constraint application point)",
+        "Sub_1081400 (SimplifyAndColor - coloring with constraints)",
+        "Sub_1090BD0 (SelectNodeForRemoval - constraint-aware selection)",
+        "Sub_12E1EF0 (AssignColors - color assignment respecting constraints)"
+      ]
+    },
+
+    "phase_3_register_allocation_tracing": {
+      "objective": "Trace register allocation decisions for specific variables",
+      "approach": [
+        "Instrument compiled kernels with profiling code",
+        "Capture register allocations for each virtual register",
+        "Compare allocated physical registers against constraint rules",
+        "Measure constraint violation rate (should be zero)"
+      ],
+      "profiling_points": [
+        "After graph construction: verify constraint edges present",
+        "After coalescing: verify constraints propagated",
+        "After coloring: verify all colors respect constraints",
+        "During spill code generation: verify spill placement"
+      ]
+    },
+
+    "phase_4_performance_impact_analysis": {
+      "objective": "Quantify performance impact of constraint enforcement",
+      "approach": [
+        "Run identical kernels with/without constraint checking",
+        "Measure register allocation time",
+        "Measure resulting code quality (spill count, occupancy)",
+        "Calculate overhead of constraint enforcement"
+      ],
+      "metrics_to_collect": [
+        "Graph construction time",
+        "Coloring time (with vs without constraints)",
+        "Coalescing effectiveness (registers saved by coalescing)",
+        "Spill count and spill code size impact",
+        "Register pressure distribution",
+        "Occupancy achieved (registers per thread -> occupancy)"
+      ]
+    }
+  },
+
+  "constraint_interaction_examples": {
+    "example_1_64bit_operation": {
+      "scenario": "Allocating 64-bit variable in register",
+      "constraints_involved": [
+        "GPR64 class requires 2-register alignment",
+        "Must use even register numbers",
+        "Register pair must be consecutive"
+      ],
+      "valid_allocations": [
+        "R0:R1 (registers 0-1)",
+        "R2:R3 (registers 2-3)",
+        "R4:R5 (registers 4-5)",
+        "..."
+      ],
+      "invalid_allocations": [
+        "R1:R2 (odd register, violates alignment)",
+        "R3:R5 (non-consecutive, should be R4:R5)",
+        "R254 alone (single register too small for 64-bit)"
+      ],
+      "implementation": "Register allocator adds constraint edges between odd registers and even+1 pairs during graph construction"
+    },
+
+    "example_2_tensor_core_accumulator": {
+      "scenario": "Allocating accumulator for WMMA operation (SM70)",
+      "constraints_involved": [
+        "Must occupy 8 consecutive 32-bit registers",
+        "Cannot overlap with matrix operands A and B",
+        "Cannot be allocated from caller-saved range without care"
+      ],
+      "valid_allocation": "Registers R16-R23 for accumulator D (8 consecutive)",
+      "allocation_process": [
+        "1. Reserve 8 consecutive registers in interference graph",
+        "2. Add constraint edges: R16 interferes with R24-254, R17 with R25-254, etc.",
+        "3. During coloring: select 8 consecutive free registers",
+        "4. Verify no operand registers overlap"
+      ],
+      "implementation": "Implicit edges added in interference graph for all register pairs NOT in same 8-register block"
+    },
+
+    "example_3_bank_conflict_avoidance": {
+      "scenario": "Allocating registers for shared memory address computation",
+      "constraints_involved": [
+        "Address computation register must avoid same bank as indexing registers",
+        "32 banks total, 4 bytes per bank",
+        "Bank index = (address % 128) / 4"
+      ],
+      "constraint_enforcement": [
+        "Register class constraints prevent allocation in same bank",
+        "Graph coloring treats bank-conflicting registers as incompatible",
+        "Effective degree calculation considers bank constraints"
+      ],
+      "benefit": "Prevents memory access serialization (32-cycle penalty)"
+    },
+
+    "example_4_warpgroup_coordination": {
+      "scenario": "Allocating registers for warpgroup GEMM (SM90)",
+      "constraints_involved": [
+        "Warpgroup coordinates 4 warps (128 threads)",
+        "Accumulator shared across warpgroup",
+        "Warp 0 and Warp 1 cannot use overlapping accumulator registers"
+      ],
+      "allocation_strategy": [
+        "1. Identify warpgroup membership (thread 0-31 in warp 0, 32-63 in warp 1, etc.)",
+        "2. Reserve accumulator registers per warpgroup",
+        "3. Add constraint edges between warps in same group",
+        "4. Prevent register aliasing across warp boundaries in accumulator"
+      ],
+      "implementation": "Additional constraint edges added during graph construction for SM90+ warpgroup operations"
+    }
+  },
+
+  "constraint_enforcement_flowchart": {
+    "step_1_identify_register_type": {
+      "input": "Virtual register with type information",
+      "process": "Classify register type (GPR32, GPR64, PRED, H16, etc.)",
+      "output": "Register class (RC) and alignment requirement (A)"
+    },
+    "step_2_compute_interference": {
+      "input": "Register class RC, live ranges",
+      "process": "For each pair of overlapping live ranges: check if same class or aliasing",
+      "output": "Candidate interference edges"
+    },
+    "step_3_add_class_constraints": {
+      "input": "Register class information",
+      "process": [
+        "For GPR64 class: add edges between non-consecutive registers",
+        "For bank conflicts: add edges between registers in same bank",
+        "For tensor core: add edges for non-consecutive accumulators",
+        "For warpgroup: add inter-warp coordination constraints"
+      ],
+      "output": "Complete constraint edge set"
+    },
+    "step_4_build_interference_graph": {
+      "input": "All constraint edges from steps 2-3",
+      "process": "Construct adjacency list with edge weights representing constraint strength",
+      "output": "Interference graph with constraints"
+    },
+    "step_5_apply_coalescing": {
+      "input": "Interference graph with constraints",
+      "process": [
+        "For each MOVE instruction: check Briggs criterion with constraints",
+        "Prevent coalescing if it creates constraint violations",
+        "Update edges when nodes merged"
+      ],
+      "output": "Reduced graph with constraints preserved"
+    },
+    "step_6_color_with_constraints": {
+      "input": "Constrained interference graph",
+      "process": [
+        "Simplification phase: remove low-degree nodes",
+        "For each removed node: verify no constraint violations when restoring colors",
+        "Spilling phase: if coloring fails on constrained node, mark for spilling",
+        "Color assignment: assign lowest available color satisfying constraints"
+      ],
+      "output": "Physical register assignment respecting all constraints"
+    },
+    "step_7_generate_spill_code": {
+      "input": "Nodes marked for spilling",
+      "process": [
+        "For each spilled register: insert load/store code",
+        "Respect constraint rules for spill register allocation",
+        "May recursively allocate spill registers (handled by allocator)"
+      ],
+      "output": "Final PTX with spill code and constraints satisfied"
+    }
+  },
+
+  "cross_constraint_interactions": {
+    "interaction_64bit_bank_conflict": {
+      "description": "64-bit operations require even alignment AND bank conflict avoidance",
+      "scenario": "64-bit load from shared memory needs both constraints",
+      "constraints": [
+        "Address register must be even (alignment)",
+        "Address register must avoid same bank as data access (bank conflict)"
+      ],
+      "conflict_resolution": "Conservative coalescing ensures both constraints satisfied"
+    },
+
+    "interaction_tensor_and_memory": {
+      "description": "Tensor core accumulator constraints plus memory access constraints",
+      "scenario": "WMMA accumulator stored to memory via shared memory",
+      "constraints": [
+        "Accumulator must occupy 8 consecutive registers",
+        "Store address calculation must avoid bank conflicts",
+        "Data must be aligned for shared memory access"
+      ],
+      "implementation": "Separate constraint edges for each constraint type, all enforced by coloring algorithm"
+    },
+
+    "interaction_calling_convention": {
+      "description": "Reserved registers vs. allocation constraints",
+      "scenario": "Function with arguments and local variables",
+      "constraints": [
+        "R0-R7 reserved for arguments (implicit edges to prevent allocation)",
+        "R24-R31 for callee-saved (lifetime extends across function calls)",
+        "Other constraints still apply"
+      ],
+      "implementation": "Pre-coloring nodes R0-R7, R24-R31 before graph construction"
+    }
+  },
+
+  "constraint_validation_checklist": {
+    "for_each_register_class": [
+      "Verify maximum count is correct",
+      "Verify alignment requirements documented",
+      "Verify aliasing relationships with other classes",
+      "Verify SM version applicability"
+    ],
+    "for_each_sm_version": [
+      "Verify physical register count (should be K or derived value)",
+      "Verify register file size matches documentation",
+      "Verify bank configuration documented",
+      "Verify architecture-specific constraints listed",
+      "Verify tensor core constraints if applicable"
+    ],
+    "for_constraint_mechanism": [
+      "Verify constraint edges added to interference graph",
+      "Verify constraints propagated through coalescing",
+      "Verify color assignment respects constraints",
+      "Verify spill code generation respects constraints",
+      "Verify no constraint violations in output"
+    ],
+    "for_performance_impact": [
+      "Measure register allocation time with constraints",
+      "Measure spill code increase from constraints",
+      "Measure occupancy impact of constraints",
+      "Measure cache/memory performance improvement from constraints"
+    ]
+  },
+
+  "known_edge_cases": {
+    "edge_case_1_register_spillover": {
+      "scenario": "Virtual register count exceeds physical registers",
+      "constraint_impact": "Constraints prevent optimal coloring, forcing spills",
+      "handling": "Spill cost heuristics prefer spilling constrained registers",
+      "validation_point": "Ensure spill code generation is correct"
+    },
+
+    "edge_case_2_extreme_bank_conflicts": {
+      "scenario": "All threads access sequential addresses in memory",
+      "constraint_impact": "May create pathological constraint graph",
+      "handling": "Bank conflict avoidance strategy kicks in, might increase register usage",
+      "validation_point": "Measure performance vs constraint overhead"
+    },
+
+    "edge_case_3_warpgroup_mismatch": {
+      "scenario": "Warpgroup boundaries don't align with allocation boundaries",
+      "constraint_impact": "Warpgroup constraints may conflict with other constraints",
+      "handling": "Conservative coalescing prevents incorrect merges",
+      "validation_point": "Verify warpgroup operations execute correctly"
+    },
+
+    "edge_case_4_predicate_exhaustion": {
+      "scenario": "Kernel uses more than 7 predicates",
+      "constraint_impact": "Limited predicate registers force additional constraints",
+      "handling": "Compiler may convert predicates to boolean registers",
+      "validation_point": "Ensure conversion is correct"
+    }
+  },
+
+  "diagnostic_approaches": {
+    "method_1_ptx_inspection": {
+      "tool": "NVIDIA's ptxas assembler",
+      "approach": "Compile PTX and inspect register assignments",
+      "command": "ptxas -arch sm_XX mykernel.ptx -o mykernel.cubin",
+      "output_analysis": "Examine register usage and constraint compliance"
+    },
+
+    "method_2_profile_with_metrics": {
+      "tool": "NVIDIA Nsight Systems / Nsight Compute",
+      "approach": "Profile kernel execution and correlate with register allocation",
+      "metrics": [
+        "Registers per thread",
+        "Occupancy achieved",
+        "Memory throughput (affected by bank conflicts)",
+        "Instruction throughput (affected by stalls)"
+      ]
+    },
+
+    "method_3_decompiled_code_analysis": {
+      "approach": "Analyze decompiled CICC code for constraint enforcement",
+      "targets": [
+        "Graph construction functions (verify constraint edges added)",
+        "Coalescing functions (verify constraints preserved)",
+        "Coloring functions (verify constraints checked)"
+      ]
+    },
+
+    "method_4_regression_testing": {
+      "approach": "Build test suite validating constraints",
+      "test_cases": [
+        "32-bit register allocation",
+        "64-bit register allocation with alignment",
+        "Register class incompatibilities",
+        "Bank conflict avoidance",
+        "Tensor core accumulator alignment",
+        "Warpgroup coordination"
+      ],
+      "validation": "Compare output against documented constraints"
+    }
+  },
+
+  "references_and_related_documents": {
+    "primary_document": "register_class_constraints.json (main constraint definitions)",
+    "related_analyses": [
+      "L3/register_allocation/spill_cost_formula.json",
+      "L3/register_allocation/graph_coloring_priority.json",
+      "L3/cuda_specific/bank_conflict_analysis.json",
+      "L3/instruction_selection/tensor_core_costs.json"
+    ],
+    "external_references": [
+      "NVIDIA PTX ISA Manual - Register Syntax",
+      "NVIDIA CUDA Programming Guide - Register Usage",
+      "GPU architecture documentation (Tesla, Volta, Ampere, Hopper, Blackwell)",
+      "Academic papers on register allocation (Chaitin-Briggs)"
+    ]
+  }
+}

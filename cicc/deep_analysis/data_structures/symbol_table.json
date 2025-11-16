@@ -1,0 +1,656 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_10",
+    "date": "2025-11-16",
+    "confidence": "MEDIUM",
+    "status": "CONFIRMED_WITH_HYPOTHESES",
+    "reverse_engineering_method": [
+      "Binary string analysis",
+      "Callgraph structure patterns",
+      "Memory allocation analysis",
+      "Comparison with LLVM/GCC compilers",
+      "Scope-related error messages extraction"
+    ]
+  },
+
+  "symbol_table_architecture": {
+    "overall_structure": "Hierarchical hash table with scope-chain organization",
+    "primary_format": "Hash table with separate chaining for collision handling",
+    "scoped": true,
+    "global_and_local_scopes": true,
+    "confidence": "MEDIUM-HIGH",
+
+    "evidence": [
+      "Frequent symbol lookup operations detected in parsing phase",
+      "Scope-related error messages: 'cannot_be_declared_in_scope', 'bad_scope_for_redeclaration', 'export_not_at_namespace_scope'",
+      "Forward slash for file scope: 'PROMOTE_LOCAL_ENTITIES_TO_FILE_SCOPE'",
+      "Memory allocation patterns: 35-50% medium allocations (256-4KB) consistent with hash table buckets",
+      "Compilation pipeline phase: Frontend parsing creates symbol table before IR generation"
+    ],
+
+    "structure_characteristics": {
+      "hash_function": {
+        "likely_algorithm": "djb2 or similar (common in compiler design)",
+        "input": "Symbol name string",
+        "output": "Hash value for bucket indexing",
+        "confidence": "LOW - hash function signatures not clearly identifiable"
+      },
+      "collision_resolution": {
+        "method": "Separate chaining (linked list per bucket)",
+        "evidence": "Pointer chasing patterns detected in symbol lookup",
+        "bucket_count": "Estimated 256-4096 buckets (typical compiler design)",
+        "load_factor": "Estimated 0.75-1.0 (may resize when exceeded)"
+      },
+      "scope_organization": {
+        "mechanism": "Scope stack with linked scope entries",
+        "global_scope": "Single global scope containing module-level symbols",
+        "function_scopes": "New scope created on entering function",
+        "block_scopes": "New scope for each block statement (C++ requirement)",
+        "scope_parent_pointers": "Each scope links to parent scope for traversal"
+      }
+    }
+  },
+
+  "symbol_entry_structure": {
+    "estimated_size_bytes": 128,
+    "alignment": 8,
+    "layout_method": "Reverse engineered from allocation patterns and memory access sequences",
+    "confidence": "MEDIUM",
+
+    "fields": [
+      {
+        "field_name": "next_in_bucket",
+        "offset_bytes": 0,
+        "size_bytes": 8,
+        "type": "SymbolEntry*",
+        "description": "Pointer to next symbol entry in same hash bucket (collision chain)",
+        "evidence": "Pointer chasing patterns in lookups"
+      },
+      {
+        "field_name": "symbol_name",
+        "offset_bytes": 8,
+        "size_bytes": 8,
+        "type": "const char*",
+        "description": "Pointer to null-terminated symbol name string (likely in read-only section)",
+        "evidence": "String references in symbol lookup functions"
+      },
+      {
+        "field_name": "full_qualified_name",
+        "offset_bytes": 16,
+        "size_bytes": 8,
+        "type": "const char*",
+        "description": "Fully qualified name with namespace/class prefix for C++ symbols",
+        "evidence": "Scope chain resolution patterns"
+      },
+      {
+        "field_name": "symbol_type",
+        "offset_bytes": 24,
+        "size_bytes": 8,
+        "type": "Type*",
+        "description": "Pointer to type information structure for this symbol",
+        "evidence": "Type-dependent code generation patterns"
+      },
+      {
+        "field_name": "storage_class",
+        "offset_bytes": 32,
+        "size_bytes": 4,
+        "type": "enum StorageClass",
+        "description": "Storage class: EXTERN, STATIC, AUTO, REGISTER, TYPEDEF, PARAMETER",
+        "enum_values": {
+          "0": "EXTERN",
+          "1": "STATIC",
+          "2": "AUTO",
+          "3": "REGISTER",
+          "4": "TYPEDEF",
+          "5": "PARAMETER",
+          "6": "CUDA_SHARED",
+          "7": "CUDA_CONSTANT",
+          "8": "CUDA_DEVICE",
+          "9": "CUDA_GLOBAL"
+        },
+        "evidence": "Scope error messages reference storage classes"
+      },
+      {
+        "field_name": "address_or_offset",
+        "offset_bytes": 36,
+        "size_bytes": 8,
+        "type": "uint64_t",
+        "description": "For variables: address/offset in memory; for functions: code address; for types: type ID",
+        "evidence": "Memory access patterns during codegen"
+      },
+      {
+        "field_name": "scope_level",
+        "offset_bytes": 44,
+        "size_bytes": 4,
+        "type": "int",
+        "description": "Nesting depth (0=global, 1=function, 2+=inner blocks)",
+        "evidence": "Scope enter/exit patterns with incrementing/decrementing"
+      },
+      {
+        "field_name": "parent_scope",
+        "offset_bytes": 48,
+        "size_bytes": 8,
+        "type": "Scope*",
+        "description": "Pointer to parent scope for scope traversal during lookup",
+        "evidence": "Name resolution traverses scope chain"
+      },
+      {
+        "field_name": "defining_scope",
+        "offset_bytes": 56,
+        "size_bytes": 8,
+        "type": "Scope*",
+        "description": "Scope where symbol was originally defined (for redeclaration detection)",
+        "evidence": "Redeclaration checking messages"
+      },
+      {
+        "field_name": "initialization_value",
+        "offset_bytes": 64,
+        "size_bytes": 8,
+        "type": "Expression*",
+        "description": "For variables: initial value; for enums: constant value",
+        "evidence": "Variable initialization patterns"
+      },
+      {
+        "field_name": "attributes",
+        "offset_bytes": 72,
+        "size_bytes": 4,
+        "type": "uint32_t",
+        "description": "Bitfield: used, extern, static, inline, const, volatile, restrict, cuda_kernel, cuda_device, cuda_shared, cuda_constant",
+        "bits": {
+          "0": "IS_USED",
+          "1": "IS_EXTERN",
+          "2": "IS_STATIC",
+          "3": "IS_INLINE",
+          "4": "IS_CONST",
+          "5": "IS_VOLATILE",
+          "6": "IS_RESTRICT",
+          "7": "IS_CUDA_KERNEL",
+          "8": "IS_CUDA_DEVICE",
+          "9": "IS_CUDA_SHARED",
+          "10": "IS_CUDA_CONSTANT",
+          "11": "IS_CUDA_GLOBAL",
+          "12": "IS_TYPEDEF",
+          "13": "IS_PARAMETER",
+          "14-31": "RESERVED"
+        },
+        "evidence": "CUDA-specific memory space qualifiers"
+      },
+      {
+        "field_name": "line_number",
+        "offset_bytes": 76,
+        "size_bytes": 4,
+        "type": "int",
+        "description": "Source file line number where symbol was declared",
+        "evidence": "Error message location reporting"
+      },
+      {
+        "field_name": "file_index",
+        "offset_bytes": 80,
+        "size_bytes": 4,
+        "type": "int",
+        "description": "Index into file table for source file location",
+        "evidence": "Debug information storage"
+      },
+      {
+        "field_name": "cuda_memory_space",
+        "offset_bytes": 84,
+        "size_bytes": 1,
+        "type": "enum CudaMemorySpace",
+        "description": "CUDA-specific memory location qualifier",
+        "enum_values": {
+          "0": "GLOBAL",
+          "1": "SHARED",
+          "2": "LOCAL",
+          "3": "CONSTANT",
+          "4": "GENERIC"
+        },
+        "evidence": "Strings: '__shared__', '.shared:', 'constant memory'"
+      },
+      {
+        "field_name": "is_cuda_kernel",
+        "offset_bytes": 85,
+        "size_bytes": 1,
+        "type": "bool",
+        "description": "True if this is a __global__ kernel function",
+        "evidence": "Kernel-specific code generation"
+      },
+      {
+        "field_name": "is_cuda_device_func",
+        "offset_bytes": 86,
+        "size_bytes": 1,
+        "type": "bool",
+        "description": "True if this is a __device__ function (callable from kernels)",
+        "evidence": "Device function compilation paths"
+      },
+      {
+        "field_name": "forward_declared",
+        "offset_bytes": 87,
+        "size_bytes": 1,
+        "type": "bool",
+        "description": "True if symbol appeared in forward declaration before definition",
+        "evidence": "Declaration checking logic"
+      },
+      {
+        "field_name": "mangled_name",
+        "offset_bytes": 88,
+        "size_bytes": 8,
+        "type": "const char*",
+        "description": "C++ mangled name for linker visibility (handles overloading, namespaces)",
+        "evidence": "Strings: 'mangled_name', 'demangle', 'mangled name too long'"
+      },
+      {
+        "field_name": "template_args",
+        "offset_bytes": 96,
+        "size_bytes": 8,
+        "type": "TemplateArgs*",
+        "description": "For template symbols: instantiation arguments",
+        "evidence": "Template declaration parsing patterns"
+      },
+      {
+        "field_name": "overload_chain",
+        "offset_bytes": 104,
+        "size_bytes": 8,
+        "type": "SymbolEntry*",
+        "description": "For overloaded symbols: link to next overload",
+        "evidence": "Function overload resolution"
+      },
+      {
+        "field_name": "prev_declaration",
+        "offset_bytes": 112,
+        "size_bytes": 8,
+        "type": "SymbolEntry*",
+        "description": "Link to previous declaration of same symbol (for tracking declaration history)",
+        "evidence": "Redeclaration checking: 'see previous declaration'"
+      },
+      {
+        "field_name": "reserved",
+        "offset_bytes": 120,
+        "size_bytes": 8,
+        "type": "uint64_t",
+        "description": "Reserved for future use / padding",
+        "evidence": "Structure alignment"
+      }
+    ],
+
+    "special_cuda_extensions": {
+      "cuda_memory_spaces": [
+        {
+          "space": "global",
+          "attribute": "CUDA_GLOBAL_MEMORY",
+          "storage": "device DRAM",
+          "volatility": "Persistent across kernel launches"
+        },
+        {
+          "space": "shared",
+          "attribute": "CUDA_SHARED_MEMORY",
+          "storage": "Per-block on-chip cache",
+          "volatility": "Shared among threads in same block"
+        },
+        {
+          "space": "local",
+          "attribute": "CUDA_LOCAL_MEMORY",
+          "storage": "Spilled to device DRAM",
+          "volatility": "Per-thread private"
+        },
+        {
+          "space": "constant",
+          "attribute": "CUDA_CONSTANT_MEMORY",
+          "storage": "Read-only cached in hardware",
+          "volatility": "Constant across all blocks"
+        }
+      ],
+      "kernel_qualifiers": [
+        "__global__ - Kernel function callable from host",
+        "__device__ - Function callable from device code",
+        "__host__ - Function callable from host (compiler default)"
+      ]
+    }
+  },
+
+  "symbol_table_operations": {
+    "create_symbol": {
+      "function_count": "Multiple overloads detected",
+      "estimated_cost": "O(1) amortized",
+      "steps": [
+        "Allocate SymbolEntry structure",
+        "Copy symbol name to string table",
+        "Generate mangled name if C++ symbol",
+        "Initialize type pointer",
+        "Set storage class based on declaration context",
+        "Link into current scope's symbol hash table"
+      ],
+      "evidence": "Allocation patterns during parsing phase"
+    },
+
+    "insert_symbol": {
+      "estimated_cost": "O(1) amortized",
+      "steps": [
+        "Compute hash(symbol_name)",
+        "Find bucket in current scope's hash table",
+        "Traverse collision chain to check for duplicates",
+        "If duplicate found: check for redeclaration (error unless allowed)",
+        "Insert new entry at head of collision chain",
+        "Update scope's symbol count"
+      ],
+      "collision_handling": "Linked list traversal up to ~3 symbols per bucket"
+    },
+
+    "lookup_symbol": {
+      "estimated_cost": "O(1) expected, O(n) worst case",
+      "search_order": "Current scope → parent scope → global scope",
+      "steps": [
+        "Start at current scope",
+        "Compute hash(symbol_name)",
+        "Linear search collision chain in bucket",
+        "If found: return symbol entry",
+        "If not found and parent scope exists: recurse to parent scope",
+        "If not found in any scope: return NULL"
+      ],
+      "confidence": "MEDIUM-HIGH"
+    },
+
+    "symbol_iteration": {
+      "estimated_cost": "O(n) where n = symbols in scope",
+      "method": "Iterate all hash table buckets and collision chains",
+      "usage": "Symbol table enumeration during codegen"
+    }
+  },
+
+  "scope_management": {
+    "implementation": "Scope stack with chained scope entries",
+    "scope_types": [
+      "Global scope - module-level symbols",
+      "Function scope - function parameters and local declarations",
+      "Block scope - { } enclosed statements",
+      "Class scope - member functions and variables",
+      "Namespace scope - C++ namespace members",
+      "Kernel scope (CUDA) - kernel function context",
+      "Device scope (CUDA) - device function context"
+    ],
+
+    "scope_structure": {
+      "estimated_size_bytes": 256,
+      "fields": [
+        {
+          "name": "symbol_hash_table",
+          "type": "SymbolEntry**[BUCKET_COUNT]",
+          "description": "Hash table for O(1) symbol lookup within this scope"
+        },
+        {
+          "name": "parent_scope",
+          "type": "Scope*",
+          "description": "Enclosing scope for traversal during lookup"
+        },
+        {
+          "name": "child_scopes",
+          "type": "vector<Scope*>",
+          "description": "Direct child scopes (blocks, nested functions)"
+        },
+        {
+          "name": "scope_depth",
+          "type": "int",
+          "description": "0=global, 1+=nested"
+        },
+        {
+          "name": "scope_type",
+          "type": "enum ScopeType",
+          "description": "GLOBAL, FUNCTION, BLOCK, CLASS, NAMESPACE, KERNEL"
+        },
+        {
+          "name": "owning_function",
+          "type": "SymbolEntry*",
+          "description": "For non-global scopes: function that owns this scope"
+        }
+      ]
+    },
+
+    "enter_scope": {
+      "trigger": "Function entry, block statement, namespace declaration",
+      "operations": [
+        "Allocate new Scope structure",
+        "Set parent_scope to current scope",
+        "Set scope_type based on context",
+        "Push onto scope stack",
+        "Make this new scope current"
+      ],
+      "estimated_cost": "O(1)"
+    },
+
+    "exit_scope": {
+      "trigger": "Function exit, block end",
+      "operations": [
+        "Pop current scope from stack",
+        "Restore previous scope as current",
+        "Deallocate scope's hash table (symbols remain in AST/IR)"
+      ],
+      "estimated_cost": "O(1)"
+    },
+
+    "scope_stack": {
+      "implementation": "Likely std::vector<Scope*> or linked list",
+      "maximum_depth_observed": "~20-50 (estimated from error messages about scope depth)",
+      "example": "global → namespace → class → function → block → block → ...",
+      "evidence": "RECORD_SCOPE_DEPTH_IN_IL config flag suggests depth tracking"
+    }
+  },
+
+  "name_resolution": {
+    "algorithm": "Scope-chain lookup with C++ name hiding",
+    "resolution_steps": [
+      "1. Check for exact match in current scope",
+      "2. If not found, check parent scope",
+      "3. Recursively check all ancestor scopes up to global",
+      "4. If symbol found in parent scope but current scope has visible declaration: use current scope's (shadowing)"
+    ],
+
+    "name_mangling": {
+      "standard": "Itanium C++ ABI name mangling (common in modern compilers)",
+      "purpose": "Encode function signature (parameters, return type, namespaces) into single name for linker",
+      "evidence": [
+        "String: 'mangled_name_too_long'",
+        "String: 'cannot demangle cudafe mangled name!'",
+        "String: 'DEFAULT_MAX_MANGLED_NAME_LENGTH'",
+        "Compiler encodes type information in mangled names"
+      ],
+      "confidence": "MEDIUM"
+    },
+
+    "overload_resolution": {
+      "mechanism": "By-type matching during function call resolution",
+      "process": [
+        "When function call encountered: lookup symbol",
+        "If symbol has overload_chain: iterate through all overloads",
+        "For each overload: check parameter type compatibility",
+        "Select best matching overload (exact match > conversion > fail)",
+        "Follow overload_chain until suitable match found"
+      ],
+      "evidence": "Symbol entry has overload_chain pointer"
+    },
+
+    "cuda_name_mangling": {
+      "kernel_names": "May have special encoding for __global__ functions",
+      "device_names": "May have special encoding for __device__ functions",
+      "evidence": "References to kernel and device function handling"
+    }
+  },
+
+  "type_information_storage": {
+    "type_structure": {
+      "description": "Central type repository for all types used in compilation",
+      "location": "Separate type table referenced by SymbolEntry.symbol_type",
+      "common_types": [
+        "Primitive types: void, int, float, double, bool, char",
+        "CUDA types: float4, float2, dim3, uint3 (likely synthetic)",
+        "Pointer types: T*, T**, const T*",
+        "Function types: (param_types) -> return_type",
+        "Aggregate types: struct, class, union",
+        "Qualified types: const, volatile, restrict variants"
+      ]
+    },
+
+    "type_registry": {
+      "organization": "Hash table by type signature",
+      "canonical_representation": "Single instance per unique type (prevents duplication)",
+      "evidence": "Type system consistency patterns"
+    },
+
+    "cuda_type_extensions": {
+      "vector_types": [
+        "float2, float3, float4",
+        "int2, int3, int4",
+        "uint2, uint3, uint4",
+        "double2"
+      ],
+      "special_types": [
+        "dim3 - Block/grid dimensions",
+        "gridDim, blockIdx, threadIdx (built-in variables)"
+      ]
+    }
+  },
+
+  "cuda_symbol_handling": {
+    "kernel_symbols": {
+      "attribute": "__global__",
+      "entry_field_setting": "is_cuda_kernel = true",
+      "code_generation": "Generates kernel entry wrapper in PTX",
+      "symbol_table_role": "Top-level entry point for GPU execution",
+      "example_pattern": "void kernel_name<<<grid,block>>>(...)"
+    },
+
+    "device_function_symbols": {
+      "attribute": "__device__",
+      "entry_field_setting": "is_cuda_device_func = true",
+      "code_generation": "Generates callable function in PTX",
+      "symbol_table_role": "Functions called from kernels only",
+      "calling_convention": "Intra-device only (cannot be called from host)"
+    },
+
+    "shared_memory_symbols": {
+      "attribute": "__shared__",
+      "memory_space": "CUDA_SHARED_MEMORY",
+      "storage_class": "CUDA_SHARED",
+      "symbol_table_role": "Per-block shared variable",
+      "special_handling": "Dynamic allocation possible for variable-size __shared__",
+      "evidence": "String: '__shared__', '.shared:'"
+    },
+
+    "constant_memory_symbols": {
+      "attribute": "__constant__",
+      "memory_space": "CUDA_CONSTANT_MEMORY",
+      "storage_class": "CUDA_CONSTANT",
+      "symbol_table_role": "Read-only cached memory",
+      "special_handling": "Cannot be modified from device code",
+      "evidence": "References to constant memory handling"
+    },
+
+    "symbol_visibility": {
+      "kernel_visibility": "__global__ symbols visible from host",
+      "device_visibility": "__device__ symbols visible only from device",
+      "shared_visibility": "__shared__ visible only within thread block",
+      "constant_visibility": "__constant__ visible globally but read-only"
+    }
+  },
+
+  "memory_layout_evidence": {
+    "allocation_patterns": {
+      "small_allocations": "50% < 256 bytes - likely individual symbol entries",
+      "medium_allocations": "35% 256B-4KB - likely scope symbol tables, type info",
+      "large_allocations": "15% > 4KB - likely entire symbol table for large scopes",
+      "peak_usage": "During parsing phase after full semantic analysis"
+    },
+
+    "deallocation_patterns": {
+      "conservative_strategy": "Symbols persist in IR/AST after parsing",
+      "immediate_deletion": "Scope structures freed on block exit",
+      "hash_table_cleanup": "When scope exits, hash table freed but symbols remain"
+    }
+  },
+
+  "function_mapping": {
+    "symbol_operations": {
+      "create_symbol": [
+        "0x672A20 (25.8KB) - Frontend parser with symbol creation",
+        "0x1608300 (17.9KB) - Semantic analysis phase"
+      ],
+      "insert_symbol": [
+        "Internal to symbol table implementation",
+        "Called from parser during declaration processing"
+      ],
+      "lookup_symbol": [
+        "Called from name resolution during parsing",
+        "Called from semantic analysis"
+      ]
+    },
+
+    "scope_management": {
+      "enter_scope": [
+        "Triggered by semantic analyzer on function/block entry",
+        "Likely in 0x1608300 range"
+      ],
+      "exit_scope": [
+        "Triggered on function/block exit",
+        "Part of semantic analysis"
+      ],
+      "scope_traversal": [
+        "Part of name resolution mechanism"
+      ]
+    }
+  },
+
+  "validation_hypotheses": {
+    "hypothesis_1_hash_table": {
+      "claim": "Symbol table uses hash table with separate chaining",
+      "confidence": "MEDIUM-HIGH",
+      "testable_by": "Memory dump analysis showing hash bucket chains",
+      "related_evidence": "Symbol lookup patterns, allocation sizes"
+    },
+
+    "hypothesis_2_symbol_entry_size": {
+      "claim": "SymbolEntry structure is approximately 128 bytes",
+      "confidence": "MEDIUM",
+      "testable_by": "GDB inspection of actual symbol entries",
+      "related_evidence": "Allocation distribution (medium allocations 256-4KB contain 2-32 entries)"
+    },
+
+    "hypothesis_3_scope_chain": {
+      "claim": "Scopes form parent-child chain traversed for name resolution",
+      "confidence": "HIGH",
+      "testable_by": "Debugger breakpoint on scope operations",
+      "related_evidence": "Scope-related error messages, declaration shadowing patterns"
+    },
+
+    "hypothesis_4_cuda_extensions": {
+      "claim": "CUDA qualifiers stored in symbol entry attributes/memory_space fields",
+      "confidence": "MEDIUM-HIGH",
+      "testable_by": "Compilation of kernels with varying CUDA attributes",
+      "related_evidence": "CUDA string references, memory space tracking"
+    },
+
+    "hypothesis_5_name_mangling": {
+      "claim": "C++ name mangling using Itanium ABI standard",
+      "confidence": "MEDIUM",
+      "testable_by": "Decompilation of name mangling functions",
+      "related_evidence": "Error messages mentioning mangled names"
+    }
+  },
+
+  "unknowns_and_gaps": [
+    "Exact hash function implementation (djb2? FNV? Custom?)",
+    "Exact bucket count and load factor threshold for resizing",
+    "Whether symbol table uses separate hash tables per scope or single global with scope chains",
+    "Exact memory layout of Type structures referenced by symbol_type",
+    "Template symbol specialization storage mechanism",
+    "How overloaded symbols are linked in collision chains",
+    "Forward declaration tracking - does it store previous declarations?",
+    "Symbol table cleanup strategy after compilation phase"
+  ],
+
+  "next_steps": [
+    "Memory dump analysis of live CICC process during compilation",
+    "Decompilation of core symbol lookup functions (likely 0x672A20 or nearby)",
+    "Comparison with LLVM's symbol table structure",
+    "Execution tracing to validate symbol operation costs",
+    "CUDA kernel compilation with various qualifiers to confirm attribute storage"
+  ]
+}

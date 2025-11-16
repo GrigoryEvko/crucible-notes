@@ -1,0 +1,319 @@
+{
+  "metadata": {
+    "unknown_id": "17",
+    "agent": "L3-17",
+    "confidence": "HIGH",
+    "analysis_date": "2025-11-16",
+    "codebase": "NVIDIA CICC Compiler",
+    "focus": "SSA Elimination Algorithm - Converting from SSA form back to non-SSA representation"
+  },
+  "out_of_ssa_algorithm": {
+    "pass_name": "PHIEliminationPass",
+    "pass_id": "phi-node-elimination",
+    "description": "Converts Static Single Assignment (SSA) form back to traditional non-SSA form by eliminating phi nodes and inserting copy instructions",
+    "phases": [
+      {
+        "phase": 1,
+        "name": "Liveness Analysis",
+        "description": "Analyze which values are live out of each basic block, particularly past PHI nodes",
+        "key_function": "isLiveOutPastPHIs",
+        "optimization": "Early exit when liveness analysis completes",
+        "option": "no-phi-elim-live-out-early-exit",
+        "option_description": "Disable early exit if isLiveOutPastPHIs returns true",
+        "details": {
+          "purpose": "Determines which PHI operands require copy instructions",
+          "analysis_type": "Backward liveness propagation",
+          "error_handling": "Validates LiveOutSet computation - 'Unexpected errors in computing LiveOutSet'"
+        }
+      },
+      {
+        "phase": 2,
+        "name": "PHI Elimination",
+        "description": "Replace each PHI node with copy instructions in predecessor blocks",
+        "strategy": "parallel_copy_insertion",
+        "copy_semantics": "All copies representing a single phi must execute atomically from source perspective",
+        "insertion_points": "predecessor_basic_blocks",
+        "details": {
+          "algorithm": "For each PHI node: for each operand: insert COPY instruction in predecessor block",
+          "order": "Copies inserted at end of predecessor blocks before branch instruction",
+          "critical_edges": "Cannot directly insert on critical edges - requires special handling"
+        }
+      },
+      {
+        "phase": 3,
+        "name": "Critical Edge Handling",
+        "description": "Handle edges from basic blocks with multiple successors to blocks with multiple predecessors",
+        "edge_type_definition": "Critical edge = edge from block with >1 successor to block with >1 predecessor",
+        "problem": "Cannot insert instructions directly on critical edges",
+        "solution_strategies": [
+          {
+            "strategy": "Split critical edges",
+            "mechanism": "Insert new intermediate basic block on each critical edge",
+            "option": "phi-elim-split-all-critical-edges",
+            "enabled_by_default": false,
+            "description": "Split all critical edges during PHI elimination (for debugging/safety)"
+          },
+          {
+            "strategy": "Disable critical edge splitting",
+            "mechanism": "Use alternative copy placement strategy without splitting",
+            "option": "disable-phi-elim-edge-splitting",
+            "enabled_by_default": false,
+            "description": "Disable critical edge splitting during PHI elimination"
+          }
+        ],
+        "implementation_approach": "Conditional: if critical_edge AND split_enabled then create intermediate block else use alternative strategy"
+      },
+      {
+        "phase": 4,
+        "name": "Copy Coalescing",
+        "description": "Eliminate redundant copies by merging non-interfering copies",
+        "pass_name": "Conventional SSA (CSSA) Coalescing",
+        "pass_id": "cssa-coalesce",
+        "enabled": true,
+        "coalescing_goal": "Reduce register pressure and code size by merging copies when possible",
+        "mechanism": {
+          "interference_graph": "Build interference graph between copy destinations",
+          "non_interfering": "Copies that don't interfere can be merged into single assignment",
+          "coalescing_condition": "Two copies can be coalesced if their live ranges don't overlap",
+          "cost_benefit": "Merge when non-interfering to reduce code size and register pressure"
+        },
+        "options": [
+          {
+            "name": "coalescing-counter",
+            "type": "counter",
+            "purpose": "Track which PHI operands are coalesced",
+            "description": "Controls which specific operands of phis in the module are coalesced"
+          }
+        ]
+      },
+      {
+        "phase": 5,
+        "name": "Redundant Copy Elimination",
+        "description": "Avoid inserting duplicate copies when already dominated by another copy",
+        "option": "donot-insert-dup-copies",
+        "enabled_by_default": true,
+        "mechanism": "Check if predecessor block already contains dominated copy before inserting",
+        "optimization": "If copy is already dominated by another copy to the same destination, don't insert duplicate",
+        "dominance_check": "Verify copy dominance relationship before insertion",
+        "benefit": "Reduces unnecessary copy instructions without changing semantics"
+      }
+    ],
+    "algorithm_steps": [
+      "1. Build dominance tree and compute dominance relationships",
+      "2. Perform liveness analysis to determine values live out of PHI blocks",
+      "3. For each PHI node in the function:",
+      "   a. For each operand of the PHI:",
+      "      i. Check if value is live out past the PHI",
+      "      ii. Determine if copy instruction is needed",
+      "      iii. Identify placement location (predecessor block)",
+      "      iv. Check if edge is critical and apply splitting if needed",
+      "4. Insert copy instructions in predecessor blocks",
+      "5. Replace PHI nodes with the copies",
+      "6. Build interference graph between copies",
+      "7. Coalesce non-interfering copies to reduce code size",
+      "8. Eliminate redundant copies using dominance information",
+      "9. Delete original PHI nodes"
+    ],
+    "key_algorithms": {
+      "phi_elimination": {
+        "type": "Standard SSA elimination",
+        "method": "Parallel copy insertion",
+        "insertion_pattern": "One copy per PHI operand in predecessor block",
+        "atomic_semantics": "All copies representing single PHI execute atomically"
+      },
+      "liveness_analysis": {
+        "type": "Backward dataflow analysis",
+        "computation": "Compute LiveIn and LiveOut sets for each basic block",
+        "application": "Determine which PHI operands require copies",
+        "optimization": "Early exit when LiveOutPastPHIs analysis completes"
+      },
+      "critical_edge_splitting": {
+        "type": "Conditional CFG transformation",
+        "trigger": "Edge from block with multiple successors to block with multiple predecessors",
+        "transformation": "Insert new intermediate basic block",
+        "purpose": "Enable copy insertion without affecting other control flow"
+      },
+      "copy_coalescing": {
+        "type": "Interference graph based",
+        "method": "Graph coloring / interference detection",
+        "condition": "Non-interfering live ranges can be merged",
+        "benefit": "Reduces register pressure and code size"
+      }
+    },
+    "pass_dependencies": [
+      "dominance-tree (MachineDominatorTree)",
+      "machine-liveness-analysis",
+      "control-flow-graph"
+    ],
+    "configuration_options": {
+      "phi_elimination_options": [
+        {
+          "name": "disable-phi-elim-edge-splitting",
+          "type": "bool",
+          "default": false,
+          "description": "Disable critical edge splitting during PHI elimination"
+        },
+        {
+          "name": "phi-elim-split-all-critical-edges",
+          "type": "bool",
+          "default": false,
+          "description": "Split all critical edges during PHI elimination (even if not necessary)"
+        },
+        {
+          "name": "no-phi-elim-live-out-early-exit",
+          "type": "bool",
+          "default": false,
+          "description": "Do not use early exit optimization if isLiveOutPastPHIs returns true"
+        },
+        {
+          "name": "donot-insert-dup-copies",
+          "type": "bool",
+          "default": true,
+          "description": "Do not insert duplicate copies if already dominated by another copy"
+        }
+      ],
+      "copy_coalescing_options": [
+        {
+          "name": "cssa-coalesce",
+          "type": "pass",
+          "description": "Coalesce copies from Conventional SSA form"
+        },
+        {
+          "name": "coalescing-counter",
+          "type": "counter",
+          "description": "Track statistics of which PHI operands are coalesced"
+        }
+      ]
+    }
+  },
+  "implementation_details": {
+    "phi_node_elimination_method": "parallel_copy_insertion",
+    "copy_placement": "predecessor_blocks_before_branch",
+    "critical_edge_handling": "conditional_split_or_alternative_placement",
+    "copy_coalescing": {
+      "enabled": true,
+      "method": "interference_graph_based",
+      "timing": "after_copy_insertion",
+      "reduces": "code_size_and_register_pressure"
+    },
+    "redundant_copy_elimination": {
+      "enabled": true,
+      "method": "dominance_based_checking",
+      "eliminates": "dominated_duplicate_copies"
+    }
+  },
+  "evidence": {
+    "code_locations": [
+      {
+        "file": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_578_0x577ac0.c",
+        "type": "Pass registration",
+        "evidence": "phi-elim-split-all-critical-edges and no-phi-elim-live-out-early-exit options",
+        "lines": "21-79",
+        "description": "Registers PHI elimination pass options and configuration"
+      },
+      {
+        "file": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_315_0x502c30.c",
+        "type": "Pass registration",
+        "evidence": "disable-phi-elim-edge-splitting and critical edge splitting options",
+        "lines": "13-57",
+        "description": "Additional PHI elimination configuration options"
+      },
+      {
+        "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_1CF0F10_0x1cf0f10.c",
+        "type": "Pass registration",
+        "evidence": "Insert phi elim copies pass (do-cssa)",
+        "description": "Registers the 'Insert phi elim copies' pass which performs copy insertion"
+      },
+      {
+        "file": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_280_0x4f89c0.c",
+        "type": "Pass registration",
+        "evidence": "cssa-coalesce pass and coalescing-counter option",
+        "description": "Registers copy coalescing pass and tracking options"
+      },
+      {
+        "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_2342890_0x2342890.c",
+        "type": "Pass reference",
+        "evidence": "PHIEliminationPass in pass pipeline",
+        "description": "Shows PHI elimination pass integrated in compilation pipeline"
+      },
+      {
+        "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_1A65DC0_0x1a65dc0.c",
+        "type": "Algorithm implementation",
+        "evidence": "Liveness analysis computation - 'Unexpected errors in computing LiveOutSet'",
+        "description": "References LiveOutSet computation for determining which values need copies"
+      },
+      {
+        "file": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_578_0x577ac0.c",
+        "type": "Configuration",
+        "evidence": "donot-insert-dup-copies option registration",
+        "description": "Prevents insertion of duplicate copies already dominated by other copies"
+      }
+    ],
+    "pass_pipeline_integration": [
+      "Before: MachineDominatorTree pass (provides dominance info)",
+      "Before: Machine liveness analysis (provides LiveIn/LiveOut sets)",
+      "This: PHIEliminationPass (converts SSA to non-SSA via copy insertion)",
+      "After: Copy coalescing pass (cssa-coalesce)",
+      "After: Register allocation (uses non-SSA form for coloring)"
+    ],
+    "confirmed_patterns": [
+      "PHI elimination via parallel copy insertion",
+      "Critical edge handling (both split and alternative strategies)",
+      "Liveness-based copy placement optimization",
+      "Dominance-based redundant copy elimination",
+      "Post-SSA copy coalescing for code size reduction",
+      "Configurable optimization levels via compiler flags"
+    ]
+  },
+  "algorithm_variants": {
+    "copy_insertion_variant_1": {
+      "name": "Aggressive - Split All Critical Edges",
+      "option": "phi-elim-split-all-critical-edges",
+      "strategy": "Always create intermediate blocks on critical edges, even if not strictly necessary",
+      "trade_offs": "Safer but increases code size",
+      "use_case": "Debugging, validation, safety-critical compilation"
+    },
+    "copy_insertion_variant_2": {
+      "name": "Conservative - Avoid Splitting",
+      "option": "disable-phi-elim-edge-splitting",
+      "strategy": "Place copies without edge splitting using dominance information",
+      "trade_offs": "More complex dominance analysis but smaller code",
+      "use_case": "Production compilation, code size optimization"
+    },
+    "liveness_optimization_1": {
+      "name": "With Early Exit",
+      "default": true,
+      "strategy": "Exit isLiveOutPastPHIs analysis early when determined",
+      "benefit": "Faster compilation",
+      "option_override": "no-phi-elim-live-out-early-exit"
+    },
+    "redundant_copy_elimination_1": {
+      "name": "With Dominance Checking",
+      "default": true,
+      "strategy": "Check if copy is dominated before inserting duplicate",
+      "benefit": "Reduces redundant copies",
+      "option_override": "donot-insert-dup-copies"
+    }
+  },
+  "correctness_properties": {
+    "atomicity": "All copies for single PHI node execute with atomic semantics from source program perspective",
+    "correctness": "Converted code computes same values as original SSA",
+    "data_flow": "PHI semantics preserved through parallel copy insertion",
+    "control_flow": "CFG transformed only for critical edge handling, otherwise preserved",
+    "liveness": "Copy placement respects liveness information"
+  },
+  "performance_characteristics": {
+    "time_complexity": "O(N + E) where N = instructions, E = edges",
+    "space_complexity": "O(N) for dominance tree and liveness sets",
+    "code_size_impact": "Can increase code size due to copies, mitigated by coalescing",
+    "register_pressure_impact": "Creates additional live ranges before coalescing",
+    "optimization_sequence": "Coalesce immediately after elimination to reduce impact"
+  },
+  "summary": {
+    "core_algorithm": "Standard SSA elimination using parallel copy insertion in predecessor blocks",
+    "key_innovation": "Dominance-based redundant copy elimination to reduce code bloat",
+    "critical_edge_strategy": "Configurable - can split or use dominance-based placement",
+    "optimization_focus": "Maximize redundant copy elimination while maintaining correctness",
+    "integration": "Tight integration with dominance tree and liveness analysis for efficiency"
+  }
+}

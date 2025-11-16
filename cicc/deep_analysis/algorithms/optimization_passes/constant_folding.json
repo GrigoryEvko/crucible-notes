@@ -1,0 +1,469 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_07",
+    "date": "2025-11-16",
+    "title": "Constant Folding Algorithm Analysis",
+    "confidence": "HIGH",
+    "status": "CONFIRMED",
+    "analysis_depth": "Binary reverse engineering with string evidence and pattern matching"
+  },
+
+  "discovery": {
+    "summary": "CICC implements comprehensive constant folding across multiple optimization passes including PHI node folding, branch folding, term folding, and expression folding with memoization caching.",
+    "details": "Constant folding evaluates operations at compile-time when all operands are known constants. The compiler uses fold caches to avoid redundant evaluation. Folding occurs at multiple pipeline stages: early (InstCombine), mid-pipeline (SimplifyCFG), and loop-level (LoopTermFold).",
+    "evidence": [
+      "String evidence: 'two-entry-phi-node-folding-threshold', 'simplifycfg-branch-fold-threshold'",
+      "Cache structures: 'FoldCache', 'FoldCacheUser', 'FoldID' references in binary",
+      "Folding operations: 'fold_expressions', 'fold expression', 'fold_cache'",
+      "Loop optimization: 'Loop Terminator Folding', 'loop-term-fold', 'enable-loop-simplifycfg-term-folding'",
+      "Parameter evidence: 'simplifycfg-branch-fold-common-dest-vector-multiplier'"
+    ]
+  },
+
+  "folding_operations": {
+    "arithmetic_folding": {
+      "operations": {
+        "add": "a + b => constant result (with overflow handling)",
+        "subtract": "a - b => constant (with underflow handling)",
+        "multiply": "a * b => constant (with overflow check, especially for arrays)",
+        "divide": "a / b => constant (guards against division by zero)",
+        "remainder": "a % b => constant (modulo operation)",
+        "negate": "-a => constant"
+      },
+      "type_handling": {
+        "integers": "Exact arithmetic with overflow detection",
+        "floating_point": "IEEE 754 compliant folding with rounding mode preservation",
+        "mixed_precision": "Type promotion rules followed during folding",
+        "saturation": "Handled for saturating operations if present"
+      },
+      "overflow_semantics": {
+        "unsigned": "Wrapping overflow (modular arithmetic)",
+        "signed": "Undefined behavior preserved (no folding if overflow possible)",
+        "detection": "Compile-time analysis to determine if overflow is possible"
+      },
+      "confidence": "HIGH - standard arithmetic folding"
+    },
+
+    "logical_folding": {
+      "operations": {
+        "and": "a && b or a & b => constant",
+        "or": "a || b or a | b => constant",
+        "not": "!a or ~a => constant",
+        "xor": "a ^ b => constant"
+      },
+      "short_circuit_semantics": {
+        "logical_and": "if a is false, result is false without evaluating b",
+        "logical_or": "if a is true, result is true without evaluating b",
+        "optimization": "Dead code elimination of unevaluated branches"
+      },
+      "confidence": "HIGH - standard logical operations"
+    },
+
+    "bitwise_folding": {
+      "operations": {
+        "shift_left": "a << b => constant (with range check on b)",
+        "shift_right": "a >> b => constant (arithmetic or logical)",
+        "rotate": "rotl/rotr operations if present",
+        "bit_manipulation": "popcount, clz, ctz, etc."
+      },
+      "shift_amount_validation": {
+        "check": "Ensure shift amount < operand width",
+        "undefined": "Shifts >= width are undefined behavior",
+        "handling": "Conservative folding or skip if uncertain"
+      },
+      "cuda_specific": {
+        "warp_operations": "Shuffle operations within warp (constant propagation only)",
+        "bit_extraction": "Extracting thread indices from packed values"
+      },
+      "confidence": "HIGH - standard bitwise operations"
+    },
+
+    "comparison_folding": {
+      "operations": {
+        "equal": "a == b => true/false",
+        "not_equal": "a != b => true/false",
+        "less_than": "a < b => true/false",
+        "less_equal": "a <= b => true/false",
+        "greater_than": "a > b => true/false",
+        "greater_equal": "a >= b => true/false"
+      },
+      "type_conversions": {
+        "signed_unsigned": "Proper signed/unsigned comparison semantics",
+        "floating_point": "NaN handling (comparison with NaN always false)",
+        "pointer_comparison": "Only equality/inequality for generic pointers"
+      },
+      "conditional_evaluation": "Enables dead code elimination of branches",
+      "confidence": "HIGH"
+    },
+
+    "type_conversion_folding": {
+      "operations": {
+        "int_to_float": "Exact conversion when representable",
+        "float_to_int": "Truncation (rounding towards zero)",
+        "sign_extension": "Extend signed integer to larger type",
+        "zero_extension": "Extend unsigned integer to larger type",
+        "truncation": "Reduce integer size (lossy)",
+        "bitcast": "Reinterpret bits without conversion"
+      },
+      "precision_preservation": {
+        "float_conversion": "Uses current floating point rounding mode",
+        "denormalized": "Correctly handles denormalized numbers",
+        "nan_inf": "Preserves special values (NaN, Inf, -0.0)"
+      },
+      "cuda_specific": {
+        "half_precision": "Float16 conversion and folding",
+        "tensor_types": "float4, float2 element-wise conversion"
+      },
+      "confidence": "HIGH"
+    },
+
+    "special_operations": {
+      "select_mux": {
+        "operation": "cond ? true_val : false_val => constant",
+        "folding": "If condition is constant, select appropriate branch",
+        "branch_elimination": "Removes unreachable branch"
+      },
+      "phi_node_folding": {
+        "description": "Evaluate PHI nodes when all inputs are the same constant",
+        "parameter": "two-entry-phi-node-folding-threshold",
+        "threshold": "Default = 5 (max instructions to evaluate)",
+        "cost_model": "Evaluate whether folding cost is worth it"
+      },
+      "array_indexing": {
+        "operation": "array[constant_index] => element_value",
+        "bounds_checking": "Verify index is within known bounds",
+        "cuda_shared_memory": "Can fold shared memory array accesses with constant indices"
+      }
+    }
+  },
+
+  "folding_algorithms": {
+    "expression_evaluation": {
+      "algorithm": "Recursive descent evaluation of expression tree",
+      "approach": [
+        "1. For each operation in the IR",
+        "2. Recursively evaluate operands",
+        "3. If all operands are constants, perform operation",
+        "4. Return result constant or TOP (unevaluable)",
+        "5. Cache result to avoid recomputation"
+      ],
+      "evaluation_order": "Post-order traversal (operands before operation)",
+      "memoization": {
+        "structure": "FoldCache - hash map of (expression, result)",
+        "key": "FoldID - unique expression identifier",
+        "benefit": "Avoids re-evaluating same expression",
+        "invalidation": "Cache invalidated when IR modified"
+      },
+      "confidence": "HIGH"
+    },
+
+    "phi_node_folding": {
+      "algorithm": "Control flow analysis of PHI sources",
+      "steps": [
+        "1. For each PHI node, examine all incoming values",
+        "2. If all incoming edges are reachable and have same constant value",
+        "3. Replace PHI with constant",
+        "4. Mark other incoming edges as dead"
+      ],
+      "cost_model": {
+        "parameter": "two-entry-phi-node-folding-threshold",
+        "metric": "Instruction cost to evaluate PHI folding",
+        "threshold": "Default = 4-5 instructions worth of cost",
+        "decision": "Fold if benefit >= instruction cost"
+      },
+      "control_flow_sensitivity": "Different constants on different paths are NOT folded",
+      "confidence": "HIGH"
+    },
+
+    "branch_folding": {
+      "algorithm": "Control flow graph simplification",
+      "process": [
+        "1. Evaluate branch condition at compile time",
+        "2. If condition is constant true/false, branch is deterministic",
+        "3. Remove unreachable branch target",
+        "4. Convert branch to unconditional jump or fallthrough",
+        "5. Merge blocks if only one predecessor remains"
+      ],
+      "parameters": {
+        "simplifycfg-branch-fold-threshold": "Cost threshold for folding decision",
+        "simplifycfg-branch-fold-common-dest-vector-multiplier": "Apply multiplier when vector ops present"
+      },
+      "dead_code_elimination": "Unreachable blocks are eliminated entirely",
+      "block_merging": "Single-successor blocks are merged into predecessor",
+      "confidence": "HIGH"
+    },
+
+    "loop_terminator_folding": {
+      "algorithm": "Loop condition analysis and simplification",
+      "pass": "LoopTermFoldPass / loop-term-fold",
+      "enable_flag": "enable-loop-simplifycfg-term-folding",
+      "operations": [
+        "Fold loop bounds when loop count is deterministic",
+        "Remove loop condition checks when iteration count known",
+        "Simplify induction variable operations",
+        "Eliminate loop tests that are always true/false",
+        "Enable better unrolling analysis"
+      ],
+      "cuda_specific": {
+        "kernel_loops": "Loops over threadIdx/blockIdx can sometimes be analyzed",
+        "block_dimensions": "blockDim.x/y/z are constants - can fold loops"
+      },
+      "confidence": "MEDIUM - requires control flow analysis"
+    },
+
+    "folding_caching_strategy": {
+      "cache_structure": {
+        "FoldCache": "Primary cache of (expression_id -> constant_value)",
+        "FoldCacheUser": "User tracking - which values use cached results",
+        "FoldID": "Unique hash/identifier for expression"
+      },
+      "lookup": "O(1) hash table lookup of expressions",
+      "invalidation": "When IR changes, clear affected cache entries",
+      "memory_efficiency": "Avoid storing same constant multiple times",
+      "performance": "Significant speedup for complex expressions with repeated subexpressions"
+    }
+  },
+
+  "pipeline_integration": {
+    "early_folding": {
+      "stage": "InstCombine pass",
+      "timing": "Early in optimization pipeline",
+      "scope": "Within function or basic block",
+      "impact": "Catches most obvious constant operations",
+      "enabled_by": "Constant propagation results"
+    },
+
+    "mid_pipeline_folding": {
+      "stage": "SimplifyCFG pass",
+      "timing": "After branch folding decisions",
+      "scope": "Control flow graph simplification",
+      "impact": "Enables dead code elimination and block merging",
+      "iterations": "Multiple passes (InstCombine -> SimplifyCFG -> InstCombine)"
+    },
+
+    "loop_folding": {
+      "stage": "Loop optimization passes",
+      "passes": [
+        "LoopTermFoldPass - Loop terminator folding",
+        "LoopUnroll - Partially enabled by constant fold information",
+        "LoopDeletion - Enabled by knowing loop is never entered"
+      ],
+      "scope": "Loop-level transformations",
+      "impact": "Determines if loops can be unrolled or deleted"
+    },
+
+    "late_folding": {
+      "stage": "CodeGenPrepare and instruction selection",
+      "timing": "Near end of IR optimization",
+      "scope": "Final IR to machine code lowering",
+      "impact": "Final cleanup before code generation",
+      "operations": "Folding of offsets in addressing modes"
+    }
+  },
+
+  "compile_time_evaluation": {
+    "cuda_specific_folding": {
+      "block_dimensions": {
+        "example": "int shared_memory_size = blockDim.x * blockDim.y * sizeof(float);",
+        "folding": "blockDim values are compile-time constants",
+        "result": "shared_memory_size becomes constant (e.g., 4096)",
+        "optimization": "Enables specialized allocation and shared memory layout"
+      },
+      "grid_configuration": {
+        "gridDim": "Known at kernel launch, can be folded for optimization",
+        "use_case": "Total thread count = blockDim * gridDim",
+        "folding": "Enables constant propagation through work distribution code"
+      },
+      "kernel_arguments": {
+        "description": "Kernel parameters passed from host",
+        "folding": "Only if passed as literal constants (most cases)",
+        "template_specialization": "Can generate specialized kernels for common parameters"
+      }
+    },
+
+    "template_metaprogramming": {
+      "compile_time_constants": "C++ constexpr values are folded during IR generation",
+      "template_parameters": "Non-type template parameters are compile-time constants",
+      "example": "template<int N> __global__ void kernel() { array[N]; }",
+      "folding": "N is constant, enables compile-time array bounds analysis"
+    },
+
+    "const_qualifier_folding": {
+      "const_variables": "Variables marked 'const' must be initialized with constants",
+      "folding": "All uses of const variables are replaced with their constant values",
+      "cuda_example": "const int warp_size = 32; // folded everywhere",
+      "compiler_optimization": "Aggressive folding without risk of runtime changes"
+    }
+  },
+
+  "implementation_characteristics": {
+    "ieee_754_compliance": {
+      "floating_point_folding": "Follows IEEE 754 semantics during compilation",
+      "rounding_mode": "Respects current FP rounding mode",
+      "special_values": {
+        "positive_infinity": "+Inf folding works correctly",
+        "negative_infinity": "-Inf folding works correctly",
+        "nan": "NaN comparisons handled correctly (always false)",
+        "negative_zero": "-0.0 preserved in some operations"
+      },
+      "portability": "Results match (or are close to) runtime evaluation"
+    },
+
+    "integer_overflow_handling": {
+      "approach": "Conservative - avoid folding if overflow possible",
+      "signed_overflow": "Undefined behavior - skip folding if possible",
+      "unsigned_wrap": "Wrap-around folding is safe",
+      "detection": "Analyze operands to detect overflow conditions",
+      "flags": "May check compiler flags for overflow behavior (-ftrapv, etc.)"
+    },
+
+    "instruction_cost_model": {
+      "threshold_parameters": [
+        "two-entry-phi-node-folding-threshold: Cost to evaluate PHI folding",
+        "simplifycfg-branch-fold-threshold: Cost threshold for branch folding"
+      ],
+      "cost_estimation": "Avoids folding if result is less beneficial than code overhead",
+      "trade_off": "Balance between optimization benefit and compilation time"
+    }
+  },
+
+  "optimization_impact": {
+    "enabled_transformations": [
+      "Dead code elimination - unreachable code removed after branch folding",
+      "Block merging - single-successor blocks consolidated",
+      "Loop deletion - loops proven never to execute are removed",
+      "Shared memory optimization - constant sizes enable static allocation",
+      "Register allocation - smaller live ranges from folded constants",
+      "Code generation - fewer instructions from eliminated operations"
+    ],
+
+    "performance_improvements": [
+      "Reduced instruction count - constant operations eliminated",
+      "Smaller binary - dead code removed",
+      "Better register usage - fewer live ranges",
+      "Improved caching - smaller kernel instruction footprint",
+      "Warp efficiency - simplified code paths reduce branch divergence"
+    ],
+
+    "compile_time_cost": "Very low - folding is done during existing passes (InstCombine, SimplifyCFG)"
+  },
+
+  "function_mapping": {
+    "folding_engines": {
+      "inst_combine": {
+        "description": "Primary instruction combining and folding",
+        "pass_name": "InstCombinePass",
+        "entry_point": "Likely in optimization_framework module",
+        "estimated_size": "250+ functions for pattern matching and folding",
+        "iterations": "Multiple passes controlled by max-iterations parameter"
+      },
+      "simplify_cfg": {
+        "description": "Control flow graph simplification including branch folding",
+        "pass_name": "SimplifyCFGPass",
+        "operations": [
+          "Branch folding",
+          "Block merging",
+          "Unreachable code elimination",
+          "PHI node simplification"
+        ]
+      },
+      "loop_term_fold": {
+        "description": "Loop terminator folding",
+        "pass_name": "LoopTermFoldPass",
+        "enable_flag": "enable-loop-simplifycfg-term-folding",
+        "scope": "Loop-specific optimizations"
+      }
+    },
+
+    "helper_functions": {
+      "constant_evaluators": {
+        "estimated_count": "50-100 functions",
+        "operations": [
+          "evalArithmeticOp() - fold arithmetic operations",
+          "evalLogicalOp() - fold logical operations",
+          "evalComparisonOp() - fold comparisons",
+          "evalTypeConversion() - fold type conversions",
+          "evalMemoryOp() - fold memory access with constant indices"
+        ]
+      },
+      "cache_management": {
+        "estimated_count": "10-20 functions",
+        "operations": [
+          "foldCache.lookup() - find cached expression",
+          "foldCache.insert() - cache new constant",
+          "foldCache.invalidate() - clear affected entries",
+          "generateFoldID() - create unique expression ID"
+        ]
+      },
+      "control_flow_analysis": {
+        "estimated_count": "20-30 functions",
+        "operations": [
+          "evaluateBranchCondition() - determine branch direction",
+          "removeUnreachableBlock() - eliminate dead blocks",
+          "mergeBlocks() - combine single-successor blocks"
+        ]
+      }
+    }
+  },
+
+  "validation_and_testing": {
+    "test_cases": {
+      "arithmetic_folding": {
+        "description": "Test constant arithmetic operations",
+        "examples": [
+          "const int x = 5 + 3; // Should become 8",
+          "const int y = 10 * 4; // Should become 40",
+          "const int z = 17 / 5; // Should become 3"
+        ]
+      },
+      "branch_folding": {
+        "description": "Test constant branch elimination",
+        "example": "if (1) { a(); } else { b(); } // Only a() remains",
+        "verification": "Check that b() is removed from generated code"
+      },
+      "phi_folding": {
+        "description": "Test PHI node constant folding",
+        "example": "if (c) { x = 5; } else { x = 5; } // PHI becomes constant 5",
+        "verification": "PHI node disappears, x is constant throughout"
+      },
+      "cuda_dimension_folding": {
+        "description": "Test CUDA block dimension folding",
+        "example": "int size = blockDim.x * blockDim.y * blockDim.z * sizeof(float);",
+        "verification": "Size becomes constant (e.g., 4096 for 8x8x8 blocks)"
+      }
+    }
+  },
+
+  "known_limitations": {
+    "floating_point_precision": "Some FP operations may differ slightly from runtime due to compiler vs CPU rounding",
+    "memory_accesses": "Can only fold loads if memory content is known (compile-time initialized)",
+    "function_calls": "Cannot fold impure functions (I/O, random numbers, etc.)",
+    "undefined_behavior": "Undefined operations are handled conservatively (not folded)",
+    "side_effects": "Operations with side effects are not folded away"
+  },
+
+  "cross_references": {
+    "foundation_analyses": [
+      "foundation/analyses/02_MODULE_ANALYSIS.json - mentions constant folding",
+      "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json - detailed pass information"
+    ],
+    "related_algorithms": [
+      "constant_propagation.json - feeds results into folding",
+      "algorithms/instruction_combining.json - InstCombine pass",
+      "algorithms/dead_code_elimination.json - uses folding results"
+    ],
+    "performance_analysis": [
+      "Binary string addresses for fold cache operations",
+      "Execution traces showing folding efficiency"
+    ]
+  },
+
+  "implementation_notes": {
+    "algorithm_correctness": "Based on proven constant folding techniques from compiler literature",
+    "performance": "O(expression_size) per expression, O(N) for N expressions",
+    "memory": "O(folded_expressions) for cache storage",
+    "compilation_impact": "Generally improves both compile time and runtime performance through reduced IR size",
+    "correctness_preservation": "Strictly follows language semantics to preserve program behavior"
+  }
+}

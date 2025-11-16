@@ -1,0 +1,371 @@
+{
+  "metadata": {
+    "unknown_id": "2",
+    "agent": "L3-02: Cost Model Coefficients Extraction",
+    "confidence": "HIGH",
+    "date": "2025-11-16",
+    "analysis_type": "Cost Model Formula Reconstruction",
+    "total_files_analyzed": 7,
+    "key_functions_analyzed": [
+      "sub_FDE760 (cost normalization)",
+      "sub_D788E0 (cost comparison)",
+      "sub_2F9DAC0 (pattern matcher)",
+      "sub_F04200 (fixed-point conversion)",
+      "sub_D78C90 (exponent adjustment)",
+      "sub_FDCA70 (cost addition/alignment)",
+      "sub_2F9DA20 (cost multiplication/weighting)",
+      "sub_2F9CA30 (cost subtraction)"
+    ]
+  },
+  "cost_representation": {
+    "format": "FLOATING_POINT_LIKE_PAIR",
+    "components": {
+      "mantissa": {
+        "type": "unsigned __int64",
+        "bits": 64,
+        "description": "Significant digits of the cost value in normalized form"
+      },
+      "exponent": {
+        "type": "signed __int16",
+        "bits": 16,
+        "range": "0 to 0x3FFF (16383)",
+        "description": "Scale factor: actual_cost = mantissa * 2^(exponent - bias)"
+      }
+    },
+    "bias": 16382,
+    "normalization": "Values normalized to ~2^63 for precision",
+    "operations_supported": [
+      "multiplication_with_coefficient",
+      "addition_with_exponent_alignment",
+      "subtraction_with_exponent_alignment",
+      "comparison_with_different_exponents",
+      "normalization_for_large_mantissas"
+    ]
+  },
+  "cost_model_formula": {
+    "high_level": "WEIGHTED_SUM_OF_METRICS",
+    "formula_pattern": "final_cost = sum(weight_i * metric_i) for multiple instruction metrics",
+    "example_components": [
+      "latency_cost = latency_metric * (some_weight)",
+      "throughput_cost = throughput_metric * (some_weight)",
+      "register_pressure_cost = regpressure_metric * (some_weight)",
+      "memory_latency_cost = mem_latency_metric * (some_weight)"
+    ],
+    "detailed_computation": {
+      "step_1_extract_metrics": "For each instruction pattern, extract multiple cost metrics (latency, throughput, register pressure)",
+      "step_2_scale_metrics": "Scale each metric by applying weights and combining them",
+      "step_3_apply_weights": "Weight coefficients: observed values are 1, 3, 64, 100 (and likely their inverses 1/3, 1/64, 1/100)",
+      "step_4_add_components": "Add weighted components together with proper exponent alignment",
+      "step_5_normalize": "Normalize result to handle overflow/underflow in mantissa"
+    }
+  },
+  "weights_and_coefficients": {
+    "observed_weight_values": {
+      "weight_100": {
+        "value": 100,
+        "usage": "Main cost aggregation weight, seen at sub_2F9DAC0:1125",
+        "context": "Used to scale combined latency and resource metrics"
+      },
+      "weight_3": {
+        "value": 3,
+        "usage": "Inverse weight (1/3 approximation), seen at sub_2F9DAC0:1034, 1056",
+        "context": "Used in secondary cost calculations, possibly register pressure scaling"
+      },
+      "weight_64": {
+        "value": 64,
+        "usage": "Inverse weight (1/64 approximation), seen at sub_2F9DAC0:1493",
+        "context": "Used in memory cost calculations or fine-grained adjustments"
+      },
+      "weight_1": {
+        "value": 1,
+        "usage": "Identity weight for direct metric use",
+        "context": "Used for critical path latency component"
+      }
+    },
+    "weight_application_mechanism": "sub_2F9DA20 function multiplies each metric by its weight and adjusts exponent accordingly",
+    "confidence_level": "MEDIUM - weights inferred from pattern, not directly visible in cost tables"
+  },
+  "cost_functions": {
+    "sub_FDE760_normalization": {
+      "address": "0xfde760",
+      "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_FDE760_0xfde760.c",
+      "size_bytes": 531,
+      "code_lines": "1-26",
+      "purpose": "Normalize cost values by converting between representations and adjusting for overflow/underflow",
+      "parameters": {
+        "a1": "pointer to cost structure (mantissa, exponent)",
+        "a2": "pointer to additional cost data or weight"
+      },
+      "operations": [
+        "Validates cost is non-zero",
+        "Calls sub_F04200 for conversion",
+        "Calls sub_D78C90 for exponent adjustment",
+        "Handles infinity (value = -1, exponent = 0x3FFF)"
+      ],
+      "key_line": "22: *(_QWORD *)a1 = sub_F04200(v3, *(_QWORD *)a2);"
+    },
+    "sub_D788E0_comparison": {
+      "address": "0xd788e0",
+      "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_D788E0_0xd788e0.c",
+      "size_bytes": 681,
+      "code_lines": "1-32",
+      "purpose": "Compare two cost values with different exponents and return ordering",
+      "parameters": {
+        "a1": "first cost mantissa",
+        "a2": "first cost exponent",
+        "a3": "second cost mantissa",
+        "a4": "second cost exponent"
+      },
+      "return_value": {
+        "-1": "first cost is greater (more expensive, worse)",
+        "0": "costs are equal",
+        "+1": "second cost is greater (more expensive, worse)"
+      },
+      "logic": [
+        "Compare exponents first using sub_D788C0",
+        "If exponents differ significantly, return comparison result",
+        "If exponents close, align mantissas and compare sub_F042F0"
+      ],
+      "key_line": "22: return (unsigned int)-sub_F042F0(a3, a1, (unsigned int)(a2 - v7));"
+    },
+    "sub_F04200_fixed_point_conversion": {
+      "address": "0xf04200",
+      "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_F04200_0xf04200.c",
+      "size_bytes": 286,
+      "code_lines": "1-73",
+      "purpose": "Convert cost ratio (mantissa / divisor) to fixed-point floating representation",
+      "parameters": {
+        "a1": "cost mantissa value",
+        "_RSI": "divisor (usually another cost metric)"
+      },
+      "return_value": "Normalized mantissa with implicit exponent tracking",
+      "algorithm": [
+        "Normalize input by finding leading bit",
+        "Perform division with rounding",
+        "Return normalized fixed-point result"
+      ],
+      "used_by": "sub_FDE760 for cost normalization"
+    },
+    "sub_D78C90_exponent_adjustment": {
+      "address": "0xd78c90",
+      "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_D78C90_0xd78c90.c",
+      "code_lines": "1-82",
+      "purpose": "Adjust cost exponent and mantissa when scaling by coefficient",
+      "parameters": {
+        "a1": "pointer to cost pair (mantissa, exponent)",
+        "a2": "adjustment amount (can be negative)"
+      },
+      "operations": [
+        "For negative adjustment: shift mantissa right, decrement exponent",
+        "For positive adjustment: shift mantissa left, increment exponent",
+        "Clamp exponent to valid range [0, 0x3FFF]",
+        "Clamp mantissa to [0, -1]"
+      ],
+      "key_range": "Exponent range: 0 to 0x3FFF (16384 values)"
+    },
+    "sub_FDCA70_cost_addition": {
+      "address": "0xfdca70",
+      "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_FDCA70_0xfdca70.c",
+      "code_lines": "1-66",
+      "purpose": "Add two costs by aligning exponents and combining mantissas",
+      "parameters": {
+        "a1": "pointer to first cost mantissa",
+        "a2": "pointer to first cost exponent",
+        "a3": "pointer to second cost mantissa",
+        "a4": "pointer to second cost exponent"
+      },
+      "algorithm": [
+        "Ensure first cost has larger exponent",
+        "If exponent difference <= 127:",
+        "  - Shift mantissas to align",
+        "  - Add aligned values",
+        "  - Normalize result",
+        "Else: return larger exponent value"
+      ],
+      "precision_loss": "Mantissa of smaller exponent cost may be shifted out after alignment"
+    },
+    "sub_2F9DA20_cost_weighting": {
+      "address": "0x2f9da20",
+      "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_2F9DA20_0x2f9da20.c",
+      "code_lines": "1-45",
+      "purpose": "Multiply a metric by a weight coefficient and add to accumulated cost",
+      "parameters": {
+        "a1": "weight or metric value",
+        "a2": "weight exponent",
+        "a3": "pointer to accumulated cost (mantissa, exponent)"
+      },
+      "computation": "result = a1 * cost_mantissa; result_exponent = a2 + cost_exponent",
+      "uses": "sub_F04140 for large multiplications, sub_D78C90 for exponent adjustment",
+      "used_in": "Main cost aggregation loop at sub_2F9DAC0:1125"
+    },
+    "sub_2F9CA30_cost_subtraction": {
+      "address": "0x2f9ca30",
+      "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_2F9CA30_0x2f9ca30.c",
+      "code_lines": "1-34",
+      "purpose": "Subtract second cost from first and return difference",
+      "parameters": {
+        "a1": "first cost mantissa",
+        "a2": "first cost exponent",
+        "a3": "pointer to second cost (mantissa, exponent)"
+      },
+      "return_value": "Result of cost1 - cost2, handling exponent alignment",
+      "used_for": "Cost benefit/difference calculations in optimization decisions"
+    }
+  },
+  "cost_data_structure": {
+    "pattern_entry_size": 40,
+    "unit": "bytes",
+    "layout": [
+      {
+        "offset": "0",
+        "size": "8",
+        "type": "qword",
+        "description": "Instruction or pattern identifier"
+      },
+      {
+        "offset": "8",
+        "size": "8",
+        "type": "qword",
+        "description": "First metric mantissa (e.g., latency cost)"
+      },
+      {
+        "offset": "16",
+        "size": "2",
+        "type": "word",
+        "description": "First metric exponent"
+      },
+      {
+        "offset": "18",
+        "size": "6",
+        "type": "padding",
+        "description": "Alignment padding"
+      },
+      {
+        "offset": "24",
+        "size": "8",
+        "type": "qword",
+        "description": "Second metric mantissa (e.g., throughput cost)"
+      },
+      {
+        "offset": "32",
+        "size": "2",
+        "type": "word",
+        "description": "Second metric exponent"
+      },
+      {
+        "offset": "34",
+        "size": "6",
+        "type": "padding",
+        "description": "Alignment padding"
+      }
+    ],
+    "access_pattern_in_pattern_matcher": "v322 + 40LL * hash_index (hash table with linear probing)"
+  },
+  "pattern_matcher_usage": {
+    "function": "sub_2F9DAC0",
+    "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_2F9DAC0_0x2f9dac0.c",
+    "size": "50 KB (1862 lines)",
+    "cost_retrieval_flow": [
+      "Line 793-828: Extract costs from pattern hash table for each instruction",
+      "Line 802-810: Compare costs, keep minimum latency and throughput costs",
+      "Line 887-927: Compute combined cost using sub_2F9DA20 and sub_FDCA70",
+      "Line 1090: Normalize final cost using sub_FDE760",
+      "Line 1300-1309: Compare alternative instruction patterns"
+    ],
+    "key_cost_computations": [
+      {
+        "line": 1004,
+        "operation": "Compute V metric (unknown, possibly throughput)",
+        "function": "sub_2F9DA20"
+      },
+      {
+        "line": 1006,
+        "operation": "Compute second combined cost",
+        "function": "sub_2F9DA20"
+      },
+      {
+        "line": 1016,
+        "operation": "Add two metric costs with alignment",
+        "function": "sub_FDCA70",
+        "weight": "implicit 1.0"
+      },
+      {
+        "line": 1090,
+        "operation": "Normalize combined cost with weight 100",
+        "function": "sub_FDE760",
+        "weight": 100
+      },
+      {
+        "line": 1124,
+        "operation": "Apply final weight and normalize",
+        "function": "sub_FDE760",
+        "weight": 100
+      }
+    ]
+  },
+  "sm_specific_latencies": {
+    "note": "Not directly visible in these functions. Latencies are baked into the cost tables.",
+    "inference": "Different SM architectures likely have different cost tables populated at compile time",
+    "likely_architectures": [
+      "SM 7.0 (Volta)",
+      "SM 7.5 (Turing)",
+      "SM 8.0 (Ampere)",
+      "SM 8.6 (Ampere)",
+      "SM 9.0 (Hopper)"
+    ],
+    "where_tables_are_likely": "Global cost tables in data section, indexed by instruction opcode"
+  },
+  "evidence": {
+    "cost_calc_function": {
+      "function": "sub_FDE760",
+      "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_FDE760_0xfde760.c",
+      "complete_code": "// Function: sub_FDE760\n// Address: 0xfde760\n//\n__int64 __fastcall sub_FDE760(__int64 a1, __int64 a2)\n{\n  signed __int64 v3; // rdi\n  __int16 v5; // r13\n  __int16 v6; // bx\n  __int16 v7; // dx\n\n  v3 = *(_QWORD *)a1;\n  if ( !v3 )\n    return a1;\n  if ( !*(_QWORD *)a2 )\n  {\n    *(_QWORD *)a1 = -1;\n    *(_WORD *)(a1 + 8) = 0x3FFF;\n    return a1;\n  }\n  v5 = *(_WORD *)(a2 + 8);\n  v6 = *(_WORD *)(a1 + 8);\n  *(_QWORD *)a1 = sub_F04200(v3, *(_QWORD *)a2);\n  *(_WORD *)(a1 + 8) = v7;\n  sub_D78C90(a1, (__int16)(v6 - v5));\n  return a1;\n}"
+    },
+    "cost_compare_function": {
+      "function": "sub_D788E0",
+      "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_D788E0_0xd788e0.c",
+      "complete_code": "// Function: sub_D788E0\n// Address: 0xd788e0\n//\n__int64 __fastcall sub_D788E0(unsigned __int64 a1, __int16 a2, unsigned __int64 a3, __int16 a4)\n{\n  __int64 result; // rax\n  int v7; // r15d\n  int v8; // eax\n  int v9; // [rsp+Ch] [rbp-34h]\n\n  if ( !a1 )\n    return (unsigned int)-(a3 != 0);\n  result = 1;\n  if ( a3 )\n  {\n    v7 = a4;\n    v9 = sub_D788C0(a1, a2);\n    v8 = sub_D788C0(a3, v7);\n    if ( v9 == v8 )\n    {\n      if ( a2 >= a4 )\n        return (unsigned int)-sub_F042F0(a3, a1, (unsigned int)(a2 - v7));\n      else\n        return sub_F042F0(a1, a3, (unsigned int)(v7 - a2));\n    }\n    else\n    {\n      return 2 * (unsigned int)(v9 >= v8) - 1;\n    }\n  }\n  return result;\n}"
+    },
+    "cost_addition_function": {
+      "function": "sub_FDCA70",
+      "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_FDCA70_0xfdca70.c",
+      "complete_code": "// Function: sub_FDCA70\n// Address: 0xfdca70\n//\n__int64 __fastcall sub_FDCA70(unsigned __int64 *a1, unsigned __int16 *a2, unsigned __int64 *a3, unsigned __int16 *a4)\n{\n  __int64 result; // rax\n  unsigned int v6; // r8d\n  unsigned __int16 *v7; // rdx\n  __int16 v8; // cx\n  unsigned __int16 *v9; // rcx\n  unsigned __int64 *v10; // rcx\n  unsigned __int64 v11; // r10\n  int v12; // eax\n  unsigned __int64 v13; // rcx\n  int v14; // ecx\n  char v15; // r8\n  __int16 v16; // r11\n\n  LODWORD(result) = (__int16)*a2;\n  v6 = (__int16)*a4;\n  v7 = a4;\n  while ( (__int16)result < (__int16)v6 )\n  {\n    v8 = result;\n    LODWORD(result) = (__int16)v6;\n    v6 = v8;\n    v9 = a2;\n    a2 = v7;\n    v7 = v9;\n    v10 = a1;\n    a1 = a3;\n    a3 = v10;\n  }\n  v11 = *a1;\n  if ( !*a1 )\n    return v6;\n  if ( !*a3 || (_WORD)result == (_WORD)v6 )\n    return (unsigned int)result;\n  v12 = result - v6;\n  if ( v12 <= 127 )\n  {\n    _BitScanReverse64(&v13, v11);\n    v14 = v13 ^ 0x3F;\n    if ( v12 < v14 )\n    {\n      v16 = 0;\n      v15 = 0;\n      goto LABEL_11;\n    }\n    v12 -= v14;\n    v15 = v12;\n    if ( v12 <= 63 )\n    {\n      v16 = v12;\n      LOWORD(v12) = v14;\nLABEL_11:\n      *a1 = v11 << v12;\n      *a3 >>= v15;\n      *a2 -= v12;\n      *v7 += v16;\n      return *a2;\n    }\n  }\n  *a3 = 0;\n  return *a2;\n}"
+    },
+    "cost_weighting_function": {
+      "function": "sub_2F9DA20",
+      "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_2F9DA20_0x2f9da20.c",
+      "complete_code": "// Function: sub_2F9DA20\n// Address: 0x2f9da20\n//\nunsigned __int64 __fastcall sub_2F9DA20(unsigned __int64 a1, __int64 a2, __int64 a3)\n{\n  unsigned __int64 v3; // rsi\n  __int16 v4; // ax\n  __int16 v6; // bx\n  __int16 v7; // r12\n  unsigned __int64 v8; // rdi\n  __int16 v9; // dx\n  unsigned __int64 v10; // [rsp+10h] [rbp-20h] BYREF\n  __int64 v11; // [rsp+18h] [rbp-18h]\n\n  v10 = a1;\n  v11 = a2;\n  if ( a1 )\n  {\n    v3 = *(_QWORD *)a3;\n    if ( *(_QWORD *)a3 )\n    {\n      v6 = v11;\n      v7 = *(_WORD *)(a3 + 8);\n      if ( a1 > 0xFFFFFFFF || v3 > 0xFFFFFFFF )\n      {\n        v8 = sub_F04140(a1, v3);\n      }\n      else\n      {\n        v8 = v3 * a1;\n        v9 = 0;\n      }\n      v10 = v8;\n      LOWORD(v11) = v9;\n      sub_D78C90((__int64)&v10, (__int16)(v6 + v7));\n    }\n    else\n    {\n      v4 = *(_WORD *)(a3 + 8);\n      v10 = 0;\n      LOWORD(v11) = v4;\n    }\n  }\n  return v10;\n}"
+    },
+    "pattern_matcher_usage_lines": {
+      "line_802": "if ( (int)sub_D788E0(v42, v285, *(_QWORD *)(v45 + 8), *(_WORD *)(v45 + 16)) < 0 )",
+      "line_1090": "sub_FDE760((__int64)&v320, (__int64)&v347);",
+      "line_1300": "if ( (int)sub_D788E0(*v273, *((_WORD *)v273 + 4), v278, v287) < 0 )",
+      "context": "Pattern matcher evaluates cost metrics and selects best instruction sequences"
+    }
+  },
+  "key_findings": [
+    "Cost model uses floating-point-like representation with (mantissa, exponent) pairs",
+    "Costs are aggregated as weighted sums of multiple metrics",
+    "Observed weights: 1, 3, 64, 100 (and possibly their reciprocals for inverse operations)",
+    "Two primary metrics stored per instruction pattern: latency and throughput/resource costs",
+    "Exponent range is 0 to 0x3FFF (16384 levels of precision)",
+    "All arithmetic is done with proper exponent alignment to handle different scales",
+    "Pattern matcher uses hash table with linear probing for O(1) cost lookups",
+    "Cost comparison is critical: smaller mantissa with larger exponent may be cheaper",
+    "Normalization handles overflow by clamping to -1 (infinity marker)"
+  ],
+  "unresolved_questions": [
+    "Exact values of weights for latency vs. throughput - encoded in lookup tables",
+    "Which metrics are latency vs. throughput vs. register pressure - inferred from context",
+    "SM-specific cost tables - not visible in decompiled instruction selection",
+    "Real units: cycles per instruction or abstract cost units - context dependent",
+    "Tuning methodology: how weights were determined - compiler tuning phase"
+  ],
+  "next_steps": [
+    "Find the global cost tables in the binary data section",
+    "Identify SM-specific cost table variations",
+    "Locate where weights (100, 3, 64) come from - likely config/tuning data",
+    "Cross-reference with NVIDIA CUDA documentation on instruction latencies",
+    "Validate cost model against actual measured instruction latencies"
+  ]
+}

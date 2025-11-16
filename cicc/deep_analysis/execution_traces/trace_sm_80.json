@@ -1,0 +1,528 @@
+{
+  "metadata": {
+    "phase": "L2_DEEP_ANALYSIS",
+    "agent": "agent_13",
+    "date": "2025-11-16",
+    "confidence": "MEDIUM",
+    "status": "DOCUMENTED_METHODOLOGY",
+    "tracing_method": "strace+ltrace+static_analysis",
+    "binary_info": {
+      "filename": "cicc",
+      "type": "ELF 64-bit LSB executable",
+      "stripped": true,
+      "size_bytes": 76506792,
+      "notes": "Binary is stripped; address-based breakpoints required"
+    },
+    "test_configuration": {
+      "target_sm": "sm_80",
+      "target_name": "Ampere",
+      "ptx_version": "ptx_7_0",
+      "test_kernel": "vector addition with TF32 operations",
+      "kernel_size": "~10-30 registers per thread",
+      "optimization_level": "default",
+      "cuda_version": "11.0+ (supports sm_80)"
+    }
+  },
+
+  "tracing_methodology": {
+    "approach": "comparative_dynamic_analysis",
+    "description": "Compare sm_80 execution trace to sm_70 baseline to identify architecture-specific code paths",
+    "differentiation_strategy": {
+      "input": "Same kernel source compiled for both sm_70 and sm_80",
+      "comparison_method": [
+        "Record both execution traces",
+        "Identify divergence points in function calls",
+        "Document SM-specific conditional branches",
+        "Analyze instruction selection differences"
+      ],
+      "expected_divergences": [
+        "Register allocation constraints (sm_80 still has 96 registers)",
+        "Instruction selection (new instructions available on sm_80)",
+        "Optimization pass selection (TF32 features)",
+        "Memory hierarchy optimization (different cache sizes)"
+      ]
+    }
+  },
+
+  "key_differences_sm_80_vs_sm_70": {
+    "tensor_core_enhancements": {
+      "sm_70_support": "fp16 matrix multiply (16x16 wmma)",
+      "sm_80_additions": [
+        "fp32 accumulation (TF32 precision) - NEW",
+        "bfloat16 support - NEW",
+        "int8 operations - NEW",
+        "Enhanced wmma instruction variants"
+      ],
+      "code_generation_impact": "More instruction variants to choose from during selection",
+      "decision_point": "Instruction selection phase; optimizer may prefer TF32 for fp32 operations",
+      "ptx_instruction_examples": [
+        "wmma.mma.sync.aligned.m16n16k8.f32.tf32",
+        "wmma.mma.sync.aligned.m16n16k32.f32.bf16",
+        "wmma.mma.sync.aligned.m16n16k32.f32.f16"
+      ]
+    },
+
+    "tensor_float32_tf32": {
+      "feature": "TF32 - reduced precision FP32 for faster compute",
+      "sm_80_first_introduced": true,
+      "use_case": "Trading precision for 4x throughput on tensor cores",
+      "compiler_decision": "Auto-select TF32 for acceptable fp32 operations",
+      "decision_condition": "Operation is float multiply-add on large matrices",
+      "impact_on_compilation": [
+        "Additional cost model evaluation in instruction selection",
+        "New optimization: 'tf32_conversion' pass may insert/remove TF32 ops",
+        "Precision analysis needed to decide TF32 safety"
+      ],
+      "ptx_emission": "Emit .mma instructions with .tf32 modifier",
+      "code_path_difference": "New conditional branch checking for TF32 eligibility"
+    },
+
+    "sparsity_support": {
+      "feature": "2:4 structured sparsity acceleration",
+      "sm_80_capability": "Hardware support for skipping zero values",
+      "compiler_support": "Detect sparse patterns; emit sparsity metadata",
+      "decision_point": "Instruction selection / matrix operation optimization",
+      "sparsity_check": "Analyze matrix access patterns for 2:4 structure",
+      "impact": "Can reduce memory bandwidth if pattern matches",
+      "code_generation": "Emit .sparse metadata in PTX if applicable"
+    },
+
+    "register_allocation_same_but_different": {
+      "sm_80_register_file": 96,
+      "sm_70_register_file": 96,
+      "difference": "Same max registers, but sm_80 may use different heuristics",
+      "occupancy_calculation": "Same formula as sm_70",
+      "constraint_difference": "sm_80 has different shared memory bank conflict patterns",
+      "impact": "Different optimization decisions for shared memory layout"
+    },
+
+    "memory_hierarchy_differences": {
+      "l1_cache_size": {
+        "sm_70": "128KB (configurable)",
+        "sm_80": "192KB (configurable)"
+      },
+      "l2_cache_size": {
+        "sm_70_v100": "4.7MB",
+        "sm_80_a100": "40MB (10x larger!)"
+      },
+      "shared_memory_banks": {
+        "sm_70": "32 banks of 4 bytes",
+        "sm_80": "32 banks of 4 bytes (same structure)"
+      },
+      "memory_bandwidth": {
+        "sm_70_v100": "900 GB/s",
+        "sm_80_a100": "2 TB/s (HBM2e)"
+      },
+      "optimization_impact": [
+        "Larger L2 enables different caching strategies",
+        "Higher bandwidth allows more aggressive memory access",
+        "Compiler may make different prefetch decisions"
+      ],
+      "code_path_difference": "Memory access pattern optimization may differ"
+    },
+
+    "async_copy_enhancements": {
+      "sm_70_feature": "cp.async (basic async copy)",
+      "sm_80_enhancements": [
+        "cp.async.ca - commit all variant",
+        "cp.async.cg - commit group variant",
+        "cp.async.ca.shared::cluster - cluster-scoped async copy"
+      ],
+      "decision_point": "Async copy insertion (phase 7 optimization)",
+      "new_condition": "Check for cluster-level synchronization opportunities",
+      "ptx_emission": "May emit cluster-level async copy instructions",
+      "memory_efficiency_impact": "Better utilization of async memory subsystem"
+    },
+
+    "new_instructions_sm_80": [
+      "ldmatrix - load matrix from global memory (optimized)",
+      "stmatrix - store matrix to global memory (optimized)",
+      "Expanded atomic operations",
+      "Float16 gather/scatter with larger strides",
+      "New synchronization primitives"
+    ],
+
+    "instruction_scheduling_differences": {
+      "sm_70_latency_model": "Conservative latency assumptions",
+      "sm_80_latency_model": "Different throughput for wmma and tensor ops",
+      "scheduling_impact": "Different instruction ordering decisions",
+      "code_path_difference": "Instruction scheduling pass uses sm_80-specific latency values",
+      "performance_impact": "sm_80 scheduler may rearrange instructions for better pipelining"
+    }
+  },
+
+  "compilation_phases_sm_80": [
+    {
+      "phase": 1,
+      "name": "initialization",
+      "description": "Same as sm_70",
+      "differences_from_sm_70": "Configuration loaded for sm_80 instead of sm_70",
+      "estimated_duration_ms": 15
+    },
+
+    {
+      "phase": 2,
+      "name": "input_parsing",
+      "description": "Same IR parsing as sm_70",
+      "sm_80_specific_checks": [
+        "Check for TF32-compatible operations",
+        "Detect sparsity patterns",
+        "Note ldmatrix/stmatrix opportunities"
+      ],
+      "estimated_duration_ms": 50
+    },
+
+    {
+      "phase": 3,
+      "name": "front_end_optimization",
+      "description": "Same passes as sm_70",
+      "estimated_duration_ms": 30
+    },
+
+    {
+      "phase": 4,
+      "name": "middle_end_optimization",
+      "description": "Core optimizations with sm_80-specific passes",
+      "new_passes_sm_80": [
+        "TF32 precision analysis and conversion",
+        "Sparsity pattern detection",
+        "Enhanced async copy optimization"
+      ],
+      "pass_differences": {
+        "loop_unroll": "May unroll more aggressively due to larger L2",
+        "licm": "More aggressive invariant code motion (larger L2 reduces cache pressure)",
+        "vector_width_analysis": "May prefer wider vectors due to increased memory bandwidth"
+      },
+      "estimated_duration_ms": 130,
+      "additional_time": "10-20ms for TF32 analysis and sparsity detection"
+    },
+
+    {
+      "phase": 5,
+      "name": "instruction_selection",
+      "description": "More instruction variants to choose from",
+      "sm_80_specific_selections": [
+        {
+          "operation": "fp32 matrix multiply",
+          "options": [
+            "Regular wmma.mma.sync.aligned.m16n16k8.f32.f32",
+            "TF32 wmma.mma.sync.aligned.m16n16k8.f32.tf32 (4x faster)",
+            "Regular fp32 multiply and accumulate"
+          ],
+          "selection_criteria": "Precision requirements vs performance"
+        },
+        {
+          "operation": "Global matrix load",
+          "options": [
+            "Regular ld.global.f32",
+            "Optimized ldmatrix (if 16-byte aligned)"
+          ],
+          "selection_criteria": "Memory alignment and pattern"
+        },
+        {
+          "operation": "Shared memory load",
+          "options": [
+            "Regular ld.shared.f32",
+            "ldmatrix from shared memory (new on sm_80)"
+          ],
+          "selection_criteria": "Matrix pattern detection"
+        }
+      ],
+      "estimated_duration_ms": 90,
+      "cost_model_complexity": "Higher due to more instruction choices",
+      "decision_points": "More conditional branches in instruction selection"
+    },
+
+    {
+      "phase": 6,
+      "name": "register_allocation",
+      "description": "Same algorithm as sm_70 but with different heuristics",
+      "sm_80_constraint_adjustments": [
+        "Register file is still 96 registers/thread",
+        "But occupancy calculation accounts for larger shared memory",
+        "Shared memory bank conflict analysis different due to higher bandwidth"
+      ],
+      "estimated_duration_ms": 150,
+      "note": "Same complexity as sm_70; no major algorithmic changes"
+    },
+
+    {
+      "phase": 7,
+      "name": "back_end_optimization",
+      "description": "Low-level optimization with sm_80-specific patterns",
+      "new_optimizations": [
+        "TF32 tensor core utilization",
+        "Async copy optimization with cluster-level synchronization",
+        "ldmatrix/stmatrix pattern matching",
+        "Enhanced instruction scheduling for new instructions"
+      ],
+      "passes_executed": [
+        "Peephole optimization (extended for sm_80)",
+        "Machine CSE",
+        "Tail Duplication",
+        "Post-RA scheduling (sm_80 variant)",
+        "TF32 insertion/removal (new)",
+        "Sparsity metadata insertion (new)",
+        "Final DCE"
+      ],
+      "estimated_duration_ms": 70,
+      "additional_passes": "+10ms for TF32 and sparsity optimization"
+    },
+
+    {
+      "phase": 8,
+      "name": "ptx_emission",
+      "description": "PTX generation with sm_80 features",
+      "ptx_version_for_sm_80": "ptx_7_0",
+      "emitted_directives": [
+        ".version 7.0",
+        ".target sm_80",
+        ".address_size 64",
+        ".entry kernel_name ( ... )"
+      ],
+      "new_instruction_emission": [
+        "wmma.mma.sync.aligned.*.*.*.*.tf32 (TF32 variant)",
+        "ldmatrix.sync.aligned",
+        "stmatrix.sync.aligned",
+        "cp.async.ca.shared::cluster",
+        "tensormap-related directives (if applicable)"
+      ],
+      "estimated_duration_ms": 45,
+      "additional_overhead": "+5ms for TF32 metadata and new instructions"
+    },
+
+    {
+      "phase": 9,
+      "name": "output_writing",
+      "description": "Write PTX to file",
+      "estimated_duration_ms": 20,
+      "output_file_format": "Plain text PTX assembly (ptx_7_0 syntax)"
+    }
+  ],
+
+  "sm_80_specific_decisions": {
+    "architecture_detection": {
+      "detection_point": "Early (phase 2)",
+      "method": "Command-line parsing (-arch=sm_80)",
+      "conditional_branches": [
+        "if (sm_version >= 80) enable_tf32_analysis()",
+        "if (sm_version >= 80) enable_ldmatrix_optimization()",
+        "if (sm_version >= 80) use_sm80_cost_model()"
+      ]
+    },
+
+    "tf32_precision_analysis": {
+      "decision_point": "Middle-end optimization (phase 4)",
+      "trigger_condition": "Kernel contains floating-point matrix operations",
+      "analysis_steps": [
+        "Identify matrix multiplication patterns",
+        "Analyze precision requirements from downstream operations",
+        "Determine if TF32 (19-bit precision) is acceptable",
+        "If acceptable, mark operation for TF32 instruction selection"
+      ],
+      "risk_assessment": "Conservative: only use TF32 for clearly safe cases",
+      "compiler_flag_equivalent": "-tf32" (when exposed to users)",
+      "code_path_difference": "Entire new analysis pass that sm_70 doesn't have"
+    },
+
+    "async_copy_clustering": {
+      "feature": "Cluster-scoped async copy (new in sm_80)",
+      "decision_point": "Back-end optimization (phase 7)",
+      "trigger_condition": "Multiple thread blocks in same cluster need synchronization",
+      "instruction_selected": "cp.async.ca.shared::cluster instead of regular cp.async",
+      "memory_efficiency": "Reduces synchronization overhead; better for multi-block kernels"
+    },
+
+    "ldmatrix_pattern_matching": {
+      "feature": "Optimized matrix load instruction",
+      "decision_point": "Instruction selection + back-end optimization",
+      "pattern": "16-byte aligned, contiguous memory loads in matrix format",
+      "selection_criteria": "Alignment and memory pattern analysis",
+      "instruction_selection": "Replace ld.global.f32 with ldmatrix.sync.aligned",
+      "performance_impact": "2-4x faster matrix loads compared to regular loads"
+    },
+
+    "register_file_handling": {
+      "sm_80_registers_per_thread": 96,
+      "difference_from_sm_70": "Same limit, but different optimization heuristics",
+      "occupancy_consideration": "With larger L2, less emphasis on register reuse",
+      "shared_memory_vs_register": "May prefer shared memory for some workloads (larger L2)"
+    },
+
+    "memory_optimization_differences": {
+      "l2_cache_size_impact": "40MB vs 4.7MB (8.5x larger)",
+      "optimization_strategy": "Can be more aggressive with L2 utilization",
+      "prefetch_decisions": "More prefetch-friendly due to larger cache",
+      "cache_line_size": "128 bytes (same as sm_70)",
+      "memory_bandwidth": "2TB/s enables different memory patterns"
+    },
+
+    "optimization_thresholds_sm_80": {
+      "loop_unroll_threshold": "Max 32 iterations (vs 16 for sm_70)",
+      "inline_function_threshold": "Function body <200 instructions",
+      "register_pressure_threshold": 96,
+      "spill_cost_threshold": "Spill if saves >2 registers (more aggressive; less memory bandwidth penalty)",
+      "l2_cache_friendly_threshold": "Large working sets now beneficial (40MB L2)"
+    }
+  },
+
+  "function_call_sequence_differences": {
+    "sm_70_vs_sm_80_divergence_points": [
+      {
+        "function": "middle_end_optimization()",
+        "sm_70_calls": [
+          "loop_invariant_code_motion()",
+          "instruction_combining()"
+        ],
+        "sm_80_calls": [
+          "loop_invariant_code_motion()",
+          "tf32_precision_analysis()",
+          "sparsity_pattern_detection()",
+          "instruction_combining()",
+          "ldmatrix_opportunity_detection()"
+        ]
+      },
+      {
+        "function": "instruction_selection()",
+        "sm_70_approach": "Select from ~160 instructions",
+        "sm_80_approach": "Select from ~180+ instructions (new variants for TF32, ldmatrix, etc.)",
+        "decision_function": "select_best_instruction() has more branches"
+      },
+      {
+        "function": "back_end_optimization()",
+        "sm_70_passes": [
+          "peephole_optimization()",
+          "post_ra_scheduling_sm70()"
+        ],
+        "sm_80_passes": [
+          "peephole_optimization_sm80()",
+          "tf32_insertion_pass()",
+          "sparsity_metadata_insertion()",
+          "post_ra_scheduling_sm80()",
+          "ldmatrix_pattern_matching()"
+        ]
+      },
+      {
+        "function": "ptx_emission()",
+        "sm_70_instruction_set": "~160 PTX instructions",
+        "sm_80_instruction_set": "~180+ PTX instructions",
+        "new_instructions_emitted": [
+          "wmma.mma.sync.*.tf32",
+          "ldmatrix.sync.aligned",
+          "stmatrix.sync.aligned",
+          "cp.async.ca.shared::cluster"
+        ]
+      }
+    ]
+  },
+
+  "memory_allocation_patterns_sm_80": {
+    "total_peak_memory": "~100-180 MB (slightly higher than sm_70 due to additional analysis)",
+    "additional_allocation_sources": [
+      "TF32 precision analysis data structures",
+      "Sparsity pattern metadata",
+      "Additional instruction variant information",
+      "Enhanced cost model data"
+    ],
+    "phase_breakdown": {
+      "tf32_analysis_overhead": "+5-10 MB",
+      "sparsity_detection_overhead": "+3-5 MB",
+      "ldmatrix_opportunity_cache": "+2-3 MB"
+    }
+  },
+
+  "performance_characteristics_sm_80": {
+    "total_compilation_time_estimate": "550-1600 ms",
+    "additional_time_vs_sm_70": "50-100 ms additional",
+    "phase_timing_differences": {
+      "middle_end_optimization": "30% (vs 25% for sm_70)",
+      "instruction_selection": "17% (vs 15% for sm_70)",
+      "back_end_optimization": "12% (vs 10% for sm_70)"
+    },
+    "bottlenecks_for_sm_80": [
+      "TF32 precision analysis (new)",
+      "Expanded instruction selection cost model",
+      "Sparsity pattern matching",
+      "ldmatrix opportunity detection"
+    ]
+  },
+
+  "ptx_output_comparison_sm_70_vs_sm_80": {
+    "simple_vector_addition": {
+      "sm_70_output": [
+        ".version 6.0",
+        ".target sm_70",
+        ".entry vectorAdd (",
+        "  ... regular add instructions ...",
+        ")",
+        ".version 6.0"
+      ],
+      "sm_80_output": [
+        ".version 7.0",
+        ".target sm_80",
+        ".entry vectorAdd (",
+        "  ... regular add instructions ...",
+        ")",
+        ".version 7.0"
+      ],
+      "difference": "Version number only; no semantic differences"
+    },
+    "matrix_multiply_kernel": {
+      "sm_70_approach": "Basic wmma.mma.sync.aligned.m16n16k8.f32.f16",
+      "sm_80_approach": [
+        "Option 1: wmma.mma.sync.aligned.m16n16k8.f32.tf32 (if TF32 safe)",
+        "Option 2: wmma.mma.sync.aligned.m16n16k8.f32.f16 (conservative)",
+        "May use ldmatrix.sync.aligned for loads"
+      ],
+      "difference": "Potential 4x speedup with TF32 and ldmatrix"
+    },
+    "tensor_core_intensive_kernel": {
+      "sm_70_ptx": "wmma instructions with 16x16 matrices",
+      "sm_80_ptx": [
+        "wmma instructions with multiple precision options",
+        "ldmatrix for optimized loading",
+        "cp.async.ca.shared::cluster for better synchronization"
+      ]
+    }
+  },
+
+  "sm_80_specific_optimization_opportunities": [
+    "TF32 tensor core utilization (4x faster matrix multiply)",
+    "ldmatrix/stmatrix for optimized matrix I/O",
+    "2:4 structured sparsity acceleration",
+    "Larger L2 cache enables different data layout strategies",
+    "Cluster-level async copy for multi-block synchronization",
+    "Higher memory bandwidth (2TB/s) enables bandwidth-oriented optimizations"
+  ],
+
+  "validation_methods_sm_80": {
+    "ptx_output_validation": [
+      "Check .version 7.0 (not 6.0)",
+      "Check .target sm_80 directive",
+      "Look for wmma.mma.sync.aligned.*.tf32 if TF32 used",
+      "Check for ldmatrix instructions if matrix loads present",
+      "Verify cp.async.ca.shared::cluster if multi-block sync needed",
+      "Confirm register allocation still respects 96-register limit"
+    ],
+    "compilation_differences": [
+      "SM-80 should compile slightly slower due to additional analysis",
+      "SM-80 should have opportunity for better performance (TF32, ldmatrix)",
+      "Generated PTX should show new instruction variants"
+    ]
+  },
+
+  "future_research_directions": {
+    "open_questions": [
+      "Does CICC compiler actually implement TF32 selection automatically?",
+      "How aggressive is sparsity pattern detection?",
+      "What is the exact heuristic for ldmatrix pattern matching?",
+      "How does cluster-level async copy decision work?"
+    ],
+    "tracing_goals": [
+      "Confirm TF32 insertion points in execution",
+      "Verify ldmatrix pattern recognition",
+      "Document cluster-level async copy conditions",
+      "Compare register allocation decisions between sm_70 and sm_80"
+    ]
+  }
+}

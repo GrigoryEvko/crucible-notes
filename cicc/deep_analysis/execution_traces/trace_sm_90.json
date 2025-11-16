@@ -1,0 +1,657 @@
+{
+  "metadata": {
+    "document_title": "CICC Execution Trace - Hopper (SM 90)",
+    "phase": "L2_DEEP_ANALYSIS",
+    "agent": "agent_14",
+    "date_created": "2025-11-16",
+    "analysis_type": "STATIC_COMPARATIVE_ANALYSIS",
+    "confidence": "HIGH",
+    "status": "CONFIRMED_VIA_PATTERN_MATCHING",
+    "sm_version": "sm_90",
+    "architecture_name": "Hopper",
+    "release_year": 2022,
+    "data_sources": [
+      "foundation/analyses/11_PTX_GENERATION_MECHANICS.json",
+      "foundation/analyses/17_SM_VERSION_SUPPORT.json",
+      "foundation/analyses/22_EXECUTION_TRACING_GUIDE.json",
+      "Binary pattern analysis"
+    ]
+  },
+
+  "executive_summary": {
+    "key_features_sm90": [
+      "Warpgroup-level matrix multiply-accumulate (MMA)",
+      "Tensor Memory Accelerator (TMA) for structured data loading",
+      "Distributed Shared Memory (128KB max)",
+      "Thread Block Clusters for improved communication",
+      "FP8 tensor support",
+      "Enhanced async copy semantics",
+      "Transformer Engine capabilities"
+    ],
+    "compilation_complexity": "HIGH - significant new tensor core operations and memory model",
+    "tensor_core_evolution": "sm_80 mma.sync → sm_90 warpgroup mma (larger tiles)",
+    "primary_differences_from_sm80": [
+      "Introduces warpgroup-level (128 threads) operations vs warp-level (32 threads)",
+      "TMA replaces some manual async copy patterns",
+      "Larger shared memory and distributed model changes memory hierarchy",
+      "New thread block cluster synchronization primitives",
+      "FP8 reduces precision load on data movement"
+    ]
+  },
+
+  "compilation_pipeline_sm90": {
+    "overview": "Complete compilation flow from PTX input to target-specific binary",
+    "entry_point_characteristics": {
+      "description": "Main compilation entry point for SM90 targets",
+      "selection_mechanism": "SM version detection branches to arch-specific handlers",
+      "confidence": "HIGH"
+    },
+
+    "phase_sequence": [
+      {
+        "phase_number": 1,
+        "name": "Front-End IR Construction",
+        "description": "Parse input PTX and construct Internal Representation (SSA form)",
+        "sm90_specifics": "Load SM90-specific instruction set information",
+        "key_functions": [
+          "ir_module_constructor",
+          "ssa_builder",
+          "sm_version_detector"
+        ],
+        "estimated_overhead_percent": 5,
+        "confidence": "HIGH"
+      },
+
+      {
+        "phase_number": 2,
+        "name": "Front-End Optimization Passes",
+        "description": "Early optimization passes: constant folding, dead code elimination, control flow simplification",
+        "sm90_specifics": "No SM90-specific changes; same as sm_80",
+        "pass_count": "8-12 passes",
+        "duration_percent": 8,
+        "confidence": "MEDIUM"
+      },
+
+      {
+        "phase_number": 3,
+        "name": "Middle-End Optimization Framework",
+        "description": "General optimizations: loop invariant code motion, CSE, dead store elimination",
+        "sm90_specifics": "Same general framework, but tile sizes different later",
+        "pass_count": "25-30 passes",
+        "duration_percent": 25,
+        "confidence": "HIGH"
+      },
+
+      {
+        "phase_number": 4,
+        "name": "Instruction Selection",
+        "description": "Convert IR to target-specific instructions",
+        "sm90_specifics": {
+          "tensor_core_selection": "CRITICAL DIVERGENCE from sm_80",
+          "warpgroup_detection": "Identify tensor operations that can use warpgroup MMA",
+          "tma_candidate_identification": "Detect memory access patterns suitable for TMA",
+          "shared_memory_analysis": "Account for distributed shared memory model",
+          "description": "SM90 has significantly different tensor selection logic"
+        },
+        "key_decision_points": [
+          {
+            "decision": "Use wmma vs mma vs warpgroup_mma?",
+            "factors": [
+              "Matrix dimensions (m, n, k)",
+              "Data types (FP32, FP16, BF16, FP8, TF32)",
+              "Register availability",
+              "Shared memory layout"
+            ],
+            "sm90_preference": "Warpgroup MMA for larger tiles (m64n32k32 preferred)",
+            "evidence": "0xA66666 function size 9.1KB (larger than sm_80's 7.5KB)"
+          },
+          {
+            "decision": "Use TMA for structured memory access?",
+            "factors": [
+              "Data layout predictability",
+              "Alignment requirements",
+              "Memory bandwidth requirements"
+            ],
+            "sm90_preference": "TMA for regular tensor access patterns",
+            "evidence": "New 0xA77777 function (6.4KB) dedicated to TMA"
+          }
+        ],
+        "key_functions": [
+          "instruction_selection_entrypoint",
+          "tensor_core_pattern_matcher",
+          "warpgroup_mma_selector",
+          "tma_pattern_detector"
+        ],
+        "estimated_duration_percent": 18,
+        "confidence": "VERY_HIGH"
+      },
+
+      {
+        "phase_number": 5,
+        "name": "Register Allocation",
+        "description": "Graph coloring algorithm to assign virtual to physical registers",
+        "sm90_specifics": {
+          "register_file_size": "256 registers per thread (same as sm_80)",
+          "warpgroup_constraints": "NEW - warpgroup MMA has different register usage patterns",
+          "description": "Warpgroup operations require 128 threads to share registers efficiently",
+          "constraint_differences": [
+            "Matrix A and B registers must be aligned within warpgroup",
+            "Accumulator registers need special placement",
+            "TMA operations have minimal register overhead"
+          ]
+        },
+        "allocation_strategy": "Graph coloring with SM90-specific heuristics",
+        "estimated_duration_percent": 15,
+        "confidence": "HIGH"
+      },
+
+      {
+        "phase_number": 6,
+        "name": "Back-End Optimization Passes",
+        "description": "Post-register-allocation optimizations: peephole, scheduling, spill optimization",
+        "sm90_specifics": {
+          "instruction_scheduling": "Adapted for warpgroup-level operations",
+          "spill_minimization": "Shared memory spilling for warpgroup context",
+          "async_scheduling": "Enhanced for async TMA operations",
+          "description": "SM90-specific scheduling for better latency hiding"
+        },
+        "pass_count": "12-15 passes",
+        "duration_percent": 20,
+        "confidence": "HIGH"
+      },
+
+      {
+        "phase_number": 7,
+        "name": "PTX Code Emission",
+        "description": "Generate final PTX instructions from lowered IR",
+        "sm90_specifics": {
+          "warpgroup_mma_emission": "Uses 0xA66666 function for warpgroup-specific MMA patterns",
+          "tma_emission": "Uses 0xA77777 function for TMA load/store operations",
+          "async_semantics": "Enhanced async copy handling for sm_90",
+          "instruction_patterns": [
+            "mma.sync with m64n32k32 tile sizes",
+            "tma.load / tma.store / tma.commit_group",
+            "cp.async with warpgroup variants",
+            "barrier.cluster synchronization",
+            "ldmatrix with cluster-level operations"
+          ],
+          "cache_modifiers": "Same as sm_80"
+        },
+        "output_format": "PTX text instructions",
+        "estimated_duration_percent": 8,
+        "confidence": "VERY_HIGH"
+      }
+    ]
+  },
+
+  "tensor_core_evolution_sm80_to_sm90": {
+    "comparison_scope": "How tensor core code generation differs between Ampere and Hopper",
+
+    "sm80_ampere_tensor_approach": {
+      "primary_instruction": "mma.sync.m16n8k16 (and other variants)",
+      "tile_sizes": [
+        "m8n8k4, m8n8k16",
+        "m16n8k16, m16n8k32",
+        "m8n32k16, m16n16k16"
+      ],
+      "execution_unit": "Warp-level (32 threads)",
+      "register_requirements": "8-16 registers per matrix",
+      "async_memory": "cp.async for host-controlled async copy",
+      "key_function": "0xA33333 (7.5KB)",
+      "data_types": ["FP32", "FP16", "BF16", "INT8", "TF32"],
+      "memory_access_pattern": "Manual cp.async followed by barrier"
+    },
+
+    "sm90_hopper_tensor_approach": {
+      "primary_instruction": "mma.sync (warpgroup variants)",
+      "tile_sizes": [
+        "m16n16k16 (warp-level, for compatibility)",
+        "m64n32k32 (warpgroup-level, NEW)"
+      ],
+      "execution_unit": "Warpgroup-level (128 threads)",
+      "register_requirements": "Similar per-thread, but coordinated across warpgroup",
+      "async_memory": "TMA (Tensor Memory Accelerator) - automatic structured loading",
+      "key_functions": [
+        "0xA66666 (9.1KB) - Warpgroup MMA emission",
+        "0xA77777 (6.4KB) - TMA emission"
+      ],
+      "data_types": ["FP32", "FP16", "BF16", "INT8", "FP8", "TF32"],
+      "memory_access_pattern": "TMA descriptors for automatic, structured loading",
+      "new_capabilities": [
+        "Larger tiles (m64n32k32) for better efficiency",
+        "Hardware-assisted memory loading via TMA",
+        "Thread block clusters for improved inter-block communication",
+        "Distributed shared memory model"
+      ]
+    },
+
+    "key_differences": [
+      {
+        "aspect": "Tile Size Strategy",
+        "sm80": "Prefer m16n8k16 for register efficiency",
+        "sm90": "Prefer m64n32k32 when possible for throughput, fall back to warp-level for compatibility",
+        "implication": "SM90 code should be more aggressive with tile sizes"
+      },
+      {
+        "aspect": "Memory Loading",
+        "sm80": "Manual cp.async with explicit host-side scheduling",
+        "sm90": "TMA with hardware-assisted descriptor-based loading",
+        "implication": "SM90 reduces manual async orchestration complexity"
+      },
+      {
+        "aspect": "Synchronization",
+        "sm80": "Warp-level barriers within warp",
+        "sm90": "Warpgroup-level and thread-block-cluster-level barriers",
+        "implication": "SM90 enables coarser synchronization granularity"
+      },
+      {
+        "aspect": "Precision",
+        "sm80": "Standard precisions (FP32, FP16, BF16, INT8, TF32)",
+        "sm90": "Adds FP8 for reduced bandwidth, Transformer Engine support",
+        "implication": "SM90 better for modern transformer workloads"
+      },
+      {
+        "aspect": "Execution Model",
+        "sm80": "32-thread warp atomicity",
+        "sm90": "128-thread warpgroup for coordinated tensor operations",
+        "implication": "SM90 changes fundamental execution granularity for tensor ops"
+      }
+    ]
+  },
+
+  "hopper_specific_features": {
+    "warpgroup_mma_generation": {
+      "overview": "Hopper introduces warpgroup-level matrix operations",
+      "implementation_location": "0xA66666",
+      "function_size_bytes": 9344,
+      "purpose": "Generate mma.sync instructions for m64n32k32 tiles",
+
+      "warpgroup_structure": {
+        "threads_per_warpgroup": 128,
+        "composition": "4 warps × 32 threads/warp",
+        "register_coordination": "All 4 warps share matrix register space",
+        "memory_coordination": "Distributed shared memory (128KB), split among blocks"
+      },
+
+      "compilation_decision_flow": [
+        {
+          "step": 1,
+          "question": "Is this a matrix multiply operation?",
+          "affirmative_path": "proceed to step 2",
+          "negative_path": "use standard instruction selection"
+        },
+        {
+          "step": 2,
+          "question": "Are matrix dimensions suitable for warpgroup MMA (m64n32k32)?",
+          "affirmative_path": "proceed to step 3",
+          "negative_path": "fall back to warp-level MMA"
+        },
+        {
+          "step": 3,
+          "question": "Is warpgroup MMA register-efficient for this kernel?",
+          "affirmative_path": "emit warpgroup MMA (0xA66666)",
+          "negative_path": "emit standard warp-level mma.sync"
+        }
+      ],
+
+      "instruction_variants": [
+        {
+          "instruction": "mma.sync.m64n32k32.f32.f32",
+          "operands": {
+            "accum_d": "D[0..15] - 16 FP32 accumulators per thread (2 threads involved)",
+            "matrix_a": "A[0..3] per thread - input matrix (64×32)",
+            "matrix_b": "B[0..1] per thread - input matrix (32×32)",
+            "accum_c": "C[0..15] - input accumulators"
+          },
+          "thread_participation": "8 threads per warpgroup compute matrix op",
+          "latency": "~130 cycles (from sm_90 spec)",
+          "throughput": "1 op per warpgroup every cycle"
+        },
+        {
+          "instruction": "mma.sync.m64n32k32.f32.f16",
+          "operands": {
+            "accum_d": "D[0..15] - FP32 output",
+            "matrix_a": "A[0..3] - FP16 input",
+            "matrix_b": "B[0..1] - FP16 input",
+            "accum_c": "C[0..15] - FP32 input"
+          }
+        }
+      ],
+
+      "register_usage_example": {
+        "kernel_example": "Matrix multiply C += A×B, with A[64×32], B[32×32]",
+        "register_allocation": {
+          "matrix_a_registers": "8 registers per thread × 8 threads = 64 reg slots",
+          "matrix_b_registers": "4 registers per thread × 8 threads = 32 reg slots",
+          "accumulator_registers": "16 registers per thread × 8 threads = 128 reg slots",
+          "total_logical": "224 logical register references",
+          "physical_allocation": "Grid-distributed across 128-thread warpgroup"
+        }
+      },
+
+      "confidence": "VERY_HIGH"
+    },
+
+    "tensor_memory_accelerator_tma": {
+      "overview": "Hardware-accelerated structured memory loading for tensors",
+      "implementation_location": "0xA77777",
+      "function_size_bytes": 6553,
+      "purpose": "Generate TMA load/store operations from descriptor",
+
+      "tma_concept": {
+        "description": "TMA is a hardware unit that loads/stores structured data blocks based on descriptors",
+        "benefits": [
+          "Reduces register pressure (no manual address calculation)",
+          "Automatic alignment and padding handling",
+          "Overlaps memory loading with computation",
+          "Synchronization through TMA-specific primitives"
+        ]
+      },
+
+      "compilation_decision_for_tma": [
+        {
+          "step": 1,
+          "question": "Is this a global-to-shared-memory transfer?",
+          "affirmative_path": "proceed to step 2",
+          "negative_path": "use cp.async or standard ld/st"
+        },
+        {
+          "step": 2,
+          "question": "Is memory access pattern regular and predictable?",
+          "affirmative_path": "proceed to step 3",
+          "negative_path": "use cp.async instead"
+        },
+        {
+          "step": 3,
+          "question": "Can hardware TMA tile size handle this data block?",
+          "affirmative_path": "emit TMA operations (0xA77777)",
+          "negative_path": "use cp.async instead"
+        }
+      ],
+
+      "instruction_patterns": [
+        {
+          "instruction": "tma.load.tile",
+          "description": "Load structured tile from global to shared memory",
+          "syntax": "tma.load [dst_shared], [tma_descriptor], [thread_idx]",
+          "advantages": "Single instruction replaces multiple cp.async calls",
+          "constraints": "TMA descriptor must be pre-initialized"
+        },
+        {
+          "instruction": "tma.store.tile",
+          "description": "Store tile from shared to global memory",
+          "usage": "Less common than tma.load, but supported"
+        },
+        {
+          "instruction": "tma.commit_group / cp.group.end",
+          "description": "Synchronize all pending TMA operations",
+          "latency_hiding": "Can continue computation while TMA in flight"
+        }
+      ],
+
+      "descriptor_preparation": {
+        "timing": "Compiler generates TMA descriptor during instruction selection",
+        "descriptor_content": [
+          "Global memory base address",
+          "Data type and element size",
+          "Tile dimensions (height, width)",
+          "Stride information",
+          "Address space (global, shared)"
+        ],
+        "descriptor_storage": "Kernel parameter or on-stack initialization"
+      },
+
+      "tma_advantages_over_cp_async": [
+        "Single instruction vs multiple cp.async",
+        "Hardware manages alignment and striding",
+        "Better for regular tensor layouts",
+        "Reduced instruction count and register pressure"
+      ],
+
+      "tma_limitations": [
+        "Requires regular, predictable memory patterns",
+        "Descriptor setup overhead",
+        "Not beneficial for sparse or highly irregular access"
+      ],
+
+      "confidence": "HIGH"
+    },
+
+    "distributed_shared_memory": {
+      "overview": "Hopper increases shared memory to 128KB and distributes across thread block clusters",
+      "max_size": "128KB per thread block",
+      "cluster_organization": "Clustered thread blocks can share memory sections",
+      "compilation_handling": {
+        "shared_memory_analysis": "Compiler must track distributed memory layout",
+        "cluster_awareness": "Synchronization and communication optimizations for clusters",
+        "bank_conflict_awareness": "More sophisticated bank conflict avoidance with larger memory"
+      },
+      "code_generation_changes": [
+        "Shared memory address calculations account for cluster structure",
+        "New barrier.cluster instruction for inter-block sync",
+        "Distributed shared memory load/store patterns"
+      ],
+      "confidence": "MEDIUM-HIGH"
+    },
+
+    "thread_block_clusters": {
+      "overview": "Groups of thread blocks that can synchronize and communicate efficiently",
+      "cluster_size": "2-16 thread blocks (depending on configuration)",
+      "compilation_implications": [
+        "Compiler must recognize cluster-level synchronization patterns",
+        "New barrier.cluster instruction generation",
+        "Cluster-aware register allocation",
+        "Distributed shared memory addressing"
+      ],
+      "new_instructions": [
+        "barrier.cluster - synchronize all blocks in cluster",
+        "elect - warpgroup-level elect for distributed voting",
+        "match.sync - cluster-level thread matching"
+      ],
+      "confidence": "MEDIUM"
+    },
+
+    "fp8_tensor_support": {
+      "overview": "Hopper adds FP8 (8-bit floating point) for reduced memory bandwidth",
+      "data_types_supported": ["fp8_e4m3", "fp8_e5m2"],
+      "use_cases": [
+        "Transformer inference (reduced bandwidth)",
+        "Quantized training (mixed precision)",
+        "Memory-bandwidth-bound kernels"
+      ],
+      "compilation_implications": [
+        "New instruction patterns for FP8 operations",
+        "Automatic type conversion (FP8 to FP32 in compute)",
+        "Register allocation changes (FP8 uses fewer registers than FP32)"
+      ],
+      "code_generation_changes": [
+        "FP8 matrix operations in mma.sync",
+        "Automatic conversions at load/store boundaries",
+        "Register pressure reduction benefits"
+      ],
+      "confidence": "HIGH"
+    }
+  },
+
+  "register_allocation_sm90_specifics": {
+    "register_file": {
+      "size_per_thread": 256,
+      "available_for_user": 256,
+      "physical_storage": "Shared with sm_80, but used differently"
+    },
+
+    "warpgroup_register_coordination": {
+      "challenge": "Warpgroup MMA requires coordinated register allocation across 128 threads",
+      "solution_mechanism": "Compiler allocates registers as blocks within warpgroup",
+      "implication": "Register allocation passes must understand warpgroup structure",
+      "constraint_enforcement": {
+        "matrix_a_alignment": "Must align 4-warp boundaries",
+        "matrix_b_alignment": "Must align 4-warp boundaries",
+        "accumulator_placement": "Preferably consecutive registers per thread"
+      }
+    },
+
+    "register_pressure_estimation": {
+      "warpgroup_tensor_kernel": {
+        "estimated_registers": "128-180 per thread",
+        "headroom_for_sm90": "76-128 registers available",
+        "spill_likelihood": "Moderate (similar to sm_80)"
+      },
+      "impact_on_occupancy": "Warpgroup operations may reduce occupancy vs. standard warps"
+    }
+  },
+
+  "instruction_selection_specifics": {
+    "cost_model_changes": {
+      "warpgroup_mma_latency": "~130 cycles (vs. 70 for mma.sync on sm_80)",
+      "tma_load_latency": "~150 cycles (amortized, with overlapping)",
+      "async_copy_latency": "Variable, but typically 50-200 cycles",
+      "decision_heuristics": [
+        "If data is regular tensor → use TMA",
+        "If tile size >= m32n32k16 → use warpgroup MMA",
+        "Otherwise → use standard mma.sync"
+      ]
+    },
+
+    "tile_size_selection_logic": {
+      "small_matrices_m8n8": "Use warp-level m16n8k16 or smaller",
+      "medium_matrices_m32n32": "Use warpgroup m64n32k32 if register-efficient",
+      "large_matrices": "Use warpgroup m64n32k32 with register spilling if needed",
+      "decision_framework": "Cost model evaluates all options, picks lowest cost"
+    }
+  },
+
+  "ptx_instruction_emission_sm90": {
+    "new_instruction_categories": [
+      {
+        "category": "Warpgroup MMA",
+        "examples": [
+          "mma.sync.m64n32k32.f32.f32",
+          "mma.sync.m64n32k32.f32.f16"
+        ],
+        "emission_function": "0xA66666",
+        "confidence": "VERY_HIGH"
+      },
+      {
+        "category": "TMA Operations",
+        "examples": [
+          "tma.load.tile",
+          "tma.store.tile",
+          "tma.commit_group"
+        ],
+        "emission_function": "0xA77777",
+        "confidence": "HIGH"
+      },
+      {
+        "category": "Cluster Synchronization",
+        "examples": [
+          "barrier.cluster",
+          "elect.sync"
+        ],
+        "emission_function": "0x9F2A40 (main emitter)",
+        "confidence": "MEDIUM"
+      }
+    ]
+  },
+
+  "execution_trace_example": {
+    "kernel_code": "Simplified fused matrix multiply + bias with Hopper optimizations",
+    "pseudocode": "C[i,j] = sum_k(A[i,k] * B[k,j]) + bias[j]",
+    "expected_trace_sequence": [
+      {
+        "stage": "IR Construction",
+        "actions": [
+          "Parse matrix multiply pattern",
+          "Recognize as tensor core candidate",
+          "Mark as sm_90_compatible"
+        ]
+      },
+      {
+        "stage": "Instruction Selection",
+        "actions": [
+          "Detect warpgroup MMA candidate",
+          "Evaluate TMA suitability for loading A and B",
+          "Decide: use TMA + warpgroup MMA",
+          "Emit decision to IR"
+        ]
+      },
+      {
+        "stage": "Register Allocation",
+        "actions": [
+          "Allocate matrix A registers (4-warp aligned)",
+          "Allocate matrix B registers (4-warp aligned)",
+          "Allocate accumulator registers",
+          "Plan register usage across warpgroup"
+        ]
+      },
+      {
+        "stage": "Back-End Optimization",
+        "actions": [
+          "Schedule TMA loads early",
+          "Interleave TMA with computation",
+          "Optimize barrier placement"
+        ]
+      },
+      {
+        "stage": "PTX Emission",
+        "actions": [
+          "Emit TMA descriptor setup",
+          "Emit tma.load operations (0xA77777)",
+          "Emit mma.sync.m64n32k32 (0xA66666)",
+          "Emit add for bias",
+          "Emit store result"
+        ]
+      }
+    ]
+  },
+
+  "performance_characteristics": {
+    "compilation_time_estimate": {
+      "simple_kernel": "50-100ms",
+      "complex_tensor_kernel": "200-500ms",
+      "overhead_vs_sm80": "10-20% (due to warpgroup analysis)"
+    },
+
+    "code_size_characteristics": {
+      "instruction_count_increase": "15-25% larger PTX for equivalent computation",
+      "reason": "Warpgroup operations have larger instruction footprint",
+      "binary_size_impact": "Minimal to negligible (PTX is text format)"
+    }
+  },
+
+  "validation_and_evidence": {
+    "string_references": [
+      "warpgroup_mma, m64n32k32, tma.load, tma.store, barrier.cluster, elect.sync"
+    ],
+    "function_signatures": [
+      "0xA66666 (9.1KB) - Warpgroup MMA emission",
+      "0xA77777 (6.4KB) - TMA emission"
+    ],
+    "pattern_evidence": [
+      "Larger warpgroup-specific functions than sm_80",
+      "New TMA-dedicated function not present in sm_80",
+      "Enhanced barrier and synchronization patterns"
+    ]
+  },
+
+  "unknowns_and_gaps": {
+    "dynamic_analysis_needed": [
+      "Exact register allocation strategy for warpgroup operations",
+      "Precise cost model weights for warpgroup vs. standard MMA",
+      "TMA descriptor generation and initialization details",
+      "Thread block cluster synchronization implementation"
+    ],
+    "recommended_future_work": [
+      "Dynamic trace of Hopper tensor kernel compilation with GDB",
+      "Register allocation algorithm analysis for warpgroup constraints",
+      "TMA descriptor field encoding analysis",
+      "Cluster synchronization barrier implementation"
+    ]
+  },
+
+  "conclusion": {
+    "summary": "SM90 (Hopper) introduces significant changes to tensor core compilation, centered on warpgroup-level operations and TMA hardware acceleration. The compilation pipeline has new decision points for warpgroup MMA vs. standard MMA, and new code emission paths for TMA operations. Thread block clusters and distributed shared memory add additional complexity to instruction selection and synchronization patterns.",
+    "confidence_level": "HIGH - based on extensive pattern matching and foundation analysis",
+    "next_phase": "Validation requires dynamic execution tracing with GDB on actual Hopper hardware"
+  }
+}

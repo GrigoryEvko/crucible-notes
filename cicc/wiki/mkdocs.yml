@@ -1,0 +1,157 @@
+site_name: cicc Documentation
+site_description: CUDA Intermediate Code Compiler - Reverse Engineered Technical Documentation
+site_author: nvopen-tools contributors
+site_url: https://your-site.com/cicc
+
+repo_name: nvopen-tools/cicc
+repo_url: https://github.com/your-repo/nvopen-tools
+edit_uri: edit/main/cicc/wiki/docs/
+
+theme:
+  name: material
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: green
+      accent: light-green
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: green
+      accent: light-green
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+
+  icon:
+    repo: fontawesome/brands/github
+    admonition:
+      note: octicons/tag-16
+      abstract: octicons/checklist-16
+      info: octicons/info-16
+      tip: octicons/squirrel-16
+      success: octicons/check-16
+      question: octicons/question-16
+      warning: octicons/alert-16
+      failure: octicons/x-circle-16
+      danger: octicons/zap-16
+      bug: octicons/bug-16
+      example: octicons/beaker-16
+      quote: octicons/quote-16
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - tables
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+plugins:
+  - search:
+      lang: en
+      separator: '[\s\-,:!=\[\]()"/]+|(?!\b)(?=[A-Z][a-z])|\.(?!\d)|&[lg]t;'
+  - minify:
+      minify_html: true
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/your-repo/nvopen-tools
+      name: GitHub Repository
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/your-server
+      name: Discord Community
+
+  analytics:
+    feedback:
+      title: Was this page helpful?
+      ratings:
+        - icon: material/emoticon-happy-outline
+          name: This page was helpful
+          data: 1
+          note: Thanks for your feedback!
+        - icon: material/emoticon-sad-outline
+          name: This page could be improved
+          data: 0
+          note: Thanks for your feedback! Help us improve by opening an issue.
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - About This Project: about-this-project.md
+  - Analysis Methodology: analysis-methodology.md
+  - Quick Start: quick-start.md
+
+  - Compiler Internals:
+    - Overview: compiler-internals/README.md
+    - Compilation Pipeline: compiler-internals/compilation-pipeline.md
+    - Register Allocation: compiler-internals/register-allocation.md
+    - Instruction Selection: compiler-internals/instruction-selection.md
+    - Optimization Passes: compiler-internals/optimization-passes.md
+    - Tensor Core Codegen: compiler-internals/tensor-core-codegen.md
+    - Architecture Detection: compiler-internals/architecture-detection.md
+    - Error Handling: compiler-internals/error-handling.md
+
+  - GPU Architectures:
+    - Overview: architectures/index.md
+    - CUDA-Specific Features: cuda-features.md
+
+  - Reference:
+    - Glossary: glossary.md

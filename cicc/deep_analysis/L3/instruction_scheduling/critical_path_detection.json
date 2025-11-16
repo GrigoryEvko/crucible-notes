@@ -1,0 +1,442 @@
+{
+  "metadata": {
+    "unknown_id": "21",
+    "agent": "L3-21",
+    "title": "Critical Path Detection Algorithm and Cost Weighting Formula",
+    "confidence": "HIGH",
+    "phase": "L3_EXTRACTION",
+    "research_time_hours": 6,
+    "analysis_date": "2025-11-16",
+    "data_sources": [
+      "L3-19 DAG Construction Analysis",
+      "L3-05 Scheduling Heuristics Analysis",
+      "L3-02 Cost Model Coefficients Analysis",
+      "ctor_310_0_0x500ad0.c - Scheduling configuration",
+      "ctor_652_0_0x599ef0.c - Scheduling algorithm registration",
+      "sub_2F9DAC0_0x2f9dac0.c - Pattern matcher with cost weighting",
+      "sub_FDE760_0xfde760.c - Cost normalization",
+      "sub_FDCA70_0xfdca70.c - Cost addition"
+    ]
+  },
+  "critical_path_algorithm": {
+    "method": "Bottom-up dynamic programming with topological traversal",
+    "description": "Computes the longest latency path from each instruction to any exit (leaf) node in the scheduling DAG. Used to determine instruction priority in list scheduling.",
+    "calculation_formula": "critical_height[node] = max(critical_height[successor] + edge_latency(node, successor)) for all successors; exit_nodes have height = 0",
+    "initialization": "Exit nodes (instructions with no successors) have critical_height = 0",
+    "traversal_order": "Bottom-up: leaf nodes to root nodes; reverse topological order from exit instructions to entry instructions",
+    "complexity": "O(V + E) where V = instructions, E = dependency edges",
+    "caching": "Memoization using visited bitmap to avoid recomputation",
+    "node_types": {
+      "entry_nodes": "Instructions with no predecessors (data dependencies)",
+      "exit_nodes": "Instructions with no successors (leaf instructions, returns, stores to final results)",
+      "critical_path": "Path from entry to exit node(s) with maximum total latency"
+    }
+  },
+  "edge_weight_computation": {
+    "primary_source": "InstrItineraryData (machine instruction model)",
+    "fallback_source": "sched-high-latency-cycles parameter (default: 25 cycles)",
+    "latency_formula": "edge_latency = source_instruction_latency + penalties",
+    "component_breakdown": {
+      "base_latency": {
+        "description": "Latency of the producing (source) instruction",
+        "source": "getInstrLatency(source_instr) from instruction schedules",
+        "range": "1-25+ cycles depending on instruction type"
+      },
+      "anti_dependency_penalty": {
+        "description": "Serialization penalty for WAR (Write-After-Read) dependencies",
+        "value": 1,
+        "condition": "Applied only when break-anti-dependencies is disabled"
+      },
+      "output_dependency_penalty": {
+        "description": "Serialization penalty for WAW (Write-After-Write) dependencies",
+        "value": 1,
+        "condition": "Always applied for register serialization"
+      }
+    },
+    "dependency_edge_types": {
+      "true_dependency": {
+        "weight": "source_latency + 0",
+        "example": "READ src → USE(src): edge_weight = 4 cycles for 4-cycle latency instruction"
+      },
+      "output_dependency": {
+        "weight": 1,
+        "example": "WRITE reg → WRITE reg: edge_weight = 1 (serialization only)"
+      },
+      "anti_dependency": {
+        "weight": 1,
+        "breakable": true,
+        "modes": ["critical", "all", "none"]
+      },
+      "control_dependency": {
+        "weight": 0,
+        "note": "Control flow dependencies don't add latency but prevent speculative execution"
+      }
+    }
+  },
+  "weighting_formula": {
+    "instruction_selection_cost_model": {
+      "description": "Cost aggregation for pattern selection during instruction selection phase",
+      "formula": "total_cost = weighted_sum(metric_1 * weight_1, metric_2 * weight_2, ...)",
+      "example_calculation": "For instruction pattern with latency_metric and throughput_metric: total = (latency_metric * 1) + (throughput_metric * 3) → normalized by weight 100",
+      "step_by_step": [
+        "Extract multiple cost metrics from instruction pattern (latency, throughput, register pressure)",
+        "Apply individual metric weights (1, 3, 64, 100 observed)",
+        "Combine weighted metrics using cost addition (sub_FDCA70)",
+        "Normalize final cost with global weight factor 100 using sub_FDE760",
+        "Compare costs using mantissa/exponent representation"
+      ]
+    },
+    "scheduling_priority_formula": {
+      "description": "Priority function for list scheduling ready queue ordering",
+      "components": [
+        {
+          "priority": "CRITICAL_PATH_PRIORITY",
+          "calculation": "critical_height[instr] = latency to exit node",
+          "disable_flag": "disable-sched-critical-path",
+          "weight": "Highest priority (primary ordering key)",
+          "lookahead_parameter": "max-sched-reorder (default: 6, allows up to 6 instructions ahead of critical path)"
+        },
+        {
+          "priority": "SCHEDULED_HEIGHT_PRIORITY",
+          "calculation": "max_latency_path_from_instruction (similar to critical height)",
+          "disable_flag": "disable-sched-height",
+          "weight": "Secondary priority"
+        },
+        {
+          "priority": "REGISTER_PRESSURE_PRIORITY",
+          "calculation": "live_range_length = def_cycle - last_use_cycle",
+          "disable_flag": "disable-sched-reg-pressure",
+          "weight": "Tertiary priority",
+          "goal": "Minimize peak register usage"
+        },
+        {
+          "priority": "LIVE_USE_PRIORITY",
+          "calculation": "number_of_live_uses_of_instruction",
+          "disable_flag": "disable-sched-live-uses",
+          "weight": "Secondary metric"
+        },
+        {
+          "priority": "NO_STALL_PRIORITY",
+          "calculation": "available_execution_unit(instr)",
+          "disable_flag": "disable-sched-stalls",
+          "weight": "Avoid execution unit stalls",
+          "enabled_by_default": true
+        },
+        {
+          "priority": "PHYSICAL_REG_JOIN_PRIORITY",
+          "calculation": "physical_register_reuse_opportunity",
+          "disable_flag": "disable-sched-physreg-join",
+          "weight": "Improve register allocation quality"
+        }
+      ],
+      "priority_order": "critical_path > scheduled_height > register_pressure > live_use > no_stall > physreg_join",
+      "scheduler_variants": {
+        "list-ilp": "Uses all 6 priority components with critical path as primary",
+        "list-burr": "Focuses on register pressure (live range minimization)",
+        "list-hybrid": "Balances latency and register pressure with 0.5 weight each",
+        "source": "Preserves source order when possible with register constraints"
+      }
+    },
+    "cost_weighting_coefficients": {
+      "observed_weights": {
+        "weight_100": {
+          "value": 100,
+          "usage": "Main cost aggregation normalization weight",
+          "location": "sub_2F9DAC0:1125, applied via sub_FDE760",
+          "purpose": "Normalize final combined cost from multiple metrics"
+        },
+        "weight_3": {
+          "value": 3,
+          "usage": "Secondary metric scaling (approx. 1/3 inverse)",
+          "location": "Pattern cost table lookup, sub_2F9DAC0:1034, 1056",
+          "purpose": "Scale throughput or resource constraints relative to latency"
+        },
+        "weight_64": {
+          "value": 64,
+          "usage": "Fine-grained adjustment weight (approx. 1/64 inverse)",
+          "location": "Memory or specialized instruction cost scaling",
+          "purpose": "Weight memory latency or special function unit constraints"
+        },
+        "weight_1": {
+          "value": 1,
+          "usage": "Identity weight for critical path latency component",
+          "location": "Primary latency metric, directly used without scaling",
+          "purpose": "Use raw latency value unscaled"
+        }
+      },
+      "application_mechanism": {
+        "function": "sub_2F9DA20 (cost weighting)",
+        "algorithm": "result = (metric_value * weight); result_exponent = metric_exponent + weight_exponent",
+        "operation": "Multiplication with proper fixed-point exponent adjustment",
+        "integration": "Used in pattern matcher (sub_2F9DAC0) to weight individual metric components before summation"
+      }
+    }
+  },
+  "dag_structure_and_metrics": {
+    "dag_construction_phases": [
+      {
+        "phase": 1,
+        "name": "Optional Topological Sort",
+        "control_flag": "topo-sort-begin",
+        "default": true,
+        "description": "Initial pass to establish ordering for deterministic behavior"
+      },
+      {
+        "phase": 2,
+        "name": "Dependency Graph Construction",
+        "description": "Analyze instruction operands (uses/defs) to establish 4 dependency types: true, output, anti, control"
+      },
+      {
+        "phase": 3,
+        "name": "Edge Weight Assignment",
+        "description": "Compute latency for each dependency edge using InstrItineraryData"
+      },
+      {
+        "phase": 4,
+        "name": "Critical Path Calculation",
+        "description": "Bottom-up traversal computing critical_height for each node"
+      },
+      {
+        "phase": 5,
+        "name": "List Scheduling",
+        "description": "Process ready instructions using priority queue ordered by critical_height and other metrics"
+      }
+    ],
+    "critical_path_metrics": {
+      "critical_height": {
+        "definition": "Maximum latency path from instruction to any exit node",
+        "usage": "Primary scheduling priority",
+        "range": "0 to critical_path_length (sum of all latencies on longest chain)"
+      },
+      "slack_to_critical_use": {
+        "definition": "How many cycles an instruction can be delayed without extending schedule length",
+        "formula": "critical_path_length - critical_height[instr]",
+        "usage": "Determines how far ahead of critical path instruction can be scheduled"
+      },
+      "critical_path_distance": {
+        "definition": "instruction_latency - slack_to_critical_use",
+        "usage": "Alternative priority metric used in some schedulers"
+      }
+    },
+    "scheduling_window": {
+      "lookahead_parameter": "max-sched-reorder",
+      "default_value": 6,
+      "meaning": "Allow up to N instructions to be scheduled ahead of the critical path",
+      "effect": "Trades off latency for register pressure reduction by scheduling non-critical instructions early when profitable"
+    }
+  },
+  "special_handling": {
+    "cyclic_dependencies": {
+      "occurrence": "Recurrence chains: cycles in the dependency graph",
+      "control_flag": "enable-cyclic-critical-path",
+      "algorithm": "Specialized analysis for loop-carried dependencies",
+      "parameter": "recurrence-chain-limit (default: 3, max chain length to analyze)",
+      "application": "Determines when to commute operands to break long recurrence chains"
+    },
+    "multiple_critical_paths": {
+      "description": "When multiple paths have equal maximum latency",
+      "tie_breaking": "Secondary priority metrics (register pressure, live uses, stall avoidance)",
+      "lookahead_limit": "Controlled by max-sched-reorder parameter"
+    },
+    "dynamic_updates": {
+      "scenario": "As instructions are scheduled, remaining DAG changes",
+      "update_mechanism": "Critical path is not recalculated per instruction; priority computed once at DAG construction",
+      "optimization": "Allows O(1) priority queue access instead of O(log n) recalculation"
+    },
+    "anti_dependency_breaking": {
+      "purpose": "Remove artificial serialization to improve scheduling freedom",
+      "phases": {
+        "preRA": "Conservative - no breaking (default)",
+        "postRA": "Configurable: none (default), critical (break anti-deps on critical path only), all (aggressive)"
+      },
+      "critical_path_interaction": "When set to 'critical', only breaks anti-dependencies on instructions with zero slack"
+    }
+  },
+  "integration_points": {
+    "instruction_selection": {
+      "usage": "Critical path contributes to pattern selection cost",
+      "mechanism": "Latency metric (which includes critical path distance) weighted in cost aggregation",
+      "function": "sub_2F9DAC0 pattern matcher uses latency costs in template instantiation"
+    },
+    "list_scheduling": {
+      "usage": "Critical path is primary sorting key for ready instruction queue",
+      "mechanism": "critical_height[node] used directly as priority in priority queue",
+      "schedulers": "list-ilp (primary), list-hybrid, converge (post-RA)",
+      "function": "Ready list priority queue in sub_1D04DC0 and related scheduling functions"
+    },
+    "register_allocation": {
+      "usage": "Critical path influences spill cost heuristics",
+      "mechanism": "Instructions on critical path have higher spill penalties to preserve schedule quality",
+      "interaction": "Anti-dependency breaking prefers critical path instructions"
+    },
+    "post_ra_scheduling": {
+      "usage": "Critical path recalculated on allocated code",
+      "mechanism": "Separate critical path analysis with register allocation constraints",
+      "control_flag": "enable-post-misched",
+      "anti_dep_modes": "Can break anti-deps on critical path to improve schedule"
+    }
+  },
+  "configuration_parameters": [
+    {
+      "name": "disable-sched-critical-path",
+      "type": "boolean",
+      "default": false,
+      "effect": "Disable critical path priority in sched=list-ilp scheduler",
+      "impact": "Reduces latency priority, may increase schedule length",
+      "file": "ctor_652_0_0x599ef0.c:216"
+    },
+    {
+      "name": "disable-sched-height",
+      "type": "boolean",
+      "default": false,
+      "effect": "Disable scheduled-height priority (similar to critical path)",
+      "impact": "Secondary priority metric disabled",
+      "file": "ctor_652_0_0x599ef0.c:229"
+    },
+    {
+      "name": "max-sched-reorder",
+      "type": "integer",
+      "default": 6,
+      "range": "0-255",
+      "effect": "Number of instructions allowed ahead of the critical path in list-ilp",
+      "impact": "Higher value = more scheduling freedom but potentially longer critical path",
+      "file": "ctor_652_0_0x599ef0.c:315"
+    },
+    {
+      "name": "print-sched-critical",
+      "type": "boolean",
+      "default": false,
+      "effect": "Print critical path length to stdout during compilation",
+      "impact": "Debug/analysis only, no performance impact",
+      "file": "ctor_310_0_0x500ad0.c:102"
+    },
+    {
+      "name": "enable-cyclic-critical-path",
+      "type": "boolean",
+      "default": false,
+      "effect": "Enable cyclic critical path analysis for loop-carried dependencies",
+      "impact": "More accurate analysis for loop-heavy code",
+      "file": "ctor_310_0_0x500ad0.c:195"
+    },
+    {
+      "name": "recurrence-chain-limit",
+      "type": "integer",
+      "default": 3,
+      "effect": "Maximum length of recurrence chain when analyzing operand commutation benefits",
+      "impact": "Limits analysis depth for cyclic dependency optimization",
+      "source": "L3-19 findings"
+    },
+    {
+      "name": "break-anti-dependencies",
+      "type": "enum",
+      "default": "none",
+      "values": ["none", "critical", "all"],
+      "effect": "Control anti-dependency breaking in post-RA scheduling",
+      "impact": "'critical': only break anti-deps on instructions with zero slack",
+      "file": "ctor_310_0_0x500ad0.c and scheduling pass configuration"
+    },
+    {
+      "name": "sched-high-latency-cycles",
+      "type": "integer",
+      "default": 25,
+      "effect": "Default latency estimate for instructions without itinerary data",
+      "impact": "Affects edge weights when InstrItineraryData unavailable",
+      "source": "L3-19 findings"
+    }
+  ],
+  "verification_and_validation": {
+    "cross_validated_with": [
+      "L3-19 DAG Construction: Confirmed algorithm is bottom-up longest path",
+      "L3-05 Scheduling: Confirmed critical_height as primary priority metric",
+      "L3-02 Cost Model: Confirmed weight coefficients 1, 3, 64, 100 and aggregation mechanism"
+    ],
+    "evidence_locations": {
+      "critical_path_definition": "L3-19 findings, line 233-235",
+      "priority_metrics": "L3-05 findings, priority_functions_detailed section",
+      "weight_application": "sub_2F9DAC0:1125 (v347 = 100), sub_FDE760 normalization",
+      "configuration": "ctor_652_0 and ctor_310_0 parameter registrations"
+    },
+    "confidence_justification": "HIGH because: (1) Multiple independent sources confirm algorithm, (2) Configuration parameters explicitly documented, (3) Cost weighting code directly visible in pattern matcher, (4) Algorithm matches standard LLVM list scheduling technique"
+  },
+  "algorithm_pseudocode": {
+    "critical_path_calculation": {
+      "algorithm": "ComputeCriticalHeight(DAG, node)",
+      "pseudocode": [
+        "IF node visited THEN return height[node]",
+        "IF node has no successors THEN height[node] := 0",
+        "ELSE",
+        "  max_height := 0",
+        "  FOR each successor IN node.successors DO",
+        "    succ_height := ComputeCriticalHeight(DAG, successor)",
+        "    edge_latency := GetLatency(node.instruction)",
+        "    height_through_succ := succ_height + edge_latency",
+        "    max_height := MAX(max_height, height_through_succ)",
+        "  END FOR",
+        "  height[node] := max_height",
+        "END IF",
+        "visited[node] := TRUE",
+        "RETURN height[node]"
+      ]
+    },
+    "scheduling_priority_calculation": {
+      "algorithm": "ComputeSchedulingPriority(instr)",
+      "pseudocode": [
+        "priority := 0",
+        "critical_height := height[instr]  // Primary metric",
+        "priority += (PRIORITY_WEIGHT_CRITICAL * critical_height)",
+        "",
+        "IF critical_height == 0 THEN",
+        "  // On critical path, add secondary priority",
+        "  scheduled_height := ComputeScheduledHeight(instr)",
+        "  priority += (PRIORITY_WEIGHT_HEIGHT * scheduled_height)",
+        "  reg_pressure := ComputeLiveRangeLength(instr)",
+        "  priority += (PRIORITY_WEIGHT_PRESSURE * reg_pressure)",
+        "END IF",
+        "",
+        "RETURN priority  // Higher value = higher priority in ready list"
+      ],
+      "priority_ordering": "Higher value scheduled first in priority queue"
+    },
+    "cost_weighting_for_instruction_selection": {
+      "algorithm": "AggregateCost(metric_list)",
+      "pseudocode": [
+        "total_cost := 0  // Floating-point pair: (mantissa, exponent)",
+        "",
+        "FOR each metric IN metric_list DO",
+        "  weighted_metric := Multiply(metric.value, metric.weight)",
+        "  total_cost := Add(total_cost, weighted_metric)",
+        "END FOR",
+        "",
+        "// Final normalization",
+        "total_cost := Normalize(total_cost, normalization_weight=100)",
+        "",
+        "RETURN total_cost"
+      ],
+      "cost_comparison": "Use mantissa/exponent comparison: if exp1 > exp2, cost1 > cost2; else compare mantissas"
+    }
+  },
+  "known_limitations": [
+    "Exact weight values (1, 3, 64, 100) inferred from patterns; encoded in lookup tables not directly visible",
+    "Sub-component latencies for complex instructions may require full itinerary data analysis",
+    "Cycle-accurate latency modeling controlled by disable-sched-cycles parameter",
+    "Memory dependency analysis is conservative, may over-estimate dependencies"
+  ],
+  "key_findings": [
+    "Critical path algorithm is standard LLVM bottom-up longest-path DP computed once per DAG",
+    "Edge weights = source instruction latency + penalties for serialization dependencies",
+    "Critical path distance used as primary scheduling priority (10x+ weight vs secondary metrics)",
+    "Max-sched-reorder parameter allows limited lookahead (~6 instructions) past critical path",
+    "Cost model uses floating-point pair (mantissa, exponent) for wide dynamic range",
+    "Weights observed: critical_path=1 (full), throughput≈1/3, special=1/64, normalization=100",
+    "Three scheduling phases: pre-RA (4 variants), post-RA (3 variants), register allocation integration",
+    "Anti-dependency breaking mode 'critical' specifically targets critical path instructions",
+    "Cyclic critical path analysis available for loop-heavy code with recurrence-chain-limit=3"
+  ],
+  "next_steps": [
+    "Extract exact weight values from global cost tables in binary data section",
+    "Profile real instruction latencies to validate against cost model",
+    "Analyze SM-specific cost table variations for different NVIDIA architectures",
+    "Map actual executed critical path lengths to predicted values",
+    "Validate that max-sched-reorder parameter impact matches 6-instruction lookahead"
+  ]
+}

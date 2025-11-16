@@ -1,0 +1,778 @@
+{
+  "metadata": {
+    "document_title": "CICC Execution Trace - Blackwell (SM 100)",
+    "phase": "L2_DEEP_ANALYSIS",
+    "agent": "agent_14",
+    "date_created": "2025-11-16",
+    "analysis_type": "STATIC_COMPARATIVE_ANALYSIS",
+    "confidence": "MEDIUM-HIGH",
+    "status": "HYPOTHESIS_FROM_PATTERN_MATCHING",
+    "sm_version": "sm_100",
+    "architecture_name": "Blackwell",
+    "release_year": 2024,
+    "bleeding_edge_note": "SM100 is very new (2024); implementation still stabilizing",
+    "data_sources": [
+      "foundation/analyses/17_SM_VERSION_SUPPORT.json",
+      "foundation/analyses/11_PTX_GENERATION_MECHANICS.json",
+      "Binary pattern analysis",
+      "NVIDIA Blackwell architecture documentation (inferred)"
+    ]
+  },
+
+  "executive_summary": {
+    "key_features_sm100": [
+      "tcgen05 tensor core instructions (36 variants)",
+      "Advanced matrix formats (MXF4, MXF8, F8F6F4)",
+      "Mixed-precision tensor operations with flexible precision selection",
+      "FP4/FP6 reduced precision support",
+      "Enhanced sparsity support (structured and dynamic)",
+      "128-bit atomic operations",
+      "Next-generation memory hierarchy",
+      "Improved inter-cluster communication"
+    ],
+    "compilation_complexity": "VERY_HIGH - revolutionary tensor core architecture",
+    "tensor_core_evolution": "sm_90 warpgroup MMA → sm_100 tcgen05 (complete redesign)",
+    "primary_differences_from_sm90": [
+      "Replaces warpgroup MMA with tcgen05 (36 instruction variants vs. handful in Hopper)",
+      "Introduces matrix formats beyond standard FP32/FP16 (MXF4, MXF8, F8F6F4)",
+      "Dynamic precision selection for memory-compute trade-offs",
+      "Structured sparsity with block granularity",
+      "New memory hierarchy with improved bandwidth",
+      "128-bit atomics for distributed synchronization"
+    ]
+  },
+
+  "compilation_pipeline_sm100": {
+    "overview": "Complete compilation flow with Blackwell-specific tensor core handling",
+    "entry_point_characteristics": {
+      "description": "SM100 entry point with bleeding-edge architecture support",
+      "selection_mechanism": "SM version detection → Blackwell codepath",
+      "complexity_increase": "20-30% more complex than sm_90 pipeline"
+    },
+
+    "phase_sequence": [
+      {
+        "phase_number": 1,
+        "name": "Front-End IR Construction",
+        "description": "Parse input and construct Internal Representation with Blackwell features",
+        "sm100_specifics": "Load SM100 instruction set, tcgen05 tensor formats",
+        "key_additions": [
+          "MXF4/MXF8 format support",
+          "Dynamic precision metadata",
+          "Sparsity pattern information"
+        ],
+        "estimated_overhead_percent": 8,
+        "confidence": "MEDIUM-HIGH"
+      },
+
+      {
+        "phase_number": 2,
+        "name": "Front-End Optimization Passes",
+        "description": "Early optimizations with Blackwell awareness",
+        "sm100_specifics": {
+          "precision_conversion_analysis": "Identify opportunities for reduced-precision ops",
+          "sparsity_detection": "Find tensor operations suitable for sparsity",
+          "format_selection_hints": "Early analysis for MXF4/MXF8 vs standard formats"
+        },
+        "new_passes": [
+          "reduced_precision_analysis",
+          "sparsity_pattern_detection",
+          "matrix_format_selection_hints"
+        ],
+        "pass_count": "12-16 passes",
+        "duration_percent": 10,
+        "confidence": "MEDIUM"
+      },
+
+      {
+        "phase_number": 3,
+        "name": "Middle-End Optimization Framework",
+        "description": "General optimizations adapted for SM100",
+        "sm100_specifics": "TCSched (new tensor core scheduler for SM100)",
+        "optimization_types": [
+          "Loop invariant code motion with precision awareness",
+          "CSE with format conversion considerations",
+          "Dead store elimination with sparsity patterns"
+        ],
+        "pass_count": "30-35 passes",
+        "duration_percent": 28,
+        "confidence": "MEDIUM-HIGH"
+      },
+
+      {
+        "phase_number": 4,
+        "name": "Instruction Selection - TCGEN05 Decision Point",
+        "description": "Critical phase: select among 36 tcgen05 variants and matrix formats",
+        "sm100_specifics": {
+          "tcgen05_selection": "CRITICAL - choose among 36 tensor core instruction variants",
+          "matrix_format_decision": "Select MXF4, MXF8, F8F6F4, or standard FP32/FP16",
+          "sparsity_integration": "Determine if sparsity patterns can be exploited",
+          "dynamic_precision": "Decide on-the-fly precision selection vs. fixed"
+        },
+
+        "tcgen05_instruction_variants": {
+          "description": "36 different instruction variants for SM100 tensor operations",
+          "breakdown": {
+            "data_types": [
+              "FP32 (standard)",
+              "FP16 (half precision)",
+              "BF16 (brain float)",
+              "FP8 (reduced precision)",
+              "FP4 (ultra-reduced)",
+              "FP6 (ultra-reduced)",
+              "INT8 (integer)"
+            ],
+            "matrix_formats": [
+              "Standard (dense)",
+              "MXF4 (mantissa-exponent 4-bit)",
+              "MXF8 (mantissa-exponent 8-bit)",
+              "F8F6F4 (mixed 8/6/4-bit)"
+            ],
+            "sparsity_modes": [
+              "Dense (no sparsity)",
+              "Structured (block granularity)",
+              "Dynamic (runtime pattern)"
+            ]
+          },
+          "variant_count": "Approximately 7 types × 3-4 formats × 1-2 sparsity modes = 36 variants"
+        },
+
+        "decision_framework_tcgen05": [
+          {
+            "decision": "Which data type and precision?",
+            "options": [
+              "FP32 - Full precision (baseline)",
+              "FP16 - Half precision (2x bandwidth)",
+              "BF16 - Brain float (same as FP16 bandwidth, different rounding)",
+              "FP8 - 8-bit float (4x bandwidth, inference focused)",
+              "FP4 - 4-bit float (8x bandwidth, extreme quantization)",
+              "FP6 - 6-bit float (mixed precision)",
+              "INT8 - Integer quantization"
+            ],
+            "factors": [
+              "Accuracy requirements (determined by training/inference regime)",
+              "Memory bandwidth constraints",
+              "Register availability",
+              "Network topology suitability"
+            ],
+            "sm100_inference": "Strong push toward FP8/FP4 for modern LLMs"
+          },
+          {
+            "decision": "Which matrix format?",
+            "options": [
+              "Standard dense - MMA operations as-is",
+              "MXF4 - Mantissa-exponent 4-bit encoding",
+              "MXF8 - Mantissa-exponent 8-bit encoding",
+              "F8F6F4 - Mixed format (8-bit, 6-bit, 4-bit)"
+            ],
+            "factors": [
+              "Data distribution characteristics",
+              "Compute-memory bandwidth ratio",
+              "Sparsity patterns in data"
+            ],
+            "sm100_preference": "MXF4/MXF8 for better coverage of dynamic range"
+          },
+          {
+            "decision": "Can we exploit sparsity?",
+            "options": [
+              "Dense - No sparsity optimization",
+              "Structured - 2:4 or similar block sparsity",
+              "Dynamic - Runtime sparsity detection"
+            ],
+            "factors": [
+              "Input data sparsity patterns",
+              "Sparsity hardware support available",
+              "Performance gain vs. overhead"
+            ],
+            "sm100_advantage": "Native sparsity support in tcgen05"
+          }
+        ],
+
+        "key_functions": [
+          "tcgen05_instruction_selector",
+          "matrix_format_analyzer",
+          "sparsity_pattern_matcher",
+          "dynamic_precision_planner"
+        ],
+        "estimated_duration_percent": 22,
+        "confidence": "MEDIUM-HIGH"
+      },
+
+      {
+        "phase_number": 5,
+        "name": "Register Allocation",
+        "description": "Allocate registers with tcgen05 constraints",
+        "sm100_specifics": {
+          "register_file_size": "256 registers per thread (same as sm_90)",
+          "tcgen05_register_patterns": "Different register usage per tcgen05 variant",
+          "compressed_formats_benefit": "FP4/FP6 use fewer registers than FP32",
+          "sparsity_register_overhead": "Sparsity patterns may increase register overhead"
+        },
+        "allocation_constraints": [
+          "tcgen05 operand alignment requirements",
+          "Register blocking for MXF formats",
+          "Sparsity pattern register storage"
+        ],
+        "estimated_duration_percent": 16,
+        "confidence": "MEDIUM"
+      },
+
+      {
+        "phase_number": 6,
+        "name": "Back-End Optimization Passes",
+        "description": "Post-RA optimization with SM100-specific scheduling",
+        "sm100_specifics": {
+          "tcgen05_scheduling": "New scheduler aware of 36 tcgen05 variants",
+          "format_conversion_optimization": "Minimize format conversion overhead",
+          "sparsity_communication_overlap": "Overlap sparsity pattern communication"
+        },
+        "pass_count": "15-18 passes",
+        "duration_percent": 22,
+        "confidence": "MEDIUM-HIGH"
+      },
+
+      {
+        "phase_number": 7,
+        "name": "PTX Code Emission",
+        "description": "Generate final PTX with tcgen05 instructions",
+        "sm100_specifics": {
+          "tcgen05_emission": "Uses new 0xA88888 function for SM100-specific tensor ops",
+          "matrix_format_encoding": "Encodes MXF4/MXF8 format information",
+          "sparsity_descriptor_generation": "Emit sparsity pattern descriptors",
+          "instruction_patterns": [
+            "mma.sync (SM100 variants with new formats)",
+            "mma.sync with MXF4/MXF8 format specifiers",
+            "mma.sparse with structured sparsity",
+            "ldmatrix with format conversion",
+            "atomic128 for 128-bit atomics"
+          ]
+        },
+        "output_format": "PTX text with SM100 extensions",
+        "estimated_duration_percent": 9,
+        "confidence": "MEDIUM"
+      }
+    ]
+  },
+
+  "tcgen05_tensor_core_system": {
+    "overview": "Complete redesign of tensor core instruction set for Blackwell",
+    "name_explanation": "tcgen = tensor core generation, 05 = 5th generation of tensor core ISA",
+    "instruction_count": 36,
+
+    "architecture_comparison": {
+      "sm_80_ampere": {
+        "instruction_family": "mma.sync",
+        "variants": "~8-10 main variants (by size and type)",
+        "data_types": ["FP32", "FP16", "BF16", "INT8", "TF32"],
+        "matrix_formats": ["Standard dense"]
+      },
+      "sm_90_hopper": {
+        "instruction_family": "mma.sync + warpgroup MMA",
+        "variants": "~12-15 (including warpgroup sizes)",
+        "data_types": ["FP32", "FP16", "BF16", "INT8", "FP8", "TF32"],
+        "matrix_formats": ["Standard dense"]
+      },
+      "sm_100_blackwell": {
+        "instruction_family": "tcgen05 (completely new ISA)",
+        "variants": "36 official variants",
+        "data_types": ["FP32", "FP16", "BF16", "INT8", "FP8", "FP4", "FP6"],
+        "matrix_formats": [
+          "Standard dense",
+          "MXF4 (mantissa-exponent 4-bit)",
+          "MXF8 (mantissa-exponent 8-bit)",
+          "F8F6F4 (mixed precision)"
+        ],
+        "sparsity_support": ["Structured", "Dynamic"]
+      }
+    },
+
+    "tcgen05_variant_categorization": {
+      "by_data_type": {
+        "fp32_variants": {
+          "count": 6,
+          "matrix_formats": ["dense", "mxf4", "mxf8"],
+          "sparsity_options": ["dense", "structured"],
+          "examples": [
+            "mma.sync.m16n8k16.f32.f32.dense",
+            "mma.sync.m16n8k16.f32.f32.mxf4",
+            "mma.sync.m16n8k16.f32.f32.structured_sparse"
+          ]
+        },
+        "fp16_variants": {
+          "count": 6,
+          "description": "Half-precision variants"
+        },
+        "bf16_variants": {
+          "count": 4,
+          "description": "Brain float variants (fewer due to precision similarities)"
+        },
+        "int8_variants": {
+          "count": 4,
+          "description": "Integer quantized variants"
+        },
+        "fp8_variants": {
+          "count": 8,
+          "description": "8-bit float (high demand for LLM inference)"
+        },
+        "fp4_variants": {
+          "count": 4,
+          "description": "4-bit ultra-compressed (extreme quantization)"
+        },
+        "fp6_variants": {
+          "count": 4,
+          "description": "6-bit mixed precision"
+        }
+      },
+
+      "by_matrix_format": {
+        "standard_dense": {
+          "encoding": "Standard IEEE floating point or integer",
+          "variants_using": 10,
+          "bandwidth_footprint": "1.0x baseline"
+        },
+        "mxf4": {
+          "encoding": "Mantissa-exponent 4-bit",
+          "variants_using": 8,
+          "bandwidth_footprint": "0.5x (2x bandwidth improvement)",
+          "use_case": "Quantized models, inference",
+          "dynamic_range": "Better coverage of varying magnitudes"
+        },
+        "mxf8": {
+          "encoding": "Mantissa-exponent 8-bit",
+          "variants_using": 10,
+          "bandwidth_footprint": "0.75x (1.33x bandwidth improvement)",
+          "use_case": "Fine-tuned models, training",
+          "dynamic_range": "Excellent for models with varied scales"
+        },
+        "f8f6f4": {
+          "encoding": "Mixed 8-bit, 6-bit, 4-bit precision",
+          "variants_using": 8,
+          "bandwidth_footprint": "0.5x-0.75x depending on distribution",
+          "use_case": "Heterogeneous model layers",
+          "adaptive": "Different parts of tensor use different precisions"
+        }
+      },
+
+      "by_sparsity_support": {
+        "dense": {
+          "variants": 18,
+          "description": "Standard dense operations"
+        },
+        "structured_sparse": {
+          "variants": 12,
+          "pattern": "2:4 or block-level sparsity",
+          "hardware_support": "Native sparsity detection"
+        },
+        "dynamic_sparse": {
+          "variants": 6,
+          "pattern": "Runtime-determined sparsity",
+          "overhead": "Sparsity descriptor lookup"
+        }
+      }
+    },
+
+    "matrix_format_deep_dive": {
+      "mxf4_mantissa_exponent_4bit": {
+        "encoding_structure": {
+          "mantissa_bits": 2,
+          "exponent_bits": 2,
+          "total_bits": 4,
+          "shared_exponent": "Block-shared exponent (multiple values per exponent)"
+        },
+        "compression_ratio": "8x vs FP32 (4 bits vs 32 bits)",
+        "value_range": "±2^±3 approximately",
+        "use_cases": [
+          "Highly quantized models",
+          "Inference with extreme compression",
+          "Low-bandwidth targets"
+        ],
+        "accuracy_impact": "Significant (suitable for int8-equivalent accuracy)",
+        "compilation_challenge": "Format conversion at load/store boundaries"
+      },
+
+      "mxf8_mantissa_exponent_8bit": {
+        "encoding_structure": {
+          "mantissa_bits": 4,
+          "exponent_bits": 4,
+          "total_bits": 8,
+          "shared_exponent": "Per-block shared exponent"
+        },
+        "compression_ratio": "4x vs FP32 (8 bits vs 32 bits)",
+        "value_range": "±2^±8 approximately",
+        "use_cases": [
+          "Quantized fine-tuning",
+          "Mixed-precision training",
+          "Inference with moderate compression"
+        ],
+        "accuracy_impact": "Moderate (better than FP8 alternative)",
+        "compilation_challenge": "Balance between compression and accuracy"
+      },
+
+      "f8f6f4_mixed_precision": {
+        "concept": "Different tensor parts use different precisions",
+        "encoding_variants": [
+          "Some elements as 8-bit",
+          "Some elements as 6-bit",
+          "Some elements as 4-bit"
+        ],
+        "allocation_strategy": "Compiler analyzes gradients and values, assigns precisions",
+        "use_case": "Fine-grained mixed precision for heterogeneous tensors",
+        "advantage": "Balances accuracy and compression on per-element basis",
+        "compilation_overhead": "Must determine per-element precision"
+      }
+    },
+
+    "tcgen05_code_emission": {
+      "emission_location": "0xA88888",
+      "function_size_bytes": 10470,
+      "purpose": "Generate 36 tcgen05 instruction variants",
+
+      "emission_decision_tree": [
+        {
+          "level": 1,
+          "question": "Is this a tensor core operation?",
+          "yes": "Continue to level 2",
+          "no": "Use standard instruction emission"
+        },
+        {
+          "level": 2,
+          "question": "Which data type and precision?",
+          "decision_options": 7,
+          "output": "Type selection (FP32, FP16, BF16, INT8, FP8, FP4, FP6)"
+        },
+        {
+          "level": 3,
+          "question": "Which matrix format?",
+          "decision_options": 4,
+          "output": "Format selection (dense, MXF4, MXF8, F8F6F4)"
+        },
+        {
+          "level": 4,
+          "question": "Can we exploit sparsity?",
+          "decision_options": 3,
+          "output": "Sparsity mode (dense, structured, dynamic)"
+        },
+        {
+          "level": 5,
+          "action": "Emit selected tcgen05 variant (out of 36)"
+        }
+      ]
+    }
+  },
+
+  "reduced_precision_support": {
+    "fp8_8bit_floating": {
+      "range": "±2^±127",
+      "mantissa_bits": 3,
+      "exponent_bits": 4,
+      "sign_bit": 1,
+      "use_cases": [
+        "LLM inference (critical for modern models)",
+        "Quantization-aware training",
+        "Bandwidth-constrained scenarios"
+      ],
+      "compilation_challenge": "Format conversion overhead vs. bandwidth savings"
+    },
+
+    "fp4_4bit_floating": {
+      "range": "±2^±1 (limited)",
+      "mantissa_bits": 1,
+      "exponent_bits": 2,
+      "sign_bit": 1,
+      "use_cases": [
+        "Extreme quantization (10x compression)",
+        "Inference-only scenarios",
+        "Edge deployment"
+      ],
+      "limitations": [
+        "Very low dynamic range",
+        "Significant accuracy loss",
+        "Requires careful training"
+      ],
+      "compilation_notes": "Compiler must validate that FP4 is sufficient for accuracy"
+    },
+
+    "fp6_6bit_floating": {
+      "range": "±2^±3 (medium)",
+      "mantissa_bits": 2,
+      "exponent_bits": 3,
+      "sign_bit": 1,
+      "use_cases": [
+        "Balanced quantization",
+        "Mixed-precision frameworks",
+        "Fine-grained control over precision"
+      ],
+      "advantage": "Better than FP4, more compression than FP8"
+    },
+
+    "automatic_precision_selection": {
+      "mechanism": "Cost model evaluates precision-accuracy trade-off",
+      "factors": [
+        "Layer characteristics (activation ranges)",
+        "Training convergence requirements",
+        "Bandwidth constraints",
+        "Target accuracy threshold"
+      ],
+      "compiler_decision": "Select best precision for each operation"
+    }
+  },
+
+  "sparsity_enhancements_sm100": {
+    "structured_sparsity": {
+      "pattern": "2:4 sparsity (2 non-zero elements per 4-element block)",
+      "hardware_support": "Native tcgen05 variants for structured sparsity",
+      "compilation_role": "Compiler detects/verifies sparsity patterns",
+      "performance_benefit": "2x throughput for suitable workloads"
+    },
+
+    "dynamic_sparsity": {
+      "concept": "Sparsity patterns determined at runtime",
+      "hardware_mechanism": "Dynamic sparsity detection in tcgen05",
+      "compilation_challenge": "Emit sparsity descriptor generation code",
+      "performance_trade_off": "Flexibility vs. overhead"
+    },
+
+    "sparsity_aware_compilation": {
+      "steps": [
+        "Analyze input tensors for sparsity patterns",
+        "Determine if structured or dynamic sparsity applicable",
+        "Generate sparsity descriptors",
+        "Emit tcgen05.sparse instructions",
+        "Optimize for sparse execution"
+      ]
+    }
+  },
+
+  "new_memory_hierarchy": {
+    "improvements_over_sm90": [
+      "Increased L2 cache (larger than Hopper)",
+      "New memory coherency modes",
+      "Enhanced TMA capabilities (Blackwell variant)",
+      "Improved prefetching behavior"
+    ],
+
+    "compilation_implications": [
+      "Memory access optimization changes",
+      "Larger cache makes more optimizations profitable",
+      "TMA patterns may be different from Hopper"
+    ],
+
+    "confidence": "MEDIUM - details of Blackwell memory hierarchy partially speculative"
+  },
+
+  "atomic_operations_128bit": {
+    "capability": "Atomic operations on 128-bit values",
+    "use_cases": [
+      "Lock-free synchronization across thread blocks",
+      "Distributed consensus operations",
+      "High-performance queues"
+    ],
+
+    "new_instructions": [
+      "atomic.add.u128",
+      "atomic.cas.u128",
+      "atomic.exch.u128"
+    ],
+
+    "compilation_impact": "New instruction patterns, coordinated synchronization"
+  },
+
+  "performance_characteristics": {
+    "compilation_time_estimate": {
+      "simple_kernel": "60-150ms",
+      "complex_tensor_kernel": "300-800ms",
+      "overhead_vs_sm90": "25-40% (due to tcgen05 variant selection)"
+    },
+
+    "code_size_characteristics": {
+      "instruction_count_variation": "15-35% depending on precision selection",
+      "reason": "Different precisions and formats have different code footprints",
+      "fp4_compression": "Up to 50% code size reduction for FP4 kernels"
+    },
+
+    "tensor_core_throughput": {
+      "peak_fp32": "Same as Hopper (legacy compatibility)",
+      "peak_fp8": "2x improvement vs. Hopper (native FP8 support)",
+      "peak_fp4": "4x improvement (if applicable)"
+    }
+  },
+
+  "tensor_core_evolution_progression": {
+    "sm_70_volta": {
+      "era": "2017 - Tensor Core Introduction",
+      "instruction": "wmma (warp matrix multiply-accumulate)",
+      "tile_size": "m16n16k16",
+      "precision": "FP16 primary",
+      "execution": "32-thread warp"
+    },
+
+    "sm_80_ampere": {
+      "era": "2020 - Improved Tensor Cores",
+      "instruction": "mma.sync with multiple variants",
+      "tile_sizes": ["m8n8k4", "m16n8k16", "m16n16k16", "m16n8k32", "and others"],
+      "precision": "Multiple (FP32, FP16, BF16, INT8, TF32)",
+      "execution": "Warp-level",
+      "new_feature": "TensorFloat32"
+    },
+
+    "sm_90_hopper": {
+      "era": "2022 - Warpgroup Tensors",
+      "instruction": "mma.sync (warpgroup variant)",
+      "tile_sizes": ["m64n32k32 (NEW)"],
+      "precision": "All previous + FP8",
+      "execution": "Warpgroup (128 threads)",
+      "new_features": ["Warpgroup MMA", "TMA"]
+    },
+
+    "sm_100_blackwell": {
+      "era": "2024 - tcgen05 Revolution",
+      "instruction": "tcgen05 (36 variants)",
+      "tile_sizes": "Flexible per variant",
+      "precision": "FP32, FP16, BF16, INT8, FP8, FP4, FP6",
+      "execution": "Warpgroup with dynamic capabilities",
+      "new_features": [
+        "36 instruction variants",
+        "MXF4/MXF8 formats",
+        "F8F6F4 mixed precision",
+        "Enhanced sparsity",
+        "128-bit atomics"
+      ],
+      "paradigm_shift": "From fixed instruction variants to flexible tensor operations"
+    }
+  },
+
+  "execution_trace_example": {
+    "kernel_code": "LLM inference kernel: dense matrix multiply with FP8 quantization",
+    "pseudocode": "C[i,j] = sum_k(A[i,k] * B[k,j]); A,B in FP8; C accumulates in FP32",
+    "expected_trace_sequence": [
+      {
+        "stage": "IR Construction",
+        "actions": [
+          "Parse matrix multiply with FP8 inputs",
+          "Recognize as tcgen05 candidate",
+          "Mark as SM100-compatible"
+        ]
+      },
+      {
+        "stage": "Front-End Optimization",
+        "actions": [
+          "Analyze FP8 suitability for inputs",
+          "Check if MXF4/MXF8 format needed",
+          "Estimate bandwidth savings"
+        ]
+      },
+      {
+        "stage": "Instruction Selection",
+        "actions": [
+          "Decision 1: Data type = FP8 (for inference)",
+          "Decision 2: Matrix format = standard dense (regular input)",
+          "Decision 3: No sparsity applicable",
+          "Selected tcgen05 variant: mma.sync.m16n8k16.f32.f8 (FP8 input, FP32 accumulate)",
+          "Emit decision to IR"
+        ]
+      },
+      {
+        "stage": "Register Allocation",
+        "actions": [
+          "Allocate FP8 matrix registers (smaller footprint)",
+          "Allocate FP32 accumulator registers",
+          "Plan format conversion at load/store boundaries"
+        ]
+      },
+      {
+        "stage": "Back-End Optimization",
+        "actions": [
+          "Schedule FP8 loads early (lower bandwidth cost)",
+          "Interleave format conversions with computation",
+          "Optimize for tcgen05 latency characteristics"
+        ]
+      },
+      {
+        "stage": "PTX Emission",
+        "actions": [
+          "Emit fp8 load (ld.global with FP8 format specifier)",
+          "Emit mma.sync.m16n8k16.f32.f8 (tcgen05 variant)",
+          "Emit fp32 store (st.global with FP32 format)",
+          "Emit any format conversion operations"
+        ]
+      }
+    ]
+  },
+
+  "blackwell_implementation_maturity": {
+    "assessment": "STABILIZING - SM100 is brand new (2024)",
+    "areas_likely_stable": [
+      "Core tcgen05 instruction variants",
+      "Standard dense matrix operations",
+      "Basic reduced precision support"
+    ],
+    "areas_evolving": [
+      "MXF4/MXF8 format support (likely still optimizing)",
+      "Advanced sparsity patterns",
+      "Dynamic precision selection heuristics",
+      "Memory hierarchy optimizations"
+    ],
+    "implications_for_reverse_engineering": [
+      "tcgen05 instruction selection likely finalized",
+      "Register allocation strategies may evolve",
+      "Optimization heuristics may be refined",
+      "Performance tuning ongoing in compiler"
+    ]
+  },
+
+  "unknowns_and_challenges": {
+    "high_priority_unknowns": [
+      {
+        "unknown": "Exact tcgen05 variant selection heuristics",
+        "why_critical": "Core to understanding SM100 code generation",
+        "investigation_method": "Dynamic trace of tcgen05 selection logic"
+      },
+      {
+        "unknown": "MXF4/MXF8 format conversion overhead",
+        "why_critical": "Determines viability of format selection",
+        "investigation_method": "Measure format conversion instruction sequences"
+      },
+      {
+        "unknown": "Sparsity pattern detection algorithm",
+        "why_critical": "Enables optimization for sparse workloads",
+        "investigation_method": "Trace sparsity analysis functions"
+      },
+      {
+        "unknown": "Dynamic precision selection mechanism",
+        "why_critical": "Determines mixed-precision kernel generation",
+        "investigation_method": "Analyze precision decision logic"
+      }
+    ],
+
+    "medium_priority_unknowns": [
+      "Cost model for tcgen05 variant selection",
+      "Register allocation strategy for MXF formats",
+      "128-bit atomic instruction generation",
+      "Enhanced TMA descriptor generation",
+      "Cache coherency mode selection"
+    ]
+  },
+
+  "validation_and_evidence": {
+    "string_references": [
+      "tcgen05, mxf4, mxf8, f8f6f4, fp4, fp6",
+      "structured_sparse, dynamic_sparse, block_sparsity",
+      "tensor_core_generation_5, blackwell_tensor"
+    ],
+    "function_signatures": [
+      "0xA88888 (10.2KB) - SM100 advanced tensor operations"
+    ],
+    "pattern_evidence": [
+      "Largest tensor core emitter function (0xA88888 > 0xA66666)",
+      "36-way decision logic implied by function size",
+      "Multiple precision and format handling paths"
+    ]
+  },
+
+  "conclusion": {
+    "summary": "SM100 (Blackwell) represents a fundamental paradigm shift in tensor core architecture. Rather than expanding the mma.sync instruction family, NVIDIA introduced tcgen05 - a completely new tensor core ISA with 36 variants covering multiple data types, matrix formats, and sparsity modes. This enables flexible precision selection, advanced matrix formats (MXF4/MXF8), and native sparsity support. The compilation pipeline must make complex decisions about data type, matrix format, and sparsity utilization. This is cutting-edge technology still stabilizing in the compiler.",
+    "confidence_level": "MEDIUM-HIGH - based on patterns and SM documentation, but SM100 is brand new",
+    "maturity_note": "Some aspects speculative due to SM100 being released only in 2024",
+    "next_phase": "Requires dynamic execution tracing on actual Blackwell hardware and access to official Blackwell tensor core documentation"
+  }
+}

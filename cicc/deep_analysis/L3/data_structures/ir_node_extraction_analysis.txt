@@ -1,0 +1,73 @@
+IR VALUE NODE FIELD OFFSETS EXTRACTION ANALYSIS
+================================================
+
+From decompiled code analysis of sub_672A20_0x672a20.c (129 KB):
+
+1. NODE ALLOCATION PATTERNS:
+   - sub_727670() - allocates IR value node (size unknown, used as v260)
+   - sub_7276D0() - allocates IR value node (size unknown, used as v281)  
+   - sub_724D80(0) - allocates IR value node (size unknown, used as v293)
+   - sub_72C930(84) - allocates IR node with 84 bytes (multiple instances)
+   - sub_72C930(79) - allocates IR node with 79 bytes
+   - sub_72C930(a1) - allocates IR node with variable size
+
+2. IDENTIFIED FIELD OFFSETS AND ACCESS PATTERNS:
+
+   From v260/v281 node creation (lines 2979-3010):
+   - Offset 0: QWORD - linked list pointer (line 3009: *(_QWORD *)v260 = v221)
+   - Offset 8: BYTE - type/opcode byte (line 2983: *(_BYTE *)(v260 + 8) = 84)
+   - Offset 10: BYTE - state flag (line 3001: *(_BYTE *)(v281 + 10) = 3)
+   - Offset 16: QWORD - pointer to type/attribute (line 2984: *(_QWORD *)(v260 + 16) = sub_724840(...))
+   - Offset 24: QWORD - pointer to value/operand (line 3002: *(_QWORD *)(v281 + 24) = v220)
+   - Offset 32: QWORD - pointer to next/operand (line 2986: *(_QWORD *)(v260 + 32) = v281)
+   - Offset 40: QWORD - pointer to operand (line 3003: *(_QWORD *)(v281 + 40) = v293)
+   - Offset 56: QWORD - pointer to parent/context (line 2985: *(_QWORD *)(v260 + 56) = *(_QWORD *)&dword_4F063F8)
+
+   From v37/v42 use-def chain traversal (lines 1885-1976):
+   - Offset 0: QWORD - linked list next pointer (line 1898: *v45 = *(_QWORD *)v37; then line 1899: *(_QWORD *)v37 = 0)
+   - Offset 8: BYTE - opcode/type (line 1886: v49 = *(_BYTE *)(v37 + 8); line 1968: v23 = *(_BYTE *)(v42 + 8) == 19)
+   - Offset 9: BYTE - operand count or type indicator
+   - Offset 10: BYTE - state/phase (line 1900: *(_BYTE *)(v37 + 10) = 5; line 1970: *(_BYTE *)(v42 + 10) = 1)
+   - Offset 11: BYTE - flags (line 1885: v48 = *(_BYTE *)(v37 + 11); check v48 & 2, v48 & 0x10)
+
+3. ALL UNIQUE OFFSETS FOUND IN CODE:
+   0, 5, 6, 7, 8, 9, 10, 11, 16, 20, 24, 32, 36, 40, 56, 72, 73, 75, 80, 88, 96, 776
+
+4. OBSERVATIONS ON SIZE:
+   - Offsets 0-56 appear to be in the main IR Value node
+   - Offset 56 + 8 bytes (QWORD) = total at least 64 bytes
+   - sub_72C930(84) allocations suggest 84-byte nodes for some operations
+   - Offsets 72+ may be in parent context structure (v5 + 272 pattern seen throughout)
+
+5. USE-DEF CHAIN STRUCTURE:
+   - Linked list of IR nodes using offset 0 as next pointer
+   - Nodes can be inserted/removed from chain (line 1898-1902 pattern)
+   - Each node has flags at offsets 9-11 controlling traversal behavior
+   - Flag checks: offset 11 & 2 (break condition), offset 11 & 0x10 (skip condition)
+   - Opcode at offset 8 determines node semantic type (value 19 checked at line 1968)
+
+6. FIELD SIZES AND TYPES (INFERRED):
+   Offset 0: 8 bytes - QWORD pointer (next in use-def chain)
+   Offset 8: 1 byte - BYTE (opcode/type indicator, values seen: 84, 19)
+   Offset 9: 1 byte - BYTE (operand count or flags)
+   Offset 10: 1 byte - BYTE (state/phase, values: 1, 3, 5)
+   Offset 11: 1 byte - BYTE (control flags, mask patterns: 2, 0x10, 0x80)
+   Offset 12-15: 4 bytes - padding or inline data
+   Offset 16-23: 8 bytes - QWORD pointer (type/attribute/def)
+   Offset 24-31: 8 bytes - QWORD pointer (value/operand)
+   Offset 32-39: 8 bytes - QWORD pointer (next operand or child)
+   Offset 40-47: 8 bytes - QWORD pointer (operand)
+   Offset 48-55: 8 bytes - QWORD pointer (unknown)
+   Offset 56-63: 8 bytes - QWORD pointer (parent/context)
+
+   TOTAL: 64 bytes minimum (56 offset + 8 for QWORD at offset 56)
+
+7. EVIDENCE SUMMARY:
+   Line 2979: v260 = sub_727670() - allocates IR node
+   Line 2983: *(_BYTE *)(v260 + 8) = 84 - sets byte field
+   Line 2984: *(_QWORD *)(v260 + 16) = sub_724840(...) - sets QWORD field
+   Line 2986: *(_QWORD *)(v260 + 32) = v281 - sets QWORD field
+   Line 3001: *(_BYTE *)(v281 + 10) = 3 - sets state field
+   Line 3002: *(_QWORD *)(v281 + 24) = v220 - sets QWORD field
+   Line 3003: *(_QWORD *)(v281 + 40) = v293 - sets QWORD field
+   Line 3009: *(_QWORD *)v260 = v221 - sets offset 0 field
