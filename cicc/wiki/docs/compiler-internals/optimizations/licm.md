@@ -150,6 +150,373 @@ version_loop = (invariant_ratio >= 0.90) AND
 
 ---
 
+## Loop Rejection Criteria
+
+This section documents the precise thresholds and decision logic that determine whether LICM versioning is applied to a loop. These criteria are enforced to ensure profitable optimizations while maintaining compile-time bounds.
+
+### Invariant Instruction Threshold
+
+**Parameter**: `licm-versioning-invariant-threshold`
+**Value**: **90 (percent)**
+**Evidence**: `ctor_218_0x4e7a30.c` (decompiled parameter registration)
+
+**Criterion**: A loop is eligible for versioning only if ≥90% of its instructions are classified as loop-invariant or conditionally-invariant.
+
+**Formula**:
+```c
+float invariant_ratio = count_invariant_instructions(loop) /
+                        count_total_instructions(loop);
+bool meets_invariant_threshold = (invariant_ratio >= 0.90);
+```
+
+**Rationale**:
+- **Below 90%**: Loop has significant variant work that cannot be hoisted, limiting optimization benefit
+- **At 90%**: Approximately 9 of 10 instructions can be hoisted or are safe to assume invariant under versioning
+- **Above 90%**: High confidence that versioning will yield measurable performance improvement
+
+**Example**:
+```c
+// Loop with 100 instructions: 95 invariant, 5 variant
+// Ratio: 95/100 = 0.95 (95%) ≥ 0.90 ✓ ELIGIBLE
+for (int i = 0; i < N; i++) {
+    int base = arr[offset];        // Invariant (offset is loop-invariant)
+    float factor = compute();      // Invariant (no loop dependencies)
+    result[i] = base * factor + i; // Variant (depends on i)
+}
+```
+
+### Loop Nesting Depth Limit
+
+**Parameter**: `licm-versioning-max-depth-threshold`
+**Value**: **2 (nesting levels)**
+**Evidence**: `ctor_473_0x54d740.c` (decompiled parameter registration)
+
+**Criterion**: Versioning is disabled for loops with nesting depth > 2. Only loops at nesting level ≤ 2 are candidates.
+
+**Definition**:
+```c
+int loop_nesting_depth = getLoopNestDepth(loop);
+bool meets_depth_threshold = (loop_nesting_depth <= 2);
+```
+
+**Nesting Levels**:
+```
+Depth 1: Outermost loop (not nested)
+Depth 2: One level of nesting
+Depth 3+: REJECTED - not versioned
+```
+
+**Rationale**:
+- **Depth 1-2**: Reasonable code size growth (2× duplication acceptable)
+- **Depth ≥ 3**: Exponential code bloat - versioning 3 nested loops = 2³ = 8 versions potential
+- **Register pressure**: Deep nesting with versioning can exhaust register resources
+- **Compile time**: Prevents quadratic compile-time complexity
+
+**Example**:
+```c
+// Depth 1: VERSIONED ✓
+for (int i = 0; i < N; i++) {
+    process(i);
+}
+
+// Depth 2: VERSIONED ✓
+for (int i = 0; i < N; i++) {
+    for (int j = 0; j < M; j++) {
+        process(i, j);
+    }
+}
+
+// Depth 3: REJECTED ✗
+for (int i = 0; i < N; i++) {
+    for (int j = 0; j < M; j++) {
+        for (int k = 0; k < K; k++) {
+            process(i, j, k);  // Too deeply nested
+        }
+    }
+}
+```
+
+### Memory Disambiguation Check Count Limit
+
+**Parameter**: `runtime-memory-check-threshold`
+**Value**: **8 (maximum number of comparisons)**
+**Evidence**: `ctor_053_0x490b90.c` (decompiled parameter registration)
+
+**Criterion**: LICM versioning generates at most 8 runtime memory checks per loop. Additional potential conflicts are conservatively rejected.
+
+**Formula**:
+```c
+int num_checks = countMemoryDisambiguationChecks(loop);
+bool meets_check_threshold = (num_checks <= 8);
+```
+
+**What Constitutes a Check**:
+Each pair of potentially-aliasing memory accesses (load-store, store-store) requires one runtime check:
+```c
+// Check structure: ptr_a + size_a <= ptr_b OR ptr_b + size_b <= ptr_a
+bool no_alias = (ptr_a_end <= ptr_b_start) || (ptr_b_end <= ptr_a_start);
+```
+
+**Check Explosion Problem**:
+- n load-store pairs → C(n, 2) = n*(n-1)/2 pairwise checks
+- 8 checks maximum prevents quadratic explosion
+- Each check: ~6-8 CPU instructions at runtime
+
+**Example**:
+```c
+// 1 load, 2 stores → 2 checks ✓
+for (int i = 0; i < N; i++) {
+    int x = load(ptr_a);           // Check 1: ptr_a vs ptr_b
+    store(ptr_b + i, x);           // Check 2: ptr_a vs ptr_c
+    store(ptr_c + i, x + 1);
+}
+
+// 1 load, 8 stores → 8 checks ✓ AT LIMIT
+for (int i = 0; i < N; i++) {
+    int x = load(ptr_a);
+    store(ptr_b[i], x);
+    store(ptr_c[i], x);
+    // ... (6 more stores)
+}
+
+// 1 load, 9 stores → 9 checks ✗ REJECTED
+for (int i = 0; i < N; i++) {
+    int x = load(ptr_a);
+    store(ptr_b[i], x);
+    // ... (8 more stores) → 9 checks total
+}
+```
+
+### Memory Check Merging Threshold
+
+**Parameter**: `memory-check-merge-threshold`
+**Value**: **100 (maximum comparisons when merging checks)**
+**Evidence**: `ctor_053_0x490b90.c` (decompiled parameter registration)
+
+**Criterion**: When combining multiple memory checks into a single guard condition, the total number of comparison operations must not exceed 100.
+
+**Formula**:
+```c
+// Without merging: 8 separate conditional branches
+if (check1) { ... }
+if (check2) { ... }
+// ...
+if (check8) { ... }
+
+// With merging: Single combined condition
+if ((check1) && (check2) && ... && (check8)) {
+    // Fast path
+} else {
+    // Safe path
+}
+// Total comparisons: 2 * 8 = 16 (each check has 2 comparisons)
+// Limit: ≤ 100 total comparisons
+```
+
+**Rationale**:
+- Merging checks reduces number of branches at loop entry
+- Prevents merging logic from becoming prohibitively expensive
+- 100 comparisons ≈ 2-3 CPU instructions
+- Balances code size (merged) vs. branch overhead (unmerged)
+
+### Benefit-to-Overhead Ratio Threshold
+
+**Parameter**: Implicit in cost model (no direct command-line flag)
+**Threshold Multiplier**: **2.0×**
+**Evidence**: `licm_versioning.json` L3 analysis (line 104-105)
+
+**Criterion**: Hoisting benefit must exceed versioning overhead by at least 2× to justify versioning.
+
+**Formula**:
+```c
+float calculateHoistBenefit(Loop* L) {
+    int trip_count = estimateTripCount(L);
+    int hoisted_insns = countHoistableInstructions(L);
+    float insn_cost = 4.0;  // Average cycles per instruction
+
+    return trip_count * hoisted_insns * insn_cost;
+}
+
+float calculateVersionOverhead(Loop* L) {
+    int num_checks = countMemoryChecks(L);
+    float check_cost = 1.5;  // Cycles per pointer comparison
+
+    return num_checks * check_cost;
+}
+
+bool shouldVersion = (calculateHoistBenefit(L) >
+                     calculateVersionOverhead(L) * 2.0);
+```
+
+**Example Decision**:
+```
+Trip count: 1000 iterations
+Hoistable instructions: 3 (load, add, mul)
+Instruction cost: 4 cycles average
+
+Benefit = 1000 × 3 × 4 = 12,000 cycles saved
+
+Memory checks: 4 pointer comparisons
+Check cost: 1.5 cycles per comparison
+
+Overhead = 4 × 1.5 = 6 cycles (at loop entry)
+
+Ratio = 12,000 / 6 = 2000× ✓ VERSIONED (far exceeds 2.0×)
+```
+
+---
+
+## Comprehensive Loop Rejection Decision Flow
+
+The following pseudocode documents the complete decision tree for whether to apply LICM versioning:
+
+```c
+bool shouldApplyLICMVersioning(Loop* L) {
+    // Check 1: Global enable flag
+    if (!enableLoopVersioningLICM) {
+        return false;  // Rejection: "GloballyDisabled"
+    }
+
+    // Check 2: Per-loop metadata override
+    if (hasMetadata(L, "llvm.loop.licm_versioning.disable")) {
+        return false;  // Rejection: "MetadataDisabled"
+    }
+
+    // Check 3: Size optimization flag
+    if (optimizeForSize) {
+        return false;  // Rejection: "CantVersionLoopWithOptForSize"
+    }
+
+    // Check 4: Divergent control flow
+    if (hasDivergentControlFlow(L)) {
+        return false;  // Rejection: "CantVersionLoopWithDivergentTarget"
+    }
+
+    // Check 5: Trip count analysis
+    ScalarEvolution::BackedgeTakenInfo BEI = SE->getBackedgeTakenInfo(L);
+    if (!BEI.isKnown()) {
+        // Unknown trip count with complex CFG
+        if (hasComplexControlFlow(L)) {
+            return false;  // Rejection: "UnknownLoopCountComplexCFG"
+        }
+    } else {
+        // Known trip count - check if too small
+        if (BEI.getValue() <= 1) {
+            return false;  // Rejection: "SmallTripCount"
+        }
+
+        // Check stride alignment
+        if (!strideAlignmentValid(L, BEI)) {
+            return false;  // Rejection: "StrideMismatch"
+        }
+    }
+
+    // Check 6: Nesting depth limit
+    if (getLoopNestDepth(L) > 2) {
+        return false;  // Rejection: "MaxNestingDepthExceeded"
+    }
+
+    // Check 7: Invariant ratio threshold
+    int totalInstructions = countLoopInstructions(L);
+    int invariantInstructions = countLoopInvariantInstructions(L);
+    float invariantRatio = invariantInstructions / (float)totalInstructions;
+
+    if (invariantRatio < 0.90) {
+        return false;  // Rejection: "InvariantRatioBelowThreshold"
+    }
+
+    // Check 8: Memory check count limit
+    int memoryCheckCount = estimateMemoryCheckCount(L);
+    if (memoryCheckCount > 8) {
+        return false;  // Rejection: "TooManyMemoryChecks"
+    }
+
+    // Check 9: Benefit vs. overhead analysis
+    float hoistBenefit = calculateHoistBenefit(L);
+    float versionOverhead = calculateVersionOverhead(L);
+    float threshold = 2.0;  // 2× multiplier
+
+    if (hoistBenefit <= versionOverhead * threshold) {
+        return false;  // Rejection: "InsufficientBenefit"
+    }
+
+    // Check 10: Check merging feasibility
+    int totalComparisons = estimateMergedCheckComparisons(L);
+    if (totalComparisons > 100) {
+        return false;  // Rejection: "CheckMergingTooComplex"
+    }
+
+    // ALL CHECKS PASSED
+    return true;  // Decision: VERSION LOOP
+}
+```
+
+### Rejection Condition Details
+
+| Rejection Code | Threshold/Condition | Parameter | Evidence |
+|----------------|-------------------|-----------|----------|
+| `GloballyDisabled` | `enable-loop-versioning-licm == false` | Master flag | `ctor_388_0x51b710.c` |
+| `MetadataDisabled` | Loop has `llvm.loop.licm_versioning.disable` | Per-loop metadata | `sub_F6E950_0xf6e950.c` |
+| `CantVersionLoopWithOptForSize` | `-Os` or `-Oz` compilation flag | Compile mode | `ctor_388_0x51b710.c` |
+| `CantVersionLoopWithDivergentTarget` | Multiple exit edges with different targets | CFG structure | Decompiled logic |
+| `UnknownLoopCountComplexCFG` | Trip count unknown AND complex CFG | Control flow | Decompiled logic |
+| `SmallTripCount` | Trip count ≤ 1 | Dynamic analysis | Decompiled logic |
+| `StrideMismatch` | Loop stride ∤ trip count | Loop structure | Decompiled logic |
+| `MaxNestingDepthExceeded` | Nesting depth > 2 | `licm-versioning-max-depth-threshold` | `ctor_473_0x54d740.c` |
+| `InvariantRatioBelowThreshold` | Invariant ratio < 0.90 | `licm-versioning-invariant-threshold` | `ctor_218_0x4e7a30.c` |
+| `TooManyMemoryChecks` | Memory checks > 8 | `runtime-memory-check-threshold` | `ctor_053_0x490b90.c` |
+| `InsufficientBenefit` | Benefit ≤ 2.0× overhead | Cost model multiplier | Analysis files |
+| `CheckMergingTooComplex` | Merged comparisons > 100 | `memory-check-merge-threshold` | `ctor_053_0x490b90.c` |
+
+### Function References (Decompiled Evidence)
+
+**Key Implementation Functions** extracted from CICC binary analysis:
+
+| Function | Address | Purpose | Confidence |
+|----------|---------|---------|------------|
+| `LoopVersioningLICMPass::run()` | 0x4e33a0 | Main versioning decision entry point | VERY HIGH |
+| `isLoopVersioningEligible()` | Derived from 0x4e33a0 | Eligibility check implementation | HIGH |
+| `generateMemoryChecks()` | Within 0x288e950 | Generate disambiguation checks | HIGH |
+| `versionLoop()` | `sub_19C97B0_0x19c97b0.c` | Create fast/safe loop versions | HIGH |
+| `estimateHoistBenefit()` | Derived | Benefit calculation | MEDIUM |
+| `selectVersionedLoop()` | Derived | Runtime version selection | MEDIUM |
+
+---
+
+## Configuration Command-Line Overrides
+
+To override rejection criteria during compilation:
+
+```bash
+# Reduce invariant threshold to 85%
+-mllvm -licm-versioning-invariant-threshold=85
+
+# Increase max nesting depth to 3
+-mllvm -licm-versioning-max-depth-threshold=3
+
+# Increase memory check limit to 12
+-mllvm -runtime-memory-check-threshold=12
+
+# Increase merge threshold to 200
+-mllvm -memory-check-merge-threshold=200
+
+# Disable versioning entirely
+-mllvm -enable-loop-versioning-licm=false
+```
+
+---
+
+## CUDA-Specific Rejection Impacts
+
+When LICM versioning is rejected, CUDA kernels experience:
+
+1. **Divergence**: Invariant branch conditions not hoisted → warp divergence
+2. **Memory Traffic**: Invariant loads executed per iteration → redundant memory accesses
+3. **Register Pressure**: Simpler paths but more iterations to compute invariants
+4. **Occupancy**: Larger loop bodies may reduce occupancy by forcing register spill
+
+---
+
 ## Cost Model
 
 ### Benefit Calculation

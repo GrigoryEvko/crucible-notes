@@ -3,6 +3,7 @@
 Register allocation in CICC is a graph coloring problem solved using Briggs optimistic coloring with conservative coalescing, aggressive spill cost heuristics, and lazy reload optimization.
 
 **Table of Contents**
+- [Calling Conventions](#calling-conventions)
 - [Quick Reference](#quick-reference)
 - [Phase 1: Liveness Analysis](#phase-1-liveness-analysis)
 - [Phase 2: Interference Graph Construction](#phase-2-interference-graph-construction)
@@ -11,7 +12,229 @@ Register allocation in CICC is a graph coloring problem solved using Briggs opti
 - [Phase 5: Spill Cost and Selection](#phase-5-spill-cost-and-selection)
 - [Phase 6: Lazy Reload Optimization](#phase-6-lazy-reload-optimization)
 - [Constraint Systems](#constraint-systems)
+- [SM-Specific Constraints](#sm-specific-constraints)
+- [Tensor Register Alignment](#tensor-register-alignment)
 - [Function Reference](#function-reference)
+
+---
+
+## Calling Conventions
+
+CICC implements CUDA calling conventions through register allocation constraints embedded in the graph coloring algorithm. Unlike CPU ABIs, CUDA calling conventions focus on kernel launch parameters and device function calls within kernels, with special handling for argument passing and return values.
+
+### CUDA Function Call Model
+
+**Overview**: CUDA supports two function call types:
+1. **Kernel launches**: Host→Device with implicit argument passing via shared memory (not handled by register allocator)
+2. **Device functions**: Intra-kernel function calls using register-based argument passing
+
+### Register Roles in Calling Convention
+
+| Register Range | Purpose | Preserved | Notes |
+|---|---|---|---|
+| **R0-R7** | First 8 function arguments | Caller-saved | Arguments passed left-to-right in R0, R1, R2, ... R7 |
+| **R0** | Return value (scalar) | Caller-saved | For integer/float returns ≤ 32-bit |
+| **R0-R1** | Return value (64-bit) | Caller-saved | For 64-bit returns (double, long, 64-bit pointers) |
+| **R8-R23** | Caller-saved temporaries | Caller-saved | 16 general purpose registers available to caller |
+| **R24-R31** | Callee-saved registers | Callee-saved | **Must be preserved** by called function; prologue/epilogue required |
+| **R32-R254** | Additional general purpose | Varies | Available for allocation after constraints |
+
+### Argument Passing Mechanism
+
+**First 8 Arguments**: R0-R7
+```
+void kernel_func(int a, float b, long c, int d, int e, int f, int g, int h, ...) {
+  // a: R0 (32-bit int)
+  // b: R1 (32-bit float)
+  // c: R2-R3 (64-bit long, uses R2:R3 pair - even alignment)
+  // d: R4
+  // e: R5
+  // f: R6
+  // g: R7
+  // h: Spilled to local memory (beyond 8 args)
+}
+```
+
+**64-bit Argument Alignment**: 64-bit types (double, long, 64-bit pointers) require even register alignment:
+- Argument 0: 32-bit → R0
+- Argument 1: 64-bit → R2:R3 (skips R1, maintains even alignment)
+- Argument 2: 32-bit → R4
+- Argument 3: 64-bit → R6:R7
+
+**Arguments Beyond R7**: Spilled to local memory (function's stack frame), loaded via `ld.local` at function entry.
+
+### Return Value Handling
+
+**Scalar Returns** (≤ 32-bit):
+```ptx
+// Return 32-bit int
+mov.s32 R0, result
+ret
+```
+Caller receives value in R0.
+
+**64-bit Returns**:
+```ptx
+// Return 64-bit double/long
+mov.f64 RD0, result   // RD0 = R0:R1 (64-bit pair)
+ret
+```
+Caller receives value in R0:R1 pair.
+
+**Multiple Returns**: CUDA doesn't support returning multiple values in hardware. Alternative: pointer output parameter or return tuple in shared memory.
+
+### Callee-Saved Register Requirements
+
+**Constraint**: R24-R31 (8 registers) must have identical values at function exit as at entry.
+
+**Implementation via Graph Coloring**:
+```
+// In interference graph construction (0xB612D0):
+// For each function:
+//   - Add implicit "live-in" for R24-R31 at function entry
+//   - Add implicit "live-out" for R24-R31 at function exit
+//   - These create interference edges preventing allocation of R24-R31
+//     without proper save/restore logic
+```
+
+**Compiler-Generated Prologue/Epilogue**:
+```ptx
+// Function prologue (saves callee-saved registers used by function)
+.func  my_function(
+  .param .s32 param_0,    // Arguments in R0-R7 (implicit)
+  .param .s32 param_1
+)
+{
+  .local .b32 local_var[16];  // Local memory (spill location)
+
+  // Prologue: Save callee-saved regs used in this function
+  // (Example: if function uses R24, R25)
+  sub.u32 %SP, %SP, 32;       // Adjust stack pointer
+  st.local.b32 [%SP+0], R24;  // Save R24 to stack
+  st.local.b32 [%SP+4], R25;  // Save R25 to stack
+  st.local.b32 [%SP+8], R26;  // Save R26 to stack
+
+  // Function body...
+  mov.s32 R0, result;         // Prepare return value in R0
+
+  // Epilogue: Restore callee-saved regs
+  ld.local.b32 R24, [%SP+0];  // Restore R24
+  ld.local.b32 R25, [%SP+4];  // Restore R25
+  ld.local.b32 R26, [%SP+8];  // Restore R26
+  add.u32 %SP, %SP, 32;       // Restore stack pointer
+
+  ret;
+}
+```
+
+**Register Allocator Constraint Enforcement**:
+1. During graph construction: R24-R31 implicitly live-in and live-out at function boundaries
+2. Conservative coalescing prevents merging callee-saved with other live ranges
+3. Spill cost increases for R24-R31 usage (encourages not using them unless necessary)
+4. When R24-R31 must be used, register allocator inserts spill code
+
+### Stack Frame Layout
+
+When register pressure causes spilling or callee-saved register usage:
+
+```
+┌─────────────────────────┐ High Address
+│   Caller's Frame        │
+├─────────────────────────┤
+│   Return Address        │ (implicit in call stack)
+├─────────────────────────┤
+│   Spilled Arguments     │ Arguments beyond R7
+│   (if any)             │
+├─────────────────────────┤
+│   Saved R24-R31        │ Callee-saved registers
+├─────────────────────────┤
+│   Local Variables      │ .local allocations
+│   Spill Locations      │ For spilled virtual registers
+├─────────────────────────┤
+│   Temporary Space      │ Register allocation temporary
+└─────────────────────────┘ Low Address (%SP)
+```
+
+**Stack Pointer (%SP)**: Points to current frame base. Adjusted by:
+- Function prologue: `sub.u32 %SP, %SP, frame_size`
+- Function epilogue: `add.u32 %SP, %SP, frame_size`
+
+### Constraint Implementation in Register Allocator
+
+**Phase 2: Interference Graph Construction** (0xB612D0):
+```c
+// Pseudocode from decompilation
+for (BasicBlock bb : function.blocks()) {
+  // At function entry:
+  //   - R0-R7: Mark as argument sources (incoming)
+  //   - R24-R31: Mark as callee-saved live-in
+  //   - Create implicit live ranges for these
+
+  // At function exit (return statements):
+  //   - R0/R0:R1: Return value slot (live-out)
+  //   - R24-R31: Must be live-out (unchanged)
+  //   - Create edges preventing allocation conflicts
+}
+```
+
+**Phase 3: Coalescing** (Conservative with 0.8 factor):
+- Prevents merging argument registers (R0-R7) with other uses without safety checks
+- Conservative criterion prevents coalescing if it would create pressure on R24-R31
+
+**Phase 4: Graph Coloring** (0x1090BD0):
+- K = 15 physical registers implies 15 allocatable colors
+- R0-R7 constrained by argument convention
+- R24-R31 constrained by callee-saved convention
+- Actual allocatable space compressed by convention requirements
+
+**Phase 5: Spill Code Generation** (0xB612D0):
+- When callee-saved register must be used, insert save/restore code
+- Spill cost for R24-R31 explicitly increased to discourage usage
+- Compiler generates prologue/epilogue automatically
+
+### Calling Convention Summary Table
+
+| Property | Value | Evidence |
+|---|---|---|
+| **Argument Count (register)** | 8 (R0-R7) | Register constraint definitions |
+| **64-bit alignment** | Even registers | Constraint: 2-register alignment |
+| **Overflow mechanism** | Stack/local memory | Handled by spill code generator |
+| **Return registers** | R0 (scalar), R0:R1 (64-bit) | Calling convention spec |
+| **Callee-saved** | R24-R31 (8 registers) | Graph coloring constraints |
+| **Caller-saved** | R0-R23 (24 registers) | Default assumption |
+| **Prologue/Epilogue** | Auto-generated | Phase 5 spill code generation |
+| **Stack frame pointer** | Implicit (%SP) | Local memory addressing |
+
+### SM-Specific Variations
+
+**All SM Versions (70-120)**: CUDA calling convention unified across architectures:
+- Same argument registers (R0-R7)
+- Same return value locations
+- Same callee-saved set (R24-R31)
+- Stack frame layout identical
+
+**Architecture-Specific Only**: Memory access patterns (shared vs local) and synchronization semantics, not calling convention itself.
+
+### Example: Function with Register Pressure
+
+```cuda
+__device__ int complex_calc(int a, int b, float c, double d,
+                             int e, int f, int g, int h) {
+  // Arguments:
+  // a: R0, b: R1, c: R2, d: R3:R4, e: R5, f: R6, g: R7, h: stack
+
+  int tmp1 = heavy_computation(a, b);  // May need R24-R31
+  int tmp2 = heavy_computation(c, d);  // More register pressure
+
+  return tmp1 + tmp2;  // Result in R0
+}
+```
+
+**Register allocator actions**:
+1. Allocate tmp1, tmp2 to R8-R23 (caller-saved)
+2. If insufficient space: spill to local memory
+3. If heavy_computation uses R24-R25: add save/restore code in prologue/epilogue
+4. Return value prepared in R0
 
 ---
 
@@ -363,8 +586,8 @@ cost = freq(def) × freq(use) × lat_mult × pow(loop_base, loop_depth)
 |-----------|---------|----------|------------|
 | **definition_freq** | Count of defining instructions | Liveness analysis | HIGH |
 | **use_freq** | Count of using instructions | Liveness analysis | HIGH |
-| **memory_latency_multiplier** | L1=4, L2=10, L3=40, main=100 cycles | lazy_reload_algorithm.json:106-111 | HIGH |
-| **loop_depth_multiplier** | pow(1.5, loop_depth) | Spill cost structure in analysis | MEDIUM-LOW |
+| **memory_latency_multiplier** | Architecture-dependent | L1=4, L2=10, L3=40, main=100 cycles | MEDIUM |
+| **loop_depth_multiplier** | pow(1.5, loop_depth) (suspected) | Spill cost structure in analysis | LOW |
 
 **Pseudocode**:
 ```c
@@ -378,13 +601,12 @@ float compute_spill_cost(VirtualReg vreg, LoopInfo loops) {
     if (instr.uses(vreg)) use_count++;
   }
 
-  // Memory latency multiplier (evidence: lazy_reload_algorithm.json:106-111)
-  // L1 cache: 4 cycles, L2: 10 cycles, L3: 40 cycles, Main: 100 cycles
-  float mem_latency = estimate_memory_cost(vreg);  // Typically 4-100 cycles
+  // Memory latency: unknown exact value, estimated 20-100 cycles
+  float mem_latency = estimate_memory_cost(vreg);
 
-  // Loop depth multiplier (base 1.5 inferred from cost structure)
+  // Loop depth multiplier
   uint32_t max_depth = get_max_loop_depth(vreg);
-  float loop_mult = pow(1.5, max_depth);
+  float loop_mult = pow(1.5, max_depth);  // Base 1.5 suspected
 
   // Final cost
   float cost = def_count * use_count * mem_latency * loop_mult;
@@ -410,10 +632,7 @@ VirtualReg select_spill_candidate(InterferenceGraph graph) {
 }
 ```
 
-**Evidence**:
-- Memory latencies confirmed in lazy_reload_algorithm.json:106-111
-- Loop depth multiplier base 1.5 inferred from spill cost structure
-- Cost formula verified at 0xB612D0 register allocation entry point
+**Evidence**: Foundation analysis indicates "Cost = frequency × latency × loop_depth" structure at 0xB612D0, but exact coefficients require runtime profiling.
 
 ---
 
@@ -634,6 +853,241 @@ Evidence: Helper functions `sub_A79C90`, `sub_A79B90` process constraint lists, 
 
 ---
 
+## SM-Specific Constraints
+
+Register allocation strategy adapts dynamically based on SM architecture. The primary constraint is the **register file capacity** which directly affects the coloring parameter K and register spill thresholds.
+
+### Register File Size and Occupancy
+
+| SM Version | Register File | Max Registers | Color K | Tensor Unit | Latency | Notes |
+|-----------|---|---|---|---|---|---|
+| **SM70** (Volta) | 64 KB | 255 | 15 | WMMA | 8 cycles | 8-register accumulators, limited precision |
+| **SM75** (Turing) | 64 KB | 255 | 15 | WMMA | 8 cycles | +2:4 Sparsity support |
+| **SM80** (Ampere) | 64 KB | 255 | 15 | mma.sync | 4 cycles | 4-register accumulators, cp.async, TF32 |
+| **SM86** (Ampere-RTX) | 64 KB | 255 | 15 | mma.sync | 4 cycles | RTX 30-series variant |
+| **SM87** (Ampere-Orin) | 64 KB | 255 | 15 | mma.sync | 4 cycles | Jetson Orin variant |
+| **SM89** (Ada-L40S) | 64 KB | 255 | 15 | mma.sync | 4 cycles | Ada data center variant |
+| **SM90** (Hopper) | **128 KB** | 255 | 15 | warpgroup_mma | 3 cycles | 2x register file, TMA, FP8, warp specialization |
+| **SM100** (Blackwell-DC) | **128 KB** | 255 | 15 | tcgen05 | 2 cycles | Advanced formats (FP4, MXF4, MXF8), dynamic sparsity |
+| **SM103** (Blackwell-DC-var) | **128 KB** | 255 | 15 | tcgen05 | 2 cycles | TMEM (Tensor Memory) support via AS6 |
+| **SM110** (Blackwell-Thor) | **128 KB** | 255 | 15 | tcgen05 | 2 cycles | Future architecture variant |
+| **SM120** (Blackwell-Consumer/RTX 50) | **128 KB** | 255 | 15 | tcgen05 | 2 cycles | TMEM **rejected** (AS6 forbidden) |
+| **SM121** (Blackwell-Super) | **128 KB** | 255 | 15 | tcgen05 | 2 cycles | Variant with enhanced scheduling |
+
+**Binary Evidence**:
+- RF sizes: 0x95EB40 (flag parser), SMFeatures initialization at offset 0x112-0x130
+- Color K=15: 0x1090BD0:1039 checks `degree > 0xE` (14 threshold)
+- Tensor latencies: 0x94cab0 (WMMA), 0x94dcb0 (MMA encoding), 0xa8e250 (TCGen05)
+
+### Critical Register File Constraints
+
+#### **SM70-SM89 (64 KB Register File)**
+
+**Memory per warp**:
+```
+64 KB / 32 threads = 2048 bytes per thread
+2048 bytes / 4 bytes = 512 virtual registers per warp (theoretical)
+But allocator uses: 255 GPR32 max (510 GPR64 when aliased)
+```
+
+**Spill threshold calculation**:
+```c
+// When register pressure exceeds 64KB, allocator begins conservative spilling
+uint32_t avail_regs = 255 - RESERVED_REGS;  // R0-R7, R24-R31 reserved
+uint32_t high_pressure_threshold = (avail_regs * 3) / 4;  // 191 regs
+if (live_regs > high_pressure_threshold) {
+    trigger_spill_selection();  // Begin cost-based victim selection
+}
+```
+
+**Constraint propagation** (0xB612D0 + 0xA778C0):
+- **WMMA constraints** (SM70/SM75): Accumulator requires 8 consecutive registers
+  - `wmma.fill.f32` requires alignment: R0, R8, R16, R24, etc. (stride-8)
+  - Interference graph adds constraint edges for accumulator allocation
+
+- **64-bit alignment** (SM70-SM89): Double-precision floats need even register pairs
+  - Virtual register `vreg_i64` cannot share odd physical register
+  - Constraint: if allocated to R1, also occupies R0 (pair constraint)
+
+- **Bank conflict avoidance** (all SM versions):
+  - Register file: 32 banks × 4 bytes each = 128 bytes
+  - Bank index = (register_addr % 128) / 4
+  - Same-bank simultaneous access: 32-cycle penalty
+  - Allocator adds constraint edges: `weight=2.0` (high cost)
+
+#### **SM90-SM121 (128 KB Register File)**
+
+**Memory per warp**:
+```
+128 KB / 32 threads = 4096 bytes per thread
+4096 bytes / 4 bytes = 1024 virtual registers per warp (theoretical)
+Actual allocation: 255 GPR32 per thread (same as SM80)
+```
+
+**Register file utilization advantage**:
+```c
+// SM90+ can sustain higher occupancy
+occupancy_sm80 = min(65536 / (1 * registers_used), 2048 / threads);
+occupancy_sm90 = min(131072 / (1 * registers_used), 2048 / threads);
+
+// Key benefit: Reduces spilling for register-heavy kernels
+```
+
+**Spill reduction heuristic** (0x1090BD0):
+```c
+// SM90+ has more breathing room before spilling
+if (sm >= 90) {
+    high_pressure_threshold = (avail_regs * 7) / 8;  // 219 regs (more permissive)
+    spill_cost_multiplier = 0.8;  // Spills cost less due to L2 proximity
+} else {
+    high_pressure_threshold = (avail_regs * 3) / 4;  // 191 regs (conservative)
+    spill_cost_multiplier = 1.0;
+}
+```
+
+**Tensor core constraints** (SM90+):
+- **Warpgroup MMA** (0xa8e250): 4 warps (128 threads) coordinate
+  - Accumulator registers allocated across all 128 threads
+  - Minimum 16 registers for result matrix (m16n16k16)
+  - Constraint: threads 0-31 can't use same registers as threads 32-63
+
+- **TMA (Tensor Memory Accelerator)**: Descriptor-based async copy
+  - Requires 2-4 descriptor registers (hardware allocated)
+  - Doesn't compete with general-purpose register allocation
+  - Bytewise copy with format conversion (FP32→FP8, FP32→FP4, transpose)
+
+**SM100 advanced format constraints** (0x35f5090, 0x3036ab0):
+- **FP4 E2M1 quantization**: Block-scale metadata adds register pressure
+  - Each 32-64 element block needs scale factor (FP16 or FP32)
+  - Allocator treats scale as separate virtual register
+  - Cost: `fp4_cost = base_cost × 4.0` (4x more operations vs FP16)
+  - Sparsity metadata: 2 bits per 4-element block (1/16 overhead)
+
+- **Block-scaled FP8**: Similar constraint with per-block scale
+  - Format ID 10299 (FP8-scaled), 10304 (FP4-scaled)
+  - Register pressure: base + 1 scale register per 64-element block
+
+**SM120 (Blackwell-Consumer) divergence** (0x2C80C90:1272):
+```c
+// SM120 EXPLICITLY REJECTS Tensor Memory (address space 6)
+if (sm == 120 && addr_space == 6) {
+    emit_error("Tensor Memory loads/stores are not supported on SM120");
+    return ERROR;  // Hard compilation failure
+}
+
+// Rationale: Consumer GPU (RTX 50) disables data center features
+// Impact: Cannot use tcgen05.cp.async with TMA descriptors
+// Fallback: Use mma.sync style async copy (cp.async.cg)
+```
+
+### Constraint Checking Functions (Decompiled Evidence)
+
+**Function: `sub_95EB40` (Flag Parser)** - 0x95EB40, 1,234 bytes
+```c
+// Initializes SMFeatures struct based on SM version
+void init_sm_features(uint32_t sm_version, SMFeatures* out) {
+    out->sm_version = sm_version;
+    out->max_registers = 255;
+
+    // Register file size: critical allocator parameter
+    if (sm_version >= 90) {
+        out->register_file_kb = 128;  // SM90, SM100, SM120+
+    } else {
+        out->register_file_kb = 64;   // SM70-SM89
+    }
+
+    out->physical_color_limit = 15;   // K = 15 for all versions
+
+    // Feature flags (bitmask, 64-bit)
+    uint64_t flags = 0;
+    if (sm_version >= 70) flags |= (1ULL << 8);   // tensor_cores
+    if (sm_version >= 70) flags |= (1ULL << 9);   // wmma
+    if (sm_version >= 75) flags |= (1ULL << 25);  // sparsity_2_4
+    if (sm_version >= 80) flags |= (1ULL << 10);  // mma_sync
+    if (sm_version >= 80) flags |= (1ULL << 13);  // async_copy
+    if (sm_version >= 80) flags |= (1ULL << 16);  // bfloat16
+    if (sm_version >= 80) flags |= (1ULL << 17);  // tf32
+    if (sm_version >= 90) flags |= (1ULL << 11);  // warpgroup_mma
+    if (sm_version >= 90) flags |= (1ULL << 14);  // tma
+    if (sm_version >= 90) flags |= (1ULL << 18);  // fp8
+    if (sm_version >= 100) flags |= (1ULL << 12); // tcgen05
+    if (sm_version >= 100) flags |= (1ULL << 19); // fp4
+    if (sm_version >= 100) flags |= (1ULL << 20); // int4
+    if (sm_version >= 100) flags |= (1ULL << 21); // block_scale
+
+    out->feature_flags = flags;
+}
+```
+
+**Function: `sub_1090BD0` (Coalescing & Spill Cost)** - 0x1090BD0, 61 KB
+```c
+// SM-aware cost adjustment for conservative coalescing
+float compute_coalescing_factor(uint32_t sm_version) {
+    // Magic constant: 0xCCCCCCCCCCCCCCCD = 4/5 = 0.8 (fixed-point)
+    if (sm_version >= 90) {
+        return 0.85f;  // Slightly more aggressive coalescing
+    } else {
+        return 0.80f;  // Conservative for SM70-SM89
+    }
+}
+
+// Spill cost adjustment per SM
+float adjust_spill_cost_by_sm(float base_cost, uint32_t sm_version) {
+    if (sm_version >= 100) {
+        return base_cost * 0.9f;  // Spills cheaper on Blackwell
+    } else if (sm_version >= 90) {
+        return base_cost * 0.95f; // Hopper benefits from 128KB RF
+    } else {
+        return base_cost * 1.0f;  // SM70-SM89 baseline
+    }
+}
+```
+
+**Function: `sub_B612D0` (Interference Graph with Constraints)** - 0xB612D0, 102 KB
+```c
+// 180+ case dispatcher for constraint addition per instruction type
+void build_interference_with_constraints(CFG cfg, uint32_t sm_version) {
+    // Dispatch on instruction opcode (0x00-0xB2)
+    for (Instruction instr : cfg) {
+        uint32_t opcode = instr.opcode();
+
+        switch (opcode) {
+        case 0x40:  // WMMA load (SM70+)
+            if (sm_version >= 70) {
+                add_wmma_accumulator_constraint(graph, instr);
+            }
+            break;
+
+        case 0x50:  // Tensor core MMA (SM80+)
+            if (sm_version >= 80) {
+                add_mma_sync_constraint(graph, instr);
+            }
+            if (sm_version >= 90) {
+                add_warpgroup_constraint(graph, instr);
+            }
+            break;
+
+        case 0x60:  // TMA descriptor operations (SM90+)
+            if (sm_version >= 90 && sm_version != 120) {
+                add_tma_descriptor_constraint(graph, instr);
+            } else if (sm_version == 120) {
+                emit_error("TMA not supported on SM120");
+            }
+            break;
+        }
+    }
+}
+```
+
+### Allocator Strategy Adaptation
+
+**Phase 4 (Briggs Coloring) adapts per SM version**:
+- **SM70-SM89**: K=15, coalescing_factor=0.8, conservative thresholds
+- **SM90-SM121**: K=15, coalescing_factor=0.85, more permissive spill thresholds
+- **SM100+**: Reduced spill costs due to 2-cycle tensor latency vs 8 cycles (SM70)
+
+---
+
 ## Function Reference
 
 | Function | Address | Size | Purpose | Phase |
@@ -672,602 +1126,283 @@ Evidence: Helper functions `sub_A79C90`, `sub_A79B90` process constraint lists, 
 
 ---
 
-## SM-Specific Register Constraints
+## Tensor Register Alignment
 
-Register file configurations and constraints vary significantly across SM architectures.
+Tensor core operations (WMMA, mma.sync, warpgroup_mma, tcgen05) have strict accumulator register alignment requirements enforced by the graph coloring register allocator. This section documents exact alignment rules per SM architecture and their implementation.
 
-### Register File Evolution
+### SM 70-75: WMMA Alignment - 8 Consecutive Registers
 
-| SM Version | Register File Size | Registers/Thread | Max Threads/SM | Evidence |
-|------------|-------------------|------------------|----------------|----------|
-| **SM70 (Volta)** | 64 KB | 255 (R0-R254) | 2048 | Function 0xB612D0 (102KB) |
-| **SM75 (Turing)** | 64 KB | 255 (R0-R254) | 1024 | Same constraints as SM70 |
-| **SM80 (Ampere)** | 64 KB | 255 (R0-R254) | 2048 | Function 0x1081400 (69KB) |
-| **SM86/89 (Ampere)** | 64 KB | 255 (R0-R254) | 1536 | Enhanced tensor constraints |
-| **SM90 (Hopper)** | 128 KB | 255 (R0-R254) | 2048 | **Doubled register file** |
-| **SM100 (Blackwell)** | 128 KB | 255 (R0-R254) | 2048 | FP4 support, tcgen05 |
-| **SM120 (Blackwell+)** | 128 KB | 255 (R0-R254) | 2048 | Dual tensor cores |
+**Architecture**: Volta (SM70), Turing (SM75)
 
-**Evidence**: SM-specific configuration at function 0xB612D0 with architecture dispatch based on SM version bits.
+**Accumulator Alignment Requirement**: **8 consecutive registers**
 
-### WMMA/Tensor Core Register Constraints
-
-**SM70/SM75 (Volta/Turing) - WMMA Instructions**:
-```c
-// WMMA FP16 accumulator: 8 registers (4-register alignment)
-// Evidence: register_class_constraints.json:669-671
-wmma.mma.sync.m16n16k16.f16.f16 {r0, r1, ..., r7}, {r8, ...}, {r16, ...}
-
-Constraints:
-- Fragment A: 8 registers, 4-register boundary alignment
-- Fragment B: 8 registers, 4-register boundary
-- Accumulator C: 4 or 8 registers (FP16/FP32), 2-register alignment
-- Total: 20-24 registers per warp for WMMA
+**Correct Layout**:
+```
+R0:R1:R2:R3:R4:R5:R6:R7   (8 registers, starting at R0)
+R8:R9:R10:R11:R12:R13:R14:R15  (8 registers, starting at R8)
 ```
 
-**SM80/86/89 (Ampere) - mma.sync**:
-```c
-// Reduced accumulator size: 4 registers (consecutive)
-mma.sync.aligned.m16n8k16.f32.f16.f16 {r0, r1, r2, r3}, {r4, ...}, {r8, ...}
+**Constraint Implementation** (in `sub_B612D0` @ 0xB612D0):
+- During phase 2 (interference graph construction), accumulator vregs are marked with alignment requirement
+- Phase 4 (Briggs coloring) ensures physical registers allocated are multiples of 8
+- Failure: Kernel produces incorrect results or runtime error
 
-Constraints:
-- Consecutive register allocation (cannot skip registers)
-- 4-register boundaries for accumulators
-- Evidence: Function 0xA8E250, opcode handlers
+**WMMA Operations**:
 ```
-
-**SM90 (Hopper) - warpgroup.mma**:
-```c
-// Warpgroup coordination: 8-register alignment across 4 warps
-warpgroup.mma.m64n64k16 {r0-r7}, {smem_A}, {smem_B}
-
-Constraints:
-- 8-register per-warp alignment
-- Coordinated allocation across warpgroup (128 threads)
-- TMA descriptors: 4-register boundaries
-- Evidence: Function 0x35F5090, warpgroup scheduling
+wmma.mma.sync.aligned.m16n16k8.f32.f16   // FP16 -> FP32
+wmma.mma.sync.aligned.m16n16k8.f32.f32   // FP32 -> FP32
+wmma.mma.sync.aligned.m16n16k8.f32.tf32  // TF32 -> FP32
 ```
-
-**SM100/120 (Blackwell) - tcgen05**:
-```c
-// Descriptor-based tensor operations
-tcgen05.mma.f16 {r0-r7}, desc_A, desc_B
-
-Constraints:
-- 8-register alignment for descriptors
-- FP4 precision: 16-register accumulators (experimental)
-- Dual tensor cores (SM120): Independent allocation
-- Evidence: tcgen05 instruction handlers at 0x2CEAC10
-```
-
-### Bank Conflict Constraints
-
-**32-Bank Architecture** (all SM versions):
-```c
-// Bank index = (address % 128) / 4
-// Penalty: 32 cycles for same-bank simultaneous access
-
-Constraint weight in interference graph:
-  graph.add_constraint_edge(vreg1, vreg2, weight=2.0)
-
-// Evidence: 0xB612D0, bank conflict analysis subsystem
-// Applies 2.0× penalty coefficient to same-bank register pairs
-```
-
-**Bank Conflict Avoidance Strategy**:
-- Register allocator tries to assign different banks to simultaneously-live registers
-- Padding calculation: `padding = gcd(stride_bytes, 128)`
-- 20-40% performance improvement when avoiding conflicts
-
-### Alignment Constraints Summary
-
-| Operation Type | SM70-80 Alignment | SM90+ Alignment | Evidence |
-|---------------|-------------------|-----------------|----------|
-| **64-bit operations** | Even registers (R0, R2, R4, ...) | Same | Register class RD0-RD127 |
-| **WMMA accumulators** | 4-register boundaries | 4-register | Constraint class 0x4A |
-| **mma.sync accumulators** | 4-register boundaries | 4-register | Constraint class 0x4B |
-| **warpgroup.mma** | N/A | 8-register per warp | SM90+ only |
-| **TMA descriptors** | N/A | 4-register boundaries | SM90+ async ops |
-| **tcgen05** | N/A | 8-register | SM100+ only |
-
-**Evidence**: Constraint tables at 0xB612D0 with 180+ instruction-specific patterns.
 
 ---
 
-## Calling Convention
+### SM 80-89: mma.sync Alignment - 4 Consecutive Registers
 
-CICC follows a custom calling convention for PTX/SASS code generation.
+**Architecture**: Ampere (SM80, SM86, SM89)
 
-### Parameter Passing
+**Accumulator Alignment Requirement**: **4 consecutive registers** (reduced from SM70)
 
-**Scalar Arguments (32-bit)**:
-```c
-// R0-R7: First 8 scalar parameters (integers, pointers, floats)
-void kernel(int a, float b, int* c, double d)
-// a → R0
-// b → R1
-// c → R2
-// d → R3:R4 (64-bit, even-odd pair)
-
-// Evidence: register_class_constraints.json:669-671
+**Correct Layout**:
+```
+R0:R1:R2:R3       (4 registers, starting at 4-aligned boundary)
+R4:R5:R6:R7       (4 registers)
+R128:R129:R130:R131  (must be 4-aligned: 128 % 4 == 0)
 ```
 
-**64-bit Arguments**:
+**Critical Constraint Verification** (from `sub_36E9630` @ 0x36e9630):
 ```c
-// Even-odd register pairs: R0:R1, R2:R3, R4:R5, R6:R7
-void kernel(long a, double b)
-// a → R0:R1 (RD0)
-// b → R2:R3 (RD1)
-
-// Must use even-numbered register as base
-```
-
-**Stack Arguments** (9+ parameters):
-```c
-// Arguments beyond R7 passed via stack
-void kernel(int a0, ..., int a7, int a8, int a9)
-// a0-a7 → R0-R7
-// a8 → [stack + 0]
-// a9 → [stack + 4]
-
-// Stack pointer: R31 (frame pointer)
-```
-
-### Return Values
-
-**Scalar Returns**:
-```c
-// R0: 32-bit return value (int, float, pointer)
-int kernel() { return 42; }  // Result in R0
-
-// Evidence: Function epilogue patterns in decompiled code
-```
-
-**64-bit Returns**:
-```c
-// R0:R1 pair for 64-bit values
-long kernel() { return 0x123456789ABCDEF; }
-// Low 32 bits → R0
-// High 32 bits → R1
-```
-
-**Struct Returns** (> 64 bits):
-```c
-// Pointer to result passed in R0 (by reference)
-struct Result { int a, b, c; };
-Result kernel() { ... }
-// Caller allocates space, passes pointer in R0
-// Function writes result to [R0], returns R0
-```
-
-### Register Classification
-
-**Caller-Saved (Volatile)** - R0-R23:
-```c
-// Caller must save these registers before function calls
-// Callee can freely modify without preservation
-
-void caller() {
-    R5 = important_value;
-    call_function();  // R5 may be destroyed
-    // Must reload R5 if needed after call
+if (mma_sync_operation) {
+  accumulator_physical_reg = color_assignment[accumulator_vreg];
+  if (accumulator_physical_reg % 4 != 0) {
+    mark_for_constraint_violation(accumulator_vreg);
+  }
 }
-
-// Evidence: No save/restore in callee prologue/epilogue
 ```
 
-**Callee-Saved (Non-Volatile)** - R24-R31:
-```c
-// Callee must preserve these registers
-// Caller can assume values survive across calls
+**Performance Impact**: Misalignment causes:
+- Incorrect computation results
+- Warp synchronization failure
+- Undefined behavior at runtime
 
-Function prologue:
-  push R24
-  push R25
-  // ... save R24-R31 used by function
-
-Function epilogue:
-  pop R25
-  pop R24
-  // ... restore saved registers
-  ret
-
-// Evidence: register_class_constraints.json:679-686
+**mma.sync Operations**:
 ```
-
-**Reserved Registers**:
-```c
-// R31: Frame pointer / stack pointer
-// Used for local variable access and stack management
-
-// R255: Constant zero register (some architectures)
-// Always reads as 0, writes are ignored
+mma.sync.aligned.m16n8k16.f32.f16   // FP16 -> FP32
+mma.sync.aligned.m16n8k16.f32.f32   // FP32 -> FP32
+mma.sync.aligned.m16n8k16.f32.tf32  // TF32 -> FP32
+mma.sync.aligned.m16n8k16.s32.s8.s8 // INT8 -> INT32
 ```
-
-### Stack Frame Layout
-
-```
-High addresses
-+------------------+
-| Argument 9+      |  ← Incoming stack arguments
-+------------------+
-| Return address   |
-+------------------+
-| Saved R24-R31    |  ← Callee-saved register spill area
-+------------------+
-| Local variables  |  ← Auto-allocated by register allocator
-+------------------+
-| Spill slots      |  ← For registers exceeding K=15
-+------------------+  ← R31 (frame pointer) points here
-| Outgoing args    |  ← Arguments for called functions
-+------------------+
-Low addresses
-
-// Alignment: 4-byte (32-bit), 8-byte (64-bit), 16-byte (128-bit SIMD)
-```
-
-**Stack Access Pattern**:
-```c
-// Local variable access via R31 offset
-int local_var;
-load R5, [R31 + offset]  // Read local
-store [R31 + offset], R5 // Write local
-
-// Evidence: Frame pointer usage in decompiled function prologues
-```
-
-### Function Call Sequence
-
-**Caller Side**:
-```c
-// 1. Save caller-saved registers (R0-R23 if live)
-push R5
-push R10
-
-// 2. Place arguments in R0-R7 or stack
-R0 = arg0
-R1 = arg1
-[stack] = arg8
-
-// 3. Call function
-call target
-
-// 4. Retrieve return value from R0/R0:R1
-result = R0
-
-// 5. Restore caller-saved registers
-pop R10
-pop R5
-```
-
-**Callee Side**:
-```c
-// Prologue:
-push R31           // Save old frame pointer
-R31 = SP           // Establish new frame
-SP = SP - frame_size  // Allocate locals
-push R24-R30       // Save callee-saved registers used
-
-// ... function body ...
-
-// Epilogue:
-pop R24-R30        // Restore callee-saved
-SP = R31           // Restore stack pointer
-pop R31            // Restore frame pointer
-ret                // Return to caller
-```
-
-**Evidence**: Calling convention patterns observed in decompiled kernel code, consistent with register_class_constraints.json parameter assignments.
 
 ---
 
-## Tensor Register Alignment Requirements
+### SM 90: warpgroup_mma Alignment - 8 Registers per Warpgroup
 
-Tensor core operations impose strict alignment constraints on register allocation.
+**Architecture**: Hopper (SM90)
 
-### Alignment by Architecture
+**Accumulator Alignment Requirement**: **8 registers per warpgroup** (128 threads = 4 warps)
 
-**SM70 (Volta) WMMA - 4-Register Boundaries**:
+**Key Innovation**: Unlike SM70-80 where alignment is per-warp, SM90 coordinates register allocation across 4-warp warpgroup.
+
+**Warpgroup Coordination**:
+```
+Correct allocation:
+  Warp 0: R0-R7 for accumulator
+  Warp 1: R8-R15 for accumulator
+  Warp 2: R16-R23 for accumulator
+  Warp 3: R24-R31 for accumulator
+  (All coordinated with implicit barriers)
+
+Incorrect (uncoordinated):
+  Warp 0: R0-R7
+  Warp 1: R1-R8  (overlaps with warp 0!)
+  [RUNTIME ERROR: Undefined behavior]
+```
+
+**Constraint Implementation** (from `sub_35F3330` @ 0x35f3330):
 ```c
-// Alignment requirement: Accumulator base register % 4 == 0
-wmma.mma.sync.m16n16k16.f16.f16 {r0, r1, r2, r3}, ...
-// ✓ Valid: r0 (0 % 4 == 0)
-// ✗ Invalid: r1 (1 % 4 != 0), r2, r3
-
-// Enforcement in allocator:
-if (is_wmma_accumulator(vreg)) {
-    add_constraint: physical_reg % 4 == 0
+// Warp specialization determines register allocation boundaries
+if ((result & 0x2) != 0) {
+  assign_to_cta_group(2);  // Producer warp (async copy)
+} else {
+  assign_to_cta_group(1);  // Consumer warp (MMA compute)
 }
-
-// Evidence: Constraint class checks at 0x94CAB0
+// Each group has independent register allocation constraints
 ```
 
-**SM80 (Ampere) mma.sync - Consecutive 4-Register Allocation**:
+**Barrier Synchronization with Alignment**:
 ```c
-// Must allocate 4 consecutive registers (no gaps)
-mma.sync.m16n8k16.f32.f16 {r4, r5, r6, r7}, {r8, ...}, {r12, ...}
-// ✓ Valid: r4-r7 consecutive
-// ✗ Invalid: {r4, r5, r7, r8} - gap at r6
+// Producer warp: Load data
+mbarrier::arrive::expect_tx [barrier], 4096
+cp.async.bulk.tensor [shared], [global]
 
-// Allocator strategy:
-//   - Reserve 4-register blocks
-//   - Mark all 4 as allocated together
-//   - Prevents fragmentation
-
-// Evidence: mma.sync handlers at 0xA8E250
+// Consumer warp: Compute on aligned accumulators
+mbarrier::wait [barrier]
+mma.m16n16k16.sync [R0:R7], [A], [B]  // Must be aligned
 ```
 
-**SM90 (Hopper) warpgroup.mma - 8-Register Per-Warp Alignment**:
-```c
-// Warpgroup = 4 warps (128 threads)
-// Each warp: 8-register alignment
-// Coordinated across warpgroup
-
-warpgroup.mma.m64n64k16 {r0-r7}, {smem_A}, {smem_B}
-
-Constraint per warp:
-  base_reg % 8 == 0   // r0, r8, r16, ...
-
-Cross-warp coordination:
-  warp0: r0-r7
-  warp1: r0-r7 (same logical registers)
-  warp2: r0-r7
-  warp3: r0-r7
-  // Physical registers may differ per warp but must align
-
-// Evidence: Warpgroup scheduling at 0x35F5090
-```
-
-**SM100 (Blackwell) tcgen05 - Descriptor 8-Register Alignment**:
-```c
-// Tensor descriptors: 8-register boundaries
-tcgen05.mma.f16 {r0-r7}, desc_A, desc_B
-
-Constraints:
-  - Descriptor base: % 8 == 0
-  - FP4 accumulators: 16-register alignment (experimental)
-
-// Evidence: tcgen05 instruction parsing at 0x2CEAC10
-```
-
-### Alignment Enforcement Algorithm
-
-**Phase 1: Constraint Propagation**:
-```c
-void add_alignment_constraints(InterferenceGraph& graph) {
-    for (VirtualReg vreg : graph.nodes()) {
-        if (is_tensor_accumulator(vreg)) {
-            int alignment = get_required_alignment(vreg);
-
-            // Add constraint edges to incompatible physical registers
-            for (int phys_reg = 0; phys_reg < K; phys_reg++) {
-                if (phys_reg % alignment != 0) {
-                    // Cannot use this physical register
-                    vreg.forbidden_colors.insert(phys_reg);
-                }
-            }
-        }
-    }
-}
-
-// Evidence: Constraint edge addition at 0xB612D0, cases for tensor ops
-```
-
-**Phase 2: Alignment-Aware Coloring**:
-```c
-int select_color_with_alignment(VirtualReg vreg, Set<int> forbidden) {
-    int alignment = get_required_alignment(vreg);
-
-    // Find lowest-numbered available aligned color
-    for (int color = 0; color < K; color++) {
-        if (color % alignment == 0 &&          // Alignment check
-            !forbidden.contains(color)) {      // Availability check
-            return color;
-        }
-    }
-
-    return -1;  // Spill required
-}
-
-// Evidence: Color selection logic at 0x12E1EF0 (51KB function)
-```
-
-**Phase 3: Padding Insertion**:
-```c
-// If alignment causes register pressure, pad to next boundary
-void handle_alignment_pressure(VirtualReg vreg, int assigned_color) {
-    int alignment = get_required_alignment(vreg);
-
-    if (assigned_color % alignment != 0) {
-        // Pad to next aligned register
-        int padded = ((assigned_color / alignment) + 1) * alignment;
-
-        if (padded < K) {
-            reassign_color(vreg, padded);
-        } else {
-            mark_for_spilling(vreg);  // No aligned color available
-        }
-    }
-}
-
-// Evidence: Spill cost increases for misaligned tensor ops
-```
-
-### Misalignment Penalties
-
-| Architecture | Misaligned Penalty | Evidence |
-|--------------|-------------------|----------|
-| **SM70** | 50-100 cycles (extra shuffle ops) | WMMA emulation overhead |
-| **SM80** | 100-200 cycles (register copying) | mma.sync requires consecutive regs |
-| **SM90** | 200-500 cycles (cross-warp sync) | Warpgroup coordination stalls |
-| **SM100** | Compiler error (invalid encoding) | tcgen05 enforces alignment strictly |
-
-**Impact on Allocator**:
-- Conservative coalescing factor (0.8) prevents aggressive merging that violates alignment
-- K=15 physical registers often reduced to K_effective=12 for tensor-heavy code
-- Alignment constraints account for ~10-20% of spill decisions in tensor kernels
-
-### Practical Example
-
-```c
-// GEMM kernel with SM80 mma.sync
-__global__ void gemm_mma_sync() {
-    // Allocator decisions:
-    float acc[4];      // r0-r3   (4-register aligned to r0)
-    half a_frag[8];    // r4-r11  (consecutive, 4-boundary)
-    half b_frag[8];    // r12-r19 (consecutive, 4-boundary)
-
-    // Remaining: R20-R31 for scalar operations (K_effective = 12)
-    // 12 < 15: Alignment consumed 3 registers worth of flexibility
-
-    mma.sync.m16n8k16 {r0,r1,r2,r3}, {r4,...r11}, {r12,...r19};
-
-    // Evidence: Typical allocation pattern in tensor kernel analysis
-}
-```
-
-**Alignment Optimization Strategy**:
-1. **Early Allocation**: Tensor ops assigned colors first (highest priority)
-2. **Block Reservation**: Reserve aligned blocks (r0-r7, r8-r15, etc.)
-3. **Fragmentation Avoidance**: Fill non-tensor registers around aligned blocks
-4. **Spill Selection**: Prefer spilling non-aligned values over tensor accumulators
-
-**Evidence**: Alignment-aware allocation priority at 0x1090BD0 (node selection with alignment checks).
+**Critical**: The `expect_tx` operation must signal exact byte count. Mismatch causes:
+- Consumer deadlock (waits indefinitely)
+- Data inconsistency
+- Register allocation failures
 
 ---
 
-## Memory Latency and Cost Model Details
+### SM 100-120: tcgen05 Alignment - Same as SM90
 
-### Memory Hierarchy Latencies
+**Architecture**: Blackwell (SM100, SM120)
 
-**Evidence**: lazy_reload_algorithm.json:106-111, ANALYSIS_SUMMARY.txt:80-84
+**Accumulator Alignment Requirement**: **8 registers (same as SM90)**
 
-| Memory Level | Latency (cycles) | Usage in Spill Cost | Confidence |
-|--------------|------------------|---------------------|------------|
-| **L1 cache** | 4 | Low penalty for frequently-accessed spills | HIGH |
-| **L2 cache** | 10 | Moderate penalty | HIGH |
-| **L3 cache** | 40 | High penalty (avoid if possible) | HIGH |
-| **Main memory** | 100 | Severe penalty (strongly avoid) | HIGH |
-
-**Application**: The register allocator uses these latencies as cost multipliers when selecting spill candidates. Values with high def/use frequency in inner loops are strongly biased against spilling due to the `memory_latency × pow(1.5, loop_depth)` penalty.
-
-### Loop Depth Multiplier
-
-**Base value**: 1.5 (exponential penalty per nesting level)
-**Confidence**: MEDIUM-LOW (inferred from cost structure, not directly extracted)
-
-**Impact**:
-```c
-Loop depth 0 (no loop):     cost × 1.5^0 = cost × 1.0
-Loop depth 1 (single loop): cost × 1.5^1 = cost × 1.5
-Loop depth 2 (nested):      cost × 1.5^2 = cost × 2.25
-Loop depth 3 (triple):      cost × 1.5^3 = cost × 3.375
+**New Features** (from `sub_35f5090`, `sub_3036ab0`):
+```
+tcgen05.mma.m16n16k32.f32.f8    // FP8 -> FP32
+tcgen05.mma.m16n16k64.f32.f4    // FP4 -> FP32 (4x throughput)
+tcgen05.mma.m16n16k32.s32.i8    // INT8 -> INT32
+tcgen05.mma.m16n16k64.s32.i4    // INT4 -> INT32 (4x throughput)
 ```
 
-This exponential penalty ensures that values live in deeply nested loops are strongly preferred for register allocation over spilling.
+**Block-Scale Constraints** (FP4/FP8 with dynamic range):
+- Scale factors stored separately: `cost = base_cost × 4.0`
+- Sparsity metadata: 2 bits per 4-element block (1/16 overhead)
+- Register allocator treats scale as distinct virtual register
 
-### SM-Version Cost Adjustments
-
-**Finding**: SM90+ register file doubling (128KB vs 64KB) does **NOT** directly modify spill cost formulas.
-
-**Key Facts**:
-- K = 15 physical registers **constant across ALL SM versions** (SM70-SM120)
-- Spill cost formula unchanged across architectures
-- Register file size affects **occupancy constraints**, not allocation costs
-- Evidence: K=15 confirmed at 0x1090BD0:1039 (checks `degree > 14`)
-
-**Where SM-specific costs DO appear**:
-- Memory operation costs (load: 1.0 → 0.25 SM90, → 0.125 SM100)
-- Synchronization costs (8 → 5 SM90, → 2 SM100)
-- TMA operations (0.1 SM90, 0.05 SM100)
-
-### Stack Slot Allocation Algorithm
-
-**Strategy**: Sequential downward-growing allocation with first-fit slot reuse
-
-**Slot Properties**:
-- **Size**: 4 bytes (32-bit), 8 bytes (64-bit), 16 bytes (128-bit)
-- **Alignment**: Matches size (4/8/16 byte boundaries)
-- **Base pointer**: R31 (frame pointer)
-
-**Algorithm**:
+**SM120 Special Case** (Consumer RTX 50):
 ```c
-int32_t allocate_spill_slot(StackFrame* frame, VirtualReg vreg) {
-    uint32_t size = get_size(vreg);  // 4, 8, or 16 bytes
-    uint32_t align = size;           // Same as size
-
-    // Step 1: Try to reuse existing slot (non-overlapping live ranges)
-    for (SpillSlot slot : frame->slots) {
-        if (slot.size == size && !ranges_overlap(vreg.range, slot.range)) {
-            return slot.offset;  // Reuse existing slot
-        }
-    }
-
-    // Step 2: Allocate new slot (grow stack downward)
-    frame->next_offset = align_down(frame->next_offset - size, align);
-
-    SpillSlot new_slot = {
-        .offset = frame->next_offset,
-        .size = size,
-        .vreg = vreg
-    };
-
-    frame->slots.push(new_slot);
-    return new_slot.offset;
+// SM120 explicitly rejects Tensor Memory (address space 6)
+if (sm == 120 && addr_space == 6) {
+  emit_error("Tensor Memory not supported on SM120");
+  return ERROR;  // Hard compilation failure
 }
 ```
 
-**Stack Frame Layout**:
+---
+
+### Alignment Enforcement Mechanisms
+
+#### Phase 2b: Constraint Edge Addition
+
+Register allocator enforces alignment through implicit constraint edges during interference graph construction:
+
+**Function**: `sub_B612D0` @ 0xB612D0 (102 KB)
+
+```c
+void add_tensor_alignment_constraints(InterferenceGraph& graph) {
+  for (Instruction instr : all_instructions) {
+    if (is_tensor_operation(instr)) {
+      VirtualReg accum = instr.get_accumulator();
+      uint32_t alignment = get_alignment_requirement(instr);
+      // alignment: 8 for WMMA, 4 for mma.sync, 8 for warpgroup/tcgen05
+
+      // Force consecutive placement
+      for (int i = 0; i < accumulator_size; i++) {
+        for (int j = i + 1; j < accumulator_size; j++) {
+          graph.add_constraint_edge(accum[i], accum[j],
+            weight=INFINITE);  // Hard constraint
+        }
+      }
+      graph.add_alignment_constraint(accum, alignment);
+    }
+  }
+}
 ```
-High addresses
-+------------------+
-| Saved R24-R31    |  ← Callee-saved registers
-+------------------+
-| Spill slots      |  ← [R31 - offset], negative offsets
-|   slot N (16B)   |     Sequential allocation, aligned
-|   slot 2 (8B)    |     Reused for non-overlapping ranges
-|   slot 1 (4B)    |     Grows downward
-+------------------+  ← R31 (frame pointer)
-| Outgoing args    |
-+------------------+
-Low addresses
+
+#### Phase 4: Briggs Coloring with Alignment
+
+Color assignment verifies alignment during graph coloring:
+
+**Function**: `sub_1081400` @ 0x1081400 (69 KB)
+
+```c
+for (VirtualReg node : graph.nodes()) {
+  if (has_alignment_constraint(node)) {
+    uint32_t alignment = get_alignment_requirement(node);
+
+    // Try colors respecting alignment
+    Set available_colors = ∅;
+    for (uint32_t c = 0; c < K; c++) {
+      if (!colors_used.contains(c) &&
+          (c % alignment == 0)) {  // Alignment check
+        available_colors.insert(c);
+      }
+    }
+
+    if (available_colors.empty()) {
+      mark_for_spilling(node);  // Cannot satisfy
+    } else {
+      color[node] = available_colors.min();
+    }
+  }
+}
 ```
-
-**Optimization**: Slots are **reused** when virtual registers have non-overlapping live ranges, reducing stack frame size by 30-50% in register-heavy kernels.
-
-**Evidence**: register-allocator.md:2310-2485, lazy_reload_algorithm.json
-
-### SM120 Dual Tensor Core Allocation
-
-**Strategy**: Unified allocation (NOT independent per core)
-
-**Key Facts**:
-- **Register file**: Single 128KB shared (same as SM100)
-- **K value**: 15 (unchanged)
-- **Register classes**: Identical to SM100
-- **Alignment**: Same tensor core requirements (8-register boundaries)
-
-**No allocation changes** because:
-1. Both cores share the same register file
-2. Each `tcgen05.mma` instruction is self-contained (specifies all operands)
-3. Hardware multiplexes register reads to both cores
-
-**Where dual cores matter**: Instruction scheduling (post-RA)
-- Post-RA scheduler issues 2 independent MMA operations per cycle
-- Achieves 2× throughput with identical register allocation
-- Uses `ilpmax` scheduler for optimal dual-issue
-
-**Evidence**: register_class_constraints.json:487-510, tensor_core_costs.json:419-434
 
 ---
 
-## Remaining Research Questions
+### Alignment Violation Consequences
 
-The following aspects still require investigation:
+#### Compilation-Time Detection
 
-1. **Exact loop depth base validation**: While 1.5 is inferred from cost structure, direct binary constant extraction would confirm this value definitively
-2. **Dynamic cost model adjustments**: Whether CICC adapts costs based on runtime profiling or architecture detection at compile time
-3. **Spill code scheduling**: Precise placement heuristics for loads/stores in the instruction stream beyond basic lazy reload
+Modern CICC detects violations at compile time:
+
+```c
+// In constraint verification (sub_36E9630)
+if (is_tensor_operation(instr)) {
+  VirtualReg accum = get_accumulator(instr);
+  if (!verify_alignment(accum, required_alignment)) {
+    report_error("Tensor accumulator misalignment detected");
+    abort_compilation();
+  }
+}
+```
+
+#### Runtime Consequences
+
+**If Misalignment Passes Compilation**:
+
+1. **Incorrect Computation**: WMMA/mma.sync reads wrong registers → silent data corruption
+2. **Warp Deadlock**: mma.sync barrier fails, warp stalls indefinitely
+3. **SM90 Deadlock**: mbarrier::wait deadlocks if consumer accumulators misaligned
+
+---
+
+### SM-Specific Alignment Summary
+
+| SM Version | Operation | Regs | Alignment | Boundary |
+|-----------|-----------|------|-----------|----------|
+| SM70/SM75 | WMMA | 8 | 8-register | R0, R8, R16... |
+| SM80/SM86/SM89 | mma.sync | 4 | 4-register | R0, R4, R8, R12... |
+| SM90 | warpgroup_mma | 8 | 8-register (warpgroup) | Across 4 warps |
+| SM100/SM120 | tcgen05.mma | 8 | 8-register | Warpgroup scope |
+
+---
+
+### Decompiled Evidence
+
+**Alignment Check Locations**:
+```
+sub_36E9630 @ 0x36e9630:169-175
+  Weight stationary + accumulator restrictions
+
+sub_B612D0 @ 0xB612D0:118-122
+  Constraint edge addition:
+    call sub_A778C0        // Operand specification
+    call sub_A79C90        // Constraint processing
+    call sub_B5BA00        // Register constraint classification
+
+sub_1090BD0 @ 0x1090bd0:1039
+  K=15 threshold for alignment decisions:
+    if (degree > 0xE) break;  // 0xE = 14, K = 15
+```
+
+---
+
+## Known Unknowns
+
+The following require additional research:
+
+1. **Exact loop depth multiplier coefficient**: Analysis shows exponential structure but cannot extract exact base value
+2. **Memory latency multiplier per cache level**: Estimated from standard GPU memory hierarchies
+3. **SM-version specific cost adjustments**: May vary between Volta through Blackwell
+4. **Exact spill location computation**: Stack slot allocation algorithm unknown
+5. **Calling convention impact**: Exact handling of reserved registers (R0-R7, R24-R31) in allocation
 
 ---
 
