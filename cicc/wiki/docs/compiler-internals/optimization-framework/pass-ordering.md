@@ -530,7 +530,7 @@ All 212 passes execute in index order from 10 (0x0A) to 221 (0xDD). The followin
 [211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221]
 ```
 
-**Special Cases**: Indices 211 and 217 use sub_12D6240 with default="1" (enabled by default)
+**Special Cases**: Index 211 uses sub_12D6240 with default="1" (enabled by default)
 
 **Characteristics**: Final cleanup and preparation passes for code generation.
 
@@ -540,30 +540,55 @@ All 212 passes execute in index order from 10 (0x0A) to 221 (0xDD). The followin
 
 ### Indices with Default="1" (Enabled by Default)
 
-Passes at these indices have default boolean value of "1" (enabled) rather than "0":
+14 passes have default boolean value of "1" (enabled) rather than "0". These passes are always active unless explicitly disabled:
 
-| Index | Decimal | Hex | Handler | Reason |
-|-------|---------|-----|---------|--------|
-| 19 | 19 | 0x13 | sub_12D6240 | Critical early optimization |
-| 25 | 25 | 0x19 | sub_12D6240 | Required transformation |
-| 211 | 211 | 0xD3 | sub_12D6240 | Late-stage requirement |
-| 217 | 217 | 0xD9 | sub_12D6240 | Final pass requirement |
+| Index | Decimal | Hex | Handler | Code Line | Pass Phase |
+|-------|---------|-----|---------|-----------|------------|
+| 19 | 19 | 0x13 | sub_12D6240 | 1895 | Early Scalar |
+| 25 | 25 | 0x19 | sub_12D6240 | 1970 | Early Scalar |
+| 93 | 93 | 0x5D | sub_12D6240 | 2890 | Mid-Level |
+| 95 | 95 | 0x5F | sub_12D6240 | 2913 | Mid-Level |
+| 117 | 117 | 0x75 | sub_12D6240 | 3218 | Mid-Level |
+| 141 | 141 | 0x8D | sub_12D6240 | 3546 | Mid-Level |
+| 143 | 143 | 0x8F | sub_12D6240 | 3571 | Mid-Level |
+| 151 | 151 | 0x97 | sub_12D6240 | 3669 | Mid-Level |
+| 155 | 155 | 0x9B | sub_12D6240 | 3735 | Mid-Level |
+| 157 | 157 | 0x9D | sub_12D6240 | 3760 | Mid-Level |
+| 159 | 159 | 0x9F | sub_12D6240 | 3783 | Mid-Level |
+| 165 | 165 | 0xA5 | sub_12D6240 | 3887 | Loop Opts |
+| 211 | 211 | 0xD3 | sub_12D6240 | 4621 | Late-Stage |
+| 219 | 219 | 0xDB | sub_12D6240 | 4762 | Late-Stage |
+
+**Verified from decompiled code** (`sub_12D6300_0x12d6300.c`): All 14 indices call `sub_12D6240` with third parameter `"1"` instead of `"0"`.
 
 ---
 
 ## Memory Layout and Storage
 
+### Mixed-Stride Architecture (CRITICAL)
+
+**PassManager uses TWO different storage functions with DIFFERENT entry sizes**:
+
+| Handler | Function | Entry Size | Pass Count | Total Size |
+|---------|----------|------------|------------|------------|
+| sub_12D6170 (Metadata) | sub_12D6090 | **24 bytes** | 113 passes | 2,712 bytes |
+| sub_12D6240 (Boolean) | sub_12D6100 | **16 bytes** | 99 passes | 1,584 bytes |
+
+**Verified from decompiled code**:
+- `sub_12D6090_0x12d6090.c` lines 12-23: Stores 24-byte metadata entries (8+4+4+4+padding)
+- `sub_12D6100_0x12d6100.c` lines 11-23: Stores 16-byte boolean entries (1+4+4+4)
+
 ### Output Structure (a1) Organization
 
-| Offset | Size | Content | Purpose |
-|--------|------|---------|---------|
-| 0 | 4 bytes | Optimization level | Read from a2+112 (O0/O1/O2/O3) |
-| 8 | 8 bytes | Pointer to a2 | Pass data structure reference |
-| 16 | 16 bytes | Pass 0 metadata | First pass output |
-| 32 | 16 bytes | Pass 1 metadata | Second pass output |
-| 48 | 16 bytes | Pass 2 metadata | Third pass output |
-| ... | ... | ... | ... |
-| 3536 | 16 bytes | Pass 211 metadata | Final pass output |
+| Offset | Size | Content | Handler Type |
+|--------|------|---------|--------------|
+| 0 | 4 bytes | Optimization level | Header (from a2+112) |
+| 8 | 8 bytes | Pointer to a2 | Header reference |
+| 16 | 24/16 bytes | Pass 0 entry | Metadata (24B) or Boolean (16B) |
+| 40 | 24/16 bytes | Pass 1 entry | Depends on handler |
+| 64 | 24/16 bytes | Pass 2 entry | Depends on handler |
+| ... | ... | ... | Mixed stride continues |
+| ~4464 | 24/16 bytes | Pass 211 entry | Final pass |
 
 ### Pass Registry (a2) Key Fields
 
@@ -574,15 +599,12 @@ Passes at these indices have default boolean value of "1" (enabled) rather than 
 
 ### Memory Calculation
 
-**Pass Stride**: 16 bytes per pass slot
-
-**First Pass Storage Offset**: 16 (a1 + 16)
-
-**Last Pass Storage Offset**: a1 + 16 + (211 * 16) = a1 + 3536
-
-**Total Output Size**: 3552 bytes (222 slots * 16 bytes)
-
-**Actual Used**: 3536 bytes (212 passes * 16 bytes + 16-byte header)
+**Total Output Size**: ~4,480 bytes
+- Header: 16 bytes
+- Metadata passes (113): 2,712 bytes (24 bytes each)
+- Boolean passes (99): 1,584 bytes (16 bytes each)
+- **Calculated**: 16 + 2,712 + 1,584 = **4,312 bytes**
+- **Observed max offset in code**: a1 + 4464 (last entry)
 
 ### Handler Memory Access Patterns
 
