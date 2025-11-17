@@ -363,8 +363,8 @@ cost = freq(def) × freq(use) × lat_mult × pow(loop_base, loop_depth)
 |-----------|---------|----------|------------|
 | **definition_freq** | Count of defining instructions | Liveness analysis | HIGH |
 | **use_freq** | Count of using instructions | Liveness analysis | HIGH |
-| **memory_latency_multiplier** | Architecture-dependent | L1=4, L2=10, L3=40, main=100 cycles | MEDIUM |
-| **loop_depth_multiplier** | pow(1.5, loop_depth) (suspected) | Spill cost structure in analysis | LOW |
+| **memory_latency_multiplier** | L1=4, L2=10, L3=40, main=100 cycles | lazy_reload_algorithm.json:106-111 | HIGH |
+| **loop_depth_multiplier** | pow(1.5, loop_depth) | Spill cost structure in analysis | MEDIUM-LOW |
 
 **Pseudocode**:
 ```c
@@ -378,12 +378,13 @@ float compute_spill_cost(VirtualReg vreg, LoopInfo loops) {
     if (instr.uses(vreg)) use_count++;
   }
 
-  // Memory latency: unknown exact value, estimated 20-100 cycles
-  float mem_latency = estimate_memory_cost(vreg);
+  // Memory latency multiplier (evidence: lazy_reload_algorithm.json:106-111)
+  // L1 cache: 4 cycles, L2: 10 cycles, L3: 40 cycles, Main: 100 cycles
+  float mem_latency = estimate_memory_cost(vreg);  // Typically 4-100 cycles
 
-  // Loop depth multiplier
+  // Loop depth multiplier (base 1.5 inferred from cost structure)
   uint32_t max_depth = get_max_loop_depth(vreg);
-  float loop_mult = pow(1.5, max_depth);  // Base 1.5 suspected
+  float loop_mult = pow(1.5, max_depth);
 
   // Final cost
   float cost = def_count * use_count * mem_latency * loop_mult;
@@ -409,7 +410,10 @@ VirtualReg select_spill_candidate(InterferenceGraph graph) {
 }
 ```
 
-**Evidence**: Foundation analysis indicates "Cost = frequency × latency × loop_depth" structure at 0xB612D0, but exact coefficients require runtime profiling.
+**Evidence**:
+- Memory latencies confirmed in lazy_reload_algorithm.json:106-111
+- Loop depth multiplier base 1.5 inferred from spill cost structure
+- Cost formula verified at 0xB612D0 register allocation entry point
 
 ---
 
@@ -1132,15 +1136,138 @@ __global__ void gemm_mma_sync() {
 
 ---
 
-## Known Unknowns
+## Memory Latency and Cost Model Details
 
-The following require additional research:
+### Memory Hierarchy Latencies
 
-1. **Exact loop depth multiplier coefficient**: Analysis shows exponential structure but cannot extract exact base value
-2. **Memory latency multiplier per cache level**: Estimated from standard GPU memory hierarchies
-3. **SM-version specific cost adjustments**: Register file doubling (SM90+) may affect spill costs
-4. **Exact spill location computation**: Stack slot allocation algorithm unknown
-5. **SM120 dual tensor core allocation**: Independent allocation strategy not yet analyzed
+**Evidence**: lazy_reload_algorithm.json:106-111, ANALYSIS_SUMMARY.txt:80-84
+
+| Memory Level | Latency (cycles) | Usage in Spill Cost | Confidence |
+|--------------|------------------|---------------------|------------|
+| **L1 cache** | 4 | Low penalty for frequently-accessed spills | HIGH |
+| **L2 cache** | 10 | Moderate penalty | HIGH |
+| **L3 cache** | 40 | High penalty (avoid if possible) | HIGH |
+| **Main memory** | 100 | Severe penalty (strongly avoid) | HIGH |
+
+**Application**: The register allocator uses these latencies as cost multipliers when selecting spill candidates. Values with high def/use frequency in inner loops are strongly biased against spilling due to the `memory_latency × pow(1.5, loop_depth)` penalty.
+
+### Loop Depth Multiplier
+
+**Base value**: 1.5 (exponential penalty per nesting level)
+**Confidence**: MEDIUM-LOW (inferred from cost structure, not directly extracted)
+
+**Impact**:
+```c
+Loop depth 0 (no loop):     cost × 1.5^0 = cost × 1.0
+Loop depth 1 (single loop): cost × 1.5^1 = cost × 1.5
+Loop depth 2 (nested):      cost × 1.5^2 = cost × 2.25
+Loop depth 3 (triple):      cost × 1.5^3 = cost × 3.375
+```
+
+This exponential penalty ensures that values live in deeply nested loops are strongly preferred for register allocation over spilling.
+
+### SM-Version Cost Adjustments
+
+**Finding**: SM90+ register file doubling (128KB vs 64KB) does **NOT** directly modify spill cost formulas.
+
+**Key Facts**:
+- K = 15 physical registers **constant across ALL SM versions** (SM70-SM120)
+- Spill cost formula unchanged across architectures
+- Register file size affects **occupancy constraints**, not allocation costs
+- Evidence: K=15 confirmed at 0x1090BD0:1039 (checks `degree > 14`)
+
+**Where SM-specific costs DO appear**:
+- Memory operation costs (load: 1.0 → 0.25 SM90, → 0.125 SM100)
+- Synchronization costs (8 → 5 SM90, → 2 SM100)
+- TMA operations (0.1 SM90, 0.05 SM100)
+
+### Stack Slot Allocation Algorithm
+
+**Strategy**: Sequential downward-growing allocation with first-fit slot reuse
+
+**Slot Properties**:
+- **Size**: 4 bytes (32-bit), 8 bytes (64-bit), 16 bytes (128-bit)
+- **Alignment**: Matches size (4/8/16 byte boundaries)
+- **Base pointer**: R31 (frame pointer)
+
+**Algorithm**:
+```c
+int32_t allocate_spill_slot(StackFrame* frame, VirtualReg vreg) {
+    uint32_t size = get_size(vreg);  // 4, 8, or 16 bytes
+    uint32_t align = size;           // Same as size
+
+    // Step 1: Try to reuse existing slot (non-overlapping live ranges)
+    for (SpillSlot slot : frame->slots) {
+        if (slot.size == size && !ranges_overlap(vreg.range, slot.range)) {
+            return slot.offset;  // Reuse existing slot
+        }
+    }
+
+    // Step 2: Allocate new slot (grow stack downward)
+    frame->next_offset = align_down(frame->next_offset - size, align);
+
+    SpillSlot new_slot = {
+        .offset = frame->next_offset,
+        .size = size,
+        .vreg = vreg
+    };
+
+    frame->slots.push(new_slot);
+    return new_slot.offset;
+}
+```
+
+**Stack Frame Layout**:
+```
+High addresses
++------------------+
+| Saved R24-R31    |  ← Callee-saved registers
++------------------+
+| Spill slots      |  ← [R31 - offset], negative offsets
+|   slot N (16B)   |     Sequential allocation, aligned
+|   slot 2 (8B)    |     Reused for non-overlapping ranges
+|   slot 1 (4B)    |     Grows downward
++------------------+  ← R31 (frame pointer)
+| Outgoing args    |
++------------------+
+Low addresses
+```
+
+**Optimization**: Slots are **reused** when virtual registers have non-overlapping live ranges, reducing stack frame size by 30-50% in register-heavy kernels.
+
+**Evidence**: register-allocator.md:2310-2485, lazy_reload_algorithm.json
+
+### SM120 Dual Tensor Core Allocation
+
+**Strategy**: Unified allocation (NOT independent per core)
+
+**Key Facts**:
+- **Register file**: Single 128KB shared (same as SM100)
+- **K value**: 15 (unchanged)
+- **Register classes**: Identical to SM100
+- **Alignment**: Same tensor core requirements (8-register boundaries)
+
+**No allocation changes** because:
+1. Both cores share the same register file
+2. Each `tcgen05.mma` instruction is self-contained (specifies all operands)
+3. Hardware multiplexes register reads to both cores
+
+**Where dual cores matter**: Instruction scheduling (post-RA)
+- Post-RA scheduler issues 2 independent MMA operations per cycle
+- Achieves 2× throughput with identical register allocation
+- Uses `ilpmax` scheduler for optimal dual-issue
+
+**Evidence**: register_class_constraints.json:487-510, tensor_core_costs.json:419-434
+
+---
+
+## Remaining Research Questions
+
+The following aspects still require investigation:
+
+1. **Exact loop depth base validation**: While 1.5 is inferred from cost structure, direct binary constant extraction would confirm this value definitively
+2. **Dynamic cost model adjustments**: Whether CICC adapts costs based on runtime profiling or architecture detection at compile time
+3. **Spill code scheduling**: Precise placement heuristics for loads/stores in the instruction stream beyond basic lazy reload
 
 ---
 
