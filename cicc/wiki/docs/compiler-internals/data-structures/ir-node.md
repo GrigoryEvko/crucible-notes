@@ -739,6 +739,289 @@ if (count > 3) {
 }
 ```
 
+---
+
+## IRNode Operand Array Memory Layout (Technical Deep Dive)
+
+### Allocation Allocator Analysis
+
+**Primary Allocator**: `sub_72C930(size_t allocation_size)`
+
+**Location**: Referenced in `/home/user/nvopen-tools/cicc/deep_analysis/L3/data_structures/ir_node_exact_layout.json`
+
+**Allocation Patterns**:
+```c
+// From decompiled code evidence (sub_672A20.c)
+
+// Standard base node (64 bytes)
+void* node = sub_727670();           // Lines 2979, etc.
+
+// Extended node with operand array (84 bytes)
+void* extended_node = sub_72C930(84); // Lines 418, 495, 1858
+
+// Reduced operand variant (79 bytes = 64 + 15)
+void* reduced_node = sub_72C930(79);  // Line 3434
+
+// Error/null case
+void* null_node = sub_72C930(0);      // Line 2822
+```
+
+**Size Formula**:
+```
+Total Allocation Size = Base Node (64 bytes) + Operand Array Extension (N bytes)
+                      = 64 + (num_extra_operands * 8)
+
+For standard 84-byte allocation:
+84 = 64 + 20
+20 = 2.5 operand pointers (can store 2-3 additional uint64_t* pointers)
+```
+
+### Memory Layout Diagram (Byte-Level)
+
+**Standard 64-byte Node Layout**:
+```
+Byte Offset (hex)     Field                      Size   Content
+────────────────      ──────────────────────     ────   ──────────────
+0x00-0x07             next_use_def               8B     uint64_t*
+0x08                  opcode                     1B     uint8_t
+0x09                  operand_count              1B     uint8_t
+0x0A                  state_phase                1B     uint8_t
+0x0B                  control_flags              1B     uint8_t
+0x0C-0x0F             padding                    4B     uint32_t (alignment)
+0x10-0x17             type_or_def                8B     uint64_t*
+0x18-0x1F             value_or_operand (OP1)     8B     uint64_t*
+0x20-0x27             next_operand_or_child(OP2) 8B     uint64_t*
+0x28-0x2F             second_operand (OP3)       8B     uint64_t*
+0x30-0x37             reserved_or_attributes     8B     uint64_t*
+0x38-0x3F             parent_or_context          8B     uint64_t*
+                      ─────────────────────────────────
+                      TOTAL: 64 bytes (0x00-0x3F)
+```
+
+**Extended 84-byte Node Layout** (with operand array):
+```
+Byte Offset (hex)     Field                      Size   Content
+────────────────      ──────────────────────     ────   ──────────────
+0x00-0x3F             [Base IRValueNode]         64B    (full structure above)
+
+0x40-0x47             operand[4]                 8B     uint64_t* (operand 4)
+0x48-0x4F             operand[5]                 8B     uint64_t* (operand 5)
+0x50-0x53             operand[6]                 4B     uint64_t* (partial, if < 84 bytes)
+                      ─────────────────────────────────
+                      Extended Array: 20 bytes (0x40-0x53) = 2.5 operand slots
+                      Total: 84 bytes (0x00-0x53)
+```
+
+### Offset Calculation Formula (from Decompiled Code)
+
+**Primary Operand Field Access**:
+```c
+// From sub_672A20.c decompiled code
+
+// For operand index i (0-based):
+uint64_t* operand = *(_QWORD *)((uint8_t*)node + OPERAND_OFFSET[i]);
+
+// Operand offset table (hardcoded in IR node structure):
+OPERAND_OFFSET[0] = 24  // value_or_operand (0x18)
+OPERAND_OFFSET[1] = 32  // next_operand_or_child (0x20)
+OPERAND_OFFSET[2] = 40  // second_operand (0x28)
+
+// For extended array (operand index 3+):
+// offset = 64 + ((i - 3) * 8)
+//        = 0x40 + ((i - 3) * 0x08)
+
+Example:
+  operand[3] at 0x40 = 64 + ((3 - 3) * 8) = 64 + 0
+  operand[4] at 0x48 = 64 + ((4 - 3) * 8) = 64 + 8
+  operand[5] at 0x50 = 64 + ((5 - 3) * 8) = 64 + 16
+```
+
+**Generic Access Pattern from Decompiled Code**:
+```c
+// Extracted from lines 3002-3004 of sub_672A20.c
+
+// First operand (offset 24 / 0x18)
+*(_QWORD *)(v281 + 24) = v220;
+
+// Second operand (offset 32 / 0x20)
+*(_QWORD *)(v281 + 32) = unk_4F061D8;
+
+// Third operand (offset 40 / 0x28)
+*(_QWORD *)(v281 + 40) = v293;
+
+// Pattern for extended array (if allocated via sub_72C930(84)):
+// *(_QWORD *)(node + 64 + (operand_idx * 8)) = operand_value;
+```
+
+### Memory Alignment Requirements
+
+**Alignment Constraints** (x86-64 architecture):
+
+```
+Field Type       | Required Alignment | Achieved In | Why
+─────────────────|──────────────────|────────────|──────────────────────
+uint8_t fields   | 1-byte            | 8-11       | Naturally aligned
+uint32_t padding | 4-byte boundary   | 12-15      | 4-byte aligned at offset 0x0C
+uint64_t ptrs    | 8-byte boundary   | 0,16,24... | All at 8-byte boundaries
+```
+
+**Base Node Alignment**: 8-byte boundary (cacheline-aligned for efficiency)
+
+**Extended Array Alignment**:
+- Operand[4] at offset 64 (0x40): 8-byte aligned (64 % 8 = 0)
+- Operand[5] at offset 72 (0x48): 8-byte aligned (72 % 8 = 0)
+- All subsequent operands: 8-byte aligned
+
+**Cache Line Consideration**:
+```
+Standard x86-64 L1 cache line: 64 bytes
+Base IRValueNode: 64 bytes → fits exactly in one cache line
+Extended allocation (84 bytes): requires 2 cache lines (64 + 20)
+  - Cache line 0: bytes 0-63 (base node)
+  - Cache line 1: bytes 64-83 (operand array)
+```
+
+### Decompiled Code Evidence
+
+**Function: `sub_72C930(size)` - Generic Allocator**
+
+Called with specific sizes:
+```c
+// Line 418 (sub_672A20.c)
+v37 = sub_72C930(84);
+
+// Line 495
+v60 = sub_72C930(84);
+
+// Line 1858
+v28 = sub_72C930(84);
+
+// Line 3434
+v278 = sub_72C930(79);
+
+// Line 2822
+v274 = sub_72C930(0);
+```
+
+**Node Initialization Pattern** (lines 2979-3010):
+```c
+// Allocate base node
+v260 = sub_727670();  // Returns 64-byte IRValueNode
+
+// Set opcode at offset 8
+*(_BYTE *)(v260 + 8) = 84;
+
+// Set type descriptor at offset 16
+*(_QWORD *)(v260 + 16) = sub_724840(unk_4F073B8, "explicit");
+
+// Set parent context at offset 56
+*(_QWORD *)(v260 + 56) = *(_QWORD *)&dword_4F063F8;
+
+// Link operands via offsets 24, 32, 40
+*(_QWORD *)(v260 + 32) = v281;      // Operand 2 at offset 32
+
+// Operand 1 (offset 24)
+*(_QWORD *)(v281 + 24) = v220;
+
+// Operand 3 (offset 40)
+*(_QWORD *)(v281 + 40) = v293;
+
+// Set chain link at offset 0
+*(_QWORD *)v260 = v221;
+```
+
+**Operand Count Usage** (lines 1915-1925, pseudo-decompiled):
+```c
+// Load operand count from offset 9
+v47 = *(_BYTE *)(v37 + 9);
+
+// Check operand count patterns
+if ((v47 == 1 || v47 == 4) && (v48 & 0x10) == 0) {
+    // Process operands based on count
+    // Count values: 1=unary, 4=quaternary with extended array
+}
+```
+
+### Operand Array Storage Structure (Complete)
+
+**Combined Operand Storage**:
+
+```c
+struct IRValueNodeWithOperands {
+    // ===== BASE 64-BYTE NODE =====
+    struct IRValueNode base;  // 64 bytes (offsets 0-63)
+
+    // ===== INLINE OPERANDS IN BASE NODE =====
+    // uint64_t* operand[0] at offset 24 (value_or_operand)
+    // uint64_t* operand[1] at offset 32 (next_operand_or_child)
+    // uint64_t* operand[2] at offset 40 (second_operand)
+
+    // ===== EXTENDED OPERAND ARRAY (if allocated via sub_72C930(84)) =====
+    uint64_t* extended_operands[2.5];  // 20 bytes (offsets 64-83)
+    // uint64_t* operand[3] at offset 64 (0x40)
+    // uint64_t* operand[4] at offset 72 (0x48)
+    // uint64_t* operand[5] at offset 80 (0x50) - partial
+};
+```
+
+**Total Operand Capacity**:
+- Base node (64 bytes): 3 operands (offsets 24, 32, 40)
+- Extended array (20 bytes): 2-3 operands (offsets 64-80)
+- **Maximum per node**: 5-6 operands
+
+**Access by Index**:
+```c
+// Get operand pointer by index
+uint64_t* get_operand(IRValueNode* node, int index) {
+    if (index < 3) {
+        // Base node operands
+        static int offsets[] = {24, 32, 40};
+        return *(_QWORD *)((uint8_t*)node + offsets[index]);
+    } else if (index < 6) {
+        // Extended array operands
+        int ext_index = index - 3;
+        return *(_QWORD *)((uint8_t*)node + 64 + (ext_index * 8));
+    }
+    return NULL;  // Out of range
+}
+```
+
+### Memory Access Pattern (Performance Notes)
+
+**Hot Path** (Most Frequently Accessed):
+```
+Priority | Field         | Offset | Frequency | Reason
+---------|---------------|--------|-----------|────────────────
+1        | opcode        | 8      | 40+ times | Type identification (tight loop)
+2        | next_use_def  | 0      | 10+ times | Use-def chain traversal
+3        | state_phase   | 10     | 10+ times | Phase tracking
+4        | control_flags | 11     | 10+ times | Branch control
+5        | operand ptrs  | 24,32,40| 5-8 times| Operand linking
+```
+
+**Cache Efficiency**:
+- All frequently accessed fields (0, 8-11, 16, 24, 32, 40) fit in single cache line
+- Extended operands (64+) require cache line 1
+- Typical pattern: load base node, access opcode/flags, conditionally access extended array
+
+### Allocator Function Addresses (Binary References)
+
+From `/home/user/nvopen-tools/cicc/deep_analysis/L3/data_structures/ir_node_exact_layout.json`:
+
+```
+Allocator Function              | Purpose                    | Binary Evidence
+────────────────────────────    | ──────────────────────     | ─────────────
+sub_727670()                    | Primary IR node allocator  | Used at line 2979
+sub_7276D0()                    | Operand node allocator     | Used at line 2980
+sub_724D80(int param)           | Attribute allocator        | Used at line 2981
+sub_72C930(size_t size)         | Generic allocator          | Uses: 84, 79, 0
+
+Type descriptor function:
+sub_724840(ptr, "explicit")     | Returns type structure     | Line 2984
+```
+
+These functions are part of the CICC memory allocation subsystem documented in the compiler internals.
+
 ## Validation Metrics
 
 **Analysis Agent**: L3-06-IR-Node-Field-Offsets
