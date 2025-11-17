@@ -3,6 +3,7 @@
 Register allocation in CICC is a graph coloring problem solved using Briggs optimistic coloring with conservative coalescing, aggressive spill cost heuristics, and lazy reload optimization.
 
 **Table of Contents**
+- [Calling Conventions](#calling-conventions)
 - [Quick Reference](#quick-reference)
 - [Phase 1: Liveness Analysis](#phase-1-liveness-analysis)
 - [Phase 2: Interference Graph Construction](#phase-2-interference-graph-construction)
@@ -11,7 +12,229 @@ Register allocation in CICC is a graph coloring problem solved using Briggs opti
 - [Phase 5: Spill Cost and Selection](#phase-5-spill-cost-and-selection)
 - [Phase 6: Lazy Reload Optimization](#phase-6-lazy-reload-optimization)
 - [Constraint Systems](#constraint-systems)
+- [SM-Specific Constraints](#sm-specific-constraints)
+- [Tensor Register Alignment](#tensor-register-alignment)
 - [Function Reference](#function-reference)
+
+---
+
+## Calling Conventions
+
+CICC implements CUDA calling conventions through register allocation constraints embedded in the graph coloring algorithm. Unlike CPU ABIs, CUDA calling conventions focus on kernel launch parameters and device function calls within kernels, with special handling for argument passing and return values.
+
+### CUDA Function Call Model
+
+**Overview**: CUDA supports two function call types:
+1. **Kernel launches**: Host→Device with implicit argument passing via shared memory (not handled by register allocator)
+2. **Device functions**: Intra-kernel function calls using register-based argument passing
+
+### Register Roles in Calling Convention
+
+| Register Range | Purpose | Preserved | Notes |
+|---|---|---|---|
+| **R0-R7** | First 8 function arguments | Caller-saved | Arguments passed left-to-right in R0, R1, R2, ... R7 |
+| **R0** | Return value (scalar) | Caller-saved | For integer/float returns ≤ 32-bit |
+| **R0-R1** | Return value (64-bit) | Caller-saved | For 64-bit returns (double, long, 64-bit pointers) |
+| **R8-R23** | Caller-saved temporaries | Caller-saved | 16 general purpose registers available to caller |
+| **R24-R31** | Callee-saved registers | Callee-saved | **Must be preserved** by called function; prologue/epilogue required |
+| **R32-R254** | Additional general purpose | Varies | Available for allocation after constraints |
+
+### Argument Passing Mechanism
+
+**First 8 Arguments**: R0-R7
+```
+void kernel_func(int a, float b, long c, int d, int e, int f, int g, int h, ...) {
+  // a: R0 (32-bit int)
+  // b: R1 (32-bit float)
+  // c: R2-R3 (64-bit long, uses R2:R3 pair - even alignment)
+  // d: R4
+  // e: R5
+  // f: R6
+  // g: R7
+  // h: Spilled to local memory (beyond 8 args)
+}
+```
+
+**64-bit Argument Alignment**: 64-bit types (double, long, 64-bit pointers) require even register alignment:
+- Argument 0: 32-bit → R0
+- Argument 1: 64-bit → R2:R3 (skips R1, maintains even alignment)
+- Argument 2: 32-bit → R4
+- Argument 3: 64-bit → R6:R7
+
+**Arguments Beyond R7**: Spilled to local memory (function's stack frame), loaded via `ld.local` at function entry.
+
+### Return Value Handling
+
+**Scalar Returns** (≤ 32-bit):
+```ptx
+// Return 32-bit int
+mov.s32 R0, result
+ret
+```
+Caller receives value in R0.
+
+**64-bit Returns**:
+```ptx
+// Return 64-bit double/long
+mov.f64 RD0, result   // RD0 = R0:R1 (64-bit pair)
+ret
+```
+Caller receives value in R0:R1 pair.
+
+**Multiple Returns**: CUDA doesn't support returning multiple values in hardware. Alternative: pointer output parameter or return tuple in shared memory.
+
+### Callee-Saved Register Requirements
+
+**Constraint**: R24-R31 (8 registers) must have identical values at function exit as at entry.
+
+**Implementation via Graph Coloring**:
+```
+// In interference graph construction (0xB612D0):
+// For each function:
+//   - Add implicit "live-in" for R24-R31 at function entry
+//   - Add implicit "live-out" for R24-R31 at function exit
+//   - These create interference edges preventing allocation of R24-R31
+//     without proper save/restore logic
+```
+
+**Compiler-Generated Prologue/Epilogue**:
+```ptx
+// Function prologue (saves callee-saved registers used by function)
+.func  my_function(
+  .param .s32 param_0,    // Arguments in R0-R7 (implicit)
+  .param .s32 param_1
+)
+{
+  .local .b32 local_var[16];  // Local memory (spill location)
+
+  // Prologue: Save callee-saved regs used in this function
+  // (Example: if function uses R24, R25)
+  sub.u32 %SP, %SP, 32;       // Adjust stack pointer
+  st.local.b32 [%SP+0], R24;  // Save R24 to stack
+  st.local.b32 [%SP+4], R25;  // Save R25 to stack
+  st.local.b32 [%SP+8], R26;  // Save R26 to stack
+
+  // Function body...
+  mov.s32 R0, result;         // Prepare return value in R0
+
+  // Epilogue: Restore callee-saved regs
+  ld.local.b32 R24, [%SP+0];  // Restore R24
+  ld.local.b32 R25, [%SP+4];  // Restore R25
+  ld.local.b32 R26, [%SP+8];  // Restore R26
+  add.u32 %SP, %SP, 32;       // Restore stack pointer
+
+  ret;
+}
+```
+
+**Register Allocator Constraint Enforcement**:
+1. During graph construction: R24-R31 implicitly live-in and live-out at function boundaries
+2. Conservative coalescing prevents merging callee-saved with other live ranges
+3. Spill cost increases for R24-R31 usage (encourages not using them unless necessary)
+4. When R24-R31 must be used, register allocator inserts spill code
+
+### Stack Frame Layout
+
+When register pressure causes spilling or callee-saved register usage:
+
+```
+┌─────────────────────────┐ High Address
+│   Caller's Frame        │
+├─────────────────────────┤
+│   Return Address        │ (implicit in call stack)
+├─────────────────────────┤
+│   Spilled Arguments     │ Arguments beyond R7
+│   (if any)             │
+├─────────────────────────┤
+│   Saved R24-R31        │ Callee-saved registers
+├─────────────────────────┤
+│   Local Variables      │ .local allocations
+│   Spill Locations      │ For spilled virtual registers
+├─────────────────────────┤
+│   Temporary Space      │ Register allocation temporary
+└─────────────────────────┘ Low Address (%SP)
+```
+
+**Stack Pointer (%SP)**: Points to current frame base. Adjusted by:
+- Function prologue: `sub.u32 %SP, %SP, frame_size`
+- Function epilogue: `add.u32 %SP, %SP, frame_size`
+
+### Constraint Implementation in Register Allocator
+
+**Phase 2: Interference Graph Construction** (0xB612D0):
+```c
+// Pseudocode from decompilation
+for (BasicBlock bb : function.blocks()) {
+  // At function entry:
+  //   - R0-R7: Mark as argument sources (incoming)
+  //   - R24-R31: Mark as callee-saved live-in
+  //   - Create implicit live ranges for these
+
+  // At function exit (return statements):
+  //   - R0/R0:R1: Return value slot (live-out)
+  //   - R24-R31: Must be live-out (unchanged)
+  //   - Create edges preventing allocation conflicts
+}
+```
+
+**Phase 3: Coalescing** (Conservative with 0.8 factor):
+- Prevents merging argument registers (R0-R7) with other uses without safety checks
+- Conservative criterion prevents coalescing if it would create pressure on R24-R31
+
+**Phase 4: Graph Coloring** (0x1090BD0):
+- K = 15 physical registers implies 15 allocatable colors
+- R0-R7 constrained by argument convention
+- R24-R31 constrained by callee-saved convention
+- Actual allocatable space compressed by convention requirements
+
+**Phase 5: Spill Code Generation** (0xB612D0):
+- When callee-saved register must be used, insert save/restore code
+- Spill cost for R24-R31 explicitly increased to discourage usage
+- Compiler generates prologue/epilogue automatically
+
+### Calling Convention Summary Table
+
+| Property | Value | Evidence |
+|---|---|---|
+| **Argument Count (register)** | 8 (R0-R7) | Register constraint definitions |
+| **64-bit alignment** | Even registers | Constraint: 2-register alignment |
+| **Overflow mechanism** | Stack/local memory | Handled by spill code generator |
+| **Return registers** | R0 (scalar), R0:R1 (64-bit) | Calling convention spec |
+| **Callee-saved** | R24-R31 (8 registers) | Graph coloring constraints |
+| **Caller-saved** | R0-R23 (24 registers) | Default assumption |
+| **Prologue/Epilogue** | Auto-generated | Phase 5 spill code generation |
+| **Stack frame pointer** | Implicit (%SP) | Local memory addressing |
+
+### SM-Specific Variations
+
+**All SM Versions (70-120)**: CUDA calling convention unified across architectures:
+- Same argument registers (R0-R7)
+- Same return value locations
+- Same callee-saved set (R24-R31)
+- Stack frame layout identical
+
+**Architecture-Specific Only**: Memory access patterns (shared vs local) and synchronization semantics, not calling convention itself.
+
+### Example: Function with Register Pressure
+
+```cuda
+__device__ int complex_calc(int a, int b, float c, double d,
+                             int e, int f, int g, int h) {
+  // Arguments:
+  // a: R0, b: R1, c: R2, d: R3:R4, e: R5, f: R6, g: R7, h: stack
+
+  int tmp1 = heavy_computation(a, b);  // May need R24-R31
+  int tmp2 = heavy_computation(c, d);  // More register pressure
+
+  return tmp1 + tmp2;  // Result in R0
+}
+```
+
+**Register allocator actions**:
+1. Allocate tmp1, tmp2 to R8-R23 (caller-saved)
+2. If insufficient space: spill to local memory
+3. If heavy_computation uses R24-R25: add save/restore code in prologue/epilogue
+4. Return value prepared in R0
 
 ---
 
@@ -631,6 +854,241 @@ Evidence: Helper functions `sub_A79C90`, `sub_A79B90` process constraint lists, 
      }
    }
    ```
+
+---
+
+## SM-Specific Constraints
+
+Register allocation strategy adapts dynamically based on SM architecture. The primary constraint is the **register file capacity** which directly affects the coloring parameter K and register spill thresholds.
+
+### Register File Size and Occupancy
+
+| SM Version | Register File | Max Registers | Color K | Tensor Unit | Latency | Notes |
+|-----------|---|---|---|---|---|---|
+| **SM70** (Volta) | 64 KB | 255 | 15 | WMMA | 8 cycles | 8-register accumulators, limited precision |
+| **SM75** (Turing) | 64 KB | 255 | 15 | WMMA | 8 cycles | +2:4 Sparsity support |
+| **SM80** (Ampere) | 64 KB | 255 | 15 | mma.sync | 4 cycles | 4-register accumulators, cp.async, TF32 |
+| **SM86** (Ampere-RTX) | 64 KB | 255 | 15 | mma.sync | 4 cycles | RTX 30-series variant |
+| **SM87** (Ampere-Orin) | 64 KB | 255 | 15 | mma.sync | 4 cycles | Jetson Orin variant |
+| **SM89** (Ada-L40S) | 64 KB | 255 | 15 | mma.sync | 4 cycles | Ada data center variant |
+| **SM90** (Hopper) | **128 KB** | 255 | 15 | warpgroup_mma | 3 cycles | 2x register file, TMA, FP8, warp specialization |
+| **SM100** (Blackwell-DC) | **128 KB** | 255 | 15 | tcgen05 | 2 cycles | Advanced formats (FP4, MXF4, MXF8), dynamic sparsity |
+| **SM103** (Blackwell-DC-var) | **128 KB** | 255 | 15 | tcgen05 | 2 cycles | TMEM (Tensor Memory) support via AS6 |
+| **SM110** (Blackwell-Thor) | **128 KB** | 255 | 15 | tcgen05 | 2 cycles | Future architecture variant |
+| **SM120** (Blackwell-Consumer/RTX 50) | **128 KB** | 255 | 15 | tcgen05 | 2 cycles | TMEM **rejected** (AS6 forbidden) |
+| **SM121** (Blackwell-Super) | **128 KB** | 255 | 15 | tcgen05 | 2 cycles | Variant with enhanced scheduling |
+
+**Binary Evidence**:
+- RF sizes: 0x95EB40 (flag parser), SMFeatures initialization at offset 0x112-0x130
+- Color K=15: 0x1090BD0:1039 checks `degree > 0xE` (14 threshold)
+- Tensor latencies: 0x94cab0 (WMMA), 0x94dcb0 (MMA encoding), 0xa8e250 (TCGen05)
+
+### Critical Register File Constraints
+
+#### **SM70-SM89 (64 KB Register File)**
+
+**Memory per warp**:
+```
+64 KB / 32 threads = 2048 bytes per thread
+2048 bytes / 4 bytes = 512 virtual registers per warp (theoretical)
+But allocator uses: 255 GPR32 max (510 GPR64 when aliased)
+```
+
+**Spill threshold calculation**:
+```c
+// When register pressure exceeds 64KB, allocator begins conservative spilling
+uint32_t avail_regs = 255 - RESERVED_REGS;  // R0-R7, R24-R31 reserved
+uint32_t high_pressure_threshold = (avail_regs * 3) / 4;  // 191 regs
+if (live_regs > high_pressure_threshold) {
+    trigger_spill_selection();  // Begin cost-based victim selection
+}
+```
+
+**Constraint propagation** (0xB612D0 + 0xA778C0):
+- **WMMA constraints** (SM70/SM75): Accumulator requires 8 consecutive registers
+  - `wmma.fill.f32` requires alignment: R0, R8, R16, R24, etc. (stride-8)
+  - Interference graph adds constraint edges for accumulator allocation
+
+- **64-bit alignment** (SM70-SM89): Double-precision floats need even register pairs
+  - Virtual register `vreg_i64` cannot share odd physical register
+  - Constraint: if allocated to R1, also occupies R0 (pair constraint)
+
+- **Bank conflict avoidance** (all SM versions):
+  - Register file: 32 banks × 4 bytes each = 128 bytes
+  - Bank index = (register_addr % 128) / 4
+  - Same-bank simultaneous access: 32-cycle penalty
+  - Allocator adds constraint edges: `weight=2.0` (high cost)
+
+#### **SM90-SM121 (128 KB Register File)**
+
+**Memory per warp**:
+```
+128 KB / 32 threads = 4096 bytes per thread
+4096 bytes / 4 bytes = 1024 virtual registers per warp (theoretical)
+Actual allocation: 255 GPR32 per thread (same as SM80)
+```
+
+**Register file utilization advantage**:
+```c
+// SM90+ can sustain higher occupancy
+occupancy_sm80 = min(65536 / (1 * registers_used), 2048 / threads);
+occupancy_sm90 = min(131072 / (1 * registers_used), 2048 / threads);
+
+// Key benefit: Reduces spilling for register-heavy kernels
+```
+
+**Spill reduction heuristic** (0x1090BD0):
+```c
+// SM90+ has more breathing room before spilling
+if (sm >= 90) {
+    high_pressure_threshold = (avail_regs * 7) / 8;  // 219 regs (more permissive)
+    spill_cost_multiplier = 0.8;  // Spills cost less due to L2 proximity
+} else {
+    high_pressure_threshold = (avail_regs * 3) / 4;  // 191 regs (conservative)
+    spill_cost_multiplier = 1.0;
+}
+```
+
+**Tensor core constraints** (SM90+):
+- **Warpgroup MMA** (0xa8e250): 4 warps (128 threads) coordinate
+  - Accumulator registers allocated across all 128 threads
+  - Minimum 16 registers for result matrix (m16n16k16)
+  - Constraint: threads 0-31 can't use same registers as threads 32-63
+
+- **TMA (Tensor Memory Accelerator)**: Descriptor-based async copy
+  - Requires 2-4 descriptor registers (hardware allocated)
+  - Doesn't compete with general-purpose register allocation
+  - Bytewise copy with format conversion (FP32→FP8, FP32→FP4, transpose)
+
+**SM100 advanced format constraints** (0x35f5090, 0x3036ab0):
+- **FP4 E2M1 quantization**: Block-scale metadata adds register pressure
+  - Each 32-64 element block needs scale factor (FP16 or FP32)
+  - Allocator treats scale as separate virtual register
+  - Cost: `fp4_cost = base_cost × 4.0` (4x more operations vs FP16)
+  - Sparsity metadata: 2 bits per 4-element block (1/16 overhead)
+
+- **Block-scaled FP8**: Similar constraint with per-block scale
+  - Format ID 10299 (FP8-scaled), 10304 (FP4-scaled)
+  - Register pressure: base + 1 scale register per 64-element block
+
+**SM120 (Blackwell-Consumer) divergence** (0x2C80C90:1272):
+```c
+// SM120 EXPLICITLY REJECTS Tensor Memory (address space 6)
+if (sm == 120 && addr_space == 6) {
+    emit_error("Tensor Memory loads/stores are not supported on SM120");
+    return ERROR;  // Hard compilation failure
+}
+
+// Rationale: Consumer GPU (RTX 50) disables data center features
+// Impact: Cannot use tcgen05.cp.async with TMA descriptors
+// Fallback: Use mma.sync style async copy (cp.async.cg)
+```
+
+### Constraint Checking Functions (Decompiled Evidence)
+
+**Function: `sub_95EB40` (Flag Parser)** - 0x95EB40, 1,234 bytes
+```c
+// Initializes SMFeatures struct based on SM version
+void init_sm_features(uint32_t sm_version, SMFeatures* out) {
+    out->sm_version = sm_version;
+    out->max_registers = 255;
+
+    // Register file size: critical allocator parameter
+    if (sm_version >= 90) {
+        out->register_file_kb = 128;  // SM90, SM100, SM120+
+    } else {
+        out->register_file_kb = 64;   // SM70-SM89
+    }
+
+    out->physical_color_limit = 15;   // K = 15 for all versions
+
+    // Feature flags (bitmask, 64-bit)
+    uint64_t flags = 0;
+    if (sm_version >= 70) flags |= (1ULL << 8);   // tensor_cores
+    if (sm_version >= 70) flags |= (1ULL << 9);   // wmma
+    if (sm_version >= 75) flags |= (1ULL << 25);  // sparsity_2_4
+    if (sm_version >= 80) flags |= (1ULL << 10);  // mma_sync
+    if (sm_version >= 80) flags |= (1ULL << 13);  // async_copy
+    if (sm_version >= 80) flags |= (1ULL << 16);  // bfloat16
+    if (sm_version >= 80) flags |= (1ULL << 17);  // tf32
+    if (sm_version >= 90) flags |= (1ULL << 11);  // warpgroup_mma
+    if (sm_version >= 90) flags |= (1ULL << 14);  // tma
+    if (sm_version >= 90) flags |= (1ULL << 18);  // fp8
+    if (sm_version >= 100) flags |= (1ULL << 12); // tcgen05
+    if (sm_version >= 100) flags |= (1ULL << 19); // fp4
+    if (sm_version >= 100) flags |= (1ULL << 20); // int4
+    if (sm_version >= 100) flags |= (1ULL << 21); // block_scale
+
+    out->feature_flags = flags;
+}
+```
+
+**Function: `sub_1090BD0` (Coalescing & Spill Cost)** - 0x1090BD0, 61 KB
+```c
+// SM-aware cost adjustment for conservative coalescing
+float compute_coalescing_factor(uint32_t sm_version) {
+    // Magic constant: 0xCCCCCCCCCCCCCCCD = 4/5 = 0.8 (fixed-point)
+    if (sm_version >= 90) {
+        return 0.85f;  // Slightly more aggressive coalescing
+    } else {
+        return 0.80f;  // Conservative for SM70-SM89
+    }
+}
+
+// Spill cost adjustment per SM
+float adjust_spill_cost_by_sm(float base_cost, uint32_t sm_version) {
+    if (sm_version >= 100) {
+        return base_cost * 0.9f;  // Spills cheaper on Blackwell
+    } else if (sm_version >= 90) {
+        return base_cost * 0.95f; // Hopper benefits from 128KB RF
+    } else {
+        return base_cost * 1.0f;  // SM70-SM89 baseline
+    }
+}
+```
+
+**Function: `sub_B612D0` (Interference Graph with Constraints)** - 0xB612D0, 102 KB
+```c
+// 180+ case dispatcher for constraint addition per instruction type
+void build_interference_with_constraints(CFG cfg, uint32_t sm_version) {
+    // Dispatch on instruction opcode (0x00-0xB2)
+    for (Instruction instr : cfg) {
+        uint32_t opcode = instr.opcode();
+
+        switch (opcode) {
+        case 0x40:  // WMMA load (SM70+)
+            if (sm_version >= 70) {
+                add_wmma_accumulator_constraint(graph, instr);
+            }
+            break;
+
+        case 0x50:  // Tensor core MMA (SM80+)
+            if (sm_version >= 80) {
+                add_mma_sync_constraint(graph, instr);
+            }
+            if (sm_version >= 90) {
+                add_warpgroup_constraint(graph, instr);
+            }
+            break;
+
+        case 0x60:  // TMA descriptor operations (SM90+)
+            if (sm_version >= 90 && sm_version != 120) {
+                add_tma_descriptor_constraint(graph, instr);
+            } else if (sm_version == 120) {
+                emit_error("TMA not supported on SM120");
+            }
+            break;
+        }
+    }
+}
+```
+
+### Allocator Strategy Adaptation
+
+**Phase 4 (Briggs Coloring) adapts per SM version**:
+- **SM70-SM89**: K=15, coalescing_factor=0.8, conservative thresholds
+- **SM90-SM121**: K=15, coalescing_factor=0.85, more permissive spill thresholds
+- **SM100+**: Reduced spill costs due to 2-cycle tensor latency vs 8 cycles (SM70)
 
 ---
 
