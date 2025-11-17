@@ -145,6 +145,15 @@ nav:
     - Register Allocation: compiler-internals/register-allocation.md
     - Instruction Selection: compiler-internals/instruction-selection.md
     - Optimization Passes: compiler-internals/optimization-passes.md
+    - Optimizations:
+      - DSE (Dead Store Elimination): compiler-internals/optimizations/dse-dead-store-elimination.md
+      - GVN (Global Value Numbering): compiler-internals/optimizations/gvn-global-value-numbering.md
+      - LICM Loop Versioning: compiler-internals/optimizations/licm-loop-versioning.md
+      - Loop Detection: compiler-internals/optimizations/loop-detection.md
+    - Optimization Framework:
+      - Pass Ordering (212 passes): compiler-internals/optimization-framework/pass-ordering.md
+      - Pass Function Addresses: compiler-internals/optimization-framework/pass-addresses.md
+      - Pass Manager Implementation: compiler-internals/optimization-framework/pass-manager.md
     - Tensor Core Codegen: compiler-internals/tensor-core-codegen.md
     - Architecture Detection: compiler-internals/architecture-detection.md
     - Error Handling: compiler-internals/error-handling.md
