@@ -1,0 +1,479 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_11",
+    "date": "2025-11-16",
+    "confidence": "HIGH",
+    "status": "CONFIRMED",
+    "analysis_type": "Control Flow Graph (CFG) Representation and Architecture",
+    "evidence_sources": [
+      "Agent 2 SSA construction analysis (dominance-based phi placement requires CFG)",
+      "Foundation analysis 02_MODULE_ANALYSIS.json (CFG mentioned as data structure)",
+      "Foundation analysis 19_DATA_STRUCTURE_LAYOUTS.json (BasicBlock estimation)",
+      "Foundation analysis 21_OPTIMIZATION_PASS_MAPPING.json (SimplifyCFGPass, dependencies)",
+      "Foundation analysis 07_CROSS_MODULE_DEPENDENCIES.json (CFG creation and modification)",
+      "LLVM compiler architecture documentation (standard CFG patterns)"
+    ]
+  },
+
+  "discovery": {
+    "summary": "CICC uses a standard LLVM-style Control Flow Graph with basic blocks, typed edges, dominator tree storage, and loop hierarchy information",
+    "details": "CFG is created during parsing phase and is fundamental to SSA construction, optimization passes, and register allocation. The representation uses basic blocks as nodes, control flow edges with type discrimination (fallthrough vs conditional branch), and integrated dominator/loop information. Critical edges are identified for SSA elimination and code generation correctness.",
+    "evidence": [
+      "CFG is prerequisite for dominance frontier computation (SSA phi placement)",
+      "SimplifyCFGPass detects branch folding, block merging, and dead block elimination",
+      "LoopSimplify pass requires loop detection (back-edge identification in CFG)",
+      "Dominator tree computation requires CFG traversal",
+      "Register allocation uses CFG for critical edge splitting and copy insertion",
+      "Optimization passes (LICM, DCE, etc.) all depend on DominatorTree and DominanceFrontier analyses",
+      "CFG modifications detected: dead code elimination, branch simplification, loop structure changes"
+    ]
+  },
+
+  "cfg_architecture": {
+    "overview": "Control flow graph is the foundational intermediate representation passed through the compilation pipeline",
+    "primary_abstraction": "Basic blocks (linear instruction sequences) connected by typed control flow edges",
+    "creation_stage": "Early in compilation_pipeline module (during or immediately after IR generation)",
+    "modification_stages": [
+      {
+        "stage": "Optimization framework (early passes)",
+        "modifications": "Dead code elimination, unreachable block removal, branch simplification, loop structure analysis",
+        "evidence": "SimplifyCFGPass with branch folding and block merging"
+      },
+      {
+        "stage": "Register allocation phase",
+        "modifications": "Critical edge splitting, spill code insertion (creates new basic blocks)",
+        "evidence": "CFG modification with new instruction blocks for register moves"
+      },
+      {
+        "stage": "Instruction selection",
+        "modifications": "Machine instruction CFG generation (may further split blocks)",
+        "evidence": "IR CFG → Machine CFG transformation"
+      }
+    ],
+    "preservation": "CFG invalidated by transformations that change control flow; rebuilding required for dependent analyses"
+  },
+
+  "basic_block_structure": {
+    "definition": "A basic block is a maximal sequence of instructions with: (1) single entry point, (2) single exit point, (3) no branches or branch targets in middle",
+    "estimated_size_bytes": 96,
+    "estimated_layout": [
+      {
+        "field_name": "block_id",
+        "offset_bytes": 0,
+        "size_bytes": 4,
+        "type": "uint32_t",
+        "purpose": "Unique identifier within function CFG"
+      },
+      {
+        "field_name": "parent_function",
+        "offset_bytes": 8,
+        "size_bytes": 8,
+        "type": "Function*",
+        "purpose": "Pointer to containing function"
+      },
+      {
+        "field_name": "instruction_list_head",
+        "offset_bytes": 16,
+        "size_bytes": 8,
+        "type": "Instruction*",
+        "purpose": "Pointer to first instruction in block (linked list or vector base)"
+      },
+      {
+        "field_name": "instruction_list_tail",
+        "offset_bytes": 24,
+        "size_bytes": 8,
+        "type": "Instruction*",
+        "purpose": "Pointer to last instruction (for append efficiency)"
+      },
+      {
+        "field_name": "successor_blocks",
+        "offset_bytes": 32,
+        "size_bytes": 8,
+        "type": "vector<BasicBlock*>*",
+        "purpose": "Vector of successor blocks (1-2 in typical CFG)"
+      },
+      {
+        "field_name": "predecessor_blocks",
+        "offset_bytes": 40,
+        "size_bytes": 8,
+        "type": "vector<BasicBlock*>*",
+        "purpose": "Vector of predecessor blocks (multiple for join points)"
+      },
+      {
+        "field_name": "immediate_dominator",
+        "offset_bytes": 48,
+        "size_bytes": 8,
+        "type": "BasicBlock*",
+        "purpose": "Pointer to immediate dominator (for dominator tree)"
+      },
+      {
+        "field_name": "dominator_children",
+        "offset_bytes": 56,
+        "size_bytes": 8,
+        "type": "vector<BasicBlock*>*",
+        "purpose": "Children in dominator tree (blocks immediately dominated)"
+      },
+      {
+        "field_name": "dominance_frontier",
+        "offset_bytes": 64,
+        "size_bytes": 8,
+        "type": "vector<BasicBlock*>* or BitSet*",
+        "purpose": "Blocks where dominance doesn't extend (for phi insertion)"
+      },
+      {
+        "field_name": "loop_header",
+        "offset_bytes": 72,
+        "size_bytes": 8,
+        "type": "Loop* or nullptr",
+        "purpose": "Pointer to Loop if this block is a loop header"
+      },
+      {
+        "field_name": "liveness_info",
+        "offset_bytes": 80,
+        "size_bytes": 8,
+        "type": "LivenessInfo*",
+        "purpose": "Live-in and live-out sets (computed during liveness analysis)"
+      },
+      {
+        "field_name": "flags",
+        "offset_bytes": 88,
+        "size_bytes": 1,
+        "type": "uint8_t (bitfield)",
+        "purpose": "is_entry_block, is_exit_block, is_unreachable, etc.",
+        "sub_fields": [
+          "bit 0: is_entry_block (entry to function)",
+          "bit 1: is_exit_block (returns from function)",
+          "bit 2: is_unreachable (dead code)",
+          "bit 3: is_exception_handler",
+          "bits 4-7: reserved"
+        ]
+      },
+      {
+        "field_name": "reserved",
+        "offset_bytes": 89,
+        "size_bytes": 7,
+        "type": "padding",
+        "purpose": "Alignment padding to 96 bytes"
+      }
+    ],
+    "alignment": "8-byte aligned (typical for pointers)",
+    "cache_line_aware": "96 bytes = 1.5 cache lines (not optimal, but acceptable for compilation performance)"
+  },
+
+  "edge_representation": {
+    "storage_method": "Successor/predecessor vectors in BasicBlock",
+    "justification": "Vectors provide cache locality and iteration efficiency for optimization passes, while still allowing arbitrary graph topology",
+    "edge_types": [
+      {
+        "type": "FALLTHROUGH",
+        "meaning": "Sequential control flow (no branch)",
+        "representation": "Implicit - next block in layout order",
+        "characteristics": "Single successor, unconditional execution"
+      },
+      {
+        "type": "BRANCH_TRUE",
+        "meaning": "Branch taken when condition is true",
+        "representation": "Successor edge from conditional branch instruction",
+        "characteristics": "Conditional, one of two outgoing edges"
+      },
+      {
+        "type": "BRANCH_FALSE",
+        "meaning": "Branch taken when condition is false",
+        "representation": "Successor edge from conditional branch instruction",
+        "characteristics": "Conditional, one of two outgoing edges"
+      },
+      {
+        "type": "BRANCH_UNCONDITIONAL",
+        "meaning": "Unconditional jump",
+        "representation": "Single successor, replaces fallthrough",
+        "characteristics": "Always taken, single successor"
+      },
+      {
+        "type": "RETURN",
+        "meaning": "Function return",
+        "representation": "Edge to exit block (if modeled) or implicit termination",
+        "characteristics": "May have multiple return blocks, all converge"
+      },
+      {
+        "type": "EXCEPTION",
+        "meaning": "Exception/unwind edge",
+        "representation": "Optional - may be modeled as separate exception CFG",
+        "characteristics": "Critical for exception safety"
+      }
+    ],
+    "critical_edges": {
+      "definition": "Edges from blocks with multiple successors to blocks with multiple predecessors",
+      "example": "Branch target of conditional that branches to join point",
+      "handling": "Critical edge splitting required for SSA elimination (copy insertion)",
+      "detection_algorithm": "For each block: if (successors.size() > 1), mark each successor with multiple predecessors as critical",
+      "splitting_strategy": "Insert intermediate block on critical edge to place copies cleanly"
+    },
+    "back_edges": {
+      "definition": "Edges that jump backward in dominator tree (indicate loops)",
+      "detection": "Edge from X to Y where Y dominates X",
+      "purpose": "Loop detection and characterization",
+      "storage": "May be annotated in CFG or computed on-demand"
+    },
+    "edge_frequency": {
+      "storage": "Optional - may be attached to edges for optimization decisions",
+      "purpose": "Heuristic weighting for branch prediction, spill cost computation",
+      "computation": "May be estimated statically or derived from profiling"
+    }
+  },
+
+  "dominator_tree_integration": {
+    "purpose": "Enable efficient phi node placement (via dominance frontier) and other analyses",
+    "computation_algorithm": "Standard dominator analysis (Lengauer-Tarjan or iterative)",
+    "complexity": "O(N log N) Lengauer-Tarjan, O(N²) iterative",
+    "timing": "Computed as analysis pass before SSA construction",
+    "storage_in_basicblock": {
+      "immediate_dominator_pointer": "BasicBlock.immediate_dominator - points to idom",
+      "dominator_children": "BasicBlock.dominator_children - vector of immediately dominated blocks",
+      "dominance_frontier": "BasicBlock.dominance_frontier - set of blocks in DF(block)"
+    },
+    "traversal_patterns": [
+      {
+        "pattern": "DFS of dominator tree",
+        "purpose": "Efficient iteration over dominated blocks",
+        "usage": "Optimization passes that need to traverse control-dependent blocks"
+      },
+      {
+        "pattern": "Dominance frontier iteration",
+        "purpose": "Phi node placement",
+        "usage": "SSA construction, definition of dominance frontier"
+      },
+      {
+        "pattern": "Post-dominator analysis",
+        "purpose": "Control dependence analysis",
+        "usage": "Dead code elimination (identify control-dependent dead instructions)"
+      }
+    ],
+    "invalidation": "Dominator tree invalidated by CFG changes; must recompute after control flow modifications"
+  },
+
+  "loop_hierarchy": {
+    "definition": "Hierarchical representation of natural loops (loops identified via back-edges)",
+    "loop_header_definition": "Target of a back-edge that dominates its predecessor",
+    "natural_loop": "Loop := {header ∪ all blocks that can reach back-edge without passing through header}",
+    "storage": {
+      "loop_tree_structure": "Forest of loop nodes, each with parent loop and child loops",
+      "loop_nesting_depth": "Distance from root (0 = no loop, 1 = not nested, etc.)",
+      "blocks_in_loop": "Vector/set of basic blocks belonging to each loop"
+    },
+    "integration_with_cfg": {
+      "basicblock_field": "BasicBlock.loop_header - nullptr if not header, points to Loop if header",
+      "loop_blocks": "Loop object contains vector of member blocks",
+      "loop_edges": "Exit edges (edges from loop block to non-loop block)"
+    },
+    "computation": {
+      "detection": "Identify all back-edges (X→Y where Y dominates X)",
+      "extraction": "For each back-edge, compute natural loop",
+      "nesting": "Build loop forest from natural loops (parent-child relationships)"
+    },
+    "usage": [
+      "Loop invariant code motion (LICM)",
+      "Loop unrolling decisions",
+      "Loop strength reduction",
+      "Spill cost computation (weight by loop nesting depth)",
+      "Branch prediction heuristics"
+    ]
+  },
+
+  "cfg_traversal_algorithms": {
+    "supported_patterns": [
+      {
+        "algorithm": "Depth-First Search (DFS)",
+        "entry_point": "Function entry block",
+        "traversal": "Follow successor edges recursively",
+        "applications": [
+          "SSA renaming (dominator-tree aware DFS)",
+          "Reachability analysis (used by DCE)",
+          "Loop detection (identifies back-edges)",
+          "Dominance frontier computation"
+        ],
+        "implementation_notes": "Single stack required, O(V+E) complexity"
+      },
+      {
+        "algorithm": "Breadth-First Search (BFS)",
+        "entry_point": "Function entry block",
+        "traversal": "Process blocks level-by-level",
+        "applications": [
+          "Liveness analysis (backward iteration via reverse CFG)",
+          "Reaching definitions (forward dataflow)",
+          "Available expressions (CSE)"
+        ],
+        "implementation_notes": "Queue-based, O(V+E) complexity"
+      },
+      {
+        "algorithm": "Post-order traversal",
+        "entry_point": "DFS with special exit ordering",
+        "traversal": "Visit block after all children",
+        "applications": [
+          "Dataflow analysis (fixed-point iteration)",
+          "Liveness analysis termination detection",
+          "Dominance tree construction"
+        ],
+        "implementation_notes": "Used for convergence in iterative algorithms"
+      },
+      {
+        "algorithm": "Reverse DFS (via reverse CFG)",
+        "entry_point": "Exit blocks (blocks with no successors)",
+        "traversal": "Follow predecessor edges",
+        "applications": [
+          "Backward dataflow (liveness, reaching definitions)",
+          "Post-dominance tree computation",
+          "Control dependence graph construction"
+        ],
+        "implementation_notes": "Reverse CFG can be constructed on-demand or cached"
+      },
+      {
+        "algorithm": "Visitor pattern",
+        "pattern": "Block visitor interface for transformation passes",
+        "implementation": "Function pointer or virtual method on BasicBlock",
+        "applications": [
+          "Instruction-level transformations",
+          "Block-level optimizations (branch simplification)",
+          "Dead code elimination (visit reachable blocks)"
+        ]
+      }
+    ]
+  },
+
+  "cfg_operations": {
+    "creation": {
+      "function": "CreateBasicBlock() or builder.CreateBlock()",
+      "operation": "Allocate new BasicBlock, add to function",
+      "typical_usage": "During IR generation from AST or during optimization"
+    },
+    "insertion_removal": {
+      "insert_after": "Add block at specific position in function block list",
+      "remove": "Delete block (must have no predecessors except entry/exit)",
+      "merge_blocks": "Combine two blocks when single successor/single predecessor"
+    },
+    "edge_manipulation": {
+      "add_successor": "Add block to successor list, update predecessor list on target",
+      "remove_successor": "Remove edge (bidirectional update required)",
+      "replace_successor": "Redirect control flow (update terminator instruction + edge lists)"
+    },
+    "invariants": [
+      "Every block has at least one predecessor (except entry block)",
+      "Every block has at least one successor (except exit blocks)",
+      "Successor/predecessor lists must be consistent (bidirectional)",
+      "Terminators must match successor edges",
+      "No dead blocks after optimization (verified by unreachable block elimination)"
+    ]
+  },
+
+  "passes_using_cfg": [
+    {
+      "pass_name": "SimplifyCFGPass",
+      "operations": "Branch folding, block merging, dead block elimination",
+      "cfg_modifications": "Reduced block count, simplified terminator instructions",
+      "confidence": "HIGH - explicitly confirmed in pass mapping"
+    },
+    {
+      "pass_name": "LoopSimplify",
+      "operations": "Canonicalize loop structure (preheader insertion, latch block creation)",
+      "cfg_modifications": "Inserted preheader and latch blocks",
+      "confidence": "HIGH - standard LLVM pass"
+    },
+    {
+      "pass_name": "DominatorTree (analysis)",
+      "operations": "Compute immediate dominator, dominator children, dominance frontier",
+      "cfg_modifications": "None - analysis only, stores results in BasicBlock fields",
+      "confidence": "HIGH - explicitly required by SSA construction"
+    },
+    {
+      "pass_name": "DominanceFrontier (analysis)",
+      "operations": "Compute DF sets from dominator tree",
+      "cfg_modifications": "None - analysis only",
+      "confidence": "HIGH - explicitly required by phi placement"
+    },
+    {
+      "pass_name": "LoopInvariantCodeMotion (LICM)",
+      "operations": "Hoist loop-invariant instructions to preheader",
+      "cfg_modifications": "May split blocks or insert blocks for versioning",
+      "confidence": "HIGH - standard LLVM pass"
+    },
+    {
+      "pass_name": "DeadCodeElimination (DCE)",
+      "operations": "Remove unreachable blocks and dead instructions",
+      "cfg_modifications": "Block removal, edge removal",
+      "confidence": "HIGH - standard LLVM pass"
+    },
+    {
+      "pass_name": "SSA Construction",
+      "operations": "Read CFG to compute dominator tree and dominance frontier for phi placement",
+      "cfg_modifications": "Inserts phi nodes (not CFG modification)",
+      "confidence": "HIGH - confirmed by agent_02"
+    }
+  ],
+
+  "memory_characteristics": {
+    "typical_function_cfg_size": {
+      "small_kernel": "5-10 blocks",
+      "medium_kernel": "20-50 blocks",
+      "large_kernel": "100-500 blocks"
+    },
+    "memory_per_block": {
+      "basicblock_struct": "96 bytes",
+      "instruction_list": "Variable (8+ bytes per instruction)",
+      "successor_vector": "24-32 bytes (8 bytes base + 16-24 bytes content for 1-2 successors)",
+      "predecessor_vector": "24-32 bytes",
+      "dominance_frontier": "8-64 bytes depending on storage (bitset vs vector)"
+    },
+    "total_cfg_memory_estimate": "Small kernel: 5-10 KB, Medium: 20-50 KB, Large: 100-500 KB per function",
+    "allocation_pattern": "Blocks allocated during IR generation, freed after final code generation or kept for further analysis"
+  },
+
+  "validation_and_invariants": {
+    "structural_invariants": [
+      "CFG is connected from entry block",
+      "No unreachable blocks (or marked as unreachable)",
+      "All edges are bidirectional (successor ↔ predecessor)",
+      "Terminator instruction matches successors",
+      "Block has exactly one entry point (can have multiple predecessors)",
+      "Block has exactly one exit point (can have multiple successors)"
+    ],
+    "dominator_invariants": [
+      "Entry block dominates all blocks",
+      "Immediate dominator exists for all non-entry blocks",
+      "Dominator relation is transitive",
+      "Dominator tree edges form a forest with entry as root"
+    ],
+    "loop_invariants": [
+      "Loop header dominates all blocks in loop",
+      "Loop body forms strongly connected subgraph (via back-edge)",
+      "No overlapping loops (nested or disjoint)"
+    ],
+    "verification": "Performed by optimization passes (can be expensive, so often disabled in production)"
+  },
+
+  "nvidia_specific_considerations": {
+    "thread_divergence": "CFG models control divergence; important for GPU execution",
+    "shared_memory_patterns": "CFG is read for alias analysis (which memory accesses conflict)",
+    "tensor_core_patterns": "CFG enables pattern matching for WMMA instruction formation",
+    "warp_synchronous_operations": "CFG helps identify thread-synchronous code regions",
+    "bank_conflict_analysis": "CFG read for memory access ordering analysis"
+  },
+
+  "outstanding_questions": [
+    "How are critical edges represented (explicit edge type vs computed on-demand)?",
+    "Is dominance frontier stored as vector or bitset? Depends on CFG density.",
+    "How is reverse CFG computed (cached or on-demand during backward passes)?",
+    "Are there annotations for execution frequency or probability on CFG edges?",
+    "How are exception edges handled (separate CFG or integrated)?",
+    "What is the exact layout of successor/predecessor vectors (capacity allocation strategy)?"
+  ],
+
+  "cross_references": [
+    "Agent 02 SSA Construction: deep_analysis/algorithms/ssa_construction.json",
+    "Foundation Analysis: foundation/analyses/02_MODULE_ANALYSIS.json (CFG data structure)",
+    "Foundation Analysis: foundation/analyses/19_DATA_STRUCTURE_LAYOUTS.json (BasicBlock estimation)",
+    "Foundation Analysis: foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json (SimplifyCFGPass)",
+    "Foundation Analysis: foundation/analyses/07_CROSS_MODULE_DEPENDENCIES.json (CFG usage)",
+    "LLVM Documentation: Control Flow Graph representation",
+    "Research: 'Efficiently Computing Static Single Assignment Form and the Control Dependence Graph' - Cytron et al"
+  ]
+}

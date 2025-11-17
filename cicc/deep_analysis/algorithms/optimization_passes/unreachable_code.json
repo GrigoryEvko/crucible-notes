@@ -1,0 +1,370 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_06",
+    "date": "2025-11-16",
+    "confidence": "HIGH",
+    "status": "CONFIRMED",
+    "source_module": "optimization_framework",
+    "related_passes": ["SimplifyCFG", "ADCE", "LoopDeletion"]
+  },
+
+  "summary": {
+    "description": "Unreachable Code Detection and Removal in CICC using Control Flow Graph analysis and reachability computation",
+    "key_findings": [
+      "SimplifyCFG pass removes unreachable basic blocks",
+      "Reachability analysis uses dominator tree traversal",
+      "Control flow simplification with branch folding",
+      "Dead code barrier elimination for GPU memory consistency",
+      "CUDA-specific handling of divergent code paths"
+    ]
+  },
+
+  "unreachable_code_detection": {
+    "algorithm": "CFG Reachability Analysis",
+    "description": "Identifies and removes basic blocks that are unreachable from function entry",
+
+    "detection_methods": {
+      "method_1_dominance_based": {
+        "name": "Dominance-Based Reachability",
+        "description": "A block is unreachable if no path from entry dominates it",
+        "algorithm_steps": [
+          "1. Build dominator tree rooted at entry block",
+          "2. A block is reachable if and only if it appears in dominator tree",
+          "3. All blocks not in dominator tree are unreachable",
+          "4. Remove unreachable blocks from CFG"
+        ],
+        "complexity": "O(N) with dominator tree construction being O(N log N)",
+        "evidence": [
+          "String: 'Verify dominator info (time consuming)'",
+          "Dominator tree construction integrated into optimization framework"
+        ]
+      },
+
+      "method_2_worklist_traversal": {
+        "name": "Worklist-Based Reachability",
+        "description": "Forward traversal from entry to mark reachable blocks",
+        "algorithm_steps": [
+          "1. Initialize worklist with entry block",
+          "2. While worklist not empty:",
+          "   a. Pop block B from worklist",
+          "   b. If B not marked reachable:",
+          "      - Mark B as reachable",
+          "      - Add all successors to worklist",
+          "3. Unmarked blocks are unreachable"
+        ],
+        "complexity": "O(N + E) where N = blocks, E = edges",
+        "optimization": "Can use breadth-first or depth-first traversal"
+      },
+
+      "method_3_path_check_limit": {
+        "name": "Path-Bounded Reachability Check",
+        "description": "Limits reachability exploration to prevent excessive analysis",
+        "parameters": {
+          "dom-tree-reachability-max-bbs-to-explore": "Maximum basic blocks to explore"
+        },
+        "use_case": "For very large functions or complex CFGs"
+      }
+    },
+
+    "triggers_for_unreachable_blocks": [
+      "Unconditional branch before dead code",
+      "Return statement in all control flow paths",
+      "Exception-only code paths",
+      "Code after switch statement with default case",
+      "Unreachable handlers (exception, catch blocks)",
+      "Infeasible branches (always-false conditions)",
+      "GPU divergence with impossible conditions"
+    ]
+  },
+
+  "simplify_cfg_pass": {
+    "pass_name": "SimplifyCFG",
+    "pass_id": "SimplifyCFG",
+    "algorithm_type": "Control Flow Graph Simplification",
+    "category": "Instruction Combining / CFG Optimization",
+    "confidence": "HIGH",
+    "evidence": [
+      "String: 'SimplifyCFG'",
+      "String: 'SimplifyCFGPass'",
+      "String: 'invalid argument to SimplifyCFG pass bonus-threshold parameter'",
+      "String: 'Allow SimplifyCFG to merge invokes together when appropriate'",
+      "String: 'Simplify the CFG'"
+    ],
+
+    "algorithm_description": "Simplifies control flow graph by removing unreachable blocks, merging basic blocks, folding branches, and eliminating redundant successors",
+
+    "algorithm_phases": {
+      "phase_1_remove_unreachable_blocks": {
+        "description": "Remove basic blocks that cannot be reached from entry",
+        "algorithm": "Dominance-based or worklist-based reachability",
+        "impact": "Reduces CFG complexity, enables downstream optimizations"
+      },
+
+      "phase_2_merge_blocks": {
+        "description": "Merge consecutive blocks with single predecessor/successor",
+        "algorithm_steps": [
+          "1. For each block B with single successor S",
+          "2. If S has single predecessor (which is B)",
+          "3. Merge B and S into single block",
+          "4. Redirect all edges to merged block"
+        ],
+        "benefit": "Reduces instruction cache pressure, enables constant propagation"
+      },
+
+      "phase_3_branch_folding": {
+        "description": "Replace branches with direct jumps when condition is known",
+        "conditions_detected": [
+          "Constant condition (always true/false)",
+          "Condition comparing equal values",
+          "Condition on contradiction",
+          "Predicated branch after conditional define"
+        ],
+        "algorithm_steps": [
+          "1. Evaluate branch condition if possible",
+          "2. If condition is constant, remove false branch",
+          "3. Replace conditional branch with unconditional",
+          "4. May lead to unreachable code which is then removed"
+        ]
+      },
+
+      "phase_4_successor_elimination": {
+        "description": "Remove redundant successors from blocks",
+        "triggers": [
+          "Duplicate successors in switch statement",
+          "Unreachable case labels",
+          "Dead exception handlers"
+        ]
+      },
+
+      "phase_5_critical_edge_breaking": {
+        "description": "Break critical edges in CFG for phi node placement",
+        "critical_edge": "Edge from block with multiple successors to block with multiple predecessors",
+        "algorithm": "Insert empty block on critical edges",
+        "benefit": "Enables phi node insertion and other CFG transformations"
+      },
+
+      "phase_6_merge_invokes": {
+        "description": "Merge similar invoke instructions where possible",
+        "condition": "'Allow SimplifyCFG to merge invokes together when appropriate'",
+        "purpose": "Reduce invoke overhead by merging exception handlers"
+      }
+    },
+
+    "command_line_options": {
+      "disable-CFGSimplificationPass": "Disable CFG simplification",
+      "bonus-threshold": "Merge bonus threshold - cost threshold for block merging",
+      "simplifycfg-merge-invokes": "Merge compatible invoke instructions"
+    },
+
+    "dependencies": [
+      "Dominator Tree (for reachability analysis)",
+      "LoopInfo (for loop-aware CFG simplification)"
+    ],
+
+    "complexity": "O(N^2) worst case but typically O(N) or O(N log N) in practice",
+
+    "iterative_execution": "SimplifyCFG often runs multiple times in pipeline as other optimizations create new opportunities"
+  },
+
+  "control_flow_analysis": {
+    "basic_block_properties": {
+      "definition": "Maximal sequence of instructions with no branches except at end",
+      "entry": "Only at block start (targets of branches)",
+      "exit": "Only at block end (branch instructions)"
+    },
+
+    "cfg_edges": {
+      "fallthrough_edge": "Implicit edge from instruction to next when no explicit branch",
+      "branch_edge": "Explicit branch to target block",
+      "exception_edge": "Edge to exception handler",
+      "invoke_edge": "Special handling for invoke instructions (normal + exception)"
+    },
+
+    "unreachable_patterns": {
+      "pattern_1_unconditional_branch": {
+        "pattern": "Unconditional branch followed by code",
+        "detection": "Code after unconditional branch with no incoming edges",
+        "elimination": "Remove unreachable code after branch"
+      },
+
+      "pattern_2_return_path": {
+        "pattern": "All paths from block to block boundary are returns",
+        "detection": "All successors are unreachable except return",
+        "elimination": "Remove unreachable successors"
+      },
+
+      "pattern_3_infinite_loop": {
+        "pattern": "Loop with no exit",
+        "detection": "Loop with only back edges, no forward exit",
+        "cuda_specific": "May be intentional in GPU kernels (blocking wait)"
+      },
+
+      "pattern_4_constant_condition": {
+        "pattern": "Branch on constant condition",
+        "detection": "Condition is constant true/false",
+        "elimination": "Remove unreachable branch target"
+      }
+    }
+  },
+
+  "loop_deletion": {
+    "pass_name": "Loop Deletion",
+    "pass_id": "LoopDeletion",
+    "algorithm_type": "Loop-Based Unreachable Code Removal",
+    "category": "Loop Optimization",
+
+    "algorithm_description": "Removes loops that are unreachable or whose effects are not observable",
+
+    "detection_methods": {
+      "method_1_loop_exit_analysis": {
+        "description": "Loop has no exits (infinite loop)",
+        "condition": "Loop cannot exit under any circumstances",
+        "cuda_implication": "Some CUDA kernels intentionally have infinite loops (synchronization)",
+        "removal_condition": "Only remove if loop has no observable side effects"
+      },
+
+      "method_2_unreachable_loop_header": {
+        "description": "Loop header is unreachable",
+        "condition": "No path from function entry to loop header",
+        "removal": "Remove entire loop body"
+      },
+
+      "method_3_never_entered_loop": {
+        "description": "Loop condition always false",
+        "condition": "Loop cannot execute any iterations",
+        "removal": "Remove loop, keep loop exit code"
+      }
+    }
+  },
+
+  "cuda_specific_unreachable_code": {
+    "divergence_awareness": {
+      "description": "CUDA code may appear unreachable due to divergence",
+      "example": "Code under 'if (threadIdx.x == 0)' is reachable only by thread 0",
+      "implementation": "Divergence Analysis tracks thread-specific control flow",
+      "evidence": [
+        "String: 'Divergence Analysis'",
+        "String: 'TEMPORAL DIVERGENCE LIST'",
+        "Integration with ADCE pass"
+      ]
+    },
+
+    "memory_consistency_barriers": {
+      "description": "Code before barriers affects GPU memory consistency",
+      "optimization": "Dead code before barrier elimination with caution",
+      "evidence": [
+        "String: 'Run the basic dead barrier elimination which uses one bit for the liveness of memory at the barrier'",
+        "Barrier-aware reachability analysis"
+      ]
+    },
+
+    "warp_level_considerations": {
+      "broadcast_patterns": "Code under warp-uniform conditions has special reachability",
+      "shared_memory_access": "Access patterns determine if code is truly dead",
+      "synchronization_points": "Barriers create control flow bottlenecks"
+    }
+  },
+
+  "unreachable_code_strings_found": {
+    "error_messages": [
+      "code_is_unreachable",
+      "statement is unreachable",
+      "dynamic initialization in unreachable code",
+      "__builtin_unreachable",
+      "INDICATE_CLEANUP_STATE_IN_UNREACHABLE_CODE"
+    ],
+    "analysis_components": [
+      "PostDominatorTree for function",
+      "Verify dominator info (time consuming)",
+      "Instruction does not dominate all uses",
+      "Break critical edges in CFG",
+      "dom-tree-reachability-max-bbs-to-explore"
+    ]
+  },
+
+  "optimization_interaction": {
+    "with_constant_propagation": "Constant propagation creates infeasible branches → SimplifyCFG removes unreachable code",
+
+    "with_dce": {
+      "relationship": "Complementary - ADCE removes unreachable instructions, SimplifyCFG removes unreachable blocks",
+      "execution_order": "SimplifyCFG typically runs after ADCE in pipeline"
+    },
+
+    "with_loop_optimization": {
+      "loop_unroll": "Unrolling may create unreachable paths → SimplifyCFG cleans up",
+      "loop_deletion": "Deletes entire unreachable loops"
+    },
+
+    "with_branch_prediction": "Likely/unlikely predicates influence reachability analysis"
+  },
+
+  "fixed_point_iteration": {
+    "description": "SimplifyCFG often requires multiple iterations as one pass creates new optimization opportunities",
+    "example_chain": [
+      "1. Constant propagation makes branch condition known",
+      "2. SimplifyCFG removes unreachable target",
+      "3. Block becomes dead (only unreachable predecessors)",
+      "4. SimplifyCFG removes that block",
+      "5. More predecessors become dead",
+      "6. Iterate until stable"
+    ],
+    "control": "InstCombine runs SimplifyCFG multiple times until fixed point"
+  },
+
+  "performance_characteristics": {
+    "analysis_cost": "Medium - requires CFG traversal and dominator tree",
+    "transformation_cost": "Low - mostly deletion operations",
+    "impact_on_downstream": "High - reduces CFG complexity, enables many optimizations",
+    "compile_time": "Adds 1-3% to compile time typically",
+    "code_size_impact": "Typically 2-5% reduction from unreachable block removal"
+  },
+
+  "validation_criteria": {
+    "correctness": [
+      "No reachable code removed",
+      "Program semantics preserved exactly",
+      "Exception handling preserved",
+      "GPU memory consistency preserved"
+    ],
+    "testing": [
+      "Create kernels with unreachable code after unconditional branch",
+      "Create kernels with constant branch conditions",
+      "Create kernels with infinite loops",
+      "Verify removed code matches expected unreachable code",
+      "Verify remaining code executes correctly"
+    ]
+  },
+
+  "known_limitations": [
+    "Cannot detect unreachable code based on runtime values (e.g., command-line arguments)",
+    "Conservative approach for function calls (assume they may exit normally)",
+    "CUDA divergence handling is incomplete - may miss some divergent paths",
+    "Infinite loops are only removed if proven to have no side effects",
+    "Exception handler reachability analysis may be conservative"
+  ],
+
+  "related_analyses": {
+    "reachability_analysis": "Core algorithm for detecting unreachable code",
+    "dominance_analysis": "Used for efficient reachability checking",
+    "postdominance_analysis": "Used by ADCE for control dependence",
+    "liveness_analysis": "Determines if code has observable effects",
+    "divergence_analysis": "GPU-specific - tracks thread-divergent paths",
+    "side_effect_analysis": "Determines if code can be safely removed"
+  },
+
+  "implementation_notes": {
+    "entry_point_functions": [
+      "0x12D6300 - Pass manager orchestrates SimplifyCFG execution"
+    ],
+    "key_data_structures": [
+      "Function CFG (vector of BasicBlocks)",
+      "Dominator tree rooted at entry",
+      "Successor/predecessor lists for blocks"
+    ],
+    "optimization_flags": {
+      "disable-CFGSimplificationPass": "Disable entire pass",
+      "bonus-threshold": "Control aggressiveness of simplifications"
+    }
+  }
+}

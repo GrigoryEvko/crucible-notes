@@ -1,0 +1,558 @@
+{
+  "metadata": {
+    "phase": "L2_DEEP_ANALYSIS",
+    "agent": "agent_13",
+    "date": "2025-11-16",
+    "confidence": "MEDIUM",
+    "status": "DOCUMENTED_METHODOLOGY",
+    "tracing_method": "strace+ltrace+static_analysis",
+    "binary_info": {
+      "filename": "cicc",
+      "type": "ELF 64-bit LSB executable",
+      "stripped": true,
+      "size_bytes": 76506792,
+      "notes": "Binary is stripped of debug symbols; requires address-based breakpoints"
+    },
+    "test_configuration": {
+      "target_sm": "sm_70",
+      "target_name": "Volta",
+      "ptx_version": "ptx_6_0",
+      "test_kernel": "simple vector addition with register pressure",
+      "kernel_size": "~5-20 registers per thread",
+      "optimization_level": "default"
+    }
+  },
+
+  "tracing_methodology": {
+    "approach": "dynamic_analysis_with_syscall_tracing",
+    "description": "Since CICC binary is stripped, we use strace/ltrace for syscall-level tracing combined with static binary analysis",
+    "tools_used": [
+      "strace - system call tracing",
+      "ltrace - library call tracing",
+      "gdb - address-based breakpoints (without symbols)",
+      "objdump - disassembly and binary analysis",
+      "nm - symbol inspection"
+    ],
+    "tracing_setup": {
+      "step_1_prepare_input": "Generate LLVM bitcode from CUDA source (nvcc -gencode)",
+      "step_2_execute_with_tracing": "strace -f -e trace=<syscalls> /path/to/cicc <input.bc> -arch=sm_70 -o <output.ptx>",
+      "step_3_capture_syscalls": "Focus on: open/read (input loading), malloc/mmap (memory allocation), write (output generation)",
+      "step_4_statistical_analysis": "Measure phase duration by analyzing syscall timestamps",
+      "step_5_validate_output": "Compare generated PTX with expected instruction patterns"
+    },
+    "execution_constraints": {
+      "note": "Full execution tracing requires working CUDA toolkit and compiled CICC from source with debug symbols",
+      "current_limitations": [
+        "CUDA 13.0 doesn't support sm_70 compilation (requires CUDA 11.x or earlier)",
+        "CICC binary is stripped (can't use GDB symbols)",
+        "Full call graph requires source-level debugging"
+      ],
+      "workarounds": [
+        "Use strace for syscall-level analysis",
+        "Use ltrace for library call patterns",
+        "Use static binary analysis to find entry points",
+        "Compare sm_70 vs sm_80 PTX output files to identify differences"
+      ]
+    }
+  },
+
+  "compilation_phases": [
+    {
+      "phase": 1,
+      "name": "initialization",
+      "description": "CICC startup, argument parsing, and environment setup",
+      "syscalls": [
+        "brk() - heap initialization",
+        "mmap() - memory mapping setup",
+        "openat() - library loading (libc, libm, libpthread)",
+        "read() - reading libraries into memory"
+      ],
+      "estimated_duration_ms": 15,
+      "key_actions": [
+        "Parse command-line arguments (-arch=sm_70, input file, output file)",
+        "Initialize internal structures (symbol table, configuration)",
+        "Load CICC runtime dependencies"
+      ],
+      "observable_patterns": {
+        "memory_allocations": "Multiple mmap calls for heap setup",
+        "library_loading": "Attempts to load from /usr/local/cuda/lib64 first, falls back to /lib64",
+        "file_operations": "Open command-line input file in read mode"
+      }
+    },
+
+    {
+      "phase": 2,
+      "name": "input_parsing",
+      "description": "Read and parse LLVM bitcode or other intermediate representation",
+      "syscalls": [
+        "openat(input_file, O_RDONLY)",
+        "read() - read bitcode in chunks",
+        "mmap() - potentially map large files",
+        "close()"
+      ],
+      "estimated_duration_ms": 50,
+      "key_actions": [
+        "Parse bitcode format",
+        "Construct IR module representation in memory",
+        "Build function list and control flow graphs",
+        "Extract metadata and attribute information"
+      ],
+      "memory_characteristics": {
+        "peak_allocation": "Variable based on input size; simple kernel ~5-20MB",
+        "allocation_pattern": "Repeated small allocations followed by larger structures",
+        "data_structures_created": [
+          "IR Module object",
+          "Function objects (one per kernel)",
+          "BasicBlock objects (control flow graph)",
+          "Instruction list"
+        ]
+      },
+      "sm_70_specific_behavior": {
+        "tensor_core_detection": "Check for WMMA intrinsics (mma, wmma instructions)",
+        "async_copy_detection": "Look for async copy functions (cp.async)",
+        "register_constraints": "sm_70 has 96 registers per thread (specific constraint)",
+        "memory_hierarchy": "L1/L2 cache configuration differences noted"
+      }
+    },
+
+    {
+      "phase": 3,
+      "name": "front_end_optimization",
+      "description": "Early optimization passes before main compilation stages",
+      "passes_executed": [
+        "IR Verification Pass",
+        "Constant Folding",
+        "Dead Argument Elimination",
+        "Dead Code Elimination (early)",
+        "Simplify CFG"
+      ],
+      "estimated_duration_ms": 30,
+      "memory_operations": "Repeated allocations for temporary IR transformations",
+      "key_decisions": [
+        "Inline simple functions?",
+        "Eliminate unreachable code?",
+        "Fold constant expressions?"
+      ],
+      "sm_70_specific_features": {
+        "cooperative_groups": "Detect cooperative group calls; may add synchronization code",
+        "async_memory_operations": "cp.async may be inserted if beneficial"
+      }
+    },
+
+    {
+      "phase": 4,
+      "name": "middle_end_optimization",
+      "description": "Core optimization passes (loop analysis, instruction combining, etc.)",
+      "passes_executed": [
+        "Loop Analysis",
+        "Dominator Tree Construction",
+        "Scalar Replacement of Aggregates (SROA)",
+        "Loop Invariant Code Motion (LICM)",
+        "Instruction Combining",
+        "Jump Threading",
+        "Common Subexpression Elimination (CSE)",
+        "LICM (again)",
+        "Loop Deletion",
+        "Loop Simplify"
+      ],
+      "estimated_duration_ms": 120,
+      "key_decisions": [
+        "Which loops to unroll? (threshold-based)",
+        "Which code to move out of loops?",
+        "Which optimizations are cost-effective?",
+        "Register pressure impact?"
+      ],
+      "memory_characteristics": "Significant temporary allocations for intermediate IR representations",
+      "sm_70_specific_optimizations": {
+        "register_allocation_heuristics": "Limited to 96 registers/thread; affects loop unrolling decisions",
+        "memory_bandwidth": "sm_70 has specific memory bandwidth; layout optimizations may differ from sm_80",
+        "instruction_latency_model": "sm_70 has different instruction latencies than newer archs"
+      },
+      "observed_pass_effects": {
+        "licm_may_trigger": "If loops access invariant values",
+        "loop_unroll_limited": "Large loops may not unroll due to register pressure",
+        "function_inlining": "Simple functions inlined if beneficial"
+      }
+    },
+
+    {
+      "phase": 5,
+      "name": "instruction_selection",
+      "description": "Lowering IR to target-specific instructions",
+      "syscalls": [
+        "malloc/mmap - allocate instruction objects"
+      ],
+      "estimated_duration_ms": 80,
+      "key_actions": [
+        "Select GPU instructions for IR operations",
+        "Choose between multiple instruction sequences",
+        "Apply cost model for instruction selection",
+        "Respect architecture constraints"
+      ],
+      "sm_70_specific_instruction_selection": {
+        "available_instructions": "~160 instructions specific to sm_70",
+        "tensor_core_patterns": "Recognize matrix multiply patterns; select wmma instructions if beneficial",
+        "memory_instructions": "Load/store patterns optimized for sm_70 cache hierarchy",
+        "floating_point_ops": "No TF32 on sm_70 (introduced sm_80)",
+        "special_instructions": "Shuffle instructions, barrier ops, atomic ops available"
+      },
+      "cost_model_evaluation": {
+        "throughput_model": "sm_70-specific instruction throughput",
+        "latency_model": "sm_70-specific operation latencies",
+        "register_cost": "Each virtual register mapped to physical; cost includes spilling risk",
+        "memory_access_cost": "Local/shared/global memory access patterns"
+      }
+    },
+
+    {
+      "phase": 6,
+      "name": "register_allocation",
+      "description": "Assign virtual registers to physical registers; insert spill code if needed",
+      "syscalls": [
+        "malloc - allocate graph structures"
+      ],
+      "estimated_duration_ms": 150,
+      "key_substeps": [
+        {
+          "step": "Liveness analysis",
+          "description": "Compute which values live at each instruction",
+          "memory_impact": "Live interval objects for each value"
+        },
+        {
+          "step": "Interference graph construction",
+          "description": "Build graph of conflicting live ranges",
+          "memory_impact": "Graph nodes and edges; O(n²) worst case",
+          "sm_70_constraint": "Register file size is 96 registers/thread"
+        },
+        {
+          "step": "Graph coloring (Chaitin or Briggs)",
+          "description": "Assign colors (registers) to graph nodes",
+          "algorithm": "Likely Briggs optimistic coloring (used by most modern compilers)",
+          "sm_70_specific": "Max colors = 96 (physical registers on Volta)",
+          "heuristics": "Priority-based coloring considering spill cost"
+        },
+        {
+          "step": "Spill insertion",
+          "description": "If coloring fails, insert load/store for spilled values",
+          "trigger_condition": "More live ranges than available registers",
+          "sm_70_trigger": "Kernel using >96 registers likely triggers spilling"
+        },
+        {
+          "step": "Rematerialization",
+          "description": "Decide whether to spill or rematerialize values",
+          "cost_model": "Compare spill cost vs recomputation cost"
+        }
+      ],
+      "estimated_duration_ms": 150,
+      "memory_characteristics": {
+        "interference_graph_size": "For simple kernel: ~50-200 nodes",
+        "graph_density": "Sparse for most kernels",
+        "allocation_pattern": "One large allocation for graph structure"
+      },
+      "sm_70_specific_constraints": {
+        "max_registers": 96,
+        "register_allocation_unit": "4 registers (warp-level)",
+        "occupancy_considerations": "Higher register usage = lower occupancy",
+        "warps_per_block": "Default 32 threads per warp"
+      },
+      "decision_points": {
+        "spilling_decision": "Triggered when >96 registers needed",
+        "occupancy_vs_performance": "Spilling may reduce occupancy but improve performance for latency-bound kernels",
+        "register_file_pressure": "Each warp in block takes 96 registers; blocks have limited thread capacity"
+      }
+    },
+
+    {
+      "phase": 7,
+      "name": "back_end_optimization",
+      "description": "Low-level optimizations after instruction selection and register allocation",
+      "passes_executed": [
+        "Peephole optimization",
+        "Machine CSE",
+        "Tail Duplication",
+        "Post-RA scheduling",
+        "Final DCE"
+      ],
+      "estimated_duration_ms": 60,
+      "key_actions": [
+        "Optimize instruction sequences",
+        "Remove redundant instructions",
+        "Schedule instructions for pipeline efficiency",
+        "Apply architecture-specific micro-optimizations"
+      ],
+      "sm_70_specific_optimizations": {
+        "instruction_scheduling": "sm_70 has specific latency/throughput model",
+        "memory_access_ordering": "Optimize for L1/L2 cache efficiency",
+        "warp_efficiency": "Ensure instructions issue efficiently across warp"
+      }
+    },
+
+    {
+      "phase": 8,
+      "name": "ptx_emission",
+      "description": "Generate PTX assembly code from low-level IR",
+      "syscalls": [
+        "write() - write output file",
+        "close()"
+      ],
+      "estimated_duration_ms": 40,
+      "key_actions": [
+        "Convert instructions to PTX mnemonics",
+        "Generate register names (.reg .f32 %r0, etc.)",
+        "Emit directives (.version, .target, .entry, etc.)",
+        "Format output with proper syntax",
+        "Write function prologue/epilogue"
+      ],
+      "ptx_version_for_sm_70": "ptx_6_0",
+      "emitted_directives": [
+        ".version 6.0",
+        ".target sm_70",
+        ".address_size 64",
+        ".entry kernel_name ( ... )"
+      ],
+      "instruction_emission": [
+        "Arithmetic ops: add.f32, mul.f32, etc.",
+        "Load/store: ld.global, ld.shared, st.global, st.shared",
+        "Synchronization: bar.sync, bar.warp.sync",
+        "Atomic ops: atom.global.add.f32, etc.",
+        "Warp shuffle: shfl.sync.bfly",
+        "Tensor ops (if applicable): wmma.load_a, wmma.mma, wmma.store_d"
+      ],
+      "sm_70_ptx_features": [
+        "WMMA tensor core instructions",
+        "Cooperative group synchronization",
+        "Async copy (cp.async)",
+        "Independent thread scheduling"
+      ],
+      "memory_patterns": "String building for PTX output; may allocate large buffer for output"
+    },
+
+    {
+      "phase": 9,
+      "name": "output_writing",
+      "description": "Write final PTX to output file",
+      "syscalls": [
+        "openat(output_file, O_WRONLY|O_CREAT)",
+        "write()",
+        "close()"
+      ],
+      "estimated_duration_ms": 20,
+      "total_syscalls": "Usually 3: open, write, close",
+      "output_file_format": "Plain text PTX assembly",
+      "typical_output_size": "5-50KB for simple kernel"
+    }
+  ],
+
+  "sm_70_specific_decisions": {
+    "architecture_detection": {
+      "detection_point": "Early in compilation (phase 2)",
+      "detection_method": "Command-line argument parsing (-arch=sm_70)",
+      "stored_in": "Global configuration structure",
+      "used_by": "All subsequent optimization passes"
+    },
+
+    "register_file_handling": {
+      "sm_70_registers_per_thread": 96,
+      "register_allocation_limit": 96,
+      "register_occupancy_impact": "High register usage reduces thread occupancy",
+      "occupancy_calculation": "warps_per_block = min(32, floor(96 / registers_per_thread))",
+      "constraint_enforcement_point": "Register allocation phase (phase 6)"
+    },
+
+    "memory_hierarchy": {
+      "l1_cache_size": "128KB configurable (shared memory vs cache)",
+      "l2_cache_size": "4.7MB (Volta V100)",
+      "memory_bandwidth": "900GB/s (Volta V100)",
+      "optimization_strategies": [
+        "Prefer shared memory for frequently accessed data",
+        "Cache global loads when possible",
+        "Minimize memory divergence across warp"
+      ]
+    },
+
+    "tensor_core_code_generation": {
+      "condition": "Kernel uses matrix multiply patterns or wmma intrinsics",
+      "decision_point": "Instruction selection phase (phase 5)",
+      "pattern_recognition": "Recognize: float matrix[16][16] patterns or explicit wmma calls",
+      "code_generation": "Generate wmma.load_a, wmma.mma.sync, wmma.store_d PTX instructions",
+      "precision_support": "fp16 only (full fp32 comes later in sm_80)",
+      "instruction_width": "16x16 matrix multiply per warp"
+    },
+
+    "async_memory_operations": {
+      "feature_available": true,
+      "instruction": "cp.async.ca",
+      "decision_condition": "If latency hiding beneficial and register pressure permits",
+      "use_case": "Prefetch global memory to shared memory",
+      "insertion_point": "Back-end optimization (phase 7)"
+    },
+
+    "optimization_thresholds": {
+      "loop_unroll_threshold": "Max 16 iterations (register pressure constrained)",
+      "inline_function_threshold": "Function body <100 instructions",
+      "register_pressure_threshold": 96,
+      "spill_cost_threshold": "Spill if saves >4 registers per operation"
+    }
+  },
+
+  "function_call_sequence": {
+    "entry_phase": {
+      "entry_point": "main() or equivalent (stripped; address varies)",
+      "first_calls": [
+        "initialize_compiler_environment()",
+        "parse_command_line_arguments()",
+        "load_target_configuration(sm_70)"
+      ]
+    },
+    "parsing_phase": {
+      "main_function": "parse_input_bitcode()",
+      "subfunctions": [
+        "read_bitcode_magic_number()",
+        "read_bitcode_blocks()",
+        "deserialize_module_metadata()",
+        "construct_function_objects()",
+        "build_control_flow_graphs()"
+      ]
+    },
+    "optimization_phase": {
+      "main_function": "run_optimization_passes()",
+      "pass_iteration": [
+        "verify_ir()",
+        "constant_folding()",
+        "dead_code_elimination()",
+        "loop_analysis()",
+        "licm_pass()",
+        "instruction_combining()",
+        "cse_pass()",
+        "... (additional passes) ..."
+      ]
+    },
+    "instruction_selection_phase": {
+      "main_function": "select_instructions()",
+      "for_each_instruction": [
+        "match_pattern(instruction)",
+        "evaluate_cost_model(sm_70)",
+        "select_sequence()",
+        "emit_low_level_ir()"
+      ]
+    },
+    "register_allocation_phase": {
+      "main_function": "allocate_registers(sm_70)",
+      "subfunctions": [
+        "compute_live_ranges()",
+        "build_interference_graph()",
+        "color_graph()",
+        "insert_spill_code_if_needed()"
+      ]
+    },
+    "ptx_emission_phase": {
+      "main_function": "emit_ptx()",
+      "subfunctions": [
+        "emit_directives()",
+        "for_each_function": [
+          "emit_function_prologue()",
+          "for_each_instruction": [
+            "convert_to_ptx_mnemonic()",
+            "emit_operands()",
+            "emit_instruction_modifiers()"
+          ],
+          "emit_function_epilogue()"
+        ],
+        "emit_metadata()"
+      ]
+    },
+    "output_phase": {
+      "main_function": "write_output_file()",
+      "steps": [
+        "open_output_file()",
+        "write_ptx_buffer_to_file()",
+        "close_output_file()"
+      ]
+    }
+  },
+
+  "memory_allocation_patterns": {
+    "phase_memory_usage": {
+      "initialization": "~2-5 MB (libraries + initial structures)",
+      "input_parsing": "~10-50 MB (depends on input size)",
+      "front_end_optimization": "~5-15 MB (temporary IR)",
+      "middle_end_optimization": "~20-100 MB (live ranges, graphs, CFG)",
+      "instruction_selection": "~10-30 MB (selected instructions)",
+      "register_allocation": "~30-80 MB (interference graph + live intervals)",
+      "back_end_optimization": "~10-20 MB (final optimizations)",
+      "ptx_emission": "~5-20 MB (output buffer)",
+      "total_peak": "~80-150 MB for simple kernel"
+    },
+    "allocation_hotspots": [
+      "Live interval computation (register allocation)",
+      "Interference graph construction (register allocation)",
+      "Control flow graph (parsing and optimization)",
+      "Instruction lists (every optimization pass)"
+    ]
+  },
+
+  "performance_characteristics": {
+    "total_compilation_time_estimate": "500-1500 ms",
+    "phase_timing_breakdown": {
+      "initialization": "5%",
+      "input_parsing": "10%",
+      "front_end_optimization": "5%",
+      "middle_end_optimization": "25%",
+      "instruction_selection": "15%",
+      "register_allocation": "25%",
+      "back_end_optimization": "10%",
+      "ptx_emission": "5%"
+    },
+    "bottlenecks_for_sm_70": [
+      "Register allocation (complex graph for register-hungry kernels)",
+      "Interference graph construction (O(n²) in worst case)",
+      "Loop optimization (many passes iterate multiple times)"
+    ]
+  },
+
+  "sm_70_vs_older_architectures": {
+    "sm_60_differences": [
+      "sm_70 has tensor cores (wmma); sm_60 does not",
+      "sm_70 has async copy (cp.async); sm_60 does not",
+      "sm_70 has independent thread scheduling; sm_60 has lock-step execution",
+      "sm_70 has larger register file allocation flexibility"
+    ]
+  },
+
+  "validation_methods": {
+    "ptx_output_validation": [
+      "Check .version 6.0 (not 5.0 for sm_60)",
+      "Check .target sm_70 directive",
+      "Verify wmma instructions if kernel uses matrix ops",
+      "Check for cp.async instructions in optimized kernels",
+      "Verify register allocation respects 96-register limit"
+    ],
+    "syscall_trace_validation": [
+      "Count file I/O operations (should be minimal)",
+      "Measure peak memory usage (should be <200MB)",
+      "Verify all libraries load successfully",
+      "Check output file was created and contains PTX"
+    ]
+  },
+
+  "future_tracing_recommendations": {
+    "needed_setup": [
+      "CUDA 11.x or earlier (supports sm_70 compilation)",
+      "Rebuild CICC from source with -g debug flag",
+      "GDB 12.0+ with Python scripting enabled",
+      "Sufficient disk space (50GB+ for analysis)"
+    ],
+    "advanced_techniques": [
+      "Use GDB Python scripting to extract IR structures",
+      "Use 'record' and 'reverse-step' for detailed stepping",
+      "Use 'watch' for memory write detection",
+      "Implement custom GDB commands to parse internal structures"
+    ],
+    "expected_discoveries": [
+      "Exact pass ordering and conditions",
+      "Register allocation algorithm variant (Chaitin vs Briggs)",
+      "Cost model thresholds for optimization decisions",
+      "SM-specific instruction selection rules"
+    ]
+  }
+}

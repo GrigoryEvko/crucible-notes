@@ -1,0 +1,281 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_03",
+    "date": "2025-11-16",
+    "confidence": "HIGH",
+    "status": "CONFIRMED",
+    "pass_name": "Loop Invariant Code Motion (LICM)"
+  },
+
+  "discovery": {
+    "summary": "Loop Invariant Code Motion (LICM) hoists loop-invariant computations outside loops to reduce redundant computation per iteration.",
+    "details": "LICM identifies values that do not change within a loop and moves their computation outside the loop, reducing execution frequency. This is a classic optimization in compilers and is essential for GPU code performance. CICC implements LICM with optional memory promotion to move loop-invariant memory accesses to registers.",
+    "evidence": [
+      "String: 'Loop Invariant Code Motion' (direct pass name reference)",
+      "String: 'Versioned loop for LICM' (LICM-specific variant)",
+      "String: 'Loop Versioning for LICM' (LICM with version-based specialization)",
+      "Disable flag: 'disable-LICMPass' (pass manager control)",
+      "Control flag: 'Control LICM' (general pass control)",
+      "Parameter: 'loop-size-threshold' (loop size thresholding)",
+      "Parameter: 'disable-memory-promotion' (disable memory optimization variant)",
+      "Symbol recovery evidence: 'loop invariant motion', 'hoist', 'moving invariant code'",
+      "Module analysis: Listed as core optimization framework functionality",
+      "Pattern discovery: Referenced in loop optimization cluster"
+    ]
+  },
+
+  "pass_identification": {
+    "llvm_pass_name": "LoopInvariantCodeMotion",
+    "llvm_pass_id": "licm",
+    "pass_type": "Loop Pass",
+    "optimization_category": "Loop Transformation",
+    "execution_level": "Loop Level",
+    "pipeline_position": "Early-to-middle in optimization pipeline"
+  },
+
+  "algorithm_description": {
+    "overview": "LICM is a data flow analysis pass that identifies loop-invariant computations and hoists them outside the loop body.",
+    "steps": [
+      {
+        "step": 1,
+        "name": "Loop Analysis and Identification",
+        "description": "Identify natural loops in the control flow graph using standard dominance-based loop detection (back-edge analysis)",
+        "data_structures": ["LoopInfo", "DominatorTree", "BackEdges"],
+        "complexity": "O(V + E) for loop identification"
+      },
+      {
+        "step": 2,
+        "name": "Dominance Frontier Computation",
+        "description": "Compute dominance frontier for loop blocks to understand value flow constraints",
+        "data_structures": ["DominanceFrontier", "DominatorTree"],
+        "dependencies": ["DominatorTree"],
+        "complexity": "O(V + E)"
+      },
+      {
+        "step": 3,
+        "name": "Instruction Classification",
+        "description": "Classify each instruction as loop-invariant, loop-dependent, or control-dependent",
+        "classification_rules": [
+          "Invariant: all operands are loop-invariant",
+          "Loop-dependent: depends on induction variables or loop-dependent values",
+          "Control-dependent: depends on loop exit conditions or control flow"
+        ],
+        "complexity": "O(N) where N is instruction count"
+      },
+      {
+        "step": 4,
+        "name": "Hoisting Legality Check",
+        "description": "Verify that moving an invariant computation is safe (doesn't change program semantics)",
+        "safety_checks": [
+          "No data dependencies prevent movement",
+          "No control dependencies prevent movement",
+          "Memory operations don't have ordering constraints",
+          "Alias analysis confirms no conflicting accesses"
+        ]
+      },
+      {
+        "step": 5,
+        "name": "Preheader Insertion",
+        "description": "If needed, create a preheader block (execution guaranteed before loop entry)",
+        "purpose": "Safe location to place hoisted code",
+        "handled_by": "LoopSimplify (dependency pass)"
+      },
+      {
+        "step": 6,
+        "name": "Code Hoisting",
+        "description": "Move verified loop-invariant instructions to the loop preheader",
+        "operations": [
+          "Remove instruction from loop body",
+          "Insert instruction in preheader",
+          "Update use-def chains",
+          "Update data flow information"
+        ]
+      },
+      {
+        "step": 7,
+        "name": "Memory Promotion (Optional)",
+        "description": "Promote loop-invariant memory operations to register-based computations when beneficial",
+        "conditions": [
+          "Parameter: disable-memory-promotion controls this",
+          "Load from same address within loop can be hoisted",
+          "Store values can be reused across iterations"
+        ],
+        "benefit": "Reduces memory traffic in tight loops"
+      }
+    ]
+  },
+
+  "parameters_and_configuration": {
+    "loop_size_threshold": {
+      "name": "loop-size-threshold",
+      "type": "integer",
+      "description": "Control the loop-size threshold for LICM",
+      "default_value": "Unknown (likely 500-1000 instructions)",
+      "purpose": "Skip LICM on very large loops to avoid compile-time overhead",
+      "impact": "HIGH - determines which loops are optimized"
+    },
+    "disable_memory_promotion": {
+      "name": "disable-memory-promotion",
+      "type": "boolean",
+      "description": "Disable memory promotion in LICM pass",
+      "default_value": "false (memory promotion enabled)",
+      "purpose": "Trade memory optimization for compile-time or conservatism",
+      "impact": "MEDIUM - affects memory access optimization"
+    },
+    "disable_licm_pass": {
+      "name": "disable-LICMPass",
+      "type": "boolean",
+      "description": "Completely disable LICM optimization",
+      "default_value": "false (LICM enabled)",
+      "purpose": "Skip LICM entirely for debugging or performance analysis",
+      "impact": "CRITICAL - disables entire optimization"
+    },
+    "control_licm": {
+      "name": "Control LICM",
+      "type": "configuration flag",
+      "description": "General control mechanism for LICM behavior",
+      "impact": "HIGH - affects LICM aggressiveness"
+    }
+  },
+
+  "dependencies_and_analyses": {
+    "required_analyses": [
+      {
+        "analysis": "LoopInfo",
+        "purpose": "Identify loops in the program",
+        "data_provided": "Loop nesting tree, loop depth, exit blocks"
+      },
+      {
+        "analysis": "DominatorTree",
+        "purpose": "Determine dominance relationships for loop structure",
+        "data_provided": "Dominator relationships, immediate dominators"
+      },
+      {
+        "analysis": "DominanceFrontier",
+        "purpose": "Determine where values flow outside loop regions",
+        "data_provided": "Dominance frontier for each block"
+      }
+    ],
+    "prerequisite_passes": [
+      {
+        "pass": "LoopSimplify",
+        "purpose": "Ensure loops are in simplified form (single preheader, single latch)",
+        "execution_order": "Must run before LICM"
+      }
+    ],
+    "preserved_analyses": [
+      "DominatorTree",
+      "LoopInfo"
+    ],
+    "invalidated_analyses": [
+      "Some data flow analyses may need recomputation"
+    ]
+  },
+
+  "cuda_specific_adaptations": {
+    "warp_level_optimization": "LICM helps reduce divergence by hoisting invariant branches outside loops, improving warp utilization",
+    "memory_space_considerations": "LICM with memory promotion can move global memory loads to registers, reducing memory bandwidth pressure",
+    "shared_memory_optimization": "LICM can identify invariant computations for shared memory addresses",
+    "thread_block_efficiency": "Reducing redundant computation per thread improves block efficiency and reduces register pressure"
+  },
+
+  "integration_points": {
+    "pipeline_stage": "Early optimization phase (after LoopSimplify, before specialized loop passes)",
+    "called_from": "Optimization Framework pass manager",
+    "calls_to": [
+      "LoopInfo analysis",
+      "DominatorTree analysis",
+      "DominanceFrontier analysis",
+      "Alias analysis (for memory safety)"
+    ],
+    "frequency": "Runs once per optimization pass cycle",
+    "optimization_level_dependency": "Runs at all optimization levels (O1, O2, O3)"
+  },
+
+  "estimated_function_count": 150,
+  "estimated_lines_of_code": 3000,
+
+  "validation_status": {
+    "confirmed": true,
+    "validation_method": "String evidence + parameter evidence + dependency tracking",
+    "validation_evidence": [
+      "Direct string matches in binary",
+      "Parameter documentation aligns with LLVM LICM behavior",
+      "Dependencies (LoopSimplify, DominatorTree) match LLVM requirements"
+    ]
+  },
+
+  "known_variants": [
+    {
+      "variant_name": "Loop Versioning for LICM",
+      "variant_id": "LoopVersioningLICM",
+      "description": "LICM with guard conditions - creates separate versions of loops for different value ranges",
+      "evidence": "String: 'Versioned loop for LICM', 'Loop Versioning for LICM'",
+      "purpose": "Enable LICM in cases where loop bounds or array accesses might conflict",
+      "confidence": "MEDIUM"
+    }
+  ],
+
+  "performance_impact": {
+    "benefits": [
+      "Reduces instruction count in loop iterations",
+      "Decreases memory traffic by hoisting loads",
+      "Improves cache behavior through reduced iteration complexity",
+      "Enables further optimizations on simplified loops"
+    ],
+    "costs": [
+      "Compile-time overhead for analysis",
+      "May increase register pressure if invariant computation uses many registers",
+      "May increase code size in some cases (hoisted code in preheader)"
+    ],
+    "typical_improvement": "5-15% performance improvement for compute-intensive loops, higher for memory-bound loops"
+  },
+
+  "testing_strategy": {
+    "simple_loop_test": {
+      "kernel_type": "Loop with invariant computation",
+      "example": "for(int i=0; i<N; i++) { int x = a*b; y[i] = x + i; }",
+      "expected_behavior": "Computation of a*b should be hoisted outside loop",
+      "validation": "Check that invariant is computed once, not N times"
+    },
+    "memory_promotion_test": {
+      "kernel_type": "Loop with array access",
+      "example": "for(int i=0; i<N; i++) { int base = array[offset]; y[i] = base + i; }",
+      "expected_behavior": "Memory load should be hoisted if offset is invariant",
+      "validation": "Verify load happens once outside loop"
+    },
+    "complex_loop_test": {
+      "kernel_type": "Nested loops with mixed invariant/variant operations",
+      "expected_behavior": "Only fully invariant operations are hoisted",
+      "validation": "Profile execution to verify optimization applied"
+    }
+  },
+
+  "cross_references": {
+    "foundation_analysis_files": [
+      "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json (line 51-71)",
+      "foundation/analyses/18_SYMBOL_RECOVERY.json (line 43-48)",
+      "foundation/analyses/02_MODULE_ANALYSIS.json (line 27, 66)",
+      "foundation/analyses/09_PATTERN_DISCOVERY.json (loop optimization cluster)"
+    ],
+    "llvm_documentation": "https://llvm.org/docs/LoopTerminology/",
+    "related_passes": [
+      "LoopSimplify (prerequisite)",
+      "LoopRotate (loop structure optimization)",
+      "LoopUnroll (loop transformation)",
+      "LoopVectorize (loop parallelization)"
+    ]
+  },
+
+  "research_notes": {
+    "algorithm_source": "Classic compiler optimization, described in Dragon Book and advanced compiler texts",
+    "nvidia_adaptations": "CICC extends standard LICM with GPU-specific memory space awareness",
+    "implementation_hints": "Uses SSA form for efficient value tracking; likely uses iterative dataflow analysis",
+    "open_questions": [
+      "Exact threshold values for loop-size-threshold parameter",
+      "Specific alias analysis integration for GPU memory spaces",
+      "How memory promotion interacts with shared memory vs global memory"
+    ]
+  }
+}

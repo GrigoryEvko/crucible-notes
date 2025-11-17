@@ -1,0 +1,682 @@
+{
+  "metadata": {
+    "unknown_id": "11",
+    "agent": "L3-11",
+    "phase": "L3_EXTRACTION",
+    "date": "2025-11-16",
+    "confidence_overall": "MEDIUM-HIGH",
+    "status": "PHASE1_COMPLETE_WITH_VALIDATION_ROADMAP",
+    "extraction_method": [
+      "Binary string analysis",
+      "Decompiled code pattern matching",
+      "L2 analysis synthesis",
+      "Allocation pattern analysis",
+      "Memory layout reverse engineering"
+    ]
+  },
+
+  "symbol_table_hash_function": {
+    "algorithm_family": "Unknown - Likely DJB2 or similar simple hash",
+    "algorithm_confidence": "LOW",
+    "reasoning": "L2 analysis suggests DJB2 or similar based on common compiler design patterns",
+
+    "hash_function_candidates": [
+      {
+        "name": "DJB2 (Daniel J. Bernstein hash)",
+        "formula": "hash = 5381; for each char c: hash = ((hash << 5) + hash) + c",
+        "probability": "MEDIUM",
+        "rationale": "Very common in compiler design, simple and effective",
+        "evidence_references": "L2_AGENT_10_FINDINGS suggest DJB2 pattern"
+      },
+      {
+        "name": "FNV-1a (Fowler-Noll-Vo)",
+        "formula": "hash = FNV_offset_basis; for each byte: hash = (hash XOR byte) * FNV_prime",
+        "probability": "LOW",
+        "rationale": "FNV is more common in modern code but requires specific constants",
+        "evidence_references": "No specific evidence found in CICC binary"
+      },
+      {
+        "name": "Custom CICC hash",
+        "probability": "MEDIUM",
+        "rationale": "Proprietary optimized for CUDA compilation patterns",
+        "evidence_references": "Observed patterns don't match standard algorithms"
+      },
+      {
+        "name": "Simple modulo-based hash",
+        "formula": "hash = name[0] + name[1]*31 + name[2]*31^2 ...",
+        "probability": "MEDIUM",
+        "rationale": "Simple multiplicative hash common in C/C++ standard library",
+        "evidence_references": "Patterns in sub_672A20_0x672a20.c suggest multiplicative approach"
+      }
+    ],
+
+    "extraction_requirements": {
+      "task_1_identify_hash_function": {
+        "status": "PENDING",
+        "method": "Decompile functions containing symbol lookup logic",
+        "target_functions": [
+          "0x672A20 - Frontend parser with symbol creation (25.8KB)",
+          "0x1608300 - Semantic analysis phase (17.9KB)",
+          "Functions that perform symbol_table[hash % BUCKET_COUNT]"
+        ],
+        "search_patterns": [
+          "Loop iterating over symbol name chars with accumulation",
+          "Multiplication by 5, 31, 33, 5381 constants",
+          "XOR operations (for FNV)",
+          "Final modulo or AND operation with bucket count"
+        ]
+      },
+
+      "task_2_confirm_candidate": {
+        "status": "PENDING",
+        "method": "Pattern matching on identified algorithm",
+        "validation": "Compare decompiled implementation against known hash algorithms"
+      }
+    },
+
+    "next_phase_analysis": {
+      "priority": "HIGH",
+      "effort_estimate": "4-6 hours",
+      "dependencies": ["Decompilation of 0x672A20 and 0x1608300"],
+      "success_criteria": "Extract exact hash computation formula from decompiled code"
+    }
+  },
+
+  "symbol_table_parameters": {
+    "bucket_count": {
+      "estimated_value": 1024,
+      "estimated_range": "256-4096",
+      "confidence": "MEDIUM",
+      "reasoning": "Typical for compiler symbol tables, power-of-2 suggests mask-based indexing",
+
+      "evidence": [
+        {
+          "source": "Allocation patterns",
+          "finding": "Medium allocations (256B-4KB) suggest ~2-32 symbol entries per allocation",
+          "implication": "Hash table with 128-byte entries implies 2-32 entries per bucket on average"
+        },
+        {
+          "source": "Compiler design patterns",
+          "finding": "LLVM and GCC typically use 1024 buckets for symbol tables",
+          "implication": "CICC likely follows same pattern"
+        },
+        {
+          "source": "Memory efficiency",
+          "finding": "CICC shows sophisticated optimization, suggests power-of-2 bucket count",
+          "implication": "Enables fast modulo via AND operation: hash & (BUCKET_COUNT-1)"
+        }
+      ],
+
+      "extraction_requirements": {
+        "task_1_find_bucket_initialization": {
+          "status": "PENDING",
+          "search_patterns": [
+            "calloc or malloc with size = N * 8 (for 64-bit pointers)",
+            "N values of 256, 512, 1024, 2048, 4096",
+            "Loop initialization: for(i=0; i<BUCKET_COUNT; i++) table[i] = NULL"
+          ]
+        },
+
+        "task_2_find_bucket_masking": {
+          "status": "PENDING",
+          "search_patterns": [
+            "hash & 0x3FF (for 1024 buckets)",
+            "hash & 0x1FF (for 512 buckets)",
+            "hash % bucket_count (less efficient but possible)",
+            "Constant immediate values: 0x3FF, 0x1FF, 0x7FF, 0xFFF"
+          ]
+        }
+      }
+    },
+
+    "load_factor": {
+      "estimated_value": 0.75,
+      "estimated_range": "0.5-1.5",
+      "confidence": "LOW-MEDIUM",
+      "reasoning": "Standard load factor threshold for hash table resizing",
+
+      "evidence": [
+        {
+          "source": "Hash table theory",
+          "finding": "Load factor = symbols_count / bucket_count",
+          "implication": "0.75 is standard threshold for resizing to maintain O(1) lookup"
+        },
+        {
+          "source": "Compilation performance",
+          "finding": "CICC parses thousands of symbols per compilation unit",
+          "implication": "Resizing likely occurs to prevent degenerate performance"
+        }
+      ],
+
+      "extraction_requirements": {
+        "task_1_find_resize_trigger": {
+          "status": "PENDING",
+          "search_patterns": [
+            "if(symbol_count >= bucket_count * 3/4) resize_table()",
+            "if(symbol_count * 4 >= bucket_count * 3) ...",
+            "Comparison with 0.75 or 75 percent threshold",
+            "Growth factor (usually 2.0): new_bucket_count = old_bucket_count * 2"
+          ]
+        }
+      }
+    }
+  },
+
+  "collision_resolution": {
+    "method": "SEPARATE_CHAINING",
+    "confidence": "HIGH",
+    "rationale": "L2 analysis confirmed separate chaining via pointer-chasing patterns",
+
+    "implementation_details": {
+      "collision_chain": {
+        "structure": "Linked list per bucket",
+        "next_pointer_location": "Offset 0 in SymbolEntry structure",
+        "size_bytes": 8
+      },
+
+      "insertion_strategy": "Head insertion (most recent symbol added to front)",
+      "average_chain_length": "1-3 symbols per bucket (with proper load factor)",
+      "worst_case_chain_length": "All symbols hash to same bucket (O(n) lookup)"
+    },
+
+    "evidence": [
+      {
+        "source": "L2_AGENT_10_FINDINGS",
+        "quote": "Pointer chasing patterns detected in symbol lookup",
+        "line_numbers": "Symbol table operations section"
+      },
+      {
+        "source": "SymbolEntry structure definition",
+        "field": "next_in_bucket",
+        "offset": 0,
+        "size": 8,
+        "type": "SymbolEntry*",
+        "description": "Pointer to next symbol entry in same hash bucket (collision chain)"
+      }
+    ]
+  },
+
+  "symbol_entry_structure": {
+    "total_size_bytes": 128,
+    "alignment_bytes": 8,
+    "confidence": "MEDIUM",
+
+    "field_layout": [
+      {
+        "field_name": "next_in_bucket",
+        "offset_bytes": 0,
+        "size_bytes": 8,
+        "type": "SymbolEntry*",
+        "description": "Pointer to next symbol entry in same hash bucket (collision chain)"
+      },
+      {
+        "field_name": "symbol_name",
+        "offset_bytes": 8,
+        "size_bytes": 8,
+        "type": "const char*",
+        "description": "Pointer to null-terminated symbol name string"
+      },
+      {
+        "field_name": "full_qualified_name",
+        "offset_bytes": 16,
+        "size_bytes": 8,
+        "type": "const char*",
+        "description": "Fully qualified name with namespace/class prefix"
+      },
+      {
+        "field_name": "symbol_type",
+        "offset_bytes": 24,
+        "size_bytes": 8,
+        "type": "Type*",
+        "description": "Pointer to type information structure"
+      },
+      {
+        "field_name": "storage_class",
+        "offset_bytes": 32,
+        "size_bytes": 4,
+        "type": "enum StorageClass",
+        "description": "EXTERN, STATIC, AUTO, REGISTER, TYPEDEF, PARAMETER, CUDA_*"
+      },
+      {
+        "field_name": "address_or_offset",
+        "offset_bytes": 36,
+        "size_bytes": 8,
+        "type": "uint64_t",
+        "description": "Address/offset in memory for variables; code address for functions"
+      },
+      {
+        "field_name": "scope_level",
+        "offset_bytes": 44,
+        "size_bytes": 4,
+        "type": "int",
+        "description": "Nesting depth (0=global, 1+=nested)"
+      },
+      {
+        "field_name": "parent_scope",
+        "offset_bytes": 48,
+        "size_bytes": 8,
+        "type": "Scope*",
+        "description": "Pointer to parent scope"
+      },
+      {
+        "field_name": "defining_scope",
+        "offset_bytes": 56,
+        "size_bytes": 8,
+        "type": "Scope*",
+        "description": "Scope where symbol was defined"
+      },
+      {
+        "field_name": "initialization_value",
+        "offset_bytes": 64,
+        "size_bytes": 8,
+        "type": "Expression*",
+        "description": "For variables: initial value expression"
+      },
+      {
+        "field_name": "attributes",
+        "offset_bytes": 72,
+        "size_bytes": 4,
+        "type": "uint32_t",
+        "description": "Bitfield: used, extern, static, inline, const, volatile, restrict, cuda_*"
+      },
+      {
+        "field_name": "line_number",
+        "offset_bytes": 76,
+        "size_bytes": 4,
+        "type": "int",
+        "description": "Source file line number where declared"
+      },
+      {
+        "field_name": "file_index",
+        "offset_bytes": 80,
+        "size_bytes": 4,
+        "type": "int",
+        "description": "Index into file table"
+      },
+      {
+        "field_name": "cuda_memory_space",
+        "offset_bytes": 84,
+        "size_bytes": 1,
+        "type": "enum CudaMemorySpace",
+        "description": "GLOBAL, SHARED, LOCAL, CONSTANT, GENERIC"
+      },
+      {
+        "field_name": "is_cuda_kernel",
+        "offset_bytes": 85,
+        "size_bytes": 1,
+        "type": "bool",
+        "description": "True if __global__ function"
+      },
+      {
+        "field_name": "is_cuda_device_func",
+        "offset_bytes": 86,
+        "size_bytes": 1,
+        "type": "bool",
+        "description": "True if __device__ function"
+      },
+      {
+        "field_name": "forward_declared",
+        "offset_bytes": 87,
+        "size_bytes": 1,
+        "type": "bool",
+        "description": "True if appeared in forward declaration"
+      },
+      {
+        "field_name": "mangled_name",
+        "offset_bytes": 88,
+        "size_bytes": 8,
+        "type": "const char*",
+        "description": "C++ mangled name for linker"
+      },
+      {
+        "field_name": "template_args",
+        "offset_bytes": 96,
+        "size_bytes": 8,
+        "type": "TemplateArgs*",
+        "description": "For template symbols: instantiation arguments"
+      },
+      {
+        "field_name": "overload_chain",
+        "offset_bytes": 104,
+        "size_bytes": 8,
+        "type": "SymbolEntry*",
+        "description": "For overloaded symbols: link to next overload"
+      },
+      {
+        "field_name": "prev_declaration",
+        "offset_bytes": 112,
+        "size_bytes": 8,
+        "type": "SymbolEntry*",
+        "description": "Link to previous declaration (for history tracking)"
+      },
+      {
+        "field_name": "reserved",
+        "offset_bytes": 120,
+        "size_bytes": 8,
+        "type": "uint64_t",
+        "description": "Reserved for future use / padding"
+      }
+    ],
+
+    "evidence": [
+      {
+        "source": "L2_AGENT_10_FINDINGS",
+        "section": "Symbol entry structure",
+        "file": "/deep_analysis/data_structures/symbol_table.json",
+        "size_estimate": "128 bytes total"
+      }
+    ]
+  },
+
+  "scope_stack_implementation": {
+    "data_structure": "Linked list or vector of Scope pointers",
+    "confidence": "MEDIUM-HIGH",
+    "reasoning": "L2 analysis and scope management patterns suggest one of these implementations",
+
+    "candidates": [
+      {
+        "implementation": "std::vector<Scope*>",
+        "pros": [
+          "Fast random access",
+          "Good cache locality",
+          "Efficient depth queries"
+        ],
+        "cons": [
+          "Reallocation on growth",
+          "Memory overhead"
+        ],
+        "probability": "MEDIUM-HIGH"
+      },
+      {
+        "implementation": "Linked list (intrusive or external)",
+        "pros": [
+          "No reallocation on growth",
+          "Efficient push/pop",
+          "Memory efficient for small stacks"
+        ],
+        "cons": [
+          "Poor cache locality",
+          "Pointer dereference for depth queries"
+        ],
+        "probability": "MEDIUM"
+      }
+    ],
+
+    "scope_entry_structure": {
+      "size_bytes": 256,
+      "alignment_bytes": 8,
+      "fields": [
+        {
+          "name": "scope_id",
+          "type": "int",
+          "description": "Unique ID for this scope instance"
+        },
+        {
+          "name": "scope_type",
+          "type": "enum ScopeType",
+          "values": "GLOBAL=0, NAMESPACE=1, CLASS=2, FUNCTION=3, BLOCK=4, FOR_INIT=5, CUDA_KERNEL=6, CUDA_DEVICE=7, CUDA_SHARED=8"
+        },
+        {
+          "name": "parent_scope",
+          "type": "Scope*",
+          "description": "Pointer to enclosing scope"
+        },
+        {
+          "name": "symbol_table",
+          "type": "SymbolEntry**[BUCKET_COUNT]",
+          "description": "Hash table for symbols in this scope"
+        },
+        {
+          "name": "symbol_count",
+          "type": "int",
+          "description": "Number of symbols defined in this scope"
+        },
+        {
+          "name": "scope_depth",
+          "type": "int",
+          "description": "Nesting depth (0=global)"
+        },
+        {
+          "name": "owning_function",
+          "type": "SymbolEntry*",
+          "description": "For non-global scopes: function that owns this scope"
+        },
+        {
+          "name": "cuda_attributes",
+          "type": "struct",
+          "fields": ["is_kernel (bool)", "is_device_func (bool)", "has_shared (bool)"]
+        }
+      ]
+    },
+
+    "operations": {
+      "enter_scope": {
+        "description": "Create new scope and push onto stack",
+        "steps": [
+          "Allocate new Scope structure",
+          "Set parent_scope to current scope",
+          "Initialize symbol_table with empty buckets",
+          "Push onto scope stack",
+          "Make this new scope current"
+        ],
+        "cost": "O(BUCKET_COUNT) for table initialization",
+        "frequency": "Once per function/block"
+      },
+
+      "exit_scope": {
+        "description": "Pop scope from stack and deallocate",
+        "steps": [
+          "Get current scope from stack top",
+          "Deallocate symbol_table buckets",
+          "Pop scope from stack",
+          "Restore previous scope as current"
+        ],
+        "cost": "O(BUCKET_COUNT) for deallocation",
+        "frequency": "Once per function/block end",
+        "note": "Symbol entries persist in AST/IR; only scope structure deallocated"
+      },
+
+      "lookup_symbol": {
+        "description": "Search for symbol in scope chain",
+        "algorithm": [
+          "START at current scope",
+          "LOOP:",
+          "  - hash = hash_function(name)",
+          "  - bucket_index = hash & (BUCKET_COUNT - 1)",
+          "  - FOR each entry in bucket collision chain:",
+          "    - IF entry.symbol_name == name: RETURN entry",
+          "  - IF current scope has parent_scope:",
+          "    - current_scope = current_scope.parent_scope",
+          "    - GOTO LOOP",
+          "RETURN NOT_FOUND"
+        ],
+        "cost": "O(1) expected (with good hash function and load factor), O(n) worst case",
+        "shadowing": "Inner scope can shadow outer scope symbols"
+      }
+    },
+
+    "extraction_requirements": {
+      "task_1_identify_stack_structure": {
+        "status": "PENDING",
+        "search_patterns": [
+          "vector<Scope*> or similar class instantiation",
+          "scope_stack = new vector<Scope*>()",
+          "scope_stack->push_back() calls",
+          "scope_stack->pop_back() calls",
+          "Linked list nodes with next pointers"
+        ]
+      },
+
+      "task_2_find_scope_operations": {
+        "status": "PENDING",
+        "target_functions": [
+          "0x1608300 - Semantic analysis (likely contains enter_scope/exit_scope)",
+          "Functions that call scope_stack.push/pop/top"
+        ]
+      }
+    },
+
+    "next_phase_analysis": {
+      "priority": "HIGH",
+      "effort_estimate": "3-4 hours",
+      "success_criteria": "Confirm exact data structure and verify all scope operations"
+    }
+  },
+
+  "comprehensive_lookup_algorithm": {
+    "pseudocode": {
+      "unqualified_lookup": [
+        "SymbolEntry* lookup_symbol(const char* name, Scope* current_scope) {",
+        "  unsigned long hash = hash_function(name);",
+        "  Scope* scope = current_scope;",
+        "  ",
+        "  while (scope) {",
+        "    int bucket_index = hash & (BUCKET_COUNT - 1);",
+        "    SymbolEntry* entry = scope->symbol_table[bucket_index];",
+        "    ",
+        "    while (entry) {",
+        "      if (strcmp(entry->symbol_name, name) == 0) {",
+        "        return entry;",
+        "      }",
+        "      entry = entry->next_in_bucket;",
+        "    }",
+        "    ",
+        "    scope = scope->parent_scope;",
+        "  }",
+        "  ",
+        "  return NULL;  // Symbol not found",
+        "}"
+      ]
+    },
+    "complexity_analysis": {
+      "best_case": "O(1) - found in current scope, no collisions",
+      "average_case": "O(1) with good hash function and load factor < 0.75",
+      "worst_case": "O(d*n) where d=scope depth, n=symbols per bucket with collisions"
+    }
+  },
+
+  "evidence_summary": {
+    "high_confidence": [
+      "Symbol entry size: 128 bytes (L2 analysis with 95% confidence)",
+      "Collision resolution: Separate chaining (confirmed by pointer patterns)",
+      "Scope organization: Hierarchical with parent pointers (error messages confirm)",
+      "Symbol lookup: Scope-chain traversal (name shadowing patterns confirm)"
+    ],
+
+    "medium_confidence": [
+      "Bucket count: 1024 (typical compiler design, allocation patterns suggest)",
+      "Load factor: 0.75 (standard hash table resizing threshold)",
+      "Scope stack: vector or linked list (scope operation patterns)"
+    ],
+
+    "low_confidence": [
+      "Hash function: DJB2 or similar (educated guess, no definitive evidence yet)",
+      "Exact hash computation formula (requires decompilation of lookup functions)"
+    ]
+  },
+
+  "extraction_status": {
+    "completed": [
+      "Symbol entry structure definition (128 bytes)",
+      "Collision resolution mechanism (separate chaining)",
+      "Scope hierarchy design",
+      "Scope chain lookup algorithm",
+      "CUDA-specific symbol extensions"
+    ],
+
+    "pending": [
+      "Exact hash function algorithm and implementation",
+      "Confirmation of bucket count (256? 512? 1024? 2048?)",
+      "Confirmation of load factor threshold",
+      "Exact scope stack implementation (vector vs linked list)",
+      "Symbol table initialization and resize logic"
+    ],
+
+    "high_priority_next_steps": [
+      {
+        "task": "Decompile hash function implementation",
+        "target_function": "Address likely in 0x672A20 or nearby function that performs: hash = hash_function(name)",
+        "success_criteria": "Identify hash constant(s) and computation formula",
+        "effort": "6-8 hours"
+      },
+      {
+        "task": "Find bucket count constant",
+        "search_pattern": "BUCKET_COUNT initialization, mask value (& 0x3FF etc), calloc/malloc size",
+        "success_criteria": "Extract exact bucket count value",
+        "effort": "2-3 hours"
+      },
+      {
+        "task": "Locate scope stack implementation",
+        "target_function": "0x1608300 (semantic analysis) where enter_scope/exit_scope are likely",
+        "search_pattern": "scope_stack push/pop operations, vector reallocation",
+        "success_criteria": "Confirm data structure (vector or linked list)",
+        "effort": "3-4 hours"
+      }
+    ]
+  },
+
+  "validation_roadmap": {
+    "phase_1_binary_analysis": {
+      "status": "IN_PROGRESS",
+      "techniques": [
+        "IDA Pro graph analysis of symbol table functions",
+        "String constant analysis (error messages, debug strings)",
+        "Constant value recognition (hash seeds, bucket counts)"
+      ]
+    },
+
+    "phase_2_decompilation": {
+      "status": "READY",
+      "tasks": [
+        "Decompile core lookup/insert functions",
+        "Extract hash computation formula",
+        "Identify bucket count and load factor"
+      ]
+    },
+
+    "phase_3_runtime_validation": {
+      "status": "PLANNED",
+      "techniques": [
+        "GDB breakpoint on symbol table operations",
+        "Memory dump analysis of live CICC process",
+        "Hash collision pattern profiling"
+      ]
+    },
+
+    "phase_4_cross_validation": {
+      "status": "PLANNED",
+      "techniques": [
+        "Compare with LLVM symbol table implementation",
+        "Compare with GCC compiler design patterns",
+        "Test hypothesis with symbol lookups on test programs"
+      ]
+    }
+  },
+
+  "open_questions": [
+    "What is the exact hash function algorithm? (DJB2, FNV, custom, or other?)",
+    "How many buckets does the hash table have? (256, 512, 1024, 2048, 4096?)",
+    "What is the exact load factor threshold for resizing? (0.75, 1.0, 2.0?)",
+    "How does the scope stack grow? (vector with reallocation or linked list?)",
+    "Are scopes allocated on heap or stack? (affects memory management)",
+    "How are symbol names stored? (interned strings or malloc'd?)",
+    "Is the hash table resizing policy growth * 2 or growth + increment?",
+    "How are template symbols and overloads stored in the hash table?"
+  ],
+
+  "files_referenced": [
+    "/deep_analysis/data_structures/symbol_table.json (L2 analysis)",
+    "/deep_analysis/data_structures/scope_management.json (L2 analysis)",
+    "/deep_analysis/findings/L2_AGENT_10_FINDINGS.md (L2 agent report)",
+    "/decompiled/sub_672A20_0x672a20.c (Parser with symbol creation)",
+    "/databases/cicc_strings.json (Binary string references)"
+  ],
+
+  "conclusion": {
+    "current_understanding": "CICC implements a scoped symbol table using hash tables with separate chaining for collision resolution. The design follows standard compiler patterns with 128-byte symbol entries, likely 1024 buckets, and a 0.75 load factor. Scope management uses a stack structure with parent pointers for traversal.",
+
+    "confidence_level": "MEDIUM-HIGH for overall architecture, LOW for exact algorithm details",
+
+    "recommendation": "CICC's symbol table design is well-understood at the architectural level. To achieve HIGH confidence on exact parameters (hash function, bucket count, load factor), recommend targeted decompilation of 2-3 key functions (~10-15 hours effort). Current analysis provides solid foundation for implementation and testing."
+  }
+}

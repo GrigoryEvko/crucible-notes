@@ -1,0 +1,664 @@
+{
+  "metadata": {
+    "document_title": "CICC Execution Trace - Blackwell Super (SM 120)",
+    "phase": "L2_DEEP_ANALYSIS",
+    "agent": "agent_14",
+    "date_created": "2025-11-16",
+    "analysis_type": "STATIC_SPECULATIVE_ANALYSIS",
+    "confidence": "MEDIUM",
+    "status": "HYPOTHESIS_BASED_ON_FOUNDATION",
+    "sm_version": "sm_120",
+    "architecture_variants": ["sm_110", "sm_120", "sm_121"],
+    "architecture_name": "Blackwell Advanced / Blackwell Super",
+    "release_year": "2024-2025 (future)",
+    "speculative_note": "SM120/121 not yet widely deployed; analysis based on expected evolution",
+    "data_sources": [
+      "foundation/analyses/17_SM_VERSION_SUPPORT.json",
+      "Architecture evolution patterns",
+      "NVIDIA roadmap hints",
+      "Tensor core generational progression"
+    ]
+  },
+
+  "executive_summary": {
+    "positioning": "SM120 (Blackwell Super) represents evolutionary improvements over SM100",
+    "key_expected_features": [
+      "tcgen05 enhancements (potentially tcgen05+ or tcgen06)",
+      "Further precision optimization (extended FP4/FP6 support)",
+      "Advanced sparsity modes",
+      "Im2Col tensor operations (new for convolution optimization)",
+      "Enhanced TMA with improved scheduling",
+      "Next-gen memory hierarchy",
+      "Improved inter-cluster communication primitives",
+      "Advanced fault tolerance mechanisms"
+    ],
+    "compilation_complexity": "HIGH - evolutionary improvements on SM100 base",
+    "tensor_core_evolution": "sm_100 tcgen05 → sm_120 tcgen05+ (incremental enhancements)",
+    "release_positioning": "Mid-cycle refresh for Blackwell (1-2 years after SM100)",
+    "confidence_justification": "Based on NVIDIA historical architecture evolution patterns"
+  },
+
+  "architecture_evolution_context": {
+    "nvidia_historical_pattern": {
+      "maxwell_to_pascal": "Incremental improvements (Maxwell 50-53 → Pascal 60-62)",
+      "pascal_to_volta": "Major leap (introduced tensor cores)",
+      "volta_to_turing": "Incremental (added sparsity)",
+      "turing_to_ampere": "Major expansion (mma.sync family)",
+      "ampere_to_hopper": "Major shift (warpgroup MMA, TMA)",
+      "hopper_to_blackwell_sm100": "Revolutionary (tcgen05, matrix formats)",
+      "blackwell_sm100_to_sm110_120": "Expected to be EVOLUTIONARY"
+    },
+
+    "expected_pattern_sm120": "Incremental refinement on SM100 foundation, not revolutionary change",
+
+    "architectural_progression_timeline": [
+      {
+        "release": "SM100 (2024)",
+        "name": "Blackwell Base",
+        "focus": "tcgen05, matrix formats introduction"
+      },
+      {
+        "release": "SM110 (2024-2025)",
+        "name": "Blackwell Advanced",
+        "focus": "Sparsity and memory improvements"
+      },
+      {
+        "release": "SM120 (2025)",
+        "name": "Blackwell Super",
+        "focus": "Im2Col, enhanced scheduling, TMA++",
+        "note": "Primary variant, highest volumes"
+      },
+      {
+        "release": "SM121 (2025-2026)",
+        "name": "Blackwell Super Plus",
+        "focus": "Minor refinements, fault tolerance"
+      }
+    ]
+  },
+
+  "compilation_pipeline_sm120": {
+    "overview": "SM120 compilation builds on SM100 foundation with incremental improvements",
+    "entry_point_characteristics": {
+      "description": "SM120 entry point with Blackwell Super architecture support",
+      "selection_mechanism": "SM version detection → Blackwell (sm_120) codepath",
+      "complexity_vs_sm100": "5-10% more complex (incremental, not revolutionary)",
+      "code_reuse_from_sm100": "85-90% of SM100 code paths applicable"
+    },
+
+    "phase_sequence": [
+      {
+        "phase_number": 1,
+        "name": "Front-End IR Construction",
+        "description": "Parse and construct IR with SM120 feature awareness",
+        "sm120_specifics": {
+          "im2col_support": "NEW - load Im2Col tensor operations",
+          "enhanced_sparsity": "Load SM120 sparsity format variants",
+          "improved_memory_model": "Next-gen memory hierarchy hints"
+        },
+        "key_additions": [
+          "Im2Col operation patterns",
+          "Enhanced sparsity descriptors",
+          "Memory hierarchy configuration"
+        ],
+        "estimated_overhead_percent": 7,
+        "confidence": "MEDIUM"
+      },
+
+      {
+        "phase_number": 2,
+        "name": "Front-End Optimization Passes",
+        "description": "Early optimizations with SM120 awareness",
+        "sm120_specifics": {
+          "im2col_pattern_detection": "NEW - identify convolution patterns suitable for Im2Col",
+          "enhanced_sparsity_analysis": "Detect advanced sparsity patterns",
+          "memory_hierarchy_optimization": "Optimize for SM120 memory topology"
+        },
+        "new_passes": [
+          "convolution_to_im2col_converter",
+          "advanced_sparsity_analyzer",
+          "sm120_memory_optimizer"
+        ],
+        "pass_count": "13-17 passes",
+        "duration_percent": 10,
+        "confidence": "MEDIUM"
+      },
+
+      {
+        "phase_number": 3,
+        "name": "Middle-End Optimization Framework",
+        "description": "General optimizations adapted for SM120",
+        "sm120_specifics": {
+          "im2col_aware_scheduling": "Schedule Im2Col operations optimally",
+          "sparsity_memory_coordination": "Coordinate sparse access patterns with memory"
+        },
+        "optimization_types": [
+          "Im2Col pattern optimization",
+          "Enhanced CSE with sparsity awareness",
+          "Memory hierarchy-aware scheduling"
+        ],
+        "pass_count": "30-35 passes (mostly inherited from SM100)",
+        "duration_percent": 27,
+        "confidence": "MEDIUM-HIGH"
+      },
+
+      {
+        "phase_number": 4,
+        "name": "Instruction Selection - tcgen05+ Decision Point",
+        "description": "Select tensor core instructions with SM120 enhancements",
+        "sm120_specifics": {
+          "tcgen05_base_selection": "All SM100 tcgen05 variants still applicable",
+          "sm120_enhancements": "NEW - potentially tcgen05+ with additional features",
+          "im2col_instruction_selection": "NEW - select Im2Col tensor operations",
+          "advanced_sparsity_modes": "ENHANCED - more sophisticated sparsity patterns"
+        },
+
+        "tcgen05_plus_expected_enhancements": {
+          "hypothesis_1_extended_precision": "Potentially additional precision modes (E3M4, E2M5)",
+          "hypothesis_2_advanced_formats": "Extended matrix formats beyond MXF4/MXF8",
+          "hypothesis_3_dynamic_precision": "Runtime precision selection improvements",
+          "hypothesis_4_sparsity_enhancements": "Block sparsity with smaller granularity"
+        },
+
+        "im2col_tensor_operations": {
+          "purpose": "Hardware-accelerated convolution via implicit matrix multiplication",
+          "benefit": "Converts 2D convolution to 1D GEMM-like operation",
+          "compilation_challenge": "Recognize convolution patterns and emit Im2Col instructions",
+          "instruction_examples": [
+            "mma.im2col.convert (transform image to matrix)",
+            "mma.sync with im2col semantics",
+            "mma.im2col.store (write result)"
+          ],
+          "expected_location": "0xA99999 (hypothetical new function for Im2Col)"
+        },
+
+        "decision_framework_sm120": [
+          {
+            "decision": "SM100 tcgen05 selection logic (inherited)",
+            "options": "All 36 SM100 variants",
+            "confidence": "VERY_HIGH"
+          },
+          {
+            "decision": "NEW - Can we use Im2Col optimization?",
+            "options": [
+              "Standard GEMM via tcgen05",
+              "Im2Col-optimized convolution (NEW in SM120)"
+            ],
+            "factors": [
+              "Convolution pattern recognition",
+              "Data layout suitability",
+              "Register availability"
+            ],
+            "sm120_preference": "Use Im2Col when applicable for 2-3x speedup"
+          },
+          {
+            "decision": "ENHANCED - Advanced sparsity modes?",
+            "options": [
+              "Dense (no sparsity)",
+              "Structured 2:4 sparsity (SM100 baseline)",
+              "Fine-grained block sparsity (NEW in SM120)",
+              "Dynamic adaptive sparsity (ENHANCED in SM120)"
+            ],
+            "factors": [
+              "Sparsity pattern granularity",
+              "Hardware support availability",
+              "Performance overhead"
+            ]
+          }
+        ],
+
+        "key_functions": [
+          "tcgen05_base_selector (inherited from SM100)",
+          "im2col_tensor_selector (NEW)",
+          "advanced_sparsity_matcher (ENHANCED)"
+        ],
+        "estimated_duration_percent": 21,
+        "confidence": "MEDIUM-HIGH (SM100 base stable, SM120 enhancements speculative)"
+      },
+
+      {
+        "phase_number": 5,
+        "name": "Register Allocation",
+        "description": "Allocate registers with SM120 optimizations",
+        "sm120_specifics": {
+          "register_file_size": "256 registers per thread (same as SM100)",
+          "im2col_register_patterns": "NEW - different register usage for Im2Col ops",
+          "sparsity_register_optimization": "ENHANCED - better register reuse for sparse patterns"
+        },
+        "allocation_improvements": [
+          "Better sparsity-aware register blocking",
+          "Im2Col operation register patterns",
+          "Potential register sharing between phases"
+        ],
+        "estimated_duration_percent": 15,
+        "confidence": "MEDIUM"
+      },
+
+      {
+        "phase_number": 6,
+        "name": "Back-End Optimization Passes",
+        "description": "Post-RA optimization with SM120-specific scheduling",
+        "sm120_specifics": {
+          "im2col_scheduling": "Optimize Im2Col operation scheduling",
+          "enhanced_tma_scheduling": "IMPROVED - better TMA operation overlapping",
+          "advanced_sparsity_communication": "ENHANCED - better sparsity pattern communication"
+        },
+        "pass_count": "16-19 passes",
+        "duration_percent": 22,
+        "confidence": "MEDIUM"
+      },
+
+      {
+        "phase_number": 7,
+        "name": "PTX Code Emission",
+        "description": "Generate final PTX with SM120 instructions",
+        "sm120_specifics": {
+          "tcgen05_emission": "Uses existing SM100 emission logic",
+          "im2col_emission": "Uses new 0xA99999 function (hypothetical) for Im2Col",
+          "enhanced_sparsity_emission": "Emit advanced sparsity descriptors",
+          "instruction_patterns": [
+            "mma.sync (all tcgen05 variants from SM100)",
+            "mma.im2col.* (NEW - Im2Col operations)",
+            "mma.sparse.* (ENHANCED - advanced sparsity)",
+            "tma.* (ENHANCED - improved TMA variants)"
+          ]
+        },
+        "output_format": "PTX text with SM120 extensions",
+        "estimated_duration_percent": 9,
+        "confidence": "MEDIUM"
+      }
+    ]
+  },
+
+  "im2col_tensor_operations": {
+    "overview": "Hardware-accelerated convolution via image-to-column transformation",
+    "motivation": {
+      "traditional_convolution": "Inefficient memory access patterns",
+      "gemm_equivalent": "Converting conv to GEMM enables tensor core acceleration",
+      "im2col_benefit": "Automatic transformation with hardware support"
+    },
+
+    "mathematical_concept": {
+      "traditional": "C[n,c_out,h_out,w_out] = sum_over_spatial_filter(A[n,c_in,h,w] * W[c_out,c_in,k_h,k_w])",
+      "im2col": "Unfold spatial dimensions into matrix form, then use GEMM",
+      "hardware_acceleration": "SM120 provides native Im2Col instructions"
+    },
+
+    "compilation_decision": [
+      {
+        "step": 1,
+        "question": "Is this a convolution operation?",
+        "affirmative": "proceed to step 2",
+        "negative": "use standard GEMM"
+      },
+      {
+        "step": 2,
+        "question": "Can we use Im2Col (regular kernel, standard padding)?",
+        "affirmative": "proceed to step 3",
+        "negative": "use standard GEMM (for irregular convolutions)"
+      },
+      {
+        "step": 3,
+        "question": "Is Im2Col register-efficient for this kernel?",
+        "affirmative": "emit Im2Col operations",
+        "negative": "use standard GEMM"
+      }
+    ],
+
+    "expected_instruction_patterns": {
+      "im2col_load": {
+        "instruction": "mma.im2col.load",
+        "description": "Load image data and transform to matrix form",
+        "operands": [
+          "image_data (global or shared memory)",
+          "transformation_parameters (kernel size, stride, padding)"
+        ]
+      },
+      "im2col_gemm": {
+        "instruction": "mma.sync with im2col encoding",
+        "description": "Matrix multiply on im2col-transformed data",
+        "variants": "Same tcgen05 variants, but aware of im2col format"
+      },
+      "im2col_store": {
+        "instruction": "mma.im2col.store or standard store",
+        "description": "Write convolution result"
+      }
+    },
+
+    "performance_expectations": {
+      "speedup_vs_traditional": "2-3x for small kernels (3x3, 5x5)",
+      "memory_bandwidth_savings": "1.5-2x improvement",
+      "register_pressure": "Comparable to equivalent GEMM"
+    },
+
+    "compilation_challenge": "Recognizing convolution patterns suitable for Im2Col transformation",
+
+    "confidence": "LOW-MEDIUM (Im2Col is speculative, based on architecture evolution patterns)"
+  },
+
+  "advanced_sparsity_enhancements": {
+    "sm100_sparsity_baseline": {
+      "structured_2_4": "2 non-zero per 4 elements (standard)",
+      "dynamic_detection": "Runtime sparsity pattern detection",
+      "support_level": "Functional in SM100"
+    },
+
+    "sm120_expected_enhancements": {
+      "fine_grained_block_sparsity": {
+        "hypothesis": "Support for smaller block sparsity (1:2 or finer granularity)",
+        "benefit": "Better compression for highly sparse tensors",
+        "tradeoff": "Increased sparsity descriptor overhead"
+      },
+      "adaptive_sparsity_modes": {
+        "hypothesis": "Automatic sparsity pattern selection per operation",
+        "benefit": "Flexible sparsity handling without kernel recompilation",
+        "compilation_role": "Emit multiple sparsity variants, select at runtime"
+      },
+      "sparsity_memory_optimization": {
+        "hypothesis": "Better integration of sparse patterns with memory hierarchy",
+        "benefit": "Reduced memory access overhead for sparse operations"
+      }
+    },
+
+    "confidence": "MEDIUM (based on sparsity evolution in prior architectures)"
+  },
+
+  "tensor_memory_accelerator_enhanced": {
+    "sm100_tma_baseline": {
+      "capability": "Hardware-assisted structured tensor loading",
+      "descriptor_format": "Fixed format defined in SM100"
+    },
+
+    "sm120_expected_enhancements": {
+      "tma_plus_scheduling": {
+        "hypothesis": "Better overlap of TMA operations with computation",
+        "mechanism": "More flexible TMA descriptor update timing",
+        "benefit": "Hide more of TMA latency"
+      },
+      "tma_advanced_strides": {
+        "hypothesis": "Support for more complex memory striding patterns",
+        "benefit": "Eliminate manual address calculation for irregular layouts"
+      },
+      "tma_prefetch_optimization": {
+        "hypothesis": "Smart prefetching for TMA operations",
+        "benefit": "Reduce stalls from TMA latency"
+      }
+    },
+
+    "compilation_implications": [
+      "TMA descriptor generation becomes more sophisticated",
+      "Scheduling must optimize TMA overlap better",
+      "Memory access patterns can be more flexible"
+    ],
+
+    "confidence": "MEDIUM (TMA is SM100 success, refinement likely)"
+  },
+
+  "inter_cluster_communication_primitives": {
+    "sm100_baseline": [
+      "barrier.cluster (basic synchronization)",
+      "elect.sync (distributed voting)"
+    ],
+
+    "sm120_expected_enhancements": [
+      {
+        "primitive": "cluster_broadcast",
+        "description": "Efficient broadcasting within cluster",
+        "use_case": "Distributing tensor core results across cluster"
+      },
+      {
+        "primitive": "cluster_reduce",
+        "description": "Reduction across cluster threads",
+        "use_case": "Distributed gradient accumulation"
+      },
+      {
+        "primitive": "cluster_shuffle",
+        "description": "Fine-grained thread exchange within cluster",
+        "use_case": "Advanced communication patterns"
+      }
+    ],
+
+    "compilation_implications": "New synchronization pattern recognition and code emission",
+
+    "confidence": "LOW-MEDIUM (speculative based on cluster evolution)"
+  },
+
+  "memory_hierarchy_improvements": {
+    "sm100_baseline": {
+      "l1_cache": "Larger than Hopper",
+      "l2_cache": "Expanded from Hopper",
+      "distributed_shared_memory": "128KB per block"
+    },
+
+    "sm120_expected_improvements": [
+      {
+        "area": "L1 Cache Associativity",
+        "hypothesis": "Higher associativity for better hit rates",
+        "benefit": "Fewer memory stalls"
+      },
+      {
+        "area": "L2 Cache Size",
+        "hypothesis": "Further expansion (36-40MB vs. 30-33MB in SM100)",
+        "benefit": "Better reuse of larger working sets"
+      },
+      {
+        "area": "Memory Coherency",
+        "hypothesis": "More flexible coherency modes",
+        "benefit": "Better performance for distributed memory patterns"
+      },
+      {
+        "area": "Prefetching",
+        "hypothesis": "More sophisticated prefetch algorithms",
+        "benefit": "Better bandwidth utilization"
+      }
+    ],
+
+    "compilation_implications": [
+      "Cache optimization heuristics may need tuning",
+      "Memory access patterns become more important",
+      "TMA scheduler must account for cache hierarchy"
+    ],
+
+    "confidence": "MEDIUM (memory hierarchy evolution is gradual)"
+  },
+
+  "fault_tolerance_and_reliability": {
+    "hypothesis": "SM120 may introduce enhanced error detection/correction",
+    "use_cases": [
+      "Cosmic ray protection for data center applications",
+      "Parity/ECC support in tensor core operations",
+      "Recovery mechanisms for long-running simulations"
+    ],
+
+    "compilation_implications": [
+      "Optional error checking instruction insertion",
+      "Redundancy support for critical operations",
+      "Fault recovery code generation"
+    ],
+
+    "confidence": "LOW (speculative, not common in GPU compiler focus)"
+  },
+
+  "performance_characteristics": {
+    "compilation_time_estimate": {
+      "simple_kernel": "55-140ms",
+      "complex_tensor_kernel": "280-750ms",
+      "im2col_heavy_kernel": "350-900ms",
+      "overhead_vs_sm100": "5-15% (evolutionary improvements)"
+    },
+
+    "code_size_characteristics": {
+      "instruction_count_change": "Similar to SM100 for standard kernels",
+      "im2col_kernels": "Potentially 10-20% smaller due to Im2Col efficiency",
+      "sparse_kernels": "10-30% smaller for advanced sparsity patterns"
+    },
+
+    "tensor_core_throughput": {
+      "fp32_compatibility": "Same as SM100 (baseline preserved)",
+      "fp8_inference": "Slight improvement (better scheduling)",
+      "im2col_convolution": "2-3x improvement over standard GEMM approach"
+    }
+  },
+
+  "sm110_positioning": {
+    "overview": "Intermediate variant between SM100 and SM120",
+    "expected_features": [
+      "All SM100 tcgen05 features",
+      "Enhanced sparsity support (possibly some SM120 features early)",
+      "Improved memory hierarchy",
+      "No Im2Col (reserved for SM120+)"
+    ],
+    "positioning": "Chip variant for specific market segments",
+    "compilation_considerations": "Mostly SM100-compatible, some SM120 features optional"
+  },
+
+  "sm121_positioning": {
+    "overview": "Refresh of SM120 with minor refinements",
+    "expected_features": [
+      "All SM120 features",
+      "Minor micro-architectural improvements",
+      "Enhanced fault tolerance (possibly)",
+      "Further optimization passes"
+    ],
+    "positioning": "Next-generation refresh (1-2 years after SM120)",
+    "compilation_considerations": "Backward compatible with SM120, with additional refinements"
+  },
+
+  "tensor_core_generational_progression": {
+    "complete_evolution": [
+      {
+        "sm": "sm_70",
+        "year": "2017",
+        "instruction_family": "wmma",
+        "execution_unit": "Warp (32 threads)",
+        "tile_sizes": ["m16n16k16"],
+        "key_innovation": "Introduction of tensor cores"
+      },
+      {
+        "sm": "sm_75",
+        "year": "2018",
+        "instruction_family": "wmma (enhanced)",
+        "execution_unit": "Warp",
+        "tile_sizes": ["m16n16k16"],
+        "key_innovation": "Sparsity support"
+      },
+      {
+        "sm": "sm_80",
+        "year": "2020",
+        "instruction_family": "mma.sync",
+        "execution_unit": "Warp",
+        "tile_sizes": ["m8n8k4", "m16n8k16", "m16n16k16"],
+        "key_innovation": "Multiple tile sizes, TensorFloat32"
+      },
+      {
+        "sm": "sm_90",
+        "year": "2022",
+        "instruction_family": "mma.sync (warpgroup)",
+        "execution_unit": "Warpgroup (128 threads)",
+        "tile_sizes": ["m16n16k16", "m64n32k32"],
+        "key_innovation": "Warpgroup MMA, TMA, FP8"
+      },
+      {
+        "sm": "sm_100",
+        "year": "2024",
+        "instruction_family": "tcgen05",
+        "execution_unit": "Warpgroup with flexible tiling",
+        "tile_sizes": ["flexible per variant"],
+        "key_innovation": "tcgen05, MXF formats, 36 variants"
+      },
+      {
+        "sm": "sm_120",
+        "year": "2025",
+        "instruction_family": "tcgen05+ (hypothetical)",
+        "execution_unit": "Warpgroup with enhanced capabilities",
+        "tile_sizes": ["flexible"],
+        "key_innovations": [
+          "Im2Col hardware support",
+          "Advanced sparsity",
+          "Enhanced TMA",
+          "Evolutionary improvements"
+        ]
+      }
+    ]
+  },
+
+  "future_proofing_analysis": {
+    "extrapolating_to_sm130_sm140": {
+      "pattern_observation": "Each generation adds 1-2 major features, many incremental improvements",
+      "expected_sm130_features": [
+        "tcgen06 or extended tcgen05",
+        "More sophisticated Im2Col variants",
+        "Full-chip sparsity optimization",
+        "3D tensor core operations (speculative)"
+      ],
+      "compilation_pipeline_trend": "Increasingly complex instruction selection, more decision points"
+    },
+
+    "architectural_trajectory": {
+      "current_trend": "Shift from fixed instruction sets to flexible tensor operations",
+      "future_implication": "Compiler must make increasingly sophisticated decisions",
+      "long_term": "Potential move toward JIT compilation of tensor operations"
+    }
+  },
+
+  "validation_and_evidence": {
+    "strong_evidence": [
+      "Architecture evolution patterns observed in prior NVIDIA generations",
+      "Foundation analysis documenting sm_100-121 range support",
+      "Historical progression from wmma → mma.sync → warpgroup → tcgen05"
+    ],
+    "speculative_elements": [
+      "Specific Im2Col implementation details",
+      "Advanced sparsity modes beyond SM100",
+      "Enhanced TMA scheduling improvements",
+      "Inter-cluster communication primitives"
+    ],
+    "confidence_note": "SM120 likely released after this analysis; validation pending"
+  },
+
+  "unknowns_and_research_gaps": {
+    "critical_unknowns": [
+      {
+        "unknown": "Exact features in SM120 vs SM100",
+        "why_critical": "Core to understanding evolutionary nature",
+        "status": "UNKNOWN - requires actual SM120 release"
+      },
+      {
+        "unknown": "Im2Col instruction specifications",
+        "why_critical": "Major new feature for convolution optimization",
+        "status": "SPECULATIVE - based on pattern evolution"
+      },
+      {
+        "unknown": "Advanced sparsity pattern definitions",
+        "why_critical": "Key to performance on sparse workloads",
+        "status": "SPECULATIVE - based on expected improvements"
+      }
+    ],
+
+    "investigation_blockers": [
+      "SM120 hardware not yet available for testing (at analysis time)",
+      "Official NVIDIA SM120 documentation limited",
+      "Compiler source code for SM120-specific paths not accessible"
+    ],
+
+    "recommended_future_work": [
+      "Dynamic analysis of SM120 CICC once hardware available",
+      "Comparison of actual SM120 vs SM100 compiled kernels",
+      "Validation of Im2Col hypothesis against real kernels",
+      "Measurement of sparsity optimization effectiveness"
+    ]
+  },
+
+  "conclusion": {
+    "summary": "SM120 (Blackwell Super) represents an evolutionary improvement on the revolutionary SM100. Based on NVIDIA's historical architecture progression patterns and architectural hints, SM120 is expected to introduce Im2Col hardware support for efficient convolution, advanced sparsity modes, and enhanced TMA scheduling. The core tcgen05 tensor operation architecture from SM100 remains foundational, but is refined and extended. The compilation pipeline becomes increasingly sophisticated in its decision-making for tensor operation selection.",
+    "confidence_level": "MEDIUM - based on pattern analysis and architectural evolution, but SM120 is not yet widely deployed",
+    "speculative_nature": "This analysis makes educated hypotheses about SM120 features based on:",
+    "bases_of_speculation": [
+      "Historical NVIDIA generation patterns",
+      "Foundation analysis documenting SM100-121 support",
+      "Tensor core evolution from wmma → mma.sync → tcgen05",
+      "Computer vision/AI workload trends"
+    ],
+    "validation_timeline": "Requires access to SM120 hardware and official documentation (2025+)",
+    "next_phase": "Update this analysis with actual SM120 implementation details as they become available"
+  }
+}

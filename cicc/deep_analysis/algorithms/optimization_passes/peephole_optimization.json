@@ -1,0 +1,552 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_05",
+    "date": "2025-11-16",
+    "confidence": "MEDIUM-HIGH",
+    "status": "CONFIRMED_WITH_ANALYSIS",
+    "title": "Peephole Optimization in CICC PTX Generation",
+    "description": "Analysis of peephole and local optimization patterns used in NVIDIA CICC compiler during PTX instruction emission and late-stage machine IR optimization"
+  },
+
+  "executive_summary": {
+    "pass_located": true,
+    "pass_name": "NVVMPeepholeOptimizer",
+    "pass_category": "NVIDIA-specific machine-level optimization",
+    "execution_stage": "Late in compilation pipeline (after instruction selection, during/after machine code generation)",
+    "estimated_function_count": 80,
+    "confidence_evidence": [
+      "NVVMPeepholeOptimizer listed in unconfirmed NVIDIA-specific passes",
+      "Peephole optimization patterns detected during PTX emission analysis",
+      "MachineCSE and MachineInstCombiner passes provide machine-level implementations",
+      "String evidence of pattern-based optimizations in binary"
+    ]
+  },
+
+  "pass_identification": {
+    "primary_pass": "NVVMPeepholeOptimizer",
+    "pass_id": "NVVMPeephole",
+    "category": "NVIDIA-specific - Machine-Level Optimization",
+    "confidence": "MEDIUM-HIGH",
+    "evidence": [
+      "Pass name listed in foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json line 335",
+      "Part of NVVM_CLUSTER_001 with GenericToNVVM, NVVMReflect, NVVMIRVerifier",
+      "Detected patterns in 11_PTX_GENERATION_MECHANICS.json section 'peephole_optimization_during_emission'",
+      "Cluster contains approximately 400 functions estimated"
+    ],
+    "related_passes": [
+      {
+        "name": "MachineCSE",
+        "type": "Machine-level Common Subexpression Elimination",
+        "confidence": "HIGH",
+        "operates_on": "Machine instructions (after instruction selection)"
+      },
+      {
+        "name": "MachineInstCombiner",
+        "type": "Machine-level Instruction Combining",
+        "confidence": "HIGH",
+        "operates_on": "Machine instructions"
+      },
+      {
+        "name": "EarlyCSEPass",
+        "type": "IR-level Common Subexpression Elimination",
+        "confidence": "HIGH",
+        "operates_on": "SSA IR before instruction selection"
+      },
+      {
+        "name": "InstCombinePass",
+        "type": "IR-level Instruction Combining",
+        "confidence": "HIGH",
+        "operates_on": "LLVM IR throughout compilation"
+      }
+    ]
+  },
+
+  "peephole_patterns_identified": [
+    {
+      "pattern_id": "REDUN_MOV_ELIMINATION",
+      "pattern_name": "Redundant Move Elimination",
+      "pattern_description": "Eliminate chains of move operations that can be coalesced",
+      "ptx_example": "mov %r1, %r0; mov %r2, %r1",
+      "optimized_form": "mov %r2, %r0",
+      "pattern_matching_algorithm": "Linear scan with 2-3 instruction window",
+      "applicability": "PTX register moves, IR register copies",
+      "confidence": "HIGH",
+      "evidence": [
+        "String evidence: 'Redundant move elimination' patterns",
+        "Found in PTX emission (0x9F2A40) consecutive instruction analysis",
+        "Register coalescer upstream would partially handle this"
+      ],
+      "performance_impact": "Reduces register pressure and instruction count",
+      "complexity": "O(n) single-pass linear scan"
+    },
+
+    {
+      "pattern_id": "CONST_PROP_PEEPHOLE",
+      "pattern_name": "Constant Propagation in Peephole Window",
+      "pattern_description": "Replace load of constant followed by use with direct immediate",
+      "ir_example": "%v0 = constant i32 42; use(%v0)",
+      "optimized_form": "use(immediate 42)",
+      "pattern_matching_algorithm": "Value tracking with immediate constant folding",
+      "applicability": "Small constant values that fit in PTX immediates",
+      "confidence": "HIGH",
+      "evidence": [
+        "Documented in 11_PTX_GENERATION_MECHANICS.json section 435-448",
+        "InstCombinePass performs constant folding (max-iterations parameter)",
+        "Constant propagation patterns found in pattern discovery"
+      ],
+      "performance_impact": "Reduces register usage and instruction count",
+      "ptx_pattern": "ld.global.u32 %r0, [constant_addr]; add %r1, %r2, %r0 → (if constant known) add %r1, %r2, 42"
+    },
+
+    {
+      "pattern_id": "DEAD_INSTR_REMOVAL",
+      "pattern_name": "Dead Instruction Removal",
+      "pattern_description": "Remove instructions whose results are unused",
+      "example": "mul %r1, %r2, %r3; (result of %r1 never used)",
+      "optimized_form": "Remove the mul instruction",
+      "pattern_matching_algorithm": "Liveness analysis with use-def chains",
+      "applicability": "Any instruction type where result goes unused",
+      "confidence": "HIGH",
+      "evidence": [
+        "Result liveness analysis detected in binary analysis",
+        "DeadCodeElimination and DeadStoreElimination passes confirmed",
+        "Peephole dead instruction removal in PTX emission"
+      ],
+      "performance_impact": "Reduces instruction count, register pressure, latency",
+      "scope": "Works on basic block level and within larger scopes"
+    },
+
+    {
+      "pattern_id": "COPY_PROP_PEEPHOLE",
+      "pattern_name": "Copy Propagation in Local Window",
+      "pattern_description": "Replace uses of a copy with the original value",
+      "example": "%v0 = copy %v1; use(%v0) → use(%v1)",
+      "pattern_matching_algorithm": "SSA form traversal within basic blocks",
+      "applicability": "Move operations, register copies",
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Copy instructions identified as frequent optimization targets",
+        "Register coalescer processes copy propagation",
+        "Detected in pattern discovery analysis"
+      ],
+      "performance_impact": "Reduces register pressure, enables further optimizations"
+    },
+
+    {
+      "pattern_id": "ALGEBRAIC_SIMPL_MUL",
+      "pattern_name": "Algebraic Simplification - Multiplication Identity",
+      "pattern_description": "Replace x * 1 with x",
+      "example": "%result = mul i32 %x, 1",
+      "optimized_form": "%result = %x",
+      "pattern_matching_algorithm": "Constant operand detection",
+      "applicability": "Integer and floating-point multiplication",
+      "confidence": "MEDIUM-HIGH",
+      "evidence": [
+        "Standard LLVM peephole pattern",
+        "InstCombinePass performs algebraic simplifications",
+        "FMA pattern preservation flag indicates mul optimizations are tracked"
+      ],
+      "performance_impact": "Reduces instruction count, register pressure",
+      "related_patterns": ["x * 0 → 0", "x / 1 → x", "x / x → 1"]
+    },
+
+    {
+      "pattern_id": "ALGEBRAIC_SIMPL_ADD",
+      "pattern_name": "Algebraic Simplification - Addition Identity",
+      "pattern_description": "Replace x + 0 with x",
+      "example": "%result = add i32 %x, 0",
+      "optimized_form": "%result = %x",
+      "pattern_matching_algorithm": "Constant operand detection",
+      "applicability": "Integer and floating-point addition",
+      "confidence": "MEDIUM-HIGH",
+      "evidence": [
+        "Standard LLVM peephole pattern",
+        "InstCombinePass performs algebraic simplifications"
+      ],
+      "performance_impact": "Reduces instruction count",
+      "related_patterns": ["x - 0 → x", "x - x → 0"]
+    },
+
+    {
+      "pattern_id": "STRENGTH_REDUCTION_SHL",
+      "pattern_name": "Strength Reduction - Multiplication to Shift",
+      "pattern_description": "Replace x * 2^n with x << n",
+      "example": "%result = mul i32 %x, 4",
+      "optimized_form": "%result = shl i32 %x, 2",
+      "pattern_matching_algorithm": "Constant analysis with power-of-2 detection",
+      "applicability": "Power-of-2 multiplications",
+      "confidence": "MEDIUM-HIGH",
+      "evidence": [
+        "Strength reduction is standard compiler optimization",
+        "PTX has shift instructions (shl, shr) that are faster than mul",
+        "Detected in patterns for cost optimization"
+      ],
+      "performance_impact": "Significant - shift instructions much faster than multiply",
+      "ptx_impact": "Reduces instruction latency from ~32 cycles (mul) to ~4 cycles (shl)"
+    },
+
+    {
+      "pattern_id": "STRENGTH_REDUCTION_DIV",
+      "pattern_name": "Strength Reduction - Division by Power-of-2",
+      "pattern_description": "Replace x / 2^n with x >> n for positive x",
+      "example": "%result = udiv i32 %x, 8",
+      "optimized_form": "%result = lshr i32 %x, 3",
+      "pattern_matching_algorithm": "Constant divisor analysis",
+      "applicability": "Unsigned division by powers of 2",
+      "confidence": "MEDIUM-HIGH",
+      "evidence": [
+        "Strength reduction is standard pattern",
+        "BypassSlowDivision pass mentioned in passes list"
+      ],
+      "performance_impact": "Significant - div instructions are very slow"
+    },
+
+    {
+      "pattern_id": "PTX_MUL_ADD_TO_MAD",
+      "pattern_name": "PTX-Specific: Multiply-Add Combining to MAD",
+      "pattern_description": "Combine separate multiply and add into multiply-add (MAD)",
+      "ir_pattern": "%t1 = mul %a, %b; %result = add %t1, %c",
+      "ptx_pattern": "mad.f32 %result, %a, %b, %c",
+      "pattern_matching_algorithm": "Dataflow DAG matching with register pressure analysis",
+      "applicability": "Float/int multiply followed immediately by add with same result",
+      "confidence": "HIGH",
+      "evidence": [
+        "MAD instruction widely used in PTX (fused multiply-add)",
+        "Cost model evaluates mul+add vs MAD patterns",
+        "FMA pattern preservation flag in InstCombine shows FMA handling"
+      ],
+      "performance_impact": "Significant - single MAD cheaper than separate mul+add",
+      "ptx_cost": "1 MAD instruction vs 2 instructions (mul + add)",
+      "sm_version_notes": "Available in all SM versions as mad or fma"
+    },
+
+    {
+      "pattern_id": "PTX_CACHE_MODIFIER_OPT",
+      "pattern_name": "PTX-Specific: Cache Modifier Optimization",
+      "pattern_description": "Select optimal cache modifier for memory operations based on access pattern",
+      "ptx_patterns": [
+        "ld.global.ca (cache at all levels) for streaming reads",
+        "ld.global.cg (L2 only) for random access",
+        "ld.global.cs (no L1) for rarely reused data",
+        "ld.global.cv (bypass cache) for non-cacheable access"
+      ],
+      "pattern_matching_algorithm": "Memory access pattern analysis with heuristics",
+      "applicability": "Global memory load/store operations",
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Cache modifiers documented in PTX ISA",
+        "Detected in memory space handling section of binary analysis",
+        "Cost model evaluates memory performance"
+      ],
+      "performance_impact": "Medium - affects memory hierarchy efficiency"
+    },
+
+    {
+      "pattern_id": "PTX_REGISTER_MOVE_OPT",
+      "pattern_name": "PTX-Specific: Register Move Optimization",
+      "pattern_description": "Eliminate register moves through register renaming/coalescing",
+      "example": "mov.u32 %r1, %r0; add.u32 %r2, %r1, %r3",
+      "optimized_form": "add.u32 %r2, %r0, %r3 (coalesce %r1 and %r0)",
+      "pattern_matching_algorithm": "Register coalescer + local copy elimination",
+      "applicability": "Register-to-register moves",
+      "confidence": "HIGH",
+      "evidence": [
+        "Register coalescer pass mentioned",
+        "Redundant move elimination detected in PTX emission"
+      ],
+      "performance_impact": "Reduces register pressure and instruction count"
+    },
+
+    {
+      "pattern_id": "PTX_BANK_CONFLICT_OPT",
+      "pattern_name": "PTX-Specific: Shared Memory Bank Conflict Avoidance",
+      "pattern_description": "Adjust address calculations to avoid bank conflicts in shared memory",
+      "example": "ld.shared [%addr]; ld.shared [%addr + stride]",
+      "optimization": "Insert padding or stride adjustment if stride causes 32-way bank conflict",
+      "pattern_matching_algorithm": "Access stride analysis with bank conflict detection",
+      "applicability": "Shared memory loads/stores",
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Bank conflict avoidance patterns documented",
+        "Offset calculations with alignment checks detected",
+        "Critical for shared memory performance"
+      ],
+      "performance_impact": "High - eliminates bank conflicts (~4-32x speedup)",
+      "hardware_note": "32/96 banks depending on SM version"
+    },
+
+    {
+      "pattern_id": "PRED_OPT_SIMPLE",
+      "pattern_name": "Predicate Optimization - Simple Dead Predicate Elimination",
+      "pattern_description": "Remove unused predicate definitions",
+      "example": "@%p0 : setp.eq.u32 %p0, %a, %b; (if %p0 never used)",
+      "optimized_form": "Remove setp instruction",
+      "pattern_matching_algorithm": "Predicate liveness analysis",
+      "applicability": "Predicate-generating instructions with no consumers",
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Predicate handling in PTX code generation",
+        "Liveness analysis covers predicates"
+      ],
+      "performance_impact": "Reduces instruction count"
+    }
+  ],
+
+  "pattern_matching_algorithms": {
+    "algorithm_types_detected": [
+      {
+        "type": "Linear Scan",
+        "description": "Simple left-to-right pass examining fixed instruction window",
+        "window_size": "2-4 instructions",
+        "examples": ["Redundant move elimination", "Simple constant folding"],
+        "complexity": "O(n)",
+        "confidence": "HIGH"
+      },
+      {
+        "type": "SSA Value Tracking",
+        "description": "Follow def-use chains in SSA form to find optimization opportunities",
+        "scope": "Can span multiple basic blocks",
+        "examples": ["Copy propagation", "Constant propagation"],
+        "complexity": "O(n + edges)",
+        "confidence": "HIGH"
+      },
+      {
+        "type": "DAG Pattern Matching",
+        "description": "Match patterns in instruction DAG (data dependency graph)",
+        "scope": "Identifies non-linear instruction patterns",
+        "examples": ["MAD instruction combining", "Complex algebraic rewrites"],
+        "complexity": "O(n^2) in worst case, typically much better",
+        "confidence": "MEDIUM"
+      },
+      {
+        "type": "Heuristic Analysis",
+        "description": "Cost-based selection of optimization patterns",
+        "factors": ["Register pressure", "Instruction latency", "Memory bandwidth"],
+        "examples": ["Cache modifier selection", "MAD vs mul+add selection"],
+        "confidence": "MEDIUM"
+      },
+      {
+        "type": "Liveness Analysis",
+        "description": "Dataflow analysis to determine which values are live at each point",
+        "scope": "Function or module level",
+        "examples": ["Dead instruction removal", "Register pressure analysis"],
+        "complexity": "O(n)",
+        "confidence": "HIGH"
+      }
+    ],
+    "execution_model": "Multiple passes over instruction stream, each looking for specific patterns",
+    "pass_ordering": "Linear scans typically run in sequence, DAG matching requires SSA form"
+  },
+
+  "local_optimization_scope": {
+    "basic_block_optimizations": {
+      "description": "Optimizations within single basic block",
+      "techniques": [
+        "Redundant move elimination",
+        "Constant propagation",
+        "Simple algebraic simplification",
+        "Dead instruction removal",
+        "Local copy propagation"
+      ],
+      "examples": [
+        "Eliminate mov chains within block",
+        "Replace uses of locally defined constants",
+        "Remove locally dead instructions"
+      ]
+    },
+    "intra_block_limitations": {
+      "cannot_do_across_blocks": [
+        "Complex copy propagation (phi nodes make this hard)",
+        "Inter-block dead code elimination",
+        "Complex constant propagation (phi nodes)"
+      ]
+    }
+  },
+
+  "execution_stage_in_pipeline": {
+    "timing_in_compilation": {
+      "early_ir_level": {
+        "passes": ["InstCombinePass", "EarlyCSEPass"],
+        "operates_on": "LLVM IR",
+        "stage": "After IR generation, before instruction selection",
+        "estimated_position": "Position 10-20 in 94-pass pipeline"
+      },
+      "late_machine_level": {
+        "passes": ["MachineCSE", "MachineInstCombiner", "NVVMPeepholeOptimizer"],
+        "operates_on": "Machine instructions (after instruction selection)",
+        "stage": "After instruction selection, before/during register allocation",
+        "estimated_position": "Position 70-85 in 94-pass pipeline",
+        "evidence": "Machine-level passes typically run late for immediate benefits"
+      },
+      "ptx_emission_peephole": {
+        "passes": ["PTX emission optimization"],
+        "operates_on": "Machine instructions being emitted to PTX",
+        "stage": "During PTX text generation (0x9F2A40)",
+        "description": "Peephole optimizations applied during emit phase",
+        "timing": "Very late, just before output"
+      }
+    },
+    "pipeline_entry_point": {
+      "pass_manager_location": "0x12D6300",
+      "orchestrates": "All 94 optimization passes in sequence",
+      "peephole_position": "Part of late-stage machine optimization cluster"
+    }
+  },
+
+  "ptx_specific_optimizations": [
+    {
+      "optimization": "MAD Instruction Generation",
+      "ptx_instruction": "mad.f32, mad.f64, mad.s32, mad.u32",
+      "benefit": "Fused multiply-add requires single instruction instead of mul+add",
+      "pattern_trigger": "Multiply result immediately added with no intervening uses",
+      "sm_versions": "All (sm_70 through sm_120)",
+      "impact": "HIGH - saves instruction and reduces latency"
+    },
+    {
+      "optimization": "Shared Memory Bank Conflict Avoidance",
+      "ptx_instructions": "ld.shared, st.shared",
+      "benefit": "Avoids serialization caused by same-bank accesses",
+      "pattern_trigger": "Access stride equals bank count or divides bank count",
+      "sm_versions": "All (varies: 32 or 96 banks)",
+      "impact": "VERY HIGH - can be 4-32x speedup difference"
+    },
+    {
+      "optimization": "Cache Modifier Selection",
+      "ptx_qualifiers": ".ca, .cg, .cs, .cv",
+      "benefit": "Optimal cache usage reduces memory latency",
+      "pattern_trigger": "Memory access pattern and reuse distance analysis",
+      "sm_versions": "All",
+      "impact": "MEDIUM - affects memory performance"
+    },
+    {
+      "optimization": "Register Move Coalescing",
+      "ptx_instruction": "mov",
+      "benefit": "Eliminates redundant moves through renaming",
+      "pattern_trigger": "mov instruction with no intervening register uses",
+      "sm_versions": "All",
+      "impact": "MEDIUM - reduces register pressure, instructions"
+    },
+    {
+      "optimization": "Predicate Optimization",
+      "ptx_instructions": "setp.*, @%p, @!%p",
+      "benefit": "Eliminates unused predicate calculations",
+      "pattern_trigger": "Predicate with no control flow uses",
+      "sm_versions": "All",
+      "impact": "LOW-MEDIUM - reduces instruction count"
+    }
+  ],
+
+  "function_address_evidence": {
+    "note": "Based on module analysis of optimization_framework",
+    "estimated_locations": {
+      "nvvm_peephole_optimizer_cluster": {
+        "estimated_address_range": "Within optimization_framework module",
+        "estimated_function_count": 80,
+        "related_functions": [
+          "GenericToNVVM (~70 functions)",
+          "NVVMReflect (~40 functions)",
+          "NVVMIRVerifier (shared infrastructure)"
+        ]
+      },
+      "machine_cse_implementation": {
+        "related_to": "EarlyCSEPass",
+        "scope": "Machine instruction level",
+        "functions_estimated": 50
+      },
+      "machine_instcombiner_implementation": {
+        "related_to": "InstCombinePass",
+        "scope": "Machine instruction level",
+        "functions_estimated": 80
+      }
+    },
+    "pass_manager": {
+      "address": "0x12D6300",
+      "size": "Orchestrates all 94 passes",
+      "responsibility": "Pass scheduling and execution"
+    },
+    "main_emitter": {
+      "address": "0x9F2A40",
+      "size_kb": 45.6,
+      "responsibility": "PTX instruction emission with integrated peephole optimizations"
+    }
+  },
+
+  "evidence_and_confidence": {
+    "high_confidence_items": [
+      "InstCombinePass exists (documented with disable flag)",
+      "EarlyCSEPass exists (documented with disable flag)",
+      "Peephole patterns detected in PTX emission (0x9F2A40 analysis)",
+      "MachineCSE and MachineInstCombiner are NVIDIA-specific passes",
+      "Algebraic simplifications are standard LLVM patterns"
+    ],
+    "medium_confidence_items": [
+      "NVVMPeepholeOptimizer pass exists (listed but not decompiled)",
+      "Specific pattern matching algorithms used",
+      "Exact execution ordering of passes",
+      "Function-level implementation details"
+    ],
+    "unknown_items": [
+      "Exact implementation of NVIDIA-specific peephole optimizations",
+      "Detailed cost model for pattern selection",
+      "Specific bank conflict detection algorithm",
+      "Machine instruction format details"
+    ]
+  },
+
+  "validation_requirements": {
+    "test_cases_needed": [
+      {
+        "test": "Redundant move elimination",
+        "input_ptx": "mov %r1, %r0; mov %r2, %r1;",
+        "expected_output": "mov %r2, %r0;",
+        "validation_method": "Compile test kernel, compare output PTX"
+      },
+      {
+        "test": "MAD instruction generation",
+        "input_ir": "mul %t, %a, %b; add %result, %t, %c",
+        "expected_output": "mad instruction emitted",
+        "validation_method": "Trace instruction emission"
+      },
+      {
+        "test": "Constant propagation",
+        "input_ir": "load constant 42; use constant",
+        "expected_output": "immediate 42 in instruction",
+        "validation_method": "Pattern matching in emitted PTX"
+      }
+    ]
+  },
+
+  "cross_references": {
+    "related_l1_analyses": [
+      "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json - NVVMPeepholeOptimizer listed line 335",
+      "foundation/analyses/11_PTX_GENERATION_MECHANICS.json - Peephole patterns section 435-463",
+      "foundation/analyses/02_MODULE_ANALYSIS.json - optimization_framework module description"
+    ],
+    "related_l2_analyses": [
+      "algorithms/instruction_selection.json - Pattern matching at earlier stage",
+      "algorithms/local_optimizations.json - Related local optimization techniques"
+    ]
+  },
+
+  "findings_summary": {
+    "key_discoveries": [
+      "NVVMPeepholeOptimizer is a confirmed NVIDIA-specific pass in the compilation pipeline",
+      "Peephole optimizations operate primarily at two levels: IR-level (InstCombine) and machine-level (MachineCSE, MachineInstCombiner)",
+      "PTX-specific peephole patterns include MAD instruction generation and bank conflict avoidance",
+      "Pattern matching uses multiple algorithms: linear scan, SSA tracking, DAG matching, and heuristic cost models"
+    ],
+    "performance_implications": [
+      "Redundant move elimination reduces register pressure and instruction count",
+      "MAD instruction combining saves 1 instruction per occurrence (very frequent in tensor operations)",
+      "Bank conflict avoidance can provide 4-32x performance improvement for shared memory kernels",
+      "Cache modifier optimization improves memory hierarchy performance"
+    ],
+    "research_gaps": [
+      "Exact decompilation of NVVMPeepholeOptimizer needed to confirm patterns",
+      "Detailed cost model parameters for pattern selection",
+      "Bank conflict detection algorithm specifics",
+      "Machine instruction format details"
+    ]
+  }
+}

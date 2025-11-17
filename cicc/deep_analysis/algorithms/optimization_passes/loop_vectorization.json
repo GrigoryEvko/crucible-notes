@@ -1,0 +1,342 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_03",
+    "date": "2025-11-16",
+    "confidence": "MEDIUM",
+    "status": "SUSPECTED_WITH_EVIDENCE",
+    "pass_name": "Loop Vectorization"
+  },
+
+  "discovery": {
+    "summary": "Loop Vectorization transforms scalar loops into vectorized form to exploit data-level parallelism. For GPUs, this creates warp-level parallelism.",
+    "details": "LoopVectorize is a sophisticated pass that identifies data-parallel loops and generates vectorized code. For GPU/CUDA, this is adapted to warp-level execution where 32 threads execute the same operation on different data. This differs from traditional CPU SIMD vectorization but serves the same purpose of exploiting data parallelism.",
+    "evidence": [
+      "Listed in unconfirmed passes: 'LoopVectorize', 'LoopIdiomVectorize' (21_OPTIMIZATION_PASS_MAPPING.json lines 266-267)",
+      "Compiler comparison: 'Warp-level vectorization (32/64 threads execute same instruction)' vs traditional SIMD (23_COMPILER_COMPARISON.json line 147)",
+      "Key insight: 'CICC doesn't need traditional SIMD vectorization - GPU provides natural parallelism' (line 148)",
+      "Pass ordering: Part of loop optimization pipeline (LoopSimplify -> LoopRotate -> LoopUnroll -> LoopVectorize) line 812",
+      "Module analysis: Vectorization mentioned in optimization framework",
+      "Performance opportunities: 'Vectorize data-parallel loops' (04_PERFORMANCE_OPPORTUNITIES.json line 117)"
+    ]
+  },
+
+  "pass_identification": {
+    "llvm_pass_name": "LoopVectorize",
+    "llvm_pass_id": "loop-vectorize",
+    "pass_type": "Loop Pass / Function Pass",
+    "optimization_category": "Loop Transformation / Parallelization",
+    "execution_level": "Loop/Function Level",
+    "pipeline_position": "Late stage in loop optimization pipeline, before instruction selection"
+  },
+
+  "algorithm_description": {
+    "overview": "LoopVectorize identifies innermost loops with data parallelism and generates vectorized code operating on multiple iterations simultaneously.",
+    "core_concept": "Transform scalar loop into vector loop where each operation processes V elements (V=vector width, GPU context: V=32 for warp)",
+    "steps": [
+      {
+        "step": 1,
+        "name": "Loop Analysis and Dependence Check",
+        "description": "Analyze innermost loop for data parallelism",
+        "analysis": [
+          "Check for loop-carried dependencies",
+          "Identify reduction patterns",
+          "Analyze memory access patterns"
+        ],
+        "criterion": "Loop iterations must be independent (or have specific dependency patterns)"
+      },
+      {
+        "step": 2,
+        "name": "Cost Model Evaluation",
+        "description": "Estimate benefit/cost of vectorization",
+        "factors": [
+          "Vector width (operations per iteration set)",
+          "Memory bandwidth improvement",
+          "Instruction-level parallelism",
+          "Register pressure increase",
+          "Code size increase"
+        ]
+      },
+      {
+        "step": 3,
+        "name": "Legality Checking",
+        "description": "Verify vectorization preserves program semantics",
+        "checks": [
+          "No loop-carried data dependencies prevent vectorization",
+          "Reductions are properly handled",
+          "Memory access patterns are vectorizable"
+        ]
+      },
+      {
+        "step": 4,
+        "name": "Vectorized Loop Generation",
+        "description": "Create vectorized version of loop body",
+        "operations": [
+          "Adapt instruction operands for vector operations",
+          "Create vector load/store instructions",
+          "Handle partial iterations (remainder loops)",
+          "Generate gather/scatter for irregular accesses"
+        ]
+      },
+      {
+        "step": 5,
+        "name": "Reduction Handling",
+        "description": "Special handling for reduction operations",
+        "patterns": [
+          "Sum reduction (+=)",
+          "Multiplication reduction (*=)",
+          "Min/Max reductions",
+          "Custom reductions"
+        ],
+        "implementation": "Horizontal reduction operations combining partial results"
+      },
+      {
+        "step": 6,
+        "name": "Remainder Loop Creation",
+        "description": "Handle iterations not divisible by vector width",
+        "strategies": [
+          "Generate scalar remainder loop for leftover iterations",
+          "Or use masking/predicates if architecture supports"
+        ]
+      }
+    ]
+  },
+
+  "gpu_vectorization_specifics": {
+    "warp_level_vectorization": {
+      "definition": "Instead of SIMD within single instruction, distribute iterations across warp threads",
+      "execution_model": "All 32 threads in warp execute same loop iteration (different data elements)",
+      "difference_from_simd": "Thread-level parallelism vs instruction-level parallelism",
+      "natural_advantage": "GPU threads are the natural 'vector' units"
+    },
+    "data_distribution": "Each thread in warp gets different array element to process",
+    "memory_coalescing": "Vectorized memory access patterns improve cache line utilization",
+    "reduction_across_warp": "Reductions require warp-synchronous operations (shuffle, reduction)",
+    "thread_divergence": "Must avoid different threads taking different paths within warp"
+  },
+
+  "loop_idiom_vectorize": {
+    "variant_name": "LoopIdiomVectorize",
+    "description": "Recognizes specific loop idioms and applies specialized vectorization",
+    "examples": [
+      "memset/memcpy-like patterns",
+      "Standard reduction patterns (sum, product, min, max)",
+      "Saxpy-like operations (scalar * vector + vector)"
+    ],
+    "evidence": "Listed in unconfirmed passes (line 267)",
+    "benefit": "More efficient code generation for recognized patterns"
+  },
+
+  "slp_vectorizer": {
+    "name": "SLP Vectorizer (Superword Level Parallelism)",
+    "relation": "Complementary to loop vectorization",
+    "scope": "Finds parallelism within basic blocks, not loops",
+    "listed": "In vectorization section (21_OPTIMIZATION_PASS_MAPPING.json line 295)",
+    "interaction": "Works alongside LoopVectorize to find all parallelism opportunities"
+  },
+
+  "cost_model": {
+    "description": "Estimated speedup vs code size/register pressure tradeoff",
+    "benefits": [
+      {
+        "factor": "Iteration reduction",
+        "value": "Trip count reduced by vector width"
+      },
+      {
+        "factor": "Memory bandwidth",
+        "value": "Coalesced memory access improves bandwidth utilization"
+      },
+      {
+        "factor": "Instruction-level parallelism",
+        "value": "More independent operations enable better pipelining"
+      }
+    ],
+    "costs": [
+      {
+        "factor": "Code size",
+        "value": "Vectorized loop body may be larger"
+      },
+      {
+        "factor": "Register pressure",
+        "value": "Processing vector elements increases register usage"
+      },
+      {
+        "factor": "Remainder loop",
+        "value": "Additional scalar loop for non-divisible iterations"
+      }
+    ],
+    "gpu_adaptation": "GPU vectorization has different tradeoffs due to warp execution model"
+  },
+
+  "parameters_and_configuration": {
+    "vectorize_enable": {
+      "name": "Enable vectorization",
+      "type": "boolean",
+      "default": "true",
+      "purpose": "Master switch for loop vectorization"
+    },
+    "prefer_vector_width": {
+      "name": "Preferred vector width",
+      "type": "integer",
+      "default": "Depends on target (32 for GPU warp)",
+      "purpose": "Target vector width for vectorization"
+    },
+    "min_loop_size": {
+      "name": "Minimum loop size",
+      "type": "integer",
+      "default": "Likely 16-32 instructions",
+      "purpose": "Don't vectorize very small loops"
+    }
+  },
+
+  "data_parallelism_patterns": {
+    "element_wise_operations": {
+      "pattern": "for(i) y[i] = f(x[i])",
+      "vectorizable": true,
+      "example": "element-wise arithmetic, trigonometric functions"
+    },
+    "reductions": {
+      "pattern": "for(i) sum += f(x[i])",
+      "vectorizable": true,
+      "challenge": "Requires reduction tree"
+    },
+    "gather_scatter": {
+      "pattern": "for(i) y[i] = x[idx[i]]",
+      "vectorizable": "Conditionally (with gather instruction)",
+      "challenge": "Irregular memory access patterns"
+    },
+    "loop_carried_dependencies": {
+      "pattern": "for(i) y[i] = f(y[i-1], x[i])",
+      "vectorizable": false,
+      "note": "Cannot vectorize due to iteration dependence"
+    }
+  },
+
+  "cuda_specific_adaptations": {
+    "warp_execution": "Natural 'vector' unit is a 32-thread warp",
+    "thread_block_mapping": "Vectorization helps map thread blocks to loop iterations",
+    "memory_access_coalescing": "Vectorized patterns naturally coalesce memory access",
+    "divergence_control": "Must prevent thread divergence within warp during vectorized execution",
+    "shared_memory": "Vectorized operations can efficiently use shared memory",
+    "tensor_cores": "May interact with tensor core operations for matrix operations"
+  },
+
+  "integration_points": {
+    "pipeline_stage": "Late stage in loop optimization, before instruction selection",
+    "called_from": "Optimization Framework pass manager",
+    "prerequisites": [
+      "LoopSimplify (canonical form)",
+      "LoopInfo (loop structure)",
+      "Dominance information"
+    ],
+    "execution_order": "After basic loop passes, may run multiple times",
+    "frequency": "Runs once or twice per optimization cycle"
+  },
+
+  "estimated_function_count": 400,
+  "estimated_lines_of_code": 5000,
+
+  "validation_status": {
+    "confirmed": false,
+    "confidence_level": "MEDIUM - listed + compiler comparison evidence",
+    "validation_method": "LLVM standard pipeline + GPU-specific adaptation evidence",
+    "validation_evidence": [
+      "LoopVectorize listed in unconfirmed passes",
+      "Compiler comparison explicitly discusses warp-level vectorization",
+      "Part of standard LLVM optimization pipeline",
+      "Essential for GPU performance (parallelism extraction)"
+    ]
+  },
+
+  "challenges": {
+    "dependence_analysis": "Accurate detection of loop-carried dependencies is complex",
+    "memory_patterns": "Irregular memory access patterns (gather/scatter) are hard to vectorize",
+    "cost_estimation": "Predicting actual speedup is difficult (depends on memory behavior)",
+    "code_generation": "Generating efficient vectorized code is non-trivial",
+    "gpu_specific": "Must adapt traditional SIMD techniques to thread-level parallelism"
+  },
+
+  "performance_impact": {
+    "benefits": [
+      "Exploits data parallelism natural to GPUs",
+      "Reduces loop iteration count by vector width",
+      "Improves memory bandwidth utilization through coalescing",
+      "Enables thread cooperation within warp",
+      "Typical improvement: 2-8x for vectorizable loops"
+    ],
+    "costs": [
+      "Code size increase",
+      "Register pressure increase",
+      "Remainder loop overhead for non-divisible iterations",
+      "Not beneficial for already-parallel code"
+    ]
+  },
+
+  "testing_strategy": {
+    "simple_vectorization_test": {
+      "kernel_type": "Element-wise operation",
+      "example": "for(int i=0; i<1024; i++) y[i] = x[i] * 2.0f;",
+      "expected_behavior": "Vectorized with warp-level parallelism",
+      "validation": "Single kernel iteration processes 32 elements (warp width)"
+    },
+    "reduction_test": {
+      "kernel_type": "Sum reduction",
+      "example": "for(int i=0; i<N; i++) sum += x[i];",
+      "expected_behavior": "Vectorized with parallel reduction",
+      "validation": "Check warp reduction implementation"
+    },
+    "irregular_access_test": {
+      "kernel_type": "Gather pattern",
+      "example": "for(int i=0; i<N; i++) y[i] = x[idx[i]];",
+      "expected_behavior": "May not vectorize (or use gather)",
+      "validation": "Verify behavior depends on architecture"
+    }
+  },
+
+  "cross_references": {
+    "foundation_analysis_files": [
+      "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json (lines 266-267, 294-295, 812)",
+      "foundation/analyses/23_COMPILER_COMPARISON.json (lines 145-148)",
+      "foundation/analyses/04_PERFORMANCE_OPPORTUNITIES.json (line 117)"
+    ],
+    "llvm_documentation": "https://llvm.org/docs/Passes/#loop-vectorize",
+    "research_papers": [
+      "Loop Vectorization (Loop Vectorizer paper)",
+      "SLP Vectorization for parallelism within blocks",
+      "Vectorization for GPUs (NVIDIA LLVM adaptations)"
+    ]
+  },
+
+  "research_notes": {
+    "algorithm_source": "Advanced loop optimization from research and LLVM implementation",
+    "nvidia_adaptations": "Adapted from CPU SIMD vectorization to GPU warp-level parallelism",
+    "critical_difference": "GPU has natural thread-level parallelism instead of SIMD within instruction",
+    "implementation_complexity": "Very high - requires sophisticated analysis and code generation",
+    "key_insight": "Loop vectorization in GPU context means distributing work across thread block threads"
+  },
+
+  "open_questions": [
+    "How does CICC adapt loop vectorization to warp execution?",
+    "What vector width is assumed (32 for warp)?",
+    "How are reductions implemented across warps?",
+    "Does it integrate with tensor core operations?",
+    "How are gather/scatter operations handled?",
+    "What cost model is used for vectorization decisions?"
+  ],
+
+  "notes_for_reverse_engineering": {
+    "function_identification_hints": [
+      "Look for dependence analysis and memory pattern classification",
+      "Find cost model evaluation for vectorization decisions",
+      "Identify vector code generation functions",
+      "Search for warp-specific optimization code"
+    ],
+    "evidence_patterns": [
+      "String references to 'warp', 'vectorize', 'parallelism'",
+      "Functions analyzing loop patterns for data independence",
+      "Vector instruction generation routines",
+      "Reduction pattern recognition"
+    ],
+    "validation_approach": "Trace vectorization of simple data-parallel kernels, observe generated code"
+  }
+}

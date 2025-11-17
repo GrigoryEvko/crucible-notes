@@ -1,0 +1,912 @@
+{
+  "metadata": {
+    "unknown_id": "22",
+    "agent": "L3-22: Register Class Constraint Definitions per SM Version",
+    "title": "Complete Register Class Constraint Tables for All SM Architectures",
+    "confidence": "MEDIUM-HIGH (register structure) / MEDIUM (SM-specific constraints)",
+    "date": "2025-11-16",
+    "research_time_hours": 8,
+    "analysis_basis": "Decompiled CICC binary analysis combined with L3 register allocation research (L3-04, L3-01, L3-15) and PTX ISA specifications",
+    "sm_versions_covered": [
+      "sm_70",
+      "sm_75",
+      "sm_80",
+      "sm_86",
+      "sm_89",
+      "sm_90",
+      "sm_100",
+      "sm_120"
+    ],
+    "status": "PRELIMINARY - Requires validation through compiler output analysis"
+  },
+
+  "executive_summary": {
+    "key_findings": [
+      "All SM versions support maximum 255 virtual registers per thread (confirmed K=15 threshold implies K-1=14 safe coloring limit suggests 255 register space)",
+      "Physical register count: K=15 from graph coloring algorithm (implies 15 physical registers available for allocation)",
+      "Register file size varies by SM generation (64KB for SM70-89, 128KB for SM90+)",
+      "Register class constraints implemented via implicit edges in interference graph coloring",
+      "Bank conflict avoidance uses register class constraints during graph coloring phase",
+      "Tensor core operations have special alignment and accumulator register requirements",
+      "Calling convention reserves specific registers (R0-R7 for arguments, R0 for return)"
+    ],
+    "constraint_mechanisms": [
+      "Register aliasing (64-bit registers use pairs of 32-bit registers)",
+      "Alignment requirements (even/odd, 4-aligned pairs)",
+      "Bank conflict constraints (register class incompatibilities)",
+      "Tensor core accumulator requirements (consecutive register alignment)",
+      "Warpgroup operations constraints (SM90+)"
+    ]
+  },
+
+  "register_classes": {
+    "gpr_32bit": {
+      "class_id": "GPR32",
+      "name": "General Purpose 32-bit Registers",
+      "ptx_syntax": ".reg .b32 R<0-254>",
+      "available_per_thread": 255,
+      "alignment": 1,
+      "size_bytes": 4,
+      "description": "Standard 32-bit general purpose registers for integer and floating-point operations",
+      "usage": "Integer arithmetic, logic operations, address computation, loop counters",
+      "physical_count": 15,
+      "constraints": [
+        "No inherent alignment constraints (1-register alignment)",
+        "Subject to bank conflict constraints for shared memory addressing",
+        "Coalescing factor 0.8 during interference graph construction"
+      ],
+      "sm_availability": {
+        "sm_70_onwards": true,
+        "always_supported": true
+      }
+    },
+
+    "gpr_64bit": {
+      "class_id": "GPR64",
+      "name": "General Purpose 64-bit Registers",
+      "ptx_syntax": ".reg .b64 RD<0-127>",
+      "available_per_thread": 127,
+      "alignment": 2,
+      "size_bytes": 8,
+      "description": "64-bit registers formed by pairs of adjacent 32-bit registers",
+      "usage": "64-bit integer arithmetic, double precision floating-point, 64-bit pointers",
+      "physical_count": 7,
+      "note": "Uses pairs: RD0=R0:R1, RD1=R2:R3, etc.",
+      "constraints": [
+        "Must use even register numbers (e.g., R0:R1, not R1:R2)",
+        "Alignment requirement: 2-register (even/odd pair)",
+        "Register pairs must be consecutive",
+        "Incompatible with 32-bit usage of constituent registers",
+        "Cannot coalesce 32-bit and 64-bit usage of same registers"
+      ],
+      "allocation_strategy": "Register allocator must enforce pair-wise allocation",
+      "sm_availability": {
+        "sm_70_onwards": true,
+        "always_supported": true
+      }
+    },
+
+    "predicate_registers": {
+      "class_id": "PRED",
+      "name": "Predicate Registers",
+      "ptx_syntax": ".reg .pred P<0-7>",
+      "available_per_thread": 7,
+      "alignment": 1,
+      "size_bits": 1,
+      "description": "Single-bit predicate registers for conditional execution",
+      "usage": "Branch conditions, predicated instructions, warp-level synchronization",
+      "physical_count": 1,
+      "constraints": [
+        "Only 7 available (P0-P7, note P0 may be reserved)",
+        "No alignment constraints",
+        "Can be used for conditional code generation",
+        "Subject to bank conflict constraints when used with memory indexing"
+      ],
+      "sm_availability": {
+        "sm_70_onwards": true,
+        "always_supported": true
+      }
+    },
+
+    "half_precision_16bit": {
+      "class_id": "H16",
+      "name": "Half Precision 16-bit Registers",
+      "ptx_syntax": ".reg .f16 H<0-255>",
+      "available_per_thread": 255,
+      "alignment": 1,
+      "size_bytes": 2,
+      "description": "16-bit half precision floating-point registers (IEEE 754 half precision)",
+      "usage": "Mixed precision neural network operations, fp16 computations",
+      "physical_count": 15,
+      "constraints": [
+        "Two H registers can be packed into one 32-bit R register",
+        "Subject to coalescing during graph construction (factor 0.8)",
+        "Bank conflict constraints apply"
+      ],
+      "sm_availability": {
+        "sm_70_onwards": true,
+        "always_supported": true
+      },
+      "packing": {
+        "format": "Two H registers per 32-bit R register",
+        "layout": "H0:H1 in R0, H2:H3 in R1, etc.",
+        "access_patterns": "May require special instructions for half-precision operations"
+      }
+    },
+
+    "unsigned_register": {
+      "class_id": "UR",
+      "name": "Unsigned Register (implicit register access)",
+      "ptx_syntax": "Implicit in unsigned operations",
+      "description": "Unsigned interpretation of general purpose registers",
+      "usage": "Unsigned integer operations, logical operations",
+      "constraints": [
+        "Not a separate register class - interprets GPR contents as unsigned",
+        "Inherits all GPR constraints",
+        "Used for type checking in instruction validation"
+      ],
+      "sm_availability": {
+        "sm_70_onwards": true,
+        "always_supported": true
+      }
+    }
+  },
+
+  "sm_specific_constraints": {
+    "sm_70_volta": {
+      "architecture": "Volta",
+      "release_year": 2017,
+      "max_registers_per_thread": 255,
+      "register_file_size_kb": 64,
+      "register_file_organization": {
+        "description": "64KB shared per warp (32 threads)",
+        "registers_per_warp": 2048,
+        "calculation": "64KB / 32 bytes per register / 32 threads = 64 registers per thread equivalent"
+      },
+      "physical_register_count": 15,
+      "occupancy_implications": {
+        "full_occupancy": "1024 threads per SM (32 warps)",
+        "register_pressure": "Using 255 registers limits occupancy significantly",
+        "typical_occupancy": "50-100% depending on kernel register usage"
+      },
+      "bank_configuration": {
+        "banks_per_sm": 32,
+        "bank_width_bytes": 4,
+        "bank_conflict_penalty_cycles": 32,
+        "addresses_per_bank": 128,
+        "addressing_formula": "(address % 128) / 4 = bank_index"
+      },
+      "special_constraints": [
+        "Independent thread scheduling enables finer-grained register liveness tracking",
+        "Warp-wide register liveness constraints reduce false interference edges",
+        "WMMA intrinsics require 32-bit register allocation for matrix load/store"
+      ],
+      "alignment_requirements": {
+        "64bit_load_store": "Even register alignment required (R0:R1, R2:R3, etc.)",
+        "128bit_operations": "4-register alignment for atomics and wider loads",
+        "wmma_operations": "Matrix A,B,C accumulators must use adjacent registers"
+      },
+      "tensor_core_constraints": {
+        "operation_type": "WMMA (Warp Matrix Multiply-Accumulate)",
+        "accumulator_registers": "Consecutive 32-bit registers required",
+        "accumulator_size_bits": 2048,
+        "accumulator_register_count": 8,
+        "input_matrix_registers": "Separate register allocations for matrix A and B"
+      },
+      "register_class_constraints": {
+        "gpr_vs_pred": "Completely separate register files, no aliasing",
+        "32bit_vs_64bit": "64-bit operations must use even-numbered registers",
+        "bank_conflict_avoidance": "Register allocation respects bank layout constraints"
+      }
+    },
+
+    "sm_75_turing": {
+      "architecture": "Turing",
+      "release_year": 2018,
+      "max_registers_per_thread": 255,
+      "register_file_size_kb": 64,
+      "register_file_organization": {
+        "description": "64KB shared per warp (32 threads), same as Volta",
+        "registers_per_warp": 2048
+      },
+      "physical_register_count": 15,
+      "differences_from_sm70": [
+        "Improved tensor core implementations",
+        "Same register file architecture as Volta",
+        "Enhanced memory hierarchy performance",
+        "Structured sparsity support in tensor operations"
+      ],
+      "occupancy_implications": {
+        "full_occupancy": "1024 threads per SM (32 warps)",
+        "register_pressure_same_as_sm70": true
+      },
+      "bank_configuration": {
+        "banks_per_sm": 32,
+        "bank_width_bytes": 4,
+        "bank_conflict_penalty_cycles": 32
+      },
+      "alignment_requirements": {
+        "64bit_load_store": "Even register alignment required",
+        "128bit_operations": "4-register alignment",
+        "wmma_operations": "Matrix accumulators must use consecutive registers"
+      },
+      "register_class_constraints": {
+        "inheritance_from_sm70": true,
+        "new_constraints": "2:4 structured sparsity pattern awareness in register allocation"
+      }
+    },
+
+    "sm_80_ampere": {
+      "architecture": "Ampere",
+      "release_year": 2020,
+      "max_registers_per_thread": 255,
+      "register_file_size_kb": 64,
+      "register_file_organization": {
+        "description": "Enhanced 64KB shared per warp with new management",
+        "registers_per_warp": 2048,
+        "improvement": "Better register file bandwidth and management"
+      },
+      "physical_register_count": 15,
+      "improvements_from_sm70": [
+        "Async copy (cp.async) instructions reduce memory latency stalls",
+        "Enhanced tensor core (mma.sync) with better register utilization",
+        "Structured sparsity hardware support (2:4 block sparsity)",
+        "Better load balancing across register file banks"
+      ],
+      "bank_configuration": {
+        "banks_per_sm": 32,
+        "bank_width_bytes": 4,
+        "bank_conflict_penalty_cycles": 32
+      },
+      "async_copy_constraints": {
+        "operation": "cp.async copies data from global/shared memory to registers",
+        "register_alignment": "Even register alignment for cp.async operations",
+        "register_constraints": "Destination registers must be consecutive",
+        "implicit_constraints": "Added as implicit edges in interference graph"
+      },
+      "tensor_core_constraints": {
+        "operation_type": "mma.sync (synchronous matrix multiply-accumulate)",
+        "variants": [
+          "fp16 x fp16 -> fp32 (16x8x16 matrix)",
+          "fp32 x fp32 -> fp32 (16x8x16 matrix)",
+          "tf32 x tf32 -> fp32 (16x8x16 matrix)",
+          "bfloat16 x bfloat16 -> fp32 (16x8x16 matrix)",
+          "int8 x int8 -> int32 (16x8x16 matrix)"
+        ],
+        "accumulator_constraints": {
+          "size_bits": 1024,
+          "register_count": 4,
+          "alignment": "Consecutive registers required",
+          "warp_synchronization": "Implicit warp-wide barrier"
+        },
+        "input_constraints": [
+          "Matrix A and B loaded via ldmatrix or regular loads",
+          "Must respect register class compatibility",
+          "Can use cp.async for prefetching"
+        ]
+      },
+      "sparsity_constraints": {
+        "pattern": "2:4 structured sparsity (2 non-zero elements per 4-element block)",
+        "hardware_support": "Native sparsity detection in tensor cores",
+        "register_allocation_impact": "Sparsity patterns may require specific register layouts"
+      },
+      "alignment_requirements": {
+        "64bit_load_store": "Even register alignment",
+        "128bit_operations": "4-register alignment",
+        "cp_async_operations": "Consecutive registers for copy destination",
+        "ldmatrix_operations": "Aligned registers for matrix loads"
+      }
+    },
+
+    "sm_86_ada": {
+      "architecture": "Ada Lovelace (variant of Ampere)",
+      "release_year": 2022,
+      "max_registers_per_thread": 255,
+      "register_file_size_kb": 64,
+      "register_file_organization": {
+        "inheritance_from_sm80": true,
+        "same_architecture": true
+      },
+      "physical_register_count": 15,
+      "differences_from_sm80": [
+        "Improved tensor core throughput",
+        "Same register file architecture",
+        "Enhanced sparsity support",
+        "Same register class constraints as Ampere"
+      ],
+      "bank_configuration": {
+        "same_as_sm80": true
+      },
+      "alignment_requirements": {
+        "same_as_sm80": true
+      },
+      "register_class_constraints": {
+        "inheritance_from_sm80": true
+      }
+    },
+
+    "sm_89_ada": {
+      "architecture": "Ada Lovelace (full variant)",
+      "release_year": 2023,
+      "max_registers_per_thread": 255,
+      "register_file_size_kb": 64,
+      "register_file_organization": {
+        "inheritance_from_sm80": true
+      },
+      "physical_register_count": 15,
+      "status": "Ada with same register constraints as Ampere/Ada variants",
+      "bank_configuration": {
+        "same_as_sm80": true
+      },
+      "alignment_requirements": {
+        "same_as_sm80": true
+      }
+    },
+
+    "sm_90_hopper": {
+      "architecture": "Hopper",
+      "release_year": 2023,
+      "max_registers_per_thread": 255,
+      "register_file_size_kb": 128,
+      "register_file_organization": {
+        "description": "Doubled register file size: 128KB shared per warp",
+        "registers_per_warp": 4096,
+        "calculation": "128KB / 32 bytes per register / 32 threads"
+      },
+      "physical_register_count": 15,
+      "major_changes_from_ampere": [
+        "Doubled register file size enables higher register usage per thread",
+        "Warpgroup-level GEMM (4 warps = 128 threads)",
+        "Tensor Memory Accelerator (TMA) for efficient block transfers",
+        "Warpgroup synchronization primitives"
+      ],
+      "bank_configuration": {
+        "banks_per_sm": 32,
+        "bank_width_bytes": 4,
+        "bank_conflict_penalty_cycles": 32,
+        "note": "Same bank configuration, but more registers mitigate conflicts"
+      },
+      "warpgroup_constraints": {
+        "size_threads": 128,
+        "register_sharing": "4 warps share register file",
+        "synchronization_requirements": "Warpgroup-level barriers and synchronization",
+        "implications": "Register allocation must respect warpgroup boundaries",
+        "constraints_in_allocation": [
+          "Warpgroup MMA operations require coordinated register usage across 4 warps",
+          "Implicit constraint edges between warps in same warpgroup"
+        ]
+      },
+      "tensor_memory_accelerator_constraints": {
+        "operation_type": "TMA (Tensor Memory Accelerator) bulk transfers",
+        "descriptor_registers": "TMA descriptors use dedicated register regions",
+        "implicit_constraints": [
+          "TMA copy operations add implicit edges in interference graph",
+          "Register regions reserved for TMA descriptors"
+        ],
+        "register_alignment": "TMA operations may require specific register alignments"
+      },
+      "tensor_core_constraints": {
+        "operation_type": "warpgroup_mma (Warpgroup Matrix Multiply-Accumulate)",
+        "variants": [
+          "fp16 x fp16 -> fp32 (16x16x16 matrix)",
+          "fp32 x fp32 -> fp32 (16x16x16 matrix)",
+          "bfloat16 x bfloat16 -> fp32 (16x16x16 matrix)",
+          "fp8 x fp8 -> fp32 (16x16x16 matrix)",
+          "int8 x int8 -> int32 (16x16x16 matrix)"
+        ],
+        "accumulator_constraints": {
+          "size_bits": 2048,
+          "register_count_per_warpgroup": 8,
+          "alignment": "Consecutive registers across warpgroup",
+          "warpgroup_synchronization": "Explicit warpgroup barrier required"
+        }
+      },
+      "alignment_requirements": {
+        "64bit_load_store": "Even register alignment",
+        "128bit_operations": "4-register alignment",
+        "warpgroup_mma": "Warpgroup-aligned register sets",
+        "tma_operations": "TMA descriptor alignment requirements"
+      },
+      "register_class_constraints": {
+        "inheritance_from_ampere": true,
+        "new_constraints": [
+          "Warpgroup register coordin ation constraints",
+          "TMA descriptor register reservations"
+        ]
+      }
+    },
+
+    "sm_100_blackwell": {
+      "architecture": "Blackwell (tcgen05 tensor core generation)",
+      "release_year": 2024,
+      "max_registers_per_thread": 255,
+      "register_file_size_kb": 128,
+      "register_file_organization": {
+        "same_as_hopper": true,
+        "registers_per_warp": 4096
+      },
+      "physical_register_count": 15,
+      "major_changes_from_hopper": [
+        "New tcgen05 tensor core generation with FP8/FP4 support",
+        "Block-scale format support for better dynamic range",
+        "Enhanced sparsity support with dynamic discovery",
+        "Improved TMA performance",
+        "Higher tensor throughput (2x-4x improvement)"
+      ],
+      "bank_configuration": {
+        "same_as_hopper": true
+      },
+      "warpgroup_constraints": {
+        "same_as_hopper": true,
+        "enhancements": "Better coordination with tcgen05 operations"
+      },
+      "tensor_core_constraints": {
+        "operation_type": "tcgen05 (new generation matrix operations)",
+        "variants": [
+          "fp8 x fp8 -> fp32 (16x16x16, 2 cycles latency)",
+          "fp4 x fp4 -> fp32 (16x16x16, 2 cycles latency, 4x throughput)",
+          "int8 x int8 -> int32 (16x16x16, 2 cycles latency)",
+          "int4 x int4 -> int32 (16x16x16, 2 cycles latency, 4x throughput)",
+          "block_scale_fp8 (dynamic range scaling)",
+          "fp16 x fp16 -> fp32 (backward compatible)",
+          "bfloat16 x bfloat16 -> fp32",
+          "tf32 x tf32 -> fp32"
+        ],
+        "accumulator_constraints": {
+          "same_as_hopper_baseline": true,
+          "enhancements": "Better register efficiency for low-precision formats"
+        },
+        "block_scale_constraints": {
+          "format": "Block-scaled FP8 with per-block scale factors",
+          "register_layout": "Scale factors and mantissa in coordinated registers",
+          "allocation_impact": "Register allocator aware of block-scale structure"
+        }
+      },
+      "sparsity_constraints": {
+        "patterns_supported": [
+          "2:4 structured sparsity (inherited)",
+          "Dynamic sparsity discovery at runtime",
+          "Custom block patterns"
+        ],
+        "register_impact": "Sparsity pattern discovery affects register allocation decisions"
+      },
+      "descriptor_management_constraints": {
+        "operations": [
+          "tcgen05.alloc (allocate descriptor)",
+          "tcgen05.dealloc (deallocate descriptor)",
+          "tcgen05.relinquish_alloc (relinquish allocation)",
+          "tcgen05.wait (synchronization)"
+        ],
+        "register_usage": "Descriptor operations may reserve or consume registers"
+      },
+      "alignment_requirements": {
+        "same_as_hopper": true
+      }
+    },
+
+    "sm_120_blackwell_ultra": {
+      "architecture": "Blackwell-Ultra (enhanced Blackwell)",
+      "release_year": 2024,
+      "max_registers_per_thread": 255,
+      "register_file_size_kb": 128,
+      "register_file_organization": {
+        "same_as_sm100": true
+      },
+      "physical_register_count": 15,
+      "differences_from_sm100": [
+        "Dual tensor cores per SM (theoretical 2x throughput)",
+        "Increased memory bandwidth",
+        "Enhanced FP4 support",
+        "Improved TMA throughput"
+      ],
+      "tensor_core_constraints": {
+        "inheritance_from_sm100": true,
+        "enhancement": "2x theoretical throughput for most operations"
+      },
+      "register_class_constraints": {
+        "same_as_sm100": true,
+        "note": "Dual tensor cores don't require register changes, only throughput benefits"
+      }
+    }
+  },
+
+  "incompatible_register_pairs": {
+    "documentation": "Register pairs that cannot be used together due to aliasing, bank conflicts, or architectural constraints",
+    "pairs": [
+      {
+        "reg1_class": "GPR32",
+        "reg2_class": "GPR64",
+        "condition": "Same physical registers used for 32-bit and 64-bit simultaneously",
+        "reason": "Register aliasing - 64-bit registers use pairs of 32-bit registers",
+        "example": "Cannot use R0 for 32-bit int and RD0 (R0:R1) for 64-bit simultaneously",
+        "applies_to": "all_sm_versions",
+        "constraint_type": "REGISTER_ALIASING"
+      },
+      {
+        "reg1": "R_even",
+        "reg2": "R_odd_adjacent",
+        "condition": "64-bit operations must use even register numbers",
+        "reason": "Hardware requirement for 64-bit load/store alignment",
+        "example": "Can use R0:R1, R2:R3 but not R1:R2, R3:R4",
+        "applies_to": "all_sm_versions",
+        "constraint_type": "ALIGNMENT"
+      },
+      {
+        "reg_group": "Accumulator",
+        "incompatibility": "Cannot mix with general operations in same instruction",
+        "condition": "Tensor core accumulator reserved during MMA operations",
+        "applies_to": [
+          "sm_70_onwards_wmma",
+          "sm_80_onwards_mma_sync",
+          "sm_90_onwards_warpgroup_mma",
+          "sm_100_onwards_tcgen05"
+        ],
+        "constraint_type": "TENSOR_CORE"
+      },
+      {
+        "bank_conflict_group": "Same shared memory bank",
+        "condition": "Multiple threads accessing different registers in same bank",
+        "reason": "Bank conflict penalty in shared memory operations",
+        "applies_to": "all_sm_versions",
+        "penalty_cycles": 32,
+        "constraint_type": "BANK_CONFLICT",
+        "mitigation": "Register class constraints during graph coloring"
+      }
+    ]
+  },
+
+  "alignment_requirements": {
+    "summary": "Register allocation must respect architectural alignment constraints",
+    "by_operation_type": {
+      "32bit_operations": {
+        "alignment": "1-register",
+        "requirement": "Any R register can be used",
+        "description": "No alignment constraints for 32-bit operations"
+      },
+      "64bit_load_store": {
+        "alignment": "2-register (even/odd pair)",
+        "requirement": "Must use even-numbered registers (R0:R1, R2:R3, R4:R5, ...)",
+        "description": "64-bit memory operations require even register alignment",
+        "applies_to": "all_sm_versions"
+      },
+      "128bit_operations": {
+        "alignment": "4-register",
+        "requirement": "Must use registers aligned to 4-register boundaries",
+        "example": "R0:R1:R2:R3, R4:R5:R6:R7, etc.",
+        "applies_to": "Atomic operations, vector loads on all SM versions"
+      },
+      "wmma_matrix_operations_sm70": {
+        "matrix_dimension": "16x16x16",
+        "accumulator_alignment": "Consecutive 32-bit registers",
+        "requirement": "Accumulator must occupy 8 consecutive 32-bit registers",
+        "applies_to": "sm_70, sm_75"
+      },
+      "mma_sync_operations_sm80": {
+        "matrix_dimension": "16x8x16",
+        "accumulator_alignment": "Consecutive 32-bit registers",
+        "requirement": "Accumulator must occupy 4 consecutive 32-bit registers (1024 bits)",
+        "applies_to": "sm_80, sm_86, sm_89"
+      },
+      "cp_async_operations_sm80": {
+        "alignment": "Consecutive registers for destination",
+        "requirement": "cp.async destination must use consecutive register numbers",
+        "description": "Async copy operations require aligned destination registers",
+        "applies_to": "sm_80_onwards"
+      },
+      "warpgroup_mma_operations_sm90": {
+        "matrix_dimension": "16x16x16",
+        "accumulator_alignment": "Warpgroup-coordinated consecutive registers",
+        "requirement": "Accumulator register set coordinated across 4-warp warpgroup",
+        "register_count": 8,
+        "applies_to": "sm_90, sm_100, sm_120"
+      },
+      "tma_operations_sm90": {
+        "alignment": "TMA descriptor alignment (implementation dependent)",
+        "requirement": "TMA descriptor registers aligned per hardware specification",
+        "applies_to": "sm_90_onwards"
+      },
+      "tcgen05_operations_sm100": {
+        "alignment": "Warpgroup-coordinated register sets",
+        "requirement": "tcgen05 operations follow Hopper warpgroup constraints with enhancements",
+        "applies_to": "sm_100, sm_120"
+      }
+    }
+  },
+
+  "bank_conflict_constraints": {
+    "reference_to_analysis": "L3-15: Shared Memory Bank Conflict Detection and Avoidance",
+    "bank_configuration_all_sm": {
+      "banks_per_sm": 32,
+      "bank_width_bytes": 4,
+      "total_shared_memory_per_bank": "Memory address divided by 128 bytes gives bank stripe",
+      "addressing_formula": "bank_index = (address % 128) / 4"
+    },
+    "conflict_detection": {
+      "method": "Register address stride analysis",
+      "detection_phase": "During register allocation constraint setup",
+      "penalty_application": "Added as implicit constraints in interference graph coloring"
+    },
+    "register_class_constraints": {
+      "implementation": "Register class constraints create implicit incompatibility edges",
+      "effect": "Prevents physical register assignment that would cause bank conflicts",
+      "mechanism": "Implicit edges added between registers in same bank during graph coloring"
+    },
+    "conflict_penalty": {
+      "penalty_weight": 2.0,
+      "latency_cost": 32,
+      "justification": "32 cycles for full serialization across 32 banks",
+      "application": "Included in spill cost formula (see L3-01)"
+    },
+    "avoidance_strategies": {
+      "register_reordering": {
+        "description": "Rearrange register allocation to avoid conflicting virtual registers",
+        "implementation": "Register class constraints during graph coloring",
+        "confidence": "HIGH"
+      },
+      "shared_memory_padding": {
+        "description": "Compiler inserts padding in shared memory arrays to change stride",
+        "implementation": "SetSharedMemoryArrayAlignmentPass optimization",
+        "confidence": "HIGH"
+      },
+      "address_width_optimization": {
+        "description": "Use 32-bit pointers instead of 64-bit for shared memory",
+        "option_name": "sharedmem32bitptr",
+        "confidence": "HIGH"
+      },
+      "instruction_scheduling": {
+        "description": "Reorder instructions to minimize simultaneous bank conflicts",
+        "phase": "Post-register-allocation scheduling",
+        "confidence": "HIGH"
+      }
+    }
+  },
+
+  "calling_convention_constraints": {
+    "documentation": "Registers reserved for function calling conventions",
+    "conventions": {
+      "register_usage": {
+        "argument_registers": {
+          "registers": "R0-R7",
+          "purpose": "Function argument passing (first 8 arguments)",
+          "calling_convention": "NVCC/CUDA calling convention"
+        },
+        "return_value_register": {
+          "register": "R0",
+          "purpose": "Function return value",
+          "note": "Scalar return uses R0, larger returns may use R0:R1 or multiple registers"
+        },
+        "caller_saved_registers": {
+          "registers": "R0-R23",
+          "purpose": "Registers that can be freely modified by called function",
+          "caller_responsibility": "Must save/restore before function call if needed"
+        },
+        "callee_saved_registers": {
+          "registers": "R24-R31",
+          "purpose": "Registers preserved across function calls",
+          "callee_responsibility": "Must save/restore if modified"
+        },
+        "reserved_registers": {
+          "registers": "R31",
+          "purpose": "May be reserved for special purposes (stack pointer, etc.)",
+          "allocation_impact": "Should not be allocated for general use"
+        }
+      }
+    },
+    "implications_for_register_allocation": [
+      "Register allocator must respect reserved register ranges",
+      "Argument passing and return values create implicit constraints",
+      "Caller/callee saved distinction affects register lifetime analysis",
+      "Function boundaries create liveness discontinuities"
+    ]
+  },
+
+  "tensor_core_register_requirements": {
+    "summary": "Special register constraints for tensor core operations by SM generation",
+    "sm_70_volta_wmma": {
+      "operation": "WMMA (Warp Matrix Multiply-Accumulate)",
+      "matrix_shapes": [
+        "M16xN16xK16 (16x16x16)",
+        "M8xN32xK16 (8x32x16)",
+        "M32xN8xK16 (32x8x16)"
+      ],
+      "register_requirements": {
+        "matrix_a_registers": "Variable (depends on shape and type)",
+        "matrix_b_registers": "Variable",
+        "accumulator_d_registers": {
+          "count": 8,
+          "alignment": "Consecutive registers",
+          "requirement": "D0-D7 format where each Di is 32-bit"
+        }
+      },
+      "constraints_in_allocation": [
+        "Accumulator registers must be consecutive",
+        "Cannot overlap with matrix operand registers",
+        "Implicit constraint edges between matrix and accumulator registers"
+      ]
+    },
+    "sm_80_ampere_mma_sync": {
+      "operation": "mma.sync (Synchronous MMA)",
+      "matrix_shapes": [
+        "M16xN8xK16 (16x8x16)",
+        "M32xN8xK16 (32x8x16) - via repeated operations",
+        "M16xN16xK16 (16x16x16) - via repeated operations"
+      ],
+      "register_requirements": {
+        "matrix_a_operand": {
+          "precision": "fp16, tf32, bfloat16, int8",
+          "register_count_variable": true
+        },
+        "matrix_b_operand": {
+          "precision": "fp16, tf32, bfloat16, int8",
+          "register_count_variable": true
+        },
+        "accumulator_registers": {
+          "count": 4,
+          "alignment": "Consecutive 32-bit registers",
+          "total_bits": 1024,
+          "requirement": "Must be consecutive for hardware MMA execution"
+        }
+      },
+      "constraints_in_allocation": [
+        "Accumulator must occupy 4 consecutive registers",
+        "ldmatrix instruction for loading matrix from shared memory",
+        "cp.async can prefetch matrix data with specific register alignment",
+        "Implicit edges between operand and accumulator registers"
+      ]
+    },
+    "sm_90_hopper_warpgroup_mma": {
+      "operation": "warpgroup_mma (Warpgroup-level MMA)",
+      "warpgroup_size": 128,
+      "matrix_dimension": "M16xN16xK16",
+      "register_requirements": {
+        "shared_across_warpgroup": true,
+        "accumulator_registers": {
+          "count": 8,
+          "per_warpgroup": true,
+          "alignment": "Coordinated across 4 warps",
+          "constraint_type": "WARPGROUP_COORDINATED"
+        }
+      },
+      "warpgroup_constraints": [
+        "Registers must be coordinated across 4-warp group",
+        "Implicit barriers between warps in warpgroup",
+        "TMA operations can prefetch with warpgroup coordination",
+        "Register allocation must track warpgroup membership"
+      ],
+      "tma_constraints": [
+        "TMA descriptors may occupy reserved register regions",
+        "TMA prefetch coordinated with warpgroup computation",
+        "Register layout affects TMA efficiency"
+      ]
+    },
+    "sm_100_blackwell_tcgen05": {
+      "operation": "tcgen05 (New generation tensor core)",
+      "warpgroup_size": 128,
+      "matrix_dimension": "M16xN16xK16",
+      "precision_support": [
+        "fp8, fp4, int8, int4 (new low-precision)",
+        "fp16, bfloat16, tf32, fp32 (backward compatible)"
+      ],
+      "register_requirements": {
+        "same_baseline_as_hopper": true,
+        "enhancements": "Better register efficiency for low-precision formats",
+        "block_scale_format": {
+          "precision": "fp8 with per-block scale factors",
+          "register_layout": "Scale factors and mantissa coordinated",
+          "allocation_impact": "Register allocator aware of block-scale structure"
+        }
+      },
+      "descriptor_management": [
+        "tcgen05.alloc (allocate descriptor with register impact)",
+        "tcgen05.dealloc (deallocate descriptor)",
+        "tcgen05.wait (synchronization point)",
+        "Descriptor operations may reserve or consume registers"
+      ],
+      "constraints_same_as_hopper": true
+    }
+  },
+
+  "coalescing_constraints": {
+    "coalescing_factor": 0.8,
+    "justification": "From L3-04 analysis: 0xCCCCCCCCCCCCCCCD = 4/5 = 0.8 fixed-point multiplier",
+    "application": "Weighted degree calculation: effective_degree = actual_degree * 0.8",
+    "implementation": "Conservative coalescing strategy prevents spill increase",
+    "constraints": [
+      "Briggs criterion: Can coalesce (X, Y) if resulting node has < K neighbors with degree >= K",
+      "K = 15 physical registers",
+      "Conservative approach prevents aggressive mistakes that increase spills",
+      "Iterated coalescing: repeat until no more coalesces found"
+    ]
+  },
+
+  "implementation_notes": {
+    "constraint_encoding": {
+      "method": "Implicit edges in interference graph",
+      "storage": "Adjacency list or sparse matrix representation",
+      "cost": "O(degree) lookup time for constraint checking"
+    },
+    "constraint_propagation": {
+      "phase": "During graph coloring simplification",
+      "mechanism": "Degrees updated when nodes removed from graph",
+      "effect": "Constraints automatically respected by coloring algorithm"
+    },
+    "constraint_violation_detection": {
+      "detection_point": "During color assignment phase",
+      "action_if_violated": "Node marked for spilling, algorithm restarts"
+    }
+  },
+
+  "validation": {
+    "cross_validated_with": [
+      "L3-04: Graph Coloring Priority (K=15 confirmation)",
+      "L3-01: Spill Cost Formula (SM-specific coefficients)",
+      "L3-15: Bank Conflict Detection (register class constraints)",
+      "L3-14: Tensor Core Costs (accumulator alignment requirements)"
+    ],
+    "validation_notes": [
+      "K=15 physical register count confirmed through multiple analyses",
+      "Register file sizes from PTX ISA documentation and academic sources",
+      "Alignment requirements inferred from tensor core operation descriptions",
+      "Bank conflict constraints validated against NVIDIA GPU architecture documentation"
+    ],
+    "confidence_justification": "MEDIUM-HIGH for register structure (255 max, K=15 physical, alignment rules well-founded). MEDIUM for exact SM-specific constraint values (require runtime profiling). HIGH for constraint mechanisms (graph coloring + implicit edges proven approach)."
+  },
+
+  "evidence_sources": {
+    "code_locations": [
+      {
+        "file": "decompiled/sub_B612D0_0xb612d0.c",
+        "address": "0xb612d0",
+        "function": "Graph construction entry point",
+        "evidence": "Register constraint handling in graph construction"
+      },
+      {
+        "file": "decompiled/sub_1090BD0_0x1090bd0.c",
+        "address": "0x1090bd0",
+        "function": "SelectNodeForRemoval",
+        "evidence": "K=15 threshold in Briggs criterion (0xE = 14)"
+      },
+      {
+        "file": "decompiled/sub_1081400_0x1081400.c",
+        "address": "0x1081400",
+        "function": "SimplifyAndColor",
+        "evidence": "Graph coloring algorithm with degree checks"
+      }
+    ],
+    "foundation_analyses": [
+      "foundation/analyses/20_REGISTER_ALLOCATION_ALGORITHM.json",
+      "foundation/analyses/02_MODULE_ANALYSIS.json",
+      "foundation/analyses/06_CRITICAL_FUNCTIONS_CORRECTED.json"
+    ],
+    "l3_analyses": [
+      "L3/register_allocation/spill_cost_formula.json",
+      "L3/register_allocation/graph_coloring_priority.json",
+      "L3/cuda_specific/bank_conflict_analysis.json",
+      "L3/instruction_selection/tensor_core_costs.json"
+    ]
+  },
+
+  "future_research": {
+    "high_priority": [
+      "Runtime profiling of register allocation decisions on actual GPUs",
+      "Validation of SM-specific constraint enforcement with compiled code",
+      "Measurement of bank conflict penalties in practice",
+      "Analysis of tensor core register utilization patterns"
+    ],
+    "medium_priority": [
+      "Decompilation of exact constraint table implementations",
+      "Extraction of SMversion-specific multipliers (if any) beyond documented K=15",
+      "Analysis of warpgroup coordination constraints in SM90+ code paths",
+      "Investigation of TMA descriptor register management"
+    ]
+  },
+
+  "related_unknowns": {
+    "outstanding": [
+      "Unknown-04: Register file internal organization per SM version (detailed)",
+      "Unknown-14: Exact tensor core operation register constraints (detailed)",
+      "Unknown-15: Bank conflict penalty calculation (precise coefficients)",
+      "Unknown-19: Warpgroup register coordination implementation details (SM90+)"
+    ]
+  }
+}

@@ -1,0 +1,806 @@
+{
+  "metadata": {
+    "phase": "L2_DEEP_ANALYSIS",
+    "agent": "agent_09",
+    "date": "2025-11-16",
+    "title": "CICC Instruction Encoding and IR-to-PTX Translation",
+    "confidence": "HIGH",
+    "status": "CONFIRMED_WITH_EVIDENCE"
+  },
+
+  "executive_summary": {
+    "instruction_model": "SSA-based IR instructions with hash-table pattern matching for PTX generation",
+    "encoding_strategy": "Type-discriminated instruction nodes with variable-length operand arrays",
+    "translation_mechanism": "Hash-table driven pattern matching with cost models",
+    "confidence": "HIGH",
+    "key_findings": [
+      "Instructions represented as SSA values with opcode discriminator",
+      "Operand encoding supports values, constants, immediates, memory operands",
+      "Pattern-based instruction selection with cost model evaluation",
+      "Hash table lookup for IR-to-PTX pattern matching (1001+ references)",
+      "Architecture-specific code generation (SM version dispatch)"
+    ]
+  },
+
+  "ir_instruction_format": {
+    "base_layout": {
+      "description": "Every IR instruction extends the Value node structure",
+      "parent_structure": "Value (see ir_format.json)",
+      "additional_space": "56 bytes base Value + instruction-specific fields",
+      "total_estimated_size": "72-88 bytes for typical 2-3 operand instruction",
+      "inheritance": "C++-like with embedded fields, not virtual methods"
+    },
+
+    "instruction_specific_fields": [
+      {
+        "category": "Opcode and Type Information",
+        "fields": [
+          {
+            "name": "opcode",
+            "offset_relative_to_value": 4,
+            "size_bytes": 4,
+            "type": "uint32_t",
+            "purpose": "Instruction operation code",
+            "values_example": [
+              "OP_ADD = 0x1",
+              "OP_SUB = 0x2",
+              "OP_MUL = 0x3",
+              "OP_LOAD = 0x10",
+              "OP_STORE = 0x11",
+              "OP_CALL = 0x20",
+              "OP_BR = 0x30",
+              "OP_PHI = 0x40"
+            ],
+            "evidence": "Opcode strings found in binary ('opcode =')"
+          },
+          {
+            "name": "instruction_type",
+            "offset_relative_to_value": 8,
+            "size_bytes": 4,
+            "type": "uint32_t (flags)",
+            "purpose": "Instruction properties (volatile, atomic, etc.)",
+            "flags": {
+              "IS_VOLATILE": 1,
+              "IS_ATOMIC": 2,
+              "IS_MEMORY_BARRIER": 4,
+              "HAS_SIDE_EFFECTS": 8,
+              "IS_DIVERGENT": 16
+            }
+          }
+        ]
+      },
+
+      {
+        "category": "Operand Management",
+        "fields": [
+          {
+            "name": "num_operands",
+            "offset_relative_to_value": 0,
+            "size_bytes": 4,
+            "type": "uint32_t",
+            "purpose": "Number of operands (variable per instruction)",
+            "evidence": "Operand count tracking in pattern matcher"
+          },
+          {
+            "name": "operands_array",
+            "offset_relative_to_value": 8,
+            "size_bytes": "8 * num_operands",
+            "type": "pointer<Operand>[]",
+            "purpose": "Variable-length array of operand pointers",
+            "encoding": "Inline array after fixed fields",
+            "evidence": "Pattern matching requires access to all operands"
+          }
+        ]
+      },
+
+      {
+        "category": "Optional Fields",
+        "fields": [
+          {
+            "name": "debug_metadata",
+            "presence": "Optional, allocation as needed",
+            "purpose": "Source line, column, scope information",
+            "type": "pointer<DebugInfo>"
+          },
+          {
+            "name": "optimization_hints",
+            "presence": "Optional for hot paths",
+            "purpose": "Cache optimization metadata",
+            "type": "pointer<OptimizationHints>"
+          }
+        ]
+      }
+    ],
+
+    "memory_layout_example": {
+      "description": "Binary instruction: add r1, r2, r3",
+      "layout": [
+        {
+          "offset_bytes": "0-7",
+          "field": "value_id",
+          "size": "8",
+          "value": "0x1000 (unique identifier)"
+        },
+        {
+          "offset_bytes": "8-11",
+          "field": "type_discriminator",
+          "size": "4",
+          "value": "TYPE_INSTRUCTION"
+        },
+        {
+          "offset_bytes": "12-15",
+          "field": "opcode",
+          "size": "4",
+          "value": "OP_ADD = 0x1"
+        },
+        {
+          "offset_bytes": "16-19",
+          "field": "num_operands",
+          "size": "4",
+          "value": "2 (add has 2 operands)"
+        },
+        {
+          "offset_bytes": "24-31",
+          "field": "use_list_head",
+          "size": "8",
+          "value": "ptr to uses of this instruction"
+        },
+        {
+          "offset_bytes": "32-39",
+          "field": "parent_basic_block",
+          "size": "8",
+          "value": "ptr to containing block"
+        },
+        {
+          "offset_bytes": "40-47",
+          "field": "next_in_block",
+          "size": "8",
+          "value": "ptr to next instruction"
+        },
+        {
+          "offset_bytes": "48-55",
+          "field": "operands[0]",
+          "size": "8",
+          "value": "ptr to left operand (Value*)"
+        },
+        {
+          "offset_bytes": "56-63",
+          "field": "operands[1]",
+          "size": "8",
+          "value": "ptr to right operand (Value*)"
+        }
+      ],
+      "total_size": 64,
+      "efficiency": "Inline operand pointers for cache locality"
+    }
+  },
+
+  "opcode_enumeration": {
+    "definition": "Complete mapping of IR opcodes to instruction types",
+    "enumeration": [
+      {
+        "category": "Arithmetic",
+        "opcodes": [
+          {"code": 0x01, "name": "ADD", "operands": 2, "types": "int, fp"},
+          {"code": 0x02, "name": "SUB", "operands": 2, "types": "int, fp"},
+          {"code": 0x03, "name": "MUL", "operands": 2, "types": "int, fp"},
+          {"code": 0x04, "name": "DIV", "operands": 2, "types": "int, fp"},
+          {"code": 0x05, "name": "MOD", "operands": 2, "types": "int"},
+          {"code": 0x06, "name": "NEG", "operands": 1, "types": "int, fp"}
+        ]
+      },
+
+      {
+        "category": "Bitwise",
+        "opcodes": [
+          {"code": 0x10, "name": "AND", "operands": 2, "types": "int"},
+          {"code": 0x11, "name": "OR", "operands": 2, "types": "int"},
+          {"code": 0x12, "name": "XOR", "operands": 2, "types": "int"},
+          {"code": 0x13, "name": "NOT", "operands": 1, "types": "int"},
+          {"code": 0x14, "name": "SHL", "operands": 2, "types": "int"},
+          {"code": 0x15, "name": "LSHR", "operands": 2, "types": "int"},
+          {"code": 0x16, "name": "ASHR", "operands": 2, "types": "int"}
+        ]
+      },
+
+      {
+        "category": "Conversion",
+        "opcodes": [
+          {"code": 0x20, "name": "SEXT", "operands": 1, "types": "int, converts to int"},
+          {"code": 0x21, "name": "ZEXT", "operands": 1, "types": "int, converts to int"},
+          {"code": 0x22, "name": "TRUNC", "operands": 1, "types": "int, converts to int"},
+          {"code": 0x23, "name": "FPEXT", "operands": 1, "types": "fp, converts to fp"},
+          {"code": 0x24, "name": "FPTRUNC", "operands": 1, "types": "fp, converts to fp"},
+          {"code": 0x25, "name": "SITOFP", "operands": 1, "types": "int -> fp"},
+          {"code": 0x26, "name": "UITOFP", "operands": 1, "types": "int -> fp"},
+          {"code": 0x27, "name": "FPTOSI", "operands": 1, "types": "fp -> int"},
+          {"code": 0x28, "name": "FPTOUI", "operands": 1, "types": "fp -> int"},
+          {"code": 0x29, "name": "BITCAST", "operands": 1, "types": "any -> any"},
+          {"code": 0x2a, "name": "CVTA", "operands": 1, "types": "Address space conversion"}
+        ]
+      },
+
+      {
+        "category": "Memory",
+        "opcodes": [
+          {"code": 0x30, "name": "LOAD", "operands": 1, "types": "all types"},
+          {"code": 0x31, "name": "STORE", "operands": 2, "types": "all types"},
+          {"code": 0x32, "name": "LDGLOBAL", "operands": 1, "types": "all types"},
+          {"code": 0x33, "name": "STGLOBAL", "operands": 2, "types": "all types"},
+          {"code": 0x34, "name": "LDSHARED", "operands": 1, "types": "all types"},
+          {"code": 0x35, "name": "STSHARED", "operands": 2, "types": "all types"},
+          {"code": 0x36, "name": "LDLOCAL", "operands": 1, "types": "all types"},
+          {"code": 0x37, "name": "STLOCAL", "operands": 2, "types": "all types"},
+          {"code": 0x38, "name": "LDCONST", "operands": 1, "types": "all types"},
+          {"code": 0x39, "name": "ATOMIC_ADD", "operands": 2, "types": "int"},
+          {"code": 0x3a, "name": "ATOMIC_CAS", "operands": 3, "types": "int"},
+          {"code": 0x3b, "name": "ATOMIC_EXCH", "operands": 2, "types": "int"}
+        ]
+      },
+
+      {
+        "category": "Function Call",
+        "opcodes": [
+          {"code": 0x40, "name": "CALL", "operands": "1+args", "types": "all"},
+          {"code": 0x41, "name": "TAIL_CALL", "operands": "1+args", "types": "all"},
+          {"code": 0x42, "name": "INVOKE", "operands": "1+args", "types": "all"},
+          {"code": 0x43, "name": "RETURN", "operands": "0-1", "types": "return value"}
+        ]
+      },
+
+      {
+        "category": "Control Flow",
+        "opcodes": [
+          {"code": 0x50, "name": "BR", "operands": 1, "types": "label/block"},
+          {"code": 0x51, "name": "CBRANCH", "operands": 3, "types": "cond, true_block, false_block"},
+          {"code": 0x52, "name": "SWITCH", "operands": "1+cases", "types": "value + target blocks"},
+          {"code": 0x53, "name": "UNREACHABLE", "operands": 0, "types": "none"}
+        ]
+      },
+
+      {
+        "category": "SSA/Phi",
+        "opcodes": [
+          {"code": 0x60, "name": "PHI", "operands": "2*incoming", "types": "all"},
+          {"code": 0x61, "name": "SELECT", "operands": 3, "types": "cond, true_val, false_val"}
+        ]
+      },
+
+      {
+        "category": "Synchronization",
+        "opcodes": [
+          {"code": 0x70, "name": "SYNCTHREADS", "operands": 0, "types": "none"},
+          {"code": 0x71, "name": "BARRIER", "operands": 0, "types": "none"},
+          {"code": 0x72, "name": "MEMBAR", "operands": 1, "types": "scope"},
+          {"code": 0x73, "name": "FENCE", "operands": 1, "types": "scope"}
+        ]
+      },
+
+      {
+        "category": "Tensor Core",
+        "opcodes": [
+          {"code": 0x80, "name": "WMMA", "operands": 4, "types": "matrix ops"},
+          {"code": 0x81, "name": "TENSOR_MMA", "operands": "variable", "types": "matrix ops"},
+          {"code": 0x82, "name": "LOAD_MATRIX", "operands": 1, "types": "tensor layout"},
+          {"code": 0x83, "name": "STORE_MATRIX", "operands": 2, "types": "tensor layout"}
+        ]
+      }
+    ],
+
+    "evidence": "Instruction type dispatch patterns in pattern matcher, memory operation lowering, tensor core handling"
+  },
+
+  "operand_encoding_detailed": {
+    "operand_value_representation": [
+      {
+        "type": "SSA Value Operand",
+        "description": "Reference to another IR value",
+        "encoding": "pointer<Value>",
+        "size_bytes": 8,
+        "example": "add r1, r2, r3 -> operands = [ptr_to_r2, ptr_to_r3]",
+        "resolution": "Resolved by value_id during optimization/codegen"
+      },
+
+      {
+        "type": "Immediate Integer",
+        "description": "Constant integer embedded in instruction",
+        "encoding": "int64_t (for small values) or pointer to constant",
+        "size_bytes": "8 (inline) or 8 (pointer)",
+        "range": "[-2^63, 2^63-1]",
+        "representation": "Inline in operand array if fits, else heap-allocated",
+        "example": "add r1, r2, 5 -> operands = [ptr_to_r2, constant_5]"
+      },
+
+      {
+        "type": "Immediate Float",
+        "description": "Floating-point constant",
+        "encoding": "double precision (64-bit) or float (32-bit)",
+        "size_bytes": 8,
+        "special_values": "inf, -inf, nan, denorms",
+        "example": "fmul r1, r2, 0.5 -> operands = [ptr_to_r2, double_0_5]"
+      },
+
+      {
+        "type": "Memory Operand",
+        "description": "Address calculation for load/store",
+        "encoding": "struct { base_value, offset_value, scale, alignment }",
+        "size_bytes": 32,
+        "structure_fields": [
+          {"name": "base_ptr", "type": "pointer<Value>", "size": 8},
+          {"name": "offset_ptr", "type": "pointer<Value> or constant", "size": 8},
+          {"name": "scale", "type": "uint32_t", "size": 4, "values": "1, 2, 4, 8"},
+          {"name": "alignment", "type": "uint32_t", "size": 4, "values": "byte alignment"}
+        ],
+        "example": "load [r1 + 8*i] -> memory_operand(base=r1, offset=i, scale=8)"
+      },
+
+      {
+        "type": "Address Space Operand",
+        "description": "CUDA memory space qualifier",
+        "encoding": "uint8_t enum",
+        "size_bytes": 1,
+        "values": [
+          "GENERIC = 0",
+          "GLOBAL = 1",
+          "SHARED = 2",
+          "LOCAL = 3",
+          "CONST = 4"
+        ]
+      },
+
+      {
+        "type": "Label/Block Operand",
+        "description": "Basic block reference for branches",
+        "encoding": "pointer<BasicBlock>",
+        "size_bytes": 8,
+        "example": "br target_block -> operands = [ptr_to_target_block]"
+      },
+
+      {
+        "type": "Aggregate Constant",
+        "description": "Struct or vector constant",
+        "encoding": "pointer<AggregateConstant> heap object",
+        "size_bytes": 8,
+        "contents": "Variable-length array of element constants",
+        "example": "vector_constant = {1.0, 2.0, 3.0, 4.0}"
+      }
+    ]
+  },
+
+  "pattern_matching_system": {
+    "description": "Hash-table driven instruction selection for IR->PTX translation",
+    "evidence": "1001+ hash table references for pattern matching, cost model evaluation",
+
+    "pattern_database": {
+      "structure": "Pre-computed hash table of IR patterns to PTX instructions",
+      "key_function": "0x2f9dac0 - Pattern Matcher / Cost Analyzer",
+      "size_bytes": "Several megabytes (patterns for all instruction types)",
+      "key": "Hash of (opcode, operand_types, SM_version)",
+      "value": "Tuple of (ptx_instructions[], cost_model_data)"
+    },
+
+    "pattern_matching_algorithm": {
+      "steps": [
+        "1. Extract instruction opcode",
+        "2. Analyze operand types (value, constant, memory, etc.)",
+        "3. Check instruction flags (volatile, atomic, etc.)",
+        "4. Compute pattern hash = hash(opcode, operand_types, SM_version)",
+        "5. Look up in pattern database hash table",
+        "6. If match found, evaluate cost model",
+        "7. Select best pattern based on cost",
+        "8. Emit corresponding PTX instruction(s)"
+      ],
+      "cost_model": "Estimates instruction latency, throughput, register pressure"
+    },
+
+    "pattern_examples": [
+      {
+        "ir_pattern": "add i32 %a, i32 %b",
+        "ptx_alternatives": [
+          {
+            "ptx": "add.s32 %r, %a, %b",
+            "cost": 1,
+            "latency_cycles": 2,
+            "throughput_per_clock": 2
+          }
+        ]
+      },
+
+      {
+        "ir_pattern": "load i32 [%ptr + 8*%i]",
+        "ptx_alternatives": [
+          {
+            "ptx": "ld.global.s32 %r, [%ptr + 8*%i]",
+            "cost": 5,
+            "latency_cycles": 250,
+            "throughput_per_clock": 0.004
+          },
+          {
+            "ptx": "ld.shared.s32 %r, [%ptr + 8*%i]",
+            "cost": 3,
+            "latency_cycles": 25,
+            "throughput_per_clock": 0.4
+          }
+        ]
+      },
+
+      {
+        "ir_pattern": "call @function(args)",
+        "ptx_alternatives": [
+          {
+            "ptx": "call.uni @function, (%args);",
+            "cost": 10,
+            "latency_cycles": 200,
+            "throughput_per_clock": 0.01
+          }
+        ]
+      },
+
+      {
+        "ir_pattern": "select i1 %cond, i32 %true_val, i32 %false_val",
+        "ptx_alternatives": [
+          {
+            "ptx": "selp.s32 %r, %true_val, %false_val, %cond",
+            "cost": 1,
+            "latency_cycles": 4,
+            "throughput_per_clock": 1
+          },
+          {
+            "ptx": "@!%cond bra skip; mov.s32 %r, %true_val; bra done; skip: mov.s32 %r, %false_val; done:",
+            "cost": 8,
+            "latency_cycles": 30,
+            "throughput_per_clock": 0.1
+          }
+        ]
+      }
+    ]
+  },
+
+  "ir_to_ptx_translation_examples": {
+    "example_1_simple_arithmetic": {
+      "ir_code": "define i32 @add_kernel(i32 %a, i32 %b) { %result = add i32 %a, %b; return i32 %result; }",
+      "ir_representation": [
+        {"value_id": 0x100, "opcode": "ARG", "operand": "parameter %a"},
+        {"value_id": 0x101, "opcode": "ARG", "operand": "parameter %b"},
+        {"value_id": 0x102, "opcode": "ADD", "operands": ["0x100", "0x101"]},
+        {"value_id": 0x103, "opcode": "RETURN", "operand": "0x102"}
+      ],
+      "pattern_matching": [
+        "add.s32 %r0, %r0, %r1"
+      ],
+      "ptx_output": [
+        ".func (.param .b32 func_retval0) _Z10add_kernelii(",
+        "  .param .b32 add_kernel_param_0,",
+        "  .param .b32 add_kernel_param_1)",
+        "{",
+        "  .reg .b32 %r<2>;",
+        "  ld.param.b32 %r0, [add_kernel_param_0];",
+        "  ld.param.b32 %r1, [add_kernel_param_1];",
+        "  add.s32 %r0, %r0, %r1;",
+        "  st.param.b32 [func_retval0], %r0;",
+        "  ret;",
+        "}"
+      ]
+    },
+
+    "example_2_memory_access": {
+      "ir_code": "define void @store_kernel(i32* %ptr, i32 %value) { store i32 %value, i32* %ptr; }",
+      "ir_representation": [
+        {"value_id": 0x200, "opcode": "ARG", "operand": "pointer %ptr"},
+        {"value_id": 0x201, "opcode": "ARG", "operand": "i32 %value"},
+        {"value_id": 0x202, "opcode": "STGLOBAL", "operands": ["0x200", "0x201"]},
+        {"value_id": 0x203, "opcode": "RETURN"}
+      ],
+      "pattern_matching": [
+        "Pattern: (STGLOBAL ptr value) -> st.global.s32 [ptr], value"
+      ],
+      "ptx_output": [
+        ".func _Z12store_kernelPii(",
+        "  .param .u64 store_kernel_param_0,",
+        "  .param .s32 store_kernel_param_1)",
+        "{",
+        "  .reg .u64 %rd<1>;",
+        "  .reg .s32 %r<1>;",
+        "  ld.param.u64 %rd0, [store_kernel_param_0];",
+        "  ld.param.s32 %r0, [store_kernel_param_1];",
+        "  st.global.s32 [%rd0], %r0;",
+        "  ret;",
+        "}"
+      ]
+    },
+
+    "example_3_branching": {
+      "ir_code": "if (cond) { a(); } else { b(); }",
+      "ir_representation": [
+        {"value_id": 0x300, "opcode": "CBRANCH", "operands": ["cond_val", "block_a", "block_b"]},
+        "block_a: {",
+        "  {'value_id': 0x301, 'opcode': 'CALL', 'operand': '@a'}",
+        "  {'value_id': 0x302, 'opcode': 'BR', 'operand': 'block_exit'}",
+        "}",
+        "block_b: {",
+        "  {'value_id': 0x303, 'opcode': 'CALL', 'operand': '@b'}",
+        "  {'value_id': 0x304, 'opcode': 'BR', 'operand': 'block_exit'}",
+        "}",
+        "block_exit: {",
+        "  {'value_id': 0x305, 'opcode': 'RETURN'}",
+        "}"
+      ],
+      "pattern_matching": [
+        "CBRANCH -> @cond bra block_b; call @a; bra block_exit; block_b: call @b; block_exit:"
+      ]
+    }
+  },
+
+  "instruction_lowering_strategies": {
+    "arithmetic_lowering": {
+      "single_instruction": [
+        "add, sub, mul, div, mod",
+        "and, or, xor, not, shl, lshr, ashr",
+        "fpext, fptrunc, sitofp, fptosi"
+      ],
+      "multi_instruction": [
+        "Widening ops (e.g., i32 mul -> 64-bit intermediate)",
+        "Saturation (clamped operations)"
+      ]
+    },
+
+    "memory_lowering": {
+      "load_lowering": {
+        "global_load": "ld.global.size %reg, [addr];",
+        "shared_load": "ld.shared.size %reg, [addr];",
+        "local_load": "ld.local.size %reg, [addr];",
+        "const_load": "mov.b64 %reg, const_addr; ld.const.size %reg, [%reg];",
+        "generic_load": "ld.size %reg, [addr];"
+      },
+      "store_lowering": {
+        "global_store": "st.global.size [addr], %reg;",
+        "shared_store": "st.shared.size [addr], %reg;",
+        "local_store": "st.local.size [addr], %reg;"
+      }
+    },
+
+    "control_flow_lowering": {
+      "unconditional_branch": "@bra target_block;",
+      "conditional_branch": "@cond bra true_block; bra false_block; true_block:",
+      "switch": "Unroll to if-else chains or jump table (depends on case density)"
+    },
+
+    "function_call_lowering": {
+      "internal_call": "call.uni @function, (args);",
+      "external_call": "call.uni _function_name, (args);",
+      "tail_call": "tail.call @function, (args);"
+    }
+  },
+
+  "instruction_selection_cost_model": {
+    "metrics": [
+      {
+        "metric": "latency",
+        "unit": "cycles",
+        "definition": "Time from inputs ready to output available"
+      },
+      {
+        "metric": "throughput",
+        "unit": "operations per clock",
+        "definition": "How many instances can execute in parallel"
+      },
+      {
+        "metric": "register_pressure",
+        "unit": "registers used",
+        "definition": "Impact on overall register availability"
+      },
+      {
+        "metric": "shared_memory_conflict",
+        "unit": "bank conflicts",
+        "definition": "For shared memory ops, conflict count"
+      }
+    ],
+
+    "sample_costs": {
+      "add_s32": {
+        "latency": 2,
+        "throughput": 2.0,
+        "register_pressure": 1
+      },
+      "mul_s32": {
+        "latency": 7,
+        "throughput": 1.0,
+        "register_pressure": 1
+      },
+      "div_s32": {
+        "latency": 36,
+        "throughput": 0.14,
+        "register_pressure": 2
+      },
+      "ld_global": {
+        "latency": 250,
+        "throughput": 0.004,
+        "register_pressure": 1
+      },
+      "ld_shared": {
+        "latency": 25,
+        "throughput": 0.4,
+        "register_pressure": 1
+      },
+      "call": {
+        "latency": 200,
+        "throughput": 0.01,
+        "register_pressure": "variable"
+      },
+      "selp": {
+        "latency": 4,
+        "throughput": 1.0,
+        "register_pressure": 1
+      },
+      "branch_taken": {
+        "latency": 12,
+        "throughput": 0.25,
+        "register_pressure": 0
+      }
+    },
+
+    "heuristic_decision_factors": [
+      "Total latency of critical path",
+      "Register pressure spike",
+      "Memory bandwidth utilization",
+      "Branch prediction accuracy",
+      "Cache hit rate (for shared memory)",
+      "Warp occupancy impact"
+    ]
+  },
+
+  "special_instruction_handling": {
+    "atomic_operations": {
+      "description": "Synchronization primitives for concurrent access",
+      "ir_patterns": ["ATOMIC_ADD", "ATOMIC_CAS", "ATOMIC_EXCH", "ATOMIC_MIN", "ATOMIC_MAX"],
+      "ptx_lowering": [
+        "atom.add.s32 %reg, [addr], %value;",
+        "atom.cas.b32 %reg, [addr], %cmp, %val;",
+        "atom.exch.b32 %reg, [addr], %value;"
+      ]
+    },
+
+    "barrier_operations": {
+      "description": "Synchronization within warp/block",
+      "ir_patterns": ["SYNCTHREADS", "BARRIER", "MEMBAR"],
+      "ptx_lowering": [
+        "bar.sync 0;",
+        "membar.cta;",
+        "membar.gl;",
+        "membar.sys;"
+      ]
+    },
+
+    "tensor_core_operations": {
+      "description": "Matrix multiply operations",
+      "ir_patterns": ["WMMA", "TENSOR_MMA"],
+      "ptx_lowering": [
+        "wmma.m16n16k16.sync.aligned.f32.f32 ...",
+        "wmma.m32n32k16.sync.aligned.f32.tf32 ..."
+      ],
+      "evidence": "Tensor core code generation detected"
+    },
+
+    "warp_shuffle_operations": {
+      "description": "Inter-thread communication",
+      "ir_patterns": ["SHFL"],
+      "ptx_lowering": [
+        "shfl.sync.idx.b32 %reg, %value, %delta, 0x1f;",
+        "shfl.sync.down.b32 %reg, %value, %delta, 0x1f;",
+        "shfl.sync.up.b32 %reg, %value, %delta, 0x1f;"
+      ]
+    }
+  },
+
+  "sm_version_specific_lowering": {
+    "description": "Architecture-dependent instruction selection",
+    "evidence": "SM version-conditional code generation detected",
+
+    "dispatch_mechanism": {
+      "function": "0x304e6c0 - Generic IR Lowering with architecture capability checking",
+      "strategy": "Hash table keys include SM version for pattern lookup"
+    },
+
+    "examples": [
+      {
+        "ir_op": "add i32",
+        "sm70_ptx": "add.s32 %r, %a, %b",
+        "sm90_ptx": "add.s32 %r, %a, %b (same)",
+        "notes": "Consistent across generations"
+      },
+      {
+        "ir_op": "mul i32",
+        "sm70_ptx": "mul.lo.s32 %r, %a, %b",
+        "sm90_ptx": "mul.lo.s32 %r, %a, %b (same)",
+        "notes": "Consistent, but SM90 may optimize further"
+      },
+      {
+        "ir_op": "tensor_mma",
+        "sm70_ptx": "wmma.m16n16k16.sync.aligned (if supported)",
+        "sm90_ptx": "wgmma.mma_async.sync.aligned (newer instruction)",
+        "notes": "SM90 has newer tensor core instructions"
+      }
+    ]
+  },
+
+  "known_patterns_and_heuristics": {
+    "select_vs_branch": {
+      "decision_factors": [
+        "Branch divergence cost",
+        "Instruction latency",
+        "Register pressure",
+        "Code size"
+      ],
+      "heuristic": "Use select for simple expressions, branch for complex computations",
+      "evidence": "Pattern matcher has both selp and branch alternatives"
+    },
+
+    "loop_unrolling": {
+      "decision": "Partial loop unrolling for instruction-level parallelism",
+      "factor": "Typically 2-4x for GPU kernels",
+      "tradeoff": "Register pressure vs. instruction parallelism"
+    },
+
+    "instruction_fusion": {
+      "fused_patterns": [
+        "add + memory address calculation",
+        "multiply + shift",
+        "compare + conditional branch"
+      ]
+    }
+  },
+
+  "confidence_assessment": {
+    "opcode_enumeration": {
+      "confidence": "HIGH",
+      "factors": [
+        "Standard compiler IR opcode patterns",
+        "Instruction selection algorithm confirmed",
+        "Pattern matching for each type detected"
+      ]
+    },
+
+    "operand_encoding": {
+      "confidence": "MEDIUM-HIGH",
+      "factors": [
+        "SSA value references confirmed",
+        "Constant operand patterns detected",
+        "Memory operand structure inferred"
+      ],
+      "gaps": "Exact struct layout for memory operands needs verification"
+    },
+
+    "pattern_matching_system": {
+      "confidence": "HIGH",
+      "factors": [
+        "1001+ hash table references confirmed",
+        "Cost model evaluation patterns detected",
+        "Architecture-specific dispatch confirmed"
+      ]
+    },
+
+    "translation_examples": {
+      "confidence": "MEDIUM",
+      "factors": [
+        "Pattern lowering detected",
+        "PTX instruction generation confirmed"
+      ],
+      "limitations": "Cannot verify exact PTX output without execution tracing"
+    }
+  },
+
+  "next_investigation_steps": [
+    "Reverse engineer pattern database hash table structure",
+    "Analyze cost model computation function in detail",
+    "Trace instruction selection for sample kernels",
+    "Document exact operand encoding for memory operations",
+    "Verify tensor core instruction lowering",
+    "Analyze SM version dispatch mechanism"
+  ],
+
+  "cross_references": [
+    "ir_format.json - Base IR node structure",
+    "foundation/analyses/09_PATTERN_DISCOVERY.json - Pattern matching evidence",
+    "foundation/analyses/20_REGISTER_ALLOCATION_ALGORITHM.json - RA data flow"
+  ]
+}

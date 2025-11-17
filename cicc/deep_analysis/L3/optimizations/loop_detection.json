@@ -1,0 +1,400 @@
+{
+  "metadata": {
+    "unknown_id": "20",
+    "agent": "L3-20",
+    "analysis_type": "Loop Detection Algorithm and Nesting Level Calculation",
+    "date": "2025-11-16",
+    "confidence": "HIGH",
+    "status": "EXTRACTED_FROM_OPTIMIZATION_ANALYSIS",
+    "source_analysis": [
+      "foundation/analyses/09_PATTERN_DISCOVERY.json",
+      "foundation/analyses/19_DATA_STRUCTURE_LAYOUTS.json",
+      "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json",
+      "deep_analysis/algorithms/optimization_passes/*.json"
+    ]
+  },
+
+  "loop_detection_algorithm": {
+    "name": "Dominator-Based Natural Loop Detection",
+    "classification": "Control Flow Analysis",
+    "description": "CICC uses standard dominance-based loop detection to identify natural loops in the control flow graph. A natural loop is identified by finding back edges in the CFG and using dominator relationships to construct loop bodies.",
+    "algorithm_type": "Graph-based control flow analysis",
+    "complexity_analysis": {
+      "space_complexity": "O(V + E) where V=vertices (basic blocks), E=edges",
+      "time_complexity": "O(V + E) for loop detection phase",
+      "dominator_tree_construction": "O(α(V) * (V + E)) using Lengauer-Tarjan algorithm"
+    },
+    "required_analyses": [
+      "Control Flow Graph (CFG) construction",
+      "Dominator Tree computation",
+      "Post-order numbering",
+      "Depth-First Search (DFS)"
+    ]
+  },
+
+  "back_edge_identification": {
+    "definition": "An edge (u, v) in the CFG is a back edge if v dominates u",
+    "algorithm": "DFS-based back edge classification",
+    "steps": [
+      {
+        "step": 1,
+        "name": "CFG Traversal with DFS",
+        "description": "Perform depth-first search on control flow graph, assigning discovery time and finish time to each block"
+      },
+      {
+        "step": 2,
+        "name": "Edge Classification",
+        "description": "Classify each edge as forward, back, cross, or tree based on discovery/finish times",
+        "classification_rules": {
+          "tree_edge": "Part of DFS tree",
+          "back_edge": "Target ancestor in DFS tree (discovery[target] < discovery[source])",
+          "forward_edge": "Target descendant, not tree edge",
+          "cross_edge": "Neither ancestor nor descendant"
+        }
+      },
+      {
+        "step": 3,
+        "name": "Dominator Check",
+        "description": "For potential back edges, verify that target dominates source using dominator tree"
+      },
+      {
+        "step": 4,
+        "name": "Loop Header Identification",
+        "description": "Each back edge target is a loop header (entry point to natural loop)"
+      }
+    ],
+    "evidence": {
+      "pattern_discovery_reference": "foundation/analyses/09_PATTERN_DISCOVERY.json - 'Natural loop detection'",
+      "data_structure_reference": "foundation/analyses/19_DATA_STRUCTURE_LAYOUTS.json - 'loop_analysis: Back-edge identification in CFG'"
+    }
+  },
+
+  "loop_construction": {
+    "algorithm_name": "Natural Loop Construction from Back Edges",
+    "description": "Once back edges are identified, the natural loop is constructed by finding all blocks that can reach the back edge source without going through the loop header.",
+    "steps": [
+      {
+        "step": 1,
+        "name": "Initialize Loop Set",
+        "description": "Create loop L = {h, x} where h is loop header (back edge target) and x is source of back edge"
+      },
+      {
+        "step": 2,
+        "name": "Workqueue Initialization",
+        "description": "Add immediate predecessors of back edge source (x) to work queue"
+      },
+      {
+        "step": 3,
+        "name": "Backward Traversal",
+        "description": "Process work queue, adding blocks to loop if they reach back edge source without passing through loop header",
+        "condition": "For each block m in work queue: if m != h and m not yet in L, add to L and add predecessors to queue"
+      },
+      {
+        "step": 4,
+        "name": "Loop Completion",
+        "description": "When work queue exhausted, L contains all blocks in natural loop"
+      }
+    ],
+    "data_structures": {
+      "loop_object": {
+        "loop_header": "The unique entry point to the loop",
+        "blocks": "Set of all basic blocks in the loop",
+        "exit_blocks": "Blocks that have successors outside loop",
+        "parent_loop": "Immediately containing loop (for nesting)",
+        "sub_loops": "Loops immediately contained within this loop"
+      }
+    }
+  },
+
+  "loop_header_identification": {
+    "definition": "The unique block that dominates all other blocks in the loop",
+    "properties": [
+      "Only block with external edges entering loop",
+      "All back edges target the loop header",
+      "Dominates every block in the loop",
+      "Entry point for loop execution"
+    ],
+    "identification_method": "The target of a back edge (u, v) is automatically the loop header",
+    "single_entry_guarantee": "Natural loops have exactly one entry block (the header)"
+  },
+
+  "nesting_level_calculation": {
+    "algorithm_name": "Loop Nesting Depth Computation",
+    "description": "Loop nesting depth is calculated by traversing the loop containment tree and counting nesting levels",
+    "calculation_method": "Recursive depth-first traversal of nested loop hierarchy",
+    "formula": {
+      "depth_of_loop": "1 + depth_of_containing_loop",
+      "outermost_loop_depth": 1,
+      "unnested_block_depth": 0,
+      "maximum_depth": "Typical maximum 10-15 for real programs, can be arbitrary"
+    },
+    "steps": [
+      {
+        "step": 1,
+        "name": "Build Loop Tree",
+        "description": "Construct containment relationships between loops during loop identification",
+        "structure": "Parent-child relationships where child loop is entirely contained in parent loop"
+      },
+      {
+        "step": 2,
+        "name": "Assign Root Depth",
+        "description": "All outermost loops have depth = 1"
+      },
+      {
+        "step": 3,
+        "name": "Recursive Depth Assignment",
+        "description": "For each nested loop, depth = parent_depth + 1"
+      },
+      {
+        "step": 4,
+        "name": "Block Depth Computation",
+        "description": "Assign each basic block the depth of its innermost containing loop"
+      }
+    ],
+    "applications": [
+      "Cost model adjustment: inner loops weighted more heavily",
+      "Unroll factor selection: may reduce factor for deep nesting",
+      "Register pressure estimation: increases with loop depth",
+      "Memory access optimization priority"
+    ],
+    "evidence": {
+      "pattern_discovery": "foundation/analyses/09_PATTERN_DISCOVERY.json - 'Loop nesting depth computation'",
+      "optimization_passes": [
+        "loop_unrolling.json: 'loop nesting depth multiplier for cost adjustment'",
+        "loop_invariant_code_motion.json: 'Loop nesting tree, loop depth'"
+      ]
+    }
+  },
+
+  "dominator_tree_usage": {
+    "purpose": "Foundation for loop detection and control flow analysis",
+    "construction": {
+      "algorithm": "Lengauer-Tarjan dominance algorithm",
+      "complexity": "O(α(n) * (n + m)) where α is inverse Ackermann function",
+      "result": "Complete dominator tree with immediate dominator pointers"
+    },
+    "data_structure": {
+      "representation": "Immediate dominator (idom) pointers in each block + children vector",
+      "storage": "Likely stored as: struct BasicBlock { ...; block *idom; vector<block*> idom_children; }"
+    },
+    "loop_detection_integration": [
+      "Verify back edge: target must dominate source",
+      "Find all blocks in loop by reverse traversal until loop header",
+      "Identify loop header as unique block dominating all others in loop"
+    ]
+  },
+
+  "loop_info_analysis": {
+    "purpose": "Provide loop structure information for optimization passes",
+    "data_structures": {
+      "loop_tree": {
+        "description": "Hierarchical representation of loop nesting",
+        "root": "Implicit root representing the function",
+        "nodes": "Each loop is a node in the tree",
+        "edges": "Parent is immediately containing loop"
+      },
+      "loop_info_queries": [
+        "getLoopFor(block) - get innermost loop containing block",
+        "getLoopDepth(block) - get nesting depth of block",
+        "contains(loop1, loop2) - check if loop1 contains loop2",
+        "getInnerLoops(loop) - get immediate child loops"
+      ]
+    },
+    "analysis_updates": {
+      "preheader_tracking": "Single entry block guaranteed by LoopSimplify",
+      "latch_tracking": "Single back edge block after LoopSimplify normalization",
+      "exit_blocks": "Blocks with successors outside loop"
+    }
+  },
+
+  "loop_simplify_integration": {
+    "prerequisite_pass": "LoopSimplify ensures canonical form before detailed loop optimization",
+    "canonical_form_requirements": [
+      "Single preheader block (entry point with guaranteed single execution before loop)",
+      "Single latch block (contains back edge to loop header)",
+      "All back edges from latch to header",
+      "All loop entries from preheader"
+    ],
+    "simplification_operations": [
+      "Insert preheader if multiple external entries exist",
+      "Merge multiple back edges into single latch block",
+      "Normalize exit block structure"
+    ],
+    "benefit_for_loop_detection": "Simplification preserves loop detection results but ensures uniform structure for subsequent passes"
+  },
+
+  "algorithm_characteristics": {
+    "strengths": [
+      "Mathematically sound: based on dominator relationships",
+      "Complete: finds all natural loops",
+      "Efficient: linear time with standard algorithms",
+      "Handles nested loops correctly",
+      "Works with arbitrary CFG structures"
+    ],
+    "properties": [
+      "Identifies natural loops (loop + proper nesting structure)",
+      "Single entry property: natural loops have exactly one entry block",
+      "Proper nesting: inner loops don't cross outer loop boundaries",
+      "Back edge property: every loop has at least one back edge"
+    ],
+    "edge_cases": [
+      "Self-loops: blocks with edges to themselves form single-block loops",
+      "Irreducible loops: multiple entries to same basic block",
+      "Nested irreducible structures: handled by dominance analysis",
+      "Exception handling blocks: treated as regular CFG blocks"
+    ]
+  },
+
+  "optimization_pass_usage": {
+    "passes_requiring_loop_detection": [
+      {
+        "pass": "LoopInvariantCodeMotion (LICM)",
+        "usage": "Identifies values that don't change within loop; uses loop structure for safety verification"
+      },
+      {
+        "pass": "LoopUnroll",
+        "usage": "Replicates loop body; uses trip count analysis and nesting depth for factor selection"
+      },
+      {
+        "pass": "LoopVectorize",
+        "usage": "Identifies data parallelism in loops; uses loop structure and dependence analysis"
+      },
+      {
+        "pass": "LoopRotate",
+        "usage": "Transforms do-while from while; uses loop header/latch structure"
+      },
+      {
+        "pass": "LoopFusion",
+        "usage": "Combines compatible loops; uses loop containment and adjacency information"
+      },
+      {
+        "pass": "LoopInterchange",
+        "usage": "Reorders nested loops; requires accurate nesting relationship information"
+      },
+      {
+        "pass": "LoopDeletion",
+        "usage": "Removes empty/unreachable loops; uses loop body analysis"
+      }
+    ]
+  },
+
+  "cuda_specific_considerations": {
+    "thread_block_mapping": "Loop structures correspond to thread block organization in CUDA kernels",
+    "warp_execution_alignment": "Loop nesting affects warp divergence and synchronization points",
+    "register_pressure_analysis": "Nested loops increase register usage, critical for occupancy calculation",
+    "shared_memory_optimization": "Loop structure guides shared memory allocation and synchronization",
+    "tensor_core_integration": "Innermost loops often vectorized for tensor core operations",
+    "gpu_memory_hierarchy": "Loop nesting affects global/shared/local memory access patterns"
+  },
+
+  "detected_algorithms": {
+    "dominator_tree_construction": {
+      "algorithm": "Lengauer-Tarjan dominance algorithm",
+      "evidence": "foundation/analyses/09_PATTERN_DISCOVERY.json",
+      "characteristics": [
+        "CFG traversal for dominator tree construction",
+        "Post-order numbering scheme",
+        "Immediate dominator tracking"
+      ]
+    },
+    "dfs_traversal": {
+      "algorithm": "Depth-First Search (DFS)",
+      "confidence": "HIGH",
+      "uses": [
+        "Control flow graph traversal",
+        "Loop identification and ordering",
+        "Back edge detection via DFS classification"
+      ]
+    }
+  },
+
+  "implementation_evidence": {
+    "code_patterns": [
+      "CFG traversal for dominator tree construction",
+      "Post-order numbering in optimization passes",
+      "Loop header identification and marking",
+      "Block-to-loop mapping data structures"
+    ],
+    "string_references": [
+      "Loop Invariant Code Motion - LICM pass",
+      "Versioned loop for LICM - variant handling",
+      "Loop Versioning for LICM",
+      "Control LICM - pass control flag"
+    ],
+    "parameter_references": [
+      "loop-size-threshold: threshold for applying optimizations",
+      "disable-memory-promotion: loop memory optimization control",
+      "disable-LICMPass: disable LICM optimization"
+    ]
+  },
+
+  "validation_methodology": {
+    "analysis_sources": [
+      "Pattern discovery from binary analysis",
+      "Cross-reference validation from multiple analysis documents",
+      "Consistency with LLVM standard compiler implementation",
+      "Inference from optimization pass specifications"
+    ],
+    "confidence_justification": [
+      "Explicit dependency chains in pass specifications",
+      "Standard compiler theory alignment",
+      "Evidence from loop optimization pass details",
+      "Architectural consistency across optimization framework"
+    ]
+  },
+
+  "research_notes": {
+    "algorithm_origin": "Standard compiler optimization technique from Dragon Book and LLVM documentation",
+    "nvidia_adaptations": "GPU-specific adjustments for thread-level parallelism and memory hierarchy",
+    "key_insights": [
+      "Loop detection is prerequisite for all loop optimizations",
+      "Dominator-based detection finds natural loops precisely",
+      "Nesting depth critical for cost models in optimization decisions",
+      "Loop structure directly maps to GPU thread block organization"
+    ],
+    "implementation_complexity": "Medium - standard algorithms but requires careful dominance tree management",
+    "critical_dependencies": [
+      "Accurate CFG construction",
+      "Correct dominator tree computation",
+      "Proper back edge identification",
+      "Accurate SSA and use-def chains"
+    ]
+  },
+
+  "open_questions": [
+    "Exact loop detection entry point in CICC compilation pipeline",
+    "How irreducible loops are handled if present",
+    "Loop splitting or restructuring for problematic patterns",
+    "Integration with GPU thread block analysis",
+    "Optimization of deeply nested loop structures",
+    "Special handling for exception/error handling edges"
+  ],
+
+  "references_and_documentation": {
+    "compiler_textbooks": [
+      "Compilers: Principles, Techniques, and Tools (Dragon Book) - Chapter 8: Code Generation",
+      "Advanced Compiler Design and Implementation - Chapter 13: Loop Optimization"
+    ],
+    "llvm_documentation": [
+      "https://llvm.org/docs/LoopTerminology/",
+      "https://llvm.org/docs/Passes/#loop-simplify",
+      "https://llvm.org/doxygen/classllvm_1_1LoopInfo.html"
+    ],
+    "foundation_analysis_files": [
+      "foundation/analyses/09_PATTERN_DISCOVERY.json",
+      "foundation/analyses/19_DATA_STRUCTURE_LAYOUTS.json",
+      "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json",
+      "foundation/analyses/02_MODULE_ANALYSIS.json"
+    ]
+  },
+
+  "summary": {
+    "loop_detection_method": "Dominator-based natural loop detection using back edge identification",
+    "key_algorithm": "Find all back edges (edges where target dominates source), then construct loop bodies by backward CFG traversal",
+    "loop_header": "The target block of a back edge; dominates all blocks in loop",
+    "nesting_depth": "Calculated recursively from loop containment tree; depth = parent_depth + 1",
+    "supporting_data_structures": "CFG, dominator tree, loop info tree, block-to-loop mapping",
+    "integration_point": "Early in optimization pipeline, prerequisite for all loop optimization passes",
+    "confidence_level": "HIGH - based on standard compiler algorithms and consistent evidence from multiple analysis sources"
+  }
+}

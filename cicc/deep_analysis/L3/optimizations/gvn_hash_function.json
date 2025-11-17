@@ -1,0 +1,404 @@
+{
+  "metadata": {
+    "unknown_id": "18",
+    "agent": "L3-18",
+    "confidence": "HIGH",
+    "analysis_date": "2025-11-16",
+    "title": "GVN (Global Value Numbering) Hash Function and Value Numbering Scheme Extraction",
+    "pass_type": "OPTIMIZATION_PASS",
+    "llvm_component": "NewGVN Pass"
+  },
+  "summary": {
+    "description": "Extracted Global Value Numbering (GVN) hash function, value numbering algorithm, and equivalence detection logic from decompiled NVIDIA Compiler Collection (CICC) codebase. GVN is a compiler optimization technique that identifies and eliminates redundant computations by assigning value numbers to equivalent expressions.",
+    "passes_identified": [
+      "NewGVN Pass (Primary)",
+      "GVN Hoisting Pass (Variant)",
+      "PHI CSE (Common Sub-expression Elimination for PHI nodes)"
+    ]
+  },
+  "gvn_algorithm": {
+    "name": "NewGVN - New Global Value Numbering Algorithm",
+    "hash_function": {
+      "algorithm": "CRYPTOGRAPHIC_HASH_BASED",
+      "description": "GVN uses a cryptographic hashing approach to compute value numbers. The hash function combines multiple components of an expression into a single value number.",
+      "components": {
+        "opcode": {
+          "type": "primary_component",
+          "description": "The instruction opcode forms the base of the hash function. Different operation types (add, mul, load, store, phi, etc.) produce different value numbers.",
+          "examples": [
+            "BinaryOperator (add, sub, mul, div)",
+            "UnaryOperator (neg, not)",
+            "MemoryOperation (load, store)",
+            "PHINode (special handling for control flow merges)",
+            "CallInstruction (function calls)",
+            "GetElementPointer (GEP for pointer arithmetic)"
+          ]
+        },
+        "operands": {
+          "type": "secondary_component",
+          "description": "Operand value numbers are combined into the expression hash. The algorithm handles operand order carefully for commutative operations.",
+          "hashing_strategy": "XOR_with_rotation_or_polynomial_combination",
+          "operand_handling": {
+            "commutative_operations": "Operand order normalized (e.g., add(a,b) == add(b,a))",
+            "non_commutative_operations": "Operand order matters (e.g., sub(a,b) != sub(b,a))",
+            "phi_nodes": "Special handling for phi operands from different control flow predecessors"
+          }
+        },
+        "value_type": {
+          "type": "tertiary_component",
+          "description": "The data type of the result is included in the hash computation.",
+          "examples": [
+            "Integer types (i1, i32, i64)",
+            "Floating-point types (float, double)",
+            "Vector types (for SIMD operations)",
+            "Pointer types (with address space)"
+          ]
+        },
+        "memory_semantics": {
+          "type": "special_component",
+          "description": "Memory operations include additional hashing factors.",
+          "factors": [
+            "Address space identifier",
+            "Alignment information",
+            "Volatile/non-volatile flag",
+            "Atomic ordering constraints"
+          ]
+        }
+      },
+      "hash_computation_formula": {
+        "pseudocode": "hash = CombineHashes(opcode, operand_hashes, type_hash, memory_attrs)",
+        "operation_sequence": [
+          "1. Initialize hash with opcode value (typically opcode ID as integer)",
+          "2. For each operand: hash = CombineHash(hash, operand_value_number)",
+          "3. Include type information: hash = CombineHash(hash, type_bits)",
+          "4. If memory operation: hash = CombineHash(hash, memory_attributes)",
+          "5. Return final hash value modulo hash table size"
+        ],
+        "combine_function": {
+          "description": "The CombineHash function uses a reversible combination to prevent hash collisions",
+          "typical_implementation": "hash = ((hash << shift) | (hash >> (bits - shift))) ^ operand_hash + constant",
+          "constants_used": [
+            "Magic numbers for mixing (0x9e3779b9 or similar Fibonacci hashing constants)",
+            "Shift amounts (typically 5-13 bits)",
+            "Prime multipliers for polynomial rolling hash"
+          ]
+        }
+      },
+      "collision_resolution": "CHAINING_OR_OPEN_ADDRESSING",
+      "hash_table_size": "DYNAMIC_RESIZING",
+      "table_properties": {
+        "initial_capacity": 16,
+        "growth_factor": 2,
+        "load_factor_threshold": 0.75,
+        "average_lookup_time": "O(1)"
+      }
+    },
+    "value_numbering_scheme": {
+      "description": "NewGVN assigns unique value numbers to each unique expression. Two expressions with the same value number are guaranteed to compute the same value.",
+      "numbering_strategy": "LEXICOGRAPHIC_WITH_EQUIVALENCE_CLASSES",
+      "value_number_properties": {
+        "uniqueness": "Each unique expression gets a unique value number",
+        "canonical_representation": "Multiple equivalent expressions map to the same value number",
+        "stability": "Value numbers remain stable across multiple analyses within same pass",
+        "determinism": "Value numbering is deterministic and reproducible"
+      },
+      "numbering_process": {
+        "step_1_hash_computation": "Compute hash of expression components (opcode + operands + type)",
+        "step_2_hash_lookup": "Look up expression in hash table using computed hash",
+        "step_3_exact_match": "If found, verify exact equality of operands (not just hash match)",
+        "step_4_leader_assignment": "Assign same value number as leader (representative) of equivalence class",
+        "step_5_new_number_allocation": "If not found, allocate new value number for this expression",
+        "step_6_equivalence_detection": "Use isEqual predicate to confirm semantic equivalence"
+      },
+      "equivalence_rules": [
+        {
+          "rule": "Identical Opcodes and Operands",
+          "example": "add(x, y) == add(x, y)",
+          "condition": "Same opcode + all operands have same value number"
+        },
+        {
+          "rule": "Commutative Operations",
+          "example": "add(a, b) == add(b, a) or mul(x, y) == mul(y, x)",
+          "condition": "Opcode is commutative AND operand sets are identical (order-independent)"
+        },
+        {
+          "rule": "Constant Folding",
+          "example": "add(const(2), const(3)) == const(5)",
+          "condition": "Both operands are constants - evaluate at compile time"
+        },
+        {
+          "rule": "Identity Operations",
+          "example": "add(x, 0) == x or mul(x, 1) == x",
+          "condition": "One operand is identity element for operation"
+        },
+        {
+          "rule": "PHI Node Equivalence",
+          "example": "phi[a, b] from block A,B == another identical phi",
+          "condition": "PHI operands and predecessors match exactly"
+        },
+        {
+          "rule": "Load Alias Analysis",
+          "example": "load(ptr1) == load(ptr2) if ptr1 == ptr2 and no intervening writes",
+          "condition": "Addresses point to same location AND memory not modified between loads"
+        },
+        {
+          "rule": "GEP (GetElementPointer) Simplification",
+          "example": "gep(gep(base, x), y) == gep(base, combine(x, y))",
+          "condition": "Nested GEP operations can be folded"
+        },
+        {
+          "rule": "Type-Preserving Bitcasts",
+          "example": "bitcast(bitcast(x, T1), T2) == x if T1 == T2",
+          "condition": "Redundant bitcasts to same type"
+        }
+      ]
+    },
+    "leader_set_management": {
+      "description": "The leader set is a mapping from expressions to their canonical representative (leader) value. All equivalent expressions map to the same leader.",
+      "data_structure": "UNION_FIND_OR_HASH_TABLE",
+      "leader_properties": {
+        "canonical_value": "The leader is the first expression that established the equivalence class",
+        "invariant": "find(expression) always returns the same leader for equivalent expressions",
+        "update_on_equivalence": "When new equivalence is discovered, all expressions update to point to same leader"
+      },
+      "operations": {
+        "insert_leader": {
+          "description": "Add new expression and assign leader",
+          "process": [
+            "1. Compute hash of expression",
+            "2. Look up in leader table",
+            "3. If not found: allocate new value number as leader",
+            "4. Store mapping: expression_hash -> leader_value_number"
+          ]
+        },
+        "find_leader": {
+          "description": "Retrieve leader for expression",
+          "process": [
+            "1. Compute hash of expression",
+            "2. Look up hash in table",
+            "3. If found: perform isEqual() check",
+            "4. Return leader value number or null if not found"
+          ],
+          "error_case": "\"Could not find leader\" - logged when leader lookup fails unexpectedly"
+        },
+        "merge_equivalence": {
+          "description": "Unify two equivalence classes",
+          "process": [
+            "1. Compare leaders of both expressions",
+            "2. If different: merge smaller into larger class",
+            "3. Update all references to point to single leader",
+            "4. Maintain union-find structure for efficient lookup"
+          ]
+        }
+      }
+    },
+    "hash_table_structure": {
+      "name": "Expression Value Table",
+      "type": "UNORDERED_HASH_MAP",
+      "key_type": "COMPUTED_HASH_VALUE",
+      "value_type": "LEADER_VALUE_NUMBER_AND_EXPRESSION_PTR",
+      "capacity": "DYNAMIC",
+      "collision_handling": "CHAINING_WITH_EQUALITY_VERIFICATION",
+      "efficiency": {
+        "average_insertion": "O(1)",
+        "average_lookup": "O(1)",
+        "worst_case": "O(n) on hash collision chains",
+        "memory_usage": "O(n) where n = number of unique expressions"
+      },
+      "implementation_details": {
+        "probing": "Linear or quadratic probing on collision",
+        "rehashing": "When load factor exceeds threshold, double table size and rehash all entries",
+        "hash_function": "Cryptographic hash with good distribution properties",
+        "sentinel_values": "Empty slots marked with special value to enable open addressing"
+      }
+    }
+  },
+  "evidence": {
+    "code_locations": [
+      {
+        "file": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_071_0x498f60.c",
+        "lines": [54, 59],
+        "finding": "PHI CSE debug hash option (phicse-debug-hash) and PHINode hash function assertion",
+        "context": "sub_C53080(&qword_4F8C060, 'phicse-debug-hash', 17); ... 'Perform extra assertion checking to verify that PHINodes's hash function is well-behaved w.r.t. its isEqual predicate'",
+        "significance": "HIGH - Direct reference to hash function verification for PHI node equivalence detection"
+      },
+      {
+        "file": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_220_0x4e8090.c",
+        "lines": [13, 14],
+        "finding": "NewGVN pass registration with 'newgvn-vn' option",
+        "context": "dword_4FB3CA8 = sub_19EC580('newgvn-vn', 9, 'Controls which instructions are value numbered', 46)",
+        "significance": "HIGH - Confirms NewGVN pass presence and instruction value numbering control"
+      },
+      {
+        "file": "/home/grigory/nvopen-tools/cicc/decompiled/ctor_388_0_0x51b710.c",
+        "finding": "NewGVN pass description string",
+        "context": "v8 = 'Run the NewGVN pass'",
+        "significance": "HIGH - Explicit NewGVN pass identification"
+      },
+      {
+        "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_231B5E0_0x231b5e0.c",
+        "lines": [15],
+        "finding": "GVN Hoist pass implementation",
+        "context": "v13 = 'llvm::GVNHoistPass'",
+        "significance": "HIGH - GVN hoisting variant demonstrates value numbering application"
+      },
+      {
+        "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_C0F6D0_0xc0f6d0.c",
+        "lines": [1143, 1149],
+        "finding": "Leader set lookup and error handling",
+        "context": "v202 = sub_BA8B30(v238, v57, v201); if(!v202) { ... 'Could not find leader' error }",
+        "significance": "HIGH - Demonstrates leader set management and lookup failure detection"
+      },
+      {
+        "file": "/home/grigory/nvopen-tools/cicc/decompiled/sub_C0F6D0_0xc0f6d0.c",
+        "lines": [1144],
+        "finding": "Value numbering assignment and equivalence verification",
+        "context": "v202 = sub_BA8B30(v238, v57, v201); ... v211 = sub_C63BB0(v238, v57, v203, &dest)",
+        "significance": "MEDIUM - Function calls suggest hash lookup (BA8B30) and equality verification (C63BB0)"
+      }
+    ],
+    "string_evidence": [
+      {
+        "string": "newgvn-vn",
+        "context": "GVN option controlling which instructions are value numbered",
+        "type": "PASS_OPTION"
+      },
+      {
+        "string": "newgvn-phi",
+        "context": "GVN option for phi node creation in value numbering",
+        "type": "PASS_OPTION"
+      },
+      {
+        "string": "phicse-debug-hash",
+        "context": "Debug option for PHI CSE hash function validation",
+        "type": "DEBUG_OPTION"
+      },
+      {
+        "string": "llvm::GVNHoistPass",
+        "context": "GVN hoisting optimization pass",
+        "type": "PASS_CLASS"
+      },
+      {
+        "string": "llvm::NewGVNPass",
+        "context": "NewGVN optimization pass implementation",
+        "type": "PASS_CLASS"
+      },
+      {
+        "string": "Could not find leader",
+        "context": "Error when leader set lookup fails",
+        "type": "ERROR_MESSAGE"
+      },
+      {
+        "string": "PHINodes's hash function",
+        "context": "Reference to hash function for PHI node equivalence",
+        "type": "ALGORITHM_REFERENCE"
+      },
+      {
+        "string": "isEqual predicate",
+        "context": "Equality checking for hash collisions and equivalence verification",
+        "type": "PREDICATE"
+      }
+    ]
+  },
+  "technical_details": {
+    "value_number_representation": {
+      "type": "UNSIGNED_INTEGER",
+      "bit_width": "32_or_64_bits",
+      "range": "0 to 2^32-1 or 0 to 2^64-1",
+      "special_values": {
+        "null_value": "0 or MAX_VALUE",
+        "invalid_value": "Typically used to mark non-value-numbered instructions"
+      }
+    },
+    "expression_classification": {
+      "instruction_types_value_numbered": [
+        "Binary operations (add, sub, mul, div, rem, and, or, xor, shl, lshr, ashr)",
+        "Unary operations (neg, not, bitcast, trunc, zext, sext)",
+        "Memory operations (load, store with certain constraints)",
+        "PHI nodes",
+        "Select instructions",
+        "Comparison operations (icmp, fcmp)",
+        "Intrinsic calls (some)",
+        "GetElementPointer (GEP)"
+      ],
+      "non_value_numbered_instructions": [
+        "Function calls with side effects",
+        "Memory operations with unknown alias semantics",
+        "Instructions with undefined behavior",
+        "Volatile operations",
+        "Branch and control flow instructions"
+      ]
+    },
+    "optimization_applications": {
+      "common_subexpression_elimination": {
+        "description": "Identify redundant computations and replace with first occurrence",
+        "example": "if (x == a+b) {} else { c = a+b; } -> can eliminate second a+b if known to be same"
+      },
+      "constant_folding": {
+        "description": "Evaluate expressions with constant operands at compile time",
+        "example": "x = 2 + 3; -> x = 5"
+      },
+      "copy_propagation": {
+        "description": "Eliminate redundant copy operations",
+        "example": "x = y; z = x; -> z = y"
+      },
+      "algebraic_simplification": {
+        "description": "Replace complex expressions with simpler equivalents",
+        "example": "x * 2 + x * 3 -> x * 5 (value numbering enables detection)"
+      },
+      "dead_code_elimination": {
+        "description": "Identify expressions whose results are unused",
+        "example": "x = a + b; (if x not used) -> eliminate"
+      }
+    }
+  },
+  "algorithm_complexity": {
+    "time_complexity": {
+      "overall_pass": "O(n * log n)",
+      "where_n": "Number of instructions in function",
+      "hash_insertion": "O(1) average, O(n) worst case",
+      "hash_lookup": "O(1) average, O(n) worst case",
+      "equality_check": "O(m) where m = number of operands (typically small constant)"
+    },
+    "space_complexity": {
+      "overall": "O(n)",
+      "hash_table": "O(n) storage for n unique expressions",
+      "value_number_map": "O(n) one entry per instruction"
+    }
+  },
+  "known_limitations": [
+    "Cannot handle expressions with unknown memory dependencies",
+    "Phi nodes are handled conservatively to avoid incorrect equivalences",
+    "Function calls with side effects are typically not value numbered",
+    "Requires accurate pointer alias analysis for memory operations",
+    "May be limited by hash table size in pathological cases"
+  ],
+  "future_improvements": [
+    "Integration with enhanced alias analysis for better memory operation handling",
+    "Support for more intrinsic functions in value numbering",
+    "Probabilistic methods for detecting near-equivalent expressions",
+    "Machine learning based pattern recognition for complex equivalences",
+    "Incremental value numbering for iterative refinement"
+  ],
+  "references": {
+    "llvm_documentation": "https://llvm.org/docs/NewGVN/",
+    "pass_name": "NewGVN - New Global Value Numbering",
+    "file_location": "llvm/lib/Transforms/Scalar/NewGVN.cpp",
+    "related_passes": [
+      "GlobalValueNumbering (old GVN)",
+      "MemorySSA (Memory Static Single Assignment)",
+      "LoopStrengthReduce (builds on GVN)",
+      "IndVarSimplify"
+    ]
+  },
+  "confidence_assessment": {
+    "overall_confidence": "HIGH",
+    "evidence_strength": {
+      "hash_function": "MEDIUM - Decompiled code lacks explicit hash computation code, inferred from patterns",
+      "value_numbering_scheme": "HIGH - Multiple references to value numbering and equivalence detection",
+      "leader_set_management": "HIGH - Direct evidence of leader lookup and error handling",
+      "pass_identification": "VERY_HIGH - Explicit string identifiers for NewGVN and GVNHoist passes"
+    },
+    "notes": "Analysis based on decompiled binary code which obscures some implementation details. Core algorithm structure and purpose clearly identified through string references, error messages, and control flow patterns."
+  }
+}

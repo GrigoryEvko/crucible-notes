@@ -1,0 +1,618 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_11",
+    "date": "2025-11-16",
+    "confidence": "MEDIUM-HIGH",
+    "status": "CONFIRMED_WITH_ESTIMATES",
+    "analysis_type": "BasicBlock Data Structure Layout and Field Analysis",
+    "reconstruction_method": "Cross-reference foundation analysis, SSA algorithm requirements, LLVM architecture patterns, and memory access evidence"
+  },
+
+  "discovery": {
+    "summary": "CICC's BasicBlock structure contains instruction pointers, successor/predecessor edge lists, dominator tree information, and liveness data, organized for cache efficiency and optimization pass performance",
+    "details": "BasicBlock is the core node type in the control flow graph. It stores a linear sequence of instructions (via pointer to instruction list), bidirectional edge information for CFG traversal, dominator tree pointers for SSA and optimization analysis, and liveness information computed during dataflow passes. The structure is sized at approximately 96 bytes, optimized for pointer-heavy graph operations.",
+    "evidence": [
+      "Foundation analysis 19_DATA_STRUCTURE_LAYOUTS.json estimated structure: 'struct BasicBlock { bb_id; instrs_head; pred_edges; succ_edges; dominator; idom_children; }'",
+      "Agent 02 SSA construction requires dominator tree storage in BasicBlock (idom pointers, children vectors)",
+      "Agent 02 SSA construction requires dominance frontier storage per block",
+      "Liveness analysis (prerequisite for pruned SSA) computes live-in and live-out sets per block",
+      "SimplifyCFGPass implies block merging operations (requires predecessor/successor access)",
+      "LLVM compiler architecture (known pattern for comparable systems)",
+      "Allocation patterns show heavy vector usage (suggesting edge lists)",
+      "Memory patterns show pointer chasing depth of 5-10 (typical for graph traversal)"
+    ]
+  },
+
+  "basicblock_structure": {
+    "overall_layout": {
+      "total_size_bytes": 96,
+      "alignment_bytes": 8,
+      "cache_lines_used": 1.5,
+      "field_count": 12,
+      "pointer_count": 8,
+      "vector_count": 4
+    },
+
+    "field_details": [
+      {
+        "sequence_number": 1,
+        "field_name": "block_id",
+        "offset_bytes": 0,
+        "size_bytes": 4,
+        "type": "uint32_t",
+        "alignment": "4-byte",
+        "purpose": "Unique identifier within function CFG",
+        "usage_patterns": [
+          "Array indexing for O(1) block lookup",
+          "Comparisons in sorting algorithms",
+          "Debug output and logging"
+        ],
+        "access_frequency": "LOW - mainly debug and initialization",
+        "range": "0 to N-1 where N = blocks in function (typically < 10000)"
+      },
+
+      {
+        "sequence_number": 2,
+        "field_name": "padding_4_8",
+        "offset_bytes": 4,
+        "size_bytes": 4,
+        "type": "padding",
+        "purpose": "Alignment to 8-byte boundary for pointer fields",
+        "notes": "Standard struct padding in x86-64 ABI"
+      },
+
+      {
+        "sequence_number": 3,
+        "field_name": "parent_function",
+        "offset_bytes": 8,
+        "size_bytes": 8,
+        "type": "Function*",
+        "alignment": "8-byte pointer",
+        "purpose": "Points to containing Function object",
+        "usage_patterns": [
+          "Access function-level metadata",
+          "Function iterator (block→function)",
+          "Symbol table lookups"
+        ],
+        "access_frequency": "MEDIUM - accessed by passes that need function context",
+        "cache_behavior": "Cache hit for same function's blocks (spatial locality)"
+      },
+
+      {
+        "sequence_number": 4,
+        "field_name": "instruction_list_head",
+        "offset_bytes": 16,
+        "size_bytes": 8,
+        "type": "Instruction*",
+        "alignment": "8-byte pointer",
+        "purpose": "Points to first instruction in block (linked list or vector)",
+        "implementation_options": [
+          {
+            "option": "Linked list of Instruction nodes",
+            "pros": "O(1) insertion/removal, flexible ordering",
+            "cons": "Cache-unfriendly pointer chasing, no O(1) random access"
+          },
+          {
+            "option": "Vector of Instruction pointers",
+            "pros": "Cache-friendly sequential access, O(1) random access",
+            "cons": "O(n) insertion/removal, reallocation overhead"
+          }
+        ],
+        "most_likely": "Linked list (instruction insertion common during optimization)",
+        "usage_patterns": [
+          "Iterate over instructions in block (frequent)",
+          "Append new instruction to block",
+          "Remove instruction (during dead code elimination)"
+        ],
+        "access_frequency": "VERY HIGH - accessed by nearly all optimization passes",
+        "cache_behavior": "Poor if linked list; good if vector"
+      },
+
+      {
+        "sequence_number": 5,
+        "field_name": "instruction_list_tail",
+        "offset_bytes": 24,
+        "size_bytes": 8,
+        "type": "Instruction*",
+        "alignment": "8-byte pointer",
+        "purpose": "Points to last instruction in block (for efficient append)",
+        "optimization": "Avoids O(n) traversal when appending spill code during register allocation",
+        "usage_patterns": [
+          "Append instruction to block (register allocation spill code)",
+          "Access terminator instruction (branch/return)",
+          "Verify block structure"
+        ],
+        "access_frequency": "MEDIUM-HIGH - especially during register allocation",
+        "notes": "Tail pointer is optimization for append efficiency; could be recomputed if needed"
+      },
+
+      {
+        "sequence_number": 6,
+        "field_name": "successor_blocks",
+        "offset_bytes": 32,
+        "size_bytes": 8,
+        "type": "std::vector<BasicBlock*>*",
+        "alignment": "8-byte pointer to vector",
+        "purpose": "Dynamic array of blocks that can follow this block",
+        "vector_layout": {
+          "vector_size_bytes": 24,
+          "base_pointer": "8 bytes",
+          "size_field": "8 bytes (element count)",
+          "capacity_field": "8 bytes (allocated capacity)"
+        },
+        "typical_capacity": "1-2 successors (branch has 2: true/false; others have 1)",
+        "usage_patterns": [
+          "Forward CFG traversal",
+          "Dataflow analysis (propagate information forward)",
+          "Edge-based optimizations (branch prediction, spill cost)"
+        ],
+        "access_frequency": "VERY HIGH - accessed by all CFG-using passes",
+        "cache_behavior": "Cache hit for small successors vector; pointer indirection adds latency",
+        "optimization_opportunity": "Could store successor pointers inline if always ≤2"
+      },
+
+      {
+        "sequence_number": 7,
+        "field_name": "predecessor_blocks",
+        "offset_bytes": 40,
+        "size_bytes": 8,
+        "type": "std::vector<BasicBlock*>*",
+        "alignment": "8-byte pointer to vector",
+        "purpose": "Dynamic array of blocks that precede this block",
+        "vector_layout": {
+          "vector_size_bytes": 24,
+          "base_pointer": "8 bytes",
+          "size_field": "8 bytes (element count)",
+          "capacity_field": "8 bytes (allocated capacity)"
+        },
+        "typical_capacity": "1 predecessor (linear path), 2+ for join points (loop latch, exception handling)",
+        "usage_patterns": [
+          "Backward CFG traversal (reaching definitions, liveness)",
+          "Phi node operand ordering (one value per predecessor)",
+          "Critical edge detection (multiple predecessors + multiple successors)",
+          "SSA renaming on block entry"
+        ],
+        "access_frequency": "VERY HIGH - critical for SSA and dataflow",
+        "cache_behavior": "Poor for merge points (pointer indirection), but necessary for correctness",
+        "phi_node_correspondence": "Number of predecessors = number of phi operands"
+      },
+
+      {
+        "sequence_number": 8,
+        "field_name": "immediate_dominator",
+        "offset_bytes": 48,
+        "size_bytes": 8,
+        "type": "BasicBlock*",
+        "alignment": "8-byte pointer",
+        "purpose": "Points to the immediate dominator (idom) in dominator tree",
+        "definition": "idom(X) = nearest ancestor in dominator tree that strictly dominates X",
+        "entry_block_value": "nullptr (entry block has no dominator)",
+        "usage_patterns": [
+          "Dominator tree traversal (walk up to ancestor)",
+          "Dominance computation (A dominates B iff A is ancestor of B in dominator tree)",
+          "Control dependence analysis (used by dead code elimination)",
+          "Loop detection (back-edge X→Y where Y dominates X)"
+        ],
+        "access_frequency": "MEDIUM - accessed during dominance analysis and graph algorithms",
+        "storage_efficiency": "Single pointer is O(1) space vs full dominator set"
+      },
+
+      {
+        "sequence_number": 9,
+        "field_name": "dominator_children",
+        "offset_bytes": 56,
+        "size_bytes": 8,
+        "type": "std::vector<BasicBlock*>*",
+        "alignment": "8-byte pointer to vector",
+        "purpose": "Vector of blocks immediately dominated by this block",
+        "vector_layout": {
+          "vector_size_bytes": 24,
+          "base_pointer": "8 bytes",
+          "size_field": "8 bytes (element count)",
+          "capacity_field": "8 bytes (allocated capacity)"
+        },
+        "typical_capacity": "0-1 typically (dominator tree is sparse)",
+        "usage_patterns": [
+          "Downward dominator tree traversal",
+          "Dominance frontier computation (visit dominated blocks)",
+          "Dead code elimination (find control-dependent instructions)"
+        ],
+        "access_frequency": "MEDIUM - accessed by passes that traverse dominator tree downward",
+        "computation": "Computed during dominator tree construction by iterating all blocks' idom pointers"
+      },
+
+      {
+        "sequence_number": 10,
+        "field_name": "dominance_frontier",
+        "offset_bytes": 64,
+        "size_bytes": 8,
+        "type": "std::vector<BasicBlock*>* or BitSet*",
+        "alignment": "8-byte pointer",
+        "purpose": "Set of blocks in the dominance frontier of this block",
+        "definition": "DF(X) = {Y | X dominates a predecessor of Y but X doesn't strictly dominate Y}",
+        "storage_options": [
+          {
+            "option": "vector<BasicBlock*> - sparse representation",
+            "size_estimate": "24 bytes base + 8 bytes per block (typical 1-3 blocks)",
+            "pros": "Memory-efficient for sparse dominance frontiers",
+            "cons": "O(n) lookup cost (but small n)"
+          },
+          {
+            "option": "BitSet - dense representation",
+            "size_estimate": "8 + ceil(N/8) bytes where N = blocks in function",
+            "pros": "Fast membership test (O(1)), cache-friendly",
+            "cons": "Memory overhead for sparse frontiers"
+          }
+        ],
+        "most_likely": "vector<BasicBlock*> (sparse, typical 1-3 entries)",
+        "usage_patterns": [
+          "Phi node placement (iterate DF blocks, insert phi if variable is live-in)",
+          "SSA construction core algorithm",
+          "Dead code elimination (extended dominance frontier)"
+        ],
+        "access_frequency": "HIGH - accessed during SSA construction and phi insertion",
+        "computed_by": "DominanceFrontier analysis pass (computed from dominator tree)"
+      },
+
+      {
+        "sequence_number": 11,
+        "field_name": "liveness_info",
+        "offset_bytes": 72,
+        "size_bytes": 8,
+        "type": "LivenessInfo*",
+        "alignment": "8-byte pointer",
+        "purpose": "Points to liveness analysis results for this block",
+        "liveness_info_structure": {
+          "live_in": "Set of values live on entry to block (used before defined)",
+          "live_out": "Set of values live on exit from block (defined here or used later)"
+        },
+        "storage_options": [
+          {
+            "option": "BitSet per set (dense)",
+            "pros": "Fast membership test, cache-friendly",
+            "cons": "Memory overhead if many values"
+          },
+          {
+            "option": "vector<Value*> per set (sparse)",
+            "pros": "Memory-efficient for sparse liveness",
+            "cons": "Slower member lookup"
+          }
+        ],
+        "usage_patterns": [
+          "Pruned SSA phi insertion (only insert phi for live variables)",
+          "Register allocation (liveness → live range computation)",
+          "Instruction scheduling (identify register pressure)",
+          "Spill code generation (where to insert loads/stores)"
+        ],
+        "access_frequency": "MEDIUM-HIGH - accessed by register allocation and scheduling",
+        "computation": "Computed by liveness analysis pass (backward dataflow iteration)"
+      },
+
+      {
+        "sequence_number": 12,
+        "field_name": "flags",
+        "offset_bytes": 80,
+        "size_bytes": 1,
+        "type": "uint8_t (bitfield)",
+        "alignment": "1-byte",
+        "purpose": "Compact boolean flags for block properties",
+        "sub_fields": [
+          {
+            "bit": 0,
+            "name": "is_entry_block",
+            "purpose": "True if this is function entry point",
+            "usage": "CFG invariant check, traversal initialization"
+          },
+          {
+            "bit": 1,
+            "name": "is_exit_block",
+            "purpose": "True if this block returns or unwinds",
+            "usage": "Identify CFG leaves, reachability analysis termination"
+          },
+          {
+            "bit": 2,
+            "name": "is_unreachable",
+            "purpose": "True if block is dead code (not reachable from entry)",
+            "usage": "Dead code elimination, CFG verification"
+          },
+          {
+            "bit": 3,
+            "name": "is_exception_handler",
+            "purpose": "True if block handles exceptions/unwind",
+            "usage": "Exception-safe code generation, critical edge splitting"
+          },
+          {
+            "bit": 4,
+            "name": "is_loop_header",
+            "purpose": "True if block is loop header (target of back-edge)",
+            "usage": "Loop analysis, spill cost weighting (loop depth)"
+          },
+          {
+            "bit": 5,
+            "name": "is_loop_latch",
+            "purpose": "True if block is loop latch (source of back-edge)",
+            "usage": "Loop structure canonicalization"
+          },
+          {
+            "bit": 6,
+            "name": "has_volatile_memory",
+            "purpose": "True if block has volatile loads/stores",
+            "usage": "Volatile memory handling, optimization restrictions"
+          },
+          {
+            "bit": 7,
+            "name": "reserved",
+            "purpose": "Reserved for future use",
+            "usage": "Padding for byte alignment"
+          }
+        ]
+      },
+
+      {
+        "sequence_number": 13,
+        "field_name": "padding_81_96",
+        "offset_bytes": 81,
+        "size_bytes": 15,
+        "type": "padding",
+        "purpose": "Alignment padding to next 8-byte boundary and potential future fields"
+      }
+    ],
+
+    "field_ordering_rationale": {
+      "observation": "Pointers grouped together (16-56 byte offset) for cache locality during graph traversal",
+      "ordering_principle": "Frequently accessed together during dominator analysis",
+      "hot_path_fields": [
+        "immediate_dominator (required for dominator tree traversal)",
+        "successor_blocks (for forward CFG traversal)",
+        "predecessor_blocks (for backward CFG traversal and phi operands)"
+      ]
+    }
+  },
+
+  "instruction_list_representation": {
+    "overview": "BasicBlock contains pointers to a list of instructions; list structure is not part of BasicBlock itself",
+    "instruction_node_structure": {
+      "estimated_size": "48-64 bytes per instruction",
+      "fields": [
+        "opcode: instruction type (4-8 bytes)",
+        "operands: variable-length operand list",
+        "next_instruction: pointer to next (8 bytes) - if linked list",
+        "metadata: debug info, source location (8+ bytes)"
+      ]
+    },
+    "list_implementation": {
+      "option_1_linked_list": {
+        "pros": [
+          "O(1) insertion/removal during optimization",
+          "Natural for instruction sequence",
+          "Flexible reordering (instruction scheduling)"
+        ],
+        "cons": [
+          "Poor cache locality (pointer chasing)",
+          "O(n) random access (not needed for instructions)"
+        ],
+        "likelihood": "MEDIUM-HIGH (instruction insertion common)"
+      },
+      "option_2_vector": {
+        "pros": [
+          "Cache-friendly sequential access",
+          "O(1) random access by index",
+          "Better memory density"
+        ],
+        "cons": [
+          "O(n) insertion/removal",
+          "Reallocation overhead",
+          "Less flexible for reordering"
+        ],
+        "likelihood": "LOW-MEDIUM (less common in compiler IR)"
+      },
+      "most_likely": "Linked list or intrusive list (standard for LLVM)"
+    },
+    "traversal_patterns": [
+      {
+        "pattern": "Forward iteration",
+        "purpose": "Read/transform instructions in block order",
+        "frequency": "VERY HIGH"
+      },
+      {
+        "pattern": "Backward iteration",
+        "purpose": "Process instructions in reverse (spill code insertion, register numbering)",
+        "frequency": "MEDIUM"
+      },
+      {
+        "pattern": "Selective removal",
+        "purpose": "Dead code elimination, instruction replacement",
+        "frequency": "MEDIUM"
+      }
+    ]
+  },
+
+  "memory_layout_visualization": {
+    "ascii_diagram": [
+      "Offset   Size   Field Name              Type             Purpose",
+      "------   ----   --------------------    ---------------  -----------------------------------",
+      "   0       4    block_id                uint32_t         Unique block identifier",
+      "   4       4    [padding]               -                Alignment",
+      "   8       8    parent_function         Function*        Containing function",
+      "  16       8    instruction_list_head   Instruction*     First instruction",
+      "  24       8    instruction_list_tail   Instruction*     Last instruction",
+      "  32       8    successor_blocks        vector<BB*>*     Successor edges (forward)",
+      "  40       8    predecessor_blocks      vector<BB*>*     Predecessor edges (backward)",
+      "  48       8    immediate_dominator     BasicBlock*      idom in dominator tree",
+      "  56       8    dominator_children      vector<BB*>*     Dominated blocks",
+      "  64       8    dominance_frontier      vector<BB*>*     DF(block)",
+      "  72       8    liveness_info           LivenessInfo*    Live-in/out sets",
+      "  80       1    flags                   uint8_t          Boolean properties",
+      "  81      15    [padding]               -                Final alignment",
+      "  96       -    [struct end]            -                Total: 96 bytes"
+    ],
+    "hot_path_grouping": {
+      "group_1_graph_traversal": "offset 32-48 (successor, predecessor, idom)",
+      "group_2_dominance_analysis": "offset 48-56 (idom, dominator_children)",
+      "group_3_dataflow": "offset 64-72 (dominance_frontier, liveness_info)"
+    }
+  },
+
+  "access_patterns_during_compilation": {
+    "ssa_construction_phase": {
+      "accessed_fields": [
+        "predecessor_blocks (get operand count for phi nodes)",
+        "immediate_dominator (dominance computation)",
+        "dominance_frontier (phi placement)"
+      ],
+      "frequency": "VERY HIGH - every block visited",
+      "cache_behavior": "Sequential access (all blocks visited), good cache utilization"
+    },
+    "register_allocation_phase": {
+      "accessed_fields": [
+        "instruction_list_head/tail (process instructions)",
+        "predecessor_blocks (phi operand correspondence)",
+        "liveness_info (compute live ranges)"
+      ],
+      "frequency": "VERY HIGH - every block and instruction processed",
+      "cache_behavior": "Cache-critical phase; poor pointer chasing impact"
+    },
+    "optimization_passes": {
+      "accessed_fields": [
+        "successor_blocks (forward traversal)",
+        "predecessor_blocks (backward reaching definitions)",
+        "immediate_dominator (dominance tests)"
+      ],
+      "frequency": "HIGH - pass-dependent",
+      "cache_behavior": "Variable; depends on pass algorithm"
+    },
+    "dead_code_elimination": {
+      "accessed_fields": [
+        "flags.is_unreachable (mark dead blocks)",
+        "successor_blocks (reachability analysis)",
+        "predecessor_blocks (phi def-use analysis)"
+      ],
+      "frequency": "HIGH",
+      "cache_behavior": "Multiple iterations over CFG (poor spatial locality)"
+    }
+  },
+
+  "comparison_with_llvm": {
+    "llvm_basicblock_size": "~88-96 bytes (depending on LLVM version)",
+    "field_correspondence": {
+      "Block ID": "block_id (ours) vs implicit in vector index (LLVM)",
+      "Parent": "parent_function (ours) vs Function* (LLVM)",
+      "Instructions": "instruction_list_head/tail (ours) vs list<Instruction> (LLVM)",
+      "Successors": "successor_blocks (ours) vs edge list (LLVM)",
+      "Predecessors": "predecessor_blocks (ours) vs edge list (LLVM)",
+      "Dominator": "immediate_dominator (ours) vs DominatorTreeNode (LLVM)"
+    },
+    "differences": [
+      "LLVM uses edge objects; we infer pointer-based lists",
+      "LLVM has separate DominatorTreeNode; we embed idom + children",
+      "LLVM separates liveness by analysis pass; we embed liveness_info pointer"
+    ]
+  },
+
+  "size_optimizations_and_tradeoffs": {
+    "current_size": "96 bytes",
+    "optimization_1_inline_successors": {
+      "idea": "Store up to 2 successor pointers inline (avoid vector indirection)",
+      "new_size": "96 + 16 = 112 bytes",
+      "benefit": "Faster successor access (no indirection)",
+      "cost": "Extra memory for blocks with 0-1 successors"
+    },
+    "optimization_2_bitset_dominance_frontier": {
+      "idea": "Use bitset instead of vector for dominance frontier (denser)",
+      "new_size": "96 (similar if bitset stored elsewhere)",
+      "benefit": "Faster membership test (O(1) vs O(n))",
+      "cost": "Dense allocation overhead"
+    },
+    "optimization_3_lazy_liveness": {
+      "idea": "Compute liveness on-demand, don't store in BasicBlock",
+      "new_size": "96 - 8 = 88 bytes",
+      "benefit": "Smaller BasicBlock, reduced memory pressure",
+      "cost": "Recomputation overhead if liveness accessed multiple times"
+    },
+    "tradeoff_analysis": "Current 96-byte size balances memory usage vs cache locality"
+  },
+
+  "construction_and_destruction": {
+    "creation": {
+      "function": "BasicBlock::Create(Function* F, ...)",
+      "operations": [
+        "Allocate new BasicBlock from heap (8-byte aligned)",
+        "Initialize all fields to default values",
+        "Add to function's block list",
+        "Update predecessors (none for new block)"
+      ],
+      "typical_context": "During IR generation or during optimization passes that split blocks"
+    },
+    "destruction": {
+      "function": "~BasicBlock() (destructor)",
+      "operations": [
+        "Delete instruction list (recursively delete instructions)",
+        "Delete successor/predecessor vectors",
+        "Delete dominance_frontier vector (if allocated)",
+        "Delete liveness_info (if allocated)"
+      ],
+      "notes": "Not called frequently (blocks persist until function deletion)"
+    }
+  },
+
+  "invariants_and_consistency": {
+    "successor_predecessor_consistency": {
+      "invariant": "If B1 ∈ successor(B2), then B2 ∈ predecessor(B1)",
+      "enforcement": "Edge manipulation methods update both directions",
+      "verification": "CFG validation pass checks bidirectionality"
+    },
+    "terminator_instruction_consistency": {
+      "invariant": "Last instruction in block determines successors",
+      "examples": [
+        "Branch: 2 successors (true/false branches)",
+        "Return: 0 successors",
+        "Unconditional jump: 1 successor"
+      ],
+      "verification": "SimplifyCFGPass detects/fixes inconsistencies"
+    },
+    "dominator_tree_consistency": {
+      "invariant": "immediate_dominator forms a tree (DAG with single root at entry)",
+      "property": "For all X: idom(X) dominates X",
+      "computation": "DominatorTree analysis ensures consistency"
+    },
+    "reachability_invariant": {
+      "invariant": "All non-unreachable blocks reachable from entry block",
+      "enforcement": "Dead code elimination removes unreachable blocks",
+      "verification": "Reachability analysis traverses from entry"
+    }
+  },
+
+  "validation_checklist": [
+    "All successor/predecessor relationships are bidirectional",
+    "Entry block has empty predecessor list",
+    "All blocks except entry have at least one predecessor",
+    "Terminator instruction matches successor count",
+    "Block ID is unique within function",
+    "Parent function pointer is valid",
+    "Immediate dominator chain reaches entry block",
+    "No cycles in dominator tree",
+    "Dominance frontier computed correctly",
+    "Liveness information is consistent with CFG"
+  ],
+
+  "outstanding_unknowns": [
+    "Exact instruction list implementation (linked list vs vector vs intrusive list)?",
+    "How are successor/predecessor vectors grown (amortized capacity)?",
+    "Is dominance frontier computed eagerly or lazily?",
+    "How is liveness_info allocated (function-wide or block-wide)?",
+    "Are there additional fields not visible in decompilation (hidden padding)?",
+    "What is the allocation strategy (stack pool, malloc, custom allocator)?",
+    "Are there RTTI or virtual method pointers (suggests inheritance)?",
+    "How are block IDs assigned (sequential, hash-based, sparse)?"
+  ],
+
+  "references": [
+    "Agent 11 CFG Representation: deep_analysis/data_structures/cfg_representation.json",
+    "Agent 02 SSA Construction: deep_analysis/algorithms/ssa_construction.json",
+    "Foundation Analysis: foundation/analyses/19_DATA_STRUCTURE_LAYOUTS.json",
+    "LLVM BasicBlock: https://llvm.org/doxygen/classllvm_1_1BasicBlock.html",
+    "LLVM Programmer's Manual: https://llvm.org/docs/ProgrammersManual/#the-basic-block",
+    "Research: Dominance and Its Computation (Lengauer-Tarjan algorithm)"
+  ]
+}

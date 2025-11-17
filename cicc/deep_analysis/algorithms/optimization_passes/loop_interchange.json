@@ -1,0 +1,289 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_03",
+    "date": "2025-11-16",
+    "confidence": "LOW-MEDIUM",
+    "status": "SUSPECTED_UNCONFIRMED",
+    "pass_name": "Loop Interchange"
+  },
+
+  "discovery": {
+    "summary": "Loop Interchange reorders nested loop iterations to improve cache locality and enable better vectorization.",
+    "details": "Loop interchange changes the nesting order of loops (swaps outer and inner loops). This transformation improves cache behavior by changing memory access patterns. For GPU code, it can help align memory coalescing patterns with warp execution.",
+    "evidence": [
+      "Listed in unconfirmed passes: 'LoopInterchange' (21_OPTIMIZATION_PASS_MAPPING.json line 271)",
+      "Loop optimization family: Part of loop transformation cluster",
+      "Standard LLVM pipeline: LoopInterchange is part of standard optimization passes",
+      "Cache optimization: Essential for improving cache behavior",
+      "Related to other loop transformations: Complements unrolling, fusion, vectorization"
+    ]
+  },
+
+  "pass_identification": {
+    "llvm_pass_name": "LoopInterchange",
+    "llvm_pass_id": "loop-interchange",
+    "pass_type": "Loop Pass",
+    "optimization_category": "Loop Transformation / Restructuring",
+    "execution_level": "Loop Level (nested loops)",
+    "pipeline_position": "Early-to-middle in loop optimization pipeline"
+  },
+
+  "algorithm_description": {
+    "overview": "Loop interchange reorders nested loop iterations by swapping outer and inner loops when beneficial for cache locality or parallelism.",
+    "canonical_example": {
+      "before": "for(i) for(j) y[i][j] = f(x[i][j])",
+      "after": "for(j) for(i) y[i][j] = f(x[i][j])",
+      "benefit": "Improves cache locality if y is row-major stored"
+    },
+    "steps": [
+      {
+        "step": 1,
+        "name": "Nested Loop Identification",
+        "description": "Find nested loops that are candidates for interchange",
+        "criteria": [
+          "Perfectly nested loops (no statements between nesting levels)",
+          "Loops with dependent iterations can be interchanged only if dependencies allow",
+          "Simple loop structures (arithmetic induction variables)"
+        ]
+      },
+      {
+        "step": 2,
+        "name": "Memory Access Pattern Analysis",
+        "description": "Analyze how loops access memory",
+        "analysis": [
+          "For each array access, determine stride in each loop dimension",
+          "Identify which loop dimension is innermost (fastest changing)",
+          "Compare with memory layout (row-major vs column-major)"
+        ]
+      },
+      {
+        "step": 3,
+        "name": "Cache Locality Cost Calculation",
+        "description": "Estimate cache benefit of different loop orderings",
+        "metrics": [
+          "Stride per memory access (unit stride preferred)",
+          "Cache line utilization",
+          "TLB misses (for large arrays)",
+          "Memory bandwidth efficiency"
+        ]
+      },
+      {
+        "step": 4,
+        "name": "Dependence Legality Check",
+        "description": "Verify loop interchange preserves program semantics",
+        "analysis": [
+          "Check for loop-carried dependencies",
+          "Identify which dependencies would be violated by interchange",
+          "Determine if interchange is legal"
+        ],
+        "dependency_types": [
+          "Flow dependencies (write→read)",
+          "Anti-dependencies (read→write)",
+          "Output dependencies (write→write)"
+        ]
+      },
+      {
+        "step": 5,
+        "name": "Profitability Analysis",
+        "description": "Determine if interchange is worth the transformation cost",
+        "factors": [
+          "Cache improvement vs interchange overhead",
+          "Code generation complexity",
+          "Impact on other optimizations"
+        ]
+      },
+      {
+        "step": 6,
+        "name": "Loop Interchange Transformation",
+        "description": "Perform the actual loop reordering",
+        "operations": [
+          "Reorder loop nesting structure",
+          "Adjust loop bounds",
+          "Update induction variable references",
+          "Maintain SSA form correctness"
+        ]
+      }
+    ]
+  },
+
+  "dependence_analysis": {
+    "overview": "Dependence analysis determines which loops can be safely interchanged",
+    "dependence_direction": {
+      "concept": "Direction vector shows dependence relative to loop iterations",
+      "notation": "d = (di, dj) where di,dj ∈ {<, =, >}",
+      "meaning": "di < means dependence from earlier i iteration to later i iteration"
+    },
+    "interchange_legality": {
+      "rule": "Can interchange loops i and j if no dependence has di > and dj <",
+      "intuition": "Cannot swap if it reverses a backward dependence"
+    },
+    "examples": [
+      {
+        "dependence": "d = (<, =)",
+        "meaning": "Depends on previous i iteration, current j",
+        "i_and_j_swappable": true,
+        "reason": "Dependence is carried by i; after swap still on i (now outer)"
+      },
+      {
+        "dependence": "d = (>, <)",
+        "meaning": "Depends on next i iteration, previous j",
+        "i_and_j_swappable": false,
+        "reason": "Would reverse loop-carrying dependence"
+      }
+    ]
+  },
+
+  "cuda_specific_adaptations": {
+    "memory_coalescing": "Interchange can align memory access patterns with warp threads",
+    "thread_block_structure": "Loop order affects how thread blocks map to loop iterations",
+    "shared_memory_optimization": "Changing loop order can improve shared memory access patterns",
+    "warp_efficiency": "Some loop orders naturally partition iterations for warp execution",
+    "global_memory_bandwidth": "Cache-friendly loop ordering improves memory bandwidth utilization"
+  },
+
+  "data_structures": {
+    "dependence_matrix": {
+      "purpose": "Store dependence vectors between all loop levels",
+      "structure": "Matrix where entry (i,j) is direction vector from loop i to loop j"
+    },
+    "memory_access_descriptor": {
+      "purpose": "Characterize each array access pattern",
+      "information": "Stride in each loop dimension, base address"
+    }
+  },
+
+  "integration_points": {
+    "pipeline_stage": "Early-to-middle in loop optimization",
+    "prerequisite": "LoopSimplify (canonical form)",
+    "called_from": "Optimization Framework pass manager",
+    "interaction": "Works before vectorization and unrolling to improve loop structure",
+    "typical_sequence": "LoopSimplify → LoopInterchange → LoopUnroll → LoopVectorize"
+  },
+
+  "estimated_function_count": 120,
+  "estimated_lines_of_code": 1500,
+
+  "validation_status": {
+    "confirmed": false,
+    "confidence_level": "LOW-MEDIUM - listed but no direct evidence",
+    "validation_method": "LLVM standard pipeline + pattern matching",
+    "validation_evidence": [
+      "LoopInterchange listed in unconfirmed passes",
+      "Standard LLVM optimization pipeline includes it",
+      "Critical for cache optimization",
+      "Part of loop optimization family"
+    ]
+  },
+
+  "complexity": {
+    "time_complexity": "O(n^2) for n nested loops (checking all permutations)",
+    "space_complexity": "O(n^2) for dependence matrix storage",
+    "best_practice": "Limit to small nesting depths (typically 2-3 levels)",
+    "challenge": "Exponential search space for deeply nested loops"
+  },
+
+  "performance_impact": {
+    "benefits": [
+      "Significantly improved cache locality (2-5x speedup possible)",
+      "Reduced TLB misses",
+      "Better memory bandwidth utilization",
+      "Enables subsequent optimizations",
+      "Critical for multi-level cache optimization"
+    ],
+    "costs": [
+      "Transformation overhead (compile-time)",
+      "May increase register pressure",
+      "May hurt other loop properties",
+      "Compile-time analysis is expensive"
+    ],
+    "best_for": "Nested loops with predictable memory access patterns"
+  },
+
+  "testing_strategy": {
+    "simple_interchange_test": {
+      "kernel_type": "2D array traversal",
+      "example": "for(i) for(j) y[i][j] = x[i][j] * 2;",
+      "expected_behavior": "May interchange depending on array storage and access pattern",
+      "validation": "Verify cache miss rate improves after interchange"
+    },
+    "dependent_loop_test": {
+      "kernel_type": "Nested loops with dependencies",
+      "example": "for(i) for(j) y[i][j] = y[i-1][j] + x[i][j];",
+      "expected_behavior": "May or may not interchange depending on dependence",
+      "validation": "Verify program correctness after transformation"
+    },
+    "memory_pattern_test": {
+      "kernel_type": "Complex memory access",
+      "expected_behavior": "Interchange chosen to improve locality",
+      "validation": "Profile memory access patterns before/after"
+    }
+  },
+
+  "related_loop_transformations": {
+    "loop_tiling": {
+      "relation": "Often combined with tiling for cache optimization",
+      "note": "Interchange reorders loops; tiling blocks them"
+    },
+    "loop_fusion": {
+      "relation": "Interchange may be applied before fusion",
+      "purpose": "Make loops more amenable to fusion"
+    },
+    "loop_distribution": {
+      "relation": "May distribute after interchange",
+      "purpose": "Separate different optimization requirements"
+    }
+  },
+
+  "polyhedral_optimization": {
+    "connection": "Loop interchange is part of polyhedral model optimization",
+    "tools": "Pluto, Polly (LLVM plugin) implement loop permutation",
+    "advanced_form": "General loop permutation (not just swap of pairs)",
+    "research_level": "Active area of compiler research"
+  },
+
+  "cross_references": {
+    "foundation_analysis_files": [
+      "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json (line 271)"
+    ],
+    "llvm_documentation": "https://llvm.org/docs/Passes/#loop-interchange",
+    "research_papers": [
+      "Loop interchange for cache optimization",
+      "Polyhedral loop transformations",
+      "Memory hierarchy optimization"
+    ]
+  },
+
+  "research_notes": {
+    "algorithm_source": "Classic compiler optimization, researched extensively in literature",
+    "complexity_source": "Dependence analysis and cost model are complex",
+    "gpu_challenges": "GPU memory model (cached vs uncached) makes interchange decisions different",
+    "key_insight": "Loop order dramatically affects memory behavior and cache efficiency",
+    "nvidia_adaptation": "Must account for warp-level memory coalescing"
+  },
+
+  "open_questions": [
+    "Does CICC implement full loop interchange or conservative variant?",
+    "What dependence analysis method is used (must be precise)?",
+    "How is memory access pattern analyzed?",
+    "Cost model for cache benefit estimation?",
+    "Integration with polyhedral optimization?",
+    "GPU-specific adaptations for warp coalescing?"
+  ],
+
+  "notes_for_reverse_engineering": {
+    "function_identification_hints": [
+      "Search for dependence analysis and loop permutation code",
+      "Look for cache locality cost calculation",
+      "Find loop permutation generation and application",
+      "Identify memory stride analysis"
+    ],
+    "evidence_patterns": [
+      "Dependence direction vector computation",
+      "Nested loop permutation utilities",
+      "Memory access stride extraction",
+      "Cost comparison functions"
+    ],
+    "validation_approach": "Analyze generated code for nested loops, verify reordering based on memory patterns"
+  }
+}

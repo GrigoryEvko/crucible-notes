@@ -1,0 +1,305 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_03",
+    "date": "2025-11-16",
+    "confidence": "LOW-MEDIUM",
+    "status": "SUSPECTED_UNCONFIRMED",
+    "pass_name": "Loop Fusion / Loop Distribution"
+  },
+
+  "discovery": {
+    "summary": "Loop Fusion combines multiple loops into a single loop to improve cache locality and reduce loop overhead. Loop Distribution is the inverse transformation.",
+    "details": "Loop fusion merges adjacent loops operating on the same data into a single loop. For GPU code, this improves cache behavior and reduces thread block overhead. Loop distribution splits complex loops to expose parallelism or enable specific optimizations. CICC likely implements selective fusion based on data reuse analysis.",
+    "evidence": [
+      "Listed in unconfirmed passes: 'LoopDistribute' (21_OPTIMIZATION_PASS_MAPPING.json line 270)",
+      "Pattern discovery mentions loop optimization cluster including fusion candidates",
+      "Cross module dependencies: References loop transformation passes",
+      "Related to loop tiling and cache optimization strategies",
+      "Standard LLVM pipeline includes loop distribution and fusion passes"
+    ]
+  },
+
+  "pass_identification": {
+    "llvm_pass_name": "LoopDistribute / LoopFusion",
+    "llvm_pass_id": "loop-distribute / loop-fusion",
+    "pass_type": "Loop Pass",
+    "optimization_category": "Loop Transformation / Restructuring",
+    "execution_level": "Loop Level",
+    "pipeline_position": "Middle stage in loop optimization pipeline"
+  },
+
+  "algorithm_description": {
+    "overview": "Loop Fusion merges adjacent loops with compatible structure and data reuse opportunities. Loop Distribution splits loops to enable specific optimizations.",
+    "fusion_algorithm": {
+      "step1": "Identify adjacent loops with similar structure",
+      "step2": "Analyze data dependencies between loops",
+      "step3": "Check legality of fusion (no flow dependencies prevent it)",
+      "step4": "Estimate benefit (cache improvement vs code size increase)",
+      "step5": "Perform fusion if beneficial"
+    },
+    "steps": [
+      {
+        "step": 1,
+        "name": "Loop Identification and Pairing",
+        "description": "Find adjacent loops that are candidates for fusion",
+        "criteria": [
+          "Same or compatible loop structure (same bounds, iteration pattern)",
+          "Adjacent in control flow",
+          "Operating on same data structures"
+        ]
+      },
+      {
+        "step": 2,
+        "name": "Data Dependency Analysis",
+        "description": "Analyze data flow between loops to determine fusion legality",
+        "analysis_types": [
+          "Intra-loop dependencies (within single loop)",
+          "Inter-loop dependencies (between loops)",
+          "Memory dependence (alias analysis)",
+          "Control dependencies"
+        ],
+        "legality_criterion": "No backward dependencies prevent fusion"
+      },
+      {
+        "step": 3,
+        "name": "Cache Reuse Analysis",
+        "description": "Estimate cache locality improvement from fusion",
+        "benefit_calculation": [
+          "Reuse distance for shared data",
+          "Cache line hits with fused loops vs separate",
+          "Memory bandwidth savings"
+        ]
+      },
+      {
+        "step": 4,
+        "name": "Cost Model Evaluation",
+        "description": "Balance cache benefit against code size and register pressure",
+        "trade_offs": [
+          "Cache locality improvement vs register pressure increase",
+          "Code size impact (fused loop longer)",
+          "ILP reduction due to longer critical path"
+        ]
+      },
+      {
+        "step": 5,
+        "name": "Loop Fusion Transformation",
+        "description": "Merge loop bodies and combine loop structures",
+        "operations": [
+          "Merge loop preheaders",
+          "Combine loop bodies sequentially",
+          "Create single latch block",
+          "Update phi nodes and data flow"
+        ]
+      },
+      {
+        "step": 6,
+        "name": "Register Renaming",
+        "description": "Resolve conflicts from combining loop bodies",
+        "handling": [
+          "Phi nodes must account for both loop iterations",
+          "Live ranges may overlap differently",
+          "SSA renaming required"
+        ]
+      }
+    ]
+  },
+
+  "distribution_algorithm": {
+    "overview": "Loop Distribution splits loops to separate independent computations, enable specific optimizations, or improve parallelization.",
+    "purpose": [
+      "Enable vectorization of specific computations",
+      "Separate memory-bound from compute-bound code",
+      "Enable different optimization for different parts",
+      "Improve thread-level parallelism in nested loops"
+    ],
+    "steps": [
+      {
+        "step": 1,
+        "name": "Dependency Analysis",
+        "description": "Identify independent iterations or partitions"
+      },
+      {
+        "step": 2,
+        "name": "Partition Identification",
+        "description": "Find groups of statements that can execute in separate loops"
+      },
+      {
+        "step": 3,
+        "name": "Legality Verification",
+        "description": "Ensure distribution preserves program semantics"
+      },
+      {
+        "step": 4,
+        "name": "Loop Splitting",
+        "description": "Create separate loops for independent partitions"
+      }
+    ]
+  },
+
+  "legality_conditions": {
+    "fusion_legality": [
+      "No statement from loop L1 depends on any iteration of loop L2",
+      "No statement from loop L2 depends on any iteration of loop L1",
+      "Loops are adjacent in control flow",
+      "No control dependencies prevent fusion"
+    ],
+    "distribution_legality": [
+      "Can partition statements into groups S1, S2, ..., Sk",
+      "All dependencies satisfied within partition or between partitions only",
+      "No backward dependencies across partition boundaries"
+    ]
+  },
+
+  "cuda_specific_adaptations": {
+    "thread_block_optimization": "Loop fusion can reduce overhead by combining thread iterations",
+    "memory_access_patterns": "Fusion improves cache locality for GPU shared memory",
+    "warp_efficiency": "Combined loops can improve warp occupancy and reduce divergence",
+    "shared_memory_utilization": "Fusion may improve shared memory reuse patterns",
+    "gpu_caveat": "GPU memory models may make fusion less beneficial than CPU due to warp-level parallelism"
+  },
+
+  "data_structures": {
+    "dependence_graph": {
+      "nodes": "Statements in loops",
+      "edges": "Data dependencies between statements",
+      "purpose": "Determine safe loop transformations"
+    },
+    "partition_sets": {
+      "purpose": "Group statements for distribution",
+      "constraints": "Partition must satisfy data dependencies"
+    }
+  },
+
+  "integration_points": {
+    "pipeline_stage": "Middle phase in loop optimization",
+    "prerequisites": [
+      "LoopSimplify (canonical form)",
+      "Dependency analysis"
+    ],
+    "called_from": "Optimization Framework pass manager",
+    "interaction": "Works with loop vectorization and other transforms"
+  },
+
+  "estimated_function_count": 150,
+  "estimated_lines_of_code": 2000,
+
+  "validation_status": {
+    "confirmed": false,
+    "confidence_level": "LOW-MEDIUM - listed but no direct evidence",
+    "validation_method": "LLVM standard pipeline + pattern matching",
+    "validation_evidence": [
+      "LoopDistribute listed in unconfirmed passes",
+      "Standard LLVM optimization pipeline includes both passes",
+      "Cache optimization is critical for GPU performance",
+      "Related to loop tiling and memory optimization"
+    ]
+  },
+
+  "challenges_and_complexities": {
+    "data_dependency_analysis": "Accurate dependence analysis is complex, may need alias analysis",
+    "cost_model_accuracy": "Estimating cache reuse benefit is difficult",
+    "compile_time": "Searching all fusion candidates can be expensive",
+    "interleaving_with_other_passes": "Fusion decisions interact with vectorization, unrolling, etc."
+  },
+
+  "related_passes": {
+    "LoopVectorize": {
+      "relation": "Vectorization often wants fused/distributed loops in specific form",
+      "interaction": "May work together or in sequence"
+    },
+    "LoopTiling": {
+      "relation": "Tiling may combine with fusion for cache optimization",
+      "note": "Not explicitly listed but related transformation"
+    },
+    "LoopInterchange": {
+      "relation": "May reorder loops before fusion for better data reuse",
+      "interaction": "Preprocessing step"
+    }
+  },
+
+  "performance_impact": {
+    "fusion_benefits": [
+      "Improved cache locality (shared data in L1/L2 cache)",
+      "Reduced loop overhead (single loop vs multiple)",
+      "Reduced memory bandwidth (fewer passes over data)",
+      "Typical improvement: 10-30% for cache-bound loops"
+    ],
+    "fusion_costs": [
+      "Code size increase (merged loop body larger)",
+      "Register pressure may increase",
+      "ILP may decrease due to longer critical path",
+      "Less suitable for some architectural patterns"
+    ],
+    "gpu_specific": [
+      "GPU cache (shared memory) is small, fusion helps maximize reuse",
+      "Warp-level parallelism reduces benefit vs CPU",
+      "Memory bandwidth is critical bottleneck"
+    ]
+  },
+
+  "testing_strategy": {
+    "simple_fusion_test": {
+      "kernel_type": "Two sequential loops over same array",
+      "example": "for(i) y[i]=x[i]*2; for(i) z[i]=y[i]+1;",
+      "expected_behavior": "Merged into single loop",
+      "validation": "Count loop iterations, verify both operations happen in one iteration"
+    },
+    "dependent_fusion_test": {
+      "kernel_type": "Loops with dependencies between them",
+      "example": "for(i) y[i]=f(x[i]); for(i) z[i]=y[i];",
+      "expected_behavior": "May or may not fuse depending on dependency direction",
+      "validation": "Verify program correctness"
+    },
+    "cache_locality_test": {
+      "kernel_type": "Loops accessing same data",
+      "expected_behavior": "Fused for improved cache behavior",
+      "validation": "Measure memory bandwidth, cache hits"
+    }
+  },
+
+  "cross_references": {
+    "foundation_analysis_files": [
+      "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json (line 270)",
+      "foundation/analyses/04_PERFORMANCE_OPPORTUNITIES.json (cache optimization)"
+    ],
+    "llvm_documentation": "https://llvm.org/docs/Passes/#loop-distribute",
+    "research_papers": [
+      "Loop fusion for memory optimization",
+      "Data reuse analysis for loops",
+      "Polyhedral loop optimization"
+    ]
+  },
+
+  "research_notes": {
+    "algorithm_source": "Research in loop transformation and data reuse optimization",
+    "polyhedral_connection": "Related to polyhedral loop transformations (Pluto, etc.)",
+    "cuda_challenges": "GPU memory model and warp execution complicate traditional fusion benefits",
+    "implementation_complexity": "High - requires sophisticated dependence analysis and cost modeling",
+    "key_insight": "Cache locality optimization is critical for GPU memory bandwidth utilization"
+  },
+
+  "open_questions": [
+    "Does CICC implement loop fusion or only distribution?",
+    "What dependence analysis method is used?",
+    "How is cost model for cache benefit computed?",
+    "Does it interact with tensor core optimizations?",
+    "How does it handle indirect array accesses?"
+  ],
+
+  "notes_for_reverse_engineering": {
+    "function_identification_hints": [
+      "Search for functions analyzing loop dependencies",
+      "Look for cost model functions comparing cache scenarios",
+      "Find loop merging/splitting utilities",
+      "Identify dependence graph construction"
+    ],
+    "evidence_patterns": [
+      "String references to 'data reuse', 'locality', 'cache'",
+      "Dependence query functions",
+      "Loop merger/splitter utilities",
+      "Cost model evaluation functions"
+    ],
+    "validation_approach": "Compile test kernels with loops and observe optimizations"
+  }
+}

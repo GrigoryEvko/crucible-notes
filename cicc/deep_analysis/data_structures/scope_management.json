@@ -1,0 +1,619 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_10",
+    "date": "2025-11-16",
+    "confidence": "MEDIUM-HIGH",
+    "status": "CONFIRMED_WITH_DETAILED_ANALYSIS",
+    "reverse_engineering_method": [
+      "Scope-related error message extraction",
+      "Declaration/definition processing patterns",
+      "Semantic analysis phase structure",
+      "CUDA-specific scope handling",
+      "Comparison with C/C++ standard scoping rules"
+    ]
+  },
+
+  "scope_hierarchy": {
+    "top_level": "Global/module scope",
+    "nesting_types": [
+      "Global → Namespace → Class → Function → Block",
+      "Global → Function → Block → Block → ...",
+      "Kernel → Shared memory scope",
+      "Device function → Block scope"
+    ],
+    "maximum_nesting_depth": "Estimated 20-50 levels based on error messages",
+    "scope_visibility_rules": "Name hiding / shadowing when inner scope has same name as outer scope"
+  },
+
+  "scope_types": {
+    "global_scope": {
+      "id": 0,
+      "depth": 0,
+      "contains": [
+        "Global variables",
+        "Function declarations/definitions",
+        "Type declarations (struct, class, union, enum)",
+        "Namespace declarations",
+        "CUDA kernel declarations (__global__)",
+        "CUDA device function declarations (__device__)",
+        "External symbol declarations (extern)",
+        "Static module-level symbols"
+      ],
+      "symbol_visibility": "Visible to all nested scopes (unless shadowed)",
+      "example": "Global namespace containing kernel_name, device_func, global_var"
+    },
+
+    "namespace_scope": {
+      "id": 1,
+      "depth": 1,
+      "contains": [
+        "Namespace-scoped symbols",
+        "Type definitions",
+        "Function declarations within namespace"
+      ],
+      "visibility_rule": "Requires namespace qualification or using declaration",
+      "c_plus_plus_feature": true,
+      "cuda_relevance": "Some CUDA functions may be in namespaces"
+    },
+
+    "class_scope": {
+      "id": 2,
+      "depth": 2,
+      "contains": [
+        "Member variables",
+        "Member functions",
+        "Static members",
+        "Nested types",
+        "Access control: public/private/protected"
+      ],
+      "visibility_rule": "Requires class qualification (ClassName::member)",
+      "c_plus_plus_feature": true,
+      "cuda_relevance": "CUDA struct definitions with __shared__ members"
+    },
+
+    "function_scope": {
+      "id": 3,
+      "depth": 3,
+      "contains": [
+        "Function parameters",
+        "Local variables declared in function body",
+        "Nested block scopes"
+      ],
+      "visibility_rule": "Parameters and locals visible only within function",
+      "cuda_specific": [
+        "threadIdx (implicit parameter)",
+        "blockIdx (implicit parameter)",
+        "blockDim (implicit parameter)",
+        "gridDim (implicit parameter)"
+      ],
+      "example": "void kernel_func(int param) { int local; { int block_local; } }"
+    },
+
+    "block_scope": {
+      "id": 4,
+      "depth": "varies (4+)",
+      "contains": [
+        "Variables declared in block: int x { ... }",
+        "Nested blocks"
+      ],
+      "triggers": [
+        "Compound statement { ... }",
+        "For loop init: for (int x = 0; ...)",
+        "If/else block",
+        "While/do-while block",
+        "Switch statement"
+      ],
+      "visibility_rule": "Variables visible only within block and nested blocks",
+      "nesting_example": "function → block → nested-block → innermost"
+    },
+
+    "for_init_scope": {
+      "id": 5,
+      "special_rule": "C++ feature - variables declared in for(int x;...) have block scope",
+      "evidence": "Error messages: 'declaration_after_statements', 'declaration_hides_for_init'",
+      "scope_end": "End of for loop body"
+    },
+
+    "cuda_kernel_scope": {
+      "id": 6,
+      "special_cuda_feature": true,
+      "contains": [
+        "Kernel function code",
+        "Access to grid/block/thread indices",
+        "Shared memory within block"
+      ],
+      "implicit_parameters": [
+        "threadIdx - thread index in block (dim3)",
+        "blockIdx - block index in grid (dim3)",
+        "blockDim - block dimensions (dim3)",
+        "gridDim - grid dimensions (dim3)",
+        "warpSize - threads per warp (int, usually 32)"
+      ],
+      "visibility_rules": [
+        "Global memory readable/writable by all threads",
+        "Shared memory scope: per-block (coordinate with threadIdx)",
+        "Local variables: per-thread private"
+      ],
+      "synchronization_scope": "__syncthreads() only visible within kernel",
+      "evidence": [
+        "String references: 'gridDim', 'blockIdx', 'threadIdx'",
+        "Kernel-specific code paths in codegen"
+      ]
+    },
+
+    "cuda_shared_memory_scope": {
+      "id": 7,
+      "special_cuda_feature": true,
+      "contains": [
+        "__shared__ int array[256];",
+        "__shared__ struct {...} shared_data;",
+        "Dynamic shared memory"
+      ],
+      "visibility": "All threads in same block can see/modify",
+      "synchronization_required": "true",
+      "lifetime": "Allocated at block launch, deallocated at block end",
+      "size_limit": "96KB-192KB depending on SM version"
+    },
+
+    "cuda_device_function_scope": {
+      "id": 8,
+      "special_cuda_feature": true,
+      "contains": [
+        "__device__ function code",
+        "Access to thread local variables",
+        "Access to global memory",
+        "Cannot access shared memory directly (caller's scope)"
+      ],
+      "callable_from": "Only from kernel or other device functions",
+      "not_callable_from": "Host code",
+      "synchronization_constraint": "__syncthreads() depends on calling context"
+    }
+  },
+
+  "scope_management_structure": {
+    "scope_entry": {
+      "estimated_size_bytes": 256,
+      "fields": [
+        {
+          "name": "scope_id",
+          "type": "int",
+          "description": "Unique ID for this scope instance"
+        },
+        {
+          "name": "scope_type",
+          "type": "enum ScopeType",
+          "description": "GLOBAL, NAMESPACE, CLASS, FUNCTION, BLOCK, FOR_INIT, CUDA_KERNEL, CUDA_DEVICE, CUDA_SHARED",
+          "values": [
+            "0 = GLOBAL",
+            "1 = NAMESPACE",
+            "2 = CLASS",
+            "3 = FUNCTION",
+            "4 = BLOCK",
+            "5 = FOR_INIT",
+            "6 = CUDA_KERNEL",
+            "7 = CUDA_DEVICE",
+            "8 = CUDA_SHARED"
+          ]
+        },
+        {
+          "name": "parent_scope",
+          "type": "Scope*",
+          "description": "Pointer to enclosing scope (nullptr for global)"
+        },
+        {
+          "name": "children_scopes",
+          "type": "vector<Scope*>",
+          "description": "Direct child scopes (blocks, functions, nested scopes)"
+        },
+        {
+          "name": "symbol_table",
+          "type": "SymbolEntry**[BUCKET_COUNT]",
+          "description": "Hash table for symbols defined in this scope"
+        },
+        {
+          "name": "symbol_count",
+          "type": "int",
+          "description": "Number of symbols in this scope"
+        },
+        {
+          "name": "scope_depth",
+          "type": "int",
+          "description": "Nesting depth (0=global, increments for nested)"
+        },
+        {
+          "name": "owning_function",
+          "type": "SymbolEntry*",
+          "description": "For non-global scopes: pointer to function symbol that owns this scope"
+        },
+        {
+          "name": "owning_class",
+          "type": "SymbolEntry*",
+          "description": "For class-scoped symbols: pointer to class symbol"
+        },
+        {
+          "name": "cuda_attributes",
+          "type": "struct { bool is_kernel; bool is_device_func; bool has_shared; }",
+          "description": "CUDA-specific scope attributes"
+        },
+        {
+          "name": "implicit_parameters",
+          "type": "vector<SymbolEntry*>",
+          "description": "For kernel scopes: threadIdx, blockIdx, etc. as built-in symbols"
+        },
+        {
+          "name": "access_control",
+          "type": "int",
+          "description": "For class scopes: current access level (0=public, 1=protected, 2=private)"
+        }
+      ]
+    },
+
+    "scope_stack": {
+      "implementation": "std::vector<Scope*> or linked list",
+      "current_scope": "Top of stack is active scope for symbol insertion/lookup",
+      "operations": [
+        "push(Scope*) - enter new scope",
+        "pop() - exit current scope",
+        "top() - get current scope",
+        "depth() - return stack depth"
+      ]
+    }
+  },
+
+  "scope_operations": {
+    "enter_scope": {
+      "trigger": [
+        "Function definition: void func() {",
+        "Block statement: {",
+        "For loop init: for (int x; ...)",
+        "If/else block",
+        "Class definition",
+        "Namespace definition"
+      ],
+      "algorithm": [
+        "1. Create new Scope structure",
+        "2. Set parent_scope to current top of scope stack",
+        "3. Initialize symbol_table (hash table with BUCKET_COUNT buckets)",
+        "4. Set scope_type based on context",
+        "5. Push new scope onto stack",
+        "6. Make this new scope the current active scope"
+      ],
+      "cuda_specific": [
+        "If CUDA_KERNEL type: create implicit parameters (threadIdx, blockIdx, etc.)",
+        "If CUDA_SHARED type: mark scope as synchronized"
+      ],
+      "estimated_cost": "O(1)"
+    },
+
+    "exit_scope": {
+      "trigger": [
+        "Function body end: }",
+        "Block end: }",
+        "For loop body end",
+        "Semantic analysis complete for scope"
+      ],
+      "algorithm": [
+        "1. Current scope = top of scope stack",
+        "2. Deallocate symbol_table (free hash buckets)",
+        "3. Pop scope from stack",
+        "4. Restore previous scope as current"
+      ],
+      "note": "Symbol entries themselves may persist in AST/IR; only scope structure deallocated",
+      "estimated_cost": "O(BUCKET_COUNT)"
+    },
+
+    "lookup_in_scope": {
+      "start_scope": "Current scope (top of stack)",
+      "algorithm": [
+        "1. scope = current scope",
+        "2. LOOP:",
+        "   - hash = hash_function(name)",
+        "   - bucket = scope->symbol_table[hash % BUCKET_COUNT]",
+        "   - FOR each entry in bucket collision chain:",
+        "     - IF entry.name == name: return entry",
+        "   - IF scope has parent_scope:",
+        "     - scope = scope.parent_scope",
+        "     - GOTO LOOP",
+        "3. return NOT_FOUND"
+      ],
+      "estimated_cost": "O(1) expected, O(n) worst case if many collisions",
+      "shadowing": "Inner scope can shadow (redefine) outer scope symbols",
+      "unqualified_lookup": "Common case in C/C++"
+    },
+
+    "qualified_lookup": {
+      "usage": "ClassName::member or namespace::name",
+      "algorithm": [
+        "1. Parse qualification: get class/namespace symbol",
+        "2. Get target scope from that symbol",
+        "3. Lookup name only in target scope (not parents)",
+        "4. If not found: error (qualified lookup doesn't search parents)"
+      ],
+      "estimated_cost": "O(1) expected"
+    }
+  },
+
+  "name_resolution_with_scopes": {
+    "unqualified_name": {
+      "example": "int x = value;",
+      "resolution_order": [
+        "1. Check current scope",
+        "2. Check parent scope",
+        "3. Check grandparent scope",
+        "4. ... up to global scope",
+        "5. If multiple scopes have same name: innermost wins (shadowing)"
+      ],
+      "c_standard_rule": "Block scope shadows function scope, shadows global scope"
+    },
+
+    "qualified_name": {
+      "example": "MyClass::member_var",
+      "resolution_order": [
+        "1. Lookup 'MyClass' symbol",
+        "2. Get class scope from MyClass",
+        "3. Lookup 'member_var' in class scope only (no parent traversal)",
+        "4. Check access control (public/private/protected)"
+      ]
+    },
+
+    "cuda_unqualified_lookup": {
+      "in_kernel": [
+        "threadIdx - implicit parameter from kernel scope",
+        "blockIdx - implicit parameter from kernel scope",
+        "local_var - user-declared variable in function scope",
+        "global_var - global scope variable"
+      ],
+      "in_device_func": [
+        "param - function parameter from function scope",
+        "local_var - function scope variable",
+        "global_var - global scope variable",
+        "NOTE: Cannot access __shared__ directly (must be passed as parameter)"
+      ]
+    }
+  },
+
+  "cuda_scope_extensions": {
+    "kernel_scope_implicit_parameters": [
+      {
+        "name": "threadIdx",
+        "type": "dim3",
+        "value": "Current thread's index within block",
+        "range": "0 to (blockDim.x-1, blockDim.y-1, blockDim.z-1)",
+        "symbol_table_entry": "Built-in symbol in kernel scope"
+      },
+      {
+        "name": "blockIdx",
+        "type": "dim3",
+        "value": "Current block's index within grid",
+        "range": "0 to (gridDim.x-1, gridDim.y-1, gridDim.z-1)",
+        "symbol_table_entry": "Built-in symbol in kernel scope"
+      },
+      {
+        "name": "blockDim",
+        "type": "dim3",
+        "value": "Dimensions of current block",
+        "range": "1 to architecture limits (1024 total threads typically)",
+        "symbol_table_entry": "Built-in symbol in kernel scope"
+      },
+      {
+        "name": "gridDim",
+        "type": "dim3",
+        "value": "Dimensions of grid launched",
+        "range": "1 to SM_COUNT",
+        "symbol_table_entry": "Built-in symbol in kernel scope"
+      },
+      {
+        "name": "warpSize",
+        "type": "int",
+        "value": "Threads per warp (32 for current NVIDIA GPUs)",
+        "symbol_table_entry": "Built-in constant in kernel scope"
+      }
+    ],
+
+    "shared_memory_scope": {
+      "declaration": "__shared__ type name[size];",
+      "visibility": "All threads in block see same memory",
+      "lifetime": "From block launch to block end",
+      "barriers": "__syncthreads() required for coordination",
+      "dynamic_shared": "Variable size determined at runtime via launch config",
+      "symbol_storage": "Symbols marked with memory_space = CUDA_SHARED_MEMORY"
+    },
+
+    "global_memory_access": {
+      "declaration": "type name; (at global scope or with __device__ prefix)",
+      "visibility": "All threads in all blocks see same memory",
+      "synchronization": "Atomic operations for coordination between blocks",
+      "performance": "High latency (400+ cycles), cached in L1/L2"
+    },
+
+    "constant_memory_access": {
+      "declaration": "__constant__ type name;",
+      "visibility": "All threads see same read-only data",
+      "optimization": "Cached in constant cache, broadcasted to warp",
+      "restriction": "Cannot be written from device code"
+    }
+  },
+
+  "scope_chain_examples": {
+    "example_1_simple_function": {
+      "code": "int global_var = 10; void func(int param) { int local = 5; }",
+      "scope_chain": [
+        "0: global_scope { global_var }",
+        "  └─ 1: function_scope (func) { param, local }"
+      ],
+      "lookup_'local'": "Found in scope 1 (function)",
+      "lookup_'global_var'": "Not in scope 1, found in scope 0 (global)"
+    },
+
+    "example_2_nested_blocks": {
+      "code": "void func() { int x = 1; { int x = 2; int y = 3; } int z = 4; }",
+      "scope_chain": [
+        "0: global_scope",
+        "  └─ 1: function_scope { x=1, z=4 }",
+        "     └─ 2: block_scope { x=2, y=3 } [shadows outer x]"
+      ],
+      "lookup_'x'_in_block": "Scope 2 has x=2 (inner x shadows outer x)",
+      "lookup_'z'_in_block": "Not in scope 2, found in scope 1"
+    },
+
+    "example_3_cuda_kernel": {
+      "code": "__global__ void kernel(int block_param) { int local = threadIdx.x; __shared__ int sdata[256]; }",
+      "scope_chain": [
+        "0: global_scope",
+        "  └─ 1: cuda_kernel_scope { block_param, local, threadIdx(implicit), blockIdx(implicit), sdata }"
+      ],
+      "implicit_symbols": [
+        "threadIdx - automatically available",
+        "blockIdx - automatically available",
+        "blockDim - automatically available",
+        "gridDim - automatically available"
+      ]
+    }
+  },
+
+  "scope_related_error_detection": {
+    "redeclaration_error": {
+      "detected_by": "Checking symbol table before insertion",
+      "error_message_template": "error: redeclaration of %s (see previous declaration at %file:%line)",
+      "example": "int x; int x; // Error: x already declared in this scope",
+      "evidence": [
+        "String: 'bad_scope_for_redeclaration'",
+        "String: 'the other declaration is %p'",
+        "String: 'see previous declaration %p'"
+      ]
+    },
+
+    "shadowing_warning": {
+      "detected_by": "Comparing inner scope declaration with outer scope symbol",
+      "error_message_template": "warning: declaration hides outer scope variable %s",
+      "example": "int x; { int x; } // Warning: inner x shadows outer x",
+      "evidence": "String: 'declaration_hides_for_init'"
+    },
+
+    "scope_for_declaration": {
+      "detected_by": "Checking scope type before allowing declaration",
+      "error_message_template": "error: declaration not allowed at %scope_type scope",
+      "examples": [
+        "class Foo { int x; } x; // Can't declare variable after class definition",
+        "extern int x; int x; // extern in wrong scope"
+      ],
+      "evidence": [
+        "String: 'cannot_be_declared_in_scope'",
+        "String: 'bad_scope_for_declaration'",
+        "String: 'invalid_declaration_in_scope'"
+      ]
+    },
+
+    "missing_scope_declaration": {
+      "detected_by": "Lookup returning NULL",
+      "error_message_template": "error: %s not found (did you forget to declare it?)",
+      "example": "int x = undefined_var; // undefined_var not in any scope"
+    }
+  },
+
+  "scope_stack_depth_analysis": {
+    "typical_depths": {
+      "global_scope": 0,
+      "simple_function": 1,
+      "function_with_one_block": 2,
+      "function_with_nested_blocks": 3,
+      "deeply_nested_code": "5-10+",
+      "maximum_observed": "20-50 estimated"
+    },
+
+    "evidence": "String: 'RECORD_SCOPE_DEPTH_IN_IL' suggests depth tracking in IR"
+  },
+
+  "scope_destruction_and_cleanup": {
+    "when_destroyed": [
+      "Function scope: when function definition parsing complete",
+      "Block scope: when block statement end } reached",
+      "For init scope: when for loop body ends"
+    ],
+
+    "what_persists": [
+      "Symbol entries remain in AST/IR",
+      "Scope structure itself is deallocated",
+      "References to outer scopes maintained through parent pointers"
+    ],
+
+    "optimization": "Scope structures are temporary; symbols are permanent"
+  },
+
+  "scope_stack_operations_in_code": {
+    "during_parsing": [
+      "Parser calls: enter_scope(FUNCTION) on function definition",
+      "Parser processes function body",
+      "Parser calls: exit_scope() on }"
+    ],
+
+    "during_semantic_analysis": [
+      "Type checking uses scope lookups",
+      "Declaration checking verifies no duplicates",
+      "Name resolution performed on references"
+    ],
+
+    "during_code_generation": [
+      "Scopes already destroyed",
+      "Symbol information stored in IR/AST",
+      "No more scope operations"
+    ]
+  },
+
+  "access_control_in_scopes": {
+    "global_scope": "No access control",
+    "class_scope": [
+      "public: visible outside class",
+      "protected: visible in derived classes",
+      "private: visible only in class"
+    ],
+    "cuda_kernel_scope": [
+      "All symbols implicitly visible to all threads",
+      "Synchronization required for shared memory"
+    ]
+  },
+
+  "validation_hypotheses": {
+    "hypothesis_1_scope_stack": {
+      "claim": "Scope stack implemented as vector or linked list",
+      "confidence": "HIGH",
+      "testable_by": "Debugger observation of scope management"
+    },
+
+    "hypothesis_2_scope_chain_lookup": {
+      "claim": "Name lookup traverses scope chain from current to global",
+      "confidence": "HIGH",
+      "testable_by": "Tracing lookup behavior for shadowed names"
+    },
+
+    "hypothesis_3_cuda_implicit_parameters": {
+      "claim": "threadIdx, blockIdx, etc. stored as built-in symbols in kernel scope",
+      "confidence": "MEDIUM-HIGH",
+      "testable_by": "Kernel compilation with these parameters"
+    },
+
+    "hypothesis_4_scope_destruction": {
+      "claim": "Scope structures deallocated after semantic analysis, symbols persist",
+      "confidence": "MEDIUM",
+      "testable_by": "Memory profiling during compilation phases"
+    }
+  },
+
+  "unknowns_and_gaps": [
+    "Exact scope stack data structure (vector vs linked list)",
+    "Whether scope variables stored with scope or move to IR",
+    "How template instantiations create scope instances",
+    "CUDA dynamic shared memory size tracking in scope",
+    "Whether function overloads share scope or have separate scopes",
+    "Namespace scope implementation details (single global or per-namespace?)"
+  ],
+
+  "next_steps": [
+    "Decompile semantic analysis function (0x1608300) to see scope enter/exit",
+    "Trace scope stack operations during parsing of test program",
+    "Analyze how CUDA symbols are added to kernel scope",
+    "Compare implementation with LLVM/GCC open source",
+    "Memory profiling to confirm scope structure sizes"
+  ]
+}

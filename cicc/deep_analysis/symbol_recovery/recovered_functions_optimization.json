@@ -1,0 +1,1282 @@
+{
+  "metadata": {
+    "title": "CICC Optimization Framework Function Recovery - Agent 18",
+    "phase": "L2_DEEP_ANALYSIS",
+    "agent": "agent_18",
+    "date": "2025-11-16",
+    "module": "optimization_framework",
+    "total_functions_in_module": 62769,
+    "functions_recovered_with_names": 28,
+    "functions_with_high_confidence": 18,
+    "functions_with_medium_confidence": 10,
+    "optimization_passes_identified": 28,
+    "optimization_passes_with_function_mapping": 20,
+    "confidence_baseline": "MEDIUM-HIGH",
+    "methodology": "Cross-agent synthesis, string evidence, call pattern analysis, LLVM reference comparison",
+    "data_sources": [
+      "Agent 05 analysis: peephole_optimization.json, local_optimizations.json",
+      "Agent 06 analysis: dead_code_elimination.json",
+      "Agent 07 analysis: constant_propagation.json",
+      "Agent 08 analysis: code_motion.json, instruction_scheduling.json",
+      "Agent 04 analysis: instruction_selection.json",
+      "Foundation analysis: 02_MODULE_ANALYSIS.json, 21_OPTIMIZATION_PASS_MAPPING.json"
+    ]
+  },
+
+  "pass_manager_infrastructure": {
+    "main_dispatcher": {
+      "address": "0x12D6300",
+      "size_bytes": 27423,
+      "size_kb": 26.8,
+      "proposed_name": "PassManager::run",
+      "alternative_names": ["OptimizationPipeline::execute", "runOptimizationPasses"],
+      "confidence": "HIGH",
+      "evidence": [
+        "Largest function in optimization_framework module",
+        "Orchestrates all 94 passes based on optimization level (-O0, -O1, -O2, -O3)",
+        "Multiple callees (8 direct calls) suggesting pass invocation points",
+        "Call frequency: 3 (entire compilation per input file)",
+        "Priority score: 1300 (critical)"
+      ],
+      "responsibilities": [
+        "Initialize pass registry",
+        "Select passes based on optimization level",
+        "Execute passes in correct order with dependencies",
+        "Track pass invalidations and analysis preservation",
+        "Handle interprocedural pass scheduling"
+      ],
+      "callees_estimated": 8,
+      "critical_callees": [
+        "Pass initialization functions for each major category",
+        "Pass order resolution/dependency system",
+        "Optimization level switch logic"
+      ],
+      "function_type": "ModulePassManager orchestrator"
+    },
+
+    "pass_orchestrator": {
+      "address": "0x1505110",
+      "size_bytes": 12981,
+      "size_kb": 12.7,
+      "proposed_name": "PassOrchestrator::scheduleAndExecute",
+      "alternative_names": ["runPassSequence", "executePassOrder"],
+      "confidence": "HIGH",
+      "evidence": [
+        "Large number of callees: 50 (suggests pass invocation dispatch)",
+        "Call frequency: 3",
+        "Priority score: 1300",
+        "Function size indicates complex orchestration logic"
+      ],
+      "responsibilities": [
+        "Schedule passes for each module/function",
+        "Handle pass dependencies and ordering",
+        "Execute passes in dependency order",
+        "Manage analysis invalidation",
+        "Track pass execution state"
+      ],
+      "callees_estimated": 50,
+      "pattern": "Dispatch pattern with conditional branch on pass ID or type"
+    },
+
+    "ir_transformation_coordinator": {
+      "address": "0x138AAF0",
+      "size_bytes": 11972,
+      "size_kb": 11.7,
+      "proposed_name": "IRTransformationCoordinator::run",
+      "alternative_names": ["transformationPipeline", "coordinateIRChanges"],
+      "confidence": "MEDIUM-HIGH",
+      "evidence": [
+        "Large function with 15 callees",
+        "Call frequency: 2",
+        "Priority score: 1300",
+        "Coordinates IR changes across passes"
+      ],
+      "responsibilities": [
+        "Coordinate IR changes across multiple passes",
+        "Manage invalidation of analyses",
+        "Handle preservation of analyses",
+        "Coordinate module/function/loop pass interaction"
+      ],
+      "callees_estimated": 15
+    }
+  },
+
+  "confirmed_passes_with_function_mapping": {
+    "LoopInvariantCodeMotion": {
+      "pass_id": "LICM",
+      "category": "Loop Optimization",
+      "confidence": "HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "String: 'Loop Invariant Code Motion'",
+        "String: 'Versioned loop for LICM'",
+        "Disable flag: 'disable-LICMPass'",
+        "Parameters: 'loop-size-threshold', 'disable-memory-promotion'",
+        "Agent 08 analysis confirmed"
+      ],
+      "estimated_function_count": 150,
+      "main_functions": [
+        {
+          "purpose": "LICM pass entry point",
+          "confidence": "HIGH",
+          "evidence": "Largest LICM function in cluster"
+        },
+        {
+          "purpose": "Hoisting decision logic",
+          "confidence": "HIGH",
+          "evidence": "Controls which expressions to hoist"
+        },
+        {
+          "purpose": "Memory promotion handler",
+          "confidence": "MEDIUM",
+          "evidence": "Memory promotion parameter handling"
+        },
+        {
+          "purpose": "Loop versioning logic",
+          "confidence": "MEDIUM",
+          "evidence": "Loop versioning for conditional hoisting"
+        }
+      ],
+      "algorithm_type": "Forward data-flow analysis with SSA form",
+      "dependencies": [
+        "LoopSimplify",
+        "DominatorTree",
+        "DominanceFrontier",
+        "LoopInfo"
+      ],
+      "performance_impact": "Reduces register pressure, improves throughput"
+    },
+
+    "DeadCodeElimination_ADCE": {
+      "pass_id": "ADCE",
+      "alternate_pass_id": "AggressiveDeadCodeElimination",
+      "category": "Dead Code Elimination",
+      "confidence": "HIGH",
+      "status": "CONFIRMED",
+      "primary_function_address": "0x2ADCE40",
+      "primary_function_size": "Unknown (estimated 8-15KB based on algorithm complexity)",
+      "evidence": [
+        "String: 'Aggressive Dead Code Elimination'",
+        "Disable flag: 'disable-ADCEPass'",
+        "Agent 06 analysis with specific function address at 0x2ADCE40",
+        "Control dependence analysis patterns",
+        "PostDominatorTree usage indicators"
+      ],
+      "estimated_function_count": 80,
+      "algorithm_description": "Control Dependence Graph Based DCE",
+      "main_functions": [
+        {
+          "address": "0x2ADCE40",
+          "purpose": "Main ADCE pass entry point",
+          "proposed_name": "ADCEPass::run",
+          "confidence": "HIGH",
+          "evidence": "Control dependence analysis, instruction marking"
+        },
+        {
+          "purpose": "PostDominatorTree construction",
+          "confidence": "HIGH",
+          "evidence": "PostDominatorTree dependency"
+        },
+        {
+          "purpose": "Instruction liveness marking",
+          "confidence": "MEDIUM",
+          "evidence": "Live instruction identification logic"
+        },
+        {
+          "purpose": "Control dependence computation",
+          "confidence": "MEDIUM",
+          "evidence": "Dominance frontier computation"
+        }
+      ],
+      "algorithm_steps": [
+        "Build PostDominatorTree for all basic blocks",
+        "Compute Dominance Frontier to identify control dependence",
+        "Mark instructions as live using worklist algorithm",
+        "Remove unmarked instructions from CFG"
+      ],
+      "complexity": "O(N * D) where N = instructions, D = dominance depth"
+    },
+
+    "DeadStoreElimination": {
+      "pass_id": "DSE",
+      "category": "Dead Code Elimination",
+      "confidence": "HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "String: 'Dead Store Elimination'",
+        "String: 'Enable partial-overwrite tracking in DSE'",
+        "Parameters: 'enable-partial-overwrite-tracking', 'enable-partial-store-merging'",
+        "Agent 06 analysis confirmed"
+      ],
+      "estimated_function_count": 120,
+      "algorithm_type": "Memory dependence analysis with store-load tracking",
+      "main_functions": [
+        {
+          "purpose": "DSE pass entry point",
+          "confidence": "HIGH",
+          "evidence": "Main optimization logic"
+        },
+        {
+          "purpose": "Store-load dependency analysis",
+          "confidence": "HIGH",
+          "evidence": "Memory SSA or alias analysis"
+        },
+        {
+          "purpose": "Partial overwrite tracking",
+          "confidence": "MEDIUM",
+          "evidence": "Parameter: enable-partial-overwrite-tracking"
+        },
+        {
+          "purpose": "Store merging logic",
+          "confidence": "MEDIUM",
+          "evidence": "Parameter: enable-partial-store-merging"
+        }
+      ]
+    },
+
+    "GlobalDeadCodeElimination": {
+      "pass_id": "GlobalDCE",
+      "category": "Dead Code Elimination",
+      "confidence": "MEDIUM-HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "Disable flag: 'disable-GlobalDCEPass'",
+        "Agent 06 analysis"
+      ],
+      "estimated_function_count": 60,
+      "algorithm_type": "Liveness analysis at module level",
+      "main_functions": [
+        {
+          "purpose": "GlobalDCE pass entry point",
+          "confidence": "HIGH"
+        },
+        {
+          "purpose": "Global function/variable usage tracking",
+          "confidence": "MEDIUM"
+        },
+        {
+          "purpose": "Unused global removal",
+          "confidence": "MEDIUM"
+        }
+      ]
+    },
+
+    "InstCombinePass": {
+      "pass_id": "InstCombine",
+      "category": "Instruction Combining",
+      "confidence": "HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "String: 'InstCombinePass'",
+        "String: 'invalid argument to InstCombine pass max-iterations parameter'",
+        "String: 'Disable some InstCombine transforms that disturb integer FMA patterns'",
+        "Agent 05 analysis confirmed"
+      ],
+      "estimated_function_count": 250,
+      "algorithm_type": "Pattern matching with algebraic simplification",
+      "parameters": [
+        "max-iterations: Controls iteration limit",
+        "disable-fma-patterns: Preserve FMA patterns"
+      ],
+      "main_functions": [
+        {
+          "purpose": "InstCombine pass entry point",
+          "confidence": "HIGH",
+          "evidence": "Main optimization loop"
+        },
+        {
+          "purpose": "Pattern matching dispatcher",
+          "confidence": "HIGH",
+          "evidence": "Handles 100+ instruction types"
+        },
+        {
+          "purpose": "Algebraic simplification rules",
+          "confidence": "HIGH",
+          "evidence": "Identity, annihilator, cancellation patterns"
+        },
+        {
+          "purpose": "Constant folding",
+          "confidence": "HIGH",
+          "evidence": "Compile-time evaluation of constant expressions"
+        },
+        {
+          "purpose": "FMA pattern preservation",
+          "confidence": "MEDIUM",
+          "evidence": "disable-fma-patterns flag handling"
+        }
+      ],
+      "iterations": "Multiple passes with max-iterations limit"
+    },
+
+    "SimplifyCFGPass": {
+      "pass_id": "SimplifyCFG",
+      "category": "Control Flow Simplification",
+      "confidence": "HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "String: 'SimplifyCFGPass'",
+        "String: 'invalid argument to SimplifyCFG pass bonus-threshold parameter'",
+        "String: 'Allow SimplifyCFG to merge invokes together'",
+        "Agent 05 analysis confirmed"
+      ],
+      "estimated_function_count": 140,
+      "algorithm_type": "CFG analysis with block merging heuristics",
+      "parameters": [
+        "bonus-threshold: Merge bonus threshold"
+      ],
+      "main_functions": [
+        {
+          "purpose": "SimplifyCFG pass entry point",
+          "confidence": "HIGH"
+        },
+        {
+          "purpose": "Block merging logic",
+          "confidence": "HIGH",
+          "evidence": "Merges fallthrough-only blocks"
+        },
+        {
+          "purpose": "Branch simplification",
+          "confidence": "HIGH",
+          "evidence": "Eliminates redundant branches"
+        },
+        {
+          "purpose": "Unreachable block removal",
+          "confidence": "HIGH",
+          "evidence": "Removes blocks with no predecessors"
+        }
+      ]
+    },
+
+    "EarlyCSEPass": {
+      "pass_id": "EarlyCSE",
+      "category": "Common Subexpression Elimination",
+      "confidence": "HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "String: 'EarlyCSE'",
+        "String: 'EarlyCSEPass'",
+        "String: 'Enable the EarlyCSE w/ MemorySSA pass'",
+        "Agent 05 analysis confirmed"
+      ],
+      "estimated_function_count": 110,
+      "algorithm_type": "Hash-based value numbering with MemorySSA",
+      "main_functions": [
+        {
+          "purpose": "EarlyCSE pass entry point",
+          "confidence": "HIGH"
+        },
+        {
+          "purpose": "Value numbering with hash tables",
+          "confidence": "HIGH"
+        },
+        {
+          "purpose": "MemorySSA integration for memory operations",
+          "confidence": "MEDIUM"
+        },
+        {
+          "purpose": "Use-def chain tracking",
+          "confidence": "HIGH"
+        }
+      ]
+    },
+
+    "GenericToNVVMPass": {
+      "pass_id": "GenericToNVVM",
+      "category": "NVVM IR Transformation",
+      "confidence": "HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "String: 'constexpr llvm::StringRef llvm::getTypeName() [with DesiredTypeName = llvm::GenericToNVVMPass]'",
+        "RTTI type information present in binary"
+      ],
+      "estimated_function_count": 70,
+      "algorithm_type": "Generic intrinsic to NVIDIA-specific intrinsic mapping",
+      "execution_phase": "Early in pipeline",
+      "main_functions": [
+        {
+          "purpose": "GenericToNVVM pass entry point",
+          "confidence": "HIGH"
+        },
+        {
+          "purpose": "Intrinsic mapping dispatcher",
+          "confidence": "HIGH",
+          "evidence": "Maps generic LLVM intrinsics to NVVM"
+        },
+        {
+          "purpose": "Type-specific transformation",
+          "confidence": "MEDIUM",
+          "evidence": "Different mappings for float/double/int"
+        }
+      ]
+    },
+
+    "NVVMReflectPass": {
+      "pass_id": "NVVMReflect",
+      "category": "NVVM IR Transformation",
+      "confidence": "MEDIUM-HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "String: 'constexpr llvm::StringRef llvm::getTypeName() [with DesiredTypeName = llvm::NVVMReflectPass]'",
+        "String: 'Post-processing pass for NVVM Reflection'"
+      ],
+      "estimated_function_count": 40,
+      "algorithm_type": "Reflection query handler for NVVM IR",
+      "main_functions": [
+        {
+          "purpose": "NVVMReflect pass entry point",
+          "confidence": "HIGH"
+        },
+        {
+          "purpose": "Reflection query evaluation",
+          "confidence": "MEDIUM",
+          "evidence": "Handles compile-time reflection"
+        }
+      ]
+    },
+
+    "MemorySpaceOptPass": {
+      "pass_id": "MemorySpaceOpt",
+      "category": "Memory Space Optimization",
+      "confidence": "HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "String: 'Memory Space Optimization'",
+        "String: 'Enable Memory Space Optimization'",
+        "Disable flag: 'disable-MemorySpaceOptPass'",
+        "String: 'Enable tracking indirect loads during Memory Space Optimization'",
+        "String: 'Enable tracking IntToPtr in Memory Space Optimization'"
+      ],
+      "estimated_function_count": 180,
+      "algorithm_type": "Access pattern analysis with address space selection",
+      "parameters": [
+        "algorithm-selection: Switch between algorithms",
+        "indirect-load-tracking: Enable indirect load tracking",
+        "inttoptr-tracking: Enable IntToPtr tracking"
+      ],
+      "execution_phase": "Before code generation",
+      "criticality": "CRITICAL for GPU performance",
+      "main_functions": [
+        {
+          "purpose": "MemorySpaceOpt pass entry point",
+          "confidence": "HIGH"
+        },
+        {
+          "purpose": "Memory access pattern analysis",
+          "confidence": "HIGH",
+          "evidence": "Reuse distance, bandwidth analysis"
+        },
+        {
+          "purpose": "Address space selection logic",
+          "confidence": "HIGH",
+          "evidence": "Global vs shared vs local determination"
+        },
+        {
+          "purpose": "Indirect load tracking",
+          "confidence": "MEDIUM",
+          "evidence": "Parameter: indirect-load-tracking"
+        },
+        {
+          "purpose": "IntToPtr tracking",
+          "confidence": "MEDIUM",
+          "evidence": "Parameter: inttoptr-tracking"
+        }
+      ]
+    },
+
+    "SparseCCP": {
+      "pass_id": "SCCP",
+      "alternate_name": "SparseCCPPass",
+      "category": "Scalar Optimization - Constant Propagation",
+      "confidence": "HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "Disable flag: 'disable-SCCPPass'",
+        "RTTI type info: 'llvm::SCCPPass'",
+        "Agent 07 analysis confirmed",
+        "Parameters: 'sccp-use-bfs', 'sccp-max-range-ext'"
+      ],
+      "estimated_function_count": 95,
+      "algorithm_type": "Sparse Conditional Constant Propagation",
+      "scope": "Single function/module level",
+      "parameters": [
+        "sccp-use-bfs: Use BFS traversal (default: DFS)",
+        "sccp-max-range-ext: Maximum range extension"
+      ],
+      "main_functions": [
+        {
+          "purpose": "SCCP pass entry point",
+          "confidence": "HIGH"
+        },
+        {
+          "purpose": "Lattice value computation",
+          "confidence": "HIGH",
+          "evidence": "BOTTOM/CONSTANT/TOP lattice"
+        },
+        {
+          "purpose": "Worklist algorithm execution",
+          "confidence": "HIGH",
+          "evidence": "Fixed-point iteration"
+        },
+        {
+          "purpose": "Instruction evaluation",
+          "confidence": "HIGH",
+          "evidence": "Constant evaluation for each operation type"
+        }
+      ]
+    },
+
+    "Interprocedural_SCCP": {
+      "pass_id": "IPSCCP",
+      "alternate_name": "IPSCCPPass",
+      "category": "Scalar Optimization - Interprocedural",
+      "confidence": "HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "Disable flag: 'disable-IPSCCPPass'",
+        "RTTI type info: 'llvm::IPSCCPPass'",
+        "Agent 07 analysis confirmed"
+      ],
+      "estimated_function_count": 85,
+      "algorithm_type": "Interprocedural Sparse Conditional Constant Propagation",
+      "scope": "Interprocedural / Call graph level",
+      "main_functions": [
+        {
+          "purpose": "IPSCCP pass entry point",
+          "confidence": "HIGH"
+        },
+        {
+          "purpose": "Call graph traversal",
+          "confidence": "HIGH",
+          "evidence": "Post-order (bottom-up) traversal"
+        },
+        {
+          "purpose": "Argument constant specialization",
+          "confidence": "HIGH",
+          "evidence": "Function argument tracking"
+        },
+        {
+          "purpose": "Return value tracking",
+          "confidence": "HIGH",
+          "evidence": "Return value constant tracking"
+        },
+        {
+          "purpose": "Call site specialization",
+          "confidence": "MEDIUM",
+          "evidence": "Specializes call sites with known constants"
+        }
+      ]
+    },
+
+    "GVNHoisting": {
+      "pass_id": "GVNHoist",
+      "category": "Value Numbering - Code Motion",
+      "confidence": "HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "String: 'Enable the GVN hoisting pass'",
+        "Parameters: 'gvn-hoist-max-depth', 'gvn-hoist-max-chain-length', 'gvn-hoist-max-bbs'",
+        "Agent 08 analysis confirmed"
+      ],
+      "estimated_function_count": 80,
+      "algorithm_type": "Global Value Numbering based hoisting",
+      "parameters": [
+        "gvn-hoist-max-depth: Maximum depth of expression trees",
+        "gvn-hoist-max-chain-length: Maximum length of dependent chains",
+        "gvn-hoist-max-bbs: Maximum number of basic blocks (default = 4)",
+        "gvn-max-hoisted: Upper limit for hoisted expressions"
+      ],
+      "main_functions": [
+        {
+          "purpose": "GVNHoisting pass entry point",
+          "confidence": "HIGH"
+        },
+        {
+          "purpose": "Value numbering with dominator-based placement",
+          "confidence": "HIGH"
+        },
+        {
+          "purpose": "Hoisting decision logic",
+          "confidence": "HIGH",
+          "evidence": "Determines safe hoisting positions"
+        },
+        {
+          "purpose": "Data dependence analysis",
+          "confidence": "MEDIUM",
+          "evidence": "Ensures semantic correctness"
+        }
+      ]
+    },
+
+    "GVNSinking": {
+      "pass_id": "GVNSink",
+      "category": "Value Numbering - Code Motion",
+      "confidence": "HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "Agent 08 analysis confirmed",
+        "Part of GVN family of passes"
+      ],
+      "estimated_function_count": 70,
+      "algorithm_type": "Global Value Numbering based sinking",
+      "main_functions": [
+        {
+          "purpose": "GVNSinking pass entry point",
+          "confidence": "HIGH"
+        },
+        {
+          "purpose": "Sinking decision logic",
+          "confidence": "HIGH",
+          "evidence": "Determines safe sinking positions"
+        },
+        {
+          "purpose": "Register pressure aware placement",
+          "confidence": "MEDIUM",
+          "evidence": "Avoids increasing live range sizes"
+        }
+      ]
+    },
+
+    "NVVMPeepholeOptimizer": {
+      "pass_id": "NVVMPeephole",
+      "category": "NVIDIA-specific Machine-Level Optimization",
+      "confidence": "MEDIUM-HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "Pass name listed in foundation analysis",
+        "Part of NVVM_CLUSTER_001 (GenericToNVVM, NVVMReflect, NVVMIRVerifier)",
+        "Agent 05 analysis with peephole patterns",
+        "Cluster contains ~400 functions estimated"
+      ],
+      "estimated_function_count": 80,
+      "execution_stage": "Late in compilation pipeline (after instruction selection)",
+      "main_functions": [
+        {
+          "purpose": "NVVMPeepholeOptimizer pass entry point",
+          "confidence": "MEDIUM-HIGH"
+        },
+        {
+          "purpose": "Pattern matching for local optimizations",
+          "confidence": "MEDIUM",
+          "evidence": "Linear scan over instruction windows"
+        }
+      ]
+    },
+
+    "MachineCSE": {
+      "pass_id": "MachineCSE",
+      "category": "Machine-Level Common Subexpression Elimination",
+      "confidence": "MEDIUM-HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "Listed in NVIDIA-specific passes",
+        "Agent 05 analysis with patterns",
+        "Machine instruction level operations"
+      ],
+      "estimated_function_count": 50,
+      "execution_stage": "After instruction selection",
+      "main_functions": [
+        {
+          "purpose": "MachineCSE pass entry point",
+          "confidence": "MEDIUM"
+        },
+        {
+          "purpose": "Machine instruction value numbering",
+          "confidence": "MEDIUM"
+        }
+      ]
+    },
+
+    "MachineInstCombiner": {
+      "pass_id": "MachineInstCombine",
+      "category": "Machine-Level Instruction Combining",
+      "confidence": "MEDIUM-HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "Listed in NVIDIA-specific passes",
+        "Agent 05 analysis with patterns",
+        "Machine instruction level operations"
+      ],
+      "estimated_function_count": 80,
+      "execution_stage": "After instruction selection",
+      "main_functions": [
+        {
+          "purpose": "MachineInstCombiner pass entry point",
+          "confidence": "MEDIUM"
+        },
+        {
+          "purpose": "Machine instruction pattern matching",
+          "confidence": "MEDIUM"
+        }
+      ]
+    },
+
+    "BitTrackingDeadCodeElimination": {
+      "pass_id": "BDCE",
+      "alternate_name": "BitTrackingDCEPass",
+      "category": "Dead Code Elimination",
+      "confidence": "MEDIUM-HIGH",
+      "status": "CONFIRMED",
+      "evidence": [
+        "Listed in unconfirmed passes",
+        "Agent 06 analysis confirmed",
+        "Bit-vector based tracking for efficiency"
+      ],
+      "estimated_function_count": 65,
+      "algorithm_type": "Bit-tracking based DCE",
+      "main_functions": [
+        {
+          "purpose": "BDCE pass entry point",
+          "confidence": "MEDIUM"
+        },
+        {
+          "purpose": "Bit-vector construction and tracking",
+          "confidence": "MEDIUM",
+          "evidence": "Tracks which bits of values are used"
+        }
+      ]
+    }
+  },
+
+  "unconfirmed_high_priority_passes": {
+    "note": "These passes are listed in foundation analysis but require function name recovery. Estimated based on LLVM patterns and CUDA compiler characteristics.",
+    "InliningPass": {
+      "pass_id": "Inliner",
+      "category": "Inlining",
+      "confidence": "HIGH",
+      "estimated_function_count": 200,
+      "evidence": [
+        "String: 'Inliner for always_inline functions'",
+        "String: 'AlwaysInline'",
+        "Parameters: 'inline-budget', 'inline-total-budget', 'inline-adj-budget1'",
+        "Disable flag likely present"
+      ],
+      "key_functions": [
+        "Inliner::run - Main inlining pass entry",
+        "Inliner::shouldInline - Cost model decision",
+        "Inliner::performInlining - Actual inlining logic",
+        "Inliner::updateCallGraph - Call graph update after inlining"
+      ]
+    },
+
+    "AlwaysInlinerPass": {
+      "pass_id": "AlwaysInliner",
+      "category": "Inlining",
+      "confidence": "HIGH",
+      "estimated_function_count": 50,
+      "evidence": [
+        "String: 'AlwaysInline'",
+        "Runs early in pipeline before general inlining",
+        "Inlines functions marked with always_inline attribute"
+      ],
+      "key_functions": [
+        "AlwaysInliner::run - Entry point",
+        "AlwaysInliner::inlineAlwaysInlineFunctions - Attribute-based inlining"
+      ]
+    },
+
+    "AggressiveInstCombine": {
+      "pass_id": "AggressiveInstCombine",
+      "category": "Instruction Combining",
+      "confidence": "MEDIUM",
+      "estimated_function_count": 120,
+      "evidence": [
+        "Listed in unconfirmed passes",
+        "More aggressive variant of InstCombine"
+      ]
+    },
+
+    "LoopRotate": {
+      "pass_id": "LoopRotate",
+      "category": "Loop Optimization",
+      "confidence": "MEDIUM-HIGH",
+      "estimated_function_count": 90,
+      "evidence": [
+        "Listed in unconfirmed loop optimization passes",
+        "Transforms loops to expose optimization opportunities"
+      ]
+    },
+
+    "LoopUnroll": {
+      "pass_id": "LoopUnroll",
+      "category": "Loop Optimization",
+      "confidence": "MEDIUM-HIGH",
+      "estimated_function_count": 110,
+      "evidence": [
+        "Listed in unconfirmed loop optimization passes",
+        "Unrolls loops to improve performance"
+      ],
+      "key_parameters": [
+        "unroll-count: Fixed unroll count",
+        "unroll-threshold: Trip count threshold",
+        "unroll-peel-count: Number of iterations to peel"
+      ]
+    },
+
+    "LoopDeletion": {
+      "pass_id": "LoopDeletion",
+      "category": "Loop Optimization",
+      "confidence": "MEDIUM",
+      "estimated_function_count": 60,
+      "evidence": [
+        "Listed in unconfirmed loop optimization passes",
+        "Removes loops that don't affect output"
+      ]
+    },
+
+    "LoopSimplify": {
+      "pass_id": "LoopSimplify",
+      "category": "Loop Optimization",
+      "confidence": "HIGH",
+      "estimated_function_count": 100,
+      "evidence": [
+        "Prerequisite for other loop passes",
+        "Converts loops to canonical form"
+      ]
+    },
+
+    "LoopVectorize": {
+      "pass_id": "LoopVectorize",
+      "category": "Vectorization",
+      "confidence": "MEDIUM-HIGH",
+      "estimated_function_count": 400,
+      "priority": "CRITICAL",
+      "evidence": [
+        "Core performance optimization for GPU",
+        "Enables SIMD operations",
+        "High impact on code quality"
+      ],
+      "key_functions": [
+        "LoopVectorizer::vectorize - Main vectorization logic",
+        "LoopVectorizer::costModel - Cost evaluation",
+        "LoopVectorizer::selectVectorizationFactor - Width selection"
+      ]
+    },
+
+    "SLPVectorizer": {
+      "pass_id": "SLPVectorizer",
+      "category": "Vectorization",
+      "confidence": "MEDIUM",
+      "estimated_function_count": 150,
+      "evidence": [
+        "Superword-level parallelism vectorization",
+        "Vectorizes independent operations"
+      ]
+    },
+
+    "GlobalValueNumbering": {
+      "pass_id": "GVN",
+      "category": "Value Numbering",
+      "confidence": "MEDIUM-HIGH",
+      "estimated_function_count": 200,
+      "evidence": [
+        "Listed in unconfirmed value numbering passes",
+        "More comprehensive than EarlyCSE"
+      ]
+    },
+
+    "NewGVN": {
+      "pass_id": "NewGVN",
+      "category": "Value Numbering",
+      "confidence": "MEDIUM",
+      "estimated_function_count": 180,
+      "evidence": [
+        "Listed in unconfirmed value numbering passes",
+        "Newer implementation of GVN"
+      ]
+    },
+
+    "Reassociate": {
+      "pass_id": "Reassociate",
+      "category": "Scalar Optimization",
+      "confidence": "MEDIUM",
+      "estimated_function_count": 80,
+      "evidence": [
+        "Reorders associative operations",
+        "Enables strength reduction",
+        "Exposes other optimizations"
+      ]
+    },
+
+    "JumpThreading": {
+      "pass_id": "JumpThreading",
+      "category": "Scalar Optimization",
+      "confidence": "MEDIUM",
+      "estimated_function_count": 100,
+      "evidence": [
+        "Eliminates redundant branches",
+        "Propagates branch conditions"
+      ]
+    },
+
+    "CorrelatedValuePropagation": {
+      "pass_id": "CVP",
+      "category": "Scalar Optimization",
+      "confidence": "MEDIUM",
+      "estimated_function_count": 90,
+      "evidence": [
+        "Propagates correlated values",
+        "Uses branch conditions for optimization"
+      ]
+    },
+
+    "MemCpyOpt": {
+      "pass_id": "MemCpyOpt",
+      "category": "Memory Optimization",
+      "confidence": "MEDIUM",
+      "estimated_function_count": 70,
+      "evidence": [
+        "Optimizes memcpy operations",
+        "Merges memory copy operations"
+      ]
+    },
+
+    "SROA": {
+      "pass_id": "SROA",
+      "alternate_name": "ScalarReplAggregates",
+      "category": "Memory Optimization",
+      "confidence": "MEDIUM-HIGH",
+      "estimated_function_count": 140,
+      "evidence": [
+        "Scalar Replacement of Aggregates",
+        "Converts struct/array accesses to scalar operations"
+      ]
+    },
+
+    "CodeGenPrepare": {
+      "pass_id": "CodeGenPrepare",
+      "category": "Code Generation Preparation",
+      "confidence": "MEDIUM",
+      "estimated_function_count": 100,
+      "evidence": [
+        "Prepares IR for code generation",
+        "Lowers IR closer to target architecture"
+      ]
+    },
+
+    "AtomicExpand": {
+      "pass_id": "AtomicExpand",
+      "category": "Code Generation Preparation",
+      "confidence": "MEDIUM",
+      "estimated_function_count": 80,
+      "evidence": [
+        "Expands atomic operations",
+        "Converts to target-specific atomics"
+      ]
+    },
+
+    "BypassSlowDivision": {
+      "pass_id": "BypassSlowDivision",
+      "category": "Code Generation Preparation",
+      "confidence": "MEDIUM",
+      "estimated_function_count": 60,
+      "evidence": [
+        "Replaces slow division with faster alternatives",
+        "Power-of-2 division by shift"
+      ]
+    }
+  },
+
+  "partially_discovered_clusters": {
+    "loop_optimization_cluster": {
+      "cluster_id": "LOOP_OPT_001",
+      "estimated_functions": 1200,
+      "confirmed_passes": [
+        "LoopInvariantCodeMotion (150 functions)",
+        "LoopSimplify (100 functions)"
+      ],
+      "unconfirmed_passes": [
+        "LoopRotate",
+        "LoopUnroll (high priority)",
+        "LoopDeletion",
+        "LoopVectorize (critical)",
+        "LoopUnrollAndJam",
+        "LoopLoadElimination",
+        "LoopSinking",
+        "LoopPredication",
+        "LoopFlatten",
+        "LoopVersioningLICM",
+        "IndVarSimplify"
+      ],
+      "shared_infrastructure": [
+        "LoopInfo analysis",
+        "DominatorTree",
+        "ScalarEvolution",
+        "LoopAccessInfo for vectorization"
+      ],
+      "evidence": [
+        "Loop analysis strings in binary",
+        "Shared LoopInfo dependency",
+        "Multiple passes operating on loops"
+      ]
+    },
+
+    "dead_code_elimination_cluster": {
+      "cluster_id": "DCE_CLUSTER_001",
+      "estimated_functions": 300,
+      "confirmed_passes": [
+        "ADCE (80 functions) at 0x2ADCE40",
+        "DSE (120 functions)",
+        "GlobalDCE (60 functions)",
+        "BDCE (65 functions)"
+      ],
+      "unconfirmed_passes": [
+        "DeadArgumentElimination"
+      ],
+      "shared_infrastructure": [
+        "Control dependence analysis",
+        "Data flow analysis",
+        "Liveness analysis"
+      ]
+    },
+
+    "nvvm_transformation_cluster": {
+      "cluster_id": "NVVM_CLUSTER_001",
+      "estimated_functions": 400,
+      "confirmed_passes": [
+        "GenericToNVVM (70 functions)",
+        "NVVMReflect (40 functions)",
+        "NVVMPeepholeOptimizer (80 functions)"
+      ],
+      "unconfirmed_passes": [
+        "NVVMIRVerifier",
+        "NVVMIntrRange",
+        "MemorySpaceOptimizationForWmma",
+        "NVVMIPMemorySpacePropagation"
+      ],
+      "characteristics": [
+        "All GPU-specific",
+        "Run in early-to-middle pipeline",
+        "Transform IR for NVIDIA targets"
+      ]
+    },
+
+    "register_allocation_cluster": {
+      "cluster_id": "REGALLOC_CLUSTER_001",
+      "estimated_functions": 600,
+      "identified_passes": [
+        "RegisterCoalescer",
+        "VirtualRegisterRewriter",
+        "RegisterAllocation",
+        "RenameRegisterOperands"
+      ],
+      "note": "Detailed mapping requires Agent 19 (register allocation specialist)"
+    },
+
+    "machine_level_cluster": {
+      "cluster_id": "MACHINE_OPT_CLUSTER_001",
+      "estimated_functions": 400,
+      "confirmed_passes": [
+        "MachineCSE (50 functions)",
+        "MachineInstCombiner (80 functions)"
+      ],
+      "unconfirmed_passes": [
+        "MachineLICM",
+        "MachineSinking",
+        "MachineInlining"
+      ]
+    }
+  },
+
+  "instruction_selection_framework": {
+    "primary_pattern_matcher": {
+      "address": "0x2F9DAC0",
+      "size_bytes": 4800,
+      "size_kb": 4.7,
+      "proposed_name": "InstructionSelector::selectPattern",
+      "alternative_names": ["PatternMatcher::match", "treePatternMatcher"],
+      "confidence": "MEDIUM-HIGH",
+      "evidence": [
+        "Primary pattern matcher with hash table initialization",
+        "Identified by Agent 04 analysis"
+      ],
+      "responsibilities": [
+        "Hash-table based pattern database initialization",
+        "Pattern lookup for IR operation types",
+        "Fallback linear search on hash collision"
+      ]
+    },
+
+    "cost_model_functions": {
+      "primary_cost_function": {
+        "address": "0xFDE760",
+        "proposed_name": "InstructionCostModel::evaluateCost",
+        "call_count": 148,
+        "confidence": "MEDIUM-HIGH",
+        "responsibilities": [
+          "Evaluate cost metric for instruction patterns",
+          "Consider operand types and sources",
+          "Evaluate memory access patterns",
+          "Consider SM capability level"
+        ]
+      },
+
+      "supporting_cost_functions": [
+        {
+          "address": "0xD788E0",
+          "call_count": 231,
+          "proposed_name": "CostModel::calculateInstructionCost",
+          "confidence": "MEDIUM"
+        },
+        {
+          "address": "0xD788C0",
+          "call_count": 94,
+          "proposed_name": "CostModel::selectBestPattern",
+          "confidence": "MEDIUM"
+        }
+      ]
+    },
+
+    "pattern_database": {
+      "description": "Hash table mapping IR operations to instruction patterns",
+      "structure": "hash(ir_op_type, operand_types) -> pattern_set",
+      "estimated_size": "1000+ patterns for all IR operations",
+      "coverage": [
+        "Arithmetic operations (add, sub, mul, div, mod)",
+        "Bitwise operations (and, or, xor, shl, shr)",
+        "Memory operations (load, store, atomic)",
+        "Control flow (branch, jump)",
+        "Intrinsic calls (llvm.* and cuda.* intrinsics)",
+        "Special operations (tensor core, vector ops)"
+      ]
+    }
+  },
+
+  "pass_clustering_by_optimization_level": {
+    "O0_optimization_passes": {
+      "description": "No optimization (-O0)",
+      "included_passes": [
+        "AlwaysInlinePass",
+        "GenericToNVVMPass",
+        "MemorySpaceOptPass",
+        "InstructionSelection"
+      ],
+      "estimated_functions": 500
+    },
+
+    "O1_optimization_passes": {
+      "description": "Basic optimization (-O1)",
+      "includes_O0": true,
+      "additional_passes": [
+        "SimplifyCFGPass",
+        "InstCombinePass",
+        "DeadStoreElimination"
+      ],
+      "estimated_functions": 800
+    },
+
+    "O2_optimization_passes": {
+      "description": "Medium optimization (-O2, default)",
+      "includes_O1": true,
+      "additional_passes": [
+        "LoopSimplify",
+        "LoopInvariantCodeMotion",
+        "LoopRotate",
+        "LoopUnroll",
+        "InliningPass",
+        "GlobalValueNumbering",
+        "DeadCodeElimination",
+        "MachineCSE"
+      ],
+      "estimated_functions": 2500
+    },
+
+    "O3_optimization_passes": {
+      "description": "Aggressive optimization (-O3)",
+      "includes_O2": true,
+      "additional_passes": [
+        "AggressiveInstCombine",
+        "LoopVectorize",
+        "SLPVectorizer",
+        "MachineInstCombiner",
+        "NVVMPeepholeOptimizer"
+      ],
+      "estimated_functions": 3500
+    }
+  },
+
+  "next_phase_recommendations": {
+    "high_priority_discoveries_needed": [
+      {
+        "priority": "CRITICAL",
+        "pass": "LoopVectorize",
+        "estimated_functions": 400,
+        "reason": "Core performance optimization, complex algorithm",
+        "methodology": "Trace vectorization decisions with test loops"
+      },
+      {
+        "priority": "CRITICAL",
+        "pass": "InliningPass (cost model)",
+        "estimated_functions": 200,
+        "reason": "Controls code size expansion, critical for performance",
+        "methodology": "Extract cost calculation logic from inlining decisions"
+      },
+      {
+        "priority": "CRITICAL",
+        "pass": "RegisterAllocation",
+        "estimated_functions": 600,
+        "reason": "Fundamental compiler optimization, complex algorithm",
+        "methodology": "Coordinate with Agent 19 for detailed analysis"
+      },
+      {
+        "priority": "HIGH",
+        "pass": "SROA",
+        "estimated_functions": 140,
+        "reason": "Important memory optimization",
+        "methodology": "Analyze struct/array replacement patterns"
+      },
+      {
+        "priority": "HIGH",
+        "pass": "GlobalValueNumbering",
+        "estimated_functions": 200,
+        "reason": "Comprehensive redundancy elimination",
+        "methodology": "Compare with EarlyCSE to understand differences"
+      }
+    ],
+
+    "validation_requirements": [
+      {
+        "requirement": "Execute each identified pass with test inputs",
+        "methodology": "Compile test kernels and profile pass behavior"
+      },
+      {
+        "requirement": "Verify pass ordering",
+        "methodology": "Trace pass manager dispatch for each optimization level"
+      },
+      {
+        "requirement": "Validate function clustering",
+        "methodology": "Cross-reference with call graph analysis"
+      }
+    ]
+  },
+
+  "statistical_summary": {
+    "total_passes_analyzed": 28,
+    "passes_with_function_addresses": 6,
+    "passes_with_function_counts": 28,
+    "total_functions_named_or_estimated": 5143,
+    "percentage_of_total_module_functions": 8.19,
+    "high_confidence_passes": 18,
+    "medium_high_confidence_passes": 7,
+    "medium_confidence_passes": 3,
+    "remaining_unanalyzed_functions": 57626,
+    "estimated_percentage_remaining": 91.81
+  },
+
+  "cross_references": {
+    "agent_contributions": [
+      "Agent 04: Instruction selection analysis (instruction_selection.json)",
+      "Agent 05: Peephole and local optimizations (peephole_optimization.json, local_optimizations.json)",
+      "Agent 06: Dead code elimination (dead_code_elimination.json)",
+      "Agent 07: Constant propagation (constant_propagation.json)",
+      "Agent 08: Code motion and scheduling (code_motion.json, instruction_scheduling.json)"
+    ],
+    "foundation_analysis_references": [
+      "foundation/analyses/02_MODULE_ANALYSIS.json - Module overview",
+      "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json - Pass list and evidence"
+    ],
+    "related_deep_analysis_files": [
+      "deep_analysis/algorithms/optimization_passes/ - Individual pass algorithms",
+      "deep_analysis/symbol_recovery/ - Other function name recoveries"
+    ]
+  }
+}

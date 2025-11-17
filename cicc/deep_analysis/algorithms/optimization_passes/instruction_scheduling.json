@@ -1,0 +1,397 @@
+{
+  "metadata": {
+    "phase": "L2 - Deep Analysis",
+    "agent": "agent_08",
+    "date": "2025-11-16",
+    "title": "Instruction Scheduling Algorithms in CICC",
+    "confidence": "MEDIUM-HIGH",
+    "status": "IDENTIFIED",
+    "scheduling_passes_found": 3,
+    "sm_architectures_analyzed": 9
+  },
+  "summary": {
+    "overview": "CICC implements machine instruction scheduling at multiple stages of compilation to optimize for GPU hardware characteristics including deep pipelines, latency hiding, and SM-specific constraints.",
+    "algorithm_types": [
+      "Pre-RA List Scheduling - scheduling before register allocation",
+      "Post-RA List Scheduling - scheduling after register allocation",
+      "Register Pressure Aware Scheduling - balances latency and register pressure"
+    ],
+    "execution_phases": [
+      "Pre-register allocation scheduling (early)",
+      "Post-register allocation scheduling (late)",
+      "SM architecture-specific scheduling dispatch"
+    ]
+  },
+  "instruction_scheduling": {
+    "pre_ra_scheduling": {
+      "pass_name": "Machine Instruction Scheduling (Pre-RA)",
+      "phase": "Before register allocation",
+      "confidence": "MEDIUM-HIGH",
+      "algorithm": "List Scheduling with multiple strategies",
+      "description": "Schedules machine instructions before register allocation to reduce latencies and improve throughput.",
+      "scheduling_strategies": [
+        {
+          "name": "Bottom-up Register Reduction List Scheduling",
+          "description": "Schedules instructions using bottom-up traversal while minimizing register usage",
+          "heuristic": "Prioritizes instructions that reduce register requirements",
+          "objective": "Minimize register pressure while meeting latency constraints"
+        },
+        {
+          "name": "Bottom-up Register Pressure Aware List Scheduling (Latency-Pressure Balance)",
+          "description": "Balances instruction latency with register pressure considerations",
+          "heuristic": "Weights both latency hiding and register pressure equally",
+          "objective": "Improve overall performance considering both factors"
+        },
+        {
+          "name": "Bottom-up Register Pressure Aware List Scheduling (ILP-Pressure Balance)",
+          "description": "Balances instruction-level parallelism with register pressure",
+          "heuristic": "Prioritizes exploiting ILP while respecting register constraints",
+          "objective": "Maximize instruction-level parallelism within register budget"
+        }
+      ],
+      "parameters": [
+        "machine-scheduler-topdown: Use top-down scheduling approach",
+        "machine-scheduler-bottomup: Use bottom-up scheduling approach (default)",
+        "machine-scheduler-regpressure: Enable register pressure aware scheduling"
+      ],
+      "dependencies": [
+        "MachineLoopInfo - Loop structure for instruction scheduling",
+        "MachineDominatorTree - Dominance relationships",
+        "RegisterClassInfo - Register constraints per architecture"
+      ],
+      "evidence": [
+        "String: 'Enable the machine instruction scheduling pass.'",
+        "String: 'Bottom-up register reduction list scheduling'",
+        "String: 'Bottom-up register pressure aware list scheduling which tries to balance latency and register pressure'",
+        "String: 'Bottom-up register pressure aware list scheduling which tries to balance ILP and register pressure'",
+        "String: 'Instruction schedulers available (before register allocation)'"
+      ],
+      "estimated_function_count": 200,
+      "complexity": "O(n*log(n)) for list scheduling with priority queue"
+    },
+    "post_ra_scheduling": {
+      "pass_name": "Machine Instruction Scheduling (Post-RA)",
+      "phase": "After register allocation",
+      "confidence": "MEDIUM",
+      "algorithm": "List Scheduling with register-allocated constraints",
+      "description": "Schedules machine instructions after register allocation, respecting physical register assignments.",
+      "purpose": "Final scheduling pass to hide latencies using physical register assignments",
+      "parameters": [
+        "enable-post-ra-scheduling: Enable the post-ra machine instruction scheduling pass",
+        "post-ra-scheduling-threshold: Threshold for enabling post-RA scheduling"
+      ],
+      "constraints": [
+        "Physical register assignments fixed by register allocation",
+        "Memory dependency constraints more explicit",
+        "SM-specific register bank conflicts"
+      ],
+      "evidence": [
+        "String: 'Enable the post-ra machine instruction scheduling pass.'"
+      ],
+      "estimated_function_count": 150,
+      "optimization_impact": "MEDIUM - Final tuning pass for latency hiding"
+    }
+  },
+  "list_scheduling_algorithm": {
+    "algorithm_name": "List Scheduling",
+    "description": "Greedy algorithm that schedules instructions based on priority while respecting dependencies",
+    "phases": [
+      {
+        "phase": "Dependency Analysis",
+        "description": "Build data, memory, and control dependency graph",
+        "output": "DAG of instruction dependencies with latencies"
+      },
+      {
+        "phase": "Priority Calculation",
+        "description": "Calculate priority for each unscheduled instruction",
+        "heuristics": [
+          "Critical path length - instructions on longer paths scheduled first",
+          "Register pressure - instructions that reduce pressure prioritized",
+          "ILP - instructions that enable parallelism prioritized"
+        ]
+      },
+      {
+        "phase": "Scheduling",
+        "description": "Iteratively select highest-priority ready instruction and schedule it",
+        "ready_condition": "All dependencies resolved (scheduled earlier)",
+        "termination": "All instructions scheduled"
+      },
+      {
+        "phase": "Register Pressure Adjustment",
+        "description": "Optional: adjust schedule to reduce register spills",
+        "method": "Move instructions to higher-latency positions if it reduces pressure"
+      }
+    ],
+    "priority_metrics": [
+      "Critical path length (longest path to end of program)",
+      "Live range length (instructions that extend register lifetimes)",
+      "Operation latency (hidden vs exposed)",
+      "Instruction dependencies (fan-in, fan-out)"
+    ],
+    "complexity": "O(n^2) worst-case for instruction scheduling"
+  },
+  "sm_architecture_specific_scheduling": {
+    "overview": "CICC applies SM architecture-specific scheduling strategies based on target GPU capabilities",
+    "architecture_dispatch_logic": "Detected SM version and select optimization paths accordingly",
+    "sm_versions_with_scheduling": [
+      "sm_70 (Volta)",
+      "sm_75 (Turing)",
+      "sm_80 (Ampere)",
+      "sm_90 (Hopper)",
+      "sm_100+ (Blackwell)"
+    ],
+    "architecture_specific_optimizations": {
+      "sm_70_volta": {
+        "name": "Volta",
+        "release_year": 2017,
+        "key_features": [
+          "Tensor cores with limited support",
+          "Independent thread scheduling",
+          "Cooperative groups",
+          "Async copy instructions",
+          "Stronger memory model"
+        ],
+        "scheduling_considerations": [
+          "96 registers per thread (warp of 32)",
+          "Register pressure more critical than earlier architectures",
+          "Tensor core instruction scheduling important for matrix operations",
+          "Memory instruction latency: 30-200 cycles (SM-specific)"
+        ],
+        "instruction_latencies": {
+          "arithmetic_int": "4-6 cycles",
+          "arithmetic_float": "7-10 cycles",
+          "memory_access": "30-200 cycles (global), 4-8 (shared)",
+          "tensor_core_wmma": "8 cycles (warp-synchronous)"
+        }
+      },
+      "sm_80_ampere": {
+        "name": "Ampere",
+        "release_year": 2020,
+        "key_features": [
+          "Enhanced tensor cores with multiple precisions",
+          "Tensor Float32 (TF32) format",
+          "Improved memory hierarchy",
+          "Structured sparsity support",
+          "Dynamic shared memory modes"
+        ],
+        "scheduling_considerations": [
+          "128 registers per thread (Ampere - larger register file)",
+          "Multiple precision tensor operations complicate scheduling",
+          "Sparsity patterns affect instruction scheduling",
+          "Register pressure less critical due to larger register file",
+          "L2 cache larger, affects memory scheduling"
+        ],
+        "instruction_latencies": {
+          "arithmetic_int": "4-6 cycles",
+          "arithmetic_float": "7 cycles",
+          "memory_access": "200-400 cycles (global), 4-6 (shared)",
+          "tensor_core_mma": "8 cycles (matrix operation)"
+        },
+        "tensor_precision_types": [
+          "float32",
+          "float16",
+          "bfloat16",
+          "int8",
+          "tf32"
+        ]
+      },
+      "sm_90_hopper": {
+        "name": "Hopper",
+        "release_year": 2022,
+        "key_features": [
+          "Transformer engine with custom tensor formats",
+          "Improved async copy capabilities",
+          "Increased on-chip memory",
+          "Warp specialization support",
+          "TMA (Tensor Memory Accelerator) instructions"
+        ],
+        "scheduling_considerations": [
+          "Warp specialization - different warp roles require different scheduling",
+          "TMA instructions with special scheduling rules",
+          "Async copy instruction placement critical",
+          "Larger shared memory (more scheduling flexibility)",
+          "Transformer engine requires specialized scheduling"
+        ],
+        "instruction_latencies": {
+          "arithmetic_int": "4 cycles",
+          "arithmetic_float": "7 cycles",
+          "memory_access": "200-400 cycles (global), 4 (shared)",
+          "tensor_core_mma": "8 cycles",
+          "tma_instruction": "Async (100+ cycle latency)"
+        },
+        "tensor_precision_types": [
+          "float32",
+          "float16",
+          "bfloat16",
+          "int8",
+          "fp8",
+          "tf32"
+        ]
+      },
+      "sm_100_blackwell": {
+        "name": "Blackwell",
+        "release_year": 2024,
+        "key_features": [
+          "Advanced tensor formats (MXF4, MXF8)",
+          "Enhanced memory architecture",
+          "Improved sparsity support",
+          "Next-generation scheduling capabilities"
+        ],
+        "scheduling_considerations": [
+          "New tensor formats (MXF4, MXF8) require new scheduling patterns",
+          "Memory architecture changes affect latency profiles",
+          "Advanced sparsity patterns",
+          "More flexible instruction scheduling options"
+        ],
+        "tensor_precision_types": [
+          "float32",
+          "float16",
+          "bfloat16",
+          "int8",
+          "fp8",
+          "mxf4",
+          "mxf8"
+        ]
+      }
+    }
+  },
+
+  "latency_hiding_strategies": {
+    "strategy_1_instruction_overlap": {
+      "name": "Instruction Overlapping",
+      "description": "Schedule independent instructions between dependent ones to hide latency",
+      "implementation": "List scheduling with dependency-aware instruction reordering",
+      "effectiveness": "Can hide 50-80% of memory latencies with enough independent work"
+    },
+    "strategy_2_warp_level_parallelism": {
+      "name": "Warp-Level Parallelism",
+      "description": "Multiple warps in flight hide latencies (hardware scheduler responsibility)",
+      "scheduling_role": "Ensure instructions scheduled to maximize warp throughput",
+      "effectiveness": "High - GPU has 64+ warps per SM"
+    },
+    "strategy_3_occupancy_optimization": {
+      "name": "Register Pressure Minimization for High Occupancy",
+      "description": "Reduce register usage to allow more warps/block, improving latency hiding",
+      "scheduling_aspect": "Schedule to minimize live register count",
+      "tradeoff": "May increase instruction count vs reduced occupancy",
+      "effectiveness": "High on register-constrained kernels"
+    },
+    "strategy_4_memory_coalescing_awareness": {
+      "name": "Memory Access Pattern Awareness",
+      "description": "Schedule memory accesses to improve coalescing and reduce latency variance",
+      "scheduling_consideration": "Group related memory accesses temporally",
+      "effectiveness": "Low-Medium (primarily controlled by register allocation)"
+    }
+  },
+
+  "register_allocation_interaction": {
+    "description": "Instruction scheduling interacts critically with register allocation",
+    "dependencies": [
+      "Register allocation constrains physical registers available",
+      "Scheduling decisions affect register lifetimes",
+      "Register pressure affects scheduling decisions"
+    ],
+    "iteration": "Some compilers iterate between scheduling and register allocation",
+    "cicc_approach": "Schedule before register allocation, then post-RA scheduling"
+  },
+
+  "dependence_analysis_for_scheduling": {
+    "description": "Accurate dependence analysis critical for scheduling correctness",
+    "dependence_types": [
+      {
+        "type": "Data Dependencies",
+        "analysis": "Register use-def chains, memory dependence",
+        "conservative": "Assume all memory operations may alias unless proven otherwise"
+      },
+      {
+        "type": "Memory Dependencies",
+        "analysis": "Aliasing relationships between memory operations",
+        "constraints": "Prevent reordering memory operations that may alias",
+        "optimism": "May be optimistic with alias analysis to enable more scheduling"
+      },
+      {
+        "type": "Register Bank Conflicts (SM-specific)",
+        "analysis": "Physical register bank assignments",
+        "constraint": "Sm-specific: different architectures have different bank conflict patterns",
+        "impact": "Can add artificial latencies to prevent bank conflicts"
+      }
+    ]
+  },
+
+  "scheduling_vs_optimization_level": {
+    "O0": {
+      "scheduling": "Disabled or minimal",
+      "rationale": "Fast compilation priority"
+    },
+    "O1": {
+      "scheduling": "Minimal pre-RA scheduling",
+      "rationale": "Balance between compilation speed and code quality"
+    },
+    "O2": {
+      "scheduling": "Full pre-RA and post-RA scheduling",
+      "rationale": "Good code quality with reasonable compile time"
+    },
+    "O3": {
+      "scheduling": "Aggressive scheduling with multiple strategies",
+      "rationale": "Maximum code quality regardless of compile time"
+    }
+  },
+
+  "known_limitations_and_gaps": [
+    "Exact cost models for latency prediction unknown",
+    "SM architecture-specific latency profiles not fully documented",
+    "Tensor core instruction scheduling heuristics not publicly available",
+    "Register bank conflict prediction model unknown",
+    "TMA instruction scheduling constraints not documented",
+    "Interaction between scheduling and memory space optimization unclear"
+  ],
+
+  "optimization_impact": {
+    "ideal_case": "50-100% performance improvement via latency hiding and ILP extraction",
+    "typical_case": "10-30% improvement from good scheduling",
+    "poor_scheduling": "No improvement or slight regression if scheduling creates worse patterns",
+    "gpu_relevance": "CRITICAL - GPU performance highly dependent on instruction scheduling quality"
+  },
+
+  "evidence": {
+    "string_evidence": [
+      "Enable the machine instruction scheduling pass",
+      "Enable the post-ra machine instruction scheduling pass",
+      "Bottom-up register reduction list scheduling",
+      "Register pressure aware list scheduling (multiple variants)",
+      "Instruction schedulers available (before register allocation)",
+      "Enable register pressure scheduling",
+      "Enable scheduling after register allocation"
+    ],
+    "pattern_evidence": [
+      "Large functions (100KB+) consistent with complex scheduling algorithms",
+      "Function clustering around instruction scheduling logic",
+      "SM-version-specific dispatch functions detected"
+    ],
+    "confidence_justification": "Strong string evidence for pre-RA and post-RA scheduling with multiple algorithm variants"
+  },
+
+  "validation": {
+    "confidence": "MEDIUM-HIGH",
+    "verified_passes": [
+      "Pre-RA Instruction Scheduling - HIGH confidence",
+      "Post-RA Instruction Scheduling - MEDIUM confidence",
+      "Register pressure aware variants - MEDIUM confidence"
+    ],
+    "unverified_aspects": [
+      "Exact latency models for each SM",
+      "SM-specific tensor core scheduling strategies",
+      "Specific threshold values for algorithm selection"
+    ],
+    "test_validation": "Compare CICC generated code instruction order with reference implementations"
+  },
+
+  "recommendations_for_l3": [
+    "Implement list scheduling algorithm as primary scheduling engine",
+    "Create SM-specific latency tables for each architecture (sm_70, sm_80, sm_90, sm_100)",
+    "Build register pressure estimation for pre-RA scheduling",
+    "Implement multiple priority metrics (critical path, register pressure, ILP)",
+    "Add SM architecture-specific dispatching logic",
+    "Validate scheduling against real hardware measurements"
+  ]
+}

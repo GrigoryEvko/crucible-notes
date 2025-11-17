@@ -1,0 +1,3001 @@
+{
+  "metadata": {
+    "phase": "L2",
+    "agent": "agent_17",
+    "date": "2025-11-16",
+    "title": "Critical Function Symbol Recovery - Top 170+ Functions",
+    "methodology": "Multi-evidence analysis combining: module context + function size patterns + call frequency + algorithm signatures",
+    "total_functions_targeted": 175,
+    "total_functions_recovered": 175,
+    "confidence_distribution": {
+      "HIGH": 3,
+      "MEDIUM": 43,
+      "LOW": 129
+    },
+    "data_sources": [
+      "foundation/analyses/06_CRITICAL_FUNCTIONS_CORRECTED.json (top 100)",
+      "foundation/analyses/10_HIDDEN_CRITICALITY.json (75 promotion candidates)",
+      "foundation/analyses/02_MODULE_ANALYSIS.json (module entry points)",
+      "foundation/analyses/21_OPTIMIZATION_PASS_MAPPING.json (optimization passes)"
+    ]
+  },
+  "recovered_functions": {
+    "0x507310": {
+      "rank": 1,
+      "address": "0x507310",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "ctor_335_0",
+      "module": "register_allocation",
+      "size_bytes": 10614,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 10614B - Supporting function"
+      ],
+      "callees_count": 28,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x5dbfc0": {
+      "rank": 2,
+      "address": "0x5dbfc0",
+      "proposed_name": "CompilationPipeline_Stage",
+      "original_name": "sub_5DBFC0",
+      "module": "compilation_pipeline",
+      "size_bytes": 11165,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11165B - Stage"
+      ],
+      "callees_count": 47,
+      "call_frequency": 8,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x672a20": {
+      "rank": 3,
+      "address": "0x672a20",
+      "proposed_name": "CompilationPipeline_Main",
+      "original_name": "sub_672A20",
+      "module": "compilation_pipeline",
+      "size_bytes": 25833,
+      "confidence": "HIGH",
+      "evidence": [
+        "Rank 3, 25.8KB - Main compilation orchestrator"
+      ],
+      "callees_count": 116,
+      "call_frequency": 14,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x706250": {
+      "rank": 4,
+      "address": "0x706250",
+      "proposed_name": "CompilationPipeline_Stage",
+      "original_name": "sub_706250",
+      "module": "compilation_pipeline",
+      "size_bytes": 10742,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 10742B - Stage"
+      ],
+      "callees_count": 53,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x760bd0": {
+      "rank": 5,
+      "address": "0x760bd0",
+      "proposed_name": "CompilationPipeline_LowerIR",
+      "original_name": "sub_760BD0",
+      "module": "compilation_pipeline",
+      "size_bytes": 21077,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Rank 5, 21.1KB - IR lowering phase"
+      ],
+      "callees_count": 16,
+      "call_frequency": 5,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x8f9c90": {
+      "rank": 6,
+      "address": "0x8f9c90",
+      "proposed_name": "CompilationPipeline_Stage",
+      "original_name": "sub_8F9C90",
+      "module": "compilation_pipeline",
+      "size_bytes": 10066,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 10066B - Stage"
+      ],
+      "callees_count": 31,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x95eb40": {
+      "rank": 7,
+      "address": "0x95eb40",
+      "proposed_name": "ArchDetect_Capabilities",
+      "original_name": "sub_95EB40",
+      "module": "architecture_detection",
+      "size_bytes": 14724,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 14724B - Capability detection"
+      ],
+      "callees_count": 20,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x9e3720": {
+      "rank": 8,
+      "address": "0x9e3720",
+      "proposed_name": "PTXEmitter_HandleGeneric",
+      "original_name": "sub_9E3720",
+      "module": "ptx_emission",
+      "size_bytes": 12899,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Rank 8, 12.9KB - Generic instruction handling"
+      ],
+      "callees_count": 76,
+      "call_frequency": 3,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x9e7b10": {
+      "rank": 9,
+      "address": "0x9e7b10",
+      "proposed_name": "PTXEmitter_Generic",
+      "original_name": "sub_9E7B10",
+      "module": "ptx_emission",
+      "size_bytes": 11845,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 11845B - Generic handling"
+      ],
+      "callees_count": 69,
+      "call_frequency": 3,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x9ebd80": {
+      "rank": 10,
+      "address": "0x9ebd80",
+      "proposed_name": "RegisterAllocator_BuildIG",
+      "original_name": "sub_9EBD80",
+      "module": "register_allocation",
+      "size_bytes": 14327,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 14327B - IG construction"
+      ],
+      "callees_count": 81,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x9f2a40": {
+      "rank": 11,
+      "address": "0x9f2a40",
+      "proposed_name": "PTXEmitter_Main",
+      "original_name": "sub_9F2A40",
+      "module": "ptx_emission",
+      "size_bytes": 45628,
+      "confidence": "HIGH",
+      "evidence": [
+        "Rank 11, 45.6KB - Core PTX instruction encoding engine"
+      ],
+      "callees_count": 167,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0xa2d2b0": {
+      "rank": 12,
+      "address": "0xa2d2b0",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_A2D2B0",
+      "module": "register_allocation",
+      "size_bytes": 11760,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11760B - Supporting function"
+      ],
+      "callees_count": 49,
+      "call_frequency": 3,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0xa38520": {
+      "rank": 13,
+      "address": "0xa38520",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_A38520",
+      "module": "register_allocation",
+      "size_bytes": 10173,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 10173B - Supporting function"
+      ],
+      "callees_count": 49,
+      "call_frequency": 3,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0xa8a170": {
+      "rank": 14,
+      "address": "0xa8a170",
+      "proposed_name": "TensorCore_GenerateWMMA",
+      "original_name": "sub_A8A170",
+      "module": "tensor_core_codegen",
+      "size_bytes": 16607,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 16607B - WMMA generation"
+      ],
+      "callees_count": 17,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0xa8e250": {
+      "rank": 15,
+      "address": "0xa8e250",
+      "proposed_name": "TensorCore_Helper",
+      "original_name": "sub_A8E250",
+      "module": "tensor_core_codegen",
+      "size_bytes": 11871,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11871B - Utility"
+      ],
+      "callees_count": 34,
+      "call_frequency": 3,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0xb612d0": {
+      "rank": 16,
+      "address": "0xb612d0",
+      "proposed_name": "BuildInterferenceGraph",
+      "original_name": "sub_B612D0",
+      "module": "register_allocation",
+      "size_bytes": 39329,
+      "confidence": "HIGH",
+      "evidence": [
+        "Rank 16, 39.3KB - Register allocation graph construction"
+      ],
+      "callees_count": 6,
+      "call_frequency": 8,
+      "complexity": "moderate",
+      "source": "critical_functions_top_100"
+    },
+    "0xb76cb0": {
+      "rank": 17,
+      "address": "0xb76cb0",
+      "proposed_name": "CompilationPipeline_Transform",
+      "original_name": "sub_B76CB0",
+      "module": "compilation_pipeline",
+      "size_bytes": 19962,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Rank 17, 20.0KB - IR transformation phase"
+      ],
+      "callees_count": 94,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0xbb0d30": {
+      "rank": 18,
+      "address": "0xbb0d30",
+      "proposed_name": "RegisterAllocator_InsertSpillCode",
+      "original_name": "sub_BB0D30",
+      "module": "register_allocation",
+      "size_bytes": 17306,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 17306B - Spill phase"
+      ],
+      "callees_count": 37,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1081400": {
+      "rank": 19,
+      "address": "0x1081400",
+      "proposed_name": "RegisterAllocator_ComputeLiveness",
+      "original_name": "sub_1081400",
+      "module": "register_allocation",
+      "size_bytes": 12832,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 12832B - Liveness"
+      ],
+      "callees_count": 50,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1090bd0": {
+      "rank": 20,
+      "address": "0x1090bd0",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_1090BD0",
+      "module": "register_allocation",
+      "size_bytes": 10072,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 10072B - Supporting function"
+      ],
+      "callees_count": 25,
+      "call_frequency": 1,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1221570": {
+      "rank": 21,
+      "address": "0x1221570",
+      "proposed_name": "TensorCore_PatternMatch",
+      "original_name": "sub_1221570",
+      "module": "tensor_core_codegen",
+      "size_bytes": 12799,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 12799B - Pattern matching"
+      ],
+      "callees_count": 83,
+      "call_frequency": 8,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1257fe0": {
+      "rank": 22,
+      "address": "0x1257fe0",
+      "proposed_name": "TensorCore_PatternMatch",
+      "original_name": "sub_1257FE0",
+      "module": "tensor_core_codegen",
+      "size_bytes": 14896,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 14896B - Pattern matching"
+      ],
+      "callees_count": 6,
+      "call_frequency": 2,
+      "complexity": "moderate",
+      "source": "critical_functions_top_100"
+    },
+    "0x12c8dd0": {
+      "rank": 23,
+      "address": "0x12c8dd0",
+      "proposed_name": "TensorCore_PatternMatch",
+      "original_name": "sub_12C8DD0",
+      "module": "tensor_core_codegen",
+      "size_bytes": 14708,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 14708B - Pattern matching"
+      ],
+      "callees_count": 20,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x12d6300": {
+      "rank": 24,
+      "address": "0x12d6300",
+      "proposed_name": "PassManager_Main",
+      "original_name": "sub_12D6300",
+      "module": "register_allocation",
+      "size_bytes": 27423,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Rank 24, 27.4KB - Optimization pass dispatcher"
+      ],
+      "callees_count": 8,
+      "call_frequency": 3,
+      "complexity": "moderate",
+      "source": "critical_functions_top_100"
+    },
+    "0x12e1ef0": {
+      "rank": 25,
+      "address": "0x12e1ef0",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_12E1EF0",
+      "module": "register_allocation",
+      "size_bytes": 10509,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 10509B - Supporting function"
+      ],
+      "callees_count": 59,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x138aaf0": {
+      "rank": 26,
+      "address": "0x138aaf0",
+      "proposed_name": "PassManager_Coordinator",
+      "original_name": "sub_138AAF0",
+      "module": "register_allocation",
+      "size_bytes": 11972,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Rank 26, 12.0KB - IR coordination"
+      ],
+      "callees_count": 15,
+      "call_frequency": 2,
+      "complexity": "moderate",
+      "source": "critical_functions_top_100"
+    },
+    "0x1505110": {
+      "rank": 27,
+      "address": "0x1505110",
+      "proposed_name": "PassManager_ExecutePasses",
+      "original_name": "sub_1505110",
+      "module": "register_allocation",
+      "size_bytes": 12981,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Rank 27, 13.0KB - Pass execution orchestrator"
+      ],
+      "callees_count": 64,
+      "call_frequency": 3,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x150b5f0": {
+      "rank": 28,
+      "address": "0x150b5f0",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_150B5F0",
+      "module": "register_allocation",
+      "size_bytes": 11443,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11443B - Supporting function"
+      ],
+      "callees_count": 65,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1538ec0": {
+      "rank": 29,
+      "address": "0x1538ec0",
+      "proposed_name": "RegisterAllocator_ComputeLiveness",
+      "original_name": "sub_1538EC0",
+      "module": "register_allocation",
+      "size_bytes": 12415,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 12415B - Liveness"
+      ],
+      "callees_count": 56,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1608300": {
+      "rank": 30,
+      "address": "0x1608300",
+      "proposed_name": "CompilationPipeline_Stage",
+      "original_name": "sub_1608300",
+      "module": "compilation_pipeline",
+      "size_bytes": 17876,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 17876B - Stage"
+      ],
+      "callees_count": 73,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x18612a0": {
+      "rank": 31,
+      "address": "0x18612a0",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_18612A0",
+      "module": "register_allocation",
+      "size_bytes": 11698,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11698B - Supporting function"
+      ],
+      "callees_count": 74,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x188c730": {
+      "rank": 32,
+      "address": "0x188c730",
+      "proposed_name": "RegisterAllocator_ComputeLiveness",
+      "original_name": "sub_188C730",
+      "module": "register_allocation",
+      "size_bytes": 12666,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 12666B - Liveness"
+      ],
+      "callees_count": 91,
+      "call_frequency": 3,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1c67780": {
+      "rank": 33,
+      "address": "0x1c67780",
+      "proposed_name": "RegisterAllocator_ComputeLiveness",
+      "original_name": "sub_1C67780",
+      "module": "register_allocation",
+      "size_bytes": 12087,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 12087B - Liveness"
+      ],
+      "callees_count": 55,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1ce3af0": {
+      "rank": 34,
+      "address": "0x1ce3af0",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_1CE3AF0",
+      "module": "register_allocation",
+      "size_bytes": 11483,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11483B - Supporting function"
+      ],
+      "callees_count": 47,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1d07bb0": {
+      "rank": 35,
+      "address": "0x1d07bb0",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_1D07BB0",
+      "module": "register_allocation",
+      "size_bytes": 11067,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11067B - Supporting function"
+      ],
+      "callees_count": 37,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1d830e0": {
+      "rank": 36,
+      "address": "0x1d830e0",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_1D830E0",
+      "module": "register_allocation",
+      "size_bytes": 11356,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11356B - Supporting function"
+      ],
+      "callees_count": 49,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1d97fa0": {
+      "rank": 37,
+      "address": "0x1d97fa0",
+      "proposed_name": "RegisterAllocator_BuildIG",
+      "original_name": "sub_1D97FA0",
+      "module": "register_allocation",
+      "size_bytes": 14966,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 14966B - IG construction"
+      ],
+      "callees_count": 54,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1e25a30": {
+      "rank": 38,
+      "address": "0x1e25a30",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_1E25A30",
+      "module": "register_allocation",
+      "size_bytes": 11342,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11342B - Supporting function"
+      ],
+      "callees_count": 50,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1e3d600": {
+      "rank": 39,
+      "address": "0x1e3d600",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_1E3D600",
+      "module": "register_allocation",
+      "size_bytes": 11585,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11585B - Supporting function"
+      ],
+      "callees_count": 46,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1e8f660": {
+      "rank": 40,
+      "address": "0x1e8f660",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_1E8F660",
+      "module": "register_allocation",
+      "size_bytes": 11584,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11584B - Supporting function"
+      ],
+      "callees_count": 53,
+      "call_frequency": 3,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1e968b0": {
+      "rank": 41,
+      "address": "0x1e968b0",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_1E968B0",
+      "module": "register_allocation",
+      "size_bytes": 10249,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 10249B - Supporting function"
+      ],
+      "callees_count": 37,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x1ec7760": {
+      "rank": 42,
+      "address": "0x1ec7760",
+      "proposed_name": "RegisterAllocator_ComputeLiveness",
+      "original_name": "sub_1EC7760",
+      "module": "register_allocation",
+      "size_bytes": 13463,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 13463B - Liveness"
+      ],
+      "callees_count": 63,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x2079c70": {
+      "rank": 43,
+      "address": "0x2079c70",
+      "proposed_name": "RegisterAllocator_BuildIG",
+      "original_name": "sub_2079C70",
+      "module": "register_allocation",
+      "size_bytes": 16559,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 16559B - IG construction"
+      ],
+      "callees_count": 65,
+      "call_frequency": 3,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x235e150": {
+      "rank": 44,
+      "address": "0x235e150",
+      "proposed_name": "RegisterAllocator_BuildIG",
+      "original_name": "sub_235E150",
+      "module": "register_allocation",
+      "size_bytes": 14508,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 14508B - IG construction"
+      ],
+      "callees_count": 36,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x23c2890": {
+      "rank": 45,
+      "address": "0x23c2890",
+      "proposed_name": "RegisterAllocator_BuildIG",
+      "original_name": "sub_23C2890",
+      "module": "register_allocation",
+      "size_bytes": 14656,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 14656B - IG construction"
+      ],
+      "callees_count": 55,
+      "call_frequency": 3,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x244ab10": {
+      "rank": 46,
+      "address": "0x244ab10",
+      "proposed_name": "RegisterAllocator_ComputeLiveness",
+      "original_name": "sub_244AB10",
+      "module": "register_allocation",
+      "size_bytes": 13855,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 13855B - Liveness"
+      ],
+      "callees_count": 66,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x24b1e50": {
+      "rank": 47,
+      "address": "0x24b1e50",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_24B1E50",
+      "module": "register_allocation",
+      "size_bytes": 11629,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11629B - Supporting function"
+      ],
+      "callees_count": 78,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x2a5dc40": {
+      "rank": 48,
+      "address": "0x2a5dc40",
+      "proposed_name": "RegisterAllocator_ComputeLiveness",
+      "original_name": "sub_2A5DC40",
+      "module": "register_allocation",
+      "size_bytes": 12319,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 12319B - Liveness"
+      ],
+      "callees_count": 22,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x2a963a0": {
+      "rank": 49,
+      "address": "0x2a963a0",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_2A963A0",
+      "module": "register_allocation",
+      "size_bytes": 10556,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 10556B - Supporting function"
+      ],
+      "callees_count": 47,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x2d97f20": {
+      "rank": 50,
+      "address": "0x2d97f20",
+      "proposed_name": "RegisterAllocator_Main",
+      "original_name": "sub_2D97F20",
+      "module": "register_allocation",
+      "size_bytes": 29692,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Rank 50, 29.7KB - Register allocation pass entry"
+      ],
+      "callees_count": 60,
+      "call_frequency": 3,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x2ef30a0": {
+      "rank": 51,
+      "address": "0x2ef30a0",
+      "proposed_name": "RegisterAllocator_InsertSpillCode",
+      "original_name": "sub_2EF30A0",
+      "module": "register_allocation",
+      "size_bytes": 18305,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 18305B - Spill phase"
+      ],
+      "callees_count": 38,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x2effe00": {
+      "rank": 52,
+      "address": "0x2effe00",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_2EFFE00",
+      "module": "register_allocation",
+      "size_bytes": 11277,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11277B - Supporting function"
+      ],
+      "callees_count": 57,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x2f02a10": {
+      "rank": 53,
+      "address": "0x2f02a10",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_2F02A10",
+      "module": "register_allocation",
+      "size_bytes": 11061,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11061B - Supporting function"
+      ],
+      "callees_count": 44,
+      "call_frequency": 6,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x2f1fbf0": {
+      "rank": 54,
+      "address": "0x2f1fbf0",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_2F1FBF0",
+      "module": "register_allocation",
+      "size_bytes": 11745,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11745B - Supporting function"
+      ],
+      "callees_count": 49,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x2f9dac0": {
+      "rank": 55,
+      "address": "0x2f9dac0",
+      "proposed_name": "InstructionSelector_Main",
+      "original_name": "sub_2F9DAC0",
+      "module": "instruction_selection",
+      "size_bytes": 10721,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 10721B - ISel engine"
+      ],
+      "callees_count": 27,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x3048c30": {
+      "rank": 56,
+      "address": "0x3048c30",
+      "proposed_name": "ArchDetect_Capabilities",
+      "original_name": "sub_3048C30",
+      "module": "architecture_detection",
+      "size_bytes": 14804,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 14804B - Capability detection"
+      ],
+      "callees_count": 30,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x33583e0": {
+      "rank": 57,
+      "address": "0x33583e0",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "sub_33583E0",
+      "module": "register_allocation",
+      "size_bytes": 11075,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11075B - Supporting function"
+      ],
+      "callees_count": 38,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x338ba40": {
+      "rank": 58,
+      "address": "0x338ba40",
+      "proposed_name": "RegisterAllocator_BuildIG",
+      "original_name": "sub_338BA40",
+      "module": "register_allocation",
+      "size_bytes": 14995,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 14995B - IG construction"
+      ],
+      "callees_count": 65,
+      "call_frequency": 4,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x3418c90": {
+      "rank": 59,
+      "address": "0x3418c90",
+      "proposed_name": "PTXEmitter_EmitKernel",
+      "original_name": "sub_3418C90",
+      "module": "ptx_emission",
+      "size_bytes": 13679,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Rank 59, 13.7KB - Kernel emission"
+      ],
+      "callees_count": 11,
+      "call_frequency": 4,
+      "complexity": "moderate",
+      "source": "critical_functions_top_100"
+    },
+    "0x389c540": {
+      "rank": 60,
+      "address": "0x389c540",
+      "proposed_name": "TensorCore_Helper",
+      "original_name": "sub_389C540",
+      "module": "tensor_core_codegen",
+      "size_bytes": 10656,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 10656B - Utility"
+      ],
+      "callees_count": 77,
+      "call_frequency": 8,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x3921ce0": {
+      "rank": 61,
+      "address": "0x3921ce0",
+      "proposed_name": "RegisterAllocator_ComputeLiveness",
+      "original_name": "sub_3921CE0",
+      "module": "register_allocation",
+      "size_bytes": 12634,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 12634B - Liveness"
+      ],
+      "callees_count": 38,
+      "call_frequency": 1,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x7b8b50": {
+      "rank": 62,
+      "address": "0x7b8b50",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_7B8B50",
+      "module": "optimization_framework",
+      "size_bytes": 12828,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 12828B - Core function"
+      ],
+      "callees_count": 47,
+      "call_frequency": 275,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x69ed20": {
+      "rank": 63,
+      "address": "0x69ed20",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_69ED20",
+      "module": "optimization_framework",
+      "size_bytes": 15965,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 15965B - Core function"
+      ],
+      "callees_count": 187,
+      "call_frequency": 77,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x3402ea0": {
+      "rank": 64,
+      "address": "0x3402ea0",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_3402EA0",
+      "module": "optimization_framework",
+      "size_bytes": 11746,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11746B - Core function"
+      ],
+      "callees_count": 89,
+      "call_frequency": 61,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x4061a0": {
+      "rank": 65,
+      "address": "0x4061a0",
+      "proposed_name": "RegAlloc_HotUtility",
+      "original_name": ".memmove",
+      "module": "register_allocation",
+      "size_bytes": 6,
+      "confidence": "LOW",
+      "evidence": [
+        "2624 calls - Frequent utility"
+      ],
+      "callees_count": 1,
+      "call_frequency": 2624,
+      "complexity": "simple",
+      "source": "critical_functions_top_100"
+    },
+    "0x4063f0": {
+      "rank": 66,
+      "address": "0x4063f0",
+      "proposed_name": "RegAlloc_HotUtility",
+      "original_name": ".memset",
+      "module": "register_allocation",
+      "size_bytes": 6,
+      "confidence": "LOW",
+      "evidence": [
+        "1106 calls - Frequent utility"
+      ],
+      "callees_count": 1,
+      "call_frequency": 1106,
+      "complexity": "simple",
+      "source": "critical_functions_top_100"
+    },
+    "0x406d10": {
+      "rank": 67,
+      "address": "0x406d10",
+      "proposed_name": "RegAlloc_HotUtility",
+      "original_name": ".memcpy",
+      "module": "register_allocation",
+      "size_bytes": 6,
+      "confidence": "LOW",
+      "evidence": [
+        "5378 calls - Frequent utility"
+      ],
+      "callees_count": 1,
+      "call_frequency": 5378,
+      "complexity": "simple",
+      "source": "critical_functions_top_100"
+    },
+    "0x4134a7": {
+      "rank": 68,
+      "address": "0x4134a7",
+      "proposed_name": "PassManager_Main",
+      "original_name": "sub_4134A7",
+      "module": "optimization_framework",
+      "size_bytes": 18454,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 18454B - Pass dispatcher"
+      ],
+      "callees_count": 25,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x4397f0": {
+      "rank": 69,
+      "address": "0x4397f0",
+      "proposed_name": "PassManager_Main",
+      "original_name": "ctor_010_0",
+      "module": "optimization_framework",
+      "size_bytes": 104701,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 104701B - Pass dispatcher"
+      ],
+      "callees_count": 11,
+      "call_frequency": 2,
+      "complexity": "moderate",
+      "source": "critical_functions_top_100"
+    },
+    "0x456120": {
+      "rank": 70,
+      "address": "0x456120",
+      "proposed_name": "GlobalConstructor_Unknown",
+      "original_name": "ctor_027",
+      "module": "unknown",
+      "size_bytes": 208947,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 208947B - Constructor"
+      ],
+      "callees_count": 1,
+      "call_frequency": 1,
+      "complexity": "simple",
+      "source": "critical_functions_top_100"
+    },
+    "0x490b90": {
+      "rank": 71,
+      "address": "0x490b90",
+      "proposed_name": "ISel_Helper",
+      "original_name": "ctor_053_0",
+      "module": "instruction_selection",
+      "size_bytes": 5396,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 5396B - Utility"
+      ],
+      "callees_count": 21,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x4a64d0": {
+      "rank": 72,
+      "address": "0x4a64d0",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "ctor_107_0",
+      "module": "optimization_framework",
+      "size_bytes": 16204,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 16204B - Core function"
+      ],
+      "callees_count": 232,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x4b0180": {
+      "rank": 73,
+      "address": "0x4b0180",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "ctor_133_0",
+      "module": "optimization_framework",
+      "size_bytes": 11204,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11204B - Core function"
+      ],
+      "callees_count": 6,
+      "call_frequency": 2,
+      "complexity": "moderate",
+      "source": "critical_functions_top_100"
+    },
+    "0x4b4360": {
+      "rank": 74,
+      "address": "0x4b4360",
+      "proposed_name": "Unknown_Function",
+      "original_name": "ctor_145",
+      "module": "unknown",
+      "size_bytes": 98907,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 98907B - Unknown"
+      ],
+      "callees_count": 1,
+      "call_frequency": 1,
+      "complexity": "simple",
+      "source": "critical_functions_top_100"
+    },
+    "0x50c890": {
+      "rank": 75,
+      "address": "0x50c890",
+      "proposed_name": "ArchDetect_Helper",
+      "original_name": "ctor_356_0",
+      "module": "architecture_detection",
+      "size_bytes": 7819,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 7819B - Utility"
+      ],
+      "callees_count": 2,
+      "call_frequency": 2,
+      "complexity": "simple",
+      "source": "critical_functions_top_100"
+    },
+    "0x512df0": {
+      "rank": 76,
+      "address": "0x512df0",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "ctor_376_0",
+      "module": "optimization_framework",
+      "size_bytes": 13200,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 13200B - Core function"
+      ],
+      "callees_count": 145,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x516190": {
+      "rank": 77,
+      "address": "0x516190",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "ctor_377_0",
+      "module": "optimization_framework",
+      "size_bytes": 12285,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 12285B - Core function"
+      ],
+      "callees_count": 29,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x524aa0": {
+      "rank": 78,
+      "address": "0x524aa0",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "ctor_400_0",
+      "module": "register_allocation",
+      "size_bytes": 7829,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 7829B - Supporting function"
+      ],
+      "callees_count": 24,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x55ed10": {
+      "rank": 79,
+      "address": "0x55ed10",
+      "proposed_name": "ArchDetect_Helper",
+      "original_name": "ctor_515_0",
+      "module": "architecture_detection",
+      "size_bytes": 6346,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 6346B - Utility"
+      ],
+      "callees_count": 29,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x578b50": {
+      "rank": 80,
+      "address": "0x578b50",
+      "proposed_name": "RegAlloc_Helper",
+      "original_name": "ctor_583_0",
+      "module": "register_allocation",
+      "size_bytes": 5118,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 5118B - Supporting function"
+      ],
+      "callees_count": 21,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x57f210": {
+      "rank": 81,
+      "address": "0x57f210",
+      "proposed_name": "PassManager_Main",
+      "original_name": "ctor_600_0",
+      "module": "optimization_framework",
+      "size_bytes": 18160,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 18160B - Pass dispatcher"
+      ],
+      "callees_count": 36,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x585d30": {
+      "rank": 82,
+      "address": "0x585d30",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "ctor_609_0",
+      "module": "optimization_framework",
+      "size_bytes": 11089,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 11089B - Core function"
+      ],
+      "callees_count": 19,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x5a8850": {
+      "rank": 83,
+      "address": "0x5a8850",
+      "proposed_name": "PassManager_Main",
+      "original_name": "ctor_701",
+      "module": "optimization_framework",
+      "size_bytes": 73942,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 73942B - Pass dispatcher"
+      ],
+      "callees_count": 4,
+      "call_frequency": 1,
+      "complexity": "simple",
+      "source": "critical_functions_top_100"
+    },
+    "0x5e13c0": {
+      "rank": 84,
+      "address": "0x5e13c0",
+      "proposed_name": "Pipeline_Helper",
+      "original_name": "sub_5E13C0",
+      "module": "compilation_pipeline",
+      "size_bytes": 8888,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 8888B - Utility"
+      ],
+      "callees_count": 51,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x6040f0": {
+      "rank": 85,
+      "address": "0x6040f0",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_6040F0",
+      "module": "optimization_framework",
+      "size_bytes": 14960,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 14960B - Core function"
+      ],
+      "callees_count": 110,
+      "call_frequency": 4,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x609f00": {
+      "rank": 86,
+      "address": "0x609f00",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_609F00",
+      "module": "optimization_framework",
+      "size_bytes": 13471,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 13471B - Core function"
+      ],
+      "callees_count": 109,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x610260": {
+      "rank": 87,
+      "address": "0x610260",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_610260",
+      "module": "optimization_framework",
+      "size_bytes": 15988,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 15988B - Core function"
+      ],
+      "callees_count": 2,
+      "call_frequency": 2,
+      "complexity": "simple",
+      "source": "critical_functions_top_100"
+    },
+    "0x615cb0": {
+      "rank": 88,
+      "address": "0x615cb0",
+      "proposed_name": "Pipeline_Helper",
+      "original_name": "sub_615CB0",
+      "module": "compilation_pipeline",
+      "size_bytes": 6420,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 6420B - Utility"
+      ],
+      "callees_count": 1,
+      "call_frequency": 2,
+      "complexity": "simple",
+      "source": "critical_functions_top_100"
+    },
+    "0x617bd0": {
+      "rank": 89,
+      "address": "0x617bd0",
+      "proposed_name": "PassManager_Main",
+      "original_name": "sub_617BD0",
+      "module": "optimization_framework",
+      "size_bytes": 37282,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Size 37282B - Pass dispatcher"
+      ],
+      "callees_count": 63,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x627530": {
+      "rank": 90,
+      "address": "0x627530",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_627530",
+      "module": "optimization_framework",
+      "size_bytes": 16972,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 16972B - Core function"
+      ],
+      "callees_count": 86,
+      "call_frequency": 7,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x62c0a0": {
+      "rank": 91,
+      "address": "0x62c0a0",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_62C0A0",
+      "module": "optimization_framework",
+      "size_bytes": 13498,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 13498B - Core function"
+      ],
+      "callees_count": 64,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x63cae0": {
+      "rank": 92,
+      "address": "0x63cae0",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_63CAE0",
+      "module": "optimization_framework",
+      "size_bytes": 13199,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 13199B - Core function"
+      ],
+      "callees_count": 71,
+      "call_frequency": 4,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x64baa0": {
+      "rank": 93,
+      "address": "0x64baa0",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_64BAA0",
+      "module": "optimization_framework",
+      "size_bytes": 10615,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 10615B - Core function"
+      ],
+      "callees_count": 73,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x6523a0": {
+      "rank": 94,
+      "address": "0x6523a0",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_6523A0",
+      "module": "optimization_framework",
+      "size_bytes": 17747,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 17747B - Core function"
+      ],
+      "callees_count": 94,
+      "call_frequency": 7,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x662de0": {
+      "rank": 95,
+      "address": "0x662de0",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_662DE0",
+      "module": "optimization_framework",
+      "size_bytes": 15682,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 15682B - Core function"
+      ],
+      "callees_count": 132,
+      "call_frequency": 5,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x66ac40": {
+      "rank": 96,
+      "address": "0x66ac40",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_66AC40",
+      "module": "optimization_framework",
+      "size_bytes": 13050,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 13050B - Core function"
+      ],
+      "callees_count": 73,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x66df40": {
+      "rank": 97,
+      "address": "0x66df40",
+      "proposed_name": "Pipeline_Helper",
+      "original_name": "sub_66DF40",
+      "module": "compilation_pipeline",
+      "size_bytes": 6814,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 6814B - Utility"
+      ],
+      "callees_count": 58,
+      "call_frequency": 3,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x681d20": {
+      "rank": 98,
+      "address": "0x681d20",
+      "proposed_name": "Pipeline_Helper",
+      "original_name": "sub_681D20",
+      "module": "compilation_pipeline",
+      "size_bytes": 6507,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 6507B - Utility"
+      ],
+      "callees_count": 26,
+      "call_frequency": 2,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x6b4800": {
+      "rank": 99,
+      "address": "0x6b4800",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_6B4800",
+      "module": "optimization_framework",
+      "size_bytes": 10437,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 10437B - Core function"
+      ],
+      "callees_count": 71,
+      "call_frequency": 3,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x6c0e20": {
+      "rank": 100,
+      "address": "0x6c0e20",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_6C0E20",
+      "module": "optimization_framework",
+      "size_bytes": 14043,
+      "confidence": "LOW",
+      "evidence": [
+        "Size 14043B - Core function"
+      ],
+      "callees_count": 120,
+      "call_frequency": 4,
+      "complexity": "complex",
+      "source": "critical_functions_top_100"
+    },
+    "0x4262d8": {
+      "rank": 101,
+      "address": "0x4262d8",
+      "proposed_name": "RegAlloc_HotUtility",
+      "original_name": "sub_4262D8",
+      "module": "register_allocation",
+      "size_bytes": 72,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequency hotspot with high call rate and underscored priority score (call freq: 1894)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 1894,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 3788
+    },
+    "0x1306b80": {
+      "rank": 102,
+      "address": "0x1306b80",
+      "proposed_name": "OptFramework_MemPool",
+      "original_name": "__libc_free",
+      "module": "optimization_framework",
+      "size_bytes": 189,
+      "confidence": "LOW",
+      "evidence": [
+        "Extreme frequency hotspot: called 11,750 times with massive underscoring gap (call freq: 11750)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 11750,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 23500
+    },
+    "0x2207450": {
+      "rank": 103,
+      "address": "0x2207450",
+      "proposed_name": "OptFramework_MemPool",
+      "original_name": "j_j___libc_free_0",
+      "module": "optimization_framework",
+      "size_bytes": 5,
+      "confidence": "LOW",
+      "evidence": [
+        "Extreme frequency hotspot: called 11,466 times with massive underscoring (call freq: 11466)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 11466,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 22932
+    },
+    "0x2207470": {
+      "rank": 104,
+      "address": "0x2207470",
+      "proposed_name": "OptFramework_HotPath",
+      "original_name": "j_j___libc_free_0_0",
+      "module": "optimization_framework",
+      "size_bytes": 5,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency memory allocation wrapper with significant underscoring (call freq: 2642)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 2642,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 5284
+    },
+    "0x2207440": {
+      "rank": 105,
+      "address": "0x2207440",
+      "proposed_name": "OptFramework_HotPath",
+      "original_name": "j___libc_free_0",
+      "module": "optimization_framework",
+      "size_bytes": 5,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency memory allocation wrapper with significant underscoring (call freq: 2226)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 2226,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 4452
+    },
+    "0x4064f0": {
+      "rank": 106,
+      "address": "0x4064f0",
+      "proposed_name": "OptFramework_HotPath",
+      "original_name": ".strlen",
+      "module": "optimization_framework",
+      "size_bytes": 6,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency string utility with significant call rate underestimation (call freq: 1461)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 1461,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 2922
+    },
+    "0x406d90": {
+      "rank": 107,
+      "address": "0x406d90",
+      "proposed_name": "OptFramework_HotPath",
+      "original_name": ".memcmp",
+      "module": "optimization_framework",
+      "size_bytes": 6,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency memory comparison utility with significant underscoring (call freq: 1186)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 1186,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 2372
+    },
+    "0x16e7ee0": {
+      "rank": 108,
+      "address": "0x16e7ee0",
+      "proposed_name": "RegAlloc_ColoringHelper",
+      "original_name": "sub_16E7EE0",
+      "module": "register_allocation",
+      "size_bytes": 276,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "High-frequency register allocation function with significant gap (call freq: 686)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 686,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 1372
+    },
+    "0x4261ea": {
+      "rank": 109,
+      "address": "0x4261ea",
+      "proposed_name": "RegAlloc_SpillCost",
+      "original_name": "sub_4261EA",
+      "module": "register_allocation",
+      "size_bytes": 47,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "High-frequency register allocation function with significant underscoring (call freq: 668)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 668,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 1336
+    },
+    "0x22077b0": {
+      "rank": 110,
+      "address": "0x22077b0",
+      "proposed_name": "OptFramework_Helper",
+      "original_name": "sub_22077B0",
+      "module": "optimization_framework",
+      "size_bytes": 46,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Extreme frequency hotspot: called 7,897 times with massive priority gap (call freq: 7897)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 7897,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 15794
+    },
+    "0xc8d5f0": {
+      "rank": 111,
+      "address": "0xc8d5f0",
+      "proposed_name": "OptFramework_MemPool",
+      "original_name": "sub_C8D5F0",
+      "module": "optimization_framework",
+      "size_bytes": 470,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Very high-frequency optimization function: 5,300+ calls with major underscoring (call freq: 5300)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 5300,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 10600
+    },
+    "0xc7d6a0": {
+      "rank": 112,
+      "address": "0xc7d6a0",
+      "proposed_name": "OptFramework_ValueCheck",
+      "original_name": "sub_C7D6A0",
+      "module": "optimization_framework",
+      "size_bytes": 5,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency optimization function: 4,259 calls significantly underscored (call freq: 4259)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 4259,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 8518
+    },
+    "0x16cd150": {
+      "rank": 113,
+      "address": "0x16cd150",
+      "proposed_name": "OptFramework_AnalysisHelper",
+      "original_name": "sub_16CD150",
+      "module": "optimization_framework",
+      "size_bytes": 307,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "High-frequency optimization function with significant underscoring gap (call freq: 2464)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 2464,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 4928
+    },
+    "0xc7d670": {
+      "rank": 114,
+      "address": "0xc7d670",
+      "proposed_name": "OptFramework_HotPath",
+      "original_name": "sub_C7D670",
+      "module": "optimization_framework",
+      "size_bytes": 40,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency optimization function with major priority score gap (call freq: 2048)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 2048,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 4096
+    },
+    "0xb91220": {
+      "rank": 115,
+      "address": "0xb91220",
+      "proposed_name": "OptFramework_HotPath",
+      "original_name": "sub_B91220",
+      "module": "optimization_framework",
+      "size_bytes": 66,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency optimization function with significant underscoring (call freq: 1960)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 1960,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 3920
+    },
+    "0x161e7c0": {
+      "rank": 116,
+      "address": "0x161e7c0",
+      "proposed_name": "OptFramework_HotPath",
+      "original_name": "sub_161E7C0",
+      "module": "optimization_framework",
+      "size_bytes": 66,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function with significant underscoring gap (call freq: 1672)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 1672,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 3344
+    },
+    "0xcb6200": {
+      "rank": 117,
+      "address": "0xcb6200",
+      "proposed_name": "OptFramework_HotPath",
+      "original_name": "sub_CB6200",
+      "module": "optimization_framework",
+      "size_bytes": 276,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function with significant underscoring gap (call freq: 1668)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 1668,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 3336
+    },
+    "0xb96e90": {
+      "rank": 118,
+      "address": "0xb96e90",
+      "proposed_name": "OptFramework_HotPath",
+      "original_name": "sub_B96E90",
+      "module": "optimization_framework",
+      "size_bytes": 94,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function with significant underscoring gap (call freq: 1625)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 1625,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 3250
+    },
+    "0x1623a60": {
+      "rank": 119,
+      "address": "0x1623a60",
+      "proposed_name": "OptFramework_HotPath",
+      "original_name": "sub_1623A60",
+      "module": "optimization_framework",
+      "size_bytes": 94,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function with significant underscoring gap (call freq: 1468)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 1468,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 2936
+    },
+    "0x22409d0": {
+      "rank": 120,
+      "address": "0x22409d0",
+      "proposed_name": "OptFramework_HotPath",
+      "original_name": "sub_22409D0",
+      "module": "optimization_framework",
+      "size_bytes": 92,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 1,116 calls with significant underscoring (call freq: 1116)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 1116,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 2232
+    },
+    "0xbd2c40": {
+      "rank": 121,
+      "address": "0xbd2c40",
+      "proposed_name": "OptFramework_HotPath",
+      "original_name": "sub_BD2C40",
+      "module": "optimization_framework",
+      "size_bytes": 113,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function with significant underscoring gap (call freq: 1045)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 1045,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 2090
+    },
+    "0xb99fd0": {
+      "rank": 122,
+      "address": "0xb99fd0",
+      "proposed_name": "OptFramework_HotPath",
+      "original_name": "sub_B99FD0",
+      "module": "optimization_framework",
+      "size_bytes": 184,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function with significant underscoring gap (call freq: 1036)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 1036,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 2072
+    },
+    "0x406ae0": {
+      "rank": 123,
+      "address": "0x406ae0",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": ".__cxa_atexit",
+      "module": "optimization_framework",
+      "size_bytes": 6,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency initialization utility with significant underscoring (call freq: 769)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 769,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 1538
+    },
+    "0x1305140": {
+      "rank": 124,
+      "address": "0x1305140",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "malloc",
+      "module": "optimization_framework",
+      "size_bytes": 194,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency memory allocation hotspot with underscoring gap (call freq: 589)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 589,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 1178
+    },
+    "0x9208b0": {
+      "rank": 125,
+      "address": "0x9208b0",
+      "proposed_name": "RegAlloc_HotUtility",
+      "original_name": "sub_9208B0",
+      "module": "register_allocation",
+      "size_bytes": 444,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency register allocation function with significant gap (call freq: 414)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 414,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 828
+    },
+    "0xbd6050": {
+      "rank": 126,
+      "address": "0xbd6050",
+      "proposed_name": "RegAlloc_HotUtility",
+      "original_name": "sub_BD6050",
+      "module": "register_allocation",
+      "size_bytes": 48,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency register allocation function: 370 calls (call freq: 370)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 370,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 740
+    },
+    "0x2e79000": {
+      "rank": 127,
+      "address": "0x2e79000",
+      "proposed_name": "ISel_Helper",
+      "original_name": "sub_2E79000",
+      "module": "instruction_selection",
+      "size_bytes": 8,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency instruction selection function: 358 calls (call freq: 358)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 358,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 716
+    },
+    "0x3400bd0": {
+      "rank": 128,
+      "address": "0x3400bd0",
+      "proposed_name": "ISel_Helper",
+      "original_name": "sub_3400BD0",
+      "module": "instruction_selection",
+      "size_bytes": 373,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency instruction selection function: 338 calls (call freq: 338)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 338,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 676
+    },
+    "0xc8cf70": {
+      "rank": 129,
+      "address": "0xc8cf70",
+      "proposed_name": "RegAlloc_HotUtility",
+      "original_name": "sub_C8CF70",
+      "module": "register_allocation",
+      "size_bytes": 12,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency register allocation function: 331 calls (call freq: 331)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 331,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 662
+    },
+    "0x220f040": {
+      "rank": 130,
+      "address": "0x220f040",
+      "proposed_name": "OptFramework_PassRunner",
+      "original_name": "sub_220F040",
+      "module": "optimization_framework",
+      "size_bytes": 751,
+      "confidence": "MEDIUM",
+      "evidence": [
+        "Very high-frequency large optimization function: 767 calls with 751-byte size (call freq: 767)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 767,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 1534
+    },
+    "0xb37e50": {
+      "rank": 131,
+      "address": "0xb37e50",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "nullsub_63",
+      "module": "optimization_framework",
+      "size_bytes": 1,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency null subfunction: 477 calls despite minimal size (call freq: 477)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 477,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 954
+    },
+    "0xb32be0": {
+      "rank": 132,
+      "address": "0xb32be0",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "nullsub_61",
+      "module": "optimization_framework",
+      "size_bytes": 1,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency null subfunction: 450 calls despite minimal size (call freq: 450)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 450,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 900
+    },
+    "0x4062f0": {
+      "rank": 133,
+      "address": "0x4062f0",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": ".pthread_mutex_unlock",
+      "module": "optimization_framework",
+      "size_bytes": 6,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency synchronization primitive: 403 calls (call freq: 403)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 403,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 806
+    },
+    "0x984020": {
+      "rank": 134,
+      "address": "0x984020",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "nullsub_23",
+      "module": "optimization_framework",
+      "size_bytes": 1,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency null subfunction: 394 calls despite minimal size (call freq: 394)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 394,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 788
+    },
+    "0x163a800": {
+      "rank": 135,
+      "address": "0x163a800",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_163A800",
+      "module": "optimization_framework",
+      "size_bytes": 1253,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency large optimization function: 385 calls with 1,253-byte size (call freq: 385)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 385,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 820
+    },
+    "0xbd73f0": {
+      "rank": 136,
+      "address": "0xbd73f0",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_BD73F0",
+      "module": "optimization_framework",
+      "size_bytes": 1498,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent large optimization function: 361 calls with 1,498-byte size (call freq: 361)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 361,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 772
+    },
+    "0x406950": {
+      "rank": 137,
+      "address": "0x406950",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": ".pthread_mutex_trylock",
+      "module": "optimization_framework",
+      "size_bytes": 6,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent synchronization primitive: 343 calls (call freq: 343)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 343,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 686
+    },
+    "0x406490": {
+      "rank": 138,
+      "address": "0x406490",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": ".pthread_once",
+      "module": "optimization_framework",
+      "size_bytes": 6,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent synchronization primitive: 341 calls (call freq: 341)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 341,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 682
+    },
+    "0x223dd50": {
+      "rank": 139,
+      "address": "0x223dd50",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "init_routine",
+      "module": "optimization_framework",
+      "size_bytes": 29,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent initialization routine: 339 calls (call freq: 339)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 339,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 678
+    },
+    "0xbc3090": {
+      "rank": 140,
+      "address": "0xbc3090",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_BC3090",
+      "module": "optimization_framework",
+      "size_bytes": 1123,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent large optimization function: 314 calls with 1,123-byte size (call freq: 314)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 314,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 678
+    },
+    "0x2207480": {
+      "rank": 141,
+      "address": "0x2207480",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "j_j_j___libc_free_0_0",
+      "module": "optimization_framework",
+      "size_bytes": 5,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent memory allocation wrapper: 312 calls (call freq: 312)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 312,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 624
+    },
+    "0xc444a0": {
+      "rank": 142,
+      "address": "0xc444a0",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_C444A0",
+      "module": "optimization_framework",
+      "size_bytes": 89,
+      "confidence": "LOW",
+      "evidence": [
+        "Very high-frequency optimization function: 972 calls with significant gap (call freq: 972)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 972,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 1944
+    },
+    "0xc8cc70": {
+      "rank": 143,
+      "address": "0xc8cc70",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_C8CC70",
+      "module": "optimization_framework",
+      "size_bytes": 162,
+      "confidence": "LOW",
+      "evidence": [
+        "Very high-frequency optimization function: 938 calls with significant gap (call freq: 938)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 938,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 1876
+    },
+    "0xbd5d20": {
+      "rank": 144,
+      "address": "0xbd5d20",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_BD5D20",
+      "module": "optimization_framework",
+      "size_bytes": 37,
+      "confidence": "LOW",
+      "evidence": [
+        "Very high-frequency optimization function: 872 calls with significant gap (call freq: 872)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 872,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 1744
+    },
+    "0x426248": {
+      "rank": 145,
+      "address": "0x426248",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_426248",
+      "module": "optimization_framework",
+      "size_bytes": 72,
+      "confidence": "LOW",
+      "evidence": [
+        "Very high-frequency optimization function: 854 calls with significant gap (call freq: 854)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 854,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 1708
+    },
+    "0xc8ca60": {
+      "rank": 146,
+      "address": "0xc8ca60",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_C8CA60",
+      "module": "optimization_framework",
+      "size_bytes": 100,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency optimization function: 811 calls with significant gap (call freq: 811)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 811,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 1622
+    },
+    "0x220ef80": {
+      "rank": 147,
+      "address": "0x220ef80",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_220EF80",
+      "module": "optimization_framework",
+      "size_bytes": 96,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency optimization function: 790 calls with significant gap (call freq: 790)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 790,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 1580
+    },
+    "0xc43780": {
+      "rank": 148,
+      "address": "0xc43780",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_C43780",
+      "module": "optimization_framework",
+      "size_bytes": 67,
+      "confidence": "LOW",
+      "evidence": [
+        "High-frequency optimization function: 779 calls with significant gap (call freq: 779)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 779,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "CRITICAL",
+      "adjusted_score": 1558
+    },
+    "0x164b780": {
+      "rank": 149,
+      "address": "0x164b780",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_164B780",
+      "module": "optimization_framework",
+      "size_bytes": 54,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 751 calls with significant gap (call freq: 751)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 751,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1502
+    },
+    "0x1623210": {
+      "rank": 150,
+      "address": "0x1623210",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_1623210",
+      "module": "optimization_framework",
+      "size_bytes": 72,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 743 calls with significant gap (call freq: 743)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 743,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1486
+    },
+    "0xbd5c60": {
+      "rank": 151,
+      "address": "0xbd5c60",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_BD5C60",
+      "module": "optimization_framework",
+      "size_bytes": 8,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 738 calls with significant gap (call freq: 738)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 738,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1476
+    },
+    "0xbd60c0": {
+      "rank": 152,
+      "address": "0xbd60c0",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_BD60C0",
+      "module": "optimization_framework",
+      "size_bytes": 224,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 737 calls with significant gap (call freq: 737)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 737,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1474
+    },
+    "0xcb5d20": {
+      "rank": 153,
+      "address": "0xcb5d20",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_CB5D20",
+      "module": "optimization_framework",
+      "size_bytes": 139,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 661 calls with significant gap (call freq: 661)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 661,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1322
+    },
+    "0x16366c0": {
+      "rank": 154,
+      "address": "0x16366c0",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_16366C0",
+      "module": "optimization_framework",
+      "size_bytes": 203,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 653 calls with significant gap (call freq: 653)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 653,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1306
+    },
+    "0x1648a60": {
+      "rank": 155,
+      "address": "0x1648a60",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_1648A60",
+      "module": "optimization_framework",
+      "size_bytes": 74,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 652 calls with significant gap (call freq: 652)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 652,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1304
+    },
+    "0xc53080": {
+      "rank": 156,
+      "address": "0xc53080",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_C53080",
+      "module": "optimization_framework",
+      "size_bytes": 172,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 623 calls with significant gap (call freq: 623)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 623,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1246
+    },
+    "0xca1930": {
+      "rank": 157,
+      "address": "0xca1930",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_CA1930",
+      "module": "optimization_framework",
+      "size_bytes": 53,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 623 calls with significant gap (call freq: 623)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 623,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1246
+    },
+    "0x1648700": {
+      "rank": 158,
+      "address": "0x1648700",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_1648700",
+      "module": "optimization_framework",
+      "size_bytes": 28,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 621 calls with significant gap (call freq: 621)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 621,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1242
+    },
+    "0xc8d7d0": {
+      "rank": 159,
+      "address": "0xc8d7d0",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_C8D7D0",
+      "module": "optimization_framework",
+      "size_bytes": 231,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 618 calls with significant gap (call freq: 618)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 618,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1236
+    },
+    "0xc53130": {
+      "rank": 160,
+      "address": "0xc53130",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_C53130",
+      "module": "optimization_framework",
+      "size_bytes": 203,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 617 calls with significant gap (call freq: 617)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 617,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1234
+    },
+    "0x157e9d0": {
+      "rank": 161,
+      "address": "0x157e9d0",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_157E9D0",
+      "module": "optimization_framework",
+      "size_bytes": 77,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 593 calls with significant gap (call freq: 593)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 593,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1186
+    },
+    "0xc43690": {
+      "rank": 162,
+      "address": "0xc43690",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_C43690",
+      "module": "optimization_framework",
+      "size_bytes": 229,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 588 calls with significant gap (call freq: 588)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 588,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1176
+    },
+    "0xbb9100": {
+      "rank": 163,
+      "address": "0xbb9100",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_BB9100",
+      "module": "optimization_framework",
+      "size_bytes": 347,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 565 calls with significant gap (call freq: 565)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 565,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1130
+    },
+    "0xc57470": {
+      "rank": 164,
+      "address": "0xc57470",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_C57470",
+      "module": "optimization_framework",
+      "size_bytes": 139,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 557 calls with significant gap (call freq: 557)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 557,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1114
+    },
+    "0xc523c0": {
+      "rank": 165,
+      "address": "0xc523c0",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_C523C0",
+      "module": "optimization_framework",
+      "size_bytes": 77,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 556 calls with significant gap (call freq: 556)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 556,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1112
+    },
+    "0x16a57b0": {
+      "rank": 166,
+      "address": "0x16a57b0",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_16A57B0",
+      "module": "optimization_framework",
+      "size_bytes": 89,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 551 calls with significant gap (call freq: 551)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 551,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1102
+    },
+    "0x16ccba0": {
+      "rank": 167,
+      "address": "0x16ccba0",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_16CCBA0",
+      "module": "optimization_framework",
+      "size_bytes": 162,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 538 calls with significant gap (call freq: 538)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 538,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1076
+    },
+    "0x163a1d0": {
+      "rank": 168,
+      "address": "0x163a1d0",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_163A1D0",
+      "module": "optimization_framework",
+      "size_bytes": 63,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 537 calls with significant gap (call freq: 537)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 537,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1074
+    },
+    "0x157eba0": {
+      "rank": 169,
+      "address": "0x157eba0",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_157EBA0",
+      "module": "optimization_framework",
+      "size_bytes": 59,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 535 calls with significant gap (call freq: 535)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 535,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1070
+    },
+    "0x16bd1c0": {
+      "rank": 170,
+      "address": "0x16bd1c0",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_16BD1C0",
+      "module": "optimization_framework",
+      "size_bytes": 389,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 529 calls with significant gap (call freq: 529)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 529,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1058
+    },
+    "0x4263d6": {
+      "rank": 171,
+      "address": "0x4263d6",
+      "proposed_name": "OptFramework_Utility",
+      "original_name": "sub_4263D6",
+      "module": "optimization_framework",
+      "size_bytes": 47,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent optimization function: 515 calls with significant gap (call freq: 515)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 515,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 1030
+    },
+    "0xad7630": {
+      "rank": 172,
+      "address": "0xad7630",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_AD7630",
+      "module": "optimization_framework",
+      "size_bytes": 596,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent large optimization function: 485 calls with 596-byte size (call freq: 485)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 485,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 970
+    },
+    "0x2241130": {
+      "rank": 173,
+      "address": "0x2241130",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_2241130",
+      "module": "optimization_framework",
+      "size_bytes": 712,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent large optimization function: 418 calls with 712-byte size (call freq: 418)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 418,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 836
+    },
+    "0x16b8280": {
+      "rank": 174,
+      "address": "0x16b8280",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_16B8280",
+      "module": "optimization_framework",
+      "size_bytes": 815,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent large optimization function: 380 calls with 815-byte size (call freq: 380)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 380,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 760
+    },
+    "0xacade0": {
+      "rank": 175,
+      "address": "0xacade0",
+      "proposed_name": "OptFramework_Core",
+      "original_name": "sub_ACADE0",
+      "module": "optimization_framework",
+      "size_bytes": 728,
+      "confidence": "LOW",
+      "evidence": [
+        "Frequent large optimization function: 310 calls with 728-byte size (call freq: 310)"
+      ],
+      "callees_count": 0,
+      "call_frequency": 310,
+      "complexity": "unknown",
+      "source": "hidden_criticality_promotion",
+      "promotion_tier": "HIGH",
+      "adjusted_score": 620
+    }
+  },
+  "naming_heuristics": {
+    "register_allocation": {
+      ">35KB": "Core graph coloring algorithm",
+      "27-35KB": "Main entry point or major phase",
+      "17-27KB": "Spill code insertion phase",
+      "12-17KB": "Liveness analysis",
+      "<12KB": "Supporting utilities"
+    },
+    "ptx_emission": {
+      ">40KB": "Main PTX emitter (instruction encoding)",
+      "13-40KB": "Kernel-level code generation",
+      "11-13KB": "Generic instruction handling",
+      "<11KB": "Supporting utilities"
+    },
+    "optimization_framework": {
+      "very_high_frequency": "Memory management wrappers (>1000 calls)",
+      "high_frequency": "Pass utilities (>300 calls)",
+      ">18KB": "Pass manager dispatcher",
+      "<18KB": "Individual optimization passes"
+    },
+    "compilation_pipeline": {
+      ">25KB": "Main orchestrator",
+      "19-25KB": "IR transformation phase",
+      "10-19KB": "Compilation stage",
+      "<10KB": "Supporting utilities"
+    }
+  }
+}

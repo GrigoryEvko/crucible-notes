@@ -1,0 +1,888 @@
+{
+  "metadata": {
+    "phase": "L2_DEEP_ANALYSIS",
+    "agent": "agent_16_decision_point_capture",
+    "date": "2025-11-16",
+    "confidence": "HIGH",
+    "status": "CONFIRMED",
+    "analysis_scope": "Granular decision points and control flow branches in optimization selection"
+  },
+
+  "discovery_summary": {
+    "title": "CICC Optimization Decision Point Analysis",
+    "description": "Detailed reconstruction of decision points and control flow in CICC's optimization framework. Each optimization pass contains multiple decision points that determine whether to apply the optimization and how.",
+    "methodology": "Traced through cost model functions, architecture detection, and conditional compilation points"
+  },
+
+  "decision_points": {
+    "pass_manager_dispatch": {
+      "location": "Pass manager entry (0x12D6300, 0x1505110, 0x138AAF0)",
+      "trigger": "Compilation of IR function/module",
+      "decision_sequence": [
+        {
+          "point": "1_read_optimization_level",
+          "question": "What optimization level (-O0, -O1, -O2, -O3)?",
+          "impact": "Determines which passes execute and their aggressiveness",
+          "possible_values": ["-O0 (no optimization)", "-O1 (minimal)", "-O2 (default)", "-O3 (aggressive)"]
+        },
+        {
+          "point": "2_detect_target_architecture",
+          "question": "What is target SM version?",
+          "functions": ["0x50C890", "0x55ED10", "0x95EB40"],
+          "impact": "Selects architecture-specific optimization passes and instruction patterns",
+          "possible_values": ["SM_70", "SM_80", "SM_90", "SM_100+"]
+        },
+        {
+          "point": "3_load_pass_pipeline",
+          "question": "Which passes are enabled for this optimization level and SM?",
+          "impact": "Selects subset of 94 available passes to execute",
+          "execution_order": "Pass manager maintains ordering (some passes have prerequisites)"
+        },
+        {
+          "point": "4_iterate_through_passes",
+          "question": "For each pass in pipeline, should it execute?",
+          "impact": "Determines pass execution sequence",
+          "implementation": "Loop through pass registry with prerequisite checking"
+        }
+      ]
+    },
+
+    "inlining_pass_decision_points": {
+      "pass_id": "Inliner",
+      "entry_point": "When inlining pass runs (after AlwaysInliner)",
+      "decision_sequence": [
+        {
+          "point": "1_function_level_entry",
+          "question": "Is this a top-level function to optimize?",
+          "true_path": "Analyze all call sites in function",
+          "false_path": "Skip function"
+        },
+        {
+          "point": "2_iterate_call_sites",
+          "question": "For each call site, should callee be inlined?",
+          "loop": "Process each direct call instruction",
+          "sub_decisions": [
+            "2a_check_always_inline_attribute",
+            "2b_check_noinline_attribute",
+            "2c_check_callee_size",
+            "2d_check_total_inline_budget",
+            "2e_profitability_analysis"
+          ]
+        },
+        {
+          "point": "2a_check_always_inline_attribute",
+          "question": "Does callee have always_inline attribute?",
+          "true_path": {
+            "action": "Mark for inlining regardless of size",
+            "rationale": "always_inline is explicit user directive"
+          },
+          "false_path": "Proceed to next check"
+        },
+        {
+          "point": "2b_check_noinline_attribute",
+          "question": "Does callee have noinline attribute?",
+          "true_path": {
+            "action": "Skip inlining",
+            "rationale": "Explicit user directive"
+          },
+          "false_path": "Proceed to size check"
+        },
+        {
+          "point": "2c_check_callee_size",
+          "question": "Callee size < inline-budget threshold?",
+          "threshold": 40000,
+          "unit": "instruction_units",
+          "true_path": "Proceed to budget check",
+          "false_path": {
+            "action": "Skip inlining",
+            "rationale": "Function too large, code size explosion risk"
+          }
+        },
+        {
+          "point": "2d_check_total_inline_budget",
+          "question": "Total accumulated inlining < inline-total-budget?",
+          "tracking": "Maintain running counter of inlined instructions",
+          "true_path": "Proceed to profitability analysis",
+          "false_path": {
+            "action": "Skip inlining",
+            "rationale": "Cumulative limit reached"
+          }
+        },
+        {
+          "point": "2e_profitability_analysis",
+          "question": "Is inlining profitable? benefit > cost * 1.2?",
+          "analysis": "Cost model evaluates call overhead vs code size increase",
+          "benefits": [
+            "Call overhead elimination (~10-50 cycles)",
+            "Optimization opportunities (CSE, DCE)",
+            "Constant propagation from arguments",
+            "Register pressure reduction"
+          ],
+          "costs": [
+            "Code size increase",
+            "Instruction cache pressure",
+            "Register pressure increase"
+          ],
+          "true_path": {
+            "action": "INLINE function",
+            "follow_up": "Mark this inlining in counter"
+          },
+          "false_path": {
+            "action": "Keep call out-of-line"
+          }
+        },
+        {
+          "point": "3_post_inlining_optimization",
+          "question": "Apply additional optimizations to inlined code?",
+          "sub_passes": [
+            "InstCombine (simplification)",
+            "DeadCodeElimination (dead code from inlining)",
+            "CSE (common subexpression elimination)"
+          ]
+        }
+      ]
+    },
+
+    "loop_invariant_code_motion_licm": {
+      "pass_id": "LICM",
+      "entry_point": "After LoopSimplify prerequisites",
+      "decision_sequence": [
+        {
+          "point": "1_loop_detection",
+          "question": "Are there loops in the function?",
+          "analysis": "LoopInfo provides loop structure",
+          "false_path": "Skip LICM, no loops to process"
+        },
+        {
+          "point": "2_loop_simplification_check",
+          "question": "Are all loops in simplified form?",
+          "requirement": "LoopSimplify prerequisite must have run",
+          "true_path": "Proceed to LICM",
+          "false_path": "This is error - prerequisites not met"
+        },
+        {
+          "point": "3_dominance_frontier_computation",
+          "question": "Is dominance frontier computed?",
+          "data": "DominanceFrontier analysis available",
+          "true_path": "Proceed to loop analysis",
+          "false_path": "Compute dominance frontier first"
+        },
+        {
+          "point": "4_iterate_loops",
+          "question": "For each loop, should LICM apply?",
+          "loop": "Process each loop in nested order",
+          "sub_decisions": [
+            "4a_check_loop_size",
+            "4b_check_memory_promotion_enabled",
+            "4c_identify_invariant_instructions",
+            "4d_check_safety_conditions"
+          ]
+        },
+        {
+          "point": "4a_check_loop_size",
+          "question": "Loop size < loop-size-threshold?",
+          "parameter": "loop-size-threshold",
+          "default_value": "Unknown (Agent 3 to determine)",
+          "true_path": "LICM eligible for this loop",
+          "false_path": {
+            "action": "Skip LICM for this loop",
+            "rationale": "Large loops may cause code bloat"
+          }
+        },
+        {
+          "point": "4b_check_memory_promotion_enabled",
+          "question": "Is memory promotion enabled?",
+          "parameter": "enable-memory-promotion (default: enabled)",
+          "disabled_by": "disable-memory-promotion flag",
+          "true_path": "Enable memory promotion optimization",
+          "false_path": "Only hoist non-memory operations"
+        },
+        {
+          "point": "4c_identify_invariant_instructions",
+          "question": "Which instructions are loop-invariant?",
+          "definition": "Instruction has same value every iteration",
+          "analysis": "All operands either constants or defined outside loop",
+          "candidates": [
+            "Arithmetic operations on loop-invariant values",
+            "Load operations from invariant addresses",
+            "Multiplication chains",
+            "Address computations"
+          ]
+        },
+        {
+          "point": "4d_check_safety_conditions",
+          "question": "Is hoisting safe without changing semantics?",
+          "safety_checks": [
+            "No data dependence violations",
+            "No memory aliases that change result",
+            "No side effects in hoisted code",
+            "Exception handling preserved"
+          ],
+          "true_path": "Hoist invariant instructions to loop preheader",
+          "false_path": "Keep instruction in loop"
+        },
+        {
+          "point": "5_sinking_decision",
+          "question": "Should sunk values be brought back in?",
+          "sinking": "Move hoisted code into uses inside loop if beneficial",
+          "rationale": "May reduce live range, improve register allocation"
+        }
+      ]
+    },
+
+    "dead_code_elimination_dce": {
+      "pass_id": "ADCE (Aggressive Dead Code Elimination)",
+      "entry_point": "Function-level pass",
+      "decision_sequence": [
+        {
+          "point": "1_build_control_dependence_graph",
+          "question": "Which instructions are control-dependent?",
+          "definition": "Instruction only executes on some control paths",
+          "data_structure": "Control dependence graph (inverse of postdominance)"
+        },
+        {
+          "point": "2_identify_live_instructions",
+          "question": "Which instructions have visible side effects or control flow?",
+          "live_categories": [
+            "Function return instructions",
+            "Function calls (assume side effects)",
+            "Memory stores (assume observable)",
+            "Branch instructions (control flow)",
+            "Volatile operations"
+          ]
+        },
+        {
+          "point": "3_propagate_liveness",
+          "question": "Which instructions define live values?",
+          "propagation": "Backward from live instructions through use-def chains",
+          "process": "Mark as live any instruction whose value is used by live instruction"
+        },
+        {
+          "point": "4_identify_dead_instructions",
+          "question": "Which instructions are not live?",
+          "dead_category": "Instructions not marked live after propagation",
+          "candidates": [
+            "Unused arithmetic results",
+            "Redundant computations",
+            "Unreachable code blocks",
+            "Stores to dead memory"
+          ]
+        },
+        {
+          "point": "5_delete_dead_instructions",
+          "question": "Remove dead instruction from IR?",
+          "safety": "Safe if control dependence verified",
+          "order": "Delete in reverse order (handle dependencies)",
+          "action": "Remove instruction from basic block"
+        }
+      ]
+    },
+
+    "dead_store_elimination_dse": {
+      "pass_id": "DSE (Dead Store Elimination)",
+      "entry_point": "Function-level pass",
+      "decision_sequence": [
+        {
+          "point": "1_analyze_memory_writes",
+          "question": "Which memory locations are written?",
+          "analysis": "Scan all store instructions in function",
+          "tracking": "Map each write to memory location and value"
+        },
+        {
+          "point": "2_analyze_memory_reads",
+          "question": "Which memory locations are read?",
+          "analysis": "Scan all load instructions and other reads",
+          "tracking": "Map each read to potential source locations"
+        },
+        {
+          "point": "3_identify_dead_stores",
+          "question": "Are there stores to memory never subsequently read?",
+          "dead_store_pattern": "Store at location L never has load from L afterward",
+          "candidates": "All stores not followed by loads from same address"
+        },
+        {
+          "point": "3a_check_partial_overwrite_tracking",
+          "question": "Enable partial-overwrite-tracking?",
+          "parameter": "enable-partial-overwrite-tracking",
+          "true_path": {
+            "analysis": "Track partial overwrites (e.g., store to first 4 bytes overwritten by full 8-byte store)",
+            "benefit": "Eliminate more dead stores"
+          },
+          "false_path": {
+            "analysis": "Only eliminate completely overwritten stores",
+            "conservative": "Safer but less aggressive"
+          }
+        },
+        {
+          "point": "3b_check_store_merging",
+          "question": "Enable partial-store-merging?",
+          "parameter": "enable-partial-store-merging",
+          "true_path": {
+            "optimization": "Merge adjacent stores into larger store",
+            "benefit": "Reduce store count, improve locality"
+          },
+          "false_path": {
+            "action": "Keep stores separate"
+          }
+        },
+        {
+          "point": "4_handle_memory_aliases",
+          "question": "Could memory aliases invalidate analysis?",
+          "considerations": [
+            "Pointers that could point to store location",
+            "Indirect accesses through arrays",
+            "Function calls that might read memory"
+          ],
+          "conservative_approach": "Assume all indirect/function accesses might read any memory"
+        },
+        {
+          "point": "5_delete_dead_store",
+          "question": "Remove dead store instruction?",
+          "safety": "Only if certain no subsequent read from location",
+          "action": "Eliminate store instruction"
+        }
+      ]
+    },
+
+    "instruction_selection_cost_model": {
+      "pass_id": "Instruction Selection",
+      "entry_point": "IR-to-machine instruction lowering",
+      "decision_sequence": [
+        {
+          "point": "1_pattern_database_initialization",
+          "question": "Load patterns for target SM architecture?",
+          "architecture_detection": ["0x50C890", "0x55ED10", "0x95EB40"],
+          "pattern_database_variants": {
+            "SM_70_75": "~400 patterns (wmma only)",
+            "SM_80_89": "~550 patterns (mma.sync)",
+            "SM_90": "~650 patterns (warpgroup mma)",
+            "SM_100_plus": "~800 patterns (tcgen05 + sparsity)"
+          }
+        },
+        {
+          "point": "2_traverse_ir_tree",
+          "question": "For each IR instruction, find PTX mapping?",
+          "process": "Walk IR DAG/tree bottom-up or breadth-first",
+          "sub_decisions": [
+            "2a_pattern_matching",
+            "2b_cost_evaluation",
+            "2c_selection"
+          ]
+        },
+        {
+          "point": "2a_pattern_matching",
+          "question": "Which PTX instructions can implement this IR operation?",
+          "mechanism": "Hash table lookup: hash(ir_op, operand_types) -> patterns",
+          "hash_function": "CRC32 or FNV-1a (cryptographic quality)",
+          "expected_lookup": "O(1) typical, O(n) worst case (collision)",
+          "fallback": "Linear search through collision chain"
+        },
+        {
+          "point": "2a_i_hash_collision_handling",
+          "question": "Hash collision? Multiple patterns in bucket?",
+          "true_path": "Continue to cost evaluation for all matching patterns",
+          "false_path": "Found unique pattern or no match"
+        },
+        {
+          "point": "2b_cost_evaluation",
+          "question": "What is cost of each matching pattern?",
+          "function": "0xFDE760 (calculate_cost)",
+          "cost_factors": [
+            "Instruction latency: Cycles to complete",
+            "Operand setup cost: Moving values to correct sources",
+            "Memory latency: L1/L2/register access time",
+            "Register pressure: Registers consumed",
+            "Bank conflicts: Shared memory access cost"
+          ],
+          "formula": "cost = base_cost + operand_cost + architecture_multiplier * context_multiplier"
+        },
+        {
+          "point": "2c_selection",
+          "question": "Which pattern has minimum cost?",
+          "function": "0xD788E0 (compare_cost)",
+          "selection": "Select pattern with lowest numeric cost value"
+        },
+        {
+          "point": "3_critical_path_analysis",
+          "question": "Is selected instruction on loop-critical path?",
+          "definition": "Instruction affects loop iteration latency",
+          "detection": "Dependency chain analysis from loop exit condition",
+          "true_path": {
+            "adjustment": "Multiply cost by critical_weight (1.5-2.0)",
+            "rationale": "Critical path instructions have outsized performance impact"
+          },
+          "false_path": "Use base cost (no adjustment)"
+        },
+        {
+          "point": "4_immediate_encoding",
+          "question": "How to encode immediate operands?",
+          "candidates": [
+            "Small immediates (0-255): Direct encoding",
+            "Large immediates: Multi-instruction sequence",
+            "Floating point: Canonical format conversion",
+            "Memory offsets: Relative address calculation"
+          ]
+        },
+        {
+          "point": "5_operand_source_selection",
+          "question": "Where are operands located?",
+          "sources": [
+            "Register (preferred if available)",
+            "Immediate constant",
+            "Memory (load required)",
+            "Special values (NaN, infinity)"
+          ],
+          "decision": "Cost model considers all source combinations"
+        },
+        {
+          "point": "6_architecture_variant_selection",
+          "question": "Select SM-specific instruction variant?",
+          "examples": [
+            "bar.sync (SM90+) vs bar.arrive (SM70-80)",
+            "mma.sync (SM80+) vs wmma (SM70-75)",
+            "tcgen05.mma variants (SM100+ only with 36 options)",
+            "ld.global.ca vs .cg vs .cs vs .cv (cache modifiers)"
+          ],
+          "decision": "Determined by SM version check"
+        },
+        {
+          "point": "7_profitability_check",
+          "question": "Optimization worth the effort?",
+          "minimum_improvement": "3%",
+          "decision": "Skip if improvement < 3% (avoid bloat)",
+          "skip_scenarios": [
+            "Select vs branch: Only use select if cost < (branch + misprediction)",
+            "Instruction variant: Only choose expensive option if gain sufficient",
+            "Memory operation: Only use special forms if measurable benefit"
+          ]
+        },
+        {
+          "point": "8_code_generation",
+          "question": "Emit selected instruction?",
+          "output": "Machine IR or PTX with specific operands"
+        }
+      ]
+    },
+
+    "memory_space_optimization": {
+      "pass_id": "MemorySpaceOpt",
+      "category": "Memory Space Optimization",
+      "criticality": "CRITICAL for GPU performance",
+      "entry_point": "Before code generation",
+      "decision_sequence": [
+        {
+          "point": "1_enable_check",
+          "question": "Is MemorySpaceOpt enabled?",
+          "disable_flag": "disable-MemorySpaceOptPass",
+          "default": "enabled",
+          "true_path": "Proceed to algorithm selection",
+          "false_path": "Skip memory space optimization"
+        },
+        {
+          "point": "2_algorithm_selection",
+          "question": "Which algorithm to use for address space optimization?",
+          "parameter": "algorithm-selection",
+          "options": [
+            "Algorithm A: Access pattern based optimization",
+            "Algorithm B: Type-based address space inference",
+            "Algorithm C: Hybrid approach"
+          ],
+          "decision": "Select based on parameter value"
+        },
+        {
+          "point": "3_analyze_memory_accesses",
+          "question": "Characterize all memory access patterns?",
+          "analysis": [
+            "Identify load and store operations",
+            "Determine access patterns (sequential, random, stride)",
+            "Map to memory hierarchy (global, shared, local, constant)",
+            "Check for coalescing opportunities"
+          ]
+        },
+        {
+          "point": "4_indirect_load_tracking",
+          "question": "Enable indirect load tracking?",
+          "parameter": "enable-indirect-load-tracking (default: enabled)",
+          "true_path": "Track loads through pointers and arrays",
+          "false_path": "Analyze direct accesses only"
+        },
+        {
+          "point": "5_inttoptr_tracking",
+          "question": "Enable IntToPtr conversion tracking?",
+          "parameter": "enable-inttoptr-tracking",
+          "purpose": "Track integer-to-pointer casts that could affect address space",
+          "true_path": "Include in address space analysis",
+          "false_path": "Conservative: assume unknown address space"
+        },
+        {
+          "point": "6_memory_space_inference",
+          "question": "Which memory space is accessed?",
+          "spaces": [
+            "Global memory (device memory, cache hierarchy)",
+            "Shared memory (per-block, bank conflict sensitive)",
+            "Local memory (per-thread, used for spilling)",
+            "Constant memory (read-only, cached)",
+            "Generic (determined at runtime)"
+          ],
+          "decision": "Determine from access pattern and type"
+        },
+        {
+          "point": "7_cache_optimization_global",
+          "question": "How to optimize global memory access?",
+          "cache_modifiers": [
+            ".ca (cache all): Default, cache in all levels",
+            ".cg (cache global): Cache in L2 only",
+            ".cs (cache streaming): Non-temporal, avoid cache",
+            ".cv (cache volatile): Bypass cache, coherency"
+          ],
+          "decision": "Select based on access pattern",
+          "heuristics": {
+            "temporal_locality": "Use .ca for good temporal locality",
+            "streaming_pattern": "Use .cs for one-time accesses",
+            "volatile": "Use .cv for synchronization"
+          }
+        },
+        {
+          "point": "8_shared_memory_optimization",
+          "question": "Optimize shared memory access?",
+          "concerns": [
+            "Bank conflicts (adjacent threads access adjacent addresses)",
+            "Padding to avoid conflicts",
+            "Load/store patterns"
+          ],
+          "conflict_detection": "Analyze thread index vs address patterns"
+        },
+        {
+          "point": "9_constant_memory_utilization",
+          "question": "Can access use constant memory?",
+          "requirements": [
+            "Read-only access",
+            "All threads access same address (broadcast pattern)",
+            "Data is compile-time constant or initialized"
+          ],
+          "decision": "Use ld.const if beneficial"
+        }
+      ]
+    },
+
+    "sparse_constant_propagation_sccp": {
+      "pass_id": "SCCP (Sparse Conditional Constant Propagation)",
+      "entry_point": "Scalar optimization phase",
+      "decision_sequence": [
+        {
+          "point": "1_dataflow_analysis_initialization",
+          "question": "Initialize dataflow lattice?",
+          "lattice_values": [
+            "⊥ (bottom): No information",
+            "concrete_value: Known constant (e.g., 42)",
+            "⊤ (top): Multiple possible values (over-approximation)"
+          ]
+        },
+        {
+          "point": "2_iterate_to_fixed_point",
+          "question": "Propagate constants to fixed point?",
+          "algorithm": "Iterative fixed-point computation",
+          "termination": "When lattice values don't change"
+        },
+        {
+          "point": "3_check_phi_node",
+          "question": "Is this a phi node (multiple predecessors)?",
+          "true_path": "Analyze incoming values from each predecessor",
+          "false_path": "Proceed to regular instruction analysis"
+        },
+        {
+          "point": "3a_two_entry_phi_folding",
+          "question": "Is this two-entry phi node?",
+          "threshold": "two-entry-phi-node-folding-threshold",
+          "true_path": "Consider folding into conditional assignment",
+          "false_path": "Standard phi handling"
+        },
+        {
+          "point": "4_evaluate_constant_expression",
+          "question": "Can instruction be evaluated as constant?",
+          "candidates": [
+            "Arithmetic operations (add, mul, div) on constants",
+            "Logical operations (and, or, xor) on constants",
+            "Comparisons producing boolean constants",
+            "Select with constant condition"
+          ],
+          "evaluation": "Compute result at compile time"
+        },
+        {
+          "point": "5_check_range_extension",
+          "question": "Exceed sccp-max-range-ext limit?",
+          "parameter": "sccp-max-range-ext",
+          "purpose": "Limit complexity of constant propagation",
+          "true_path": "Stop propagation, mark as over-approximated",
+          "false_path": "Continue propagation"
+        },
+        {
+          "point": "6_replace_uses_with_constants",
+          "question": "Replace variable uses with discovered constants?",
+          "candidates": "All uses of variables determined to be constant",
+          "replacement": "Substitute constant value in all uses",
+          "follow_up": "Dead code elimination will remove now-unused definitions"
+        }
+      ]
+    },
+
+    "loop_unrolling": {
+      "pass_id": "LoopUnroll",
+      "entry_point": "Loop optimization phase (requires LoopSimplify)",
+      "decision_sequence": [
+        {
+          "point": "1_loop_analysis",
+          "question": "Is this a candidate for unrolling?",
+          "properties": [
+            "Loop must be in simplified form",
+            "Loop body must be analyzable",
+            "Trip count preferably known"
+          ]
+        },
+        {
+          "point": "2_trip_count_analysis",
+          "question": "What is trip count (iteration count)?",
+          "cases": [
+            "Known constant: Can compute unroll factor statically",
+            "Unknown: Conservative approach, limit unroll",
+            "Variable: May unroll with runtime check"
+          ]
+        },
+        {
+          "point": "2a_known_trip_count",
+          "question": "Trip count is small constant?",
+          "threshold": "exact_value = agent_3_determination",
+          "true_path": "Likely candidate for unrolling",
+          "false_path": "Unrolling may be counterproductive"
+        },
+        {
+          "point": "3_body_size_analysis",
+          "question": "Loop body size < unroll_body_threshold?",
+          "threshold": "exact_value = agent_3_determination",
+          "factors": [
+            "Number of instructions in loop body",
+            "Register pressure in body",
+            "Control flow complexity"
+          ],
+          "true_path": "Unrolling likely profitable",
+          "false_path": "Body too large, unrolling causes code bloat"
+        },
+        {
+          "point": "4_unroll_factor_selection",
+          "question": "How many times to unroll loop?",
+          "heuristics_applied": [
+            "Unroll factor = min(trip_count, max_unroll_factor)",
+            "Max unroll factor depends on:",
+            "- Register file size",
+            "- Instruction cache constraints",
+            "- Loop body size"
+          ],
+          "typical_values": "2, 4, 8, 16 (powers of 2)"
+        },
+        {
+          "point": "5_register_pressure_check",
+          "question": "Will unrolled loop exceed register limits?",
+          "analysis": "Estimate live range growth with unrolling",
+          "true_path": "Proceed with unrolling",
+          "false_path": "Skip unrolling to avoid spilling"
+        },
+        {
+          "point": "6_profitability_analysis",
+          "question": "Is unrolling profitable?",
+          "metrics": [
+            "Instruction count reduction from loop control elimination",
+            "Opportunity for further optimization (CSE, instruction combining)",
+            "Code size increase"
+          ],
+          "threshold": "Must achieve >= 3% speedup"
+        },
+        {
+          "point": "7_pragma_override",
+          "question": "Loop has unroll pragma?",
+          "pragmas": [
+            "#pragma unroll(N): Unroll N times",
+            "#pragma unroll: Unroll completely",
+            "#pragma nounroll: Disable unrolling"
+          ],
+          "override": "Pragma overrides heuristic decision"
+        },
+        {
+          "point": "8_generate_unrolled_code",
+          "question": "Generate unrolled loop body?",
+          "process": [
+            "Clone loop body N times",
+            "Update induction variables",
+            "Adjust loop condition",
+            "Simplify control flow (eliminate some branches)"
+          ]
+        }
+      ]
+    },
+
+    "architecture_dispatch_mechanism": {
+      "name": "SM-Version Specific Decision Dispatch",
+      "mechanism": "Runtime SM capability detection drives all architecture-dependent decisions",
+      "detection_flow": [
+        {
+          "step": 1,
+          "action": "Call architecture_detection module (0x50C890, 0x55ED10, 0x95EB40)",
+          "returns": "SM version capability flags"
+        },
+        {
+          "step": 2,
+          "action": "Branch on SM version",
+          "branches": {
+            "SM_70_75": "Load wmma-only pattern database",
+            "SM_80_89": "Load mma.sync pattern database",
+            "SM_90": "Load warpgroup mma pattern database",
+            "SM_100_plus": "Load tcgen05 pattern database (36 variants)"
+          }
+        },
+        {
+          "step": 3,
+          "action": "Select instruction variants",
+          "examples": {
+            "barrier_sync": "bar.arrive (SM70-80) vs bar.sync (SM90+)",
+            "async_copy": "Not available (SM70-75) vs cp.async (SM80+)",
+            "atomic_width": "64-bit max (SM80) vs 128-bit (SM90+)",
+            "tensor_instruction": "wmma (SM70) vs mma.sync (SM80) vs tcgen05 (SM100+)"
+          }
+        },
+        {
+          "step": 4,
+          "action": "Apply architecture-specific optimizations",
+          "optimizations": {
+            "SM_70": "Basic optimizations only",
+            "SM_80": "Async memory optimization enabled",
+            "SM_90": "Warpgroup synchronization optimization",
+            "SM_100": "Sparsity detection and weight stationary mode"
+          }
+        }
+      ]
+    }
+  },
+
+  "cross_cutting_decision_patterns": {
+    "cost_driven_decisions": {
+      "pattern": "All major decisions ultimately evaluate cost and select minimum-cost option",
+      "functions": [
+        "0xD788E0 (compare_cost) - 231 calls",
+        "0xFDE760 (calculate_cost) - 148 calls",
+        "0xD788C0 (extract_cost) - 94 calls"
+      ],
+      "implication": "Cost model is central to all optimization decisions"
+    },
+
+    "threshold_based_filtering": {
+      "pattern": "Many decisions use numeric thresholds to filter optimization candidates",
+      "thresholds": {
+        "inline_budget": 40000,
+        "minimum_improvement": "3%",
+        "loop_size": "Unknown (parameter exists)",
+        "bonus_threshold": "Unknown (parameter exists)"
+      },
+      "implication": "Conservative approach - only apply optimizations when clearly beneficial"
+    },
+
+    "architecture_aware_dispatch": {
+      "pattern": "SM version detection enables different code paths and instruction variants",
+      "mechanism": "Early architecture detection, dynamic dispatch",
+      "implication": "Same IR may compile to very different PTX depending on target architecture"
+    },
+
+    "prerequisite_checking": {
+      "pattern": "Many passes require analyses to be already computed",
+      "examples": {
+        "LICM": "Requires LoopSimplify, DominatorTree, DominanceFrontier",
+        "Inliner": "Requires call graph information",
+        "DSE": "Requires alias analysis"
+      },
+      "implication": "Pass manager maintains dependency graph to ensure proper ordering"
+    },
+
+    "profitability_analysis": {
+      "pattern": "Optimizations only applied if benefit exceeds cost by threshold",
+      "thresholds": {
+        "inlining": "benefit > cost * 1.2",
+        "loop_optimization": "improvement >= 3%",
+        "instruction_selection": "cost reduction > 3%"
+      },
+      "implication": "Prevents pessimizations and code bloat"
+    }
+  },
+
+  "control_flow_complexity_analysis": {
+    "pass_manager_control_flow": {
+      "entry_point": "Compilation of module/function",
+      "branches": [
+        "Optimization level (O0, O1, O2, O3)",
+        "Architecture detection (SM70, SM80, SM90, SM100+)",
+        "Pass pipeline selection",
+        "Pass execution loop"
+      ],
+      "complexity": "O(n) where n = number of passes × number of functions/loops"
+    },
+
+    "inlining_control_flow": {
+      "decision_depth": 5,
+      "branching_factor": "2-3",
+      "complexity": "O(m * c) where m = call sites, c = average callees per site"
+    },
+
+    "instruction_selection_control_flow": {
+      "decision_depth": 8,
+      "pattern_matching": "Hash table O(1) average, O(n) worst case",
+      "cost_evaluation": "Called 379 times (473 total cost function calls)"
+    }
+  },
+
+  "recommendations_for_instrumentation": {
+    "tracing_optimization_decisions": [
+      "Instrument cost comparison function (0xD788E0) to log compared costs",
+      "Instrument cost calculation (0xFDE760) to capture all cost factors",
+      "Log all threshold comparisons (inline_budget, loop_size, etc.)",
+      "Capture profitability analysis results"
+    ],
+
+    "critical_decision_points_to_monitor": [
+      "Architecture detection result",
+      "Optimization level determination",
+      "Inlining decisions (yes/no per call site)",
+      "Loop unroll factor selection",
+      "Instruction pattern selection",
+      "Instruction cost values"
+    ],
+
+    "validation_test_cases": [
+      "Small function inlining (< 40000 units)",
+      "Large function non-inlining (> 40000 units)",
+      "Loop with known trip count (candidate for unrolling)",
+      "Loop with unknown trip count (conservative LICM)",
+      "Dead store elimination (dead vs live stores)",
+      "Tensor core pattern matching (different SM versions)"
+    ]
+  },
+
+  "unknowns_requiring_execution_trace": [
+    "Exact default values for: loop-size-threshold, bonus-threshold, max-iterations",
+    "Exact unroll factor selection formula",
+    "Exact cost metric computation (multiplicative vs additive components)",
+    "Exact critical path weight (1.5x or 2.0x or variable)",
+    "Exact value of 'minimum improvement threshold' metric",
+    "sccp-max-range-ext and two-entry-phi-node-folding-threshold default values",
+    "How multiple cost factors are combined (weighted sum? product?)"
+  ],
+
+  "cross_references": {
+    "related_outputs": [
+      "optimization_decisions.json (thresholds and firing conditions)",
+      "algorithms/instruction_selection.json (cost model details)",
+      "algorithms/pattern_matching.json (pattern database structure)"
+    ],
+    "foundation_analysis": [
+      "21_OPTIMIZATION_PASS_MAPPING.json (94 passes with parameters)",
+      "02_MODULE_ANALYSIS.json (cost model locations)",
+      "06_CRITICAL_FUNCTIONS_CORRECTED.json (critical function identification)"
+    ]
+  }
+}

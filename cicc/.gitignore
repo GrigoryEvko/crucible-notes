@@ -1,0 +1,43 @@
+# IDA Pro Database Files
+*.idb
+*.i64
+*.id0
+*.id1
+*.id2
+*.nam
+*.til
+
+# IDA Pro Backup Files
+*.idb~
+*.i64~
+
+# IDA Pro Dump Directories (large output)
+decompiled/
+disasm/
+graphs/
+
+# IDA Pro Binary Data
+cicc_rodata.bin
+
+# Archive Directory (temporary files)
+archive/
+
+# IDA Pro Logs
+ida_analysis.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Analysis Logs
+*.log
+
+# MkDocs Build Output
+wiki/site/
+
+# Temporary Analysis Files
+*.tmp
+*.bak

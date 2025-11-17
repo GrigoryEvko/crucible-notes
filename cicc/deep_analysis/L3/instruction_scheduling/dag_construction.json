@@ -1,0 +1,364 @@
+{
+  "metadata": {
+    "unknown_id": "19",
+    "agent": "L3-19",
+    "title": "Instruction Scheduling DAG Construction and Edge Weight Computation",
+    "confidence": "HIGH",
+    "data_sources": [
+      "ctor_282_0_0x4f8f80.c - Scheduling algorithm registrations",
+      "ctor_283_0x4f9b60.c - Latency configuration",
+      "ctor_310_0_0x500ad0.c - Critical path analysis and scheduling control",
+      "ctor_314_0x502360.c - Recurrence chain analysis",
+      "ctor_316_0x502ea0.c - Anti-dependency breaking configuration",
+      "ctor_336_0x509ca0.c - Machine model configuration",
+      "ctor_345_0x50b430.c - Aggressive anti-dependency breaker control"
+    ],
+    "timestamp": "2025-11-16"
+  },
+  "dag_construction": {
+    "algorithm_type": "Bottom-up List Scheduling with DAG",
+    "description": "The scheduler constructs a scheduling DAG (Directed Acyclic Graph) from machine basic blocks, where nodes represent instructions and edges represent data/control dependencies with weighted latencies. The DAG is built by analyzing instruction operands and establishing dependency relationships.",
+    "dag_phases": [
+      {
+        "phase": 1,
+        "name": "Initial Topological Sort",
+        "description": "Optional topological sort at the beginning of the scheduling pass for initial ordering",
+        "control_flag": "topo-sort-begin",
+        "default": true
+      },
+      {
+        "phase": 2,
+        "name": "DAG Construction",
+        "description": "Build dependency DAG by analyzing instruction register uses/defs and establishing true/output/anti/control dependencies"
+      },
+      {
+        "phase": 3,
+        "name": "Edge Weight Computation",
+        "description": "Calculate latency-based edge weights and priority metrics for list scheduling"
+      },
+      {
+        "phase": 4,
+        "name": "Bottom-up List Scheduling",
+        "description": "Process DAG from bottom (leaf instructions) upward, maintaining priority queue of ready instructions"
+      }
+    ]
+  },
+  "dependency_types": {
+    "true_dependency": {
+      "type": "true",
+      "aka": ["data_dependency", "register_dependency"],
+      "description": "Read-After-Write (RAW) dependency: consumer reads register written by producer",
+      "edge_weight": "instruction_latency + additional_penalties",
+      "edge_weight_formula": "latency = max(0, InstrLatency(producer) - start_of_consumer_relative_to_producer)",
+      "example": "dest = add src1, src2; use_val dest"
+    },
+    "output_dependency": {
+      "type": "output",
+      "aka": ["write_after_write", "WAW"],
+      "description": "Write-After-Write dependency: must serialize writes to same register",
+      "edge_weight": 1,
+      "note": "Serialization edge, minimal latency"
+    },
+    "anti_dependency": {
+      "type": "anti",
+      "aka": ["write_after_read", "WAR", "register_true_dependency"],
+      "description": "Write-After-Read dependency: consumer cannot write register until producer reads it",
+      "edge_weight": 1,
+      "breakable": true,
+      "control_flag": "break-anti-dependencies",
+      "control_options": ["critical", "all", "none"],
+      "description_control_options": "critical: break anti-deps on critical path only; all: break all anti-deps; none: disable breaking"
+    },
+    "control_dependency": {
+      "type": "control",
+      "description": "Control flow dependency: cannot move past control-dependent branches",
+      "edge_weight": 0,
+      "note": "Not truly serialized in execution order but affects correctness"
+    },
+    "memory_dependency": {
+      "type": "memory",
+      "description": "Memory ordering dependency: load/store ordering constraints",
+      "analysis": "Conservative analysis over instruction window",
+      "window_size_instructions": 100,
+      "window_size_blocks": 200,
+      "caching_enabled": true,
+      "cache_purpose": "Reduce compile time by caching dependency candidates"
+    }
+  },
+  "edge_weight_computation": {
+    "primary_formula": "edge_weight = source_instruction_latency + penalties",
+    "components": {
+      "source_latency": {
+        "description": "Base latency of the producing instruction",
+        "source": "InstrItineraryData (instruction schedules) or machine model",
+        "lookup": "getInstrLatency(source_instr)",
+        "fallback": "Estimated latency for long-latency instructions without itinerary"
+      },
+      "long_latency_estimate": {
+        "description": "Default estimate for long-latency instructions on targets without itinerary",
+        "parameter": "sched-high-latency-cycles",
+        "default_value": 25,
+        "applies_when": "No InstrItineraryData available for target"
+      },
+      "penalties": {
+        "anti_dependency_penalty": {
+          "type": "anti",
+          "base_weight": 1,
+          "conditions": "Only when break-anti-dependencies is disabled"
+        },
+        "output_dependency_penalty": {
+          "type": "output",
+          "base_weight": 1,
+          "note": "Serialization penalty for WAW conflicts"
+        }
+      }
+    },
+    "machine_model_integration": {
+      "itinerary_data": "InstrItineraryData structures define execution stages and latencies per functional unit",
+      "resource_reservation": "Edges account for functional unit reservation times",
+      "cycle_level_precision": {
+        "parameter": "disable-sched-cycles",
+        "default": false,
+        "description": "Controls whether cycle-level precision is maintained during scheduling"
+      }
+    }
+  },
+  "scheduling_algorithms": {
+    "algorithm_count": 4,
+    "algorithms": [
+      {
+        "name": "list-burr",
+        "description": "Bottom-up register reduction list scheduling",
+        "strategy": "Minimize register pressure during scheduling",
+        "implementation_ref": "sub_1D05200"
+      },
+      {
+        "name": "source",
+        "description": "Similar to list-burr but schedules in source order when possible",
+        "strategy": "Preserves original instruction order as secondary heuristic",
+        "implementation_ref": "sub_1D05510"
+      },
+      {
+        "name": "list-hybrid",
+        "description": "Bottom-up register pressure aware list scheduling which tries to balance latency and register pressure",
+        "strategy": "Dual-objective: minimize latency AND register pressure",
+        "implementation_ref": "sub_1D05820"
+      },
+      {
+        "name": "list-ilp",
+        "description": "Bottom-up register pressure aware list scheduling which tries to balance ILP and register pressure",
+        "strategy": "Maximize instruction-level parallelism while controlling register pressure",
+        "implementation_ref": "sub_1D04DC0",
+        "priority_heuristics": [
+          {
+            "name": "critical_path_priority",
+            "description": "Prioritize instructions on the critical path to minimize makespan",
+            "disable_flag": "disable-sched-critical-path",
+            "allows_ahead": "Number of instructions to allow ahead of the critical path in sched=list-ilp"
+          },
+          {
+            "name": "scheduled_height_priority",
+            "description": "Prioritize instructions with higher scheduled height (longer latency to leaves)",
+            "disable_flag": "disable-sched-height"
+          },
+          {
+            "name": "register_pressure_priority",
+            "description": "Prioritize instructions that reduce register pressure",
+            "disable_flag": "disable-sched-reg-pressure",
+            "type": "regpressure"
+          },
+          {
+            "name": "live_use_priority",
+            "description": "Prioritize instructions with live values",
+            "disable_flag": "disable-sched-live-use"
+          },
+          {
+            "name": "no_stall_priority",
+            "description": "Prioritize instructions that avoid stalls",
+            "disable_flag": "disable-sched-stalls",
+            "default": true
+          },
+          {
+            "name": "physical_register_join_priority",
+            "description": "Prioritize physical register join optimization",
+            "disable_flag": "disable-sched-physreg-join"
+          }
+        ]
+      }
+    ]
+  },
+  "scheduling_passes": [
+    {
+      "pass_name": "Machine Instruction Scheduling (preRA)",
+      "control_flag": "enable-misched",
+      "default": true,
+      "description": "Enable the machine instruction scheduling pass (pre-register allocation)",
+      "timing": "Before register allocation",
+      "dag_used": true
+    },
+    {
+      "pass_name": "Post-RA Machine Instruction Scheduling",
+      "control_flag": "enable-post-misched",
+      "default": true,
+      "description": "Enable the post-ra machine instruction scheduling pass",
+      "timing": "After register allocation",
+      "dag_used": true,
+      "anti_dependency_breaking": {
+        "parameter": "break-anti-dependencies",
+        "default": "none",
+        "options": {
+          "none": "Disable anti-dependency breaking",
+          "critical": "Break anti-dependencies on critical path only",
+          "all": "Break all anti-dependencies"
+        }
+      }
+    }
+  ],
+  "critical_path_analysis": {
+    "enabled_by_default": true,
+    "control_flags": [
+      {
+        "flag": "disable-sched-critical-path",
+        "description": "Disable critical path priority in sched=list-ilp"
+      },
+      {
+        "flag": "print-sched-critical",
+        "description": "Print critical path length to stdout"
+      },
+      {
+        "flag": "enable-cyclic-critical-path",
+        "description": "Enable cyclic critical path analysis"
+      }
+    ],
+    "algorithm": "Computes longest path from each instruction to any leaf in DAG",
+    "priority_metric": "critical_height = maximum latency from instruction to any leaf",
+    "application": "Instructions on critical path receive highest scheduling priority"
+  },
+  "anti_dependency_breaking": {
+    "purpose": "Remove artificial serialization constraints to improve scheduling freedom",
+    "phases": {
+      "preRA": {
+        "enabled_by_default": false,
+        "mode": "Conservative - only break critical anti-dependencies"
+      },
+      "postRA": {
+        "enabled_by_default": false,
+        "parameter": "break-anti-dependencies",
+        "modes": {
+          "none": "No breaking",
+          "critical": "Break anti-deps on critical path",
+          "all": "Aggressive breaking of all anti-deps"
+        }
+      }
+    },
+    "aggressive_variant": {
+      "name": "Aggressive Anti-Dependency Breaker",
+      "control_flags": [
+        {
+          "flag": "agg-antidep-debugdiv",
+          "description": "Debug control for aggressive anti-dep breaker (division)",
+          "default": false
+        },
+        {
+          "flag": "agg-antidep-debugmod",
+          "description": "Debug control for aggressive anti-dep breaker (modulo)",
+          "default": false
+        }
+      ]
+    }
+  },
+  "recurrence_chain_analysis": {
+    "parameter": "recurrence-chain-limit",
+    "default_value": 3,
+    "description": "Maximum length of recurrence chain when evaluating the benefit of commuting operands",
+    "application": "Analyzes cyclic dependencies (recurrence cycles) for optimization opportunities",
+    "use_case": "Determines when to commute operands to break long recurrence chains"
+  },
+  "memory_dependency_analysis": {
+    "window_size_instructions": 100,
+    "window_size_blocks": 200,
+    "caching_candidates": true,
+    "cache_purpose": "Reduce compile time by caching dependency analysis",
+    "conservative_approach": "Assumes all loads/stores may alias unless proven otherwise",
+    "optimization": "Can disable deep analysis on functions with very large basic blocks"
+  },
+  "edge_weight_examples": {
+    "example_1": {
+      "description": "Simple register RAW dependency",
+      "producer": "ADD dest, src1, src2 (latency: 4 cycles)",
+      "consumer": "MUL result, dest, other (starts 0 cycles later)",
+      "edge_weight": 4,
+      "explanation": "Consumer must wait full 4-cycle latency of ADD"
+    },
+    "example_2": {
+      "description": "Short-latency instruction",
+      "producer": "MOV reg, immediate (latency: 1 cycle)",
+      "consumer": "ADD result, reg, other",
+      "edge_weight": 1,
+      "explanation": "MOV has minimal latency, consumer ready after 1 cycle"
+    },
+    "example_3": {
+      "description": "Long-latency instruction without itinerary",
+      "producer": "LOAD value, [memory] (estimated latency: 25 cycles)",
+      "consumer": "FADD result, value, other",
+      "edge_weight": 25,
+      "explanation": "Estimated at sched-high-latency-cycles default of 25"
+    },
+    "example_4": {
+      "description": "Anti-dependency serialization",
+      "producer": "READ reg (reads)",
+      "consumer": "WRITE reg (writes)",
+      "edge_weight": 1,
+      "notes": "Can be broken with break-anti-dependencies=all or critical",
+      "after_breaking": "Edge removed, allows speculative execution"
+    }
+  },
+  "dag_traversal": {
+    "algorithm": "Bottom-up list scheduling with priority queue",
+    "traversal_method": "Topological ordering from leaves to roots",
+    "initial_phase": "Optional: Do topological sort at the beginning of the pass (topo-sort-begin)",
+    "ready_instructions": "Instructions whose dependencies are all satisfied",
+    "ready_queue": "Priority queue ordered by scheduling priority metrics",
+    "priority_order": "critical_height > scheduled_height > register_pressure > live_use > no_stall",
+    "scheduling_unit": "Machine basic blocks (MBBs)"
+  },
+  "dag_node_structure": {
+    "note": "Reconstructed from configuration and control flags",
+    "per_instruction_node": {
+      "instruction": "Machine instruction reference",
+      "successors": "List of dependent instructions",
+      "predecessors": "List of dependencies",
+      "latency_to_leaves": "Critical height metric",
+      "register_pressure_delta": "Change in live register count if scheduled",
+      "position_in_schedule": "Assigned cycle or order"
+    }
+  },
+  "scheduling_metrics": {
+    "makespan": "Total cycles from first to last instruction",
+    "register_pressure": "Maximum number of live values at any point",
+    "instruction_level_parallelism": "Number of independent instructions that can execute concurrently",
+    "critical_path_length": "Longest latency path in the DAG"
+  },
+  "evidence_summary": {
+    "dag_construction_algorithm": "List scheduling with topological DAG",
+    "edge_types_confirmed": 5,
+    "edge_weight_formula_confirmed": true,
+    "scheduling_heuristics_count": 6,
+    "latency_sources": [
+      "InstrItineraryData (machine model)",
+      "sched-high-latency-cycles fallback (default 25)"
+    ],
+    "control_dependencies": "Handled conservatively",
+    "memory_dependencies": "Window-based analysis (100 instructions, 200 blocks)"
+  },
+  "key_findings": [
+    "Scheduler uses multi-phase DAG construction: topological sort → DAG build → weight computation → bottom-up list scheduling",
+    "Edge weights computed from source instruction latency obtained via InstrItineraryData or estimation",
+    "Critical path analysis drives primary scheduling priority, allowing limited lookahead (configurable)",
+    "Dual-stage scheduling: preRA for maximum performance, postRA with anti-dep breaking for register allocation",
+    "Six priority heuristics in list-ilp scheduler: critical path, height, register pressure, live use, no-stall, physreg join",
+    "Anti-dependencies are serialization constraints that can be optionally broken to improve scheduling freedom",
+    "Recurrence chains (cycles) analyzed up to 3 instructions deep by default",
+    "Conservative memory dependency analysis over window of 100 instructions and 200 blocks"
+  ]
+}

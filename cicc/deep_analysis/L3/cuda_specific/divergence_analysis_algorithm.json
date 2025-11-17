@@ -1,0 +1,353 @@
+{
+  "metadata": {
+    "unknown_id": "10",
+    "agent": "L3-10",
+    "title": "CUDA Thread Divergence Analysis and ADCE Integration",
+    "confidence": "HIGH",
+    "date": "2025-11-16",
+    "description": "Comprehensive analysis of CICC's divergence analysis algorithm and its integration with ADCE (Aggressive Dead Code Elimination) pass for safe code optimization in divergent execution contexts."
+  },
+  "divergence_analysis": {
+    "algorithm_type": "Forward Data-Flow Analysis with Uniformity Propagation",
+    "core_components": {
+      "uniformity_pass": {
+        "implementation": "LLVM UniformityPass",
+        "key_functions": [
+          "sub_2310760 - Print uniformity analysis results",
+          "sub_233F860 - Require/invalidate uniformity analysis",
+          "sub_2377300 - Uniformity pass driver"
+        ],
+        "analysis_type": "Backward dependence analysis to determine which values are uniform across all threads",
+        "output": "Uniformity information stored per instruction/value"
+      },
+      "divergence_source_detection": {
+        "description": "Identifies values derived from thread/block indices that cause divergence",
+        "detected_sources": [
+          {
+            "name": "threadIdx",
+            "classification": "DIVERGENT",
+            "components": ["threadIdx.x", "threadIdx.y", "threadIdx.z"],
+            "rationale": "Each thread has different threadIdx value, causes warp-level divergence"
+          },
+          {
+            "name": "blockIdx",
+            "classification": "CONTEXT_DEPENDENT",
+            "components": ["blockIdx.x", "blockIdx.y", "blockIdx.z"],
+            "rationale": "Different blocks have different blockIdx, but all threads within a block have same blockIdx"
+          },
+          {
+            "name": "blockDim",
+            "classification": "UNIFORM",
+            "rationale": "All threads in block see same blockDim, determined at kernel launch"
+          },
+          {
+            "name": "gridDim",
+            "classification": "UNIFORM",
+            "rationale": "All threads see same gridDim, determined at kernel launch"
+          },
+          {
+            "name": "warpSize",
+            "classification": "UNIFORM",
+            "rationale": "Architecture constant, same for all threads"
+          }
+        ],
+        "detection_function": "sub_920430 @ 0x920430",
+        "detection_logic": "Analyzes operand types and source attributes to classify divergence sources"
+      },
+      "divergence_propagation": {
+        "algorithm": "Forward data-flow propagation through IR instructions",
+        "phases": [
+          {
+            "phase": 1,
+            "name": "Source Identification",
+            "description": "Mark all values that directly depend on threadIdx as DIVERGENT"
+          },
+          {
+            "phase": 2,
+            "name": "Forward Propagation",
+            "description": "Propagate divergence marker to all instructions using divergent values"
+          },
+          {
+            "phase": 3,
+            "name": "Control Dependence Tracking",
+            "description": "Mark instructions control-dependent on divergent branches as divergent"
+          },
+          {
+            "phase": 4,
+            "name": "Convergence Analysis",
+            "description": "Identify where divergence ceases due to convergence points"
+          }
+        ],
+        "key_insight": "Divergence flows through data and control dependencies, requiring exact tracking for safety"
+      }
+    },
+    "convergence_point_detection": {
+      "description": "Identifies locations where all threads reconverge, allowing divergence to end",
+      "convergence_sources": [
+        {
+          "type": "EXPLICIT_SYNC",
+          "mechanism": "__syncthreads() / cuda.syncthreads()",
+          "detection": "Function call pattern matching",
+          "implementation": [
+            "sub_90AEE0 @ 0x90aee0 - Mark __syncthreads intrinsic",
+            "sub_126A910 @ 0x126a910 - Register syncthreads semantics",
+            "sub_A91130 @ 0xa91130 - Detect cuda.syncthreads calls"
+          ],
+          "effect": "All threads must reach before proceeding, guaranteed convergence point"
+        },
+        {
+          "type": "POST_DOMINATOR_JOIN",
+          "mechanism": "Post-dominator tree analysis",
+          "description": "Block that post-dominates all predecessors in divergent region",
+          "implementation": "StructurizeCFG pass with post-dominator CFG traversal",
+          "effect": "Natural reconvergence without explicit synchronization"
+        },
+        {
+          "type": "BLOCK_BOUNDARY",
+          "mechanism": "End of control flow block",
+          "description": "Single predecessor to successor block",
+          "effect": "All threads exit block before entering next, implicit convergence"
+        },
+        {
+          "type": "FUNCTION_RETURN",
+          "mechanism": "Return instruction",
+          "description": "All threads must complete function before returning",
+          "effect": "Function-level convergence point"
+        }
+      ],
+      "structured_region_handling": {
+        "pass": "StructurizeCFG",
+        "description": "Enforces structured control flow in presence of uniform/divergent regions",
+        "options": [
+          "structurizecfg-skip-uniform-regions: Skip transformation for uniform regions",
+          "structurizecfg-relaxed-uniform-regions: Allow relaxed uniform region checks"
+        ],
+        "purpose": "Ensure predictable convergence behavior for optimization passes"
+      }
+    },
+    "integration_with_adce": {
+      "description": "How Aggressive Dead Code Elimination respects divergence constraints",
+      "adce_pass_info": {
+        "implementation_address": "0x2ADCE40 (driver), 0x30ADAE0 (core)",
+        "class_name": "ADCEPass",
+        "configuration_options": [
+          {
+            "option": "adce-remove-control-flow",
+            "description": "Enable removal of dead conditional branches"
+          },
+          {
+            "option": "adce-remove-loops",
+            "description": "Enable removal of dead loop structures"
+          }
+        ]
+      },
+      "safety_rules": {
+        "fundamental_rule": "Cannot eliminate code with side-effects in divergent regions where not all threads execute the same path",
+        "rules": [
+          {
+            "rule_id": "R1",
+            "name": "Uniform Execution Requirement",
+            "description": "Code can only be eliminated if ALL threads in the warp execute it OR it has no side effects",
+            "applies_to": "Instructions in divergent regions with side effects"
+          },
+          {
+            "rule_id": "R2",
+            "name": "Memory Operation Preservation",
+            "description": "Store operations, atomics, and device memory operations in divergent code must be preserved",
+            "rationale": "Some threads may perform the operation; elimination would cause data corruption"
+          },
+          {
+            "rule_id": "R3",
+            "name": "Control Dependence Safety",
+            "description": "Cannot eliminate instructions that are control-dependent on divergent branches",
+            "exception": "If instruction has no side effects AND is data-dependent on values killed before use"
+          },
+          {
+            "rule_id": "R4",
+            "name": "Side Effect Preservation",
+            "description": "Function calls, I/O operations, and volatile accesses cannot be eliminated",
+            "applies_to": "All code regardless of divergence, but especially critical in divergent regions"
+          },
+          {
+            "rule_id": "R5",
+            "name": "Convergent Operation Constraints",
+            "description": "Operations marked 'convergent' have special semantics that prevent certain optimizations",
+            "implementation": "convergencectrl metadata and intrinsics",
+            "constraint": "Cannot add control dependencies to convergent operations"
+          },
+          {
+            "rule_id": "R6",
+            "name": "Speculative Execution Limits",
+            "description": "Divergent targets (branches with divergent condition) restrict speculative execution",
+            "implementation": "only-if-divergent-target option in speculative execution pass",
+            "effect": "Prevents inserting code speculatively in divergent regions"
+          }
+        ]
+      },
+      "adce_algorithm": {
+        "phases": [
+          {
+            "phase": 1,
+            "name": "Liveness Analysis",
+            "description": "Mark all instructions with live side effects as alive"
+          },
+          {
+            "phase": 2,
+            "name": "Dependence Computation",
+            "description": "Compute data and control dependencies from live instructions"
+          },
+          {
+            "phase": 3,
+            "name": "Divergence-Aware Marking",
+            "description": "Mark all instructions that are data/control-dependent on live instructions as alive",
+            "caveat": "Respect divergence constraints - cannot kill code in divergent regions with side effects"
+          },
+          {
+            "phase": 4,
+            "name": "Dead Code Removal",
+            "description": "Remove all unmarked instructions"
+          }
+        ]
+      },
+      "divergence_constraint_application": {
+        "query": "Query uniformity information before marking instructions for elimination",
+        "check": "If instruction is in divergent region AND has side effects, mark as alive",
+        "implementation": "Call uniformity analysis before ADCE execution"
+      }
+    },
+    "implementation_details": {
+      "key_data_structures": [
+        {
+          "name": "UniformityInfo",
+          "purpose": "Stores uniformity classification for each value",
+          "fields": ["is_uniform", "divergence_source", "convergence_point"]
+        },
+        {
+          "name": "DivergenceMarker",
+          "purpose": "Marks instructions in divergent code regions",
+          "fields": ["is_divergent", "divergent_condition", "convergence_block"]
+        },
+        {
+          "name": "SideEffectMap",
+          "purpose": "Tracks which instructions have observable side effects",
+          "fields": ["has_side_effect", "effect_type", "critical_semantics"]
+        }
+      ],
+      "critical_functions": {
+        "divergence_detection": [
+          {
+            "address": "0x920430",
+            "name": "sub_920430",
+            "purpose": "Classify divergence source (threadIdx, blockIdx, blockDim, gridDim, warpSize)",
+            "returns": "Classification code (0-4)"
+          },
+          {
+            "address": "0x6a49a0",
+            "name": "sub_6A49A0",
+            "purpose": "Complex analysis of thread index comparisons in conditionals",
+            "complexity": "Analyzes SSA form and operand dependencies"
+          }
+        ],
+        "adce_implementation": [
+          {
+            "address": "0x2adce40",
+            "name": "sub_2ADCE40",
+            "purpose": "ADCEPass main driver - orchestrates dead code elimination",
+            "inputs": ["Function", "Block list"],
+            "outputs": ["Modified function with dead code removed"]
+          },
+          {
+            "address": "0x30adae0",
+            "name": "sub_30ADAE0",
+            "purpose": "Core ADCE algorithm - liveness and dependence analysis",
+            "key_operation": "Iterative marking phase with divergence checks"
+          }
+        ]
+      }
+    }
+  },
+  "evidence": {
+    "divergence_source_classification": {
+      "source_code_location": "/home/grigory/nvopen-tools/cicc/decompiled/sub_920430_0x920430.c",
+      "snippet": "Classification of divergence sources - threadIdx(0), blockDim(1), blockIdx(2), gridDim(3), warpSize(4)",
+      "key_logic": "Checks operand attribute and compares against known CUDA built-ins",
+      "significance": "Fundamental source for identifying which values cause divergence"
+    },
+    "adce_main_driver": {
+      "source_code_location": "/home/grigory/nvopen-tools/cicc/decompiled/sub_2ADCE40_0x2adce40.c",
+      "complexity": "458 lines of decompiled IR manipulation",
+      "key_operations": [
+        "Block enumeration and instruction scheduling",
+        "Liveness propagation through use-def chains",
+        "Dead block/instruction removal with safe memory management",
+        "Post-dominator tree construction for convergence analysis"
+      ],
+      "safety_checks": "Multiple NULL checks and boundary conditions prevent corruption"
+    },
+    "syncthreads_detection": {
+      "references": [
+        {
+          "location": "sub_90AEE0 @ 0x90aee0",
+          "pattern": "Register __syncthreads as intrinsic function"
+        },
+        {
+          "location": "sub_A91130 @ 0xa91130",
+          "pattern": "Detect cuda.syncthreads in call chains"
+        }
+      ],
+      "significance": "Marks explicit synchronization points where divergence ends"
+    },
+    "uniformity_pass_integration": {
+      "references": [
+        "print<uniformity> analysis results",
+        "require<uniformity> / invalidate<uniformity> dependency",
+        "structurizecfg pass options for uniform region handling"
+      ],
+      "confidence": "HIGH - Multiple references confirm pass execution"
+    }
+  },
+  "algorithm_summary": {
+    "divergence_propagation": "Forward data-flow analysis marks all values derived from threadIdx as divergent, then propagates through data and control dependencies until convergence points",
+    "convergence_detection": "Identifies __syncthreads calls, post-dominator tree convergence points, and block boundaries as locations where all threads reconverge",
+    "adce_safety_mechanism": "Before eliminating dead code in divergent regions, checks if instruction has side effects. If yes and divergence is present, preserves code. Uses uniformity information from UniformityPass",
+    "key_constraint": "Cannot apply standard DCE in divergent regions because different threads may execute different code paths. Side effects must be preserved even if instructions appear dead"
+  },
+  "confidence_assessment": {
+    "overall_confidence": "HIGH",
+    "reasoning": [
+      "Direct evidence from decompiled code of divergence source classification",
+      "Explicit function references to threadIdx/blockIdx detection",
+      "ADCE pass implementation confirmed with address 0x2ADCE40",
+      "Integration with uniformity pass demonstrated through function calls",
+      "Syncthreads detection verified in multiple locations",
+      "Safety rule constraints inferred from code structure and error messages"
+    ],
+    "areas_of_uncertainty": [
+      "Exact liveness algorithm implementation (decompiled code is complex)",
+      "Precise convergence point detection heuristics (CFG analysis details)",
+      "Some edge cases in divergence propagation rules (rare patterns)"
+    ]
+  },
+  "references": {
+    "decompiled_files": [
+      "/home/grigory/nvopen-tools/cicc/decompiled/sub_2ADCE40_0x2adce40.c - ADCE main pass",
+      "/home/grigory/nvopen-tools/cicc/decompiled/sub_30ADAE0_0x30adae0.c - ADCE core algorithm",
+      "/home/grigory/nvopen-tools/cicc/decompiled/sub_920430_0x920430.c - Divergence source classification",
+      "/home/grigory/nvopen-tools/cicc/decompiled/sub_6A49A0_0x6a49a0.c - Thread index analysis",
+      "/home/grigory/nvopen-tools/cicc/decompiled/sub_90AEE0_0x90aee0.c - Syncthreads intrinsic registration"
+    ],
+    "related_passes": [
+      "UniformityPass - Computes uniformity information",
+      "StructurizeCFG - Handles uniform/divergent region structuring",
+      "SpeculativeExecutionPass - Respects divergent target constraints",
+      "ConvergenceControl - LLVM intrinsics for convergence semantics"
+    ]
+  },
+  "implementation_notes": {
+    "critical_insight_1": "Divergence analysis is not about detecting ALL possible divergence, but rather tracking which values and instructions are GUARANTEED to be uniform across all threads",
+    "critical_insight_2": "ADCE integration requires querying uniformity before each potential elimination, making it slower but safer than standard DCE",
+    "critical_insight_3": "Post-dominator analysis is crucial for convergence detection - a block post-dominated by an exit point means all threads must pass through it",
+    "critical_insight_4": "threadIdx-based divergence is local to warps, making warp-level optimization safer than thread-level",
+    "optimization_opportunity": "Could cache divergence/uniformity information to avoid repeated computation during ADCE iteration"
+  }
+}

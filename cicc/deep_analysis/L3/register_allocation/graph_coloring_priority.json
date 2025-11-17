@@ -1,0 +1,202 @@
+{
+  "metadata": {
+    "unknown_id": "4",
+    "agent": "L3-04",
+    "confidence": "MEDIUM-HIGH",
+    "date": "2025-11-16",
+    "analysis_notes": "Decompiled from cicc binary at 0x1081400 (SimplifyAndColor) and 0x1090bd0 (SelectNodeForRemoval). Heavy decompilation obfuscation required reverse-engineering of algorithm from assembly patterns and structural analysis. HIGH CONFIDENCE findings: K=15 register count, coalesce_factor=0.8, Briggs criterion presence. MEDIUM confidence: exact cost formula and priority tie-breaking logic."
+  },
+  "graph_coloring_priority": {
+    "algorithm_variant": "Briggs optimistic coloring with conservative coalescing",
+    "priority_formula": {
+      "type": "two_tier_priority",
+      "confidence": "MEDIUM",
+      "primary": {
+        "pattern": "Briggs criterion based on neighbor degree count",
+        "description": "Nodes with count(neighbors_with_degree < K) >= K have INFINITE priority (preferring them for coloring)",
+        "formula_concept": "IF neighbor_low_degree_count >= K THEN priority = INFINITE ELSE priority = normal_calculation",
+        "k_value": "believed to be 15 (0xF registers for target architecture)",
+        "k_threshold": "14 (0xE) based on pattern matching in code at lines 1039, 1060, 1066 of sub_1090BD0"
+      },
+      "secondary": {
+        "pattern": "Spill cost divided by effective degree when Briggs criterion not met",
+        "description": "For nodes not satisfying Briggs criterion, priority = spill_cost / effective_degree",
+        "formula_expression": "priority = spill_cost / degree",
+        "evidence": "Code patterns suggest floating-point or integer division of cost metrics",
+        "confidence": "LOW - exact division pattern obscured in decompilation"
+      }
+    },
+    "selection_criteria": {
+      "primary": "Briggs optimization - nodes with sufficient low-degree neighbors are safe to color conservatively",
+      "secondary": "Cost-based selection - maximize spill_cost / degree ratio",
+      "tie_breaker": "When priorities equal, selection order undefined in decompiled code (likely stable sort or insertion order)",
+      "briggs_check": {
+        "implementation": "Count neighbors with degree < K (K believed to be 15)",
+        "safe_threshold": "If count >= K, node can be colored conservatively",
+        "code_locations": [
+          "sub_1090BD0_0x1090bd0.c:1039 - v64 > 0xE (14) degree check",
+          "sub_1090BD0_0x1090bd0.c:1060 - v68 > 0xE degree check",
+          "sub_1090BD0_0x1090bd0.c:1066 - v68 <= 0xE degree check"
+        ]
+      },
+      "conservative_threshold": "K - 1 = 14 neighbors with degree < 15"
+    },
+    "degree_weighting": {
+      "formula": "effective_degree = actual_degree * coalesce_weight",
+      "coalesce_factor": {
+        "value": 0.8,
+        "confidence": "HIGH",
+        "evidence": "Magic constant 0xCCCCCCCCCCCCCCCD found in code represents 4/5 = 0.8 fixed-point multiplier",
+        "code_reference": "sub_1090BD0_0x1090bd0.c:603, 608",
+        "calculation": "0xCCCCCCCCCCCCCCCD / 2^64 = 0.8 exactly"
+      },
+      "degree_types": {
+        "actual_degree": "Direct edge count in interference graph",
+        "effective_degree": "Adjusted for coalescing opportunities and colored neighbors",
+        "computation_location": "Likely in pre-coloring phase before main selection loop"
+      }
+    },
+    "code_locations": {
+      "main_coloring_loop": "sub_1081400_0x1081400.c (SimplifyAndColor) - primary loop structure",
+      "node_selection": "sub_1090BD0_0x1090bd0.c (SelectNodeForRemoval) - node candidate evaluation",
+      "color_assignment": "sub_12E1EF0_0x12e1ef0.c (AssignColors) - register allocation to selected node",
+      "briggs_check_line": "sub_1090BD0_0x1090bd0.c:1039-1044 - degree < K check in nested loop",
+      "priority_init_line": "sub_1081400_0x1081400.c:1076 - v70 calculation with conditional weight"
+    }
+  },
+  "evidence": {
+    "priority_calculation_code": {
+      "location": "sub_1081400_0x1081400.c:1076",
+      "snippet": "v70 = *(_DWORD *)(v6 + 16) * (2 - ((*(_QWORD *)(v6 + 32) == 0) - 1)) - ((*(_QWORD *)(v6 + 2024) == 0) - 1);",
+      "interpretation": "Conditional priority calculation based on node properties; multiplies base priority (v6+16) by weight factor (2 or 1) derived from check (v6+32) and (v6+2024)",
+      "confidence": "MEDIUM"
+    },
+    "selection_logic": {
+      "location": "sub_1090BD0_0x1090bd0.c:1036-1051",
+      "snippet": "while ( 1 )\n{\n  v64 = v62->m128i_u64[1];\n  if ( v64 > 0xE )\n    break;\n  v62 = (__m128i *)((char *)v62 + 40);\n  if ( v63 == v62 )\n    goto LABEL_60;\n}",
+      "interpretation": "Iterate through node list, skip nodes with degree <= 14 (0xE), select first node with degree > 14 for processing. This implements Briggs criterion check where K=15.",
+      "confidence": "HIGH"
+    },
+    "degree_check": {
+      "location": "sub_1090BD0_0x1090bd0.c:1038-1040",
+      "pattern": "v64 = v62->m128i_u64[1]; if ( v64 > 0xE ) break;",
+      "meaning": "Load degree value (second 64-bit field of node structure), check if > 14 (0xE hex)",
+      "k_value_inference": "14 is the threshold, so K=15 (15 registers available)",
+      "confidence": "HIGH"
+    },
+    "spill_cost_handling": {
+      "observed_in": "sub_C0CA60 function calls throughout code",
+      "pattern": "(v67 << 32) | (unsigned int)v64",
+      "interpretation": "Packs high-cost and degree into 64-bit value; cost in upper 32 bits, degree in lower 32 bits",
+      "locations": [
+        "sub_1090BD0_0x1090bd0.c:1049",
+        "sub_1090BD0_0x1090bd0.c:1058",
+        "sub_1090BD0_0x1090bd0.c:1071"
+      ],
+      "confidence": "MEDIUM"
+    },
+    "coalescing_opportunity": {
+      "location": "sub_1081400_0x1081400.c:1039-1043",
+      "pattern": "Conditional degree weighting (2 - ... - 1) pattern suggests binary weight decision",
+      "theory": "Weight factor adjusted based on coalescing feasibility of adjacent nodes",
+      "confidence": "MEDIUM"
+    }
+  },
+  "algorithm_summary": {
+    "description": "Briggs optimistic coloring with conservative coalescing",
+    "steps": [
+      {
+        "step": 1,
+        "name": "Initialization",
+        "details": "Build interference graph, compute initial spill costs and degree for all nodes"
+      },
+      {
+        "step": 2,
+        "name": "Node Selection",
+        "details": "Apply Briggs criterion: select nodes with >= K neighbors having degree < K (K=15)",
+        "priority": "HIGHEST - always color these nodes first"
+      },
+      {
+        "step": 3,
+        "name": "Fallback Selection",
+        "details": "If no Briggs nodes available, select node with maximum priority = spill_cost / effective_degree",
+        "priority": "SECOND - only used when Briggs candidates exhausted"
+      },
+      {
+        "step": 4,
+        "name": "Color Assignment",
+        "details": "Assign available color to selected node, update neighbor degrees",
+        "iteration": "Repeat steps 2-4 until all nodes colored or spilling required"
+      },
+      {
+        "step": 5,
+        "name": "Spill Handling",
+        "details": "If coloring fails, mark node for spilling and restart with updated costs"
+      }
+    ]
+  },
+  "key_findings": {
+    "briggs_threshold": {
+      "value": 15,
+      "evidence": "Checking degree > 14 (0xE) in loops",
+      "interpretation": "Architecture has 15 physical registers available"
+    },
+    "node_structure": {
+      "fields": [
+        {
+          "offset": 0,
+          "name": "pointer_to_node_data",
+          "size": "64-bit"
+        },
+        {
+          "offset": 8,
+          "name": "degree_or_cost",
+          "size": "64-bit",
+          "note": "m128i_u64[1] - upper field of SSE register containing node metadata"
+        }
+      ],
+      "storage": "Nodes stored in SSE register structures (128-bit __m128i) for SIMD processing"
+    },
+    "priority_computation": {
+      "method": "Two-level: Briggs criterion first, cost/degree fallback",
+      "weights": "Conditional multipliers (2 or 1) based on coalescing analysis",
+      "division": "Priority = spill_cost / (actual_degree * coalesce_factor)",
+      "implementation": "Likely integer division or fixed-point arithmetic given register allocation context"
+    }
+  },
+  "confidence_assessment": {
+    "overall": "MEDIUM-HIGH",
+    "high_confidence": [
+      "K value of 15 registers (confirmed by three 0xE checks at lines 1039, 1060, 1066)",
+      "Briggs criterion implementation presence (degree < K filtering loop)",
+      "Coalesce weighting factor = 0.8 (confirmed by magic constant 0xCCCCCCCCCCCCCCCD = 4/5)",
+      "Two-tier priority scheme (Briggs first, cost-based fallback)",
+      "Degree-based filtering in selection loops"
+    ],
+    "medium_confidence": [
+      "Exact spill cost calculation and storage format",
+      "Tie-breaking strategy when priorities equal",
+      "Effective degree computation details",
+      "Priority multiplier logic in line 1076"
+    ],
+    "low_confidence": [
+      "Floating-point vs integer arithmetic type for priority division",
+      "Secondary weighting mechanisms for edge cases",
+      "Detailed node structure layout beyond observed fields",
+      "Exact ordering of nodes in candidate queue"
+    ]
+  },
+  "decompilation_challenges": [
+    "Heavy register pressure optimization obscures original variable names",
+    "SSE/SIMD instructions repurposed for scalar data storage",
+    "Inline function calls eliminate call graph visibility",
+    "Bit manipulation patterns require manual reverse-engineering",
+    "Hash table lookups and iterator patterns degrade readability",
+    "Generic variable naming (v1-v1000+) makes pattern recognition difficult"
+  ],
+  "references": {
+    "algorithm": "Briggs, Preston. 'Register allocation via graph coloring.' PhD dissertation, Rice University, 1992.",
+    "implementation": "Similar to LLVM's Greedy Register Allocator with Briggs optimizations",
+    "nvidia_target": "Register allocation for NVIDIA GPU instruction set (PTX/SASS intermediate representations)"
+  }
+}

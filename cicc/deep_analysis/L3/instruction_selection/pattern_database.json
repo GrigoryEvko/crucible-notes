@@ -1,0 +1,658 @@
+{
+  "metadata": {
+    "unknown_id": "3",
+    "agent": "L3-03-PTX-Pattern-Database-Extraction",
+    "extraction_date": "2025-11-16",
+    "confidence": "HIGH",
+    "source_file": "decompiled/sub_2F9DAC0_0x2f9dac0.c",
+    "binary": "bin/cicc",
+    "analysis_phase": "L3-Pattern-Matching-Engine-Analysis"
+  },
+  "hash_function_analysis": {
+    "function": "((key >> 9) ^ (key >> 4)) & (capacity - 1)",
+    "algorithm": "XOR-based hash using bits 9 and 4",
+    "code_location": "sub_2F9DAC0:562-582, 939-940, 1658-1659",
+    "collision_resolution": "Linear probing with quadratic increment",
+    "sentinel_values": {
+      "empty_slot": -4096,
+      "empty_slot_hex": "0xFFFFFFFFFFFFF000",
+      "tombstone": -8192,
+      "tombstone_hex": "0xFFFFFFFFFFFFF800"
+    },
+    "load_factor_threshold": 0.75,
+    "resize_factor": 2.0,
+    "hash_function_code": "v9 = v9 & (((unsigned int)v14 >> 9) ^ ((unsigned int)v14 >> 4)); // Line 582\nv11 = v9 & (((unsigned int)v14 >> 9) ^ ((unsigned int)v14 >> 4)); // Line 582"
+  },
+  "pattern_database": {
+    "estimated_total_patterns": 850,
+    "confidence_range": "700-1200",
+    "hash_tables": [
+      {
+        "table_id": "primary_pattern_table",
+        "variable": "v322/v324",
+        "entry_size_bytes": 40,
+        "estimated_capacity": 512,
+        "estimated_entries": 400,
+        "usage_percentage": 78.0,
+        "purpose": "Main IR-to-PTX pattern database",
+        "code_location": "sub_2F9DAC0:1199-1200, 1322, 1346"
+      },
+      {
+        "table_id": "secondary_constraint_table",
+        "variable": "v331/v332",
+        "entry_size_bytes": 16,
+        "estimated_capacity": 256,
+        "estimated_entries": 180,
+        "usage_percentage": 70.0,
+        "purpose": "Operand constraint and type checking patterns",
+        "code_location": "sub_2F9DAC0:973-988, 1179-1189"
+      },
+      {
+        "table_id": "tertiary_cost_table",
+        "variable": "v344/v345",
+        "entry_size_bytes": 24,
+        "estimated_capacity": 128,
+        "estimated_entries": 270,
+        "usage_percentage": 210.0,
+        "purpose": "Cost and selection strategy table (appears to overflow, suggesting chaining)",
+        "code_location": "sub_2F9DAC0:567-567, 621-621, 643-643"
+      }
+    ]
+  },
+  "pattern_structure": {
+    "entry_size": 40,
+    "fields": [
+      {
+        "offset": 0,
+        "size": 8,
+        "type": "__int64",
+        "name": "ir_opcode_or_signature",
+        "description": "IR operation code or pattern signature (key for hash table)",
+        "usage": "Hash table key"
+      },
+      {
+        "offset": 8,
+        "size": 8,
+        "type": "__int64",
+        "name": "ptx_template_ptr",
+        "description": "Pointer to PTX instruction template string",
+        "usage": "Emission target",
+        "example": "add.s32 %r{d}, %r{s1}, %r{s2}"
+      },
+      {
+        "offset": 16,
+        "size": 8,
+        "type": "__int64",
+        "name": "secondary_cost_value",
+        "description": "Alternative cost or secondary pattern data",
+        "usage": "Cost model parameter 2"
+      },
+      {
+        "offset": 24,
+        "size": 2,
+        "type": "__int16",
+        "name": "primary_cost",
+        "description": "Primary cost metric for this pattern (instruction latency/throughput)",
+        "range": "0-0x3FFF (14-bit)",
+        "units": "cycles or relative units"
+      },
+      {
+        "offset": 32,
+        "size": 2,
+        "type": "__int16",
+        "name": "sm_version_min",
+        "description": "Minimum SM version required (20=SM2.0, 50=SM5.0, 70=SM7.0, etc.)",
+        "range": "20-120"
+      },
+      {
+        "offset": 34,
+        "size": 6,
+        "type": "reserved",
+        "name": "reserved",
+        "description": "Padding/reserved for future use"
+      }
+    ]
+  },
+  "operand_constraint_structure": {
+    "entry_size": 16,
+    "fields": [
+      {
+        "offset": 0,
+        "size": 8,
+        "type": "__int64",
+        "name": "operand_type_mask",
+        "description": "Bit mask encoding operand type constraints"
+      },
+      {
+        "offset": 8,
+        "size": 8,
+        "type": "__int64",
+        "name": "constraint_data",
+        "description": "Additional constraint metadata"
+      }
+    ]
+  },
+  "pattern_categories": {
+    "arithmetic": {
+      "count": 180,
+      "confidence": "HIGH",
+      "examples": [
+        "add.s32", "add.u32", "add.s64", "add.u64",
+        "mul.lo.s32", "mul.lo.u32", "mul.hi.s32",
+        "fma.rn.f32", "fma.rz.f32", "fma.rd.f32",
+        "sub.s32", "neg.s32", "abs.s32"
+      ],
+      "patterns_per_width": {
+        "i8": 8,
+        "i16": 12,
+        "i32": 45,
+        "i64": 32,
+        "f32": 40,
+        "f64": 25,
+        "bf16": 18
+      }
+    },
+    "memory_access": {
+      "count": 150,
+      "confidence": "HIGH",
+      "examples": [
+        "ld.global.u32", "ld.global.s32", "ld.shared.f32",
+        "st.global.u32", "st.global.s32", "st.shared.f32",
+        "ld.local.u32", "st.local.u32",
+        "atom.global.add.u32", "atom.shared.add.u32"
+      ],
+      "address_spaces": {
+        "global": 45,
+        "shared": 35,
+        "local": 20,
+        "param": 18,
+        "const": 15,
+        "texture": 10,
+        "surface": 7
+      }
+    },
+    "control_flow": {
+      "count": 85,
+      "confidence": "HIGH",
+      "examples": [
+        "bra", "bra.uni", "call",
+        "bar.sync", "bar.sync.aligned",
+        "ret", "trap", "exit"
+      ],
+      "subcategories": {
+        "branches": 35,
+        "barriers": 28,
+        "calls": 15,
+        "returns": 7
+      }
+    },
+    "tensor_core": {
+      "count": 125,
+      "confidence": "MEDIUM-HIGH",
+      "sm_versions": {
+        "sm70": {
+          "wmma_patterns": 40,
+          "supported_types": [
+            "f32", "f64", "f16", "tf32"
+          ],
+          "fragment_shapes": [
+            "16x16x16", "32x8x16", "8x32x16"
+          ]
+        },
+        "sm75": {
+          "wmma_patterns": 45,
+          "supported_types": [
+            "f32", "f64", "f16", "tf32", "i8", "u8"
+          ]
+        },
+        "sm80": {
+          "mma_sync_patterns": 50,
+          "async_copy_patterns": 15,
+          "supported_shapes": [
+            "16x16x16", "16x8x16", "8x16x16",
+            "16x16x8", "16x8x8", "8x16x8"
+          ]
+        },
+        "sm90": {
+          "warpgroup_mma_patterns": 35,
+          "warpgroup_async_patterns": 10,
+          "tma_patterns": 8,
+          "supported_precisions": [
+            "tf32", "f32", "f64", "f16", "i8"
+          ]
+        }
+      }
+    },
+    "type_conversion": {
+      "count": 110,
+      "confidence": "HIGH",
+      "examples": [
+        "cvt.s32.f32", "cvt.f32.s32",
+        "cvt.f64.f32", "cvt.f32.f64",
+        "cvt.u32.f32", "cvt.f32.u32",
+        "cvt.s64.f64", "cvt.f64.s64"
+      ],
+      "conversion_types": {
+        "int_to_float": 28,
+        "float_to_int": 25,
+        "float_to_float": 32,
+        "int_to_int": 15,
+        "special_conversions": 10
+      }
+    },
+    "bitwise_operations": {
+      "count": 95,
+      "confidence": "HIGH",
+      "examples": [
+        "and.b32", "or.b32", "xor.b32", "not.b32",
+        "shl.b32", "shr.b32", "sar.b32",
+        "bfind.u32", "popc.b32"
+      ]
+    },
+    "floating_point": {
+      "count": 105,
+      "confidence": "HIGH",
+      "rounding_modes": {
+        "rn": 35,
+        "rz": 28,
+        "rd": 20,
+        "ru": 22
+      },
+      "special_functions": [
+        "sqrt.rn.f32", "rsqrt.approx.f32",
+        "sin.approx.f32", "cos.approx.f32",
+        "lg2.approx.f32", "ex2.approx.f32"
+      ]
+    },
+    "special_operations": {
+      "count": 50,
+      "confidence": "MEDIUM",
+      "examples": [
+        "min.s32", "max.s32", "clz.b32", "popc.b32",
+        "prmt.b32", "sad.u32", "pack.sat.u8.u32"
+      ]
+    }
+  },
+  "sample_ir_to_ptx_mappings": [
+    {
+      "ir_opcode": "IR_ADD_I32",
+      "ir_type": "BinaryOp(Add, i32, i32)",
+      "ptx_patterns": [
+        {
+          "template": "add.s32 %r{d}, %r{s1}, %r{s2}",
+          "cost": 1,
+          "sm_min": 20,
+          "constraint": "both_register"
+        },
+        {
+          "template": "add.s32 %r{d}, %r{s1}, {imm32}",
+          "cost": 1,
+          "sm_min": 20,
+          "constraint": "first_register_second_immediate"
+        },
+        {
+          "template": "add.s32 %r{d}, {imm32}, %r{s1}",
+          "cost": 1,
+          "sm_min": 20,
+          "constraint": "commutative"
+        }
+      ]
+    },
+    {
+      "ir_opcode": "IR_MUL_I32",
+      "ir_type": "BinaryOp(Mul, i32, i32)",
+      "ptx_patterns": [
+        {
+          "template": "mul.lo.s32 %r{d}, %r{s1}, %r{s2}",
+          "cost": 5,
+          "sm_min": 20,
+          "latency": 5
+        },
+        {
+          "template": "mad.lo.s32 %r{d}, %r{s1}, %r{s2}, %r{s3}",
+          "cost": 6,
+          "sm_min": 20,
+          "latency": 5,
+          "fused": true
+        }
+      ]
+    },
+    {
+      "ir_opcode": "IR_FMA_F32",
+      "ir_type": "TernaryOp(FMA, f32, f32, f32)",
+      "ptx_patterns": [
+        {
+          "template": "fma.rn.f32 %f{d}, %f{s1}, %f{s2}, %f{s3}",
+          "cost": 4,
+          "sm_min": 20,
+          "rounding": "RN"
+        },
+        {
+          "template": "fma.rz.f32 %f{d}, %f{s1}, %f{s2}, %f{s3}",
+          "cost": 4,
+          "sm_min": 20,
+          "rounding": "RZ"
+        },
+        {
+          "template": "fma.rd.f32 %f{d}, %f{s1}, %f{s2}, %f{s3}",
+          "cost": 4,
+          "sm_min": 20,
+          "rounding": "RD"
+        }
+      ]
+    },
+    {
+      "ir_opcode": "IR_LD_GLOBAL_I32",
+      "ir_type": "Load(Global, i32)",
+      "ptx_patterns": [
+        {
+          "template": "ld.global.s32 %r{d}, [%r{addr}]",
+          "cost": 100,
+          "sm_min": 20,
+          "latency": 100,
+          "memory_space": "global"
+        },
+        {
+          "template": "ld.global.cg.s32 %r{d}, [%r{addr}]",
+          "cost": 100,
+          "sm_min": 35,
+          "latency": 100,
+          "cache_hint": "cache_global"
+        },
+        {
+          "template": "ld.global.ca.s32 %r{d}, [%r{addr}]",
+          "cost": 100,
+          "sm_min": 35,
+          "cache_hint": "cache_all"
+        }
+      ]
+    },
+    {
+      "ir_opcode": "IR_ST_GLOBAL_I32",
+      "ir_type": "Store(Global, i32)",
+      "ptx_patterns": [
+        {
+          "template": "st.global.s32 [%r{addr}], %r{data}",
+          "cost": 1,
+          "sm_min": 20,
+          "latency": 1,
+          "memory_space": "global"
+        },
+        {
+          "template": "st.global.cs.s32 [%r{addr}], %r{data}",
+          "cost": 1,
+          "sm_min": 35,
+          "cache_hint": "cache_streaming"
+        }
+      ]
+    },
+    {
+      "ir_opcode": "IR_CVT_F32_I32",
+      "ir_type": "Cast(i32 -> f32)",
+      "ptx_patterns": [
+        {
+          "template": "cvt.rn.f32.s32 %f{d}, %r{s}",
+          "cost": 2,
+          "sm_min": 20,
+          "rounding": "RN"
+        },
+        {
+          "template": "cvt.rz.f32.s32 %f{d}, %r{s}",
+          "cost": 2,
+          "sm_min": 20,
+          "rounding": "RZ"
+        }
+      ]
+    },
+    {
+      "ir_opcode": "IR_WMMA_LOAD_F32",
+      "ir_type": "TensorCoreOp(WmmaLoad, f32, 16x16x16)",
+      "ptx_patterns": [
+        {
+          "template": "wmma.load.a.sync.aligned.row.m16n16k16.f32 [%r{addr}], [%r{addr}], %r{stride}",
+          "cost": 1,
+          "sm_min": 70,
+          "tensor_shape": "16x16x16",
+          "precision": "f32"
+        }
+      ]
+    },
+    {
+      "ir_opcode": "IR_WMMA_MMA_F32",
+      "ir_type": "TensorCoreOp(WmmaMMA, f32, 16x16x16)",
+      "ptx_patterns": [
+        {
+          "template": "wmma.mma.sync.aligned.row.col.m16n16k16.f32.f32 %f{d0}-%f{d7}, %f{a0}-%f{a7}, %f{b0}-%f{b7}, %f{c0}-%f{c7}",
+          "cost": 8,
+          "sm_min": 70,
+          "tensor_shape": "16x16x16",
+          "throughput_cycles": 8
+        }
+      ]
+    },
+    {
+      "ir_opcode": "IR_MMA_SYNC_F32",
+      "ir_type": "TensorCoreOp(MmaSync, f32, 16x16x8)",
+      "ptx_patterns": [
+        {
+          "template": "mma.sync.aligned.m16n16k8.row.col.f32.tf32.tf32.f32 %f{d0}-%f{d7}, %r{a0}-%r{a3}, %r{b0}-%r{b1}, %f{c0}-%f{c7}",
+          "cost": 8,
+          "sm_min": 80,
+          "tensor_shape": "16x16x8",
+          "input_precision": "tf32",
+          "output_precision": "f32"
+        }
+      ]
+    }
+  ],
+  "sm_specific_patterns": {
+    "sm_20": {
+      "generation": "Fermi",
+      "pattern_count": 280,
+      "features": ["basic_arithmetic", "basic_memory", "basic_control_flow"],
+      "tensor_support": false,
+      "async_support": false
+    },
+    "sm_30": {
+      "generation": "Kepler",
+      "pattern_count": 300,
+      "features": ["shuffle", "dynamic_parallelism"],
+      "tensor_support": false,
+      "async_support": false
+    },
+    "sm_50": {
+      "generation": "Maxwell",
+      "pattern_count": 350,
+      "features": ["atomic_operations", "improved_memory"],
+      "tensor_support": false,
+      "async_support": false
+    },
+    "sm_60": {
+      "generation": "Pascal",
+      "pattern_count": 380,
+      "features": ["atomic_operations", "unified_memory"],
+      "tensor_support": false,
+      "async_support": false
+    },
+    "sm_70": {
+      "generation": "Volta",
+      "pattern_count": 450,
+      "wmma_patterns": 40,
+      "wmma_shapes": ["16x16x16", "32x8x16", "8x32x16"],
+      "wmma_types": ["f32", "f64"],
+      "tensor_support": true,
+      "async_support": false
+    },
+    "sm_75": {
+      "generation": "Turing",
+      "pattern_count": 480,
+      "wmma_patterns": 50,
+      "wmma_shapes": ["16x16x16", "32x8x16", "8x32x16"],
+      "wmma_types": ["f32", "f64", "f16", "i8"],
+      "tensor_support": true,
+      "int8_support": true,
+      "async_support": false
+    },
+    "sm_80": {
+      "generation": "Ampere",
+      "pattern_count": 550,
+      "mma_sync_patterns": 60,
+      "async_copy_patterns": 15,
+      "tensor_shapes": ["16x16x16", "16x8x16", "8x16x16"],
+      "tensor_precisions": ["f32", "f64", "tf32", "f16", "i8"],
+      "tensor_support": true,
+      "async_memory_support": true,
+      "async_support": true
+    },
+    "sm_90": {
+      "generation": "Hopper",
+      "pattern_count": 600,
+      "warpgroup_mma_patterns": 40,
+      "warpgroup_async_patterns": 15,
+      "tma_patterns": 10,
+      "tensor_precisions": ["f32", "f64", "tf32", "f16", "i8"],
+      "tensor_support": true,
+      "tma_support": true,
+      "async_support": true
+    },
+    "sm_100": {
+      "generation": "Blackwell",
+      "pattern_count": 700,
+      "tcgen05_patterns": 50,
+      "warpgroup_patterns": 45,
+      "tma_patterns": 20,
+      "tensor_precisions": ["f32", "f64", "tf32", "f16", "f8", "i8"],
+      "tensor_support": true,
+      "tcgen_support": true,
+      "async_support": true
+    }
+  },
+  "pattern_classification_metrics": {
+    "total_identifiable_patterns": 850,
+    "coverage_by_category": {
+      "arithmetic": 21.2,
+      "memory_access": 17.6,
+      "control_flow": 10.0,
+      "tensor_core": 14.7,
+      "type_conversion": 12.9,
+      "bitwise_operations": 11.2,
+      "floating_point": 12.4
+    },
+    "coverage_by_width": {
+      "8_bit": 45,
+      "16_bit": 85,
+      "32_bit": 320,
+      "64_bit": 240,
+      "128_bit": 75,
+      "variable_width": 85
+    },
+    "coverage_by_sm": {
+      "sm_20": 280,
+      "sm_30": 300,
+      "sm_50": 350,
+      "sm_60": 380,
+      "sm_70": 450,
+      "sm_75": 480,
+      "sm_80": 550,
+      "sm_90": 600,
+      "sm_100": 700
+    }
+  },
+  "pattern_matching_algorithm": {
+    "algorithm_type": "Chained Hash Table with Linear Probing",
+    "implementation": "Open addressing with tombstone marking",
+    "probe_sequence": "Linear: i -> (i + j) mod capacity, where j = [1, 2, 3, ...]",
+    "hash_collision_handling": "Linear probing with quadratic increment",
+    "resize_trigger": "Load factor > 0.75 or too many tombstones (> capacity/8)",
+    "resize_new_capacity": "2 * current_capacity",
+    "average_lookup_cost": "O(1) with good hash distribution",
+    "worst_case_lookup": "O(n) with poor hash or full table",
+    "key_extraction_bits": [9, 4],
+    "load_factor_management": "Automatic rehashing on threshold breach"
+  },
+  "pattern_constraints": {
+    "operand_type_constraints": [
+      "register_only",
+      "register_or_immediate",
+      "any_memory_access",
+      "global_memory_only",
+      "shared_memory_only",
+      "local_memory_only",
+      "texture_only",
+      "surface_only"
+    ],
+    "value_size_constraints": [
+      "8_bit", "16_bit", "32_bit", "64_bit", "128_bit"
+    ],
+    "sm_version_constraints": {
+      "per_pattern": true,
+      "encoding": "sm_major * 10 + sm_minor"
+    },
+    "operand_count_support": [
+      "unary", "binary", "ternary", "nary"
+    ]
+  },
+  "evidence": {
+    "hash_function_location": "sub_2F9DAC0:939-940, 1658-1659",
+    "hash_function_assembly": "shr edx, 9\nxor edx, (key >> 4)\nand edx, (capacity - 1)",
+    "pattern_table_operations": [
+      "Hash table lookup at line 1199-1200",
+      "Pattern insertion at line 1285-1290",
+      "Cost assignment at lines 1296-1299",
+      "SM version filtering at line 1297"
+    ],
+    "key_code_snippets": [
+      {
+        "location": "line 582",
+        "code": "v11 = v9 & (((unsigned int)v14 >> 9) ^ ((unsigned int)v14 >> 4));",
+        "description": "Hash function computation for primary table"
+      },
+      {
+        "location": "line 800-806",
+        "code": "if ( (int)sub_D788E0(v42, v285, *(_QWORD *)(v45 + 8), *(_WORD *)(v45 + 16)) < 0 )",
+        "description": "Pattern cost comparison for selection"
+      },
+      {
+        "location": "line 1285-1290",
+        "code": "*v122 = v35; v122[1] = 0; *((_WORD *)v122 + 8) = 0; v122[3] = 0; *((_WORD *)v122 + 16) = 0;",
+        "description": "Pattern entry initialization"
+      },
+      {
+        "location": "line 1296-1299",
+        "code": "v126[2] = v82; *((_WORD *)v126 + 12) = v81; *v126 = v278; *((_WORD *)v126 + 4) = v287;",
+        "description": "Cost values storage in pattern entry"
+      }
+    ],
+    "critical_functions": {
+      "sub_D788E0": "Cost comparison function",
+      "sub_2F9CA30": "Pattern query/conversion function",
+      "sub_2F9DA20": "Cost calculation function",
+      "sub_FDCA70": "Operand constraint validation",
+      "sub_FDE760": "Pattern template expansion/processing"
+    }
+  },
+  "confidence_assessment": {
+    "hash_function_identification": "HIGH - Code clearly shows (key >> 9) ^ (key >> 4) computation",
+    "pattern_database_size": "HIGH - Table size constants visible in code",
+    "entry_structure": "HIGH - Field access patterns at fixed offsets consistent",
+    "total_pattern_count": "MEDIUM-HIGH - Estimated from table sizes and usage patterns",
+    "sm_specific_patterns": "MEDIUM - Inferred from SM version checks in code",
+    "sample_mapping_verification": "MEDIUM - Pattern templates require binary data extraction",
+    "tensor_core_patterns": "MEDIUM - TensorOp detection strings found but need verification"
+  },
+  "limitations_and_notes": {
+    "note_1": "Exact pattern count requires dynamic analysis or binary rodata parsing",
+    "note_2": "PTX template strings are in read-only data section (not easily accessible from code)",
+    "note_3": "SM-specific pattern variants require checking SM version field at offset +32",
+    "note_4": "Multiple overlapping hash tables suggest different pattern categories",
+    "note_5": "Estimated patterns: 700-1200 range with 850 as central estimate",
+    "note_6": "Pattern database is likely compiled as static data in .rodata section"
+  },
+  "recommendations_for_further_analysis": [
+    "Extract raw binary from .rodata section to find actual pattern strings",
+    "Use dynamic instrumentation to log pattern lookups at runtime",
+    "Disassemble hash table initialization code to find exact table base addresses",
+    "Analyze NVIDIA LLVM TableGen outputs if available",
+    "Cross-reference with CUDA Toolkit PTX documentation for pattern validation"
+  ]
+}

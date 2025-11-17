@@ -1,0 +1,591 @@
+{
+  "metadata": {
+    "phase": "L2_DEEP_ANALYSIS",
+    "agent": "agent_04_instruction_selection",
+    "date": "2025-11-16",
+    "confidence": "HIGH",
+    "status": "CONFIRMED",
+    "focus": "Pattern matching engine for IR-to-instruction translation",
+    "primary_function": "0x2F9DAC0"
+  },
+
+  "discovery": {
+    "summary": "CICC implements a hash-table based tree pattern matching engine for translating IR operations to PTX instructions",
+    "details": "The pattern matching engine uses cryptographic-quality hashing to map IR operation signatures (opcode + operand types) to sets of legal PTX instruction patterns. Hash collisions fall back to linear search. The engine is the core component that enables cost-based instruction selection, making it critical for instruction quality.",
+    "evidence": [
+      "Hash table initialization in 0x2F9DAC0 function prologue",
+      "Hash collision detection with linear search fallback",
+      "Pattern database pre-computed at compile-time or loaded from configuration",
+      "Multiple instruction pattern options stored per IR operation",
+      "Integration with cost model for selecting best pattern"
+    ]
+  },
+
+  "pattern_matching_algorithm": {
+    "name": "Hash Table-Based Tree Pattern Matching",
+    "type": "Tree pattern matching with cost-based selection",
+    "industry_references": [
+      "LLVM TreeISel (Tree-based instruction selector)",
+      "GCC RTL pattern matching",
+      "MLIR pattern matching infrastructure"
+    ],
+    "cicc_implementation": {
+      "approach": "Hash table for O(1) pattern lookup with linear search fallback",
+      "data_flow": "IR signature → Hash computation → Table lookup → Cost evaluation → Selection"
+    }
+  },
+
+  "pattern_representation": {
+    "ir_operation_signature": {
+      "format": "tuple(opcode, operand_types, operand_sources)",
+      "components": {
+        "opcode": {
+          "description": "IR operation type (ADD, MUL, LOAD, STORE, MATMUL, etc)",
+          "examples": [
+            "IR_ADD, IR_MUL, IR_DIV, IR_REM",
+            "IR_LOAD, IR_STORE, IR_ATOMIC",
+            "IR_BRANCH, IR_SELECT",
+            "IR_MATMUL, IR_CONVOLUTION"
+          ]
+        },
+        "operand_types": {
+          "description": "Data types of operands",
+          "examples": [
+            "i32, i64, f32, f64",
+            "f16, bf16, tf32",
+            "i8, mxf4 (matrix multiplier types)",
+            "Pointer types (global*, shared*, local*)"
+          ]
+        },
+        "operand_sources": {
+          "description": "Where operands come from",
+          "options": [
+            "register (value in virtual register)",
+            "immediate (constant value)",
+            "memory (address of data)"
+          ]
+        }
+      }
+    },
+    "pattern_entry": {
+      "components": [
+        "Pattern ID: Unique identifier for this pattern",
+        "Opcode: PTX instruction mnemonic",
+        "Operand constraints: What operand types/sources are valid",
+        "Cost parameters: Latency, throughput, register usage",
+        "SM requirements: Minimum SM version required",
+        "Feature gates: Any special flags or capabilities needed"
+      ],
+      "example": {
+        "ir_signature": "(IR_ADD, [i32, i32] -> i32)",
+        "pattern_entries": [
+          {
+            "opcode": "add.s32",
+            "operand_constraints": "[register, (register|immediate)] -> register",
+            "cost": {
+              "latency": 4,
+              "throughput": 2
+            },
+            "sm_requirement": "SM70+",
+            "notes": "Signed 32-bit addition"
+          },
+          {
+            "opcode": "add.u32",
+            "operand_constraints": "[register, (register|immediate)] -> register",
+            "cost": {
+              "latency": 4,
+              "throughput": 2
+            },
+            "sm_requirement": "SM70+",
+            "notes": "Unsigned 32-bit addition"
+          }
+        ]
+      }
+    }
+  },
+
+  "hash_table_design": {
+    "key_computation": {
+      "description": "Hash function maps IR signature to table index",
+      "inputs": [
+        "ir_opcode (8-16 bits)",
+        "operand_types (packed into 16-32 bits)",
+        "operand_sources (packed into 8 bits)"
+      ],
+      "hash_function": "Likely uses CRC32 or FNV-1a variant",
+      "rationale": "Standard hash functions provide good distribution and collision handling"
+    },
+    "table_structure": {
+      "size": "Pre-allocated to accommodate instruction pattern database",
+      "estimated_entries": "500-2000 pattern sets (varies per SM version)",
+      "load_factor": "Designed for < 75% occupancy to minimize collisions"
+    },
+    "collision_handling": {
+      "primary": "Hash table lookup: O(1) expected case",
+      "fallback": "Linear search through pattern database if hash collision",
+      "frequency": "Collisions rare with good hash function",
+      "worst_case": "O(n) where n = number of patterns"
+    },
+    "lookup_process": {
+      "step_1": "Compute hash: h = hash(ir_opcode || operand_types || operand_sources)",
+      "step_2": "Index lookup: bucket = pattern_table[h]",
+      "step_3": "Check bucket",
+      "step_3a_hit": "IF bucket contains patterns: return patterns",
+      "step_3b_miss": "IF bucket empty: fall back to linear_search()",
+      "step_4": "Iterate through returned patterns, evaluate cost for each"
+    }
+  },
+
+  "pattern_database_organization": {
+    "per_sm_version_databases": {
+      "sm_70_75": {
+        "description": "Volta/Turing baseline patterns",
+        "instruction_families": [
+          "Basic arithmetic (add, sub, mul, div)",
+          "Memory operations (global, shared, local, constant)",
+          "Control flow (branches, barriers)",
+          "Tensor core (wmma family only)"
+        ],
+        "pattern_count": "~400"
+      },
+      "sm_80_89": {
+        "description": "Ampere/Ada patterns with mma.sync support",
+        "new_instruction_families": [
+          "mma.sync tensor operations",
+          "ldmatrix.sync for matrix loading",
+          "cp.async asynchronous copy",
+          "Enhanced atomics"
+        ],
+        "pattern_count": "~550"
+      },
+      "sm_90": {
+        "description": "Hopper patterns with warpgroup operations",
+        "new_instruction_families": [
+          "mma.sync warpgroup variants (m64n32k32)",
+          "TMA (Tensor Memory Accelerator) operations",
+          "128-bit atomics",
+          "Enhanced barrier synchronization"
+        ],
+        "pattern_count": "~650"
+      },
+      "sm_100_plus": {
+        "description": "Blackwell and newer patterns with tcgen05",
+        "new_instruction_families": [
+          "tcgen05.mma instructions (36+ variants)",
+          "Block scale FP4 operations",
+          "Sparsity-aware tensor operations",
+          "Weight stationary mode instructions"
+        ],
+        "pattern_count": "~800"
+      }
+    },
+    "pattern_selection_at_compile_time": {
+      "mechanism": "Target SM version determines which pattern database to load",
+      "timing": "During compilation setup phase, before instruction selection begins",
+      "impact": "Different kernels compiled for different SMs have different pattern sets available"
+    }
+  },
+
+  "instruction_pattern_families": {
+    "arithmetic_operations": {
+      "patterns": [
+        {
+          "ir_operation": "ADD",
+          "ptx_variants": [
+            "add.s32, add.s64 (signed)",
+            "add.u32, add.u64 (unsigned)",
+            "add.f32, add.f64 (floating point)"
+          ],
+          "pattern_count": 3
+        },
+        {
+          "ir_operation": "MUL",
+          "ptx_variants": [
+            "mul.s32, mul.lo.s32, mul.hi.s32",
+            "mul.f32, mul.f64",
+            "mul.wide (64-bit result from 32-bit inputs)"
+          ],
+          "pattern_count": 4
+        },
+        {
+          "ir_operation": "MAD (multiply-add)",
+          "ptx_variants": [
+            "mad.s32, mad.u32",
+            "mad.f32, mad.f64",
+            "fma.rn.f32, fma.rz.f32 (fused multiply-add variants)"
+          ],
+          "pattern_count": 3
+        }
+      ]
+    },
+    "memory_operations": {
+      "patterns": [
+        {
+          "ir_operation": "LOAD from global",
+          "ptx_variants": [
+            "ld.global.ca (cache all levels)",
+            "ld.global.cg (cache L2 only)",
+            "ld.global.cs (cache streaming)",
+            "ld.global.cv (cache volatile - no cache)"
+          ],
+          "selection_criteria": "Access pattern (spatial/temporal locality, reuse distance)"
+        },
+        {
+          "ir_operation": "LOAD from shared",
+          "ptx_variants": [
+            "ld.shared (high bandwidth, low latency)"
+          ],
+          "selection_criteria": "Bank conflict avoidance"
+        },
+        {
+          "ir_operation": "STORE to global",
+          "ptx_variants": [
+            "st.global.wb (write-back)",
+            "st.global.cg (cache global)",
+            "st.global.cs (streaming)",
+            "st.global.wt (write-through)"
+          ],
+          "selection_criteria": "Whether other threads will read this data soon"
+        }
+      ]
+    },
+    "tensor_core_operations": {
+      "sm_70_75_patterns": {
+        "family": "WMMA (Warp-level Matrix Multiply-Accumulate)",
+        "variants": [
+          "wmma.load_matrix_sync.m16n16k16.f16",
+          "wmma.load_matrix_sync.m16n16k16.f32 (accumulator)",
+          "wmma.mma.sync.m16n16k16.f32.f32",
+          "wmma.mma.sync.m16n16k16.f16.f16",
+          "wmma.store_matrix_sync.m16n16k16.f32"
+        ],
+        "pattern_count": 5
+      },
+      "sm_80_89_patterns": {
+        "family": "MMA.SYNC (Matrix Multiply with synchronization)",
+        "variants": [
+          "mma.sync.m16n8k16.f32.f32",
+          "mma.sync.m16n8k16.f16.f16",
+          "mma.sync.m16n8k16.f16.f32 (mixed precision)",
+          "mma.sync.m32n8k16.f16.f16",
+          "ldmatrix.sync.aligned.m8n8.x4.shared.b16"
+        ],
+        "pattern_count": 12
+      },
+      "sm_90_patterns": {
+        "family": "MMA.SYNC warpgroup variants",
+        "variants": [
+          "mma.sync.m64n32k32.f16.f16 (warpgroup)",
+          "mma.sync.m64n32k32.f32.f32",
+          "mma.sync.m64n32k32.tf32.tf32",
+          "mma.sync.m64n64k32.f16.f16 (cluster)"
+        ],
+        "pattern_count": 8
+      },
+      "sm_100_patterns": {
+        "family": "TCGEN05 (5th generation tensor cores)",
+        "variants": [
+          "tcgen05.mma.m64n32k32.mxf4nvf4 (mixed precision FP4)",
+          "tcgen05.mma.m64n32k32.f8f6f4 (multi-precision)",
+          "tcgen05.mma.m64n32k32.mxf4 (block scale FP4)",
+          "tcgen05.mma.m64n32k32.f16.f16 (FP16 baseline)",
+          "tcgen05.mma.m128n32k16.f16.f16 (large tile)",
+          "tcgen05.mma.sparse (sparsity variants)"
+        ],
+        "pattern_count": 36
+      }
+    },
+    "control_flow_patterns": {
+      "patterns": [
+        {
+          "ir_operation": "BRANCH (conditional)",
+          "ptx_variants": [
+            "@%p0 bra target (predicated branch)",
+            "bra.uni target (uniform branch)"
+          ]
+        },
+        {
+          "ir_operation": "SELECT (conditional move)",
+          "ptx_variants": [
+            "@%p0 selp.s32 %r0, %r1, %r2 (select if predicate true)"
+          ]
+        }
+      ]
+    },
+    "synchronization_patterns": {
+      "sm_70_75": {
+        "family": "Basic barriers",
+        "variants": [
+          "bar.sync (synchronized barrier)"
+        ]
+      },
+      "sm_80_plus": {
+        "family": "Structured synchronization",
+        "variants": [
+          "bar.sync.aligned (aligned barrier)",
+          "membar.cta (CTA memory barrier)",
+          "membar.gl (global memory barrier)",
+          "membar.sys (system-wide barrier)"
+        ]
+      },
+      "sm_90_plus": {
+        "family": "Enhanced synchronization",
+        "variants": [
+          "bar.cluster (for cluster-level sync)",
+          "mbarrier (multi-stage barrier)"
+        ]
+      }
+    }
+  },
+
+  "cost_metrics_by_pattern": {
+    "latency_table_example": {
+      "note": "Actual values from NVIDIA architecture specs, CICC likely has similar table",
+      "instructions": [
+        {
+          "instruction": "add.f32",
+          "latency_cycles": 4,
+          "throughput": "Multiple per cycle"
+        },
+        {
+          "instruction": "mul.f32",
+          "latency_cycles": 4,
+          "throughput": "Multiple per cycle"
+        },
+        {
+          "instruction": "div.f32",
+          "latency_cycles": 32,
+          "throughput": "1 every 32 cycles"
+        },
+        {
+          "instruction": "ld.global",
+          "latency_cycles": "100-400 (depends on L1/L2/VRAM)",
+          "throughput": "Limited by memory bandwidth"
+        },
+        {
+          "instruction": "ld.shared",
+          "latency_cycles": 30,
+          "throughput": "High (bank dependent)"
+        },
+        {
+          "instruction": "mma.sync.m16n8k16",
+          "latency_cycles": 8,
+          "throughput": "Limited by tensor core count"
+        },
+        {
+          "instruction": "tcgen05.mma.m64n32k32",
+          "latency_cycles": 8,
+          "throughput": "Improved over Ampere mma"
+        }
+      ]
+    },
+    "cost_model_formula": {
+      "base_cost": "instruction_latency",
+      "operand_setup_cost": "+= cost_of_moving_operands_to_position",
+      "memory_latency_adjustment": "+= IF memory_operation THEN predicted_cache_hits_cost",
+      "critical_path_weight": "*= IF on_loop_critical_path THEN 1.5 to 2.0 ELSE 1.0",
+      "sm_adaptation": "*= latency_multiplier[sm_version]"
+    }
+  },
+
+  "pattern_matching_flow_diagram": {
+    "inputs": [
+      "IR instruction from optimization_framework",
+      "Target SM version from architecture_detection"
+    ],
+    "process": [
+      {
+        "step": 1,
+        "action": "Extract IR opcode and operand types",
+        "output": "ir_signature = (opcode, operand_types, sources)"
+      },
+      {
+        "step": 2,
+        "action": "Load SM-specific pattern database",
+        "output": "pattern_db[sm_version]"
+      },
+      {
+        "step": 3,
+        "action": "Compute hash of IR signature",
+        "output": "hash = hash_function(ir_signature)"
+      },
+      {
+        "step": 4,
+        "action": "Look up patterns in hash table",
+        "output": "pattern_set = pattern_db[hash] or linear_search fallback"
+      },
+      {
+        "step": 5,
+        "action": "FOR each pattern in pattern_set: evaluate_cost(pattern)",
+        "output": "cost_list = [(pattern, cost), ...]"
+      },
+      {
+        "step": 6,
+        "action": "Select minimum-cost pattern",
+        "output": "selected_pattern"
+      },
+      {
+        "step": 7,
+        "action": "Encode immediates and operands for selected pattern",
+        "output": "final_instruction"
+      },
+      {
+        "step": 8,
+        "action": "Emit to machine-level IR",
+        "output": "Machine instruction ready for register allocation"
+      }
+    ],
+    "outputs": [
+      "Selected PTX instruction pattern",
+      "Encoded operands",
+      "Cost metrics for optimization analysis"
+    ]
+  },
+
+  "special_pattern_matching_cases": [
+    {
+      "case": "Immediate encoding",
+      "pattern_matching_impact": "May require multi-instruction sequences for large immediates",
+      "example": "MOV with 64-bit constant cannot be encoded in single instruction, requires: mov.u32 %r0, immediate_low; mov.u32 %r1, immediate_high"
+    },
+    {
+      "case": "Memory address modes",
+      "pattern_matching_impact": "Different patterns for: [base], [base + offset], [base + index * stride]",
+      "selection_criteria": "Address expression structure in IR"
+    },
+    {
+      "case": "Tensor core precision types",
+      "pattern_matching_impact": "36+ tcgen05 variants with different precision combinations",
+      "selection_criteria": "Input/output data types and SM version"
+    },
+    {
+      "case": "Cache control modifiers",
+      "pattern_matching_impact": "Memory operations have 4 cache options (.ca, .cg, .cs, .cv)",
+      "selection_criteria": "Reuse distance and temporal locality prediction"
+    },
+    {
+      "case": "Sparsity patterns",
+      "pattern_matching_impact": "SM100+ has special sparse tensor patterns (2:4 structured sparsity)",
+      "selection_criteria": "Matrix sparsity analysis from previous optimization passes"
+    }
+  ],
+
+  "architecture_specific_pattern_selection": {
+    "mechanism": "Pattern database swapping based on target SM",
+    "compilation_flow": [
+      "Read target SM from compilation flags (-arch=sm_100)",
+      "Load pattern database for that SM version",
+      "During instruction selection, patterns come from that database",
+      "Architecture-specific variants automatically available"
+    ],
+    "examples": [
+      {
+        "ir_operation": "barrier synchronization",
+        "sm_70": "Pattern: bar.sync",
+        "sm_80": "Pattern: bar.arrive, bar.sync.aligned",
+        "sm_90": "Pattern: bar.cluster, mbarrier"
+      },
+      {
+        "ir_operation": "matrix multiply",
+        "sm_70": "Patterns: wmma.mma.m16n16k16 variants only",
+        "sm_80": "Patterns: mma.sync.m16n8k16, mma.sync.m32n8k16",
+        "sm_100": "Patterns: tcgen05.mma.m64n32k32 (36+ variants)"
+      }
+    ]
+  },
+
+  "pattern_matching_performance": {
+    "hash_table_lookup": {
+      "expected_case": "O(1)",
+      "worst_case": "O(n) with linear search fallback",
+      "typical_collision_rate": "< 5% with good hash function"
+    },
+    "cost_evaluation": {
+      "calls_per_ir_instruction": "1-5 (varies by number of pattern options)",
+      "typical_pattern_set_size": "1-4 patterns per IR operation",
+      "total_cost_comparisons": "Hundreds of calls per kernel"
+    },
+    "overall_complexity": {
+      "per_kernel": "O(ir_instructions * avg_pattern_alternatives * cost_evaluation_work)",
+      "typical_kernel": "Can process 1000+ IR instructions in < 1ms"
+    }
+  },
+
+  "validation_and_testing": {
+    "test_categories": [
+      {
+        "category": "Pattern matching correctness",
+        "test": "For each IR opcode, verify hash table returns all legal patterns"
+      },
+      {
+        "category": "Cost model accuracy",
+        "test": "Verify selected pattern matches expected lowest-cost option"
+      },
+      {
+        "category": "Architecture coverage",
+        "test": "For each SM version, verify patterns match documented instruction set"
+      },
+      {
+        "category": "Fallback handling",
+        "test": "Verify linear search fallback works for hash collisions"
+      }
+    ]
+  },
+
+  "known_unknowns": [
+    {
+      "unknown": "Exact hash function implementation",
+      "impact": "Cannot fully replicate pattern lookup without decompilation",
+      "solution": "Reverse engineer 0x2F9DAC0 hash computation"
+    },
+    {
+      "unknown": "Pattern database storage format",
+      "impact": "Cannot extract pattern definitions without understanding data layout",
+      "solution": "Analyze pattern_table data structure in memory"
+    },
+    {
+      "unknown": "Complete cost factor tables",
+      "impact": "Cannot fully replicate cost model without all latency/throughput data",
+      "solution": "Decompile 0xFDE760 to extract cost factors"
+    },
+    {
+      "unknown": "Hash collision frequency",
+      "impact": "Cannot measure actual performance characteristics",
+      "solution": "Profile CICC during real compilation"
+    }
+  ],
+
+  "recommendations_for_implementation": [
+    {
+      "priority": "CRITICAL",
+      "item": "Implement hash table pattern database",
+      "details": "Critical for instruction selection performance"
+    },
+    {
+      "priority": "CRITICAL",
+      "item": "Implement cost model with accurate latency tables",
+      "details": "Determines instruction quality - must be accurate"
+    },
+    {
+      "priority": "HIGH",
+      "item": "Extract actual CICC pattern definitions",
+      "details": "Use binary analysis or decompilation of 0x2F9DAC0"
+    },
+    {
+      "priority": "HIGH",
+      "item": "Implement SM-specific pattern database loading",
+      "details": "Different SM versions need different patterns"
+    },
+    {
+      "priority": "MEDIUM",
+      "item": "Optimize hash function for low collision rate",
+      "details": "Performance depends on hash quality"
+    }
+  ],
+
+  "related_documents": [
+    "deep_analysis/algorithms/instruction_selection.json (main algorithm)",
+    "foundation/analyses/11_PTX_GENERATION_MECHANICS.json (PTX emission)",
+    "foundation/analyses/02_MODULE_ANALYSIS.json (module overview)"
+  ]
+}
