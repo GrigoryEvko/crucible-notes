@@ -223,9 +223,10 @@ for each Module:
 ### Registration Mechanism
 
 **Phase**: Compile-time static initialization
-**Method**: RegisterPass<T> template constructors (206+ constructor files detected)
+**Method**: RegisterPass<T> template constructors
+**Total Constructor Files in Decompiled Code**: 862 (729 unique ctor indices)
+**Canonical Constructors** (variant 0): 133
 **Named Passes Extracted**: 82
-**Constructor Files Found**: 206
 
 #### Example Constructor Registrations
 
@@ -865,35 +866,54 @@ PassRegistryEntry* registry_lookup(
 | registry_base | Start address of pass registry array |
 | pass_id | Target pass ID to locate |
 
-#### Implementation Strategy
+#### Implementation Strategy (HASH TABLE)
+
+**Verified from decompiled code** (`sub_168FA50_0x168fa50.c`):
 
 ```
-1. Iterate through registry entries sequentially
-2. Check each entry's ID field at offset 0
-3. Compare with target pass_id
-4. Return pointer to matching entry
-5. Return NULL if no match found
+1. Calculate hash: hash_index = (pass_id × 37) & mask
+2. Probe hash table starting at hash_index
+3. Use linear probing for collision resolution
+4. Compare entry->id with target pass_id
+5. Return pointer to matching entry or NULL
 ```
 
-**Complexity**: O(n) linear search through pass list
-**Optimization Note**: Could be replaced with hash table for O(1) lookup
+**Complexity**: O(1) average case with hash table + linear probing
+**Hash Function**: Multiplication by prime (37) with bit mask
 
 #### Algorithm
 
 ```c
 PassRegistryEntry* search_pass_registry(
     void *registry_base,
-    unsigned pass_id
+    unsigned pass_id,
+    unsigned hash_mask  // e.g., 0xFF for 256-slot table
 ) {
-    for (unsigned i = 0; i < TOTAL_PASSES; i++) {
-        PassRegistryEntry *entry = registry_lookup(registry_base, i + 1);
+    // Calculate initial hash index
+    unsigned hash_index = (pass_id * 37) & hash_mask;
+
+    // Linear probing for collision resolution
+    for (unsigned probe = 0; probe < MAX_PROBES; probe++) {
+        unsigned index = (hash_index + probe) & hash_mask;
+        PassRegistryEntry *entry = &registry_base[index];
+
         if (entry->id == pass_id) {
-            return entry;
+            return entry;  // Match found
+        }
+        if (entry->id == 0) {
+            return NULL;  // Empty slot = not found
         }
     }
-    return NULL;
+
+    return NULL;  // Not found after max probes
 }
 ```
+
+**Hash Table Details**:
+- Hash function: `(pass_id * 37) & mask`
+- Collision resolution: Linear probing
+- Prime multiplier: 37 (reduces clustering)
+- Typical load factor: ~50-75% for good performance
 
 ---
 
@@ -1144,7 +1164,8 @@ Most passes default to false (disabled unless explicitly enabled), but these exc
 |--------|-------|
 | Total Passes Analyzed | 212 |
 | Unique Pass Names Found | 82 |
-| Constructor Files Examined | 206 |
+| Total Constructor Files | 862 |
+| Canonical Constructors | 133 |
 | Handler Functions Identified | 2 |
 | Key Functions Decompiled | 7 |
 
@@ -1239,7 +1260,7 @@ Most passes default to false (disabled unless explicitly enabled), but these exc
 **L3-16**: pass_address_mapping
 - Maps 129 pass addresses
 - Identifies 82 unique pass names
-- Finds 206 constructor files
+- Finds 862 constructor files (729 unique indices, 133 canonical)
 - Detects pass variants
 
 **LLVM Reference Architecture**
