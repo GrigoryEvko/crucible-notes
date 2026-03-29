@@ -289,9 +289,9 @@ Valid architectures (bit positions in `0x60081200F821`). Note the gaps — SM 81
 | 15 | 90 | Hopper |
 | 25 | 100 | Blackwell |
 | 28 | 103 | Blackwell |
-| 35 | 110 | Post-Blackwell |
-| 45 | 120 | Post-Blackwell |
-| 46 | 121 | Post-Blackwell |
+| 35 | 110 | Jetson Thor |
+| 45 | 120 | Blackwell (sm120) — RTX 50xx / Pro |
+| 46 | 121 | Blackwell (sm120) — DGX Spark |
 
 Suffix handling: `a` and `f` variants share the base SM number for validation but get distinct `-mcpu=sm_XXa`/`-mcpu=sm_XXf` strings.
 

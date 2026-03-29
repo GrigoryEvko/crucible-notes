@@ -36,15 +36,15 @@
 | `sm_103` | 1030 | 6 | Blackwell | — | Production |
 | `sm_103a` | 1030 | 7 | Blackwell | `a` | Production |
 | `sm_103f` | 1030 | 7 | Blackwell | `f` | Production |
-| `sm_110` | 1100 | 6 | Post-Blackwell | — | **Future** |
-| `sm_110a` | 1100 | 7 | Post-Blackwell | `a` | **Future** |
-| `sm_110f` | 1100 | 7 | Post-Blackwell | `f` | **Future** |
-| `sm_120` | 1200 | 6 | Post-Blackwell | — | **Future** |
-| `sm_120a` | 1200 | 7 | Post-Blackwell | `a` | **Future** |
-| `sm_120f` | 1200 | 7 | Post-Blackwell | `f` | **Future** |
-| `sm_121` | 1210 | 6 | Post-Blackwell | — | **Future** |
-| `sm_121a` | 1210 | 7 | Post-Blackwell | `a` | **Future** |
-| `sm_121f` | 1210 | 7 | Post-Blackwell | `f` | **Future** |
+| `sm_110` | 1100 | 6 | Jetson Thor | — | Production |
+| `sm_110a` | 1100 | 7 | Jetson Thor | `a` | Production |
+| `sm_110f` | 1100 | 7 | Jetson Thor | `f` | Production |
+| `sm_120` | 1200 | 6 | Blackwell (sm120) | — | Production |
+| `sm_120a` | 1200 | 7 | Blackwell (sm120) | `a` | Production |
+| `sm_120f` | 1200 | 7 | Blackwell (sm120) | `f` | Production |
+| `sm_121` | 1210 | 6 | Blackwell (sm120) | — | Production |
+| `sm_121a` | 1210 | 7 | Blackwell (sm120) | `a` | Production |
+| `sm_121f` | 1210 | 7 | Blackwell (sm120) | `f` | Production |
 
 Legacy architectures also present in the table but not in the CLI mapping: `sm_20`, `sm_21`, `sm_30`, `sm_32`, `sm_35`, `sm_37`, `sm_50`, `sm_52`, `sm_53`, `sm_60`, `sm_61`, `sm_62`, `sm_70`, `sm_72`, `sm_73`.
 
@@ -76,7 +76,7 @@ Sets ~60 `unk_4D04*` feature flags based on SM version thresholds:
 | 40000 | sm_80 (Ampere) | L2 cache hints, extended atomics |
 | 89999 | sm_90 (Hopper) | Cluster ops, TMA, setmaxnreg |
 | 109999 | sm_100 (Blackwell) | tcgen05, match instruction |
-| 119999 | sm_120 | Post-Blackwell features |
+| 119999 | sm_120 | Blackwell (sm120) features |
 
 Each flag is gated by a `byte_4CF8*` user-override check.
 
@@ -128,7 +128,7 @@ The NVVMIntrinsicVerifier (143KB) gates intrinsics by SM version:
 - **Extended MMA shapes**: m16n8k256
 - **`.offset.bindless`** intrinsics
 
-### Post-Blackwell (sm_110, sm_120, sm_121)
+### Jetson Thor (sm_110) / Blackwell sm120 (sm_120, sm_121)
 - Present in binary but feature details not yet exercised in the codebase
 
 ## NVVM Container Architecture Enum — `sub_CD09E0`
