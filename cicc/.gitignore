@@ -12,6 +12,7 @@
 *.i64~
 
 # IDA Pro Dump Directories (large output)
+decompiled/
 disasm/
 graphs/
 bin/cicc
