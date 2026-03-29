@@ -14,6 +14,11 @@
 
 - [Entry Point & CLI](./pipeline/entry.md)
 - [EDG 6.6 Frontend](./pipeline/edg.md)
+- [NVVM IR Generation](./pipeline/ir-generation.md)
+  - [Expression & Constant Codegen](./pipeline/irgen-expressions.md)
+  - [Statement & Control Flow Codegen](./pipeline/irgen-statements.md)
+  - [Function, Call & Inline Asm Codegen](./pipeline/irgen-functions.md)
+  - [Type Translation, Globals & Special Vars](./pipeline/irgen-types.md)
 - [LLVM Optimizer](./pipeline/optimizer.md)
 - [Code Generation](./pipeline/codegen.md)
 - [PTX Emission](./pipeline/emission.md)
@@ -42,6 +47,8 @@
 - [SelectionDAG](./llvm/selectiondag.md)
 - [Register Allocation](./llvm/register-allocation.md)
 - [Instruction Scheduling](./llvm/scheduling.md)
+- [Loop Strength Reduction (NVIDIA)](./llvm/lsr.md)
+- [StructurizeCFG](./llvm/structurizecfg.md)
 
 # NVVM Builtins
 
@@ -67,6 +74,10 @@
 - [Pattern Database](./structs/pattern-db.md)
 - [DAG Node](./structs/dag-node.md)
 - [Symbol Table](./structs/symbol-table.md)
+
+# LTO & Module Optimization
+
+- [Inliner Cost Model](./lto/inliner-cost.md)
 
 # Configuration
 

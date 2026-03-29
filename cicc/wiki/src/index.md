@@ -45,7 +45,7 @@ Runtime selection is controlled by `v253` in `sub_8F9C90` (the real main functio
 
 ## Compilation Pipeline
 
-Both paths converge on the same 4-stage pipeline:
+Both paths converge on the same 5-stage pipeline:
 
 ```
 CUDA C++ Source (.cu / .ci / .i)
@@ -57,6 +57,13 @@ CUDA C++ Source (.cu / .ci / .i)
   │   └─ Backend: "Generating NVVM IR" → .int.c / .device.c / .stub.c
   │
   └─ NVVM/LLVM Pipeline
+      │
+      ├─ IRGEN:  EDG IL → LLVM IR translation (cicc's equivalent of Clang CodeGen)
+      │            Type translation (fixed-point iteration, address space mapping)
+      │            Expression/statement/function codegen (recursive AST walk)
+      │            CUDA semantic lowering (threadIdx→intrinsics, printf→vprintf, etc.)
+      │            Kernel metadata emission (nvvm.annotations)
+      │            Two copies: Path A (0x90xxxx) and Path B (0x126xxxx)
       │
       ├─ LNK:     Module linking + libdevice (455KB embedded bitcode)
       │            Triple validation (must be nvptx64-)
@@ -102,7 +109,7 @@ CUDA C++ Source (.cu / .ci / .i)
 
 The wiki is organized around the compilation pipeline:
 
-- **[Compilation Pipeline](./pipeline/entry.md)** — Start here. Entry point, CLI, dual-path dispatch, then follow through [EDG](./pipeline/edg.md) → [Optimizer](./pipeline/optimizer.md) → [Codegen](./pipeline/codegen.md) → [Emission](./pipeline/emission.md).
+- **[Compilation Pipeline](./pipeline/entry.md)** — Start here. Entry point, CLI, dual-path dispatch, then follow through [EDG](./pipeline/edg.md) → [IR Generation](./pipeline/ir-generation.md) → [Optimizer](./pipeline/optimizer.md) → [Codegen](./pipeline/codegen.md) → [Emission](./pipeline/emission.md).
 - **[NVIDIA Custom Passes](./passes/index.md)** — The 35 proprietary passes not found in upstream LLVM: MemorySpaceOpt, Rematerialization, BranchDist, etc.
 - **[NVVM Builtins](./builtins/index.md)** — The 770-entry builtin table: hash table structure, complete ID inventory, category breakdown.
 - **[GPU Targets](./targets/index.md)** — SM feature gates, architecture detection, 45 SM variants from sm\_20 to sm\_121f.
