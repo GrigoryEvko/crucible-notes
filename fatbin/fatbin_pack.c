@@ -232,13 +232,32 @@ static nvFatbinResult compress_cubin_data(nvFatbinHandle_impl *impl, EntryNode *
         }
     }
 
-    size_t compressed_size = ZSTD_compress(
-        entry->compressed_data,
-        max_compressed,
-        entry->original_data,
-        entry->original_size,
-        zstd_level
-    );
+    size_t compressed_size;
+    if (zstd_level > 19) {
+        /* Ultra compression levels (20-22) require advanced API */
+        ZSTD_CCtx* cctx = ZSTD_createCCtx();
+        if (!cctx) {
+            free(entry->compressed_data);
+            entry->compressed_data = NULL;
+            return NVFATBIN_ERROR_COMPRESSION_FAILED;
+        }
+        ZSTD_CCtx_setParameter(cctx, ZSTD_c_compressionLevel, zstd_level);
+        compressed_size = ZSTD_compress2(cctx,
+            entry->compressed_data,
+            max_compressed,
+            entry->original_data,
+            entry->original_size);
+        ZSTD_freeCCtx(cctx);
+    } else {
+        /* Standard compression levels (1-19) */
+        compressed_size = ZSTD_compress(
+            entry->compressed_data,
+            max_compressed,
+            entry->original_data,
+            entry->original_size,
+            zstd_level
+        );
+    }
 
     if (ZSTD_isError(compressed_size)) {
         free(entry->compressed_data);

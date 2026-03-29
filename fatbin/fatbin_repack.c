@@ -34,12 +34,21 @@ static int write_file(const char *path, const void *data, size_t size) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <unpacked_dir> <output.bin>\n", argv[0]);
+    if (argc < 3 || argc > 4) {
+        fprintf(stderr, "Usage: %s <unpacked_dir> <output.bin> [compress_level]\n", argv[0]);
+        fprintf(stderr, "  compress_level: 1-22 (default: 3)\n");
         return 1;
     }
     const char *unpacked_dir = argv[1];
     const char *output_path = argv[2];
+    int compress_level = 3;
+    if (argc == 4) {
+        compress_level = atoi(argv[3]);
+        if (compress_level < 1 || compress_level > 22) {
+            fprintf(stderr, "Error: compress_level must be 1-22\n");
+            return 1;
+        }
+    }
     char manifest_path[4096];
     snprintf(manifest_path, sizeof(manifest_path), "%s/manifest.txt", unpacked_dir);
     FILE *manifest = fopen(manifest_path, "r");
@@ -48,13 +57,16 @@ int main(int argc, char **argv) {
         return 1;
     }
     nvFatbinHandle handle;
-    nvFatbinResult res = nvFatbinCreate(&handle, NULL, 0);
+    char level_opt[32];
+    snprintf(level_opt, sizeof(level_opt), "-compress-level=%d", compress_level);
+    const char *options[] = {level_opt, "-compress-all"};
+    nvFatbinResult res = nvFatbinCreate(&handle, options, 2);
     if (res != NVFATBIN_SUCCESS) {
         fprintf(stderr, "nvFatbinCreate failed: %s\n", nvFatbinGetErrorString(res));
         fclose(manifest);
         return 1;
     }
-    printf("Repacking from %s\n", manifest_path);
+    printf("Repacking from %s with compression level %d\n", manifest_path, compress_level);
     char line[8192];
     int added = 0;
     while (fgets(line, sizeof(line), manifest)) {
@@ -70,59 +82,19 @@ int main(int argc, char **argv) {
         }
         char full_path[4096];
         snprintf(full_path, sizeof(full_path), "%s/%s", unpacked_dir, filename);
-        size_t compressed_size;
-        uint8_t *compressed_data = read_file(full_path, &compressed_size);
-        if (!compressed_data) {
-            fprintf(stderr, "Warning: Cannot read %s\n", filename);
-            continue;
-        }
-        const uint32_t zstd_magic = 0xFD2FB528;
-        size_t zstd_offset = 0;
-        int found = 0;
-        for (size_t i = 0; i < compressed_size - 4; i++) {
-            if (*(uint32_t*)(compressed_data + i) == zstd_magic) {
-                zstd_offset = i;
-                found = 1;
-                break;
-            }
-        }
-        if (!found) {
-            fprintf(stderr, "Warning: No zstd magic found in %s\n", filename);
-            free(compressed_data);
-            continue;
-        }
-        uint8_t *zstd_data = compressed_data + zstd_offset;
-        size_t zstd_size = compressed_size - zstd_offset;
-        size_t decompressed_size = ZSTD_getFrameContentSize(zstd_data, zstd_size);
-        if (decompressed_size == ZSTD_CONTENTSIZE_ERROR ||
-            decompressed_size == ZSTD_CONTENTSIZE_UNKNOWN) {
-            fprintf(stderr, "Warning: Invalid zstd frame: %s (offset=%zu)\n",
-                    filename, zstd_offset);
-            free(compressed_data);
-            continue;
-        }
-        uint8_t *cubin_data = malloc(decompressed_size);
+        size_t cubin_size;
+        uint8_t *cubin_data = read_file(full_path, &cubin_size);
         if (!cubin_data) {
-            fprintf(stderr, "Warning: Out of memory for %s\n", filename);
-            free(compressed_data);
-            continue;
-        }
-        size_t result = ZSTD_decompress(cubin_data, decompressed_size,
-                                        zstd_data, zstd_size);
-        free(compressed_data);
-        if (ZSTD_isError(result)) {
-            fprintf(stderr, "Warning: Decompression failed for %s: %s\n",
-                    filename, ZSTD_getErrorName(result));
-            free(cubin_data);
+            fprintf(stderr, "Warning: Cannot read %s\n", filename);
             continue;
         }
         char arch_str[16];
         snprintf(arch_str, sizeof(arch_str), "sm_%u", sm_arch);
         if (type == 0x01) {
-            res = nvFatbinAddPTX(handle, (const char*)cubin_data, decompressed_size,
+            res = nvFatbinAddPTX(handle, (const char*)cubin_data, cubin_size,
                                 arch_str, NULL, NULL);
         } else if (type == 0x02 || type == 0x10) {
-            res = nvFatbinAddCubin(handle, cubin_data, decompressed_size,
+            res = nvFatbinAddCubin(handle, cubin_data, cubin_size,
                                   arch_str, NULL);
         } else {
             fprintf(stderr, "Warning: Unknown type 0x%x for %s\n", type, filename);
