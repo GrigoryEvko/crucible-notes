@@ -6,7 +6,6 @@
 
 # Overview
 
-- [Binary Overview](./index.md)
 - [Function Map](./function-map.md)
 - [Binary Layout](./binary-layout.md)
 - [Methodology](./methodology.md)
