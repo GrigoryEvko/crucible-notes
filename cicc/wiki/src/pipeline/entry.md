@@ -1,6 +1,8 @@
 # Entry Point & CLI
 
-Real main function, command-line processing, dual-path compilation dispatch, and architecture detection. Address range `0x8F0000`–`0x96FFFF` (~520 KB of code).
+The cicc binary has a surprisingly complex entry point. Rather than a straightforward `main → compile → exit` flow, it implements a **dual-path architecture** where the same binary can operate as either a LibNVVM-based compiler (Path A) or a standalone compiler (Path B), selected at runtime through environment variables and obfuscated string comparisons. This design allows NVIDIA to ship a single binary that serves both the `nvcc` toolchain and the LibNVVM API.
+
+The entry point region (`0x8F0000`–`0x96FFFF`, ~520 KB) handles CLI parsing, architecture detection with a 3-column flag fan-out system, and dispatch into one of several compilation pipelines. A hidden "wizard mode" gated behind an environment variable with a magic number enables developer diagnostics that are otherwise completely inaccessible.
 
 | | |
 |---|---|
@@ -52,6 +54,8 @@ main (0x4396A0, 16B thunk)
 
 ## Real Main — `sub_8F9C90`
 
+The exported `main()` at `0x4396A0` is a 16-byte thunk that immediately tail-calls `sub_8F9C90` — the actual entry point. This function is a monolithic CLI parser and dispatcher: it copies argv into a local buffer, checks for wizard mode, iterates over all arguments accumulating state in ~12 local variables, resolves the compilation path, and finally dispatches to the appropriate pipeline function. The entire function is a single 10KB basic-block-heavy control flow graph with ~80 branch targets.
+
 | Field | Value |
 |---|---|
 | Address | `0x8F9C90`–`0x8FC3E2` |
@@ -60,6 +64,8 @@ main (0x4396A0, 16B thunk)
 | Local buffers | `v284[2096]` for argv copy (stack if argc ≤ 256, else heap) |
 
 ### Key Local Variables
+
+The function's behavior is controlled by two critical dispatch variables: `v253` (which compilation backend to use) and `v263` (which phase of the pipeline to invoke). These are accumulated during the argument loop and combined after parsing to select one of ~10 possible code paths. The interaction between them creates a matrix of behaviors that covers everything from simple single-file compilation to multi-stage LibNVVM pipeline processing.
 
 | Variable | Init | Purpose |
 |---|---|---|
@@ -84,9 +90,13 @@ if (v10 && strtol(v10, NULL, 10) == 553282)   // 0x8F9D92
     byte_4F6D280 = 1;
 ```
 
-Global `byte_4F6D280` gates the effectiveness of `-v`, `-keep`, `-dryrun`. Without wizard mode, these flags are silently ignored — `v259` and `v262` stay 0.
+Global `byte_4F6D280` gates the effectiveness of `-v`, `-keep`, `-dryrun`. Without wizard mode, these flags are silently ignored — `v259` and `v262` stay 0. This is a deliberate anti-reverse-engineering measure: even if someone discovers the `-v` flag, it does nothing without the magic environment variable. The magic number 553282 (0x87142) appears to be arbitrary.
 
 ### Invocation Modes (`v263`)
+
+The `v263` variable determines *which stage* of the compilation pipeline cicc enters. When nvcc invokes cicc directly, `v263` stays at 0 (default). But cicc can also be invoked in sub-pipeline mode — for example, `-lnk` runs only the linking phase, `-opt` runs only the optimizer, and `-llc` runs only code generation. This is how the multi-stage pipeline works: the outer driver calls cicc multiple times with different `-lXXX` flags, or a single invocation with `-libnvvm` runs all stages internally.
+
+Each mode has its own format for the `-discard-value-names` flag, which tells the LLVM backend whether to strip IR value names (reducing memory usage). The different formats exist because each sub-pipeline stage has its own option namespace:
 
 | v263 | Flag | Mode | discard-value-names format |
 |---|---|---|---|
@@ -99,6 +109,8 @@ Global `byte_4F6D280` gates the effectiveness of `-v`, `-keep`, `-dryrun`. Witho
 | 6 | `-llc` | Standalone LLVM codegen | — |
 
 ### Input File Extensions
+
+Input files are identified by extension during the argument loop. The **last** matching file wins (`s` is overwritten each time). Unrecognized arguments are added to the `v266` pass-through vector and forwarded to sub-pipelines. The `.cup` extension has a special restriction — it's only accepted when the *preceding* argument is `--orig_src_path_name` or `--orig_src_file_name`, which are metadata flags inserted by nvcc to track the original source file.
 
 | Extension | Format | Condition |
 |---|---|---|
@@ -133,6 +145,10 @@ This hides an environment variable name and option prefix from static analysis. 
 
 ## Path A — LibNVVM Pipeline (`sub_905EE0`)
 
+Path A is the primary compilation path when cicc is invoked through the LibNVVM API (e.g., by nvcc or by applications using the CUDA Driver API's runtime compilation). The driver function `sub_902D10` first processes CLI flags, then optionally runs the EDG frontend (the "CUDA C++ Front-End" stage timed as `"CUDA C++ Front-End"`), and finally hands the resulting LLVM module to `sub_905EE0` — the 43KB pipeline driver that orchestrates the full compilation through 14 sequential phases.
+
+The pipeline uses an interesting indirection mechanism: rather than calling LibNVVM API functions directly, it resolves them at runtime through `sub_12BC0F0(id)` — a dispatch function that takes a numeric ID and returns a function pointer. The IDs appear to be deliberately chosen as memorable hex values (0xFEED, 0xBEAD, 0xDEED, 0xBEEF) — likely internal jokes by the NVIDIA compiler team.
+
 | Field | Value |
 |---|---|
 | Address | `0x905EE0` |
@@ -141,6 +157,8 @@ This hides an environment variable name and option prefix from static analysis. 
 | Orchestrator | `sub_902D10` (simple mode) |
 
 ### 14-Phase Compilation Flow
+
+The compilation proceeds through these phases sequentially. Phases 2.1–2.14 are the core compilation unit lifecycle: create, populate, configure, compile, extract results, destroy. The `-keep` flag (when wizard mode is active) causes intermediate `.lnk.bc` and `.opt.bc` files to be written to disk, which is invaluable for debugging the pipeline.
 
 | Phase | Action |
 |---|---|
@@ -166,7 +184,7 @@ This hides an environment variable name and option prefix from static analysis. 
 
 ### LibNVVM API Dispatch IDs
 
-Internal function `sub_12BC0F0(id)` returns API function pointers by numeric ID:
+Internal function `sub_12BC0F0(id)` returns API function pointers by numeric ID. This indirection exists because the LibNVVM API is implemented within the same binary — these aren't dynamically-linked external functions but rather internal call points resolved through a dispatch table. The hex IDs double as a form of internal documentation:
 
 | ID | Hex | Function |
 |---|---|---|
@@ -186,14 +204,20 @@ Internal function `sub_12BC0F0(id)` returns API function pointers by numeric ID:
 
 ### Embedded Libdevice
 
+A key design decision: **two identical copies** of the libdevice bitcode are statically embedded in the binary. Each is 455,876 bytes (~445 KB) of LLVM bitcode containing ~400+ math functions (`__nv_sin`, `__nv_cos`, `__nv_exp`, `__nv_log`, `__nv_sqrt`, etc.) plus atomic operation helpers and FP16/BF16 conversion routines. The duplication exists because Path A and Path B have separate initialization sequences and the linker didn't deduplicate the `.rodata` sections.
+
+When the user provides `-nvvmir-library <path>`, the external file is used instead. This allows overriding the built-in math library — useful for testing custom libdevice builds.
+
 | Path | Address | Size | Purpose |
 |---|---|---|---|
 | Path A | `unk_3EA0080` | 455,876 bytes | Default libdevice for LibNVVM mode |
 | Path B | `unk_420FD80` | 455,876 bytes | Default libdevice for standalone mode |
 
-Used when no `-nvvmir-library` path is provided. Contains ~400+ math functions (`__nv_*`, `__nvvm_*`).
-
 ## Path B — Standalone cicc Pipeline (`sub_1265970`)
+
+Path B is the standalone compilation path used when cicc is invoked directly (without the LibNVVM intermediary). Despite the different entry point, it shares the same underlying LLVM infrastructure as Path A — the difference is in how modules are loaded and how the pipeline stages are orchestrated. Path B appends `-nvvm-version=nvvm70` to the optimizer arguments, indicating it targets the NVVM 7.0 IR specification (corresponding to LLVM 7.0.1 bitcode format, the version NVIDIA froze their IR compatibility at).
+
+The 4-stage pipeline (LNK → OPT → OPTIXIR → LLC) runs in-memory: each stage takes an LLVM Module, transforms it, and passes it to the next stage. The OPTIXIR stage is optional and only active when `--emit-optix-ir` is specified. A user-provided cancellation callback can abort compilation between stages (return code 10).
 
 | Field | Value |
 |---|---|
@@ -203,6 +227,8 @@ Used when no `-nvvmir-library` path is provided. Contains ~400+ math functions (
 | Version string | `-nvvm-version=nvvm70` |
 
 ### 4-Stage Pipeline Orchestrator — `sub_12C35D0`
+
+The orchestrator creates two backend objects — `nvopt` (512 bytes, the optimizer) and `nvllc` (480 bytes, the code generator) — and wires them together with the stage dispatch structure. Each stage is controlled by a bit in a stage bitmask derived from `sub_12D2AA0`, which parses architecture and options into per-stage configuration.
 
 | Field | Value |
 |---|---|
@@ -223,14 +249,16 @@ Return codes: 0=success, 7=parse failure, 9=link/layout/verification error, 10=c
 
 ### Module Linker — `sub_12C06E0`
 
-- Validates bitcode magic: `0xDE,0xC0,0x17,0x0B` (LLVM) or `0x42,0x43,0xC0,0xDE` (wrapper)
-- Triple validation: must start with `"nvptx64-"`
-- IR version check via `sub_12BFF60`: reads `"nvvmir.version"` metadata, `NVVM_IR_VER_CHK` env var override
-- Symbol size matching across modules (type codes: 1=half, 2=float, 3=double, 7=ptr, 0xB=integer, 0xD=struct, 0xE=array)
+The LNK stage's core function (63KB) links multiple LLVM bitcode modules into a single module. This is where user code gets linked with the libdevice math library and any additional modules. The linker performs several validation steps to catch incompatible IR early — before the expensive optimization and codegen stages:
+
+- **Bitcode magic validation**: checks for `0xDE,0xC0,0x17,0x0B` (raw LLVM bitcode) or `0x42,0x43,0xC0,0xDE` (bitcode wrapper). Anything else → error code 9.
+- **Triple validation**: every module's target triple must start with `"nvptx64-"`. Modules without a triple get a clear error: `"Module does not contain a triple, should be 'nvptx64-'"`.
+- **IR version compatibility**: `sub_12BFF60` reads `"nvvmir.version"` metadata (2 or 4 element tuples: major.minor or major.minor.debug_major.debug_minor). The `NVVM_IR_VER_CHK` environment variable can disable this check entirely (set to `"0"`), useful when mixing IR from different CUDA toolkit versions.
+- **Symbol size matching**: for multi-module linking, compares the byte sizes of identically-named globals across modules. Size computation uses type codes (1=half(16b), 2=float(32b), 3=double(64b), 7=ptr, 0xB=integer, 0xD=struct, 0xE=array). A mismatch produces: `"Size does not match for <sym> in <mod> with size X specified in <other> with size Y."`
 
 ## Architecture Detection — `sub_95EB40`
 
-Builds a `std::map<string, ArchTriple>` in a red-black tree at `a1+248`. Each entry maps a CLI flag to three forwarded strings:
+One of the most important functions in cicc: the architecture detection system translates a single user-facing flag like `-arch=compute_90a` into **three independent flag strings**, one for each pipeline stage. This 3-column fan-out is necessary because the EDG frontend, the LLVM optimizer, and the LLVM backend each use different flag formats to specify the target architecture. The mapping is stored in a `std::map<string, ArchTriple>` in a red-black tree at `a1+248`.
 
 | Column | Target | Example |
 |---|---|---|
@@ -240,13 +268,15 @@ Builds a `std::map<string, ArchTriple>` in a red-black tree at `a1+248`. Each en
 
 ### Architecture Validation Bitmask
 
+Before the 3-column mapping is consulted, the architecture number is validated against a hardcoded 64-bit bitmask. This is a fast rejection filter: the SM number minus 75 gives a bit index, and if that bit isn't set in the constant `0x60081200F821`, the architecture is rejected. This means cicc v13.0 has a **fixed, compile-time-determined** set of supported architectures — you cannot add new SM targets without rebuilding the binary.
+
 ```c
 offset = arch_number - 75;
 if (offset > 0x2E || !_bittest64(&0x60081200F821, offset))
     → ERROR: "is an unsupported option"
 ```
 
-Valid architectures (bit positions in `0x60081200F821`):
+Valid architectures (bit positions in `0x60081200F821`). Note the gaps — SM 81–85, 91–99, 101–102, 104–109, 111–119 are all absent:
 
 | Bit | SM | Generation |
 |---|---|---|
@@ -267,6 +297,10 @@ Suffix handling: `a` and `f` variants share the base SM number for validation bu
 
 ## Flag Catalog — `sub_9624D0`
 
+The flag catalog is the second-largest function in the entry point range at 75KB. It takes the raw CLI arguments and sorts them into **four output vectors** — one per pipeline stage (lnk, opt, lto, llc). This is the translation layer between user-facing flags and the internal per-stage options that each pipeline component understands.
+
+A clever detail: the function takes a "mode cookie" parameter (`a4`) that distinguishes CUDA compilation (`0xABBA`) from OpenCL compilation (`0xDEED`). Several flags behave differently depending on this cookie — for example, `-prec-div=0` maps to `-nvptx-prec-divf32=1` in CUDA mode but `-nvptx-prec-divf32=0` in OpenCL mode, reflecting the different default precision expectations of the two languages.
+
 | Field | Value |
 |---|---|
 | Address | `0x9624D0` |
@@ -276,6 +310,8 @@ Suffix handling: `a` and `f` variants share the base SM number for validation bu
 
 ### -Ofast-compile Levels
 
+NVIDIA's `-Ofast-compile` is a compile-time vs runtime-performance tradeoff. At "max" level, it disables memory space optimization and LSA optimization entirely — these are expensive analysis passes that improve runtime performance but slow compilation significantly. The "mid" and "min" levels provide intermediate points. This feature is targeted at iterative development workflows where compile speed matters more than code quality.
+
 | Level String | Internal Value | Effect |
 |---|---|---|
 | `"max"` | 2 | Most optimizations skipped, forces `-lsa-opt=0 -memory-space-opt=0` |
@@ -283,9 +319,11 @@ Suffix handling: `a` and `f` variants share the base SM number for validation bu
 | `"min"` | 4 | Minimal speedup |
 | `"0"` | 1 → reset to 0 | Disabled |
 
-Error: `"libnvvm : error: -Ofast-compile specified more than once"`
+Error: `"libnvvm : error: -Ofast-compile specified more than once"`. Only one `-Ofast-compile` per compilation is allowed.
 
 ### Flag-to-Pipeline Routing (Selected)
+
+This table shows how a single user-facing flag gets split into per-stage options. The pattern reveals NVIDIA's compilation architecture: the LNK stage communicates via `-R` macro definitions (these become `#define`s visible to the linker), the OPT stage uses NVIDIA-specific optimizer flags (`-opt-use-*`), and the LLC stage uses LLVM backend flags (`-nvptx-*`). Some flags like `-ftz=1` propagate to all three stages, while others like `-aggressive-inline` only affect the optimizer.
 
 | User Flag | LNK Forward | OPT Forward | LLC Forward |
 |---|---|---|---|
@@ -301,7 +339,7 @@ Error: `"libnvvm : error: -Ofast-compile specified more than once"`
 
 ### nvcc→cicc Flag Translation — `sub_8FE280`
 
-Red-black tree at `qword_4F6D2A0` (populated once, guarded by `qword_4F6D2C8`). Selected mappings:
+When cicc is invoked by nvcc (the CUDA compiler driver), the flags arrive in nvcc's format and need to be translated to cicc's internal format. This translation happens through a red-black tree at `qword_4F6D2A0`, populated once on first use (guarded by `qword_4F6D2C8`). Each entry maps an nvcc flag to a pair: an EDG passthrough string and a cicc internal string. Some flags only affect one side — for example, `-fmad=1` has no EDG equivalent (FMA is a backend concern) but maps to cicc's `-fma=1`. Others are dual-mapped: `-O0` becomes both `--device-O=0` for EDG and `-opt=0` for cicc.
 
 | nvcc Flag | EDG Passthrough | cicc Internal |
 |---|---|---|
@@ -314,6 +352,8 @@ Red-black tree at `qword_4F6D2A0` (populated once, guarded by `qword_4F6D2C8`). 
 | `-discard-value-names` | `--discard_value_names=1` | `-discard-value-names=1` |
 
 ## Key Global Variables
+
+These globals persist across the entire compilation and are accessed from multiple subsystems. The wizard mode flag and flag mapping tree are set during CLI parsing and read throughout the pipeline. The embedded libdevice addresses are compile-time constants (`.rodata`), while the data model width is set during architecture configuration.
 
 | Variable | Purpose |
 |---|---|

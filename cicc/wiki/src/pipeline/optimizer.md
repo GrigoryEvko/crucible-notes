@@ -1,6 +1,12 @@
 # LLVM Optimizer
 
-Pass pipeline assembly, two-phase compilation, NVVMPassOptions knob system, and New PM integration. Address range `0x12D0000`–`0x16FFFFF` (~4.2 MB of code).
+NVIDIA's LLVM optimizer in cicc v13.0 is not a straightforward invocation of the upstream LLVM `opt` pipeline. Instead, it implements a proprietary **two-phase compilation model** where the same 49.8KB pipeline assembly function (`sub_12E54A0`) is called twice with different phase counters, allowing analysis passes to run in Phase I and codegen-oriented passes in Phase II. Individual passes read a TLS variable (`qword_4FBB3B0`) to determine which phase is active and skip themselves accordingly.
+
+The optimizer also supports **concurrent per-function compilation**: after Phase I completes on the whole module, Phase II can be parallelized across functions using a thread pool sized to `get_nprocs()` or a GNU Jobserver token count. This is a significant departure from upstream LLVM, which processes functions sequentially within a single pass manager invocation.
+
+The entire optimization behavior is controlled by the **NVVMPassOptions** system — a 4,512-byte struct with 221 option slots (114 string + 100 boolean + 6 integer + 1 string-pointer) that provides per-pass enable/disable toggles and parametric knobs. This system is completely proprietary and has no upstream equivalent.
+
+Address range `0x12D0000`–`0x16FFFFF` (~4.2 MB of code).
 
 | | |
 |---|---|
@@ -70,7 +76,9 @@ sub_12E54A0 (49.8KB, MASTER PIPELINE ASSEMBLY)
 | Size | 9.4KB |
 | Strings | `"Phase I"`, `"Phase II"`, `"Concurrent=Yes/No"` |
 
-Both phases call the **same** `sub_12E54A0`. The difference: `qword_4FBB3B0` (TLS variable) is set to 1 or 2 before each call. Individual passes read this to decide whether to run.
+The two-phase model exists because certain optimization passes (e.g., inter-procedural memory space propagation, global inlining decisions) require whole-module visibility, while others (register pressure-driven rematerialization, instruction scheduling) operate per-function and benefit from parallelization. Phase I runs the whole-module analysis and early optimization passes; Phase II runs the per-function backend-oriented passes.
+
+Both phases call the **same** `sub_12E54A0`. The difference: `qword_4FBB3B0` (TLS variable) is set to 1 or 2 before each call. Individual passes read this counter and skip themselves if the current phase doesn't match their intended execution phase. When the module contains only a single defined function, the phase mechanism is bypassed entirely — a single unphased call handles everything.
 
 ```
 Phase State Machine:
@@ -89,6 +97,8 @@ Single-function modules skip the phase mechanism entirely — a single unphased 
 
 ### GNU Jobserver Integration
 
+When cicc is invoked from a parallel `make -jN` build, it can participate in the GNU Jobserver protocol to limit its own thread count to the available parallelism tokens. This prevents oversubscription — without it, a `-j16` build could spawn 16 cicc processes each creating their own thread pool, resulting in hundreds of threads competing for CPU time. The jobserver reads the `--jobserver-auth=R,W` pipe file descriptors from the `MAKEFLAGS` environment variable.
+
 In `sub_12E1EF0` (lines 833–866), when `a4+3288` is set:
 
 ```c
@@ -103,6 +113,8 @@ elif (v184 != 0)
 
 ### Split-Module Compilation
 
+Split-module compilation is NVIDIA's mechanism for the `-split-compile=N` flag. It decomposes a multi-function module into individual per-function bitcode blobs, compiles each independently (potentially in parallel), then re-links the results. This trades away inter-procedural optimization opportunities for compilation speed and reduced peak memory usage — a worthwhile tradeoff for large CUDA kernels during development iteration.
+
 When optimization level (a4+4104) is negative, enters split-module mode:
 
 1. Each function's bitcode is extracted via `sub_1AB9F40` with filter callback `sub_12D4BD0`
@@ -112,9 +124,13 @@ When optimization level (a4+4104) is negative, enters split-module mode:
 
 ## Pipeline Assembly — `sub_12E54A0`
 
+The pipeline assembly function is the heart of the optimizer. At 49.8KB with ~150 `AddPass` calls, it constructs the complete LLVM pass pipeline at runtime rather than using a static pipeline description. The function first sets up target machine infrastructure (triple, data layout, subtarget features), then dispatches into one of three language-specific paths that determine which passes run and in what order. After the language-specific path completes, a shared finalization phase runs barriers, critical edge breaking, and codegen preparation.
+
+A distinguishing feature of NVIDIA's pipeline is the **tier system**: passes are organized into Tiers 0–3, each gated by a threshold counter. As compilation progresses through the main loop (which iterates over external plugin/extension pass entries), tiers fire when the accumulated pass count exceeds their threshold. This allows NVIDIA to precisely control where in the pipeline their custom passes interleave with standard LLVM passes.
+
 ### Language-Specific Paths
 
-The pipeline branches based on `a4[3648]` (language string):
+The pipeline branches based on `a4[3648]` (language string). The three paths represent different optimization strategies for different IR maturity levels:
 
 | String | Path | Pass Count | Key Difference |
 |---|---|---|---|
@@ -136,6 +152,8 @@ if (tier3_flag && phase_id > tier3_threshold) → sub_12DE8F0(3) // Tier 3
 Each tier fires once (flag cleared after execution). Remaining tiers fire unconditionally after the loop.
 
 ### Tier 0 — Full Optimization (`sub_12DE330`)
+
+Tier 0 is the most aggressive optimization sub-pipeline. It runs ~40 passes in a carefully ordered sequence that interleaves standard LLVM passes with NVIDIA-specific ones. The ordering reveals NVIDIA's optimization strategy: start with GVN and SCCP for value simplification, then run NVIDIA's custom NVVMReflect and NVVMVerifier to clean up NVVM-specific constructs, followed by aggressive loop transformations (LoopIndexSplit, LoopUnroll, LoopUnswitch), and finally register-pressure-sensitive passes (Rematerialization, DSE, DCE) to prepare for codegen.
 
 ~40 passes in order:
 
@@ -178,11 +196,15 @@ Each tier fires once (flag cleared after execution). Remaining tiers fire uncond
 
 ### "mid" Path — Complete Pass Ordering
 
-The longest path (~45 passes), used for mid-level IR optimization:
+The "mid" path is the primary optimization pipeline for standard CUDA compilation. At ~45 passes, it is the most comprehensive of the three paths. The key pattern is **repeated interleaving** of NVIDIA custom passes with standard LLVM passes: NVVMIntrinsicLowering runs 4 times at different points, NVVMReflect runs 3 times, and NVVMIRVerification runs after each major transformation to catch correctness regressions early. The MemorySpaceOpt pass appears once in this sequence (gated by `!opts[1760]`) — it runs again later via the parameterized `<second-time>` invocation in Tier 1/2/3.
 
 ConstantMerge → NVVMIntrinsicLowering → MemCpyOpt → SROA → NVVMPeephole → NVVMAnnotations → LoopSimplify → GVN → NVVMIRVerification → SimplifyCFG → InstCombine → LLVM standard #5 → NVVMIntrinsicLowering → DeadArgElim → FunctionAttrs → DCE → ConstantMerge → LICM → NVVMLowerBarriers → MemorySpaceOpt → Reassociate → LLVM standard #8 → NVVMReflect → ADCE → InstructionSimplify → DeadArgElim → TailCallElim → DeadArgElim → CVP → Sink → SimplifyCFG → DSE → NVVMSinking2 → NVVMIRVerification → EarlyCSE → NVVMReflect → LLVM standard #8 → NVVMIntrinsicLowering → IPConstProp → LICM → NVVMIntrinsicLowering → NVVMBranchDist → NVVMRemat
 
 ## NVVMPassOptions — `sub_12D6300`
+
+NVVMPassOptions is NVIDIA's proprietary mechanism for fine-grained control over every optimization pass. Unlike LLVM's `cl::opt` system (which uses global command-line options), NVVMPassOptions stores per-pass configuration in a flat struct that is allocated once and passed through the pipeline by pointer. This design avoids the global-state problems of `cl::opt` and allows different compilation units to have different pass configurations within the same process — critical for the concurrent per-function compilation model.
+
+The 125KB initialization function is the largest in the optimizer range. Its size comes from the sheer number of option slots: each of the 221 slots requires a hash-table lookup, a default-value resolution, and a type-specific store, with most slots organized in pairs (a string parameter + a boolean enable flag).
 
 | Field | Value |
 |---|---|
@@ -213,9 +235,9 @@ ConstantMerge → NVVMIntrinsicLowering → MemCpyOpt → SROA → NVVMPeephole 
 
 ### Pair Organization
 
-Slots are organized in pairs: **even** = string parameter, **odd** = boolean enable/disable toggle. Each "pass knob" has a string value and a do-X flag.
+Slots are organized in pairs: **even** = string parameter (the pass's configuration value or name), **odd** = boolean enable/disable toggle (the `do-X` flag). This consistent pairing means each "pass knob" has both a parametric value and an on/off switch, allowing passes to be individually disabled without removing their configuration — useful for A/B testing optimizations.
 
-Exceptions: slots 160–162 (3 consecutive strings), slots 192–193 (2 consecutive bools), slot 181 (string pointer with char* + length).
+Exceptions to the pair pattern: slots 160–162 (3 consecutive strings — a pass with 3 string parameters), slots 192–193 (2 consecutive bools — a pair of binary flags), slot 181 (the only string-pointer type, storing a `char*` + length directly — likely a file path or regex pattern).
 
 ### Defaults Enabled (14 of 100 booleans)
 
@@ -245,7 +267,9 @@ Slots: 19, 25, 93, 95, 117, 141, 143, 151, 155, 157, 159, 165, 211, 219. These a
 
 ## New PM Pass Registration — `sub_2342890`
 
-2,816-line function registering every analysis, pass, and printer. Uses `sub_E41FB0(pm, class_name, len, pass_name, len)` for registration.
+NVIDIA maintains both the Legacy Pass Manager and the New Pass Manager in cicc v13.0. The New PM registration lives in a single 2,816-line function that registers every analysis, pass, and printer by calling `sub_E41FB0(pm, class_name, len, pass_name, len)` for each. Standard LLVM passes use the `llvm::` prefix (stripped during registration), while NVIDIA custom passes use their own class names.
+
+The registration function also handles **parameterized pass parsing**: when the pipeline text parser encounters a pass name with angle-bracket parameters (e.g., `memory-space-opt<first-time;warnings>`), it calls a registered parameter-parsing callback that returns a configured pass options struct. This is how MemorySpaceOpt can run twice with different configurations in the same pipeline.
 
 ### NVIDIA Custom Passes (35 total)
 
@@ -261,10 +285,10 @@ Slots: 19, 25, 93, 95, 117, 141, 143, 151, 155, 157, 159, 165, 211, 219. These a
 
 ### Key Discoveries
 
-- **nvvm-reflect-pp** is actually `SimplifyConstantConditionalsPass` — it runs *after* NVVMReflect to clean up dead branches from resolved `__nvvm_reflect()` calls
-- **memory-space-opt** runs **twice** in the pipeline: `<first-time>` then `<second-time>`, with more information available on the second pass
-- **d2ir-scalarizer** reuses LLVM's `ScalarizerPass` class under a different name
-- Legacy PM has separate registrations with slightly different names (e.g., `"memory-space-opt-pass"` vs `"memory-space-opt"`)
+- **nvvm-reflect-pp** is actually `SimplifyConstantConditionalsPass`, not a reflection pass. It runs *after* NVVMReflect resolves `__nvvm_reflect()` calls to constants, cleaning up the resulting dead branches and unreachable code. The misleading name ("pp" = post-processing) obscures what is essentially a targeted dead-code-elimination pass.
+- **memory-space-opt** runs **twice** in the pipeline with different parameterizations: `<first-time>` early in optimization (conservative, uses available alias information) and `<second-time>` late (aggressive, benefits from earlier optimizations having simplified the IR). This two-pass approach is necessary because address space resolution depends on pointer analysis quality, which improves as other passes simplify the code.
+- **d2ir-scalarizer** reuses LLVM's `ScalarizerPass` class under a different name, suggesting NVIDIA added a custom registration point to control when scalarization happens in the NVPTX pipeline without modifying the upstream pass.
+- **Legacy PM co-existence**: both Legacy PM and New PM registrations exist for the same passes, with slightly different names (e.g., `"memory-space-opt-pass"` vs `"memory-space-opt"`). This dual registration is necessary during the LLVM Legacy→New PM migration — cicc v13.0 appears to be in the middle of this transition.
 
 ## Key Global Variables
 
