@@ -27,9 +27,9 @@
 | `sm_100` | 1000 | 6 | Blackwell | — | Production |
 | `sm_100a` | 1000 | 7 | Blackwell | `a` | Production |
 | `sm_100f` | 1000 | 7 | Blackwell | `f` | Production |
-| `sm_101` | 1010 | 6 | Blackwell | — | **Undocumented** |
-| `sm_101a` | 1010 | 7 | Blackwell | `a` | **Undocumented** |
-| `sm_101f` | 1010 | 7 | Blackwell | `f` | **Undocumented** |
+| `sm_101` | 1010 | 6 | Jetson Thor (pre-rename) | — | **Undocumented** |
+| `sm_101a` | 1010 | 7 | Jetson Thor (pre-rename) | `a` | **Undocumented** |
+| `sm_101f` | 1010 | 7 | Jetson Thor (pre-rename) | `f` | **Undocumented** |
 | `sm_102` | 1020 | 6 | Blackwell | — | **Undocumented** |
 | `sm_102a` | 1020 | 7 | Blackwell | `a` | **Undocumented** |
 | `sm_102f` | 1020 | 7 | Blackwell | `f` | **Undocumented** |
@@ -128,7 +128,7 @@ The NVVMIntrinsicVerifier (143KB) gates intrinsics by SM version:
 - **Extended MMA shapes**: m16n8k256
 - **`.offset.bindless`** intrinsics
 
-### Jetson Thor (sm_110) / Blackwell sm120 (sm_120, sm_121)
+### Jetson Thor (sm_110) / Blackwell (sm120) (sm_120, sm_121)
 - Present in binary but feature details not yet exercised in the codebase
 
 ## NVVM Container Architecture Enum — `sub_CD09E0`
@@ -148,7 +148,7 @@ The NVVM container format uses an architecture enumeration:
 | `NVVM_ARCH_AMPERE_8_0` through `8_8` | sm_80–sm_88 |
 | `NVVM_ARCH_HW_SM_5_0` through `10_4` | sm_50–sm_104 |
 
-Notable: `NVVM_ARCH_HW_SM_10_4` (sm_104) and `NVVM_ARCH_BLACKWELL_11_0` are not publicly documented.
+Notable: `NVVM_ARCH_HW_SM_10_4` (sm_104) and `NVVM_ARCH_BLACKWELL_11_0` are not publicly documented. NVIDIA's internal naming uses "BLACKWELL" for all sm_100–sm_121 variants, even though sm_110 is marketed as Jetson Thor and sm_120/121 are a distinct consumer microarchitecture (RTX 50xx).
 
 ## Target Triples
 
