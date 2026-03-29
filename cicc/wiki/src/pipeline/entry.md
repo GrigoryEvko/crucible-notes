@@ -5,305 +5,325 @@ Real main function, command-line processing, dual-path compilation dispatch, and
 | | |
 |---|---|
 | **main() thunk** | `0x4396A0` (16 bytes) — `return sub_8F9C90(argc, argv, envp)` |
-| **Real main** | `sub_8F9C90` (56KB, 1990 lines) |
+| **Real main** | `sub_8F9C90` (10,066 bytes, 1,990 lines) |
 | **Wizard mode** | `getenv("NVVMCCWIZ") == 553282` → `byte_4F6D280 = 1` |
-| **Default arch** | `compute_75` / `sm_75` |
-| **Flag catalog** | `sub_9624D0` (75KB, 142 unique flags) |
-| **Architecture map** | `sub_95EB40` (38KB, 30 architectures) |
+| **Default arch** | `compute_75` / `sm_75` (Turing) |
+| **Flag catalog** | `sub_9624D0` (75KB, 2,626 lines, 4 output vectors) |
+| **Architecture map** | `sub_95EB40` (38KB, 23 architectures, 3-column fan-out) |
+| **Flag translation** | `sub_8FE280` (red-black tree at `qword_4F6D2A0`, 40+ nvcc→cicc mappings) |
 | **Pipeline stages** | LNK → OPT → \[OPTIXIR\] → LLC |
-| **Dual path** | Path A (`sub_905EE0`, LibNVVM) / Path B (`sub_1265970`, standalone cicc) |
-| **Libdevice** | Embedded at `unk_3EA0080` (455,876 bytes) or external file |
+| **Dual path** | Path A (`sub_905EE0`) / Path B (`sub_1265970`) |
+| **Libdevice** | Path A: `unk_3EA0080` / Path B: `unk_420FD80` (455,876 bytes each) |
+| **Arch bitmask** | `0x60081200F821` (validates SM 75–121) |
 
 ## Architecture
-
-Two compilation paths converge on the same 4-stage pipeline:
 
 ```
 main (0x4396A0, 16B thunk)
   │
-  └─ sub_8F9C90 (56KB, REAL MAIN)
+  └─ sub_8F9C90 (10KB, REAL MAIN)
        │
-       ├─ v253 == 1 ──→ PATH A (LibNVVM mode)
-       │    ├─ sub_900130 (39KB, CLI processing)
-       │    ├─ sub_8FE280 (35KB, nvcc→cicc flag mapping)
-       │    └─ sub_905EE0 (43KB, LibNVVM pipeline driver)
-       │         ├─ sub_12BC0F0 (module load, builtin link, compile)
-       │         ├─ Libdevice: unk_3EA0080 (456KB embedded) or external
-       │         └─ Outputs: .lnk.bc → .opt.bc → .ptx
+       ├─ getenv("NVVMCCWIZ") == 553282 → wizard mode
+       ├─ sub_16C5290: extract program name from argv[0]
        │
-       ├─ v253 == 0 ──→ PATH B (standalone cicc mode)
-       │    └─ sub_1265970 (48KB, LibNVVM API entry)
-       │         ├─ Read inputs, create compilation unit
-       │         ├─ Add modules, link with builtins
-       │         └─ sub_12C35D0 (41KB, pipeline orchestrator)
-       │              ├─ LNK:     "LibNVVM module linking step."
-       │              ├─ OPT:     "LibNVVM optimization step."
-       │              ├─ OPTIXIR: "LibNVVM Optix IR step."
-       │              └─ LLC:     "LibNVVM code-generation step."
+       ├─ ARGUMENT LOOP (v15 = 1..argc)
+       │    ├─ -o <file>              → v257 (output)
+       │    ├─ -nvvmir-library <path> → v256 (libdevice)
+       │    ├─ -lgenfe/-libnvvm/-lnk/-opt/-llc → v263 (mode)
+       │    ├─ -arch/-mcpu/--nv_arch  → v242 (SM number)
+       │    ├─ --emit-optix-ir        → v243=1, v258=1
+       │    ├─ -nvc                   → v258=1
+       │    ├─ -irversion             → print IR version, exit
+       │    ├─ .bc/.ci/.i/.ii/.cup/.optixir → s (input file)
+       │    └─ obfuscated option      → v253 (0 or 1)
        │
-       └─ v253 == 2 ──→ DEFAULT (EDG frontend first, then Path A or B)
-            └─ sub_5D2A80 (EDG orchestrator) → sub_905EE0 or sub_1265970
+       ├─ v253 RESOLUTION (if still == 2)
+       │    └─ getenv(obfuscated) → compare → set v253 = 0 or 1
+       │
+       ├─ DISPATCH (v263 × v253)
+       │    ├─ v263==0, v253==1 → sub_902D10  (simple Path A)
+       │    ├─ v263==0, v253==0 → sub_1262860 (simple Path B)
+       │    ├─ v263==1          → sub_905E50 / sub_12658E0 (lgenfe)
+       │    ├─ v263≥2, v253==1  → sub_905EE0  (multi-stage Path A)
+       │    └─ v263≥2, v253==0  → sub_1265970 (multi-stage Path B)
+       │
+       └─ CLEANUP: free all vectors, strings, argv copy
 ```
 
 ## Real Main — `sub_8F9C90`
 
 | Field | Value |
 |---|---|
-| Address | `0x8F9C90` |
-| Size | 56KB (1,990 lines) |
-| Strings | 50+ CLI flag names |
+| Address | `0x8F9C90`–`0x8FC3E2` |
+| Size | 10,066 bytes |
+| Stack frame | 0x978 bytes (2,424 bytes) |
+| Local buffers | `v284[2096]` for argv copy (stack if argc ≤ 256, else heap) |
+
+### Key Local Variables
+
+| Variable | Init | Purpose |
+|---|---|---|
+| `v253` | 2 | Dispatch mode: 0=Path B, 1=Path A, 2=default (needs env resolution) |
+| `v263` | 0 | Invocation mode: 0=default, 1=lgenfe, 2=libnvvm, 3=lnk, 4=opt, 6=llc |
+| `v242` | 0 | Target architecture (SM number) |
+| `v258` | 0 | NVC flag |
+| `v243` | 0 | OptiX IR flag |
+| `v259` | 0 | Verbose (only effective in wizard mode) |
+| `v261` | 0 | Dryrun |
+| `v262` | 0 | Keep intermediates (only effective in wizard mode) |
+| `s` | NULL | Input file path |
+| `v257` | NULL | Output file path |
+| `v256` | NULL | NVVM IR library path |
+| `v266` | vector | Pass-through options vector |
 
 ### Wizard Mode
 
 ```c
-if (getenv("NVVMCCWIZ") && atoi(getenv("NVVMCCWIZ")) == 553282)
-    byte_4F6D280 = 1;  // wizard mode enabled
+v10 = getenv("NVVMCCWIZ");                    // 0x8F9D36
+if (v10 && strtol(v10, NULL, 10) == 553282)   // 0x8F9D92
+    byte_4F6D280 = 1;
 ```
 
-### Dispatch Variable (`v253`)
+Global `byte_4F6D280` gates the effectiveness of `-v`, `-keep`, `-dryrun`. Without wizard mode, these flags are silently ignored — `v259` and `v262` stay 0.
 
-| Value | Mode | Handler |
+### Invocation Modes (`v263`)
+
+| v263 | Flag | Mode | discard-value-names format |
+|---|---|---|---|
+| 0 | (none) | Default (nvcc invocation) | `-discard-value-names` |
+| 1 | `-lgenfe` | EDG frontend linkage | `--discard_value_names=1` (underscores) |
+| 2 | `-libnvvm` | LibNVVM API | `-discard-value-names=1` (dashes) |
+| 3 | `-lnk` | Linker | `-lnk-discard-value-names=1` |
+| 4 | `-opt` | Optimizer | `-opt-discard-value-names=1` |
+| 5 | (internal) | Undocumented (sets `v278` high byte) | — |
+| 6 | `-llc` | Standalone LLVM codegen | — |
+
+### Input File Extensions
+
+| Extension | Format | Condition |
 |---|---|---|
-| 2 | Default (full pipeline) | EDG → NVVM → LLVM → PTX |
-| 1 | Path A (LibNVVM) | `sub_902D10` / `sub_905EE0` |
-| 0 | Path B (standalone) | `sub_1262860` / `sub_1265970` |
+| `.bc` | LLVM bitcode | Always accepted |
+| `.ci` | CUDA intermediate (preprocessed) | Always accepted |
+| `.i` | Preprocessed C/C++ | Always accepted |
+| `.ii` | Preprocessed C++ | Always accepted |
+| `.cup` | CUDA source | Only after `--orig_src_path_name` or `--orig_src_file_name` |
+| `.optixir` | OptiX IR | Always accepted |
 
-### CLI Flags (Real Main)
+### Obfuscated Strings
 
-| Flag | Purpose |
-|---|---|
-| `-o` | Output file path |
-| `-nvvmir-library` | Path to NVVM IR library (libdevice) |
-| `-v` | Verbose mode |
-| `-dryrun` | Dry run (parse only) |
-| `-keep` | Keep intermediate files (.lnk.bc, .opt.bc) |
-| `-arch` / `--nv_arch` | Target architecture (compute_XX) |
-| `-mcpu=sm_XX` | Backend target CPU |
-| `--emit-optix-ir` | OptiX IR output mode |
-| `-lgenfe` / `-libnvvm` / `-lnk` / `-opt` / `-llc` | Phase selectors (1/2/3/4/6) |
+At `0x8F98A0`, `sub_8F98A0` decrypts strings using an XOR + ROT13-like cipher:
 
-### Input Extensions
+```c
+v40 = v37 ^ (-109 * ((offset + 97) ^ 0xC5));
+// then ROT13 on alphabetic characters
+```
 
-| Extension | Format |
-|---|---|
-| `.bc` | LLVM bitcode |
-| `.ci` / `.i` / `.ii` | Preprocessed C/C++ |
-| `.cup` | CUDA preprocessed |
-| `.optixir` | OptiX IR |
+This hides an environment variable name and option prefix from static analysis. The decrypted strings control the `v253` (Path A vs Path B) resolution when no explicit mode is specified.
 
-## Path A — LibNVVM Pipeline
+### Error Messages
 
-### CLI Processing — `sub_900130`
+| Message | Condition | Address |
+|---|---|---|
+| `"Missing output file\n"` | `-o` with no next argument | `0x8FA365` |
+| `"Missing NVVM IR library file\n"` | `-nvvmir-library` with no next arg | `0x8FAB34` |
+| `"Unparseable architecture: "` + value | Invalid arch string | Multiple |
+| `"Missing input file\n"` | No recognized input file | `0x8FBEAD` |
+| `"Recognized input file extensions are: .bc .ci .i .cup .optixir"` | After missing input | `0x8FBE97` |
+| `"Error: Output file was not specified (See -o option).\n"` | Multi-stage without `-o` | `0x8FB655` |
 
-| Field | Value |
-|---|---|
-| Address | `0x900130` |
-| Size | 39KB |
-
-Default architecture: `compute_75` / `sm_75`. Processes:
-
-| Flag | Purpose |
-|---|---|
-| `--emit-llvm-bc` | Emit LLVM bitcode instead of PTX |
-| `-maxreg` | Maximum register count |
-| `-split-compile` | Split compilation mode |
-| `--Xlgenfe` / `--Xlibnvvm` / `--Xlnk` / `--Xopt` / `--Xllc` | Pass-through to sub-phases |
-| `-covinfo` | Coverage info generation |
-| `-extra-device-vectorization` | Enable extra device vectorization |
-| `-gen-lto` | Generate LTO bitcode |
-
-### Flag Mapping Table — `sub_8FE280`
-
-| Field | Value |
-|---|---|
-| Address | `0x8FE280` |
-| Size | 35KB |
-| Data structure | Red-black tree at `qword_4F6D2A0` |
-
-Maps nvcc-facing flags to internal cicc equivalents:
-
-| nvcc Flag | cicc Equivalent |
-|---|---|
-| `-ftz` | `-nvptx-f32ftz` |
-| `-prec_sqrt` | `-nvptx-prec-sqrtf32=` |
-| `-prec_div` | `-nvptx-prec-divf32=` |
-| `-fmad` | `-nvptx-fma-level=` |
-| `-O0` / `-O1` / `-O2` / `-O3` | Optimization level |
-| `-Osize` | Size optimization |
-| `-Om` | Memory optimization |
-| `-Ofast-compile` | Fast-compile tiers |
-
-### LibNVVM Pipeline Driver — `sub_905EE0`
+## Path A — LibNVVM Pipeline (`sub_905EE0`)
 
 | Field | Value |
 |---|---|
 | Address | `0x905EE0` |
-| Size | 43KB |
-| Timer name | `"LibNVVM"` |
+| Size | 43KB (1,268 lines) |
+| Timer | `"LibNVVM"` |
+| Orchestrator | `sub_902D10` (simple mode) |
 
-Calls `sub_12BC0F0` for the compilation lifecycle:
-1. Module load
-2. Builtin linking (libdevice at `unk_3EA0080`, 455,876 bytes)
-3. Compile (invokes the full LNK → OPT → LLC pipeline)
-4. Output retrieval
+### 14-Phase Compilation Flow
 
-Creates intermediate files: `.lnk.bc` and `.opt.bc`.
-Loads 37 LLVM options from table at `off_4B90FE0`.
+| Phase | Action |
+|---|---|
+| 0 | Verbose command-line reconstruction |
+| 1 | Input file handling — NVVM container (`sub_9047E0`) or regular bitcode |
+| 2.1 | Pipeline infrastructure: verbose stream, address space query, module prep |
+| 2.2 | `nvvmCreateCU` (dispatch ID 2151) |
+| 2.3 | `nvvmCUAddModule` (dispatch ID 4660) |
+| 2.4 | Check for `-opt`/`-llc` direct stage invocation |
+| 2.5 | Parse and add additional modules from extra args |
+| 2.6 | Libdevice linking: external file or embedded `unk_3EA0080` (455,876 bytes) |
+| 2.7 | Intermediate file path construction (`.lnk.bc`, `.opt.bc`) |
+| 2.8 | Option parsing via `sub_9685E0` → 4 stage vectors (lnk/opt/lto/llc) |
+| 2.9 | Verbose stage logging + callback registration |
+| 2.10 | Load 37 LLVM options from `off_4B90FE0` via `nvvmSetOptionStrings` (ID 0xFEED) |
+| 2.11 | `nvvmCUCompile` (ID 0xBEAD) with phase code `57069` (0xDEED) |
+| 2.12 | Get compilation log/warnings |
+| 2.13 | Get PTX output |
+| 2.14 | `nvvmDestroyCU` (ID 21257 = 0x5309) |
+| 3 | Error/warning output to caller |
+| 4 | Write output file (text or binary detection via ELF magic) |
+| 5 | Timer stop |
 
-## Path B — Standalone cicc Pipeline
+### LibNVVM API Dispatch IDs
 
-### LibNVVM API Entry — `sub_1265970`
+Internal function `sub_12BC0F0(id)` returns API function pointers by numeric ID:
+
+| ID | Hex | Function |
+|---|---|---|
+| 2151 | 0x0867 | `nvvmCreateCU` |
+| 4111 | 0x100F | `nvvmGetCompiledResult` |
+| 4660 | 0x1234 | `nvvmCUAddModule` |
+| 17185 | 0x4321 | `nvvmCUSetExtraArgs` |
+| 21257 | 0x5309 | `nvvmDestroyCU` |
+| 41856 | 0xA380 | `nvvmGetCompilationLog` |
+| 46903 | 0xB737 | `nvvmGetCompiledResultLog` |
+| 46967 | 0xB797 | `nvvmGetErrorString` |
+| 48813 | 0xBEAD | `nvvmCUCompile` |
+| 48879 | 0xBEEF | Callback registrar |
+| 61451 | 0xF00B | `nvvmGetCompiledResultSize` |
+| 62298 | 0xF37A | `nvvmCUAddModuleFromBuffer` |
+| 65261 | 0xFEED | `nvvmCUSetOptions` |
+
+### Embedded Libdevice
+
+| Path | Address | Size | Purpose |
+|---|---|---|---|
+| Path A | `unk_3EA0080` | 455,876 bytes | Default libdevice for LibNVVM mode |
+| Path B | `unk_420FD80` | 455,876 bytes | Default libdevice for standalone mode |
+
+Used when no `-nvvmir-library` path is provided. Contains ~400+ math functions (`__nv_*`, `__nvvm_*`).
+
+## Path B — Standalone cicc Pipeline (`sub_1265970`)
 
 | Field | Value |
 |---|---|
 | Address | `0x1265970` |
-| Size | 48KB |
+| Size | ~48KB (1,371 lines) |
+| Timer | `"LibNVVM"` (same name) |
+| Version string | `-nvvm-version=nvvm70` |
 
-The outermost entry point for LibNVVM compilation. Orchestrates:
-1. Read input files
-2. Create compilation unit
-3. Add modules
-4. Link with builtins (`-nvvmir-library`)
-5. Run pipeline via `sub_12C35D0`
-6. Extract PTX output
-7. Handle errors and verbose mode (`-keep`, `-v`)
-
-Passes `-nvvm-version=nvvm70` to optimizer.
-
-### Compilation Orchestrator — `sub_12C35D0`
+### 4-Stage Pipeline Orchestrator — `sub_12C35D0`
 
 | Field | Value |
 |---|---|
 | Address | `0x12C35D0` |
-| Size | 41KB |
-| Stages | 4 (LNK, OPT, OPTIXIR, LLC) |
+| Size | 41KB (1,446 lines) |
+| Backend objects | `nvopt` (512 bytes) + `nvllc` (480 bytes) |
 
-| Stage | Timer String | Purpose |
-|---|---|---|
-| LNK | `"LibNVVM module linking step."` | Link IR modules + libdevice |
-| OPT | `"LibNVVM optimization step."` | Run LLVM optimizer pipeline |
-| OPTIXIR | `"LibNVVM Optix IR step."` | OptiX IR generation (optional) |
-| LLC | `"LibNVVM code-generation step."` | Backend codegen → PTX |
+| Stage | Bit | Timer String | Core Function |
+|---|---|---|---|
+| LNK | 0x01 | `"LNK"` / `"LibNVVM module linking step."` | `sub_12C06E0` (63KB, module linker) |
+| OPT | 0x80 | `"OPT"` / `"LibNVVM optimization step."` | `sub_12E7E70` (full LLVM pipeline) |
+| OPTIXIR | 0x40 | `"OPTIXIR"` / `"LibNVVM Optix IR step."` | `sub_12F9270` (OptiX IR gen) |
+| LLC | 0x04 | `"LLC"` / `"LibNVVM code-generation step."` | `sub_12F5100` (SelectionDAG codegen) |
 
-Each stage uses `sub_16D8B50` for timing and supports optional progress callback.
+Pipeline stage bitmask (from `sub_12D2AA0`): bit 0=LNK, bit 2=LLC, bit 5=verify, bit 6=OPTIXIR, bit 7=OPT.
+
+Return codes: 0=success, 7=parse failure, 9=link/layout/verification error, 10=cancelled, 100=post-pipeline verification failure.
 
 ### Module Linker — `sub_12C06E0`
 
-| Field | Value |
-|---|---|
-| Address | `0x12C06E0` |
-| Size | 63KB |
-
-Validates:
-- Triple must start with `nvptx64-`
-- IR version compatibility: `"incompatible IR detected. Possible mix of compiler/IR from different releases."`
-- Symbol size matching across modules
-
-### NVVM IR Version Checker — `sub_12BFF60`
-
-Reads `"nvvmir.version"` metadata. Checks `NVVM_IR_VER_CHK` environment variable for version override. Validates `"llvm.dbg.cu"` debug info presence.
+- Validates bitcode magic: `0xDE,0xC0,0x17,0x0B` (LLVM) or `0x42,0x43,0xC0,0xDE` (wrapper)
+- Triple validation: must start with `"nvptx64-"`
+- IR version check via `sub_12BFF60`: reads `"nvvmir.version"` metadata, `NVVM_IR_VER_CHK` env var override
+- Symbol size matching across modules (type codes: 1=half, 2=float, 3=double, 7=ptr, 0xB=integer, 0xD=struct, 0xE=array)
 
 ## Architecture Detection — `sub_95EB40`
 
-| Field | Value |
-|---|---|
-| Address | `0x95EB40` |
-| Size | 38KB |
-| Architectures | 30 (compute_75 through compute_121f) |
-| Triple | `nvptx64-nvidia-cuda` (hardcoded at `0x3f0f5cd`) |
+Builds a `std::map<string, ArchTriple>` in a red-black tree at `a1+248`. Each entry maps a CLI flag to three forwarded strings:
 
-Maps `-arch=compute_XX` to three independent flag columns:
+| Column | Target | Example |
+|---|---|---|
+| Column 1 | EDG frontend | `-R __CUDA_ARCH=750` |
+| Column 2 | Optimizer | `-opt-arch=sm_75` |
+| Column 3 | LLC backend | `-mcpu=sm_75` |
 
-| Architecture | `__CUDA_ARCH` | `-opt-arch=` | `-mcpu=` |
-|---|---|---|---|
-| `compute_75` | 750 | `sm_75` | `sm_75` |
-| `compute_80` | 800 | `sm_80` | `sm_80` |
-| `compute_86` | 860 | `sm_86` | `sm_86` |
-| `compute_87` | 870 | `sm_87` | `sm_87` |
-| `compute_88` | 880 | `sm_88` | `sm_88` |
-| `compute_89` | 890 | `sm_89` | `sm_89` |
-| `compute_90` | 900 | `sm_90` | `sm_90` |
-| `compute_90a` | 900 | `sm_90a` | `sm_90a` |
-| `compute_100` | 1000 | `sm_100` | `sm_100` |
-| `compute_100a` | 1000 | `sm_100a` | `sm_100a` |
-| `compute_100f` | 1000 | `sm_100f` | `sm_100f` |
-| `compute_103` | 1030 | `sm_103` | `sm_103` |
-| `compute_103a` | 1030 | `sm_103a` | `sm_103a` |
-| `compute_103f` | 1030 | `sm_103f` | `sm_103f` |
-| `compute_110` | 1100 | `sm_110` | `sm_110` |
-| `compute_110a` | 1100 | `sm_110a` | `sm_110a` |
-| `compute_110f` | 1100 | `sm_110f` | `sm_110f` |
-| `compute_120` | 1200 | `sm_120` | `sm_120` |
-| `compute_120a` | 1200 | `sm_120a` | `sm_120a` |
-| `compute_120f` | 1200 | `sm_120f` | `sm_120f` |
-| `compute_121` | 1210 | `sm_121` | `sm_121` |
-| `compute_121a` | 1210 | `sm_121a` | `sm_121a` |
-| `compute_121f` | 1210 | `sm_121f` | `sm_121f` |
+### Architecture Validation Bitmask
 
-Also maps general flags: `-g`, `-generate-line-info`, `-opt=0/1/2/3`, `-Osize`, `-Om`, `-ftz`, `-prec-sqrt`, `-prec-div`, `-fma`, `-unsafe-math`, `-fast-math`, `-disable-inlining`, `-aggressive-inline` (budget=40000), `-restrict`, `-new-nvvm-remat`, `-disable-nvvm-remat`, `--emit-optix-ir`.
+```c
+offset = arch_number - 75;
+if (offset > 0x2E || !_bittest64(&0x60081200F821, offset))
+    → ERROR: "is an unsupported option"
+```
 
-## NVVM Flag Catalog — `sub_9624D0`
+Valid architectures (bit positions in `0x60081200F821`):
+
+| Bit | SM | Generation |
+|---|---|---|
+| 0 | 75 | Turing |
+| 5 | 80 | Ampere |
+| 11 | 86 | Ampere |
+| 12 | 87 | Ampere (Jetson Orin) |
+| 13 | 88 | Ada (undocumented) |
+| 14 | 89 | Ada Lovelace |
+| 15 | 90 | Hopper |
+| 25 | 100 | Blackwell |
+| 28 | 103 | Blackwell |
+| 35 | 110 | Post-Blackwell |
+| 45 | 120 | Post-Blackwell |
+| 46 | 121 | Post-Blackwell |
+
+Suffix handling: `a` and `f` variants share the base SM number for validation but get distinct `-mcpu=sm_XXa`/`-mcpu=sm_XXf` strings.
+
+## Flag Catalog — `sub_9624D0`
 
 | Field | Value |
 |---|---|
 | Address | `0x9624D0` |
-| Size | 75KB |
-| Unique flags | 142 |
-| Output vectors | 4 (lnk, opt, lto, llc) |
+| Size | 75KB (2,626 lines) |
+| Mode cookie | `a4`: `0xABBA`=CUDA, `0xDEED`=OpenCL |
+| Output vectors | lnk, opt, lto, llc (32-byte std::string elements with SSO) |
 
-### Phase Routing
+### -Ofast-compile Levels
 
-| Phase ID | Name | Option Vector |
+| Level String | Internal Value | Effect |
 |---|---|---|
-| 1 | LNK (linker) | `-lnk` flags |
-| 2 | OPT (optimizer) | `-opt` flags |
-| 3 | LLC (codegen) | `-llc` flags |
-| 4 | LibNVVM | All phases |
+| `"max"` | 2 | Most optimizations skipped, forces `-lsa-opt=0 -memory-space-opt=0` |
+| `"mid"` | 3 | Medium speedup |
+| `"min"` | 4 | Minimal speedup |
+| `"0"` | 1 → reset to 0 | Disabled |
 
-### Key Flag Categories
+Error: `"libnvvm : error: -Ofast-compile specified more than once"`
 
-| Category | Example Flags |
-|---|---|
-| **Architecture** | `-arch=compute_XXX` (validated against bitmask `0x60081200F821`) |
-| **Math precision** | `-ftz`, `-prec-sqrt`, `-prec-div`, `-fma`, `-opt-fdiv`, `-unsafe-math` |
-| **Optimization** | `-Ofast-compile=0/min/mid/max` (stored at offset+1640) |
-| **Custom pipeline** | `-opt-passes=<pipeline>` (stored at offset+1512) |
-| **Inlining** | `-disable-inlining`, `-inline-budget=40000`, `-aggressive-inline`, `-inline-info` |
-| **LTO** | `-lto` (0x23), `-gen-lto` (0x21), `-gen-lto-and-llc`, `-link-lto` (0x26) |
-| **Pass-through** | `-Xopt`, `-Xllc`, `-Xlnk`, `-Xlto` |
-| **Register limit** | `-maxreg=N` (offset+1192, forwarded to opt+llc) |
-| **Split compile** | `-split-compile=N` (offset+1480) |
-| **OptiX** | `--emit-optix-ir` (disables ip-msp and licm) |
+### Flag-to-Pipeline Routing (Selected)
 
-## NVVM Builtin Resolution — `sub_90AEE0`
+| User Flag | LNK Forward | OPT Forward | LLC Forward |
+|---|---|---|---|
+| `-ftz=1` | `-R __CUDA_FTZ=1` | `-nvptx-f32ftz` | `-nvptx-f32ftz` |
+| `-prec-div=1` (CUDA) | `-R __CUDA_PREC_DIV=1` | `-opt-use-prec-div=true` | `-nvptx-prec-divf32=2` |
+| `-prec-div=0` (CUDA) | — | `-opt-use-prec-div=false` | `-nvptx-prec-divf32=1` |
+| `-prec-sqrt=1` | `-R __CUDA_PREC_SQRT=1` | — | `-nvptx-prec-sqrtf32=1` |
+| `-fma=1` | — | — | `-nvptx-fma-level=1` |
+| `-fast-math` (CUDA) | `-R __CUDA_USE_FAST_MATH=1` | `-opt-use-fast-math` | — |
+| `-unsafe-math` | `-R FAST_RELAXED_MATH=1 -R __CUDA_FTZ=1` | `-opt-use-fast-math -nvptx-f32ftz` | `-nvptx-fma-level=1 -nvptx-f32ftz` |
+| `-aggressive-inline` | — | `-inline-budget=40000` | — |
+| `-new-nvvm-remat` | — | — | `-enable-new-nvvm-remat=true -nv-disable-remat=true -rp-aware-mcse=true` |
 
-| Field | Value |
-|---|---|
-| Address | `0x90AEE0` |
-| Size | 109KB |
-| Builtins | 770 entries via `sub_90ADD0` / `sub_C92610` |
+### nvcc→cicc Flag Translation — `sub_8FE280`
 
-Pre-optimization builtin resolution table. Surface/texture builtins visible (e.g., `__nvvm_sust_b_2d_v2i64_zero`, ID 612). See [Builtin Table](../builtins/index.md) for the full inventory.
+Red-black tree at `qword_4F6D2A0` (populated once, guarded by `qword_4F6D2C8`). Selected mappings:
 
-## Data Layout Strings
-
-| Mode | Layout String |
-|---|---|
-| 64-bit (shared mem) | `e-p:64:64:64-p3:32:32:32-i1:8:8-...-n16:32:64` |
-| 64-bit (no shared) | `e-p:64:64:64-i1:8:8-...-n16:32:64` |
-| 32-bit | `e-p:32:32:32-i1:8:8-...-n16:32:64` |
-
-`p3:32:32:32` = address space 3 (shared memory) uses 32-bit pointers even in 64-bit mode.
+| nvcc Flag | EDG Passthrough | cicc Internal |
+|---|---|---|
+| `-O0`..`-O3` | `--device-O=N` | `-opt=N` |
+| `-fmad=1` | — | `-fma=1` |
+| `-prec_sqrt=1` | — | `-prec-sqrt=1` |
+| `-Ofast-compile=max` | — | `-Ofast-compile=max` |
+| `-Ofc=max` | — | `-Ofast-compile=max` (alias) |
+| `--emit-optix-ir` | `--emit-lifetime-intrinsics` | `--emit-optix-ir` |
+| `-discard-value-names` | `--discard_value_names=1` | `-discard-value-names=1` |
 
 ## Key Global Variables
 
 | Variable | Purpose |
 |---|---|
-| `byte_4F6D280` | Wizard mode flag |
+| `byte_4F6D280` | Wizard mode flag (gates `-v`, `-keep`) |
 | `qword_4F6D2A0` | Flag mapping red-black tree root |
-| `unk_3EA0080` | Embedded libdevice bitcode (455,876 bytes) |
+| `qword_4F6D2C8` | Tree initialization guard |
+| `byte_4F6D2D0` | `--partial-link` active flag |
+| `byte_4F6D2DC` | `--force-llp64` active flag |
+| `unk_3EA0080` | Embedded libdevice bitcode (Path A, 455,876 bytes) |
+| `unk_420FD80` | Embedded libdevice bitcode (Path B, 455,876 bytes) |
 | `off_4B90FE0` | LLVM options table (37 entries) |
-| `qword_4F076F0` | Input source filename |
-| `unk_4D045E8` | SM number (from `-arch`) |
-| `unk_4D045E4` | `a` suffix flag |
-| `unk_4D045E0` | `f` suffix flag |
+| `unk_4F06A68` | Data model width (8=64-bit, 4=32-bit) |
+| `unk_4D0461C` | Enable `p3:32:32:32` in data layout (shared mem 32-bit ptrs) |

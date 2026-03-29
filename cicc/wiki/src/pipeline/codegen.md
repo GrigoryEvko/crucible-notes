@@ -172,33 +172,120 @@ At object offset 72760 (`0x11C58`): Per-type legalize action array. 4 bits per e
 |---|---|
 | Address | `0x21E74C0` |
 | Size | 17KB |
+| Packed descriptor | `*(QWORD*)(*(QWORD*)(a1+16) + 16*a2 + 8)` |
 
-Central PTX mma/wmma instruction builder covering all generations:
+Central PTX mma/wmma instruction builder. Reads a packed 64-bit descriptor via string queries ("mid", "shape", "ety", "aty", "bty", "al", "bl", "opc", "rnd", "satf", "rowcol").
 
-| Shape | Data Types | Features |
+### Complete Shape Inventory
+
+| Enum | Shape | M dim | PTX String | Notes |
+|---|---|---|---|---|
+| `0x01` | m8n8k4 | 8 | `"m8n8k4"` | Original Volta HMMA |
+| `0x02` | m8n8k16 | 8 | `"m8n8k16"` | Integer MMA (s8/u8) |
+| `0x03` | m8n8k32 | 8 | `"m8n8k32"` | Sub-byte (s4/u4) |
+| `0x04` | m8n8k64 | 8 | `"m8n8k64"` | Extended sub-byte |
+| `0x05` | m8n8k128 | 8 | `"m8n8k128"` | Binary MMA (b1) |
+| `0x10` | m16n8k4 | 16 | `"m16n8k4"` | f64 on Ampere |
+| `0x11` | m16n8k8 | 16 | `"m16n8k8"` | Turing/Ampere HMMA |
+| `0x12` | m16n8k16 | 16 | `"m16n8k16"` | Ampere (bf16, tf32) |
+| `0x13` | m16n8k32 | 16 | `"m16n8k32"` | Ampere integer |
+| `0x14` | m16n8k64 | 16 | `"m16n8k64"` | Sub-byte integer |
+| `0x15` | m16n8k128 | 16 | `"m16n8k128"` | Extended sub-byte |
+| `0x16` | m16n8k256 | 16 | `"m16n8k256"` | Largest — binary/sub-byte |
+| `0x17` | m16n16k16 | 16 | `"m16n16k16"` | Square — Hopper+ |
+| `0x18` | m32n8k16 | 32 | `"m32n8k16"` | Tall shape |
+| `0x19` | m16n16k8 | 16 | `"m16n16k8"` | f16 WMMA path |
+
+### Data Type Encoding
+
+| Enum | Type | Bits | PTX |
+|---|---|---|---|
+| 1 | b1 | 1 | `"b1"` |
+| 2 | s4 | 4 | `"s4"` |
+| 3 | u4 | 4 | `"u4"` |
+| 4 | s8 | 8 | `"s8"` |
+| 5 | u8 | 8 | `"u8"` |
+| 6 | f16 | 16 | `"f16"` |
+| 7 | bf16 | 16 | `"bf16"` |
+| 8 | tf32 | 19 | `"tf32"` |
+| 9 | f64 | 64 | `"f64"` |
+| 10 | f32 | 32 | `"f32"` |
+| 11 | s32 | 32 | `"s32"` |
+
+### Packed Descriptor Bit Layout
+
+| Bits | Field | Values |
 |---|---|---|
-| `m8n8k4` | f16, f32, f64 | Volta (sm_70) |
-| `m8n8k16/32/64/128` | s32 (int MMA) | Turing (sm_75) |
-| `m16n8k4/8/16/32/64/128/256` | f16, bf16, tf32, s32 | Ampere/Hopper/Blackwell |
-| `m16n16k16/8` | f16, s32 | Legacy shapes |
-| `m32n8k16` | s32 | Legacy shapes |
+| [0] | rowcol | 0=row, 1=col |
+| [2:1] | mid | 0=a, 1=b, 2=c, 3=d |
+| [7:4] / [2:0] | opc / rnd | 0=none, 1=.and.popc, 2=.xor.popc / 1=.rn, 2=.rm, 3=.rp, 4=.rz |
+| [15:8] | aty | A element type enum |
+| [23:16] | bty | B element type enum |
+| [25:24] | al | A layout (0=row, nonzero=col) |
+| [27:26] | bl | B layout |
+| [28] | satf | Saturation flag → `.satfinite` |
+| [39:32] | shape | Shape enum (0x01–0x19) |
 
-Rounding modes: `.rm`, `.rn`, `.rp`, `.rz`. Saturation: `.satfinite`. Binary operations: `.and.popc`, `.xor.popc`.
+### Architecture Gates
 
-### Per-Type Lowering Functions
+| Family | Gate | Min SM | Features |
+|---|---|---|---|
+| HMMA | `*(target+252) > 0x45` | SM 70 | f16 only |
+| IMMA | `*(target+252) > 0x47` | SM 72 | s8/u8 (restricted shapes at SM 72) |
+| IMMA full | `*(target+252) > 0x48` | SM 75 | All IMMA shapes |
+| BMMA | `*(target+252) > 0x48` | SM 75 | b1 (.and.popc, .xor.popc) |
+| bf16/tf32/f64 | — | SM 80 | Ampere data types |
+| tcgen05 | `+340 ≥ 0x3E8` | SM 100 | Blackwell tensor core |
 
-| Function | Size | Type |
+SM 72 (Xavier) restriction: only basic IMMA shape (variant ≤ 1). SM 75+ supports all.
+
+### Per-Family Functions
+
+| Function | Family | Operation | Min SM |
+|---|---|---|---|
+| `sub_21E0360` | HMMA | load A/B (`hmmaldab`) | 70 |
+| `sub_21E0630` | HMMA | load C (`hmmaldc`) | 70 |
+| `sub_21DFBF0` | HMMA | store C (`hmmastc`) | 70 |
+| `sub_21E0870` | HMMA | MMA (`hmmamma`) | 70 |
+| `sub_21E1280` | IMMA | load A/B (`immaldab`) | 72 |
+| `sub_21E15D0` | IMMA | load C (`immaldc`) | 72 |
+| `sub_21E1830` | IMMA | store C | 72 |
+| `sub_21E1D20` | IMMA | MMA w/ saturation (`immamma`) | 72 |
+| `sub_21E2280` | BMMA | binary MMA (`bmmamma`) | 75 |
+| `sub_21E8CD0` | tcgen05 | scaled MMA operands | 100 |
+
+Each function exists in two copies: AsmPrinter side (`0x21Dxxxx`) and NVPTX backend side (`0x36Exxxx`).
+
+### tcgen05 Blackwell — `sub_21E8CD0` / `sub_35F3E90`
+
+Packed descriptor bits for Blackwell scaled MMA:
+
+| Bit | Field | Values |
 |---|---|---|
-| `sub_21DFBF0` | 5KB | HMMA store-C (`hmmastc`) |
-| `sub_21E0360` | 3KB | HMMA load-A/B (`hmmaldab`) |
-| `sub_21E0630` | 3KB | HMMA load-C (`hmmaldc`) |
-| `sub_21E0870` | 4KB | HMMA multiply-accumulate (`hmmamma`) |
-| `sub_21E1280` | 4KB | IMMA load-A/B (`immaldab`) |
-| `sub_21E15D0` | 3KB | IMMA load-C (`immaldc`) |
-| `sub_21E1830` | 5KB | IMMA store-C |
-| `sub_21E1D20` | 6KB | IMMA multiply-accumulate (saturation control) |
-| `sub_21E2280` | 6KB | Binary MMA (`bmma`, 1-bit XOR/AND popcount) |
-| `sub_21E8CD0` | 2KB | tcgen05 scaled MMA (Blackwell: `scaleD`, `transA`, `negA`, `negB`) |
+| 0 | scaleD | 0→"0", 1→"1" |
+| 1 | negA | 0→"1", 1→"-1" |
+| 2 | negB | 0→"1", 1→"-1" |
+| 3 | transA | 0→"0", 1→"1" |
+| 4 | transB | 0→"0", 1→"1" |
+
+10 tcgen05.mma shape variants (opcodes 4905–4940), with modifiers: `block_scale`, `sparsity` (bit 5), `weight_stationary`, `scaleInputAccumulator`. Type encoding bits[8:6]: mxf4nvf4, i8, mxf8f6f4, f16, tf32, fp4, mxf4, bf16.
+
+### Shape × Type × Architecture Matrix
+
+| Shape | A/B Types | Acc Types | Min SM |
+|---|---|---|---|
+| m8n8k4 | f16 | f16,f32 | 70 |
+| m16n8k4 | f64 | f64 | 80 |
+| m16n8k8 | f16 | f16,f32 | 75 |
+| m16n8k16 | f16,bf16,tf32 | f16,f32 | 80 |
+| m16n16k16 | f16,bf16 | f16,f32 | 90 |
+| m8n8k16 | s8,u8 | s32 | 72 |
+| m16n8k32 | s8,u8 | s32 | 75 |
+| m8n8k32 | s4,u4 | s32 | 75 |
+| m16n8k128 | s4,u4 | s32 | 75 |
+| m8n8k128 | b1 | s32 | 75 |
+| m16n8k256 | b1 | s32 | 75 |
+| tcgen05 (10 variants) | mxf8f6f4,mxf4,f16,bf16,tf32,i8,fp4 | varies | 100 |
 
 ## Register Allocation
 
