@@ -1,6 +1,8 @@
 # EDG 6.6 Frontend
 
-Edison Design Group C/C++ Front End, version 6.6. Address range `0x5D0000`–`0x8F0000` (~3.2 MB of code). This is the **largest single subsystem** in the cicc binary.
+NVIDIA licenses the Edison Design Group (EDG) C/C++ front end — a commercial compiler frontend used by several major compilers including Intel ICC. In cicc v13.0, EDG version 6.6 occupies 3.2 MB of code (`0x5D0000`–`0x8F0000`), making it the **largest single subsystem** in the binary. Unlike most modern compilers that parse directly to an SSA-based IR, EDG operates as a **source-to-source translator**: it parses CUDA C++ source code and emits transformed C code containing CUDA runtime API calls. This output is then fed into a second compilation phase that produces NVVM IR (LLVM bitcode). This two-stage design means the CUDA language extensions (kernel launch syntax, memory space qualifiers, device/host function annotations) are resolved entirely within EDG, and the LLVM-based backend never sees raw CUDA syntax.
+
+The EDG frontend is configured at compile time through 737 `#define` macros, including GCC 8.1 emulation mode and Clang 9.1 emulation mode. Exceptions are disabled by default — CUDA device code cannot use C++ exceptions — while RTTI remains enabled for `dynamic_cast` support in host-side code that interacts with device objects.
 
 | | |
 |---|---|
@@ -18,7 +20,7 @@ Edison Design Group C/C++ Front End, version 6.6. Address range `0x5D0000`–`0x
 
 ## Architecture
 
-The EDG frontend operates as a **source-to-source translator**: it parses CUDA C++ and emits transformed C code with CUDA runtime API calls. The output feeds into a second compilation phase that produces NVVM IR.
+The compilation flow through EDG has four major phases: CLI parsing (282-case switch), translation unit initialization (keyword tables, parser bootstrapping), parsing and semantic analysis (the bulk of the 3.2 MB), and backend code emission (generating three output files: `.int.c` for internal declarations, `.device.c` for device code, and `.stub.c` for host-side launch stubs). Error recovery uses `setjmp`/`longjmp` — any of the 478 call sites that invoke the abort handler (`sub_721090`) will unwind back to the orchestrator rather than crashing the process.
 
 ```
 sub_5D2A80 (orchestrator, setjmp error recovery)
@@ -52,7 +54,7 @@ Timer callbacks record `"Front end time"`, `"Back end time"`, and `"Total compil
 
 ## Orchestrator — `sub_5D2A80`
 
-The master entry point for the entire frontend. Uses `setjmp` for error recovery — if any EDG subsystem calls the abort handler (`sub_721090`, 478 callers), control returns here.
+The master entry point for the entire frontend. Uses `setjmp` for non-local error recovery — when any of the ~5,000 EDG functions detects an unrecoverable error (type system inconsistency, parser corruption, internal assertion failure), it calls `sub_721090`, which `longjmp`s back to this function. The 478 call sites that reference the abort handler demonstrate just how pervasive error checking is throughout the frontend — roughly 10% of all functions in the EDG range can trigger a fatal abort.
 
 | Global | Purpose |
 |---|---|
@@ -64,7 +66,9 @@ The master entry point for the entire frontend. Uses `setjmp` for error recovery
 
 ## Frontend Entry — `sub_617BD0` (lgenfe_main)
 
-123KB, 3,113 lines. The **largest function** in the EDG range. Signature: `(int argc, __int64 argv)`.
+At 123KB and 3,113 decompiled lines, `lgenfe_main` is the largest function in the EDG range. The name "lgenfe" stands for "LLVM-generating front end" — a hint that this function was originally designed for a different backend before NVIDIA adopted the EDG+LLVM architecture. The function is divided into three distinct regions: a massive 282-case switch for CLI option parsing (2,000 lines), a post-parse validation phase that checks for conflicting options and enforces CUDA-specific constraints, and a file I/O setup phase that installs 11 signal handlers and returns a pointer to the configured compilation context.
+
+Signature: `(int argc, __int64 argv)`.
 
 ### Structure
 
@@ -125,6 +129,8 @@ Registers ~300 options via `sub_6101D0(id, name, flag, ...)`. CUDA-specific opti
 
 ## Translation Unit Processing
 
+Translation unit processing is where EDG transitions from CLI configuration to actual compilation. The init function sets up the lexer, allocates the translation unit data structure (416 bytes), populates the keyword table with ~350 entries, and enters the recursive-descent parser. EDG uses a keyword-registration model where each keyword is individually registered with its token ID — this allows NVIDIA to add CUDA-specific keywords (like `__shared__` or `__nv_fp8_e4m3`) without modifying the core parser grammar.
+
 ### Init — `sub_8D0BC0`
 
 1. Reset token state (`dword_4F063F8 = 0`)
@@ -155,6 +161,8 @@ Strings: `"Generating Needed Template Instantiations"`, `"Wrapping up translatio
 
 ## Preprocessor
 
+EDG includes its own preprocessor rather than relying on an external `cpp`. This is standard for EDG-based compilers — the preprocessor is tightly integrated with the parser to handle complex interactions between macros and C++ syntax (e.g., `__VA_OPT__` in C++20, which requires the preprocessor to understand syntactic context). The preprocessor occupies ~250KB across four major functions and maintains a 99-entry predefined macro table plus a 25-entry feature-test macro table.
+
 ### Token Scanner — `sub_7B8B50` (59KB)
 
 The main preprocessor tokenizer. Handles all C/C++ token kinds: identifiers, numbers (delegates to `sub_7B40D0`), string literals, operators, punctuators, UCN sequences. Detects C++20 `module`/`import` keywords via string comparison.
@@ -179,9 +187,13 @@ Giant switch on character value. Handles trigraph sequences, line splices, multi
 
 ## Parser & Declaration Processing
 
+The parser subsystem is the largest part of the EDG frontend — over 1 MB of code spread across dozens of functions. EDG uses a recursive-descent parser augmented with a declaration-specifier state machine. The state machine design is necessary because C/C++ declaration specifiers can appear in any order (`const unsigned long long int` and `int long unsigned long const` are identical), requiring the parser to accumulate specifiers into bitmasks and resolve the final type only after all specifiers have been consumed.
+
+NVIDIA's major contribution to the parser is the CUDA type extension infrastructure: 19 new FP8/FP6/FP4/MX-format type tokens (339–354) for Blackwell's tensor core operations, 9 address-space qualifier tokens (272–280) for GPU memory spaces, and 4 memory-space declaration specifiers (133–136) that piggyback on the existing width-modifier field. These extensions are grafted onto EDG's type system in a way that minimizes changes to the core parser logic — CUDA qualifiers reuse existing state variables with previously-unused value ranges.
+
 ### Declaration Specifier State Machine — `sub_672A20` (132KB, 4,371 lines)
 
-The **central parser function**. A `while(2)/switch` dispatcher on token codes from `word_4F06418[0]` with ~80 case labels. Accumulates type specifiers, qualifiers, storage-class specifiers, and CUDA address-space qualifiers from the token stream.
+The **central parser function** and one of the most complex functions in the binary. A `while(2)/switch` dispatcher on token codes from `word_4F06418[0]` with ~80 case labels. It accumulates type specifiers, qualifiers, storage-class specifiers, and CUDA address-space qualifiers from the token stream into a set of bitmask variables, then constructs the final type node from the accumulated state.
 
 #### State Variables
 
@@ -406,7 +418,9 @@ The backbone type printer. Walks type nodes recursively, emitting textual repres
 
 ## IL Tree Infrastructure
 
-Four **structurally identical** tree walkers share the same 87 node-type dispatch:
+EDG represents parsed code as an Intermediate Language (IL) tree — a rich AST that preserves full C++ semantic information including template instantiation state, scope chains, and type qualifiers. The IL is not LLVM IR; it is EDG's proprietary tree representation that predates the LLVM integration. All semantic analysis, template instantiation, and overload resolution operate on this tree.
+
+The IL tree is traversed by four structurally identical walker functions that share the same 87 node-type dispatch table. The walkers are instantiated from a common template with different callback functions — a design pattern where the traversal logic is fixed but the action at each node is parameterized through function pointers stored in six global variables. This callback-driven walker system is central to EDG's architecture: template instantiation, type checking, code emission, and tree copying all use the same walker infrastructure with different callbacks.
 
 | Function | Size | Self-recursive Calls | Purpose |
 |---|---|---|---|
@@ -452,7 +466,11 @@ Six global function pointers form the visitor dispatch table:
 
 ## Constexpr Evaluator
 
-A **complete tree-walking interpreter** for C++ constant expressions at compile time. Signature:
+The constexpr evaluator is arguably the most technically impressive subsystem in the EDG frontend. It is a **complete tree-walking interpreter** that can execute arbitrary C++ code at compile time, implementing the full C++20 constexpr specification including heap allocation (`constexpr new`), string literals, virtual function dispatch, and complex control flow. At 317KB for the expression evaluator alone, plus 77KB for the statement executor and ~200KB in supporting functions, it constitutes nearly 20% of the entire EDG frontend.
+
+The evaluator operates on EDG's IL tree directly — it does not compile to bytecode or any intermediate form. Instead, it recursively walks expression and statement nodes, maintaining its own memory model (a 3-tier page arena), variable bindings (an open-addressing hash table), and lifetime tracking (scope epoch counters). This design trades execution speed for implementation simplicity and guaranteed semantic fidelity with the compiler's own type system.
+
+Signature:
 
 ```c
 bool constexpr_eval_expr(
@@ -651,13 +669,15 @@ Silent mode: `ctx+132` bit 5 (0x20) suppresses diagnostics (SFINAE contexts).
 
 ## CUDA-Specific Extensions
 
+NVIDIA's extensions to the EDG frontend fall into four categories: memory space qualifiers that map to GPU address spaces, kernel launch syntax that gets lowered to CUDA runtime API calls, registration stubs that tell the CUDA runtime about compiled kernels, and atomic builtin generation for the C++11 atomics model on GPU. These extensions are concentrated in the `0x650000`–`0x810000` range and reference SM architecture version globals extensively — many features are gated by `qword_4F077A8` comparisons against architecture thresholds.
+
 ### Memory Space Attributes
 
-`sub_6582F0` and `sub_65F400` validate `__shared__`, `__constant__`, `__managed__` on declarations. Token cases 133–136 in the parser handle these as first-class declaration specifiers.
+`sub_6582F0` and `sub_65F400` validate `__shared__`, `__constant__`, `__managed__` on declarations. Token cases 133–136 in the parser handle these as first-class declaration specifiers. The validation logic enforces CUDA semantics: `__shared__` variables cannot have initializers (shared memory is not initialized on kernel launch), `__constant__` variables must have static storage duration, and `__managed__` variables require unified memory support on the target architecture.
 
 ### Kernel Launch Lowering — `sub_7F2B50` (16KB)
 
-Generates cooperative launch sequences. Strings: `"cudaGetParameterBufferV2"`, `"cudaLaunchDeviceV2"`, `"__cudaPushCallConfiguration"`.
+Transforms CUDA's `<<<gridDim, blockDim, sharedMem, stream>>>` kernel launch syntax into CUDA runtime API calls. The lowered sequence allocates a parameter buffer via `cudaGetParameterBufferV2`, copies kernel arguments into it, and launches with `cudaLaunchDeviceV2`. For the simpler launch path, it generates `__cudaPushCallConfiguration` followed by individual `__cudaSetupArg`/`__cudaSetupArgSimple` calls. This lowering happens entirely within EDG — by the time the code reaches the LLVM backend, kernel launches are ordinary function calls.
 
 ### Registration Stub Generator — `sub_806F60`
 
@@ -687,6 +707,8 @@ Each flag is gated by a `byte_4CF8*` user-override check, preventing auto-config
 
 ## Diagnostic System
 
+EDG's diagnostic system supports three output formats: human-readable terminal output (with ANSI color and word-wrapping), SARIF JSON for IDE integration, and a machine-readable log format for automated tooling. All three share the same diagnostic numbering scheme and severity classification. The terminal output handler alone is 37KB — it implements its own word-wrapping algorithm with configurable terminal width, recursive child diagnostic emission (for "note: see declaration of X" chains), and color coding by severity level.
+
 ### Terminal Output — `sub_681D20` (37KB)
 
 Formats error/warning/remark messages with:
@@ -710,7 +732,9 @@ Writes to `qword_4D04908` in format: `<severity-char> "<filename>" <line> <col> 
 
 ## Name Mangling (Itanium ABI)
 
-Address range `0x810000`–`0x8EFFFF` includes a complete Itanium C++ ABI name mangler:
+EDG includes a complete implementation of the Itanium C++ ABI name mangling specification. NVIDIA extends the standard mangling with three proprietary prefixes (`Unvdl`, `Unvdtl`, `Unvhdl`) for device lambdas, device template lambdas, and host-device lambdas respectively. These extensions are necessary because CUDA's execution model requires distinguishing between host and device versions of the same lambda — they must have different mangled names to avoid linker collisions when both host and device code are linked into the same binary.
+
+Address range `0x810000`–`0x8EFFFF`:
 
 | Function | Size | Role |
 |---|---|---|
