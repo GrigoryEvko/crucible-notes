@@ -1,0 +1,22 @@
+[book]
+title = "CICC Reverse Engineering Reference"
+authors = ["nvopen-tools"]
+description = "Reverse engineering documentation for NVIDIA's CUDA C-to-PTX compiler (cicc v13.0)"
+language = "en"
+src = "src"
+
+[build]
+build-dir = "../../docs/cicc"
+create-missing = true
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/GrigoryEvko/nvopen-tools"
+additional-css = ["custom.css"]
+no-section-label = false
+
+[output.html.search]
+enable = true
+limit-results = 30
+use-hierarchical-heading = true
