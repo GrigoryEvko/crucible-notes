@@ -1,6 +1,12 @@
 # Register Allocation
 
+> **Prerequisites:** Familiarity with [NVPTX register classes](../reference/register-classes.md), the [GPU execution model](../gpu-execution-model.md) (especially occupancy and register pressure), and [Live Range Calculation](live-range-calc.md). Understanding of [Register Coalescing](register-coalescing.md) is helpful.
+
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **Upstream source:** `llvm/lib/CodeGen/RegAllocGreedy.cpp`, `llvm/lib/CodeGen/SplitKit.cpp`, `llvm/lib/CodeGen/RegisterCoalescer.cpp`, `llvm/lib/CodeGen/LiveRangeEdit.cpp` (LLVM 20.0.0). NVPTX register class definitions: `llvm/lib/Target/NVPTX/NVPTXRegisterInfo.td`.
+>
+> **LLVM version note:** CICC v13.0 ships two complete copies of `RAGreedy` (legacy PM at `0x1EC0400`, new PM at `0x2F4C2E0`). The new PM variant matches the LLVM 20 `RAGreedyPass` interface. The `PriorityAdvisor`/`EvictionAdvisor` infrastructure matches LLVM 15+ patterns. All NVPTX-specific behavior (pressure-driven allocation, `-maxreg` ceiling, occupancy-aware rematerialization) is layered on top of stock `RAGreedy` via TTI hooks and custom knobs.
 
 NVPTX register allocation in CICC v13.0 operates under a fundamentally different model from CPU targets. PTX has no fixed physical register file -- registers are virtual (`%r0`, `%r1`, `%f0`, ...) and the hardware scheduler maps them to physical resources at launch time. The "physical register" concept in LLVM's greedy allocator maps to register pressure constraints rather than actual hardware registers, making the allocator pressure-driven rather than assignment-driven. The primary constraint is the `-maxreg` limit (default 70), which bounds total live registers across all classes to control occupancy on the SM.
 
@@ -25,35 +31,13 @@ Both are registered under the pass name "Greedy Register Allocator" via `RAGreed
 
 ## NVPTX Register Classes
 
-CICC defines nine register classes plus one internal-only class. Each class is identified by a vtable pointer and encodes virtual registers as 32-bit values with a 4-bit class tag in bits `[31:28]` and a 28-bit register index in bits `[27:0]`:
+CICC defines nine register classes plus one internal-only class. The complete register class table -- vtable addresses, PTX type suffixes, prefixes, encoded IDs, copy opcodes, and coalescing constraints -- is in [Register Classes](../reference/register-classes.md).
 
-| Vtable | PTX Prefix | Class | Encoded Bits | Description |
-|---|---|---|---|---|
-| `off_4A027A0` | `%p` | `Int1Regs` | `0x10000000` | 1-bit predicate |
-| `off_4A02720` | `%qs` | `Int16Regs` | `0x20000000` | 16-bit integer |
-| `off_4A025A0` | `%r` | `Int32Regs` | `0x30000000` | 32-bit integer |
-| `off_4A024A0` | `%qd` | `Int64Regs` | `0x40000000` | 64-bit integer |
-| `off_4A02620` | `%f` | `Float32Regs` | `0x50000000` | 32-bit float |
-| `off_4A02520` | `%fd` | `Float64Regs` | `0x60000000` | 64-bit float |
-| `off_4A02760` | `%h` | `Float16Regs` | `0x70000000` | 16-bit float |
-| `off_4A026A0` | `%fh` | `Float16x2Regs` | `0x80000000` | packed 2xf16 |
-| `off_4A02460` | `%rq` | `SpecialRegs` | `0x90000000` | special/env regs |
-
-The classes are completely disjoint -- there is no cross-class interference. Each type lives in its own namespace: integer 32-bit values occupy `%r` registers, 32-bit floats occupy `%f` registers, and so on. The sign bit (`0x80000000`) distinguishes physical from virtual registers in LLVM's internal convention.
-
-Copy instructions are class-specific. Each register class has both a same-class copy opcode and a cross-class copy opcode (from `sub_2162350`):
-
-| Class | Same-Class Opcode | Cross-Class Opcode |
-|---|---|---|
-| `Int32Regs` | 39552 | 10816 |
-| `Int64Regs` | 39680 | 11008 |
-| `Float32Regs` | 30656 | 10880 |
-| `Float64Regs` | 30784 | 11072 |
-| `Float16Regs` | 30528 | 10688 |
-
-Classes like `Int1Regs`, `Int16Regs`, `Float16x2Regs`, and `SpecialRegs` use identical opcodes for both same-class and cross-class copies, reflecting the absence of cross-class movement paths for these types.
+The classes are completely disjoint -- there is no cross-class interference. Each type lives in its own namespace: integer 32-bit values occupy `%r` registers, 32-bit floats occupy `%f` registers, and so on. Copy instructions are class-specific, with both same-class and cross-class opcodes dispatched by `sub_2162350` (see the [copy opcode table](../reference/register-classes.md#copy-opcodes----sub_2162350)).
 
 ## Greedy selectOrSplit -- Detailed Algorithm
+
+**Complexity.** Let V = number of virtual registers, R = number of register units, and I = total MachineInstr count. The main allocation loop processes V virtual registers in priority order. For each VReg, `selectOrSplit` performs: (1) operand scanning in O(operands) with 40-byte stride, (2) interference scanning (`scanInterference`) in O(R) via the RegAllocMatrix, (3) assignment or eviction attempts in O(R) per candidate. The `tryLastChanceRecoloring` path is bounded by `lcr-max-depth` (default 5) and `lcr-max-interf` (default 8), giving O(8^5) = O(32768) per VReg in the absolute worst case -- though this path is rarely taken. Live range splitting (`splitAroundRegion`, 93KB) iterates segments in O(S) where S = number of live range segments, with interference analysis per segment in O(R). Overall: O(V * R) for the common case, O(V * R + V * 8^D) when last-chance recoloring is exercised at depth D. The interference cache's open-addressing hash map with `37 * reg` provides O(1) amortized lookups. Spill cost computation (`setupSpillCosts`) is O(V * I_avg) where I_avg is average instructions per VReg's live range. On NVPTX, the completely disjoint register classes mean cross-class interference is zero, reducing the effective R to the per-class register count.
 
 The core allocation algorithm (`sub_2F49070`, 82KB, 2,314 decompiled lines) follows LLVM's standard `RAGreedy::selectOrSplit` structure with NVPTX-specific adaptations for pressure-driven allocation. The following pseudocode is reconstructed from the decompiled binary and covers the key phases visible in the new-pass-manager instance.
 
@@ -412,7 +396,7 @@ When physical register assignment fails (`sub_2F418E0`), three error paths exist
 "no registers from class available to allocate"
 ```
 
-The register class has zero allocatable registers. This can happen for `SpecialRegs` if the target configuration excludes all environment registers. Diagnostic emitted via `sub_B6EB20` (DiagnosticHandler).
+The register class has zero allocatable registers. This can happen for the [internal-only class](../reference/register-classes.md#the-internal-only-class----off_4a026e0) (`off_4A026E0`) if the target configuration excludes all environment registers. Diagnostic emitted via `sub_B6EB20` (DiagnosticHandler).
 
 ### Path 2: All Registers Occupied
 
@@ -479,6 +463,16 @@ The following table summarizes where CICC's register allocator diverges from ups
 | **Splitting strategy** | Region-based splitting (`splitAroundRegion`) | Same algorithm, but gap flag (bit 2) and sub-range flag (bit 3) in 40-byte segment entries use NVPTX-specific encoding |
 | **Callee-saved registers** | CSR-first-time-cost matters for ABI compliance | NVPTX has no callee-saved convention; `regalloc-csr-first-time-cost` is effectively dead code |
 | **Debug strings** | `"Before greedy register allocator"` | Same string, but emitted conditionally on `unk_503FCFD` (a debug flag at a fixed BSS address) |
+
+## What Upstream LLVM Gets Wrong for GPU
+
+Upstream LLVM's register allocation framework was designed for CPU targets where the register file is a fixed, small, physically-interfering resource. Every core assumption breaks on NVPTX:
+
+- **Upstream assumes spills are cheap (L1/L2 latency).** On x86/AArch64, a spill is a store to the stack frame backed by L1 cache (3-5 cycles). On GPU, a "spill" writes to local memory backed by device DRAM at 200-800 cycle latency. This 40-160x penalty makes rematerialization nearly always preferable to spilling, which is why NVIDIA ships 11+ custom `nv-remat-*` knobs and an iterative remat loop that has no upstream equivalent.
+- **Upstream assumes a fixed physical register set with cross-class interference.** CPU ISAs have a static register file (e.g., 16 GPRs on x86-64) where GR32 is a sub-register of GR64 and allocating one constrains the other. NVPTX has no fixed register count and its nine register classes are completely disjoint -- allocating `%r5` (Int32Regs) never conflicts with `%f5` (Float32Regs). The entire interference-graph framework is solving the wrong problem.
+- **Upstream has no concept of occupancy.** CPU register allocation never reduces parallelism -- a function uses N registers and that is the end of the story. On GPU, every additional register per thread can cross an [occupancy cliff](../gpu-execution-model.md#occupancy-cliffs), losing an entire warp group and halving throughput. The allocator must minimize pressure to a target, not just avoid running out of registers.
+- **Upstream assumes one allocation pass produces the final assignment.** On CPU, LLVM's greedy RA emits final machine code. On NVPTX, cicc's allocator emits PTX with virtual registers bounded by `-maxreg`, and then ptxas performs an entirely separate second allocation pass with its own 72+ knobs to map virtual PTX registers to hardware resources. The LLVM allocator is half the pipeline, not the whole thing.
+- **Upstream's callee-saved register convention is irrelevant.** CPU ABIs define callee-saved sets (e.g., `rbx`, `rbp` on SysV x86-64) that the allocator must respect. NVPTX has no callee-saved convention at all -- there is no hardware call stack for registers. The `regalloc-csr-first-time-cost` knob is dead code on this target.
 
 ## Function Map
 

@@ -1,6 +1,10 @@
 # LoopVectorize and VPlan (GPU-Adapted)
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **Upstream source:** `llvm/lib/Transforms/Vectorize/LoopVectorize.cpp`, `llvm/lib/Transforms/Vectorize/VPlan*.cpp` (LLVM 20.0.0). VPlan infrastructure lives in `llvm/lib/Transforms/Vectorize/VPlan.cpp`, `VPlanRecipes.cpp`, `VPlanTransforms.cpp`, and related files.
+>
+> **LLVM version note:** CICC v13.0 is based on LLVM 20.0.0 trunk. Evidence includes histogram-pattern support (merged in LLVM 19), early-exit vectorization (LLVM 20 experimental feature, gated by `byte_500CDA8`), and the VPlan-native path. The VPlan object size (656 bytes) is consistent with LLVM 17/18+ layout. Scalable vectors are always disabled for NVPTX.
 
 NVIDIA's cicc ships a heavily modified copy of LLVM's `LoopVectorizePass`, the single largest pass in the vectorization pipeline at 88 KB of decompiled output (2,612 lines in `sub_2AF1970`). The modifications do not change the pass's fundamental architecture -- it still builds VPlans, selects a vectorization factor (VF) through cost modeling, and transforms IR through VPlan execution -- but the cost model, VF selection heuristics, interleave count logic, and legality checker are all tuned for a target where "vectorization" means something fundamentally different than on a CPU. On a CPU, loop vectorization fills SIMD lanes: a VF of 4 on SSE processes four `float` elements per vector instruction. On an NVIDIA GPU, there are no SIMD lanes in the CPU sense -- each thread already executes scalar code, and the warp executes 32 threads in lockstep. The reasons to vectorize on GPU are: (1) **memory coalescing** -- adjacent threads issuing adjacent loads produce 128-byte cache line transactions, and vectorizing a per-thread loop body with VF=2 or VF=4 produces `ld.v2`/`ld.v4` wide loads that maximize bytes-per-transaction; (2) **reducing instruction count** -- a single `ld.global.v4.f32` replaces four `ld.global.f32` instructions, saving fetch/decode/issue bandwidth; (3) **register-to-memory width matching** -- PTX supports 32-, 64-, and 128-bit load/store widths, and vectorization widens narrow scalar accesses to fill these naturally.
 
@@ -330,6 +334,29 @@ All diagnostic strings are embedded in the binary with `OptimizationRemarkAnalys
 - [Scheduling](scheduling.md) -- The TTI scheduling info (issue width and latency at TTI+56) that caps interleave count comes from the same target model used by instruction scheduling.
 - [SelectionDAG](selectiondag.md) -- Vectorized IR produces vector types (`<4 x float>`) that SelectionDAG must lower to PTX `ld.v4`/`st.v4` instructions.
 - [SLP Vectorizer](slp-vectorizer.md) -- SLP vectorization (`sub_2BD1C50`) handles straight-line code and horizontal reductions; loop vectorization handles loop bodies. Both share the same TTI cost model.
+
+## What Upstream LLVM Gets Wrong for GPU
+
+Upstream LLVM's LoopVectorize pass was built for CPU SIMD: fill wider vector registers to process more data elements per instruction. On a GPU, every foundational assumption is inverted:
+
+- **Upstream assumes SIMD lanes need filling.** The CPU vectorizer exists to pack 4/8/16 scalar operations into one vector instruction (SSE/AVX/NEON). On GPU, there are no SIMD lanes in the CPU sense -- the SIMT model already executes 32 threads in lockstep per warp. "Vectorization" on GPU means widening per-thread memory accesses to `ld.v2`/`ld.v4` for coalescing, not filling SIMD lanes.
+- **Upstream computes VF from vector register width.** The standard formula is `VF = registerWidth / elementSize` (e.g., AVX-512 gives VF=16 for float). NVPTX's `getRegisterBitWidth()` returns 32 bits -- a single scalar register width -- so this formula always produces VF=1 for 32-bit types. Wider VFs must come entirely from the cost model deciding that `ld.v4.f32` is profitable, bypassing the standard VF selection path.
+- **Upstream ignores register pressure when selecting VF.** On CPU, VF=16 using 16 ZMM registers has no throughput penalty -- there is no occupancy concept. On GPU, VF=4 that quadruples live registers can cross an occupancy cliff, losing an entire warp group and halving net throughput. Every VF and IC decision must be bounded by register pressure impact on occupancy.
+- **Upstream assumes scalable vectors are desirable.** LLVM supports SVE/RISC-V V scalable vector types. NVPTX disables them entirely (`supportsScalableVectors() = false`) because PTX has no scalable vector model -- only fixed-width `ld.v2`/`ld.v4` instructions exist.
+- **Upstream's interleave count is bounded by CPU port pressure.** CPU IC selection considers execution port contention and register file depth (e.g., 16 YMM registers). GPU IC selection is capped by the TTI scheduling model's issue width and latency at `TTI+56`, reflecting the SM's instruction issue pipeline saturation -- a completely different bottleneck.
+
+## Optimization Level Behavior
+
+| Level | Scheduled | Max VF | Interleave | Notes |
+|-------|-----------|--------|-----------|-------|
+| **O0** | Not run | N/A | N/A | No optimization passes |
+| **Ofcmax** | Not run | N/A | N/A | Fast-compile skips vectorization entirely |
+| **Ofcmid** | Not run | N/A | N/A | Vectorization not in medium fast-compile tier |
+| **O1** | Runs (Tier 1) | 4 | Enabled | Single instance after loop canonicalization |
+| **O2** | Runs (Tier 1) | 4 | Enabled | Same scheduling as O1; benefits from more aggressive scalar optimization preceding it |
+| **O3** | Runs (Tier 1) | 4 | Enabled | Same as O2; additional Tier 3 loop passes (interchange, distribution) may create more vectorization opportunities |
+
+Loop vectorization is a Tier 1 pass, meaning it runs at O1 and above but not in any fast-compile tier. The maximum VF is effectively capped at 4 by the GPU register pressure constraint -- higher VFs would multiply live registers past occupancy cliffs. The `vectorize-loops` knob (`qword_500D340[17]`) can force vectorization even when the cost model says it is unprofitable; this knob defaults to off and is typically used only for debugging. Early-exit vectorization (`byte_500CDA8`) is gated separately and defaults to disabled. See [Optimization Levels](../config/optimization-levels.md) for the complete tier structure.
 
 ## Differences from Upstream LLVM
 

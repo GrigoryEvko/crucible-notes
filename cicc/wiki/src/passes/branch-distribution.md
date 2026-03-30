@@ -17,6 +17,36 @@ The pass works by classifying every instruction in the function as a shared/glob
 
 The pass runs during the NVIDIA IR optimization pipeline. The global enable flag at `byte_4FBB6C0` is set by the pipeline setup when appropriate for the current optimization level.
 
+## IR Before/After Example
+
+The pass removes `__syncthreads()` barriers that protect no actual shared/global memory hazard.
+
+**Before** (conservative barrier placement):
+```llvm
+define void @kernel(ptr addrspace(3) %smem) {
+entry:
+  %x = add i32 %tid, 1               ; pure register computation
+  %y = mul i32 %x, 42                ; pure register computation
+  call void @llvm.nvvm.barrier0()     ; __syncthreads() -- no shared/global R/W above
+  %z = add i32 %y, %x                ; pure register computation
+  ret void
+}
+```
+
+**After** (dead barrier removed):
+```llvm
+define void @kernel(ptr addrspace(3) %smem) {
+entry:
+  %x = add i32 %tid, 1
+  %y = mul i32 %x, 42
+  ; barrier removed: no shared/global reads or writes above or below
+  %z = add i32 %y, %x
+  ret void
+}
+```
+
+When the dataflow analysis determines that neither side of the barrier accesses shared or global memory, the barrier is dead and removed. The pass restarts after each removal since deleting one barrier may expose another as redundant.
+
 ## Algorithm
 
 ### Phase 1: Instruction Classification (`sub_1C46330`)

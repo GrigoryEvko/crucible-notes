@@ -35,6 +35,46 @@ CICC v13.0 contains **five** distinct sinking mechanisms. Understanding which is
 
 The stock LLVM sink (`sub_1869C50`, called with params `(1,0,1)`) uses MemorySSA for alias queries and makes a single pass. Sinking2 uses its own alias analysis layer routed through `sub_13575E0` and iterates to convergence. NVVMSinking2 (`sub_1CC60B0`) is a separate NVIDIA pass that runs late in the pipeline after barrier lowering and warp-level optimizations, gated by the SM-specific pass group flag `opts[3328]`.
 
+## IR Before/After Example
+
+The pass sinks address computation closer to texture/surface use sites, reducing register pressure by shortening live ranges.
+
+**Before** (address computation in preheader, live across loop body):
+```llvm
+preheader:
+  %base = getelementptr float, ptr addrspace(1) %tex_ptr, i64 %offset
+  %addr = getelementptr float, ptr addrspace(1) %base, i64 %stride
+  br label %loop
+
+loop:
+  %i = phi i64 [ 0, %preheader ], [ %i.next, %loop ]
+  ; ... many instructions using registers, %base and %addr are live ...
+  %tex_addr = getelementptr float, ptr addrspace(1) %addr, i64 %i
+  %val = call float @llvm.nvvm.tex.unified.1d.v4f32.f32(i64 %tex_addr)
+  %i.next = add i64 %i, 1
+  %cmp = icmp slt i64 %i.next, %n
+  br i1 %cmp, label %loop, label %exit
+```
+
+**After** (address computation sunk into loop, next to texture use):
+```llvm
+preheader:
+  br label %loop
+
+loop:
+  %i = phi i64 [ 0, %preheader ], [ %i.next, %loop ]
+  ; ... many instructions, but %base and %addr are no longer live here ...
+  %base = getelementptr float, ptr addrspace(1) %tex_ptr, i64 %offset
+  %addr = getelementptr float, ptr addrspace(1) %base, i64 %stride
+  %tex_addr = getelementptr float, ptr addrspace(1) %addr, i64 %i
+  %val = call float @llvm.nvvm.tex.unified.1d.v4f32.f32(i64 %tex_addr)
+  %i.next = add i64 %i, 1
+  %cmp = icmp slt i64 %i.next, %n
+  br i1 %cmp, label %loop, label %exit
+```
+
+The GEP instructions now execute inside the loop (higher execution count) but free registers in the rest of the loop body. This is a deliberate tradeoff: extra ALU work for reduced register pressure, which typically improves occupancy and net throughput.
+
 ## Algorithm
 
 ### Entry Point

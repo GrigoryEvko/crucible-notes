@@ -1,6 +1,10 @@
 # Instruction Scheduling
 
+> **Prerequisites:** Familiarity with [Register Allocation](register-allocation.md), [NVPTX register classes](../reference/register-classes.md), and the [codegen pipeline](../pipeline/codegen.md). Understanding of the [GPU execution model](../gpu-execution-model.md) (warp scheduling, latency hiding) is essential.
+
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **Upstream source:** `llvm/lib/CodeGen/MachineScheduler.cpp` (`ScheduleDAGMILive`), `llvm/lib/CodeGen/MachinePipeliner.cpp` (Swing Modulo Scheduler) (LLVM 20.0.0). The MRPA incremental pressure tracker and Texture Group Merge pass are NVIDIA-only with no upstream equivalent.
 
 CICC v13.0 implements three distinct scheduling subsystems: MRPA (Machine Register Pressure Analysis) for incremental pressure tracking during MCSE, a Swing Modulo Scheduling pipeliner for loop bodies, and `ScheduleDAGMILive` for post-RA instruction ordering. All three maintain per-register-class pressure arrays but differ in granularity and update frequency. A texture group merge pass (`sub_2DDE8C0`) acts as a scheduling-adjacent optimization that groups texture load instructions for hardware coalescing.
 
@@ -152,6 +156,8 @@ The backend variant (`sub_1E00370`, decompiled lines 2416--2420) uses `byte_4FC6
 To trigger verification: `cicc -Xcuda -verify-update-mcse input.cu`. NVIDIA keeps this check off by default since the full rescan is O(n) and expensive.
 
 ## MachinePipeliner: Swing Modulo Scheduling
+
+**Complexity.** Let N = number of instructions in the loop body and E = number of dependency edges in the DDG. DDG construction is O(N + E). RecMII computation (`computeRecMII`) finds the maximum cycle ratio via enumeration of elementary circuits in the DDG -- worst-case exponential, but bounded in practice by small loop sizes (N < 100) and sparse dependency graphs. ResMII computation is O(N) (sum of resource vectors). ASAP/ALAP computation is O(N + E) each (topological traversals). The II search probes at most `pipeliner-ii-search-range` (default 10) candidate IIs. For each II, node placement is O(N * II) -- each of N nodes probes up to II cycle slots. The total scheduling cost is O((N + E) + R * N * II_max) where R = search range. The `pipeliner-max-stages` (default 3) and `pipeliner-max-mii` (default 27) provide additional constant-factor bounds. For MRPA, the incremental pressure update is O(1) per instruction move (delta update), compared to O(N) for a full recomputation -- this is the key efficiency gain over a naive approach.
 
 The MachinePipeliner (`sub_3563190`, ~2030 decompiled lines, ~58KB) implements Swing Modulo Scheduling (SMS) for software pipelining of loop bodies. It overlaps iterations of a loop body to improve throughput on pipelined hardware by interleaving instructions from different iterations. The upstream LLVM equivalent is `SwingSchedulerDAG::schedule()`.
 
@@ -562,6 +568,16 @@ All three maintain per-register-class pressure arrays but with different granula
 The DenseMap hash function `(ptr >> 9) ^ (ptr >> 4)` is shared across both the 32-bit value variant (`sub_1DFB9D0`) and 64-bit value variant (`sub_1DFB810`), indicating a common template instantiation pattern consistent with LLVM's `DenseMap<K, V>` template.
 
 Contrast with **ptxas scheduling**: ptxas has its own instruction scheduling subsystem with 195 knobs (including scoreboard-aware scheduling via the `AdvancedSB*` family, `SchedDisableAll`, `SchedForceReverseOrder`, and the `GemmPipeliner*` family of 8 knobs for matrix multiply detection and pipelining). CICC's scheduling operates at the MachineInstr level before PTX emission; ptxas re-schedules at the SASS level after PTX assembly. The two scheduling layers are independent but complementary.
+
+## What Upstream LLVM Gets Wrong for GPU
+
+Upstream LLVM's instruction scheduling framework was designed for CPU cores with out-of-order execution, branch prediction, and deep reorder buffers. On a GPU SM, these hardware features do not exist:
+
+- **Upstream assumes out-of-order hardware will hide scheduling mistakes.** Modern CPUs have 200+ entry reorder buffers that dynamically reorder instructions, making compiler scheduling a second-order optimization. GPU SMs execute instructions in-order within each warp -- every scheduling decision is final. A poorly ordered instruction stream on GPU means stalls that no hardware can recover from.
+- **Upstream optimizes for pipeline hazards and port pressure.** CPU schedulers model execution port contention (e.g., port 0 vs. port 1 on Intel), dispatch group rules, and pipeline bubble avoidance. GPU scheduling targets register pressure minimization (`nvptx-sched4reg`) because the SM's warp scheduler handles instruction-level parallelism through warp interleaving, not through instruction reordering within a single thread.
+- **Upstream assumes a single scheduling pass produces the final order.** On CPU, LLVM's `ScheduleDAGMILive` emits the final instruction sequence. On NVPTX, cicc's scheduling is the first of two layers -- ptxas re-schedules the entire program at the SASS level with its own 195-knob subsystem (including scoreboard-aware scheduling via the `AdvancedSB*` family). CICC's scheduler optimizes for ptxas consumption, not for direct hardware execution.
+- **Upstream has no concept of texture instruction grouping.** CPU scheduling never considers grouping memory operations for hardware coalescing units. NVIDIA adds a dedicated Texture Group Merge pass (`sub_2DDE8C0`, 74KB) that groups texture load instructions by base address for the hardware texture unit -- an entirely GPU-specific optimization absent from upstream.
+- **Upstream does not track register pressure incrementally during CSE.** Upstream LLVM recomputes register pressure from scratch after each Machine CSE transform. NVIDIA's MRPA subsystem (`sub_2E5A4E0`, 48KB) maintains running pressure state through delta updates, because on GPU the pressure-to-occupancy relationship makes every CSE decision a potential occupancy cliff crossing that must be evaluated cheaply.
 
 ## Differences from Upstream LLVM
 

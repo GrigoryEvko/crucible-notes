@@ -6,29 +6,43 @@ The pass is implemented as a multi-function cluster totaling roughly 250KB of de
 
 ## NVPTX Address Space Numbering
 
-CICC uses the standard NVPTX/LLVM address space convention:
+The pass operates on the standard NVPTX address spaces (0=generic, 1=global, 3=shared, 4=constant, 5=local, 101=param). See [Address Spaces](../reference/address-spaces.md) for the complete table with hardware mapping, pointer widths, and aliasing rules.
 
-| LLVM AS | Name | Description |
-|---------|------|-------------|
-| 0 | Generic (flat) | Unresolved -- the pointer could target any space |
-| 1 | Global | Device DRAM, accessible by all threads |
-| 3 | Shared | Per-block on-chip SRAM (`__shared__`) |
-| 4 | Constant | Read-only memory in the constant cache |
-| 5 | Local | Per-thread stack-private memory |
-| 101 | Param | Kernel parameter window |
+Internally, the pass encodes address spaces as a single-bit bitmask for efficient dataflow computation (0x01=global, 0x02=shared, 0x04=constant, 0x08=local, 0x10=param, 0x0F=unknown). When multiple pointer sources contribute different spaces, the bitmask is OR'd together. A singleton bit (popcount == 1) means the space is fully resolved; multiple bits set means ambiguous. See the [MemorySpaceOpt Internal Bitmask](../reference/address-spaces.md#memoryspaceopt-internal-bitmask) section for the complete mapping and resolution algorithm.
 
-Internally, the pass encodes these as a bitmask for efficient dataflow computation:
+## IR Before/After Example
 
-| Bit | Value | Maps to AS |
-|-----|-------|------------|
-| 0 | 0x01 | Global (AS 1) |
-| 1 | 0x02 | Shared (AS 3) |
-| 2 | 0x04 | Constant (AS 4) |
-| 3 | 0x08 | Local (AS 5) |
-| 4 | 0x10 | Param (AS 101) |
-| 0-3 | 0x0F | Unknown (union of all non-param spaces) |
+The following illustrates the core transformation: generic-pointer loads/stores are resolved to specific address spaces, enabling specialized PTX memory instructions.
 
-When multiple pointer sources contribute different spaces, the bitmask is OR'd together. A singleton bit (popcount == 1) means the space is fully resolved; multiple bits set means ambiguous.
+**Before** (generic pointers, AS 0):
+```llvm
+define void @kernel(ptr addrspace(0) %shared_buf, ptr addrspace(0) %global_out) {
+  %val = load float, ptr addrspace(0) %shared_buf, align 4
+  %add = fadd float %val, 1.0
+  store float %add, ptr addrspace(0) %global_out, align 4
+  %check = call i1 @llvm.nvvm.isspacep.shared(ptr %shared_buf)
+  br i1 %check, label %fast, label %slow
+fast:
+  ret void
+slow:
+  ret void
+}
+```
+
+**After** (resolved address spaces):
+```llvm
+define void @kernel(ptr addrspace(3) %shared_buf, ptr addrspace(1) %global_out) {
+  %val = load float, ptr addrspace(3) %shared_buf, align 4    ; -> ld.shared.f32
+  %add = fadd float %val, 1.0
+  store float %add, ptr addrspace(1) %global_out, align 4     ; -> st.global.f32
+  ; isspacep.shared folded to true (phase 2), branch simplified by later DCE
+  br label %fast
+fast:
+  ret void
+}
+```
+
+The `addrspacecast` instructions are inserted during resolution and consumed by downstream passes. The `isspacep` folding (phase 2 only) eliminates runtime address space checks when the space is statically known.
 
 ## Two-Phase Architecture
 
@@ -48,6 +62,8 @@ Both phases share the same instruction dispatch structure, handling loads (opcod
 **Phase 2 (second-time)** runs after inter-procedural propagation has enriched the analysis context. It uses hash-table lookups (`sub_1CA8350`) and can fold `isspacep` intrinsics (builtins `0xFD0`-`0xFD5`) to constants when the address space is already known, eliminating runtime space checks.
 
 ## Inter-Procedural Memory Space Propagation (IP-MSP)
+
+**Complexity.** Let F = number of functions in the module, A = total number of pointer-typed arguments across all functions, E = total call-graph edges, and I = total instructions. The intra-procedural use-def chain walk is O(I) per function (bounded by visited-set to avoid cycles through PHI nodes). The IP-MSP worklist iterates until no argument's bitmask changes; since each of the A arguments has a 5-bit bitmask that can only grow (OR of incoming values), the worklist converges in at most O(A) rounds. Each round re-analyzes at most O(F) functions, and adding callers back to the worklist costs O(E) in total across all rounds. Worst-case: O(A * (F * I_avg + E)) where I_avg is average instructions per function. Function cloning adds at most O(F) clones (bounded by `do-clone-for-ip-msp`), each clone being O(I_f) to create. In practice, GPU modules have small call graphs (F < 200 after inlining) and the worklist converges in 2--4 rounds, making the pass effectively O(F * I_avg + E).
 
 The IP-MSP driver in `sub_1C70910` implements a fixed-point worklist algorithm that propagates address space information across function boundaries:
 
@@ -190,6 +206,17 @@ A parallel implementation exists at `sub_2CBBE90` / `sub_2CEAC10` / `sub_2CF2C20
 |------|--------|---------|-------------|
 | `dump-ip-msp` | `qword_5013548` | 0 | Debug tracing for IPMSP variant |
 | `do-clone-for-ip-msp` | `qword_5013468` | -1 | Clone limit for IPMSP variant |
+
+## Optimization Level Behavior
+
+| Level | Phase 1 (first-time) | Phase 2 (second-time) | IP-MSP Cloning |
+|-------|---------------------|----------------------|----------------|
+| **O0** | Runs (mode 0) -- address space resolution is required for correct PTX emission | Not run | Not run |
+| **Ofcmax** | Runs (mode 0); `LSA-Opt` forced to 0, limiting resolution depth | Not run | Not run |
+| **Ofcmid** | Runs (mode 0) | Runs (mode 1) after IP-MSP propagation | Enabled (`do-clone-for-ip-msp=-1`) |
+| **O1+** | Runs (mode 0) early in pipeline | Runs (mode 1) after IP-MSP propagation | Enabled; iterates to fixed point |
+
+This pass is unusual in that it runs even at O0 -- address space resolution is a correctness requirement, not purely an optimization. Without it, all memory accesses would use generic (flat) addressing, which is functionally correct but significantly slower due to the address translation hardware penalty. At Ofcmax, the pass runs in a reduced mode with `LSA-Opt` disabled. See [Optimization Levels](../config/optimization-levels.md) for the complete pipeline structure.
 
 ## Diagnostic Strings
 

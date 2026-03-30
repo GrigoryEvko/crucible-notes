@@ -1,6 +1,10 @@
 # StructurizeCFG
 
+> **Prerequisites:** Familiarity with [GPU execution model](../gpu-execution-model.md) (warp divergence, reconvergence), LLVM dominator tree and post-dominator tree concepts, and the [PTX emission pipeline](../pipeline/emission.md). Understanding of reducible vs. irreducible control flow is assumed.
+
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **Upstream source:** `llvm/lib/Transforms/Scalar/StructurizeCFG.cpp` (LLVM 20.0.0). The upstream version was originally written for AMDGPU; cicc ships both the stock AMDGPU copy at `sub_1F0EBC0` and a separate NVPTX-customized copy at `sub_35CC920`.
 
 CICC v13.0 ships two copies of the StructurizeCFG pass: an NVPTX-specific version at `sub_35CC920` (95 KB, 2,397 decompiled lines) and a stock LLVM/AMDGPU version at `sub_1F0EBC0`. Both exist because the binary links both the NVPTX backend and the generic LLVM Scalar library; only the NVPTX instance is scheduled in the CUDA compilation pipeline. This page documents the NVPTX version exclusively.
 
@@ -69,7 +73,7 @@ sub_35CF930(pass, function):
         return sub_35CC920(pass, function)
 ```
 
-The attribute IDs likely map to: 56 = `convergent`, 63 = `nodivergencesource`, 59 = `nounwind`, 64 = `alwaysinline`, 57 = `optnone`. Functions carrying any of these are either already guaranteed to have uniform control flow or are explicitly marked as not-to-be-optimized.
+The attribute IDs likely map to: 56 = `convergent`, 63 = `nodivergencesource`, 59 = `nounwind`, 64 = `alwaysinline`, 57 = `optnone`. `[MEDIUM confidence]` These numeric-to-name associations are inferred from LLVM attribute enumeration ordering in the upstream source and the semantic context of their usage (skip-structurize guard), not from string evidence in the binary. The attribute enum may differ in NVIDIA's fork. Functions carrying any of these are either already guaranteed to have uniform control flow or are explicitly marked as not-to-be-optimized.
 
 ## CLI Knobs
 
@@ -435,6 +439,10 @@ For a divergent loop:
 ## Flow Block Insertion Algorithm
 
 The previous sections describe the pass at the function-dispatch level. This section provides the complete algorithmic detail of how Flow blocks are actually created, wired, and how PHI networks are maintained -- the core transformation that converts a reducible-but-unstructured CFG into a fully structured CFG suitable for PTX emission.
+
+### Complexity
+
+Let B = number of basic blocks, E = number of CFG edges, and D = depth of the dominator tree. The irreducibility detection (`sub_35CA2C0`) is O(B * E) -- for each block in reverse RPO, it probes successors against the dominator tree hash table (O(1) per probe). The per-block classification loop is O(B * (P_avg + S_avg)) where P_avg and S_avg are average predecessor and successor counts -- effectively O(B + E). The uniform branch classifier (`sub_35CB4A0`) is O(1) per block (a few flag checks and one DivergenceAnalysis query). The NCA computation (`sub_35C9ED0`) walks the domtree upward from two nodes until convergence: O(D) per call. Each Flow block insertion is O(D + PHI_count) where PHI_count is the number of PHI nodes at the original merge point (each needs entry copying). Recursive child splitting adds at most O(B) new blocks total across the entire function. The bitvector tracking is O(B / 64) per test/set operation. Overall: O(B * D + E + F * PHI_total) where F = number of Flow blocks created. Since F <= B (one Flow per divergent region) and D = O(B) in the worst case, the theoretical worst case is O(B^2 + E). In practice, CUDA CFGs are shallow (D < 20) and sparsely divergent, making the pass effectively O(B + E).
 
 ### Conceptual Model
 

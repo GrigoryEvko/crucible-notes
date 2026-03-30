@@ -1,6 +1,8 @@
 # GVN (Global Value Numbering)
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **Upstream source:** `llvm/lib/Transforms/Scalar/GVN.cpp`, `llvm/lib/Transforms/Scalar/NewGVN.cpp` (LLVM 20.0.0)
 
 CICC v13.0 ships two GVN implementations: the classic GVN pass at `0x1900BB0` (83 KB, ~2314 decompiled lines) and a NewGVN pass at `0x19F99A0` (68 KB, ~2460 decompiled lines). Both are derived from upstream LLVM but carry substantial NVIDIA modifications for GPU-specific value numbering, store splitting, and intrinsic-aware CSE. The knob constructor at `ctor_201` (`0x4E0990`) registers eleven tunables that control PRE, store splitting, PHI removal, dominator caching, and recursion depth.
 
@@ -22,6 +24,38 @@ Knobs are registered in `ctor_201` at `0x4E0990`. Bool knobs use `cl::opt<bool>`
 | `gvn-dom-cache` | bool | true | `0x4FAE700` | Cache dominator tree query results (cache size 32) |
 | `max-recurse-depth` | int | 1000 | `0x4FAE620` | Maximum recursion depth during simplification |
 
+## IR Before/After Example
+
+GVN eliminates redundant computations and forwards store values to loads. The following shows a common GPU pattern: a redundant load eliminated via value numbering, and a store-to-load forward.
+
+**Before:**
+```llvm
+define void @f(ptr addrspace(1) %p, ptr addrspace(1) %q) {
+  %a = load float, ptr addrspace(1) %p, align 4
+  %b = fmul float %a, 2.0
+  %c = load float, ptr addrspace(1) %p, align 4        ; redundant load (same %p, no intervening store)
+  %d = fadd float %b, %c
+  store float 42.0, ptr addrspace(1) %q, align 4
+  %e = load float, ptr addrspace(1) %q, align 4        ; load from location just stored to
+  ret void
+}
+```
+
+**After:**
+```llvm
+define void @f(ptr addrspace(1) %p, ptr addrspace(1) %q) {
+  %a = load float, ptr addrspace(1) %p, align 4
+  %b = fmul float %a, 2.0
+  ; %c eliminated -- replaced with %a (same value number)
+  %d = fadd float %b, %a
+  store float 42.0, ptr addrspace(1) %q, align 4
+  ; %e eliminated -- forwarded from store (value 42.0)
+  ret void
+}
+```
+
+The second `load` from `%p` is eliminated because GVN assigns it the same value number as `%a`. The `load` from `%q` after the `store` is forwarded directly from the stored constant. On GPU, eliminating memory loads is especially valuable because each avoided `ld.global` saves hundreds of cycles of memory latency.
+
 ## Classic GVN Algorithm
 
 The main entry point is `GVN::runOnFunction` at `sub_1900BB0`. The pass object is approximately 600 bytes and carries four scoped hash tables plus a dominator tree reference.
@@ -38,6 +72,10 @@ The main entry point is `GVN::runOnFunction` at `sub_1900BB0`. The pass object i
 | +392 | StoreExprTable | Hash: store expressions |
 | +544 | LoadExprTable | Hash: load expressions |
 | +592 | RPO counter | Current block's RPO number |
+
+### Complexity
+
+Let N = number of instructions, B = number of basic blocks, and D = depth of the dominator tree. The classic GVN traversal visits every instruction exactly once during the RPO walk: O(N). Each instruction is hashed (O(1) amortized via the scoped hash tables) and looked up in the leader table (O(1) amortized). Memory dependence queries (`getDependency`) are O(D) per load in the worst case, cached by MemDep to amortize across the function. PRE insertion adds at most O(N) new instructions. Store splitting is bounded by the number of stores times the split factor (controlled by `no-split-stores-below/above`). The `gvn-dom-cache` (size 32) converts repeated dominance queries from O(D) to O(1). PHI removal (`replaceAndErase`) is O(U) per replaced value where U = number of uses. Overall: O(N * D) in the worst case due to dominance queries; O(N) in practice with the dominator cache enabled (default). NewGVN's partition-based algorithm is O(N * alpha(N)) amortized where alpha is the inverse Ackermann function from union-find, though the fixpoint iteration can degrade to O(N^2) on pathological inputs.
 
 ### Traversal Strategy
 
@@ -306,6 +344,19 @@ These four passes form the core scalar optimization chain in CICC's mid-pipeline
 | **DSE** | Dead stores exposed by GVN, MemorySSA/AA results | Eliminated stores, reduced memory traffic |
 
 **Why this ordering matters for GPU code:** SROA is existential because un-promoted allocas become `.local` memory (200-400 cycle penalty). InstCombine must run before GVN because GVN's hash-table matching requires canonical expression forms -- without InstCombine, `(a + 0)` and `a` would hash differently and miss the CSE opportunity. GVN must run before DSE because GVN's load forwarding is what exposes dead stores: once GVN proves that a load reads a value already available as an SSA register, the store that was keeping that value alive becomes dead. DSE then removes it, reducing the memory write traffic that is the primary bandwidth bottleneck on GPU architectures.
+
+## Optimization Level Behavior
+
+| Level | Classic GVN | NewGVN | PRE | Store Splitting |
+|-------|------------|--------|-----|-----------------|
+| **O0** | Not run | Not run | N/A | N/A |
+| **Ofcmax** | Not run | Not run | N/A | N/A |
+| **Ofcmid** | Runs (1 instance) | Not run | Enabled (`enable-pre=true`) | Enabled (`split-stores=true`) |
+| **O1** | Runs (1-2 instances in Tier 0/1) | Not run | Enabled | Enabled |
+| **O2** | Runs (2-3 instances across Tier 0/1/2) | Not run | Enabled | Enabled |
+| **O3** | Runs (2-3 instances, most aggressive inlining exposes more CSE) | Not run | Enabled | Enabled |
+
+GVN is a core mid-pipeline pass that runs at O1 and above. It appears multiple times in the pipeline -- typically once after CGSCC inlining and once in the late scalar cleanup. Each instance benefits from different preceding transformations (inlining, SROA, InstCombine). NewGVN is compiled into the binary but not scheduled in any standard pipeline tier. The `enable-pre` and `enable-load-pre` knobs are both true by default across all levels. See [Optimization Levels](../config/optimization-levels.md) for the complete tier structure.
 
 ## Differences from Upstream LLVM
 

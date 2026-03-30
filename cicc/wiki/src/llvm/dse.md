@@ -1,8 +1,36 @@
 # DSE (Dead Store Elimination)
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **Upstream source:** `llvm/lib/Transforms/Scalar/DeadStoreElimination.cpp` (LLVM 20.0.0)
 
 CICC v13.0 contains a heavily modified Dead Store Elimination pass totaling approximately 91 KB of decompiled code across three major functions: the core `DSE::runOnFunction` at `sub_19DA750` (33 KB), the overwrite detection engine at `sub_19DDCB0` (28 KB), and the partial overwrite tracking system at `sub_19DF5F0` (30 KB). This substantially exceeds the size of upstream LLVM DSE, primarily due to NVIDIA's additions for partial store forwarding with type conversion, cross-store dependency tracking, store-chain decomposition for aggregates, and native CUDA vector type awareness.
+
+## IR Before/After Example
+
+DSE removes stores that are overwritten before any load reads them. The NVIDIA extension handles partial overwrites common in CUDA vector code.
+
+**Before** (dead store followed by overwrite):
+```llvm
+define void @f(ptr addrspace(1) %p, float %x, float %y) {
+  store float %x, ptr addrspace(1) %p, align 4          ; dead: overwritten below before any load
+  %other = fadd float %x, %y
+  store float %other, ptr addrspace(1) %p, align 4      ; overwrites the first store completely
+  ret void
+}
+```
+
+**After:**
+```llvm
+define void @f(ptr addrspace(1) %p, float %x, float %y) {
+  ; first store removed -- overwritten by second store, no intervening load
+  %other = fadd float %x, %y
+  store float %other, ptr addrspace(1) %p, align 4
+  ret void
+}
+```
+
+NVIDIA's DSE also handles partial overwrite patterns with CUDA vector types. When a `float4` store partially overwrites a previous `float4` store, the pass decomposes via GEP to determine which elements are dead. This is a key GPU extension that upstream LLVM DSE does not handle.
 
 ## Analysis Dependencies
 

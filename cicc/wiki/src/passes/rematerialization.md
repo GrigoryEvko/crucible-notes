@@ -20,6 +20,8 @@ The pass is registered at `sub_1CD0BE0` with pass ID `"nvvmrematerialize"` and e
 
 ### Main Algorithm (`sub_1CE7DD0`, 67KB)
 
+**Complexity.** Let B = number of basic blocks, I = total instructions, and L = number of live-in values. The live-in analysis uses hardware `popcnt` on bitvectors of size ceil(I / 64) per block, giving O(B * I / 64) per iteration. The intersection of live-in sets (bitwise AND) is O(B * I / 64). The rematizability check for each candidate walks its def chain: O(D) where D is the def-chain depth (bounded by `max-recurse-depth`). The pull-in cost model (`sub_1CE3AF0`) scores each candidate in O(U * D) where U = uses per candidate. Candidate sorting is O(K^2) via selection sort where K = candidates selected. The block executor clones instructions in O(K * B). The outer loop runs at most 5 iterations. Overall IR-level: O(5 * (B * I / 64 + K * U * D + K * B)). For the machine-level pass (`sub_2186D90`): max-live computation is O(I) per block (reverse walk), giving O(I) total. Candidate classification is O(I) for the initial scan, plus O(K * 50) for recursive pullability checks (depth bounded at 50). The second-chance heuristic iterates until convergence -- bounded by the candidate count K. The outer loop runs at most `nv-remat-max-times` (default 10) iterations. Overall machine-level: O(10 * (I + K^2)).
+
 The driver implements an iterative register pressure reduction loop with up to 5 iterations. The high-level flow:
 
 1. **Function exclusion check**: The `no-remat` knob stores a comma-separated list of function names. If the current function matches, the pass prints `"Skip rematerialization on <funcname>"` and bails.
@@ -371,6 +373,19 @@ The assembler (ptxas) has its own rematerialization controls that complement the
 - `RematEnable=1`
 - `SinkRematEnable=1`
 - `RematBackOffRegTargetFactor=N`
+
+## Optimization Level Behavior
+
+| Level | IR-Level Remat (`nvvmrematerialize`) | Machine-Level Remat (`nv-remat-block`) |
+|-------|--------------------------------------|---------------------------------------|
+| **O0** | Not run | Not run |
+| **Ofcmax** | Not run | Not run |
+| **Ofcmid** | Runs with `do-remat=3` (full) | Not run |
+| **O1** | Runs with `do-remat=3`, `remat-iv=4`, `remat-load=1` | Runs with `nv-remat-block=14` (default bitmask) |
+| **O2** | Same as O1 | Same as O1 |
+| **O3** | Same as O1; may see more candidates due to additional inlining/unrolling | Same as O1; operates on more aggressively optimized MIR |
+
+The `do-remat` master control (default 3) enables all rematerialization sub-phases at O1+. The machine-level pass is gated by its own NVVMPassOptions slot and runs only when the codegen pipeline includes the full register allocation sequence. At Ofcmax, neither pass runs because the fast-compile pipeline skips the full optimization and codegen stack. See [Optimization Levels](../config/optimization-levels.md) for the complete pipeline tier structure.
 
 ## Diagnostic Strings
 

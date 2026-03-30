@@ -1,5 +1,7 @@
 # Type Legalization
 
+> **Prerequisites:** Familiarity with [SelectionDAG](selectiondag.md), [NVPTX register classes](../reference/register-classes.md), and [LLVM type system basics](https://llvm.org/docs/LangRef.html#type-system). Understanding of the [compilation pipeline](../pipeline/overview.md) up to instruction selection is assumed.
+
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
 
 Type legalization is the SelectionDAG phase that rewrites every DAG node whose result or operand type is illegal for the target into equivalent sequences of legal-type operations. In upstream LLVM this logic spans four source files (`LegalizeTypes.cpp`, `LegalizeIntegerTypes.cpp`, `LegalizeFloatTypes.cpp`, `LegalizeVectorTypes.cpp`) totaling roughly 16,000 lines. In CICC v13.0, NVIDIA ships all of it as a single 348KB monolithic function -- `sub_20019C0` -- the largest function in the SelectionDAG address range and among the largest in the entire binary. Operation legalization follows in a separate 169KB function (`sub_1FFB890`), and vector split/scalarize dispatchers fan out into an additional 25+ worker functions.
@@ -38,17 +40,19 @@ The type legalizer iterates to a fixpoint: each pass may create new nodes with i
 
 The legal type set is defined in the `NVPTXTargetLowering` constructor (`sub_3314670`, 73KB) which populates the action table at offset `+2422`. NVPTX has a narrow set of legal types dictated by the PTX register file:
 
-| Register Class | PTX Type | Prefix | Legal MVTs |
-|---|---|---|---|
-| Int1Regs | `.pred` | `%p` | `i1` |
-| Int16Regs | `.b16` | `%rs` | `i16` |
-| Int32Regs | `.b32` | `%r` | `i32` |
-| Int64Regs | `.b64` | `%rd` | `i64` |
-| Float32Regs | `.f32` | `%f` | `f32` |
-| Float64Regs | `.f64` | `%fd` | `f64` |
-| Int16HalfRegs | `.b16` | `%h` | `f16`, `bf16` |
-| Int32HalfRegs | `.b32` | `%hh` | `v2f16`, `v2bf16`, `v2i16`, `v4i8` |
-| Int128Regs | `.b128` | `%rq` | `i128` (SM 70+) |
+| Register Class | Legal MVTs |
+|---|---|
+| Int1Regs (`%p`) | `i1` |
+| Int16Regs (`%rs`) | `i16` |
+| Int32Regs (`%r`) | `i32` |
+| Int64Regs (`%rd`) | `i64` |
+| Float32Regs (`%f`) | `f32` |
+| Float64Regs (`%fd`) | `f64` |
+| Int16HalfRegs (`%h`) | `f16`, `bf16` |
+| Int32HalfRegs (`%hh`) | `v2f16`, `v2bf16`, `v2i16`, `v4i8` |
+| Int128Regs (`%rq`) | `i128` (SM 70+) |
+
+For the complete register class table (vtable addresses, PTX types, encoded IDs, copy opcodes) see [Register Classes](../reference/register-classes.md#the-nine-register-classes).
 
 The critical constraint: `Int32HalfRegs` is the **only** vector register class. It holds exactly 32 bits of packed data. The only legal vector types are those that pack into 32 bits:
 

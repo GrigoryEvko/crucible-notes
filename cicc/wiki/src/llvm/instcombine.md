@@ -1,6 +1,8 @@
 # InstCombine
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **Upstream source:** `llvm/lib/Transforms/InstCombine/InstructionCombining.cpp`, `llvm/lib/Transforms/InstCombine/InstCombine*.cpp` (LLVM 20.0.0). The upstream is split across ~15 files by instruction category; cicc inlines them into a single monolithic visitor.
 
 NVIDIA's InstCombine in CICC v13.0 is approximately twice the size of upstream LLVM's, weighing in at roughly 405 KB for the main visitor alone. The monolithic visitor function at `sub_10EE7A0` dispatches across 80 unique opcode cases through a three-level switch structure, handling standard LLVM instructions, NVIDIA-extended vector and FMA operations, and three high-opcode NVVM intrinsic dead-code elimination patterns. A separate 87 KB intrinsic folding function (`sub_1169C30`) handles NVVM-specific canonicalization, and a 127 KB `computeKnownBits` implementation (`sub_11A7600`) provides the dataflow backbone. This page covers the visitor architecture, the per-instruction-type visitors recovered from the binary, and the NVIDIA-specific extensions that distinguish this implementation from upstream.
 
@@ -285,6 +287,19 @@ The wrapper `sub_11AE870` gets the bit-width via `sub_BCB060` (or `sub_AE43A0` f
 | High-opcode NVIDIA intrinsics | ~15 KB | DCE for opcodes 0x254D/0x2551/0x255F |
 | Expanded comparator/cast | ~50 KB | Extended ICmp, cast chain, select handling |
 | **NVIDIA total addition** | **~200 KB** | Roughly doubles upstream InstCombine |
+
+## Optimization Level Behavior
+
+| Level | Scheduled | Instances | Notes |
+|-------|-----------|-----------|-------|
+| **O0** | Not run | 0 | No optimization passes |
+| **Ofcmax** | Runs | 1 | Single instance in fast-compile pipeline |
+| **Ofcmid** | Runs | 2 | Early + post-GVN cleanup |
+| **O1** | Runs | 3-4 | Early, post-SROA, post-GVN, late cleanup |
+| **O2** | Runs | 4-5 | Same as O1 + additional Tier 2 instance after loop passes |
+| **O3** | Runs | 5-6 | Same as O2 + Tier 3 instance; benefits from more aggressive inlining/unrolling |
+
+InstCombine is the most frequently scheduled pass in the CICC pipeline. Each instance runs the full 405KB visitor but benefits from different preceding transformations: the post-SROA instance cleans up cast chains from aggregate decomposition, the post-GVN instance simplifies expressions exposed by redundancy elimination, and the late instance performs final canonicalization before codegen. The `instcombine-negator-max-depth` and `instcombine-negator-enabled` knobs apply uniformly across all instances. Even at Ofcmax, at least one InstCombine run is considered essential for basic IR canonicalization. See [Optimization Levels](../config/optimization-levels.md) for pipeline tier details.
 
 ## Differences from Upstream LLVM
 
