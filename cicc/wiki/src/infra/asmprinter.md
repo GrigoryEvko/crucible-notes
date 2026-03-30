@@ -209,7 +209,7 @@ For each MachineInstr, reads the opcode at `MI+0x44` (uint16) and dispatches thr
 
 **Meta-instructions (opcodes 3-7, 10-18):** These include STACKMAP, PATCHPOINT, EH_LABEL, GC_LABEL, KILL, CFI_INSTRUCTION, DBG_VALUE, DBG_VALUE_LIST, and DBG_LABEL. Most emit labels or debug comments rather than PTX instructions. The KILL pseudo emits a `"kill:"` comment listing each killed register with `sub_2FF6320` (printReg). DBG_LABEL emits `"DEBUG_LABEL: <label>"`.
 
-**Convergence control (opcodes 24, 33):** `CONVERGENCECTRL_ENTRY` calls `sub_31DB9B0` to mark the entry point of a convergent region. `CONVERGENCECTRL_LOOP` calls `sub_31DB950` to mark a loop-back convergence point. These pseudo-instructions are critical for the PTX assembler to correctly track warp divergence and reconvergence.
+**Convergence control (opcodes 24, 33):** `CONVERGENCECTRL_ENTRY` calls `sub_31DB9B0` to mark the entry point of a convergent region. `CONVERGENCECTRL_LOOP` calls `sub_31DB950` to mark a loop-back convergence point. These pseudo-instructions are critical for the PTX assembler to correctly track warp divergence and reconvergence. See the dedicated [Convergence Control Framework](#convergence-control-framework) section below for the full lowering pipeline.
 
 **FAKE_USE (opcode 43):** Debug-only. Emits `"fake_use:"` followed by register operands.
 
@@ -266,11 +266,153 @@ The `.pragma "nounroll"` directive is emitted at MBB level by `sub_3970E40` when
 
 The `.abi_preserve` family of directives is emitted by `sub_3937240`: `.abi_preserve`, `.abi_preserve_after`, `.abi_preserve_uniform`, `.abi_preserve_control`. These are NVIDIA-specific PTX directives for register ABI preservation across function calls.
 
+## Convergence Control Framework
+
+CUDA's SIMT execution model requires the compiler to track which threads in a warp must execute the same instruction simultaneously. When a conditional branch causes warp divergence (some threads take one path, others take the other), the hardware needs to know where threads reconverge. The convergence control framework propagates this information from LLVM IR intrinsics through MachineInstr pseudo-instructions to the final PTX output, where ptxas uses it to emit correct convergence/reconvergence barriers in SASS.
+
+### Three-Layer Architecture
+
+Convergence information flows through three representation layers during compilation:
+
+```
+LLVM IR                    MachineInstr                AsmPrinter
+─────────────────────      ──────────────────────      ──────────────────
+llvm.experimental          CONVERGENCECTRL_ENTRY       sub_31DB9B0
+  .convergence.entry  →    (opcode 24)            →   (emitConvergenceEntry)
+
+llvm.experimental          CONVERGENCECTRL_LOOP        sub_31DB950
+  .convergence.loop   →    (opcode 33)            →   (emitConvergenceLoop)
+
+llvm.experimental          CONVERGENCECTRL_ANCHOR      (no AsmPrinter case --
+  .convergence.anchor →    (opcode 34)                  dropped before emission)
+
+"convergencectrl"          (operand bundle tag          (verified at IR level,
+ operand bundle      →      preserved through ISel)      consumed by pseudo-instrs)
+```
+
+**Layer 1: IR intrinsics.** Three `llvm.experimental.convergence.*` intrinsics define convergent regions at the LLVM IR level. Each returns an abstract "convergence token" (type `token`) that is consumed by calls carrying the `convergencectrl` operand bundle. The bundle ties a call to a specific convergence scope -- the verifier at `sub_29ED7A0` enforces `"convergent call needs convergencectrl operand"` for any call marked with the `convergent` attribute (attribute kind 0x34 = 52).
+
+**Layer 2: MachineInstr pseudo-opcodes.** During instruction selection (SelectionDAG lowering), the convergence intrinsics are lowered to target-independent MachineInstr pseudo-opcodes. These survive register allocation and all machine-level optimization passes unchanged -- they carry no register operands and produce no real instructions. Their sole purpose is to mark positions in the MBB instruction stream for the AsmPrinter.
+
+**Layer 3: AsmPrinter emission.** The `emitFunctionBody` loop at `sub_31EC4F0` dispatches opcodes 24 and 33 to dedicated emitter functions that translate the pseudo-instructions into whatever PTX annotation ptxas requires for reconvergence tracking. The `CONVERGENCECTRL_ANCHOR` pseudo (opcode 34) does not appear in the AsmPrinter's 46-case jump table, indicating it is either dropped during ISel or consumed by an earlier machine pass.
+
+### Convergence Token Semantics
+
+The convergence token model enforces a strict dominance and nesting discipline:
+
+1. **`convergence.entry`** produces a token that represents the function's entry convergence scope. All threads that enter the function are converged at this point. The token must dominate all its uses.
+
+2. **`convergence.loop`** produces a token scoped to a natural loop. The token marks the point where loop-back-edge threads reconverge before the next iteration. The loop header must dominate all blocks in the cycle.
+
+3. **`convergence.anchor`** produces a token at an arbitrary program point, used for structured convergence within non-loop regions (e.g., structured `if`/`else` regions where reconvergence is needed at the join point).
+
+4. **`convergencectrl` operand bundle** attaches a convergence token to a call site. This tells the compiler "this call must execute with the set of threads defined by this token's scope." For example:
+
+```llvm
+%tok = call token @llvm.experimental.convergence.entry()
+%result = call float @__shfl_sync(i32 %mask, float %val, i32 %lane)
+          [ "convergencectrl"(token %tok) ]
+```
+
+The LLVM verifier (`sub_BFC6A0`, 211KB) checks that convergent calls carry the bundle; the convergence verifier (`sub_E35A10`, 14KB) checks the structural invariants.
+
+### ConvergenceVerifier -- `sub_E35A10`
+
+The standalone convergence verification pass at `sub_E35A10` (14KB) enforces five invariants on convergence token usage:
+
+| Invariant | Diagnostic String |
+|---|---|
+| Token dominance | `"Convergence control token must dominate all its uses."` |
+| Region nesting | `"Convergence region is not well-nested."` |
+| Cycle heart dominance | `"Cycle heart must dominate all blocks in the cycle."` |
+| Single token per cycle | `"Two static convergence token uses in a cycle..."` |
+| Loop token type | Checks `llvm.experimental.convergence.loop` usage in cycles |
+
+The verifier calls `sub_B19720` for domination checks, `sub_E342D0` for cycle detection (using the generic cycle info infrastructure), `sub_E45390` for diagnostic emission, and `sub_E348A0` for error reporting. It runs as part of the IR verification pipeline, not as a separate pass -- the convergence invariants are checked alongside other LLVM IR well-formedness rules.
+
+### NVIDIA Convergent Branch Intrinsics
+
+In addition to the upstream `llvm.experimental.convergence.*` intrinsics, cicc defines two NVIDIA-specific convergent branch intrinsics that interact with the convergence framework:
+
+| Intrinsic | Builtin ID | Minimum SM | Error on Violation |
+|---|---|---|---|
+| `llvm.nvvm.branch.if.all.convergent` | 3755 / 8282 | sm_70+ (Volta) | `"not supported on pre-Volta Architectures"` |
+| `llvm.nvvm.branch.if.convergent` | 3754 / 8283 | sm_80+ (Ampere) | `"not supported on pre-Ampere Architectures"` |
+
+These intrinsics produce a boolean result that must be consumed by exactly one branch instruction (enforced by `sub_2C7B6A0` with diagnostic: `"result of llvm.nvvm.branch.if.convergent and llvm.nvvm.branch.if.all.convergent can only be used by exactly one branch instruction"`). The `.all` variant tests whether all threads in the warp are converged (equivalent to a "uniform predicate" test); the non-`.all` variant tests whether the current execution context is convergent (the thread set matches the convergence token's scope).
+
+SM version gating is checked in both the NVVM verifier (`sub_1C36530`) and the lowering pass (`sub_2C7B6A0`). The SM version is stored as `SM * 10` internally (so sm_70 = 700, sm_80 = 800), compared against thresholds at `unk_4D045E8`.
+
+### The `convergent` Function Attribute (Kind 0x34)
+
+The `convergent` function/call attribute (attribute kind 52, bit 0x20 at byte offset +33 in the function attribute flags) marks operations that have warp-synchronous semantics. This attribute affects multiple compilation stages:
+
+**Constant folding gate (`sub_2C7B430`).** The NVIDIA intrinsic fold function checks `hasAttribute(callee, -1, 0x34)` before attempting any constant fold. If the callee is convergent, folding is rejected unconditionally -- even if all arguments are compile-time constants. This prevents `__syncthreads()`, `__ballot_sync()`, `__shfl_sync()`, and warp-vote operations from being eliminated.
+
+**Inline asm convergence flag.** During SelectionDAG lowering of inline assembly (`sub_1560260`), the convergent attribute is tested via operand bundle or function attribute. If set, bit 5 of the inline asm flags word is set (`isConvergent`), encoding into the DAG node as: `flags = hasSideEffects | (isAlignStack << 1) | (dialect << 2) | (convergent << 5)`.
+
+**Loop unrolling epilog forcing.** When a loop body contains convergent calls (`hasCallInLoop` check), the unroller forces epilog remainder style rather than prolog, because epilog preserves the property that all threads participate in each full iteration of the unrolled body.
+
+**StructurizeCFG skip.** Functions carrying the convergent attribute (attribute ID 56 in the attribute check at `sub_B2D610`) are skipped by the StructurizeCFG pass -- they are assumed to already have correct convergence structure.
+
+**Dead barrier elimination gate.** The dead sync elimination engine (`sub_2C83D20`) identifies barrier intrinsics by checking bit 0x20 at byte +33 (the convergent attribute flag) on the callee, combined with opcode 85 (the internal barrier opcode) and a barrier intrinsic ID confirmation via `sub_CEA1A0`.
+
+### Operand Bundle Registration
+
+The `convergencectrl` operand bundle tag is registered during LLVMContext initialization at `sub_B6EEA0` (9KB), alongside the other standard bundle tags:
+
+```
+Operand bundle tags registered at context creation:
+  "funclet"           -- EH funclet scope
+  "gc-transition"     -- GC state transition
+  "ptrauth"           -- pointer authentication
+  "kcfi"              -- kernel control flow integrity
+  "convergencectrl"   -- convergence token attachment
+```
+
+These tags are interned as string IDs in the context's operand bundle tag table. When the bitcode reader parses a call instruction with operand bundles (`sub_14FCE40`, 107KB), the `convergencectrl` bundle is reconstructed from the bitcode record and attached to the CallInst/InvokeInst. The inliner at `sub_29ED7A0` (96KB) checks `"convergent call needs convergencectrl operand"` to verify that convergent calls in the callee carry appropriate bundles after inlining.
+
+### Pseudo-Instruction Lowering in emitFunctionBody
+
+The `emitFunctionBody` loop at `sub_31EC4F0` handles the two convergence pseudo-instructions as part of its 46-case opcode switch:
+
+**Case 24 -- CONVERGENCECTRL_ENTRY.** Calls `sub_31DB9B0` (emitConvergenceEntry). This function is positioned at address `0x31DB9B0`, immediately after `sub_31DB950` in the binary layout (the two functions are adjacent, separated by only 0x60 bytes: `0x31DB950` to `0x31DB9B0`). The entry pseudo marks the function entry convergence point. It does not emit visible PTX text -- instead it updates internal state that the OutStreamer uses for reconvergence tracking in the generated object.
+
+**Case 33 -- CONVERGENCECTRL_LOOP.** Calls `sub_31DB950` (emitConvergenceLoop). This marks loop-back convergence points. Like the entry pseudo, it produces no visible PTX output but influences ptxas's reconvergence analysis.
+
+Both pseudo-instructions are "silent" -- they do not increment the instruction counter (`var_F30`), do not trigger `.loc` emission, and do not invoke the `beginInstruction`/`endInstruction` handler callbacks. They fall through the switch without reaching the default path's instruction-counting logic.
+
+### Post-Function Convergence Close-Out
+
+After all MBBs in a function are emitted, the `emitFunctionBody` function performs convergence-related cleanup in Phase 3a (`0x31ECFFD`-`0x31ED0FA`):
+
+```
+Phase 3a: Convergence control close-out
+  if (var_ED1 == true):                          // any real instructions seen?
+      OutStreamer->emitAlignment(MF->getAlignment())
+      for sym in MF->globalSymbolTable[0x48..0x50]:
+          if (sym[-0x16] & 0x7FFF) != 0:         // visibility flags
+              sub_31E1750(sym)                    // resolveBlockAddress
+              if block_was_removed:
+                  emit diagnostic "Address of block that was removed by Co..."
+                  OutStreamer->emitLabel(fallback_sym)
+```
+
+The `var_ED1` flag tracks whether any non-meta instructions appeared in the function body. When set, the close-out phase emits function alignment, resolves block-address symbols in the global symbol table (checking visibility flags at `sym[-0x16] & 0x7FFF`), and handles the edge case where a basic block was removed by CodeGen after a block-address was taken -- this would produce a dangling convergence reference, so a diagnostic is emitted and a fallback label is created.
+
+### Convergence and the StructurizeCFG Pass
+
+The StructurizeCFG pass (documented in [StructurizeCFG](../llvm/structurizecfg.md)) is the primary consumer of convergence information during the CFG transformation phase. PTX requires reducible control flow: every back-edge must target a loop header that dominates all blocks in the cycle, and every divergent branch must reconverge at a post-dominator.
+
+The pass performs a domtree-guided reconvergence insertion that stores head/tail pointers into function metadata at `*(func_obj+672)` and `*(func_obj+680)`. These pointers are read by subsequent PTX emission passes to emit correct convergence annotations. Functions with the `convergent` attribute (or `optnone`) are skipped entirely -- they are assumed to already have correct structure.
+
+When non-uniform divergent regions are identified, the pass creates new "reconvergence" basic blocks, copies phi entries, and reroutes edges so that all divergent paths merge at a single post-dominator. The `sub_35CB4A0` uniformity check and `sub_35C9ED0` NCA (nearest common ancestor) computation in the dominator tree determine where reconvergence points are inserted.
+
 ## NVIDIA Extensions Beyond Upstream
 
 cicc's AsmPrinter diverges from upstream LLVM's NVPTXAsmPrinter in several important ways:
 
-**Convergence control pseudo-instructions.** Upstream LLVM (as of the LLVM 20 base) has `llvm.experimental.convergence.*` intrinsics, but the AsmPrinter handling of `CONVERGENCECTRL_ENTRY` and `CONVERGENCECTRL_LOOP` as dedicated opcode cases (24 and 33 in the jump table) with calls to `sub_31DB9B0` / `sub_31DB950` is cicc-specific. These ensure correct warp-level synchronization semantics in the emitted PTX.
+**Convergence control pseudo-instructions.** Upstream LLVM (as of the LLVM 20 base) has `llvm.experimental.convergence.*` intrinsics, but the AsmPrinter handling of `CONVERGENCECTRL_ENTRY` and `CONVERGENCECTRL_LOOP` as dedicated opcode cases (24 and 33 in the jump table) with calls to `sub_31DB9B0` / `sub_31DB950` is cicc-specific. These ensure correct warp-level synchronization semantics in the emitted PTX. Additionally, cicc adds two NVIDIA-specific convergent branch intrinsics (`llvm.nvvm.branch.if.convergent` for sm_80+ and `llvm.nvvm.branch.if.all.convergent` for sm_70+) that have no upstream equivalent. See the [Convergence Control Framework](#convergence-control-framework) section for the full pipeline.
 
 **Enhanced `.loc` with inlined-at.** The `function_name` and `inlined_at` extensions to `.loc` directives are NVIDIA additions. Upstream LLVM's NVPTX backend emits only standard `.loc file line col`. cicc's version walks the full inlining chain to produce richer debug information.
 
@@ -325,8 +467,15 @@ cicc's AsmPrinter diverges from upstream LLVM's NVPTXAsmPrinter in several impor
 | `sub_2FF6320` | -- | `printReg` (register number -> `%rN` string) |
 | `sub_31D55F0` | -- | Per-instruction `.loc` DWARF directive |
 | `sub_31D89B0` | -- | Instruction-level debug comment emission |
-| `sub_31DB9B0` | -- | `emitConvergenceEntry` |
-| `sub_31DB950` | -- | `emitConvergenceLoop` |
+| `sub_31DB9B0` | -- | `emitConvergenceEntry` (CONVERGENCECTRL_ENTRY pseudo, opcode 24) |
+| `sub_31DB950` | -- | `emitConvergenceLoop` (CONVERGENCECTRL_LOOP pseudo, opcode 33) |
+| `sub_E35A10` | 14KB | ConvergenceVerifier::verify (token dominance/nesting checks) |
+| `sub_E342D0` | -- | Cycle detection for convergence verification |
+| `sub_E348A0` | -- | Convergence verification error reporting |
+| `sub_29ED7A0` | 96KB | Inliner/verifier core (`"convergent call needs convergencectrl operand"`) |
+| `sub_1C36530` | -- | NVVM convergent branch intrinsic SM-version gating |
+| `sub_2C7B6A0` | -- | Convergent branch lowering + single-use enforcement |
+| `sub_B6EEA0` | 9KB | Metadata kind + operand bundle tag registration (incl. `convergencectrl`) |
 | `sub_31DCBB0` | -- | `emitNops` (zero-length function avoidance) |
 | `sub_31DCC50` | -- | `createTempSymbol` (`"func_end"`, `"Ltmp"`) |
 | `sub_31EC4F0` | 12KB | `emitFunctionBody` (main loop) |
@@ -344,3 +493,7 @@ cicc's AsmPrinter diverges from upstream LLVM's NVPTXAsmPrinter in several impor
 - [NVPTX Call ABI](../pipeline/emission.md#param-space-marshaling) -- `.param` space calling convention detail
 - [Register Allocation](../llvm/register-allocation.md) -- determines which virtual registers exist for the register declaration phase
 - [Inliner Cost Model](../lto/inliner-cost.md) -- inlining decisions that create the inlined-at debug chains the AsmPrinter must emit
+- [StructurizeCFG](../llvm/structurizecfg.md) -- CFG restructuring pass that creates reconvergence basic blocks for divergent control flow
+- [Dead Sync Elimination](../passes/dead-sync-elimination.md) -- dead barrier elimination engine that uses the convergent attribute to identify barrier intrinsics
+- [SM 70-89 Architecture](../targets/sm70-89.md) -- SM version gating for convergent branch intrinsics
+- [GPU Execution Model](../gpu-execution-model.md) -- SIMT warp divergence/reconvergence background

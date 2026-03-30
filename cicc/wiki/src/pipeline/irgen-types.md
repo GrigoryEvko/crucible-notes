@@ -234,6 +234,211 @@ The two-pass approach (syntactic substitution then semantic matching) handles ca
 
 Template specialization support is entirely optional and gated behind configuration flags, allowing it to be disabled for faster compilation when not needed.
 
+### Primitive Type Translation Table
+
+The dispatcher `sub_918E50` handles kinds `0x00`--`0x10` (values 0--16) as primitive/scalar types. These map directly from EDG internal type representation to LLVM IR types. The correspondence between the three type-tag namespaces used across cicc is:
+
+| EDG Type Kind | EDG Printer `type_kind` | Cast Codegen Tag (`*(type+8)`) | LLVM IR Type | Width |
+|---|---|---|---|---|
+| `0x00` | `0x00` error | --- | `<error>` | --- |
+| `0x01` | `0x01` void | 3 | `void` | 0 |
+| `0x02` | `0x02` scalar/integer | 17 | `iN` | N bits |
+| `0x03` | `0x03` float | 1 (half), 2 (float), 3 (double), 4 (fp80), 5 (fp128), 6 (bf16) | see FP table | varies |
+| `0x04` | `0x04` imaginary | --- | emulated | varies |
+| `0x05` | `0x05` complex | --- | `{ fN, fN }` struct | 2x float |
+| `0x06` | `0x06` pointer/ref | 18 | `ptr` (opaque) or `ptr addrspace(N)` | 32/64 |
+| `0x07` | `0x07` function | 15 (function), 16 (ptr-to-fn) | function type | --- |
+| `0x08` | `0x08` array | 20 | `[N x elem]` | N * elem |
+| `0x09`--`0x0B` | `0x09`--`0x0B` class/struct/union/enum | 21 (struct) | `%struct.Name = type { ... }` | layout |
+| `0x0C` | `0x0C` elaborated/typedef | --- | resolved target | --- |
+| `0x0D` | `0x0D` pointer-to-member | --- | `{ ptr, i64 }` or `i64` | 64/128 |
+| `0x0E` | `0x0E` template param | --- | deduced | --- |
+| `0x0F` | `0x0F` vector | 16 | `<N x elem>` | N * elem |
+| `0x10` | `0x10` scalable vector | 16 | `<vscale x N x elem>` | runtime |
+
+The integer type (EDG kind `0x02`) carries its bit-width in the upper bytes of the type word. The cast codegen subsystem (`sub_128A450`) classifies types by the tag byte at `*(type+8)`: tags 1--6 are floating-point (see next section), tag 11 is integer, tag 15 is pointer, and tag 16 is vector/aggregate. The key dispatch idiom `(tag - 1) > 5u` tests "is NOT a float"; `(tag & 0xFD) != 0xB` tests "is NOT integer-like".
+
+### Floating-Point Type Encoding
+
+Floating-point types use a sub-kind byte stored in the EDG type node at `v3[10].m128i_i8[0]` (type printer) or equivalently the cast codegen tag at `*(type+8)`. The complete mapping including all NVIDIA-extended formats:
+
+| Cast Tag | EDG FP Sub-kind | Mangling | C++ Type | LLVM Type | Width | SM Minimum |
+|---|---|---|---|---|---|---|
+| 1 | 0 / 0xA | `DF16_` | `_Float16` / `__half` | `half` | 16 | SM 53 (scalar), SM 70 (packed) |
+| 1 | 1 | `Dh` | `__fp16` | `half` | 16 | SM 53 |
+| 2 | 2 | `f` | `float` | `float` | 32 | all |
+| --- | 3 | `DF32x` | `_Float32x` | `double` (promoted) | 64 | all |
+| 3 | 4 | `d` | `double` | `double` | 64 | all |
+| --- | 5 | `DF64x` | `_Float64x` | `fp128` (emulated) | 128 | all |
+| --- | 6 | (single) | `long double` | platform-dependent | arch | --- |
+| --- | 7 | `u7float80` | `float80` | `x86_fp80` | 80 | N/A on GPU |
+| --- | 8 | `g` | `__float128` | `fp128` | 128 | emulated |
+| 6 | 9 | `u6__bf16` or `DF16b` | `__bf16` / `__nv_bfloat16` | `bfloat` | 16 | SM 80 |
+| --- | 0xB | `DF32_` | `_Float32` | `float` | 32 | all |
+| --- | 0xC | `DF64_` | `_Float64` | `double` | 64 | all |
+| --- | 0xD | `DF128_` | `_Float128` | `fp128` | 128 | emulated |
+
+The `bf16` mangling has a three-way ABI gate controlled by `qword_4F077B4` (low 32 = `use_new_bf16_mangling`, high 32 = `bf16_abi_version`) and `qword_4F06A78` (secondary selector). Old ABI emits `u6__bf16` (Itanium vendor-extended); C++23 ABI emits `DF16b` (P1467 standard). The `__nv_bool` type (EDG printer case `0x02`, bit 4 of `+162`) is a CUDA-specific boolean that emits `"__nv_bool"` when `sub_5D76E0` (CUDA mode check) returns true, or `"_Bool"` / `"bool"` otherwise.
+
+Two additional NVIDIA-specific types have dedicated mangling:
+
+| EDG Type Code | Mangling | C++ Type | Purpose |
+|---|---|---|---|
+| 17 | `u11__SVCount_t` | `__SVCount_t` | ARM SVE predicate count |
+| 18 | `u6__mfp8` | `__mfp8` | 8-bit minifloat (FP8 E4M3/E5M2 base) |
+
+On the LLVM side, the `__mfp8` type maps to `i8` storage with metadata annotations indicating the floating-point interpretation.
+
+### CUDA FP8/FP6/FP4 Extended Type Keywords
+
+CUDA 12.x+ introduces narrow floating-point types for transformer inference and tensor core operations. The EDG parser (`sub_691320`) recognizes these as token values 236 and 339--354, all resolved through `sub_6911B0` (CUDA type-token resolver):
+
+| Token | Keyword | Format | Width | Packed Variant | SM Requirement |
+|---|---|---|---|---|---|
+| 236 | `__nv_fp8_e4m3` | E4M3 (4-bit exponent, 3-bit mantissa) | 8 | --- | SM 89 |
+| 339 | `__nv_fp8_e5m2` | E5M2 (5-bit exponent, 2-bit mantissa) | 8 | --- | SM 89 |
+| 340 | `__nv_fp8x2_e4m3` | E4M3 packed pair | 16 | 2 elements | SM 89 |
+| 341 | `__nv_fp8x2_e5m2` | E5M2 packed pair | 16 | 2 elements | SM 89 |
+| 342 | `__nv_fp8x4_e4m3` | E4M3 packed quad | 32 | 4 elements | SM 89 |
+| 343 | `__nv_fp8x4_e5m2` | E5M2 packed quad | 32 | 4 elements | SM 89 |
+| 344 | `__nv_fp6_e2m3` | E2M3 (2-bit exponent, 3-bit mantissa) | 6 | --- | SM 100 |
+| 345 | `__nv_fp6_e3m2` | E3M2 (3-bit exponent, 2-bit mantissa) | 6 | --- | SM 100 |
+| 346 | `__nv_fp6x2_e2m3` | E2M3 packed pair | 12 | 2 elements | SM 100 |
+| 347 | `__nv_fp6x2_e3m2` | E3M2 packed pair | 12 | 2 elements | SM 100 |
+| 348 | `__nv_mxfp8_e4m3` | MX-format E4M3 | 8 | --- | SM 100 |
+| 349 | `__nv_mxfp8_e5m2` | MX-format E5M2 | 8 | --- | SM 100 |
+| 350 | `__nv_mxfp6_e2m3` | MX-format E2M3 | 6 | --- | SM 100 |
+| 351 | `__nv_mxfp6_e3m2` | MX-format E3M2 | 6 | --- | SM 100 |
+| 352 | `__nv_mxfp4_e2m1` | MX-format E2M1 (FP4) | 4 | --- | SM 100 |
+| 353 | `__nv_satfinite` | Saturation-to-finite modifier | --- | --- | SM 89 |
+| 354 | `__nv_e8m0` | E8M0 exponent-only scale format | 8 | --- | SM 100 |
+
+The resolver `sub_6911B0` follows the `field_140 == 12` (qualified/elaborated type) chain to find the base type node, then sets `v325 = 20` (typename). At the LLVM level, these narrow types are lowered to integer storage types (`i8`, `i16`, `i32`) with type metadata or intrinsic-based interpretation. The `cvt_packfloat` intrinsic family handles conversion to and from these formats with explicit format specifiers:
+
+| cvt_packfloat Case | PTX Suffix | Format |
+|---|---|---|
+| 2 | `.e4m3x2` | FP8 E4M3 pair |
+| 3 | `.e5m2x2` | FP8 E5M2 pair |
+| 4 | `.bf16x2` | BFloat16 pair |
+| 5 | `.e2m1x2` | FP4 E2M1 pair (SM 100+) |
+| 6 | `.e2m3x2` | FP6 E2M3 pair (SM 100+) |
+| 7 | `.e3m2x2` | FP6 E3M2 pair (SM 100+) |
+| 8 | `.ue8m0x2` | UE8M0 scale pair (SM 100+) |
+
+### Address Space Annotations on Types
+
+CUDA memory-space qualifiers propagate through the EDG type system via a 15-bit **qualifier word** at `edg_node+18`. The low 15 bits encode a qualifier ID; bit 15 is a negation flag. The qualifier word is the single mechanism through which `__device__`, `__shared__`, `__constant__`, and `__managed__` semantics reach the LLVM type system.
+
+**EDG qualifier word to LLVM address space mapping** (performed by `sub_5FFE90`):
+
+| Qualifier Word (`node+18 & 0x7FFF`) | LLVM Address Space | CUDA Source | Notes |
+|---|---|---|---|
+| 0 | 0 | (default/generic) | Unqualified pointers |
+| 1 | 1 | `__device__` / global | Explicit global annotation |
+| 9 | 0 (with flag check via `sub_5F3280`) | (generic variant) | Conditional on context |
+| 14 | --- | `__host__` / method qualifier | Not an address space --- function qualifier |
+| 26 | --- | (array subscript context A) | Internal, not an address space |
+| 27 | --- | (array subscript context B) | Internal, not an address space |
+| 32 | 3 | `__shared__` | Per-block shared memory |
+| 33 | 4 | `__constant__` | Read-only constant memory |
+
+The function `sub_5A3140` creates the appropriately address-space-qualified LLVM pointer type given the qualifier output from `sub_5FFE90`. The helper `sub_911CB0` combines address space information with the type kind to produce a unique scope-table index: it computes `(type_kind - 24)` as a base and combines it with the qualifier to produce a monotonic key.
+
+**EDG frontend encoding** (from `sub_691320` parser, tokens 133--136, and `sub_667B60`):
+
+| Parser Token | CUDA Keyword | `v305` Value | EDG `memory_space_code` | Target AS |
+|---|---|---|---|---|
+| 133 | `__shared__` | 4 | 2 | 3 |
+| 134 | `__device__` | 5 | 1 | 1 |
+| 135 | `__constant__` | 6 | 3 | 4 |
+| 136 | `__managed__` | 7 | (special) | 0 + `"managed"` annotation |
+| 273 | `__global__` (addr-space attr) | --- | 0 | 0 |
+| 274 | `__shared__` (addr-space attr) | --- | 2 | 3 |
+| 275 | `__constant__` (addr-space attr) | --- | 3 | 4 |
+| 276 | `__generic__` (addr-space attr) | --- | (parsed) | (parsed) |
+
+Address-space propagation through types is **transitive**: if `struct S` contains a `__shared__ int*` field, the shared qualifier flows through the pointer type and is preserved in the LLVM `ptr addrspace(3)` type of that field. The type-pair comparator `sub_911D10` achieves this by pushing child pairs onto its worklist whenever a pointer/reference type (kinds 75/76) carries a non-zero qualifier. The qualifier-word masks 1, 14, 32, and 33 are the four values that trigger this child propagation.
+
+For a full cross-reference of all 10 address spaces (including AS 5 local, AS 6 tensor memory, AS 7 shared cluster, AS 25 internal device, AS 53 MemorySpaceOpt annotation, AS 101 param), see [Address Spaces](../reference/address-spaces.md).
+
+### Vector Type Handling
+
+NVPTX has a highly constrained vector type model. Only four vector types are legal --- all packed into 32-bit `Int32HalfRegs` (`%hh` prefix in PTX):
+
+| Legal Vector Type | LLVM MVT | PTX Register Class | PTX Suffix | SM Minimum |
+|---|---|---|---|---|
+| `v2f16` | `v2f16` | `Int32HalfRegs` | `.f16x2` | SM 70 (arith), SM 53 (ld/st) |
+| `v2bf16` | `v2bf16` | `Int32HalfRegs` | `.bf16x2` | SM 80 |
+| `v2i16` | `v2i16` | `Int32HalfRegs` | `.s16x2` | SM 70 |
+| `v4i8` | `v4i8` | `Int32HalfRegs` | (packed bytes) | SM 70 |
+
+All wider vector types are illegal and undergo recursive split/scalarize during [type legalization](../llvm/type-legalization.md). The split depth for common CUDA vector types:
+
+| CUDA Type | LLVM Type | Split Chain | Final Form |
+|---|---|---|---|
+| `float4` | `v4f32` | v4f32 -> 2x v2f32 -> 4x f32 | 4 scalar `float` ops |
+| `float2` | `v2f32` | v2f32 -> 2x f32 | 2 scalar `float` ops |
+| `int4` | `v4i32` | v4i32 -> 2x v2i32 -> 4x i32 | 4 scalar `i32` ops |
+| `double2` | `v2f64` | v2f64 -> 2x f64 | 2 scalar `double` ops |
+| `half2` | `v2f16` | **legal** (no split) | single `.f16x2` packed op |
+| `__nv_bfloat162` | `v2bf16` | **legal** (no split, SM 80+) | single `.bf16x2` packed op |
+| `short2` | `v2i16` | **legal** (no split) | single `.s16x2` packed op |
+| `char4` / `uchar4` | `v4i8` | **legal** (no split) | single packed-byte op |
+| `half` (4 elements) | `v4f16` | v4f16 -> 2x v2f16 | 2 packed `.f16x2` ops |
+| `half` (8 elements) | `v8f16` | v8f16 -> v4f16 -> 2x v2f16 | 4 packed `.f16x2` ops |
+
+The critical architectural insight: `v2f32` is NOT legal on NVPTX (no 64-bit packed float register class exists), so `float4` always fully scalarizes to four independent `f32` operations. In contrast, `half2` stays packed throughout the pipeline, delivering 2x throughput via `add.f16x2`, `mul.f16x2`, and `fma.rn.f16x2` PTX instructions.
+
+SM-version gating affects which types are legal at which pipeline stage:
+
+- **SM < 53**: No legal vector types; `v2f16` must be scalarized, and scalar `f16` is promoted to `f32`.
+- **SM 53--69**: Scalar `f16` is legal; `v2f16` is legal for load/store but packed arithmetic may be `Custom` or `Expand`.
+- **SM 70+**: `v2f16` fully legal with packed arithmetic. `i128` scalar register class added.
+- **SM 80+**: `v2bf16` added as legal vector type.
+- **SM 100+**: Additional packed FP types for `cvt_packfloat` --- `e2m1x2`, `e2m3x2`, `e3m2x2`, `ue8m0x2`.
+
+Tensor core matrix fragments bypass vector legalization entirely. WMMA and WGMMA intrinsics represent matrix data as individual scalar registers or `{f16, f16, ...}` struct aggregates, not as LLVM vector types. See [MMA Codegen](../llvm/mma-codegen.md) for the tensor-core lowering path.
+
+### Cast Codegen Type Tags
+
+The cast emission function `sub_128A450` uses a distinct type-tag namespace at `*(type+8)`. This tag drives all cast instruction selection and must be clearly distinguished from the EDG type-kind byte at `edg_node+16`:
+
+| Tag | LLVM Type | Cast Behavior |
+|---|---|---|
+| 1 | `half` (f16) | Float family; float-to-float casts use `fpext`/`fptrunc` |
+| 2 | `float` (f32) | Float family |
+| 3 | `double` (f64) | Float family |
+| 4 | `x86_fp80` | Float family (not used on GPU) |
+| 5 | `fp128` | Float family; triggers standard LLVM cast path (no `__nv_*_rz` intrinsic) |
+| 6 | `bfloat` (bf16) | Float family |
+| 11 | `iN` (integer) | Integer family; width at `*(type+8) >> 8` |
+| 15 | `ptr` | Pointer family |
+| 16 | `<N x elem>` (vector) | Vector/aggregate; address-space extraction via `sub_16463B0` |
+
+Integer-to-float conversions (tags 11 -> 1..6) default to `sitofp`/`uitofp` but can route through NVIDIA-specific `__nv_*_rz` round-to-zero intrinsics when `unk_4D04630` is clear. These intrinsics (`__nv_float2int_rz`, `__nv_double2ll_rz`, etc.) are emitted as plain function calls and later pattern-matched by the PTX backend to `cvt.rz.*` instructions. The `fp128` path always uses standard LLVM casts because 128-bit floating point is emulated via [FP128/I128 library calls](../passes/fp128-emulation.md).
+
+### SelectionDAG SimpleVT Encoding
+
+After IR generation, types enter the SelectionDAG type system where they are encoded as single-byte `SimpleVT` values for the legality table lookup at `NVPTXTargetLowering + 2422`:
+
+| SimpleVT | LLVM Type | Bitwidth |
+|---|---|---|
+| 0 | extended/custom | computed via `sub_1F58D40` |
+| 1 | `i1` | 1 |
+| 2 | `i2` | 2 |
+| 3 | `i8` | 8 |
+| 4 | `i16` | 16 |
+| 5 | `i32` | 32 |
+| 6 | `i64` | 64 |
+| 7 | `i128` | 128 |
+| 8 | `f16` / `bf16` | 16 |
+| 9 | `f32` | 32 |
+| 10 | `f64` | 64 |
+| 14--55 | fixed-width vector types | vector of above |
+| 56--109 | scalable vector types | scalable vector of above |
+
+The bitwidth-to-SimpleVT conversion pattern appears 11 times in the 348KB `DAGTypeLegalizer::run` monolith (`sub_20019C0`), and the vector-to-scalar-element switch table (cases 14--109 mapping back to scalar VT 2--10) appears 6 times. This redundancy is an artifact of the monolithic inlining --- upstream LLVM factors these into per-category files (`LegalizeIntegerTypes.cpp`, `LegalizeFloatTypes.cpp`, etc.).
+
 ## Global Variable Code Generation
 
 ### Module-Level Driver

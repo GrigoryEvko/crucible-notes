@@ -55,11 +55,11 @@ After type filtering, the pass walks the global's use-list. Every user must be e
 
 ## Path A: Small-Constant Promotion
 
-When the global's initializer is a struct constant and its total bit-size (including alignment padding) fits within 2047 bits (0x7FF), the pass promotes it into a function-local value with a separate initializer function. This threshold is NVIDIA-specific -- upstream LLVM uses different heuristics based on `TargetData` layout considerations.
+When the global's initializer is a struct constant and its total bit-size (including alignment padding) fits within 2047 bits (0x7FF), the pass promotes it into a function-local value with a separate initializer function. This threshold is NVIDIA-specific -- upstream LLVM uses different heuristics based on `TargetData` layout considerations. The 2047-bit ceiling corresponds roughly to 64 32-bit registers, aligning with the per-thread register budget on most SM architectures where promoting beyond that limit would spill to local memory and negate the benefit.
 
 ### Size Computation
 
-The pass walks the type tree recursively to compute total bit-size:
+The pass walks the type tree recursively to compute total bit-size. The implementation at lines 499-570 of the decompilation uses a `switch` on the type tag byte at `type + 8`:
 
 | Type tag | Type | Bits |
 |----------|------|------|
@@ -75,9 +75,46 @@ The pass walks the type tree recursively to compute total bit-size:
 | 0xD | struct | 8 * field_count (via `sub_15A9930`) |
 | 0xE | vector | 8 * alignment * num_elements * padded_size |
 | 0xF | opaque ptr | `sub_15A9520(target, addr_space) * 8` |
-| 0x10 | array | element_size * array_length (recursive) |
+| 0x0, 0x8, 0xA, 0xC, 0x10 | array variants | element_size * array_length (recursive) |
 
-Note that opaque pointers (tag 0xF) use `getPointerSizeInBits(target, addr_space)` -- the pointer size varies by address space on NVPTX (64-bit for AS 0/1, potentially 32-bit for AS 3/5 on some targets).
+Note that opaque pointers (tag 0xF) use `getPointerSizeInBits(target, addr_space)` -- the pointer size varies by address space on NVPTX (64-bit for AS 0/1, potentially 32-bit for AS 3/5 on some targets). Tags 0x0, 0x8 (label/token), 0xA (metadata), and 0xC (bfloat) all fall into the array-multiplier path -- they extract an element count and recurse, which handles the case where these type wrappers contain inner array types.
+
+The pseudocode for the size computation:
+
+```c
+// sub_18612A0, lines 499-570
+uint64_t compute_total_bits(Type *type, TargetInfo *target, uint8_t addr_space) {
+    uint8_t tag = *(uint8_t *)(type + 8);
+    switch (tag) {
+    case 0x1:  return 16;                                     // i16 / half
+    case 0x2:  return 32;                                     // i32 / float
+    case 0x3:  return 64;                                     // i64
+    case 0x4:  return 80;                                     // x86_fp80
+    case 0x5:  return 128;                                    // i128
+    case 0x6:  return 128;                                    // fp128 / ppc_fp128
+    case 0x7:  return sub_15A9520(target, 0) * 8;             // generic pointer
+    case 0x9:  return 64;                                     // double
+    case 0xB:  return *(uint32_t *)(type + 8) >> 8;           // iN custom-width
+    case 0xD: {                                               // struct
+        uint64_t layout = sub_15A9930(target, type);          // getStructLayout
+        return 8 * *(uint32_t *)(layout + 12);                // 8 * element_count
+    }
+    case 0xE: {                                               // vector
+        uint64_t align = sub_15A9FE0(target, type);           // getAlignment
+        uint64_t n_elts = *(uint32_t *)(type + 12);
+        uint64_t elem_bits = compute_total_bits(
+            sub_16463B0(type, 0), target, addr_space);        // getArrayElementType
+        return 8 * align * n_elts * ((elem_bits + align - 1) / align);
+    }
+    case 0xF:  return sub_15A9520(target, addr_space) * 8;    // opaque ptr (AS-aware)
+    default: {                                                 // 0x0,0x8,0xA,0xC,0x10: array
+        uint64_t n_elts = *(uint32_t *)(type + 12);
+        Type *elem = sub_16463B0(type, 0);                    // getArrayElementType
+        return n_elts * compute_total_bits(elem, target, addr_space);
+    }
+    }
+}
+```
 
 The acceptance check at line 570:
 
@@ -108,6 +145,100 @@ define internal void @my_global.init() {
 
 The `.body` global is created via `sub_15E51E0` with the same address space and internal linkage (code 7). The `.init` function is created via `sub_15E5070`. The pass then walks all users of the original global: loads (tag 55) get redirected to the `.body` global, GEPs (tag 71) get RAUW'd via `sub_164D160`, and `extractvalue` instructions (tag 75) get specialized `.val` accessors. Sub-opcodes on the `extractvalue` determine further handling: codes 0x20/0x25/0x29 produce `notinit` sentinels, 0x24/0x28 extract terminal types via `sub_159C540`, and 0x21-0x23/0x26-0x27 pass through unchanged.
 
+The full promotion pseudocode covering body creation, init creation, and use rewriting:
+
+```c
+// sub_18612A0, lines 577-805 — Path A: small-constant promotion
+void promote_small_constant(Global *global, Module *module, Value *init_val,
+                            Type *type, TargetInfo *target) {
+    // --- Extract address space from global flags ---
+    uint8_t addr_space = (*(uint8_t *)(global + 33) >> 2) & 7;
+
+    // --- Create ".body" global in same address space ---
+    void *node = sub_1648A60(88, 1);                           // IRBuilder::create
+    Global *body_gv = sub_15E51E0(
+        get_scope(module), type, /*init=*/0, /*linkage=*/7,
+        concat_name(global, ".body"), addr_space);             // createGlobalVar
+    sub_15E6480(global, body_gv);                              // copyMetadata
+
+    // --- Rewrite all users of original global ---
+    Use *use = *(Use **)(global + 8);                          // use-list head
+    while (use != NULL) {
+        Instruction *inst = sub_1648700(use);                  // getInstruction
+        uint8_t opcode = *(uint8_t *)(inst + 16);
+
+        if (opcode == 71) {                                    // GEP
+            // If GEP references old global, RAUW to body
+            sub_164D160(inst, body_gv);                        // RAUW
+            sub_15F20C0(inst);                                 // eraseFromParent
+        } else {
+            // Create local variable referencing body
+            Value *local = sub_15FD590(inst, get_scope(module),
+                                       "newgv", module);       // createLocalVar
+            sub_1648780(use, local);                           // replaceUseWith
+        }
+        use = *(Use **)(use + 8);                              // next use
+    }
+
+    // --- Create ".init" function ---
+    Function *init_fn = sub_15E5070(
+        get_scope(module), type, /*linkage=*/7,
+        init_val, concat_name(global, ".init"));               // createFunction
+    int init_user_count = 0;
+
+    // Walk users again for extractvalue and load rewriting
+    use = *(Use **)(body_gv + 8);
+    while (use != NULL) {
+        Instruction *inst = sub_1648700(use);
+        uint8_t opcode = *(uint8_t *)(inst + 16);
+
+        if (opcode == 55) {                                    // load
+            sub_15F9480(init_val, init_fn);                    // createStoreInit
+            init_user_count++;
+        } else if (opcode == 75) {                             // extractvalue
+            Value *val_acc = sub_15F8F80(inst, type, init_fn,
+                concat_name(global, ".val"));                  // createExtractValue
+            uint8_t sub_opcode = *(uint8_t *)(inst + 24);
+            switch (sub_opcode) {
+            case 0x20: case 0x25: case 0x29:
+                // Uninitialized path: create "notinit" sentinel
+                sub_15FB630(val_acc, "notinit", inst);         // createNotInit
+                break;
+            case 0x24: case 0x28:
+                // Terminal type extraction
+                sub_159C540(val_acc);                          // getTerminalType
+                break;
+            default:                                           // 0x21-0x23, 0x26-0x27
+                break;                                         // pass-through
+            }
+            sub_164D160(inst, val_acc);                        // RAUW
+            sub_15F20C0(inst);                                 // eraseFromParent
+            init_user_count++;
+        }
+        use = *(Use **)(use + 8);
+    }
+
+    // --- Finalize ---
+    if (init_user_count > 0) {
+        sub_1631BE0(module_fn_list, init_fn);                  // insertIntoFnList
+        // Patch metadata chain at global+56
+        *(void **)(global + 56) = init_fn;
+    } else {
+        // Dead init function: destroy
+        sub_15E5530(init_fn);                                  // destroyFunctionBody
+        sub_159D9E0(init_fn);                                  // destroyFunction
+        sub_164BE60(init_fn);                                  // dropAllReferences
+        sub_1648B90(init_fn);                                  // markDead (flags |= 1)
+    }
+
+    sub_15E55B0(global);                                       // erase original global
+    sub_15F20C0(module_entry);                                 // erase module-level ref
+
+    // --- Recursive re-application to newly created .body ---
+    sub_185B1D0(body_gv, target);                              // recursiveGlobalOpt
+}
+```
+
 After rewriting all uses, if the `.init` function has users, it is linked into the module's function list via `sub_1631BE0`. If it has zero users (the initializer was never needed), the function body is destroyed and marked dead. The original global is erased via `sub_15E55B0`. Finally, `sub_185B1D0` recursively re-applies GlobalOpt to the newly created `.body` global, enabling cascaded optimizations.
 
 ## Path B: Scalar Replacement of Aggregates (SRA)
@@ -119,38 +250,162 @@ When a global is too large for constant promotion, the pass attempts SRA -- expl
 3. The type must be a struct (tag 13) with 1 to 16 fields: `field_count - 1 <= 0xF`.
 4. Every user must reference only this global -- no cross-global pointer arithmetic.
 
-### Field Explosion
+The 16-field limit is a hardcoded constant at line 822 of the decompilation. It prevents combinatorial explosion in the null-check and free chains that follow: each field generates one `icmp eq` (null check), one `or`, one conditional branch, one `free_it` block, and one `next` block. Beyond 16 fields the cost of the generated guard code would exceed the benefit of splitting.
 
-For each field index 0 through `field_count - 1`:
+### Use Analysis: Store Value Collection
+
+Before field explosion, the pass collects all stored values into a hash set to determine which initializers are live. For each store (tag 54) user of the global, `sub_185CAF0` inserts the stored value into a hash/set structure at `v432`. The scratch buffer starts with capacity 32 and grows via `sub_16CC920` when full. This collection serves two purposes: it validates that all stores write analyzable values (no opaque function pointers or computed addresses), and it builds the value set used later to initialize the per-field globals.
 
 ```c
-for (int i = 0; i < field_count; i++) {
-    Type *field_type = getStructFieldType(struct_type, ptr_bits);  // sub_1646BA0
-    uint64_t field_offset = computeFieldOffset(type_info, bits);   // sub_15A06D0
+// sub_18612A0, lines 823-868 — Store value collection for SRA
+void collect_store_values(Global *global, Module *module,
+                          HashSet *store_set, Buffer *scratch) {
+    Use *use = *(Use **)(global + 8);
+    int store_count = 0;
 
-    // Generate name: "my_global.f0", "my_global.f1", ...
-    char name[256];
-    snprintf(name, sizeof(name), "%s.f%d", global_name, i);
+    while (use != NULL) {
+        Instruction *inst = sub_1648700(use);                  // getInstruction
+        uint8_t opcode = *(uint8_t *)(inst + 16);
 
-    // Create field global in same address space, internal linkage
-    GlobalVariable *field_gv = createGlobalVar(
-        scope, field_type, field_init, /*linkage=*/7, name, addr_space
-    );  // sub_15E51E0
+        if (opcode == 54) {                                    // store
+            sub_185CAF0(use, store_set, scratch);              // collectStoredValue
+            store_count++;
 
-    // Copy metadata from parent
-    copyMetadata(global, field_gv);  // sub_15E6480
-
-    // Create GEP replacement and store initializer
-    createBitcastGEP(module, type_info, src_type);  // sub_15FEBE0
-    createFieldStore(offset, field_gv, parent);      // sub_15F9660
+            // Grow scratch if full
+            if (scratch->size >= scratch->capacity) {
+                if (scratch->capacity < 64)
+                    memset(scratch->data, 0xFF, scratch->capacity * 8);
+                else
+                    sub_16CC920(scratch);                      // growScratchBuffer
+            }
+        }
+        use = *(Use **)(use + 8);
+    }
 }
 ```
 
-The field globals are stored in a dynamically-grown `std::vector` with realloc growth strategy (lines 1161-1220 of the decompilation).
+### Global-Only-Use Validation
+
+After collection, lines 878-1017 validate that every user of every collected global references **only** the target global -- no cross-global pointer arithmetic is allowed. The validation walks the use chain of each collected global. For each operand slot (24-byte stride, count from `*(uint32_t *)(global + 20) & 0xFFFFFFF`):
+
+- If the operand is the module itself: accepted.
+- If the opcode tag is <= 0x17 (arithmetic/comparison): rejected -- the global's address is used in computation.
+- If the opcode is 77 (GEP): the pass calls `sub_16CC9F0` (find in sorted set) to verify the GEP's base pointer is the same global being split.
+- If the opcode is 54 (store): the pass checks that the store's parent basic block (at offset -24 from the operand) belongs to the global being analyzed.
+
+If any operand fails validation, a flag `v17` is set to zero and the entire SRA path is abandoned for this global.
+
+### Field Explosion
+
+For each field index 0 through `field_count - 1`, the pass creates a replacement global variable in the same address space with internal linkage. The full pseudocode at lines 1084-1476:
+
+```c
+// sub_18612A0, lines 1084-1476 — SRA field explosion
+typedef struct {
+    Global **data;
+    uint64_t size;
+    uint64_t capacity;
+} FieldVec;
+
+void sra_explode_fields(Global *global, Module *module, Type *struct_type,
+                        Value *init_val, TargetInfo *target, FieldVec *fields) {
+    uint8_t addr_space = (*(uint8_t *)(global + 33) >> 2) & 7;
+    const char *global_name = sub_1649960(global);             // getName
+    uint32_t field_count = *(uint32_t *)(struct_type + 12);
+    uint64_t ptr_bits = sub_15A9520(target, addr_space);       // getPointerSizeInBits
+
+    for (uint32_t i = 0; i < field_count; i++) {
+        // --- Extract field type and offset ---
+        Type *field_type = sub_1646BA0(struct_type, ptr_bits); // getStructFieldType
+        uint64_t field_offset = sub_15A06D0(struct_type, i);   // computeFieldOffset
+
+        // --- Generate name: "my_global.f0", "my_global.f1", ... ---
+        char name[256];
+        snprintf(name, sizeof(name), "%s.f%d", global_name, i);
+
+        // --- Extract field initializer from parent init ---
+        Value *field_init = sub_15FEBE0(module, init_val, field_type); // createBitcast/GEP
+
+        // --- Create field global in same address space, internal linkage ---
+        Global *field_gv = sub_15E51E0(
+            get_scope(module), field_type, field_init,
+            /*linkage=*/7, name, addr_space);                  // createGlobalVar
+
+        // --- Copy metadata from parent to field global ---
+        sub_15E6480(global, field_gv);                         // copyMetadata
+
+        // --- Store into dynamically-grown field vector ---
+        if (fields->size >= fields->capacity) {
+            // Realloc growth: double capacity (lines 1161-1220)
+            uint64_t new_cap = fields->capacity * 2;
+            if (new_cap < 8) new_cap = 8;
+            fields->data = realloc(fields->data, new_cap * sizeof(Global *));
+            fields->capacity = new_cap;
+        }
+        fields->data[fields->size++] = field_gv;
+
+        // --- Compute field bit-size (same type switch as Path A) ---
+        uint64_t field_bits = compute_total_bits(field_type, target, addr_space);
+        uint64_t alignment;
+        if (*(uint8_t *)(field_type + 8) == 0xD) {            // struct
+            uint64_t layout = sub_15A9930(target, field_type);
+            alignment = *(uint64_t *)(layout + 8);
+        } else {
+            alignment = sub_15A9FE0(target, field_type);       // getAlignment
+        }
+        uint64_t padded = alignment * ((field_bits + alignment - 1) / alignment);
+
+        // --- Create GEP replacement and store initializer ---
+        Value *gep = sub_15FEBE0(module, field_gv, field_type); // createBitcast/GEP
+        sub_15F9660(field_offset, field_gv, global);            // createFieldStore
+    }
+}
+```
+
+The field globals are stored in a dynamically-grown `std::vector` with realloc growth strategy (lines 1161-1220 of the decompilation). The growth factor is 2x with a minimum initial capacity of 8 entries.
 
 ### Null/Negative Guards
 
-After field explosion, the pass generates safety checks for the original global's pointer value. This pattern handles the case where the global was heap-allocated via malloc -- the original pointer might be null or negative (indicating allocation failure on some platforms):
+After field explosion, the pass generates safety checks for the original global's pointer value. This pattern handles the case where the global was heap-allocated via malloc -- the original pointer might be null or negative (indicating allocation failure on some platforms). The guard chain is constructed at lines 1478-1535:
+
+```c
+// sub_18612A0, lines 1478-1535 — Null/negative guard chain generation
+Value *build_guard_chain(Global *global, FieldVec *fields,
+                         Module *module, TargetInfo *target) {
+    // --- Create %isneg = icmp slt <ptr>, 0 ---
+    // Opcode 51 = ICmp, predicate 40 = SLT (signed less than zero)
+    Value *isneg = sub_15FEC10(
+        /*dest=*/NULL, /*type_id=*/1, /*opcode=*/51, /*pred=*/40,
+        get_module_sym(module), /*offset=*/0,
+        concat_name(global, ".isneg"), get_current_bb(module)); // createICmp
+
+    Value *chain = isneg;
+
+    // --- For each field: %isnullI = icmp eq <field_ptr>, null ---
+    for (uint64_t i = 0; i < fields->size; i++) {
+        Global *field_gv = fields->data[i];
+        uint64_t field_offset = sub_15A06D0(
+            get_type(global), i);                              // computeFieldOffset
+
+        // Predicate 32 = EQ (equal to null)
+        Value *isnull = sub_15FEC10(
+            /*dest=*/NULL, /*type_id=*/1, /*opcode=*/51, /*pred=*/32,
+            field_gv, field_offset,
+            concat_name(global, ".isnull"), get_current_bb(module));
+
+        // Chain with OR: %tmpI = or i1 %chain, %isnullI
+        // Opcode 27 = OR
+        char tmp_name[16];
+        snprintf(tmp_name, sizeof(tmp_name), "tmp%lu", i);
+        chain = sub_15FB440(/*opcode=*/27, chain, isnull,
+                            tmp_name, module);                 // createBinOp(OR)
+    }
+
+    return chain;  // final chained predicate
+}
+```
+
+The generated IR for a 3-field struct:
 
 ```llvm
 %isneg  = icmp slt ptr @original_global, null    ; predicate 40 = SLT
@@ -158,39 +413,158 @@ After field explosion, the pass generates safety checks for the original global'
 %tmp0   = or i1 %isneg, %isnull0
 %isnull1 = icmp eq ptr @my_global.f1, null
 %tmp1   = or i1 %tmp0, %isnull1
-; ... chain for all fields
-br i1 %tmpN, label %malloc_ret_null, label %malloc_cont
+%isnull2 = icmp eq ptr @my_global.f2, null
+%tmp2   = or i1 %tmp1, %isnull2
+br i1 %tmp2, label %malloc_ret_null, label %malloc_cont
 ```
 
-The `.isneg` guard is created by `sub_15FEC10` with opcode 51 (ICmp), predicate 40 (SLT with zero). Per-field `.isnull` guards use predicate 32 (EQ with null). The guards are chained with OR instructions (opcode 27) via `sub_15FB440`.
+The `.isneg` guard is created by `sub_15FEC10` with opcode 51 (ICmp), predicate 40 (SLT with zero). Per-field `.isnull` guards use predicate 32 (EQ with null). The guards are chained with OR instructions (opcode 27) via `sub_15FB440`. The chain evaluation is linear in the number of fields -- for the maximum 16 fields, this produces 17 `icmp` instructions and 16 `or` instructions, plus one terminal conditional branch.
 
-### Malloc/Free Replacement
+### Malloc/Free Decomposition Algorithm
 
-When the chained null check indicates a valid allocation, the pass generates a multi-block control flow that replaces the original single malloc/free pair with per-field conditional frees:
+This is the core of NVIDIA's per-field malloc/free elimination, covering lines 1537-1640 of the decompilation. When the chained null check indicates a valid allocation, the pass generates a multi-block control flow that replaces the original single malloc/free pair with per-field conditional frees. This is the key divergence from upstream LLVM: stock `tryToOptimizeStoreOfMallocToGlobal` treats the malloc/free as an atomic pair, replacing it with a single static allocation. NVIDIA decomposes to per-field granularity, generating N+2 basic blocks (one `malloc_ret_null`, one `malloc_cont`, and for each field one `free_it` plus one `next` block).
 
-```llvm
+The complete pseudocode:
+
+```c
+// sub_18612A0, lines 1537-1640 — Malloc/free decomposition
+void decompose_malloc_free(Global *global, Module *module, Function *fn,
+                           FieldVec *fields, Value *guard_chain,
+                           TargetInfo *target) {
+    uint8_t addr_space = (*(uint8_t *)(global + 33) >> 2) & 7;
+
+    // === Step 1: Create control flow skeleton ===
+
+    // "malloc_cont" — continuation after successful allocation check
+    BasicBlock *malloc_cont_bb = sub_157FBF0(
+        fn, get_global_chain(module), "malloc_cont");          // createBB
+
+    // "malloc_ret_null" — failure path returning null
+    BasicBlock *ret_null_body = sub_157E9C0(fn);               // createReturnBB
+    BasicBlock *malloc_ret_null_bb = sub_157FB60(
+        NULL, ret_null_body, "malloc_ret_null", NULL);         // createBBWithPred
+
+    // === Step 2: Emit conditional branch on guard chain ===
+    // br i1 %guard_chain, label %malloc_ret_null, label %malloc_cont
+    sub_15F8650(
+        get_terminator(fn),                                    // insertion point
+        malloc_ret_null_bb,                                    // true target (fail)
+        malloc_cont_bb,                                        // false target (success)
+        guard_chain,                                           // condition (isneg|isnull)
+        fn);                                                   // createCondBr
+
+    // === Step 3: Per-field conditional free and reinitialization ===
+    BasicBlock *current_bb = malloc_cont_bb;
+
+    for (uint64_t i = 0; i < fields->size; i++) {
+        Global *field_gv = fields->data[i];
+        uint64_t field_offset = sub_15A06D0(get_type(global), i);
+        Type *field_type = sub_1646BA0(get_type(global),
+                                       sub_15A9520(target, addr_space));
+
+        // 3a. Create "tmp" alloca in current block
+        Value *tmp_alloca = sub_15F9330(
+            NULL, field_type, "tmp", current_bb);              // createAlloca
+
+        // 3b. Create non-null check: %condI = icmp ne <field_ptr>, null
+        // Opcode 51 = ICmp, predicate 33 = NE (not equal to null)
+        char cond_name[64];
+        snprintf(cond_name, sizeof(cond_name), "%s.f%lu.nonnull",
+                 sub_1649960(global), i);
+        Value *cond = sub_15FED60(
+            NULL, /*type_id=*/1, /*opcode=*/51, /*pred=*/33,
+            field_gv, field_offset, cond_name, current_bb);    // createICmpNE
+
+        // 3c. Create "free_it" block — frees this field if non-null
+        char free_name[64];
+        snprintf(free_name, sizeof(free_name), "free_it%lu", i);
+        BasicBlock *free_it_bb = sub_157FB60(
+            NULL, NULL, free_name, NULL);                      // createBBWithPred
+
+        // 3d. Create "next" block — fallthrough after conditional free
+        char next_name[64];
+        snprintf(next_name, sizeof(next_name), "next%lu", i);
+        BasicBlock *next_bb = sub_157FB60(
+            NULL, NULL, next_name, NULL);                      // createBBWithPred
+
+        // 3e. Conditional branch: non-null → free, null → skip
+        // br i1 %condI, label %free_itI, label %nextI
+        sub_15F8650(
+            get_terminator_of(current_bb),
+            free_it_bb,                                        // true: free
+            next_bb,                                           // false: skip
+            cond, fn);                                         // createCondBr
+
+        // 3f. In free_it block: wire field into use-def chain, then branch to next
+        sub_15FDB00(field_gv, get_use_chain(free_it_bb),
+                    i, free_it_bb);                            // wireDef
+
+        // Unconditional branch: free_it → next
+        sub_15F8590(NULL, next_bb, free_it_bb);                // createBr
+
+        // 3g. In next block: store field initializer into the new field global
+        sub_15F9850(field_offset, tmp_alloca, next_bb);        // createStoreToField
+
+        current_bb = next_bb;
+    }
+
+    // === Step 4: Wire entry into malloc_cont, erase original ===
+    // Unconditional branch from entry into malloc_cont
+    sub_15F8590(NULL, malloc_cont_bb, get_entry_bb(fn));       // createBr
+
+    // Erase the original global
+    sub_15F20C0(get_module_entry(module));                      // eraseFromParent
+}
+```
+
+The generated CFG for a 2-field struct `{ i32, float }`:
+
+```
+entry:
+  br i1 %tmp1, label %malloc_ret_null, label %malloc_cont
+
 malloc_ret_null:
   ret null
 
 malloc_cont:
-  ; For each field:
-  %cond0 = icmp ne ptr @my_global.f0, null       ; predicate 33 = NE
+  %cond0 = icmp ne ptr @g.f0, null
   br i1 %cond0, label %free_it0, label %next0
 
 free_it0:
-  ; free the individual field allocation
+  ; free(@g.f0)   — conditional per-field deallocation
   br label %next0
 
 next0:
-  store <field0_init>, ptr addrspace(N) @my_global.f0
-  ; ... repeat for each field
+  store i32 <init0>, ptr addrspace(1) @g.f0
+  %cond1 = icmp ne ptr @g.f1, null
+  br i1 %cond1, label %free_it1, label %next1
+
+free_it1:
+  ; free(@g.f1)
+  br label %next1
+
+next1:
+  store float <init1>, ptr addrspace(1) @g.f1
+  ; ... continuation
 ```
 
-This is more aggressive than upstream LLVM's malloc/free removal, which replaces a single malloc/free pair as an atomic unit. NVIDIA's version decomposes to per-field granularity, enabling partial-allocation scenarios where some fields are stack-promoted and others remain heap-allocated.
+Each `free_it` block is conditionally entered only when the field pointer is non-null, preventing double-free on fields that were never successfully allocated. The `next` blocks store the field initializer after the conditional free, ensuring the field global is properly initialized regardless of whether freeing occurred. This per-field decomposition enables a critical optimization that upstream LLVM cannot perform: if a later pass (dead store elimination, constant propagation) determines that only some fields of the struct are actually used, the unused field globals and their associated `free_it`/`next` blocks become dead code and are trivially eliminated by GlobalDCE.
+
+### Address-Space-Aware Splitting
+
+The address space preservation logic is woven throughout both the field explosion and the malloc/free decomposition. Every call to `sub_15E51E0` (createGlobalVar) passes the extracted address space from the parent global. The extraction point is always the same: `(*(uint8_t *)(global + 33) >> 2) & 7`. This is critical for three reasons:
+
+1. **Shared memory splitting**: A `__shared__` struct global (AS 3) split into per-field globals must keep each field in AS 3. If any field migrated to AS 0 (generic), the hardware would resolve the address at runtime via the generic-to-specific resolution unit, adding 10-20 cycles of latency per access and defeating the purpose of placing data in shared memory.
+
+2. **Constant memory splitting**: A `__constant__` struct (AS 4) split into fields must remain in AS 4 to benefit from the constant cache's broadcast capability. A single warp reading the same constant field hits the cache once and broadcasts to all 32 threads. In AS 0 (generic), this broadcast would not occur.
+
+3. **Pointer size consistency**: On some NVPTX targets, pointers in AS 3 (shared) and AS 5 (local) are 32-bit, while AS 0 and AS 1 pointers are 64-bit. The size computation for opaque pointers (tag 0xF) calls `sub_15A9520(target, addr_space)` -- if the address space were lost during splitting, the pointer size calculation would be wrong, producing incorrect field offsets and corrupted stores.
+
+The per-field null checks in the guard chain also respect address space: the `icmp eq` with null uses a null pointer of the correct address space width. A 32-bit null in AS 3 is not the same bit pattern as a 64-bit null in AS 1.
 
 ### Hash Table for Processed Globals
 
-After field explosion and malloc rewrite, the pass uses a custom hash table (open addressing, 32-byte entries) to track which globals and their transitive users have been processed:
+After field explosion and malloc rewrite, the pass uses a custom hash table (open addressing, 32-byte entries) to track which globals and their transitive users have been processed. This is an instance of the NVIDIA-original hash table variant (sentinel pair -8/-16) as documented in the [hash infrastructure](../infra/hash-infrastructure.md) page.
 
 | Offset | Field | Description |
 |--------|-------|-------------|
@@ -200,12 +574,178 @@ After field explosion and malloc rewrite, the pass uses a custom hash table (ope
 | +24 | cap | Vector capacity |
 
 Hash function: `bucket = (capacity - 1) & ((uint64_t(global) >> 9) ^ (uint64_t(global) >> 4))`.
-Collision resolution: linear probing.
+Collision resolution: quadratic probing with triangular numbers (the step variable increments linearly as 1, 2, 3, ... but the probe position advances quadratically).
 Rehash trigger: `4 * (count + 1) >= 3 * capacity` (75% load factor), or when tombstone count exceeds `capacity / 8`.
 
-The processing loop (lines 1710-1812) iterates remaining users of the original global. For stores (tag 54), it calls `sub_1860BE0` to rewrite each user's GEP+store/load sequences to reference the new field globals. For other users (typically loads), it creates direct stores to the appropriate field global using the computed field offset.
+The processing loop (lines 1710-1812) iterates remaining users of the original global and rewrites them to reference the new field globals:
 
-After all users are rewritten, cleanup proceeds in two phases: first, operand lists of dead GEP (tag 77) and store (tag 54) instructions are unlinked from the use chain (nulling out 24-byte-stride operand slots); second, the dead instructions are erased via `sub_15F20C0`. Finally, the original global declaration is erased, and all temporary data structures (hash table backing array, field vectors, scratch buffers) are freed.
+```c
+// sub_18612A0, lines 1710-1812 — Post-SRA user rewriting via hash table
+void rewrite_remaining_users(Global *global, FieldVec *fields,
+                             HashTable *table, Module *module,
+                             TargetInfo *target) {
+    Use *use = *(Use **)(global + 8);
+
+    while (use != NULL) {
+        Use *next_use = *(Use **)(use + 8);
+        Instruction *inst = sub_1648700(use);
+        uint8_t opcode = *(uint8_t *)(inst + 16);
+
+        if (opcode == 54) {                                    // store
+            // Walk the store's own use-chain
+            Use *store_use = *(Use **)(inst + 8);
+            while (store_use != NULL) {
+                Use *next_su = *(Use **)(store_use + 8);
+
+                // Per-user SRA rewrite: replaces GEP+store/load sequences
+                // with direct accesses to the appropriate field global
+                sub_1860BE0(store_use, table, fields, target); // rewriteUserForSRA
+
+                store_use = next_su;
+            }
+
+            // If store has no remaining uses, erase it
+            if (*(Use **)(inst + 8) == NULL) {
+                sub_15F20C0(inst);                             // eraseFromParent
+                // Remove from hash table (mark as tombstone)
+                HashEntry *entry = sub_1860630(
+                    inst, 0, table, NULL);                     // lookupInTable
+                if (entry != NULL)
+                    entry->key = (void *)(-16);                // tombstone
+            }
+        } else {
+            // For non-store users (loads, etc.): create direct stores
+            // to the appropriate field global
+            for (uint64_t i = 0; i < fields->size; i++) {
+                uint64_t offset = sub_15A06D0(
+                    get_type(global), i);                      // computeFieldOffset
+                sub_15F9660(offset, fields->data[i], inst);    // createFieldStore
+            }
+        }
+
+        use = next_use;
+    }
+}
+```
+
+After all users are rewritten, cleanup proceeds in two phases: first, operand lists of dead GEP (tag 77) and store (tag 54) instructions are unlinked from the use chain (nulling out 24-byte-stride operand slots at lines 2004-2079); second, the dead instructions are erased via `sub_15F20C0` at lines 2081-2117. Finally, the original global declaration is erased via `sub_15E55B0`, and all temporary data structures (hash table backing array, field vectors, scratch buffers) are freed at lines 2119-2161.
+
+## Top-Level Driver: sub_18612A0
+
+The complete control flow of the core transform function, integrating all four strategies. This pseudocode corresponds to the entire 2179-line decompilation:
+
+```c
+// sub_18612A0 — Core GlobalOpt transform for a single global variable
+// Returns: 1 if transformed, 0 if no transformation applied
+int globalopt_transform(Global *global, Module *module, Type *type,
+                        int flag, TargetInfo *target, TargetInfo *target2) {
+    // === Phase 1: Type filter (lines 444-451) ===
+    uint8_t type_tag = *(uint8_t *)(type + 8);
+    uint16_t bitmask = 0x8A7E;  // bits: 1,2,3,4,5,9,11,13,15
+    if (!((1 << type_tag) & bitmask)) {
+        // Additional acceptance for struct(13), vector(14), array(16)
+        if (type_tag == 13 || type_tag == 14 || type_tag == 16) {
+            if (!sub_16435F0(type, 0))                         // isAnalyzableType
+                return 0;
+        } else {
+            return 0;
+        }
+    }
+
+    // === Phase 2: Use validation — all users must be store/load (lines 452-481) ===
+    Buffer scratch = { .data = alloca(8 * sizeof(void *)), .size = 0, .capacity = 8 };
+    Use *use = *(Use **)(global + 8);
+    while (use != NULL) {
+        Instruction *inst = sub_1648700(use);                  // getInstruction
+        uint8_t opcode = *(uint8_t *)(inst + 16);
+        if (opcode <= 0x17) return 0;                          // arithmetic: reject
+        if (opcode == 54) {                                    // store
+            if (!sub_185C920(inst, &scratch))                  // analyzeStore
+                return 0;
+        } else if (opcode != 55) {                             // not load either
+            return 0;
+        }
+        use = *(Use **)(use + 8);
+    }
+
+    // === Phase 3: Collect store values and evaluate initializer (lines 482-493) ===
+    Buffer store_buf = { .data = calloc(32, sizeof(void *)), .size = 0, .capacity = 32 };
+    sub_185C560(module, global, &store_buf);                   // collectStoreValues
+    Value *init_val = sub_140B2F0(module, target, global, 1);  // evaluateInitializer
+
+    // === Phase 4: Try Path A — small-constant promotion (lines 494-805) ===
+    uint8_t init_tag = *(uint8_t *)(init_val + 16);
+    if (init_tag == 13) {                                      // struct constant
+        uint8_t addr_space = (*(uint8_t *)(global + 33) >> 2) & 7;
+        uint64_t total_bits = compute_total_bits(type, target, addr_space);
+        uint64_t alignment = sub_15A9FE0(target, type);
+        uint64_t padded = alignment * ((total_bits + alignment - 1) / alignment);
+
+        if (padded <= 0x7FF) {                                 // <= 2047 bits
+            promote_small_constant(global, module, init_val, type, target);
+            free(store_buf.data);
+            return 1;
+        }
+    }
+
+    // === Phase 5: Try Path B — SRA of struct globals (lines 807-2177) ===
+    if (flag != 0) { free(store_buf.data); return 0; }        // SRA disabled by caller
+
+    // Verify unique initializer
+    if (init_val != sub_15A0680(get_module_sym(module), 1, 0)) {
+        free(store_buf.data); return 0;
+    }
+
+    // Check struct with 1-16 fields
+    if (type_tag == 14) type = unwrap_vector(type);            // vector peeling
+    if (*(uint8_t *)(type + 8) != 13) { free(store_buf.data); return 0; }
+    uint32_t field_count = *(uint32_t *)(type + 12);
+    if (field_count - 1 > 0xF) { free(store_buf.data); return 0; }  // > 16 fields
+
+    // Collect stored values into hash set (lines 823-868)
+    HashSet store_set;
+    init_hashset(&store_set);
+    collect_store_values(global, module, &store_set, &scratch);
+
+    // Validate all users reference only this global (lines 878-1017)
+    if (!validate_global_only_uses(global, &store_set)) {
+        free(store_buf.data); return 0;
+    }
+
+    // Optional vector type peeling (lines 1026-1083)
+    if (*(uint8_t *)(type + 8) == 14) {
+        peel_vector_type(global, module, type, target);
+    }
+
+    // Field explosion (lines 1084-1476)
+    FieldVec fields = { .data = NULL, .size = 0, .capacity = 0 };
+    sra_explode_fields(global, module, type, init_val, target, &fields);
+
+    // Null/negative guard chain (lines 1478-1535)
+    Value *guard = build_guard_chain(global, &fields, module, target);
+
+    // Malloc/free decomposition (lines 1537-1640)
+    Function *fn = get_parent_function(global);
+    decompose_malloc_free(global, module, fn, &fields, guard, target);
+
+    // Hash-table-driven user rewriting (lines 1642-2161)
+    HashTable processed;
+    init_hashtable(&processed);
+    rewrite_remaining_users(global, &fields, &processed, module, target);
+
+    // Cleanup: unlink dead operands, erase dead instructions
+    cleanup_dead_instructions(&processed);                     // lines 2004-2117
+
+    // Erase original global and free temporaries
+    sub_15E55B0(global);                                       // lines 2119-2161
+    free(fields.data);
+    free(store_buf.data);
+    destroy_hashtable(&processed);
+    destroy_hashset(&store_set);
+
+    return 1;
+}
+```
 
 ## LTO Interaction
 
@@ -270,6 +810,33 @@ There are no user-facing CLI flags that directly control the 2047-bit threshold 
 | `0x15F8650` | `sub_15F8650` | Create conditional branch |
 | `0x15F8590` | `sub_15F8590` | Create unconditional branch |
 | `0x157FBF0` | `sub_157FBF0` | Create basic block |
+| `0x15FED60` | `sub_15FED60` | Create ICmp NE (opcode 51, predicate 33) |
+| `0x15F9330` | `sub_15F9330` | Create alloca (`"tmp"` variable in block) |
+| `0x15FDB00` | `sub_15FDB00` | Wire def into use-def chain |
+| `0x15F9850` | `sub_15F9850` | Create store-to-field-global |
+| `0x157E9C0` | `sub_157E9C0` | Create return basic block (null-return) |
+| `0x157FB60` | `sub_157FB60` | Create basic block with predecessor |
+| `0x15F55D0` | `sub_15F55D0` | Grow operand list |
+| `0x1648700` | `sub_1648700` | `getInstruction(use)` from use-chain |
+| `0x1649960` | `sub_1649960` | `getName(global/fn)` returns C string |
+| `0x1648A60` | `sub_1648A60` | `IRBuilder::create(size, kind)` allocates IR node |
+| `0x15E5530` | `sub_15E5530` | Destroy function body |
+| `0x159D9E0` | `sub_159D9E0` | Destroy function |
+| `0x164BE60` | `sub_164BE60` | Drop all references |
+| `0x1648B90` | `sub_1648B90` | Mark dead (flags or-equals 1) |
+| `0x1631BE0` | `sub_1631BE0` | Insert into function list |
+| `0x15A9FE0` | `sub_15A9FE0` | `getAlignment(target, type)` ABI alignment |
+| `0x15A0680` | `sub_15A0680` | `lookupSymbol(module_sym, idx, flags)` |
+| `0x16463B0` | `sub_16463B0` | `getArrayElementType(ptr, idx)` |
+| `0x159C540` | `sub_159C540` | `getTerminalType(type)` |
+| `0x1752100` | `sub_1752100` | Collect use-def chain |
+| `0x15E6480` | `sub_15E6480` | Copy metadata from global to global |
+| `0x15F8F80` | `sub_15F8F80` | Create extractvalue instruction |
+| `0x15F9480` | `sub_15F9480` | Create store-init (initializer store) |
+| `0x15F9660` | `sub_15F9660` | Create field store (offset + field global) |
+| `0x15FD590` | `sub_15FD590` | Create local variable (`"newgv"`) |
+| `0x15FEBE0` | `sub_15FEBE0` | Create bitcast/GEP for field extraction |
+| `0x1648780` | `sub_1648780` | Replace use with value |
 | `0x16CC920` | `sub_16CC920` | Grow scratch buffer |
 | `0x16CC9F0` | `sub_16CC9F0` | Find in sorted set |
 | `0x1968390` | `sub_1968390` | GlobalDCE / ConstantProp (runs before GlobalOpt) |
@@ -301,3 +868,6 @@ Stock LLVM's `GlobalOptPass` (in `lib/Transforms/IPO/GlobalOpt.cpp`) performs si
 - [MemorySpaceOpt](../passes/memory-space-opt.md) -- resolves generic pointers to specific address spaces; runs before GlobalOpt and may expose globals that were previously behind generic pointers
 - [Pipeline & Ordering](../llvm/pipeline.md) -- full pass ordering showing GlobalOpt's position at step 30
 - [Type Translation, Globals & Special Vars](../pipeline/irgen-types.md) -- how EDG frontend assigns address spaces to global variables during IR generation
+- [Hash Infrastructure](../infra/hash-infrastructure.md) -- hash function, sentinel values, and probing strategy used by the processed-globals table
+- [Struct Splitting](../passes/struct-splitting.md) -- the NewPM `lower-aggr-copies` pass that handles similar aggregate decomposition at a different pipeline stage
+- [Address Spaces](../reference/address-spaces.md) -- complete NVPTX address space reference including pointer sizes and latency characteristics

@@ -388,7 +388,7 @@ Internal function `sub_12BC0F0(id)` returns API function pointers by numeric ID.
 | 21257 | 0x5309 | `nvvmDestroyCU` |
 | 41856 | 0xA380 | `nvvmGetCompilationLog` |
 | 46903 | 0xB737 | `nvvmGetCompiledResultLog` |
-| 46967 | 0xB797 | `nvvmGetErrorString` |
+| 46967 | 0xB777 | `nvvmGetErrorString` |
 | 48813 | 0xBEAD | `nvvmCUCompile` |
 | 48879 | 0xBEEF | Callback registrar |
 | 61451 | 0xF00B | `nvvmGetCompiledResultSize` |
@@ -425,6 +425,221 @@ The complete dispatch table in `sub_12BC0F0` contains 25 entries implemented as 
 | 61806 | 0xF16E | `sub_12BAA30` | `nvvmCUGetOptIR` |
 | 62298 | 0xF37A | `sub_12BC8B0` | `nvvmCUAddModuleFromBuffer` |
 | 65261 | 0xFEED | `sub_12B9AB0` | `nvvmSetOptionStrings` |
+
+### Public LibNVVM API vs Internal CU API
+
+The dispatch table above reveals a critical architectural detail: cicc's internal API uses **compilation unit** semantics (`nvvmCreateCU`, `nvvmCUAddModule`, `nvvmCUCompile`), while the public LibNVVM shared library (`libnvvm.so`) exports a different API surface using **program** semantics (`nvvmCreateProgram`, `nvvmAddModuleToProgram`, `nvvmCompileProgram`). The public API is documented in NVIDIA's `nvvm.h` header; the internal API exists only within cicc and is never exported.
+
+Evidence for this mapping comes from nvlink's `-dlto` code path, which dynamically loads `libnvvm.so` via `dlsym()` and resolves symbols by their public names:
+
+```c
+// nvlink sub_4BC290 — loads libnvvm.so for device LTO
+dlsym(handle, "nvvmCreateProgram");    // → internally nvvmCreateCU
+dlsym(handle, "nvvmCompileProgram");   // → internally nvvmCUCompile
+dlsym(handle, "nvvmGetCompiledResultSize");
+dlsym(handle, "nvvmGetCompiledResult");
+dlsym(handle, "nvvmDestroyProgram");   // → internally nvvmDestroyCU
+```
+
+The complete mapping between the public `libnvvm.so` API (as used by external callers like nvlink and user programs) and cicc's internal CU dispatch IDs:
+
+| Public API (`libnvvm.so`) | Internal Name | Dispatch ID | Hex | Target |
+|---|---|---|---|---|
+| `nvvmCreateProgram` | `nvvmCreateCU` | 2151 | 0x0867 | `sub_12BB090` |
+| `nvvmAddModuleToProgram` | `nvvmCUAddModule` | 4660 | 0x1234 | `sub_12BC650` |
+| `nvvmLazyAddModuleToProgram` | `nvvmCUAddModuleFromBuffer` | 62298 | 0xF37A | `sub_12BC8B0` |
+| `nvvmCompileProgram` | `nvvmCUCompile` | 48813 | 0xBEAD | `sub_12BA110` |
+| `nvvmVerifyProgram` | `nvvmVerify` | 23294 | 0x5AFE | `sub_12BAF10` |
+| `nvvmGetCompiledResultSize` | `nvvmGetCompiledResultPTXSize` | 61451 | 0xF00B | `sub_12BA560` |
+| `nvvmGetCompiledResult` | `nvvmGetCompiledResult` | 4111 | 0x100F | `sub_12BA8F0` |
+| `nvvmGetProgramLogSize` | `nvvmGetCompiledResultSize` | 41856 | 0xA380 | `sub_12BA220` |
+| `nvvmGetProgramLog` | `nvvmGetCompiledResultLog` | 46903 | 0xB737 | `sub_12BA7C0` |
+| `nvvmDestroyProgram` | `nvvmDestroyCU` | 21257 | 0x5309 | `sub_12B9C40` |
+
+Note the naming confusion in the internal API: `nvvmGetCompiledResultSize` (ID 0xA380) returns the **log** size, while `nvvmGetCompiledResultPTXSize` (ID 0xF00B) returns the actual PTX output size. The public API resolves this with clearer names (`nvvmGetProgramLogSize` vs `nvvmGetCompiledResultSize`).
+
+The internal-only API entries have no public equivalents:
+
+| Internal Name | Dispatch ID | Hex | Target | Purpose |
+|---|---|---|---|---|
+| `nvvmInit` | 57005 | 0xDEAD | `sub_12B9C00` | One-time initialization of LLVM infrastructure |
+| `nvvmGetVersion` | 51966 | 0xCAFE | `sub_12B9A50` | Returns internal NVVM version tuple |
+| `nvvmGetErrorString` | 46967 | 0xB777 | `sub_12B9980` | Maps `nvvmResult` code to human-readable string |
+| `nvvmSetOptionStrings` | 65261 | 0xFEED | `sub_12B9AB0` | Bulk-loads LLVM CLI option table (37 entries) |
+| `nvvmCUSetExtraArgs` | 17185 | 0x4321 | `sub_12BBD80` | Passes additional argc/argv to compilation |
+| `nvvmCUSetOption` | 8320 | 0x2080 | `sub_12BB400` | Sets a single compilation option |
+| `nvvmCUSetProgressCallback` | 3911 | 0x0F47 | `sub_12BBF40` | Registers progress/cancellation callback |
+| `nvvmCURegisterCallback` | 48879 | 0xBEEF | `sub_12BACF0` | Registers stage-boundary callback (verbose output) |
+| `nvvmCURegisterLNKCallback` | 61453 | 0xF00D | `sub_12BA6A0` | Registers LNK-stage-specific callback |
+| `nvvmCUGetLog` | 11245 | 0x2BED | `sub_12BB290` | Alternative log retrieval interface |
+| `nvvmCUGetWarnings` | 45242 | 0xB0BA | `sub_12BAB40` | Retrieves warning-only messages |
+| `nvvmCUGetIR` | 49522 | 0xC172 | `sub_12BA470` | Retrieves intermediate LLVM IR after linking |
+| `nvvmCUGetOptIR` | 61806 | 0xF16E | `sub_12BAA30` | Retrieves optimized IR (post-OPT stage); also used by `-irversion` |
+| `nvvmCULinkModule` | 4606 | 0x11FE | `sub_12BA330` | Explicit module linking (separate from add-then-compile) |
+| (unknown) | 56495 | 0xDCEF | `sub_12B9A40` | Unknown (one byte smaller than `nvvmGetVersion`) |
+| (alias) | 2167 | 0x0877 | `sub_12BB090` | Alias for `nvvmCreateCU` (same target, different ID) |
+
+The `nvvmCUGetOptIR` function at `sub_12BAA30` serves double duty: it is both the post-optimization IR retrieval API and the target of `sub_12BC0E0` (a thunk called from `sub_8F9C90` for the `-irversion` flag). When the user passes `-irversion`, the real main calls `sub_12BC0E0` which dispatches to `sub_12BAA30`, which returns the IR version tuple as `major * 100 + minor`. This value is printed to stdout and the process exits immediately.
+
+### The `sub_12BC0F0` Dispatch Mechanism
+
+`sub_12BC0F0` is a ~3 KB function at `0x12BC0F0` that implements a binary search tree over the 25 dispatch IDs. The function takes a single `unsigned int` argument (the ID) and returns a function pointer (`void*`). The tree is hardcoded as a series of comparison-and-branch instructions, not as a data-driven lookup table.
+
+```c
+// Pseudocode for sub_12BC0F0(unsigned int id)
+void* nvvm_dispatch(unsigned int id) {
+    // Binary search over 25 IDs
+    if (id < 17185) {
+        if (id < 4660) {
+            if (id == 2151 || id == 2167) return sub_12BB090;
+            if (id == 3911) return sub_12BBF40;
+            if (id == 4111) return sub_12BA8F0;
+            if (id == 4606) return sub_12BA330;
+        } else {
+            if (id == 4660)  return sub_12BC650;
+            if (id == 8320)  return sub_12BB400;
+            if (id == 11245) return sub_12BB290;
+        }
+    } else {
+        // ... upper half of the tree
+        if (id == 48813) return sub_12BA110;   // 0xBEAD
+        if (id == 65261) return sub_12B9AB0;   // 0xFEED
+        // etc.
+    }
+    return NULL;  // unknown ID
+}
+```
+
+The hex IDs are deliberately memorable patterns used as a form of internal documentation: `0xDEAD` = init, `0xBEAD` = compile, `0xBEEF` = callback, `0xCAFE` = version, `0xFEED` = options, `0xF00D` = LNK callback, `0xF00B` = result size. The secondary ID `0x0877` (2167) is an alias for `0x0867` (2151) and dispatches to the same `sub_12BB090` target, suggesting an internal API version migration where both old and new IDs must remain functional.
+
+### Dual-Path Initialization
+
+The two compilation paths (Path A and Path B) use independent initialization sequences, creating a **dual-path initialization** architecture where the same underlying LLVM infrastructure is bootstrapped through different entry points. This is why two copies of libdevice, two LLVM options tables, and two sets of verbose callbacks exist.
+
+```
+Path A initialization (EDG → LibNVVM):
+  sub_B6EEA0  — Creates LLVMContext + registers 42+ metadata kinds
+                 (dbg=1, tbaa=2, prof=3, ... noalias.addrspace=42)
+  sub_900130  — 39 KB CLI parser for Path A flags
+  sub_905880  — EDG frontend produces LLVM module (880-byte object)
+  sub_908850  — Binds module to target: data layout, triple, verification
+  → sub_905EE0 enters LibNVVM pipeline with module
+
+Path B initialization (Standalone):
+  sub_1602D10 — Creates standalone LLVMContext (no EDG metadata assumptions)
+  sub_125FB30 — 8 KB CLI parser for Path B flags
+  sub_1265340 — Pre-compilation setup (configure output path, timer)
+  → sub_1265970 enters LibNVVM pipeline with bitcode input
+```
+
+The version resolver `sub_12B9F70` at `0x12B9F70` is shared between both paths and determines which NVVM IR compatibility mode to use. It reads two obfuscated environment variables in sequence:
+
+```c
+// Pseudocode for sub_12B9F70(unsigned int sm_version)
+int nvvm_version_resolve(unsigned int sm_version) {
+    // Try NV_NVVM_VERSION first (decrypted from 0x3C23A90)
+    char *env = getenv(decrypt("NV_NVVM_VERSION"));
+    if (!env) {
+        // Fallback: try LIBNVVM_NVVM_VERSION (decrypted from 0x42812F0)
+        env = getenv(decrypt("LIBNVVM_NVVM_VERSION"));
+    }
+    if (env) {
+        if (strcmp(env, "nvvm70") == 0)      return 0;  // Path B mode
+        if (strcmp(env, "nvvm-latest") == 0)  return 1;  // Path A mode
+    }
+    // Default: SM >= 100 uses Path B, SM < 100 uses Path A
+    return (sm_version > 99) ? 0 : 1;
+}
+```
+
+This function is called from both `sub_8F9C90` (the real main, for `v253` resolution) and `sub_12BB580` (inside the LibNVVM compilation unit initialization). The dual call-site ensures that the version mode is consistent regardless of whether the compiler was invoked via CLI or via the LibNVVM API.
+
+The `nvvmInit` function (ID 0xDEAD, `sub_12B9C00`) performs one-time LLVM infrastructure initialization. It is called implicitly during `nvvmCreateCU` (`sub_12BB090`) via a `pthread_once` guard at `dword_4F92D9C`. The initialization includes:
+
+1. Registering LLVM target triples (`nvptx64-nvidia-cuda`, `nvptx-nvidia-cuda`)
+2. Initializing the NVPTX target machine factory
+3. Setting up the LLVM pass registry
+4. Configuring thread-safety based on `LIBNVVM_DISABLE_CONCURRENT_API` (`byte_4F92D70`)
+
+When `byte_4F92D70 == 1` (concurrent API disabled), the pipeline operates in single-threaded mode — no `pthread_mutex` locks are acquired around compilation unit operations, and Phase II concurrent optimization is disabled regardless of the module's function count.
+
+### Internal API Usage Sequence
+
+The complete sequence of dispatch table calls during a standard Path A compilation (from `sub_905EE0`):
+
+```
+1.  sub_12BC0F0(2151)   → nvvmCreateCU(&handle)
+    Creates compilation unit. Calls nvvmInit via pthread_once on first use.
+
+2.  sub_12BC0F0(46967)  → nvvmGetErrorString
+    Saved for later error message formatting.
+
+3.  sub_12BC0F0(4660)   → nvvmCUAddModule(handle, IR_data, IR_size, NULL)
+    Adds the user's LLVM bitcode module.
+
+4.  sub_12BC0F0(21257)  → nvvmDestroyCU
+    Saved as cleanup function pointer (not called yet).
+
+5.  sub_12BCB00 [thunk]  → nvvmCUAddModuleFromBuffer(handle, buf, size, NULL)
+    Called N times: once per additional module from extra args,
+    once for libdevice (embedded or external).
+
+6.  sub_12BC0F0(48879)  → nvvmCURegisterCallback
+    Registers verbose stage callbacks:
+      sub_903BA0 with ID 61453 (LNK stage)
+      sub_903730 with ID 47710 (LLC stage)
+    When -keep mode active, also registers:
+      sub_9085A0 with ID 64222 (OPT output → .opt.bc file)
+      sub_908220 with ID 56993 (LLC output → final file)
+
+7.  sub_12BC0F0(65261)  → nvvmSetOptionStrings(opts_table, 37)
+    Loads 37 LLVM backend configuration strings from off_4B90FE0.
+    Calls sub_1C31130() internally to register/reset LLVM options.
+
+8.  sub_12BC0F0(48813)  → nvvmCUCompile(handle, 57069)
+    Main compilation. Phase code 57069 (0xDEED) triggers full
+    LNK → OPT → [OPTIXIR] → LLC pipeline in sub_12C35D0.
+
+9.  sub_12BC0F0(17185)  → nvvmCUSetExtraArgs(handle, argc, argv)
+    Passes additional arguments collected from the CLI.
+
+10. sub_12BC0F0(41856)  → nvvmGetCompiledResultSize(handle, &log_size)
+    Queries the compilation log size.
+
+11. sub_12BC0F0(46903)  → nvvmGetCompiledResultLog(handle, log_buf)
+    Retrieves the compilation log (warnings/errors).
+
+12. sub_12BC0F0(61451)  → nvvmGetCompiledResultPTXSize(handle, &ptx_size)
+    Queries the PTX output size.
+
+13. sub_12BC0F0(4111)   → nvvmGetCompiledResult(handle, ptx_buf)
+    Copies the generated PTX into the caller's buffer.
+
+14. sub_12BC0F0(21257)  → nvvmDestroyCU(&handle)
+    Destroys the compilation unit, frees all internal resources.
+```
+
+Path B (`sub_1265970`) follows the identical sequence but uses `off_4C6EEE0` for the options table (step 7), `unk_420FD80` for the embedded libdevice (step 5), and appends `"-nvvm-version=nvvm70"` instead of `"-nvvm-version=nvvm-latest"` to the pipeline arguments.
+
+### nvvmResult Error Codes
+
+The `nvvmGetErrorString` function (ID 0xB777, `sub_12B9980`) maps integer result codes from all API functions to descriptive strings:
+
+| Code | Constant | Description |
+|---|---|---|
+| 0 | `NVVM_SUCCESS` | Operation completed successfully |
+| 1 | `NVVM_ERROR_OUT_OF_MEMORY` | Memory allocation failed |
+| 2 | `NVVM_ERROR_PROGRAM_CREATION_FAILURE` | Failed to create compilation unit |
+| 3 | `NVVM_ERROR_IR_VERSION_MISMATCH` | Incompatible NVVM IR version detected |
+| 4 | `NVVM_ERROR_INVALID_INPUT` | Malformed input (bad bitcode, wrong magic) |
+| 5 | `NVVM_ERROR_INVALID_PROGRAM` | Null or invalid compilation unit handle |
+| 6 | `NVVM_ERROR_INVALID_IR` | IR failed verification |
+| 7 | `NVVM_ERROR_INVALID_OPTION` | Unrecognized compilation option |
+| 8 | `NVVM_ERROR_NO_MODULE_IN_PROGRAM` | Compilation unit has no modules added |
+| 9 | `NVVM_ERROR_COMPILATION` | Compilation failed (linker, optimizer, or codegen error) |
+| 10 | `NVVM_ERROR_CANCELLED` | Compilation cancelled by user callback |
+
+The pipeline orchestrator `sub_12C35D0` maps its internal return codes to these: 0 → `NVVM_SUCCESS`, 7 → `NVVM_ERROR_INVALID_OPTION`, 9 → `NVVM_ERROR_COMPILATION`, 10 → `NVVM_ERROR_CANCELLED`, 100 → `NVVM_ERROR_COMPILATION` (post-pipeline verification failure).
 
 ### 37 LLVM Options from `off_4B90FE0`
 
