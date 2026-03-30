@@ -691,11 +691,11 @@ The following components appear to be stock LLVM with no NVIDIA modifications:
 
 - [Type Legalization](type-legalization.md) -- detailed 348KB monolith documentation
 - [ISel Pattern Matching](isel-patterns.md) -- instruction selection patterns and matching
-- [Register Allocation](../register-allocation.md) -- follows ISel in the pipeline
+- [Register Allocation](register-allocation.md) -- follows ISel in the pipeline
 - [Address Spaces](../reference/address-spaces.md) -- consolidated AS reference
 - [Register Classes](../reference/register-classes.md) -- NVPTX register class definitions
 - [NVPTX Opcodes](../reference/nvptx-opcodes.md) -- MachineInstr opcode reference
 - [NVPTXTargetMachine](../infra/nvptx-target.md) -- target machine and TTI hooks
-- [Emission](../emission.md) -- PTX emission from MachineInstrs
+- [Emission](../pipeline/emission.md) -- PTX emission from MachineInstrs
 - [Tensor Core Intrinsics](../builtins/tensor-mma.md) -- WMMA/MMA intrinsic detail
 - [Surface/Texture Intrinsics](../builtins/surface-texture.md) -- tex/surf lowering

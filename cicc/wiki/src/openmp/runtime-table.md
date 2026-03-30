@@ -76,30 +76,46 @@ The SPMD-vs-Generic distinction affects which runtime calls appear in the genera
 - **SPMD mode** kernels call `__kmpc_parallel_51` (index 158) for nested parallelism, `__kmpc_barrier_simple_spmd` for synchronization, and `__kmpc_alloc_shared` / `__kmpc_free_shared` for shared-memory output promotion between guarded and parallel sections.
 - Both modes call `__kmpc_target_init` / `__kmpc_target_deinit` for kernel lifecycle management.
 
+## Call Generation Infrastructure
+
+When any codegen pass needs a runtime function, it calls `sub_312CF50(omp_context + 400, existing_value, case_index)`. The `omp_context` object (typically at `a2+208` in the pass state) contains both the type cache (+2600..+3072) and the runtime function array. If `Module::getNamedValue` finds the symbol already declared, it is returned immediately; otherwise a new declaration is created and registered.
+
+Once a declaration is obtained, `sub_921880` (create runtime library call instruction) builds the `CallInst` node with the argument list from current SSA values, attaches debug/source location metadata, and inserts it at the specified basic block position.
+
+### Primary Consumers
+
+| Pass | Address | Size | Runtime Entries Used |
+|---|---|---|---|
+| Generic-to-SPMD transform | `sub_26968A0` | 61 KB | 6 (thread ID), 180 (alloc_shared), 181 (free_shared), 187 (barrier_simple_spmd) |
+| State machine generation | `sub_2678420` | 41 KB | 155 (target_init), 156 (target_deinit), 171 (kernel_parallel), 172 (kernel_end_parallel), 188 (barrier_simple_generic) |
+| Parallel region outliner | `sub_313D1B0` | 47 KB | 7 (fork_call), 158 (parallel_51) |
+| Parallel region merging | `sub_2680940` | 52 KB | 180 (alloc_shared), 181 (free_shared), 187 (barrier_simple_spmd) |
+| Attributor OpenMP driver | `sub_269F530` | 63 KB | All -- identifies/folds known runtime calls by index |
+
 ## Complete Runtime Function Table
 
-All 194 entries, organized by functional category. The "Index" column is the `switch` case in `sub_312CF50` and the slot in the context's runtime function array. Signatures use LLVM IR type syntax.
+All 194 entries, organized by functional category. The "Index" column is the `switch` case in `sub_312CF50` and the slot in the context's runtime function array. Signatures use LLVM IR type syntax. The "Call Generation" column describes how and when cicc emits each call.
 
 ### Standard OpenMP Runtime (0--13)
 
-| Index | Function | Signature | Purpose |
-|---|---|---|---|
-| 0 | `__kmpc_barrier` | `void(ident_t*, i32)` | Explicit barrier |
-| 1 | `__kmpc_cancel` | `i32(ident_t*, i32, i32)` | Cancel construct |
-| 2 | `__kmpc_cancel_barrier` | `void(ident_t*, i32)` | Implicit barrier with cancellation check |
-| 3 | `__kmpc_error` | `void(ident_t*, i32, i8*)` | Runtime error reporting |
-| 4 | `__kmpc_flush` | `void(ident_t*)` | Memory fence |
-| 5 | `__kmpc_global_thread_num` | `i32(ident_t*)` | Get global thread ID |
-| 6 | `__kmpc_get_hardware_thread_id_in_block` | `i32()` | GPU: threadIdx within CTA |
-| 7 | `__kmpc_fork_call` | `void(ident_t*, i32, kmpc_micro, ...)` | Fork parallel region (varargs) |
-| 8 | `__kmpc_fork_call_if` | `void(ident_t*, i32, i32, i8*, i32)` | Conditional fork |
-| 9 | `__kmpc_omp_taskwait` | `void(ident_t*, i32)` | Taskwait |
-| 10 | `__kmpc_omp_taskyield` | `i32(ident_t*, i32, i32)` | Task yield point |
-| 11 | `__kmpc_push_num_threads` | `void(ident_t*, i32, i32)` | Set thread count for next parallel |
-| 12 | `__kmpc_push_proc_bind` | `void(ident_t*, i32, i32)` | Set affinity for next parallel |
-| 13 | `__kmpc_omp_reg_task_with_affinity` | `i32(ident_t*, i32, i8*, i32, i8*)` | Register task with affinity info |
+| Index | Function | Signature | Purpose | Call Generation |
+|---|---|---|---|---|
+| 0 | `__kmpc_barrier` | `void(ident_t*, i32)` | Explicit barrier | Emitted for `#pragma omp barrier`. On GPU compiles to `__syncthreads()`. OpenMPOpt may replace with index 187 (SPMD barrier) |
+| 1 | `__kmpc_cancel` | `i32(ident_t*, i32, i32)` | Cancel construct | Third param: cancel kind (1=parallel, 2=sections, 3=for, 4=taskgroup). Returns nonzero if cancellation pending |
+| 2 | `__kmpc_cancel_barrier` | `void(ident_t*, i32)` | Implicit barrier + cancel check | Generated at end of worksharing constructs when cancel is possible |
+| 3 | `__kmpc_error` | `void(ident_t*, i32, i8*)` | Runtime error | Second param: severity (1=warning, 2=fatal). Third: message string pointer |
+| 4 | `__kmpc_flush` | `void(ident_t*)` | Memory fence | `#pragma omp flush`. On GPU: `__threadfence()` or scope-specific fence |
+| 5 | `__kmpc_global_thread_num` | `i32(ident_t*)` | Get global thread ID | On GPU: blockIdx*blockDim+threadIdx. Emitted at start of every region needing a thread identifier |
+| 6 | `__kmpc_get_hardware_thread_id_in_block` | `i32()` | threadIdx.x equivalent | Direct PTX `%tid.x` wrapper. Used by SPMD transform (`sub_26968A0`) to build `tid==0` guards. Lookup: `sub_312CF50(..., 6)` |
+| 7 | `__kmpc_fork_call` | `void(ident_t*, i32, kmpc_micro, ...)` | Fork parallel region (varargs) | Second param: shared variable count. Third: outlined microtask pointer. Remaining: shared variables. On GPU Generic mode triggers worker state machine dispatch. Attribute #26 applied post-create |
+| 8 | `__kmpc_fork_call_if` | `void(ident_t*, i32, i32, i8*, i32)` | Conditional fork | Third param: `if`-clause condition. If false, region executes serially |
+| 9 | `__kmpc_omp_taskwait` | `void(ident_t*, i32)` | Taskwait | `#pragma omp taskwait` |
+| 10 | `__kmpc_omp_taskyield` | `i32(ident_t*, i32, i32)` | Task yield point | Third param: end-of-task flag |
+| 11 | `__kmpc_push_num_threads` | `void(ident_t*, i32, i32)` | Set thread count | `num_threads(N)` clause. Pushes count for next parallel region |
+| 12 | `__kmpc_push_proc_bind` | `void(ident_t*, i32, i32)` | Set affinity | `proc_bind(spread/close/master)`. Third param encodes binding policy |
+| 13 | `__kmpc_omp_reg_task_with_affinity` | `i32(ident_t*, i32, i8*, i32, i8*)` | Register task with affinity info | OMP 5.0 affinity clause |
 
-Index 7 (`__kmpc_fork_call`) and index 118 (`__kmpc_fork_teams`) are the only two varargs entries. Both receive special post-processing: `sub_B994D0` sets function attribute #26 (likely the `convergent` attribute or a varargs-related marker), checked via `sub_B91C10`.
+Index 7 (`__kmpc_fork_call`) and index 118 (`__kmpc_fork_teams`) are the only two varargs entries. Both receive special post-processing: `sub_B994D0` sets function attribute #26 (likely the `convergent` attribute or a varargs-related marker), checked via `sub_B91C10`. This prevents the optimizer from incorrectly splitting, duplicating, or removing these calls.
 
 ### Hardware Query (14--16)
 
@@ -145,26 +161,33 @@ These three functions have no parameters -- they are direct wrappers around PTX 
 | 44 | `omp_set_schedule` | `void(i32, i32)` | Set loop schedule |
 | 45 | `omp_set_max_active_levels` | `void(i32)` | Set max nesting |
 
-These are the user-facing OpenMP API functions. On GPU, most return compile-time constants or trivial register reads.
+These are the user-facing OpenMP API functions. On GPU, most return compile-time constants or trivial register reads. The Attributor-based OpenMP driver (`sub_269F530`) can fold many of these to constants when the execution mode and team configuration are statically known -- for example, `omp_get_num_threads` folds to the `blockDim.x` launch parameter.
+
+### Begin/End (53--54)
+
+| Index | Function | Signature | Purpose |
+|---|---|---|---|
+| 53 | `__kmpc_begin` | `void(ident_t*, i32)` | Library initialization (rarely used on GPU) |
+| 54 | `__kmpc_end` | `void(ident_t*)` | Library shutdown |
 
 ### Master/Masked Constructs (46--49)
 
-| Index | Function | Signature | Purpose |
-|---|---|---|---|
-| 46 | `__kmpc_master` | `i32(ident_t*, i32)` | Enter master region (returns 1 for master thread) |
-| 47 | `__kmpc_end_master` | `void(ident_t*, i32)` | Exit master region |
-| 48 | `__kmpc_masked` | `i32(ident_t*, i32, i32)` | Enter masked region (OMP 5.1, filtered thread) |
-| 49 | `__kmpc_end_masked` | `void(ident_t*, i32)` | Exit masked region |
+| Index | Function | Signature | Purpose | Call Generation |
+|---|---|---|---|---|
+| 46 | `__kmpc_master` | `i32(ident_t*, i32)` | Enter master region | Returns 1 for master thread (thread 0), 0 for all others. IRGen wraps user code in `if(__kmpc_master(..)) {...}` |
+| 47 | `__kmpc_end_master` | `void(ident_t*, i32)` | Exit master region | Called at end of master block |
+| 48 | `__kmpc_masked` | `i32(ident_t*, i32, i32)` | Enter masked region (OMP 5.1) | Third param is the filter ID (which specific thread executes). Replaces `master` in OMP 5.1 |
+| 49 | `__kmpc_end_masked` | `void(ident_t*, i32)` | Exit masked region | Called at end of masked block |
 
 ### Critical Sections (50--52)
 
-| Index | Function | Signature | Purpose |
-|---|---|---|---|
-| 50 | `__kmpc_critical` | `void(ident_t*, i32, kmp_critical*)` | Enter critical section |
-| 51 | `__kmpc_critical_with_hint` | `void(ident_t*, i32, i32, kmp_critical*)` | Enter with lock hint |
-| 52 | `__kmpc_end_critical` | `void(ident_t*, i32, kmp_critical*)` | Exit critical section |
+| Index | Function | Signature | Purpose | Call Generation |
+|---|---|---|---|---|
+| 50 | `__kmpc_critical` | `void(ident_t*, i32, kmp_critical*)` | Enter critical section | On GPU: atomic spin-lock acquire on the 32-byte lock variable |
+| 51 | `__kmpc_critical_with_hint` | `void(ident_t*, i32, i32, kmp_critical*)` | Enter with lock hint | Hint encodes contention strategy (uncontended, contended, speculative, non-speculative) |
+| 52 | `__kmpc_end_critical` | `void(ident_t*, i32, kmp_critical*)` | Exit critical section | Atomic release on lock variable |
 
-On GPU, critical sections use atomic operations on global memory. The `kmp_critical_name` type is `[8 x i32]` (32 bytes), used as an atomic lock variable. The `_with_hint` variant accepts a contention hint (e.g., speculative, non-speculative, uncontended) that the GPU runtime maps to different atomic strategies.
+On GPU, critical sections use atomic operations on global memory. The `kmp_critical_name` type is `[8 x i32]` (32 bytes), used as an atomic lock variable. The `_with_hint` variant accepts a contention hint that the GPU runtime maps to different atomic strategies.
 
 ### Reduction (55--58)
 
@@ -200,18 +223,27 @@ Indices 88--91 (`__kmpc_team_static_init_{4,4u,8,8u}`) handle team-level static 
 
 19 entries covering the full OpenMP tasking interface:
 
-| Index | Function | Key detail |
-|---|---|---|
-| 98 | `__kmpc_omp_task_alloc` | Returns `i8*` (task descriptor), 6 params |
-| 99 | `__kmpc_omp_task` | Submit allocated task for execution |
-| 100--101 | `__kmpc_end_taskgroup` / `__kmpc_taskgroup` | Task group synchronization |
-| 102--103 | `__kmpc_omp_task_begin_if0` / `complete_if0` | Immediate (if(0)) task execution |
-| 104 | `__kmpc_omp_task_with_deps` | Task with dependency list (7 params) |
-| 105--106 | `__kmpc_taskloop` / `__kmpc_taskloop_5` | Taskloop construct (11/12 params) |
-| 107 | `__kmpc_omp_target_task_alloc` | Target-offload task allocation (7 params) |
-| 108--113 | `__kmpc_taskred_*` / `__kmpc_task_reduction_*` | Task reduction infrastructure |
-| 114 | `__kmpc_proxy_task_completed_ooo` | Out-of-order proxy task completion |
-| 115--116 | `__kmpc_omp_wait_deps` / `_deps_51` | Dependency wait (OMP 5.0/5.1) |
+| Index | Function | Signature | Purpose |
+|---|---|---|---|
+| 98 | `__kmpc_omp_task_alloc` | `i8*(ident_t*, i32, i32, i64, i64, kmp_routine_entry_t)` | Allocate task descriptor (6 params). Returns `kmp_task_t*`. Params: flags, sizeof_task, sizeof_shareds, task_entry |
+| 99 | `__kmpc_omp_task` | `i32(ident_t*, i32, i8*)` | Submit allocated task for execution. Third param is the `kmp_task_t*` from task_alloc |
+| 100 | `__kmpc_end_taskgroup` | `void(ident_t*, i32)` | End `#pragma omp taskgroup` |
+| 101 | `__kmpc_taskgroup` | `void(ident_t*, i32)` | Begin taskgroup |
+| 102 | `__kmpc_omp_task_begin_if0` | `void(ident_t*, i32, i8*)` | Begin immediate task (when `if` clause evaluates to false) |
+| 103 | `__kmpc_omp_task_complete_if0` | `void(ident_t*, i32, i8*)` | Complete immediate task |
+| 104 | `__kmpc_omp_task_with_deps` | `i32(ident_t*, i32, i8*, i32, i8*, i32, i8*)` | Task with dependency list (7 params). Params: task, ndeps, dep_list, ndeps_noalias, noalias_list |
+| 105 | `__kmpc_taskloop` | `void(ident_t*, i32, i8*, i32, i64*, i64*, i64, i32, i32, i64, i8*)` | `#pragma omp taskloop` (11 params). Params: task, if_val, lb_p, ub_p, st, nogroup, sched, grainsize, task_dup |
+| 106 | `__kmpc_taskloop_5` | `void(ident_t*, i32, i8*, i32, i64*, i64*, i64, i32, i32, i64, i8*, i32)` | OMP 5.1 taskloop (12 params). Extra param: modifier |
+| 107 | `__kmpc_omp_target_task_alloc` | `i8*(ident_t*, i32, i32, i64, i64, kmp_routine_entry_t, i64)` | Target-offload task allocation (7 params). Extra i64: device_id |
+| 108 | `__kmpc_taskred_modifier_init` | `i8*(ident_t*, i32, i32, i32, i8*)` | Init task reduction with modifier (5 params). Params: is_ws, num, data |
+| 109 | `__kmpc_taskred_init` | `i8*(i32, i32, i8*)` | Init task reduction (basic) |
+| 110 | `__kmpc_task_reduction_modifier_fini` | `void(ident_t*, i32, i32)` | Finalize task reduction |
+| 111 | `__kmpc_task_reduction_get_th_data` | `i8*(i32, i8*, i8*)` | Get thread-local reduction data |
+| 112 | `__kmpc_task_reduction_init` | `i8*(i32, i32, i8*)` | Init task reduction (alternate path) |
+| 113 | `__kmpc_task_reduction_modifier_init` | `i8*(i8*, i32, i32, i32, i8*)` | Init with full modifier (5 params) |
+| 114 | `__kmpc_proxy_task_completed_ooo` | `void(i8*)` | Out-of-order proxy task completion. Used for detached tasks |
+| 115 | `__kmpc_omp_wait_deps` | `void(ident_t*, i32, i32, i8*, i32, i8*)` | Wait on task dependencies (6 params) |
+| 116 | `__kmpc_omp_taskwait_deps_51` | `void(ident_t*, i32, i32, i8*, i32, i8*, i32)` | OMP 5.1 dependency wait (7 params). Extra param: nowait modifier |
 
 Index 106 (`__kmpc_taskloop_5`) and index 116 (`__kmpc_omp_taskwait_deps_51`) are OMP 5.1 additions with an extra modifier parameter compared to their predecessors.
 
@@ -225,26 +257,78 @@ Index 106 (`__kmpc_taskloop_5`) and index 116 (`__kmpc_omp_taskwait_deps_51`) ar
 | 120 | `__kmpc_push_num_teams_51` | `void(ident_t*, i32, i32, i32, i32)` | Set team count (OMP 5.1, 5 params) |
 | 121 | `__kmpc_set_thread_limit` | `void(ident_t*, i32, i32)` | Set per-team thread limit |
 
+### Copyprivate and Threadprivate (122--124)
+
+| Index | Function | Signature | Purpose |
+|---|---|---|---|
+| 122 | `__kmpc_copyprivate` | `void(ident_t*, i32, i64, i8*, kmp_copy_func, i32)` | `#pragma omp copyprivate`. Broadcasts private data from single thread to all others. 6 params |
+| 123 | `__kmpc_threadprivate_cached` | `i8*(ident_t*, i32, i8*, i64, i8***)` | Get/allocate threadprivate variable data. 5 params |
+| 124 | `__kmpc_threadprivate_register` | `void(ident_t*, i8*, kmpc_ctor, void*, void*)` | Register threadprivate with ctor, copy-ctor, dtor callbacks |
+
+### Doacross Synchronization (125--128)
+
+Cross-iteration dependencies for `#pragma omp ordered depend(source/sink)`.
+
+| Index | Function | Signature | Purpose |
+|---|---|---|---|
+| 125 | `__kmpc_doacross_init` | `void(ident_t*, i32, i32, i8*)` | Init doacross tracking. Params: num_dims, dims_info |
+| 126 | `__kmpc_doacross_post` | `void(ident_t*, i32, i64*)` | Post (source): signal iteration completion |
+| 127 | `__kmpc_doacross_wait` | `void(ident_t*, i32, i64*)` | Wait (sink): wait for iteration to complete |
+| 128 | `__kmpc_doacross_fini` | `void(ident_t*, i32)` | Finalize doacross tracking |
+
+### Memory Allocators (129--136)
+
+| Index | Function | Signature | Purpose |
+|---|---|---|---|
+| 129 | `__kmpc_alloc` | `i8*(i32, i64, i8*)` | OpenMP allocator alloc. Params: gtid, size, allocator |
+| 130 | `__kmpc_aligned_alloc` | `i8*(i32, i64, i64, i8*)` | Aligned allocation. Params: gtid, align, size, allocator |
+| 131 | `__kmpc_free` | `void(i32, i8*, i8*)` | Free allocated memory. Params: gtid, ptr, allocator |
+| 132 | `__tgt_interop_init` | `void(ident_t*, i32, i8**, i32, i32, i32, i8*, i32)` | OMP 5.1 foreign runtime interop init (8 params) |
+| 133 | `__tgt_interop_destroy` | `void(ident_t*, i32, i8**, i32, i32, i32, i8*)` | Destroy interop object (7 params) |
+| 134 | `__tgt_interop_use` | `void(ident_t*, i32, i8**, i32, i32, i32, i8*)` | Use interop object (7 params) |
+| 135 | `__kmpc_init_allocator` | `i8*(i32, i32, i8*, i8*)` | Init OpenMP allocator. Params: gtid, memspace, num_traits, traits |
+| 136 | `__kmpc_destroy_allocator` | `void(i32, i8*)` | Destroy allocator |
+
 ### Target Offloading (137--153)
 
 18 entries implementing the host-side target offloading protocol. These are primarily used when cicc compiles host code that launches GPU kernels, not within device code itself:
 
-| Index | Function | Params | Purpose |
-|---|---|---|---|
-| 137 | `__kmpc_push_target_tripcount_mapper` | 3 | Set iteration count for target region |
-| 138--141 | `__tgt_target_*_mapper` / `_nowait_mapper` | 10--16 | Launch target region with data mapping |
-| 142--143 | `__tgt_target_kernel` / `_nowait` | 6/10 | New-style kernel launch (takes `__tgt_kernel_arguments*`) |
-| 144--151 | `__tgt_target_data_*_mapper` / `_nowait_mapper` | 9--13 | Data map-to/from/update operations |
-| 152--153 | `__tgt_mapper_num_components` / `push_mapper_component` | 1/6 | User-defined mapper support |
+| Index | Function | Signature | Params | Purpose |
+|---|---|---|---|---|
+| 137 | `__kmpc_push_target_tripcount_mapper` | `void(ident_t*, i64, i64)` | 3 | Set iteration count for target region. Params: device_id, trip_count |
+| 138 | `__tgt_target_mapper` | `i32(ident_t*, i64, i8*, i32, i8**, i8**, i64*, i64*, i8**, i8**)` | 10 | Launch target region with data mapping |
+| 139 | `__tgt_target_nowait_mapper` | (14 params) | 14 | Async target launch. Adds depobj count/list, noalias count/list |
+| 140 | `__tgt_target_teams_mapper` | (12 params) | 12 | Target teams launch. Adds num_teams, thread_limit, mappers |
+| 141 | `__tgt_target_teams_nowait_mapper` | (16 params) | 16 | Async target teams. Most complex host-side offload call |
+| 142 | `__tgt_target_kernel` | `i32(ident_t*, i64, i32, i32, i8*, __tgt_kernel_args*)` | 6 | New-style kernel launch (takes `__tgt_kernel_arguments*`) |
+| 143 | `__tgt_target_kernel_nowait` | (10 params) | 10 | Async new-style launch. Adds depobj info |
+| 144 | `__tgt_target_data_begin_mapper` | (9 params) | 9 | Map data to device |
+| 145 | `__tgt_target_data_begin_nowait_mapper` | (13 params) | 13 | Async map-to |
+| 146 | `__tgt_target_data_begin_mapper_issue` | (10 params) | 10 | Split-phase issue for async map-to |
+| 147 | `__tgt_target_data_begin_mapper_wait` | `void(i64, __tgt_async_info*)` | 2 | Split-phase wait for async map-to |
+| 148 | `__tgt_target_data_end_mapper` | (9 params) | 9 | Map data from device |
+| 149 | `__tgt_target_data_end_nowait_mapper` | (13 params) | 13 | Async map-from |
+| 150 | `__tgt_target_data_update_mapper` | (9 params) | 9 | Data update (host-to-device or device-to-host) |
+| 151 | `__tgt_target_data_update_nowait_mapper` | (13 params) | 13 | Async data update |
+| 152 | `__tgt_mapper_num_components` | `i64(i8*)` | 1 | Query user-defined mapper component count |
+| 153 | `__tgt_push_mapper_component` | `void(i8*, i8*, i8*, i64, i64, i8*)` | 6 | Register mapper component. Params: handle, base, begin, size, type, name |
 
-### GPU Kernel Lifecycle (155--158)
+### Task Completion Event (154)
 
 | Index | Function | Signature | Purpose |
 |---|---|---|---|
-| 155 | `__kmpc_target_init` | `i32(KernelEnvironmentTy*, KernelLaunchEnvironmentTy*)` | Kernel entry: initialize runtime, returns thread role |
-| 156 | `__kmpc_target_deinit` | `void()` | Kernel exit: cleanup |
-| 157 | `__kmpc_kernel_prepare_parallel` | `void(i8*)` | Generic mode: signal workers to execute outlined function |
-| 158 | `__kmpc_parallel_51` | `void(ident_t*, i32, i32, i32, i32, i8*, i8*, i8**, i64)` | OMP 5.1 GPU parallel dispatch (9 params) |
+| 154 | `__kmpc_task_allow_completion_event` | `i8*(ident_t*, i32, i8*)` | Allow completion event for detached tasks (OMP 5.0) |
+
+### GPU Kernel Lifecycle (155--158)
+
+These are the most important entries for device-side GPU OpenMP code.
+
+| Index | Function | Signature | Purpose | Call Generation |
+|---|---|---|---|---|
+| 155 | `__kmpc_target_init` | `i32(KernelEnvironmentTy*, KernelLaunchEnvironmentTy*)` | Kernel entry | First call in every GPU OpenMP kernel. State machine generator (`sub_2678420`) emits this at entry. `KernelEnvironmentTy` carries `ConfigurationEnvironmentTy` (first byte = execution mode) |
+| 156 | `__kmpc_target_deinit` | `void()` | Kernel exit | Last call in every GPU OpenMP kernel. Emitted by state machine generator |
+| 157 | `__kmpc_kernel_prepare_parallel` | `void(i8*)` | Generic: signal workers | Master thread writes outlined function pointer to shared memory, then signals workers to execute it. Replaced by `__kmpc_parallel_51` after SPMD conversion |
+| 158 | `__kmpc_parallel_51` | `void(ident_t*, i32, i32, i32, i32, i8*, i8*, i8**, i64)` | OMP 5.1 GPU parallel dispatch | 9 params: if_expr, num_threads, proc_bind, fn, wrapper_fn, shared_args, num_shared_args. Used by parallel region outliner (`sub_313D1B0`) on SPMD kernels. Replaces `fork_call` for GPU |
 
 `__kmpc_target_init` is the first runtime call in every GPU OpenMP kernel. In Generic mode, it returns -1 for worker threads (which should enter the polling loop) and 0 for the master thread. In SPMD mode, it returns 0 for all threads. The `KernelEnvironmentTy` struct carries the `ConfigurationEnvironmentTy` which encodes the execution mode, team sizes, and runtime configuration.
 
@@ -434,13 +518,125 @@ The OpenMP passes are registered in the pipeline under three names:
 
 The runtime declaration table (`sub_312CF50`) is invoked lazily from any of these passes when they need to emit a runtime call. The SPMD transformation is part of the module-level `openmp-opt` pass.
 
+## Execution Mode Call Patterns
+
+The execution mode fundamentally determines which runtime functions appear in generated IR. These pseudocode patterns show the exact call sequences emitted by the state machine generator (`sub_2678420`) and the SPMD transformation (`sub_26968A0`).
+
+### Generic Mode Kernel (mode byte = 1)
+
+```
+entry:
+    ret = __kmpc_target_init(KernelEnv, LaunchEnv)   // [155]
+    if (ret == -1) goto worker_loop                   // worker threads
+    // master thread: user code
+    __kmpc_kernel_prepare_parallel(outlined_fn_ptr)   // [157]
+    __kmpc_barrier_simple_generic(loc, gtid)          // [188]
+    // ... more serial + parallel sections ...
+    __kmpc_target_deinit()                            // [156]
+worker_loop:
+    while (true) {
+        __kmpc_barrier_simple_generic(loc, gtid)      // [188]
+        if (__kmpc_kernel_parallel(&fn))               // [171]
+            fn(args);
+            __kmpc_kernel_end_parallel()               // [172]
+        __kmpc_barrier_simple_generic(loc, gtid)      // [188]
+    }
+```
+
+### SPMD Mode Kernel -- Simple (mode byte = 2, single parallel region)
+
+After successful Generic-to-SPMD transformation:
+
+```
+entry:
+    __kmpc_target_init(KernelEnv, LaunchEnv)          // [155], returns 0 for all
+    tid = __kmpc_get_hardware_thread_id_in_block()    // [6]
+    is_main = (tid == 0)
+    br is_main, user_code, exit.threads
+user_code:
+    // all threads: user code
+    __kmpc_parallel_51(loc, gtid, ...)                // [158], for nested
+    __kmpc_barrier_simple_spmd(loc, gtid)             // [187]
+exit.threads:
+    __kmpc_target_deinit()                            // [156]
+```
+
+### SPMD Mode Kernel -- Complex (guarded regions, multiple parallel regions)
+
+```
+entry:
+    __kmpc_target_init(...)                           // [155]
+region.check.tid:
+    tid = __kmpc_get_hardware_thread_id_in_block()    // [6]
+    cmp = icmp eq tid, 0
+    br cmp, region.guarded, region.barrier
+region.guarded:
+    ... master-only serial code ...
+    shared_ptr = __kmpc_alloc_shared(sizeof(result))  // [180]
+    store result -> shared_ptr
+region.guarded.end:
+    br region.barrier
+region.barrier:
+    __kmpc_barrier_simple_spmd(loc, gtid)             // [187]
+    result = load from shared_ptr
+    __kmpc_barrier_simple_spmd(loc, gtid)             // [187], post-load
+    __kmpc_free_shared(shared_ptr, size)              // [181]
+    ... all threads continue with result ...
+exit:
+    __kmpc_target_deinit()                            // [156]
+```
+
+The SPMD transformation eliminates the worker state machine entirely. Workers no longer idle-spin in a polling loop; they participate in computation from the kernel's first instruction. Serial sections between parallel regions are wrapped in `tid==0` guards with shared-memory output promotion and barriers.
+
+## SPMD-Amenable Function Table
+
+The SPMD transformation maintains a hash set of functions that are safe to call from all threads simultaneously, located at `*(omp_context + 208) + 34952` (base pointer), `+34968` (capacity).
+
+| Property | Value |
+|---|---|
+| Hash function | Open-addressing with linear probing |
+| Slot computation | `((addr >> 9) ^ (addr >> 4)) & (capacity - 1)` |
+| Sentinel | `-4096` (empty slot marker) |
+| Contents | Functions pre-analyzed or annotated with `[[omp::assume("ompx_spmd_amenable")]]` |
+
+When a call instruction references a function not in this set, the SPMD transformation fails for that kernel and emits OMP121: `"Value has potential side effects preventing SPMD-mode execution. Add [[omp::assume(\"ompx_spmd_amenable\")]] to the called function to override"`.
+
+## Functional Category Summary
+
+| Category | Count | Indices |
+|---|---|---|
+| Thread hierarchy and hardware query | 20 | 0--6, 14--16, 17--45 |
+| Work sharing / loop scheduling | 48 | 61--95, 159--170 |
+| Tasking | 19 | 98--116, 154 |
+| Synchronization | 12 | 0, 2, 4, 50--52, 59--60, 96--97, 187--188, 190 |
+| Target offloading / data mapping | 18 | 137--153 |
+| GPU execution mode | 10 | 155--158, 171--174, 185--186 |
+| Warp primitives | 4 | 175, 179, 189--190 |
+| NVIDIA device reduction | 3 | 176--178 |
+| Shared memory management | 5 | 180--184 |
+| Memory allocators | 8 | 129--136 |
+| Copyprivate / threadprivate | 3 | 122--124 |
+| Doacross synchronization | 4 | 125--128 |
+| Teams / cancellation | 5 | 117--121 |
+| Master / masked | 4 | 46--49 |
+| Reduction (standard) | 4 | 55--58 |
+| Begin / end | 2 | 53--54 |
+| Profiling | 2 | 191--192 |
+| Sentinel | 1 | 193 |
+| **Total** | **194** | |
+
 ## Function Map
 
 | Address | Identity |
 |---|---|
 | `0x312CF50` | `sub_312CF50` -- OpenMP runtime declaration factory (194-case switch) |
 | `0x3122A50` | `sub_3122A50` -- `registerRuntimeFunction(context, index, funcDecl)` |
+| `0x2686D90` | `sub_2686D90` -- OpenMP runtime declaration table (215 KB, outer wrapper) |
 | `0x26968A0` | `sub_26968A0` -- Generic-to-SPMD transformation (61 KB) |
+| `0x2680940` | `sub_2680940` -- Parallel region merging (52 KB) |
+| `0x2678420` | `sub_2678420` -- State machine generation for Generic mode (41 KB) |
+| `0x269F530` | `sub_269F530` -- Attributor-based OpenMP optimization driver (63 KB) |
+| `0x313D1B0` | `sub_313D1B0` -- Parallel region outliner (47 KB) |
 | `0xBCF480` | `sub_BCF480` -- `FunctionType::get(retTy, paramTys, count, isVarArg)` |
 | `0xBA8CB0` | `sub_BA8CB0` -- `Module::getNamedValue(name)` |
 | `0xB2C660` | `sub_B2C660` -- `Function::Create(funcTy, linkage, name, module)` |
@@ -449,11 +645,19 @@ The runtime declaration table (`sub_312CF50`) is invoked lazily from any of thes
 | `0xB9C770` | `sub_B9C770` -- Attribute construction (varargs attribute) |
 | `0xB8C960` | `sub_B8C960` -- Attribute kind construction |
 | `0xB2BE50` | `sub_B2BE50` -- `Function::getContext()` |
+| `0x921880` | `sub_921880` -- Create runtime library call instruction |
+| `0x5FB5C0` | `sub_5FB5C0` -- OpenMP variant processing (`%s$$OMP_VARIANT%06d`) |
+
+## OpenMP Variant Processing
+
+cicc also supports OpenMP variant dispatch during EDG front-end processing. The function `sub_5FB5C0` at `0x5FB5C0` handles mangled names with the format `%s$$OMP_VARIANT%06d`, which the front-end generates for `#pragma omp declare variant` constructs. This is separate from the runtime declaration table and operates at the source-level AST rather than at the LLVM IR level.
 
 ## Cross-References
 
-- [Generic-to-SPMD Transformation](./spmd-transform.md) -- the primary consumer of the runtime table, performing mode conversion using entries 6, 155, 156, 187, 188
-- [Pipeline & Ordering](../llvm/pipeline.md) -- where `openmp-opt` / `openmp-opt-cgscc` sit in the pass pipeline
+- [Generic-to-SPMD Transformation](./spmd-transform.md) -- the primary consumer of the runtime table, performing mode conversion using entries 6, 155, 156, 180, 181, 187, 188
+- [Pipeline & Ordering](../llvm/pipeline.md) -- where `openmp-opt` (ID 75), `openmp-opt-postlink` (ID 76), and `openmp-opt-cgscc` (ID 154) sit in the pass pipeline
 - [CLI Flags](../config/cli-flags.md) -- compiler flags that control OpenMP code generation
 - [LLVM Knobs](../config/knobs.md) -- the `openmp-opt-*` knobs listed above
 - [Kernel Metadata](../pipeline/ir-generation.md) -- how `KernelEnvironmentTy` and execution mode are set during IR generation
+- [Hash Infrastructure](../infra/hash-infrastructure.md) -- the open-addressing hash table pattern used by the SPMD-amenable function set
+- [GPU Execution Model](../gpu-execution-model.md) -- broader context on SPMD vs Generic execution

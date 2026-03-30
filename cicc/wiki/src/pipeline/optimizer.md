@@ -1646,10 +1646,10 @@ Total unique pass factory addresses: ~55.
 ## Cross-References
 
 - [Optimization Levels](../config/optimization-levels.md) -- detailed O0/O1/O2/O3 and fast-compile pipeline construction
-- [Memory Space Optimization](../nvidia/memspaceopt.md) -- the MemorySpaceOpt pass (first-time/second-time parameterization)
-- [Rematerialization](../nvidia/remat.md) -- NVVMRematerialization pass and its register-pressure knobs
+- [Memory Space Optimization](../passes/memory-space-opt.md) -- the MemorySpaceOpt pass (first-time/second-time parameterization)
+- [Rematerialization](../passes/rematerialization.md) -- NVVMRematerialization pass and its register-pressure knobs
 - [Loop Strength Reduction](../llvm/lsr.md) -- NVIDIA's custom LSR overlay with 11 GPU-specific knobs
-- [Sinking2](../nvidia/sinking2.md) -- NVIDIA's enhanced sinking pass
+- [Sinking2](../passes/sinking2.md) -- NVIDIA's enhanced sinking pass
 - [CGSCC & LazyCallGraph](../infra/lazycallgraph.md) -- the inliner framework and iteration model
 - [Pipeline Entry](entry.md) -- top-level compilation entry and two-phase orchestration
 - [SROA](../llvm/sroa.md), [EarlyCSE](../llvm/early-cse.md), [JumpThreading](../llvm/jump-threading.md) -- scalar pass details (hub: [scalar-passes](../llvm/scalar-passes.md))

@@ -154,7 +154,7 @@ All loop passes share three core analysis frameworks.
 
 ### ScalarEvolution (SCEV)
 
-SCEV models how values evolve across loop iterations. Every loop pass depends on it for trip count computation, stride analysis, and value range queries. cicc ships an LLVM 7.x-era SCEV with three NVIDIA extensions: a complexity control system (`simple_mode`) that prevents unbounded analysis time, GPU-specific SCEV sources that inject thread index bounds, and recognition of CUDA loop idioms (warp-stride, grid-stride). See [ScalarEvolution Overview](./scev.md), [Range Analysis & Trip Counts](./scev-range-btc.md), and [Invalidation & Delinearization](./scev-invalidation.md).
+SCEV models how values evolve across loop iterations. Every loop pass depends on it for trip count computation, stride analysis, and value range queries. cicc ships an LLVM 20.0.0-based SCEV with three NVIDIA extensions: a complexity control system (`simple_mode`) that prevents unbounded analysis time, GPU-specific SCEV sources that inject thread index bounds, and recognition of CUDA loop idioms (warp-stride, grid-stride). See [ScalarEvolution Overview](./scev.md), [Range Analysis & Trip Counts](./scev-range-btc.md), and [Invalidation & Delinearization](./scev-invalidation.md).
 
 ### LoopInfo
 

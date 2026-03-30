@@ -391,7 +391,7 @@ The multi-run pattern (early Sinking2, post-peephole fast Sinking2, late NVVMSin
 - [Dead Synchronization Elimination](dead-sync-elimination.md) -- runs earlier, removes barriers that Sinking2 would otherwise treat as memory fences
 - [LICM](../llvm/licm-real.md) -- counterpart: hoists loop-invariant code into preheaders; Sinking2 sinks address computation out of preheaders
 - [NVVMPeephole](nvvm-peephole.md) -- runs before late Sinking2, may create new sinking opportunities
-- [Rematerialization](../llvm/rematerialization.md) -- runs after all sinking; rematerialization + sinking together minimize register pressure (ptxas `SinkRematEnable` knob)
+- [Rematerialization](rematerialization.md) -- runs after all sinking; rematerialization + sinking together minimize register pressure (ptxas `SinkRematEnable` knob)
 - [MemorySpaceOpt](../passes/other.md) -- changes address spaces which affects sinking profitability
 - [NVVMPassOptions](../config/nvvm-pass-options.md) -- `opts[1040]` disables stock Sink; `opts[2440]` disables NVVMSinking2
 - [Register Allocation](../llvm/register-allocation.md) -- ultimate consumer of the register pressure reduction that sinking provides

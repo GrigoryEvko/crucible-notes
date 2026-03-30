@@ -200,7 +200,7 @@ struct EmitResultRecord {  // 40 bytes
 
 ### SDNode Field Offsets
 
-Confirmed SDNode field layout from the binary (matches LLVM 7.x base with minor extensions):
+Confirmed SDNode field layout from the binary (matches LLVM 20.0.0 base with minor NVIDIA extensions):
 
 | Offset | Type | Field |
 |---|---|---|
