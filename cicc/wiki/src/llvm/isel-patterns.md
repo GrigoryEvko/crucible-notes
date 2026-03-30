@@ -288,26 +288,26 @@ Note that cicc does **not** use FastISel for GPU code generation. The `fast-isel
 
 ## Function Map
 
-| Address | Size | Function |
-|---|---|---|
-| `sub_3090F90` | 91KB | `NVPTXDAGToDAGISel::Select` -- ISel driver |
-| `sub_308FEE0` | -- | Pattern matcher entry (dispatches to Select switch and SelectCode) |
-| `sub_347A8D0` | 309KB | NVPTX hand-written Select switch |
-| `sub_348D3E0` | 256KB | TableGen-generated SelectCode |
-| `sub_3475BB0` | 89KB | Vector/SIMD pattern selection |
-| `sub_306D850` | 77KB | Memory operation patterns (ld/st with address spaces) |
-| `sub_30811D0` | 77KB | Complex addressing mode matching |
-| `sub_30783B0` | 39KB | Addressing mode helper (base + offset extraction) |
-| `sub_306A930` | 52KB | Texture/surface instruction selection |
-| `sub_3048C30` | 86KB | Atomic operation selection |
-| `sub_3447D70` | 32KB | Sub-selector for specific NVPTX patterns |
-| `sub_3472970` | 36KB | Pattern matching helpers |
-| `sub_343A2E0` | 49KB | Operand matching |
-| `sub_376DE90` | -- | Compressed legality table lookup |
-| `sub_308B6F0` | -- | Initialize topological worklist |
-| `sub_3089BD0` | -- | Min-heap sift-down (priority queue) |
-| `sub_308AB30` | -- | ISel cleanup |
-| `sub_308B100` | -- | Hash table destruction |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `NVPTXDAGToDAGISel::Select` -- ISel driver | `sub_3090F90` | 91KB | -- |
+| Pattern matcher entry (dispatches to Select switch and SelectCode) | `sub_308FEE0` | -- | -- |
+| NVPTX hand-written Select switch | `sub_347A8D0` | 309KB | -- |
+| TableGen-generated SelectCode | `sub_348D3E0` | 256KB | -- |
+| Vector/SIMD pattern selection | `sub_3475BB0` | 89KB | -- |
+| Memory operation patterns (ld/st with address spaces) | `sub_306D850` | 77KB | -- |
+| Complex addressing mode matching | `sub_30811D0` | 77KB | -- |
+| Addressing mode helper (base + offset extraction) | `sub_30783B0` | 39KB | -- |
+| Texture/surface instruction selection | `sub_306A930` | 52KB | -- |
+| Atomic operation selection | `sub_3048C30` | 86KB | -- |
+| Sub-selector for specific NVPTX patterns | `sub_3447D70` | 32KB | -- |
+| Pattern matching helpers | `sub_3472970` | 36KB | -- |
+| Operand matching | `sub_343A2E0` | 49KB | -- |
+| Compressed legality table lookup | `sub_376DE90` | -- | -- |
+| Initialize topological worklist | `sub_308B6F0` | -- | -- |
+| Min-heap sift-down (priority queue) | `sub_3089BD0` | -- | -- |
+| ISel cleanup | `sub_308AB30` | -- | -- |
+| Hash table destruction | `sub_308B100` | -- | -- |
 
 ## Cross-References
 

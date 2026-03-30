@@ -1,24 +1,26 @@
 # EarlyCSE (Early Common Subexpression Elimination)
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm-2000) for GPU-specific changes.
+>
+> **LLVM version note:** Based on LLVM 20.0.0 `EarlyCSE.cpp`. Evidence: iterative (non-recursive) dominator-tree walk matches the LLVM 16+ refactoring; MemorySSA-backed variant with `early-cse-memssa` pipeline parameter matches LLVM 14+. NVIDIA adds four GPU extensions (barrier-aware versioning, AS 7 handling, NVVM call CSE, PHI limit) and a fourth scoped hash table not present in any upstream version.
 
 EarlyCSE is a fast dominator-tree-walk pass that eliminates redundant computations, loads, and calls within a function. Cicc's version is **not** stock LLVM 20.0.0 -- the binary contains four CUDA-specific extensions that handle GPU memory model semantics: barrier-aware memory versioning with hardcoded NVVM intrinsic ID checks, shared memory address space 7 protection against unsafe store-to-load forwarding, a dedicated NVVM intrinsic call CSE handler with a fast-path for thread-invariant special register reads, and a PHI operand limit of 5 for compile-time control. It also adds a fourth scoped hash table (store-forwarding) that upstream lacks.
 
 ## Key Facts
 
-| Field | Value |
+| Property | Value |
 |---|---|
-| **Pass name** | `"early-cse"` (standard), `"early-cse-memssa"` (MemorySSA variant) |
-| **Pipeline parser params** | `memssa` (selects MemorySSA-backed variant) |
-| **Pass entry (standard)** | `sub_2778270` |
-| **Pass entry (MemorySSA)** | `sub_27783D0` |
-| **Core function** | `sub_2780B00` (12,350 bytes) |
-| **NVVM call CSE handler** | `sub_2780450` (1,142 bytes, ~263 decompiled lines) |
-| **Pipeline positions** | 245, 291 (tier 1); 525, 593 (tier 2+); ~370 (late) |
-| **Disable flag** | `NVVMPassOptions` offset `+1440` |
-| **Pipeline assembler** | `sub_18E4A00` (MemorySSA variant), `sub_196A2B0` (standard) |
-| **Upstream LLVM file** | `llvm/lib/Transforms/Scalar/EarlyCSE.cpp` |
-| **NVIDIA modifications** | Barrier generation tracking, AS 7 handling, NVVM call CSE, PHI limit, store-fwd table |
+| Pass name | `"early-cse"` (standard), `"early-cse-memssa"` (MemorySSA variant) |
+| Pipeline parser params | `memssa` (selects MemorySSA-backed variant) |
+| Entry point (standard) | `sub_2778270` |
+| Entry point (MemorySSA) | `sub_27783D0` |
+| Core function | `sub_2780B00` (12,350 bytes) |
+| NVVM call CSE handler | `sub_2780450` (1,142 bytes, ~263 decompiled lines) |
+| Pipeline slot | 245, 291 (tier 1); 525, 593 (tier 2+); ~370 (late) |
+| Disable flag | `NVVMPassOptions` offset `+1440` |
+| Pipeline assembler | `sub_18E4A00` (MemorySSA variant), `sub_196A2B0` (standard) |
+| Upstream LLVM file | `llvm/lib/Transforms/Scalar/EarlyCSE.cpp` |
+| NVIDIA modifications | Barrier generation tracking, AS 7 handling, NVVM call CSE, PHI limit, store-fwd table |
 
 ## Algorithm Overview
 
@@ -338,47 +340,61 @@ The pass is independently disableable via `NVVMPassOptions` at offset `+1440`. T
 
 ## Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_2778270` | -- | `EarlyCSEPass::run` (standard variant entry) |
-| `sub_27783D0` | -- | `EarlyCSEPass::run` (MemorySSA variant entry) |
-| `sub_2780B00` | 12,350 | Core pass body (domtree walk + instruction processing) |
-| `sub_2780450` | 1,142 | `handleNVVMCallCSE` (NVVM intrinsic call CSE) |
-| `sub_277F590` | -- | Expression hash function |
-| `sub_277AC50` | -- | Expression equality check |
-| `sub_277CF80` | -- | Load/call key hash |
-| `sub_27792F0` | -- | Load/call key equality |
-| `sub_277C800` | -- | Store key hash |
-| `sub_27781D0` | -- | Store key equality |
-| `sub_D222C0` | -- | `isSimpleExpression` |
-| `sub_F50EE0` | -- | `canCSE` / `doesNotAccessMemory` |
-| `sub_B49E20` | -- | `isSharedMemoryStore` (AS 7 check) |
-| `sub_B49E00` | -- | `isSharedMemoryAccess` |
-| `sub_1020E10` | -- | `getCallCSEValue` (readonly/readnone check) |
-| `sub_B46420` | -- | `isLoadCSECandidate` |
-| `sub_B46490` | -- | `hasMemoryWriteSideEffects` |
-| `sub_B46500` | -- | `computeCSEHash` / `isVolatile` |
-| `sub_987FE0` | -- | `getIntrinsicID` (NVVM intrinsic ID from call) |
-| `sub_AA54C0` | -- | `isTriviallyDead` |
-| `sub_11C4E30` | -- | `replaceAllUsesWith` (RAUW) |
-| `sub_BD84D0` | -- | `salvageDebugInfo` |
-| `sub_B43D60` | -- | `eraseInstruction` |
-| `sub_27793B0` | -- | `removeFromParent` |
-| `sub_2779A20` | -- | `computeLoadCSEKey` |
-| `sub_27808D0` | -- | `insertStoreForwarding` |
-| `sub_27801B0` | -- | `insertExprIntoScopedHT` |
-| `sub_277D510` | -- | `lookupScope` (find value by generation) |
-| `sub_277D3C0` | -- | `lookupCallTable` |
-| `sub_2778110` | -- | `lookupInScopedHT` |
-| `sub_27785B0` | -- | `shouldInsertIntoTable` |
-| `sub_277C980` | -- | `growTable` (double hash table size) |
-| `sub_277C8A0` | -- | `insertIntoTable` (post-grow insert) |
-| `sub_277FFC0` | -- | `cleanupLoadTable` (compact after scope exit) |
-| `sub_277A110` | -- | `cleanupCallTable` (compact after scope exit) |
-| `sub_277A9A0` | -- | `compareLoadTypes` (type compatibility) |
-| `sub_AE43F0` | -- | `TargetData::getTypeSizeInBits` |
-| `sub_B43CB0` | -- | `getCalledFunction` |
-| `sub_B2D610` | -- | `hasIntrinsicID` |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `EarlyCSEPass::run` (standard variant entry) | `sub_2778270` | -- | -- |
+| `EarlyCSEPass::run` (MemorySSA variant entry) | `sub_27783D0` | -- | -- |
+| Core pass body (domtree walk + instruction processing) | `sub_2780B00` | 12,350 | -- |
+| `handleNVVMCallCSE` (NVVM intrinsic call CSE) | `sub_2780450` | 1,142 | -- |
+| Expression hash function | `sub_277F590` | -- | -- |
+| Expression equality check | `sub_277AC50` | -- | -- |
+| Load/call key hash | `sub_277CF80` | -- | -- |
+| Load/call key equality | `sub_27792F0` | -- | -- |
+| Store key hash | `sub_277C800` | -- | -- |
+| Store key equality | `sub_27781D0` | -- | -- |
+| `isSimpleExpression` | `sub_D222C0` | -- | -- |
+| `canCSE` / `doesNotAccessMemory` | `sub_F50EE0` | -- | -- |
+| `isSharedMemoryStore` (AS 7 check) | `sub_B49E20` | -- | -- |
+| `isSharedMemoryAccess` | `sub_B49E00` | -- | -- |
+| `getCallCSEValue` (readonly/readnone check) | `sub_1020E10` | -- | -- |
+| `isLoadCSECandidate` | `sub_B46420` | -- | -- |
+| `hasMemoryWriteSideEffects` | `sub_B46490` | -- | -- |
+| `computeCSEHash` / `isVolatile` | `sub_B46500` | -- | -- |
+| `getIntrinsicID` (NVVM intrinsic ID from call) | `sub_987FE0` | -- | -- |
+| `isTriviallyDead` | `sub_AA54C0` | -- | -- |
+| `replaceAllUsesWith` (RAUW) | `sub_11C4E30` | -- | -- |
+| `salvageDebugInfo` | `sub_BD84D0` | -- | -- |
+| `eraseInstruction` | `sub_B43D60` | -- | -- |
+| `removeFromParent` | `sub_27793B0` | -- | -- |
+| `computeLoadCSEKey` | `sub_2779A20` | -- | -- |
+| `insertStoreForwarding` | `sub_27808D0` | -- | -- |
+| `insertExprIntoScopedHT` | `sub_27801B0` | -- | -- |
+| `lookupScope` (find value by generation) | `sub_277D510` | -- | -- |
+| `lookupCallTable` | `sub_277D3C0` | -- | -- |
+| `lookupInScopedHT` | `sub_2778110` | -- | -- |
+| `shouldInsertIntoTable` | `sub_27785B0` | -- | -- |
+| `growTable` (double hash table size) | `sub_277C980` | -- | -- |
+| `insertIntoTable` (post-grow insert) | `sub_277C8A0` | -- | -- |
+| `cleanupLoadTable` (compact after scope exit) | `sub_277FFC0` | -- | -- |
+| `cleanupCallTable` (compact after scope exit) | `sub_277A110` | -- | -- |
+| `compareLoadTypes` (type compatibility) | `sub_277A9A0` | -- | -- |
+| `TargetData::getTypeSizeInBits` | `sub_AE43F0` | -- | -- |
+| `getCalledFunction` | `sub_B43CB0` | -- | -- |
+| `hasIntrinsicID` | `sub_B2D610` | -- | -- |
+
+## Common Pitfalls
+
+These are mistakes a reimplementor is likely to make when extending EarlyCSE for a GPU target with barrier semantics.
+
+**1. Relying solely on LLVM memory-effect attributes to model barrier semantics.** Upstream LLVM models barrier intrinsics as memory-writing calls, which triggers a generation bump through the standard `hasMemoryWriteSideEffects` path. This is insufficient for GPU barriers: a `bar.sync` does not just write memory from one thread's perspective -- it makes writes from *other threads* visible. The LLVM memory model has no native concept of inter-thread visibility guarantees. Cicc adds explicit hardcoded checks for four intrinsic IDs (155, 205, 291, 324) as a safety net. A reimplementation that trusts the declared memory effects alone will forward values across barriers, producing load CSE that reads stale pre-barrier data written by a different thread.
+
+**2. Forwarding stores to loads across barriers in shared memory (AS 7).** When thread T0 stores to `smem[0]`, a barrier fires, and thread T1 loads from `smem[0]`, the load must see T1's own value (if it wrote) or the value written by whichever thread last stored before the barrier. Forwarding T0's stored value to T0's subsequent load is only safe if no barrier intervenes and no other thread could have written to the same location. Cicc's AS 7 handling conservatively disables store-to-load forwarding for all shared memory stores by bumping the generation counter. A reimplementation that allows shared memory store forwarding without barrier awareness will produce reads that return the local thread's stale value instead of the globally-visible post-barrier value.
+
+**3. Missing one or more of the four barrier intrinsic IDs.** Cicc checks for IDs 155 (`barrier0` / `__syncthreads`), 205 (`membar.*`), 291 (`bar.sync`), and 324 (cluster barrier for SM 90+). A reimplementation that only handles `__syncthreads` (ID 155) will fail to invalidate the load/call tables when a `bar.sync` or cluster barrier is encountered. The result: loads before and after a named barrier or cluster-scope fence are incorrectly CSE'd, producing silent data corruption in multi-CTA cooperative kernels.
+
+**4. Applying expression CSE to PHI nodes with more than 5 incoming values.** Cicc hardcodes a PHI operand limit of 5 for CSE analysis. GPU kernel code after loop unrolling and predication commonly produces PHI nodes with dozens of operands. Comparing all incoming values for CSE equivalence is quadratic in operand count, and the benefit for wide PHIs is negligible -- they rarely represent true common subexpressions. A reimplementation without this threshold will experience severe compile-time regressions on heavily unrolled GPU kernels.
+
+**5. Not adding a dedicated store-forwarding hash table.** Upstream LLVM uses three scoped hash tables (expression, load, call). Cicc adds a fourth table dedicated to store-to-load forwarding. Without this separation, inserting stored values into the load table pollutes the load namespace, making dead-store detection within the same scope unreliable. Two stores to the same address with no intervening load or barrier should trigger dead-store elimination of the earlier store; mixing stores into the load table obscures this pattern.
 
 ## Cross-References
 

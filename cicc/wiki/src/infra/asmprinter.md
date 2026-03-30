@@ -416,60 +416,60 @@ cicc's AsmPrinter diverges from upstream LLVM's NVPTXAsmPrinter in several impor
 
 ## Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_214ABE0` | -- | NVPTXAsmPrinter pass registration |
-| `sub_214C940` | 1.9KB | Return type / `.attribute(.unified)` emission |
-| `sub_214CAD0` | 2.4KB | Linkage directive emission (`.visible`/`.extern`/`.common`) |
-| `sub_214DA90` | 8.7KB | Kernel attribute emission (`.reqntid`, `.maxnreg`, cluster) |
-| `sub_214E300` | 1.3KB | `.local_maxnreg` emission |
-| `sub_214F370` | 7.2KB | `emitHeader` (`.version`, `.target`, `.address_size`) |
-| `sub_214FA80` | 1.9KB | Address space qualifier emission |
-| `sub_21502D0` | 22KB | `emitFunctionParamList` (`.param` declarations) |
-| `sub_2150230` | -- | Parameter name generation (`_param_N`) |
-| `sub_2151550` | 3.9KB | Function forward declaration emission |
-| `sub_2151D30` | 7.0KB | `emitFunctionEntryLabel` (`.entry`/`.func`) |
-| `sub_21518E0` | 5.0KB | Function alias emission (`.alias`) |
-| `sub_2153350` | 5.3KB | Static initializer expression emission |
-| `sub_2153AE0` | 9.9KB | Byte-level constant data emission |
-| `sub_2156420` | 20KB | `printModuleLevelGV` (texref/surfref/samplerref/data) |
-| `sub_2157D50` | 5.9KB | Global variable topological sort |
-| `sub_21583D0` | 4.6KB | Register class -> encoded ID |
-| `sub_2158E80` | 17KB | Stack frame + register declaration emission |
-| `sub_215A3C0` | 10KB | Function header orchestrator |
-| `sub_215ACD0` | 8.1KB | Module-level emission entry (ctor/dtor check, DWARF) |
-| `sub_215DC20` | -- | GenericToNVVM pass registration |
-| `sub_2163730` | 1.7KB | Register class -> PTX type suffix |
-| `sub_21638D0` | 1.6KB | Register class -> PTX register prefix |
-| `sub_216F7F0` | 5.7KB | `llvm.ident` / `"Based on NVVM 7.0.1"` reader |
-| `sub_21CF8D0` | 29KB | `emitCallPrototype` (`.callprototype` for indirect calls) |
-| `sub_21E5E70` | -- | Atomic opcode emission (13 operations) |
-| `sub_21E6420` | -- | L2-hinted atomic emission (SM 80+) |
-| `sub_21E7FE0` | -- | Address space conversion (cvta) + MMA helpers |
-| `sub_21E86B0` | -- | Standard special register emission (%tid, %ctaid, etc.) |
-| `sub_21E8EA0` | -- | Cluster barrier emission (SM 90+) |
-| `sub_21E9060` | -- | Cluster special register emission (SM 90+) |
-| `sub_21E94F0` | -- | Memory barrier emission (membar/fence) |
-| `sub_2FF6320` | -- | `printReg` (register number -> `%rN` string) |
-| `sub_31D55F0` | -- | Per-instruction `.loc` DWARF directive |
-| `sub_31D89B0` | -- | Instruction-level debug comment emission |
-| `sub_31DB9B0` | -- | `emitConvergenceEntry` (CONVERGENCECTRL_ENTRY pseudo, opcode 24) |
-| `sub_31DB950` | -- | `emitConvergenceLoop` (CONVERGENCECTRL_LOOP pseudo, opcode 33) |
-| `sub_E35A10` | 14KB | ConvergenceVerifier::verify (token dominance/nesting checks) |
-| `sub_E342D0` | -- | Cycle detection for convergence verification |
-| `sub_E348A0` | -- | Convergence verification error reporting |
-| `sub_29ED7A0` | 96KB | Inliner/verifier core (`"convergent call needs convergencectrl operand"`) |
-| `sub_1C36530` | -- | NVVM convergent branch intrinsic SM-version gating |
-| `sub_2C7B6A0` | -- | Convergent branch lowering + single-use enforcement |
-| `sub_B6EEA0` | 9KB | Metadata kind + operand bundle tag registration (incl. `convergencectrl`) |
-| `sub_31DCBB0` | -- | `emitNops` (zero-length function avoidance) |
-| `sub_31DCC50` | -- | `createTempSymbol` (`"func_end"`, `"Ltmp"`) |
-| `sub_31EC4F0` | 12KB | `emitFunctionBody` (main loop) |
-| `sub_31F26A0` | -- | `emitInlineAsm` |
-| `sub_3937240` | 14KB | `.abi_preserve` directive emission |
-| `sub_3970E40` | 18KB | MBB printer + `.pragma "nounroll"` |
-| `sub_3972F10` | 24KB | `doFinalization` |
-| `sub_397DF10` | 30KB | `emitInlineAsm` (parser/streamer) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| NVPTXAsmPrinter pass registration | `sub_214ABE0` | -- | -- |
+| Return type / `.attribute(.unified)` emission | `sub_214C940` | 1.9KB | -- |
+| Linkage directive emission (`.visible`/`.extern`/`.common`) | `sub_214CAD0` | 2.4KB | -- |
+| Kernel attribute emission (`.reqntid`, `.maxnreg`, cluster) | `sub_214DA90` | 8.7KB | -- |
+| `.local_maxnreg` emission | `sub_214E300` | 1.3KB | -- |
+| `emitHeader` (`.version`, `.target`, `.address_size`) | `sub_214F370` | 7.2KB | -- |
+| Address space qualifier emission | `sub_214FA80` | 1.9KB | -- |
+| `emitFunctionParamList` (`.param` declarations) | `sub_21502D0` | 22KB | -- |
+| Parameter name generation (`_param_N`) | `sub_2150230` | -- | -- |
+| Function forward declaration emission | `sub_2151550` | 3.9KB | -- |
+| `emitFunctionEntryLabel` (`.entry`/`.func`) | `sub_2151D30` | 7.0KB | -- |
+| Function alias emission (`.alias`) | `sub_21518E0` | 5.0KB | -- |
+| Static initializer expression emission | `sub_2153350` | 5.3KB | -- |
+| Byte-level constant data emission | `sub_2153AE0` | 9.9KB | -- |
+| `printModuleLevelGV` (texref/surfref/samplerref/data) | `sub_2156420` | 20KB | -- |
+| Global variable topological sort | `sub_2157D50` | 5.9KB | -- |
+| Register class -> encoded ID | `sub_21583D0` | 4.6KB | -- |
+| Stack frame + register declaration emission | `sub_2158E80` | 17KB | -- |
+| Function header orchestrator | `sub_215A3C0` | 10KB | -- |
+| Module-level emission entry (ctor/dtor check, DWARF) | `sub_215ACD0` | 8.1KB | -- |
+| GenericToNVVM pass registration | `sub_215DC20` | -- | -- |
+| Register class -> PTX type suffix | `sub_2163730` | 1.7KB | -- |
+| Register class -> PTX register prefix | `sub_21638D0` | 1.6KB | -- |
+| `llvm.ident` / `"Based on NVVM 7.0.1"` reader | `sub_216F7F0` | 5.7KB | -- |
+| `emitCallPrototype` (`.callprototype` for indirect calls) | `sub_21CF8D0` | 29KB | -- |
+| Atomic opcode emission (13 operations) | `sub_21E5E70` | -- | -- |
+| L2-hinted atomic emission (SM 80+) | `sub_21E6420` | -- | -- |
+| Address space conversion (cvta) + MMA helpers | `sub_21E7FE0` | -- | -- |
+| Standard special register emission (%tid, %ctaid, etc.) | `sub_21E86B0` | -- | -- |
+| Cluster barrier emission (SM 90+) | `sub_21E8EA0` | -- | -- |
+| Cluster special register emission (SM 90+) | `sub_21E9060` | -- | -- |
+| Memory barrier emission (membar/fence) | `sub_21E94F0` | -- | -- |
+| `printReg` (register number -> `%rN` string) | `sub_2FF6320` | -- | -- |
+| Per-instruction `.loc` DWARF directive | `sub_31D55F0` | -- | -- |
+| Instruction-level debug comment emission | `sub_31D89B0` | -- | -- |
+| `emitConvergenceEntry` (CONVERGENCECTRL_ENTRY pseudo, opcode 24) | `sub_31DB9B0` | -- | -- |
+| `emitConvergenceLoop` (CONVERGENCECTRL_LOOP pseudo, opcode 33) | `sub_31DB950` | -- | -- |
+| ConvergenceVerifier::verify (token dominance/nesting checks) | `sub_E35A10` | 14KB | -- |
+| Cycle detection for convergence verification | `sub_E342D0` | -- | -- |
+| Convergence verification error reporting | `sub_E348A0` | -- | -- |
+| Inliner/verifier core (`"convergent call needs convergencectrl operand"`) | `sub_29ED7A0` | 96KB | -- |
+| NVVM convergent branch intrinsic SM-version gating | `sub_1C36530` | -- | -- |
+| Convergent branch lowering + single-use enforcement | `sub_2C7B6A0` | -- | -- |
+| Metadata kind + operand bundle tag registration (incl. `convergencectrl`) | `sub_B6EEA0` | 9KB | -- |
+| `emitNops` (zero-length function avoidance) | `sub_31DCBB0` | -- | -- |
+| `createTempSymbol` (`"func_end"`, `"Ltmp"`) | `sub_31DCC50` | -- | -- |
+| `emitFunctionBody` (main loop) | `sub_31EC4F0` | 12KB | -- |
+| `emitInlineAsm` | `sub_31F26A0` | -- | -- |
+| `.abi_preserve` directive emission | `sub_3937240` | 14KB | -- |
+| MBB printer + `.pragma "nounroll"` | `sub_3970E40` | 18KB | -- |
+| `doFinalization` | `sub_3972F10` | 24KB | -- |
+| `emitInlineAsm` (parser/streamer) | `sub_397DF10` | 30KB | -- |
 
 ## Cross-References
 

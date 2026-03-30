@@ -384,40 +384,40 @@ Upstream LLVM has no two-phase compilation model. The standard LLVM pipeline run
 
 ## Function Map
 
-| Address | Size | Function |
-|---------|------|----------|
-| `sub_12D3C60` | ~200 | Function iterator: next |
-| `sub_12D3C80` | ~230 | Function iterator: advance |
-| `sub_12D3CA0` | ~260 | Function iterator: end check |
-| `sub_12D3D20` | 585 | Function attribute/priority query |
-| `sub_12D3FC0` | 3,600 | Auto thread count determination |
-| `sub_12D4250` | 626 | Concurrency eligibility check |
-| `sub_12D48A0` | -- | Insertion sort (small N) |
-| `sub_12D4BD0` | 2,384 | Per-function bitcode filter callback |
-| `sub_12D4D90` | 2,742 | Work item destructor callback |
-| `sub_12D57D0` | -- | Introsort (large N) |
-| `sub_12E0CA0` | 23,422 | Function sorting and enumeration |
-| `sub_12E1EF0` | 51,325 | Concurrent compilation top-level entry |
-| `sub_12E54A0` | 49,800 | Master pipeline assembly (both phases) |
-| `sub_12E7B90` | 2,997 | Concurrent worker entry |
-| `sub_12E7E70` | 9,405 | Phase I/II orchestrator |
-| `sub_12E86C0` | 7,687 | Per-function Phase II optimizer |
-| `sub_12E8D50` | -- | Per-function completion callback |
-| `sub_12F5610` | 7,339 | LLVM module linker (post-merge) |
-| `sub_153BF40` | -- | Bitcode reader/verifier |
-| `sub_15E4F60` | -- | `isDeclaration()` check |
-| `sub_1649960` | -- | Get function name |
-| `sub_164A820` | -- | Walk to parent GlobalValue |
-| `sub_1682740` | -- | Jobserver error check/cleanup |
-| `sub_1682BF0` | -- | MAKEFLAGS `--jobserver-auth=` parser |
-| `sub_16832F0` | -- | GNU jobserver init (296-byte state) |
-| `sub_16D40E0` | -- | TLS set (`qword_4FBB3B0`) |
-| `sub_16D40F0` | -- | TLS get (`qword_4FBB3B0`) |
-| `sub_16D4AB0` | -- | Thread pool create |
-| `sub_16D4EC0` | -- | Thread pool join |
-| `sub_16D5230` | -- | Thread pool enqueue work item |
-| `sub_1AB9F40` | -- | Per-function bitcode extraction |
-| `sub_22420F0` | -- | `get_nprocs()` wrapper |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| Function iterator: next | `sub_12D3C60` | ~200 | -- |
+| Function iterator: advance | `sub_12D3C80` | ~230 | -- |
+| Function iterator: end check | `sub_12D3CA0` | ~260 | -- |
+| Function attribute/priority query | `sub_12D3D20` | 585 | -- |
+| Auto thread count determination | `sub_12D3FC0` | 3,600 | -- |
+| Concurrency eligibility check | `sub_12D4250` | 626 | -- |
+| Insertion sort (small N) | `sub_12D48A0` | -- | -- |
+| Per-function bitcode filter callback | `sub_12D4BD0` | 2,384 | -- |
+| Work item destructor callback | `sub_12D4D90` | 2,742 | -- |
+| Introsort (large N) | `sub_12D57D0` | -- | -- |
+| Function sorting and enumeration | `sub_12E0CA0` | 23,422 | -- |
+| Concurrent compilation top-level entry | `sub_12E1EF0` | 51,325 | -- |
+| Master pipeline assembly (both phases) | `sub_12E54A0` | 49,800 | -- |
+| Concurrent worker entry | `sub_12E7B90` | 2,997 | -- |
+| Phase I/II orchestrator | `sub_12E7E70` | 9,405 | -- |
+| Per-function Phase II optimizer | `sub_12E86C0` | 7,687 | -- |
+| Per-function completion callback | `sub_12E8D50` | -- | -- |
+| LLVM module linker (post-merge) | `sub_12F5610` | 7,339 | -- |
+| Bitcode reader/verifier | `sub_153BF40` | -- | -- |
+| `isDeclaration()` check | `sub_15E4F60` | -- | -- |
+| Get function name | `sub_1649960` | -- | -- |
+| Walk to parent GlobalValue | `sub_164A820` | -- | -- |
+| Jobserver error check/cleanup | `sub_1682740` | -- | -- |
+| MAKEFLAGS `--jobserver-auth=` parser | `sub_1682BF0` | -- | -- |
+| GNU jobserver init (296-byte state) | `sub_16832F0` | -- | -- |
+| TLS set (`qword_4FBB3B0`) | `sub_16D40E0` | -- | -- |
+| TLS get (`qword_4FBB3B0`) | `sub_16D40F0` | -- | -- |
+| Thread pool create | `sub_16D4AB0` | -- | -- |
+| Thread pool join | `sub_16D4EC0` | -- | -- |
+| Thread pool enqueue work item | `sub_16D5230` | -- | -- |
+| Per-function bitcode extraction | `sub_1AB9F40` | -- | -- |
+| `get_nprocs()` wrapper | `sub_22420F0` | -- | -- |
 
 ## Cross-References
 

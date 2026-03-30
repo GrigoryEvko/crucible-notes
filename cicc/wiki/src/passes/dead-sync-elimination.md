@@ -6,18 +6,18 @@ This pass is distinct from the lightweight [`basic-dbe`](./dead-barrier-elim.md)
 
 ## Key Facts
 
-| Field | Value |
+| Property | Value |
 |---|---|
-| **Entry point** | `sub_2C84BA0` |
-| **Binary size** | 96KB (~3,400 decompiled lines) |
-| **Pass type** | Module-level NVIDIA custom (not registered in New PM) |
-| **Callers** | `sub_2C88020`, `sub_2C883F0`, self-recursive |
-| **Barrier predicate** | `sub_2C83D20` |
-| **Access classifier** | `sub_2C83AE0` |
-| **Per-BB analysis** | `sub_2C84640` (bidirectional, parameterized by direction) |
-| **State object** | 12 red-black tree maps at known offsets in `a1` |
-| **Diagnostic** | `" Removed dead synch: "` with per-category read/write counts |
-| **Upstream equivalent** | None -- entirely NVIDIA-proprietary |
+| Entry point | `sub_2C84BA0` |
+| Binary size | 96KB (~3,400 decompiled lines) |
+| Pass type | Module-level NVIDIA custom (not registered in New PM) |
+| Callers | `sub_2C88020`, `sub_2C883F0`, self-recursive |
+| Barrier predicate | `sub_2C83D20` |
+| Access classifier | `sub_2C83AE0` |
+| Per-BB analysis | `sub_2C84640` (bidirectional, parameterized by direction) |
+| State object | 12 red-black tree maps at known offsets in `a1` |
+| Diagnostic | `" Removed dead synch: "` with per-category read/write counts |
+| Upstream equivalent | None -- entirely NVIDIA-proprietary |
 
 ## Five-Phase Algorithm
 
@@ -277,32 +277,81 @@ The numeric values are the boolean (0/1) access flags for each category. When th
 
 ## Function Map
 
-| Address | Size | Role |
-|---|---|---|
-| `sub_2C84BA0` | 96KB (3,400 lines) | Main engine: 5-phase algorithm |
-| `sub_2C83D20` | small | `isSyncBarrier` predicate |
-| `sub_2C83AE0` | small | `classifyMemoryAccess` (read/write classification) |
-| `sub_2C84640` | medium | Per-BB analysis (bidirectional, direction parameter) |
-| `sub_2C84590` | small | Red-black tree insert (forward/backward maps) |
-| `sub_2C84AF0` | small | Red-black tree insert (bridge maps, different node type) |
-| `sub_2C84080` | small | Map lookup / convergence check helper |
-| `sub_2C83F20` | small | Map initialization / clear helper |
-| `sub_2C83D50` | small | Map destructor / cleanup |
-| `sub_BD3660` | small | `hasOneUse` -- used for intrinsic IDs 8260--8262 special case |
-| `sub_CEA1A0` | small | Barrier intrinsic ID confirmation |
-| `sub_B49E00` | small | `isSharedMemoryAccess` -- CUDA address space check |
-| `sub_B43D60` | small | `Instruction::eraseFromParent` -- barrier deletion |
-| `sub_B46E30` | small | `getNumSuccessors` -- CFG successor count |
-| `sub_B46EC0` | small | `getSuccessor(i)` -- i-th successor retrieval |
-| `sub_CB6200` | small | `raw_ostream::write` -- diagnostic string output |
-| `sub_B91420` | small | Debug location extraction (filename/line) |
-| `sub_B91F50` | small | Debug info accessor |
-| `sub_BD5D20` | small | Type/value accessor |
-| `sub_22409D0` | small | IR utility (instruction manipulation) |
-| `sub_CB59D0` | small | `raw_ostream` integer write |
-| `sub_CB59F0` | small | `raw_ostream` integer write (variant) |
-| `sub_2C88020` | -- | Caller: module-level pass invoking the engine |
-| `sub_2C883F0` | -- | Caller: module-level pass invoking the engine (variant) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| -- | `sub_2C84BA0` | 96KB (3,400 lines) | Main engine: 5-phase algorithm |
+| -- | `sub_2C83D20` | small | `isSyncBarrier` predicate |
+| -- | `sub_2C83AE0` | small | `classifyMemoryAccess` (read/write classification) |
+| -- | `sub_2C84640` | medium | Per-BB analysis (bidirectional, direction parameter) |
+| -- | `sub_2C84590` | small | Red-black tree insert (forward/backward maps) |
+| -- | `sub_2C84AF0` | small | Red-black tree insert (bridge maps, different node type) |
+| -- | `sub_2C84080` | small | Map lookup / convergence check helper |
+| -- | `sub_2C83F20` | small | Map initialization / clear helper |
+| -- | `sub_2C83D50` | small | Map destructor / cleanup |
+| -- | `sub_BD3660` | small | `hasOneUse` -- used for intrinsic IDs 8260--8262 special case |
+| -- | `sub_CEA1A0` | small | Barrier intrinsic ID confirmation |
+| -- | `sub_B49E00` | small | `isSharedMemoryAccess` -- CUDA address space check |
+| -- | `sub_B43D60` | small | `Instruction::eraseFromParent` -- barrier deletion |
+| -- | `sub_B46E30` | small | `getNumSuccessors` -- CFG successor count |
+| -- | `sub_B46EC0` | small | `getSuccessor(i)` -- i-th successor retrieval |
+| -- | `sub_CB6200` | small | `raw_ostream::write` -- diagnostic string output |
+| -- | `sub_B91420` | small | Debug location extraction (filename/line) |
+| -- | `sub_B91F50` | small | Debug info accessor |
+| -- | `sub_BD5D20` | small | Type/value accessor |
+| -- | `sub_22409D0` | small | IR utility (instruction manipulation) |
+| -- | `sub_CB59D0` | small | `raw_ostream` integer write |
+| -- | `sub_CB59F0` | small | `raw_ostream` integer write (variant) |
+| -- | `sub_2C88020` | -- | Caller: module-level pass invoking the engine |
+| -- | `sub_2C883F0` | -- | Caller: module-level pass invoking the engine (variant) |
+
+## Common Pitfalls
+
+These are mistakes a reimplementor is likely to make when building an equivalent dead synchronization elimination engine.
+
+**1. Removing a barrier that protects a cross-thread shared memory hazard invisible to single-thread analysis.** The most dangerous mistake is treating the analysis as a single-thread dataflow problem. The pass classifies memory accesses as read/write *per thread*, but the barrier's purpose is to order accesses *across threads*. If thread A writes to `smem[tid]` above the barrier and thread B reads `smem[tid-1]` below it, a single-thread view sees no RAW hazard (different addresses). The correct analysis must conservatively assume that any shared memory write above and any shared memory read below constitutes a hazard -- the pass uses boolean flags (not address tracking) precisely because aliasing across threads is unknowable at compile time. A reimplementation that attempts to be "smarter" by tracking addresses will remove barriers that are needed.
+
+**2. Not restarting the full analysis after each barrier removal.** When a barrier is deleted, the two regions it separated merge into one. This merged region may expose an adjacent barrier as dead (it no longer has memory accesses on one side). A reimplementation that removes all identified dead barriers in a single pass and then stops will miss these cascading redundancies. The restart is mandatory: the pass deliberately uses a goto back to Phase 3 after each removal, re-analyzing the entire function from scratch.
+
+**3. Incorrectly classifying call instructions as non-memory-accessing.** The access classifier (`sub_2C83AE0`) must recursively analyze callees to determine if they access shared/global memory. A reimplementation that conservatively marks all calls as read+write will be correct but will retain too many barriers (poor optimization). Conversely, one that ignores calls entirely will remove barriers protecting memory accesses hidden inside called functions. The correct behavior checks the `isSharedMemoryAccess` predicate on the callee and falls back to read+write if the callee is opaque.
+
+**4. Treating `__syncthreads_count/and/or` (IDs 8260--8262) the same as plain `__syncthreads`.** These barrier variants return a value (lane participation count/and/or). Even when the barrier is dead from a memory-ordering perspective, the return value may be used as data by the program. The pass applies a special `hasOneUse` check for these IDs. A reimplementation that blindly removes them when the dataflow says "no hazard" will break programs that depend on the return value for algorithmic purposes.
+
+**5. Applying the element-size gate too aggressively.** The pass filters out loads/stores of types narrower than 512 bits (`> 0x1FF`), assuming they are register-promoted scalars. A reimplementation that raises this threshold (e.g., to 1024 bits) will miss legitimate memory operations that should keep a barrier alive. Conversely, lowering it to 0 will make the analysis overly conservative, retaining dead barriers for trivial register operations.
+
+## Test This
+
+The following kernel contains consecutive `__syncthreads()` barriers with no shared memory accesses between them. The dead synchronization elimination pass should remove the redundant barriers.
+
+```cuda
+__global__ void dead_sync_test(float* out, int n) {
+    __shared__ float smem[256];
+
+    smem[threadIdx.x] = (float)threadIdx.x;
+    __syncthreads();    // barrier 1: needed (write above, read below)
+
+    float val = smem[threadIdx.x ^ 1];
+    __syncthreads();    // barrier 2: dead -- no smem access between barrier 1 and 2's "below"
+
+    __syncthreads();    // barrier 3: consecutive with barrier 2 -- trivially dead
+
+    out[threadIdx.x] = val;
+}
+```
+
+**What to look for in PTX:**
+- Count the number of `bar.sync 0;` instructions. The kernel has three `__syncthreads()` calls in source, but only **one** should survive: barrier 1 (which orders the write to `smem` against the read from `smem[tid^1]`). Barriers 2 and 3 have no shared memory hazard to protect.
+- The diagnostic `"Removed dead synch:"` (visible with internal dump flags) shows the per-category access flags that justified removal: `Read above: 0, Write above: 0` means no memory accesses reach the barrier from above.
+- To verify the pass preserves necessary barriers, move the `float val = smem[...]` read to between barriers 2 and 3. Now barrier 2 orders the write against this read and must survive -- expect two `bar.sync` instructions.
+- The cascading restart behavior is observable with 5 consecutive `__syncthreads()` with no memory between them. The pass removes one, restarts the analysis, removes the next, and repeats until only one remains.
+
+## Reimplementation Checklist
+
+1. **Barrier identification predicate.** Implement the five-condition conjunction: opcode == 85 (internal call), non-null callee, byte[0] == 0 (intrinsic flag), scope match (callee.field[24] == inst.field[80]), convergent attribute (bit 0x20 at byte+33), and barrier intrinsic ID confirmation.
+2. **Memory access classifier.** Classify every non-barrier instruction as read/write/both/neither based on opcode (store=0x3D, load=0x3E, atomic=0x41, cmpxchg=0x42, call=0x55), with the element-size gate (>511 bits) for loads/stores and recursive analysis for call instructions including shared-memory-access checks.
+3. **Bidirectional fixed-point dataflow.** Maintain eight red-black tree maps (forward ReadAbove/WriteAbove/ReadBelow/WriteBelow per BB, backward same) populated by scanning each BB in both directions, propagating from successors (forward) and predecessors (backward), iterating until no boolean flips from 0 to 1.
+4. **Bridge map construction.** After dataflow convergence, populate four bridge maps keyed by barrier instruction pointer, representing the combined read/write access sets crossing each specific barrier boundary.
+5. **Elimination decision logic.** A barrier is dead if: (ReadAbove==0 AND WriteAbove==0), OR (ReadBelow==0 AND WriteBelow==0), OR (ReadAbove==0 AND WriteBelow==0), OR (WriteAbove==0 AND ReadBelow==0). Handle the special case for intrinsic IDs 8260--8262 (`__syncthreads_count/and/or`) where single-use return values allow additional removal.
+6. **Complete restart after removal.** After each barrier deletion, restart the entire dataflow analysis from scratch to handle cascading redundancies where removing one barrier makes adjacent barriers dead.
 
 ## Cross-References
 

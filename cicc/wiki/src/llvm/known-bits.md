@@ -377,81 +377,81 @@ The 27-bit index allows up to 134 million nodes (4 GB theoretical IR size).
 
 ### IR-Level Known-Bits
 
-| Address | Size | Identity |
+| Function | Address | Size |
 |---|---|---|
-| `sub_11A7600` | 127 KB | `computeKnownBitsAndSimplify` -- merged main analysis |
-| `sub_11A1430` | 6.3 KB | `SimplifyDemandedBitsHelper` -- binary arithmetic subset |
-| `sub_11AE940` | varies | Per-operand demand propagation trampoline (depth check) |
-| `sub_11AE870` | thin | SimplifyDemandedBits entry wrapper (allocates APInts) |
-| `sub_11AE3E0` | 235 lines | SimplifyDemandedBits result caching (hash table at IC+2064) |
-| `sub_11A3F30` | 50 KB | `computeKnownBitsFromOperator` / PHI merge |
-| `sub_11A6910` | 12.5 KB | `computeKnownBitsFromAssume` (processes `@llvm.assume`) |
-| `sub_11A68C0` | varies | `computeKnownBitsFromRangeMetadata` (reads `!range`) |
-| `sub_9AC0E0` | varies | Generic `computeKnownBits` (fallback, no simplification) |
-| `sub_9AC330` | varies | Reference `computeKnownBits` (debug cross-validation only) |
-| `sub_99B5E0` | varies | NVIDIA post-analysis fixup (alignment + range refinement) |
-| `sub_F0C4B0` | varies | NVIDIA intrinsic known-bits oracle (special registers) |
-| `sub_F0C3D0` | varies | `isNVVMFunction` check (NVIDIA-specific flag) |
-| `sub_10CA790` | 11.2 KB | Intrinsic return range analysis (computes `[lo, hi]`) |
-| `sub_11A1390` | varies | Extract return range bounds from range analysis result |
-| `sub_BD5420` | varies | `getPointerAlignmentBits` (alignment-derived known zeros) |
-| `sub_10024C0` | varies | `isDemandedBitsFullyKnown` (demand subset-of known) |
-| `sub_216F4B0` | varies | `NVVMIntrRange` pass -- attaches `!range` metadata |
+| `computeKnownBitsAndSimplify` -- merged main analysis | `sub_11A7600` | 127 KB |
+| `SimplifyDemandedBitsHelper` -- binary arithmetic subset | `sub_11A1430` | 6.3 KB |
+| Per-operand demand propagation trampoline (depth check) | `sub_11AE940` | varies |
+| SimplifyDemandedBits entry wrapper (allocates APInts) | `sub_11AE870` | thin |
+| SimplifyDemandedBits result caching (hash table at IC+2064) | `sub_11AE3E0` | 235 lines |
+| `computeKnownBitsFromOperator` / PHI merge | `sub_11A3F30` | 50 KB |
+| `computeKnownBitsFromAssume` (processes `@llvm.assume`) | `sub_11A6910` | 12.5 KB |
+| `computeKnownBitsFromRangeMetadata` (reads `!range`) | `sub_11A68C0` | varies |
+| Generic `computeKnownBits` (fallback, no simplification) | `sub_9AC0E0` | varies |
+| Reference `computeKnownBits` (debug cross-validation only) | `sub_9AC330` | varies |
+| NVIDIA post-analysis fixup (alignment + range refinement) | `sub_99B5E0` | varies |
+| NVIDIA intrinsic known-bits oracle (special registers) | `sub_F0C4B0` | varies |
+| `isNVVMFunction` check (NVIDIA-specific flag) | `sub_F0C3D0` | varies |
+| Intrinsic return range analysis (computes `[lo, hi]`) | `sub_10CA790` | 11.2 KB |
+| Extract return range bounds from range analysis result | `sub_11A1390` | varies |
+| `getPointerAlignmentBits` (alignment-derived known zeros) | `sub_BD5420` | varies |
+| `isDemandedBitsFullyKnown` (demand subset-of known) | `sub_10024C0` | varies |
+| `NVVMIntrRange` pass -- attaches `!range` metadata | `sub_216F4B0` | varies |
 
 ### SelectionDAG-Level Known-Bits
 
-| Address | Size | Identity |
+| Function | Address | Size |
 |---|---|---|
-| `sub_33D4EF0` | 114 KB | `SelectionDAG::computeKnownBits` (recursive, 112 opcode cases) |
-| `sub_33DD090` | wrapper | Creates all-demanded mask, delegates to `sub_33D4EF0` |
-| `sub_33D4D80` | wrapper | `computeMinLeadingZeros` (calls `sub_33D25A0` + returns) |
-| `sub_33D25A0` | 49 KB | `computeNumSignBits` (parallel switch structure) |
-| `sub_33DCF10` | varies | `computeOverflowForAdd` / `computeOverflowForSub` |
+| `SelectionDAG::computeKnownBits` (recursive, 112 opcode cases) | `sub_33D4EF0` | 114 KB |
+| Creates all-demanded mask, delegates to `sub_33D4EF0` | `sub_33DD090` | wrapper |
+| `computeMinLeadingZeros` (calls `sub_33D25A0` + returns) | `sub_33D4D80` | wrapper |
+| `computeNumSignBits` (parallel switch structure) | `sub_33D25A0` | 49 KB |
+| `computeOverflowForAdd` / `computeOverflowForSub` | `sub_33DCF10` | varies |
 
 ### KnownBits Arithmetic Helpers
 
-| Address | Identity |
+| Function | Address |
 |---|---|
-| `sub_C70430` | `KnownBits::computeForMul(result, nuw, nsw, kb0, kb1)` |
-| `sub_C74E10` | `KnownBits::add(a, b, nsw, nuw, carry)` |
-| `sub_C75B70` | `KnownBits::sub(a, b, nsw, nuw)` |
-| `sub_C76560` | `KnownBits::computeForAddSub(isSub, nsw, nuw, a, b)` |
-| `sub_C73220` | `KnownBits::shl(a, shamt)` |
-| `sub_C738B0` | `KnownBits::lshr(a, b)` |
-| `sub_C73E40` | `KnownBits::ashr(a, b)` |
-| `sub_C787D0` | `KnownBits::and(a, b, commutative)` |
-| `sub_C78F20` | `KnownBits::or(a, b)` |
-| `sub_C790F0` | `KnownBits::xor(a, b)` |
-| `sub_C79480` | `KnownBits::mergeForPHI` / `smax(a, b)` |
-| `sub_C7B4D0` | `KnownBits::truncate` / `smulh(a, b)` |
-| `sub_C7BCF0` | `KnownBits::cttz(a, shift)` |
-| `sub_C7BD50` | `KnownBits::ctpop(a)` |
-| `sub_C7BDB0` | `KnownBits::bswap(a)` |
-| `sub_C746C0` | `KnownBits::abs(a, known_shift)` |
-| `sub_C740A0` | `KnownBits::umin(a, b)` |
-| `sub_C74180` | `KnownBits::umax(a, b)` |
-| `sub_C778B0` | `KnownBits::ctlz(a, poisonAtZero)` |
+| `KnownBits::computeForMul(result, nuw, nsw, kb0, kb1)` | `sub_C70430` |
+| `KnownBits::add(a, b, nsw, nuw, carry)` | `sub_C74E10` |
+| `KnownBits::sub(a, b, nsw, nuw)` | `sub_C75B70` |
+| `KnownBits::computeForAddSub(isSub, nsw, nuw, a, b)` | `sub_C76560` |
+| `KnownBits::shl(a, shamt)` | `sub_C73220` |
+| `KnownBits::lshr(a, b)` | `sub_C738B0` |
+| `KnownBits::ashr(a, b)` | `sub_C73E40` |
+| `KnownBits::and(a, b, commutative)` | `sub_C787D0` |
+| `KnownBits::or(a, b)` | `sub_C78F20` |
+| `KnownBits::xor(a, b)` | `sub_C790F0` |
+| `KnownBits::mergeForPHI` / `smax(a, b)` | `sub_C79480` |
+| `KnownBits::truncate` / `smulh(a, b)` | `sub_C7B4D0` |
+| `KnownBits::cttz(a, shift)` | `sub_C7BCF0` |
+| `KnownBits::ctpop(a)` | `sub_C7BD50` |
+| `KnownBits::bswap(a)` | `sub_C7BDB0` |
+| `KnownBits::abs(a, known_shift)` | `sub_C746C0` |
+| `KnownBits::umin(a, b)` | `sub_C740A0` |
+| `KnownBits::umax(a, b)` | `sub_C74180` |
+| `KnownBits::ctlz(a, poisonAtZero)` | `sub_C778B0` |
 
 ### APInt Utilities
 
-| Address | Identity |
+| Function | Address |
 |---|---|
-| `sub_C43690` | `APInt(width, 0)` -- zero-init constructor (heap for width > 64) |
-| `sub_C43780` | `APInt` copy constructor |
-| `sub_C43B90` | `APInt::operator&=` |
-| `sub_C43BD0` | `APInt::operator\|=` |
-| `sub_C43C90` | `APInt::setBits(lo, hi)` |
-| `sub_C43D10` | `APInt::flipAllBits` |
-| `sub_C44740` | `APInt::trunc(width)` |
-| `sub_C449B0` | `APInt::zext(width)` |
-| `sub_C44830` | `APInt::sext(width)` |
-| `sub_C44590` | `APInt::countTrailingZeros` |
-| `sub_C444A0` | `APInt::countLeadingZeros` |
-| `sub_C44630` | `APInt::countPopulation` |
-| `sub_C446F0` | `APInt::isSubsetOf(other)` |
-| `sub_C44AB0` | `APInt::reverseBits` / `byteSwap` |
-| `sub_AD6220` | `ConstantInt::get(type, APInt)` -- creates constant replacement |
-| `sub_AD64C0` | `ConstantInt::get(type, value, isSigned)` |
+| `APInt(width, 0)` -- zero-init constructor (heap for width > 64) | `sub_C43690` |
+| `APInt` copy constructor | `sub_C43780` |
+| `APInt::operator&=` | `sub_C43B90` |
+| `APInt::operator\ | `sub_C43BD0` |
+| `APInt::setBits(lo, hi)` | `sub_C43C90` |
+| `APInt::flipAllBits` | `sub_C43D10` |
+| `APInt::trunc(width)` | `sub_C44740` |
+| `APInt::zext(width)` | `sub_C449B0` |
+| `APInt::sext(width)` | `sub_C44830` |
+| `APInt::countTrailingZeros` | `sub_C44590` |
+| `APInt::countLeadingZeros` | `sub_C444A0` |
+| `APInt::countPopulation` | `sub_C44630` |
+| `APInt::isSubsetOf(other)` | `sub_C446F0` |
+| `APInt::reverseBits` / `byteSwap` | `sub_C44AB0` |
+| `ConstantInt::get(type, APInt)` -- creates constant replacement | `sub_AD6220` |
+| `ConstantInt::get(type, value, isSigned)` | `sub_AD64C0` |
 
 ## Differences from Upstream LLVM
 

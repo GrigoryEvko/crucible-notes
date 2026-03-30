@@ -979,6 +979,20 @@ It must run **after** divergence analysis (so it can query which branches are un
 | EH funclet block detected | **Reject** | `"UnsupportedEHFunclets"` |
 | Reducible, divergent regions | **Restructure** | None (new Flow blocks inserted, edges rerouted) |
 
+## Common Pitfalls
+
+These are mistakes a reimplementor is likely to make when building an equivalent CFG structurization pass for a GPU target.
+
+**1. Attempting to restructure irreducible CFGs instead of rejecting them.** The LLVM codebase includes `FixIrreduciblePass` (`sub_29D33E0`) which performs T1-T2 node splitting, but NVIDIA deliberately does not schedule it before StructurizeCFG. A reimplementation that adds node splitting to "handle" irreducible CFGs risks exponential code size blowup (2^N blocks for N entry points), catastrophic register pressure increases from the duplicated live ranges, and untested interaction with divergence analysis. The correct approach for an NVPTX target is to reject irreducible CFGs with a diagnostic and rely on the CUDA language guarantee that well-formed source never produces them.
+
+**2. Forgetting to update LoopInfo when inserting Flow blocks inside loops.** When `insertLoopFlowBlock` creates a new block between the latch and the exit, that block carries the back-edge to the header and is therefore inside the loop. If LoopInfo is not updated (`loop_info->addBlockToLoop`), subsequent passes (LICM, LSR, LoopUnroll) will not recognize the Flow block as a loop member and may hoist or sink code across it incorrectly. This is a silent miscompilation: the kernel produces wrong results only for inputs that exercise the divergent loop path.
+
+**3. Inverting the Flow block PHI convention.** The pass uses `true = exit loop` (break) and `false = continue loop` (back-edge) for loop Flow blocks. This is counterintuitive -- most programmers expect `true` to mean "condition is met, continue." Reversing this convention causes the back-edge to be the taken path for `true`, which not only produces wrong control flow but also defeats the branch prediction hint that maps the fall-through (false) path to the common-case loop continuation. A reimplementation must match the exact convention documented in the upstream LLVM structurization invariant.
+
+**4. Not writing reconvergence metadata to function offsets `+672`/`+680`.** The AsmPrinter's convergence control framework reads the head and tail stored at these offsets to emit `CONVERGENCECTRL_ENTRY` and `CONVERGENCECTRL_LOOP` pseudo-instructions. A reimplementation that structures the CFG correctly but does not write these metadata values will cause the AsmPrinter to emit PTX without convergence barriers. On architectures with hardware convergence tracking (SM 7.0+), this can lead to threads reconverging at incorrect points, producing silent data corruption.
+
+**5. Skipping structurization for regions where all branches appear uniform but sub-regions contain divergent branches.** The `structurizecfg-relaxed-uniform-regions` knob allows skipping outer regions when they have at most one conditional direct child. A reimplementation that skips any region marked "uniform" without checking sub-region divergence will fail to insert Flow blocks for inner divergent branches, leaving the PTX with unstructured control flow that ptxas may reject or (worse) silently miscompile.
+
 ## Cross-References
 
 - [CSSA](../passes/cssa.md) -- the Conventional SSA pass that consumes Flow blocks to insert warp-safe copies

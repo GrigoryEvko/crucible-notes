@@ -345,28 +345,28 @@ Knobs are registered in two constructors: standard LLVM knobs in `ctor_216_0` at
 
 ## Function Map
 
-| Address | Identity | Role |
-|---|---|---|
-| `0x09305A0` | `emitUnrollPragma` | Frontend: `#pragma unroll` to metadata |
-| `0x19B4C50` | `parseUnrollMetadata` | Reads `llvm.loop.unroll.*` metadata |
-| `0x19B5DD0` | `computeLocalArraySize` | NVIDIA: local array threshold heuristic |
-| `0x19B6500` | `handleSmallFunction` | Special aggressive unroll for tiny kernels |
-| `0x19B6690` | `selectUnrollFactor` | Trip count analysis helper |
-| `0x19B78B0` | `emitRemainderNotAllowedRemark` | Diagnostic emission |
-| `0x19B9A90` | `simulateLoopBody` | Dynamic cost simulation with constant folding |
-| `0x19BB5C0` | `computeUnrollCount` | Main decision engine |
-| `0x19BE360` | `tryToUnrollLoop` | Top-level driver |
-| `0x1B0B080` | `computePeelCount` | Loop peeling logic |
-| `0x1B18810` | `computeRuntimeTripCount` | Runtime trip count estimation |
-| `0x2A10B40` | `hasCallInLoop` | Checks for call/invoke in loop body |
-| `0x2A10DD0` | `createSideExitPHI` | PHI nodes for side-exit unrolled loops |
-| `0x2A12AD0` | `cloneInstructionsInBlock` | Instruction-level cloning |
-| `0x2A13F00` | `reconcileLoopAfterUnroll` | Post-unroll SCEV/LoopInfo fixup |
-| `0x2A15A20` | `UnrollLoop` | Main transformation engine |
-| `0x2A1AA10` | `unrollCostModel` | Cost estimation helper |
-| `0x2A1CF00` | `UnrollAndJamLoop` | Unroll-and-jam variant |
-| `0x2A23640` | `generateRemainderLoop` | Remainder loop construction |
-| `0x2A25260` | `UnrollLoopWithRuntimeChecks` | Prologue/epilogue generation |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `emitUnrollPragma` | `0x09305A0` | -- | Frontend: `#pragma unroll` to metadata |
+| `parseUnrollMetadata` | `0x19B4C50` | -- | Reads `llvm.loop.unroll.*` metadata |
+| `computeLocalArraySize` | `0x19B5DD0` | -- | NVIDIA: local array threshold heuristic |
+| `handleSmallFunction` | `0x19B6500` | -- | Special aggressive unroll for tiny kernels |
+| `selectUnrollFactor` | `0x19B6690` | -- | Trip count analysis helper |
+| `emitRemainderNotAllowedRemark` | `0x19B78B0` | -- | Diagnostic emission |
+| `simulateLoopBody` | `0x19B9A90` | -- | Dynamic cost simulation with constant folding |
+| `computeUnrollCount` | `0x19BB5C0` | -- | Main decision engine |
+| `tryToUnrollLoop` | `0x19BE360` | -- | Top-level driver |
+| `computePeelCount` | `0x1B0B080` | -- | Loop peeling logic |
+| `computeRuntimeTripCount` | `0x1B18810` | -- | Runtime trip count estimation |
+| `hasCallInLoop` | `0x2A10B40` | -- | Checks for call/invoke in loop body |
+| `createSideExitPHI` | `0x2A10DD0` | -- | PHI nodes for side-exit unrolled loops |
+| `cloneInstructionsInBlock` | `0x2A12AD0` | -- | Instruction-level cloning |
+| `reconcileLoopAfterUnroll` | `0x2A13F00` | -- | Post-unroll SCEV/LoopInfo fixup |
+| `UnrollLoop` | `0x2A15A20` | -- | Main transformation engine |
+| `unrollCostModel` | `0x2A1AA10` | -- | Cost estimation helper |
+| `UnrollAndJamLoop` | `0x2A1CF00` | -- | Unroll-and-jam variant |
+| `generateRemainderLoop` | `0x2A23640` | -- | Remainder loop construction |
+| `UnrollLoopWithRuntimeChecks` | `0x2A25260` | -- | Prologue/epilogue generation |
 
 
 ## Pass Factory and Object Layout
@@ -532,6 +532,30 @@ All hash tables use the same `(value >> 9) ^ (value >> 4)` hash function and lin
 | **Register pressure model** | Generic TTI-based unroll cost; no occupancy concept | Occupancy-aware cost model considers register pressure cliffs where one additional register per thread drops warp occupancy |
 | **Pipeline invocations** | Single invocation in optimization pipeline | Two invocations: early (interleaved with vectorization) and late (cleanup, gated by `opts[1360]` / `nv-disable-loop-unrolling`) |
 | **Transformation engine** | Stock `llvm::UnrollLoop` | Lightly modified `UnrollLoop` (`sub_2A15A20`, 85 KB); decision engine is where the changes concentrate |
+
+## Test This
+
+The following kernel contains a simple counted loop that is a prime candidate for full unrolling. Compile and compare PTX output with and without `#pragma unroll`.
+
+```cuda
+__global__ void unroll_test(float* out, const float* in) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    float sum = 0.0f;
+
+    #pragma unroll
+    for (int i = 0; i < 8; i++) {
+        sum += in[tid + i * 128];
+    }
+    out[tid] = sum;
+}
+```
+
+**What to look for in PTX:**
+- With `#pragma unroll`: the loop should be fully unrolled into 8 sequential `ld.global.f32` + `add.f32` sequences with no backedge branch. Look for the absence of `bra` instructions targeting a loop header and the presence of 8 distinct `ld.global.f32` instructions with addresses offset by `128*sizeof(float)`.
+- Without `#pragma unroll` (remove the pragma): the compiler may still unroll if the trip count (8) times body size fits within the threshold (default 300). Check whether the PTX has a loop or is fully unrolled -- this exercises the automatic decision engine.
+- With `#pragma unroll 1`: the loop must remain as a counted loop with a backedge branch. This tests that pragma disabling works.
+- Compare `.nreg` values across the three variants. Full unrolling increases register pressure (8 loads live simultaneously); the partial or no-unroll variant uses fewer registers at the cost of loop overhead.
+- The power-of-two enforcement is visible when the trip count is not a power of two: change the loop bound to 6 and check whether the compiler partially unrolls by 4 (highest power of two dividing the body-size budget) rather than 6.
 
 ## Cross-References
 

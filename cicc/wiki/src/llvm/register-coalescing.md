@@ -308,42 +308,42 @@ A pathological case is over-aggressive coalescing that creates very long live ra
 
 ## Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_34AF4A0` | 67KB | Main NVPTX coalescing driver |
-| `sub_34AE060` | 28KB | Per-instruction coalesce attempt |
-| `sub_34AB5C0` | 16KB | Pre-coalesce validation (opcode 14/15 check) |
-| `sub_34AC810` | 19KB | Post-coalesce update (rewrite def-use chains) |
-| `sub_34AD8B0` | 8.5KB | Constrained-copy validation variant |
-| `sub_34AA450` | 11.5KB | Interference check |
-| `sub_34A46B0` | 13KB | Range rebuild (bitvector `v90[12336]`) |
-| `sub_34A2770` | 7.3KB | Interval equivalence verify |
-| `sub_34A0610` | 14.7KB | Interval tree insert/rebalance (RB-tree) |
-| `sub_34A3910` | 2.7KB | Register-to-interval hash lookup |
-| `sub_34A3D10` | 5KB | Build worklist from BB operand scan |
-| `sub_34A41A0` | 4.8KB | Build worklist from instruction iteration |
-| `sub_34BAAF0` | 31.7KB | Block-level coalescing driver |
-| `sub_34B7280` | 22KB | Live-out analysis + weight computation |
-| `sub_34B6620` | 17.7KB | Per-register interference build |
-| `sub_34961A0` | 26.6KB | Operand-type classification |
-| `sub_3497B40` | 16.5KB | Register-pair decomposition |
-| `sub_3494EA0` | 12.7KB | Opcode -> copy-type mapping (switch) |
-| `sub_349AB40` | 24.5KB | Build coalesce candidate list |
-| `sub_349D6E0` | -- | Merged-interval representative lookup |
-| `sub_349FA50` | 7.1KB | Instruction position lookup/creation |
-| `sub_349E330` | 4KB | Interval tree destructor (variant A) |
-| `sub_349E500` | 4KB | Interval tree destructor (variant B) |
-| `sub_349E6D0` | 4KB | Interval tree destructor (variant C) |
-| `sub_349E8A0` | 4KB | Interval tree destructor (variant D) |
-| `sub_349F140` | 4.7KB | Interval info populate from instruction |
-| `sub_349F740` | 4KB | Interval structure reset |
-| `sub_34A2010` | -- | Generic map cleanup (callback `sub_349D600`) |
-| `sub_34A2530` | -- | Finalize coalescing metadata |
-| `sub_34AA090` | -- | Commit merged intervals |
-| `sub_34A9A60` | -- | Secondary coalesce commit |
-| `sub_35065A0` | -- | Register info initializer |
-| `sub_2F71140` | 80KB | Standard LLVM RegisterCoalescer |
-| `sub_2F60C50` | -- | RegisterCoalescer::getPassName |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| Main NVPTX coalescing driver | `sub_34AF4A0` | 67KB | -- |
+| Per-instruction coalesce attempt | `sub_34AE060` | 28KB | -- |
+| Pre-coalesce validation (opcode 14/15 check) | `sub_34AB5C0` | 16KB | -- |
+| Post-coalesce update (rewrite def-use chains) | `sub_34AC810` | 19KB | -- |
+| Constrained-copy validation variant | `sub_34AD8B0` | 8.5KB | -- |
+| Interference check | `sub_34AA450` | 11.5KB | -- |
+| Range rebuild (bitvector `v90[12336]`) | `sub_34A46B0` | 13KB | -- |
+| Interval equivalence verify | `sub_34A2770` | 7.3KB | -- |
+| Interval tree insert/rebalance (RB-tree) | `sub_34A0610` | 14.7KB | -- |
+| Register-to-interval hash lookup | `sub_34A3910` | 2.7KB | -- |
+| Build worklist from BB operand scan | `sub_34A3D10` | 5KB | -- |
+| Build worklist from instruction iteration | `sub_34A41A0` | 4.8KB | -- |
+| Block-level coalescing driver | `sub_34BAAF0` | 31.7KB | -- |
+| Live-out analysis + weight computation | `sub_34B7280` | 22KB | -- |
+| Per-register interference build | `sub_34B6620` | 17.7KB | -- |
+| Operand-type classification | `sub_34961A0` | 26.6KB | -- |
+| Register-pair decomposition | `sub_3497B40` | 16.5KB | -- |
+| Opcode -> copy-type mapping (switch) | `sub_3494EA0` | 12.7KB | -- |
+| Build coalesce candidate list | `sub_349AB40` | 24.5KB | -- |
+| Merged-interval representative lookup | `sub_349D6E0` | -- | -- |
+| Instruction position lookup/creation | `sub_349FA50` | 7.1KB | -- |
+| Interval tree destructor (variant A) | `sub_349E330` | 4KB | -- |
+| Interval tree destructor (variant B) | `sub_349E500` | 4KB | -- |
+| Interval tree destructor (variant C) | `sub_349E6D0` | 4KB | -- |
+| Interval tree destructor (variant D) | `sub_349E8A0` | 4KB | -- |
+| Interval info populate from instruction | `sub_349F140` | 4.7KB | -- |
+| Interval structure reset | `sub_349F740` | 4KB | -- |
+| Generic map cleanup (callback `sub_349D600`) | `sub_34A2010` | -- | -- |
+| Finalize coalescing metadata | `sub_34A2530` | -- | -- |
+| Commit merged intervals | `sub_34AA090` | -- | -- |
+| Secondary coalesce commit | `sub_34A9A60` | -- | -- |
+| Register info initializer | `sub_35065A0` | -- | -- |
+| Standard LLVM RegisterCoalescer | `sub_2F71140` | 80KB | -- |
+| RegisterCoalescer::getPassName | `sub_2F60C50` | -- | -- |
 
 ## Differences from Upstream LLVM
 

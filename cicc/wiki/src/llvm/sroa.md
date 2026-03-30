@@ -1,6 +1,8 @@
 # SROA (Scalar Replacement of Aggregates)
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **LLVM version note:** Based on LLVM 20.0.0 `SROA.cpp`. Evidence: `preserve-cfg` / `modify-cfg` pipeline parser parameters match LLVM 16+ new PM integration; two-pass analysis mode (`qword_50055E8`) matches LLVM 17+ pre-analysis path. Core splitting algorithm is stock LLVM with no CUDA-specific modifications detected.
 
 SROA is the single most important early-pipeline optimization for NVIDIA GPU compilation. Every `alloca` instruction that survives into code generation is lowered to `.local` memory (NVPTX address space 5) -- physically backed by device DRAM and accessed through the L1/L2 cache hierarchy. A `.local` access that misses L1 costs 200-400 cycles; a register read costs zero. A single un-promoted alloca in a hot loop can degrade kernel throughput by 10-50x. SROA's job is to decompose aggregate allocas (structs, arrays, unions) into individual scalar SSA values that the register allocator can place in registers, eliminating the memory traffic entirely.
 
@@ -483,85 +485,116 @@ The core SROA algorithm in cicc v13.0 is stock LLVM SROA. No CUDA-specific modif
 
 ## Function Map
 
-| Address | Identity | Size |
-|---------|----------|------|
-| **Primary instance (new PM)** | | |
-| `sub_2935C30` | `SROAPass::runOnAlloca` | 58 KB |
-| `sub_2930B90` | `SROAPass::splitAlloca` | 80 KB |
-| `sub_2927160` | `buildSlices` (use analysis) | -- |
-| `sub_2924690` | `buildPartitions` (group slices) | -- |
-| `sub_2913C40` | `buildPartitionTable` | -- |
-| `sub_2912200` | `sortSlices` | -- |
-| `sub_2915A90` | `compactSlices` (with filter) | -- |
-| `sub_2914CE0` | `compactSlices` (simple) | -- |
-| `sub_291A860` | `findExistingValue` | -- |
-| `sub_29197E0` | `rewritePartition` | -- |
-| `sub_2919EF0` | `rewriteCallback` | -- |
-| `sub_292A4F0` | `visitUse` (rewrite one use) | 54 KB |
-| `sub_291F660` | `validateRewrite` | -- |
-| `sub_29150D0` | `analyzeSlice` | -- |
-| `sub_2929FB0` | `addToNewAllocaWorklist` | -- |
-| `sub_2928360` | `addToWorklist` | -- |
-| `sub_29220F0` | `addOperandToWorklist` | -- |
-| `sub_2921860` | `clearPendingQueue` | -- |
-| `sub_29280E0` | `classifySlice` | -- |
-| `sub_2916C30` | `recordNonSplitAlloca` | -- |
-| `sub_2916270` | `computeRewrittenValue` | -- |
-| `sub_2912870` | `advancePartitionIterator` | -- |
-| `sub_29348F0` | `rewriteGEPChain` | -- |
-| `sub_2914800` | `replaceAndErase` | -- |
-| `sub_2914380` | `collectUsesForRewrite` (variant) | -- |
-| `sub_2914550` | `collectUsesForRewrite` (original) | -- |
-| `sub_29222D0` | Hash table resize | -- |
-| `sub_292D810` | Alloca rewriting helper | 67 KB |
-| `sub_2912100` | SROA pass metadata | -- |
-| `sub_2912340` | SROA pass registration (`"Scalar Replacement Of Aggregates"`, `"sroa"`) | -- |
-| **Secondary instance (legacy PM)** | | |
-| `sub_1A33E80` | `SROAPass::runOnAlloca` (legacy) | 61 KB |
-| `sub_1A37040` | `SROAPass::splitAlloca` (legacy) | 46 KB |
-| `sub_1A3B290` | `rewritePartition` (memcpy/memset) | 58 KB |
-| `sub_1A2D070` | `presplitLoadsAndStores` | 35 KB |
-| `sub_1A2C2F0` | Select speculation | 9 KB |
-| `sub_1A2FFA0` | Vector splat handling | 12 KB |
-| `sub_1A30D10` | Load rewriting | 16 KB |
-| `sub_1A31B60` | Extract/load patterns | 9 KB |
-| `sub_1A23B30` | Type casting | 11 KB |
-| `sub_1A3A670` | Speculative load promotion | 13 KB |
-| `sub_1A13B30` | Alloca analysis / slice building | 36 KB |
-| `sub_1A15E70` | Partition computation | 34 KB |
-| `sub_1A18770` | Use analysis | 38 KB |
-| `sub_1A3DCD0` | Cleanup | 15 KB |
-| **Shared helpers** | | |
-| `sub_B4CE70` | `isAllocaPromotable` | -- |
-| `sub_B43CC0` | `getDL` (DataLayout) | -- |
-| `sub_BDB740` | `getTypeSizeInBits` | -- |
-| `sub_9208B0` | `getTypeAllocSize` | -- |
-| `sub_BD5C60` | `getType` | -- |
-| `sub_BD5D20` | `getName` | -- |
-| `sub_BD2C40` | `AllocaInst::Create` | -- |
-| `sub_BD2DA0` | `PHINode::Create` | -- |
-| `sub_B4CCA0` | `AllocaInst` constructor | -- |
-| `sub_BCD140` | `CreateBitCast` | -- |
-| `sub_BCD420` | `CreateAlloca` | -- |
-| `sub_BD84D0` | `replaceAllUsesWith` | -- |
-| `sub_B43D60` | `eraseFromParent` | -- |
-| `sub_B36550` | `SelectInst::Create` | -- |
-| `sub_ACADE0` | `UndefValue::get` | -- |
-| `sub_AE5020` | `getABITypeAlignment` | -- |
-| `sub_AE5260` | `getPrefTypeAlignment` | -- |
-| `sub_B91FC0` | `copyMetadata` | -- |
-| `sub_B46500` | `isVolatile` | -- |
-| `sub_BCEBA0` | `isVectorType` | -- |
-| `sub_F38250` | `rewriteLoadStoreOfSlice` | -- |
-| `sub_F38330` | `rewriteMemTransferOfSlice` | -- |
-| `sub_AE74C0` | `collectAllUses` | -- |
-| `sub_AF47B0` | `getAccessRange` | -- |
-| `sub_AF4D30` | `checkSubAllocaOverlap` | -- |
-| `sub_D5F1F0` | `buildMetadataTable` | -- |
-| `sub_D6B260` | `addToErasedSet` | -- |
-| `sub_11D2BF0` | Slice optimizer init | -- |
-| `sub_11D3120` | Slice optimizer run | -- |
-| `sub_11D7E80` | Slice optimizer finalize | -- |
+| Function | Address | Size | Role |
+|---|---|---|---|
+|  | **Primary instance (new PM)** |  | -- |
+| `SROAPass::runOnAlloca` | `sub_2935C30` | 58 KB | -- |
+| `SROAPass::splitAlloca` | `sub_2930B90` | 80 KB | -- |
+| `buildSlices` (use analysis) | `sub_2927160` | -- | -- |
+| `buildPartitions` (group slices) | `sub_2924690` | -- | -- |
+| `buildPartitionTable` | `sub_2913C40` | -- | -- |
+| `sortSlices` | `sub_2912200` | -- | -- |
+| `compactSlices` (with filter) | `sub_2915A90` | -- | -- |
+| `compactSlices` (simple) | `sub_2914CE0` | -- | -- |
+| `findExistingValue` | `sub_291A860` | -- | -- |
+| `rewritePartition` | `sub_29197E0` | -- | -- |
+| `rewriteCallback` | `sub_2919EF0` | -- | -- |
+| `visitUse` (rewrite one use) | `sub_292A4F0` | 54 KB | -- |
+| `validateRewrite` | `sub_291F660` | -- | -- |
+| `analyzeSlice` | `sub_29150D0` | -- | -- |
+| `addToNewAllocaWorklist` | `sub_2929FB0` | -- | -- |
+| `addToWorklist` | `sub_2928360` | -- | -- |
+| `addOperandToWorklist` | `sub_29220F0` | -- | -- |
+| `clearPendingQueue` | `sub_2921860` | -- | -- |
+| `classifySlice` | `sub_29280E0` | -- | -- |
+| `recordNonSplitAlloca` | `sub_2916C30` | -- | -- |
+| `computeRewrittenValue` | `sub_2916270` | -- | -- |
+| `advancePartitionIterator` | `sub_2912870` | -- | -- |
+| `rewriteGEPChain` | `sub_29348F0` | -- | -- |
+| `replaceAndErase` | `sub_2914800` | -- | -- |
+| `collectUsesForRewrite` (variant) | `sub_2914380` | -- | -- |
+| `collectUsesForRewrite` (original) | `sub_2914550` | -- | -- |
+| Hash table resize | `sub_29222D0` | -- | -- |
+| Alloca rewriting helper | `sub_292D810` | 67 KB | -- |
+| SROA pass metadata | `sub_2912100` | -- | -- |
+| SROA pass registration (`"Scalar Replacement Of Aggregates"`, `"sroa"`) | `sub_2912340` | -- | -- |
+|  | **Secondary instance (legacy PM)** |  | -- |
+| `SROAPass::runOnAlloca` (legacy) | `sub_1A33E80` | 61 KB | -- |
+| `SROAPass::splitAlloca` (legacy) | `sub_1A37040` | 46 KB | -- |
+| `rewritePartition` (memcpy/memset) | `sub_1A3B290` | 58 KB | -- |
+| `presplitLoadsAndStores` | `sub_1A2D070` | 35 KB | -- |
+| Select speculation | `sub_1A2C2F0` | 9 KB | -- |
+| Vector splat handling | `sub_1A2FFA0` | 12 KB | -- |
+| Load rewriting | `sub_1A30D10` | 16 KB | -- |
+| Extract/load patterns | `sub_1A31B60` | 9 KB | -- |
+| Type casting | `sub_1A23B30` | 11 KB | -- |
+| Speculative load promotion | `sub_1A3A670` | 13 KB | -- |
+| Alloca analysis / slice building | `sub_1A13B30` | 36 KB | -- |
+| Partition computation | `sub_1A15E70` | 34 KB | -- |
+| Use analysis | `sub_1A18770` | 38 KB | -- |
+| Cleanup | `sub_1A3DCD0` | 15 KB | -- |
+|  | **Shared helpers** |  | -- |
+| `isAllocaPromotable` | `sub_B4CE70` | -- | -- |
+| `getDL` (DataLayout) | `sub_B43CC0` | -- | -- |
+| `getTypeSizeInBits` | `sub_BDB740` | -- | -- |
+| `getTypeAllocSize` | `sub_9208B0` | -- | -- |
+| `getType` | `sub_BD5C60` | -- | -- |
+| `getName` | `sub_BD5D20` | -- | -- |
+| `AllocaInst::Create` | `sub_BD2C40` | -- | -- |
+| `PHINode::Create` | `sub_BD2DA0` | -- | -- |
+| `AllocaInst` constructor | `sub_B4CCA0` | -- | -- |
+| `CreateBitCast` | `sub_BCD140` | -- | -- |
+| `CreateAlloca` | `sub_BCD420` | -- | -- |
+| `replaceAllUsesWith` | `sub_BD84D0` | -- | -- |
+| `eraseFromParent` | `sub_B43D60` | -- | -- |
+| `SelectInst::Create` | `sub_B36550` | -- | -- |
+| `UndefValue::get` | `sub_ACADE0` | -- | -- |
+| `getABITypeAlignment` | `sub_AE5020` | -- | -- |
+| `getPrefTypeAlignment` | `sub_AE5260` | -- | -- |
+| `copyMetadata` | `sub_B91FC0` | -- | -- |
+| `isVolatile` | `sub_B46500` | -- | -- |
+| `isVectorType` | `sub_BCEBA0` | -- | -- |
+| `rewriteLoadStoreOfSlice` | `sub_F38250` | -- | -- |
+| `rewriteMemTransferOfSlice` | `sub_F38330` | -- | -- |
+| `collectAllUses` | `sub_AE74C0` | -- | -- |
+| `getAccessRange` | `sub_AF47B0` | -- | -- |
+| `checkSubAllocaOverlap` | `sub_AF4D30` | -- | -- |
+| `buildMetadataTable` | `sub_D5F1F0` | -- | -- |
+| `addToErasedSet` | `sub_D6B260` | -- | -- |
+| Slice optimizer init | `sub_11D2BF0` | -- | -- |
+| Slice optimizer run | `sub_11D3120` | -- | -- |
+| Slice optimizer finalize | `sub_11D7E80` | -- | -- |
+
+## Test This
+
+The following kernel allocates a local struct and accesses its fields. SROA should completely eliminate the alloca, promoting all fields to registers.
+
+```cuda
+struct Particle {
+    float x, y, z;
+    float vx, vy, vz;
+};
+
+__global__ void sroa_test(float* out, int n) {
+    Particle p;
+    p.x  = (float)threadIdx.x;
+    p.y  = (float)threadIdx.y;
+    p.z  = 0.0f;
+    p.vx = 1.0f;
+    p.vy = 2.0f;
+    p.vz = 3.0f;
+
+    float energy = 0.5f * (p.vx*p.vx + p.vy*p.vy + p.vz*p.vz);
+    out[threadIdx.x] = p.x + p.y + p.z + energy;
+}
+```
+
+**What to look for in PTX:**
+- Absence of `.local` memory declarations. If SROA succeeds, there should be no `.local .align` directives in the PTX for the `Particle` struct. All six fields (`x, y, z, vx, vy, vz`) should live in `%f` (float) registers.
+- No `st.local` or `ld.local` instructions. These indicate that the struct survived into `.local` memory -- a 200-400 cycle penalty per access versus zero cycles for a register.
+- The PTX should show direct register arithmetic: `mov.f32`, `fma.rn.f32`, `add.f32` -- no memory traffic at all for the struct fields.
+- To see the failure case, add `volatile` to the struct declaration (`volatile Particle p;`). This prevents SROA from promoting the alloca, and `ld.local`/`st.local` instructions will appear in the PTX, demonstrating the performance cliff that SROA normally prevents.
+- At `-O0`, SROA still runs (it is correctness-relevant for address space resolution), but with a more conservative threshold. Compare the `.local` frame size between `-O0` and `-O2`.
 
 ## Cross-References
 

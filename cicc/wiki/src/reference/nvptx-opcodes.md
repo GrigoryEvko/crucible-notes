@@ -482,33 +482,33 @@ Recovering these ranges requires systematic analysis of the `sub_33B0210` intrin
 
 ## Function Map
 
-| Address | Size | Identity |
-|---------|------|----------|
-| `sub_B612D0` | 104KB | Constraint emission (179-case switch on `word_3F3E6C0`) |
-| `sub_B5BA00` | 21KB | Register class set builder (111 cases) |
-| `sub_B6B200` | 44KB | Operand type decoder (101 cases) |
-| `sub_A778C0` | -- | `createRegClassConstraint(state, regclass, flags)` |
-| `sub_A77AD0` | -- | `createAnyRegConstraint(state, flags)` |
-| `sub_A79C90` | -- | `composeConstraints(state, desc, N)` |
-| `sub_A78010` | -- | `emitConstraint(state, desc_array, N)` |
-| `sub_3494EA0` | 12.7KB | Opcode-to-copy-type mapping (switch, families 440--503) |
-| `sub_34961A0` | 26.6KB | Operand-type classification (reads `byte_444C4A0`) |
-| `sub_3497B40` | 16.5KB | Register-pair decomposition (wide/paired registers) |
-| `sub_3040BF0` | 88KB | `NVPTXTargetLowering::LowerCall` (call ABI opcodes) |
-| `sub_33B0210` | 343KB | Intrinsic lowering switch (NVVM intrinsic to opcode) |
-| `sub_3090F90` | 91KB | `NVPTXDAGToDAGISel::Select` (ISel entry) |
-| `sub_21E74C0` | 17KB | MMA instruction builder (packed descriptor) |
-| `sub_21E5E70` | -- | Atomic operation PTX emission (base) |
-| `sub_21E6420` | -- | L2 cache-hinted atomic PTX emission (SM 80+) |
-| `sub_21E94F0` | -- | Memory barrier PTX emission |
-| `sub_21E8EA0` | -- | Cluster barrier PTX emission (SM 90+) |
-| `sub_21E86B0` | -- | Special register PTX emission |
-| `sub_21E9060` | -- | Cluster special register PTX emission (SM 90+) |
-| `sub_21E7FE0` | -- | Address space conversion (cvta) PTX emission |
-| `sub_21E8CD0` | -- | tcgen05 Blackwell MMA emission (SM 100+) |
-| `sub_21583D0` | -- | Register class to encoded ID mapping |
-| `sub_2163730` | -- | Register class to PTX type suffix |
-| `sub_21638D0` | -- | Register class to PTX register prefix |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| Constraint emission (179-case switch on `word_3F3E6C0`) | `sub_B612D0` | 104KB | -- |
+| Register class set builder (111 cases) | `sub_B5BA00` | 21KB | -- |
+| Operand type decoder (101 cases) | `sub_B6B200` | 44KB | -- |
+| `createRegClassConstraint(state, regclass, flags)` | `sub_A778C0` | -- | -- |
+| `createAnyRegConstraint(state, flags)` | `sub_A77AD0` | -- | -- |
+| `composeConstraints(state, desc, N)` | `sub_A79C90` | -- | -- |
+| `emitConstraint(state, desc_array, N)` | `sub_A78010` | -- | -- |
+| Opcode-to-copy-type mapping (switch, families 440--503) | `sub_3494EA0` | 12.7KB | -- |
+| Operand-type classification (reads `byte_444C4A0`) | `sub_34961A0` | 26.6KB | -- |
+| Register-pair decomposition (wide/paired registers) | `sub_3497B40` | 16.5KB | -- |
+| `NVPTXTargetLowering::LowerCall` (call ABI opcodes) | `sub_3040BF0` | 88KB | -- |
+| Intrinsic lowering switch (NVVM intrinsic to opcode) | `sub_33B0210` | 343KB | -- |
+| `NVPTXDAGToDAGISel::Select` (ISel entry) | `sub_3090F90` | 91KB | -- |
+| MMA instruction builder (packed descriptor) | `sub_21E74C0` | 17KB | -- |
+| Atomic operation PTX emission (base) | `sub_21E5E70` | -- | -- |
+| L2 cache-hinted atomic PTX emission (SM 80+) | `sub_21E6420` | -- | -- |
+| Memory barrier PTX emission | `sub_21E94F0` | -- | -- |
+| Cluster barrier PTX emission (SM 90+) | `sub_21E8EA0` | -- | -- |
+| Special register PTX emission | `sub_21E86B0` | -- | -- |
+| Cluster special register PTX emission (SM 90+) | `sub_21E9060` | -- | -- |
+| Address space conversion (cvta) PTX emission | `sub_21E7FE0` | -- | -- |
+| tcgen05 Blackwell MMA emission (SM 100+) | `sub_21E8CD0` | -- | -- |
+| Register class to encoded ID mapping | `sub_21583D0` | -- | -- |
+| Register class to PTX type suffix | `sub_2163730` | -- | -- |
+| Register class to PTX register prefix | `sub_21638D0` | -- | -- |
 
 ## Global Data References
 

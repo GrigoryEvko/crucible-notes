@@ -409,61 +409,61 @@ The memoization set (`sub_2B3C060`) prevents re-evaluating the same `(offset, VF
 
 ## Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_2BD1C50` | 85 KB | `HorizontalReduction::tryToReduce()` -- main horizontal reduction entry |
-| `sub_2BCE070` | -- | Straight-line SLP vectorizer entry |
-| `sub_2BCA110` | -- | Store-SLP vectorizer entry |
-| `sub_2BAACB0` | -- | `BoUpSLP::buildTree()` |
-| `sub_2B94A80` | 71 KB | `BoUpSLP::getTreeCost()` |
-| `sub_2BC6BE0` | 71 KB | `BoUpSLP::vectorizeTree()` (codegen) |
-| `sub_2BBDBE0` | 40 KB | `BoUpSLP::computeScheduleData()` |
-| `sub_2BBFB60` | 71 KB | `BoUpSLP::scheduleBlock()` |
-| `sub_2BB3590` | -- | `BoUpSLP::optimizeGatherSequence()` |
-| `sub_2BB0460` | -- | `BoUpSLP::reorderInputsIfNecessary()` |
-| `sub_2B4F3D0` | -- | `BoUpSLP::buildExternalUses()` |
-| `sub_2B28940` | -- | `getReductionCost()` |
-| `sub_2B21C80` | -- | `createFinalReduction()` |
-| `sub_2B21B90` | -- | `createReductionOp()` (`"const.rdx"`) |
-| `sub_2B2FE10` | -- | `buildReductionResult()` |
-| `sub_2B2F4A0` | -- | `reduceTreeLevel()` |
-| `sub_2B0D8B0` | -- | `isReductionOp()` |
-| `sub_2B0D880` | -- | `isHomogeneous()` (all ops satisfy predicate) |
-| `sub_2B4B450` | -- | `canVectorize()` (legality check) |
-| `sub_2B2DB00` | -- | `isTreeTinyAndNotFullyVectorizable()` |
-| `sub_2B2DA40` | -- | `isTreeNotBeneficialForArch()` |
-| `sub_2B1FA70` | -- | `adjustVF()` (vectorization factor selection) |
-| `sub_2B1E190` | -- | `getNextLegalVF()` |
-| `sub_2B49BC0` | -- | `getScalarTypeWidth()` |
-| `sub_2B6E610` | -- | `hasVectorizableReductions()` |
-| `sub_2B3C030` | -- | `tryMergeFaddBundles()` (NVIDIA-specific) |
-| `sub_2B25EA0` | -- | `validateMergedBundle()` (NVIDIA-specific) |
-| `sub_2B38BA0` | -- | `rewriteMergedBundle()` (NVIDIA-specific) |
-| `sub_2B77B90` | -- | `perBundleVectorize()` |
-| `sub_2B44ED0` | -- | `emitVectorizedReductionDiagnostic()` |
-| `sub_2B33D00` | -- | `reorderForCanonical()` |
-| `sub_2BD7F70` | 46 KB | SLP tree scheduling |
-| `sub_2B889C0` | 45 KB | SLP tree cost computation |
-| `sub_2BCFB90` | 44 KB | SLP value rewriting (scalar-to-vector) |
-| `sub_2BCAEC0` | 42 KB | SLP node creation (tree construction) |
-| `sub_2B5C350` | -- | `deleteTree()` (cleanup on failure) |
-| `sub_2B3C060` | -- | `alreadyTried()` (VF memoization) |
-| `sub_2B399C0` | -- | `tryNextVF()` (advance or fail) |
-| `sub_2B5F980` | -- | `classifyReductionPair()` (per-bundle opcode pair extraction) |
-| `sub_2B27F10` | -- | `hasExternalUses()` (external use check for bundles) |
-| `sub_BD5C60` | -- | `getTargetInfo()` (TTI accessor) |
-| `sub_D5F1F0` | -- | `initDominatorContext()` |
-| `sub_27B0000` | -- | `hashOperandSlice()` (operand slice hash for scheduling cache) |
-| `sub_2B15E10` | -- | Extended opcode classifier (opcodes > 0x1C) |
-| `sub_2B3D4E0` | -- | `buildOperandOrder()` (commutative reorder table) |
-| `sub_2B3D560` | -- | `isInScheduledSet()` (scheduling membership test) |
-| `sub_2B54920` | -- | Reduction use counter (per-operand) |
-| `sub_DFE640` | -- | `TTI::getRegisterBitWidth(Vector)` -- returns 32 |
-| `sub_DFE610` | -- | `TTI::supportsScalableVectors()` -- returns false |
-| `sub_DFB1B0` | -- | `TTI::getRegisterBitWidth(Scalar)` -- returns 32 |
-| `sub_20E14F0` | 33 KB | `TTI::getInstructionCost()` (scheduling cost model) |
-| `sub_B91420` | -- | `TTI::getInstructionCost()` (IR-level variant) |
-| `sub_B2D610` | -- | `TTI::hasAttribute(N)` (function attribute query) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `HorizontalReduction::tryToReduce()` -- main horizontal reduction entry | `sub_2BD1C50` | 85 KB | -- |
+| Straight-line SLP vectorizer entry | `sub_2BCE070` | -- | -- |
+| Store-SLP vectorizer entry | `sub_2BCA110` | -- | -- |
+| `BoUpSLP::buildTree()` | `sub_2BAACB0` | -- | -- |
+| `BoUpSLP::getTreeCost()` | `sub_2B94A80` | 71 KB | -- |
+| `BoUpSLP::vectorizeTree()` (codegen) | `sub_2BC6BE0` | 71 KB | -- |
+| `BoUpSLP::computeScheduleData()` | `sub_2BBDBE0` | 40 KB | -- |
+| `BoUpSLP::scheduleBlock()` | `sub_2BBFB60` | 71 KB | -- |
+| `BoUpSLP::optimizeGatherSequence()` | `sub_2BB3590` | -- | -- |
+| `BoUpSLP::reorderInputsIfNecessary()` | `sub_2BB0460` | -- | -- |
+| `BoUpSLP::buildExternalUses()` | `sub_2B4F3D0` | -- | -- |
+| `getReductionCost()` | `sub_2B28940` | -- | -- |
+| `createFinalReduction()` | `sub_2B21C80` | -- | -- |
+| `createReductionOp()` (`"const.rdx"`) | `sub_2B21B90` | -- | -- |
+| `buildReductionResult()` | `sub_2B2FE10` | -- | -- |
+| `reduceTreeLevel()` | `sub_2B2F4A0` | -- | -- |
+| `isReductionOp()` | `sub_2B0D8B0` | -- | -- |
+| `isHomogeneous()` (all ops satisfy predicate) | `sub_2B0D880` | -- | -- |
+| `canVectorize()` (legality check) | `sub_2B4B450` | -- | -- |
+| `isTreeTinyAndNotFullyVectorizable()` | `sub_2B2DB00` | -- | -- |
+| `isTreeNotBeneficialForArch()` | `sub_2B2DA40` | -- | -- |
+| `adjustVF()` (vectorization factor selection) | `sub_2B1FA70` | -- | -- |
+| `getNextLegalVF()` | `sub_2B1E190` | -- | -- |
+| `getScalarTypeWidth()` | `sub_2B49BC0` | -- | -- |
+| `hasVectorizableReductions()` | `sub_2B6E610` | -- | -- |
+| `tryMergeFaddBundles()` (NVIDIA-specific) | `sub_2B3C030` | -- | -- |
+| `validateMergedBundle()` (NVIDIA-specific) | `sub_2B25EA0` | -- | -- |
+| `rewriteMergedBundle()` (NVIDIA-specific) | `sub_2B38BA0` | -- | -- |
+| `perBundleVectorize()` | `sub_2B77B90` | -- | -- |
+| `emitVectorizedReductionDiagnostic()` | `sub_2B44ED0` | -- | -- |
+| `reorderForCanonical()` | `sub_2B33D00` | -- | -- |
+| SLP tree scheduling | `sub_2BD7F70` | 46 KB | -- |
+| SLP tree cost computation | `sub_2B889C0` | 45 KB | -- |
+| SLP value rewriting (scalar-to-vector) | `sub_2BCFB90` | 44 KB | -- |
+| SLP node creation (tree construction) | `sub_2BCAEC0` | 42 KB | -- |
+| `deleteTree()` (cleanup on failure) | `sub_2B5C350` | -- | -- |
+| `alreadyTried()` (VF memoization) | `sub_2B3C060` | -- | -- |
+| `tryNextVF()` (advance or fail) | `sub_2B399C0` | -- | -- |
+| `classifyReductionPair()` (per-bundle opcode pair extraction) | `sub_2B5F980` | -- | -- |
+| `hasExternalUses()` (external use check for bundles) | `sub_2B27F10` | -- | -- |
+| `getTargetInfo()` (TTI accessor) | `sub_BD5C60` | -- | -- |
+| `initDominatorContext()` | `sub_D5F1F0` | -- | -- |
+| `hashOperandSlice()` (operand slice hash for scheduling cache) | `sub_27B0000` | -- | -- |
+| Extended opcode classifier (opcodes > 0x1C) | `sub_2B15E10` | -- | -- |
+| `buildOperandOrder()` (commutative reorder table) | `sub_2B3D4E0` | -- | -- |
+| `isInScheduledSet()` (scheduling membership test) | `sub_2B3D560` | -- | -- |
+| Reduction use counter (per-operand) | `sub_2B54920` | -- | -- |
+| `TTI::getRegisterBitWidth(Vector)` -- returns 32 | `sub_DFE640` | -- | -- |
+| `TTI::supportsScalableVectors()` -- returns false | `sub_DFE610` | -- | -- |
+| `TTI::getRegisterBitWidth(Scalar)` -- returns 32 | `sub_DFB1B0` | -- | -- |
+| `TTI::getInstructionCost()` (scheduling cost model) | `sub_20E14F0` | 33 KB | -- |
+| `TTI::getInstructionCost()` (IR-level variant) | `sub_B91420` | -- | -- |
+| `TTI::hasAttribute(N)` (function attribute query) | `sub_B2D610` | -- | -- |
 
 ## Data Structure: HorizontalReduction Object
 

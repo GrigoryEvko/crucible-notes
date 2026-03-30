@@ -392,29 +392,29 @@ The master feature configurator `sub_60E7C0` sets the following flags at the sm_
 
 ## Key Binary Locations
 
-| Address | Symbol | Purpose |
-|---|---|---|
-| `0xCD09E0` | `sub_CD09E0` | NVVM arch enum (`NVVM_ARCH_HOPPER_9_0`) |
-| `0x50C890` | `ctor_356` | Subtarget registration (sm_90 enum 38, sm_90a enum 39) |
-| `0x214DA90` | `sub_214DA90` | Kernel attribute emitter (cluster PTX directives) |
-| `0x21E9060` | `sub_21E9060` | Cluster special register PTX emission |
-| `0x21E8EA0` | `sub_21E8EA0` | Cluster barrier instruction emission |
-| `0x21E94F0` | `sub_21E94F0` | Membar/fence printer (`fence.sc.cluster`) |
-| `0xBFC6A0` | `sub_BFC6A0` | setmaxnreg NVVM IR validation |
-| `0xFCDCB0` | `sub_FCDCB0` | setmaxnreg inline asm pattern matching |
-| `0x955A70` | `sub_955A70` | WGMMA lowering (M-dimension switch) |
-| `0x90AEE0` | `sub_90AEE0` | Builtin registration (WGMMA, cluster barriers/queries) |
-| `0xA8E250` | `sub_A8E250` | TMA intrinsic name parsing (52 KB) |
-| `0x33AD3D0` | `sub_33AD3D0` | TMA SelectionDAG lowering handler (modes 2/3/5/7) |
-| `0x33AB690` | `sub_33AB690` | `cp.async.bulk` non-tensor handler |
-| `0x33AC2B0` | `sub_33AC2B0` | `cp.async` handler |
-| `0x33AC130` | `sub_33AC130` | `cp.async.wait` handler |
-| `0x36EC510` | `sub_36EC510` | CpAsyncBulkTensor G2S lowering (27 KB, 1185 lines) |
-| `0x9483E0` | `sub_9483E0` | TMA descriptor extraction |
-| `0x12AA280` | `sub_12AA280` | TMA descriptor builder (EDG -> LLVM IR) |
-| `0x12A7070` | `sub_12A7070` | TMA scatter/store builtin handler |
-| `0x8D4C10` | `sub_8D4C10` | `edg::get_tma_descriptor_flags` |
-| `0x35F4B50` | `sub_35F4B50` | DSMEM qualifier emission |
-| `0x35F4E30` | `sub_35F4E30` | Commit modifier emission (mbarrier, multicast) |
-| `0x35F4AD0` | `sub_35F4AD0` | `.mbarrier_init` emission |
-| `0x35F4080` | `sub_35F4080` | Secondary `.shared::cluster` emission |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `sub_CD09E0` | `0xCD09E0` | NVVM arch enum (`NVVM_ARCH_HOPPER_9_0`) | NVVM arch enum (`NVVM_ARCH_HOPPER_9_0`) |
+| `ctor_356` | `0x50C890` | Subtarget registration (sm_90 enum 38, sm_90a enum 39) | Subtarget registration (sm_90 enum 38, sm_90a enum 39) |
+| `sub_214DA90` | `0x214DA90` | Kernel attribute emitter (cluster PTX directives) | Kernel attribute emitter (cluster PTX directives) |
+| `sub_21E9060` | `0x21E9060` | Cluster special register PTX emission | Cluster special register PTX emission |
+| `sub_21E8EA0` | `0x21E8EA0` | Cluster barrier instruction emission | Cluster barrier instruction emission |
+| `sub_21E94F0` | `0x21E94F0` | Membar/fence printer (`fence.sc.cluster`) | Membar/fence printer (`fence.sc.cluster`) |
+| `sub_BFC6A0` | `0xBFC6A0` | setmaxnreg NVVM IR validation | setmaxnreg NVVM IR validation |
+| `sub_FCDCB0` | `0xFCDCB0` | setmaxnreg inline asm pattern matching | setmaxnreg inline asm pattern matching |
+| `sub_955A70` | `0x955A70` | WGMMA lowering (M-dimension switch) | WGMMA lowering (M-dimension switch) |
+| `sub_90AEE0` | `0x90AEE0` | Builtin registration (WGMMA, cluster barriers/queries) | Builtin registration (WGMMA, cluster barriers/queries) |
+| `sub_A8E250` | `0xA8E250` | TMA intrinsic name parsing (52 KB) | TMA intrinsic name parsing (52 KB) |
+| `sub_33AD3D0` | `0x33AD3D0` | TMA SelectionDAG lowering handler (modes 2/3/5/7) | TMA SelectionDAG lowering handler (modes 2/3/5/7) |
+| `sub_33AB690` | `0x33AB690` | `cp.async.bulk` non-tensor handler | `cp.async.bulk` non-tensor handler |
+| `sub_33AC2B0` | `0x33AC2B0` | `cp.async` handler | `cp.async` handler |
+| `sub_33AC130` | `0x33AC130` | `cp.async.wait` handler | `cp.async.wait` handler |
+| `sub_36EC510` | `0x36EC510` | CpAsyncBulkTensor G2S lowering (27 KB, 1185 lines) | CpAsyncBulkTensor G2S lowering (27 KB, 1185 lines) |
+| `sub_9483E0` | `0x9483E0` | TMA descriptor extraction | TMA descriptor extraction |
+| `sub_12AA280` | `0x12AA280` | TMA descriptor builder (EDG -> LLVM IR) | TMA descriptor builder (EDG -> LLVM IR) |
+| `sub_12A7070` | `0x12A7070` | TMA scatter/store builtin handler | TMA scatter/store builtin handler |
+| `sub_8D4C10` | `0x8D4C10` | `edg::get_tma_descriptor_flags` | `edg::get_tma_descriptor_flags` |
+| `sub_35F4B50` | `0x35F4B50` | DSMEM qualifier emission | DSMEM qualifier emission |
+| `sub_35F4E30` | `0x35F4E30` | Commit modifier emission (mbarrier, multicast) | Commit modifier emission (mbarrier, multicast) |
+| `sub_35F4AD0` | `0x35F4AD0` | `.mbarrier_init` emission | `.mbarrier_init` emission |
+| `sub_35F4080` | `0x35F4080` | Secondary `.shared::cluster` emission | Secondary `.shared::cluster` emission |

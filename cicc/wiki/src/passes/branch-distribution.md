@@ -10,6 +10,8 @@ The pass works by classifying every instruction in the function as a shared/glob
 |---|---|
 | Pass name | `branch-dist` |
 | Pass type | FunctionPass (NVIDIA-custom, not in upstream LLVM) |
+| Registration | New PM #377, line 2217 in `sub_2342890` |
+| Runtime positions | Tier 1/2/3 #78, #82 (NVVMBranchDist via `sub_1CB73C0`, gated by `!opts[2080] && !opts[2120]`); see [Pipeline](../llvm/pipeline.md) |
 | Core function | `sub_1C47810` (2357 lines) |
 | Pass wrapper | `sub_1C49D10` (179 lines) |
 | Knob constructor | `ctor_525_0` at `0x563730` (493 lines) |
@@ -142,12 +144,21 @@ The default for `ignore-call-safety` is notably **true** (aggressive): device fu
 
 ## Diagnostic Strings
 
-When `dump-branch-dist` is enabled, the pass emits:
+Diagnostic strings recovered from `p2b.3-01-branchdist.txt`. All runtime diagnostics are gated by the `dump-branch-dist` knob (default false).
 
-```
-[filename:line] Removed dead synch: Read above: X, Write above: Y,
-  Read below: Z, Write below: W in function NAME
-```
+| String | Source | Category | Trigger |
+|--------|--------|----------|---------|
+| `"[filename:line] Removed dead synch: Read above: X, Write above: Y, Read below: Z, Write below: W in function NAME"` | `sub_1C47810` phase 3 | Debug | `dump-branch-dist` enabled and a barrier is removed; prints the four read/write flags and the function name |
+| `"Dump information from Branch Distribution"` | `ctor_525_0` at `0x563730` | Knob | `dump-branch-dist` knob description |
+| `"Ignore calls safety in branch Distribution"` | `ctor_525_0` | Knob | `ignore-call-safety` knob description |
+| `"Ignore variance condition in branch Distribution"` | `ctor_525_0` | Knob | `ignore-variance-cond` knob description |
+| `"Ignore address-space checks in branch Distribution"` | `ctor_525_0` | Knob | `ignore-address-space-check` knob description |
+| `"Ignore the overhead due to phis"` | `ctor_525_0` | Knob | `ignore-phi-overhead` knob description |
+| `"Disable more complex branch Distribution"` | `ctor_525_0` | Knob | `disable-complex-branch-dist` knob description |
+| `"Do not do Branch Distribution on some functions"` | `ctor_525_0` | Knob | `no-branch-dist` knob description (value format: `"function1,function2,..."`) |
+| `"Control number of functions to apply"` | `ctor_525_0` | Knob | `branch-dist-func-limit` knob description |
+| `"Control number of blocks to apply"` | `ctor_525_0` | Knob | `branch-dist-block-limit` knob description |
+| `"Control normalization for branch dist"` | `ctor_525_0` | Knob | `branch-dist-norm` knob description |
 
 ## Data Structures
 
@@ -164,24 +175,38 @@ All maps are `std::map`-like red-black trees with 48-byte nodes (left/right/pare
 
 ## Function Map
 
-| Address | Size | Role |
-|---|---|---|
-| `0x1C47810` | 2357L | Core algorithm: classify + propagate + remove |
-| `0x1C49D10` | 179L | Pass wrapper: init state, call core, cleanup |
-| `0x1C46330` | 197L | Phase 1: forward/backward instruction scan |
-| `0x1C46620` | 1157L | Phase 2: CFG successor propagation (fixed-point) |
-| `0x1C45690` | 117L | Instruction classifier: determines R/W flags |
-| `0x1C458C0` | 28L | Helper: classify all instructions in a block |
-| `0x1C46280` | 38L | Map insert-or-find (block-level maps) |
-| `0x1C47760` | 37L | Map insert-or-find (instruction-level maps) |
-| `0x1C475C0` | 43L | Map lower_bound lookup |
-| `0x1C47660` | 50L | Map find with hint |
-| `0x1C45B10` | 113L | Map erase operation |
-| `0x1C45C70` | 133L | Tree destructor (recursive free) |
-| `0x1C45940` | 133L | Tree destructor (recursive free, alt type) |
-| `0x1C301F0` | 15L | Is-sync-intrinsic predicate |
-| `0x1C30240` | 13L | Is-fence-intrinsic predicate |
-| `0x563730` | 493L | CLI knob registration (`ctor_525_0`) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| -- | `0x1C47810` | 2357L | Core algorithm: classify + propagate + remove |
+| -- | `0x1C49D10` | 179L | Pass wrapper: init state, call core, cleanup |
+| -- | `0x1C46330` | 197L | Phase 1: forward/backward instruction scan |
+| -- | `0x1C46620` | 1157L | Phase 2: CFG successor propagation (fixed-point) |
+| -- | `0x1C45690` | 117L | Instruction classifier: determines R/W flags |
+| -- | `0x1C458C0` | 28L | Helper: classify all instructions in a block |
+| -- | `0x1C46280` | 38L | Map insert-or-find (block-level maps) |
+| -- | `0x1C47760` | 37L | Map insert-or-find (instruction-level maps) |
+| -- | `0x1C475C0` | 43L | Map lower_bound lookup |
+| -- | `0x1C47660` | 50L | Map find with hint |
+| -- | `0x1C45B10` | 113L | Map erase operation |
+| -- | `0x1C45C70` | 133L | Tree destructor (recursive free) |
+| -- | `0x1C45940` | 133L | Tree destructor (recursive free, alt type) |
+| -- | `0x1C301F0` | 15L | Is-sync-intrinsic predicate |
+| -- | `0x1C30240` | 13L | Is-fence-intrinsic predicate |
+| -- | `0x563730` | 493L | CLI knob registration (`ctor_525_0`) |
+
+## Common Pitfalls
+
+These are mistakes a reimplementor is likely to make when building an equivalent dead barrier elimination pass using CFG dataflow.
+
+**1. Using address-level tracking instead of boolean per-category flags.** The pass tracks four boolean flags per block (reads_above, writes_above, reads_below, writes_below) for shared/global memory, not specific addresses. A reimplementation that attempts to track precise addresses ("smem[0] is only written above, smem[1] is only read below") will appear to find more dead barriers but is fundamentally unsound for GPU execution. Different threads access different addresses through the same pointer expression (`smem[tid]` vs `smem[tid-1]`), making address-based alias analysis across threads impossible at compile time. The boolean-per-category approach is the correct conservative abstraction.
+
+**2. Not excluding `__syncthreads_count/and/or` (IDs 3734--3736) from removal.** These barrier variants return a value that encodes lane participation information (`__syncthreads_count` returns the number of threads that passed a non-zero predicate). Even when no memory hazard exists across the barrier, the return value carries data that the program depends on. A reimplementation that removes these barriers based solely on memory analysis will break programs that use the return value for algorithmic purposes (e.g., warp-level voting patterns, early-exit counting).
+
+**3. Treating the `ignore-call-safety` default as conservative.** The default for `ignore-call-safety` is `true` (aggressive): function calls are assumed not to access shared/global memory. This is correct for typical CUDA helper functions that operate on registers and local memory, but a reimplementation that uses `false` as the default will retain nearly all barriers in code that calls device functions, defeating the optimization. Conversely, a reimplementation that uses `true` but does not also check the callee's `isSharedMemoryAccess` attribute when available will miss cases where a called function does access shared memory through a pointer argument.
+
+**4. Not restarting the analysis after removing a barrier.** The pass restarts from Phase 1 (goto LABEL_2) after each barrier deletion because removing one barrier merges the regions it separated, potentially exposing adjacent barriers as dead. A reimplementation that collects all dead barriers in one pass and removes them simultaneously will miss cascading redundancies. Worse, it may remove barriers in the wrong order: if barrier B2 is dead only because barrier B1 separates it from a hazard, removing both simultaneously removes B1's protection while the hazard still exists.
+
+**5. Conflating address space filtering with memory visibility.** The pass considers only shared and global memory accesses (address spaces > 511 and not in the `0x3xx` range) as relevant for barrier justification. Local/private memory (per-thread, invisible to other threads) is correctly excluded. A reimplementation that includes local memory accesses in the analysis will never remove any barrier in code that uses local arrays, since every function with local variables would show "read+write above and below." The address space filter is essential for the optimization to have any effect.
 
 ## GPU-Specific Motivation
 

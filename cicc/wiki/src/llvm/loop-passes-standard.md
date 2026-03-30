@@ -354,71 +354,71 @@ Ensures that every value defined inside a loop and used outside it passes throug
 
 ## Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_1945A50` | 65 KB | `IndVarSimplify::run` (core) |
-| `sub_19489B0` | -- | `IndVarSimplifyPass::run` (NewPM wrapper with NVIDIA guards) |
-| `sub_1943460` | -- | `rewriteLoopExitValues` |
-| `sub_1941790` | -- | `replaceExitValuesWithCompute` (LFTR commit) |
-| `sub_1940670` | -- | `computeWideTripCount` |
-| `sub_193E1A0` | -- | `hasCongruousExitingBlock` |
-| `sub_193DD90` | -- | `getLoopDepth` (recursive, 1 for outermost) |
-| `sub_193E640` | -- | `isBetterIV` (candidate comparison for LFTR) |
-| `sub_193F280` | -- | `exitValueSafeToExpand` (SCEV expandability check) |
-| `sub_193F190` | -- | `findFinalIVValue` (trace IV to exit value) |
-| `sub_193F750` | -- | `hasSafeExitBlock` (exit block LFTR safety) |
-| `sub_1940CE0` | -- | `initPassState` (initialize pass-level state) |
-| `sub_1940B30` | -- | `clearPassState` (cleanup per-iteration state) |
-| `sub_1B649E0` | -- | `SimplifyIndVar::simplifyIVUsers` |
-| `sub_1979A90` | 69 KB | `LoopInterchange::processLoopList` |
-| `sub_1975210` | 45 KB | `LoopInterchange` legality checker |
-| `sub_1978000` | 37 KB | `LoopInterchange` dependence analysis helper |
-| `sub_19743F0` | -- | `LoopInterchange::getAnalysisUsage` |
-| `sub_19742B0` | -- | SmallVector copy helper (dep vector / loop list) |
-| `sub_1974CB0` | -- | `vector<DepVector>` push\_back |
-| `sub_1973F90` | -- | Swap loop bounds / trip count metadata |
-| `sub_194D450` | 71 KB | `InductiveRangeCheckElimination::run` |
-| `sub_194C320` | -- | `createPreLoop` / `cloneLoopForRange` (~1200 bytes) |
-| `sub_194AE30` | -- | `createPostLoop` / `wirePostLoop` (~1300 bytes) |
-| `sub_1949EA0` | -- | `classifyRangeCheckICmp` (~800 bytes) |
-| `sub_1949540` | -- | `canHandleRangeCheck` (~400 bytes) |
-| `sub_1949670` | -- | `canHandleRangeCheckExtended` (~300 bytes, constrained mode) |
-| `sub_1949C30` | -- | `buildInductiveRangeCheck` (~500 bytes) |
-| `sub_1949270` | -- | `adjustSCEVAfterCloning` |
-| `sub_1948FD0` | -- | `simplifyLoopAfterCloning` (~200 bytes) |
-| `sub_1948D70` | -- | `verifyLoopStructure` (~200 bytes) |
-| `sub_1A8CD80` | 63 KB | `LoopDistributePass::run` |
-| `sub_1B1E040` | -- | `distributeLoopBody` (core fission engine, ~2000 bytes) |
-| `sub_1B1DC30` | -- | `updateDominatorTree` (post-distribution, ~400 bytes) |
-| `sub_1B1DDA0` | -- | `updateLoopInfo` (post-distribution, ~300 bytes) |
-| `sub_1B1F0F0` | -- | `cleanupPartitions` (~400 bytes) |
-| `sub_1B216C0` | -- | `verifyDistribution` (~300 bytes) |
-| `sub_1A8C510` | -- | `cleanupAfterDistribution` (~200 bytes) |
-| `sub_3860240` | -- | `lookupPartitionForInstruction` (hash table lookup) |
-| `sub_385DBB0` | -- | `hasDirectDependence(partA, partB)` |
-| `sub_385DB90` | -- | `alreadyMerged(partA, partB)` |
-| `sub_1452CB0` | -- | `isSafeToDistribute` (final safety check) |
-| `sub_196FF90` | 51 KB | `LoopIdiomRecognize::run` |
-| `sub_196B740` | 10 KB | LoopIdiom memset pattern detection |
-| `sub_196E000` | 43 KB | LoopIdiom memcpy/memmove patterns |
-| `sub_2AA00B0` | 48 KB | `expandMemCmpMismatch` |
-| `sub_2AA3190` | 40 KB | `expandFindFirst` (string search vectorization) |
-| `sub_2A9D690` | -- | `expandByteMismatchLoopBody` (type 0) |
-| `sub_2A9EC20` | -- | `expandWordMismatchLoopBody` (type 1) |
-| `sub_2A9D330` | -- | `replaceUsesOfPhiInSuccessors` (LCSSA fixup) |
-| `sub_2A0CFD0` | 65 KB | `LoopRotation::runOnLoop` |
-| `sub_28448D0` | -- | `LoopRotatePass` (NewPM, `"header-duplication;"`) |
-| `sub_18A3090` | -- | `LoopRotate` (legacy pipeline call) |
-| `sub_1A5B3D0` | 62 KB | `LoopSimplify` canonical form enforcement |
-| `sub_1A593E0` | 47 KB | `LoopSimplify` DomTree update helper |
-| `sub_1A5E350` | 25 KB | LoopSimplify preheader insertion |
-| `sub_1A5F590` | 42 KB | LoopSimplify exit block normalization |
-| `sub_1832270` | -- | `LoopSimplify` pipeline wrapper (with verify flag) |
-| `sub_1841180` | -- | `LoopSimplify + LCSSA` bundled pass |
-| `sub_1AE2630` | 49 KB | LCSSA formation pass |
-| `sub_1961B00` | 13 KB | LCSSA lightweight `.lcssa` PHI insertion |
-| `sub_1AF8F90` | -- | LCSSA form updater (used post-interchange) |
-| `sub_D48E00` | -- | `verifyLoopLCSSA` (assertion: "Loops must remain in LCSSA form!") |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `IndVarSimplify::run` (core) | `sub_1945A50` | 65 KB | -- |
+| `IndVarSimplifyPass::run` (NewPM wrapper with NVIDIA guards) | `sub_19489B0` | -- | -- |
+| `rewriteLoopExitValues` | `sub_1943460` | -- | -- |
+| `replaceExitValuesWithCompute` (LFTR commit) | `sub_1941790` | -- | -- |
+| `computeWideTripCount` | `sub_1940670` | -- | -- |
+| `hasCongruousExitingBlock` | `sub_193E1A0` | -- | -- |
+| `getLoopDepth` (recursive, 1 for outermost) | `sub_193DD90` | -- | -- |
+| `isBetterIV` (candidate comparison for LFTR) | `sub_193E640` | -- | -- |
+| `exitValueSafeToExpand` (SCEV expandability check) | `sub_193F280` | -- | -- |
+| `findFinalIVValue` (trace IV to exit value) | `sub_193F190` | -- | -- |
+| `hasSafeExitBlock` (exit block LFTR safety) | `sub_193F750` | -- | -- |
+| `initPassState` (initialize pass-level state) | `sub_1940CE0` | -- | -- |
+| `clearPassState` (cleanup per-iteration state) | `sub_1940B30` | -- | -- |
+| `SimplifyIndVar::simplifyIVUsers` | `sub_1B649E0` | -- | -- |
+| `LoopInterchange::processLoopList` | `sub_1979A90` | 69 KB | -- |
+| `LoopInterchange` legality checker | `sub_1975210` | 45 KB | -- |
+| `LoopInterchange` dependence analysis helper | `sub_1978000` | 37 KB | -- |
+| `LoopInterchange::getAnalysisUsage` | `sub_19743F0` | -- | -- |
+| SmallVector copy helper (dep vector / loop list) | `sub_19742B0` | -- | -- |
+| `vector<DepVector>` push\_back | `sub_1974CB0` | -- | -- |
+| Swap loop bounds / trip count metadata | `sub_1973F90` | -- | -- |
+| `InductiveRangeCheckElimination::run` | `sub_194D450` | 71 KB | -- |
+| `createPreLoop` / `cloneLoopForRange` (~1200 bytes) | `sub_194C320` | -- | -- |
+| `createPostLoop` / `wirePostLoop` (~1300 bytes) | `sub_194AE30` | -- | -- |
+| `classifyRangeCheckICmp` (~800 bytes) | `sub_1949EA0` | -- | -- |
+| `canHandleRangeCheck` (~400 bytes) | `sub_1949540` | -- | -- |
+| `canHandleRangeCheckExtended` (~300 bytes, constrained mode) | `sub_1949670` | -- | -- |
+| `buildInductiveRangeCheck` (~500 bytes) | `sub_1949C30` | -- | -- |
+| `adjustSCEVAfterCloning` | `sub_1949270` | -- | -- |
+| `simplifyLoopAfterCloning` (~200 bytes) | `sub_1948FD0` | -- | -- |
+| `verifyLoopStructure` (~200 bytes) | `sub_1948D70` | -- | -- |
+| `LoopDistributePass::run` | `sub_1A8CD80` | 63 KB | -- |
+| `distributeLoopBody` (core fission engine, ~2000 bytes) | `sub_1B1E040` | -- | -- |
+| `updateDominatorTree` (post-distribution, ~400 bytes) | `sub_1B1DC30` | -- | -- |
+| `updateLoopInfo` (post-distribution, ~300 bytes) | `sub_1B1DDA0` | -- | -- |
+| `cleanupPartitions` (~400 bytes) | `sub_1B1F0F0` | -- | -- |
+| `verifyDistribution` (~300 bytes) | `sub_1B216C0` | -- | -- |
+| `cleanupAfterDistribution` (~200 bytes) | `sub_1A8C510` | -- | -- |
+| `lookupPartitionForInstruction` (hash table lookup) | `sub_3860240` | -- | -- |
+| `hasDirectDependence(partA, partB)` | `sub_385DBB0` | -- | -- |
+| `alreadyMerged(partA, partB)` | `sub_385DB90` | -- | -- |
+| `isSafeToDistribute` (final safety check) | `sub_1452CB0` | -- | -- |
+| `LoopIdiomRecognize::run` | `sub_196FF90` | 51 KB | -- |
+| LoopIdiom memset pattern detection | `sub_196B740` | 10 KB | -- |
+| LoopIdiom memcpy/memmove patterns | `sub_196E000` | 43 KB | -- |
+| `expandMemCmpMismatch` | `sub_2AA00B0` | 48 KB | -- |
+| `expandFindFirst` (string search vectorization) | `sub_2AA3190` | 40 KB | -- |
+| `expandByteMismatchLoopBody` (type 0) | `sub_2A9D690` | -- | -- |
+| `expandWordMismatchLoopBody` (type 1) | `sub_2A9EC20` | -- | -- |
+| `replaceUsesOfPhiInSuccessors` (LCSSA fixup) | `sub_2A9D330` | -- | -- |
+| `LoopRotation::runOnLoop` | `sub_2A0CFD0` | 65 KB | -- |
+| `LoopRotatePass` (NewPM, `"header-duplication;"`) | `sub_28448D0` | -- | -- |
+| `LoopRotate` (legacy pipeline call) | `sub_18A3090` | -- | -- |
+| `LoopSimplify` canonical form enforcement | `sub_1A5B3D0` | 62 KB | -- |
+| `LoopSimplify` DomTree update helper | `sub_1A593E0` | 47 KB | -- |
+| LoopSimplify preheader insertion | `sub_1A5E350` | 25 KB | -- |
+| LoopSimplify exit block normalization | `sub_1A5F590` | 42 KB | -- |
+| `LoopSimplify` pipeline wrapper (with verify flag) | `sub_1832270` | -- | -- |
+| `LoopSimplify + LCSSA` bundled pass | `sub_1841180` | -- | -- |
+| LCSSA formation pass | `sub_1AE2630` | 49 KB | -- |
+| LCSSA lightweight `.lcssa` PHI insertion | `sub_1961B00` | 13 KB | -- |
+| LCSSA form updater (used post-interchange) | `sub_1AF8F90` | -- | -- |
+| `verifyLoopLCSSA` (assertion: "Loops must remain in LCSSA form!") | `sub_D48E00` | -- | -- |
 
 ---
 

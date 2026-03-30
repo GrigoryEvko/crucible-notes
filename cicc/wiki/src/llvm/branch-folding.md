@@ -1,6 +1,8 @@
 # BranchFolding & TailMerge
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **LLVM version note:** Based on LLVM 20.0.0 `BranchFolding.cpp`. The critical divergence is that cicc removes the `requiresStructuredCFG()` gate that upstream uses to disable tail merging for GPU targets, and compensates with a reserved-register merge safety check not present in any upstream version.
 
 BranchFolding is LLVM's post-register-allocation CFG optimizer. It runs after block placement and performs three transformations in a fixed-point loop: tail merging (extracting identical instruction tails from multiple blocks into a shared block), branch optimization (eliminating redundant or unreachable branches, merging single-predecessor blocks into predecessors), and common-code hoisting (lifting identical instructions from successors into a shared predecessor). In cicc v13.0 the pass lives at `sub_2F336B0` (the `OptimizeBlock` / `TailMergeBlocks` core, 11,347 bytes) with pass entry at `sub_2F36310`. The NVPTX version carries one critical divergence from upstream LLVM: tail merging is **not** disabled by `requiresStructuredCFG()`. Instead, cicc keeps tail merging enabled but gates individual merge decisions on a reserved-register check that prevents merging when NVPTX special registers (`%tid.x`, `%ntid.x`, etc.) cross the merge boundary.
 
@@ -394,31 +396,31 @@ The `tail-merge-size` of 3 is the break-even point: creating a new shared block 
 
 ## Function Map
 
-| Address | Size | Identity | Role |
+| Function | Address | Size | Role |
 |---|---|---|---|
-| `sub_2F36310` | -- | `BranchFolder::OptimizeFunction` | Pass entry; fixed-point loop over TailMerge + OptimizeBranches + HoistCommonCode |
-| `sub_2F336B0` | 11,347B | `BranchFolder::OptimizeBlock` / inner logic | Per-block optimization + tail merge core (792-byte stack frame) |
-| `sub_2F26260` | -- | `HashEndOfMBB` | Tail hash computation; hashes last non-debug non-terminator instruction |
-| `sub_2F31250` | -- | `isBranchFoldable` | Checks if operand represents a foldable branch target |
-| `sub_2F33020` | -- | Merge candidate map lookup | Hash table lookup in `MergePotentials` DenseMap |
-| `sub_2E2B9F0` | -- | `TryTailMergeBlocks` | Attempts merge across candidate set; calls Gates 1--4 |
-| `sub_2E09D00` | -- | `AnalyzeBranch` | NVPTXInstrInfo branch analysis: type, targets, conditions |
-| `sub_2E0C3B0` | -- | `RemoveBranch` | Removes terminator branch instructions from MBB |
-| `sub_2E0F080` | -- | `InsertBranch` | Inserts new branch instruction to redirect flow |
-| `sub_2E0A600` | -- | `ReplaceTailWithBranchTo` | Splices tail into shared block, inserts unconditional redirect |
-| `sub_2E0E0B0` | -- | `ReplaceUsesOfBlockWith` | Updates phi nodes and predecessor lists after merge |
-| `sub_2E192D0` | -- | `getBlockNumbered` | MBB number to pointer lookup |
-| `sub_2FAD510` | -- | `UpdateTerminator` | Fixes terminators after CFG modification |
-| `sub_2E790D0` | -- | `RemoveBlock` | Removes dead MBB from function; updates predecessor/successor lists |
-| `sub_2E16F10` | -- | `computeLiveIns` | Updates live-in register sets for merged block; filters reserved registers |
-| `sub_2EBEE10` | -- | `getVRegDef` | Virtual register definition lookup |
-| `sub_2E88A90` | -- | `hasProperty(flag)` | Multi-purpose register/operand property query (flag `0x200` = reserved, `0x80000` = uniform, `0x100000` = divergent) |
-| `sub_2E89C70` | -- | `HashMachineInstr` | Instruction hash for merge candidate bucketing (`* 37` multiply-XOR scheme) |
-| `sub_2E31080` | -- | `SpliceBlock` | Unlinks MBB from doubly-linked list |
-| `sub_2DAC790` | -- | `NVPTXInstrInfo` vtable | Vtable base checked at `0x2F337A3` to validate InstrInfo supports analyzeBranch |
-| `sub_3958DA0` | -- | Dynamic special register resolver | Resolves opcodes `0x5E`/`0x5F` to `%warpid`/`%laneid` |
-| `sub_21E86B0` | -- | Special register emission | Emits `%tid`, `%ctaid`, `%ntid`, `%nctaid` (opcodes `0x26`--`0x31`) |
-| `sub_21E9060` | -- | Cluster register emission (SM 90+) | Emits 15 cluster registers (`%cluster_ctarank`, `%clusterid`, etc.) |
+| `BranchFolder::OptimizeFunction` | `sub_2F36310` | -- | Pass entry; fixed-point loop over TailMerge + OptimizeBranches + HoistCommonCode |
+| `BranchFolder::OptimizeBlock` / inner logic | `sub_2F336B0` | 11,347B | Per-block optimization + tail merge core (792-byte stack frame) |
+| `HashEndOfMBB` | `sub_2F26260` | -- | Tail hash computation; hashes last non-debug non-terminator instruction |
+| `isBranchFoldable` | `sub_2F31250` | -- | Checks if operand represents a foldable branch target |
+| Merge candidate map lookup | `sub_2F33020` | -- | Hash table lookup in `MergePotentials` DenseMap |
+| `TryTailMergeBlocks` | `sub_2E2B9F0` | -- | Attempts merge across candidate set; calls Gates 1--4 |
+| `AnalyzeBranch` | `sub_2E09D00` | -- | NVPTXInstrInfo branch analysis: type, targets, conditions |
+| `RemoveBranch` | `sub_2E0C3B0` | -- | Removes terminator branch instructions from MBB |
+| `InsertBranch` | `sub_2E0F080` | -- | Inserts new branch instruction to redirect flow |
+| `ReplaceTailWithBranchTo` | `sub_2E0A600` | -- | Splices tail into shared block, inserts unconditional redirect |
+| `ReplaceUsesOfBlockWith` | `sub_2E0E0B0` | -- | Updates phi nodes and predecessor lists after merge |
+| `getBlockNumbered` | `sub_2E192D0` | -- | MBB number to pointer lookup |
+| `UpdateTerminator` | `sub_2FAD510` | -- | Fixes terminators after CFG modification |
+| `RemoveBlock` | `sub_2E790D0` | -- | Removes dead MBB from function; updates predecessor/successor lists |
+| `computeLiveIns` | `sub_2E16F10` | -- | Updates live-in register sets for merged block; filters reserved registers |
+| `getVRegDef` | `sub_2EBEE10` | -- | Virtual register definition lookup |
+| `hasProperty(flag)` | `sub_2E88A90` | -- | Multi-purpose register/operand property query (flag `0x200` = reserved, `0x80000` = uniform, `0x100000` = divergent) |
+| `HashMachineInstr` | `sub_2E89C70` | -- | Instruction hash for merge candidate bucketing (`* 37` multiply-XOR scheme) |
+| `SpliceBlock` | `sub_2E31080` | -- | Unlinks MBB from doubly-linked list |
+| `NVPTXInstrInfo` vtable | `sub_2DAC790` | -- | Vtable base checked at `0x2F337A3` to validate InstrInfo supports analyzeBranch |
+| Dynamic special register resolver | `sub_3958DA0` | -- | Resolves opcodes `0x5E`/`0x5F` to `%warpid`/`%laneid` |
+| Special register emission | `sub_21E86B0` | -- | Emits `%tid`, `%ctaid`, `%ntid`, `%nctaid` (opcodes `0x26`--`0x31`) |
+| Cluster register emission (SM 90+) | `sub_21E9060` | -- | Emits 15 cluster registers (`%cluster_ctarank`, `%clusterid`, etc.) |
 
 ## Interaction with StructurizeCFG
 

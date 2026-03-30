@@ -430,22 +430,22 @@ ProxyRegErasure (sub_21DA810)       Late cvta.to.local removal
 
 ## Function Map
 
-| Address | Role | Size |
-|---|---|---|
-| `sub_1CEF8F0` | NVVMPeephole factory (legacy PM) | small |
-| `sub_215D9D0` | NVVMAnnotationsProcessor (companion, always paired) | -- |
-| `sub_2314DA0` | NVVMPeepholeOptimizerPass serializer (New PM) | small |
-| `sub_2342890` | New PM registration function (slot 382) | -- |
-| `sub_233C410` | Pipeline text parser (line 3534) | -- |
-| `sub_21DB090` | NVPTXPeephole machine pass registration | small |
-| `sub_2166ED0` | `addPreRegAlloc()` -- hosts NVPTXPeephole | 1.6KB |
-| `sub_21DA810` | ProxyRegErasure (`cvta.to.local` removal) | -- |
-| `sub_2203290` | `param-opt` (`ld.param` optimization) | small |
-| `sub_2204E60` | Remove Redundant Moves | small |
-| `sub_22058E0` | `nvptx-trunc-opts` (ANDb16ri elimination) | small |
-| `sub_21BEE70` | `"Bad address space in addrspacecast"` validation | 4.1KB |
-| `sub_20DA7F0` | DAG combine / peephole on MachineInstrs | 30KB |
-| `sub_37E1AE0` | Late-stage machine optimization (peephole or copy prop) | 18KB |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| -- | `sub_1CEF8F0` | small | NVVMPeephole factory (legacy PM) |
+| -- | `sub_215D9D0` | -- | NVVMAnnotationsProcessor (companion, always paired) |
+| -- | `sub_2314DA0` | small | NVVMPeepholeOptimizerPass serializer (New PM) |
+| -- | `sub_2342890` | -- | New PM registration function (slot 382) |
+| -- | `sub_233C410` | -- | Pipeline text parser (line 3534) |
+| -- | `sub_21DB090` | small | NVPTXPeephole machine pass registration |
+| -- | `sub_2166ED0` | 1.6KB | `addPreRegAlloc()` -- hosts NVPTXPeephole |
+| -- | `sub_21DA810` | -- | ProxyRegErasure (`cvta.to.local` removal) |
+| -- | `sub_2203290` | small | `param-opt` (`ld.param` optimization) |
+| -- | `sub_2204E60` | small | Remove Redundant Moves |
+| -- | `sub_22058E0` | small | `nvptx-trunc-opts` (ANDb16ri elimination) |
+| -- | `sub_21BEE70` | 4.1KB | `"Bad address space in addrspacecast"` validation |
+| -- | `sub_20DA7F0` | 30KB | DAG combine / peephole on MachineInstrs |
+| -- | `sub_37E1AE0` | 18KB | Late-stage machine optimization (peephole or copy prop) |
 
 ## Differences from Upstream LLVM
 

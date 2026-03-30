@@ -99,13 +99,13 @@ Constructor: `ctor_214_0` at `0x4E4B00`. Eleven NVIDIA-specific LSR flags (69% N
 | Flag | Type | Default | Purpose |
 |---|---|---|---|
 | `disable-unknown-trip-lsr` | bool | false | Disable LSR for loops with unknown trip count |
-| `lsr-check-rp` | bool | false | Check register pressure before applying LSR |
-| `lsr-rp-limit` | int | none | Skip LSR entirely when RP exceeds this limit |
-| `filter-bad-formula` | bool | false | Filter out poor-quality LSR formulae early |
-| `do-lsr-64-bit` | bool | false | Enable 64-bit loop strength reduction |
-| `count-sxt-opt-for-reg-pressure` | bool | false | Factor sign-extension elimination savings into RP analysis |
-| `lsr-sxtopt` | bool | false | Perform sign-extension elimination within LSR |
-| `lsr-loop-level` | int | none | Apply LSR only at specific loop nesting level |
+| `lsr-check-rp` | bool | true `[MEDIUM]` | Check register pressure before applying LSR |
+| `lsr-rp-limit` | int | ~32-64 `[LOW]` | Skip LSR entirely when RP exceeds this limit (occupancy cliff) |
+| `filter-bad-formula` | bool | true `[MEDIUM]` | Filter out poor-quality LSR formulae early |
+| `do-lsr-64-bit` | bool | arch-dependent | Enable 64-bit loop strength reduction (false on sm_3x-5x, true on sm_70+) |
+| `count-sxt-opt-for-reg-pressure` | bool | true `[MEDIUM]` | Factor sign-extension elimination savings into RP analysis |
+| `lsr-sxtopt` | bool | true `[MEDIUM]` | Perform sign-extension elimination within LSR |
+| `lsr-loop-level` | int | 0 | Apply LSR only at specific loop nesting level (0 = all levels) |
 | `lsr-skip-outer-loop` | bool | false | Ignore outer-loop induction variables in LSR |
 | `disable-lsr-for-sharedmem32-ptr` | bool | false | Disable LSR for 32-bit shared memory pointers (GPU-specific) |
 | `disable-lsr-complexity-discount` | bool | false | Disable complexity estimation discount heuristic |
@@ -187,30 +187,83 @@ Constructor: `ctor_610` at `0x5888A0` (7,400 bytes).
 
 ### Category 10: Memory Space Optimization
 
-Scattered across `ctor_267`, `ctor_528`, `ctor_531`. Twenty NVIDIA-specific knobs for the address space inference engine. See [IPMSP](../passes/ipmsp.md) for the full algorithm.
+Scattered across `ctor_264`, `ctor_267_0`, `ctor_528`, `ctor_531_0`. See [MemorySpaceOpt](../passes/memory-space-opt.md) and [IPMSP](../passes/ipmsp.md) for the full algorithm.
 
 | Flag | Type | Default | Purpose |
 |---|---|---|---|
-| `mem-space-alg` | int | — | Switch between MSO algorithm variants |
+| `mem-space-alg` | int | 2 | Switch between MSO algorithm variants |
 | `dump-ir-before-memory-space-opt` | bool | false | Dump IR before MSO |
 | `dump-ir-after-memory-space-opt` | bool | false | Dump IR after MSO |
-| `track-indir-load` | bool | false | Track indirect loads during MSO dataflow |
-| `track-int2ptr` | bool | false | Track IntToPtr casts in MSO |
-| `param-always-point-to-global` | bool | false | Parameter pointers always point to global memory |
+| `track-indir-load` | bool | true | Track indirect loads during MSO dataflow |
+| `track-int2ptr` | bool | true | Track IntToPtr casts in MSO |
+| `param-always-point-to-global` | bool | true | Kernel parameter pointers always point to global memory |
 | `devicefn-param-always-local` | bool | false | Treat parameter space as local in device functions |
 | `ignore-address-space-check` | bool | false | Ignore address-space checks during branch distribution |
-| `sink-into-texture` | int | 0 | Sink loads into texture blocks: 1=cross-block, 2=+intra, 3=+consolidate |
+| `sink-into-texture` | int | 3 | Sink loads into texture blocks: 0=off, 1=cross-block, 2=+intra, 3=+outside-only. See also [Category 14](#category-14-sinking--code-motion) |
 | `ldg` | bool | true | Load Global Constant Transform (ld.global.nc) |
-| `do-clone-for-ip-msp` | int | — | Control function cloning limit for IP memory space propagation |
+| `do-clone-for-ip-msp` | int | -1 | Function cloning limit for IP-MSP (-1 = unlimited, 0 = disable) |
 | `dump-ip-msp` | bool | false | Dump interprocedural MSP info |
 | `lower-read-only-devicefn-byval` | bool | false | Handle byval attribute of args to read-only device functions |
 | `reuse-lmem-very-long-live-range` | int | — | Threshold for very-long live range in local memory reuse |
 | `hoist-load-param` | bool | false | Generate all `ld.param` in entry basic block |
 | `sink-ld-param` | bool | false | Sink one-use `ld.param` to use point |
+| `process-alloca-always` | bool | true | Treat `alloca` as definite local (AS 5) regardless of context |
+| `wmma-memory-space-opt` | bool | true | Enable memory space optimization for WMMA operations |
+| `strong-global-assumptions` | bool | true | Assume const buffer pointers always point to globals |
+| `process-builtin-assume` | bool | — | Process `__builtin_assume(__is*(p))` assertions for space deduction |
 
 ### Category 11: Rematerialization
 
-Scattered across `ctor_609_0`, `ctor_362`, and others. Twenty-two knobs for NVVM's multi-pass remat engine.
+Scattered across `ctor_609_0`, `ctor_362`, `ctor_277_0`, `ctor_361_0`, and others. See [Rematerialization](../passes/rematerialization.md) for full algorithm detail.
+
+#### IR-Level Knobs (ctor_277_0 at `0x4F7BE0`)
+
+| Flag | Type | Default | Global | Purpose |
+|---|---|---|---|---|
+| `do-remat` | int | 3 | `dword_4FC05C0` | Master control. 0=off, 1=conservative, 2=normal, 3=full |
+| `no-remat` | string | (empty) | `qword_4FC0440` | Comma-separated function exclusion list |
+| `remat-iv` | int | 4 | `dword_4FBFB40` | IV demotion level. 0=off, 4=full |
+| `remat-load` | int | 1 | `dword_4FBFA60` | Load rematerialization. 0=off, 1=on |
+| `remat-add` | int | 0 | `dword_4FBF980` | Add/GEP factoring. 0=off |
+| `remat-single-cost-limit` | int | 6000 | `dword_4FC0080` | Max cost per single live-in reduction |
+| `remat-loop-trip` | int | 20 | `dword_4FBFFA0` | Default assumed loop trip count |
+| `remat-gep-cost` | int | 6000 | `dword_4FBFEC0` | Max cost for GEP rematerialization |
+| `remat-use-limit` | int | 10 | `dword_4FBFDE0` | Max number of uses for a candidate |
+| `remat-max-live-limit` | int | 10 | `dword_4FBFD00` | Max live-in limit for rematerialization |
+| `remat-maxreg-ceiling` | int | 0 | `dword_4FBF600` | Register ceiling (0 = uncapped) |
+| `remat-for-occ` | int | 120 | `dword_4FBF8A0` | Occupancy-driven rematerialization target |
+| `remat-lli-factor` | int | 10 | `dword_4FC0320` | Long-latency instruction cost factor |
+| `remat-ignore-single-cost` | bool | false | `byte_4FBFC20` | Bypass per-value cost filter |
+| `remat-move` | bool | false | `byte_4FC0400` | Remat move instructions |
+| `simplify-live-out` | int | 2 | `dword_4FBF520` | NLO level. 0=off, 2=full |
+| `dump-remat` | int | 0 | `dword_4FC0240` | Debug dump level (0-4+) |
+| `dump-remat-iv` | int | 0 | `dword_4FC0160` | IV remat debug dump |
+| `dump-remat-load` | int | 0 | `dword_4FBF720` | Load remat debug dump |
+| `dump-remat-add` | int | 0 | `dword_4FBF640` | Add remat debug dump |
+| `dump-simplify-live-out` | bool | false | `byte_4FBF400` | NLO debug dump |
+
+#### Machine-Level Knobs (ctor_361_0 at `0x5108E0`)
+
+| Flag | Type | Default | Global | Purpose |
+|---|---|---|---|---|
+| `nv-remat-block` | int | 14 | `dword_4FD3820` | Bitmask controlling remat modes (bits 0-3) |
+| `nv-remat-max-times` | int | 10 | `dword_4FD3740` | Max outer loop iterations |
+| `nv-remat-block-single-cost` | int | 10 | `dword_4FD3660` | Max cost per single live value pull-in |
+| `nv-remat-block-map-size-limit` | int | 6 | `dword_4FD3580` | Map size limit for single pull-in |
+| `nv-remat-block-max-cost` | int | 100 | `dword_4FD3040` | Max total clone cost per live value reduction |
+| `nv-remat-block-liveout-min-percentage` | int | 70 | `dword_4FD3120` | Min liveout % for special consideration |
+| `nv-remat-block-loop-cost-factor` | int | 20 | `unk_4FD3400` | Loop cost multiplier |
+| `nv-remat-default-max-reg` | int | 70 | `unk_4FD3320` | Default max register pressure target |
+| `nv-remat-block-load-cost` | int | 10 | `unk_4FD2EC0` | Cost assigned to load instructions |
+| `nv-remat-threshold-for-spec-reg` | int | 20 | `unk_4FD3860` | Threshold for special register remat |
+| `nv-dump-remat-block` | bool | false | `byte_4FD2E80` | Debug dump toggle |
+| `nv-remat-check-internal-live` | bool | false | `byte_4FD2DA0` | Check internal liveness during MaxLive |
+| `max-reg-kind` | int | 0 | `qword_4FD2C20` | Kind of max register pressure info |
+| `no-mi-remat` | string | (empty) | `qword_4FD2BE0` | Skip machine-level remat for named functions |
+| `load-remat` | bool | true | `word_4FD32F0` | Enable load rematerialization |
+| `vasp-fix1` | bool | false | `word_4FD3210` | VASP fix for volatile/addsp |
+
+#### General Remat Knobs (ctor_609_0, ctor_362, and others)
 
 | Flag | Type | Default | Purpose |
 |---|---|---|---|
@@ -263,11 +316,15 @@ Seven NVIDIA-specific flags.
 
 ### Category 14: Sinking / Code Motion
 
-Ten knobs across multiple constructors.
+Thirteen knobs across multiple constructors. See [Sinking2](../passes/sinking2.md) for the NVIDIA-custom texture-aware sinking pass.
 
 | Flag | Type | Default | Purpose |
 |---|---|---|---|
+| `sink-into-texture` | int | 3 | Texture sinking aggressiveness: 0=off, 1=cross-block, 2=+intra, 3=+outside-only |
+| `sink-limit` | int | 20 | Max instructions to sink per Sinking2 invocation (complexity limiter) |
 | `dump-sink2` | bool | false | Debug dump for Sinking2 pass |
+| `sink-check-sched` | bool | true | Check scheduling effects of sinking (stock Sink) |
+| `sink-single-only` | bool | true | Only sink single-use instructions (stock Sink) |
 | `enable-andcmp-sinking` | bool | false | Sink and/cmp sequences into branches |
 | `aggressive-no-sink` | bool | false | Sink all generated instructions |
 | `max-uses-for-sinking` | int | — | Don't sink instructions with too many uses |
@@ -277,7 +334,9 @@ Ten knobs across multiple constructors.
 
 ### Category 15: Register Pressure / Allocation
 
-Ten NVIDIA-specific knobs.
+NVIDIA-specific knobs plus LLVM greedy allocator knobs. See [Register Allocation](../llvm/register-allocation.md) for the full algorithm.
+
+#### NVIDIA RP Knobs
 
 | Flag | Type | Default | Purpose |
 |---|---|---|---|
@@ -288,9 +347,23 @@ Ten NVIDIA-specific knobs.
 | `pred-aware-mcse` | bool | false | Predicate-aware MachineCSE |
 | `rp-aware-mcse` | bool | false | Register-pressure-aware MachineCSE |
 | `verify-update-mcse` | bool | false | Debug: verify incremental RP update in MachineCSE |
+| `incremental-update-mcse` | bool | true | Incrementally update register pressure analysis in MachineCSE |
+| `print-verify` | bool | false | Print problematic RP info if MCSE verification fails |
 | `pred-target-adjust` | int | 0 | Predicate register target adjustment (-10 to +10) |
 | `donot-insert-dup-copies` | bool | false | Skip duplicate copies to predecessor basic block |
 | `nv-disable-mem2reg` | bool | false | Disable machine-level mem2reg |
+
+#### LLVM Greedy Allocator Knobs
+
+| Flag | Type | Default | Purpose |
+|---|---|---|---|
+| `split-spill-mode` | int | 1 | Spill mode: 0=default, 1=size, 2=speed |
+| `lcr-max-depth` | int | 5 | Last chance recoloring max recursion depth |
+| `lcr-max-interf` | int | 8 | Last chance recoloring max interferences |
+| `exhaustive-register-search` | bool | false | Bypass LCR depth/interference cutoffs |
+| `enable-deferred-spilling` | bool | false | Defer spill code to end of allocation |
+| `grow-region-complexity-budget` | int | 10000 | `growRegion()` edge budget for live range splitting |
+| `split-threshold-for-reg-with-hint` | int | 75 | Split threshold percentage for hinted registers |
 
 ### Category 16: Restrict / Aliasing
 
@@ -420,6 +493,64 @@ Three flags.
 | `prefer-predicated-reduction-select` | bool | false | Prefer predicated reduction over after-loop select |
 | `openmp-opt-disable-barrier-elimination` | bool | false | Disable OpenMP barrier elimination |
 
+### Category 25: MachinePipeliner (Swing Modulo Scheduling)
+
+Eighteen LLVM-origin knobs for software pipelining. See [Scheduling](../llvm/scheduling.md) for the full algorithm.
+
+| Flag | Type | Default | Global | Purpose |
+|---|---|---|---|---|
+| `enable-pipeliner` | bool | true | `unk_503EE20` | Master switch for SMS |
+| `enable-pipeliner-opt-size` | bool | false | `qword_503ED40` | Enable SWP at -Os |
+| `pipeliner-max-mii` | int | 27 | `qword_503ECE8` | Maximum allowed MII |
+| `pipeliner-force-ii` | int | 0 | `qword_503EB80` | Force specific II (0 = auto) |
+| `pipeliner-max-stages` | int | 3 | `qword_503EB28` | Maximum pipeline stages |
+| `pipeliner-prune-deps` | bool | true | `qword_503E9C0` | Prune deps between unrelated Phi nodes |
+| `pipeliner-prune-loop-carried` | bool | true | `qword_503E8E0` | Prune loop-carried order deps |
+| `pipeliner-ignore-recmii` | bool | false | `qword_503E888` | Ignore RecMII; **hidden** |
+| `pipeliner-show-mask` | bool | false | `qword_503E720` | Debug: show scheduling mask |
+| `pipeliner-dbg-res` | bool | false | `qword_503E640` | Debug: resource usage |
+| `pipeliner-annotate-for-testing` | bool | false | `qword_503E5E8` | Annotate instead of codegen |
+| `pipeliner-experimental-cg` | bool | false | `qword_503E508` | Use peeling code generator |
+| `pipeliner-ii-search-range` | int | 10 | `qword_503E3A0` | Range to search for II |
+| `pipeliner-register-pressure` | bool | false | `qword_503E2C0` | Consider register pressure |
+| `pipeliner-register-pressure-margin` | int | 5 | `qword_503E1E0` | Margin % for reg pressure limit |
+| `pipeliner-mve-cg` | bool | true | `unk_503E100` | Use MVE code generator |
+| `pipeliner-enable-copytophi` | bool | true | `qword_503E020` | Enable CopyToPhi DAG Mutation |
+| `pipeliner-force-issue-width` | int | 0 | `qword_503DF40` | Force issue width (0 = auto) |
+
+### Category 26: LLVM Standard Inliner (Model B)
+
+Seventeen LLVM-origin knobs from `ctor_625_0` / `ctor_715_0` at `0x58FAD0`. These control the upstream `InlineCostAnalysis::analyzeCall` path; see [Inliner Cost Model](../lto/inliner-cost.md) for why the NVIDIA custom model (Category 2) dominates in practice.
+
+| Flag | Type | Default | Purpose |
+|---|---|---|---|
+| `inline-threshold` | int | 225 | Base inlining threshold |
+| `inlinedefault-threshold` | int | 225 | Default when no hint/profile |
+| `inlinehint-threshold` | int | 325 | Threshold for `__attribute__((always_inline))` hint |
+| `inline-cold-callsite-threshold` | int | 45 | Threshold for cold callsites |
+| `inlinecold-threshold` | int | 45 | Threshold for functions with cold attribute |
+| `hot-callsite-threshold` | int | 3000 | Threshold for hot callsites (PGO) |
+| `locally-hot-callsite-threshold` | int | 525 | Threshold for locally hot callsites |
+| `inline-instr-cost` | int | 5 | Cost per instruction |
+| `inline-call-penalty` | int | 25 | Penalty per callsite in callee |
+| `inline-memaccess-cost` | int | 0 | Cost per load/store |
+| `inline-savings-multiplier` | int | 8 | Multiplier for cycle savings |
+| `inline-savings-profitable-multiplier` | int | 4 | Multiplier for profitability check |
+| `inline-size-allowance` | int | 100 | Max callee size inlined without savings proof |
+| `inline-cost-full` | bool | false | Compute full cost even when over threshold |
+| `inline-enable-cost-benefit-analysis` | bool | false | Enable cost-benefit analysis |
+| `inline-deferral` | bool | — | Defer inlining in cold paths (PGO) |
+| `inline-remark-attribute` | bool | false | Emit inline remarks |
+
+### Category 27: New PM CGSCC Inliner (Model C)
+
+Two knobs for the New Pass Manager CGSCC inliner at `0x2613930`. See [Inliner Cost Model](../lto/inliner-cost.md).
+
+| Flag | Type | Default | Purpose |
+|---|---|---|---|
+| `function-inline-cost-multiplier` | int | — | Penalize recursive function inlining |
+| `enable-ml-inliner` | enum | default | ML advisory mode: `default`, `development`, `release` |
+
 ## Knob System 2: NVVMPassOptions
 
 222 pass option slots initialized by `sub_12D6300` (125KB). Each slot is accessed by integer index (1--221) and stored in a ~4,480-byte struct.
@@ -482,14 +613,19 @@ These are effective defaults applied by the flag catalog parser (`sub_9624D0`), 
 |---|---|---|---|
 | LSR | 11 | 5 | 69% |
 | InstCombine | 12 | 4 | 75% |
-| Inliner | 9 | 1 | 90% |
-| GVN | 11 | 3 | 79% |
+| Inliner (NVIDIA custom) | 9 | 0 | 100% |
+| Inliner (LLVM standard) | 0 | 17 | 0% |
+| GVN | 8 | 3 | 73% |
 | NVPTX Backend | 30+ | 0 | 100% |
 | SimplifyCFG | 2 | 8+ | 20% |
-| Memory Space Opt | 16 | 0 | 100% |
-| Rematerialization | 15 | 0 | 100% |
+| Memory Space Opt | 20 | 0 | 100% |
+| Rematerialization (IR) | 21 | 0 | 100% |
+| Rematerialization (MI) | 16 | 0 | 100% |
+| Rematerialization (General) | 15 | 0 | 100% |
 | SCEV-CGP | 11 | 0 | 100% |
-| Register Pressure | 10 | 0 | 100% |
+| Register Pressure | 12 | 7 | 63% |
+| Sinking / Code Motion | 5 | 6 | 45% |
+| MachinePipeliner | 0 | 18 | 0% |
 | Vectorizer | 0 | 18+ | 0% |
 | SCEV | 0 | 10+ | 0% |
 
@@ -499,6 +635,14 @@ These are effective defaults applied by the flag catalog parser (`sub_9624D0`), 
 - [CLI Flags](cli-flags.md) -- complete flag-to-pipeline routing
 - [Environment Variables](env-vars.md) -- all verified env vars
 - [Optimization Levels](optimization-levels.md) -- O0/O1/O2/O3 and fast-compile pipelines
+- [Rematerialization](../passes/rematerialization.md) -- multi-pass remat engine
+- [Memory Space Optimization](../passes/memory-space-opt.md) -- address space resolution
+- [Sinking2](../passes/sinking2.md) -- texture-aware sinking
+- [Register Allocation](../llvm/register-allocation.md) -- greedy RA with NVIDIA extensions
+- [Scheduling](../llvm/scheduling.md) -- SMS and MRPA
 - [IPMSP](../passes/ipmsp.md) -- memory space optimization engine
 - [Alias Analysis](../infra/alias-analysis.md) -- restrict propagation
 - [CodeGenPrepare](../llvm/codegen-prepare.md) -- SCEV-CGP pass
+- [Inliner Cost Model](../lto/inliner-cost.md) -- four parallel inliner models
+- [GVN](../llvm/gvn.md) -- GPU-specific value numbering
+- [LSR](../llvm/lsr.md) -- GPU-aware loop strength reduction

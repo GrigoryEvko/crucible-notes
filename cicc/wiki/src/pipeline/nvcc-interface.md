@@ -423,25 +423,25 @@ The `a13` parameter in `sub_9624D0` is an IN/OUT bitmask tracking compilation mo
 
 ## Function Map
 
-| Address | Function | Size | Role |
-|---------|----------|------|------|
-| `0x8F9C90` | `sub_8F9C90` | 10,066 B | Real main entry point |
-| `0x8FE280` | `sub_8FE280` | ~35 KB | Flag translation tree builder (nvcc -> cicc) |
-| `0x8FE150` | `sub_8FE150` | -- | Tree lookup (lower_bound + insert) |
-| `0x8FDFD0` | `sub_8FDFD0` | -- | Tree insert + rebalance |
-| `0x8FD0D0` | `sub_8FD0D0` | -- | Architecture flag scanner (first pass) |
-| `0x900130` | `sub_900130` | 39 KB | CLI processing Path A (12 params) |
-| `0x902D10` | `sub_902D10` | ~9 KB | Path A orchestrator |
-| `0x904450` | `sub_904450` | -- | Push flag to argument vector |
-| `0x905880` | `sub_905880` | ~6 KB | EDG frontend stage |
-| `0x905EE0` | `sub_905EE0` | 43 KB | Path A multi-stage pipeline driver |
-| `0x908220` | `sub_908220` | -- | LLC output callback (ID 56993) |
-| `0x908850` | `sub_908850` | -- | Triple construction (`nvptx64-nvidia-cuda`) |
-| `0x9085A0` | `sub_9085A0` | -- | OPT output callback (ID 64222) |
-| `0x95EB40` | `sub_95EB40` | 38 KB | 3-column architecture mapping table builder |
-| `0x9624D0` | `sub_9624D0` | 75 KB | Flag catalog (4 output vectors, ~111 flags) |
-| `0x1262860` | `sub_1262860` | -- | Path B simple dispatch |
-| `0x1265970` | `sub_1265970` | 48 KB | Path B multi-stage pipeline driver |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `sub_8F9C90` | `0x8F9C90` | 10,066 B | Real main entry point |
+| `sub_8FE280` | `0x8FE280` | ~35 KB | Flag translation tree builder (nvcc -> cicc) |
+| `sub_8FE150` | `0x8FE150` | -- | Tree lookup (lower_bound + insert) |
+| `sub_8FDFD0` | `0x8FDFD0` | -- | Tree insert + rebalance |
+| `sub_8FD0D0` | `0x8FD0D0` | -- | Architecture flag scanner (first pass) |
+| `sub_900130` | `0x900130` | 39 KB | CLI processing Path A (12 params) |
+| `sub_902D10` | `0x902D10` | ~9 KB | Path A orchestrator |
+| `sub_904450` | `0x904450` | -- | Push flag to argument vector |
+| `sub_905880` | `0x905880` | ~6 KB | EDG frontend stage |
+| `sub_905EE0` | `0x905EE0` | 43 KB | Path A multi-stage pipeline driver |
+| `sub_908220` | `0x908220` | -- | LLC output callback (ID 56993) |
+| `sub_908850` | `0x908850` | -- | Triple construction (`nvptx64-nvidia-cuda`) |
+| `sub_9085A0` | `0x9085A0` | -- | OPT output callback (ID 64222) |
+| `sub_95EB40` | `0x95EB40` | 38 KB | 3-column architecture mapping table builder |
+| `sub_9624D0` | `0x9624D0` | 75 KB | Flag catalog (4 output vectors, ~111 flags) |
+| `sub_1262860` | `0x1262860` | -- | Path B simple dispatch |
+| `sub_1265970` | `0x1265970` | 48 KB | Path B multi-stage pipeline driver |
 
 ### Global Variables
 

@@ -132,15 +132,18 @@ Four small functions classify how the `ICmp` operands relate to the induction va
 | `sub_2CBF770` | — | Validate loop structure for splitting |
 | `sub_2CBF180` | — | Create new loop preheader for split result |
 
-## Optimization Remarks
+## Diagnostic Strings
 
-The pass emits three distinct optimization remark strings, allowing developers to see which transformation was applied:
+Diagnostic strings recovered from `p2b.4-5-sinking2-loopindexsplit.txt`. The pass emits optimization remarks via the standard LLVM `OptimizationRemark` system.
 
-| Remark | Transformation |
-|---|---|
-| `"LoopIndexSplit: performed processAllButOneIterationLoop"` | Mode A: single iteration peeled |
-| `"LoopIndexSplit: performed processOnlyOneIterationLoop"` | Mode B: loop replaced with guarded body |
-| `"LoopIndexSplit: performed processSplitRangeLoop"` | Mode C: loop split at range boundary |
+| String | Source | Category | Trigger |
+|--------|--------|----------|---------|
+| `"LoopIndexSplit: performed processAllButOneIterationLoop"` | `sub_2CC3FF0` (New PM) / `sub_1C77080` (Legacy PM) | Remark | Mode A transformation applied: single exceptional iteration peeled |
+| `"LoopIndexSplit: performed processOnlyOneIterationLoop"` | `sub_2CC4A70` (New PM) / `sub_1C77080` (Legacy PM) | Remark | Mode B transformation applied: entire loop replaced with guarded single body |
+| `"LoopIndexSplit: performed processSplitRangeLoop"` | `sub_2CC5900` (New PM) / `sub_1C7B2C0` (Legacy PM) | Remark | Mode C transformation applied: loop split at range boundary |
+| `"Index Split Loops"` | `sub_1C76080` / `sub_2CBEC60` | Registration | Display name used in both Legacy PM and New PM pass registration |
+| `"loop-index-split"` | Pipeline parser (`sub_2377300` line 3768, `sub_2368220` line 5081) | Registration | Pipeline ID string (16 characters) |
+| `"LoopSplitIndex"` / `"LoopIndexSplit"` | Remark infrastructure | Remark tag | Optimization remark tag names (both variants observed in binary) |
 
 ## Configuration Knobs
 
@@ -184,45 +187,45 @@ SCEV is the critical dependency: it provides induction variable identification, 
 
 ### New PM Implementation
 
-| Address | Size | Role |
-|---|---|---|
-| `0x2CBEC60` | — | New PM pass registration |
-| `0x2CBFF20` | — | New PM factory |
-| `0x2CC3FF0` | 13KB | `processAllButOneIterationLoop` (Mode A) |
-| `0x2CC4A70` | 19KB | `processOnlyOneIterationLoop` (Mode B) |
-| `0x2CC5900` | 68KB | Main driver + `processSplitRangeLoop` (Mode C) |
-| `0x2CC1B10` | 42KB | Loop cloning and CFG rewiring |
-| `0x2CC0040` | 7KB | Split boundary computation |
-| `0x2CC0CC0` | 7KB | Alternate split boundary computation |
-| `0x2CC9AA0` | 18KB | Helper |
-| `0x2CCB3B0` | 25KB | Helper |
-| `0x2CCCE20` | 13KB | Helper |
-| `0x2CCDD70` | 15KB | Helper |
-| `0x2CCED30` | 8KB | Helper |
-| `0x2CCF450` | 57KB | Large helper / alternate path |
-| `0x2CBED80` | — | Comparison classifier (IV operand) |
-| `0x2CBED00` | — | Comparison classifier (bound operand) |
-| `0x2CBEE00` | — | Comparison direction classifier |
-| `0x2CBEE80` | — | Extended comparison classifier |
-| `0x2CBFC80` | — | Split legality validation |
-| `0x2CBF770` | — | Loop structure validation |
-| `0x2CBF180` | — | Create new preheader |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| -- | `0x2CBEC60` | — | New PM pass registration |
+| -- | `0x2CBFF20` | — | New PM factory |
+| -- | `0x2CC3FF0` | 13KB | `processAllButOneIterationLoop` (Mode A) |
+| -- | `0x2CC4A70` | 19KB | `processOnlyOneIterationLoop` (Mode B) |
+| -- | `0x2CC5900` | 68KB | Main driver + `processSplitRangeLoop` (Mode C) |
+| -- | `0x2CC1B10` | 42KB | Loop cloning and CFG rewiring |
+| -- | `0x2CC0040` | 7KB | Split boundary computation |
+| -- | `0x2CC0CC0` | 7KB | Alternate split boundary computation |
+| -- | `0x2CC9AA0` | 18KB | Helper |
+| -- | `0x2CCB3B0` | 25KB | Helper |
+| -- | `0x2CCCE20` | 13KB | Helper |
+| -- | `0x2CCDD70` | 15KB | Helper |
+| -- | `0x2CCED30` | 8KB | Helper |
+| -- | `0x2CCF450` | 57KB | Large helper / alternate path |
+| -- | `0x2CBED80` | — | Comparison classifier (IV operand) |
+| -- | `0x2CBED00` | — | Comparison classifier (bound operand) |
+| -- | `0x2CBEE00` | — | Comparison direction classifier |
+| -- | `0x2CBEE80` | — | Extended comparison classifier |
+| -- | `0x2CBFC80` | — | Split legality validation |
+| -- | `0x2CBF770` | — | Loop structure validation |
+| -- | `0x2CBF180` | — | Create new preheader |
 
 ### Legacy PM Implementation
 
-| Address | Size | Role |
-|---|---|---|
-| `0x1C76080` | — | Legacy PM pass registration |
-| `0x1C76180` | — | Legacy PM factory |
-| `0x1C76260` | — | Alternate factory |
-| `0x1C76340` | 7KB | Hash table management for visited set |
-| `0x1C768C0` | 4KB | Helper |
-| `0x1C76B50` | 4KB | Block cloning helper |
-| `0x1C76EB0` | 2.5KB | Recursive loop tree walker |
-| `0x1C77080` | 46KB | `processAllButOneIterationLoop` + `processOnlyOneIterationLoop` |
-| `0x1C797A0` | 15KB | Split legality checking |
-| `0x1C7A300` | 21KB | Loop body cloning |
-| `0x1C7B2C0` | 84KB | `processSplitRangeLoop` + main driver |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| -- | `0x1C76080` | — | Legacy PM pass registration |
+| -- | `0x1C76180` | — | Legacy PM factory |
+| -- | `0x1C76260` | — | Alternate factory |
+| -- | `0x1C76340` | 7KB | Hash table management for visited set |
+| -- | `0x1C768C0` | 4KB | Helper |
+| -- | `0x1C76B50` | 4KB | Block cloning helper |
+| -- | `0x1C76EB0` | 2.5KB | Recursive loop tree walker |
+| -- | `0x1C77080` | 46KB | `processAllButOneIterationLoop` + `processOnlyOneIterationLoop` |
+| -- | `0x1C797A0` | 15KB | Split legality checking |
+| -- | `0x1C7A300` | 21KB | Loop body cloning |
+| -- | `0x1C7B2C0` | 84KB | `processSplitRangeLoop` + main driver |
 
 **Total code size:** ~180KB (Legacy PM) + ~260KB (New PM) = ~440KB. This is one of the largest individual passes in cicc.
 

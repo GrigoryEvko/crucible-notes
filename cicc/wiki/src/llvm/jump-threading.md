@@ -1,6 +1,8 @@
 # JumpThreading
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **LLVM version note:** Based on LLVM 20.0.0 `JumpThreading.cpp`. Evidence: DFA JumpThreading variant (`dfa-jump-threading`) present as a separate pass matches LLVM 14+; `early-exit-heuristic` knob matches LLVM 16+. Core algorithm is unmodified; NVIDIA changes are configuration-level (adjusted thresholds, three pipeline positions, OCG disable flag).
 
 CICC v13.0 ships LLVM's `JumpThreadingPass` at `sub_2DC4260` (12,932 bytes, address range `0x2DC4260`--`0x2DC74E4`). The pass duplicates basic blocks so that predecessors whose branch conditions can be statically resolved jump directly to the correct successor, eliminating a conditional branch from the critical path. On a GPU, this directly reduces warp divergence: a branch that was previously data-dependent becomes unconditional along each incoming edge, so the warp scheduler never needs to serialize the two paths.
 
@@ -394,38 +396,38 @@ The core algorithm is unmodified from upstream. NVIDIA's changes are configurati
 
 ## Function Map
 
-| Address | Size | Identity |
-|---------|------|----------|
-| `sub_2DC4260` | 12,932 bytes | `JumpThreadingPass::run` (main pass body) |
-| `sub_2DC22F0` | 2,797 bytes | Block cloning engine (`duplicateBlock`) |
-| `sub_2DC30A0` | 1,094 bytes | CFG finalization after threading |
-| `sub_2DC37C0` | 2,288 bytes | Single-instruction threading |
-| `sub_2DC40B0` | 420 bytes | `tryToUnfoldSelect` |
-| `sub_2DC1F40` | 349 bytes | SmallVector append/copy for instruction map |
-| `sub_11F3070` | -- | `LVI::getPredicateAt` |
-| `sub_DFABC0` | -- | `evaluateConditionOnEdge` |
-| `sub_988330` | -- | `getConstantOnEdge` |
-| `sub_AC4810` | -- | `isImpliedCondition` |
-| `sub_AA93C0` | -- | `SimplifyICmpInst` |
-| `sub_981210` | -- | `getBranchCondition` |
-| `sub_B43CB0` | -- | `BranchInst::getCondition` |
-| `sub_B4C9A0` | -- | `BranchInst::Create` (conditional) |
-| `sub_B4C8F0` | -- | `BranchInst::Create` (unconditional) |
-| `sub_B99FD0` | -- | `PHINode::addIncoming` |
-| `sub_D5C860` | -- | `PHINode::Create` |
-| `sub_F36990` | -- | `SplitBlockAndInsertIfThen` |
-| `sub_BD5C60` | -- | `BasicBlock::getContext` |
-| `sub_22077B0` | -- | `operator new(0x50)` (allocate BasicBlock) |
-| `sub_AA4D50` | -- | `BasicBlock::insertInto` |
-| `sub_BD84D0` | -- | `Value::replaceAllUsesWith` |
-| `sub_B43D60` | -- | `Instruction::eraseFromParent` |
-| `sub_FFB3D0` | -- | `DominatorTree::changeImmediateDominator` |
-| `sub_AD69F0` | -- | `PHINode::getIncomingValueForBlock` |
-| `sub_C959E0` | -- | LoopInfo pass lookup |
-| `sub_B532B0` | -- | Predicate implies branch check |
-| `sub_B52EF0` | -- | `ConstantExpr::getICmp` or create threaded edge |
-| `sub_92B530` | -- | `CloneBasicBlock` or wire new block |
-| `sub_929DE0` | -- | `CloneBasicBlock` (alternate path) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `JumpThreadingPass::run` (main pass body) | `sub_2DC4260` | 12,932 bytes | -- |
+| Block cloning engine (`duplicateBlock`) | `sub_2DC22F0` | 2,797 bytes | -- |
+| CFG finalization after threading | `sub_2DC30A0` | 1,094 bytes | -- |
+| Single-instruction threading | `sub_2DC37C0` | 2,288 bytes | -- |
+| `tryToUnfoldSelect` | `sub_2DC40B0` | 420 bytes | -- |
+| SmallVector append/copy for instruction map | `sub_2DC1F40` | 349 bytes | -- |
+| `LVI::getPredicateAt` | `sub_11F3070` | -- | -- |
+| `evaluateConditionOnEdge` | `sub_DFABC0` | -- | -- |
+| `getConstantOnEdge` | `sub_988330` | -- | -- |
+| `isImpliedCondition` | `sub_AC4810` | -- | -- |
+| `SimplifyICmpInst` | `sub_AA93C0` | -- | -- |
+| `getBranchCondition` | `sub_981210` | -- | -- |
+| `BranchInst::getCondition` | `sub_B43CB0` | -- | -- |
+| `BranchInst::Create` (conditional) | `sub_B4C9A0` | -- | -- |
+| `BranchInst::Create` (unconditional) | `sub_B4C8F0` | -- | -- |
+| `PHINode::addIncoming` | `sub_B99FD0` | -- | -- |
+| `PHINode::Create` | `sub_D5C860` | -- | -- |
+| `SplitBlockAndInsertIfThen` | `sub_F36990` | -- | -- |
+| `BasicBlock::getContext` | `sub_BD5C60` | -- | -- |
+| `operator new(0x50)` (allocate BasicBlock) | `sub_22077B0` | -- | -- |
+| `BasicBlock::insertInto` | `sub_AA4D50` | -- | -- |
+| `Value::replaceAllUsesWith` | `sub_BD84D0` | -- | -- |
+| `Instruction::eraseFromParent` | `sub_B43D60` | -- | -- |
+| `DominatorTree::changeImmediateDominator` | `sub_FFB3D0` | -- | -- |
+| `PHINode::getIncomingValueForBlock` | `sub_AD69F0` | -- | -- |
+| LoopInfo pass lookup | `sub_C959E0` | -- | -- |
+| Predicate implies branch check | `sub_B532B0` | -- | -- |
+| `ConstantExpr::getICmp` or create threaded edge | `sub_B52EF0` | -- | -- |
+| `CloneBasicBlock` or wire new block | `sub_92B530` | -- | -- |
+| `CloneBasicBlock` (alternate path) | `sub_929DE0` | -- | -- |
 
 ## Cross-References
 

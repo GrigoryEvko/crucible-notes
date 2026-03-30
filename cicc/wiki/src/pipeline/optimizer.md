@@ -1541,109 +1541,119 @@ The `a4` parameter to `sub_12E54A0` is a ~4500-byte CompilerOptions struct. The 
 
 All unique pass factory addresses called from the pipeline assembler and tier sub-pipelines:
 
-| Address | Likely Identity | Occurrences |
-|---------|----------------|-------------|
-| `sub_12D4560` | NVVMVerifier | many (tiers) |
-| `sub_1361950` | AssumptionCacheTracker | 1 |
-| `sub_149CCE0` | TargetLibraryInfoWrapperPass | 1 |
-| `sub_14A7550` | VerifierPass / BasicAA | 1 |
-| `sub_1654860` | BreakCriticalEdges | 2 |
-| `sub_17060B0` | PrintModulePass (debug dump) | ~30+ |
-| `sub_1832270` | InstructionCombining | 2 |
-| `sub_1833EB0` | TailCallElim / JumpThreading | 3 |
-| `sub_1841180` | FunctionAttrs | 3 |
-| `sub_1842BC0` | SCCP | 2 |
-| `sub_1857160` | NVVMReflect | ~8 |
-| `sub_185D600` | IPConstantPropagation | 3 |
-| `sub_1869C50` | Sink (MemorySSA-based) | 3 |
-| `sub_18A3090` | NVVMPredicateOpt variant | 2 |
-| `sub_18A3430` | NVVMPredicateOpt / SelectionOpt | 2 |
-| `sub_18B1DE0` | NVVMLoopOpt / BarrierOpt | 3 |
-| `sub_18B3080` | Sinking2Pass (fast=1 for fc mode) | 1 |
-| `sub_18DEFF0` | DCE | 4 |
-| `sub_18E4A00` | NVVMBarrierAnalysis | 1 |
-| `sub_18EEA90` | CorrelatedValuePropagation | 3 |
-| `sub_18F5480` | DSE | 2 |
-| `sub_18FD350` | DeadArgElimination | 5 |
-| `sub_190BB10` | SimplifyCFG | 4 |
-| `sub_1922F90` | NVIDIA-specific loop pass | 1 |
-| `sub_1952F90` | LoopIndexSplit | 3 |
-| `sub_195E880` | LICM / LoopRotate | 4 |
-| `sub_1968390` | SROA | 2 |
-| `sub_196A2B0` | EarlyCSE | 2 |
-| `sub_197E720` | LoopUnroll | 1 |
-| `sub_198DF00` | LoopSimplify | 3 |
-| `sub_198E2A0` | SROA (variant) | 1 |
-| `sub_19401A0` | InstCombine | 2 |
-| `sub_19B73C0` | LoopUnswitch (7 params) | 3 |
-| `sub_19C1680` | LoopUnroll variant | 2 |
-| `sub_19CE990` | NVIDIA custom pass | 1 |
-| `sub_1A02540` | GenericToNVVM | 1 |
-| `sub_1A13320` | NVVMRematerialization | 3 |
-| `sub_1A223D0` | NVVMIRVerification | 5+ |
-| `sub_1A62BF0` | LLVM StandardPassPipeline | ~9 |
-| `sub_1A68E70` | LoopIdiomRecognize | 1 |
-| `sub_1A7A9F0` | InstructionSimplify | 3 |
-| `sub_1AAC510` | NVIDIA-specific pass | 1 |
-| `sub_1B26330` | MemCpyOpt | 4 |
-| `sub_1B7FDF0` | Reassociate | 3 |
-| `sub_1BFB520` | TTIWrapperPass | 1 |
-| `sub_1C46000` | NVVMLateOpt | 1 |
-| `sub_1C4B6F0` | Inliner / AlwaysInline | 2 |
-| `sub_1C6E560` | NewGVN / GVNHoist | 1 |
-| `sub_1C6E800` | GVN | 2 |
-| `sub_1C6FCA0` | ADCE | 2 |
-| `sub_1C76260` | ADCE variant | 2 |
-| `sub_1C7F370` | NVVMWarpShuffle | 1 |
-| `sub_1C8A4D0` | EarlyCSE / GVN variant | 3 |
-| `sub_1C8E680` | MemorySpaceOptimization | 4 |
-| `sub_1C98160` | NVVMLowerBarriers | 4 |
-| `sub_1C98270` | NVVMLowerBarriers variant | 1 |
-| `sub_1CB0F50` | ProfileSummaryInfo | 1 |
-| `sub_1CB4E40` | NVVMIntrinsicLowering | ~10 |
-| `sub_1CB73C0` | NVVMBranchDist | 3 |
-| `sub_1CBC480` | NVVMLowerAlloca | 1 |
-| `sub_1CC3990` | NVVMUnreachableBlockElim | 1 |
-| `sub_1CC5E00` | NVVMReduction | 1 |
-| `sub_1CC60B0` | NVVMSinking2 | 3 |
-| `sub_1CC71E0` | NVVMGenericAddrOpt | 1 |
-| `sub_1CEBD10` | NVVMFinalLowering | 1 |
-| `sub_1CEF8F0` | NVVMPeephole | 2 |
-| `sub_215D9D0` | NVVMAnnotationsProcessor | 2 |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| NVVMVerifier | `sub_12D4560` | many (tiers) | many (tiers) |
+| AssumptionCacheTracker | `sub_1361950` | 1 | 1 |
+| TargetLibraryInfoWrapperPass | `sub_149CCE0` | 1 | 1 |
+| VerifierPass / BasicAA | `sub_14A7550` | 1 | 1 |
+| BreakCriticalEdges | `sub_1654860` | 2 | 2 |
+| PrintModulePass (debug dump) | `sub_17060B0` | ~30+ | ~30+ |
+| InstructionCombining | `sub_1832270` | 2 | 2 |
+| TailCallElim / JumpThreading | `sub_1833EB0` | 3 | 3 |
+| FunctionAttrs | `sub_1841180` | 3 | 3 |
+| SCCP | `sub_1842BC0` | 2 | 2 |
+| NVVMReflect | `sub_1857160` | ~8 | ~8 |
+| IPConstantPropagation | `sub_185D600` | 3 | 3 |
+| Sink (MemorySSA-based) | `sub_1869C50` | 3 | 3 |
+| NVVMPredicateOpt variant | `sub_18A3090` | 2 | 2 |
+| NVVMPredicateOpt / SelectionOpt | `sub_18A3430` | 2 | 2 |
+| NVVMLoopOpt / BarrierOpt | `sub_18B1DE0` | 3 | 3 |
+| Sinking2Pass (fast=1 for fc mode) | `sub_18B3080` | 1 | 1 |
+| DCE | `sub_18DEFF0` | 4 | 4 |
+| NVVMBarrierAnalysis | `sub_18E4A00` | 1 | 1 |
+| CorrelatedValuePropagation | `sub_18EEA90` | 3 | 3 |
+| DSE | `sub_18F5480` | 2 | 2 |
+| DeadArgElimination | `sub_18FD350` | 5 | 5 |
+| SimplifyCFG | `sub_190BB10` | 4 | 4 |
+| NVIDIA-specific loop pass | `sub_1922F90` | 1 | 1 |
+| LoopIndexSplit | `sub_1952F90` | 3 | 3 |
+| LICM / LoopRotate | `sub_195E880` | 4 | 4 |
+| SROA | `sub_1968390` | 2 | 2 |
+| EarlyCSE | `sub_196A2B0` | 2 | 2 |
+| LoopUnroll | `sub_197E720` | 1 | 1 |
+| LoopSimplify | `sub_198DF00` | 3 | 3 |
+| SROA (variant) | `sub_198E2A0` | 1 | 1 |
+| InstCombine | `sub_19401A0` | 2 | 2 |
+| LoopUnswitch (7 params) | `sub_19B73C0` | 3 | 3 |
+| LoopUnroll variant | `sub_19C1680` | 2 | 2 |
+| NVIDIA custom pass | `sub_19CE990` | 1 | 1 |
+| GenericToNVVM | `sub_1A02540` | 1 | 1 |
+| NVVMRematerialization | `sub_1A13320` | 3 | 3 |
+| NVVMIRVerification | `sub_1A223D0` | 5+ | 5+ |
+| LLVM StandardPassPipeline | `sub_1A62BF0` | ~9 | ~9 |
+| LoopIdiomRecognize | `sub_1A68E70` | 1 | 1 |
+| InstructionSimplify | `sub_1A7A9F0` | 3 | 3 |
+| NVIDIA-specific pass | `sub_1AAC510` | 1 | 1 |
+| MemCpyOpt | `sub_1B26330` | 4 | 4 |
+| Reassociate | `sub_1B7FDF0` | 3 | 3 |
+| TTIWrapperPass | `sub_1BFB520` | 1 | 1 |
+| NVVMLateOpt | `sub_1C46000` | 1 | 1 |
+| Inliner / AlwaysInline | `sub_1C4B6F0` | 2 | 2 |
+| NewGVN / GVNHoist | `sub_1C6E560` | 1 | 1 |
+| GVN | `sub_1C6E800` | 2 | 2 |
+| ADCE | `sub_1C6FCA0` | 2 | 2 |
+| ADCE variant | `sub_1C76260` | 2 | 2 |
+| NVVMWarpShuffle | `sub_1C7F370` | 1 | 1 |
+| EarlyCSE / GVN variant | `sub_1C8A4D0` | 3 | 3 |
+| MemorySpaceOptimization | `sub_1C8E680` | 4 | 4 |
+| NVVMLowerBarriers | `sub_1C98160` | 4 | 4 |
+| NVVMLowerBarriers variant | `sub_1C98270` | 1 | 1 |
+| ProfileSummaryInfo | `sub_1CB0F50` | 1 | 1 |
+| NVVMIntrinsicLowering | `sub_1CB4E40` | ~10 | ~10 |
+| NVVMBranchDist | `sub_1CB73C0` | 3 | 3 |
+| NVVMLowerAlloca | `sub_1CBC480` | 1 | 1 |
+| NVVMUnreachableBlockElim | `sub_1CC3990` | 1 | 1 |
+| NVVMReduction | `sub_1CC5E00` | 1 | 1 |
+| NVVMSinking2 | `sub_1CC60B0` | 3 | 3 |
+| NVVMGenericAddrOpt | `sub_1CC71E0` | 1 | 1 |
+| NVVMFinalLowering | `sub_1CEBD10` | 1 | 1 |
+| NVVMPeephole | `sub_1CEF8F0` | 2 | 2 |
+| NVVMAnnotationsProcessor | `sub_215D9D0` | 2 | 2 |
 
 Total unique pass factory addresses: ~55.
 
 ## Function Map
 
-| Address | Identity | Size | Notes |
-|---------|----------|------|-------|
-| `sub_12D6300` | NVVMPassOptions::init | 125KB | Populates 4,512-byte options struct |
-| `sub_12D6090` | writeStringOption | ~100B | Writes 24-byte string slot |
-| `sub_12D6100` | writeBoolOption | ~80B | Writes 16-byte boolean slot |
-| `sub_12D6170` | PassOptionRegistry::lookupOption | ~200B | Hash table lookup |
-| `sub_12D6240` | getBoolOption | ~300B | Boolean resolution with default |
-| `sub_1691920` | PassDefTable::getPassDef | ~50B | 64-byte stride table lookup |
-| `sub_16D2BB0` | parseInt | ~100B | String to int64 |
-| `sub_12E54A0` | Pipeline assembler (master) | 49.8KB | 8-phase pipeline construction |
-| `sub_12DE0B0` | AddPass | 3.5KB | Hash-table-based insertion |
-| `sub_12DE330` | Tier 0 sub-pipeline | 4.8KB | ~40 passes, full optimization |
-| `sub_12DE8F0` | Tier 1/2/3 sub-pipeline | 17.9KB | Phase-conditional, incremental |
-| `sub_12DFE00` | Codegen dispatch | 20.7KB | Dependency-ordered codegen |
-| `sub_12E7E70` | Phase I/II orchestrator | 9.4KB | Two-phase state machine |
-| `sub_2342890` | New PM registration | ~50KB | 2,816 lines, 35 NVIDIA + ~350 LLVM |
-| `sub_E41FB0` | registerPass (hash insert) | ~300B | StringMap insertion |
-| `sub_2337DE0` | Pass name prefix matcher | ~100B | starts_with comparison |
-| `sub_234CEE0` | Parameterized pass parser | ~200B | Extracts `<params>` |
-| `sub_23331A0` | MemorySpaceOpt param parser | ~300B | first-time/second-time/warnings |
-| `sub_226C400` | New PM pipeline driver | 35KB | nvopt<O0/O1/O2/O3/Ofcmax/Ofcmid/Ofcmin> selection |
-| `sub_2277440` | New PM text parser (`buildDefaultPipeline`) | 60KB | Parses pipeline name strings |
-| `sub_225D540` | nvopt registration (new PM) | ~32KB | Pipeline element vtable at `0x4A08350` |
-| `sub_12C35D0` | nvopt registration (legacy PM) | ~500B | Pipeline element vtable at `0x49E6A58` |
-| `sub_12EC960` | nvopt object initializer | ~100B | Creates 512-byte pipeline object |
-| `sub_1A62BF0` | LLVM standard pipeline factory | varies | Pipeline IDs 1,2,4,5,7,8 |
-| `sub_163A1D0` | Pass registry check | ~100B | Pass registration status |
-| `sub_163A340` | Pass status update | ~100B | Used in codegen dispatch |
-| `sub_2352D90` | Pipeline text tokenizer | ~200B | Tokenizes `nvopt<>` strings |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| NVVMPassOptions::init | `sub_12D6300` | 125KB | Populates 4,512-byte options struct |
+| writeStringOption | `sub_12D6090` | ~100B | Writes 24-byte string slot |
+| writeBoolOption | `sub_12D6100` | ~80B | Writes 16-byte boolean slot |
+| PassOptionRegistry::lookupOption | `sub_12D6170` | ~200B | Hash table lookup |
+| getBoolOption | `sub_12D6240` | ~300B | Boolean resolution with default |
+| PassDefTable::getPassDef | `sub_1691920` | ~50B | 64-byte stride table lookup |
+| parseInt | `sub_16D2BB0` | ~100B | String to int64 |
+| Pipeline assembler (master) | `sub_12E54A0` | 49.8KB | 8-phase pipeline construction |
+| AddPass | `sub_12DE0B0` | 3.5KB | Hash-table-based insertion |
+| Tier 0 sub-pipeline | `sub_12DE330` | 4.8KB | ~40 passes, full optimization |
+| Tier 1/2/3 sub-pipeline | `sub_12DE8F0` | 17.9KB | Phase-conditional, incremental |
+| Codegen dispatch | `sub_12DFE00` | 20.7KB | Dependency-ordered codegen |
+| Phase I/II orchestrator | `sub_12E7E70` | 9.4KB | Two-phase state machine |
+| New PM registration | `sub_2342890` | ~50KB | 2,816 lines, 35 NVIDIA + ~350 LLVM |
+| registerPass (hash insert) | `sub_E41FB0` | ~300B | StringMap insertion |
+| Pass name prefix matcher | `sub_2337DE0` | ~100B | starts_with comparison |
+| Parameterized pass parser | `sub_234CEE0` | ~200B | Extracts `<params>` |
+| MemorySpaceOpt param parser | `sub_23331A0` | ~300B | first-time/second-time/warnings |
+| New PM pipeline driver | `sub_226C400` | 35KB | nvopt<O0/O1/O2/O3/Ofcmax/Ofcmid/Ofcmin> selection |
+| New PM text parser (`buildDefaultPipeline`) | `sub_2277440` | 60KB | Parses pipeline name strings |
+| nvopt registration (new PM) | `sub_225D540` | ~32KB | Pipeline element vtable at `0x4A08350` |
+| nvopt registration (legacy PM) | `sub_12C35D0` | ~500B | Pipeline element vtable at `0x49E6A58` |
+| nvopt object initializer | `sub_12EC960` | ~100B | Creates 512-byte pipeline object |
+| LLVM standard pipeline factory | `sub_1A62BF0` | varies | Pipeline IDs 1,2,4,5,7,8 |
+| Pass registry check | `sub_163A1D0` | ~100B | Pass registration status |
+| Pass status update | `sub_163A340` | ~100B | Used in codegen dispatch |
+| Pipeline text tokenizer | `sub_2352D90` | ~200B | Tokenizes `nvopt<>` strings |
+
+## Reimplementation Checklist
+
+1. **Two-phase compilation model.** Implement a TLS phase variable (values 1=Phase I, 2=Phase II, 3=done) read by individual passes to skip themselves when the current phase does not match their intended execution phase. Phase I runs whole-module analysis; Phase II runs per-function codegen-oriented passes.
+2. **Pipeline assembly function (~150 AddPass calls).** Build the master pipeline at runtime using hash-table-based pass insertion (`AddPass`), with language-specific dispatch (paths for `"ptx"`, `"mid"`, and default), tier-based interleaving (Tiers 0--3 fired by accumulated pass-count thresholds), and phase-conditional pass inclusion.
+3. **NVVMPassOptions system (4,512-byte struct, 221 slots).** Implement the proprietary per-pass enable/disable and parametric knob system with 114 string + 100 boolean + 6 integer + 1 string-pointer option slots, parsed from CLI flags and routed to individual passes.
+4. **Concurrent per-function compilation.** After Phase I completes on the whole module, split Phase II across a thread pool sized to `get_nprocs()` or GNU Jobserver token count, with per-function bitcode extraction, independent compilation, and re-linking of results.
+5. **GNU Jobserver integration.** Parse `--jobserver-auth=R,W` from `MAKEFLAGS` environment variable, create a token management pipe, and spawn a pthread to throttle concurrent compilations to the build system's `-j` level.
+6. **Split-module compilation.** Implement the `-split-compile=N` mechanism: decompose multi-function modules into per-function bitcode blobs via filter callbacks, compile each independently (potentially in parallel), re-link results, and restore linkage attributes from a hash table.
+7. **Tier 0 full optimization sub-pipeline.** Assemble the ~40-pass Tier 0 sequence: BreakCriticalEdges, GVN, NVVMReflect, SCCP, NVVMVerifier, LoopIndexSplit, ADCE, LICM, LoopUnroll, InstCombine, SROA, EarlyCSE, LoopUnswitch, SimplifyCFG, NVVMRematerialization, DSE, DCE, with per-pass NVVMPassOptions gating.
 
 ## Cross-References
 

@@ -445,3 +445,12 @@ Upstream LLVM's inliner cost model was built for x86/AArch64 where function call
 | `0x38576C0` | 58 KB | NVPTX target-specific cost modifier |
 | `0x4DBEC0` | 14 KB | NVIDIA inliner knob registration |
 | `0x58FAD0` | 27 KB | LLVM InlineCost option registration |
+
+## Reimplementation Checklist
+
+1. **Type-size-based cost model (60% of the inliner).** Implement the argument coercion cost engine that walks NVVM IR type nodes (16 type tags: half through opaque/token) to compute byte-level sizes for both callsite actuals and callee formals, using the formula `byte_size = (multiplier * bit_width + 7) >> 3`. Flag arguments where `callee_arg_size > callee_formal_size` as requiring `.param`-space widening.
+2. **20,000-unit budget system.** Implement the three-level budget: per-caller `inline-budget` (default 20,000), module-wide `inline-total-budget`, and dynamically adjusted `inline-adj-budget1` (kernel entry points may receive higher limits). Include the `-aggressive-inline` mapping to budget 40,000 and `nv-inline-all` force-all mode.
+3. **Early bail-out chain.** Implement the eligibility checks in order: LLVM intrinsic name prefix rejection, pre-analysis callee walk (instruction/call/block counts), linkage check (linkonce_odr/weak_odr only), visibility check, noinline/optnone attribute rejection, and the `loads * stores > 100` combinatorial bail-out.
+4. **Struct layout walk (depth limit 20).** Implement the stack-based DFS walk of struct type trees to count fields for coercion cost, handling pointer types (tag 15), struct types (tag 13/14), and array types (tag 16), with a hard depth limit of 20 levels.
+5. **Switch statement heuristics.** Implement the three GPU-specific switch knobs (`inline-switchctrl`, `inline-numswitchfunc`, `inline-maxswitchcases`) that penalize switch-heavy callees where branch divergence, absent branch prediction, and reconvergence overhead make inlining particularly costly.
+6. **NVPTX opcode tag 9 bonus (+2000).** Implement the target-specific cost modifier that scans callee instructions for opcode tag 9 (likely tensor core/warp intrinsics) and adds a +2000 bonus to encourage inlining functions containing GPU operations that benefit from cross-boundary register allocation and scheduling.

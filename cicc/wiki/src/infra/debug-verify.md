@@ -534,43 +534,43 @@ The module-level entry `sub_215ACD0` checks `*(a1+240)->field_344` to determine 
 
 ## Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_29C00F0` | -- | `"llvm.global_ctors"` utility |
-| `sub_29C0AE0` | -- | `errs()` diagnostic output stream accessor |
-| `sub_29C0DC0` | -- | PassManager / PassAdaptor infrastructure (`"PassManager"`, `"PassAdaptor"`) |
-| `sub_29C0F30` | -- | Copy retained-nodes list (SmallVector deep copy) |
-| `sub_29C1060` | -- | Copy local-variable list |
-| `sub_29C1190` | -- | Copy scope-chain list |
-| `sub_29C12C0` | -- | Validate scope chain connectivity |
-| `sub_29C1CB0` | -- | Debugify synthetic debug info injector (`"llvm.debugify"`, `"llvm.mir.debugify"`) |
-| `sub_29C1F00` | -- | Merge/update tracking sets after verification |
-| `sub_29C20D0` | -- | Serialize verification result to stream |
-| `sub_29C2230` | -- | Copy imported-entities list (32-byte node deep copy) |
-| `sub_29C3AB0` | 5,592B | Per-instruction `DILocation` verifier |
-| `sub_29C5270` | -- | `DenseMap::FindAndConstruct` for tracking map |
-| `sub_29C6AD0` | -- | Set insert with metadata key normalization |
-| `sub_29C6DE0` | -- | Set insert variant (different key extraction) |
-| `sub_29C8000` | 12,480B | Debug info verification pass (main entry) |
-| `sub_29E2B40` | -- | `no-inline-line-tables` flag handler |
-| `sub_22702B0` | -- | `NewPMCheckDebugifyPass` wrapper |
-| `sub_2270390` | -- | `NewPMDebugifyPass` wrapper |
-| `sub_2270470` | -- | `VerifierPass` wrapper (standard IR verifier) |
-| `sub_2272BE0` | 14KB | Pass pipeline text parser |
-| `sub_2277440` | 60KB | `buildDefaultPipeline()` equivalent |
-| `sub_12C6910` | -- | Flag filter (checks `-debug-compile`, `-g`, `-generate-line-info`) |
-| `sub_31D55F0` | -- | Emit per-instruction `.loc` DWARF directive |
-| `sub_31E4280` | -- | Emit `.file`/`.loc` directives (function scope) |
-| `sub_31E6100` | -- | `insertDebugLocEntry` (file/line to symbol mapping) |
-| `sub_399B1E0` | 29KB | `DwarfDebug::beginModule()` |
-| `sub_3997B50` | 33KB | `.debug_aranges` emission |
-| `sub_215ACD0` | 8.1KB | Module-level emission entry / NVPTX Debug Info Emission |
-| `sub_12BFF60` | ~9KB | NVVM IR version + debug version validator |
-| `sub_CD41B0` | -- | NVVM container debug version check |
-| `sub_9433F0` | -- | Emit `DILocalVariable` for parameter (frontend) |
-| `sub_943430` | -- | Emit debug info for GlobalVariable (frontend) |
-| `sub_941230` | -- | Set `DebugLoc` from EDG source position (frontend) |
-| `sub_915400` | -- | Finalize: `"Debug Info Version"` = 3 (frontend) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `"llvm.global_ctors"` utility | `sub_29C00F0` | -- | -- |
+| `errs()` diagnostic output stream accessor | `sub_29C0AE0` | -- | -- |
+| PassManager / PassAdaptor infrastructure (`"PassManager"`, `"PassAdaptor"`) | `sub_29C0DC0` | -- | -- |
+| Copy retained-nodes list (SmallVector deep copy) | `sub_29C0F30` | -- | -- |
+| Copy local-variable list | `sub_29C1060` | -- | -- |
+| Copy scope-chain list | `sub_29C1190` | -- | -- |
+| Validate scope chain connectivity | `sub_29C12C0` | -- | -- |
+| Debugify synthetic debug info injector (`"llvm.debugify"`, `"llvm.mir.debugify"`) | `sub_29C1CB0` | -- | -- |
+| Merge/update tracking sets after verification | `sub_29C1F00` | -- | -- |
+| Serialize verification result to stream | `sub_29C20D0` | -- | -- |
+| Copy imported-entities list (32-byte node deep copy) | `sub_29C2230` | -- | -- |
+| Per-instruction `DILocation` verifier | `sub_29C3AB0` | 5,592B | -- |
+| `DenseMap::FindAndConstruct` for tracking map | `sub_29C5270` | -- | -- |
+| Set insert with metadata key normalization | `sub_29C6AD0` | -- | -- |
+| Set insert variant (different key extraction) | `sub_29C6DE0` | -- | -- |
+| Debug info verification pass (main entry) | `sub_29C8000` | 12,480B | -- |
+| `no-inline-line-tables` flag handler | `sub_29E2B40` | -- | -- |
+| `NewPMCheckDebugifyPass` wrapper | `sub_22702B0` | -- | -- |
+| `NewPMDebugifyPass` wrapper | `sub_2270390` | -- | -- |
+| `VerifierPass` wrapper (standard IR verifier) | `sub_2270470` | -- | -- |
+| Pass pipeline text parser | `sub_2272BE0` | 14KB | -- |
+| `buildDefaultPipeline()` equivalent | `sub_2277440` | 60KB | -- |
+| Flag filter (checks `-debug-compile`, `-g`, `-generate-line-info`) | `sub_12C6910` | -- | -- |
+| Emit per-instruction `.loc` DWARF directive | `sub_31D55F0` | -- | -- |
+| Emit `.file`/`.loc` directives (function scope) | `sub_31E4280` | -- | -- |
+| `insertDebugLocEntry` (file/line to symbol mapping) | `sub_31E6100` | -- | -- |
+| `DwarfDebug::beginModule()` | `sub_399B1E0` | 29KB | -- |
+| `.debug_aranges` emission | `sub_3997B50` | 33KB | -- |
+| Module-level emission entry / NVPTX Debug Info Emission | `sub_215ACD0` | 8.1KB | -- |
+| NVVM IR version + debug version validator | `sub_12BFF60` | ~9KB | -- |
+| NVVM container debug version check | `sub_CD41B0` | -- | -- |
+| Emit `DILocalVariable` for parameter (frontend) | `sub_9433F0` | -- | -- |
+| Emit debug info for GlobalVariable (frontend) | `sub_943430` | -- | -- |
+| Set `DebugLoc` from EDG source position (frontend) | `sub_941230` | -- | -- |
+| Finalize: `"Debug Info Version"` = 3 (frontend) | `sub_915400` | -- | -- |
 
 ### LLVM Infrastructure Functions Used
 

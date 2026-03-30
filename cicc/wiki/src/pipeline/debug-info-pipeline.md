@@ -396,33 +396,33 @@ PTX Output
 
 ## Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_9433F0` | -- | Emit `DILocalVariable` for function parameter |
-| `sub_943430` | -- | Emit debug info for `GlobalVariable` (conditional on `[ctx+0x170]`) |
-| `sub_941230` | -- | Set IR builder `DebugLoc` from EDG source position |
-| `sub_915400` | 133B | Module finalizer: emit `"Debug Info Version" = 3` module flag |
-| `sub_12C6910` | -- | Flag filter: checks `-debug-compile`, `-g`, `-generate-line-info` |
-| `sub_29C8000` | 12,480B | Debug info verification pass (main entry) |
-| `sub_29C3AB0` | 5,592B | Per-instruction `DILocation` verifier |
-| `sub_29C1CB0` | -- | Debugify synthetic debug info injector |
-| `sub_22702B0` | -- | `NewPMCheckDebugifyPass` wrapper |
-| `sub_2270390` | -- | `NewPMDebugifyPass` wrapper |
-| `sub_31D55F0` | -- | Per-instruction `.loc` emission |
-| `sub_31E4280` | -- | Function-scope `.file`/`.loc` emission |
-| `sub_31E6100` | -- | `insertDebugLocEntry` (file/line to MCSymbol mapping) |
-| `sub_31D89B0` | -- | Instruction-level debug comment emission |
-| `sub_214F370` | 7.2KB | `emitHeader` (`.version`, `.target ... , debug`) |
-| `sub_215ACD0` | 8.1KB | Module-level emission entry / NVPTX Debug Info Emission |
-| `sub_399B1E0` | 29KB | `DwarfDebug::beginModule()` |
-| `sub_3997B50` | 33KB | `.debug_aranges` emission |
-| `sub_399D1D0` | 12KB | Range list emission (`DW_RLE_*`) |
-| `sub_399EB70` | 12KB | Register location expressions |
-| `sub_39BDF60` | 38KB | `.debug_names` accelerator table |
-| `sub_39B6390` | 33KB | DWARF form size calculator |
-| `sub_ADCDB0` | -- | `DIBuilder` / debug metadata helper |
-| `sub_48D7F0` | -- | `cl::opt` registration: `debug-compile`, `generate-line-info`, `line-info-inlined-at` |
-| `sub_CD41B0` | -- | NVVM container version check (validates `NvvmDebugVersion.Major == 3`) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| Emit `DILocalVariable` for function parameter | `sub_9433F0` | -- | -- |
+| Emit debug info for `GlobalVariable` (conditional on `[ctx+0x170]`) | `sub_943430` | -- | -- |
+| Set IR builder `DebugLoc` from EDG source position | `sub_941230` | -- | -- |
+| Module finalizer: emit `"Debug Info Version" = 3` module flag | `sub_915400` | 133B | -- |
+| Flag filter: checks `-debug-compile`, `-g`, `-generate-line-info` | `sub_12C6910` | -- | -- |
+| Debug info verification pass (main entry) | `sub_29C8000` | 12,480B | -- |
+| Per-instruction `DILocation` verifier | `sub_29C3AB0` | 5,592B | -- |
+| Debugify synthetic debug info injector | `sub_29C1CB0` | -- | -- |
+| `NewPMCheckDebugifyPass` wrapper | `sub_22702B0` | -- | -- |
+| `NewPMDebugifyPass` wrapper | `sub_2270390` | -- | -- |
+| Per-instruction `.loc` emission | `sub_31D55F0` | -- | -- |
+| Function-scope `.file`/`.loc` emission | `sub_31E4280` | -- | -- |
+| `insertDebugLocEntry` (file/line to MCSymbol mapping) | `sub_31E6100` | -- | -- |
+| Instruction-level debug comment emission | `sub_31D89B0` | -- | -- |
+| `emitHeader` (`.version`, `.target ... , debug`) | `sub_214F370` | 7.2KB | -- |
+| Module-level emission entry / NVPTX Debug Info Emission | `sub_215ACD0` | 8.1KB | -- |
+| `DwarfDebug::beginModule()` | `sub_399B1E0` | 29KB | -- |
+| `.debug_aranges` emission | `sub_3997B50` | 33KB | -- |
+| Range list emission (`DW_RLE_*`) | `sub_399D1D0` | 12KB | -- |
+| Register location expressions | `sub_399EB70` | 12KB | -- |
+| `.debug_names` accelerator table | `sub_39BDF60` | 38KB | -- |
+| DWARF form size calculator | `sub_39B6390` | 33KB | -- |
+| `DIBuilder` / debug metadata helper | `sub_ADCDB0` | -- | -- |
+| `cl::opt` registration: `debug-compile`, `generate-line-info`, `line-info-inlined-at` | `sub_48D7F0` | -- | -- |
+| NVVM container version check (validates `NvvmDebugVersion.Major == 3`) | `sub_CD41B0` | -- | -- |
 
 ## Cross-References
 

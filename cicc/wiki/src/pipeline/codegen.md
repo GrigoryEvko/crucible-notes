@@ -95,6 +95,10 @@ Items marked **★ NVIDIA** are NVIDIA-proprietary additions not present in upst
 
 **StructurizeCFG** ([detail](../llvm/structurizecfg.md)) -- mandatory pass that converts arbitrary CFGs into the structured form PTX requires, rejecting irreducible CFGs and EH funclets.
 
+## Two-Stage Compilation: cicc + ptxas
+
+CUDA compilation is a two-stage process. cicc (this binary) compiles CUDA/NVVM IR down to PTX assembly text -- a virtual ISA with unlimited registers and structured control flow. `ptxas` then compiles the PTX into SASS machine code for a specific SM target. This split means that many of cicc's code generation decisions (register allocation, instruction scheduling, peephole optimization) are revisited by ptxas with full hardware knowledge. cicc's code generation pipeline therefore optimizes for two audiences simultaneously: (1) reducing register pressure and producing clean PTX that gives ptxas maximum optimization freedom, and (2) performing target-aware lowering (type legalization, instruction selection, structured CFG) that ptxas cannot undo. The practical consequence is that cicc's backend is pressure-driven rather than latency-driven -- scheduling for low register count matters more than scheduling for pipeline throughput, because ptxas will re-schedule for the hardware but cannot reduce register demand below what cicc emitted.
+
 ## Cross-References
 
 - [NVPTX Subtarget & feature flags](../infra/nvptx-target.md) -- SM processor table, type legality offsets

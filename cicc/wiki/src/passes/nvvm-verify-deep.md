@@ -4,22 +4,22 @@ The NVVM IR Verifier (`nvvm-verify`) is NVIDIA's three-layer correctness gate th
 
 ## Key Facts
 
-| Field | Value |
+| Property | Value |
 |---|---|
-| **Pass name (New PM)** | `nvvm-verify` |
-| **Pass class** | `llvm::NVVMIRVerifierPass` |
-| **Registration** | `sub_2342890` (New PM), `sub_12E54A0` (pipeline builder) |
-| **Entry wrapper** | `sub_12D4560` |
-| **Module verifier** | `sub_2C80C90` (51KB, ~1671 lines) |
-| **Function verifier** | `sub_2C771D0` (36KB, ~1165 lines) |
-| **Intrinsic verifier** | `sub_2C7B6A0` (143KB, ~4139 lines) |
-| **Combined size** | ~230KB decompiled |
-| **Pipeline insertions** | ~12 per tier (O1-O3), after GVN, after DSE, after LICM, etc. |
-| **Disable knob** | `NVVMPassOptions[600]` (bool) |
-| **Info knob** | `nvvm-verify-show-info` |
-| **Error model** | Accumulate-and-continue (no early abort) |
-| **SM encoding** | Internal SM * 10 (e.g., sm_90 = 900) at context offset +8 |
-| **Upstream equivalent** | None -- fully proprietary |
+| Pass name | `nvvm-verify` |
+| Pass class | `llvm::NVVMIRVerifierPass` |
+| Registration | `sub_2342890` (New PM), `sub_12E54A0` (pipeline builder) |
+| Entry point | `sub_12D4560` |
+| Module verifier | `sub_2C80C90` (51KB, ~1671 lines) |
+| Function verifier | `sub_2C771D0` (36KB, ~1165 lines) |
+| Intrinsic verifier | `sub_2C7B6A0` (143KB, ~4139 lines) |
+| Binary size | ~230KB decompiled |
+| Pipeline slot | ~12 per tier (O1-O3), after GVN, after DSE, after LICM, etc. |
+| Disable flag | `NVVMPassOptions[600]` (bool) |
+| Primary knobs | `nvvm-verify-show-info` |
+| Error model | Accumulate-and-continue (no early abort) |
+| SM encoding | Internal SM * 10 (e.g., sm_90 = 900) at context offset +8 |
+| Upstream equivalent | None -- fully proprietary |
 
 ## Three-Layer Verification Architecture
 

@@ -386,26 +386,26 @@ The 165 surface store builtins are registered unconditionally regardless of targ
 
 ## Function Map
 
-| Address | Function | Role |
-|---|---|---|
-| `sub_955A70` | NVVM builtin lowering dispatch | Main switch; case `0x287` handles `__nv_tex_surf_handler` |
-| `sub_954F10` | Texture/surface sample handler | Red-black tree dispatch for IDs 302--309, 338--345, 395--402 |
-| `sub_72BA30` | EDG keyword handler | Parses `__nv_tex_surf_handle_t` built-in type (keyword 277) |
-| `sub_33B0210` | NVPTX intrinsic lowering | 343KB central dispatch; tex IDs 0x5D--0x8D, surf IDs 0x8E--0x90 |
-| `sub_33A4350` | Texture fetch bulk handler | 50 consecutive intrinsic IDs for all tex1D/2D/3D/array variants |
-| `sub_33A3180` | Surface read/write handler | 3 intrinsic IDs for surf1D/2D/3D read |
-| `sub_33EB1C0` | Tex/surf sample DAG node builder | Creates memory-typed NVPTXISD sample nodes (opcode 47) |
-| `sub_3409320` | Sampler state DAG node builder | Creates sampler state binding nodes |
-| `sub_33AEC60` | Surface atomics handler | Intrinsic IDs 0x9C--0x9D |
-| `sub_33AFBA0` | Surface special handler | Intrinsic ID 0x9E |
-| `sub_306A930` | Texture/surface ISel | 52KB instruction selection for tex/suld/sust patterns |
-| `sub_21DD1A0` | Image type validator | 16KB; validates `.tex`/`.suld`/`.sust`/`suq.` image types |
-| `sub_21DBEA0` | NVPTXReplaceImageHandles | Replaces IR image handles with PTX `.texref`/`.surfref` |
-| `sub_2156420` | Global variable emitter | 20KB; emits `.texref`/`.surfref`/`.samplerref` with initializers |
-| `sub_21502D0` | Parameter list emitter | 22KB; emits `.param .texref`/`.surfref`/`.samplerref` in function signatures |
-| `sub_2077400` | visitNVVMTexSurf | 20KB SelectionDAGBuilder extension for tex/surf handle lowering |
-| `sub_BA8CA0` | NVVM intrinsic lookup | Resolves constructed intrinsic name string to LLVM function declaration |
-| `sub_90A810` | Intrinsic table lookup | Resolves intrinsic ID to function declaration with type overloads |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| NVVM builtin lowering dispatch | `sub_955A70` | -- | Main switch; case `0x287` handles `__nv_tex_surf_handler` |
+| Texture/surface sample handler | `sub_954F10` | -- | Red-black tree dispatch for IDs 302--309, 338--345, 395--402 |
+| EDG keyword handler | `sub_72BA30` | -- | Parses `__nv_tex_surf_handle_t` built-in type (keyword 277) |
+| NVPTX intrinsic lowering | `sub_33B0210` | -- | 343KB central dispatch; tex IDs 0x5D--0x8D, surf IDs 0x8E--0x90 |
+| Texture fetch bulk handler | `sub_33A4350` | -- | 50 consecutive intrinsic IDs for all tex1D/2D/3D/array variants |
+| Surface read/write handler | `sub_33A3180` | -- | 3 intrinsic IDs for surf1D/2D/3D read |
+| Tex/surf sample DAG node builder | `sub_33EB1C0` | -- | Creates memory-typed NVPTXISD sample nodes (opcode 47) |
+| Sampler state DAG node builder | `sub_3409320` | -- | Creates sampler state binding nodes |
+| Surface atomics handler | `sub_33AEC60` | -- | Intrinsic IDs 0x9C--0x9D |
+| Surface special handler | `sub_33AFBA0` | -- | Intrinsic ID 0x9E |
+| Texture/surface ISel | `sub_306A930` | -- | 52KB instruction selection for tex/suld/sust patterns |
+| Image type validator | `sub_21DD1A0` | -- | 16KB; validates `.tex`/`.suld`/`.sust`/`suq.` image types |
+| NVPTXReplaceImageHandles | `sub_21DBEA0` | -- | Replaces IR image handles with PTX `.texref`/`.surfref` |
+| Global variable emitter | `sub_2156420` | -- | 20KB; emits `.texref`/`.surfref`/`.samplerref` with initializers |
+| Parameter list emitter | `sub_21502D0` | -- | 22KB; emits `.param .texref`/`.surfref`/`.samplerref` in function signatures |
+| visitNVVMTexSurf | `sub_2077400` | -- | 20KB SelectionDAGBuilder extension for tex/surf handle lowering |
+| NVVM intrinsic lookup | `sub_BA8CA0` | -- | Resolves constructed intrinsic name string to LLVM function declaration |
+| Intrinsic table lookup | `sub_90A810` | -- | Resolves intrinsic ID to function declaration with type overloads |
 
 ## Cross-References
 

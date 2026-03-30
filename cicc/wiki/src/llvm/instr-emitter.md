@@ -1,6 +1,8 @@
 # InstrEmitter
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **LLVM version note:** SDNode field layout matches LLVM 20.0.0 base. NVIDIA merges the upstream `EmitNode`/`EmitSpecialNode` split into a single monolithic function, adds a dedicated CopyToReg handler, an extended MachineInstr flag at bit 36, and a triple vtable dispatch for GPU pseudo-expansion.
 
 InstrEmitter is the final translation layer between LLVM's SelectionDAG representation and the machine-level MachineInstr pipeline. After instruction selection has converted LLVM IR into a DAG of target-specific SDNodes, and after scheduling has linearized those nodes into a sequence, InstrEmitter walks the scheduled sequence and converts each SDNode into one or more MachineInstrs inserted into the current MachineBasicBlock. In CICC v13.0, the emitter lives at `sub_2EDDF20` (11,722 bytes) and is called by `ScheduleDAGSDNodes::EmitSchedule` (`sub_2EE0CF0`). NVIDIA's build contains three key modifications relative to upstream LLVM: a dedicated CopyToReg handler factored out for NVPTX's physical-register-heavy parameter ABI, a triple vtable dispatch pattern that gates custom pseudo-expansion for GPU-specific instructions, and an extended MachineInstr flag at bit 36 (`0x1000000000`) not present in stock LLVM.
 
@@ -451,42 +453,42 @@ During the dead copy scan (Phase 12, offset `0x2EE08A0`--`0x2EE08BA`), the emitt
 
 ## Function Map
 
-| Address | Identity | Notes |
-|---|---|---|
-| `sub_2EDDF20` | `InstrEmitter::EmitNode` | Main entry, 11,722 bytes |
-| `sub_2EE0CF0` | `ScheduleDAGSDNodes::EmitSchedule` | Top-level driver, 59KB |
-| `sub_2ED95B0` | `EmitCopyToReg` | Dedicated CopyToReg handler |
-| `sub_2E8B400` | `getRegForValue` | SDValue to VReg mapping |
-| `sub_2E8B100` | `isUnusedReg` | Dead register predicate |
-| `sub_2DADC00` | `isDeadNode` | Dead SDNode predicate |
-| `sub_2E88E20` | `eraseFromParent` | MachineInstr deletion |
-| `sub_2E88A90` | `hasProperty` | Register/operand flag query |
-| `sub_2EBEE10` | `getVRegDef` | Virtual register definition lookup |
-| `sub_2EBEF70` | `isPhysReg` | Physical vs virtual register check |
-| `sub_2EBECB0` | `replaceRegWith` | Virtual register substitution |
-| `sub_2EBF120` | `clearKillFlags` | Remove kill annotations |
-| `sub_2ED7930` | Sub-register resolution | SUBREG_TO_REG handling |
-| `sub_2EDB7A0` | `EmitSubregNode` | Sub-register copy emission |
-| `sub_2EDD7E0` | `EmitCopyToRegClassOp` | Class-constrained copy |
-| `sub_2ED3660` | `ProcessOperands` | EmitMachineNode core |
-| `sub_2E6D360` | `isAllocatableInClass` | Register class membership |
-| `sub_2E5E6D0` | `DenseMap::find` | SDNode-to-MI lookup |
-| `sub_2ED56A0` | `addToDeadList` | Queue MI for deletion |
-| `sub_2E29BA0` | `DenseMap::grow` | Hash table resize |
-| `sub_2ED11C0` | NVPTXInstrInfo default | `EmitInstrWithCustomInserter` stub |
-| `sub_2ED11E0` | NVPTXInstrInfo default | `getInsertSubreg` stub |
-| `sub_2ED11F0` | NVPTXInstrInfo default | `expandPostRAPseudo` stub |
-| `sub_2ED1840` | operand comparison | Operand equality helper |
-| `sub_2ED19B0` | MI builder | Additional MachineInstr construction |
-| `sub_2ED41E0` | register mapping | Register mapping utility |
-| `sub_2ED4900` | register info query | Register info accessor |
-| `sub_2ED5D10` | MI property query | MachineInstr property reader |
-| `sub_2EDA920` | emission utility | Additional emission helper |
-| `sub_2EAB0C0` | `setDesc` | Sets MI operand descriptors during emission |
-| `sub_2E31210` | `addOperand` | Appends operand to MachineInstr |
-| `sub_2E31DD0` | MI manipulation | Additional MI manipulation utility |
-| `sub_2E4EE60` | TRI utility | TargetRegisterInfo helper |
-| `sub_2E4F5F0` | NVPTXRegisterInfo | Register class query vtable method |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `InstrEmitter::EmitNode` | `sub_2EDDF20` | -- | Main entry, 11,722 bytes |
+| `ScheduleDAGSDNodes::EmitSchedule` | `sub_2EE0CF0` | -- | Top-level driver, 59KB |
+| `EmitCopyToReg` | `sub_2ED95B0` | -- | Dedicated CopyToReg handler |
+| `getRegForValue` | `sub_2E8B400` | -- | SDValue to VReg mapping |
+| `isUnusedReg` | `sub_2E8B100` | -- | Dead register predicate |
+| `isDeadNode` | `sub_2DADC00` | -- | Dead SDNode predicate |
+| `eraseFromParent` | `sub_2E88E20` | -- | MachineInstr deletion |
+| `hasProperty` | `sub_2E88A90` | -- | Register/operand flag query |
+| `getVRegDef` | `sub_2EBEE10` | -- | Virtual register definition lookup |
+| `isPhysReg` | `sub_2EBEF70` | -- | Physical vs virtual register check |
+| `replaceRegWith` | `sub_2EBECB0` | -- | Virtual register substitution |
+| `clearKillFlags` | `sub_2EBF120` | -- | Remove kill annotations |
+| Sub-register resolution | `sub_2ED7930` | -- | SUBREG_TO_REG handling |
+| `EmitSubregNode` | `sub_2EDB7A0` | -- | Sub-register copy emission |
+| `EmitCopyToRegClassOp` | `sub_2EDD7E0` | -- | Class-constrained copy |
+| `ProcessOperands` | `sub_2ED3660` | -- | EmitMachineNode core |
+| `isAllocatableInClass` | `sub_2E6D360` | -- | Register class membership |
+| `DenseMap::find` | `sub_2E5E6D0` | -- | SDNode-to-MI lookup |
+| `addToDeadList` | `sub_2ED56A0` | -- | Queue MI for deletion |
+| `DenseMap::grow` | `sub_2E29BA0` | -- | Hash table resize |
+| NVPTXInstrInfo default | `sub_2ED11C0` | -- | `EmitInstrWithCustomInserter` stub |
+| NVPTXInstrInfo default | `sub_2ED11E0` | -- | `getInsertSubreg` stub |
+| NVPTXInstrInfo default | `sub_2ED11F0` | -- | `expandPostRAPseudo` stub |
+| operand comparison | `sub_2ED1840` | -- | Operand equality helper |
+| MI builder | `sub_2ED19B0` | -- | Additional MachineInstr construction |
+| register mapping | `sub_2ED41E0` | -- | Register mapping utility |
+| register info query | `sub_2ED4900` | -- | Register info accessor |
+| MI property query | `sub_2ED5D10` | -- | MachineInstr property reader |
+| emission utility | `sub_2EDA920` | -- | Additional emission helper |
+| `setDesc` | `sub_2EAB0C0` | -- | Sets MI operand descriptors during emission |
+| `addOperand` | `sub_2E31210` | -- | Appends operand to MachineInstr |
+| MI manipulation | `sub_2E31DD0` | -- | Additional MI manipulation utility |
+| TRI utility | `sub_2E4EE60` | -- | TargetRegisterInfo helper |
+| NVPTXRegisterInfo | `sub_2E4F5F0` | -- | Register class query vtable method |
 
 ## Differences from Upstream LLVM
 

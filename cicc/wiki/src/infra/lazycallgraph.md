@@ -722,53 +722,53 @@ The call graph DOT writer cluster at `0x2280000`--`0x228A000` emits: `"view-call
 
 ## Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_D230A0` | -- | LazyCallGraph cluster start |
-| `sub_D23910` | -- | `std::rotate` / SCC array reorder |
-| `sub_D23A60` | -- | SCC array splitting helper |
-| `sub_D23BF0` | -- | `Node::populate()` / edge iterator (lazy population point) |
-| `sub_D23C40` | -- | `LazyCallGraph::lookupSCC(Node&)` |
-| `sub_D23CB0` | -- | `RefSCC::isAncestorOf()` connectivity check |
-| `sub_D23D60` | -- | `LazyCallGraph::notifyRefSCCChange()` |
-| `sub_D23E00` | -- | `Edge::setKind()` (flip call/ref tag bit) |
-| `sub_D23F30` | -- | SCC constructor |
-| `sub_D248B0` | -- | `LazyCallGraph::insertRefSCC()` |
-| `sub_D24960` | -- | Node edge list cleanup |
-| `sub_D24C50` | -- | DenseMap insert (Node-to-SCC) |
-| `sub_D24D10` | -- | `RefSCC::isPartOfRefSCC()` check |
-| `sub_D24EE0` | -- | DenseMap clear (SCC internals) |
-| `sub_D25AF0` | -- | `RefSCC::find()` / updateSCCIndex |
-| `sub_D25BD0` | -- | `RefSCC::SCCIndexMap::find()` |
-| `sub_D25CB0` | -- | DenseMap grow/rehash |
-| `sub_D25FD0` | 5,526 | `switchInternalEdgeToCall()` |
-| `sub_D27750` | -- | `Node::setRefSCC()` |
-| `sub_D27A10` | 29,179 | `switchOutgoingEdgeToCall/Ref()` |
-| `sub_D29180` | 6,417 | Call graph verification |
-| `sub_D29900` | 8,235 | DOT graph dumper |
-| `sub_D2A080` | 15,253 | `insertInternalRefEdge()` |
-| `sub_D2AD40` | 12,495 | `computeRefSCC()` |
-| `sub_D2B640` | 12,287 | Call graph text printer |
-| `sub_D2BEB0` | 9,782 | `buildSCCs()` / initial construction |
-| `sub_D2C610` | 5,236 | `switchInternalEdgeToRef()` |
-| `sub_D2DA90` | 17,930 | `mergeRefSCC()` |
-| `sub_D2E510` | 6,890 | SCC iteration logic |
-| `sub_D2F240` | 6,141 | `rebuildSCC()` |
-| `sub_D2F8A0` | 10,451 | Post-order SCC traversal helper |
-| `sub_D30800` | 7,796 | Post-order traversal |
-| `sub_D301A0` | 5,148 | Edge management helper |
-| `sub_D31270` | 7,696 | RefSCC-level operations |
-| `sub_1A62BF0` | -- | CGSCC pass manager / InlinerWrapper factory |
-| `sub_1864060` | 75,000 | NVIDIA custom inliner (old CGSCC) |
-| `sub_186CA00` | 61,117 | `Inliner::inlineCallsImpl()` (CGSCC core loop) |
-| `sub_2280510` | 24,000 | Call graph node visitor |
-| `sub_2282680` | 33,000 | Call graph builder |
-| `sub_2284BC0` | 16,000 | DevirtSCCRepeatedPass ("Max devirtualization iterations reached") |
-| `sub_2342850` | -- | InlinerWrapper factory (nv-early-inliner, inliner-wrapper) |
-| `sub_2362FB0` | 6,700 | CGSCC-to-function adaptor |
-| `sub_2377300` | 103,000 | CGSCC pipeline text parser |
-| `sub_2582AC0` | 39,000 | Attributor CGSCC pass |
-| `sub_2613930` | 69,000 | New PM CGSCC inliner |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| LazyCallGraph cluster start | `sub_D230A0` | -- | -- |
+| `std::rotate` / SCC array reorder | `sub_D23910` | -- | -- |
+| SCC array splitting helper | `sub_D23A60` | -- | -- |
+| `Node::populate()` / edge iterator (lazy population point) | `sub_D23BF0` | -- | -- |
+| `LazyCallGraph::lookupSCC(Node&)` | `sub_D23C40` | -- | -- |
+| `RefSCC::isAncestorOf()` connectivity check | `sub_D23CB0` | -- | -- |
+| `LazyCallGraph::notifyRefSCCChange()` | `sub_D23D60` | -- | -- |
+| `Edge::setKind()` (flip call/ref tag bit) | `sub_D23E00` | -- | -- |
+| SCC constructor | `sub_D23F30` | -- | -- |
+| `LazyCallGraph::insertRefSCC()` | `sub_D248B0` | -- | -- |
+| Node edge list cleanup | `sub_D24960` | -- | -- |
+| DenseMap insert (Node-to-SCC) | `sub_D24C50` | -- | -- |
+| `RefSCC::isPartOfRefSCC()` check | `sub_D24D10` | -- | -- |
+| DenseMap clear (SCC internals) | `sub_D24EE0` | -- | -- |
+| `RefSCC::find()` / updateSCCIndex | `sub_D25AF0` | -- | -- |
+| `RefSCC::SCCIndexMap::find()` | `sub_D25BD0` | -- | -- |
+| DenseMap grow/rehash | `sub_D25CB0` | -- | -- |
+| `switchInternalEdgeToCall()` | `sub_D25FD0` | 5,526 | -- |
+| `Node::setRefSCC()` | `sub_D27750` | -- | -- |
+| `switchOutgoingEdgeToCall/Ref()` | `sub_D27A10` | 29,179 | -- |
+| Call graph verification | `sub_D29180` | 6,417 | -- |
+| DOT graph dumper | `sub_D29900` | 8,235 | -- |
+| `insertInternalRefEdge()` | `sub_D2A080` | 15,253 | -- |
+| `computeRefSCC()` | `sub_D2AD40` | 12,495 | -- |
+| Call graph text printer | `sub_D2B640` | 12,287 | -- |
+| `buildSCCs()` / initial construction | `sub_D2BEB0` | 9,782 | -- |
+| `switchInternalEdgeToRef()` | `sub_D2C610` | 5,236 | -- |
+| `mergeRefSCC()` | `sub_D2DA90` | 17,930 | -- |
+| SCC iteration logic | `sub_D2E510` | 6,890 | -- |
+| `rebuildSCC()` | `sub_D2F240` | 6,141 | -- |
+| Post-order SCC traversal helper | `sub_D2F8A0` | 10,451 | -- |
+| Post-order traversal | `sub_D30800` | 7,796 | -- |
+| Edge management helper | `sub_D301A0` | 5,148 | -- |
+| RefSCC-level operations | `sub_D31270` | 7,696 | -- |
+| CGSCC pass manager / InlinerWrapper factory | `sub_1A62BF0` | -- | -- |
+| NVIDIA custom inliner (old CGSCC) | `sub_1864060` | 75,000 | -- |
+| `Inliner::inlineCallsImpl()` (CGSCC core loop) | `sub_186CA00` | 61,117 | -- |
+| Call graph node visitor | `sub_2280510` | 24,000 | -- |
+| Call graph builder | `sub_2282680` | 33,000 | -- |
+| DevirtSCCRepeatedPass ("Max devirtualization iterations reached") | `sub_2284BC0` | 16,000 | -- |
+| InlinerWrapper factory (nv-early-inliner, inliner-wrapper) | `sub_2342850` | -- | -- |
+| CGSCC-to-function adaptor | `sub_2362FB0` | 6,700 | -- |
+| CGSCC pipeline text parser | `sub_2377300` | 103,000 | -- |
+| Attributor CGSCC pass | `sub_2582AC0` | 39,000 | -- |
+| New PM CGSCC inliner | `sub_2613930` | 69,000 | -- |
 
 
 ## Cross-References

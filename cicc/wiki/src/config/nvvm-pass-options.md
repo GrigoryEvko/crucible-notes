@@ -470,16 +470,16 @@ The second caller, `sub_12F4060` (TargetMachine creation in the standalone path)
 
 ## Function Map
 
-| Address | Name | Size | Purpose |
+| Function | Address | Size | Role |
 |---|---|---|---|
-| `sub_12D6300` | `NVVMPassOptions::init` | 125KB | Populate 221 slots from registry |
-| `sub_12D6170` | `PassOptionRegistry::lookupOption` | ~200B | Hash-table lookup by slot index |
-| `sub_12D6240` | `PassOptionRegistry::getBoolOption` | ~300B | Boolean resolution with default |
-| `sub_12D6090` | `writeStringOption` | ~150B | Write 24-byte string slot |
-| `sub_12D6100` | `writeBoolOption` | ~120B | Write 16-byte boolean slot |
-| `sub_1691920` | `PassDefTable::getPassDef` | ~80B | 64-byte stride table lookup |
-| `sub_16D2BB0` | `parseInt` | ~100B | String-to-int64 parser |
-| `sub_16D2060` | `toLowercase` | ~80B | String lowercasing for bool parse |
+| `NVVMPassOptions::init` | `sub_12D6300` | 125KB | Populate 221 slots from registry |
+| `PassOptionRegistry::lookupOption` | `sub_12D6170` | ~200B | Hash-table lookup by slot index |
+| `PassOptionRegistry::getBoolOption` | `sub_12D6240` | ~300B | Boolean resolution with default |
+| `writeStringOption` | `sub_12D6090` | ~150B | Write 24-byte string slot |
+| `writeBoolOption` | `sub_12D6100` | ~120B | Write 16-byte boolean slot |
+| `PassDefTable::getPassDef` | `sub_1691920` | ~80B | 64-byte stride table lookup |
+| `parseInt` | `sub_16D2BB0` | ~100B | String-to-int64 parser |
+| `toLowercase` | `sub_16D2060` | ~80B | String lowercasing for bool parse |
 
 ## Cross-References
 

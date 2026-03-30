@@ -609,34 +609,34 @@ These opcodes are emitted by the SelectionDAG lowering for native atomic operati
 
 ## Function Map
 
-| Address | Size | Function | Role |
+| Function | Address | Size | Role |
 |---|---|---|---|
-| `0x6BBC40` | ~1251 lines | `sub_6BBC40` | EDG atomic builtin name generator |
-| `0x12AA280` | | `sub_12AA280` | Legacy CAS IR node builder |
-| `0x12AA9B0` | | `sub_12AA9B0` | Legacy atomic exchange handler |
-| `0x12ADE80` | | `sub_12ADE80` | Scoped atomic load/store/fetch handler |
-| `0x12AE010` | | `sub_12AE010` | Fence acquire/release emitter (EDG only; BUG on NVVM) |
-| `0x12AE0E0` | | `sub_12AE0E0` | Volatile fence emitter (pre-SM 70) |
-| `0x12AE4B0` | | `sub_12AE4B0` | Explicit fence emitter (SM 70+) |
-| `0x12AE930` | 41KB | `sub_12AE930` | PTX inline ASM atomic codegen (EDG side) |
-| `0x12B3FD0` | 103KB | `sub_12B3FD0` | Main builtin lowering mega-switch |
-| `0x20C7CE0` | 1399 | `sub_20C7CE0` | AtomicExpandPass: recursive type walker |
-| `0x20C84C0` | 1656 | `sub_20C84C0` | AtomicExpandPass: address space checker |
-| `0x20C9140` | 1204 | `sub_20C9140` | AtomicExpandPass: runOnFunction |
-| `0x20C96A0` | 1814 | `sub_20C96A0` | AtomicExpandPass: CAS loop generation |
-| `0x20CA900` | 218 | `sub_20CA900` | AtomicExpandPass: registration |
-| `0x20CB200` | 2896 | `sub_20CB200` | AtomicExpandPass: sub-word mask generation |
-| `0x20CBD50` | 1646 | `sub_20CBD50` | AtomicExpandPass: partword RMW expansion |
-| `0x20CC690` | 43 | `sub_20CC690` | AtomicExpandPass: 11-case operation dispatch |
-| `0x20CD3E0` | 6030 | `sub_20CD3E0` | AtomicExpandPass: partword CmpXchg expansion |
-| `0x20CEB70` | 10640 | `sub_20CEB70` | AtomicExpandPass: full CmpXchg LL/SC expansion |
-| `0x21E5E70` | | `sub_21E5E70` | PTX emission: base atomic opcode emitter |
-| `0x21E6420` | | `sub_21E6420` | PTX emission: L2-hinted atomic opcode emitter |
-| `0x21E8EA0` | | `sub_21E8EA0` | PTX emission: cluster barrier emitter |
-| `0x21E94F0` | | `sub_21E94F0` | PTX emission: membar/fence emitter |
-| `0x9502D0` | 55KB | `sub_9502D0` | PTX inline ASM atomic codegen (NVVM side) |
-| `0x94F9E0` | | `sub_94F9E0` | NVVM membar emitter |
-| `0x94FDF0` | | `sub_94FDF0` | NVVM fence emitter |
+| `sub_6BBC40` | `0x6BBC40` | ~1251 lines | EDG atomic builtin name generator |
+| `sub_12AA280` | `0x12AA280` |  | Legacy CAS IR node builder |
+| `sub_12AA9B0` | `0x12AA9B0` |  | Legacy atomic exchange handler |
+| `sub_12ADE80` | `0x12ADE80` |  | Scoped atomic load/store/fetch handler |
+| `sub_12AE010` | `0x12AE010` |  | Fence acquire/release emitter (EDG only; BUG on NVVM) |
+| `sub_12AE0E0` | `0x12AE0E0` |  | Volatile fence emitter (pre-SM 70) |
+| `sub_12AE4B0` | `0x12AE4B0` |  | Explicit fence emitter (SM 70+) |
+| `sub_12AE930` | `0x12AE930` | 41KB | PTX inline ASM atomic codegen (EDG side) |
+| `sub_12B3FD0` | `0x12B3FD0` | 103KB | Main builtin lowering mega-switch |
+| `sub_20C7CE0` | `0x20C7CE0` | 1399 | AtomicExpandPass: recursive type walker |
+| `sub_20C84C0` | `0x20C84C0` | 1656 | AtomicExpandPass: address space checker |
+| `sub_20C9140` | `0x20C9140` | 1204 | AtomicExpandPass: runOnFunction |
+| `sub_20C96A0` | `0x20C96A0` | 1814 | AtomicExpandPass: CAS loop generation |
+| `sub_20CA900` | `0x20CA900` | 218 | AtomicExpandPass: registration |
+| `sub_20CB200` | `0x20CB200` | 2896 | AtomicExpandPass: sub-word mask generation |
+| `sub_20CBD50` | `0x20CBD50` | 1646 | AtomicExpandPass: partword RMW expansion |
+| `sub_20CC690` | `0x20CC690` | 43 | AtomicExpandPass: 11-case operation dispatch |
+| `sub_20CD3E0` | `0x20CD3E0` | 6030 | AtomicExpandPass: partword CmpXchg expansion |
+| `sub_20CEB70` | `0x20CEB70` | 10640 | AtomicExpandPass: full CmpXchg LL/SC expansion |
+| `sub_21E5E70` | `0x21E5E70` |  | PTX emission: base atomic opcode emitter |
+| `sub_21E6420` | `0x21E6420` |  | PTX emission: L2-hinted atomic opcode emitter |
+| `sub_21E8EA0` | `0x21E8EA0` |  | PTX emission: cluster barrier emitter |
+| `sub_21E94F0` | `0x21E94F0` |  | PTX emission: membar/fence emitter |
+| `sub_9502D0` | `0x9502D0` | 55KB | PTX inline ASM atomic codegen (NVVM side) |
+| `sub_94F9E0` | `0x94F9E0` |  | NVVM membar emitter |
+| `sub_94FDF0` | `0x94FDF0` |  | NVVM fence emitter |
 
 ## Cross-References
 

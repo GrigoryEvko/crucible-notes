@@ -1,6 +1,8 @@
 # CodeGenPrepare and SCEV-CGP
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **LLVM version note:** Upstream CodeGenPrepare is stock LLVM 20.0.0 `CodeGenPrepare.cpp` with all 20+ `cl::opt` knobs unchanged. SCEV-CGP is a fully proprietary NVIDIA pass with no upstream equivalent; it is disabled by default (`nv-disable-scev-cgp = true`).
 
 cicc v13.0 contains two distinct passes that prepare LLVM IR for the NVPTX backend's instruction selection. The first is upstream LLVM's `CodeGenPreparePass`, registered as `"codegenprepare"` in the New PM pipeline (line 216 of `sub_2342890`), which sinks address computations, creates PHI nodes for sunk values, and splits critical edges. The second is NVIDIA's proprietary SCEV-CGP (Scalar-Evolution-based Code Generation Preparation), a fully custom pass that uses SCEV analysis to rewrite address expressions with GPU thread ID as an induction variable.
 
@@ -8,21 +10,21 @@ Both passes operate at the LLVM IR level, immediately before SelectionDAG constr
 
 ## Key Facts
 
-| Field | Value |
-|-------|-------|
-| **Pass name (upstream)** | `codegenprepare` (New PM) |
-| **Pass name (NVIDIA)** | SCEV-CGP (no formal New PM pass name found in binary) |
-| **Binary range (v12.x)** | `0x1D60000`--`0x1D7FFFF` (helpers + main transforms) |
-| **Binary range (v13.0)** | `0x2D75700`--`0x2D88660` (Cluster 6 in `0x2D` sweep) |
-| **Address sinking** | `sub_1D73760` / `sub_2D75700` (65--72 KB), string `"sunkaddr"` |
-| **PHI sinking** | `sub_1D706F0` / `sub_2D784F0` (64--68 KB), string `"sunk_phi"` |
-| **Block splitting** | `sub_1D7AA30` / `sub_2D88660` (54--74 KB), strings `".unlikely"`, `".cond.split"` |
-| **Main transform** | `sub_2D80050` (54 KB) -- orchestrates address mode lowering |
-| **SCEV-CGP knob ctor** | `ctor_263_0` at `0x4F36F0` (9.9 KB, 44 option strings) |
-| **CGP knob ctor** | `ctor_288_0` at `0x4FA950` (8.6 KB, 44 option strings) |
-| **Master disable** | `nv-disable-scev-cgp` (default: `true` -- SCEV-CGP is disabled) |
-| **Upstream source** | `llvm/lib/CodeGen/CodeGenPrepare.cpp` |
-| **Pipeline position** | Late IR, immediately before SelectionDAG ISel |
+| Property | Value |
+|---|---|
+| Pass name (upstream) | `codegenprepare` (New PM) |
+| Pass name (NVIDIA) | SCEV-CGP (no formal New PM pass name found in binary) |
+| Binary range (v12.x) | `0x1D60000`--`0x1D7FFFF` (helpers + main transforms) |
+| Binary range (v13.0) | `0x2D75700`--`0x2D88660` (Cluster 6 in `0x2D` sweep) |
+| Address sinking | `sub_1D73760` / `sub_2D75700` (65--72 KB), string `"sunkaddr"` |
+| PHI sinking | `sub_1D706F0` / `sub_2D784F0` (64--68 KB), string `"sunk_phi"` |
+| Block splitting | `sub_1D7AA30` / `sub_2D88660` (54--74 KB), strings `".unlikely"`, `".cond.split"` |
+| Main transform | `sub_2D80050` (54 KB) -- orchestrates address mode lowering |
+| SCEV-CGP knob ctor | `ctor_263_0` at `0x4F36F0` (9.9 KB, 44 option strings) |
+| CGP knob ctor | `ctor_288_0` at `0x4FA950` (8.6 KB, 44 option strings) |
+| Master disable | `nv-disable-scev-cgp` (default: `true` -- SCEV-CGP is disabled) |
+| Upstream source | `llvm/lib/CodeGen/CodeGenPrepare.cpp` |
+| Pipeline position | Late IR, immediately before SelectionDAG ISel |
 
 ## Upstream CodeGenPrepare
 
@@ -76,13 +78,13 @@ for each basic block BB in function:
 
 Key helpers in the v13.0 build:
 
-| Address | Role |
-|---------|------|
-| `sub_2D749D0` | Address mode cache lookup |
-| `sub_2D67BB0` | Address mode legality test (calls into TTI) |
-| `sub_2D6E640` | Address mode cache insert |
-| `sub_2D68450` | Materialize address mode as IR instructions |
-| `sub_2CE7CF0` | `ValueToSunkAddr` DenseMap operations |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| -- | -- | `sub_2D749D0` | -- |
+| -- | -- | `sub_2D67BB0` | -- |
+| -- | -- | `sub_2D6E640` | -- |
+| -- | -- | `sub_2D68450` | -- |
+| -- | -- | `sub_2CE7CF0` | -- |
 
 ### Transform 2: PHI Sinking (`sunk_phi`)
 
@@ -276,30 +278,30 @@ NVIDIA's solution is pragmatic: keep SCEV-CGP off, let LSR handle SCEV-level opt
 
 ### CodeGenPrepare (v12.x Addresses)
 
-| Address | Size | Role |
-|---------|------|------|
-| `sub_1D73760` | 65 KB | `optimizeMemoryInst` -- address sinking, creates `"sunkaddr"` |
-| `sub_1D706F0` | 68 KB | PHI optimization, creates `"sunk_phi"` |
-| `sub_1D7AA30` | 74 KB | Block splitting, creates `".unlikely"`, `".cond.split"` |
-| `sub_1D779D0` | 71 KB | IR transform (DAG combine-level, possibly `optimizeInst`) |
-| `sub_1D765D0` | 34 KB | Select lowering (`"cond.false"`, `"cond.end"`) |
-| `sub_1D7F9D0` | 31 KB | Deque-based worklist processor |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| -- | `sub_1D73760` | 65 KB | `optimizeMemoryInst` -- address sinking, creates `"sunkaddr"` |
+| -- | `sub_1D706F0` | 68 KB | PHI optimization, creates `"sunk_phi"` |
+| -- | `sub_1D7AA30` | 74 KB | Block splitting, creates `".unlikely"`, `".cond.split"` |
+| -- | `sub_1D779D0` | 71 KB | IR transform (DAG combine-level, possibly `optimizeInst`) |
+| -- | `sub_1D765D0` | 34 KB | Select lowering (`"cond.false"`, `"cond.end"`) |
+| -- | `sub_1D7F9D0` | 31 KB | Deque-based worklist processor |
 
 ### CodeGenPrepare (v13.0 Addresses)
 
-| Address | Size | Role |
-|---------|------|------|
-| `sub_2D75700` | 72 KB | Address sinking with `"sunk_phi"`, ValueToSunkAddr DenseMap |
-| `sub_2D784F0` | 64 KB | Address mode lowering orchestrator, calls `sub_2D75700` |
-| `sub_2D80050` | 54 KB | Main CodeGenPrepare transform, calls TTI and address mode logic |
-| `sub_2D82850` | 62 KB | Late lowering/expansion (type widening, custom lowering) |
-| `sub_2D88660` | 70 KB | Block splitting with branch weights (`"hot"`, `"unlikely"`, `"unknown"`) |
-| `sub_2D749D0` | -- | Address mode cache lookup |
-| `sub_2D67BB0` | -- | Address mode legality test |
-| `sub_2D6E640` | -- | Address mode cache insert |
-| `sub_2D68450` | -- | Address mode materialization |
-| `sub_2D6DEE0` | -- | Address mode matching |
-| `sub_2D69E90` | -- | Cleanup/init |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| -- | `sub_2D75700` | 72 KB | Address sinking with `"sunk_phi"`, ValueToSunkAddr DenseMap |
+| -- | `sub_2D784F0` | 64 KB | Address mode lowering orchestrator, calls `sub_2D75700` |
+| -- | `sub_2D80050` | 54 KB | Main CodeGenPrepare transform, calls TTI and address mode logic |
+| -- | `sub_2D82850` | 62 KB | Late lowering/expansion (type widening, custom lowering) |
+| -- | `sub_2D88660` | 70 KB | Block splitting with branch weights (`"hot"`, `"unlikely"`, `"unknown"`) |
+| -- | `sub_2D749D0` | -- | Address mode cache lookup |
+| -- | `sub_2D67BB0` | -- | Address mode legality test |
+| -- | `sub_2D6E640` | -- | Address mode cache insert |
+| -- | `sub_2D68450` | -- | Address mode materialization |
+| -- | `sub_2D6DEE0` | -- | Address mode matching |
+| -- | `sub_2D69E90` | -- | Cleanup/init |
 
 ### Helper Range (0x1D60000--0x1D6FFFF)
 
@@ -307,13 +309,13 @@ This 64 KB sub-range contains CodeGenPrepare helper functions. The sweep identif
 
 ### SCEV-CGP Option Registration
 
-| Address | Size | Role |
-|---------|------|------|
-| `ctor_263_0` (`0x4F36F0`) | 9.9 KB | Registers 44 cl::opt strings for SCEV-CGP + BASR |
-| `ctor_288_0` (`0x4FA950`) | 8.6 KB | Registers 44 cl::opt strings for upstream CodeGenPrepare |
-| `ctor_591` (`0x57C1A0`) | 9.3 KB | Additional CodeGenPrepare sink/split options |
-| `ctor_544_0` (`0x56C190`) | 13.1 KB | CodeGenPrepare options (v13.0 duplicate registration) |
-| `ctor_609_0` (`0x585D30`) | 37.3 KB | NVPTX backend mega-block, includes `nv-disable-scev-cgp` |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| -- | `ctor_263_0` (`0x4F36F0`) | 9.9 KB | Registers 44 cl::opt strings for SCEV-CGP + BASR |
+| -- | `ctor_288_0` (`0x4FA950`) | 8.6 KB | Registers 44 cl::opt strings for upstream CodeGenPrepare |
+| -- | `ctor_591` (`0x57C1A0`) | 9.3 KB | Additional CodeGenPrepare sink/split options |
+| -- | `ctor_544_0` (`0x56C190`) | 13.1 KB | CodeGenPrepare options (v13.0 duplicate registration) |
+| -- | `ctor_609_0` (`0x585D30`) | 37.3 KB | NVPTX backend mega-block, includes `nv-disable-scev-cgp` |
 
 ## Cross-References
 

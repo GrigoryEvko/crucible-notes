@@ -106,24 +106,24 @@ No LLVM or NVIDIA code lives here. Pure runtime support.
 
 The complete Edison Design Group C++ frontend, version 6.6. Contains the lexer, parser, constexpr evaluator, template instantiator, overload resolver, IL walker/copier, diagnostic engine, SARIF output, and CUDA-specific extensions (kernel launch grammar, `__shared__`/`__device__` memory space parsing, atomic builtin stubs).
 
-| Address | Size | Identity |
+| Function | Address | Size |
 |---|---|---|
-| `sub_5D2A80` | | EDG main entry (called from real main) |
-| `sub_610000`-`sub_62FFFF` | 128 KB | Expression parser core |
-| `sub_750000`-`sub_76FFFF` | 128 KB | Declaration processing |
-| `sub_840000`-`sub_87FFFF` | 256 KB | Template / constexpr |
-| `sub_880000`-`sub_8EFFFF` | 448 KB | SARIF, diagnostics, keywords |
+| EDG main entry (called from real main) | `sub_5D2A80` |  |
+| Expression parser core | `sub_610000`-`sub_62FFFF` | 128 KB |
+| Declaration processing | `sub_750000`-`sub_76FFFF` | 128 KB |
+| Template / constexpr | `sub_840000`-`sub_87FFFF` | 256 KB |
+| SARIF, diagnostics, keywords | `sub_880000`-`sub_8EFFFF` | 448 KB |
 
 ### Zone 4: CLI / Real Main / Dual-Path Entry (0x8F0000 - 0x9EFFFF)
 
-| Address | Size | Identity |
+| Function | Address | Size |
 |---|---|---|
-| `sub_8F9C90` | | Real main (after CRT/jemalloc init) |
-| `sub_900130` | | Path A CLI parsing (LibNVVM API mode) |
-| `sub_902D10` | | Path A simple compile entry |
-| `sub_905EE0` | 43 KB | Path A multi-stage pipeline |
-| `sub_90AEE0` | 109 KB | Path A builtin resolution table |
-| `sub_960000`-`sub_9EFFFF` | 576 KB | Architecture detection, NVVM option parsing |
+| Real main (after CRT/jemalloc init) | `sub_8F9C90` |  |
+| Path A CLI parsing (LibNVVM API mode) | `sub_900130` |  |
+| Path A simple compile entry | `sub_902D10` |  |
+| Path A multi-stage pipeline | `sub_905EE0` | 43 KB |
+| Path A builtin resolution table | `sub_90AEE0` | 109 KB |
+| Architecture detection, NVVM option parsing | `sub_960000`-`sub_9EFFFF` | 576 KB |
 
 ### Zone 5: Bitcode Reader / X86 AutoUpgrade / Verifier (0x9F0000 - 0xBFFFFF)
 
@@ -214,20 +214,20 @@ This zone is the core NVIDIA bridge between the EDG frontend AST and the LLVM IR
 
 The pipeline assembler constructs the complete LLVM pass pipeline, inserting passes by calling factory functions whose addresses scatter across the entire binary.
 
-| Address | Size | Identity |
+| Function | Address | Size |
 |---|---|---|
-| `sub_12D3E60` | | Module split-range helper |
-| `sub_12D4560` | 325 B | Pass factory: creates NVIDIA custom pass |
-| `sub_12D6300` | 125 KB | **NVVMPassOptions initializer** -- populates 222 pass option slots into 4,480-byte struct |
-| `sub_12DE0B0` | 3.5 KB | **AddPass** -- hash-table-based pass insertion into pipeline |
-| `sub_12DE330` | 4.8 KB | **Tier 0** sub-pipeline builder (full optimization, 40 passes) |
-| `sub_12DE8F0` | | **Tier 1/2/3** sub-pipeline builder (85-pass superset, tier-gated) |
-| `sub_12DFE00` | | **Codegen dispatch** -- routes to backend machine pass pipeline |
-| `sub_12E54A0` | 49.8 KB | **Master pipeline assembler** -- 1,553 lines, two major pipelines (normal + fast) |
-| `sub_12EB010` | | Machine pass assembly (Pipeline B fast path) |
-| `sub_12EC4F0` | | Machine codegen execution |
-| `sub_12FC000`+ | ~256 KB | **jemalloc core** (~400 functions) |
-| `sub_12FCDB0` | 129 KB | `malloc_conf_init` (parses 199 config strings from `MALLOC_CONF`) |
+| Module split-range helper | `sub_12D3E60` |  |
+| Pass factory: creates NVIDIA custom pass | `sub_12D4560` | 325 B |
+| **NVVMPassOptions initializer** -- populates 222 pass option slots into 4,480-byte struct | `sub_12D6300` | 125 KB |
+| **AddPass** -- hash-table-based pass insertion into pipeline | `sub_12DE0B0` | 3.5 KB |
+| **Tier 0** sub-pipeline builder (full optimization, 40 passes) | `sub_12DE330` | 4.8 KB |
+| **Tier 1/2/3** sub-pipeline builder (85-pass superset, tier-gated) | `sub_12DE8F0` |  |
+| **Codegen dispatch** -- routes to backend machine pass pipeline | `sub_12DFE00` |  |
+| **Master pipeline assembler** -- 1,553 lines, two major pipelines (normal + fast) | `sub_12E54A0` | 49.8 KB |
+| Machine pass assembly (Pipeline B fast path) | `sub_12EB010` |  |
+| Machine codegen execution | `sub_12EC4F0` |  |
+| **jemalloc core** (~400 functions) | `sub_12FC000`+ | ~256 KB |
+| `malloc_conf_init` (parses 199 config strings from `MALLOC_CONF`) | `sub_12FCDB0` | 129 KB |
 
 ### Zone 11: IR Infrastructure / PassManager (0x1300000 - 0x16FFFFF)
 
@@ -263,119 +263,119 @@ This 5 MB zone contains the bulk of LLVM's scalar optimization passes and all of
 
 **GVN family (0x1900000 - 0x193FFFF):**
 
-| Address | Size | Identity |
+| Function | Address | Size |
 |---|---|---|
-| `sub_1900BB0` | 83 KB | GVN::runOnFunction (core fixed-point iteration) |
-| `sub_1906720` | 26 KB | GVN PRE (Partial Redundancy Elimination) |
-| `sub_1930810` | 3 KB | NewGVN expression printing |
-| `sub_1933B40` | 43 KB | NewGVN core value numbering |
+| GVN::runOnFunction (core fixed-point iteration) | `sub_1900BB0` | 83 KB |
+| GVN PRE (Partial Redundancy Elimination) | `sub_1906720` | 26 KB |
+| NewGVN expression printing | `sub_1930810` | 3 KB |
+| NewGVN core value numbering | `sub_1933B40` | 43 KB |
 
 **Standard scalar passes (0x1830000 - 0x1AFFFFF):**
 
-| Address | Size | Identity (pipeline factory call) |
+| Function (pipeline factory call) | Address | Size |
 |---|---|---|
-| `sub_1832270` | | InstructionCombining (Old PM wrapper) |
-| `sub_1833EB0` | | TailCallElim / JumpThreading |
-| `sub_1841180` | | FunctionAttrs |
-| `sub_1842BC0` | | SCCP (Sparse Conditional Constant Propagation) |
-| `sub_184CD60` | | ConstantMerge / GlobalDCE |
-| `sub_1857160` | | **NVVMReflect** |
-| `sub_185D600` | | IPConstantPropagation / ArgumentPromotion |
-| `sub_1869C50` | | Sink / MemorySSA |
-| `sub_18A3430` | | NVVMPredicateOpt / SelectionOpt |
-| `sub_18B1DE0` | | LoopPass (barrier optimization) |
-| `sub_18DEFF0` | | DCE (Dead Code Elimination) |
-| `sub_18EEA90` | | CorrelatedValuePropagation |
-| `sub_18F5480` | | DSE (Dead Store Elimination) |
-| `sub_18FD350` | | DeadArgumentElimination |
-| `sub_190BB10` | | SimplifyCFG |
-| `sub_195E880` | | LICM / LoopRotate |
-| `sub_1952F90` | | LoopIndexSplit |
-| `sub_197E720` | | LoopUnroll / LoopVectorize |
-| `sub_198DF00` | | LoopSimplify / IndVarSimplify |
-| `sub_198E2A0` | | SROA (Scalar Replacement of Aggregates) |
-| `sub_19401A0` | | InstCombine variant |
-| `sub_19B73C0` | | SROA variant / LoopUnswitch |
-| `sub_19CE990` | | NVIDIA pass (unknown) |
-| `sub_1A13320` | | **NVVMRematerialization** (IR-level remat) |
-| `sub_1A223D0` | | **NVVMIRVerification** |
-| `sub_1A62BF0` | | **LLVM standard pass pipeline** (parameterized, called ~8x with different configs) |
-| `sub_1A68E70` | | LoopIdiomRecognize / IndVarSimplify |
-| `sub_1A7A9F0` | | InstructionSimplify / ValueTracking |
+| InstructionCombining (Old PM wrapper) | `sub_1832270` |  |
+| TailCallElim / JumpThreading | `sub_1833EB0` |  |
+| FunctionAttrs | `sub_1841180` |  |
+| SCCP (Sparse Conditional Constant Propagation) | `sub_1842BC0` |  |
+| ConstantMerge / GlobalDCE | `sub_184CD60` |  |
+| **NVVMReflect** | `sub_1857160` |  |
+| IPConstantPropagation / ArgumentPromotion | `sub_185D600` |  |
+| Sink / MemorySSA | `sub_1869C50` |  |
+| NVVMPredicateOpt / SelectionOpt | `sub_18A3430` |  |
+| LoopPass (barrier optimization) | `sub_18B1DE0` |  |
+| DCE (Dead Code Elimination) | `sub_18DEFF0` |  |
+| CorrelatedValuePropagation | `sub_18EEA90` |  |
+| DSE (Dead Store Elimination) | `sub_18F5480` |  |
+| DeadArgumentElimination | `sub_18FD350` |  |
+| SimplifyCFG | `sub_190BB10` |  |
+| LICM / LoopRotate | `sub_195E880` |  |
+| LoopIndexSplit | `sub_1952F90` |  |
+| LoopUnroll / LoopVectorize | `sub_197E720` |  |
+| LoopSimplify / IndVarSimplify | `sub_198DF00` |  |
+| SROA (Scalar Replacement of Aggregates) | `sub_198E2A0` |  |
+| InstCombine variant | `sub_19401A0` |  |
+| SROA variant / LoopUnswitch | `sub_19B73C0` |  |
+| NVIDIA pass (unknown) | `sub_19CE990` |  |
+| **NVVMRematerialization** (IR-level remat) | `sub_1A13320` |  |
+| **NVVMIRVerification** | `sub_1A223D0` |  |
+| **LLVM standard pass pipeline** (parameterized, called ~8x with different configs) | `sub_1A62BF0` |  |
+| LoopIdiomRecognize / IndVarSimplify | `sub_1A68E70` |  |
+| InstructionSimplify / ValueTracking | `sub_1A7A9F0` |  |
 
 **Loop unrolling + switch lowering (0x1B00000 - 0x1B7FFFF):**
 
-| Address | Size | Identity |
+| Function | Address | Size |
 |---|---|---|
-| `sub_1B01A40` | 68 KB | LoopUnroll main driver |
-| `sub_1B07290` | 55 KB | Unroll-and-Jam |
-| `sub_1B0BF10` | 39 KB | Loop peeling |
-| `sub_1B12B90` | 65 KB | Unroll prologue/epilogue generation |
-| `sub_1B51110` | 51 KB | Code sinking (".sink.split") |
-| `sub_1B5C580` | 30 KB | SimplifyCFG condition combining |
-| `sub_1B60700` | 83 KB | Switch-to-lookup-table transformation |
+| LoopUnroll main driver | `sub_1B01A40` | 68 KB |
+| Unroll-and-Jam | `sub_1B07290` | 55 KB |
+| Loop peeling | `sub_1B0BF10` | 39 KB |
+| Unroll prologue/epilogue generation | `sub_1B12B90` | 65 KB |
+| Code sinking (".sink.split") | `sub_1B51110` | 51 KB |
+| SimplifyCFG condition combining | `sub_1B5C580` | 30 KB |
+| Switch-to-lookup-table transformation | `sub_1B60700` | 83 KB |
 
 **Loop/SLP vectorizer (0x1B80000 - 0x1BFFFFF):**
 
-| Address | Size | Identity |
+| Function | Address | Size |
 |---|---|---|
-| `sub_1BB6740` | 43 KB | LoopVectorize main driver ("loop-vectorize") |
-| `sub_1BAB460` | 32 KB | VPlan builder |
-| `sub_1BDDB00` | 47 KB | SLP horizontal reduction ("slp-vectorizer") |
-| `sub_1BD0660` | 62 KB | SLP shuffle/reorder engine |
+| LoopVectorize main driver ("loop-vectorize") | `sub_1BB6740` | 43 KB |
+| VPlan builder | `sub_1BAB460` | 32 KB |
+| SLP horizontal reduction ("slp-vectorizer") | `sub_1BDDB00` | 47 KB |
+| SLP shuffle/reorder engine | `sub_1BD0660` | 62 KB |
 
 **NVVM module validation + configuration (0x1C00000 - 0x1C3FFFF):**
 
-| Address | Size | Identity |
+| Function | Address | Size |
 |---|---|---|
-| `sub_1C20170` | 33 KB | **NVVM codegen config parser** (70+ knobs: AdvancedRemat, CSSACoalescing, DoMMACoalescing, PGO, OCGKnobs) |
-| `sub_1C21CE0` | 28 KB | **NVVM compile mode parser** (WHOLE_PROGRAM_NOABI/ABI, SEPARATE_ABI, opt level, debug info) |
-| `sub_1C32740` | 30 KB | **Kernel attribute validator** (cluster launch, parameter size, Hopper constraints) |
-| `sub_1C36530` | 112 KB | **NVVM intrinsic lowering** (tex/surf/syncwarp/ISBE/MAP/ATTR validation) |
-| `sub_1C3BC10` | 48 KB | **NVVM module validator** (data layout, target triple, UnifiedNVVMIR) |
+| **NVVM codegen config parser** (70+ knobs: AdvancedRemat, CSSACoalescing, DoMMACoalescing, PGO, OCGKnobs) | `sub_1C20170` | 33 KB |
+| **NVVM compile mode parser** (WHOLE_PROGRAM_NOABI/ABI, SEPARATE_ABI, opt level, debug info) | `sub_1C21CE0` | 28 KB |
+| **Kernel attribute validator** (cluster launch, parameter size, Hopper constraints) | `sub_1C32740` | 30 KB |
+| **NVVM intrinsic lowering** (tex/surf/syncwarp/ISBE/MAP/ATTR validation) | `sub_1C36530` | 112 KB |
+| **NVVM module validator** (data layout, target triple, UnifiedNVVMIR) | `sub_1C3BC10` | 48 KB |
 
 **NVIDIA custom IR passes (0x1C40000 - 0x1CFFFFF):**
 
 This 1 MB block contains the majority of NVIDIA's proprietary IR-level optimization passes. Every pass listed here has no upstream LLVM equivalent.
 
-| Address | Size | Pass name | Identity |
+| Function | Address | Size | Role |
 |---|---|---|---|
-| `sub_1C47810` | 63 KB | dead-sync-elim | **Dead Synchronization Elimination** -- removes redundant `__syncthreads()` barriers via fixed-point R/W dataflow |
-| `sub_1C4D210` | 69 KB | | Alloca cloning / PHI insertion (mem2reg extension) |
-| `sub_1C585C0` | 39 KB | | NVIDIA pass helper (dead-sync / common-base infrastructure) |
-| `sub_1C5DFC0` | 39 KB | common-base-elim | **Common Base Elimination** -- removes redundant base address computations |
-| `sub_1C5FDC0` | 26 KB | | Block-level analysis infrastructure ("Processing", "Block") |
-| `sub_1C637F0` | 28 KB | | Base address bitcast helper ("baseValue", "bitCastEnd") |
-| `sub_1C67780` | 59 KB | base-addr-sr | **Base Address Strength Reduction** ("BaseAddressStrengthReduce") |
-| `sub_1C6A6C0` | 54 KB | | MemorySpaceOpt loop index analysis ("phi maxLoopInd") |
-| `sub_1C6E800` | | | GVN or LICM variant |
-| `sub_1C6FCA0` | | | ADCE (Aggressive DCE) |
-| `sub_1C70910` | 75 KB | memspace-opt (core) | **MemorySpaceOpt function cloning** -- specializes generic pointers to global/shared/local |
-| `sub_1C7B2C0` | 84 KB | loop-index-split | **LoopIndexSplit** -- splits loops on index conditions (three modes: all-but-one, single-iter, range-split) |
-| `sub_1C82A50` | 40 KB | lower-aggr-copies | **Memmove Unrolling** -- forward/reverse element copy loops |
-| `sub_1C86CA0` | 73 KB | lower-aggr-copies | **Struct/Aggregate Splitting** -- element-wise memcpy decomposition |
-| `sub_1C8A4D0` | | | EarlyCSE / GVN variant |
-| `sub_1C8C170` | 26 KB | lower-ops | **FP128/I128 Emulation** -- replaces 128-bit ops with `__nv_*` library calls |
-| `sub_1C8E680` | | nvvm-memspace-opt | **MemorySpaceOpt** entry (pipeline factory address) |
-| `sub_1C98160` | | | NVVMLowerBarriers / BarrierLowering |
-| `sub_1CA2920` | 32 KB | | MemorySpaceOpt address space resolution (warnings for illegal atomics on const/local) |
-| `sub_1CA9E90` | 28 KB | | MemorySpaceOpt secondary resolver |
-| `sub_1CB1E60` | 31 KB | printf-lowering | **Printf Lowering** -- lowers `printf` to `vprintf` + local buffer packing |
-| `sub_1CB4E40` | | nvvm-intrinsic-lower | **NVVMIntrinsicLowering** (most frequently inserted pass, ~10 occurrences in pipeline) |
-| `sub_1CB73C0` | | branch-dist | **NVVMBranchDist** |
-| `sub_1CBFA40` | 75 KB | | RLMCAST transformation (register-level multicast) |
-| `sub_1CC60B0` | | sinking2 | **NVVMSinking2** (NVIDIA enhanced code sinking) |
-| `sub_1CD74B0` | 75 KB | iv-demotion | **IV Demotion** -- narrows 64-bit induction variables to 32-bit ("demoteIV", "newBaseIV") |
-| `sub_1CDC1F0` | 35 KB | | NLO (NVIDIA Live Output) helper ("nloNewAdd", "nloNewBit") |
-| `sub_1CDE4D0` | 80 KB | | Instruction classification / cost model (NLO/remat) |
-| `sub_1CE10B0` | 48 KB | | **Simplify Live Output** (NLO pass -- "nloNewBit") |
-| `sub_1CE3AF0` | 56 KB | | Rematerialization pull-in cost analysis ("Total pull-in cost") |
-| `sub_1CE67D0` | 32 KB | | Rematerialization block executor ("remat_", "uclone_" prefixes) |
-| `sub_1CE7DD0` | 67 KB | remat | **NVVMRematerialization main driver** -- live-in/live-out pressure analysis per block |
-| `sub_1CEBD10` | | | Final NVVM lowering / intrinsic cleanup |
-| `sub_1CEE970` | 27 KB | | Formal parameter space overflow checker |
-| `sub_1CEF8F0` | | nvvm-peephole | **NVVMPeephole** |
-| `sub_1CFDD60` | 49 KB | | Instruction scheduling helper (physical register constraints) |
+| **Dead Synchronization Elimination** -- removes redundant `__syncthreads()` barriers via fixed-point R/W dataflow | `sub_1C47810` | 63 KB | dead-sync-elim |
+| Alloca cloning / PHI insertion (mem2reg extension) | `sub_1C4D210` | 69 KB |  |
+| NVIDIA pass helper (dead-sync / common-base infrastructure) | `sub_1C585C0` | 39 KB |  |
+| **Common Base Elimination** -- removes redundant base address computations | `sub_1C5DFC0` | 39 KB | common-base-elim |
+| Block-level analysis infrastructure ("Processing", "Block") | `sub_1C5FDC0` | 26 KB |  |
+| Base address bitcast helper ("baseValue", "bitCastEnd") | `sub_1C637F0` | 28 KB |  |
+| **Base Address Strength Reduction** ("BaseAddressStrengthReduce") | `sub_1C67780` | 59 KB | base-addr-sr |
+| MemorySpaceOpt loop index analysis ("phi maxLoopInd") | `sub_1C6A6C0` | 54 KB |  |
+| GVN or LICM variant | `sub_1C6E800` |  |  |
+| ADCE (Aggressive DCE) | `sub_1C6FCA0` |  |  |
+| **MemorySpaceOpt function cloning** -- specializes generic pointers to global/shared/local | `sub_1C70910` | 75 KB | memspace-opt (core) |
+| **LoopIndexSplit** -- splits loops on index conditions (three modes: all-but-one, single-iter, range-split) | `sub_1C7B2C0` | 84 KB | loop-index-split |
+| **Memmove Unrolling** -- forward/reverse element copy loops | `sub_1C82A50` | 40 KB | lower-aggr-copies |
+| **Struct/Aggregate Splitting** -- element-wise memcpy decomposition | `sub_1C86CA0` | 73 KB | lower-aggr-copies |
+| EarlyCSE / GVN variant | `sub_1C8A4D0` |  |  |
+| **FP128/I128 Emulation** -- replaces 128-bit ops with `__nv_*` library calls | `sub_1C8C170` | 26 KB | lower-ops |
+| **MemorySpaceOpt** entry (pipeline factory address) | `sub_1C8E680` |  | nvvm-memspace-opt |
+| NVVMLowerBarriers / BarrierLowering | `sub_1C98160` |  |  |
+| MemorySpaceOpt address space resolution (warnings for illegal atomics on const/local) | `sub_1CA2920` | 32 KB |  |
+| MemorySpaceOpt secondary resolver | `sub_1CA9E90` | 28 KB |  |
+| **Printf Lowering** -- lowers `printf` to `vprintf` + local buffer packing | `sub_1CB1E60` | 31 KB | printf-lowering |
+| **NVVMIntrinsicLowering** (most frequently inserted pass, ~10 occurrences in pipeline) | `sub_1CB4E40` |  | nvvm-intrinsic-lower |
+| **NVVMBranchDist** | `sub_1CB73C0` |  | branch-dist |
+| RLMCAST transformation (register-level multicast) | `sub_1CBFA40` | 75 KB |  |
+| **NVVMSinking2** (NVIDIA enhanced code sinking) | `sub_1CC60B0` |  | sinking2 |
+| **IV Demotion** -- narrows 64-bit induction variables to 32-bit ("demoteIV", "newBaseIV") | `sub_1CD74B0` | 75 KB | iv-demotion |
+| NLO (NVIDIA Live Output) helper ("nloNewAdd", "nloNewBit") | `sub_1CDC1F0` | 35 KB |  |
+| Instruction classification / cost model (NLO/remat) | `sub_1CDE4D0` | 80 KB |  |
+| **Simplify Live Output** (NLO pass -- "nloNewBit") | `sub_1CE10B0` | 48 KB |  |
+| Rematerialization pull-in cost analysis ("Total pull-in cost") | `sub_1CE3AF0` | 56 KB |  |
+| Rematerialization block executor ("remat_", "uclone_" prefixes) | `sub_1CE67D0` | 32 KB |  |
+| **NVVMRematerialization main driver** -- live-in/live-out pressure analysis per block | `sub_1CE7DD0` | 67 KB | remat |
+| Final NVVM lowering / intrinsic cleanup | `sub_1CEBD10` |  |  |
+| Formal parameter space overflow checker | `sub_1CEE970` | 27 KB |  |
+| **NVVMPeephole** | `sub_1CEF8F0` |  | nvvm-peephole |
+| Instruction scheduling helper (physical register constraints) | `sub_1CFDD60` | 49 KB |  |
 
 ### Zone 14: SelectionDAG ISel / CodeGenPrepare / Backend (0x1D00000 - 0x1EFFFFF)
 
@@ -421,15 +421,15 @@ This 1 MB block contains the majority of NVIDIA's proprietary IR-level optimizat
 
 ### Zone 17: New PM Pass Registration (0x2340000 - 0x23FFFFF)
 
-| Address | Size | Identity |
+| Function | Address | Size |
 |---|---|---|
-| `sub_2342890` | ~2,816 lines | **Master pass registration** -- registers all 526 passes (121 module + 174 function + 23 loop + 48 MF + analyses) into StringMap |
-| `sub_233C410` | | Print available passes (--print-pipeline-passes) |
-| `sub_233F860` | | Function pass pipeline text parser |
-| `sub_2377300` | | Module pipeline text parser |
-| `sub_2368220` | | Inner function/loop pipeline parser |
-| `sub_233BD40` | | Alias analysis name resolver (globals-aa, basic-aa, scev-aa, tbaa) |
-| `sub_E41FB0` | | Hash table insertion (pass_name -> constructor) |
+| **Master pass registration** -- registers all 526 passes (121 module + 174 function + 23 loop + 48 MF + analyses) into StringMap | `sub_2342890` | ~2,816 lines |
+| Print available passes (--print-pipeline-passes) | `sub_233C410` |  |
+| Function pass pipeline text parser | `sub_233F860` |  |
+| Module pipeline text parser | `sub_2377300` |  |
+| Inner function/loop pipeline parser | `sub_2368220` |  |
+| Alias analysis name resolver (globals-aa, basic-aa, scev-aa, tbaa) | `sub_233BD40` |  |
+| Hash table insertion (pass_name -> constructor) | `sub_E41FB0` |  |
 
 ### Zone 18: IPO / Attributor / OpenMP Optimization (0x2400000 - 0x29FFFFF)
 
@@ -444,16 +444,16 @@ This 1 MB block contains the majority of NVIDIA's proprietary IR-level optimizat
 
 ### Zone 19: Loop Transforms (0x2A00000 - 0x2CFFFFF)
 
-| Address | Size | Identity |
+| Function | Address | Size |
 |---|---|---|
-| `sub_2A07DE0` | 76 KB | LoopPeeling ("llvm.loop.peeled.count") |
-| `sub_2A0CFD0` | 65 KB | LoopRotation (".lr.ph", "h.rot") |
-| `sub_2A15A20` | 85 KB | UnrollLoop main ("loop-unroll", "UnrollCount") |
-| `sub_2A1CF00` | 58 KB | UnrollAndJamLoop ("loop-unroll-and-jam") |
-| `sub_2A25260` | 91 KB | Runtime unrolling (".epil.preheader", ".prol.preheader") |
-| `sub_2A76A40` | 67 KB | IndVarSimplify IV widening ("iv.rem", ".sext", ".zext") |
-| `sub_2A79EE0` | 82 KB | WidenIV / IV transformation |
-| `sub_2C84BA0` | 94 KB | **Dead Synchronization Elimination** (island -- the larger copy; see also `sub_1C47810`) |
+| LoopPeeling ("llvm.loop.peeled.count") | `sub_2A07DE0` | 76 KB |
+| LoopRotation (".lr.ph", "h.rot") | `sub_2A0CFD0` | 65 KB |
+| UnrollLoop main ("loop-unroll", "UnrollCount") | `sub_2A15A20` | 85 KB |
+| UnrollAndJamLoop ("loop-unroll-and-jam") | `sub_2A1CF00` | 58 KB |
+| Runtime unrolling (".epil.preheader", ".prol.preheader") | `sub_2A25260` | 91 KB |
+| IndVarSimplify IV widening ("iv.rem", ".sext", ".zext") | `sub_2A76A40` | 67 KB |
+| WidenIV / IV transformation | `sub_2A79EE0` | 82 KB |
+| **Dead Synchronization Elimination** (island -- the larger copy; see also `sub_1C47810`) | `sub_2C84BA0` | 94 KB |
 
 Note: `sub_2C84BA0` is a second copy of the dead synchronization elimination pass located outside the main NVIDIA custom pass zone. This is the 94KB variant analyzed in depth (p2b.6-01), with the four-category fixed-point R/W dataflow algorithm and red-black tree maps.
 
@@ -586,11 +586,11 @@ NVIDIA statically links jemalloc 5.3.x as the process-wide memory allocator. The
 
 Key jemalloc entry points visible in the binary:
 
-| Address | Identity |
+| Function | Address |
 |---|---|
-| `0x12FCDB0` | `malloc_conf_init` (199 config strings) |
-| `0x40D5CA` | `vsnprintf` (jemalloc stats formatting) |
-| `0x12FC000` range | Core arena management, tcache, extent allocator |
+| `malloc_conf_init` (199 config strings) | `0x12FCDB0` |
+| `vsnprintf` (jemalloc stats formatting) | `0x40D5CA` |
+| Core arena management, tcache, extent allocator | `0x12FC000` range |
 
 The jemalloc integration is significant for reverse engineering because it means `malloc`/`free` calls throughout the binary resolve to jemalloc's arena-based allocator rather than glibc's `ptmalloc2`. When tracing memory allocation patterns in IDA, look for calls into the `0x12FC000` range.
 

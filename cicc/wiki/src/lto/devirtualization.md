@@ -537,33 +537,33 @@ After remark emission, extensive cleanup of small-string-optimized (SSO) `std::s
 
 ## Function Map
 
-| Address | Size | Identity | Role |
-|---------|------|----------|------|
-| `sub_2703170` | 13,077 | `WholeProgramDevirtPass::run` | Pass entry point |
-| `sub_2702830` | ~2,600 | `buildTypeTestInfo` | Build type test records from metadata |
-| `sub_2702540` | ~740 | `growHashTable` | Grow and rehash the type test hash table |
-| `sub_26FEE10` | ~3,200 | `resolveVirtualCall` | Attempt single-target resolution for a call site |
-| `sub_26F9AB0` | ~1,600 | `rewriteCallToDirectCall` | Strategy 1: replace indirect call with direct call |
-| `sub_26F9080` | ~640 | `rewriteToUniqueMember` | Strategy 2: unique member dispatch rewrite |
-| `sub_26FAF90` | ~1,700 | `finalizeUniqueMember` | Strategy 2: call-site-specific fixup |
-| `sub_26F78E0` | ~1,100 | `createBranchFunnelMeta` | Strategy 3: create branch funnel metadata |
-| `sub_BCF480` | ~6,400 | `buildBranchFunnel` | Strategy 3: build conditional dispatch structure |
-| `sub_BA8C10` | ~8,200 | `emitIndirectBranch` | Strategy 3: emit indirect branch sequence |
-| `sub_26F9120` | ~500 | `emitDispatchCheck` | Branch funnel byte/bit offset check |
-| `sub_26FB610` | ~1,800 | `finalizeBranchFunnel` | Branch funnel finalization |
-| `sub_26F92C0` | ~400 | `destroyTypeHierarchy` | Release type hierarchy data structures |
-| `sub_26F75B0` | ~300 | `releaseResolutionData` | Free per-entry resolution data |
-| `sub_26F69E0` | ~240 | `attachFunctionName` | Attach function name to optimization remark |
-| `sub_2700B00` | ~9,800 | `branchFunnelHelper` | Branch funnel main helper (called from `sub_2703170`) |
-| `sub_2706490` | ~7,600 | `summaryIO` | WPD summary read/write (`-wholeprogramdevirt-read-summary`) |
-| `sub_2284BC0` | 16,000 | `DevirtSCCRepeatedPass::run` | CGSCC devirtualization iteration loop |
-| `sub_B6AC80` | ~200 | `getNamedMetadata` | Fetch named metadata node from module |
-| `sub_B91420` | ~300 | `getTypeInfoName` | Compute type info name string |
-| `sub_B2F650` | ~180 | `stringHash` | Hash a type name string (xxHash-style) |
-| `sub_B17560` | ~250 | `createRemarkHeader` | Create optimization remark header |
-| `sub_B18290` | ~200 | `appendRemarkBody` | Append body text to remark |
-| `sub_B16430` | ~200 | `createNamedAttribute` | Create named attribute for remark |
-| `sub_1049740` | ~100 | `publishRemark` | Publish remark to diagnostic handler |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `WholeProgramDevirtPass::run` | `sub_2703170` | 13,077 | Pass entry point |
+| `buildTypeTestInfo` | `sub_2702830` | ~2,600 | Build type test records from metadata |
+| `growHashTable` | `sub_2702540` | ~740 | Grow and rehash the type test hash table |
+| `resolveVirtualCall` | `sub_26FEE10` | ~3,200 | Attempt single-target resolution for a call site |
+| `rewriteCallToDirectCall` | `sub_26F9AB0` | ~1,600 | Strategy 1: replace indirect call with direct call |
+| `rewriteToUniqueMember` | `sub_26F9080` | ~640 | Strategy 2: unique member dispatch rewrite |
+| `finalizeUniqueMember` | `sub_26FAF90` | ~1,700 | Strategy 2: call-site-specific fixup |
+| `createBranchFunnelMeta` | `sub_26F78E0` | ~1,100 | Strategy 3: create branch funnel metadata |
+| `buildBranchFunnel` | `sub_BCF480` | ~6,400 | Strategy 3: build conditional dispatch structure |
+| `emitIndirectBranch` | `sub_BA8C10` | ~8,200 | Strategy 3: emit indirect branch sequence |
+| `emitDispatchCheck` | `sub_26F9120` | ~500 | Branch funnel byte/bit offset check |
+| `finalizeBranchFunnel` | `sub_26FB610` | ~1,800 | Branch funnel finalization |
+| `destroyTypeHierarchy` | `sub_26F92C0` | ~400 | Release type hierarchy data structures |
+| `releaseResolutionData` | `sub_26F75B0` | ~300 | Free per-entry resolution data |
+| `attachFunctionName` | `sub_26F69E0` | ~240 | Attach function name to optimization remark |
+| `branchFunnelHelper` | `sub_2700B00` | ~9,800 | Branch funnel main helper (called from `sub_2703170`) |
+| `summaryIO` | `sub_2706490` | ~7,600 | WPD summary read/write (`-wholeprogramdevirt-read-summary`) |
+| `DevirtSCCRepeatedPass::run` | `sub_2284BC0` | 16,000 | CGSCC devirtualization iteration loop |
+| `getNamedMetadata` | `sub_B6AC80` | ~200 | Fetch named metadata node from module |
+| `getTypeInfoName` | `sub_B91420` | ~300 | Compute type info name string |
+| `stringHash` | `sub_B2F650` | ~180 | Hash a type name string (xxHash-style) |
+| `createRemarkHeader` | `sub_B17560` | ~250 | Create optimization remark header |
+| `appendRemarkBody` | `sub_B18290` | ~200 | Append body text to remark |
+| `createNamedAttribute` | `sub_B16430` | ~200 | Create named attribute for remark |
+| `publishRemark` | `sub_1049740` | ~100 | Publish remark to diagnostic handler |
 
 ## Cross-References
 

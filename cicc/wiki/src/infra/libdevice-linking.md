@@ -347,23 +347,32 @@ The `.lnk.bc` file is useful for verifying which libdevice functions survived li
 
 ## Function Map
 
-| Address | Size | Function | Role |
-|---------|------|----------|------|
-| `sub_12C06E0` | 63KB | `ModuleLinker` | Main bitcode linker: validates magic, triple, version; links user modules, then builtins |
-| `sub_12BFF60` | 9KB | `NVVMIRVersionCheck` | Reads `nvvmir.version` metadata, checks compatibility via `sub_12BDA30`/`sub_12BD890` |
-| `sub_12BDA30` | ~2KB | `CheckIRVersion` | IR version compatibility predicate (special-cases `{2,0}` as always-compatible) |
-| `sub_12BD890` | ~2KB | `CheckDebugVersion` | Debug IR version compatibility predicate (special-cases `{3, <=2}`) |
-| `sub_12C35D0` | 41KB | `PipelineOrchestrator` | 4-stage pipeline driver; calls `sub_12C06E0` during LNK stage |
-| `sub_905EE0` | 43KB | `LibNVVMPipelineA` | Path A pipeline driver; references `unk_3EA0080` for embedded libdevice |
-| `sub_1265970` | 48KB | `LibNVVMPipelineB` | Path B pipeline driver; references `unk_420FD80` for embedded libdevice |
-| `sub_12BCB00` | ~1KB | `nvvmCUAddModuleFromBuffer` | API wrapper that adds a bitcode buffer to the compilation unit |
-| `sub_12BC0F0` | 3KB | `LibNVVM API dispatch` | Resolves LibNVVM API function pointers by hash ID |
-| `sub_15099C0` | ~8KB | `ParseBitcodeFile` | LLVM bitcode parser entry point |
-| `sub_1CCEBE0` | ~4KB | `LinkBuiltinModule` | Links a single builtin module into the main module (`Linker::linkModules` with `OverrideFromSrc` `[MEDIUM confidence]` -- inferred from the override-from-source semantics of builtin linking and the 4KB size matching a thin wrapper around LLVM's linker API, but no diagnostic string confirms the exact LLVM API call) |
-| `sub_12F5610` | ~4KB | `LinkUserModules` | Links multiple user modules (`Linker::linkModules` `[MEDIUM confidence]` -- same reasoning as above; wrapper size and call pattern match, but unconfirmed by string evidence) |
-| `sub_14D90D0` | 27KB | `CanFoldIntrinsic` | Constant-fold eligibility checker for math intrinsics |
-| `unk_3EA0080` | 455,876B | embedded libdevice (Path A) | Raw LLVM bitcode blob |
-| `unk_420FD80` | 455,876B | embedded libdevice (Path B) | Raw LLVM bitcode blob (identical copy) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `ModuleLinker` | `sub_12C06E0` | 63KB | Main bitcode linker: validates magic, triple, version; links user modules, then builtins |
+| `NVVMIRVersionCheck` | `sub_12BFF60` | 9KB | Reads `nvvmir.version` metadata, checks compatibility via `sub_12BDA30`/`sub_12BD890` |
+| `CheckIRVersion` | `sub_12BDA30` | ~2KB | IR version compatibility predicate (special-cases `{2,0}` as always-compatible) |
+| `CheckDebugVersion` | `sub_12BD890` | ~2KB | Debug IR version compatibility predicate (special-cases `{3, <=2}`) |
+| `PipelineOrchestrator` | `sub_12C35D0` | 41KB | 4-stage pipeline driver; calls `sub_12C06E0` during LNK stage |
+| `LibNVVMPipelineA` | `sub_905EE0` | 43KB | Path A pipeline driver; references `unk_3EA0080` for embedded libdevice |
+| `LibNVVMPipelineB` | `sub_1265970` | 48KB | Path B pipeline driver; references `unk_420FD80` for embedded libdevice |
+| `nvvmCUAddModuleFromBuffer` | `sub_12BCB00` | ~1KB | API wrapper that adds a bitcode buffer to the compilation unit |
+| `LibNVVM API dispatch` | `sub_12BC0F0` | 3KB | Resolves LibNVVM API function pointers by hash ID |
+| `ParseBitcodeFile` | `sub_15099C0` | ~8KB | LLVM bitcode parser entry point |
+| `LinkBuiltinModule` | `sub_1CCEBE0` | ~4KB | Links a single builtin module into the main module (`Linker::linkModules` with `OverrideFromSrc` `[MEDIUM confidence]` -- inferred from the override-from-source semantics of builtin linking and the 4KB size matching a thin wrapper around LLVM's linker API, but no diagnostic string confirms the exact LLVM API call) |
+| `LinkUserModules` | `sub_12F5610` | ~4KB | Links multiple user modules (`Linker::linkModules` `[MEDIUM confidence]` -- same reasoning as above; wrapper size and call pattern match, but unconfirmed by string evidence) |
+| `CanFoldIntrinsic` | `sub_14D90D0` | 27KB | Constant-fold eligibility checker for math intrinsics |
+| embedded libdevice (Path A) | `unk_3EA0080` | 455,876B | Raw LLVM bitcode blob |
+| embedded libdevice (Path B) | `unk_420FD80` | 455,876B | Raw LLVM bitcode blob (identical copy) |
+
+## Reimplementation Checklist
+
+1. **Embedded bitcode storage and loading.** Embed the libdevice bitcode blob (455,876 bytes) directly in the compiler binary, provide two independent copies for dual-path compilation (Path A / Path B), and implement the `nvvmCUAddModuleFromBuffer` API wrapper to load the embedded blob or an external override file via `-nvvmir-library`.
+2. **Bitcode magic validation.** Accept two bitcode formats: raw bitcode (`0xDE 0xC0 0x17 0x0B`, little-endian `0x0B17C0DE`) and bitcode wrapper (`0x42 0x43 0xC0 0xDE`, ASCII "BC" prefix). Reject anything else with error code 9.
+3. **Target triple and IR version validation.** Enforce `nvptx64-` prefix on all module triples. Implement the NVVM IR version checker that reads `nvvmir.version` metadata (2-element or 4-element tuples), special-cases version `{2,0}` as always-compatible (the libdevice sentinel), and checks debug IR version compatibility for `{3, <=2}`.
+4. **Multi-module linking pipeline.** Implement the six-phase linker: (A) module iteration with bitcode validation, (B) triple validation, (C) IR version check, (D) single-module fast path, (E) multi-module user linking with primary module selection and triple/data-layout propagation, (F) builtin linking with `OverrideFromSrc` semantics.
+5. **Symbol size matching.** Walk all global symbols in the linked module, compute type sizes recursively (handling half/float/double/pointer/integer/struct/array/vector types), and verify that declarations and definitions agree on type sizes using a binary search tree keyed by symbol name.
+6. **Constant folding integration.** Implement the fold eligibility checker for libdevice functions with three dispatch mechanisms (LLVM intrinsic ID switch for IDs 0--211, NVVM intrinsic ID ranges for IDs >211, name-based matching for C library names), gated by the convergent attribute check to prevent folding warp-synchronous functions.
 
 ## Cross-References
 

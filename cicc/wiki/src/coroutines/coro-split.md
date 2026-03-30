@@ -4,8 +4,8 @@ cicc v13.0 carries the complete LLVM coroutine lowering pipeline -- CoroEarly, C
 
 ## Key Facts
 
-| Item | Value |
-|------|-------|
+| Property | Value |
+|---|---|
 | CoroSplit pass entry | `sub_24EF980` (71 KB, address range `0x24EF980`--`0x24F2300`) |
 | CoroFrame layout computation | `sub_24F6730` (11,249 bytes, stack frame 5,624 bytes) |
 | Core frame layout workhorse | `sub_24F5860` (called from CoroFrame) |
@@ -524,26 +524,26 @@ The StructurizeCFG pass (see [structurizecfg.md](../llvm/structurizecfg.md)) run
 
 The binary contains a second, independent cluster of coroutine functions, likely from a different compilation unit or LTO merge:
 
-| Address | Size | Identity |
-|---------|------|----------|
-| `0x3171DA0` | 55 KB | CoroFrame layout computation |
-| `0x316D160` | 49 KB | CoroSplit splitting logic |
-| `0x3160A60` | 48 KB | CoroSplit dispatcher (`.corodispatch`, `MustTailCall.Before.CoroEnd`) |
-| `0x31650D0` | 47 KB | Spill/reload generation (`AllocaSpillBB`, `PostSpill`, `.reload`, `.spill.addr`) |
-| `0x3169200` | 46 KB | Frame type builder (`__coro_frame`, `.coro_frame_ty`, `__coro_index`) |
-| `0x315A7B0` | 41 KB | CoroElide heap allocation elision |
-| `0x3150D70` | 43 KB | Attributor analysis helper |
-| `0x314DBB0` | 40 KB | Attributor analysis helper |
+| Function | Address | Size |
+|---|---|---|
+| CoroFrame layout computation | `0x3171DA0` | 55 KB |
+| CoroSplit splitting logic | `0x316D160` | 49 KB |
+| CoroSplit dispatcher (`.corodispatch`, `MustTailCall.Before.CoroEnd`) | `0x3160A60` | 48 KB |
+| Spill/reload generation (`AllocaSpillBB`, `PostSpill`, `.reload`, `.spill.addr`) | `0x31650D0` | 47 KB |
+| Frame type builder (`__coro_frame`, `.coro_frame_ty`, `__coro_index`) | `0x3169200` | 46 KB |
+| CoroElide heap allocation elision | `0x315A7B0` | 41 KB |
+| Attributor analysis helper | `0x3150D70` | 43 KB |
+| Attributor analysis helper | `0x314DBB0` | 40 KB |
 
 These functions reference the same string literals and implement the same algorithms as the primary cluster. The primary cluster at `0x24D`--`0x25C` and this cluster at `0x314`--`0x317` are structurally identical -- they differ only in binary address due to compilation unit or LTO merge ordering.
 
 Additionally, three helper functions in the primary cluster's vicinity handle specialized aspects:
 
-| Address | Size | Identity |
-|---------|------|----------|
-| `sub_25CA370` | 55 KB | CoroSplit Cloner/Driver (calls CoroFrame helpers) |
-| `sub_25C5C80` | 49 KB | CoroFrame Materializer (heap-to-stack frame layout) |
-| `sub_25C1030` | 37 KB | CoroFrame Spill Analysis helper |
+| Function | Address | Size |
+|---|---|---|
+| CoroSplit Cloner/Driver (calls CoroFrame helpers) | `sub_25CA370` | 55 KB |
+| CoroFrame Materializer (heap-to-stack frame layout) | `sub_25C5C80` | 49 KB |
+| CoroFrame Spill Analysis helper | `sub_25C1030` | 37 KB |
 
 `sub_25C5C80` (CoroFrame Materializer) is particularly relevant: this is the function that actually rewrites the IR to replace heap allocation with stack-based frame placement after CoroElide has proven safety. It materializes the frame struct type, inserts the `alloca`, and rewires all frame access GEPs.
 
@@ -597,37 +597,37 @@ The frontend does **not** restrict coroutines to host-side code. The EDG configu
 
 ## Function Map
 
-| Address | Size | Identity |
-|---------|------|----------|
-| `sub_24DCD10` | 41 KB | CoroEarly pass entry |
-| `sub_24DF350` | 80 KB | CoroElide pass entry |
-| `sub_24E2340` | 33 KB | CoroAnnotationElide pass entry |
-| `sub_24EF980` | 71 KB | CoroSplit pass entry |
-| `sub_24F5860` | -- | Core frame layout computation |
-| `sub_24F6730` | 11 KB | CoroFrame layout entry |
-| `sub_25C1030` | 37 KB | CoroFrame Spill Analysis helper |
-| `sub_25C5C80` | 49 KB | CoroFrame Materializer (heap-to-stack) |
-| `sub_25CA370` | 55 KB | CoroSplit Cloner/Driver |
-| `sub_2284030` | -- | createResumeFunction |
-| `sub_2284040` | -- | createDestroyFunction |
-| `sub_D2E510` | -- | Function cloner (used for resume/destroy) |
-| `sub_B2D610` | -- | Frame-already-computed check |
-| `sub_BD5D20` | -- | Get function name string |
-| `sub_BC1CD0` | -- | Register in coroutine metadata table |
-| `sub_B17560` | -- | Create optimization remark |
-| `sub_1049740` | -- | Publish remark to diagnostic handler |
-| `sub_22077B0` | -- | Allocator (frame info, spill entries, BFS deque) |
-| `sub_2337E30` | 15 KB | `coro-cond` module analysis checker |
-| `sub_314DBB0` | 40 KB | Attributor helper (coroutine attributes) |
-| `sub_3150D70` | 43 KB | Attributor helper (coroutine attributes) |
-| `sub_315A7B0` | 41 KB | CoroElide (second cluster) |
-| `sub_3160A60` | 48 KB | CoroSplit dispatcher (`.corodispatch`) |
-| `sub_31650D0` | 47 KB | Spill/reload generation |
-| `sub_3169200` | 46 KB | Frame type builder |
-| `sub_316D160` | 49 KB | CoroSplit splitting logic (second cluster) |
-| `sub_3171DA0` | 55 KB | CoroFrame layout (second cluster) |
-| `sub_87AFA0` | 14 KB | EDG coroutine body processor |
-| `sub_87BD00` | 6 KB | EDG coroutine trait resolver |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| CoroEarly pass entry | `sub_24DCD10` | 41 KB | -- |
+| CoroElide pass entry | `sub_24DF350` | 80 KB | -- |
+| CoroAnnotationElide pass entry | `sub_24E2340` | 33 KB | -- |
+| CoroSplit pass entry | `sub_24EF980` | 71 KB | -- |
+| Core frame layout computation | `sub_24F5860` | -- | -- |
+| CoroFrame layout entry | `sub_24F6730` | 11 KB | -- |
+| CoroFrame Spill Analysis helper | `sub_25C1030` | 37 KB | -- |
+| CoroFrame Materializer (heap-to-stack) | `sub_25C5C80` | 49 KB | -- |
+| CoroSplit Cloner/Driver | `sub_25CA370` | 55 KB | -- |
+| createResumeFunction | `sub_2284030` | -- | -- |
+| createDestroyFunction | `sub_2284040` | -- | -- |
+| Function cloner (used for resume/destroy) | `sub_D2E510` | -- | -- |
+| Frame-already-computed check | `sub_B2D610` | -- | -- |
+| Get function name string | `sub_BD5D20` | -- | -- |
+| Register in coroutine metadata table | `sub_BC1CD0` | -- | -- |
+| Create optimization remark | `sub_B17560` | -- | -- |
+| Publish remark to diagnostic handler | `sub_1049740` | -- | -- |
+| Allocator (frame info, spill entries, BFS deque) | `sub_22077B0` | -- | -- |
+| `coro-cond` module analysis checker | `sub_2337E30` | 15 KB | -- |
+| Attributor helper (coroutine attributes) | `sub_314DBB0` | 40 KB | -- |
+| Attributor helper (coroutine attributes) | `sub_3150D70` | 43 KB | -- |
+| CoroElide (second cluster) | `sub_315A7B0` | 41 KB | -- |
+| CoroSplit dispatcher (`.corodispatch`) | `sub_3160A60` | 48 KB | -- |
+| Spill/reload generation | `sub_31650D0` | 47 KB | -- |
+| Frame type builder | `sub_3169200` | 46 KB | -- |
+| CoroSplit splitting logic (second cluster) | `sub_316D160` | 49 KB | -- |
+| CoroFrame layout (second cluster) | `sub_3171DA0` | 55 KB | -- |
+| EDG coroutine body processor | `sub_87AFA0` | 14 KB | -- |
+| EDG coroutine trait resolver | `sub_87BD00` | 6 KB | -- |
 
 ## Cross-References
 

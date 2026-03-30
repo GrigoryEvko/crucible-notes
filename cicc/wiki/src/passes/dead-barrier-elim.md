@@ -4,17 +4,18 @@ CICC contains three independent passes that eliminate redundant `__syncthreads()
 
 ## Key Facts: `basic-dbe`
 
-| Field | Value |
+| Property | Value |
 |---|---|
-| **Pass name** | `basic-dbe` |
-| **Class** | `llvm::BasicDeadBarrierEliminationPass` |
-| **Scope** | Function pass (LLVM IR level) |
-| **Registration** | New PM slot 376, line 2212 in `sub_2342890` |
-| **Parameters** | None (non-parameterized pass) |
-| **Knob constructor** | `ctor_261` (below 5KB, in `0x4F0000`--`0x51FFFF` range) |
-| **Enable global** | `byte_4FBB6C0` (initialized to 0 in `ctor_261`, set to 1 by pipeline setup) |
-| **Binary size** | Small (< 5KB compiled) |
-| **Upstream equivalent** | None -- entirely NVIDIA-proprietary |
+| Pass name | `basic-dbe` |
+| Class | `llvm::BasicDeadBarrierEliminationPass` |
+| Scope | Function pass (LLVM IR level) |
+| Registration | New PM #376, line 2212 in `sub_2342890` (first NVIDIA function pass registered) |
+| Runtime positions | Inserted via pipeline extension callbacks; not in the Tier 0/1/2/3 tables (see [Pipeline](../llvm/pipeline.md)) |
+| Parameters | None (non-parameterized pass) |
+| Knob constructor | `ctor_261` (below 5KB, in `0x4F0000`--`0x51FFFF` range) |
+| Enable global | `byte_4FBB6C0` (initialized to 0 in `ctor_261`, set to 1 by pipeline setup) |
+| Binary size | Small (< 5KB compiled) |
+| Upstream equivalent | None -- entirely NVIDIA-proprietary |
 
 ## Why a Lightweight Pass Exists
 
@@ -174,16 +175,16 @@ No dedicated per-pass knobs (threshold, dump flags, or limits) have been identif
 
 ## Function Map
 
-| Address | Role |
-|---|---|
-| `sub_2342890` line 2212 | New PM registration: maps `"basic-dbe"` to `llvm::BasicDeadBarrierEliminationPass` |
-| `ctor_261` (0x4F range) | Global constructor: initializes `byte_4FBB6C0` to 0, registers `basic-dbe` knob string |
-| `byte_4FBB6C0` | Global enable flag (shared with `branch-dist`) |
-| `sub_2C83D20` | `isSyncBarrier` predicate (shared with full engine) |
-| `sub_2C83AE0` | `classifyMemoryAccess` (shared with full engine) |
-| `sub_CEA1A0` | Barrier intrinsic ID confirmation |
-| `sub_B49E00` | `isSharedMemoryAccess` -- CUDA address space check |
-| `sub_B43D60` | `Instruction::eraseFromParent` -- barrier deletion |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| -- | `sub_2342890` line 2212 | -- | New PM registration: maps `"basic-dbe"` to `llvm::BasicDeadBarrierEliminationPass` |
+| -- | `ctor_261` (0x4F range) | -- | Global constructor: initializes `byte_4FBB6C0` to 0, registers `basic-dbe` knob string |
+| -- | `byte_4FBB6C0` | -- | Global enable flag (shared with `branch-dist`) |
+| -- | `sub_2C83D20` | -- | `isSyncBarrier` predicate (shared with full engine) |
+| -- | `sub_2C83AE0` | -- | `classifyMemoryAccess` (shared with full engine) |
+| -- | `sub_CEA1A0` | -- | Barrier intrinsic ID confirmation |
+| -- | `sub_B49E00` | -- | `isSharedMemoryAccess` -- CUDA address space check |
+| -- | `sub_B43D60` | -- | `Instruction::eraseFromParent` -- barrier deletion |
 
 ## Cross-References
 

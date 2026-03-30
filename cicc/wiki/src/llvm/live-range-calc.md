@@ -1,6 +1,8 @@
 # LiveRangeCalc
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **LLVM version note:** Based on LLVM 17.x `LiveRangeCalc.cpp` (the page's own diff table cites LLVM 17.x as baseline). NVIDIA adds dual-bitvector GP/predicate tracking, a small-function bypass (instruction count <= 15), an enlarged 296-byte segment structure with inlined SmallVectors, and a 4/5 active-block fraction not present in any upstream version.
 
 LiveRangeCalc is the low-level engine inside LLVM's CodeGen that turns def/use information into live intervals -- contiguous `[SlotIndex, SlotIndex)` segments describing when each virtual register holds a value. It sits between the `SlotIndexes` numbering pass and the `LiveIntervals` analysis, performing the actual iterative dataflow computation that propagates liveness backward through the CFG and inserts PHI-def value numbers at merge points. In CICC v13.0 the implementation at `sub_2FC4FC0` is structurally based on upstream LLVM's `LiveRangeCalc::extend` / `calculateValues` but carries several NVIDIA-specific modifications: a dual-bitvector tracking scheme that separates general-purpose and predicate register liveness, a small-function bypass that skips the full dataflow for trivial kernels, and an enlarged per-segment structure (296 bytes) that inlines four separate SmallVector buffers to avoid heap allocations on the hot path.
 
@@ -381,36 +383,36 @@ LiveRangeCalc (approx 0x4C0 bytes):
 
 ## Function Map
 
-| Address | Identity |
-|---|---|
-| `sub_2FC4FC0` | **LiveRangeCalc::extend / calculateValues** -- main entry, self-recursive (12,900 bytes, 78KB decompiled) |
-| `sub_2FC8470` | LiveIntervals::computeRegUnitRange (caller, populates kill/def sets) |
-| `sub_2FC8230` | LiveIntervals::createDeadDef / addSegment (caller) |
-| `sub_2FC1A70` | ensureCapacity / resetLiveRanges (per-block storage preparation) |
-| `sub_2FC1040` | grow per-block segment table (called when `[r13+0xAC]` insufficient) |
-| `sub_2FC1190` | interval building helper (called from `sub_2FC1040`) |
-| `sub_2FC0880` | hash table operations: insert/lookup/resize with open addressing |
-| `sub_2FC0040` | segment creation / initialization (296-byte struct setup) |
-| `sub_2FBF8B0` | resolvePhiValue / findReachingDef (PHI resolution, 4 args) |
-| `sub_2FBF390` | free VNInfo chain (frees 0x38-byte intermediate nodes, 0x78-byte VNInfo) |
-| `sub_2FBFCC0` | segment merge / extend (interference update) |
-| `sub_2FC3C20` | live range query |
-| `sub_2FC3A50` | live range intersection test |
-| `sub_2E0AFD0` | getRegInfo / MachineRegisterInfo query |
-| `sub_2E0FDD0` | isAllocatable / reserved register check (return value unused in NVPTX) |
-| `sub_2E0F080` | addSegment / extendInBlock (materializes `[start, end)` segments) |
-| `sub_2E76F70` | MachineFunction helper |
-| `sub_2E88E20` | eraseFromParent (MachineInstr deletion, used in Phase 8 cleanup) |
-| `sub_2E88A90` | register property check (called with flags `0x80000`, `0x100000`) |
-| `sub_22077B0` | operator new (VNInfo allocation, 120 bytes) |
-| `sub_1F10BF0` | SlotIndexes::runOnMachineFunction (11KB) |
-| `sub_1F10320` | SlotIndexes pass registration (`"slotindexes"` / `"Slot index numbering"`) |
-| `sub_1F112A0` | SlotIndexes insertion / repair (13KB) |
-| `sub_1F10810` | SlotIndex validity check (string: `"invalid"`) |
-| `sub_2F54D60` | computeLiveIntervals (RA integration, called from greedy RA init) |
-| `sub_C8D5F0` | SmallVector::grow (bitvector expansion when block count > 8) |
-| `sub_C7D6A0` | realloc (SmallVector resize / auxiliary table resize) |
-| `sub_C7D670` | malloc (new allocation) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| **LiveRangeCalc::extend / calculateValues** -- main entry, self-recursive (12,900 bytes, 78KB decompiled) | `sub_2FC4FC0` | -- | -- |
+| LiveIntervals::computeRegUnitRange (caller, populates kill/def sets) | `sub_2FC8470` | -- | -- |
+| LiveIntervals::createDeadDef / addSegment (caller) | `sub_2FC8230` | -- | -- |
+| ensureCapacity / resetLiveRanges (per-block storage preparation) | `sub_2FC1A70` | -- | -- |
+| grow per-block segment table (called when `[r13+0xAC]` insufficient) | `sub_2FC1040` | -- | -- |
+| interval building helper (called from `sub_2FC1040`) | `sub_2FC1190` | -- | -- |
+| hash table operations: insert/lookup/resize with open addressing | `sub_2FC0880` | -- | -- |
+| segment creation / initialization (296-byte struct setup) | `sub_2FC0040` | -- | -- |
+| resolvePhiValue / findReachingDef (PHI resolution, 4 args) | `sub_2FBF8B0` | -- | -- |
+| free VNInfo chain (frees 0x38-byte intermediate nodes, 0x78-byte VNInfo) | `sub_2FBF390` | -- | -- |
+| segment merge / extend (interference update) | `sub_2FBFCC0` | -- | -- |
+| live range query | `sub_2FC3C20` | -- | -- |
+| live range intersection test | `sub_2FC3A50` | -- | -- |
+| getRegInfo / MachineRegisterInfo query | `sub_2E0AFD0` | -- | -- |
+| isAllocatable / reserved register check (return value unused in NVPTX) | `sub_2E0FDD0` | -- | -- |
+| addSegment / extendInBlock (materializes `[start, end)` segments) | `sub_2E0F080` | -- | -- |
+| MachineFunction helper | `sub_2E76F70` | -- | -- |
+| eraseFromParent (MachineInstr deletion, used in Phase 8 cleanup) | `sub_2E88E20` | -- | -- |
+| register property check (called with flags `0x80000`, `0x100000`) | `sub_2E88A90` | -- | -- |
+| operator new (VNInfo allocation, 120 bytes) | `sub_22077B0` | -- | -- |
+| SlotIndexes::runOnMachineFunction (11KB) | `sub_1F10BF0` | -- | -- |
+| SlotIndexes pass registration (`"slotindexes"` / `"Slot index numbering"`) | `sub_1F10320` | -- | -- |
+| SlotIndexes insertion / repair (13KB) | `sub_1F112A0` | -- | -- |
+| SlotIndex validity check (string: `"invalid"`) | `sub_1F10810` | -- | -- |
+| computeLiveIntervals (RA integration, called from greedy RA init) | `sub_2F54D60` | -- | -- |
+| SmallVector::grow (bitvector expansion when block count > 8) | `sub_C8D5F0` | -- | -- |
+| realloc (SmallVector resize / auxiliary table resize) | `sub_C7D6A0` | -- | -- |
+| malloc (new allocation) | `sub_C7D670` | -- | -- |
 
 ## Cross-References
 

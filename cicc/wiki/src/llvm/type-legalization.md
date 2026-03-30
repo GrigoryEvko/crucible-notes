@@ -551,6 +551,15 @@ No CICC-specific legalization knobs beyond the standard LLVM flag were found. Th
 | CAS expansion decision | `sub_20B7E10` | -- | CAS loop vs direct atomic |
 | Gather/scatter alignment | `sub_20BD400` | -- | MGATHER/MSCATTER alignment fixup |
 
+## Reimplementation Checklist
+
+1. **NVPTX legal type model.** Define the narrow set of legal types dictated by PTX register classes (i1, i16, i32, i64, f32, f64, f16, bf16, v2f16, v2bf16, v2i16, v4i8, i128), with SM-gated legality: f16 arithmetic on SM 53+, v2f16 packed ops on SM 70+, v2bf16 on SM 80+, FP4/FP6 packed types on SM 100+.
+2. **Primary legality table population.** Build the 2D action table at `TLI + 259 * VT + opcode + 2422` with per-opcode-per-type action bytes (0=Legal, 1=Custom, 2=Expand, 3=LibCall, 4=Promote), plus the type-supported flag array at offset +120, the promotion action table at offset +2681, and the condition-code action table at offset +18112 with 4-bit packed nibbles.
+3. **Four legalization actions.** Implement Promote (widen via ANY_EXTEND/ZERO_EXTEND, operate, TRUNCATE), Expand (split via shift-and-OR for integers, libcall for floats), Soften (integer emulation of unsupported FP types), and Scalarize/Split-Vector (decompose illegal vectors into scalar or half-width vector operations).
+4. **Iterative fixpoint loop.** Run the type legalizer worklist until every node in the DAG has only legal result and operand types, since each pass may create new nodes with illegal types (e.g., splitting a vector creates half-width vectors that may themselves require further splitting).
+5. **Vector legalization for NVPTX.** Handle the critical constraint that Int32HalfRegs is the only vector class (32 bits total): scalarize all vectors wider than 32 bits (v4f32, v2f32, v8i32, etc.) while keeping v2f16/v2bf16/v2i16/v4i8 legal. Implement the SplitVectorResult/SplitVectorOperand/ScalarizeVector dispatchers with their 190+/157+/~100 case switches.
+6. **SimpleVT type encoding.** Implement the bitwidth-to-SimpleVT conversion (11 instances in NVIDIA's monolith) and the ~100-case vector-element-type switch (6 instances) mapping MVT ranges 14--109 to their scalar element types.
+
 ## Cross-References
 
 - [SelectionDAG & Instruction Selection](./selectiondag.md) -- parent page covering the full SelectionDAG pipeline

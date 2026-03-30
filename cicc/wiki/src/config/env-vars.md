@@ -310,20 +310,20 @@ Several `getenv("bar")` calls appear in `ctor_106`, `ctor_107`, `ctor_376`, `cto
 
 ## Function Map
 
-| Address | Name | Size | Role |
-|---------|------|------|------|
-| `sub_8F98A0` | StringDeobfuscate | ~400B | XOR + ROT13 decryption engine |
-| `sub_8F9C90` | RealMain | 10,066B | Main entry; checks NVVMCCWIZ, dispatches via NV_NVVM_VERSION |
-| `sub_12B9F70` | NvvmVersionHelper | ~3KB | Reads NV_NVVM_VERSION / LIBNVVM_NVVM_VERSION; compares values |
-| `sub_12BB580` | NvvmVersionHelper2 | ~3KB | Second call site for NV_NVVM_VERSION |
-| `sub_12BDA30` | CheckIRVersion | ~1KB | IR major/minor compatibility check |
-| `sub_12BD890` | CheckDebugVersion | ~1KB | Debug IR major/minor compatibility check |
-| `sub_12BFF60` | NVVMIRVersionCheck | 9KB | Full NVVM IR version validator; reads NVVM_IR_VER_CHK |
-| `sub_2259720` | NVVMIRVersionCheck2 | 14KB | Second instance of version checker |
-| `sub_12FCDB0` | JemallocInit | 131,600B | jemalloc config parser; reads MALLOC_CONF |
-| `sub_1682BF0` | JobserverParser | ~2KB | MAKEFLAGS --jobserver-auth parser |
-| `sub_C86120` | GenericGetEnv | ~100B | LLVM sys::Process::GetEnv wrapper |
-| `sub_67C750` | EDGColorInit | ~2KB | NOCOLOR / EDG_COLORS / GCC_COLORS handler |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| StringDeobfuscate | `sub_8F98A0` | ~400B | XOR + ROT13 decryption engine |
+| RealMain | `sub_8F9C90` | 10,066B | Main entry; checks NVVMCCWIZ, dispatches via NV_NVVM_VERSION |
+| NvvmVersionHelper | `sub_12B9F70` | ~3KB | Reads NV_NVVM_VERSION / LIBNVVM_NVVM_VERSION; compares values |
+| NvvmVersionHelper2 | `sub_12BB580` | ~3KB | Second call site for NV_NVVM_VERSION |
+| CheckIRVersion | `sub_12BDA30` | ~1KB | IR major/minor compatibility check |
+| CheckDebugVersion | `sub_12BD890` | ~1KB | Debug IR major/minor compatibility check |
+| NVVMIRVersionCheck | `sub_12BFF60` | 9KB | Full NVVM IR version validator; reads NVVM_IR_VER_CHK |
+| NVVMIRVersionCheck2 | `sub_2259720` | 14KB | Second instance of version checker |
+| JemallocInit | `sub_12FCDB0` | 131,600B | jemalloc config parser; reads MALLOC_CONF |
+| JobserverParser | `sub_1682BF0` | ~2KB | MAKEFLAGS --jobserver-auth parser |
+| GenericGetEnv | `sub_C86120` | ~100B | LLVM sys::Process::GetEnv wrapper |
+| EDGColorInit | `sub_67C750` | ~2KB | NOCOLOR / EDG_COLORS / GCC_COLORS handler |
 
 ## Cross-References
 

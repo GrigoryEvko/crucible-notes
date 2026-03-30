@@ -318,35 +318,35 @@ The remark message format: `"Saved {N} bytes by outlining {M} instructions from 
 
 ## Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_35320A0` | -- | Pass registration (name, ID, factory) |
-| `sub_3534A50` | -- | Pass factory function |
-| `sub_3537010` | 77KB | Core outlining engine (`outline + rewrite`) |
-| `sub_3539E80` | 59KB | Candidate finder / suffix-tree builder |
-| `sub_1E3D600` | 62KB | MachineOutliner `runOnModule` entry (MIR region) |
-| `sub_35364E0` | -- | `insertIntoSuffixTree` -- adds MBB instruction hashes |
-| `sub_3535DB0` | -- | `SuffixArray::allocateWorkBuffer` |
-| `sub_3534120` | -- | `SuffixArray::parallelMergeSort` |
-| `sub_3533600` | -- | `SuffixArray::inPlaceMergeSort` (fallback for small arrays) |
-| `sub_3533450` | -- | Insertion sort for <= 14 elements |
-| `sub_3532120` | -- | `findIllegalInRange` (4-way unrolled sentinel scan) |
-| `sub_3508720` | -- | `buildInstrLegalityMapping` -- MBB to suffix alphabet |
-| `sub_3508F10` | -- | `buildRegClassMapping` -- register-class constraint resolution |
-| `sub_35095B0` | -- | `populateOutlinedFunctionBody` -- instruction insertion |
-| `sub_3536E40` | -- | `classifyOperandRegisters` -- RB-tree register tracking |
-| `sub_3532B90` | -- | `RBTree::destroyAll` -- recursive tree deallocation |
-| `sub_35323D0` | -- | `std::string` constructor (for name generation) |
-| `sub_3532560` | -- | SmallString SSO-aware deep copy |
-| `sub_3534BB0` | -- | `RemarkBuilder::appendField` |
-| `sub_35341F0` | -- | `RemarkBuilder::emitOutlinedFunctionRemark` |
-| `sub_A746B0` | -- | Extract calling convention from candidate entry's source function |
-| `sub_A77AA0` | -- | Create callee-saved register mask for non-default CC |
-| `sub_B2D620` | -- | `hasAttribute("nooutline")` -- function attribute check |
-| `sub_CE9220` | -- | `isKernel(func)` -- returns true for CC 0x47 or `nvvm.kernel` metadata |
-| `sub_1C2F070` | -- | `isKernelFunction` -- `.entry` vs `.func` emission branch |
-| `sub_214DA90` | -- | Kernel attribute emission (`.maxntid`, `.maxnreg`, `.minnctapersm`) |
-| `sub_215A3C0` | -- | PTX function header orchestrator (`.entry` / `.func` branch + params) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| Pass registration (name, ID, factory) | `sub_35320A0` | -- | -- |
+| Pass factory function | `sub_3534A50` | -- | -- |
+| Core outlining engine (`outline + rewrite`) | `sub_3537010` | 77KB | -- |
+| Candidate finder / suffix-tree builder | `sub_3539E80` | 59KB | -- |
+| MachineOutliner `runOnModule` entry (MIR region) | `sub_1E3D600` | 62KB | -- |
+| `insertIntoSuffixTree` -- adds MBB instruction hashes | `sub_35364E0` | -- | -- |
+| `SuffixArray::allocateWorkBuffer` | `sub_3535DB0` | -- | -- |
+| `SuffixArray::parallelMergeSort` | `sub_3534120` | -- | -- |
+| `SuffixArray::inPlaceMergeSort` (fallback for small arrays) | `sub_3533600` | -- | -- |
+| Insertion sort for <= 14 elements | `sub_3533450` | -- | -- |
+| `findIllegalInRange` (4-way unrolled sentinel scan) | `sub_3532120` | -- | -- |
+| `buildInstrLegalityMapping` -- MBB to suffix alphabet | `sub_3508720` | -- | -- |
+| `buildRegClassMapping` -- register-class constraint resolution | `sub_3508F10` | -- | -- |
+| `populateOutlinedFunctionBody` -- instruction insertion | `sub_35095B0` | -- | -- |
+| `classifyOperandRegisters` -- RB-tree register tracking | `sub_3536E40` | -- | -- |
+| `RBTree::destroyAll` -- recursive tree deallocation | `sub_3532B90` | -- | -- |
+| `std::string` constructor (for name generation) | `sub_35323D0` | -- | -- |
+| SmallString SSO-aware deep copy | `sub_3532560` | -- | -- |
+| `RemarkBuilder::appendField` | `sub_3534BB0` | -- | -- |
+| `RemarkBuilder::emitOutlinedFunctionRemark` | `sub_35341F0` | -- | -- |
+| Extract calling convention from candidate entry's source function | `sub_A746B0` | -- | -- |
+| Create callee-saved register mask for non-default CC | `sub_A77AA0` | -- | -- |
+| `hasAttribute("nooutline")` -- function attribute check | `sub_B2D620` | -- | -- |
+| `isKernel(func)` -- returns true for CC 0x47 or `nvvm.kernel` metadata | `sub_CE9220` | -- | -- |
+| `isKernelFunction` -- `.entry` vs `.func` emission branch | `sub_1C2F070` | -- | -- |
+| Kernel attribute emission (`.maxntid`, `.maxnreg`, `.minnctapersm`) | `sub_214DA90` | -- | -- |
+| PTX function header orchestrator (`.entry` / `.func` branch + params) | `sub_215A3C0` | -- | -- |
 
 ## Differences from Upstream LLVM
 

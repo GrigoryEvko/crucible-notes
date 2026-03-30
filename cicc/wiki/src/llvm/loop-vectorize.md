@@ -11,7 +11,9 @@ NVIDIA's cicc ships a heavily modified copy of LLVM's `LoopVectorizePass`, the s
 ## Key Facts
 
 | Property | Value |
-|----------|-------|
+|---|---|
+| Registration | New PM #400, parameterized: `no-interleave-forced-only;...` |
+| Runtime positions | Not in Tier 0/1/2/3 tables; invoked via LLVM standard sub-pipeline `sub_1A62BF0` when vectorization is enabled (see [Pipeline](pipeline.md)) |
 | Main entry point | `sub_2AF1970` (0x2AF1970) -- `LoopVectorizePass::processLoop()` |
 | Binary size | 88 KB decompiled, 2,612 lines |
 | VPlan builder | `sub_2AEE460` (0x2AEE460) -- `tryToBuildVPlanWithVPRecipes()`, 56 KB |
@@ -275,57 +277,67 @@ The scheduling info at `TTI+56` (with issue width at offset +32 and latency at +
 
 ## Diagnostic Strings
 
-All diagnostic strings are embedded in the binary with `OptimizationRemarkAnalysis` tags:
+All diagnostic strings are embedded in the binary with `OptimizationRemarkAnalysis` tags. Source: `p2-E01-loop-vectorize.txt`.
 
 | Tag | Message | Trigger |
 |-----|---------|---------|
-| `UncountableEarlyExitLoopsDisabled` | "Auto-vectorization of loops with uncountable early exit is not enabled" | Early-exit loop + knob off |
-| `LowTripCount` | "The trip count is below the minial threshold value." | TC < min threshold (note: "minial" is a typo in the NVIDIA binary) |
-| `NoImplicitFloat` | "Can't vectorize when the NoImplicitFloat attribute is used" | Function attribute check |
-| `UnsafeFP` | "Potentially unsafe FP op prevents vectorization" | FP safety check failure |
-| `CantReorderFPOps` | "loop not vectorized: cannot prove it is safe to reorder floating-point operations" | FP reorder proof failure |
-| `CantReorderMemOps` | "loop not vectorized: cannot prove it is safe to reorder memory operations" | Memory reorder proof failure |
-| `VectorizationNotBeneficial` | "the cost-model indicates that vectorization is not beneficial" | Cost model: VF=1 wins |
-| `InterleavingNotBeneficial` | "the cost-model indicates that interleaving is not beneficial" | Cost model: IC=1 wins |
-| `HistogramPreventsScalarInterleaving` | "Unable to interleave without vectorization due to constraints on the order of histogram operations" | NVIDIA-specific: histogram loop + scalar IC |
-| `ScalableVFUnfeasible` | "Scalable vectorization requested but not supported by the target" | Scalable VF on NVPTX |
-| `UncountableEarlyExitUnsupported` | "Auto-vectorization of early exit loops requiring a scalar epilogue is unsupported" | Early-exit + epilogue |
+| `UncountableEarlyExitLoopsDisabled` | `"Auto-vectorization of loops with uncountable early exit is not enabled"` | Early-exit loop + `byte_500CDA8` knob off |
+| `LowTripCount` | `"The trip count is below the minial threshold value."` | TC < `dword_500EAE8` min threshold (note: "minial" is a typo [sic] in the NVIDIA binary) |
+| `NoImplicitFloat` | `"Can't vectorize when the NoImplicitFloat attribute is used"` | Function attribute 30 check |
+| `UnsafeFP` | `"Potentially unsafe FP op prevents vectorization"` | FP safety check failure |
+| `CantReorderFPOps` | `"loop not vectorized: cannot prove it is safe to reorder floating-point operations"` | FP reorder proof failure |
+| `CantReorderMemOps` | `"loop not vectorized: cannot prove it is safe to reorder memory operations"` | Memory reorder proof failure |
+| `VectorizationNotBeneficial` | `"the cost-model indicates that vectorization is not beneficial"` | Cost model: VF=1 wins |
+| `InterleavingNotBeneficial` | `"the cost-model indicates that interleaving is not beneficial"` | Cost model: IC=1 wins |
+| `InterleavingNotBeneficialAndDisabled` | (appended: `" and is explicitly disabled or interleave count is set to 1"`) | IC=1 + explicitly disabled |
+| `InterleavingBeneficialButDisabled` | (tag only, no message body recovered) | IC>1 but user disabled interleaving |
+| `InterleavingAvoided` | `"Ignoring UserIC, because interleaving was avoided up front"` | User-specified IC overridden |
+| `HistogramPreventsScalarInterleaving` | `"Unable to interleave without vectorization due to constraints on the order of histogram operations"` | NVIDIA-specific: histogram loop + scalar IC |
+| `ScalableVFUnfeasible` | `"Scalable vectorization requested but not supported by the target"` | Scalable VF on NVPTX |
+| `UncountableEarlyExitUnsupported` | `"Auto-vectorization of early exit loops requiring a scalar epilogue is unsupported"` | Early-exit + epilogue |
+| (success remark) | `"interleaved loop (interleaved count: N)"` | Vectorization/interleaving succeeded via `sub_2AC2B40` |
+| (metadata) | `"llvm.loop.vectorize.followup_all"` | Post-vectorization loop metadata tag |
+| (metadata) | `"llvm.loop.vectorize.followup_epilogue"` | Post-vectorization epilogue metadata tag |
+| (block name) | `"vec.epilog.middle.block"` | Epilogue vectorization middle block |
+| (block name) | `"vec.epilog.vector.body"` | Epilogue vectorization body block |
+| (block name) | `"scev.check"` | Runtime SCEV overflow check block (`sub_27C1C30`) |
+| (VPlan debug) | `"Initial VPlan"` | VPlan builder debug output at `0x2AEFC7B` |
 
 ## Function Map
 
-| Address | Identity | Size |
-|---------|----------|------|
-| `sub_2AF1970` | `LoopVectorizePass::processLoop()` | 88 KB |
-| `sub_2AEE460` | `tryToBuildVPlanWithVPRecipes()` | 56 KB |
-| `sub_2AF13F0` | `Planner::plan()` -- generate VPlans for candidate VFs | -- |
-| `sub_2AE08E0` | `selectBestVF()` -- iterate VPlans, pick lowest cost | -- |
-| `sub_2AE0750` | `computeCostForVF()` -- per-VF cost query | -- |
-| `sub_2AB3FE0` | `isBetterThan()` -- VF cost comparator | -- |
-| `sub_2AE3460` | `executeVPlan()` -- IR transformation from VPlan | -- |
-| `sub_2AED330` | `selectInterleaveCount()` -- IC heuristic | -- |
-| `sub_2ABBD40` | `selectEpilogueVectorizationFactor()` | -- |
-| `sub_2AB2780` | `LoopVectorizationCostModel` constructor (16 params) | -- |
-| `sub_2AB8AC0` | `selectVectorizationFactor()` -- outer loop path | -- |
-| `sub_2AAEAB0` | `selectVectorizationFactor()` -- hint/pre-check | -- |
-| `sub_2AAD640` | `computeExpectedScalarCost()` | -- |
-| `sub_31A4FD0` | `LoopVectorizationLegality::init()` | -- |
-| `sub_31A91F0` | `canVectorize()` -- pre-check | -- |
-| `sub_31AF060` | `canVectorize()` -- full check | -- |
-| `sub_2BF1320` | `getBestPlanFor(VF)` -- VPlan lookup | -- |
-| `sub_2BF7CB0` | `cloneVPlan()` | -- |
-| `sub_2AB0350` | `mergeVPlans()` -- main + epilogue merge | -- |
-| `sub_2C06CE0` | `buildInterleaveGroupRecipes()` | -- |
-| `sub_2C2E3C0` | VPlan cost annotation pass | -- |
-| `sub_2C32950` | VPlan simplification / recipe combining | -- |
-| `sub_2C2A390` | VPlan legality re-verification | -- |
-| `sub_2AA7EC0` | `getSmallBestKnownTC()` -- trip count upper bound | -- |
-| `sub_2AA9E60` | `tryToBuildRecipesForVF()` -- per-VF body builder | -- |
-| `sub_2AD9850` | `finalizeRecipesForVF()` -- scaling/widening | -- |
-| `sub_DFB120` | `TTI::getMaxInterleaveFactor()` | -- |
-| `sub_DFE640` | `TTI::getRegisterBitWidth(Vector)` | -- |
-| `sub_DFE610` | `TTI::supportsScalableVectors()` | -- |
-| `sub_2AC2B40` | Emit vectorization success remarks | -- |
-| `sub_ABDAE0` | VPlan fixup/finalize | -- |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `LoopVectorizePass::processLoop()` | `sub_2AF1970` | 88 KB | -- |
+| `tryToBuildVPlanWithVPRecipes()` | `sub_2AEE460` | 56 KB | -- |
+| `Planner::plan()` -- generate VPlans for candidate VFs | `sub_2AF13F0` | -- | -- |
+| `selectBestVF()` -- iterate VPlans, pick lowest cost | `sub_2AE08E0` | -- | -- |
+| `computeCostForVF()` -- per-VF cost query | `sub_2AE0750` | -- | -- |
+| `isBetterThan()` -- VF cost comparator | `sub_2AB3FE0` | -- | -- |
+| `executeVPlan()` -- IR transformation from VPlan | `sub_2AE3460` | -- | -- |
+| `selectInterleaveCount()` -- IC heuristic | `sub_2AED330` | -- | -- |
+| `selectEpilogueVectorizationFactor()` | `sub_2ABBD40` | -- | -- |
+| `LoopVectorizationCostModel` constructor (16 params) | `sub_2AB2780` | -- | -- |
+| `selectVectorizationFactor()` -- outer loop path | `sub_2AB8AC0` | -- | -- |
+| `selectVectorizationFactor()` -- hint/pre-check | `sub_2AAEAB0` | -- | -- |
+| `computeExpectedScalarCost()` | `sub_2AAD640` | -- | -- |
+| `LoopVectorizationLegality::init()` | `sub_31A4FD0` | -- | -- |
+| `canVectorize()` -- pre-check | `sub_31A91F0` | -- | -- |
+| `canVectorize()` -- full check | `sub_31AF060` | -- | -- |
+| `getBestPlanFor(VF)` -- VPlan lookup | `sub_2BF1320` | -- | -- |
+| `cloneVPlan()` | `sub_2BF7CB0` | -- | -- |
+| `mergeVPlans()` -- main + epilogue merge | `sub_2AB0350` | -- | -- |
+| `buildInterleaveGroupRecipes()` | `sub_2C06CE0` | -- | -- |
+| VPlan cost annotation pass | `sub_2C2E3C0` | -- | -- |
+| VPlan simplification / recipe combining | `sub_2C32950` | -- | -- |
+| VPlan legality re-verification | `sub_2C2A390` | -- | -- |
+| `getSmallBestKnownTC()` -- trip count upper bound | `sub_2AA7EC0` | -- | -- |
+| `tryToBuildRecipesForVF()` -- per-VF body builder | `sub_2AA9E60` | -- | -- |
+| `finalizeRecipesForVF()` -- scaling/widening | `sub_2AD9850` | -- | -- |
+| `TTI::getMaxInterleaveFactor()` | `sub_DFB120` | -- | -- |
+| `TTI::getRegisterBitWidth(Vector)` | `sub_DFE640` | -- | -- |
+| `TTI::supportsScalableVectors()` | `sub_DFE610` | -- | -- |
+| Emit vectorization success remarks | `sub_2AC2B40` | -- | -- |
+| VPlan fixup/finalize | `sub_ABDAE0` | -- | -- |
 
 ## Related Pages
 

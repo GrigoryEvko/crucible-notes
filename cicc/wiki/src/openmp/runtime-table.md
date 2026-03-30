@@ -627,26 +627,26 @@ When a call instruction references a function not in this set, the SPMD transfor
 
 ## Function Map
 
-| Address | Identity |
-|---|---|
-| `0x312CF50` | `sub_312CF50` -- OpenMP runtime declaration factory (194-case switch) |
-| `0x3122A50` | `sub_3122A50` -- `registerRuntimeFunction(context, index, funcDecl)` |
-| `0x2686D90` | `sub_2686D90` -- OpenMP runtime declaration table (215 KB, outer wrapper) |
-| `0x26968A0` | `sub_26968A0` -- Generic-to-SPMD transformation (61 KB) |
-| `0x2680940` | `sub_2680940` -- Parallel region merging (52 KB) |
-| `0x2678420` | `sub_2678420` -- State machine generation for Generic mode (41 KB) |
-| `0x269F530` | `sub_269F530` -- Attributor-based OpenMP optimization driver (63 KB) |
-| `0x313D1B0` | `sub_313D1B0` -- Parallel region outliner (47 KB) |
-| `0xBCF480` | `sub_BCF480` -- `FunctionType::get(retTy, paramTys, count, isVarArg)` |
-| `0xBA8CB0` | `sub_BA8CB0` -- `Module::getNamedValue(name)` |
-| `0xB2C660` | `sub_B2C660` -- `Function::Create(funcTy, linkage, name, module)` |
-| `0xB994D0` | `sub_B994D0` -- `addAttribute(26, value)` -- set function attribute |
-| `0xB91C10` | `sub_B91C10` -- `hasAttribute(26)` -- check function attribute |
-| `0xB9C770` | `sub_B9C770` -- Attribute construction (varargs attribute) |
-| `0xB8C960` | `sub_B8C960` -- Attribute kind construction |
-| `0xB2BE50` | `sub_B2BE50` -- `Function::getContext()` |
-| `0x921880` | `sub_921880` -- Create runtime library call instruction |
-| `0x5FB5C0` | `sub_5FB5C0` -- OpenMP variant processing (`%s$$OMP_VARIANT%06d`) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `sub_312CF50` -- OpenMP runtime declaration factory (194-case switch) | `0x312CF50` | -- | -- |
+| `sub_3122A50` -- `registerRuntimeFunction(context, index, funcDecl)` | `0x3122A50` | -- | -- |
+| `sub_2686D90` -- OpenMP runtime declaration table (215 KB, outer wrapper) | `0x2686D90` | -- | -- |
+| `sub_26968A0` -- Generic-to-SPMD transformation (61 KB) | `0x26968A0` | -- | -- |
+| `sub_2680940` -- Parallel region merging (52 KB) | `0x2680940` | -- | -- |
+| `sub_2678420` -- State machine generation for Generic mode (41 KB) | `0x2678420` | -- | -- |
+| `sub_269F530` -- Attributor-based OpenMP optimization driver (63 KB) | `0x269F530` | -- | -- |
+| `sub_313D1B0` -- Parallel region outliner (47 KB) | `0x313D1B0` | -- | -- |
+| `sub_BCF480` -- `FunctionType::get(retTy, paramTys, count, isVarArg)` | `0xBCF480` | -- | -- |
+| `sub_BA8CB0` -- `Module::getNamedValue(name)` | `0xBA8CB0` | -- | -- |
+| `sub_B2C660` -- `Function::Create(funcTy, linkage, name, module)` | `0xB2C660` | -- | -- |
+| `sub_B994D0` -- `addAttribute(26, value)` -- set function attribute | `0xB994D0` | -- | -- |
+| `sub_B91C10` -- `hasAttribute(26)` -- check function attribute | `0xB91C10` | -- | -- |
+| `sub_B9C770` -- Attribute construction (varargs attribute) | `0xB9C770` | -- | -- |
+| `sub_B8C960` -- Attribute kind construction | `0xB8C960` | -- | -- |
+| `sub_B2BE50` -- `Function::getContext()` | `0xB2BE50` | -- | -- |
+| `sub_921880` -- Create runtime library call instruction | `0x921880` | -- | -- |
+| `sub_5FB5C0` -- OpenMP variant processing (`%s$$OMP_VARIANT%06d`) | `0x5FB5C0` | -- | -- |
 
 ## OpenMP Variant Processing
 

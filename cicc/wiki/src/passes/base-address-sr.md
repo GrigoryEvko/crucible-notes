@@ -6,22 +6,22 @@ Base Address Strength Reduction (BASR) is an NVIDIA-proprietary IR-level pass th
 
 ## Key Facts
 
-| Field | Value |
-|-------|-------|
-| **Pass name** | `BaseAddressStrengthReduce` |
-| **Entry point** | `sub_1C67780` (Legacy PM), `sub_2CA4A10` (New PM) |
-| **Size** | 58 KB (~1,400 decompiled lines) |
-| **Pass type** | NVIDIA-proprietary, IR-level, loop body transform |
-| **Master knob** | `do-base-address-strength-reduce` (two levels: 1 = no conditions, 2 = with conditions) |
-| **Chain variant** | `do-base-address-strength-reduce-chain` (separate boolean toggle) |
-| **Negative offset control** | `dword_4FBCAE0` (aggressiveness for negative-offset patterns) |
-| **IV limit** | `base-address-strength-reduce-iv-limit` (parametric) |
-| **Max IV** | `base-address-strength-reduce-max-iv` (parametric) |
-| **Debug dump** | `dump-base-address-strength-reduce` |
-| **Required analyses** | LoopInfo (`sub_1632FA0`), DataLayout |
-| **Option registration** | `ctor_263_0` at `0x4F36F0` (shared with SCEV-CGP, 44 strings total) |
-| **Companion pass** | [Common Base Elimination](./common-base-elim.md) (`sub_1C5DFC0`) |
-| **Helper** | Bitcast helper at `sub_1C637F0` (28 KB, strings `"baseValue"`, `"bitCastEnd"`) |
+| Property | Value |
+|---|---|
+| Pass name | `BaseAddressStrengthReduce` |
+| Entry point | `sub_1C67780` (Legacy PM), `sub_2CA4A10` (New PM) |
+| Binary size | 58 KB (~1,400 decompiled lines) |
+| Pass type | NVIDIA-proprietary, IR-level, loop body transform |
+| Primary knobs | `do-base-address-strength-reduce` (two levels: 1 = no conditions, 2 = with conditions) |
+| Chain variant | `do-base-address-strength-reduce-chain` (separate boolean toggle) |
+| Negative offset control | `dword_4FBCAE0` (aggressiveness for negative-offset patterns) |
+| IV limit | `base-address-strength-reduce-iv-limit` (parametric) |
+| Max IV | `base-address-strength-reduce-max-iv` (parametric) |
+| Debug dump | `dump-base-address-strength-reduce` |
+| Required analyses | LoopInfo (`sub_1632FA0`), DataLayout |
+| Option registration | `ctor_263_0` at `0x4F36F0` (shared with SCEV-CGP, 44 strings total) |
+| Companion pass | [Common Base Elimination](./common-base-elim.md) (`sub_1C5DFC0`) |
+| Helper | Bitcast helper at `sub_1C637F0` (28 KB, strings `"baseValue"`, `"bitCastEnd"`) |
 
 ## Algorithm
 

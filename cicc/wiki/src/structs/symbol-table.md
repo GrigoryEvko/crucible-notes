@@ -619,28 +619,28 @@ The consistency of the hash function, sentinel values, and growth policy across 
 
 ## Function Map
 
-| Address | Name | Role |
-|---------|------|------|
-| `sub_662DE0` | `edg_parse_declarator` | Top-level declarator parser |
-| `sub_672A20` | `edg_parse_decl_specifiers_core` | While/switch token dispatcher |
-| `sub_7C0F00` | `edg_resolve_decl_specifiers` | Scope chain + qualified name resolver |
-| `sub_7386E0` | `edg_compare_type_nodes` | Structural type tree comparison |
-| `sub_739370` | `edg_compare_type_lists` | Linked-list type comparator |
-| `sub_739430` | `edg_compare_decl_types` | Declaration-level type comparator |
-| `sub_72EC50` | `edg_canonicalize_type` | Typedef / elaborated alias stripper |
-| `sub_74A390` | `edg_type_to_string` | Type-to-string for diagnostics |
-| `sub_7506E0` | `edg_walk_il_node` | 190KB IL tree walker (297 recursive calls) |
-| `sub_766570` | `edg_copy_il_node` | 148KB IL tree copier |
-| `sub_854590` | `edg_push_scope` | Push scope stack entry |
-| `sub_854430` | `edg_pop_scope` | Pop scope stack entry |
-| `sub_82BDA0` | `edg_emit_scope_chain` | Scope chain emission |
-| `sub_7D5DD0` | `edg_unqualified_lookup` | Unqualified name lookup |
-| `sub_7D4600` | `edg_qualified_lookup` | Qualified name lookup (after `::`) |
-| `sub_7D2AC0` | `edg_lookup_with_flags` | Lookup with specific mode flags |
-| `sub_7D4A40` | `edg_namespace_lookup` | Lookup in namespace scope |
-| `sub_8D97D0` | `edg_compare_decl_identity` | Entity identity comparison |
-| `sub_91AED0` | `edg_type_translation_entry` | Top-level EDG-to-LLVM type translation |
-| `sub_91AB30` | `edg_type_translation_driver` | Fixed-point iteration driver |
-| `sub_918E50` | `edg_type_kind_dispatch` | Type-kind dispatch for translation |
-| `sub_911D10` | `edg_type_pair_compare` | Core type-pair comparison + replacement |
-| `sub_84DCB0` | `edg_alloc_decl_node` | 152-byte declaration node allocator |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `edg_parse_declarator` | `sub_662DE0` | -- | Top-level declarator parser |
+| `edg_parse_decl_specifiers_core` | `sub_672A20` | -- | While/switch token dispatcher |
+| `edg_resolve_decl_specifiers` | `sub_7C0F00` | -- | Scope chain + qualified name resolver |
+| `edg_compare_type_nodes` | `sub_7386E0` | -- | Structural type tree comparison |
+| `edg_compare_type_lists` | `sub_739370` | -- | Linked-list type comparator |
+| `edg_compare_decl_types` | `sub_739430` | -- | Declaration-level type comparator |
+| `edg_canonicalize_type` | `sub_72EC50` | -- | Typedef / elaborated alias stripper |
+| `edg_type_to_string` | `sub_74A390` | -- | Type-to-string for diagnostics |
+| `edg_walk_il_node` | `sub_7506E0` | -- | 190KB IL tree walker (297 recursive calls) |
+| `edg_copy_il_node` | `sub_766570` | -- | 148KB IL tree copier |
+| `edg_push_scope` | `sub_854590` | -- | Push scope stack entry |
+| `edg_pop_scope` | `sub_854430` | -- | Pop scope stack entry |
+| `edg_emit_scope_chain` | `sub_82BDA0` | -- | Scope chain emission |
+| `edg_unqualified_lookup` | `sub_7D5DD0` | -- | Unqualified name lookup |
+| `edg_qualified_lookup` | `sub_7D4600` | -- | Qualified name lookup (after `::`) |
+| `edg_lookup_with_flags` | `sub_7D2AC0` | -- | Lookup with specific mode flags |
+| `edg_namespace_lookup` | `sub_7D4A40` | -- | Lookup in namespace scope |
+| `edg_compare_decl_identity` | `sub_8D97D0` | -- | Entity identity comparison |
+| `edg_type_translation_entry` | `sub_91AED0` | -- | Top-level EDG-to-LLVM type translation |
+| `edg_type_translation_driver` | `sub_91AB30` | -- | Fixed-point iteration driver |
+| `edg_type_kind_dispatch` | `sub_918E50` | -- | Type-kind dispatch for translation |
+| `edg_type_pair_compare` | `sub_911D10` | -- | Core type-pair comparison + replacement |
+| `edg_alloc_decl_node` | `sub_84DCB0` | -- | 152-byte declaration node allocator |

@@ -490,25 +490,25 @@ The `aa-eval` diagnostic pass (`sub_13549C0`) uses 14 independent boolean flags 
 
 ## Function Map
 
-| Address | Size | Identity |
-|---------|------|----------|
-| `sub_134CB50` | -- | `AAResults::alias(MemoryLocation, MemoryLocation)` -- main alias query entry |
-| `sub_134F0E0` | -- | `AAResults::getModRefInfo(CallBase, MemoryLocation)` |
-| `sub_134F530` | -- | `AAResults::getModRefInfo(CallBase, CallBase)` |
-| `sub_13549C0` | 11,038 B | `AAEvaluator::runOnFunction` -- the `aa-eval` diagnostic pass |
-| `sub_13540B0` | -- | `SmallPtrSet::insert` (pointer collection in aa-eval) |
-| `sub_1352080` | -- | Pointer-pair result printer (aa-eval) |
-| `sub_1351E00` | -- | Call-site pair result printer (aa-eval) |
-| `sub_13523B0` | -- | Formatted alias result printer (aa-eval) |
-| `sub_13C7380` | 35.7 KB | `GlobalsAA` main analysis function |
-| `sub_13C5530` | 21 KB | `GlobalsAA` helper (per-function analysis) |
-| `sub_13C4410` | 6.7 KB | `GlobalsAA` call-site analysis |
-| `sub_13C34D0` | 12.6 KB | `GlobalsAA` alias query |
-| `sub_FD1250` | 23.4 KB | AA iteration / chaining logic |
-| `sub_14A4050` | -- | Dominator-tree-based AA query setup (used by MemorySSA) |
-| `sub_B6EEA0` | 9 KB | Metadata kind registration (including `noalias.addrspace` = kind 42) |
-| `sub_1C70910` | ~2,427 lines | MemorySpaceOpt pass entry (IP-MSP worklist driver) |
-| `sub_1CA8CD0` | ~898 lines | MemorySpaceOpt per-BB scanner + address-space bitmask builder |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `AAResults::alias(MemoryLocation, MemoryLocation)` -- main alias query entry | `sub_134CB50` | -- | -- |
+| `AAResults::getModRefInfo(CallBase, MemoryLocation)` | `sub_134F0E0` | -- | -- |
+| `AAResults::getModRefInfo(CallBase, CallBase)` | `sub_134F530` | -- | -- |
+| `AAEvaluator::runOnFunction` -- the `aa-eval` diagnostic pass | `sub_13549C0` | 11,038 B | -- |
+| `SmallPtrSet::insert` (pointer collection in aa-eval) | `sub_13540B0` | -- | -- |
+| Pointer-pair result printer (aa-eval) | `sub_1352080` | -- | -- |
+| Call-site pair result printer (aa-eval) | `sub_1351E00` | -- | -- |
+| Formatted alias result printer (aa-eval) | `sub_13523B0` | -- | -- |
+| `GlobalsAA` main analysis function | `sub_13C7380` | 35.7 KB | -- |
+| `GlobalsAA` helper (per-function analysis) | `sub_13C5530` | 21 KB | -- |
+| `GlobalsAA` call-site analysis | `sub_13C4410` | 6.7 KB | -- |
+| `GlobalsAA` alias query | `sub_13C34D0` | 12.6 KB | -- |
+| AA iteration / chaining logic | `sub_FD1250` | 23.4 KB | -- |
+| Dominator-tree-based AA query setup (used by MemorySSA) | `sub_14A4050` | -- | -- |
+| Metadata kind registration (including `noalias.addrspace` = kind 42) | `sub_B6EEA0` | 9 KB | -- |
+| MemorySpaceOpt pass entry (IP-MSP worklist driver) | `sub_1C70910` | ~2,427 lines | -- |
+| MemorySpaceOpt per-BB scanner + address-space bitmask builder | `sub_1CA8CD0` | ~898 lines | -- |
 
 
 ## Cross-References

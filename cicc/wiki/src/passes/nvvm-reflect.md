@@ -7,9 +7,11 @@ The pass is relatively small in code size but architecturally critical -- it run
 ## Key Facts
 
 | Property | Value |
-|----------|-------|
+|---|---|
 | Pass factory | `sub_1857160` |
 | Pass level | Function pass (runs per-function) |
+| Registration | Legacy PM only (not separately registered in New PM); post-processor `nvvm-reflect-pp` is New PM #381 at line 2237 |
+| Runtime positions | Tier 0 #7; Tier 1/2/3 #9, #73 (see [Pipeline](../llvm/pipeline.md)) |
 | Pipeline disable flag | NVVMPassOptions offset `+880` |
 | Knob | `nvvm-reflect-enable` (boolean, default: `true`) |
 | Global knob constructor | `ctor_271` |
@@ -295,16 +297,57 @@ The multi-run strategy is the most significant difference. Upstream LLVM assumes
 
 ## Function Map
 
-| Function | Address | Role |
-|----------|---------|------|
-| NVVMReflect pass factory | `sub_1857160` | Creates and returns a new NVVMReflect pass instance |
-| NVVMReflect constructor knob | `ctor_271` | Registers `nvvm-reflect-enable` cl::opt |
-| SimplifyConstantConditionalsPass (nvvm-reflect-pp) | registered at line 2237 of `sub_2342890` | Post-reflect dead branch cleanup |
-| Pipeline assembler | `sub_12E54A0` | Inserts NVVMReflect at multiple positions |
-| Tier 0 pipeline builder | `sub_12DE330` | Inserts NVVMReflect as pass #7 |
-| Tiered sub-pipeline | `sub_12DE8F0` | Inserts NVVMReflect at tier-gated positions |
-| Architecture detection table | `sub_95EB40` | Maps `-arch=compute_XX` to `__CUDA_ARCH` values |
-| Architecture detection (libnvvm) | `sub_12C8DD0` | Parallel mapping table for the libnvvm path |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| NVVMReflect pass factory | `sub_1857160` | -- | Creates and returns a new NVVMReflect pass instance |
+| NVVMReflect constructor knob | `ctor_271` | -- | Registers `nvvm-reflect-enable` cl::opt |
+| SimplifyConstantConditionalsPass (nvvm-reflect-pp) | registered at line 2237 of `sub_2342890` | -- | Post-reflect dead branch cleanup |
+| Pipeline assembler | `sub_12E54A0` | -- | Inserts NVVMReflect at multiple positions |
+| Tier 0 pipeline builder | `sub_12DE330` | -- | Inserts NVVMReflect as pass #7 |
+| Tiered sub-pipeline | `sub_12DE8F0` | -- | Inserts NVVMReflect at tier-gated positions |
+| Architecture detection table | `sub_95EB40` | -- | Maps `-arch=compute_XX` to `__CUDA_ARCH` values |
+| Architecture detection (libnvvm) | `sub_12C8DD0` | -- | Parallel mapping table for the libnvvm path |
+
+## Test This
+
+The following kernel calls a libdevice math function whose implementation branches on `__CUDA_FTZ` and `__CUDA_ARCH`. Compile for two configurations and compare the PTX to see NVVMReflect in action.
+
+```cuda
+#include <math.h>
+
+__global__ void reflect_test(float* out, const float* in, int n) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < n) {
+        out[tid] = sinf(in[tid]);
+    }
+}
+```
+
+Compile twice:
+```bash
+nvcc -ptx -arch=sm_90 -ftz=true  reflect_test.cu -o reflect_ftz.ptx
+nvcc -ptx -arch=sm_90 -ftz=false reflect_test.cu -o reflect_noftz.ptx
+```
+
+**What to look for in PTX:**
+- With `-ftz=true`: the PTX should contain flush-to-zero math instructions (e.g., `sin.approx.ftz.f32`). The NVVMReflect pass resolved `__nvvm_reflect("__CUDA_FTZ")` to `1`, SimplifyCFG folded the branch, and only the FTZ code path survived.
+- With `-ftz=false`: the PTX should contain precise math instructions without the `.ftz` suffix. The reflect resolved to `0`, selecting the non-FTZ path.
+- The key evidence is that the PTX contains only **one** code path -- no conditional branch choosing between FTZ and non-FTZ variants. If both paths survive, NVVMReflect or its downstream cleanup passes failed.
+- Comparing `-arch=sm_75` vs. `-arch=sm_90` exercises the `__CUDA_ARCH` reflect. Functions like `__nv_dsqrt_rn` use architecture comparisons (`icmp sge i32 %arch, 800`) to select between SM 8.0+ instruction sequences and legacy fallbacks.
+
+## Common Pitfalls
+
+These are mistakes a reimplementor is likely to make when building an equivalent compile-time reflection mechanism.
+
+**1. Returning the wrong `__CUDA_ARCH` encoding.** The `__CUDA_ARCH` value is `major * 100 + minor * 10`, not `major * 10 + minor`. For SM 9.0, the correct value is 900, not 90. For SM 10.0, the correct value is 1000, not 100. A reimplementation that uses the wrong encoding will select the wrong code paths in libdevice, potentially enabling instructions not supported by the target architecture (e.g., SM 7.0 paths on an SM 9.0 target) or disabling instructions that should be available. This encoding is also used by the CUDA preprocessor (`__CUDA_ARCH__`), so consistency between the frontend macro and the reflect value is critical.
+
+**2. Running NVVMReflect only once in the pipeline.** The pass must run multiple times (approximately 8 invocations across the full pipeline) because `__nvvm_reflect` calls are hidden inside un-inlined libdevice function bodies. The first run resolves calls visible at the top level, but each subsequent inlining pass exposes new reflect calls from freshly inlined libdevice functions. A reimplementation with a single early invocation will leave reflected branches unresolved in all functions inlined after that point, resulting in both FTZ and non-FTZ code paths surviving to the final binary -- doubling code size and defeating the entire specialization mechanism.
+
+**3. Not running `SimplifyConstantConditionalsPass` (nvvm-reflect-pp) after reflect resolution.** After NVVMReflect replaces `__nvvm_reflect("__CUDA_FTZ")` with the constant `1`, the IR contains `icmp ne i32 1, 0` feeding a conditional branch. If no pass simplifies this to an unconditional branch, the dead code path survives through the rest of the pipeline, consuming compile time in every subsequent pass and inflating the final binary. While standard LLVM SimplifyCFG will eventually handle it, the dedicated `nvvm-reflect-pp` pass provides immediate cleanup at the point where it matters most.
+
+**4. Returning 0 for unknown query strings instead of propagating a diagnostic.** The pass returns 0 for any unrecognized `__nvvm_reflect` query string. This is the correct behavior (documented default), but a reimplementation that raises an error or leaves the call unresolved will break forward compatibility: future CUDA toolkit versions may introduce new query strings that libdevice checks. The value 0 is the safe default because libdevice code always treats 0 as "feature not available" and falls back to the conservative code path.
+
+**5. Reading the SM version from the wrong source.** The reflect query values flow through three layers: CLI (`-arch=compute_90`), EDG frontend (`-R __CUDA_ARCH=900`), and optimizer (`-opt-arch=sm_90`). The NVVMReflect pass must read the SM version from the target machine configuration (the optimizer-level value), not from the `-R` preprocessor flags. A reimplementation that reads from the wrong layer may get a stale or mismatched value, especially in LTO scenarios where the preprocessor flags were consumed during an earlier compilation phase.
 
 ## Cross-References
 

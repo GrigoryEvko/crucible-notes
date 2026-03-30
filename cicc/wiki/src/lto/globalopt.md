@@ -771,65 +771,65 @@ There are no user-facing CLI flags that directly control the 2047-bit threshold 
 
 ## Function Map
 
-| Address | Symbol | Role |
-|---------|--------|------|
-| `0x18612A0` | `sub_18612A0` | Core transform: type filter, Path A, Path B |
-| `0x196A2B0` | `sub_196A2B0` | Pipeline wrapper (calls core after GlobalDCE) |
-| `0x185B1D0` | `sub_185B1D0` | Recursive re-application to split globals |
-| `0x185B7E0` | `sub_185B7E0` | Pre-SRA setup |
-| `0x1860410` | `sub_1860410` | Hash table rehash |
-| `0x1860630` | `sub_1860630` | Hash table lookup |
-| `0x1860BE0` | `sub_1860BE0` | Per-user SRA rewrite |
-| `0x185C560` | `sub_185C560` | Collect all store values for a global |
-| `0x185C920` | `sub_185C920` | Analyze single store for optimizability |
-| `0x185CAF0` | `sub_185CAF0` | Collect stored value into hash set |
-| `0x15E51E0` | `sub_15E51E0` | Create global variable (88 bytes, with AS) |
-| `0x15E5070` | `sub_15E5070` | Create init function |
-| `0x164D160` | `sub_164D160` | RAUW (Replace All Uses With) |
-| `0x15F20C0` | `sub_15F20C0` | Erase instruction from parent |
-| `0x15E55B0` | `sub_15E55B0` | Erase global declaration |
-| `0x15A9520` | `sub_15A9520` | `getPointerSizeInBits(target, addr_space)` |
-| `0x15A9930` | `sub_15A9930` | `getStructLayout` (field offsets) |
-| `0x15A06D0` | `sub_15A06D0` | `computeFieldOffset` |
-| `0x1646BA0` | `sub_1646BA0` | `getStructFieldType` |
-| `0x16435F0` | `sub_16435F0` | `isAnalyzableType(type, depth)` |
-| `0x140B2F0` | `sub_140B2F0` | `evaluateInitializer(module, target, ..., 1)` |
-| `0x15FB630` | `sub_15FB630` | Create `notinit` sentinel |
-| `0x15FB440` | `sub_15FB440` | Create binary OR (opcode 27) |
-| `0x15FEC10` | `sub_15FEC10` | Create ICmp instruction |
-| `0x15F8650` | `sub_15F8650` | Create conditional branch |
-| `0x15F8590` | `sub_15F8590` | Create unconditional branch |
-| `0x157FBF0` | `sub_157FBF0` | Create basic block |
-| `0x15FED60` | `sub_15FED60` | Create ICmp NE (opcode 51, predicate 33) |
-| `0x15F9330` | `sub_15F9330` | Create alloca (`"tmp"` variable in block) |
-| `0x15FDB00` | `sub_15FDB00` | Wire def into use-def chain |
-| `0x15F9850` | `sub_15F9850` | Create store-to-field-global |
-| `0x157E9C0` | `sub_157E9C0` | Create return basic block (null-return) |
-| `0x157FB60` | `sub_157FB60` | Create basic block with predecessor |
-| `0x15F55D0` | `sub_15F55D0` | Grow operand list |
-| `0x1648700` | `sub_1648700` | `getInstruction(use)` from use-chain |
-| `0x1649960` | `sub_1649960` | `getName(global/fn)` returns C string |
-| `0x1648A60` | `sub_1648A60` | `IRBuilder::create(size, kind)` allocates IR node |
-| `0x15E5530` | `sub_15E5530` | Destroy function body |
-| `0x159D9E0` | `sub_159D9E0` | Destroy function |
-| `0x164BE60` | `sub_164BE60` | Drop all references |
-| `0x1648B90` | `sub_1648B90` | Mark dead (flags or-equals 1) |
-| `0x1631BE0` | `sub_1631BE0` | Insert into function list |
-| `0x15A9FE0` | `sub_15A9FE0` | `getAlignment(target, type)` ABI alignment |
-| `0x15A0680` | `sub_15A0680` | `lookupSymbol(module_sym, idx, flags)` |
-| `0x16463B0` | `sub_16463B0` | `getArrayElementType(ptr, idx)` |
-| `0x159C540` | `sub_159C540` | `getTerminalType(type)` |
-| `0x1752100` | `sub_1752100` | Collect use-def chain |
-| `0x15E6480` | `sub_15E6480` | Copy metadata from global to global |
-| `0x15F8F80` | `sub_15F8F80` | Create extractvalue instruction |
-| `0x15F9480` | `sub_15F9480` | Create store-init (initializer store) |
-| `0x15F9660` | `sub_15F9660` | Create field store (offset + field global) |
-| `0x15FD590` | `sub_15FD590` | Create local variable (`"newgv"`) |
-| `0x15FEBE0` | `sub_15FEBE0` | Create bitcast/GEP for field extraction |
-| `0x1648780` | `sub_1648780` | Replace use with value |
-| `0x16CC920` | `sub_16CC920` | Grow scratch buffer |
-| `0x16CC9F0` | `sub_16CC9F0` | Find in sorted set |
-| `0x1968390` | `sub_1968390` | GlobalDCE / ConstantProp (runs before GlobalOpt) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `sub_18612A0` | `0x18612A0` | -- | Core transform: type filter, Path A, Path B |
+| `sub_196A2B0` | `0x196A2B0` | -- | Pipeline wrapper (calls core after GlobalDCE) |
+| `sub_185B1D0` | `0x185B1D0` | -- | Recursive re-application to split globals |
+| `sub_185B7E0` | `0x185B7E0` | -- | Pre-SRA setup |
+| `sub_1860410` | `0x1860410` | -- | Hash table rehash |
+| `sub_1860630` | `0x1860630` | -- | Hash table lookup |
+| `sub_1860BE0` | `0x1860BE0` | -- | Per-user SRA rewrite |
+| `sub_185C560` | `0x185C560` | -- | Collect all store values for a global |
+| `sub_185C920` | `0x185C920` | -- | Analyze single store for optimizability |
+| `sub_185CAF0` | `0x185CAF0` | -- | Collect stored value into hash set |
+| `sub_15E51E0` | `0x15E51E0` | -- | Create global variable (88 bytes, with AS) |
+| `sub_15E5070` | `0x15E5070` | -- | Create init function |
+| `sub_164D160` | `0x164D160` | -- | RAUW (Replace All Uses With) |
+| `sub_15F20C0` | `0x15F20C0` | -- | Erase instruction from parent |
+| `sub_15E55B0` | `0x15E55B0` | -- | Erase global declaration |
+| `sub_15A9520` | `0x15A9520` | -- | `getPointerSizeInBits(target, addr_space)` |
+| `sub_15A9930` | `0x15A9930` | -- | `getStructLayout` (field offsets) |
+| `sub_15A06D0` | `0x15A06D0` | -- | `computeFieldOffset` |
+| `sub_1646BA0` | `0x1646BA0` | -- | `getStructFieldType` |
+| `sub_16435F0` | `0x16435F0` | -- | `isAnalyzableType(type, depth)` |
+| `sub_140B2F0` | `0x140B2F0` | -- | `evaluateInitializer(module, target, ..., 1)` |
+| `sub_15FB630` | `0x15FB630` | -- | Create `notinit` sentinel |
+| `sub_15FB440` | `0x15FB440` | -- | Create binary OR (opcode 27) |
+| `sub_15FEC10` | `0x15FEC10` | -- | Create ICmp instruction |
+| `sub_15F8650` | `0x15F8650` | -- | Create conditional branch |
+| `sub_15F8590` | `0x15F8590` | -- | Create unconditional branch |
+| `sub_157FBF0` | `0x157FBF0` | -- | Create basic block |
+| `sub_15FED60` | `0x15FED60` | -- | Create ICmp NE (opcode 51, predicate 33) |
+| `sub_15F9330` | `0x15F9330` | -- | Create alloca (`"tmp"` variable in block) |
+| `sub_15FDB00` | `0x15FDB00` | -- | Wire def into use-def chain |
+| `sub_15F9850` | `0x15F9850` | -- | Create store-to-field-global |
+| `sub_157E9C0` | `0x157E9C0` | -- | Create return basic block (null-return) |
+| `sub_157FB60` | `0x157FB60` | -- | Create basic block with predecessor |
+| `sub_15F55D0` | `0x15F55D0` | -- | Grow operand list |
+| `sub_1648700` | `0x1648700` | -- | `getInstruction(use)` from use-chain |
+| `sub_1649960` | `0x1649960` | -- | `getName(global/fn)` returns C string |
+| `sub_1648A60` | `0x1648A60` | -- | `IRBuilder::create(size, kind)` allocates IR node |
+| `sub_15E5530` | `0x15E5530` | -- | Destroy function body |
+| `sub_159D9E0` | `0x159D9E0` | -- | Destroy function |
+| `sub_164BE60` | `0x164BE60` | -- | Drop all references |
+| `sub_1648B90` | `0x1648B90` | -- | Mark dead (flags or-equals 1) |
+| `sub_1631BE0` | `0x1631BE0` | -- | Insert into function list |
+| `sub_15A9FE0` | `0x15A9FE0` | -- | `getAlignment(target, type)` ABI alignment |
+| `sub_15A0680` | `0x15A0680` | -- | `lookupSymbol(module_sym, idx, flags)` |
+| `sub_16463B0` | `0x16463B0` | -- | `getArrayElementType(ptr, idx)` |
+| `sub_159C540` | `0x159C540` | -- | `getTerminalType(type)` |
+| `sub_1752100` | `0x1752100` | -- | Collect use-def chain |
+| `sub_15E6480` | `0x15E6480` | -- | Copy metadata from global to global |
+| `sub_15F8F80` | `0x15F8F80` | -- | Create extractvalue instruction |
+| `sub_15F9480` | `0x15F9480` | -- | Create store-init (initializer store) |
+| `sub_15F9660` | `0x15F9660` | -- | Create field store (offset + field global) |
+| `sub_15FD590` | `0x15FD590` | -- | Create local variable (`"newgv"`) |
+| `sub_15FEBE0` | `0x15FEBE0` | -- | Create bitcast/GEP for field extraction |
+| `sub_1648780` | `0x1648780` | -- | Replace use with value |
+| `sub_16CC920` | `0x16CC920` | -- | Grow scratch buffer |
+| `sub_16CC9F0` | `0x16CC9F0` | -- | Find in sorted set |
+| `sub_1968390` | `0x1968390` | -- | GlobalDCE / ConstantProp (runs before GlobalOpt) |
 
 ## Differences from Upstream LLVM GlobalOpt
 

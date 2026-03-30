@@ -4,17 +4,17 @@ The NVPTXTargetMachine, NVPTXSubtarget, and NVPTXTargetTransformInfo form the ta
 
 ## Key Facts
 
-| | |
+| Property | Value |
 |---|---|
-| **SM processor table** | `qword_502A920` (45 entries, stride-2, `ctor_605` at `0x584510`) |
-| **Target lookup** | `sub_12EA530` (4KB, calls `sub_16D3AC0` = `TargetRegistry::lookupTarget`) |
-| **TargetMachine creation** | `sub_12F4060` (16KB, NVIDIA options) / `sub_12E54A0` (50KB, pipeline path) |
-| **TTI wrapper pass** | `sub_1BFB520` (208-byte alloc, wraps `sub_1BFB9A0`) |
-| **Register bit width (Vector)** | `sub_DFE640` -- returns 32 (fixed) |
-| **Scalable vectors** | `sub_DFE610` -- returns `false` |
-| **Max interleave factor** | `sub_DFB120` (at TTI+448), `sub_DFB730` (vectorized variant) |
-| **SubtargetFeatures** | Offsets +2498, +2584, +2843, +2870, +2871 |
-| **Target triples** | `nvptx64-nvidia-cuda`, `nvptx-nvidia-cuda`, `nvsass-nvidia-*` (6 total) |
+| SM processor table | `qword_502A920` (45 entries, stride-2, `ctor_605` at `0x584510`) |
+| Target lookup | `sub_12EA530` (4KB, calls `sub_16D3AC0` = `TargetRegistry::lookupTarget`) |
+| TargetMachine creation | `sub_12F4060` (16KB, NVIDIA options) / `sub_12E54A0` (50KB, pipeline path) |
+| TTI wrapper pass | `sub_1BFB520` (208-byte alloc, wraps `sub_1BFB9A0`) |
+| Register bit width (Vector) | `sub_DFE640` -- returns 32 (fixed) |
+| Scalable vectors | `sub_DFE610` -- returns `false` |
+| Max interleave factor | `sub_DFB120` (at TTI+448), `sub_DFB730` (vectorized variant) |
+| SubtargetFeatures | Offsets +2498, +2584, +2843, +2870, +2871 |
+| Target triples | `nvptx64-nvidia-cuda`, `nvptx-nvidia-cuda`, `nvsass-nvidia-*` (6 total) |
 
 ## NVPTXTargetMachine
 
@@ -390,36 +390,36 @@ In non-UnifiedNVVMIR mode, validation is looser: the triple must start with `nvp
 
 ## Function Map
 
-| Address | Identity | Size |
-|---------|----------|------|
-| `sub_12EA530` | NVPTX Target Lookup and Creation | 4 KB |
-| `sub_12F4060` | TargetMachine Creation with NVIDIA Options | 16 KB |
-| `sub_12E54A0` | Master Pipeline Assembly (includes TM setup) | 50 KB |
-| `sub_12F7D90` | CICC CLI Argument Parser | 14 KB |
-| `sub_16D3AC0` | `TargetRegistry::lookupTarget()` | -- |
-| `sub_167F890` | SubtargetInfo initialization | -- |
-| `sub_1BFB520` | TTIWrapperPass allocation (208 bytes) | -- |
-| `sub_1BFB9A0` | TargetTransformInfo / DataLayout creation | -- |
-| `sub_14A04B0` | TargetLibraryInfo creation | -- |
-| `sub_149CBC0` | TargetLibraryInfo finalization | -- |
-| `sub_DFE640` | `TTI::getRegisterBitWidth(Vector)` -- returns 32 | -- |
-| `sub_DFE610` | `TTI::supportsScalableVectors()` -- returns false | -- |
-| `sub_DFB120` | `TTI::getMaxInterleaveFactor()` (at TTI+448) | -- |
-| `sub_DFB730` | `TTI::getMaxInterleaveFactor(vectorized)` | -- |
-| `sub_DFB1B0` | `TTI::getRegisterBitWidth(Scalar)` or cache-line query | -- |
-| `sub_20E14F0` | `TTI::getInstructionCost()` / scheduling cost model | 33 KB |
-| `sub_B2D610` | `TTI::hasAttribute(N)` -- function attribute query | -- |
-| `sub_B91420` | `TTI::getInstructionCost()` (IR-level variant) | -- |
-| `sub_982C80` | NVPTX feature flag table initializer (224 bytes) | -- |
-| `sub_97DEE0` | Feature bitfield initial population | -- |
-| `sub_982B20` | SM-version-specific feature refinements | -- |
-| `sub_201BB90` | SubtargetFeature reads at +2843, +2584, +2498 | -- |
-| `sub_20650A0` | Branch distance / jump table checks at +2870, +2871 | -- |
-| `sub_60E7C0` | EDG SM architecture feature gating (38KB, ~60 flags) | -- |
-| `sub_908850` | Module initialization with triple and data layout | -- |
-| `ctor_605` | SM processor table population (`0x584510`, 2.6KB) | -- |
-| `ctor_607` | NVPTX backend math options (`0x584B60`, 14KB) | -- |
-| `ctor_609_0` | NVPTX backend options (`0x585D30`, 37KB) | -- |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| NVPTX Target Lookup and Creation | `sub_12EA530` | 4 KB | -- |
+| TargetMachine Creation with NVIDIA Options | `sub_12F4060` | 16 KB | -- |
+| Master Pipeline Assembly (includes TM setup) | `sub_12E54A0` | 50 KB | -- |
+| CICC CLI Argument Parser | `sub_12F7D90` | 14 KB | -- |
+| `TargetRegistry::lookupTarget()` | `sub_16D3AC0` | -- | -- |
+| SubtargetInfo initialization | `sub_167F890` | -- | -- |
+| TTIWrapperPass allocation (208 bytes) | `sub_1BFB520` | -- | -- |
+| TargetTransformInfo / DataLayout creation | `sub_1BFB9A0` | -- | -- |
+| TargetLibraryInfo creation | `sub_14A04B0` | -- | -- |
+| TargetLibraryInfo finalization | `sub_149CBC0` | -- | -- |
+| `TTI::getRegisterBitWidth(Vector)` -- returns 32 | `sub_DFE640` | -- | -- |
+| `TTI::supportsScalableVectors()` -- returns false | `sub_DFE610` | -- | -- |
+| `TTI::getMaxInterleaveFactor()` (at TTI+448) | `sub_DFB120` | -- | -- |
+| `TTI::getMaxInterleaveFactor(vectorized)` | `sub_DFB730` | -- | -- |
+| `TTI::getRegisterBitWidth(Scalar)` or cache-line query | `sub_DFB1B0` | -- | -- |
+| `TTI::getInstructionCost()` / scheduling cost model | `sub_20E14F0` | 33 KB | -- |
+| `TTI::hasAttribute(N)` -- function attribute query | `sub_B2D610` | -- | -- |
+| `TTI::getInstructionCost()` (IR-level variant) | `sub_B91420` | -- | -- |
+| NVPTX feature flag table initializer (224 bytes) | `sub_982C80` | -- | -- |
+| Feature bitfield initial population | `sub_97DEE0` | -- | -- |
+| SM-version-specific feature refinements | `sub_982B20` | -- | -- |
+| SubtargetFeature reads at +2843, +2584, +2498 | `sub_201BB90` | -- | -- |
+| Branch distance / jump table checks at +2870, +2871 | `sub_20650A0` | -- | -- |
+| EDG SM architecture feature gating (38KB, ~60 flags) | `sub_60E7C0` | -- | -- |
+| Module initialization with triple and data layout | `sub_908850` | -- | -- |
+| SM processor table population (`0x584510`, 2.6KB) | `ctor_605` | -- | -- |
+| NVPTX backend math options (`0x584B60`, 14KB) | `ctor_607` | -- | -- |
+| NVPTX backend options (`0x585D30`, 37KB) | `ctor_609_0` | -- | -- |
 
 ## Cross-References
 

@@ -780,34 +780,34 @@ Header: `[+0x08]` = current count, `[+0x0C]` = capacity. Growth is handled by a 
 
 ## Function Map
 
-| Address | Size | Identity |
-|---------|------|----------|
-| `sub_1854A20` | 4,326 B | ThinLTO import driver (triple-pass candidate processing) |
-| `sub_1853180` | 5,059 B | Threshold computation with GUID dedup and priority-class multipliers |
-| `sub_18518A0` | -- | Threshold comparison gate (returns nonzero if candidate qualifies) |
-| `sub_1852CC0` | -- | Import candidate evaluator (prepares candidate for threshold check) |
-| `sub_1852FB0` | -- | Import list builder (called by `sub_1853180`) |
-| `sub_1852A30` | -- | Import list node allocator (called by `sub_1853180`) |
-| `sub_1851200` | -- | Import list initialization (called by `sub_1853180`) |
-| `sub_15E4B20` | -- | Execute import decision (materialize function into destination) |
-| `sub_15E4EB0` | -- | Resolve function name/info from summary |
-| `sub_1855B10` | 10,503 B | Entry point (parses `-function-import` / `-summary-file`) |
-| `sub_1858B90` | 31,344 B | Whole-module ThinLTO processing |
-| `sub_185E850` | 24,263 B | Type metadata propagation during import |
-| `sub_1627100` | -- | Attach named metadata (used for `thinlto_src_module`) |
-| `sub_1627350` | -- | Create optimization remark (import diagnostic) |
-| `sub_161FF10` | -- | Resolve source module name string |
-| `sub_1670560` | -- | Check if function exists in a given module |
-| `sub_16704E0` | -- | Get "import source" module handle |
-| `sub_16704F0` | -- | Get "import destination" module handle |
-| `sub_16C1840` | -- | Format import remark (cost component) |
-| `sub_16C1A90` | -- | Format import remark (threshold component) |
-| `sub_16C1AA0` | -- | Finalize import remark string |
-| `sub_1851560` | -- | Hash table insert (GUID dedup table) |
-| `sub_1674380` | -- | Initialize resolved function summary storage |
-| `sub_1851C60` | -- | Finalize empty-import path cleanup |
-| `sub_161E7C0` | -- | Release import list entry data |
-| `sub_22077B0` | -- | `malloc` wrapper (used for 16-byte dedup node allocation) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| ThinLTO import driver (triple-pass candidate processing) | `sub_1854A20` | 4,326 B | -- |
+| Threshold computation with GUID dedup and priority-class multipliers | `sub_1853180` | 5,059 B | -- |
+| Threshold comparison gate (returns nonzero if candidate qualifies) | `sub_18518A0` | -- | -- |
+| Import candidate evaluator (prepares candidate for threshold check) | `sub_1852CC0` | -- | -- |
+| Import list builder (called by `sub_1853180`) | `sub_1852FB0` | -- | -- |
+| Import list node allocator (called by `sub_1853180`) | `sub_1852A30` | -- | -- |
+| Import list initialization (called by `sub_1853180`) | `sub_1851200` | -- | -- |
+| Execute import decision (materialize function into destination) | `sub_15E4B20` | -- | -- |
+| Resolve function name/info from summary | `sub_15E4EB0` | -- | -- |
+| Entry point (parses `-function-import` / `-summary-file`) | `sub_1855B10` | 10,503 B | -- |
+| Whole-module ThinLTO processing | `sub_1858B90` | 31,344 B | -- |
+| Type metadata propagation during import | `sub_185E850` | 24,263 B | -- |
+| Attach named metadata (used for `thinlto_src_module`) | `sub_1627100` | -- | -- |
+| Create optimization remark (import diagnostic) | `sub_1627350` | -- | -- |
+| Resolve source module name string | `sub_161FF10` | -- | -- |
+| Check if function exists in a given module | `sub_1670560` | -- | -- |
+| Get "import source" module handle | `sub_16704E0` | -- | -- |
+| Get "import destination" module handle | `sub_16704F0` | -- | -- |
+| Format import remark (cost component) | `sub_16C1840` | -- | -- |
+| Format import remark (threshold component) | `sub_16C1A90` | -- | -- |
+| Finalize import remark string | `sub_16C1AA0` | -- | -- |
+| Hash table insert (GUID dedup table) | `sub_1851560` | -- | -- |
+| Initialize resolved function summary storage | `sub_1674380` | -- | -- |
+| Finalize empty-import path cleanup | `sub_1851C60` | -- | -- |
+| Release import list entry data | `sub_161E7C0` | -- | -- |
+| `malloc` wrapper (used for 16-byte dedup node allocation) | `sub_22077B0` | -- | -- |
 
 ## Cross-References
 

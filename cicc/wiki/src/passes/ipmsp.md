@@ -560,46 +560,46 @@ The 608-byte stack-allocated context for `sub_2CE8530` contains:
 
 ## Function Map
 
-| Address | Name | Size | Description |
+| Function | Address | Size | Role |
 |---|---|---|---|
-| `sub_2CBBE90` | MemorySpaceCloning | 71 KB | Worklist driver (New PM variant) |
-| `sub_1C6A6C0` | IPMSPPass | 54 KB | LIBNVVM variant |
-| `sub_2CE96D0` | inferAddressSpace | -- | Inference entry point |
-| `sub_2CE8530` | coreDataflowWalker | -- | Backward dataflow analysis |
-| `sub_2CE8CB0` | perCalleePropagate | -- | Per-callee space propagation |
-| `sub_2CE88B0` | mergeAndCommit | -- | Post-inference merge (qsort) |
-| `sub_2CE85D0` | rewriteCalleePair | -- | Instruction rewriting for matched pairs |
-| `sub_2CE7410` | calleeMatchingEngine | -- | Dominance + coverage scoring |
-| `sub_2CE80A0` | pushInferenceResult | -- | Append to result vector |
-| `sub_2CE7E60` | vectorRealloc | -- | Grow inference result vector |
-| `sub_2CE4830` | computeEdgeWeight | -- | Call graph edge weight |
-| `sub_2CE3B60` | commitSpace | -- | Commit resolved space to callee |
-| `sub_2CE3A70` | fallbackPropagate | -- | Propagate unmatched entries |
-| `sub_2CE3780` | propagateToAlternate | -- | Propagate to alternate callee users |
-| `sub_2CE2F10` | commitSingleCallee | -- | Single-callee commit via vtable |
-| `sub_2CE2DE0` | singlePredecessorCheck | -- | Check single-predecessor property |
-| `sub_2CE2BD0` | qsortComparator | -- | Compare callee entries for sorting |
-| `sub_2CE2A70` | mergeSmallVectors | -- | Merge small vector pairs |
-| `sub_2CE27A0` | extractAddressSpace | -- | Extract AS from Value's type |
-| `sub_2CE8120` | cloneInstruction | -- | Clone instruction + DenseMap update |
-| `sub_2CE97F0` | populateUserSet | -- | Build per-arg user list |
-| `sub_2CF5840` | propagateSpacesToCallees | -- | Post-specialization propagation |
-| `sub_2CF51E0` | bodyWalker | -- | Walk function body for propagation |
-| `sub_2CBA650` | shouldProcessFunction | -- | Worklist eligibility predicate |
-| `sub_2CBA520` | hasUnresolvedPointerArgs | -- | Check for unresolved generic ptr args |
-| `sub_F4BFF0` | CloneFunction | -- | Full function clone with arg rewriting |
-| `sub_F4BB00` | ValueMapCloner | -- | ValueMap-based body cloner |
-| `sub_BD84D0` | replaceAllUsesWith | -- | Redirect call sites to clone |
-| `sub_2CBB230` | mapInsertOrFind | -- | Red-black tree insert |
-| `sub_2CBB490` | mapLookup | -- | Red-black tree search |
-| `sub_2CBB610` | dequeGrow | -- | Worklist deque push_back |
-| `sub_245A9B0` | checkAttributeBundle | -- | Attribute flag membership test |
-| `sub_245AA10` | instructionEquivalence | -- | Test instruction equivalence |
-| `sub_2403DE0` | bbDominates | -- | BasicBlock dominance test |
-| `sub_24B89F0` | loopMembership | -- | Check if two instructions share a loop |
-| `sub_244CA00` | createSpecializedInst | -- | Create instruction with modified types |
-| `sub_24056C0` | insertIntoBlock | -- | Insert instruction into BB |
-| `sub_2D2DBE0` | updateDebugInfo | -- | Debug info update for cloned inst |
+| MemorySpaceCloning | `sub_2CBBE90` | 71 KB | Worklist driver (New PM variant) |
+| IPMSPPass | `sub_1C6A6C0` | 54 KB | LIBNVVM variant |
+| inferAddressSpace | `sub_2CE96D0` | -- | Inference entry point |
+| coreDataflowWalker | `sub_2CE8530` | -- | Backward dataflow analysis |
+| perCalleePropagate | `sub_2CE8CB0` | -- | Per-callee space propagation |
+| mergeAndCommit | `sub_2CE88B0` | -- | Post-inference merge (qsort) |
+| rewriteCalleePair | `sub_2CE85D0` | -- | Instruction rewriting for matched pairs |
+| calleeMatchingEngine | `sub_2CE7410` | -- | Dominance + coverage scoring |
+| pushInferenceResult | `sub_2CE80A0` | -- | Append to result vector |
+| vectorRealloc | `sub_2CE7E60` | -- | Grow inference result vector |
+| computeEdgeWeight | `sub_2CE4830` | -- | Call graph edge weight |
+| commitSpace | `sub_2CE3B60` | -- | Commit resolved space to callee |
+| fallbackPropagate | `sub_2CE3A70` | -- | Propagate unmatched entries |
+| propagateToAlternate | `sub_2CE3780` | -- | Propagate to alternate callee users |
+| commitSingleCallee | `sub_2CE2F10` | -- | Single-callee commit via vtable |
+| singlePredecessorCheck | `sub_2CE2DE0` | -- | Check single-predecessor property |
+| qsortComparator | `sub_2CE2BD0` | -- | Compare callee entries for sorting |
+| mergeSmallVectors | `sub_2CE2A70` | -- | Merge small vector pairs |
+| extractAddressSpace | `sub_2CE27A0` | -- | Extract AS from Value's type |
+| cloneInstruction | `sub_2CE8120` | -- | Clone instruction + DenseMap update |
+| populateUserSet | `sub_2CE97F0` | -- | Build per-arg user list |
+| propagateSpacesToCallees | `sub_2CF5840` | -- | Post-specialization propagation |
+| bodyWalker | `sub_2CF51E0` | -- | Walk function body for propagation |
+| shouldProcessFunction | `sub_2CBA650` | -- | Worklist eligibility predicate |
+| hasUnresolvedPointerArgs | `sub_2CBA520` | -- | Check for unresolved generic ptr args |
+| CloneFunction | `sub_F4BFF0` | -- | Full function clone with arg rewriting |
+| ValueMapCloner | `sub_F4BB00` | -- | ValueMap-based body cloner |
+| replaceAllUsesWith | `sub_BD84D0` | -- | Redirect call sites to clone |
+| mapInsertOrFind | `sub_2CBB230` | -- | Red-black tree insert |
+| mapLookup | `sub_2CBB490` | -- | Red-black tree search |
+| dequeGrow | `sub_2CBB610` | -- | Worklist deque push_back |
+| checkAttributeBundle | `sub_245A9B0` | -- | Attribute flag membership test |
+| instructionEquivalence | `sub_245AA10` | -- | Test instruction equivalence |
+| bbDominates | `sub_2403DE0` | -- | BasicBlock dominance test |
+| loopMembership | `sub_24B89F0` | -- | Check if two instructions share a loop |
+| createSpecializedInst | `sub_244CA00` | -- | Create instruction with modified types |
+| insertIntoBlock | `sub_24056C0` | -- | Insert instruction into BB |
+| updateDebugInfo | `sub_2D2DBE0` | -- | Debug info update for cloned inst |
 
 ## Cross-References
 

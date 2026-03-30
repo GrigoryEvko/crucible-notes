@@ -8,17 +8,17 @@ Loop-Invariant Code Motion in cicc v13.0 operates at three distinct levels: an I
 
 | Property | Value |
 |---|---|
-| **IR pass name** | `"licm"` (new PM), `"LICMPass"` (legacy) |
-| **IR pass factory** | `sub_195E880(0)` -- creates LICM with `AllowSpeculation=false` |
-| **IR pass factory (alt)** | `sub_184CD60()` -- creates LICM (also identified as ConstantMerge in some sweeps; identity ambiguous -- see Analysis Notes) |
-| **Machine pass (pre-RA)** | `"early-machinelicm"` / `EarlyMachineLICMPass` |
-| **Machine pass (post-RA)** | `"machinelicm"` / `MachineLICMPass` |
-| **Knob registration** | `ctor_457_0` at `0x544C40` (18,398 bytes -- 11 knobs) |
-| **MachineLICM knob registration** | `ctor_305` (4 knobs) |
-| **Pipeline disable flag** | `-disable-LICMPass` via `-Xcicc` |
-| **PassOptions disable** | `-opt "-do-licm=0"` (also forced by `--emit-optix-ir`) |
-| **NVVMPassOptions slot** | `opts[1240]` (disable), `opts[2880]` (enable, reversed logic) |
-| **Upstream LLVM source** | `llvm/lib/Transforms/Scalar/LICM.cpp`, `llvm/lib/CodeGen/MachineLICM.cpp` |
+| IR pass name | `"licm"` (new PM), `"LICMPass"` (legacy) |
+| IR pass factory | `sub_195E880(0)` -- creates LICM with `AllowSpeculation=false` |
+| IR pass factory (alt) | `sub_184CD60()` -- creates LICM (also identified as ConstantMerge in some sweeps; identity ambiguous -- see Analysis Notes) |
+| Machine pass (pre-RA) | `"early-machinelicm"` / `EarlyMachineLICMPass` |
+| Machine pass (post-RA) | `"machinelicm"` / `MachineLICMPass` |
+| Knob registration | `ctor_457_0` at `0x544C40` (18,398 bytes -- 11 knobs) |
+| MachineLICM knob registration | `ctor_305` (4 knobs) |
+| Disable flag | `-disable-LICMPass` via `-Xcicc` |
+| PassOptions disable | `-opt "-do-licm=0"` (also forced by `--emit-optix-ir`) |
+| NVVMPassOptions slot | `opts[1240]` (disable), `opts[2880]` (enable, reversed logic) |
+| Upstream LLVM source | `llvm/lib/Transforms/Scalar/LICM.cpp`, `llvm/lib/CodeGen/MachineLICM.cpp` |
 
 ## Pipeline Positions
 
@@ -262,19 +262,19 @@ The `--emit-optix-ir` mode (triggered by OptiX runtime compilation with device t
 
 ## Function Map
 
-| Function | Address | Role |
-|---|---|---|
-| `LICMPass::create` | `sub_195E880` | IR-level LICM factory (AllowSpeculation=false) |
-| `LICMPass::create` (alt) | `sub_184CD60` | IR-level LICM factory (identity ambiguous, may be ConstantMerge) |
-| LICM knob registration | `ctor_457_0` (`0x544C40`) | 11 `cl::opt` registrations for IR LICM |
-| MachineLICM knob registration | `ctor_305` | 4 `cl::opt` registrations for MachineLICM |
-| `EarlyMachineLICMPass` | (in codegen pipeline) | Pre-RA machine-level LICM |
-| `MachineLICMPass` | (in codegen pipeline) | Post-RA machine-level LICM |
-| `LoopSinkPass` | pipeline parser entry 271 | Inverse of LICM hoist -- sinks unprofitable hoists |
-| `NVVMLowerBarriers` | `sub_1C98160` | Runs between LICM invocations; lowers barrier intrinsics |
-| NVVM AA query | `sub_146F1B0` | Address-space-based NoAlias determination used by MemorySSA |
-| MemorySSA clobber walk | `sub_1A6AFB3` | Walker that LICM uses to determine load hoistability |
-| Loop-invariant check | `sub_1C51340` | Utility for checking if a value is loop-invariant |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `LICMPass::create` | `sub_195E880` | -- | IR-level LICM factory (AllowSpeculation=false) |
+| `LICMPass::create` (alt) | `sub_184CD60` | -- | IR-level LICM factory (identity ambiguous, may be ConstantMerge) |
+| LICM knob registration | `ctor_457_0` (`0x544C40`) | -- | 11 `cl::opt` registrations for IR LICM |
+| MachineLICM knob registration | `ctor_305` | -- | 4 `cl::opt` registrations for MachineLICM |
+| `EarlyMachineLICMPass` | (in codegen pipeline) | -- | Pre-RA machine-level LICM |
+| `MachineLICMPass` | (in codegen pipeline) | -- | Post-RA machine-level LICM |
+| `LoopSinkPass` | pipeline parser entry 271 | -- | Inverse of LICM hoist -- sinks unprofitable hoists |
+| `NVVMLowerBarriers` | `sub_1C98160` | -- | Runs between LICM invocations; lowers barrier intrinsics |
+| NVVM AA query | `sub_146F1B0` | -- | Address-space-based NoAlias determination used by MemorySSA |
+| MemorySSA clobber walk | `sub_1A6AFB3` | -- | Walker that LICM uses to determine load hoistability |
+| Loop-invariant check | `sub_1C51340` | -- | Utility for checking if a value is loop-invariant |
 
 ## Differences from Upstream LLVM
 

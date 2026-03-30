@@ -1070,45 +1070,45 @@ These globals persist across the entire compilation and are accessed from multip
 
 ## Function Map — Entry Point Cluster
 
-| Address | Size | Identity |
-|---|---|---|
-| `0x4396A0` | 16 B | `main()` thunk → `sub_8F9C90` |
-| `0x8F98A0` | ~512 B | String deobfuscation (XOR + ROT13) |
-| `0x8F9C20` | ~128 B | Push string to `std::vector<std::string>` |
-| `0x8F9C90` | 10,066 B | Real main — CLI parser + dispatcher |
-| `0x8FE280` | ~4 KB | nvcc→cicc flag translation (red-black tree) |
-| `0x900130` | 39 KB | Path A CLI processing |
-| `0x902D10` | ~9 KB | Path A orchestrator (simple mode) |
-| `0x903730` | ~5 KB | LLC stage verbose callback |
-| `0x903BA0` | ~5 KB | LNK stage verbose callback |
-| `0x9047E0` | 10 KB | NVVM IR container parser (Path A) |
-| `0x905880` | ~6 KB | CUDA C++ Front-End (lgenfe stage) |
-| `0x905E50` | ~256 B | lgenfe single-stage wrapper (Path A) |
-| `0x905EE0` | 43 KB | LibNVVM pipeline driver (Path A) |
-| `0x908850` | 10 KB | Backend SM config + EDG module binding |
-| `0x95EB40` | 38 KB | Architecture detection (3-column fan-out) |
-| `0x9624D0` | 75 KB | Flag catalog (4 output vectors) |
-| `0x9685E0` | ~8 KB | Pipeline option parser (4 stage vectors) |
-| `0x125FB30` | ~8 KB | Path B CLI processing |
-| `0x1262860` | ~4 KB | Path B entry (simple mode) |
-| `0x1263280` | ~1 KB | Path B LNK verbose callback |
-| `0x12636E0` | ~1 KB | Path B OPT verbose callback |
-| `0x12642A0` | ~3 KB | NVVM container parser (Path B) |
-| `0x1265340` | ~4 KB | Path B pre-compilation setup |
-| `0x12658E0` | ~256 B | lgenfe single-stage wrapper (Path B) |
-| `0x1265970` | 48 KB | LibNVVM compilation entry (Path B) |
-| `0x12BC0F0` | ~3 KB | LibNVVM API dispatch table (25 entries) |
-| `0x12BCB00` | ~64 B | Thunk → `sub_12BC8B0` (nvvmCUAddModuleFromBuffer) |
-| `0x12BFF60` | ~9 KB | NVVM IR version checker |
-| `0x12C06E0` | 63 KB | Module linker (LNK stage core) |
-| `0x12C35D0` | 41 KB | 4-stage pipeline orchestrator |
-| `0x12D2AA0` | ~4 KB | Stage bitmask parser |
-| `0x12D4250` | ~2 KB | Concurrency eligibility check |
-| `0x12E7E70` | ~8 KB | Two-phase optimizer entry |
-| `0x12E7B90` | ~4 KB | Concurrent worker entry point |
-| `0x12F5100` | ~12 KB | LLC core (SelectionDAG codegen) |
-| `0x12F9270` | ~6 KB | OptiX IR generator |
-| `0x1602D10` | ~2 KB | Path B context initialization |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `main()` thunk → `sub_8F9C90` | `0x4396A0` | 16 B | -- |
+| String deobfuscation (XOR + ROT13) | `0x8F98A0` | ~512 B | -- |
+| Push string to `std::vector<std::string>` | `0x8F9C20` | ~128 B | -- |
+| Real main — CLI parser + dispatcher | `0x8F9C90` | 10,066 B | -- |
+| nvcc→cicc flag translation (red-black tree) | `0x8FE280` | ~4 KB | -- |
+| Path A CLI processing | `0x900130` | 39 KB | -- |
+| Path A orchestrator (simple mode) | `0x902D10` | ~9 KB | -- |
+| LLC stage verbose callback | `0x903730` | ~5 KB | -- |
+| LNK stage verbose callback | `0x903BA0` | ~5 KB | -- |
+| NVVM IR container parser (Path A) | `0x9047E0` | 10 KB | -- |
+| CUDA C++ Front-End (lgenfe stage) | `0x905880` | ~6 KB | -- |
+| lgenfe single-stage wrapper (Path A) | `0x905E50` | ~256 B | -- |
+| LibNVVM pipeline driver (Path A) | `0x905EE0` | 43 KB | -- |
+| Backend SM config + EDG module binding | `0x908850` | 10 KB | -- |
+| Architecture detection (3-column fan-out) | `0x95EB40` | 38 KB | -- |
+| Flag catalog (4 output vectors) | `0x9624D0` | 75 KB | -- |
+| Pipeline option parser (4 stage vectors) | `0x9685E0` | ~8 KB | -- |
+| Path B CLI processing | `0x125FB30` | ~8 KB | -- |
+| Path B entry (simple mode) | `0x1262860` | ~4 KB | -- |
+| Path B LNK verbose callback | `0x1263280` | ~1 KB | -- |
+| Path B OPT verbose callback | `0x12636E0` | ~1 KB | -- |
+| NVVM container parser (Path B) | `0x12642A0` | ~3 KB | -- |
+| Path B pre-compilation setup | `0x1265340` | ~4 KB | -- |
+| lgenfe single-stage wrapper (Path B) | `0x12658E0` | ~256 B | -- |
+| LibNVVM compilation entry (Path B) | `0x1265970` | 48 KB | -- |
+| LibNVVM API dispatch table (25 entries) | `0x12BC0F0` | ~3 KB | -- |
+| Thunk → `sub_12BC8B0` (nvvmCUAddModuleFromBuffer) | `0x12BCB00` | ~64 B | -- |
+| NVVM IR version checker | `0x12BFF60` | ~9 KB | -- |
+| Module linker (LNK stage core) | `0x12C06E0` | 63 KB | -- |
+| 4-stage pipeline orchestrator | `0x12C35D0` | 41 KB | -- |
+| Stage bitmask parser | `0x12D2AA0` | ~4 KB | -- |
+| Concurrency eligibility check | `0x12D4250` | ~2 KB | -- |
+| Two-phase optimizer entry | `0x12E7E70` | ~8 KB | -- |
+| Concurrent worker entry point | `0x12E7B90` | ~4 KB | -- |
+| LLC core (SelectionDAG codegen) | `0x12F5100` | ~12 KB | -- |
+| OptiX IR generator | `0x12F9270` | ~6 KB | -- |
+| Path B context initialization | `0x1602D10` | ~2 KB | -- |
 
 ## Cross-References
 

@@ -6,9 +6,9 @@ The pass exists in two binary instances. The primary implementation at `sub_1C86
 
 ## Key Facts
 
-| Field | Value |
-|-------|-------|
-| Primary function | `sub_1C86CA0` |
+| Property | Value |
+|---|---|
+| Entry point | `sub_1C86CA0` |
 | Size | 72KB (~1,200 lines decompiled), 500+ local variables |
 | Binary cluster | `0x1C80000`--`0x1CBFFFF` (Aggregate Splitting + Memory Ops) |
 | Second instance | `sub_2CCF450` (58KB, `lower-aggr-copies` pass) |
@@ -295,6 +295,43 @@ The companion pass `lower-struct-args` (pass index 418) handles byval-attributed
 | New PM registration | `sub_2342890` | Pass index 417 (`lower-aggr-copies`) |
 | Parameter parser | `sub_233A3B0` | Parses `lower-aggr-func-args` parameter |
 | `lower-struct-args` parser | `sub_233A370` | Parses `opt-byval` parameter |
+
+## Test This
+
+The following kernel returns a struct from a device function. Struct splitting should decompose the aggregate return value into individual scalar registers.
+
+```cuda
+struct Result {
+    float value;
+    int   index;
+    float confidence;
+};
+
+__device__ Result compute(const float* data, int tid) {
+    Result r;
+    r.value      = data[tid] * 2.0f;
+    r.index      = tid;
+    r.confidence = 0.95f;
+    return r;
+}
+
+__global__ void struct_split_test(const float* in, float* out_val,
+                                   int* out_idx, float* out_conf, int n) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= n) return;
+
+    Result r = compute(in, tid);
+    out_val[tid]  = r.value;
+    out_idx[tid]  = r.index;
+    out_conf[tid] = r.confidence;
+}
+```
+
+**What to look for in PTX:**
+- The `compute` function should be inlined, but even if it is not, the struct return should be decomposed. Look for the absence of `.local` memory for the `Result` struct -- all three fields (`value`, `index`, `confidence`) should live in individual PTX registers (`%f` for floats, `%r` for int).
+- No `ld.local`/`st.local` pairs for passing the struct between `compute` and the kernel. If the struct survives unsplit, the caller allocates local memory for the return value, the callee stores into it, and the caller loads from it -- a 200+ cycle penalty per field.
+- In the PTX, the three stores to `out_val`, `out_idx`, `out_conf` should use values directly from registers without any intermediate local memory traffic. Look for `st.global.f32` and `st.global.u32` with register operands, not loaded-from-local operands.
+- To see the unsplit case, make `compute` a `__noinline__` function and compile at `-O0`. The struct will be passed through `.param` space with explicit `st.param`/`ld.param` sequences, showing the overhead that struct splitting eliminates.
 
 ## Cross-References
 

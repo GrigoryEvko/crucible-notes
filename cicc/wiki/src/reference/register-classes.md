@@ -349,20 +349,20 @@ The encoding scheme (4-bit tag in `[31:28]`, 28-bit index in `[27:0]`) and the f
 
 ## Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_21583D0` | 4.6KB | Register class encoding (class tag OR index) |
-| `sub_2163730` | 1.7KB | Register class -> PTX type suffix (`.pred`, `.b32`, `.f32`, ...) |
-| `sub_21638D0` | 1.6KB | Register class -> PTX prefix (`%p`, `%r`, `%f`, ...) |
-| `sub_2162350` | 3.0KB | Copy opcode dispatch by register class |
-| `sub_2158E80` | 17KB | Stack frame + register declaration emission |
-| `sub_2163AB0` | 1.1KB | NVPTXRegisterInfo init (legacy PM) |
-| `sub_2149CD0` | -- | NVPTXRegisterInfo factory (legacy PM) |
-| `sub_30590F0` | -- | NVPTXRegisterInfo init (new PM) |
-| `sub_301F0C0` | -- | NVPTXRegisterInfo factory (new PM) |
-| `sub_1F4A910` | -- | TargetRegisterInfo::InitMCRegisterInfo |
-| `sub_21E86B0` | -- | Special register emission (%tid, %ctaid, %ntid, %nctaid) |
-| `sub_21E9060` | -- | Cluster register emission (SM 90+) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| Register class encoding (class tag OR index) | `sub_21583D0` | 4.6KB | -- |
+| Register class -> PTX type suffix (`.pred`, `.b32`, `.f32`, ...) | `sub_2163730` | 1.7KB | -- |
+| Register class -> PTX prefix (`%p`, `%r`, `%f`, ...) | `sub_21638D0` | 1.6KB | -- |
+| Copy opcode dispatch by register class | `sub_2162350` | 3.0KB | -- |
+| Stack frame + register declaration emission | `sub_2158E80` | 17KB | -- |
+| NVPTXRegisterInfo init (legacy PM) | `sub_2163AB0` | 1.1KB | -- |
+| NVPTXRegisterInfo factory (legacy PM) | `sub_2149CD0` | -- | -- |
+| NVPTXRegisterInfo init (new PM) | `sub_30590F0` | -- | -- |
+| NVPTXRegisterInfo factory (new PM) | `sub_301F0C0` | -- | -- |
+| TargetRegisterInfo::InitMCRegisterInfo | `sub_1F4A910` | -- | -- |
+| Special register emission (%tid, %ctaid, %ntid, %nctaid) | `sub_21E86B0` | -- | -- |
+| Cluster register emission (SM 90+) | `sub_21E9060` | -- | -- |
 
 ## Cross-References
 

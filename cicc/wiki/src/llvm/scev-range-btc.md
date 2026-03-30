@@ -299,39 +299,39 @@ The NVIDIA-specific knobs are particularly important. `track-trip-count-more` en
 
 ## Function Map
 
-| Address | Identity |
-|---------|----------|
-| `sub_DBB9F0` | `ScalarEvolution::getRangeRef()` -- core range evaluator |
-| `sub_DBB110` | `getRangeForAffineARViaRange()` -- predecessor-based range |
-| `sub_DBEFC0` | `computeUnsignedRangeFromAddRecTripCount()` |
-| `sub_DBF480` | `computeSignedRangeFromAddRecTripCount()` |
-| `sub_DE4FD0` | `computeExitValueRange()` -- Phase D exit value analysis |
-| `sub_DDFBD0` | `getFullRangeFallback()` -- depth-exceeded fallback |
-| `sub_DB0AC0` | `cacheRange()` -- insert range into hash table |
-| `sub_DB5510` | `getKnownBits()` for SCEV (unsigned known bits) |
-| `sub_DB55F0` | `getNumSignBits()` for SCEV (signed known bits) |
-| `sub_DBED40` | `isKnownNonNegative(step)` |
-| `sub_DBEC80` | `isKnownNonPositive(step)` |
-| `sub_DCF3A0` | `getBackedgeTakenCount(loop, mode)` -- BTC dispatcher |
-| `sub_DB9E00` | `computeBackedgeTakenCount()` -- per-loop BTC with caching |
-| `sub_DB9040` | `computeExitCountForBranch()` -- exit condition analysis |
-| `sub_DBA850` | `howFarToZero()` -- "reaches zero" trip count |
-| `sub_DCE310` | `howManyLessThans()` -- "less than" trip count |
-| `sub_DCFD50` | `computeExitCountExhaustively()` -- brute-force small loops |
-| `sub_DCB270` | `computeExitLimit()` -- exit limit from condition |
-| `sub_DB04E0` | `getSmallConstantTripCount()` |
-| `sub_DB06C0` | `getSmallConstantMaxTripCount()` |
-| `sub_DB6980` | BTC hash table growth / rehash |
-| `sub_DE0180` | BTC hash table rehash-in-place (tombstone cleanup) |
-| `sub_988CD0` | `getRangeFromUnknownSCEV()` -- range for SCEVUnknown |
-| `sub_AB2160` | `ConstantRange::intersectWith()` |
-| `sub_AB3510` | `ConstantRange::unionWith()` |
-| `sub_ABA0E0` | `ConstantRange::addWithNoWrap()` |
-| `sub_AB5480` | `ConstantRange::multiply()` |
-| `sub_AB6A50` | `ConstantRange::udiv()` |
-| `sub_ABD750` | `ConstantRange::minmax_combine()` |
-| `sub_ABEA30` | `ConstantRange` from `!range` metadata |
-| `sub_C4B490` | `ConstantRange` from KnownBits |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `ScalarEvolution::getRangeRef()` -- core range evaluator | `sub_DBB9F0` | -- | -- |
+| `getRangeForAffineARViaRange()` -- predecessor-based range | `sub_DBB110` | -- | -- |
+| `computeUnsignedRangeFromAddRecTripCount()` | `sub_DBEFC0` | -- | -- |
+| `computeSignedRangeFromAddRecTripCount()` | `sub_DBF480` | -- | -- |
+| `computeExitValueRange()` -- Phase D exit value analysis | `sub_DE4FD0` | -- | -- |
+| `getFullRangeFallback()` -- depth-exceeded fallback | `sub_DDFBD0` | -- | -- |
+| `cacheRange()` -- insert range into hash table | `sub_DB0AC0` | -- | -- |
+| `getKnownBits()` for SCEV (unsigned known bits) | `sub_DB5510` | -- | -- |
+| `getNumSignBits()` for SCEV (signed known bits) | `sub_DB55F0` | -- | -- |
+| `isKnownNonNegative(step)` | `sub_DBED40` | -- | -- |
+| `isKnownNonPositive(step)` | `sub_DBEC80` | -- | -- |
+| `getBackedgeTakenCount(loop, mode)` -- BTC dispatcher | `sub_DCF3A0` | -- | -- |
+| `computeBackedgeTakenCount()` -- per-loop BTC with caching | `sub_DB9E00` | -- | -- |
+| `computeExitCountForBranch()` -- exit condition analysis | `sub_DB9040` | -- | -- |
+| `howFarToZero()` -- "reaches zero" trip count | `sub_DBA850` | -- | -- |
+| `howManyLessThans()` -- "less than" trip count | `sub_DCE310` | -- | -- |
+| `computeExitCountExhaustively()` -- brute-force small loops | `sub_DCFD50` | -- | -- |
+| `computeExitLimit()` -- exit limit from condition | `sub_DCB270` | -- | -- |
+| `getSmallConstantTripCount()` | `sub_DB04E0` | -- | -- |
+| `getSmallConstantMaxTripCount()` | `sub_DB06C0` | -- | -- |
+| BTC hash table growth / rehash | `sub_DB6980` | -- | -- |
+| BTC hash table rehash-in-place (tombstone cleanup) | `sub_DE0180` | -- | -- |
+| `getRangeFromUnknownSCEV()` -- range for SCEVUnknown | `sub_988CD0` | -- | -- |
+| `ConstantRange::intersectWith()` | `sub_AB2160` | -- | -- |
+| `ConstantRange::unionWith()` | `sub_AB3510` | -- | -- |
+| `ConstantRange::addWithNoWrap()` | `sub_ABA0E0` | -- | -- |
+| `ConstantRange::multiply()` | `sub_AB5480` | -- | -- |
+| `ConstantRange::udiv()` | `sub_AB6A50` | -- | -- |
+| `ConstantRange::minmax_combine()` | `sub_ABD750` | -- | -- |
+| `ConstantRange` from `!range` metadata | `sub_ABEA30` | -- | -- |
+| `ConstantRange` from KnownBits | `sub_C4B490` | -- | -- |
 
 ## Differences from Upstream LLVM
 

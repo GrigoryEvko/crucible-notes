@@ -359,29 +359,29 @@ Both paths finish with `sub_159CCF0(*type, &storage)` which constructs the `Cons
 
 ## Function Map
 
-| Address | Identity | Size | Role |
-|---------|----------|------|------|
-| `0x14D90D0` | `nvvmIntrinsicConstantFold` | 27 KB | Eligibility predicate: can this intrinsic be constant-folded? |
-| `0x14D1BC0` | `nvvmConstantFoldLibCall` | 54 KB | Math evaluator: compute constant result from constant args |
-| `0x14D1620` | `extractDoubleFromConstantFP` | -- | Extract `double` from `ConstantFP` IR node |
-| `0x14D19F0` | `safeMathEvalUnary` | -- | Exception-safe unary evaluation wrapper |
-| `0x14D1A80` | `safeMathEvalBinary` | -- | Exception-safe binary evaluation wrapper |
-| `0x14D17B0` | `createConstantFPResult` | -- | Build `ConstantFP` from evaluated double |
-| `0x14D1280` | `customFabs` | -- | SSE2 sign-bit clear |
-| `0x14D13B0` | `customFloor` | -- | Truncation + sign correction |
-| `0x14D1410` | `customCeil` | -- | Truncation + sign correction |
-| `0x14D1470` | `customSqrt` | -- | Thin wrapper around libc `sqrt` |
-| `0x14D1500` | `fptoui_fptosi_fold` | -- | FP-to-integer conversion fold |
-| `0x14D15E0` | `apintMoveTransfer` | -- | APInt move/transfer helper |
-| `0x149E420` | `vectorMathLibMapping` | 26 KB | Scalar-to-vectorized math mapping table |
-| `0x149FA60` | `platformFuncCanonicalize` | 15 KB | Platform-specific name canonicalization |
-| `0x14D44C0` | `constantExprFoldSCEV` | 20 KB | ConstantExpr fold / SCEV integration |
-| `0x14D5510` | `constantFoldAggregate` | 16 KB | ConstantFold for aggregate types |
-| `0x14D66F0` | `constantFoldGEPExtract` | 17 KB | ConstantFold for GEP and extract |
-| `0x14DBA90` | `constantExprSCEVBuild` | 22 KB | ConstantExpr + SCEV builder |
-| `0x1560260` | `AttributeList::hasAttribute` | -- | Attribute query (used 8 times in eligibility checker) |
-| `0x1649960` | `Value::getName` | -- | Name string extraction (case 0 path) |
-| `0x1169C30` | NVVM InstCombine intrinsic fold | 87 KB | Algebraic simplification of NVVM intrinsics (see [InstCombine](instcombine.md)) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `nvvmIntrinsicConstantFold` | `0x14D90D0` | 27 KB | Eligibility predicate: can this intrinsic be constant-folded? |
+| `nvvmConstantFoldLibCall` | `0x14D1BC0` | 54 KB | Math evaluator: compute constant result from constant args |
+| `extractDoubleFromConstantFP` | `0x14D1620` | -- | Extract `double` from `ConstantFP` IR node |
+| `safeMathEvalUnary` | `0x14D19F0` | -- | Exception-safe unary evaluation wrapper |
+| `safeMathEvalBinary` | `0x14D1A80` | -- | Exception-safe binary evaluation wrapper |
+| `createConstantFPResult` | `0x14D17B0` | -- | Build `ConstantFP` from evaluated double |
+| `customFabs` | `0x14D1280` | -- | SSE2 sign-bit clear |
+| `customFloor` | `0x14D13B0` | -- | Truncation + sign correction |
+| `customCeil` | `0x14D1410` | -- | Truncation + sign correction |
+| `customSqrt` | `0x14D1470` | -- | Thin wrapper around libc `sqrt` |
+| `fptoui_fptosi_fold` | `0x14D1500` | -- | FP-to-integer conversion fold |
+| `apintMoveTransfer` | `0x14D15E0` | -- | APInt move/transfer helper |
+| `vectorMathLibMapping` | `0x149E420` | 26 KB | Scalar-to-vectorized math mapping table |
+| `platformFuncCanonicalize` | `0x149FA60` | 15 KB | Platform-specific name canonicalization |
+| `constantExprFoldSCEV` | `0x14D44C0` | 20 KB | ConstantExpr fold / SCEV integration |
+| `constantFoldAggregate` | `0x14D5510` | 16 KB | ConstantFold for aggregate types |
+| `constantFoldGEPExtract` | `0x14D66F0` | 17 KB | ConstantFold for GEP and extract |
+| `constantExprSCEVBuild` | `0x14DBA90` | 22 KB | ConstantExpr + SCEV builder |
+| `AttributeList::hasAttribute` | `0x1560260` | -- | Attribute query (used 8 times in eligibility checker) |
+| `Value::getName` | `0x1649960` | -- | Name string extraction (case 0 path) |
+| NVVM InstCombine intrinsic fold | `0x1169C30` | 87 KB | Algebraic simplification of NVVM intrinsics (see [InstCombine](instcombine.md)) |
 
 ## Cross-References
 

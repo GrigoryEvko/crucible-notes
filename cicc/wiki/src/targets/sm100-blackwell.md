@@ -184,20 +184,20 @@ At the sm_100+ threshold (`qword_4F077A8 > 109999`), the master configurator `su
 
 ## Key Binary Locations
 
-| Address | Symbol | Purpose |
-|---|---|---|
-| `0xCD09E0` | `sub_CD09E0` | NVVM arch enum (all Blackwell constants) |
-| `0x1C1B150` | `sub_1C1B150` | Second arch enum copy (LLVM module metadata) |
-| `0x30462A0` | `sub_30462A0` | tcgen05 intrinsic handler (alloc/dealloc/commit/fence/wait/cp) |
-| `0x304E6C0` | `sub_304E6C0` | tcgen05.mma intrinsic handler + SelectionDAG lowering |
-| `0x36E9630` | `sub_36E9630` | tcgen05.mma validation + ISD opcode selection |
-| `0x304FBD0` | `sub_304FBD0` | cvt_packfloat intrinsic handler |
-| `0x35ED820` | `sub_35ED820` | cvt_packfloat type string emission |
-| `0x35F3330` | `sub_35F3330` | tcgen05.mma modifier emission (kind, scale, cta_group) |
-| `0x35F38B0` | `sub_35F38B0` | tcgen05.mma modifier emission (ashift, collector) |
-| `0x35F4E30` | `sub_35F4E30` | tcgen05 commit modifier emission |
-| `0x35F5090` | `sub_35F5090` | tcgen05.cp shape/format emission |
-| `0x95EB40` | `sub_95EB40` | CLI arch string mapping |
-| `0x617BD0` | `sub_617BD0` | `compute_NNN` string parsing |
-| `0x584510` | `ctor_605` | Processor variant string table |
-| `0x50C890` | `ctor_356` | LLVM processor description table |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `sub_CD09E0` | `0xCD09E0` | NVVM arch enum (all Blackwell constants) | NVVM arch enum (all Blackwell constants) |
+| `sub_1C1B150` | `0x1C1B150` | Second arch enum copy (LLVM module metadata) | Second arch enum copy (LLVM module metadata) |
+| `sub_30462A0` | `0x30462A0` | tcgen05 intrinsic handler (alloc/dealloc/commit/fence/wait/cp) | tcgen05 intrinsic handler (alloc/dealloc/commit/fence/wait/cp) |
+| `sub_304E6C0` | `0x304E6C0` | tcgen05.mma intrinsic handler + SelectionDAG lowering | tcgen05.mma intrinsic handler + SelectionDAG lowering |
+| `sub_36E9630` | `0x36E9630` | tcgen05.mma validation + ISD opcode selection | tcgen05.mma validation + ISD opcode selection |
+| `sub_304FBD0` | `0x304FBD0` | cvt_packfloat intrinsic handler | cvt_packfloat intrinsic handler |
+| `sub_35ED820` | `0x35ED820` | cvt_packfloat type string emission | cvt_packfloat type string emission |
+| `sub_35F3330` | `0x35F3330` | tcgen05.mma modifier emission (kind, scale, cta_group) | tcgen05.mma modifier emission (kind, scale, cta_group) |
+| `sub_35F38B0` | `0x35F38B0` | tcgen05.mma modifier emission (ashift, collector) | tcgen05.mma modifier emission (ashift, collector) |
+| `sub_35F4E30` | `0x35F4E30` | tcgen05 commit modifier emission | tcgen05 commit modifier emission |
+| `sub_35F5090` | `0x35F5090` | tcgen05.cp shape/format emission | tcgen05.cp shape/format emission |
+| `sub_95EB40` | `0x95EB40` | CLI arch string mapping | CLI arch string mapping |
+| `sub_617BD0` | `0x617BD0` | `compute_NNN` string parsing | `compute_NNN` string parsing |
+| `ctor_605` | `0x584510` | Processor variant string table | Processor variant string table |
+| `ctor_356` | `0x50C890` | LLVM processor description table | LLVM processor description table |

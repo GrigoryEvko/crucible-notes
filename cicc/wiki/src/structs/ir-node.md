@@ -386,35 +386,35 @@ This is the standard LLVM BumpPtrAllocator pattern, consistent with how upstream
 
 ## Function Map
 
-| Address | Size | Function |
-|---------|------|----------|
-| `sub_162D4F0` | 49KB | Node uniquing: lookup-or-insert, opcode dispatch |
-| `sub_1621740` | 14KB | Node erase from uniquing tables (tombstone writer) |
-| `sub_16275A0` | 21KB | IR builder / node cloner |
-| `sub_1627350` | -- | Multi-operand node create (MDTuple::get) |
-| `sub_15B9E00` | -- | Binary node create |
-| `sub_15C4420` | -- | Variadic node create |
-| `sub_15B3480` | -- | Hash computation for multi-operand nodes |
-| `sub_1608300` | 90KB | Context destructor (frees 20+ hash tables) |
-| `sub_B76CB0` | 97KB | LLVMContext destructor (~3,656-byte object) |
-| `sub_B504D0` | -- | `BinaryOperator::Create` / `IRBuilder::CreateBinOp` |
-| `sub_B50640` | -- | Result-typed instruction create / `CreateNeg` |
-| `sub_B51BF0` | -- | `IRBuilder::CreateZExtOrBitCast` |
-| `sub_B51D30` | -- | `CmpInst::Create` / `IRBuilder::CreateCast` |
-| `sub_B52190` | -- | `BitCastInst::Create` |
-| `sub_B52260` | -- | `GetElementPtrInst::Create` (single-index) |
-| `sub_B52500` | -- | `CastInst::Create` with predicate |
-| `sub_B33D10` | -- | `IRBuilder::CreateIntrinsicCall` |
-| `sub_BD2DA0` | -- | `Instruction::Create` (80-byte allocation) |
-| `sub_BD2C40` | -- | `Instruction::Create` (variable-size) |
-| `sub_72C9A0` | -- | `create_empty_ir_node` (204 callers, EDG front-end) |
-| `sub_1623A60` | -- | IR builder / node constructor (349x calls) |
-| `sub_1623210` | -- | IR builder / node constructor variant (337x calls) |
-| `sub_15FB440` | -- | Create node with 5 args (276x calls) |
-| `sub_161E7C0` | -- | Node accessor / property query (463x calls) |
-| `sub_166A310` | 60KB | `BitcodeReader::parseFunctionBody` (stock LLVM) |
-| `sub_151B070` | 123KB | `parseFunctionBody` (two-phase compilation path) |
-| `sub_9F2A40` | 185KB | `parseFunctionBody` (standalone libNVVM path) |
-| `sub_10EE7A0` | 405KB | `InstCombinerImpl::visitInstruction` (full opcode switch) |
-| `sub_F2CFA0` | -- | InstCombine master visit dispatcher |
-| `sub_2C80C90` | 51KB | NVVMModuleVerifier (per-opcode validation) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| Node uniquing: lookup-or-insert, opcode dispatch | `sub_162D4F0` | 49KB | -- |
+| Node erase from uniquing tables (tombstone writer) | `sub_1621740` | 14KB | -- |
+| IR builder / node cloner | `sub_16275A0` | 21KB | -- |
+| Multi-operand node create (MDTuple::get) | `sub_1627350` | -- | -- |
+| Binary node create | `sub_15B9E00` | -- | -- |
+| Variadic node create | `sub_15C4420` | -- | -- |
+| Hash computation for multi-operand nodes | `sub_15B3480` | -- | -- |
+| Context destructor (frees 20+ hash tables) | `sub_1608300` | 90KB | -- |
+| LLVMContext destructor (~3,656-byte object) | `sub_B76CB0` | 97KB | -- |
+| `BinaryOperator::Create` / `IRBuilder::CreateBinOp` | `sub_B504D0` | -- | -- |
+| Result-typed instruction create / `CreateNeg` | `sub_B50640` | -- | -- |
+| `IRBuilder::CreateZExtOrBitCast` | `sub_B51BF0` | -- | -- |
+| `CmpInst::Create` / `IRBuilder::CreateCast` | `sub_B51D30` | -- | -- |
+| `BitCastInst::Create` | `sub_B52190` | -- | -- |
+| `GetElementPtrInst::Create` (single-index) | `sub_B52260` | -- | -- |
+| `CastInst::Create` with predicate | `sub_B52500` | -- | -- |
+| `IRBuilder::CreateIntrinsicCall` | `sub_B33D10` | -- | -- |
+| `Instruction::Create` (80-byte allocation) | `sub_BD2DA0` | -- | -- |
+| `Instruction::Create` (variable-size) | `sub_BD2C40` | -- | -- |
+| `create_empty_ir_node` (204 callers, EDG front-end) | `sub_72C9A0` | -- | -- |
+| IR builder / node constructor (349x calls) | `sub_1623A60` | -- | -- |
+| IR builder / node constructor variant (337x calls) | `sub_1623210` | -- | -- |
+| Create node with 5 args (276x calls) | `sub_15FB440` | -- | -- |
+| Node accessor / property query (463x calls) | `sub_161E7C0` | -- | -- |
+| `BitcodeReader::parseFunctionBody` (stock LLVM) | `sub_166A310` | 60KB | -- |
+| `parseFunctionBody` (two-phase compilation path) | `sub_151B070` | 123KB | -- |
+| `parseFunctionBody` (standalone libNVVM path) | `sub_9F2A40` | 185KB | -- |
+| `InstCombinerImpl::visitInstruction` (full opcode switch) | `sub_10EE7A0` | 405KB | -- |
+| InstCombine master visit dispatcher | `sub_F2CFA0` | -- | -- |
+| NVVMModuleVerifier (per-opcode validation) | `sub_2C80C90` | 51KB | -- |

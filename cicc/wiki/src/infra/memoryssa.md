@@ -253,28 +253,54 @@ Five major passes consume MemorySSA in cicc:
 
 ## Function Map
 
-| Address | Size | Identity |
-|---------|------|----------|
-| `sub_1A6CAD0` | 48 | Pass entry wrapper (skipFunction guard + tail call to builder) |
-| `sub_1A6A260` | 10,344 | MemorySSA builder core (DFS rename walk) |
-| `sub_1A69110` | 1,245 | MemoryAccess node allocator (Def/Use/Phi) |
-| `sub_1A695F0` | -- | MemoryDef creation dispatcher (routes to `sub_1A69110`) |
-| `sub_1A69690` | 754 | Store-instruction MemoryDef handler (partial store support) |
-| `sub_1A69990` | 664 | MemoryPhi operand insertion handler (bidirectional edge setup) |
-| `sub_1A69C30` | -- | Call-instruction handler (intrinsic classification) |
-| `sub_1643330` | -- | `MemorySSA::getMemoryAccess` or walker lookup |
-| `sub_1643D30` | -- | `MemoryAccess::getDefiningAccess` |
-| `sub_1644900` | -- | `MemoryLocation::get` or `getForDest` |
-| `sub_164B780` | -- | `Value::replaceAllUsesWith` (def substitution during trivial phi removal) |
-| `sub_164BEC0` | -- | `MemoryAccess::~MemoryAccess` (destructor) |
-| `sub_1AEB370` | -- | `MemoryAccess::eraseFromParent` |
-| `sub_22077B0` | -- | `BumpPtrAllocator::Allocate` (64-byte node allocation) |
-| `sub_146F1B0` | -- | AA query: getModRefInfo / reaching-def resolution |
-| `sub_145CF80` | -- | AA query: may-alias check (two-pointer comparison) |
-| `sub_1487400` | -- | AA query: isNoAlias / clobber check |
-| `sub_13B8390` | -- | DominatorTree DFS order computation |
-| `sub_1636880` | -- | skipFunction guard (checks `isDeclaration`) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| Pass entry wrapper (skipFunction guard + tail call to builder) | `sub_1A6CAD0` | 48 | -- |
+| MemorySSA builder core (DFS rename walk) | `sub_1A6A260` | 10,344 | -- |
+| MemoryAccess node allocator (Def/Use/Phi) | `sub_1A69110` | 1,245 | -- |
+| MemoryDef creation dispatcher (routes to `sub_1A69110`) | `sub_1A695F0` | -- | -- |
+| Store-instruction MemoryDef handler (partial store support) | `sub_1A69690` | 754 | -- |
+| MemoryPhi operand insertion handler (bidirectional edge setup) | `sub_1A69990` | 664 | -- |
+| Call-instruction handler (intrinsic classification) | `sub_1A69C30` | -- | -- |
+| `MemorySSA::getMemoryAccess` or walker lookup | `sub_1643330` | -- | -- |
+| `MemoryAccess::getDefiningAccess` | `sub_1643D30` | -- | -- |
+| `MemoryLocation::get` or `getForDest` | `sub_1644900` | -- | -- |
+| `Value::replaceAllUsesWith` (def substitution during trivial phi removal) | `sub_164B780` | -- | -- |
+| `MemoryAccess::~MemoryAccess` (destructor) | `sub_164BEC0` | -- | -- |
+| `MemoryAccess::eraseFromParent` | `sub_1AEB370` | -- | -- |
+| `BumpPtrAllocator::Allocate` (64-byte node allocation) | `sub_22077B0` | -- | -- |
+| AA query: getModRefInfo / reaching-def resolution | `sub_146F1B0` | -- | -- |
+| AA query: may-alias check (two-pointer comparison) | `sub_145CF80` | -- | -- |
+| AA query: isNoAlias / clobber check | `sub_1487400` | -- | -- |
+| DominatorTree DFS order computation | `sub_13B8390` | -- | -- |
+| skipFunction guard (checks `isDeclaration`) | `sub_1636880` | -- | -- |
 
+
+## Diagnostic Strings
+
+Diagnostic strings recovered from `p2-J04-memoryssa.txt` and the pipeline parser (`p2c.1-01-pipeline-parser.txt`). MemorySSA itself emits no optimization remarks; its diagnostics are configuration knobs and the verification/dump infrastructure.
+
+| String | Source | Category | Trigger |
+|--------|--------|----------|---------|
+| `"memoryssa"` | Pipeline parser analysis #179 | Registration | Analysis registration name in the pass pipeline |
+| `"print<memoryssa>"` | Pipeline parser #406 | Registration | Printer pass registration; params: `no-ensure-optimized-uses` |
+| `"memssa-check-limit"` | Knob (default 100) | Knob | Maximum stores/phis the CachingWalker will walk past before returning a conservative clobber |
+| `"verify-memoryssa"` | Knob (default false) | Knob | Enables expensive verification of MemorySSA invariants after every modification; on under `EXPENSIVE_CHECKS` |
+| `"dot-cfg-mssa"` | Knob (default `""`) | Knob | If set, dumps the CFG annotated with MemorySSA information to the named DOT file for visualization |
+| `"dse-memoryssa"` | Knob (default true) | Knob | Master switch enabling MemorySSA-based DSE |
+| `"dse-memoryssa-scanlimit"` | Knob (default 150) | Knob | Max memory accesses DSE will scan for a redundant store |
+| `"dse-memoryssa-walklimit"` | Knob (default 90) | Knob | Max MemorySSA walk steps per DSE query |
+| `"dse-memoryssa-partial-store-limit"` | Knob (default 5) | Knob | Max partial stores DSE will try to merge |
+| `"dse-memoryssa-defs-per-block-limit"` | Knob (default 5000) | Knob | Skip blocks with more defs than this limit |
+| `"dse-memoryssa-samebb-cost"` | Knob (default 1) | Knob | Walk cost weight for same-block MemoryDefs |
+| `"dse-memoryssa-otherbb-cost"` | Knob (default 5) | Knob | Walk cost weight for cross-block MemoryDefs |
+| `"dse-memoryssa-path-check-limit"` | Knob (default 50) | Knob | Max paths DSE will check for nontrivial reachability |
+| `"dse-optimize-memoryssa"` | Knob (default true) | Knob | Enables DSE's own MemorySSA optimization (trivial phi removal during DSE) |
+| `"enable-gvn-memoryssa"` | Knob (varies) | Knob | Switches GVN from MemDep to MemorySSA |
+| `"memdep-block-scan-limit"` | Knob (default 100 legacy) | Knob | Legacy MemDep per-block scan limit |
+| `"memdep-block-number-limit"` | Knob (default 200 legacy / 1000 NewPM) | Knob | Max blocks MemDep will search; NewPM variant defaults to 1,000 (5x increase) |
+| `"print<memoryssa-walker>"` | Pipeline parser | Registration | MemorySSA walker printer pass |
+| `"early-cse-memssa"` | Pipeline parser | Registration | EarlyCSE variant that uses MemorySSA |
 
 ## Cross-References
 

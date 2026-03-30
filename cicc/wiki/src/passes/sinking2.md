@@ -13,6 +13,8 @@ The pass is particularly focused on sinking instructions into texture load block
 | Display name | `Code sinking` |
 | Pass type | FunctionPass (NVIDIA-custom) |
 | Class | `llvm::Sinking2Pass` |
+| Registration | New PM #390, line 2282 in `sub_2342890` |
+| Runtime positions | Tier 1/2/3 #81 (NVVMSinking2 via `sub_1CC60B0`, gated by `opts[3328] && !opts[2440]`); see [Pipeline](../llvm/pipeline.md) |
 | Legacy PM entry | `sub_1CCA270` |
 | New PM entry | `sub_2D1C160` (19KB) |
 | Legacy PM registration | `sub_1CC7010` |
@@ -382,25 +384,25 @@ This is a key difference from stock LLVM `SinkingPass`, which requires `MemorySS
 
 ## Function Map
 
-| Address | Size | Role |
-|---|---|---|
-| `sub_1CC7010` | -- | Legacy PM pass registration |
-| `sub_1CC7100` | -- | Legacy PM factory |
-| `sub_1CC71E0` | -- | Legacy PM alternate factory |
-| `sub_1CC7510` | 16KB | `processInstruction`: sink candidate evaluation, use-chain walk, LCD computation |
-| `sub_1CC8170` | 13KB | Dominance ordering: DFS numbering for block comparison |
-| `sub_1CC8920` | 4KB | Alias checking helper: validates no conflicting memory accesses on path |
-| `sub_1CC8CA0` | 6KB | Memory dependency helper: store-load forwarding, store ordering, volatile |
-| `sub_1CC9110` | 22KB | Main worklist driver: fixpoint iteration over dominator tree |
-| `sub_1CCA270` | -- | Legacy PM `runOnFunction` entry |
-| `sub_2D1B410` | -- | New PM pass registration |
-| `sub_2D1BC50` | -- | New PM factory |
-| `sub_2D1C160` | 19KB | New PM `run()` entry |
-| `sub_2D1CFB0` | 13KB | New PM core logic |
-| `sub_2D1D770` | 7KB | New PM helper |
-| `sub_2D1DCF0` | 7KB | New PM helper |
-| `sub_2315E20` | -- | RTTI name printer |
-| `0x4F7750` | -- | Knob constructor (`ctor_275`) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| -- | `sub_1CC7010` | -- | Legacy PM pass registration |
+| -- | `sub_1CC7100` | -- | Legacy PM factory |
+| -- | `sub_1CC71E0` | -- | Legacy PM alternate factory |
+| -- | `sub_1CC7510` | 16KB | `processInstruction`: sink candidate evaluation, use-chain walk, LCD computation |
+| -- | `sub_1CC8170` | 13KB | Dominance ordering: DFS numbering for block comparison |
+| -- | `sub_1CC8920` | 4KB | Alias checking helper: validates no conflicting memory accesses on path |
+| -- | `sub_1CC8CA0` | 6KB | Memory dependency helper: store-load forwarding, store ordering, volatile |
+| -- | `sub_1CC9110` | 22KB | Main worklist driver: fixpoint iteration over dominator tree |
+| -- | `sub_1CCA270` | -- | Legacy PM `runOnFunction` entry |
+| -- | `sub_2D1B410` | -- | New PM pass registration |
+| -- | `sub_2D1BC50` | -- | New PM factory |
+| -- | `sub_2D1C160` | 19KB | New PM `run()` entry |
+| -- | `sub_2D1CFB0` | 13KB | New PM core logic |
+| -- | `sub_2D1D770` | 7KB | New PM helper |
+| -- | `sub_2D1DCF0` | 7KB | New PM helper |
+| -- | `sub_2315E20` | -- | RTTI name printer |
+| -- | `0x4F7750` | -- | Knob constructor (`ctor_275`) |
 
 **Related pipeline factories:**
 

@@ -461,49 +461,49 @@ The final block ordering directly determines which branches in the PTX output ar
 
 ## Function Map
 
-| Address | Identity | Notes |
-|---|---|---|
-| `sub_3521FF0` | `runOnMachineFunction` | Entry point, 82 KB |
-| `sub_3521900` | `buildChains` | Initial chain construction |
-| `sub_35185B0` | `tailDupPlacement` | Tail-dup-aware chain merging |
-| `sub_3519A10` | `applyBlockOrder` | Commit final BB ordering to MF |
-| `sub_3516980` | `alignBlocks` | Post-placement alignment |
-| `sub_351EBB0` | `buildLoopChains` | Loop-aware chain merging |
-| `sub_351D700` | `buildChainForBlock` | Greedy successor chain walk |
-| `sub_35157A0` | `selectBestSuccessor` | Pick best fall-through successor |
-| `sub_3515040` | `chainLookup` | DenseMap BB-to-chain lookup |
-| `sub_351C710` | `rotateLoop` | Loop rotation heuristic |
-| `sub_351A710` | `mergeTails` | Chain tail merge logic |
-| `sub_35161F0` | `lowerChain` | Final lowering of chain to BB list |
-| `sub_3515CB0` | (helper) | Chain cost model evaluation |
-| `sub_3515280` | (helper) | Chain building iteration |
-| `sub_3516000` | (helper) | Chain length query |
-| `sub_34BEDF0` | (NVIDIA addition) | Layout evaluator state constructor (321 bytes) |
-| `sub_34C7080` | (NVIDIA addition) | Layout evaluator dispatch wrapper (17 bytes, guards `sub_34C6AF0`) |
-| `sub_34C6AF0` | (NVIDIA addition) | Core layout evaluator body (1419 bytes, SM-aware) |
-| `sub_34C4890` | (NVIDIA addition) | Frequency-priority BB advancement |
-| `sub_34C2D70` | (NVIDIA addition) | Chain swap application |
-| `sub_34C56D0` | (NVIDIA addition) | Loop-level cost re-evaluation (5137 bytes, divergence-aware) |
-| `sub_34C0690` | (NVIDIA addition) | Lightweight loop evaluator (sm_70/sm_75 path) |
-| `sub_34BA1B0` | (NVIDIA addition) | Chain state snapshot |
-| `sub_34C0EE0` | (NVIDIA addition) | Block-level cost query |
-| `sub_34BE7F0` | (NVIDIA addition) | Chain adjacency analysis |
-| `sub_350FE30` | (NVPTX) | Pass registration |
-| `sub_350FEE0` | (NVPTX) | Stats pass registration |
-| `sub_1DE8060` | (generic) | Generic LLVM pass registration |
-| `sub_1DE8500` | (generic) | Generic LLVM stats registration |
-| `sub_3511770` | cleanup | Chain-map teardown |
-| `sub_35142F0` | cleanup | Loop chain data teardown |
-| `sub_3510940` | cleanup | Bump allocator teardown |
-| `sub_29BAF70` | `calcExtTspScore` | Ext-TSP score (original layout) |
-| `sub_29BAC40` | `calcExtTspScore` | Ext-TSP score (alternative layout) |
-| `sub_29BB2B0` | `computeExtTspLayout` | Ext-TSP chain reordering solver |
-| `sub_2EE6520` | (helper) | Ext-TSP enable decision |
-| `sub_2EE6AD0` | (helper) | Branch redirect profitability check |
-| `sub_2E441D0` | `getEdgeProbability` | Edge probability query |
-| `sub_2FDC800` | (default stub) | Default `getTailDupThreshold` implementation |
-| `sub_2FF52D0` | (default stub) | Default reconvergence-region query |
-| `sub_2FDC810` | (default stub) | Default layout-accept threshold query |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `runOnMachineFunction` | `sub_3521FF0` | -- | Entry point, 82 KB |
+| `buildChains` | `sub_3521900` | -- | Initial chain construction |
+| `tailDupPlacement` | `sub_35185B0` | -- | Tail-dup-aware chain merging |
+| `applyBlockOrder` | `sub_3519A10` | -- | Commit final BB ordering to MF |
+| `alignBlocks` | `sub_3516980` | -- | Post-placement alignment |
+| `buildLoopChains` | `sub_351EBB0` | -- | Loop-aware chain merging |
+| `buildChainForBlock` | `sub_351D700` | -- | Greedy successor chain walk |
+| `selectBestSuccessor` | `sub_35157A0` | -- | Pick best fall-through successor |
+| `chainLookup` | `sub_3515040` | -- | DenseMap BB-to-chain lookup |
+| `rotateLoop` | `sub_351C710` | -- | Loop rotation heuristic |
+| `mergeTails` | `sub_351A710` | -- | Chain tail merge logic |
+| `lowerChain` | `sub_35161F0` | -- | Final lowering of chain to BB list |
+| (helper) | `sub_3515CB0` | -- | Chain cost model evaluation |
+| (helper) | `sub_3515280` | -- | Chain building iteration |
+| (helper) | `sub_3516000` | -- | Chain length query |
+| (NVIDIA addition) | `sub_34BEDF0` | -- | Layout evaluator state constructor (321 bytes) |
+| (NVIDIA addition) | `sub_34C7080` | -- | Layout evaluator dispatch wrapper (17 bytes, guards `sub_34C6AF0`) |
+| (NVIDIA addition) | `sub_34C6AF0` | -- | Core layout evaluator body (1419 bytes, SM-aware) |
+| (NVIDIA addition) | `sub_34C4890` | -- | Frequency-priority BB advancement |
+| (NVIDIA addition) | `sub_34C2D70` | -- | Chain swap application |
+| (NVIDIA addition) | `sub_34C56D0` | -- | Loop-level cost re-evaluation (5137 bytes, divergence-aware) |
+| (NVIDIA addition) | `sub_34C0690` | -- | Lightweight loop evaluator (sm_70/sm_75 path) |
+| (NVIDIA addition) | `sub_34BA1B0` | -- | Chain state snapshot |
+| (NVIDIA addition) | `sub_34C0EE0` | -- | Block-level cost query |
+| (NVIDIA addition) | `sub_34BE7F0` | -- | Chain adjacency analysis |
+| (NVPTX) | `sub_350FE30` | -- | Pass registration |
+| (NVPTX) | `sub_350FEE0` | -- | Stats pass registration |
+| (generic) | `sub_1DE8060` | -- | Generic LLVM pass registration |
+| (generic) | `sub_1DE8500` | -- | Generic LLVM stats registration |
+| cleanup | `sub_3511770` | -- | Chain-map teardown |
+| cleanup | `sub_35142F0` | -- | Loop chain data teardown |
+| cleanup | `sub_3510940` | -- | Bump allocator teardown |
+| `calcExtTspScore` | `sub_29BAF70` | -- | Ext-TSP score (original layout) |
+| `calcExtTspScore` | `sub_29BAC40` | -- | Ext-TSP score (alternative layout) |
+| `computeExtTspLayout` | `sub_29BB2B0` | -- | Ext-TSP chain reordering solver |
+| (helper) | `sub_2EE6520` | -- | Ext-TSP enable decision |
+| (helper) | `sub_2EE6AD0` | -- | Branch redirect profitability check |
+| `getEdgeProbability` | `sub_2E441D0` | -- | Edge probability query |
+| (default stub) | `sub_2FDC800` | -- | Default `getTailDupThreshold` implementation |
+| (default stub) | `sub_2FF52D0` | -- | Default reconvergence-region query |
+| (default stub) | `sub_2FDC810` | -- | Default layout-accept threshold query |
 
 ## Differences from Upstream LLVM
 

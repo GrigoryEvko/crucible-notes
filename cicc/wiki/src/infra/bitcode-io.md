@@ -6,24 +6,24 @@ The bitcode subsystem sits at the boundary between all pipeline stages. The [sta
 
 ## Key Facts
 
-| | |
+| Property | Value |
 |---|---|
-| **Reader (primary copy)** | `sub_151B070` (`0x151B070`, 123 KB) -- parseFunctionBody |
-| **Reader (standalone copy)** | `sub_9F2A40` (`0x9F2A40`, 185 KB) -- parseFunctionBody |
-| **Writer** | `sub_1538EC0` (`0x1538EC0`, 58 KB) -- writeModule |
-| **Metadata reader** | `sub_A09F80` (`0xA09F80`, 121 KB) -- MetadataLoader::parseOneMetadata |
-| **X86 AutoUpgrade (name)** | `sub_156E800` (`0x156E800`, 593 KB) -- UpgradeIntrinsicFunction |
-| **X86 AutoUpgrade (call)** | `sub_A939D0` (`0xA939D0`, 457 KB) -- UpgradeIntrinsicCall |
-| **NVVM version checker** | `sub_157E370` (`0x157E370`, 7 KB) |
-| **NVVM version checker (standalone)** | `sub_12BFF60` (`0x12BFF60`, 9 KB) |
-| **Producer init (ctor_036)** | `0x48CC90` (544 bytes) -- reads `LLVM_OVERRIDE_PRODUCER` |
-| **Producer init (ctor_154)** | `0x4CE640` (215 bytes) -- reads `LLVM_OVERRIDE_PRODUCER` |
-| **Address range (primary)** | `0x1500000`--`0x157FFFF` |
-| **Address range (standalone copy)** | `0x9F0000`--`0xA2FFFF` |
-| **Address range (AutoUpgrade)** | `0xA80000`--`0xABFFFF` |
-| **Hardcoded producer string** | `"LLVM7.0.1"` (writer), `"20.0.0"` (internal fallback) |
-| **NVVM IR version gate** | major == 3, minor <= 2 |
-| **Upstream source** | `lib/Bitcode/Reader/BitcodeReader.cpp`, `lib/Bitcode/Writer/BitcodeWriter.cpp`, `lib/IR/AutoUpgrade.cpp` |
+| Reader (primary copy) | `sub_151B070` (`0x151B070`, 123 KB) -- parseFunctionBody |
+| Reader (standalone copy) | `sub_9F2A40` (`0x9F2A40`, 185 KB) -- parseFunctionBody |
+| Writer | `sub_1538EC0` (`0x1538EC0`, 58 KB) -- writeModule |
+| Metadata reader | `sub_A09F80` (`0xA09F80`, 121 KB) -- MetadataLoader::parseOneMetadata |
+| X86 AutoUpgrade (name) | `sub_156E800` (`0x156E800`, 593 KB) -- UpgradeIntrinsicFunction |
+| X86 AutoUpgrade (call) | `sub_A939D0` (`0xA939D0`, 457 KB) -- UpgradeIntrinsicCall |
+| NVVM version checker | `sub_157E370` (`0x157E370`, 7 KB) |
+| NVVM version checker (standalone) | `sub_12BFF60` (`0x12BFF60`, 9 KB) |
+| Producer init (ctor_036) | `0x48CC90` (544 bytes) -- reads `LLVM_OVERRIDE_PRODUCER` |
+| Producer init (ctor_154) | `0x4CE640` (215 bytes) -- reads `LLVM_OVERRIDE_PRODUCER` |
+| Address range (primary) | `0x1500000`--`0x157FFFF` |
+| Address range (standalone copy) | `0x9F0000`--`0xA2FFFF` |
+| Address range (AutoUpgrade) | `0xA80000`--`0xABFFFF` |
+| Hardcoded producer string | `"LLVM7.0.1"` (writer), `"20.0.0"` (internal fallback) |
+| NVVM IR version gate | major == 3, minor <= 2 |
+| Upstream source | `lib/Bitcode/Reader/BitcodeReader.cpp`, `lib/Bitcode/Writer/BitcodeWriter.cpp`, `lib/IR/AutoUpgrade.cpp` |
 
 ## Bitcode Format Basics
 

@@ -590,3 +590,7 @@ Upstream LLVM's instruction scheduling framework was designed for CPU cores with
 | **Two-level scheduling** | Single scheduling pass produces final instruction order | CICC scheduling is first layer; `ptxas` re-schedules at SASS level with its own 195-knob subsystem |
 | **Register pressure model** | Per-register-class pressure sets from TRI | Same model but with GPU occupancy awareness; pressure arrays used to detect occupancy cliff crossings |
 | **Scheduling mode switch** | Configured at pipeline construction time | Runtime mode switch between pre-RA (`sub_2165850`) and post-RA (`sub_21668D0`) with different heuristic weights |
+
+## ptxas Interaction
+
+cicc's instruction scheduling operates at the MachineInstr level and produces a PTX instruction order that is not final. `ptxas` re-schedules the entire program at the SASS level using its own 195-knob scheduling subsystem, including scoreboard-aware scheduling (`AdvancedSB*` family), the `GemmPipeliner*` family for matrix multiply detection and software pipelining, and `SchedForceReverseOrder` for debugging. cicc's scheduler therefore optimizes for ptxas consumption rather than direct hardware execution: its primary goal is minimizing register pressure (`nvptx-sched4reg`) so that ptxas starts from a low-pressure baseline. The two scheduling layers are independent but complementary -- cicc controls the virtual register count visible to ptxas, and ptxas maps the resulting instruction stream onto the SM's hardware pipeline with full knowledge of scoreboard latencies and functional unit availability.

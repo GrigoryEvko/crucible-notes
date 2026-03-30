@@ -263,20 +263,20 @@ Note that bit 2 (LLC) is 0 in the `0x43` bitmask, confirming that the LLC stage 
 
 ## Function Map
 
-| Address | Size | Function |
-|---------|------|----------|
-| `sub_12F9270` | ~6 KB | OptiX IR generator (core OPTIXIR stage) |
-| `sub_12C35D0` | ~41 KB | Pipeline orchestrator (`nvvmCompileProgram` internal) |
-| `sub_12D2AA0` | — | Bitmask / stage descriptor parser |
-| `sub_9624D0` | ~75 KB | Flag catalog (routes `--emit-optix-ir`) |
-| `sub_8F9C90` | ~10 KB | Real main (matches `--emit-optix-ir` at `0x8FAD00`) |
-| `sub_1268040` | — | OPTIXIR callback registration (callback ID `64222`) |
-| `sub_12BC0F0` | — | Pipeline callback dispatcher |
-| `sub_1864060` | ~75 KB | Inliner cost model (`nv-inline-all` bypass) |
-| `sub_186CA00` | ~61 KB | CGSCC inliner core (`inlineCallsImpl`) |
-| `sub_16D8B50` | — | Timer start (receives `"OPTIXIR"` phase name) |
-| `sub_16D7950` | — | Timer close |
-| `sub_12E54A0` | ~49.8 KB | Pipeline assembler (skips LICM when `do-licm=0`) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| OptiX IR generator (core OPTIXIR stage) | `sub_12F9270` | ~6 KB | -- |
+| Pipeline orchestrator (`nvvmCompileProgram` internal) | `sub_12C35D0` | ~41 KB | -- |
+| Bitmask / stage descriptor parser | `sub_12D2AA0` | — | -- |
+| Flag catalog (routes `--emit-optix-ir`) | `sub_9624D0` | ~75 KB | -- |
+| Real main (matches `--emit-optix-ir` at `0x8FAD00`) | `sub_8F9C90` | ~10 KB | -- |
+| OPTIXIR callback registration (callback ID `64222`) | `sub_1268040` | — | -- |
+| Pipeline callback dispatcher | `sub_12BC0F0` | — | -- |
+| Inliner cost model (`nv-inline-all` bypass) | `sub_1864060` | ~75 KB | -- |
+| CGSCC inliner core (`inlineCallsImpl`) | `sub_186CA00` | ~61 KB | -- |
+| Timer start (receives `"OPTIXIR"` phase name) | `sub_16D8B50` | — | -- |
+| Timer close | `sub_16D7950` | — | -- |
+| Pipeline assembler (skips LICM when `do-licm=0`) | `sub_12E54A0` | ~49.8 KB | -- |
 
 ## Cross-References
 

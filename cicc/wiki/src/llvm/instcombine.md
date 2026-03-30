@@ -8,6 +8,8 @@ NVIDIA's InstCombine in CICC v13.0 is approximately twice the size of upstream L
 
 | | |
 |---|---|
+| **Registration** | New PM #398, parameterized: `no-aggressive-aggregate-splitting;...;max-iterations=N` |
+| **Runtime positions** | Tier 0 #28 (via `sub_19401A0`); Tier 1/2/3 #42 (gated by `!opts[1000]`); see [Pipeline](pipeline.md) |
 | **Main visitor** | `sub_10EE7A0` (`0x10EE7A0`, ~405 KB, 9,258 lines) |
 | **Intrinsic folding** | `sub_1169C30` (`0x1169C30`, ~87 KB, 2,268 lines) |
 | **computeKnownBits** | `sub_11A7600` (`0x11A7600`, ~127 KB, 4,156 lines) |
@@ -275,6 +277,24 @@ The wrapper `sub_11AE870` gets the bit-width via `sub_BCB060` (or `sub_AE43A0` f
 | `sub_C444A0` | `APInt::countLeadingZeros()` | Bit analysis |
 | `sub_986760` | `APInt::isZero()` | Zero test |
 | `sub_10EA360` | `recordSeparateStorageOperand()` | Separate storage alias hint |
+
+## Diagnostic Strings
+
+Diagnostic strings recovered from the InstCombine binary region. InstCombine uses assertion-style diagnostics rather than optimization remarks; the `computeKnownBits` consistency check is the primary runtime diagnostic.
+
+| String | Source | Category | Trigger |
+|--------|--------|----------|---------|
+| `"computeKnownBits(): "` | `sub_904010` in `sub_11A7600` line ~2204 | Assertion | Debug build: `computeKnownBits` and `SimplifyDemandedBits` produce inconsistent results (prints both APInt values, then calls `abort()`) |
+| `"SimplifyDemandedBits(): "` | `sub_904010` in `sub_11A7600` line ~2212 | Assertion | Debug build: paired with `computeKnownBits()` inconsistency diagnostic above |
+| `"separate_storage"` | Main visitor lines 6557--6567 | Bundle tag | Matched via `memcmp` (16 bytes) on `llvm.assume` operand bundles; not a user-visible diagnostic |
+| `"instcombine-negator-max-depth"` | `ctor_090` at `0x4F908A8` | Knob | Knob registration (default -1, unlimited) |
+| `"instcombine-negator-enabled"` | `ctor_090` at `0x4F90988` | Knob | Knob registration (default 1, enabled) |
+| `"instcombine-split-gep-chain"` | `ctor_068` at `0x4F8B4C0` | Knob | Knob registration |
+| `"instcombine-canonicalize-geps-i8"` | `ctor_068` at `0x4F8B340` | Knob | Knob registration |
+| `"instcombine-max-num-phis"` | `ctor_091` at `0x4F909E0` | Knob | Knob registration |
+| `"instcombine-guard-widening-window"` | `ctor_087` at `0x4F90120` | Knob | Knob registration (default 3) |
+
+InstCombine does not emit `OptimizationRemark` diagnostics. The only runtime-visible diagnostic is the debug assertion that fires when `computeKnownBits` and `SimplifyDemandedBits` produce inconsistent results (known_zero & known_one != 0, or results disagree with the demanded mask). This check is compiled into debug/checked builds only and calls `abort()` after printing both APInt values.
 
 ## Size Contribution Estimate
 

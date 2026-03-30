@@ -433,13 +433,13 @@ The global table `word_3F3E6C0` is in the `.data` section, allocated at link tim
 
 ## Function Map
 
-| Address | Size | Function | Role |
-|---------|------|----------|------|
-| `sub_A778C0` | -- | `createRegClassConstraint` | Build register-class input constraint entry |
-| `sub_A77AD0` | -- | `createAnyRegConstraint` | Build unconstrained ("any") input constraint |
-| `sub_A79C90` | -- | `composeConstraints` | Merge N descriptor entries into compound constraint |
-| `sub_A7A6D0` | 7KB | `mergeConstraints` | Set-intersection of constraints using `byte_3F252E0` |
-| `sub_A78010` | -- | `emitConstraint` | Finalize and emit constraint record |
-| `sub_B5BA00` | 21KB | `createOutputConstraint` | 111-case switch: class ID to output representation |
-| `sub_B612D0` | 104KB | `emitInstrConstraint` | Top-level: 179-case constraint class dispatch |
-| `sub_B6B200` | 44KB | `decodeOperandType` | 101-case operand type decoder from bytecode stream |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `createRegClassConstraint` | `sub_A778C0` | -- | Build register-class input constraint entry |
+| `createAnyRegConstraint` | `sub_A77AD0` | -- | Build unconstrained ("any") input constraint |
+| `composeConstraints` | `sub_A79C90` | -- | Merge N descriptor entries into compound constraint |
+| `mergeConstraints` | `sub_A7A6D0` | 7KB | Set-intersection of constraints using `byte_3F252E0` |
+| `emitConstraint` | `sub_A78010` | -- | Finalize and emit constraint record |
+| `createOutputConstraint` | `sub_B5BA00` | 21KB | 111-case switch: class ID to output representation |
+| `emitInstrConstraint` | `sub_B612D0` | 104KB | Top-level: 179-case constraint class dispatch |
+| `decodeOperandType` | `sub_B6B200` | 44KB | 101-case operand type decoder from bytecode stream |

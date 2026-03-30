@@ -1,6 +1,8 @@
 # TwoAddressInstruction
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **LLVM version note:** Structurally identical to LLVM 20.0.0 `TwoAddressInstructionPass.cpp`. NVIDIA extensions are limited to deeper `EXTRACT_SUBREG` handling for multi-register results (texture/tensor/warp ops), extended `LiveVariables` maintenance, `OptimizationRemarkEmitter` integration, and the standard `optnone`/fast-compile gate.
 
 The TwoAddressInstruction pass converts three-address `MachineInstr`s into two-address form by inserting `COPY` pseudo-instructions so that tied operand constraints are satisfied before register allocation. In upstream LLVM, many CPU targets have instructions where one source operand must be the same physical register as the destination (x86 `addl %esi, %edi` means `%edi = %edi + %esi`); the pass rewrites `A = B op C` into `A = COPY B; A op= C`. On NVPTX this pass is largely a formality -- PTX instructions are three-address and the virtual register file has no physical-register constraints -- but it still performs essential bookkeeping: eliminating `REG_SEQUENCE` and `INSERT_SUBREG` pseudo-instructions, building copy-equivalence maps for downstream coalescing, and handling the tied operands that arise from multi-result NVPTX intrinsics (texture loads, tensor core operations, warp-level collectives). CICC's binary is structurally identical to stock LLVM, with extended `EXTRACT_SUBREG` handling for multi-register results, deeper `LiveVariables` maintenance, `OptimizationRemarkEmitter` integration, and the standard NVIDIA `optnone`/fast-compile gate.
 
@@ -523,36 +525,36 @@ The `optnone`/fast-compile gate is not a knob per se but has the effect of disab
 
 ## Function Map
 
-| Address | Identity | Size | Notes |
+| Function | Address | Size | Role |
 |---|---|---|---|
-| `sub_1F4D900` | Pass registration (name + ID) | small | Sets `"Two-Address instruction pass"` and `"twoaddressinstruction"` |
-| `sub_1F4D9F0` | Constructor | small | |
-| `sub_1F4CC10` | Helper: rescheduleMIBelowKill support | -- | Called by `sub_1F4EF20` |
-| `sub_1F4D060` | Helper: rescheduleKillAboveMI support | -- | Called by `sub_1F4EF20` |
-| `sub_1F4DD40` | `SmallPtrSet::contains(MI*)` | 67 lines | Processed set membership check |
-| `sub_1F4DE20` | `SmallDenseMap::clear()` | 180 lines | TiedOperandMap cleanup, frees heap-allocated pair lists |
-| `sub_1F4E3A0` | `DenseMap<int,int>::insert` | 166 lines | EqClassMap insertion, hash = `37 * key` |
-| `sub_1F4E620` | `collectRegCopies` | 357 lines | Walks COPY chains to build transitive equivalence classes |
-| `sub_1F4EC70` | `DenseMap<ptr,int>::insert` | 164 lines | DistanceMap insertion, hash = `(ptr>>4) ^ (ptr>>9)` |
-| `sub_1F4EF20` | `tryInstructionTransform` | 28KB / 1,127 lines | Core tied-operand rewriter: commutation, 3-addr, COPY. Recursive (22 xrefs). |
-| `sub_1F50270` | `processTiedPairs` | 63KB / 2,209 lines | Full pipeline: commute, convert, COPY insertion, LV/LI update |
-| `sub_1F53020` | `SmallDenseMap::grow` | 312 lines | TiedOperandMap rehash, 56-byte entry stride |
-| `sub_1F53550` | `runOnMachineFunction` | 79KB / 2,470 lines | Pass entry point |
-| `sub_1F3AD60` | Helper: find matching superclass | -- | Finds register class for tied physical reg constraints |
-| `sub_1F4C460` | Helper: implicit tied operands | -- | Checks if MI has implicit tied operand pairs |
-| `sub_1F4C640` | Helper: filter/emit remark | -- | ORE filtering for copy-insertion diagnostics |
-| `sub_1DBA290` | `LiveVariables::createNewVarInfo` | -- | Allocates VarInfo for new register |
-| `sub_1DBB110` | `LiveVariables::initVarInfo` | -- | Initializes kill/def lists and alive bitvector |
-| `sub_1DB3C70` | `VarInfo::findKill` | -- | Scans block for register kill point |
-| `sub_1DB4410` | `VarInfo::addKill` / `removeKill` | -- | Updates kill tracking |
-| `sub_1DB8610` | `VarInfo::addNewBlock` | -- | Updates block-level liveness bitvectors |
-| `sub_1DBF6C0` | `LiveVariables::HandlePhysRegDef` | -- | Transfer liveness from old MI to new COPY |
-| `sub_1DCCCA0` | `ORE::emit` (copy remark) | -- | Emits optimization remark for COPY insertion |
-| `sub_1DCC790` | `ORE::lookup` | -- | Looks up remark data for register |
-| `sub_1DCBB50` | `ORE::push` | -- | Pushes remark to output |
-| `sub_1DCC370` | `ORE::appendToList` | -- | Appends remark (bundle-aware) |
-| `sub_1E926D0` | `MachineFunction::verify` | -- | Called with `"After two-address instruction pass"` |
-| `sub_1636880` | `isOptNone` / fast-compile check | -- | Forces `OptLevel = 0` when active |
+| Pass registration (name + ID) | `sub_1F4D900` | small | Sets `"Two-Address instruction pass"` and `"twoaddressinstruction"` |
+| Constructor | `sub_1F4D9F0` | small |  |
+| Helper: rescheduleMIBelowKill support | `sub_1F4CC10` | -- | Called by `sub_1F4EF20` |
+| Helper: rescheduleKillAboveMI support | `sub_1F4D060` | -- | Called by `sub_1F4EF20` |
+| `SmallPtrSet::contains(MI*)` | `sub_1F4DD40` | 67 lines | Processed set membership check |
+| `SmallDenseMap::clear()` | `sub_1F4DE20` | 180 lines | TiedOperandMap cleanup, frees heap-allocated pair lists |
+| `DenseMap<int,int>::insert` | `sub_1F4E3A0` | 166 lines | EqClassMap insertion, hash = `37 * key` |
+| `collectRegCopies` | `sub_1F4E620` | 357 lines | Walks COPY chains to build transitive equivalence classes |
+| `DenseMap<ptr,int>::insert` | `sub_1F4EC70` | 164 lines | DistanceMap insertion, hash = `(ptr>>4) ^ (ptr>>9)` |
+| `tryInstructionTransform` | `sub_1F4EF20` | 28KB / 1,127 lines | Core tied-operand rewriter: commutation, 3-addr, COPY. Recursive (22 xrefs). |
+| `processTiedPairs` | `sub_1F50270` | 63KB / 2,209 lines | Full pipeline: commute, convert, COPY insertion, LV/LI update |
+| `SmallDenseMap::grow` | `sub_1F53020` | 312 lines | TiedOperandMap rehash, 56-byte entry stride |
+| `runOnMachineFunction` | `sub_1F53550` | 79KB / 2,470 lines | Pass entry point |
+| Helper: find matching superclass | `sub_1F3AD60` | -- | Finds register class for tied physical reg constraints |
+| Helper: implicit tied operands | `sub_1F4C460` | -- | Checks if MI has implicit tied operand pairs |
+| Helper: filter/emit remark | `sub_1F4C640` | -- | ORE filtering for copy-insertion diagnostics |
+| `LiveVariables::createNewVarInfo` | `sub_1DBA290` | -- | Allocates VarInfo for new register |
+| `LiveVariables::initVarInfo` | `sub_1DBB110` | -- | Initializes kill/def lists and alive bitvector |
+| `VarInfo::findKill` | `sub_1DB3C70` | -- | Scans block for register kill point |
+| `VarInfo::addKill` / `removeKill` | `sub_1DB4410` | -- | Updates kill tracking |
+| `VarInfo::addNewBlock` | `sub_1DB8610` | -- | Updates block-level liveness bitvectors |
+| `LiveVariables::HandlePhysRegDef` | `sub_1DBF6C0` | -- | Transfer liveness from old MI to new COPY |
+| `ORE::emit` (copy remark) | `sub_1DCCCA0` | -- | Emits optimization remark for COPY insertion |
+| `ORE::lookup` | `sub_1DCC790` | -- | Looks up remark data for register |
+| `ORE::push` | `sub_1DCBB50` | -- | Pushes remark to output |
+| `ORE::appendToList` | `sub_1DCC370` | -- | Appends remark (bundle-aware) |
+| `MachineFunction::verify` | `sub_1E926D0` | -- | Called with `"After two-address instruction pass"` |
+| `isOptNone` / fast-compile check | `sub_1636880` | -- | Forces `OptLevel = 0` when active |
 
 ## Binary Size Note
 

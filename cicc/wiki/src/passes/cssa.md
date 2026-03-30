@@ -182,6 +182,29 @@ NVIDIA's CSSA pass runs *before* instruction selection, at the LLVM IR level, an
 
 This is one of the fundamental semantic gaps between LLVM's CPU-centric IR model and GPU reality. LLVM assumes sequential scalar semantics; NVIDIA's CSSA pass bridges that gap by making the implicit thread-level parallelism explicit in the copy structure of the IR.
 
+## Common Pitfalls
+
+These are mistakes a reimplementor is likely to make when building an equivalent CSSA transformation for GPU targets.
+
+**1. Inserting copies only at the merge block instead of at the end of each predecessor.** The entire point of CSSA is that copies must be placed *before* the warp reconverges, not *at* the reconvergence point. If you insert the copy instruction at the beginning of the merge block (after the PHI), the warp has already reconverged and whichever path executed last has overwritten the register value for all threads. Copies must be at the terminator position of each predecessor block, before control leaves that block. This is the fundamental GPU-vs-CPU distinction: on a CPU, only one predecessor executes so placement does not matter; on a GPU, all predecessors may execute sequentially within the same warp.
+
+**2. Coalescing copies that have divergent live ranges.** The `cssa-coalesce` knob controls how aggressively copies are merged back together. Over-aggressive coalescing can assign two copies to the same physical register when their live ranges overlap under divergence -- threads from different predecessor paths would see each other's values. The coalescer must verify that live ranges are truly non-interfering under the SIMT execution model, not just under the sequential CFG model. A reimplementation that reuses a standard LLVM register coalescer without divergence-aware interference checking will produce silent miscompilation on any kernel with divergent control flow.
+
+**3. Failing to insert copies for uniform PHI nodes that become divergent after later transformations.** CSSA runs before instruction selection, but divergence analysis at that point may be imprecise. A PHI node classified as uniform (all threads agree on the incoming edge) may become effectively divergent after subsequent loop transformations or predication changes the control flow. The safe approach is to insert copies for all PHI nodes and let the coalescing phase remove unnecessary ones. A reimplementation that skips "uniform" PHI nodes based on divergence analysis risks correctness if that analysis is later invalidated.
+
+**4. Using a standard LLVM `PHIElimination` pass without the CSSA preprocessing step.** LLVM's built-in PHI elimination assumes scalar control flow semantics (exactly one predecessor contributes at runtime). Running it directly on GPU IR without first converting to CSSA form will produce incorrect register assignments whenever a warp diverges at a branch leading to a PHI merge point. CSSA is not a replacement for PHI elimination -- it is a prerequisite that transforms PHI semantics into a form safe for the standard lowering.
+
+**5. Not propagating the `"pcp"` copy through the instruction graph after insertion.** Phase 4 of the algorithm (copy propagation via `sub_371F790`) replaces uses of original values with uses of the inserted copies. A reimplementation that inserts copies but skips this propagation step will leave the PHI node still referencing the original value, making the copies dead. The subsequent dead-copy cleanup (Phase 5) will then erase them, and the transformation has no effect -- the original divergence-unsafe PHI remains.
+
+## Reimplementation Checklist
+
+1. **Basic block ordering and numbering.** Assign preorder and reverse-postorder indices to every basic block (stored at block offsets +0x48/+0x4C), used later for dominance and reconvergence queries.
+2. **PHI node scanning and hash map population.** Walk all instructions across all basic blocks, identify PHI nodes (opcode 0x54), assign monotonic IDs, and insert into a DenseMap using the hash `(ptr >> 4) ^ (ptr >> 9)` with LLVM-layer sentinels (-4096/-8192) and 75% load-factor growth.
+3. **Copy insertion at reconvergence points.** For each PHI node's incoming value, insert a `"pcp"`-prefixed copy instruction at the end of the predecessor block (before the terminator) using opcode 0x22D7 (divergence-safe copy), then rewire the PHI's use chain so the operand points to the copy instead of the original value.
+4. **Copy propagation.** Iterate all blocks a second time, invoking the PCP builder on each instruction to propagate inserted copies through the instruction graph, replacing uses of original values with uses of copies where appropriate and eliminating redundant copies where original and copy provably carry the same value for all threads.
+5. **Dead copy cleanup.** Walk the cleanup worklist, check each entry for zero remaining uses, and erase dead copy instructions via `eraseFromParent`.
+6. **Copy coalescing (cssa-coalesce).** Implement configurable coalescing that identifies cases where multiple `"pcp"` copies carry the same value and can share a single register, reducing copy overhead while preserving correctness under warp divergence.
+
 ## Cross-References
 
 - [NVIDIA Custom Passes](./index.md) -- CSSA listed as `sub_3720740` with knobs `cssa-coalesce`, `cssa-verbosity`, `dump-before-cssa`

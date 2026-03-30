@@ -6,9 +6,9 @@ The pass lives in the aggregate-lowering cluster at `0x1C80000`--`0x1CBFFFF`, ad
 
 ## Key Facts
 
-| Field | Value |
-|-------|-------|
-| Function | `sub_1C82A50` |
+| Property | Value |
+|---|---|
+| Entry point | `sub_1C82A50` |
 | Size | 39KB (~1,200 lines decompiled) |
 | Binary cluster | `0x1C80000`--`0x1CBFFFF` (Aggregate Splitting + Memory Ops) |
 | Pipeline pass | `lower-aggr-copies` (pass index 417, parameterized: `lower-aggr-func-args`) |

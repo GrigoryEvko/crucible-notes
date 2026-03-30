@@ -112,6 +112,24 @@ The module-level pass uses `"vprintfBuffer.local"` as the alloca name (versus `"
 
 **Pointer tag bits**: the basic block instruction list uses an intrusive doubly-linked list where the low 3 bits of next/prev pointers carry metadata tags (masked with `0xFFFFFFFFFFFFFFF8`). This is consistent with LLVM's `ilist` implementation using pointer-int pairs.
 
+## Diagnostic Strings
+
+Diagnostic strings recovered from `p2-B08-printf-lowering.txt` and `p1.7-04-sweep-0x1B00000-0x1CFFFFF.txt`.
+
+| String | Source | Category | Trigger |
+|--------|--------|----------|---------|
+| `"DataLayout must be available for lowering printf!"` | `sub_1CB1E60` (module-level pass) | Assertion/Error | Module lacks DataLayout; fatal guard at module pass entry |
+| `"The first argument for printf must be a string literal!"` | `sub_1CB1E60` (module-level pass) | Error | Format string argument is not a constant string; validation failure |
+| `"vprintf"` | `sub_1632190` / `sub_12992B0` | Symbol | Target function name looked up or created in the module (literal string, length 7) |
+| `"vprintfBuffer.local"` | `sub_1CB1E60` (module-level pass) | IR name | Name of the packed argument buffer alloca in the module-level pass |
+| `"bufIndexed"` | `sub_1CB1E60` (module-level pass) | IR name | Name of GEP instructions into the argument buffer in the module-level pass |
+| `"tmp"` | `sub_12992B0` (AST-level lowering) | IR name | Name of the packed argument buffer alloca in the AST-level lowering; cached at `a1[19]` |
+| `"buf.indexed"` | `sub_12992B0` (AST-level lowering) | IR name | Name of GEP instructions into the argument buffer in the AST-level lowering |
+| `"casted"` | `sub_12992B0` (AST-level lowering) | IR name | Name of bitcast instructions when GEP result type differs from argument type (opcode 47) |
+| `"nvvm-lower-printf"` | `ctor_269` | Knob | Enable knob for the printf lowering pass |
+
+The two lowering stages produce different IR names for the same conceptual entities (`"vprintfBuffer.local"` vs `"tmp"` for the alloca, `"bufIndexed"` vs `"buf.indexed"` for the GEPs), confirming they are distinct codepaths.
+
 ## IRGenState Layout
 
 The codegen context object used by the AST-level lowering:

@@ -584,6 +584,10 @@ Multi-purpose helper for cvta, MMA operands, and address space qualifiers:
 | `dword_4FD1558` | GenericToNVVM once-init guard |
 | `qword_4F837E0` | True LLVM producer version ("20.0.0") |
 
+## ptxas Interaction
+
+The PTX text emitted by cicc is not executed directly -- it is consumed by `ptxas`, which parses the PTX back into an internal IR, applies its own optimization and scheduling passes (195+ knobs), performs hardware register allocation, and emits SASS machine code. Every formatting decision in emission (register naming with `%r<N>` angle-bracket counts, `.pragma` annotations, kernel attribute placement) must conform to what ptxas's PTX parser expects. The `"LLVM7.0.1"` producer string exists specifically because ptxas gates certain parsing behaviors on the declared producer version. Emission quality directly affects ptxas optimization scope: cleaner PTX with fewer redundant moves gives ptxas more freedom to schedule and allocate efficiently.
+
 ## Cross-References
 
 - [OptiX IR](optix-ir.md) -- OptiX IR output format details

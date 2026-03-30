@@ -474,65 +474,65 @@ All three diagnostic systems share the same growable string buffer used for mess
 
 ## Function Map
 
-| Address | Size | Function | System | Role |
-|---------|------|----------|--------|------|
-| `0x67B780` | -- | `sub_67B780` | EDG | Increment error/warning counters |
-| `0x67B7E0` | -- | `sub_67B7E0` | EDG | Build include-stack annotation |
-| `0x67B9F0` | -- | `sub_67B9F0` | EDG | Diagnostic record pool allocator |
-| `0x67BB20` | -- | `sub_67BB20` | EDG | Argument node allocator |
-| `0x67BBF0` | -- | `sub_67BBF0` | EDG | Set ANSI color state for output |
-| `0x67BD40` | -- | `sub_67BD40` | EDG | Emit newline/flush for source context |
-| `0x67BDC0` | -- | `sub_67BDC0` | EDG | Load file metadata and tab stop width |
-| `0x67C120` | -- | `sub_67C120` | EDG/SARIF | Emit `physicalLocation` JSON |
-| `0x67C860` | -- | `sub_67C860` | EDG | Localized string lookup by ID |
-| `0x67D2D0` | -- | `sub_67D2D0` | EDG | Convert internal diag ID to user-visible number |
-| `0x67D470` | -- | `sub_67D470` | EDG | Record pragma-based suppression |
-| `0x67D520` | -- | `sub_67D520` | EDG | Check pragma-based suppression |
-| `0x67D610` | -- | `sub_67D610` | EDG | Create synthetic diagnostic (warnings-as-errors) |
-| `0x681B50` | -- | `sub_681B50` | EDG | Populate message text into header buffer |
-| `0x681D20` | 37KB | `sub_681D20` | EDG | Terminal text diagnostic renderer |
-| `0x683690` | -- | `sub_683690` | EDG/SARIF | Emit JSON-escaped `message` object |
-| `0x6837D0` | 20KB | `sub_6837D0` | EDG | Diagnostic dispatch and SARIF renderer |
-| `0x721AB0` | -- | `sub_721AB0` | EDG | Multi-byte character byte count |
-| `0x722DF0` | -- | `sub_722DF0` | EDG/SARIF | Resolve file-id to path string |
-| `0x722FC0` | -- | `sub_722FC0` | EDG | Format filename into buffer |
-| `0x723260` | -- | `sub_723260` | EDG | Get filename string from file info |
-| `0x723640` | -- | `sub_723640` | EDG | Get decorated source location string |
-| `0x729B10` | -- | `sub_729B10` | EDG | Retrieve file/line data for source context |
-| `0x729E00` | -- | `sub_729E00` | EDG/SARIF | Decompose packed source position |
-| `0x729F80` | -- | `sub_729F80` | EDG | Promote severity (hard error) |
-| `0x7235F0` | -- | `sub_7235F0` | EDG | Fatal exit with severity code |
-| `0x7AF1D0` | -- | `sub_7AF1D0` | EDG | Newline character mapping lookup |
-| `0x823800` | -- | `sub_823800` | Shared | Reset/clear growable string buffer |
-| `0x823810` | -- | `sub_823810` | Shared | Grow/realloc string buffer |
-| `0x8237A0` | -- | `sub_8237A0` | Shared | Allocate new growable buffer |
-| `0x8238B0` | -- | `sub_8238B0` | Shared | Append to string buffer |
-| `0xB16430` | -- | `sub_B16430` | LLVM Remark | Create named string attribute |
-| `0xB16530` | -- | `sub_B16530` | LLVM Remark | Append named value |
-| `0xB16B10` | -- | `sub_B16B10` | LLVM Remark | Create named integer attribute |
-| `0xB157E0` | -- | `sub_B157E0` | LLVM Remark | Get DebugLoc for remark source location |
-| `0xB17560` | -- | `sub_B17560` | LLVM Remark | Construct `OptimizationRemark` (passed) |
-| `0xB178C0` | -- | `sub_B178C0` | LLVM Remark | Construct warning-level `DiagnosticInfo` |
-| `0xB180C0` | -- | `sub_B180C0` | LLVM Remark | Finalize and prepare remark for emission |
-| `0xB18290` | -- | `sub_B18290` | LLVM Remark | Append raw string to remark message |
-| `0xB2BE50` | -- | `sub_B2BE50` | LLVM Remark | `getRemarkStreamer` |
-| `0xB6EA50` | -- | `sub_B6EA50` | LLVM Remark | `isEnabled` check |
-| `0xB6F970` | -- | `sub_B6F970` | LLVM Remark | `getRemarkFilter` |
-| `0xB91220` | -- | `sub_B91220` | LLVM Remark | Free remark string |
-| `0xC2E790` | 6KB | `sub_C2E790` | LLVM Remark | `createRemarkSerializer` factory |
-| `0xC302C0` | 4KB | `sub_C302C0` | LLVM Remark | YAML remark serializer emit |
-| `0xC30A00` | 6KB | `sub_C30A00` | LLVM Remark | YAML remark parser (6 type tags) |
-| `0xC31010` | 8KB | `sub_C31010` | LLVM Remark | YAML remark field parser |
-| `0xEFCCF0` | 9KB | `sub_EFCCF0` | LLVM Remark | Bitstream abbreviation emitter |
-| `0xEFD2C0` | 18KB | `sub_EFD2C0` | LLVM Remark | Bitstream record writer |
-| `0xEFE900` | 30KB | `sub_EFE900` | LLVM Remark | Bitstream remark parser |
-| `0xF01350` | 23KB | `sub_F01350` | LLVM Remark | Bitstream remark serializer |
-| `0x1049740` | -- | `sub_1049740` | LLVM Remark | Publish remark to diagnostic handler |
-| `0x15CA330` | -- | `sub_15CA330` | LLVM Remark | `OptimizationRemark` constructor |
-| `0x15CA540` | -- | `sub_15CA540` | LLVM Remark | `OptimizationRemarkMissed` constructor |
-| `0x15CAB20` | -- | `sub_15CAB20` | LLVM Remark | `OptimizationRemark::operator<<(StringRef)` |
-| `0x15CAD70` | 13KB | `sub_15CAD70` | LLVM Remark | YAML remark serializer (NVIDIA-extended) |
-| `0x1DCCCA0` | -- | `sub_1DCCCA0` | LLVM Remark | `OptimizationRemarkEmitter::emit` |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `sub_67B780` | `0x67B780` | -- | EDG: Increment error/warning counters |
+| `sub_67B7E0` | `0x67B7E0` | -- | EDG: Build include-stack annotation |
+| `sub_67B9F0` | `0x67B9F0` | -- | EDG: Diagnostic record pool allocator |
+| `sub_67BB20` | `0x67BB20` | -- | EDG: Argument node allocator |
+| `sub_67BBF0` | `0x67BBF0` | -- | EDG: Set ANSI color state for output |
+| `sub_67BD40` | `0x67BD40` | -- | EDG: Emit newline/flush for source context |
+| `sub_67BDC0` | `0x67BDC0` | -- | EDG: Load file metadata and tab stop width |
+| `sub_67C120` | `0x67C120` | -- | EDG/SARIF: Emit `physicalLocation` JSON |
+| `sub_67C860` | `0x67C860` | -- | EDG: Localized string lookup by ID |
+| `sub_67D2D0` | `0x67D2D0` | -- | EDG: Convert internal diag ID to user-visible number |
+| `sub_67D470` | `0x67D470` | -- | EDG: Record pragma-based suppression |
+| `sub_67D520` | `0x67D520` | -- | EDG: Check pragma-based suppression |
+| `sub_67D610` | `0x67D610` | -- | EDG: Create synthetic diagnostic (warnings-as-errors) |
+| `sub_681B50` | `0x681B50` | -- | EDG: Populate message text into header buffer |
+| `sub_681D20` | `0x681D20` | 37KB | EDG: Terminal text diagnostic renderer |
+| `sub_683690` | `0x683690` | -- | EDG/SARIF: Emit JSON-escaped `message` object |
+| `sub_6837D0` | `0x6837D0` | 20KB | EDG: Diagnostic dispatch and SARIF renderer |
+| `sub_721AB0` | `0x721AB0` | -- | EDG: Multi-byte character byte count |
+| `sub_722DF0` | `0x722DF0` | -- | EDG/SARIF: Resolve file-id to path string |
+| `sub_722FC0` | `0x722FC0` | -- | EDG: Format filename into buffer |
+| `sub_723260` | `0x723260` | -- | EDG: Get filename string from file info |
+| `sub_723640` | `0x723640` | -- | EDG: Get decorated source location string |
+| `sub_729B10` | `0x729B10` | -- | EDG: Retrieve file/line data for source context |
+| `sub_729E00` | `0x729E00` | -- | EDG/SARIF: Decompose packed source position |
+| `sub_729F80` | `0x729F80` | -- | EDG: Promote severity (hard error) |
+| `sub_7235F0` | `0x7235F0` | -- | EDG: Fatal exit with severity code |
+| `sub_7AF1D0` | `0x7AF1D0` | -- | EDG: Newline character mapping lookup |
+| `sub_823800` | `0x823800` | -- | Shared: Reset/clear growable string buffer |
+| `sub_823810` | `0x823810` | -- | Shared: Grow/realloc string buffer |
+| `sub_8237A0` | `0x8237A0` | -- | Shared: Allocate new growable buffer |
+| `sub_8238B0` | `0x8238B0` | -- | Shared: Append to string buffer |
+| `sub_B16430` | `0xB16430` | -- | LLVM Remark: Create named string attribute |
+| `sub_B16530` | `0xB16530` | -- | LLVM Remark: Append named value |
+| `sub_B16B10` | `0xB16B10` | -- | LLVM Remark: Create named integer attribute |
+| `sub_B157E0` | `0xB157E0` | -- | LLVM Remark: Get DebugLoc for remark source location |
+| `sub_B17560` | `0xB17560` | -- | LLVM Remark: Construct `OptimizationRemark` (passed) |
+| `sub_B178C0` | `0xB178C0` | -- | LLVM Remark: Construct warning-level `DiagnosticInfo` |
+| `sub_B180C0` | `0xB180C0` | -- | LLVM Remark: Finalize and prepare remark for emission |
+| `sub_B18290` | `0xB18290` | -- | LLVM Remark: Append raw string to remark message |
+| `sub_B2BE50` | `0xB2BE50` | -- | LLVM Remark: `getRemarkStreamer` |
+| `sub_B6EA50` | `0xB6EA50` | -- | LLVM Remark: `isEnabled` check |
+| `sub_B6F970` | `0xB6F970` | -- | LLVM Remark: `getRemarkFilter` |
+| `sub_B91220` | `0xB91220` | -- | LLVM Remark: Free remark string |
+| `sub_C2E790` | `0xC2E790` | 6KB | LLVM Remark: `createRemarkSerializer` factory |
+| `sub_C302C0` | `0xC302C0` | 4KB | LLVM Remark: YAML remark serializer emit |
+| `sub_C30A00` | `0xC30A00` | 6KB | LLVM Remark: YAML remark parser (6 type tags) |
+| `sub_C31010` | `0xC31010` | 8KB | LLVM Remark: YAML remark field parser |
+| `sub_EFCCF0` | `0xEFCCF0` | 9KB | LLVM Remark: Bitstream abbreviation emitter |
+| `sub_EFD2C0` | `0xEFD2C0` | 18KB | LLVM Remark: Bitstream record writer |
+| `sub_EFE900` | `0xEFE900` | 30KB | LLVM Remark: Bitstream remark parser |
+| `sub_F01350` | `0xF01350` | 23KB | LLVM Remark: Bitstream remark serializer |
+| `sub_1049740` | `0x1049740` | -- | LLVM Remark: Publish remark to diagnostic handler |
+| `sub_15CA330` | `0x15CA330` | -- | LLVM Remark: `OptimizationRemark` constructor |
+| `sub_15CA540` | `0x15CA540` | -- | LLVM Remark: `OptimizationRemarkMissed` constructor |
+| `sub_15CAB20` | `0x15CAB20` | -- | LLVM Remark: `OptimizationRemark::operator<<(StringRef)` |
+| `sub_15CAD70` | `0x15CAD70` | 13KB | LLVM Remark: YAML remark serializer (NVIDIA-extended) |
+| `sub_1DCCCA0` | `0x1DCCCA0` | -- | LLVM Remark: `OptimizationRemarkEmitter::emit` |
 
 ## Cross-References
 

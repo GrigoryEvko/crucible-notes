@@ -648,53 +648,62 @@ The following components appear to be stock LLVM with no NVIDIA modifications:
 
 ## Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_1FCE100` | 91KB | `SelectionDAGLegalize::LegalizeOp` dispatcher (~100 opcodes) |
-| `sub_1FFB890` | 137KB | `SelectionDAGLegalize` action dispatch (967 cases) |
-| `sub_1FF5010` | | Legalization worklist management |
-| `sub_1FF6F70` | | `ExpandNode` fallback |
-| `sub_F20C20` | 64KB | `DAGCombiner::visitNode` (6-phase per-node combine) |
-| `sub_F681E0` | 65KB | `DAGCombiner::combine` orchestrator (worklist management) |
-| `sub_F162A0` | | `ReplaceAllUsesWith` (hash: `((id >> 9) ^ (id >> 4))`) |
-| `sub_F0F270` | 25.5KB | Combine pattern matcher (STORE/BITCAST/CONSTANT) |
-| `sub_100E380` | | Target-independent opcode-specific combine dispatcher |
-| `sub_1028510` | | All-constant-operand fold evaluation |
-| `sub_F15980` | | Vector stride / reassociation combine |
-| `sub_F5A610` | 36.7KB | Generic `computeKnownBits` |
-| `sub_F5F040` | 52.4KB | Extended known-bits (recursive expansion limit) |
-| `sub_F4CEE0` | 41.3KB | `SelectionDAG::getNode` / CSE hash table |
-| `sub_F49030` | 38.2KB | DAG node builder (operand/result setup) |
-| `sub_F47010` | 36.4KB | Constrained FP intrinsic lowering |
-| `sub_32E3060` | 111KB | `NVPTXTargetLowering::LowerOperation` dispatcher |
-| `sub_3377410` | 75KB | LowerOperation secondary dispatch (overflow) |
-| `sub_32A1EF0` | 109KB | NVPTX custom type promotion |
-| `sub_32EC4F0` | 92KB | NVPTX post-legalize DAG combine |
-| `sub_32FE970` | 88KB | NVPTX vector operation splitting |
-| `sub_32D2680` | 81KB | NVPTX load/store lowering |
-| `sub_32983B0` | 79KB | NVPTX integer/FP legalization |
-| `sub_32B8A20` | 71KB | NVPTX intrinsic lowering (tex/surf) |
-| `sub_32A9030` | 55KB | NVPTX vector operation lowering |
-| `sub_32C3760` | 54KB | NVPTX addrspacecast / pointer lowering |
-| `sub_32BE8D0` | 54KB | NVPTX conditional/select lowering |
-| `sub_32B6540` | 50KB | NVPTX special register lowering |
-| `sub_33C0CA0` | 62KB | `NVPTXTargetLowering::PerformDAGCombine` |
-| `sub_3425710` | 142KB | NVPTX DAGCombiner with "COVERED"/"INCLUDED" tracing |
-| `sub_3040BF0` | 88KB | `NVPTXTargetLowering::LowerCall` |
-| `sub_3048C30` | 86KB | NVPTX atomic operation lowering |
-| `sub_3056320` | 45KB | `NVPTXTargetLowering` constructor (action setup) |
-| `sub_3314670` | 73KB | Type legalization table population |
-| `sub_33B0210` | 343KB | Intrinsic lowering mega-switch |
-| `sub_33D4EF0` | 114KB | NVPTX `computeKnownBitsForTargetNode` |
-| `sub_338BA40` | 79KB | NVPTX inline asm constraint handler |
-| `sub_2079C70` | 83KB | `SelectionDAGBuilder::visitInlineAsm` |
-| `sub_2077400` | 20KB | NVPTX `visitNVVMTexSurf` handler |
-| `sub_2072590` | 38KB | NVPTX argument passing / type coercion |
-| `sub_3090F90` | 91KB | `NVPTXDAGToDAGISel::Select` driver |
-| `sub_33067C0` | 74KB | Address space / memory operation support |
-| `sub_331F6A0` | 62KB | Global address lowering |
-| `sub_3349730` | 82KB | Formal arguments / return lowering |
-| `sub_332FEA0` | 79KB | Call lowering (`visitCall` / `LowerCallTo`) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `SelectionDAGLegalize::LegalizeOp` dispatcher (~100 opcodes) | `sub_1FCE100` | 91KB | -- |
+| `SelectionDAGLegalize` action dispatch (967 cases) | `sub_1FFB890` | 137KB | -- |
+| Legalization worklist management | `sub_1FF5010` |  | -- |
+| `ExpandNode` fallback | `sub_1FF6F70` |  | -- |
+| `DAGCombiner::visitNode` (6-phase per-node combine) | `sub_F20C20` | 64KB | -- |
+| `DAGCombiner::combine` orchestrator (worklist management) | `sub_F681E0` | 65KB | -- |
+| `ReplaceAllUsesWith` (hash: `((id >> 9) ^ (id >> 4))`) | `sub_F162A0` |  | -- |
+| Combine pattern matcher (STORE/BITCAST/CONSTANT) | `sub_F0F270` | 25.5KB | -- |
+| Target-independent opcode-specific combine dispatcher | `sub_100E380` |  | -- |
+| All-constant-operand fold evaluation | `sub_1028510` |  | -- |
+| Vector stride / reassociation combine | `sub_F15980` |  | -- |
+| Generic `computeKnownBits` | `sub_F5A610` | 36.7KB | -- |
+| Extended known-bits (recursive expansion limit) | `sub_F5F040` | 52.4KB | -- |
+| `SelectionDAG::getNode` / CSE hash table | `sub_F4CEE0` | 41.3KB | -- |
+| DAG node builder (operand/result setup) | `sub_F49030` | 38.2KB | -- |
+| Constrained FP intrinsic lowering | `sub_F47010` | 36.4KB | -- |
+| `NVPTXTargetLowering::LowerOperation` dispatcher | `sub_32E3060` | 111KB | -- |
+| LowerOperation secondary dispatch (overflow) | `sub_3377410` | 75KB | -- |
+| NVPTX custom type promotion | `sub_32A1EF0` | 109KB | -- |
+| NVPTX post-legalize DAG combine | `sub_32EC4F0` | 92KB | -- |
+| NVPTX vector operation splitting | `sub_32FE970` | 88KB | -- |
+| NVPTX load/store lowering | `sub_32D2680` | 81KB | -- |
+| NVPTX integer/FP legalization | `sub_32983B0` | 79KB | -- |
+| NVPTX intrinsic lowering (tex/surf) | `sub_32B8A20` | 71KB | -- |
+| NVPTX vector operation lowering | `sub_32A9030` | 55KB | -- |
+| NVPTX addrspacecast / pointer lowering | `sub_32C3760` | 54KB | -- |
+| NVPTX conditional/select lowering | `sub_32BE8D0` | 54KB | -- |
+| NVPTX special register lowering | `sub_32B6540` | 50KB | -- |
+| `NVPTXTargetLowering::PerformDAGCombine` | `sub_33C0CA0` | 62KB | -- |
+| NVPTX DAGCombiner with "COVERED"/"INCLUDED" tracing | `sub_3425710` | 142KB | -- |
+| `NVPTXTargetLowering::LowerCall` | `sub_3040BF0` | 88KB | -- |
+| NVPTX atomic operation lowering | `sub_3048C30` | 86KB | -- |
+| `NVPTXTargetLowering` constructor (action setup) | `sub_3056320` | 45KB | -- |
+| Type legalization table population | `sub_3314670` | 73KB | -- |
+| Intrinsic lowering mega-switch | `sub_33B0210` | 343KB | -- |
+| NVPTX `computeKnownBitsForTargetNode` | `sub_33D4EF0` | 114KB | -- |
+| NVPTX inline asm constraint handler | `sub_338BA40` | 79KB | -- |
+| `SelectionDAGBuilder::visitInlineAsm` | `sub_2079C70` | 83KB | -- |
+| NVPTX `visitNVVMTexSurf` handler | `sub_2077400` | 20KB | -- |
+| NVPTX argument passing / type coercion | `sub_2072590` | 38KB | -- |
+| `NVPTXDAGToDAGISel::Select` driver | `sub_3090F90` | 91KB | -- |
+| Address space / memory operation support | `sub_33067C0` | 74KB | -- |
+| Global address lowering | `sub_331F6A0` | 62KB | -- |
+| Formal arguments / return lowering | `sub_3349730` | 82KB | -- |
+| Call lowering (`visitCall` / `LowerCallTo`) | `sub_332FEA0` | 79KB | -- |
+
+## Reimplementation Checklist
+
+1. **NVPTXTargetLowering with legality tables.** Populate the 2D action table at offset +2422 (259-byte row stride, indexed by `259 * VT + opcode`) with per-SM-version legal/custom/expand/promote actions for all ISD opcodes and NVPTX-specific opcodes. Include the condition-code action table at offset +18112 and the SM-gated type legality rules (f16 on SM 53+, v2f16 on SM 70+, bf16 on SM 80+).
+2. **LowerOperation dispatcher (111KB equivalent).** Implement the master `LowerOperation` switch dispatching ~3,626 lines of GPU-specific lowering for loads, stores, calls, atomics, vector operations, and address space casts, including the `.param`-space calling convention with DeclareParam/StoreV1-V4/LoadRetParam sequences.
+3. **Intrinsic lowering mega-switch (343KB equivalent).** Build the intrinsic lowering function covering 200+ CUDA intrinsic IDs (up to ID 14196/0x3774), organized as a jump table with per-intrinsic lowering handlers for tensor core, warp, surface/texture, and math intrinsics.
+4. **PerformDAGCombine for NVPTX.** Implement the NVPTX-specific DAG combines (62KB) that run after operation legalization, including load/store vectorization (offset-based coalescing with sorting for `ld.v2`/`ld.v4`/`st.v2`/`st.v4` detection), NVPTX-specific algebraic simplifications, and the "COVERED"/"INCLUDED" tracing infrastructure.
+5. **ISel::Select pattern matching (91KB equivalent).** Implement the top-down instruction selection driver that visits DAG nodes in topological order, matching against NVPTX-specific patterns via opcode-indexed tables, with special handling for tensor core instructions, inline assembly constraints, and multi-result nodes.
+6. **computeKnownBits for NVPTX (114KB).** Implement the NVPTX-specific known-bits analysis covering `ctaid`, `tid`, `ntid`, address space pointer width constraints, and GPU-specific intrinsic range information to enable downstream optimization.
 
 ## Cross-References
 

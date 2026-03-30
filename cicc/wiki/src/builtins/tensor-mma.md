@@ -2,7 +2,9 @@
 
 Tensor core builtins implement the Warp Matrix Multiply-Accumulate (WMMA) and Warp Group MMA (WGMMA) interfaces, spanning IDs 678--770 across four SM generations. Each generation added new data types and matrix shapes, resulting in 91 registered builtins that cover half-precision, integer, binary, double-precision, TF32, BF16, and FP8 matrix operations. SM 100 (Blackwell) adds a fifth generation -- tcgen05 -- documented in [Tensor / MMA Codegen](../llvm/mma-codegen.md).
 
-| Key Facts ||
+## Key Facts
+
+| Property | Value |
 |---|---|
 | Builtin IDs | 678--770 (93 entries) |
 | WGMMA handler (IDs 753--768) | ~800 lines in `sub_12B3FD0` / `sub_955A70` |

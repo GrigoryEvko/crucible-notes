@@ -9,6 +9,8 @@ The pass runs repeatedly throughout the pipeline -- up to 10 times in the "mid" 
 | **Pass factory** | `sub_1CB4E40` (creates pass instance with level parameter) |
 | **Core engine** | `sub_2C63FB0` (140KB, 2,460 lines) |
 | **Pass type** | FunctionPass (Legacy PM) |
+| **Registration** | Legacy PM only (not separately registered in New PM); invoked from pipeline assembler |
+| **Runtime positions** | Tier 1/2/3 #1, #3, #28, #50, #64 (level 1); "mid" path has 4 level-0 invocations (see [Pipeline](../llvm/pipeline.md)) |
 | **NVVMPassOptions slot** | 99 (offset 2000, `BOOL_COMPACT`, default = 0 = enabled) |
 | **Disable flag** | `opts[2000] = 1` disables all invocations |
 | **Level parameter** | 0 = basic lowering, 1 = barrier-aware lowering |

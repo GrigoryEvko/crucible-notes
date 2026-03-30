@@ -4,6 +4,19 @@ NVIDIA's rematerialization infrastructure in CICC operates at two levels: an IR-
 
 On NVIDIA GPUs, register pressure directly determines [occupancy](../gpu-execution-model.md#register-pressure-and-occupancy) -- the number of concurrent warps per SM -- with discrete cliff boundaries where a single additional register can drop an entire warp group. Rematerialization trades extra ALU work for reduced register count, a tradeoff that is almost always profitable on GPUs where compute throughput vastly exceeds register file bandwidth.
 
+## Key Facts
+
+| Property | Value |
+|---|---|
+| Pass name (New PM) | `remat` |
+| Pass name (Legacy PM) | `nvvmrematerialize` / `"Legacy IR Remat"` |
+| Class | `RematerializationPass` |
+| Registration | New PM #385, line 2257 in `sub_2342890` |
+| Runtime positions | Tier 0 #34 (NVVMRematerialization via `sub_1A13320`); Tier 1/2/3 #55 (gated by `!opts[2320]`); see [Pipeline](../llvm/pipeline.md) |
+| Pass factory | `sub_1A13320` |
+| Machine-level companion | `nv-remat-block` / `"Do Remat Machine Block"` at `sub_2186D90` |
+| Upstream equivalent | None -- entirely NVIDIA-proprietary |
+
 ## IR-Level Rematerialization (`nvvmrematerialize`)
 
 ### Registration and Dependencies
@@ -413,9 +426,56 @@ The `do-remat` master control (default 3) enables all rematerialization sub-phas
 "Total Pullable before considering cost: <count>"
 ```
 
+## Reimplementation Checklist
+
+1. **Live-in/live-out bitvector analysis.** Build per-basic-block bitvector sets tracking which values are live-in and live-out, compute max live-in via hardware `popcnt`, and maintain a hash map of per-block counts.
+2. **Occupancy-driven register target.** Query the occupancy model to compute a target register count (default: `remat-for-occ=120`), apply heuristic adjustments based on occupancy cliff boundaries, and cap at `remat-maxreg-ceiling` when set.
+3. **Candidate selection and cost model.** Compute the live-in intersection across all blocks (bitwise AND), check rematerizability of each candidate via def-chain walking (bounded by `max-recurse-depth`), score candidates as `base_cost * use_factor` with loop-nesting scaling, filter by `remat-use-limit`/`remat-gep-cost`/`remat-single-cost-limit`, and sort cheapest-first.
+4. **Block-level instruction cloning.** Implement two clone types: `remat_` prefix clones (full rematerialization of live-in values at use sites) and `uclone_` prefix clones (use-level copies for live range splitting within the dominance chain), with proper use-def chain and debug location updates.
+5. **IV demotion sub-pass.** Identify 64-bit loop-header PHI nodes whose value range fits in 32 bits (`(val + 0x80000000) <= 0xFFFFFFFF`), create narrowed PHI replacements (`demoteIV`/`newBaseIV`/`substIV`), and rewrite loop exit conditions.
+6. **NLO live-out simplification.** Walk each block's live-out set, create `nloNewBit` instructions (AND/extract/trunc to actual used bit-width) and `nloNewAdd` instructions (local address recomputations) to reduce live-out register count at block boundaries.
+7. **Machine-level pull-in algorithm (`nv-remat-block`).** Implement the iterative MachineIR rematerialization engine: max-live computation via reverse instruction walk, MULTIDEF verification, recursive pullability checking (depth 50), second-chance heuristic for re-evaluating rejected candidates, cost-sorted greedy selection, and liveness propagation with instruction cloning at use sites.
+8. **Iterative convergence loop.** Wrap the IR-level pass in an up-to-5-iteration loop (recompute max live-in after each round, stop when target is met) and the machine-level pass in an up-to-`nv-remat-max-times` loop.
+
 ## Architecture-Specific Behavior
 
 The machine-level MULTIDEF checker (`sub_217E810`) contains architecture-specific opcode exclusions: opcodes 380-396 are rejected only when the target SM is sm_62 (GP106, mid-range Pascal), suggesting these instructions have rematerialization hazards specific to that microarchitecture. All other opcode exclusions apply uniformly across SM targets.
+
+## Test This
+
+The following kernel creates high register pressure by keeping many independent values alive simultaneously. Compile with `nvcc -ptx -arch=sm_90 -maxrregcount=32` to force a low register cap and observe rematerialization in action.
+
+```cuda
+__global__ void remat_test(const float* __restrict__ in, float* __restrict__ out, int n) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= n) return;
+
+    float a = in[tid];
+    float b = in[tid + n];
+    float c = in[tid + 2*n];
+    float d = in[tid + 3*n];
+    float e = in[tid + 4*n];
+    float f = in[tid + 5*n];
+    float g = in[tid + 6*n];
+    float h = in[tid + 7*n];
+
+    float r0 = a * b + c;
+    float r1 = d * e + f;
+    float r2 = g * h + a;
+    float r3 = b * c + d;
+    float r4 = e * f + g;
+
+    out[tid]       = r0 + r1;
+    out[tid + n]   = r2 + r3;
+    out[tid + 2*n] = r4 + r0;
+}
+```
+
+**What to look for in PTX:**
+- Address recomputation: the expressions `tid + k*n` are cheap to recompute. With `-maxrregcount=32`, the pass should rematerialize these address calculations at use sites rather than keeping them in registers. Look for repeated `mad.lo.s32` or `add.s32` instructions computing the same offset near each `ld.global` instead of a single computation early on.
+- Compare the `.nreg` directive value between `-maxrregcount=32` and the default. The rematerialization pass trades extra ALU instructions for fewer registers to hit the lower target.
+- With `-Xcicc -dump-remat=4`, cicc prints `"Total pull-in cost = %d"` for each candidate, showing the cost/benefit analysis.
+- The `remat_` prefix on SSA names in LLVM IR dumps identifies rematerialized values.
 
 ## Pipeline Interaction
 

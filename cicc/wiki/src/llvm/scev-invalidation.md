@@ -301,65 +301,65 @@ These candidates are passed to `findArrayDimensions` (`sub_147B0D0`) which uses 
 
 ### Invalidation Functions
 
-| Address | Identity | Size | Notes |
-|---------|----------|------|-------|
-| `sub_DE2750` | `ScalarEvolution::forgetLoop` | 10,051 B | 8-phase loop invalidation |
-| `sub_D9EE30` | `ScalarEvolution::forgetValue` | ~9 KB | Single-value eviction |
-| `sub_D9D700` | `ScalarEvolution::forgetAllLoops` | ~8 KB | Invalidate all loops |
-| `sub_DE2690` | `forgetMemoizedResults` | small | Recursive BTC invalidation helper |
-| `sub_DE5FA0` | `ScalarEvolution::verify` | ~52 KB | Debug verification (old/new trip count comparison) |
-| `sub_DE5640` | Loop invalidation helper | ~178 lines | Helper for `forgetLoop` |
-| `sub_DCE1C0` | SCEV expression invalidator | small | Callback for AddRec folding cleanup |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `ScalarEvolution::forgetLoop` | `sub_DE2750` | 10,051 B | 8-phase loop invalidation |
+| `ScalarEvolution::forgetValue` | `sub_D9EE30` | ~9 KB | Single-value eviction |
+| `ScalarEvolution::forgetAllLoops` | `sub_D9D700` | ~8 KB | Invalidate all loops |
+| `forgetMemoizedResults` | `sub_DE2690` | small | Recursive BTC invalidation helper |
+| `ScalarEvolution::verify` | `sub_DE5FA0` | ~52 KB | Debug verification (old/new trip count comparison) |
+| Loop invalidation helper | `sub_DE5640` | ~178 lines | Helper for `forgetLoop` |
+| SCEV expression invalidator | `sub_DCE1C0` | small | Callback for AddRec folding cleanup |
 
 ### Delinearization Functions
 
-| Address | Identity | Size | Notes |
-|---------|----------|------|-------|
-| `sub_DE9D10` | `ScalarEvolution::delinearize` | 3,614 B | Recursive delinearizer (17-case switch) |
-| `sub_DE8D20` | `collectParametricTerms` | ~521 lines | Term extraction before delinearization |
-| `sub_DE97B0` | Structural GEP delinearization | small | Sub-analysis called from GEP case |
-| `sub_D9ABD0` | `canonicalizeExpr` | small | SCEV normalization |
-| `sub_D94080` | `computeAccessFunctions` | ~12 KB | Access function computation |
-| `sub_CF5550` | `SCEV_delinearize` (dependence region) | 6,276 B | Alternate copy in dependence analysis |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `ScalarEvolution::delinearize` | `sub_DE9D10` | 3,614 B | Recursive delinearizer (17-case switch) |
+| `collectParametricTerms` | `sub_DE8D20` | ~521 lines | Term extraction before delinearization |
+| Structural GEP delinearization | `sub_DE97B0` | small | Sub-analysis called from GEP case |
+| `canonicalizeExpr` | `sub_D9ABD0` | small | SCEV normalization |
+| `computeAccessFunctions` | `sub_D94080` | ~12 KB | Access function computation |
+| `SCEV_delinearize` (dependence region) | `sub_CF5550` | 6,276 B | Alternate copy in dependence analysis |
 
 ### Dependence Analysis Delinearization
 
-| Address | Identity | Size | Notes |
-|---------|----------|------|-------|
-| `sub_146F1B0` | `delinearizeAccess` | 40 KB | Core delinearization for dependence analysis |
-| `sub_146B5E0` | `tryDelinearize` | 18 KB | Delinearization attempt with fallback |
-| `sub_1472640` | Delinearize subscript | 10 KB | Per-subscript extraction |
-| `sub_1473850` | Array dimension inference | 12 KB | Infers dimensions from access patterns |
-| `sub_1476060` | `collectSubscripts` | 22 KB | Multi-dimensional GEP subscript collection |
-| `sub_14747F0` | Dependence distance with delinearization | 15 KB | Computes dependence vectors using delinearized subscripts |
-| `sub_147B0D0` | `findArrayDimensions` | 11 KB | Dimension sizes from SCEV product decomposition |
-| `sub_147C070` | Combined delinearize-and-test | 34 KB | Delinearize + per-dimension dependence test |
-| `sub_147EE30` | Alternative delinearization v2 | 25 KB | NVIDIA-enhanced heuristics |
-| `sub_147DF40` | Partial result combiner | 11 KB | Combines partial delinearization results |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `delinearizeAccess` | `sub_146F1B0` | 40 KB | Core delinearization for dependence analysis |
+| `tryDelinearize` | `sub_146B5E0` | 18 KB | Delinearization attempt with fallback |
+| Delinearize subscript | `sub_1472640` | 10 KB | Per-subscript extraction |
+| Array dimension inference | `sub_1473850` | 12 KB | Infers dimensions from access patterns |
+| `collectSubscripts` | `sub_1476060` | 22 KB | Multi-dimensional GEP subscript collection |
+| Dependence distance with delinearization | `sub_14747F0` | 15 KB | Computes dependence vectors using delinearized subscripts |
+| `findArrayDimensions` | `sub_147B0D0` | 11 KB | Dimension sizes from SCEV product decomposition |
+| Combined delinearize-and-test | `sub_147C070` | 34 KB | Delinearize + per-dimension dependence test |
+| Alternative delinearization v2 | `sub_147EE30` | 25 KB | NVIDIA-enhanced heuristics |
+| Partial result combiner | `sub_147DF40` | 11 KB | Combines partial delinearization results |
 
 ### Key SCEV Callees (shared by both subsystems)
 
-| Address | Identity |
-|---------|----------|
-| `sub_DBB9F0` | `getRangeRef` -- range computation |
-| `sub_AB1BB0` | `ConstantRange::contains` |
-| `sub_AB0910` | `ConstantRange::intersectWith` |
-| `sub_AB0A00` | `ConstantRange::unionWith` |
-| `sub_AAFBB0` | `ConstantRange::isEmptySet` |
-| `sub_AAF760` | `ConstantRange::isFullSet` |
-| `sub_DD8400` | `getSCEV` -- expression resolution |
-| `sub_DCFD50` | `tryFoldAddRecWithStep` |
-| `sub_DC7EB0` | `getAddExpr` (N-ary) |
-| `sub_DC8BD0` | `getMulExpr` (N-ary) |
-| `sub_DBFF60` | `getAddRecExpr` |
-| `sub_DCB270` | `getUDivExpr` |
-| `sub_DC5000` | `getZeroExtendExpr` |
-| `sub_DC2B70` | `getSignExtendExpr` |
-| `sub_DC5200` | `getTruncateExpr` |
-| `sub_DD3A70` | `getPtrToIntExpr` |
-| `sub_B19D00` | `DominatorTree::dominates` |
-| `sub_C8CC70` | `SmallDenseSet::insert` |
-| `sub_DB11F0` | Cache insert (delinearization result memoization) |
+| Function | Address |
+|---|---|
+| `getRangeRef` -- range computation | `sub_DBB9F0` |
+| `ConstantRange::contains` | `sub_AB1BB0` |
+| `ConstantRange::intersectWith` | `sub_AB0910` |
+| `ConstantRange::unionWith` | `sub_AB0A00` |
+| `ConstantRange::isEmptySet` | `sub_AAFBB0` |
+| `ConstantRange::isFullSet` | `sub_AAF760` |
+| `getSCEV` -- expression resolution | `sub_DD8400` |
+| `tryFoldAddRecWithStep` | `sub_DCFD50` |
+| `getAddExpr` (N-ary) | `sub_DC7EB0` |
+| `getMulExpr` (N-ary) | `sub_DC8BD0` |
+| `getAddRecExpr` | `sub_DBFF60` |
+| `getUDivExpr` | `sub_DCB270` |
+| `getZeroExtendExpr` | `sub_DC5000` |
+| `getSignExtendExpr` | `sub_DC2B70` |
+| `getTruncateExpr` | `sub_DC5200` |
+| `getPtrToIntExpr` | `sub_DD3A70` |
+| `DominatorTree::dominates` | `sub_B19D00` |
+| `SmallDenseSet::insert` | `sub_C8CC70` |
+| Cache insert (delinearization result memoization) | `sub_DB11F0` |
 
 ## Differences from Upstream LLVM
 

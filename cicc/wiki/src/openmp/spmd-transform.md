@@ -716,65 +716,65 @@ Additionally, the SPMD-amenable function set at `*(a2+208)+34952` is populated b
 
 ## Function Map
 
-| Address | Identity |
-|---|---|
-| `sub_26968A0` | Generic-to-SPMD transformation pass (this function, 61 KB) |
-| `sub_2678420` | Worker state machine generation (Generic fallback, 41 KB) |
-| `sub_269F530` | Attributor-based OpenMP optimization driver (63 KB, sets `a1+241`) |
-| `sub_2680940` | Parallel region merging (52 KB) |
-| `sub_251BBC0` | AbstractAttribute infrastructure (Attributor framework) |
-| `sub_251CD10` | Attributor::runTillFixpoint (53 KB, fixed-point iteration engine) |
-| `sub_26747F0` | OpenMP kernel info collector (populates PassState) |
-| `sub_2591C20` | Attributor Module Pass entry point (51 KB) |
-| `sub_2674090` | Read execution mode from attribute map |
-| `sub_2674040` | Read execution mode (alternate entry) |
-| `sub_250CBE0` | Get parallel region thread configuration |
-| `sub_2673FD0` | Read attribute from kernel attribute map |
-| `sub_2673A60` | Create secondary barrier call |
-| `sub_312CF50` | OpenMP runtime call table lookup by ID (194-case switch, 117 KB) |
-| `sub_3122A50` | registerRuntimeFunction (registers declaration in table) |
-| `sub_313D1B0` | Parallel region outliner (47 KB, creates `.omp_par` functions) |
-| `sub_25096F0` | Get function entry basic block |
-| `sub_BD5C60` | Get function scope / debug info |
-| `sub_AA8550` | Build CFG region (start/end blocks) |
-| `sub_AA4D50` | Build exit/cleanup block |
-| `sub_F36960` | Split basic block |
-| `sub_BD2C40` | Allocate IR instruction node |
-| `sub_B4A410` | Fill instruction as runtime-call value load |
-| `sub_AD64C0` | Create integer constant (zero for tid check) |
-| `sub_AD6530` | Create integer constant (alternate entry, used in complex path) |
-| `sub_B52500` | Create icmp instruction |
-| `sub_B4C9A0` | Create branch instruction (opcode 3) |
-| `sub_B30000` | Create shared-memory alloca (addr space 7) |
-| `sub_B4D460` | Create store instruction |
-| `sub_B4D230` | Create load instruction |
-| `sub_256E5A0` | Replace all uses of a value |
-| `sub_921880` | Create runtime library call instruction |
-| `sub_ACD640` | Create bit-vector entry |
-| `sub_AAAE30` | Insert into attribute map |
-| `sub_D695C0` | Register block in pass manager worklist |
-| `sub_B174A0` | Construct remark DiagnosticInfo |
-| `sub_B178C0` | Construct warning DiagnosticInfo |
-| `sub_B18290` | Append string to diagnostic message |
-| `sub_1049740` | Emit diagnostic to handler |
-| `sub_B46970` | Check if instruction is a call |
-| `sub_B46420` | Check if instruction is an invoke |
-| `sub_BD2BC0` | Get invoke exception handler count |
-| `sub_B444E0` | Insert guard instructions at range boundary |
-| `sub_AAB310` | Fast-path comparison instruction creation |
-| `sub_B523C0` | Full comparison instruction creation |
-| `sub_CA0F50` | Build name from debug info + suffix |
-| `sub_B96E90` | Ref-count increment on metadata/debug-info |
-| `sub_B91220` | Ref-count decrement on metadata/debug-info |
-| `sub_B976B0` | Transfer metadata ownership between blocks |
-| `sub_986580` | Get terminator's successor block pointer |
-| `sub_B99FD0` | Add operand bundle to instruction |
-| `sub_266EF50` | Duplicate metadata reference |
-| `sub_B491C0` | Process entry block terminator successor |
-| `sub_ACA8A0` | Get instruction value type |
-| `sub_BD5D20` | Get IR node name |
-| `sub_C8CC70` | Vector push_back (dynamic arrays) |
-| `sub_C8D5F0` | Vector reserve/grow |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| Generic-to-SPMD transformation pass (this function, 61 KB) | `sub_26968A0` | -- | -- |
+| Worker state machine generation (Generic fallback, 41 KB) | `sub_2678420` | -- | -- |
+| Attributor-based OpenMP optimization driver (63 KB, sets `a1+241`) | `sub_269F530` | -- | -- |
+| Parallel region merging (52 KB) | `sub_2680940` | -- | -- |
+| AbstractAttribute infrastructure (Attributor framework) | `sub_251BBC0` | -- | -- |
+| Attributor::runTillFixpoint (53 KB, fixed-point iteration engine) | `sub_251CD10` | -- | -- |
+| OpenMP kernel info collector (populates PassState) | `sub_26747F0` | -- | -- |
+| Attributor Module Pass entry point (51 KB) | `sub_2591C20` | -- | -- |
+| Read execution mode from attribute map | `sub_2674090` | -- | -- |
+| Read execution mode (alternate entry) | `sub_2674040` | -- | -- |
+| Get parallel region thread configuration | `sub_250CBE0` | -- | -- |
+| Read attribute from kernel attribute map | `sub_2673FD0` | -- | -- |
+| Create secondary barrier call | `sub_2673A60` | -- | -- |
+| OpenMP runtime call table lookup by ID (194-case switch, 117 KB) | `sub_312CF50` | -- | -- |
+| registerRuntimeFunction (registers declaration in table) | `sub_3122A50` | -- | -- |
+| Parallel region outliner (47 KB, creates `.omp_par` functions) | `sub_313D1B0` | -- | -- |
+| Get function entry basic block | `sub_25096F0` | -- | -- |
+| Get function scope / debug info | `sub_BD5C60` | -- | -- |
+| Build CFG region (start/end blocks) | `sub_AA8550` | -- | -- |
+| Build exit/cleanup block | `sub_AA4D50` | -- | -- |
+| Split basic block | `sub_F36960` | -- | -- |
+| Allocate IR instruction node | `sub_BD2C40` | -- | -- |
+| Fill instruction as runtime-call value load | `sub_B4A410` | -- | -- |
+| Create integer constant (zero for tid check) | `sub_AD64C0` | -- | -- |
+| Create integer constant (alternate entry, used in complex path) | `sub_AD6530` | -- | -- |
+| Create icmp instruction | `sub_B52500` | -- | -- |
+| Create branch instruction (opcode 3) | `sub_B4C9A0` | -- | -- |
+| Create shared-memory alloca (addr space 7) | `sub_B30000` | -- | -- |
+| Create store instruction | `sub_B4D460` | -- | -- |
+| Create load instruction | `sub_B4D230` | -- | -- |
+| Replace all uses of a value | `sub_256E5A0` | -- | -- |
+| Create runtime library call instruction | `sub_921880` | -- | -- |
+| Create bit-vector entry | `sub_ACD640` | -- | -- |
+| Insert into attribute map | `sub_AAAE30` | -- | -- |
+| Register block in pass manager worklist | `sub_D695C0` | -- | -- |
+| Construct remark DiagnosticInfo | `sub_B174A0` | -- | -- |
+| Construct warning DiagnosticInfo | `sub_B178C0` | -- | -- |
+| Append string to diagnostic message | `sub_B18290` | -- | -- |
+| Emit diagnostic to handler | `sub_1049740` | -- | -- |
+| Check if instruction is a call | `sub_B46970` | -- | -- |
+| Check if instruction is an invoke | `sub_B46420` | -- | -- |
+| Get invoke exception handler count | `sub_BD2BC0` | -- | -- |
+| Insert guard instructions at range boundary | `sub_B444E0` | -- | -- |
+| Fast-path comparison instruction creation | `sub_AAB310` | -- | -- |
+| Full comparison instruction creation | `sub_B523C0` | -- | -- |
+| Build name from debug info + suffix | `sub_CA0F50` | -- | -- |
+| Ref-count increment on metadata/debug-info | `sub_B96E90` | -- | -- |
+| Ref-count decrement on metadata/debug-info | `sub_B91220` | -- | -- |
+| Transfer metadata ownership between blocks | `sub_B976B0` | -- | -- |
+| Get terminator's successor block pointer | `sub_986580` | -- | -- |
+| Add operand bundle to instruction | `sub_B99FD0` | -- | -- |
+| Duplicate metadata reference | `sub_266EF50` | -- | -- |
+| Process entry block terminator successor | `sub_B491C0` | -- | -- |
+| Get instruction value type | `sub_ACA8A0` | -- | -- |
+| Get IR node name | `sub_BD5D20` | -- | -- |
+| Vector push_back (dynamic arrays) | `sub_C8CC70` | -- | -- |
+| Vector reserve/grow | `sub_C8D5F0` | -- | -- |
 
 ## Cross-References
 

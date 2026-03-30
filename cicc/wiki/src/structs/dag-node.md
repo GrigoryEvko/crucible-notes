@@ -432,46 +432,46 @@ This matches the LLVM `ilist` intrusive linked list pattern where the list hook 
 
 ## Function Map
 
-| Address | Size | Function | Role |
-|---------|------|----------|------|
-| `sub_163D530` | 73KB | SelectionDAG builder context init | Allocator, DenseMaps, BB iteration |
-| `sub_2081F00` | 267KB | SelectionDAGBuilder::visit | IR-to-DAG main lowering |
-| `sub_2065D30` | 25KB | SelectionDAGBuilder visit dispatch | Per-instruction routing |
-| `sub_208CF60` | 56KB | visitCall | Call lowering into DAG |
-| `sub_209B000` | 15KB | visitLoad | Load chain emission |
-| `sub_2090780` | 14KB | visitStore | Store alignment/chain |
-| `sub_20912B0` | 18KB | visitSwitch/Br | Control flow lowering |
-| `sub_20920A0` | 13KB | visitPHI | PHI node handling |
-| `sub_209FCA0` | 13KB | visitGEP | Address computation |
-| `sub_2079C70` | 83KB | visitInlineAsm | Inline asm constraint parsing |
-| `sub_2077400` | 20KB | visitNVVMTexSurf | NVIDIA tex/surf handle lowering |
-| `sub_2072590` | 38KB | NVPTX argument coercion | CUDA kernel argument lowering |
-| `sub_F4CEE0` | 41KB | getNode / CSE hash table | Node deduplication |
-| `sub_F49030` | 38KB | SelectionDAG node builder | Complex node construction |
-| `sub_F429C0` | 34KB | Merge/TokenFactor creation | Chain merging, indexed nodes |
-| `sub_F681E0` | 65KB | DAG combiner orchestrator | Worklist management |
-| `sub_F20C20` | 64KB | DAG combiner visitor | Per-node combine algorithm |
-| `sub_100E380` | -- | combine() opcode dispatch | Target-independent combines |
-| `sub_F162A0` | -- | CombineTo / RAUW | Use-chain replacement + worklist push |
-| `sub_BD2C40` | -- | SDNode allocation | Bump allocator |
-| `sub_B44260` | -- | SDNode constructor | Initialization |
-| `sub_B43C20` | -- | SDUse add to use list | Use-chain linkage |
-| `sub_B43D60` | -- | SDUse remove from use list | Use-chain unlinkage |
-| `sub_BD84D0` | -- | ReplaceAllUsesWith | Raw use-chain splice |
-| `sub_BD6B90` | -- | transferDbgValues | Debug info transfer |
-| `sub_B91C10` | -- | setOperand | Operand mutation |
-| `sub_B99FD0` | -- | replaceOperand | Single operand swap |
-| `sub_20019C0` | 348KB | DAGTypeLegalizer::run | Type legalization master dispatch |
-| `sub_1FFB890` | 169KB | LegalizeOp | Operation legalization |
-| `sub_1FF6F70` | -- | ExpandNode | Full node expansion fallback |
-| `sub_32E3060` | 111KB | NVPTXTargetLowering::LowerOperation | NVPTX custom operation lowering |
-| `sub_3040BF0` | 88KB | NVPTXTargetLowering::LowerCall | `.param` calling convention |
-| `sub_33B0210` | 343KB | Intrinsic lowering switch | 200+ CUDA intrinsic IDs |
-| `sub_33C0CA0` | 62KB | PerformDAGCombine (NVPTX) | Post-legalize NVPTX combines |
-| `sub_3425710` | 142KB | NVIDIA DAGCombiner | NVIDIA-specific combine engine |
-| `sub_33D4EF0` | 114KB | computeKnownBits (NVPTX) | 112-opcode known-bits transfer |
-| `sub_3090F90` | 91KB | ISel::Select driver | Pattern matching entry |
-| `sub_2095B00` | 35KB | getOperationName | ISD opcode -> string mapping |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| SelectionDAG builder context init | `sub_163D530` | 73KB | Allocator, DenseMaps, BB iteration |
+| SelectionDAGBuilder::visit | `sub_2081F00` | 267KB | IR-to-DAG main lowering |
+| SelectionDAGBuilder visit dispatch | `sub_2065D30` | 25KB | Per-instruction routing |
+| visitCall | `sub_208CF60` | 56KB | Call lowering into DAG |
+| visitLoad | `sub_209B000` | 15KB | Load chain emission |
+| visitStore | `sub_2090780` | 14KB | Store alignment/chain |
+| visitSwitch/Br | `sub_20912B0` | 18KB | Control flow lowering |
+| visitPHI | `sub_20920A0` | 13KB | PHI node handling |
+| visitGEP | `sub_209FCA0` | 13KB | Address computation |
+| visitInlineAsm | `sub_2079C70` | 83KB | Inline asm constraint parsing |
+| visitNVVMTexSurf | `sub_2077400` | 20KB | NVIDIA tex/surf handle lowering |
+| NVPTX argument coercion | `sub_2072590` | 38KB | CUDA kernel argument lowering |
+| getNode / CSE hash table | `sub_F4CEE0` | 41KB | Node deduplication |
+| SelectionDAG node builder | `sub_F49030` | 38KB | Complex node construction |
+| Merge/TokenFactor creation | `sub_F429C0` | 34KB | Chain merging, indexed nodes |
+| DAG combiner orchestrator | `sub_F681E0` | 65KB | Worklist management |
+| DAG combiner visitor | `sub_F20C20` | 64KB | Per-node combine algorithm |
+| combine() opcode dispatch | `sub_100E380` | -- | Target-independent combines |
+| CombineTo / RAUW | `sub_F162A0` | -- | Use-chain replacement + worklist push |
+| SDNode allocation | `sub_BD2C40` | -- | Bump allocator |
+| SDNode constructor | `sub_B44260` | -- | Initialization |
+| SDUse add to use list | `sub_B43C20` | -- | Use-chain linkage |
+| SDUse remove from use list | `sub_B43D60` | -- | Use-chain unlinkage |
+| ReplaceAllUsesWith | `sub_BD84D0` | -- | Raw use-chain splice |
+| transferDbgValues | `sub_BD6B90` | -- | Debug info transfer |
+| setOperand | `sub_B91C10` | -- | Operand mutation |
+| replaceOperand | `sub_B99FD0` | -- | Single operand swap |
+| DAGTypeLegalizer::run | `sub_20019C0` | 348KB | Type legalization master dispatch |
+| LegalizeOp | `sub_1FFB890` | 169KB | Operation legalization |
+| ExpandNode | `sub_1FF6F70` | -- | Full node expansion fallback |
+| NVPTXTargetLowering::LowerOperation | `sub_32E3060` | 111KB | NVPTX custom operation lowering |
+| NVPTXTargetLowering::LowerCall | `sub_3040BF0` | 88KB | `.param` calling convention |
+| Intrinsic lowering switch | `sub_33B0210` | 343KB | 200+ CUDA intrinsic IDs |
+| PerformDAGCombine (NVPTX) | `sub_33C0CA0` | 62KB | Post-legalize NVPTX combines |
+| NVIDIA DAGCombiner | `sub_3425710` | 142KB | NVIDIA-specific combine engine |
+| computeKnownBits (NVPTX) | `sub_33D4EF0` | 114KB | 112-opcode known-bits transfer |
+| ISel::Select driver | `sub_3090F90` | 91KB | Pattern matching entry |
+| getOperationName | `sub_2095B00` | 35KB | ISD opcode -> string mapping |
 
 ## Cross-References
 

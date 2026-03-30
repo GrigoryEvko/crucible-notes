@@ -11,7 +11,7 @@ ScalarEvolution (SCEV) is the foundational analysis that models how values chang
 ## Key Facts
 
 | Property | Value |
-|----------|-------|
+|---|---|
 | LLVM base version | 20.0.0 `ScalarEvolution.cpp` |
 | Top-level entry | `sub_DD8400` (`getSCEV`) |
 | Core builder | `sub_DD65B0` (`createNodeForInstruction`, 1103 lines) |
@@ -584,36 +584,36 @@ The most consequential divergence is the `simple_mode` system: it changes the co
 
 ## Function Map
 
-| Address | Identity | Lines | Role |
-|---------|----------|-------|------|
-| `sub_DD8400` | `getSCEV` | 66 | Top-level entry; cache + mode dispatch |
-| `sub_DD8130` | Worklist `createSCEV` | 154 | Non-recursive worklist driver |
-| `sub_DD80F0` | `createSCEV` wrapper | 14 | Type check + delegate |
-| `sub_DD65B0` | `createNodeForInstruction` | 1103 | Core 3-phase opcode dispatch |
-| `sub_D94080` | `decomposeIRInstruction` | 452 | Instruction to decomposition struct |
-| `sub_DD92B0` | `createNodeForPHI` | -- | PHI to AddRec conversion |
-| `sub_DD99C0` | `createNodeForSelectOrPHI` | -- | Select/PHI combined handler |
-| `sub_DD6410` | `getExistingExpr` | -- | Fast path for phi recurrence |
-| `sub_DD3A70` | `getGEPExpr` | -- | GEP to SCEV conversion |
-| `sub_DD86E0` | `getLoopForExpr` | -- | Determine loop context for expression |
-| `sub_D98300` | `lookupSCEV` | -- | Cache lookup (ValueExprMap) |
-| `sub_DB77A0` | `insertSCEV` | -- | Cache store |
-| `sub_DB3670` | `expressionComplexity` | 35KB | NVIDIA expression size scorer; self-recursive, uses `sub_CF4090` |
-| `sub_CF4090` | SCEV node size counter | -- | Counts nodes in existing SCEV tree for complexity scoring |
-| `sub_DB04E0` | `getSmallConstantTripCount` | 117 | Extract small constant trip count |
-| `sub_1495EB0` | `classifyExpressions` / `print` | 20KB | Debug: "Classifying expressions for: " |
-| `sub_D97040` | `isSCEVable` | -- | Type is integer or pointer |
-| `sub_D96A50` | `isUnknown` / `isFailedSCEV` | -- | Check SCEVUnknown |
-| `sub_D95540` | `getSCEVType` | -- | Extract LLVM Type from SCEV expr |
-| `sub_D97050` | `getTypeBitWidth` | -- | Bit width of a type |
-| `sub_B494D0` | `lookupIntrinsicSCEV` | -- | Intrinsic fast-path table |
-| `sub_988010` | `isIntrinsicCall` | -- | Intrinsic detection |
-| `sub_DBED40` | `isLoopInvariant` | -- | Loop invariance check |
-| `sub_BCAC40` | `isIntegerTy` | -- | Integer type check |
-| `sub_DBB9F0` | `getRangeRef` | -- | ConstantRange evaluator (see [range page](./scev-range-btc.md)) |
-| `sub_DB9E00` | `computeBackedgeTakenCount` | -- | BTC computation (see [range page](./scev-range-btc.md)) |
-| `sub_DE2750` | `forgetLoop` | -- | Cache invalidation (see [invalidation page](./scev-invalidation.md)) |
-| `sub_DE9D10` | `delinearize` | -- | Array delinearization (see [invalidation page](./scev-invalidation.md)) |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `getSCEV` | `sub_DD8400` | -- | Top-level entry; cache + mode dispatch |
+| Worklist `createSCEV` | `sub_DD8130` | -- | Non-recursive worklist driver |
+| `createSCEV` wrapper | `sub_DD80F0` | -- | Type check + delegate |
+| `createNodeForInstruction` | `sub_DD65B0` | -- | Core 3-phase opcode dispatch |
+| `decomposeIRInstruction` | `sub_D94080` | -- | Instruction to decomposition struct |
+| `createNodeForPHI` | `sub_DD92B0` | -- | PHI to AddRec conversion |
+| `createNodeForSelectOrPHI` | `sub_DD99C0` | -- | Select/PHI combined handler |
+| `getExistingExpr` | `sub_DD6410` | -- | Fast path for phi recurrence |
+| `getGEPExpr` | `sub_DD3A70` | -- | GEP to SCEV conversion |
+| `getLoopForExpr` | `sub_DD86E0` | -- | Determine loop context for expression |
+| `lookupSCEV` | `sub_D98300` | -- | Cache lookup (ValueExprMap) |
+| `insertSCEV` | `sub_DB77A0` | -- | Cache store |
+| `expressionComplexity` | `sub_DB3670` | -- | NVIDIA expression size scorer; self-recursive, uses `sub_CF4090` |
+| SCEV node size counter | `sub_CF4090` | -- | Counts nodes in existing SCEV tree for complexity scoring |
+| `getSmallConstantTripCount` | `sub_DB04E0` | -- | Extract small constant trip count |
+| `classifyExpressions` / `print` | `sub_1495EB0` | -- | Debug: "Classifying expressions for: " |
+| `isSCEVable` | `sub_D97040` | -- | Type is integer or pointer |
+| `isUnknown` / `isFailedSCEV` | `sub_D96A50` | -- | Check SCEVUnknown |
+| `getSCEVType` | `sub_D95540` | -- | Extract LLVM Type from SCEV expr |
+| `getTypeBitWidth` | `sub_D97050` | -- | Bit width of a type |
+| `lookupIntrinsicSCEV` | `sub_B494D0` | -- | Intrinsic fast-path table |
+| `isIntrinsicCall` | `sub_988010` | -- | Intrinsic detection |
+| `isLoopInvariant` | `sub_DBED40` | -- | Loop invariance check |
+| `isIntegerTy` | `sub_BCAC40` | -- | Integer type check |
+| `getRangeRef` | `sub_DBB9F0` | -- | ConstantRange evaluator (see [range page](./scev-range-btc.md)) |
+| `computeBackedgeTakenCount` | `sub_DB9E00` | -- | BTC computation (see [range page](./scev-range-btc.md)) |
+| `forgetLoop` | `sub_DE2750` | -- | Cache invalidation (see [invalidation page](./scev-invalidation.md)) |
+| `delinearize` | `sub_DE9D10` | -- | Array delinearization (see [invalidation page](./scev-invalidation.md)) |
 
 ## Cross-References
 

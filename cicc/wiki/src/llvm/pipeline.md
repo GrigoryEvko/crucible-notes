@@ -911,75 +911,75 @@ After all optimization tiers complete, `sub_12DFE00` (`0x12DFE00`) performs code
 
 Every unique pass factory address observed in `sub_12E54A0`, `sub_12DE330`, and `sub_12DE8F0`:
 
-| Address | Likely Identity | Occurrences |
-|---|---|---|
-| `sub_12D4560` | NVVMVerifier | many (tiers) |
-| `sub_1361950` | AssumptionCacheTracker | 1 |
-| `sub_149CCE0` | TargetLibraryInfoWrapperPass | 1 |
-| `sub_14A7550` | VerifierPass/BasicAA | 1 |
-| `sub_1654860` | BreakCriticalEdges | 2 |
-| `sub_17060B0` | PrintModulePass (debug dump) | ~30+ |
-| `sub_1832270` | InstructionCombining | 2 |
-| `sub_1833EB0` | TailCallElim/JumpThreading | 3 |
-| `sub_1841180` | FunctionAttrs | 3 |
-| `sub_1842BC0` | SCCP | 2 |
-| `sub_1857160` | NVVMReflect | ~8 |
-| `sub_185D600` | IPConstantPropagation | 3 |
-| `sub_1869C50` | Sink (MemorySSA-based) | 3 |
-| `sub_18A3090` | NVVMPredicateOpt | 2 |
-| `sub_18A3430` | AggressiveInstCombine | 2 |
-| `sub_18B1DE0` | NVVMLoopOpt/BarrierOpt | 3 |
-| `sub_18B3080` | Sinking2Pass (fast-mode) | 1 |
-| `sub_18DEFF0` | DCE | 4 |
-| `sub_18E4A00` | NVVMBarrierAnalysis | 1 |
-| `sub_18EEA90` | CorrelatedValuePropagation | 3 |
-| `sub_18F5480` | DSE | 2 |
-| `sub_18FD350` | DeadArgElimination | 5 |
-| `sub_190BB10` | SimplifyCFG | 4 |
-| `sub_1922F90` | NVIDIA loop pass | 1 |
-| `sub_1952F90` | LoopIndexSplit | 3 |
-| `sub_195E880` | LICM | 4 |
-| `sub_1968390` | SROA | 2 |
-| `sub_196A2B0` | EarlyCSE | 2 |
-| `sub_197E720` | LoopUnroll/Vectorize | 1 |
-| `sub_198DF00` | LoopSimplify/IndVarSimplify | 3 |
-| `sub_198E2A0` | CorrelatedValuePropagation | 1 |
-| `sub_19401A0` | InstCombine | 2 |
-| `sub_19B73C0` | LoopUnswitch | 3 |
-| `sub_19C1680` | LoopUnroll | 2 |
-| `sub_19CE990` | NVIDIA pass (unknown) | 1 |
-| `sub_1A02540` | GenericToNVVM | 1 |
-| `sub_1A13320` | NVVMRematerialization | 3 |
-| `sub_1A223D0` | NVVMIRVerification | 5+ |
-| `sub_1A62BF0` | LLVM StandardPassPipeline | ~9 |
-| `sub_1A68E70` | LoopIdiomRecognize | 1 |
-| `sub_1A7A9F0` | InstructionSimplify | 3 |
-| `sub_1AAC510` | NVIDIA-specific pass | 1 |
-| `sub_1B26330` | MemCpyOpt | 4 |
-| `sub_1B7FDF0` | Reassociate/Sinking | 3 |
-| `sub_1BFB520` | TTIWrapperPass | 1 |
-| `sub_1C46000` | NVVMLateOpt | 1 |
-| `sub_1C4B6F0` | Inliner/AlwaysInline | 2 |
-| `sub_1C6E560` | NewGVN/GVNHoist | 1 |
-| `sub_1C6E800` | GVN | 2 |
-| `sub_1C6FCA0` | ADCE (AggressiveDCE) | 2 |
-| `sub_1C76260` | ADCE variant | 2 |
-| `sub_1C7F370` | NVVMWarpShuffle | 1 |
-| `sub_1C8A4D0` | EarlyCSE/GVN variant | 3 |
-| `sub_1C8E680` | MemorySpaceOpt | 4 |
-| `sub_1C98160` | NVVMLowerBarriers | 4 |
-| `sub_1C98270` | NVVMLowerBarriers variant | 1 |
-| `sub_1CB0F50` | ProfileSummaryInfo | 1 |
-| `sub_1CB4E40` | NVVMIntrinsicLowering | ~10 |
-| `sub_1CB73C0` | NVVMBranchDist | 3 |
-| `sub_1CBC480` | NVVMLowerAlloca | 1 |
-| `sub_1CC3990` | NVVMUnreachableBlockElim | 1 |
-| `sub_1CC5E00` | NVVMReduction | 1 |
-| `sub_1CC60B0` | NVVMSinking2 | 3 |
-| `sub_1CC71E0` | NVVMGenericAddrOpt | 1 |
-| `sub_1CEBD10` | NVVMFinalLowering | 1 |
-| `sub_1CEF8F0` | NVVMPeephole | 2 |
-| `sub_215D9D0` | NVVMAnnotationsProcessor | 2 |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| NVVMVerifier | `sub_12D4560` | many (tiers) | many (tiers) |
+| AssumptionCacheTracker | `sub_1361950` | 1 | 1 |
+| TargetLibraryInfoWrapperPass | `sub_149CCE0` | 1 | 1 |
+| VerifierPass/BasicAA | `sub_14A7550` | 1 | 1 |
+| BreakCriticalEdges | `sub_1654860` | 2 | 2 |
+| PrintModulePass (debug dump) | `sub_17060B0` | ~30+ | ~30+ |
+| InstructionCombining | `sub_1832270` | 2 | 2 |
+| TailCallElim/JumpThreading | `sub_1833EB0` | 3 | 3 |
+| FunctionAttrs | `sub_1841180` | 3 | 3 |
+| SCCP | `sub_1842BC0` | 2 | 2 |
+| NVVMReflect | `sub_1857160` | ~8 | ~8 |
+| IPConstantPropagation | `sub_185D600` | 3 | 3 |
+| Sink (MemorySSA-based) | `sub_1869C50` | 3 | 3 |
+| NVVMPredicateOpt | `sub_18A3090` | 2 | 2 |
+| AggressiveInstCombine | `sub_18A3430` | 2 | 2 |
+| NVVMLoopOpt/BarrierOpt | `sub_18B1DE0` | 3 | 3 |
+| Sinking2Pass (fast-mode) | `sub_18B3080` | 1 | 1 |
+| DCE | `sub_18DEFF0` | 4 | 4 |
+| NVVMBarrierAnalysis | `sub_18E4A00` | 1 | 1 |
+| CorrelatedValuePropagation | `sub_18EEA90` | 3 | 3 |
+| DSE | `sub_18F5480` | 2 | 2 |
+| DeadArgElimination | `sub_18FD350` | 5 | 5 |
+| SimplifyCFG | `sub_190BB10` | 4 | 4 |
+| NVIDIA loop pass | `sub_1922F90` | 1 | 1 |
+| LoopIndexSplit | `sub_1952F90` | 3 | 3 |
+| LICM | `sub_195E880` | 4 | 4 |
+| SROA | `sub_1968390` | 2 | 2 |
+| EarlyCSE | `sub_196A2B0` | 2 | 2 |
+| LoopUnroll/Vectorize | `sub_197E720` | 1 | 1 |
+| LoopSimplify/IndVarSimplify | `sub_198DF00` | 3 | 3 |
+| CorrelatedValuePropagation | `sub_198E2A0` | 1 | 1 |
+| InstCombine | `sub_19401A0` | 2 | 2 |
+| LoopUnswitch | `sub_19B73C0` | 3 | 3 |
+| LoopUnroll | `sub_19C1680` | 2 | 2 |
+| NVIDIA pass (unknown) | `sub_19CE990` | 1 | 1 |
+| GenericToNVVM | `sub_1A02540` | 1 | 1 |
+| NVVMRematerialization | `sub_1A13320` | 3 | 3 |
+| NVVMIRVerification | `sub_1A223D0` | 5+ | 5+ |
+| LLVM StandardPassPipeline | `sub_1A62BF0` | ~9 | ~9 |
+| LoopIdiomRecognize | `sub_1A68E70` | 1 | 1 |
+| InstructionSimplify | `sub_1A7A9F0` | 3 | 3 |
+| NVIDIA-specific pass | `sub_1AAC510` | 1 | 1 |
+| MemCpyOpt | `sub_1B26330` | 4 | 4 |
+| Reassociate/Sinking | `sub_1B7FDF0` | 3 | 3 |
+| TTIWrapperPass | `sub_1BFB520` | 1 | 1 |
+| NVVMLateOpt | `sub_1C46000` | 1 | 1 |
+| Inliner/AlwaysInline | `sub_1C4B6F0` | 2 | 2 |
+| NewGVN/GVNHoist | `sub_1C6E560` | 1 | 1 |
+| GVN | `sub_1C6E800` | 2 | 2 |
+| ADCE (AggressiveDCE) | `sub_1C6FCA0` | 2 | 2 |
+| ADCE variant | `sub_1C76260` | 2 | 2 |
+| NVVMWarpShuffle | `sub_1C7F370` | 1 | 1 |
+| EarlyCSE/GVN variant | `sub_1C8A4D0` | 3 | 3 |
+| MemorySpaceOpt | `sub_1C8E680` | 4 | 4 |
+| NVVMLowerBarriers | `sub_1C98160` | 4 | 4 |
+| NVVMLowerBarriers variant | `sub_1C98270` | 1 | 1 |
+| ProfileSummaryInfo | `sub_1CB0F50` | 1 | 1 |
+| NVVMIntrinsicLowering | `sub_1CB4E40` | ~10 | ~10 |
+| NVVMBranchDist | `sub_1CB73C0` | 3 | 3 |
+| NVVMLowerAlloca | `sub_1CBC480` | 1 | 1 |
+| NVVMUnreachableBlockElim | `sub_1CC3990` | 1 | 1 |
+| NVVMReduction | `sub_1CC5E00` | 1 | 1 |
+| NVVMSinking2 | `sub_1CC60B0` | 3 | 3 |
+| NVVMGenericAddrOpt | `sub_1CC71E0` | 1 | 1 |
+| NVVMFinalLowering | `sub_1CEBD10` | 1 | 1 |
+| NVVMPeephole | `sub_1CEF8F0` | 2 | 2 |
+| NVVMAnnotationsProcessor | `sub_215D9D0` | 2 | 2 |
 
 Total unique pass factories: ~65.
 

@@ -6,6 +6,18 @@
 
 CICC v13.0 ships two GVN implementations: the classic GVN pass at `0x1900BB0` (83 KB, ~2314 decompiled lines) and a NewGVN pass at `0x19F99A0` (68 KB, ~2460 decompiled lines). Both are derived from upstream LLVM but carry substantial NVIDIA modifications for GPU-specific value numbering, store splitting, and intrinsic-aware CSE. The knob constructor at `ctor_201` (`0x4E0990`) registers eleven tunables that control PRE, store splitting, PHI removal, dominator caching, and recursion depth.
 
+## Key Facts
+
+| Property | Value |
+|---|---|
+| Pass name (pipeline) | `gvn` (parameterized) |
+| Registration | New PM #397, parameterized: `no-pre;pre;no-load-pre;load-pre;...` |
+| Runtime positions | Tier 0 #5 (via `sub_1C6E800`); also appears at NewGVN/GVNHoist position #6; see [Pipeline](pipeline.md) |
+| Classic GVN entry | `sub_1900BB0` (83 KB, 2,314 lines) |
+| NewGVN entry | `sub_19F99A0` (68 KB, 2,460 lines) |
+| Knob constructor | `ctor_201` at `0x4E0990` |
+| Upstream source | `llvm/lib/Transforms/Scalar/GVN.cpp`, `NewGVN.cpp` (LLVM 20.0.0) |
+
 ## Knob Inventory
 
 Knobs are registered in `ctor_201` at `0x4E0990`. Bool knobs use `cl::opt<bool>` (vtable `0x49EEC70`); int knobs use `cl::opt<int>` (vtable `0x49EEB70`). The store-split limit knobs route through a custom NVIDIA registrar at `sub_190BE40` that accepts an `int**` default initializer.
@@ -370,6 +382,44 @@ GVN is a core mid-pipeline pass that runs at O1 and above. It appears multiple t
 | **Diagnostic framework** | Standard `OptimizationRemark` system | `profusegvn` knob (default true) uses NVIDIA's custom profuse diagnostic framework, not LLVM's `ORE` |
 | **NewGVN** | Standard partition-based NewGVN | Same algorithm, ships alongside classic GVN at separate address; both carry NVIDIA modifications |
 
+## Diagnostic Strings
+
+All diagnostic strings recovered from the binary. GVN uses NVIDIA's custom profuse diagnostic framework rather than LLVM's `OptimizationRemark` system.
+
+| String | Source | Category | Trigger |
+|--------|--------|----------|---------|
+| `"profuse for GVN"` | `0x4FAE7E0` (`profusegvn` knob description) | Knob | Knob registration |
+| `"enable caching of dom tree nodes"` | `0x4FAE700` (`gvn-dom-cache` knob description) | Knob | Knob registration |
+| `"Max recurse depth (default = 1000)"` | `0x4FAE620` (`max-recurse-depth` knob description) | Knob | Knob registration |
+| (profuse GVN diagnostic output) | `sub_1909530` (~5 KB) | Debug | `profusegvn` knob enabled (default true); emits at value replacement, store/load match, and PRE insertion decisions |
+| (PHI removal diagnostic output) | `sub_19003A0` region | Debug | `dump-phi-remove` > 0; dumps which PHI nodes are being removed and why |
+
+The `profusegvn` framework follows the same pattern as `profuseinline` -- it is a custom NVIDIA diagnostic channel likely controlled by environment variables such as `CICC_PROFUSE_DIAGNOSTICS`, not the standard LLVM `OptimizationRemark` / `ORE` system. The `dump-phi-remove` knob (default 0) separately enables diagnostic output during PHI removal.
+
 ## Allocation Strategy
 
 The 136-byte domtree nodes and 48-byte expression entries use `sub_145CBF0` (`BumpPtrAllocator`) and `sub_22077B0` (malloc wrapper). This careful memory management addresses the potentially large number of expressions produced by heavily unrolled GPU kernels.
+
+## Test This
+
+The following kernel contains redundant loads from the same global address. GVN should eliminate the second load by recognizing it has the same value number as the first.
+
+```cuda
+__global__ void gvn_test(const float* __restrict__ in, float* __restrict__ out, int n) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= n) return;
+
+    float a = in[tid];        // first load
+    float b = a * 2.0f;
+    float c = in[tid];        // redundant -- same address, no intervening store
+    float d = c * 3.0f;
+
+    out[tid] = b + d;
+}
+```
+
+**What to look for in PTX:**
+- Only **one** `ld.global.f32` instruction for `in[tid]`, not two. GVN assigns the same value number to both loads (same pointer, no intervening aliasing store thanks to `__restrict__`) and replaces the second with the first's result.
+- The arithmetic should reduce to something equivalent to `in[tid] * 5.0f`. After GVN eliminates the redundant load, InstCombine or the backend may simplify `a*2 + a*3` into `a*5`.
+- Remove `__restrict__` and add an intervening store (`out[tid] = b;` between the two loads). Without `__restrict__`, GVN cannot prove the second load is redundant (the store to `out` might alias `in`), so both `ld.global.f32` instructions survive. This demonstrates how alias analysis feeds GVN.
+- For store-to-load forwarding: insert `out[tid] = 42.0f;` followed by `float e = out[tid];`. GVN should replace the load with the constant `42.0f` -- no `ld.global` emitted for `e`.
