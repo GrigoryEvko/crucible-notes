@@ -165,49 +165,216 @@ The NVPTX printer at `sub_35F3330` emits WGMMA operand modifiers encoded in bitf
 
 ## TMA — Tensor Memory Access
 
-TMA provides hardware-accelerated bulk data movement between global and shared memory. The intrinsic dispatcher at `sub_A8E250` recognizes the following TMA operations:
+TMA provides hardware-accelerated bulk data movement between global and shared memory, driven by a tensor map descriptor that encodes the multi-dimensional layout. Three independent subsystems in cicc cooperate to implement TMA: the intrinsic name parser (`sub_A8E250`), the SelectionDAG lowering handler (`sub_33AD3D0`), and the NVPTX ISel pattern matcher for `CpAsyncBulkTensor` (`sub_36EC510`).
 
-### Global-to-Shared Tile Copy
+### TMA Descriptor Format (NVVM Container Tag 401)
+
+The host-side tensor map descriptor is embedded in the NVVM container under tag 401. The tag is conditional on `ExtOpt.Field344` (tag 301) having value 1, which identifies the Hopper TMA path. (Blackwell uses tag 402 for TCGen05Config instead, gated by `Field344==4`; the two are mutually exclusive.)
+
+| Component | Size | Description |
+|---|---|---|
+| Fixed header | 44 bytes | Tensor map metadata (dimensions, strides, element type, interleave, swizzle, fill, OOB policy) |
+| Per-descriptor entry | 16 bytes each | One entry per `cp.async.bulk.tensor` call site in the kernel |
+| Total struct at offset 408 | 44 + 16*N bytes | N = number of distinct TMA operations |
+
+The compiler serializes this into the NVVM container (`sub_CDD2D0`) so ptxas can validate shared memory allocation sizes and descriptor compatibility at link time.
+
+### TMA Descriptor ABI in Kernel Parameters
+
+The EDG frontend detects TMA descriptor parameters during kernel registration stub generation. The detection function `sub_8D4C10` (`edg::get_tma_descriptor_flags`) checks:
+
+```
+if (unk_4F068E0
+    && arch > 0x9EFB
+    && type_is_struct_or_class(type)
+    && (*(type+140) & ~4) == 8
+    && get_tma_descriptor_flags(type) & 4):
+  insert copy_node(sub_7E7ED0, calling_convention=7)
+  byte_at(node+88) |= 4   // TMA descriptor flag
+```
+
+This gives TMA descriptors a distinct ABI: calling convention 7 with flag bit 4, separate from normal struct-by-value passing. The copy node ensures the descriptor is materialized at the correct address space boundary before kernel launch.
+
+### TMA Intrinsic Name Parsing (sub_A8E250)
+
+The intrinsic dispatcher `sub_A8E250` (52 KB) matches TMA intrinsic names via string comparison and assigns internal opcode IDs. Two families exist:
+
+**Tensor-structured copies** (require a tensor map descriptor):
 
 | Intrinsic Pattern | Dimensions | Opcode |
 |---|---|---|
-| `cp.async.bulk.tensor.g2s.tile.{1d..5d}` | 1D–5D | 9222–9226 |
-| `cp.async.bulk.tensor.g2s.im2col.{3d..5d}` | 3D–5D | 9213–9215 |
+| `cp.async.bulk.tensor.g2s.tile.1d` | 1D | 9222 |
+| `cp.async.bulk.tensor.g2s.tile.2d` | 2D | 9223 |
+| `cp.async.bulk.tensor.g2s.tile.3d` | 3D | 9224 |
+| `cp.async.bulk.tensor.g2s.tile.4d` | 4D | 9225 |
+| `cp.async.bulk.tensor.g2s.tile.5d` | 5D | 9226 |
+| `cp.async.bulk.tensor.g2s.im2col.3d` | 3D | 9213 |
+| `cp.async.bulk.tensor.g2s.im2col.4d` | 4D | 9214 |
+| `cp.async.bulk.tensor.g2s.im2col.5d` | 5D | 9215 |
+| `cp.async.bulk.tensor.gmem.to.smem.1d` | 1D | 8324 |
+| `cp.async.bulk.tensor.gmem.to.smem.2d` | 2D | 8325 |
+| `cp.async.bulk.tensor.gmem.to.smem.3d` | 3D | 8326 |
+| `cp.async.bulk.tensor.gmem.to.smem.4d` | 4D | 8327 |
+| `cp.async.bulk.tensor.gmem.to.smem.5d` | 5D | 8328 |
+| `cp.async.bulk.tensor.gmem.to.smem.im2col.w.3d` | 3D | 8329 |
+| `cp.async.bulk.tensor.gmem.to.smem.im2col.w.4d` | 4D | 8330 |
+| `cp.async.bulk.tensor.gmem.to.smem.im2col.w.5d` | 5D | 8331 |
 
-### Bulk Memory Transfers
+**Unstructured bulk copies** (byte-level, no tensor map descriptor):
 
 | Intrinsic Pattern | Opcode |
 |---|---|
-| `cp.async.bulk.gmem.to.dsmem` | 8316 |
 | `cp.async.bulk.global.to.shared.cluster` | 8315 |
-| `cp.async.bulk.tensor.gmem.to.smem.{1d..5d}` | 8324–8328 |
-| `cp.async.bulk.tensor.gmem.to.smem.im2col.w.{3d..5d}` | 8329–8331 |
+| `cp.async.bulk.gmem.to.dsmem` | 8316 |
+
+**Fragment-indexed TMA** (from builtin IDs 411/412 via `sub_9483E0`):
+
+| LLVM Intrinsic | Base Opcode | Index Range |
+|---|---|---|
+| `llvm.nvvm.tma.load` | 9233 | 9227–9232 (6 entries, indexed by fragment count) |
+| `llvm.nvvm.tma.store` | 9257 | (corresponding store entries) |
+
+### TMA SelectionDAG Lowering (sub_33AD3D0)
+
+The unified TMA handler `sub_33AD3D0` receives a `mode` argument from the main intrinsic lowering switch in `sub_33B0210`:
+
+| Case | Mode | Operation | Memory Direction |
+|---|---|---|---|
+| `0x179` | 2 | TMA load | global -> shared |
+| `0x17A` | 3 | TMA store | shared -> global |
+| `0x17B` | 5 | TMA prefetch | global (read-only) |
+| `0x17C` | 7 | TMA multicast load | global -> N shared (across cluster) |
+
+Related `cp.async` handlers in the same dispatch table:
+
+| Case | Handler | Operation |
+|---|---|---|
+| `0x175` | `sub_33AC2B0` | `cp.async` (non-TMA async copy) |
+| `0x176` | `sub_33AC130` | `cp.async.wait` |
+| `0x177` | `sub_33AB690` | `cp.async.bulk` (non-tensor bulk copy) |
+| `0x178` | `goto LABEL_32` | No-op — commit/barrier (scheduling fence only) |
+
+The `0x178` no-op is significant: it represents the `cp.async.bulk` commit/barrier intrinsic that exists purely for scheduling purposes. The compiler preserves it as a DAG ordering constraint even though it produces no data-flow SDNode.
+
+### CpAsyncBulkTensor G2S Lowering (sub_36EC510)
+
+The 27 KB function `sub_36EC510` (1185 lines) implements the complete `cp.async.bulk.tensor` global-to-shared lowering with full architecture gating and mode validation.
+
+**Architecture gates** (read from offset+340 of the subtarget object):
+
+| SM Value | Hex | Features Unlocked |
+|---|---|---|
+| >= 1000 | `0x3E8` | SM 90: tile mode (1D–5D), Im2Col mode (3D–5D) |
+| >= 1032 | `0x408` | SM 100: adds 2CTA mode, Im2Col_W, Im2Col_W128 |
+
+**Mode bit decoding** from operand `v11`:
+
+| Bits | Mask | Meaning |
+|---|---|---|
+| 2–4 | `v11 & 0x1C` | Im2Col variant: Im2Col, Im2Col_W, Im2Col_W128 |
+| 3–4 | `v11 & 0x18` | 2CTA mode flag |
+
+**Validation error strings** (emitted as fatal diagnostics):
+
+- *"NumDims should be at least 3 for Im2Col or Im2Col_W or Im2Col_W128 mode"* — Im2Col requires >= 3D tensors
+- *"Im2Col_W and Im2Col_W128 modes are not supported on this architecture."* — SM 90 does not support Im2Col_W/W128; requires SM 100+
+- *"2CTA Mode for CpAsyncBulkTensorG2S not supported on this architecture"* — 2CTA mode requires SM 100+
+
+### TMA Builtin Codegen (EDG -> LLVM IR)
+
+The EDG-to-LLVM builtin lowering handles TMA as builtin IDs 411 and 412 (hex `0x19B` / `0x19C`).
+
+**ID 411 (scatter/store path)** — `sub_12A7070` extracts TMA descriptor info, then an iterative loop builds a vector of per-element store nodes. The intrinsic table `0x107A`–`0x107F` (4218–4223) selects among 6 entries indexed by element count. Approximately 300 lines of handler code (lines 1256–1501 of `sub_12A71A0`).
+
+**ID 412 (gather/load path)** — Similar structure but for the load direction. Uses intrinsic table `0x1094`–`0x109A` (4244–4250). Includes bitcast insertion (opcode 47) for type mismatches between the descriptor element type and the destination register type. Approximately 450 lines (lines 1503–1713).
+
+Both paths use:
+- `sub_12AA280` — TMA descriptor builder (constructs the multi-operand struct from the builtin arguments)
+- `sub_12A9E60` — `extractvalue` emission (decomposes aggregate returns into individual registers)
+- `sub_39FAC40` — Fragment count computation (determines how many load/store fragments the TMA operation expands into)
+
+### TMA Scheduling Constraints
+
+TMA operations impose specific scheduling constraints visible in cicc's SelectionDAG construction:
+
+1. **Chain dependencies by mode.** Every TMA operation produces a memory chain in the SelectionDAG. The mode parameter determines the chain direction:
+
+   | Mode | Reads | Writes | Chain Effect |
+   |---|---|---|---|
+   | 2 (load) | global | shared | Load chain |
+   | 3 (store) | shared | global | Store chain |
+   | 5 (prefetch) | global | (none) | Load chain |
+   | 7 (multicast) | global | N x shared | Load chain |
+
+2. **Commit-as-fence.** Intrinsic ID `0x178` lowers to no-op (`goto LABEL_32`), functioning as a pure scheduling barrier. This prevents the DAG scheduler from reordering TMA operations past their commit point.
+
+3. **Async qualifier hierarchy.** The memory space qualifiers emitted by `sub_35F4B50` form an ordered fence hierarchy:
+
+   | Qualifier | Scope | Strength |
+   |---|---|---|
+   | `.async` | Unscoped | Weakest |
+   | `.async.global` | Global memory domain | |
+   | `.async.shared::cta` | CTA-local shared memory | |
+   | `.async.shared::cluster` | Cluster shared memory (DSMEM) | Strongest |
 
 ## Distributed Shared Memory
 
-Hopper's cluster architecture enables distributed shared memory (DSMEM) across CTAs in a cluster. The NVPTX backend emits the following memory space qualifiers:
+Hopper's cluster architecture enables distributed shared memory (DSMEM) across CTAs in a cluster. The NVPTX backend emits memory space qualifiers from two functions:
 
-| Qualifier | Source |
-|---|---|
-| `.shared::cluster` | `sub_35F4E30`, `sub_35F4080` |
-| `.async.shared::cluster` | `sub_35F4B50` |
-| `.multicast::cluster` | `sub_35F4E30` |
-| `.async.shared::cta` | `sub_35F4B50` |
-| `.async.global` | `sub_35F4B50` |
-| `.async` | `sub_35F4B50` |
-| `.alias` | `sub_35F4B50` |
+**`sub_35F4B50`** — Async memory space qualifier emission (switch on operand):
 
-These qualify `cp.async.bulk` and `mbarrier` operations for cluster-level distributed shared memory access.
+| Line | Qualifier | Semantic |
+|---|---|---|
+| 20 | `.async` | Base async qualifier (unscoped) |
+| 32 | `.async.global` | Async from global memory |
+| 45 | `.async.shared::cta` | Async to CTA-local shared memory |
+| 59 | `.async.shared::cluster` | Async to cluster distributed shared memory |
+| 73 | `.alias` | Aliased access modifier (permits overlapping accesses) |
 
-## Mbarrier Extensions
+**`sub_35F4E30`** — Commit modifier emission (switch on operand):
 
-Hopper extends the async barrier (mbarrier) mechanism with new modifiers emitted from `sub_35F4AD0` and `sub_35F4E30`:
+| Line | Qualifier | Semantic |
+|---|---|---|
+| 28 | `.cta_group::1` | CTA group 1 selection |
+| 38 | `.cta_group::2` | CTA group 2 selection |
+| 51 | `.mbarrier::arrive::one` | Single-thread mbarrier arrive |
+| 67 | `.shared::cluster` | Cluster shared memory scope |
+| 80 | `.multicast::cluster` | Multicast to all CTAs in cluster |
 
-- `.mbarrier_init` — Barrier initialization
-- `.mbarrier::arrive::one` — Single-thread arrive
-- `.cta_group::1` / `.cta_group::2` — CTA group selection
+**`sub_35F4080`** — Secondary `.shared::cluster` emission (line 68), used in non-commit contexts.
 
-These are used in conjunction with TMA operations for asynchronous data movement coordination.
+These qualifiers attach to `cp.async.bulk` and `mbarrier` instructions to specify the scope and direction of asynchronous data movement within the cluster.
+
+## Mbarrier Extensions — DMA Fence/Arrive/Wait
+
+Hopper extends the async barrier (mbarrier) mechanism to coordinate TMA data movement. The TMA DMA pipeline follows a three-phase synchronization protocol:
+
+### Phase 1: Initialization
+
+`.mbarrier_init` (emitted from `sub_35F4AD0`) initializes the async barrier with the expected transaction byte count. The `arrive_expect_tx` variant sets both the expected arrival count and the transaction byte count atomically.
+
+### Phase 2: Arrive (Producer Signals Completion)
+
+When a TMA operation completes, it signals the mbarrier:
+
+- `.mbarrier::arrive::one` (`sub_35F4E30` line 51) — single-thread arrive notification. The TMA hardware auto-arrives with the transferred byte count.
+- `.cta_group::1` / `.cta_group::2` (`sub_35F4E30` lines 28/38) — selects which CTA group the arrive targets, enabling pipelined producer-consumer patterns where two groups alternate roles.
+
+### Phase 3: Wait (Consumer Blocks)
+
+The consumer thread issues `mbarrier.try_wait` with a phase bit. The phase alternates each time the barrier completes a full cycle, enabling pipelined double-buffered access patterns. No additional cicc emission function is needed; the standard mbarrier wait path handles this.
+
+### WGMMA Fence/Commit/Wait (Distinct Pipeline)
+
+WGMMA has its own synchronization cycle, separate from TMA mbarriers:
+
+| Builtin | IDs | Handler | LLVM Intrinsic |
+|---|---|---|---|
+| `__wgmma_fence` | 745–750 | `sub_12B1C20` | 9062 (`wgmma.fence.aligned`, 3 type overloads) |
+| `__wgmma_commit_group` | (same range) | `sub_12B1C20` | (same dispatch) |
+| `__wgmma_wait_group` | (same range) | `sub_12B1C20` | (same dispatch) |
+
+WGMMA fences synchronize the tensor core accumulator pipeline; TMA mbarriers synchronize the DMA engine. A typical Hopper kernel pipelines both: TMA loads data into shared memory (mbarrier-synchronized), then WGMMA consumes the data from shared memory (fence-synchronized). The two synchronization domains must not be confused in a reimplementation.
 
 ## Feature Flag Configuration
 
@@ -237,6 +404,17 @@ The master feature configurator `sub_60E7C0` sets the following flags at the sm_
 | `0xFCDCB0` | `sub_FCDCB0` | setmaxnreg inline asm pattern matching |
 | `0x955A70` | `sub_955A70` | WGMMA lowering (M-dimension switch) |
 | `0x90AEE0` | `sub_90AEE0` | Builtin registration (WGMMA, cluster barriers/queries) |
-| `0xA8E250` | `sub_A8E250` | TMA intrinsic name parsing |
+| `0xA8E250` | `sub_A8E250` | TMA intrinsic name parsing (52 KB) |
+| `0x33AD3D0` | `sub_33AD3D0` | TMA SelectionDAG lowering handler (modes 2/3/5/7) |
+| `0x33AB690` | `sub_33AB690` | `cp.async.bulk` non-tensor handler |
+| `0x33AC2B0` | `sub_33AC2B0` | `cp.async` handler |
+| `0x33AC130` | `sub_33AC130` | `cp.async.wait` handler |
+| `0x36EC510` | `sub_36EC510` | CpAsyncBulkTensor G2S lowering (27 KB, 1185 lines) |
+| `0x9483E0` | `sub_9483E0` | TMA descriptor extraction |
+| `0x12AA280` | `sub_12AA280` | TMA descriptor builder (EDG -> LLVM IR) |
+| `0x12A7070` | `sub_12A7070` | TMA scatter/store builtin handler |
+| `0x8D4C10` | `sub_8D4C10` | `edg::get_tma_descriptor_flags` |
 | `0x35F4B50` | `sub_35F4B50` | DSMEM qualifier emission |
 | `0x35F4E30` | `sub_35F4E30` | Commit modifier emission (mbarrier, multicast) |
+| `0x35F4AD0` | `sub_35F4AD0` | `.mbarrier_init` emission |
+| `0x35F4080` | `sub_35F4080` | Secondary `.shared::cluster` emission |
