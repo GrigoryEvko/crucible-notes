@@ -1,24 +1,26 @@
 # Loop Strength Reduction (NVIDIA Custom LSR)
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 NVIDIA ships two entirely separate LSR implementations inside cicc v13.0. The first is upstream LLVM's `LoopStrengthReducePass` (approximately 200 helpers across `0x284F650`--`0x287C150`, compiled from `llvm/lib/Transforms/Scalar/LoopStrengthReduce.cpp`). The second is a custom 160KB formula solver (`sub_19A87A0`, 2688 decompiled lines) sitting at `0x199A`--`0x19BF`, wrapped by `NVLoopStrengthReduce` at `sub_19CE990`. Both are invoked through the `"loop-reduce"` pass name in the LLVM new pass manager pipeline, but NVIDIA's overlay replaces the formula generation and selection phases with GPU-aware logic while reusing LLVM's SCEV infrastructure, IV rewriting, and chain construction.
 
 This page documents the NVIDIA overlay -- the most GPU-specific LLVM pass in cicc. If you are reimplementing cicc's optimizer, this is the pass you cannot skip.
 
 ## Why NVIDIA Rebuilt LSR
 
-The root motivation is a single equation that does not exist on CPUs: **register count determines occupancy, and occupancy determines performance.**
+The root motivation is a single equation that does not exist on CPUs: **register count determines occupancy, and occupancy determines performance.** On a GPU, each additional register per thread can cross a discrete [occupancy cliff](../gpu-execution-model.md#occupancy-cliffs), dropping warp-level parallelism by an entire warp group -- see the [GPU Execution Model](../gpu-execution-model.md#register-pressure-and-occupancy) for the register budget and cliff table.
 
 On a CPU, LSR's primary concern is minimizing the number of live induction variables to reduce register pressure, with a secondary goal of producing address expressions that fold into hardware addressing modes. The cost model compares formulae by counting registers, base additions, immediate encoding costs, and setup instructions. This works because a CPU's register file is fixed (16 GPRs on x86-64) and the cost of spilling to cache is relatively uniform.
 
-On an NVIDIA GPU, the story is fundamentally different:
+On an NVIDIA GPU, four properties break this model:
 
-1. **Soft register limits.** Each SM has a fixed register file (65,536 32-bit registers on sm_70+), but those registers are partitioned across all resident threads. Using 32 registers per thread allows 2048 resident threads; using 64 registers per thread halves that to 1024. The relationship is not linear -- there are discrete occupancy cliffs where adding one more register to a kernel crosses a partition boundary and drops occupancy by a full warp group.
+1. **Discrete occupancy cliffs.** A formula that saves one instruction but adds one register might push the kernel past a cliff and lose 50% throughput. The cliff boundaries and their impact are documented in the [occupancy cliff table](../gpu-execution-model.md#occupancy-cliffs).
 
-2. **No equivalent of L1 spill cost.** When a GPU "spills," values go to local memory (DRAM), which is orders of magnitude slower than CPU L1 cache. A formula that saves one instruction but adds one register might push the kernel past an occupancy cliff and lose 50% throughput.
+2. **No equivalent of L1 spill cost.** When a GPU "spills," values go to [local memory](../gpu-execution-model.md#memory-hierarchy) (DRAM, 200-800 cycles), which is orders of magnitude slower than CPU L1 cache.
 
-3. **Address space semantics.** GPU memory is partitioned into address spaces with different widths and hardware addressing modes. Shared memory (`addrspace(3)`) uses 32-bit pointers with specialized `.shared::` load/store instructions. Generic pointers are 64-bit. Strength-reducing a 32-bit shared-memory pointer can produce 64-bit intermediate values that force truncation, defeating the optimization.
+3. **Address space semantics.** GPU memory is [partitioned into address spaces](../gpu-execution-model.md#address-space-semantics) with different widths and hardware addressing modes. Shared memory (`addrspace(3)`) uses 32-bit pointers with specialized `.shared::` load/store instructions. Generic pointers are 64-bit. Strength-reducing a 32-bit shared-memory pointer can produce 64-bit intermediate values that force truncation, defeating the optimization.
 
-4. **Typed registers.** PTX uses typed registers (`%r` for 32-bit, `%rd` for 64-bit, `%f` for float). A 64-bit induction variable costs two 32-bit register slots. On older architectures (sm_3x through sm_5x), 64-bit integer operations are emulated and expensive; on sm_70+, native 64-bit addressing makes them acceptable.
+4. **Typed registers.** PTX uses [typed virtual registers](../reference/register-classes.md) (`%r` for 32-bit, `%rd` for 64-bit, `%f` for float). A 64-bit induction variable costs two 32-bit register slots. On older architectures (sm_3x through sm_5x), 64-bit integer operations are emulated and expensive; on sm_70+, native 64-bit addressing makes them acceptable.
 
 LLVM's stock cost model knows none of this. It calls `TTI::isLSRCostLess` which compares an 8-field cost tuple (`{Insns, NumRegs, AddRecCost, NumIVMuls, NumBaseAdds, ImmCost, SetupCost, ScaleCost}`), but the NVPTX TTI implementation cannot express occupancy cliffs, address space constraints, or the sign-extension register savings that matter on GPU. NVIDIA's solution: replace the formula solver entirely, with 11 knobs for fine-grained control.
 
@@ -403,3 +405,15 @@ For reimplementation reference, the critical helpers and their roles:
 7. **The use-count bitmap has two representations.** Inline (when `value & 1`) and heap-allocated. The inline form is fast but limited to small register ID ranges. The heap form uses a `BitVector` with the size at `+16`. Both must be supported.
 
 8. **Phase ordering is strict.** The 7 phases must run in order. Later phases depend on candidates generated by earlier ones, and the hash tables in Phase 6 assume all candidates have been generated by Phases 1--5.
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **Formula solver** | Single LLVM `LoopStrengthReduce` with TTI-based cost model | Two implementations: stock LLVM LSR + custom 160 KB NVIDIA formula solver (`sub_19A87A0`, 2688 lines) that replaces formula generation/selection |
+| **Cost model** | 8-field cost tuple (`{Insns, NumRegs, AddRecCost, ...}`), no occupancy concept | Occupancy-aware cost: register count evaluated against discrete warp occupancy cliffs where +1 register can halve throughput |
+| **Address space awareness** | No address space semantics in formula selection | Address space tagging (`sub_19932F0`) ensures formulae preserve shared memory (addrspace 3) 32-bit pointer width; prevents strength-reducing 32-bit pointers into 64-bit generic form |
+| **Knob count** | ~5 knobs for cost tuning | 11 knobs for fine-grained GPU-specific control (`lsr-no-ptr-address-space3`, stride limits, formula depth, etc.) |
+| **Algorithm structure** | Monolithic formula generator + greedy selector | 7-phase formula solver pipeline: candidate generation, stride-based filtering, use-group analysis, formula selection, commit, rewrite |
+| **State object** | Modest state for formula tracking | 32,160-byte state object with embedded register pressure tracker, formula hash table, and per-use-group formula arrays |
+| **Typed register cost** | All registers weigh the same | 64-bit IVs cost two 32-bit register slots; emulated on sm_3x--5x; native on sm_70+ but still double the pressure |

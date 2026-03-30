@@ -1,5 +1,7 @@
 # Tensor Core / MMA Code Generation
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 CICC v13.0 contains a complete tensor core code generation pipeline spanning five SM generations (Volta through Blackwell), three distinct MMA instruction families (HMMA/IMMA/BMMA), the SM 90 Warp Group MMA (WGMMA) system, and the SM 100 Tensor Core Generation 5 (tcgen05) engine. The pipeline transforms NVVM intrinsic calls through two parallel lowering paths -- one in the NVVM IR lowering layer (`sub_955A70`) and one in the SelectionDAG backend (`sub_33B0210`) -- before reaching a common PTX instruction emission layer that constructs MMA instructions from packed 64-bit descriptors encoding shape, type, layout, rounding, and saturation.
 
 This page documents the code generation mechanics: how MMA operations flow from source-level `__hmma_*` / `__wmma_*` / `__wgmma_*` builtins through LLVM intrinsic selection, SelectionDAG lowering, and PTX string emission. For the builtin-to-intrinsic mapping and per-ID reference, see [Tensor / MMA Builtins](../builtins/tensor-mma.md). For the SelectionDAG infrastructure that hosts this lowering, see [SelectionDAG](selectiondag.md).

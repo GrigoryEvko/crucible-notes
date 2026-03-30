@@ -1,5 +1,7 @@
 # LiveRangeCalc
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 LiveRangeCalc is the low-level engine inside LLVM's CodeGen that turns def/use information into live intervals -- contiguous `[SlotIndex, SlotIndex)` segments describing when each virtual register holds a value. It sits between the `SlotIndexes` numbering pass and the `LiveIntervals` analysis, performing the actual iterative dataflow computation that propagates liveness backward through the CFG and inserts PHI-def value numbers at merge points. In CICC v13.0 the implementation at `sub_2FC4FC0` is structurally based on upstream LLVM's `LiveRangeCalc::extend` / `calculateValues` but carries several NVIDIA-specific modifications: a dual-bitvector tracking scheme that separates general-purpose and predicate register liveness, a small-function bypass that skips the full dataflow for trivial kernels, and an enlarged per-segment structure (296 bytes) that inlines four separate SmallVector buffers to avoid heap allocations on the hot path.
 
 | | |
@@ -272,13 +274,7 @@ The boundary mask is critical for correctness: without it, garbage bits in the p
 
 #### Hash table for segment lookup
 
-The segment hash table (`sub_2FC0880`) uses open-addressing with linear probing:
-
-- **Hash function:** `h(key) = ((key >> 4) ^ (key >> 9)) & (capacity - 1)`
-- **Capacity** is always a power of two. Growth uses the bit-smearing idiom to round up to the next power of two: `x |= x>>1; x |= x>>2; x |= x>>4; x |= x>>8; x |= x>>16; x += 1`.
-- **Load factor:** Rehash is triggered when the occupancy exceeds approximately 75% (the standard LLVM DenseMap threshold: `4 * (count + 1) >= 3 * capacity`).
-- **Entry stride:** `0x128` (296 bytes), matching the full segment structure size.
-- **Sentinels:** Empty = `0xFFFFFFFFFFFFF000`, Tombstone = `0xFFFFFFFFFFFFE000` (standard LLVM `DenseMap<SlotIndex, ...>` sentinels).
+The segment hash table (`sub_2FC0880`) uses the standard DenseMap infrastructure with LLVM-layer sentinels (-4096 / -8192) and an entry stride of `0x128` (296 bytes), matching the full segment structure size. See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function, probing, and growth policy.
 
 During the dataflow iteration, each block requires two hash lookups per killed register (one for the block entry, one for each killed register's entry), so the total hash table traffic per iteration is `O(N * K_max)` where `K_max` is the maximum kill-set size across all blocks. Since NVPTX virtual register counts are typically in the hundreds (bounded by `-maxreg`, default 70), the hash table remains small and cache-friendly.
 

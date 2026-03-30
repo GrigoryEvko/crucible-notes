@@ -378,7 +378,7 @@ This is a key difference from stock LLVM `SinkingPass`, which requires `MemorySS
 
 ## GPU-Specific Motivation
 
-Register pressure is the dominant performance constraint on NVIDIA GPUs. Each SM has a fixed register file (e.g., 65,536 registers on SM 8.x) shared among all active warps. Every register consumed by a warp reduces the number of warps that can be resident, directly reducing occupancy and the GPU's ability to hide memory latency through warp switching.
+Register pressure directly determines [occupancy](../gpu-execution-model.md#register-pressure-and-occupancy) -- each additional live register per thread reduces the number of warps available for latency hiding, with discrete cliff boundaries where a single register can drop an entire warp group.
 
 Sinking instructions closer to their uses shortens live ranges and reduces the peak number of simultaneously live registers. This is especially valuable for texture load sequences, which typically involve address computation (GEP chains, index arithmetic) that produces values consumed only at the texture fetch site. Without sinking, these intermediate values occupy registers across potentially many instructions, bloating register pressure unnecessarily.
 

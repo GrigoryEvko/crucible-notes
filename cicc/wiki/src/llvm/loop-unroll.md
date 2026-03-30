@@ -1,5 +1,7 @@
 # Loop Unrolling
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 Loop unrolling in cicc is one of the most heavily tuned transformations in the entire pipeline. On a GPU, unrolling directly trades register pressure against instruction-level parallelism: every additional copy of the loop body increases live register count, which reduces SM occupancy and the number of concurrent warps available to hide memory latency. Conversely, too little unrolling leaves performance on the table by failing to expose independent instructions that the hardware scheduler can overlap. NVIDIA's unroller resolves this tension through a priority-based decision cascade with GPU-specific heuristics that have no upstream equivalent -- most notably a local-array threshold multiplier, power-of-two factor enforcement, and a pragma threshold 200x larger than stock LLVM. The transformation engine itself is a lightly modified version of upstream `llvm::UnrollLoop`, but the decision engine (`computeUnrollCount`) is substantially reworked.
 
 The pass appears twice in the cicc pipeline. The first invocation (`sub_197E720`) runs early, interleaved with loop vectorization in the main optimization sequence. The second invocation (`sub_19C1680`) runs later as a cleanup pass, gated by `opts[1360]` (the `nv-disable-loop-unrolling` flag). Both share the same decision engine; the second invocation operates on loops that were created or exposed by intervening passes (InstCombine, SROA, EarlyCSE).
@@ -18,11 +20,11 @@ The pass appears twice in the cicc pipeline. The first invocation (`sub_197E720`
 
 ## Why Unrolling Matters More on GPU
 
-On a CPU, the primary benefit of unrolling is reducing branch overhead and enabling wider SIMD scheduling. On a GPU, the calculus is different in three ways.
+On a CPU, the primary benefit of unrolling is reducing branch overhead and enabling wider SIMD scheduling. On a GPU, the calculus is different in three ways that all trace back to the [GPU execution model](../gpu-execution-model.md):
 
-First, GPUs have massive register files partitioned across warps. An SM on Blackwell (sm\_100) provides 65536 32-bit registers shared among all resident warps. If a kernel uses 64 registers per thread, the SM can host `65536 / (64 * 32) = 32` warps. If unrolling increases register usage to 96, the maximum drops to `65536 / (96 * 32) = 21` warps -- a 34% occupancy reduction. The hardware scheduler relies on warp-level multithreading to hide memory latency (typically 200-400 cycles for global memory), so fewer warps means more stalls. This is why cicc's unroll factor selection must be conservative in ways that a CPU unroller never needs to be.
+First, unrolling increases register pressure, and register pressure determines [occupancy](../gpu-execution-model.md#register-pressure-and-occupancy). If unrolling pushes a kernel from 64 to 96 registers per thread, the SM drops from 32 to 21 resident warps -- a 34% reduction. Fewer warps means less [latency hiding](../gpu-execution-model.md#no-out-of-order-execution), so the unroll factor selection must be conservative in ways that a CPU unroller never needs to be.
 
-Second, GPU instruction scheduling is fundamentally different. There is no out-of-order execution within a warp; the hardware issues instructions in program order. Unrolling creates independent instructions that the compiler (ptxas) can interleave, particularly independent loads that can overlap with arithmetic. This is the ILP benefit, and it is the primary argument *for* aggressive unrolling.
+Second, there is [no out-of-order execution](../gpu-execution-model.md#no-out-of-order-execution) within a warp; the hardware issues instructions in program order. Unrolling creates independent instructions that the compiler (ptxas) can interleave, particularly independent loads that can overlap with arithmetic. This is the ILP benefit, and it is the primary argument *for* aggressive unrolling.
 
 Third, GPU loops often access shared memory (`__shared__`) or local memory arrays indexed by `threadIdx`. Unrolling these loops enables the backend to promote array elements to registers and to rearrange memory accesses to avoid bank conflicts. NVIDIA's local-array heuristic (see below) exists specifically to exploit this opportunity.
 
@@ -516,6 +518,18 @@ The primary analysis function `sub_19B7FA0` (11 KB) analyzes each candidate loop
 
 All hash tables use the same `(value >> 9) ^ (value >> 4)` hash function and linear probing strategy found throughout CICC's LLVM passes. See [Hash Infrastructure](../infra/hash-infrastructure.md) for the common implementation.
 
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **Pragma threshold** | `UnrollThreshold` default 150; pragma multiplier ~8x | Pragma threshold 200x larger than stock (`PragmaUnrollThreshold` = 30000); enables aggressive pragma-directed unrolling for GPU kernels |
+| **Power-of-two enforcement** | No power-of-two requirement; any profitable factor accepted | Enforces power-of-two unroll factors; non-power-of-two factors are rounded down to avoid irregular loop tails |
+| **Local array multiplier** | No concept of local array bonus | Dedicated local-array threshold multiplier boosts unroll budget when loop body accesses `alloca`/`.local` arrays indexed by IV, enabling register promotion |
+| **Decision engine** | ~20 KB `computeUnrollCount` | Substantially reworked 50 KB `computeUnrollCount` (`sub_19BB5C0`) with 6-level priority cascade and GPU-specific occupancy heuristics |
+| **Register pressure model** | Generic TTI-based unroll cost; no occupancy concept | Occupancy-aware cost model considers register pressure cliffs where one additional register per thread drops warp occupancy |
+| **Pipeline invocations** | Single invocation in optimization pipeline | Two invocations: early (interleaved with vectorization) and late (cleanup, gated by `opts[1360]` / `nv-disable-loop-unrolling`) |
+| **Transformation engine** | Stock `llvm::UnrollLoop` | Lightly modified `UnrollLoop` (`sub_2A15A20`, 85 KB); decision engine is where the changes concentrate |
 
 ## Cross-References
 

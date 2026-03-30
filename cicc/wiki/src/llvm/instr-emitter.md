@@ -1,5 +1,7 @@
 # InstrEmitter
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 InstrEmitter is the final translation layer between LLVM's SelectionDAG representation and the machine-level MachineInstr pipeline. After instruction selection has converted LLVM IR into a DAG of target-specific SDNodes, and after scheduling has linearized those nodes into a sequence, InstrEmitter walks the scheduled sequence and converts each SDNode into one or more MachineInstrs inserted into the current MachineBasicBlock. In CICC v13.0, the emitter lives at `sub_2EDDF20` (11,722 bytes) and is called by `ScheduleDAGSDNodes::EmitSchedule` (`sub_2EE0CF0`). NVIDIA's build contains three key modifications relative to upstream LLVM: a dedicated CopyToReg handler factored out for NVPTX's physical-register-heavy parameter ABI, a triple vtable dispatch pattern that gates custom pseudo-expansion for GPU-specific instructions, and an extended MachineInstr flag at bit 36 (`0x1000000000`) not present in stock LLVM.
 
 | | |
@@ -485,6 +487,17 @@ During the dead copy scan (Phase 12, offset `0x2EE08A0`--`0x2EE08BA`), the emitt
 | `sub_2E31DD0` | MI manipulation | Additional MI manipulation utility |
 | `sub_2E4EE60` | TRI utility | TargetRegisterInfo helper |
 | `sub_2E4F5F0` | NVPTXRegisterInfo | Register class query vtable method |
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **EmitNode structure** | Separate `EmitNode` and `EmitSpecialNode` dispatchers | Merged into single monolithic function (`sub_2EDDF20`, 11,722 bytes) with bit-table opcode classification |
+| **CopyToReg handling** | Inline within EmitSpecialNode | Factored out to dedicated handler (`sub_2ED95B0`) for NVPTX's physical-register-heavy `.param` ABI |
+| **MachineInstr flags** | Standard flag bits (up to bit ~20) | Extended flag at bit 36 (`0x1000000000`) not present in stock LLVM; marks NVIDIA-specific instruction properties |
+| **Pseudo-expansion** | Single vtable dispatch for target pseudo-instructions | Triple vtable dispatch pattern gating custom expansion for GPU-specific pseudo-instructions |
+| **Dead node predicate** | Standard `isDeadNode` check | Custom `sub_2DADC00` predicate with NVPTX-specific liveness criteria |
+| **VReg hash table** | Standard `DenseMap` for value-to-VReg mapping | Custom hash with `key * 37` and 3/4 load factor rehash policy |
 
 ## Cross-References
 

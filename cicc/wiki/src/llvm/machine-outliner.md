@@ -348,6 +348,17 @@ The remark message format: `"Saved {N} bytes by outlining {M} instructions from 
 | `sub_214DA90` | -- | Kernel attribute emission (`.maxntid`, `.maxnreg`, `.minnctapersm`) |
 | `sub_215A3C0` | -- | PTX function header orchestrator (`.entry` / `.func` branch + params) |
 
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **Activation** | Default off for most targets; explicit `-enable-machine-outliner` required | Conditionally enabled via `TargetPassConfig::addMachineOutliner()`; evidence of "guaranteed beneficial" mode for NVPTX |
+| **Calling convention** | Uses target default CC for outlined functions | Assigns CC 95 to outlined functions -- a dedicated NVPTX convention that bypasses `.param`-space ABI overhead |
+| **Kernel interaction** | No kernel concept; all functions treated equally | `isKernel(func)` check (`sub_CE9220`) for CC 0x47 / `nvvm.kernel` metadata; kernel attributes (`.maxntid`, `.maxnreg`, `.minnctapersm`) may constrain outlining profitability |
+| **`nooutline` attribute** | Standard function attribute check | Same check (`sub_B2D620` / `hasAttribute("nooutline")`); kernels with tight `__launch_bounds__` may implicitly disable outlining |
+| **Code size motivation** | Reduce instruction cache footprint and binary size | Primary motivation is L0/L1i instruction cache pressure per SM partition; every surviving PTX instruction also costs `ptxas` compilation time |
+| **Suffix tree/array** | Standard suffix array construction | Same algorithm; parallel merge sort (`sub_3534120`) with fallback insertion sort for <= 14 elements |
+
 ## Cross-References
 
 - [Inliner Cost Model](../lto/inliner-cost.md) -- the opposing force: inlining decisions that the outliner may partially reverse

@@ -1,5 +1,7 @@
 # CodeGenPrepare and SCEV-CGP
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 cicc v13.0 contains two distinct passes that prepare LLVM IR for the NVPTX backend's instruction selection. The first is upstream LLVM's `CodeGenPreparePass`, registered as `"codegenprepare"` in the New PM pipeline (line 216 of `sub_2342890`), which sinks address computations, creates PHI nodes for sunk values, and splits critical edges. The second is NVIDIA's proprietary SCEV-CGP (Scalar-Evolution-based Code Generation Preparation), a fully custom pass that uses SCEV analysis to rewrite address expressions with GPU thread ID as an induction variable.
 
 Both passes operate at the LLVM IR level, immediately before SelectionDAG construction. They share the goal of making address expressions cheap for the backend to lower, but they work at different abstraction levels: CodeGenPrepare operates syntactically on individual memory instructions; SCEV-CGP operates semantically on entire address expression families using scalar evolution. NVIDIA disables SCEV-CGP by default (`nv-disable-scev-cgp` defaults to `true`), relying on upstream CodeGenPrepare plus the downstream [Base Address Strength Reduction](../passes/base-address-sr.md) and [Common Base Elimination](../passes/common-base-elim.md) passes to handle GPU address optimization.

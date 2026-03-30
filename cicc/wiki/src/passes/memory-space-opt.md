@@ -210,6 +210,105 @@ A parallel implementation exists at `sub_2CBBE90` / `sub_2CEAC10` / `sub_2CF2C20
 "Cannot to vector atomic on const memory"
 ```
 
+## Multi-Pass Data Flow: MemorySpaceOpt / IP-MSP / Alias Analysis
+
+The following diagram shows how three cooperating subsystems exchange data to resolve generic pointers into specific address spaces. The left column is MemorySpaceOpt (per-function), the center is IP-MSP (module-level), and the right is NVVM Alias Analysis (query service). Arrows show data produced (`-->`) and consumed (`<--`).
+
+```
+ MemorySpaceOpt (per-function)       IP-MSP (module-level)          NVVM Alias Analysis
+ ==============================      ==========================      ======================
+
+ 1. EARLY RUN (mode 0)
+ +----------------------------+
+ | Use-def chain walker       |
+ | (sub_1CA5350)              |
+ | Walk: GEP, bitcast, PHI,  |
+ | alloca, call returns       |
+ |                            |
+ | Produces:                  |
+ |  - per-arg bitmask         |
+ |    (0x01=global,0x02=shr,  |
+ |     0x04=const,0x08=local, |
+ |     0x10=param)            |
+ |  - unresolved arg list     |
+ +---+------------------------+
+     |                                                              +----------------------+
+     | per-arg bitmasks                                             | Address space         |
+     | (singleton bit = resolved,                                   | disjointness table:  |
+     |  multi-bit = ambiguous)                                      |                      |
+     v                                                              | AS 1 vs AS 3: NoAlias|
+ +---+------------------------+                                     | AS 1 vs AS 5: NoAlias|
+ | addrspacecast insertion    |                                     | AS 3 vs AS 5: NoAlias|
+ | (sub_1CA1B70)              |                                     | AS 0 vs any: MayAlias|
+ | Rewrites loads/stores to   |                                     | (stateless, trivial) |
+ | ld.shared / st.global etc. |                                     +----------+-----------+
+ +---+------------------------+                                                |
+     |                                                                         |
+     | Resolved pointer types on                                               |
+     | function args + return values                                           |
+     v                                                                         |
+ +---+-----------------------------+      +--------------------------+         |
+ | Unresolved args remain generic  | ---> | IP-MSP worklist driver   |         |
+ | Need cross-function evidence    |      | (sub_1C70910 / 2CBBE90)  |         |
+ +---+-----------------------------+      |                          |         |
+     ^                                    | For each function F:     |         |
+     |                                    |  1. Collect all callers  |         |
+     |                                    |  2. Intersect arg AS     |         |
+     |                                    |     across call sites    |         |
+     |                                    |  3. If unanimous:        |         |
+     |                                    |     specialize or clone  |         |
+     |  propagated arg spaces             |                          |         |
+     |  (from callers)                    | Produces:                |         |
+     +------------------------------------+  - cloned functions      |         |
+                                          |    with AS-specific args |         |
+                                          |  - updated call sites    |         |
+                                          |  - "changed in argument  |         |
+                                          |    memory space" events  |         |
+                                          +---+----------------------+         |
+                                              |                                |
+ 2. LATE RUN (mode 1)                         | Enriched module with           |
+ +----------------------------+               | resolved pointer types          |
+ | Hash-table resolver        |               v                                |
+ | (sub_1CA9E90)              | <--- cloned functions re-enter worklist        |
+ |                            |                                                |
+ | Additional capabilities:   |      Each resolved addrspacecast               |
+ |  - isspacep folding        |      feeds into...                             |
+ |    (builtins 0xFD0-0xFD5) |                                                |
+ |  - Dead cast elimination   |                                     +----------v-----------+
+ |                            |                                     | NVVM AA (nvptx-aa)   |
+ | Consumes:                  |                                     |                      |
+ |  - IP-MSP propagated       |                                     | With resolved AS on  |
+ |    address spaces          |                                     | pointers, queries    |
+ |  - hash table of known     |                                     | return NoAlias for   |
+ |    pointer->space mappings |                                     | cross-space pairs    |
+ +---+------------------------+                                     |                      |
+     |                                                              | Enables downstream:  |
+     | Fully resolved IR                                            |  - GVN load forward  |
+     | (minimal generic ptrs)                                       |  - DSE elimination   |
+     v                                                              |  - LICM hoisting     |
+ +---+------------------------+                                     |  - MemorySSA queries |
+ | Downstream consumers:      |                                     +----------------------+
+ |  - Instruction selection   |
+ |    (ld.shared, st.global)  |
+ |  - Backend PTX emission    |
+ |  - Register allocation     |
+ |    (no generic-ptr spills) |
+ +----------------------------+
+```
+
+**Data flow summary:**
+
+| Producer | Data | Consumer |
+|----------|------|----------|
+| MemorySpaceOpt phase 1 | Per-arg address space bitmask | IP-MSP worklist |
+| IP-MSP worklist | Cloned functions with specialized arg types | MemorySpaceOpt phase 2 |
+| IP-MSP worklist | Call-site rewriting (`addrspacecast` at boundaries) | All downstream passes |
+| MemorySpaceOpt phase 2 | `isspacep` folded to `true`/`false` | Dead code elimination |
+| Both phases | Resolved pointer address spaces on all IR values | NVVM AA (`nvptx-aa`) |
+| NVVM AA | `NoAlias` for cross-space pointer pairs | GVN, DSE, LICM, MemorySSA |
+
+The feedback loop between MemorySpaceOpt and IP-MSP is the critical insight: phase 1 resolves locally-obvious cases, IP-MSP propagates those resolutions across call boundaries (cloning when necessary), and phase 2 picks up the newly-available information to resolve cases that were previously ambiguous. The worklist iterates until no more argument spaces change, guaranteeing a fixed point. NVVM AA is the downstream beneficiary -- every resolved pointer pair that previously required a conservative `MayAlias` answer can now return `NoAlias`, enabling more aggressive optimization in GVN, DSE, LICM, and scheduling.
+
 ## Pipeline Interaction
 
 The pass runs at two points in the CICC pipeline: once early (first-time, mode 0) to resolve obvious cases before optimization, and again after inter-procedural propagation (second-time, mode 1) to catch cases that became resolvable after inlining and constant propagation. The no-warnings variants (modes 2/3) suppress repeated diagnostics on re-runs. The pass feeds directly into instruction selection, where resolved address spaces determine which PTX memory instructions are emitted. It also interacts with the `ipmsp` module pass, which drives the inter-procedural cloning engine separately from the per-function resolver.

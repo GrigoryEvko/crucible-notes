@@ -75,25 +75,25 @@ Items marked **★ NVIDIA** are NVIDIA-proprietary additions not present in upst
 
 ## Stage Overview
 
-**CodeGenPrepare** ([detail](../llvm/codegen-prepare.md)) sinks address computations close to their uses, creates PHI nodes for sunk values, and splits critical edges. NVIDIA's optional SCEV-CGP extension rewrites address expressions using scalar evolution (disabled by default via `nv-disable-scev-cgp`).
+**CodeGenPrepare** ([detail](../llvm/codegen-prepare.md)) -- last IR-level pass before ISel. Sinks address computations, creates PHI nodes for sunk values, and splits critical edges. NVIDIA adds an optional SCEV-CGP extension.
 
-**SelectionDAG Build** ([detail](../llvm/selectiondag.md)) converts LLVM IR into a target-independent DAG. The NVPTX backend intercepts this phase for `.param`-space argument passing (`sub_2072590`) and texture/surface handle lowering (`sub_2077400`). The `NVPTXTargetLowering` cluster at `0x330xxxx`–`0x33Bxxxx` (~2.3 MB) is the most NVIDIA-modified region in the binary.
+**SelectionDAG Build** ([detail](../llvm/selectiondag.md)) -- converts LLVM IR into a target-independent DAG. NVPTX intercepts for `.param`-space argument passing and texture/surface handle lowering.
 
-**Type Legalization** ([detail](../llvm/type-legalization.md)) rewrites every illegal type into legal equivalents via promote, expand, soften, or split-vector actions. Shipped as one 348KB function -- the largest in the SelectionDAG range.
+**Type Legalization** ([detail](../llvm/type-legalization.md)) -- rewrites every illegal type into legal equivalents via promote, expand, soften, or split-vector actions.
 
-**Operation Legalization** processes nodes whose opcodes are illegal for the target. Atomic operations receive NVIDIA-specific lowering ([atomics](../builtins/atomics.md)) with scope-aware instructions (CTA/GPU/SYS) and per-SM feature gates.
+**Operation Legalization** -- processes nodes whose opcodes are illegal for the target. [Atomic operations](../builtins/atomics.md) receive NVIDIA-specific scope-aware lowering (CTA/GPU/SYS) with per-SM feature gates.
 
-**DAG Combining** folds redundant operations, canonicalizes patterns, and reduces the DAG before instruction selection. The orchestrator (`sub_F681E0`, 65KB) iterates a worklist of SDNodes. The [KnownBits](../llvm/known-bits.md) analysis feeds into combining decisions.
+**DAG Combining** -- folds redundant operations, canonicalizes patterns, and reduces the DAG before instruction selection. The [KnownBits](../llvm/known-bits.md) analysis feeds into combining decisions.
 
-**Instruction Selection** ([detail](../llvm/isel-patterns.md)) matches DAG nodes against PTX instruction patterns via a three-level hierarchy: `Select` driver (91KB), hand-written NVPTX switch (309KB), and TableGen `SelectCode` (256KB). A compressed per-SM-variant legality table gates which target opcodes exist on which GPU architecture. The intrinsic lowering mega-switch (`sub_33B0210`, 343KB) handles 200+ CUDA intrinsics including [tensor core](../builtins/tensor-mma.md), [surface/texture](../builtins/surface-texture.md), and [warp](../builtins/warp.md) operations.
+**Instruction Selection** ([detail](../llvm/isel-patterns.md)) -- matches DAG nodes against PTX instruction patterns via a three-level dispatch hierarchy. A compressed per-SM-variant legality table gates which opcodes exist on which GPU architecture.
 
-**Instruction Scheduling** ([detail](../llvm/scheduling.md)) runs post-RA using `ScheduleDAGMILive` (64KB) and an optional software pipeliner (58KB). NVIDIA's custom [MRPA](../llvm/machine-passes.md) provides incremental register pressure tracking integrated with the scheduler.
+**Instruction Scheduling** ([detail](../llvm/scheduling.md)) -- post-RA scheduling plus an optional software pipeliner. NVIDIA's custom MRPA provides incremental register pressure tracking.
 
-**Register Allocation** ([detail](../llvm/register-allocation.md)) uses LLVM's greedy allocator adapted for PTX's virtual register model. The allocator is pressure-driven (bounded by `-maxreg`, default 70) rather than assignment-driven. [Register classes](../reference/register-classes.md) are typed: `Int1Regs`, `Int16Regs`, `Int32Regs`, `Int64Regs`, `Float32Regs`, `Float64Regs`. [Live range splitting](../llvm/live-range-calc.md) (`sub_2F2D9F0`, 93KB) and [rematerialization](../passes/rematerialization.md) reduce spill pressure.
+**Register Allocation** ([detail](../llvm/register-allocation.md)) -- pressure-driven greedy allocator adapted for PTX's virtual register model. Works with nine typed [register classes](../reference/register-classes.md); [live range splitting](../llvm/live-range-calc.md) and [rematerialization](../passes/rematerialization.md) reduce spill pressure.
 
-**Machine-Level Passes** ([detail](../llvm/machine-passes.md)) include NVIDIA-proprietary MRPA (register pressure analysis), block rematerialization (`nvptx-remat-block`), machine mem2reg (`nvptx-mem2reg`), LDG transform (`ldgxform`), vector splitting, RLMCAST, and texture group merge. These passes optimize register pressure, promote stack objects back to registers, and prepare clean PTX for `ptxas`.
+**Machine-Level Passes** ([detail](../llvm/machine-passes.md)) -- NVIDIA-proprietary and stock LLVM passes that optimize register pressure, promote stack objects back to registers, and prepare clean PTX for `ptxas`.
 
-**StructurizeCFG** ([detail](../llvm/structurizecfg.md)) is mandatory for NVPTX because PTX demands structured control flow. The 95KB pass (`sub_35CC920`) converts arbitrary CFGs into structured form, explicitly rejecting irreducible CFGs and EH funclets.
+**StructurizeCFG** ([detail](../llvm/structurizecfg.md)) -- mandatory pass that converts arbitrary CFGs into the structured form PTX requires, rejecting irreducible CFGs and EH funclets.
 
 ## Cross-References
 

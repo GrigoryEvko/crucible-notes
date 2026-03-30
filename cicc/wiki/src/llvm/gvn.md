@@ -1,5 +1,7 @@
 # GVN (Global Value Numbering)
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 CICC v13.0 ships two GVN implementations: the classic GVN pass at `0x1900BB0` (83 KB, ~2314 decompiled lines) and a NewGVN pass at `0x19F99A0` (68 KB, ~2460 decompiled lines). Both are derived from upstream LLVM but carry substantial NVIDIA modifications for GPU-specific value numbering, store splitting, and intrinsic-aware CSE. The knob constructor at `ctor_201` (`0x4E0990`) registers eleven tunables that control PRE, store splitting, PHI removal, dominator caching, and recursion depth.
 
 ## Knob Inventory
@@ -154,6 +156,168 @@ The `profusegvn` knob (default true) enables verbose output through NVIDIA's cus
 ## Expression Classification Bitmask
 
 The bitmask `0x1F133FFE23FFFF` classifies opcodes that are safe for value numbering (pure, side-effect-free). It appears eight times in the main function. Bit positions correspond to `(opcode - 35)`, covering standard arithmetic, logical, comparison, and cast operations, plus NVIDIA-specific opcodes in the extended range.
+
+## Multi-Pass Data Flow: SROA / InstCombine / GVN / DSE
+
+These four passes form the core scalar optimization chain in CICC's mid-pipeline. They execute in sequence (often multiple times through the pipeline), with each pass producing IR transformations that create opportunities for the next. The following diagram traces data flow through a single iteration of the chain, showing what each pass produces and what the next pass consumes.
+
+```
+ SROA (Scalar Replacement of Aggregates)
+ ========================================
+ Input:  IR with aggregate alloca instructions (structs, arrays)
+         Example: %s = alloca %struct.float4   -->  lives in .local memory (AS 5)
+
+ +--------------------------------------------------------------+
+ | Phase 1: Slice analysis                                      |
+ |   Walk all uses of each alloca, build byte-range slices      |
+ |   Group non-overlapping slices into partitions               |
+ |                                                              |
+ | Phase 2: Partition splitting                                 |
+ |   Replace each partition with a scalar alloca or SSA value   |
+ |   Insert extractvalue/insertvalue for partial accesses       |
+ |   Defer trivially-promotable allocas to mem2reg              |
+ |                                                              |
+ | Produces:                                                    |
+ |   - Scalar SSA values replacing aggregate members            |
+ |   - Inserted bitcasts, trunc, zext for type mismatches       |
+ |   - Dead aggregate allocas (erased)                          |
+ |   - GEP chains pointing at sub-fields (now redundant)        |
+ +------------------------------+-------------------------------+
+                                |
+                                | Scalar SSA values with redundant
+                                | casts, dead GEPs, identity ops
+                                v
+ InstCombine (Instruction Combining)
+ ========================================
+ Input:  Post-SROA IR with redundant instructions
+
+ +--------------------------------------------------------------+
+ | 405KB visitor dispatches across 80 opcode cases:             |
+ |                                                              |
+ | Consumes from SROA:                                          |
+ |   - Redundant bitcasts from type-punned accesses             |
+ |   - trunc(zext(x)) chains from width mismatches              |
+ |   - Dead GEP arithmetic (base + 0)                           |
+ |   - Identity selects from conditional stores                 |
+ |                                                              |
+ | Canonicalization:                                            |
+ |   - Constant folding (sub_101E960)                           |
+ |   - Algebraic identities: x+0, x*1, x&-1 (sub_F0F270)      |
+ |   - Strength reduction: x*2^n -> x<<n (sub_10BA120)         |
+ |   - Cast chain collapse: trunc(zext(x)) -> x or smaller     |
+ |   - NVIDIA intrinsic folding (sub_1169C30, 87KB)             |
+ |   - computeKnownBits propagation (sub_11A7600, 127KB)        |
+ |                                                              |
+ | Produces:                                                    |
+ |   - Canonical instruction forms (const on RHS, etc.)         |
+ |   - Simplified expressions (fewer instructions)              |
+ |   - Known-bits metadata on values                            |
+ |   - Opportunities for value numbering (same expression       |
+ |     in different blocks now looks identical)                  |
+ +------------------------------+-------------------------------+
+                                |
+                                | Canonical IR with duplicate
+                                | expressions across blocks
+                                v
+ GVN (Global Value Numbering)
+ ========================================
+ Input:  Canonicalized IR from InstCombine
+
+ +--------------------------------------------------------------+
+ | Traverses dominator tree in RPO with scoped hash tables:     |
+ |                                                              |
+ | Consumes from InstCombine:                                   |
+ |   - Canonical expression forms (enables hash-table matching) |
+ |   - Known-bits info (used in SimplifyInstruction)            |
+ |   - Folded NVIDIA intrinsics (enables ldu/ldg CSE)           |
+ |                                                              |
+ | Value numbering:                                             |
+ |   - Hash expression: (opcode, type, operands) -> leader      |
+ |   - Scoped tables: LeaderTable, StoreExprTable, LoadExprTable|
+ |   - NVIDIA ldu/ldg CSE (intrinsics 4057, 4085, 4492, 4503)  |
+ |                                                              |
+ | Load forwarding:                                             |
+ |   - Query MemoryDependenceResults for store->load forwarding |
+ |   - Store splitting: float4 store -> scalar float load       |
+ |     (NVIDIA extension, controlled by split-stores knob)      |
+ |                                                              |
+ | PRE (Partial Redundancy Elimination):                        |
+ |   - Insert computations at merge points to enable CSE        |
+ |   - Load PRE across edges (enable-load-pre)                  |
+ |                                                              |
+ | Consumes from alias analysis:                                |
+ |   - MemoryDependence results (which store feeds which load?) |
+ |   - NVVM AA NoAlias answers for cross-address-space pairs    |
+ |                                                              |
+ | Produces:                                                    |
+ |   - Eliminated redundant computations (replaced with leader) |
+ |   - Forwarded loads (replaced with stored value)             |
+ |   - Trivial PHIs (from leader substitution)                  |
+ |   - Dead stores exposed (stored value is never loaded)       |
+ +------------------------------+-------------------------------+
+                                |
+                                | IR with eliminated redundancies,
+                                | forwarded loads, exposed dead stores
+                                v
+ DSE (Dead Store Elimination)
+ ========================================
+ Input:  Post-GVN IR with dead stores exposed
+
+ +--------------------------------------------------------------+
+ | 91KB across three major functions:                           |
+ |                                                              |
+ | Consumes from GVN:                                           |
+ |   - Stores whose values were forwarded to loads (now dead)   |
+ |   - Stores to locations that GVN proved are overwritten      |
+ |   - Simplified store patterns from PRE insertion             |
+ |                                                              |
+ | Consumes from alias analysis:                                |
+ |   - MemorySSA graph (which stores are visible to which loads)|
+ |   - NVVM AA NoAlias (cross-space stores never conflict)      |
+ |   - TBAA metadata (type-based aliasing for struct fields)    |
+ |                                                              |
+ | Dead store detection:                                        |
+ |   - Complete overwrite: later store covers same location     |
+ |   - Partial overwrite: float4 store then float4 store with   |
+ |     overlapping range (72-byte hash table tracking)          |
+ |   - Store chain decomposition: aggregate stores decomposed   |
+ |     via GEP into element-level dead-store checks             |
+ |                                                              |
+ | NVIDIA extensions:                                           |
+ |   - Partial store forwarding with type conversion            |
+ |     (float4 -> float via GEP + load extraction)              |
+ |   - Cross-store 6-element dependency records                 |
+ |   - CUDA vector type-aware size computation                  |
+ |                                                              |
+ | Produces:                                                    |
+ |   - Eliminated dead stores (fewer memory writes)             |
+ |   - Replacement loads for partial forwards                   |
+ |   - Reduced memory traffic (critical for GPU bandwidth)      |
+ +--------------------------------------------------------------+
+```
+
+**Cross-pass data dependency table:**
+
+| Pass | Consumes from predecessor | Produces for successor |
+|------|--------------------------|----------------------|
+| **SROA** | Aggregate allocas from frontend/inliner | Scalar SSA values, redundant casts/GEPs |
+| **InstCombine** | Redundant casts, identity ops from SROA | Canonical expressions, known-bits metadata |
+| **GVN** | Canonical forms from InstCombine, MemDep/AA results | Forwarded loads, eliminated redundancies, exposed dead stores |
+| **DSE** | Dead stores exposed by GVN, MemorySSA/AA results | Eliminated stores, reduced memory traffic |
+
+**Why this ordering matters for GPU code:** SROA is existential because un-promoted allocas become `.local` memory (200-400 cycle penalty). InstCombine must run before GVN because GVN's hash-table matching requires canonical expression forms -- without InstCombine, `(a + 0)` and `a` would hash differently and miss the CSE opportunity. GVN must run before DSE because GVN's load forwarding is what exposes dead stores: once GVN proves that a load reads a value already available as an SSA register, the store that was keeping that value alive becomes dead. DSE then removes it, reducing the memory write traffic that is the primary bandwidth bottleneck on GPU architectures.
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **Store splitting** | Not present; GVN handles stores only for forwarding | Three knobs (`split-stores`, `no-split-stores-below`, `no-split-stores-above`) enable splitting wide vector stores into sub-stores matching load granularity |
+| **NVIDIA intrinsic CSE** | No awareness of `nvvm.ldu`, `nvvm.ldg` | Four NVIDIA intrinsic IDs (4057, 4085, 4492, 4503) with custom pointer operand extraction, enabling CSE of texture/global cache loads |
+| **Dominator cache** | No caching; dominance queries are O(n * depth) | `gvn-dom-cache` (default true, size 32) caches recent `dominates(A, B)` results for O(1) repeated queries |
+| **PHI removal aggressiveness** | Basic trivial PHI cleanup | Three-level `enable-phi-remove` knob (0=off, 1=trivial, 2=aggressive); 4-way unrolled use-scanning loop for PHI-heavy IR |
+| **Knob count** | ~4 knobs (`enable-pre`, `enable-load-pre`, `enable-split-backedge-in-load-pre`, `max-recurse-depth`) | 11 knobs including store splitting limits, dominator caching, profuse diagnostics, and PHI removal depth |
+| **Diagnostic framework** | Standard `OptimizationRemark` system | `profusegvn` knob (default true) uses NVIDIA's custom profuse diagnostic framework, not LLVM's `ORE` |
+| **NewGVN** | Standard partition-based NewGVN | Same algorithm, ships alongside classic GVN at separate address; both carry NVIDIA modifications |
 
 ## Allocation Strategy
 

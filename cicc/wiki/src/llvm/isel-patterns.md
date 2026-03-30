@@ -1,5 +1,7 @@
 # ISel Pattern Matching & Instruction Selection
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 The NVPTX instruction selector in cicc v13.0 translates legal SelectionDAG nodes into target MachineInstr opcodes through a three-level dispatch hierarchy totaling approximately 900KB of code. At the top sits `NVPTXDAGToDAGISel::Select` (`sub_3090F90`, 91KB), which builds a per-function cost table, manages a priority-queue-driven topological worklist, and calls the pattern matcher (`sub_308FEE0`) for every node. The pattern matcher fans out to a hand-written NVPTX-specific select switch (`sub_347A8D0`, 309KB) and a TableGen-generated `SelectCode` function (`sub_348D3E0`, 256KB). Surrounding this core are six NVPTX-specific sub-selectors covering memory operations, texture/surface fetches, complex addressing modes, vector patterns, and atomics. NVIDIA's key delta from upstream LLVM is (1) a compressed per-SM-variant legality table that gates which target opcodes exist on which GPU architecture, (2) a secondary 4-bit packed bitfield for fine-grained operand-class legality, and (3) the iteration budget that prevents the selector from looping indefinitely on pathological DAGs.
 
 | | |

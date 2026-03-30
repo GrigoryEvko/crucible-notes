@@ -1,5 +1,7 @@
 # ScalarEvolution Overview & Construction
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 ScalarEvolution (SCEV) is the foundational analysis that models how values change across loop iterations. Every loop optimization in cicc -- vectorization, unrolling, strength reduction, interchange, distribution -- depends on SCEV to answer three questions: "what is the trip count?", "what is the stride?", and "what is the value range?" NVIDIA's cicc v13.0 ships an LLVM 20.0.0-based ScalarEvolution with three categories of proprietary extensions: a **complexity control system** (`simple_mode`) that prevents SCEV from spending unbounded time on GPU kernels with hundreds of induction variables, **GPU-specific SCEV sources** that inject thread index bounds and launch configuration constraints into the analysis, and **recognition of CUDA-specific loop idioms** (warp-stride and grid-stride patterns) that have no analog in CPU code. This page documents SCEV expression construction -- the core `getSCEV` / `createSCEV` / `createNodeForInstruction` call chain. Range computation and trip count analysis are covered in [SCEV Range Analysis & Trip Counts](./scev-range-btc.md); cache invalidation and delinearization in [SCEV Invalidation & Delinearization](./scev-invalidation.md).
 
 ## Key Facts

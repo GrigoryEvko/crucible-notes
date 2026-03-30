@@ -4,7 +4,7 @@ Three LLVM scalar optimization passes play outsized roles in cicc's GPU pipeline
 
 ## [SROA (Scalar Replacement of Aggregates)](./sroa.md)
 
-SROA eliminates `alloca` instructions by decomposing aggregates into individual SSA values that the register allocator can place in registers. On a GPU this is existential: every surviving alloca becomes a spill to `.local` memory (address space 5), which is DRAM-backed per-thread storage with 200-400 cycle latency on L1 miss versus zero cycles for a register read. A single un-promoted alloca in a hot loop can degrade kernel throughput by 10-50x. SROA also eliminates the `.param` space copies generated for byval struct parameters, preventing round-trips through local memory.
+SROA eliminates `alloca` instructions by decomposing aggregates into individual SSA values that the register allocator can place in registers. On a GPU this is existential: every surviving alloca becomes a spill to [`.local` memory](../gpu-execution-model.md#memory-hierarchy) (DRAM-backed, 200-800 cycle latency on cache miss versus zero for a register). A single un-promoted alloca in a hot loop can degrade kernel throughput by 10-50x. SROA also eliminates the [`.param` space](../gpu-execution-model.md#the-param-calling-convention) copies generated for byval struct parameters, preventing round-trips through local memory.
 
 **[Full SROA analysis >>>](./sroa.md)**
 

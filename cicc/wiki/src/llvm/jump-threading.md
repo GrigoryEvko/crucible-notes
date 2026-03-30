@@ -1,5 +1,7 @@
 # JumpThreading
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 CICC v13.0 ships LLVM's `JumpThreadingPass` at `sub_2DC4260` (12,932 bytes, address range `0x2DC4260`--`0x2DC74E4`). The pass duplicates basic blocks so that predecessors whose branch conditions can be statically resolved jump directly to the correct successor, eliminating a conditional branch from the critical path. On a GPU, this directly reduces warp divergence: a branch that was previously data-dependent becomes unconditional along each incoming edge, so the warp scheduler never needs to serialize the two paths.
 
 The pass is fundamentally at odds with PTX's requirement for reducible control flow. Block duplication can create multi-entry loops (irreducible cycles) when the duplicated block is a loop header or when the threading target sits inside a loop whose header is not the threading source. CICC addresses this through three layered mechanisms -- loop header protection, conservative duplication thresholds, and a late-pipeline StructurizeCFG safety net -- that collectively keep the CFG reducible without sacrificing the pass's optimization value.

@@ -1,5 +1,7 @@
 # Instruction Scheduling
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 CICC v13.0 implements three distinct scheduling subsystems: MRPA (Machine Register Pressure Analysis) for incremental pressure tracking during MCSE, a Swing Modulo Scheduling pipeliner for loop bodies, and `ScheduleDAGMILive` for post-RA instruction ordering. All three maintain per-register-class pressure arrays but differ in granularity and update frequency. A texture group merge pass (`sub_2DDE8C0`) acts as a scheduling-adjacent optimization that groups texture load instructions for hardware coalescing.
 
 | | |
@@ -560,3 +562,15 @@ All three maintain per-register-class pressure arrays but with different granula
 The DenseMap hash function `(ptr >> 9) ^ (ptr >> 4)` is shared across both the 32-bit value variant (`sub_1DFB9D0`) and 64-bit value variant (`sub_1DFB810`), indicating a common template instantiation pattern consistent with LLVM's `DenseMap<K, V>` template.
 
 Contrast with **ptxas scheduling**: ptxas has its own instruction scheduling subsystem with 195 knobs (including scoreboard-aware scheduling via the `AdvancedSB*` family, `SchedDisableAll`, `SchedForceReverseOrder`, and the `GemmPipeliner*` family of 8 knobs for matrix multiply detection and pipelining). CICC's scheduling operates at the MachineInstr level before PTX emission; ptxas re-schedules at the SASS level after PTX assembly. The two scheduling layers are independent but complementary.
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **Scheduling subsystems** | `ScheduleDAGMILive` + optional `MachinePipeliner`; no incremental pressure tracker | Three distinct subsystems: MRPA incremental tracker, Swing Modulo Scheduler, `ScheduleDAGMILive`; plus texture group merge pass |
+| **MRPA (incremental pressure)** | Not present; pressure recomputed from scratch after each CSE transform | `sub_2E5A4E0` (48 KB) + backend variant `sub_1E00370` (78 KB) maintain running pressure state through delta operations during MCSE |
+| **Texture group merge** | No concept of texture instruction grouping | Dedicated pass (`sub_2DDE8C0`) groups texture load instructions for hardware coalescing; scheduling-adjacent optimization absent from upstream |
+| **Scheduling target** | Optimize for hardware pipeline hazards and port pressure | Optimize the MachineInstr stream for `ptxas` consumption; focus on register pressure reduction (`nvptx-sched4reg`) rather than hardware pipeline timing |
+| **Two-level scheduling** | Single scheduling pass produces final instruction order | CICC scheduling is first layer; `ptxas` re-schedules at SASS level with its own 195-knob subsystem |
+| **Register pressure model** | Per-register-class pressure sets from TRI | Same model but with GPU occupancy awareness; pressure arrays used to detect occupancy cliff crossings |
+| **Scheduling mode switch** | Configured at pipeline construction time | Runtime mode switch between pre-RA (`sub_2165850`) and post-RA (`sub_21668D0`) with different heuristic weights |

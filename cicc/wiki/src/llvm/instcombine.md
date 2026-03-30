@@ -1,5 +1,7 @@
 # InstCombine
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 NVIDIA's InstCombine in CICC v13.0 is approximately twice the size of upstream LLVM's, weighing in at roughly 405 KB for the main visitor alone. The monolithic visitor function at `sub_10EE7A0` dispatches across 80 unique opcode cases through a three-level switch structure, handling standard LLVM instructions, NVIDIA-extended vector and FMA operations, and three high-opcode NVVM intrinsic dead-code elimination patterns. A separate 87 KB intrinsic folding function (`sub_1169C30`) handles NVVM-specific canonicalization, and a 127 KB `computeKnownBits` implementation (`sub_11A7600`) provides the dataflow backbone. This page covers the visitor architecture, the per-instruction-type visitors recovered from the binary, and the NVIDIA-specific extensions that distinguish this implementation from upstream.
 
 | | |
@@ -283,3 +285,16 @@ The wrapper `sub_11AE870` gets the bit-width via `sub_BCB060` (or `sub_AE43A0` f
 | High-opcode NVIDIA intrinsics | ~15 KB | DCE for opcodes 0x254D/0x2551/0x255F |
 | Expanded comparator/cast | ~50 KB | Extended ICmp, cast chain, select handling |
 | **NVIDIA total addition** | **~200 KB** | Roughly doubles upstream InstCombine |
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **Binary size** | ~200 KB main visitor | ~405 KB main visitor + 87 KB intrinsic folding (~2x upstream) |
+| **NVVM intrinsic folding** | No NVVM-specific intrinsic canonicalization | Dedicated 87 KB function (`sub_1169C30`) with two-layer dispatch for negation, vector extract/insert, FMA, tensor, dot product, and 15+ fold types |
+| **High-opcode DCE** | Not present | Three NVIDIA proprietary intrinsic IDs (9549, 9553, 9567) with constant-argument dead-code elimination |
+| **`separate_storage` bundles** | No `separate_storage` operand bundle handling | Iterates `llvm.assume` bundles, extracting `"separate_storage"` hints for alias-based optimization |
+| **Ternary FMA opcodes** | Standard `llvm.fma` / `llvm.fmuladd` folding | Extended preamble handles opcodes 238--245 for CUDA FMA variants with address-space mismatch handling |
+| **GEP chain look-through** | Single-level GEP simplification | Depth-limited chain walk (`dword_4F901A8` steps) backward through constant-index GEP chains to find CallInst base pointers |
+| **Horizontal reduction** | Standard intrinsic-based reduction fold | Four template-instantiated `matchBinOpReduction` helpers for NVVM horizontal reduction intrinsics (IDs 329, 330, 365, 366) |
+| **KnownBits integration** | Separate `computeKnownBits` in ValueTracking | Fused 127 KB `computeKnownBits` + `SimplifyDemandedBits` with GPU special-register range oracle |

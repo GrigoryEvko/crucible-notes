@@ -1,5 +1,7 @@
 # LoopVectorize and VPlan (GPU-Adapted)
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 NVIDIA's cicc ships a heavily modified copy of LLVM's `LoopVectorizePass`, the single largest pass in the vectorization pipeline at 88 KB of decompiled output (2,612 lines in `sub_2AF1970`). The modifications do not change the pass's fundamental architecture -- it still builds VPlans, selects a vectorization factor (VF) through cost modeling, and transforms IR through VPlan execution -- but the cost model, VF selection heuristics, interleave count logic, and legality checker are all tuned for a target where "vectorization" means something fundamentally different than on a CPU. On a CPU, loop vectorization fills SIMD lanes: a VF of 4 on SSE processes four `float` elements per vector instruction. On an NVIDIA GPU, there are no SIMD lanes in the CPU sense -- each thread already executes scalar code, and the warp executes 32 threads in lockstep. The reasons to vectorize on GPU are: (1) **memory coalescing** -- adjacent threads issuing adjacent loads produce 128-byte cache line transactions, and vectorizing a per-thread loop body with VF=2 or VF=4 produces `ld.v2`/`ld.v4` wide loads that maximize bytes-per-transaction; (2) **reducing instruction count** -- a single `ld.global.v4.f32` replaces four `ld.global.f32` instructions, saving fetch/decode/issue bandwidth; (3) **register-to-memory width matching** -- PTX supports 32-, 64-, and 128-bit load/store widths, and vectorization widens narrow scalar accesses to fill these naturally.
 
 ## Key Facts
@@ -18,15 +20,15 @@ NVIDIA's cicc ships a heavily modified copy of LLVM's `LoopVectorizePass`, the s
 
 ## Why Vectorize on GPU
 
-GPU vectorization is not about filling SIMD lanes. Each CUDA thread runs scalar code, and 32 threads form a warp that executes in lockstep on one SM. Vectorization targets three orthogonal benefits:
+GPU vectorization is not about filling SIMD lanes -- the [SIMT model](../gpu-execution-model.md#simt-warp-execution) already replicates scalar code across 32 threads. Vectorization targets three orthogonal benefits related to [memory coalescing](../gpu-execution-model.md#memory-coalescing) and instruction throughput:
 
-**Memory coalescing width.** The GPU memory subsystem services requests in 128-byte (or 32-byte sector) transactions. When a warp of 32 threads accesses 32 consecutive `float` values (128 bytes total), the hardware coalesces this into a single transaction. But if a single thread's inner loop accesses 4 consecutive floats in sequence, those 4 accesses become 4 separate scalar loads issued over 4 iterations. Vectorizing with VF=4 converts them into one `ld.global.v4.f32`, which the memory subsystem can service in a single wider transaction per thread. Across the warp, this multiplies the effective memory bandwidth.
+**Memory coalescing width.** The GPU memory subsystem services requests in [128-byte transactions](../gpu-execution-model.md#memory-coalescing). If a single thread's inner loop accesses 4 consecutive floats in sequence, those 4 accesses become 4 separate scalar loads issued over 4 iterations. Vectorizing with VF=4 converts them into one `ld.global.v4.f32`, which the memory subsystem can service in a single wider transaction per thread. Across the warp, this multiplies the effective memory bandwidth.
 
 **Instruction count reduction.** PTX's `ld.v2` and `ld.v4` instructions load 2 or 4 elements with a single instruction. The instruction issue pipeline has finite throughput (typically 1-2 instructions per clock per scheduler), so halving instruction count directly improves throughput-bound kernels.
 
-**Register-width matching.** PTX has 32-bit registers. A 128-bit `ld.v4.f32` loads directly into four consecutive registers via a single instruction, which is strictly better than four separate 32-bit loads (each requiring its own address computation).
+**Register-width matching.** PTX has [32-bit typed registers](../reference/register-classes.md). A 128-bit `ld.v4.f32` loads directly into four consecutive registers via a single instruction, which is strictly better than four separate 32-bit loads (each requiring its own address computation).
 
-These benefits are bounded by **register pressure** -- the primary constraint that does not exist on CPU. On a CPU, using wider vector registers has no occupancy cost. On a GPU, every additional register per thread reduces the number of threads that fit on an SM, potentially crossing an occupancy cliff. A VF=4 vectorization that quadruples the live register count may halve occupancy and lose net throughput.
+These benefits are bounded by **register pressure** -- the primary constraint that does not exist on CPU. On a GPU, every additional register per thread can cross an [occupancy cliff](../gpu-execution-model.md#occupancy-cliffs), potentially losing an entire warp group. A VF=4 vectorization that quadruples the live register count may halve occupancy and lose net throughput.
 
 ## The 8-Phase Pipeline
 
@@ -328,3 +330,15 @@ All diagnostic strings are embedded in the binary with `OptimizationRemarkAnalys
 - [Scheduling](scheduling.md) -- The TTI scheduling info (issue width and latency at TTI+56) that caps interleave count comes from the same target model used by instruction scheduling.
 - [SelectionDAG](selectiondag.md) -- Vectorized IR produces vector types (`<4 x float>`) that SelectionDAG must lower to PTX `ld.v4`/`st.v4` instructions.
 - [SLP Vectorizer](slp-vectorizer.md) -- SLP vectorization (`sub_2BD1C50`) handles straight-line code and horizontal reductions; loop vectorization handles loop bodies. Both share the same TTI cost model.
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **Vectorization purpose** | Fill SIMD lanes (SSE/AVX/NEON) for data parallelism | Memory coalescing (`ld.v2`/`ld.v4`), instruction count reduction, and register-to-memory width matching; no SIMD lanes on GPU |
+| **Scalable vectors** | Supported (SVE, RISC-V V) | Always disabled -- `sub_DFE610` returns `false` for NVPTX; only fixed-width VF=2/4 |
+| **Register bit width (TTI)** | Target-dependent (128/256/512 for x86) | Fixed 32 bits (`TypeSize::getFixed(32)`) reflecting PTX's 32-bit register model |
+| **VF selection cost model** | SIMD-width-driven: higher VF fills wider vector registers | Occupancy-bounded: VF must not increase register pressure past warp occupancy cliffs; VF=4 is typically the maximum |
+| **Interleave count** | Profile-guided or port-pressure-based (2--8 typical) | Capped by TTI scheduling info at `TTI+56`; conservative due to register pressure cost per interleaved iteration |
+| **Early-exit vectorization** | Experimental (behind flag) | Present, gated by `byte_500CDA8` (`-enable-early-exit-vectorization`) |
+| **Convergent call handling** | Standard legality rejection | Additional barrier-aware legality: convergent intrinsics (`__syncthreads`, warp shuffles) block vectorization of the containing loop body |

@@ -1,5 +1,7 @@
 # SCEV Range Analysis & Backedge-Taken Counts
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 Every loop optimization in cicc ultimately depends on two questions: "what values can this expression take?" and "how many times does this loop iterate?" The SCEV range analysis (`sub_DBB9F0`, corresponding to `ScalarEvolution::getRangeRef`) answers the first by propagating `ConstantRange` intervals through SCEV expression trees. The backedge-taken count (BTC) machinery (`sub_DB9E00` / `sub_DB9040`, corresponding to `computeBackedgeTakenCount` / `computeExitCountForBranch`) answers the second by solving loop exit conditions algebraically. The two systems feed each other: range analysis uses trip counts to bound AddRec expressions, and trip count computation uses ranges to prove overflow behavior. On GPU targets, these analyses gain additional precision from NVIDIA-specific range sources -- thread indices are bounded by block dimensions, `warpSize` is the constant 32, and `__launch_bounds__` metadata constrains block dimensions -- all of which flow into tighter ranges and more computable trip counts.
 
 ## Key Facts
@@ -330,6 +332,17 @@ The NVIDIA-specific knobs are particularly important. `track-trip-count-more` en
 | `sub_ABD750` | `ConstantRange::minmax_combine()` |
 | `sub_ABEA30` | `ConstantRange` from `!range` metadata |
 | `sub_C4B490` | `ConstantRange` from KnownBits |
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **Range sources** | Profile data, `__builtin_assume`, `!range` metadata from user annotations | Additional GPU-specific sources: `nvvm-intr-range` pass injects `!range` on all special register reads; `__launch_bounds__` constrains `%tid`/`%ntid` ranges; `warpSize` = 32 constant |
+| **Thread index bounds** | No concept of bounded thread indices | `%tid.x/y/z` bounded by `[0, maxntid-1]`, `%ntid.x/y/z` by `[1, 1024]`, `%laneid` by `[0, 31]`; these tighten trip count computation for thread-indexed loops |
+| **Trip count precision** | Depends on programmer-visible range annotations | Substantially higher precision on GPU due to statically known hardware launch bounds; most CUDA loops have computable trip counts |
+| **Range feedback loop** | Range analysis and BTC computation feed each other | Same mutual feeding, but GPU-specific ranges make the feedback loop converge faster and more precisely |
+| **Warp-stride loops** | No concept; stride analysis treats all strides equally | NVIDIA SCEV recognizes warp-stride patterns (`stride = warpSize` or `stride = blockDim.x`), enabling specialized BTC computation for cooperative thread loops |
+| **Overflow analysis** | Standard NSW/NUW flag analysis | Same flags, plus GPU-specific insight: 32-bit IVs with `%tid` or `%ctaid` bases are often provably non-wrapping given launch dimension bounds |
 
 ## Cross-References
 

@@ -1,5 +1,7 @@
 # MachineBlockPlacement for GPU
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 MachineBlockPlacement decides the physical ordering of basic blocks in a MachineFunction. On CPU, it is primarily an I-cache optimization. On GPU, block ordering has deeper consequences: PTX is a structured ISA where every taken branch stalls the SM instruction fetch pipeline, warp divergence must reconverge at post-dominators, and instruction cache capacity is measured in tens of kilobytes per SM partition. cicc carries two separate instances of this pass -- a stock LLVM copy for internal use and an NVPTX-pipeline copy at `sub_3521FF0` that participates in GPU-specific analysis. The NVPTX instance queries a divergence flag on the MachineFunction to decide whether tail duplication is profitable, and adds an alternative layout proposal path (`sub_34BEDF0` / `sub_34C7080`) that is absent from upstream LLVM.
 
 ## Key Facts
@@ -502,6 +504,18 @@ The final block ordering directly determines which branches in the PTX output ar
 | `sub_2FDC800` | (default stub) | Default `getTailDupThreshold` implementation |
 | `sub_2FF52D0` | (default stub) | Default reconvergence-region query |
 | `sub_2FDC810` | (default stub) | Default layout-accept threshold query |
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **Pass instances** | Single `MachineBlockPlacement` per pipeline | Two instances: stock LLVM copy + NVPTX-pipeline copy at `sub_3521FF0` |
+| **Divergence awareness** | No divergence concept; layout optimizes for I-cache locality | Queries warp divergence flag on MachineFunction; divergent branches affect tail duplication profitability |
+| **Alternative layout proposal** | Absent; single layout path only | Additional proposal path (`sub_34BEDF0` / `sub_34C7080`) evaluates alternative orderings with SM-aware cost |
+| **Tail duplication threshold** | `TailDupPlacementThreshold` (default 2) | GPU-specific threshold via vtable query (`sub_2FDC810`); controlled by reconvergence-region analysis |
+| **Loop cost evaluation** | Frequency-weighted chain cost | Divergence-aware loop cost re-evaluation (`sub_34C56D0`, 5137 bytes) considers warp reconvergence overhead |
+| **Ext-TSP scoring** | Standard profile-guided layout scoring | Same Ext-TSP solver but gated by NVPTX-specific enable decision (`sub_2EE6520`) |
+| **Structured CFG constraint** | No structured CFG requirement (targets like x86 have arbitrary CFG) | Must preserve structured regions from StructurizeCFG; contiguous structured blocks cannot be interleaved |
 
 ## Cross-References
 

@@ -413,5 +413,5 @@ The 165 surface store builtins are registered unconditionally regardless of targ
 - [Atomics Builtins](./atomics.md) -- PTX inline asm generation pattern shared by surface stores
 - [NVPTX Instruction Selection](../llvm/isel-patterns.md) -- ISel pattern matching context
 - [SelectionDAG Lowering](../llvm/selectiondag.md) -- DAG node construction infrastructure
-- [PTX Emission](../codegen/emission.md) -- Final instruction text generation
+- [PTX Emission](../pipeline/emission.md) -- Final instruction text generation
 - [Address Spaces](../reference/address-spaces.md) -- Memory space qualifiers for tex/surf

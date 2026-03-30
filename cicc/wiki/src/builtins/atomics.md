@@ -644,6 +644,6 @@ These opcodes are emitted by the SelectionDAG lowering for native atomic operati
 - [SM 70--89 Feature Gates](../targets/sm70-89.md) -- unk_4D045E8 thresholds
 - [SM 90 Hopper Features](../targets/sm90-hopper.md) -- cluster scope, fence.sc.cluster
 - [SM 100 Blackwell Features](../targets/sm100-blackwell.md) -- f16x4 atomics
-- [PTX Emission](../llvm/emission.md) -- instruction printer subsystem
+- [PTX Emission](../pipeline/emission.md) -- instruction printer subsystem
 - [NVPTX Opcodes Reference](../reference/nvptx-opcodes.md) -- MachineInstr opcode table
 - [Inline Assembly Codegen](../pipeline/irgen-expressions.md) -- general inline ASM infrastructure at sub_1292420

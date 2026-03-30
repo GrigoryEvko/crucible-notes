@@ -1,5 +1,7 @@
 # KnownBits & DemandedBits for GPU
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 NVIDIA's KnownBits and DemandedBits infrastructure in cicc v13.0 diverges from upstream LLVM in three structural ways. First, the two analyses are fused into a single 127 KB function (`sub_11A7600`) that simultaneously computes known-zero/known-one bitmasks and simplifies instructions whose demanded bits allow constant folding or narrowing -- upstream LLVM separates `computeKnownBits` (in ValueTracking) from `SimplifyDemandedBits` (in InstCombine). Second, a dedicated GPU-specific known-bits oracle (`sub_F0C4B0`) provides range constraints for NVIDIA special registers (`%tid`, `%ntid`, `%ctaid`, `%nctaid`, `%warpsize`, `%laneid`) that have no CPU equivalent. Third, an early NVVM pipeline pass (`nvvm-intr-range` at `sub_216F4B0`) attaches `!range` metadata to every special-register read intrinsic, giving downstream analyses the same bounded-range information that CPU targets only get from profile data or programmer assertions. Together these form the primary dataflow backbone for address calculation optimization, type narrowing, and dead-bit elimination in GPU kernels.
 
 | | |
@@ -450,6 +452,18 @@ The 27-bit index allows up to 134 million nodes (4 GB theoretical IR size).
 | `sub_C44AB0` | `APInt::reverseBits` / `byteSwap` |
 | `sub_AD6220` | `ConstantInt::get(type, APInt)` -- creates constant replacement |
 | `sub_AD64C0` | `ConstantInt::get(type, value, isSigned)` |
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **Analysis architecture** | Separate `computeKnownBits` (ValueTracking) and `SimplifyDemandedBits` (InstCombine) | Fused into single 127 KB function (`sub_11A7600`) that simultaneously computes bitmasks and simplifies instructions |
+| **GPU register ranges** | No special register concept; all values have full-width range | Dedicated oracle (`sub_F0C4B0`) provides known-zero bits for `%tid`, `%ntid`, `%ctaid`, `%warpsize`, `%laneid`, and 10+ PTX special registers |
+| **Range metadata injection** | No equivalent pass; range info comes from profile data or programmer annotations | `nvvm-intr-range` pass (`sub_216F4B0`) attaches `!range` metadata to every special-register read; tightened by `__launch_bounds__` |
+| **Warp size** | Not a concept; no constant is known | `%warpsize` is statically known to be exactly 32 (known-zero bits `[0,4]` and `[6,31]`, bit 5 = 1) |
+| **Cross-validation** | No cross-validation in release builds | Debug flag `qword_4F90C28` enables abort-on-mismatch between `computeKnownBits` and `SimplifyDemandedBits` results |
+| **SelectionDAG integration** | Separate DAG-level `computeKnownBits` (~60 KB) | Extended DAG-level version at `sub_33D4EF0` (114 KB, 3,286 lines) with GPU-specific value tracking |
+| **Max recursion depth** | 6 (configurable) | Same default 6, checked in `sub_11AE940` with identical semantics |
 
 ## Cross-References
 

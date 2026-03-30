@@ -1,5 +1,7 @@
 # TwoAddressInstruction
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 The TwoAddressInstruction pass converts three-address `MachineInstr`s into two-address form by inserting `COPY` pseudo-instructions so that tied operand constraints are satisfied before register allocation. In upstream LLVM, many CPU targets have instructions where one source operand must be the same physical register as the destination (x86 `addl %esi, %edi` means `%edi = %edi + %esi`); the pass rewrites `A = B op C` into `A = COPY B; A op= C`. On NVPTX this pass is largely a formality -- PTX instructions are three-address and the virtual register file has no physical-register constraints -- but it still performs essential bookkeeping: eliminating `REG_SEQUENCE` and `INSERT_SUBREG` pseudo-instructions, building copy-equivalence maps for downstream coalescing, and handling the tied operands that arise from multi-result NVPTX intrinsics (texture loads, tensor core operations, warp-level collectives). CICC's binary is structurally identical to stock LLVM, with extended `EXTRACT_SUBREG` handling for multi-register results, deeper `LiveVariables` maintenance, `OptimizationRemarkEmitter` integration, and the standard NVIDIA `optnone`/fast-compile gate.
 
 | | |
@@ -555,6 +557,17 @@ The `optnone`/fast-compile gate is not a knob per se but has the effect of disab
 ## Binary Size Note
 
 The 79KB `runOnMachineFunction` plus 63KB `processTiedPairs` plus 28KB `tryInstructionTransform` total approximately 170KB of machine code. Upstream LLVM source for the entire pass is approximately 2,000 lines of C++. The binary bloat is almost entirely explained by aggressive inlining: every `DenseMap::insert`, `DenseMap::find`, `DenseMap::clear`, `SmallPtrSet::insert`, and `SmallPtrSet::find` operation is fully expanded inline with all template specialization, sentinel initialization, grow/rehash, and power-of-2 computation logic. This accounts for roughly 40% of the binary. The remaining expansion comes from the COPY-creation path (operand setup, flag manipulation, list splicing) being duplicated for each opcode-specific branch rather than factored into a shared helper.
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **Primary purpose** | Convert 3-address to 2-address form for physical register constraints (x86 tied operands) | Largely a formality on NVPTX (PTX is 3-address); primary role is eliminating `REG_SEQUENCE`/`INSERT_SUBREG` and building copy-equivalence maps |
+| **EXTRACT_SUBREG handling** | Standard sub-register extraction for CPU multi-result instructions | Extended decomposition for multi-register NVPTX results: texture loads, tensor core operations (WMMA/MMA), and warp-level collectives |
+| **LiveVariables maintenance** | Standard liveness tracking | Deeper `LiveVariables` maintenance with explicit `VarInfo` allocation/init (`sub_1DBA290`/`sub_1DBB110`) for new registers created during decomposition |
+| **ORE integration** | Basic or absent remark emission for copies | Full `OptimizationRemarkEmitter` integration for COPY insertion diagnostics (`sub_1DCCCA0`/`sub_1DCC790`/`sub_1DCBB50`) |
+| **Binary size** | ~2,000 lines of C++ source | 170 KB of machine code (79 KB `runOnMachineFunction` + 63 KB `processTiedPairs` + 28 KB `tryInstructionTransform`); bloat from aggressive DenseMap inlining |
+| **optnone/fast-compile gate** | Standard `OptLevel` check | NVIDIA `optnone` / fast-compile check (`sub_1636880`) forces `OptLevel = 0` for fast-compile kernels |
 
 ## Cross-References
 

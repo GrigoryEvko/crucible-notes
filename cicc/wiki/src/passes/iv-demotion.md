@@ -175,7 +175,7 @@ The performance gap between 32-bit and 64-bit integer operations on NVIDIA GPUs 
 
 **Instruction count.** 64-bit integer addition on PTX compiles to two machine instructions (`add.cc.u32` + `addc.u32`) because the hardware ALU is 32-bit wide. A 64-bit multiply is even worse: it decomposes into multiple 32-bit multiplies and adds. Every loop iteration with a 64-bit IV pays this tax on the increment alone.
 
-**Register pressure.** A single `i64` value occupies a pair of 32-bit registers. In a loop with 3 IVs, demoting all three frees 3 registers -- enough to increase occupancy by one level on many kernels. Since GPU occupancy is quantized (e.g., 32/48/64/96 registers per thread determine 1/2/3/4 resident blocks), even small register savings can yield large occupancy jumps.
+**Register pressure.** A single `i64` value occupies a pair of 32-bit registers. In a loop with 3 IVs, demoting all three frees 3 registers -- enough to cross an [occupancy cliff](../gpu-execution-model.md#occupancy-cliffs) and gain an entire warp group on many kernels.
 
 **Address arithmetic.** CUDA uses 64-bit pointers (`nvptx64` target), so loop index computations are promoted to `i64` by default during LLVM IR generation. But most CUDA kernels operate on arrays smaller than 4 GB, making the upper 32 bits of the index perpetually zero. The IV demotion pass recovers this wasted precision.
 

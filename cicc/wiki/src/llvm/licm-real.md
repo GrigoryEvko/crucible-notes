@@ -1,5 +1,7 @@
 # LICM (Loop-Invariant Code Motion)
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 Loop-Invariant Code Motion in cicc v13.0 operates at three distinct levels: an IR-level pass (`"licm"`, backed by MemorySSA), a pre-RA machine pass (`"early-machinelicm"`), and a post-RA machine pass (`"machinelicm"`). The IR-level pass runs in two modes within the same pipeline -- a **hoist invocation** early in the optimization sequence that pulls invariant computations and loads out of loops into preheaders, and a **sink invocation** via `LoopSinkPass` (or implicit re-processing) later that pushes unprofitable hoists back into cold loop blocks. On a CPU, hoisting is almost universally profitable because the preheader executes once per loop entry rather than once per iteration. On a GPU, the calculus is different: every value hoisted into the preheader extends its live range across the entire loop body, consuming a register for all iterations. If that extra register pushes the kernel past an occupancy cliff -- the threshold where the SM can fit one fewer warp -- the net effect is a slowdown, not a speedup. NVIDIA addresses this tension through the interplay of the two invocations, the NVVM alias analysis pipeline that makes cross-address-space loads trivially hoistable, and the downstream rematerialization passes that can undo hoists that turned out to be unprofitable after register allocation.
 
 ## Key Facts
@@ -125,17 +127,7 @@ The `sink-insts-to-avoid-spills` knob (registered at `ctor_305`) is the critical
 
 ### Register Pressure and Occupancy Cliffs
 
-On NVIDIA GPUs, register allocation is per-thread, and the total register file per SM is shared among all resident threads. The relationship between per-thread register count and achievable occupancy is a step function with sharp cliffs:
-
-| Registers/thread | Max warps/SM (Ampere) | Occupancy |
-|---|---|---|
-| 32 | 64 | 100% |
-| 40 | 48 | 75% |
-| 48 | 32 | 50% |
-| 64 | 32 | 50% |
-| 80 | 24 | 37.5% |
-| 128 | 16 | 25% |
-| 255 | 8 | 12.5% |
+Each SM's register file is shared among all resident warps, creating discrete [occupancy cliffs](../gpu-execution-model.md#occupancy-cliffs) where a single additional register per thread can drop maximum occupancy by an entire warp group.
 
 Hoisting one additional value into the preheader extends its live range across the entire loop body, increasing peak register pressure by one. If that increase crosses an occupancy cliff boundary, the kernel loses an entire warp's worth of parallelism per SM. This is why cicc invokes LICM early (to expose optimization opportunities for GVN, DSE, and InstCombine) and then relies on the downstream rematerialization infrastructure to undo hoists that became unprofitable after the register allocator made its decisions.
 

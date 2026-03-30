@@ -1,5 +1,7 @@
 # EarlyCSE (Early Common Subexpression Elimination)
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm-2000) for GPU-specific changes.
+
 EarlyCSE is a fast dominator-tree-walk pass that eliminates redundant computations, loads, and calls within a function. Cicc's version is **not** stock LLVM 20.0.0 -- the binary contains four CUDA-specific extensions that handle GPU memory model semantics: barrier-aware memory versioning with hardcoded NVVM intrinsic ID checks, shared memory address space 7 protection against unsafe store-to-load forwarding, a dedicated NVVM intrinsic call CSE handler with a fast-path for thread-invariant special register reads, and a PHI operand limit of 5 for compile-time control. It also adds a fourth scoped hash table (store-forwarding) that upstream lacks.
 
 ## Key Facts

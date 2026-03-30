@@ -2,7 +2,7 @@
 
 NVIDIA's rematerialization infrastructure in CICC operates at two levels: an IR-level pass (`nvvmrematerialize` / `"Legacy IR Remat"`) that reduces register pressure before instruction selection, and a machine-level pass (`nv-remat-block` / `"Do Remat Machine Block"`) that performs the same transformation on MachineIR after register allocation decisions have been made. Both passes share the same fundamental strategy -- recompute cheap values at their use sites rather than keeping them live across long spans -- but they differ significantly in their cost models, candidate selection criteria, and interaction with the surrounding pipeline.
 
-On NVIDIA GPUs, register pressure directly determines occupancy: the number of thread blocks that can execute concurrently on a streaming multiprocessor. A kernel using 64 registers per thread can fit half as many warps as one using 32 registers. Rematerialization trades extra ALU work for reduced register count, a tradeoff that is almost always profitable on GPUs where compute throughput vastly exceeds register file bandwidth.
+On NVIDIA GPUs, register pressure directly determines [occupancy](../gpu-execution-model.md#register-pressure-and-occupancy) -- the number of concurrent warps per SM -- with discrete cliff boundaries where a single additional register can drop an entire warp group. Rematerialization trades extra ALU work for reduced register count, a tradeoff that is almost always profitable on GPUs where compute throughput vastly exceeds register file bandwidth.
 
 ## IR-Level Rematerialization (`nvvmrematerialize`)
 
@@ -105,6 +105,135 @@ The algorithm identifies PHI nodes at loop headers, checks whether the IV's valu
 - **`newBaseIV`**: A new narrow PHI node to replace the wide loop IV.
 - **`iv_base_clone_`**: A clone of the IV's base value for use in comparisons that need the original width.
 - **`substIV`**: Replaces uses of the old IV with the demoted version.
+
+## Multi-Pass Data Flow: Rematerialization / IV Demotion / NLO
+
+The IR-level rematerialization pass (`nvvmrematerialize`) contains three cooperating sub-passes that execute in a fixed sequence within a single pass invocation. The following diagram shows the data each sub-pass produces and consumes, and the feedback loop that drives iterative pressure reduction.
+
+```
+               Live Variable Analysis (prerequisite)
+               +------------------------------------+
+               | Builds per-block live-in/live-out   |
+               | bitvector sets via sub_1BFDF20     |
+               | Produces:                           |
+               |  - live-in bitvector per BB         |
+               |  - live-out bitvector per BB        |
+               |  - max live-in count (pressure)     |
+               +------------------+-----------------+
+                                  |
+                                  v
+  +===============================================================+
+  |  MAIN REMATERIALIZATION LOOP (sub_1CE7DD0, up to 5 iterations)|
+  |                                                               |
+  |  Inputs:                                                      |
+  |   - live-in bitvectors (from analysis above)                  |
+  |   - register target (from occupancy model or 80% heuristic)  |
+  |   - remat cost thresholds (knobs)                             |
+  |                                                               |
+  |  +----------------------------------------------------------+ |
+  |  | Step 1: Compute intersection of live-in sets              | |
+  |  | (bitwise AND across all blocks)                           | |
+  |  | --> Values live everywhere = best candidates              | |
+  |  +---------------------------+------------------------------+ |
+  |                              |                                |
+  |                              | candidate value set            |
+  |                              v                                |
+  |  +---------------------------+------------------------------+ |
+  |  | Step 2: Pull-In Cost Analysis (sub_1CE3AF0)              | |
+  |  | For each candidate:                                       | |
+  |  |   cost = base_cost(def chain) * use_factor(loop nesting) | |
+  |  | Filter by: remat-use-limit, remat-gep-cost,              | |
+  |  |            remat-single-cost-limit                        | |
+  |  | Sort by cost (cheapest first)                             | |
+  |  | Produces: ranked list of N cheapest candidates            | |
+  |  +---------------------------+------------------------------+ |
+  |                              |                                |
+  |                              | remat plan per block           |
+  |                              v                                |
+  |  +---------------------------+------------------------------+ |
+  |  | Step 3: Block Executor (sub_1CE67D0)                     | |
+  |  | For each selected candidate in each block:                | |
+  |  |   "remat_" clone: full rematerialization at use site     | |
+  |  |   "uclone_" clone: live range split within dom chain     | |
+  |  | Produces:                                                 | |
+  |  |   - cloned instructions at use sites                      | |
+  |  |   - reduced live-in counts per block                      | |
+  |  +---------------------------+------------------------------+ |
+  |                              |                                |
+  |                              | updated IR                     |
+  |                              v                                |
+  |  Recompute max live-in. If decreased and < 5 iters, loop.   |
+  +=======================+=====================================+
+                          |
+                          | IR with reduced register pressure
+                          v
+  +=======================+=====================================+
+  | IV DEMOTION (sub_1CD74B0, controlled by remat-iv)           |
+  |                                                              |
+  | Consumes:                                                    |
+  |  - Loop header PHI nodes (from LoopInfo)                     |
+  |  - Type widths (from DataLayout)                             |
+  |  - post-remat IR (live ranges already shortened)             |
+  |                                                              |
+  | Algorithm:                                                   |
+  |  for each loop L:                                            |
+  |    for each 64-bit PHI in L.header:                          |
+  |      if (val + 0x80000000) <= 0xFFFFFFFF:                    |
+  |        create "demoteIV" (trunc to i32)                      |
+  |        create "newBaseIV" (narrow PHI replacement)            |
+  |        rewrite uses with "substIV"                            |
+  |                                                              |
+  | Produces:                                                    |
+  |  - narrowed IVs (64->32 bit, halving register cost)          |
+  |  - "iv_base_clone_" values for comparisons needing           |
+  |    original width                                            |
+  |  - updated loop exit conditions                              |
+  +=======================+=====================================+
+                          |
+                          | IR with narrowed IVs
+                          v
+  +=======================+=====================================+
+  | NLO -- SIMPLIFY LIVE OUTPUT (sub_1CE10B0, simplify-live-out)|
+  |                                                              |
+  | Consumes:                                                    |
+  |  - per-block live-out bitvector sets                          |
+  |  - post-IV-demotion IR                                       |
+  |                                                              |
+  | For each block's live-out set:                               |
+  |  - If a value is live-out but only its low bits are used     |
+  |    downstream: create "nloNewBit" (AND/extract/trunc)        |
+  |  - If a value is an address live-out that can be recomputed  |
+  |    locally in successors: create "nloNewAdd" (local add)     |
+  |                                                              |
+  | Produces:                                                    |
+  |  - "nloNewBit" bit-narrowing instructions                    |
+  |  - "nloNewAdd" local recomputation instructions              |
+  |  - reduced live-out register count at block boundaries       |
+  +=======================+=====================================+
+                          |
+                          | Final IR: pressure-reduced,
+                          | IVs narrowed, live-outs simplified
+                          v
+  +-------------------------------------------------------+
+  | Downstream consumers:                                  |
+  |  - Instruction selection (register model now concrete) |
+  |  - Machine-level remat (nv-remat-block, second pass)  |
+  |  - Register allocation (lower pressure = higher occ.) |
+  +-------------------------------------------------------+
+```
+
+**Data flow summary:**
+
+| Producer | Data | Consumer |
+|----------|------|----------|
+| Live Variable Analysis | Per-block live-in/live-out bitvectors | Main remat loop |
+| Occupancy model (`sub_1C01730`) | Register pressure target | Main remat loop |
+| Main remat loop | `remat_`/`uclone_` cloned instructions | Updated IR for IV demotion |
+| IV Demotion | `demoteIV`, `newBaseIV`, `substIV` narrowed values | NLO and downstream |
+| NLO | `nloNewBit`, `nloNewAdd` local recomputations | Final IR for instruction selection |
+| All three sub-passes | Cumulative register pressure reduction | Machine-level remat (`nv-remat-block`) |
+
+The sequencing is important: the main loop reduces cross-block live-in pressure first (the broadest and cheapest wins), IV demotion then halves the cost of loop induction variables (converting two registers to one), and NLO cleans up block-boundary live-out values that survived both earlier phases. The machine-level `nv-remat-block` pass runs much later in the pipeline (after instruction selection and register allocation) as a final safety net, operating on concrete register assignments rather than abstract SSA values.
 
 ## Machine-Level Block Rematerialization (`nv-remat-block`)
 

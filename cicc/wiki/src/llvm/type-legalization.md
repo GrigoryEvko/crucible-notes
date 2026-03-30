@@ -1,5 +1,7 @@
 # Type Legalization
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 Type legalization is the SelectionDAG phase that rewrites every DAG node whose result or operand type is illegal for the target into equivalent sequences of legal-type operations. In upstream LLVM this logic spans four source files (`LegalizeTypes.cpp`, `LegalizeIntegerTypes.cpp`, `LegalizeFloatTypes.cpp`, `LegalizeVectorTypes.cpp`) totaling roughly 16,000 lines. In CICC v13.0, NVIDIA ships all of it as a single 348KB monolithic function -- `sub_20019C0` -- the largest function in the SelectionDAG address range and among the largest in the entire binary. Operation legalization follows in a separate 169KB function (`sub_1FFB890`), and vector split/scalarize dispatchers fan out into an additional 25+ worker functions.
 
 The monolithic structure is either an LTO inlining artifact (all four upstream `.cpp` files collapsed by link-time optimization) or a deliberate choice for branch-prediction locality. The functional behavior is a faithful reproduction of upstream LLVM's `DAGTypeLegalizer`, but the legality tables, legal-type set, and vector legalization rules are heavily NVPTX-specific.

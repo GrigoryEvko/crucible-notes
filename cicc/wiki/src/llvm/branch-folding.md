@@ -1,5 +1,7 @@
 # BranchFolding & TailMerge
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 BranchFolding is LLVM's post-register-allocation CFG optimizer. It runs after block placement and performs three transformations in a fixed-point loop: tail merging (extracting identical instruction tails from multiple blocks into a shared block), branch optimization (eliminating redundant or unreachable branches, merging single-predecessor blocks into predecessors), and common-code hoisting (lifting identical instructions from successors into a shared predecessor). In cicc v13.0 the pass lives at `sub_2F336B0` (the `OptimizeBlock` / `TailMergeBlocks` core, 11,347 bytes) with pass entry at `sub_2F36310`. The NVPTX version carries one critical divergence from upstream LLVM: tail merging is **not** disabled by `requiresStructuredCFG()`. Instead, cicc keeps tail merging enabled but gates individual merge decisions on a reserved-register check that prevents merging when NVPTX special registers (`%tid.x`, `%ntid.x`, etc.) cross the merge boundary.
 
 ## Key Facts

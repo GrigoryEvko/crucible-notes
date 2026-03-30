@@ -1,5 +1,7 @@
 # PrologEpilogInserter & Frame Layout
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 NVIDIA GPUs have no hardware stack pointer. There is no `push`, no `pop`, no `%rsp` — the entire concept of a "stack frame" is a compiler fiction. When a CUDA kernel needs local storage (spill slots, `alloca`, local arrays), cicc allocates a byte array called `__local_depot` in PTX `.local` address space and computes all offsets at compile time. The PrologEpilogInserter (PEI) pass is responsible for this: it takes abstract `MachineFrameInfo` frame indices produced by register allocation and earlier lowering, assigns concrete byte offsets within the depot, emits the two-instruction prologue that sets up the `%SP`/`%SPL` pseudo-registers, and rewrites every frame-index operand in the MachineFunction to `[%SP + offset]` form. At 68 KB and ~2,400 decompiled lines, cicc's PEI is a heavily modified monolith — the upstream open-source NVPTX backend replaces LLVM's standard PEI with a stripped-down 280-line `NVPTXPrologEpilogPass` that handles only offset calculation and frame-index elimination. cicc restores and extends nearly all of the standard PEI's functionality: callee-saved register handling, register scavenging, bitmap-based frame packing, categorized layout ordering, and a stack-size diagnostic system.
 
 | Property | Value |
@@ -367,6 +369,18 @@ Offset  Type   Field
 | `sub_B2D620` | Check function attribute existence |
 | `sub_B2D7E0` | Get function attribute value |
 | `sub_B15960` | Build stack-size diagnostic message |
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM (NVPTX open-source) | CICC v13.0 |
+|--------|-----------------------------------|------------|
+| **Implementation** | Stripped-down `NVPTXPrologEpilogPass` (~280 lines); handles only offset calculation and frame-index elimination | Full 68 KB PEI monolith with callee-saved register handling, register scavenging, bitmap-based frame packing, categorized layout ordering |
+| **Stack concept** | No hardware stack; minimal `__local_depot` offset assignment | Same `__local_depot` model but with full-featured offset assignment: categorized frame objects, alignment-based bucketing, dead frame object elimination |
+| **Callee-saved registers** | Skipped entirely (no function calls in typical kernels) | Restored: full callee-saved register scan, compound save/restore instruction insertion for non-inlined device function calls |
+| **Register scavenging** | Absent | Included: `sub_35C5BD0`/`sub_35C5C00` initialize and advance a register scavenger per MBB for emergency spill resolution |
+| **Frame packing** | Sequential offset assignment | Bitmap-based packing with categorized buckets; objects sorted by alignment to minimize padding waste |
+| **Stack-size diagnostics** | No diagnostic system | Annotation system (`sub_35AE7D0`) formats stack-size remarks; integrates with `-Rpass-analysis` for occupancy tuning |
+| **Prologue emission** | Two-instruction `%SP`/`%SPL` setup | Same two-instruction prologue (`sub_2158E80`) but with additional `__local_depot` sizing logic for complex frame layouts |
 
 ## Cross-References
 

@@ -1,5 +1,7 @@
 # Register Allocation
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 NVPTX register allocation in CICC v13.0 operates under a fundamentally different model from CPU targets. PTX has no fixed physical register file -- registers are virtual (`%r0`, `%r1`, `%f0`, ...) and the hardware scheduler maps them to physical resources at launch time. The "physical register" concept in LLVM's greedy allocator maps to register pressure constraints rather than actual hardware registers, making the allocator pressure-driven rather than assignment-driven. The primary constraint is the `-maxreg` limit (default 70), which bounds total live registers across all classes to control occupancy on the SM.
 
 | | |
@@ -318,19 +320,11 @@ The vtable-indirect calls at offsets `[1064]` and `[1072]` correspond to `tryRea
 
 ## Register Pressure and the -maxreg Constraint
 
-The real allocation constraint on NVPTX is not register scarcity but register pressure. Each SM has a fixed register file shared among all active warps. Higher register usage per thread reduces occupancy (the number of concurrent warps), directly impacting throughput. The `-maxreg` CLI flag (parsed at `sub_900130`, stored at compilation context offset `+1192`) caps the total live register count.
-
-Duplicate `-maxreg` definitions produce the error: `"libnvvm : error: -maxreg defined more than once"` (`sub_9624D0`).
+The real allocation constraint on NVPTX is not register scarcity but register pressure -- higher per-thread register usage reduces [occupancy](../gpu-execution-model.md#register-pressure-and-occupancy), directly impacting throughput through fewer warps available for latency hiding. The `-maxreg` CLI flag (parsed at `sub_900130`, stored at compilation context offset `+1192`) caps the total live register count. Duplicate `-maxreg` definitions produce the error: `"libnvvm : error: -maxreg defined more than once"` (`sub_9624D0`).
 
 ### Concrete Occupancy Examples
 
-The following table shows how register usage maps to occupancy on recent architectures. The register file is 65,536 registers per SM (256 KB), shared among all active warps. Each SM supports a maximum number of warps (e.g., 64 for SM 7.0--8.x, 48 for SM 9.0). The relationship is:
-
-```text
-regs_per_warp = regs_per_thread * 32  (warp_size)
-max_warps     = min(SM_warp_limit, floor(65536 / regs_per_warp))
-occupancy     = max_warps / SM_warp_limit
-```
+The occupancy formula and cliff table are documented in the [GPU Execution Model](../gpu-execution-model.md#occupancy-cliffs). Here the relevant values are shown for the `-maxreg` settings that the allocator targets:
 
 | `-maxreg` | Regs/Warp | Warps (SM 8.0) | Occupancy | Warps (SM 9.0) | Occupancy |
 |---|---|---|---|---|---|
@@ -341,7 +335,7 @@ occupancy     = max_warps / SM_warp_limit
 | 192 | 6,144 | 10 | 16% | 10 | 21% |
 | 255 | 8,160 | 8 | 13% | 8 | 17% |
 
-An occupancy "cliff" occurs at each boundary where increasing register count by one drops the warp count. For example, going from 64 to 65 registers per thread on SM 8.0 drops warps from 32 to 31 -- but going from 32 to 33 drops from 64 to 62. The `-maxreg` flag sets the ceiling, and the remat infrastructure aggressively reduces pressure below the cliff to avoid losing an entire warp slot.
+The `-maxreg` flag sets the ceiling, and the remat infrastructure aggressively reduces pressure below the nearest cliff to avoid losing an entire warp slot.
 
 The `remat-for-occ` knob (default 120) encodes an occupancy target. When set, the IR-level rematerialization pass (`sub_1CE7DD0`) calls `sub_1C01730` to compute an occupancy-based register target. The heuristic applies a scale factor: if the computed occupancy level exceeds 4, it multiplies the target by `3/2` (effectively allowing more registers when occupancy is already high). If the result still exceeds the ceiling, it applies `target = 2*target/3` as a tighter bound.
 
