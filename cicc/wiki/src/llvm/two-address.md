@@ -43,11 +43,8 @@ for each MBB in MF:
 
         if MI is EXTRACT_SUBREG (opcode 14):
             // NVPTX extended path -- multi-result decomposition
-            for each pair of operands (stride-2 iteration):
-                create COPY: dst_subreg = COPY src_reg
-                insert before MI, update LiveVariables
-                emit OptimizationRemark if ORE present
-            erase original EXTRACT_SUBREG
+            // See detailed algorithm below
+            decomposeExtractSubreg(MI)
             continue
 
         if MI is REG_SEQUENCE (opcode 15):
@@ -79,7 +76,7 @@ for each MBB in MF:
             rewrite descriptor to COPY
 ```
 
-### tryInstructionTransform (sub_1F4EF20)
+### tryInstructionTransform (sub\_1F4EF20)
 
 This is the optimization core. When `OptLevel != None`, it attempts to satisfy a tied constraint without inserting a COPY, in priority order:
 
@@ -93,26 +90,340 @@ This is the optimization core. When `OptLevel != None`, it attempts to satisfy a
 
 5. **COPY insertion.** If all optimization attempts fail, fall through to `processTiedPairs` which inserts an explicit `COPY`.
 
-The function calls itself recursively for transitive constraint resolution (e.g., when unfolding creates a new instruction that itself has tied operands).
+The function calls itself recursively (22 cross-references including a recursive self-call at `sub_1F4EF20`) for transitive constraint resolution -- when unfolding creates a new instruction that itself has tied operands, the resolution recurses.
 
-### EXTRACT_SUBREG Multi-Result Decomposition
+## EXTRACT\_SUBREG Multi-Result Decomposition Algorithm
 
-This is the most visibly NVPTX-extended portion. Standard LLVM handles `EXTRACT_SUBREG` in TwoAddress, but the NVPTX version extends it for multi-result instructions. When a texture load returns `v4f32`, ISEL produces a single pseudo-instruction with 8 operands (4 def/use pairs), each extracting one component. The pass iterates by stride-2 across the operand list, creating one `COPY` per component:
+This is the most substantial NVIDIA extension to the upstream pass. The code lives at lines 821--994 of `sub_1F53550` (decompilation line numbers from the 2,470-line function body). Standard LLVM handles single-result `EXTRACT_SUBREG`; the NVPTX version handles multi-result instructions where the `InstrEmitter` has produced a single `EXTRACT_SUBREG` pseudo with multiple operand pairs representing all extracted components.
+
+### Why Multi-Result EXTRACT\_SUBREG Exists
+
+When `InstrEmitter::EmitNode` (`sub_2EDDF20`, 872-byte stack frame, self-recursive for multi-result SDNode chains) lowers a multi-result NVPTX intrinsic, it produces a single `MachineInstr` with opcode 14 (`EXTRACT_SUBREG`) carrying N operand pairs -- one per result component. Each pair contains a def register (the extracted component destination) and a use register (the source super-register) plus a subreg index encoding which component to extract. The TwoAddress pass must decompose this single multi-operand pseudo into N separate `COPY` instructions.
+
+The three major producer categories:
+
+| Producer | Handler | ID range | Typical result width |
+|---|---|---|---|
+| Texture/surface loads | `sub_33A4350` | 50 IDs (0x5D--0x8D) | v4f32, v2f64, v4i32 |
+| WMMA / MMA operations | `sub_33A64B0` | 95 IDs (0xA4--0xA8, 0x194--0x1EC) | 2--8 register fragments |
+| Multi-element surface ops | case 0xA2 | single | loop over elements |
+| MMA sm90+ (wgmma) | `sub_33AC8F0` | 0x183--0x191 | 8--16 register fragments |
+| TMA operations | `sub_33AD3D0` | 0x179--0x17C | varies |
+| Async copy | `sub_33ADA20` | 0x17F--0x182 | 2 results (data + token) |
+
+The DAG-level builders that produce multi-result nodes are `sub_3411BE0` (multi-result DAG node), `sub_33FC220` (multi-result variadic node), and `sub_33F7800` (multi-result alternate form). The type list is built by `sub_1D25C30` (`SelectionDAG::getVTList` for multi-result).
+
+### Operand Memory Layout
+
+Each `MachineOperand` occupies 40 bytes in memory (stride 40 per operand in the operand array):
+
+| Offset within operand | Size | Field |
+|---|---|---|
+| +0 | `byte` | Flags byte 0: bit 0 = isDef |
+| +2 | `word` | Flags word: bits 4--11 = subreg class index, bits 8--19 = subreg index |
+| +3 | `byte` | Flags byte 3: bit 4 = isTied, bit 6 = earlyTied |
+| +4 | `byte` | Flags byte 4: bit 0 = isTied flag (secondary) |
+| +8 | `int64` | Register number (virtual reg > 0, physical reg < 0) |
+
+The subreg index is extracted by the formula:
 
 ```
-// Original: %dst0, %dst1, %dst2, %dst3 = EXTRACT_SUBREG %src, sub0, sub1, sub2, sub3
-// After:
-//   %dst0 = COPY %src.sub0
-//   %dst1 = COPY %src.sub1
-//   %dst2 = COPY %src.sub2
-//   %dst3 = COPY %src.sub3
+subregIdx = (*(uint32_t*)(operand + 0) >> 8) & 0xFFF
 ```
 
-The `earlyTied` optimization (checking bit 6 of operand flags at byte +3) detects when a later pair shares the same destination register and can merge the tie constraint forward, avoiding an extra COPY.
+This 12-bit field encodes which sub-register of the source to extract: sub0, sub1, sub2, sub3, etc. For a v4f32 texture result, the values are typically 1 through 4.
 
-### Copy-Equivalence Classes
+### Decomposition Pseudocode
 
-The pass builds two maps (`SrcEqClassMap` at offset +552, `DstEqClassMap` at +584) that track transitive copy chains. When it encounters `COPY`, `REG_SEQUENCE`, or `INSERT_SUBREG` instructions, it records the source-to-destination register mapping. The helper `collectRegCopies` (`sub_1F4E620`) walks use-def chains to build transitivity: if `A -> B -> C` via COPYs, then `A` maps directly to `C`. These maps are consumed by the downstream `RegisterCoalescer` to improve copy elimination.
+```
+// sub_1F53550 lines 821-994: EXTRACT_SUBREG handler (opcode == 14)
+decomposeExtractSubreg(MI):
+    numOps = MI.getNumOperands()              // v405
+    pairIdx = 0                               // v286, stride-2 counter
+
+    while pairIdx < numOps:
+        defOp  = MI.getOperand(pairIdx)       // base + pairIdx * 40
+        useOp  = MI.getOperand(pairIdx + 1)   // base + (pairIdx+1) * 40
+
+        dstReg = defOp.getReg()               // *(int64*)(defOp + 8)
+        srcReg = useOp.getReg()               // *(int64*)(useOp + 8)
+
+        // Extract subreg index from def operand flags (bits 8-19)
+        subregIdx = (defOp.flags >> 8) & 0xFFF
+
+        // Check if this operand is already tied (bit 0 of byte +4)
+        alreadyTied = (defOp.flagsByte4 & 1) != 0
+
+        // === CREATE COPY INSTRUCTION ===
+        // sub_1E0B640(MBB, insertPoint, MI.getDebugLoc(), 0)
+        // This is BuildMI -- allocates a new MachineInstr with opcode COPY
+        newCOPY = BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(TargetOpcode::COPY))
+
+        // Insert into block's instruction list
+        if MI.isBundledWithSucc():
+            sub_1DD6E10(MBB, MI, newCOPY)     // insertBefore (bundled variant)
+        else:
+            sub_1DD5BA0(MBB, MI, newCOPY)     // standard list insert
+
+        // Add def operand: destination register with subreg class encoding
+        // sub_1E1A9C0(newCOPY, dstReg, flags_with_subregclass)
+        newCOPY.addOperand(MachineOperand::CreateReg(dstReg, /*isDef=*/true))
+
+        // Add use operand: source register
+        // sub_1E1A9C0(newCOPY, srcReg, flags_use)
+        newCOPY.addOperand(MachineOperand::CreateReg(srcReg, /*isDef=*/false))
+
+        // === EARLY TIED OPTIMIZATION ===
+        // When this is NOT the first pair (pairIdx > 0) and the instruction
+        // has tied constraints, check if a later pair shares the same dest
+        // register. If so, mark the first operand of this COPY with isTied,
+        // allowing the register coalescer to merge them without an extra COPY.
+        if pairIdx > 0:
+            earlyTiedCheck = (defOp.flagsByte3 >> 6) & 1   // bit 6
+            isTiedCheck    = (defOp.flagsByte3 >> 4) & 1   // bit 4
+            if earlyTiedCheck AND isTiedCheck:
+                newCOPY.getOperand(0).setTied()  // set bit 0 of byte +4
+
+        // === OPTIMIZATION REMARK ===
+        if ORE != null:                       // pass object offset +272
+            sub_1DCCCA0(ORE, dstReg, MI, newCOPY)   // emit copy remark
+            remarkData = sub_1DCC790(ORE, dstReg)    // lookup remark data
+            sub_1F4C640(remarkData)                   // filter/emit remark
+            sub_1DCBB50(ORE)                          // push to output
+            if newCOPY.isInsideBundle():
+                walk to bundle head via successor chain
+            if sub_1E1AFE0(bundleHead):               // hasProperty check
+                sub_1DCC370(ORE, remarkNode)          // append to list
+
+        // === LIVEVARIABLES UPDATE ===
+        if LV != null:                        // pass object offset +280
+            sub_1DBF6C0(LV, MBB, MI, newCOPY, ...)
+            // This calls the full update chain:
+            //   sub_1DBA290: createNewVarInfo for newCOPY's def register
+            //   sub_1DBB110: initVarInfo (initialize kill/def lists)
+            //   sub_1DB3C70: findKill (locate kill point in block)
+            //   sub_1DB4410: addKill (update kill tracking for srcReg)
+            //   sub_1DB8610: addNewBlock (update block-level liveness)
+
+        pairIdx += 2                          // v286 += 2 (stride-2)
+
+    // === CLEANUP ===
+    // Remove all operands from original MI, then erase it
+    sub_1E16240(MI)                           // RemoveOperand (bulk)
+    MI.eraseFromParent()
+```
+
+### earlyTied Optimization Detail
+
+The earlyTied optimization is a critical performance path. Consider a `v4f32` texture load producing 4 results. Without earlyTied, the decomposition creates 4 independent COPY instructions. The register coalescer must then discover independently that some of these COPYs can be coalesced.
+
+The earlyTied flag (bit 6 of operand flags byte +3) is set during instruction emission when the emitter knows that consecutive extract results target adjacent sub-registers of a contiguous super-register. When detected, the pass marks the COPY's def operand with the isTied bit, creating a chain of tied constraints:
+
+```
+// Without earlyTied (4 independent COPYs, coalescer must work harder):
+%dst0 = COPY %src.sub0
+%dst1 = COPY %src.sub1
+%dst2 = COPY %src.sub2
+%dst3 = COPY %src.sub3
+
+// With earlyTied (COPYs carry tie hints, coalescer has direct information):
+%dst0 = COPY %src.sub0                          // first pair: no tie
+%dst1 = COPY %src.sub1   [tied to %dst0.succ]   // isTied bit set
+%dst2 = COPY %src.sub2   [tied to %dst1.succ]   // isTied bit set
+%dst3 = COPY %src.sub3   [tied to %dst2.succ]   // isTied bit set
+```
+
+The condition is: `(flagsByte3 >> 6) & 1` (earlyTied set) AND `(flagsByte3 >> 4) & 1` (isTied set) AND `pairIdx > 0` (not the first pair). This triple-guard prevents false positives on single-result extracts and on the first component which has no predecessor to tie to.
+
+### LiveVariables Update Chain
+
+Every COPY produced by the decomposition triggers a six-function update sequence. This is deeper than upstream LLVM's TwoAddress LiveVariables handling and suggests NVIDIA's downstream register allocator (the greedy RA at `sub_1E5B110`) is particularly sensitive to stale liveness:
+
+| Step | Function | Purpose |
+|---|---|---|
+| 1 | `sub_1DBF6C0` | Entry: transfer liveness from old MI to new COPY |
+| 2 | `sub_1DBA290` | `createNewVarInfo`: allocate VarInfo for the COPY's def register |
+| 3 | `sub_1DBB110` | `initVarInfo`: initialize the VarInfo's kill list, def list, and alive-block bitvector |
+| 4 | `sub_1DB3C70` | `findKill`: scan the current block to locate where srcReg is killed |
+| 5 | `sub_1DB4410` | `addKill` / `removeKill`: move the kill point from the original MI to the new COPY (srcReg now dies at the COPY, not at the original EXTRACT_SUBREG) |
+| 6 | `sub_1DB8610` | `addNewBlock`: update block-level liveness bitvectors if srcReg is live-in to this block from a predecessor |
+
+For a v4f32 decomposition, this executes 24 function calls (6 per component times 4 components). For a wmma.mma producing 8 fragments, it is 48 calls. The cost is quadratic in the worst case because `findKill` scans from the block start, but in practice the kill is always close to the insertion point.
+
+## Multi-Result Producers on NVPTX
+
+The EXTRACT_SUBREG decomposition path fires for all NVPTX operations that produce more than one register result. These originate in the intrinsic lowering pass (`sub_33A64B0` and friends in the `0x33A` cluster) and flow through SelectionDAG ISel and InstrEmitter before reaching TwoAddress.
+
+### Texture and Surface Loads
+
+The texture bulk handler `sub_33A4350` covers 50 intrinsic IDs (0x5D through 0x8D). A `tex.1d.v4.f32` intrinsic produces an SDNode with value type list `{f32, f32, f32, f32, chain}` via `sub_1D25C30` (`getVTList`). InstrEmitter converts this into a single MachineInstr with 8 operands (4 def/use pairs), which TwoAddress decomposes into 4 COPYs.
+
+Surface read/write handlers at `sub_33A3180` (IDs 0x8E--0x90) and the scatter/gather handler at case 0xA2 follow the same pattern with variable result widths.
+
+### WMMA and MMA Operations
+
+The mega-handler `sub_33A64B0` services 95 intrinsic IDs covering all wmma/mma variants across sm70+. A `wmma.mma.sync` on sm70 with fp16 accumulation produces 8 f16x2 fragments; on sm80 with tf32 it produces 4 f32 fragments. The sm90+ wgmma handler at `sub_33AC8F0` (IDs 0x183--0x191) can produce up to 16 register fragments for large matrix shapes.
+
+Each fragment becomes one operand pair in the EXTRACT_SUBREG pseudo. The TwoAddress pass decomposes a 16-fragment wgmma result into 16 individual COPYs, each with full LiveVariables update. This is the most expensive decomposition path in the entire pass.
+
+### TMA and Async Copy
+
+TMA bulk operations (`sub_33AD3D0`, IDs 0x179--0x17C) and async copy operations (`sub_33ADA20`, IDs 0x17F--0x182) produce 2-result nodes (data + completion token). These are simpler decompositions with only 2 COPY instructions.
+
+## Inline Assembly Tied Operands
+
+CUDA inline assembly with `"+r"` read-write constraints is the third category that exercises the TwoAddress pass on NVPTX. The tied operand pipeline spans three compilation stages:
+
+### Stage 1: EDG Constraint Construction (sub\_1286D80 path)
+
+The EDG frontend's inline asm codegen (analyzed in `p2-B07-inline-asm-codegen.txt`) detects tied operands when the operand descriptor byte at offset +24 equals 3. It constructs the constraint string by:
+
+1. Emitting the input value via `sub_1286D80`
+2. Appending `*` for indirect operands
+3. Appending the tied operand index as a decimal number to the constraint string
+
+If the type size is a power-of-2 and 64 bits or less, it may insert a bitcast to matching integer type. GCC-style matching-digit constraints in input position are explicitly rejected with `"tied input/output operands not supported!"`.
+
+### Stage 2: DAG-Level Tied Resolution (sub\_2079C70)
+
+`SelectionDAGBuilder::visitInlineAsm` (`sub_2079C70`, 83KB) uses:
+- `sub_20B4290`: `hasTiedOperand()` -- checks if tied index is not -1
+- `sub_20B42B0`: `getTiedOperand()` -- returns the tied index
+- `sub_2045250`: `resolveTiedOperand()` -- creates the DAG-level constraint
+
+The error string `"inline asm not supported yet: don't know how to handle tied indirect register inputs"` guards against the unsupported case of tied operands on memory-indirect inline asm operands.
+
+### Stage 3: TwoAddress COPY Insertion
+
+After ISel, the tied operand from inline asm appears as a regular tied constraint in the MachineInstr operand list. The TwoAddress pass processes it through the standard `collectTiedOperands` / `processTiedPairs` path. For `"+r"` constraints this typically produces a single COPY before the INLINEASM instruction.
+
+## processTiedPairs Detail (sub\_1F50270)
+
+This 63KB / 2,209-line function is the heavyweight tied-operand resolver. It is called from the main loop whenever `collectTiedOperands` finds constraints that the fast path (`tryInstructionTransform`) could not resolve.
+
+```
+processTiedPairs(MI, tiedPairs, distance):
+    for each (srcIdx, dstIdx) in tiedPairs:
+        srcReg = MI.getOperand(srcIdx).getReg()
+        dstReg = MI.getOperand(dstIdx).getReg()
+
+        if srcReg == dstReg:
+            continue    // constraint already satisfied
+
+        // === ATTEMPT COMMUTATION (OptLevel != None) ===
+        if canCommute(MI):
+            // isProfitableToCommute walks up to MaxDataFlowEdge (default 3)
+            // dataflow edges from srcReg and dstReg, comparing distances
+            // in DistanceMap to determine if commuting reduces copies
+            if isProfitableToCommute(MI, srcIdx, dstIdx, distance):
+                TII->commuteInstruction(MI)
+                if MI.getOperand(srcIdx).getReg() == MI.getOperand(dstIdx).getReg():
+                    continue    // resolved by commutation
+
+        // === ATTEMPT RESCHEDULING (twoaddr-reschedule = true) ===
+        if twoAddrReschedule:
+            // Try to move MI below the kill of srcReg
+            if rescheduleMIBelowKill(MI, srcIdx, dstIdx, distance):
+                continue    // resolved by rescheduling
+            // Try to move the kill of srcReg above MI
+            if rescheduleKillAboveMI(MI, srcIdx, dstIdx, distance):
+                continue    // resolved by rescheduling
+
+        // === ATTEMPT 3-ADDRESS CONVERSION ===
+        // On NVPTX, convertToThreeAddress always returns null (dead code)
+        if TII->convertToThreeAddress(MI, LIS):
+            continue    // resolved by conversion (never happens on NVPTX)
+
+        // === INSERT COPY (last resort) ===
+        newCOPY = BuildMI(MBB, MI, DL, TII.get(COPY), dstReg).addReg(srcReg)
+
+        // Extract subreg index from original operand
+        subregIdx = (MI.getOperand(srcIdx).flags >> 8) & 0xFFF
+        if subregIdx != 0:
+            newCOPY.getOperand(1).setSubReg(subregIdx)
+
+        // Insert into DistanceMap with incremented counter
+        // Walk predecessor chain to find scheduling unit
+        DistanceMap[newCOPY] = ++distance
+        DistanceMap[MI] = ++distance
+
+        // Rewrite srcReg to dstReg in original MI
+        MI.getOperand(srcIdx).setReg(dstReg)     // sub_1E310D0
+
+        // Update SrcEqClassMap: map srcReg -> dstReg
+        SrcEqClassMap.insert(srcReg, dstReg)      // sub_1F4E3A0
+
+        // === LIVEVARIABLES UPDATE ===
+        if LV:
+            varInfo = LV.getVarInfo(dstReg)        // sub_1DC1550
+            if varInfo not found:
+                varInfo = LV.createNewVarInfo(dstReg)  // sub_1DBA290
+                LV.initVarInfo(varInfo)                 // sub_1DBB110
+            // Transfer kill info: srcReg kill moves from MI to newCOPY
+            killInfo = varInfo.findKill(MBB)       // sub_1DB3C70
+            varInfo.addKill(newCOPY, flags)        // sub_1DB4410
+            // Update block-level liveness
+            varInfo.addNewBlock(MBB, position)     // sub_1DB8610
+
+        // === OPTIMIZATION REMARK ===
+        if ORE and commutationWasAttempted:        // v384 flag
+            sub_1DCC790(ORE, srcReg)               // lookup remark data
+            sub_1F4C640(remarkData)                 // filter remark
+            sub_1DCBB50(ORE)                        // push
+            if newCOPY.isInsideBundle():
+                walk to bundle head
+            if sub_1E1AFE0(bundleHead):
+                sub_1DCC370(ORE, remarkNode)       // append to list
+
+        // === REGISTER CLASS TIGHTENING ===
+        // sub_1E69410(SubtargetInfo, dstReg, regClass, 0)
+        // constrainRegClass on the destination register to the intersection
+        // of the current class and the class required by the tied operand
+```
+
+### INSERT\_SUBREG Rewrite (lines 2386--2396)
+
+After all tied pairs are processed for an `INSERT_SUBREG` instruction (opcode 8), the pass converts it into a plain `COPY`:
+
+```
+if MI.getOpcode() == INSERT_SUBREG:
+    // Propagate subreg encoding from operand[3] into operand[0]
+    subregBits = MI.getOperand(3).getSubRegIdx()
+    MI.getOperand(0).setSubReg(subregBits)
+    // Copy tie flag from operand[1] into operand[0]
+    MI.getOperand(0).setTied(MI.getOperand(1).isTied())
+    // Remove operands 3 and 1 (in reverse order to preserve indices)
+    MI.RemoveOperand(3)              // sub_1E16C90(MI, 3)
+    MI.RemoveOperand(1)              // sub_1E16C90(MI, 1)
+    // Rewrite opcode descriptor to COPY
+    MI.setDesc(TII.get(COPY))        // descriptor at TII + 960
+```
+
+## Copy-Equivalence Classes
+
+The pass builds two maps (`SrcEqClassMap` at offset +552, `DstEqClassMap` at +584) that track transitive copy chains. When it encounters `COPY`, `REG_SEQUENCE`, or `INSERT_SUBREG` instructions, it records the source-to-destination register mapping. The helper `collectRegCopies` (`sub_1F4E620`, 357 lines) walks use-def chains to build transitivity: if `A -> B -> C` via COPYs, then `A` maps directly to `C`. These maps are consumed by the downstream `RegisterCoalescer` to improve copy elimination.
+
+The `collectRegCopies` algorithm:
+
+```
+collectRegCopies(startReg):
+    chain = SmallVector()
+    reg = startReg
+
+    while true:
+        if not MRI.hasOneUse(reg):        // sub_1E69E00
+            break
+        defMI = MRI.getVRegDef(reg)
+        if defMI.getOpcode() not in {COPY, REG_SEQUENCE, INSERT_SUBREG}:
+            break
+        nextReg = defMI.getOperand(1).getReg()
+        chain.push(reg)
+        reg = nextReg
+
+    // Process chain in reverse: build transitivity
+    for i in reverse(chain):
+        SrcEqClassMap.insert(chain[i], chain[i+1])    // sub_1F4E3A0
+```
 
 ## Data Structures
 
@@ -128,7 +439,7 @@ The pass builds two maps (`SrcEqClassMap` at offset +552, `DstEqClassMap` at +58
 
 Entry stride: 56 bytes. Hash function: `37 * key`, linear probing, load factor 3/4. Total inline size: 224 bytes on stack.
 
-**DistanceMap** (`DenseMap<MachineInstr*, unsigned>` at pass object offsets +312..+336): maps each MI to its sequential position within the current block. Hash: `(ptr >> 4) ^ (ptr >> 9)`. Used by `tryInstructionTransform` for rescheduling decisions.
+**DistanceMap** (`DenseMap<MachineInstr*, unsigned>` at pass object offsets +312..+336): maps each MI to its sequential position within the current block. Hash: `(ptr >> 4) ^ (ptr >> 9)`. Used by `tryInstructionTransform` and `processTiedPairs` for rescheduling decisions and commutation profitability evaluation.
 
 **Pass Object Layout** (selected fields):
 
@@ -138,6 +449,7 @@ Entry stride: 56 bytes. Hash function: `37 * key`, linear probing, load factor 3
 | +240 | `MachineRegisterInfo*` | MRI |
 | +248 | `TargetInstrInfo*` | TII |
 | +256 | `TargetRegisterInfo*` | TRI |
+| +264 | `ptr` | InstrItineraryData* or TargetSubtargetInfo* |
 | +272 | `OptimizationRemarkEmitter*` | ORE (NVIDIA addition) |
 | +280 | `LiveVariables*` | LV |
 | +288 | `LiveIntervals*` | LIS (via SlotIndexes at +160) |
@@ -145,18 +457,54 @@ Entry stride: 56 bytes. Hash function: `37 * key`, linear probing, load factor 3
 | +304 | `MachineBasicBlock*` | Current MBB |
 | +312..+336 | `DenseMap` | DistanceMap |
 | +344..+376 | `SmallPtrSet` | Processed set |
+| +448..+476 | `SmallPtrSet` | Second set (reprocessing) |
 | +552..+576 | `DenseMap` | SrcEqClassMap |
 | +584..+608 | `DenseMap` | DstEqClassMap |
+
+## Tied Operand Scanning (Lines 1183--1413)
+
+The `collectTiedOperands` logic iterates all operands of an instruction checking for tied constraints. The inner loop (at STEP 7 in the raw analysis) contains a special-case direct resolution path:
+
+```
+for opIdx in 0..numOps-1:
+    // Skip defs, already-tied, and operands with no subreg class
+    if operand.isDef():           continue     // byte +0 != 0
+    if operand.isTied():          continue     // bit 4 of byte +3
+    if operand.subregClass == 0:  continue     // bits 4-11 of word +2
+
+    tiedIdx = MI.findTiedOperandIdx(opIdx)     // sub_1E16AB0
+    srcReg = operand[opIdx].getReg()
+    dstReg = operand[tiedIdx].getReg()
+
+    if srcReg == dstReg:
+        continue    // already satisfied
+
+    // SPECIAL CASE: direct resolution without COPY
+    if operand.isTied(secondary) AND def.subregClass == 0:
+        if dstReg < 0:    // physical register
+            regClass = sub_1F3AD60(MRI, instrDesc, opIdx, TII, MF)
+            if regClass:
+                MRI.constrainRegClass(dstReg, regClass)   // sub_1E69410
+        operand.setReg(dstReg)                     // sub_1E310D0
+        operand.clearSubregBits()                  // *operand &= 0xFFF000FF
+        // Constraint resolved: use now points to same reg as def
+        continue
+
+    // NORMAL: add to TiedOperandMap
+    TiedOperandMap[srcReg].push({opIdx, tiedIdx})  // packed as qword
+```
+
+The special-case path at the `isTied(secondary)` check (bit 0 of byte +4) handles the case where the operand carries a secondary tie flag from instruction emission and the def side has no subreg class constraint. In this case the pass can directly rewrite the use register to match the def without inserting a COPY, and clears the subreg bits with the mask `0xFFF000FF`.
 
 ## NVIDIA Modifications
 
 The pass is structurally stock LLVM -- the libNVVM build at `sub_F4EA80` is byte-for-byte identical in structure, confirming shared source. The NVIDIA delta consists of four additions:
 
-1. **Extended EXTRACT_SUBREG handling** (lines 821--994 of the decompilation). Standard LLVM handles single EXTRACT_SUBREG; the NVPTX version handles multi-result instructions with multiple extract chains via stride-2 operand iteration. This is required for texture/surface loads returning `v4f32`, wmma/mma producing multi-register fragments, and similar multi-result NVPTX intrinsics.
+1. **Extended EXTRACT_SUBREG handling** (lines 821--994 of the decompilation). Standard LLVM handles single EXTRACT_SUBREG; the NVPTX version handles multi-result instructions with multiple extract chains via stride-2 operand iteration. This is required for texture/surface loads returning `v4f32`, wmma/mma producing multi-register fragments, and similar multi-result NVPTX intrinsics. The earlyTied optimization (checking bits 4 and 6 of operand flags byte +3) is unique to this extension and provides direct coalescing hints for contiguous sub-register sequences.
 
-2. **Deeper LiveVariables maintenance** (lines 1791--2064). When a COPY is inserted, the pass creates new `VarInfo` entries (`sub_1DBA290`), initializes them (`sub_1DBB110`), updates kill info (`sub_1DB3C70` / `sub_1DB4410`), and maintains block-level liveness (`sub_1DB8610`). This depth suggests NVIDIA's downstream register allocator is particularly sensitive to stale liveness information.
+2. **Deeper LiveVariables maintenance** (lines 1791--2064). When a COPY is inserted, the pass creates new `VarInfo` entries (`sub_1DBA290`), initializes them (`sub_1DBB110`), updates kill info (`sub_1DB3C70` / `sub_1DB4410`), and maintains block-level liveness (`sub_1DB8610`). This six-function chain executes per COPY, not per instruction. For a 16-fragment wgmma result, this produces 96 function calls for liveness maintenance alone.
 
-3. **OptimizationRemarkEmitter integration** (lines 2207--2258). The pass reports cases where tied-operand constraints forced extra COPY insertions, providing performance diagnostic information. This is absent in upstream LLVM's TwoAddress pass. The ORE pointer is stored at pass object offset +272 and acquired via analysis lookup of `unk_4FC4534`.
+3. **OptimizationRemarkEmitter integration** (lines 2207--2258). The pass reports cases where tied-operand constraints forced extra COPY insertions, providing performance diagnostic information. This is absent in upstream LLVM's TwoAddress pass. The ORE pointer is stored at pass object offset +272 and acquired via analysis lookup of `unk_4FC4534`. The five-function chain (`sub_1DCCCA0` through `sub_1DCC370`) handles remark creation, filtering, and bundle-aware emission.
 
 4. **optnone/fast-compile gate** (`sub_1636880`). When the function has `optnone` or when NVIDIA's fast-compile mode is active, the effective optimization level is forced to 0. This disables commutation, 3-address conversion, and rescheduling attempts in `tryInstructionTransform` (which returns `false` immediately when `OptLevel == None`), making the pass a pure COPY-insertion pass with no optimization.
 
@@ -177,18 +525,30 @@ The `optnone`/fast-compile gate is not a knob per se but has the effect of disab
 |---|---|---|---|
 | `sub_1F4D900` | Pass registration (name + ID) | small | Sets `"Two-Address instruction pass"` and `"twoaddressinstruction"` |
 | `sub_1F4D9F0` | Constructor | small | |
+| `sub_1F4CC10` | Helper: rescheduleMIBelowKill support | -- | Called by `sub_1F4EF20` |
+| `sub_1F4D060` | Helper: rescheduleKillAboveMI support | -- | Called by `sub_1F4EF20` |
 | `sub_1F4DD40` | `SmallPtrSet::contains(MI*)` | 67 lines | Processed set membership check |
 | `sub_1F4DE20` | `SmallDenseMap::clear()` | 180 lines | TiedOperandMap cleanup, frees heap-allocated pair lists |
 | `sub_1F4E3A0` | `DenseMap<int,int>::insert` | 166 lines | EqClassMap insertion, hash = `37 * key` |
 | `sub_1F4E620` | `collectRegCopies` | 357 lines | Walks COPY chains to build transitive equivalence classes |
 | `sub_1F4EC70` | `DenseMap<ptr,int>::insert` | 164 lines | DistanceMap insertion, hash = `(ptr>>4) ^ (ptr>>9)` |
-| `sub_1F4EF20` | `tryInstructionTransform` | 28KB / 1,127 lines | Core tied-operand rewriter: commutation, 3-addr, COPY. Recursive. |
+| `sub_1F4EF20` | `tryInstructionTransform` | 28KB / 1,127 lines | Core tied-operand rewriter: commutation, 3-addr, COPY. Recursive (22 xrefs). |
 | `sub_1F50270` | `processTiedPairs` | 63KB / 2,209 lines | Full pipeline: commute, convert, COPY insertion, LV/LI update |
 | `sub_1F53020` | `SmallDenseMap::grow` | 312 lines | TiedOperandMap rehash, 56-byte entry stride |
 | `sub_1F53550` | `runOnMachineFunction` | 79KB / 2,470 lines | Pass entry point |
 | `sub_1F3AD60` | Helper: find matching superclass | -- | Finds register class for tied physical reg constraints |
 | `sub_1F4C460` | Helper: implicit tied operands | -- | Checks if MI has implicit tied operand pairs |
 | `sub_1F4C640` | Helper: filter/emit remark | -- | ORE filtering for copy-insertion diagnostics |
+| `sub_1DBA290` | `LiveVariables::createNewVarInfo` | -- | Allocates VarInfo for new register |
+| `sub_1DBB110` | `LiveVariables::initVarInfo` | -- | Initializes kill/def lists and alive bitvector |
+| `sub_1DB3C70` | `VarInfo::findKill` | -- | Scans block for register kill point |
+| `sub_1DB4410` | `VarInfo::addKill` / `removeKill` | -- | Updates kill tracking |
+| `sub_1DB8610` | `VarInfo::addNewBlock` | -- | Updates block-level liveness bitvectors |
+| `sub_1DBF6C0` | `LiveVariables::HandlePhysRegDef` | -- | Transfer liveness from old MI to new COPY |
+| `sub_1DCCCA0` | `ORE::emit` (copy remark) | -- | Emits optimization remark for COPY insertion |
+| `sub_1DCC790` | `ORE::lookup` | -- | Looks up remark data for register |
+| `sub_1DCBB50` | `ORE::push` | -- | Pushes remark to output |
+| `sub_1DCC370` | `ORE::appendToList` | -- | Appends remark (bundle-aware) |
 | `sub_1E926D0` | `MachineFunction::verify` | -- | Called with `"After two-address instruction pass"` |
 | `sub_1636880` | `isOptNone` / fast-compile check | -- | Forces `OptLevel = 0` when active |
 
@@ -201,7 +561,12 @@ The 79KB `runOnMachineFunction` plus 63KB `processTiedPairs` plus 28KB `tryInstr
 - [Register Coalescing](./register-coalescing.md) -- runs immediately after TwoAddress; consumes the SrcEqClassMap/DstEqClassMap built here
 - [Register Allocation](./register-allocation.md) -- the downstream consumer that requires tied operands to be resolved
 - [SelectionDAG](./selectiondag.md) -- produces the EXTRACT_SUBREG/INSERT_SUBREG/REG_SEQUENCE pseudo-instructions that this pass eliminates
+- [Instruction Emitter](./instr-emitter.md) -- `sub_2EDDF20` creates multi-result EXTRACT_SUBREG chains from SDNode output
+- [MMA Code Generation](./mma-codegen.md) -- WMMA/MMA intrinsics producing multi-register results that require decomposition
+- [ISel Patterns](./isel-patterns.md) -- instruction selection creates the tied operand constraints
 - [Instruction Scheduling](./scheduling.md) -- runs before TwoAddress in the pre-RA scheduling slot
 - [Pipeline & Ordering](./pipeline.md) -- full pass ordering context
 - [CLI Flags](../config/cli-flags.md) -- `optnone` and fast-compile mode
 - [LLVM Knobs](../config/knobs.md) -- `twoaddr-reschedule`, `dataflow-edge-limit`
+- [Hash Infrastructure](../infra/hash-infrastructure.md) -- DenseMap and SmallDenseMap internals used throughout
+- [Diagnostics](../infra/diagnostics.md) -- OptimizationRemarkEmitter system

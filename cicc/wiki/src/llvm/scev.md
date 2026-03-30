@@ -93,15 +93,78 @@ The **PTX kernel bypass** (calling conventions 42 and 43) is significant: kernel
 
 ### NVIDIA Simple Mode (Complexity Control)
 
-Upstream LLVM uses a single recursion counter to bound `getSCEV`. NVIDIA replaces this with a two-stage gating system called `simple_mode` (enabled by the `scalar-evolution-complexity-control` flag, default **true**):
+Upstream LLVM uses a single recursion counter to bound `getSCEV`. NVIDIA replaces this with a two-stage gating system called `simple_mode` (enabled by the `scalar-evolution-complexity-control` flag, default **true**). The system is stored entirely in four bytes of the SE object:
 
-1. **Expression size scoring** (`sub_DB3670`): Before committing to building a SCEV expression, the system estimates how large the resulting expression tree would be. The scorer considers loop nesting depth, operand count, and configuration bits at `SE+1572`. If the score exceeds `scalar-evolution-max-expr-size` (default **384**), the instruction is classified as `SCEVUnknown` immediately.
+| Offset | Type | Field | Role |
+|--------|------|-------|------|
+| `+1560` | `uint8` | `simple_mode` | 0 = normal (upstream-style), 1 = NVIDIA complexity control |
+| `+1564` | `uint32` | `failure_count` | Running count of instructions classified as `SCEVUnknown` by the size gate |
+| `+1568` | `uint32` | `recursion_count` | Upstream-style depth counter, only active when `simple_mode == 0` |
+| `+1572` | `uint8` | `complexity_config` | Tuning bits read by the expression size scorer |
 
-2. **Failure counting** (`SE+1564`): Each time an instruction is classified as Unknown due to the size threshold, the failure counter increments. After `scalar-evolution-max-expr-failures` (default **100**) failures, ALL subsequent `getSCEV` calls for that function bail out immediately. This prevents a single pathological function from burning O(N^2) time trying to score thousands of instructions.
+When `scalar-evolution-complexity-control` is true (the default), the SE constructor initializes `simple_mode` to 1. The gating operates in three stages:
 
-3. **Mode toggle**: When an instruction passes the size check, `simple_mode` is temporarily set to 0 and the recursion counter reset to 0 before calling `createSCEV`. This prevents double budget-checking (the normal recursion counter would immediately start counting from 0 for the sub-expression tree).
+**Stage 1 -- Failure gate.** Before scoring anything, `getSCEV` checks `failure_count > scalar-evolution-max-expr-failures` (global `qword_4F88348`, default **100**). If the function has already exceeded the failure budget, the instruction is classified as `SCEVUnknown`, the result is cached via `sub_DB77A0` (`insertSCEV`), and control returns immediately. This prevents a single pathological function from burning O(N^2) time trying to score thousands of instructions that will all fail.
 
-The practical effect: GPU kernels with hundreds of address computations (common in tiled matrix multiply, convolution stencils) hit the complexity wall early for outer variables, but the important inner loop induction variables -- which have simple affine structure -- always get analyzed.
+**Stage 2 -- Expression size scoring.** The scorer `sub_DB3670` (`expressionComplexity`, 35KB binary, self-recursive) estimates how large the resulting SCEV expression tree would be. It walks the instruction's def-use chain bottom-up, counting nodes and weighting by expression kind:
+
+```
+uint64_t expressionComplexity(SE *se, Value *V) {
+    // sub_DB3670 -- self-recursive, calls sub_CF4090 for SCEV node size
+    if (V is Constant)     return 1;
+    if (V is Argument)     return 1;
+    if (!isSCEVable(V))    return 0;      // non-integer/pointer: free
+
+    // Look up V in the SCEV cache; if already a SCEV node,
+    // delegate to the node-size estimator
+    SCEV *cached = lookupSCEV(se, V);
+    if (cached)
+        return sub_CF4090(cached);         // count nodes in SCEV tree
+
+    // Not yet in cache: estimate from instruction structure
+    Instruction *I = dyn_cast<Instruction>(V);
+    if (!I) return 1;
+
+    uint64_t score = 1;                    // 1 for this node
+    Loop *L = LoopInfo->getLoopFor(I);
+    if (L) {
+        uint32_t depth = L->getLoopDepth();
+        score += depth;                    // loop nesting multiplier
+    }
+
+    // Walk operands, accumulating recursively
+    for (unsigned i = 0; i < I->getNumOperands(); i++) {
+        score += expressionComplexity(se, I->getOperand(i));
+    }
+
+    // Apply configuration scaling from SE+1572
+    if (se->complexity_config & 0x1)
+        score = score * 3 / 2;            // 50% penalty for aggressive mode
+    if (se->complexity_config & 0x2)
+        score += depth * 2;               // extra loop nesting weight
+
+    return score;
+}
+```
+
+The helper `sub_CF4090` counts nodes in an existing SCEV expression tree: it returns 1 for `SCEVConstant` and `SCEVUnknown`, recurses into operands for `SCEVAddExpr`/`SCEVMulExpr`/`SCEVAddRecExpr` (summing child sizes + 1), and handles casts (`Truncate`/`ZeroExtend`/`SignExtend`) as 1 + child size. The node-size estimate is precise because SCEV expressions are uniqued -- the same sub-expression pointer is never double-counted within a single scoring call.
+
+If the total score exceeds `scalar-evolution-max-expr-size` (global `dword_4F88428`, default **384**), the instruction is classified as `SCEVUnknown` and `failure_count` is incremented. The `SCEVUnknown` result is cached immediately so that later queries from different loop passes return instantly rather than re-running the scorer.
+
+**Stage 3 -- Mode toggle.** When an instruction passes the size check (score <= 384), `simple_mode` is temporarily set to 0 and the recursion counter reset to 0 before calling `createSCEV`:
+
+```
+se->simple_mode = 0;        // disable complexity gating
+se->recursion_count = 0;    // reset upstream counter for this sub-tree
+SCEV *result = createSCEV(se, V);
+se->simple_mode = 1;        // restore
+```
+
+This prevents double budget-checking: the upstream recursion counter inside `createSCEV` starts from 0 for the sub-expression tree rather than inheriting a parent depth. Each `createSCEV` call thus gets a fresh budget of `scalar-evolution-max-recursion-depth` (default 100) for its own sub-tree.
+
+**Practical effect:** GPU kernels with hundreds of address computations (common in tiled matrix multiply, convolution stencils) hit the complexity wall early for outer variables, but the important inner loop induction variables -- which have simple affine structure -- always get analyzed. The two-stage gate (score first, then depth-limit) avoids the upstream problem where a single deep operand chain exhausts the entire recursion budget for the function.
+
+**Why not just raise the upstream recursion limit?** The upstream counter is a *global* depth counter -- raising it means every instruction in the function gets more budget, including ones that will never produce useful SCEV expressions. The NVIDIA approach is *per-instruction*: each instruction is independently scored, and only instructions with manageable complexity get the full treatment. This keeps total SCEV compile time bounded at O(N * max_expr_size) rather than O(N * max_recursion_depth^2).
 
 ## Worklist-Driven createSCEV
 
@@ -254,21 +317,83 @@ Device functions (`__device__`, conventions other than 42/43) remain subject to 
 
 ### Warp-Stride and Grid-Stride Loop Patterns
 
-Two CUDA-specific loop idioms produce distinctive SCEV expressions:
+Two CUDA-specific loop idioms produce distinctive SCEV expressions. Neither has an analog in CPU code, and cicc's SCEV subsystem recognizes both at construction time -- not as a post-hoc pattern match.
 
-**Warp-stride loop:**
+#### Warp-Stride Loop
+
 ```c
 for (int i = threadIdx.x; i < N; i += warpSize) { ... }
 ```
-Produces: `{threadIdx.x, +, 32}<loop>` -- an `SCEVAddRecExpr` with start = `SCEVUnknown(threadIdx.x)` (range `[0, blockDim.x)`) and step = `SCEVConstant(32)`. The trip count is `udiv(N - threadIdx.x + 31, 32)`.
 
-**Grid-stride loop:**
+The PHI decomposer (`sub_D94080`) recognizes the increment value as the constant 32 (warpSize is a compile-time constant on all NVIDIA architectures). The resulting SCEV:
+
+```
+{threadIdx.x, +, 32}<nuw><loop>
+```
+
+- **Start**: `SCEVUnknown(@llvm.nvvm.read.ptx.sreg.tid.x)`, range `[0, blockDim.x)` (injected from the builtin table, intrinsic ID 333).
+- **Step**: `SCEVConstant(32)`.
+- **Flags**: NUW (no-unsigned-wrap) is set because the start is non-negative and the step is positive. The PHI decomposer sets this flag when the incoming value (intrinsic ID 372 = warpSize) resolves to a constant and the start range has a non-negative lower bound.
+- **Trip count**: The backedge-taken count (`sub_DB9E00`) computes:
+  ```
+  BTC = udiv(N - threadIdx.x + 31, 32)
+      = udiv(sext(N) - sext(start) + step - 1, step)
+  ```
+  This is the standard SCEV `computeExitCountFromICmpUN` path for `i < N` with stride 32.
+
+The NUW flag is critical: it allows the loop vectorizer to prove that the induction variable never wraps, enabling vectorization without a runtime overflow check. Without the warp-stride recognition, the vectorizer would see `SCEVUnknown(threadIdx.x)` as an opaque value and conservatively assume wrapping is possible.
+
+#### Grid-Stride Loop
+
 ```c
 for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N; i += blockDim.x * gridDim.x) { ... }
 ```
-Produces: `{blockIdx.x * blockDim.x + threadIdx.x, +, blockDim.x * gridDim.x}<loop>`. The start is an `SCEVAddExpr(SCEVMulExpr(blockIdx.x, blockDim.x), threadIdx.x)`. The step is `SCEVMulExpr(blockDim.x, gridDim.x)`. Both start and step are `SCEVUnknown` values with range constraints derived from the builtin table.
 
-The delinearization system (documented in [SCEV Invalidation & Delinearization](./scev-invalidation.md)) specifically recognizes the grid-stride pattern -- when a `ZeroExtend` or `SignExtend` wraps an `AddRecExpr` whose step matches `blockDim.x * gridDim.x`, the delinearizer treats it as a dimension boundary for multi-dimensional array access recovery.
+The instruction decomposer traces through the PHI's increment chain. The addition `blockDim.x * gridDim.x` is recognized as two calls to special register intrinsics (IDs 312 for blockDim.x and 312 again for gridDim.x) combined in a multiply. The resulting SCEV:
+
+```
+{blockIdx.x * blockDim.x + threadIdx.x, +, blockDim.x * gridDim.x}<loop>
+```
+
+Decomposition detail:
+- **Start**: `SCEVAddExpr(SCEVMulExpr(SCEVUnknown(blockIdx.x), SCEVUnknown(blockDim.x)), SCEVUnknown(threadIdx.x))`.
+  - `blockIdx.x` (ID 339): range `[0, gridDim.x)`.
+  - `blockDim.x` (ID 312): range `[1, 1024]` (hardware limit).
+  - `threadIdx.x` (ID 333): range `[0, blockDim.x)`.
+  - The combined start range is `[0, gridDim.x * blockDim.x)` = `[0, total_threads)`.
+- **Step**: `SCEVMulExpr(SCEVUnknown(blockDim.x), SCEVUnknown(gridDim.x))` -- this is the total grid size. Both operands are `SCEVUnknown` values with ranges from the builtin table.
+- **Trip count**: `computeBackedgeTakenCount` (`sub_DB9E00`) produces:
+  ```
+  BTC = udiv(N - start + step - 1, step)
+  ```
+  where `start` and `step` are symbolic. The trip count itself is `SCEVUnknown` (the exact value depends on runtime launch configuration), but the *maximum* trip count can be bounded using the range constraints.
+
+#### Delinearization of Grid-Stride Patterns
+
+The delinearization system (`sub_DE9D10`, documented in [SCEV Invalidation & Delinearization](./scev-invalidation.md)) specifically recognizes the grid-stride pattern. In the `ZeroExtend`/`SignExtend` handlers (cases 3 and 4 of the delinearizer), when an `AddRecExpr` whose step matches the delinearization context's `step_recurrence` field (`ctx+0x68`):
+
+1. The delinearizer checks if `step == blockDim.x * gridDim.x` by comparing the step SCEV pointer against `ctx[+0x68]`.
+2. If matched and the `AddRec` has exactly 2 operands (start + step), the delinearizer treats this as a *dimension boundary* -- the step represents the stride of the outer dimension in a multi-dimensional array access.
+3. The dimension size is extracted and added to the term collector at `ctx[+0x58]`. The element count is obtained via `sub_D33D80` (`getElementSize`) and `sub_DA4270` (`getConstant`).
+4. The delinearizer reconstructs the multi-dimensional subscript by applying `getZeroExtendExpr` (or `getSignExtendExpr`) to the start and step separately, preserving the recurrence structure across the extension.
+
+This is how cicc recovers the original multi-dimensional array indices from grid-stride loops over flattened arrays -- essential for dependence analysis in LoopVectorize and LoopInterchange.
+
+#### Block-Stride Loop (Variant)
+
+A less common but recognized pattern:
+
+```c
+for (int i = threadIdx.x; i < N; i += blockDim.x) { ... }
+```
+
+Produces: `{threadIdx.x, +, blockDim.x}<loop>`. The step is `SCEVUnknown(blockDim.x)` with range `[1, 1024]`. The trip count is `udiv(N - threadIdx.x + blockDim.x - 1, blockDim.x)` -- symbolic but bounded. This pattern is common in reduction kernels and shared-memory tiling.
+
+#### Aggressive Positive Stride Analysis
+
+The NVIDIA-specific knob `aggressive-positive-stride-analysis` (see nvbug 3972412) enables additional reasoning about stride signs. When enabled, the SCEV range analysis assumes that strides derived from `blockDim.x`, `gridDim.x`, and `warpSize` are always positive (range `[1, ...)` rather than `[0, ...)`). This allows the loop vectorizer and LSR to prove monotonic increase of induction variables, eliminating runtime overflow checks. The knob is registered in `ctor_131_0` (constructor at `0x4E1CD0` area) and can be disabled via `-no-aggressive-positive-stride-analysis`.
+
+The `special-reassociate-for-threadid` knob (description: "Don't move back expressions with threadid") prevents SCEV-based reassociation from hoisting `threadIdx.x` expressions out of their canonical position. Without this guard, the reassociator might combine `threadIdx.x + offset` into a form that obscures the warp/grid-stride pattern for downstream consumers.
 
 ## SCEV Expression Types and the FoldingSet
 
@@ -356,9 +481,13 @@ SCEV is consumed by every loop optimization in cicc. The key interfaces:
 
 **Loop Strength Reduction** (`sub_19A87A0`): The NVIDIA custom LSR reads SCEV expressions for each loop use (base SCEV at `+0`, stride SCEV at `+8`, loop bounds at `+712`/`+720`). The formula solver generates alternatives by factoring common strides out of SCEV expressions. SCEV normalization (`sub_199D980`) provides canonical forms for hash-table keying.
 
-**IndVarSimplify** (`sub_1945A50`): Uses SCEV to compute exit values, rewrite loop exit conditions, and perform LFTR (Linear Function Test Replace). The NVIDIA `Disable-unknown-trip-iv` knob skips the entire pass when the trip count is not SCEV-computable, protecting GPU-specific loops from incorrect IV transforms.
+**IndVarSimplify** (`sub_1945A50`): Uses SCEV to compute exit values, rewrite loop exit conditions, and perform LFTR (Linear Function Test Replace). NVIDIA adds two guards:
+- `Disable-unknown-trip-iv` (registered in `ctor_203` at `0x4E1CD0`, global `qword_4FAF520`): When set, the pass is skipped entirely for loops whose trip count is `SCEVCouldNotCompute`. The check in the `run()` wrapper (`sub_19489B0`, lines 119-122) calls `sub_1CED350` (trip count query) and `sub_1CED620` (trip count for header). This protects GPU-specific loops with divergent control flow from incorrect IV transforms.
+- `iv-loop-level` (default **1**, global `qword_4FAF440`): Limits IndVarSimplify to loops at nesting depth <= the configured level. `sub_193DD90` (`getLoopDepth`) returns 1 for outermost loops. The default restricts IV simplification to outermost loops only, avoiding compile-time explosion on deeply-nested GPU kernels (stencil, tensor code).
 
-**LoopInterchange** (`sub_E05-loop-interchange`): Uses SCEV stride analysis to determine which loops carry memory strides. If a subscript has stride in both inner and outer loops, it is marked "ambiguous" and interchange is blocked.
+**Loop Strength Reduction** (`sub_19A87A0`): The NVIDIA custom LSR reads SCEV expressions for each loop use (base SCEV at `+0`, stride SCEV at `+8`, loop bounds at `+712`/`+720`). The formula solver generates alternatives by factoring common strides out of SCEV expressions. SCEV normalization (`sub_199D980`) provides canonical forms for hash-table keying. NVIDIA adds `disable-unknown-trip-lsr` to skip LSR entirely for unknown-trip-count loops, plus `lsr-check-rp` / `lsr-rp-limit` to gate LSR on register pressure.
+
+**LoopInterchange** (`sub_E05-loop-interchange`): Uses SCEV stride analysis to determine which loops carry memory strides. If a subscript has stride in both inner and outer loops, it is marked "ambiguous" and interchange is blocked. For grid-stride loops, the step `blockDim.x * gridDim.x` is recognized as an outer-loop stride, allowing interchange when the array subscript depends on a single loop dimension.
 
 ## Configuration: All SCEV Knobs
 
@@ -375,7 +504,11 @@ SCEV is consumed by every loop optimization in cicc. The key interfaces:
 | `track-trip-count-more` | **true** | More aggressive trip count tracking |
 | `common-factor-with-mr265` | **true** | SCEV common factor optimization (internal MR reference) |
 | `scalar-evolution-classify-expressions` | **true** | Enable SCEV expression classification |
-| `aggressive-positive-stride-analysis` | (bool) | Aggressive stride analysis (see nvbug 3972412) |
+| `aggressive-positive-stride-analysis` | (bool) | Aggressive stride sign reasoning for blockDim/gridDim/warpSize (see nvbug 3972412) |
+| `special-reassociate-for-threadid` | (bool) | Prevent hoisting threadIdx expressions out of canonical position |
+| `Disable-unknown-trip-iv` | (bool) | Skip IndVarSimplify for loops with `SCEVCouldNotCompute` trip count |
+| `disable-unknown-trip-lsr` | (bool) | Skip Loop Strength Reduction for unknown-trip-count loops |
+| `iv-loop-level` | **1** | Max loop nesting depth for IndVarSimplify (1 = outermost only) |
 | `scev-cgp-tid-max-value` | (int) | Max value of thread ID for SCEV-CGP address mode optimization |
 
 ### Upstream LLVM Knobs (Preserved in cicc)
@@ -397,6 +530,16 @@ SCEV is consumed by every loop optimization in cicc. The key interfaces:
 | `verify-scev-strict` | **false** | Stricter SCEV verification |
 | `verify-scev-maps` | **false** | Verify SCEV map consistency |
 
+### SCEV Global Variables (Binary Addresses)
+
+| Global | Knob String | Default | Used By |
+|--------|-------------|---------|---------|
+| `dword_4F88268` | `scalar-evolution-max-recursion-depth` | 100 | `getSCEV` normal mode depth counter |
+| `qword_4F88348` | `scalar-evolution-max-expr-failures` | 100 | `getSCEV` simple mode failure gate |
+| `dword_4F88428` | `scalar-evolution-max-expr-size` | 384 | `expressionComplexity` size threshold |
+| `qword_4F88DC8` | (loop iteration bound) | -- | Exit analysis iteration limit |
+| `qword_4F88EA8` | (range recursion limit) | -- | `getRangeRef` max recursion depth |
+
 ### SCEV-CGP Knobs (Address Mode Optimization)
 
 | Knob | Effect |
@@ -412,6 +555,26 @@ SCEV is consumed by every loop optimization in cicc. The key interfaces:
 | `scev-cgp-old-base` | Use old base computation method |
 | `scev-cgp-tid-max-value` | Max thread ID value for address mode analysis |
 | `print-after-scev-cgp` | Print function IR after SCEV-CGP |
+
+## Differences from Upstream LLVM
+
+The cicc v13.0 SCEV subsystem diverges from upstream LLVM 20.0.0 `ScalarEvolution.cpp` in the following ways:
+
+| Feature | Upstream LLVM | cicc v13.0 |
+|---------|---------------|------------|
+| Budget system | Single `recursion_count` depth counter | Two-stage: expression size scoring (`sub_DB3670`) + failure counting, toggled via `simple_mode` flag |
+| Kernel bypass | No concept of calling convention bypass | CC 42/43 (PTX `__global__`) bypass all SCEV budgets |
+| `createSCEV` | Recursive | Non-recursive worklist (`sub_DD8130`) to handle deep GPU expression trees |
+| GPU builtin ranges | No thread/block index knowledge | Intrinsic IDs 312/333/339/360/369/372 inject ranges at SCEV construction time |
+| PHI decomposition | Standard recurrence detection | GPU-specific path (kind 64) traces PHI chains through NVIDIA special register intrinsics |
+| Delinearization | Standard dimension recovery | Polymorphic predicate collector recognizes grid-stride patterns; `step_recurrence` field enables GPU memory coalescing analysis |
+| Trip count tracking | Standard | `track-trip-count-more` (default true) enables more aggressive BTC computation |
+| Stride sign reasoning | Standard | `aggressive-positive-stride-analysis` assumes blockDim/gridDim/warpSize are always positive |
+| Expression canonicalization | Standard | `special-reassociate-for-threadid` prevents moving threadIdx expressions |
+| SCEV-CGP | Not present | Complete NVIDIA SCEV-based CodeGenPrepare pass with 11 dedicated knobs |
+| Knob count | ~15 standard knobs | 15 upstream + 15 NVIDIA-specific + 11 SCEV-CGP = ~41 total SCEV knobs |
+
+The most consequential divergence is the `simple_mode` system: it changes the compile-time complexity class of SCEV analysis from O(N * D^2) (where D is recursion depth) to O(N * S) (where S is the per-instruction size limit), making SCEV analysis tractable on large GPU kernels without sacrificing accuracy on the important inner-loop induction variables.
 
 ## Function Map
 
@@ -429,7 +592,10 @@ SCEV is consumed by every loop optimization in cicc. The key interfaces:
 | `sub_DD86E0` | `getLoopForExpr` | -- | Determine loop context for expression |
 | `sub_D98300` | `lookupSCEV` | -- | Cache lookup (ValueExprMap) |
 | `sub_DB77A0` | `insertSCEV` | -- | Cache store |
-| `sub_DB3670` | Expression size scorer | -- | NVIDIA complexity estimator |
+| `sub_DB3670` | `expressionComplexity` | 35KB | NVIDIA expression size scorer; self-recursive, uses `sub_CF4090` |
+| `sub_CF4090` | SCEV node size counter | -- | Counts nodes in existing SCEV tree for complexity scoring |
+| `sub_DB04E0` | `getSmallConstantTripCount` | 117 | Extract small constant trip count |
+| `sub_1495EB0` | `classifyExpressions` / `print` | 20KB | Debug: "Classifying expressions for: " |
 | `sub_D97040` | `isSCEVable` | -- | Type is integer or pointer |
 | `sub_D96A50` | `isUnknown` / `isFailedSCEV` | -- | Check SCEVUnknown |
 | `sub_D95540` | `getSCEVType` | -- | Extract LLVM Type from SCEV expr |
@@ -451,4 +617,7 @@ SCEV is consumed by every loop optimization in cicc. The key interfaces:
 - [SCEV Range Analysis & Trip Counts](./scev-range-btc.md) -- ConstantRange computation and backedge-taken count
 - [SCEV Invalidation & Delinearization](./scev-invalidation.md) -- cache eviction and multi-dimensional array recovery
 - [Builtin Table Structure](../builtins/index.md) -- intrinsic ID assignments for threadIdx/blockIdx/etc.
+- [IndVarSimplify](../llvm/loop-passes-standard.md) -- SCEV-dependent IV transforms with `Disable-unknown-trip-iv` guard
+- [SCEV-CGP (CodeGenPrepare)](./codegen-prepare.md) -- NVIDIA SCEV-based address mode optimization
 - [LLVM Knobs (1,689)](../config/knobs.md) -- full knob catalog including all SCEV knobs
+- [GPU Execution Model](../gpu-execution-model.md) -- why GPU kernels need special SCEV treatment

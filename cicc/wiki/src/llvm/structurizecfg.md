@@ -430,6 +430,457 @@ For a divergent loop:
 
 `FlowLoop` is a new block whose branch condition is a PHI: `true` incoming from `Body` means exit the loop, `false` means take the back-edge. This inverted convention (true = break, false = continue) matches upstream LLVM's structurization invariant.
 
+## Flow Block Insertion Algorithm
+
+The previous sections describe the pass at the function-dispatch level. This section provides the complete algorithmic detail of how Flow blocks are actually created, wired, and how PHI networks are maintained -- the core transformation that converts a reducible-but-unstructured CFG into a fully structured CFG suitable for PTX emission.
+
+### Conceptual Model
+
+A "Flow block" is a synthetic basic block that serves as an explicit thread reconvergence point. In an unstructured CFG, divergent branches may merge at a common successor without any indication of *which* predecessor each thread arrived from. The hardware's reconvergence mechanism needs a single merge point where it can resume lockstep execution. Flow blocks provide this by:
+
+1. Interposing between the divergent region and its exit.
+2. Carrying a PHI node whose value encodes the path taken by each thread.
+3. Branching conditionally on that PHI to either enter the next region body or skip to the next Flow block.
+
+The algorithm processes the function bottom-to-top (reverse RPO), which ensures that inner regions are structurized before outer ones. Each region is defined by a head (dominator) and tail (post-dominator). The output is a function where every conditional branch leads to at most one "then" block followed by a Flow block, guaranteeing single-entry single-exit regions.
+
+### Top-Level Algorithm: sub_35CC920
+
+This is the complete algorithm for the main pass body, including the Flow block insertion logic interleaved with the classification phases already described above.
+
+```
+sub_35CC920(pass, function):
+    // ---- Phase 1: Analysis setup ----
+    div_info    = getAnalysis<DivergenceAnalysis>(function) + 200
+    loop_info   = getAnalysis<LoopInfo>(function) + 200
+    dom_tree    = getAnalysis<DominatorTree>(function) + 200
+    post_dom    = getAnalysis<PostDominatorTree>(function) + 200
+    pass[65]    = div_info
+    pass[66]    = loop_info
+    pass[67]    = NULL          // region_head
+    pass[68]    = NULL          // region_tail
+    pass[69]    = dom_tree
+    pass[70]    = post_dom
+
+    // Compute RPO via sub_2EA7130 -> sub_2EA7B20
+    rpo_list = computeRPO(function)
+
+    // Cross-reference RPO with SCC decomposition (sub_357E170)
+    scc_order = buildSCCOrdering(rpo_list)
+
+    // ---- Phase 1b: Reject irreducible ----
+    if sub_35CA2C0(scc_order, dom_tree) == 1:   // irreducible detected
+        sub_35CA580(pass, "UnsupportedIrreducibleCFG",
+                    "Irreducible CFGs are not supported yet.")
+        return 0
+
+    // ---- Phase 1c: Initialize bitvector ----
+    bb_count = countBasicBlocks(function)
+    word_count = (bb_count + 63) >> 6
+    bitvector = allocate(word_count * 8)
+    memset(bitvector, 0, word_count * 8)
+    pass[91] = bitvector   // at offset +728
+
+    // ---- Phase 2: Bottom-up region identification and Flow insertion ----
+    modified = false
+    order = reverse(scc_order)      // process bottom-to-top
+
+    for each BB in order:
+        // 2a. Reject EH funclets
+        if *(BB + 235) != 0:       // isEHFunclet flag
+            sub_35CA580(pass, "UnsupportedEHFunclets",
+                        "EH Funclets are not supported yet.")
+            resetBitvector(pass)
+            return 0
+
+        // 2b. Already marked for structurization (from prior inner-region pass)
+        if *(BB + 216) != 0 or *(BB + 262) != 0:
+            sub_35CBCD0(pass, BB, context)
+            continue
+
+        // 2c. Detect back-edges to already-visited blocks (loop detection)
+        has_loop_backedge = false
+        for each successor S of BB:
+            if bitvectorTest(pass[91], S->ordinal):
+                has_loop_backedge = true
+
+        // 2d. Classify predecessors for divergence
+        needs_structurize = false
+        for each predecessor P of BB:
+            if sub_35CB4A0(pass, P, ...) == 1:  // divergent branch
+                needs_structurize = true
+                break
+
+        // 2e. Structurize the region rooted at BB
+        if needs_structurize:
+            sub_35CBCD0(pass, BB, context)      // collect region bounds
+
+            // If region bounds are valid, insert Flow blocks
+            head = pass[67]
+            tail = pass[68]
+            if head != NULL and tail != NULL:
+                modified |= insertFlowBlocks(pass, head, tail, function)
+
+        // 2f. Update bitvector
+        if needs_structurize:
+            bitvectorSet(pass[91], BB->ordinal)
+        else:
+            bitvectorClear(pass[91], BB->ordinal)
+
+    // ---- Phase 3: Domtree-guided outer-region finalization ----
+    if pass[67] != NULL and pass[68] != NULL:
+        current = pass[67]    // split_point
+        while current != NULL:
+            if strategy->shouldSplit(current):            // vtable+312
+                sub_35CBCD0(pass, current, context)
+                modified |= insertFlowBlocks(pass, pass[67], pass[68], function)
+
+            if strategy->shouldSplitChild(current):       // vtable+320
+                // recurse into child regions
+                modified |= insertFlowBlocksForChildren(pass, current, function)
+
+            current = domtreeParent(dom_tree, current)
+
+        // Store reconvergence metadata for PTX emission
+        *(function + 672) = pass[67]    // reconvergence head
+        *(function + 680) = pass[68]    // reconvergence tail
+
+    // ---- Phase 4: Cleanup ----
+    free(scc_order)
+    free(bitvector)
+    return modified ? 1 : 0
+```
+
+### Flow Block Insertion Detail: insertFlowBlocks
+
+This function (inlined within the Phase 2/Phase 3 loops of `sub_35CC920`, approximately decompiled lines 980--2027) performs the actual CFG transformation for a single region.
+
+```
+insertFlowBlocks(pass, head, tail, function):
+    // Step 1: Validate region boundaries via dominator/post-dominator trees
+    if not dominates(pass[69], head, tail):
+        return false    // head does not dominate tail => not a valid region
+    if not postDominates(pass[70], tail, head):
+        return false    // tail does not post-dominate head => not a valid region
+
+    // Step 2: Classify edges leaving the tail block
+    external_edges = []     // edges pointing outside the region
+    internal_edges = []     // edges pointing back inside the region
+
+    for each successor S of tail:
+        if not dominatedBy(S, head) or S == tail:
+            external_edges.append((tail, S))
+        else:
+            internal_edges.append((tail, S))
+
+    // Step 3: Query strategy object for each edge
+    for each edge E in (external_edges + internal_edges):
+        classification = strategy->classifyEdge(E)   // vtable+344
+        if classification == SKIP:
+            continue
+        // else: edge needs restructuring
+
+    // Step 4: Create the Flow block
+    //   sub_2E7AAE0 = BasicBlock::Create(context, name_hint, function)
+    flow_bb = sub_2E7AAE0(function->getContext(), "Flow", function)
+
+    //   sub_2E33BD0 = insert into function's BB list after tail
+    sub_2E33BD0(flow_bb, tail->getNextNode())
+
+    // Step 5: Build PHI node in the Flow block
+    //   The PHI encodes "which path did threads arrive from?"
+    //   Convention: true (i1 1) = came from the "then" body
+    //              false (i1 0) = skipped the body (fell through)
+    phi = createPHINode(Type::i1, flow_bb)
+    phi.addIncoming(ConstantInt::getTrue(),  body_block)    // threads that executed body
+    phi.addIncoming(ConstantInt::getFalse(), head_block)    // threads that skipped body
+
+    // Step 6: Create conditional branch in the Flow block
+    //   Branch on PHI: true -> next_region_or_exit, false -> next_flow_or_exit
+    createCondBranch(flow_bb, phi, next_target_true, next_target_false)
+
+    // Step 7: Reroute original edges through the Flow block
+    //   For each predecessor that previously branched to the original merge:
+    for each edge (P, original_merge) that should go through flow_bb:
+        // sub_2E337A0 = replaceAllUsesWith for the branch target
+        P->getTerminator()->replaceSuccessor(original_merge, flow_bb)
+
+    // Step 8: Copy PHI entries from original merge to Flow block
+    //   If the original merge had PHI nodes, their incoming values from
+    //   rerouted predecessors must be transferred.
+    for each phi_node in original_merge->phis():
+        value = phi_node->getIncomingValueForBlock(rerouted_pred)
+        // sub_2E33140 = addIncoming to new PHI at flow_bb
+        // sub_2E341F0 = removeIncomingValue from original PHI
+        flow_bb_phi.addIncoming(value, rerouted_pred)
+        phi_node.removeIncomingBlock(rerouted_pred)
+        phi_node.addIncoming(flow_bb_phi, flow_bb)
+
+    // Step 9: Update dominator tree
+    //   The new Flow block is immediately dominated by head.
+    //   It immediately dominates the original merge (if flow_bb is its
+    //   only predecessor now).
+    dom_tree->addNewBlock(flow_bb, head)
+
+    // Step 10: Update divergence analysis
+    //   sub_35C9CD0 = edge reroute handler
+    for each rerouted_edge:
+        sub_35C9CD0(pass, rerouted_edge)
+        strategy->updateDivergence(rerouted_edge)   // vtable+368
+
+    // Step 11: Recursive child-split (if needed)
+    //   The strategy may determine that the Flow block itself needs
+    //   further splitting (deeply nested divergent regions).
+    if strategy->shouldSplitChild(flow_bb):         // vtable+320
+        child_flow = sub_2E7AAE0(function->getContext(), "Flow", function)
+        sub_2E33BD0(child_flow, flow_bb->getNextNode())
+        // ... repeat Steps 5-10 for the child Flow block ...
+        // This recursion terminates when shouldSplitChild returns false.
+
+    // Step 12: Expand bitvector if function grew
+    new_bb_count = countBasicBlocks(function)
+    if new_bb_count > pass[bb_count_field]:
+        sub_C8D5F0(pass[91], new_bb_count)    // SmallVector::grow
+        // Initialize new words to 0xFF...FF (conservatively "visited")
+        // Then clear trailing bits beyond actual block count
+
+    return true
+```
+
+### PHI Network Construction for Nested Regions
+
+When multiple Flow blocks are created for a chain of if-then-else regions, the PHI networks form a cascade. Each Flow block's PHI determines whether threads should enter the next body or skip to the subsequent Flow block.
+
+Consider a three-way branch (implemented as nested if-then-else):
+
+```
+Before:                          After:
+    Entry                            Entry
+    / | \                            |
+   A  B  C                          cond_A?
+    \ | /                           / T   F
+    Merge                          A      |
+                                   |      |
+                                  Flow1   |
+                                  / F  T  |
+                                 |   cond_B?
+                                 |   / T   F
+                                 |  B      |
+                                 |  |      |
+                                 | Flow2   |
+                                 | / F  T  |
+                                 ||   C    |
+                                 ||   |    |
+                                 || Flow3  |
+                                 | \ | /   |
+                                  Merge----+
+```
+
+The PHI cascade at each Flow block:
+
+```
+Flow1:
+    %path_A = phi i1 [ true, %A ], [ false, %Entry ]
+    br i1 %path_A, <continue to cond_B>, <skip to Merge via Flow3>
+
+Flow2:
+    %path_B = phi i1 [ true, %B ], [ false, %Flow1 ]
+    br i1 %path_B, <continue to C>, <skip to Merge via Flow3>
+
+Flow3:
+    %path_C = phi i1 [ true, %C ], [ false, %Flow2 ]
+    br i1 %path_C, <Merge>, <Merge>
+    // Flow3's branch is unconditional to Merge (both sides converge)
+    // but the PHI values propagated through the chain ensure each
+    // thread sees the correct value at Merge's PHI nodes.
+```
+
+Each Flow block carries exactly one `i1` PHI and one conditional branch. The chain length equals the number of divergent exits from the region minus one. The final Flow block has an unconditional branch (or a branch where both targets are the same) because all paths must converge at the region exit.
+
+### Loop Flow Block Insertion
+
+For divergent loops, Flow blocks serve double duty: they both gate the loop body and control the back-edge. The algorithm handles loops specially:
+
+```
+insertLoopFlowBlock(pass, header, latch, exit, function):
+    // The loop has structure: header -> body -> latch -> {header, exit}
+    // After structurization:
+    //   header -> body -> FlowLoop -> {header (back-edge), exit}
+
+    // Step 1: Create FlowLoop block between latch and exit
+    flow_loop = sub_2E7AAE0(context, "Flow", function)
+    sub_2E33BD0(flow_loop, latch->getNextNode())
+
+    // Step 2: PHI in FlowLoop encodes continue/break decision
+    //   Convention: true = exit the loop, false = take back-edge
+    //   This is INVERTED from what you might expect.
+    //   Rationale: the "default" path (false) continues the loop,
+    //   and the "exception" path (true) exits. This matches
+    //   upstream LLVM's structurization invariant and simplifies
+    //   the PHI lowering in CSSA.
+    phi_loop = createPHINode(Type::i1, flow_loop)
+    phi_loop.addIncoming(ConstantInt::getTrue(),  exit_pred)   // threads exiting
+    phi_loop.addIncoming(ConstantInt::getFalse(), body_block)  // threads continuing
+
+    // Step 3: Conditional branch
+    createCondBranch(flow_loop, phi_loop, exit, header)
+    // true -> exit, false -> header (back-edge)
+
+    // Step 4: Reroute latch
+    latch->getTerminator()->replaceSuccessor(header, flow_loop)
+    latch->getTerminator()->replaceSuccessor(exit, flow_loop)
+
+    // Step 5: Update loop info
+    //   FlowLoop is inside the loop (it has the back-edge to header).
+    //   LoopInfo must be updated so that FlowLoop is recognized as
+    //   a loop block, otherwise subsequent passes (LICM, LSR) may
+    //   misclassify it.
+    loop_info->addBlockToLoop(flow_loop, loop)
+
+    // Step 6: Domtree update
+    //   FlowLoop is dominated by latch (or by header if the latch
+    //   was the only block between header and exit).
+    dom_tree->addNewBlock(flow_loop, latch)
+```
+
+The inverted convention (true = break) is critical. It ensures that the "natural" loop iteration (the common case) follows the fall-through path, which maps to the hardware's predicted branch direction. The PTX assembler uses this hint to generate the `@p bra` instruction with the back-edge as the taken path, minimizing branch misprediction overhead on the GPU.
+
+## Irreducible CFG Rejection: Why FixIrreducible is Not Scheduled
+
+The pass rejects irreducible CFGs rather than attempting to restructure them. This section documents the design rationale and the consequences.
+
+### What Makes a CFG Irreducible
+
+A CFG is irreducible if it contains a cycle with multiple entry points -- that is, there exist two blocks A and B in the cycle such that neither dominates the other, yet both can be reached from outside the cycle. The classic example is a `goto` into the middle of a loop:
+
+```
+Irreducible:
+    Entry
+    / \
+   v   v
+   A -> B
+   ^   /
+    \ v
+     C
+
+Both A and B are reachable from Entry, and both are in the cycle A->B->C->A.
+Neither A dominates B nor B dominates A.
+```
+
+In a reducible CFG, every back-edge target dominates its source. This is the invariant that `sub_35CA2C0` checks: it iterates blocks in reverse RPO and, for each back-edge (successor that was already visited), verifies that the target dominates the source via the dominator tree hash table.
+
+### The FixIrreducible Pass Exists But Is Not Used
+
+CICC v13.0 links `FixIrreduciblePass` at `sub_29D33E0` (registered as `"fix-irreducible"` at pipeline-parser index 239). Its core implementation at `sub_29D3E80` (60KB) performs controlled node splitting: it duplicates blocks to create a single-entry version of each irreducible cycle. This is the standard compiler technique (T1-T2 node splitting from Hecht and Ullman).
+
+However, the NVPTX pipeline in CICC v13.0 does **not** schedule `FixIrreduciblePass` before `StructurizeCFG`. The pipeline ordering is:
+
+```
+... -> SimplifyCFG -> Sink -> StructurizeCFG -> CSSA -> ISel -> ...
+                              ^
+                              |
+                     fix-irreducible is NOT here
+```
+
+### Design Rationale
+
+Three factors explain this decision:
+
+1. **CUDA source language guarantee.** Well-formed CUDA C++ does not produce irreducible control flow. The language has no `goto` across loop boundaries (the EDG frontend rejects it), and structured constructs (`if`/`for`/`while`/`do`/`switch`) always produce reducible CFGs. The only way to get irreducible flow is through extreme `goto` abuse in C mode or through a buggy optimization pass that introduces one.
+
+2. **Code size explosion.** Node splitting can exponentially increase code size in pathological cases. For a cycle with N entry points, splitting may duplicate up to 2^N blocks. On a GPU where register pressure is the primary performance limiter, this expansion would be catastrophic -- more blocks means more live ranges, more register pressure, and lower occupancy.
+
+3. **Correctness risk.** `FixIrreduciblePass` transforms the CFG before divergence analysis has finalized. If the splitting creates new blocks with divergent branches, those branches would need re-analysis. The interaction between `FixIrreducible`, `DivergenceAnalysis`, and `StructurizeCFG` is not validated in the NVPTX pipeline.
+
+### Consequence: Silent Miscompilation Risk
+
+When `sub_35CA2C0` detects irreducibility, it emits a diagnostic remark:
+
+```
+remark: UnsupportedIrreducibleCFG
+        "Irreducible CFGs are not supported yet."
+```
+
+The pass then returns 0 (no modification). The function proceeds through the rest of the pipeline with its irreducible CFG intact. Downstream, one of two things happens:
+
+1. **ptxas rejects the PTX.** If the irreducible pattern produces a branch target that violates PTX's structured control flow rules, `ptxas` will emit an error. This is the safe outcome.
+
+2. **ptxas silently accepts malformed PTX.** If the irreducible pattern happens to look like valid PTX (perhaps it only involves uniform branches), the resulting code may execute with undefined reconvergence behavior. Threads may reconverge at the wrong point, producing silent data corruption. This is the dangerous outcome.
+
+### The Stock LLVM Version Has the Same Limitation
+
+The stock LLVM `StructurizeCFG` at `sub_1F0EBC0` (linked from `llvm/lib/Transforms/Scalar/StructurizeCFG.cpp`) contains identical rejection logic. The AMDGPU backend, which also requires structured control flow, schedules `FixIrreduciblePass` explicitly before `StructurizeCFG`. NVIDIA chose not to do this.
+
+| Instance | Address | Size | Irreducible handling |
+|----------|---------|------|---------------------|
+| NVPTX custom | `sub_35CC920` | 95 KB | Reject with diagnostic |
+| Stock LLVM | `sub_1F0EBC0` | ~58 KB | Reject with diagnostic |
+| FixIrreducible | `sub_29D33E0` / `sub_29D3E80` | 60 KB | Node splitting (not scheduled) |
+
+### The Stock StructurizeCFG Entry Block Handling
+
+The stock LLVM version also includes explicit entry block handling at `sub_1A74020` (13KB). When the function's entry block has predecessors (which can happen if the function is a loop body extracted by a prior pass), this function creates a new entry block named `"entry"` and renames the original to `"entry.orig"`. The NVPTX version at `sub_35CC920` handles this inline in Phase 1.
+
+## PTX Structured Control Flow Contract
+
+This section documents the precise contract that StructurizeCFG must satisfy for downstream passes to emit correct PTX.
+
+### What "Structured" Means for PTX
+
+After StructurizeCFG completes, the function's CFG must satisfy these five invariants:
+
+1. **Single-entry regions.** Every natural loop has exactly one entry (the loop header dominates all loop blocks). No irreducible cycles exist.
+
+2. **Post-dominator reconvergence.** For every divergent conditional branch at block B, there exists a block P that post-dominates B and dominates all merge points of the two branch targets. A Flow block is inserted at P if one does not already exist.
+
+3. **Linear Flow chain.** Between any divergent branch and its reconvergence point, the CFG forms a chain of Flow blocks with single-entry single-exit semantics. Each Flow block has exactly two predecessors (the "then" body exit and the "skip" path) and two successors (the next body entry or the final merge).
+
+4. **PHI-encodable path selection.** Every Flow block contains an `i1` PHI that encodes which path was taken. This PHI is the sole branch condition of the Flow block's terminator. No other computation occurs in Flow blocks.
+
+5. **Metadata tagging.** Uniform branches are tagged with `!structurizecfg.uniform` metadata (metadata kind registered at `sub_298D780`). This prevents CSSA from inserting unnecessary copies at reconvergence points for branches where all threads agree.
+
+### Downstream Consumer: CSSA
+
+The CSSA pass (`sub_3720740`) consumes the structured CFG and inserts explicit copy instructions at every reconvergence point. It relies on:
+
+- The Flow block chain to identify where reconvergence happens.
+- The `i1` PHI in each Flow block to determine which threads took which path.
+- The `!structurizecfg.uniform` metadata to skip copy insertion for uniform regions.
+
+Without StructurizeCFG, CSSA would not know where to insert copies, and the resulting register allocation would be unsound under warp divergence.
+
+### Downstream Consumer: Convergence Control in AsmPrinter
+
+The reconvergence head/tail stored at function offsets `+672` and `+680` are consumed by the AsmPrinter's convergence control framework (see [AsmPrinter](../infra/asmprinter.md)). The AsmPrinter emits `CONVERGENCECTRL_ENTRY` (opcode 24) and `CONVERGENCECTRL_LOOP` (opcode 33) pseudo-instructions at the boundaries defined by these metadata values. The hardware uses these to program the convergence barrier stack.
+
+### Interaction with `SIAnnotateControlFlow` (AMDGPU Comparison)
+
+AMDGPU uses a different approach: `SIAnnotateControlFlow` inserts explicit `if`/`else`/`end_cf` intrinsics after StructurizeCFG. NVPTX does not use this -- instead, the convergence information flows through:
+
+1. StructurizeCFG (Flow blocks + function metadata)
+2. CSSA (copy insertion at reconvergence)
+3. SelectionDAG / ISel (structured branch patterns)
+4. AsmPrinter (convergence pseudo-instructions)
+
+This four-stage pipeline is NVIDIA-specific. Upstream LLVM for AMDGPU collapses stages 1-2 into `StructurizeCFG + SIAnnotateControlFlow` and has no equivalent of stage 4.
+
+## The Two Binary Instances
+
+CICC v13.0 contains two complete copies of the StructurizeCFG pass because the binary links both the NVPTX backend (custom) and the generic LLVM Scalar library (stock). Only the NVPTX version is scheduled in the pipeline.
+
+| | NVPTX Custom | Stock LLVM |
+|---|---|---|
+| **Main body** | `sub_35CC920` (95 KB) | `sub_1F0EBC0` (~58 KB) |
+| **Entry gate** | `sub_35CF930` | (inlined) |
+| **Region processing** | `sub_35CBCD0` | `sub_1A761E0` (28 KB) |
+| **Entry block handler** | (inlined in Phase 1) | `sub_1A74020` (13 KB, strings `"entry.orig"`, `"entry"`) |
+| **Region-based** | Operates on entire function | Operates on individual `Region` objects |
+| **Uniform metadata** | `sub_298D780` (`"structurizecfg.uniform"`) | Same string, different address |
+| **Registration** | `sub_29882C0` (`"Structurize the CFG"`) | `sub_2988270` (`"Structurize control flow"`) |
+| **Pipeline parser** | Index 413: `"structurizecfg"` with `skip-uniform-regions` param | Same index, same params |
+
+The NVPTX version is 37 KB larger because it inlines the entry-block handler and region-processing logic (avoiding virtual dispatch overhead) and adds the CUDA-specific attribute checks (IDs 56, 63, 59, 64, 57) and the convergence metadata writes at offsets `+672`/`+680`.
+
 ## Bitvector Tracking for Region Membership
 
 The pass tracks which basic blocks have been visited using a dynamically sized bitvector stored in the pass object:
@@ -528,3 +979,14 @@ It must run **after** divergence analysis (so it can query which branches are un
 | Irreducible CFG detected | **Reject** | `"UnsupportedIrreducibleCFG"` |
 | EH funclet block detected | **Reject** | `"UnsupportedEHFunclets"` |
 | Reducible, divergent regions | **Restructure** | None (new Flow blocks inserted, edges rerouted) |
+
+## Cross-References
+
+- [CSSA](../passes/cssa.md) -- the Conventional SSA pass that consumes Flow blocks to insert warp-safe copies
+- [AsmPrinter](../infra/asmprinter.md) -- convergence control pseudo-instruction emission consuming the `+672`/`+680` metadata
+- [GPU Execution Model](../gpu-execution-model.md) -- warp divergence and reconvergence fundamentals
+- [Branch Folding](branch-folding.md) -- may eliminate redundant Flow blocks after code generation
+- [Hash Infrastructure](../infra/hash-infrastructure.md) -- details on the DenseSet implementation used by the BB tracking tables
+- [Pipeline](pipeline.md) -- exact position of `structurizecfg` in the pass ordering
+- [Knobs](../config/knobs.md) -- `structurizecfg-skip-uniform-regions`, `structurizecfg-relaxed-uniform-regions`, `enable-shrink-wrap`
+- Upstream LLVM source: `llvm/lib/Transforms/Scalar/StructurizeCFG.cpp`

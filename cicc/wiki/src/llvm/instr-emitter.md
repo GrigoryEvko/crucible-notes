@@ -166,7 +166,70 @@ The flow collects `UsedRegs` by scanning:
 2. **Glue chain uses**: the emitter walks the glue chain upward from the current node, collecting physical registers referenced by CopyFromReg nodes and RegisterSDNode operands.
 3. **Dead marking**: `MachineInstr::setPhysRegsDeadExcept(UsedRegs)` marks any implicit def that is NOT in UsedRegs as dead, allowing the register allocator and later passes to ignore it.
 
-The NVIDIA-specific extended flag at bit 36 (`0x1000000000`), checked via `sub_2E88A90`, appears to mark instructions with NVPTX-specific implicit uses -- possibly predicate registers or convergence control tokens that standard LLVM MachineInstr flags cannot represent.
+## NVIDIA Extended Flag: Bit 36 (`0x1000000000`)
+
+Standard LLVM MachineInstr flags occupy bits 0--31 of the flags word (is_def, is_implicit, is_dead, is_kill, is_undef, is_early_clobber, etc.). CICC extends this to a 64-bit flags field and reserves bit 36 (`0x1000000000`) for an NVIDIA-specific purpose. The flag is queried via `sub_2E88A90` (`hasProperty`) with argument `rsi = 0x1000000000, edx = operand_index`.
+
+### Where Bit 36 Is Checked
+
+There are exactly two call sites within `sub_2EDDF20`:
+
+**Site 1 -- Generic emission path (`0x2EDE50A`--`0x2EDE523`)**
+
+```
+0x2EDE4EF: mov  eax, [r13+2Ch]          ; load SDNode property flags
+0x2EDE4F3: test eax, 0x20000            ; bit 17 = hasDebugValue?
+0x2EDE4F8: jnz  skip_flag_check         ; if set, skip the bit-36 test
+0x2EDE4FA: test al, 4                   ; bit 2 = isTied
+0x2EDE4FC: jnz  loc_2EDF064             ; tied operand -> different path
+0x2EDE502: test al, 8                   ; bit 3 = hasGlue
+0x2EDE504: jz   loc_2EDF064             ; no glue -> different path
+0x2EDE50A: mov  edx, 1                  ; operand index = 1
+0x2EDE50F: mov  rdi, r13                ; SDNode*
+0x2EDE512: mov  rsi, 0x1000000000       ; bit 36 flag mask
+0x2EDE51C: call sub_2E88A90             ; hasProperty(node, flag, idx)
+0x2EDE521: test al, al
+0x2EDE523: jnz  loc_2EDE086             ; if set -> skip emission entirely
+```
+
+**Site 2 -- CopyFromReg-adjacent path (`0x2EDEE5D`--`0x2EDEE86`)**
+
+```
+0x2EDEE5D: test al, 4                   ; bit 2 = isTied
+0x2EDEE5F: jnz  loc_2EDEFA2             ; tied -> sub-register path
+0x2EDEE65: test al, 8                   ; bit 3 = hasGlue
+0x2EDEE67: jz   loc_2EDEFA2             ; no glue -> sub-register path
+0x2EDEE6D: mov  edx, 1                  ; operand index = 1
+0x2EDEE72: mov  rdi, r13                ; SDNode*
+0x2EDEE75: mov  rsi, 0x1000000000       ; bit 36 flag mask
+0x2EDEE7F: call sub_2E88A90             ; hasProperty(node, flag, idx)
+0x2EDEE84: test al, al
+0x2EDEE86: jnz  loc_2EDE100             ; if set -> skip (no MI emitted)
+```
+
+### Guard Conditions and Semantics
+
+Both sites share the same guard pattern: the flag is only checked when the SDNode's property byte at `+0x2C` satisfies `bit_3_set AND NOT bit_2_set` -- i.e., the node has a glue result chain but is not a tied operand. This narrows the check to nodes that participate in glue chains: typically multi-instruction sequences like texture fetches, surface operations, and warp-level intrinsics where a chain of SDNodes must emit as a contiguous bundle.
+
+When `hasProperty(node, 0x1000000000, 1)` returns true, the emitter skips the node entirely. The operand index of 1 means the flag is checked on the first data operand (operand 0 is typically the chain input). The effect is that nodes carrying bit 36 on operand 1 are treated as "already materialized" -- their value has been produced by a preceding glued instruction and does not require a separate MachineInstr.
+
+The most likely interpretation of bit 36 is **"implicit glue consumer already emitted"**: when a glued predecessor has already produced the value as a side effect (e.g., a texture fetch that writes both the result and a predicate), the glue consumer SDNode carries bit 36 to tell the emitter that no additional COPY or MI is needed. This is consistent with the check position immediately after `getRegForValue` succeeds -- the VReg mapping exists, the glue chain has been walked, and the emitter is about to create a potentially redundant MI.
+
+### `sub_2E88A90` Calling Convention
+
+The function serves as a universal property query across the emitter and other codegen passes. Observed flag values and their meanings:
+
+| Flag Value | Bit | Meaning | Call Sites |
+|---|---|---|---|
+| `0x80` | 7 | isCall | Instruction scheduler (`sub_2EE40E0`) |
+| `0x200` | 9 | isReservedReg | Branch folding (`sub_2F33DD0`) |
+| `0x80000` | 19 | isImplicit | InstrEmitter generic path, StructurizeCFG |
+| `0x100000` | 20 | isSimple / isMachineReg | InstrEmitter CopyFromReg, dead copy pass |
+| `0x400000` | 22 | isSubRegister | InstrEmitter sub-register resolution |
+| `0x40000000` | 30 | isAllocatable | InstrEmitter CopyFromReg class check |
+| `0x1000000000` | 36 | NVIDIA: implicit glue consumer | InstrEmitter only (2 sites) |
+
+The function signature is `bool hasProperty(SDNode *node, uint64_t flag_mask, unsigned operand_idx)`. It reads the MCInstrDesc via `[node+10h] -> [desc+18h]`, extracts a bit field by shifting right by the appropriate amount, and ANDs with 1 to produce a boolean result.
 
 ## Internal Data Structures
 
@@ -218,14 +281,149 @@ Tagged pointers are stripped throughout with `AND 0xFFFFFFFFFFFFFFF8` (clear low
 
 ## Dead Copy Elimination
 
-After the main emission loop completes, a dedicated cleanup pass (Phase 12 in the binary, offset `0x2EE0816`) scans all emitted COPY instructions:
+After the main emission loop completes, a dedicated cleanup pass (Phase 12 in the binary, offset `0x2EE0816`--`0x2EE09AC`) scans all emitted result records and eliminates redundant COPY instructions. This is notably aggressive compared to upstream LLVM, which defers dead copy removal to a separate `DeadMachineInstrElimination` pass later in the pipeline. CICC performs it inline because NVPTX's SelectionDAG generates massive numbers of redundant copies when lowering kernel parameter loads -- each parameter maps to a fixed physical register (`%r1`--`%r255` corresponding to PTX parameter registers), and the DAG legalizer inserts CopyFromReg nodes for every parameter access.
 
-1. For each copy whose source is a CopyFromReg result (opcode `0x14`): check via `sub_2E8B100` (`isUnusedReg`) whether any downstream instruction uses the copy's destination.
-2. If unused: call `sub_2E88E20` (`eraseFromParent`) to delete the MI immediately.
-3. If used: call `sub_2EBF120` (`clearKillFlags`) on both source and destination registers to prevent incorrect kill annotations from propagating to the register allocator.
-4. Any MI queued for deferred deletion is added to the dead list at `InstrEmitter+0x4A0` via `sub_2ED56A0`.
+### Dead Copy Elimination Algorithm
 
-This pass is notably aggressive in CICC relative to upstream. The raw report notes that NVPTX's SelectionDAG generates many redundant copies when lowering kernel parameter loads, because each parameter maps to a fixed physical register (`%r1`--`%r255` corresponding to PTX parameter registers). The dead copy pass reclaims these immediately rather than deferring to a later dead MI elimination pass.
+The algorithm walks the emitted result record array (0x28-byte stride, accumulated during Phases 4--11) and classifies each record for deletion or preservation.
+
+```
+DeadCopyElimination(InstrEmitter *self, ResultRecord *records, int count):
+    // records is at [rbp-0x250], count at [rbp-0x248]
+    // stride = 0x28 (40 bytes per record)
+
+    end = records + count * 0x28
+    cursor = records
+
+    while cursor < end:
+        MI = cursor->producer             // [rbx+0x00]: the MachineInstr*
+        TII = self->TargetInstrInfo       // [r14+0x08]
+
+        // Step 1: Classify by opcode
+        if MI->opcode == 0x14:            // CopyFromReg
+            // CopyFromReg-specific path: virtual dispatch to target
+            vtable = TII->vtable
+            result = vtable[0xF0](         // ~30th virtual method
+                MI,                        // the CopyFromReg MI
+                &cursor[0x08],             // source vreg slot
+                /* additional args */
+            )
+            // This checks whether the target considers the copy
+            // sinkable or rematerlizable -- NVPTX overrides this
+            // for parameter register copies that are trivially dead
+
+        else:
+            // Generic MI path: check via vtable[0x350]
+            result = TII->vtable[0x350](MI, cursor, ...)
+
+        // Step 2: Check source register kill flags
+        src_reg = cursor->src_vreg        // [rbx+0x08]
+        if src_reg < 0:                   // physical register (sign bit set)
+            clearKillFlags(self->MRI, src_reg)  // sub_2EBF120
+
+        // Step 3: Check dest register kill flags
+        dst_reg = cursor->dst_vreg        // [rbx+0x0C]
+        if dst_reg < 0:                   // physical register
+            clearKillFlags(self->MRI, dst_reg)  // sub_2EBF120
+
+        // Step 4: Determine if MI is dead
+        //   Check opcode: if (MI->opcode - 1) <= 1 (opcode 1 or 2)
+        //   then check MI->operand[0] byte [+0x40] bit 4 (0x10)
+        //   which indicates "result consumed by inline fold"
+        opc = MI->opcode
+        if (opc == 1 || opc == 2):        // COPY or REG_SEQUENCE
+            if MI->operands[0].flags & 0x10:   // inline folded
+                goto mark_dead
+
+        // Step 5: Property gate
+        flags_2c = MI->flags_2c           // [rdi+2Ch]
+        if !(flags_2c & 0x04):            // bit 2 not set
+            // Check TSFlags bit 20 via descriptor
+            desc = MI->MCInstrDesc        // [rdi+10h]
+            tsflags = desc->TSFlags       // [desc+18h]
+            is_simple = (tsflags >> 20) & 1
+            if !is_simple:
+                goto emit_and_advance     // not a candidate
+
+        // (falls through only when bit 2 set OR TSFlags bit 20 set)
+
+        // Step 6: Check hasProperty(0x100000, 1) -- isMachineReg
+        has_prop = hasProperty(MI, 0x100000, 1)   // sub_2E88A90
+        if !has_prop:
+            // MI is deletable: call eraseFromParent
+            eraseFromParent(MI)            // sub_2E88E20
+            advance cursor by 0x28
+            continue
+
+    mark_dead:
+        // Step 7: Liveness check via isUnusedReg
+        unused = isUnusedReg(MI)           // sub_2E8B100
+        if unused:
+            // Still has a def -- erase immediately
+            eraseFromParent(MI)            // sub_2E88E20
+        else:
+            // Defer: add to dead list for bulk deletion
+            addToDeadList(self->deadList, MI)  // sub_2ED56A0
+            // deadList is at InstrEmitter+0x4A0
+
+        advance cursor by 0x28
+```
+
+### Glue Chain Walk in Dead Copy Context
+
+After the per-record loop, the emitter performs a secondary traversal for CopyFromReg records that survived deletion. For each surviving copy whose SDNode has a glue result (`[r13+38h] != 0`):
+
+1. Walk the glue chain backward via `[r13+0] & 0xFFFFFFFFFFFFFFF8` (strip tag bits).
+2. For each predecessor in the chain, check `[rax+2Ch] & 4` -- if the predecessor has been scheduled (bit 2 set), continue walking.
+3. If the predecessor has an unresolved glue reference (`[r13+38h]` non-null) and the predecessor's MI has zero uses after copy elimination, mark it for deferred deletion too.
+
+This secondary walk catches cascading dead copies: when a CopyFromReg is deleted, its glued predecessor may also become dead.
+
+### Deferred Deletion via Dead List
+
+MIs added to `InstrEmitter+0x4A0` via `sub_2ED56A0` are not deleted immediately. Instead, they are accumulated and deleted in bulk during Phase 14 (final cleanup at `0x2EE0C0B`). The dead list is a SmallVector<MachineInstr*> with 8 inline entries (64 bytes inline buffer), growing via `sub_C8D5F0` if needed. Bulk deletion avoids iterator invalidation during the emission loop and is more cache-friendly for large basic blocks.
+
+### Why NVPTX Needs Aggressive Dead Copy Elimination
+
+NVPTX kernel signatures routinely have 20--60 parameters, each lowered through a CopyFromReg from a fixed physical register. The SelectionDAG legalizer creates CopyFromReg SDNodes for each parameter load, but many parameters are only used in a subset of the kernel's basic blocks. Without immediate dead copy elimination, a kernel with 50 parameters would carry 50 COPY MachineInstrs at function entry, most of which are dead in any given block. The standard LLVM `DeadMachineInstrElimination` pass would eventually clean these up, but doing so immediately during emission:
+
+1. Reduces the MachineBasicBlock size that subsequent passes (register allocation, scheduling) must process.
+2. Avoids creating unnecessary VReg-to-PhysReg interference entries in the register allocator.
+3. Prevents false register pressure signals from dead copies during the MRPA (Machine Register Pressure Analysis) pass that NVIDIA uses for scheduling decisions.
+
+## NVIDIA-Specific Emission Patterns
+
+### Parameter Cascade Emission
+
+NVPTX kernel entry functions map each parameter to a physical register via a cascade of CopyFromReg SDNodes. During emission, this produces a dense block of COPY MachineInstrs at the top of the entry MachineBasicBlock. The emitter handles this pattern specially:
+
+1. When `EmitSchedule` processes the first SUnit, it detects a sequence of CopyFromReg nodes whose source registers are consecutive physical parameter registers (`%r1`, `%r2`, ...).
+2. Each CopyFromReg is processed through the Phase 5 path (at `0x2EDF423`). The register class resolution at `0x2EDF4C2` uses the compressed bit-vector test to verify the destination belongs to the `Int32Regs` or `Int64Regs` class.
+3. Dead copy elimination (Phase 12) immediately removes copies whose destinations have no users, reducing the entry block size before subsequent passes see it.
+
+### Texture/Surface Glue Bundle Emission
+
+Texture and surface operations are emitted as glue bundles: a chain of SDNodes connected by glue edges that must produce a contiguous sequence of MachineInstrs. The emitter walks the glue chain backward from the final node and emits predecessors first. The bit 36 flag is critical here: when a texture fetch produces both a data result and a predicate condition, the predicate-producing node carries bit 36 on its data operand, telling the emitter that the preceding glued instruction already materialized the value and no separate COPY is needed.
+
+The triple vtable dispatch at the end of emission (Phase 5 in the algorithm) handles the expansion of texture pseudo-instructions: `EmitInstrWithCustomInserter` (vtable 0xB8) replaces the texture pseudo-MI with the actual address setup, sampler configuration, and fetch instruction sequence.
+
+### Multi-Result SDNode Self-Recursion
+
+When an SDNode produces multiple results (e.g., a `div`+`rem` pair or a load-with-predicate), the emitter calls itself recursively at `sub_2EDDF20` to emit MIs for each additional result. The self-recursive call shares the same InstrEmitter instance and hash tables. This is a CICC-specific pattern; upstream LLVM handles multi-result nodes in a loop within `EmitMachineNode` rather than via recursion. The recursive approach simplifies the handling of multi-result nodes that themselves have glue chains (e.g., a texture fetch that returns 4 components).
+
+### Opcode-1/Opcode-2 Inline Fold Detection
+
+During the dead copy scan (Phase 12, offset `0x2EE08A0`--`0x2EE08BA`), the emitter checks if the MI's opcode is 1 or 2 (COPY or REG_SEQUENCE). For these opcodes, it reads the first operand's byte at `[operand_array + 0x40]` and tests bit 4 (`0x10`). This bit indicates the result was consumed via an inline fold -- the consumer instruction selected a pattern that folds the copy directly into its own operand. When this bit is set, the COPY MI is marked dead regardless of its use count, because the consuming instruction no longer references it.
+
+```
+0x2EE08A0: movzx eax, word ptr [rdi+44h]   ; MI->opcode
+0x2EE08A4: sub   eax, 1                     ; opcode - 1
+0x2EE08A7: cmp   eax, 1                     ; is it 1 (COPY) or 2 (REG_SEQUENCE)?
+0x2EE08AA: ja    not_copy                   ; no -> skip
+0x2EE08AC: mov   rax, [rdi+20h]             ; MI->operands array
+0x2EE08B0: test  byte ptr [rax+40h], 0x10   ; bit 4 = inline fold consumed
+0x2EE08B4: jnz   mark_dead                  ; if folded -> dead
+```
 
 ## NVIDIA Modifications vs Stock LLVM
 
@@ -238,6 +436,8 @@ This pass is notably aggressive in CICC relative to upstream. The raw report not
 | Dead copy elimination | Post-emission pass in ScheduleDAGSDNodes | Inlined aggressive cleanup within EmitNode |
 | Stack frame | ~300--400 bytes typical | 872 bytes (multiple inline SmallVectors and hash tables) |
 | Self-recursion | Not self-recursive | Self-recursive for multi-result SDNode chains |
+| Inline fold detection | Not present at this stage | Opcode-1/2 fold bit check during dead copy scan |
+| Glue chain secondary walk | Not present | Cascading dead copy detection through glue predecessors |
 
 ## Complexity
 
@@ -274,6 +474,16 @@ This pass is notably aggressive in CICC relative to upstream. The raw report not
 | `sub_2ED11C0` | NVPTXInstrInfo default | `EmitInstrWithCustomInserter` stub |
 | `sub_2ED11E0` | NVPTXInstrInfo default | `getInsertSubreg` stub |
 | `sub_2ED11F0` | NVPTXInstrInfo default | `expandPostRAPseudo` stub |
+| `sub_2ED1840` | operand comparison | Operand equality helper |
+| `sub_2ED19B0` | MI builder | Additional MachineInstr construction |
+| `sub_2ED41E0` | register mapping | Register mapping utility |
+| `sub_2ED4900` | register info query | Register info accessor |
+| `sub_2ED5D10` | MI property query | MachineInstr property reader |
+| `sub_2EDA920` | emission utility | Additional emission helper |
+| `sub_2EAB0C0` | `setDesc` | Sets MI operand descriptors during emission |
+| `sub_2E31210` | `addOperand` | Appends operand to MachineInstr |
+| `sub_2E31DD0` | MI manipulation | Additional MI manipulation utility |
+| `sub_2E4EE60` | TRI utility | TargetRegisterInfo helper |
 | `sub_2E4F5F0` | NVPTXRegisterInfo | Register class query vtable method |
 
 ## Cross-References
