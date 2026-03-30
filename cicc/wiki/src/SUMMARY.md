@@ -13,6 +13,7 @@
 # Compilation Pipeline
 
 - [Entry Point & CLI](./pipeline/entry.md)
+- [nvcc-to-cicc Interface](./pipeline/nvcc-interface.md)
 - [EDG 6.6 Frontend](./pipeline/edg.md)
 - [NVVM IR Generation](./pipeline/ir-generation.md)
   - [Expression & Constant Codegen](./pipeline/irgen-expressions.md)
@@ -20,6 +21,7 @@
   - [Function, Call & Inline Asm Codegen](./pipeline/irgen-functions.md)
   - [Type Translation, Globals & Special Vars](./pipeline/irgen-types.md)
 - [LLVM Optimizer](./pipeline/optimizer.md)
+- [OptiX IR Generation](./pipeline/optix-ir.md)
 - [Code Generation](./pipeline/codegen.md)
 - [PTX Emission](./pipeline/emission.md)
 
@@ -28,6 +30,7 @@
 - [Overview & Inventory](./passes/index.md)
 - [MemorySpaceOpt](./passes/memory-space-opt.md)
 - [Rematerialization](./passes/rematerialization.md)
+  - [IV Demotion](./passes/iv-demotion.md)
 - [Branch Distribution](./passes/branch-distribution.md)
 - [Sinking2](./passes/sinking2.md)
 - [Loop Index Split](./passes/loop-index-split.md)
@@ -35,6 +38,7 @@
 - [Dead Barrier Elimination](./passes/dead-barrier-elim.md)
 - [Printf Lowering](./passes/printf-lowering.md)
 - [IP Memory Space Propagation](./passes/ipmsp.md)
+- [FP128/I128 Emulation](./passes/fp128-emulation.md)
 - [Other NVIDIA Passes](./passes/other.md)
 
 # LLVM Passes
@@ -46,10 +50,12 @@
 - [InstCombine](./llvm/instcombine.md)
 - [GVN](./llvm/gvn.md)
 - [DSE](./llvm/dse.md)
-- [LICM](./llvm/licm.md)
+- [LICM (LoopUnroll mislabel)](./llvm/licm.md)
+- [LICM (Actual)](./llvm/licm-real.md)
 - [Constant Folding: Math & Intrinsics](./llvm/constant-folding.md)
 - [KnownBits & DemandedBits](./llvm/known-bits.md)
 - [SROA, EarlyCSE & JumpThreading](./llvm/scalar-passes.md)
+- [EarlyCSE Deep Dive](./llvm/early-cse.md)
 
 ## Loop
 
@@ -68,6 +74,7 @@
 
 - [Machine-Level Passes](./llvm/machine-passes.md)
 - [SelectionDAG](./llvm/selectiondag.md)
+- [ISel Pattern Matching](./llvm/isel-patterns.md)
 - [InstrEmitter](./llvm/instr-emitter.md)
 - [LiveRangeCalc](./llvm/live-range-calc.md)
 - [Register Allocation](./llvm/register-allocation.md)
@@ -112,6 +119,8 @@
 - [AsmPrinter & PTX Body Emission](./infra/asmprinter.md)
 - [Debug Info Verification](./infra/debug-verify.md)
 - [LazyCallGraph & CGSCC](./infra/lazycallgraph.md)
+- [NVPTX Target Infrastructure](./infra/nvptx-target.md)
+- [Libdevice Linking](./infra/libdevice-linking.md)
 
 # Coroutines
 
@@ -130,6 +139,10 @@
 - [ThinLTO Function Import](./lto/thinlto-import.md)
 - [GlobalOpt for GPU](./lto/globalopt.md)
 - [Whole-Program Devirtualization](./lto/devirtualization.md)
+
+# Reference
+
+- [Register Classes](./reference/register-classes.md)
 
 # Configuration
 
