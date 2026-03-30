@@ -136,7 +136,7 @@ Passes marked "Utility" are registered in the pipeline infrastructure but are no
 
 ### Standard Loop Passes (Threshold Overrides Only)
 
-**[LICM](./licm.md)** (Loop-Invariant Code Motion) hoists loop-invariant computations above the loop and sinks them below it. On GPU, LICM's hoist mode must be conservative: hoisting increases register pressure in the loop preheader, which may push past occupancy cliffs. The sink mode (running later) undoes unprofitable hoists. Stock LLVM with NVIDIA-tuned thresholds.
+**[LICM](./licm-real.md)** (Loop-Invariant Code Motion) hoists loop-invariant computations above the loop and sinks them below it. On GPU, LICM's hoist mode must be conservative: hoisting increases register pressure in the loop preheader, which may push past occupancy cliffs. The sink mode (running later) undoes unprofitable hoists. Stock LLVM with NVIDIA-tuned thresholds.
 
 **LoopInterchange** swaps the nesting order of a perfectly-nested loop pair when doing so improves memory access locality. In cicc, the threshold `loop-interchange-threshold` (`dword_4FB07E0`) defaults to 0, meaning interchange is only performed when the net locality benefit is non-negative AND parallelism improves. The pass has a 100-pair dependence limit (`0x960 bytes`) as a compile-time safety valve. There is no visible CUDA-specific memory space awareness -- the standard LLVM stride-1 locality model applies uniformly. See the [standard loop passes page](./loop-passes-standard.md#loopinterchange) for details.
 

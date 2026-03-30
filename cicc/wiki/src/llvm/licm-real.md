@@ -2,8 +2,6 @@
 
 Loop-Invariant Code Motion in cicc v13.0 operates at three distinct levels: an IR-level pass (`"licm"`, backed by MemorySSA), a pre-RA machine pass (`"early-machinelicm"`), and a post-RA machine pass (`"machinelicm"`). The IR-level pass runs in two modes within the same pipeline -- a **hoist invocation** early in the optimization sequence that pulls invariant computations and loads out of loops into preheaders, and a **sink invocation** via `LoopSinkPass` (or implicit re-processing) later that pushes unprofitable hoists back into cold loop blocks. On a CPU, hoisting is almost universally profitable because the preheader executes once per loop entry rather than once per iteration. On a GPU, the calculus is different: every value hoisted into the preheader extends its live range across the entire loop body, consuming a register for all iterations. If that extra register pushes the kernel past an occupancy cliff -- the threshold where the SM can fit one fewer warp -- the net effect is a slowdown, not a speedup. NVIDIA addresses this tension through the interplay of the two invocations, the NVVM alias analysis pipeline that makes cross-address-space loads trivially hoistable, and the downstream rematerialization passes that can undo hoists that turned out to be unprofitable after register allocation.
 
-> **Note on the existing `licm.md`.** The page currently at [llvm/licm.md](./licm.md) documents `LoopUnrollPass`, not LICM. A sweep misidentified `sub_19B73C0` (the 7-parameter LoopUnroll factory) as LICM due to binary adjacency. This page documents the actual LICM pass.
-
 ## Key Facts
 
 | Property | Value |
@@ -308,4 +306,4 @@ The `--emit-optix-ir` mode (triggered by OptiX runtime compilation with device t
 - [Optimization Levels](../config/optimization-levels.md) -- per-tier pipeline configuration
 - [Machine-Level Passes](./machine-passes.md) -- MachineLICM pre-RA and post-RA placement
 - [Loop Passes (Standard)](./loop-passes-standard.md) -- LoopRotate, LCSSA, LoopSimplify that canonicalize before LICM
-- [LICM (LoopUnroll mislabel)](./licm.md) -- the existing page that actually documents LoopUnroll
+- [Loop Unrolling](./loop-unroll.md) -- runs after LICM in the pipeline; the LoopUnroll pass factory at `sub_19B73C0` was previously mislabeled as LICM

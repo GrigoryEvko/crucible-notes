@@ -266,7 +266,7 @@ Ensures that every value defined inside a loop and used outside it passes throug
 
 - **[LoopVectorize & VPlan](./loop-vectorize.md)** -- LoopDistribute feeds vectorization; IRCE removes bounds checks that block it.
 - **[Loop Unrolling](./loop-unroll.md)** -- Runs after IndVarSimplify canonicalizes IVs; requires LoopSimplify form.
-- **[LICM](./licm.md)** -- Requires LoopRotate and LoopSimplify as prerequisites.
+- **[LICM](./licm-real.md)** -- Requires LoopRotate and LoopSimplify as prerequisites.
 - **[ScalarEvolution](./scev.md)** -- IndVarSimplify and IRCE are among the heaviest SCEV consumers; LoopInterchange uses SCEV for stride analysis.
 - **[SCEV Invalidation](./scev-invalidation.md)** -- LoopRotate and LoopDistribute call `ScalarEvolution::forgetLoop` after transformation.
 - **[Loop Strength Reduction](./lsr.md)** -- Runs after IndVarSimplify; consumes the canonicalized IV forms it produces.

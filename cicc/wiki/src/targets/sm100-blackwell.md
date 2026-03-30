@@ -11,11 +11,11 @@ Six Blackwell arch constants are defined in `sub_CD09E0`:
 | `NVVM_ARCH_BLACKWELL_10_0` | 1000 | sm_100 |
 | `NVVM_ARCH_BLACKWELL_10_1` | 1010 | sm_101 |
 | `NVVM_ARCH_BLACKWELL_10_3` | 1030 | sm_103 |
-| `NVVM_ARCH_BLACKWELL_11_0` | 1010 | sm_110 (Jetson Thor) |
+| `NVVM_ARCH_BLACKWELL_11_0` | 1100 | sm_110 (Jetson Thor) |
 | `NVVM_ARCH_BLACKWELL_12_0` | 1200 | sm_120 |
 | `NVVM_ARCH_BLACKWELL_12_1` | 1210 | sm_121 |
 
-Notable: `NVVM_ARCH_BLACKWELL_10_1` and `NVVM_ARCH_BLACKWELL_11_0` both map to numeric value 1010. This is how sm_101 (the pre-rename designation for Jetson Thor) and the "11.0" label are unified internally.
+Notable: sm_110 (Jetson Thor) was originally designated sm_101 before being renumbered to its own 11.x line. Despite the rename, both remain in the Blackwell family (`NVVM_ARCH_BLACKWELL_*`). The numeric encoding follows the standard `major*100 + minor*10` formula: 11*100 + 0*10 = 1100.
 
 ### SM Variant Table
 

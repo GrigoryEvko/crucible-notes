@@ -14,7 +14,8 @@ NVPTX backend: SelectionDAG lowering, instruction selection, register allocation
 | **StructurizeCFG** | [StructurizeCFG](../llvm/structurizecfg.md) — mandatory structured control flow |
 | **CodeGenPrepare** | [CodeGenPrepare & SCEV-CGP](../llvm/codegen-prepare.md) — IR-level backend prep |
 | **KnownBits** | [KnownBits & DemandedBits](../llvm/known-bits.md) — fused analysis with GPU SR oracle |
-| **Tensor core codegen** | [Tensor / MMA Builtins](../builtins/tensor-mma.md) — WMMA/WGMMA/tcgen05 |
+| **Tensor core codegen** | [MMA Code Generation](../llvm/mma-codegen.md) — HMMA/IMMA/WGMMA/tcgen05 lowering pipeline |
+| **Tensor core builtins** | [Tensor / MMA Builtins](../builtins/tensor-mma.md) — per-ID reference, validation rules |
 | **Atomics** | [Atomic Builtins](../builtins/atomics.md) — scope-aware atom lowering |
 | **Target infrastructure** | [NVPTX Target Infrastructure](../infra/nvptx-target.md) — TargetMachine, TTI, SubtargetFeatures |
 | **Live range calc** | [LiveRangeCalc](../llvm/live-range-calc.md) — dual-bitvector liveness |

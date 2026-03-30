@@ -279,7 +279,7 @@ Five major passes consume MemorySSA in cicc:
 ## Cross-References
 
 - [Alias Analysis & NVVM AA](./alias-analysis.md) -- the AA pipeline that feeds MemorySSA with GPU-aware NoAlias results
-- [LICM](../llvm/licm.md) -- primary consumer; NVVM AA-enhanced MemorySSA enables aggressive hoisting of shared-memory loads past global stores
+- [LICM](../llvm/licm-real.md) -- primary consumer; NVVM AA-enhanced MemorySSA enables aggressive hoisting of shared-memory loads past global stores
 - [DSE](../llvm/dse.md) -- walks MemorySSA backwards to find dead stores; extensive set of MemorySSA-specific knobs
 - [GVN](../llvm/gvn.md) -- optional MemorySSA backend via `enable-gvn-memoryssa`
 - [EarlyCSE](../llvm/early-cse.md) -- EarlyCSE's `memssa` variant uses MemorySSA for redundant load elimination

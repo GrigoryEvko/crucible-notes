@@ -365,10 +365,162 @@ Knobs are registered in two constructors: standard LLVM knobs in `ctor_216_0` at
 | `0x2A25260` | `UnrollLoopWithRuntimeChecks` | Prologue/epilogue generation |
 
 
+## Pass Factory and Object Layout
+
+> The following section documents the LoopUnroll pass factory at `sub_19B73C0`, which was originally misidentified as LICM in the P2C.3 sweep due to binary adjacency with the actual LICM pass. The vtable at `unk_4FB224C`, the 7-parameter constructor signature, and diagnostic function strings all confirm LoopUnroll identity.
+
+The pass factory at `sub_19B73C0` allocates a 184-byte pass object and accepts seven parameters that control unroll behavior. When a parameter is -1, the pass uses its compiled-in default.
+
+### Constructor Parameters
+
+| Parameter | Offset | Enable Flag | Semantics |
+|-----------|--------|-------------|-----------|
+| `a1` (optimization level) | +156 | -- | 2 = standard, 3 = aggressive |
+| `a2` (unroll threshold) | +168 | +172 | Trip count threshold; -1 = use default |
+| `a3` (unroll count) | +160 | +164 | Explicit unroll factor; -1 = use default |
+| `a4` (allow partial) | +176 | +177 | 0 = disable partial unroll, 1 = enable |
+| `a5` (runtime unroll) | +178 | +179 | 0 = disable runtime unroll, 1 = enable |
+| `a6` (upper bound) | +180 | +181 | 0 = disable upper-bound unroll, 1 = enable |
+| `a7` (profile-based) | +182 | +183 | 0 = disable profile-guided unroll, 1 = enable |
+
+### Object Construction
+
+The factory allocates 184 bytes via `sub_22077B0`, sets the vtable to `off_49F45F0` (loop-unroll pass vtable), stores pass ID `unk_4FB224C` at offset +16, initializes self-referential linked-list pointers at offsets +80/+88 and +128/+136, sets pass type 2 (FunctionPass) at offset +24, and calls `sub_163A1D0` / `sub_19B71A0` for pass registration.
+
+
+## Pipeline Invocation Configurations
+
+CICC invokes LoopUnroll with six distinct configurations at different pipeline stages, reflecting NVIDIA's careful tuning of unroll aggressiveness per compilation phase. These are the factory-level parameter sets passed to `sub_19B73C0`; see also the decision engine's per-invocation behavior in [The Decision Engine](#the-decision-engine-computeunrollcount) above.
+
+### Configuration A: Standard Pipeline (O1/O2)
+
+Call site: `sub_12DE330`
+
+```
+LoopUnroll(2, -1, -1, -1, -1, -1, -1)
+```
+
+All parameters at defaults. Standard unrolling with default thresholds at optimization level 2.
+
+### Configuration B: Code-Size Mode
+
+Call site: `sub_12DE8F0`, when `*(a3+4480) < 0` (NVIDIA code-size flag set)
+
+```
+LoopUnroll(a2, -1, -1, 0, 0, 0, 0)
+```
+
+All unrolling features disabled: partial, runtime, upper-bound, and profile-based are all zeroed. The pass only unrolls when the trip count is statically known and the benefit is certain. This reflects the constraint that GPU register pressure makes speculative unrolling expensive when code size matters.
+
+### Configuration C: Normal Optimizer
+
+Call site: `sub_12DE8F0`, when `*(a3+4480) >= 0` (normal mode)
+
+```
+LoopUnroll(a2, -1, -1, -1, -1, -1, -1)
+```
+
+Fully aggressive unrolling with all defaults. The optimization level is passed through from the caller.
+
+### Configuration D: Late Pipeline (Conservative)
+
+Call site: `sub_12DE8F0`, late pipeline position
+
+```
+LoopUnroll(a2, -1, -1, 0, 0, -1, -1)
+```
+
+Partial and runtime unrolling disabled, but upper-bound and profile-based unrolling retain their defaults. This conservative late-pipeline configuration avoids creating new runtime overhead in code that has already been substantially optimized.
+
+### Configuration E: Aggressive Pipeline (O3)
+
+Call site: `sub_12E54A0`
+
+```
+LoopUnroll(3, -1, -1, 0, 0, -1, 0)
+```
+
+Optimization level 3 with aggressive thresholds, but partial, runtime, and profile-based unrolling are disabled. Only upper-bound unrolling retains its default. The rationale is that at O3, the higher thresholds already capture most profitable unrolling opportunities without needing speculative runtime checks.
+
+### Configuration F: User-Configured
+
+Call site: `sub_12EA3A0`
+
+```
+LoopUnroll(a1[4], a1[5], a1[6], a1[7], a1[8], a1[9], a1[10])
+```
+
+All seven parameters are read from a stored configuration object, enabling user-specified unroll behavior via command-line flags or pragmas.
+
+
+## Threshold Initialization (Pass-Level)
+
+The function `sub_19B6690` (17 KB) configures unroll thresholds based on optimization level and LLVM knobs at pass construction time. These values feed into the `UnrollParams` struct consumed by the decision engine.
+
+### Default Threshold Values
+
+| Offset | Field | Default (O2+) | Default (O1) |
+|--------|-------|---------------|--------------|
+| +0 | OptThreshold | 405 | 150 |
+| +4 | Threshold | 400 | 400 |
+| +12 | SmallTripCountThreshold | 150 | 150 |
+| +56 | MaxIterationsCountToAnalyze | 60 | 60 |
+
+### Function-Attribute-Aware Override
+
+The threshold initializer queries function attributes via `sub_1560180`:
+
+- **Attribute ID 34** (`minsize`): Reduces `OptThreshold` to `SmallTripCountThreshold` (150).
+- **Attribute ID 17** (`optsize`): Same reduction.
+
+This means kernels annotated with size constraints get conservative unroll thresholds regardless of the global optimization level.
+
+### Per-Function Knob Override via BST
+
+The function queries the LLVM option registry (`dword_4FA0208` BST) ten times, each time looking up a different knob address. For each knob, it searches the BST rooted at `dword_4FA0208[2]`, compares the current function hash (`sub_16D5D50`) against node ranges, and applies the override if the knob value meets the threshold. The knob-to-field mapping:
+
+| Knob Address | Override Address | Field |
+|---|---|---|
+| `dword_4FB3228` | `dword_4FB32C0` | OptThreshold (+0) |
+| `dword_4FB3148` | `dword_4FB31E0` | SmallTripCountThreshold (+12) |
+| `dword_4FB3068` | `dword_4FB3100` | Threshold (+4) |
+| `dword_4FB2DC8` | `dword_4FB2E60` | field +32 |
+| `dword_4FB2CE8` | `dword_4FB2D80` | field +36 |
+| `dword_4FB2C08` | `dword_4FB2CA0` | field +24 |
+| `dword_4FB2B28` | (next value) | field +40 |
+
+The per-function BST lookup keyed by function hash enables fine-grained tuning of unroll behavior per kernel, a capability not present in upstream LLVM.
+
+
+## Diagnostic Functions
+
+Three diagnostic emission functions produce optimization remarks:
+
+| Function | Address | Diagnostic |
+|----------|---------|-----------|
+| `emitPragmaCountDiag` | `sub_19B78B0` | Reports when pragma unroll count conflicts with trip multiple |
+| `emitThresholdDiag` | `sub_19B7B10` | Reports when unrolled size exceeds threshold |
+| `emitLoopSizeDiag` | `sub_19B7D80` | Reports when loop body is too large to unroll |
+
+
+## Main Loop Processing and Hash Infrastructure
+
+The primary analysis function `sub_19B7FA0` (11 KB) analyzes each candidate loop. The pass uses hash table infrastructure shared with other CICC LLVM passes:
+
+| Function | Address | Size | Role |
+|----------|---------|------|------|
+| `rehashSmallTable` | `sub_19B60B0` | 5 KB | Small hash table resize |
+| `rehashTable` | `sub_19B8820` | 4 KB | Key-value hash table resize |
+| `rehashSet` | `sub_19B89E0` | 7 KB | Set hash table resize |
+| `insertIntoSet` | `sub_19B8DA0` | -- | Set insert with growth |
+
+All hash tables use the same `(value >> 9) ^ (value >> 4)` hash function and linear probing strategy found throughout CICC's LLVM passes. See [Hash Infrastructure](../infra/hash-infrastructure.md) for the common implementation.
+
+
 ## Cross-References
 
 - [Loop Optimization Passes](loop-passes.md) -- pipeline context and pass ordering
-- [LICM](licm.md) -- runs before second unroll invocation, feeds hoisted invariants
+- [LICM](licm-real.md) -- runs before second unroll invocation, feeds hoisted invariants
 - [Loop Strength Reduction](lsr.md) -- runs after unrolling, reduces IV expressions
 - [Register Allocation](register-allocation.md) -- occupancy-driven allocation consumes what unrolling produces
 - [StructurizeCFG](structurizecfg.md) -- runs after all loop transforms, restructures divergent control flow

@@ -60,8 +60,7 @@
 - [InstCombine](./llvm/instcombine.md)
 - [GVN](./llvm/gvn.md)
 - [DSE](./llvm/dse.md)
-- [LICM (LoopUnroll mislabel)](./llvm/licm.md)
-- [LICM (Actual)](./llvm/licm-real.md)
+- [LICM](./llvm/licm-real.md)
 - [Constant Folding: Math & Intrinsics](./llvm/constant-folding.md)
 - [KnownBits & DemandedBits](./llvm/known-bits.md)
 - [SROA, EarlyCSE & JumpThreading](./llvm/scalar-passes.md)
@@ -98,6 +97,7 @@
 - [BranchFolding & TailMerge](./llvm/branch-folding.md)
 - [TwoAddressInstruction](./llvm/two-address.md)
 - [Instruction Scheduling](./llvm/scheduling.md)
+- [Tensor / MMA Codegen](./llvm/mma-codegen.md)
 
 # NVVM Builtins
 

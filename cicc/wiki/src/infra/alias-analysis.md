@@ -282,7 +282,7 @@ The `aa-eval` diagnostic pass (`sub_13549C0`) uses 14 independent boolean flags 
 - [IP Memory Space Propagation](../passes/ipmsp.md) -- the interprocedural wrapper around MemorySpaceOpt
 - [GVN](../llvm/gvn.md) -- consumes AA for load elimination and store forwarding
 - [DSE](../llvm/dse.md) -- relies on AA for dead store detection; confirmed to have no internal address-space checks
-- [LICM](../llvm/licm.md) -- uses AA to hoist/sink memory operations across loops
+- [LICM](../llvm/licm-real.md) -- uses AA to hoist/sink memory operations across loops
 - [Pipeline & Ordering](../llvm/pipeline.md) -- where NVVM AA fits in the overall pass schedule
 - [LLVM Knobs](../config/knobs.md) -- complete knob inventory including AA-related knobs
 - [Optimization Levels](../config/optimization-levels.md) -- how `NVVMAliasAnalysis` appears in the tier 2+ pipeline
