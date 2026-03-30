@@ -125,12 +125,7 @@ uint32_t hash(uint32_t val, uint32_t mask) {
 }
 ```
 
-The table uses power-of-2 sizing with two sentinel values for slot states:
-
-| Sentinel | Value | Meaning |
-|----------|-------|---------|
-| Empty | `0xFFFFFFFFE000` | Slot never occupied |
-| Deleted | `0xFFFFFFFFF000` | Slot was occupied then erased |
+The table uses power-of-2 sizing with LLVM-layer sentinels (empty = `0xFFFFFFFFE000`, deleted = `0xFFFFFFFFF000`). See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the probing and growth policy.
 
 Each 56-byte hash table entry stores:
 
@@ -464,10 +459,10 @@ If devirtualization fails, the PTX backend must emit a `call.uni` or `call` thro
 
 1. **No inlining.** The callee is unknown, so the [inliner](./inliner-cost.md) cannot evaluate it.
 2. **Full `.param` marshaling.** Every argument must be written to `.param` space; no copy elision is possible. The call ABI (opcodes 510-513: `CallDirect`, `CallDirectNoProto`, `CallIndirect`, `CallIndirectNoProto`) forces `.param`-space round-tripping.
-3. **Register pressure spike.** All live registers across the call must be spilled to local memory (device DRAM, ~400 cycle latency on SM 70-90).
+3. **Register pressure spike.** All live registers across the call must be spilled to [local memory](../gpu-execution-model.md#memory-hierarchy) (device DRAM, ~400 cycle latency on SM 70-90).
 4. **Scheduling barrier.** The call is a full fence for instruction scheduling -- no operations can be reordered across it.
-5. **Divergence hazard.** If different threads in a warp resolve the pointer to different functions, execution serializes into multiple passes. In the worst case (32 different targets), this is a 32x slowdown.
-6. **Occupancy reduction.** The register spills increase per-thread local memory usage, which reduces the maximum number of resident warps and thus hides less memory latency.
+5. **Divergence hazard.** If different threads in a warp resolve the pointer to different functions, execution [serializes both paths](../gpu-execution-model.md#divergence). In the worst case (32 different targets), this is a 32x slowdown.
+6. **Occupancy reduction.** The register spills increase per-thread local memory usage, reducing [occupancy](../gpu-execution-model.md#register-pressure-and-occupancy) and thus hiding less memory latency.
 
 This is why CICC's default inlining budget of 20,000 (89x the upstream LLVM default) makes sense in combination with aggressive devirtualization: the pass converts expensive indirect calls into direct calls, and the inliner then eliminates them entirely.
 

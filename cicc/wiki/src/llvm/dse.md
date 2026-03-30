@@ -1,5 +1,7 @@
 # DSE (Dead Store Elimination)
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 CICC v13.0 contains a heavily modified Dead Store Elimination pass totaling approximately 91 KB of decompiled code across three major functions: the core `DSE::runOnFunction` at `sub_19DA750` (33 KB), the overwrite detection engine at `sub_19DDCB0` (28 KB), and the partial overwrite tracking system at `sub_19DF5F0` (30 KB). This substantially exceeds the size of upstream LLVM DSE, primarily due to NVIDIA's additions for partial store forwarding with type conversion, cross-store dependency tracking, store-chain decomposition for aggregates, and native CUDA vector type awareness.
 
 ## Analysis Dependencies
@@ -103,7 +105,7 @@ Each hash table entry is 72 bytes:
 | +24 | Inline storage (when count <= small threshold) |
 | +48 | Additional metadata |
 
-The hash function is `(value >> 9) ^ (value >> 4)`, using linear probing with tombstone handling. Growth triggers when `4*(used+1) >= 3*capacity` or when too many tombstones accumulate (`capacity - tombstones - used <= capacity/8`). Minimum table size is 64 entries with power-of-2 sizing.
+The hash function, probing strategy, and growth/compaction thresholds follow the standard DenseMap infrastructure; see [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md). This instance uses NVVM-layer sentinels (-8 / -16) and a minimum table size of 64 entries.
 
 ### Cross-Store Dependency Records
 

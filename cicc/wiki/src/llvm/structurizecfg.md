@@ -1,5 +1,7 @@
 # StructurizeCFG
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 CICC v13.0 ships two copies of the StructurizeCFG pass: an NVPTX-specific version at `sub_35CC920` (95 KB, 2,397 decompiled lines) and a stock LLVM/AMDGPU version at `sub_1F0EBC0`. Both exist because the binary links both the NVPTX backend and the generic LLVM Scalar library; only the NVPTX instance is scheduled in the CUDA compilation pipeline. This page documents the NVPTX version exclusively.
 
 The pass is **mandatory** for PTX emission. It is registered as `"structurizecfg"` in the pipeline parser (`sub_2377300`, `sub_233F860`) and listed as a required late pass by `sub_29882C0` and `sub_1A6D600`.
@@ -912,18 +914,7 @@ When new basic blocks are created during structurization (the function grows), t
 
 ## Hash Table Implementation
 
-The pass uses LLVM DenseSet-style open-addressing hash tables for BB tracking:
-
-| Property | Value |
-|----------|-------|
-| Hash function | `((ptr >> 9) ^ (ptr >> 4)) & (size - 1)` |
-| Empty sentinel | `-4096` (`0xFFFFFFFFFFFFF000`) |
-| Tombstone sentinel | `-8192` (`0xFFFFFFFFFFFFE000`) |
-| Resize threshold | `4 * (count + 1) >= 3 * bucket_count` (75% load) |
-| Shrink threshold | Tombstones exceed 1/8 of capacity |
-| Resize function | `sub_2E61F50` |
-
-Two hash tables are used: `v394` tracks BBs already processed during the BFS expansion, and `v417` serves as a scratch set for child-split deduplication.
+The pass uses two DenseSet-style hash tables with LLVM-layer sentinels (-4096 / -8192); see [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function, probing, and growth policy. The resize function for this pass is `sub_2E61F50`. Table `v394` tracks BBs already processed during the BFS expansion, and `v417` serves as a scratch set for child-split deduplication.
 
 ## Comparison with Upstream LLVM StructurizeCFG
 
@@ -990,3 +981,15 @@ It must run **after** divergence analysis (so it can query which branches are un
 - [Pipeline](pipeline.md) -- exact position of `structurizecfg` in the pass ordering
 - [Knobs](../config/knobs.md) -- `structurizecfg-skip-uniform-regions`, `structurizecfg-relaxed-uniform-regions`, `enable-shrink-wrap`
 - Upstream LLVM source: `llvm/lib/Transforms/Scalar/StructurizeCFG.cpp`
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM (AMDGPU) | CICC v13.0 (NVPTX) |
+|--------|------------------------|---------------------|
+| **Binary copies** | Single StructurizeCFG in LLVM Scalar library | Two copies: NVPTX-specific at `sub_35CC920` (95 KB) and stock LLVM/AMDGPU at `sub_1F0EBC0`; only NVPTX instance scheduled |
+| **Divergence query** | Queries AMDGPU divergence analysis | Queries NVPTX warp divergence analysis; uniform branch skip via `structurizecfg-skip-uniform-regions` knob |
+| **Flow block metadata** | Flow blocks inserted without convergence metadata | Inserts convergence control metadata at offsets `+672`/`+680` on Flow blocks, consumed by AsmPrinter for warp reconvergence pseudo-instructions |
+| **Relaxed uniform regions** | Not present | `structurizecfg-relaxed-uniform-regions` knob allows less aggressive structurization when all branches in a region are provably uniform |
+| **Irreducible CFG handling** | Attempts T1/T2 node-folding reduction | Same approach, but rejection diagnostic `"UnsupportedIrreducibleCFG"` is NVPTX-specific; GPU code with irreducible CFG is a hard error |
+| **Skip conditions** | Skip for single-block functions | Extended skip: single-block, `convergent`/`optnone` attributes, `enable-shrink-wrap` = 2, and strategy object decline |
+| **Mandatory status** | Required for AMDGPU but can be skipped via flag | Mandatory for PTX emission: registered as required late pass by both `sub_29882C0` and `sub_1A6D600` |

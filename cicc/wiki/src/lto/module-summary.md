@@ -240,7 +240,7 @@ min_priority = 3 * (dword_4F87C60 != 2) + 1;
 
 ## Hash Table Infrastructure
 
-The builder manages multiple open-addressing hash tables with different entry sizes:
+The builder manages multiple open-addressing hash tables with different entry sizes. All use the standard DenseMap pointer hash and growth policy; see [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the common implementation.
 
 | Table | Entry size | Probe strategy | Purpose |
 |-------|-----------|----------------|---------|

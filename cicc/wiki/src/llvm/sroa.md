@@ -1,5 +1,7 @@
 # SROA (Scalar Replacement of Aggregates)
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 SROA is the single most important early-pipeline optimization for NVIDIA GPU compilation. Every `alloca` instruction that survives into code generation is lowered to `.local` memory (NVPTX address space 5) -- physically backed by device DRAM and accessed through the L1/L2 cache hierarchy. A `.local` access that misses L1 costs 200-400 cycles; a register read costs zero. A single un-promoted alloca in a hot loop can degrade kernel throughput by 10-50x. SROA's job is to decompose aggregate allocas (structs, arrays, unions) into individual scalar SSA values that the register allocator can place in registers, eliminating the memory traffic entirely.
 
 | Property | Value |
@@ -19,16 +21,9 @@ SROA is the single most important early-pipeline optimization for NVIDIA GPU com
 
 ## Why SROA Is Existential on GPU
 
-On a CPU, an alloca that cannot be promoted to a register lives on the stack -- a cached, low-latency memory region with typical access times of 1-4 cycles. On an NVIDIA GPU there is no hardware stack cache. The memory hierarchy for per-thread state is:
+On a CPU, an alloca that cannot be promoted to a register lives on the stack -- a cached, low-latency memory region with typical access times of 1-4 cycles. On an NVIDIA GPU there is no hardware stack cache: every surviving alloca becomes a `.local` allocation backed by DRAM with [200-800 cycle latency](../gpu-execution-model.md#memory-hierarchy) on cache miss versus zero for a register. See the [GPU Execution Model memory hierarchy table](../gpu-execution-model.md#latency-table) for per-tier latencies.
 
-| Storage | Latency | Capacity per thread |
-|---------|---------|---------------------|
-| Registers | 0 cycles | 255 (SM 70+) |
-| `.local` (L1 hit) | ~30 cycles | Limited by L1 size / thread count |
-| `.local` (L1 miss, L2 hit) | ~200 cycles | L2 partition |
-| `.local` (L2 miss) | ~400+ cycles | Device DRAM |
-
-Every alloca that survives SROA becomes a `.local` allocation. The NVPTX backend emits these as frame objects in the `NVPTXFrameLowering::emitPrologue` path, and ptxas maps them to per-thread local memory. Because occupancy (the number of resident warps) is bounded by register count per SM, and `.local` spills effectively consume both registers (for the address) and memory bandwidth, the performance impact compounds.
+Every alloca that survives SROA becomes a `.local` allocation. The NVPTX backend emits these as frame objects in the `NVPTXFrameLowering::emitPrologue` path, and ptxas maps them to per-thread local memory. Because [occupancy](../gpu-execution-model.md#register-pressure-and-occupancy) is bounded by register count per SM, and `.local` spills effectively consume both registers (for the address) and memory bandwidth, the performance impact compounds.
 
 The pipeline runs SROA twice: once early (position 4, immediately after NVVMReflect) to eliminate allocas before any other transform sees them, and once late (after NVVMCustomSinking2 and BreakCriticalEdges) to catch allocas created or exposed by loop unrolling, inlining, and other mid-pipeline transforms. The early invocation handles the common case (byval parameter copies, local struct variables); the late invocation cleans up whatever the loop optimizer and sinking passes left behind.
 
@@ -360,18 +355,7 @@ Stored in a `SmallVector<SubAllocaRecord, 2>` -- the inline buffer holds two ele
 
 ### Pass State Hash Table
 
-The SROA pass state object (parameter `a1` to both main functions) contains an open-addressing hash table at offsets `+432` through `+896`:
-
-| Property | Value |
-|----------|-------|
-| Type | Open-addressing, linear probing |
-| Empty sentinel | `-4096` (`0xFFFFF000`) |
-| Tombstone sentinel | `-8192` (`0xFFFFE000`) |
-| Hash function | `((key >> 9) ^ (key >> 4)) & mask` |
-| Resize trigger | `4n/3 + 1` load factor (75% threshold) |
-| Key | Instruction pointer (as integer) |
-
-This table tracks which instructions have already been processed or are pending in the worklist. The sentinel values are chosen to be invalid pointer values in the user address space.
+The SROA pass state object (parameter `a1` to both main functions) contains an open-addressing hash table at offsets `+432` through `+896`. It uses LLVM-layer sentinels (-4096 / -8192) with instruction pointer keys. This table tracks which instructions have already been processed or are pending in the worklist. See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function, probing strategy, and growth policy.
 
 ### Tagged Pointer Scheme
 

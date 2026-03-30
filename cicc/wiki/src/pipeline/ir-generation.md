@@ -264,7 +264,7 @@ The EDG-to-LLVM type translation (`sub_91AED0` and its callees) is a worklist-dr
 - **Template specializations**: Two-pass approach -- syntactic substitution (`sub_908040`) followed by semantic matching (`sub_910920`), gated by optimization flags.
 - **Mutually recursive types**: Handled by the fixed-point iteration `do { changed = process_all(); } while (changed)`.
 
-All hash tables in the type system use the same hash function -- `(ptr >> 9) ^ (ptr >> 4)` -- with open addressing, linear probing, and sentinel values of -8 (empty) and -16 (tombstone). Rehash occurs at 75% load factor.
+All hash tables in the type system use the standard DenseMap infrastructure with NVVM-layer sentinels (-8 / -16). See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the common implementation.
 
 ## Global Variable Codegen
 

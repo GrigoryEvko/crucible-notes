@@ -543,7 +543,7 @@ The fixed-point analysis in `sub_251CD10` converges by iterating over all abstra
    - **Automatic population**: When `sub_312CF50` (the 194-case runtime declaration factory) creates a runtime function declaration, that function is automatically added to the set if it is known to be thread-safe (most `__kmpc_*` functions, all `omp_*` query functions).
    - **User annotation**: Functions declared with `[[omp::assume("ompx_spmd_amenable")]]` are inserted into the set by the attribute parser.
 
-   The set uses open-addressing with linear probing. The hash function is `((addr >> 9) ^ (addr >> 4)) & (capacity - 1)`. The empty-slot sentinel is `-4096` (0xFFFFFFFFFFFFF000). If any callee fails the lookup, the analysis sets `*(a1+241) = 0` and the transformation will emit OMP121 diagnostics instead.
+   The set uses the standard DenseMap infrastructure with LLVM-layer sentinels (-4096 / -8192); see [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md). If any callee fails the lookup, the analysis sets `*(a1+241) = 0` and the transformation will emit OMP121 diagnostics instead.
 
 3. **No unresolvable side effects.** Operations that are inherently unsafe when executed by all threads simultaneously -- such as I/O with ordering requirements, thread-local storage accesses assuming single-thread semantics, or calls to external functions with unknown side-effect profiles -- prevent SPMDization.
 
@@ -646,7 +646,7 @@ The cicc SPMD transformation in `sub_26968A0` is a proprietary reimplementation 
 | Guarded regions | `insertInstructionGuardsHelper` using `SplitBlock` | Custom 5-block split with explicit worklist registration |
 | Broadcast mechanism | `GlobalVariable` in shared memory (internal linkage, `UndefValue` init) | `alloca` in address space 7 (shared) via `sub_B30000` |
 | Barrier | `__kmpc_barrier_simple_spmd` | Same: `__kmpc_barrier_simple_spmd` (call ID 187) |
-| Hash tables | LLVM `DenseSet` / `SmallPtrSet` | Custom open-addressing with linear probing and `-4096` sentinel |
+| Hash tables | LLVM `DenseSet` / `SmallPtrSet` | Custom open-addressing with `-4096` sentinel ([details](../infra/hash-infrastructure.md)) |
 | Region merging | Separate `openmp-opt-enable-merging` flag (disabled by default) | Integrated into the complex path; always runs when needed |
 | State machine fallback | `buildCustomStateMachine` in same `AAKernelInfo::manifest` | Separate function `sub_2678420` (41 KB) |
 | Diagnostic IDs | OMP120, OMP121 (identical) | OMP120, OMP121 (identical) |

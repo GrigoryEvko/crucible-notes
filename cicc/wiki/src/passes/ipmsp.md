@@ -520,13 +520,7 @@ Red-black tree nodes are 0x58 bytes with the standard `{left, right, parent, col
 
 ### DenseMap Caches
 
-The inference engine and per-callee propagation use DenseMap hash tables for fast lookup:
-
-- **Hash function**: `(ptr >> 9) ^ (ptr >> 4)` with linear probing
-- **Empty sentinel**: `-4096` (`0xFFFFFFFFFFFFF000`)
-- **Tombstone**: `-8192` (`0xFFFFFFFFFFFFE000`)
-- **Entry size**: 16 bytes (key + value, both 8 bytes)
-- **Growth**: rehash at 75% load factor via `sub_240C8E0`
+The inference engine and per-callee propagation use DenseMap hash tables with LLVM-layer sentinels (-4096 / -8192) and 16-byte entries (key + value). Growth is handled by `sub_240C8E0`. See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function, probing, and growth policy.
 
 Three independent DenseMaps are used:
 1. Offset +80: instruction -> resolved space (per-function analysis cache)

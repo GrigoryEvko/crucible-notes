@@ -1,5 +1,7 @@
 # SLP Vectorizer
 
+> **NVIDIA-modified pass.** See [Key Behavioral Differences from Upstream](#key-behavioral-differences-from-upstream) for GPU-specific changes.
+
 The SLP (Superword-Level Parallelism) vectorizer packs independent scalar operations on adjacent data into vector operations. Unlike the loop vectorizer, SLP operates on straight-line code within a single basic block --- it does not require a loop. On NVPTX, the practical payoff is combining two or four scalar loads/stores into `ld.v2`/`ld.v4` (or `st.v2`/`st.v4`), and folding arithmetic on adjacent elements into a single wider instruction. CICC runs the SLP vectorizer as part of the combined `LoopVectorize / SLPVectorize` pass group at step 31 of the O2 pipeline (`sub_19B73C0`), after SCCP/GlobalOpt and before the post-vectorization GVN cleanup. The pass is registered under the name `slp-vectorizer` (pipeline slot 350, `llvm::SLPVectorizerPass`).
 
 | Property | Value |
@@ -186,7 +188,7 @@ The most complex path. Handles horizontal reductions (e.g., summing all elements
 
 **Phase 0 -- Scalar chain scan.** Reads the reduction operand array at `a1+304` (pointer) and `a1+312` (count). Each bundle entry is 64 bytes. Classifies operands by opcode: values <= `0x1C` are simple scalars (add/sub/mul/etc.), values > `0x1C` are complex (fcmp, icmp variants). Calls `sub_2B0D8B0` (`isReductionOp`) to validate each operation as a legal reduction (add, fadd, mul, fmul, and, or, xor, smin/smax/umin/umax, fmin/fmax).
 
-**Phase 1 -- Hash table construction.** Builds two open-addressing hash tables. The "AllOps" table uses 32-byte entries with the hash function `((ptr >> 9) ^ (ptr >> 4)) & (capacity - 1)`, matching LLVM's `DenseMap` pointer hash. Sentinel values: `-4096` (empty), `-8192` (tombstone). Load factor: grow at 75%, compact when free slots drop below 12.5%.
+**Phase 1 -- Hash table construction.** Builds two open-addressing hash tables. The "AllOps" table uses 32-byte entries with LLVM-layer sentinels (-4096 / -8192). See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function, probing strategy, and growth/compaction thresholds.
 
 **Phase 2 -- Bundle pair extraction.** Calls `sub_2B5F980` per bundle to classify reduction opcode pairs. When two consecutive bundles both contain `fadd` reductions (opcode 90), NVIDIA attempts a **paired fadd bundle merge** via `sub_2B3C030`/`sub_2B25EA0`/`sub_2B38BA0`. This is an NVIDIA-specific optimization for warp-level fadd reductions not present in upstream LLVM.
 

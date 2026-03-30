@@ -108,7 +108,7 @@ The builder context is the `a1`/`v4` parameter to `sub_163D530`. It holds the fu
 
 ### Embedded DenseMaps
 
-Three DenseMap/DenseSet instances are embedded inline in the context for node deduplication and worklist tracking. All use the universal CICC hash function `(ptr >> 9) ^ (ptr >> 4)`, with sentinels EMPTY = -8, TOMBSTONE = -16, and a 75% load factor growth threshold.
+Three DenseMap/DenseSet instances are embedded inline in the context for node deduplication and worklist tracking. All use the standard DenseMap infrastructure with NVVM-layer sentinels (-8 / -16); see [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function, probing strategy, and growth policy.
 
 **Map A (CSE node mapping)** at offsets +120..+148:
 

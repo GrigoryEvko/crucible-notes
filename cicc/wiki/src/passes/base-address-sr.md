@@ -170,16 +170,7 @@ The pass uses a red-black tree infrastructure (`sub_220F040` for insertion, `sub
 
 ## Hash Map Implementation
 
-The address pattern hash maps are central to the algorithm's efficiency. They use open addressing with a load-factor-based growth policy identical to the one in Common Base Elimination:
-
-| Condition | Action |
-|-----------|--------|
-| `4 * (count + 1) >= 3 * capacity` | Double capacity and rehash |
-| `capacity - tombstones - live > capacity / 8` | Rehash in place (reclaim tombstones) |
-
-The resize/rehash logic lives in `sub_1C54050`. This is the same growth policy used by the NVIDIA custom hash tables throughout the SCEV-CGP / BASR / CBE subsystem -- distinct from LLVM's `DenseMap` which uses a 75% load factor with power-of-two sizing.
-
-Hash keys are `Value*` pointers. The hash function is pointer-based (the pointer value itself serves as the hash input). Collision resolution uses linear probing. Deleted entries leave tombstone markers that are reclaimed during rehash.
+The address pattern hash maps use the standard DenseMap growth policy (75% load factor, 12.5% tombstone compaction) with NVVM-layer sentinels (-8 / -16). The resize/rehash logic lives in `sub_1C54050` -- the same function used by [Common Base Elimination](./common-base-elim.md). Hash keys are `Value*` pointers with linear probing. See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function and probing strategy.
 
 ## Relationship with Common Base Elimination
 

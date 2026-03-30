@@ -573,9 +573,7 @@ After field explosion and malloc rewrite, the pass uses a custom hash table (ope
 | +16 | size | Current vector size |
 | +24 | cap | Vector capacity |
 
-Hash function: `bucket = (capacity - 1) & ((uint64_t(global) >> 9) ^ (uint64_t(global) >> 4))`.
-Collision resolution: quadratic probing with triangular numbers (the step variable increments linearly as 1, 2, 3, ... but the probe position advances quadratically).
-Rehash trigger: `4 * (count + 1) >= 3 * capacity` (75% load factor), or when tombstone count exceeds `capacity / 8`.
+Hash function, quadratic probing with triangular numbers, and 75% load factor / 12.5% tombstone compaction thresholds all follow the standard DenseMap infrastructure; see [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for details.
 
 The processing loop (lines 1710-1812) iterates remaining users of the original global and rewrites them to reference the new field globals:
 
@@ -851,7 +849,7 @@ Stock LLVM's `GlobalOptPass` (in `lib/Transforms/IPO/GlobalOpt.cpp`) performs si
 
 3. **Per-field malloc decomposition.** Stock LLVM's `tryToOptimizeStoreOfMallocToGlobal` handles malloc/free as a single pair. NVIDIA generates per-field null checks, conditional frees, and continuation blocks -- a more aggressive decomposition.
 
-4. **Custom hash table.** LLVM uses `DenseMap`/`SmallPtrSet`. NVIDIA uses a hand-rolled open-addressing hash table with 32-byte entries and a specific hash function (`(ptr >> 9) ^ (ptr >> 4)`).
+4. **Custom hash table.** LLVM uses `DenseMap`/`SmallPtrSet`. NVIDIA uses a hand-rolled open-addressing hash table with 32-byte entries (see [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function and sentinel values).
 
 5. **Address-space preservation.** Every created global explicitly receives the source global's address space. Stock LLVM does not special-case address spaces in GlobalOpt.
 

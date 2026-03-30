@@ -53,12 +53,7 @@ The pass maintains two hash maps for grouping addresses:
 - This allows grouping addresses to the _same global_ even when accessed through different local pointer variables.
 - New globals are appended to worklist `v360`.
 
-The hash maps use a load-factor-based growth policy:
-- If `4 * (count + 1) >= 3 * capacity`, double the capacity.
-- If `capacity - tombstones - live > capacity / 8`, rehash in place (compact tombstones without growing).
-- `sub_1C54050` handles both resize and in-place rehash.
-
-The sentinel values follow the standard cicc DenseMap convention: `-8` for empty slots, `-16` for tombstones.
+The hash maps use the standard DenseMap growth policy (75% load factor, 12.5% tombstone compaction) with NVVM-layer sentinels (-8 / -16). `sub_1C54050` handles both resize and in-place rehash. See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the complete specification.
 
 ### Phase 3 -- Dominator Walk and Base Hoisting
 

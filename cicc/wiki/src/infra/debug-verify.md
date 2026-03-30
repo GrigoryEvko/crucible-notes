@@ -135,7 +135,7 @@ For each `DICompileUnit` operand, the pass walks the subprogram list and retaine
 uint64_t hash = ((ptr >> 4) ^ (ptr >> 9)) & (bucket_count - 1);
 ```
 
-This matches LLVM's `DenseMap` hash with linear probing, empty sentinel `0x0`, tombstone `0xFFFFFFFFF000`, and secondary sentinel `0xFFFFFFFFE000`.
+This is the standard DenseMap pointer hash with LLVM-layer sentinels. See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the complete specification.
 
 ### Phase 3: DISubprogram Iteration (`0x29C82BE` -- `0x29C84C8`)
 

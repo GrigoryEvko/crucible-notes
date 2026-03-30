@@ -1,5 +1,7 @@
 # Standard Loop Passes
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 CICC v13.0 includes a full complement of LLVM loop transformation passes beyond the major ones (LoopVectorize, LoopUnroll, LICM, LSR) that have their own pages. This page covers the remaining loop passes: LoopInterchange, IRCE, IndVarSimplify, LoopDistribute, LoopIdiom, LoopRotate, LoopSimplify, and LCSSA. Most are stock LLVM with default thresholds, but IndVarSimplify carries three NVIDIA-specific knobs that materially change behavior on GPU code. LoopRotate appears multiple times in the pipeline as a canonicalization prerequisite for LICM and unrolling. The canonicalization trio -- LoopSimplify, LCSSA, and LoopRotate -- run so frequently they constitute the backbone of loop pass infrastructure in cicc.
 
 **Barrier awareness.** None of these 8 passes have explicit barrier (`__syncthreads()`) awareness. Barrier handling in cicc occurs through dedicated NVIDIA passes: Dead Barrier Elimination (`sub_2C83D20`) and convergence control token verification (`sub_E35A10`). The structural passes (LoopRotate, LoopSimplify, LCSSA) do not move instructions across basic blocks in ways that could reorder barriers. LoopInterchange and LoopDistribute could theoretically reorder barriers, but barriers in CUDA kernels typically occur outside perfectly-nested loop bodies (interchange) or create non-distributable loop bodies (distribution).
@@ -205,7 +207,7 @@ Splits a single loop into multiple loops (loop fission), each containing a subse
 
 **Dependence entry** (0x40 = 64 bytes per entry): source instruction (+0x00), destination instruction (+0x08), dep type info (+0x10), SCEV distance (+0x18), DependenceType byte (+0x28). Stride confirmed at `shl rax, 6` (0x1A8E6B9).
 
-If validation passes, the core phase builds a partition graph. Each instruction starts in its own partition. The partition hash set uses open-addressing with 16 bytes per slot, hash function `(ptr >> 4) ^ (ptr >> 9)` (standard LLVM DenseMap pointer hash), linear probing, and 3/4 load factor growth. Sentinel values: `0xFFFFFFFFFFFFFFF8` (-8) = empty, `0xFFFFFFFFFFFFFFF0` (-16) = tombstone, `0xFFFFFFFFFFFFFFFE` (-2) = unassigned.
+If validation passes, the core phase builds a partition graph. Each instruction starts in its own partition. The partition hash set uses 16-byte slots with NVVM-layer sentinels (-8 / -16) and an additional `-2` value for "unassigned" partitions. See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function, probing, and growth policy.
 
 For each unsafe memory dependence pair, the pass either merges source and destination partitions (if the dependence cannot be broken) or marks it as cross-partition. A union-find structure tracks merged partitions. After merging, if at least two distinct partitions remain, `sub_1B1E040` (`distributeLoopBody`, ~2000 bytes) clones the loop body once per partition, removes instructions not belonging to each partition, and wires the clones in dependence order. Optional runtime dependence checks (loop versioning) are added. Post-distribution: `sub_1B1DC30` updates the dominator tree, `sub_197E390` registers new loops, `sub_143AA50` (`ScalarEvolution::forgetLoop`) invalidates SCEV cache. Metadata `"distributed loop"` (16 chars) is attached to prevent future re-distribution.
 
@@ -419,6 +421,18 @@ Ensures that every value defined inside a loop and used outside it passes throug
 | `sub_D48E00` | -- | `verifyLoopLCSSA` (assertion: "Loops must remain in LCSSA form!") |
 
 ---
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **IndVarSimplify knobs** | Stock LLVM defaults; no GPU-specific configuration | Three NVIDIA-specific knobs that change IV widening/narrowing behavior for GPU register pressure management |
+| **Barrier awareness** | No concept of GPU barriers or synchronization primitives | None of the 8 standard passes have explicit barrier awareness; barrier handling deferred to dedicated NVIDIA passes (Dead Barrier Elimination, convergence token verification) |
+| **LoopRotate frequency** | Runs once or twice in pipeline | Appears multiple times as canonicalization prerequisite for LICM and unrolling; forms the backbone of loop pass infrastructure |
+| **LoopIdiom patterns** | `memset`, `memcpy` recognition for CPU targets | Same patterns; GPU-specific expansion handled downstream by [MemmoveUnroll](../passes/memmove-unroll.md) pass |
+| **IRCE** | Range check elimination for deoptimization-safe targets | Present but effectiveness limited on GPU: no deoptimization support, relies on SCEV range analysis for bound proofs |
+| **LoopInterchange** | Cost model driven by cache locality | Same legality checks; profitability analysis implicitly favors stride-1 access (coalescing) over cache line optimization |
+| **IV Demotion** | Not present | Downstream NVIDIA pass ([IV Demotion](../passes/iv-demotion.md)) narrows IVs widened by IndVarSimplify back to 32-bit where GPU value ranges permit |
 
 ## Cross-References
 

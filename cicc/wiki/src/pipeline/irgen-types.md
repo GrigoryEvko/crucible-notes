@@ -217,7 +217,7 @@ To avoid redundant work, the translator maintains five distinct caches:
 | **Scope table** | `ctx+0x10`, hash at `+8/+24` | scope ID | type info | Maps scope identifiers to type information for type-pair comparison |
 | **Type index table** | `ctx+0x98`+ | compound key | monotonic index | Linear ordering of processed types; Jenkins-like hash for compound keys |
 
-All hash tables share the same implementation: hash function `h(ptr) = (ptr >> 9) ^ (ptr >> 4)`, open addressing with linear probing, sentinels `-8` (empty) and `-16` (tombstone), and rehash at 75% load factor. The hash is optimized for pointer-like keys where the low bits have limited entropy due to alignment.
+All hash tables use the standard DenseMap infrastructure with NVVM-layer sentinels (-8 / -16). See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function, probing strategy, and growth policy.
 
 Cache invalidation is handled by `sub_913880`, which walks a type's member list and removes stale entries. Invalidation cascades: if a struct type is invalidated, all member types that are non-trivial (not kind 54/55 typedef/using) are also removed from the cache.
 

@@ -1,5 +1,7 @@
 # Register Coalescing
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 Register coalescing in CICC v13.0 eliminates redundant copy instructions by merging the live ranges of their source and destination virtual registers. NVPTX's unlimited virtual register model (PTX has no fixed physical register file) changes the purpose of coalescing compared to CPU targets: rather than reducing physical register pressure to avoid spills, the goal is strictly copy elimination -- fewer `mov` instructions in the emitted PTX, which in turn gives `ptxas` a cleaner input with fewer live-range constraints to resolve during its own physical allocation. CICC runs two coalescing passes in sequence: the standard LLVM `RegisterCoalescer` at `sub_2F71140` (which handles generic `COPY` pseudo-instructions) and a separate NVPTX-specific coalescer rooted at `sub_34AF4A0` (which handles NVPTX copy instruction families in the opcode 440--503 range that the generic pass does not recognize). This page documents both, with emphasis on the NVPTX-specific pass where the bulk of the proprietary logic resides.
 
 | | |
@@ -218,14 +220,14 @@ Higher weight means higher coalescing priority. The overall ordering is:
 
 ### Hash Maps
 
-All hash maps use open-addressing with linear probing. Two variants exist:
+All hash maps use the standard DenseMap open-addressing infrastructure described in [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md). Two sentinel variants appear in this pass:
 
-| Variant | Key Type | Hash Function | Empty Sentinel | Deleted Sentinel |
-|---|---|---|---|---|
-| Integer-key | `int32_t` | `(key * 37) & (cap - 1)` | `-1` (0xFFFFFFFF) | `-2` (0xFFFFFFFE) |
-| Pointer-key | `int64_t` | `((key >> 9) ^ (key >> 4)) & (cap - 1)` | `-4096` | `-8192` |
+| Variant | Key Type | Sentinel pair |
+|---|---|---|
+| Integer-key | `int32_t` | `-1` / `-2` (hash: `key * 37`) |
+| Pointer-key | `int64_t` | `-4096` / `-8192` (hash: `(key >> 9) ^ (key >> 4)`) |
 
-Load factor threshold: rehash when `4 * (count + 1) >= 3 * capacity` (75%). Growth policy: `next_power_of_2(2 * old_capacity - 1)`, minimum 64 entries. Power-of-two rounding uses the standard bit-smearing idiom (`x |= x>>1; x |= x>>2; ... x += 1`).
+Growth policy: `next_power_of_2(2 * old_capacity - 1)`, minimum 64 entries.
 
 Allocator: `sub_C7D670(size, alignment=8)` / `sub_C7D6A0(ptr, size, alignment=8)` -- CICC's aligned malloc/free wrappers.
 
@@ -354,6 +356,18 @@ A pathological case is over-aggressive coalescing that creates very long live ra
 | `sub_35065A0` | -- | Register info initializer |
 | `sub_2F71140` | 80KB | Standard LLVM RegisterCoalescer |
 | `sub_2F60C50` | -- | RegisterCoalescer::getPassName |
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **Number of passes** | Single `RegisterCoalescer` pass handling `COPY` pseudo-instructions | Two passes in sequence: stock LLVM `RegisterCoalescer` (`sub_2F71140`) + NVPTX-specific coalescer (`sub_34AF4A0`) |
+| **Opcode coverage** | Handles only `TargetOpcode::COPY` (generic copy pseudo) | NVPTX pass handles NVPTX copy instruction families in opcode range 440--503 that the generic pass does not recognize |
+| **Coalescing goal** | Reduce physical register pressure to prevent spills | Strictly copy elimination (PTX has unlimited virtual registers); goal is fewer `mov` instructions in emitted PTX and smaller interference graphs for `ptxas` |
+| **Interference check** | Standard `LiveIntervals` query | Custom interference check (`sub_34AA450`, 11.5 KB) with interval tree (red-black BST at `sub_34A0610`) for NVPTX register classes |
+| **Block-level coalescing** | Part of the unified worklist | Separate block-level coalescing pass (`sub_34BAAF0`, 31.7 KB) processes copies within each block before cross-block coalescing |
+| **Operand classification** | Generic operand handling | Custom operand type classification table (`byte_444C4A0`, 16-byte entries) maps NVPTX opcode families to copy semantics |
+| **Pass parameters** | Standard `runOnMachineFunction` with no limits | Parameterized with explicit `(copy_limit, coalesce_limit)` bounds for compile-time control on large kernels |
 
 ## Cross-References
 

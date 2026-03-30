@@ -255,15 +255,7 @@ Both are looked up via `sub_1632310` (named metadata search on the module).
 
 For the debug version, `sub_12BD890` checks compatibility with a similar special case: `(debug_major=3, debug_minor<=2)` always passes.
 
-**Unique node deduplication**: The checker builds a hash set of unique metadata nodes using open-addressing with quadratic probing:
-
-```
-hash(value) = (value >> 9) ^ (value >> 4) & mask
-tombstone   = 0xFFFFFFFFFFFFFFF0
-empty       = 0xFFFFFFFFFFFFFFF8
-```
-
-This deduplication handles the case where multiple source files within a compilation unit carry identical version metadata -- each unique version is checked exactly once.
+**Unique node deduplication**: The checker builds a hash set of unique metadata nodes using the standard DenseMap infrastructure with NVVM-layer sentinels (-8 / -16). See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function and probing strategy. This deduplication handles the case where multiple source files within a compilation unit carry identical version metadata -- each unique version is checked exactly once.
 
 **Final gate**: If debug info is present in the module, the debug mode flag is set, but no debug version was validated (because the metadata lacked elements 2-3), the checker returns 3 (incompatible). This catches the case where a debug-compiled user module is linked against a non-debug library that lacks debug version metadata.
 

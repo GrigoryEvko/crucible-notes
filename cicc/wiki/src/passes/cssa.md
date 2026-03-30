@@ -22,7 +22,7 @@ CSSA (Conventional SSA) is NVIDIA's transformation that rewrites the IR so that 
 
 ### The Warp Execution Model
 
-An NVIDIA SM executes threads in groups of 32 called warps. All threads in a warp share a single program counter under the SIMT (Single Instruction, Multiple Threads) model. When a branch condition evaluates differently across threads in a warp, the hardware serializes the two paths: first the "taken" subset of threads executes while the others are masked off, then the "not-taken" subset executes. Eventually the warp *reconverges* -- all 32 threads resume executing the same instruction.
+NVIDIA GPUs execute threads in warps of 32 under the [SIMT model](../gpu-execution-model.md#simt-warp-execution): all threads share a program counter, and [divergent branches](../gpu-execution-model.md#divergence) serialize both paths before the warp reconverges. The full warp execution model and its implications for cicc are documented in the [GPU Execution Model](../gpu-execution-model.md).
 
 ### Why Standard SSA Breaks
 
@@ -72,8 +72,8 @@ For each PHI node found, the function:
 
 1. Increments a monotonic counter at `[r15+0x78]` to assign a unique PHI ID.
 2. Computes a hash of the PHI's pointer value using the standard NVIDIA hash: `h = (ptr >> 4) ^ (ptr >> 9)`, masked by `(table_size - 1)`. This is the same hash function used across CICC's DenseMap infrastructure.
-3. Inserts the PHI (or looks it up) in the hash map at `[r15+0x60]` with metadata fields: key at `[slot+0]`, PHI ID at `[slot+8]`. The hash table uses open addressing with linear probing, tombstone sentinel `0xFFFFFFFFFFFFF000`, and empty sentinel `0xFFFFFFFFFFFFE000`.
-4. Calls `sub_A41E30` to resize the hash table when the load factor exceeds the 3/4 threshold (`4*count >= 3*capacity`).
+3. Inserts the PHI (or looks it up) in the hash map at `[r15+0x60]` with metadata fields: key at `[slot+0]`, PHI ID at `[slot+8]`. The hash table uses LLVM-layer sentinels (-4096 / -8192); see [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the probing and growth policy.
+4. Calls `sub_A41E30` to resize the hash table when the load factor exceeds the 75% threshold.
 
 ### Phase 3: Copy Insertion at Reconvergence Points
 

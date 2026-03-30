@@ -340,7 +340,7 @@ Iterates the case list (linked list at `stmt[10]+16`, next pointer at +32). For 
 | +516 | numTombstones |
 | +520 | capacity |
 
-Hash function: `((ptr >> 9) ^ (ptr >> 4)) & (capacity - 1)`. Linear probing with tombstone value `-8192` and empty sentinel `-4096`. Resizes at 75% load factor.
+Uses the standard DenseMap infrastructure with LLVM-layer sentinels (-4096 / -8192). See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function and growth policy.
 
 ### Phase 2: Emit LLVM SwitchInst
 

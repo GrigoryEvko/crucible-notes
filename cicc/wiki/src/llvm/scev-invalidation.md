@@ -1,5 +1,7 @@
 # SCEV Invalidation & Delinearization
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 SCEV analysis results are expensive to compute and are cached aggressively. When the IR mutates -- a loop is unrolled, a value is replaced, a block is deleted -- cached SCEV expressions, range information, and backedge-taken counts can become stale. The invalidation subsystem (`forgetLoop`, `forgetValue`, `forgetAllLoops`) determines exactly which cache entries must be discarded after each transformation. Get it wrong in either direction and the compiler either produces incorrect code (stale data) or wastes time recomputing everything (over-invalidation).
 
 Delinearization is the complementary recovery problem: given a flat pointer expression like `base + i*N*M + j*M + k`, recover the original multi-dimensional subscripts `[i][j][k]`. This is critical for GPU code because memory coalescing analysis needs to know whether adjacent threads in a warp are accessing adjacent addresses -- a question that can only be answered by examining per-dimension subscripts against the thread index structure.
@@ -37,7 +39,7 @@ SCEV maintains seven distinct cache tables that must be kept consistent. Each ha
 | 6 | AddRec folding cache | per-expression | AddRec pair | folded form | per-expression |
 | 7 | Predicated BTC cache | 16 bytes | loop `SCEV*` | predicated count | secondary table |
 
-All hash tables use the same open-addressing scheme with the hash function `(key >> 9) ^ (key >> 4)`, the same sentinel values, and the same growth policy: resize when `4 * (entries + 1) >= 3 * capacity`, rehash-in-place when tombstones exceed `capacity / 8`.
+All hash tables use the standard DenseMap infrastructure with LLVM-layer sentinels (-4096 / -8192). See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function, probing strategy, and growth/compaction thresholds.
 
 ### forgetLoop: The 8-Phase Algorithm
 
@@ -358,6 +360,17 @@ These candidates are passed to `findArrayDimensions` (`sub_147B0D0`) which uses 
 | `sub_B19D00` | `DominatorTree::dominates` |
 | `sub_C8CC70` | `SmallDenseSet::insert` |
 | `sub_DB11F0` | Cache insert (delinearization result memoization) |
+
+## Differences from Upstream LLVM
+
+| Aspect | Upstream LLVM | CICC v13.0 |
+|--------|---------------|------------|
+| **Delinearization purpose** | Optimize for cache locality; multi-dimensional subscript recovery for polyhedral analysis | Optimize for memory coalescing: recover subscripts to determine whether adjacent warp threads access adjacent addresses |
+| **Invalidation triggers** | Standard loop transformations (unroll, vectorize, simplify) | Additional triggers from NVIDIA-specific passes: MemorySpaceOpt (address space transformations), IV Demotion (narrowing changes SCEV types), NVLoopStrengthReduce |
+| **Delinearization result caching** | No explicit memoization in upstream | Memoization cache via `sub_DB11F0` prevents redundant delinearization of the same GEP across multiple consumers |
+| **Thread index awareness** | No concept of thread-index-based access patterns | Delinearized subscripts are analyzed against `threadIdx` dimensions to determine coalescing quality; feeds into vectorization and LSR decisions |
+| **`forget-scev-loop-unroll` knob** | Present in upstream LLVM | Same knob, but more critical on GPU because over-invalidation forces expensive SCEV recomputation on deeply nested kernel loops |
+| **Range source diversity** | Profile data, programmer assertions (`__builtin_assume`) | Additional sources: `!range` metadata from `nvvm-intr-range`, `__launch_bounds__`, `warpSize` constant, special register bounded ranges |
 
 ## Cross-References
 

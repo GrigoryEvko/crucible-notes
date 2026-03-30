@@ -1,5 +1,7 @@
 # SelectionDAG & Instruction Selection
 
+> **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+
 CICC v13.0 contains a complete NVPTX SelectionDAG backend derived from LLVM 20.0.0, with substantial NVIDIA customizations for GPU-specific lowering, the PTX `.param`-space calling convention, tensor core intrinsic selection, and a 343KB intrinsic lowering mega-switch covering over 200 CUDA intrinsic IDs. The SelectionDAG pipeline converts LLVM IR into machine-level PTX instructions through four major phases: type legalization, operation legalization, DAG combining, and pattern-based instruction selection.
 
 The NVPTX SelectionDAG backend spans roughly 4MB of code across two address ranges: `0xF05000`--`0xF70000` for the target-independent DAG infrastructure (combining, known-bits, node management) and `0x3290000`--`0x35FFFFF` for the NVPTX-specific lowering, instruction selection, and register allocation. The infrastructure range is stock LLVM with no detectable NVIDIA modifications; all NVIDIA customization lives in the latter range via target hooks and virtual dispatch.
@@ -412,7 +414,7 @@ The per-node combine visitor (`sub_F20C20`, 64KB) implements six sequential opti
 
 ### ReplaceAllUsesWith: `sub_F162A0`
 
-The combiner's RAUW implementation walks the use-list and hashes each user into a worklist map using open-addressing with hash function `((id >> 9) ^ (id >> 4)) & (size - 1)`. The worklist grows when load factor exceeds 75%. The sentinel values are `-4096` (empty slot) and `-8192` (tombstone).
+The combiner's RAUW implementation walks the use-list and hashes each user into a worklist map using the standard DenseMap infrastructure with LLVM-layer sentinels (-4096 / -8192). See [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md) for the hash function and growth policy.
 
 ### Supporting Combine Functions
 
