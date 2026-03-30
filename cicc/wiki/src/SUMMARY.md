@@ -62,8 +62,10 @@
 - [GVN](./llvm/gvn.md)
 - [DSE](./llvm/dse.md)
 - [LICM](./llvm/licm-real.md)
+  - [LICM Redirect (old page)](./llvm/licm.md)
 - [Constant Folding: Math & Intrinsics](./llvm/constant-folding.md)
 - [KnownBits & DemandedBits](./llvm/known-bits.md)
+- [CodeGenPrepare & SCEV-CGP](./llvm/codegen-prepare.md)
 - [SROA, EarlyCSE & JumpThreading](./llvm/scalar-passes.md)
 - [SROA Deep Dive](./llvm/sroa.md)
 - [EarlyCSE Deep Dive](./llvm/early-cse.md)
@@ -134,6 +136,10 @@
 - [Debug Info Verification](./infra/debug-verify.md)
 - [LazyCallGraph & CGSCC](./infra/lazycallgraph.md)
 - [NVPTX Target Infrastructure](./infra/nvptx-target.md)
+- [Bitcode Reader/Writer](./infra/bitcode-io.md)
+- [Concurrent Compilation](./infra/concurrent-compilation.md)
+- [Diagnostics & Optimization Remarks](./infra/diagnostics.md)
+- [Hash Table Infrastructure](./infra/hash-infrastructure.md)
 - [Libdevice Linking](./infra/libdevice-linking.md)
 
 # Coroutines

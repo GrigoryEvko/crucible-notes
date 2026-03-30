@@ -107,11 +107,150 @@ CUDA C++ Source (.cu / .ci / .i)
 
 ## Reading This Wiki
 
-The wiki is organized around the compilation pipeline:
+The wiki is organized around the compilation pipeline. Every page is written at reimplementation-grade depth for an audience of senior C++ developers with LLVM backend experience.
 
-- **[Compilation Pipeline](./pipeline/entry.md)** — Start here. Entry point, CLI, dual-path dispatch, then follow through [EDG](./pipeline/edg.md) → [IR Generation](./pipeline/ir-generation.md) → [Optimizer](./pipeline/optimizer.md) → [Codegen](./pipeline/codegen.md) → [Emission](./pipeline/emission.md).
-- **[NVIDIA Custom Passes](./passes/index.md)** — The 35 proprietary passes not found in upstream LLVM: MemorySpaceOpt, Rematerialization, BranchDist, etc.
-- **[NVVM Builtins](./builtins/index.md)** — The 770-entry builtin table: hash table structure, complete ID inventory, category breakdown.
-- **[GPU Targets](./targets/index.md)** — SM feature gates, architecture detection, 45 SM variants from sm\_20 to sm\_121f.
+### Section Index
+
+- **[Pipeline Overview](./pipeline/overview.md)** — End-to-end compilation flow diagram with links to every stage.
+- **[Entry Point & CLI](./pipeline/entry.md)** — CLI parsing, dual-path dispatch, architecture detection.
+- **[EDG 6.6 Frontend](./pipeline/edg.md)** — CUDA C++ to transformed C source-to-source translation.
+- **[NVVM IR Generation](./pipeline/ir-generation.md)** — EDG IL tree to LLVM Module: types, expressions, statements, functions.
+- **[LLVM Optimizer](./pipeline/optimizer.md)** — Two-phase compilation, pipeline assembly, NVVMPassOptions.
+- **[Code Generation](./pipeline/codegen.md)** — SelectionDAG, ISel, register allocation, scheduling.
+- **[PTX Emission](./pipeline/emission.md)** — AsmPrinter, directive emission, PTX body output.
+- **[NVIDIA Custom Passes](./passes/index.md)** — 35 proprietary passes not in upstream LLVM.
+- **[LLVM Pass Pipeline & Ordering](./llvm/pipeline.md)** — Complete pass registration, execution order per O-level, tier system.
+- **[NVVM Builtins](./builtins/index.md)** — 770-entry builtin table: hash structure, ID inventory, category breakdown.
+- **[GPU Targets](./targets/index.md)** — SM feature gates, architecture detection, sm\_75 through sm\_121f.
+- **[Data Structures](./structs/ir-node.md)** — IR node layout, pattern database, DAG node, symbol table, NVVM container.
+- **[Infrastructure](./infra/alias-analysis.md)** — Alias analysis, MemorySSA, AsmPrinter, debug verification, NVPTX target.
+- **[LTO & Module Optimization](./lto/index.md)** — Cross-TU inlining, devirtualization, GlobalOpt, ThinLTO import.
 - **[Configuration](./config/knobs.md)** — Three knob systems: ~1,689 `cl::opt` flags, 222 NVVMPassOptions slots, ~70 codegen knobs.
+- **[Reference](./reference/address-spaces.md)** — Address spaces, register classes, NVPTX opcodes, GPU execution model.
 - **[Function Map](./function-map.md)** — Address-to-identity lookup for ~350 key functions with confidence levels.
+- **[Binary Layout](./binary-layout.md)** — Subsystem address map at pass granularity.
+- **[Methodology](./methodology.md)** — How this analysis was performed and how to assess confidence.
+
+### Reading Path 1: End-to-End Pipeline Understanding
+
+Goal: understand how CUDA source becomes PTX, what each stage does, and how control flows between subsystems.
+
+Read in this order:
+
+1. **[Pipeline Overview](./pipeline/overview.md)** — The complete flow diagram. Establishes the 10 stages and their address ranges. Read this first to build the mental model that all other pages assume.
+2. **[Entry Point & CLI](./pipeline/entry.md)** — How cicc is invoked, the 1,689-flag CLI, dual-path dispatch (Path A LibNVVM vs. Path B standalone), and the `sub_8F9C90` real-main function.
+3. **[nvcc-to-cicc Interface](./pipeline/nvcc-interface.md)** — The flag translation layer between nvcc and cicc. The 40+ flag mappings and 3-column architecture fan-out. Necessary context for understanding why certain flags exist.
+4. **[EDG 6.6 Frontend](./pipeline/edg.md)** — The commercial C++ frontend. How CUDA syntax is lowered to C, the 737 configuration `#define`s, and the `.int.c` / `.device.c` / `.stub.c` output split.
+5. **[NVVM IR Generation](./pipeline/ir-generation.md)** — The EDG-to-LLVM bridge. Then follow the four sub-pages: [Type Translation](./pipeline/irgen-types.md) → [Expressions](./pipeline/irgen-expressions.md) → [Statements](./pipeline/irgen-statements.md) → [Functions](./pipeline/irgen-functions.md).
+6. **[Libdevice Linking](./infra/libdevice-linking.md)** — The embedded 455KB bitcode library with 352 `__nv_*` math functions. Triple validation, version checking.
+7. **[LLVM Optimizer](./pipeline/optimizer.md)** — The two-phase compilation model, the 49.8KB pipeline assembler (`sub_12E54A0`), pass ordering, and the NVVMPassOptions knob system. This is the longest and densest stage.
+8. **[Pipeline & Pass Ordering](./llvm/pipeline.md)** — The exact pass execution order at each O-level, the tier system, and the 526 registered passes.
+9. **[Code Generation](./pipeline/codegen.md)** — SelectionDAG lowering, instruction selection, register allocation, instruction scheduling. Hub page with links to deep dives.
+10. **[PTX Emission](./pipeline/emission.md)** — AsmPrinter, directive headers, PTX body output, metadata emission.
+
+Optional extensions after the core path:
+
+- **[OptiX IR Generation](./pipeline/optix-ir.md)** — The alternative output mode for ray tracing workloads.
+- **[Debug Info Pipeline](./pipeline/debug-info-pipeline.md)** — How `-g` debug metadata survives the optimizer.
+- **[LTO & Module Optimization](./lto/index.md)** — Cross-module optimization when compiling multiple translation units.
+- **[Concurrent Compilation](./infra/concurrent-compilation.md)** — The Phase II thread pool and GNU Jobserver integration.
+- **[GPU Execution Model](./gpu-execution-model.md)** — Background on warps, divergence, shared memory, and address spaces if you are new to GPU architecture.
+
+### Reading Path 2: Reimplementing a Specific Pass
+
+Goal: reproduce the exact behavior of one NVIDIA custom pass or understand an LLVM pass modification deeply enough to write a compatible replacement.
+
+For an **NVIDIA custom pass** (e.g., MemorySpaceOpt, Rematerialization, BranchDist):
+
+1. **[NVIDIA Custom Passes — Overview](./passes/index.md)** — Locate the pass in the inventory table. Note its category (module/function/loop/machine), its pipeline position, and its controlling knobs.
+2. **The pass's dedicated page** (e.g., [MemorySpaceOpt](./passes/memory-space-opt.md), [Rematerialization](./passes/rematerialization.md), [Branch Distribution](./passes/branch-distribution.md)). Every dedicated page contains the function address, decompiled algorithm, data flow description, controlling knobs, and diagnostic strings.
+3. **[NVVMPassOptions](./config/nvvm-pass-options.md)** — The 222-slot struct that controls per-pass enable/disable toggles and parametric thresholds. Find which slots your target pass reads.
+4. **[Pipeline & Pass Ordering](./llvm/pipeline.md)** — Determine exactly where the pass runs in the pipeline. Identify what analyses it depends on (must run before it) and what passes consume its results (run after it).
+5. **[Optimization Levels](./config/optimization-levels.md)** — Determine at which O-levels the pass is enabled, disabled, or parameterized differently.
+6. **[Function Map](./function-map.md)** — Cross-reference the pass's internal function addresses with the master function map for confidence levels.
+
+For a **modified LLVM pass** (e.g., InstCombine, GVN, DSE, LICM, LoopVectorize):
+
+1. **The pass's dedicated page** (e.g., [InstCombine](./llvm/instcombine.md), [GVN](./llvm/gvn.md), [DSE](./llvm/dse.md), [LICM](./llvm/licm-real.md)). These pages document NVIDIA's modifications relative to upstream LLVM 20.0.0.
+2. **[Alias Analysis & NVVM AA](./infra/alias-analysis.md)** — The custom alias analysis chain. Nearly every optimization pass depends on AA, and NVIDIA's GPU-aware AA behaves differently from upstream (address-space-aware `NoAlias` for disjoint spaces, `__restrict__` propagation).
+3. **[MemorySSA](./infra/memoryssa.md)** — The memory dependence representation used by DSE, LICM, and other memory-sensitive passes.
+
+For a **machine-level pass** (e.g., Block Remat, MRPA, Machine Mem2Reg):
+
+1. **[Machine-Level Passes](./llvm/machine-passes.md)** — The complete machine pass pipeline with per-pass algorithm descriptions.
+2. **[Register Allocation](./llvm/register-allocation.md)** — The greedy RA algorithm with NVIDIA's occupancy-driven spill heuristics.
+3. **[Register Classes](./reference/register-classes.md)** — The 9 PTX register classes and their constraints.
+4. **[NVPTX Machine Opcodes](./reference/nvptx-opcodes.md)** — The MachineInstr opcode reference.
+
+Supporting references for any pass reimplementation:
+
+- **[IR Node Layout](./structs/ir-node.md)** — The internal IR data structures that passes operate on.
+- **[Address Spaces](./reference/address-spaces.md)** — GPU address space semantics that many passes must respect.
+- **[NVPTX Target Infrastructure](./infra/nvptx-target.md)** — TargetMachine, TTI hooks, and target feature queries.
+- **[Diagnostics](./infra/diagnostics.md)** — The three diagnostic systems (EDG, LLVM remarks, profuse framework) for reproducing pass-level reporting.
+
+### Reading Path 3: Debugging Correctness
+
+Goal: diagnose a miscompilation, a crash, or incorrect PTX output by tracing the problem to a specific pass or pipeline stage.
+
+Start with instrumentation and observability:
+
+1. **[Diagnostics & Optimization Remarks](./infra/diagnostics.md)** — The three independent diagnostic layers: EDG frontend errors, LLVM optimization remarks (`-opt-bisect-limit`, `-Rpass=`, `-Rpass-missed=`), and NVIDIA's profuse framework (`profuseinline`, `profusegvn`). This page tells you how to make cicc talk about what it is doing.
+2. **[Debug Info Verification](./infra/debug-verify.md)** — The three verification modes (`verify-each`, `debugify-each`, and JSON delta reporting). Use `verify-each` to detect the first pass that corrupts debug metadata.
+3. **[CLI Flags](./config/cli-flags.md)** — Locate the flags for dumping IR at specific pipeline points: `--print-after-all`, `--print-before-all`, `--filter-print-funcs=`, `--opt-bisect-limit=`. Also the `--passes=` interface for running individual passes in isolation.
+4. **[Optimization Levels](./config/optimization-levels.md)** — Compare the pass pipeline at different O-levels. If a bug appears at `-O2` but not `-O1`, the diff between their pipelines identifies the suspect passes.
+
+Then isolate the pipeline stage:
+
+5. **[Pipeline Overview](./pipeline/overview.md)** — Determine which stage produces the incorrect output. The pipeline is linear: EDG → IR Generation → Libdevice Linking → Optimizer → Codegen → Emission. The stage boundary where output first goes wrong narrows the search.
+6. **[NVVM IR Verifier](./passes/nvvm-verify-deep.md)** — The 230KB three-layer verifier (module + function + intrinsic). It validates triples, address spaces, atomic restrictions, pointer cast rules, and architecture-gated intrinsic availability. A verification failure after a specific pass is a strong signal.
+7. **[Bitcode I/O](./infra/bitcode-io.md)** — If the problem is in bitcode reading/writing (corrupted input, version mismatch), this page documents the reader at `sub_9F2A40` and the writer.
+
+Then investigate the suspect pass:
+
+8. **[NVIDIA Custom Passes](./passes/index.md)** or the relevant **[LLVM pass page](./llvm/pipeline.md)** — Read the algorithm description for the suspect pass. Look for documented edge cases, known limitations, and diagnostic strings that would appear in verbose output.
+9. **[NVVMPassOptions](./config/nvvm-pass-options.md)** — Check whether the suspect pass has enable/disable knobs or threshold parameters that could be adjusted to confirm or rule it out.
+10. **[Environment Variables](./config/env-vars.md)** — Some passes are gated by environment variables (including obfuscated ones). Check whether any are influencing behavior.
+
+For correctness issues specific to GPU semantics:
+
+- **[Address Spaces](./reference/address-spaces.md)** — Incorrect address space resolution is a common source of silent miscompilation. Global vs. shared vs. local aliasing rules differ from CPU memory models.
+- **[MemorySpaceOpt](./passes/memory-space-opt.md)** — This pass resolves generic pointers to specific address spaces. If it infers the wrong space, downstream code will access the wrong memory.
+- **[Alias Analysis](./infra/alias-analysis.md)** — If the alias analysis returns `NoAlias` for pointers that do alias, DSE/LICM/GVN will misoptimize. The `process-restrict` propagation is a known source of aggressive alias assumptions.
+- **[StructurizeCFG](./llvm/structurizecfg.md)** — PTX requires structured control flow. If structurization produces incorrect flow blocks, the kernel will execute the wrong path.
+- **[Dead Barrier Elimination](./passes/dead-barrier-elim.md)** and **[Dead Synchronization Elimination](./passes/dead-sync-elimination.md)** — Incorrect elimination of barriers or synchronization can cause race conditions that only manifest under specific warp configurations.
+
+### Reading Path 4: Tuning Performance
+
+Goal: understand what cicc does at each optimization level, which passes are the performance-critical ones, and what knobs control their aggressiveness.
+
+Start with the tuning infrastructure:
+
+1. **[Optimization Levels](./config/optimization-levels.md)** — The four standard levels (O0--O3) and three fast-compile tiers (Ofcmin/Ofcmid/Ofcmax). This page shows the exact pass pipeline diff between levels, including which passes are added, removed, or reparameterized at each step.
+2. **[NVVMPassOptions](./config/nvvm-pass-options.md)** — The 222-slot per-pass configuration system. This is the primary tuning mechanism. The page documents every slot's type (boolean/integer/string), its default value, and which pass reads it.
+3. **[CLI Flags](./config/cli-flags.md)** — The flag-to-pipeline routing tables. Locate flags that control pass thresholds (`--inline-threshold=`, `--unroll-count=`, etc.) and pass enable/disable toggles.
+4. **[LLVM Knobs](./config/knobs.md)** — The ~1,689 `cl::opt` flags with their defaults, types, and controlling constructors.
+5. **[Environment Variables](./config/env-vars.md)** — Runtime environment overrides, including the obfuscated variables.
+
+Then study the high-impact optimization passes:
+
+6. **[LLVM Optimizer](./pipeline/optimizer.md)** — Understand the two-phase model. Phase I (whole-module) determines inlining decisions, inter-procedural memory space propagation, and global optimization. Phase II (per-function, potentially concurrent) does register-pressure-driven rematerialization and instruction scheduling. Tuning decisions in Phase I cascade into Phase II.
+7. **[Inliner Cost Model](./lto/inliner-cost.md)** — Inlining is typically the single highest-impact optimization decision. This page documents the cost model thresholds, the caller/callee size heuristics, and NVIDIA's kernel-specific adjustments.
+8. **[LoopVectorize & VPlan](./llvm/loop-vectorize.md)** — Loop vectorization for GPU SIMT. The VPlan infrastructure, cost model, and the NVIDIA TTI hooks that influence vectorization width decisions.
+9. **[Loop Unrolling](./llvm/loop-unroll.md)** — Unrolling thresholds, the NVIDIA-specific unroll heuristics, and the interaction with register pressure.
+10. **[Rematerialization](./passes/rematerialization.md)** — NVIDIA's IR-level rematerialization pass (67KB). Trades recomputation for register pressure reduction, which directly affects occupancy on GPU.
+11. **[Register Allocation](./llvm/register-allocation.md)** — The greedy RA with occupancy-driven spill heuristics. Register count directly determines maximum occupancy.
+12. **[Instruction Scheduling](./llvm/scheduling.md)** — The scheduler subsystems and their interaction with hardware latency models.
+
+For tensor core workloads specifically:
+
+- **[Tensor / MMA Codegen](./llvm/mma-codegen.md)** — 19 MMA shapes across 11 data types. The instruction selection patterns, register allocation constraints, and WGMMA code generation for Hopper and Blackwell.
+- **[Tensor / MMA Builtins](./builtins/tensor-mma.md)** — The builtin-to-intrinsic lowering for `wmma`, `mma`, and `wgmma` operations.
+- **[SM 90 — Hopper](./targets/sm90-hopper.md)** — Hopper-specific features: TMA, WGMMA, asynchronous barriers, cluster launch.
+- **[SM 100 — Blackwell](./targets/sm100-blackwell.md)** — Blackwell-specific features: new MMA shapes, FP4/FP6 support, sparsity.
+
+For understanding performance at the target level:
+
+- **[GPU Targets](./targets/index.md)** — The SM feature gate matrix. Which features are enabled at each architecture level, and how architecture detection routes to different codegen paths.
+- **[NVPTX Target Infrastructure](./infra/nvptx-target.md)** — The TTI hooks that passes query for target-specific costs (memory latency, instruction throughput, register file size).
+- **[Concurrent Compilation](./infra/concurrent-compilation.md)** — If compile time itself is the bottleneck, understand the Phase II thread pool and GNU Jobserver integration to maximize parallelism.

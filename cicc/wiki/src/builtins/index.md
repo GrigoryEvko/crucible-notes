@@ -1,113 +1,40 @@
 # NVVM Builtin Table Structure
 
-770 builtins mapped to integer IDs (1–770) in a wyhash open-addressing hash table. Dual tables exist: pre-optimization (`sub_90AEE0`) and post-optimization (`sub_126A910`), both with identical content but separate address spaces.
+770 builtins mapped to integer IDs (1--770) in a wyhash open-addressing hash table. Dual tables exist: pre-optimization (`sub_90AEE0`) and post-optimization (`sub_126A910`), both with identical content but separate address spaces.
 
 | | |
 |---|---|
-| **Pre-opt table builder** | `sub_90AEE0` (109KB, populates all 770 entries) |
-| **Pre-opt dispatcher** | `sub_913450` (name → ID lookup) |
-| **Post-opt table builder** | `sub_126A910` (123KB) |
-| **Post-opt dispatcher** | `sub_12731E0` (name → ID lookup) |
+| **Pre-opt table builder** | `sub_90AEE0` (109 KB, populates all 770 entries) |
+| **Pre-opt dispatcher** | `sub_913450` (name -> ID lookup) |
+| **Post-opt table builder** | `sub_126A910` (123 KB) |
+| **Post-opt dispatcher** | `sub_12731E0` (name -> ID lookup) |
 | **Hash function** | `sub_CBF760` (wyhash v4 family) |
-| **Hash table insert** | `sub_90ADD0` → `sub_C92610` → `sub_C92740` |
+| **Hash table insert** | `sub_90ADD0` -> `sub_C92610` -> `sub_C92740` |
 | **Hash table find** | `sub_C92860` (find-only, quadratic probing) |
 | **Rehash** | `sub_C929D0` (75% load factor trigger) |
-| **Total builtins** | 770 (IDs 1–770) |
+| **Total builtins** | 770 (IDs 1--770) |
 | **Storage** | Open-addressing at `context+480` (20-byte header) |
 
 ## Architecture
 
 ```
-sub_913450 (public API: name → builtin ID)
-  │
-  ├─ Guard: context+492 == 0?
-  │    └─ sub_90AEE0 (lazy init: populate all 770 entries, once)
-  │
-  ├─ strlen(name)
-  ├─ sub_C92610(name, len)         → compute wyhash
-  ├─ sub_C92860(context+480, ...)  → quadratic probe find
-  │
-  └─ return *(uint32*)(entry + 8)  → the builtin ID
+sub_913450 (public API: name -> builtin ID)
+  |
+  +-- Guard: context+492 == 0?
+  |    +-- sub_90AEE0 (lazy init: populate all 770 entries, once)
+  |
+  +-- strlen(name)
+  +-- sub_C92610(name, len)         -> compute wyhash
+  +-- sub_C92860(context+480, ...)  -> quadratic probe find
+  |
+  +-- return *(uint32*)(entry + 8)  -> the builtin ID
 ```
 
-## Hash Table Layout
+## Hash Table Infrastructure
 
-The hash table is a 20-byte struct at `context+480`:
+The builtin name table uses a specialized 20-byte hash table header at `context+480` with a parallel hash cache array and wyhash-v4 string hashing. The table employs quadratic probing with triangular-number increments and grows at 75% load factor. For 770 entries the capacity sequence is `16 -> 32 -> 64 -> 128 -> 256 -> 512 -> 1024`.
 
-| Offset | Size | Field | Description |
-|---|---|---|---|
-| +0 | 8 | `bucket_array_ptr` | Pointer to contiguous memory block |
-| +8 | 4 | `capacity` | Number of buckets (power of 2) |
-| +12 | 4 | `count` | Number of live entries |
-| +16 | 4 | `tombstone_count` | Number of tombstone (`-8`) slots |
-
-Contiguous memory block layout (allocated via `calloc(capacity+1, 12)`):
-
-| Region | Size | Content |
-|---|---|---|
-| `[0 .. 8*cap-1]` | `8*cap` | Bucket array: `cap` qword pointers |
-| `[8*cap .. 8*cap+7]` | 8 | Sentinel: value `2` (end-of-table marker) |
-| `[8*cap+8 .. +4*cap-1]` | `4*cap` | Hash cache: `uint32` per slot |
-
-Each bucket holds:
-- `0` (NULL) — empty, never occupied
-- `-8` (`0xFFFFFFFFFFFFFFF8`) — tombstone (deleted)
-- pointer to string entry
-
-### String Entry Layout
-
-Heap-allocated via `sub_C7D670(length + 17, 8)`:
-
-| Offset | Size | Field |
-|---|---|---|
-| +0 | 8 | `string_length` (size_t) |
-| +8 | 4 | `builtin_id` (uint32, set after insertion) |
-| +16 | N+1 | Null-terminated string data (the builtin name) |
-
-## Hash Function — `sub_CBF760` (wyhash v4)
-
-`sub_C92610` is a thin wrapper that tail-calls `sub_CBF760(data_ptr, length)`. Returns `uint32` (high dword XOR low dword of 64-bit result).
-
-| Length | Strategy | Constants |
-|---|---|---|
-| 0 | Return `0x2D06800538D394C2` | — |
-| 1–3 | First/middle/last byte XOR | Seed `0x87275A9B`, mul `0xC2B2AE3D27D4EB4F` |
-| 4–8 | Two uint32 reads | XOR `0xC73AB174C5ECD5A2`, mul `0x9FB21C651E98DF25` |
-| 9–16 | Two uint64 reads | XOR `0x6782737BEA4239B9`, `0xAF56BC3B0996523A` |
-| 17–128 | Pair-from-ends, 128-bit multiply | Per-pair constants, accumulator |
-| 129–240 | `sub_CBF370` (extended mixing) | — |
-| >240 | `sub_CBF100` (bulk processing) | — |
-
-Final avalanche: `0x165667919E3779F9 * ((sum) ^ (sum >> 37))`, fold hi32^lo32.
-
-## Quadratic Probing — Triangular Numbers
-
-Both `sub_C92740` (insert-or-find) and `sub_C92860` (find-only) use:
-
-```
-slot = hash & (capacity - 1)     // initial probe
-step = 1
-loop:
-  if bucket[slot] matches → return slot
-  if bucket[slot] == 0    → return slot (empty)
-  if bucket[slot] == -8   → record first tombstone
-  slot = (slot + step) & (capacity - 1)
-  step++
-```
-
-Probe sequence: `h, h+1, h+3, h+6, h+10, h+15, h+21, ...` (triangular numbers `T(k) = k*(k+1)/2`). Guarantees full table coverage for power-of-2 capacity.
-
-Match check is triple-gated: cached hash equality → length equality → `memcmp` content.
-
-### Rehash at 75% Load — `sub_C929D0`
-
-```
-if (4 * count > 3 * capacity):       double capacity
-elif (free_slots <= capacity/8):      rehash at same capacity (clear tombstones)
-else:                                 no rehash
-```
-
-For 770 entries: table grows `16 → 32 → 64 → 128 → 256 → 512 → 1024`.
+Full structural details -- table layout, bucket format, string entry format, wyhash length-dispatch table with pseudocode, probing algorithm, triple-gated comparison guard, rehash procedure, and sentinel values -- are documented in [Hash Table and Collection Infrastructure](../infra/hash-infrastructure.md#builtin-name-table----specialized-hash-table). The "wyhash v4 String Hasher" and "Probing Strategy" sections on that page are the canonical references.
 
 ## Complete Builtin ID Inventory
 

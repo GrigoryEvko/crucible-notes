@@ -88,7 +88,7 @@ The cost model is dispatched through the TargetInstrInfo vtable, meaning the NVP
 
 **No hardware call stack.** PTX function calls are lowered by `ptxas` into something closer to inlined code with register renaming. The actual "call" may or may not involve a hardware subroutine mechanism depending on the SM architecture and `ptxas` optimization level. This makes the cost model somewhat speculative from CICC's perspective -- the outlined function may be re-inlined by `ptxas`.
 
-**Calling convention 95.** When no candidate entry in a group requires a special calling convention, the outlined function is assigned CC 95 -- an NVPTX-specific calling convention not present in upstream LLVM. This likely maps to PTX `.func` linkage with internal visibility, meaning the function is private to the compilation unit and `ptxas` has full freedom to inline or optimize it.
+**Calling convention 95.** When no candidate entry in a group requires a special calling convention, the outlined function is assigned CC 95 -- an NVPTX-specific calling convention not present in upstream LLVM. CC 95 maps to PTX `.func` linkage with internal visibility, meaning the function is private to the compilation unit and `ptxas` has full freedom to inline or optimize it. See [Calling Convention 95](#calling-convention-95-the-nvptx-outlined-function-cc) below for the complete assignment algorithm and CC comparison table.
 
 ## Outlined Function Creation
 
@@ -139,15 +139,137 @@ Each candidate is a 224-byte structure (56 x uint32 stride):
 
 The two string fields use LLVM's small-string optimization (SSO): strings shorter than the inline buffer are stored directly in the struct; longer strings allocate on the heap. The copy function `sub_3532560` handles both cases.
 
-## NVPTX Constraints: launch_bounds and Cross-Function Outlining
+## Calling Convention 95: The NVPTX Outlined-Function CC
 
-The MachineOutliner operates at module scope -- it considers all functions in the module simultaneously. On NVPTX, this raises the question of whether sequences can be outlined across functions with different `__launch_bounds__` annotations. The answer depends on the target hooks:
+CICC defines calling convention 95 (0x5F) as an NVPTX-specific calling convention that does not exist in upstream LLVM. It is assigned exclusively to outlined functions and signals to both the AsmPrinter and `ptxas` that the function is a module-internal device helper with PTX `.func` linkage.
 
-**`isFunctionSafeToOutlineFrom`** (vtable +1432) receives the cost mode byte and can reject kernel entry points (`__global__` functions with `.entry` linkage) or functions with specific register pressure constraints. If a function has `nvvm.maxnreg` or `nvvm.maxntid` metadata, the NVPTX hook may reject it to prevent the outlined callee from inflating register pressure beyond the caller's budget.
+### CC Assignment Algorithm
 
-**The outlined function inherits no launch_bounds.** Because outlined functions are created with internal linkage, void return type, and CC 95 (`.func`), they are device functions -- never kernels. They carry no `.maxntid`, `.maxnreg`, or `.minnctapersm` directives. This means the outlined function's register usage is unconstrained from `ptxas`'s perspective, which could cause the calling kernel to exceed its register budget if `ptxas` does not inline the outlined call.
+The CC assignment happens in Phase 5 of `sub_3537010` (lines 838--877 of the decompilation), after the outlined MachineFunction is created and before its body is populated. The algorithm:
 
-**Practical implication.** If kernel A has `maxnreg=32` and kernel B has `maxnreg=64`, and both contain an identical instruction sequence, the outliner may extract it into a shared `.func`. When `ptxas` processes kernel A's call to this `.func`, it must either inline the call (absorbing the register usage) or allocate registers for the callee frame within A's 32-register budget. If the outlined function uses more registers than available, `ptxas` will spill. This is a correctness-preserving but potentially performance-degrading outcome that the CICC-side cost model cannot fully predict.
+```
+fn assign_outlined_cc(candidate_group, outlined_fn):
+    max_cc = 0
+    for entry in candidate_group:
+        cc = sub_A746B0(entry)          // extract caller's CC from candidate
+        max_cc = max(max_cc, cc)
+
+    if max_cc > 0:
+        // At least one call site has a non-default CC.
+        // Inherit the highest CC and create a callee-saved register mask.
+        sub_B2BE50(outlined_fn, max_cc)         // setCallingConv
+        sub_A77AA0(outlined_fn, max_cc)         // create callee-saved mask
+    else:
+        // All call sites have default CC (0) -- typical case for
+        // device functions compiled from __device__ code.
+        // Assign the NVPTX-specific outlined-function CC.
+        outlined_fn.setCallingConv(95)
+```
+
+`sub_A746B0` extracts the calling convention from each candidate entry's source MachineFunction. The "max" selection rule means that if candidates come from functions with different CCs, the outlined function inherits the most restrictive one. In practice, since the outliner only groups structurally identical MachineInstr sequences, all entries in a group typically come from functions with the same CC.
+
+### CC 95 vs Other NVPTX Calling Conventions
+
+| CC | Decimal | PTX Linkage | Meaning |
+|---|---|---|---|
+| 0 | 0 | `.func` | Default C calling convention (non-kernel device function) |
+| 42 | 0x2A | `.entry` | PTX kernel entry (one of two kernel CCs; used in SCEV budget bypass) |
+| 43 | 0x2B | `.entry` | PTX kernel entry (variant; also bypasses SCEV budget) |
+| 71 | 0x47 | `.entry` | Primary CUDA kernel CC (`isKernel` returns true when `linkage == 0x47`) |
+| 95 | 0x5F | `.func` | **NVPTX outlined-function CC** -- internal, never a kernel |
+
+CC 95 functions are emitted as `.func` by the AsmPrinter (`sub_215A3C0`). The `.entry` vs `.func` branch at line 30--33 of the PTX header emission calls `sub_1C2F070` (`isKernelFunction`), which checks whether the CC is one of the kernel CCs (42, 43, 71) or the `nvvm.kernel` metadata flag. CC 95 fails all kernel tests, so the function is always emitted as `.func`.
+
+### What CC 95 Communicates
+
+The CC carries three semantic signals:
+
+1. **Internal linkage.** CC 95 functions are never externally visible. The flag word `0x4087` applied at function offset +32 encodes internal linkage. Combined with the `nounwind` (47) and `minsize` (18) attributes, this tells the backend and `ptxas` that the function is private to the compilation unit.
+
+2. **No `.param`-space calling convention overhead.** Unlike CC 0 device functions, which must declare `.param` space for every argument and marshal values through `st.param`/`ld.param` sequences (the full `sub_3040BF0` `LowerCall` path with `DeclareParam`/`DeclareScalarParam` nodes), CC 95 functions use a simplified call interface. The outlined function takes no explicit arguments -- live values are passed implicitly through the register state, and the `TargetInstrInfo::insertOutlinedCall` hook (vtable +1416) handles the call-site ABI.
+
+3. **`ptxas` is free to inline.** Because CC 95 functions are internal `.func` with no special ABI constraints, `ptxas` can and frequently does inline them back at the call site during its own optimization passes. This makes the outlining decision partially speculative from CICC's perspective -- the code size reduction measured by the benefit model may be undone by `ptxas`.
+
+### Callee-Saved Register Mask Interaction
+
+When `max_cc > 0` (the non-default path), `sub_A77AA0` creates a callee-saved register mask for the outlined function. This mask determines which registers the outlined function must preserve across its body. For CC 95 (the `max_cc == 0` path), no callee-saved mask is created. Instead, the call-site rewriting logic at Phase 11 of `sub_3537010` (lines 1469--1968) builds explicit `implicit-def` (flag `0x30000000`) and `implicit-use` (flag `0x20000000`) operands on the call instruction using the RB-tree-based register classifier at `sub_3536E40`. This makes the register interface fully explicit rather than relying on a convention-defined preserved set.
+
+## launch_bounds Interaction and Cross-Kernel Outlining
+
+The MachineOutliner operates at module scope -- it considers all functions in the module simultaneously. On NVPTX, this raises the question of whether sequences can be outlined across functions with different `__launch_bounds__` annotations.
+
+### How launch_bounds Metadata Flows
+
+The `__launch_bounds__` attribute on a `__global__` function flows through CICC as follows:
+
+1. **EDG frontend** (`sub_826060`): Validates `__launch_bounds__` arguments. Rejects `__launch_bounds__` on non-`__global__` functions. Detects conflicts with `__maxnreg__`.
+
+2. **Post-parse fixup** (`sub_5D0FF0`): Converts `__launch_bounds__` values into structured metadata.
+
+3. **Kernel metadata emission** (`sub_B05_kernel_metadata`): Stores as LLVM named metadata under `nvvm.annotations`:
+   - `nvvm.maxntid` -- max threads per block (from first `__launch_bounds__` argument)
+   - `nvvm.minctasm` -- minimum CTAs per SM (from second argument, if present)
+   - `nvvm.maxnreg` -- max registers per thread (from `__maxnreg__` or third argument)
+
+4. **PTX emission** (`sub_214DA90`): Reads the metadata back and emits `.maxntid`, `.minnctapersm`, `.maxnreg` directives. These are emitted **only for `.entry` functions** -- the guard at step (g) of `sub_215A3C0` ensures `.func` functions never receive these directives.
+
+### The Outlined Function Inherits Nothing
+
+Because outlined functions are created with internal linkage, void return type, and CC 95 (`.func`), they are device functions -- never kernels. The function creation code in Phase 5 of `sub_3537010` does not copy any metadata from source functions. Specifically:
+
+- No `nvvm.kernel` flag is set.
+- No `nvvm.maxntid` metadata is attached.
+- No `nvvm.maxnreg` metadata is attached.
+- No `nvvm.minctasm` metadata is attached.
+- No `nvvm.cluster_dim` or `nvvm.maxclusterrank` metadata is attached.
+- The `isKernel` check (`sub_CE9220`) returns false: the CC is not 0x47, there is no `nvvm.kernel` metadata, and there is no `"kernel"` entry in `nvvm.annotations`.
+
+The only function-level metadata the outlined function receives is the `isOutlined` flag at MachineFunction offset +582 and the two attributes `nounwind` (47) and `minsize` (18).
+
+### Function Eligibility Gating
+
+The candidate finder (`sub_3539E80`) applies three gates before considering a function's basic blocks for outlining:
+
+```
+fn is_eligible(func, cost_mode):
+    // Gate 1: explicit opt-out
+    if sub_B2D620(func, "nooutline"):       // has "nooutline" attribute?
+        return false
+
+    // Gate 2: target hook -- "should we outline FROM this function?"
+    tii = get_target_instr_info(func)
+    if !tii.vtable[1440](func):             // shouldOutlineFrom
+        return false
+
+    // Gate 3: target hook -- "is it SAFE to outline from this function?"
+    if !tii.vtable[1432](func, cost_mode):  // isFunctionSafeToOutlineFrom
+        return false
+
+    return true
+```
+
+The NVPTX backend's implementation of `shouldOutlineFrom` (vtable +1440) and `isFunctionSafeToOutlineFrom` (vtable +1432) determines whether kernel functions and launch_bounds-constrained functions participate. The evidence does not contain the NVPTX-specific implementation of these hooks, so we cannot state definitively whether kernels with `nvvm.maxnreg` are rejected. However, the architectural implications are clear:
+
+**If the hooks permit outlining from constrained kernels**, the outliner may extract a sequence shared between a `maxnreg=32` kernel and a `maxnreg=64` kernel into a single CC 95 `.func`. That `.func` has no register budget. When `ptxas` processes the `maxnreg=32` kernel's call to this `.func`, it must either:
+
+1. **Inline the call** -- absorbing the outlined function's register usage into the kernel's allocation. If the outlined body fits within 32 registers, this is transparent.
+2. **Keep the call** -- allocating the outlined function's registers within the kernel's 32-register budget. If the outlined function needs more registers than available after the kernel's own allocation, `ptxas` will spill to local memory.
+
+Both outcomes preserve correctness. The performance risk is that spilling may occur in a kernel that would not have spilled without outlining, because the CICC-side cost model has no visibility into `ptxas`'s register allocation decisions.
+
+**If the hooks reject constrained kernels**, the outliner only operates on unconstrained device functions (CC 0) and kernels without `__launch_bounds__`. This is the conservative and likely behavior, given that NVIDIA is aware of the register-pressure implications.
+
+### Per-Block Eligibility
+
+Even within an eligible function, individual basic blocks are filtered:
+
+| Condition | Check | Effect |
+|---|---|---|
+| Block has <= 1 instruction | `MBB.size() <= 1` | Skipped -- too small to outline |
+| Block already outlined | byte at MBB offset +217 | Skipped -- prevents re-outlining |
+| Block has special flag | qword at MBB offset +224 != 0 | Skipped -- target-specific block exclusion |
+
+The "already outlined" flag at MBB offset +217 is set by the call-site rewriting phase (Phase 11) after replacing a sequence with a call to the outlined function. Combined with the cost-array sentinel memset (`0xFF` fill), this provides a two-layer defense against re-outlining.
 
 ## Outlining vs. Inlining Tension
 
@@ -218,6 +340,13 @@ The remark message format: `"Saved {N} bytes by outlining {M} instructions from 
 | `sub_3532560` | -- | SmallString SSO-aware deep copy |
 | `sub_3534BB0` | -- | `RemarkBuilder::appendField` |
 | `sub_35341F0` | -- | `RemarkBuilder::emitOutlinedFunctionRemark` |
+| `sub_A746B0` | -- | Extract calling convention from candidate entry's source function |
+| `sub_A77AA0` | -- | Create callee-saved register mask for non-default CC |
+| `sub_B2D620` | -- | `hasAttribute("nooutline")` -- function attribute check |
+| `sub_CE9220` | -- | `isKernel(func)` -- returns true for CC 0x47 or `nvvm.kernel` metadata |
+| `sub_1C2F070` | -- | `isKernelFunction` -- `.entry` vs `.func` emission branch |
+| `sub_214DA90` | -- | Kernel attribute emission (`.maxntid`, `.maxnreg`, `.minnctapersm`) |
+| `sub_215A3C0` | -- | PTX function header orchestrator (`.entry` / `.func` branch + params) |
 
 ## Cross-References
 
@@ -227,3 +356,5 @@ The remark message format: `"Saved {N} bytes by outlining {M} instructions from 
 - [Register Coalescing](./register-coalescing.md) -- coalescing happens before outlining; the outliner operates on already-coalesced code
 - [Block Placement](./block-placement.md) -- block layout interacts with code size; the outliner reduces the instruction footprint that placement must arrange
 - [Pipeline & Ordering](./pipeline.md) -- where the outliner sits in the overall pass sequence
+- [NVPTX Call ABI](./selectiondag.md) -- the `.param`-space calling convention that CC 0 device functions use; CC 95 outlined functions bypass this
+- [SCEV Analysis](./scev.md) -- SCEV budget bypass for CC 42/43 kernel functions; illustrates CC-based dispatch in CICC

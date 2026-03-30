@@ -102,15 +102,40 @@ runOnMachineFunction(MF):
 
 ### Chain-Based Placement (Standard Path)
 
-`sub_3521900` (`buildChains`) is the workhorse. It operates in four steps:
+`sub_3521900` (`buildChains`) is the workhorse. It operates in four steps.
 
-**Step 1 -- Initial chain construction.** For every BB in the MachineFunction, allocate a 64-byte chain node from the bump allocator and register it in the chain-map. Then attempt to extend the chain by querying `TII->analyzeBranch()` (vtable+344) to identify the fall-through successor. If the successor is valid (not already in a different chain, verified by `sub_2E32580`), append it to the current chain and continue walking.
+#### Step 1 -- Initial Chain Construction
 
-**Step 2 -- Loop chain merging.** Read MachinePostDominatorTree's sorted loop list. For each loop from innermost outward, call `sub_351EBB0` (`buildLoopChains`), which merges chains within the loop body to form a contiguous sequence. This includes loop rotation via `sub_351C710` (`rotateLoop`).
+For every BB in the MachineFunction (iterated via the doubly-linked intrusive list from `MF+328` to sentinel `MF+320`), the builder:
 
-**Step 3 -- Global successor ordering.** Call `sub_35157A0` (`selectBestSuccessor`) for each BB to find the globally best successor chain ordering. Then `sub_351D700` (`buildChainForBlock`) performs a greedy walk from the function entry, building the top-level chain.
+1. Allocates a 64-byte chain node from the bump allocator at `pass+792`. The node is initialized with `count=1`, `capacity=1`, the inline BB pointer set to the current BB, and the chain-map pointer set to `pass+888`.
+2. Inserts the BB-to-chain mapping into the chain-map via `sub_3515040` (DenseMap insert with pointer hash `((ptr >> 9) ^ (ptr >> 4)) & (bucket_count - 1)`).
+3. Attempts to extend the chain forward: calls `TII->analyzeBranch()` (vtable+344) on the current BB. If analyzable and a fall-through successor exists, calls `sub_2E32580` to verify the successor is valid for chaining (not already claimed by a different chain, not a landing pad, not the function entry if it would create a cycle). If valid, the successor is appended to the chain's BB array (growing from inline storage to heap allocation via `sub_C7D6A0` when needed), and the walk continues from the successor.
 
-**Step 4 -- Commit.** Walk the final chain's BB array and splice each BB into position using intrusive-list pointer swaps on the MachineFunction's BB list.
+The result is a set of maximal fall-through chains -- each chain represents a sequence of BBs where every transition is a fall-through edge according to `analyzeBranch`.
+
+#### Step 2 -- Loop Chain Merging
+
+Read the MachineLoopInfo structure at `pass+584`. Iterate loops from innermost outward. For each loop, call `sub_351EBB0` (`buildLoopChains`), which:
+
+1. Identifies all chains that contain BBs belonging to the loop.
+2. Merges these chains into a single loop chain, ordering them to maximize fall-through within the loop body.
+3. Applies loop rotation via `sub_351C710` (`rotateLoop`) to place the exiting block at the bottom, making the back-edge a fall-through and the exit a taken branch (or the reverse, whichever minimizes cost according to the profile data).
+
+Cold blocks within the loop (where `loop_freq / block_freq > loop-to-cold-block-ratio`) are ejected from the loop chain and will be placed at the function's end during the commit step.
+
+#### Step 3 -- Global Successor Ordering
+
+Call `sub_35157A0` (`selectBestSuccessor`) for each BB to find the globally best successor chain ordering. The selection considers:
+- Edge probability from `sub_2E441D0` (`getEdgeProbability`)
+- Whether the successor is already the fall-through (free) or would require a taken branch (cost = `misfetch-cost` + `jump-inst-cost`)
+- Whether chaining the successor would break an existing profitable chain connection
+
+Then `sub_351D700` (`buildChainForBlock`) performs a greedy walk from the function entry, building the top-level chain by repeatedly selecting the best unchained successor and appending it.
+
+#### Step 4 -- Commit
+
+Walk the final chain's BB array and splice each BB into position using intrusive-list pointer swaps on the MachineFunction's BB list (pointer updates at `BB+0` and `BB+8` -- the prev/next pointers of the doubly-linked list).
 
 ### Ext-TSP Layout (Optional Path)
 
@@ -148,19 +173,154 @@ The most significant GPU-specific behavior is the divergence check before tail d
 
 The rationale: tail duplication creates an additional copy of a basic block to convert a diamond-shaped CFG into a straight-line fall-through. On CPU, this eliminates a taken branch on the hot path. On GPU with divergent branches, both sides of the diamond execute regardless (the warp mask simply toggles), so duplicating the tail block doubles code size for zero fall-through benefit. The divergence flag is a conservative gate -- it disables tail-dup for the entire function, not per-branch.
 
-### Alternative Layout Proposal
+### Alternative Layout Proposal Algorithm
 
-When the standard chain-based path is selected (not ext-TSP), and the function has more than 3 basic blocks with profile data and is not marked divergent, the pass runs an additional layout evaluation:
+When the standard chain-based path is selected (not ext-TSP), and the function has more than 3 basic blocks with profile data and is not marked divergent, the pass runs a complete alternative layout evaluation through a pipeline absent from upstream LLVM. This is one of cicc's most significant code-layout additions.
+
+#### Activation Gate
 
 ```
 if (byte_503C568 is set AND MF.size() > 3):
-    alt_layout = sub_34BEDF0(pass)     // construct alternative proposal
-    alt_cost   = sub_34C7080(pass)     // evaluate via cost model
-    if alt_cost < chain_cost:
-        commit(alt_layout)
+    evaluator = sub_34BEDF0(state, profile_flag, MBFI, TII, MBPI)
+    changed   = sub_34C7080(evaluator, MF, chain_data, ...)
+    if changed:
+        commit(evaluator_layout)
 ```
 
-`sub_34BEDF0` and `sub_34C7080` are not present in upstream LLVM. They appear to be an NVIDIA addition that provides a second opinion on block ordering, using a cost model tuned for GPU instruction fetch characteristics. The alternative proposal can override the standard chain-based result when it produces a lower-cost layout. This path writes to the TailDuplicator state at `a1+576` if tail-dup is active.
+The gate variable `byte_503C568` corresponds to the `branch-fold-placement` knob (default true). When branch-fold-placement is active and the function has enough basic blocks to justify the extra analysis cost, the alternative path fires.
+
+#### State Object Initialization -- `sub_34BEDF0` (321 bytes)
+
+`sub_34BEDF0` is a constructor that initializes a 0x100-byte evaluator state object. It takes six arguments: `(rdi=state, rsi=profile_available, rdx=?, rcx=MBFI*, r8=TII*, r9=MBPI*)`. The initialization zeroes the majority of the structure and sets up internal storage pointers:
+
+```
+struct LayoutEvaluatorState {      // 0x100 bytes, initialized by sub_34BEDF0
+    void*    bb_array_ptr;         // +0x00: BB ordering array (initially null)
+    uint64_t bb_array_size;        // +0x08: count
+    uint64_t bb_array_cap;         // +0x10: capacity
+    uint64_t iteration_count;      // +0x18: cleared to 0
+    void*    inline_storage_ptr;   // +0x20: points to +0x38 (inline array)
+    uint64_t initial_capacity;     // +0x28: set to 2
+    uint32_t current_count;        // +0x30: set to 0
+    uint8_t  is_fresh;             // +0x34: set to 1 (first-run flag)
+    uint8_t  padding[3];           // +0x35
+    uint8_t  inline_array[72];     // +0x38: inline storage for small chains
+    uint8_t  profile_available;    // +0x80: bit 0 = profile flag
+    uint8_t  force_mode;           // +0x81: set from qword_503AD08 knob
+    uint8_t  divergence_aware;     // +0x82: set from dl argument
+    uint8_t  needs_reconverge;     // +0x83: cleared to 0, set during evaluation
+    uint32_t bb_limit;             // +0x84: from stack argument (BB count cap)
+    // +0x88..+0xA8: five qword slots, all zeroed
+    void*    bb_ptr_array;         // +0xB0: points to +0xC8 (inline)
+    uint64_t bb_ptr_array_pad;     // +0xB8: cleared
+    uint64_t bb_ptr_array_cap;     // +0xC0: set to 8
+    uint8_t  bb_ptr_inline[24];    // +0xC8: inline BB pointer storage
+    uint64_t total_cost;           // +0xD8: cleared
+    uint32_t cost_flags;           // +0xE0: cleared
+    void*    mbfi_ptr;             // +0xE8: MachineBlockFrequencyInfo*
+    void*    tii_ptr;              // +0xF0: TargetInstrInfo*
+    void*    mbpi_ptr;             // +0xF8: MachineBranchProbabilityInfo*
+};
+```
+
+The `force_mode` field at offset `+0x81` is set based on the global `qword_503AD08`. When this global equals 0, the force mode takes the `profile_available` argument. When it equals 1, force mode is unconditionally set to 1 (always evaluate). Any other value causes a straight return (skip evaluation). This provides a three-way override: 0=auto, 1=always, other=never.
+
+#### Dispatch Wrapper -- `sub_34C7080` (17 bytes)
+
+`sub_34C7080` is a thin guard:
+
+```c
+// sub_34C7080(rdi=evaluator, rsi=MF, rdx=chain_data, rcx=..., r8=..., r9=changed_flag)
+if (rdx == NULL) return 0;     // no chain data -> nothing to evaluate
+return sub_34C6AF0(rdi, rsi, rdx, rcx, r8, (bool)r9);
+```
+
+The NULL check on `rdx` (the chain-data pointer) provides a fast exit when the chain builder produced no intermediate state worth re-evaluating.
+
+#### Core Layout Evaluator -- `sub_34C6AF0` (1419 bytes)
+
+`sub_34C6AF0` is the real body of the alternative layout evaluator. It operates on the evaluator state object (from `sub_34BEDF0`) and the MachineFunction, performing a complete re-evaluation of the chain-based layout against a different cost model. The algorithm proceeds in six steps:
+
+**Step 1 -- Iteration counter and hash table reset.**
+Increment the iteration count at `state+0x18`. If the hash table at `state+0x20` is not fresh (byte at `state+0x34` is 0), compute a minimum table size as `max(32, 4 * (capacity - count))`, and if the current table is undersized, fill it with 0xFF sentinels via `memset`. This hash table tracks which BBs have been visited during the current evaluation pass.
+
+**Step 2 -- State initialization from MachineFunction.**
+Clear the running cost accumulator at `state+0x2C..+0x30`. Read the first BB from the MachineFunction's chain data. Store the chain data pointer, the iteration limit from `state+0x84`, and the analysis pointers (MBPI at `state+0x98`, TII at `state+0xA0`) into the evaluator's working slots.
+
+Read `MF->getSubtarget()->something` at offset `+0x220` and subtract `0x2A` (decimal 42). This produces an SM-generation index (sm_70=0, sm_75=1, sm_80=2, ..., sm_90=6, sm_100=16 based on this encoding). This index determines which cost table row is used for the fetch-penalty model.
+
+**Step 3 -- Divergence-aware block scanning.**
+For the first BB in the chain, check bit 2 of the flags at `BB[0]+0x158`. If set, dispatch to `TII->vtable+0x210` (which is compared against `sub_2FF52D0` -- the default stub). If the target overrides this vtable slot, call the override with the MachineFunction to determine if the block needs special handling. When the default is in use, set `state+0x83` (needs_reconverge) to 1 unconditionally. This appears to be an NVPTX check for whether the block is in a reconvergence region where layout ordering has correctness implications, not just performance.
+
+**Step 4 -- Main evaluation loop.**
+Call `sub_34BA1B0` to snapshot the current chain state into a temporary structure on the stack. Then enter the main loop:
+
+```
+while (true):
+    status = sub_34C4890(state, MF)   // advance to next BB in evaluation order
+    changed_bit = (state->profile_available XOR 1) OR status
+    if changed_bit == 0:
+        // Reached the evaluation boundary without changes
+        if (sm_index <= 1):           // sm_70 or sm_75
+            check qword_503AA68 knob  // additional gate for older archs
+            if set: call sub_34C0690(state, loop) for each loop in MF
+        if state->divergence_aware:
+            call sub_34C56D0(state, loop) for each loop in MF
+        break if no further changes
+
+    // A change was proposed
+    call sub_34C2D70(state, MF)       // apply the proposed reordering step
+    accumulate changed flags
+
+    if (sm_index <= 1):               // sm_70/sm_75
+        check qword_503AA68 knob
+        if set: call sub_34C0690 for each loop
+    if state->divergence_aware:
+        call sub_34C56D0 for each loop
+
+    if changed_this_iteration:
+        continue loop
+```
+
+`sub_34C4890` advances through the MachineFunction's basic blocks in frequency-priority order, proposing a reordering when a higher-frequency successor is not the current fall-through. `sub_34C2D70` performs the actual chain manipulation to implement the proposed swap.
+
+**Step 5 -- Loop-level re-evaluation.**
+The calls to `sub_34C56D0` (5137 bytes, called from `sub_34C6AF0` via the loop-iteration path at `0x34C6E90`) perform loop-level cost re-evaluation. This function:
+- Walks the MachineFunction's loop tree (from `MF+0x148`, the MachineLoopInfo block list)
+- For each loop, evaluates whether the proposed layout improves or degrades the loop body's fall-through density
+- Calls `sub_34C0EE0` for block-level cost queries
+- Calls `sub_34BE7F0` for chain adjacency analysis
+- Queries `sub_2E88AF0` (divergence analysis) and `sub_2E88FE0` for convergence properties
+- Uses `sub_2FDC710`/`sub_2FDC700` for target-specific cost overrides via the TII vtable
+- Calls `sub_3509790` for reconvergence point identification
+
+`sub_34C0690` (called on the sm_70/sm_75 path gated by `qword_503AA68`) is a lighter variant that omits the divergence-aware sub-evaluations, appropriate for older SM architectures where divergence reconvergence is handled differently.
+
+**Step 6 -- Final cost comparison and bitvector scan.**
+After the evaluation loop terminates, build a bitvector tracking which BBs changed position. The bitvector uses 64-bit words with word index `= bb_index >> 6` and bit position `= bb_index & 63`. Walk the MachineFunction's loop tree blocks (`MF+0x148` linked list):
+- For each block in the loop, walk the instruction list starting at `BB+0x20`
+- For each instruction, mask the opcode with `0xFFFFFF` and compute `opcode * 5` as a stride
+- If the instruction byte at offset 0 is `0x08` (a branch instruction), set the corresponding bit in the bitvector
+
+Then scan the bitvector against the evaluator's proposed ordering to detect any BB that would need to move. If at least one BB is displaced, set the return flag.
+
+On the final cost-comparison path (at `0x34C6FD3`), the evaluator reads `TII->vtable+0x5D8` and compares against `sub_2FDC810`. If the target overrides this slot, the override is called to provide a final accept/reject decision. Otherwise, a default threshold of 3 is used: the proposed layout is accepted only if the cost reduction exceeds the acceptance threshold. The stat-based knobs at `dword_503AAC8` and `qword_503AB48` provide tuning for the threshold lookup via the `sub_C52410`/`sub_C959E0` statistics infrastructure.
+
+#### Shared Infrastructure with Register Allocation
+
+A surprising discovery: `sub_34BEDF0` and `sub_34C7080`/`sub_34C6AF0` are also called from `sub_34ED530` (RegAllocGreedy, 91KB) via `sub_34F1190`. The register allocator uses the same layout evaluator to assess whether a spill-induced block split would degrade code layout quality. This sharing means the cost model is consistent between register allocation decisions and post-RA block placement, preventing the two passes from working at cross purposes. The evaluator state is separate per invocation (stack-allocated), so there is no state leakage between the two callers.
+
+#### SM-Generation-Dependent Behavior
+
+The SM index computation (`(MF->getSubtarget()+0x220) - 0x2A`) creates generation-dependent behavior:
+
+| SM Generation | Index | Loop Evaluator | Divergence Sub-Eval |
+|---|---|---|---|
+| sm_70 (Volta) | 0 | `sub_34C0690` if `qword_503AA68` | Only if divergence flag |
+| sm_75 (Turing) | 1 | `sub_34C0690` if `qword_503AA68` | Only if divergence flag |
+| sm_80+ (Ampere+) | 2+ | Skipped (only `sub_34C56D0`) | Always if divergence flag |
+
+This split reflects the hardware difference: Volta and Turing use a stack-based reconvergence mechanism that benefits from the lighter `sub_34C0690` analysis, while Ampere and later use the uniform warp scheduler where the more thorough `sub_34C56D0` evaluation is worthwhile.
 
 ### Dual Pass Registration
 
@@ -271,6 +431,32 @@ size_t hash = ((ptr >> 9) ^ (ptr >> 4)) & (bucket_count - 1);
 // Rehash function:  sub_2E3E470(map, new_capacity)
 ```
 
+## GPU-Specific Placement Considerations
+
+### Why This Pass Matters More on GPU Than on CPU
+
+On CPU, MachineBlockPlacement is primarily an I-cache optimization -- placing hot blocks contiguously reduces cache misses. On GPU, the stakes are higher for three reasons:
+
+1. **No branch prediction.** GPU SMs do not speculate. Every taken branch is a guaranteed fetch stall. The ratio of taken branches to fall-throughs directly translates to warp scheduler utilization. Optimal block placement can eliminate 10-30% of fetch bubbles in branch-heavy kernels.
+
+2. **Instruction cache is tiny and shared.** A single SM partition has 32-128 KB of instruction cache shared across all active warps. Code duplication (tail-dup, loop unrolling) competes with warp occupancy for this shared resource. The tail-dup-placement-penalty (2%) is conservative -- on kernels with high warp counts, even small code size increases can cause I-cache thrashing.
+
+3. **Reconvergence is layout-sensitive.** On architectures before Ampere (sm_70, sm_75), the stack-based reconvergence mechanism depends on the post-dominator being reachable from both sides of a divergent branch. Block placement that separates a post-dominator from its divergent predecessors can increase the live warp state, consuming scarce convergence stack entries. The alternative layout evaluator's `sub_34C0690` path specifically addresses this by evaluating reconvergence distance.
+
+### Structured Control Flow Constraint
+
+Unlike CPU backends where block placement has complete freedom, the NVPTX backend runs StructurizeCFG **before** MachineBlockPlacement. This means:
+
+- All irreducible control flow has already been eliminated
+- Structured regions (loops, if-then-else diamonds) are contiguous in the CFG
+- Block placement cannot violate structured region boundaries without re-structurizing
+
+This constraint actually simplifies placement in some cases (fewer valid orderings to consider) but eliminates certain profitable reorderings that would be legal on CPU (e.g., outlining a cold exception handler to a distant location that breaks region contiguity).
+
+### Interaction with PTX Emission
+
+The final block ordering directly determines which branches in the PTX output are `bra` instructions (taken) vs. fall-throughs (implicit). The AsmPrinter (see [AsmPrinter](../infra/asmprinter.md)) emits `bra` only for non-fall-through edges. Since `ptxas` performs its own block scheduling on the PTX input, the cicc block ordering serves as a strong hint rather than a final answer -- but `ptxas` generally respects the input ordering for blocks within the same structured region.
+
 ## Function Map
 
 | Address | Identity | Notes |
@@ -287,11 +473,19 @@ size_t hash = ((ptr >> 9) ^ (ptr >> 4)) & (bucket_count - 1);
 | `sub_351C710` | `rotateLoop` | Loop rotation heuristic |
 | `sub_351A710` | `mergeTails` | Chain tail merge logic |
 | `sub_35161F0` | `lowerChain` | Final lowering of chain to BB list |
-| `sub_3515CB0` | (helper) | Chain cost model |
+| `sub_3515CB0` | (helper) | Chain cost model evaluation |
 | `sub_3515280` | (helper) | Chain building iteration |
 | `sub_3516000` | (helper) | Chain length query |
-| `sub_34BEDF0` | (NVIDIA addition) | Alternative layout proposal construction |
-| `sub_34C7080` | (NVIDIA addition) | Alternative layout cost evaluation |
+| `sub_34BEDF0` | (NVIDIA addition) | Layout evaluator state constructor (321 bytes) |
+| `sub_34C7080` | (NVIDIA addition) | Layout evaluator dispatch wrapper (17 bytes, guards `sub_34C6AF0`) |
+| `sub_34C6AF0` | (NVIDIA addition) | Core layout evaluator body (1419 bytes, SM-aware) |
+| `sub_34C4890` | (NVIDIA addition) | Frequency-priority BB advancement |
+| `sub_34C2D70` | (NVIDIA addition) | Chain swap application |
+| `sub_34C56D0` | (NVIDIA addition) | Loop-level cost re-evaluation (5137 bytes, divergence-aware) |
+| `sub_34C0690` | (NVIDIA addition) | Lightweight loop evaluator (sm_70/sm_75 path) |
+| `sub_34BA1B0` | (NVIDIA addition) | Chain state snapshot |
+| `sub_34C0EE0` | (NVIDIA addition) | Block-level cost query |
+| `sub_34BE7F0` | (NVIDIA addition) | Chain adjacency analysis |
 | `sub_350FE30` | (NVPTX) | Pass registration |
 | `sub_350FEE0` | (NVPTX) | Stats pass registration |
 | `sub_1DE8060` | (generic) | Generic LLVM pass registration |
@@ -306,6 +500,8 @@ size_t hash = ((ptr >> 9) ^ (ptr >> 4)) & (bucket_count - 1);
 | `sub_2EE6AD0` | (helper) | Branch redirect profitability check |
 | `sub_2E441D0` | `getEdgeProbability` | Edge probability query |
 | `sub_2FDC800` | (default stub) | Default `getTailDupThreshold` implementation |
+| `sub_2FF52D0` | (default stub) | Default reconvergence-region query |
+| `sub_2FDC810` | (default stub) | Default layout-accept threshold query |
 
 ## Cross-References
 
