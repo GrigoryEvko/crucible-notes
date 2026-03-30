@@ -67,94 +67,152 @@ The byte at `expr+0x18` selects the top-level expression category:
 | `0x14` | Declaration reference | `EmitAddressOf` + `EmitLoadFromAddress` |
 | default | | Fatal: `"unsupported expression!"` |
 
-### Inner switch — C operators to LLVM IR
+### Inner switch — complete opcode reference
 
-When the outer kind is `0x01` (operation), the byte at `expr+0x38` selects which C operator to emit. The complete mapping follows, grouped by category.
+When the outer kind is `0x01` (operation), the byte at `expr+0x38` selects which C operator to emit. The complete dispatch table follows. Every opcode is listed; no gaps exist between documented entries.
 
-#### Arithmetic and comparison (opcodes 0x27-0x2B, 0x35-0x39)
-
-All delegate to `EmitBinaryArithCmp` (`sub_128F9F0`), which reads the expression type to choose between integer and floating-point LLVM opcodes and selects signed vs. unsigned variants.
-
-#### Shift and bitwise (opcodes 0x3A-0x3F)
-
-Each passes an opcode triple `(signedOp, intOp, fpOp)` to `EmitShiftOrBitwise` (`sub_128F580`):
-
-| Opcode | C operator | LLVM (int) | Triple |
+| Opcode | C operator | Handler / delegate | LLVM pattern |
 |---|---|---|---|
-| `0x3A` | `<<` | `shl` | `(1, 32, 32)` |
-| `0x3B` | `>>` | `ashr` / `lshr` | `(14, 33, 33)` |
-| `0x3C` | `&` | `and` | `(2, 38, 34)` |
-| `0x3D` | `^` | `xor` | `(4, 40, 36)` |
-| `0x3E` | `\|` | `or` | `(3, 39, 35)` |
-| `0x3F` | rotate | funnel shift | `(5, 41, 37)` |
+| `0x00` | Constant subexpr | `sub_72B0F0` (evaluate) + `sub_1286D80` (load) | Constant materialization |
+| `0x03` | Compound special A | `EmitCompoundAssign` (`sub_1287ED0`) | Read-modify-write |
+| `0x05` | Dereference (`*p`) | Elide if child is `&`: `IsAddressOfExpr` (`sub_127B420`). Otherwise: recursive `EmitExpr` + `EmitLoad` (`sub_128B370`) | `%val = load T, ptr %p` |
+| `0x06` | Compound special B | `EmitCompoundAssign` (`sub_1287ED0`) | Read-modify-write |
+| `0x08` | Compound special C | `EmitCompoundAssign` (`sub_1287ED0`) | Read-modify-write |
+| `0x15` | Array decay | See [Array decay](#array-decay) | `%arraydecay = getelementptr inbounds ...` |
+| `0x19` | Parenthesized `(x)` | Tail-call optimization: `a2 = child`, restart loop | (no IR emitted) |
+| `0x1A` | `sizeof` / `alignof` | `EmitSizeofAlignof` (`sub_128FDE0`) | Constant integer |
+| `0x1C` | Bitwise NOT (`~x`) | `sub_15FB630` (xor with -1) | `%not = xor i32 %x, -1` |
+| `0x1D` | Logical NOT (`!x`) | Two-phase: `EmitBoolExpr` + `zext` | `%lnot = icmp eq ..., 0` / `%lnot.ext = zext i1 ... to i32` |
+| `0x1E` | Type-level const | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
+| `0x1F` | Type-level const | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
+| `0x23` | Pre-increment `++x` | `EmitIncDec` (`sub_128C390`): prefix=1, inc=1 | `%inc = add ...` / `%ptrincdec = getelementptr ...` |
+| `0x24` | Pre-decrement `--x` | `EmitIncDec` (`sub_128C390`): prefix=0, inc=0 | `%dec = sub ...` / `%ptrincdec = getelementptr ...` |
+| `0x25` | Post-increment `x++` | `EmitIncDec` (`sub_128C390`): prefix=1, inc=0 | Returns old value; `%inc = add ...` |
+| `0x26` | Post-decrement `x--` | `EmitIncDec` (`sub_128C390`): prefix=0, inc=1 | Returns old value; `%dec = sub ...` |
+| `0x27`-`0x2B` | `+`, `-`, `*`, `/`, `%` | `EmitBinaryArithCmp` (`sub_128F9F0`) | `add`/`sub`/`mul`/`sdiv`/`srem` (or `u`/`f` variants) |
+| `0x32` | Comma `(a, b)` | Emit both sides; return RHS | (LHS discarded) |
+| `0x33` | Subscript `a[i]` | `EmitSubscriptOp` (`sub_128B750`): GEP + load | `%arrayidx = getelementptr ...` + `load` |
+| `0x34` | Pointer subtraction | See [Pointer subtraction](#pointer-subtraction) | `%sub.ptr.div = sdiv exact ...` |
+| `0x35`-`0x39` | `==`, `!=`, `<`, `>`, `<=`, `>=` | `EmitBinaryArithCmp` (`sub_128F9F0`) | `icmp eq`/`ne`/`slt`/`sgt`/`sle`/`sge` (or `u`/`f` variants) |
+| `0x3A` | `<<` | `EmitShiftOrBitwise` (`sub_128F580`): triple `(1, 32, 32)` | `shl` |
+| `0x3B` | `>>` | `EmitShiftOrBitwise` (`sub_128F580`): triple `(14, 33, 33)` | `ashr` (signed) / `lshr` (unsigned) |
+| `0x3C` | `&` | `EmitShiftOrBitwise` (`sub_128F580`): triple `(2, 38, 34)` | `and` |
+| `0x3D` | `^` | `EmitShiftOrBitwise` (`sub_128F580`): triple `(4, 40, 36)` | `xor` |
+| `0x3E` | `\|` | `EmitShiftOrBitwise` (`sub_128F580`): triple `(3, 39, 35)` | `or` |
+| `0x3F` | Rotate | `EmitShiftOrBitwise` (`sub_128F580`): triple `(5, 41, 37)` | `llvm.fshl` / `llvm.fshr` |
+| `0x41`-`0x46` | Type-level consts | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
+| `0x49` | Member access `.`/`->` | See [Member access](#member-access) | `getelementptr` + `load` (or bitfield path) |
+| `0x4A` | `+=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1288F60` | Load + add + store |
+| `0x4B` | `-=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1288370` | Load + sub + store |
+| `0x4C` | `*=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1288770` | Load + mul + store |
+| `0x4D` | `/=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1289D20` | Load + div + store |
+| `0x4E` | `%=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1288DC0` | Load + rem + store |
+| `0x4F` | `&=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1288B70` | Load + and + store |
+| `0x50` | `\|=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1289360` | Load + or + store |
+| `0x51` | `<<=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1288090` | Load + shl + store |
+| `0x52` | `>>=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1287F30` | Load + ashr/lshr + store |
+| `0x53` | `^=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1288230` | Load + xor + store |
+| `0x54` | `,=` (rare) | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_128BE50` | Comma-compound |
+| `0x55` | `[]=` (subscript compound) | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_128B750` | GEP + R-M-W |
+| `0x56` | Bitfield assign | See [Bitfield Codegen](#bitfield-codegen) | R-M-W sequence |
+| `0x57` | Logical AND `&&` | See [Logical AND](#logical-and-short-circuit) | `land.rhs`/`land.end` + PHI |
+| `0x58` | Logical OR `\|\|` | See [Logical OR](#logical-or-short-circuit) | `lor.rhs`/`lor.end` + PHI |
+| `0x59`, `0x5A`, `0x5D` | Type-level consts | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
+| `0x5B` | Statement expression `({...})` | `EmitStmtExpr` (`sub_127FF60`); create empty BB if `(*a1)[7] == 0` | Body emission |
+| `0x5C`, `0x5E`, `0x5F` | Compound special | `EmitCompoundAssign` (`sub_1287ED0`) | Read-modify-write |
+| `0x67` | Ternary `?:` | See [Ternary operator](#ternary--conditional-operator) | `cond.true`/`cond.false`/`cond.end` + PHI |
+| `0x68` | Type-level const | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
+| `0x69` | Special const | `EmitSpecialConst` (`sub_1281200`) | Constant materialization |
+| `0x6F` | Label address `&&label` | GCC extension: `sub_12A4D00` (lookup) + `sub_1285E30`(builder, label, 1) | `blockaddress(@fn, %label)` |
+| `0x70` | Label value | `sub_12A4D00` + `sub_12812E0`(builder, label, type) | Indirect goto target |
+| `0x71` | Computed goto `goto *p` | `sub_12A4D00` + `sub_1285E30`(builder, label, 0) | `indirectbr` |
+| `0x72` | `va_arg` | `sub_12A4D00` on va_list child + `sub_1286000` | `va_arg` lowering |
+| default | | `FatalDiag` (`sub_127B550`) | `"unsupported operation expression!"` |
 
-The `signedOp` value controls whether right-shift produces `ashr` (arithmetic, preserves sign) or `lshr` (logical, zero-fills).
+#### Shift and bitwise triple encoding
 
-#### Increment / decrement (opcodes 0x23-0x26)
+The `EmitShiftOrBitwise` (`sub_128F580`) triple `(signedOp, intOp, fpOp)` encodes three things: `signedOp` controls signed-vs-unsigned selection for right shift (14 selects `ashr` for signed, `lshr` for unsigned), `intOp` is the LLVM integer opcode number, and `fpOp` is the floating-point variant (unused for shift/bitwise but present for uniformity).
 
-All four variants call `EmitIncDec` (`sub_128C390`) with two boolean flags:
+#### Increment / decrement detail
 
-| Opcode | C operator | `isPrefix` | `isIncrement` |
-|---|---|---|---|
-| `0x23` | `++x` (prefix) | 1 | 1 |
-| `0x24` | `--x` (prefix) | 0 | 0 |
-| `0x25` | `x++` (postfix) | 1 | 0 |
-| `0x26` | `x--` (postfix) | 0 | 1 |
+`EmitIncDec` (`sub_128C390`, 16 KB) handles integer, floating-point, and pointer types. It reads the expression type to select the arithmetic operation:
 
-#### Compound assignment (opcodes 0x4A-0x55)
+- **Integer path**: `add`/`sub nsw i32 %x, 1` with name `"inc"` or `"dec"`. For prefix variants, the incremented value is returned; for postfix, the original value is returned and the increment is stored.
+- **Floating-point path**: `fadd`/`fsub float %x, 1.0` with the same return-value semantics.
+- **Pointer path**: `getelementptr inbounds T, ptr %p, i64 1` (or `i64 -1` for decrement) with name `"ptrincdec"`. Element type comes from the pointed-to type.
 
-All use a generic wrapper `EmitCompoundAssignWrapper` (`sub_12901D0`) that takes a per-operator implementation function:
+All paths load the current value, compute the new value, store back, and return either old or new depending on prefix/postfix.
 
-| Opcode | C operator | Implementation |
-|---|---|---|
-| `0x4A` | `+=` | `sub_1288F60` (AddAssign) |
-| `0x4B` | `-=` | `sub_1288370` (SubAssign) |
-| `0x4C` | `*=` | `sub_1288770` (MulAssign) |
-| `0x4D` | `/=` | `sub_1289D20` (DivAssign) |
-| `0x4E` | `%=` | `sub_1288DC0` (RemAssign) |
-| `0x4F` | `&=` | `sub_1288B70` (AndAssign) |
-| `0x50` | `\|=` | `sub_1289360` (OrAssign) |
-| `0x51` | `<<=` | `sub_1288090` (ShlAssign) |
-| `0x52` | `>>=` | `sub_1287F30` (ShrAssign) |
-| `0x53` | `^=` | `sub_1288230` (XorAssign) |
+#### Compound assignment wrapper mechanics
 
-#### Simple and delegating opcodes
+`EmitCompoundAssignWrapper` (`sub_12901D0`) implements the common load-compute-store pattern for all compound assignment operators (`+=`, `-=`, etc.):
 
-| Opcode | Category | Behavior |
-|---|---|---|
-| `0x00` | Constant subexpr | Evaluate via `sub_72B0F0`, attach debug loc, load |
-| `0x03,0x06,0x08,0x5C,0x5E,0x5F` | Compound/special | Delegate to `EmitCompoundAssign` (`sub_1287ED0`) |
-| `0x05` | Dereference (`*p`) | If child is address-of: elide. Otherwise: recursive emit + load |
-| `0x19` | Parenthesized `(x)` | Tail-call: strip parens, loop with `a2 = child` |
-| `0x1A` | `sizeof` / `alignof` | Delegate to `sub_128FDE0` |
-| `0x1E,0x1F,0x41-0x46,0x59,0x5A,0x5D,0x68` | Type-level constants | All delegate to `ConstantFromType` (`sub_127D2C0`) |
-| `0x32` | Comma `(a, b)` | Emit both sides, return RHS value |
-| `0x33` | Subscript `a[i]` | Emit base + index, GEP + load via `sub_128B750` |
-| `0x49` | Member access | Compute field GEP, bitfield or normal load |
-| `0x56` | Bitfield assignment | Full R-M-W (see [Bitfield Codegen](#bitfield-codegen) below) |
-| `0x5B` | Statement expression `({...})` | Emit body via `EmitStmtExpr`, create empty BB if needed |
-| `0x69` | Special constant | Delegate to `sub_1281200` |
-| `0x6F` | Label address (`&&label`) | GCC extension: `blockaddress` via `sub_1285E30` |
-| `0x70` | Label value | Indirect goto target materialization |
-| `0x71` | Computed goto (`goto *p`) | `sub_1285E30` with different flag |
-| `0x72` | `va_arg` | Delegate to `sub_1286000` |
-| default | | Fatal: `"unsupported operation expression!"` |
+```c
+// sub_12901D0 pseudocode
+Value *EmitCompoundAssignWrapper(ctx, expr, impl_fn, flags) {
+    Value *addr = EmitAddressOf(ctx, expr->lhs);     // sub_1286D80
+    Value *old_val = EmitLoadFromAddress(ctx, addr);  // sub_1287CD0
+    Value *rhs_val = EmitExpr(ctx, expr->rhs);        // sub_128D0F0 (recursive)
+    Value *new_val = impl_fn(ctx, old_val, rhs_val);  // per-operator function
+    EmitStore(ctx, new_val, addr);                     // store back
+    return new_val;
+}
+```
+
+Each `impl_fn` is a small function (typically 200-400 lines) that handles integer/float type dispatch and signedness. For example, `sub_1288F60` (AddAssign) selects between `add`, `fadd`, and pointer-GEP addition.
+
+#### Member access multi-path handler
+
+Opcode `0x49` handles struct field access (`.` and `->`) through a multi-path dispatcher:
+
+1. **Simple scalar field** (field count == 1): Computes field address via `EmitAddressOf` (`sub_1286D80`), checks the volatile bit (`v349 & 1`), copies 12 DWORDs of field descriptor into the local frame, then loads via `EmitLoadFromAddress` (`sub_1287CD0`).
+
+2. **Bitfield field**: If the field descriptor indicates a bitfield, routes to `EmitBitfieldAccess` (`sub_1282050`) which emits the shift/mask extraction sequence.
+
+3. **Nested/union access** (field count > 1): Calls `ComputeCompositeMemberAddr` (`sub_1289860`) for multi-level GEP computation, then `EmitComplexMemberLoad` (`sub_12843D0`).
+
+4. **Write-only context**: If the assignment bit (`a2+25`, bit 2) is set, returns null -- the caller only needs the address, not the loaded value.
+
+#### Statement expression, label address, and va_arg
+
+**Statement expression** (`0x5B`): Emits the compound statement body via `EmitStmtExpr` (`sub_127FF60`). If no return basic block exists yet (`(*a1)[7] == 0`), creates an anonymous empty BB via `CreateBasicBlock` + `SetInsertPoint` to serve as the fall-through target. The value of the last expression in the block is the statement expression's result.
+
+**Label address** (`0x6F`): Implements the GCC `&&label` extension. Looks up the label via `LookupLabel` (`sub_12A4D00`), then creates a `blockaddress(@current_fn, %label)` constant via `sub_1285E30(builder, label, 1)`. The second argument `1` distinguishes "take address" from "goto to".
+
+**Computed goto** (`0x71`): The `goto *ptr` extension. Same `LookupLabel` call, but `sub_1285E30(builder, label, 0)` with flag `0` emits an `indirectbr` instruction targeting the resolved label.
+
+**`va_arg`** (`0x72`): Extracts the va_list child node at `+72`, its sub-child at `+16`, resolves both via `sub_12A4D00`, then calls `EmitVaArg` (`sub_1286000`) which lowers to a `va_arg` LLVM instruction with the appropriate type.
 
 ### Constant vs. instruction dispatch
 
-Throughout all operator emission, a consistent pattern selects between constant folding and IR instruction creation. The byte at `Value+16` encodes the LLVM Value subclass kind: values <= `0x10` are constants (`ConstantInt`, `ConstantFP`, etc.) and values > `0x10` are instructions:
+Throughout all operator emission, a consistent pattern selects between constant folding and IR instruction creation. The byte at `Value+16` encodes the LLVM Value subclass kind: values <= `0x10` are constants (`ConstantInt`, `ConstantFP`, etc.) and values > `0x10` are instructions. This check appears 20+ times throughout the function, always with the same structure:
 
 ```c
+// Constant-fold or emit IR? Decision pattern (appears 20+ times)
 if (*(uint8_t*)(value + 16) > 0x10) {
     // Real IR instruction -- create via IR builder
     result = CreateCast(opcode, value, destTy, &out, 0);    // sub_15FDBD0
     result = CreateBinOp(opcode, lhs, rhs, &out, 0);       // sub_15FB440
 } else {
-    // Compile-time constant -- constant-fold
+    // Compile-time constant -- constant-fold at LLVM ConstantExpr level
     result = ConstantExprCast(opcode, value, destTy, 0);    // sub_15A46C0
     result = ConstantFoldBinOp(lhs, rhs, 0, 0);            // sub_15A2B60
 }
 ```
+
+The dispatch table for the constant-fold vs IR-instruction paths:
+
+| Operation | IR path (Value > 0x10) | Constant path (Value <= 0x10) |
+|---|---|---|
+| Binary op | `CreateBinOp` (`sub_15FB440`) | `ConstantFoldBinOp` (`sub_15A2B60`) |
+| Unary NOT | `CreateUnaryOp` (`sub_15FB630`) | `ConstantFoldUnary` (`sub_15A2B00`) |
+| Cast | `CreateCast` (`sub_15FDBD0`) | `ConstantExprCast` (`sub_15A46C0`) |
+| Int compare | `sub_15FEC10`(op=51, pred) | `sub_15A37B0`(pred, lhs, rhs) |
+| Float compare | `sub_15FEC10`(op=52, pred) | `sub_15A37B0`(pred, lhs, rhs) |
+| Sub (constant) | `CreateBinOp`(13=Sub) | `ConstantFoldSub` (`sub_15A2B60`) |
+| SDiv exact | `CreateBinOp`(18=SDiv) + `SetExactFlag` | `ConstantFoldSDiv` (`sub_15A2C90`) |
+
+When the constant path is taken, no LLVM instruction is created and no BB insertion occurs -- the result is a pure `llvm::Constant*` that can be used directly. This is critical for expressions like `sizeof(int) + 4` where no runtime code should be emitted.
 
 ## Key Expression Patterns
 
@@ -480,15 +538,86 @@ Post-processing applies a constant GEP offset if `expr[12].qword[0]` is nonzero,
 
 ### Aggregate initializers
 
-The largest case (630+ lines). After stripping typedefs, dispatches on the canonical type tag:
+The largest case (630+ lines). After stripping typedefs, dispatches on the canonical type tag at `+140`:
 
-**Struct** (tag 10): Walks the EDG field list and initializer list in parallel. Padding/zero-width fields are skipped (flag byte at +146, bit 3). For each field, calls `EmitConstExpr` recursively for the field's initializer, pushes the result into an element vector. Missing trailing fields are filled with `Constant::getNullValue`. If the struct is empty and the initializer list is empty, returns `ConstantAggregateZero::get` as a shortcut.
+| Tag | Type | Output |
+|---|---|---|
+| 10 | Struct | `ConstantStruct` or `ConstantAggregateZero` |
+| 11 | Union | Anonymous `{member_type, [N x i8]}` |
+| 8 | Array | `ConstantArray` |
+| 12 | Typedef | Strip and re-dispatch |
+| other | | Fatal: `"unsupported aggregate constant!"` |
 
-Bitfield fields within structs are deferred to a post-processing pass that packs bits byte-by-byte using APInt operations: for each bitfield, the compiled constant value is extracted, truncated to the field's bit width, then shifted and ORed into the appropriate byte positions of the struct constant. The iteration processes one byte at a time, handling first-byte, middle-byte, and last-byte boundary cases identically to the runtime bitfield store path.
+**Struct** (tag 10): Walks the EDG field list and initializer list in parallel. The field chain is traversed via `+112` pointers; the initializer list via `+120` next pointers.
 
-**Union** (tag 11): Finds the initialized member (via designated initializer if present, otherwise the first non-skip non-bitfield field). Emits the member value recursively, then pads with `i8 x N` zero bytes to the full union size. The result is an anonymous `{member_type, [N x i8]}` struct. Named bitfield members in unions are explicitly rejected: `"initialization of bit-field in union not supported!"`.
+- Padding/zero-width fields are skipped (flag byte at +146, bit 3).
+- For each non-bitfield field, `GetFieldIndex` (`sub_1277B60`) returns the LLVM struct element index. If gaps exist between the previous and current index, intermediate slots are filled with `Constant::getNullValue` (`sub_15A06D0`).
+- Each field's initializer is processed by recursive `EmitConstExpr` call.
+- Packed struct fields (flag at +145, bit 4) have their sub-elements extracted individually via `ConstantExpr::extractvalue` (`sub_15A0A60`).
+- Missing trailing fields are padded with null values.
+- If the struct has no fields and the initializer list is empty, returns `ConstantAggregateZero::get` (`sub_1598F00`) as a shortcut.
+- Final assembly: `ConstantStruct::get` (`sub_159F090`) with type compatibility check via `Type::isLayoutIdentical` (`sub_1643C60`). If packed, `StructType::get(elts, n, true)` (`sub_15943F0`).
 
-**Array** (tag 8): Resolves element type, walks the initializer linked list, calls `EmitConstExpr` recursively for each element. When the declared dimension exceeds the initializer count, remaining elements are filled with `Constant::getNullValue`. The result uses `ConstantArray::get` when all elements have the same type, or falls back to an anonymous struct for heterogeneous cases (which should not occur in well-formed C).
+#### Struct bitfield packing (post-processing)
+
+When any bitfield field is detected during the main walk (flag bit 2, `&4` at +144), the function re-enters a post-processing phase after the main field loop. This packs bitfield constant values byte-by-byte into the struct's byte array:
+
+```c
+// Bitfield packing pseudocode — sub_127D8B0, case 0xA post-processing
+StructLayout *layout = DataLayout::getStructLayout(structTy);  // sub_15A9930
+
+for (each bitfield field where flag &4 at +144 && name at +8 is non-null) {
+    uint32_t byte_offset = field->byte_offset;
+    uint32_t elem_idx = StructLayout::getElementContainingOffset(layout, byte_offset);
+                                                                // sub_15A8020
+    // Validate the target byte is zero
+    assert(elements[elem_idx] == ConstantInt::get(i8, 0),
+           "unexpected error while initializing bitfield!");
+
+    // Evaluate bitfield initializer
+    Constant *val = EmitConstExpr(ctx, init_expr, 0);          // recursive
+    assert(val != NULL, "bit-field constant must have a known value at compile time!");
+
+    APInt bits = extractAPInt(val);  // at constant+24, width at constant+32
+    uint8_t bit_width = field->bit_width;    // at +137
+    if (bits.width > bit_width)
+        bits = APInt::trunc(bits, bit_width);                  // sub_16A5A50
+
+    // Pack into struct bytes, one byte at a time
+    uint8_t bit_offset = field->bit_offset;  // at +136 (within first byte)
+    while (remaining_bits > 0) {
+        uint8_t available = (first_byte ? 8 - bit_offset : 8);
+        uint8_t take = min(remaining_bits, available);
+
+        APInt slice = bits;
+        if (slice.width > take)
+            slice = APInt::trunc(slice, take);                 // sub_16A5A50
+        if (take < 8)
+            slice = APInt::zext(slice, 8);                     // sub_16A5C50
+        slice = slice << bit_offset;                           // shl
+        existing_byte |= slice;                                // sub_16A89F0
+
+        elements[byte_index] = ConstantInt::get(ctx, existing_byte);
+        bits = bits >> take;                                   // sub_16A7DC0
+        remaining_bits -= take;
+        bit_offset = 0;       // subsequent bytes start at bit 0
+        byte_index++;
+    }
+}
+```
+
+This implements the C standard's bitfield byte-packing model: bits are inserted starting at the field's `bit_offset` within its containing byte, potentially spanning multiple bytes. Values wider than 64 bits use heap-backed APInt word arrays.
+
+**Union** (tag 11): Finds the initialized member via two paths:
+
+1. **Designated initializer** (kind 13): `*(init+184)` is the designated field, `*(init+120)` is the actual value expression.
+2. **Implicit**: Walk the field chain (`type+160`) looking for the first non-skip, non-bitfield field. Named bitfield members are explicitly rejected: `"initialization of bit-field in union not supported!"`. If no field is found: `"cannot find initialized union member!"`.
+
+The member value is emitted recursively. Padding to the full union byte size is added as `[N x i8] zeroinitializer`. The result is an anonymous `{member_type, [N x i8]}` struct via `ConstantStruct::getAnon` (`sub_159F090`).
+
+**Array** (tag 8): Resolves element type via `GetArrayElementType` (`sub_8D4050`), walks the initializer linked list via `+120` next pointers, calls `EmitConstExpr` recursively for each element. Designated initializers (kind 11) are supported: `*(node+176)` gives the designated element index, `*(node+184)` gives the range count. Type mismatches are handled by `sub_127D000` (resize constant to target type).
+
+When the declared dimension exceeds the initializer count, remaining elements are filled with `Constant::getNullValue`. The result uses `ConstantArray::get` (`sub_159DFD0`) when all elements have the same LLVM type (the common case), or falls back to an anonymous struct via `StructType::get` + `ConstantStruct::get` for heterogeneous cases (which should not occur in well-formed C but is handled defensively).
 
 ## Cast / Conversion Codegen
 
@@ -716,6 +845,177 @@ if (debugLoc) {
 | `sub_15A0680` | `ConstantInt::get` | Integer constant creation |
 | `sub_159C0E0` | `ConstantInt::get` (APInt) | Wide integer constant creation |
 | `sub_159CCF0` | `ConstantFP::get` | Float constant creation |
+| `sub_128B370` | `EmitLoad` | Load with volatile/type/srcloc |
+| `sub_128BE50` | `EmitCommaOp` | Comma operator RHS extraction |
+| `sub_1289860` | `ComputeCompositeMemberAddr` | Multi-level GEP for nested fields |
+| `sub_12843D0` | `EmitComplexMemberLoad` | Nested struct/union field load |
+| `sub_127FF60` | `EmitStmtExpr` | Statement expression body emission |
+| `sub_1281200` | `EmitSpecialConst` | Special constant materialization |
+| `sub_1281220` | `EmitInitExpr` | Init expression emission |
+| `sub_1285E30` | `EmitBlockAddress` | `blockaddress` / indirect branch |
+| `sub_1286000` | `EmitVaArg` | `va_arg` lowering |
+| `sub_127FC40` | `CreateAlloca` | Alloca with name and alignment |
+| `sub_127B420` | `IsAddressOfExpr` | Check if child is `&` (for elision) |
+| `sub_127B3A0` | `IsVolatile` | Volatile type query |
+| `sub_127B390` | `GetSMVersion` | Returns current SM target |
+| `sub_127B460` | `IsPacked` | Packed struct type query |
+| `sub_127B550` | `FatalDiag` | Fatal diagnostic (never returns) |
+| `sub_127C5E0` | `AttachDebugLoc` | Debug location attachment |
+| `sub_127D2C0` | `ConstantFromType` | Type-level constant (sizeof, etc.) |
+| `sub_12A4D00` | `LookupLabel` | Label resolution for goto/address |
 | `sub_1648A60` | `AllocateInstruction` | Raw instruction memory allocation |
 | `sub_1648B60` | `AllocatePHI` | PHI node memory allocation |
 | `sub_164B780` | `SetValueName` | Assigns `%name` to IR value |
+| `sub_157E9D0` | `InsertIntoBasicBlock` | BB instruction list insertion |
+| `sub_1623A60` | `CloneDebugLoc` | Debug location cloning |
+| `sub_1623210` | `RegisterDebugLoc` | Debug location list registration |
+| `sub_161E7C0` | `ReleaseDebugLoc` | Debug location list removal |
+| `sub_15F1EA0` | `InitInstruction` | Instruction field initialization |
+| `sub_15F1F50` | `InitPHINode` | PHI node initialization (opcode 53) |
+| `sub_15F2350` | `SetExactFlag` | Mark `sdiv`/`udiv` as `exact` |
+| `sub_15F55D0` | `GrowOperandList` | Realloc PHI operand array |
+| `sub_15FEC10` | `CreateCmpInst` | ICmp/FCmp instruction creation |
+| `sub_15FE0A0` | `CreateIntResize` | Trunc/zext/sext helper |
+| `sub_15FB630` | `CreateUnaryOp` | Unary NOT (xor -1) |
+| `sub_15F9CE0` | `SetGEPOperands` | GEP operand filling |
+| `sub_15FA2E0` | `SetInBoundsFlag` | Mark GEP as inbounds |
+| `sub_8D23B0` | `IsArrayType` | Array type check |
+| `sub_72B0F0` | `EvaluateConstantExpr` | EDG constant evaluation |
+| `sub_731770` | `NeedsBitfieldTemp` | Bitfield temp alloca check |
+
+### Constant expression helper functions
+
+| Address | Recovered name | Role |
+|---|---|---|
+| `sub_127D8B0` | `EmitConstExpr` | Master constant expression emitter |
+| `sub_127D000` | `ResizeConstant` | Resize constant to target type |
+| `sub_127D120` | `DestroyAPFloatElement` | APFloat cleanup in aggregate loop |
+| `sub_127D2E0` | `PushElementBulk` | Bulk push to element vector |
+| `sub_127D5D0` | `PushElement` | Single push to element vector |
+| `sub_1277B60` | `GetFieldIndex` | Struct field index query |
+| `sub_1276020` | `GetOrCreateGlobalVar` | Global variable creation/lookup |
+| `sub_1277140` | `GetOrCreateFunction` | Function creation/lookup |
+| `sub_1280350` | `LookupFunctionStaticVar` | Static local variable resolution |
+| `sub_126A1B0` | `CreateStringGlobalConst` | Global string constant creation |
+| `sub_1598F00` | `ConstantAggregateZero::get` | Zero-initialized aggregate |
+| `sub_15991C0` | `ConstantDataArray::getRaw` | Raw byte array constant |
+| `sub_159DFD0` | `ConstantArray::get` | Typed array constant |
+| `sub_159F090` | `ConstantStruct::get` | Struct constant |
+| `sub_15943F0` | `StructType::get` | Anonymous struct type |
+| `sub_15A06D0` | `Constant::getNullValue` | Zero constant for any type |
+| `sub_15A0A60` | `ConstantExpr::extractvalue` | Sub-element extraction |
+| `sub_15A2E80` | `ConstantExpr::getGEP` | Constant GEP expression |
+| `sub_15A4510` | `ConstantExpr::getBitCast` | Constant bitcast |
+| `sub_15A4A70` | `ConstantExpr::getAddrSpaceCast` | Constant addrspacecast |
+| `sub_15A4180` | `ConstantExpr::getPtrToInt` | Constant ptrtoint |
+| `sub_15A8020` | `StructLayout::getElemContainingOffset` | Bitfield byte lookup |
+| `sub_15A9930` | `DataLayout::getStructLayout` | Struct layout query |
+| `sub_620E90` | `edg::IsSignedIntConst` | Signedness query |
+| `sub_620FA0` | `edg::GetSignedIntValue` | Signed integer extraction |
+| `sub_620FD0` | `edg::GetUnsignedIntValue` | Unsigned integer extraction |
+| `sub_622850` | `edg::GetIntConstAsString` | `__int128` decimal string extraction |
+| `sub_622920` | `edg::ExtractFieldOffset` | Field offset extraction |
+| `sub_709B30` | `edg::ExtractFloatBits` | Float raw bits extraction |
+| `sub_722AB0` | `edg::ReadIntFromBuffer` | Endian-aware integer read |
+| `sub_8D4050` | `edg::GetArrayElementType` | Array element type query |
+| `sub_8D4490` | `edg::GetArrayElementCount` | Array dimension query |
+
+## LLVM Opcode Constants
+
+Numeric opcode constants used in `CreateBinOp`, `CreateCast`, and instruction creation calls throughout the expression codegen:
+
+| Number | LLVM instruction | Used by |
+|---|---|---|
+| 13 | `sub` | Pointer subtraction step 4 |
+| 18 | `sdiv` | Pointer subtraction step 5 (with `exact` flag) |
+| 32 | `shl` | Left shift (`<<`) |
+| 33 | `ashr` / `lshr` | Right shift (`>>`, signedness-dependent) |
+| 34 | `and` (FP variant) | Bitwise AND |
+| 35 | `or` (FP variant) | Bitwise OR |
+| 36 | `xor` (FP variant) | Bitwise XOR |
+| 37 | `zext` | Zero-extend (bool-to-int, `lnot.ext`, `land.ext`) |
+| 38 | `and` | Bitwise AND (integer) |
+| 39 | `sitofp` / `or` | Signed int-to-float / bitwise OR (integer) |
+| 40 | `uitofp` / `xor` | Unsigned int-to-float / bitwise XOR (integer) |
+| 41 | `fptosi` / funnel shift | Signed float-to-int / rotate |
+| 42 | `fptoui` | Unsigned float-to-int |
+| 43 | `fptrunc` | Float-to-float truncation |
+| 44 | `fpext` | Float-to-float extension |
+| 45 | `ptrtoint` | Pointer-to-integer cast |
+| 46 | `inttoptr` | Integer-to-pointer cast |
+| 47 | `bitcast` / `addrspacecast` | Pointer casts |
+| 51 | ICmp instruction kind | Integer comparison creation |
+| 52 | FCmp instruction kind | Float comparison creation |
+| 53 | PHI node kind | PHI creation for `&&`, `\|\|`, `?:` |
+
+## PHI Node Construction Detail
+
+PHI nodes are used by three expression types: logical AND (`0x57`), logical OR (`0x58`), and ternary (`0x67`). The construction sequence is identical across all three:
+
+1. **Allocate**: `AllocatePHI` (`sub_1648B60`) with 64 bytes.
+2. **Initialize**: `InitPHINode` (`sub_15F1F50`) with opcode 53 (PHI), type, and zero for parent/count/incoming.
+3. **Set capacity**: `*(phi+56) = 2` -- two incoming edges.
+4. **Set name**: `SetValueName` (`sub_164B780`) with `"land.ext"`, `"lor.ext"`, or `"cond"`.
+5. **Reserve slots**: `sub_1648880(phi, 2, 1)` -- reserve 2 incoming at initial capacity 1.
+
+Adding each incoming value:
+
+```c
+count = *(phi+20) & 0xFFFFFFF;           // current operand count
+if (count == *(phi+56))                   // capacity full?
+    GrowOperandList(phi);                 // sub_15F55D0: realloc
+
+new_idx = (count + 1) & 0xFFFFFFF;
+*(phi+20) = new_idx | (*(phi+20) & 0xF0000000);  // update count, preserve flags
+
+// Large-mode flag at *(phi+23) & 0x40 selects operand array location:
+base = (*(phi+23) & 0x40) ? *(phi-8) : phi_alloc_base - 24*new_idx;
+
+// Value slot: base + 24*(new_idx-1) — 24 bytes per slot (value ptr + use-list pointers)
+slot = base + 24*(new_idx - 1);
+*slot = value;                           // incoming value
+slot[1] = value.use_next;               // link into value's use-list
+slot[2] = &value.use_head | (slot[2] & 3);
+value.use_head = slot;
+
+// Basic block slot: stored after all value slots as parallel array
+bb_offset = base + 8*(new_idx-1) + 24*num_incoming + 8;
+*bb_offset = incoming_bb;
+```
+
+The PHI operand layout is `[val0, val1, ..., bb0, bb1, ...]` where each value slot occupies 24 bytes (value pointer + doubly-linked use-list pointers), and basic block pointers form a parallel 8-byte array after all value slots.
+
+## Duplicate Implementations
+
+Two additional copies of the bitfield codegen exist at `sub_923780` (store) and `sub_925930` (load) -- identical algorithms with the same string names, same opcodes, same control flow. These are in the `0x92xxxx` range (NVVM frontend region) while the primary copies are in the `0x128xxxx` range (codegen helper region). They likely correspond to different template instantiations or address-space variants in the original NVIDIA source code.
+
+## Diagnostic String Index
+
+| String | Origin function | Trigger |
+|---|---|---|
+| `"unsupported expression!"` | `EmitExpr` (`sub_128D0F0`) | Default case in outer switch |
+| `"unsupported operation expression!"` | `EmitExpr` (`sub_128D0F0`) | Default case in inner switch |
+| `"constant expressions are not supported!"` | `EmitConstExpr` (`sub_127D8B0`) | Unsupported context kind (`sub_6E9180` returns true) |
+| `"unsupported constant variant!"` | `EmitConstExpr` (`sub_127D8B0`) | Unknown constant kind in main switch; also byte != 0/1/2 in address-of |
+| `"unsupported float variant!"` | `EmitConstExpr` (`sub_127D8B0`) | Float kind 5, or kind < 2 |
+| `"long double"` / `"__float80"` / `"__float128"` | `EmitConstExpr` (`sub_127D8B0`) | Warning 0xE51: extended precision truncated to double on CUDA target |
+| `"failed to lookup function static variable"` | `EmitConstExpr` (`sub_127D8B0`) | Function static address with type tag > 0x10 |
+| `"taking address of non-string constant is not supported!"` | `EmitConstExpr` (`sub_127D8B0`) | `&literal` where literal kind != 2 (non-string) |
+| `"unsupported cast from address constant!"` | `EmitConstExpr` (`sub_127D8B0`) | Type mismatch that is not ptr-to-ptr or ptr-to-int |
+| `"unsupported aggregate constant!"` | `EmitConstExpr` (`sub_127D8B0`) | Type tag not in {8, 10, 11, 12} for aggregate case |
+| `"initialization of bit-field in union not supported!"` | `EmitConstExpr` (`sub_127D8B0`) | Union initializer targeting a named bitfield |
+| `"cannot find initialized union member!"` | `EmitConstExpr` (`sub_127D8B0`) | Union field chain exhausted without finding target |
+| `"bit-field constant must have a known value at compile time!"` | `EmitConstExpr` (`sub_127D8B0`) | Bitfield initializer evaluates to NULL |
+| `"unexpected error while initializing bitfield!"` | `EmitConstExpr` (`sub_127D8B0`) | Pre-existing byte in struct is not zero when packing |
+| `"unexpected non-integer type for cast from pointer type!"` | `EmitCast` (`sub_128A450`) | `ptrtoint` destination is not integer |
+| `"unexpected destination type for cast from pointer type"` | `EmitCast` (`sub_128A450`) | `inttoptr` source is not integer |
+| `"error generating code for loading from bitfield!"` | `EmitBitfieldLoad` (`sub_1284570`) | Alignment assertion failure |
+| `"expected result type of bassign to be void!"` | `EmitExpr` (`sub_128D0F0`) | Bitfield assign result type validation |
+
+## Cross-References
+
+- [IRGen Types](irgen-types.md) -- type translation from EDG to LLVM
+- [Statement Codegen](irgen-stmts.md) -- statement-level emission that calls into `EmitExpr`
+- [Cast Codegen detail](irgen-expressions.md#cast--conversion-codegen) -- `EmitCast` subsystem
+- [Diagnostics](../infra/diagnostics.md) -- diagnostic emission infrastructure
+- [Address Spaces](../reference/address-spaces.md) -- NVPTX address space model affecting pointer casts
