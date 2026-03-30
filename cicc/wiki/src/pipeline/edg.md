@@ -714,58 +714,228 @@ NVIDIA's extensions to the EDG frontend fall into four categories: memory space 
 
 ### CUDA Keyword Extensions
 
-NVIDIA extends the EDG keyword table with execution space qualifiers, memory space qualifiers, and type intrinsics. These are registered during `sub_706250` (keyword table initialization) and processed as first-class tokens throughout the parser -- not as attributes or pragmas. The parser's declaration specifier state machine (`sub_672A20`) handles them through dedicated token cases.
+NVIDIA extends the EDG keyword table with execution space qualifiers, memory space qualifiers, and type intrinsics. These exist in four distinct layers -- registered keywords, declaration specifier tokens, address space attribute tokens, and extended type tokens -- each integrated differently into the EDG parser infrastructure.
 
-**Execution space qualifiers** are not registered as keywords in the traditional token table. Instead, `__device__`, `__host__`, and `__global__` are processed through the attribute system at token 272-280 in the declaration specifier parser. The memory space byte at scope entry offset +198 (bit 4 = device function) and the execution space character codes in `sub_6582F0` map them:
+The critical architectural fact: `__device__`, `__host__`, and `__global__` are **not** keywords in the EDG keyword table. They are processed through the C/C++ attribute system, where EDG maps them to internal single-character codes. The declaration specifier state machine (`sub_672A20`) and the address space handler together resolve these attributes into symbol-table fields that downstream passes consume.
 
-| Char Code | Qualifier | Space ID | Meaning |
+#### Token ID Inventory
+
+NVIDIA uses four non-contiguous token ID ranges:
+
+| Range | Category | Count | Registration |
 |---|---|---|---|
-| `'W'` (0x57) | `__device__` | 1 | Global device memory |
-| `'X'` (0x58) | `__global__` | 0 | Kernel entry point |
-| `'Z'` (0x5A) | `__shared__` | 2 | Per-block shared memory |
-| `'['` (0x5B) | `__constant__` | 3 | Read-only constant memory |
-| `'f'` (0x66) | `__managed__` | 5 | Unified memory (host+device) |
-| `'k'` (0x6B) | `__cluster_dims__` | -- | Thread block cluster dimensions |
+| 133-136 | Memory space declaration specifiers | 4 | Hardcoded in `sub_672A20` switch |
+| 236, 339-354 | Extended numeric types (FP8/FP6/FP4/MX) | 17 | Resolved via `sub_6911B0` |
+| 272-280 | Address space qualifier / special type tokens | 9 | Hardcoded handlers in `sub_672A20` |
+| 328-330 | NVIDIA type trait intrinsics | 3 | Registered via `sub_885C00` in `sub_706250` |
 
-**Memory space declaration specifiers** (token cases 133-136) piggyback on the signedness/width field `v305` in the declaration specifier state machine with values 4-7, cleanly separated from the standard C width modifiers (0-3):
+Only tokens 328-330 use the standard `sub_885C00(token_id, "keyword")` registration path. All other CUDA tokens are wired directly into parser switch cases, bypassing the keyword table entirely.
 
-| Token | Keyword | `v305` Value | Handler |
+#### Execution Space Qualifiers -- Attribute Path
+
+`__device__`, `__host__`, and `__global__` are recognized by the attribute parser, which stores them as single-character codes at declaration context offset +269. The complete internal attribute character map (`sub_5C79F0` at 0x5C79F0):
+
+| Char | Hex | Attribute | Scope Entry Bits |
 |---|---|---|---|
-| 133 | `__shared__` | 4 | Special case |
-| 134 | `__device__` | 5 | `token - 129` |
-| 135 | `__constant__` | 6 | `token - 129` |
-| 136 | `__managed__` | 7 | `token - 129` |
+| `'V'` | 0x56 | `__host__` | -- (host is the default) |
+| `'W'` | 0x57 | `__device__` | +198 bit 4 (0x10) |
+| `'X'` | 0x58 | `__global__` | +198 bit 4 (0x10) AND bit 5 (0x20) |
+| `'Y'` | 0x59 | `__tile_global__` | -- |
+| `'Z'` | 0x5A | `__shared__` | -- (stored in +136 as space code 3) |
+| `'['` | 0x5B | `__constant__` | -- (stored in +136 as space code 2) |
+| `'\'` | 0x5C | `__launch_bounds__` | Arguments at decl+336 struct |
+| `']'` | 0x5D | `__maxnreg__` | -- |
+| `'^'` | 0x5E | `__local_maxnreg__` | -- |
+| `'_'` | 0x5F | `__tile_builtin__` | -- |
+| `'f'` | 0x66 | `__managed__` | -- (stored in +136 as space code 5) |
+| `'k'` | 0x6B | `__cluster_dims__` | Arguments at cluster config struct |
+| `'l'` | 0x6C | `__block_size__` | -- |
+| `'r'` | 0x72 | `__nv_pure__` | -- |
 
-**Address space qualifier tokens** (272-280) are processed by dedicated handlers in the declaration specifier parser:
+The attribute character code at +269 is consumed by `sub_6582F0` (declaration-side validation) and `sub_65F400` (definition-side validation). These functions never see the CUDA qualifier as a keyword token -- they only see the resolved character code.
 
-| Token | Keyword | Handler |
-|---|---|---|
-| 272 | `__attribute__((address_space(N)))` | `sub_6210B0` (parses integer argument) |
-| 273 | `__global__` (addr space) | `sub_667B60(0, ...)` |
-| 274 | `__shared__` (addr space) | `sub_667B60(2, ...)` |
-| 275 | `__constant__` (addr space) | `sub_667B60(3, ...)` |
-| 276 | `__generic__` | `sub_72B620(type, cv)` |
-| 279 | `__nv_grid_constant` | `sub_72C390()` |
+**Execution space at scope entry offset +198** is the authoritative record of a function's execution space for all downstream passes:
+
+- Bit 4 (0x10): function is `__device__` or `__global__` -- activates device-scope variable validation
+- Bit 5 (0x20): function is `__global__` (kernel entry point) -- triggers kernel metadata emission via `sub_12735D0`, which emits `("kernel", 1)` to LLVM IR
+- Bit 2 (0x04) at offset +199: `full_custom_abi` flag
+
+When a function has bit 5 set, the attribute emitter also iterates the parameter array (40-byte entries at decl+16) and emits `("grid_constant", param_index)` for each parameter where byte +33 is nonzero. The preserve-register struct at decl+336 (three int32 fields: data, control, after) is consumed and cleared (set to -1) after emission.
+
+#### Memory Space Declaration Specifiers (Tokens 133-136)
+
+These piggyback on the signedness/width field `v305` in the declaration specifier state machine with values 4-7, cleanly separated from the standard C width modifiers (0-3):
+
+| Token | Keyword | `v305` Value | `v325` Value | Formula |
+|---|---|---|---|---|
+| 133 | `__shared__` | 4 | 2 | Special case |
+| 134 | `__device__` | 5 | 8 | `token - 129` |
+| 135 | `__constant__` | 6 | 8 | `token - 129` |
+| 136 | `__managed__` | 7 | 8 | `token - 129` |
+
+The type construction switch in `sub_672A20` branches on `v305 > 3` to invoke CUDA-specific type constructors (`sub_72BC30` for signed, `sub_72BDB0` for unsigned) instead of the standard C type constructors used for `v305` values 0-3.
+
+#### Address Space Qualifier Tokens (272-280)
+
+Processed by dedicated handlers in the declaration specifier parser:
+
+| Token | Keyword | Handler | Argument |
+|---|---|---|---|
+| 272 | `__attribute__((address_space(N)))` | `sub_6210B0` | Parses integer N |
+| 273 | `__global__` (addr space annotation) | `sub_667B60(0, ...)` | Space ID = 0 |
+| 274 | `__shared__` (addr space annotation) | `sub_667B60(2, ...)` | Space ID = 2 |
+| 275 | `__constant__` (addr space annotation) | `sub_667B60(3, ...)` | Space ID = 3 |
+| 276 | `__generic__` | `sub_72B620(type, cv)` | -- |
+| 277 | `__nv_tex_surf_handle_t` | `sub_72BA30(unk_4F06A51)` | Texture/surface handle |
+| 278 | `__nv_buffer_handle_t` | `sub_72BA30(unk_4F06A60)` | Buffer handle |
+| 279 | `__nv_grid_constant` | `sub_72C390()` | Grid-constant marker |
+| 280 | `__nv_is_extended_device_lambda` | `sub_72C270()` | Lambda closure check |
+
+Note the dual role of `__shared__`, `__constant__`, and `__global__`: each appears both as a memory space declaration specifier (tokens 133-135) and as an address space qualifier (tokens 273-275). The declaration specifier path stores the result in the symbol-table entry's `memory_space_code` at offset +136 and `memory_space_flags` at offset +156. The address space qualifier path stores the result in the EDG type node's qualifier word at offset +18 (values 1=global, 32=shared, 33=constant). Both representations flow downstream: the symbol-table code controls declaration validation, while the type qualifier controls LLVM pointer type construction in `sub_911D10`.
 
 The `__grid_constant__` qualifier (token 279, handler `sub_72C390`) marks kernel parameters as grid-constant -- the parameter is read-only across all thread blocks and may be placed in constant memory by the backend. This is a SM 70+ feature.
 
-**NVIDIA type intrinsic keywords** are always registered (not version-gated):
+#### NVIDIA Type Trait Keywords (Tokens 328-330)
 
-| Token | Keyword |
-|---|---|
-| 328 | `__nv_is_extended_device_lambda_closure_type` |
-| 329 | `__nv_is_extended_host_device_lambda_closure_type` |
-| 330 | `__nv_is_extended_device_lambda_with_preserved_return_type` |
+The only CUDA tokens registered through the standard `sub_885C00` keyword registration path. Always registered -- not gated by any version, language mode, or feature flag:
+
+| Token | Keyword | Registration |
+|---|---|---|
+| 328 | `__nv_is_extended_device_lambda_closure_type` | `sub_885C00(328, ...)` |
+| 329 | `__nv_is_extended_host_device_lambda_closure_type` | `sub_885C00(329, ...)` |
+| 330 | `__nv_is_extended_device_lambda_with_preserved_return_type` | `sub_885C00(330, ...)` |
 
 These type traits are used by CUDA's extended lambda machinery to query whether a lambda closure type carries device or host-device execution space annotations. They participate in SFINAE and `if constexpr` contexts for compile-time dispatch between host and device lambda implementations.
 
+The lambda mangling extensions in `sub_80FE00` use the execution space information from these traits to choose between three proprietary Itanium ABI mangling prefixes: `Unvdl` (device lambda), `Unvdtl` (device template lambda), and `Unvhdl` (host-device lambda). The selection is based on flag byte +92 of the closure descriptor, where bit 5 (0x20) marks an extended CUDA lambda, bit 4 (0x10) marks host-device, and bit 2 (0x04) marks a template lambda.
+
+#### Extended Numeric Type Tokens (236, 339-354)
+
+Blackwell tensor core operations require exotic floating-point formats. These are resolved via `sub_6911B0()` to a type node, then set `v325=20, v327|=4` in the declaration specifier state machine:
+
+| Token | Type | Format | Width |
+|---|---|---|---|
+| 236 | `__nv_fp8_e4m3` | FP8 | 8b |
+| 339 | `__nv_fp8_e5m2` | FP8 | 8b |
+| 340-341 | `__nv_fp8x2_e{4m3,5m2}` | FP8 vector | 16b |
+| 342-343 | `__nv_fp8x4_e{4m3,5m2}` | FP8 vector | 32b |
+| 344-345 | `__nv_fp6_e{2m3,3m2}` | FP6 | 6b |
+| 346-347 | `__nv_fp6x2_e{2m3,3m2}` | FP6 vector | 12b |
+| 348-349 | `__nv_mxfp8_e{4m3,5m2}` | MX-format FP8 | 8b |
+| 350-351 | `__nv_mxfp6_e{2m3,3m2}` | MX-format FP6 | 6b |
+| 352 | `__nv_mxfp4_e2m1` | MX-format FP4 | 4b |
+| 353 | `__nv_satfinite` | Saturation modifier | -- |
+| 354 | `__nv_e8m0` | Exponent-only E8M0 | 8b |
+
+These types are represented as fundamental types with distinct sub-kind values at type node +56 in the EDG type system. The type comparison engine (`sub_7386E0`, case 1) compares sub-kind, extra flags at +58 (bits 0x3A), and the base type chain at +72 to ensure each format is treated as a distinct type.
+
+#### Attribute Processing Pipeline
+
+The complete pipeline from CUDA source keyword to LLVM IR metadata:
+
+```
+CUDA source: __global__ void kernel() __launch_bounds__(256, 2)
+  |
+  v
+Phase 1: Attribute parser → char code 'X' (0x58) at decl context +269
+  |
+  v
+Phase 2: Declaration specifier state machine (sub_672A20)
+         → scope entry +198 bit 5 set (kernel)
+  |
+  v
+Phase 3: Post-parse fixup (sub_5D0FF0)
+         → __launch_bounds__(256, 2) extracted to launch config struct
+  |
+  v
+Phase 4: CUDA attribute validator (sub_826060)
+         → validates __launch_bounds__ on __global__ function
+         → diagnostic 0xDCE (3534) if __launch_bounds__ on non-kernel
+         → diagnostic 0xE83 (3715) if values out of range
+         → diagnostic 0xE87 (3719) if __launch_bounds__ + __maxnreg__ conflict
+  |
+  v
+Phase 5: Attribute emission to LLVM IR (sub_12735D0)
+         → emits ("kernel", 1) from bit 5 of decl+198
+         → emits ("grid_constant", N) per qualifying parameter
+  |
+  v
+Phase 6: Kernel metadata generation (sub_93AE30)
+         → "nvvm.maxntid" = "256,1,1"
+         → "nvvm.minctasm" = "2"
+```
+
 ### Memory Space Attributes
 
-`sub_6582F0` and `sub_65F400` validate `__shared__`, `__constant__`, `__managed__` on declarations. Token cases 133-136 in the parser handle these as first-class declaration specifiers. The validation logic enforces CUDA semantics: `__shared__` variables cannot have initializers (shared memory is not initialized on kernel launch), `__constant__` variables must have static storage duration, and `__managed__` variables require unified memory support on the target architecture.
+`sub_6582F0` (22KB) and `sub_65F400` (28KB) validate `__shared__`, `__constant__`, `__managed__` on variable declarations and definitions respectively. Token cases 133-136 in the parser handle these as first-class declaration specifiers. The validation logic enforces CUDA semantics: `__shared__` variables cannot have initializers (shared memory is not initialized on kernel launch), `__constant__` variables must have static storage duration, and `__managed__` variables require unified memory support on the target architecture.
 
-The validation in `sub_6582F0` follows a multi-phase pipeline. Phase 1 handles `__managed__` pre-resolution: when not in whole-program mode, managed variables are silently downgraded to `__device__` (space code 1). Later phases validate mutual exclusivity -- `__constant__` combined with `__shared__` triggers diagnostic 3481, `__constant__` combined with `__managed__` triggers 3568. The `thread_local` storage class is incompatible with all device memory spaces (diagnostic 892/3578). Automatic (stack) variables cannot carry device memory qualifiers (diagnostic 3484), because GPU shared and constant memory are not per-thread allocations.
+#### Symbol Table Memory Space Encoding
 
-The diagnostic messages use the memory space name strings directly: `"__shared__"`, `"__constant__"`, `"__device__"`, `"__managed__"` -- these are format arguments to the diagnostic emitter, not hardcoded strings in the error message table.
+Memory space is tracked in two locations within each symbol-table entry:
+
+| Offset | Size | Field | Values |
+|---|---|---|---|
+| +136 | 1 byte | `memory_space_code` | 0=default, 1=`__device__`, 2=`__constant__`, 3=`__shared__`, 5=`__managed__` |
+| +156 | 1 byte | `memory_space_flags` | bit 0=device, bit 1=shared, bit 2=constant, bit 4=thread_local interaction |
+| +157 | 1 byte | Extended flags | bit 0=managed |
+
+The dual encoding exists because the flags are additive from parsed attributes (multiple attributes can be OR'd in) while the code is the single resolved value used by downstream passes. The code at +136 is set by `sub_735FB0` (symbol entry constructor) and queried throughout the compiler.
+
+#### Declaration-Side Validation -- `sub_6582F0`
+
+The validation follows a ten-phase pipeline:
+
+1. **`__managed__` pre-resolution**: when `dword_4F04C5C == dword_4F04C34` (host-only mode), managed variables are silently downgraded to `__device__` (space code 1) and the extern flag is cleared.
+
+2. **Extern handling**: sets bit 0 of decl context +122 and the `is_extern` tracking variables.
+
+3. **Type normalization**: checks function-type declarations against CUDA criteria via `sub_8D4C10`; emits diagnostic 891 for function types with memory space.
+
+4. **Specifier processing**: calls `sub_6413B0` against the current compilation target.
+
+5. **Prior-declaration conflict detection**: looks up existing symbol, compares memory space codes. Mismatch with `dword_4F077C4 == 2` (separate compilation) triggers diagnostic 172 (warning 4).
+
+6. **New symbol creation**: `sub_735FB0(type_ptr, space_code, target_id, is_new_decl)`.
+
+7. **`__managed__` namespace binding**: validates namespace name via `sub_703C10`; checks class/struct type compatibility (diagnostic 1560 on failure).
+
+8. **Storage class adjustments**: processes constant-space read-only flags.
+
+9. **Device-scope enforcement**: when scope +198 bit 4 is set (inside `__device__`/`__global__` function), local variables cannot carry device memory qualifiers. Diagnostic 3484: `"an automatic variable may not be declared as __device__"`. The memory space name is determined by the priority cascade: `__constant__` > `__managed__` > `__shared__` > `__device__`.
+
+10. **Final fixup**: type validation (`sub_8D9350`), attribute propagation (`sub_8756F0`), `"main"` function warnings (diagnostic 2948), thread-safety analysis (`sub_826000`).
+
+#### Memory Space Mutual Exclusivity
+
+The code consistently enforces these combinations:
+
+| Combination | Diagnostic | Severity |
+|---|---|---|
+| `__shared__` + `__constant__` | 3481 | error |
+| `__constant__` + `__managed__` | 3568 | error |
+| `__constant__` + `__shared__` + `__managed__` | 3568 | error |
+| `thread_local` + `__device__` | 892 | error |
+| `thread_local` + any device space | 3578 | error |
+| auto variable + `__device__`/`__constant__`/`__managed__` | 3484 | error |
+| `__shared__` + initializer | 3510 | error |
+| `__constant__` in device-function scope | 3512 | error |
+| `register` + device memory | 3485/3688 | error |
+| `volatile` + `__constant__` | 1378 | error |
+| redeclaration with different memory space | 3499 | warning 5 |
+
+The diagnostic name-string priority cascade (`__constant__` > `__managed__` > `__shared__` > `__device__`) appears identically in six locations: `sub_6582F0` lines 734-739, `sub_65F400` lines 541-549 and 927-935, `sub_5C6B80` lines 22-34, `sub_667550` lines 87-98, and `sub_5D9330` (the symbol printer).
+
+#### Address Space Flow: EDG to LLVM to PTX
+
+| CUDA Source | EDG Token | Symbol +136 | Type Qualifier +18 | LLVM AS | PTX Directive |
+|---|---|---|---|---|---|
+| `__device__ int x;` | 134 | 1 | 1 | 1 | `.global` |
+| `__shared__ int x;` | 133 | 3 | 32 | 3 | `.shared` |
+| `__constant__ int x;` | 135 | 2 | 33 | 4 | `.const` |
+| `__managed__ int x;` | 136 | 5 | 1 | 1 | `.global` + runtime registration |
+| (local in kernel) | -- | 0 | -- | 0/5 | `.local`/`.param` |
+
+The EDG type node qualifier word (offset +18, masked to 0x7FFF) carries address space through the type system. During EDG-to-LLVM type translation, `sub_911D10` reads this qualifier from pointer/reference types (kind 75/76) and maps to LLVM address space numbers via `sub_5FFE90`. `__managed__` variables are compiled as `__device__` (LLVM address space 1) with additional runtime registration calls generated by `sub_806F60` for unified memory management.
 
 ### Kernel Launch Lowering — `sub_7F2B50` (16KB)
 
