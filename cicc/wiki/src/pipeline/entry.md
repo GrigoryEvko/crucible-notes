@@ -63,6 +63,19 @@ The exported `main()` at `0x4396A0` is a 16-byte thunk that immediately tail-cal
 | Stack frame | 0x978 bytes (2,424 bytes) |
 | Local buffers | `v284[2096]` for argv copy (stack if argc ≤ 256, else heap) |
 
+### Argument Handling and Argv Copy
+
+The function begins with a defensive copy of `argv` into a local buffer. When `8 * argc` fits within 0x800 bytes (argc ≤ 256), the copy lives in `v284[2096]` on the stack. For larger argument lists -- which can occur during complex nvcc invocations with many pass-through flags -- it allocates heap memory via `sub_16CD150`. This copy is necessary because the argument loop modifies pointers (advancing `i` to skip flag values), and the caller's argv must not be disturbed.
+
+```c
+if (8 * argc > 0x800)
+    v284 = sub_16CD150(8 * argc);   // heap alloc for large argc
+// else use stack buffer v284[2096]
+memcpy(v284, argv, 8 * argc);       // copy all pointers
+```
+
+After copying, `sub_16C5290` extracts the base program name from `argv[0]` -- stripping directory prefixes -- and stores it in `dest`. This name appears in error messages and verbose output throughout the pipeline.
+
 ### Key Local Variables
 
 The function's behavior is controlled by two critical dispatch variables: `v253` (which compilation backend to use) and `v263` (which phase of the pipeline to invoke). These are accumulated during the argument loop and combined after parsing to select one of ~10 possible code paths. The interaction between them creates a matrix of behaviors that covers everything from simple single-file compilation to multi-stage LibNVVM pipeline processing.
@@ -143,11 +156,170 @@ This hides an environment variable name and option prefix from static analysis. 
 | `"Recognized input file extensions are: .bc .ci .i .cup .optixir"` | After missing input | `0x8FBE97` |
 | `"Error: Output file was not specified (See -o option).\n"` | Multi-stage without `-o` | `0x8FB655` |
 
-## Path A — LibNVVM Pipeline (`sub_905EE0`)
+## The `v253` Dispatch Variable
 
-Path A is the primary compilation path when cicc is invoked through the LibNVVM API (e.g., by nvcc or by applications using the CUDA Driver API's runtime compilation). The driver function `sub_902D10` first processes CLI flags, then optionally runs the EDG frontend (the "CUDA C++ Front-End" stage timed as `"CUDA C++ Front-End"`), and finally hands the resulting LLVM module to `sub_905EE0` — the 43KB pipeline driver that orchestrates the full compilation through 14 sequential phases.
+The `v253` variable is the single most important dispatch control in the entire entry point. It determines whether the compilation uses Path A (the EDG/PTX-producing pipeline) or Path B (the standalone LLVM-based pipeline). Understanding its resolution logic is essential to reproducing cicc's behavior.
 
-The pipeline uses an interesting indirection mechanism: rather than calling LibNVVM API functions directly, it resolves them at runtime through `sub_12BC0F0(id)` — a dispatch function that takes a numeric ID and returns a function pointer. The IDs appear to be deliberately chosen as memorable hex values (0xFEED, 0xBEAD, 0xDEED, 0xBEEF) — likely internal jokes by the NVIDIA compiler team.
+### Initialization and Explicit Setting
+
+`v253` begins at 2 (unresolved default). During the argument loop, obfuscated string matching can set it directly:
+
+| Source | Value | Meaning |
+|---|---|---|
+| Initial default | 2 | Needs environment variable resolution |
+| Obfuscated option suffix matches `byte_3C23AC3` | 1 | Path A explicitly requested |
+| Obfuscated option suffix matches `byte_3C23AB4` | 0 | Path B explicitly requested |
+
+### Environment Variable Resolution
+
+When `v253` remains at 2 after argument parsing (the common case), cicc resolves it through the obfuscated environment variable `NV_NVVM_VERSION` (decrypted from `byte_3C23A9F`). The resolution has two sub-cases depending on the target architecture:
+
+```
+if (v253 == 2) {
+    env = getenv(decrypt(byte_3C23A9F));   // NV_NVVM_VERSION
+    if (env matches decrypt(byte_3C23A82))       // "nvvm-latest"
+        v253 = 1;  // Path A
+    else if (env matches decrypt(byte_3C23A7B))  // "nvvm70"
+        v253 = 0;  // Path B
+    else if (v242 > 99 && !v258)                 // SM >= 100, not -nvc
+        v253 = 0;  // Path B (new architectures default to standalone)
+    else
+        v253 = 1;  // Path A (legacy default)
+}
+```
+
+The architectural threshold at SM 100 (Blackwell) is notable: for SM < 100, the default is Path A (the EDG frontend path). For SM >= 100, unless the `-nvc` flag is present, the default switches to Path B. This suggests NVIDIA is migrating newer architectures toward the standalone LLVM pipeline, possibly as a precursor to eventually deprecating the EDG-based path.
+
+### Version Strings Injected per Path
+
+After `v253` is resolved and for multi-stage modes (`v263 >= 3`), the entry point injects a version string into the pass-through options:
+
+| v253 | Injected string | Semantics |
+|---|---|---|
+| 1 (Path A) | `"-nvvm-version=nvvm-latest"` (25 bytes from `xmmword_3C23BC0`) | Targets the latest NVVM IR specification |
+| 0 (Path B) | `"-nvvm-version=nvvm70"` (20 bytes) | Targets NVVM 7.0 IR (frozen at LLVM 7.0.1 bitcode format) |
+
+This version string propagates through the entire pipeline, controlling bitcode compatibility, intrinsic name resolution, and metadata format expectations.
+
+## Post-Parse Dispatch Logic
+
+After the argument loop terminates, the dispatch logic combines `v253` and `v263` to select the target function. The combined keep-and-verbose flag `v260 = v262 & v259` is also computed -- both wizard-mode flags must be active for intermediate file retention and verbose logging to function simultaneously.
+
+### Simple Dispatch (v263 == 0)
+
+When cicc is invoked without any `-lXXX` mode flag (the standard nvcc invocation path):
+
+```c
+if (v253 == 1)
+    v8 = sub_902D10(dest, 0, &v266, s, v257, v256, v260, v262, v261);
+    // Path A: CLI → lgenfe → LibNVVM pipeline
+else
+    v8 = sub_1262860(dest, 0, &v266, s, v257, v256, v260, v262, v261);
+    // Path B: CLI → standalone LLVM pipeline
+```
+
+Both functions receive identical parameter signatures: program name, zero (unused), pass-through options, input file, output file, libdevice path, verbose+keep, keep, and dryrun. The return value becomes the process exit code.
+
+### lgenfe Dispatch (v263 == 1)
+
+The `-lgenfe` mode builds a full `argv`-style array with the program name as the first entry, followed by all `v266` pass-through options. This argv is then passed to one of two function pairs:
+
+| v253 | Init function | Pipeline function |
+|---|---|---|
+| 1 (Path A) | `sub_B6EEA0` (LLVMContext + metadata kind registration) | `sub_905880` (EDG lgenfe) |
+| 0 (Path B) | `sub_1602D10` (standalone context initialization) | `sub_1265340` (standalone lgenfe) |
+
+The init functions create the LLVM context and register the 42+ metadata kinds used throughout the pipeline (dbg, tbaa, prof, noalias, etc.). These must be registered before any IR construction begins.
+
+### Multi-Stage Dispatch (v263 >= 2)
+
+For `-libnvvm`, `-lnk`, `-opt`, and `-llc` modes, the dispatch constructs a `CompilationState` structure with input/output strings, extra arguments, and the `v278` mode byte, then calls:
+
+| v253 | Function | Size | Role |
+|---|---|---|---|
+| 1 | `sub_905EE0` | 43 KB | Path A multi-stage pipeline driver |
+| 0 | `sub_1265970` | 48 KB | Path B multi-stage pipeline driver |
+
+For `-libnvvm` (v263 == 2), the extra args are taken directly from `v266` without prepending the program name. For `-lnk`/`-opt`/`-llc` (v263 >= 3), the appropriate version string (`nvvm-latest` or `nvvm70`) is appended to the pass-through options before dispatch.
+
+### Cleanup
+
+After the pipeline function returns, `sub_8F9C90` performs deterministic cleanup in reverse allocation order: the `v281` extra-argument char** array and each entry, the `v275` output string, the `s2` input string, each element of the `v266` pass-through vector, the vector's backing buffer, the `dest` program name, and the `v282` argv copy buffer (if heap-allocated). The return value `v8` is 0 on success, 1 on argument errors, or the pipeline function's return code (stored in `v264`).
+
+## Path A — EDG → LibNVVM Pipeline
+
+Path A is the full CUDA C++ compilation path. It starts with the EDG 6.6 C++ frontend parsing CUDA source code into an IL tree, then converts that IL into LLVM IR via the lgenfe (LLVM Generation Front End) stage, and finally runs the LibNVVM pipeline to optimize and lower the IR to PTX. This is the path taken when cicc is invoked by nvcc for `.cu` file compilation, and it represents the standard CUDA compilation flow that most users encounter.
+
+### Path A Orchestrator — `sub_902D10`
+
+The orchestrator is a 9 KB function that sequences the three major stages of Path A compilation. It acts as the conductor between the CLI processing layer, the EDG frontend, and the LibNVVM optimizer/codegen.
+
+| Field | Value |
+|---|---|
+| Address | `0x902D10` |
+| Size | ~9 KB |
+| Timer | Creates 8-byte timer via `sub_22077B0` → `sub_B6EEA0` |
+
+**Execution flow:**
+
+1. **Timer creation.** Allocates and initializes an 8-byte timing context. The `sub_B6EEA0` init function also registers the 42+ LLVM metadata kinds (dbg=1, tbaa=2, prof=3, ... noalias.addrspace=42) that all subsequent IR construction depends on. This is why the timer creation happens first: the metadata registration is a side effect of context initialization.
+
+2. **CLI processing.** Calls `sub_900130` (39 KB) to parse the accumulated CLI flags into structured forms: command buffer `v58`, emit-llvm-bc flag `v52`, architecture compute/SM numbers `v55`/`v56`, and file paths. On failure: `"Error processing command line: <cmd>\n"`.
+
+3. **Include path setup.** If an input file is present (`v64`), calls `sub_C98ED0` to configure system and user include paths for the EDG frontend.
+
+4. **EDG frontend (lgenfe).** Calls `sub_905880` with timer name `"CUDA C++ Front-End"`. This stage:
+   - Allocates an 880-byte module object via `sub_BA8740`
+   - Processes lgenfe CLI options from the options struct
+   - In dryrun mode: skips execution, frees the module, returns null
+   - On success: returns a module pointer and sets the output path
+
+5. **LibNVVM pipeline.** If lgenfe succeeds (module pointer is non-null), calls `sub_905EE0` with the module for the full optimization and codegen pipeline.
+
+6. **Time profiler output.** After pipeline completion, checks `sub_C96F30()` for active profiling. If profiling is enabled, writes timing data to the output file via `sub_C9C600`. Failure emits: `"Error: Failed to write time profiler data.\n"`.
+
+7. **Cleanup.** Frees the timer (`sub_B6E710`), option strings, and option arrays.
+
+### EDG Frontend Stage — `sub_905880`
+
+The lgenfe stage bridges the EDG 6.6 C++ frontend to LLVM IR generation. This is where CUDA C++ source code becomes NVVM IR.
+
+| Field | Value |
+|---|---|
+| Address | `0x905880` |
+| Size | ~6 KB |
+| Timer label | `"CUDA C++ Front-End"` |
+| Module size | 880 bytes (allocated by `sub_BA8740`) |
+
+The function reconstructs a verbose command line for diagnostic output (quoting paths for `--orig_src_file_name`, `--orig_src_path_name`, `--compiler_bindir`, `--sdk_dir`), builds an argument array, and calls `sub_908750(numArgs, argArray, opt_level)` to create the LLVM module. On success, it copies the output path into the module at offset `21*8` and, if the keep flag is set via `a3->byte[66]`, calls `sub_905860` to write intermediate files.
+
+The actual EDG parsing and IL-to-IR conversion happens inside `sub_908750`, which eventually calls `sub_617BD0` — the `lgenfe_main` function documented in the [EDG Frontend](edg.md) page.
+
+### EDG Module Binding — `sub_908850`
+
+After the EDG frontend produces its IL tree, `sub_908850` (10 KB) bridges the output to the LLVM backend. This function performs the critical step of configuring the LLVM module's data layout and target triple based on the target architecture.
+
+**Data layout strings** are selected based on `unk_4F06A68` (address space width):
+
+| Width | p3 flag | Data layout string |
+|---|---|---|
+| 8 (64-bit) | `unk_4D0461C` set | `"e-p:64:64:64-p3:32:32:32-i1:8:8-..."` (167 chars) |
+| 8 (64-bit) | Not set | `"e-p:64:64:64-i1:8:8-..."` (155 chars) |
+| 4 (32-bit) | — | `"e-p:32:32:32-i1:8:8-..."` (155 chars) |
+
+The `p3:32:32:32` component enables 32-bit pointers in address space 3 (shared memory), which is critical for SM architectures where shared memory accesses use 32-bit addressing even in 64-bit compilation mode.
+
+**Target triple** is set to `"nvptx64-nvidia-cuda"` for 64-bit or `"nvptx-nvidia-cuda"` for 32-bit. The function also:
+
+- Creates a 496-byte target info structure via `sub_AE3F70`
+- Iterates global function declarations, marking device functions for compilation via `sub_91CA00`
+- Iterates global variables, processing initializers for device-side storage via `sub_9172F0`
+- Runs LLVM module verification via `sub_B89FE0` -- on failure: `"there was an error in verifying the lgenfe output!"`
+- Stores the module globally at `unk_4F6D2F8`
+
+### LibNVVM Pipeline Driver — `sub_905EE0`
+
+This 43 KB function is the core of Path A. It orchestrates the full compilation through 14 sequential phases, using an interesting indirection mechanism: rather than calling LibNVVM API functions directly, it resolves them at runtime through `sub_12BC0F0(id)` — a dispatch function that takes a numeric ID and returns a function pointer.
 
 | Field | Value |
 |---|---|
@@ -182,6 +354,27 @@ The compilation proceeds through these phases sequentially. Phases 2.1–2.14 ar
 | 4 | Write output file (text or binary detection via ELF magic) |
 | 5 | Timer stop |
 
+### Input File Handling — Phase 1
+
+Phase 1 has two sub-paths based on the `a3->byte[65]` container flag:
+
+**Path 1A: NVVM IR Container.** When the input is an NVVM container (a binary format wrapping IR plus compilation options), `sub_9047E0` (10 KB) parses it. The container format encodes the target SM version, FTZ mode, precision settings, and IEEE mode. The parser extracts these and converts them to LLVM CLI flags:
+
+```c
+// Pseudo-code for container option extraction
+push("-march=nvptx");
+push("-mcpu=sm_" + str(container->sm_version / 10));
+if (container->flags[200] & 0x20) push("-nvptx-f32ftz");
+if (container->flags[200] & 0x80) push("-nvptx-prec-sqrtf32=1");
+else                               push("-nvptx-prec-sqrtf32=0");
+push(container->flags[204] ? "-nvvm-ieee-mode=S" : "-nvvm-ieee-mode=T");
+if (container->mode == 2) push("--device-c");  // relocatable compilation
+```
+
+If parsing fails, the error message is `"Invalid NVVM IR Container"` (error code 259).
+
+**Path 1B: Regular LLVM bitcode.** For raw `.bc` files, the function creates a timer object, configures the SM architecture via `sub_B6F950`, opens the file via `sub_C7EAD0`, and parses it into an LLVM module via `sub_A01950`.
+
 ### LibNVVM API Dispatch IDs
 
 Internal function `sub_12BC0F0(id)` returns API function pointers by numeric ID. This indirection exists because the LibNVVM API is implemented within the same binary — these aren't dynamically-linked external functions but rather internal call points resolved through a dispatch table. The hex IDs double as a form of internal documentation:
@@ -202,6 +395,41 @@ Internal function `sub_12BC0F0(id)` returns API function pointers by numeric ID.
 | 62298 | 0xF37A | `nvvmCUAddModuleFromBuffer` |
 | 65261 | 0xFEED | `nvvmCUSetOptions` |
 
+The complete dispatch table in `sub_12BC0F0` contains 25 entries implemented as a binary search tree on the ID value:
+
+| ID | Hex | Target | Semantic Name |
+|---|---|---|---|
+| 2151 | 0x0867 | `sub_12BB090` | `nvvmCreateCU` |
+| 2167 | 0x0877 | `sub_12BB090` | (alias) |
+| 3911 | 0x0F47 | `sub_12BBF40` | `nvvmCUSetProgressCallback` |
+| 4111 | 0x100F | `sub_12BA8F0` | `nvvmGetCompiledResult` |
+| 4606 | 0x11FE | `sub_12BA330` | `nvvmCULinkModule` |
+| 4660 | 0x1234 | `sub_12BC650` | `nvvmCUAddModule` |
+| 8320 | 0x2080 | `sub_12BB400` | `nvvmCUSetOption` |
+| 11245 | 0x2BED | `sub_12BB290` | `nvvmCUGetLog` |
+| 17185 | 0x4321 | `sub_12BBD80` | `nvvmCUSetExtraArgs` |
+| 21257 | 0x5309 | `sub_12B9C40` | `nvvmDestroyCU` |
+| 23294 | 0x5AFE | `sub_12BAF10` | `nvvmVerify` |
+| 41856 | 0xA380 | `sub_12BA220` | `nvvmGetCompiledResultSize` |
+| 45242 | 0xB0BA | `sub_12BAB40` | `nvvmCUGetWarnings` |
+| 46903 | 0xB737 | `sub_12BA7C0` | `nvvmGetCompiledResultLog` |
+| 46967 | 0xB777 | `sub_12B9980` | `nvvmGetErrorString` |
+| 48813 | 0xBEAD | `sub_12BA110` | `nvvmCUCompile` |
+| 48879 | 0xBEEF | `sub_12BACF0` | `nvvmCURegisterCallback` |
+| 49522 | 0xC172 | `sub_12BA470` | `nvvmCUGetIR` |
+| 51966 | 0xCAFE | `sub_12B9A50` | `nvvmGetVersion` |
+| 56495 | 0xDCEF | `sub_12B9A40` | (unknown) |
+| 57005 | 0xDEAD | `sub_12B9C00` | `nvvmInit` |
+| 61451 | 0xF00B | `sub_12BA560` | `nvvmGetCompiledResultPTXSize` |
+| 61453 | 0xF00D | `sub_12BA6A0` | `nvvmCURegisterLNKCallback` |
+| 61806 | 0xF16E | `sub_12BAA30` | `nvvmCUGetOptIR` |
+| 62298 | 0xF37A | `sub_12BC8B0` | `nvvmCUAddModuleFromBuffer` |
+| 65261 | 0xFEED | `sub_12B9AB0` | `nvvmSetOptionStrings` |
+
+### 37 LLVM Options from `off_4B90FE0`
+
+Phase 2.10 loads a hardcoded table of 37 LLVM option strings from `off_4B90FE0` (296 bytes = 37 pointers). These are static, compiled-in LLVM backend configuration flags that are injected into every compilation unit via `nvvmSetOptionStrings` (ID 0xFEED). The options include target architecture flags (`-march=nvptx64`, `-mcpu=sm_XX`), math precision controls (`-nvptx-f32ftz`, `-nvptx-prec-sqrtf32=`), optimization levels, debug info flags, and NVPTX-specific feature knobs. The sub_12B9AB0 target function calls `sub_1C31130()` -- the LLVM option registration/reset function -- to apply them.
+
 ### Embedded Libdevice
 
 A key design decision: **two identical copies** of the libdevice bitcode are statically embedded in the binary. Each is 455,876 bytes (~445 KB) of LLVM bitcode containing ~400+ math functions (`__nv_sin`, `__nv_cos`, `__nv_exp`, `__nv_log`, `__nv_sqrt`, etc.) plus atomic operation helpers and FP16/BF16 conversion routines. The duplication exists because Path A and Path B have separate initialization sequences and the linker didn't deduplicate the `.rodata` sections.
@@ -213,9 +441,42 @@ When the user provides `-nvvmir-library <path>`, the external file is used inste
 | Path A | `unk_3EA0080` | 455,876 bytes | Default libdevice for LibNVVM mode |
 | Path B | `unk_420FD80` | 455,876 bytes | Default libdevice for standalone mode |
 
+### Verbose Callbacks and Intermediate Files
+
+Phase 2.9 registers callback functions that fire at pipeline stage boundaries. When verbose mode is active, these callbacks produce reconstructed command-line output for each stage:
+
+```
+[ "<src>" -lnk -nvvmir-library "<path>" "<input>" -o "<file>.lnk.bc" <opts> -nvvm-version=nvvm-latest ]
+[ "<src>" -llc "<llc_path>" -o "<output>" <opts> -nvvm-version=nvvm-latest ]
+```
+
+The callback registration uses `sub_12BC0F0(48879)` (ID 0xBEEF = `nvvmCURegisterCallback`) with stage-specific callback IDs:
+
+| Callback | ID | Stage |
+|---|---|---|
+| `sub_903BA0` | 61453 | LNK stage output |
+| `sub_903730` | 47710 | LLC stage output |
+| `sub_9085A0` | 64222 | OPT output (keep mode) |
+| `sub_908220` | 56993 | LLC output (keep mode) |
+
+Intermediate file paths (`.lnk.bc` for linked-but-unoptimized, `.opt.bc` for optimized-but-not-yet-codegen'd) are always constructed as strings, but the actual files are only written to disk when the `-keep` flag is active in wizard mode.
+
+### Path A Error Messages
+
+All errors from `sub_905EE0` are written to stderr via `sub_223E0D0`. Error categories:
+
+| Category | Prefix | Example |
+|---|---|---|
+| File I/O | `"<src>: "` | `"error in open <file>"`, `"input file <f> read error"` |
+| LibNVVM API | `"libnvvm: error: "` | `"failed to create the libnvvm compilation unit"` |
+| Output | `"<src>: "` | `"IO error: <system_error_msg>"` |
+| Fatal | (none) | `"basic_string::append"` (std::string overflow at 0x3FFFFFFFFFFFFFFF) |
+
+The error code from LibNVVM API calls maps to `nvvmResult`: 0 = success, 1 = out of memory, 4 = invalid input, 5 = invalid compilation unit (null handle).
+
 ## Path B — Standalone cicc Pipeline (`sub_1265970`)
 
-Path B is the standalone compilation path used when cicc is invoked directly (without the LibNVVM intermediary). Despite the different entry point, it shares the same underlying LLVM infrastructure as Path A — the difference is in how modules are loaded and how the pipeline stages are orchestrated. Path B appends `-nvvm-version=nvvm70` to the optimizer arguments, indicating it targets the NVVM 7.0 IR specification (corresponding to LLVM 7.0.1 bitcode format, the version NVIDIA froze their IR compatibility at).
+Path B is the standalone compilation path used when cicc is invoked with LLVM bitcode input (`.bc` files), by the LibNVVM API directly, or as the default for SM >= 100 architectures. Despite the different entry point, it shares the same underlying LLVM infrastructure as Path A — the difference is in how modules are loaded and how the pipeline stages are orchestrated. Path B appends `-nvvm-version=nvvm70` to the optimizer arguments, indicating it targets the NVVM 7.0 IR specification (corresponding to LLVM 7.0.1 bitcode format, the version NVIDIA froze their IR compatibility at).
 
 The 4-stage pipeline (LNK → OPT → OPTIXIR → LLC) runs in-memory: each stage takes an LLVM Module, transforms it, and passes it to the next stage. The OPTIXIR stage is optional and only active when `--emit-optix-ir` is specified. A user-provided cancellation callback can abort compilation between stages (return code 10).
 
@@ -223,8 +484,38 @@ The 4-stage pipeline (LNK → OPT → OPTIXIR → LLC) runs in-memory: each stag
 |---|---|
 | Address | `0x1265970` |
 | Size | ~48KB (1,371 lines) |
-| Timer | `"LibNVVM"` (same name) |
+| Timer | `"LibNVVM"` (same name as Path A) |
 | Version string | `-nvvm-version=nvvm70` |
+
+### Path B Entry — `sub_1262860`
+
+`sub_1262860` (418 lines) is the command-line entry point for Path B, analogous to `sub_902D10` for Path A. It parses CLI flags, initializes the compilation context, and calls `sub_1265970` for the actual compilation.
+
+| Field | Value |
+|---|---|
+| Address | `0x1262860` |
+| Timer init | `sub_1602D10` (standalone context, contrasted with Path A's `sub_B6EEA0`) |
+| CLI parser | `sub_125FB30` (Path B's equivalent of Path A's `sub_900130`) |
+
+The flow is: allocate timer handle → parse CLI via `sub_125FB30` → configure output path → call `sub_1265340` for pre-compilation setup → call `sub_1265970` for compilation → write output. Output can go to stdout if the output path is `"-"`, handled by `sub_125C500`. On failure: `"\n Error processing command line: <details>"`.
+
+### Path B Compilation Orchestrator — `sub_1265970`
+
+This 48 KB function mirrors `sub_905EE0`'s role but with Path B's initialization and context. It handles both LibNVVM API invocations (when `a11 = 1`) and CLI invocations (when `a11 = 0`), with the same 14-phase structure as Path A but using Path B's context objects and the `nvvm70` version string.
+
+**Key behavioral differences from Path A:**
+
+1. **Context initialization.** Path B uses `sub_1602D10` for context init (rather than `sub_B6EEA0`), which creates a standalone LLVM context without the EDG frontend's metadata registration assumptions.
+
+2. **NVVM IR container handling.** Container parsing is performed by `sub_12642A0` (Path B's container parser) rather than `sub_9047E0`.
+
+3. **Embedded libdevice address.** Uses `unk_420FD80` (the second copy) rather than `unk_3EA0080`.
+
+4. **LLVM options table.** Loads 37 options from `off_4C6EEE0` (Path B's copy) rather than `off_4B90FE0`.
+
+5. **Verbose callbacks.** Registers `sub_1263280` (ID 61453) and `sub_12636E0` (ID 47710) for LNK and OPT stage output respectively, and `sub_1268040`/`sub_1267CC0` for keep-mode output.
+
+6. **Version string.** Always appends `"-nvvm-version=nvvm70"` rather than `"-nvvm-version=nvvm-latest"`.
 
 ### 4-Stage Pipeline Orchestrator — `sub_12C35D0`
 
@@ -247,6 +538,69 @@ Pipeline stage bitmask (from `sub_12D2AA0`): bit 0=LNK, bit 2=LLC, bit 5=verify,
 
 Return codes: 0=success, 7=parse failure, 9=link/layout/verification error, 10=cancelled, 100=post-pipeline verification failure.
 
+### Backend Object Initialization
+
+The orchestrator allocates and initializes two backend objects with distinct vtables:
+
+```c
+// nvllc — code generator backend (480 bytes)
+v8 = sub_22077B0(480);
+sub_12EC960(v8, "nvllc", 5);
+v8->vtable = &unk_49E7FF0;
+
+// nvopt — optimizer backend (512 bytes)
+v10 = sub_22077B0(512);
+sub_12EC960(v10, "nvopt", 5);
+v10->vtable = &unk_49E6A58;
+v10->sub_vtable = &unk_49E6B20;    // at offset +60*8
+v10->plugin_slots[0..2] = 0;       // offsets 61-63 cleared
+```
+
+A stage dispatch structure (vtable `&unk_49E6B38`) links the OPT output to the LLC input and stores the cancellation callback pointer.
+
+### Cancellation Callback
+
+Between every pipeline stage, the orchestrator checks an optional user-provided cancellation callback stored at `state[26]`:
+
+```c
+cancellation_fn = state[26];
+if (cancellation_fn && cancellation_fn(state[27], 0))
+    return 10;   // CANCELLED
+```
+
+This mechanism allows the LibNVVM API caller to abort a long-running compilation. Return code 10 propagates up through the entire call chain, causing `sub_8F9C90` to return 10 as the process exit code.
+
+### Two-Phase Optimization (OPT Stage)
+
+The OPT stage calls `sub_12E7E70`, which implements a **two-phase optimization protocol**. Both phases call the same underlying pipeline function `sub_12E54A0`, but a TLS variable `qword_4FBB3B0` is set to 1 or 2 to indicate which phase is active:
+
+| Phase | TLS value | Purpose |
+|---|---|---|
+| Phase I | 1 | Analysis + early IR optimization (module-level, CGSCC, function passes) |
+| Phase II | 2 | Backend optimization + codegen preparation (lowering, legalization) |
+| Complete | 3 | Compilation finished for this module |
+
+Between phases, `sub_12D4250` checks **concurrency eligibility**: if the module contains more than one defined function (non-declaration), and the options permit it, Phase II can run with multiple threads. Thread count is determined from `opts[1026]` or falls back to `get_nprocs()`. When concurrency is enabled, `sub_12E7B90` is the concurrent worker entry point.
+
+For single-function modules, the optimizer skips the two-phase protocol entirely and runs a single un-phased call to `sub_12E54A0` -- no phase counter is set, and the optimizer executes both analysis and backend passes in one invocation.
+
+### Data Layout Validation
+
+After the LLC stage but before returning, the orchestrator validates the module's data layout string. If the module has no data layout:
+
+```
+"DataLayoutError: Data Layout string is empty"
+→ return 9
+```
+
+On layout mismatch, it produces a detailed diagnostic:
+
+```
+"<error details>\nExample valid data layout:\n64-bit: <reference_layout>"
+```
+
+The reference layout string is loaded from `off_4CD4948[0]`.
+
 ### Module Linker — `sub_12C06E0`
 
 The LNK stage's core function (63KB) links multiple LLVM bitcode modules into a single module. This is where user code gets linked with the libdevice math library and any additional modules. The linker performs several validation steps to catch incompatible IR early — before the expensive optimization and codegen stages:
@@ -255,6 +609,105 @@ The LNK stage's core function (63KB) links multiple LLVM bitcode modules into a 
 - **Triple validation**: every module's target triple must start with `"nvptx64-"`. Modules without a triple get a clear error: `"Module does not contain a triple, should be 'nvptx64-'"`.
 - **IR version compatibility**: `sub_12BFF60` reads `"nvvmir.version"` metadata (2 or 4 element tuples: major.minor or major.minor.debug_major.debug_minor). The `NVVM_IR_VER_CHK` environment variable can disable this check entirely (set to `"0"`), useful when mixing IR from different CUDA toolkit versions.
 - **Symbol size matching**: for multi-module linking, compares the byte sizes of identically-named globals across modules. Size computation uses type codes (1=half(16b), 2=float(32b), 3=double(64b), 7=ptr, 0xB=integer, 0xD=struct, 0xE=array). A mismatch produces: `"Size does not match for <sym> in <mod> with size X specified in <other> with size Y."`
+
+**Single-module fast path:** When only one module is present (after adding user code and libdevice), the linker returns it directly via `sub_1C3DFC0` without invoking the full linking machinery.
+
+**Multi-module linking:** For N > 1 modules, the linker copies the primary module's target triple to all secondary modules, then calls `sub_12F5610` to perform the LLVM link. After user modules are linked, builtin modules (from `a1[3..4]`) are linked via `sub_1CCEBE0`, followed by target feature configuration via `sub_1CB9110` and `sub_1619140`.
+
+### NVVM IR Version Checker — `sub_12BFF60`
+
+The version checker reads `"nvvmir.version"` named metadata and validates it against the compiler's expected version range.
+
+| Field | Value |
+|---|---|
+| Address | `0x12BFF60` |
+| Size | ~9 KB (362 lines) |
+| Metadata key | `"nvvmir.version"` |
+| Debug metadata | `"llvm.dbg.cu"` |
+
+Version tuples come in two forms:
+- **2-element**: `(major, minor)` — IR version only. Special case: `(2, 0)` always passes.
+- **4-element**: `(major, minor, debug_major, debug_minor)` — IR version plus debug info version. Special case: `debug_major == 3, debug_minor <= 2` always passes.
+
+The `NVVM_IR_VER_CHK` environment variable is checked **multiple times** throughout the validation. When set to `"0"`, all version checks are bypassed, returning 0 (compatible). This is a critical escape hatch for mixing bitcode from different CUDA toolkit versions.
+
+## Memory Management
+
+### jemalloc — The Global Allocator
+
+cicc statically links a **jemalloc 5.x** allocator in the address range `0x12FC000`–`0x131FFFF` (~400 functions). This replaces the system `malloc`/`free` entirely. The jemalloc configuration parser (`sub_12FCDB0`, 131,600 bytes -- the largest single function in this range) handles the `MALLOC_CONF` environment variable and `/etc/malloc.conf` symlink, supporting dozens of tuning options: `abort`, `cache_oblivious`, `metadata_thp`, `trust_madvise`, `retain`, `dss`, `tcache`, `narenas`, `percpu_arena`, `background_thread`, `san_guard_small`, `san_guard_large`, and more.
+
+The choice of jemalloc over glibc's allocator is significant for compiler workloads. jemalloc's thread-local caching (`tcache`) and arena-per-CPU design (`percpu_arena`) reduce contention during the concurrent Phase II optimization, where multiple threads may be simultaneously allocating and freeing IR nodes, instruction objects, and analysis results.
+
+The jemalloc stats subsystem (functions at `0x400000`–`0x42FFFF`) provides comprehensive per-arena statistics including allocation counts, active/dirty/muzzy page tracking, mutex contention metrics, and HPA hugify counts. These can be triggered via `MALLOC_CONF="stats_print:true"`.
+
+### EDG Memory Regions — `sub_822260`
+
+The EDG 6.6 frontend uses a custom memory region system configured with `USE_MMAP_FOR_MEMORY_REGIONS = 1`. During post-parse validation in `sub_617BD0` (lgenfe_main), `sub_822260()` is called 11 times to initialize memory regions 1 through 11. These regions serve as arena-style allocators for different categories of EDG internal data:
+
+- **Token buffers** (preprocessor token storage)
+- **IL node pools** (intermediate language tree nodes)
+- **Symbol tables** (name→declaration mappings)
+- **Type representations** (structural type information)
+
+The mmap-backed regions grow by mapping additional pages on demand, avoiding the fragmentation problems that would occur with individual `malloc` calls for the millions of small, short-lived objects the frontend creates during parsing. Region cleanup happens in bulk when the frontend completes -- all pages for a region are unmapped at once rather than individually freed.
+
+The EDG heap allocator cluster at `0x821000`–`0x823FFF` includes tracked allocation (`sub_822B10`/`sub_822B90`) with a 1024-entry inline tracking array (`unk_4F19620`, 1024 * 24 bytes) that overflows to heap when exceeded. The tracking count is maintained in `dword_4F19600`. The finalization function `sub_823310` walks bucket chains to free all tracked allocations.
+
+### Large Argument Lists
+
+The argv copy in `sub_8F9C90` uses a threshold-based allocation strategy:
+
+```c
+if (8 * argc <= 0x800)   // argc <= 256
+    v284 = stack_buffer;  // 2096 bytes on stack
+else
+    v284 = sub_16CD150(8 * argc);  // heap allocation
+```
+
+This avoids heap allocation for the common case (most cicc invocations have fewer than 256 arguments) while handling the worst case gracefully. The heap path uses `sub_16CD150` (a realloc-like wrapper), and the buffer is freed during cleanup if it was heap-allocated.
+
+## Signal Handling and Crash Recovery
+
+### EDG Signal Handler
+
+The EDG frontend registers a signal handler at `0x723610` during initialization:
+
+```c
+// signal handler (0x723610)
+void handler(int sig) {
+    write(STDERR_FILENO, "\n", 1);
+    dword_4F0790C = 1;    // set "interrupted" flag
+    sub_7235F0(9);         // initiate orderly shutdown
+}
+```
+
+This handler is registered for SIGINT, allowing the compiler to be interrupted gracefully during long frontend operations (template instantiation, constexpr evaluation). The global `dword_4F0790C` flag is checked periodically by the parser loop, enabling cooperative cancellation.
+
+### LLVM Crash Recovery
+
+The LLVM infrastructure provides its own crash handling via the `print-on-crash` and `print-on-crash-path` CLI options (registered in the `0x4F0000`–`0x51FFFF` range). When enabled, the LLVM pass manager dumps the current IR to a specified path on any unhandled signal (SIGSEGV, SIGABRT, etc.). This is separate from the EDG handler and covers the optimization and codegen phases.
+
+### Concurrent API Protection
+
+The global constructor at `0x4A5810` checks `LIBNVVM_DISABLE_CONCURRENT_API`. When set (to any value), `byte_4F92D70 = 1` disables thread-safe LibNVVM API usage. The pipeline orchestrator (`sub_12C35D0`) uses `pthread_once(&dword_4F92D9C, init_routine)` for one-time setup, and TLS at `__readfsqword(0)-24` stores exception handling stack frames while `__readfsqword(0)-32` stores the cleanup function `sub_12BCC20`. These TLS slots ensure that concurrent compilations in the same process do not corrupt each other's state.
+
+## Timer Infrastructure
+
+Compilation timing is implemented through a hierarchical timer system. Timer creation (`sub_C996C0`) takes a label and context string; timer stop (`sub_C9AF60`) records the elapsed time. The timer hierarchy is:
+
+```
+"CUDA C++ Front-End"     ← EDG parsing + IL-to-IR conversion (Path A only)
+  └─ "LibNVVM"           ← Full optimization + codegen pipeline
+       ├─ "LNK"          ← Module linking (sub_12C06E0)
+       ├─ "OPT"          ← LLVM optimization (sub_12E7E70)
+       │    ├─ "Phase I"  ← Analysis + early optimization
+       │    └─ "Phase II" ← Backend optimization + codegen prep
+       ├─ "OPTIXIR"      ← OptiX IR generation (optional)
+       └─ "LLC"          ← SelectionDAG codegen (sub_12F5100)
+```
+
+The profiler is controlled by `sub_C96F30()` (returns nonzero when active). Timer data is written to the output file after compilation via `sub_C9C600` (Path A) or `sub_16DD960` (Path B). The `-time` flag or environment variable controls activation. The timer names appear in the profiler output, making them essential for identifying compilation bottlenecks.
 
 ## Architecture Detection — `sub_95EB40`
 
@@ -294,6 +747,18 @@ Valid architectures (bit positions in `0x60081200F821`). Note the gaps — SM 81
 | 46 | 121 | Blackwell (sm120) — DGX Spark |
 
 Suffix handling: `a` and `f` variants share the base SM number for validation but get distinct `-mcpu=sm_XXa`/`-mcpu=sm_XXf` strings.
+
+### Architecture Parsing in the EDG Frontend
+
+The EDG frontend (`sub_617BD0`, option ID 0x52 = `--nv_arch`) performs its own independent architecture parsing that produces three global variables:
+
+| Global | Address | Purpose |
+|---|---|---|
+| `unk_4D045E8` | `0x4D045E8` | SM compute version (integer: 75, 80, ..., 121) |
+| `unk_4D045E4` | `0x4D045E4` | Accelerated flag (1 if suffix `a`) |
+| `unk_4D045E0` | `0x4D045E0` | Fast flag (1 if suffix `f`; also sets accelerated=1) |
+
+The `f` suffix (fast-mode) is new to SM >= 100 architectures. When present, it implies a forward-compatible feature set that may not exactly match the base SM version's capabilities.
 
 ## Flag Catalog — `sub_9624D0`
 
@@ -351,6 +816,21 @@ When cicc is invoked by nvcc (the CUDA compiler driver), the flags arrive in nvc
 | `--emit-optix-ir` | `--emit-lifetime-intrinsics` | `--emit-optix-ir` |
 | `-discard-value-names` | `--discard_value_names=1` | `-discard-value-names=1` |
 
+## Environment Variables
+
+cicc checks 20 distinct environment variables across its subsystems. The six NVIDIA-specific variables are the most important for understanding and reimplementing the entry point behavior:
+
+| Variable | Function | Effect |
+|---|---|---|
+| `NVVMCCWIZ` | `sub_8F9C90` | Set to `553282` → enables wizard mode (`byte_4F6D280 = 1`) |
+| `NVVM_IR_VER_CHK` | `sub_12BFF60` | Set to `"0"` → disables NVVM IR version checking |
+| `LIBNVVM_DISABLE_CONCURRENT_API` | ctor at `0x4A5810` | Any value → disables thread-safe API (`byte_4F92D70 = 1`) |
+| `NV_NVVM_VERSION` | `sub_8F9C90`, `sub_12B9F70` | `"nvvm70"` or `"nvvm-latest"` → controls Path A/B default and IR compat mode |
+| `LIBNVVM_NVVM_VERSION` | `sub_12B9F70` | Same as `NV_NVVM_VERSION` (checked as fallback) |
+| `LLVM_OVERRIDE_PRODUCER` | ctors at `0x48CC90`, `0x4CE640` | Overrides the producer string in output bitcode metadata |
+
+The `NV_NVVM_VERSION` and `LIBNVVM_NVVM_VERSION` variables are **obfuscated** in the binary using the same XOR+ROT13 cipher as the CLI option strings. They are decrypted from `0x3C23A90` and `0x42812F0` respectively.
+
 ## Key Global Variables
 
 These globals persist across the entire compilation and are accessed from multiple subsystems. The wizard mode flag and flag mapping tree are set during CLI parsing and read throughout the pipeline. The embedded libdevice addresses are compile-time constants (`.rodata`), while the data model width is set during architecture configuration.
@@ -364,6 +844,61 @@ These globals persist across the entire compilation and are accessed from multip
 | `byte_4F6D2DC` | `--force-llp64` active flag |
 | `unk_3EA0080` | Embedded libdevice bitcode (Path A, 455,876 bytes) |
 | `unk_420FD80` | Embedded libdevice bitcode (Path B, 455,876 bytes) |
-| `off_4B90FE0` | LLVM options table (37 entries) |
+| `off_4B90FE0` | LLVM options table (Path A, 37 entries) |
+| `off_4C6EEE0` | LLVM options table (Path B, 37 entries) |
 | `unk_4F06A68` | Data model width (8=64-bit, 4=32-bit) |
 | `unk_4D0461C` | Enable `p3:32:32:32` in data layout (shared mem 32-bit ptrs) |
+| `byte_4F92D70` | Concurrent API disabled flag |
+| `dword_4F92D9C` | pthread_once guard for one-time pipeline setup |
+| `qword_4FBB3B0` | TLS: optimization phase counter (1=Phase I, 2=Phase II, 3=done) |
+| `unk_4F6D2F8` | Global module pointer (set by `sub_908850` after EDG binding) |
+
+## Function Map — Entry Point Cluster
+
+| Address | Size | Identity |
+|---|---|---|
+| `0x4396A0` | 16 B | `main()` thunk → `sub_8F9C90` |
+| `0x8F98A0` | ~512 B | String deobfuscation (XOR + ROT13) |
+| `0x8F9C20` | ~128 B | Push string to `std::vector<std::string>` |
+| `0x8F9C90` | 10,066 B | Real main — CLI parser + dispatcher |
+| `0x8FE280` | ~4 KB | nvcc→cicc flag translation (red-black tree) |
+| `0x900130` | 39 KB | Path A CLI processing |
+| `0x902D10` | ~9 KB | Path A orchestrator (simple mode) |
+| `0x903730` | ~5 KB | LLC stage verbose callback |
+| `0x903BA0` | ~5 KB | LNK stage verbose callback |
+| `0x9047E0` | 10 KB | NVVM IR container parser (Path A) |
+| `0x905880` | ~6 KB | CUDA C++ Front-End (lgenfe stage) |
+| `0x905E50` | ~256 B | lgenfe single-stage wrapper (Path A) |
+| `0x905EE0` | 43 KB | LibNVVM pipeline driver (Path A) |
+| `0x908850` | 10 KB | Backend SM config + EDG module binding |
+| `0x95EB40` | 38 KB | Architecture detection (3-column fan-out) |
+| `0x9624D0` | 75 KB | Flag catalog (4 output vectors) |
+| `0x9685E0` | ~8 KB | Pipeline option parser (4 stage vectors) |
+| `0x125FB30` | ~8 KB | Path B CLI processing |
+| `0x1262860` | ~4 KB | Path B entry (simple mode) |
+| `0x1263280` | ~1 KB | Path B LNK verbose callback |
+| `0x12636E0` | ~1 KB | Path B OPT verbose callback |
+| `0x12642A0` | ~3 KB | NVVM container parser (Path B) |
+| `0x1265340` | ~4 KB | Path B pre-compilation setup |
+| `0x12658E0` | ~256 B | lgenfe single-stage wrapper (Path B) |
+| `0x1265970` | 48 KB | LibNVVM compilation entry (Path B) |
+| `0x12BC0F0` | ~3 KB | LibNVVM API dispatch table (25 entries) |
+| `0x12BCB00` | ~64 B | Thunk → `sub_12BC8B0` (nvvmCUAddModuleFromBuffer) |
+| `0x12BFF60` | ~9 KB | NVVM IR version checker |
+| `0x12C06E0` | 63 KB | Module linker (LNK stage core) |
+| `0x12C35D0` | 41 KB | 4-stage pipeline orchestrator |
+| `0x12D2AA0` | ~4 KB | Stage bitmask parser |
+| `0x12D4250` | ~2 KB | Concurrency eligibility check |
+| `0x12E7E70` | ~8 KB | Two-phase optimizer entry |
+| `0x12E7B90` | ~4 KB | Concurrent worker entry point |
+| `0x12F5100` | ~12 KB | LLC core (SelectionDAG codegen) |
+| `0x12F9270` | ~6 KB | OptiX IR generator |
+| `0x1602D10` | ~2 KB | Path B context initialization |
+
+## Cross-References
+
+- [EDG Frontend](edg.md) — `sub_617BD0` (lgenfe_main), the 282-case CLI dispatch inside the EDG 6.6 frontend
+- [NVVM Container Format](../structs/nvvm-container.md) — Container parsing by `sub_9047E0` (Path A) and `sub_12642A0` (Path B)
+- [Optimizer Pipeline](optimizer.md) — The OPT stage driven by `sub_12E7E70` (two-phase optimization)
+- [IR Generation](ir-generation.md) — Module creation via `sub_908850` (EDG module binding)
+- [PTX Emission](../infra/asmprinter.md) — The LLC stage's PTX output via `sub_12F5100`

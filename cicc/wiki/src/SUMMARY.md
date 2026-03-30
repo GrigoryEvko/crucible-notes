@@ -40,15 +40,44 @@
 # LLVM Passes
 
 - [Pipeline & Ordering](./llvm/pipeline.md)
+
+## Scalar
+
 - [InstCombine](./llvm/instcombine.md)
 - [GVN](./llvm/gvn.md)
 - [DSE](./llvm/dse.md)
 - [LICM](./llvm/licm.md)
-- [SelectionDAG](./llvm/selectiondag.md)
-- [Register Allocation](./llvm/register-allocation.md)
-- [Instruction Scheduling](./llvm/scheduling.md)
+- [Constant Folding: Math & Intrinsics](./llvm/constant-folding.md)
+- [KnownBits & DemandedBits](./llvm/known-bits.md)
+- [SROA, EarlyCSE & JumpThreading](./llvm/scalar-passes.md)
+
+## Loop
+
+- [Loop Optimization Passes](./llvm/loop-passes.md)
+- [LoopVectorize & VPlan](./llvm/loop-vectorize.md)
+- [Loop Unrolling](./llvm/loop-unroll.md)
+- [SLP Vectorizer](./llvm/slp-vectorizer.md)
+- [Standard Loop Passes](./llvm/loop-passes-standard.md)
 - [Loop Strength Reduction (NVIDIA)](./llvm/lsr.md)
+- [ScalarEvolution Overview & Construction](./llvm/scev.md)
+- [SCEV Range Analysis & Backedge-Taken Counts](./llvm/scev-range-btc.md)
+- [SCEV Invalidation & Delinearization](./llvm/scev-invalidation.md)
 - [StructurizeCFG](./llvm/structurizecfg.md)
+
+## Machine-Level
+
+- [Machine-Level Passes](./llvm/machine-passes.md)
+- [SelectionDAG](./llvm/selectiondag.md)
+- [InstrEmitter](./llvm/instr-emitter.md)
+- [LiveRangeCalc](./llvm/live-range-calc.md)
+- [Register Allocation](./llvm/register-allocation.md)
+- [Register Coalescing](./llvm/register-coalescing.md)
+- [PrologEpilogInserter & Frame Layout](./llvm/prolog-epilog.md)
+- [MachineOutliner](./llvm/machine-outliner.md)
+- [Block Placement](./llvm/block-placement.md)
+- [BranchFolding & TailMerge](./llvm/branch-folding.md)
+- [TwoAddressInstruction](./llvm/two-address.md)
+- [Instruction Scheduling](./llvm/scheduling.md)
 
 # NVVM Builtins
 
@@ -63,7 +92,7 @@
 # GPU Targets
 
 - [Feature Gate Matrix](./targets/index.md)
-- [SM 70–89 (Volta → Ada)](./targets/sm70-89.md)
+- [SM 70-89 (Volta -> Ada)](./targets/sm70-89.md)
 - [SM 90 — Hopper](./targets/sm90-hopper.md)
 - [SM 100 — Blackwell](./targets/sm100-blackwell.md)
 - [SM 120 — Blackwell (sm120)](./targets/sm120.md)
@@ -74,10 +103,33 @@
 - [Pattern Database](./structs/pattern-db.md)
 - [DAG Node](./structs/dag-node.md)
 - [Symbol Table](./structs/symbol-table.md)
+- [NVVM Container](./structs/nvvm-container.md)
+
+# Infrastructure & Analysis
+
+- [Alias Analysis & NVVM AA](./infra/alias-analysis.md)
+- [MemorySSA Builder for GPU](./infra/memoryssa.md)
+- [AsmPrinter & PTX Body Emission](./infra/asmprinter.md)
+- [Debug Info Verification](./infra/debug-verify.md)
+- [LazyCallGraph & CGSCC](./infra/lazycallgraph.md)
+
+# Coroutines
+
+- [CoroSplit & CoroFrame](./coroutines/coro-split.md)
+
+# OpenMP Support
+
+- [Runtime Declaration Table](./openmp/runtime-table.md)
+- [Generic-to-SPMD Transformation](./openmp/spmd-transform.md)
 
 # LTO & Module Optimization
 
+- [LTO & Module Optimization](./lto/index.md)
+- [NVModuleSummary Builder](./lto/module-summary.md)
 - [Inliner Cost Model](./lto/inliner-cost.md)
+- [ThinLTO Function Import](./lto/thinlto-import.md)
+- [GlobalOpt for GPU](./lto/globalopt.md)
+- [Whole-Program Devirtualization](./lto/devirtualization.md)
 
 # Configuration
 

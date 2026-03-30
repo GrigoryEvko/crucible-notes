@@ -347,7 +347,17 @@ Declarator parsing — handles pointer (`*`), reference (`&`/`&&`), array (`[]`)
 
 ### Overload Resolution — `sub_6523A0` (64KB)
 
-Handles `__builtin_` prefix detection and OpenMP variant dispatch (`%s$$OMP_VARIANT%06d`). 57 diagnostic calls — one of the heaviest diagnostic emitters.
+The master overload resolution function. Given a declaration being introduced and a set of existing candidates from name lookup, it decides whether the declaration is a new overload, a redeclaration, or an error. At 2,448 decompiled lines with 39 diagnostic call sites, it is one of the heaviest diagnostic emitters in the frontend.
+
+**Candidate collection** uses a 72-byte ranking context (`v320` on stack) and dispatches to one of three collectors: `sub_644100` for non-member/ADL candidates, `sub_648CF0` for member + using-declaration candidates (chosen when C++ mode, prior declaration exists, and the class has base classes or is a template), or `sub_6418E0` for C-linkage functions. The best candidate is selected by `sub_641B60`.
+
+**`__builtin_` prefix forwarding** (lines 2060-2162): after resolution, if the resolved symbol is a bodyless non-member function, the resolver checks if a compiler builtin equivalent exists. It hardcodes three function names by length: `"abs"` (3), `"ceil"` (4), `"strlen"` (6). For each, it constructs `"__builtin_"` + name in a scratch buffer at `qword_4F06C50`, looks it up via `sub_878540`, then compares parameter types via `sub_8DED30(type1, type2, 0x100004)` (exact match + qualification conversion). On match, the builtin's scope entry is linked into the user function's auxiliary data at offset +256 field 8.
+
+**OpenMP variant dispatch** (lines 727-752): when `unk_4D03A10` is set, the resolver renames the declaration to `"<name>$$OMP_VARIANT%06d"` using a monotonic counter `unk_4D03A0C`. This creates unique internal names for each device/host specialization.
+
+**Constexpr/consteval propagation** (lines 2288-2301): gated by `unk_4F07778` (C++ standard year). For C++11 and later, byte +204 of the scope entry is bit-packed with three globals: bits 5-6 = `unk_4F06C58` (constexpr disposition), bits 1-2 = `unk_4F06C5A` (consteval disposition), bits 3-4 = `unk_4F06C59` (immediate-function flag). Diagnostic 2383 fires on constexpr mismatch between declaration and definition.
+
+**Device/host overload sets**: CUDA allows the same function name to have both `__host__` and `__device__` overloads. EDG does not treat execution space as part of the function signature for overload resolution purposes -- the standard C++ overload rules apply first, and execution space filtering happens later during code generation. The `$$OMP_VARIANT` renaming mechanism is used for OpenMP dispatch variants that need distinct host/device specializations, but regular CUDA `__host__`/`__device__` overloads rely on the backend's execution space filtering rather than frontend overload resolution. This means that if two functions have identical C++ signatures but differ only in `__host__` vs `__device__`, they are treated as redeclarations (not overloads) at the EDG level, and the execution space annotation at scope entry offset +198 determines which version survives into device or host code.
 
 ### CUDA Memory Space Processing — `sub_6582F0` (22KB)
 
@@ -410,7 +420,21 @@ Indexed by `dword_4F04C64` into base `qword_4F04C68`:
 
 ### Type Comparison — `sub_7386E0` (23KB)
 
-Walks two type trees in parallel. Canonicalizes via `sub_72EC50`. Compares fields at +173, +176, +168.
+The core type equivalence engine. Takes two type node pointers packed in an `__int128` and a flags word, returns boolean equality. The flags word controls comparison mode: bits 0-1 select cv-qualifier strictness (0=strict, 1=relaxed, 2=overload), bit 2 enables template matching (class-equivalence shortcuts), and bit 5 enables anonymous-class structural comparison.
+
+**Entry sequence**: both types are first canonicalized through `sub_72EC50`, which peels through chains of non-template typedef aliases. The canonicalizer checks three fields on the elaborated type node: `+173 == 12` (typedef kind), `+176 == 1` (single-member), and `+170 bit 4 == 0` (no template specialization). If all hold, it unwraps one level via `sub_72E9A0` and loops. This means `typedef int MyInt; typedef MyInt YourInt;` canonicalizes `YourInt` directly to `int`.
+
+After canonicalization, a **quick-reject** compares three header bytes without recursing: byte +24 (type kind) must match exactly, bytes +25 XOR must be zero for bits 0x03 (const/volatile) and 0x40 (restrict), and byte +26 XOR must be zero for bit 0x04. Any mismatch short-circuits to `return 0`.
+
+The main switch dispatches on 38 type kinds. Key cases for CUDA:
+
+- **Case 1 (fundamental)**: compares sub-kind at +56, extra flags at +58 (bits 0x3A), and the base type chain at +72. For integer sub-kind (`sub_kind == 'i'`), follows a resolution chain to find the underlying class scope. In template matching mode (flags bit 2), uses `sub_8C7520` to check whether two class instantiations share the same primary template, then `sub_89AB40` to compare template argument lists. This path handles CUDA's exotic numeric types (`__nv_fp8_e4m3`, `__nv_fp8_e5m2`, etc.) which are represented as fundamental types with distinct sub-kinds.
+- **Case 3 (class/struct/union)**: fast identity via scope pointer equality, then unique-ID shortcut via `dword_4F07588`. For anonymous classes with template matching, calls `sub_740200` to extract canonical member lists and performs structural comparison. This is relevant for CUDA lambda closure types, which are anonymous classes.
+- **Case 33 (using-declaration/alias)**: in overload mode (flags bit 1), performs a hash table lookup via `*qword_4D03BF8` to retrieve base class triples and compare element-by-element. This ensures that two `using` declarations resolving to different base classes are treated as distinct for overload discrimination.
+
+**Overload mode specifics** (flags & 2): the post-switch check additionally verifies that both types agree on the presence/absence of the +80 "extra declaration" pointer. Template parameters are forced unequal (never match for overload purposes without being identical). Scope pointer equivalence is verified via unique-ID for using-declaration discrimination.
+
+**CUDA type equivalence**: the NVIDIA-specific float types (`__nv_fp8_e4m3`, `__bf16`, `_Float16`, etc.) each have distinct sub-kind values at type node +56 (see the type mangling table: sub-kind 0 = `_Float16`, 1 = `__fp16`, 9 = `__bf16`, 0xA = `_Float16` alternate, 0xB = `_Float32`, 0xC = `_Float64`, 0xD = `_Float128`). The type comparison treats them as distinct fundamental types -- `_Float16` and `__fp16` are NOT equivalent despite both being 16-bit floats. The `half` type in CUDA maps to `_Float16` (sub-kind 0 or 0xA depending on context), while `__half` in `cuda_fp16.h` is a wrapper struct (type kind 9, class/struct), so `half` and `__half` are never type-equivalent at the EDG level. User code relies on implicit conversions defined in the CUDA headers, not on type equivalence.
 
 ### Type-to-String Emitter — `sub_74A390` (29KB, 19 callers)
 
@@ -614,6 +638,23 @@ Open-addressing with 16-byte entries `[key, value]`. Hash: `key_pointer >> 3`. C
 
 Silent mode: `ctx+132` bit 5 (0x20) suppresses diagnostics (SFINAE contexts).
 
+### Constexpr and CUDA: Host-Side Evaluation of Device Code
+
+A key architectural question for any CUDA compiler is whether `constexpr` functions annotated `__device__` are evaluated at host compile time. In cicc v13.0, the answer is **yes, conditionally**. The constexpr evaluator operates entirely within the EDG frontend, which runs on the host. When a `constexpr __device__` function is used in a context requiring a constant expression (template argument, array bound, `static_assert`, `constexpr` variable initializer), the evaluator executes it using its tree-walking interpreter regardless of the function's execution space annotation. The execution space attributes (`__device__`, `__host__`, `__global__`) are semantic annotations for code generation, not for the constexpr evaluator -- the evaluator sees only the IL tree and does not distinguish between host and device function bodies.
+
+This works because EDG's constexpr evaluator uses **software floating point** (`USE_SOFTFLOAT = 1` in the 737-define configuration block). All floating-point arithmetic in constexpr contexts goes through the softfloat library (`sub_70B8D0` add, `sub_70B9E0` sub, `sub_70BBE0` mul, `sub_70BCF0` div, `sub_709EF0` convert) rather than the host CPU's FPU. This guarantees that constexpr evaluation of device code produces results consistent with IEEE 754 semantics regardless of the host platform's floating-point behavior. The softfloat library handles all precision levels including `_Float16`, `__bf16`, `_Float32`, `_Float64`, and `__float128`.
+
+SM architecture gates influence constexpr relaxations. The global `qword_4F077A8` (SM version) gates certain constexpr features:
+
+- SM >= 89 (`qword_4F077A8 > 0x15F8F`): relaxed constexpr rules for variables with incomplete types
+- `dword_4F077C4 == 2`: C++20 features including constexpr `new`, constexpr string literals, and constexpr member access (expression evaluator cases 5/6)
+- `dword_4D04880`: C++14 relaxed constexpr (loops, local variable mutation, multiple return statements)
+- C++23/26 extensions: constexpr `try`-`catch` (statement executor case 14), constexpr placement `new` (expression evaluator case 103), constexpr `dynamic_cast` (error `0xBB7`)
+
+The evaluator enforces a step limit (`qword_4D042E0`, default ~1M iterations) to prevent infinite loops in constexpr evaluation. This limit applies uniformly to both host and device constexpr functions. When exceeded, diagnostic `0x97F` ("constexpr evaluation step limit exceeded") is emitted.
+
+One important consequence: `__global__` (kernel) functions cannot be `constexpr` because they have no return value in the conventional sense -- they are launched asynchronously. The parser enforces this at the declaration specifier level, not in the constexpr evaluator.
+
 ### Supporting Functions
 
 | Function | Size | Role |
@@ -671,9 +712,60 @@ Silent mode: `ctx+132` bit 5 (0x20) suppresses diagnostics (SFINAE contexts).
 
 NVIDIA's extensions to the EDG frontend fall into four categories: memory space qualifiers that map to GPU address spaces, kernel launch syntax that gets lowered to CUDA runtime API calls, registration stubs that tell the CUDA runtime about compiled kernels, and atomic builtin generation for the C++11 atomics model on GPU. These extensions are concentrated in the `0x650000`–`0x810000` range and reference SM architecture version globals extensively — many features are gated by `qword_4F077A8` comparisons against architecture thresholds.
 
+### CUDA Keyword Extensions
+
+NVIDIA extends the EDG keyword table with execution space qualifiers, memory space qualifiers, and type intrinsics. These are registered during `sub_706250` (keyword table initialization) and processed as first-class tokens throughout the parser -- not as attributes or pragmas. The parser's declaration specifier state machine (`sub_672A20`) handles them through dedicated token cases.
+
+**Execution space qualifiers** are not registered as keywords in the traditional token table. Instead, `__device__`, `__host__`, and `__global__` are processed through the attribute system at token 272-280 in the declaration specifier parser. The memory space byte at scope entry offset +198 (bit 4 = device function) and the execution space character codes in `sub_6582F0` map them:
+
+| Char Code | Qualifier | Space ID | Meaning |
+|---|---|---|---|
+| `'W'` (0x57) | `__device__` | 1 | Global device memory |
+| `'X'` (0x58) | `__global__` | 0 | Kernel entry point |
+| `'Z'` (0x5A) | `__shared__` | 2 | Per-block shared memory |
+| `'['` (0x5B) | `__constant__` | 3 | Read-only constant memory |
+| `'f'` (0x66) | `__managed__` | 5 | Unified memory (host+device) |
+| `'k'` (0x6B) | `__cluster_dims__` | -- | Thread block cluster dimensions |
+
+**Memory space declaration specifiers** (token cases 133-136) piggyback on the signedness/width field `v305` in the declaration specifier state machine with values 4-7, cleanly separated from the standard C width modifiers (0-3):
+
+| Token | Keyword | `v305` Value | Handler |
+|---|---|---|---|
+| 133 | `__shared__` | 4 | Special case |
+| 134 | `__device__` | 5 | `token - 129` |
+| 135 | `__constant__` | 6 | `token - 129` |
+| 136 | `__managed__` | 7 | `token - 129` |
+
+**Address space qualifier tokens** (272-280) are processed by dedicated handlers in the declaration specifier parser:
+
+| Token | Keyword | Handler |
+|---|---|---|
+| 272 | `__attribute__((address_space(N)))` | `sub_6210B0` (parses integer argument) |
+| 273 | `__global__` (addr space) | `sub_667B60(0, ...)` |
+| 274 | `__shared__` (addr space) | `sub_667B60(2, ...)` |
+| 275 | `__constant__` (addr space) | `sub_667B60(3, ...)` |
+| 276 | `__generic__` | `sub_72B620(type, cv)` |
+| 279 | `__nv_grid_constant` | `sub_72C390()` |
+
+The `__grid_constant__` qualifier (token 279, handler `sub_72C390`) marks kernel parameters as grid-constant -- the parameter is read-only across all thread blocks and may be placed in constant memory by the backend. This is a SM 70+ feature.
+
+**NVIDIA type intrinsic keywords** are always registered (not version-gated):
+
+| Token | Keyword |
+|---|---|
+| 328 | `__nv_is_extended_device_lambda_closure_type` |
+| 329 | `__nv_is_extended_host_device_lambda_closure_type` |
+| 330 | `__nv_is_extended_device_lambda_with_preserved_return_type` |
+
+These type traits are used by CUDA's extended lambda machinery to query whether a lambda closure type carries device or host-device execution space annotations. They participate in SFINAE and `if constexpr` contexts for compile-time dispatch between host and device lambda implementations.
+
 ### Memory Space Attributes
 
-`sub_6582F0` and `sub_65F400` validate `__shared__`, `__constant__`, `__managed__` on declarations. Token cases 133–136 in the parser handle these as first-class declaration specifiers. The validation logic enforces CUDA semantics: `__shared__` variables cannot have initializers (shared memory is not initialized on kernel launch), `__constant__` variables must have static storage duration, and `__managed__` variables require unified memory support on the target architecture.
+`sub_6582F0` and `sub_65F400` validate `__shared__`, `__constant__`, `__managed__` on declarations. Token cases 133-136 in the parser handle these as first-class declaration specifiers. The validation logic enforces CUDA semantics: `__shared__` variables cannot have initializers (shared memory is not initialized on kernel launch), `__constant__` variables must have static storage duration, and `__managed__` variables require unified memory support on the target architecture.
+
+The validation in `sub_6582F0` follows a multi-phase pipeline. Phase 1 handles `__managed__` pre-resolution: when not in whole-program mode, managed variables are silently downgraded to `__device__` (space code 1). Later phases validate mutual exclusivity -- `__constant__` combined with `__shared__` triggers diagnostic 3481, `__constant__` combined with `__managed__` triggers 3568. The `thread_local` storage class is incompatible with all device memory spaces (diagnostic 892/3578). Automatic (stack) variables cannot carry device memory qualifiers (diagnostic 3484), because GPU shared and constant memory are not per-thread allocations.
+
+The diagnostic messages use the memory space name strings directly: `"__shared__"`, `"__constant__"`, `"__device__"`, `"__managed__"` -- these are format arguments to the diagnostic emitter, not hardcoded strings in the error message table.
 
 ### Kernel Launch Lowering — `sub_7F2B50` (16KB)
 
@@ -720,11 +812,56 @@ Formats error/warning/remark messages with:
 
 ### SARIF JSON Output — `sub_6837D0` (20KB)
 
-Structured diagnostics for IDE integration:
+Structured diagnostics for IDE integration, enabled by `--diagnostics_format=sarif` (CLI case `0x125`, sets `unk_4D04198 = 1`). The output is a comma-separated stream of SARIF result objects -- NOT a complete SARIF envelope with `$schema`, `runs[]`, etc. The caller or a post-processor is expected to wrap the stream in the standard SARIF container.
+
+Each diagnostic emits one JSON object:
+
 ```json
-{"ruleId": "EC<number>", "level": "error", "message": "...",
- "locations": [{"physicalLocation": {...}}]}
+{
+  "ruleId": "EC<number>",
+  "level": "error",
+  "message": {"text": "<json-escaped message>"},
+  "locations": [
+    {
+      "physicalLocation": {
+        "artifactLocation": {"uri": "file://<path>"},
+        "region": {
+          "startLine": 42,
+          "startColumn": 17
+        }
+      }
+    }
+  ],
+  "relatedLocations": [
+    {
+      "message": {"text": "see declaration of X"},
+      "physicalLocation": { ... }
+    }
+  ]
+}
 ```
+
+**Rule ID format**: `"EC"` + decimal error number from the diagnostic record at offset +176. For example, EDG error 1234 becomes `"EC1234"`.
+
+**Severity mapping** (byte at diagnostic node +180):
+
+| Severity | EDG Meaning | SARIF `level` |
+|---|---|---|
+| 4 | remark | `"remark"` |
+| 5 | warning | `"warning"` |
+| 7, 8 | error | `"error"` |
+| 9 | catastrophe | `"catastrophe"` |
+| 11 | internal error | `"internal_error"` |
+
+Note that SARIF spec only defines `"warning"`, `"error"`, and `"note"` as standard levels. The `"remark"`, `"catastrophe"`, and `"internal_error"` values are EDG extensions -- consuming tools should treat unknown levels as `"error"`.
+
+**Message text escaping**: `sub_683690` renders the diagnostic text into `qword_4D039E8`, then copies character-by-character into the output buffer, escaping `"` as `\"` and `\` as `\\`. No other JSON escaping (e.g., control characters, Unicode) is applied.
+
+**Location resolution**: `sub_67C120` calls `sub_729E00` to decompose the packed source location into (file-id, line, column), then `sub_722DF0` to resolve the file-id to a filesystem path. The `startColumn` field is omitted when column is zero.
+
+**Related locations**: the linked list at diagnostic node +72 chains "note" sub-diagnostics. Each is emitted as a `relatedLocations` array entry with its own message and physical location.
+
+**Filtering before emission**: diagnostics pass through severity threshold check (`byte_4F07481[0]`), duplicate detection (`byte_4CFFE80[4*errnum + 2]` bit flags), pragma-based suppression (`sub_67D520`), and error limit check (`unk_4F074B0 + unk_4F074B8 >= unk_4F07478`). All filtering happens before the SARIF/text format branch.
 
 ### Machine-Readable Log
 
@@ -745,7 +882,28 @@ Address range `0x810000`–`0x8EFFFF`:
 | `sub_80E340` | 23KB | Builtin type mangling (incl. `DF16_`, `DF16b`, `Cu6__bf16`, `u6__mfp8`) |
 | `sub_80FE00` | 8KB | NVIDIA extension mangling (`Unvdl`, `Unvdtl`, `Unvhdl`) |
 
-NVIDIA-specific manglings: `Unvdl` = device lambda, `Unvdtl` = device template lambda, `Unvhdl` = host-device lambda.
+**NVIDIA lambda mangling extensions** (`sub_80FE00`): standard Itanium ABI uses `Ul<params>E<index>_` for unnamed lambda types and `Ut<index>_` for unnamed non-lambda types. NVIDIA adds three proprietary prefixes chosen based on flag byte +92 of the lambda's closure descriptor:
+
+| Prefix | Meaning | Condition |
+|---|---|---|
+| `Unvdl` | `__device__` lambda | `flag_byte_92 & 0x20` set, not host-device, not template |
+| `Unvdtl` | `__device__` template lambda | `flag_byte_92 & 0x20` set, `flag_byte_92 & 4` set |
+| `Unvhdl` | `__host__ __device__` lambda | `flag_byte_92 & 0x20` set, `flag_byte_92 & 0x10` set |
+
+The `Unvhdl` prefix carries three single-digit flags separated by underscores after the prefix: `Unvhdl<index>_<has_explicit_return>_<is_host_device>_<has_template_params>_`. Each flag is `'0'` or `'1'`. This is richer than the standard `Ul` which only encodes parameter types.
+
+**NVIDIA vendor type manglings** (`sub_80E340`): the type mangler handles CUDA-specific types as Itanium vendor types (prefix `u` + length + name):
+
+| Type | Mangling | Notes |
+|---|---|---|
+| `__bf16` (bfloat16) | `u6__bf16` or `DF16b` | ABI-gated: `qword_4F077B4` lo32 selects vendor vs C++23 encoding |
+| `__mfp8` (FP8) | `u6__mfp8` | NVIDIA micro-float 8-bit for transformer inference |
+| `__metainfo` | `U10__metainfo` | Kernel parameter metadata type attribute |
+| `float80` | `u7float80` | x87 extended precision (vendor type) |
+
+The `__bf16` mangling has a three-way gate reflecting the ongoing ABI transition: `qword_4F077B4` lo32 != 0 selects `"u6__bf16"` (vendor type); hi32 == 0 selects `"DF16b"` (C++23 standardized P1467); otherwise `qword_4F06A78` determines which encoding. The ABI version variable `unk_4D04250` controls this and other encoding decisions, with known thresholds at `0x76BF` (GCC 3.3 compat) and `0xC350` (GCC 12 compat).
+
+Standard float types follow Itanium: `_Float16` = `"DF16_"`, `__fp16` = `"Dh"`, `float` = `"f"`, `double` = `"d"`, `__float128` = `"g"`, with the complex variants adding a `'C'` prefix.
 
 ## Key Global Variables
 

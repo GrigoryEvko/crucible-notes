@@ -1,0 +1,229 @@
+# MachineOutliner for GPU
+
+The MachineOutliner in CICC v13.0 is the stock LLVM `MachineOutliner` pass, compiled into the binary at two address ranges: a candidate-finder at `sub_3539E80` and a core outlining engine at `sub_3537010`, totaling approximately 136KB of combined code. A second instance at `sub_1E3D600` (62KB) appears in the MIR infrastructure region (0x1E20000--0x1E3FFFF) containing the same diagnostic strings ("NotOutliningCheaper", "OutliningBenefit", etc.) and likely represents the `runOnModule` entry point that delegates to the two primary functions. The pass extracts repeated MachineInstr sequences across all functions in a module, factors them into shared `OUTLINED_FUNCTION_*` stubs, and replaces the original sequences with calls. On GPU targets this is significant because code size directly affects the L1 instruction cache (L0/L1i) footprint per SM, and every instruction that survives into PTX also contributes to `ptxas` compilation time and register pressure during its own allocation pass.
+
+CICC ships the pass as part of its standard LLVM codegen infrastructure, controlled by the `enable-machine-outliner` TargetPassConfig knob (tri-state: `disable`, `enable`, `guaranteed beneficial`). The binary does **not** override the upstream default -- meaning the outliner's activation depends on whether the NVPTX backend's `TargetPassConfig::addMachineOutliner()` enables it. The presence of full outliner infrastructure (pass registration at `sub_35320A0`, ~136KB of outliner code, the benefit-threshold knob, and the `"nooutline"` function-attribute check) confirms the pass is callable. The critical question is whether NVIDIA's default pipeline activates it. The evidence is ambiguous but leans toward **conditionally enabled**: the `TargetPassConfig` enum includes "guaranteed beneficial" mode, and the NVPTX-specific calling convention 95 (assigned to outlined functions when no special CC is required) would serve no purpose if the pass were dead code.
+
+| | |
+|---|---|
+| **Pass name** | `"Machine Function Outliner"` / `"machine-outliner"` |
+| **Registration** | `sub_35320A0` -- stores pass ID at `unk_503D78C` |
+| **Core outlining engine** | `sub_3537010` (77KB, 2,185 decompiled lines) |
+| **Candidate finder** | `sub_3539E80` (59KB) |
+| **Second instance (MIR region)** | `sub_1E3D600` (62KB, 0x1E3D600) |
+| **Pass factory** | `sub_3534A50` |
+| **Benefit threshold knob** | `qword_503DAC8` = `outliner-benefit-threshold` (default: 1) |
+| **Cost mode flag** | `qword_503DC88` (loaded into pass state at offset +184) |
+| **Debug flag** | `qword_503D828` (verbose outliner output) |
+| **Options constructor** | `ctor_675` at `0x5A2820` (10,602 bytes) |
+| **NVPTX outlined-function CC** | Calling convention 95 (PTX `.func` linkage) |
+| **Outlined function naming** | `OUTLINED_FUNCTION_{round}_{index}` |
+| **Function attributes applied** | `nounwind` (47), `minsize` (18), internal linkage |
+
+## Suffix Tree Algorithm
+
+The outliner's core algorithm is Ukkonen's suffix tree construction, applied to a flattened sequence of MachineInstr encodings from every eligible basic block in the module. The process proceeds in three stages.
+
+### Stage 1: Instruction Mapping
+
+`sub_3508720` (`buildInstrLegalityMapping`) walks each MachineBasicBlock and encodes every instruction as a `uint16` alphabet symbol. The encoding incorporates both the opcode and a structurally significant operand pattern, so that two instruction sequences with different register names but identical structure map to the same suffix-tree substring. The helper `sub_35082F0` initializes from the MBB's scheduling info (offset +32), and `sub_35085F0` populates the actual mapping.
+
+Register-class resolution happens in a second pass via `sub_3508F10` (`buildRegClassMapping`): `sub_3508B80` builds register-class bitmask information, and `sub_3508890` computes the final mapping. This two-layer encoding is critical because NVPTX has typed register classes (i32, i64, f32, f64, pred, etc.) and an outlined sequence must be valid across all call sites regardless of which specific virtual register names appear.
+
+Instructions that cannot participate in outlining receive a special encoding: unique negative integers starting at -3 (matching upstream's `IllegalInstrNumber`). Each illegal instruction gets a distinct value so it acts as a suffix-tree terminator, preventing matches from spanning across them. The sentinel value `0xFFFFFFFF` (-1 as `uint32`) in the cost array explicitly marks these.
+
+### Stage 2: Suffix Tree Construction and Candidate Extraction
+
+`sub_35364E0` (`insertIntoSuffixTree`) inserts each MBB's encoded instruction sequence into the suffix tree working set. The suffix tree identifies all repeated substrings of length >= 2. For each repeated substring with at least 2 occurrences, the pass creates a candidate group.
+
+Function filtering happens before insertion. `sub_3539E80` iterates all MachineFunctions in the module's linked list and applies three gates:
+
+1. **`nooutline` attribute check** -- `sub_B2D620` tests whether the function has the `"nooutline"` string attribute. If present, all MBBs in that function are skipped.
+
+2. **`shouldOutlineFrom`** -- vtable dispatch at offset +1440 on the TargetInstrInfo. The NVPTX backend's implementation of this hook determines whether a given function is eligible based on target constraints.
+
+3. **`isFunctionSafeToOutlineFrom`** -- vtable dispatch at offset +1432, receiving the outliner cost mode byte from `qword_503DC88`. This is where target-specific safety checks (e.g., functions with special register constraints or inline assembly) can reject outlining.
+
+Additional per-block filters: a block must contain more than one instruction, must not already be marked as outlined (byte at MBB offset +217), and must have no special flag (qword at MBB offset +224 must be zero).
+
+### Stage 3: Sorting and Pruning
+
+After suffix-tree extraction, the candidate list is sorted using a hybrid merge sort:
+
+- `sub_3534120` -- parallel merge sort for large arrays (recursive, splits at midpoint)
+- `sub_3533600` -- in-place merge sort for small arrays (fallback when size < 14 pointers = 112 bytes)
+- `sub_3533450` -- insertion sort for very small partitions (<= 14 elements)
+
+The sorted suffix array is then scanned by `sub_3532120` (`findIllegalInRange`), which performs a 4-way unrolled linear scan searching for the sentinel value `0xFFFFFFFF` in the integer cost array. Any candidate whose instruction range contains an illegal sentinel is pruned. The compaction loop copies valid entries forward in place and frees discarded entries' internal string buffers via `_libc_free`.
+
+## Benefit/Cost Model
+
+The outliner accepts a candidate only if the net benefit exceeds the threshold. The formula:
+
+```
+Benefit = NumOccurrences * PerOccurrenceCost - FrameOverheadCost
+```
+
+Where:
+
+- **NumOccurrences** = number of identical sequences found (vtable dispatch at slot 0 on the candidate)
+- **PerOccurrenceCost** = bytes saved per replacement (effectively the cost of the call instruction that replaces the inlined sequence, dispatched via vtable slot 0 multiplied by the `repeat_count` at candidate offset +40)
+- **FrameOverheadCost** = cost of the outlined function itself: the function entry/exit, the return instruction, and any callee-saved register saves (vtable dispatch at slot 8)
+
+The decision rule:
+
+```c
+int benefit = num_occurrences * per_call_cost - frame_overhead;
+if (benefit < 0) benefit = 0;
+if (benefit < outliner_benefit_threshold) continue;  // skip candidate
+```
+
+The threshold `qword_503DAC8` defaults to 1, meaning any candidate that saves at least one byte is accepted. This is identical to upstream LLVM's default and is intentionally aggressive -- the outliner relies on the cost model's accuracy rather than a conservative threshold to filter bad candidates.
+
+### NVPTX Cost Model Considerations
+
+The cost model is dispatched through the TargetInstrInfo vtable, meaning the NVPTX backend supplies its own `getOutliningCandidateInfo`, `buildOutlinedFrame`, and `insertOutlinedCall` implementations. Several factors make the GPU cost model structurally different from CPU targets:
+
+**Call overhead in PTX is expensive.** A PTX `.func` call requires `.param` space declaration, parameter marshaling (each argument is copied to `.param` memory), the `call` instruction itself, and result retrieval from `.param` space. On CPU targets, a `call` instruction is a single opcode plus a return address push. On NVPTX, the overhead is proportional to the number of live values that must be passed to the outlined function. This means the FrameOverheadCost for NVPTX candidates is significantly higher than on CPU, and only sequences with many occurrences or substantial length achieve positive benefit.
+
+**No hardware call stack.** PTX function calls are lowered by `ptxas` into something closer to inlined code with register renaming. The actual "call" may or may not involve a hardware subroutine mechanism depending on the SM architecture and `ptxas` optimization level. This makes the cost model somewhat speculative from CICC's perspective -- the outlined function may be re-inlined by `ptxas`.
+
+**Calling convention 95.** When no candidate entry in a group requires a special calling convention, the outlined function is assigned CC 95 -- an NVPTX-specific calling convention not present in upstream LLVM. This likely maps to PTX `.func` linkage with internal visibility, meaning the function is private to the compilation unit and `ptxas` has full freedom to inline or optimize it.
+
+## Outlined Function Creation
+
+When a candidate group passes the benefit threshold, `sub_3537010` creates the outlined function through these steps:
+
+**Name generation.** The name follows the pattern `OUTLINED_FUNCTION_{round}_{index}`. The round number (pass counter at state offset +188) is omitted in round 0, producing `OUTLINED_FUNCTION_0`, `OUTLINED_FUNCTION_1`, etc. for the first pass and `OUTLINED_FUNCTION_2_0`, `OUTLINED_FUNCTION_2_1`, etc. for subsequent reruns. The integer-to-string conversion uses a standard two-digit lookup table (`"00010203...9899"`) for fast decimal formatting.
+
+**LLVM Function creation.** `sub_BCB120` (getOrInsertFunction) creates or retrieves the Function in the LLVM Module. `sub_BCF640` creates the function type (void return, no arguments by default). `sub_B2C660` creates the corresponding MachineFunction.
+
+**Function flags.** The flag word at function offset +32 is set to `(existing & 0xBC00) | 0x4087`. The bit pattern `0x4087` encodes internal linkage, norecurse, and nounwind. The mask `0xBC00` preserves target-dependent alignment and visibility bits. Two explicit attributes are added: `nounwind` (attribute ID 47) and `minsize` (attribute ID 18).
+
+**Register liveness.** A `calloc`-allocated byte array (one byte per physical register, count from `TargetRegisterInfo::getNumRegs()` at TRI offset +16) tracks which registers are live-through versus defined-inside the outlined region. `sub_35095B0` (`populateOutlinedFunctionBody`) walks the outlined MBB's instruction stream, checking the TargetRegisterInfo live-in bitmap (offset +48 in the subtarget). Registers not in the live-in set are inserted as phantom definitions. Super-register chains are walked via delta tables at TRI offset +56, following standard LLVM MCRegisterInfo encoding.
+
+**Outlined body.** The TargetInstrInfo hook `buildOutlinedFrame` (vtable offset +1408) constructs the actual machine instructions in the outlined function by copying from the candidate entries. The `isOutlined` flag is set at MachineFunction offset +582.
+
+## Call-Site Rewriting
+
+After creating the outlined function, the pass rewrites each call site:
+
+1. For each candidate entry, `insertOutlinedCall` (vtable offset +1416) is invoked with the caller's MBB, an insertion point, the outlined Function, and the candidate metadata. This returns the new call MachineInstr.
+
+2. If the outlined function has callee-saved register information (flag at candidate offset 344), the pass builds live-in/live-out register sets using red-black trees (`sub_3536E40` for classification). Registers are classified as defs (implicit-def, flag `0x30000000`), uses (implicit-use, flag `0x20000000`), or implicitly-defined. These operands are attached to the call instruction via `sub_2E8F270`.
+
+3. The original instruction range in the cost array is memset to `0xFF`, marking it with illegal sentinels. This prevents future outlining passes (reruns) from attempting to re-outline already-outlined code.
+
+## Candidate Entry Structure
+
+Each candidate is a 224-byte structure (56 x uint32 stride):
+
+| Offset | Size | Field |
+|---|---|---|
+| `+0x00` | 4 | `start_index` -- index into module instruction array |
+| `+0x04` | 4 | `length` -- number of instructions in sequence |
+| `+0x08` | 8 | `call_info_ptr` -- pointer to MBB or instruction range |
+| `+0x10` | 8 | `metadata_0` |
+| `+0x18` | 8 | `metadata_1` |
+| `+0x20` | 4 | `num_occurrences_field` |
+| `+0x28` | 4 | `cost_field` |
+| `+0x2C` | 48 | SSO string data (via `sub_3532560`) |
+| `+0x70` | 4 | `benefit_or_flags` |
+| `+0x78` | 40 | Second SSO string field |
+| `+0xA0` | 1 | `flag_byte_0` |
+| `+0xA1` | 1 | `flag_byte_1` |
+| `+0xA8` | 4 | `field_A8` |
+| `+0xAC` | 4 | `field_AC` |
+| `+0xB0` | 4 | `field_B0` |
+| `+0xB4` | 4 | `field_B4` |
+
+The two string fields use LLVM's small-string optimization (SSO): strings shorter than the inline buffer are stored directly in the struct; longer strings allocate on the heap. The copy function `sub_3532560` handles both cases.
+
+## NVPTX Constraints: launch_bounds and Cross-Function Outlining
+
+The MachineOutliner operates at module scope -- it considers all functions in the module simultaneously. On NVPTX, this raises the question of whether sequences can be outlined across functions with different `__launch_bounds__` annotations. The answer depends on the target hooks:
+
+**`isFunctionSafeToOutlineFrom`** (vtable +1432) receives the cost mode byte and can reject kernel entry points (`__global__` functions with `.entry` linkage) or functions with specific register pressure constraints. If a function has `nvvm.maxnreg` or `nvvm.maxntid` metadata, the NVPTX hook may reject it to prevent the outlined callee from inflating register pressure beyond the caller's budget.
+
+**The outlined function inherits no launch_bounds.** Because outlined functions are created with internal linkage, void return type, and CC 95 (`.func`), they are device functions -- never kernels. They carry no `.maxntid`, `.maxnreg`, or `.minnctapersm` directives. This means the outlined function's register usage is unconstrained from `ptxas`'s perspective, which could cause the calling kernel to exceed its register budget if `ptxas` does not inline the outlined call.
+
+**Practical implication.** If kernel A has `maxnreg=32` and kernel B has `maxnreg=64`, and both contain an identical instruction sequence, the outliner may extract it into a shared `.func`. When `ptxas` processes kernel A's call to this `.func`, it must either inline the call (absorbing the register usage) or allocate registers for the callee frame within A's 32-register budget. If the outlined function uses more registers than available, `ptxas` will spill. This is a correctness-preserving but potentially performance-degrading outcome that the CICC-side cost model cannot fully predict.
+
+## Outlining vs. Inlining Tension
+
+The MachineOutliner and the LLVM inliner operate in opposite directions: the inliner copies callee bodies into call sites (increasing code size, reducing call overhead), while the outliner extracts common sequences out of function bodies (decreasing code size, adding call overhead). In CICC, the two passes do not directly coordinate -- the inliner runs during the IR optimization pipeline (CGSCC pass manager), while the MachineOutliner runs late in the machine codegen pipeline after register allocation and scheduling.
+
+The tension manifests in two ways:
+
+1. **The inliner may create outlining opportunities.** Aggressive inlining of small device functions can produce multiple copies of the same instruction sequence in different callers, which the outliner then detects and re-extracts. This round-trip (inline then outline) is wasteful but not incorrect. The net result depends on whether the outliner's shared function is more cache-friendly than the inlined copies.
+
+2. **The outliner may undo inlining benefits.** If the inliner carefully decided that inlining a hot function improves performance by eliminating call overhead and enabling cross-function optimization, the outliner may later extract the inlined sequence back out if it appears in multiple callers. The `minsize` attribute on outlined functions does not prevent this -- it only signals that the outlined function should be optimized for size rather than speed.
+
+The `enable-machine-outliner` knob's "guaranteed beneficial" mode addresses this partially by only outlining sequences where the cost model is confident the savings are worthwhile, but it cannot reason about the inliner's original intent.
+
+## Configuration Knobs
+
+All knobs are LLVM `cl::opt` command-line options, passable via `-Xllc` in CICC:
+
+| Knob | Type | Default | Effect |
+|---|---|---|---|
+| `outliner-benefit-threshold` | `unsigned` | 1 | Minimum net byte savings for a candidate to be accepted. Higher values make outlining more conservative. |
+| `enable-machine-outliner` | enum | target-dependent | Tri-state: `disable`, `enable`, `guaranteed beneficial`. Controls whether the pass runs at all. |
+| `enable-linkonceodr-outlining` | `bool` | `false` | Whether to outline from `linkonce_odr` functions. Off by default because the linker can deduplicate these. Should be enabled under LTO. |
+| `machine-outliner-reruns` | `unsigned` | 0 | Number of additional outliner passes after the initial run. Each rerun can find new candidates from code modified by previous outlining. |
+| `outliner-leaf-descendants` | `bool` | `true` | Consider all leaf descendants of internal suffix-tree nodes as candidates (not just direct leaf children). |
+| `disable-global-outlining` | `bool` | `false` | Disable global (cross-module) outlining, ignoring codegen data generation/use. |
+
+The options constructor at `ctor_675` (0x5A2820, 10,602 bytes) registers the outliner-specific options including the linkonce-odr and rerun knobs. The benefit threshold is registered separately in the same constructor.
+
+## Diagnostic Strings
+
+The outliner emits LLVM optimization remarks under the `"machine-outliner"` pass name:
+
+| Remark key | Meaning |
+|---|---|
+| `"OutlinedFunction"` | A new outlined function was created |
+| `"NotOutliningCheaper"` | Candidate rejected because outlining would not save bytes |
+| `"Did not outline"` | Candidate rejected for other reasons (illegal instructions, safety checks) |
+| `"OutliningBenefit"` | Named integer: net byte savings |
+| `"OutliningCost"` | Named integer: cost of the outlined call sequence |
+| `"NotOutliningCost"` | Named integer: cost of keeping the sequence inline |
+| `"NumOccurrences"` | Named integer: how many times the sequence was found |
+| `"Length"` | Named integer: number of instructions in the sequence |
+| `"StartLoc"` / `"OtherStartLoc"` | Source locations of the outlined regions |
+
+The remark message format: `"Saved {N} bytes by outlining {M} instructions from {K} locations. (Found at: {loc1}, {loc2}, ...)"`.
+
+## Function Map
+
+| Address | Size | Identity |
+|---|---|---|
+| `sub_35320A0` | -- | Pass registration (name, ID, factory) |
+| `sub_3534A50` | -- | Pass factory function |
+| `sub_3537010` | 77KB | Core outlining engine (`outline + rewrite`) |
+| `sub_3539E80` | 59KB | Candidate finder / suffix-tree builder |
+| `sub_1E3D600` | 62KB | MachineOutliner `runOnModule` entry (MIR region) |
+| `sub_35364E0` | -- | `insertIntoSuffixTree` -- adds MBB instruction hashes |
+| `sub_3535DB0` | -- | `SuffixArray::allocateWorkBuffer` |
+| `sub_3534120` | -- | `SuffixArray::parallelMergeSort` |
+| `sub_3533600` | -- | `SuffixArray::inPlaceMergeSort` (fallback for small arrays) |
+| `sub_3533450` | -- | Insertion sort for <= 14 elements |
+| `sub_3532120` | -- | `findIllegalInRange` (4-way unrolled sentinel scan) |
+| `sub_3508720` | -- | `buildInstrLegalityMapping` -- MBB to suffix alphabet |
+| `sub_3508F10` | -- | `buildRegClassMapping` -- register-class constraint resolution |
+| `sub_35095B0` | -- | `populateOutlinedFunctionBody` -- instruction insertion |
+| `sub_3536E40` | -- | `classifyOperandRegisters` -- RB-tree register tracking |
+| `sub_3532B90` | -- | `RBTree::destroyAll` -- recursive tree deallocation |
+| `sub_35323D0` | -- | `std::string` constructor (for name generation) |
+| `sub_3532560` | -- | SmallString SSO-aware deep copy |
+| `sub_3534BB0` | -- | `RemarkBuilder::appendField` |
+| `sub_35341F0` | -- | `RemarkBuilder::emitOutlinedFunctionRemark` |
+
+## Cross-References
+
+- [Inliner Cost Model](../lto/inliner-cost.md) -- the opposing force: inlining decisions that the outliner may partially reverse
+- [AsmPrinter & PTX Body Emission](../infra/asmprinter.md) -- how outlined `.func` functions are emitted as PTX
+- [Register Allocation](./register-allocation.md) -- the outliner runs after RA; outlined functions affect register pressure
+- [Register Coalescing](./register-coalescing.md) -- coalescing happens before outlining; the outliner operates on already-coalesced code
+- [Block Placement](./block-placement.md) -- block layout interacts with code size; the outliner reduces the instruction footprint that placement must arrange
+- [Pipeline & Ordering](./pipeline.md) -- where the outliner sits in the overall pass sequence
