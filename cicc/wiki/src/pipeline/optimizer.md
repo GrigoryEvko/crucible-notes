@@ -416,6 +416,184 @@ Several regions break the standard string/boolean pair pattern:
 - **Slot 181 (offset 3648)**: The only `STRING_PTR` type. Its default is `byte_3F871B3` (an empty string in `.rodata`). The raw pointer + length storage suggests this holds a file path or regex pattern for pass filtering.
 - **Slots 196-207**: Alternating string + integer slots instead of string + boolean. This high-numbered region contains all six integer options, likely controlling late-pipeline passes with numeric thresholds (unroll counts, live-variable limits, iteration bounds).
 
+### Complete Slot-to-Offset Map with Known Consumers
+
+The following table maps NVVMPassOptions slot indices to struct byte offsets, types, defaults, and -- where the cross-reference to the pipeline assembler's `a4[offset]` guards could be established -- the consuming pass(es). Offsets marked with `*` are confirmed by cross-referencing `a4[offset]` guards in `sub_12E54A0` and `sub_12DE8F0`.
+
+| Slot | Offset | Type | Default | Known Knob Name | Consuming Pass |
+|------|--------|------|---------|----------------|----------------|
+| 1 | 16 | STRING | | `ftz` | Global: flush-to-zero mode |
+| 2 | 40 | STRING | | `prec-div` | Global: precise division |
+| 3 | 64 | STRING | | `prec-sqrt` | Global: precise sqrt |
+| 4 | 88 | STRING | | `fmad` | Global: fused multiply-add |
+| 5 | 112 | STRING | | `opt-level` | Global: optimization level |
+| 6 | 136 | STRING | | `sm-arch` | Global: target SM architecture |
+| 7 | 160 | BOOL | 0 | | |
+| 8 | 176 | STRING | | | |
+| 9 | 200* | INTEGER | 1 | | Opt level for `sub_12DFE00` codegen |
+| 10 | 216 | STRING | | | |
+| 11 | 240 | BOOL | 0 | | |
+| 13 | 280* | BOOL | 0 | `no-dce` | `sub_18DEFF0` (DCE) |
+| 15 | 320* | BOOL | 0 | `no-tailcallelim` | `sub_1833EB0` (TailCallElim) |
+| 17 | 360* | BOOL | 0 | `no-late-opt` | `sub_1C46000` (NVVMLateOpt) |
+| 19 | 400* | BOOL | **1** | `no-inline-a` | Inlining variant A |
+| 21 | 440* | BOOL | 0 | `no-inline-b` | `sub_1C4B6F0` (AlwaysInliner) |
+| 23 | 480* | BOOL | 0 | `no-inline-c` | `sub_1C4B6F0` in `sub_12DE8F0` |
+| 25 | 520* | BOOL | **1** | | `sub_1AAC510` (NVIDIA pass A) |
+| 27 | 560* | BOOL | 0 | | `sub_1AAC510` (NVIDIA pass B) |
+| 29 | 600* | BOOL | 0 | `no-nvvm-verify` | `sub_12D4560` (NVVMVerifier) |
+| 33 | 680* | BOOL | 0 | `no-func-attrs` | `sub_1841180` (FunctionAttrs) |
+| 35 | 720* | BOOL | 0 | `no-sccp` | `sub_1842BC0` (SCCP) |
+| 37 | 760* | BOOL | 0 | `no-dse` | `sub_18F5480` (DSE) |
+| 43 | 880* | BOOL | 0 | `no-nvvm-reflect` | `sub_1857160` (NVVMReflect) |
+| 45 | 920* | BOOL | 0 | `no-ipconst` | `sub_185D600` (IPConstProp) |
+| 47 | 960* | BOOL | 0 | `no-simplifycfg` | `sub_190BB10` (SimplifyCFG) |
+| 49 | 1000* | BOOL | 0 | `no-instcombine` | `sub_19401A0` (InstCombine) |
+| 51 | 1040* | BOOL | 0 | `no-sink` | `sub_1869C50` (Sink/MemSSA) |
+| 53 | 1080* | BOOL | 0 | `no-dump` | `sub_17060B0` (PrintModulePass) |
+| 55 | 1120* | BOOL | 0 | `no-predopt` | `sub_18A3430` (NVVMPredicateOpt) |
+| 57 | 1160* | BOOL | 0 | `no-loopindexsplit` | `sub_1952F90` (LoopIndexSplit) |
+| 59 | 1200* | BOOL | 0 | `no-simplifycfg-b` | SimplifyCFG variant B |
+| 61 | 1240* | BOOL | 0 | `do-licm` (inverted) | `sub_195E880` (LICM) |
+| 63 | 1280* | BOOL | 0 | `no-reassoc` | `sub_1B7FDF0` (Reassociate) |
+| 65 | 1320* | BOOL | 0 | `no-adce-a` | `sub_1C76260` (ADCE variant) |
+| 67 | 1360* | BOOL | 0 | `no-loopunroll` | `sub_19C1680` (LoopUnroll) |
+| 69 | 1400* | BOOL | 0 | `no-sroa` | `sub_1968390` (SROA) |
+| 71 | 1440* | BOOL | 0 | `no-earlycse` | `sub_196A2B0` (EarlyCSE) |
+| 73 | 1480* | BOOL | 0 | `no-adce-b` | ADCE variant B |
+| 75 | 1520* | BOOL | 0 | `no-loopsimplify` | `sub_198DF00` (LoopSimplify) |
+| 83 | 1680* | BOOL | 0 | | `sub_19CE990` (NVIDIA pass) |
+| 87 | 1760* | BOOL | 0 | `do-ip-msp` (inverted) | `sub_1C8E680` (MemorySpaceOpt) |
+| 91 | 1840* | BOOL | 0 | `no-adce-c` | `sub_1C6FCA0` (ADCE) |
+| 93 | 1880 | BOOL | **1** | | NVVMReduction param A |
+| 95 | 1920 | BOOL | **1** | | NVVMReduction param B |
+| 97 | 1960* | BOOL | 0 | `no-constmerge` | `sub_184CD60` (ConstantMerge) |
+| 99 | 2000* | BOOL | 0 | `no-intrin-lower` | `sub_1CB4E40` (NVVMIntrinsicLowering) |
+| 101 | 2040* | BOOL | 0 | `no-memcpyopt` | `sub_1B26330` (MemCpyOpt) |
+| 105 | 2120* | BOOL | 0 | `no-branchdist-b` | `sub_1CB73C0` (NVVMBranchDist B) |
+| 109 | 2200* | BOOL | 0 | `no-generic2nvvm` | `sub_1A02540` (GenericToNVVM) |
+| 113 | 2280* | BOOL | 0 | `no-loweralloca-b` | NVVMLowerAlloca B |
+| 115 | 2320* | BOOL | 0 | `do-remat` (inverted) | `sub_1A13320` (NVVMRemat) |
+| 117 | 2360 | BOOL | **1** | | `sub_1CC3990` (NVVMUnreachBlockElim) |
+| 121 | 2440* | BOOL | 0 | `no-sinking2` | `sub_1CC60B0` (NVVMSinking2) |
+| 127 | 2560* | BOOL | 0 | `no-genericaddropt` | `sub_1CC71E0` (NVVMGenericAddrOpt) |
+| 129 | 2600* | BOOL | 0 | `no-irverify` | `sub_1A223D0` (NVVMIRVerification) |
+| 131 | 2640* | BOOL | 0 | `no-loopopt` | `sub_18B1DE0` (NVVMLoopOpt) |
+| 133 | 2680* | BOOL | 0 | `no-memspaceopt-b` | MemorySpaceOpt in `sub_12DE8F0` |
+| 135 | 2720* | BOOL | 0 | `no-instsimplify` | `sub_1A7A9F0` (InstructionSimplify) |
+| 141 | 2840* | BOOL | **1** | | Enable ADCE (`sub_1C6FCA0`, reversed) |
+| 143 | 2880* | BOOL | **1** | `do-licm` | Enable LICM (reversed logic) |
+| 149 | 3000* | BOOL | 0 | | Extra DeadArgElim trigger |
+| 151 | 3040 | BOOL | **1** | | Enable CorrelatedValuePropagation |
+| 155 | 3120* | BOOL | **1** | | Address space optimization flag |
+| 157 | 3160* | BOOL | **1** | `dump-*` master | Debug dump mode (PrintModulePass) |
+| 159 | 3200* | BOOL | **1** | | Enable advanced NVIDIA passes group |
+| 165 | 3328* | BOOL | **1** | | Enable SM-specific warp/reduction/sinking |
+| 173 | 3488* | BOOL | 0 | | Enable barrier optimization |
+| 175 | 3528* | BOOL | 0 | | Tier 1 optimization enable |
+| 177 | 3568* | BOOL | 0 | | Tier 2 optimization enable |
+| 179 | 3608* | BOOL | 0 | | Tier 3 optimization enable |
+| 181 | 3648* | STR_PTR | `""` | | Language string (`"ptx"/"mid"/"idn"`) |
+| 183 | 3704* | BOOL | 0 | | Late optimization / address-space mode |
+| 193 | 3904* | BOOL | 0 | | Debug: verify after each plugin pass |
+| 195 | 3944* | BOOL | 0 | | Debug: rename BBs to `"F%d_B%d"` |
+| 197 | 3984 | INTEGER | 20 | | Limit/threshold (e.g., unroll count) |
+| 203 | 4104 | INTEGER | -1 | | Sentinel: unlimited/auto |
+| 205 | 4144 | INTEGER | -1 | | Sentinel: unlimited/auto |
+| 207 | 4184 | INTEGER | -1 | | Sentinel: unlimited/auto |
+| 209 | 4224* | BOOL | 0 | | Master optimization switch |
+| 211 | 4264 | BOOL | **1** | | |
+| 213 | 4304* | BOOL | 0 | | Device-code / separate-compilation |
+| 215 | 4344 | INTEGER | 0 | | Disabled counter |
+| 217 | 4384* | BOOL | 0 | | Fast-compile / bypass LLVM pipeline |
+| 219 | 4424 | BOOL | **1** | | |
+| 221 | 4464* | BOOL | 0 | | Disable late CFG cleanup variant B |
+
+Slots not listed have no confirmed cross-reference to pipeline assembler guards. The full 221-slot table is in the [NVVMPassOptions Reference](../config/nvvm-pass-options.md).
+
+### Complete Option Name Inventory
+
+The following option names were extracted from binary string references in `.rodata`. They are set via `-opt "-name=value"` on the cicc command line (requires NVVMCCWIZ=553282 in non-release builds).
+
+**Boolean toggles (do-X / no-X):**
+
+| Name | Effect |
+|------|--------|
+| `do-ip-msp` | Enable inter-procedural memory space propagation |
+| `do-licm` | Enable LICM (loop-invariant code motion) |
+| `do-remat` | Enable NVVMRematerialization |
+| `do-clone-for-ip-msp` | Enable function cloning for IPMSP |
+| `do-cssa` | Enable Conventional SSA construction |
+| `do-scev-cgp` | Enable SCEV-based CodeGenPrepare |
+| `do-function-scev-cgp` | Enable function-level SCEV-CGP |
+| `do-scev-cgp-aggresively` | Aggressive SCEV-CGP mode [sic] |
+| `do-base-address-strength-reduce` | Enable base address strength reduction |
+| `do-base-address-strength-reduce-chain` | Enable chained base address SR |
+| `do-comdat-renaming` | Enable COMDAT group renaming |
+| `do-counter-promotion` | Enable counter promotion |
+| `do-lsr-64-bit` | Enable 64-bit loop strength reduction |
+| `do-sign-ext-expand` | Enable sign extension expansion |
+| `do-sign-ext-simplify` | Enable sign extension simplification |
+
+**Parametric knobs:**
+
+| Name | Type | Default | Purpose |
+|------|------|---------|---------|
+| `remat-for-occ` | string | | Rematerialization occupancy target |
+| `remat-gep-cost` | string | | GEP rematerialization cost |
+| `remat-ignore-single-cost` | string | | Skip single-use cost analysis |
+| `remat-lli-factor` | string | | Live-interval factor |
+| `remat-load-param` | string | | Parameter load remat policy |
+| `remat-loop-trip` | string | | Loop trip count for remat decisions |
+| `remat-max-live-limit` | string | | Maximum live variable count |
+| `remat-maxreg-ceiling` | string | | Register ceiling for remat |
+| `remat-move` | string | | Rematerialization move policy |
+| `remat-single-cost-limit` | string | | Single-value cost limit |
+| `remat-use-limit` | string | | Use count limit for remat |
+| `branch-dist-block-limit` | string | | Block count limit for branch distribution |
+| `branch-dist-func-limit` | string | | Function-level branch dist limit |
+| `branch-dist-norm` | string | | Normalization factor |
+| `scev-cgp-check-latency` | string | | Latency check threshold |
+| `scev-cgp-control` | string | | CGP control mode |
+| `scev-cgp-cross-block-limit` | string | | Cross-block analysis limit |
+| `scev-cgp-idom-level-limit` | string | | Immediate dominator depth limit |
+| `scev-cgp-inst-limit` | string | | Instruction count limit |
+| `scev-cgp-norm` | string | | Normalization factor |
+| `scev-cgp-old-base` | string | | Legacy base address mode |
+| `scev-cgp-tid-max-value` | string | | Thread ID maximum value |
+| `base-address-strength-reduce-iv-limit` | string | | IV count limit for base addr SR |
+| `base-address-strength-reduce-max-iv` | string | | Maximum IV for base addr SR |
+| `cssa-coalesce` | string | | CSSA coalescing mode |
+| `cssa-verbosity` | string | | CSSA debug verbosity |
+
+**Dump/debug flags:**
+
+| Name | Purpose |
+|------|---------|
+| `dump-ip-msp` | Dump IPMSP analysis results |
+| `dump-ir-before-memory-space-opt` | Dump IR before MemorySpaceOpt |
+| `dump-ir-after-memory-space-opt` | Dump IR after MemorySpaceOpt |
+| `dump-memory-space-warnings` | Dump address space warnings |
+| `dump-remat` | Dump rematerialization decisions |
+| `dump-remat-add` | Dump remat additions |
+| `dump-remat-iv` | Dump remat induction variables |
+| `dump-remat-load` | Dump remat load decisions |
+| `dump-branch-dist` | Dump branch distribution analysis |
+| `dump-scev-cgp` | Dump SCEV-CGP analysis |
+| `dump-base-address-strength-reduce` | Dump base address SR |
+| `dump-sink2` | Dump Sinking2 pass output |
+| `dump-before-cssa` | Dump IR before CSSA |
+| `dump-phi-remove` | Dump PHI node removal |
+| `dump-normalize-gep` | Dump GEP normalization |
+| `dump-simplify-live-out` | Dump live-out simplification |
+| `dump-process-restrict` | Dump restrict processing |
+| `dump-process-builtin-assume` | Dump builtin assume processing |
+| `dump-conv-dot` | Dump convergence as DOT graph |
+| `dump-conv-func` | Dump convergence per function |
+| `dump-conv-text` | Dump convergence as text |
+| `dump-nvvmir` | Dump NVVM IR |
+| `dump-va` | Dump value analysis |
+
 ## Tier-Based Pass Ordering
 
 ### The Threshold Dispatch Mechanism
@@ -470,15 +648,95 @@ Tier 0 (`sub_12DE330`) is the most comprehensive sub-pipeline at ~40 passes. Its
 
 **Phase D -- Register Pressure Management** (passes 28-40): InstCombine and SROA simplify the IR further. NVVMRematerialization recomputes values to reduce register pressure -- critical for GPU occupancy. DSE and DCE clean up dead stores and code. The final CGSCC pass and FunctionAttrs prepare for per-function Phase II processing.
 
-### Tier 1/2/3 Incremental Additions
+### Tier 1/2/3 Incremental Additions -- `sub_12DE8F0`
 
-`sub_12DE8F0(PM, tier, opts)` adds passes incrementally. It first stores the tier number into `qword_4FBB410` (the tier tracker global), then checks the phase counter `qword_4FBB3B0` for phase-dependent behavior.
+| | |
+|---|---|
+| **Address** | `0x12DE8F0` |
+| **Size** | 17,904 bytes |
+| **Signature** | `int64 sub_12DE8F0(int64 passMgr, int tier, int64 opts)` |
 
-**Tier 1 (baseline)** adds a conservative set: NVVMIntrinsicLowering (twice, at different points), NVVMIRVerification, NVVMVerifier, and -- when `opts[3200]` (advanced optimization flag) is set -- IPConstPropagation, NVVMReflect, SCCP, ConstantMerge, LoopRotate, and LICM. Tier 1 explicitly *skips* SimplifyCFG, LoopIndexSplit, EarlyCSE, and Sink (these are gated by `tier != 1`).
+`sub_12DE8F0` adds passes incrementally based on the tier value (1, 2, or 3). Its first action stores the tier into `qword_4FBB410` (the tier tracker global), then checks `qword_4FBB3B0` (phase counter) for phase-dependent behavior. Nearly every pass insertion is gated by a boolean in the NVVMPassOptions struct.
 
-**Tier 2** adds everything from Tier 1 plus the passes that Tier 1 skips: SimplifyCFG, LoopIndexSplit (with threshold -1), EarlyCSE, Sink, ADCE, LoopUnroll, InstCombine, SROA, LoopUnswitch, NVVMRematerialization, DSE, DCE, MemorySpaceOpt, NVVMGenericAddrOpt, ADCE, and LoopOpt/BarrierOpt.
+The full pass list for `sub_12DE8F0` (all tiers combined, with tier-specific gates):
 
-**Tier 3** adds the most aggressive passes on top of Tier 2: TailCallElim (gated by `tier == 3`), NVVMReflect (run again at late position for `tier == 3`), NVVMLateOpt, and when `qword_4FBB370` byte 4 was previously zero, it sets the feature flag register to 6 (enabling both barrier optimization and memory space optimization gates).
+```
+sub_1CB4E40(1) [!opts[2000]]            NVVMIntrinsicLowering (level=1)
+sub_1A223D0()  [!opts[2600]]            NVVMIRVerification
+sub_1CB4E40(1) [!opts[2000]]            NVVMIntrinsicLowering (barrier=1)
+sub_18E4A00()  [opts[3488]]             NVVMBarrierAnalysis
+sub_1C98160(0) [opts[3488]]             NVVMLowerBarriers
+sub_12D4560()  [!opts[600]]             NVVMVerifier
+sub_185D600()  [opts[3200]&&!opts[920]] IPConstPropagation         [advanced group]
+sub_1857160()  [opts[3200]&&!opts[880]] NVVMReflect                [advanced group]
+sub_18A3430()  [opts[3200]&&!opts[1120]] NVVMPredicateOpt          [advanced group]
+sub_1842BC0()  [opts[3200]&&!opts[720]] SCCP                       [advanced group]
+sub_12D4560()  [!opts[600]]             NVVMVerifier
+sub_18A3090()  [opts[3200]&&!opts[2160]] NVVMPredicateOpt variant  [advanced group]
+sub_184CD60()  [opts[3200]&&!opts[1960]] ConstantMerge             [advanced group]
+sub_190BB10(1,0)[tier!=1 && guards]     SimplifyCFG                [TIER 2/3 ONLY]
+sub_1952F90(-1)[tier!=1 && guards]      LoopIndexSplit             [TIER 2/3 ONLY]
+sub_12D4560()  [tier!=1 && !opts[600]]  NVVMVerifier               [TIER 2/3 ONLY]
+sub_195E880(0) [opts[3704]&&opts[2880]] LICM
+sub_1C8A4D0(v) [v=1 if opts[3704]]     EarlyCSE
+sub_1869C50(1,0,1)[tier!=1&&!opts[1040]] Sink                     [TIER 2/3 ONLY]
+sub_1833EB0(3) [tier==3 && !opts[320]]  TailCallElim              [TIER 3 ONLY]
+sub_1CC3990()  [!opts[2360]]            NVVMUnreachableBlockElim
+sub_18EEA90()  [opts[3040]]             CorrelatedValuePropagation
+sub_12D4560()  [!opts[600]]             NVVMVerifier
+sub_1A223D0()  [!opts[2600]]            NVVMIRVerification
+sub_1CB4E40(1) [!opts[2000]]            NVVMIntrinsicLowering
+sub_1C4B6F0()  [!opts[440]&&!opts[480]] Inliner
+sub_1A7A9F0()  [!opts[2720]]            InstructionSimplify
+sub_12D4560()  [!opts[600]]             NVVMVerifier
+sub_1A02540()  [!opts[2200]]            GenericToNVVM
+sub_198DF00(-1)[!opts[1520]]            LoopSimplify
+sub_1C76260()  [!opts[1320]&&!opts[1480]] ADCE
+sub_195E880(0) [opts[2880]&&!opts[1240]] LICM
+sub_1C98160(v) [opts[3488]]             NVVMLowerBarriers
+sub_19C1680(0,1)[!opts[1360]]           LoopUnroll
+sub_19401A0()  [!opts[1000]]            InstCombine
+sub_196A2B0()  [!opts[1440]]            EarlyCSE
+sub_1968390()  [!opts[1400]]            SROA
+sub_19B73C0(t,...)[tier!=1]             LoopUnswitch (SM-dependent) [TIER 2/3 ONLY]
+sub_1A62BF0(1,...)[!opts[600]]          LLVM standard pipeline #1
+sub_1A223D0()  [!opts[2600]]            NVVMIRVerification
+sub_1CB4E40(1) [!opts[2000]]            NVVMIntrinsicLowering
+sub_190BB10(0,0)[!opts[960]]            SimplifyCFG
+sub_1922F90()  [opts[3080]]             NVIDIA-specific loop pass
+sub_195E880(0) [opts[2880]&&!opts[1240]] LICM
+sub_1A13320()  [!opts[2320]]            NVVMRematerialization
+sub_1968390()  [!opts[1400]]            SROA
+sub_18EEA90()  [opts[3040]]             CorrelatedValuePropagation
+sub_18F5480()  [!opts[760]]             DSE
+sub_18DEFF0()  [!opts[280]]             DCE
+sub_1A62BF0(1,...)[!opts[600]]          LLVM standard pipeline #1
+sub_1AAC510()  [!opts[520]&&!opts[560]] NVIDIA-specific pass
+sub_1A223D0()  [!opts[2600]]            NVVMIRVerification
+sub_1CB4E40(1) [!opts[2000]]            NVVMIntrinsicLowering
+sub_1C8E680()  [!opts[2680]]            MemorySpaceOpt (from opts[3120])
+sub_1CC71E0()  [!opts[2560]]            NVVMGenericAddrOpt
+sub_1C98270(1,v)[opts[3488]]            NVVMLowerBarriers variant
+sub_1C6FCA0()  [opts[2840]&&!opts[1840]] ADCE
+sub_18B1DE0()  [opts[3200]&&!opts[2640]] LoopOpt/BarrierOpt        [advanced group]
+sub_1857160()  [opts[3200]&&tier==3]    NVVMReflect                [TIER 3 ONLY]
+sub_1841180()  [opts[3200]&&!opts[680]] FunctionAttrs              [advanced group]
+sub_1C46000()  [tier==3&&!opts[360]]    NVVMLateOpt                [TIER 3 ONLY]
+sub_1841180()  [opts[3200]&&!opts[680]] FunctionAttrs (2nd call)   [advanced group]
+sub_1CBC480()  [!opts[2240]&&!opts[2280]] NVVMLowerAlloca
+sub_1CB73C0()  [!opts[2080]&&!opts[2120]] NVVMBranchDist
+sub_1C7F370(1) [opts[3328]&&!opts[1640]] NVVMWarpShuffle           [SM-specific]
+sub_1CC5E00()  [opts[3328]&&!opts[2400]] NVVMReduction             [SM-specific]
+sub_1CC60B0()  [opts[3328]&&!opts[2440]] NVVMSinking2              [SM-specific]
+sub_1CB73C0()  [opts[3328]&&guards]     BranchDist (2nd call)      [SM-specific]
+sub_1B7FDF0(3) [opts[3328]&&!opts[1280]] Reassociate               [SM-specific]
+```
+
+**Tier 1 (baseline)** adds the passes above EXCEPT those gated by `tier!=1`: SimplifyCFG, LoopIndexSplit, Sink, and LoopUnswitch are all skipped. This is a conservative set focused on NVIDIA-specific cleanup without expensive LLVM optimization.
+
+**Tier 2** adds everything Tier 1 has plus the `tier!=1`-gated passes. The LoopUnswitch parameters are SM-architecture-dependent: `sub_19B73C0` receives different vector widths based on the target subtarget.
+
+**Tier 3** adds TailCallElim (gated `tier==3`), NVVMReflect at a late position (gated `tier==3`), and NVVMLateOpt (gated `tier==3`). Critically, it also triggers feature flag escalation (see below).
 
 ### Feature Flag Escalation
 
@@ -531,6 +789,77 @@ All three levels call `sub_12DE330` for the same ~40-pass Tier 0 sub-pipeline. T
 | `nvopt<O3>` | sub_12DE330 | ~35+ | normal | enabled | Tier 3: aggressive + feature escalation |
 
 Ofcmax is architecturally distinct: it forces `-lsa-opt=0` and `-memory-space-opt=0` in the optimizer flags (confirmed in both `sub_9624D0` line 1358 and `sub_12CC750` line 2025). This means two of NVIDIA's most important proprietary passes -- LSA optimization and MemorySpaceOpt -- are unconditionally disabled regardless of what the user requests.
+
+## Pipeline Text Strings and `nvopt<>` Dispatch
+
+### The `nvopt<>` Naming Convention
+
+NVIDIA replaces LLVM's standard `default<O2>` pipeline naming with a proprietary `nvopt<>` prefix. The new-PM driver `sub_226C400` (35KB, at `0x226C400`) selects one of exactly seven pipeline name strings based on optimization level and fast-compile flags. These strings are passed verbatim to `sub_2277440` (60KB, at `0x2277440`) -- NVIDIA's equivalent of LLVM's `PassBuilder::buildDefaultPipeline()`.
+
+```
+nvopt<O0>       Optimization disabled. ~5-8 infrastructure passes only.
+nvopt<O1>       Standard optimization, Tier 1 (conservative).
+nvopt<O2>       Standard optimization, Tier 2 (full).
+nvopt<O3>       Standard optimization, Tier 3 (aggressive + feature escalation).
+nvopt<Ofcmax>   Fast-compile maximum speed. Forces -lsa-opt=0, -memory-space-opt=0.
+nvopt<Ofcmid>   Fast-compile medium. MemorySpaceOpt enabled, CGSCC(5) iterations.
+nvopt<Ofcmin>   Fast-compile minimum. Like Ofcmid but more aggressive loop settings.
+```
+
+### Selection Algorithm (`sub_226C400`)
+
+The config struct encodes O-level flags at fixed byte offsets. The fast-compile level string (if present) is at qwords 131/132 (offset 1048/1056), encoded as a 3-byte sequence compared via 2-byte word + 1-byte suffix:
+
+```c
+// sub_226C400, lines 828-874 (pseudocode)
+char* select_pipeline_name(Config* cfg) {
+    if (cfg->byte[928])   return "nvopt<O1>";     // 9 chars
+    if (cfg->byte[968])   return "nvopt<O2>";     // 9 chars
+    if (cfg->byte[1008])  return "nvopt<O3>";     // 9 chars
+
+    char* fc = cfg->qword[131];
+    int fc_len = cfg->qword[132];
+    if (fc_len == 3) {
+        // Word comparison: *(uint16_t*)fc, then byte fc[2]
+        if (*(uint16_t*)fc == 24941 && fc[2] == 120)  // "max" = 'a','m' + 'x'
+            return "nvopt<Ofcmax>";   // 14 chars
+        if (*(uint16_t*)fc == 26989 && fc[2] == 100)  // "mid" = 'i','m' + 'd'
+            return "nvopt<Ofcmid>";   // 14 chars
+        if (*(uint16_t*)fc == 26989 && fc[2] == 110)  // "min" = 'i','m' + 'n'
+            return "nvopt<Ofcmin>";   // 14 chars
+    }
+    return "nvopt<O0>";              // 9 chars
+}
+```
+
+The `nvopt` prefix is registered as a pipeline element in `sub_225D540` (new PM, vtable `0x4A08350`) and `sub_12C35D0` (legacy PM, vtable `0x49E6A58`). Both route into an `nvopt` pipeline builder class that creates a 512-byte pipeline object via `sub_12EC960`.
+
+### Mutual Exclusion
+
+Combining `-O#` with `--passes=` or `--foo-pass` is an error:
+
+```
+Cannot specify -O#/-Ofast-compile=<min,mid,max> and --passes=/--foo-pass,
+use -passes='default<O#>,other-pass' or -passes='default<Ofcmax>,other-pass'
+```
+
+### Pipeline Text Parser (`sub_2277440`)
+
+`sub_2277440` (60KB) is the new-PM `buildDefaultPipeline()` equivalent. It tokenizes the pipeline name string via `sub_2352D90`, then dispatches to the appropriate pipeline builder based on the `nvopt<>` parameter. NVIDIA custom passes are injected via extension point callbacks at `[PassBuilder+2208]` (stride 32 bytes per entry, count at `[PassBuilder+2216]`). Each callback entry has a guard pointer at `[+16]` and a callback function at `[+24]`.
+
+### Fast-Compile Level Encoding
+
+In the libnvvm config struct, offset 1640 holds an integer encoding:
+
+| Value | CLI Source | Pipeline Name | Notes |
+|-------|-----------|---------------|-------|
+| 0 | (no `-Ofast-compile`) | normal O-level | Default |
+| 1 | `-Ofast-compile=0` | reset to 0 | Treated as "off" |
+| 2 | `-Ofc=max` | `nvopt<Ofcmax>` | Forces `-lsa-opt=0`, `-memory-space-opt=0` |
+| 3 | `-Ofc=mid` | `nvopt<Ofcmid>` | MemorySpaceOpt enabled |
+| 4 | `-Ofc=min` | `nvopt<Ofcmin>` | Closest to full optimization |
+
+Any other value produces: `"libnvvm : error: -Ofast-compile called with unsupported level, only supports 0, min, mid, or max"`.
 
 ## Pass Registration Architecture
 
@@ -596,62 +925,484 @@ Each parameterized NVIDIA pass also registers a serializer for pipeline text out
 
 ## Pipeline Construction Flow
 
-### The AddPass Mechanism
+### The AddPass Mechanism -- `sub_12DE0B0`
 
-`sub_12DE0B0` is the hash-table-based pass insertion function that all pipeline assembly calls go through:
+| | |
+|---|---|
+| **Address** | `0x12DE0B0` |
+| **Size** | 3,458 bytes |
+| **Signature** | `int64 sub_12DE0B0(int64 passMgr, int64 passObj, uint8 flags, char barrier)` |
+| **Call count** | ~137 direct calls from `sub_12E54A0`, ~40 from `sub_12DE330`, ~50+ per tier |
+
+`sub_12DE0B0` is the **sole** entry point for adding passes to the pipeline. Every pass factory call in the entire pipeline assembler funnels through this function. It performs three operations atomically: hash-table insertion for O(1) lookup, flag encoding for the pass scheduler, and append to the ordered pass array.
 
 ```c
-// Pseudocode for sub_12DE0B0
-void AddPass(PassManager* PM, Pass* pass, uint8_t flags, char barrier) {
-    // 1. Hash the pass pointer for dedup/lookup
-    uint64_t hash = (pass >> 9) ^ (pass >> 4);
+// Detailed pseudocode for sub_12DE0B0
+int64 AddPass(PassManager* PM, Pass* pass, uint8_t flags, char barrier) {
+    // --- Step 1: Hash the pass pointer ---
+    // Uses a custom shift-XOR hash, NOT a standard hash function.
+    // The two shifts (9 and 4) spread pointer bits across the table.
+    uint64_t hash = ((uint64_t)pass >> 9) ^ ((uint64_t)pass >> 4);
 
-    // 2. Open-addressing insert into hash table at PM+80
-    //    Stores pass pointer + (flags | (barrier ? 2 : 0))
-    hashtable_insert(PM + 80, hash, pass, flags | (barrier << 1));
+    // --- Step 2: Open-addressing insert into hash table at PM+80 ---
+    // The hash table is a flat array of 16-byte entries at PM+80:
+    //   [+0] uint64 pass_pointer (0 = empty slot)
+    //   [+8] uint8  combined_flags
+    // Table capacity is stored at PM+72 (initial: derived from 0x800000000 mask).
+    // Collision resolution: linear probing with step 1.
+    uint8_t combined = flags | (barrier ? 2 : 0);
+    //   Bit 0 (0x01): 1 = FunctionPass, 0 = ModulePass/AnalysisPass
+    //   Bit 1 (0x02): 1 = barrier (scheduling fence)
+    //   Remaining bits: reserved
 
-    // 3. Append to dynamic pass array at PM[0]
-    //    8-byte slots, count at PM+8
-    PM->passes[PM->count++] = pass;
+    size_t capacity = PM->ht_capacity;       // at PM+72
+    size_t idx = hash & (capacity - 1);      // power-of-2 masking
+    Entry* table = (Entry*)(PM + 80);
+
+    while (table[idx].pass != 0) {
+        if (table[idx].pass == pass) {
+            // Pass already inserted -- update flags only
+            table[idx].flags = combined;
+            return 0;  // dedup: no second insertion
+        }
+        idx = (idx + 1) & (capacity - 1);   // linear probe
+    }
+    table[idx].pass = pass;
+    table[idx].flags = combined;
+
+    // --- Step 3: Append to ordered pass array at PM[0] ---
+    // PM[0] = pointer to dynamic array of 8-byte pass pointers
+    // PM[1] = count of passes (PM+8)
+    // Growth: geometric reallocation (not shown here)
+    uint64_t* array = (uint64_t*)PM->passes; // PM[0]
+    array[PM->count] = (uint64_t)pass;
+    PM->count++;                              // PM+8
+
+    return 0;
 }
 ```
 
-The `flags` parameter encodes the pass type: `0` for module/analysis passes, `1` for function passes. The `barrier` parameter is a scheduling hint that marks the pass as requiring all preceding passes to complete before it runs -- used for passes that must see the module in a consistent state.
+The `flags` parameter encodes the pass type: `0` for module/analysis passes, `1` for function passes. The `barrier` parameter (bit 1) is a scheduling fence that tells the pass manager all preceding passes must complete before this pass runs -- used for passes that require the module in a globally consistent state (e.g., after whole-module inlining).
 
-### Complete Construction Sequence
+The hash table serves two purposes: (a) deduplication -- if the same pass factory is called twice (which happens for NVVMReflect, NVVMIntrinsicLowering, etc.), the second call updates flags rather than inserting a duplicate; and (b) O(1) flag lookup during the codegen dispatch phase (`sub_12DFE00`), where each pass's type and barrier status must be queried efficiently.
 
-The full pipeline construction in `sub_12E54A0` proceeds through eight phases:
+The pass manager container is initialized at line 390 of `sub_12E54A0` with inline storage: `v270 = v272` (stack buffer), `v271 = 0x800000000` (capacity/flags encoding with 33-bit sentinel).
 
-**Phase 0 (Infrastructure):** Always runs. Adds TargetLibraryInfo, TargetTransformInfo, Verifier, AssumptionCacheTracker, and ProfileSummaryInfo. These are analysis passes that later optimization passes depend on.
+### Complete 8-Phase Construction Algorithm
 
-**Phase 1 (Language dispatch):** Reads `a4[3648]` (language string). Three paths exist:
-- `"ptx"`: Light pipeline (~15 passes) for already-lowered PTX text input
-- `"mid"`: Full pipeline (~45 passes) for mid-level IR from the frontend
-- Default: General pipeline (~40 passes) for bitcode from external sources
+The full pipeline construction in `sub_12E54A0` proceeds through eight phases. The pseudocode below is reconstructed from the decompiled 49.8KB function at lines 300-757 of the decompilation output. All `a4` offsets refer to the CompilerOptions struct (parameter 4, ~4500 bytes).
 
-**Phase 2 (Pre-optimization):** Adds early passes gated by per-pass disable flags. NVVMReflect, DeadArgElim, NVVMVerifier, ConstantMerge, and the AlwaysInliner all run here if not disabled.
+#### Phase 0: Infrastructure (lines 396-420, always runs)
 
-**Phase 3 (Main optimization loop):** The tier-threshold-driven loop described above. External/plugin passes interleave with Tier 0/1/2/3 sub-pipelines.
+```c
+// Phase 0: Analysis infrastructure required by all subsequent passes
+#01  TLI = sub_149CCE0(malloc(368), sub_14A04B0(triple));
+     AddPass(PM, TLI, 0, 0);     // TargetLibraryInfoWrapperPass [Module]
 
-**Phase 4 (Post-opt language paths):** After the main loop, language-specific post-optimization runs. The "mid" path adds NVVMBranchDist and NVVMRematerialization. The default path adds LoopIndexSplit, NVVMSinking2, and final CGSCC passes.
+#02  TTI = sub_1BFB520(malloc(208), sub_1BFB9A0(dataLayout));
+     AddPass(PM, TTI, 1, 0);     // TargetTransformInfoWrapperPass [Function]
 
-**Phase 5 (Finalization):** Always runs. Adds NVVMLowerBarriers (conditional on `a4[3488]`), NVVMFinal cleanup via `sub_1CEBD10`, BreakCriticalEdges, and the codegen dispatch via `sub_12DFE00`.
+#03  verifier = sub_14A7550();
+     AddPass(PM, verifier, 0, 0); // VerifierPass / BasicAliasAnalysis [Module]
 
-**Phase 6 (Phase II codegen check):** Reads `qword_4FBB3B0`. If phase == 2 and `a4[4480] & 4` is set, enters a special codegen extension block that calls target machine hooks for phase-II-specific machine pass insertion.
+#04  assumptions = sub_1361950();
+     AddPass(PM, assumptions, 0, 0); // AssumptionCacheTracker [Module]
 
-**Phase 7 (Execution):** Calls `sub_160FB70` (PassManager::run) followed by `sub_1619BD0` (PassManager::finalize) and cleanup.
+#05  profile = sub_1CB0F50();
+     AddPass(PM, profile, 1, 0); // ProfileSummaryInfoWrapperPass [Function]
+```
 
-**Phase 8 (BB naming):** When `a4[3944]` (debug mode) is set, iterates all functions and basic blocks, naming each block `"F%d_B%d"` for debugging.
+These five analysis passes have no upstream-LLVM equivalent in terms of initialization ordering. NVIDIA always adds them first regardless of optimization level, language, or fast-compile mode.
 
-### Codegen Dispatch — `sub_12DFE00`
+#### Phase 1: Language Dispatch (lines 421-488)
 
-The codegen dispatch at `sub_12DFE00` does not simply append passes. It performs a dependency analysis over the entire pass pipeline built so far:
+Phase 1 reads the language string at `a4[3648]` (pointer) with length at `a4[3656]`. Three language paths exist; each produces a fundamentally different pass sequence. See the [Language Path Differences](#language-path-differences) section below for the complete per-path pass lists.
 
-1. Reads the optimization level from `opts[200]`: level 0 means minimal codegen; level >1 enables dependency tracking
-2. Iterates all passes in the PassManager, calling `vtable+112` (pass->isCodeGenOnly) to identify codegen-specific passes
-3. Calls `vtable+16` (pass->getAnalysisUsage) to build a dependency graph in a secondary hash table
-4. For passes with ordering constraints (depends on later codegen passes), establishes explicit ordering edges
-5. Finally calls the SubtargetInfo hook (`vtable+16`) to emit the codegen passes in dependency-respecting order
+```c
+// Phase 1: Language-based pipeline branching
+char* lang = *(char**)(a4 + 3648);
+int lang_len = *(int*)(a4 + 3656);
+
+bool opt_enabled = *(bool*)(a4 + 4224);
+bool fc_max = false, fc_mid = false;
+int v238 = *(int*)(a4 + 4304);  // device-code / additional-opt flag
+
+if (lang_len == 3) {
+    uint16_t w = *(uint16_t*)lang;
+    if (w == 0x7470 && lang[2] == 0x78) {        // "ptx"
+        goto PATH_A_PTX;
+    }
+    if (w == 0x696D && lang[2] == 0x64) {         // "mid"
+        goto PATH_B_MID;
+    }
+    // "idn" (w == 0x696D && lang[2] == 0x6E) shares the default path
+}
+// Fall through to PATH_C_DEFAULT
+
+// Fast-compile dispatch (within the language check):
+// fc="max" AND !v238 → v244=1, v238=1, goto LABEL_191 (minimal + O0)
+// fc="max" AND v238  → goto LABEL_196 → LABEL_188 (Sinking2 + common)
+// fc="mid"           → goto LABEL_297 (mid pipeline)
+// fc="min"           → goto LABEL_297 (min pipeline, differs via v238)
+// no fc, no O-level  → LABEL_159 (O0 minimal pipeline)
+// O-level set        → LABEL_38 → LABEL_39 (process pass list + tiers)
+```
+
+#### Phase 2: Pre-Optimization (lines 442-480)
+
+Only when optimization is not completely skipped. Each pass is gated by a per-pass disable flag in the NVVMPassOptions struct.
+
+```c
+// Phase 2: Early passes before the main optimization loop
+if (!a4[1960] || a4[3000])                           // not disabled OR extra trigger
+    AddPass(PM, sub_1857160(), 1, 0);                // NVVMReflect
+
+if (a4[3000])                                        // extra DeadArgElim trigger
+    AddPass(PM, sub_18FD350(0), 1, 0);              // DeadArgElimination
+
+if (!a4[1680])                                       // NVIDIA pass not disabled
+    AddPass(PM, sub_19CE990(), 1, 0);               // LoopStrengthReduce (NVIDIA)
+
+AddPass(PM, sub_1CB4E40(0), 1, 0);                  // NVVMIntrinsicLowering(level=0)
+
+if (!a4[2040])
+    AddPass(PM, sub_1B26330(), 1, 0);                // MemCpyOpt
+
+AddPass(PM, sub_12D4560(), 1, 0);                    // NVVMVerifier
+
+if (!a4[1960])
+    AddPass(PM, sub_184CD60(), 1, 0);                // ConstantMerge
+
+if (!a4[440] && !a4[400])
+    AddPass(PM, sub_1C4B6F0(), 1, 0);               // AlwaysInliner
+
+if (a4[3160])                                        // debug dump enabled
+    AddPass(PM, sub_17060B0(1, 0), 1, 0);           // PrintModulePass
+```
+
+#### Phase 3: Main Optimization Loop (lines 481-553)
+
+The tier-threshold-driven loop iterates over the plugin/external pass array at `a4[4488]`. Each entry is 16 bytes (vtable pointer + phase_id). When a threshold is crossed, the corresponding tier sub-pipeline fires once and never again.
+
+```c
+// Phase 3: Tier dispatch within the main plugin pass loop
+uint64_t* entry = *(uint64_t**)(a4 + 4488);
+uint64_t* end   = *(uint64_t**)(a4 + 4496);
+
+while (entry < end) {
+    int phase_id = *(int*)((char*)entry + 8);
+
+    // Tier 0: full optimization sub-pipeline
+    if (*(bool*)(a4+4224) && phase_id > *(int*)(a4+4228)) {
+        sub_12DE330(PM, opts);        // ~40 passes
+        *(bool*)(a4+4224) = false;    // fire once
+    }
+    // Tier 1: conservative
+    if (*(bool*)(a4+3528) && phase_id > *(int*)(a4+3532)) {
+        sub_12DE8F0(PM, 1, opts);
+        *(bool*)(a4+3528) = false;
+    }
+    // Tier 2: full
+    if (*(bool*)(a4+3568) && phase_id > *(int*)(a4+3572)) {
+        sub_12DE8F0(PM, 2, opts);
+        *(bool*)(a4+3568) = false;
+    }
+    // Tier 3: aggressive
+    if (*(bool*)(a4+3608) && phase_id > *(int*)(a4+3612)) {
+        sub_12DE8F0(PM, 3, opts);
+        *(bool*)(a4+3608) = false;
+    }
+
+    // Insert the plugin/external pass itself
+    Pass* plugin = vtable_call(entry, +72);  // entry->createPass()
+    AddPass(PM, plugin, 1, 0);
+
+    // Optional debug verification after each plugin pass
+    if (a4[3904]) {
+        sub_12D3E60();  // insert verification/print pass
+        sub_16E8CB0();
+        sub_15E9F00();
+    }
+
+    entry = (uint64_t*)((char*)entry + 16);  // next entry (16-byte stride)
+}
+
+// Any tier that didn't fire during the loop fires unconditionally now
+if (*(bool*)(a4+4224))  sub_12DE330(PM, opts);
+if (*(bool*)(a4+3528))  sub_12DE8F0(PM, 1, opts);
+if (*(bool*)(a4+3568))  sub_12DE8F0(PM, 2, opts);
+if (*(bool*)(a4+3608))  sub_12DE8F0(PM, 3, opts);
+```
+
+#### Phase 4: Post-Optimization Language Paths (lines 580-1371)
+
+After the main loop, language-specific post-optimization runs. This is where the three paths diverge most significantly. Each path ends by falling through to LABEL_84 (Phase 5). See [Language Path Differences](#language-path-differences) for complete pass lists per path.
+
+#### Phase 5: Finalization (LABEL_84, lines 640-653)
+
+Always runs after the language-specific optimization path completes.
+
+```c
+// Phase 5: Finalization -- barriers, cleanup, codegen
+if (!v244 && a4[3488])                              // barrier optimization enabled
+    AddPass(PM, sub_1C98160(a4[2920]!=0), 1, 0);   // NVVMLowerBarriers
+
+AddPass(PM, sub_1CEBD10(), 1, 0);                   // NVVMFinalLowering (cleanup)
+
+if (!a4[2800] && !a4[4464])                         // late CFG cleanup not disabled
+    AddPass(PM, sub_1654860(1), 1, 0);              // BreakCriticalEdges
+
+sub_12DFE00(PM, subtargetInfo, a4);                  // Codegen dispatch (see below)
+```
+
+#### Phase 6: Phase II Codegen Check (lines 654-693)
+
+Reads the compilation phase counter and conditionally enters a special codegen extension block for multi-phase compilation.
+
+```c
+// Phase 6: Phase-II-specific codegen extensions
+int phase = sub_16D40F0(qword_4FBB3B0);  // read cl::opt<int> phase counter
+if (phase == 2 && (*(int*)(a4 + 4480) & 4)) {
+    // Enter special Phase II codegen block
+    // Calls vtable at v245+56 (TargetMachine::addPhaseIIPasses)
+    // Passes SubtargetInfo (v253) and CodeGenOpt config (v262)
+    target_machine->addPhaseIIPasses(subtarget, codegen_config);
+}
+```
+
+#### Phase 7: Pipeline Execution (lines 694-698)
+
+```c
+// Phase 7: Run the assembled pipeline
+sub_160FB70(PM, *output, output[1]);   // PassManager::run(Module, outputs)
+sub_1619BD0(PM, module);               // PassManager::finalize(Module)
+free(v274);                            // cleanup allocations
+sub_160FE50(PM);                       // PassManager::destroy()
+```
+
+#### Phase 8: Basic Block Naming (lines 700-757)
+
+Only when `a4[3944]` (debug/naming mode) is set. Produces deterministic block names for debugging.
+
+```c
+// Phase 8: Debug block naming for IR dump readability
+if (a4[3944]) {
+    int funcIdx = 0;
+    for (Function* F = module->functions; F; F = F->next) {
+        if (sub_15E4F60(F))  continue;  // skip declarations
+        funcIdx++;
+        int blockIdx = 0;
+        for (BasicBlock* BB = F->blocks; BB; BB = BB->next) {
+            blockIdx++;
+            char name[32];
+            sprintf(name, "F%d_B%d", funcIdx, blockIdx);
+            sub_164B780(BB, &name);  // BB->setName()
+        }
+    }
+}
+```
+
+### Language Path Differences
+
+The three language paths in Phase 1/4 represent fundamentally different IR maturity levels. The `a4[3648]` string pointer determines which path is taken, with length at `a4[3656]`.
+
+#### Path A: `"ptx"` -- Light Pipeline (~15 passes)
+
+PTX text input has already been lowered by an earlier compilation stage. This path applies only light cleanup and canonicalization:
+
+```
+sub_1CEF8F0()               NVVMPeephole
+sub_215D9D0()               NVVMAnnotationsProcessor
+sub_1857160()  [!a4[880]]   NVVMReflect
+sub_1A62BF0(1,0,0,1,0,0,1)  LLVM standard pipeline #1
+sub_1B26330()  [!a4[2040]]  MemCpyOpt
+sub_17060B0(0,0)            PrintModulePass (debug)
+sub_18DEFF0()  [!a4[280]]   DCE
+sub_1A62BF0(1,0,0,1,0,0,1)  LLVM standard pipeline #1 (repeat)
+sub_18B1DE0()  [!a4[2640]]  LoopPass / BarrierOpt
+sub_1C8E680(0) [!a4[1760]]  MemorySpaceOptimization
+ --> LABEL_84 (finalization)
+```
+
+Key difference: no SROA, no GVN, no loop transformations, no CGSCC inlining. The PTX path trusts that the earlier compilation already optimized the code.
+
+#### Path B: `"mid"` -- Full Optimization (~45 passes)
+
+The primary path for standard CUDA compilation. The IR comes from the EDG frontend through IR generation and is at "mid-level" maturity (high-level constructs lowered, but not yet optimized).
+
+```
+sub_184CD60()  [!a4[1960]]    ConstantMerge
+sub_1CB4E40(0) [!a4[2000]]    NVVMIntrinsicLowering (1st of 4)
+sub_1B26330()  [!a4[2040]]    MemCpyOpt
+sub_198E2A0()                  SROA
+sub_1CEF8F0()                  NVVMPeephole
+sub_215D9D0()                  NVVMAnnotationsProcessor
+sub_198DF00(-1)[!a4[1520]]     LoopSimplify
+sub_1C6E800()                  GVN
+sub_1A223D0()  [!a4[2600]]    NVVMIRVerification (1st of 5+)
+sub_190BB10(0,0)               SimplifyCFG
+sub_1832270(1)                 InstructionCombining
+sub_1A62BF0(5,0,0,1,0,0,1)    CGSCC pipeline (5 iterations)
+sub_1CB4E40(0) [!a4[2000]]    NVVMIntrinsicLowering (2nd)
+sub_18FD350(0)                 DeadArgElim
+sub_1841180()  [!a4[680]]     FunctionAttrs
+sub_18DEFF0()  [!a4[280]]     DCE
+sub_184CD60()  [!a4[1960]]    ConstantMerge
+sub_195E880(0) [!a4[1240]]    LICM
+sub_1C98160(0)                 NVVMLowerBarriers
+sub_1C8E680(0) [!a4[1760]]    MemorySpaceOpt (1st invocation)
+sub_1B7FDF0(3) [!a4[1280]]    Reassociate
+sub_1A62BF0(8,0,0,1,1,0,1)    CGSCC pipeline (8 iterations)
+sub_1857160()  [!a4[880]]     NVVMReflect (2nd of 3)
+sub_1C6FCA0()  [!a4[1840]]    ADCE
+sub_1A7A9F0()  [!a4[2720]]    InstructionSimplify
+sub_18FD350(0)                 DeadArgElim
+sub_1833EB0(3) [!a4[320]]     TailCallElim
+sub_18FD350(0)                 DeadArgElim
+sub_18EEA90()                  CorrelatedValuePropagation
+sub_1869C50(1,0,1)             Sink (MemorySSA-based)
+sub_190BB10(0,0)[!a4[960]]     SimplifyCFG
+sub_18F5480()  [!a4[760]]     DSE
+sub_1CC60B0()  [!a4[2440]]    NVVMSinking2
+sub_1A223D0()  [!a4[2600]]    NVVMIRVerification
+sub_1C8A4D0(0)                 EarlyCSE
+sub_1857160()  [!a4[880]]     NVVMReflect (3rd)
+sub_1A62BF0(8,0,0,1,1,0,1)    CGSCC pipeline (8 iterations)
+sub_1CB4E40(0) [!a4[2000]]    NVVMIntrinsicLowering (3rd)
+sub_185D600()  [!a4[920]]     IPConstPropagation
+sub_195E880(0) [!a4[1240]]    LICM
+sub_1CB4E40(0) [!a4[2000]]    NVVMIntrinsicLowering (4th)
+sub_1CB73C0()  [!a4[2120]]    NVVMBranchDist
+sub_1A13320()  [!a4[2320]]    NVVMRematerialization
+ --> LABEL_84 (finalization)
+```
+
+Key pattern: NVVMIntrinsicLowering runs 4 times, NVVMReflect runs 3 times, NVVMIRVerification runs 5+ times. The CGSCC pipeline is called with 5 and 8 iteration counts (aggressive devirtualization).
+
+#### Path C: Default -- General Pipeline (~40 passes)
+
+Used for bitcode from external sources (not marked as "ptx" or "mid"). Balances optimization breadth with conservative assumptions about IR maturity.
+
+```
+sub_1A62BF0(4,0,0,1,0,0,1)    LLVM standard pipeline #4
+sub_1857160()  [!a4[880]]     NVVMReflect (1st)
+sub_1CB4E40(0) [!a4[2000]]    NVVMIntrinsicLowering
+sub_1857160()  [!a4[880]]     NVVMReflect (2nd)
+sub_1CEF8F0()                  NVVMPeephole
+sub_215D9D0()                  NVVMAnnotationsProcessor
+sub_1A7A9F0()  [!a4[2720]]    InstructionSimplify
+sub_1A62BF0(5,0,0,1,0,0,1)    LLVM standard pipeline #5
+sub_185D600()  [!a4[920]]     IPConstPropagation
+sub_1B26330()  [!a4[2040]]    MemCpyOpt
+sub_184CD60()  [!a4[1960]]    ConstantMerge
+sub_1A13320()  [!a4[2320]]    NVVMRematerialization
+sub_1833EB0(3) [!a4[320]]     TailCallElim
+sub_1C6E800()                  GVN
+sub_1842BC0()  [!a4[720]]     SCCP
+sub_18DEFF0()  [!a4[280]]     DCE
+sub_184CD60()  [!a4[1960]]    ConstantMerge
+sub_18FD350(0)                 DeadArgElim
+sub_18EEA90()                  CorrelatedValuePropagation
+sub_1A62BF0(1,0,0,1,0,0,1)    LLVM standard pipeline #1
+sub_197E720()                  LoopUnroll
+sub_19401A0()  [!a4[1000]]    InstCombine
+sub_1857160()  [!a4[880]]     NVVMReflect (3rd)
+sub_1A62BF0(7,0,0,1,0,0,1)    LLVM standard pipeline #7
+sub_1C8A4D0(0)                 EarlyCSE
+sub_1A223D0()  [!a4[2600]]    NVVMIRVerification
+sub_1832270(1)                 InstructionCombining
+sub_1869C50(1,0,1)             Sink
+sub_1A68E70()                  LoopIdiomRecognize
+sub_198DF00(-1)[!a4[1520]]     LoopSimplify
+sub_195E880(0) [!a4[1240]]    LICM
+sub_190BB10(0,0)[!a4[960]]     SimplifyCFG
+sub_19B73C0(3,-1,-1,0,0,-1,0)  LoopUnswitch
+sub_1A223D0()  [!a4[2600]]    NVVMIRVerification
+sub_1C98160(0)                 NVVMLowerBarriers
+sub_1C8E680(0) [!a4[1760]]    MemorySpaceOpt
+sub_1B7FDF0(3) [!a4[1280]]    Reassociate
+sub_18B1DE0()  [!a4[2640]]    LoopPass
+sub_1952F90(-1)[!a4[1160]]     LoopIndexSplit
+sub_18FD350(0)                 DeadArgElim
+sub_1CC60B0()  [!a4[2440]]    NVVMSinking2
+sub_1A62BF0(2,0,0,1,0,0,1)    LLVM standard pipeline #2
+sub_1A223D0()  [!a4[2600]]    NVVMIRVerification
+sub_18A3430()  [!a4[1120]]    NVVMPredicateOpt
+sub_1A62BF0(4,0,0,1,1,0,1)    LLVM standard pipeline #4 (inlining)
+ --> LABEL_84 (finalization)
+```
+
+Key difference from "mid": default path uses LLVM standard pipeline wrappers (IDs 1,2,4,5,7) more heavily, runs SCCP explicitly, includes LoopIdiomRecognize, and uses a conservative LoopUnswitch with zeroed thresholds `(3,-1,-1,0,0,-1,0)`.
+
+### Codegen Dispatch -- `sub_12DFE00`
+
+| | |
+|---|---|
+| **Address** | `0x12DFE00` |
+| **Size** | 20,729 bytes |
+| **Signature** | `int64 sub_12DFE00(int64 passMgr, int64 subtargetInfo, int64 opts)` |
+| **Called from** | Phase 5 of `sub_12E54A0` (LABEL_84, line 640) |
+
+The codegen dispatch does **not** simply append passes to the pipeline. It performs a full dependency analysis over every pass already inserted, constructs an ordering graph, and then emits codegen passes in topologically-sorted order. This is necessary because machine-level passes (register allocation, instruction scheduling, frame lowering) have strict ordering dependencies that the flat AddPass model cannot express.
+
+```c
+// Pseudocode for sub_12DFE00 (codegen dispatch with dependency analysis)
+void CodegenDispatch(PassManager* PM, SubtargetInfo* STI, CompilerOpts* opts) {
+    // Step 1: Read optimization level to determine analysis depth
+    int opt_level = *(int*)(opts + 200);  // opts[200] = optimization level
+    bool do_deps = (opt_level > 1);       // dependency tracking for O2+
+
+    // Step 2: Classify existing passes
+    // Iterates PM->passes[0..PM->count], calling two vtable methods per pass
+    HashTable dep_graph;   // secondary hash table for dependencies (v134..v137)
+    init_hashtable(&dep_graph);
+
+    for (int i = 0; i < PM->count; i++) {
+        Pass* p = PM->passes[i];
+
+        // 2a. Check if pass is codegen-only (vtable+112)
+        bool is_codegen = p->vtable->isCodeGenOnly(p);   // vtable offset +112
+        if (is_codegen)
+            continue;  // already classified, skip
+
+        // 2b. Check registration status
+        int status = sub_163A1D0(p);   // pass registry check
+        sub_163A340(p, &status);       // update status
+
+        // 2c. If pass needs codegen support, mark it in the hash table
+        if (pass_needs_codegen(p)) {
+            // Set flag |= 2 in the AddPass hash table entry
+            // This marks the pass as "codegen-interacting"
+            Entry* e = hashtable_find(PM + 80, p);
+            if (e) e->flags |= 2;
+        }
+
+        // 2d. Build dependency edges (getAnalysisUsage)
+        if (do_deps) {
+            AnalysisUsage AU;
+            p->vtable->getAnalysisUsage(p, &AU);   // vtable offset +16
+
+            // For each required analysis, create an ordering edge
+            // in the dependency hash table
+            for (AnalysisID* req = AU.required; req; req = req->next) {
+                dep_graph_add_edge(&dep_graph, p, req->pass);
+            }
+        }
+    }
+
+    // Step 3: Emit codegen passes in dependency-respecting order
+    // Calls the SubtargetInfo hook to get the ordered codegen pass list
+    // vtable+16 at STI -> STI->emitCodeGenPasses(PM, dep_graph)
+    STI->vtable->emitCodeGenPasses(STI, PM, &dep_graph);
+    // Each emitted pass gets a flag:
+    //   0 = normal pass (no special ordering)
+    //   1 = pass with codegen requirement (flag bit 0 from AddPass)
+}
+```
+
+The dependency graph construction is what makes this function 20KB: it must handle the full LLVM analysis dependency model, including transitive dependencies and analysis preservation. The `getAnalysisUsage` calls return `Required`, `RequiredTransitive`, and `Preserved` sets that define the ordering constraints between passes.
+
+For O0 compilation (`opt_level == 0`), the dependency tracking is skipped entirely -- codegen passes are emitted in a fixed default order since no optimization passes exist that could create ordering conflicts.
 
 ## Pass Iteration and Convergence
 
@@ -688,6 +1439,178 @@ NVVMIRVerification (`sub_1A223D0`) runs after every major transformation group -
 
 NVIDIA's pipeline does not use explicit fixed-point loops (run passes until IR stops changing). Instead, it achieves convergence through **strategic repetition**: the same pass appears at multiple carefully-chosen pipeline positions, with different optimization passes running between repetitions. This is more predictable than a true fixed-point approach because compilation time is bounded by the static pipeline length rather than by how many iterations are needed for convergence. The tradeoff is that the pipeline may not reach a true fixed point -- some optimization opportunities exposed by late passes may not be caught -- but in practice, the multi-position placement catches the vast majority of cases.
 
+## LLVM Standard Pass Pipeline Factory -- `sub_1A62BF0`
+
+The LLVM standard pass pipeline is invoked multiple times throughout the optimizer via `sub_1A62BF0`. The first parameter is a **pipeline ID** that selects which LLVM extension point to inject passes at:
+
+| Pipeline ID | LLVM Extension Point | Usage Context |
+|-------------|---------------------|---------------|
+| 1 | `EP_EarlyAsPossible` / basic cleanup | Tier 0, default path |
+| 2 | `EP_LoopOptimizerEnd` | Default path late |
+| 4 | `EP_ScalarOptimizerLate` | Default path, Tier sub-pipeline |
+| 5 | `EP_VectorizerStart` | "mid" path, default path |
+| 7 | `EP_OptimizerLast` | Default path |
+| 8 | `EP_CGSCCOptimizerLate` | "mid" path (with opt flag = 1 for inlining) |
+
+The signature is `sub_1A62BF0(pipelineID, 0, 0, 1, optFlag, 0, 1, outBuf)`, where `optFlag` at position 5 enables inlining within the CGSCC sub-pipeline (observed as 1 for pipeline IDs 4 and 8 in the "mid" path: `sub_1A62BF0(8,0,0,1,1,0,1)`).
+
+Each call potentially returns a cleanup callback stored in `v298`, invoked as `v298[0](s, s, 3)` for destructor/finalization. The factory is called 9+ times across the three language paths.
+
+## CompilerOptions Struct Flag Map
+
+The `a4` parameter to `sub_12E54A0` is a ~4500-byte CompilerOptions struct. The following offsets have been confirmed through cross-referencing guards in the pipeline assembler and tier sub-pipelines.
+
+| Offset | Type | Purpose | Cross-Reference |
+|--------|------|---------|-----------------|
+| +200 | int | Optimization level (0-3) | `sub_12DFE00` codegen depth |
+| +280 | bool | Disable DCE | `sub_18DEFF0` guard |
+| +320 | bool | Disable TailCallElim | `sub_1833EB0` guard |
+| +360 | bool | Disable NVVMLateOpt | `sub_1C46000` guard |
+| +400 | bool | Disable inlining variant A | |
+| +440 | bool | Disable inlining variant B | `sub_1C4B6F0` guard |
+| +480 | bool | Disable inlining variant C | `sub_12DE8F0` guard |
+| +520 | bool | Disable NVIDIA pass A | `sub_1AAC510` guard |
+| +560 | bool | Disable NVIDIA pass B | `sub_1AAC510` guard |
+| +600 | bool | Disable NVVMVerifier | `sub_12D4560` guard |
+| +680 | bool | Disable FunctionAttrs | `sub_1841180` guard |
+| +720 | bool | Disable SCCP | `sub_1842BC0` guard |
+| +760 | bool | Disable DSE | `sub_18F5480` guard |
+| +880 | bool | Disable NVVMReflect | `sub_1857160` guard |
+| +920 | bool | Disable IPConstPropagation | `sub_185D600` guard |
+| +960 | bool | Disable SimplifyCFG | `sub_190BB10` guard |
+| +1000 | bool | Disable InstCombine | `sub_19401A0` guard |
+| +1040 | bool | Disable Sink/MemSSA | `sub_1869C50` guard |
+| +1080 | bool | Disable PrintModulePass | `sub_17060B0` guard |
+| +1120 | bool | Disable NVVMPredicateOpt | `sub_18A3430` guard |
+| +1160 | bool | Disable LoopIndexSplit | `sub_1952F90` guard |
+| +1240 | bool | Disable LICM | `sub_195E880` guard |
+| +1280 | bool | Disable Reassociate | `sub_1B7FDF0` guard |
+| +1320 | bool | Disable ADCE variant A | `sub_1C76260` guard |
+| +1360 | bool | Disable LoopUnroll | `sub_19C1680` guard |
+| +1400 | bool | Disable SROA | `sub_1968390` guard |
+| +1440 | bool | Disable EarlyCSE | `sub_196A2B0` guard |
+| +1520 | bool | Disable LoopSimplify | `sub_198DF00` guard |
+| +1680 | bool | Disable NVIDIA pass | `sub_19CE990` guard |
+| +1760 | bool | Disable MemorySpaceOpt | `sub_1C8E680` guard |
+| +1840 | bool | Disable ADCE C | `sub_1C6FCA0` guard |
+| +1960 | bool | Disable ConstantMerge | `sub_184CD60` guard |
+| +2000 | bool | Disable NVVMIntrinsicLowering | `sub_1CB4E40` guard |
+| +2040 | bool | Disable MemCpyOpt | `sub_1B26330` guard |
+| +2120 | bool | Disable NVVMBranchDist B | `sub_1CB73C0` guard |
+| +2200 | bool | Disable GenericToNVVM | `sub_1A02540` guard |
+| +2320 | bool | Disable NVVMRematerialization | `sub_1A13320` guard |
+| +2440 | bool | Disable NVVMSinking2 | `sub_1CC60B0` guard |
+| +2560 | bool | Disable NVVMGenericAddrOpt | `sub_1CC71E0` guard |
+| +2600 | bool | Disable NVVMIRVerification | `sub_1A223D0` guard |
+| +2640 | bool | Disable NVVMLoopOpt | `sub_18B1DE0` guard |
+| +2720 | bool | Disable InstructionSimplify | `sub_1A7A9F0` guard |
+| +2840 | bool | Enable ADCE (reversed logic) | `sub_1C6FCA0` |
+| +2880 | bool | Enable LICM (reversed logic) | `sub_195E880` |
+| +2920 | bool | NVVMLowerBarriers param | `sub_1C98160` |
+| +3000 | bool | Extra DeadArgElim trigger | `sub_18FD350` |
+| +3040 | bool | Enable CVP | `sub_18EEA90` |
+| +3080 | bool | Enable NVIDIA loop pass | `sub_1922F90` |
+| +3120 | bool | Address space optimization flag | `sub_1C8E680` param |
+| +3160 | bool | Debug dump mode | `sub_17060B0` enable |
+| +3200 | bool | Enable advanced NVIDIA group | IPConst/Reflect/SCCP/etc. |
+| +3328 | bool | Enable SM-specific passes | Warp/Reduction/Sinking2 |
+| +3488 | bool | Enable barrier optimization | `sub_1C98160`, `sub_18E4A00` |
+| +3528 | bool | Tier 1 enable | Phase 3 loop |
+| +3532 | int | Tier 1 phase threshold | Phase 3 loop |
+| +3568 | bool | Tier 2 enable | Phase 3 loop |
+| +3572 | int | Tier 2 phase threshold | Phase 3 loop |
+| +3608 | bool | Tier 3 enable | Phase 3 loop |
+| +3612 | int | Tier 3 phase threshold | Phase 3 loop |
+| +3648 | ptr | Language string (`"ptx"/"mid"/"idn"`) | Phase 1 dispatch |
+| +3656 | int | Language string length | Phase 1 dispatch |
+| +3704 | bool | Late optimization mode | `sub_195E880`, `sub_1C8A4D0` |
+| +3904 | bool | Debug: verify after plugins | Phase 3 loop |
+| +3944 | bool | Debug: BB naming `"F%d_B%d"` | Phase 8 |
+| +4224 | bool | Optimization master switch | Tier 0 gate |
+| +4228 | int | Optimization phase threshold | Tier 0 gate |
+| +4304 | bool | Device-code flag | Phase 1 `v238` |
+| +4384 | bool | Fast-compile / bypass pipeline | Top branch Pipeline A vs B |
+| +4464 | bool | Disable late CFG cleanup B | Phase 5 `sub_1654860` |
+| +4480 | ptr | SM feature capability | Phase 6: `& 4` = codegen ext |
+| +4488 | ptr | Plugin pass array start | Phase 3 loop |
+| +4496 | ptr | Plugin pass array end | Phase 3 loop |
+
+## Pass Factory Address Inventory
+
+All unique pass factory addresses called from the pipeline assembler and tier sub-pipelines:
+
+| Address | Likely Identity | Occurrences |
+|---------|----------------|-------------|
+| `sub_12D4560` | NVVMVerifier | many (tiers) |
+| `sub_1361950` | AssumptionCacheTracker | 1 |
+| `sub_149CCE0` | TargetLibraryInfoWrapperPass | 1 |
+| `sub_14A7550` | VerifierPass / BasicAA | 1 |
+| `sub_1654860` | BreakCriticalEdges | 2 |
+| `sub_17060B0` | PrintModulePass (debug dump) | ~30+ |
+| `sub_1832270` | InstructionCombining | 2 |
+| `sub_1833EB0` | TailCallElim / JumpThreading | 3 |
+| `sub_1841180` | FunctionAttrs | 3 |
+| `sub_1842BC0` | SCCP | 2 |
+| `sub_1857160` | NVVMReflect | ~8 |
+| `sub_185D600` | IPConstantPropagation | 3 |
+| `sub_1869C50` | Sink (MemorySSA-based) | 3 |
+| `sub_18A3090` | NVVMPredicateOpt variant | 2 |
+| `sub_18A3430` | NVVMPredicateOpt / SelectionOpt | 2 |
+| `sub_18B1DE0` | NVVMLoopOpt / BarrierOpt | 3 |
+| `sub_18B3080` | Sinking2Pass (fast=1 for fc mode) | 1 |
+| `sub_18DEFF0` | DCE | 4 |
+| `sub_18E4A00` | NVVMBarrierAnalysis | 1 |
+| `sub_18EEA90` | CorrelatedValuePropagation | 3 |
+| `sub_18F5480` | DSE | 2 |
+| `sub_18FD350` | DeadArgElimination | 5 |
+| `sub_190BB10` | SimplifyCFG | 4 |
+| `sub_1922F90` | NVIDIA-specific loop pass | 1 |
+| `sub_1952F90` | LoopIndexSplit | 3 |
+| `sub_195E880` | LICM / LoopRotate | 4 |
+| `sub_1968390` | SROA | 2 |
+| `sub_196A2B0` | EarlyCSE | 2 |
+| `sub_197E720` | LoopUnroll | 1 |
+| `sub_198DF00` | LoopSimplify | 3 |
+| `sub_198E2A0` | SROA (variant) | 1 |
+| `sub_19401A0` | InstCombine | 2 |
+| `sub_19B73C0` | LoopUnswitch (7 params) | 3 |
+| `sub_19C1680` | LoopUnroll variant | 2 |
+| `sub_19CE990` | NVIDIA custom pass | 1 |
+| `sub_1A02540` | GenericToNVVM | 1 |
+| `sub_1A13320` | NVVMRematerialization | 3 |
+| `sub_1A223D0` | NVVMIRVerification | 5+ |
+| `sub_1A62BF0` | LLVM StandardPassPipeline | ~9 |
+| `sub_1A68E70` | LoopIdiomRecognize | 1 |
+| `sub_1A7A9F0` | InstructionSimplify | 3 |
+| `sub_1AAC510` | NVIDIA-specific pass | 1 |
+| `sub_1B26330` | MemCpyOpt | 4 |
+| `sub_1B7FDF0` | Reassociate | 3 |
+| `sub_1BFB520` | TTIWrapperPass | 1 |
+| `sub_1C46000` | NVVMLateOpt | 1 |
+| `sub_1C4B6F0` | Inliner / AlwaysInline | 2 |
+| `sub_1C6E560` | NewGVN / GVNHoist | 1 |
+| `sub_1C6E800` | GVN | 2 |
+| `sub_1C6FCA0` | ADCE | 2 |
+| `sub_1C76260` | ADCE variant | 2 |
+| `sub_1C7F370` | NVVMWarpShuffle | 1 |
+| `sub_1C8A4D0` | EarlyCSE / GVN variant | 3 |
+| `sub_1C8E680` | MemorySpaceOptimization | 4 |
+| `sub_1C98160` | NVVMLowerBarriers | 4 |
+| `sub_1C98270` | NVVMLowerBarriers variant | 1 |
+| `sub_1CB0F50` | ProfileSummaryInfo | 1 |
+| `sub_1CB4E40` | NVVMIntrinsicLowering | ~10 |
+| `sub_1CB73C0` | NVVMBranchDist | 3 |
+| `sub_1CBC480` | NVVMLowerAlloca | 1 |
+| `sub_1CC3990` | NVVMUnreachableBlockElim | 1 |
+| `sub_1CC5E00` | NVVMReduction | 1 |
+| `sub_1CC60B0` | NVVMSinking2 | 3 |
+| `sub_1CC71E0` | NVVMGenericAddrOpt | 1 |
+| `sub_1CEBD10` | NVVMFinalLowering | 1 |
+| `sub_1CEF8F0` | NVVMPeephole | 2 |
+| `sub_215D9D0` | NVVMAnnotationsProcessor | 2 |
+
+Total unique pass factory addresses: ~55.
+
 ## Function Map
 
 | Address | Identity | Size | Notes |
@@ -710,10 +1633,15 @@ NVIDIA's pipeline does not use explicit fixed-point loops (run passes until IR s
 | `sub_2337DE0` | Pass name prefix matcher | ~100B | starts_with comparison |
 | `sub_234CEE0` | Parameterized pass parser | ~200B | Extracts `<params>` |
 | `sub_23331A0` | MemorySpaceOpt param parser | ~300B | first-time/second-time/warnings |
-| `sub_226C400` | New PM pipeline driver | ~2KB | nvopt<O0/O1/O2/O3> selection |
-| `sub_2277440` | New PM text parser | ~5KB | Parses pipeline name strings |
-| `sub_225D540` | nvopt registration (new PM) | ~500B | Pipeline element vtable |
-| `sub_12C35D0` | nvopt registration (legacy PM) | ~500B | Pipeline element vtable |
+| `sub_226C400` | New PM pipeline driver | 35KB | nvopt<O0/O1/O2/O3/Ofcmax/Ofcmid/Ofcmin> selection |
+| `sub_2277440` | New PM text parser (`buildDefaultPipeline`) | 60KB | Parses pipeline name strings |
+| `sub_225D540` | nvopt registration (new PM) | ~32KB | Pipeline element vtable at `0x4A08350` |
+| `sub_12C35D0` | nvopt registration (legacy PM) | ~500B | Pipeline element vtable at `0x49E6A58` |
+| `sub_12EC960` | nvopt object initializer | ~100B | Creates 512-byte pipeline object |
+| `sub_1A62BF0` | LLVM standard pipeline factory | varies | Pipeline IDs 1,2,4,5,7,8 |
+| `sub_163A1D0` | Pass registry check | ~100B | Pass registration status |
+| `sub_163A340` | Pass status update | ~100B | Used in codegen dispatch |
+| `sub_2352D90` | Pipeline text tokenizer | ~200B | Tokenizes `nvopt<>` strings |
 
 ## Cross-References
 
@@ -724,4 +1652,4 @@ NVIDIA's pipeline does not use explicit fixed-point loops (run passes until IR s
 - [Sinking2](../nvidia/sinking2.md) -- NVIDIA's enhanced sinking pass
 - [CGSCC & LazyCallGraph](../infra/lazycallgraph.md) -- the inliner framework and iteration model
 - [Pipeline Entry](entry.md) -- top-level compilation entry and two-phase orchestration
-- [Scalar Passes](../llvm/scalar-passes.md) -- SROA, EarlyCSE, JumpThreading details
+- [SROA](../llvm/sroa.md), [EarlyCSE](../llvm/early-cse.md), [JumpThreading](../llvm/jump-threading.md) -- scalar pass details (hub: [scalar-passes](../llvm/scalar-passes.md))
