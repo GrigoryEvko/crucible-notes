@@ -238,7 +238,7 @@ After PEI assigns offsets, the spill loads/stores reference `[%SP + offset]` or 
 
 ## Interaction with SROA
 
-SROA runs early in the optimization pipeline (see [scalar-passes.md](./scalar-passes.md)) and aggressively promotes `alloca` instructions to SSA values. For many GPU kernels — especially those that avoid taking addresses of locals — SROA eliminates all allocas, resulting in an empty `MachineFrameInfo`. In this case:
+SROA runs early in the optimization pipeline (see [SROA](./sroa.md)) and aggressively promotes `alloca` instructions to SSA values. For many GPU kernels — especially those that avoid taking addresses of locals — SROA eliminates all allocas, resulting in an empty `MachineFrameInfo`. In this case:
 
 1. PEI's frame size computes to 0.
 2. The PTX emitter (`sub_2158E80`) checks `FrameInfo.StackSize`; if zero, it emits no `.local` directive and no `%SP`/`%SPL` declarations.
@@ -372,7 +372,7 @@ Offset  Type   Field
 
 - **[Register Allocation](./register-allocation.md)** — creates spill slots that PEI lays out; the number and alignment of spills directly determines frame size.
 - **[Register Coalescing](./register-coalescing.md)** — reduces register pressure, which reduces spills, which reduces frame size.
-- **[SROA, EarlyCSE & JumpThreading](./scalar-passes.md)** — SROA eliminates allocas before they reach MachineIR; when fully successful, PEI has nothing to do.
+- **[SROA](./sroa.md)** — SROA eliminates allocas before they reach MachineIR; when fully successful, PEI has nothing to do.
 - **[AsmPrinter & PTX Body Emission](../infra/asmprinter.md)** — `sub_2158E80` emits the `.local` directive and `%SP`/`%SPL` declarations that PEI computed.
 - **[Instruction Scheduling](./scheduling.md)** — runs before PEI; scheduling decisions affect register pressure and thus spill count.
 - **[Pipeline & Ordering](./pipeline.md)** — PEI runs post-regalloc, followed immediately by NVPTXPeephole for `%VRFrame` to `%VRFrameLocal` optimization.

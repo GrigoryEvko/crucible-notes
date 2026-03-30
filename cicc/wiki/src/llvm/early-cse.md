@@ -380,7 +380,7 @@ The pass is independently disableable via `NVVMPassOptions` at offset `+1440`. T
 
 ## Cross-References
 
-- [SROA, EarlyCSE & JumpThreading](./scalar-passes.md) -- the overview page that covers all three scalar passes
+- [Scalar Passes Hub](./scalar-passes.md) -- hub page linking SROA, EarlyCSE, and JumpThreading with GPU-context summaries
 - [MemorySSA Builder for GPU](../infra/memoryssa.md) -- the MemorySSA infrastructure consumed by the `early-cse-memssa` variant
 - [Hash Infrastructure](../infra/hash-infrastructure.md) -- the universal DenseMap mechanics shared by all four hash tables
 - [Barriers & Sync](../builtins/barriers.md) -- the barrier builtins whose intrinsic IDs trigger generation bumps

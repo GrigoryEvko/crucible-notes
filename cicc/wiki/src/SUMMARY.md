@@ -24,6 +24,7 @@
 - [OptiX IR Generation](./pipeline/optix-ir.md)
 - [Code Generation](./pipeline/codegen.md)
 - [PTX Emission](./pipeline/emission.md)
+- [Debug Info Pipeline](./pipeline/debug-info-pipeline.md)
 
 # NVIDIA Custom Passes
 
@@ -36,10 +37,19 @@
 - [Loop Index Split](./passes/loop-index-split.md)
 - [NVVM Peephole](./passes/nvvm-peephole.md)
 - [Dead Barrier Elimination](./passes/dead-barrier-elim.md)
+- [Dead Synchronization Elimination](./passes/dead-sync-elimination.md)
 - [Printf Lowering](./passes/printf-lowering.md)
 - [IP Memory Space Propagation](./passes/ipmsp.md)
+- [NVVM IR Verifier](./passes/nvvm-verify-deep.md)
+- [NVVM Intrinsic Lowering](./passes/nvvm-intrinsic-lowering.md)
+- [NVVM Reflect](./passes/nvvm-reflect.md)
 - [FP128/I128 Emulation](./passes/fp128-emulation.md)
-- [Other NVIDIA Passes](./passes/other.md)
+- [Struct/Aggregate Splitting](./passes/struct-splitting.md)
+- [Memmove Unrolling](./passes/memmove-unroll.md)
+- [Base Address Strength Reduction](./passes/base-address-sr.md)
+- [Common Base Elimination](./passes/common-base-elim.md)
+- [CSSA (Conventional SSA)](./passes/cssa.md)
+- [Minor NVIDIA Passes](./passes/other.md)
 
 # LLVM Passes
 
@@ -55,7 +65,9 @@
 - [Constant Folding: Math & Intrinsics](./llvm/constant-folding.md)
 - [KnownBits & DemandedBits](./llvm/known-bits.md)
 - [SROA, EarlyCSE & JumpThreading](./llvm/scalar-passes.md)
+- [SROA Deep Dive](./llvm/sroa.md)
 - [EarlyCSE Deep Dive](./llvm/early-cse.md)
+- [JumpThreading Deep Dive](./llvm/jump-threading.md)
 
 ## Loop
 
@@ -74,6 +86,7 @@
 
 - [Machine-Level Passes](./llvm/machine-passes.md)
 - [SelectionDAG](./llvm/selectiondag.md)
+- [Type Legalization](./llvm/type-legalization.md)
 - [ISel Pattern Matching](./llvm/isel-patterns.md)
 - [InstrEmitter](./llvm/instr-emitter.md)
 - [LiveRangeCalc](./llvm/live-range-calc.md)
@@ -142,11 +155,15 @@
 
 # Reference
 
+- [GPU Execution Model](./gpu-execution-model.md)
+- [Address Spaces](./reference/address-spaces.md)
 - [Register Classes](./reference/register-classes.md)
+- [NVPTX Machine Opcodes](./reference/nvptx-opcodes.md)
 
 # Configuration
 
 - [CLI Flags](./config/cli-flags.md)
 - [Optimization Levels](./config/optimization-levels.md)
+- [NVVMPassOptions (222 Slots)](./config/nvvm-pass-options.md)
 - [LLVM Knobs (1,689)](./config/knobs.md)
 - [Environment Variables](./config/env-vars.md)

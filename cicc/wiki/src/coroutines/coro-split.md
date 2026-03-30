@@ -329,7 +329,7 @@ The frontend does **not** restrict coroutines to host-side code. `__device__` fu
 ## Cross-References
 
 - [Pipeline & Ordering](../llvm/pipeline.md) -- where coroutine passes sit in the optimization sequence
-- [SROA, EarlyCSE & JumpThreading](../llvm/scalar-passes.md) -- SROA interacts with coroutine frame allocas
+- [SROA](../llvm/sroa.md) -- SROA interacts with coroutine frame allocas; decomposes aggregate allocas into scalar SSA values
 - [AsmPrinter & PTX Body Emission](../infra/asmprinter.md) -- `.pragma "coroutine"` emission
 - [Inliner Cost Model](../lto/inliner-cost.md) -- inlining decisions for split resume/destroy functions
 - [StructurizeCFG](../llvm/structurizecfg.md) -- structurizes the resume dispatch switch
