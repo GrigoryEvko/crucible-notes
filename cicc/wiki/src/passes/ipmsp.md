@@ -20,17 +20,7 @@ Disabling this pass (`-disable-MemorySpaceOptPass`) causes 2--20x performance re
 
 ## NVPTX Address Spaces
 
-The NVPTX target uses five address spaces (see [reference/address-spaces](../reference/address-spaces.md) for the full 10-space table):
-
-| AS | Name | PTX memory | Typical source |
-|---|---|---|---|
-| 0 | Generic | generic | Unresolved pointers (default) |
-| 1 | Global | `.global` | `__device__`, `cudaMalloc` |
-| 3 | Shared | `.shared` | `__shared__` |
-| 4 | Constant | `.const` | `__constant__` |
-| 5 | Local | `.local` | Stack allocations (`alloca`) |
-
-Generic pointers require a runtime address space check on every access. Resolving them statically eliminates this overhead.
+The pass resolves generic (AS 0) pointers to specific address spaces: global (AS 1), shared (AS 3), constant (AS 4), local (AS 5), or param (AS 101). Generic pointers require a runtime address space check on every access; resolving them statically eliminates this overhead. See [Address Spaces](../reference/address-spaces.md) for the complete table with hardware mapping, pointer widths, aliasing rules, and the MemorySpaceOpt bitmask encoding.
 
 ## Algorithm Overview
 

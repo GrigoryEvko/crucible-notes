@@ -504,18 +504,11 @@ fn determine_address_space(edg_node: &EDGNode) -> u32 {
 }
 ```
 
-### Complete NVPTX Address Space Table
+### NVPTX Address Space Assignment
 
-| LLVM AS | PTX State Space | CUDA Qualifier | Used For |
-|---|---|---|---|
-| 0 | `.global` (default) | `__device__` | Regular device-side globals |
-| 1 | `.global` (explicit) | `__device__` (annotated) | Explicitly address-qualified pointers |
-| 3 | `.shared` | `__shared__` | Per-block shared memory |
-| 4 | `.const` | `__constant__` | Read-only constant memory (cached) |
-| 5 | `.local` | (internal) | Per-thread local/stack memory |
-| 7 | (generic) | (internal) | Initial value before resolution; re-assigned before use |
+See [Address Spaces](../reference/address-spaces.md) for the complete master table mapping LLVM AS numbers to PTX qualifiers, hardware, and pointer widths.
 
-Address space 0 is the default for `__device__` variables. Address space 1 appears in pointer types when the global qualifier is explicit in the type annotation (as opposed to being inferred from the variable declaration). `__managed__` variables use address space 0 (same as regular device globals) but receive a `"managed"` annotation in `nvvm.annotations` that the runtime uses to set up Unified Virtual Memory mappings.
+In the IR generation context: address space 0 (generic) is the default for `__device__` variables. Address space 1 (global) appears in pointer types when the global qualifier is explicit in the type annotation (as opposed to being inferred from the variable declaration). `__managed__` variables use address space 0 (same as regular device globals) but receive a `"managed"` annotation in `nvvm.annotations` that the runtime uses to set up Unified Virtual Memory mappings.
 
 ### GlobalVariable Object Creation
 

@@ -1,6 +1,10 @@
 # Constant Folding: Math & Intrinsics
 
 > **NVIDIA-modified pass.** GPU-specific changes (110+ math name variants, 60+ NVVM intrinsic IDs, exception-safe host evaluation) are documented throughout this page.
+>
+> **Upstream source:** `llvm/lib/Analysis/ConstantFolding.cpp` (LLVM 20.0.0). The upstream `ConstantFoldCall` function handles standard `llvm.*` intrinsics; NVIDIA's extensions (`sub_14D90D0` eligibility checker, `sub_14D1BC0` evaluator) are layered on top.
+>
+> **LLVM version note:** The upstream `ConstantFolding.cpp` in LLVM 20 handles approximately 30 standard math intrinsics (`llvm.sin`, `llvm.cos`, `llvm.sqrt`, etc.) and a small set of NVPTX-specific intrinsics (ceil, floor, fabs, sqrt in `nvvm.*` form). CICC extends this to 110+ math name variants (C, glibc `__*_finite`, C++ mangled `_Z*`) and 60+ NVVM intrinsic IDs. The upstream `disable-fp-call-folding` knob (`cl::Hidden`, default `false`) is preserved; NVIDIA adds a separate `FPFoldDisable` CiccOption for independent control.
 
 CICC v13.0 extends LLVM's `ConstantFolding` analysis with two large custom functions that together enable compile-time evaluation of over 110 distinct math function name variants and 60+ NVVM intrinsic IDs. Upstream LLVM's `ConstantFoldCall` handles standard `llvm.sin`, `llvm.cos`, `llvm.sqrt`, and a handful of NVPTX-specific intrinsics (ceil, floor, fabs, sqrt in their `nvvm.*` forms, plus FP-to-integer conversion intrinsics). CICC goes far beyond this: it recognizes every C math library name (`sin`, `sinf`), every glibc `__*_finite` internal variant, every C++ mangled form (`_Z3cosf`, `_Z4acosd`), and the full set of NVVM approximate/FTZ math intrinsics -- then evaluates them using the host C math library with an exception-safe wrapper that refuses to produce results when the host FPU signals domain errors, overflow, or underflow.
 

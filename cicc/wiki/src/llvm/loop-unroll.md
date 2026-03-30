@@ -1,6 +1,8 @@
 # Loop Unrolling
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **Upstream source:** `llvm/lib/Transforms/Scalar/LoopUnrollPass.cpp` (decision engine), `llvm/lib/Transforms/Utils/LoopUnroll.cpp` (transformation engine), `llvm/lib/Transforms/Utils/LoopUnrollRuntime.cpp` (runtime unrolling) (LLVM 20.0.0)
 
 Loop unrolling in cicc is one of the most heavily tuned transformations in the entire pipeline. On a GPU, unrolling directly trades register pressure against instruction-level parallelism: every additional copy of the loop body increases live register count, which reduces SM occupancy and the number of concurrent warps available to hide memory latency. Conversely, too little unrolling leaves performance on the table by failing to expose independent instructions that the hardware scheduler can overlap. NVIDIA's unroller resolves this tension through a priority-based decision cascade with GPU-specific heuristics that have no upstream equivalent -- most notably a local-array threshold multiplier, power-of-two factor enforcement, and a pragma threshold 200x larger than stock LLVM. The transformation engine itself is a lightly modified version of upstream `llvm::UnrollLoop`, but the decision engine (`computeUnrollCount`) is substantially reworked.
 

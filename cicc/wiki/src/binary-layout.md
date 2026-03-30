@@ -640,6 +640,98 @@ When opening cicc in IDA Pro for the first time, the auto-analysis will take sev
 
 7. **Locate NVIDIA passes via factory addresses.** The Pass Factory Address Summary table above maps every pipeline-inserted pass to its constructor address. In IDA, setting a breakpoint at `sub_12DE0B0` (AddPass) and logging the second argument reveals the exact pass insertion order at runtime.
 
+## Master Address-Range Map
+
+The definitive quick-reference for "what lives at address X?" Every major address range in the cicc v13.0 binary, sorted by start address, consolidated from all subsystem pages in this wiki.
+
+### .text Section (0x400000 - 0x3BFFFFF)
+
+| Start | End | Size | Subsystem | Zone |
+|---|---|---|---|---|
+| `0x400000` | `0x40CFFF` | 52 KB | **CRT startup** (`_start`, libc stubs) | 1 |
+| `0x40D000` | `0x41FFFF` | 80 KB | **jemalloc stats** (`vsnprintf` at `sub_40D5CA`) | 1 |
+| `0x420000` | `0x42FFFF` | 64 KB | **libc helpers** (memcpy, memset, strlen, math) | 1 |
+| `0x430000` | `0x5CFFFF` | 1.6 MB | **Global constructors** (~1,689 `cl::opt` registrations, pass/target init) | 2 |
+| `0x5D0000` | `0x8EFFFF` | 3.2 MB | **EDG 6.6 C++ Frontend** (parser, constexpr, templates, IL walkers, SARIF, preprocessor) | 3 |
+| `0x8F0000` | `0x8FFFFF` | 64 KB | **Real main / CLI** (`sub_8F9C90` entry, flag mapping, XOR deobfuscator) | 4 |
+| `0x900000` | `0x92FFFF` | 192 KB | **Path A entry** (LibNVVM API: CLI parse, pipeline driver, builtin tables) | 4 |
+| `0x930000` | `0x95FFFF` | 192 KB | **Path A builtins** (pre-opt builtin lowering, 770-entry resolution) | 4 |
+| `0x960000` | `0x9EFFFF` | 576 KB | **Architecture detection** (`-arch` fan-out, NVVM option parsing) | 4 |
+| `0x9F0000` | `0xAEFFFF` | 1 MB | **Bitcode reader** (`parseFunctionBody` 166KB, metadata reader 121KB) | 5 |
+| `0xAF0000` | `0xBEFFFF` | 1 MB | **X86 AutoUpgrade** (`sub_A939D0` 457KB -- legacy intrinsic upgrader) | 5 |
+| `0xBF0000` | `0xBFFFFF` | 64 KB | **LLVM IR Verifier** (entry points, `visitCallInst` 207KB) | 5 |
+| `0xC00000` | `0xCAFFFF` | 704 KB | **LLVM Support/ADT** (APInt, CommandLine, ConstantRange, JSON, Timer, YAML, VFS) | 6 |
+| `0xCB0000` | `0xCBFFFF` | 64 KB | **YAML parser/emitter** (libyaml) | 7 |
+| `0xCC0000` | `0xCCFFFF` | 64 KB | **LLVM Triple** parsing (`Triple_normalize` 35KB) | 7 |
+| `0xCCD000` | `0xCDFFFF` | 76 KB | **NVVM container format** (serialize `sub_CDD2D0`, deserialize `sub_CD1D80`, 144 tags) | 7 |
+| `0xCE0000` | `0xD5FFFF` | 512 KB | **NVVM options** (container validators, option parsers) | 7 |
+| `0xD60000` | `0xD82FFF` | 140 KB | **NV Module Summary / LTO** (`buildModuleSummary` 74KB, `runOnModule` 56KB) | 7 |
+| `0xD83000` | `0xDFFFFF` | 500 KB | **ScalarEvolution (SCEV)** (AddRecExpr, backedge analysis, trip counts) | 7 |
+| `0xE00000` | `0xE0FFFF` | 64 KB | **DWARF debug info** (string/enum tables) | 7 |
+| `0xE10000` | `0xE2FFFF` | 128 KB | **Itanium name demangler** (`parseExpr` 47KB) | 7 |
+| `0xE30000` | `0xEBFFFF` | 576 KB | **MC assembler layer** (ELF/COFF/MachO section parsers, expression evaluator) | 7 |
+| `0xEC0000` | `0xED0000` | 64 KB | **MC directives** (`sub_ECB300` ELF section parser 40KB) | 7 |
+| `0xED0000` | `0xEF8000` | 160 KB | **InstrProf / MemProf** reader (profiling data infrastructure) | 7 |
+| `0xEF8000` | `0xF05000` | 52 KB | **Bitstream remark serialization** | 7 |
+| `0xF05000` | `0xF6FFFF` | 428 KB | **SelectionDAG infrastructure** (DAG node creation, SDValue, EVT/MVT helpers) | 7 |
+| `0xF70000` | `0xF8FFFF` | 128 KB | **Loop vectorization runtime checks** (`vectorizeLoop` 37KB, `canVectorizeMemory` 29KB) | 7 |
+| `0xF90000` | `0xFCFFFF` | 256 KB | **SimplifyCFG + code sinking** (switch table gen, speculative exec) | 7 |
+| `0xFD0000` | `0xFEFFFF` | 128 KB | **AliasSet / register pressure** (CFG graphviz) | 7 |
+| `0xFF0000` | `0x101FFFF` | 192 KB | **Block scheduling** (RPO traversal, constant folding) | 7 |
+| `0x1020000` | `0x103FFFF` | 128 KB | **Inline ASM + scheduling model** (CUTLASS kernel detection 41KB) | 7 |
+| `0x1040000` | `0x106FFFF` | 192 KB | **Divergence analysis** (DAG utilities, IR linker) | 7 |
+| `0x1070000` | `0x10CFFFF` | 384 KB | **MC object emission + InstructionSimplify** (`visitAdd` 94KB) | 7 |
+| `0x10D0000` | `0x122FFFF` | 1.4 MB | **InstCombine mega-region** (main visitor 396KB, KnownBits 125KB, SimplifyLibCalls, LLParser) | 8 |
+| `0x1230000` | `0x12CFFFF` | 640 KB | **NVVM Bridge / IR codegen** (AST-to-IR, Path B entry, builtin tables, bitcode linker) | 9 |
+| `0x12D0000` | `0x12FBFFF` | 176 KB | **Pipeline builder** (NVVMPassOptions 125KB, `AddPass`, tier builders, master assembler 50KB) | 10 |
+| `0x12FC000` | `0x133FFFF` | 256 KB | **jemalloc core** (~400 functions, `malloc_conf_init` 129KB) | 10 |
+| `0x1340000` | `0x16FFFFF` | 3.8 MB | **IR infrastructure / PassManager** (IR types, constants, instructions, metadata, execution engine, IR linker) | 11 |
+| `0x1700000` | `0x17FFFFF` | 1 MB | **InstCombine (NewPM) + Sanitizers + PGO** (MSan, TSan, coverage, GCov) | 12 |
+| `0x1800000` | `0x18DFFFF` | 896 KB | **Standard scalar passes** (InstructionCombining, TailCallElim, FunctionAttrs, SCCP, Sink, MemorySSA) | 13 |
+| `0x18E0000` | `0x18FFFFF` | 128 KB | **DCE / CVP / DSE** (Dead Code Elimination, CorrelatedValuePropagation, Dead Store Elimination) | 13 |
+| `0x1900000` | `0x193FFFF` | 256 KB | **GVN family** (`runOnFunction` 83KB, PRE 26KB, NewGVN 43KB) | 13 |
+| `0x1940000` | `0x19FFFFF` | 768 KB | **Scalar passes continued** (LICM, LoopRotate, LoopIndexSplit, LoopUnroll, SROA) | 13 |
+| `0x1A00000` | `0x1AFFFFF` | 1 MB | **NVVMRematerialization / LLVM standard pipeline / InstructionSimplify** | 13 |
+| `0x1B00000` | `0x1B7FFFF` | 512 KB | **Loop unrolling + switch lowering** (main driver 68KB, Unroll-and-Jam 55KB, peeling 39KB) | 13 |
+| `0x1B80000` | `0x1BFFFFF` | 512 KB | **Loop/SLP vectorizer** (LoopVectorize 43KB, VPlan 32KB, SLP 47KB+62KB) | 13 |
+| `0x1C00000` | `0x1C3FFFF` | 256 KB | **NVVM module validation + config** (codegen config 33KB, compile mode 28KB, intrinsic lowering 112KB, module validator 48KB) | 13 |
+| `0x1C40000` | `0x1CFFFFF` | 768 KB | **NVIDIA custom IR passes** (dead-sync-elim, common-base-elim, base-addr-sr, memspace-opt, loop-index-split, printf-lowering, iv-demotion, remat, peephole, sinking2, NLO) | 13 |
+| `0x1D00000` | `0x1DFFFFF` | 1 MB | **SelectionDAG ISel / CodeGenPrepare** (bytecode interpreter 97KB, address sinking 65KB) | 14 |
+| `0x1E00000` | `0x1EFFFFF` | 1 MB | **Register allocation infrastructure** (Greedy RA, live intervals, spill cost) | 14 |
+| `0x1F00000` | `0x1FFFFFF` | 1 MB | **Backend codegen infrastructure** (ScheduleDAG, ShrinkWrapping, SpillPlacement, register coalescer, TwoAddressInstruction) | 15 |
+| `0x2000000` | `0x20FFFFF` | 1 MB | **LegalizeTypes** (`sub_20019C0` 341KB -- third largest function) | 15 |
+| `0x2100000` | `0x21FFFFF` | 1 MB | **NVPTX target backend** (AsmPrinter, PTX emission, MMA/tensor codegen, atomics, TargetMachine) | 16 |
+| `0x2200000` | `0x233FFFF` | 1.25 MB | **(gap: misc codegen, late passes)** | -- |
+| `0x2340000` | `0x23FFFFF` | 768 KB | **New PM pass registration** (master registrar 2,816 lines, 526 passes, pipeline text parser) | 17 |
+| `0x2400000` | `0x258FFFF` | 1.6 MB | **Attributor framework** (`runTillFixpoint` 53KB) | 18 |
+| `0x2590000` | `0x265FFFF` | 832 KB | **Sanitizer instrumentation** (ASan, HWASan) | 18 |
+| `0x2660000` | `0x269FFFF` | 256 KB | **OpenMP target offloading** (194-entry `__kmpc_*` table, Generic-to-SPMD 61KB, state machine 41KB) | 18 |
+| `0x26A0000` | `0x29FFFFF` | 3.5 MB | **Coroutines / LTO infrastructure / PGO lowering / EarlyCSE / SROA (NewPM)** | 18 |
+| `0x2A00000` | `0x2CFFFFF` | 3 MB | **Loop transforms** (LoopPeeling, LoopRotation, UnrollLoop, IndVarSimplify, dead-sync-elim island) | 19 |
+| `0x2D00000` | `0x2FFFFFF` | 3 MB | **Codegen target options / SelectionDAG lowering** (TargetOptions 112KB, DAG combine, type legalization) | 20 |
+| `0x3000000` | `0x36FFFFF` | 7 MB | **NVPTX ISel + DAG lowering** (NVPTXTargetLowering 111KB, intrinsic switch 343KB, register info) | 21 |
+| `0x3700000` | `0x37AFFFF` | 704 KB | **Table-driven instruction selector** (main matcher 138KB, per-SM opcode gating) | 22 |
+| `0x37B0000` | `0x38FFFFF` | 1.3 MB | **Late machine passes** (inliner cost model at `0x38576C0`, pipeline helpers) | 22 |
+| `0x3900000` | `0x397FFFF` | 512 KB | **NVIDIA machine-level passes** (register pressure, remat, ABI preserve, GEP split, AsmPrinter/PTX emission) | 22 |
+| `0x3980000` | `0x399FFFF` | 128 KB | **MC layer / DWARF emission** (object file writers, DWARF sections at `0x3990000`-`0x39DF000`) | 22 |
+| `0x39A0000` | `0x3BFFFFF` | 2.4 MB | **Trailing codegen** (section management, CRT finalization) | 22 |
+
+### .rodata / .data Sections (0x3C00000+)
+
+| Start | End | Size | Contents |
+|---|---|---|---|
+| `0x3C00000` | `0x3EAFFFF` | ~2.7 MB | **Read-only data** (strings, jump tables, XOR-encrypted env vars at `0x3C23A7B`) |
+| `0x3EA0080` | `0x3F1FFFF` | 456 KB | **Embedded libdevice bitcode (Path A)** |
+| `0x3F252E0` | `0x3F3E6C0`+ | varies | **NVPTX tables** (constraint type table, constraint word table, MVT tables) |
+| `0x420FD80` | `0x428FFFF` | 456 KB | **Embedded libdevice bitcode (Path B)** |
+| `0x42812C0` | -- | varies | **Obfuscated version strings** (XOR+ROT13 ciphertext) |
+| `0x444C4A0` | `0x4456580`+ | varies | **MVT tables** (operand type, vector element count, scalarized MVT) |
+| `0x4F00000`+ | -- | large | **BSS** (`cl::opt` storage, hash tables, global state) |
+
+### Usage
+
+Given an IDA address, find the row whose `Start <= address < End`. The Subsystem column tells you which component of cicc you are looking at. For pass-level detail within a zone, jump to the corresponding Zone section above.
+
 ## Cross-References
 
 - [Pipeline Overview](pipeline/overview.md) -- compilation flow from entry to PTX emission

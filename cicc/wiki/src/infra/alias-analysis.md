@@ -25,32 +25,9 @@ Beyond pure address-space disjointness, cicc augments the standard LLVM AA infra
 
 ## GPU Address Space Table
 
-NVPTX defines six logically disjoint address spaces plus a generic (flat) umbrella:
+NVPTX defines six logically disjoint address spaces plus a generic (flat) umbrella. See [Address Spaces](../reference/address-spaces.md) for the complete master table with hardware mapping, pointer widths, latency numbers, and data layout strings.
 
-| LLVM AS | Name | PTX qualifier | Hardware | Aliasing rule |
-|---------|------|--------------|----------|---------------|
-| 0 | generic (flat) | `.generic` | Virtual -- maps to any physical space at runtime | May alias with **all** other spaces |
-| 1 | global | `.global` | Device DRAM, L2 cached | May alias with AS 1 and AS 101 (param window is within global) |
-| 3 | shared | `.shared` | Per-CTA scratchpad SRAM | May alias with AS 3 and AS 7 (shared cluster) |
-| 4 | constant | `.const` | Read-only constant cache | Cannot be written; `getModRefInfoMask` returns `NoModRef` |
-| 5 | local | `.local` | Per-thread stack in DRAM | Only aliased by itself |
-| 7 | shared cluster | `.shared::cluster` | Distributed shared memory (SM 90+) | May alias with AS 3 (regular shared) |
-| 101 | param | `.param` | Kernel parameter window | Read-only; may alias with AS 1 on SM 70+ via `cvta.param` |
-
-The critical insight: any `(AS_x, AS_y)` pair where `x != y` and neither is 0 (generic) and neither is the shared/shared-cluster pair returns **NoAlias**, unless `x` is global and `y` is param (or vice versa) once `cvta.param` support is added.
-
-MemorySpaceOpt uses an internal bitmask encoding for dataflow analysis of address spaces:
-
-| Bit | Value | Address space |
-|-----|-------|--------------|
-| 0 | `0x01` | global (AS 1) |
-| 1 | `0x02` | shared (AS 3) |
-| 2 | `0x04` | constant (AS 4) |
-| 3 | `0x08` | local (AS 5) |
-| 4 | `0x10` | param (AS 101) |
-| 0--3 | `0x0F` | unknown (union of all non-param) |
-
-The mapping is implemented in `sub_1CA8CD0` via a switch on the LLVM address space ID. When multiple sources contribute different spaces, bitmasks are OR'd. A singleton bit means the pointer's space is fully resolved; multiple bits set means the pointer is ambiguous (requires runtime `isspacep` or conservative default to global).
+The critical property exploited by NVVM AA: any `(AS_x, AS_y)` pair where `x != y` and neither is 0 (generic) and neither is the shared/shared-cluster pair (AS 3 vs AS 7) returns **NoAlias**, unless `x` is global and `y` is param (or vice versa) since `cvta.param` on SM 70+ makes param addressable as global. See the [Aliasing Rules](../reference/address-spaces.md#aliasing-rules) section for the complete cross-space aliasing specification and the [MemorySpaceOpt Internal Bitmask](../reference/address-spaces.md#memoryspaceopt-internal-bitmask) section for the dataflow bitmask encoding used during address space resolution.
 
 
 ## The NVVM AA Algorithm

@@ -411,6 +411,16 @@ Furthermore, GPU functions tend to be small (typically 10-100 instructions for d
 
 With `-aggressive-inline` (budget 40,000, i.e., 178x the LLVM default), NVIDIA targets workloads like OptiX where complete flattening is desired but `nv-inline-all` is too blunt (it ignores all cost analysis).
 
+## What Upstream LLVM Gets Wrong for GPU
+
+Upstream LLVM's inliner cost model was built for x86/AArch64 where function call overhead is small and code size is the primary inlining constraint. On GPU, every assumption is wrong:
+
+- **Upstream assumes a 225-instruction budget is sufficient.** The default `inline-threshold` of 225 reflects CPU economics where a function call costs 5-20 cycles (register push/pop + branch). On GPU, a single function call with 8 struct arguments generates 16+ `.param`-space memory operations, potential register spills to device DRAM (200-800 cycle latency), loss of cross-boundary scheduling, and branch divergence hazards. NVIDIA's 20,000-unit budget (89x upstream) is calibrated for this reality, not because GPU code is more aggressive about inlining large functions.
+- **Upstream counts instructions as the primary cost metric.** LLVM prices each instruction at 5 units and subtracts savings from constant propagation and dead code elimination. NVIDIA's custom inliner (Model A) does not count instructions at all -- 60% of its 75KB body computes byte-level argument type-size coercion costs, because on GPU the dominant cost of a function call is `.param` address-space marshaling, not instruction count.
+- **Upstream has no concept of `.param`-space argument passing cost.** CPU calling conventions pass arguments in registers (nearly free) or via L1-cached stack (3-5 cycles). On GPU, every argument requires explicit `DeclareParam` + `st.param` (caller) + `ld.param` (callee) sequences. A function with 10 instructions but 8 struct arguments is more expensive to call than one with 200 instructions and 2 scalar arguments. Upstream's model gets this exactly backwards.
+- **Upstream uses a single per-callsite budget.** NVIDIA uses a three-level system: per-caller budget (`inline-budget`), module-wide total budget (`inline-total-budget`), and a dynamically adjusted secondary budget (`inline-adj-budget1`) that can give kernel entry points higher limits. This multi-level approach prevents any single caller from bloating while still allowing aggressive inlining where it matters most.
+- **Upstream has no GPU intrinsic awareness.** NVIDIA's Model D applies a +2000 cost bonus for functions containing opcode tag 9 instructions (likely tensor core or warp-level intrinsics), because these operations benefit enormously from being visible to the register allocator and scheduler within the caller's scope. Upstream LLVM has no mechanism to express "this function contains operations that are disproportionately valuable to inline."
+
 ## Key Addresses
 
 | Address | Size | Function |

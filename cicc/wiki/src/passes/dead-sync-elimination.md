@@ -65,6 +65,8 @@ The element size gate (`> 0x1FF` bits, i.e., > 511 bits) filters out trivially s
 
 ### Phase 3: Bidirectional Fixed-Point Dataflow
 
+**Complexity.** Let B = number of basic blocks, S = number of barrier instructions, and I = total instructions across all blocks. Phase 1 (barrier identification) is O(S). Phase 2 (access classification) is O(I). The dataflow fixed-point iterates until no boolean in the 4 * B * 2 lattice positions flips from 0 to 1; since the lattice has height 1, convergence is bounded by O(B) iterations, each costing O(B + I) for the forward and backward scans, giving O(B * (B + I)) per convergence cycle. Phase 4 (elimination decision) is O(S). Phase 5 restarts the entire analysis from Phase 3 on each removal, yielding a worst-case total of O(S * B * (B + I)). In practice, CUDA kernels have B < 100, S < 20, and convergence in 2--3 iterations, so the pass behaves as near-linear in typical use. The red-black tree maps contribute O(log B) per insert/lookup, but this is dominated by the iteration cost.
+
 This is the core of the pass and accounts for the majority of its 96KB size. The algorithm maintains **eight red-black tree maps** organized into forward and backward analysis sets, plus **four bridge maps** for the final elimination decision.
 
 #### Map Layout

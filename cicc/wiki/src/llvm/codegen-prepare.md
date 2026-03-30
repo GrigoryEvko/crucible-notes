@@ -214,9 +214,9 @@ All registered in `ctor_263_0` at `0x4F36F0`. These are NVVMPassOptions values, 
 
 | Knob | Type | Default | Effect |
 |------|------|---------|--------|
-| `do-scev-cgp` | bool | (likely true) | Master enable for SCEV-based CodeGenPrepare transforms |
-| `do-scev-cgp-aggresively` [sic] | bool | false (likely) | Enable aggressive SCEV-CGP mode with expanded search |
-| `do-function-scev-cgp` | bool | false (likely) | Enable function-level (cross-loop) SCEV-CGP |
+| `do-scev-cgp` | bool | true `[MEDIUM confidence]` | Master enable for SCEV-based CodeGenPrepare transforms. Default inferred from the fact that `nv-disable-scev-cgp` exists as an override, implying this defaults to enabled. |
+| `do-scev-cgp-aggresively` [sic] | bool | false `[MEDIUM confidence]` | Enable aggressive SCEV-CGP mode with expanded search. Default inferred from naming convention (aggressive modes typically off by default). |
+| `do-function-scev-cgp` | bool | false `[MEDIUM confidence]` | Enable function-level (cross-loop) SCEV-CGP. Default inferred from naming convention. |
 | `nv-disable-scev-cgp` | bool | **true** | Master disable switch in NVPTX backend (overrides `do-scev-cgp`) |
 | `scev-cgp-control` | int | unknown | Limit the total number of SCEV-CGP transformations per function |
 | `scev-cgp-cross-block-limit` | int | unknown | Max number of common base expressions from a single block |

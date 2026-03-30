@@ -87,23 +87,9 @@ Cluster attributes (5--7) gated by `*(a1+232)->field_1212 > 0x59` (SM > 89, i.e.
    .reg .f64   %fd<3>;
    ```
 
-## Register Class Map -- Complete
+## Register Class Map
 
-9 register classes with vtable addresses, PTX type suffixes, register prefixes, and encoded IDs:
-
-| Vtable | Class | PTX Type | Prefix | Encoded ID |
-|---|---|---|---|---|
-| `off_4A027A0` | Int1Regs | `.pred` | `%p` | `0x10000000` |
-| `off_4A02720` | Int16Regs | `.b16` | `%rs` | `0x20000000` |
-| `off_4A025A0` | Int32Regs | `.b32` | `%r` | `0x30000000` |
-| `off_4A024A0` | Int64Regs | `.b64` | `%rd` | `0x40000000` |
-| `off_4A02620` | Float32Regs | `.f32` | `%f` | `0x50000000` |
-| `off_4A02520` | Float64Regs | `.f64` | `%fd` | `0x60000000` |
-| `off_4A02760` | Int16HalfRegs | `.b16` | `%h` | `0x70000000` |
-| `off_4A026A0` | Int32HalfRegs | `.b32` | `%hh` | `0x80000000` |
-| `off_4A02460` | Int128Regs | `.b128` | `%rq` | `0x90000000` |
-
-Encoding in `sub_21583D0`: `class_encoded_id | (register_index & 0x0FFFFFFF)`. Fatal `"Bad register class"` on unrecognized vtable.
+The complete 9-class register table (vtable addresses, PTX type suffixes, prefixes, encoded IDs, copy opcodes, and coalescing constraints) is in [Register Classes](../reference/register-classes.md#the-nine-register-classes). The encoding scheme (`sub_21583D0`: `class_encoded_id | (register_index & 0x0FFFFFFF)`, fatal `"Bad register class"` on unrecognized vtable) is documented in [Register Encoding Scheme](../reference/register-classes.md#register-encoding-scheme----sub_21583d0).
 
 ## Special Registers -- `sub_21E86B0`
 
@@ -378,15 +364,7 @@ Filter mode selects between `"nearest"` and `"linear"`. The `force_unnormalized_
 
 ### Address Space Qualifiers
 
-`sub_214FA80` maps NVPTX address space numbers to PTX qualifier strings:
-
-| Address Space | PTX Qualifier |
-|---|---|
-| 0 | (generic, no qualifier) |
-| 1 | `.global` |
-| 3 | `.shared` |
-| 4 | `.const` |
-| 5+ | `.local` |
+`sub_214FA80` maps NVPTX address space numbers to PTX qualifier strings (0=no qualifier, 1=`.global`, 3=`.shared`, 4=`.const`, 5+=`.local`). See [Address Spaces](../reference/address-spaces.md) for the complete mapping including tensor memory, shared cluster, and param spaces.
 
 Additional attributes emitted by `sub_214FEE0`:
 - `.attribute(.managed)` for CUDA managed memory globals

@@ -49,27 +49,29 @@ The output entry (kind = -1) carries the result register class. Input entries ca
 
 The `register_class_id` in the high byte maps to NVIDIA GPU register files. Values recovered from `sub_A778C0` (register class constraint creator), `sub_B5BA00` (register class set builder, 111 cases), and `sub_2163730` (PTX emission naming):
 
-| ID | Register Class | PTX Type | PTX Prefix | Width |
-|----|---------------|----------|------------|-------|
-| 14 | Int32Regs | `.b32` | `%r` | 32 bits |
-| 22 | Int16Regs | `.b16` | `%rs` | 16 bits |
-| 24 | Int16HalfRegs | `.b16` | `%h` | 16 bits (f16/bf16) |
-| 27 | Int32HalfRegs | `.b32` | `%hh` | 32 bits (v2f16/v2bf16) |
-| 29 | (unidentified) | -- | -- | -- |
-| 32 | (unidentified) | -- | -- | -- |
-| 36 | (unidentified) | -- | -- | -- |
-| 39 | (unidentified) | -- | -- | -- |
-| 40 | Float32Regs | `.f32` | `%f` | 32 bits |
-| 41 | (unidentified) | -- | -- | -- |
-| 43 | Float16Regs | (alias) | `%h` | 16 bits |
-| 50 | Int64Regs | `.b64` | `%rd` | 64 bits |
-| 51 | Float64Regs | `.f64` | `%fd` | 64 bits |
-| 52 | Int128Regs | `.b128` | `%rq` | 128 bits |
-| 67 | (unidentified) | -- | -- | -- |
-| 72 | (unidentified) | -- | -- | -- |
-| 76 | (unidentified) | -- | -- | -- |
-| 78 | Int1Regs (Pred) | `.pred` | `%p` | 1 bit |
-| 86 | SpecialRegs | `!Special!` | -- | varies |
+These IDs are specific to the pattern database constraint system and differ from the 4-bit class tags used in register encoding (see [Register Classes](../reference/register-classes.md) for vtable addresses, PTX types, prefixes, and encoded IDs).
+
+| ID | Register Class | Width |
+|----|---------------|-------|
+| 14 | Int32Regs (`%r`) | 32 bits |
+| 22 | Int16Regs (`%rs`) | 16 bits |
+| 24 | Int16HalfRegs (`%h`) | 16 bits (f16/bf16) |
+| 27 | Int32HalfRegs (`%hh`) | 32 bits (v2f16/v2bf16) |
+| 29 | (unidentified) | -- |
+| 32 | (unidentified) | -- |
+| 36 | (unidentified) | -- |
+| 39 | (unidentified) | -- |
+| 40 | Float32Regs (`%f`) | 32 bits |
+| 41 | (unidentified) | -- |
+| 43 | Float16Regs (`%h`, alias of Int16HalfRegs) | 16 bits |
+| 50 | Int64Regs (`%rd`) | 64 bits |
+| 51 | Float64Regs (`%fd`) | 64 bits |
+| 52 | Int128Regs (`%rq`) | 128 bits |
+| 67 | (unidentified) | -- |
+| 72 | (unidentified) | -- |
+| 76 | (unidentified) | -- |
+| 78 | Int1Regs (`%p`) | 1 bit |
+| 86 | SpecialRegs (internal-only, `off_4A026E0`) | varies |
 
 IDs 29, 32, 36, 39, 41, 67, 72, 76 appear in the `sub_B612D0` table but have not been definitively mapped to named register classes. They likely correspond to sub-register classes, tied-operand classes, or WMMA accumulator classes that cicc defines beyond the 9 primary classes documented in [reference/register-classes.md](../reference/register-classes.md).
 

@@ -80,21 +80,9 @@ The constraint flag at offset +3 (mask `0x10`) gates whether the operand partici
 
 ### Register Class Constraints
 
-Coalescing is constrained to same-class merges. The NVPTX register classes are completely disjoint -- an `Int32Regs` (`%r`) register cannot coalesce with a `Float32Regs` (`%f`) register even though both are 32 bits wide. This is a consequence of PTX's typed register model: `.reg .b32 %r0` and `.reg .f32 %f0` are distinct storage locations from `ptxas`'s perspective.
+Coalescing is constrained to same-class merges. The NVPTX register classes are completely disjoint -- an `Int32Regs` (`%r`) register cannot coalesce with a `Float32Regs` (`%f`) register even though both are 32 bits wide. This is a consequence of PTX's typed register model: `.reg .b32 %r0` and `.reg .f32 %f0` are distinct storage locations from `ptxas`'s perspective. The complete register class table and coalescing constraint flags are in [Register Classes](../reference/register-classes.md#coalescing-constraints). All eight primary classes are same-class-only; `Int128Regs` is excluded from the coalescing worklist entirely (constraint flag cleared).
 
-| Class | PTX Prefix | Type Code | Coalesceable With |
-|---|---|---|---|
-| `Int1Regs` | `%p` | -- | Same class only |
-| `Int16Regs` | `%qs` | -- | Same class only |
-| `Int32Regs` | `%r` | 12 | Same class only |
-| `Int64Regs` | `%qd` | 13 | Same class only |
-| `Float32Regs` | `%f` | 15 | Same class only |
-| `Float64Regs` | `%fd` | -- | Same class only |
-| `Float16Regs` | `%h` | -- | Same class only |
-| `Float16x2Regs` | `%fh` | -- | Same class only |
-| `SpecialRegs` | `%rq` | -- | Never (excluded by constraint flag) |
-
-Cross-class copies (e.g., bitcasting an `i32` to `f32`) use distinct cross-class copy opcodes (see the [Register Allocation](./register-allocation.md) page for the full opcode table) and are never eliminated by the coalescer -- they must survive as explicit instructions in PTX.
+Cross-class copies (e.g., bitcasting an `i32` to `f32`) use distinct cross-class copy opcodes (see the [copy opcode table](../reference/register-classes.md#copy-opcodes----sub_2162350)) and are never eliminated by the coalescer -- they must survive as explicit instructions in PTX.
 
 ### Sub-Register Handling
 

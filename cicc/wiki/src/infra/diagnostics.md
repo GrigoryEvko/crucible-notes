@@ -191,7 +191,7 @@ The severity byte at `diag+180` encodes the following levels, used by both the t
 | 10 | catastrophe | ESC 2 (red) | `"catastrophe"` | c | C |
 | 11 | internal-error | ESC 2 (red) | `"internal_error"` | i | special |
 
-Severity values 9, 10, and 11 are fatal: after emission, `sub_7AFBD0` (likely `longjmp` / error propagation) and `sub_7235F0(severity)` terminate compilation. Internal errors (11) additionally prepend `"(internal error) "` to the log output and use the prefix for error 3709.
+Severity values 9, 10, and 11 are fatal: after emission, `sub_7AFBD0` (`longjmp` / error propagation `[LOW confidence]` -- the function is called on fatal error paths and does not return to its caller, consistent with `longjmp` or `exit`, but could also be a custom `abort`-style handler; no `setjmp`/`longjmp` string evidence found) and `sub_7235F0(severity)` terminate compilation. Internal errors (11) additionally prepend `"(internal error) "` to the log output and use the prefix for error 3709.
 
 Note: severity 2 (remark) is distinct from LLVM optimization remarks -- it is an EDG frontend remark (e.g., template instantiation notes). Remarks at severity 2 suppress their note\_list children during recursive emission.
 

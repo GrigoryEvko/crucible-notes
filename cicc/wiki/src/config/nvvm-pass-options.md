@@ -181,22 +181,24 @@ Parses a string to a 64-bit integer. Used for the 6 integer-typed option slots (
 
 Most boolean slots default to `0` (disabled). 14 slots default to `1` (enabled) -- these represent passes that run by default and must be explicitly disabled:
 
-| Slot | Offset | Likely Pass |
-|---|---|---|
-| 19 | 400 | Inliner (AlwaysInliner gate) |
-| 25 | 520 | NVIDIA-specific pass A |
-| 93 | 1880 | ConstantMerge |
-| 95 | 1920 | NVVMIntrinsicLowering |
-| 117 | 2360 | NVVMUnreachableBlockElim |
-| 141 | 2840 | ADCE |
-| 143 | 2880 | LICM |
-| 151 | 3040 | CorrelatedValuePropagation |
-| 155 | 3120 | MemorySpaceOpt (second pass) |
-| 157 | 3160 | PrintModulePass (dump mode) |
-| 159 | 3200 | Optimization-level gating |
-| 165 | 3328 | Late-pipeline enable block |
-| 211 | 4264 | (inline bool, late pass) |
-| 219 | 4424 | (compact bool, late pass) |
+> **Confidence note:** Pass associations marked `[MEDIUM]` are inferred from pipeline guard cross-references (`a4[offset]`). Associations marked `[LOW]` are based solely on offset proximity or default-value patterns.
+
+| Slot | Offset | Likely Pass | Confidence |
+|---|---|---|---|
+| 19 | 400 | Inliner (AlwaysInliner gate) | MEDIUM |
+| 25 | 520 | NVIDIA-specific pass A | LOW |
+| 93 | 1880 | ConstantMerge | HIGH |
+| 95 | 1920 | NVVMIntrinsicLowering | HIGH |
+| 117 | 2360 | NVVMUnreachableBlockElim | HIGH |
+| 141 | 2840 | ADCE | HIGH |
+| 143 | 2880 | LICM | HIGH |
+| 151 | 3040 | CorrelatedValuePropagation | MEDIUM |
+| 155 | 3120 | MemorySpaceOpt (second pass) | MEDIUM |
+| 157 | 3160 | PrintModulePass (dump mode) | HIGH |
+| 159 | 3200 | Optimization-level gating | MEDIUM |
+| 165 | 3328 | Late-pipeline enable block | LOW |
+| 211 | 4264 | (inline bool, late pass) | LOW |
+| 219 | 4424 | (compact bool, late pass) | LOW |
 
 Integer slot defaults:
 

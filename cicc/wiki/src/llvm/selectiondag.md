@@ -1,6 +1,10 @@
 # SelectionDAG & Instruction Selection
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
+>
+> **Upstream source:** Target-independent DAG infrastructure: `llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp`, `DAGCombiner.cpp`, `LegalizeDAG.cpp`, `LegalizeTypes.cpp`, `SelectionDAGBuilder.cpp`, `SelectionDAGISel.cpp`. NVPTX target: `llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp`, `NVPTXISelDAGToDAG.cpp`, `NVPTXInstrInfo.td` (LLVM 20.0.0).
+>
+> **LLVM version note:** The target-independent SelectionDAG infrastructure at `0xF05000`--`0xF70000` appears to be stock LLVM 20 with no detectable NVIDIA modifications. All NVIDIA customization lives in the NVPTX target range (`0x3290000`--`0x35FFFFF`) via virtual dispatch through `NVPTXTargetLowering` and `NVPTXDAGToDAGISel`. The intrinsic lowering switch covers IDs up to 14196 (0x3774), far exceeding upstream NVPTX which covers approximately IDs 0--300.
 
 CICC v13.0 contains a complete NVPTX SelectionDAG backend derived from LLVM 20.0.0, with substantial NVIDIA customizations for GPU-specific lowering, the PTX `.param`-space calling convention, tensor core intrinsic selection, and a 343KB intrinsic lowering mega-switch covering over 200 CUDA intrinsic IDs. The SelectionDAG pipeline converts LLVM IR into machine-level PTX instructions through four major phases: type legalization, operation legalization, DAG combining, and pattern-based instruction selection.
 
@@ -26,6 +30,10 @@ The NVPTX SelectionDAG backend spans roughly 4MB of code across two address rang
 | **NVPTXTargetLowering init** | `sub_3056320` (45KB, constructor) |
 | **Type legalization setup** | `sub_3314670` (73KB, table population) |
 | **Upstream** | `lib/CodeGen/SelectionDAG/`, `lib/Target/NVPTX/NVPTXISelLowering.cpp` |
+
+## Complexity
+
+Let N = number of DAG nodes and E = number of edges (use-def relationships). The SelectionDAG pipeline runs eight sequential phases. SelectionDAGBuilder converts IR instructions to DAG nodes in O(I) where I = LLVM IR instruction count. Each DAG Combiner pass is worklist-driven: O(N) nodes are visited, each matched against pattern rules in O(1) via opcode dispatch; `ReplaceAllUsesWith` is O(U) per node where U = uses. The three combiner passes total O(3 * N * U_avg). Type legalization (`sub_20019C0`, 348KB) iterates until all types are legal -- each iteration processes O(N) nodes, and convergence is guaranteed in O(T) iterations where T = max type-promotion depth (typically 2--3 for GPU types). Operation legalization (`sub_1FFB890`, 137KB) visits each node once: O(N). The action table lookup is O(1) via the 2D array at `TLI + 259 * VT + opcode + 2422`. ISel pattern matching (`sub_3090F90`, 91KB) visits each node once in topological order: O(N). Per-node matching is O(P) where P = number of patterns for that opcode, but NVPTX patterns are organized by opcode-indexed tables making this effectively O(1) for common opcodes. The DAG worklist uses `((addr >> 9) ^ (addr >> 4)) & (cap - 1)` hashing for O(1) amortized membership tests. Overall: O(I + N * U_avg * 3 + N * T + N) which simplifies to O(N * U_avg) in practice. The intrinsic lowering mega-switch (343KB, 200+ IDs) adds O(1) per intrinsic call via the jump table, not O(200).
 
 ## Pipeline Position
 
@@ -465,18 +473,7 @@ The NVIDIA-side DAGCombiner at `sub_3425710` (142KB) includes debug tracing with
 
 ## NVPTX Address Spaces
 
-Address space constants appear throughout the SelectionDAG lowering:
-
-| AS# | Name | PTX | Usage |
-|---|---|---|---|
-| 0 | `generic` | (unqualified) | Default address space; unqualified pointers |
-| 1 | `global` | `.global` | Global memory |
-| 3 | `shared` | `.shared` | Shared memory within a CTA |
-| 4 | `const` | `.const` | Constant memory |
-| 5 | `local` | `.local` | Stack allocations, pointer casts in LowerCall |
-| 6 | (unnamed) | (special) | Likely another special space |
-| 7 | `param` | `.param` | Parameter memory -- used extensively in call lowering |
-| 101 | `param` (alt) | `.param` | Alternative `.param` encoding seen in `sub_33067C0` |
+Address space constants appear throughout the SelectionDAG lowering. See [Address Spaces](../reference/address-spaces.md) for the master table and [SelectionDAG Address Space Encoding](../reference/address-spaces.md#selectiondag-address-space-encoding) for the backend-specific secondary encoding used in `.param` passing conventions.
 
 In `LowerCall`, pointer arguments undergo `addrspacecast` to generic (AS 0) via `sub_33F2D30`. The pointer size for AS 5 follows a power-of-two encoding: sizes 1, 2, 4, 8, 16, 32, 64, 128 bytes map to codes 2, 3, 4, 5, 6, 7, 8, 9.
 
@@ -598,6 +595,16 @@ Key aspects of the initialization:
 - **Atomic support.** The string `"vector atomics not supported on this architecture!"` at `sub_3048C30` confirms SM-version-gated vector atomic support, likely SM 90+ (Hopper) or SM 100+ (Blackwell).
 
 - **Address space assertions.** AS values (generic=0, global=1, shared=3, const=4, local=5) are encoded directly into the legalization tables, with different legal operation sets per address space.
+
+## What Upstream LLVM Gets Wrong for GPU
+
+Upstream LLVM's SelectionDAG framework was designed for CPU ISAs where register classes overlap and share a unified physical register file. The NVPTX target breaks these assumptions at every level:
+
+- **Upstream assumes register classes interfere with each other.** On x86, GR32 is a sub-register of GR64; allocating `eax` constrains `rax`. The interference graph, coalescing, and copy elimination infrastructure all assume overlapping classes. NVPTX has nine completely disjoint classes (`%r`, `%f`, `%fd`, `%p`, etc.) with zero cross-class interference. The DAG's register pressure tracking, copy coalescing hints, and class constraint propagation solve a problem that does not exist on this target.
+- **Upstream assumes function calls are cheap register shuffles.** CPU calling conventions move arguments through registers (`rdi`, `rsi`, etc.) or a stack backed by L1 cache. NVPTX function calls go through the `.param` address space with explicit `DeclareParam`/`st.param`/`ld.param` sequences -- O(n) memory operations per argument. The `LowerCall` function in cicc is 88KB (vs. upstream's few KB) because it must handle four call flavors, monotonic `.param` naming, and `"nvptx-libcall-callee"` metadata for synthesized calls.
+- **Upstream assumes a small set of intrinsics.** Upstream NVPTX intrinsic lowering covers approximately IDs 0-300. CICC's intrinsic mega-switch at `sub_33B0210` (343KB) handles IDs up to 14196, covering cp.async, TMA, WGMMA, and the full SM 90/100 tensor operation set. The upstream framework's assumption that intrinsic lowering is a small switch case is off by two orders of magnitude.
+- **Upstream assumes vector types are natively supported.** CPU targets have native vector registers (XMM/YMM/ZMM, NEON Q-registers). NVPTX has no native vector registers -- most vector operations are marked Custom or Expand, forcing them through 111KB of custom lowering at `sub_32E3060`. The "legalize then select" pipeline spends most of its time decomposing vectors that never should have been formed.
+- **Upstream assumes known-bits propagation is a small target hook.** Upstream NVPTX's `computeKnownBitsForTargetNode` handles fewer than 20 opcodes. CICC's version at `sub_33D4EF0` (114KB, 112 opcode cases) propagates bits through texture fetches, address space loads, and NVPTX-specific operations -- a 50x expansion that upstream's hook interface was never designed to support cleanly.
 
 ## Differences from Upstream LLVM
 

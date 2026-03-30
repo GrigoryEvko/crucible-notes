@@ -25,15 +25,7 @@ Every transformation in this pass must respect CUDA address spaces. The global's
 uint8_t addr_space = (*(uint8_t*)(global + 33) >> 2) & 7;
 ```
 
-The NVPTX address space encoding used by CICC:
-
-| AS | CUDA qualifier | Memory | Latency | Scope |
-|----|---------------|--------|---------|-------|
-| 0 | (generic) | Generic pointer, resolved at runtime | Varies | Thread |
-| 1 | `__device__` | Global device memory (DRAM) | 200-800 cycles | Grid |
-| 3 | `__shared__` | Per-block SRAM (configurable L1) | 20-30 cycles | Block |
-| 4 | `__constant__` | Constant memory (cached, broadcast) | 4 cycles (hit) | Grid |
-| 5 | (local) | Per-thread local memory (spilled to DRAM) | 200-800 cycles | Thread |
+The NVPTX address spaces relevant here are 0 (generic), 1 (global/`__device__`), 3 (shared/`__shared__`), 4 (constant/`__constant__`), and 5 (local). See [Address Spaces](../reference/address-spaces.md) for the complete table with hardware mapping, pointer widths, and latency numbers.
 
 When `sub_18612A0` creates replacement globals via `sub_15E51E0`, it passes the extracted address space to the constructor. The created global inherits the same address space, linkage (always internal, linkage code 7), and metadata (copied via `sub_15E6480`). This is the key delta from stock LLVM: upstream `GlobalOpt` does not consider address space when splitting globals because host-side address spaces are trivial. On GPU, promoting a `__shared__` struct global to per-field `__shared__` globals preserves the 10x latency advantage over DRAM, while accidentally demoting to generic would force the hardware to resolve address space at runtime via the generic-to-specific address resolution unit.
 

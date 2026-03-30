@@ -719,6 +719,8 @@ These five passes are always inserted first, regardless of optimization level:
 
 Called when `opts[4224]` (optimization enabled) and the phase threshold is exceeded. This is the primary optimization sub-pipeline for O1/O2/O3, adding ~40 passes. Address: `0x12DE330`.
 
+> **Confidence note:** Pass identifications are based on diagnostic strings, factory-function signatures, and pipeline ordering. Most identifications are HIGH confidence (confirmed by unique string literals). Entries marked `[MEDIUM confidence]` are inferred from code structure, argument patterns, or address proximity rather than direct string evidence.
+
 | Pos | Factory Address | Likely Pass | Guard Condition |
 |---|---|---|---|
 | 1 | `sub_1654860(1)` | BreakCriticalEdges | always |
@@ -726,15 +728,15 @@ Called when `opts[4224]` (optimization enabled) and the phase threshold is excee
 | 3 | `sub_1B26330` | MemCpyOpt | always |
 | 4 | `sub_185D600` | IPConstantPropagation | always |
 | 5 | `sub_1C6E800` | GVN | always |
-| 6 | `sub_1C6E560` | NewGVN/GVNHoist | always |
+| 6 | `sub_1C6E560` | NewGVN/GVNHoist `[MEDIUM confidence]` | always |
 | 7 | `sub_1857160` | NVVMReflect | always |
 | 8 | `sub_1842BC0` | SCCP | always |
 | 9 | `sub_17060B0(1,0)` | PrintModulePass | `opts[3160]` |
 | 10 | `sub_12D4560` | NVVMVerifier | always |
 | 11 | `sub_18A3090` | NVVMPredicateOpt | always |
 | 12 | `sub_184CD60` | ConstantMerge | always |
-| 13 | `sub_1869C50(1,0,1)` | Sink/MemSSA | `!opts[1040]` |
-| 14 | `sub_1833EB0(3)` | TailCallElim/JumpThreading | always |
+| 13 | `sub_1869C50(1,0,1)` | Sink/MemSSA `[MEDIUM confidence]` -- three-arg factory matches Sink with MemSSA parameters, but could also be a custom sinking variant | `!opts[1040]` |
+| 14 | `sub_1833EB0(3)` | TailCallElim/JumpThreading `[MEDIUM confidence]` -- integer arg=3 could be JumpThreading threshold or TailCallElim mode; no disambiguating string | always |
 | 15 | `sub_17060B0(1,0)` | PrintModulePass | `opts[3160]` |
 | 16 | `sub_1952F90(-1)` | LoopIndexSplit | always |
 | 17 | `sub_1A62BF0(1,...)` | LLVM standard pipeline #1 | always |
@@ -759,7 +761,7 @@ Called when `opts[4224]` (optimization enabled) and the phase threshold is excee
 | 36 | `sub_18F5480` | DSE | always |
 | 37 | `sub_18DEFF0` | DCE | always |
 | 38 | `sub_1A62BF0(1,...)` | LLVM standard pipeline #1 | always |
-| 39 | `sub_18B1DE0` | NVVMLoopPass/BarrierOpt | always |
+| 39 | `sub_18B1DE0` | NVVMLoopPass/BarrierOpt `[MEDIUM confidence]` -- address is in NVVM pass range, but dual name reflects ambiguity between loop optimization and barrier optimization roles | always |
 | 40 | `sub_1841180` | FunctionAttrs | always |
 
 ### Tier 1/2/3 -- Phase-Specific Sub-pipeline (`sub_12DE8F0`)
@@ -767,6 +769,8 @@ Called when `opts[4224]` (optimization enabled) and the phase threshold is excee
 Called with tier number (1, 2, or 3). Address: `0x12DE8F0`. Stores the tier value to `qword_4FBB410`. When tier==3, sets `qword_4FBB370` = 6 if BYTE4 was 0 (enables advanced barrier and memory space optimization features).
 
 The pass sequence is significantly longer than Tier 0 and varies by tier. The following shows the **superset** of all passes that can be inserted; tier-based guards are annotated.
+
+> **Confidence note:** Same methodology as Tier 0 table above. Most identifications confirmed by diagnostic strings or NVVMPassOptions slot cross-references.
 
 | Pos | Factory Address | Likely Pass | Guard |
 |---|---|---|---|

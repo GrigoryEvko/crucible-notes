@@ -124,21 +124,7 @@ The distinction between direct references and pointer-to-references reflects whe
 
 ## Register Declarations
 
-Inside the function body, `sub_2158E80` emits register declarations for every virtual register class used. The NVPTX backend defines nine register classes, each mapped to a PTX type suffix and a register name prefix:
-
-| Vtable Address | Class Name | PTX Type | Prefix | Encoded ID |
-|---|---|---|---|---|
-| `off_4A027A0` | Int1Regs | `.pred` | `%p` | `0x10000000` |
-| `off_4A02720` | Int16Regs | `.b16` | `%rs` | `0x20000000` |
-| `off_4A025A0` | Int32Regs | `.b32` | `%r` | `0x30000000` |
-| `off_4A024A0` | Int64Regs | `.b64` | `%rd` | `0x40000000` |
-| `off_4A02620` | Float32Regs | `.f32` | `%f` | `0x50000000` |
-| `off_4A02520` | Float64Regs | `.f64` | `%fd` | `0x60000000` |
-| `off_4A02760` | Int16HalfRegs | `.b16` | `%h` | `0x70000000` |
-| `off_4A026A0` | Int32HalfRegs | `.b32` | `%hh` | `0x80000000` |
-| `off_4A02460` | Int128Regs | `.b128` | `%rq` | `0x90000000` |
-
-The encoding scheme in `sub_21583D0` packs the register class into the high nibble and the register index into the low 28 bits. For physical registers (index >= 0), only the index is returned. For virtual registers (index < 0), the function looks up the register class vtable and returns `class_encoded_id | (register_index & 0x0FFFFFFF)`. An unrecognized class triggers `"Bad register class"` fatal error.
+Inside the function body, `sub_2158E80` emits register declarations for every virtual register class used. The nine register classes, their vtable addresses, PTX type suffixes, prefixes, and encoded IDs are documented in [Register Classes](../reference/register-classes.md#the-nine-register-classes). The encoding scheme, declaration emission format, and the internal-only tenth class are covered in [Register Encoding Scheme](../reference/register-classes.md#register-encoding-scheme----sub_21583d0) and [Register Declaration Emission](../reference/register-classes.md#register-declaration-emission----sub_2158e80).
 
 The emitted text for each class follows the pattern:
 

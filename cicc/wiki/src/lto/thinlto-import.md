@@ -62,6 +62,8 @@ The priority is determined by querying the `ImportPriorityTable` (parameter `a4`
 
 ## Import Algorithm: Complete Pseudocode
 
+**Complexity.** Let C = number of import candidates across all modules, G = number of unique GUIDs, and L = total number of name entries across all candidates. Stage 1 (threshold computation, `sub_1853180`) iterates every candidate once: O(C). For each candidate, the GUID dedup hash table (`slot = GUID * 37 & (size - 1)`) provides O(1) amortized lookup with linear probing. The name array scan is up to 4-level unrolled, giving O(L) total across all candidates. The 11-case linkage dispatch via jump table is O(1) per entry. The priority-class threshold adjustment is O(1) per candidate (a single float multiply). The global budget check is O(1). Overall Stage 1: O(C + L). Stage 2 (triple-pass driver, `sub_1854A20`) processes three priority-ordered linked lists, each in a single pass: O(C) total. Per-candidate import execution (`sub_15E4B20`) is O(I_f) where I_f = instructions in the imported function (bitcode materialization). The whole-module processing (`sub_1858B90`, 31KB) is O(F * I_avg) where F = total functions and I_avg = average instruction count. The dedup hash table growth follows standard load-factor 75% doubling, maintaining O(1) amortized operations. Total: O(C + L + sum(I_imported)).
+
 The import process runs in two major stages. Stage 1 (`sub_1853180`) builds a prioritized list of qualifying candidates by evaluating each against a computed threshold. Stage 2 (`sub_1854A20`) materializes candidates via a triple-pass sweep over three priority-ordered linked lists, executing the actual cross-module function import.
 
 ### Stage 1: Threshold Computation Engine (`sub_1853180`)

@@ -157,6 +157,8 @@ Tier 0 is the most aggressive optimization sub-pipeline. It runs ~40 passes in a
 
 ~40 passes in order:
 
+> **Confidence note:** Pass identifications are based on diagnostic strings, factory signatures, and pipeline ordering. Most are HIGH confidence. Entries with `[MEDIUM confidence]` are inferred from code structure rather than direct string evidence.
+
 | # | Factory | Likely Pass | Guarded By |
 |---|---|---|---|
 | 1 | `sub_1654860(1)` | BreakCriticalEdges | — |
@@ -164,14 +166,14 @@ Tier 0 is the most aggressive optimization sub-pipeline. It runs ~40 passes in a
 | 3 | `sub_1B26330` | MemCpyOpt | — |
 | 4 | `sub_185D600` | IPConstantPropagation | — |
 | 5 | `sub_1C6E800` | GVN | — |
-| 6 | `sub_1C6E560` | NewGVN/GVNHoist | — |
+| 6 | `sub_1C6E560` | NewGVN/GVNHoist `[MEDIUM confidence]` | — |
 | 7 | `sub_1857160` | NVVMReflect | — |
 | 8 | `sub_1842BC0` | SCCP | — |
 | 9 | `sub_12D4560` | NVVMVerifier | — |
 | 10 | `sub_18A3090` | NVVMPredicateOpt | — |
 | 11 | `sub_184CD60` | ConstantMerge | — |
-| 12 | `sub_1869C50(1,0,1)` | Sink/MemSSA | `!opts[1040]` |
-| 13 | `sub_1833EB0(3)` | TailCallElim/JumpThreading | — |
+| 12 | `sub_1869C50(1,0,1)` | Sink/MemSSA `[MEDIUM confidence]` | `!opts[1040]` |
+| 13 | `sub_1833EB0(3)` | TailCallElim/JumpThreading `[MEDIUM confidence]` | — |
 | 14 | `sub_1952F90(-1)` | LoopIndexSplit | — |
 | 15 | `sub_1A62BF0(1,...)` | LLVM standard pipeline #1 | — |
 | 16 | `sub_1A223D0` | NVVMIRVerification | — |
@@ -191,7 +193,7 @@ Tier 0 is the most aggressive optimization sub-pipeline. It runs ~40 passes in a
 | 30 | `sub_18F5480` | DSE | — |
 | 31 | `sub_18DEFF0` | DCE | — |
 | 32 | `sub_1A62BF0(1,...)` | LLVM standard pipeline #1 | — |
-| 33 | `sub_18B1DE0` | NVVMLoopPass | — |
+| 33 | `sub_18B1DE0` | NVVMLoopPass `[MEDIUM confidence]` | — |
 | 34 | `sub_1841180` | FunctionAttrs | — |
 
 ### "mid" Path — Complete Pass Ordering
@@ -411,10 +413,10 @@ The registry is a hash table populated from these CLI strings. Each `-opt` argum
 
 Several regions break the standard string/boolean pair pattern:
 
-- **Slots 160-162**: Three consecutive string slots with no interleaved boolean. This represents a pass (likely MemorySpaceOpt or the CSSA pass) that takes three string configuration parameters followed by a single boolean enable flag at slot 163.
+- **Slots 160-162**: Three consecutive string slots with no interleaved boolean. `[LOW confidence]` This represents a pass (likely MemorySpaceOpt or the CSSA pass) that takes three string configuration parameters followed by a single boolean enable flag at slot 163. The pass identity is uncertain because neither MemorySpaceOpt nor CSSA has been confirmed to consume three string parameters; the association is based on pipeline position proximity only.
 - **Slots 192-193**: Two consecutive boolean slots. One is the main enable toggle; the other appears to be a sub-feature flag (both default to disabled).
 - **Slot 181 (offset 3648)**: The only `STRING_PTR` type. Its default is `byte_3F871B3` (an empty string in `.rodata`). The raw pointer + length storage suggests this holds a file path or regex pattern for pass filtering.
-- **Slots 196-207**: Alternating string + integer slots instead of string + boolean. This high-numbered region contains all six integer options, likely controlling late-pipeline passes with numeric thresholds (unroll counts, live-variable limits, iteration bounds).
+- **Slots 196-207**: Alternating string + integer slots instead of string + boolean. `[LOW confidence]` This high-numbered region contains all six integer options, likely controlling late-pipeline passes with numeric thresholds (unroll counts, live-variable limits, iteration bounds). The specific pass-to-slot associations are unconfirmed; the "unroll counts, live-variable limits, iteration bounds" interpretation is based on typical LLVM integer-valued pass options, not direct evidence.
 
 ### Complete Slot-to-Offset Map with Known Consumers
 

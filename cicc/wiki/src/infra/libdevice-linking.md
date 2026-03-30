@@ -359,8 +359,8 @@ The `.lnk.bc` file is useful for verifying which libdevice functions survived li
 | `sub_12BCB00` | ~1KB | `nvvmCUAddModuleFromBuffer` | API wrapper that adds a bitcode buffer to the compilation unit |
 | `sub_12BC0F0` | 3KB | `LibNVVM API dispatch` | Resolves LibNVVM API function pointers by hash ID |
 | `sub_15099C0` | ~8KB | `ParseBitcodeFile` | LLVM bitcode parser entry point |
-| `sub_1CCEBE0` | ~4KB | `LinkBuiltinModule` | Links a single builtin module into the main module (likely `Linker::linkModules` with `OverrideFromSrc`) |
-| `sub_12F5610` | ~4KB | `LinkUserModules` | Links multiple user modules (likely `Linker::linkModules`) |
+| `sub_1CCEBE0` | ~4KB | `LinkBuiltinModule` | Links a single builtin module into the main module (`Linker::linkModules` with `OverrideFromSrc` `[MEDIUM confidence]` -- inferred from the override-from-source semantics of builtin linking and the 4KB size matching a thin wrapper around LLVM's linker API, but no diagnostic string confirms the exact LLVM API call) |
+| `sub_12F5610` | ~4KB | `LinkUserModules` | Links multiple user modules (`Linker::linkModules` `[MEDIUM confidence]` -- same reasoning as above; wrapper size and call pattern match, but unconfirmed by string evidence) |
 | `sub_14D90D0` | 27KB | `CanFoldIntrinsic` | Constant-fold eligibility checker for math intrinsics |
 | `unk_3EA0080` | 455,876B | embedded libdevice (Path A) | Raw LLVM bitcode blob |
 | `unk_420FD80` | 455,876B | embedded libdevice (Path B) | Raw LLVM bitcode blob (identical copy) |

@@ -111,7 +111,7 @@ sub   eax, [rdx+20h]        ; subtract dead_block_count
 
 Two bitvectors are allocated on the stack for the live-in set. Initial inline capacity is 8 words (512 registers); if the block count exceeds 8, `SmallVector::grow` at `sub_C8D5F0` expands them. The pre-allocated capacity at `[r13+0xAC]` is also checked; if insufficient, `sub_2FC1040` (grow per-block segment table) is called.
 
-**Small-function bypass:** If the total instruction count is 15 or fewer, OR the block count is 1 or fewer, OR the global flag `qword_5025F68` is set (likely `-Ofast-compile` mode), the function skips the full dataflow and returns early. This is an NVIDIA addition not present in upstream LLVM -- it avoids the quadratic cost of bitvector dataflow on trivial kernel bodies where liveness is obvious from local analysis alone.
+**Small-function bypass:** If the total instruction count is 15 or fewer, OR the block count is 1 or fewer, OR the global flag `qword_5025F68` is set (`-Ofast-compile` mode `[LOW confidence]` -- the flag triggers a compile-time shortcut consistent with a fast-compile option, but no string or CLI mapping for this global has been recovered; it could also be a debug-only override or an internal tuning knob), the function skips the full dataflow and returns early. This is an NVIDIA addition not present in upstream LLVM -- it avoids the quadratic cost of bitvector dataflow on trivial kernel bodies where liveness is obvious from local analysis alone.
 
 ### Phase 4 -- Per-Block Segment Allocation (0x2FC538D -- 0x2FC55E7)
 

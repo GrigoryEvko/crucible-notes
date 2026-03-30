@@ -323,7 +323,7 @@ After parsing the module, this function reads the `"nvvmir.version"` named metad
 major == 3  AND  minor <= 2
 ```
 
-If the check fails, the function calls `sub_16BD130` which emits `"Broken module found, compilation aborted!"` and terminates compilation. If the module passes the version check, it proceeds to `sub_166CBC0` (likely `verifyModule`) for structural IR verification, then `sub_15ACB40` for post-verification processing.
+If the check fails, the function calls `sub_16BD130` which emits `"Broken module found, compilation aborted!"` and terminates compilation. If the module passes the version check, it proceeds to `sub_166CBC0` (`verifyModule` `[MEDIUM confidence]` -- identification based on call position after bitcode parsing and before optimization, consistent with LLVM's standard verify-after-parse pattern, but no diagnostic string directly confirms the function name) for structural IR verification, then `sub_15ACB40` for post-verification processing.
 
 A second instance at `sub_12BFF60` (9 KB) in the standalone pipeline performs the same check with additional `llvm.dbg.cu` debug info presence validation.
 
