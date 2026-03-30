@@ -2,16 +2,48 @@
 
 The NVVM container is a proprietary binary envelope that wraps LLVM bitcode with compiler metadata for transport between pipeline stages in cicc v13.0. It carries target architecture, optimization options, fast-math flags, memory window configurations, per-kernel resource tables, and the IR payload itself -- all in a single serializable blob. Two serialization paths exist: a compact binary wire format used in production (`nvcc` / `ptxas` pipelines) and an XML-based format used for debugging and interchange. This page specifies the binary format in sufficient detail to write a conformant parser and serializer.
 
-The format is implemented across six core functions in the `0xCCBB10`--`0xCDD2D0` address range:
+The format is implemented across 26 functions in the `0xCCBB10`--`0xCDD2D0` address range (Cluster C in the binary layout). The six top-level entry points:
+
+| Function | Address | Size | Role |
+|----------|---------|------|------|
+| `NvvmContainer_serialize` | `0xCDD2D0` | 47,540 B | Binary + XML serializer |
+| `NvvmContainer_deserialize_options` | `0xCD1D80` | 51,859 B | Binary tag/value decoder |
+| `NvvmContainer_parse_header` | `0xCDCA30` | 10,206 B | XML path header parser |
+| `NvvmContainer_check_versions` | `0xCD41B0` | 16,708 B | Version compatibility gate |
+| `NvvmContainer_validate_versions` | `0xCCD5F0` | 8,987 B | Standalone version validator |
+| `NvvmContainer_init_options_struct` | `0xCCBB10` | small | Zero-init 248-byte container struct |
+
+Supporting parsers called from `NvvmOptions_parse_compile_options` (`0xCDB4D0`, 26,643 bytes):
+
+| Function | Address | Size | Role |
+|----------|---------|------|------|
+| `NvvmOptions_parse_arch_enum` | `0xCD09E0` | 14,516 B | ArchVariant enum string-to-int |
+| `NvvmOptions_parse_fast_math` | `0xCCF590` | 12,771 B | FastMathOptions sub-structure |
+| `NvvmOptions_parse_multi_view` | `0xCD6D20` | 12,188 B | MultiViewOptions sub-structure |
+| `NvvmOptions_parse_cb_reserved_area` | `0xCCE780` | 9,802 B | CB reserved area config |
+| `NvvmOptions_parse_reg_targets` | `0xCD7CE0` | 9,542 B | Register target config |
+| `NvvmOptions_parse_serialize_helper` | `0xCD58A0` | 9,579 B | Option serialization helper |
+| `NvvmOptions_parse_shader_const_iface` | `0xCCEEA0` | 8,355 B | ShaderConstIface (DCI) |
+| `NvvmOptions_parse_align_entries` | `0xCD8610` | 6,739 B | Alignment entry config |
+| `NvvmOptions_parse_pgo_section` | `0xCD02C0` | 5,482 B | PGO configuration |
+| `NvvmOptions_parse_section` | `0xCD5510` | 5,166 B | Nested YAML section parser |
+| `NvvmOptions_parse_memory_windows` | `0xCCE100` | 5,042 B | Memory window config |
+| `NvvmOptions_parse_cbank_config` | `0xCCE4B0` | 4,173 B | Constant bank config |
+| `NvvmOptions_parse_bool_or_int` | `0xCCC4A0` | small | Boolean/int option parser |
+| `NvvmOptions_parse_tristate` | `0xCCCFB0` | small | Tri-state option parser |
+| `NvvmOptions_parse_string` | `0xCD5150` | small | String option parser |
+
+The finalizer knobs parser (`0xCD9990`, 31,702 bytes) is called separately to ingest the full set of NVIDIA-specific backend knobs (see [NVVMPassOptions](../config/nvvm-pass-options.md)).
+
+Binary-level helpers:
 
 | Function | Address | Role |
 |----------|---------|------|
-| `NvvmContainer_serialize` | `0xCDD2D0` (47,540 bytes) | Binary + XML serializer |
-| `NvvmContainer_deserialize_options` | `0xCD1D80` (51,859 bytes) | Binary tag/value decoder |
-| `NvvmContainer_parse_header` | `0xCDCA30` (10,206 bytes) | XML path header parser |
-| `NvvmContainer_check_versions` | `0xCD41B0` (16,708 bytes) | Version compatibility gate |
-| `NvvmContainer_validate_versions` | `0xCCD5F0` (8,987 bytes) | Standalone version validator |
-| `NvvmContainer_init_options_struct` | `0xCCBB10` | Zero-init 248-byte container struct |
+| `NvvmContainer_write_tag_value` | `0xCD17A0` | Write one tag/value pair (called 121 times from serializer) |
+| `NvvmContainer_write_blob` | `0xCD1AB0` | Write blob data + tag reference |
+| `NvvmContainer_compute_crc` | `0xCCD2B0` | CRC with seeds `0x8DF5D74C`, `0xBAA56A96` |
+
+Global state: `qword_4F87148` holds the NVVM options global state pointer, checked by many downstream consumers.
 
 ## Binary Header
 
@@ -148,7 +180,7 @@ Blob entries do not carry explicit length fields in the tag/value stream. The de
 | 30 | int32 | `UnrollControl2` | +224 | Secondary unroll control |
 | 31 | bit | `FastMath.NoFloatMAD` | +201 bit 3 | Disable float MAD formation |
 | 32 | bool | `AcceleratedArch2` | +232 | Secondary accelerated-arch flag |
-| 33 | bit | `FastMath.Control4` | +201 bit 4 | Additional fast-math control |
+| 33 | bit | `FastMath.LaxFP16ApproximateDivision` | +201 bit 4 | Lax FP16 approximate division |
 | 34 | bool | `StdELF2` | +233 | Secondary StdELF |
 | 35 | int32 | `ShaderCodegenSelMask` | +236 | Shader codegen selection bitmask |
 | 36 | bool | `OmegaPtxErrorHandling` | +240 | Enable Omega-style PTX error handling |
@@ -162,14 +194,21 @@ Blob entries do not carry explicit length fields in the tag/value stream. The de
 |-----|------|------|-------|
 | 99 | int32 | `CompressAlgoId` | Compression algorithm selector for IR payload |
 
-When present, the IR payload following the blob region is compressed. The value selects a codec via `sub_16886D0(algo_id)`. If the value is 0, the runtime substitutes the default algorithm ID `0x75D49913` (1,977,119,507 decimal). The codec interface:
+When present, the IR payload following the blob region is compressed. The value selects a codec via `sub_16886D0(algo_id)`. If the value is 0, the runtime substitutes the default algorithm ID `0x75D49913` (1,977,119,507 decimal). The codec is a pluggable compression/encryption layer accessed through four function pointers:
 
-- `sub_16886D0(algo_id)` -- acquire codec handle
-- `sub_1688730(codec, data, size)` -- compress (write path)
-- `sub_16887A0(codec, data, size)` -- decompress (read path)
-- `sub_1688720(codec)` -- release codec
+```c
+/* Compression codec API (addresses in the 0x1688xxx range) */
+void *codec_acquire(uint32_t algo_id);            /* sub_16886D0 */
+int   codec_compress(void *codec, void *data,
+                     size_t size);                 /* sub_1688730 */
+int   codec_decompress(void *codec, void *data,
+                       size_t size);               /* sub_16887A0 */
+void  codec_release(void *codec);                  /* sub_1688720 */
+```
 
-CRC computation for integrity checking uses `sub_CCD2B0` with seed values `-1914584148` (`0x8DF5D74C`) and `-1162247642` (`0xBAA56A96`).
+The write path in `NvvmContainer_serialize` (`0xCDD2D0`) compresses the LLVM bitcode payload via `sub_C8D290`, then computes a CRC hash via `NvvmContainer_compute_crc` (`0xCCD2B0`) with the two seed values `-1914584148` (`0x8DF5D74C`) and `-1162247642` (`0xBAA56A96`). The CRC value is stored as the `CompressAlgoId` tag 99 value, which doubles as an integrity check token: the deserializer uses the same CRC seeds to verify the payload before decompression.
+
+The compression subsystem lives outside the main container cluster at addresses `0x16886D0`--`0x16887A0`, in the utility library region of the binary.
 
 ### Range 101--173: Extended Target Options
 
@@ -307,6 +346,49 @@ These tags are conditionally parsed based on the value of tag 301 (`ExtOpt.Field
 
 The conditional parsing means a single container cannot carry both TMA and TCGen05 data -- the `Field344` value selects which hardware generation's tensor memory interface is active.
 
+#### TMADescriptor Layout (Tag 401, Field344 == 1)
+
+TMA (Tensor Memory Access) descriptors configure `cp.async.bulk` operations on SM 90 Hopper. The TMA descriptor extraction is performed by `sub_9483E0` during intrinsic lowering. The blob layout:
+
+```c
+struct TMADescriptor {
+    /* +0  */ uint32_t num_entries;          /* Number of TMA descriptors     */
+    /* +4  */ uint32_t dimensionality;       /* 1d..5d tensor rank            */
+    /* +8  */ uint32_t element_size;         /* Bytes per element             */
+    /* +12 */ uint32_t interleave_layout;    /* Memory interleave pattern     */
+    /* +16 */ uint32_t swizzle_mode;         /* Swizzle mode selector         */
+    /* +20 */ uint32_t fill_mode;            /* Out-of-bounds fill behavior   */
+    /* +24 */ uint32_t [5] global_dims;      /* Global tensor dimensions      */
+    /* +44 */ /* --- 16 bytes per entry --- */
+    /*        uint32_t box_dim;              Per-entry box dimension          */
+    /*        uint32_t stride;               Per-entry stride                 */
+    /*        uint32_t elem_stride;          Per-entry element stride         */
+    /*        uint32_t reserved;             Reserved/padding                 */
+};
+```
+
+See [SM 90 Hopper](../targets/sm90-hopper.md) for the TMA instruction format and the `cp.async.bulk.tensor.g2s.tile.{1d,2d,3d,4d,5d}` intrinsic family.
+
+#### TCGen05Config Layout (Tag 402, Field344 == 4)
+
+TCGen05 (Tensor Core Generation 5) configurations describe Blackwell SM 100 tensor memory operations. The TCGen05 instruction set includes `tcgen05.alloc`, `tcgen05.dealloc`, `tcgen05.commit`, `tcgen05.fence`, `tcgen05.wait`, and `tcgen05.relinquish.alloc` -- all gated by the SM 100 arch-conditional check at `sub_30462A0`. The blob layout:
+
+```c
+struct TCGen05Config {
+    /* +0  */ uint32_t num_entries;          /* Number of TCGen05 configs     */
+    /* +4  */ uint32_t accumulator_size;     /* Accumulator memory size       */
+    /* +8  */ uint32_t commit_mode;          /* Commit mode (multicast flags) */
+    /* +12 */ uint32_t fence_mode;           /* Fence mode selector           */
+    /* +16 */ uint32_t [4] reserved;         /* Reserved fields               */
+    /* +32 */ /* --- 12 bytes per entry --- */
+    /*        uint32_t config_id;            TCGen05 config identifier        */
+    /*        uint32_t fragment_count;       Number of fragments              */
+    /*        uint32_t flags;                Per-config flags                 */
+};
+```
+
+See [SM 100 Blackwell](../targets/sm100-blackwell.md) for the TCGen05 instruction set and the `tcgen05.*` intrinsic family.
+
 ## Deserialized Container Struct
 
 After parsing, the container is represented as a 248-byte in-memory structure allocated by `NvvmContainer_init_options_struct` (`0xCCBB10`). This struct holds the container metadata plus a pointer to the full 440-byte Options struct.
@@ -403,6 +485,46 @@ struct NvvmOptions {                   /* 440 bytes total                  */
 /* sizeof(NvvmOptions) == 440 (0x1B8) */
 ```
 
+### DCIInfo Sub-Structure (Options +80, 120 bytes)
+
+The Device-Code-Interface sub-structure at offset +80 contains the shader constant interface and constant bank reserved area configurations. Parsed by `NvvmOptions_parse_shader_const_iface` (`0xCCEEA0`, 8,355 bytes) and `NvvmOptions_parse_cb_reserved_area` (`0xCCE780`, 9,802 bytes).
+
+**ShaderConstIface XML fields** (from `sub_CCEEA0`):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `OptimizerConstBank` | int32 | Constant bank index used by the optimizer |
+| `DriverConstBank` | int32 | Constant bank index used by the driver |
+| `BindlessTextureBank` | int32 | Constant bank for bindless texture handles |
+| `LocalMemoryWindow` | struct | Memory window config for local memory |
+| `SharedMemoryWindow` | struct | Memory window config for shared memory |
+| `VectorizeAndRemapTLD` | bool | Enable vectorization and TLD remapping |
+| `ELFControlsDCI` | bool | ELF controls DCI interface layout |
+| `DiscardDefaultValueOutputs` | bool | Discard outputs that match default values |
+
+**CBReservedArea XML fields** (from `sub_CCE780`):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ByteOffsetToEndOfReservedArea` | int32 | End-of-reserved-area offset in constant bank |
+| `CbAddressBitsInReservedVABase` | int32 | Address bits for reserved virtual address base |
+| `CbBankToReservedVABase` | int32 | Constant bank index for reserved VA base |
+| `ForceHighLatencyConstExpr` | bool | Force high-latency constant expression evaluation |
+| `ReservedCbReadBank` | int32 | Reserved constant bank read bank index |
+
+### MultiViewOptions Sub-Structure (Options +24, 48 bytes)
+
+The multi-view rendering options sub-structure at offset +24 carries graphics pipeline multi-view configuration. Parsed by `NvvmOptions_parse_multi_view` (`0xCD6D20`, 12,188 bytes). Serialized as blob tag 204.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `NumViews` | int32 | Number of rendering views |
+| `NominalViewIDs` | int32[] | Array of nominal view identifiers |
+| `PerViewRTIndexConstants` | int32[] | Per-view render target index constants |
+| `EnableViewInstanceMask` | bool | Enable per-view instance masking |
+| `ComputePerPatchAttribsForViewZero` | bool | Compute per-patch attributes for view 0 |
+| `IsImplicit` | bool | Implicit multi-view mode |
+
 ### CompileMode Enum
 
 | Value | Name | Meaning |
@@ -482,7 +604,7 @@ The architecture enum uses a numeric encoding where the value equals `major * 10
 | `NVVM_ARCH_BLACKWELL_12_0` | 120 | Blackwell (RTX 50xx / Pro) | 12.0 |
 | `NVVM_ARCH_BLACKWELL_12_1` | 121 | Blackwell (DGX Spark) | 12.1 |
 
-Note: `NVVM_ARCH_BLACKWELL_10_1` and `NVVM_ARCH_BLACKWELL_11_0` both map to the internal `__CUDA_ARCH` value 1010. This is how SM 101 and the "11.0" designation are unified internally.
+Note: `NVVM_ARCH_BLACKWELL_10_1` maps to `__CUDA_ARCH` 1010, while `NVVM_ARCH_BLACKWELL_11_0` maps to `__CUDA_ARCH` 1100. Despite both being in the `BLACKWELL` family, they are distinct architectures with separate entries in the processor table. sm_110 (Jetson Thor) was originally designated sm_101 before being renumbered to its own 11.x line.
 
 ### HW Architecture Variants
 
@@ -519,9 +641,9 @@ The fast-math configuration occupies two bytes at Options offset +200 and +201, 
 ```
   Bit 7   Bit 6   Bit 5   Bit 4   Bit 3   Bit 2   Bit 1   Bit 0
 +-------+-------+-------+-------+-------+-------+-------+-------+
-|       |       |       | FM    | No    |Reassoc|CanReor| Allow |
-|       |       |       | Ctrl4 | Float | Float |derDist| Rcp   |
-|       |       |       |       | MAD   |AddMAD |ribute | Rsq   |
+|       |       |       | Lax   | No    |Reassoc|CanReor| Allow |
+|       |       |       | FP16  | Float | Float |derDist| Rcp   |
+|       |       |       | Div   | MAD   |AddMAD |ribute | Rsq   |
 +-------+-------+-------+-------+-------+-------+-------+-------+
                           tag 33  tag 31  tag 26  tag 17  tag 16
 ```
@@ -530,14 +652,37 @@ The fast-math configuration occupies two bytes at Options offset +200 and +201, 
 
 The `Divide` field within FastMathOptions is a nested enum serialized by name in the XML path:
 
-| Name | Meaning |
-|------|---------|
-| `NVVM_FAST_MATH_DIVIDE_PRECISE_NO_FTZ` | IEEE-compliant division, no flush-to-zero |
-| `NVVM_FAST_MATH_DIVIDE_PRECISE_ALLOW_FTZ` | IEEE division with FTZ permitted |
-| `NVVM_FAST_MATH_DIVIDE_FULL_RANGE_APPROX` | Full-range approximation |
-| `NVVM_FAST_MATH_DIVIDE_FAST_APPROX` | Fast approximation (least precise) |
+| Value | Name | Meaning |
+|-------|------|---------|
+| 0 | `NVVM_FAST_MATH_DIVIDE_PRECISE_NO_FTZ` | IEEE-compliant division, no flush-to-zero |
+| 1 | `NVVM_FAST_MATH_DIVIDE_PRECISE_ALLOW_FTZ` | IEEE division with FTZ permitted |
+| 2 | `NVVM_FAST_MATH_DIVIDE_FULL_RANGE_APPROX` | Full-range approximation |
+| 3 | `NVVM_FAST_MATH_DIVIDE_FAST_APPROX` | Fast approximation (least precise) |
 
 These correspond to the nvcc flags `-prec-div=1` (precise) and `-prec-div=0` (fast), with FTZ interaction determined by `-ftz`.
+
+### Complete FastMath XML Field Inventory
+
+The full set of XML field names parsed by `NvvmOptions_parse_fast_math` (`0xCCF590`, 12,771 bytes):
+
+| XML Field Name | Binary Tag | Type | Description |
+|----------------|-----------|------|-------------|
+| `IgnoreInf` | 8 | bit | Treat infinities as NaN |
+| `IgnoreNaN` | 9 | bit | Assume no NaN values present |
+| `IgnoreSignedZero` | 10 | bit | Ignore sign of zero |
+| `ReorderFloat` | 11 | bit | Allow float reordering |
+| `ReorderHalf` | 12 | bit | Allow half-precision reordering |
+| `Ftz` | 13 | bit | Flush denormals to zero |
+| `FastSqrt` | 14 | bit | Use fast sqrt approximation |
+| `Fmad` | 15 | bit | Allow fused multiply-add |
+| `AllowRcpRsqToSqrt` | 16 | bit | Allow `rcp(rsqrt(x))` to `sqrt(x)` |
+| `CanReorderFloatDistribute` | 17 | bit | Allow distributive reordering |
+| `ReassociateFloatAddOverMad` | 26 | bit | Float add reassociation over MAD |
+| `NoFloatMAD` | 31 | bit | Disable float MAD formation |
+| `LaxFP16ApproximateDivision` | 33 | bit | Lax FP16 approximate division |
+| `Divide` | -- | enum | Division precision sub-enum (above) |
+
+The `Divide` field is serialized as a nested enum element in XML; in the binary format it is encoded as part of the fast-math reserved int32 at Options +204 (tag 18).
 
 ## Memory Window Configuration
 
@@ -748,12 +893,75 @@ A container with a 32-bit value would look like:
 
 ## Pipeline Integration
 
-The container serves as the inter-stage transport format within the cicc compilation pipeline. In the Path A (LibNVVM) flow, `sub_9047E0` parses the container at phase 1 of the 14-phase pipeline. In the Path B (standalone) flow, `sub_12642A0` performs the same role. After parsing, the container's Options are translated into per-stage compiler flags:
+The container serves as the inter-stage transport format within the cicc compilation pipeline. Two entry paths exist:
+
+| Path | Entry Function | Address | Pipeline |
+|------|---------------|---------|----------|
+| Path A (LibNVVM) | `nvvmCompileProgram` dispatcher | `0x9047E0` | 3-phase: LNK -> OPT -> LLC |
+| Path B (standalone) | `cicc_main` orchestrator | `0x12642A0` | 4-stage: LNK -> OPT -> OPTIXIR -> LLC |
+
+Both paths deserialize the container at phase 1, then translate Options into per-stage compiler flags:
 
 - `SmMajor` / `SmMinor` from tags 1--2 become `-mcpu=sm_XX`
 - `FastMath.Ftz` from tag 13 becomes `-nvptx-f32ftz`
 - `FastMath.Fmad` from tag 15 becomes the IEEE mode flag
 - `OptLevel` becomes `-nvptx-opt-level=N`
 - `CompileMode == 2` (SEPARATE_ABI) adds `--device-c`
+- `IRLevel == 1` (LTO) enters the [LTO pipeline](../lto/index.md) with partially-optimized bitcode
+- `IRLevel == 2` (OPTIX) activates the [OptiX IR](../pipeline/optix-ir.md) stage (bit 6 of pipeline bitmask) and disables LICM and IP-MSP
 
 The container format is the single source of truth for all compilation parameters. When cicc is invoked by nvcc, the driver serializes its accumulated flags into a container, passes the container as input, and cicc deserializes it back into compiler options. This round-trip through binary serialization ensures that all pipeline stages see exactly the same configuration, eliminating the flag-parsing divergence that would otherwise arise from each stage having its own CLI parser.
+
+### YAML Serialization Framework
+
+The XML/YAML path uses a generic serialization framework built on a bundled YAML parser/emitter library (Cluster A: `0xCB0000`--`0xCBFA60`). The library provides:
+
+| Function | Address | Role |
+|----------|---------|------|
+| `yaml_parser_main` | `0xCB9640` | Top-level YAML parser (25,873 bytes) |
+| `yaml_emitter_main_loop` | `0xCBDA10` | Main YAML emitter loop (23,583 bytes) |
+| `yaml_scanner_scan_tokens` | `0xCB7E40` | Token scanner (17,924 bytes) |
+| `yaml_parser_parse_flow` | `0xCB8C00` | Flow-style parsing (15,188 bytes) |
+| `yaml_parser_load_document` | `0xCBA570` | Document loader/resolver (9,695 bytes) |
+
+The serialization framework uses virtual dispatch: each serializable type registers a serialize/deserialize function pair, and the framework dispatches based on the YAML node type (scalar=1, sequence, mapping). All enum values are serialized by their full string names (`NVVM_COMPILE_MODE_SEPARATE_ABI`, `NVVM_ARCH_ADA_8_9`, etc.), not by numeric value.
+
+### Finalizer Knobs Integration
+
+The container Options struct also feeds into the NVIDIA finalizer knobs system through `NvvmOptions_parse_finalizer_knobs` (`0xCD9990`, 31,702 bytes -- the 7th largest function in the binary). This parser ingests the complete set of NVIDIA-specific backend configuration knobs:
+
+- Shader pipeline controls: `PromoteHalf`, `PromoteFixed`, `USePIXBAR`, `VSIsVREnabled`, `VSIsLastVTGStage`
+- Codegen controls: `DisablePredication`, `DisableXBlockSched`, `EnableJumpTable`, `ScheduleKils`
+- Memory controls: `DoMMACoalescing`, `AssumeConvertMemoryToRegProfitable`
+- Barrier controls: `DisableERRBARAfterMEMBAR`, `GenConvBranchForWarpSync`
+- PGO controls: `PGOEpoch`, `PGOBatchSize`, `PGOCounterMemBaseVAIndex`
+- Per-CTA controls: `CTASizeX`, `CTASizeY`, `CTASizeZ`, `SharedMemorySize`, `SMemScratchBase`
+- Register controls: `MaxActiveWarpsPerSM`, `NumReservedUReg`, `NumScratchURegs`
+
+These knobs are distinct from the NVVMPassOptions system (see [NVVMPassOptions](../config/nvvm-pass-options.md)) -- the finalizer knobs configure the backend code generator, while NVVMPassOptions configure the optimization pipeline.
+
+## Tag Summary Statistics
+
+| Range | Count | Description |
+|-------|-------|-------------|
+| 1--39 | 38 | Core scalar options (SM version, fast-math, unroll, flags) |
+| 99 | 1 | Compression metadata |
+| 101--173 | 73 | Extended target options (hardware capabilities, memory config) |
+| 201--218 | 18 | Blob data (memory windows, resource tables, strings) |
+| 301--309 | 9 | Extended int32 fields (cluster config, extended options) |
+| 351--353 | 3 | Extended int64 blob references |
+| 401--402 | 2 | Structured conditional blobs (TMA / TCGen05) |
+| **Total** | **144** | **Distinct tag IDs across 6 ranges** |
+
+The deserializer switch statement has 103 unique case labels -- the remaining 41 tags share code paths with other tags (e.g., all single-bit tags in a byte share a case that reads the bit position from a secondary table).
+
+## Cross-References
+
+- [NVVMPassOptions](../config/nvvm-pass-options.md) -- 222-slot optimization pipeline configuration
+- [Pipeline Entry](../pipeline/entry.md) -- LibNVVM API and CLI entry points
+- [OptiX IR](../pipeline/optix-ir.md) -- IRLevel=2 OptiX pipeline
+- [LTO Pipeline](../lto/index.md) -- IRLevel=1 link-time optimization
+- [SM 90 Hopper](../targets/sm90-hopper.md) -- TMA descriptor usage (tag 401)
+- [SM 100 Blackwell](../targets/sm100-blackwell.md) -- TCGen05 config usage (tag 402)
+- [Bitcode I/O](../infra/bitcode-io.md) -- LLVM bitcode reader/writer wrapping the IR payload
+- [nvcc Interface](../pipeline/nvcc-interface.md) -- Driver-to-cicc container passing
