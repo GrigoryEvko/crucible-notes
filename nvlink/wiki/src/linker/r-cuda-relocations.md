@@ -1,0 +1,587 @@
+# R_CUDA Relocations
+
+nvlink defines 119 CUDA-specific ELF relocation types for the `EM_CUDA` (190) machine type. These types are stored in `.rela.*` sections of device ELF (cubin) files and are consumed by the relocation engine during the link phase. Each type encodes how a resolved symbol address is patched into the instruction stream or data section: the bit-field width, the bit-field position within the 64- or 128-bit instruction word, and the computation to perform (absolute, PC-relative, hi/lo split, etc.).
+
+The types are organized into two global descriptor tables baked into the nvlink binary's `.rodata` segment. A validation/dispatch function at `sub_42F6C0` selects between them based on whether the relocation is a standard code/data relocation or a section-attribute relocation. The application engine at `sub_468760` reads 64-byte per-type descriptors from these tables and performs up to four sequential bit-field patching actions per relocation.
+
+## Key Facts
+
+| Property | Value |
+|---|---|
+| Machine type | `EM_CUDA` (190) |
+| Total unique type names | 119 |
+| Standard relocation table | `off_1D37600` (117 entries, index 0--116) |
+| Attribute relocation table | `off_1D371E0` (65 entries, index 0--64) |
+| Attribute type offset | `0x10000` (attribute type = standard type + 65536) |
+| Descriptor size | 64 bytes per type (4 actions x 16 bytes) |
+| Validation function | `sub_42F6C0` at `0x42F6C0` |
+| Architecture class function | `sub_42F8C0` at `0x42F8C0` |
+| Max-type-for-class function | `sub_42F690` at `0x42F690` |
+| Application engine | `sub_468760` at `0x468760` (14,322 bytes) |
+| CUDA descriptor table | `off_1D3DBE0` (used by relocation engine) |
+| Mercury descriptor table | `off_1D3CBE0` (Mercury types are CUDA types + `0x10000`) |
+
+## Naming Convention
+
+Every R_CUDA type name follows a systematic pattern:
+
+```
+R_CUDA_<category><bits>_<bitposition>
+```
+
+The components are:
+
+- **Category**: the semantic class of the relocation (ABS, G, FUNC_DESC, TEX, etc.)
+- **Bits**: the width of the relocated value in bits (8, 16, 19, 20, 21, 22, 24, 32, 47, 55, 56, 64, 128)
+- **Bit position**: the starting bit offset within the instruction word where the value is inserted
+
+For example, `R_CUDA_ABS32_20` means: patch bits [20:52) of the instruction word with a 32-bit absolute address. `R_CUDA_PCREL_IMM24_23` means: compute a PC-relative offset, take 24 bits, and insert starting at bit 23.
+
+Some types use a compound suffix with `_HI` or `_LO` to indicate which half of a 32-bit value is being patched (high 16 bits or low 16 bits).
+
+## Dual Descriptor Tables
+
+### Standard Table (off_1D37600)
+
+The standard relocation table at `off_1D37600` contains 117 entries (indices 0 through 116, validated against limit `0x75` = 117). Each entry is a pointer pair in the table: the first pointer is the type name string (e.g., `"R_CUDA_ABS32_20"`), and additional fields encode the relocation class and architecture compatibility.
+
+The validation function `sub_42F6C0` checks:
+
+```c
+// Standard relocation path
+if (!is_attribute) {
+    if (type_index >= 117)       // limit 0x75
+        error("unknown attribute");
+    entry = &off_1D37600[2 * type_index];
+    if (entry->arch_class > target_class)
+        warning("Relocation %s not supported on %s", entry->name, class_name);
+}
+```
+
+### Attribute Table (off_1D371E0)
+
+The attribute relocation table at `off_1D371E0` contains 65 entries (indices 0 through 64, validated against limit `0x41` = 65). Attribute relocations are identified by having their type encoded with the `0x10000` offset -- when the relocation engine encounters a type >= `0x10000`, it subtracts `0x10000` and uses this table instead.
+
+```c
+// Attribute relocation path (type >= 0x10000)
+type_index -= 0x10000;
+if (type_index >= 65)            // limit 0x41
+    error("unknown attribute");
+entry = &off_1D371E0[2 * type_index];
+```
+
+Attribute relocations apply to `.nv.info.*` attribute sections rather than to instruction streams. A separate validation function at `sub_42F760` handles attribute-specific compatibility checking with a three-way dispatch based on the attribute usage field (`dword_1D37D68[4 * type + 1]`): value 0 = warning, value 1 = error, value 2 = silent ignore.
+
+### Architecture Class System
+
+The function at `sub_42F8C0` maps an SM version number to an architecture class used for relocation compatibility checking:
+
+```c
+int reloc_arch_class(int sm_version) {
+    if (sm_version == 0)   return 0;   // invalid / unset
+    if (sm_version <= 70)  return 1;   // Kepler through Volta (sm_30--sm_70)
+    if (sm_version <= 72)  return 2;   // Volta extended (sm_72)
+    if (sm_version >= 76)  return 5;   // Ampere+ (sm_80--sm_90+)
+    return 3;                           // Turing (sm_75)
+}
+```
+
+Each descriptor entry stores a minimum architecture class. The validation function compares the entry's class against the target to ensure the relocation type is supported on the architecture being linked. The five class names are stored in a string pointer array at `off_1D371A0` (indexed 0--4), used in error/warning messages.
+
+The maximum valid relocation index varies by architecture class. The function `sub_42F690` scans backward from index 115 (the last non-special standard type) through the descriptor table, returning the first index whose architecture class is not 5 (the highest). This determines which types are valid for a given target.
+
+## Descriptor Format
+
+Each relocation type has a 64-byte descriptor in the application engine's table (`off_1D3DBE0` for CUDA, `off_1D3CBE0` for Mercury). The descriptor contains up to four 16-byte action records:
+
+```
+Descriptor (64 bytes total):
+  +0   Action 0 (16 bytes)
+  +16  Action 1 (16 bytes)
+  +32  Action 2 (16 bytes)
+  +48  Action 3 (16 bytes)
+
+Action record (16 bytes):
+  +0   uint32_t  bit_offset;    // Starting bit position in instruction word
+  +4   uint32_t  bit_width;     // Number of bits to patch
+  +8   uint32_t  action_type;   // Operation code (see table below)
+  +12  uint32_t  reserved;      // Padding / flags
+```
+
+The application engine (`sub_468760`) iterates the four action slots sequentially. Action type 0 terminates the sequence early. The engine indexes into the descriptor table via:
+
+```c
+descriptor_base = table + (type_index << 6);  // type_index * 64
+action_ptr = descriptor_base + 12;             // first action at offset +12
+end_ptr    = descriptor_base + 60;             // sentinel at offset +60
+```
+
+### Action Types
+
+| Code | Name | Computation |
+|---|---|---|
+| `0x00` | **end** | Terminate action sequence |
+| `0x01` | **abs_full** | `S + A` -- full absolute, store all bits |
+| `0x06` | **abs_lo** | `(S + A) & mask` -- low bits of absolute |
+| `0x07` | **abs_hi** | `((S + A) >> 32) & mask` -- high 32 bits of absolute |
+| `0x08` | **abs_size** | `S + A + section_size` -- absolute plus section size addend |
+| `0x09` | **abs_shifted** | `(S + A) >> 2` -- absolute right-shifted by 2 (4-byte aligned) |
+| `0x0A` | **sec_type_lo** | `section_type & (0xFF >> (8 - width))` -- low nybble of section type |
+| `0x0B` | **sec_type_hi** | `(section_type >> 4) & (0xFF >> (8 - width))` -- high nybble of section type |
+| `0x10` | **pc_rel** | `(S + A) - PC` -- PC-relative offset |
+| `0x12` | **abs_full** | Alias of `0x01` (same behavior) |
+| `0x13` | **clear** | Zero the bit-field (write 0) |
+| `0x14` | **clear** | Alias of `0x13` (same behavior) |
+| `0x16`--`0x1D` | **masked_shift_0..7** | `(S + A) & mask_table[n] >> shift_table[n]` |
+| `0x2E` | **abs_full** | Alias of `0x01` (same behavior, different encoding) |
+| `0x2F`--`0x36` | **masked_shift_8..15** | `(S + A) & mask_table[n] >> shift_table[n]` |
+| `0x37` | **abs_lo** | Alias of `0x06` |
+| `0x38` | **abs_hi** | Alias of `0x07` |
+
+The masked-shift actions (codes `0x16`--`0x1D` and `0x2F`--`0x36`) use a pair of SSE constant vectors loaded from `xmmword_1D3F8E0` through `xmmword_1D3F930`. These contain mask and shift values indexed by (action_type - 22), enabling a single code path to handle 16 different extract-and-place patterns for multi-field instruction encodings.
+
+### Bit-field Patching
+
+The engine uses two helper functions for the actual bit manipulation:
+
+- `sub_468670` (reader): extracts the current value of a bit-field from the instruction word
+- `sub_4685B0` (writer): splices a new value into a bit-field
+
+Both handle fields that span 64-bit word boundaries. The general write operation for a field at `[bit_offset, bit_offset + bit_width)` in a 128-bit instruction word is:
+
+```c
+// Single-word case (field fits within one uint64_t)
+word[i] = (word[i] & ~(mask << shift)) | ((value & mask) << shift);
+
+// Multi-word case (field crosses a 64-bit boundary)
+while (remaining_bits > 0) {
+    write_partial(word_ptr, value, start_bit, min(64 - start_bit, remaining_bits));
+    value >>= bits_written;
+    remaining_bits -= bits_written;
+    word_ptr++;
+    start_bit = 0;
+}
+```
+
+## Relocation Categories
+
+The 119 types fall into 15 semantic categories based on their name prefix and purpose.
+
+### No-op and Sentinel
+
+| Index | Name | Description |
+|---|---|---|
+| 0 | `R_CUDA_NONE` | No relocation (placeholder / deleted) |
+| 116 | `R_CUDA_NONE_LAST` | Sentinel marking end of valid type range |
+
+### Full-Width Data Relocations
+
+These apply to data sections (`.nv.global`, `.nv.constant*`, etc.) rather than instructions.
+
+| Index | Name | Bits | Description |
+|---|---|---|---|
+| 1 | `R_CUDA_32` | 32 | 32-bit absolute address |
+| 2 | `R_CUDA_32_HI` | 16 | Upper 16 bits of 32-bit address |
+| 3 | `R_CUDA_32_LO` | 16 | Lower 16 bits of 32-bit address |
+| 4 | `R_CUDA_64` | 64 | 64-bit absolute address |
+
+### Byte-Level Relocations (R_CUDA_8_*)
+
+Byte-granularity relocations for patching individual bytes within data structures, typically in descriptor tables or attribute sections.
+
+| Index | Name | Byte offset | Description |
+|---|---|---|---|
+| 5 | `R_CUDA_8_0` | 0 | Byte at offset 0 |
+| 6 | `R_CUDA_8_8` | 1 | Byte at offset 8 bits |
+| 7 | `R_CUDA_8_16` | 2 | Byte at offset 16 bits |
+| 8 | `R_CUDA_8_24` | 3 | Byte at offset 24 bits |
+| 9 | `R_CUDA_8_32` | 4 | Byte at offset 32 bits |
+| 10 | `R_CUDA_8_40` | 5 | Byte at offset 40 bits |
+| 11 | `R_CUDA_8_48` | 6 | Byte at offset 48 bits |
+| 12 | `R_CUDA_8_56` | 7 | Byte at offset 56 bits |
+
+### Global Address Relocations (R_CUDA_G*)
+
+Used for global memory address references. These are the primary relocations for `.nv.global` section symbols.
+
+| Index | Name | Bits | Description |
+|---|---|---|---|
+| 13 | `R_CUDA_G32` | 32 | 32-bit global address |
+| 14 | `R_CUDA_G64` | 64 | 64-bit global address |
+| 15 | `R_CUDA_G8_0` | 8 | Global byte at offset 0 |
+| 16 | `R_CUDA_G8_8` | 8 | Global byte at offset 8 |
+| 17 | `R_CUDA_G8_16` | 8 | Global byte at offset 16 |
+| 18 | `R_CUDA_G8_24` | 8 | Global byte at offset 24 |
+| 19 | `R_CUDA_G8_32` | 8 | Global byte at offset 32 |
+| 20 | `R_CUDA_G8_40` | 8 | Global byte at offset 40 |
+| 21 | `R_CUDA_G8_48` | 8 | Global byte at offset 48 |
+| 22 | `R_CUDA_G8_56` | 8 | Global byte at offset 56 |
+
+### Absolute Instruction Relocations (R_CUDA_ABS*)
+
+These patch absolute addresses into SASS instruction bit-fields. The first number is the bit-width of the value; the second is the starting bit position within the instruction word.
+
+| Index | Name | Width | Bit pos | Description |
+|---|---|---|---|---|
+| 23 | `R_CUDA_ABS16_20` | 16 | 20 | 16-bit absolute at bit 20 |
+| 24 | `R_CUDA_ABS16_23` | 16 | 23 | 16-bit absolute at bit 23 |
+| 25 | `R_CUDA_ABS16_26` | 16 | 26 | 16-bit absolute at bit 26 |
+| 26 | `R_CUDA_ABS16_32` | 16 | 32 | 16-bit absolute at bit 32 |
+| 27 | `R_CUDA_ABS20_44` | 20 | 44 | 20-bit absolute at bit 44 |
+| 28 | `R_CUDA_ABS24_20` | 24 | 20 | 24-bit absolute at bit 20 |
+| 29 | `R_CUDA_ABS24_23` | 24 | 23 | 24-bit absolute at bit 23 |
+| 30 | `R_CUDA_ABS24_26` | 24 | 26 | 24-bit absolute at bit 26 |
+| 31 | `R_CUDA_ABS24_32` | 24 | 32 | 24-bit absolute at bit 32 |
+| 32 | `R_CUDA_ABS24_40` | 24 | 40 | 24-bit absolute at bit 40 |
+| 33 | `R_CUDA_ABS32_20` | 32 | 20 | 32-bit absolute at bit 20 |
+| 34 | `R_CUDA_ABS32_23` | 32 | 23 | 32-bit absolute at bit 23 |
+| 35 | `R_CUDA_ABS32_26` | 32 | 26 | 32-bit absolute at bit 26 |
+| 36 | `R_CUDA_ABS32_32` | 32 | 32 | 32-bit absolute at bit 32 |
+| 37 | `R_CUDA_ABS32_HI_20` | 16 | 20 | High 16 bits of 32-bit absolute at bit 20 |
+| 38 | `R_CUDA_ABS32_HI_23` | 16 | 23 | High 16 bits of 32-bit absolute at bit 23 |
+| 39 | `R_CUDA_ABS32_HI_26` | 16 | 26 | High 16 bits of 32-bit absolute at bit 26 |
+| 40 | `R_CUDA_ABS32_HI_32` | 16 | 32 | High 16 bits of 32-bit absolute at bit 32 |
+| 41 | `R_CUDA_ABS32_LO_20` | 16 | 20 | Low 16 bits of 32-bit absolute at bit 20 |
+| 42 | `R_CUDA_ABS32_LO_23` | 16 | 23 | Low 16 bits of 32-bit absolute at bit 23 |
+| 43 | `R_CUDA_ABS32_LO_26` | 16 | 26 | Low 16 bits of 32-bit absolute at bit 26 |
+| 44 | `R_CUDA_ABS32_LO_32` | 16 | 32 | Low 16 bits of 32-bit absolute at bit 32 |
+| 45 | `R_CUDA_ABS47_34` | 47 | 34 | 47-bit absolute at bit 34 (sm_75+ wide immediate) |
+| 46 | `R_CUDA_ABS55_16_34` | 55 | 34 | 55-bit absolute at bit 34 (16-bit aligned) |
+| 47 | `R_CUDA_ABS56_16_34` | 56 | 34 | 56-bit absolute at bit 34 (16-bit aligned) |
+
+The HI/LO variants are used in instruction pairs where a 32-bit address is split across two instructions: one loads the upper 16 bits (`MOV32I` or `LUI`-like) and the other loads the lower 16 bits.
+
+The ABS47, ABS55, and ABS56 types are newer additions (sm_75+/sm_90+) that exploit wider immediate fields in Turing and later ISA encodings.
+
+### PC-Relative Relocations (R_CUDA_PCREL_*)
+
+| Index | Name | Width | Bit pos | Description |
+|---|---|---|---|---|
+| 48 | `R_CUDA_PCREL_IMM24_23` | 24 | 23 | PC-relative 24-bit immediate at bit 23 |
+| 49 | `R_CUDA_PCREL_IMM24_26` | 24 | 26 | PC-relative 24-bit immediate at bit 26 |
+
+PC-relative relocations compute `(S + A) - PC` where `PC` is the address of the instruction being patched. These are used for branch instructions (`BRA`, `BRX`, `CALL`). The 24-bit width limits the branch offset to +/- 8M instructions (each instruction being 8 or 16 bytes depending on encoding).
+
+### Function Descriptor Relocations (R_CUDA_FUNC_DESC_*)
+
+These relocate references to function descriptor entries, used for indirect calls, virtual function tables, and device-side function pointers.
+
+| Index | Name | Bits | Description |
+|---|---|---|---|
+| 50 | `R_CUDA_FUNC_DESC_32` | 32 | 32-bit function descriptor reference |
+| 51 | `R_CUDA_FUNC_DESC_64` | 64 | 64-bit function descriptor reference |
+| 52 | `R_CUDA_FUNC_DESC_8_0` | 8 | Descriptor byte at offset 0 |
+| 53 | `R_CUDA_FUNC_DESC_8_8` | 8 | Descriptor byte at offset 8 |
+| 54 | `R_CUDA_FUNC_DESC_8_16` | 8 | Descriptor byte at offset 16 |
+| 55 | `R_CUDA_FUNC_DESC_8_24` | 8 | Descriptor byte at offset 24 |
+| 56 | `R_CUDA_FUNC_DESC_8_32` | 8 | Descriptor byte at offset 32 |
+| 57 | `R_CUDA_FUNC_DESC_8_40` | 8 | Descriptor byte at offset 40 |
+| 58 | `R_CUDA_FUNC_DESC_8_48` | 8 | Descriptor byte at offset 48 |
+| 59 | `R_CUDA_FUNC_DESC_8_56` | 8 | Descriptor byte at offset 56 |
+| 60 | `R_CUDA_FUNC_DESC32_20` | 32 | 20 | 32-bit descriptor at instruction bit 20 |
+| 61 | `R_CUDA_FUNC_DESC32_23` | 32 | 23 | 32-bit descriptor at instruction bit 23 |
+| 62 | `R_CUDA_FUNC_DESC32_32` | 32 | 32 | 32-bit descriptor at instruction bit 32 |
+| 63 | `R_CUDA_FUNC_DESC32_HI_20` | 16 | 20 | High 16 bits of descriptor at bit 20 |
+| 64 | `R_CUDA_FUNC_DESC32_HI_23` | 16 | 23 | High 16 bits of descriptor at bit 23 |
+| 65 | `R_CUDA_FUNC_DESC32_HI_32` | 16 | 32 | High 16 bits of descriptor at bit 32 |
+| 66 | `R_CUDA_FUNC_DESC32_LO_20` | 16 | 20 | Low 16 bits of descriptor at bit 20 |
+| 67 | `R_CUDA_FUNC_DESC32_LO_23` | 16 | 23 | Low 16 bits of descriptor at bit 23 |
+| 68 | `R_CUDA_FUNC_DESC32_LO_32` | 16 | 32 | Low 16 bits of descriptor at bit 32 |
+
+The byte-level variants (FUNC_DESC_8_*) are used for patching function descriptors in data sections rather than instruction immediate fields. The instruction variants (FUNC_DESC32_*) patch call instructions that embed the function descriptor index.
+
+### Texture, Sampler, and Surface Relocations
+
+These handle bindable resource references in SASS instructions.
+
+| Index | Name | Description |
+|---|---|---|
+| 69 | `R_CUDA_TEX_HEADER_INDEX` | Texture header index (binds to .nv.tex.header) |
+| 70 | `R_CUDA_TEX_SLOT` | Texture slot number |
+| 71 | `R_CUDA_SAMP_HEADER_INDEX` | Sampler header index |
+| 72 | `R_CUDA_SAMP_SLOT` | Sampler slot number |
+| 73 | `R_CUDA_SAMP_HEADER_INDEX_0` | Sampler header index (variant 0) |
+| 74 | `R_CUDA_SURF_HEADER_INDEX` | Surface header index |
+| 75 | `R_CUDA_SURF_SLOT` | Surface slot number |
+| 76 | `R_CUDA_SURF_HW_DESC` | Surface hardware descriptor |
+| 77 | `R_CUDA_SURF_HW_SW_DESC` | Surface combined hardware/software descriptor |
+
+These are resolved during linking by looking up the resource in the merged texture/sampler/surface header tables. The `HEADER_INDEX` types reference the global `.nv.tex.header` / `.nv.samp.header` / `.nv.surf.header` sections, while `SLOT` types reference the logical binding slot number.
+
+### Constant Bank Relocations (R_CUDA_CONST_FIELD*)
+
+Relocations for references into constant memory banks (`.nv.constant0`, `.nv.constant2`, etc.).
+
+| Index | Name | Width | Bit pos | Description |
+|---|---|---|---|---|
+| 78 | `R_CUDA_CONST_FIELD19_20` | 19 | 20 | 19-bit constant offset at bit 20 |
+| 79 | `R_CUDA_CONST_FIELD19_23` | 19 | 23 | 19-bit constant offset at bit 23 |
+| 80 | `R_CUDA_CONST_FIELD19_26` | 19 | 26 | 19-bit constant offset at bit 26 |
+| 81 | `R_CUDA_CONST_FIELD19_28` | 19 | 28 | 19-bit constant offset at bit 28 |
+| 82 | `R_CUDA_CONST_FIELD19_40` | 19 | 40 | 19-bit constant offset at bit 40 |
+| 83 | `R_CUDA_CONST_FIELD21_20` | 21 | 20 | 21-bit constant offset at bit 20 |
+| 84 | `R_CUDA_CONST_FIELD21_23` | 21 | 23 | 21-bit constant offset at bit 23 |
+| 85 | `R_CUDA_CONST_FIELD21_26` | 21 | 26 | 21-bit constant offset at bit 26 |
+| 86 | `R_CUDA_CONST_FIELD21_38` | 21 | 38 | 21-bit constant offset at bit 38 |
+| 87 | `R_CUDA_CONST_FIELD22_37` | 22 | 37 | 22-bit constant offset at bit 37 |
+
+The 19-bit variants can address up to 512 KB of constant memory (19 bits * 4-byte aligned = 2 MB byte addressable, or 512 K dwords). The 21-bit and 22-bit variants (sm_75+) expand the addressable range for larger constant banks.
+
+### Bindless Texture Relocations (R_CUDA_TEX_BINDLESSOFF* / R_CUDA_BINDLESSOFF*)
+
+| Index | Name | Width | Bit pos | Description |
+|---|---|---|---|---|
+| 88 | `R_CUDA_TEX_BINDLESSOFF13_32` | 13 | 32 | Texture bindless offset at bit 32 |
+| 89 | `R_CUDA_TEX_BINDLESSOFF13_41` | 13 | 41 | Texture bindless offset at bit 41 |
+| 90 | `R_CUDA_TEX_BINDLESSOFF13_45` | 13 | 45 | Texture bindless offset at bit 45 |
+| 91 | `R_CUDA_TEX_BINDLESSOFF13_47` | 13 | 47 | Texture bindless offset at bit 47 |
+| 92 | `R_CUDA_TEX_SLOT9_49` | 9 | 49 | Texture slot 9-bit at bit 49 |
+| 93 | `R_CUDA_BINDLESSOFF13_36` | 13 | 36 | Generic bindless offset at bit 36 |
+| 94 | `R_CUDA_BINDLESSOFF14_40` | 14 | 40 | Generic bindless 14-bit offset at bit 40 |
+
+Bindless texture relocations patch the bindless resource offset into texture sampling instructions. The 13-bit width supports up to 8192 unique textures per kernel launch. See [Bindless Relocations](bindless-relocations.md) for the full resolution pipeline.
+
+### Unified Table Relocations (R_CUDA_UNIFIED_*)
+
+Relocations for the Unified Descriptor Table (UDT) and Unified Function Table (UFT). These are the primary relocation types for CUDA Dynamic Parallelism and indirect function calls through the unified tables.
+
+| Index | Name | Bits | Description |
+|---|---|---|---|
+| 95 | `R_CUDA_UNIFIED` | special | Unified table reference (generic) |
+| 96 | `R_CUDA_UNIFIED_32` | 32 | 32-bit unified table offset |
+| 97 | `R_CUDA_UNIFIED32_HI_32` | 16 | High 16 bits of unified table offset at bit 32 |
+| 98 | `R_CUDA_UNIFIED32_LO_32` | 16 | Low 16 bits of unified table offset at bit 32 |
+| 99 | `R_CUDA_UNIFIED_8_0` | 8 | Unified byte at offset 0 |
+| 100 | `R_CUDA_UNIFIED_8_8` | 8 | Unified byte at offset 8 |
+| 101 | `R_CUDA_UNIFIED_8_16` | 8 | Unified byte at offset 16 |
+| 102 | `R_CUDA_UNIFIED_8_24` | 8 | Unified byte at offset 24 |
+| 103 | `R_CUDA_UNIFIED_8_32` | 8 | Unified byte at offset 32 |
+| 104 | `R_CUDA_UNIFIED_8_40` | 8 | Unified byte at offset 40 |
+| 105 | `R_CUDA_UNIFIED_8_48` | 8 | Unified byte at offset 48 |
+| 106 | `R_CUDA_UNIFIED_8_56` | 8 | Unified byte at offset 56 |
+
+During the relocation phase, unified relocations (types 102--113 in the internal remapping) are translated to their base equivalents. Relocations targeting synthetic symbols (`__UFT_OFFSET`, `__UDT_OFFSET`, `__UFT_CANONICAL`, `__UDT_CANONICAL`, `__UDT`, `__UFT`, `__UFT_END`, `__UDT_END`) are resolved to type 0 (no-op) because the unified table manager has already computed the final offsets.
+
+### Instruction-Level Relocations (R_CUDA_INSTRUCTION*)
+
+| Index | Name | Width | Description |
+|---|---|---|---|
+| 107 | `R_CUDA_INSTRUCTION64` | 64 | Full 64-bit instruction replacement |
+| 108 | `R_CUDA_INSTRUCTION128` | 128 | Full 128-bit instruction replacement |
+
+These are whole-instruction relocations that replace the entire instruction word. Used by the instruction-level optimization pass (peephole) and for instruction encoding conversions where the entire instruction must be rewritten (e.g., converting a 64-bit instruction to a 128-bit encoding or vice versa).
+
+### Yield Relocations (R_CUDA_YIELD_*)
+
+| Index | Name | Description |
+|---|---|---|
+| 109 | `R_CUDA_YIELD_OPCODE9_0` | Patch 9-bit opcode field at bit 0 for YIELD |
+| 110 | `R_CUDA_YIELD_CLEAR_PRED4_87` | Clear 4-bit predicate field at bit 87 for YIELD |
+
+YIELD relocations are used to convert YIELD instructions to NOP when forward-progress guarantees are required. The relocation engine checks the forward-progress-required flag (`ctx+94`) and suppresses the conversion if active, with the trace message: `"Ignoring the reloc to convert YIELD to NOP due to forward progress requirement."`
+
+### Unused-Clear Relocations
+
+| Index | Name | Width | Description |
+|---|---|---|---|
+| 111 | `R_CUDA_UNUSED_CLEAR32` | 32 | Clear 32 bits (write zeros) |
+| 112 | `R_CUDA_UNUSED_CLEAR64` | 64 | Clear 64 bits (write zeros) |
+
+These zero out fields in sections that are no longer needed after linking, such as placeholder entries in merged data sections.
+
+### Miscellaneous Types
+
+| Index | Name | Description |
+|---|---|---|
+| 113 | `R_CUDA_QUERY_DESC21_37` | 21-bit query descriptor offset at bit 37 |
+| 114 | `R_CUDA_6_31` | 6-bit value at bit 31 |
+| 115 | `R_CUDA_2_47` | 2-bit value at bit 47 |
+
+The `QUERY_DESC` type is used for CUDA's query descriptor mechanism. The 6-bit and 2-bit types are narrow-field relocations for specific instruction encoding fields in newer architectures.
+
+## Per-Architecture Vtable
+
+In addition to the descriptor-table-driven application engine, nvlink maintains a per-architecture **relocation vtable** created by `sub_459640` (16,109 bytes). This 632-byte table (79 function pointer slots, 8 bytes each) contains architecture-specific handler functions for relocation types that require different patching behavior across GPU generations.
+
+The vtable is populated based on the target SM range:
+
+| SM Range | Architecture | Notes |
+|---|---|---|
+| 30--39 | Kepler | Shared "legacy" handler set |
+| 50--59 | Maxwell | Adds additional instruction-field handlers |
+| 60--69 | Pascal | Adds 60+ series handlers, wider field support |
+| 70--72, 73--79 | Volta/Turing | New instruction format, `result[33]`/`result[34]` populated |
+| 80--88, 89 | Ampere/Ada | Adds bindless handlers, new field variants |
+| 90--99 | Hopper | Major differences in slots 10/11/28/50--53, new desc types |
+| 100--103, 110--121 | Mercury (Blackwell+) | Distinct handler for slot 13, new constant field sizes |
+
+The vtable is allocated via `sub_4307C0` (arena allocator) and the first 78 slots are populated. Slots that are not explicitly set remain NULL (zero), and the relocation engine skips NULL handlers. This is how unsupported relocation types are detected at runtime -- a NULL vtable entry for a required type triggers an error.
+
+## Mercury vs CUDA Type Mapping
+
+Mercury (sm >= 100) uses a parallel set of relocation types offset by `0x10000`. When the linker context's ELF class byte (offset `+7`) is `'A'` (0x41, indicating Mercury), the relocation engine subtracts `0x10000` from the type and uses the Mercury descriptor table (`off_1D3CBE0`) instead of the CUDA table (`off_1D3DBE0`).
+
+```c
+if (ctx->elf_class == 'A') {              // Mercury
+    if (reloc_type <= 0x10000)
+        fatal("unexpected reloc");          // should always be >= 0x10000
+    reloc_type -= 0x10000;
+    descriptor_table = off_1D3CBE0;         // Mercury table
+} else {                                    // CUDA
+    descriptor_table = off_1D3DBE0;         // CUDA table
+}
+```
+
+Both tables have the same structure (64 bytes per entry) but different action encodings reflecting the different instruction formats between pre-Mercury (64-bit SASS) and Mercury (128-bit SASS) architectures.
+
+## Validation Error Messages
+
+The validation infrastructure produces these diagnostic messages:
+
+| Source function | Message | Condition |
+|---|---|---|
+| `sub_42F6C0` | `"unknown attribute"` | Type index exceeds table bounds |
+| `sub_42F6C0` | `"Relocation %s not supported on %s"` | Architecture class mismatch |
+| `sub_42F760` | `"unknown attribute"` | Attribute type index > 96 |
+| `sub_42F760` | `"Attribute %s not supported on %s"` | Attribute arch class mismatch |
+| `sub_42F760` | `"unknown usage"` | Usage field has unrecognized value |
+| `sub_42F850` | `"STO_CUDA_OBSCURE"` | Symbol with obscure storage class |
+| `sub_469D60` | `"unexpected reloc"` | Mercury type found without Mercury context |
+
+The error descriptors at `unk_2A5BAB0` (warning) and `unk_2A5BAC0` (error) control whether these diagnostics are warnings or fatal errors.
+
+## Full Type Catalog
+
+The complete list of 119 R_CUDA relocation types extracted from nvlink v13.0.88, sorted by name:
+
+| # | Name | Category |
+|---|---|---|
+| 1 | `R_CUDA_2_47` | misc |
+| 2 | `R_CUDA_32` | data |
+| 3 | `R_CUDA_32_HI` | data |
+| 4 | `R_CUDA_32_LO` | data |
+| 5 | `R_CUDA_6_31` | misc |
+| 6 | `R_CUDA_64` | data |
+| 7 | `R_CUDA_8_0` | byte |
+| 8 | `R_CUDA_8_16` | byte |
+| 9 | `R_CUDA_8_24` | byte |
+| 10 | `R_CUDA_8_32` | byte |
+| 11 | `R_CUDA_8_40` | byte |
+| 12 | `R_CUDA_8_48` | byte |
+| 13 | `R_CUDA_8_56` | byte |
+| 14 | `R_CUDA_8_8` | byte |
+| 15 | `R_CUDA_ABS16_20` | abs-instr |
+| 16 | `R_CUDA_ABS16_23` | abs-instr |
+| 17 | `R_CUDA_ABS16_26` | abs-instr |
+| 18 | `R_CUDA_ABS16_32` | abs-instr |
+| 19 | `R_CUDA_ABS20_44` | abs-instr |
+| 20 | `R_CUDA_ABS24_20` | abs-instr |
+| 21 | `R_CUDA_ABS24_23` | abs-instr |
+| 22 | `R_CUDA_ABS24_26` | abs-instr |
+| 23 | `R_CUDA_ABS24_32` | abs-instr |
+| 24 | `R_CUDA_ABS24_40` | abs-instr |
+| 25 | `R_CUDA_ABS32_20` | abs-instr |
+| 26 | `R_CUDA_ABS32_23` | abs-instr |
+| 27 | `R_CUDA_ABS32_26` | abs-instr |
+| 28 | `R_CUDA_ABS32_32` | abs-instr |
+| 29 | `R_CUDA_ABS32_HI_20` | abs-instr |
+| 30 | `R_CUDA_ABS32_HI_23` | abs-instr |
+| 31 | `R_CUDA_ABS32_HI_26` | abs-instr |
+| 32 | `R_CUDA_ABS32_HI_32` | abs-instr |
+| 33 | `R_CUDA_ABS32_LO_20` | abs-instr |
+| 34 | `R_CUDA_ABS32_LO_23` | abs-instr |
+| 35 | `R_CUDA_ABS32_LO_26` | abs-instr |
+| 36 | `R_CUDA_ABS32_LO_32` | abs-instr |
+| 37 | `R_CUDA_ABS47_34` | abs-instr |
+| 38 | `R_CUDA_ABS55_16_34` | abs-instr |
+| 39 | `R_CUDA_ABS56_16_34` | abs-instr |
+| 40 | `R_CUDA_BINDLESSOFF13_36` | bindless |
+| 41 | `R_CUDA_BINDLESSOFF14_40` | bindless |
+| 42 | `R_CUDA_CONST_FIELD19_20` | const |
+| 43 | `R_CUDA_CONST_FIELD19_23` | const |
+| 44 | `R_CUDA_CONST_FIELD19_26` | const |
+| 45 | `R_CUDA_CONST_FIELD19_28` | const |
+| 46 | `R_CUDA_CONST_FIELD19_40` | const |
+| 47 | `R_CUDA_CONST_FIELD21_20` | const |
+| 48 | `R_CUDA_CONST_FIELD21_23` | const |
+| 49 | `R_CUDA_CONST_FIELD21_26` | const |
+| 50 | `R_CUDA_CONST_FIELD21_38` | const |
+| 51 | `R_CUDA_CONST_FIELD22_37` | const |
+| 52 | `R_CUDA_FUNC_DESC_32` | func-desc |
+| 53 | `R_CUDA_FUNC_DESC32_20` | func-desc |
+| 54 | `R_CUDA_FUNC_DESC32_23` | func-desc |
+| 55 | `R_CUDA_FUNC_DESC32_32` | func-desc |
+| 56 | `R_CUDA_FUNC_DESC32_HI_20` | func-desc |
+| 57 | `R_CUDA_FUNC_DESC32_HI_23` | func-desc |
+| 58 | `R_CUDA_FUNC_DESC32_HI_32` | func-desc |
+| 59 | `R_CUDA_FUNC_DESC32_LO_20` | func-desc |
+| 60 | `R_CUDA_FUNC_DESC32_LO_23` | func-desc |
+| 61 | `R_CUDA_FUNC_DESC32_LO_32` | func-desc |
+| 62 | `R_CUDA_FUNC_DESC_64` | func-desc |
+| 63 | `R_CUDA_FUNC_DESC_8_0` | func-desc |
+| 64 | `R_CUDA_FUNC_DESC_8_16` | func-desc |
+| 65 | `R_CUDA_FUNC_DESC_8_24` | func-desc |
+| 66 | `R_CUDA_FUNC_DESC_8_32` | func-desc |
+| 67 | `R_CUDA_FUNC_DESC_8_40` | func-desc |
+| 68 | `R_CUDA_FUNC_DESC_8_48` | func-desc |
+| 69 | `R_CUDA_FUNC_DESC_8_56` | func-desc |
+| 70 | `R_CUDA_FUNC_DESC_8_8` | func-desc |
+| 71 | `R_CUDA_G32` | global |
+| 72 | `R_CUDA_G64` | global |
+| 73 | `R_CUDA_G8_0` | global |
+| 74 | `R_CUDA_G8_16` | global |
+| 75 | `R_CUDA_G8_24` | global |
+| 76 | `R_CUDA_G8_32` | global |
+| 77 | `R_CUDA_G8_40` | global |
+| 78 | `R_CUDA_G8_48` | global |
+| 79 | `R_CUDA_G8_56` | global |
+| 80 | `R_CUDA_G8_8` | global |
+| 81 | `R_CUDA_INSTRUCTION128` | instr |
+| 82 | `R_CUDA_INSTRUCTION64` | instr |
+| 83 | `R_CUDA_NONE` | sentinel |
+| 84 | `R_CUDA_NONE_LAST` | sentinel |
+| 85 | `R_CUDA_PCREL_IMM24_23` | pc-rel |
+| 86 | `R_CUDA_PCREL_IMM24_26` | pc-rel |
+| 87 | `R_CUDA_QUERY_DESC21_37` | misc |
+| 88 | `R_CUDA_SAMP_HEADER_INDEX` | sampler |
+| 89 | `R_CUDA_SAMP_HEADER_INDEX_0` | sampler |
+| 90 | `R_CUDA_SAMP_SLOT` | sampler |
+| 91 | `R_CUDA_SURF_HEADER_INDEX` | surface |
+| 92 | `R_CUDA_SURF_HW_DESC` | surface |
+| 93 | `R_CUDA_SURF_HW_SW_DESC` | surface |
+| 94 | `R_CUDA_SURF_SLOT` | surface |
+| 95 | `R_CUDA_TEX_BINDLESSOFF13_32` | bindless |
+| 96 | `R_CUDA_TEX_BINDLESSOFF13_41` | bindless |
+| 97 | `R_CUDA_TEX_BINDLESSOFF13_45` | bindless |
+| 98 | `R_CUDA_TEX_BINDLESSOFF13_47` | bindless |
+| 99 | `R_CUDA_TEX_HEADER_INDEX` | texture |
+| 100 | `R_CUDA_TEX_SLOT` | texture |
+| 101 | `R_CUDA_TEX_SLOT9_49` | texture |
+| 102 | `R_CUDA_UNIFIED` | unified |
+| 103 | `R_CUDA_UNIFIED_32` | unified |
+| 104 | `R_CUDA_UNIFIED32_HI_32` | unified |
+| 105 | `R_CUDA_UNIFIED32_LO_32` | unified |
+| 106 | `R_CUDA_UNIFIED_8_0` | unified |
+| 107 | `R_CUDA_UNIFIED_8_16` | unified |
+| 108 | `R_CUDA_UNIFIED_8_24` | unified |
+| 109 | `R_CUDA_UNIFIED_8_32` | unified |
+| 110 | `R_CUDA_UNIFIED_8_40` | unified |
+| 111 | `R_CUDA_UNIFIED_8_48` | unified |
+| 112 | `R_CUDA_UNIFIED_8_56` | unified |
+| 113 | `R_CUDA_UNIFIED_8_8` | unified |
+| 114 | `R_CUDA_UNUSED_CLEAR32` | clear |
+| 115 | `R_CUDA_UNUSED_CLEAR64` | clear |
+| 116 | `R_CUDA_YIELD_CLEAR_PRED4_87` | yield |
+| 117 | `R_CUDA_YIELD_OPCODE9_0` | yield |
+| 118 | `R_CUDA_INSTRUCTION64` | instr |
+| 119 | `R_CUDA_INSTRUCTION128` | instr |
+
+Note: The catalog contains 119 unique name strings as extracted from the binary. Some types appear in both the standard and attribute tables with the same name but different table indices and different descriptor actions. The total across both tables is 117 + 65 = 182 table slots, but many attribute slots share names with their standard counterparts.
+
+## Cross-References
+
+- [Relocation Phase](../pipeline/relocate.md) -- the pipeline stage that consumes these types
+- [Finalization Phase](../pipeline/finalize.md) -- second-pass relocation application
+- [Relocation Application Engine](relocation-engine.md) -- the bit-field patching engine
+- [Bindless Relocations](bindless-relocations.md) -- bindless texture/surface resolution
+- [Binary Layout](../binary-layout.md) -- locations of descriptor tables in the nvlink binary
