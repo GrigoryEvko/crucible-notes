@@ -83,7 +83,7 @@ The inner function `sub_753600` runs on a single basic block and returns a boole
 
 The convergence check for option 464 acts as an emergency brake: if the knob returns false, the loop breaks even if changes were detected. This prevents pathological cases where mutual transformations oscillate indefinitely.
 
-**Phase 29** (`sub_C5FC50`) follows the same pattern but delegates to `sub_908EB0`, which implements a more complex instruction walk with additional opcode dispatch (opcodes 97, 18, 124) and predicate-aware propagation.
+**Phase 29** (`sub_C5FC50`) follows the same pattern but delegates to `sub_908EB0`, which implements a more complex instruction walk with additional opcode dispatch (opcodes 97 [`STG` in ROT13; used here as a definition anchor], 18 [`FSETP`], 124 [conditional select]) and predicate-aware propagation.
 
 ### Variant B: Full-Program Sub-Pass Orchestration (Phases 37, 58)
 
@@ -384,7 +384,7 @@ function copy_prop_forward(ctx):
 
 | Opcode | IR Meaning | Role in Copy Prop | Evidence |
 |--------|-----------|-------------------|---------|
-| 97 | Definition anchor / label marker | Updates the current definition tracking context (`v11`). Its operand `instr+84 & 0xFFFFFF` is an index into the BB array at `ctx+296`, retrieving the BasicBlock descriptor for the definition point. All subsequent propagation decisions for opcodes 18 and 124 reference this context. | `sub_908EB0` lines 74--78: `v11 = *(*(a1+296) + 8 * (*(v9+84) & 0xFFFFFF))` |
+| 97 | Definition anchor / label marker (`STG` in the ROT13 name table; used here as a definition anchor, not an actual store-global instruction) | Updates the current definition tracking context (`v11`). Its operand `instr+84 & 0xFFFFFF` is an index into the BB array at `ctx+296`, retrieving the BasicBlock descriptor for the definition point. All subsequent propagation decisions for opcodes 18 and 124 reference this context. | `sub_908EB0` lines 74--78: `v11 = *(*(a1+296) + 8 * (*(v9+84) & 0xFFFFFF))` |
 | 18 | `FSETP`/`ISETP` (set predicate) | A predicate-setting comparison instruction. Copy propagation treats it as a "predicated copy" target: when source operands have type 2 or 3 (predicate/uniform register) and pass `sub_91D150` register constraint checks, the destination predicate can be folded into consumers. Marked with `0x400` when the architecture supports it. | `sub_908EB0` lines 84--96, `sub_8F2E50` lines 19--61 |
 | 124 | Conditional select (phi-like) | A two-source selection instruction controlled by a predicate. Copy propagation attempts to simplify it to a direct assignment when one source is a constant or when structural analysis shows the predicate is trivially true/false. Marked with `0x100` or type-converted via `(operand & 0xFFFFFDF0) | 0x201`. | `sub_908EB0` lines 82--198, `sub_8F2E50` lines 42--51 |
 
@@ -438,7 +438,7 @@ function is_eligible(ctx, instr):
     return false
 ```
 
-The SM version threshold **20479** (`0x4FFF`) divides pre-Turing architectures (where constant propagation through conditional selects is unconditionally safe) from newer architectures that require the constraint bits at `dst & 0x1C00` to be zero.
+The SM version threshold **20479** (`0x4FFF`) divides generation-4-and-below architectures (Kepler/Maxwell, where constant propagation through conditional selects is unconditionally safe) from generation-5+ architectures (Pascal onward) that require the constraint bits at `dst & 0x1C00` to be zero. See [SM Version Encoding and the 20479 Boundary](#sm-version-encoding-and-the-20479-boundary) for the encoding formula.
 
 #### Architecture Predicate Query: `sub_8F29C0`
 
@@ -579,7 +579,7 @@ The threshold divides two immediate-encoding regimes:
 | <= 20479 | Legacy encoding | Integer (type 1) and float (type 2) constants in conditional selects fold unconditionally | Legacy architectures use fixed-width immediate slots with no sign/width constraints |
 | > 20479 | Extended encoding | Same types fold only if `(dest & 0x1C00) == 0` -- constraint bits at operand positions 10--12 must all be zero | Extended architectures introduced variable-width immediate encoding with sign-extension rules; bits 10--12 encode width/signedness constraints that prevent certain constants from being represented as immediates |
 
-The exact mapping from SM architecture numbers (e.g., sm_50, sm_75, sm_86) to the encoded value at `comp_unit+372` is not a simple identity -- an architecture-dependent multiplier is applied during target initialization. Based on the threshold position, the boundary falls approximately between the sm_80 (Ampere) and sm_86 (Ampere+) generations, aligning with the introduction of extended immediate formats in the Ampere refresh.
+The encoded value at `comp_unit+372` uses the formula `(generation << 12) | variant`. Known values: 12288 = sm_30 (gen 3), 16385 = sm_50 (gen 4), 20481 = sm_50a (gen 5), 24576 = sm_60 (gen 6), 28672 = sm_70 (gen 7), 32768 = sm_90 (gen 8), 36864 = sm_100 (gen 9). The threshold 20479 = `(5 << 12) - 1` = `0x4FFF` falls exactly at the generation 4/5 boundary: all generation-4 values (Kepler/Maxwell) are at or below 20479, while the first generation-5 value (20481) exceeds it. This aligns with the introduction of extended immediate encoding formats in Pascal (sm_60, gen 6) and its predecessors in the gen-5 range.
 
 #### How Fold Results Are Consumed
 
@@ -672,6 +672,123 @@ Phase 37 uses `sub_8F3FE0` to validate that folding an instruction's operands re
    - Returns 0 (fold invalid) on any constraint mismatch
 4. Loop count is determined by the destination operand format field (`& 7`)
 5. Returns 1 only if all source operands have consistent register constraints
+
+### Constant Folding and Propagation Marking Architecture
+
+The term "constant folding" in the context of GeneralOptimize is misleading. The pass does not evaluate arithmetic at compile time (e.g., replacing `3 + 5` with `8`). Instead, it performs **constant propagation eligibility marking** -- identifying operands that hold constant or propagatable values and setting flag bits so downstream passes can exploit this information. Actual arithmetic evaluation occurs elsewhere in the pipeline.
+
+#### Three Levels of Constant Handling in ptxas
+
+Constant handling spans three distinct pipeline stages, each with different scope and mechanism:
+
+| Level | Stage | Functions | What It Does | What It Does NOT Do |
+|---|---|---|---|---|
+| 1 -- ORI-IR Propagation Marking | GeneralOptimize (phases 13/29/37/46/58/65) | `sub_908EB0` (body), `sub_8F2E50` (gate), `sub_908A60` (deep analysis) | Marks operands with flag bits (`0x100`/`0x200`/`0x400`) indicating they are eligible for constant propagation | Evaluate arithmetic; rewrite instructions; emit immediates |
+| 2 -- SASS Peephole Combining | Post-ISel peephole (phases 83+) | `sub_83EF00` (156KB mega-peephole), `sub_1249B50` (integer ALU fold), `sub_1249940` (MOV-pair matcher) | Combines MOV-from-immediate + ALU instruction pairs into single instructions with folded constants | Operate on ORI IR; handle non-MOV sources |
+| 3 -- Frontend Expression Evaluation | PTX parser/validator (address range `0x460000`--`0x4D5000`) | Multiple validator functions (string evidence: `"Constant expression has division by zero"`, `"Constant overflow"`) | Evaluates PTX-level constant expressions during parsing; reports errors for invalid expressions | Operate on internal IR; run during optimization |
+
+The `limit-fold-fp` knob controls **Level 1 only** -- specifically whether float-typed operands take the fast path or must go through predicate analysis before being marked.
+
+#### SM Version Encoding and the 20479 Boundary
+
+The SM version at `comp_unit->profile[+372]` is not a direct sm_XX number. It uses a packed encoding:
+
+```
+encoded_sm = (generation << 12) | variant
+```
+
+Concrete values from the binary:
+
+| Encoded | Hex | Generation | Variant | Architecture |
+|---|---|---|---|---|
+| 12288 | `0x3000` | 3 | 0 | sm_30 (Kepler) |
+| 16385 | `0x4001` | 4 | 1 | sm_50 (Maxwell) |
+| 20481 | `0x5001` | 5 | 1 | sm_50a (Maxwell alt / gen-5 base) |
+| 24576 | `0x6000` | 6 | 0 | sm_60 (Pascal) |
+| 28672 | `0x7000` | 7 | 0 | sm_70 (Volta) |
+| 28673 | `0x7001` | 7 | 1 | sm_80 (Ampere) |
+| 32768 | `0x8000` | 8 | 0 | sm_90 (Hopper) |
+| 36864 | `0x9000` | 9 | 0 | sm_100 (Blackwell) |
+
+The threshold **20479** = `(5 << 12) - 1` = `0x4FFF`. This is the largest value that fits in generation 4. Every generation-5+ encoded value exceeds it.
+
+The fold-eligibility impact:
+
+- **SM <= 20479** (generation 4 and below -- Kepler, Maxwell): Integer and float immediates in conditional-select instructions (opcode 124) fold unconditionally. The hardware uses fixed-width immediate slots with no sign/width constraints at operand bit positions 10--12.
+
+- **SM > 20479** (generation 5+ -- Pascal and all newer): The operand's constraint bits at positions 10--12 (mask `0x1C00`) must all be zero for folding to proceed. These bits encode hardware constraints introduced with extended immediate formats:
+  - Bit 10: immediate width constraint (narrow vs wide encoding)
+  - Bit 11: sign-extension requirement
+  - Bit 12: bank-relative vs absolute encoding
+
+The threshold appears in 6 locations across the binary, confirming it is a fundamental architectural boundary rather than an ad-hoc check: `sub_8F2E50` (fold eligibility), `sub_406C5E` (peephole), `sub_406018` (peephole operand matcher), `sub_751940` (instruction walker), `sub_78DB70` (phase pre-check), `sub_848790` (register bank coalescer).
+
+#### Architecture Class Predicate: `sub_8F29C0` Internals
+
+The 9-line function `sub_8F29C0` queries three architecture capability checks in sequence. If any returns true, the conservative fold path (which requires additional predicate analysis) is the correct approach for the target:
+
+```c
+bool arch_needs_conservative_fold(int64_t ctx) {
+    int64_t cu = *(int64_t*)(ctx + 1584);
+    if (sub_7DC0E0(cu)) return true;   // isDualIssue
+    if (sub_7DC050(cu)) return true;   // isNvlinkArch
+    return sub_7DC030(cu);             // isGraceArch
+}
+```
+
+Each sub-function reads the architecture class field at `comp_unit->profile[+12]`:
+
+| Function | Check | Class ID | Architecture Family |
+|---|---|---|---|
+| `sub_7DC0E0` | `profile[+12] == 4` | 4 | Dual-issue (Maxwell sm_50) |
+| `sub_7DC050` | `profile[+12] == 11` OR `profile[+1418] & 1` | 11 | NVLink-capable (Volta+) |
+| `sub_7DC030` | `profile[+12] == 10` OR `profile[+1417] >> 7` | 10 | Grace (ARM-based) |
+
+When `sub_8F29C0` returns **true**: folding a constant into a conditional select requires predicate analysis first, because these architectures have immediate encoding differences between conditional and unconditional instruction forms, or because predicate evaluation may have observable side effects.
+
+When `sub_8F29C0` returns **false** (simpler architectures): the fold attempt still proceeds but falls through to the more expensive two-pass predicate simplifier (`sub_908A60`) as a fallback rather than using the direct marking path.
+
+#### Two-Pass Predicate Simplifier: `sub_908A60` Internals
+
+When the eligibility check passes for opcode 124 but the conservative path is required (either `sub_8F29C0` returns false, or the tier flags at `ctx+1379 & 0x1B` have bits set), `sub_908A60` performs a bidirectional scan of the instruction stream to validate that the fold is safe.
+
+**Signature:** `sub_908A60(ctx_array, basic_block_id, instr, direction, &out_hit, &out_partial)`
+
+| Parameter | Type | Meaning |
+|---|---|---|
+| `a1` | `int64_t*` | Context as QWORD array (`a1[37]` = block array, `a1[198]` = comp_unit) |
+| `a2` | `int` | Basic block index (from the definition anchor) |
+| `a3` | `int64_t` | Current instruction pointer |
+| `a4` | `int` | Direction: `1` = forward scan, `0` = backward scan |
+| `a5` | `int*` | Output: 1 if a complete safe-fold chain was found |
+| `a6` | `int*` | Output: 1 if architecture supports aggressive mode |
+
+**Algorithm:**
+
+1. Allocates a 24-byte tracking structure via `comp_unit->vtable[24]`
+2. Queries architecture mode via `sub_7DC0E0`/`sub_7DC050`/`sub_7DC030`
+3. Walks instructions in the specified direction within the basic block:
+   - Opcode 97 (`STG` in ROT13; used as definition anchor/label marker): follows the label chain to the next definition
+   - Opcode 52 (NOP/delimiter): stops the scan (block boundary)
+   - Opcode 124 or 18: recursively calls `sub_8F2E50` on the chained instruction to verify fold safety through the chain
+4. Sets output flags based on whether a complete safe-fold chain was found
+
+**Invocation pattern in `sub_908EB0`:**
+
+```
+// Forward pass first
+sub_908A60(ctx, bb_id, instr, 1, &hit, &partial);
+if (hit) goto mark_propagated;
+
+// If forward found nothing useful, try backward
+if (!partial) {
+    sub_908A60(ctx, bb_id, instr, 0, &hit, &partial);
+    if (hit) goto mark_propagated;
+    if (!partial) continue;   // neither direction found a match
+}
+```
+
+The two-pass strategy (forward then backward) handles PHI-like merge patterns at loop boundaries. Forward catches definitions along normal control flow; backward catches definitions from loop back-edges. The `partial` flag prevents unnecessary backward scans when the forward pass already determined the chain is definitively unfoldable.
 
 ### Algebraic Simplification and Structural Equivalence
 
@@ -1068,18 +1185,19 @@ After phase 65, the pipeline transitions to register-attribute setting (phase 90
 
 ## Knobs and Options
 
-| Option | Name/Description | Used By |
-|---|---|---|
-| 214 | Skip `GeneralOptimizeEarly` when set | Phase 13 only |
-| 231 | Dump mode -- skip `GeneralOptimize` when set | Phase 29 only |
-| 31 | Architecture-dependent fold eligibility gate | Phase 58; extended-value semantics |
-| 135 | Threshold override for cost-based convergence | Phase 37; checked via `*(config+9720)` |
-| 461 | Secondary gate for phase 29 | Phase 29; passed through `sub_661470` |
-| 464 | **Iteration cap** -- breaks fixed-point loop when returns false | Phase 13, and by extension any Variant A user |
-| 474 | Cost convergence threshold (float, default 0.25) | Phase 37 (`sub_90FBA0`) |
-| 487 | **General optimization enable** -- master switch for all GeneralOptimize passes | Phases 13, 29, 37 |
-| 605 | Restrict circular buffer matching to existing entries only | Phase 58 (`sub_8F6530`) |
-| `limit-fold-fp` | `"Enable/disable constant folding of float operations"` (default: `"false"`, config+340, boolean, internal) | When `true`, forces conservative fold path via `ctx+1379` tier flags; prevents FP folds that could alter precision semantics |
+| Option | Decoded Name | Type | Code Default | Used By | Description |
+|---|---|---|---|---|---|
+| 31 | `AllowReassociateCSE` | OKT_INT | unset | Phase 58 | Architecture-dependent fold eligibility gate; extended-value semantics via `config+2232`/`+2240` |
+| 135 | `ConvertMemoryToRegIndexedSizeLimit` | OKT_INT | unset (fallback: 0.25 from knob 474) | Phase 37 | Threshold override for cost-based convergence when `*(config+9720)` is set; controls indexed-access size limit for memory-to-register conversion |
+| 214 | `DisableMergeEquivalentConditionalFlow` | OKT_NONE | false | Phase 13 only | When present, skips `GeneralOptimizeEarly` entirely (`if (getOption(ctx, 214)) return;`) |
+| 231 | `DisableRedundantBarrierRemoval` | OKT_NONE | false | Phase 29 only | Dump mode -- when present, skips `GeneralOptimize` to preserve IR state for debugging |
+| 461 | `MembarFlowControl` | OKT_INT | unset | Phase 29 | Secondary gate; controls whether memory barrier flow analysis runs during standard GeneralOptimize; passed through `sub_661470` |
+| 464 | `MergeEquivalentConditionalFlowBudget` | OKT_BDGT | unset (= unbounded) | Phase 13 (Variant A) | **Iteration cap** -- budget knob that breaks the fixed-point loop when exhausted; prevents oscillating transformations |
+| 474 | `MovWeightForConvertMemToReg` | OKT_DBL | 0.25 | Phase 37 (`sub_90FBA0`) | Cost convergence threshold and per-fold cost weight for cost-exempt opcodes (`v104` in cost computation) |
+| 487 | *(not yet decoded)* | -- | enabled | Phases 13, 29, 37 | **General optimization enable** -- master switch for all GeneralOptimize passes |
+| 499 | `OptBudget` | OKT_BDGT | enabled (pass-through) | `sub_7DDB50` (opt-level accessor) | Master guard for opt-level accessor; when disabled, caps all opt-level-gated behavior at O1 |
+| 605 | `ReassociateCSEWindow` | OKT_NONE | false | Phase 58 (`sub_8F6530`) | When present, restricts 6-slot circular buffer matching to existing entries only (no new entries added during walk) |
+| `limit-fold-fp` | -- | bool | `"false"` (config+340) | Phase 37 | When `true`, forces conservative fold path via `ctx+1379` tier flags; prevents FP folds that could alter precision semantics |
 
 The `"ConvertMemoryToRegisterOrUniform"` named-phase gate at `0x21DD228` allows phase 37 to be disabled via the `--no-phase` command-line option.
 
@@ -1145,4 +1263,5 @@ The `"ConvertMemoryToRegisterOrUniform"` named-phase gate at `0x21DD228` allows 
 - [Liveness Analysis](liveness.md) -- standalone `OriPerformLiveDead` passes (heavier DCE)
 - [Peephole Optimization](../codegen/peephole.md) -- MainPeepholeOptimizer; handles constant-identity patterns (x+0, x*1, x&0, etc.)
 - [Strength Reduction](strength-reduction.md) -- standalone strength reduction pass (phase 26)
-- [Knobs System](../config/knobs.md) -- option 464 (iteration cap), option 487 (general opt enable), `limit-fold-fp`
+- [Knobs System](../config/knobs.md) -- `MergeEquivalentConditionalFlowBudget` (464, iteration cap), option 487 (general opt enable), `OptBudget` (499, opt-level guard), `AllowReassociateCSE` (31), `MovWeightForConvertMemToReg` (474, cost threshold), `limit-fold-fp`
+- [Optimization Levels](../config/opt-levels.md) -- knob 499 (`OptBudget`) as opt-level accessor guard
