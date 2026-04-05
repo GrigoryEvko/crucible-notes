@@ -1,5 +1,7 @@
 # Priority List Scheduling Algorithm
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The scheduling engine implements a classical priority list scheduling algorithm extended with GPU-specific heuristics for register pressure management, functional unit contention avoidance, yield hint generation, and barrier-aware instruction ordering. A single unified engine (`sub_688DD0`, 20 KB) serves all three scheduling phases -- ReduceReg, ILP/Latency, and DynBatch -- differentiated only by a mode byte that selects different priority weight configurations. The algorithm iterates basic blocks, builds a ready list of zero-dependency instructions, selects the highest-priority candidate via an 8-bit packed heuristic, emits it into the final schedule, updates the dependency DAG, and repeats until all instructions in the block are placed.
 
 | | |
@@ -1004,6 +1006,220 @@ This propagation allows scheduling decisions in callee functions to influence ca
 | `sub_C60910` | -- | DispatchConditionalCodecSchedule -- SM gate + knob override | CERTAIN |
 | `sub_7DDB50` | -- | GetSmVersionIndex -- reads context+2104 | HIGH |
 
+## Scheduling Guidance Output
+
+After scheduling completes, ptxas can emit statistics comments into the SASS output and DUMPIR stream. Three emitter functions produce scheduling guidance in different contexts, all reading from a shared ~1400-byte statistics object. `sub_A46CE0` controls the "SCHEDULING GUIDANCE:" header that wraps per-block scheduling output. `sub_A3A7E0` emits per-function statistics as `# [field=value]` comment lines during DUMPIR. Eight post-regalloc clones at `sub_ABBA50`--`sub_ABEB50` emit a variant with hardware pipe names.
+
+### Verbosity Controls
+
+Two independent verbosity mechanisms gate the output:
+
+**Scheduling guidance level** at `*(DWORD*)(vtable + 992)`:
+
+| Level | Behavior |
+|---|---|
+| 0 | No scheduling guidance output |
+| 1+ | `"SCHEDULING GUIDANCE:"` header emitted; per-block scheduling dispatched |
+| 2+ | Pre-formatting hook called via `vtable+816` before header emission |
+| 4+ | `"LOOP STATIC METRICS : "` sub-header appended |
+
+**DUMPIR detail bits** at `context+1416`:
+
+| Bit | Mask | Behavior |
+|---|---|---|
+| 3 | `0x08` | Enable detailed statistics (FP16 vectorization, functional unit breakdown, throughput estimates) |
+| 4 | `0x10` | Show worst-case latency: `# [worstcaseLat=%f]` |
+| 5 | `0x20` | Show average-case latency: `# [avgcaseLat=%f]` |
+
+Bits 4 and 5 are mutually exclusive -- only one latency variant is emitted.
+
+### Emitter Functions
+
+| Address | Size | Identity | Confidence | Context |
+|---|---|---|---|---|
+| `sub_A3A7E0` | 1,236 B | Statistics::emitFunctionStats | CERTAIN | Pre-regalloc DUMPIR statistics. 20+ format strings at `0x21EBF76`--`0x21EC3B0`. Uses abstract FU names (fp, half, shared, controlFlow, loadStore). |
+| `sub_A46CE0` | 1,793 B | SchedulingGuidance::buildAndEmit | HIGH | Scheduling guidance header + BB classification. Walks BB array at `context+296`, dispatches schedulable blocks to vtable+336. |
+| `sub_A4B8F0` | 248 B | StatsEmitter::emitInstrRegStats | HIGH | Binary-embedded metadata. Writes record type 3 (string) into SASS code object at `*(a1+1000) + *(a1+996)`. |
+| `sub_ABBA50`--`sub_ABEB50` | 8 x 1,771 B | PostSchedStats::emit (SM-variant) | CERTAIN | Post-regalloc statistics. 8 clones at 0x700 spacing. Format strings at `0x21FA008`--`0x21FA400`. Uses hardware pipe names (adu, alu, cbu, fma, lsu). |
+
+### Pre-Regalloc Output Format (sub_A3A7E0)
+
+Emitted during DUMPIR. All lines prefixed with `# `. Lines marked `[COND]` are gated by the stated condition.
+
+```
+# 142 instructions, 24 R-regs
+# [inst=142] [texInst=0] [tepid=0] [rregs=24]
+# [urregs=8]                                              [COND: SM > 0x5FFF]
+# [_lat2inst=0.0]
+# [FP16 inst=0] [FP16 VectInst=0] [Percentage Vectorized=0.00]  [COND: +1416 bit 3]
+# [est latency = 87] [LSpillB=0] [LRefillB=0], [SSpillB=0], [SRefillB=0], [LowLmemSpillSize=0] [FrameLmemSpillSize=0]
+# [LNonSpillB=0] [LNonRefillB=0], [NonSpillSize=0]
+# [Occupancy = 0.750000], [est numDivergentBranches=2] [attributeMemUsage=0], [programSize=1024]
+# [est fp=12] [est half=0], [est trancedental=0], [est ipa=0], [est shared=0], [est controlFlow=8], [est loadStore=24]
+# [est tex=0] [est pairs=4]
+# [issue thru=0.888889] [fp thru=0.111111] [half thru=0.000000], [trancedental thru=0.000000], [ipa thru=0.000000]
+# [shared thru=0.000000] [controlFlow thru=0.062500] [texLoadStore thru=0.187500], [reg thru=0.000000], [warp thru=0.000000]
+# [SharedMem Alloc thru=0.125000]                         [COND: value != 0.0]
+# [partially unrolled loops=0] [non-unrolled loops=1]
+# [CB-Bound Tex=0] [UR-Bound Tex=0] [Bindless Tex=0] [Partially Bound Tex=0]
+# [UDP inst=0] [numVecToURConverts inst=0]
+# [maxNumLiveValuesAtSuspend=0]
+# [Precise inst=0]
+# [worstcaseLat=87.000000]                                [COND: +1416 bits 4-5 == 0x10]
+# [avgcaseLat=52.500000]                                  [COND: +1416 bits 4-5 == 0x20]
+# [instHint=142] [instPairs=4]                            [COND: instPairs != 0]
+# <custom annotation>                                     [COND: linked list at stats[55] != NULL]
+```
+
+Key format details: pre-regalloc uses commas between some bracket groups (`[SSpillB=%d], [SRefillB=%d],`) and abstract functional unit names (fp, half, trancedental, shared, controlFlow, loadStore, texLoadStore). The typo "trancedental" (missing "s") is present in the binary.
+
+### Post-Regalloc Output Format (sub_ABBA50 clones)
+
+Emitted after scheduling by SM-variant clones dispatched via vtable. Same `# ` prefix. Differs from the pre-regalloc format in three ways:
+
+1. **No commas** between bracket groups
+2. **SpillSize** replaces `LowLmemSpillSize` + `FrameLmemSpillSize`
+3. **Hardware pipe names** replace abstract unit names; MMA variant breakdown added
+
+The unique lines (lines shared with pre-regalloc use the same structure minus commas):
+
+```
+# [est latency = %d] [LSpillB=%d] [LRefillB=%d] [SSpillB=%d] [SRefillB=%d] [SpillSize=%d]
+# [LNonSpillB=%d] [LNonRefillB=%d] [NonSpillSize=%d]
+# [Occupancy = %f] [est numDivergentBranches=%d] [attributeMemUsage=%d] [programSize=%d]
+# [est adu=%d] [est alu=%d] [est cbu=%d] [est fma2x=%d] [est fma=%d] [est half=%d]
+# [est trancedental=%d] [est ipa=%d] [est lsu=%d] [est redux=%d]
+# [est schedDisp=%d] [est tex=%d] [est ttu=%d] [est udp=%d]
+# [est imma16816=%d] [est imma16832=%d] [est immaSp8832=%d] [est immaSp16832=%d]
+# [est dmma=%d] [est fma64=%d] [est hmma16816=%d] [est hmma16816f16=%d]
+# [est hmma1688=%d] [est hmma1688f16=%d] [est hmmaSp1688=%d] [est hmmaSp1688f16=%d]
+# [issue thru=%f] [adu thru=%f] [alu thru=%f] [cbu thru=%f] [fma2x thru=%f] [fma thru=%f]
+# [trancedental thru=%f] [ipa thru=%f] [lsu thru=%f] [redux thru=%f]
+# [schedDisp thru=%f] [tex thru=%f] [ttu thru=%f] [udp thru=%f]
+# [imma16816 thru=%f] [imma16832 thru=%f] [immaSp8832 thru=%f] [immaSp16832 thru=%f]
+# [dmma thru=%f] [fma64 thru=%f] [hmma16816 thru=%f] [hmma16816f16 thru=%f]
+# [hmma1688 thru=%f] [hmma1688f16 thru=%f] [hmmaSp1688 thru=%f] [hmmaSp1688f16 thru=%f]
+# [reg thru=%f] [warp thru=%f]
+```
+
+### Hardware Pipe Name Mapping
+
+The post-regalloc format maps abstract functional unit names to hardware execution pipe identifiers:
+
+| Post-Regalloc Pipe | Pre-Regalloc Equivalent | Description |
+|---|---|---|
+| `adu` | -- | Address Divergence Unit (address computation) |
+| `alu` | `fp` | Arithmetic Logic Unit (integer + FP32 combined) |
+| `cbu` | `controlFlow` | Control/Branch Unit (branch, exit, barrier) |
+| `fma2x` | -- | Double-precision FMA (separate pipe on sm_80+) |
+| `fma` | `fp` | Fused Multiply-Add (FP32) |
+| `half` | `half` | FP16 operations |
+| `lsu` | `loadStore` + `shared` | Load/Store Unit (unified) |
+| `redux` | -- | Reduction Unit (warp-level reductions) |
+| `schedDisp` | -- | Scheduler Dispatch (internal overhead) |
+| `tex` | `tex` | Texture Unit |
+| `ttu` | -- | Tensor Texture Unit (Ada Lovelace+) |
+| `udp` | -- | Uniform Data Path operations |
+
+### Binary-Embedded Statistics Record (sub_A4B8F0)
+
+Separate from the DUMPIR comment output, `sub_A4B8F0` writes a compact binary record into the SASS code object during emission:
+
+```
+Format string: "instr/R-regs: %d instructions, %d R-regs"
+  instructions = stats[335] - stats[341]     (total minus removed)
+  R-regs       = stats[159] + stats[102]     (extra + base allocation)
+
+Record layout in output buffer:
+  +0  DWORD  type = 3                        (string record type)
+  +4  DWORD  string_length
+  +8  char[] string_content                  (formatted text)
+```
+
+The companion function `sub_A4B9F0` writes record type 2 for undefined register warnings: `"Referencing undefined register: %s%d"`.
+
+### Scheduling Guidance Header (sub_A46CE0)
+
+`sub_A46CE0` emits the scheduling guidance wrapper, then walks the BB array to classify and dispatch blocks for scheduling. The header is emitted into the output stream via `sub_7FE930` (string builder) at `context + 1440`.
+
+**BB classification algorithm:**
+
+For each BB in `context+296` (index 0 through `context+304`):
+
+1. **Schedulable**: `sub_7544D0(context, bb)` returns true AND `sub_754510(context, bb)` returns false. Dispatched immediately to scheduling via `vtable+336`.
+
+2. **Type-8 (deferred)**: `*(bb+16) == 8`. Added to a dynamically-grown `src` array for second-pass processing.
+
+3. **Loop back-edge**: When `*(bb+148) != 0` and `*(bb+128) != NULL`, the function walks the predecessor linked list at `bb+128`. For each predecessor, it checks whether the predecessor's iteration order (`bb+144`) exceeds the current block's, and whether the predecessor's terminal instruction is a branch (opcode `0x5D` after masking with `0xFFFFCFFD`) with a matching program counter at `(instr+84) & 0xFFFFFF`. If a back-edge is detected, scheduling dispatch includes the back-edge source instruction as a hint parameter.
+
+After the first pass, deferred type-8 blocks are processed in a second loop with the same back-edge detection logic.
+
+### Statistics Object Field Map
+
+Both emitter families read from the same ~1400-byte statistics object. The object is accessed as a `float*` array; integer fields use the same DWORD index but read as `int32`.
+
+| Index | Type | Field | Description |
+|---|---|---|---|
+| 8 | int32 | `est_latency` | Estimated schedule length in cycles |
+| 9 | float | `FP16_vectorization_pct` | Fraction of FP16 instructions vectorized |
+| 10 | int32 | `worstcase_latency` | Worst-case latency (cast to float for output) |
+| 11 | int32 | `avgcase_latency` | Average-case latency (cast to float for output) |
+| 12 | int32 | `LSpillB` | Long spill byte count |
+| 13 | int32 | `LRefillB` | Long refill byte count |
+| 14 | int32 | `SRefillB` | Short refill byte count |
+| 15 | int32 | `SSpillB` | Short spill byte count |
+| 16 | int32 | `LowLmemSpillSize` | Local-memory low spill allocation |
+| 17 | int32 | `FrameLmemSpillSize` | Frame local-memory spill allocation |
+| 18 | int32 | `LNonSpillB` | Long non-spill byte count |
+| 19 | int32 | `LNonRefillB` | Long non-refill byte count |
+| 20 | int32 | `NonSpillSize` | Non-spill allocation size |
+| 26 | float | `Occupancy` | Occupancy ratio (0.0--1.0) |
+| 27 | int32 | `numDivergentBranches` | Estimated divergent branch count |
+| 28 | int32 | `attributeMemUsage` | Attribute memory usage in bytes |
+| 29 | int32 | `programSize` | Program binary size in bytes |
+| 42 | int32 | `preciseInst` | Count of precise (non-approximate) instructions |
+| 44 | int32 | `UDPinst` | Uniform data-path instruction count |
+| 45 | int32 | `vecToURConverts` | Vector-to-uniform-register conversion count |
+| 49 | int32 | `maxLiveAtSuspend` | Max live register values at suspend points |
+| 50 | float | `issue_thru` | Overall issue throughput (fraction of peak) |
+| 54 | float | `fp_thru` | FP32 pipe throughput |
+| 57 | float | `half_thru` | FP16 pipe throughput |
+| 58 | float | `transcendental_thru` | Transcendental function pipe throughput |
+| 59 | float | `ipa_thru` | Interpolation pipe throughput |
+| 61 | float | `shared_thru` | Shared memory pipe throughput |
+| 62 | float | `controlFlow_thru` | Control flow pipe throughput |
+| 65 | float | `texLoadStore_thru` | Texture and load/store pipe throughput |
+| 84 | float | `reg_thru` | Register throughput |
+| 85 | float | `warp_thru` | Warp throughput |
+| 86 | float | `sharedMemAlloc_thru` | Shared memory allocation throughput |
+| 87 | int32 | `partiallyUnrolledLoops` | Partially unrolled loop count |
+| 88 | int32 | `nonUnrolledLoops` | Non-unrolled loop count |
+| 89 | int32 | `CBBoundTex` | Constant-bank-bound texture count |
+| 90 | int32 | `PartiallyBoundTex` | Partially bound texture count |
+| 91 | int32 | `BindlessTex` | Bindless texture count |
+| 92 | int32 | `URBoundTex` | Uniform-register-bound texture count |
+| 93 | int32 | `SM_architecture_enum` | SM version discriminator (>0x5FFF enables UR stats) |
+| 99 | int32 | `uniform_reg_count` | Uniform register count |
+| 102 | int32 | `R_reg_base` | Base R-register allocation |
+| 159 | int32 | `R_reg_extra` | Extra R-register allocation |
+| 303 | int32 | `est_fp` | Estimated FP32 instruction count |
+| 306 | int32 | `est_half` | Estimated FP16 instruction count |
+| 307 | int32 | `est_transcendental` | Estimated transcendental instruction count |
+| 308 | int32 | `est_ipa` | Estimated IPA instruction count |
+| 310 | int32 | `est_shared` | Estimated shared memory operation count |
+| 311 | int32 | `est_controlFlow` | Estimated control flow operation count |
+| 315 | int32 | `est_loadStore` | Estimated load/store instruction count |
+| 316 | int32 | `est_tex` | Estimated texture instruction count |
+| 334 | int32 | `est_pairs` | Estimated co-issuable instruction pairs |
+| 335 | int32 | `total_inst` | Total instruction count (before removal) |
+| 336 | int32 | `texInst` | Texture instruction count |
+| 337 | int32 | `FP16inst` | FP16 instruction count |
+| 338 | int32 | `FP16VectInst` | FP16 vectorized instruction count |
+| 339 | int32 | `instHint` | Instruction hint value |
+| 340 | int32 | `instPairs` | Instruction pair count (also output gate) |
+| 341 | int32 | `removed_inst` | Removed instruction count |
+| 342 | int32 | `tepid_inst` | TEPID (texture-pending) instruction count |
+
 ## Cross-References
 
 - [Scheduler Overview](overview.md) -- 3-phase architecture, register budget, scheduling knobs
@@ -1013,3 +1229,5 @@ This propagation allows scheduling decisions in callee functions to influence ca
 - [Phase Manager](../passes/phase-manager.md) -- how ScheduleInstructions fits in the 159-phase pipeline
 - [Knobs](../config/knobs.md) -- the 76 scheduling knobs and the knob query infrastructure
 - [GMMA Pipeline](../passes/gmma-pipeline.md) -- GMMA/WGMMA operations targeted by DynBatch
+- [DUMPIR Configuration](../config/dumpir.md) -- DUMPIR levels that trigger statistics output
+- [Spilling](../regalloc/spilling.md) -- spill metrics (LSpillB, SSpillB) referenced in guidance output
