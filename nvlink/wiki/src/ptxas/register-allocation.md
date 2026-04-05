@@ -12,7 +12,7 @@ Register allocation follows a graph-coloring model with iterative spilling, oper
 | Per-instruction encoder | `sub_18AE2D0` at `0x18AE2D0` (155,321 bytes / 4,005 lines) -- largest function in region |
 | Full pipeline | `sub_18E54B0` (`AllocateRegisters_full_pipeline`) at `0x18E54B0` (75,131 bytes / 2,738 lines) |
 | Graph coloring core | `sub_189C3E0` at `0x189C3E0` (47,807 bytes / 1,734 lines, self-recursive) |
-| Spill cost computation | `sub_189F300` at `0x189F300` (37,728 bytes / 1,680 lines, self-recursive) |
+| Operand field encoder | `sub_189F300` at `0x189F300` (37,728 bytes / 1,680 lines) -- 250-case switch encoding operand attributes into packed bitfields |
 | No-spill pass | `sub_18B3AE0` at `0x18B3AE0` (45,720 bytes / 1,525 lines) |
 | SMEM spill driver | `sub_18C8790` at `0x18C8790` (20,336 bytes / 764 lines) |
 | Budget negotiation | `sub_18E3530` at `0x18E3530` (32,949 bytes / 1,250 lines, self-recursive) |
@@ -41,7 +41,7 @@ The register allocation pipeline proceeds through eight stages. Each stage may i
     |
     |  4. Graph coloring (self-recursive)
     |     regalloc_graph_coloring_core (0x189C3E0)
-    |       -> spill cost computation (0x189F300, also self-recursive)
+    |       -> operand field encoder (0x189F300)
     |       -> coalescing (0x189BE00)
     |       -> splitting (0x18A6860)
     |
@@ -76,11 +76,622 @@ The graph coloring allocator at `sub_189C3E0` (48 KB, 1,734 lines) implements a 
 
 3. **Coloring** -- the recursive core assigns physical registers (colors) to virtual registers while respecting interference edges. When coloring fails, it selects a spill candidate based on the spill cost computation.
 
-4. **Spill cost computation** (`sub_189F300`, 38 KB, also self-recursive) -- computes the cost of spilling each virtual register. Factors include loop nesting depth, use frequency, rematerialization eligibility, and live range length. The recursive nature handles hierarchical loop structures -- inner loops contribute multiplicatively to spill cost.
+4. **Operand field encoding** (`sub_189F300`, 38 KB) -- encodes per-operand properties into packed bitfields via a 250-case switch on operand attribute IDs (91--341). Each case sets specific bits in a packed `int[3]` descriptor. Despite the wiki name "spill cost computation" in the Key Facts table, this function is structurally an operand attribute encoder, not a cost computation. The actual spill weight computation lives in `sub_18C5470` and `sub_18C5B30` (see [Spilling and No-Spill Regalloc](#spilling-and-no-spill-regalloc)).
 
 5. **Coalescing** (`sub_189BE00`, 7.5 KB) -- attempts to merge virtual registers connected by copy instructions into a single physical register, eliminating the copy. Pre-coloring coalescing (aggressive) and post-coloring coalescing (conservative) paths are both present.
 
 6. **Live range splitting** (`sub_18A6860`, 7.7 KB) -- splits long live ranges into smaller segments that may be independently colorable, reducing interference.
+
+### Reconstructed Pseudocode: Graph Coloring Core (`sub_189C3E0`)
+
+The following pseudocode is reconstructed from the 1,734-line decompiled function. The function operates as a single-pass instruction-stream walker that simultaneously builds a register-to-physical-register map, attempts coalescing, and detects coloring failures. [Confidence: medium -- control flow is clear, but some field semantics are inferred from offsets.]
+
+```
+function graph_coloring_core(alloc_state) -> bool:
+    func_ir      = alloc_state.func_ir
+    config       = func_ir.regalloc_config         // at offset +1600
+    func_data    = config.func_data                 // at offset +16
+
+    // ---- Phase 0: Guard and knob reads ----
+    config.coloring_attempted = false
+    alloc_state.result_pair   = {1, 1}              // optimistic: both halves succeed
+    if instruction_count(func_ir) <= 3:
+        return false                                // trivial function, nothing to color
+
+    knob_reader = func_ir.knob_table                // vtable at offset +1664
+    // Read 5 configuration knobs via vtable dispatch (knob IDs 308--312):
+    //   knob 309: enable_paired_allocation (writes config+32)
+    //   knob 308: enable_split_allocation  (writes config+33)
+    //   knob 311: max_coloring_iterations  (writes config+36, default from config)
+    //   knob 310: max_split_depth          (writes config+40, default from config)
+    //   knob 312: conservative_coalescing  (writes config+1081)
+    enable_paired   = read_knob_bool(knob_reader, 309)
+    enable_split    = read_knob_bool(knob_reader, 308)
+    max_iterations  = read_knob_int(knob_reader, 311, default=config.max_iterations)
+    max_split_depth = read_knob_int(knob_reader, 310, default=config.max_split_depth)
+    conservative    = read_knob_bool(knob_reader, 312)
+
+    // ---- Phase 1: Validate preconditions ----
+    if enable_split or not enable_paired or func_data.size <= 0x4000:
+        return false                                // bail: incompatible config or tiny function
+
+    // ---- Phase 2: Initialize register map ----
+    alloc_state.best_phys_reg = -1
+    alloc_state.coloring_ok   = true
+    reg_class_table           = config + 1112       // 16 entries, 4 bytes each (class descriptors)
+    // Initialize all 16 register class slots to value 25632 (0x6420 = default "unassigned" marker)
+    for slot in 0..15:
+        reg_class_table[slot].packed_value = 0x6420
+
+    // Allocate FNV-1a hash map for virtual-to-physical register mapping
+    //   Initial capacity = 8 buckets
+    //   Each bucket: linked list of {next_ptr, vreg_id, phys_reg, hash} entries
+    alloc_state.reg_map          = arena_alloc(100)  // hash map header
+    alloc_state.reg_map_aux      = arena_alloc(100)  // auxiliary map
+    reg_map_buckets              = 8
+    reg_map_entries              = 0
+    reg_map_distinct             = 0
+
+    // Locate opcode indices for key instruction types
+    for idx in 0..num_opcodes:
+        if opcode_table[idx].opcode == 25:           // ENTER/PROLOGUE
+            alloc_state.enter_opcode_idx = idx
+        elif opcode_table[idx].opcode == 232:         // EXIT/EPILOGUE
+            alloc_state.exit_opcode_idx  = idx
+
+    // ---- Phase 3: Instruction walk (main loop) ----
+    // Walk the instruction linked list, processing each instruction by opcode class.
+    // Track basic-block boundaries, register definitions/uses, and coalescing opportunities.
+
+    pending_insert = NULL
+    bb_count       = 0                               // basic block counter
+    bb_use_count   = 0                               // use count in current BB
+    outer_use_cnt  = 0                               // use count before first BB
+    prev_bb_id     = -1
+    last_vreg_def  = 0
+    last_vreg_use  = 0
+    enter_sym_ref  = NULL
+    exit_sym_ref   = NULL
+
+    for inst in instruction_stream(func_ir):
+        opcode = inst.opcode & 0xFFFFCFFF           // mask out modifier bits
+
+        switch opcode:
+            case 53, 42:    // BASIC_BLOCK_START, LABEL
+                ++alloc_state.bb_counter
+                // Flush any pending instruction insertion
+                if pending_insert:
+                    delete_instruction(func_ir, pending_insert, /*mode=*/1)
+                // Record BB linkage and set up per-BB state
+                func_ir.current_bb      = inst.linked_ir_node
+                func_ir.current_bb_line = inst.line_number
+                // Attempt register conflict check at BB boundary
+                if not alloc_state.has_first_half:
+                    if alloc_state.has_second_half:
+                        goto attempt_bb_boundary_check
+                    // else: fall through to record BB
+                elif alloc_state.has_second_half:
+                    goto attempt_bb_boundary_check
+                else:
+                    // First-half only: emit encoding for first half
+                    phys_reg_encode(alloc_state, alloc_state.first_half_id,
+                                   last_vreg_use | 0x10000000)
+                    alloc_state.first_half_id = 1
+                alloc_state.coloring_ok = checked_value
+                pending_insert = inst
+                prev_bb_id = -1
+                continue
+
+            case 55:    // BASIC_BLOCK_END
+                bb_count++
+                is_first_bb = (bb_count == 1)
+                alloc_state.coloring_ok = (outer_use_cnt == bb_use_count) or is_first_bb
+                // Validate iteration bound
+                if func_ir.loop_depth > 1 and not is_first_bb and prev_bb_id != inst.bb_id:
+                    goto coloring_failed
+                // Flush pending insertion
+                if pending_insert:
+                    pending_insert_next = inst
+                    delete_instruction(func_ir, pending_insert, 1)
+                else:
+                    pending_insert = inst
+                outer_use_cnt = 0
+                continue
+
+            case 97:    // FUNCTION_CALL
+                // Record callee symbol reference for ABI-aware allocation
+                callee_sym = sym_table[inst.operand[0] & 0xFFFFFF]
+                if not enable_paired:
+                    inst = inst.next; continue       // skip if paired alloc disabled
+
+                // Emit enter/exit register encoding for callee
+                line = inst.line_number
+                func_ir.current_bb      = inst
+                func_ir.current_bb_line = line
+                phys0 = compute_phys_encoding(func_ir, 0)
+                emit_register_ref(alloc_state, func_ir, 130, 11, SENTINEL, phys0)
+                last_vreg_use = alloc_state.result
+                enter_sym_ref = func_ir.current_bb_ref
+
+                phys1 = compute_phys_encoding(func_ir, 0)
+                emit_register_ref(alloc_state, func_ir, 130, 11, SENTINEL, phys1)
+                last_vreg_def = alloc_state.result
+                exit_sym_ref  = func_ir.current_bb_ref
+                enable_paired = false                // consume the enter/exit pair once
+                continue
+
+            case 288:   // BRANCH / JUMP
+                // Track branch destinations for BB connectivity
+                if bb_count:
+                    ++outer_use_cnt
+                else:
+                    ++bb_use_count
+                // Check operand type to validate branch target is colorable
+                target_operand = inst.operand[inst.num_operands - 5]
+                target_type    = classify_operand(target_operand)
+                if target_type != 5:                 // not a valid register operand
+                    goto coloring_failed
+                // ... (destination register validation) ...
+                continue
+
+            case 91:    // REGISTER USE/DEF (the hot path)
+                // This is the core register assignment logic.
+                // Extract the register ID and its register class.
+                reg_class = (inst.operand[inst.num_operands - offset].packed >> 1) & 3
+                if reg_class != 0:
+                    goto process_reg_class
+
+                dest_reg_id = inst.operand[0] & 0xFFFFFF
+                src_encoded = inst.operand[1]
+
+                // --- Check if operand is a named physical register (type tag == 1) ---
+                if operand_type_tag(src_encoded) == 1:
+                    definer = sym_lookup(func_ir, src_encoded & 0xFFFFFF).defining_inst
+                    if definer and definer.opcode in {110, 139}:
+                        // MOV or COPY instruction -- potential coalescing target
+                        if definer.opcode == 139:    // COPY
+                            goto try_assign_from_copy
+                        // MOV: check if src can be reached from current context
+                        if is_reachable(definer.operands + 27, func_ir):
+                            goto try_assign_from_copy
+                        // Fallback: extract base address encoding
+                        base_tag = (definer.operand[2].packed >> 28) & 7
+                        if base_tag in {2, 3}:
+                            phys_reg = lookup_phys_for_vreg(func_ir, definer.operand[2] & 0xFFFFFF)
+                            goto try_assign_from_copy
+                    elif definer and definer.opcode == 274:
+                        // Indirect -- check addressing mode (field at offset)
+                        if ((definer.operand[2*definer.field20 + 19] >> 8) & 0xF) == 8:
+                            goto try_assign_from_copy
+                    // All other cases: no physical register hint available
+                    phys_reg = -1
+
+                try_assign_from_copy:
+                    // Hash the dest_reg_id using FNV-1a to locate it in the register map
+                    hash = FNV1a_32(dest_reg_id)     // 0x811C9DC5 ^ byte0 * 16777619 ^ byte1 ...
+                    bucket = hash % reg_map_buckets
+                    entry  = reg_map[bucket].find(dest_reg_id)
+
+                    if entry exists:
+                        if entry.phys_reg != phys_reg:
+                            entry.phys_reg = -1      // conflict: invalidate coloring for this vreg
+                    else:
+                        // Insert new entry into hash map
+                        entry = alloc_entry(dest_reg_id, phys_reg, hash)
+                        reg_map[bucket].insert(entry)
+                        reg_map_entries++
+                        reg_map_distinct++
+
+                        // Resize hash map if load factor exceeded
+                        if reg_map_entries > reg_map_distinct
+                           and reg_map_distinct > reg_map_buckets / 2:
+                            new_capacity = 4 * reg_map_buckets
+                            rehash(reg_map, new_capacity)  // rehash all entries
+
+                // --- Attempt physical register allocation ---
+                phys = allocate_physical_register(alloc_state, inst.operand_ptr,
+                                                  bb_count % max_iterations)
+                bb_id = inst.bb_id
+                if prev_bb_id != -1 and prev_bb_id != bb_id:
+                    goto coloring_failed
+
+                offset_val = compute_register_offset(func_data, operand_ptr)
+                combined   = offset_val + sign_extend_24(inst.operand[num_ops - offset - 2])
+
+                // --- Coalescing attempt (conservative mode) ---
+                if not conservative:
+                    coalesced = try_coalesce(alloc_state, combined, inst, reg_class_table,
+                                             inst.operand_ptr)
+                    if coalesced:
+                        goto record_assignment
+
+                // --- Register class slot assignment ---
+                dest_operand = inst.operand[0]
+                if operand_type_tag(dest_operand) == 1 and (dest_operand & 0xFFFFFF) != 0x29:
+                    // 0x29 = RZ (zero register) -- skip assignment for RZ
+                    definer = sym_lookup(func_ir, dest_operand & 0xFFFFFF).defining_inst
+                    if not definer or (definer.flags & 0x10) != 0:
+                        goto coloring_failed         // undefined or special register
+
+                // Check if combined offset maps to a standard register class slot (28..31 or 176..183)
+                slot = combined / 4
+                if slot in [28..31] or slot in [176..183]:
+                    alloc_state.coloring_ok = false   // special register, cannot freely color
+                    goto check_and_advance
+
+                // Validate against existing assignment in class table
+                is_same_phys = (phys == combined) and not is_precolored(alloc_state, inst.operand_ptr)
+                existing = reg_class_table[combined >> 2]
+                if is_same_phys and not existing:
+                    // First assignment: record in class table
+                    record_class_assignment(config, class_index, slot_index, combined)
+                    // Also record in per-slot hash
+                    mark_slot_used(reg_class_table, combined, phys)
+                    config.has_class_assignment = true
+
+                // Validate consistency: if already assigned, compare
+                if not alloc_state.coloring_ok:
+                    goto check_and_advance
+
+                record_assignment:
+                    delete_instruction(func_ir, inst, 1)  // consume the instruction
+                    prev_bb_id = saved_bb_id
+
+            case 183:   // SPECIAL / BARRIER
+                // Check for barrier register operand type
+                alloc_state.coloring_ok = false       // assume failure
+                if (inst.opcode & 0x1000) == 0:
+                    // Extract and classify the barrier operand
+                    operand  = inst.operand[inst.num_operands - 5]
+                    op_type  = classify_operand(operand)
+                    if op_type == 6:                  // barrier type
+                        alloc_state.coloring_ok = true
+                    elif:
+                        // Check secondary operand
+                        sec_operand = inst.operand[inst.num_operands - offset - 5]
+                        sec_type    = classify_operand(sec_operand)
+                        alloc_state.coloring_ok = (sec_type == 7)
+                continue
+
+            default:
+                // Unknown opcode -- preserve current coloring status
+                continue
+
+        // Advance to next instruction
+        if not alloc_state.coloring_ok:
+            goto coloring_failed
+
+    // ---- Phase 4: Post-walk finalization ----
+    // If we reach here, the entire instruction stream was walked successfully.
+    if bb_count % max_iterations != 0:
+        goto coloring_failed
+
+    alloc_state.coloring_ok = true
+
+    // --- Emit enter/exit register references if function calls were found ---
+    if pending_insert and alloc_state.bb_counter == 0:
+        // Single-BB function with ABI calls: emit register save/restore pair
+        func_ir.current_bb      = pending_insert
+        func_ir.current_bb_line = pending_insert.line_number
+        if has_first_half and not has_second_half:
+            phys = compute_phys_encoding(func_ir, alloc_state.first_half_id)
+            emit_register_ref(alloc_state, func_ir, 130, 11, last_vreg_use, phys)
+            delete_instruction(func_ir, enter_sym_ref, 1)
+        elif has_first_half and has_second_half:
+            phys = compute_phys_encoding(func_ir, alloc_state.second_half_id)
+            if exit_sym_ref.bb_id == pending_insert.bb_id:
+                emit_register_ref(alloc_state, func_ir, 130, 11, last_vreg_def, phys)
+                delete_instruction(func_ir, exit_sym_ref, 1)
+            else:
+                emit_register_pair(alloc_state, func_ir, 151, 11, last_vreg_def, last_vreg_def, phys)
+
+    // --- Emit enter/exit encoding for multi-BB functions ---
+    if has_first_half:
+        config.has_first_half_encoding  = true
+        if not has_second_half:
+            config.has_second_half_encoding = true
+        // Emit SETMAXNREG-style register count adjustment if needed
+        emit_regcount_instruction(alloc_state, func_ir, alloc_state.enter_opcode_idx,
+                                  exit_sym_ref, ...)
+        emit_branch_fixup(alloc_state, func_ir, 288, 11, ...)
+
+    // --- Walk exception/unwind table to emit register encoding there too ---
+    for unwind_entry in func_ir.unwind_table:
+        if (unwind_entry.opcode & 0xFFFFFFFD) == 0xBC:  // UNWIND_ENTRY
+            emit matching register encoding for unwind path
+            mark func_ir.unwind_entry_type = 7
+
+    // ---- Phase 5: Commit or rollback ----
+    if alloc_state.coloring_ok:
+        if pending_insert:
+            delete_instruction(func_ir, pending_insert, 1)
+        config.coloring_attempted = true
+        config.iteration_count    = max(alloc_state.bb_counter, 1)
+        return true
+    else:
+        coloring_failed:
+            cleanup_partial_assignment(func_ir)  // sub_18B8F50
+            return false
+```
+
+### Key Data Structures in the Coloring Core
+
+**Register map (FNV-1a hash table)**. The coloring core uses a chained hash table with FNV-1a hashing to map virtual register IDs to their assigned physical registers. The FNV-1a constants are visible in the decompiled code:
+
+| Constant | Value | Role |
+|---|---|---|
+| FNV offset basis | `0x811C9DC5` | Initial hash value |
+| FNV prime | `16777619` (`0x01000193`) | Per-byte multiply |
+| Hash finalizer multiplier | `637696617` | Post-fold multiplier for bucket index |
+
+The hash map starts at 8 buckets and doubles (to `4 * current`) when the load factor (total entries / distinct entries) exceeds the bucket count. Each entry is a 24-byte node: `{next_ptr: *Node, vreg_id: u32, phys_reg: i32, hash: u32}`.
+
+**Register class table**. A 16-entry array (4 bytes per entry) at `config + 1112` tracks which register class slot each virtual register maps to. The initial marker value `0x6420` (25632 decimal) means "unassigned." Each entry packs 4 nibble-sized fields encoding the register's class, bank, and pair status.
+
+**Instruction opcodes dispatched in the main loop**:
+
+| Opcode | Meaning | Coloring action |
+|---|---|---|
+| 42, 53 | `LABEL` / `BB_START` | Increment BB counter, flush pending |
+| 55 | `BB_END` | Record BB use counts, validate iteration |
+| 91 | `REG_USE_DEF` | Core assignment: hash lookup, coalesce, assign |
+| 97 | `FUNC_CALL` | Record callee, emit enter/exit register pair |
+| 183 | `BARRIER` / `SPECIAL` | Classify barrier operand type |
+| 288 | `BRANCH` / `JUMP` | Validate branch target register, track BB edges |
+
+### Reconstructed Pseudocode: Coalescing (`sub_189BE00`)
+
+The coalescing function attempts to merge two virtual registers connected by a MOV/COPY instruction into the same physical register. It is called from the coloring core's case-91 handler when a register definition comes from a copy.
+
+```
+function try_coalesce(alloc_state, combined_offset, inst, class_table, operand_ptr) -> bool:
+    // Only applies to register-class offsets 100 and 104 (R-reg 64-bit pairs)
+    if (combined_offset - 100) & ~4 != 0:           // not 100 or 104
+        if combined_offset == 928:                   // special: forced-spill marker
+            alloc_state.coloring_ok = false
+            return true
+        return false
+
+    // Extract source operand from the instruction
+    src_operand = operand_ptr[0]
+    slot_ptr    = &class_table[combined_offset >> 2]
+    existing    = *slot_ptr
+
+    if operand_type_tag(src_operand) != 1:           // not a register reference
+        goto no_coalesce
+    if (src_operand >> 63) & 1:                      // high bit set = precolored
+        goto no_coalesce
+
+    // Look up the source register's defining instruction
+    definer = sym_lookup(func_ir, src_operand & 0xFFFFFF).defining_inst
+    if not definer:
+        goto no_coalesce
+
+    // Check if definer is a simple MOV (opcode 201) with compatible operands
+    if definer.opcode != 201:
+        goto no_coalesce
+
+    src2 = definer.operand[1]
+    if operand_type_tag(src2) != 1 or (src2 >> 63) & 1:
+        goto no_coalesce
+
+    // Check that the MOV's second source is an immediate 0x29 (RZ/zero register)
+    src3 = definer.operand[2]
+    if operand_type_tag(src3) != 1 or (src3 >> 63) & 1 or (src3 & 0xFFFFFF) != 0x29:
+        goto no_coalesce
+
+    // Walk through to the original definition
+    original_def = sym_lookup(func_ir, src2 & 0xFFFFFF).defining_inst
+    if not original_def:
+        goto no_coalesce
+    if original_def.opcode == 130:                   // COPY -- follow one more level
+        original_def = sym_lookup(func_ir, original_def.operand[1] & 0xFFFFFF).defining_inst
+        if not original_def:
+            goto no_coalesce
+
+    // Must be opcode 10 (REG_DEF / register creation)
+    if original_def.opcode != 10:
+        goto no_coalesce
+
+    // Compute the encoding for the coalesced register
+    phys_encoding = compute_phys_encoding(func_ir, operand)
+    // ... (validate encoding, check for conflicts in class_table, emit new mapping)
+    return success
+
+no_coalesce:
+    return false
+```
+
+### Reconstructed Pseudocode: Interference Graph Construction (`sub_189E600`)
+
+The interference graph builder emits IR instructions that represent interference edges. Rather than building a traditional adjacency matrix, ptxas uses an instruction-based representation where interference is encoded as synthetic IR nodes.
+
+```
+function build_interference_graph(alloc_state):
+    func_ir   = alloc_state.func_ir
+    config    = func_ir.regalloc_config
+    func_data = config.func_data
+
+    if func_ir.state != 3:                           // not in regalloc phase
+        return
+
+    // Check preconditions: coloring must have been attempted or split mode active
+    if func_data.flags[1097] < 0                     // signed check: high bit set = enabled
+       and (config.coloring_attempted
+            or (config.enable_split and config.enable_paired)):
+
+        // Locate the BARRIER opcode index (opcode 27) in the opcode table
+        barrier_opcode_idx = -1
+        for idx in 0..num_opcodes:
+            if opcode_table[idx].opcode == 27:
+                barrier_opcode_idx = idx
+
+        // Emit a 16-byte signature into the interference graph structure
+        // (constant loaded from xmmword_24170C0..xmmword_24170F0)
+        signature = load_128bit_constant(INTERFERENCE_GRAPH_MAGIC)
+        func_data.interference_signature = signature
+
+        // Create anchor instruction for the interference subgraph
+        anchor = emit_instruction(func_ir, 18 /*ANCHOR*/, 48 /*flags*/, barrier_opcode_idx)
+
+        // Emit initial interference edge from anchor
+        phys0 = compute_phys_encoding(func_ir, 4 * signature_index - 2)
+        phys1 = compute_phys_encoding(func_ir, 2)
+        emit_ternary(func_ir, 110 /*INTERFERENCE_EDGE*/, 12, SENTINEL, anchor, phys1, phys0)
+
+        // Emit secondary interference markers
+        emit_address_computation(func_ir, 16, 0, func_data.field_792, ...)
+        emit_complex_edge(func_ir, 183 /*BARRIER*/, 14, ...)
+
+        // Walk existing instructions and add interference edges for BARRIER nodes
+        for inst in instruction_stream_from(func_ir.current_bb):
+            opcode = inst.opcode & 0xFFFFCFFF
+            if opcode == 8:                          // INTERFERENCE_CANDIDATE
+                // Extract operands based on addressing mode
+                operand = inst.operand[inst.num_operands - modifier_offset - 5]
+                type    = classify_operand(operand)
+                if type in {48, 49}:                 // valid interference-eligible types
+                    if inst has indirect flag:
+                        // Handle indirect addressing: extract base+offset
+                        emit complex interference edge with address computation
+                    // Emit direct interference
+                    emit_instruction(func_ir, 8 /*update*/, inst.field19, ...)
+                    emit_complex_interference(func_ir, 274 /*BARRIER_PAIR*/, 14, ...)
+                    // Emit register-to-register interference
+                    phys = compute_phys_encoding(func_ir, 3841)
+                    emit_ternary(func_ir, 21 /*INTERFERENCE_LINK*/, 11,
+                                 inst.operand[0] & 0xFFFFFF,
+                                 anchor | 0x10000000, phys, inst_ref)
+                    delete_instruction(func_ir, inst, 1)
+
+            elif opcode == 183:                      // BARRIER instruction
+                // Extract barrier source and destination operands
+                src = inst.operand[inst.num_operands - modifier_offset - 5]
+                src_type = classify_operand(src)
+                if src_type == 6:                    // valid barrier operand
+                    // Similar interference edge emission as above
+                    ...
+```
+
+### Reconstructed Pseudocode: Spill Cost Computation (`sub_18C5470`, `sub_18C5B30`)
+
+The actual spill cost computation lives in two functions, not in `sub_189F300` (which is an operand encoder). These functions evaluate each virtual register as a spill candidate.
+
+```
+function compute_spill_weights_per_block(func_ir, block, reg_class, budget, target) -> void:
+    // sub_18C5470: 5 parameters, iterates a block's live set
+    config    = func_ir.regalloc_config
+    func_data = config.func_data
+
+    // Build the live-in and live-out sets for this block
+    live_in  = compute_live_in(func_ir, block)
+    live_out = compute_live_out(func_ir, block)
+
+    // For each virtual register live across this block:
+    for vreg in (live_in UNION live_out):
+        weight = 0
+        // Count definitions in this block
+        for inst in block.instructions:
+            if inst defines vreg:
+                weight += DEF_WEIGHT                 // base cost of a spill store
+            if inst uses vreg:
+                weight += USE_WEIGHT                 // base cost of a spill load
+
+        // Multiply by loop nesting depth
+        // Inner loops contribute multiplicatively: weight *= 10^depth (approx)
+        loop_depth = block.loop_nesting_depth
+        weight *= LOOP_WEIGHT_MULTIPLIER ^ loop_depth
+
+        // Check rematerialization eligibility
+        if vreg.defining_inst is rematerializable:
+            weight *= REMAT_DISCOUNT                 // typically 0.1x -- very cheap to recompute
+
+        // Record in the per-register spill weight table
+        spill_weight_table[vreg] = weight
+
+
+function compute_spill_benefit(func_ir, block, candidate_set) -> vreg:
+    // sub_18C5B30: returns the best spill candidate from candidate_set
+    best_vreg   = NULL
+    best_ratio  = +infinity                          // lower is better (cost / benefit)
+
+    for vreg in candidate_set:
+        cost    = spill_weight_table[vreg]           // from compute_spill_weights_per_block
+        benefit = vreg.live_range_length             // how many interference edges it removes
+        ratio   = cost / benefit
+
+        // Prefer registers with:
+        //   1. Long live ranges (high benefit)
+        //   2. Low use frequency (low cost)
+        //   3. Outside inner loops (low cost)
+        //   4. Rematerializable (low cost)
+        if ratio < best_ratio:
+            best_ratio = ratio
+            best_vreg  = vreg
+
+    return best_vreg
+```
+
+### Reconstructed Pseudocode: Iterative Spill-Retry Loop
+
+The outermost allocation loop ties together coloring and spilling. This is the high-level Chaitin-Briggs flow as implemented by the interaction between `AllocateRegisters_main_driver` (`0x18988D0`), the graph coloring core, and the iterative spill functions.
+
+```
+function allocate_registers_main(func_ir, target_reg_count):
+    // ---- Stage 1: Classify and prepare ----
+    classify_register_classes(func_ir)               // sub_189B2D0
+    compute_live_ranges(func_ir)                     // sub_18A0DB0
+
+    // ---- Stage 2: Attempt no-spill allocation ----
+    success = allocate_nospill(func_ir, target_reg_count)  // sub_18B3AE0
+    if success:
+        goto encode_and_verify
+
+    // ---- Stage 3: Chaitin-Briggs iterative loop ----
+    for iteration in 1..MAX_ITERATIONS:
+        // Build interference graph
+        build_interference_graph(func_ir)            // sub_189E600
+
+        // Attempt graph coloring
+        colored = graph_coloring_core(func_ir)       // sub_189C3E0
+
+        if colored:
+            // Coloring succeeded: check register count fits budget
+            if actual_reg_count <= target_reg_count:
+                goto encode_and_verify
+            else:
+                // Over budget: select spill candidates and retry
+                compute_spill_weights(func_ir)       // sub_18C5470 per block
+                victim = select_spill_victim(func_ir) // sub_18C5B30
+                insert_spill_code(func_ir, victim)   // sub_18AD450 (STL at defs)
+                insert_refill_code(func_ir, victim)  // sub_18BC670 (LDL at uses)
+                assign_spill_slot(func_ir, victim)   // sub_18A6E40
+                // Loop continues: rebuild interference graph with new spill code
+        else:
+            // Coloring failed: too many high-degree nodes
+            // Select the highest-degree uncolorable node as spill candidate
+            compute_spill_weights(func_ir)
+            victim = select_spill_victim(func_ir)
+            insert_spill_code(func_ir, victim)
+            insert_refill_code(func_ir, victim)
+            assign_spill_slot(func_ir, victim)
+            // Loop continues
+
+    // Spill optimization: clean up redundant spill/refill pairs
+    optimize_spill_code(func_ir)                     // sub_18CCB10
+    coalesce_spill_stores(func_ir)                   // sub_18CD130
+
+    encode_and_verify:
+        // ---- Stage 4: Physical register encoding ----
+        encode_all_instructions(func_ir)             // sub_18EF990
+        per_instruction_encode(func_ir)              // sub_18AE2D0
+
+        // ---- Stage 5: Verification ----
+        full_verification(func_ir)                   // sub_19D6730
+
+        // ---- Stage 6: Report resource usage ----
+        report_resource_usage(func_ir)               // sub_140A6B0
+```
 
 ## Spilling and No-Spill Regalloc
 
@@ -500,7 +1111,7 @@ The complete register allocation subsystem, listed by pipeline stage:
 | `0x189BE00` | 7.5 KB | `regalloc_try_coalesce` |
 | `0x189C3E0` | 48 KB | `regalloc_graph_coloring_core` (self-recursive) |
 | `0x189E600` | 11.5 KB | `regalloc_build_interference_graph` |
-| `0x189F300` | 38 KB | `regalloc_compute_spill_cost` (self-recursive) |
+| `0x189F300` | 38 KB | `regalloc_operand_field_encoder` -- 250-case operand attribute packer |
 | `0x18A0DB0` | 13.5 KB | `regalloc_compute_live_ranges` |
 | `0x18A1990` | 30 KB | `regalloc_compute_operand_encoding` (self-recursive) |
 | `0x18A65E0` | 3 KB | `regalloc_assign_physical_register` |
