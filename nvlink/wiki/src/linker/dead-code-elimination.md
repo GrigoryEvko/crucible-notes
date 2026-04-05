@@ -230,124 +230,276 @@ After liveness seeding, `sub_426AE0` calls `sub_44AD40` -- the core dead code el
 
 ### Algorithm Overview
 
-The pass operates in two phases within a single function:
+The pass operates in two phases within a single function. Phase 1 iterates every callgraph entry, applies a cascade of liveness predicates, and removes functions that are conclusively dead. Functions whose liveness cannot be determined (because their section-to-symbol resolution fails) are deferred to Phase 2, which re-examines them after Phase 1 has cleaned up the callgraph.
 
-**Phase 1: Primary sweep.** Iterate all entries in the callgraph (stored in the vector at `ctx+408`). For each function:
+### Phase 1: Primary Sweep
 
-1. Retrieve the function's section record via `sub_440590`.
-2. Check if the function is an entry point (a `__global__` kernel) using `sub_44A520`. Entry points are always live.
-3. Check if the function has callers (field at `callgraph_entry+40`). Functions with callers are live.
-4. If the function has its address taken (`callgraph_entry+50` flag) but no direct callers, it is kept alive but a diagnostic is printed:
-   ```
-   function %d(%s) has address taken but no call to it
-   ```
-   When `--extra-warnings` is set, this also emits a linker warning via `sub_467460`.
-5. If the function is reachable via `sub_440350` (resolves the section's link to the symbol table), check whether the function's callee is `__cuda_syscall_32f3056bbb` (via `sub_444830`). Syscall stubs are never eliminated.
-6. Check whether the section has flag `0x04` set (indicating a kept/pinned section) or whether the function is a UF stub (`sub_440230` checks for `__cuda_uf_stub_` prefix). These are never eliminated.
-7. If none of the above conditions apply, the function is dead.
+Phase 1 iterates all entries in the callgraph vector (`ctx+408`) from index 1 through `count - 1` (index 0 is reserved). For each entry it applies seven liveness tests in order; the first matching test determines the disposition:
 
-**Phase 2: Deferred sweep.** Some functions cannot be determined dead in the first pass because they reference sections that still appear live. These are collected into a deferred list (`v165`) during Phase 1 via `sub_4644C0`. After the primary sweep completes, the deferred list is re-examined with the same liveness criteria. Functions that remain unreachable after Phase 1's removals are eliminated in this second pass.
+```
+deferred_list = empty
 
-### Section Removal
+for i = 1 to callgraph_count - 1:
+    entry = callgraph[i]                         // sub_464DB0(ctx+408, i)
+    func_id = entry.section_id                   // entry+0 (int32)
+    section = get_section_record(ctx, func_id)   // sub_440590
 
-When a function is determined dead, `sub_44AD40` removes not just the function's code section but all associated sections:
+    # ── Test 1: forced root via ctx+568 ──────────────────────────
+    #   When ctx+568 is nonzero, it holds the section ID of a single
+    #   designated root (set by certain LTO paths). Only that function
+    #   is considered an entry point.
+    if ctx.forced_root != 0:
+        is_entry = (func_id == ctx.forced_root)
+    else:
+        is_entry = is_entry_point(ctx, func_id)  // sub_44A520
 
-```c
-// Simplified from sub_44AD40 -- removing a dead function
-if (verbose)
-    fprintf(stderr, "dead function %d(%s)\n", func_id, section->name);
+    if is_entry:
+        continue                                 // always live
 
-// 1. Mark the function section as dead (flags = flags & 0xFC | 1)
-section->flags = (section->flags & 0xFC) | 0x01;
+    # ── Test 2: has callers ──────────────────────────────────────
+    if entry.caller_list != NULL:                 // entry+40
+        continue                                 // called by someone → live
 
-// 2. Get the section index of the function's code
-code_secidx = get_section_index(ctx, func_id);
-code_section = get_section_record(ctx, code_secidx);
+    # ── Test 3: address taken ────────────────────────────────────
+    if entry.address_taken:                       // byte at entry+50
+        if verbose:
+            print("function %d(%s) has address taken but no call to it",
+                  func_id, section.name)
+        if extra_warnings:                       // byte at ctx+93
+            emit_warning(func_id, section.name)  // sub_467460
+        continue                                 // conservatively keep
 
-// 3. Remove the code section itself
-remove_section(ctx, code_secidx);
+    # ── Test 4: symbol resolution ────────────────────────────────
+    #   sub_440350 resolves the section's sh_link to a symbol table
+    #   entry. If the section has no valid symbol link (returns 0),
+    #   the function's liveness is ambiguous — defer to Phase 2.
+    if !resolve_section_symbol(ctx, section):     // sub_440350
+        list_prepend(i, &deferred_list)           // sub_4644C0
+        continue
 
-// 4. Remove associated SHT_PROGBITS with type 0x70000000 (NVIDIA-specific)
-nvidia_secidx = find_related_section(ctx, code_secidx, 0x70000000);
-if (nvidia_secidx)
-    remove_section(ctx, nvidia_secidx);
+    # ── Test 5: CUDA syscall stub ────────────────────────────────
+    if is_cuda_syscall_target(ctx, func_id):      // sub_443500
+        continue                                  // never eliminate
 
-// 5. Remove associated SHT_RELA (relocation section, type 9)
-rela_secidx = find_related_section(ctx, code_secidx, SHT_RELA);
-if (rela_secidx)
-    remove_section(ctx, rela_secidx);
+    # ── Test 6: pinned section (flag 0x04) ───────────────────────
+    flags = section.flags                         // byte at section+5
+    if flags & 0x04:
+        continue                                  // explicitly kept
 
-// 6. Remove associated SHT_NOTE (type 4)
-note_secidx = find_related_section(ctx, code_secidx, SHT_NOTE);
-if (note_secidx)
-    remove_section(ctx, note_secidx);
+    # ── Test 7: unified-function stub ────────────────────────────
+    if section.name && is_uf_stub(section.name):  // sub_440230 → "__cuda_uf_stub_"
+        continue                                  // never eliminate
+
+    # ── Dead: remove function and all associated sections ────────
+    remove_dead_function(ctx, entry, i, section)
 ```
 
-Each `remove_section` call:
-- Zeros the section's data pointer (offset 32) and sets its size to 1 (a sentinel indicating removal)
-- Iterates the section's relocation list, calling `sub_431000` (arena free) on each relocation entry
-- Frees the relocation list via `sub_464520`
-- Prints `"removed un-used section %s (%d)\n"` when verbose
+The liveness tests form a priority cascade. Tests 1-3 check structural properties of the callgraph node itself (root status, incoming edges, address-taken). Test 4 is a resolution check that gates the remaining tests -- if the section cannot be resolved to a symbol, the function is deferred rather than killed, because a later Phase 1 removal might make the symbol resolvable. Tests 5-7 check properties of the resolved symbol (syscall identity, pinned flag, UF-stub prefix).
 
-### OCG Constant Section Handling
+The `entry.caller_list` field at offset `+40` is a singly-linked list of `(caller_section_id, call_site_offset)` pairs built during callgraph construction. A non-NULL value means at least one other function calls this one. The `entry.address_taken` flag at offset `+50` is set during callgraph construction when a function pointer load targeting this function is observed in any relocation.
 
-For functions that have associated OCG (optimized constant generation) sections, the pass performs additional cleanup. It constructs a composite section name from the ELF writer's prefix and the function name:
+### Phase 2: Deferred Re-Examination
 
-```c
-sprintf(buf, "%s.%s", elf_writer_prefix(), function_name);
+After Phase 1 completes, `sub_464740` counts the deferred list. If it is empty, the pass returns immediately. Otherwise Phase 2 iterates the deferred entries and performs a more expensive liveness check:
+
+```
+if list_length(deferred_list) == 0:              // sub_464740
+    return
+
+for each deferred_entry in deferred_list:
+    idx = deferred_entry.callgraph_index
+    entry = callgraph[idx]                       // sub_464DB0
+    if entry == NULL:
+        continue                                 // already removed
+
+    func_id = entry.section_id
+    section = get_section_record(ctx, func_id)
+
+    # ── Re-apply entry point and caller tests ────────────────────
+    if ctx.forced_root != 0:
+        is_entry = (func_id == ctx.forced_root)
+    else:
+        is_entry = is_entry_point(ctx, func_id)
+
+    if is_entry:
+        continue                                 // live
+
+    if entry.caller_list != NULL:                // entry+40
+        continue                                 // still has callers
+
+    # ── Re-try symbol resolution ─────────────────────────────────
+    if resolve_section_symbol(ctx, section):
+        continue                                 // now resolvable → keep
+
+    # ── Exhaustive callgraph scan for remaining callers ──────────
+    #   Phase 1 may have removed the only caller, but the callee list
+    #   in *other* nodes may still reference this function. Scan the
+    #   entire callgraph to see if anyone's callee list contains
+    #   this function's ID.
+    found_caller = false
+    target_id = func_id
+
+    for j = 1 to callgraph_count - 1:
+        other = callgraph[j]                     // sub_464DB0
+        if other == NULL:
+            continue
+        callee_node = other.callee_list          // offset +16
+        if callee_node == NULL:
+            continue
+
+        # Walk the callee linked list looking for target_id
+        while callee_node != NULL:
+            if callee_node.callee_section_id == target_id:   // int32 at +8
+                found_caller = true
+                break
+            callee_node = callee_node.next       // pointer at +0
+        if found_caller:
+            break
+
+    if found_caller:
+        continue                                 // someone still calls us
+
+    # ── Check CUDA syscall name ──────────────────────────────────
+    sym_name = section.name                      // offset +32 in section
+    if is_cuda_syscall_name(ctx, sym_name):       // sub_444830
+        continue
+
+    # ── Dead: simplified removal (no section cascade) ────────────
+    if verbose:
+        print("dead function %d(%s)\n", func_id, section.name)
+
+    section.flags = (section.flags & 0xFC) | 0x01    // mark dead
+    list_free(entry.callee_list)                      // entry+16
+    list_free(entry.caller_list)                      // entry+8
+    list_free(entry.attribute_list)                    // entry+40
+    arena_free(entry)
+    callgraph[idx] = NULL
+
+free(deferred_list)
 ```
 
-If this section exists (looked up via `sub_4411D0`), and it belongs to the same parent section as the dead function's code, it is removed. If the OCG constant has multiple instances (its section count does not match), the pass falls through to a broader sweep:
+Phase 2 differs from Phase 1 in two key respects:
 
-```c
-if (verbose)
-    fprintf(stderr, "dead ocg constant section %s has multiple instances\n", name);
+1. **Exhaustive caller scan.** Phase 1 relies on `entry.caller_list` -- the direct caller list attached to each node. Phase 2 additionally performs a full scan of every remaining callgraph entry's callee list to detect indirect references. This catches cases where a function was originally deferred (because its section symbol was unresolvable) but other nodes still reference it through their outgoing edges. The scan walks each callee linked list at `callgraph_entry+16`, comparing the `callee_section_id` field (int32 at node offset `+8`) against the target function's section ID.
 
-// Iterate ALL sections and remove those whose parent matches
-for (i = 0; i < section_count; i++) {
-    if (get_section_parent(ctx, i) == dead_section_parent)
-        remove_section(ctx, i);
-}
+2. **No section cascade.** Phase 2 performs a simplified removal that only marks the section dead and frees the callgraph entry's linked lists. It does not perform the full associated-section removal cascade (NVIDIA info, rela, note, OCG constants, shared/local memory) that Phase 1 does. This is because deferred functions are those whose section-symbol resolution failed -- they lack the resolved section index needed to locate associated sections via `sub_442760`. The section's flags byte is still updated (`flags = (flags & 0xFC) | 0x01`) so downstream passes know to skip it.
+
+### Why Two Phases?
+
+The two-phase design handles a specific ordering problem in the callgraph. During Phase 1, entries are visited in vector order. A function B that is only called by function A might be visited before A. When B is visited, its section-symbol resolution may fail because A's section is still present (making B's link appear valid), or A may not yet have been removed. By deferring B and revisiting it after Phase 1 has removed A, Phase 2 can correctly determine that B has no remaining callers.
+
+The deferred list is implemented as a singly-linked list of `(next_ptr, callgraph_index)` pairs, built via `sub_4644C0` (prepend) and counted via `sub_464740` (walk and count). After Phase 2 finishes, the deferred list is freed via `sub_464520`.
+
+### Section Removal Cascade (Phase 1 Only)
+
+When Phase 1 determines a function is dead, it removes not just the function's code section but all associated sections in a six-stage cascade. Phase 2 does not perform this cascade (see above). The full removal sequence:
+
+```
+function remove_dead_function(ctx, entry, cg_index, section):
+    func_id   = entry.section_id
+    func_name = section.name                         // offset +32
+
+    if verbose:
+        print("dead function %d(%s)\n", func_id, func_name)
+
+    # ── Stage 1: mark callgraph section dead ─────────────────────
+    section.flags = (section.flags & 0xFC) | 0x01
+
+    # ── Stage 2: remove the code section (.text.<func>) ──────────
+    code_secidx = get_section_index(ctx, func_id)    // sub_4411F0
+    code_symidx = resolve_section_symbol(ctx, section)
+    is_entry_flag = section.flags & 0x10             // kernel entry?
+    code_section = get_section_record(ctx, code_secidx)
+
+    symidx = resolve_section_symbol(ctx, code_section)
+    sym_record = get_sym_record(ctx, symidx)         // sub_442270
+    sym_record.data_ptr = NULL                       // offset +32 → 0
+    sym_record.size = 1                              // offset +48 → 1 (sentinel)
+
+    # free all relocation entries in the code section
+    for relo in sym_record.relo_list:                // linked list at +72
+        arena_free(relo.data)                        // sub_431000
+    list_free(sym_record.relo_list)                  // sub_464520
+    sym_record.relo_list = NULL
+    sym_record.relo_tail = NULL
+
+    if verbose:
+        print("removed un-used section %s (%d)\n",
+              sym_record.name, sym_record.index)
+
+    code_section.flags = (code_section.flags & 0xFC) | 0x01
+
+    # ── Stage 3: remove NVIDIA info section (type 0x70000000) ────
+    nvidia_secidx = find_related_section(ctx, code_secidx, 0x70000000)
+    if nvidia_secidx:
+        remove_section(ctx, nvidia_secidx)           // same zero+sentinel pattern
+
+    # ── Stage 4: remove relocation section (SHT_RELA = 9) ───────
+    rela_secidx = find_related_section(ctx, code_secidx, SHT_RELA)
+    if rela_secidx:
+        remove_section(ctx, rela_secidx)
+
+    # ── Stage 5: remove note section (SHT_NOTE = 4) ─────────────
+    note_secidx = find_related_section(ctx, code_secidx, SHT_NOTE)
+    if note_secidx:
+        remove_section(ctx, note_secidx)
+
+    # ── Stage 6: remove OCG constant section ─────────────────────
+    ocg_prefix = elf_writer_vtable.get_ocg_prefix()  // vtable+136
+    ocg_name = sprintf("%s.%s", ocg_prefix, func_name)
+    ocg_secidx = section_lookup(ctx, ocg_name)       // sub_4411D0
+
+    if ocg_secidx:
+        ocg_record = get_sym_record(ctx, ocg_secidx)
+        if ocg_record && ocg_record.parent_idx == code_secidx:
+            # single instance — remove directly
+            remove_section(ctx, ocg_secidx)
+        else:
+            # multiple instances — scan all sections for matching parent
+            if verbose:
+                print("dead ocg constant section %s has multiple instances\n",
+                      func_name)
+            total = section_count(ctx)               // sub_464BB0(ctx+360)
+            for k = 0 to total - 1:
+                rec = get_section_at(ctx+360, k)     // sub_464DB0
+                if rec.parent_idx == code_secidx:
+                    remove_section(ctx, k)
+
+    # ── Stage 7: remove shared/local memory (entry points only) ──
+    if is_entry_flag:
+        # constant bank section via writer vtable+72 prefix
+        const_prefix = elf_writer_vtable.get_const_prefix()
+        const_name = sprintf("%s.%s", const_prefix, func_name)
+        const_secidx = section_lookup(ctx, const_name)
+        if const_secidx:
+            remove_section(ctx, const_secidx)
+
+        # .nv.shared.<func_name>
+        shared_secidx = section_lookup(ctx, ".nv.shared." + func_name)
+        if shared_secidx:
+            remove_section(ctx, shared_secidx)
+
+        # .nv.local.<func_name>
+        local_secidx = section_lookup(ctx, ".nv.local." + func_name)
+        if local_secidx:
+            remove_section(ctx, local_secidx)
+
+    # ── Cleanup callgraph entry ──────────────────────────────────
+    list_free(entry.callee_list)                     // entry+16
+    list_free(entry.caller_list)                     // entry+8
+    list_free(entry.attribute_list)                   // entry+40
+    arena_free(entry)
+    callgraph[cg_index] = NULL
 ```
 
-### Shared and Local Memory Cleanup
+The `find_related_section` call (`sub_442760`) searches for a section whose `sh_info` field (ELF section header info, stored at offset `+44` in the internal record) matches the code section index and whose `sh_type` matches the requested type. This is how nvlink locates the `.nv.info.<func>`, `.rela.text.<func>`, and `.nv.note.<func>` sections that the ELF format associates with each function.
 
-When a dead function has the entry-point flag (`0x10` at section flags byte), the pass also removes the function's associated shared-memory and local-memory sections:
-
-```c
-if (is_entry_point_flag) {
-    // Remove .nv.shared.<func_name>
-    sprintf(buf, "%s%s", ".nv.shared.", function_name);
-    secidx = section_lookup(ctx, buf);
-    if (secidx)
-        remove_section(ctx, secidx);
-
-    // Remove .nv.local.<func_name>
-    sprintf(buf, "%s%s", ".nv.local.", function_name);
-    secidx = section_lookup(ctx, buf);
-    if (secidx)
-        remove_section(ctx, secidx);
-
-    // Also remove the entry's constant bank section using
-    // the constant-bank ELF writer prefix (offset 72 in writer vtable)
-    sprintf(buf, "%s.%s", const_prefix(), function_name);
-    secidx = section_lookup(ctx, buf);
-    if (secidx)
-        remove_section(ctx, secidx);
-}
-```
-
-### Callgraph Entry Cleanup
-
-After removing all associated sections, the callgraph entry itself is freed:
-
-```c
-list_free(callgraph_entry->callee_list);     // offset +16
-list_free(callgraph_entry->caller_list);     // offset +8
-list_free(callgraph_entry->attribute_list);  // offset +40
-arena_free(callgraph_entry);
-vector_set(ctx->callgraph, index, NULL);     // null out the slot
-```
+The `remove_section` primitive performs the same pattern for every section it removes:
+1. Set `data_ptr` (offset `+32`) to NULL
+2. Set `size` (offset `+48`) to 1 (a sentinel value distinguishing "removed" from "empty")
+3. Walk the relocation linked list at offset `+72`, freeing each entry via `sub_431000`
+4. Free the list head via `sub_464520`, null both list pointers (`+72` and `+80`)
+5. Print `"removed un-used section %s (%d)\n"` when verbose
 
 ## Interaction with `--keep-system-libraries`
 
@@ -408,6 +560,12 @@ This can be visualized with `dot -Tpng callgraph.dot -o callgraph.png` to inspec
 | `0x443500` | `is_cuda_syscall_target` | Checks if a function's callee is a CUDA syscall (never eliminated) |
 | `0x444830` | `is_cuda_syscall_name` | String match against `__cuda_syscall_32f3056bbb` |
 | `0x440230` | `is_uf_stub` | Checks for `__cuda_uf_stub_` prefix (unified function stubs, never eliminated) |
+| `0x4644C0` | `list_prepend` | Prepends a value to a singly-linked list (used for deferred list in Phase 2) |
+| `0x464740` | `list_length` | Counts elements in a singly-linked list by walking it |
+| `0x442760` | `find_related_section` | Finds section with matching `sh_info` and `sh_type` (locates `.nv.info`, `.rela`, `.nv.note`) |
+| `0x4411D0` | `section_lookup_by_name` | Looks up a section index by name string |
+| `0x4411F0` | `get_section_index` | Gets the section index for a given function ID |
+| `0x442270` | `get_sym_record` | Gets the internal symbol/section record for a given index |
 | `0x44A5D0` | `callgraph_detect_recursion` | DFS-based recursion detection on callgraph |
 | `0x44C030` | `callgraph_traverse` | Property propagation through callgraph (register counts, stack sizes) |
 | `0x44CCF0` | `callgraph_dump_dot` | Writes callgraph in Graphviz DOT format |
