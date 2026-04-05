@@ -50,6 +50,51 @@ ptxas v13.0.88 accepts approximately 160 command-line options: 51 documented in 
       (sub_446240)
 ```
 
+## Quick Start
+
+The most common ptxas invocations and essential options, ordered by frequency of use:
+
+```bash
+# 1. Basic compilation: PTX -> cubin for a specific GPU
+ptxas -arch sm_90 -o kernel.cubin kernel.ptx
+
+# 2. Compilation with optimization control
+ptxas -arch sm_100 -O3 -o kernel.cubin kernel.ptx
+
+# 3. Debug build with line info
+ptxas -arch sm_90 -g -lineinfo -o kernel.cubin kernel.ptx
+
+# 4. Register-limited compilation (occupancy tuning)
+ptxas -arch sm_90 -maxrregcount 64 -o kernel.cubin kernel.ptx
+
+# 5. Verbose output with resource statistics
+ptxas -arch sm_90 -v -o kernel.cubin kernel.ptx
+
+# 6. Relocatable object for separate linking
+ptxas -arch sm_90 -c -o kernel.o kernel.ptx
+
+# 7. Fast-compile mode (trade codegen quality for build speed)
+ptxas -arch sm_100 -Ofc max -o kernel.cubin kernel.ptx
+
+# 8. Parallel compilation with multiple threads
+ptxas -arch sm_90 -split-compile 0 -o kernel.cubin kernel.ptx
+
+# 9. Internal knob override (developer/debugging)
+ptxas -arch sm_90 -knob DUMPIR=AllocateRegisters -o kernel.cubin kernel.ptx
+
+# 10. Discover all 1,294 internal knob values
+DUMP_KNOBS_TO_FILE=/tmp/knobs.txt ptxas -arch sm_90 -o kernel.cubin kernel.ptx
+```
+
+| Goal | Options |
+|---|---|
+| Maximize performance | `-O3 -allow-expensive-optimizations -fmad` |
+| Maximize occupancy | `-maxrregcount N` (N = 32, 64, 128, ...) |
+| Minimize compile time | `-Ofc max -split-compile 0` |
+| Debug build | `-g -lineinfo -sp-bounds-check` |
+| Spill diagnostics | `-v -warn-spills -warn-lmem-usage` |
+| Internal tuning | `-knob NAME=VALUE` (see [Knobs System](knobs.md)) |
+
 ## Option Discovery Methodology
 
 Options were extracted from four independent sources:
@@ -304,6 +349,7 @@ Internal options for the query/control interface used by nvcc and other tools.
 | `--query-schema` **(internal)** | -- | string | -- | Query schema definition |
 | `--apply-controls` **(internal)** | -- | string | -- | Apply control parameters to compilation |
 | `--profile-options` **(internal)** | -- | string | -- | Pass profiling options to backend |
+| `--knob` **(internal)** | `-knob` | list | -- | Set internal knob: `-knob NAME=VALUE`; repeatable; see [Knobs System](knobs.md) |
 | `--omega-knob` **(internal)** | -- | string | -- | Pass omega-subsystem knob settings |
 | `--expand-macros-in-omega` **(internal)** | -- | bool | false | Expand macros in omega (instruction expansion) phase |
 | `--force-expand-macros-after-errors` **(internal)** | -- | bool | false | Force macro expansion after errors |
@@ -320,6 +366,92 @@ Internal options for system-call based operations (texturing, bulk copy).
 | `--use-tex-grad-syscall` **(internal)** | -- | bool | false | Syscall for texture gradient operations |
 | `--use-tex-surf-syscall` **(internal)** | -- | bool | false | Syscall for texture/surface operations |
 | `--use-bulk-copy-syscall` **(internal)** | -- | bool | false | Syscall for bulk copy operations |
+
+## Knobs Configuration
+
+The `-knob` flag is the primary CLI mechanism for setting internal knob values -- the 1,294 tuning parameters documented in [Knobs System](knobs.md). It is **not** listed in `--help` output and uses a single-dash prefix (not `--knob`).
+
+### Syntax
+
+```
+-knob NAME=VALUE         Set a typed knob (int, float, double, string, range)
+-knob NAME               Set a boolean knob (presence = true)
+-knob "A=1~B=2~C=3"     Multiple knobs in one argument, separated by ~ (tilde)
+```
+
+Multiple `-knob` flags are accumulated (list-append semantics):
+
+```bash
+ptxas -knob SchedNumBB_Limit=100 -knob DisableCSE -knob RegAllocBudget=5000 \
+      -arch sm_90 -o out.cubin input.ptx
+```
+
+Knob names are **case-insensitive**. The name is resolved via ROT13-encoded lookup tables in `GetKnobIndex` (`sub_6F0820` for DAG knobs, `sub_79B240` for OCG knobs). An unrecognized name produces warning 7203: `"Invalid knob specified (%s)"`.
+
+### Value Types
+
+The value after `=` is parsed according to the knob's registered type:
+
+| Type | Syntax | Example |
+|---|---|---|
+| Boolean | (no value) | `-knob DisableCSE` |
+| Integer | decimal, `0x` hex, `0` octal | `-knob SchedNumBB_Limit=100` |
+| Float | decimal with `.` | `-knob CostWeight=0.75` |
+| Double | decimal with `.` | `-knob PriorityScale=1.5` |
+| String | raw text | `-knob DUMPIR=AllocateRegisters` |
+| Int-range | `low..high` | `-knob AllowedRange=100..200` |
+| Int-list | comma-separated | `-knob TargetOpcodes=1,2,3,4` |
+
+### Conditional Overrides (WHEN=)
+
+Knobs can be set conditionally based on shader or instruction hash, applied only when a specific function is compiled:
+
+```bash
+# Apply knob only when shader hash matches
+ptxas -knob "WHEN=SH=0xDEADBEEF;SchedNumBB_Limit=200" -arch sm_90 -o out.cubin input.ptx
+
+# Multiple conditional overrides separated by ~
+ptxas -knob "WHEN=SH=0xDEAD;DisableCSE~WHEN=IH=0x1234;RegAllocBudget=1000" ...
+```
+
+Condition prefixes: `SH=` (shader hash), `IH=` (instruction hash), `K=` (direct knob, no condition).
+
+### Interaction with Other Knob Sources
+
+`KnobsInit` (`sub_79D990`) processes knob sources in this order -- **later sources override earlier ones** for the same knob index:
+
+| Priority | Source | Mechanism |
+|---|---|---|
+| 1 (lowest) | Environment variables | `KnobsInitFromEnv` (`sub_79C9D0`), comma-separated `name=value` pairs |
+| 2 | Knobs file | `ReadKnobsFile` (`sub_79D070`), plain-text with `[knobs]` header |
+| 3 | `-knob` CLI flags | Accumulated list-append from argv processing |
+| 4 | PTX `.pragma` | Per-function; disabled by `DisablePragmaKnobs` knob |
+| 5 (highest) | WHEN= overrides | Per-function conditional, matched by shader/instruction hash |
+
+### Environment Variable: DUMP_KNOBS_TO_FILE
+
+The `DUMP_KNOBS_TO_FILE` environment variable causes ptxas to write all 1,294 knob names and their resolved values to a file:
+
+```bash
+DUMP_KNOBS_TO_FILE=/tmp/all_knobs.txt ptxas -arch sm_90 -o out.cubin input.ptx
+```
+
+This is the primary mechanism for discovering which knobs exist, their current defaults for a given architecture, and verifying that CLI overrides took effect.
+
+### Commonly Used Knobs
+
+| Knob | Type | Purpose |
+|---|---|---|
+| `DUMPIR` | string | Dump IR after a named phase (e.g., `AllocateRegisters`) |
+| `DisableCSE` | bool | Disable common subexpression elimination |
+| `DisablePhases` | string | `+`-delimited list of phases to skip |
+| `SchedNumBB_Limit` | int | Basic block limit for scheduling heuristic |
+| `RegAllocBudget` | int | Budget for register allocation cost model |
+| `EmitLDCU` | bool | Emit LDCU instructions (SM90: requires `-forcetext -sso`) |
+| `IgnorePotentialMixedSizeProblems` | bool | Suppress mixed-size register warnings |
+| `DisablePragmaKnobs` | bool | Ignore all `.pragma` knob directives in PTX |
+
+For the complete knob type system, file format, and all 1,294 knob categories, see [Knobs System](knobs.md).
 
 ## Version and Architecture Queries
 
