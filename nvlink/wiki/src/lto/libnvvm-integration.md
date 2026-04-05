@@ -38,11 +38,10 @@ Loading occurs during elfw initialization (line 513 of `main()`), only when `-lt
 path = nvvmpath + "/lib64" + "/libnvvm.so"
 ```
 
-`sub_4BC470` performs three steps:
+`sub_4BC470` performs two steps (decompiled at `0x4BC470`, 10 lines):
 
-1. Calls `sub_5F5AC0(nvvmpath, "libnvvm.so", 0)` to concatenate the path components. The zero third argument selects the `/lib64/` intermediate directory.
-2. Passes the constructed path to `sub_4BC290`, which stores the `dlopen` handle and creates the NVVM program.
-3. Returns 0 on success, non-zero on failure.
+1. Calls `sub_5F5AC0(nvvmpath, "libnvvm.so", 0)` which both constructs the path **and** calls `dlopen`. Internally, `sub_5F5AC0` calls `sub_462550(nvvmpath, "libnvvm.so", 0)` to build the path, then passes that path to `sub_463360(path, 0)` to open the library.
+2. Passes the `dlopen` handle to `sub_4BC290(elfw, 0, handle)`, which stores it and creates the NVVM program.
 
 The actual `dlopen` call is in `sub_463360`:
 
@@ -55,7 +54,7 @@ void *sub_463360(const char *path, char lazy) {
 }
 ```
 
-The second argument is 0 in all observed call sites, so libnvvm is loaded with `RTLD_NOW` -- all symbols are resolved immediately at load time. This means any missing symbols in libnvvm.so cause a hard failure during loading rather than a lazy fault during compilation.
+The third argument of `sub_5F5AC0` is 0, which propagates as the `lazy` parameter to `sub_463360`, so libnvvm is loaded with `RTLD_NOW` -- all symbols are resolved immediately at load time. This means any missing symbols in libnvvm.so cause a hard failure during loading rather than a lazy fault during compilation.
 
 ### Prerequisite Validation
 
@@ -63,35 +62,37 @@ Option parsing (`sub_427AE0`) validates that `--nvvmpath` is set when `-lto` is 
 
 ## Phase 2: Program Creation (`sub_4BC290`)
 
-`sub_4BC290` is called from `sub_4BC470` after path construction. It performs two operations on the elfw context:
+`sub_4BC290` is called from `sub_4BC470` with the `dlopen` handle already resolved (by `sub_5F5AC0`). It performs two operations on the elfw context:
 
-1. **Store the library handle.** Writes the `dlopen` result to `elfw[640]`. If `elfw[640]` is already non-NULL, the function returns 0 immediately (library already loaded).
+1. **Store the library handle.** Writes the `dlopen` handle (third argument) to `elfw[640]` at line 32. If `elfw[640]` is already non-NULL, the function returns 0 immediately (library already loaded, line 27-28).
 
-2. **Create the NVVM program.** Resolves `nvvmCreateProgram` via `dlsym` from the loaded library handle, then calls it with a pointer to `elfw[648]`:
+2. **Create the NVVM program.** Resolves `nvvmCreateProgram` via `dlsym` from the stored handle (line 53), then calls it with a pointer to `elfw[648]` (line 57):
 
 ```c
-// sub_4BC290, simplified
+// sub_4BC290, simplified from decompiled (100 lines)
 int nvvm_init(elfw_t *ctx, void *unused, void *lib_handle) {
-    if (ctx == NULL)        return 1;
-    if (ctx->nvvm_lib)      return 0;   // already loaded
-    if (lib_handle == NULL) return 10;   // no library
+    if (ctx == NULL)        return 1;    // line 25
+    if (ctx->nvvm_lib)      return 0;    // line 27-28, already loaded
+    if (lib_handle == NULL) return 10;   // line 29-30, no library
 
-    ctx->nvvm_lib = lib_handle;
+    ctx->nvvm_lib = lib_handle;          // line 32
 
-    // Resolve and call nvvmCreateProgram
-    nvvmCreateProgram_fn = dlsym(ctx->nvvm_lib, "nvvmCreateProgram");
+    // setjmp crash protection wraps everything below
+    // (lines 34-41)
+
+    nvvmCreateProgram_fn = dlsym(ctx->nvvm_lib, "nvvmCreateProgram");  // line 53
     if (!nvvmCreateProgram_fn)
-        return 10;   // symbol not found
+        return 10;   // line 82-95, symbol not found
 
-    nvvmResult_t rc = nvvmCreateProgram_fn(&ctx->nvvm_prog);
+    nvvmResult_t rc = nvvmCreateProgram_fn(&ctx->nvvm_prog);   // line 57
     if (rc != NVVM_SUCCESS)
-        return 1;    // creation failed
+        return 1;    // line 71-81, creation failed
 
-    return 0;
+    return 0;        // line 48 via LABEL_8 with no error flag
 }
 ```
 
-The function uses `setjmp` / `longjmp` as an exception-handling mechanism: if any call into libnvvm triggers a signal or internal longjmp, control returns to the setjmp site and the function reports failure. This pattern appears in all three nvvm wrapper functions.
+The function uses `setjmp` / `longjmp` as an exception-handling mechanism: if any call into libnvvm triggers a signal or internal longjmp, control returns to the setjmp site and the function reports failure. This pattern appears in `sub_4BC290` and `sub_4BC4A0` but **not** in `sub_4BC6F0` (the compile function).
 
 ### Return Codes
 
@@ -106,64 +107,80 @@ The function uses `setjmp` / `longjmp` as an exception-handling mechanism: if an
 Each NVVM IR module collected during the input loop is added to the NVVM program via `sub_4BC4A0`. This function does not use the public `nvvmAddModuleToBitcode` API. Instead, it resolves and calls through the private `__nvvmHandle` dispatch table:
 
 ```c
-// sub_4BC4A0, simplified
+// sub_4BC4A0, simplified from decompiled (112 lines)
 int nvvm_add_module(elfw_t *ctx, char *name, char *ir_data, size_t ir_size) {
-    // Resolve the dispatch table
+    // setjmp crash protection wraps everything below
+
+    // Resolve the dispatch table (line 55)
     __nvvmHandle_fn = dlsym(ctx->nvvm_lib, "__nvvmHandle");
     if (!__nvvmHandle_fn)
-        return 10;
+        return 10;          // line 68
 
-    // Retrieve the "add module" function via dispatch code 8320
-    add_module_fn = __nvvmHandle_fn(8320);
+    // Retrieve the "add module" function via dispatch code 0x2080 (line 70)
+    add_module_fn = __nvvmHandle_fn(0x2080);
     if (!add_module_fn)
-        return 10;
+        return 10;          // line 83
 
-    // Call: add_module(program, name, ir_data, ir_size)
+    // Call: add_module(program, name, ir_data, ir_size) (line 86)
     nvvmResult_t rc = add_module_fn(ctx->nvvm_prog, name, ir_data, ir_size);
     if (rc != NVVM_SUCCESS)
-        return 11;
+        return 11;          // line 111
 
-    return 0;
+    return 0;               // line 52 via LABEL_3 with no error flag
 }
 ```
 
 ### The `__nvvmHandle` Dispatch Table
 
-`__nvvmHandle` is a private exported symbol in `libnvvm.so` that takes a numeric dispatch code and returns a function pointer. It serves as an extensibility mechanism, providing access to internal APIs that are not part of the public NVVM C API. Three dispatch codes are used:
+`__nvvmHandle` is a private exported symbol in `libnvvm.so` that takes a numeric dispatch code and returns a function pointer. It serves as an extensibility mechanism, providing access to internal APIs that are not part of the public NVVM C API. Four dispatch codes are used across three call sites:
 
-| Code | Context | Returns | Purpose |
-|---|---|---|---|
-| `8320` | `sub_4BC4A0` | Module-add function | Adds NVVM IR bitcode to the program; takes `(program, name, data, size)` |
-| `45242` | `sub_4BC6F0` | Multi-result getter | Retrieves compiled result as an array of module pointers; takes `(program, count, out_array)` |
-| `61453` | `sub_4BC6F0` | Result-count getter | Returns the number of compiled result modules; takes `(program, out_count)` |
-| `0xBEEF` | `main()` | Callback registrar | Registers a post-link callback; called with `(program, callback_fn, 0, 0xF00D)` |
+| Code (decimal) | Code (hex) | Call site | Returns | Signature of returned function |
+|---|---|---|---|---|
+| `8320` | `0x2080` | `sub_4BC4A0` line 70 | Module-add function | `(program, name, data, size) -> nvvmResult` |
+| `45242` | `0xB0BA` | `sub_4BC6F0` line 175 | Multi-result getter | `(program, count, out_array) -> nvvmResult` |
+| `61453` | `0xF00D` | `sub_4BC6F0` line 178 | Result-count getter | `(program, out_count) -> nvvmResult` |
+| `48879` | `0xBEEF` | `main()` line 997 | Callback registrar | `(program, callback_fn, 0, 0xF00D) -> int` |
 
-The dispatch codes appear to be arbitrary magic numbers rather than a sequential enumeration. The `0xBEEF` / `0xF00D` pair used for callback registration in main are particularly notable as mnemonic hex values.
+The dispatch codes are arbitrary magic numbers. Three of the four are mnemonic hex values: `0xB0BA` ("boba"), `0xF00D` ("food"), and `0xBEEF` ("beef"). The fourth, `0x2080` (8320 decimal), does not follow the same pattern.
 
-### Return Code 11
+The callback registrar (code `0xBEEF`) takes four arguments. The fourth argument is `61453` (`0xF00D`), which is the same numeric value as the result-count-getter dispatch code. Whether this is a coincidence or an intentional identifier (e.g., telling libnvvm "this callback relates to the F00D subsystem") is unknown; the decompiled code shows the literal value `61453` passed directly on line 1007 of `main()`.
 
-A return value of 11 from `sub_4BC4A0` indicates that the `add_module_fn` call returned a non-zero NVVM error code. This is distinct from return code 10 (symbol resolution failure) and return code 0 (success).
+### Return Codes
+
+| Code | Meaning | Decompiled location |
+|---|---|---|
+| 0 | Success -- module added | `sub_4BC4A0` line 52, via LABEL_3 with no error flag |
+| 1 | Error flag set -- `setjmp` triggered during libnvvm call (signal/longjmp from libnvvm internals) | `sub_4BC4A0` line 49, via LABEL_3 with error flag |
+| 10 | `dlsym("__nvvmHandle")` returned NULL, or `__nvvmHandle(0x2080)` returned NULL | lines 68, 83 |
+| 11 | `add_module_fn` returned non-zero NVVM error code | line 111 |
 
 ## Phase 4: Compilation and Result Extraction (`sub_4BC6F0`)
 
-`sub_4BC6F0` is the largest and most complex function in the nvvm integration layer at 13,602 bytes. It orchestrates the full compile-and-extract sequence:
+`sub_4BC6F0` is the largest and most complex function in the nvvm integration layer at 13,602 bytes. It orchestrates the full compile-and-extract sequence.
+
+Unlike the other two wrappers, this function does **not** use `setjmp`/`longjmp` for crash recovery -- if libnvvm crashes during compilation, the process terminates. The rationale is likely that compilation is the expensive operation and partial recovery would leave the program in an inconsistent state anyway.
 
 ### Symbol Resolution
 
-The function begins by resolving nine symbols from `libnvvm.so`. All nine must succeed or the function returns 10 immediately:
+The function begins by resolving eight symbols from `libnvvm.so` via `dlsym`, then dispatching `__nvvmHandle` twice for a total of ten function pointers. Every resolution must succeed or the function returns 10 immediately. The exact resolution order matches the decompiled code at lines 164--198:
 
 ```c
-// All resolved from elfw->nvvm_lib via dlsym
-nvvmCompileProgram      = dlsym(lib, "nvvmCompileProgram");
-nvvmGetCompiledResultSize = dlsym(lib, "nvvmGetCompiledResultSize");
-nvvmGetCompiledResult   = dlsym(lib, "nvvmGetCompiledResult");
-nvvmGetErrorString      = dlsym(lib, "nvvmGetErrorString");
-nvvmGetProgramLogSize   = dlsym(lib, "nvvmGetProgramLogSize");
-nvvmGetProgramLog       = dlsym(lib, "nvvmGetProgramLog");
-nvvmDestroyProgram      = dlsym(lib, "nvvmDestroyProgram");
-__nvvmHandle(45242)     = handle_fn(45242);   // multi-result getter
-__nvvmHandle(61453)     = handle_fn(61453);   // result-count getter
+// Eight dlsym calls, in order (lines 164-196 of decompiled sub_4BC6F0)
+nvvmCompileProgram        = dlsym(lib, "nvvmCompileProgram");       // line 164
+nvvmGetCompiledResultSize = dlsym(lib, "nvvmGetCompiledResultSize"); // line 168
+__nvvmHandle_fn           = dlsym(lib, "__nvvmHandle");              // line 171
+nvvmGetCompiledResult     = dlsym(lib, "nvvmGetCompiledResult");     // line 181
+nvvmGetErrorString        = dlsym(lib, "nvvmGetErrorString");        // line 184
+nvvmGetProgramLogSize     = dlsym(lib, "nvvmGetProgramLogSize");     // line 187
+nvvmGetProgramLog         = dlsym(lib, "nvvmGetProgramLog");         // line 192
+nvvmDestroyProgram        = dlsym(lib, "nvvmDestroyProgram");        // line 196
+
+// Two dispatch calls on the __nvvmHandle result (lines 175, 178)
+multi_result_getter       = __nvvmHandle_fn(45242);   // 0xB0BA
+result_count_getter       = __nvvmHandle_fn(61453);   // 0xF00D
 ```
+
+The `__nvvmHandle` dispatch calls happen between the third and fourth `dlsym` calls -- immediately after `__nvvmHandle` itself is resolved. Each dispatch result is null-checked independently; a NULL return from either dispatch causes the function to return 10.
 
 ### Option Array Construction
 
@@ -190,16 +207,21 @@ The option array is heap-allocated with capacity for `a8 + 8` entries (8 extra s
 
 ### Compilation Call
 
+The public `nvvmCompileProgram` API takes three arguments `(program, numOptions, options)`, but the decompiled call at line 391 passes six register arguments:
+
 ```c
-nvvmResult_t rc = nvvmCompileProgram(
-    elfw->nvvm_prog,   // the NVVM program handle
-    option_count,       // number of option strings
-    option_array,       // char** option array
-    ...
+// line 391 of decompiled sub_4BC6F0
+result = nvvmCompileProgram(
+    elfw->nvvm_prog,       // RDI: the NVVM program handle
+    option_count,          // RSI: number of option strings (a8, mutated by host-ref appending)
+    option_array,          // RDX: char** option array (s)
+    v21,                   // RCX: (artifact of decompiler register tracking)
+    v30,                   // R8:  (artifact)
+    v23                    // R9:  (artifact)
 );
 ```
 
-After the call, the option array is freed via `sub_431000` (arena_free).
+The three extra "arguments" (RCX, R8, R9) are leftover register values from the option-construction loop that the decompiler could not prove were dead. The actual libnvvm function only reads the first three. After the call, the option array is freed via `sub_431000` (arena_free) at line 392.
 
 ### Result Interpretation
 
@@ -240,45 +262,54 @@ if (had_error && log_size > 1) {
 
 ### Result Extraction
 
-On success (return code 0) or partial success (return code 100), the compiled PTX result is retrieved:
+On success (return code 0) or partial success (return code 100), the compiled result is retrieved through a combined single-result + multi-result path. Both paths execute sequentially within a single code block (LABEL_56 at line 446):
 
 ```c
-// Single-result path (whole-program):
-nvvmGetCompiledResultSize(program, &result_size);
-result_buf = arena_alloc(result_size);
-list_append(result_buf, &elfw->log_context);
-nvvmGetCompiledResult(program, result_buf);
-*ptx_out = result_buf;
-*ptx_size = result_size;
+// Step 1: Get single-result size (always)
+if (nvvmGetCompiledResultSize(program, &result_size))    // v13, line 447
+    return 1;
 
-// Multi-result path (split/partial):
-__nvvmHandle_61453(program, &module_count);   // get count
+// Step 2: Get multi-result count via __nvvmHandle(0xF00D)
+if (__nvvmHandle_F00D(program, &module_count))           // v16, line 451
+    return 1;
+
+// Step 3: If multi-result (count > 1), allocate and fill array
 if (module_count > 1) {
-    module_array = arena_alloc(8 * module_count);
-    __nvvmHandle_45242(program, module_count, module_array);  // get pointers
-    *cubin_array_out = module_array;
+    module_array = arena_alloc(8 * module_count);        // line 457-462
+    *cubin_array_out = module_array;                     // line 464
+    if (__nvvmHandle_B0BA(program, module_count, module_array))  // v134, line 467
+        return 1;   // falls through to single-result extraction
 }
+
+// Step 4: Extract single compiled result (always, even when multi-result)
+result_buf = arena_alloc(result_size);                   // line 470-477
+*ptx_out = result_buf;                                   // line 478
+list_append(result_buf, &elfw->log_context);             // line 479
+if (nvvmGetCompiledResult(program, result_buf))          // v135, line 480
+    return 1;
+
+// Step 5: Destroy program
+return nvvmDestroyProgram(&elfw->nvvm_prog) != 0;       // v142, line 481
 ```
 
-The single-result path produces one PTX string that `main()` feeds to the embedded ptxas. The multi-result path produces an array of module pointers that `main()` distributes across the split-compile thread pool.
+The single-result path produces one PTX string that `main()` feeds to the embedded ptxas. The multi-result path produces an array of module pointers that `main()` distributes across the split-compile thread pool. Both results are extracted -- the multi-result array supplements rather than replaces the single result.
 
 ### Program Destruction
 
-After extracting all results, the NVVM program is destroyed:
+After extracting all results, the NVVM program is destroyed as the final operation within the success path. The `nvvmDestroyProgram` call at line 481 takes a pointer to the program handle (`a7 + 648`), which allows libnvvm to NULL out the handle after cleanup:
 
 ```c
-nvvmResult_t rc = nvvmDestroyProgram(&elfw->nvvm_prog);
-return rc != 0;   // 0=success, 1=destroy failed
+return nvvmDestroyProgram(&elfw->nvvm_prog) != 0;   // 0=success, 1=destroy failed
 ```
 
 ### Return Codes
 
-| Code | Meaning |
-|---|---|
-| 0 | Success, result extracted, program destroyed |
-| 1 | Result extraction or program destruction failed |
-| 8 | Compilation error with log message |
-| 10 | Symbol resolution failed (dlsym returned NULL) |
+| Code | Meaning | Decompiled location |
+|---|---|---|
+| 0 | Success, result extracted, program destroyed | line 481 (`v142(...) != 0` evaluates to 0) |
+| 1 | Any API call in the result extraction sequence failed, or program destruction returned non-zero | lines 413, 424, 485, 481 |
+| 8 | Compilation produced an error; log+error concatenated and stored in `*a6` | lines 440, 487 |
+| 10 | Symbol resolution failed (`dlsym` or `__nvvmHandle` dispatch returned NULL) | lines 165-198 |
 
 ## Post-Link Callback (`sub_4299E0`)
 
@@ -327,56 +358,75 @@ The full libnvvm integration sequence within `main()`:
 ```
 Phase 1 (init):
   sub_4BC470(elfw, nvvmpath)
-    +-- sub_5F5AC0(nvvmpath, "libnvvm.so", 0)     // path_join
-    +-- sub_4BC290(elfw, 0, path)                  // nvvm_init
-        +-- sub_463360(path, 0)                    // dlopen(path, RTLD_NOW)
+    +-- sub_5F5AC0(nvvmpath, "libnvvm.so", 0)     // path_join + dlopen
+    |   +-- sub_462550(nvvmpath, "libnvvm.so", 0)  // construct path string
+    |   +-- sub_463360(path, 0)                    // dlopen(path, RTLD_NOW)
+    +-- sub_4BC290(elfw, 0, handle)                // nvvm_init [setjmp-protected]
+        +-- elfw[640] = handle                     // store dlopen result
         +-- dlsym(lib, "nvvmCreateProgram")
         +-- nvvmCreateProgram(&elfw[648])
 
 Phase 2 (input loop, per IR module):
-  sub_4BC4A0(elfw, name, ir_data, ir_size)         // nvvm_add_module
+  sub_4BC4A0(elfw, name, ir_data, ir_size)         // nvvm_add_module [setjmp-protected]
     +-- dlsym(lib, "__nvvmHandle")
-    +-- __nvvmHandle(8320)                         // get add-module function
+    +-- __nvvmHandle(0x2080)                       // get add-module function
     +-- add_fn(elfw[648], name, ir_data, ir_size)
 
 Phase 3 (compilation):
-  [optional] __nvvmHandle(0xBEEF)                  // get callback registrar
-             callback_registrar(prog, sub_4299E0, 0, 0xF00D)
+  [if -vkeep active]:
+    dlsym(lib, "__nvvmHandle")                     // main() line 987
+    +-- __nvvmHandle(0xBEEF)                       // get callback registrar
+    |   (NULL -> fatal "could not find CALLBACK Handle")
+    +-- callback_registrar(prog, sub_4299E0, 0, 0xF00D)
+        (non-zero -> fatal "error in LTO callback")
 
-  sub_4BC6F0(ptx_out, ptx_size, cubin_out,         // nvvm_compile
+  sub_4BC6F0(ptx_out, ptx_size, cubin_out,         // nvvm_compile [no setjmp]
              status, partial, error_msg,
              elfw, option_count, options)
-    +-- dlsym 7 public API functions
-    +-- __nvvmHandle(45242)                        // multi-result getter
-    +-- __nvvmHandle(61453)                        // result-count getter
-    +-- nvvmCompileProgram(prog, argc, argv)
-    +-- nvvmGetProgramLogSize + nvvmGetProgramLog
-    +-- nvvmGetCompiledResultSize + nvvmGetCompiledResult
-    +-- OR: __nvvmHandle(61453) + __nvvmHandle(45242) for split results
-    +-- nvvmDestroyProgram(&prog)
+    +-- dlsym: nvvmCompileProgram                  // line 164
+    +-- dlsym: nvvmGetCompiledResultSize            // line 168
+    +-- dlsym: __nvvmHandle                        // line 171
+    |   +-- __nvvmHandle(0xB0BA)                   // multi-result getter, line 175
+    |   +-- __nvvmHandle(0xF00D)                   // result-count getter, line 178
+    +-- dlsym: nvvmGetCompiledResult               // line 181
+    +-- dlsym: nvvmGetErrorString                  // line 184
+    +-- dlsym: nvvmGetProgramLogSize               // line 187
+    +-- dlsym: nvvmGetProgramLog                   // line 192
+    +-- dlsym: nvvmDestroyProgram                  // line 196
+    +-- nvvmCompileProgram(prog, argc, argv, ...)  // line 391
+    +-- nvvmGetProgramLogSize + nvvmGetProgramLog  // log extraction
+    +-- nvvmGetCompiledResultSize                  // result size
+    +-- __nvvmHandle(0xF00D)(prog, &count)         // result count
+    +-- if count > 1: __nvvmHandle(0xB0BA)(prog, count, array)  // split results
+    +-- nvvmGetCompiledResult(prog, buf)           // single PTX result
+    +-- nvvmDestroyProgram(&prog)                  // cleanup
 ```
 
 ## API Symbol Catalog
 
-Every symbol resolved from `libnvvm.so` by nvlink:
+Every symbol resolved from `libnvvm.so` by nvlink via `dlsym`:
 
-| Symbol | Resolution site | Public API? | Purpose |
-|---|---|---|---|
-| `nvvmCreateProgram` | `sub_4BC290` | Yes | Create compilation program handle |
-| `nvvmCompileProgram` | `sub_4BC6F0` | Yes | Compile accumulated IR modules |
-| `nvvmGetCompiledResultSize` | `sub_4BC6F0` | Yes | Query compiled PTX size |
-| `nvvmGetCompiledResult` | `sub_4BC6F0` | Yes | Retrieve compiled PTX string |
-| `nvvmGetErrorString` | `sub_4BC6F0` | Yes | Map error code to message |
-| `nvvmGetProgramLogSize` | `sub_4BC6F0` | Yes | Query compilation log size |
-| `nvvmGetProgramLog` | `sub_4BC6F0` | Yes | Retrieve compilation log |
-| `nvvmDestroyProgram` | `sub_4BC6F0` | Yes | Destroy program and free resources |
-| `__nvvmHandle` | `sub_4BC4A0`, `sub_4BC6F0`, `main()` | **No** (private) | Dispatch table for internal APIs |
+| # | Symbol | Resolution site | Decompiled line | Public API? | Purpose |
+|---|---|---|---|---|---|
+| 1 | `nvvmCreateProgram` | `sub_4BC290` | line 53 | Yes | Create compilation program handle |
+| 2 | `nvvmCompileProgram` | `sub_4BC6F0` | line 164 | Yes | Compile accumulated IR modules |
+| 3 | `nvvmGetCompiledResultSize` | `sub_4BC6F0` | line 168 | Yes | Query compiled PTX size |
+| 4 | `nvvmGetCompiledResult` | `sub_4BC6F0` | line 181 | Yes | Retrieve compiled PTX string |
+| 5 | `nvvmGetErrorString` | `sub_4BC6F0` | line 184 | Yes | Map error code to message |
+| 6 | `nvvmGetProgramLogSize` | `sub_4BC6F0` | line 187 | Yes | Query compilation log size |
+| 7 | `nvvmGetProgramLog` | `sub_4BC6F0` | line 192 | Yes | Retrieve compilation log |
+| 8 | `nvvmDestroyProgram` | `sub_4BC6F0` | line 196 | Yes | Destroy program and free resources |
+| 9 | `__nvvmHandle` | `sub_4BC4A0` line 55, `sub_4BC6F0` line 171, `main()` line 987 | -- | **No** (private) | Dispatch table for internal APIs |
 
-The public API symbols match the documented [NVVM IR Compiler API](https://docs.nvidia.com/cuda/libnvvm-api/) exactly. The private `__nvvmHandle` symbol provides extensions for module addition (code 8320), split-compile result extraction (codes 45242, 61453), and callback registration (code 0xBEEF).
+Nine distinct symbol names are resolved via eleven total `dlsym` calls across four call sites: one `nvvmCreateProgram` in the init function (`sub_4BC290`), one `__nvvmHandle` in the module adder (`sub_4BC4A0`), seven public API + one `__nvvmHandle` in the compile function (`sub_4BC6F0`), and one `__nvvmHandle` in `main()`. The `__nvvmHandle` symbol is resolved three times independently (once per call site) rather than cached, since each function operates in its own scope.
+
+The eight public API symbols match the documented [NVVM IR Compiler API](https://docs.nvidia.com/cuda/libnvvm-api/) exactly. Notably, `nvvmAddModuleToProgram` from the public API is **never used** -- nvlink adds modules exclusively through the private `__nvvmHandle(0x2080)` dispatch instead.
+
+The private `__nvvmHandle` symbol provides four extensions: module addition (`0x2080`), split-compile result extraction (`0xB0BA`, `0xF00D`), and callback registration (`0xBEEF`).
 
 ## Error Handling
 
-All three wrapper functions (`sub_4BC290`, `sub_4BC4A0`, `sub_4BC6F0`) use `setjmp`/`longjmp` as a signal-safe error recovery mechanism. The pattern:
+Two of the three wrapper functions (`sub_4BC290` and `sub_4BC4A0`) use `setjmp`/`longjmp` as a signal-safe error recovery mechanism. `sub_4BC6F0` does **not** -- it relies on normal return-code checking from the nvvm API calls. The `setjmp` pattern in the first two functions:
 
 ```c
 jmp_buf env;
@@ -403,9 +453,10 @@ This protects nvlink from crashes inside libnvvm.so. If libnvvm triggers a signa
 
 | String | Location | Trigger |
 |---|---|---|
-| `"could not find __nvvmHandle"` | `main()` | `dlsym("__nvvmHandle")` returned NULL during callback setup |
-| `"error in LTO callback"` | `main()` | Callback registration via `__nvvmHandle(0xBEEF)` failed |
-| `"nvlink -lto-post-link -o %s"` | `sub_4299E0` | Verbose-keep callback writing intermediate file |
+| `"could not find __nvvmHandle"` | `main()` line 991 | `dlsym("__nvvmHandle")` returned NULL during callback setup |
+| `"could not find CALLBACK Handle"` | `main()` line 1001 | `__nvvmHandle(0xBEEF)` returned NULL (callback registrar not available) |
+| `"error in LTO callback"` | `main()` line 1008 | Callback registration call returned non-zero |
+| `"nvlink -lto-post-link -o %s"` | `sub_4299E0` line 15 | Verbose-keep callback writing intermediate file |
 | `"compile linked lto ir:"` | `main()` | Before invoking `sub_4BC6F0` |
 | `"whole program compile"` | `main()` | LTO produced single output, whole-program mode |
 | `"relocatable compile"` | `main()` | LTO produced single relocatable output |

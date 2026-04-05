@@ -1,6 +1,6 @@
 # Error Reporting System
 
-nvlink's diagnostic infrastructure routes every warning, error, and fatal message through a two-function pipeline: `diag_emit` (`sub_467460`) is the variadic entry point called from ~200 sites across the binary, and `diag_format` (`sub_467A70`) is the heavy formatter that renders severity prefixes, source locations, ANSI color tokens, multi-line alignment, and optional source-code snippets. Both functions dispatch through a per-thread state block obtained via `tls_get_state` (`sub_44F410`), a pthread TLS system that allocates a 0x118-byte structure per thread. Fatal-severity messages terminate the process via `longjmp` back to the pipeline's error-recovery point, or through `fatal_exit` (`sub_44A440`) which calls `abort()` under `--trap-into-debugger` and `exit(1)` otherwise. Diagnostic descriptors are statically allocated in a BSS table of ~100 16-byte entries spanning `0x2A5B500`--`0x2A5BFE0`, each encoding a severity level and a printf-style format string pointer.
+nvlink's diagnostic infrastructure routes every warning, error, and fatal message through a two-function pipeline: `diag_emit` (`sub_467460`) is the variadic entry point called from ~200 sites across the binary, and `diag_format` (`sub_467A70`) is the heavy formatter that renders severity prefixes, source locations, ANSI color tokens, multi-line alignment, and optional source-code snippets. Both functions dispatch through a per-thread state block obtained via `tls_get_state` (`sub_44F410`), a pthread TLS system that allocates a 0x118-byte structure per thread. Fatal-severity messages terminate the process via `longjmp` back to the pipeline's error-recovery point, or through `fatal_exit` (`sub_44A440`) which calls `abort()` under `--trap-into-debugger` and `exit(1)` otherwise. Diagnostic descriptors are statically allocated in a BSS table of 88 confirmed 16-byte entries spanning `0x2A5B530`--`0x2A5BB70`, each encoding a severity level and a printf-style format string pointer. An additional 5 BSS objects in the same region serve as error-status return values or suppression bitmaps rather than diagnostic descriptors.
 
 ## Key Functions
 
@@ -79,7 +79,7 @@ When `-Werror` is active (`tls_state[50] != 0`), any warning (severity 3) is pro
 
 ## Diagnostic Descriptor Table
 
-Each diagnostic site calls `diag_emit` with a pointer to a static descriptor object as the first argument. These descriptors live in the BSS region at addresses `0x2A5B500` through `0x2A5BFE0`, spaced at 16-byte intervals. Approximately 100 unique descriptors have been observed across the decompiled codebase.
+Each diagnostic site calls `diag_emit` with a pointer to a static descriptor object as the first argument. These descriptors live in the BSS region at addresses `0x2A5B530` through `0x2A5BB70`, spaced at 16-byte intervals. 88 unique diagnostic descriptors have been confirmed across 380+ call sites in the decompiled codebase, referenced from 257 distinct functions.
 
 ### Descriptor Structure
 
@@ -96,31 +96,216 @@ Offset  Size  Field         Description
 
 The `level` field is read as `*a1` (the first DWORD). The `suppressed` field is checked as `*(BYTE*)(a1 + 4)`. The format string at offset 8 is passed as the format argument to `vsnprintf`/`vfprintf` during message assembly.
 
-### Notable Descriptors
+### Complete Descriptor Catalog
 
-| Address | Severity | Usage Context |
+98 unique descriptor addresses have been identified across the BSS range `0x2A5B500`--`0x2A5BFE0`. Of these, 88 are true diagnostic descriptors passed to `diag_emit`/`diag_format`, 3 are error-status objects used as return values (`unk_2A5BFC0`, `unk_2A5BFD0`, `unk_2A5BFE0`), and the remainder serve as BSS anchors for `__cxa_atexit` or warning-suppression bitmaps (`unk_2A5B500`, `unk_2A5BB80`).
+
+The tables below are organized by subsystem. Severity is inferred from `diag_emit` dispatch logic: descriptors whose callers continue execution after the call are Error (5) or Warning (3); descriptors whose callers never reach the next instruction (the call site is the function's last reachable point) are Fatal (6). The `Sites` column counts the number of distinct `sub_467460` call sites referencing each descriptor.
+
+#### Input Processing and File I/O (sub_427A10, sub_42AF40, main)
+
+| Address | Sev | Sites | Usage Context | Example Message |
+|---|---|---|---|---|
+| `unk_2A5B550` | 5 | 2 | Input file not found (LTO module add) | `"%s"` (file path) |
+| `unk_2A5B5B0` | 3 | 1 | Input not a device ELF and not cudadevrt | `"%s"` (file name) |
+| `unk_2A5B700` | 5 | 3 | Required input file cannot be opened | `"%s"` (file path) |
+| `unk_2A5B710` | 5 | 11 | Output file cannot be opened for writing (`fopen` failure) | `"%s"` (file path) |
+| `unk_2A5B730` | 3 | 2 | Input file fails magic/format validation | `"%s"` (file path) |
+| `unk_2A5B890` | 5 | 2 | Timing CSV file cannot be opened | `"%s"` (file path) |
+
+#### Architecture Validation (sub_426570, sub_42A2D0)
+
+| Address | Sev | Sites | Usage Context | Example Message |
+|---|---|---|---|---|
+| `unk_2A5B5C0` | 3 | 1 | Input ELF ISA version mismatch (non-fatal, older ABI) | `"%s"` (input file) |
+| `unk_2A5B610` | 5 | 1 | Architecture mismatch between input files | `"%s"` (file), `%s` (arch) |
+| `unk_2A5B620` | 3 | 1 | sm\_90 required but input built for sm <= 0x77 | `"%s"` (input file) |
+| `unk_2A5B630` | 3 | 1 | sm\_50 required but input built for sm <= 0x40 | `"%s"` (input file) |
+| `unk_2A5B640` | 3 | 2 | Input ISA class exceeds max supported by target arch | `"%s"` (file), `%d` (class), `%d` (max) |
+| `unk_2A5B660` | 5 | 3 | Unsupported architecture for non-cudadevrt input | `%s` (arch), `"%s"` (file) |
+| `unk_2A5B680` | 3 | 4 | Address size mismatch (`e_machine != EM_CUDA`) | `"%s"` (input file) |
+| `unk_2A5B690` | 3 | 1 | 32/64-bit address mode mismatch between files | `"%s"` (file), `"%s"` (`-m32`/`-m64`) |
+| `unk_2A5B6A0` | 3 | 1 | Target arch not supported by input ELF | `"%s"` (file), `%s` (arch) |
+| `unk_2A5B6B0` | 3 | 1 | ELF class mismatch (e.g., ELFCLASS32 vs ELFCLASS64) | `"%s"` (file), `%d` (class), `%d` (expected) |
+| `unk_2A5B6E0` | 3 | 1 | Arch requires split-compile but was disabled; forces mode | `%d` (arch) |
+
+#### CLI Option Parsing (sub_427AE0, sub_429BA0, sub_42BC30--sub_42DBC0)
+
+| Address | Sev | Sites | Usage Context | Example Message |
+|---|---|---|---|---|
+| `unk_2A5B530` | 3 | 1 | Arch > 0x48 with 32-bit address mode unsupported | `%d` (arch code) |
+| `unk_2A5B540` | 3 | 2 | Conflicting split-compile options (e.g., `-emit-ptx` + `-split-compile-extended`) | `"%s"`, `"%s"`, `"%s"` (option names) |
+| `unk_2A5B560` | 3 | 3 | Ignored option due to conflict (e.g., `-use-host-info` with `-kernels-used`) | `"%s"` (message) |
+| `unk_2A5B570` | 3 | 1 | Missing required prerequisite flag for arch | `"%s"` (arch string) |
+| `unk_2A5B580` | 3 | 1 | `-fdcmpt` option no longer supported | `"%s"` (option) |
+| `unk_2A5B590` | 3 | 1 | `--preserve-relocs` option used in non-applicable context | `"%s"` (option) |
+| `unk_2A5B5A0` | 3 | 2 | Deprecated option used (`-fdcmpt`, `-m32`) | `"%s"` (option) |
+| `unk_2A5B5D0` | 3 | 1 | LTO option mismatch across input files; disabling LTO | `"%s"` (context) |
+| `unk_2A5B5E0` | 3 | 1 | Conflicting `-maxrregcount` values across files | `"%s"` (option), `"%s"` (option), `%d` (value1), `%d` (value2) |
+| `unk_2A5B5F0` | 3 | 1 | Conflicting `-lineinfo` settings across files | `"%s"` (option), `"%s"` (option) |
+| `unk_2A5B600` | 3 | 6 | Per-file option conflict (`-ftz`, `-prec-div`, `-prec-sqrt`, `-fmad`, `-maxrregcount`, `-split-compile`) | `"%s"` (option name) |
+| `unk_2A5B650` | 3 | 5 | Option requires `-dlto` or `-g` not present | `"%s"` (option), `"%s"` (required flag) |
+| `unk_2A5B6D0` | 3 | 1 | Arch code too low (sm <= 0x59, pre-Volta) | `%d` (arch code) |
+| `unk_2A5B6F0` | 3 | 1 | Target GPU ISA version too old (below 0x13) | `%s` (arch string) |
+| `unk_2A5B720` | 3 | 5 | Option value overridden or conflicting | `"%s"` (option name) |
+| `unk_2A5B740` | 5 | 1 | No output file specified and not in dry-run mode | `"%s"` (option context) |
+| `unk_2A5B750` | 5 | 2 | Final output file cannot be written or linked | `"%s"` (file path) |
+| `unk_2A5B760` | 3 | 1 | Implicit arch selection when explicit arch given | `"%s"` (arch string) |
+| `unk_2A5B770` | 3 | 1 | No output path specified | `"%s"` (context) |
+
+#### Option Value Parsing (sub_42BC30--sub_42DBC0)
+
+| Address | Sev | Sites | Usage Context | Example Message |
+|---|---|---|---|---|
+| `unk_2A5B780` | 5 | 18 | Numeric parse failure for option value | `"32-bit integer"`, `"64-bit integer"`, `"32-bit hex"`, `"64-bit hex"`, `"32-bit unsigned integer"`, `"64-bit unsigned integer"` |
+| `unk_2A5B790` | 3 | 1 | Response file nesting exceeds limit (>14 levels) | `"%s"` (file path) |
+| `unk_2A5B7A0` | 3 | 1 | Unrecognized option in linker script | `"%s"` (option name) |
+| `unk_2A5B7B0` | 5 | 1 | Response file cannot be opened for reading | `"%s"` (file path) |
+| `unk_2A5B7C0` | 5 | 2 | Duplicate symbol definition in global scope | `"%s"` (symbol name) |
+| `unk_2A5B7D0` | 5 | 6 | Option value out of allowed range | `"%s"` (option), `%d` (value) |
+| `unk_2A5B7E0` | 3 | 1 | Option value not in allowed set | `"%s"` (value), `"%s"` (option) |
+| `unk_2A5B7F0` | 3 | 1 | Linker script command argument count mismatch | `%d` (count) |
+| `unk_2A5B800` | 5 | 10 | Trailing characters after numeric option value | `"%s"` (raw value string) |
+| `unk_2A5B810` | 5 | 2 | Option type mismatch (expected different value kind) | `"%s"` (value) |
+| `unk_2A5B820` | 5 | 1 | Library search path validation failure | `"%s"` (path) |
+| `unk_2A5B830` | 5 | 1 | Missing sysroot for library resolution | `"%s"` (library name) |
+| `unk_2A5B840` | 3 | 2 | Symbol visibility conflict in linker script | `"%s"` (symbol) |
+| `unk_2A5B850` | 3 | 4 | Symbol redefined in linker script version map | `"%s"` (symbol) |
+| `unk_2A5B860` | 3 | 1 | Symbol binding override (GLOBAL to LOCAL or vice versa) | `"%s"` (symbol) |
+| `unk_2A5B870` | 3 | 1 | Unresolved symbol in linker script export list | `"%s"` (symbol) |
+
+#### Internal Errors / Assertions (sub_4275C0, sub_4298C0, sub_42A2D0, main)
+
+| Address | Sev | Sites | Usage Context | Example Message |
+|---|---|---|---|---|
+| `unk_2A5B670` | 6 | 17 | Internal assertion failure; catch-all for "should never happen" | `"Internal error"`, `"cubin not an elf?"`, `"cubin not a device elf?"`, `"fatbin wrong format?"`, `"should never see bc files"`, `"error in LTO callback"`, `"unexpected cpuArch"` |
+| `unk_2A5B6C0` | 3 | 1 | Mercury/finalizer phase returned error for function | `"%s"` (function name) |
+| `unk_2A5B990` | 6 | 230 | Internal invariant violation (by far the most used descriptor) | See full table below |
+| `unk_2A5BAE0` | 6 | 2 | Out-of-memory during TLS state allocation (`sub_44F410`, `sub_44F670`) | -- (format string is the OOM message) |
+| `unk_2A5BB70` | 6 | 5 | Catch-all fatal OOM (`fatal_alloc`); recognized by pointer comparison | -- (bypass formatter, direct stderr) |
+
+#### ELF / Section Merging (sub_432870, sub_4325A0--sub_445000)
+
+| Address | Sev | Sites | Usage Context | Example Message |
+|---|---|---|---|---|
+| `unk_2A5B8A0` | 5 | 1 | Architecture state initialization failed | `"%s"` (arch name) |
+| `unk_2A5B8B0` | 3 | 4 | Duplicate symbol across input files during merge | `"%s"` (symbol name) |
+| `unk_2A5B8C0` | 3 | 2 | Unknown symbol referenced during merge | `"%s"` (symbol name or `"unknown"`) |
+| `unk_2A5B8D0` | 3 | 1 | Undefined external symbol encountered in section scan | `"%s"` (symbol name) |
+| `unk_2A5B8E0` | 3 | 1 | Target arch (sm <= 0x78) does not support feature | -- |
+| `unk_2A5B8F0` | 3 | 1 | Relocation target mismatch during merge | `"%s"` (symbol) |
+| `unk_2A5B900` | 3 | 1 | ISA\_CLASS attribute exceeds maximum (arch-specific limit, e.g., > 0x7F for sm\_100a) | `%d` (arch), `"%s"` (`"ISA_CLASS"`), `"%s"` (symbol) |
+| `unk_2A5B910` | 3 | 1 | Missing `.nv.compat` section in input ELF | `".nv.compat"` |
+| `unk_2A5B920` | 3 | 1 | Register count exceeds architecture maximum | `"%s"` (symbol), `%d` (count), `%d` (max) |
+| `unk_2A5B930` | 3 | 2 | Duplicate parameter bank on weak entry symbol | `"%s"` (symbol name) |
+| `unk_2A5B940` | 3 | 1 | Conflicting callgraph edge during DCE (dead code elimination) | `"%s"` (callee), `"%s"` (caller) |
+| `unk_2A5B950` | 3 | 2 | Common symbol replaced by global.init with smaller size | `"%s"` (symbol), `"%s"` (file) |
+| `unk_2A5B960` | 3 | 1 | Call target symbol resolution conflict | `"%s"` (target), `"%s"` (caller), `"%s"` (callee) |
+| `unk_2A5B970` | 3 | 1 | Function has address taken but no direct call found | `"%s"` (function name) |
+| `unk_2A5B980` | 3 | 1 | Section type mismatch during merge index lookup | `"%s"` (section name) |
+| `unk_2A5B9A0` | 3 | 2 | Section reference from unresolved external symbol | `%d` (section index) |
+| `unk_2A5B9B0` | 3 | 1 | Weak function replacement failed (old data not freed) | `"%s"` (function name) |
+| `unk_2A5B9C0` | 3 | 1 | Section index out of bounds during relocation | `"%s"` (symbol), `"%s"` (source section), `"%s"` (target section) |
+| `unk_2A5B9D0` | 3 | 2 | Multiple definitions of same symbol (non-weak) | `"%s"` (symbol), `"%s"` (file1), `"%s"` (file2) |
+| `unk_2A5B9E0` | 3 | 1 | Register count for callee exceeds caller's allocation | `"%s"` (callee), `%d` (callee regs), `"%s"` (caller), `%d` (caller regs) |
+| `unk_2A5B9F0` | 3 | 1 | Symbol size changed between definitions | `"%s"` (symbol), `"%s"` (file1), `"%s"` (file2) |
+| `unk_2A5BA00` | 3 | 2 | Symbol binding mismatch (e.g., LOCAL vs GLOBAL) | `"%s"` (symbol), `"%s"` (file1), `"%s"` (file2) |
+| `unk_2A5BA10` | 3 | 3 | Symbol type mismatch between definitions | `"%s"` (symbol), `"%s"` (file1), `"%s"` (file2) |
+| `unk_2A5BA20` | 3 | 2 | Undefined symbol reference during final resolution | `"%s"` (symbol), `"%s"` (file) |
+| `unk_2A5BA30` | 3 | 1 | Symbol flagged as dead but still referenced | `"%s"` (symbol name) |
+| `unk_2A5BA40` | 3 | 5 | Resource limit exceeded (textures, samplers, surfaces) | `%d` (count), `"%s"` (resource type: `"textures"`, `"samplers"`, `"surfaces"`) |
+| `unk_2A5BA50` | 1 | 3 | Verbose link-time info dump (function properties, section details) | (formatted multi-line) |
+| `unk_2A5BA60` | 3 | 1 | Common symbol max-count equals current architecture limit | `%d` (count) |
+| `unk_2A5BA70` | 3 | 1 | Undefined reference during symbol table finalization | `%d` (index) |
+| `unk_2A5BA80` | 3 | 3 | Section type conflict during merge (e.g., `"local"` qualifier) | `%d` (type code), `"%s"` (qualifier) |
+
+#### NVINFO / Attribute Parsing (sub_42F6C0, sub_42F760, sub_42F850)
+
+| Address | Sev | Sites | Usage Context | Example Message |
+|---|---|---|---|---|
+| `unk_2A5BAA0` | 3 | 1 | Unrecognized attribute value in nvinfo section | `"%s"` (attribute name), `"%s"` (value) |
+| `unk_2A5BAB0` | 3 | 1 | Unknown relocation attribute in nvinfo section | `"Relocation"`, `%d` (code), `"%s"` (type name) |
+| `unk_2A5BAC0` | 3 | 3 | Completely unknown attribute or usage code | `"unknown attribute"`, `"unknown usage"` |
+
+#### External Tool Invocation (sub_42FA70, sub_42FCB0)
+
+| Address | Sev | Sites | Usage Context | Example Message |
+|---|---|---|---|---|
+| `unk_2A5BB00` | 5 | 1 | External tool (ptxas/fatbinary) terminated by signal | `"%s"` (tool), `%d` (signal), `"%s"` (signal name) |
+| `unk_2A5BB10` | 5 | 2 | Response-file parse error: unexpected character | `"%s"` (context) |
+| `unk_2A5BB20` | 5 | 2 | Response-file parse error: missing closing bracket | `"%s"` (context) |
+| `unk_2A5BB30` | 5 | 6 | Response-file parse error: malformed token | `"%s"` (context) |
+| `unk_2A5BB40` | 5 | 1 | External tool produced core dump (signal had `0x80` flag) | `"%s"` (tool) |
+| `unk_2A5BB50` | 5 | 1 | External tool path not found or not executable | `"%s"` (tool path) |
+
+#### Non-Descriptor BSS Objects
+
+| Address | Size | Role |
 |---|---|---|
-| `unk_2A5B550` | Fatal (6) | File-not-found errors in input processing |
-| `unk_2A5B560` | Error (5) | Merge failures, symbol conflicts |
-| `unk_2A5B5D0` | Warning (3) | LTO option mismatch across input files |
-| `unk_2A5B600` | Warning (3) | Conflicting per-file options (`-ftz`, `-prec-div`, `-maxrregcount`) |
-| `unk_2A5B610` | Error (5) | Architecture mismatch between input files |
-| `unk_2A5B660` | Error (5) | Unsupported architecture specified |
-| `unk_2A5B670` | Fatal (6) | Internal errors, assertion-like failures ("cubin not an elf?") |
-| `unk_2A5B700` | Error (5) | Missing required input files |
-| `unk_2A5B710` | Error (5) | Undefined symbol references |
-| `unk_2A5B720` | Warning (3) | Option validation warnings (conflicting CLI flags) |
-| `unk_2A5B730` | Warning (3) | Deprecated feature usage |
-| `unk_2A5B780` | Error (5) | Option value parse errors ("32-bit integer", "64-bit hex") |
-| `unk_2A5B7C0` | Error (5) | Duplicate symbol definitions |
-| `unk_2A5B7D0` | Error (5) | Option value out of allowed range |
-| `unk_2A5B800` | Error (5) | Option value format errors |
-| `unk_2A5B810` | Error (5) | Option type validation failures |
-| `unk_2A5BAA0` | Warning (3) | Attribute parse warnings |
-| `unk_2A5BAB0` | Warning (3) | Relocation attribute warnings |
-| `unk_2A5BAC0` | Warning (3) | Unknown attribute/usage in nvinfo parsing |
-| `unk_2A5BAE0` | Fatal (6) | Out-of-memory during TLS state allocation |
-| `unk_2A5BB70` | Fatal (6) | Out-of-memory (used by `fatal_alloc` / `sub_45CAC0`) |
+| `unk_2A5B500` | -- | BSS module base (used as `__dso_handle` argument in `__cxa_atexit` calls) |
+| `unk_2A5BB80` | 512 B | Warning-suppression bitmap array (one bit per descriptor, used for `--Wno-*` granular suppression) |
+| `unk_2A5BFC0` | 16 B | Error-status object: "empty/null input" returned as `*a4` in file-open helpers |
+| `unk_2A5BFD0` | 16 B | Error-status object: "file read error" returned as `*a4` |
+| `unk_2A5BFE0` | 16 B | Error-status object: "file stat error" returned as `*a4` |
+
+### unk_2A5B990: Internal Assertion Messages
+
+This single descriptor accounts for 230 of the 380+ total `diag_emit` call sites. It serves as the universal internal-error descriptor, always severity Fatal (6). Every call site passes a literal string describing the violated invariant. The following table catalogs the 40 unique assertion messages observed:
+
+| Message | Subsystem | Sites |
+|---|---|---|
+| `"section not found"` | Section lookup (various) | 8 |
+| `"expected to be finalized"` | ELF finalization checks | 7 |
+| `"symbol not found"` | Symbol table lookup | 5 |
+| `"overlapping non-identical data"` | Section data merge | 5 |
+| `"bank SHT not CUDA_CONSTANT_?"` | Constant bank validation | 2 |
+| `"overlapping data spans too much"` | Section data merge | 2 |
+| `"entry data should have offset"` | Constant bank entry | 1 |
+| `"local data should have offset"` | Local data layout | 1 |
+| `"tail data node not found"` | Section data list | 1 |
+| `"callgraph not complete"` | Call graph construction | 1 |
+| `"callgraph not found"` | DCE / call graph lookup | 1 |
+| `"no callgraph node"` | Call graph node missing | 1 |
+| `"reference to deleted section"` | Post-DCE section reference | 1 |
+| `"reference to deleted symbol"` | Post-DCE symbol reference | 1 |
+| `"symbol already assigned"` | Symbol table construction | 1 |
+| `"unallocated symbol"` | ELF output generation | 1 |
+| `"adding global symbols of same name"` | Symbol merge conflict | 1 |
+| `"alias has not been declared"` | Alias resolution | 1 |
+| `"alias must be to function"` | Alias validation | 1 |
+| `"alias to unknown symbol"` | Alias target lookup | 1 |
+| `"couldn't initialize arch state"` | Architecture init | 1 |
+| `"duplicate ids in uft.entry"` | UFT table construction | 1 |
+| `"efh not found"` | ELF file header missing | 1 |
+| `"entry data cannot be GLOBAL"` | Constant bank binding | 1 |
+| `"entry_sym was null"` | Entry point resolution | 1 |
+| `"invalid index"` | Array bounds check | 1 |
+| `"Invalid Path"` | File path validation | 1 |
+| `"malformed uidx input"` | UFT index parsing | 1 |
+| `"missing nv.udt.entry"` | Missing UDT section | 1 |
+| `"missing nv.uft.entry"` | Missing UFT section | 1 |
+| `"missing sec strtab"` | Section string table | 1 |
+| `"missing std sections"` | Standard ELF sections | 1 |
+| `"Negative size encountered"` | Size validation | 1 |
+| `"no regcount?"` | Register count lookup | 1 |
+| `"no such new reg count"` | Register count update | 1 |
+| `"no such original reg count"` | Register count lookup | 1 |
+| `"no symbol for index?"` | Symbol index dereference | 1 |
+| `"not uidx input"` | UFT type check | 1 |
+| `"null entry_sym"` / `"null esym"` / `"null root_kernel sym"` | Null pointer guards | 3 |
+| `"nv.uft not found"` | UFT section lookup | 1 |
+| `"overlapped offset < full offset?"` | Merge offset validation | 1 |
+| `"secidx not virtual"` | Section type check | 1 |
+| `"section not mapped"` | Output section layout | 1 |
+| `"should only reach here with no opt"` | Optimization state check | 1 |
+| `"size of uidx window != nv.udt"` / `"size of uidx window != nv.uft"` | UFT/UDT size match | 2 |
+| `"strsec not found"` / `"symsec not found"` | Section lookup | 2 |
+| `"UFT stub match not found"` | UFT stub resolution | 1 |
+| `"unexpected bindless type"` | Bindless texture dispatch | 1 |
+| `"verbose before final"` | Verbose dump ordering | 1 |
+| `"writing file"` | File output state check | 1 |
+
+### Sentinel Descriptor: unk_2A5BB70
 
 The sentinel descriptor `unk_2A5BB70` is special: it is the "catch-all fatal" used by `fatal_alloc` and is recognized by both `diag_emit` and `diag_format` via explicit pointer comparison (`a1 == &unk_2A5BB70`). When this descriptor is detected, the formatters skip the source-location and output-channel logic and fall through directly to the simple stderr path, ensuring that even an out-of-memory condition during formatting still produces output.
 
@@ -586,4 +771,4 @@ The fast path in `strbuf_vsprintf` uses a 1024-byte stack buffer. If the formatt
 | `off_2A5BA90` | `fn_ptr` | `exit_handler` | Installed exit handler (default: `exit`) |
 | `qword_1D3C740` | `char*[7]` | `prefix_table` | Severity-to-prefix-string lookup table |
 | `byte_1D3C728` | `uint8_t[7]` | `channel_map` | Severity-to-channel-index mapping |
-| `0x2A5B500..0x2A5BFE0` | `DiagDescriptor[]` | `diag_descriptors` | Static diagnostic descriptor table |
+| `0x2A5B530..0x2A5BB70` | `DiagDescriptor[88]` | `diag_descriptors` | Static diagnostic descriptor table (16 bytes each) |
