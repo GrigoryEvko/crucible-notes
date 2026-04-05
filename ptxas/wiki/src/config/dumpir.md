@@ -42,25 +42,33 @@ This tells the developer to re-run with the DUMPIR knob set to `AllocateRegister
 
 ## Related Dump Knobs
 
-DUMPIR is part of a family of 15+ dump-related OCG knobs, all registered in `ctor_005` in the `0x4129*`--`0x412D*` address range:
+DUMPIR is part of a family of 17 dump-related OCG knobs across two constructor registrations. The OCG pipeline registers 11 dump knobs in `ctor_005` (`0x412A40`--`0x412D60`); the Mercury/DAG pipeline registers 6 in `ctor_007` (`0x421880`--`0x421A10`). All knob names and their definition-table offsets are ROT13-encoded in the binary (e.g. `0k14q0` decodes to `0x14D0`).
 
-| Knob Name | ROT13 | Address | Purpose |
-|---|---|---|---|
-| `DumpCallGraph` | `QhzcPnyyTencu` | `0x412A40` | Dump the inter-procedural call graph |
-| `DumpCFG` | `QhzcPST` | `0x412A90` | Dump the control flow graph |
-| `DumpFlow` | `QhzcSybj` | `0x412AE0` | Dump data flow information |
-| `DumpInstPhase` | `QhzcVafgCunfr` | `0x412B30` | Dump per-instruction phase annotations |
-| `DumpIR` | `QhzcVE` | `0x412B80` | Dump the Ori IR after a named phase |
-| `DumpIRInfoAsInteger` | `QhzcVEVasbNfVagrtre` | `0x412BD0` | Dump IR with integer-format operand info |
-| `DumpKnobs` | `QhzcXabof` | `0x412C20` | Dump all knob values to stderr |
-| `DumpPerfMetricsForBlock` | `QhzcCresZrgevpfSbeOybpx` | `0x412C70` | Dump per-basic-block performance metrics |
-| `DumpPerfStats` | `QhzcCresFgngf` | `0x412CC0` | Dump performance statistics |
-| `DumpSASS` | `QhzcFNFF` | `0x412D10` | Dump generated SASS assembly |
-| `DumpSBInstInfo` | `QhzcFOVafgVasb` | `0x412D60` | Dump scoreboard per-instruction info |
+### OCG Pipeline Dump Knobs (ctor_005)
 
-The DAG pipeline has its own set of dump knobs registered in `ctor_007` (`0x421880`--`0x421A10`):
+| Knob Name | ROT13 | Reg Address | Def Offset | Purpose |
+|---|---|---|---|---|
+| `DumpCallGraph` | `QhzcPnyyTencu` | `0x412A40` | `0x1490` | Dump the inter-procedural call graph |
+| `DumpCFG` | `QhzcPST` | `0x412A90` | `0x14A0` | Dump the control flow graph |
+| `DumpFlow` | `QhzcSybj` | `0x412AE0` | `0x14B0` | Dump data flow information (reaching defs, live sets) |
+| `DumpInstPhase` | `QhzcVafgCunfr` | `0x412B30` | `0x14C0` | Dump per-instruction phase annotations |
+| `DumpIR` | `QhzcVE` | `0x412B80` | `0x14D0` | Dump the Ori IR after a named phase |
+| `DumpIRInfoAsInteger` | `QhzcVEVasbNfVagrtre` | `0x412BD0` | `0x14E0` | Dump IR with integer-format operand info |
+| `DumpKnobs` | `QhzcXabof` | `0x412C20` | `0x14F0` | Dump all knob values to stderr |
+| `DumpPerfMetricsForBlock` | `QhzcCresZrgevpfSbeOybpx` | `0x412C70` | `0x1500` | Dump per-basic-block performance metrics |
+| `DumpPerfStats` | `QhzcCresFgngf` | `0x412CC0` | `0x1510` | Dump performance statistics |
+| `DumpSASS` | `QhzcFNFF` | `0x412D10` | `0x1520` | Dump generated SASS assembly |
+| `DumpSBInstInfo` | `QhzcFOVafgVasb` | `0x412D60` | `0x1530` | Dump scoreboard per-instruction info |
 
-| Knob Name | ROT13 | Address | Purpose |
+The "Def Offset" column is the byte offset into the 16-byte-stride knob definition table. Dividing by 16 gives the definition-table index: `DumpCallGraph` is index 329, `DumpSBInstInfo` is index 339. These indices are distinct from the 72-byte runtime knob slot indices used by `GetKnobIntValue`.
+
+Adjacent knobs in `ctor_005` (for boundary context):
+- `0x4129F0`: `DoYieldInsertionWAR_SW2491854` (offset `0x1480`) -- immediately before DumpCallGraph
+- `0x412DB0`: `EmitLDCU` (offset `0x1540`) -- immediately after DumpSBInstInfo
+
+### Mercury/DAG Pipeline Dump Knobs (ctor_007)
+
+| Knob Name | ROT13 | Reg Address | Purpose |
 |---|---|---|---|
 | `DumpAnnot` | `QhzcNaabg` | `0x421880` | Dump instruction annotations |
 | `DumpCFG` | `QhzcPST` | `0x4218D0` | Dump DAG pipeline CFG |
@@ -68,6 +76,8 @@ The DAG pipeline has its own set of dump knobs registered in `ctor_007` (`0x4218
 | `DumpMercOpCounts` | `QhzcZrepBcPbhagf` | `0x421970` | Dump Mercury opcode distribution |
 | `DumpReconstitutedBinary` | `QhzcErpbafgvghgrqOvanel` | `0x4219C0` | Dump reconstituted binary output |
 | `DumpRPO` | `QhzcECB` | `0x421A10` | Dump reverse post-order traversal |
+
+Three knob names appear in both pipelines: `DumpCFG`, `DumpIR`, and (implicitly) their string addresses differ (`0x21BDBF0` vs `0x21DCCA0` for DumpCFG). Setting one does not affect the other.
 
 ## NamedPhases Knob
 
@@ -120,14 +130,21 @@ The `+` character acts as an entry separator (analogous to how the DisablePhases
 
 The Mercury encoder pipeline (`sub_9F4040`, 1,850 lines decompiled) uses the NamedPhases knob to support phase reordering within the Mercury backend. In addition to standard pipeline phase names, it recognizes Mercury-specific pseudo-phases:
 
-| Name | Purpose |
-|---|---|
-| `shuffle` | Mercury instruction shuffle pass |
-| `swap1` through `swap6` | Mercury register swap passes (6 levels) |
-| `OriPerformLiveDead` | Liveness analysis within Mercury context |
-| `OriCopyProp` | Copy propagation within Mercury context |
+| Name | Decompiled Line | Match Method | Purpose |
+|---|---|---|---|
+| `shuffle` | 843 | strlen + byte compare (8 chars) | Mercury instruction shuffle pass |
+| `swap1` | 950 | strlen + byte compare (6 chars) | Mercury register swap level 1 |
+| `swap2` | 1007 | strlen + byte compare (6 chars) | Mercury register swap level 2 |
+| `swap3` | 1061 | strlen + byte compare (6 chars) | Mercury register swap level 3 |
+| `swap4` | 1119 | strlen + byte compare (6 chars) | Mercury register swap level 4 |
+| `swap5` | 1162 | strlen + byte compare (6 chars) | Mercury register swap level 5 |
+| `swap6` | 1202 | `strcmp()` | Mercury register swap level 6 |
+| `OriPerformLiveDead` | 1556 | `sub_C641D0()` lookup | Liveness analysis within Mercury context |
+| `OriCopyProp` | 1648 | `sub_C641D0()` lookup | Copy propagation within Mercury context |
 
-These Mercury-specific names are hardcoded in `sub_9F4040` and do not appear in the main phase name table.
+`shuffle` and `swap1`--`swap6` are pure Mercury pseudo-phases: they do not exist in the main 144-entry phase name table at `off_22BD0C0`. Their name matching is done inline with strlen-guarded character comparison (not `strcmp` -- except `swap6` which uses a full `strcmp` call, likely because it is the last in a fallthrough chain).
+
+`OriPerformLiveDead` and `OriCopyProp` resolve through `sub_C641D0` (the standard binary search), meaning they ARE in the main phase table. They are special in that Mercury conditionally inserts them into its own phase sequence rather than inheriting them from the standard pipeline ordering. The insertion is guarded by state flags (`v234`, `v252`, `v240` for OriPerformLiveDead; `v222`, `v236`, `v257` for OriCopyProp), suggesting they are injected only when the Mercury encoder detects certain register-pressure or correctness conditions.
 
 ## Phase Name Lookup -- `sub_C641D0`
 
@@ -199,13 +216,16 @@ Report passes check their activation condition in the `isNoOp()` virtual method.
 The dispatch loop in `sub_C64F70` constructs diagnostic context strings around each phase execution:
 
 ```c
-// Before execution:
-snprintf(buffer, size, "Before %s", phase_name);   // 0x2065726F666542 = "Before " in LE
+// Before execution (line 117 of sub_C64F70):
+*(_QWORD *)buffer = 0x2065726F666542LL;    // "Before " as 8-byte LE literal
+memcpy(buffer + 7, phase_name, len + 1);   // append phase name after "Before "
 
-// After execution:
-strcpy(buffer, "After ");
-strcat(buffer, phase_name);
+// After execution (line 196 of sub_C64F70):
+strcpy(buffer, "After ");                  // 6-byte prefix
+memcpy(buffer + 6, phase_name, len + 1);   // append phase name after "After "
 ```
+
+The literal `0x2065726F666542` decomposes as bytes `42 65 66 6F 72 65 20` = ASCII `"Before "` (7 bytes including trailing space, plus a null in the 8th byte that gets overwritten by memcpy). The "After " path uses `strcpy` instead of a literal store because it is only 6 bytes and the code path is post-execution (not latency-critical).
 
 These strings appear in diagnostic output when `--stat=phase-wise` is enabled:
 
@@ -213,6 +233,15 @@ These strings appear in diagnostic output when `--stat=phase-wise` is enabled:
 Before GeneralOptimize  ::  [Total 1234 KB]  [Freeable 567 KB]  [Freeable Leaked 12 KB] (2%)
 After GeneralOptimize   ::  [Total 1456 KB]  [Freeable 789 KB]  [Freeable Leaked 23 KB] (3%)
 ```
+
+The string addresses in the binary are:
+- `"Before "` at `0x22BC3D3`
+- `"After "` at `0x22BC3DB`
+- `"  ::  "` at `0x22BC3E2` (separator between phase name and stats)
+- `"[Total "` at `0x22BC3E9`
+- `"[Freeable "` at `0x22BC3F6`
+- `"[Freeable Leaked "` at `0x22BC401`
+- `"All Phases Summary"` at `0x22BC416` (final summary label)
 
 ### Phase-Wise Statistics -- `--stat=phase-wise`
 
@@ -230,6 +259,108 @@ ptxas --stat=phase-wise input.ptx -o output.cubin
 | `detailed` | `d` | Print all of the above |
 
 When `phase-wise` is enabled (string comparison at `0x4460F8` in `sub_445EB0`), the dispatch loop's timing flag (`PhaseManager+72`) is set, and `sub_C64310` runs after every phase to print memory deltas.
+
+## IR Output Format
+
+The DUMPIR dump emits a per-function statistics header (using `#` comment prefix) followed by the Ori IR listing. The statistics header is emitted by `sub_A3A7E0` and contains hardware performance estimates computed from the current IR state.
+
+### Per-Function Statistics Header
+
+```
+# 142 instructions, 24 R-regs
+# [inst=142] [texInst=0] [tepid=0] [rregs=24]
+# [FP16 inst=0] [FP16 VectInst=0] [Percentage Vectorized=0.00]
+# [est latency = 87] [LSpillB=0] [LRefillB=0], [SSpillB=0], [SRefillB=0], [LowLmemSpillSize=0] [FrameLmemSpillSize=0]
+# [LNonSpillB=0] [LNonRefillB=0], [NonSpillSize=0]
+# [Occupancy = 0.750000], [est numDivergentBranches=2] [attributeMemUsage=0], [programSize=1024]
+# [est fp=12] [est half=0], [est trancedental=0], [est ipa=0], [est shared=0], [est controlFlow=8], [est loadStore=24]
+# [est tex=0] [est pairs=4]
+# [issue thru=0.888889] [fp thru=0.111111] [half thru=0.000000], [trancedental thru=0.000000], [ipa thru=0.000000]
+# [shared thru=0.000000] [controlFlow thru=0.062500] [texLoadStore thru=0.187500], [reg thru=0.000000], [warp thru=0.000000]
+# [partially unrolled loops=0] [non-unrolled loops=1]
+# [CB-Bound Tex=0] [UR-Bound Tex=0] [Bindless Tex=0] [Partially Bound Tex=0]
+# [UDP inst=0] [numVecToURConverts inst=0]
+# [maxNumLiveValuesAtSuspend=0]
+# [instHint=142] [instPairs=4]
+# [worstcaseLat=87.000000]
+# [avgcaseLat=52.500000]
+# [SharedMem Alloc thru=0.000000]
+# [Precise inst=0]
+```
+
+The format strings are at two locations in rodata:
+
+| Address Range | Context | Notes |
+|---|---|---|
+| `0x21EBF76`--`0x21EC3B0` | Pre-register-allocation stats | Commas between some `[SSpillB=%d], [SRefillB=%d]` fields |
+| `0x21FA008`--`0x21FA0A0` | Post-register-allocation stats | No commas: `[SSpillB=%d] [SRefillB=%d]` |
+
+The `[Occupancy]` line's typo "trancedental" (missing 's') is present in the binary itself and matches NVIDIA's original source.
+
+### Statistics Field Glossary
+
+| Field | Meaning |
+|---|---|
+| `inst` | Total instruction count |
+| `texInst` | Texture/surface instruction count |
+| `tepid` | Texture instruction count (alternate metric) |
+| `rregs` | R-register (GPR) count |
+| `LSpillB` / `LRefillB` | Local-memory spill/refill byte counts |
+| `SSpillB` / `SRefillB` | Shared-memory spill/refill byte counts |
+| `LowLmemSpillSize` | Low local-memory spill total |
+| `FrameLmemSpillSize` | Frame-level local-memory spill total |
+| `LNonSpillB` / `LNonRefillB` | Local-memory non-spill traffic bytes |
+| `Occupancy` | Estimated warp occupancy (0.0--1.0) |
+| `numDivergentBranches` | Estimated divergent branch count |
+| `attributeMemUsage` | Attribute memory usage (shader inputs) |
+| `programSize` | Total program size in bytes |
+| `issue thru` | Issue throughput (instructions per cycle) |
+| `fp thru` / `half thru` | FP32 / FP16 throughput |
+| `trancedental thru` | Transcendental (SFU) throughput |
+| `ipa thru` | Interpolation throughput |
+| `shared thru` | Shared memory throughput |
+| `texLoadStore thru` | Texture + load/store throughput |
+| `reg thru` | Register throughput |
+| `warp thru` | Warp-level throughput |
+| `CB-Bound Tex` | Constant-bank-bound texture references |
+| `UR-Bound Tex` | Uniform-register-bound texture references |
+| `Bindless Tex` | Bindless texture references |
+| `UDP inst` | Uniform datapath instruction count |
+| `numVecToURConverts` | Vector-to-uniform-register conversion count |
+| `maxNumLiveValuesAtSuspend` | Peak live values at suspension point |
+| `instHint` / `instPairs` | Instruction hint count / instruction pair count |
+| `worstcaseLat` / `avgcaseLat` | Worst-case / average-case latency estimates |
+| `SharedMem Alloc thru` | Shared memory allocation throughput |
+| `Precise inst` | Precise (non-relaxed) instruction count |
+
+### Mercury Pipeline Dump Points
+
+The Mercury/DAG pipeline emits its own "After" labels at fixed points in the encode-decode-expand flow. These labels are used by both the DumpIR (DAG) knob and the DumpAnnot knob:
+
+| Label | String Address | Pipeline Stage |
+|---|---|---|
+| `After Decode` | `0x202D5CE` | After initial SASS decode |
+| `After Expansion` | `0x202D5DB` | After instruction expansion |
+| `After WAR post-expansion` | `0x202D604` | After WAR insertion (post-expansion) |
+| `After Opex` | `0x202D60F` | After operand expansion |
+| `After WAR post-opexing` | `0x202DCD0` | After WAR insertion (post-opex) |
+| `After MercWARs` | `0x202DCDF` | After Mercury WAR pass |
+| `After MercOpex` | `0x21E5C33` | After Mercury operand expansion |
+| `After MercConverter` | `0x22B7B38` | After Mercury format conversion |
+| `After MercExpand` | `0x22BC3DB` | After Mercury instruction expansion |
+| `After EncodeAndDecode` | `0x23D1A60` | After encode-decode round-trip |
+
+### Memory Statistics Format
+
+The `sub_C64310` (ReportPhaseStats) function formats memory sizes using three thresholds:
+
+| Size Range | Format | Example |
+|---|---|---|
+| < 1024 bytes | `%d` (raw integer) | `512` |
+| < 10 MB | `%.3lf KB` (kilobytes, 3 decimals) | `1234.567 KB` |
+| >= 10 MB | `%.3lf MB` (megabytes, 3 decimals) | `12.345 MB` |
+
+The memory format reuses the suffix from `"PeakMemoryUsage = %.3lf KB"` (at `0x1CE7BB6`) by referencing the string at offset +24 to extract just `" KB"`. The pool-consumption variant uses `"[Pool Consumption = "` at `0x22BC3B3`.
 
 ## Phase Name Table
 
@@ -263,6 +394,7 @@ The `--keep` flag is processed in the CLI option handler (`sub_43CC70` at `0x43D
 | `sub_798280` | 900 | `ParsePhaseNameFragment` -- splits `NAME,PARAM` from NamedPhases token | MEDIUM |
 | `sub_798B60` | 1,776 | `NamedPhases::ParsePhaseList` -- tokenizes NamedPhases knob string | CERTAIN |
 | `sub_9F4040` | ~7,400 | `MercuryNamedPhases` -- Mercury pipeline phase selection/reordering | HIGH |
+| `sub_A3A7E0` | ~2,000 | `CodeObject::EmitStats` -- per-function statistics header printer | HIGH |
 | `sub_C639A0` | ~800 | `QuicksortNameTable` -- iterative quicksort for phase name table | MEDIUM |
 | `sub_C63FA0` | ~600 | `EnsureSortedNameTable` -- lazy sorted table construction | MEDIUM |
 | `sub_C641D0` | 305 | `PhaseManager::LookupPhase` -- case-insensitive binary search | CERTAIN |
@@ -281,11 +413,17 @@ The `--keep` flag is processed in the CLI option handler (`sub_43CC70` at `0x43D
 
 4. **The sorted table is 16 bytes per entry**: `{char* name, int32 index, int32 padding}`. The sort is stable only within the quicksort's three-way partitioning -- duplicate names (which do not occur in practice) would have undefined ordering.
 
-5. **Two DumpIR knob instances** exist (OCG and DAG). They are independent -- setting one does not affect the other. The OCG instance controls the 159-phase optimization pipeline; the DAG instance controls the Mercury SASS pipeline.
+5. **Two DumpIR knob instances** exist (OCG and DAG). They are independent -- setting one does not affect the other. The OCG instance controls the 159-phase optimization pipeline; the DAG instance controls the Mercury SASS pipeline. Three knob names (`DumpCFG`, `DumpIR`, `DumpAnnot`/`DumpRPO`) have separate OCG and DAG instances with distinct ROT13 string addresses.
 
 6. **Memory statistics format** uses three thresholds: bytes (< 1 KB), kilobytes with 3 decimals (< 10 MB), megabytes with 3 decimals (>= 10 MB). The reporter is `sub_C64310`.
 
-7. **NamedPhases in Mercury** (`sub_9F4040`) supports additional pseudo-phases (`shuffle`, `swap1`--`swap6`, `OriPerformLiveDead`, `OriCopyProp`) that are not in the main phase table. These are Mercury-specific and handled by hardcoded string comparisons.
+7. **NamedPhases in Mercury** (`sub_9F4040`) supports 7 pure pseudo-phases (`shuffle`, `swap1`--`swap6`) that do not exist in the main phase table. These use inline strlen-guarded byte comparison, not `strcmp` (except `swap6`). Two additional names (`OriPerformLiveDead`, `OriCopyProp`) ARE in the main table but are conditionally injected into Mercury's phase sequence based on register-pressure/correctness state flags.
+
+8. **The "Before" string is a raw 8-byte LE literal store**, not a `strcpy`. The dispatch loop writes `0x2065726F666542` directly to the buffer, which is `"Before "` in ASCII. This is a micro-optimization for the hot path (pre-phase execution). The "After" path uses `strcpy` since it is post-execution.
+
+9. **Statistics header has two variants.** The pre-register-allocation format strings (at `0x21EC050`) use commas between some spill fields: `[SSpillB=%d], [SRefillB=%d]`. The post-register-allocation variant (at `0x21FA008`) drops those commas: `[SSpillB=%d] [SRefillB=%d]`. A reimplementation should match whichever variant is appropriate for the dump point.
+
+10. **The "trancedental" typo is canonical.** Both the format string and the stats output use "trancedental" (missing 's'). A reimplementation should preserve this spelling for compatibility with tools that parse the output.
 
 ## Cross-References
 
