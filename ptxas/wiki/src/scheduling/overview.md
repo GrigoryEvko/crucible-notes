@@ -33,7 +33,7 @@ function ScheduleInstructions(sched):
     if not KnobGetBool("ScheduleInstructions"):
         return
 
-    // 3. Set mode flags from knobs 419, 420
+    // 3. Set mode flags from knobs 419 (LivenessCountRegComp), 420 (LivenessUseHiLo)
     sched.flags |= (knob_419 << 3) | (knob_420 << 4)
 
     // 4. Optionally create register pressure tracker
@@ -71,7 +71,7 @@ function ScheduleInstructions(sched):
 Goal: minimize register pressure so the register allocator has headroom. This phase reorders instructions to reduce the maximum number of simultaneously-live virtual registers.
 
 - Enabled by the named option `"ScheduleInstructionsReduceReg"` (default: on at `-O3`).
-- Register targets set from knobs 776 and 778 (defaults approximately 250 and 300).
+- Register targets set from knobs 776 (`SchedReduceIncLimit`) and 778 (`SchedReduceIncLimitHigh`) (defaults approximately 250 and 300).
 - The mode byte 0x39 selects the register-pressure-minimizing priority weights inside the unified engine.
 - The engine's inner dispatch reads `*(DWORD*)(scheduler+60) == 1` to enter the ReduceReg path.
 
@@ -90,8 +90,8 @@ Goal: maximize instruction-level parallelism and hide memory latencies by interl
 Goal: batch-aware scheduling for GMMA/WGMMA warpgroup tensor operations. Groups tensor instructions into batches that can execute as warpgroup-cooperative operations with minimal pipeline stalls.
 
 - Enabled by the named option `"ScheduleInstructionsDynBatch"` and only activates when the function has varying instruction counts across BBs.
-- Controlled by knob 742 (dynamic batch enable).
-- Reads stall/batch depth limits from knobs 805, 741, 761, 762.
+- Controlled by knob 742 (`SchedCrossBlock`, cross-block scheduling mode).
+- Reads stall/batch depth limits from knobs 805 (`SchedTexBatchTargetSelectRegisterTarget`), 741 (`SchedCountLoadsPerTex`), 761 (`SchedMaxRLiveOKslack`), 762 (`SchedMaxRLiveOKslackColdBlocks`).
 - Allocates a 184-byte DynBatch context (`sub_8BF890`) with an `8 * numBBs` sub-array for per-BB batch tracking.
 - Context initialization (`sub_8C1BA0`): sets batch window to 0xFFFFFFFF (sentinel), copies register liveness from `func+832`.
 - The mode byte 0x41 selects batch-aware priority weights.
@@ -159,7 +159,7 @@ When a batch boundary is detected (instruction's BB start offset exceeds the bat
 function ScheduleEngine(sched, mode, arg3, rebuild):
     if rebuild:
         InitScheduleRegion(sched)               // sub_6833F0
-        // allocates 72-byte per-BB records, queries knobs 595, 743, 747
+        // allocates 72-byte per-BB records, queries knobs 595 (PreserveSchedOrderSame), 743 (SchedCrossBlockInstsToSpeculate), 747 (SchedCrossBlockTexToSpeculate)
 
     for each bb in sched.basic_blocks:
         // 9 register pressure counters at offsets 48-84
@@ -297,7 +297,7 @@ function ComputeRegisterBudget(sched):
     sched.pressureSlack     = ...        // offset +320
 ```
 
-The register pressure curve (`sub_8CE520`) uses a piecewise linear model parameterized by `(4, 2, 6)` or a custom string-encoded function from knob 750.
+The register pressure curve (`sub_8CE520`) uses a piecewise linear model parameterized by `(4, 2, 6)` or a custom string-encoded function from knob 750 (`SchedEstimatedLoopIterations`).
 
 ## Dependency Graph
 
@@ -306,7 +306,7 @@ The dependency DAG is built in two stages:
 ### Stage 1: Pre-scheduling scan (`sub_8CF880`, 28 KB)
 
 Iterates basic blocks in reverse order. For each BB:
-- Checks knobs 314/313 for per-BB scheduling skip flags
+- Checks knobs 314 (`FenceInterference`) / 313 (`FenceCode`) for per-instruction scheduling fence conditions
 - Walks the instruction linked list, identifying NOP/control instructions
 - Builds dependency edges via `sub_8D9930`
 - Manages memory arenas with SSE-optimized copies for instruction metadata arrays
@@ -342,7 +342,7 @@ Key behaviors:
 - Allocates per-slot arrays:
   - `scheduler+672`: 84-byte scheduling slots (resource tracking)
   - `scheduler+280`: 48-byte analysis slots (if `opt_level > 2`)
-  - `scheduler+248`, `scheduler+256`: register pressure bitvectors sized to `(numRegs+1)` or `(2*numRegs+2)` if knob 420 (dual-register tracking) is active
+  - `scheduler+248`, `scheduler+256`: register pressure bitvectors sized to `(numRegs+1)` or `(2*numRegs+2)` if knob 420 (`LivenessUseHiLo`, dual-register tracking) is active
 
 ## Pre-Scheduling vs Post-Scheduling
 
@@ -424,31 +424,35 @@ See [Latency Model](latency-model.md) for per-opcode latency tables and function
 
 ## Scheduling Knobs
 
-The scheduler reads approximately 76 knobs. The most significant ones:
+The scheduler reads approximately 76 knobs. The most significant ones (names decoded from ROT13 in the binary):
 
-| Knob ID | Type | Default | Purpose |
-|---|---|---|---|
-| 313, 314 | bool | false | Skip scheduling for specific BBs |
-| 419 | bool | -- | Forward scheduling mode flag (bit 3 in `sched+1376`) |
-| 420 | bool | -- | Dual-register tracking (bit 4 in `sched+1376`) |
-| 487 | bool | true | Master scheduling/peephole enable |
-| 510 | bool | -- | BB pre-optimization enable |
-| 595 | bool | true | Scheduling enable check |
-| 740 | double | 0.045 | Register pressure coefficient |
-| 741 | int | 3 | Stall threshold |
-| 742 | bool | -- | Dynamic batch enable |
-| 743, 747 | int | -- | Scheduling configuration parameters |
-| 750 | string | -- | Register pressure function (piecewise linear spec) |
-| 760 | int | -- | Reserved register headroom |
-| 761 | int | -- | Batch depth (non-sm_50) |
-| 762 | int | -- | Extra register reservation |
-| 763 | bool | false | Disable register budget entirely |
-| 769 | bool | -- | Per-BB scheduling query |
-| 770 | int | 4 | Priority queue depth (lookahead window) |
-| 776 | int | ~250 | Forward pass primary register target |
-| 778 | int | ~300 | Forward pass secondary register target |
-| 805 | int | -- | Max stall cycles (capped at 16) |
-| 806 | int | -- | Max stall cycles override (capped at 16) |
+| Knob ID | Name | Type | Default | Purpose |
+|---|---|---|---|---|
+| 313 | `FenceCode` | when-list | -- | Skip scheduling for specific opcodes (per-instruction WHEN condition) |
+| 314 | `FenceInterference` | when-list | -- | Mark interference fences for specific opcodes |
+| 419 | `LivenessCountRegComp` | int32 | -- | Forward scheduling mode flag (bit 3 in `sched+1376`) |
+| 420 | `LivenessUseHiLo` | int32 | -- | Dual-register hi/lo tracking (bit 4 in `sched+1376`) |
+| 487 | -- | bool | true | Master scheduling/peephole enable |
+| 510 | `OptimizeUniformAtomicMode` | int32 | -- | BB pre-optimization mode for uniform atomics |
+| 595 | `PreserveSchedOrderSame` | when-list | -- | Preserve scheduling order (per-instruction WHEN condition) |
+| 740 | `SchedBumpScaleAugmentFactor` | double | 0.045 | Register pressure bump scale augmentation coefficient |
+| 741 | `SchedCountLoadsPerTex` | int32 | 3 | Load count per texture operation (stall threshold) |
+| 742 | `SchedCrossBlock` | int32 | -- | Cross-block scheduling mode |
+| 743 | `SchedCrossBlockInstsToSpeculate` | int32 | -- | Cross-block instruction speculation count |
+| 747 | `SchedCrossBlockTexToSpeculate` | int32 | -- | Cross-block texture speculation count |
+| 750 | `SchedEstimatedLoopIterations` | string | -- | Estimated loop iteration count override |
+| 760 | `SchedMaxRLiveCarefulSlack` | int32 | -- | Reserved register headroom (careful slack for live registers) |
+| 761 | `SchedMaxRLiveOKslack` | int32 | -- | Acceptable live-register slack (batch depth on non-sm_50) |
+| 762 | `SchedMaxRLiveOKslackColdBlocks` | int32 | -- | Extra register slack for cold basic blocks |
+| 763 | `SchedMaxRTarget` | int32 | -- | Maximum register target; 0 disables register budget |
+| 769 | `SchedPrefFurthestDep` | when-list | -- | Per-BB scheduling query: prefer furthest dependency |
+| 770 | `SchedReadAvailTarget` | int32 | 4 | Priority queue depth (read-availability lookahead window) |
+| 776 | `SchedReduceIncLimit` | int32 | ~250 | Forward pass primary register increment limit |
+| 778 | `SchedReduceIncLimitHigh` | int32 | ~300 | Forward pass secondary (high) register increment limit |
+| 805 | `SchedTexBatchTargetSelectRegisterTarget` | int32 | -- | Texture batch register target stall limit (capped at 16) |
+| 806 | `SchedTexBatchTargetSelectSchedulerTarget` | int32 | -- | Texture batch scheduler target stall limit (capped at 16) |
+
+Knob names are stored ROT13-encoded in the binary (see [Knobs System](../config/knobs.md) for the obfuscation scheme). Types `when-list` indicate knobs that support per-instruction or per-BB conditional overrides via `WHEN=` syntax.
 
 The full scheduling context configuration is performed by `sub_A95DC0` (35 KB), which reads dozens of knob values and populates the scheduling context structure.
 
@@ -556,11 +560,11 @@ The scheduling context object (`sched` / `a1`) is the central state structure pa
 |---|---|---|---|---|
 | +240 | 4 | `int32` | currentPhase | Phase ID: 0 = budget computation, 1 = ReduceReg, 2 = ILP |
 | +248 | 8 | `ptr` | regBitvector1 | Register pressure bitvector (`numRegs + 1` words) |
-| +256 | 8 | `ptr` | regBitvector2 | Second bitvector for dual-register tracking (knob 420) |
+| +256 | 8 | `ptr` | regBitvector2 | Second bitvector for dual-register tracking (knob 420, `LivenessUseHiLo`) |
 | +280 | 8 | `ptr` | analysisSlots | 48-byte per-BB analysis slots (allocated when `opt_level > 2`) |
-| +292 | 1 | `byte` | regTargetValid | Whether register targets from knobs 776/778 are valid |
-| +296 | 4 | `int32` | regTargetPrimary | Forward-pass primary register target (knob 776, in HW register units) |
-| +300 | 4 | `int32` | regTargetSecondary | Forward-pass secondary register target (knob 778, in HW register units) |
+| +292 | 1 | `byte` | regTargetValid | Whether register targets from knobs 776/778 (`SchedReduceIncLimit`/`SchedReduceIncLimitHigh`) are valid |
+| +296 | 4 | `int32` | regTargetPrimary | Forward-pass primary register target (knob 776 `SchedReduceIncLimit`, in HW register units) |
+| +300 | 4 | `int32` | regTargetSecondary | Forward-pass secondary register target (knob 778 `SchedReduceIncLimitHigh`, in HW register units) |
 | +311 | 1 | `byte` | cfgFlag1 | Priority queue depth configuration flag |
 | +312 | 4 | `int32` | cfgParam1 | Configuration parameter (default 10) |
 
@@ -581,10 +585,10 @@ The scheduling context object (`sched` / `a1`) is the central state structure pa
 
 | Offset | Size | Type | Name | Purpose |
 |---|---|---|---|---|
-| +404 | 4 | `int32` | maxStallCycles | Max stall cycles; from knob 805/806, capped at 16 |
-| +408 | 4 | `int32` | stallThreshold | Stall threshold; knob 741, default 3 |
-| +412 | 4 | `int32` | batchDepth | Batch depth; knob 761, default 3 (6 or 12 for sm_50 with dual-issue) |
-| +416 | 4 | `int32` | extraRegReserve | Extra register reservation; knob 762, default -1 (disabled) |
+| +404 | 4 | `int32` | maxStallCycles | Max stall cycles; from knob 805/806 (`SchedTexBatchTargetSelect{Register,Scheduler}Target`), capped at 16 |
+| +408 | 4 | `int32` | stallThreshold | Stall threshold; knob 741 (`SchedCountLoadsPerTex`), default 3 |
+| +412 | 4 | `int32` | batchDepth | Batch depth; knob 761 (`SchedMaxRLiveOKslack`), default 3 (6 or 12 for sm_50 with dual-issue) |
+| +416 | 4 | `int32` | extraRegReserve | Extra register reservation; knob 762 (`SchedMaxRLiveOKslackColdBlocks`), default -1 (disabled) |
 | +420 | 4 | `int32` | spillModeCountdown | Spill-mode countdown; when > 0, forces aggressive scheduling with critical-path bit always set |
 
 ### Register Budget and Pressure Tracking (offsets 432--485)
