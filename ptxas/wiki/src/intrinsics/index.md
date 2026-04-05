@@ -315,19 +315,69 @@ All codegen handlers query instruction properties through accessor functions on 
 
 ## Prototype Generator -- `sub_5FF700`
 
-At 354KB, this is the single largest function in the intrinsic infrastructure. It takes an intrinsic case number (`a1`) and a buffer pointer (`a2`), allocates a buffer via `sub_4DA340(size, a2)`, fills it with a PTX prototype string via `strcpy()`, and returns the result. The output is a complete `.weak .func` PTX declaration that gets emitted into the PTX output stream so the linker can resolve calls to CUDA runtime helper functions.
+At 354KB, this is the single largest function in the intrinsic infrastructure and the 2nd largest function in the entire ptxas binary. It takes a body template ID (`a1`, range 0--1079) and an allocator context (`a2`), allocates a buffer via `sub_4DA340(size, a2)`, fills it with a PTX prototype string via `strcpy()`, and returns the result. The output is a complete `.weak .func` or `.FORCE_INLINE .func` PTX declaration that gets emitted into the PTX output stream so the linker can resolve calls to CUDA runtime helper functions.
 
-The function is effectively a giant `switch(a1)` with one case per intrinsic. Each case contains an inline string literal with the full PTX function signature.
+The function is a single `switch(a1)` with 1,080 case labels (0--1079) plus a default case that returns an empty string `""`. Each case allocates an exact-sized buffer (72--1,200 bytes), copies a hardcoded PTX prototype string into it, and returns the pointer.
+
+### Prototype Generator Architecture
+
+```
+sub_5FF700(template_id, allocator)
+  │
+  │  switch(template_id)     ← 1,080 cases, 0--1079
+  │
+  ├── case N:
+  │     buf = sub_4DA340(byte_count, allocator)    ← allocate exact-fit buffer
+  │     strcpy(buf, ".weak .func (...) name (...)")  ← copy PTX prototype
+  │     return buf
+  │
+  ├── case M:  (45 large WMMA mma cases)
+  │     buf = sub_4DA340(byte_count, allocator)    ← up to 1,200 bytes
+  │     *(u64*)buf = 0x662E206B6165772E            ← ".weak .f" (inline store)
+  │     *(u64*)(buf+N-8) = <trailer>               ← last 8 bytes inline
+  │     qmemcpy(buf+8, .rodata_addr, size-16)      ← bulk copy middle
+  │     return buf
+  │
+  └── default:
+        return ""
+```
+
+**Three copy strategies** appear in the decompilation, all producing the same result:
+
+| Strategy | Cases | Trigger | Max Size |
+|---|---|---|---|
+| `strcpy()` with inline string literal | 1,035 | Prototype fits in decompiler string threshold | ~520 bytes |
+| `qmemcpy()` with QWORD bookend stores | 45 | Prototype too long for IDA to reproduce as literal | 1,200 bytes |
+| Indirect variable assignment + copy | ~130 | IDA SSA split (subset of strcpy) | ~120 bytes |
+
+The `qmemcpy` cases are the 45 WMMA `mma` operations with the largest parameter lists (3--4 fragment matrices of 8 elements each). IDA stores the first and last 8 bytes as inline immediates (`0x662E206B6165772E` = `".weak .f"`, trailer varies per case) and bulk-copies the middle from `.rodata`. The prototype content is structurally identical to the `strcpy` cases.
+
+### Linkage Directives
+
+Two PTX linkage types are emitted, controlling how the linker handles the declared function:
+
+| Directive | Count | Meaning | Used By |
+|---|---|---|---|
+| `.weak` | 616 | Overridable by user code; linker uses user version if present | SM20 math, SM70 barriers/sync/WMMA (original Volta), SM80 cache policy, SM8x/9x/10x MMA, redux sync, sanitizer hooks, video emulation, dp2a/dp4a |
+| `.FORCE_INLINE` | 464 | Inlined at every call site; no separate callable function | SM70 aligned vote/match/query_activemask, SM7x sub-byte/bit WMMA, SM72 integer WMMA, SM8x tf32/bf16/f64 WMMA, SM10x tcgen05 alloc/guardrails, SM80 createpolicy_fractional |
+
+The `.weak` linkage supports user-supplied replacements: if the user provides their own implementation of `__cuda_sm20_div_s16`, the linker will use that instead of the built-in runtime version. The `.FORCE_INLINE` directive forces per-call-site specialization -- the later-generation WMMA implementations are more complex and performance-sensitive, making inlining profitable.
+
+A subset of `.weak` prototypes (~410) carry the `.unique` qualifier:
+
+```
+.weak .func (.reg .b32 dst) __cuda_sm70_barrier_sync (.reg .b32 arg0) .unique ;
+```
+
+`.unique` instructs the PTX linker to keep exactly one copy of the function body even if multiple compilation units reference it. All barriers, redux sync, warpsync, non-aligned vote/match/shuffle use `.unique`.
 
 ### Prototype Format
 
-Every emitted prototype follows the same structure:
+Every emitted prototype follows one of these structural patterns:
 
 ```
-.weak .func (<return_params>) <intrinsic_name> (<input_params>)
+<linkage> .func (<return_params>) <name> (<input_params>) [.unique] ;
 ```
-
-Examples from the binary:
 
 | Case | Prototype |
 |---|---|
@@ -335,8 +385,68 @@ Examples from the binary:
 | 4 | `.weak .func (.reg .u64 %rdv1) __cuda_sm20_div_u64 (.reg .u64 %rda1, .reg .u64 %rda2)` |
 | 9 | `.weak .func (.reg .f32 %fv1) __cuda_sm20_div_rn_f32 (.reg .f32 %fa1, .reg .f32 %fa2)` |
 | 25 | `.weak .func (.reg .f64 %fdv1) __cuda_sm20_div_rn_f64_full (.reg .f64 %fda1, .reg .f64 %fda2)` |
+| 76 | `.weak .func (.reg .b32 dst) __cuda_reduxsync_b32_xor (.reg .b32 src, .reg .b32 mask) .unique` |
+| 303 | `.weak .func (.param .align 16 .b32 dst[8]) __cuda_sm70_wmma_m16n16k16_load_a_row (.reg .u64 ptr, .reg .u32 ldm) .unique` |
+| 666 | `.FORCE_INLINE .func (.reg .b32 dst0, .reg .b32 dst1, .reg .b32 dst2, .reg .b32 dst3) __cuda_sm8x_tf32_wmma_m16n16k8_load_a_row (.reg .u64 ptr, .reg .u32 ldm)` |
+| 890 | `.weak .func () __cuda_sm70_wmma_m16n16k16_store_d_row_f32 (.reg .b64 ptr, .reg .b32 ldm, .reg .b32 sreg0, ...)` |
+| 1055 | `.FORCE_INLINE .func (.reg .b32 warp_rank) __cuda_sm10x_get_warp_rank ()` |
+| 1073 | `.weak .func (.param .b64 func_retval0) __cuda_sanitizer_memcheck_readmetadata (.param .b64 ..._param_0, .param .b64 ..._param_1)` |
 
-The `.weak` linkage means these declarations are overridable: if the user provides their own implementation of `__cuda_sm20_div_s16`, the linker will use that instead of the built-in runtime implementation. This mechanism supports both default CUDA runtime math and user-supplied replacements.
+### Parameter Passing Conventions
+
+Five distinct parameter-passing ABIs appear across the 1,080 prototypes:
+
+**Convention A -- Register-only (`.reg`):** Used by math operations, barriers, warp sync, redux sync, video emulation. Return and input parameters are individual `.reg` declarations with typed names. This is the simplest and most common convention.
+
+```
+.weak .func (.reg .f32 %fv1) __cuda_sm20_div_rn_f32 (.reg .f32 %fa1, .reg .f32 %fa2) ;
+```
+
+**Convention B -- Param-array with alignment (`.param .align N .b32 name[K]`):** Used by WMMA load/mma, MMA, Hopper sub-byte MMA, Blackwell MMA. Returns an aligned array of `.b32` elements. Array sizes: `dst[2]`, `dst[3]`, `dst[4]`, `dst[5]`, `dst[8]`, `mma_dst[2]`, `mma_dst[4]`, `mma_dst[8]`, `ret_dst[3]`, `ret_dst[5]`. 326 prototypes use `.align 16`; 1 prototype (`mma_shfl_f16`) uses `.align 8`.
+
+```
+.weak .func (.param .align 16 .b32 d[8]) __cuda_sm70_wmma_m16n16k16_mma_row_col_f32_f32
+  (.param .align 16 .b32 a[8], .param .align 16 .b32 b[8], .param .align 16 .b32 c[8]) ;
+```
+
+**Convention C -- Param-scalar (`.param .b64`):** Used exclusively by the 7 compute-sanitizer hooks. Parameters use fully-qualified names (`__cuda_sanitizer_memcheck_malloc_param_0`).
+
+```
+.weak .func (.param .b64 func_retval0) __cuda_sanitizer_memcheck_malloc
+  (.param .b64 __cuda_sanitizer_memcheck_malloc_param_0,
+   .param .b64 __cuda_sanitizer_memcheck_malloc_param_1) ;
+```
+
+**Convention D -- Void return `()`:** Used by WMMA store_d, tcgen05 guardrail traps, sanitizer_free. ~140 prototypes (45 `.weak` + 95 `.FORCE_INLINE`).
+
+```
+.weak .func () __cuda_sm70_wmma_m16n16k16_store_d_row_f32
+  (.reg .b64 ptr, .reg .b32 ldm, .reg .b32 sreg0, .reg .b32 sreg1, ...) ;
+```
+
+**Convention E -- Multi-register return (`.FORCE_INLINE` only):** Used by extended WMMA load operations (SM7x/SM72/SM8x). Returns 1--4 registers in the return position (never 8 -- 8-element returns use Convention B's `.param` arrays instead).
+
+```
+.FORCE_INLINE .func (.reg .b32 dst0, .reg .b32 dst1, .reg .b32 dst2, .reg .b32 dst3)
+  __cuda_sm8x_tf32_wmma_m16n16k8_load_a_row (.reg .u64 ptr, .reg .u32 ldm) ;
+```
+
+### PTX Register Types
+
+Eight PTX register types appear across the prototypes:
+
+| Type | Approx. Count | Usage |
+|---|---|---|
+| `.reg .b32` | ~2,925 | Dominant: barrier args, WMMA/MMA fragments, guardrail params |
+| `.reg .u64` | ~520 | Pointers (WMMA/MMA base addresses) |
+| `.reg .u32` | ~341 | Integer params (leading dimension, counts, offsets) |
+| `.reg .b64` | ~246 | 64-bit bitwise (match bitmask, shuffle predicates, retval) |
+| `.reg .f32` | ~106 | Float math (div, rcp, sqrt) |
+| `.reg .f64` | ~70 | Double math (div, rcp, sqrt, dsqrt) |
+| `.reg .pred` | ~10 | Predicate (vote output, matchsync predicate out) |
+| `.reg .s32` | ~6 | Signed 32-bit (SM20 div/rem s16 return values only) |
+
+Note: `.b32` is used instead of `.s32`/`.u32`/`.f32` for operations where the type interpretation is determined by the instruction rather than the register declaration (WMMA fragments, MMA accumulators, barrier IDs). The `.s32` type appears only in the 4 oldest SM20 div/rem_s16/u16 prototypes (cases 0--3).
 
 ### Register Naming Convention
 
@@ -344,7 +454,7 @@ The prototype register names encode the data type and role:
 
 | Prefix | Meaning |
 |---|---|
-| `%d` | 32-bit integer return value |
+| `%d` | 32-bit integer return value (SM20 div/rem s16/u16 only) |
 | `%a0`, `%a1` | 32-bit integer input parameters |
 | `%rdv1` | 64-bit integer return value |
 | `%rda1`, `%rda2` | 64-bit integer input parameters |
@@ -352,6 +462,67 @@ The prototype register names encode the data type and role:
 | `%fa1`, `%fa2` | f32 input parameters |
 | `%fdv1` | f64 return value |
 | `%fda1`, `%fda2` | f64 input parameters |
+| `%fdnum`, `%fdden` | f64 numerator/denominator (div_f64_v2 variants) |
+| `dst`, `dst0`..`dst7` | Generic output registers (WMMA load, barriers) |
+| `src`, `sreg0`..`sreg7` | Generic input registers (WMMA store) |
+| `ptr`, `base` | 64-bit pointer registers |
+| `ldm` | Leading dimension parameter (WMMA) |
+| `mask` | Warp participation mask |
+| `cnt` | Thread count (barrier_sync_count, barrier_arrive_count) |
+| `arg0`..`arg3` | Generic numbered arguments |
+| `parg` | Predicate argument (vote) |
+| `retVal`, `dummy` | Return/placeholder (tcgen05 guardrails) |
+| `activemask`, `warp_rank` | Cooperative group queries |
+
+### Buffer Allocation Sizes
+
+`sub_4DA340(size, allocator)` allocates an exact-fit buffer per prototype:
+
+| Metric | Value |
+|---|---|
+| Minimum allocation | 72 bytes |
+| Maximum allocation | 1,200 bytes |
+| Median allocation | ~130 bytes |
+| Most common sizes | 132 (37x), 182 (31x), 192 (30x), 125 (29x), 118 (28x) |
+| Total allocations | 1,080 |
+
+The 45 `qmemcpy` cases have the largest buffers: 386--1,200 bytes. These are WMMA `mma` operations whose prototypes enumerate all 3--4 fragment matrices (a, b, c, d) with 4--8 elements each, producing prototype strings that exceed 900 bytes.
+
+### Case Range Layout
+
+The 1,080 cases follow the body template registration order from `sub_5D7430`, roughly grouped by SM generation:
+
+| Case Range | Count | Category | Linkage |
+|---|---|---|---|
+| 0--69 | 70 | SM20 IEEE math (div, rem, rcp, sqrt, bfe, bfi, dsqrt, drsqrt) | `.weak` |
+| 70--73 | 4 | SM3x optimized division (rn_ftz/noftz f32 + slowpaths) | `.weak` |
+| 74--75 | 2 | SM62 dp2a/dp4a | `.weak` |
+| 76--92 | 17 | Redux sync (b32/s32/u32/f32 add/max/min/xor/and/or/abs/NaN) | `.weak .unique` |
+| 93--~274 | ~182 | SM70 barriers (sync/arrive/red, 16 IDs x with/without count) | `.weak .unique` |
+| ~275--~302 | ~28 | SM70 vote, shuffle, match (bfly/down/idx/up, all/any/b32/b64) | `.weak .unique` / `.FORCE_INLINE` |
+| ~303--~665 | ~363 | SM70 WMMA load/store (m16n16k16, m32n8k16, m8n32k16, all types/spaces) | `.weak .unique` |
+| ~666--~889 | ~224 | SM7x/SM72/SM8x extended WMMA (sub-byte, integer, tf32, bf16, f64) | `.FORCE_INLINE` |
+| ~890--~964 | ~75 | SM70 WMMA store_d (all shapes/layouts/spaces/types) | `.weak` |
+| ~965--~1048 | ~84 | SM70 WMMA mma + SM8x/SM9x/SM10x MMA (f16/f32, sub-byte, bit, sparse) | `.weak` |
+| ~1049--~1055 | ~7 | SM10x tcgen05 guardrail traps | `.weak` |
+| ~1056--~1060 | ~5 | SM8x direct MMA (mma_shfl, row/col f16/f32 combos) | `.weak` |
+| ~1061--~1072 | ~12 | SM10x tcgen05 alloc/guardrails check functions + get_warp_rank + create_mask | `.FORCE_INLINE` / `.weak` |
+| 1073--1079 | 7 | Compute-sanitizer hooks (readmetadata, generic, global, local, shared, malloc, free) | `.weak` |
+
+### Statistics
+
+| Metric | Value |
+|---|---|
+| Machine code size | 362,496 bytes (0x5FF700--0x658B00) |
+| Decompiled lines | 9,414 |
+| Switch cases | 1,080 (case 0 through case 1079 + default) |
+| Local variables declared | ~716 (IDA SSA artifacts) |
+| `.weak` prototypes | 616 (571 strcpy + 45 qmemcpy) |
+| `.FORCE_INLINE` prototypes | 464 |
+| `.unique`-qualified prototypes | ~410 |
+| `.param .align` prototypes | 327 (326 align-16, 1 align-8) |
+| Void-return prototypes | ~140 |
+| Predicate-using prototypes | ~10 |
 
 ## Major Codegen Handlers
 
