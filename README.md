@@ -8,10 +8,10 @@ Reverse engineering reference for NVIDIA's CUDA compiler toolchain.
 
 | Component | Description | Docs | Status |
 |---|---|---|---|
-| **cicc** | CUDA C→PTX compiler (60 MB, LLVM 20.0.0 + EDG 6.6) | **[wiki](https://grigoryevko.github.io/nvopen-tools/cicc/)** | 49 pages |
-| **ptxas** | PTX→SASS assembler | — | Decompiled |
+| **cicc** | CUDA C→PTX compiler (60 MB, LLVM 20.0.0 + EDG 6.6) | **[wiki](https://grigoryevko.github.io/nvopen-tools/cicc/)** | 128 pages |
+| **ptxas** | PTX→SASS assembler (37.7 MB, proprietary, 159-phase pipeline) | **[wiki](https://grigoryevko.github.io/nvopen-tools/ptxas/)** | 74 pages |
+| **nvlink** | GPU device linker | **[wiki](https://grigoryevko.github.io/nvopen-tools/nvlink/)** | 95 pages |
 | **nvcc** | CUDA compilation driver | — | Decompiled |
-| **nvlink** | GPU device linker | — | Decompiled |
 | **nvptxcompiler** | PTX JIT compilation library | — | Decompiled |
 | **cudafe++** | CUDA C++ frontend preprocessor | — | Decompiled |
 | **fatbin** | Fat binary manipulation tools | [readme](fatbin/README.md) | Released |
