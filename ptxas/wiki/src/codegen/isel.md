@@ -340,14 +340,164 @@ The two builder variants (`sub_B1FA20` and `sub_B20E00`) are structurally near-i
 
 ### ISel Mega-Selector -- `sub_C0EB10` (185 KB)
 
-The single largest function in the ISel range, with 500+ local variables and a giant switch/case over instruction opcodes. It handles the complete IR-to-SASS mapping for complex instructions that cannot be handled by the simpler builder variants. Key evidence:
+The single largest function in the Phase 2 ISel range: 185 KB decompiled, 6,016 lines, 719+ local variables. It performs the final Ori-IR-to-SASS opcode and operand encoding for 169 distinct instruction types (SASS opcode indices 7--221). While the ~801 DAG pattern matchers handle template-based ISel through a priority contest, the mega-selector handles complex instructions that require procedural, multi-step encoding logic -- instructions where the operand marshalling depends on runtime state (calling conventions, symbol resolution, address space aliasing).
 
-- String reference: `"__nv_reservedSMEM_offset_0_alias"` -- handles shared memory alias resolution
-- Uses SSE2 operations for bulk operand manipulation
-- For each instruction type: reads operands, checks encoding constraints, and emits the corresponding SASS instruction or instruction sequence
-- Calls into register allocation queries to verify that selected encodings are compatible with the allocated registers
+#### Dual-Switch SM-Generation Dispatch
 
-The mega-selector is too large for Hex-Rays to produce clean decompilation. Analysis relies on disassembly, call graph structure, and the smaller functions it invokes.
+The function contains **two copies** of the same 169-case switch statement, separated by a vtable-based opcode translation mechanism. This dual-switch structure is the SM-generation dispatch:
+
+```c
+// sub_C0EB10 -- simplified dispatch skeleton
+void MegaSelector(context *a1, instruction *a2, isel_ctx *a3) {
+    int64_t *vtable = *(a3->backend);
+    int opcode = *(int *)(a2 + 8);           // SASS opcode type
+
+    // Pre-dispatch: capability check via vtable[12]
+    auto cap_check = vtable[12];              // offset +96
+    if (cap_check != sub_BFEAA0)              // default stub?
+        if (cap_check(a3, a2))
+            ctx->flags[256] = 1;              // set encoding flag
+
+    // Read opcode translator from vtable[2]
+    auto translator = vtable[2];              // offset +16
+
+    if (translator != sub_BFEBF0) {
+        // PATH A: SM-specific translation
+        int encoding_index = translator(a3, opcode);
+        int isel_opcode = *(ctx + 8);         // post-translation opcode
+        switch (isel_opcode) {                // PRIMARY SWITCH (169 cases)
+            case 7: case 34: case 35: case 36:
+                emit_simple(encoding_index, ...);
+                break;
+            case 8: case 38: case 46: ...
+                /* already encoded */ break;
+            // ... 169 cases total ...
+            default: goto high_opcode_path;
+        }
+    } else {
+        // PATH B: static table lookup (default backend)
+        int encoding_index = 355;             // sentinel for extended opcodes
+        if (opcode <= 0xDD)
+            encoding_index = word_22B4B60[opcode];
+        switch (opcode) {                     // FALLBACK SWITCH (same 169 cases)
+            case 7: ...: goto handler_7;      // jumps into Path A handlers
+            // ... identical case set ...
+            default: return;
+        }
+    }
+
+high_opcode_path:
+    if (opcode > 0x199) return;
+    // Try vtable[3] extension dispatch for SM 100+ / Blackwell
+    auto extension = vtable[3];               // offset +24
+    if (extension != sub_BFEA30)
+        extension(a3, a2);                    // arch-extension handler
+}
+```
+
+The dual-switch pattern is a code-generation artifact: the compiler emitted two copies because the vtable path and static-table path produce different values for the encoding index but need identical case routing. This doubles the binary size but avoids a conditional merge point at every case entry.
+
+#### Three Vtable Dispatch Points
+
+| Vtable slot | Offset | Default stub | Purpose |
+|---|---|---|---|
+| `vtable[2]` | +16 | `sub_BFEBF0` | Opcode-to-encoding-index translator. SM-specific override remaps opcodes to different encoding slots. Fallback: `word_22B4B60[]` static table. |
+| `vtable[12]` | +96 | `sub_BFEAA0` | Pre-dispatch capability check. Returns boolean that sets `ctx[256]` encoding flag. |
+| `vtable[3]` | +24 | `sub_BFEA30` | Extension opcode handler for opcodes outside the 169-case set (barrier/sync 61--63/221, opcodes > 0x199, SM 100+ extensions). |
+
+The `word_22B4B60` static table is a `uint16[]` array indexed by SASS opcode (0--0xDD = 221). Each entry is a SASS encoding slot index. Opcodes > 221 receive the sentinel value 355. This provides the default encoding mapping; SM-specific vtable overrides can remap any opcode to a different encoding index, enabling per-architecture instruction variants without modifying the mega-selector logic.
+
+#### Opcode Case Routing
+
+The 169 distinct opcode cases (338 total case labels across both switches) group into approximately 70 handler blocks. The groupings reveal SASS ISA families:
+
+| Group | Opcodes | Handler pattern | Instruction family |
+|---|---|---|---|
+| No-op passthrough | 8, 38, 46, 87, 89, 90, 93, 97, 98, 208 | `goto LABEL_33` (already encoded) | Pre-encoded by upstream ISel |
+| Simple emission | 7, 34, 35, 36 | `sub_9314F0(encoding_index, 1 operand)` | Basic ALU / simple 1-op |
+| Branch/call | 9, 10, 11, 12, 13, 22 | `sub_926370` / vtable[17] / linked-list walk | Control flow, call frames |
+| Memory load/store | 15, 16, 18, 19, 20, 23, 24, 25, 26, 30 | `sub_C01840` + address helpers | LDG, STG, LDS, etc. |
+| Control flow | 31, 32, 33 | SSA phi nodes, branch tables | Phi, switch, call return |
+| Generic ALU | 39, 41, 42, 50, 51, 52, 53 | `sub_9314F0` passthrough | Standard arithmetic |
+| Special register | 43, 44, 45 | `sub_C06E90` symbol lookup | SR access, shared memory alias |
+| Constant/predicate | 47, 54, 55, 56 | Direct operand copy / `sub_BFFD60` | Constant bank, predicate ops |
+| Address compute | 57 | 200-line handler, `"__nv_reservedSMEM_offset_0_alias"` | Complex addressing with SMEM |
+| Immediate ops | 59, 60 | `sub_C05CC0` / `sub_C07690` | Immediate-operand variants |
+| Barrier/sync | 61, 62, 63, 221 | Forward to vtable[3] extension | BAR, MEMBAR, SYNC |
+| Conversion/move | 65 | Operand loop with per-element `sub_9314F0` | MOV, CVT |
+| Texture/surface | 67, 68, 69, 70 | Multi-operand type-qualified encoding | TEX, TLD, TXQ |
+| Intrinsics | 71, 74, 75 | Loop-based operand emission | Hardware intrinsics |
+| Tensor core | 84, 88, 91, 92 | Wide-operand encoding (case 92 = 354 lines) | HMMA, DMMA, IMMA, TCGen05 |
+| Predication ext | 94, 95 | Predicate-dependent path selection | Extended predication |
+| Memory extended | 99--130 (19 opcodes) | `sub_C0B2C0` or `sub_BFFD60` + encoding lookup | Extended memory ops |
+| Warp intrinsics | 131--189 (50+ opcodes) | Mixed handlers, vtable[198]+632 dispatch | SHFL, VOTE, MATCH, REDUX |
+| Async/bulk | 192--218 (15 opcodes) | `sub_C0B2C0` / individual handlers | TMA, async copy, bulk ops |
+
+The largest case handlers:
+- Cases 141/142: ~503 lines (warp shuffle/vote extended operations)
+- Case 92: ~354 lines (tensor core instructions -- widest operand format)
+- Cases 45, 57, 95: ~200 lines each (shared memory, address compute, predication)
+
+#### Operand Encoding Protocol
+
+The mega-selector encodes operands into a stack-allocated 256-byte output buffer using a tagged-pointer word format. Each operand occupies 8 bytes (a DWORD pair):
+
+| Bits | Field | Description |
+|---|---|---|
+| `[31:28]` of word 0 | Type tag | `0x1`=register, `0x4`=constant bank, `0x5`=immediate, `0x6`=control/modifier, `0x9`=special register |
+| `[23:0]` of word 0 | Value | Register index, immediate value, or bank offset |
+| word 1 | Flags | Modifier bits, encoding-format flags |
+
+The marshalling pipeline for a typical case:
+
+```
+1. sub_C01840(ctx, instr, operand_list, output_buf, max_count, ...)
+   -> Iterates source operands, writes tagged words to output_buf
+   -> Returns: number of operand words written
+
+2. sub_C01F50(ctx, instr, dest_list, output_buf, max_count, ...)
+   -> Same for destination operands
+
+3. Encoding-index lookup:
+   if (vtable[2] != default)
+     index = vtable[2](ctx, opcode);
+   else
+     index = word_22B4B60[opcode];
+
+4. sub_9314F0(output, ctx, encoding_index, count, n_words, buf, ...)
+   -> Emits the instruction record to the output stream
+```
+
+| Helper | Calls | Purpose |
+|---|---|---|
+| `sub_C01840` | 52 | Marshal source operands into tagged-word buffer |
+| `sub_9314F0` | 31 | Emit instruction with encoding index + operand buffer |
+| `sub_C00EA0` | 8 | Extract single operand as tagged word |
+| `sub_91D160` | 8 | Encode register index to encoding bits |
+| `sub_934630` | 6 | Build new instruction node in IR (for multi-instruction expansion) |
+| `sub_91D150` | 5 | Decode register index from operand word |
+| `sub_926370` | 4 | Emit simple instruction (branch/jump) |
+| `sub_C01F50` | 3 | Marshal destination operands |
+| `sub_7D6860` | 3 | Encode data type qualifier (FP32/FP64/INT) |
+| `sub_BFEF10` | 3 | Register bank capacity check / grow |
+| `sub_92E1B0` | 2 | Emit instruction with constant-bank operand |
+
+#### Cross-Reference: Arch Dispatch Tables
+
+The 4 arch dispatch tables (`sub_B128E0`--`sub_B12920`) are **not** called from the mega-selector. They operate at the Mercury encoder level:
+
+```
+Mega-selector (sub_C0EB10)
+  -> Produces (encoding_index, operand_buffer) pairs
+  -> Calls sub_9314F0 to package into instruction nodes
+
+Mercury encoder (sub_6D9690)
+  -> Reads instruction type field from instruction node
+  -> Arch dispatch tables (sub_B128E0 etc.) resolve type to encoding format
+  -> Encoder emits binary SASS using format + operand data
+```
+
+The mega-selector and arch dispatch tables thus operate at different abstraction levels: the mega-selector decides **what** to encode (opcode selection, operand marshalling), while the arch tables decide **how** to encode it (encoding format, bit layout). The arch tables' per-SM variants handle encoding-level differences (field widths, modifier positions) that are invisible to the mega-selector's opcode-level logic.
 
 ### Post-ISel Modifiers -- `sub_B1D670` (13 KB)
 
@@ -823,7 +973,7 @@ The key architectural difference: LLVM performs instruction selection once, then
 
 | Address | Size | Identity | Confidence |
 |---|---|---|---|
-| `sub_C0EB10` | 185 KB | ISel mega-selector (500+ locals, giant switch) | HIGH |
+| `sub_C0EB10` | 185 KB | ISel mega-selector (719 locals, dual 169-case switch, SM-generation dispatch) | HIGH |
 | `sub_6D9690` | 94 KB | Mercury master encoder (instruction type switch) | VERY HIGH |
 | `sub_9F1A90` | 35 KB | MercConverter main instruction conversion pass | HIGH |
 | `sub_9EF5E0` | 27 KB | Post-MercConverter lowering (`"CONVERTING"`) | HIGH |
@@ -867,6 +1017,19 @@ The key architectural difference: LLVM performs instruction selection once, then
 | `sub_B28E80` | tiny | isPredicate operand predicate (`tag == 3`) | VERY HIGH |
 | `sub_B28E90` | tiny | isUniformReg operand predicate (`tag == 15`) | VERY HIGH |
 | `sub_B28F60`--`sub_B74C60` | ~1.3 MB | ~801 DAG pattern matchers (priority 2--34, template 1--152) | HIGH |
+| `sub_C01840` | -- | Mega-selector source operand marshaller (52 calls from mega-selector) | HIGH |
+| `sub_C01F50` | -- | Mega-selector destination operand marshaller | HIGH |
+| `sub_C00EA0` | -- | Single operand extractor (returns tagged operand word) | HIGH |
+| `sub_BFFD60` | -- | Operand reference resolver (register ref to encoding word) | HIGH |
+| `sub_C06E90` | -- | Symbol/special-register lookup for shared memory | HIGH |
+| `sub_C07690` | -- | Immediate-operand encoding helper | MEDIUM |
+| `sub_C0B2C0` | -- | Extended memory/warp operation encoder | HIGH |
+| `sub_C05CC0` | -- | Immediate operation encoder (flag-dependent path) | MEDIUM |
+| `sub_BFEBF0` | tiny | Default vtable[2] stub (opcode translator, no-op identity) | VERY HIGH |
+| `sub_BFEAA0` | tiny | Default vtable[12] stub (capability check, always false) | VERY HIGH |
+| `sub_BFEA30` | tiny | Default vtable[3] stub (extension handler, no-op) | VERY HIGH |
+| `sub_BFEF10` | -- | Register bank capacity check / grow | MEDIUM |
+| `word_22B4B60` | -- | Static opcode-to-encoding-index table (`uint16[222]`, default backend) | VERY HIGH |
 
 ## Cross-References
 
