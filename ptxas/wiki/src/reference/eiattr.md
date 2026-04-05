@@ -1,0 +1,554 @@
+# EIATTR Attribute Catalog
+
+EIATTR (ELF Info ATTRibute) is NVIDIA's proprietary metadata system embedded in `.nv.info` ELF sections within CUBIN files. Every CUDA kernel carries EIATTR records that tell the GPU driver how many registers to allocate, how much shared memory to reserve, what barriers the kernel uses, and dozens of other resource descriptors. Without this metadata, the driver cannot launch the kernel -- it has no way to determine the kernel's hardware resource footprint.
+
+ptxas v13.0.88 defines 97 EIATTR codes, numbered 0 through 96 (`0x00`--`0x60`). The code-to-name mapping was extracted from the pointer table at VA `0x23FDC20` in the ptxas binary (16-byte entries: 8-byte string pointer + 8-byte metadata word, indexed by code number). The string names reside at `0x23FC6C7`--`0x23FD040`. Code assignments were cross-verified against the nvlink v13.0.88 pointer table at `0x1D37D60`, confirming identical enumeration across both tools.
+
+| | |
+|---|---|
+| **ELF section type** | `SHT_CUDA_INFO` = `0x70000064` |
+| **Section name (global)** | `.nv.info` |
+| **Section name (per-function)** | `.nv.info.<function_name>` |
+| **Record format** | Type-Length-Value (TLV), 4-byte aligned |
+| **Known attribute count** | 97 codes: 0--96 (v13.0.88) |
+| **Name table VA** | `0x23FDC20` (97 entries x 16 bytes = 1,552 bytes) |
+| **EIATTR builder function** | `sub_1CC9800` (14,764 bytes, 90 KB decompiled -- third largest in output range) |
+| **Barrier/register propagator** | `sub_1CC8950` (2,634 bytes, propagates counts across call graph) |
+| **TLV record emitter** | `sub_1CC85F0` (44 lines, writes individual EIATTR records) |
+| **SM-version gating** | `sub_1C97840` (checks whether an EIATTR code is valid for a given SM version) |
+
+## TLV Record Format
+
+Each `.nv.info` section contains a flat sequence of 4-byte-aligned TLV records. There is no section header or record count -- the parser walks from byte 0 to `sh_size`, consuming records sequentially.
+
+### Record Layout
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    1     format      Format byte (determines payload structure)
+0x01    1     attr_code   EIATTR type code (0x00--0x60)
+0x02    2     size        Payload size in bytes (little-endian uint16)
+0x04    var   payload     Attribute-specific data (size bytes)
+```
+
+Total record size = 4 + `size`, padded up to 4-byte alignment. The minimum record is 4 bytes (format + code + size=0, no payload).
+
+### Format Byte
+
+The format byte at offset 0 controls how the payload is interpreted:
+
+| Format | Name | Payload structure | Typical use |
+|---:|---|---|---|
+| `0x01` | Free | Raw bytes, attribute-specific layout | Offset tables, parameter info |
+| `0x02` | Value | Single 32-bit value (no symbol index) | Global flags |
+| `0x03` | Sized | 16-bit value + padding | Counts, sizes |
+| `0x04` | Indexed | `[sym_index:4][value:4]` -- per-symbol attribute | Per-kernel resources |
+
+Format `0x04` (indexed) is the most common for per-function attributes. The 4-byte symbol index at payload offset 0 identifies which function the attribute applies to. The linker uses this index for symbol remapping during merge and for per-function property extraction during finalization.
+
+### Binary Evidence -- `sub_1CC85F0`
+
+The TLV record emitter function directly confirms the encoding:
+
+```c
+// sub_1CC85F0 -- simplified from decompilation
+// a2 = attr_code, a3 = 16-bit value/size, a4 = payload data, a5 = symbol index
+void emit_eiattr(void* elfw, uint8_t attr_code, int16_t size, void* data, uint32_t sym_idx) {
+    if (!is_valid_for_sm(attr_code, elfw->sm_version))
+        return;
+
+    int section_index = get_nvinfo_section(elfw, sym_idx);
+
+    // Allocate 16-byte record buffer
+    uint8_t* record = pool_alloc(16);
+
+    // TLV header
+    record[0] = 0x04;               // format = Indexed
+    record[1] = attr_code;           // EIATTR type code
+    *(uint16_t*)(record + 2) = size; // payload size
+    *(uint32_t*)(record + 4) = section_index; // symbol index
+
+    // Append to .nv.info section's linked list
+    list_append(record, &elfw->nvinfo_list);
+
+    // Overwrite size field with actual value for indexed format
+    *(uint16_t*)(record + 2) = size;
+    *(uint64_t*)(record + 8) = data;
+}
+```
+
+### Parsing Pseudocode
+
+```c
+uint8_t *ptr = section_data;
+uint8_t *end = section_data + section_size;
+
+while (ptr < end) {
+    uint8_t  format    = ptr[0];
+    uint8_t  attr_code = ptr[1];
+    uint16_t size      = *(uint16_t *)(ptr + 2);
+
+    if (format == 0x04) {
+        // Indexed: first 4 bytes of payload = symbol index
+        uint32_t sym_idx = *(uint32_t *)(ptr + 4);
+        uint32_t value   = *(uint32_t *)(ptr + 8);
+        process_indexed_attribute(attr_code, sym_idx, value);
+    } else if (format == 0x02) {
+        // Value: single 32-bit immediate
+        uint32_t value = *(uint32_t *)(ptr + 4);
+        process_global_attribute(attr_code, value);
+    } else {
+        // Free/sized: attribute-specific handling
+        process_raw_attribute(attr_code, ptr + 4, size);
+    }
+
+    ptr += 4 + ALIGN_UP(size, 4);
+}
+```
+
+## Section Variants
+
+A cubin contains two kinds of `.nv.info` sections:
+
+**Global `.nv.info`** -- A single section named `.nv.info` with `sh_link = 0` (no associated symbol). Contains attributes that apply to the entire compilation unit: CUDA API version, compatibility flags, and shared metadata not specific to any one kernel.
+
+**Per-function `.nv.info.<name>`** -- One section per kernel or device function, named `.nv.info.<function_name>` with `sh_link` pointing to the corresponding symbol table entry. Carries per-kernel resource descriptors: register count, barrier count, stack sizes, parameter bank layout, and instruction-offset tables.
+
+Both section variants use `sh_type = SHT_CUDA_INFO` (`0x70000064`). The ELF section type is the authoritative way to identify `.nv.info` sections; the name is only a convention.
+
+## Complete Code Table
+
+All 97 EIATTR codes in numeric order. Extracted from the ptxas pointer table at VA `0x23FDC20`. The "Format" column reflects the typical TLV format byte used when emitting that attribute. The "Meta" column shows the metadata word from the pointer table (lo word encodes minimum toolkit version compatibility, hi word encodes flags).
+
+| Code | Hex | Name | Format | Meta | Category |
+|---:|---:|---|---|---:|---|
+| 0 | `0x00` | `EIATTR_ERROR` | -- | 1 | Sentinel |
+| 1 | `0x01` | `EIATTR_PAD` | -- | 1 | Sentinel |
+| 2 | `0x02` | `EIATTR_IMAGE_SLOT` | Indexed | 1 | Texture |
+| 3 | `0x03` | `EIATTR_JUMPTABLE_RELOCS` | Free | 1 | Metadata |
+| 4 | `0x04` | `EIATTR_CTAIDZ_USED` | Indexed | 1 | Metadata |
+| 5 | `0x05` | `EIATTR_MAX_THREADS` | Indexed | 1 | Resource |
+| 6 | `0x06` | `EIATTR_IMAGE_OFFSET` | Indexed | 1 | Texture |
+| 7 | `0x07` | `EIATTR_IMAGE_SIZE` | Indexed | 1 | Texture |
+| 8 | `0x08` | `EIATTR_TEXTURE_NORMALIZED` | Indexed | 1 | Texture |
+| 9 | `0x09` | `EIATTR_SAMPLER_INIT` | Indexed | 1 | Texture |
+| 10 | `0x0A` | `EIATTR_PARAM_CBANK` | Indexed | 1 | Param |
+| 11 | `0x0B` | `EIATTR_SMEM_PARAM_OFFSETS` | Free | 1 | Param |
+| 12 | `0x0C` | `EIATTR_CBANK_PARAM_OFFSETS` | Free | 1 | Param |
+| 13 | `0x0D` | `EIATTR_SYNC_STACK` | Indexed | 1 | Metadata |
+| 14 | `0x0E` | `EIATTR_TEXID_SAMPID_MAP` | Free | 1 | Texture |
+| 15 | `0x0F` | `EIATTR_EXTERNS` | Free | 1 | Metadata |
+| 16 | `0x10` | `EIATTR_REQNTID` | Indexed | 1 | Resource |
+| 17 | `0x11` | `EIATTR_FRAME_SIZE` | Indexed | 1 | Resource |
+| 18 | `0x12` | `EIATTR_MIN_STACK_SIZE` | Indexed | 1 | Resource |
+| 19 | `0x13` | `EIATTR_SAMPLER_FORCE_UNNORMALIZED` | Indexed | 1 | Texture |
+| 20 | `0x14` | `EIATTR_BINDLESS_IMAGE_OFFSETS` | Free | 1 | Texture |
+| 21 | `0x15` | `EIATTR_BINDLESS_TEXTURE_BANK` | Indexed | 1 | Texture |
+| 22 | `0x16` | `EIATTR_BINDLESS_SURFACE_BANK` | Indexed | 1 | Texture |
+| 23 | `0x17` | `EIATTR_KPARAM_INFO` | Free | 1 | Param |
+| 24 | `0x18` | `EIATTR_SMEM_PARAM_SIZE` | Indexed | 1 | Param |
+| 25 | `0x19` | `EIATTR_CBANK_PARAM_SIZE` | Sized | 1 | Param |
+| 26 | `0x1A` | `EIATTR_QUERY_NUMATTRIB` | Indexed | 1 | Metadata |
+| 27 | `0x1B` | `EIATTR_MAXREG_COUNT` | Sized | 1 | Resource |
+| 28 | `0x1C` | `EIATTR_EXIT_INSTR_OFFSETS` | Free | 1 | Offsets |
+| 29 | `0x1D` | `EIATTR_S2RCTAID_INSTR_OFFSETS` | Free | 1 | Offsets |
+| 30 | `0x1E` | `EIATTR_CRS_STACK_SIZE` | Indexed | 1 | Resource |
+| 31 | `0x1F` | `EIATTR_NEED_CNP_WRAPPER` | Indexed | 1 | Metadata |
+| 32 | `0x20` | `EIATTR_NEED_CNP_PATCH` | Indexed | 1 | Metadata |
+| 33 | `0x21` | `EIATTR_EXPLICIT_CACHING` | Indexed | 1 | Metadata |
+| 34 | `0x22` | `EIATTR_ISTYPEP_USED` | Indexed | 1 | Metadata |
+| 35 | `0x23` | `EIATTR_MAX_STACK_SIZE` | Indexed | 1 | Resource |
+| 36 | `0x24` | `EIATTR_SUQ_USED` | Indexed | 1 | Metadata |
+| 37 | `0x25` | `EIATTR_LD_CACHEMOD_INSTR_OFFSETS` | Free | 1 | Offsets |
+| 38 | `0x26` | `EIATTR_LOAD_CACHE_REQUEST` | Indexed | 1 | Metadata |
+| 39 | `0x27` | `EIATTR_ATOM_SYS_INSTR_OFFSETS` | Free | 1 | Offsets |
+| 40 | `0x28` | `EIATTR_COOP_GROUP_INSTR_OFFSETS` | Free | 1 | Offsets |
+| 41 | `0x29` | `EIATTR_COOP_GROUP_MASK_REGIDS` | Indexed | 1 | Cluster |
+| 42 | `0x2A` | `EIATTR_SW1850030_WAR` | Free | 1 | WAR |
+| 43 | `0x2B` | `EIATTR_WMMA_USED` | Indexed | 2 | Metadata |
+| 44 | `0x2C` | `EIATTR_HAS_PRE_V10_OBJECT` | Value | 3 | Metadata |
+| 45 | `0x2D` | `EIATTR_ATOMF16_EMUL_INSTR_OFFSETS` | Free | 3 | Offsets |
+| 46 | `0x2E` | `EIATTR_ATOM16_EMUL_INSTR_REG_MAP` | Free | 5 | Offsets |
+| 47 | `0x2F` | `EIATTR_REGCOUNT` | Indexed | 5 | Resource |
+| 48 | `0x30` | `EIATTR_SW2393858_WAR` | Free | 5 | WAR |
+| 49 | `0x31` | `EIATTR_INT_WARP_WIDE_INSTR_OFFSETS` | Free | 5 | Offsets |
+| 50 | `0x32` | `EIATTR_SHARED_SCRATCH` | Indexed | 5 | Shared |
+| 51 | `0x33` | `EIATTR_STATISTICS` | Free | 5 | Metadata |
+| 52 | `0x34` | `EIATTR_INDIRECT_BRANCH_TARGETS` | Free | 5 | Offsets |
+| 53 | `0x35` | `EIATTR_SW2861232_WAR` | Free | 5 | WAR |
+| 54 | `0x36` | `EIATTR_SW_WAR` | Free | 5 | WAR |
+| 55 | `0x37` | `EIATTR_CUDA_API_VERSION` | Indexed | 5 | Metadata |
+| 56 | `0x38` | `EIATTR_NUM_MBARRIERS` | Indexed | 5 | Resource |
+| 57 | `0x39` | `EIATTR_MBARRIER_INSTR_OFFSETS` | Free | 5 | Offsets |
+| 58 | `0x3A` | `EIATTR_COROUTINE_RESUME_OFFSETS` | Free | 5 | Offsets |
+| 59 | `0x3B` | `EIATTR_SAM_REGION_STACK_SIZE` | Indexed | 5 | Resource |
+| 60 | `0x3C` | `EIATTR_PER_REG_TARGET_PERF_STATS` | Free | 5 | Metadata |
+| 61 | `0x3D` | `EIATTR_CTA_PER_CLUSTER` | Indexed | 5 | Cluster |
+| 62 | `0x3E` | `EIATTR_EXPLICIT_CLUSTER` | Indexed | 5 | Cluster |
+| 63 | `0x3F` | `EIATTR_MAX_CLUSTER_RANK` | Indexed | 5 | Cluster |
+| 64 | `0x40` | `EIATTR_INSTR_REG_MAP` | Free | 5 | Metadata |
+| 65 | `0x41` | `EIATTR_RESERVED_SMEM_USED` | Indexed | 5 | Shared |
+| 66 | `0x42` | `EIATTR_RESERVED_SMEM_0_SIZE` | Indexed | 5 | Shared |
+| 67 | `0x43` | `EIATTR_UCODE_SECTION_DATA` | Free | 5 | Metadata |
+| 68 | `0x44` | `EIATTR_UNUSED_LOAD_BYTE_OFFSET` | Free | 5 | Offsets |
+| 69 | `0x45` | `EIATTR_KPARAM_INFO_V2` | Free | 5 | Param |
+| 70 | `0x46` | `EIATTR_SYSCALL_OFFSETS` | Free | 5 | Offsets |
+| 71 | `0x47` | `EIATTR_SW_WAR_MEMBAR_SYS_INSTR_OFFSETS` | Free | 5 | WAR |
+| 72 | `0x48` | `EIATTR_GRAPHICS_GLOBAL_CBANK` | Indexed | 5 | Graphics |
+| 73 | `0x49` | `EIATTR_SHADER_TYPE` | Indexed | 5 | Graphics |
+| 74 | `0x4A` | `EIATTR_VRC_CTA_INIT_COUNT` | Indexed | 5 | Graphics |
+| 75 | `0x4B` | `EIATTR_TOOLS_PATCH_FUNC` | Indexed | 5 | Metadata |
+| 76 | `0x4C` | `EIATTR_NUM_BARRIERS` | Indexed | 5 | Resource |
+| 77 | `0x4D` | `EIATTR_TEXMODE_INDEPENDENT` | Indexed | 5 | Texture |
+| 78 | `0x4E` | `EIATTR_PERF_STATISTICS` | Free | 5 | Metadata |
+| 79 | `0x4F` | `EIATTR_AT_ENTRY_FRAGEMENTS` | Free | 5 | Blackwell |
+| 80 | `0x50` | `EIATTR_SPARSE_MMA_MASK` | Free | 5 | Blackwell |
+| 81 | `0x51` | `EIATTR_TCGEN05_1CTA_USED` | Indexed | 5 | Blackwell |
+| 82 | `0x52` | `EIATTR_TCGEN05_2CTA_USED` | Indexed | 5 | Blackwell |
+| 83 | `0x53` | `EIATTR_GEN_ERRBAR_AT_EXIT` | Indexed | 5 | Blackwell |
+| 84 | `0x54` | `EIATTR_REG_RECONFIG` | Indexed | 5 | Blackwell |
+| 85 | `0x55` | `EIATTR_ANNOTATIONS` | Free | 5 | Metadata |
+| 86 | `0x56` | `EIATTR_UNKNOWN` | -- | 5 | Sentinel |
+| 87 | `0x57` | `EIATTR_STACK_CANARY_TRAP_OFFSETS` | Free | 5 | Offsets |
+| 88 | `0x58` | `EIATTR_STUB_FUNCTION_KIND` | Indexed | 5 | Metadata |
+| 89 | `0x59` | `EIATTR_LOCAL_CTA_ASYNC_STORE_OFFSETS` | Free | 5 | Offsets |
+| 90 | `0x5A` | `EIATTR_MERCURY_FINALIZER_OPTIONS` | Free | 5 | Mercury |
+| 91 | `0x5B` | `EIATTR_BLOCKS_ARE_CLUSTERS` | Indexed | 5 | Cluster |
+| 92 | `0x5C` | `EIATTR_SANITIZE` | Indexed | 5 | Blackwell |
+| 93 | `0x5D` | `EIATTR_SYSCALLS_FALLBACK` | Free | 5 | Metadata |
+| 94 | `0x5E` | `EIATTR_CUDA_REQ` | Free | 5 | Metadata |
+| 95 | `0x5F` | `EIATTR_MERCURY_ISA_VERSION` | Sized | 5 | Mercury |
+| 96 | `0x60` | `EIATTR_ERROR_LAST` | -- | 5 | Sentinel |
+
+### Metadata Word Encoding
+
+Each entry in the pointer table carries an 8-byte metadata word alongside the string pointer. The low 32 bits encode the minimum toolkit version required to parse this attribute. The high 32 bits encode flags (0 = legacy, 1 = internal-only, 2 = standard).
+
+| Meta lo | Interpretation |
+|---:|---|
+| 1 | Legacy attribute, present since earliest CUDA versions |
+| 2 | Introduced in CUDA ~7.0 era (Volta) |
+| 3 | Introduced in CUDA ~9.0 era (Turing) |
+| 5 | Introduced in CUDA ~11.0+ era (Ampere and later) |
+
+Codes 0--42 all carry `meta=1` (legacy). The boundary at code 43 (`EIATTR_WMMA_USED`) marks the Volta-era expansion. Codes 46+ carry `meta_lo=5`, indicating the major expansion that happened with Ampere and continued through Blackwell.
+
+## Attribute Categories
+
+### Resource Allocation (GPU Driver Critical)
+
+These attributes directly control how the GPU driver allocates hardware resources for kernel launch. Incorrect values cause silent performance degradation or launch failure.
+
+| Code | Hex | Name | Format | Description |
+|---:|---:|---|---|---|
+| 47 | `0x2F` | `EIATTR_REGCOUNT` | Indexed | Physical register count per thread. The GPU driver computes `max_warps_per_SM = total_registers / (regcount * warp_size)`. Single most important occupancy-determining attribute. |
+| 5 | `0x05` | `EIATTR_MAX_THREADS` | Indexed | Maximum threads per block (from `.maxntid` PTX directive). |
+| 16 | `0x10` | `EIATTR_REQNTID` | Indexed | Required thread count per dimension (from `.reqntid`). |
+| 17 | `0x11` | `EIATTR_FRAME_SIZE` | Indexed | Per-thread local memory frame size in bytes. |
+| 18 | `0x12` | `EIATTR_MIN_STACK_SIZE` | Indexed | Minimum stack size per thread (non-recursive case). |
+| 35 | `0x23` | `EIATTR_MAX_STACK_SIZE` | Indexed | Maximum stack size per thread (recursive case, computed via call graph propagation). |
+| 30 | `0x1E` | `EIATTR_CRS_STACK_SIZE` | Indexed | Call-Return-Stack size for nested function calls. |
+| 59 | `0x3B` | `EIATTR_SAM_REGION_STACK_SIZE` | Indexed | SAM (Streaming Asynchronous Memory) region stack size. |
+| 76 | `0x4C` | `EIATTR_NUM_BARRIERS` | Indexed | Number of named barriers used (max 16 on most architectures). Propagated from callees to entry points by `sub_1CC8950`. |
+| 56 | `0x38` | `EIATTR_NUM_MBARRIERS` | Indexed | Number of memory barriers (mbarrier objects) used. |
+| 27 | `0x1B` | `EIATTR_MAXREG_COUNT` | Sized | Maximum register count hint (from `--maxrregcount` or `.maxnreg`). |
+| 84 | `0x54` | `EIATTR_REG_RECONFIG` | Indexed | Dynamic register reconfiguration support (`setmaxnreg` instruction, sm_100+). |
+
+### Parameter Bank Layout
+
+Describes how kernel parameters are laid out in constant memory bank 0 (`c[0x0]`).
+
+| Code | Hex | Name | Format | Description |
+|---:|---:|---|---|---|
+| 10 | `0x0A` | `EIATTR_PARAM_CBANK` | Indexed | Constant bank number and offset for kernel parameters. |
+| 25 | `0x19` | `EIATTR_CBANK_PARAM_SIZE` | Sized | Size of the parameter constant bank in bytes. |
+| 24 | `0x18` | `EIATTR_SMEM_PARAM_SIZE` | Indexed | Size of shared memory parameter region. |
+| 11 | `0x0B` | `EIATTR_SMEM_PARAM_OFFSETS` | Free | Offsets of parameters within shared memory. |
+| 12 | `0x0C` | `EIATTR_CBANK_PARAM_OFFSETS` | Free | Offsets of parameters within constant bank. |
+| 23 | `0x17` | `EIATTR_KPARAM_INFO` | Free | Kernel parameter metadata (types, sizes, alignments). |
+| 69 | `0x45` | `EIATTR_KPARAM_INFO_V2` | Free | Extended kernel parameter info (v2 format with additional fields, no metadata version constraint). |
+
+### Instruction Offset Tables
+
+Record byte offsets of specific instruction types within the kernel's `.text` section, enabling the driver and tools to locate and patch instructions at load time.
+
+| Code | Hex | Name | Format | Description |
+|---:|---:|---|---|---|
+| 28 | `0x1C` | `EIATTR_EXIT_INSTR_OFFSETS` | Free | Byte offsets of all `EXIT` instructions. |
+| 29 | `0x1D` | `EIATTR_S2RCTAID_INSTR_OFFSETS` | Free | Offsets of `S2R` instructions reading `SR_CTAID` (CTA ID). Used for cluster launch CTA-ID remapping. |
+| 37 | `0x25` | `EIATTR_LD_CACHEMOD_INSTR_OFFSETS` | Free | Offsets of load instructions with explicit cache modifier. |
+| 39 | `0x27` | `EIATTR_ATOM_SYS_INSTR_OFFSETS` | Free | Offsets of atomic instructions with `.sys` scope. |
+| 40 | `0x28` | `EIATTR_COOP_GROUP_INSTR_OFFSETS` | Free | Offsets of cooperative group instructions. |
+| 45 | `0x2D` | `EIATTR_ATOMF16_EMUL_INSTR_OFFSETS` | Free | Offsets of emulated FP16 atomic instructions. |
+| 46 | `0x2E` | `EIATTR_ATOM16_EMUL_INSTR_REG_MAP` | Free | Register map for 16-bit atomic emulation. |
+| 49 | `0x31` | `EIATTR_INT_WARP_WIDE_INSTR_OFFSETS` | Free | Offsets of integer warp-wide instructions. |
+| 52 | `0x34` | `EIATTR_INDIRECT_BRANCH_TARGETS` | Free | Valid targets of indirect branches (for control flow integrity). |
+| 57 | `0x39` | `EIATTR_MBARRIER_INSTR_OFFSETS` | Free | Offsets of `MBAR` (memory barrier) instructions. |
+| 58 | `0x3A` | `EIATTR_COROUTINE_RESUME_OFFSETS` | Free | Resume point offsets for device-side coroutines. Variant name `EIATTR_COROUTINE_RESUME_ID_OFFSETS` at `0x24064D8`. |
+| 68 | `0x44` | `EIATTR_UNUSED_LOAD_BYTE_OFFSET` | Free | Byte offset of unused load instruction. |
+| 70 | `0x46` | `EIATTR_SYSCALL_OFFSETS` | Free | Offsets of `__cuda_syscall` invocations. |
+| 87 | `0x57` | `EIATTR_STACK_CANARY_TRAP_OFFSETS` | Free | Offsets of stack canary trap instructions (stack protector). |
+| 89 | `0x59` | `EIATTR_LOCAL_CTA_ASYNC_STORE_OFFSETS` | Free | Offsets of CTA-local async store instructions. |
+
+### Texture and Surface Binding
+
+| Code | Hex | Name | Format | Description |
+|---:|---:|---|---|---|
+| 2 | `0x02` | `EIATTR_IMAGE_SLOT` | Indexed | Texture/surface image slot assignment. |
+| 6 | `0x06` | `EIATTR_IMAGE_OFFSET` | Indexed | Offset within the image descriptor table. |
+| 7 | `0x07` | `EIATTR_IMAGE_SIZE` | Indexed | Size of the image descriptor. |
+| 8 | `0x08` | `EIATTR_TEXTURE_NORMALIZED` | Indexed | Whether texture coordinates are normalized. |
+| 9 | `0x09` | `EIATTR_SAMPLER_INIT` | Indexed | Sampler initialization parameters. |
+| 14 | `0x0E` | `EIATTR_TEXID_SAMPID_MAP` | Free | Texture ID to sampler ID mapping table. |
+| 19 | `0x13` | `EIATTR_SAMPLER_FORCE_UNNORMALIZED` | Indexed | Force unnormalized sampler coordinates. |
+| 20 | `0x14` | `EIATTR_BINDLESS_IMAGE_OFFSETS` | Free | Offsets for bindless image references. |
+| 21 | `0x15` | `EIATTR_BINDLESS_TEXTURE_BANK` | Indexed | Constant bank used for bindless texture descriptors. |
+| 22 | `0x16` | `EIATTR_BINDLESS_SURFACE_BANK` | Indexed | Constant bank used for bindless surface descriptors. |
+| 77 | `0x4D` | `EIATTR_TEXMODE_INDEPENDENT` | Indexed | Independent texture mode flag. |
+
+### Cluster and Cooperative Launch (sm_90+)
+
+| Code | Hex | Name | Format | Description |
+|---:|---:|---|---|---|
+| 41 | `0x29` | `EIATTR_COOP_GROUP_MASK_REGIDS` | Indexed | Register IDs used for cooperative group masks. |
+| 61 | `0x3D` | `EIATTR_CTA_PER_CLUSTER` | Indexed | Number of CTAs per cluster (Hopper cluster launch). |
+| 62 | `0x3E` | `EIATTR_EXPLICIT_CLUSTER` | Indexed | Kernel uses explicit cluster dimensions. |
+| 63 | `0x3F` | `EIATTR_MAX_CLUSTER_RANK` | Indexed | Maximum cluster rank for scheduling. |
+| 91 | `0x5B` | `EIATTR_BLOCKS_ARE_CLUSTERS` | Indexed | CTA blocks are clusters flag. |
+
+### Shared Memory and Reserved Resources
+
+| Code | Hex | Name | Format | Description |
+|---:|---:|---|---|---|
+| 50 | `0x32` | `EIATTR_SHARED_SCRATCH` | Indexed | Shared memory scratch space for register spilling. |
+| 65 | `0x41` | `EIATTR_RESERVED_SMEM_USED` | Indexed | Whether reserved shared memory is used. |
+| 66 | `0x42` | `EIATTR_RESERVED_SMEM_0_SIZE` | Indexed | Size of reserved shared memory partition 0. |
+
+### Software Workarounds
+
+Hardware errata requiring instruction-level patching by the driver. Each WAR attribute carries a list of instruction byte offsets that the driver must modify at kernel load time.
+
+| Code | Hex | Name | Format | Description |
+|---:|---:|---|---|---|
+| 42 | `0x2A` | `EIATTR_SW1850030_WAR` | Free | Workaround for HW bug 1850030. |
+| 48 | `0x30` | `EIATTR_SW2393858_WAR` | Free | Workaround for HW bug 2393858. |
+| 53 | `0x35` | `EIATTR_SW2861232_WAR` | Free | Workaround for HW bug 2861232. |
+| 54 | `0x36` | `EIATTR_SW_WAR` | Free | Generic software workaround container. |
+| 71 | `0x47` | `EIATTR_SW_WAR_MEMBAR_SYS_INSTR_OFFSETS` | Free | Offsets of `MEMBAR.SYS` instructions needing software workaround. |
+
+### Graphics-Specific
+
+| Code | Hex | Name | Format | Description |
+|---:|---:|---|---|---|
+| 72 | `0x48` | `EIATTR_GRAPHICS_GLOBAL_CBANK` | Indexed | Global constant bank for graphics shaders. |
+| 73 | `0x49` | `EIATTR_SHADER_TYPE` | Indexed | Shader type (vertex, fragment, compute, etc.). |
+| 74 | `0x4A` | `EIATTR_VRC_CTA_INIT_COUNT` | Indexed | Virtual Register Count CTA init count. |
+
+### Blackwell+ Features (sm_100+)
+
+| Code | Hex | Name | Format | Description |
+|---:|---:|---|---|---|
+| 79 | `0x4F` | `EIATTR_AT_ENTRY_FRAGEMENTS` | Free | Fragment descriptors at function entry. Note: "FRAGEMENTS" is a typo preserved in the binary; corrected variant `EIATTR_AT_ENTRY_FRAGMENTS` exists at `0x2405DA1`. |
+| 80 | `0x50` | `EIATTR_SPARSE_MMA_MASK` | Free | Sparsity mask for structured-sparse MMA operations. |
+| 81 | `0x51` | `EIATTR_TCGEN05_1CTA_USED` | Indexed | tcgen05 (5th-gen tensor core) single-CTA mode used. |
+| 82 | `0x52` | `EIATTR_TCGEN05_2CTA_USED` | Indexed | tcgen05 two-CTA mode used. |
+| 83 | `0x53` | `EIATTR_GEN_ERRBAR_AT_EXIT` | Indexed | Generate error barrier at kernel exit. |
+| 84 | `0x54` | `EIATTR_REG_RECONFIG` | Indexed | Dynamic register reconfiguration (`setmaxnreg`). |
+| 92 | `0x5C` | `EIATTR_SANITIZE` | Indexed | Address sanitizer instrumentation present. |
+
+### Mercury-Specific
+
+| Code | Hex | Name | Format | Description |
+|---:|---:|---|---|---|
+| 90 | `0x5A` | `EIATTR_MERCURY_FINALIZER_OPTIONS` | Free | Options for the Mercury FNLZR post-link pass. |
+| 95 | `0x5F` | `EIATTR_MERCURY_ISA_VERSION` | Sized | Mercury ISA version for the shader binary. |
+
+### Compilation Metadata
+
+| Code | Hex | Name | Format | Description |
+|---:|---:|---|---|---|
+| 3 | `0x03` | `EIATTR_JUMPTABLE_RELOCS` | Free | Jump table relocation entries. |
+| 4 | `0x04` | `EIATTR_CTAIDZ_USED` | Indexed | Whether kernel uses `%ctaid.z` (3D grid). |
+| 13 | `0x0D` | `EIATTR_SYNC_STACK` | Indexed | Synchronization stack depth. |
+| 15 | `0x0F` | `EIATTR_EXTERNS` | Free | External symbol references list. |
+| 26 | `0x1A` | `EIATTR_QUERY_NUMATTRIB` | Indexed | Number of queryable attributes. |
+| 31 | `0x1F` | `EIATTR_NEED_CNP_WRAPPER` | Indexed | Kernel needs CUDA Nested Parallelism wrapper. |
+| 32 | `0x20` | `EIATTR_NEED_CNP_PATCH` | Indexed | Kernel needs CNP patching at load time. |
+| 33 | `0x21` | `EIATTR_EXPLICIT_CACHING` | Indexed | Explicit cache control directives present. |
+| 34 | `0x22` | `EIATTR_ISTYPEP_USED` | Indexed | `isspacep` instruction used. |
+| 36 | `0x24` | `EIATTR_SUQ_USED` | Indexed | Surface query instruction used. |
+| 38 | `0x26` | `EIATTR_LOAD_CACHE_REQUEST` | Indexed | Load cache request configuration. |
+| 43 | `0x2B` | `EIATTR_WMMA_USED` | Indexed | Warp Matrix Multiply-Accumulate instructions used. |
+| 44 | `0x2C` | `EIATTR_HAS_PRE_V10_OBJECT` | Value | Object contains pre-CUDA 10 compiled code. |
+| 51 | `0x33` | `EIATTR_STATISTICS` | Free | Compilation statistics (instruction counts, etc.). |
+| 55 | `0x37` | `EIATTR_CUDA_API_VERSION` | Indexed | CUDA API version the kernel was compiled for. |
+| 60 | `0x3C` | `EIATTR_PER_REG_TARGET_PERF_STATS` | Free | Per-register-target performance statistics. |
+| 64 | `0x40` | `EIATTR_INSTR_REG_MAP` | Free | Instruction-to-register mapping for profiling. |
+| 67 | `0x43` | `EIATTR_UCODE_SECTION_DATA` | Free | Microcode section data (internal). |
+| 75 | `0x4B` | `EIATTR_TOOLS_PATCH_FUNC` | Indexed | Function patching descriptor for CUDA tools (cuda-gdb, Nsight). |
+| 78 | `0x4E` | `EIATTR_PERF_STATISTICS` | Free | Performance statistics for the profiler. |
+| 85 | `0x55` | `EIATTR_ANNOTATIONS` | Free | General-purpose annotation data. |
+| 88 | `0x58` | `EIATTR_STUB_FUNCTION_KIND` | Indexed | Stub function classification. |
+| 93 | `0x5D` | `EIATTR_SYSCALLS_FALLBACK` | Free | Syscall fallback mechanism offsets. |
+| 94 | `0x5E` | `EIATTR_CUDA_REQ` | Free | CUDA requirements descriptor. |
+
+### Sentinel and Error
+
+| Code | Hex | Name | Format | Description |
+|---:|---:|---|---|---|
+| 0 | `0x00` | `EIATTR_ERROR` | -- | Invalid/error sentinel. Never emitted in valid cubins. |
+| 1 | `0x01` | `EIATTR_PAD` | -- | Padding record (ignored by parser). |
+| 86 | `0x56` | `EIATTR_UNKNOWN` | -- | Unknown attribute placeholder. |
+| 96 | `0x60` | `EIATTR_ERROR_LAST` | -- | Upper bound sentinel for the enum range. Code 96 is never emitted; it serves as a bound check (`if (attr_code > 0x2F)` at line 760 of the builder). |
+
+## Generation Pipeline
+
+EIATTR attributes are generated during Phase 6 of the ELF output pipeline, after all per-kernel SASS encoding and memory allocation have completed. The generation is orchestrated by two functions working in sequence.
+
+### Barrier/Register Propagation -- `sub_1CC8950`
+
+Before per-entry attribute emission begins, `sub_1CC8950` (2,634 bytes, called once per entry point) propagates resource requirements from callees to entry kernels via the call graph:
+
+1. **Register count propagation**: Walks the call graph DFS, finding the maximum register count among all callees. The verbose trace `"regcount %d for %s propagated to entry %s"` logs this.
+
+2. **Barrier count creation**: When a kernel's section flags contain a barrier count (bits 20--26 of `section_header + 8`) but no `EIATTR_NUM_BARRIERS` record exists, creates one and clears the section flag bits:
+
+```
+Creating new EIATTR_NUM_BARRIERS and moving barcount %d
+from section flags of %s to nvinfo for entry symbol %s
+```
+
+3. **SM-version gating**: Uses `sub_1C97840` to check whether `EIATTR_NUM_BARRIERS` (`0x4C`) and `EIATTR_NUM_MBARRIERS` (`0x38`) are valid for the target SM version before emitting.
+
+### Master EIATTR Builder -- `sub_1CC9800`
+
+The main builder function (14,764 bytes binary, 90 KB decompiled -- third largest function in the output range) constructs the complete set of `.nv.info.<func>` sections. It has 51 callees and is called once per compilation unit.
+
+The builder iterates over every entry point and device function, emitting the applicable EIATTR records for each. The SM-version gating function `sub_1C97840` is called before emitting each attribute to check compatibility. Observed EIATTR code checks in the builder:
+
+| Hex code | EIATTR name | Gating condition |
+|---:|---|---|
+| `0x04` | `CTAIDZ_USED` | SM-version check |
+| `0x21` | `EXPLICIT_CACHING` | SM-version check |
+| `0x1F` | `NEED_CNP_WRAPPER` | SM-version check |
+| `0x20` | `NEED_CNP_PATCH` | SM-version check |
+| `0x2C` | `HAS_PRE_V10_OBJECT` | SM-version check |
+| `0x38` | `NUM_MBARRIERS` | SM-version check |
+| `0x41` | `RESERVED_SMEM_USED` | SM-version check |
+| `0x4A` | `VRC_CTA_INIT_COUNT` | SM-version check |
+| `0x4C` | `NUM_BARRIERS` | SM-version check |
+| `0x50` | `SPARSE_MMA_MASK` | SM-version check |
+| `0x51` | `TCGEN05_1CTA_USED` | SM-version check |
+| `0x52` | `TCGEN05_2CTA_USED` | SM-version check |
+| `0x54` | `REG_RECONFIG` | SM-version check |
+
+The SM version comes from offset `+624` of the compilation state object, consistent with the SM version field at `a1 + 624` observed throughout ptxas.
+
+### Weak Symbol Filtering
+
+During linking (nvlink), three specific EIATTR codes are treated specially during weak symbol resolution. When a weak function is replaced by a stronger definition, records for these three codes are dropped using the bitmask `0x800800020000`:
+
+- Code 17 (`0x11`) -- `EIATTR_FRAME_SIZE`
+- Code 35 (`0x23`) -- `EIATTR_MAX_STACK_SIZE`
+- Code 47 (`0x2F`) -- `EIATTR_REGCOUNT`
+
+The rationale: when a weak function is replaced, its resource descriptors must not contaminate the replacement's resource accounting.
+
+## Consumer Tools
+
+### cuobjdump
+
+`cuobjdump --dump-elf-section=.nv.info` dumps raw hex bytes of the global `.nv.info` section. With `--dump-resource-usage`, it decodes EIATTR records into human-readable resource summaries (register count, shared memory, stack sizes).
+
+### nvdisasm
+
+`nvdisasm -nvi` decodes `.nv.info` sections into named EIATTR records with decoded values. This is the primary tool for inspecting EIATTR content without writing a custom parser.
+
+### cuda-gdb
+
+The debugger uses `EIATTR_TOOLS_PATCH_FUNC` (code 75, `0x4B`) to locate patchable function entry points for breakpoint insertion and instrumentation.
+
+## How EIATTR Drives GPU Resource Allocation
+
+The `.nv.info` section is not just metadata for tools -- it is the primary input to the GPU driver's kernel launch resource allocator:
+
+1. **Register allocation**: `EIATTR_REGCOUNT` (`0x2F`) tells the driver how many registers each thread needs. The driver computes `max_warps_per_SM = total_registers / (regcount * warp_size)`.
+
+2. **Shared memory reservation**: `EIATTR_SMEM_PARAM_SIZE` (`0x18`) and `EIATTR_RESERVED_SMEM_0_SIZE` (`0x42`) determine how much shared memory to carve out before dynamic shared memory allocation.
+
+3. **Stack allocation**: `EIATTR_CRS_STACK_SIZE` (`0x1E`) and `EIATTR_MAX_STACK_SIZE` (`0x23`) determine per-thread stack allocation. Too small causes memory corruption; too large reduces occupancy.
+
+4. **Barrier reservation**: `EIATTR_NUM_BARRIERS` (`0x4C`) reserves named barrier slots. Hardware supports 16 barriers per CTA on most architectures.
+
+5. **Instruction patching**: Offset tables (`EXIT_INSTR_OFFSETS`, `S2RCTAID_INSTR_OFFSETS`, `SW*_WAR`) tell the driver which instruction words to patch at load time. This enables hardware workarounds and CTA-ID remapping for cluster launch without recompilation.
+
+6. **Cluster configuration**: `EIATTR_CTA_PER_CLUSTER` (`0x3D`) and `EIATTR_EXPLICIT_CLUSTER` (`0x3E`) control the cluster launch hardware on sm_90+, determining how many CTAs share distributed shared memory.
+
+7. **Tensor core mode**: `EIATTR_TCGEN05_1CTA_USED` (`0x51`) and `EIATTR_TCGEN05_2CTA_USED` (`0x52`) inform the driver about 5th-gen tensor core usage modes on sm_100+.
+
+## Binary Artifacts
+
+### Pointer Table Layout
+
+The EIATTR name table at VA `0x23FDC20` consists of 97 entries of 16 bytes each (1,552 bytes total):
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    8     name_ptr     Pointer to null-terminated EIATTR name string
+0x08    4     meta_lo      Minimum toolkit version compatibility
+0x0C    4     meta_hi      Flags (0=legacy, 1=internal, 2=standard)
+```
+
+The table is indexed directly by EIATTR code number: `entry = table_base + code * 16`.
+
+### Typos Preserved in the Binary
+
+| String in binary | Correct spelling | Address |
+|---|---|---|
+| `EIATTR_AT_ENTRY_FRAGEMENTS` | `EIATTR_AT_ENTRY_FRAGMENTS` | `0x23FCCBD` (code 79 name) |
+
+A corrected variant `EIATTR_AT_ENTRY_FRAGMENTS` exists at `0x2405DA1`, and `EIATTR_COROUTINE_RESUME_ID_OFFSETS` at `0x24064D8` is an alternate name for code 58, both outside the main table.
+
+### Diagnostic Strings
+
+```
+"Creating new EIATTR_NUM_BARRIERS and moving barcount %d
+ from section flags of %s to nvinfo for entry symbol %s"       (0x2406960)
+
+"Creating new EIATTR_NUM_BARRIERS and moving barcount %d
+ from section flags of %s to nvinfo for non-entry symbol %s"   (0x24069D0)
+
+"Creating new EIATTR_NUM_BARRIERS and propagating higher
+ barcount %d from section flags of %s to nvinfo
+ for entry symbol %s"                                          (0x2406B10)
+
+"conflicting crs_stack attribute"                               (sub_1CC9800 evidence)
+
+"Turning caching %s for entry '%s' as per its request"          (sub_1CC9800 evidence)
+
+"regcount %d for %s propagated to entry %s"                     (sub_1CC8950 evidence)
+
+"no regcount?"                                                  (sub_1CC8950 evidence)
+```
+
+### Key Functions
+
+| Address | Size | Identity | Role |
+|---|---|---|---|
+| `sub_1CC9800` | 14,764 B | Master EIATTR builder | Constructs all `.nv.info.<func>` sections (90 KB decompiled, 51 callees) |
+| `sub_1CC8950` | 2,634 B | Barrier/register propagator | Propagates resource counts across call graph |
+| `sub_1CC85F0` | ~180 B | TLV record emitter | Writes individual EIATTR records to the nvinfo linked list |
+| `sub_1C97840` | ~100 B | SM-version gate | Checks if an EIATTR code is valid for a given SM target |
+| `sub_1CC86D0` | ~600 B | EIATTR helper | Cache preference attribute helper |
+| `sub_1CC84A0` | ~400 B | EIATTR helper | Attribute lookup helper |
+| `sub_1CC83F0` | ~200 B | EIATTR helper | Section flag extractor |
+| `sub_1CC8100` | ~1 KB | Cache conflict resolver | Resolves conflicting cache preference attributes |
+
+## Cross-References
+
+- [ELF/Cubin Output](../pipeline/output.md) -- Phase 6 in the 11-phase output pipeline
+- [Custom ELF Emitter](../output/elf-emitter.md) -- Section creation and layout
+- [Synchronization & Barriers](../passes/sync-barriers.md) -- Barrier count source
+- [Register Allocation](../regalloc/overview.md) -- REGCOUNT source
