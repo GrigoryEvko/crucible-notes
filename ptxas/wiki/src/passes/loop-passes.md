@@ -282,43 +282,239 @@ This line appears in eight SM-variant statistics printers (`sub_ABBA50` through 
 
 Performs modulo software pipelining on loops that were not fully unrolled. The pass overlaps successive loop iterations by interleaving instructions from different iterations within a single loop body, hiding functional unit and memory latency. This is the single most complex loop transformation in ptxas.
 
+### Two-Layer Pipelining Architecture
+
+ptxas implements software pipelining in two cooperating layers:
+
+1. **Phase 24 (OriPipelining, pre-RA):** Annotates instruction operands with pipeline latency classes, computes the minimum initiation interval (MII), performs the modulo scheduling loop transformation (iteration overlap, prolog/epilog generation). Operates on the Ori IR before register allocation.
+
+2. **Post-RA SoftwarePipeline (`sub_8B9390`, 23KB):** A scheduling algorithm variant within the post-RA instruction scheduler (address range `0x893000`--`0x8FE000`) that performs instruction-level scheduling of already-pipelined loop bodies using physical registers. One of approximately 12 scheduling variants alongside `DualIssueScheduler`, `TensorScheduler`, `LoopScheduler`, `PrefetchScheduler`, etc.
+
+The two layers cooperate: Phase 24 transforms the loop structure (instruction replication, prolog/epilog construction) before register allocation. The post-RA SoftwarePipeline variant handles the cycle-accurate instruction placement of already-pipelined loops.
+
 ### Function Map
 
-| Function | Size | Role |
+| Function | Size | Role | Confidence |
+|---|---|---|---|
+| `sub_926A30` | 22,116 bytes | Per-instruction operand latency annotator and encoding rewriter | High |
+| `sub_91A0F0` | 5,550 bytes | Opcode-to-latency-class classifier (~350 opcodes, 13 distinct classes) | High |
+| `sub_9203A0` | 4,881 bytes | Pipeline stage cost calculator (ResMII computation, FP cost accumulation) | Medium |
+| `sub_921820` | 1,592 bytes | Prolog/epilog code generator | Medium |
+| `sub_9202D0` | 207 bytes | Two-operand pipeline feasibility check (returns 60=reject, 130=accept) | High |
+| `sub_91E610` | 399 bytes | Register-class-based latency lookup (class 4→26, class 5/2→20) | High |
+| `sub_91E900` | 470 bytes | Pipe-assignment-based stall cycle calculator (32/64 cycle caps) | High |
+| `sub_92C0D0` | 358 bytes | Per-instruction annotation wrapper (calls `sub_926A30`, checks opcode changes) | High |
+| `sub_92C240` | 8,033 bytes | Extended GEMM-loop pipeliner (SM90+ TMA pipeline depth management) | Medium |
+| `sub_8B9390` | 22,841 bytes | Post-RA software pipelining scheduling variant (in scheduler subsystem) | Medium |
+
+**Correction (P1-06):** The original function map listed `sub_926A30` as the "main pipelining engine (modulo scheduling)." Decompilation reveals it is the per-instruction operand latency annotator -- it iterates over each operand of an instruction, calls `sub_91A0F0` to classify the operand's latency class, and rewrites the operand encoding with the latency annotation. The modulo scheduling loop transformation is distributed across the remaining functions, with `sub_9203A0` computing stage costs and `sub_921820` generating prolog/epilog code.
+
+### Software Pipelining Algorithm
+
+#### Phase 1: Operand Latency Annotation
+
+For each instruction in the loop body, `sub_92C0D0` calls `sub_926A30` to annotate operands:
+
+```
+function AnnotateOperandLatencies(code_object, instruction):
+    opcode = instruction.word & 0xFFFFCFFF      // strip modifier bits (bits 12-13)
+    secondary_opcode = instruction.secondary_opcode
+    operand_array = instruction.operands         // offset +84
+    operand_count = instruction.operand_count    // offset +80
+
+    for i in 0..operand_count-1:
+        operand_type = (operand_array[i].word >> 28) & 7
+        if operand_type in {2, 3}:               // register or register pair
+            // Adjust count for predicated instructions (bit 12)
+            adjusted_count = operand_count - 2 * ((opcode >> 11) & 2 != 0)
+            if i < adjusted_count:
+                latency_class = ClassifyLatency(opcode, secondary_opcode,
+                                                operand_array, adjusted_count, i)
+                if latency_class != default:
+                    RewriteOperandEncoding(operand_array[i], code_object, latency_class)
+
+        // For register operands: call full rewriter sub_922210
+        // For non-register operands: call sub_9267C0
+```
+
+#### Phase 2: Pipeline Feasibility Filtering
+
+Each instruction is checked by `sub_9202D0`:
+
+```
+function CheckPipelineFeasibility(code_object, instruction):
+    // Reject instructions with special operand flags
+    if (operand_array[1] & 0x603FFFF) != 0 or (operand_array[3] & 0xF8000000) != 0:
+        if optimization_level > 1:
+            return REJECT                        // return code 60
+
+    // Reject if pipe assignment class <= 3 (control/barrier pipe)
+    pipe_class = PipeAssignment(code_object, primary_opcode)   // vtable+904
+    if pipe_class <= 3:
+        return REJECT
+
+    // Reject if operand 0 and operand 1 have different latency classes
+    lat0 = ClassifyLatency(opcode, secondary_opcode, operand_array, count, 0)
+    lat1 = ClassifyLatency(opcode, secondary_opcode, operand_array, count, 1)
+    if lat0 != lat1:
+        return REJECT                            // asymmetric latencies
+
+    // Reject if extended operands have blocking flags
+    if operand_count > 2 and (operand_array[4] & 0xF) or (operand_array[4] >> 4) & 1:
+        return REJECT
+
+    // Accept: trim to 2-operand form
+    result_operands = &operand_array[2]
+    result_count = 2
+    return ACCEPT                                // return code 130
+```
+
+#### Phase 3: MII Computation
+
+The minimum initiation interval is computed as:
+
+```
+MII = max(RecMII, ResMII)
+```
+
+**RecMII** (recurrence-constrained): The longest data dependence cycle in the DDG divided by the iteration distance it spans. For a cycle of total latency L spanning D iterations: `RecMII = ceil(L / D)`.
+
+**ResMII** (resource-constrained): Computed by `sub_9203A0` using floating-point cost accumulation. The function classifies each instruction's pipe class using a 7-entry pipe class table at `code_object+16` and accumulates per-pipe instruction counts:
+
+```
+function ComputeResMII(loop_body, pipe_table):
+    pipe_counts[0..6] = {0}
+    for each instruction in loop_body:
+        lat0 = ClassifyLatency(instruction, operand=0)
+        lat1 = ClassifyLatency(instruction, operand=1)
+        pipe = MapLatencyToPipe(lat0, pipe_table)    // 7-entry lookup
+        pipe_counts[pipe] += cost(instruction)       // FP cost weights
+
+    ResMII = max(pipe_counts[i] / pipe_width[i] for i in 0..6)
+```
+
+The pipe class boundaries stored at `code_object+16` define 7 functional unit classes. Each class has a capacity (number of execution slots per cycle). `ResMII` is the maximum ratio of instruction demand to capacity across all pipe classes.
+
+#### Phase 4: Modulo Schedule Construction
+
+```
+function ModuloSchedule(loop_body, MII):
+    II = MII
+    while II <= MAX_II:
+        MRT = new ModuloReservationTable(II)     // II rows x pipe_classes columns
+        success = true
+
+        for each instruction in priority order:
+            earliest = max(data_dependency_constraints)
+            latest = earliest + II - 1
+            placed = false
+
+            for slot in earliest..latest:
+                row = slot mod II
+                pipe = instruction.pipe_class
+                if MRT[row][pipe] has capacity:
+                    MRT[row][pipe] -= 1
+                    instruction.scheduled_time = slot
+                    instruction.stage = slot / II
+                    placed = true
+                    break
+
+            if not placed:
+                success = false
+                break
+
+        if success:
+            return (II, schedule)
+        II += 1
+
+    return FAILURE                               // could not pipeline
+```
+
+#### Phase 5: Prolog/Epilog Generation
+
+Once a valid schedule is found at initiation interval II with S pipeline stages, `sub_921820` generates:
+
+```
+function GeneratePrologEpilog(loop, II, num_stages):
+    // Prolog: S-1 partial iterations
+    for stage in 0..num_stages-2:
+        emit instructions assigned to stages 0..stage
+        // Each prolog iteration adds one more stage
+
+    // Kernel: steady-state loop body
+    emit all instructions from all stages
+    // Trip count adjusted: new_trip = original_trip - (num_stages - 1)
+
+    // Epilog: S-1 drain iterations
+    for stage in num_stages-2..0:
+        emit instructions assigned to stages stage+1..num_stages-1
+        // Each epilog iteration removes one stage
+```
+
+### Instruction Latency Classifier (sub_91A0F0)
+
+The classifier is a 5.5KB, 1372-line switch statement mapping approximately 350 Ori opcodes to 13 distinct latency class values. It takes five parameters: `(opcode, secondary_opcode, operand_array, operand_count, operand_index)` and returns a class ID -- not a cycle count. The scheduler maps class IDs to actual cycle counts via the hardware profile.
+
+#### Latency Class Table
+
+| Class | Typical opcodes | Meaning |
 |---|---|---|
-| `sub_926A30` | 22,116 bytes | Main pipelining engine (modulo scheduling, stage assignment, prolog/epilog generation) |
-| `sub_91A0F0` | 5,550 bytes | Instruction latency classifier (maps Ori opcodes to latency classes) |
-| `sub_9203A0` | 4,881 bytes | Pipeline stage builder (assigns instructions to stages, resolves dependencies) |
-| `sub_921820` | 1,592 bytes | Pipeline prolog/epilog generator |
-| `sub_9202D0` | 207 bytes | Two-phase schedule attempt (tries different initiation intervals) |
-| `sub_91E610` | 399 bytes | Pipeline entry: register pressure check before attempting |
-| `sub_91E900` | 470 bytes | Pipeline retry with adjusted II |
-| `sub_92C0D0` | 358 bytes | Pipeline invocation wrapper (called from multiple contexts) |
-| `sub_92C240` | 8,033 bytes | Extended pipelining for GEMM-like loops |
+| 1 | Past-end operands, invalid indices | Skip / not used |
+| 6 | Simple ALU, bitwise, short integer | Short-pipe latency (~80 opcodes) |
+| 7 | Paired register operations | Medium-short (~5 opcodes) |
+| 8 | Special cases (via lookup table `dword_21E1340`) | Medium |
+| 9 | Type conversions (via lookup table) | Medium |
+| 10 | Integer multiply, shifts, `IMAD` | Medium-long (~40 opcodes) |
+| 11 | Address computations, `LEA` variants | Medium-long (~15 opcodes) |
+| 12 | Memory operations, FP32, barriers | Standard long (~100 opcodes) |
+| 14 | Wide memory, atomics, FP64 stores | Extended long (~20 opcodes) |
+| 16 | FP64 special variants | Extended long (~3 opcodes) |
+| 20 | Texture fetches, uniform loads | Very long (~30 opcodes) |
+| 26 | Global memory loads, uncached access | Maximum latency (~25 opcodes) |
+| 31 | Scoreboard/barrier-related operands | Special handling (~5 opcodes) |
 
-### Software Pipelining Model
+#### Opcode Family Handling
 
-ptxas implements a variant of modulo scheduling. The algorithm:
+| Opcode range | Category | Latency behavior |
+|---|---|---|
+| `0x03`--`0x24` | Integer ALU | Mostly passthrough default; `0x23` always returns 10 |
+| `0x3C`, `0x3E`, `0x4E`, `0x4F` | Memory (load/store) | Returns field from `operand_array[4]` bits for operands 0--1 |
+| `0x46`, `0xF3`--`0x106` | Texture | Returns 6 normally; 10 for MIO-dependent with extended flag check |
+| `0x49`, `0x4A`, `0x51`, `0x143`, `0x15E` | Atomic/reduce | Always returns 12 |
+| `0x55`--`0x6F` | Floating-point | Complex per-operand logic; `0x55` uses lookup table `dword_21E1340` |
+| `0x5B`, `0x5C`, `0x137` | Barriers/sync | Returns 12 for operand 1, else default |
+| `0xB7`, `0x120` | WGMMA setup | Per-operand latency (10--20) based on accumulator flags |
+| `0x135` | HMMA/IMMA | Calls `sub_7E39B0`/`sub_7E3A70`/`sub_7E3BA0`/`sub_7E3C30` for matrix latency |
+| `0x13D`, `0x13E` | Extended FP | Accumulator-flag-dependent returns (10 or 12) |
 
-1. **Builds a data dependence graph (DDG)** within the loop body, classifying each instruction by its latency class. The large opcode switch in `sub_91A0F0` maps approximately 350 Ori opcodes to integer latency values, with special cases for:
-   - Memory operations (opcode categories `0x3C`--`0x4F`): latency 12--26 depending on address space
-   - Texture operations (opcode `0x46`, `0xF3`--`0x106`): latency class determined by `PipelineMIOVQToInstRatio`
-   - Integer arithmetic (opcodes `0x3`--`0x24`): latency 4--10
-   - Floating-point (opcodes `0x55`--`0x6F`): latency 4--8
-   - Barriers and sync (opcodes `0x5B`, `0x5C`, `0x137`): not pipelineable (returns failure code)
+### Stall Cycle Calculator (sub_91E900)
 
-2. **Computes the minimum initiation interval (MII)** as `max(RecMII, ResMII)`:
-   - `RecMII`: recurrence-constrained MII, determined by the longest cycle in the DDG divided by the number of iterations it spans.
-   - `ResMII`: resource-constrained MII, determined by the most-used functional unit class.
+`sub_91E900` computes the stall penalty for an instruction by mapping latency classes through the pipe assignment function (`vtable+904`):
 
-3. **Attempts modulo scheduling** at `II = MII`, incrementing II on failure up to a configurable limit. For each candidate II, the scheduler places instructions into a modulo reservation table (MRT) and checks for resource conflicts.
+```
+function ComputeStallCycles(code_object, instruction):
+    lat0 = ClassifyLatency(instruction, operand=0)
+    pipe0 = PipeAssignment(code_object, lat0)         // vtable+904
 
-4. **Generates kernel, prolog, and epilog** (`sub_921820`):
-   - The **kernel** is the steady-state loop body containing instructions from multiple iterations.
-   - The **prolog** fills the pipeline by executing partial iterations before the kernel starts.
-   - The **epilog** drains the pipeline after the last kernel iteration.
+    if pipe0 == 8:                                     // long-latency pipe
+        stall = StallTable[instruction.index]          // code_object+440
+        return min(stall, 64)                          // cap at 64 cycles
 
-### GEMM Pipelining
+    lat1 = ClassifyLatency(instruction, operand=1)
+    pipe1 = PipeAssignment(code_object, lat1)
+
+    if pipe1 == 8:
+        stall = StallTable[instruction.index]
+        return min(stall, 64)
+
+    // Neither operand on long pipe
+    stall = StallTable[instruction.index]
+    return min(stall, 32)                              // cap at 32 cycles
+```
+
+The pipe assignment value 8 corresponds to the long-latency functional unit (memory/texture). Instructions on this pipe get a 64-cycle cap; all others are capped at 32 cycles.
+
+### GEMM Pipelining (sub_92C240)
 
 The `GemmPipeliner*` family of knobs controls a specialized pipelining mode for GEMM (matrix multiply) loops:
 
@@ -327,11 +523,18 @@ The `GemmPipeliner*` family of knobs controls a specialized pipelining mode for 
 | `GemmPipelinerEnabled` | Master enable for GEMM-specific pipelining |
 | `GemmPipelinerPipelineDepthEnforceDeltaFull` | Pipeline depth adjustment for full enforcement |
 | `GemmPipelinerPipelineDepthEnforceDeltaPartial` | Pipeline depth adjustment for partial enforcement |
-| `GemmPipelinerDependenciesPopbl` | Dependency resolution policy |
-| `GemmPipelinerScoreboardHashPopbl` | Scoreboard hash policy for GEMM |
-| `GemmPipelinerUseRegisterCalculation` | Use register-based calculation for pipeline depth |
+| `GemmPipelinerDependenciesPopbl` | Dependency resolution policy between DMA and compute stages |
+| `GemmPipelinerScoreboardHashPopbl` | Scoreboard hash policy for GEMM barrier tracking |
+| `GemmPipelinerUseRegisterCalculation` | Use register-based calculation for pipeline depth vs. fixed |
 
-The extended pipelining in `sub_92C240` (8KB) handles GEMM-like patterns where the loop body contains WGMMA/IMMA instructions. It coordinates with the GMMA pipeline infrastructure (phases 85, 87) to ensure asynchronous matrix operations are correctly staged across pipeline iterations. On SM90+ (Hopper), asynchronous memory operations (TMA, bulk copies) have a hardware pipeline depth of up to 8 stages, and the GEMM pipeliner must match or approximate this depth for optimal throughput.
+The extended pipelining in `sub_92C240` (8KB) handles GEMM-like patterns where the loop body contains WGMMA/IMMA instructions. From decompilation:
+
+1. **Activation:** The GEMM pipeliner activates when `code_object+48` (GEMM mode flag) is set and the pipeline context at `code_object+56` has a valid stage range.
+2. **Stage iteration:** Iterates from `context+84` (start stage) to `context+88` (end stage), with 96-byte descriptors per stage at `context+136`.
+3. **Pipeline depth management:** Uses `sub_8A4DA0` to validate stage depth and `sub_6E6650` for dynamic array resizing when pipeline depth exceeds the current allocation. Writes stage bitmasks (`1 << stage_index`) into the stage descriptor arrays.
+4. **Hardware model:** On SM90+ (Hopper), TMA supports up to 8 outstanding asynchronous copy operations. The GEMM pipeliner matches this hardware depth, staging DMA (memory) and compute (math) operations to fill the pipeline.
+
+The DUMPIR diagnostic output includes `For Dma Loop` and `For Math Loop` sections from `sub_7A4500`, confirming the pipeliner explicitly distinguishes between DMA and compute loop stages.
 
 ### Other Pipelining Knobs
 
@@ -349,9 +552,11 @@ The extended pipelining in `sub_92C240` (8KB) handles GEMM-like patterns where t
 
 **Warp divergence.** Pipelined loops assume all threads in a warp execute the same number of iterations. If the trip count is warp-divergent, the prolog/epilog handling must account for early-exit threads. The pass checks the varying analysis (phases 53, 70) to determine divergence.
 
-**Barrier placement.** Pipelined loops containing `BAR.SYNC` or `MEMBAR` instructions cannot be pipelined (the latency classifier returns a failure code for barrier opcodes). The pipeline does not attempt modulo scheduling when barriers are present in the loop body.
+**Barrier placement.** Pipelined loops containing `BAR.SYNC` or `MEMBAR` instructions are checked by `sub_9202D0` -- if the pipe assignment class for a barrier instruction is <= 3, the instruction is rejected from pipelining. The latency classifier (`sub_91A0F0`) assigns class 12 to barrier operands (opcodes `0x5B`, `0x5C`, `0x137`), but the feasibility check rejects based on pipe class, not latency class.
 
-**Memory pipeline depth.** The `sub_92C240` extended pipeliner for GEMM-like loops specifically manages the hardware memory pipeline on SM90+. The DUMPIR diagnostic output includes `For Dma Loop` and `For Math Loop` sections from `sub_7A4500`, indicating the pipeliner explicitly distinguishes between DMA (memory) and compute (math) loop stages.
+**Memory pipeline depth.** The `sub_92C240` extended pipeliner for GEMM-like loops manages the hardware memory pipeline on SM90+. It explicitly tracks DMA pipeline depth using 96-byte per-stage descriptors, resizing arrays dynamically when depth exceeds allocation. The stage descriptor at `context+136 + 96*stage` holds bitmask membership, latency counters, and dependency links.
+
+**Pipe class model.** The 7-entry pipe class table at `code_object+16` partitions the functional units into classes. The post-RA software pipelining variant (`sub_8B9390`) uses the same table to determine which functional unit class each instruction uses, ensuring resource conflict detection is consistent between the two pipelining layers.
 
 ---
 
