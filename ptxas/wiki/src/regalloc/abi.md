@@ -33,11 +33,11 @@ generation = *(int*)(sm_target + 372) >> 12
 |------------------|------------|---------------------|
 | 3 | sm\_35, sm\_37 | Kepler ABI: no uniform registers, no convergent boundaries |
 | 4 | sm\_50, sm\_52, sm\_53 | Maxwell ABI: 16-register minimum, label fixups, coroutine insertion |
-| 5 | sm\_60--sm\_89 | Pascal through Ada ABI: 16-register minimum, cooperative launch support |
-| 9 | sm\_90+ | Hopper ABI: 24-register minimum, uniform return address support |
-| >9 | sm\_100+ | Blackwell ABI: 24-register minimum, extended register reservation |
+| 5 | sm\_60--sm\_89 | Pascal through Ada ABI: 24-register minimum, cooperative launch support |
+| 9 | sm\_90, sm\_90a | Hopper ABI: 24-register minimum, uniform return address support |
+| >9 | sm\_100+ | Blackwell ABI: no minimum enforced (skips check), extended register reservation |
 
-The minimum register count varies by generation. For sm\_50 through sm\_89, the ABI requires at least 16 registers per function. For sm\_90 and later, the minimum is 24. Violating these minimums emits warning 7016: `"regcount %d specified below abi_minimum of %d"`.
+The minimum register count varies by generation. For generations 3--4 (sm\_35 through sm\_53), the ABI requires at least 16 registers per function. For generations 5--9 (sm\_60 through sm\_90a), the minimum is 24. Generations below 3 and above 9 skip the minimum check entirely. Violating these minimums emits warning 7016: `"regcount %d specified below abi_minimum of %d"`. The `abi_minimum` value is computed as `(generation - 5) < 5 ? 24 : 16`.
 
 ## Master ABI Setup: sub\_19D1AF0
 
@@ -47,8 +47,8 @@ The top-level ABI entry point (5608 bytes), called once per function by the per-
 function abi_master_setup(func, sm_target, abi_spec):
     // 1. Validate register count vs. ABI minimums
     generation = *(sm_target + 372) >> 12
-    if generation == 5:  min_regs = 16       // sm_50-sm_89
-    if generation >= 9:  min_regs = 24       // sm_90+
+    if generation in 3..4:  min_regs = 16    // sm_35-sm_53
+    if generation in 5..9:  min_regs = 24    // sm_60-sm_90a
     if func.maxreg < min_regs:
         warn(7016, "regcount %d specified below abi_minimum of %d",
              func.maxreg, min_regs)
@@ -62,7 +62,7 @@ function abi_master_setup(func, sm_target, abi_spec):
     // 3. Validate coroutine SUSPEND semantics
     for each register in func.preserved_set:
         if register.is_scratch_at_suspend:
-            warn(7018, "Register (%s%d) is defined as scratch on "
+            warn(7011, "Register (%s%d)is defined as scratch on "
                  "SUSPEND but preserved for coroutine function",
                  register.class_name, register.index)
 
@@ -148,27 +148,29 @@ The return address validator (`sub_19CDFF0`, 7.5 KB, 99% confidence) handles fou
 
 ### Return Address Validator: sub\_19CDFF0
 
-The most thoroughly instrumented function in the ABI engine (12 distinct diagnostic strings). It performs these validations in sequence:
+The most thoroughly instrumented function in the ABI engine (7 distinct warning codes across two mode-specific paths). It performs these validations in sequence:
 
-| Warning | Code | Condition | Message |
-|---------|------|-----------|---------|
-| Unaligned | 7001 | `return_addr % 2 != 0` | `"ABI return address %d is unaligned"` |
-| Out of range | 7002 | `return_addr >= max_reg` | `"Return Address (%d) should be less than %d"` |
-| Stack pointer overlap | 7003 | `return_addr == stack_pointer` | `"Return address (%d) should not overlap with the stack pointer (%d)"` |
-| Parameter overlap | 7004 | Range collision | `"Return Address %d overlaps with parameters in range %d - %d"` |
-| Exceeds max | 7005 | `return_addr + return_size > max_reg` | `"With specified parameters, return address is %d registers and exceeds specified max reg (%d)"` |
-| Invalid range | 7008 | `return_addr < min or return_addr > max` | `"Return address (%d) should be between %d and %d"` |
-| Uniform unsupported | 7009 | Mode 3 on pre-sm\_75 | `"SM does not support uniform registers for return address"` |
+| Code | Condition | Message |
+|------|-----------|---------|
+| 7001 | `return_addr & 1 != 0` | `"ABI return address %d is unaligned"` |
+| 7002 | `return_addr >= max_reg` | `"Return Address (%d) should be less than %d"` |
+| 7003 | `stack_ptr` in `[return_addr, return_addr+1]` | `"Return address (%d) should not overlap with the stack pointer (%d)"` |
+| 7004 | Return addr bit set in parameter bitmap | `"Return Address %d overlaps with parameters in range %d - %d"` |
+| 7005 | `param_end + align > max_reg` (auto-placement) | `"With specified parameters, return address is %d registers and exceeds specified max reg (%d)"` |
+| 7008 | `return_addr < lower_bound or return_addr > upper_bound` | `"Return address (%d) should be between %d and %d"` |
+| 7009 | Mode 3 and `!(func+1408 byte & 0x02)` | `"SM does not support uniform registers for return address"` |
+
+The checks are mode-dependent. Mode 2 (regular GPR) enters the 7002/7001/7003/7004 path. Modes 3 and 5 (uniform/computed) enter the 7009/7008/7001 path. Mode 1 and mode 5 share the auto-placement path where 7005 fires. Warning 7001 (unaligned) appears in both paths because 64-bit return address pairs always require even alignment.
 
 ### Return Address Setup: sub\_19D1720
 
-The setup function (4.8 KB, 95% confidence) runs before the validator. It propagates ABI flag `0x04` to the function state (byte 1389), validates that preserved registers at coroutine SUSPEND points are not classified as scratch (warning 7012: `"%d register should not be classified as scratch"`), sizes the preserved register set to 255 entries via `sub_BDBAD0`, and computes the effective register range as `return_size + param_size` for comparison against the maximum available.
+The setup function (4.8 KB, 95% confidence) runs before the validator. It propagates ABI flag `0x04` to the function state (byte 1389), validates that the return address register (register 1) is not classified as scratch when it must be preserved (warning 7012: `"%d register should not be classified as scratch"`), sizes the preserved register set to 255 entries via `sub_BDBAD0`, and computes the effective register range as `return_size + param_size` for comparison against the maximum available. The 7012 check fires when `*(abi_spec+88) & 0x01` and `*(abi_spec+48) & 0x02` are both set, always with argument 1 (the return address register).
 
-The function also enforces the mutual exclusion rule: `"ABI allows either specifying return address or return address before params"` -- you pick one strategy, not both.
+The function also enforces the mutual exclusion rule (warning 7006): `"ABI allows either specifying return address or return address before params"`. This fires when mode is 1 (fixed, "return address before params") but an explicit return address register is also assigned (`return_addr != -1`). You pick one strategy, not both.
 
 ## Scratch Data Registers
 
-Registers not reserved by the ABI and not used for parameters or return values may be classified as **scratch** (callee-clobbered). The ABI engine tracks scratch classification per register and validates it against coroutine semantics. At SUSPEND points in coroutine functions, a register marked as scratch must not also appear in the preserved set. Violation triggers warning 7018.
+Registers not reserved by the ABI and not used for parameters or return values may be classified as **scratch** (callee-clobbered). The ABI engine tracks scratch classification per register and validates it against coroutine semantics. At SUSPEND points in coroutine functions, a register marked as scratch must not also appear in the preserved set. Violation triggers warning 7011.
 
 The scratch/preserved classification feeds into the register allocator's spill decisions. Registers marked as scratch across a call boundary must be saved by the caller; preserved registers must be saved by the callee.
 
@@ -230,7 +232,7 @@ The register-to-register transfer lowering function (3873 bytes, 95% confidence)
 
 | Data width | Generated sequence |
 |------------|-------------------|
-| 4 bytes (32-bit) | Single `MOV` (opcode 0x82) |
+| 4 bytes (32-bit) | Single MOV-like (opcode 130 / `0x82`, `HSET2` in ROT13; actual SASS `MOV` is opcode 19) |
 | 8 bytes (64-bit) | `STS` + `LDS` pair (opcodes 0x86/0x85) through shared memory |
 | Permute | `PRMT` (opcode 0x120) for byte-lane rearrangement |
 
@@ -256,7 +258,7 @@ Functions with coroutine support (flag `0x01` at function byte `+1369`) receive 
 
 **Coroutine frame builder** (`sub_19D4B80`, 1925 bytes): Constructs the frame layout for coroutine-style functions, allocating slots for each register that must survive a SUSPEND.
 
-The ABI engine validates that the scratch/preserved classification is consistent with coroutine semantics. Warning 7012 fires when a register marked as scratch at a SUSPEND point is also required to be preserved for the coroutine function.
+The ABI engine validates that the scratch/preserved classification is consistent with coroutine semantics. Warning 7011 fires when a register marked as scratch at a SUSPEND point is also required to be preserved for the coroutine function. Warning 7012 fires when the return address register itself is misclassified as scratch.
 
 ## gb10b Hardware WAR
 
@@ -321,6 +323,64 @@ The ABI engine sits between the optimization passes and the register allocator i
 ```
 
 The ABI engine produces new SASS instructions via `sub_934630` / `sub_9314F0` (instruction builder/inserter) and uses `sub_91BF30` (temp register allocation) for scratch registers needed during lowering. During final emission, the encoding functions in Zone B (`0x1A01000`--`0x1A76F30`) convert the ABI-lowered instructions into binary SASS words.
+
+## ABI Validation Diagnostics
+
+The ABI engine emits 15 distinct warning codes (7001--7017) from six functions. Two codes are unused in this binary version (7007, 7018). All codes share the contiguous hex ID range `0x1B59`--`0x1B69` and are emitted through two parallel paths: `sub_7EEFA0` (standalone diagnostic buffer) and `sub_895530` (context-attached diagnostic using the compilation context at `*(func+48)`).
+
+### Complete Warning Catalog
+
+| Code | Hex | Emitter | Message | Trigger |
+|------|-----|---------|---------|---------|
+| 7001 | `0x1B59` | `sub_19CDFF0` | `"ABI return address %d is unaligned"` | `return_addr & 1 != 0` (odd register for 64-bit pair) |
+| 7002 | `0x1B5A` | `sub_19CDFF0` | `"Return Address (%d) should be less than %d"` | `return_addr >= max_reg` (exceeds register file) |
+| 7003 | `0x1B5B` | `sub_19CDFF0` | `"Return address (%d) should not overlap with the stack pointer (%d)"` | Stack pointer falls within `[return_addr, return_addr+1]` |
+| 7004 | `0x1B5C` | `sub_19CDFF0` | `"Return Address %d overlaps with parameters in range %d - %d"` | Return addr bit set in parameter allocation bitmap |
+| 7005 | `0x1B5D` | `sub_19CDFF0` | `"With specified parameters, return address is %d registers and exceeds specified max reg (%d)"` | Auto-placed return addr pushed beyond register file limit |
+| 7006 | `0x1B5E` | `sub_19D1720` | `"ABI allows either specifying return address or return address before params"` | Mode 1 (fixed) with explicit `return_addr != -1` |
+| 7007 | `0x1B5F` | -- | -- | Unused/reserved in this binary version |
+| 7008 | `0x1B60` | `sub_19CDFF0` | `"Return address (%d) should be between %d and %d"` | Return addr outside valid range from target vtable query |
+| 7009 | `0x1B61` | `sub_19CDFF0` | `"SM does not support uniform registers for return address"` | Mode 3 (uniform) on target without UR support (`!(func+1408 & 0x02)`) |
+| 7010 | `0x1B62` | `sub_13B6DF0` | `"Relative 32-bit return address requires a caller-save 64-bit scratch register pair"` | 32-bit relative call without available scratch pair |
+| 7011 | `0x1B63` | `sub_19D1AF0` | `"Register (%s%d)is defined as scratch on SUSPEND but preserved for coroutine function"` | Register in preserved set is scratch in SUSPEND bitmap |
+| 7012 | `0x1B64` | `sub_19D1720`, `sub_19D1AF0` | `"%d register should not be classified as scratch"` | Preserved ABI register (return addr) misclassified as scratch |
+| 7013 | `0x1B65` | `sub_19CA730` | `"%d register used to return value cannot be classified as preserved"` | Return-value register appears in preserved bitmap |
+| 7014 | `0x1B66` | `sub_19CA730` | `"Reserved register range %d - %d overlaps with parameters in range %d - %d"` | Explicit reserved range collides with parameter range |
+| 7015 | `0x1B67` | `sub_19C69D0` | `"Reserved register range %d - %d overlaps with retAddr %d"` | Reserved range collides with return address register |
+| 7016 | `0x1B68` | `sub_19D1AF0` | `"regcount %d specified below abi_minimum of %d"` | `func.maxreg` below generation minimum (16 or 24) |
+| 7017 | `0x1B69` | `sub_19D1AF0` | `"register available %d for reservation is less than the requested number of registers %d "` | Available regs after reservation base < requested count |
+
+### Diagnostic Emission Architecture
+
+The ABI engine uses three diagnostic emitters:
+
+**`sub_7EEFA0`** (standalone path): Takes a stack buffer, the decimal warning code, and a printf-format string. Used as the fallback when no compilation context is available (when `*(*(func)+48) == NULL`). This is the path that produces warnings visible in non-context mode (e.g., standalone ptxas invocations).
+
+**`sub_895530`** (context-attached path): Takes the function object, the output context, flags (always 0), the hex warning code, and the format string. Used when the compilation context exists. This is the primary path during normal nvcc-driven compilation.
+
+**`sub_7F7C10`** (conditional emitter): Returns a bool indicating whether the diagnostic was accepted (not suppressed by the diagnostic context at `func+1176`). Used exclusively for warning 7011 (SUSPEND). When it returns true, the caller additionally invokes `sub_8955D0` to attach the diagnostic to the compilation context.
+
+### Validation Order
+
+The ABI master setup (`sub_19D1AF0`) invokes validators in this order:
+
+```
+1. regcount vs. abi_minimum       -> 7016
+2. register reservation overflow  -> 7017
+3. return address setup           -> 7006, 7012  (sub_19D1720)
+4. parameter allocation           -> 7013, 7014  (sub_19CA730)
+5. reserved range vs. retAddr     -> 7015         (sub_19C69D0)
+6. return address validation      -> 7001-7005, 7008, 7009  (sub_19CDFF0)
+7. coroutine SUSPEND validation   -> 7011, 7012
+```
+
+### Unreferenced ABI Strings
+
+Three ABI-related strings exist in `ptxas_strings.json` with no cross-references in the decompiled binary. They may be dead code, referenced via indirect dispatch, or used only in debug builds:
+
+- `"Caller and callee expected to have different return address register but '%s' and '%s' both use R%d as return address register"`
+- `"Function '%s' specifies register R%d as scratch register which is used as return address register"`
+- `"Mismatch in return address abi when '%s' calls '%s'"`
 
 ## Function Map
 
