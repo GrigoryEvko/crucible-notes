@@ -283,13 +283,7 @@ For each instruction in the candidate block:
 
 3. **Predicable instruction check** (`sub_137D8B0`): Each instruction is tested via the SM backend's `canPredicate` vtable method at `sm_backend+1424`. Instructions that cannot be predicated (atomics, certain memory operations, barriers) cause the scan to fail.
 
-4. **Speculative execution safety**: For load instructions (opcode 125 after masking), the memory space is queried via `sub_91C840`. The result is tested against the bitmask `0x90E`:
-   - Bit 1: register file space -- safe
-   - Bit 2: local memory -- safe
-   - Bit 3: shared memory -- safe
-   - Bit 8: constant memory -- safe
-   - Bit 11: (internal type) -- safe
-   - Global memory, surface memory, texture memory -- **not safe** (side effects or traps on invalid addresses)
+4. **Primary memory load classification**: For load instructions (opcode 125 after masking), the memory space is queried via `sub_91C840`. The internal category number is tested against bitmask `0x90E` (`(1 << category) & 0x90E`), which selects the five primary data memory spaces: `.shared` (1), `.local` (2), `.const` (3), `.tex` (8), `.global` (11). When a load targets one of these spaces, the `has_primary_memory_load` flag is set at `candidate+12`, which affects profitability thresholds in the heuristic. See the [Memory Space Classification for Predication](#memory-space-classification-for-predication) section for the full bitmask decode.
 
 5. **Extra-latency check**: Instructions matching opcodes in the set `{22, 23, 41, 42, 55, 57, 352, 297}` (long-latency operations including texture, surface, and certain memory ops) have their latency contribution tallied at `state+16` via the SM backend's `getExtraLatency` method at `sm_backend+1392`.
 
@@ -330,11 +324,11 @@ bool analyzeRegion(state, candidate):
         if not canPredicateInstruction(state, instr, header):
             fail with "too many instructions"
 
-        // Speculative memory safety
+        // Primary memory load classification (0x90E bitmask)
         if isLoadOp(instr):
             space = getMemorySpace(instr)
-            if space is in {global, surface, texture, unmapped}:
-                candidate->has_side_effect_load = true
+            if space is in {shared, local, const, tex, global}:
+                candidate->has_primary_memory_load = true
 
         // Extra latency accounting
         if isLongLatencyOp(instr):
@@ -388,9 +382,9 @@ sub_1380BF0(state, true_side, false_side, is_reverse, result):
     if predicateMatchesSELPattern(pred_operand):
         return true
 
-    // 5. Speculative execution check
-    if false_side->has_side_effect_load:
-        return sub_137F800(...)        // detailed speculation analysis
+    // 5. False-side memory load check
+    if false_side->has_primary_memory_load:
+        return sub_137F800(...)        // speculation safety analysis
 
     // 6. Extra-latency penalty
     if CheckKnob260(knob_state):
@@ -400,8 +394,8 @@ sub_1380BF0(state, true_side, false_side, is_reverse, result):
     // 7. Size-based thresholds (main heuristic)
     instr_count = true_side->instr_count
 
-    if false_side->has_side_effect_load:
-        // Side-effect loads require tighter thresholds
+    if true_side->has_primary_memory_load:
+        // Memory loads route to extended diamond analysis
         return sub_137FE10(...)        // extended diamond analysis
 
     mov_count = true_side->mov_count
@@ -424,9 +418,9 @@ sub_1380BF0(state, true_side, false_side, is_reverse, result):
     if state->combined_limit < instr_count and combined > state->threshold:
         return false
 
-    // 9. Extended diamond analysis for remaining cases
-    if false_side->has_side_effect_load:
-        return true
+    // 9. False-side memory loads boost profitability
+    if false_side->has_primary_memory_load:
+        return true                    // scheduling overlap benefit
     return sub_1380810(...)            // fall-through block analysis
 ```
 
@@ -503,36 +497,84 @@ After the main if-conversion, `sub_137EE50` (969 bytes) performs a secondary sca
 
 4. **Scans the false-side block** with the same logic.
 
-The bitmask `0x90E` identifies memory spaces safe for speculation:
+The post-predication speculation safety check targets exclusively category 18 (`.surf`/tensor extended, sm_90+). This is the only memory space that `sub_137EE50` treats as requiring speculative-unsafe tracking; global loads and texture loads are considered acceptable for speculative execution in the predication cost model.
 
-| Bit | Space type | Safe? | Reason |
-|---|---|---|---|
-| 0 | Generic | No | Could resolve to any space |
-| 1 | Register | Yes | Cannot trap |
-| 2 | Local | Yes | Thread-private, always mapped |
-| 3 | Shared | Yes | Block-scope, always mapped if within bounds |
-| 4 | Global | No | May fault on unmapped addresses |
-| 5 | Constant (generic) | No | Could be unmapped |
-| 6 | Global (explicit) | No | May fault |
-| 7 | Texture/surface | No | May trap or return garbage |
-| 8 | Constant (banked) | Yes | Always mapped by driver |
-| 9-10 | (reserved) | No | |
-| 11 | (internal) | Yes | Compiler-internal use |
+## Memory Space Classification for Predication
+
+The bitmask `0x90E` appears in five functions within the predication pass (`sub_137D990`, `sub_137F560`, `sub_137F220`, `sub_137FB60`, `sub_1380810`). All five use the identical test pattern:
+
+```c
+category = sub_91C840(operand);          // classify memory space
+if (category <= 0xB && ((1LL << category) & 0x90E) != 0)
+    // load targets a primary data memory space
+```
+
+### Bitmask Decode
+
+`0x90E` = binary `1001 0000 1110` -- bits {1, 2, 3, 8, 11} are set.
+
+| Bit | Category | PTX Space | In `0x90E`? | Role in predication |
+|---|---|---|---|---|
+| 0 | 0 | Generic (unqualified) | No | Unresolved address space -- cannot be classified, excluded |
+| 1 | 1 | `.shared` | **Yes** | CTA-scope scratchpad; always mapped for executing CTA; 20--30 cycle latency |
+| 2 | 2 | `.local` | **Yes** | Thread-private stack/frame; always mapped; backed by L1/L2 |
+| 3 | 3 | `.const` | **Yes** | Constant bank (`c[bank][offset]`); loaded by driver before launch; always mapped |
+| 4 | 4 | `.param` | No | Kernel parameter memory; typically constant-folded or register-promoted by earlier passes |
+| 5 | 5 | `.const` (extended) | No | Extended constant path (PTX inputs 21, 22); different scheduling model |
+| 6 | 6 | `.global` (extended) | No | Extended global variant (PTX input 20); different scheduling model |
+| 7 | 7 | Spill space | No | Compiler-generated register spill/fill; handled separately by regalloc |
+| 8 | 8 | `.tex` | **Yes** | Texture memory; high latency (200+ cycles); texture cache always valid when bound |
+| 9 | 9 | Special (opcode-dep.) | No | Ambiguous classification from case-18 sub-switch in `sub_91C840` |
+| 10 | -- | (unused) | No | No memory space maps to category 10 |
+| 11 | 11 | `.global` | **Yes** | DRAM-backed global memory; highest latency (300+ cycles) |
+
+Categories 12--18 (code/function, uniform, register file, surface, surface/tensor extended) all exceed the `<= 0xB` range check and are excluded from the bitmask test automatically.
+
+### What the Bitmask Selects
+
+The five selected categories -- shared, local, const, texture, global -- are the **primary data memory spaces**: the ones that involve real data movement through the GPU memory hierarchy and carry meaningful scheduling latency. These are the loads a scheduler can profitably overlap with predicated computation.
+
+The excluded categories are either:
+- **Unresolvable** (generic -- could be anything)
+- **Non-load** in practice (param -- folded away, code -- function pointers)
+- **Compiler-internal** (spill, special -- the compiler already knows how to handle these)
+- **Out of range** (register file, uniform, surface, surface/tensor -- categories > 11)
+
+### How the Bitmask Affects Profitability
+
+The bitmask test does NOT directly determine speculation safety. It sets a `has_primary_memory_load` flag at candidate offset `+12`, which the profitability heuristic (`sub_1380BF0`) uses in three ways:
+
+1. **True-side memory loads** (`a2+12` set): The profitability check routes to the extended diamond analysis (`sub_137FE10`) instead of the standard size-threshold path. This allows larger regions to be if-converted when they contain meaningful loads.
+
+2. **False-side memory loads -- speculation guard** (`a3+12` set): If the false side has memory loads AND the SM backend's speculation policy (vtable at `sm_backend+1200`) allows it, the detailed speculation analysis (`sub_137F800`) is invoked. If that analysis flags the loads as risky, predication is rejected.
+
+3. **False-side memory loads -- profitability boost** (`a3+12` set, passes safety): If the false side has memory loads and passes safety checks, the profitability heuristic returns `true` directly (line 166 of `sub_1380BF0`). The reasoning: if the false-side code contains real memory loads, converting the branch to predicated straight-line code lets the scheduler overlap those loads with other work.
+
+### Speculation Safety (Separate Mechanism)
+
+The actual speculation safety tracking is handled by `sub_137EE50` (post-predication scan), which uses a **different criterion** from the `0x90E` bitmask:
+
+- Scans both sides for opcodes 183 (LDG) and 288 (STG) after masking
+- For each, queries `sub_91C840` and checks if category == 18 (`.surf`/tensor extended)
+- Only category 18 loads are tracked as "speculatively unsafe" in the hash set at `state+240`
+- The `context+1392` bit 0 flag persists and is checked by `OriHoistInvariantsLate` (phase 66)
+
+This means global loads (category 11) that are speculatively predicated are **not** tracked as unsafe. In the ptxas cost model, global memory loads under a predicate guard are considered acceptable: the hardware will issue the load speculatively, and if the predicate is false, the result is simply discarded. On architectures with memory access traps (e.g., page faults on unmapped addresses), the hardware masks the fault for lanes where the predicate is false. Surface/tensor extended operations (category 18), however, may have side effects that cannot be masked, so they receive the unsafe designation.
 
 ## Fall-Through Block Analysis -- `sub_1380810`
 
 When the standard profitability check is inconclusive, `sub_1380810` (980 bytes) analyzes the fall-through continuation of the merge block. The idea: even if the region itself is borderline, if the code immediately after the merge point contains long-latency operations (loads, texture fetches), the predicated version may be better because the scheduler can overlap the predicated instructions with those long-latency operations.
 
-The function walks instructions in the merge block's successor(s), counting:
-- Long-latency memory operations (via `sm_backend+1824` predicability check)
-- Load instructions to specific memory spaces (again using the `0x90E` mask)
+The function walks instructions in the merge block's successor(s), using the same `0x90E` bitmask test to identify primary-data-memory loads. Non-load instructions are checked via the SM backend's vtable at `sm_backend+1824`. The function counts:
+- Primary-memory-space loads (via the `0x90E` mask)
+- Other long-latency operations (via the backend vtable check)
 - Total instruction count
 
 If the fall-through region contains enough long-latency work (compared to `state->fallthrough_limit` and `state->extended_limit`), the function returns true, indicating that predication is profitable despite the region being above the standard size threshold.
 
 ## Extended Diamond Analysis -- `sub_137FE10`
 
-For complex diamonds where one side has speculative-execution concerns, `sub_137FE10` (2,550 bytes) performs a more thorough analysis. It can "look through" the diamond to the merge block and even one block beyond, checking whether the instruction mix in the continuation makes predication worthwhile.
+For complex diamonds where one side has primary-memory loads that affect profitability thresholds, `sub_137FE10` (2,550 bytes) performs a more thorough analysis. It can "look through" the diamond to the merge block and even one block beyond, checking whether the instruction mix in the continuation makes predication worthwhile. It invokes `sub_137F560` (which also uses the `0x90E` bitmask) to scan continuation blocks for scheduling-relevant loads.
 
 The function also handles the case where the merge block falls through to another conditional branch that itself is a predication candidate -- effectively analyzing a chain of adjacent diamonds.
 
