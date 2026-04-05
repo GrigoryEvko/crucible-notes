@@ -298,11 +298,15 @@ The hash is stored at instruction field `+88` (the upper 32 bits that were reset
 
 ### Overview
 
-Backward copy propagation propagates values backward through MOV chains, eliminating intermediate copies. Unlike forward copy propagation (which replaces uses of a copy's destination with the copy's source), backward copy propagation replaces the source of a copy with the copy's destination when doing so would eliminate the copy entirely.
+Backward copy propagation propagates values backward through MOV chains, eliminating intermediate copies. Unlike forward copy propagation (which replaces uses of a copy's destination with the copy's source), backward copy propagation replaces the **definition** of a copy's source with the copy's destination, allowing the copy instruction itself to be deleted.
+
+Phase 83 uses a split-phase design with phase 82 (`AdvancedPhaseBackPropVReg`). The actual backward copy propagation algorithm lives in architecture-specific SM backend overrides of phase 82. Phase 83 is a pipeline progress marker that advances the pipeline counter `context+1552` to 9 after backward copy propagation completes, signaling to downstream operand encoding functions that they may apply relaxed register constraints.
+
+**This phase is disabled by default** (`isNoOp` returns 1). It is activated only when an architecture backend overrides phase 82 to provide its own backward propagation implementation.
 
 ### Dispatch Mechanism
 
-The execute function sets a mode flag only:
+The execute function is a 7-byte stub that advances the pipeline progress counter:
 
 ```c
 // sub_C5EB80 -- OriBackCopyPropagate::execute
@@ -311,29 +315,139 @@ void execute(phase* self, compilation_context* ctx) {
 }
 ```
 
-The actual backward copy propagation logic is driven by the `AdvancedPhaseBackPropVReg` gate (phase 82), which architecture-specific backends override to provide the real implementation. The mode flag (value 9) tells the backend which variant of backward propagation to perform.
+Phase 83 does not contain the backward copy propagation algorithm. The actual algorithm is provided by the architecture-specific SM backend that overrides phase 82 (`AdvancedPhaseBackPropVReg`). The split-phase design works as follows:
 
-**This phase is disabled by default** (`isNoOp` returns 1). It is activated only when an architecture backend overrides phase 82. The `BackCopyPropBudget` knob (`0x21BFDF0`) limits the number of instructions processed.
+| Phase | Role | Default behavior | When arch-activated |
+|---|---|---|---|
+| 82 (`AdvancedPhaseBackPropVReg`) | Gate + algorithm provider | No-op (hook, `isNoOp` = 1) | Arch backend installs backward copy propagation body |
+| 83 (`OriBackCopyPropagate`) | Pipeline progress marker | No-op (`isNoOp` = 1) | Sets `context+1552 = 9`, enabling downstream constraint relaxation |
+
+The factory switch at `sub_C60D30` installs vtable `off_22BE298` for phase 82 and `off_22BE2C0` for phase 83. Both vtables are 40-byte (5-pointer) structures at consecutive addresses in `.data.rel.ro`.
+
+### Gate Mechanism (Phase 82)
+
+Phase 82 (`AdvancedPhaseBackPropVReg`) is one of 16 `AdvancedPhase` hook points in the pipeline. By default its `isNoOp` returns true, meaning the phase is skipped entirely. When an architecture backend needs backward copy propagation, it:
+
+1. Overrides phase 82's vtable to install the actual backward propagation algorithm as the execute function
+2. Overrides phase 82's `isNoOp` to return 0 (enabled)
+3. Configures phase 83's `isNoOp` to return 0, enabling the pipeline counter advancement
+
+The `BackCopyPropBudget` knob (index 808, address `0x21BFDF0`) limits the number of backward propagations performed. This knob is read by `sub_8C0270` (scheduler initialization) at the point where the scheduler allocates its per-function work structure. When knob 808 is not set by the user, the budget falls back to a default stored in the scheduler state object at offset `+92`.
 
 ### Algorithm (Reconstructed)
 
-Backward copy propagation proceeds as follows:
+The backward copy propagation algorithm is reconstructed from the phase name, the infrastructure it shares with forward copy propagation (`sub_781F80`, `sub_763070`), the `BackCopyPropBudget` knob, and the pipeline position constraints. The actual algorithm body resides in architecture-specific SM backend code, not in the generic binary.
 
 ```
 procedure BackCopyPropagate(function F):
+    budget = knob(808)     // BackCopyPropBudget
+    count = 0
+
+    // Phase 1: rebuild def-use chains (shared infrastructure)
+    rebuild_def_chains(F)  // sub_781F80
+    rebuild_use_chains(F)  // sub_763070
+
+    // Phase 2: walk blocks in RPO, instructions in reverse
     for each basic block B in reverse postorder:
-        for each instruction I in B (reverse order):
-            if I is MOV Rd, Rs:
-                if Rs has exactly one use (this MOV):
-                    if def(Rs).dest can be renamed to Rd without conflict:
-                        rename def(Rs).dest to Rd
-                        delete I
-                        propagation_count++
-            if propagation_count >= BackCopyPropBudget:
+        for each instruction I in B (last to first):
+            if count >= budget:
                 return
+
+            if I is not MOV (opcode & 0xCF00 != MOV class):
+                continue
+
+            // I is: Rd = MOV Rs
+            def_of_Rs = reaching_def(Rs)
+
+            // Guard 1: Rs must have exactly one use (this MOV)
+            if use_count(Rs) != 1:
+                continue
+
+            // Guard 2: def(Rs).dest can be renamed to Rd without conflict
+            if not can_rename(def_of_Rs.dest, Rd):
+                continue
+
+            // Guard 3: no intervening definition of Rd between def(Rs) and I
+            if has_intervening_def(Rd, def_of_Rs, I):
+                continue
+
+            // Perform backward propagation: rename definition
+            rename def_of_Rs.dest from Rs to Rd
+            delete I  // MOV is now redundant
+            count++
 ```
 
-The backward direction is essential for cascading elimination. Given `R1 = expr; R2 = R1; R3 = R2`, backward propagation first eliminates `R3 = R2` by renaming `R2 = R1` to `R3 = R1`, then eliminates `R3 = R1` by renaming the original `R1 = expr` to `R3 = expr`, collapsing the entire chain into `R3 = expr`.
+The backward walk direction is essential for cascading chain collapse:
+
+```
+Before:    R1 = expr;    R2 = R1;    R3 = R2
+                                      ^^^^^^ processed first (backward)
+Step 1:    R1 = expr;    R3 = R1;    (deleted R3=R2, renamed R2→R3 in "R2=R1")
+                         ^^^^^^ processed next
+Step 2:    R3 = expr;                (deleted R3=R1, renamed R1→R3 in "R1=expr")
+
+Result: entire 3-instruction chain collapses to single "R3 = expr"
+```
+
+If the walk were forward, only `R2 = R1` would be processed first (renaming `R1 = expr` to `R2 = expr`), but then `R3 = R2` would need a second pass to collapse further. The backward direction achieves full chain collapse in a single pass.
+
+### Why Phase 83 Runs So Late
+
+Phase 83 is positioned at pipeline slot 83 out of 158, immediately before the register attribute computation sequence (phases 84--95). This late position serves three purposes:
+
+1. **Catches late-created copies.** Phases 66--81 include late optimizations (LICM, texture movement, rematerialization, late arch-specific peepholes) that frequently insert new MOV instructions. Backward copy propagation after these passes cleans up the residual chains that forward propagation (which last ran in phase 65) cannot see.
+
+2. **Reduces register pressure for allocation.** Every eliminated MOV is one fewer live range the register allocator (phase 101) must handle. By running just before the liveness/DCE pass (phase 84, `OriPerformLiveDeadFourth`), backward copy propagation minimizes the input to register allocation.
+
+3. **Safe renaming window.** After phase 83, the pipeline enters the register attribute and legalization sequence. Renaming destinations before this point avoids conflicts with the fixed register assignments that legalization may impose.
+
+### Why Disabled by Default
+
+Phase 83 is disabled by default (`isNoOp` returns 1) for several reasons:
+
+1. **Backward renaming is inherently riskier than forward propagation.** Forward copy propagation modifies uses (safe because the original definition still exists). Backward copy propagation modifies definitions -- changing which register an instruction writes to. A bug here can silently corrupt values used by other instructions.
+
+2. **Architecture-specific register constraints.** The legality of renaming a destination depends on target-specific constraints: fixed-function registers (thread ID, special purpose), register bank conflicts, paired/grouped register requirements for 64-bit operations, and uniform register constraints on newer architectures (Volta+). Only the architecture backend knows which renames are safe.
+
+3. **Diminishing returns.** Forward copy propagation (`OriCopyProp`) runs six times during the GeneralOptimize bundles (phases 13, 29, 37, 46, 58, 65) and handles the majority of copy elimination. Backward propagation catches only residual chains that forward propagation structurally cannot eliminate.
+
+4. **Gate requirement.** Architecture backends that enable backward copy propagation via phase 82 may also need to pre-process the IR (e.g., marking registers that must not be renamed, or inserting constraints that protect fixed-function registers).
+
+### Downstream Effects: Pipeline Counter and Encoding Relaxation
+
+When phase 83 sets `context+1552` to 9, two operand encoding pattern functions (`sub_9BF350` and `sub_9BFAF0`) change behavior. These functions gate on two conditions:
+
+```c
+// Gate check in sub_9BF350 and sub_9BFAF0
+if ((context->field_1398 & 0x04) != 0 && context->field_1552 > 9) {
+    // Apply register constraint relaxation
+    // Check if operand register class == 3 (address register) or reg_id == 41
+    // Assign special operand mask 0xFFFFFA (16777210) instead of 0xFFFFFF
+}
+```
+
+The flag at `context+1398` bit 2 is an architecture capability flag. When both conditions are met (capability flag set AND pipeline has progressed past phase 83), the encoding functions relax operand constraints for address registers (class 3) and special register 41, allowing these to participate in operand patterns that they would otherwise be excluded from.
+
+The pipeline counter value 9 is part of a progression: phase 95 (`SetAfterLegalization`, `sub_C5E440`) later advances the counter to 19, enabling a further tier of relaxation in the scheduler initialization (`sub_8C0270`).
+
+### Forward vs. Backward Copy Propagation
+
+The two propagation directions are complementary and handle different structural patterns:
+
+| Property | Forward (OriCopyProp) | Backward (OriBackCopyPropagate) |
+|---|---|---|
+| Direction | Replaces **uses** of copy destination with copy source | Replaces **definitions** to eliminate copies |
+| Example | `R2=R1; ADD R3,R2,R4` -> `ADD R3,R1,R4` | `R1=expr; R2=R1` -> `R2=expr` |
+| Runs | 6 times (phases 13,29,37,46,58,65) | Once (phase 83) |
+| Default | Always enabled | Disabled (arch-gated) |
+| Risk | Low (original def unchanged) | Higher (modifies defs) |
+| Catches | Most copies from expansion and lowering | Residual chains from late passes (66--81) |
+
+### Controlling Knobs
+
+| Knob | Address | Purpose |
+|---|---|---|
+| `BackCopyPropBudget` | `0x21BFDF0` | Maximum backward propagations per function (knob index 808) |
 
 ---
 
@@ -509,9 +623,14 @@ Phase 83: OriBackCopyPropagate
 | `0xC60020` | 48 B | LateOriCommoning::execute | Calls `sub_9059B0` |
 | `0xC5EDF0` | 6 B | LateOriCommoning::getName | Returns 64 |
 | `0xC5EE00` | 6 B | LateOriCommoning::isNoOp | Returns 0 (enabled) |
-| `0xC5EB80` | 16 B | BackCopyProp::execute | Sets context+1552 = 9 |
+| `0xC5EB80` | 7 B | BackCopyProp::execute | Sets context+1552 = 9 (pipeline progress marker) |
 | `0xC5EB90` | 6 B | BackCopyProp::getName | Returns 83 |
 | `0xC5EBA0` | 6 B | BackCopyProp::isNoOp | Returns 1 (**disabled**) |
+| `0xC5EBB0` | 6 B | AdvancedPhaseBackPropVReg::getName | Returns 82 |
+| `0xC5EBC0` | 6 B | AdvancedPhaseBackPropVReg::isNoOp | Returns 0 (overridden to 1 at runtime by default vtable) |
+| `sub_9BF350` | 8.6 KB | Encoding pattern (post-phase-83) | Checks context+1552 > 9 for register constraint relaxation |
+| `sub_9BFAF0` | 9.0 KB | Encoding pattern (post-phase-83) | Checks context+1552 > 9 for register constraint relaxation |
+| `sub_8C0270` | 14 KB | Scheduler vtable init | Reads knob 808 (BackCopyPropBudget), checks +1552 == 19 |
 | `sub_9059B0` | ~320 B | LateOriCommoning impl | Knob check + ref-counted working set + core walker |
 | `sub_9055F0` | ~800 B | LateCommoning core | Iterates code list, remaps operands, calls commoning check |
 | `sub_901A90` | ~1.5 KB | Commoning check | Hash lookup + dominance verify + replacement |
