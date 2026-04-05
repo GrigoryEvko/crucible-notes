@@ -865,6 +865,59 @@ Each SM target has its own intrinsic table initializer function registered in Ma
 
 Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base SM since they represent the same silicon with different feature exposure levels.
 
+## Instruction Description Loader -- `sub_9EE390`
+
+`sub_9EE390` (3,584 bytes, 0x9EE390--0x9EF190) is the constructor for an instruction description object that feeds the register allocator's pre-coloring pass. Despite the diagnostic string `"IntrinsicDescrFile=%s"`, the function loads *instruction descriptions* broadly -- not just intrinsic operations. It determines which instructions exist for the target SM, what register classes they use, and what scheduling properties apply. The sole caller is `sub_991790` (pre-coloring pass, 12KB).
+
+**Invocation pattern:** The pre-coloring pass checks `context+1936` before calling `sub_9EE390`. If the descriptor for the current SM class already exists, it is reused. This means the expensive initialization happens once per SM architecture per ptxas process lifetime.
+
+### Initialization Sequence
+
+1. **Extract target properties.** Read the target descriptor from `context+1584`. Compute the SM architecture class: `v111 = target_descriptor[+372] >> 12`. Read resource descriptors from option interface slots 41--44.
+
+2. **Check option 404 (IntrinsicDescrFile).** Query the option interface at `context[208]`. If option 404 is set, extract the file path and log `" IntrinsicDescrFile=%s"`. This CI-internal mechanism supplies an external description file that overrides or extends the built-in instruction table. When absent, the built-in database is used.
+
+3. **Determine instruction format class.** Call `sub_7DDB50(context)` (GetSmVersionIndex), subtract 1, index into `dword_21E6330`:
+
+   | sub_7DDB50 return | v114 | Format |
+   |---|---|---|
+   | 1 | 0 | basic 64-bit |
+   | 2 | 1 | 128-bit |
+   | 3 | 3 | extended |
+   | 4 | 2 | 192-bit |
+   | 5+ | 3 | extended (default) |
+
+4. **Determine SM generation class.** Read `context+12` (sm_version_id), subtract 1, index into `dword_21E5C80`. The table is an identity mapping (1--11), one entry per SM generation.
+
+5. **Construct instruction table (648 bytes).** Call `sub_10AFF80` with 32 parameters including memory pool, register count, format class, description file path, architecture descriptor (16 bytes from `context+1888`), SM generation class, instruction count limits, and context flags. Follow with `sub_10B1A90` (init pass 2) and `sub_10AEF10` (finalization).
+
+6. **Apply option overrides.** Options 497, 738, 739 from the option interface set register limits and allocation budget values on the instruction table sub-object at `+312`.
+
+7. **Select SM-specific instruction set descriptor.** Based on v111 (SM architecture class):
+
+   | v111 | SM range (inferred) | Alloc size | Constructor | Vtable |
+   |---|---|---|---|---|
+   | 5 | sm_50--sm_62 | 200 B | `sub_9CDF90` | `off_23F3B00` |
+   | 6 | sm_70--sm_75 | 216 B | `sub_9CE030` | `off_22BB738` |
+   | 7 | sm_80--sm_89 | 232 B | `sub_9CE120` | `off_22B5150` |
+   | 8+ | sm_90--sm_121 | 240 B | `sub_9CE190` | `off_22AD230` |
+   | <5 | (reuse existing) | -- | -- | -- |
+
+   Each successor inherits the previous class and extends it with generation-specific instructions. The descriptor is stored at `context+1936` and `this+48`.
+
+### Object Layout
+
+| Offset | Size | Contents |
+|---|---|---|
+| +0 | 8 | Vtable (`off_21E6818` -> `[sub_9DAA40, sub_9CADF0, sub_9CAE10, sub_9DDEE0]`) |
+| +8 | 8 | Back-pointer to compilation context |
+| +16 | 8 | Instruction table object (648 B, built by `sub_10AFF80`) |
+| +24 | 8 | Scheduling metadata (from `sub_1BBBA60`) |
+| +32 | 8 | Scratch area pointer (`context[198]`) |
+| +40 | 1 | Dirty flag (0 = clean) |
+| +48 | 8 | SM-specific instruction set descriptor |
+| +56--136 | -- | Resource descriptors, memory pool, sentinel, sub-allocator |
+
 ## Diagnostic Strings
 
 | String | Location | Context |
@@ -875,6 +928,7 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
 | `"__cuda_sm20_*"`, `"__cuda_sm70_*"`, etc. | `sub_5D1660` | Intrinsic name patterns in registration |
 | `"__cuda_sanitizer_memcheck_*"` | `sub_5D1660` | Compute-sanitizer integration hooks |
 | `"__cuda_sm10x_tcgen05_guardrail_trap_*"` | `sub_5D1660` | Blackwell debug trap intrinsics |
+| `" IntrinsicDescrFile=%s"` | `sub_9EE390` (0x9EEC9B) | Instruction description loader -- logs external description file path (option 404) |
 | `".RELU not allowed with unsigned type"` | `sub_6BEC60` | OCG LDC/S2R handler |
 
 ## Function Map
@@ -921,6 +975,12 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
 | `sub_6BC1D0` | -- | Default opcode validator (vtable[2] of `off_202CF48`) | 90% |
 | `sub_6BCE50` | -- | Default scope validator (vtable[24]) | 90% |
 | `sub_6BBEC0` | -- | Default memory-order validator (vtable[25]) | 90% |
+| `sub_9EE390` | 3.5KB | Instruction description loader -- builds per-SM instruction table for pre-coloring (`"IntrinsicDescrFile=%s"`) | 92% |
+| `sub_9CDF90` | 156B | SM class 5 instruction set descriptor (200B, vtable `off_23F3B00`) | 85% |
+| `sub_9CE030` | 115B | SM class 6 instruction set descriptor (216B, extends `sub_9CDF90`) | 85% |
+| `sub_9CE120` | 112B | SM class 7 instruction set descriptor (232B, vtable `off_22B5150`) | 85% |
+| `sub_9CE190` | 114B | SM class 8+ instruction set descriptor (240B, vtable `off_22AD230`) | 85% |
+| `sub_9EF190` | 1.1KB | Error handler for instruction description loader (ICE on invalid option type) | 88% |
 
 ## Cross-References
 
