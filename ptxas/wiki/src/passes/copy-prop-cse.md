@@ -50,12 +50,12 @@ The pass is gated by the `EnableGvnCse` knob (address `0x21BDA50`). When disable
 The execute function at `0xC5F000` is a 16-byte thunk:
 
 ```asm
-mov  rdi, [rsi+0x630]     ; rdi = compilation_context->optimizer_state
-mov  rax, [rdi]            ; rax = optimizer_state->vtable
+mov  rdi, [rsi+0x630]     ; rdi = compilation_context->sm_backend
+mov  rax, [rdi]            ; rax = sm_backend->vtable
 jmp  [rax+0xB8]            ; tail-call vtable[23] -- the actual GVN-CSE implementation
 ```
 
-The real implementation lives in the compilation context's optimizer state object (at context+`0x630`), dispatched through its vtable at offset `0xB8` (slot 23). This indirection means the GVN-CSE algorithm can be overridden by architecture-specific backends that provide a different optimizer state vtable.
+The real implementation lives in the compilation context's SM backend object (at context+`0x630` / +1584), dispatched through its vtable at offset `0xB8` (slot 23). This indirection means the GVN-CSE algorithm can be overridden by architecture-specific backends that provide a different SM backend vtable. (This object was previously called "optimizer_state" on this page, but it is the same polymorphic SM backend used for legalization, scheduling, and all other architecture-dependent dispatch -- see [data-structures.md](../ir/data-structures.md#sm-backend-object-at-1584).)
 
 ### Algorithm (Reconstructed)
 
@@ -125,7 +125,7 @@ int64 execute(phase* self, compilation_context* ctx) {
 }
 ```
 
-For multi-function compilation units, the pass dispatches through the compilation context's function manager (field `+1584`), calling vtable slot 44 (offset `0x160`). This enables per-function reassociation with function-level isolation of value numbering state.
+For multi-function compilation units, the pass dispatches through the compilation context's SM backend (field `+1584` / `0x630`), calling vtable slot 44 (offset `0x160`). This enables per-function reassociation with function-level isolation of value numbering state.
 
 ### Algorithm (Reconstructed)
 
@@ -307,7 +307,7 @@ The execute function sets a mode flag only:
 ```c
 // sub_C5EB80 -- OriBackCopyPropagate::execute
 void execute(phase* self, compilation_context* ctx) {
-    ctx->field_1552 = 9;   // set backward-copy-prop mode flag
+    ctx->field_1552 = 9;   // advance pipeline progress counter to backward-copy-prop stage
 }
 ```
 
@@ -500,10 +500,10 @@ Phase 83: OriBackCopyPropagate
 
 | Address | Size | Name | Purpose |
 |---|---|---|---|
-| `0xC5F000` | 16 B | GvnCse::execute | Thunk to context+0x630->vtable[23] |
+| `0xC5F000` | 16 B | GvnCse::execute | Thunk to sm_backend (context+0x630)->vtable[23] |
 | `0xC5F010` | 6 B | GvnCse::getName | Returns 49 |
 | `0xC5F020` | 6 B | GvnCse::isNoOp | Returns 0 (enabled) |
-| `0xC604D0` | 42 B | OriReassociate::execute | Dispatches to context+1584->vtable[44] |
+| `0xC604D0` | 42 B | OriReassociate::execute | Dispatches to sm_backend (context+1584)->vtable[44] |
 | `0xC5EFE0` | 6 B | OriReassociate::getName | Returns 50 |
 | `0xC5EFF0` | 6 B | OriReassociate::isNoOp | Returns 0 (enabled) |
 | `0xC60020` | 48 B | LateOriCommoning::execute | Calls `sub_9059B0` |

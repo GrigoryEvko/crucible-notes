@@ -37,12 +37,71 @@ The context is a polymorphic C++ object with a vtable at offset +0. It is alloca
 | +1440 | `stream*` | `output_stream` | `sub_7FBB70`: `sub_7FE930(a1+1440, "\nFunction name: ")` |
 | +1560 | `ptr` | `timing_records` | Growable array of 32-byte timing entries |
 | +1576 | `u32` | `timing_count` | `sub_C62720`: `cu->timing_count++` |
-| +1584 | `ptr` | `code_object` | `sub_A4B8F0`: `v5 = *(*(a1+8) + 1584)` -> Code Object |
+| +1552 | `i32` | `pipeline_progress` | Pipeline progress counter (0--21), monotonically increases; see [known values](#pipeline-progress-counter) |
+| +1584 | `ptr` | `sm_backend` | SM-specific architecture backend object (polymorphic, 1712--1992B depending on SM target); provides vtable dispatch for legalization, optimization, scheduling, and codegen; see note below |
 | +1664 | `ptr` | `knob_container` | `sub_7FB6C0`, `sub_A3B080`: options/knob dispatch object |
 | +1864 | `ptr` | `bb_structure` | `sub_7FB6C0`: destroyed via `sub_77F880` |
 | +1872 | `ptr` | `per_func_data` | `sub_7FB6C0`: destroyed via `sub_7937D0` |
 | +1880 | `ptr` | `function_context` | `sub_7FB6C0`: 17 analysis-result pairs at qword offsets |
 | +1928 | `ptr` | `codegen_ctx` | Confirmed in overview.md Code Object table |
+
+### SM Backend Object at +1584
+
+The pointer at `context+0x630` (decimal 1584) is the single most confusing field in the compilation context, because it serves multiple roles through a single polymorphic C++ object. Different wiki pages historically called it different names depending on which role they observed:
+
+- **Legalization pages** see it dispatching `MidExpansion`, `LateExpansionUnsupportedOps`, etc., and call it "SM backend" or "arch_backend"
+- **Scheduling pages** see it providing hardware latency profiles at `*(sm_backend+372)` and call it "scheduler context" or "hw_profile"
+- **Optimization pages** see it dispatching `GvnCse` (vtable[23]) and `OriReassociateAndCommon` (vtable[44]) and call it "optimizer state" or "function manager"
+- **Codegen/template pages** see it holding register file capacity at `+372` and hardware capability flags at `+1037`
+
+**It is one object.** The canonical name is **`sm_backend`**. It is constructed per-compilation-unit in `sub_662920` with a switch on SM version bits (`v3 >> 12`). Each SM generation gets a different-sized allocation and a different vtable:
+
+| SM Case | Size | Base Constructor | Vtable | SM Generations |
+|---------|------|------------------|--------|----------------|
+| 3 | 1712B | `sub_A99A30` | `off_2029DD0` | sm_30 (Kepler) |
+| 4 | 1712B | `sub_A99A30` | `off_21B4A50` | sm_50 (Maxwell) |
+| 5 | 1888B | `sub_A99A30` | `off_22B2A58` | sm_60 (Pascal) |
+| 6 | 1912B | `sub_A99A30` | `off_21D82B0` | sm_70 (Volta) |
+| 7 | 1928B | `sub_ACDE20` | `off_21B2D30` | sm_80 (Ampere) |
+| 8 | 1992B | `sub_662220` | `off_21C0C68` | sm_89 (Ada) |
+| 9 | 1992B | `sub_662220` | `off_21D6860` | sm_90+ (Hopper/Blackwell) |
+
+Key sub-fields on the SM backend:
+- `+372` (`i32`): codegen factory value / encoded SM architecture version (e.g., 28673 = sm_80)
+- `+1037` (`u8`): hardware capability flags (bit 0 = has high-precision FP64 MUFU seeds)
+- Vtable slots provide architecture-specific dispatch for 50+ operations
+
+### Pipeline Progress Counter at +1552
+
+The field at `context+1552` is a monotonically increasing `int32` that tracks how far the compilation has progressed through the 159-phase pipeline. It is **not** a legalization-only counter -- it is incremented by phases across all categories (legalization, optimization, scheduling, regalloc). Each increment is performed by a small thunk function whose sole body is `*(ctx + 1552) = N`.
+
+Known values and their associated phases:
+
+| Value | Thunk Address | Phase / Context |
+|-------|---------------|-----------------|
+| 0 | (init) | `sub_7F7DC0` -- compilation context constructor |
+| 1 | `sub_C5F620` | Early pipeline (before ConvertUnsupportedOps) |
+| 2 | `sub_C5F5A0` | After ConvertUnsupportedOps (phase 5) |
+| 3 | `sub_C5EF80` | After MidExpansion (phase 45) |
+| 4 | `sub_C5EF30` | After OriDoRematEarly (phase 54) -- signals remat mode active |
+| 5 | `sub_1233D70` | Mid-pipeline scheduling/ISel context |
+| 7 | `sub_6612E0` / `sub_C60AA0` | After LateExpansion (phase 55) |
+| 8 | `sub_849C60` | Post-optimization context |
+| 9 | `sub_C5EB80` | After OriBackCopyPropagate (phase 83) |
+| 10 | `sub_88E9D0` | Late optimization |
+| 11 | `sub_C5EA80` | After SetAfterLegalization (phase 95) region |
+| 12 | `sub_C5E980` | Post-legalization |
+| 13 | `sub_13B5C80` | ISel/scheduling |
+| 14 | `sub_C5E830` | Post-scheduling |
+| 15 | `sub_C5E7C0` | Register allocation phase |
+| 16 | `sub_C5E6E0` | Post-regalloc |
+| 17 | `sub_C5E5A0` | Mercury/codegen |
+| 18 | `sub_C5E4D0` | Post-Mercury |
+| 19 | `sub_C5E440` | Late codegen |
+| 20 | `sub_C5E390` | Post-RA cleanup |
+| 21 | `sub_C5E0B0` | Final pipeline stage |
+
+Readers of downstream passes use `*(ctx+1552) > N` to gate behavior that should only run after a certain pipeline point. For example, the rematerialization cross-block pass checks `*(ctx+1552) > 4` to enable its second-pass mode.
 
 ### Knob Container Access Pattern
 
@@ -178,7 +237,7 @@ instruction_count = code_obj[335] - code_obj[341]   // upper - lower
 
 ### Stats Emitter Field Map
 
-The stats emitter (`sub_A3A7E0`) accesses the Code Object through `v3 = *(compilation_ctx+8)[198]` (offset +1584 from the outer context). It uses DWORD indexing (4-byte), and reveals these additional fields:
+The stats emitter (`sub_A3A7E0`) accesses a per-function stats record through the SM backend: `v3 = *(compilation_ctx+8)[198]` (offset +1584 from the outer compilation context points to the SM backend object; the emitter then reads per-function stats fields within it). It uses DWORD indexing (4-byte), and reveals these additional fields:
 
 | DWORD Index | Byte Offset | Field | Stat String |
 |-------------|-------------|-------|-------------|
