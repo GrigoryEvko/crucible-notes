@@ -9,7 +9,7 @@ Instruction selection in ptxas is a two-phase process that converts PTX virtual 
 | **MercConverter dispatch** | `sub_9ED2D0` (25 KB, master switch on `*(instr+72) & 0xCF` mask) |
 | **ISel driver** | `sub_B285D0` (9 KB, 66 callees, vtable entry) |
 | **ISel mega-selector** | `sub_C0EB10` (185 KB, 500+ locals, giant switch) |
-| **DAG pattern matchers** | ~750 functions at `0xB30000`--`0xB7D000` (~1.3 MB) |
+| **DAG pattern matchers** | ~801 functions at `0xB28F60`--`0xB7D000` (~1.3 MB) |
 | **Arch dispatch tables** | 4 copies at `sub_B128E0`--`sub_B12920` (15,049 bytes each) |
 | **Mercury master encoder** | `sub_6D9690` (94 KB, instruction type switch) |
 | **MercExpand** | `sub_C3CC60` (26 KB, pseudo-instruction expansion) |
@@ -58,7 +58,7 @@ PTX source text
      |  sub_B285D0 (ISel driver, 9KB)
      |    -> sub_C0EB10 (mega-selector, 185KB)
      |    -> sub_B1FA20 / sub_B20E00 (builder variants)
-     |    -> sub_B33F00..sub_B74C60 (750 DAG pattern matchers)
+     |    -> sub_B28F60..sub_B74C60 (~801 DAG pattern matchers)
      |    -> sub_B128E0..sub_B12920 (4 arch dispatch tables)
      |
      |  sub_6D9690 (Mercury master encoder, 94KB)
@@ -370,61 +370,320 @@ Sets scheduling-relevant properties on the selected instruction:
 
 Contains a switch on `*(context+46)` (target architecture selector), confirming per-SM property assignment.
 
-### DAG Pattern Matchers -- 750 Functions at `0xB30000`--`0xB7D000`
+### DAG Pattern Matchers -- ~800 Functions at `0xB28F60`--`0xB7D000`
 
-Every pattern matcher follows an identical prototype and a strict check-and-report protocol. These are the ptxas equivalent of LLVM's TableGen-generated ISel patterns, but handwritten in C++:
+Every pattern matcher follows an identical prototype and a strict check-and-report protocol. These are the ptxas equivalent of LLVM's TableGen-generated ISel patterns, but handwritten in C++. Binary analysis confirms 801 functions with the matching `*a4 <=` priority-comparison idiom, with the bulk (750+) residing in the `0xB30000`--`0xB7D000` range and a handful of smaller matchers in the `0xB28F60`--`0xB30000` preamble zone.
+
+#### Pattern Matcher Architecture
+
+The pattern matching system implements a **priority-based best-match selection** protocol. For each instruction being lowered, the ISel infrastructure invokes all applicable matchers (dispatched through vtable function pointers, not direct calls). Each matcher independently tests whether the instruction matches its pattern; if it does, it writes a `(template_id, priority)` pair to the output parameters. The dispatcher selects the match with the highest priority value.
+
+**Function signature** (all 801+ matchers):
 
 ```c
-// Prototype (all 750 matchers)
-char match(int64_t ctx, int64_t instr, int32_t *template_id, int32_t *priority);
+char __fastcall match(
+    int64_t  ctx,           // a1: ISel context (passed through to field reader)
+    int64_t  dag_node,      // a2: pointer to the Ori IR instruction node
+    int32_t *template_id,   // a3: OUT: encoding template index [1..152]
+    int32_t *priority       // a4: IN/OUT: current best priority; written only if better
+);
+```
 
-// Algorithm
-bool match_pattern_XXX(ctx, instr, template_id, priority) {
-    // 1. Check instruction properties via DAG node field reader
-    if (sub_10AE5C0(ctx, instr, 7) != 21)   return false;   // field 7 must be 21
-    if (sub_10AE5C0(ctx, instr, 163) != 705) return false;   // field 163 must be 705
+The `priority` parameter is read-then-conditionally-written: the matcher checks `if (*a4 <= threshold)` before overwriting. This means the dispatcher initializes `*a4 = 0` and calls matchers in sequence; each matcher only upgrades the result if its specificity exceeds the current best. After all matchers complete, `*a3` holds the template index of the winning pattern.
 
-    // 2. Check operand count and types
-    if (sub_B28F50(instr) != 2)              return false;   // need 2 source operands
-    void *op0 = sub_B28F30(instr, 0);                        // get operand 0
-    if (!sub_B28E10(op0))                    return false;   // must be GPR
+**Matching pipeline** (invariant across all 801 matchers):
 
-    // 3. Check register class (1023 = wildcard)
-    int regclass = sub_B28E00(op0);
-    if (regclass != 1023 && regclass != 3)   return false;
+```
+ 1. OPCODE PROPERTY CHECKS      sub_10AE5C0(ctx, node, field_id)
+    Check 1-12 instruction properties against expected values.
+    Any mismatch -> return immediately (early exit).
 
-    // 4. Report match with priority
-    *template_id = THIS_TEMPLATE_ID;
-    *priority = THIS_PRIORITY;
-    return true;
+ 2. SOURCE OPERAND COUNT         sub_B28F50(node) -> source_count
+    Verify the instruction has the expected number of source operands.
+
+ 3. SOURCE OPERAND VALIDATION    sub_B28F30(node, i) -> operand_record
+    For each source operand:
+      a. Type predicate: isImmediate / isGPR / isPredicate / isUniformReg / ...
+      b. Register class: class == 1023 (wildcard) OR class == specific_value
+
+ 4. RESULT OPERAND COUNT         sub_B28F40(node) -> result_count
+    Verify the expected number of result (destination) operands.
+
+ 5. RESULT OPERAND VALIDATION    sub_B28F30(node, first_result + j)
+    Same type + register-class checks as for source operands.
+    First-result index = sub_B28E00(*(node + 92)).
+
+ 6. PRIORITY WRITE               if (*a4 <= N) { *a4 = N+1; *a3 = template; }
+    Conditional update: only overwrite if this pattern is more specific
+    than whatever was already matched.
+```
+
+#### Match-Score Priority System
+
+The priority values range from 2 (least specific) to 34 (most specific), with the distribution heavily concentrated in the 8--19 range. The priority correlates directly with pattern specificity: matchers with more constraints (more `sub_10AE5C0` checks, more operand type checks, tighter register class requirements) assign higher priority values.
+
+| Priority range | Count | Interpretation |
+|---|---|---|
+| 2--5 | 31 | Fallback / generic patterns (few constraints) |
+| 6--10 | 253 | Common patterns (3--6 constraints) |
+| 11--15 | 293 | Standard patterns (5--8 constraints) |
+| 16--20 | 168 | Specific patterns (6--10 constraints) |
+| 21--34 | 56 | Highly specific patterns (8--12+ constraints) |
+
+Template IDs range from 1 to 152. Multiple matchers can target the same template ID at different priority levels, forming a specificity ladder: a generic matcher might match `FADD` at priority 8 while a specialized matcher matches `FADD.FTZ.SAT` with specific register classes at priority 17. Both write the same template ID but the specialized matcher wins when its constraints are satisfied.
+
+#### Dispatcher Mechanism
+
+The matchers are **not** called directly from a single dispatch function. Instead, they are registered as virtual methods on per-instruction-class descriptor objects. The dispatch chain is:
+
+```
+sub_B285D0 (ISel driver, 9 KB)
+  -> opcode switch on (instruction[18] & 0xFFFFCFFF)
+     -> selects builder variant (sub_B1FA20 / sub_B20E00 / sub_B1EC10 / ...)
+        -> builder invokes vtable method on instruction descriptor
+           -> vtable slot contains pointer to one of the 801 pattern matchers
+              -> matcher writes (template_id, priority) if pattern matches
+```
+
+The vtable dispatch occurs at various offsets including `+2600`, `+2616`, `+2656`, and `+2896` (observed in `sub_13AF3D0`, the 137 KB ISel pattern coordinator). The matchers have no static callers -- they appear exclusively through indirect function pointer invocation, which is why the sweep reports them as "no callers in function DB."
+
+For a given instruction, the dispatcher may invoke multiple matchers (one per applicable template variant). Each matcher independently checks its constraints and conditionally updates the priority/template pair. After all candidates have been tried, the dispatcher reads the final `template_id` and uses it to select the SASS encoding template.
+
+#### DAG Node Property Accessor -- `sub_10AE5C0`
+
+The field reader is the most-called function in the matcher range (typically 2--12 calls per matcher, so 3,000--8,000 total invocations across all 801 matchers):
+
+```c
+// sub_10AE5C0 -- Read instruction property by field_id
+int64_t DAGNode_ReadField(int64_t ctx, int64_t node, uint32_t field_id) {
+    if (sub_10E32E0(node, field_id))        // field exists in descriptor?
+        return sub_10D5E60(node, field_id); // read value from property table
+    else
+        return 0xFFFFFFFF;                  // sentinel: field not present
 }
 ```
 
-Representative examples with their field checks:
+The `field_id` values form a large flat namespace (observed range: 5--595). These are **not** byte offsets into the instruction record; they are logical property identifiers resolved through a descriptor table. The backing store (managed by `sub_10E32E0` / `sub_10D5E60`) implements a sparse property bag that maps field IDs to integer values.
 
-| Matcher | Size | Opcode class | Field checks | Operands |
-|---|---|---|---|---|
-| `sub_B33F00` | 4,166 B | 7/21 | field 163 in {705,706}, field 203 in {1113..1117}, field 105==477, field 88==408, field 345==1903 | 2 src, 5 dst |
-| `sub_B390A0` | 4,193 B | 359/1957 | field 205 in {1132..1134}, field 327 in {1812..1824}, field 348 in {1912..1914}, field 345 in {1900..1903}, field 126 in {547,548} | 2 src, 5 dst |
-| `sub_B44CA0` | 6,214 B | 5/12 | 12 field checks, register classes against 1023 (wildcard), specific classes 1--4 | N src, 7 dst |
-| `sub_B74C60` | 6,277 B | 277/{1416,1417} | 11 field checks, multiple register class constraints | 1 src, 7 dst |
+The companion write functions follow the same field-ID namespace:
 
-Helper functions shared by all 750 matchers:
+```c
+// sub_10AE590 -- Write single field
+void DAGNode_WriteField(int64_t ctx, int64_t node, uint32_t field_id, uint32_t value);
 
-| Address | Purpose |
+// sub_10AE640 -- Write two fields atomically (multi-field update)
+void DAGNode_WriteFields(int64_t ctx, int64_t node, uint32_t f1, uint32_t v1, uint32_t v2);
+```
+
+Inferred semantic groupings for field IDs (from cross-referencing matcher patterns):
+
+| Field range | Likely semantics |
 |---|---|
-| `sub_10AE5C0` | Read DAG node field by ID (field_id to value) |
-| `sub_10AE590` | Write DAG node field (opcode_class, encoding) |
-| `sub_10AE640` | Modify DAG node (multi-field update, 5 args) |
-| `sub_B28F50` | Get source operand count |
-| `sub_B28F30` | Get operand by index (returns 24-byte operand record) |
-| `sub_B28F40` | Get result operand count |
-| `sub_B28E00` | Decode register class from packed field |
-| `sub_B28E10` | Validate operand is GPR |
-| `sub_B28E20` | Validate operand is immediate/constant |
-| `sub_B28E40` | Validate operand is valid register |
-| `sub_B28E80` | Check operand is predicate register |
-| `sub_B28E90` | Check operand is uniform register |
+| 5--7 | Opcode class / major instruction group |
+| 88 | Sub-operation modifier |
+| 105 | Operation variant selector |
+| 126 | Data type qualifier (e.g., field 126 in {547,548}) |
+| 163 | Addressing mode / operand encoding class |
+| 190--211 | Encoding format selectors |
+| 220 | Specific encoding property |
+| 242 | Width/size qualifier |
+| 294 | Generic constraint field |
+| 327 | Register format descriptor |
+| 345 | Rounding / saturation mode |
+| 348 | Precision qualifier |
+| 355--429 | Extended instruction properties |
+| 397 | Instruction validity flag (value 2115 appears as a near-universal gate) |
+| 480 | High opcode range (Blackwell/SM 100+ instructions) |
+| 595 | Highest observed field ID |
+
+Field 397 with value 2115 appears in the majority of matchers as a mandatory check, suggesting it encodes a "this instruction is encoding-compatible" or "instruction is valid for ISel" flag.
+
+#### Operand Record Layout
+
+Each operand is a 32-byte record accessed by index via `sub_B28F30`:
+
+```c
+// sub_B28F30 -- Get operand record by index
+int64_t GetOperand(int64_t node, int index) {
+    return *(int64_t*)(node + 32) + 32LL * index;
+}
+```
+
+The 32-byte operand record:
+
+| Offset | Size | Field | Description |
+|---|---|---|---|
+| +0 | 1 | `type_tag` | Operand kind (see predicate table below) |
+| +4 | 4 | `primary_class` | Register class ID; 1023 = wildcard (any class) |
+| +14 | 1 | `modifier_a` | Written by `sub_B28F10` |
+| +15 | 1 | `modifier_b` | Written by `sub_B28F20` |
+| +20 | 4 | `secondary_class` | Fallback register class constraint |
+
+Source operand count is stored at `node + 92` and doubles as the first-result-operand index:
+
+```c
+uint32_t source_count = *(uint32_t*)(node + 92);   // sub_B28F50
+uint32_t result_count = *(node + 40) + 1 - source_count; // sub_B28F40
+```
+
+#### Operand Type Predicates
+
+Fifteen predicate functions classify operand type tags. Each is a single comparison returning `bool`:
+
+| Address | Name | Test | Semantics |
+|---|---|---|---|
+| `sub_B28E20` | `isImmediate` | `tag == 1` | Constant / immediate literal |
+| `sub_B28E10` | `isGPR` | `tag == 2` | General-purpose register |
+| `sub_B28E80` | `isPredicate` | `tag == 3` | Predicate register |
+| `sub_B28E70` | `isType4` | `tag == 4` | (specific operand class) |
+| `sub_B28E60` | `isType5` | `tag == 5` | (specific operand class) |
+| `sub_B28E30` | `isSpecialReg` | `tag == 6` | Special register |
+| `sub_B28ED0` | `isType7` | `tag == 7` | (specific operand class) |
+| `sub_B28EF0` | `isType8` | `tag == 8` | (specific operand class) |
+| `sub_B28E50` | `isType9` | `tag == 9` | (specific operand class) |
+| `sub_B28E40` | `isValidReg` | `tag == 10` | Generic valid register |
+| `sub_B28EE0` | `isType11` | `tag == 11` | (specific operand class) |
+| `sub_B28EA0` | `isType13` | `tag == 13` | (specific operand class) |
+| `sub_B28EB0` | `isType14` | `tag == 14` | (specific operand class) |
+| `sub_B28E90` | `isUniformReg` | `tag == 15` | Uniform register (SM 75+) |
+| `sub_B28EC0` | `isType16` | `tag == 16` | (specific operand class) |
+
+Register class 1023 serves as a wildcard: `if (class == 1023 || class == expected)`. This allows matchers to accept both unconstrained operands and operands already assigned to a specific register file.
+
+#### Register Class Constraint Protocol
+
+Operand records carry two register class fields: `primary_class` at offset +4 and `secondary_class` at offset +20. The matching protocol checks them with a cascading OR:
+
+```c
+// Typical register class check (from sub_B33F00, sub_B390A0, etc.)
+uint32_t primary   = *(uint32_t*)(operand + 4);
+uint32_t secondary = *(uint32_t*)(operand + 20);
+
+if (sub_B28E00(primary) == 1023) {
+    // Wildcard -- operand is unconstrained, accept it
+} else {
+    uint32_t cls = sub_B28E00(secondary);
+    if (cls != expected_class) return;  // mismatch
+}
+```
+
+`sub_B28E00` and `sub_B28F00` are identity functions -- the register class is stored as a plain integer, not packed. The two-field scheme allows the matcher to accept an operand where either the allocation constraint (primary) is wildcard or the resolved register file (secondary) matches.
+
+Observed register class values in matchers:
+
+| Class | Frequency | Likely meaning |
+|---|---|---|
+| 1023 | ubiquitous | Wildcard (any register class) |
+| 1 | very common | 32-bit GPR (R0..R255) |
+| 2 | common | 64-bit GPR pair |
+| 3 | occasional | 128-bit GPR quad |
+| 4 | occasional | Predicate or special register file |
+| 5 | rare | Extended register class |
+
+#### Representative Matcher Walkthroughs
+
+**`sub_B30160`** -- simple 2-source, 4-result pattern (68 lines, priority 9, template 12):
+
+```
+1. field 480 == 2481                    -> opcode/subclass check
+2. source_count == 2                    -> expects 2 source operands
+3. operand[0].type == 1 (immediate)     -> first source is a constant
+4. operand[1].type == 2 (GPR)           -> second source is a register
+5. operand[1].class == 1023 OR sec == 1 -> 32-bit GPR or unconstrained
+6. result_count == 4                    -> expects 4 result operands
+7. result[0].type == 2 (GPR)            -> first result is GPR
+   result[0].class == 1023 OR sec == 1
+8. result[1].type == 3 OR 15            -> predicate or uniform register
+9. result[2].type == 2 (GPR)            -> third result is GPR
+   result[2].class == 1023 OR sec == 1
+10. if (*a4 <= 8) -> *a4 = 9, *a3 = 12
+```
+
+**`sub_B33F00`** -- medium 2-source, 5-result pattern (4,166 bytes, priority 21, template 22):
+
+```
+1. field 7 == 21                            -> major opcode class
+2. field 163 in {705, 706}                  -> addressing mode variant
+3. field 203 in {1113..1117}                -> encoding format (5 values)
+4. field 105 == 477                         -> operation variant
+5. field 88 == 408                          -> sub-operation modifier
+6. field 345 == 1903                        -> rounding/saturation mode
+7. source_count == 2                        -> 2 sources
+8. operand[0].type == 1 (immediate)         -> constant source
+9. operand[1].type == 2 (GPR)              -> register source
+   operand[1].class: primary wildcard or secondary in {1,2}
+10. result_count == 5                       -> 5 results
+11. result[0].type == 2 (GPR), class != 1023, secondary == 2 (64-bit)
+12. result[1].type == 3 OR 15 (pred/uniform)
+13. result[2].type == 2 (GPR), class: wildcard or secondary in {1,2}
+14. result[3].type == 2 (GPR), class: wildcard or secondary in {1,2}
+15. if (*a4 <= 20) -> *a4 = 21, *a3 = 22
+```
+
+**`sub_B44CA0`** -- complex 0-source, 7-result pattern (6,214 bytes, priority 11, template varies):
+
+```
+1.  field 5 == 12                           -> opcode class 12
+2.  field 220 == 1206                       -> encoding property
+3.  field 595 in {2937, 2938}               -> extended field (high range)
+4.  field 294 == 1493                       -> constraint
+5.  field 242 in {1281, 1282}               -> width qualifier
+6.  field 355 == 1943                       -> extended property
+7.  field 376 == 2035                       -> extended property
+8.  field 377 in {2037..2041}               -> extended property (5 values)
+9.  field 429 in {2252, 2253}               -> extended qualifier
+10. field 126 in {547, 548}                 -> data type
+11. field 397 == 2115                       -> validity gate
+12. source_count == 0                       -> no source operands
+13. result_count == 7                       -> 7 result operands
+14. All 7 results checked: type == 10 (valid register), various class constraints
+15. if (*a4 <= 10) -> *a4 = 11, *a3 = (template)
+```
+
+This pattern has the most field checks (12) of the representative examples, validating properties deep into the extended field namespace (field 595). Its zero-source, seven-result shape suggests a hardware intrinsic or complex output instruction like a tensor-core operation.
+
+**`sub_B28FE0`** -- minimal matcher in the preamble zone (31 lines, priority 8, template 42):
+
+```
+1. field 211 == 1182
+2. field 201 == 1109
+3. field 348 in {1912, 1915}   -> precision qualifier
+4. field 397 == 2115           -> validity gate
+5. source_count == 0           -> no sources
+6. if (*a4 <= 7) -> *a4 = 8, *a3 = 42
+```
+
+The simplest matchers skip operand validation entirely and rely solely on opcode-property checks. These are for instructions with fixed operand formats where the operand shape is fully determined by the opcode.
+
+#### Helper Function Summary
+
+| Address | Name | Signature | Purpose |
+|---|---|---|---|
+| `sub_10AE5C0` | `DAGNode_ReadField` | `(ctx, node, field_id) -> value` | Read instruction property by ID; returns `0xFFFFFFFF` if absent |
+| `sub_10AE590` | `DAGNode_WriteField` | `(ctx, node, field_id, value)` | Write single instruction property |
+| `sub_10AE640` | `DAGNode_WriteFields` | `(ctx, node, f1, v1, v2)` | Multi-field atomic update |
+| `sub_B28F30` | `GetOperand` | `(node, index) -> operand_ptr` | Index into operand array (32-byte records at `*(node+32)`) |
+| `sub_B28F40` | `GetResultCount` | `(node) -> count` | Number of result operands: `node[40] + 1 - node[92]` |
+| `sub_B28F50` | `GetSourceCount` | `(node) -> count` | Number of source operands: `*(node+92)` |
+| `sub_B28E00` | `DecodeRegClass` | `(packed) -> class_id` | Identity function (class stored as plain int) |
+| `sub_B28F00` | `DecodeRegClass2` | `(packed) -> class_id` | Second identity accessor (same semantics) |
+| `sub_B28F10` | `SetModifierA` | `(operand, value)` | Write operand modifier at offset +14 |
+| `sub_B28F20` | `SetModifierB` | `(operand, value)` | Write operand modifier at offset +15 |
+| `sub_B28E10` | `isGPR` | `(tag) -> bool` | `tag == 2` |
+| `sub_B28E20` | `isImmediate` | `(tag) -> bool` | `tag == 1` |
+| `sub_B28E30` | `isSpecialReg` | `(tag) -> bool` | `tag == 6` |
+| `sub_B28E40` | `isValidReg` | `(tag) -> bool` | `tag == 10` |
+| `sub_B28E50` | `isType9` | `(tag) -> bool` | `tag == 9` |
+| `sub_B28E60` | `isType5` | `(tag) -> bool` | `tag == 5` |
+| `sub_B28E70` | `isType4` | `(tag) -> bool` | `tag == 4` |
+| `sub_B28E80` | `isPredicate` | `(tag) -> bool` | `tag == 3` |
+| `sub_B28E90` | `isUniformReg` | `(tag) -> bool` | `tag == 15` |
+| `sub_B28EA0` | `isType13` | `(tag) -> bool` | `tag == 13` |
+| `sub_B28EB0` | `isType14` | `(tag) -> bool` | `tag == 14` |
+| `sub_B28EC0` | `isType16` | `(tag) -> bool` | `tag == 16` |
+| `sub_B28ED0` | `isType7` | `(tag) -> bool` | `tag == 7` |
+| `sub_B28EE0` | `isType11` | `(tag) -> bool` | `tag == 11` |
+| `sub_B28EF0` | `isType8` | `(tag) -> bool` | `tag == 8` |
 
 ### Architecture Dispatch Tables -- 4 Copies at `sub_B128E0`--`sub_B12920`
 
@@ -551,7 +810,7 @@ Each function maps a small integer index to an encoding constant, answering ques
 |---|---|---|
 | **ISel framework** | SelectionDAG or GlobalISel (single pass) | Two-phase: MercConverter (phase 5) + ISel driver (phase 112+) |
 | **Pattern specification** | TableGen `.td` files, machine-generated | Handwritten C++ (~750 functions) |
-| **Pattern count** | Target-dependent (thousands for x86) | ~750 DAG matchers + 185 KB mega-selector |
+| **Pattern count** | Target-dependent (thousands for x86) | ~801 DAG matchers + 185 KB mega-selector |
 | **Architecture dispatch** | Subtarget feature bits | 4 architecture dispatch tables + vtable overrides |
 | **Intermediate form** | MachineInstr (already selected) | Ori IR (SASS opcodes after phase 5, not yet encoded) |
 | **Encoding** | MCInst emission (separate pass) | Integrated: ISel + Mercury encode in same pipeline |
@@ -594,6 +853,20 @@ The key architectural difference: LLVM performs instruction selection once, then
 | `sub_B13E10` | 6 KB | Basic modifier dispatcher (21 callees) | HIGH |
 | `sub_B0AA70` | 5 KB | Opcode variant selector (class 306) | HIGH |
 | `sub_9DA5C0` | 2 KB | Opcode class 1 handler | MEDIUM |
+| `sub_13AF3D0` | 137 KB | ISel pattern coordinator (vtable dispatch to matchers) | HIGH |
+| `sub_10AE5C0` | tiny | DAGNode_ReadField (field_id to value, delegates to `sub_10D5E60`) | VERY HIGH |
+| `sub_10AE590` | tiny | DAGNode_WriteField (single field write) | VERY HIGH |
+| `sub_10AE640` | tiny | DAGNode_WriteFields (multi-field update) | VERY HIGH |
+| `sub_B28F30` | tiny | GetOperand (index into 32-byte operand array at `*(node+32)`) | VERY HIGH |
+| `sub_B28F40` | tiny | GetResultCount (`node[40] + 1 - node[92]`) | VERY HIGH |
+| `sub_B28F50` | tiny | GetSourceCount (`*(node+92)`) | VERY HIGH |
+| `sub_B28E00` | tiny | DecodeRegClass (identity function, class is plain int) | VERY HIGH |
+| `sub_B28E10` | tiny | isGPR operand predicate (`tag == 2`) | VERY HIGH |
+| `sub_B28E20` | tiny | isImmediate operand predicate (`tag == 1`) | VERY HIGH |
+| `sub_B28E40` | tiny | isValidReg operand predicate (`tag == 10`) | VERY HIGH |
+| `sub_B28E80` | tiny | isPredicate operand predicate (`tag == 3`) | VERY HIGH |
+| `sub_B28E90` | tiny | isUniformReg operand predicate (`tag == 15`) | VERY HIGH |
+| `sub_B28F60`--`sub_B74C60` | ~1.3 MB | ~801 DAG pattern matchers (priority 2--34, template 1--152) | HIGH |
 
 ## Cross-References
 
