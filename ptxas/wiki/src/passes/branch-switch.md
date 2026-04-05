@@ -48,7 +48,7 @@ The first pass (phase 14) runs immediately after the initial `GeneralOptimizeEar
 
 The second pass (phase 30) runs after loop unrolling (phase 22), strength reduction (phase 21), SSA phi insertion (phase 23), and software pipelining (phase 24). These transformations can expose new switch patterns -- particularly after loop unrolling duplicates switch bodies, creating opportunities for case clustering that were not visible before.
 
-Both passes share the same optimization logic. They differ only in their vtable addresses and pipeline position.
+Despite their names, the two passes use **different dispatch paths**. Phase 14 dispatches through the SM backend's vtable at offset +136 (`*(*(ctx+1584)+136)`), making it a polymorphic, architecture-specific switch optimization. Phase 30 calls the generic switch optimization core (`sub_77CF40` via `sub_791F00`). This means phase 14 runs whatever switch optimization the current SM target provides, while phase 30 always runs the generic algorithm. The two passes share pipeline position semantics (first pass vs. second pass) but not necessarily the same code.
 
 ## DoSwitchOpt -- Switch Statement Optimization (Phases 14, 30)
 
@@ -396,16 +396,57 @@ The jump table is strongly preferred for GPU execution because it minimizes sync
 
 ### Phase Vtable Structure
 
-All four phases follow the standard 16-byte phase object model:
+All four phases follow the standard 16-byte phase object model. Each vtable has three methods: `+0` execute, `+8` getPhaseNumber, `+16` isNoOp.
 
-| Phase | Factory case | Vtable address | isNoOp behavior |
-|-------|-------------|----------------|-----------------|
-| 14 `DoSwitchOptFirst` | case 14 | `off_22BD7F8` | Active at -O1 and above |
-| 15 `OriBranchOpt` | case 15 | `off_22BD820` | Active at -O1 and above |
-| 30 `DoSwitchOptSecond` | case 30 | `off_22BDA78` | Active at -O1 and above |
-| 38 `OptimizeNestedCondBranches` | case 38 | `off_22BDBB8` | Active at -O1 and above |
+| Phase | Factory case | Vtable address | execute body | isNoOp |
+|-------|-------------|----------------|--------------|--------|
+| 14 `DoSwitchOptFirst` | case 14 | `off_22BD7F8` | `sub_C5F720` (42B) | returns false |
+| 15 `OriBranchOpt` | case 15 | `off_22BD820` | `sub_C5F950` (34B) | returns false |
+| 30 `DoSwitchOptSecond` | case 30 | `off_22BDA78` | `sub_C5FC80` (34B) | returns false |
+| 38 `OptimizeNestedCondBranches` | case 38 | `off_22BDBB8` | `sub_C5FA70` (34B) | returns false |
 
-At `-O0`, all four phases return `isNoOp() = true`. Branch and switch optimization is entirely disabled at `-O0` to preserve source-level debugging correspondence.
+All four `isNoOp` methods return false unconditionally -- gating is performed inside the execute body, not via `isNoOp`. Each execute body calls `sub_7DDB50` (156B), which reads the optimization level from `compilation_context+2104` and checks knob 499. The guard is `opt_level > 1`, so these phases execute at `-O2` and above. At `-O0` and `-O1`, `sub_7DDB50` returns 1 and the execute body returns without action.
+
+### Execute Body Details
+
+**Phase 14 -- `sub_C5F720` (42 bytes).** After the `sub_7DDB50` gate, dispatches through the SM backend object's vtable: `(*(*(ctx+1584) + 136))(*(ctx+1584))`. Offset +136 is vtable slot 17 on the SM backend. This is a **polymorphic call** -- each SM target (sm_50, sm_75, sm_89, sm_100, etc.) provides its own switch optimization implementation. The SM backend object at `compilation_context+1584` is documented in [data-structures.md](../ir/data-structures.md#sm-backend-object-at-1584).
+
+**Phase 15 -- `sub_C5F950` (34 bytes).** After the gate, calls `sub_7917F0` (529B) directly -- no polymorphic dispatch. `sub_7917F0` is the branch simplification core:
+
+1. Checks `context+1382` bit 2 (CFG validity flag) -- returns immediately if clear
+2. Checks knob 214 via the knob state dispatcher -- if set, skips the pass (OriBranchOpt disable switch)
+3. Checks knob 487 (general optimization enablement)
+4. Calls `sub_785E20` (266B) to rebuild the CFG
+5. Calls `sub_781F80` (8335B) for block preparation infrastructure
+6. Calls `sub_7E6090` (2614B) to scan branch patterns and `sub_7E6AD0` (33B) for chain setup
+7. Iterates over basic blocks in RPO order (block list at `*(ctx+296)`, RPO indices at `*(ctx+512)`). For each block, calls `sub_753600` (1351B) for the transformation, with a convergence loop gated by knob 464
+8. After convergence, calls `sub_785E20` again to finalize the CFG
+
+**Phase 30 -- `sub_C5FC80` (34 bytes).** After the gate, calls `sub_791F00(ctx, 1)`. The second argument `1` indicates this is the second switch optimization pass. `sub_791F00` (587B) performs lazy initialization of a 152-byte `SwitchOptContext` cached at `code_object+1288`:
+
+```
+SwitchOptContext (152 bytes, allocated at code_object+1288):
+    +0   back-pointer to code object
+    +8   allocator reference (from code_object+16)
+    +16  case collection array (capacity = block_count + 2)
+    +56  secondary collection array
+    +96  code_object reference copy
+    +104 initialized sentinel (0xFFFFFFFF)
+    +112 tertiary collection array
+```
+
+After setup, `sub_791F00` calls `sub_77CF40` (4698B, 987 instructions) -- the main switch optimization algorithm containing pattern matching, strategy selection (jump table vs. BST vs. cascading if-else), and code emission.
+
+**Phase 38 -- `sub_C5FA70` (34 bytes).** After the gate, calls `sub_A0F020` (2375B, 563 instructions) directly. `sub_A0F020` implements the nested conditional optimizer as a fixed-point loop. It allocates a 16-byte work context at `code_object+1648` (lazy init), then iterates: scan blocks for nested branch patterns, combine predicates with LOP3, remove eliminated blocks, repeat until stable. The function also accesses code object fields +832 (block hash map) and +856 (edge data) for CFG manipulation.
+
+### Knob Gating Summary
+
+| Knob | Index | Effect | Checked by |
+|------|-------|--------|------------|
+| ConvertUnsupportedOps | 499 | Master opt-level gate (all 4 phases) | `sub_7DDB50` |
+| OriBranchOpt disable | 214 | Disables branch simplification | `sub_7917F0` (phase 15) |
+| General optimization | 487 | Enables/disables optimizer passes | `sub_7917F0` (phase 15) |
+| Convergence loop | 464 | Gates the fixed-point iteration | `sub_7917F0` (phase 15) |
 
 ### Interaction with ExpandJmxComputation (Phase 80)
 
@@ -442,6 +483,59 @@ OptimizeNestedCondBranches     Pattern match on nested      O(B)          Merges
 
 Where N = number of switch cases, B = number of basic blocks, E = number of CFG edges.
 
+## Function Map
+
+All addresses from ptxas v13.0.88. Vtable entries resolved by reading the ELF `.rodata` section at file offset `VA - 0x400000`. Confidence: HIGH for vtable functions (direct binary read), HIGH for core algorithms (single-caller chains from vtable execute bodies).
+
+### Phase Vtable Functions
+
+| Address | Size | Phase | Vtable slot | Role |
+|---------|------|-------|-------------|------|
+| `sub_C5F720` | 42B | 14 | `+0` | execute -- dispatches to SM backend vtable[17] |
+| `sub_C5F4A0` | 6B | 14 | `+8` | getPhaseNumber -- returns 14 |
+| `sub_C5F4B0` | 3B | 14 | `+16` | isNoOp -- returns false |
+| `sub_C5F950` | 34B | 15 | `+0` | execute -- calls `sub_7917F0` |
+| `sub_C5F480` | 6B | 15 | `+8` | getPhaseNumber -- returns 15 |
+| `sub_C5F490` | 3B | 15 | `+16` | isNoOp -- returns false |
+| `sub_C5FC80` | 34B | 30 | `+0` | execute -- calls `sub_791F00(ctx, 1)` |
+| `sub_C5F2A0` | 6B | 30 | `+8` | getPhaseNumber -- returns 30 |
+| `sub_C5F2B0` | 3B | 30 | `+16` | isNoOp -- returns false |
+| `sub_C5FA70` | 34B | 38 | `+0` | execute -- calls `sub_A0F020` |
+| `sub_C5F1A0` | 6B | 38 | `+8` | getPhaseNumber -- returns 38 |
+| `sub_C5F1B0` | 3B | 38 | `+16` | isNoOp -- returns false |
+
+### Core Algorithm Functions
+
+| Address | Size | Callers | Description |
+|---------|------|---------|-------------|
+| `sub_77CF40` | 4698B | 1 | DoSwitchOpt core -- pattern match, strategy select, code emit |
+| `sub_7917F0` | 529B | 2 | OriBranchOpt core -- worklist CFG simplification |
+| `sub_A0F020` | 2375B | 11 | OptimizeNestedCondBranches core -- predicate combining |
+| `sub_791F00` | 587B | 3 | DoSwitchOpt setup -- SwitchOptContext init, calls `sub_77CF40` |
+
+### Infrastructure Functions
+
+| Address | Size | Callers | Description |
+|---------|------|---------|-------------|
+| `sub_7DDB50` | 156B | 180 | Optimization level gate (knob 499 + opt-level check) |
+| `sub_781F80` | 8335B | 131 | Block preparation infrastructure (major shared function) |
+| `sub_785E20` | 266B | 34 | CFG rebuild after transformation |
+| `sub_7E6090` | 2614B | 80 | Branch pattern scanner |
+| `sub_7E6AD0` | 33B | 10 | Branch chain setup |
+| `sub_753600` | 1351B | 1 | Block-level branch transform (phase 15 inner loop) |
+| `sub_753B50` | 598B | 1 | Block transform continuation |
+
+### Factory and Vtable Data
+
+| Symbol | Address | Description |
+|--------|---------|-------------|
+| `sub_C60D30` | `0xC60D30` | Phase factory -- 159-case switch, allocates 16-byte phase objects |
+| `off_22BD5C8` | `0x22BD5C8` | Vtable base -- 40-byte stride, index = phase number |
+| `off_22BD7F8` | `0x22BD7F8` | Phase 14 vtable (base + 14 * 0x28) |
+| `off_22BD820` | `0x22BD820` | Phase 15 vtable (base + 15 * 0x28) |
+| `off_22BDA78` | `0x22BDA78` | Phase 30 vtable (base + 30 * 0x28) |
+| `off_22BDBB8` | `0x22BDBB8` | Phase 38 vtable (base + 38 * 0x28) |
+
 ## Cross-References
 
 - [Pass Inventory](index.md) -- complete 159-phase table with phase numbers and categories
@@ -452,3 +546,6 @@ Where N = number of switch cases, B = number of basic blocks, E = number of CFG 
 - [Predication](predication.md) -- phase 63 (if-conversion, consumes simplified CFG from phases 15 and 38)
 - [Hot/Cold Partitioning](hot-cold.md) -- phases 41, 108, 109 (block placement interacts with branch layout)
 - [Synchronization & Barriers](sync-barriers.md) -- BSSY/BSYNC reconvergence mechanism
+- [Data Structures](../ir/data-structures.md) -- SM backend object at +1584 (phase 14 polymorphic dispatch target)
+- [Optimization Levels](../config/opt-levels.md) -- `sub_7DDB50` opt-level gate, knob 499 interaction
+- [Knobs System](../config/knobs.md) -- knobs 214, 464, 487, 499 gating branch/switch phases
