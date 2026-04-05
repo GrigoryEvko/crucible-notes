@@ -190,47 +190,201 @@ The propagation sets flags on instruction operand fields:
 - Bit 9 (`0x200`): marks operand for deferred cleanup. The combined mask `0xFFFFFDF0 | 0x201` clears the old type bits and sets both "propagated" and "immediate-eligible"
 - Bit 10 (`0x400`): marks as "propagated under predicate"
 
-### Constant Folding
+### Constant Folding Patterns
 
-Constant folding is integrated into the per-block pass through checks on operand type fields. The fold-eligibility check in `sub_8F2E50` at `0x8F2E50` is the central gatekeeper:
+Constant folding in GeneralOptimize is a two-level mechanism. At the ORI IR level (phases 29 and 37), the fold-eligibility check `sub_8F2E50` at `0x8F2E50` decides which operands can be marked as constant-propagation-eligible. Separately, at the SASS level, the peephole pass `sub_1249B50` performs instruction-combining folds on ALU operations whose sources are both MOV-from-immediate. The ORI-level fold does not evaluate arithmetic at compile time -- it marks operands with flag bits that downstream passes consume to replace registers with immediates.
+
+#### The Eligibility Check: `sub_8F2E50`
+
+The central gatekeeper, called by `sub_908EB0` (phase 29) and `sub_908A60` (predicate simplifier). Returns boolean: 1 = foldable, 0 = not foldable. Two dispatch paths based on the masked opcode at `instr[18] & ~0x3000`:
 
 ```c
-// sub_8F2E50 -- Copy/fold eligibility check (simplified)
-bool is_eligible(int64_t ctx, uint32_t* instr) {
-    uint32_t opcode = instr[18];
-    opcode = (opcode & ~0x3000) | (opcode & 0xCFFF);  // mask opcode
+// sub_8F2E50 -- Fold eligibility check (complete, annotated)
+bool is_fold_eligible(int64_t ctx, uint32_t* instr) {
+    uint32_t raw = instr[18];
+    uint32_t opcode = raw;
+    BYTE1(opcode) &= 0xCF;    // clear bits 12-13 (predication variant)
 
-    if (opcode == 18) {   // predicated move
-        int dest_operand = instr[2 * (instr[20] + ~((instr[18]>>11)&2)) + 21];
-        int type_nibble = (dest_operand >> 2) & 0xF;
-        if (type_nibble == 10) return false;           // type 10: not foldable
-        if (!(type_nibble | (dest_operand & 0x400)))   // no type bits set
-            // SM version check via comp_unit vtable[1320]:
-            //   if sentinel sub_7D7240, check source operand types (bits 28-30)
-            //   otherwise call the virtual method
-            return check_source_operands(ctx, instr);
-        return false;
+    // --- Path A: opcode 18 (predicated copy) ---
+    if (opcode == 18) {
+        int dest_idx = instr[20] + ~((raw >> 11) & 2);   // last-operand index
+        int dest = instr[2 * dest_idx + 21];
+        int type_nibble = (dest >> 2) & 0xF;
+
+        if (type_nibble == 10) return false;   // operand type 10: never foldable
+
+        // Require both type nibble == 0 AND no predicate-propagated flag (0x400)
+        if (type_nibble != 0 || (dest & 0x400))
+            return false;
+
+        // Vtable dispatch at comp_unit->vtable[1320]:
+        //   sentinel sub_7D7240 -> check source operand type bits directly
+        //   otherwise -> call virtual method
+        fn = *(comp_unit->vtable + 1320);
+        if (fn == sub_7D7240) {
+            src_type = (instr[23] >> 28) & 7;
+            if (src_type - 2 > 1) return false;   // only types 2,3 eligible
+        } else {
+            if (fn() != 0) goto check_opcode_124;
+            src_type = (instr[23] >> 28) & 7;
+            if (src_type - 2 > 1) return false;
+        }
+        // Verify register constraints via sub_91D150 for both sources
+        if (sub_91D150(ctx, instr[23] & 0xFFFFFF))
+            goto check_opcode_124;
+        src2_type = (instr[25] >> 28) & 7;
+        if (src2_type - 2 <= 1 && !sub_91D150(ctx, instr[25] & 0xFFFFFF))
+            return true;
+        // Fall through to opcode 124 check on constraint failure
     }
 
-    if (opcode == 124) {  // conditional select
-        int dest = instr[2 * (instr[20] + ~((instr[18]>>11)&2)) + 21];
-        if (dest & 0x100) return false;    // already propagated
-        if (dest & 0x70)  return false;    // has modifier bits
+check_opcode_124:
+    // --- Path B: opcode 124 (conditional select / phi-like move) ---
+    if (opcode == 124) {
+        int dest_idx = instr[20] + ~((raw >> 11) & 2);
+        int dest = instr[2 * dest_idx + 21];
+        if (dest & 0x100) return false;     // already propagated
+        if (dest & 0x70)  return false;     // has modifier bits (neg/abs/sat)
 
         int type = dest & 0xF;
-        int sm_version = *(int32_t*)(*(int64_t*)(ctx + 1584) + 372);
-        // Type 1 (integer) or Type 2 (float): foldable if SM <= 20479 (pre-Turing)
-        // or no additional constraint bits (& 0x1C00 == 0)
-        if ((type == 2 || type == 1) && (sm_version <= 20479 || (dest & 0x1C00) == 0))
+        int sm_ver = *(int32_t*)(*(int64_t*)(ctx + 1584) + 372);
+
+        if ((type == 1 || type == 2) &&
+            (sm_ver <= 20479 || (dest & 0x1C00) == 0))
             return true;
     }
     return false;
 }
 ```
 
-**SM version 20479**: This threshold (0x4FFF) divides architectures where constant folding is unconditionally safe from those requiring additional constraint checks. SM versions above 20479 correspond to architectures with extended immediate encoding constraints.
+The function `sub_91D150` is a trivial lookup into a per-register constraint array: `return *(uint32_t*)(*(ctx+440) + 4 * reg_index)`. A return value of 0 means the register has no fold-blocking constraint.
 
-The knob `"limit-fold-fp"` (string at `0x1CE3D23`, helptext `"Enable/disable constant folding of float operations"` at `0x1CE63B0`) provides user control over floating-point constant folding to prevent precision issues in numerical code.
+#### Fold Eligibility Table
+
+| ORI Opcode | Operation | Foldable? | Conditions | Evidence |
+|---|---|---|---|---|
+| 18 | Predicated copy | Yes | Source operand types must be 2 (predicate) or 3 (uniform); operand type nibble must be 0; no `0x400` flag; both source registers pass `sub_91D150` constraint check | `sub_8F2E50` lines 17--61 |
+| 124 | Conditional select | Yes | Dest type 1 (integer) or 2 (float); no modifier bits (`& 0x70 == 0`); not already propagated (`& 0x100 == 0`); SM-version-dependent constraint check | `sub_8F2E50` lines 42--51 |
+| 97 | Register-to-register move | Propagated, not folded | Dest register replaced by source in all uses (copy propagation); no type/SM checks | `sub_908EB0` lines 75--79 |
+| 98 | Local load (LDL) | Cost-exempt fold target | In phase 37 only; target symbol looked up from constant bank; foldable if symbol is in constant bank | `sub_90FBA0` lines 261--270 |
+| 130 | HSET2 (packed FP16x2 compare) | Cost-exempt | Phase 37 bitmask: opcode in {130,133,134,137} bypasses fold cost penalty | `sub_90FBA0` bitmask `0x99` |
+| 133 | (SM-range-dependent ALU) | Cost-exempt | Same bitmask as 130 | `sub_90FBA0` |
+| 134 | (SM-range-dependent ALU) | Cost-exempt | Same bitmask as 130 | `sub_90FBA0` |
+| 137 | (SM-range-dependent ALU) | Cost-exempt | Same bitmask as 130 | `sub_90FBA0` |
+| 272 | Extended instruction | Cost-exempt | Phase 37: excluded from cost penalty alongside 273 | `sub_90FBA0` line 226 |
+| 273 | Extended instruction | Cost-exempt | Same as 272 | `sub_90FBA0` |
+| Others | General ALU/memory | Not directly foldable | GeneralOptimize does not attempt to fold; deferred to peephole passes | `sub_8F2E50` returns 0 |
+
+**"Cost-exempt"** means that when phase 37 (`GeneralOptimizeMid`) encounters these opcodes, it does not apply the standard cost penalty to the fold decision. Other opcodes accumulate a cost of 1.0 per fold, while these accumulate only `v104` (default 0.25, adjustable via knob 474). Exception: even cost-exempt opcodes pay full cost if `sub_91E860` reports a use count exceeding 4, preventing over-folding of widely-referenced constants.
+
+#### SM Version 20479 Threshold
+
+The value at `*(*(ctx+1584) + 372)` encodes the target SM architecture. The threshold `20479` (0x4FFF) appears in three locations in the binary:
+
+1. `sub_8F2E50` line 47: fold eligibility for opcode 124
+2. `sub_908A60` line 107: predicate simplifier's opcode-124 handling
+3. Transitively through `sub_8F2E50` calls from `sub_908A60`
+
+The threshold divides two immediate-encoding regimes:
+
+| SM range | Encoded value | Fold rule | Rationale |
+|---|---|---|---|
+| <= 20479 | Legacy encoding | Integer (type 1) and float (type 2) constants in conditional selects fold unconditionally | Legacy architectures use fixed-width immediate slots with no sign/width constraints |
+| > 20479 | Extended encoding | Same types fold only if `(dest & 0x1C00) == 0` -- constraint bits at operand positions 10--12 must all be zero | Extended architectures introduced variable-width immediate encoding with sign-extension rules; bits 10--12 encode width/signedness constraints that prevent certain constants from being represented as immediates |
+
+The exact mapping from SM architecture numbers (e.g., sm_50, sm_75, sm_86) to the encoded value at `comp_unit+372` is not a simple identity -- an architecture-dependent multiplier is applied during target initialization. Based on the threshold position, the boundary falls approximately between the sm_80 (Ampere) and sm_86 (Ampere+) generations, aligning with the introduction of extended immediate formats in the Ampere refresh.
+
+#### How Fold Results Are Consumed
+
+When `sub_8F2E50` returns true in `sub_908EB0` (phase 29), the action depends on the opcode:
+
+**Opcode 18 (predicated copy)**: If the `v21` flag is set (vtable dispatch at `comp_unit+1312` returned non-zero, confirming the target supports this transformation), the destination operand is marked with `0x400` (propagated-under-predicate). No immediate evaluation occurs.
+
+**Opcode 124 (conditional select)**: A tier flag at `ctx+1379` controls aggressiveness:
+
+```c
+// In sub_908EB0, after sub_8F2E50 returns true for opcode 124:
+int tier = *(uint8_t*)(ctx + 1379) & 7;
+if (tier == 0) {
+    // AGGRESSIVE: mark dest byte-1 |= 1 (fold-committed, fast path)
+    dest_operand[1] |= 1;
+} else {
+    // CONSERVATIVE: type-dispatched analysis required
+    if ((dest & 0xF) == 1) {              // integer immediate
+        if (sub_8F29C0(ctx))              // predicate analysis passes
+            dest = (dest & 0xFFFFFDF0) | 0x201;  // clear type, set propagated+eligible
+    } else {                              // float or other
+        if (!sub_8F29C0(ctx) || (*(ctx+1379) & 0x1B) != 0) {
+            // Two-pass predicate simplifier (forward, then backward)
+            sub_908A60(ctx, reg, instr, 1, &out_a, &out_b);  // forward
+            if (!out_a && !out_b[0])
+                sub_908A60(ctx, reg, instr, 0, &out_a, &out_b);  // backward
+        }
+        dest = (dest & 0xFFFFFDF0) | 0x201;  // set propagated+eligible
+    }
+}
+```
+
+The tier value at `ctx+1379 & 7` distinguishes:
+- **0** = aggressive fold (unconditional fast path, no predicate analysis)
+- **1--7** = conservative fold (requires `sub_8F29C0` predicate analysis and potentially `sub_908A60` two-pass simplification)
+
+The actual constant value is not computed during GeneralOptimize. The fold marks operands with flag bits (`0x100`, `0x200`, `0x400`, byte-1 `|= 1`) that downstream passes consume: the apply-changes function `sub_753B50` rewrites instruction lists, and the peephole/codegen passes emit the actual immediates.
+
+#### The `limit-fold-fp` Knob
+
+| | |
+|---|---|
+| **String** | `"limit-fold-fp"` at `0x1CE3D23` |
+| **Help text** | `"Enable/disable constant folding of float operations."` at `0x1CE63B0` |
+| **Type** | Boolean |
+| **Default** | `"false"` (FP folding is NOT limited -- folding is enabled) |
+| **Config offset** | `config + 340` (registered at `sub_434320` line 268) |
+| **Category** | Optimization control (registration category 4) |
+| **Visibility** | Internal (not exposed on public CLI) |
+
+Despite the name, `limit-fold-fp` follows the convention that `limit-X = true` means *restrict/disable X*. When set to `true`:
+
+1. The `config+340` byte propagates into per-function context flags at `ctx+1379` during compilation context setup
+2. The `ctx+1379 & 7` tier value becomes non-zero, forcing all type-2 (float) operands through the conservative fold path
+3. Conservative fold requires predicate analysis via `sub_8F29C0` and potentially the two-pass `sub_908A60` simplifier, which rejects folds where predicate conditions are ambiguous
+4. This prevents FP constants from being folded when the fold could alter precision semantics -- for example, folding an FMA source operand might lose the fused multiply-add precision guarantee that the original instruction provided
+
+The predicate analysis helper `sub_8F29C0` (11 lines) performs three sequential checks on the compilation unit at `ctx+1584`: `sub_7DC0E0`, `sub_7DC050`, and `sub_7DC030`. If any returns true, the predicate allows safe propagation. These check architecture capability flags for predicated constant operations.
+
+#### Phase 37 Fold Cost Model
+
+`sub_90FBA0` (the main loop for `GeneralOptimizeMid`) integrates fold decisions into a cost-weighted convergence model rather than a simple boolean. Key elements:
+
+**Opcode classification** (lines 226--228 of the decompiled output): a bitmask `0x99` applied to the range 130--137 classifies opcodes as cost-exempt. The expression `~(0x99 >> ((uint8_t)opcode + 126)) & v15` clears `v15` (the cost flag) for opcodes where the corresponding bit in `0x99` is set. Combined with the range check for 272--273:
+
+| Cost-exempt opcodes | Bitmask bit | Interpretation |
+|---|---|---|
+| 130 | bit 0 of 0x99 | FP16x2 compare (HSET2 family) |
+| 133 | bit 3 of 0x99 | SM-range-dependent ALU |
+| 134 | bit 4 of 0x99 | SM-range-dependent ALU |
+| 137 | bit 7 of 0x99 | SM-range-dependent ALU |
+| 272, 273 | Direct check | Extended load/store variants |
+
+**Cost computation**: For cost-exempt opcodes, fold cost = `v104 * v35` where `v104` defaults to 0.25 (overridable via knob 474) and `v35` is 0.0 if the instruction is dead (checked via `sub_7DF3A0`), 1.0 otherwise. For non-exempt opcodes, fold cost = `1.0 * v35` (full weight).
+
+**Use-count gate**: Even cost-exempt opcodes pay full cost if `sub_91E860` (use-count estimator) reports more than 4 uses, preventing over-folding of widely-referenced constants.
+
+**Convergence**: Accumulated costs at `context+26` (weighted) and `context+27` (unweighted) are doubles. The loop continues until the cost delta falls below the threshold (default 0.25 from knob 474; overridable by knob 135 when `*(config+9720)` is set).
+
+#### Register Constraint Validation: `sub_8F3FE0`
+
+Phase 37 uses `sub_8F3FE0` to validate that folding an instruction's operands respects register-class constraints. The function:
+
+1. Queries `comp_unit->vtable[904]` for the per-element operand size of the instruction
+2. Queries `comp_unit->vtable[936]` (if not sentinel `sub_7D7040`) for per-instruction fold metadata
+3. Iterates over all source operands:
+   - Requires operand type bits `(>> 28) & 7` to be 2 or 3 (predicate or uniform register)
+   - Calls `sub_91D150` to look up the register constraint for each source operand
+   - Compares against a previously cached constraint at `context + 7` (8-byte stride per fold group)
+   - Returns 0 (fold invalid) on any constraint mismatch
+4. Loop count is determined by the destination operand format field (`& 7`)
+5. Returns 1 only if all source operands have consistent register constraints
 
 ### Algebraic Simplification and Structural Equivalence
 
@@ -638,7 +792,7 @@ After phase 65, the pipeline transitions to register-attribute setting (phase 90
 | 474 | Cost convergence threshold (float, default 0.25) | Phase 37 (`sub_90FBA0`) |
 | 487 | **General optimization enable** -- master switch for all GeneralOptimize passes | Phases 13, 29, 37 |
 | 605 | Restrict circular buffer matching to existing entries only | Phase 58 (`sub_8F6530`) |
-| `limit-fold-fp` | `"Enable/disable constant folding of float operations"` | Controls FP constant folding globally |
+| `limit-fold-fp` | `"Enable/disable constant folding of float operations"` (default: `"false"`, config+340, boolean, internal) | When `true`, forces conservative fold path via `ctx+1379` tier flags; prevents FP folds that could alter precision semantics |
 
 The `"ConvertMemoryToRegisterOrUniform"` named-phase gate at `0x21DD228` allows phase 37 to be disabled via the `--no-phase` command-line option.
 
@@ -671,8 +825,8 @@ The `"ConvertMemoryToRegisterOrUniform"` named-phase gate at `0x21DD228` allows 
 | `0x90FBA0` | Main loop (Mid) | Cost-based instruction-level iteration with register bank analysis |
 | `0x90EF70` | Register promotion (Mid) | Memory-to-register conversion; threshold-based (default 0.93, knob 136) |
 | `0x903A10` | Register bank helper (Mid) | Per-instruction register bank assignment for LD/ST materialization |
-| `0x8F3FE0` | Register constraint checker (Mid) | Validates register constraints via `comp_unit->vtable[904]` and `sub_91D150` |
-| `0x8F2E50` | Copy/fold eligibility check | Checks opcode (18, 124), operand types, SM version <= 20479, constraint bits |
+| `0x8F3FE0` | Register constraint fold validator (Mid) | Validates all source operand types are 2/3 and `sub_91D150` constraints match cached values; queries `vtable[904]` for element size and `vtable[936]` for fold metadata |
+| `0x8F2E50` | Fold eligibility check | Two-path dispatch: opcode 18 checks source types 2/3 + `sub_91D150` constraints; opcode 124 checks dest type 1/2 + SM <= 20479 threshold + constraint bits `& 0x1C00` |
 | `0x8F29C0` | Predicate analysis helper | Determines if predicate condition allows propagation |
 | `0x908A60` | Two-pass predicate simplify | Called with direction flag (1 = forward, 0 = backward) |
 | `0x785E20` | Change tracking reset | Resets per-block change flags |
@@ -685,8 +839,15 @@ The `"ConvertMemoryToRegisterOrUniform"` named-phase gate at `0x21DD228` allows 
 | `0x747F80` | Absolute-value flag extractor | Extracts abs modifier from operand encoding |
 | `0x748570` | Alias hazard check | Returns true if operand has aliasing hazard |
 | `0x1245740` | Sub-DAG equivalence | Compares two instruction sub-DAGs for structural equivalence (arg 2 = depth) |
-| `0x91D150` | Register constraint check | Checks register constraints for propagation eligibility |
+| `0x91D150` | Register constraint lookup | Trivial: `return *(*(ctx+440) + 4*reg_index)`; 0 = no fold-blocking constraint |
 | `0x91E860` | Use-count estimator | Returns estimated use count for cost-based decisions (used by phase 37) |
+| `0xA9BD30` | Register-class remapper | Maps opcode indices in set {1,2,3,7,11,15,20,24} via `vtable[632]`; writes `value \| 0x60000000` (constant class marker) |
+| `0x1249B50` | SASS-level integer ALU fold | Combines IMAD_WIDE/IADD3/SGXT/CCTLT (opcodes 2,3,5,110) with MOV source pairs via `sub_1249940` and `sub_1245740` |
+| `0x1249940` | MOV-pair fold combiner | Matches two MOV-from-immediate (opcode 139) instructions feeding an ALU op; validates structural equivalence at depth 1 and 2 |
+| `0x7E19E0` | Operand info extractor | Builds 52-byte operand descriptor for opcodes 2,3,5,6,7; classifies source types and constant bank membership |
+| `0x7DC0E0` | Architecture capability check A | Checks compilation unit capability flag; used by `sub_8F29C0` for predicate fold safety |
+| `0x7DC050` | Architecture capability check B | Secondary capability check for `sub_8F29C0` |
+| `0x7DC030` | Architecture capability check C | Tertiary capability check for `sub_8F29C0` |
 
 ## Cross-References
 
