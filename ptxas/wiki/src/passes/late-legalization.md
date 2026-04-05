@@ -101,7 +101,7 @@ MidExpansion runs after the CTA/mbarrier/barrier expansion passes and before the
 
 **Dispatch.** Dispatches directly through the SM backend vtable at offset `+0xB0` (176). No two-level indirection -- the SM backend provides the implementation directly.
 
-**Side effect.** Sets `context+1552` to 3. This field tracks the current legalization stage and is read by subsequent passes to determine which expansions have already occurred. The value 3 indicates "mid-expansion complete."
+**Side effect.** Sets `context+1552` to 3. This field is the pipeline progress counter (not exclusively a legalization counter -- see Context Fields below) and is read by subsequent passes to determine which pipeline stages have completed. The value 3 indicates "mid-expansion complete."
 
 ### Phase 55 -- LateExpansion
 
@@ -117,7 +117,7 @@ Pipeline:       After OriDoRematEarly (54), before SpeculativeHoistComInsts (56)
 
 LateExpansion is the primary post-optimization legalization pass. It runs after all high-level optimizations (loop unrolling, strength reduction, GVN-CSE, reassociation, predication setup) have completed, expanding operations that were deliberately kept in high-level form for those passes.
 
-**Dispatch.** Uses the outer backend at `context+0x640`. Checks vtable slot `+0x58` (88) against the default (`sub_6612E0`). If overridden, calls the override. Otherwise, calls the inner object's vtable at `+0xE0` (224) and then sets `context+1552 = 7`, advancing the legalization stage counter.
+**Dispatch.** Uses the outer backend at `context+0x640`. Checks vtable slot `+0x58` (88) against the default (`sub_6612E0`). If overridden, calls the override. Otherwise, calls the inner object's vtable at `+0xE0` (224) and then sets `context+1552 = 7`, advancing the pipeline progress counter.
 
 **What gets expanded here:** This is the pass where most math library calls are introduced. Operations like `div.rn.f64`, `sqrt.rn.f32`, `rcp.rd.f64` that were kept as single Ori instructions through optimization are now replaced with Newton-Raphson sequences or calls to the 608-function libdevice library. The SM20 library functions (division, square root, reciprocal, bit-field extract/insert) and SM70 functions (WMMA matrix operations, barrier reductions) are the primary candidates.
 
@@ -256,13 +256,23 @@ The legalization passes interact with several fields on the compilation context:
 | `+1378` | `byte` | Bit 0: ConvertUnsupportedOps has run |
 | `+1382` | `byte` | Bit 2: prerequisite flag for LateExpansionUnsupportedOps |
 | `+1414` | `byte` | Bit 2: enable flag for LateExpansionUnsupportedOps |
-| `+1552` | `int32` | Legalization stage counter (set to 3 by MidExpansion, 7 by LateExpansion, 12 by SetAfterLegalization) |
+| `+1552` | `int32` | Pipeline progress counter -- written by multiple passes across legalization, optimization, and post-RA stages (see value table below) |
 | `+1664` | `void*` | Capability dispatch object (knob/option queries) |
 
-The legalization stage counter at `context+1552` provides a monotonically increasing value that downstream passes can check to determine which legalization phases have completed:
-- 3 = MidExpansion done
-- 7 = LateExpansion done
-- 12 = SetAfterLegalization done (all legalization complete)
+The pipeline progress counter at `context+1552` provides a monotonically increasing value that downstream passes can check to determine which pipeline stages have completed. Despite being documented previously as a "legalization stage counter," it is written by passes outside the legalization family (rematerialization, backward copy propagation, architecture-specific peephole, post-RA finalization):
+
+| Value | Writer | Phase | Function |
+|---|---|---|---|
+| 0 | Context constructor | -- | `sub_7F7DC0` |
+| 3 | MidExpansion | 45 | `sub_C5EF80` |
+| 4 | OriDoRematEarly | 54 | `sub_C5EF30` |
+| 7 | LateExpansion | 55 | `sub_6612E0` |
+| 8 | Peephole/ISel refinement (arch-specific) | varies | `sub_849C60` |
+| 9 | OriBackCopyPropagate | 83 | `sub_C5EB80` |
+| 10 | PostRAFinalizer (arch-specific) | varies | `sub_88E9D0` |
+| 12 | SetAfterLegalization | 95 | `sub_C5E980` |
+
+Downstream passes compare against these thresholds: `sub_A11060` checks `> 4` to enable cross-block rematerialization; `sub_752CF0` checks `<= 3`; `sub_766520` checks `<= 11`; `sub_781F80` checks `<= 12`; `sub_78B8D0` checks `> 18`.
 
 ## Pipeline Position Summary
 
@@ -305,6 +315,150 @@ Phase 138:   OriSplitHighPressureLiveRanges
 | `sub_7E6AD0` | -- | Instruction expansion driver (secondary) |
 | `sub_753600` | -- | Per-instruction legalization check |
 | `sub_753B50` | -- | Retry/convergence loop for iterative expansion |
+| `sub_13AF3D0` | 26,795B | Operand legalization dispatcher -- 164-case switch on opcode, called from `sub_A29220` |
+| `sub_13A6280` | 1,289B | General operand materializer -- ensures operand is in legal register (called 83x) |
+| `sub_13A6AE0` | ~250B | Special-class operand materializer -- handles condition code and predicate classes |
+| `sub_13A7410` | ~50B | Try-inline-then-materialize wrapper -- checks `sub_822750` before falling back |
+| `sub_13A6F90` | ~40B | Arch-immediate materializer -- like `sub_13A7410` without pre-check |
+| `sub_13A45E0` | -- | Predicate operand materializer |
+| `sub_13A75D0` | -- | Uniform register conversion (class 6 to class 3) |
+| `sub_A29220` | -- | Pass driver that calls `sub_13AF3D0` per instruction |
+| `sub_13ADB90` | 3,353B | Extended operand legalization variant (arch-specific override, vtable-dispatched) |
+
+## Operand Legalization Dispatcher
+
+The SASS encoding backend cannot encode arbitrary operand forms. Before an instruction reaches the per-instruction encoder, every operand must be in a form the hardware encoding supports: a register in the correct class, an immediate that fits the bit-field width, or an absent-operand sentinel. The operand legalization dispatcher (`sub_13AF3D0`, 26,795 bytes) enforces these constraints. It is called once per instruction from the pass driver `sub_A29220` and runs after ISel but before the SASS encoders.
+
+### Dispatcher Structure
+
+The function reads the instruction opcode from field `+72`, masks off the predication flags (bits 12-13, mask `& 0xCFFF`), and enters a switch with **164 case labels** covering Ori IR opcodes 0 through 352. Each case implements the legalization recipe for one opcode or a group of opcodes with identical operand layouts.
+
+Before the switch, a pre-pass handles predicated instructions. If bit 12 of the opcode is set (indicating a predicate guard is present), the function first checks backend vtable slot `+3232` for a custom handler. If none exists or it declines, `sub_13A6AE0` is called on the predicate guard operand (at position `operand_count - 2`) to ensure it is in a legal register.
+
+The switch routes to five categories of legalization logic:
+
+**Direct operand materialization.** The majority of cases call `sub_13A6280` on each operand that might need conversion. Example for a 3-source FMA (case 6):
+
+```
+sub_13A6280(context, instruction, 3, insert_point, ...)  // src0
+sub_13A7410(backend, instruction, 4, 1, insert_point, ...) // src1 (try inline first)
+sub_13A6280(context, instruction, 5, insert_point, ...)  // src2
+// then check optional predicate operands 6,7 via sentinel test
+```
+
+**Variable-length operand scanning.** Case 16 (store) scans up to 15 operand slots, testing each against the `0x70000000` sentinel to find where active operands end before legalizing each one.
+
+**Architecture-specific delegation.** Cases 70, 243, 245-247, 254-255, 257-259, 262 delegate entirely to `vtable+2816`. Cases 280-281 delegate to `vtable+2328` with adjusted operand counts. These are SM-specific instructions (tensor core, WGMMA, bulk copy) where operand constraints vary by architecture.
+
+**Opcode rewriting.** Case 137 (MOV) rewrites the opcode field itself: to `0x82` (130) for conditional MOV, or to `0x109` (265) for MOV-from-special-register when the source is in register class 4.
+
+**Passthrough.** Cases 22, 24, 34, 38, 44, 45, 59, 73, 74, 77, 83, 106, 135, 161, 180, 182, 192, 194, 198, 209, 213-215, 221, 297, 352 and the `default` case require no operand legalization and exit immediately.
+
+### The 0x70000000 Null-Operand Sentinel
+
+Each operand occupies an 8-byte slot in the instruction. The lower 4 bytes encode the operand value and type:
+
+| Bits | Field | Values |
+|---|---|---|
+| `[30:28]` | Type | 1=register, 2=signed immediate, 3=unsigned immediate, 5=predicate, **7=null** |
+| `[23:0]` | Payload | Register index or immediate value |
+| `[31]` | Negate | 1=operand is negated |
+| `+7` (byte) | Flags | Bit 0: uniform/constant bank reference |
+
+The sentinel value `0x70000000` encodes type 7 ("null") with zero payload and no negation. It marks operand slots that are architecturally absent -- optional predicate guards not specified, trailing source operands of variable-width instructions, or unused operand positions in instructions with fewer sources than the maximum slot count.
+
+The dispatcher tests for the sentinel with:
+
+```c
+if ( ((*((_DWORD *)instr + offset) ^ 0x70000000) & 0x70000000) != 0 )
+    // operand is PRESENT -- legalize it
+```
+
+The XOR produces zero in bits `[30:28]` only when they are exactly `0b111` (type 7). The AND isolates those bits. If the result is zero, the operand is null and legalization is skipped. If non-zero, the operand is present and must be processed.
+
+The function contains **59 references** to `0x70000000`. The heaviest user is case 16 (store), which chains 14 successive sentinel tests (at instruction offsets `+84` through `+196`) to determine the store's vector width -- effectively implementing `for each slot: if sentinel, stop; else legalize`.
+
+### Operand Materialization Helpers
+
+The dispatcher calls six helper functions depending on the operand class:
+
+| Function | Calls | Role |
+|---|---|---|
+| `sub_13A6280` | 83 | **General materializer.** The core function. Checks if the operand can remain as-is (register in a legal class, or inline immediate that fits). If not, creates a MOV instruction via `sub_92E800` to load the value into a fresh register, inserts it before the current instruction, and replaces the operand slot with a register reference (`0x10000000 \| reg_index`). Short-circuits immediately for uniform registers (class 6). Uses `sub_7DBC80` to test inline-immediate feasibility and `sub_91D150`/`sub_91D160` for constant pool operations. |
+| `sub_13A7410` | 15 | **Try-inline-then-materialize.** Checks `sub_822750` first ("can this immediate be encoded inline for this arch?"). If yes, keeps the immediate. If no, tries `sub_822990`/`sub_8229D0` for extended encoding paths. Falls back to `sub_13A6280` only if all inline attempts fail. |
+| `sub_13A6AE0` | 15 | **Special-class materializer.** Handles operands in non-standard register classes. For class 5 (predicate): returns immediately. For class 2 (condition code): creates a MOV with opcode `0x108`. For immediates: calls `sub_91D150` for constant pool lookup and replaces the operand. Used on predicate guard operands and instructions with condition-code sources. |
+| `sub_13A6F90` | 7 | **Arch-immediate materializer.** Like `sub_13A7410` but skips the `sub_822750` pre-check. Used for operands where inline encoding is known to be architecture-dependent (texture coordinates, barrier IDs). |
+| `sub_13A45E0` | 5 | **Predicate materializer.** Handles materialization of optional predicate operand slots, called exclusively after a sentinel test confirms the operand is present. |
+| `sub_13A75D0` | 1 | **Uniform register conversion.** Called once (case 6, FMA) to handle uniform register class 6 operands that need conversion to general-purpose class 3. |
+
+### Materialization Flow (sub_13A6280 Detail)
+
+The general materializer at `sub_13A6280` (1,289 bytes) implements this decision tree for a single operand:
+
+1. **Uniform register early exit.** If the operand is a register (type 1) in class 6 (uniform), return immediately -- uniform registers are always legal in the encoding.
+
+2. **Inline immediate check.** If the operand is an immediate (type 2/3), call `sub_7DBC80` to test whether the value fits in the instruction's immediate field. If it fits and passes the floating-point validity check (`vtable+1504`) and architecture encoding check (`vtable+3248`), keep the immediate as-is.
+
+3. **Register reclassification.** If the operand is a register in class 3 (general-purpose), query the architecture via `vtable+1240` and `vtable+904` to determine if the register should be reclassified to uniform class 6 (for data types with width <= 3 register slots).
+
+4. **Data-type conversion.** For boolean (`sub_7D66E0`) or floating-point (`sub_7D6780`) operand types, call `vtable+904` to map the data type to the appropriate register class.
+
+5. **Materialization.** Call `sub_92E800` to create a MOV instruction (opcode 0x82 = 130) that loads the constant/immediate into a new register. Insert it at the insertion point. Replace the operand slot: lower word becomes `0x10000000 | new_reg_index` (type 1 = register), upper word is cleared to `& 0xFEC00000`.
+
+6. **Insertion point update.** If the insertion point `a4` currently points to the instruction being legalized, advance it to the newly inserted MOV so subsequent materializations are ordered correctly.
+
+### Opcode Groups and Legalization Recipes
+
+| Opcodes | Instruction Class | Operands Legalized | Notes |
+|---|---|---|---|
+| 2-7 | Arithmetic (ADD/MUL/FMA) | dst, src0, src1 [, src2] | FMA (6) has optional predicate slots checked via sentinel |
+| 8 | LD (load) | Variable based on addressing mode | Operand count read from `+80` |
+| 10-11, 151-152, 290-291 | Compare/select | src0, src1 | Standard 2-source legalization |
+| 16 | ST (store) | 1-15 data operands | Sentinel-scanned variable width |
+| 32 | ATOM (atomic) | dst, addr, data | Specialized register conversion |
+| 36 | TEX (texture) | coords + handle | Texture handle materialization |
+| 42, 53, 55 | Shift/logic | src0 + try-inline src1 | `sub_13A6280` + `sub_13A7410` |
+| 51 | PRMT (permute) | src0, control, src1 | `sub_13A6F90` for arch-dependent control operand |
+| 61 | Branch-conditional | Nested switch on modifier bits | 6 sub-cases for different branch forms |
+| 70, 243-262 | Tensor/WGMMA/bulk | Delegated to vtable+2816 | Architecture-specific |
+| 82, 166, 196 | FP convert | src + try-inline | `sub_13A6280` + `sub_13A7410` + optional `sub_13A6F90` |
+| 88-89 | ATOMS/ATOMG | Loop over sources | Per-source legalization with count |
+| 110-121 | Wide arithmetic | src0, src1, src2 | 3 consecutive `sub_13A6280` calls |
+| 137 | MOV | Opcode rewrite | Rewrites to 0x82 or 0x109 based on register class |
+| 230-232 | LD/ST extended | src + inline + arch | `sub_13A6280` + `sub_13A7410` + `sub_13A6F90` |
+| 270-289 | Control flow / misc | Variable | Several sub-groups with different patterns |
+| 280-281 | Multi-source | Delegated to vtable+2328 | Operand count adjusted by -4 |
+
+### Architecture Override Points
+
+The dispatcher provides three escape hatches for architecture-specific behavior:
+
+| Vtable Offset | Decimal | Opcodes | Purpose |
+|---|---|---|---|
+| `+2816` | 0xB00 | 70, 243, 245-247, 254-255, 257-259, 262 | Full delegation for SM-specific instructions |
+| `+2328` | 0x918 | 280-281 (+ other cases) | Multi-source instructions with adjusted operand counts |
+| `+3232` | 0xCA0 | Pre-switch (predicated instructions) | Custom predicate guard handling |
+
+The `vtable+2816` handler receives `(backend, instruction, insert_point, pass_context, mode_flag)` and is expected to perform complete operand legalization for the instruction. The `vtable+2328` handler receives an adjusted operand count (`total - 4`), suggesting these instructions have 4 fixed operands plus a variable source list.
+
+### Relationship to Legalization Passes
+
+The operand legalization dispatcher operates at a different abstraction level than the six legalization passes described above. The legalization passes (phases 5-137) operate on the **Ori IR**, replacing unsupported operations with sequences of supported ones. The operand legalization dispatcher operates on **individual operands within already-legal instructions**, ensuring each operand is in a form the SASS encoder can bit-pack into machine code.
+
+The dispatcher runs as part of the SASS encoding pipeline (called from `sub_A29220`), well after all six Ori-level legalization passes have completed. It is invoked per-instruction during the encoding walk, not as a standalone pass.
+
+```
+Ori legalization passes (phases 5-137)
+  Replace unsupported OPERATIONS with legal sequences
+         |
+         v
+SASS operand legalization (sub_13AF3D0, during encoding)
+  Ensure each OPERAND of a legal instruction is encodable
+         |
+         v
+SASS per-instruction encoders (522 functions)
+  Pack operands into binary instruction word
+```
 
 ## Cross-References
 
@@ -317,3 +471,5 @@ Phase 138:   OriSplitHighPressureLiveRanges
 - [Mercury Encoder](../codegen/mercury.md) -- Post-legalization encoding (must see only legal ops)
 - [Optimization Levels](../config/opt-levels.md) -- SetAfterLegalization gating by -O level
 - [Knobs System](../config/knobs.md) -- Knobs 214, 464, 487, 499 controlling legalization
+- [SASS Encoding Format](../codegen/encoding.md) -- Per-instruction SASS encoders that consume legalized operands
+- [Instruction Representation](../ir/instructions.md) -- Ori IR operand layout (8-byte slots, type/payload encoding)
