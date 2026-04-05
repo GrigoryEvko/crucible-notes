@@ -340,11 +340,11 @@ InstructionInfo object:
   ...
   +9320    opcode_names[321].name_ptr  -> "YNFG"     (ROT13 of LAST)
   +9328    opcode_names[321].length    -> 4
-  +9336    qmemcpy from unk_22B2320, 0x508 bytes (~80 more entries)
-  +10624   (end of name table area)
+  +9336    encoding_category_map[0..321]  (322 x int32, from unk_22B2320)
+  +10624   (end of encoding category map)
 ```
 
-Total: 322 explicitly initialized entries (indices 0-321) plus ~80 additional entries copied in bulk from a static data block, giving approximately 402 named opcodes.
+Total: 322 named opcodes (indices 0-321). The 0x508 bytes at +9336 are **not** additional name entries -- they are a 322-element `int32` array mapping each opcode index to an encoding category number (see [Encoding Category Map](#encoding-category-map) below).
 
 ### Full Decoded Opcode Table (Base ISA, sm_70+)
 
@@ -542,7 +542,7 @@ The `InstructionInfo` class at `sub_BE7390` (inheriting from the base class at `
 1. **Base class init** (`sub_738E20`): sets vtable, stores parent pointer, allocates the opcode-to-descriptor mapping array (512 bytes, 64 QWORD slots), zeroes all four descriptor data areas (+744..+3624), queries SM version and stores at +3728, allocates per-opcode property array (`4 * sm_opcode_count` bytes at +4112), allocates a reference-counted descriptor block (24 bytes at +4136), queries knobs 812/867/822/493 for configuration. Sets `+4132 = 8` and `+4176 = 0` (init incomplete).
 2. **Override vtable**: `+0 = off_233ADC0` (derived vtable).
 3. **Populate ROT13 name table**: 322 inline entries (indices 0-321) at offsets +4184..+9328, each 16 bytes (`{char* name_ptr, u64 length}`).
-4. **Bulk-copy name table tail**: `qmemcpy(+9336, unk_22B2320, 0x508)` -- 80 additional entries (indices 322-401), total 402 opcode names ending at offset 10624.
+4. **Bulk-copy encoding category map**: `qmemcpy(+9336, unk_22B2320, 0x508)` -- 322-entry `int32` array (1288 bytes) mapping opcode index to encoding category number. The source table varies by arch constructor (see below).
 5. **Initialize post-table fields**: zero offsets +10624..+10680.
 6. **Store sentinels**: `+11200 = -2`, `+11224 = 0xFFFFFFFF`.
 7. **Set constants**: `+4048 = 2`, `+4056 = 10`, `+3733 = 1`.
@@ -682,9 +682,35 @@ Gaps within +204..+447 and +500..+695 are zero-initialized by `sub_1370BD0`.
 | Offset | Size | Type | Field | Description |
 |--------|------|------|-------|-------------|
 | +4184 | 5152 | `struct[322]` | `opcode_names[0..321]` | 322 inline entries, each 16 bytes: `{char* name, u64 len}` |
-| +9336 | 1288 | `struct[80+]` | `opcode_names[322..401]` | Bulk-copied from `unk_22B2320` (80 entries + 8B trailing) |
+| +9336 | 1288 | `int32[322]` | `encoding_category_map[0..321]` | Per-opcode encoding category; bulk-copied from arch-specific static table (see below) |
 
-Total: 402 named opcodes. Index `N` is at offset `4184 + 16*N`. The `getName` accessor at `sub_BEBAC0` computes `this + 4184 + 16 * opcode` directly.
+Total: 322 named opcodes. Index `N` name is at offset `4184 + 16*N`. The `getName` accessor at `sub_BEBAC0` computes `this + 4184 + 16 * opcode` directly. Encoding category for opcode `N` is at `+9336 + 4*N`.
+
+##### Encoding Category Map
+
+The 1288-byte block at +9336 is a 322-element `int32` array that maps each opcode index to an **encoding category** number. The SASS mnemonic lookup function (`sub_1377C60`) uses this to resolve a `(mnemonic, arch)` pair to a binary encoding format descriptor.
+
+**Arch-specific source tables:**
+
+| Constructor | Source Table | Content |
+|---|---|---|
+| `sub_7A5D10` (base) | `unk_21C0E00` | Identity map: `map[i] = i` for all `i` in 0..321 |
+| `sub_7C5410` | `unk_21C3600` | Arch-remapped: some entries differ from identity |
+| `sub_BE7390` | `unk_22B2320` | Arch-remapped: some entries differ from identity |
+
+The base constructor uses a pure identity map where opcode N maps to encoding category N. Arch-specific constructors override selected entries so the same mnemonic at different opcode indices can map to different encoding formats. For example, DMMA at opcode index 180 maps to encoding category 434 on one arch, while DMMA at opcode index 215 maps to encoding category 515 on another.
+
+**Reader: `sub_1377C60` (SASS mnemonic lookup)**
+
+```c
+// After matching mnemonic string v11 to opcode index v18 via ROT13 comparison:
+v84 = *(_DWORD *)(a1 + 4 * v18 + 9336);  // encoding_category_map[v18]
+// v84 is then FNV-1a hashed together with arch discriminator v16,
+// and looked up in the hash table at *(a1 + 10672) to find the
+// encoding format descriptor for this (category, arch) pair.
+```
+
+The hash table at `+10672` stores entries of the form `{encoding_category, arch_code, format_value}`, keyed by FNV-1a of `(encoding_category, arch_discriminator)`. This is the central mechanism that maps a SASS mnemonic string plus target architecture to the correct binary encoding format.
 
 #### Region 12: Descriptor Block Control (+10624 to +10687)
 
@@ -695,7 +721,7 @@ Total: 402 named opcodes. Index `N` is at offset `4184 + 16*N`. The `getName` ac
 | +10648 | 4 | `u32` | `arch_config` | SM-specific config from `target+55080/55088` |
 | +10656 | 8 | `ptr` | `descriptor_block` | Pointer to allocated 10,288-byte per-opcode descriptor block |
 | +10664 | 8 | `ptr` | `block_allocator` | MemoryManager that allocated the descriptor block |
-| +10672 | 8 | `u64` | `block_aux_a` | = 0 |
+| +10672 | 8 | `ptr` | `encoding_lookup_table` | Hash table for `(encoding_category, arch)` -> format descriptor lookup; read by `sub_1377C60` |
 | +10680 | 8 | `u64` | `block_aux_b` | = 0 |
 
 #### Region 13: Sentinels and Architecture Handler (+11200 to +11240)

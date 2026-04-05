@@ -635,14 +635,34 @@ Blackwell Ultra additions. Uniform FP operations, additional integer widths, con
 
 ## Encoding Category Map at `unk_21C0E00`
 
-The 0x508 bytes (1288 bytes) at `unk_21C0E00` are **not** additional opcode names. Binary analysis of the constructor shows that:
+The 0x508 bytes (1288 bytes) at `unk_21C0E00` are **not** additional opcode names. They are a 322-element `int32` array mapping each opcode index to an **encoding category** number -- a level of indirection between opcode indices and binary encoding format descriptors.
+
+### Binary Evidence
 
 1. RSI is loaded with `0x21C0E00` (at `0x7A5D9F: mov $0x21c0e00, %esi`)
 2. RDI is set to `obj+0x2478` (at `0x7A5D82: lea 0x2478(%rbx), %rdi`)
 3. RCX is set to 161 (at `0x7A5D22: mov $0xa1, %r13d`; `0x7A5D69: mov %r13, %rcx`)
-4. The `rep movsq` at `0x7A791D` copies 161 quadwords = 1288 bytes
+4. The `rep movsq` at `0x7A791D` copies 161 quadwords = 1288 bytes = 322 x 4 bytes
 
-The destination offset +0x2478 is immediately after the 322-entry name table (which occupies +0x1058 through +0x2477, i.e. 322 x 16 bytes). The source data at `unk_21C0E00` contains 322 identity-mapped 4-byte integers (0, 1, 2, ..., 321). This is a separate per-opcode array, likely an encoding-category or default-index map, not additional opcode names. The opcode name table has exactly 322 entries and no more.
+The destination offset +0x2478 (decimal 9336) is immediately after the 322-entry name table (+4184 through +9328). Three arch-specific constructors each populate this array from a different static source table:
+
+| Constructor | Source Table | Map Content |
+|---|---|---|
+| `sub_7A5D10` (base) | `unk_21C0E00` | Identity: `map[i] = i` for all i in 0..321 |
+| `sub_7C5410` | `unk_21C3600` | Arch-remapped (selected entries differ) |
+| `sub_BE7390` | `unk_22B2320` | Arch-remapped (selected entries differ) |
+
+### Reader: `sub_1377C60` (SASS Mnemonic Lookup)
+
+The SASS mnemonic lookup function at `sub_1377C60` reads this map at line 292:
+
+```c
+v84 = *(_DWORD *)(a1 + 4 * v18 + 9336);  // encoding_category_map[opcode_index]
+```
+
+After matching an input mnemonic string against the ROT13 name table (with inline decoding at lines 264-273), the function reads `encoding_category_map[opcode_index]` and uses the result as a hash key -- combined with a 24-bit architecture discriminator via FNV-1a -- to look up the encoding format descriptor in the hash table at `InstructionInfo+10672`.
+
+This is why duplicate mnemonics (e.g. DMMA at indices 180 and 215, or FMNMX at indices 14 and 220) can have different encoding categories (434 vs 515, 510 vs 534): the category map provides the indirection needed to select different binary encoders for the same mnemonic across architectures. The opcode name table has exactly 322 entries and no more.
 
 ## Opcode Category Summary
 
@@ -707,3 +727,14 @@ Known IR-index-to-numeric correlations (confirmed from switch statements across 
 - [Instruction Selection](../codegen/isel.md) -- Pattern matching from IR to SASS
 - [SM Architecture Map](../targets/index.md) -- SM version numbering and feature sets
 - [Scheduling](../scheduling/overview.md) -- How opcodes are assigned to functional units
+
+## Key Functions
+
+| Address | Size | Role | Confidence |
+|---------|------|------|------------|
+| `sub_7A5D10` | -- | `InstructionInfo` constructor; initializes the 322-entry ROT13 opcode name table at object offset +0x1058 and the 322-entry encoding category identity map at +0x2478 (vtable `off_233ADC0`) | 0.92 |
+| `sub_BE7390` | -- | Parallel `InstructionInfo` constructor; initializes an identical 322-entry name table | 0.90 |
+| `sub_7CB560` | -- | SASS printer; maps duplicate opcode indices (e.g., 284 vs 285) to distinct mnemonic strings (`IMNMX` vs `IMNMX.64`) based on operand metadata | 0.85 |
+| `sub_6575D0` | 49KB | Register-class-to-opcode dispatch; handles DMMA (index 215) shared dispatch with CVTA at cases 0xD6/0xD7 | 0.85 |
+| `sub_7482B0` | -- | Encoding path for ISETP (index 288, sm_104); handles case 0x120 for 64-bit integer set-predicate | 0.80 |
+| `sub_8380A0` | -- | Encoding path for ISETP (index 288, sm_104); second handler for case 0x120 | 0.80 |
