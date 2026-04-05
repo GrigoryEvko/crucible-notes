@@ -867,6 +867,274 @@ Known IR-index-to-numeric correlations (confirmed from switch statements across 
 | 96 | 0x38 | LDG |
 | 221 | 0xDF | GMMA |
 
+## Extended Mnemonic Table (`sub_896D50`)
+
+A second, much larger mnemonic table is constructed by `sub_896D50` (21KB, vtable `off_21DA9F8`). This "extended" table serves a different purpose from the primary 322-entry table: it is used during **SASS disassembly input parsing** (string-to-index lookup), whereas the primary table is used during **encoding** (index-to-string). The two tables share the same base class (`sub_A2B110`) but have different vtables and different object layouts.
+
+### Table Dimensions
+
+| Property | Primary (`sub_7A5D10`) | Extended (`sub_896D50`) |
+|----------|------------------------|-------------------------|
+| Entry count | 322 (indices 0--321) | 773 (indices 0--772) |
+| Effective mnemonics | 306 (excl. 16 boundary markers) | 772 (excl. NONE sentinel) |
+| Entry size | 16 bytes (8B ptr + 8B len) | 16 bytes (8B ptr + 8B len) |
+| Object offset | +0x1058 (+4184) | +0x2C60 (+11360) |
+| Ordering | By IR opcode index | Alphabetical by ROT13 name |
+| Encoding category map | 322 x int32 at +0x2478 | 772 x int32 at +0x5CB0 (+23728), from `unk_21D92E0` |
+| Vtable | `off_233ADC0` | `off_21DA9F8` |
+
+### Why 772 Entries?
+
+The extended table is 2.4x larger because it expands each base mnemonic into its modifier-qualified SASS forms. For example, the primary table stores one `IMAD` entry (index 1), but the extended table stores seven:
+
+| Extended entry | ROT13 | Description |
+|----------------|-------|-------------|
+| IMAD | `VZNQ` | Base form |
+| IMAD.HI | `VZNQ.UV` | High-half variant |
+| IMAD.WIDE | `VZNQ.JVQR` | 32x32->64 |
+| IMAD.WIDE.READ.AB | `VZNQ.JVQR.ERNQ.NO` | Paired read, A+B |
+| IMAD.WIDE.READ.CH | `VZNQ.JVQR.ERNQ.PU` | Paired read, C high |
+| IMAD.WIDE.READ.CL | `VZNQ.JVQR.ERNQ.PY` | Paired read, C low |
+| IMAD.WIDE.WRITE.DH | `VZNQ.JVQR.JEVGR.QU` | Paired write, D high |
+| IMAD.WIDE.WRITE.DL | `VZNQ.JVQR.JEVGR.QY` | Paired write, D low |
+
+### Entry Composition
+
+The 771 populated entries (from the decompiled string assignments at `a1+11360` through `a1+23712`) break down as:
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| SASS base mnemonics (also in primary table) | 244 | IMAD, FADD, LDG, BRA, MOV, ... |
+| SASS dot-modified variants | 125 | FENCE.G, ISETP.64, BAR.SYNC.DEFER\_BLOCKING, HMMA.SP.16832.F16.* |
+| SASS new base names (not in primary) | 81 | BGMMA, RPCMOV, SYNCS, MOV32I, SHL, SHR, LOP, BITEXTRACT |
+| Mercury internal descriptors | 321 | MERCURY\_addmin\_srcs\_r\_ur\_0, MERCURY\_mbarrier\_try\_wait\_... |
+| **Total SASS** | **450** | |
+| **Total (SASS + Mercury)** | **771** | |
+
+Of the 450 SASS entries, 7 carry annotation text in parentheses: `F2F (not F64)`, `F2I (not *64)`, `FRND (not F64)`, `I2F (not F64)`, `NANOSLEEP (with Rb)`, `NANOTRAP (with Rb)`, `WARPSYNC (with Rb)`. These annotations indicate operand-type restrictions or register-variant qualifiers used by the SASS parser to disambiguate instruction forms.
+
+### 32-Bit Immediate Forms
+
+These mnemonics represent SASS instructions with a 32-bit immediate operand packed directly into the instruction word. They do not appear as separate entries in the primary IR opcode table because the immediate form is selected during encoding based on operand type, not during IR construction:
+
+| ROT13 | Mnemonic | Description |
+|-------|----------|-------------|
+| `SNQQ32V` | **FADD32I** | FP32 add with 32-bit immediate |
+| `SSZN32V` | **FFMA32I** | FP32 FMA with 32-bit immediate |
+| `SZHY32V` | **FMUL32I** | FP32 multiply with 32-bit immediate |
+| `UNQQ2_32V` | **HADD2_32I** | FP16x2 add with 32-bit immediate |
+| `USZN2_32V` | **HFMA2_32I** | FP16x2 FMA with 32-bit immediate |
+| `UZHY2_32V` | **HMUL2_32I** | FP16x2 multiply with 32-bit immediate |
+| `VNQQ32V` | **IADD32I** | Integer add with 32-bit immediate |
+| `VNQQ2` | **IADD2** | Two-input integer add (32I related) |
+| `VZHY32V` | **IMUL32I** | Integer multiply with 32-bit immediate |
+| `VZHY32V.JVQR` | **IMUL32I.WIDE** | Integer multiply-wide with 32-bit immediate |
+| `VFPNQQ32V` | **ISCADD32I** | Integer scaled-add with 32-bit immediate |
+| `YBC32V` | **LOP32I** | Logic operation with 32-bit immediate |
+| `ZBI32V` | **MOV32I** | Move 32-bit immediate to register |
+| `ZBI64VHE` | **MOV64IUR** | Move 64-bit immediate to uniform register |
+| `HYBC32V` | **ULOP32I** | Uniform logic with 32-bit immediate |
+
+### Mercury Pseudo-Instructions (321 Entries)
+
+The single largest category. These are **not** real SASS instructions -- they are internal pseudo-instructions representing Mercury IR operations that need mnemonic-string identity for diagnostic and dump output. They follow a rigid naming convention:
+
+```
+MERCURY_{operation}_{srcs|dests}_{regclass}_{variant_index}
+```
+
+Register class codes in the mnemonic:
+- `r` = GPR (R0--R255)
+- `ur` = Uniform register (UR0--UR63)
+- `p` = Predicate register (P0--P6)
+- `simm` = Signed immediate
+- `uimm` = Unsigned immediate
+- `r2` / `ur2` = Register pair
+
+Representative entries (decoded from ROT13):
+
+| ROT13 | Cleartext | Operation |
+|-------|-----------|-----------|
+| `ZREPHEL__vage` | MERCURY\_\_intr | Generic intrinsic placeholder |
+| `ZREPHEL_nqqzva_fepf_e_he_0` | MERCURY\_addmin\_srcs\_r\_ur\_0 | Fused add-min, GPR + uniform |
+| `ZREPHEL_nqqznk_fepf_he_e_0` | MERCURY\_addmax\_srcs\_ur\_r\_0 | Fused add-max, uniform + GPR |
+| `ZREPHEL_ngbz_pnf_vag_npd_ery_...` | MERCURY\_atom\_cas\_int\_acq\_rel\_... | Atomic CAS with acquire-release |
+| `ZREPHEL_flapf_neevir_n1g0_n0g1_...` | MERCURY\_syncs\_arrive\_a1t0\_a0t1\_... | Sync arrive with token spec |
+
+### New Base Mnemonics
+
+Mnemonics that appear in the extended table but have no base-name match in the primary 322-entry table at all. Some are legacy forms (pre-Volta mnemonics preserved for disassembly compatibility), others are specialized operations:
+
+| ROT13 | Mnemonic | Category |
+|-------|----------|----------|
+| `NPDOHYX` | **ACQBULK** | CGA bulk resource acquire |
+| `OVGRKGENPG` | **BITEXTRACT** | Bitfield extract |
+| `QRPBZCERFF` | **DECOMPRESS** | Data decompression |
+| `VQC4N` | **IDP4A** | Integer dot-product accumulate (4-element) |
+| `VZHY` | **IMUL** | Integer multiply (non-fused, legacy) |
+| `VFPNQQ` | **ISCADD** | Integer scaled-add (legacy LEA form) |
+| `YQTZP` | **LDGMC** | Load global with memory consistency |
+| `YQG` | **LDT** | Load from texture memory |
+| `YBC` | **LOP** | Two-input logic operation (legacy) |
+| `CFRGC` | **PSETP** | Predicate set-predicate |
+| `ERQT` | **REDG** | Reduction, global (explicit address space) |
+| `FUY` | **SHL** | Shift left (legacy, replaced by SHF) |
+| `FUE` | **SHR** | Shift right (legacy, replaced by SHF) |
+| `FCNEFVSL` | **SPARSIFY** | Convert dense to sparse format |
+| `FGG` | **STT** | Store to texture memory |
+| `GNGBZT` | **TATOMG** | Texture atomic, global scope |
+| `IVFRG` | **VISET** | Vector integer set |
+| `JNECTEBHCFRG` | **WARPGROUPSET** | Configure warpgroup parameters |
+
+### Modifier Suffix Patterns
+
+Five distinct modifier suffix patterns are used in the extended table's dot-separated SASS mnemonics:
+
+**Pattern 1 -- Sub-operation mode.** The suffix selects a functional sub-operation within a single hardware instruction. `CCTL` has the most variants (7):
+
+| Extended Mnemonic | Sub-operation |
+|-------------------|---------------|
+| `CCTL.C` | Clean |
+| `CCTL.C.LDC` | Clean via constant cache |
+| `CCTL.C.LDC.IVALL` | Clean constant cache, invalidate all |
+| `CCTL.E.LDC` | Evict via constant cache |
+| `CCTL.I` | Invalidate |
+| `CCTL.LDCU` | Load constant, uniform path |
+| `CCTL.QFAULT` | Query fault status |
+
+Also: `SYNCS.ARRIVE.A1T0.A0T1`, `SYNCS.CAS.EXCH`, `SYNCS.CCTL`, `SYNCS.FLUSH`, `SYNCS.LD.NON_UNIFORM`, `SYNCS.LD.UNIFORM`, `SYNCS.PHASECHK` (8 variants); and `BPT.DRAIN`, `BPT.PAUSE`.
+
+**Pattern 2 -- Operand width.** The `.64` suffix (with optional `.HI`/`.LO` half-selectors) indicates 64-bit operand mode. Added for sm_104 (Blackwell Ultra):
+
+| Extended Mnemonic | Base Opcode |
+|-------------------|-------------|
+| `ISETP.64`, `ISETP.64.HI`, `ISETP.64.LO` | `ISETP` (idx 288) |
+| `IMNMX.64`, `IMNMX.64.HI`, `IMNMX.64.LO` | `IMNMX` (idx 285) |
+| `IADD.64`, `IADD.64.HI`, `IADD.64.LO` | `IADD` (idx 282) |
+| `IADD2.64`, `IADD2.64.HI`, `IADD2.64.LO` | `IADD2` |
+| `MOV.64`, `MOV.64.HI`, `MOV.64.LO` | `MOV` (idx 290) |
+| `SEL.64`, `SEL.64.HI`, `SEL.64.LO` | `SEL` (idx 292) |
+| `UMOV.64`, `USEL.64`, `UIADD3.64`, `UIMNMX.64`, `UISETP.64` | Uniform 64-bit variants |
+
+**Pattern 3 -- Data access direction.** `IMAD.WIDE` has 5 sub-variants controlling which 32-bit half of the 64-bit accumulator is read or written. These correspond to the 256-bit instruction format (format code 0x8) with 16 constant-bank operand slots:
+
+| Extended Mnemonic | Meaning |
+|-------------------|---------|
+| `IMAD.WIDE` | Default wide multiply-add |
+| `IMAD.WIDE.READ.AB` | Read both A and B input halves |
+| `IMAD.WIDE.READ.CL` / `.CH` | Read accumulator low / high half |
+| `IMAD.WIDE.WRITE.DL` / `.DH` | Write result low / high half |
+| `IMAD.HI` | High-half result only |
+
+**Pattern 4 -- Scope qualifier.** Fences, barriers, UTC operations, and synchronization carry scope suffixes:
+
+| Extended Mnemonic | Scope |
+|-------------------|-------|
+| `FENCE.G` | Global (GPU-wide) |
+| `FENCE.S` | Shared/CTA |
+| `FENCE.T` | Tensor (sm_100+) |
+| `UTCBAR.1CTA`, `UTCBAR.2CTA` | 1-CTA / 2-CTA scope |
+| `UTCBAR.1CTA.FLUSH` | 1-CTA with flush |
+| `BAR.SYNC.DEFER_BLOCKING` | Deferred blocking sync |
+| `USETMAXREG.RELEASE` | Release variant |
+| `USETSHMSZ.FLUSH` | Flush variant |
+
+**Pattern 5 -- Shape and type descriptor.** Tensor core operations carry shape geometry and data type. Brace-delimited alternation syntax indicates a single encoder handling multiple shapes:
+
+| Extended Mnemonic | Meaning |
+|-------------------|---------|
+| `HMMA.F32.{16816.F16\|16816.E8M7\|1688.E8M10}` | FP16 MMA with FP32 accum, multiple shapes |
+| `HMMA.SP.16832.F16.*` | Sparse FP16 MMA, 16x8x32 |
+| `IMMA.{8816.*\|8832.*}` | Integer MMA, 8x8x16 or 8x8x32 |
+| `IMMA.SP.{16832.*\|16864.*4.*4}` | Sparse integer MMA |
+| `QMMA.SF.SP` | Structured + unstructured sparse |
+| `MUFU.EX2.LOW_ACC.{F16x2, BF16x2}` | Low-accuracy EX2 for half types |
+
+### Top Opcodes by Dot-Variant Count
+
+| Base Opcode | Variants | Category |
+|-------------|----------|----------|
+| HMMA | 8 | Tensor core shape + sparse + FP type |
+| SYNCS | 8 | Scope-aware synchronization modes |
+| CCTL | 7 | Cache control sub-operations |
+| IMAD | 7 | .HI, .WIDE, .WIDE.READ.*, .WIDE.WRITE.* |
+| IMMA | 6 | Tensor core shape + sparse |
+| QMMA | 6 | Shape + structured/unstructured sparse |
+| USYNCS | 6 | Uniform sync scope modes |
+| MUFU | 5 | .EX2, .RCP, .RSQ, .EX2 with half-precision |
+| IADD | 4 | .64, .64.HI, .64.LO, .XOR |
+| WARPGROUP | 3 | .ARRIVE, .DEPBAR, .WAIT |
+| RPCMOV | 3 | .32, .32.READ, .64 |
+| UTCBAR | 3 | .1CTA, .1CTA.FLUSH, .2CTA |
+
+### Complete New SASS Mnemonics by Category
+
+The following 206 SASS mnemonics appear **only** in the extended table -- they have no corresponding entry in the base 322-entry name table. Many represent modifier-suffixed forms of base opcodes; others are entirely new operations.
+
+**GMMA type-specialized (8):** `BGMMA`, `BGMMA_GSB`, `HGMMA`, `HGMMA_GSB`, `IGMMA`, `IGMMA_GSB`, `QGMMA`, `QGMMA_GSB`
+
+**UTC type-specialized (20):** `UTCHMMA.1CTA`, `UTCHMMA.2CTA`, `UTCIMMA.1CTA`, `UTCIMMA.2CTA`, `UTCMXQMMA.1CTA`, `UTCMXQMMA.2CTA`, `UTCOMMA.1CTA`, `UTCOMMA.2CTA`, `UTCQMMA.1CTA`, `UTCQMMA.2CTA`, `UTCBAR.1CTA.FLUSH`, `UTCATOMSWS`, `UTCLDSWS`, `UTCSTSWS`, `UTCBAR.1CTA`, `UTCBAR.2CTA`, `UTCCP.1CTA`, `UTCCP.2CTA`, `UTCSHIFT.1CTA`, `UTCSHIFT.2CTA`
+
+**DLC/DPC operations (13):** `UDLCBAR`, `UDLCCP`, `UDLCHMMA`, `UDLCIMMA`, `UDLCQMMA`, `UDPCBLKCP`, `UDPCBLKL2CCTL`, `UDPCBLKRED`, `UDPCTMACCTL`, `UDPCTMAL2CCTL`, `UDPCTMALDG`, `UDPCTMAREDG`, `UDPCTMASTG`
+
+**Synchronization (17):** `SYNCS.ARRIVE.A1T0.A0T1`, `SYNCS.ARRIVE.A1TR.ART0.A0TR.A0TX`, `SYNCS.CAS.EXCH`, `SYNCS.CCTL`, `SYNCS.FLUSH`, `SYNCS.LD.NON_UNIFORM`, `SYNCS.LD.UNIFORM`, `SYNCS.PHASECHK`, `SYNCSU.ARRIVE.A1T0`, `SYNCSU.ARRIVE.MULTICAST.A1T0`, `WARPGROUP.ARRIVE`, `WARPGROUP.DEPBAR`, `WARPGROUP.WAIT`, `WARPGROUPSET`, `BAR.SYNC.DEFER_BLOCKING`, `BPT.DRAIN`, `BPT.PAUSE`
+
+**Uniform sync (6):** `USYNCS.ARRIVE`, `USYNCS.ARRIVE.MULTICAST`, `USYNCS.CAS.EXCH`, `USYNCS.CCTL`, `USYNCS.LD`, `USYNCS.PHASECHK`
+
+**Integer 64-bit variants (18):** `IADD.64`, `IADD.64.HI`, `IADD.64.LO`, `IADD.XOR`, `IADD2`, `IADD2.64`, `IADD2.64.HI`, `IADD2.64.LO`, `IMNMX.64`, `IMNMX.64.HI`, `IMNMX.64.LO`, `ISETP.64`, `ISETP.64.HI`, `ISETP.64.LO`, `MOV.64`, `MOV.64.HI`, `MOV.64.LO`, `SEL.64`, `SEL.64.HI`, `SEL.64.LO`
+
+**Uniform scalar extended (27):** `UIADD3.64`, `UIMNMX.64`, `UISETP.64`, `UMOV.64`, `USEL.64`, `ULOP`, `ULOP32I`, `UMEMSETS.64`, `UPSETP`, `UR2UP`, `USHL`, `USHR`, `UCCTL`, `UBLKL2CCTL`, `UCGABAR_ARV`, `UCGABAR_GET`, `UCGABAR_SET`, `UCGABAR_WAIT`, `USETMAXREG`, `USETMAXREG.RELEASE`, `USETSHMSZ`, `USETSHMSZ.FLUSH`, `UREDGR`, `UREGPRERELEASE`, `USTGR`, `UTRACEEVENT`, `UVIRTCOUNT`
+
+**IMAD/IMUL variants (8):** `IMAD.HI`, `IMAD.WIDE.READ.AB`, `IMAD.WIDE.READ.CH`, `IMAD.WIDE.READ.CL`, `IMAD.WIDE.WRITE.DH`, `IMAD.WIDE.WRITE.DL`, `IMUL.WIDE`, `IMUL32I.WIDE`
+
+**Tensor core shapes (28):** `HMMA.16816.F16.*`, `HMMA.1688.F16.*`, `HMMA.F32.{...}` (4 entries), `HMMA.SP.{...}` (4 entries), `IMMA.{...}` (3 entries), `IMMA.SP.{...}` (3 entries), `DMMA.1684`, `DMMA.1688`, `DMMA.16816`, `BMMA.88128`, `BMMA.168128`, `BMMA.168256`, `QMMA.16816`, `QMMA.16832`, `QMMA.SF`, `QMMA.SF.SP`, `QMMA.SP.16832`, `QMMA.SP.16864`, `OMMA.SP`
+
+**FP extensions (16):** `FADD32I`, `FFMA32I`, `FMUL32I`, `FHADD`, `FHADD2`, `FHFMA`, `FHFMA2`, `FHMUL2`, `UFHADD`, `UFHFMA`, `UFMNMX`, `MUFU.EX2`, `MUFU.RCP`, `MUFU.RSQ`, `MUFU.EX2.{F16x2, BF16x2}`, `MUFU.EX2.LOW_ACC.{F16x2, BF16x2}`
+
+**Cache control (7):** `CCTL.C`, `CCTL.C.LDC`, `CCTL.C.LDC.IVALL`, `CCTL.E.LDC`, `CCTL.I`, `CCTL.LDCU`, `CCTL.QFAULT`
+
+**Texture extensions (8):** `TATOMG`, `TTUCLOSE`, `TTUGO`, `TTULD`, `TTULD_CLOSE`, `TTUMACROFUSE`, `TTUOPEN`, `TTUST`
+
+**Fence/scope (3):** `FENCE.G`, `FENCE.S`, `FENCE.T`
+
+**Data movement (7):** `MOV32I`, `MOV64IUR`, `RPCMOV`, `RPCMOV.32`, `RPCMOV.32.READ`, `RPCMOV.64`, `CS2R` (base without size), `DECOMPRESS`
+
+**Memory (4):** `LDGMC`, `LDT`, `STT`, `REDG`
+
+**Other new (13):** `ACQBULK`, `BRA_IMM`, `JMP_IMM`, `JMXU`, `NONE`, `PSETP`, `HADD2_32I`, `HFMA2_32I`, `HMUL2_32I`, `IADD32I`, `IMUL`, `LOP`, `LOP32I`
+
+### Parallel Constructor Regions
+
+The ROT13 string data for the extended table exists in two identical regions:
+
+| Region | Address Range | SASS Entries | MERCURY Entries |
+|--------|--------------|--------------|-----------------|
+| 1 | `0x2039000`--`0x203A500` | 139 unique | 32 |
+| 2 | `0x21CA000`--`0x21CB100` | 139 unique | 40 |
+
+Region 2 has 8 additional MERCURY entries not in region 1, all for sm_100/sm_104 cluster barrier and atomic operations: `MERCURY_barrier_cluster_arrive_sync_unaligned_*` (4), `MERCURY_atom_shared_cta_popc_inc_*` (3), `MERCURY_atom_shared_cta_int_acq_rel_*` (1). This indicates at least two InstructionInfo variant objects for different target architectures, where the newer variant gains additional Mercury instruction templates.
+
+### Hash Table for O(1) Lookup
+
+After populating the flat sorted array, `sub_896D50` constructs a hash table for O(1) mnemonic lookup during SASS parsing. The hash table is allocated as a 488-byte header object with three backing arrays:
+
+| Array | Slot size | Slots | Total bytes | Purpose |
+|-------|-----------|-------|-------------|---------|
+| 1 | 64 bytes | 772 | 49,408 | Open-addressing hash (key prefix + metadata) |
+| 2 | 36 bytes | 772 | 27,792 | Auxiliary data per mnemonic |
+| 3 | 16 bytes | 35 | 560 | Overflow / collision chain |
+
+Array 1 slots are initialized to 0xFF (empty sentinel). The hash function used for lookup is the same FNV-1a variant used by `sub_1377C60` for the primary table.
+
+### Object Tail Configuration
+
+After building the tables and hash structure, the constructor:
+1. Queries ~14 knobs via `context+1664` (knobs 1, 2, 5, 11, 14, 18, 22, 25, 28, 273, 774, 775, 803, 983, 998) to conditionally register feature-gated instruction families at `context+1728`
+2. Stores knob 803's value at `obj+108`
+3. Sets the vtable to `off_21DA9F8` (line 2438 in decompiled source)
+4. Writes feature bitmask `0x48018BA65` at `obj+26856`
+5. Stores the hash table pointer at `obj+26832` and the arena pointer at `obj+26840`
+
 ## Related Pages
 
 - [Instructions & Opcodes](../ir/instructions.md) -- Ori IR instruction layout, opcode encoding, full ROT13 table
@@ -885,3 +1153,5 @@ Known IR-index-to-numeric correlations (confirmed from switch statements across 
 | `sub_6575D0` | 49KB | Register-class-to-opcode dispatch; handles DMMA (index 215) shared dispatch with CVTA at cases 0xD6/0xD7 | 0.85 |
 | `sub_7482B0` | -- | Encoding path for ISETP (index 288, sm_104); handles case 0x120 for 64-bit integer set-predicate | 0.80 |
 | `sub_8380A0` | -- | Encoding path for ISETP (index 288, sm_104); second handler for case 0x120 | 0.80 |
+| `sub_896D50` | 21KB | Extended mnemonic table constructor; builds the 772-entry alphabetically-sorted SASS mnemonic lookup table at object offset +11360, with parallel 772-entry encoding category map from `unk_21D92E0`, plus 3-array hash table for O(1) string lookup during disassembly parsing (vtable `off_21DA9F8`) | 0.90 |
+| `sub_A2B110` | -- | Base class constructor shared by both primary (`sub_7A5D10`) and extended (`sub_896D50`) mnemonic table objects | 0.85 |
