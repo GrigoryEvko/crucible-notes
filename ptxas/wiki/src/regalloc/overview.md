@@ -317,31 +317,248 @@ An interval-based live range system at `0x994000`--`0x9A1000` (~80 functions) su
 
 ## Allocator State Object Layout
 
-Partial reconstruction of the main allocator state object, consistent across all allocation functions:
+Full reconstruction from the constructor `sub_947150` (1088 lines), cross-referenced with the core allocator, per-class driver, entry point, and spill subsystem. The object is at least 1748 bytes (last initialized field at +1744). The constructor is called once per function before the allocation pipeline runs.
 
-| Offset | Size | Field |
-|--------|------|-------|
-| +0 | 8 | Vtable pointer (strategy dispatch) |
-| +8 | 8 | Function object pointer |
-| +240 | 8 | Pre-alloc candidate count |
-| +248 | 8 | Pre-alloc hash table base (FNV-1a keyed) |
-| +360 | 8 | Exclusion set hash table |
-| +440 | 1 | Enable pre-alloc flag (knob 628) |
-| +441 | 1 | Enable uniform flag (knob 618) |
-| +442 | 1 | Enable coalescing flag (knob 629) |
-| +744 | 8 | Register linked list head |
-| +756 | 4 | Hardware register limit |
-| +776 | 8 | Spill cost threshold (double) |
-| +864 | 1 | Bank conflict awareness flag |
-| +865 | 1 | Spill-already-triggered flag |
-| +1504 | 4 | Allocation mode (3=CSSA, 5=SMEM, 6=paired) |
-| +1524 | 4 | Register budget |
-| +1528 | 4 | Peak register usage (non-spill) |
-| +1564 | 4 | Current max assignment |
-| +1568 | 8 | Total spill cost (double accumulator) |
-| +1580 | 4 | Current register count |
-| +1588 | 1 | Epoch-aware mode flag |
-| +1589 | 1 | Paired-register mode flag |
+### Header and Compilation Context (+0 -- +24)
+
+| Offset | Size | Type | Init | Field |
+|--------|------|------|------|-------|
+| +0 | 8 | ptr | `&off_21E1648` | Vtable pointer (strategy dispatch, 40+ virtual methods) |
+| +8 | 8 | ptr | arg | Compilation context (parent object) |
+| +16 | 8 | ptr | `off_21DBEF8` | Secondary vtable (allocation sub-strategy) |
+| +24 | 8 | ptr | `ctx->func` | Function object pointer (from `ctx+16`) |
+
+### Pre-Allocation Candidate Tables (+32 -- +443)
+
+Arena-allocated hash tables for pre-assigned registers. Each table is a 3-QWORD header `{base, size, capacity}` plus an arena node (24 bytes, allocated from the function memory pool with an incrementing class tag).
+
+| Offset | Size | Type | Init | Field |
+|--------|------|------|------|-------|
+| +32 | 8 | ptr | 0 | Pre-alloc candidate list A head |
+| +40 | 8 | ptr | 0 | Pre-alloc candidate list B head |
+| +48 | 4 | DWORD | 0 | Pre-alloc candidate count A |
+| +56 -- +208 | 160 | -- | 0 | Per-class registration slots (6 x {ptr, ptr, DWORD} = 24B each) |
+| +216 | 8 | ptr | 0 | Registration slots tail |
+| +224 | 8 | ptr | alloc(24) | Exclusion set arena node (class tag = 1) |
+| +232 | 8 | ptr | alloc(24) | Pre-alloc hash table A arena node (class tag = 2) |
+| +240 | 8 | ptr | 0 | Pre-alloc hash table A: base pointer |
+| +248 | 8 | ptr | 0 | Pre-alloc hash table A: count |
+| +256 | 8 | ptr | 0 | Pre-alloc hash table A: capacity |
+| +272 | 8 | ptr | alloc(24) | Pre-alloc hash table B arena node |
+| +280 | 24 | -- | 0 | Pre-alloc hash table B: {base, count, capacity} |
+| +312 | 8 | ptr | alloc(24) | Pre-alloc hash table C arena node |
+| +320 | 24 | -- | 0 | Pre-alloc hash table C: {base, count, capacity} |
+| +352 | 8 | ptr | alloc(24) | Exclusion set hash table arena node (class tag = 3) |
+| +360 | 8 | ptr | 0 | Exclusion set: base pointer |
+| +368 | 8 | ptr | 0 | Exclusion set: count |
+| +376 | 8 | ptr | 0 | Exclusion set: capacity |
+| +384 | 4 | DWORD | 0 | Exclusion set: element count |
+| +392 | 8 | ptr | =+352 | Exclusion alias A (points to same node) |
+| +400 | 24 | -- | 0 | Exclusion secondary: {base, count, capacity} |
+| +424 | 4 | DWORD | 0 | Exclusion secondary: element count |
+| +432 | 8 | ptr | =+352 | Exclusion alias B |
+| +440 | 1 | BYTE | 0 | Enable pre-alloc flag (knob 628) |
+| +441 | 1 | BYTE | 0 | Enable uniform flag (knob 618) |
+| +442 | 1 | BYTE | 0 | Enable coalescing flag (knob 629) |
+| +443 | 1 | BYTE | 0 | Per-class mode flag (set by vtable+296 callback) |
+
+### Per-Class Bitvector Sets (+448 -- +695)
+
+An array of 6 bitvector set entries (one per allocatable register class, classes 1--6). Each entry is 40 bytes: a linked-list header `{head, data, tail, count}` (32 bytes) plus an arena node pointer (8 bytes). The arena nodes carry incrementing class tags (4, 6, 8, 10, 12, 14). The constructor loop starts at `+456` and increments by 40 until `+656`.
+
+| Offset | Size | Type | Init | Field |
+|--------|------|------|------|-------|
+| +448 | 8 | QWORD | 0 -> 6 | Bitvector set count (incremented in init loop) |
+| +456 | 240 | array | -- | 6 x BitvectorSet (40B each): classes 1--6 |
+| +696 | 24 | -- | 0 | Remat candidate list: {base, data, tail} |
+| +720 | 4 | DWORD | 0 | Remat candidate list: count |
+| +728 | 8 | ptr | alloc(24) | Remat candidate arena node (class tag = 2) |
+
+### Core Allocation State (+736 -- +872)
+
+| Offset | Size | Type | Init | Field |
+|--------|------|------|------|-------|
+| +736 | 8 | ptr | 0 | Register linked list: secondary head |
+| +744 | 8 | ptr | 0 | Register linked list head (main walk list for `sub_957160`) |
+| +752 | 1 | BYTE | 0 | Register list initialized flag |
+| +756 | 4 | DWORD | -1 | Hardware register limit (max physical regs, per-class) |
+| +760 | 4 | DWORD | -1 | Secondary HW limit |
+| +764 | 4 | DWORD | -1 | Pre-alloc constraint count |
+| +776 | 8 | double | -1.0 | Spill cost threshold |
+| +788 | 4 | DWORD | -1 | Best allocation result (reset to 0 per allocation round) |
+| +792 | 1 | BYTE | 0 | Allocation-in-progress flag |
+| +800 | 1 | BYTE | 0 | Retry-active flag |
+| +808 | 4 | DWORD | (dynamic) | Live range interference state |
+| +816 | 8 | ptr | (dynamic) | Live range secondary structure (4-byte DWORD array at +816) |
+| +824 | 1 | BYTE | 0 | Pre-coloring done flag |
+| +832 | 8 | ptr | 0 -> dyn | Per-function spill info array pointer |
+| +840 | 8 | ptr | 0 -> dyn | Per-function spill info arena node |
+| +848 | 8 | ptr | 0 | Spill info secondary |
+| +856 | 8 | ptr | 0 | Spill info tertiary |
+| +864 | 1 | BYTE | 0 | Bank conflict awareness flag |
+| +865 | 1 | BYTE | 0 | Spill-already-triggered flag |
+| +872 | 8 | ptr | 0 | Debug / trace output state |
+
+### Per-Class Register File Descriptors (+880 -- +1103)
+
+An array of 7 register class descriptors (one per class 0--6), each 32 bytes. Indexed as `alloc + 880 + 32 * class_id`. The per-class driver (`sub_971A90`) accesses max\_regs as `a1[32 * class_id + 884]` and base\_offset as `a1[32 * class_id + 880]`.
+
+**RegClassDesc (32 bytes):**
+
+| Offset | Size | Type | Init | Field |
+|--------|------|------|------|-------|
+| +0 | 4 | DWORD | 0 | Base register offset (first physical reg in class) |
+| +4 | 4 | DWORD | -1 | Max regs / HW limit (set by `vtable[896]` init callback) |
+| +8 | 4 | DWORD | 0 | Current allocation count |
+| +12 | 1 | BYTE | 0 | Class active flag |
+| +13 | 1 | BYTE | 0 | Class overflow flag |
+| +14 | 1 | BYTE | 0 | Class spill flag |
+| +15 | 1 | -- | -- | Padding |
+| +16 | 4 | DWORD | 148 | Phase ID begin (148 = unset sentinel) |
+| +20 | 4 | DWORD | 148 | Phase ID end (148 = unset sentinel) |
+| +24 | 8 | QWORD | -1 | Class auxiliary link |
+
+**Concrete addresses:**
+
+| Class | Offset Range | Description |
+|-------|-------------|-------------|
+| 0 (unified) | +880 -- +911 | Cross-class (skipped in main loop) |
+| 1 (R) | +912 -- +943 | GPR 32-bit |
+| 2 (R alt) | +944 -- +975 | GPR variant |
+| 3 (UR) | +976 -- +1007 | Uniform GPR |
+| 4 (UR ext) | +1008 -- +1039 | Uniform GPR variant |
+| 5 (P/UP) | +1040 -- +1071 | Predicate registers |
+| 6 (Tensor) | +1072 -- +1103 | Tensor / accumulator |
+
+### Extended Class Metadata (+1096 -- +1127)
+
+| Offset | Size | Type | Init | Field |
+|--------|------|------|------|-------|
+| +1096 | 8 | QWORD | -1 | Class 6 extended auxiliary link |
+| +1104 | 8 | ptr | 0 | Extended class info: pointer A |
+| +1112 | 8 | ptr | 0 | Extended class info: pointer B |
+| +1120 | 4 | DWORD | 0 | Extended class info: count |
+
+### Per-Class Rematerialization Lists (+1128 -- +1271)
+
+Six rematerialization candidate lists (one per allocatable class), each 24 bytes `{ptr base, ptr data, DWORD count}`. Initialized to zero. Populated before the allocation loop in `sub_9721C0` for classes that support rematerialization.
+
+| Class | Offset Range |
+|-------|-------------|
+| 1 | +1128 -- +1147 |
+| 2 | +1152 -- +1175 |
+| 3 | +1176 -- +1199 |
+| 4 | +1200 -- +1219 |
+| 5 | +1224 -- +1243 |
+| 6 | +1248 -- +1267 |
+
+### Coalescing / Live Range Lists (+1272 -- +1432)
+
+Self-referential circular linked lists used for register coalescing and live range splitting. Each list has a sentinel structure where `prev` and `next` point into the list body.
+
+| Offset | Size | Type | Init | Field |
+|--------|------|------|------|-------|
+| +1272 | 8 | ptr | arg2 | Back-pointer to compilation context |
+| +1280 | 8 | ptr | 0 | Coalesce list A: sentinel head |
+| +1288 | 8 | ptr | self+1296 | Coalesce list A: prev (self-referential) |
+| +1296 | 8 | ptr | self+1280 | Coalesce list A: next (circular) |
+| +1304 | 8 | ptr | 0 | Coalesce list A: data |
+| +1312 | 4 | DWORD | (checked) | Coalesce list A: count (bit 0 = non-empty flag) |
+| +1320 | 8 | ptr | self+1296 | Coalesce list A: end marker |
+| +1328 | 4 | DWORD | 2 | Coalesce list A: type tag |
+| +1336 | 8 | ptr | alloc(24) | Coalesce list A: arena node |
+| +1344 | 8 | ptr | 0 | Coalesce list B: sentinel head |
+| +1352 | 8 | ptr | self+1360 | Coalesce list B: prev |
+| +1360 | 8 | ptr | self+1344 | Coalesce list B: next |
+| +1368 | 8 | ptr | 0 | Coalesce list B: data (bit 2 checked as ABI flag) |
+| +1376 | 8 | ptr | self+1344 | Coalesce list B: tail |
+| +1384 | 8 | ptr | self+1360 | Coalesce list B: end marker |
+| +1392 | 4 | DWORD | 2 | Coalesce list B: type tag |
+| +1400 | 8 | ptr | alloc(24) | Coalesce list B: arena node |
+| +1408 | 8 | ptr | alloc(24) | Interference graph arena node (bit 1 = call-saved mode) |
+| +1416 | 8 | ptr | 0 | Interference graph: base |
+| +1424 | 8 | ptr | 0 | Interference graph: data (bit 7 checked in `sub_97EC60`) |
+| +1432 | 8 | ptr | 0 | Interference graph: capacity |
+
+### Debug / Rematerialization Infrastructure (+1440 -- +1496)
+
+| Offset | Size | Type | Init | Field |
+|--------|------|------|------|-------|
+| +1440 | 8 | -- | (tree) | Remat exclusion set (tree root, queried via `sub_99C5B0`) |
+| +1448 | 1 | BYTE | 0 | Remat exclusion: active flag (checked in `sub_962840`, `sub_94E620`) |
+| +1452 | 4 | DWORD | 0 | Remat exclusion: instruction threshold |
+| +1464 | 16 | OWORD | 0 | Remat exclusion: data block B |
+| +1472 | 8 | ptr | 0 | Remat candidate: linked list (freed in `sub_99D190`) |
+| +1480 | 16 | -- | 0 | Remat candidate list (iterated by `sub_94BDF0`) |
+| +1488 | 4 | DWORD | 0 | Remat candidate: count (checked in `sub_99C690`) |
+| +1496 | 8 | ptr | 0 | Remat candidate: root pointer |
+
+### Spill / Retry Control Block (+1504 -- +1594)
+
+The core state for the NOSPILL / SPILL retry loop. Zeroed at allocation start, populated by the per-class driver (`sub_971A90`), read/written by the fat-point allocator (`sub_957160`).
+
+| Offset | Size | Type | Init | Field |
+|--------|------|------|------|-------|
+| +1504 | 4 | DWORD | 0 | Allocation mode (0=normal, 3=CSSA, 5=SMEM, 6=paired) |
+| +1508 | 4 | DWORD | 0 | Spill attempt counter |
+| +1512 | 4 | DWORD | 0 -> 44 | Spill instruction count (knob 635, default 44) |
+| +1516 | 4 | DWORD | -1 | Budget lower bound |
+| +1520 | 4 | DWORD | -1 | Budget lower bound secondary (part of 128-bit at +1516) |
+| +1524 | 4 | DWORD | -1 | Register budget (from per-class desc max\_regs) |
+| +1528 | 4 | DWORD | (dynamic) | Peak register usage (copied from +1532 per round) |
+| +1532 | 16 | \_\_m128i | (global) | Strategy parameters (loaded from `xmmword_21E17F0`) |
+| +1540 | 4 | DWORD | 0 | Secondary budget limit (knob 633) |
+| +1544 | 4 | DWORD | 0 | Tertiary budget limit (knob 632) |
+| +1548 | 4 | float | 4.0 | Spill cost multiplier (knob 680) |
+| +1552 | 4 | DWORD | -1 | Rollback sentinel |
+| +1556 | 4 | DWORD | -1 | Max regs aligned: `(budget + 4) & ~3` |
+| +1560 | 4 | DWORD | -1 | Best result sentinel |
+| +1564 | 4 | DWORD | 0 | Current max assignment (zeroed per allocation round) |
+| +1568 | 8 | double | 0.0 | Total spill cost accumulator (zeroed per round) |
+| +1576 | 4 | DWORD | 0 | Spill event counter (zeroed per round) |
+| +1580 | 4 | DWORD | (dynamic) | Effective budget: `max(budget, SMEM_min)` |
+| +1584 | 4 | DWORD | (dynamic) | Adjusted budget (from vtable+256 callback) |
+
+### Mode Flags (+1588 -- +1594)
+
+Knob-derived boolean flags controlling allocation strategy. When the function has more than one basic block (`sub_7DDB50 > 1`), flags +1588, +1589, +1590 are all forced to 1.
+
+| Offset | Size | Type | Init | Knob | Field |
+|--------|------|------|------|------|-------|
+| +1588 | 1 | BYTE | 0 | 682 | Epoch-aware allocation mode |
+| +1589 | 1 | BYTE | 0 | 683 | Paired-register allocation mode |
+| +1590 | 1 | BYTE | 0 | 619 | SMEM spill enable |
+| +1591 | 1 | BYTE | 0 | 627 | Bank-aware allocation |
+| +1592 | 1 | BYTE | 0 | -- | Spill status / has-spilled flag |
+| +1593 | 1 | BYTE | 1 | 636 | Precolor reuse (default enabled) |
+| +1594 | 1 | BYTE | 1 | 649 | ABI compatibility (default enabled; cleared for small kernels) |
+
+### Budget Pressure Model (+1600 -- +1744)
+
+Occupancy-aware register budget interpolation. Computes a dynamic register budget based on thread occupancy, using knob-derived coefficients and a linear interpolation model. The slope at +1736 is `(coeffB - coeffC) / (maxOccupancy - minOccupancy)`, enabling the allocator to trade register count for occupancy.
+
+| Offset | Size | Type | Init | Field |
+|--------|------|------|------|-------|
+| +1600 | 8 | ptr | `ctx[2]->+208` | Function object pair pointer |
+| +1608 | 8 | ptr | 0 | Budget model: auxiliary pointer |
+| +1616 | 8 | QWORD | `0xFFFFFFFF` | Budget model: occupancy upper bound |
+| +1624 | 4 | DWORD | 119 / knob | Max threads per block (default 119) |
+| +1628 | 4 | DWORD | 160 / knob | Pressure threshold (default 160) |
+| +1632 | 8 | double | 0.2 | Interpolation coefficient A (knob-overridable) |
+| +1640 | 8 | double | 1.0 | Interpolation coefficient B (knob-overridable) |
+| +1648 | 8 | double | 0.3 | Interpolation coefficient C (knob-overridable) |
+| +1656 | 8 | double | (computed) | Total threads as double |
+| +1664 | 8 | double | = coeff A | Interpolation point [0] |
+| +1672 | 8 | double | (computed) | Interpolation point [1]: max\_threads as double |
+| +1680 | 8 | double | = coeff A | Interpolation point [2] |
+| +1688 | 8 | double | (computed) | Interpolation point [3]: threshold as double |
+| +1696 | 8 | double | = coeff A | Interpolation point [4] |
+| +1704 | 8 | double | (computed) | Interpolation point [5]: 255 minus vtable result |
+| +1712 | 8 | double | = coeff B | Interpolation point [6] |
+| +1720 | 8 | double | (computed) | Linear model: x\_min (thread count) |
+| +1728 | 8 | double | = coeff C | Linear model: y\_min |
+| +1736 | 8 | double | (computed) | Linear model: slope |
+| +1744 | 8 | ptr | 0 | Budget model: tail sentinel |
 
 ## Virtual Register Object Layout
 
@@ -405,6 +622,7 @@ Partial reconstruction of the main allocator state object, consistent across all
 | `sub_911030` | 2408 | Mem-to-reg analysis engine |
 | `sub_914B40` | 1737 | Post-promotion rewrite |
 | `sub_926A30` | 4005 | Fat-point interference builder |
+| `sub_947150` | 1088 | Allocator state constructor (initializes 1748-byte object) |
 | `sub_939BD0` | 65 | Spill allocator setup |
 | `sub_939CE0` | 23 | Register consumption counter |
 | `sub_93D070` | 155 | Best result recorder |
