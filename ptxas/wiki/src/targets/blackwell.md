@@ -334,6 +334,20 @@ sm_110 targets the Jetson Thor SoC for automotive and robotics applications. Cod
 
 Jetson Thor (automotive-grade SoC with integrated GPU). Originally internally designated sm_101 before rename.
 
+### sm_101 Legacy Alias
+
+sm_101 (with variants sm_101a and sm_101f) was the original internal name for Jetson Thor. It was renamed to sm_110 in a later CUDA release, but all three validation table entries are retained for backward compatibility:
+
+| Table | Entry | PTX ISA | Purpose |
+|---|---|---|---|
+| Base (`unk_1D16220`) | `{101, 8, 6}` | 8.6 | Accepts `--gpu-name sm_101` in existing PTX files |
+| Accelerated (`unk_1D161C0`) | `{101, 8, 6}` | 8.6 | Accepts `sm_101a` |
+| Feature-reduced (`unk_1D16160`) | `{101, 8, 8}` | 8.8 | Accepts `sm_101f` |
+
+The validation tables use `bsearch()` (`sub_484B70` comparator), so both sm_101 and sm_110 are independently findable. However, `sub_6765E0` (the profile constructor) registers only sm_110 / sm_110a / sm_110f -- there is no profile object for sm_101. After passing validation, sm_101 must resolve to the sm_110 profile through an internal aliasing path (likely in `sub_4B1080`, the target directive parser).
+
+The PTX ISA version difference is notable: sm_101 requires PTX 8.6 (same as sm_100), while sm_110 requires PTX 9.0. This reflects the timeline -- sm_101 was named when the Jetson Thor target was first added alongside sm_100, before the sm_110 numbering and PTX 9.0 specification existed.
+
 ### Key Characteristics
 
 - **Full tcgen05 hardware**: Retains datacenter-class tensor memory and tensor core features

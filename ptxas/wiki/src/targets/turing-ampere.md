@@ -4,7 +4,7 @@ SM 75 through SM 88 span two microarchitecture generations that ptxas treats as 
 
 | | |
 |---|---|
-| **SM targets** | sm_75, sm_80, sm_86, sm_87, sm_88 |
+| **SM targets** | sm_75, sm_80, sm_86, sm_87, sm_88 (+ sm_82 validation-only) |
 | **Codegen factory range** | 24577--28676 |
 | **ISA generation** | 6 (Turing), 7 (Ampere) |
 | **Encoding format** | 128-bit per-instruction control word |
@@ -26,6 +26,59 @@ SM 75 through SM 88 span two microarchitecture generations that ptxas treats as 
 **Codegen factory encoding:** `(isa_generation << 12) | sub_variant`. Turing is generation 6; Ampere is generation 7. The sub-variant distinguishes silicon cut within a generation. sm_75 and Pascal sm_60 share generation 6 (sm_60 = 24576 = `0x6000`), differentiated by sub-variant 0 vs 1.
 
 **sm_88 note:** Registered in ptxas with `CUDA_ARCH=880` and codegen factory 28676, but no public product ships on this SM. It may represent an unreleased Ampere derivative or internal test target.
+
+## SM 82 -- Internal Ampere Target
+
+sm_82 is an undocumented internal Ampere target present in the base validation table (`unk_1D16220`, entry [20]) but **not registered** in the profile constructor `sub_6765E0`. It has no capability dispatch handler, no profile object, and no handler functions in any of the 7 hash maps. It exists in ptxas solely as a validation table entry and as the SASS opcode generation boundary.
+
+| | |
+|---|---|
+| **Validation table entry** | `{82, 6, 2}` -- sm_82, PTX 6.2 |
+| **PTX ISA requirement** | 6.2 (anomalously low -- see below) |
+| **Profile object** | None -- not registered in `sub_6765E0` |
+| **Capability handlers** | None -- not registered in `sub_607DB0` |
+| **SASS opcode role** | `SM82_FIRST` (index 172) through `SM82_LAST` (index 193) |
+
+### PTX 6.2 Anomaly
+
+sm_82 requires PTX ISA version 6.2, which is **lower** than both its neighbors:
+
+| SM | PTX ISA | CUDA Toolkit |
+|---|---|---|
+| sm_75 | 6.3 | CUDA 10.0 |
+| sm_80 | 7.0 | CUDA 11.0 |
+| **sm_82** | **6.2** | -- |
+| sm_86 | 7.1 | CUDA 11.1 |
+
+PTX 6.2 corresponds to CUDA 10.1 (Turing era). This backward version number strongly suggests sm_82 was created as an early Ampere development target -- a PTX-level placeholder added before the Ampere PTX ISA (7.0) was defined. The validation table entry was never removed, but no profile object was ever created for it.
+
+### SASS Opcode Boundary Role
+
+sm_82's primary significance in ptxas is as the opcode generation boundary for Ampere SASS instructions. The opcode hierarchy uses SM-number-based range labels:
+
+```
+SM82_FIRST  = index 172   (first Ampere-era SASS opcode)
+SM82_LAST   = index 193   (last opcode in the sm_82 range)
+```
+
+These 22 opcode slots (indices 172--193) cover the core Ampere SASS additions:
+
+| Opcodes | Category |
+|---|---|
+| GATHER, GENMETADATA, SPMETADATA | Sparse MMA infrastructure |
+| BMMA_88128, BMMA_168128, BMMA_168256 | Binary tensor core MMA shapes |
+| DMMA | FP64 tensor core MMA (re-introduced at index 215 for Hopper) |
+| HMMA_SP_1688, HFMA2_MMA, HMNMX2 | FP16 sparse/packed operations |
+| IMMA_88, IMMA_SP_88, IMMA_16816, IMMA_16832, IMMA_SP_16832 | Integer tensor core MMA shapes |
+| ARRIVES, LDGDEPBAR, LDGSTS | Async copy and barrier infrastructure |
+| REDUX | Warp-wide reduction |
+| CLMAD | Carry-less multiply-add (GF(2) arithmetic) |
+
+The name `SM82_FIRST`/`SM82_LAST` is used as the boundary label even though these instructions are available on sm_80+ (any codegen factory >= 28673). The "82" in the label refers to the internal target used during Ampere development, not to a minimum SM requirement for the opcodes themselves.
+
+### Why sm_82 Matters
+
+sm_82 is a ghost target: it occupies a validation table slot and lends its name to an opcode range, but cannot be compiled for. Passing `--gpu-name sm_82` to ptxas would pass the initial validation check (bsearch succeeds in the base table) but fail during profile construction because `sub_6765E0` has no case for SM 82. The practical consequence is that sm_82 is a naming artifact preserved from Ampere development, not a usable compilation target.
 
 ## Profile Object Construction
 
