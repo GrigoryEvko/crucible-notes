@@ -644,6 +644,163 @@ Records are stored in a dynamic array at `context[135]`.
 
 This is NVIDIA's internal compiler testing infrastructure for stochastic fault injection. It targets specific vulnerability surfaces in the register allocator and post-allocation pipeline: wrong-register assignments, address calculation errors, predicate propagation failures, rematerialization correctness, spill code integrity, and register-predicate conversion accuracy. The `time(0)`-seeded RNG produces different fault patterns on each run for the same bugspec.txt, enabling randomized stress testing of verification passes.
 
+## Embedded C++ Name Demangler
+
+PTXAS statically embeds an Itanium ABI C++ name demangler rather than linking `libc++abi` or `libstdc++`. The demangler is a self-contained 41-function cluster spanning `0x1CD8B00`--`0x1CE1E60` in `.text`, with a single external entry point. The core recursive-descent parser at `sub_1CDC780` (93 KB decompiled, 3,442 lines) handles the full Itanium mangling grammar: nested names, template arguments, substitutions, function types, and special names.
+
+### API and Integration
+
+The public-facing function is `sub_1CE23F0`, whose signature matches `__cxa_demangle` exactly: it takes a mangled name string, an optional output buffer with length pointer, and a status pointer; it returns a `malloc`-allocated demangled string or `NULL` with a status code (`-1` = memory failure, `-3` = invalid arguments). The only caller of this function is the embedded terminate handler at `sub_1CD7850`, which prints the standard `"terminate called after throwing an instance of '...'"` diagnostic to stderr, demangling the exception type name before display.
+
+### Why Embedded
+
+PTXAS imports only `libc`, `libpthread`, `libm`, and `libgcc_s` (146 PLT stubs total). It has no dependency on any C++ runtime library. The only C++ ABI symbol in the PLT is `__cxa_atexit` (at `0x401989`), used to register the terminate handler. By embedding the demangler and terminate handler directly, NVIDIA avoids a runtime dependency on `libstdc++` or `libc++abi`, which would otherwise be required solely for exception type name display in fatal error messages. This is consistent with the binary's overall strategy of minimizing external dependencies.
+
+### Function Map
+
+| Address | Function | Size | Role | Confidence |
+|---|---|---|---|---|
+| `sub_1CDC780` | Demangler core (recursive-descent parser) | 93 KB | Parses Itanium-mangled names via large switch dispatch | **HIGH** (size, structure, callgraph isolation) |
+| `sub_1CE0600` | Recursive dispatch wrapper | 580 B | Re-enters the parser for nested name components (76 call sites from core) | **HIGH** (mutual recursion with `sub_1CDC780`) |
+| `sub_1CE23F0` | `__cxa_demangle`-compatible API | 340 B | Public entry: mangled string in, demangled string out, `malloc`-allocated | **CERTAIN** (API shape, status codes, `free`/`memcpy`/`strlen` callees) |
+| `sub_1CE1E60` | Parse entry point | ~200 B | Initializes parse state and invokes the core | **HIGH** (bridge between API and parser) |
+| `sub_1CD7850` | Terminate handler (`__cxa_terminate`) | 280 B | Prints `"terminate called after throwing..."` to stderr | **CERTAIN** (string: `"terminate called after throwing an instance of '"`) |
+
+## Version Update Procedure
+
+All addresses, function counts, and structural offsets in this wiki are specific to ptxas v13.0.88 (build `cuda_13.0.r13.0/compiler.36424714_0`, 37,741,528 bytes). When a new CUDA toolkit ships a different ptxas binary, the wiki must be updated. This section documents the procedure.
+
+### Version-Stable vs Version-Fragile Findings
+
+Not everything changes between versions. Understanding what is stable dramatically reduces update effort.
+
+**Version-stable** (survives across minor and most major releases unchanged):
+
+| Category | Examples | Why stable |
+|---|---|---|
+| Algorithm logic | Copy propagation worklist walk, fatpoint pressure computation, MurmurHash3 constants | Algorithms are rarely rewritten between releases |
+| Data structure layouts | Pool allocator bins at +2128, Mercury instruction node at 112 bytes, 16-byte phase objects | Struct layouts change only when fields are added or reordered |
+| Knob names | `MercuryUseActiveThreadCollectiveInsts`, `ScavInlineExpansion`, all 2,000+ ROT13 names | Knob names are API-like -- changing them breaks internal test harnesses |
+| ROT13 encoding | The ROT13 obfuscation layer itself, decoded by `codecs.decode(s, "rot_13")` | Obfuscation scheme has been consistent across observed versions |
+| Phase count and ordering | 159 phases in the OCG pipeline, ordered by the PhaseManager vtable table | Phase count may grow but existing phases retain their relative order |
+| Pipeline stage names | `Parse-time`, `DAGgen-time`, `OCG-time`, `ELF-time`, `DebugInfo-time` | Stage names are embedded in format strings unlikely to change |
+| Subsystem names | OCG, Mercury, Ori, Scav | Internal codenames are stable across releases |
+| Encoding handler template | 6-step pattern: opcode ID, `movaps` format descriptor, register class map, operand registration, finalize, bitfield extract | Template structure is generated from a stable code generator |
+| Error message text | `"SM does not support LDCU"`, `"Invalid knob identifier"` | Diagnostic strings are rarely reworded |
+
+**Version-fragile** (changes with every recompilation):
+
+| Category | Examples | Why fragile |
+|---|---|---|
+| Function addresses | Every `sub_XXXXXX` reference, vtable addresses like `off_22BD5C8` | ASLR-style shifts from any code or data size change |
+| Address ranges | Sweep boundaries `0x400000`--`0x4D5000`, subsystem regions | Functions move when preceding code grows or shrinks |
+| Function sizes | `sub_446240` at 12,345 bytes | Inlining decisions change, optimizer improvements add/remove code |
+| Caller/callee counts | `sub_424070` at 3,809 callers | New call sites added, old ones removed |
+| Struct offsets | `context[133]`, `context+1584` | New fields inserted into context structs |
+| `.rodata` addresses | String locations like `0x202D4D8`, encoding table addresses | Data layout shifts with code changes |
+| Call graph edge counts | 548,693 edges | New functions and call sites |
+| Total function count | 40,185 | New SM targets add encoding handlers |
+
+### Identifying Function Address Changes
+
+When loading a new ptxas version into IDA:
+
+1. **Extract the same 8 JSON artifacts** using `analyze_ptxas.py` (or equivalent). The critical artifacts for diffing are `ptxas_functions.json` (address, size, callee list) and `ptxas_strings.json` (string content, xref locations).
+
+2. **Match functions by invariant properties.** Functions cannot be matched by address alone. Use these matching criteria in priority order:
+
+   - **String anchors.** Functions containing unique string references (e.g., the function referencing `"Please use -knob DUMPIR=AllocateRegisters"`) can be matched across versions by searching for the same string in the new binary. This is the highest-confidence matching method.
+   - **Size + callee signature.** For functions without string anchors, match by (approximate size, sorted callee list). A function of ~2,100 bytes calling the pool allocator, OOM handler, and hash map insert is almost certainly the same function even if its address shifted by megabytes.
+   - **Callgraph position.** Functions identified by their caller/callee topology: the phase factory is the function called from the PhaseManager constructor with 159+ case targets. The diagnostic emitter is the function with 2,000+ callers that calls `vfprintf`.
+   - **Vtable slot position.** Phase `execute()` methods are at vtable slot 0. If the vtable table address changes but still contains 159 entries, the slot positions identify each phase.
+   - **Template fingerprinting.** Encoding handlers matching the 6-step template (bitfield insert via the highest-caller utility, `movaps` from `.rodata`, operand registrars, finalize call) are encoding handlers in any version.
+
+3. **Diff the function lists.** Produce a mapping `{old_addr -> new_addr}` for all matched functions. Functions present in the new binary but absent in the old are new (likely new SM target support). Functions absent in the new binary are removed (dropped legacy SM support) or merged.
+
+### Updating Sweep Reports
+
+The 30-region sweep reports in `ptxas/raw/` are version-locked historical records -- they document the analysis of v13.0.88 and should not be overwritten. For a new version:
+
+1. **Re-run the sweep** with new address ranges derived from the new binary's function list. The region partitioning should follow the same subsystem-aligned strategy: infrastructure first, then PhaseManager, then high-complexity subsystems, then batch encoding handlers.
+
+2. **Name new reports** with a version suffix: `p2.01-sweep-v13.1-0xNNN-0xMMM.txt` (or whatever scheme distinguishes the version).
+
+3. **Cross-reference against old reports.** For each region, note which functions moved, which are new, and which disappeared. The old sweep reports provide the expected function identities; the new sweep validates whether those identities still hold at the new addresses.
+
+### Pages Most Sensitive to Version Changes
+
+These wiki pages require immediate updates when the binary changes:
+
+| Page | Sensitivity | What changes |
+|---|---|---|
+| `function-map.md` | **Critical** | Every address in every table row. The entire page is address-indexed. |
+| `binary-layout.md` | **Critical** | Section addresses, subsystem boundaries, address-range diagram. |
+| `VERSIONS.md` | **Critical** | Binary size, build string, function count, version number. |
+| `pipeline/overview.md` | High | Phase factory address, PhaseManager constructor address, vtable table address. |
+| `scheduling/algorithm.md` | High | Scheduler function addresses, priority function addresses. |
+| `regalloc/algorithm.md` | High | Allocator function addresses, fatpoint computation address. |
+| `codegen/encoding.md` | High | Encoding handler address ranges, format descriptor addresses. |
+| `config/knobs.md` | Medium | Knob constructor addresses (content of knob names is stable). |
+| `ir/instructions.md` | Medium | Opcode numbers may shift if new instructions are added. |
+| `targets/index.md` | Medium | New SM targets may appear, changing validation table sizes. |
+| `methodology.md` | Low | The methodology itself is version-stable; only the "Scope and Scale" table needs updating. |
+
+### Recommended Update Workflow
+
+The update follows a five-step sequence. Steps 1-2 are mechanical; steps 3-5 require analyst judgment.
+
+**Step 1: Extract new IDA artifacts.**
+
+Load the new ptxas binary into IDA Pro 8.x. Run `analyze_ptxas.py` to produce the 8 JSON artifacts and per-function decompiled `.c` files. Store them in a version-specific directory (e.g., `ptxas/ida-v13.1/` or alongside the existing artifacts with clear version labeling).
+
+**Step 2: Diff against the old artifacts.**
+
+Write or use a diff script that:
+- Compares `ptxas_functions.json` (old vs new) by matching on string anchors, size+callee signature, and callgraph position.
+- Produces a `{old_addr -> new_addr}` mapping for matched functions.
+- Lists unmatched functions in both directions (new functions, removed functions).
+- Compares `ptxas_strings.json` to detect new strings, removed strings, and strings whose xref functions changed.
+- Reports total function count delta, binary size delta, and new section addresses.
+
+**Step 3: Update address-sensitive pages.**
+
+Using the address mapping from Step 2:
+- Update every `sub_XXXXXX` reference in `function-map.md`, `binary-layout.md`, and all pages listed in the sensitivity table above.
+- Update the "Scope and Scale" table in `methodology.md` with new function counts, string counts, binary size, and build string.
+- Update `VERSIONS.md` with the new binary metadata.
+- For pages with address ranges (sweep boundaries, subsystem regions), recompute the ranges from the new function list.
+
+**Step 4: Verify key struct layouts.**
+
+Struct offset changes are the most dangerous kind of version drift because they silently invalidate decompiled code analysis. For each documented struct:
+- Re-decompile the struct's primary accessor function (e.g., `sub_424070` for the pool allocator, `sub_4280C0` for the TLS context).
+- Compare field offsets against the documented layout.
+- If offsets shifted, update the struct documentation and propagate the change to all pages that reference those offsets.
+
+Priority structs to verify: pool allocator (free-list bins at +2128, mutex at +7128), TLS context (280 bytes), Mercury instruction node (112 bytes), scheduler context (~1000 bytes), allocator state (1590+ bytes), phase objects (16 bytes).
+
+**Step 5: Validate phase pipeline.**
+
+- Re-extract the phase vtable table (find the new address of the 159-entry pointer array in `.data.rel.ro`).
+- Verify all 159 phases are present and in the expected order.
+- Check for new phases (count > 159) or removed phases (count < 159).
+- Re-run `ptxas --fdevice-time-trace` on a test kernel and cross-reference the phase names in the trace output against the wiki's phase list.
+
+### Raw Data Locations
+
+All raw analysis artifacts for the current version (v13.0.88) live in the repository under `ptxas/`:
+
+| Directory | Contents |
+|---|---|
+| `ptxas/raw/` | 40 sweep reports (`p1.01`--`p1.30` plus sub-region splits), per-task investigation reports (`P0_*`, `P1_*`, `P2_*`, etc.) |
+| `ptxas/decompiled/` | Per-function Hex-Rays decompiled C files (`sub_XXXXXX.c`, named functions like `ctor_003_0x4095d0.c`) |
+| `ptxas/disasm/` | Per-function disassembly files |
+| `ptxas/graphs/` | Per-function control flow graph JSON files (80,078 files) |
+| `ptxas/` (root) | The 8 JSON artifacts (`ptxas_functions.json`, `ptxas_strings.json`, `ptxas_callgraph.json`, `ptxas_xrefs.json`, `ptxas_comments.json`, `ptxas_names.json`, `ptxas_imports.json`, `ptxas_segments.json`), the IDA database (`ptxas.i64`), the extraction script (`analyze_ptxas.py`), and the binary itself (`ptxas`) |
+| `ptxas/wiki/src/` | The wiki source pages (this document and all others) |
+
+When updating to a new version, preserve the existing artifacts for v13.0.88 (rename or move to a versioned subdirectory) and store new artifacts alongside them. The sweep reports in `ptxas/raw/` are historical records and should never be overwritten.
+
 ## Limitations and Known Gaps
 
 - **No dynamic validation of optimization correctness.** All findings are from static analysis. The identified phase algorithms have not been tested against runtime inputs to verify they produce correct output for all corner cases.
@@ -661,3 +818,92 @@ This is NVIDIA's internal compiler testing infrastructure for stochastic fault i
 - **Version-specific addresses.** All addresses in this wiki apply to ptxas v13.0.88 (build `cuda_13.0.r13.0/compiler.36424714_0`). Other CUDA toolkit versions will have different addresses, different function counts, and potentially different phase orderings. However, the analysis methodology (string-driven, vtable-driven, callgraph propagation) applies to any version.
 
 - **Indirect calls are undercounted.** The 548,693-edge call graph captures only direct `call` instructions resolved by IDA. Virtual calls through vtable pointers, function pointer callbacks, and computed jumps are not fully captured. The true call graph is significantly denser than what is recorded.
+
+## Corrections Log
+
+This section documents every factual error discovered and corrected during the wiki improvement pass. Each entry records the error, the correction, affected pages, and the agent task that performed the fix. The full detail for each correction is in `ptxas/raw/P5_11_corrections_log_report.txt`.
+
+### Summary
+
+| Metric | Count |
+|---|---|
+| Distinct factual errors corrected | 22 |
+| Wiki pages with at least one fix | 30+ |
+| Agent tasks that discovered errors | 15 |
+| Agent tasks that propagated fixes | 5 |
+
+### Corrections by Severity
+
+#### Systematic errors (affected 5+ pages each)
+
+| # | Error | Correction | Pages | Agent |
+|---|---|---|---|---|
+| 01 | Opcode numbering: wiki assumed two numbering systems; "Selected Opcode Values" table had wrong SASS mnemonic labels (e.g., 93=CALL, 95=EXIT, 97=MOV, 130=BAR) | One numbering system: ROT13 name table index IS the instruction opcode. Correct labels: 93=OUT_FINAL, 95=STS, 97=STG, 130=HSET2 | 15 pages (ir/instructions, ir/cfg, passes/predication, passes/sync-barriers, passes/liveness, passes/general-optimize, passes/rematerialization, passes/copy-prop-cse, passes/strength-reduction, regalloc/abi, regalloc/spilling, intrinsics/sync-warp, codegen/isel, scheduling/latency-model, scheduling/algorithm) | P0-01, P4-02, P5-01 |
+| 02 | Register class 6 = UB (Uniform Barrier); classes 2-6 all wrong | Class 6 = Tensor/Accumulator (MMA/WGMMA). Correct table: 2=R(alt), 3=UR, 4=UR(ext), 5=P/UP, 6=Tensor/Acc. Barrier regs use reg_type 9, outside the 7-class system | 7 pages (ir/registers, regalloc/overview, regalloc/algorithm, regalloc/spilling, passes/gmma-pipeline, intrinsics/tensor, ir/overview) | P0-02 |
+| 03 | context+1584 had 5 conflicting names: code_object, sched_ctx, arch_backend, optimizer_state, function manager | Single object: SM-specific architecture backend ("sm_backend"), constructed per-compilation-unit in sub_662920 via SM version switch | 3 pages corrected (ir/data-structures, ir/overview, passes/copy-prop-cse); 14 pages acceptable as-is | P0-03 |
+
+#### Identity misattributions
+
+| # | Error | Correction | Pages | Agent |
+|---|---|---|---|---|
+| 06 | sub_83EF00 (29KB) listed as "Top-level unrolling driver" | sub_83EF00 is MainPeepholeOptimizer (opcode switch on 2, 134, 133, 214, 213, 210). Actual unrolling driver: sub_1390B30 via Phase 22 entry sub_1392E30 | passes/loop-passes.md | P1-04, P5-03 |
+| 07 | sub_926A30 (22KB) listed as "Main pipelining engine (modulo scheduling)" | sub_926A30 is the operand-level latency annotator and interference weight builder, called by sub_92C0D0 per-instruction | passes/loop-passes.md | P1-06 |
+| 08 | sub_7E7380 described as "full structural equivalence" (opcode, type, all operands, register class comparison) | sub_7E7380 is 30 lines / 150 bytes: narrow predicate-operand compatibility check (predicate bit parity + last operand 24-bit ID + penultimate 8-byte encoding). Full structural comparison done by the 21 callers | passes/copy-prop-cse.md, passes/general-optimize.md | P1-07, P5-06 |
+
+#### Inverted semantics
+
+| # | Error | Correction | Pages | Agent |
+|---|---|---|---|---|
+| 05 | isNoOp()=1 "means it executes unconditionally" | isNoOp()=1 means the dispatch loop SKIPS execute(). Code: `if (!phase->isNoOp()) { phase->execute(ctx); }` | passes/rematerialization.md | P0-05 |
+| 09 | Hot-cold priority: "1 = cold, 0 = hot" | 1 = hot = higher priority, 0 = cold = lower priority. sub_A9CDE0 (hot detector) returns true -> bit 5 set -> higher priority | passes/hot-cold.md | P1-09, P5-06 |
+| 10 | "Fatpoint" implied to be maximum-pressure point | Fatpoint scans for MINIMUM-cost slot. The name refers to the exhaustive (fat) scan evaluating all slots, not to picking the maximum | (verified correct across all pages -- 0 fixes needed) | P1-10, P5-06 |
+
+#### Wrong numeric values
+
+| # | Error | Correction | Pages | Agent |
+|---|---|---|---|---|
+| 04 | context+1552 = "Legalization stage counter" with 3 values (3, 7, 12) | Pipeline progress counter with 22 values (0-21) spanning all pipeline categories | 4 pages (ir/data-structures, passes/late-legalization, passes/rematerialization, passes/copy-prop-cse) | P0-04 |
+| 12 | 5 SASS opcode mnemonic typos: PSMTEST, LGDEPBAR, LGSTS, UBLKPC, UTMAREDG | CSMTEST, LDGDEPBAR, LDGSTS, UBLKCP, UTMREDG | reference/sass-opcodes.md | P2-11 |
+| 14 | WGMMA case 9 = 0x1D5D (7517), case 10 = 0x1D5E (7518) | Case 9 = 0x1D5E (7518), case 10 = 0x1D60 (7520). Codes 0x1D5D/0x1D5F are advisory (non-serialization) warnings | passes/gmma-pipeline.md | P3-25 |
+| 15 | ABI minimum: gen 5 (sm_60-sm_89) = 16 regs, gen 9+ = 24 regs | gen 3-4 (sm_35-sm_53) = 16, gen 5-9 (sm_60-sm_100) = 24. Binary: `(generation - 5) < 5 ? 24 : 16` | regalloc/abi.md | P3-26 |
+| 17 | Unrolling rejection table at 0x21D1980 with 36-byte structures | Rejection string pointer array at 0x21D1EA0 with simple integer indices 7-24. The 0x21D1980 table is for peephole operand range lookups | passes/loop-passes.md | P1-04 |
+
+#### Phantom data and scope errors
+
+| # | Error | Correction | Pages | Agent |
+|---|---|---|---|---|
+| 11 | "Approximately 80 additional entries bulk-copied from unk_21C0E00" at SASS opcode indices 322-401, "totaling roughly 402 named opcodes" | Table has exactly 322 entries. The 1288-byte block at unk_21C0E00 is a 322-element identity map {0,1,...,321} copied to a different data structure (encoding category map at obj+0x2478) | reference/sass-opcodes.md | P2-11 |
+| 13 | "139 explicitly named phases and 20 architecture-specific unnamed phases" | All 159 phases have names in the static table at off_22BD0C0. The original 139-phase inventory missed 20 phases (e.g., OriCopyProp, Vectorization, MercConverter, AllocateRegisters) | pipeline/overview.md, passes/index.md | P2-14, P4-03 |
+| 16 | Warning 7018 (0x1B6A) attributed to SUSPEND/preserved scratch diagnostic | Code 0x1B6A does not exist in the binary. The actual code is 7011 (0x1B63) | regalloc/abi.md | P3-26 |
+| 18 | Unrolling rejection codes listed as 0x80000001-0x80000018 | Those hex values appear in diagnostic message STRINGS, not as internal codes. Internal codes are simple integers 7-24 | passes/loop-passes.md | P1-04 |
+
+#### Minor corrections
+
+| # | Error | Correction | Pages | Agent |
+|---|---|---|---|---|
+| 19 | sub_80B700/sub_80BC80 listed as unrolling functions | Both are peephole optimizer functions (called through sub_83EF00), not unrolling | passes/loop-passes.md | P1-04 |
+| 22 | general-optimize.md called sub_7E7380 "instruction_equivalent" / "structural instruction equivalence" in 6 locations | Renamed to "predicate_operand_compatible" / "predicate-operand compatibility check" | passes/general-optimize.md | P5-06 |
+
+### Error Categories
+
+| Category | Count | Examples |
+|---|---|---|
+| Identity misattribution | 5 | Wrong function-to-role mappings, wrong names for context fields |
+| Wrong numeric values | 5 | Wrong opcode labels, wrong hex codes, wrong thresholds, wrong addresses |
+| Inverted semantics | 3 | isNoOp skip-vs-execute, hot-cold bit polarity, fatpoint min-vs-max |
+| Conflicting definitions | 3 | Register class contradictions across pages |
+| Phantom data | 2 | Nonexistent SASS entries 322-401, nonexistent warning 7018 |
+| Scope mischaracterization | 2 | context+1552 scope too narrow, phase naming scope too narrow |
+| Encoding confusion | 2 | Hex-in-message-string vs internal code, wrong address for lookup table |
+
+### Lessons Learned
+
+1. **Behavioral inference is unreliable for opcode identity.** Observing that an opcode appears in branch contexts does not make it BRA. Always check the authoritative ROT13 name table.
+
+2. **Cross-page consistency checks catch conflicting speculations.** Five pages independently naming the same field (context+1584) is a strong signal that at least four are wrong.
+
+3. **Counts from partial analysis are systematically low.** The "3 values" for context+1552 and "139 named phases" both resulted from stopping the search too early. Exhaustive binary sweeps consistently reveal more entries.
+
+4. **Function size is not a reliable identity signal.** sub_83EF00 (29KB) was large enough to seem like a major driver, but size alone does not distinguish a peephole optimizer from a loop unroller.
+
+5. **ROT13 decoding + binary cross-validation is the gold standard.** Every correction that replaced speculative labels with ROT13-decoded names has held up under subsequent audits.
