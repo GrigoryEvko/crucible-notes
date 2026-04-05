@@ -8,7 +8,7 @@ Six instances exist at strategic positions in the 159-phase pipeline. Despite sh
 |---|---|
 | **Instances** | 6 (phases 13, 29, 37, 46, 58, 65) |
 | **Pattern** | Per-block iteration with convergence check |
-| **Sub-passes** | Copy propagation, constant folding, algebraic simplification, dead code elimination, predicate simplification |
+| **Sub-passes** | Copy propagation, constant folding, structural equivalence elimination, dead code elimination, predicate simplification, register promotion (Phase 37) |
 | **Convergence** | Boolean change flag per iteration; stops when no sub-pass reports a change |
 | **Iteration cap** | Knob-controlled (option 464); breaks loop if knob returns false |
 | **Single-function fast path** | Phases 13 and 65 have direct tail-call paths bypassing the multi-function dispatch |
@@ -232,21 +232,174 @@ bool is_eligible(int64_t ctx, uint32_t* instr) {
 
 The knob `"limit-fold-fp"` (string at `0x1CE3D23`, helptext `"Enable/disable constant folding of float operations"` at `0x1CE63B0`) provides user control over floating-point constant folding to prevent precision issues in numerical code.
 
-### Algebraic Simplification
+### Algebraic Simplification and Structural Equivalence
 
-The algebraic simplifier runs as part of the same per-block scan in `sub_753600`. The function is approximately 250 lines of decompiled code and operates on instruction pairs. Key mechanisms:
+The algebraic simplifier in GeneralOptimize is **not** a traditional constant-identity pattern matcher. It does not check operand values against constants (0, 1, -1) to recognize identities like `x+0` or `x*1`. Instead, it is a **structural equivalence-based pattern recognizer** that detects when two instructions in a def-use chain compute identical values, enabling one to be eliminated. Traditional algebraic identity patterns (`x+0->x`, `x*1->x`, `x&0->0`, `x-x->0`, etc.) are handled by the separate [MainPeepholeOptimizer](../codegen/peephole.md) -- see the [comparison table](#algebraic-pattern-location-map) below.
 
-1. **Instruction equivalence check** via `sub_7E7380(instr_a, instr_b)`: compares opcode at `instr+72`, operand count, operand types, and operand values. Returns a boolean. Used to detect patterns like `x op x` (self-operations) and redundant re-computation
+The simplifier lives in `sub_753600` (Phase 13, `GeneralOptimizeEarly`) and is approximately 253 lines of decompiled code. It operates on chains of instructions linked through def-use relationships.
 
-2. **Operand format classification** at `instr[25] & 7`: values 3 and 4 distinguish immediate vs register operands. When both instructions have identical format code, the simplifier can reason about algebraic identities
+#### Entry Guard
 
-3. **Def-chain following**: compares operand definition chains through `instr+128` (def-chain pointer) and register indices at `instr+24` to detect when two operands in different instructions refer to the same SSA value
+The function only triggers on instructions matching a narrow pattern:
 
-4. **Modifier extraction** via `sub_747F40` (negation flag) and `sub_747F80` (absolute-value flag): these helper functions extract per-operand modifiers from the operand encoding. The simplifier detects and eliminates double-negation (`neg(neg(x))`) and redundant absolute values (`abs(abs(x))`)
+```c
+// sub_753600 entry guard
+if (instr[18] == 95           // opcode 95 (EXIT/RET-class with guard predicate)
+    && instr[20] == 5         // exactly 5 operands
+    && (instr[25] & 7) - 3 <= 1)  // operand format 3 (register) or 4 (immediate)
+{
+    // proceed to chain walk
+}
+```
 
-5. **Constant identity matching**: when `instr[v23+21] & 0xFFFFFF` matches between two operands after accounting for operand index offsets, the instructions compute the same value. The 24-bit mask extracts the register index, and equality means the same virtual register
+The restriction to opcode 95 means this simplifier targets conditional exit/return sequences where a guard predicate or condition is computed redundantly. The 5-operand constraint ensures the instruction has the expected layout: result, predicate, and three source operands.
 
-6. **Deep equivalence for non-trivial patterns**: for opcodes where the source operands are register-type (bits 28-30 == 1), the simplifier follows the definition chain to the defining instruction. If the defining instruction has opcode 119 (a specific ALU operation), it compares the result operands at `instr[2*instr[20]+19]` and checks additional constraint bits (bit 0 and bit 3 of the result encoding). It then calls `sub_748570` to verify no aliasing hazards, and `sub_1245740(ctx, instr_a, instr_b, 2)` for structural equivalence of the entire sub-DAG
+#### Chain-Walking Algorithm
+
+After the entry guard passes, `sub_753600` executes a 9-step algorithm:
+
+**Step 1 -- Def-chain traversal.** Reads the use-list pointer at `instr[17]` (offset 136). Checks that the use-list head exists, points to a single definition (head's first element is null), and that the next instruction in the chain has opcode 97 (label/scheduling copy).
+
+**Step 2 -- Register resolution.** Follows the register index through the register table at `ctx+296` to resolve the first chain link to a concrete register entry. Both chain paths (via `instr[17]+8` field, "use-list index", and via the register table) must point to the same entry.
+
+**Step 3 -- First pair detection** via `sub_753520`. This helper calls `sub_753480` to walk the single-def chain forward, looking for an instruction with opcode 93 (CALL/branch encoded). At each step, `sub_753480` checks:
+- `sub_7E5120` -- is the current entry eligible for chain-following? (checks constant bank membership, block region flags, and opcode 91 via `sub_7A1A90`)
+- The use-list pointer at `entry[16]` has a null head (single use)
+- The use-list pointer at `entry[17]` has a null head (single def)
+- The register index at `entry[17]+8` matches the next instruction's register at `entry[1]+8 -> +24`
+
+**Step 4 -- Second pair detection** via `sub_753570`. Starting from the first pair's result, follows the chain one more step looking for a second opcode-93 instruction that references back to the same register as the first pair's target.
+
+**Step 5 -- Instruction equivalence check** via `sub_7E7380`:
+
+```c
+// sub_7E7380 -- structural instruction equivalence
+bool instruction_equivalent(Instr* a, Instr* b) {
+    bool a_has_pred = (a->opcode & 0x1000) != 0;  // bit 12: predicated
+    bool b_has_pred = (b->opcode & 0x1000) != 0;
+    if (a_has_pred != b_has_pred)
+        return false;
+    if (a_has_pred && b_has_pred) {
+        // Compare last operand (predicate register): 24-bit register index
+        int a_idx = a->operands[a->operand_count - 1] & 0xFFFFFF;
+        int b_idx = b->operands[b->operand_count - 1] & 0xFFFFFF;
+        if (a_idx != b_idx)  return false;
+        // Compare preceding operand pair (full 64-bit equality)
+        return a->operands[a->operand_count - 2] == b->operands[b->operand_count - 2];
+    }
+    return true;  // both unpredicated: structurally equivalent at this level
+}
+```
+
+This confirms the two instructions have matching predication structure -- same predicate register, same predicate condition encoding.
+
+**Step 6 -- Operand format classification.** Computes the effective operand position as `operand_count - ((opcode >> 11) & 2)` and checks whether it equals 5. When it does, reads the format code at `instr[25] & 7`. Format 3 means register operand, format 4 means immediate. Both instructions must have the same format classification (both register or both immediate).
+
+**Step 7 -- Register index equality.** Compares the 24-bit register index: `(instr_a[v23+21] & 0xFFFFFF) == (instr_b[v24+21] & 0xFFFFFF)`. When equal and the full operand descriptors at `instr[23]` and `instr[24]` also match, the instructions provably compute the same value. The function jumps to the success path.
+
+**Step 8 -- Modifier verification** via `sub_747F40` and `sub_747F80`:
+
+```c
+// sub_747F40 -- negation flag extraction
+int get_negation(Instr* instr) {
+    int eff = instr->operand_count - ((instr->opcode >> 11) & 2);
+    if (eff == 5 && (instr->data[25] & 7) - 3 < 2)
+        return (instr->data[25] >> 3) & 1;   // bit 3 of format byte
+    return 0;
+}
+
+// sub_747F80 -- absolute-value flag extraction
+int get_abs(Instr* instr) {
+    int eff = instr->operand_count - ((instr->opcode >> 11) & 2);
+    if (eff == 5 && (instr->data[25] & 7) - 3 < 2)
+        return (instr->data[25] >> 4) & 1;   // bit 4 of format byte
+    return 0;
+}
+```
+
+Both instructions must have identical negation and absolute-value flags. If `neg(a) != neg(b)` or `abs(a) != abs(b)`, the pattern is rejected. This prevents incorrectly identifying `neg(x)` as equivalent to `x`.
+
+**Step 9 -- Deep sub-DAG equivalence.** When register indices differ but operand type bits (bits 28-30) equal 1 (register type), the simplifier follows the definition chain to the defining instruction and attempts structural matching at depth:
+
+```c
+// Deep equivalence path (sub_753600, lines 149-189)
+if (((operand_a >> 28) & 7) == 1) {           // register-type operand
+    RegEntry* reg_a = reg_table[operand_a & 0xFFFFFF];
+    if (reg_a->use_count_field == 5) {         // field at +64
+        Instr* def_a = reg_a->defining_instr;  // field at +56
+        // ...same for operand_b...
+        if (def_a->opcode == 119 && def_b->opcode == 119) {  // both SHFL
+            int res_a = def_a->operands[2 * def_a->operand_count + 19];
+            int res_b = def_b->operands[2 * def_b->operand_count + 19];
+            if ((res_a & 1) == 0 && (res_b & 1) == 0        // bit 0 clear
+                && ((res_a | res_b) & 8) == 0                // bit 3 clear
+                && !sub_748570(def_a, ctx)                   // no alias hazard
+                && !sub_748570(def_b, ctx)                   // no alias hazard
+                && def_a->data[25] == def_b->data[25]        // format match
+                && def_a->data[26] == def_b->data[26]        // descriptor match
+                && sub_1245740(ctx, def_a, def_b, 2))        // depth-2 DAG eq
+            {
+                // Match found -- proceed to chain extension
+            }
+        }
+    }
+}
+```
+
+The depth limit of 2 (fourth argument to `sub_1245740`) prevents exponential blowup in the equivalence check while still catching common patterns like `f(g(x)) == f(g(y))` when `x == y`.
+
+#### Chain Extension and Accumulation
+
+After finding one matching pair, the function extends the search down the chain. It calls `sub_753520` and `sub_753570` on subsequent entries, accumulating the full matching sequence in the state array at `a1[1]` through `a1[6]`. The state layout is:
+
+```
+State array (passed as a1, 7 qword slots):
+  a1[0] = ctx (compilation context)
+  a1[1] = first matched instruction (start of sequence)
+  a1[2] = second matched instruction (end of first pair)
+  a1[3] = third matched instruction (from sub_753520)
+  a1[4] = fourth instruction (next link)
+  a1[5] = fifth instruction (from secondary sub_753520)
+  a1[6] = sixth instruction (final chain link)
+```
+
+The function returns `true` (changed) when the full chain is successfully matched. The caller (`sub_7917F0`) then invokes `sub_753B50` to rewrite the matched sequence.
+
+#### What This Actually Eliminates
+
+The pattern this simplifier catches is: a sequence of conditional exit instructions where the guard predicates, condition codes, and source operands are structurally equivalent. In practice, this arises from lowering transformations that produce redundant conditional exit/return pairs -- for example, when a function has multiple return paths that were not merged during earlier optimization, or when predicated code duplication creates exit sequences with identical conditions.
+
+The rewrite performed by `sub_753B50` replaces the redundant chain with a single exit/return sequence, updating the block's instruction list, register-to-instruction mappings, and def-use chains.
+
+#### Algebraic Pattern Location Map
+
+The following table clarifies which optimization pass handles each category of algebraic simplification:
+
+| Pattern Category | Pass | Location | Evidence |
+|---|---|---|---|
+| Structural equivalence (identical computation chains) | GeneralOptimize Phase 13 | `sub_753600` | CERTAIN -- decompiled |
+| Modifier canonicalization (neg/abs flag matching) | GeneralOptimize Phase 13 | `sub_747F40`, `sub_747F80` | CERTAIN -- decompiled |
+| Sub-DAG equivalence (depth-limited tree comparison) | GeneralOptimize Phase 13 | `sub_1245740` | CERTAIN -- decompiled |
+| Copy propagation (reg-reg, predicated, conditional) | GeneralOptimize Phase 29 | `sub_908EB0` | CERTAIN -- decompiled |
+| Predicate simplification (constant predicates) | GeneralOptimize Phase 29 | `sub_908A60` | CERTAIN -- decompiled |
+| Register promotion (memory-to-register conversion) | GeneralOptimize Phase 37 | `sub_90EF70` | CERTAIN -- decompiled |
+| Identity: `x+0->x`, `x*1->x`, `x&(-1)->x`, `x\|0->x`, `x^0->x` | MainPeepholeOptimizer | `sub_169B190` et al. | HIGH -- 3,185 pattern matchers |
+| Annihilator: `x*0->0`, `x&0->0` | MainPeepholeOptimizer | `sub_169B190` et al. | HIGH -- 3,185 pattern matchers |
+| Inverse: `x-x->0`, `x^x->0`, `!!x->x` | MainPeepholeOptimizer | `sub_169B190` et al. | HIGH -- 3,185 pattern matchers |
+| Strength reduction: `x*2->x<<1`, `x/1->x` | StrengthReduction (phase 26) | documented separately | CERTAIN -- separate pass |
+| Predicate identity: `p&true->p`, `p\|false->p` | MainPeepholeOptimizer + Phase 29 | combined | MEDIUM |
+
+The MainPeepholeOptimizer operates on the full SASS opcode set via three 233-280 KB dispatch functions with 373-case primary switches. Its pattern tables encode the constant-identity rules (IADD3 with zero source becomes MOV, IMAD with unit multiplier becomes shift/add, LOP3 with identity LUT becomes passthrough, etc.) as prioritized rewrite rules. See [Peephole Optimization](../codegen/peephole.md) for full details.
+
+#### Helper Functions: `sub_753E30` and `sub_753F70`
+
+Two additional helpers extend the Phase 13 algebraic simplifier beyond the main `sub_753600` path:
+
+**`sub_753E30`** (67 lines) -- secondary chain matcher that handles the case where the first instruction in the chain has a source register index (`instr[25] & 0xFFFFFF`) that differs from the current block's register at `*(a2 + 24)`. It follows a more complex chain topology involving three register entries (at state slots `a1[7]`, `a1[8]`, `a1[9]`) and validates that the secondary chain loops back to the primary entry. This catches equivalences across register renaming boundaries.
+
+**`sub_753F70`** (49 lines) -- vtable-dispatched transformation that performs the actual rewrite for chains detected by `sub_753E30`. It calls through `comp_unit->vtable[656]` (with sentinel check against `sub_744F30`). When the vtable method returns true, it constructs opcode-93 replacement instructions via `sub_92E1B0` and splices the old chain out via `sub_91E310`. This is the surgical rewrite counterpart to `sub_753B50`'s rewrite for the main path.
+
+**`sub_753DB0`** (33 lines) -- chain tail finder that walks from a given register entry forward through the def-chain, following opcode-97 links via the register table. Returns the last reachable entry in the chain (the "tail") or the entry one step before a broken link. Used by the extended chain detection logic to determine where the equivalence region ends.
 
 ### Dead Code Elimination
 
@@ -399,7 +552,7 @@ After `sub_753600` reports changes, `sub_753B50` applies the accumulated transfo
 
 | Phase | Sub-Passes Included |
 |---|---|
-| 13 (Early) | Copy prop via `sub_753600` (register-move chains, algebraic identity, modifier canonicalization), instruction rewrite via `sub_753B50`. No instruction-level constant folding. Lightweight -- designed for quick cleanup after initial lowering. |
+| 13 (Early) | Structural equivalence detection via `sub_753600` (def-use chain walking, instruction pair matching, modifier verification, depth-2 sub-DAG comparison via `sub_1245740`), instruction rewrite via `sub_753B50`. No instruction-level constant folding. Lightweight -- designed for quick cleanup after initial lowering. |
 | 29 | Copy prop with full opcode dispatch (97, 18, 124), predicate-aware propagation via `sub_8F2E50`/`sub_8F29C0`, two-pass predicate simplification via `sub_908A60`, liveness-gated DCE via `sub_7DF3A0`. Flag marking with `0x100`/`0x200`/`0x400` bits. |
 | 37 (Mid) | Full sub-pass suite plus `ConvertMemoryToRegisterOrUniform` (memory-to-register promotion). Bitvector-based change tracking. Cost-driven convergence with configurable threshold (default 0.25, knob 474). Most comprehensive instance. |
 | 46 (Mid2) | Architecture-dependent (vtable dispatch). May include additional target-specific simplifications. |
@@ -503,12 +656,22 @@ The `"ConvertMemoryToRegisterOrUniform"` named-phase gate at `0x21DD228` allows 
 | `0x908EB0` | `GeneralOptimize` body | Per-block copy prop + predicate simplification with flag marking |
 | `0x910840` | `GeneralOptimizeMid` body | Full suite with mem-to-reg; delegates to `sub_905B50` + `sub_90FBA0` |
 | `0x8F7080` | `GeneralOptimizeLate` body | Bitvector-tracked 7-counter pass; calls `sub_8F6FA0` |
-| `0x753600` | Per-block sub-pass runner (Early) | Copy prop + algebraic simplify; returns boolean changed |
+| `0x753600` | Per-block sub-pass runner (Early) | Structural equivalence detection on def-use chains; returns boolean changed |
 | `0x753B50` | Per-block apply changes (Early) | Instruction rewriting: `sub_931920`, `sub_932E80`, `sub_749090`, `sub_9253C0` |
+| `0x753480` | Chain walker (Early) | Walks single-def chain forward, checking `sub_7E5120` eligibility |
+| `0x753520` | Pair detector (Early) | Finds opcode-93 instruction in chain via `sub_753480` |
+| `0x753570` | Secondary pair detector (Early) | Finds second opcode-93 link referencing back to primary |
+| `0x753DB0` | Chain tail finder (Early) | Walks opcode-97 links to find end of chain |
+| `0x753E30` | Secondary chain matcher (Early) | Handles register renaming boundaries; stores `a1[7..9]` |
+| `0x753F70` | Vtable rewrite dispatcher (Early) | Calls `comp_unit->vtable[656]`; constructs opcode-93 replacements |
+| `0x7E5120` | Chain eligibility predicate | Checks constant bank, block region, opcode 91 |
 | `0x8F6530` | Per-block sub-pass runner (Late) | 6-slot circular buffer; 7-counter change tracking; 550-line function |
 | `0x8F6FA0` | Block iterator (Late) | Walks block list calling `sub_8F6530` per block; single pass, no iteration |
 | `0x905B50` | Setup/init (Mid) | ~500 lines; creates bitvector infrastructure; 3 tracked structures |
-| `0x90FBA0` | Main loop (Mid) | Cost-based instruction-level iteration with constant folding and simplification |
+| `0x90FBA0` | Main loop (Mid) | Cost-based instruction-level iteration with register bank analysis |
+| `0x90EF70` | Register promotion (Mid) | Memory-to-register conversion; threshold-based (default 0.93, knob 136) |
+| `0x903A10` | Register bank helper (Mid) | Per-instruction register bank assignment for LD/ST materialization |
+| `0x8F3FE0` | Register constraint checker (Mid) | Validates register constraints via `comp_unit->vtable[904]` and `sub_91D150` |
 | `0x8F2E50` | Copy/fold eligibility check | Checks opcode (18, 124), operand types, SM version <= 20479, constraint bits |
 | `0x8F29C0` | Predicate analysis helper | Determines if predicate condition allows propagation |
 | `0x908A60` | Two-pass predicate simplify | Called with direction flag (1 = forward, 0 = backward) |
@@ -532,4 +695,6 @@ The `"ConvertMemoryToRegisterOrUniform"` named-phase gate at `0x21DD228` allows 
 - [Optimization Pipeline](../pipeline/optimizer.md) -- overall pipeline stages
 - [Copy Propagation & CSE](copy-prop-cse.md) -- standalone copy propagation passes (phases 49, 50, 64, 83)
 - [Liveness Analysis](liveness.md) -- standalone `OriPerformLiveDead` passes (heavier DCE)
+- [Peephole Optimization](../codegen/peephole.md) -- MainPeepholeOptimizer; handles constant-identity patterns (x+0, x*1, x&0, etc.)
+- [Strength Reduction](strength-reduction.md) -- standalone strength reduction pass (phase 26)
 - [Knobs System](../config/knobs.md) -- option 464 (iteration cap), option 487 (general opt enable), `limit-fold-fp`
