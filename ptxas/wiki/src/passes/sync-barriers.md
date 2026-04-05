@@ -611,6 +611,112 @@ Texture fetches are long-latency operations (hundreds of cycles). The hardware u
 
 ---
 
+## Memory Order Intrinsic Lowering
+
+Before the eight sync phases operate on the Ori IR, the OCG intrinsic lowering pipeline translates PTX memory-ordering intrinsics into Ori IR instruction sequences. Three sibling functions in the OCG body dispatcher (`sub_6D8B20`) handle the three families of memory-ordering intrinsics. All three share an identical subop-array parsing protocol and the same scope/memory-order/deprecation validation logic.
+
+### Dispatcher and Function Family
+
+The OCG body dispatcher at `sub_6D8B20` (432 lines) reads the intrinsic ID from `*(state+10688)` and dispatches to per-family lowering functions via a 28-case switch statement. The three memory-ordering handlers are:
+
+| Case | Function | Size | Family | PTX instructions |
+|---|---|---|---|---|
+| 9 | `sub_6C0D90` | 19KB (812 lines) | Atomic/reduction | `atom.add`, `atom.cas`, `atom.exch`, `red.add` |
+| 0xA | `sub_6C1CF0` | 16KB (633 lines) | Mbarrier | `mbarrier.arrive`, `mbarrier.test_wait`, `mbarrier.try_wait`, counted/bytemask variants |
+| 0x16 | `sub_6C4DA0` | 15KB (647 lines) | Fence / load-store | `fence.sc`, `ld.acquire`, `st.release` with scope/domain |
+
+### Subop Array Protocol
+
+Each intrinsic descriptor carries a subop array at `state+10704` (an `int[]`) with the count at `state+10712`. The subop values encode orthogonal PTX qualifiers (scope, memory order, type, domain) into a flat integer sequence that the lowering functions parse in positional order.
+
+Reconstructed subop value map (shared by all three functions):
+
+| Subop | Meaning | IR effect |
+|---|---|---|
+| 0 | Scope qualifier (`.sys`/`.gpu`/`.cta`) | Sets scope_level = 4 |
+| 1 | Counted mode (mbarrier arrival count) | Adds extra type-14 parameter |
+| 2 | Shared domain (`_shared`) | scope = 5 |
+| 3 | Memory order acquire | Sets order = 5 |
+| 4 | Memory order release | Sets order = 6 |
+| 5 | MMIO flag (`.mmio`) | Sets flag bit 8 |
+| 6 | Vector width 2x | scope_width = 2 |
+| 7 | Vector width 4x | scope_width = 4 |
+| 8 | Type u32 | IR type 12 |
+| 9 | Type s32 | IR type 11 |
+| 0xA | Type u64 | IR type 10 |
+| 0xB--0x12 | Reduction ops (add/min/max/inc/dec/and/or/xor) | Op index 0--7 |
+
+### Scope and Memory Order Validation
+
+All three functions enforce the PTX 8.0 scoped memory model rules through a three-way decision tree. The logic (taken from `sub_6C0D90` and `sub_6C4DA0` where the strings appear verbatim; `sub_6C1CF0` enforces equivalent constraints via positional subop checks) is:
+
+```
+if scope_qualifier_present:
+    if memory_order NOT present:
+        ERROR 7308: "Required scope with memory order semantics"
+elif memory_order_present:
+    WARNING 7308 (via sub_7F7C10): "Deprecated scope without memory order semantics"
+    // Deprecation warning — may be promoted to error in future PTX versions.
+    // If location info available (ctx+104), emits follow-up via sub_8955D0.
+
+if mmio_flag AND NOT global_domain:
+    ERROR 7308: "Domain param \"_global\" required for mmio semantics"
+```
+
+The warning path uses `sub_7F7C10` (the deprecation-warning emitter at `context+1176`), which returns a boolean indicating whether the warning was promoted to an error. This implements NVIDIA's staged deprecation of unscoped memory operations: PTX code using old-style `membar.cta` without explicit `.acquire`/`.release` qualifiers triggers the deprecation path, while new-style `fence.sc.cta.acquire` requires the full scope + order combination.
+
+### Mbarrier Intrinsic Lowering -- `sub_6C1CF0`
+
+The mbarrier handler (16KB, case 0xA) lowers `mbarrier.*` PTX intrinsics into Ori IR instruction sequences. It handles:
+
+1. **Scope/domain parsing**: First subop must be 2 (shared) or 3 (global). If the first subop is > 1, it is treated as the domain selector directly; otherwise the function enters the two-position scope path where the second subop supplies the domain.
+
+2. **Counted mode** (subop 1): Enables arrival-count tracking. When active, the parameter list includes an extra type-14 (integer) parameter for the expected arrival count. Bytemask mode (subop 6) is incompatible with counted mode -- error 7300: `"byte mask not allowed with counted"`.
+
+3. **Bytemask mode** (subop 6): Requires global destination (`subop[1] == 3`) and shared source (`subop[2] == 2`). Sets flag bit 17 (`0x20000`). Error messages: `"global dst should be specified with bytemask"` and `"shared src should be specified with bytemask"`.
+
+4. **Sequenced mode** (subop 5): Explicitly unsupported. Error 7300: `"sequenced : Not yet supported"`.
+
+5. **MMIO flag** (subop 4 when value == 4 in the optional-subop loop): Sets bit 3 in the flag word. Only valid with global domain (scope 2); enforced by the same `"_global required for mmio"` rule.
+
+#### Parameter Processing
+
+Parameters are stored at `state+10728` as 12-byte records `{value[4], flags[4], type[4]}`. The function iterates over `v100` parameters (2 or 3 depending on counted mode):
+
+- Each parameter type must be 10 (predicate register) or 12 (scope domain). Other types trigger error 7302 using the type name table at `off_229E8C0`.
+- For scope-domain parameters, the top 3 bits of the value word (`(value >> 28) & 7`) select the resolution mode:
+  - Mode 5: Named barrier resolution via `sub_91BF30`, then `sub_934630(opcode 130)` to create a barrier pseudo-op in the Ori IR.
+  - Mode 1 (no bit 24): Direct register reference (fast path, no resolution needed).
+  - Other modes: Full register resolution via `sub_91D150` + `sub_7DEFA0`.
+
+#### Output Instruction Sequence
+
+The function generates three Ori IR instructions:
+
+| Step | Builder | Opcode | Purpose |
+|---|---|---|---|
+| 1 | `sub_934630` | 214 | Mbarrier scope-domain setup; template mask `0x90FFFFFF` |
+| 2 | `sub_934630` | 273 | Memory ordering constraint / fence |
+| 3 | `sub_92C240` | 299 | Mbarrier operation with full flags (arrive/wait/test) |
+
+The flag word passed to opcode 299 encodes: `flags | 0x60000000`, where `flags` accumulates mmio (bit 3), bytemask (bit 17), and other qualifiers from the subop parsing.
+
+### Error Codes
+
+| Code | Message template | Severity |
+|---|---|---|
+| 7300 | `"Unexpected intrinsic name (%s)"` | Semantic restriction (hard error) |
+| 7301 | `"Unexpected intrinsic param number (%d)"` | Parameter count mismatch |
+| 7302 | `"Unexpected intrinsic type (%s) in param (%d)"` | Wrong parameter type |
+| 7303 | `"Unexpected intrinsic type (%s) instead of (%s) in param (%d)"` | Type mismatch with expected |
+| 7306 | `"Unexpected intrinsic subop in position (%d)"` | Positional subop error |
+| 7307 | `"Unexpected intrinsic subop (%s) in position (%d)"` | Named subop error |
+| 7308 | `"Instrinsic - \"%s\""` | Scope/order/domain validation |
+
+Two diagnostic functions handle these errors: `sub_895530` emits directly when source location is available (`ctx+48`); `sub_7EEFA0` builds a deferred diagnostic record.
+
+---
+
 ## Function Map
 
 | Address | Size | Identity | Phase |
@@ -645,6 +751,10 @@ Texture fetches are long-latency operations (hundreds of cycles). The hardware u
 | `sub_AA3BB0` | 2,726 | MBARRIER encoding | -- |
 | `sub_AA33C0` | -- | MBARRIER mnemonic builder | -- |
 | `sub_775010` | 18 | Barrier liveness computation entry | -- |
+| `sub_6D8B20` | 432 lines | OCG intrinsic body dispatcher (28-case switch) | -- |
+| `sub_6C0D90` | 812 lines | Atomic/reduction intrinsic lowering (scope+order) | -- |
+| `sub_6C1CF0` | 633 lines | Mbarrier intrinsic lowering (arrive/wait/test) | -- |
+| `sub_6C4DA0` | 647 lines | Fence/load-store intrinsic lowering (scope+domain) | -- |
 
 ## Pipeline Position and Data Flow
 
@@ -710,6 +820,8 @@ The `sub_18F6930` predicate (185 bytes) encodes the architecture-specific decisi
 - [Scoreboards & Dependency Barriers](../scheduling/scoreboards.md) -- phases 114, 115, 116; scoreboard generation
 - [Phase Manager](phase-manager.md) -- vtable dispatch mechanism, factory switch
 - [Predication](predication.md) -- shares entry infrastructure with LateExpandSyncInstructions
+- [Intrinsics Index](../intrinsics/index.md) -- OCG body dispatcher (`sub_6D8B20`) and per-family lowering functions
+- [OCG Intrinsic Lowering](../codegen/overview.md) -- dispatch table for `sub_6C0D90`/`sub_6C1CF0`/`sub_6C4DA0`
 - [GMMA/WGMMA Pipeline](gmma-pipeline.md) -- `wgmma.fence` and `tcgen05.fence` interactions
 - [SM Architecture Map](../targets/index.md) -- per-SM sync capabilities
 - [Knobs System](../config/knobs.md) -- knob 358, 472, 487, DisableErrbarAfterMembar
