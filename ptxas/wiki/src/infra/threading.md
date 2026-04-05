@@ -469,39 +469,289 @@ The **only shared mutable state** during parallel compilation is the peak wall-c
 
 ## GNU Make Jobserver Integration
 
-The jobserver client (`sub_1CC7300`) integrates ptxas with GNU Make's parallel job control protocol. When both `--jobserver` and `--split-compile` are active, ptxas respects the `-j` limit set by the parent `make` process.
+When both `--jobserver` and `--split-compile` are active, ptxas participates in GNU Make's parallel job token protocol. The compilation driver creates the jobserver client object before spawning the thread pool, and each per-kernel worker task must acquire a token before starting and release it when done. This throttles ptxas to never exceed the `make -j N` budget, even when `--split-compile` would otherwise use more threads.
 
-### Jobserver Protocol
+### Jobserver Object (296 bytes)
 
-The client reads `MAKEFLAGS` from the environment and searches for `--jobserver-auth=`:
+The jobserver state is a 296-byte heap object allocated once per compilation, stored at global `qword_29FE128`. The constructor (`sub_1CC7AF0`) is called from the compilation driver (`sub_4428E0`) when `*(_BYTE*)(context + 993)` is set (the `--jobserver` CLI flag).
 
-| Protocol | Detection | Mechanism |
+| Offset | Size | Type | Field |
+|---|---|---|---|
+| 0 | 4 | `int32` (atomic) | State code (0=OK; see state table below) |
+| 4 | 4 | `int32` | Saved `errno` from last failed syscall |
+| 8 | 1 | `byte` | Implicit token available (1=unconsumed) |
+| 16 | 8 | `int64` | Pending waiters (threads blocked in acquire) |
+| 24 | 8 | `int64` | Active count (tokens currently held) |
+| 32 | 8 | `void*` | Token buffer base (`std::vector<char>` data) |
+| 40 | 8 | `void*` | Token buffer cursor (stack top) |
+| 48 | 8 | `void*` | Token buffer capacity end |
+| 56 | 40 | `pthread_mutex_t` | Inner mutex (guards token accounting) |
+| 96 | 40 | `pthread_mutex_t` | Write mutex (guards `write()` to Make pipe) |
+| 136 | 48 | `pthread_cond_t` | Condition variable (wakes acquire waiters and reader thread) |
+| 184 | 1 | `byte` | Token-ready flag (set by reader thread / release handoff) |
+| 185 | 1 | `byte` | Last byte read from Make pipe |
+| 188 | 4 | `int32` | Read fd (Make pipe/FIFO read end) |
+| 192 | 4 | `int32` | Write fd (Make pipe/FIFO write end) |
+| 196 | 4 | `int32` | Internal pipe read fd (shutdown wakeup) |
+| 200 | 4 | `int32` | Internal pipe write fd (shutdown wakeup) |
+| 204 | 1 | `byte` | Opened-fds flag (1=ptxas opened the Make fds itself) |
+| 205 | 1 | `byte` | Shutdown flag |
+| 208 | 8 | `void*` | Reader thread handle (`std::thread`) |
+| 216 | 80 | bytes | Outer mutexes (serializing full acquire/release operations) |
+
+### MAKEFLAGS Parser: `sub_1CC7300`
+
+Called during object construction to detect the Make jobserver channel:
+
+```c
+// sub_1CC7300 -- parse MAKEFLAGS, open pipe/FIFO
+void sub_1CC7300(JobserverObject *obj) {
+    char *flags = getenv("MAKEFLAGS");
+    if (!flags) {
+        CAS(&obj->state, 5, 0);       // no MAKEFLAGS
+        return;
+    }
+    std::string s(flags);
+    size_t pos = s.find("--jobserver-auth=");
+    if (pos == npos) {
+        CAS(&obj->state, 6, 0);       // no --jobserver-auth=
+        return;
+    }
+    size_t val = pos + 17;             // skip "--jobserver-auth="
+
+    if (s.substr(val, 5) == "fifo:") {
+        // --- FIFO mode ---
+        std::string path = s.substr(val + 5, next_space);
+        int fd = open(path.c_str(), O_RDWR | O_NONBLOCK);  // 0x802
+        if (fd == -1) { CAS(&obj->state, 7, 0); return; }
+        obj->read_fd  = fd;            // same fd for both
+        obj->write_fd = fd;
+        obj->opened_fds = 1;
+    } else {
+        // --- Pipe mode ---
+        // parse "R,W" -- e.g. "3,4"
+        std::string r_str = s.substr(val, comma_pos - val);
+        std::string w_str = s.substr(comma_pos + 1, ...);
+        // validate: digits only
+        if (r_str.find_first_not_of("0123456789") != npos ||
+            w_str.find_first_not_of("0123456789") != npos) {
+            CAS(&obj->state, 7, 0); return;
+        }
+        int rd = dup(stoi(r_str));     // private copy
+        if (fcntl(rd, F_SETFD, FD_CLOEXEC) == -1) {
+            CAS(&obj->state, 7, 0); return;
+        }
+        int wd = dup(stoi(w_str));
+        if (fcntl(wd, F_SETFD, FD_CLOEXEC) == -1) {
+            close(rd);
+            CAS(&obj->state, 7, 0); return;
+        }
+        obj->read_fd  = rd;
+        obj->write_fd = wd;
+        obj->opened_fds = 1;
+    }
+}
+```
+
+| Protocol | `--jobserver-auth=` value | Detection | fd Setup |
+|---|---|---|---|
+| FIFO | `fifo:/path/to/fifo` | Prefix match on `fifo:` | `open(path, O_RDWR\|O_NONBLOCK)` -- single fd for both read and write |
+| Pipe | `R,W` (e.g. `3,4`) | Comma-separated integers after auth= | `dup()` each fd + `fcntl(F_SETFD, FD_CLOEXEC)` -- prevents fd leak to children |
+
+### Object Construction: `sub_1CC7AF0`
+
+After `sub_1CC7300` succeeds (state == 0), the constructor continues:
+
+1. Creates an **internal wakeup pipe** via `pipe()` -- fds stored at +196/+200
+2. Spawns the **reader thread** (`sub_1CC6720`) -- passed as a `std::thread` functor via `off_2406838`
+3. Pre-allocates the **token buffer** vector to hold `thread_count` bytes
+
+If state is 5 or 6 (no MAKEFLAGS, no auth string), the caller (`sub_4428E0`) emits: `"GNU Jobserver support requested, but no compatible jobserver found. Ignoring '--jobserver'"` and proceeds without throttling.
+
+### Reader Thread: `sub_1CC6720`
+
+A dedicated background thread that reads tokens from the Make pipe/FIFO and buffers them for the acquire function:
+
+```
+loop:
+    if state != 0 or shutdown → exit
+
+    lock(mutex_inner)
+    while pending_waiters == 0 and not shutdown:
+        cond_wait(cond, mutex_inner)     // sleep until someone needs a token
+    unlock(mutex_inner)
+
+    fd_set = { read_fd, internal_pipe_read }
+    select(max_fd + 1, &fd_set, NULL, NULL, NULL)    // block
+
+    if shutdown → exit
+
+    n = read(read_fd, &byte, 1)
+    if n == 1:
+        if pending_waiters > 0:
+            lock(mutex_inner + mutex_write)
+            push byte onto token_buffer
+            token_ready = 1
+            unlock(mutex_write)
+            cond_signal(cond)            // wake one acquire waiter
+        else:
+            write(write_fd, &byte, 1)    // no waiter → return token immediately
+    else if errno == EAGAIN:
+        continue                         // expected for non-blocking fd
+    else:
+        state = 11; exit                 // I/O error
+```
+
+The `select()` monitors two fds simultaneously: the Make pipe (for incoming tokens) and the internal wakeup pipe (for shutdown notification). The internal pipe avoids a race between checking the shutdown flag and blocking in `select()`.
+
+### Token Acquire: `sub_1CC6EC0`
+
+Called by each per-kernel worker before compilation begins. Returns 0 on success.
+
+```c
+int sub_1CC6EC0(JobserverObject *obj) {
+    if (!obj) return 4;
+    lock(outer_mutex_0);
+    if (obj->state) { unlock; return obj->state; }
+
+    lock(mutex_inner);
+    if (obj->implicit_token_available) {
+        // Fast path: consume the implicit token (no pipe I/O)
+        obj->implicit_token_available = 0;
+        obj->active_count++;
+        unlock_all;
+        return 0;
+    }
+    // Slow path: wait for reader thread to supply a token
+    obj->pending_waiters++;
+    if (obj->pending_waiters == 1)
+        cond_signal(cond);               // wake reader thread
+    while (!obj->token_ready && !obj->shutdown)
+        cond_wait(cond, mutex_inner);
+    if (obj->shutdown) { unlock_all; return 3; }
+    obj->token_ready = 0;
+    obj->pending_waiters--;
+    obj->active_count++;
+    unlock_all;
+    return 0;
+}
+```
+
+The **implicit token** is the standard GNU Make convention: the parent Make gives the first child an implicit token (no byte in the pipe). The first worker to call acquire consumes it for free; subsequent workers must wait for bytes to be read from the pipe.
+
+### Token Release: `sub_1CC7040`
+
+Called by each per-kernel worker after compilation completes. Returns 0 on success.
+
+```c
+int sub_1CC7040(JobserverObject *obj) {
+    if (!obj) return 4;
+    lock(outer_mutex_1);
+    if (obj->state) { unlock; return obj->state; }
+
+    lock(mutex_inner);
+    lock(mutex_write);
+    if (token_buffer not empty) {
+        // Path A: write a buffered byte back to Make pipe
+        byte = pop(token_buffer);
+        if (write(obj->write_fd, &byte, 1) == 1) {
+            obj->active_count--;
+            unlock_all;
+            return 0;
+        }
+        // write error → set state 11 or 2
+    }
+    unlock(mutex_write);
+
+    if (obj->pending_waiters > 0) {
+        // Path B: hand off directly to a waiting acquirer
+        obj->token_ready = 1;
+        obj->active_count--;
+        cond_signal(cond);
+        unlock_all;
+        return 0;
+    }
+    if (!obj->implicit_token_available && obj->active_count == 1) {
+        // Path C: return the implicit token
+        obj->implicit_token_available = 1;
+        obj->active_count = 0;
+        unlock_all;
+        return 0;
+    }
+    // Protocol error (double-free)
+    CAS(&obj->state, 12, 0);
+    unlock_all;
+    return 12;
+}
+```
+
+Release has three paths, in priority order:
+
+| Path | Condition | Action |
 |---|---|---|
-| FIFO | `--jobserver-auth=fifo:/path` | Opens named pipe with `O_RDWR|O_NONBLOCK` (flags 2050) |
-| Pipe | `--jobserver-auth=R,W` | Parses `read_fd,write_fd` pair directly |
+| A | Token buffer non-empty | Pop byte, `write()` back to Make pipe |
+| B | No buffered token but waiters exist | Set `token_ready`, signal condvar (avoids pipe round-trip) |
+| C | No buffered token, no waiters, last active | Restore implicit token flag |
 
-### Atomic State Machine
+### Per-Kernel Worker Integration
 
-The jobserver initialization uses `InterlockedCompareExchange` (CAS) for lock-free state transitions:
+In `sub_436DF0` (the per-kernel compilation task submitted to the thread pool):
 
-| State | Meaning |
-|---|---|
-| 0 | Uninitialized |
-| 5 | No `MAKEFLAGS` environment variable |
-| 6 | No `--jobserver-auth=` in MAKEFLAGS |
-| 7 | Open failed (pipe or FIFO) |
-
-### Token Acquisition / Release
-
-Each per-kernel worker task brackets its execution with jobserver calls:
-
-```
-sub_1CC6EC0()    // acquire token (read 1 byte from pipe/FIFO)
-  ... compile kernel ...
-sub_1CC7040()    // release token (write 1 byte back)
+```c
+void sub_436DF0(int64_t *task) {
+    sub_430590("ptxas", kernel_name);     // set TLS program name
+    if (task[5] && sub_1CC6EC0(task[5]))  // acquire token if jobserver active
+        sub_42F590(FATAL);                // acquire failed → fatal error
+    // ... sub_432500(): full DAGgen + OCG pipeline ...
+    if (!task[5] || !sub_1CC7040(task[5]))  // release token
+        return;                             // normal return
+    sub_42F590(FATAL);                    // release failed → fatal error
+}
 ```
 
-If jobserver acquisition fails (e.g., the pipe is closed), a fatal error is emitted. This throttles ptxas to never exceed the number of concurrently available Make job slots, even when `--split-compile` would otherwise spawn more threads.
+`task[5]` is populated from `qword_29FE128` during task dispatch in `sub_4428E0`. When `--jobserver` is not active, `task[5] == 0` and both acquire/release calls are skipped.
+
+### Destroy: `sub_1CC6C20`
+
+Called after `sub_1CB1AE0` (wait-all) and `sub_1CB1970` (pool destroy) complete:
+
+1. Set shutdown flag (+205) via `_InterlockedCompareExchange8`
+2. Lock inner mutex, signal condvar (wake reader thread), unlock
+3. Write 1 byte to internal pipe write end (+200) -- unblocks `select()` in reader thread
+4. Join reader thread
+5. Lock inner mutex, drain all buffered tokens by writing each byte back to write_fd
+6. Unlock inner mutex
+7. Close Make fds if `opened_fds` is set (for FIFO: close once since read_fd == write_fd; for pipe: close both if different)
+8. Close internal pipe fds (+196, +200)
+9. Destroy condvar, free token buffer, free 296-byte object
+
+### State Machine
+
+All state transitions use `_InterlockedCompareExchange(state, new_value, 0)` -- only the first error sticks; subsequent errors are silently dropped.
+
+| State | Meaning | Set by |
+|---|---|---|
+| 0 | OK (operational) | Constructor |
+| 2 | Unexpected I/O (short write/read) | Release, reader thread |
+| 5 | No `MAKEFLAGS` environment variable | `sub_1CC7300` |
+| 6 | No `--jobserver-auth=` in MAKEFLAGS | `sub_1CC7300` |
+| 7 | `open()`/`dup()`/`fcntl()` failed | `sub_1CC7300` |
+| 11 | I/O error (errno recorded at +4) | Reader thread, release, constructor |
+| 12 | Protocol error (double-free of token) | Release |
+
+### Throttling Semantics
+
+With `make -jN` and `--split-compile M` where M > N:
+
+```
+ptxas creates M worker threads in the pool
+but only N-1 pipe tokens exist + 1 implicit token = N total
+workers that cannot acquire a token block in cond_wait
+→ at most N kernels compile simultaneously, matching Make's budget
+→ as each kernel finishes and releases its token, a blocked worker wakes
+```
+
+Without `--jobserver`, all M workers run freely with no external throttling.
 
 ## Pool Allocator Thread Safety
 
@@ -571,9 +821,12 @@ sub_607D90(6);    // release lock 6
 | `0x1CBEC10` | -- | 1 | Priority heap constructor (32-byte struct) |
 | `0x1CBECC0` | -- | -- | Priority heap push (sift-up) |
 | `0x1CBEDD0` | -- | -- | Priority heap pop (sift-down) |
-| `0x1CC7300` | 2,027 B | 1 | GNU Make jobserver client init |
-| `0x1CC6EC0` | -- | -- | Jobserver token acquire (read from pipe/FIFO) |
-| `0x1CC7040` | -- | -- | Jobserver token release (write to pipe/FIFO) |
+| `0x1CC6720` | ~700 B | 1 | Jobserver reader thread (`select` loop, pushes tokens to buffer) |
+| `0x1CC6C20` | ~300 B | 1 | Jobserver destroy (drain tokens, close fds, free 296-byte object) |
+| `0x1CC6EC0` | 384 B | 1 | Jobserver token acquire (consume implicit or wait for pipe token) |
+| `0x1CC7040` | ~280 B | 1 | Jobserver token release (write byte back or hand off to waiter) |
+| `0x1CC7300` | 2,027 B | 1 | Jobserver MAKEFLAGS parser (FIFO vs pipe detection, fd setup) |
+| `0x1CC7AF0` | ~700 B | 1 | Jobserver constructor (alloc 296B, spawn reader thread) |
 
 ## Cross-References
 
