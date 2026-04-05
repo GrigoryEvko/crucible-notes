@@ -553,6 +553,68 @@ Saturation: `.sat`
 | `_warpgroup.wait` | -- | `N` | 90+ | 7.8 | Warpgroup wait |
 | `_warpgroup.commit_batch` | -- | -- | 90+ | 7.8 | Warpgroup commit batch |
 
+## Internal Instructions
+
+These underscore-prefixed instructions are not part of the public PTX ISA. They are generated internally by ptxas during lowering, stub synthesis, or as pre-codegen IR representations. All are registered in the instruction table builder `sub_46E000` and appear in `--dumpir` output, but users never write them directly.
+
+### Internal Memory
+
+| Mnemonic | Type suffixes | Operands | String addr | Handler / Formatter | Description |
+|---|---|---|---|---|---|
+| `_ldldu` | (varies) | `d, [a]` | `0x1d080ee` | formatter `sub_4DD860` | Unified load-uniform; combines ld+ldu semantics for uniform-cache-path loads |
+| `_ldsm` | `.b8 .b16 .s8.s4 .u8.u4 .s4.s2 .u4.u2` | `d, [M]` | `0x1d076c2` | handlers `sub_46B0C0`--`sub_46B160`, validator `sub_4AEB60` | Load shared matrix; loads matrix tiles from shared memory into registers for MMA. Opcode ID 28 |
+| `_movm` | `.b16 .s8.s4 .u8.u4 .s4.s2 .u4.u2` | `d, a` | `0x1d076da` | handlers `sub_46B1B0`--`sub_46B260` | Move matrix; register-to-register matrix data movement with optional format conversion. Opcode ID 29 |
+
+### Internal Cache Control
+
+| Mnemonic | Type suffixes | Operands | String addr | Table builder xref | Description |
+|---|---|---|---|---|---|
+| `_createpolicy.fractional` | `.L2` | `d, fraction` | `0x1d0813a` | `0x47752f` | Internal form of `createpolicy.fractional`; creates fractional L2 cache eviction policy |
+| `_createpolicy.range` | `.L2` | `d, lo, hi, hit, miss` | `0x1d08158` | `0x477579` | Internal form of `createpolicy.range`; creates L2 policy for address range |
+
+### Internal Surface
+
+| Mnemonic | Type suffixes | Operands | String addr | Table builder xrefs | Description |
+|---|---|---|---|---|---|
+| `_sulea.b` | (varies) | `d, [surf, coord]` | `0x1d088bc` | `0x4815cd`, `0x48166b` | Surface load effective address, bindless; computes address for `suld.b` without performing the load |
+| `_sulea.p` | (varies) | `d, [surf, coord]` | `0x1d088c5` | `0x48161c`, `0x4816ba` | Surface load effective address, packed; computes address for `sust.p`-mode surface access |
+
+### Internal FP / Guard
+
+| Mnemonic | Type suffixes | Operands | String addr | Table builder xref | Description |
+|---|---|---|---|---|---|
+| `_checkfp.divide` | (varies) | `d, a, b` | `0x1d088d2` | `0x481709` | FP division guard; inserted during lowering to validate divisor (handles division-by-zero, denormals) before SASS `div` emission |
+
+### Internal Control Flow / ABI
+
+| Mnemonic | Type suffixes | Operands | String addr | Table builder xref | Description |
+|---|---|---|---|---|---|
+| `_gen_proto` | -- | (opaque) | `0x1d08903` | `0x48189a` | Generate function prototype; synthesizes call prototypes for indirect / device-runtime calls during ABI resolution |
+| `_jcall` | -- | `target` | `0x1d0890e` | `0x4818df` | Internal jump-call; used inside auto-generated unified-function-stub (UFT) wrappers synthesized by `sub_451680` (`.func .attribute(.unified_func_stub) __cuda_uf_stub_%s() { _jcall %s; }`) |
+
+### Internal Warp
+
+| Mnemonic | Type suffixes | Operands | String addr | Table builder xref | Description |
+|---|---|---|---|---|---|
+| `_match` | (varies) | `d, a` | `0x1d08a24` | `0x483404` | Internal match; pre-sync lowered form of warp `match` instruction, distinct from the public `match.sync` |
+
+### Internal MMA / Tensor Core
+
+| Mnemonic | Type suffixes | Operands | String addr | Handlers | Description |
+|---|---|---|---|---|---|
+| `_mma.warpgroup` | 135 type combos (F16, BF16, TF32, FP8, INT8) | `d, a, b, c` | `0x1d072e3` | 135 handlers `sub_4668A0`--`sub_469FD0` | Warp-group MMA; pre-codegen form of WGMMA. Each handler registers one (src, dst, acc) type triple via `sub_465030`. Lowers to `MERCURY_warpgroup_mma_*` SASS opcodes (sm_90+) |
+| `_zzn.z8a8x4` | (sub-byte int) | `d, a, b, c` | `0x1cfdc03` | data table at `0x1cfe678` | ROT13-obfuscated `_mma.m8n8k4`; sub-byte integer MMA with tile shape m8n8k4 for INT4/INT2 and bit-level XOR MMA (sm_75+) |
+
+**Handler address summary** for internal instructions:
+
+| Range | Contents |
+|---|---|
+| `sub_46B0C0`--`sub_46B260` | `_ldsm` (3) + `_movm` (3) type-variant handlers |
+| `sub_4668A0`--`sub_469FD0` | `_mma.warpgroup` 135 type-variant handlers |
+| `sub_4AEB60` | `_ldsm` validator (3.7 KB) -- handles `.s8.s4`/`.u8.u4` format rules |
+| `sub_451680` | `_jcall` UFT stub generator |
+| `sub_4DD860` | `_ldldu` PTX text formatter |
+
 ## Instruction Table Builder Internals
 
 ### Registration Mechanism
