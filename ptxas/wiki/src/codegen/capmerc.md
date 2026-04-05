@@ -1,0 +1,450 @@
+# Capsule Mercury & Finalization
+
+Capsule Mercury ("capmerc") is a packaging format that wraps Mercury-encoded instruction streams with relocation metadata, debug information, and a snapshot of compilation knobs, enabling deferred finalization for a target SM that may differ from the original compilation target. Where standard Mercury produces a fully-resolved SASS binary bound to a single SM, capmerc produces an intermediate ELF object that a downstream tool (the driver or linker) can finalize into native SASS at load time. This is the default output format for all SM 100+ targets (Blackwell, Jetson Thor, consumer RTX 50-series). The capmerc data lives in `.nv.capmerc<funcname>` per-function ELF sections alongside 21 types of `.nv.merc.*` auxiliary sections carrying cloned debug data, memory-space metadata, and Mercury-specific relocations. Finalization can be "opportunistic" -- the same capmerc object may be finalized for different SMs within or across architectural families, controlled by `--opportunistic-finalization-lvl`.
+
+| | |
+|---|---|
+| **Output modes** | `mercury` (SM 75--99 default), `capmerc` (SM 100+ default), `sass` (explicit only) |
+| **CLI parser** | `sub_703AB0` (10KB, ParsePtxasOptions) |
+| **Auto-enable** | SM arch > 99 sets `*(context + offset+81) = 1` |
+| **Mercury mode flag** | `*(DWORD*)(context+385) == 2` (shared with Mercury) |
+| **Capsule descriptor** | 328-byte object, one per function (`sub_1C9C300`) |
+| **Merc section classifier** | `sub_1C98C60` (9KB, 15 `.nv.merc.*` names) |
+| **Master ELF emitter** | `sub_1C9F280` (97KB, orchestrates full CUBIN output) |
+| **Self-check verifier** | `sub_720F00` (64KB Flex lexer) + `sub_729540` (35KB comparator) |
+| **Off-target checker** | `sub_60F290` (compatibility validation) |
+| **Kernel finalizer** | `sub_612DE0` (47KB, fastpath optimization) |
+
+## Output Mode Selection
+
+The ptxas CLI (`sub_703AB0`) registers three binary-kind options plus related flags:
+
+| Option | String literal | Purpose |
+|---|---|---|
+| `--binary-kind` | `"mercury,capmerc,sass"` | Select output format |
+| `--cap-merc` | `"Generate Capsule Mercury"` | Force capmerc regardless of SM |
+| `--self-check` | `"Self check for capsule mercury (capmerc)"` | Roundtrip verification |
+| `--out-sass` | `"Generate output of capmerc based reconstituted sass"` | Dump reconstituted SASS |
+| `--opportunistic-finalization-lvl` | (in finalization logic) | Finalization aggressiveness |
+
+When `--binary-kind` is not specified, the default is determined by SM version:
+
+```c
+// Pseudocode from sub_703AB0 + auto-enable logic
+if (sm_version > 99) {
+    *(context + offset + 81) = 1;  // capmerc auto-enabled
+    binary_kind = CAPMERC;
+} else if (sm_version >= 75) {
+    binary_kind = MERCURY;
+} else {
+    binary_kind = SASS;  // legacy direct encoding
+}
+```
+
+The Mercury mode flag `*(DWORD*)(context+385) == 2` is shared between Mercury and capmerc -- both use the identical Mercury encoder pipeline (phases 117--122). The capmerc distinction is purely at the ELF emission level: capmerc wraps the phase-122 SASS output in a capsule descriptor with relocation metadata instead of emitting it directly as a `.text` section.
+
+## Capsule Mercury ELF Structure
+
+A capmerc-mode compilation produces a CUBIN ELF with two layers of content: standard CUBIN sections (`.text.<func>`, `.nv.constant0`, `.nv.info.<func>`, etc.) and a parallel set of `.nv.merc.*` sections carrying the metadata needed for deferred finalization.
+
+```
+CUBIN ELF (capmerc mode)
+├── Standard sections
+│   ├── .shstrtab, .strtab, .symtab, .symtab_shndx
+│   ├── .text.<funcname>               (SASS binary, possibly partial)
+│   ├── .nv.constant0.<funcname>       (constant bank data)
+│   ├── .nv.shared.<funcname>          (shared memory layout)
+│   ├── .nv.info.<funcname>            (EIATTR attributes)
+│   ├── .note.nv.tkinfo, .note.nv.cuinfo
+│   └── .nv.uft.entry                 (unified function table)
+│
+├── Per-function capsule descriptor
+│   └── .nv.capmerc<funcname>          (328-byte descriptor + payload)
+│
+└── Mercury auxiliary sections (21 types)
+    ├── .nv.merc.debug_abbrev          (DWARF abbreviation table)
+    ├── .nv.merc.debug_aranges         (DWARF address ranges)
+    ├── .nv.merc.debug_frame           (DWARF frame info)
+    ├── .nv.merc.debug_info            (DWARF info)
+    ├── .nv.merc.debug_line            (DWARF line table)
+    ├── .nv.merc.debug_loc             (DWARF locations)
+    ├── .nv.merc.debug_macinfo         (DWARF macro info)
+    ├── .nv.merc.debug_pubnames        (DWARF public names)
+    ├── .nv.merc.debug_pubtypes        (DWARF public types)
+    ├── .nv.merc.debug_ranges          (DWARF ranges)
+    ├── .nv.merc.debug_str             (DWARF string table)
+    ├── .nv.merc.nv_debug_ptx_txt      (embedded PTX source text)
+    ├── .nv.merc.nv_debug_line_sass    (SASS-level line table)
+    ├── .nv.merc.nv_debug_info_reg_sass (register allocation info)
+    ├── .nv.merc.nv_debug_info_reg_type (register type info)
+    ├── .nv.merc.symtab_shndx          (extended section index table)
+    ├── .nv.merc.nv.shared.reserved    (shared memory reservation)
+    ├── .nv.merc.rela                  (Mercury relocations)
+    ├── .nv.merc.rela<secname>         (per-section relocation tables)
+    └── .nv.merc.<memory-space>        (cloned constant/global/local/shared)
+```
+
+### Capsule Descriptor -- `sub_1C9C300`
+
+Each function produces a `.nv.capmerc<funcname>` section constructed by `sub_1C9C300` (24KB, 3816 bytes binary). This function processes `.nv.capmerc` and `.merc` markers, embeds KNOBS data (compilation configuration snapshot), manages constant bank replication, and creates the per-function descriptor.
+
+The descriptor is a 328-byte object containing:
+- Mercury-encoded instruction stream for the function
+- R_MERCURY_* relocation entries that must be patched during finalization
+- KNOBS block -- a serialized snapshot of all knob values affecting code generation, optimization level, target parameters, and feature flags
+- References to the `.nv.merc.*` auxiliary sections
+- Function-level metadata: register counts, barrier counts, shared memory usage
+
+The KNOBS embedding allows the finalizer to reproduce exact compilation settings without the original command-line arguments. This is critical for off-target finalization where the finalizer runs in a different context (e.g., the CUDA driver at application load time).
+
+### Capsule Descriptor Layout (328 bytes)
+
+The descriptor is heap-allocated via `sub_424070(allocator, 328)` and zero-filled before field initialization. The constructor also creates a companion `.merc<funcname>` descriptor (same 328-byte layout) when merc section mirroring is active.
+
+```
+         Capsule Descriptor (328 bytes = 0x148)
+         ======================================
+
+         Group 1: Identity
+         ┌─────────┬──────┬────────────────────────────────────────┐
+   0x000 │ WORD    │  2B  │ desc_version                           │
+   0x002 │ WORD    │  2B  │ instr_format_version                   │
+   0x004 │ DWORD   │  4B  │ section_index                          │
+   0x008 │ DWORD   │  4B  │ weak_symbol_index                      │
+   0x00C │ --      │  4B  │ (padding)                              │
+         └─────────┴──────┴────────────────────────────────────────┘
+
+         Group 2: SASS Data
+         ┌─────────┬──────┬────────────────────────────────────────┐
+   0x010 │ QWORD   │  8B  │ weak_symbol_desc                       │
+   0x018 │ QWORD   │  8B  │ sass_data_offset                       │
+   0x020 │ DWORD   │  4B  │ sass_data_size                         │
+   0x024 │ --      │  4B  │ (padding)                              │
+   0x028 │ QWORD   │  8B  │ func_name_ptr                          │
+         └─────────┴──────┴────────────────────────────────────────┘
+
+         Group 3: Relocation Infrastructure
+         ┌─────────┬──────┬────────────────────────────────────────┐
+   0x030 │ QWORD   │  8B  │ rela_list_a (vector)                   │
+   0x038 │ QWORD   │  8B  │ rela_list_b (vector)                   │
+   0x040 │ QWORD   │  8B  │ reloc_symbol_list (vector)             │
+   0x048 │ QWORD   │  8B  │ aux_rela_list (vector)                 │
+   0x050 │ QWORD   │  8B  │ debug_rela_list (vector)               │
+   0x058 │ QWORD   │  8B  │ text_section_offset                    │
+   0x060 │ QWORD   │  8B  │ reloc_index_set (sorted container)     │
+   0x068 │ QWORD   │  8B  │ per_reloc_data_set (sorted container)  │
+   0x070 │ BYTE    │  1B  │ sampling_mode                          │
+   0x071 │ --      │  7B  │ (padding)                              │
+   0x078 │ QWORD   │  8B  │ reloc_payload_map (sorted container)   │
+         └─────────┴──────┴────────────────────────────────────────┘
+
+   0x080 │ --      │ 32B  │ (reserved, not written by constructor)  │
+         └─────────┴──────┴────────────────────────────────────────┘
+
+         Group 4: Function Metadata
+         ┌─────────┬──────┬────────────────────────────────────────┐
+   0x0A0 │ QWORD   │  8B  │ section_flags                          │
+   0x0A8 │ DWORD   │  4B  │ max_register_count                     │
+   0x0AC │ DWORD   │  4B  │ extra_section_index                    │
+   0x0B0 │ BYTE    │  1B  │ has_global_refs                        │
+   0x0B1 │ BYTE    │  1B  │ has_shared_refs                        │
+   0x0B2 │ BYTE    │  1B  │ has_exit                               │
+   0x0B3 │ BYTE    │  1B  │ has_crs                                │
+   0x0B4 │ BYTE    │  1B  │ uses_atomics                           │
+   0x0B5 │ BYTE    │  1B  │ uses_shared_atomics                    │
+   0x0B6 │ BYTE    │  1B  │ uses_global_atomics                    │
+   0x0B7 │ BYTE    │  1B  │ has_texture_refs                       │
+   0x0B8 │ --      │ 24B  │ (padding)                              │
+         └─────────┴──────┴────────────────────────────────────────┘
+
+         Group 5: Code Generation Parameters
+         ┌─────────┬──────┬────────────────────────────────────────┐
+   0x0D0 │ QWORD   │  8B  │ knobs_section_desc_ptr → 64B sub-obj  │
+         │         │      │   +0x00 DWORD: knobs_section_index     │
+         │         │      │   +0x08 QWORD: knobs_section_offset    │
+         │         │      │   +0x10 DWORD: knobs_section_size      │
+         │         │      │   +0x18 QWORD: knobs_section_name_ptr  │
+   0x0D8 │ DWORD   │  4B  │ stack_frame_size                       │
+   0x0DC │ --      │  4B  │ (padding)                              │
+   0x0E0 │ DWORD   │  4B  │ register_count                         │
+   0x0E4 │ --      │  4B  │ (padding)                              │
+   0x0E8 │ DWORD   │  4B  │ barrier_info_size                      │
+   0x0EC │ --      │  4B  │ (padding)                              │
+   0x0F0 │ QWORD   │  8B  │ barrier_info_data_ptr                  │
+   0x0F8 │ --      │  8B  │ (reserved)                             │
+         └─────────┴──────┴────────────────────────────────────────┘
+
+         Group 6: Constant Bank & Section Info
+         ┌─────────┬──────┬────────────────────────────────────────┐
+   0x100 │ QWORD   │  8B  │ const_bank_offset                      │
+   0x108 │ DWORD   │  4B  │ const_bank_size                        │
+   0x10C │ --      │  4B  │ (padding)                              │
+   0x110 │ QWORD   │  8B  │ section_name_ptr (".nv.capmerc<func>") │
+   0x118 │ QWORD   │  8B  │ section_alignment (default 16)         │
+   0x120 │ DWORD   │  4B  │ const_bank_section_index               │
+   0x124 │ --      │  4B  │ (padding)                              │
+   0x128 │ DWORD   │  4B  │ text_section_index                     │
+   0x12C │ DWORD   │  4B  │ text_rela_section_index                │
+         └─────────┴──────┴────────────────────────────────────────┘
+
+         Group 7: KNOBS Embedding
+         ┌─────────┬──────┬────────────────────────────────────────┐
+   0x130 │ QWORD   │  8B  │ kv_pair_list (vector)                  │
+   0x138 │ QWORD   │  8B  │ knobs_pair_list (vector)               │
+   0x140 │ WORD    │  2B  │ min_sm_version (default 256 = sentinel) │
+   0x142 │ BYTE    │  1B  │ has_crs_depth                          │
+   0x143 │ --      │  5B  │ (padding to 0x148)                     │
+         └─────────┴──────┴────────────────────────────────────────┘
+```
+
+Key design observations:
+
+**Flag byte block (+0x0B0 to +0x0B7).** Eight single-byte flags capture function characteristics that determine which R_MERCURY_* relocation patches the finalizer must apply. The flags are set by type-2, type-3, and type-4 markers in the capmerc stream. Each flag is a boolean (0 or 1), never a bitfield.
+
+**KNOBS indirection (+0x0D0).** The KNOBS data does not live inline in the descriptor. Instead, +0x0D0 points to a separately allocated 64-byte sub-object carrying the ELF coordinates (section index, file offset, size, and name pointer) of the KNOBS section. This allows the KNOBS data to reside in a dedicated ELF section while the descriptor references it by position. The KNOBS pair list at +0x138 and the generic key-value list at +0x130 store the parsed key-value pairs from marker type 90 data blocks; the "KNOBS" string literal serves as the discriminator between the two lists.
+
+**Dual-descriptor pattern.** When the merc section mirror is active, the constructor allocates a second 328-byte object for the `.merc<funcname>` companion section. This companion receives a copy of the SASS data (not a pointer -- an actual `memcpy` of `sass_data_size` bytes), the function name with a `.merc` prefix, and the section flags from the original ELF section header at +0x0A0. The companion's weak_symbol_index (+0x008) is always zero.
+
+**Relocation containers.** The three sorted containers at +0x060, +0x068, and +0x078 (created via `sub_425CA0` with comparator pair `sub_427750`/`sub_427760` and element size 0x20 = 32 bytes) form a three-level relocation index. The reloc_index_set stores symbol indices that appear in relocations. The per_reloc_data_set stores per-symbol relocation metadata. The reloc_payload_map associates symbol indices with the actual payload data that the finalizer patches into instruction bytes. These are populated by marker sub-types 10, 23, 25, 28, 40, 46, 49, 52, 57, 64, 68, 70, 71, 85, and 87.
+
+**min_sm_version sentinel.** The default value 256 (0x100) at +0x140 acts as a sentinel meaning "no minimum SM constraint." When a target profile is available at construction time, the profile's SM version overwrites this field. Marker sub-type 95 can further override it when CRS depth information constrains the minimum SM.
+
+### Capmerc Marker Stream Format
+
+The constructor parses a compact binary marker stream embedded in the capmerc section data. Each marker begins with a type byte followed by a sub-type byte:
+
+| Type | Size | Format | Description |
+|---|---|---|---|
+| 2 | 4 bytes fixed | `[02] [sub] [00] [00]` | Boolean flag markers |
+| 3 | 4 bytes fixed | `[03] [sub] [WORD payload]` | Short value markers |
+| 4 | variable | `[04] [sub] [WORD size] [payload...]` | Variable-length data markers |
+
+Selected marker sub-types and the descriptor fields they populate:
+
+| Sub | Type | Descriptor Field | Purpose |
+|---|---|---|---|
+| 10 | 4 | +0x0B0 `has_global_refs` | Function accesses global memory |
+| 21 | 2 | +0x0B2 `has_exit` | Function contains EXIT instruction |
+| 22 | 2 | +0x0B3 `has_crs` | Function uses call return stack |
+| 23 | 4 | +0x0A8 `max_register_count` | Register pressure (with max tracking) |
+| 25 | 4 | +0x0B1 `has_shared_refs` | Function accesses shared memory |
+| 27 | 3 | +0x000 `desc_version` | Descriptor format version stamp |
+| 47 | 4 | +0x002 `instr_format_version` | Instruction encoding format version |
+| 50 | 4 | +0x0E0 `register_count` | Allocated register count |
+| 54 | 4 | +0x0B7 `has_texture_refs` | Function uses texture/sampler units |
+| 67 | 4 | +0x0E8, +0x0F0 `barrier_info` | Barrier count and data |
+| 72 | 4 | +0x0D0 `knobs_section_desc_ptr` | KNOBS section ELF binding |
+| 73 | 3 | +0x0D8 `stack_frame_size` | Per-thread stack frame bytes |
+| 74 | 2 | +0x070 `sampling_mode` | Interpolation/sampling mode |
+| 88 | 3 | +0x0B4/B5/B6 | Atomic usage (plain/shared/global) |
+| 90 | 4 | +0x138 `knobs_pair_list` | KNOBS key-value data block |
+| 95 | 3 | +0x140, +0x142 | Min SM version + CRS depth flag |
+
+## .nv.merc.* Section Builder Pipeline
+
+Four functions cooperate to construct the `.nv.merc.*` section namespace:
+
+```
+sub_1C9F280 (97KB, Master ELF emitter)
+  │
+  ├─ sub_1C9B110 (23KB) ── Mercury capsule builder
+  │   Creates .nv.merc namespace, reads symtab entry count,
+  │   allocates mapping arrays, duplicates sections into merc space
+  │
+  ├─ sub_1CA2E40 (18KB) ── Mercury section cloner
+  │   Iterates all sections, clones constant/global/shared/local
+  │   into .nv.merc.* namespace, creates .nv.merc.rela sections,
+  │   handles .nv.global.init and .nv.shared.reserved
+  │
+  ├─ sub_1C9C300 (24KB) ── Capsule descriptor processor
+  │   Processes .nv.capmerc and .merc markers, embeds KNOBS,
+  │   handles constant bank replication and rela duplication
+  │
+  ├─ sub_1CA3A90 (45KB) ── Section merger
+  │   Merge/combine pass for sections with both merc and non-merc
+  │   copies; processes .nv.constant bank sections, handles section
+  │   linking and rela association
+  │
+  └─ sub_1C99BB0 (25KB) ── Section index remap
+      Reindexes sections after dead elimination, handles
+      .symtab_shndx / .nv.merc.symtab_shndx mapping
+```
+
+The section classifiers `sub_1C9D1F0` (16KB) and `sub_1C98C60` (9KB) map section names to internal type IDs. The former handles both SASS and merc debug section variants; the latter is merc-specific and recognizes all 15 `.nv.merc.debug_*` names.
+
+## R_MERCURY_* Relocation Types
+
+Capsule Mercury defines its own relocation type namespace for references within `.nv.merc.rela` sections and the capsule descriptor. These are distinct from standard CUDA ELF relocations (R_NV_32, etc.) and are processed during finalization rather than at link time.
+
+| Type | Description |
+|---|---|
+| `R_MERCURY_ABS64` | 64-bit absolute address |
+| `R_MERCURY_ABS32` | 32-bit absolute address |
+| `R_MERCURY_ABS16` | 16-bit absolute address |
+| `R_MERCURY_PROG_REL` | PC-relative reference |
+| `R_MERCURY_8_0` | Sub-byte patch: bits [7:0] of target word |
+| `R_MERCURY_8_8` | Sub-byte patch: bits [15:8] |
+| `R_MERCURY_8_16` | Sub-byte patch: bits [23:16] |
+| `R_MERCURY_8_24` | Sub-byte patch: bits [31:24] |
+| `R_MERCURY_8_32` | Sub-byte patch: bits [39:32] |
+| `R_MERCURY_8_40` | Sub-byte patch: bits [47:40] |
+| `R_MERCURY_8_48` | Sub-byte patch: bits [55:48] |
+| `R_MERCURY_8_56` | Sub-byte patch: bits [63:56] |
+| `R_MERCURY_FUNC_DESC` | Function descriptor reference |
+| `R_MERCURY_UNIFIED` | Unified address space reference |
+| `R_MERCURY_TEX_HEADER_INDEX` | Texture header table index |
+| `R_MERCURY_SAMP_HEADER_INDEX` | Sampler header table index |
+| `R_MERCURY_SURF_HEADER_INDEX` | Surface header table index |
+
+### Sub-Byte Relocation Design
+
+The eight `R_MERCURY_8_*` types enable patching individual bytes within a 64-bit instruction word. Mercury instruction encodings pack multiple fields into single 8-byte QWORDs (the 1280-bit instruction buffer at `a1+544` is organized as 20 QWORDs). During finalization for a different SM, only certain bit-fields within an instruction word may need updating -- for example, the opcode variant bits or register class encoding -- while neighboring fields remain unchanged. The sub-byte types let the finalizer patch exactly one byte at a specific position within the word without a read-modify-write cycle on the entire QWORD.
+
+### Relocation Resolution
+
+The master relocation resolver `sub_1CD48C0` (22KB) handles both standard and capmerc relocations. For R_MERCURY_UNIFIED, it converts internal relocation type 103 to type 1 (standard absolute). The resolver iterates relocation entries and handles: alias redirections, dead-function relocation skipping, `__UFT_OFFSET` / `__UDT_OFFSET` pseudo-relocations, PC-relative branch validation, NVRS (register spill) relocations, and YIELD-to-NOP conversion for forward progress guarantees.
+
+## Self-Check Mechanism
+
+The `--self-check` flag activates a roundtrip verification that validates the capmerc encoding by reconstituting SASS from the capsule data and comparing it against the original:
+
+```
+Phase 122 output (SASS) ──────────────────────────> reference SASS
+         │
+         └─ capmerc packaging ─> .nv.capmerc<func>
+                                        │
+                                        └─ reconstitute ─> reconstituted SASS
+                                                                │
+                                                    section-by-section compare
+                                                                │
+                                                      pass / fail (error 17/18/19)
+```
+
+The reconstitution pipeline uses `sub_720F00` (64KB), a Flex-generated SASS text lexer with thread-safety support (pthread_mutexattr_t), to parse the reconstituted instruction stream. `sub_729540` (35KB) performs the actual section-by-section comparison.
+
+Three error codes signal specific self-check failures:
+
+| Error code | Meaning |
+|---|---|
+| 17 | Section content mismatch (instruction bytes differ) |
+| 18 | Section count mismatch (missing or extra sections) |
+| 19 | Section metadata mismatch (size, alignment, or flags differ) |
+
+These error codes trigger `longjmp`-based error recovery in the master ELF emitter (`sub_1C9F280`), which uses `_setjmp` at its entry point for non-local error handling.
+
+The `--out-sass` flag causes ptxas to dump the reconstituted SASS to a file, useful for debugging self-check failures by manual comparison with the original SASS output.
+
+## Opportunistic Finalization
+
+The `--opportunistic-finalization-lvl` flag controls how aggressively capmerc binaries may be finalized for a target SM different from the compilation target:
+
+| Level | Name | Behavior |
+|---|---|---|
+| 0 | default | Standard finalization for the compile target only |
+| 1 | none | No finalization; output stays as capmerc (deferred to driver) |
+| 2 | intra-family | Finalize for any SM within the same architectural family |
+| 3 | intra+inter | Finalize across SM families |
+
+Level 2 allows a capmerc binary compiled for sm_100 (datacenter Blackwell) to be finalized for sm_103 (Blackwell Ultra / GB300) without recompilation. Level 3 extends this across families -- for example, sm_100 capmerc finalized for sm_120 (consumer RTX 50-series).
+
+The key constraint is instruction encoding compatibility: the sub-byte R_MERCURY_8_* relocations can patch SM-specific encoding bits, but the overall instruction format and register file layout must be compatible between source and target.
+
+## Off-Target Finalization
+
+Off-target finalization is the process of converting a capmerc binary compiled for SM X into native SASS for SM Y. The compatibility checker `sub_60F290` determines whether the source/target pair is compatible, examining:
+
+- SM version pair and generation compatibility
+- Feature flag differences between source and target
+- Instruction set compatibility (no target-only instructions used)
+- Constant bank layout compatibility
+- Register file layout match
+
+When the check passes, the kernel finalizer `sub_612DE0` (47KB) applies the "fastpath optimization" -- it directly patches the Mercury-encoded instruction stream using R_MERCURY_* relocations rather than running the full compilation pipeline. On success, ptxas emits the diagnostic:
+
+```
+"applied for off-target %u -> %u finalization"
+```
+
+where the two `%u` values are the source and target SM numbers.
+
+The fastpath avoids re-running phases 117--122 of the Mercury pipeline. Instead, it:
+1. Reads the capsule descriptor from `.nv.capmerc<func>`
+2. Validates compatibility via `sub_60F290`
+3. Applies R_MERCURY_* relocation patches for the target SM
+4. Regenerates the ELF `.text` section with patched instruction bytes
+5. Updates `.nv.info` EIATTR attributes for the target (register counts, barrier counts)
+
+This is substantially faster than full recompilation, which is why ptxas logs it as a "fastpath."
+
+## Pipeline Integration
+
+Capmerc does not modify the Mercury encoder pipeline (phases 113--122). The instruction encoding, pseudo-instruction expansion, WAR hazard resolution, operation expansion (opex), and SASS microcode emission all execute identically regardless of output mode. The divergence happens after phase 122 completes:
+
+| Mode | Post-Pipeline Behavior |
+|---|---|
+| Mercury | Phase 122 SASS output written directly to `.text.<func>` ELF section |
+| Capmerc | Phase 122 output wrapped in 328-byte capsule descriptor; `.nv.merc.*` sections cloned; R_MERCURY_* relocations emitted; KNOBS data embedded |
+| SASS | Phase 122 output written as raw SASS binary (no ELF wrapper) |
+
+The master ELF emitter `sub_1C9F280` (97KB) orchestrates the post-pipeline divergence:
+
+```c
+// Simplified from sub_1C9F280
+void EmitELF(context) {
+    // Common: copy ELF header (64 bytes via SSE loadu)
+    memcpy(output, &elf_header, 64);
+
+    // Common: iterate sections, build section headers
+    for (int i = 0; i < section_count; i++) {
+        if (section[i].flags & 4) continue;  // skip virtual sections
+        // ... copy section data, patch headers ...
+    }
+
+    if (is_capmerc_mode) {
+        sub_1C9B110(ctx);   // create .nv.merc namespace
+        sub_1CA2E40(ctx);   // clone sections into merc space
+        sub_1C9C300(ctx);   // build capsule descriptors + KNOBS
+        sub_1CA3A90(ctx);   // merge merc/non-merc section copies
+    }
+
+    // Common: remap section indices, build symbol table
+    sub_1C99BB0(ctx);       // section index remap
+    sub_1CB68D0(ctx);       // build .symtab
+
+    // Common: resolve relocations
+    sub_1CD48C0(ctx);       // relocation resolver (handles R_MERCURY_*)
+
+    // Common: finalize and write
+    sub_1CD13A0(ctx);       // serialize to file
+}
+```
+
+## Function Map
+
+| Address | Size | Identity |
+|---|---|---|
+| `sub_1C9F280` | 97KB | Master ELF emitter (orchestrates full CUBIN output) |
+| `sub_1CA3A90` | 45KB | Section merger / combined section emitter |
+| `sub_1CB68D0` | 49KB | Symbol table builder (handles merc section references) |
+| `sub_1C99BB0` | 25KB | Section index remap (`.symtab_shndx` / `.nv.merc.symtab_shndx`) |
+| `sub_1C9C300` | 24KB | Capsule descriptor processor (328-byte object, KNOBS embed) |
+| `sub_1C9B110` | 23KB | Mercury capsule builder (creates `.nv.merc` namespace) |
+| `sub_1CD48C0` | 22KB | Master relocation resolver (R_MERCURY_* + standard) |
+| `sub_1CA2E40` | 18KB | Mercury section cloner |
+| `sub_1C9D1F0` | 16KB | Debug section classifier (SASS + merc variants) |
+| `sub_1C98C60` | 9KB | Mercury debug section classifier (15 section names) |
+| `sub_720F00` | 64KB | Flex SASS text lexer (self-check reconstitution) |
+| `sub_729540` | 35KB | SASS assembly verification (self-check comparator) |
+| `sub_703AB0` | 10KB | Binary-kind CLI parser |
+| `sub_612DE0` | 47KB | Kernel finalizer / ELF builder (fastpath optimization) |
+| `sub_60F290` | -- | Off-target compatibility checker |
+| `sub_1CD13A0` | 11KB | ELF serialization (final file writer) |
+
+## Cross-References
+
+- [Mercury Encoder Pipeline](./mercury.md) -- phases 113--122, the upstream encoding that capmerc wraps
+- [SASS Instruction Encoding](./encoding.md) -- bit-level encoding format and 1280-bit instruction buffer
+- [Code Generation Overview](./overview.md) -- high-level codegen pipeline context
+- [Knobs System](../config/knobs.md) -- knob infrastructure that KNOBS embedding serializes
+- [Phase Manager](../passes/phase-manager.md) -- 159-phase pipeline infrastructure
+- [SM Architecture Map](../targets/index.md) -- SM version numbers and family groupings
