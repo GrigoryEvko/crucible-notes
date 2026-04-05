@@ -556,7 +556,7 @@ The 1,294 knobs cluster into functional categories. Prefix analysis of decoded k
 | Prefix | Count | Domain |
 |---|---|---|
 | `Sched*` | 76 | Instruction scheduling heuristics and thresholds |
-| `RegAlloc*` / `RA_*` | 73 | Register allocation parameters and budgets |
+| `RegAlloc*` / `Reg*` | 87 | Register allocation parameters, spill cost model, target selection |
 | `Disable*` | 63 | Pass/feature disable switches (boolean) |
 | `Mercury*` / `Merc*` | 21 | Mercury encoder configuration |
 | `URF*` | 24 | Uniform Register File optimization |
@@ -588,6 +588,155 @@ Selected knobs referenced by address in the binary:
 | 747 | (expansion option) | INT | `sub_6FFDC0` | Mercury expansion control |
 | 956 | (shader hint) | — | `sub_79C210` | Shader hint knob (offset 68832) |
 | 957 | (shader hint) | — | `sub_79C210` | Shader hint linked list (offset 68904) |
+
+### Register Allocation Knobs (87 knobs, indices 613--699)
+
+The register allocator is the most heavily parameterized subsystem in ptxas. Its 87 knobs span indices 613 through 699 in the OCG knob table, registered in `ctor_005` at addresses `0x4197F0`--`0x41B2E0`. The knobs cluster into seven functional sub-categories. All names decoded from ROT13 strings at `0x21B9730`--`0x21BA6C0`.
+
+#### A. Spill Cost Model (26 knobs)
+
+The spill guidance engine (`sub_96D940`, 84 KB) uses these knobs to compute per-candidate spill costs. The model multiplies hardware-specific latency and resource metrics by configurable scale factors, then applies threshold-based activation logic.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 658 | `RegAllocSpillBarriersAcrossSuspend` | NONE | Enable spill barriers across suspend points |
+| 659 | `RegAllocSpillBit` | INT | Master spill-bit mode selector |
+| 660 | `RegAllocSpillBitHighRegCountHeur` | INT | High register count heuristic for spill-bit decisions |
+| 661 | `RegAllocSpillBitHighRegScale` | DBL | Scale factor for high-register-count spill cost |
+| 662 | `RegAllocSpillBitInfPerRegThreshold` | INT | Interference-per-register threshold for spill-bit activation |
+| 663 | `RegAllocSpillBitLowRegCountHeur` | INT | Low register count heuristic for spill-bit decisions |
+| 664 | `RegAllocSpillBitLowRegScale` | DBL | Scale factor for low-register-count spill cost |
+| 665 | `RegAllocSpillBitMediumRegScale` | DBL | Scale factor for medium-register-count spill cost |
+| 666 | `RegAllocSpillBitNonRematSpillThreshold` | INT | Threshold for non-rematerializable spill-bit activation |
+| 667 | `RegAllocSpillBitRLivePerRegThreshold` | INT | Live-per-register threshold for R-type spill decisions |
+| 668 | `RegAllocSpillBitRLiveThreshold` | INT | Global R-live threshold for spill activation |
+| 669 | `RegAllocSpillForceXBlockHoistRefill` | INT | Force cross-block hoisting of refill instructions |
+| 670 | `RegAllocSpillLatencyScale` | DBL | Scale factor for latency in spill cost model |
+| 671 | `RegAllocSpillLatencyScale2` | DBL | Secondary latency scale (nested loops) |
+| 672 | `RegAllocSpillMemResScale` | DBL | Scale factor for memory resource pressure in spill cost |
+| 673 | `RegAllocSpillMioHeavyThreshold` | DBL | Threshold for MIO-heavy (memory-intensive) spill classification |
+| 674 | `RegAllocSpillOptBudget` | BDGT | Budget for spill optimization passes |
+| 675 | `RegAllocSpillResourceScale` | DBL | Scale factor for resource usage in spill cost |
+| 676 | `RegAllocSpillResCostsScale` | DBL | Scale factor for resource costs (secondary weighting) |
+| 677 | `RegAllocSpillReturnRegister` | INT | Spill handling mode for return-value registers |
+| 678 | `RegAllocSpillSmemFlatMode` | INT | Shared memory spill: flat addressing mode selector |
+| 679 | `RegAllocSpillSmemLatencyScale` | DBL | Scale factor for shared-memory spill latency |
+| 680 | `RegAllocSpillTexDepScale` | DBL | Scale factor for texture dependency in spill cost |
+| 681 | `RegAllocSpillValidateDebug` | INT | Debug: validate spill correctness (0=off, >0=level) |
+| 682 | `RegAllocSpillXBlock` | INT | Cross-block spill mode (hoist/refill strategy) |
+| 683 | `RegAllocSpillXBlock2` | INT | Secondary cross-block spill mode |
+
+The cost model uses three register-count tiers (low/medium/high), each with independent scale factors (664, 665, 661). The tier boundaries are set by the heuristic knobs (663, 660). Latency scales (670, 671) multiply the estimated stall cycles, while resource scales (672, 675, 676) multiply memory bandwidth consumption. The MIO-heavy threshold (673) triggers a separate cost path when the basic block is already saturated with memory operations.
+
+#### B. Rematerialization (11 knobs)
+
+Rematerialization recomputes values instead of spilling them. The allocator treats remat as a first-class spill alternative with its own budget and candidate ordering.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 619 | `RegAllocCtxSensitiveRemat` | INT | Enable context-sensitive rematerialization |
+| 622 | `RegAllocEnableOptimizedRemat` | INT | Enable optimized rematerialization pass |
+| 627 | `RegAllocLiveRemat` | INT | Enable live-range-aware rematerialization |
+| 632 | `RegAllocMaxRematHeight` | INT | Max expression DAG height for remat candidates |
+| 633 | `RegAllocMaxRematInst` | INT | Max instructions in a remat sequence |
+| 635 | `RegAllocMultiRegclassRemat` | INT | Enable remat across multiple register classes |
+| 636 | `RegAllocMultiRegRemat` | INT | Enable multi-register rematerialization |
+| 637 | `RegAllocMultiRegRematBudget` | BDGT | Budget for multi-register remat attempts |
+| 650 | `RegAllocRematDisableRange` | IRNG | Disable remat for instruction index range `lo..hi` |
+| 651 | `RegAllocRematEnable` | INT | Master enable for rematerialization (0=off) |
+| 652 | `RegAllocRematReuseBudget` | BDGT | Budget for remat-reuse optimization attempts |
+| 654 | `RegAllocOrderRematCandHeuristic` | INT | Heuristic for ordering remat candidates |
+
+Knob 650 (`RegAllocRematDisableRange`) is unique as the only IRNG-type knob in the set, accepting `"lo..hi"` to disable rematerialization for a range of instruction indices -- a debugging aid for bisecting remat-related miscompiles.
+
+#### C. Pre-Assignment / MAC (8 knobs)
+
+MAC (Machine-level Allocation with Constraints) pre-assigns physical registers to high-priority operands before the main Fatpoint allocator runs. Entry: `sub_94A020` (331 lines).
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 613 | `RegAllocAvoidBankConflictMac` | INT | Enable bank-conflict-aware MAC pre-assignment |
+| 614 | `RegAllocAvoidBankConflictMacPenalty` | INT | Penalty weight for bank conflicts during MAC pre-assignment |
+| 615 | `RegAllocAvoidBankConflictMacWindowSize` | INT | Instruction window size for bank conflict analysis |
+| 628 | `RegAllocMacForce` | NONE | Force MAC-level pre-allocation path |
+| 629 | `RegAllocMacVregAllocOrder` | INT | Vreg processing order during MAC allocation |
+| 630 | `RegAllocMacVregAllocOrderCompileTime` | INT | Compile-time variant of MAC vreg allocation order |
+| 646 | `RegAllocPrefMacOperands` | INT | MAC operand preference level (1=read, 2=write, 3=both) |
+| 647 | `RegAllocPrefMacOperandsMaxDepth` | INT | Max operand chain depth for MAC preference propagation |
+
+#### D. Coalescing (3 knobs)
+
+Register coalescing eliminates unnecessary register-to-register copies by merging live ranges.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 617 | `RegAllocCoalesceBudget` | BDGT | Budget limit for coalescing iterations |
+| 618 | `RegAllocCoalescing` | NONE | Enable register coalescing |
+| 634 | `RegAllocMmaCoalescing` | NONE | Enable MMA-specific coalescing |
+
+#### E. Performance-Difference Backoff (5 knobs)
+
+Progressive constraint relaxation: on retry iteration N, if the performance difference exceeds a limit, constraints relax between the begin and end iterations.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 641 | `RegAllocPerfDiffBackoff` | NONE | Enable perf-diff based constraint backoff |
+| 642 | `RegAllocPerfDiffBackoffBegin` | INT | Iteration at which backoff begins |
+| 643 | `RegAllocPerfDiffBackoffEnd` | INT | Iteration at which full relaxation is reached |
+| 644 | `RegAllocPerfDiffConflictWeight` | INT | Weight factor for conflicts in perf-diff calculation |
+| 645 | `RegAllocPerfDiffLimit` | INT | Performance difference limit triggering relaxation |
+
+#### F. Register Target Selection (13 knobs)
+
+The target selection phase determines how many physical registers to aim for -- the occupancy/performance tradeoff. More registers per thread means fewer warps can execute concurrently.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 687 | `RegTargetList` | ILIST | Comma-separated list of target register counts to try |
+| 688 | `RegTgtLowerLimitMMASlack` | INT | Slack added to MMA lower register limit |
+| 689 | `RegTgtLowerLimitTCGENSlack` | INT | Slack added to TCGEN lower register limit |
+| 690 | `RegTgtLowerLimitSPARSIFYSlack` | INT | Slack added to SPARSIFY lower register limit |
+| 691 | `RegTgtLowerLimitDECOMPRESSSlack` | INT | Slack added to DECOMPRESS lower register limit |
+| 692 | `RegTgtSelHigherWarpCntHeur` | INT | Heuristic mode for higher-warp-count target selection |
+| 693 | `RegTgtSelHigherWarpCntHeurValue` | DBL | Weight value for higher-warp-count heuristic |
+| 694 | `RegTgtSelHighLiveRangeHeurValue` | DBL | Weight for high-live-range target selection heuristic |
+| 695 | `RegTgtSelLowerWarpCntHeur` | INT | Heuristic mode for lower-warp-count target selection |
+| 696 | `RegTgtSelLowerWarpCntHeurValue` | DBL | Weight value for lower-warp-count heuristic |
+| 697 | `RegTgtSelLowLiveRangeHeurValue` | DBL | Weight for low-live-range target selection heuristic |
+| 698 | `RegTgtSelWithSMemSpillHeur` | INT | Heuristic mode when shared-memory spilling is active |
+| 699 | `RegUsageLevel` | INT | Register usage reporting level |
+
+The four "Slack" knobs (688--691) fine-tune lower register limits for specific architectural features that have minimum register requirements: MMA (matrix multiply), TCGEN (tensor core generation), SPARSIFY (structured sparsity), DECOMPRESS (decompression).
+
+#### G. General Allocation Control (12 knobs)
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 616 | `RegAllocCacheSize` | INT | Cache size parameter for interference graph |
+| 620 | `RegAllocDebugConflictDetails` | INT | Debug: print conflict graph details (verbosity level) |
+| 621 | `RegAllocDepDistanceThresholdForHighConflicts` | INT | Dep-distance threshold above which high-conflict registers are deprioritized |
+| 624 | `RegAllocIndexAbiScratchRegs` | INT | Index into ABI scratch register set |
+| 639 | `RegAllocNumNonSpillTrials` | INT | Non-spill allocation trials before allowing spills |
+| 640 | `RegAllocOptLevel` | INT | Regalloc optimization level (controls aggressiveness) |
+| 648 | `RegAllocPrintDetails` | NONE | Enable detailed regalloc diagnostic printing |
+| 649 | `RegAllocRefineInf` | INT | Refine interference graph iteration limit |
+| 653 | `RegAllocOptimizeABI` | INT | Enable ABI-aware register optimization (setmaxnreg handling) |
+| 655 | `RegAllocReportMaxRegsAllowed` | INT | Report maximum registers allowed per thread (diagnostic) |
+| 656 | `RegAllocCudaSmemSpillEnable` | INT | Enable CUDA shared memory spill path |
+| 685 | `RegAllocUserSmemBytesPerCTA` | INT | User-specified shared memory bytes per CTA (overrides computed) |
+
+#### H. Miscellaneous (8 knobs)
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 623 | `RegAllocEstimatedLoopIterations` | STR | String hint providing estimated loop iteration counts for spill cost weighting |
+| 625 | `RegAllocL1SpillRegThres` | INT | Register count threshold for L1 spill mode activation |
+| 626 | `RegAllocL1SpillScale` | DBL | Scale factor for L1 cache spill cost |
+| 631 | `RegAllocMaxGmmaDisallowedReg` | INT | Max registers disallowed during GMMA (warp group MMA) allocation |
+| 638 | `RegAllocNoRetargetPrefs` | NONE | Disable retarget-preference optimization |
+| 657 | `RegAllocSortRegs` | INT | Sorting order for register candidates during allocation |
+| 684 | `RegAllocThresholdForDiscardConflicts` | INT | Interference count above which conflicts are discarded (default 50) |
+| 686 | `RegAttrReuseVectorBudget` | BDGT | Budget for register-attribute vector reuse optimization |
 
 ## DUMP_KNOBS_TO_FILE
 

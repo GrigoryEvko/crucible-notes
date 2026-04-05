@@ -123,18 +123,151 @@ if (class_id == 3 or class_id == 6) and device_type == 5:
 
 ### Structure
 
-The function contains 7 near-identical code blocks, one per register class (R, P, B, UR, UP, UB, unified). Each block is approximately 400 lines of bitvector iteration and set intersection. This repetition strongly suggests C++ template instantiation or macro expansion in the original source.
+The function contains 7 near-identical code blocks, one per register class (R, P, B, UR, UP, UB, tensor/accumulator). Each block is approximately 400 lines of bitvector iteration and set intersection. This repetition strongly suggests C++ template instantiation or macro expansion in the original source.
 
-### Per-class guidance entry
+### Spill Guidance Structure (11,112 bytes)
 
-Each register class gets an 11,112-byte working structure:
+The guidance engine allocates a single 11,112-byte working structure from the arena (vtable `+24`). The structure is organized into five regions.
 
-| Offset | Content |
-|--------|---------|
-| 0 | Primary guidance table |
-| 166 | Secondary guidance table |
-| 188 | Tertiary guidance table |
-| 288--796 | 128-element bitmask arrays (live range sets) |
+**Region 0 -- Header and core pointers (bytes 0--271)**
+
+| Byte offset | QWORD idx | Type | Init | Field |
+|-------------|-----------|------|------|-------|
+| 0 | [0] | ptr | ctx | Back-pointer to allocation context |
+| 24 | [3] | ptr | alloc+16 | Pointer into allocator state object |
+| 32 | [4] | QWORD | 0 | Run counter / iteration state |
+| 40 | [5] | QWORD | 0 | Class processing counter |
+| 48 | [6] | QWORD | 0 | Spill mode flags |
+| 96 | [12] | ptr | arena | Arena allocator pointer (from `ctx+16`) |
+| 104 | [13] | ptr | arena | Queue header base / candidate list base |
+| 112 | [14] | DWORD+DWORD | -1, 0 | Max element index sentinel, entry count |
+| 136 | [17] | ptr | arena | Third arena reference |
+| 144 | [18] | QWORD | 0 | Queue 0 entry count |
+| 152 | [19] | QWORD | -1 | Queue 0 sentinel |
+| 160 | [20] | ptr | arena | Fourth arena reference |
+| 168 | [21] | QWORD | 0 | Queue 0b entry count |
+| 176 | [22] | QWORD | -1 | Queue 0b sentinel |
+| 184 | [23] | ptr | ctx | Back-pointer to context |
+| 192 | [24] | ptr | node | Candidate node list head (24-byte arena node) |
+| 200 | [25] | ptr | node | Candidate node list tail |
+| 208 | [26] | QWORD | 0 | Node count |
+| 216 | [27] | QWORD | 0 | Node capacity |
+| 240 | [30] | ptr | node | Sentinel node (same as initial node at [24]) |
+| 248 | [31] | QWORD | 0 | Free list head |
+| 256 | [32] | QWORD | 0 | Free list count |
+
+**Region 1 -- Bitmask arrays (bytes 272--1327)**
+
+Two 508-byte bitmask arrays (127 DWORDs each), separated by single-byte sentinels:
+
+| Byte range | Content |
+|------------|---------|
+| 284 | Sentinel byte (set to `0x80` after zeroing) |
+| 288--795 | Bitmask array 0: 127 DWORDs for live range set intersection |
+| 808 | Sentinel byte (set to `0x80` after zeroing) |
+| 812--1319 | Bitmask array 1: 127 DWORDs for second class pair |
+
+Each bitmask array is zeroed via an SSE2 vectorized loop (16 bytes per iteration, `0x1F` iterations). The `0x80` sentinel byte at the start of each array marks initialization completion.
+
+**Region 2 -- Priority queue table blocks (bytes 1328--2063)**
+
+Five embedded priority queue tables, each containing an entry count (QWORD) followed by an array of 6 queue entries (24 bytes each):
+
+| QWORD idx | Byte offset | Content |
+|-----------|-------------|---------|
+| [166] | 1328 | Queue block 1 entry count (incremented by 7 per pass) |
+| [167]--[184] | 1336--1479 | Queue block 1: 6 entries x 24 bytes |
+| [188] | 1504 | Queue block 2 entry count |
+| [189]--[206] | 1512--1655 | Queue block 2: 6 entries x 24 bytes |
+| [210] | 1680 | Queue block 3 entry count |
+| [211]--[228] | 1688--1831 | Queue block 3: 6 entries x 24 bytes |
+| [232] | 1856 | Queue block 4 entry count |
+| [233]--[250] | 1864--2007 | Queue block 4: 6 entries x 24 bytes |
+| [256] | 2048 | Queue block 5 (overflow) count |
+
+Each 24-byte queue entry has this layout:
+
+| Entry offset | Type | Init | Field |
+|--------------|------|------|-------|
+| +0 | ptr | arena | Bitvector storage pointer |
+| +8 | QWORD | 0 | Bitvector data pointer |
+| +16 | DWORD | -1 | Max element index |
+| +20 | DWORD | 0 | Current element count |
+
+Queue entries are built by `sub_8BE190` and sorted by `sub_7553C0`. Candidates are inserted via `sub_9370A0` (with tie-breaking) and removed via `sub_9365A0` (bit-clear in bitvector).
+
+**Region 3 -- Candidate node management (bytes ~2064--10591)**
+
+The largest region (~8,528 bytes). Contains working storage for spill candidate evaluation across all 7 register classes. This region is zeroed during initialization and populated during the instruction walk phase by `sub_93BF50` (candidate evaluation), `sub_936610` (candidate insertion with cost), `sub_9680F0` (cost propagation), and `sub_93A1F0` (interference counting). The exact internal sub-layout varies by register class and virtual register count.
+
+**Region 4 -- Linked list, accumulators, and tail (bytes 10592--11111)**
+
+| Byte offset | QWORD idx | Type | Init | Field |
+|-------------|-----------|------|------|-------|
+| 10592 | [1324] | QWORD | 0 | Linked list head (spill candidate chain) |
+| 10600 | [1325] | ptr | &self[1326] | Forward pointer (circular doubly-linked) |
+| 10608 | [1326] | ptr | &self[1324] | Backward pointer |
+| 10616 | [1327] | QWORD | 0 | List count |
+| 10624 | [1328] | ptr | &self[1324] | Secondary forward pointer |
+| 10632 | [1329] | ptr | &self[1326] | Secondary backward pointer |
+| 10640 | DWORD | int | 2 | Node type tag |
+| 10648 | [1331] | ptr | node | Primary candidate node (24B, type=2) |
+| 10656 | [1332] | ptr | node | Secondary candidate node (24B, type=2) |
+| 10696 | [1337] | ptr | node | Secondary tail pointer |
+| 10704 | [1338] | ptr | 0 | Instruction walk context (knob 622 gate) |
+| 10712 | [1339] | QWORD | 0 | Walk state |
+| 10720 | [1340] | QWORD | 0 | Walk counter |
+| 10728 | BYTE | byte | 0 | Walk active flag |
+| 10736 | [1342] | QWORD | 0 | Spill cost accumulator 0 |
+| 10744 | [1343] | QWORD | 0 | Spill cost accumulator 1 |
+| 10752--10824 | [1344]--[1353] | QWORD | 0 | Additional cost/range counters (10 slots) |
+| 10840 | [1355] | QWORD | 0 | Interference counter |
+| 10872 | DWORD | int | 0 | Class mask |
+| 10888 | [1361] | QWORD | 0 | Result register count |
+| 10896 | [1362] | QWORD | 0 | Result cost metric |
+| 10904 | [1363] | QWORD | 0 | Result spill count |
+| 10912 | [1364] | QWORD | 0 | Result class width |
+| 10920 | [1365] | QWORD | 0 | Best-attempt index |
+| 10960 | [1370] | QWORD | 0 | Phase indicator |
+| 10968 | [1371] | QWORD | 0 | Phase state |
+| 10976 | [1372] | QWORD | 0 | Output flag |
+| 11008 | [1376] | QWORD | 0 | SMEM spill tracking |
+| 11016 | [1377] | QWORD | 0 | SMEM spill state |
+| 11048 | [1381] | QWORD | 0 | Output queue pointer |
+| 11056 | [1382] | QWORD | 0 | Output queue size |
+| 11072 | [1384] | ptr | 0 | Callee-save tracking (freed by `sub_96CFA0`) |
+| 11080 | [1385] | ptr | 0 | Callee-save arena ref (freed by `sub_96CFA0`) |
+| 11089 | BYTE | byte | 1 | Guidance enabled flag |
+| 11096 | [1387] | ptr | 0 | Final candidate object (freed by `sub_96CFA0`) |
+| 11104 | [1388] | ptr | 0 | Final candidate arena ref (freed by `sub_96CFA0`) |
+
+The linked list at [1324]--[1329] is initialized as a circular doubly-linked list with self-referential pointers, following the standard intrusive list pattern. The cleanup function `sub_96CFA0` (694 lines) deallocates the candidate node objects at offsets 11072, 11080, 11096, and 11104.
+
+### Candidate node object (24 bytes)
+
+Each candidate node is a 24-byte arena-allocated object used in the doubly-linked list and as priority queue sentinels:
+
+| Offset | Type | Field |
+|--------|------|-------|
+| +0 | QWORD | Type tag: `2` = priority queue node, `3` = initial sentinel |
+| +8 | QWORD | Count / payload |
+| +16 | ptr | Arena back-reference |
+
+### Stack-local queue header array
+
+In addition to the 11,112-byte structure, the function maintains a stack-local 7-element queue header array (`v514`, 168 bytes on stack). Each entry is 24 bytes (3 QWORDs) with the same layout as the embedded queue entries above. The 7 entries map to the 7 register classes:
+
+| Index | Class |
+|-------|-------|
+| 0 | R (general-purpose registers) |
+| 1 | P (predicate registers) |
+| 2 | B (barrier registers) |
+| 3 | UR (uniform registers) |
+| 4 | UP (uniform predicates) |
+| 5 | UB (uniform barriers) |
+| 6 | Acc (tensor/accumulator registers) |
+
+After bitvector iteration, each stack-local queue header is built by `sub_8BE190` and sorted by `sub_7553C0`.
 
 ### Algorithm
 
@@ -338,7 +471,7 @@ The generated instructions use these SASS opcodes:
 | `0xC9` | IADD | Add offset to base register |
 | `0x11B` | IMAD | Multiply-add for address |
 | `0xC3` | MOV | Move value |
-| `0x82` | LD / LDL | Load from local memory (refill) |
+| `0x82` (130) | `HSET2` in ROT13; used as LD/LDL-like | Load from local memory (refill) |
 | `0xB7` | ST / STL | Store to local memory (spill) |
 | `0x14` | ISETP | Set predicate (conditional spill) |
 | `0x8B` | SHL | Shift for alignment |

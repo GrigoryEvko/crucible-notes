@@ -14,7 +14,7 @@ A secondary live-range-based infrastructure (~80 functions at `0x994000`--`0x9A1
 | **Spill codegen** | `sub_94F150` (561 lines) -- emit spill/reload instructions |
 | **Pre-coloring** | `sub_991790` (2677 lines) -- full-function pre-assignment |
 | **Address range** | `0x8FE000` -- `0x9D3000` (~860 KB, ~950 functions) |
-| **Knobs** | 73+ OCG knobs (`RegAlloc*` prefix) |
+| **Knobs** | 87 OCG knobs (`RegAlloc*` / `RegTgt*` / `RegUsageLevel`, indices 613--699) |
 
 ## Pipeline Position
 
@@ -596,7 +596,7 @@ Occupancy-aware register budget interpolation. Computes a dynamic register budge
 
 ## Key Knobs
 
-73+ OCG knobs control register allocation heuristics. The most important ones identified (names decoded from ROT13 binary strings):
+87 OCG knobs (indices 613--699) control register allocation heuristics. The complete catalog with sub-category grouping is in [Knobs System -- Register Allocation Knobs](../config/knobs.md#register-allocation-knobs-87-knobs-indices-613699). The most important ones:
 
 | Knob | Name | Type | Role |
 |------|------|------|------|
