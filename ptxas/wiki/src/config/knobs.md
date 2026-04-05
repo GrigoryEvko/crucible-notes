@@ -558,6 +558,7 @@ The 1,294 knobs cluster into functional categories. Prefix analysis of decoded k
 | `Sched*` | 76 | Instruction scheduling heuristics and thresholds |
 | `RegAlloc*` / `Reg*` | 87 | Register allocation parameters, spill cost model, target selection |
 | `Disable*` | 75 | Pass/feature disable switches (boolean) |
+| `Remat*` / `SinkRemat*` | 35 | Rematerialization cost model, enable switches, placement control |
 | `Mercury*` / `Merc*` | 21 | Mercury encoder configuration |
 | `URF*` | 24 | Uniform Register File optimization |
 | `Enable*` | 19 | Pass/feature enable switches (boolean) |
@@ -570,7 +571,7 @@ The 1,294 knobs cluster into functional categories. Prefix analysis of decoded k
 | `Spill*` | ~8 | Spill code generation parameters |
 | `Budget*` | ~10 | Cost model budgets (BDGT type knobs) |
 | `Copy*` / `CSE*` | ~8 | Copy propagation and CSE parameters |
-| (other) | ~612 | Miscellaneous per-pass tuning knobs |
+| (other) | ~577 | Miscellaneous per-pass tuning knobs |
 
 ### Notable Individual Knobs
 
@@ -896,6 +897,107 @@ These control the address sanitizer instrumentation for different memory spaces.
 | `DisablePicCodeGen` | Position-independent code generation |
 | `DisableSopSr` | SOP (scalar operation) on special registers (SR) |
 | `DisableSuperUdp` | Super-UDP (enhanced uniform datapath) optimization |
+
+### Rematerialization Knobs (35 knobs)
+
+Rematerialization knobs control the three dedicated remat pipeline phases (Phase 28: SinkRemat, Phase 69: OriDoRemat) and the cost model that decides whether recomputing a value is cheaper than keeping it live in a register. These are separate from the 12 `RegAlloc*Remat*` knobs documented above in [section B](#b-rematerialization-11-knobs), which control allocator-integrated rematerialization. The distinction matters: allocator-integrated remat fires during register allocation itself (sub_93AC90), while these knobs tune the standalone pre-allocation and post-predication remat passes.
+
+The 35 knobs split into two contiguous blocks in the descriptor table plus one outlier:
+
+- **Remat\*** (27 knobs, indices 702--728): Late rematerialization (Phase 69) and shared cost model
+- **SinkRemat\*** (8 knobs, indices 824--831): Early sink+remat (Phase 28)
+
+#### A. Remat Enable/Disable (5 knobs)
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 709 | `RematDisableTexThrottleRegTgt` | INT | Disable texture-throttle register targeting during remat |
+| 710 | `RematEarlyEnable` | INT | Enable Phase 54 early remat mode activation |
+| 711 | `RematEnable` | INT | Master enable for Phase 69 late rematerialization |
+| 712 | `RematEnablePReg` | NONE | Enable predicate register rematerialization (boolean flag) |
+| 726 | `RematStressTest` | NONE | Force all remat candidates to be rematerialized (debug, boolean flag) |
+
+Knob 711 (`RematEnable`) is the master switch. When zeroed via `-knob RematEnable=0`, Phase 69 skips its core loop entirely. Knob 710 (`RematEarlyEnable`) independently controls Phase 54's mode flag write (`ctx+1552 = 4`). Knob 726 (`RematStressTest`) is a debug-only boolean that forces every candidate to be rematerialized regardless of profitability -- useful for stress-testing correctness.
+
+#### B. Remat Cost Model (10 knobs)
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 702 | `RematAbsCostFactor` | DBL | Absolute cost scaling factor for remat profitability |
+| 703 | `RematBackOffRegTargetFactor` | DBL | Back-off factor for register pressure target during remat |
+| 705 | `RematColdBlockRatio` | DBL | Cost discount ratio for cold (rarely executed) blocks |
+| 713 | `RematGlobalCostFactor` | DBL | Global cost multiplier for cross-block rematerialization |
+| 714 | `RematGlobalLowCostFactor` | DBL | Cost factor for low-cost (cheap ALU: MOV, IADD, LOP3) remat |
+| 716 | `RematLdcCost` | DBL | Cost weight assigned to LDC (load-from-constant-bank) remat |
+| 719 | `RematMemCost` | DBL | Cost weight for memory-sourced (LD/ST) rematerialization |
+| 722 | `RematReadUAsLdc` | INT | Treat uniform address reads as LDC for cost classification |
+| 727 | `RematTexInstRatioThreshold` | DBL | Texture instruction ratio threshold for throttle activation |
+| 728 | `RematTexThrottleRegTgtScale` | DBL | Scale factor for register target when texture throttle is active |
+
+These 10 knobs parameterize the remat profitability function (`sub_90B790`). The cost model computes `remat_cost = instruction_cost * factor` and compares against register savings. The DBL-typed knobs (8 of 10) are floating-point multipliers that allow fine-grained tuning. The texture-specific knobs (727, 728) implement a throttle: when the ratio of texture instructions exceeds the threshold, the register target is scaled to avoid excessive register use that would harm texture unit throughput.
+
+#### C. Register Pressure Control (5 knobs)
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 706 | `RematConservativeRegSlack` | INT | Extra registers to reserve beyond target (conservative mode) |
+| 708 | `RematCostRegLimit` | INT | Max register count considered during cost analysis |
+| 718 | `RematMaxRegCount` | INT | Absolute ceiling on registers for remat decisions |
+| 723 | `RematRegTargetFactor` | DBL | Scaling factor for computing the register pressure target |
+| 724 | `RematRegTargetTrialLimit` | INT | Max iterations when searching for optimal register target |
+
+The register target is the pressure level below which rematerialization becomes profitable. `RematRegTargetFactor` (723) scales the occupancy-derived target. `RematRegTargetTrialLimit` (724) caps the binary-search iterations in the target-finding loop. `RematMaxRegCount` (718) is a hard ceiling -- if current pressure exceeds this value, the remat pass operates in aggressive mode.
+
+#### D. Instruction and Code Limits (2 knobs)
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 707 | `RematCostInstLimit` | INT | Max instruction count for inclusion in cost model |
+| 715 | `RematInflationSlack` | INT | Allowed code-size inflation slack (extra instructions from remat) |
+
+`RematCostInstLimit` (707) prevents the cost model from analyzing extremely large remat sequences. `RematInflationSlack` (715) limits how many extra instructions rematerialization may introduce before the pass backs off.
+
+#### E. Placement Control (4 knobs)
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 717 | `RematLowCostPlacementLimit` | DBL | Max placement distance for low-cost remat candidates |
+| 720 | `RematMinDistance` | INT | Minimum def-to-remat distance (instructions) before remat is attempted |
+| 721 | `RematPlacementLookback` | INT | Lookback window size for placement-site search |
+| 725 | `RematSortRematChain` | INT | Sort remat chain by priority before placement (0=off, 1=on) |
+
+These knobs control where rematerialized instructions are placed relative to their uses. `RematMinDistance` (720) ensures remat is not attempted for short live ranges where the original definition is close enough. `RematPlacementLookback` (721) limits how far back the placement algorithm scans when searching for a profitable insertion point.
+
+#### F. Remat Budget (1 knob)
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 704 | `RematBudget` | BDGT | Optimization budget for the late remat pass (phase 69) |
+
+BDGT-typed knobs carry a primary value and a secondary counter. The budget is decremented as each remat decision is committed. When exhausted (secondary reaches zero), the pass stops processing further candidates. This provides a deterministic cap on compile-time cost.
+
+#### G. SinkRemat (Phase 28) Knobs (8 knobs, indices 824--831)
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 824 | `SinkRematAbsCostLimit` | DBL | Absolute cost ceiling for sinking+remat decisions |
+| 825 | `SinkRematBudget` | BDGT | Optimization budget for the sink+remat pass |
+| 826 | `SinkRematDeltaRegsRatio` | DBL | Register pressure delta ratio threshold for sink profitability |
+| 827 | `SinkRematEnable` | INT | Master enable for Phase 28 SinkRemat |
+| 828 | `SinkRematMinDefPlaceDist` | INT | Minimum definition-to-placement distance for sinking |
+| 829 | `SinkRematMinPlaceRefDist` | INT | Minimum placement-to-reference distance for sinking |
+| 830 | `SinkRematMultiRefXBlkUsesPenaltyFactor` | DBL | Penalty multiplier for multi-reference cross-block uses |
+| 831 | `SinkRematPredPenaltyFactor` | DBL | Penalty multiplier for sinking predicated instructions |
+
+Phase 28's SinkRemat pass (entry: `sub_913A30`, core: `sub_A0F020`) sinks instructions closer to their uses and marks remat candidates. Knob 827 (`SinkRematEnable`) is the master switch. The distance knobs (828, 829) prevent unprofitable micro-sinks. The penalty factors (830, 831) make the cost model more conservative for predicated instructions and for instructions with multiple cross-block uses, where sinking may duplicate code along multiple paths.
+
+#### Related Knob Outside the Remat Block
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 475 | `MovWeightForRemat` | DBL | MOV instruction weight in remat profitability scoring |
+
+This knob sits in the general MOV-weight family (indices 474--476) rather than the Remat block. It tunes how MOV instructions contribute to the scheduling cost model's remat profitability calculation. When the remat candidate is a MOV chain, this weight determines the per-MOV cost used to decide whether rematerialization beats keeping the value live.
 
 ## DUMP_KNOBS_TO_FILE
 
