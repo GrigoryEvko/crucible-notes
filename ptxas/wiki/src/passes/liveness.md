@@ -1,5 +1,7 @@
 # Liveness Analysis & Dead Code Elimination
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 Liveness analysis is the most frequently repeated computation in the ptxas pipeline. Six dedicated phases perform liveness analysis combined with dead code elimination (DCE), and at least four additional subsystems recompute liveness on demand. The core algorithm is a standard backward dataflow analysis over the CFG, but the implementation is notable for its SSE2-accelerated bitvector library, per-register-file liveness tracking, and the `orWithAndNotIfChanged` fused transfer function that implements the entire dataflow step in a single SIMD pass.
 
 | | |
@@ -250,39 +252,120 @@ The OriPerformLiveDead pass combines liveness computation with DCE in a single p
 
 ## Phase 19: OriSplitLiveRanges
 
-This phase splits live ranges at loop boundaries to reduce register pressure. It runs after `OriPerformLiveDeadFirst` (phase 16) and `OriLoopSimplification` (phase 18), when the loop structure is canonical.
+This phase splits live ranges at loop boundaries and across phi/copy chains to reduce register pressure. It runs after `OriPerformLiveDeadFirst` (phase 16) and `OriLoopSimplification` (phase 18), when the loop structure is canonical.
 
 **String reference:** `"OriSplitLiveRanges"` at `0x22BC5C0`.
 
+**Core implementation:** `sub_BEF110` (108KB, 3,414 decompiled lines). Called via `sub_A1D3A0` (vtable execute) -> `sub_BF33D0` (knob-gated entry, reads register budget from `ctx+1624` and knob 456).
+
 ### Motivation
 
-On GPUs, register pressure directly determines occupancy (the number of concurrent warps). A value defined before a loop and used only after the loop occupies a register for the entire loop body, even though it is not accessed within the loop. Splitting the live range at the loop boundary -- by inserting a spill before the loop and a reload after -- can free the register for use inside the loop, reducing peak pressure and enabling higher occupancy.
+On GPUs, register pressure directly determines occupancy (the number of concurrent warps). A value defined before a loop and used only after the loop occupies a register for the entire loop body, even though it is not accessed within the loop. Splitting the live range at the loop boundary -- by inserting a copy before the loop and a copy after -- can free the register for use inside the loop, reducing peak pressure and enabling higher occupancy.
 
-### Algorithm (Reconstructed)
+### Algorithm (Decompiled from sub\_BEF110)
+
+The function operates in five distinct phases:
+
+**Phase 1: Pre-analysis** -- Rebuilds basic blocks (`sub_781F80`), allocates three bitvector fields per virtual register (kill at `VR+96`, gen at `VR+24`, live-through at `VR+176`), then runs the standard iterative liveness solver (`sub_775010` + `sub_773140`). Walks the register table checking interference chains: for each VR with a chain at `VR+136`, tests whether the chain target's kill set is a subset of the VR's kill set (`sub_BDC390 = isSubsetOf`). Non-subset cases receive the `+264 bit 1` flag, marking them as interference candidates.
+
+**Phase 2: Work structure allocation** -- Allocates a scratch array `s[]` (one entry per split candidate), a hash table for interference tracking (power-of-2 buckets sized via `_BitScanReverse64`), and an array of 64-byte per-block split records:
+
+```c
+struct PerBlockSplitRecord {    // 64 bytes, indexed by block ID
+    void*    list_head;         // +0:  interference linked list
+    void*    first_in_block;    // +8:  first entry pointer
+    void*    sentinel;          // +16: self-pointer
+    void*    reserved;          // +24
+    void*    last_in_block;     // +32: last entry pointer
+    void*    tail;              // +40: tail pointer
+    int32_t  count;             // +48: entry count
+    int32_t  pad;               // +52
+    void*    allocator_ref;     // +56: refcounted allocator
+};
+```
+
+**Phase 3: Main splitting loop** -- Iterates the ordered register array at `ctx+792` in **reverse** order (highest VR ID first). For each VR, walks the def-use chain via `ctx+296` (register table), classifying instructions by opcode:
+
+| Opcode (masked) | Meaning | Split Action |
+|-----------------|---------|-------------|
+| 167 (0xA7) | Phi-like | Walk up phi chain, split at each level via `sub_931920` |
+| 158 (0x9E) | Copy-like | Similar chain walk with copy-specific handling |
+| 188 (0xBC) | Multi-operand special | Check operand types, dispatch to `sub_BE3720` for multi-source split |
+| 27 (0x1B) | Register move | Standard split point; emit via `sub_9314F0` with 4 operands |
+| 269 (0x10D) | Copy | Lightweight split; emit via `sub_9314F0` with 2 operands |
+
+For each split: allocates a new VR via `sub_931920`, copies the three bitvector fields (`sub_BDBA60` allocates, `sub_BDC1B0` copies `dst |= src`), validates the register class via `sub_9314F0` (called 11 times total across different split patterns), and updates the interference hash via `sub_BEEC80`.
+
+The inline interference check in the hot path:
+
+```c
+// Fast single-bit test: is vr_class_id live in the kill set?
+if ((1 << vr_class_id) & kill_set[vr_class_id >> 5]) != 0)
+    // VRs interfere -- cannot share a physical register
+```
+
+**Phase 4: Interference hash processing** -- Builds a global interference hash table using FNV-1a (`0x811C9DC5` offset basis, `16777619` prime). Walks per-block split records, for each entry scans the kill bitvector (`sub_BDDC00` clears from position, scanning forward) to find concurrently live VRs. Tests interference via `sub_BEE7F0` and emits split instructions via `sub_934630` (opcode 46). The hash table resizes when load factor exceeds 50%.
+
+**Phase 5: Cleanup** -- Marks phi/copy chains with the `+245` rewrite flag (triggering opcode mutation from 188 to 93 or 95), frees hash tables and per-block records, clears `ctx+1370 bit 2` to signal liveness invalidation.
 
 ```
 function OriSplitLiveRanges(func):
-    compute_liveness(func)
-    
-    for each loop L in func (from loop array at func+512):
-        live_through = LiveIn(L.header) & LiveOut(L.exit) - gen(L.body)
-        
-        for each register r in live_through:
-            if benefit(r, L) > threshold:
-                // Insert copy before loop header
-                insert_move(L.preheader, r, r_split)
-                
-                // Insert copy after loop exit
-                insert_move(L.exit_target, r_split, r)
-                
-                // Rename uses after loop to r_split
-                rename_uses_after_loop(r, r_split, L)
+    // Phase 1: Pre-analysis
+    rebuild_basic_blocks(func, 0)           // sub_781F80
+    alloc_kill_bitvectors(func)             // sub_BEAFD0: VR+96
+    alloc_gen_bitvectors(func)              // sub_BEB110: VR+24
+    compute_liveness(func)                  // sub_775010
+    propagate_per_block(func, 0)            // sub_773140
+    mark_interference_candidates(func)      // inline: walk chains, test subsets
+
+    // Phase 2: Work structure allocation
+    allocate_work_structures(split_candidate_count)
+
+    // Phase 3: Main splitting loop
+    for each VR in ordered_array[ctx+792] (reverse):
+        walk def-use chain via ctx+296:
+            classify instruction by opcode
+            if splittable:
+                new_vr = allocate_vr(func, vr, def_instr)    // sub_931920
+                copy_bitvectors(new_vr, vr)                   // sub_BDBA60 + sub_BDC1B0
+                validate_reg_class(new_vr, opcode, operands)  // sub_9314F0
+                update_interference_hash(new_vr)               // sub_BEEC80
+
+    // Phase 4: Interference hash processing
+    for each entry in interference_hash:
+        for each concurrent_vr in kill_bitvector:
+            if interferes(entry, concurrent_vr):              // sub_BEE7F0
+                emit_split_instruction(entry, concurrent_vr)  // sub_934630
+
+    // Phase 5: Cleanup
+    mark_rewrite_flags()                    // byte +245
+    free_work_structures()
+    ctx[+1370] &= ~4                       // invalidate liveness
 ```
 
-The benefit heuristic considers:
-- Loop trip count (from PGO data if available, phase 20 runs after this)
-- Number of registers live through the loop
-- Distance from target occupancy
+### Three Bitvector Fields per Virtual Register
+
+The splitting pass maintains three independent bitvectors per VR, all using the standard 32-bit-word `BitVector` from `0xBDBA60`--`0xBDE150`:
+
+| VR Offset | Name | Content | Allocated by |
+|-----------|------|---------|-------------|
+| `+96` | Kill set | Registers defined by this VR's instructions | `sub_BEAFD0` |
+| `+24` | Gen set | Registers used before definition in this VR's range | `sub_BEB110` |
+| `+176` | Live-through set | Registers live through the range without kill or gen | Derived |
+
+These per-VR bitvectors differ from the per-block liveness bitvectors used by `OriPerformLiveDead`. The per-block sets track global liveness; the per-VR sets track interference within a single virtual register's live range, enabling the split decision: if two VRs have overlapping kill sets (tested via the fast inline `(1 << id) & word[id >> 5]` check), they interfere and splitting one of them at the boundary reduces the overlap.
+
+### Helper Functions
+
+| Address | Identity | Role |
+|---------|----------|------|
+| `sub_BEAFD0` | `AllocKillBitvectors` | Allocate `VR+96` kill sets; propagate via interference chain `VR+136` |
+| `sub_BEB110` | `AllocGenBitvectors` | Allocate `VR+24` gen sets; scan phi/copy defs (opcodes 158, 167) |
+| `sub_BE3390` | `ComputeSplitCount(interference)` | Count split points for interference-chain case |
+| `sub_BE3590` | `ComputeSplitCount(clean)` | Count split points for non-interfering case |
+| `sub_BE3720` | `ComputeSplitCount(multiSrc)` | Count split points for multi-source operand case |
+| `sub_BEE7F0` | `TestInterference` | Test bitvector interference between two VRs |
+| `sub_BEEC80` | `UpdateHashWithSplit` | Update per-split hash table (192-byte entries, 8 buckets) |
 
 ### Relationship to Phase 138
 
@@ -398,6 +481,18 @@ Over 50 call sites reference this function across the optimizer, register alloca
 | `sub_8DE7A0` | 12KB | IterativeDataFlow (scheduling solver) | HIGH (0.80) |
 | `sub_A0B5E0` | varies | Uninitialized register detector | HIGH (0.97) |
 | `sub_A7BC80` | 36KB | RegisterSetManager (multi-file liveness) | MEDIUM (0.65) |
+| `sub_BEF110` | 108KB | `OriSplitLiveRanges` core (Phase 19) | HIGH (0.90) |
+| `sub_BF33D0` | ~1KB | `OriSplitLiveRanges` knob-gated entry (reads knob 456) | HIGH (0.90) |
+| `sub_A1D3A0` | ~0.2KB | `OriSplitLiveRanges` vtable execute | HIGH (0.90) |
+| `sub_BEAFD0` | ~2KB | `AllocKillBitvectors` (VR+96 per-VR kill sets) | HIGH (0.85) |
+| `sub_BEB110` | ~3KB | `AllocGenBitvectors` (VR+24 per-VR gen sets) | HIGH (0.85) |
+| `sub_BE3390` | varies | `ComputeSplitCount(interference)` | MEDIUM (0.80) |
+| `sub_BE3590` | varies | `ComputeSplitCount(clean)` | MEDIUM (0.80) |
+| `sub_BE3720` | varies | `ComputeSplitCount(multiSrc)` | MEDIUM (0.80) |
+| `sub_BEE7F0` | varies | `TestInterference` (BV interference test) | MEDIUM (0.80) |
+| `sub_BEEC80` | ~1KB | `UpdateHashWithSplit` (per-split hash update) | MEDIUM (0.80) |
+| `sub_BEB9C0` | varies | Hash table init/destroy (secondary) | MEDIUM (0.75) |
+| `sub_BEBA40` | varies | Hash table init/destroy (primary) | MEDIUM (0.75) |
 
 ## Key Constants
 
@@ -411,6 +506,19 @@ Over 50 call sites reference this function across the optimizer, register alloca
 | `+984` | Code Object offset: number of basic blocks |
 | `+1378` bit 4 | Flag: function uses uniform registers (enables `+856` bitvector) |
 | `0xCFFF` | Opcode mask: strips modifier bits for side-effect classification |
+| `+792` | Context offset: reverse-ordered register array (for live range splitting) |
+| `+1370` bit 2 | Flag: liveness invalid (cleared by `sub_BEF110` on exit) |
+| `+1624` | Context offset: register budget (double, read by `sub_BF33D0`) |
+| `VR+24` | Virtual register offset: gen bitvector (allocated by `sub_BEB110`) |
+| `VR+96` | Virtual register offset: kill bitvector (allocated by `sub_BEAFD0`) |
+| `VR+136` | Virtual register offset: interference chain (linked list of aliased VRs) |
+| `VR+144` | Virtual register offset: register class ID (int32) |
+| `VR+176` | Virtual register offset: live-through bitvector |
+| `VR+245` | Virtual register byte flag: needs-opcode-rewrite (set by Phase 19 cleanup) |
+| `VR+264` | Virtual register flags: bit 0 = has-interference-chain, bit 1 = non-subset, bit 2 = was-split |
+| `VR+280` | Virtual register flags: bit 2 = needs-split, bit 4 = propagated, bit 12 = predicate-qualified |
+| `0x811C9DC5` | FNV-1a offset basis (used in Phase 19 interference hash) |
+| `16777619` | FNV-1a prime (0x01000193) |
 | `0x22BC5C0` | String address: `"OriSplitLiveRanges"` |
 | `0x22BCFE8` | String address: `"OriSplitHighPressureLiveRanges"` |
 
