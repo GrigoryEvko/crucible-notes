@@ -1,5 +1,7 @@
 # Data Structure Layouts
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 This page documents the key internal data structures in ptxas v13.0.88: the compilation context ("god object"), the Ori Code Object, symbol tables, constant/shared memory descriptors, the pool allocator's object model, and the generic container types (hash maps, linked lists, growable arrays) that underpin nearly every subsystem.
 
 All offsets are byte offsets from the structure base unless otherwise noted. Types are inferred from decompiled access patterns. Field names are reverse-engineered -- the binary is stripped.
@@ -647,6 +649,132 @@ The output stream used for diagnostics and stats reporting (e.g., at compilation
 | +24 | `ptr` | `format_buffer` |
 | +56 | `u32` | `flags` (bit 0=hex, bit 1=oct, bit 2=left-align, bit 3=uppercase, bits 7-8=sign) |
 
+## ORI Record Serializer (`sub_A50650`)
+
+The ORI Record Serializer (`sub_A50650`, 74 KB, 2,728 decompiled lines) is the central function that takes a Code Object's in-memory state and flattens it into a linear output buffer organized as a table of typed section records. It is the serialization backbone for both the DUMPIR diagnostic subsystem and the compilation output path. Despite the `_ORI_` string it contains, it is not an optimization pass -- it is infrastructure.
+
+| | |
+|---|---|
+| **Address** | `0xA50650` |
+| **Size** | ~74 KB |
+| **Identity** | `CodeObject::EmitRecords` |
+| **Confidence** | 0.90 |
+| **Called from** | `sub_A53840` (wrapper), `sub_AACBF0` / `sub_AAD2A0` (DUMPIR diagnostic path) |
+| **Calls** | `sub_A4BC60` (register serializer, new format), `sub_A4D3F0` (legacy format), `sub_A4B8F0` (register count annotation), `sub_A47330` + `sub_A474F0` (multi-section finalization), `sub_1730890` / `sub_17308C0` / `sub_17309A0` (scheduling serializers), `sub_1730FE0` (register file map) |
+
+### Parameters
+
+`a1` is a serialization state object ("OriRecordContext") that carries the section table, compilation context back-pointer, and per-subsection index/size pairs. `a2` is the output buffer write cursor, advanced as data is emitted.
+
+Key fields on `a1`:
+
+| Offset | Type | Field | Evidence |
+|--------|------|-------|----------|
+| +8 | `ptr` | `compilation_ctx` | Dereferenced to reach sm_backend at `+1584` |
+| +24 | `i32` | `header_section_idx` | `v5 + 32 * (*(a1+24) + 1)` |
+| +72 | `ptr` | `section_table` | Array of 32-byte section entries |
+| +180 | `u32` | `instr_counter_1` | Reset to 0 at entry |
+| +472 | `u8` | `has_debug_info` | Gates debug section emission |
+| +916 | `i32` | `multi_section_count` | `> 0` triggers link-record emission and tail call to `sub_A47330` |
+| +1102 | `u8` | `multi_section_enabled` | Master flag for multi-section mode |
+| +1120 | `ptr` | `scheduling_ctx` | Scheduling context for barrier/scope serialization |
+
+### Section Record Format
+
+Each section occupies a 32-byte entry in the table at `*(a1+72) + 32 * section_index`:
+
+```
+Offset  Type   Field
++0      u16    type_tag           section type identifier
++4      u32    data_size          byte size of data payload
++8      ptr    data_ptr           pointer to data in output buffer
++16     u32    element_count      number of elements (or auxiliary metadata)
++20     u32    aux_field          additional per-type context
++24     u32    aux_field_2        secondary per-type context
+```
+
+Data payloads are 16-byte aligned: `cursor += (size + 15) & ~0xF`.
+
+### Section Type Tag Catalog
+
+The serializer emits up to 56 unique section types across three tag ranges.
+
+**Base types (0x01--0x58):**
+
+| Tag | Hex | Content | Evidence |
+|-----|-----|---------|----------|
+| 1 | 0x01 | Instruction stream (register-allocated code body) | Emitted via `sub_A4BC60` or `sub_A4D3F0` |
+| 3 | 0x03 | Virtual-dispatch section (vtable+48 on state obj) | Conditional on `*(a1+64) > 0` |
+| 16 | 0x10 | Source operand bank (v7[199] entries at v7+97) | `*(entry+48) = v7[199]` |
+| 17 | 0x11 | Destination operand bank (bit-packed from v7+203) | Conditional on `!v7[1414]` |
+| 19 | 0x13 | Annotation stream | `*(a1+232)` counter |
+| 34 | 0x22 | Original-definition name table (`_ORI_` prefixed) | `strcpy(v50, "_ORI_")` at line 1762 |
+| 35 | 0x23 | Instruction info snapshot (340 bytes from v7+4) | `qmemcpy` of 340 bytes |
+| 46 | 0x2E | Texture/surface binding table | `v7[248]` entries, 16 bytes each |
+| 50 | 0x32 | Live range interval table (spill map) | From compilation context +984 |
+| 51 | 0x33 | Register file occupancy table | `*(ctx+1424) & 4` |
+| 53 | 0x35 | Source operand type bitmap (4-bit per operand) | v7[131] operands, 20-byte stride |
+| 54 | 0x36 | Destination operand type bitmap | v7[134] operands, 20-byte stride |
+| 55 | 0x37 | Scheduling barrier data | via `sub_1730890` |
+| 56 | 0x38 | Register file mapping | via `sub_1730FE0` |
+| 58 | 0x3A | Scheduling dependency graph | via `sub_17309A0` |
+| 59 | 0x3B | Multi-section link record | Conditional on `*(a1+1102)` |
+| 64 | 0x40 | External reference (from ctx+2120) | Pointer stored, no data copy |
+| 68 | 0x44 | Performance counter section | `*(a1+932)` counter |
+| 70 | 0x46 | Spill/fill metadata | `v7[408]` |
+| 71 | 0x47 | Call graph edge table | From v7+61, linked list traversal |
+| 73 | 0x49 | Codegen context snapshot | From ctx+932 register allocation state |
+| 80 | 0x50 | Hash table section | v7+207/208, hash bucket traversal |
+| 81 | 0x51 | Extended call info | From v7+84 |
+| 83 | 0x53 | Convergence scope data | via `sub_17308C0` |
+| 85 | 0x55 | Register geometry record (banks, warps, lanes) | From ctx+1600, writes bank/warp/lane counts |
+| 88 | 0x58 | Extended scheduling annotations | Conditional on `*(a1+1088) > 0` |
+
+**Extended types (0x1208--0x1221):** Emitted only when `*(char*)(ctx+1412) < 0`, which enables the full post-register-allocation diagnostic mode. These 16 types carry per-register-class live range and operand definition data:
+
+| Tag | Hex | Content |
+|-----|-----|---------|
+| 4616 | 0x1208 | Extended operand class 0 |
+| 4617--4623 | 0x1209--0x120F | Extended operand classes 1--7 |
+| 4624 | 0x1210 | Block-level operand summary |
+| 4625 | 0x1211 | Live-in vector (12 bytes/element, count at `*(a1+668)`) |
+| 4626 | 0x1212 | Live-out vector (12 bytes/element) |
+| 4627 | 0x1213 | Extended operand class 8 |
+| 4628--4629 | 0x1214--0x1215 | Extended operand classes 9--10 |
+| 4630 | 0x1216 | Memory space descriptor (SM arch > 0x4FFF) |
+| 4631 | 0x1217 | Extended scheduling flag (SM arch > 0x4FFF) |
+| 4632 | 0x1218 | Instruction hash (ctx+1386 bit 3) |
+| 4633 | 0x1219 | Annotation metadata |
+| 4640 | 0x1220 | Extended section metadata |
+| 4641 | 0x1221 | Optimization level record (from knob system, knob 988) |
+
+### The `_ORI_` Name Prefix
+
+The `_ORI_` string is not a pass name. At line 1762 the serializer iterates the linked list at `v7+55` (the original-definition chain maintained for rematerialization debugging) and for each entry creates a string `"_ORI_<original_name>"`:
+
+```c
+// Line 1748-1770 (simplified)
+for (def = v7->original_defs; def; def = def->next) {
+    entry = &section_table[16 * (state->instr_offset + idx)];
+    entry->type_tag = 34;      // original-definition name
+    entry->data_ptr = cursor;
+    strcpy(cursor, "_ORI_");
+    strcpy(cursor + 5, def->name);
+    cursor += align16(strlen(def->name) + 21);
+}
+```
+
+These names are consumed by the register allocation verifier (`sub_A55D80`) when it compares pre- and post-allocation reaching definitions. A mismatch triggers the "REMATERIALIZATION PROBLEM" diagnostic (string at `0xa55dd8`), which lists original definitions under their `_ORI_` names alongside the post-allocation state.
+
+### Wrapper: `sub_A53840`
+
+`sub_A53840` (48 lines) is a thin wrapper that:
+1. Emits a type-44 header record if `*(ctx+1600)[1193]` is set (scheduling metadata header)
+2. Calls `sub_A50650` with the output buffer
+3. Optionally emits a type-62 trailer record if `*(ctx+1600)[48]` is set
+
+This wrapper is the typical entry point reached through vtable dispatch.
+
 ## Function Map
 
 | Address | Size | Callers | Identity |
@@ -654,6 +782,8 @@ The output stream used for diagnostics and stats reporting (e.g., at compilation
 | `sub_A3B080` | ~700 B | multiple | Code Object constructor |
 | `sub_A3A7E0` | ~700 B | 1 | Stats emitter (per-function profile) |
 | `sub_A4B8F0` | ~250 B | 1 | Register count / annotation writer |
+| `sub_A50650` | ~74 KB | 8 | ORI Record Serializer (`CodeObject::EmitRecords`) |
+| `sub_A53840` | ~400 B | 1 | EmitRecords wrapper (adds type-44 header) |
 | `sub_424070` | 2,098 B | 3,809 | Pool allocator (`alloc`) |
 | `sub_4248B0` | 923 B | 1,215 | Pool deallocator (`free`) |
 | `sub_424C50` | 488 B | 27 | Pool reallocator (`realloc`) |

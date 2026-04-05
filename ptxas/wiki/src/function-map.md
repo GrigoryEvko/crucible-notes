@@ -118,6 +118,8 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 | `0x934630` | `register_id_packer` | 9 | 856 | Packs reg#/class/type into 32-bit |
 | `0xB28E00` | `ir_node_type_query` | 5 | many | Node kind discrimination |
 | `0xB28E90` | `ir_node_field_accessor` | 6 | many | Generic field getter |
+| `0xA50650` | `CodeObject_EmitRecords` | 1 | 8 | 74 KB, ORI record serializer (56 section types) |
+| `0xA53840` | `EmitRecords_wrapper` | 1 | 1 | Thin wrapper, adds type-44 header |
 
 > **Details**: [Instructions](ir/instructions.md), [Registers](ir/registers.md), [Data Structures](ir/data-structures.md), [CFG](ir/cfg.md)
 
