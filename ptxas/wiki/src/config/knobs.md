@@ -555,7 +555,7 @@ The 1,294 knobs cluster into functional categories. Prefix analysis of decoded k
 
 | Prefix | Count | Domain |
 |---|---|---|
-| `Sched*` | 76 | Instruction scheduling heuristics and thresholds |
+| `Sched*` / `PostSched*` / `Sb*` | 89 | Instruction scheduling heuristics and thresholds |
 | `RegAlloc*` / `Reg*` | 87 | Register allocation parameters, spill cost model, target selection |
 | `Disable*` | 75 | Pass/feature disable switches (boolean) |
 | `Remat*` / `SinkRemat*` | 35 | Rematerialization cost model, enable switches, placement control |
@@ -738,6 +738,195 @@ The four "Slack" knobs (688--691) fine-tune lower register limits for specific a
 | 657 | `RegAllocSortRegs` | INT | Sorting order for register candidates during allocation |
 | 684 | `RegAllocThresholdForDiscardConflicts` | INT | Interference count above which conflicts are discarded (default 50) |
 | 686 | `RegAttrReuseVectorBudget` | BDGT | Budget for register-attribute vector reuse optimization |
+
+### Scheduling Knobs (89 knobs, indices 229--978)
+
+The instruction scheduler is the second most heavily parameterized subsystem after register allocation. Its 89 knobs span two contiguous blocks (indices 738--811 for the core `Sched*` set, and 569--574 for the `PostSched*` set) plus 11 scattered entries for scheduling-adjacent features. All names decoded from ROT13 strings at `0x21B6CB0`--`0x21BE100`, registered in `ctor_005` at code addresses `0x411FF0`--`0x420A00`.
+
+The knobs control every aspect of the list scheduler: how latencies are modeled, which functional units are treated as busy, how aggressively cross-block motion is attempted, and how register pressure feedback loops interact with the priority function. Three Blackwell-era `SchedResBusy*` knobs (QMMA at 964, OMMA at 977, MXQMMA at 978) sit outside the main block because they were appended in a later toolkit version for new MMA unit types.
+
+#### A. Resource Busy Overrides (28 knobs)
+
+The `SchedResBusy*` knobs override the hardware-profile resource busy times for individual functional units. Each knob sets the number of cycles the named unit is considered occupied after issuing an instruction to it. When unset, the scheduler uses the value from the latency model's per-SM hardware profile. Setting a `SchedResBusy*` knob to 0 effectively makes the unit appear always free to the scheduler.
+
+Two knobs accept string values instead of integers: `SchedResBusyOp` and `SchedResBusyMachineOpcode` take a string identifying a specific opcode or machine opcode to override, enabling per-instruction busy-time tuning.
+
+| Index | Name | Type | Functional Unit |
+|---|---|---|---|
+| 781 | `SchedResBusyADU` | INT | Address divergence unit |
+| 782 | `SchedResBusyALU` | INT | Arithmetic logic unit |
+| 783 | `SchedResBusyCBU` | INT | Convergence barrier unit |
+| 784 | `SchedResBusyDMMA` | INT | Double-precision MMA unit |
+| 785 | `SchedResBusyFMA` | INT | Fused multiply-add unit |
+| 786 | `SchedResBusyFMAWide` | INT | Wide FMA unit (multi-cycle) |
+| 787 | `SchedResBusyFP16` | INT | Half-precision FP unit |
+| 788 | `SchedResBusyFP64` | INT | Double-precision FP unit |
+| 789 | `SchedResBusyGMMA` | INT | Warp group MMA (WGMMA) unit |
+| 790 | `SchedResBusyHMMA16` | INT | Half-precision MMA, 16-wide |
+| 791 | `SchedResBusyHMMA16816` | INT | Half-precision MMA, 16x8x16 shape |
+| 792 | `SchedResBusyHMMA1688` | INT | Half-precision MMA, 16x8x8 shape |
+| 793 | `SchedResBusyHMMA32` | INT | Half-precision MMA, 32-wide |
+| 794 | `SchedResBusyIMMA` | INT | Integer MMA unit |
+| 795 | `SchedResBusyLSU` | INT | Load/store unit |
+| 796 | `SchedResBusyLSUL1` | INT | Load/store unit (L1 path) |
+| 797 | `SchedResBusyOp` | STR | Per-opcode override (string: opcode name) |
+| 798 | `SchedResBusyMachineOpcode` | STR | Per-machine-opcode override (string) |
+| 799 | `SchedResBusyUDP` | INT | Uniform datapath unit |
+| 800 | `SchedResBusyXU64` | INT | Extended-precision (64-bit) unit |
+| 964 | `SchedResBusyQMMA` | INT | Quarter-precision MMA unit (Blackwell) |
+| 977 | `SchedResBusyOMMA` | INT | Octal MMA unit (Blackwell) |
+| 978 | `SchedResBusyMXQMMA` | INT | MX-quantized MMA unit (Blackwell) |
+
+The five HMMA variants (790--793) correspond to different tensor core shapes: `HMMA16` for 16-wide half-precision, `HMMA1688` for the 16x8x8 tile used on Volta/Turing, `HMMA16816` for the 16x8x16 tile used on Ampere+, and `HMMA32` for 32-wide half-precision operations. IMMA (794) handles integer tensor operations (INT8/INT4).
+
+#### B. Latency Overrides (12 knobs)
+
+These override the default latency values the scheduler uses for dependency edges. The `SchedRead*` prefix indicates read-after-write latencies; the `SchedTex*` and `SchedLDS*` variants target texture and shared-memory operations specifically.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 757 | `SchedLDSLatency` | INT | Shared memory (LDS) load latency in cycles |
+| 771 | `SchedReadLatency` | INT | Default read-after-write latency |
+| 772 | `SchedReadSBBaseLatency` | INT | Scoreboard base read latency |
+| 773 | `SchedReadSBBaseUseLSULat` | BOOL | Use LSU latency as scoreboard base |
+| 774 | `SchedReadSbDmmaLatency` | INT | Scoreboard read latency for DMMA operations |
+| 775 | `SchedReadSbLdgstsLatency` | INT | Scoreboard read latency for LDGSTS (async copy) operations |
+| 802 | `SchedSyncsLatency` | INT | Synchronization barrier latency |
+| 803 | `SchedSyncsPhasechkLatency` | INT | Phase-check synchronization latency |
+| 804 | `SchedTex2TexIssueRate` | INT | Minimum cycles between back-to-back texture issues |
+| 808 | `SchedTexLatency` | INT | Texture fetch latency in cycles |
+| 811 | `SchedXU64Latency` | INT | Extended 64-bit unit latency |
+| 770 | `SchedReadAvailTarget` | INT | Target availability delay for read operands |
+
+#### C. Register Pressure Feedback (8 knobs)
+
+The scheduler's priority function incorporates register pressure awareness through these knobs. They control how aggressively the scheduler tries to reduce live register count: `SchedMaxRTarget` sets the target register count, while the `SchedMaxRLive*` knobs define slack bands around that target. `SchedReduceIncLimit*` throttles how quickly the scheduler increases its pressure-reduction efforts.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 758 | `SchedLocalRefRatio` | DBL | Local reference ratio weight in priority function |
+| 760 | `SchedMaxRLiveCarefulSlack` | INT | Slack before aggressive register pressure reduction |
+| 761 | `SchedMaxRLiveOKslack` | INT | Slack band where register pressure is acceptable |
+| 762 | `SchedMaxRLiveOKslackColdBlocks` | INT | OK-slack for cold (infrequently executed) blocks |
+| 763 | `SchedMaxRTarget` | INT | Target maximum register count for scheduling |
+| 776 | `SchedReduceIncLimit` | INT | Limit on incremental register pressure reduction steps |
+| 778 | `SchedReduceIncLimitHigh` | INT | Upper bound on incremental reduction |
+| 779 | `SchedReduceRegBudget` | BDGT | Budget for register-pressure-reduction iterations |
+
+#### D. Cross-Block Scheduling (8 knobs)
+
+Cross-block motion allows the scheduler to move instructions across basic block boundaries for better latency hiding. These knobs control the scope and cost limits of cross-block speculation.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 742 | `SchedCrossBlock` | INT | Master cross-block scheduling mode selector |
+| 743 | `SchedCrossBlockInstsToSpeculate` | INT | Max instructions to speculate across block boundary |
+| 744 | `SchedCrossBlockLimit` | INT | Overall cross-block motion limit |
+| 745 | `SchedCrossBlockSpeculate` | INT | Speculation mode for cross-block motion |
+| 746 | `SchedCrossBlockSpeculateBudget` | BDGT | Budget for cross-block speculation attempts |
+| 747 | `SchedCrossBlockTexToSpeculate` | INT | Max texture instructions to speculate across blocks |
+| 288 | `EnableXBlockSchedInMultiBlockInMMALoop` | INT | Enable cross-block scheduling within multi-block MMA loops |
+| 738 | `SbXBlock` | INT | Cross-block scoreboard tracking mode |
+
+#### E. Texture Batching (7 knobs)
+
+Texture operations have high latency, so the scheduler groups them into batches to maximize memory-level parallelism. These knobs control batch formation and target selection.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 741 | `SchedCountLoadsPerTex` | INT | Max loads to count per texture operation |
+| 756 | `SchedLDGBatchDelayBias` | INT | Delay bias for global load batching |
+| 755 | `SchedLastHybridInBBWithIssueRate` | INT | Last hybrid scheduler position in BB with issue rate |
+| 805 | `SchedTexBatchTargetSelectRegisterTarget` | INT | Batch formation: prefer register-target-aware grouping |
+| 806 | `SchedTexBatchTargetSelectSchedulerTarget` | INT | Batch formation: prefer scheduler-target grouping |
+| 807 | `SchedTexBatchTargetTexReadTogether` | INT | Batch formation: prefer grouping tex reads together |
+| 931 | `UseGroupOpexesForResourceScheduling` | INT | Use grouped opexes for resource scheduling decisions |
+
+#### F. Dependency Modeling (6 knobs)
+
+These control how the scheduler builds and refines the dependency graph between instructions.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 753 | `SchedAddDepFromGlobalMembarToCB` | INT | Add dependency edge from global membar to CB unit |
+| 759 | `SchedMaxMemDep` | INT | Max memory dependencies per instruction |
+| 764 | `SchedMemNoAlias` | NONE | Assume no memory aliasing (aggressive scheduling) |
+| 777 | `SchedReduceRefPsuedoDepLimit` | INT | Limit on reducing reference pseudo-dependencies |
+| 780 | `SchedRefineMemDepBudget` | BDGT | Budget for memory dependency refinement iterations |
+| 801 | `SchedSymmetricAntiDepConflictWindow` | BOOL | Enable symmetric anti-dependency conflict window |
+
+#### G. Post-Scheduler (6 knobs)
+
+The post-scheduler runs after register allocation (phase 103) and adjusts the schedule to account for actual register assignments. It primarily inserts stall cycles and adjusts issue delays.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 569 | `PostSchedAdvLatencyHiding` | BOOL | Enable advanced latency hiding in post-scheduler |
+| 570 | `PostSchedBudget` | BDGT | Budget for post-scheduler iterations |
+| 571 | `PostSchedEarlyStall` | INT | Early stall insertion mode |
+| 572 | `PostSchedForceReverseOrder` | INT | Force reverse traversal order in post-scheduler |
+| 573 | `PostSchedIssueDelay` | BOOL | Enable issue delay computation |
+| 574 | `PostSchedIssueDelayForNoWBStalls` | BOOL | Compute issue delays for no-writeback stalls |
+
+#### H. Ordering and Preservation (5 knobs)
+
+These control whether the scheduler preserves the original instruction order (from the optimizer or PTX source) versus reordering freely.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 229 | `ForcePreserveSchedOrderSameNvOpt` | INT | Force preserve scheduling order from NvOpt pass |
+| 594 | `PreserveSchedOrder` | NONE | Preserve source scheduling order (boolean) |
+| 595 | `PreserveSchedOrderSame` | BOOL | Preserve scheduling order for same-priority instructions |
+| 751 | `SchedForceReverseOrder` | INT | Force reverse scheduling order (bottom-up) |
+| 769 | `SchedPrefFurthestDep` | BOOL | Prefer instructions with furthest dependency |
+
+#### I. Scoreboard (4 knobs)
+
+The hardware scoreboard tracks instruction completion. These knobs tune how the scheduler predicts scoreboard occupancy to avoid stalls.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 738 | `SbXBlock` | INT | Cross-block scoreboard tracking mode |
+| 739 | `SbXBlockLLSB` | INT | Cross-block long-latency scoreboard tracking |
+| 772 | `SchedReadSBBaseLatency` | INT | Scoreboard base read latency |
+| 773 | `SchedReadSBBaseUseLSULat` | BOOL | Use LSU latency as scoreboard base |
+
+Note: `SbXBlock` appears in both cross-block (D) and scoreboard (I) categories because it serves both purposes -- it controls whether the scoreboard state propagates across block boundaries, which is a prerequisite for cross-block scheduling correctness.
+
+#### J. MMA Coupling (3 knobs)
+
+Matrix multiply-accumulate instructions on certain architectures share functional unit resources. These knobs control how the scheduler models coupled execution.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 752 | `SchedFP16CoupledMaxellPascal` | INT | FP16 coupled execution mode on Maxwell/Pascal |
+| 754 | `SchedHmmaImmaBmmaCoupledAmperePlus` | INT | HMMA/IMMA/BMMA coupled execution on Ampere+ |
+| 366 | `GroupOpexesForResourceSchedulingThreshold` | DBL | Threshold for grouping opexes in resource scheduling |
+
+#### K. Scheduler Model (4 knobs)
+
+These control how the scheduler models the hardware pipeline and instruction movement costs.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 765 | `SchedModelIdentityMove` | INT | Model identity moves as zero-latency |
+| 766 | `SchedModelSharedPhysicalPipe` | INT | Model shared physical pipe contention |
+| 767 | `SchedMultiRefDeltaLive` | INT | Delta-live threshold for multi-reference instructions |
+| 768 | `SchedMultiRefDeltaLiveMinRefs` | INT | Minimum reference count for delta-live calculation |
+
+#### L. Budget, Scale, and Control (7 knobs)
+
+General scheduling control knobs covering budgets, loop iteration estimates, the master disable switch, and validation.
+
+| Index | Name | Type | Purpose |
+|---|---|---|---|
+| 740 | `SchedBumpScaleAugmentFactor` | DBL | Augment factor for priority bump scaling |
+| 748 | `SchedDisableAll` | INT | Master disable for all scheduling passes |
+| 749 | `SchedDynBatchBudget` | BDGT | Budget for dynamic batching iterations |
+| 750 | `SchedEstimatedLoopIterations` | STR | Estimated loop iterations (string: per-loop hints) |
+| 809 | `ScheduleKILs` | INT | Schedule KIL (kill/discard) instructions |
+| 810 | `SchedValidateLiveness` | INT | Enable liveness validation after scheduling |
+| 811 | `SchedXU64Latency` | INT | XU64 unit latency override |
 
 ### Disable Switches (75 knobs)
 
