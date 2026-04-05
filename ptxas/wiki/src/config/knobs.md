@@ -557,7 +557,7 @@ The 1,294 knobs cluster into functional categories. Prefix analysis of decoded k
 |---|---|---|
 | `Sched*` | 76 | Instruction scheduling heuristics and thresholds |
 | `RegAlloc*` / `Reg*` | 87 | Register allocation parameters, spill cost model, target selection |
-| `Disable*` | 63 | Pass/feature disable switches (boolean) |
+| `Disable*` | 75 | Pass/feature disable switches (boolean) |
 | `Mercury*` / `Merc*` | 21 | Mercury encoder configuration |
 | `URF*` | 24 | Uniform Register File optimization |
 | `Enable*` | 19 | Pass/feature enable switches (boolean) |
@@ -737,6 +737,165 @@ The four "Slack" knobs (688--691) fine-tune lower register limits for specific a
 | 657 | `RegAllocSortRegs` | INT | Sorting order for register candidates during allocation |
 | 684 | `RegAllocThresholdForDiscardConflicts` | INT | Interference count above which conflicts are discarded (default 50) |
 | 686 | `RegAttrReuseVectorBudget` | BDGT | Budget for register-attribute vector reuse optimization |
+
+### Disable Switches (75 knobs)
+
+The disable switches are boolean knobs that turn off specific passes, optimizations, or workarounds. All 75 knobs containing "Disable" were decoded from ROT13 strings at `0x21BDE30`--`0x21BFA10`. Nearly all are `OKT_NONE` (boolean) type -- setting them with no value or any value disables the corresponding feature. The single exception is `RegAllocRematDisableRange`, which is `OKT_IRNG` and accepts a `"lo..hi"` instruction index range.
+
+The bare `Disable` knob at `0x21BE860` appears to be a master pass-disable switch. `SchedDisableAll` is the master scheduler disable. `DisablePragmaKnobs` prevents PTX `.pragma` directives from setting knobs -- a meta-level control that protects the knob system itself.
+
+#### A. Workaround (WAR) Switches (9 knobs)
+
+These disable hardware or compiler bug workarounds. Each `War_SW*` knob corresponds to an NVIDIA internal bug tracker ID. Disabling a WAR reverts to the unpatched behavior -- useful for bisecting whether a WAR is causing a regression.
+
+| Name | Feature Disabled |
+|---|---|
+| `DisableWar_SW200655588` | Workaround for bug SW-200655588 |
+| `DisableWar_SW2549067` | Workaround for bug SW-2549067 |
+| `DisableWar_SW2789503` | Workaround for bug SW-2789503 |
+| `DisableWar_SW2965144` | Workaround for bug SW-2965144 |
+| `DisableWar_SW3093632` | Workaround for bug SW-3093632 |
+| `DisableForwardProgressWar1842954` | Forward-progress guarantee workaround (bug 1842954) |
+| `DisableForwardProgressWar1842954ForDeferBlocking` | Same WAR, variant for defer-blocking scheduling |
+| `DisableHMMARegAllocWar` | HMMA (half-precision MMA) register allocation workaround |
+| `DisableMultiViewPerfWAR` | Multi-view rendering performance workaround |
+
+#### B. Memory and Addressing (11 knobs)
+
+These control address computation, memory access conversion, and shared-memory optimizations.
+
+| Name | Feature Disabled |
+|---|---|
+| `DisableCvtaForGenmemToSmem` | Generic-to-shared address space conversion via `cvta` |
+| `DisableDoubleIndexedAddress` | Double-indexed addressing mode optimization |
+| `DisableErrbarAfterMembar` | Error barrier (`BAR.SYNC 15`) insertion after `membar.sys` |
+| `DisableForceLDCTOLDCUConv` | LDC to LDCU (constant uniform load) conversion |
+| `DisableImplicitMemDesc` | Implicit memory descriptor inference |
+| `DisableLDCU256` | LDCU.256 -- 256-bit constant uniform load |
+| `DisableLDCUWithURb` | LDCU with uniform register base addressing |
+| `DisableLongIntArithAddressFolding` | Long integer arithmetic folding into address computation |
+| `DisableRemoveSmemLea` | Shared memory LEA (load effective address) removal |
+| `DisableSmemSizePerCTACheck` | Shared memory size per CTA validation check |
+| `DisableStrideOnAddr` | Stride-on-address optimization (base+stride*index folding) |
+
+#### C. Register Allocation and Uniform Registers (9 knobs)
+
+These control uniform register (UR) file usage, live range management, and remat-related disable ranges.
+
+| Name | Type | Feature Disabled |
+|---|---|---|
+| `DisableConvergentWriteUR` | NONE | Convergent write-to-UR optimization |
+| `DisableExtendedLiveRange` | NONE | Extended live range optimization |
+| `DisableU128` | NONE | 128-bit uniform register support |
+| `DisableURLiveAcrossConvBound` | NONE | UR liveness across convergence boundaries |
+| `DisableURLivenessTradeOff` | NONE | UR liveness trade-off heuristic |
+| `DisableUreg` | NONE | Uniform register file usage entirely |
+| `MercuryDisableLegalizationOfTexToURBound` | NONE | Mercury tex-to-UR-bound legalization |
+| `RegAllocRematDisableRange` | IRNG | Rematerialization for instruction index range `lo..hi` |
+| `RematDisableTexThrottleRegTgt` | NONE | Texture throttle register target during remat |
+
+#### D. Loop Optimization (6 knobs)
+
+| Name | Feature Disabled |
+|---|---|
+| `DisableAlignHotLoops` | Hot loop alignment (NOP padding for fetch efficiency) |
+| `DisableDeadLoopElimination` | Dead loop elimination pass |
+| `DisableLoopLevelVaryingAnalysis` | Loop-level varying/invariant analysis |
+| `DisableLoopPrecheckForYields` | Loop pre-check insertion for yield points (cooperative groups) |
+| `DisableMeshVCTALoop` | Mesh shader virtual CTA loop optimization |
+| `DisablePartialUnrollOverflowCheck` | Overflow check during partial loop unrolling |
+
+#### E. Code Motion and Scheduling (6 knobs)
+
+| Name | Feature Disabled |
+|---|---|
+| `DisableLatTransitivity` | Latency transitivity in scheduling dependency chains |
+| `DisableMoveCommoning` | MOV-based equivalence propagation (commoning walker) |
+| `DisableNestedHoist` | Nested code hoisting (loop-invariant-like motion) |
+| `DisableOffDeck` | Off-deck scheduling (prefetch to off-deck buffer) |
+| `DisableSourceOrder` | Source-order scheduling constraint |
+| `SchedDisableAll` | **Master switch:** all scheduling passes |
+
+#### F. Vectorization (4 knobs)
+
+| Name | Feature Disabled |
+|---|---|
+| `DisableFastvecEnhancement` | Fast vectorization enhancement pass |
+| `DisableHalfPartialVectorWrites` | Half-precision partial vector write coalescing |
+| `DisableReadVectorization` | Load vectorization (coalescing scalar reads into vector loads) |
+| `DisableWriteVectorization` | Store vectorization (coalescing scalar writes into vector stores) |
+
+#### G. Predication and Branching (4 knobs)
+
+| Name | Feature Disabled |
+|---|---|
+| `CmpToMovPredCrossBlockDisable` | CMP-to-MOV predicate propagation across basic blocks |
+| `DisableBranchPredInput` | Branch predicate input optimization |
+| `DisableCmpToPred` | CMP-to-predicate conversion |
+| `DisablePredication` | Predication pass (phase 63, `OriDoPredication`) |
+
+#### H. Synchronization and Barriers (2 knobs)
+
+| Name | Feature Disabled |
+|---|---|
+| `DisableRedundantBarrierRemoval` | Redundant barrier removal pass |
+| `DisableStageAndFence` | Stage-and-fence synchronization insertion |
+
+#### I. Dead Code and Store Elimination (2 knobs)
+
+| Name | Feature Disabled |
+|---|---|
+| `DisableDeadStoreElimination` | Dead store elimination pass |
+| `DisableStraightenInSimpleLiveDead` | Straightening within simple live/dead analysis |
+
+#### J. Control Flow Merging (5 knobs)
+
+| Name | Feature Disabled |
+|---|---|
+| `DisableEarlyExtractBCO` | Early extraction of BCO (branch code optimization objects) |
+| `DisableMergeEquivalentConditionalFlow` | Phase 133: tail merging of equivalent conditional branches |
+| `DisableMergeFp16MovPhi` | FP16 MOV-PHI merge optimization |
+| `DisableMergeSamRamBlocks` | SAM/RAM block merging (surface/texture access coalescing) |
+| `DisableOptimizeHotColdFlow` | Hot/cold flow optimization (code layout splitting) |
+
+#### K. Pass Control (2 knobs)
+
+| Name | Feature Disabled |
+|---|---|
+| `Disable` | Master disable switch (bare name) |
+| `DisablePragmaKnobs` | PTX `.pragma`-based knob overrides |
+
+#### L. Sanitizer (3 knobs)
+
+These control the address sanitizer instrumentation for different memory spaces. When the sanitizer is active, these knobs can selectively disable checking for one space while keeping the others.
+
+| Name | Feature Disabled |
+|---|---|
+| `SanitizeDisableGlobal` | Address sanitizer for global memory accesses |
+| `SanitizeDisableLocal` | Address sanitizer for local memory accesses |
+| `SanitizeDisableShared` | Address sanitizer for shared memory accesses |
+
+#### M. Floating Point (2 knobs)
+
+| Name | Feature Disabled |
+|---|---|
+| `FPFoldDisable` | Floating-point constant folding |
+| `FPRefactoringDisable` | Floating-point expression refactoring |
+
+#### N. Miscellaneous (10 knobs)
+
+| Name | Feature Disabled |
+|---|---|
+| `DisableBW225LongIntArith` | BW225 (Blackwell) long integer arithmetic optimization |
+| `DisableBptTrapNoReturn` | BPT.TRAP no-return semantics (debugger breakpoint trap) |
+| `DisableDependentConstExpr` | Dependent constant expression optimization |
+| `DisableISBESharing` | ISBE (indexed set buffer entry) sharing for bindless textures |
+| `DisableMarkF2FPackbTo16Bit` | Marking F2F.PACKB as 16-bit operation |
+| `DisableNonUniformQuadDerivatives` | Non-uniform quad derivative computation |
+| `DisablePadding` | NOP padding insertion (alignment and scheduling) |
+| `DisablePicCodeGen` | Position-independent code generation |
+| `DisableSopSr` | SOP (scalar operation) on special registers (SR) |
+| `DisableSuperUdp` | Super-UDP (enhanced uniform datapath) optimization |
 
 ## DUMP_KNOBS_TO_FILE
 
