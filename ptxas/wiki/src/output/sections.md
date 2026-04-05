@@ -679,6 +679,114 @@ Not all EIATTR codes are valid on all SM architectures. The function `sub_1C9784
 
 The `sub_1C97840` function takes an EIATTR code and the SM version from the ELFW object's field at offset 624, returning a boolean. This prevents older EIATTR codes from appearing in Blackwell cubins and prevents Blackwell-only codes from appearing in Hopper cubins.
 
+## Constant Bank Optimization
+
+The master section allocator `sub_1CABD60` (11,856 bytes) performs two major space optimizations during address assignment: **constant value deduplication** within `.nv.constant0` banks, and **shared memory interference-graph coloring** for extern shared variables. Both run before final offset assignment.
+
+### Constant Value Deduplication -- `sub_1CA6890`
+
+When multiple kernels in the same compilation unit use identical constant values, the OCG constant bank can contain duplicates. `sub_1CA6890` (454 lines decompiled) eliminates them by value-matching, reducing `.nv.constant0` section size.
+
+The algorithm dispatches on constant value width:
+
+| Value Width | Dedup Strategy | Data Structure |
+|---|---|---|
+| 4 bytes | Hash map lookup (`sub_426D60`) | Hash table keyed on 32-bit value |
+| 8 bytes | Hash map lookup (separate table) | Hash table keyed on 64-bit value |
+| 12, 16, 20, 24, 32, 48, 64 bytes | Linear scan with `memcmp` (`sub_1CA6760`) | Per-width linked list |
+| Other | No deduplication | Direct append |
+
+For each constant data node in the section's linked list (at section+72):
+
+1. Extract the value bytes (node+0), alignment (node+16), and size (node+24).
+2. Look up the value in the appropriate dedup structure.
+3. **If duplicate found**: alias the current symbol's offset to the existing symbol's offset. Debug output: `"found duplicate value 0x%x, alias %s to %s"` (32-bit) or `"found duplicate 64bit value 0x%llx, alias %s to %s"` (64-bit) or `"found duplicate %d byte value, alias %s to %s"` (N-byte via `sub_1CA6760`).
+4. **If not found**: align the section cursor to the required alignment, append the data via `sub_1CA6650`, and insert into the dedup structure.
+
+After aliasing, the function rewrites pending relocations that targeted the now-eliminated range:
+
+```c
+// Simplified relocation rewriting after dedup alias
+for (reloc in pending_relocs) {
+    if (reloc.section == target_section
+        && reloc.offset >= old_data_offset
+        && reloc.offset <  old_data_offset + old_data_size) {
+        reloc.offset = reloc.offset + alias_target_offset - old_data_offset;
+        // "optimize ocg constant reloc offset from %lld to %lld"
+        unlink(reloc);  // remove from pending list
+    }
+}
+```
+
+Special cases:
+- **Zero-valued constants**: A "seen set" (parameter a15) prevents distinct zero-valued symbols from being aliased to each other, since different `__constant__` variables may legitimately hold zero but need separate addresses.
+- **Redirect mode**: When parameter a13 is set and `sub_1CB15C0` returns true for a symbol, the constant is redirected to its defining section rather than deduplicated.
+
+The caller `sub_1CABD60` wraps this in an optimization check: `"optimize OCG constants for %s, old size = %lld"`. If dedup does not reduce the section size, it reverts: `"ocg const optimization didn't help so give up"`.
+
+### Shared Memory Interference Graph -- `sub_1CA92F0`
+
+When a CUDA program declares multiple `extern __shared__` variables used by different kernels, they can potentially share the same memory if no single kernel uses both simultaneously. `sub_1CA92F0` (585 lines decompiled) builds an interference graph and performs greedy graph coloring to pack shared objects into minimum total space.
+
+**Phase 1 -- Build usage sets** (which kernels reference each shared object):
+
+For each global shared object, walk all referencing functions. A kernel "uses" a shared object if it directly references it or transitively calls a device function that does (traced via `sub_1CBD800`). Objects used by exactly one kernel are **privatized** -- moved into a per-entry `.nv.shared.<func>` section. Unused objects are removed entirely (symbol flags set to mark deleted).
+
+```
+"global shared %s only used in entry %d"    -- privatize
+"remove unused global shared %s"             -- delete
+```
+
+**Phase 2 -- Build interference edges**:
+
+For each pair of remaining shared objects (i, j), test whether their usage sets intersect (via `sub_42E460` set membership). If any kernel uses both, they **interfere** -- they cannot overlap in memory. Edges are stored as linked lists per object.
+
+**Phase 3 -- Greedy graph coloring**:
+
+Objects are processed in sorted order. For each object:
+
+1. Mark all colors used by interfering neighbors as unavailable.
+2. Assign the lowest available color (starting from 1).
+3. Update the color's alignment requirement (max of all objects in that color group).
+4. Update the color's size requirement (max of all objects in that color group).
+
+```
+"  allocate to group %d"    -- color assignment
+```
+
+**Phase 4 -- Compute group offsets**:
+
+Groups are laid out sequentially with alignment padding:
+
+```c
+group_offset[1] = align_up(base, group_align[1]);
+for (g = 2; g <= num_groups; g++)
+    group_offset[g] = align_up(group_offset[g-1] + group_size[g-1], group_align[g]);
+total_size = group_offset[last] + group_size[last];
+```
+
+Each shared object's final offset is `group_offset[its_color]`. The total extern shared size is written to the section descriptor. Per-entry shared sections are expanded if a referenced object's offset + size exceeds their current size.
+
+```
+"esh %s size = %lld"
+"for shared object (%d) %s:"
+"  offset = 0x%llx, size = 0x%llx"
+"  edge to %d"
+"  allocate to group %d"
+```
+
+### Constant Bank Optimization Functions
+
+| Address | Size | Purpose |
+|---|---|---|
+| `sub_1CA6890` | 454 lines | Constant value deduplication (32/64-bit hash, N-byte memcmp) |
+| `sub_1CA6760` | 57 lines | N-byte value dedup helper (12--64 byte constants) |
+| `sub_1CA6650` | 65 lines | Constant data node appender (40-byte node, alignment + append) |
+| `sub_1CA92F0` | 585 lines | Shared memory interference graph + greedy coloring |
+| `sub_1CA91A0` | -- | Per-entry shared section creator (`.nv.shared.<func>`) |
+| `sub_1CA5360` | -- | Shared object comparison function (sort key) |
+| `sub_1CA5A00` | -- | Shared memory data copier (offset overlap check) |
+
 ## Key Functions
 
 | Address | Size | Purpose |
@@ -695,6 +803,8 @@ The `sub_1C97840` function takes an EIATTR code and the SM version from the ELFW
 | `sub_1CABD60` | 11,856 B | Master section allocator (shared/constant/local addresses) |
 | `sub_1CBE1B0` | ~10 KB | .nv.callgraph section builder |
 | `sub_1C97840` | -- | Architecture-gated EIATTR check |
+| `sub_1CA6890` | 454 lines | Constant bank value deduplication |
+| `sub_1CA92F0` | 585 lines | Shared memory interference graph + coloring |
 
 ## Cross-References
 
