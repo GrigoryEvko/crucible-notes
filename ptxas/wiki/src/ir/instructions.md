@@ -823,6 +823,134 @@ int getLatency(ArchSpecificInfo* this, int opcode) {
 }
 ```
 
+## PTX Text-Generation Operand Accessor API
+
+The PTX text generation subsystem (instruction pretty-printer, dispatcher at `sub_5D4190`) converts Ori IR instructions into PTX assembly text. The ~580 formatter functions at `0x4DA340`-`0x5A9FFF` query a PTX instruction context object through a stable API of 48 small accessor helpers concentrated at `0x707000`-`0x710FFF`.
+
+### PTX Instruction Context Object
+
+The accessor functions do NOT operate on the 296-byte Ori IR instruction directly. They take a **PTX instruction context object** (~2500+ bytes) that contains pre-decoded fields for text generation. The raw Ori instruction is accessible at `*(context + 1096)`. Each formatter receives this context as argument `a1` and a pool allocator table as argument `a2`.
+
+Partial field map of the PTX instruction context (offsets used by accessors):
+
+| Offset | Size | Type | Field | Accessed By |
+|--------|------|------|-------|-------------|
+| +544 | 8 | `ptr` | `predicate_ptr` | `has_predicate`, `get_opcode_string` |
+| +564 | 4 | `u32` | `saturation_code` | `get_saturation_mode` (== 12 means saturate) |
+| +596 | 4 | `u32` | `field_operand_count` | `get_field_a`..`get_field_d` |
+| +600 | 1 | `u8` | `flag_byte_a` | Bit 0: precision, bit 6: addressing, bit 7: addr_mode |
+| +604 | 1 | `u8` | `rounding_mode` | Bits 0-2: rounding mode code (3 bits) |
+| +605 | 1 | `u8` | `scale_byte` | Bits 4-7: scale code (4 bits, 16 entries) |
+| +609 | 1 | `u8` | `base_addr_byte` | Bits 2-3: base address mode (2 bits, 4 entries) |
+| +611 | 1 | `u8` | `param_flags` | Bits 4-5: parameter variant selector |
+| +615 | 1 | `u8` | `ftz_byte` | Bits 6-7: FTZ flag code (2 bits, 4 entries) |
+| +620 | 1 | `u8` | `variant_index` | Variant string lookup index (8 bits, 256 entries) |
+| +627 | 1 | `u8` | `flag_byte_b` | Bits 0-1: extended_op, 2-3: flag_b, 4-5: modifier/variant |
+| +640 | 4 | `i32` | `precision_code` | Index into precision string table |
+| +648 | var | `ptr[]` | `operand_names` | Per-operand name string pointer array (8B per slot) |
+| +800 | 4 | `u32` | `operand_count` | Number of operands for comparison/count accessors |
+| +816 | var | `ptr[]` | `reg_operands` | Register operand pointer array (8B per slot) |
+| +944 | var | `u32[]` | `operand_types` | Per-operand type code array (4B per slot) |
+| +1024 | var | `ptr[]` | `src_part0` | Source part 0 pointer array (8B per slot) |
+| +1264 | var | `ptr[]` | `src_part1` | Source part 1 pointer array (8B per slot) |
+| +1504 | var | `ptr[]` | `data_types_0` | Data type array, part 0 (8B per slot) |
+| +1744 | var | `ptr[]` | `data_types_1` | Data type array, part 1 (8B per slot) |
+| +1984 | var | `u32[]` | `target_sm` | Target SM version array (4B per slot) |
+| +2120 | 8 | `ptr` | `opcode_name` | Opcode mnemonic string pointer |
+| +2488 | 8 | `ptr` | `string_intern` | String interning table for modifier deduplication |
+
+### Accessor Catalog
+
+#### Tier 1: Core Accessors (>200 callers)
+
+Used by nearly every formatter function. These are the fundamental building blocks of PTX text generation.
+
+| Address | Name | Size | Callers | Signature | Logic |
+|---------|------|------|---------|-----------|-------|
+| `sub_710860` | `getDataType` | 39B | 2953 | `(ctx, idx, part) -> u8` | `part ? **(ctx+1744+8*idx) & 0x3F : **(ctx+1504+8*idx) & 0x3F` |
+| `sub_70B910` | `getSrcPart0` | 12B | 1656 | `(ctx, idx) -> ptr` | `*(ctx + 8*idx + 1024)` |
+| `sub_70B8E0` | `getRegOperand` | 12B | 1449 | `(ctx, idx) -> ptr` | `*(ctx + 8*idx + 816)` |
+| `sub_70B920` | `getSrcPart1` | 12B | 1296 | `(ctx, idx) -> ptr` | `*(ctx + 8*idx + 1264)` |
+| `sub_70B700` | `hasPredicate` | 14B | 946 | `(ctx) -> bool` | `*(ctx + 544) != 0` |
+| `sub_70B780` | `getPredicateName` | 151B | 514 | `(ctx, pool) -> str` | Allocates `"@" + opcode_name`; inserts `"!"` if negated |
+| `sub_70CA60` | `getOperandType` | 11B | 480 | `(ctx, idx) -> u32` | `*(ctx + 4*idx + 944)` |
+| `sub_70B710` | `getOpcodeString` | 111B | 348 | `(ctx, pool) -> str` | Allocates `"@" + *(ctx+2120)` from arena pool |
+| `sub_70FA00` | `getTargetSM` | 10B | 286 | `(ctx, idx) -> u32` | `*(ctx + 4*idx + 1984)` |
+
+#### Tier 2: Modifier and Property Accessors (10-200 callers)
+
+Used by instruction-class families (memory ops, float ops, texture ops, etc.).
+
+| Address | Name | Size | Callers | Signature | Logic |
+|---------|------|------|---------|-----------|-------|
+| `sub_70CA70` | `getTypeSuffix` | 427B | 191 | `(ctx, pool) -> str` | Iterates `*(ctx+796)` type codes; looks up in `off_2032300[]` with interning |
+| `sub_70CD20` | `getOperandOffset` | 122B | 158 | `(ctx, idx) -> str` | `off_2032300[*(ctx+4*idx+944)]`; resolves via string interning for codes <= 0x39 |
+| `sub_707CE0` | `getAddressOperand` | 22B | 93 | `(ctx) -> str` | `off_2033DE0[*(ctx+600) >> 7]` |
+| `sub_70B930` | `getOperandCount` | 7B | 68 | `(ctx) -> u32` | `*(ctx + 800)` |
+| `sub_70B4C0` | `getBaseAddress` | 22B | 46 | `(ctx) -> str` | `off_2032700[(*(ctx+609) >> 2) & 3]` |
+| `sub_709A10` | `getVariantString` | 73B | 46 | `(ctx) -> str` | `off_2033060[*(ctx+620)]` resolved via string interning |
+| `sub_70B6E0` | `hasPredicate_v2` | 14B | 42 | `(ctx) -> bool` | `*(ctx + 544) != 0` (identical body to `hasPredicate`) |
+| `sub_709760` | `getComparisonOp` | 127B | 21 | `(ctx, pool) -> str` | Iterates `*(ctx+800)` operand names from +648 array with `" , "` separator |
+| `sub_709FE0` | `getRoundingMode` | 11B | 17 | `(ctx) -> u8` | `*(ctx + 604) & 7` |
+| `sub_70A500` | `getSaturationMode` | 13B | 15 | `(ctx) -> bool` | `*(ctx + 564) == 12` |
+| `sub_709910` | `getVariantCount` | 14B | 13 | `(ctx) -> u8` | `(*(ctx+627) >> 4) & 3` |
+| `sub_708E40` | `getExtendedOperand` | 29B | 10 | `(ctx, idx) -> str` | `off_2033720[(*(ctx+627) >> (idx==1 ? 0 : 2)) & 3]` |
+
+#### Tier 3: Instruction-Class-Specific Accessors (<10 callers)
+
+Used by specific instruction families (MMA/tensor, texture, guardrail formatters).
+
+| Address | Name | Size | Callers | Signature | Purpose |
+|---------|------|------|---------|-----------|---------|
+| `sub_70FA10` | `checkTargetSM` | 66B | 7 | `(ctx, idx, str) -> bool` | `sscanf(str, "sm_%d")` then compare to `*(ctx+1984+4*idx)` |
+| `sub_70C890` | `getOperandDetail` | ~300B | varies | `(ctx, pool, maxlen, type) -> str` | Complex: hex parse, fallback to `sub_707380`, type-dispatch |
+| `sub_70A810` | `getScaleString` | 22B | varies | `(ctx) -> str` | `off_2032BA0[(*(ctx+605) >> 4) & 0xF]` |
+| `sub_70B3F0` | `getFtzFlag` | 22B | varies | `(ctx) -> str` | `off_20327C0[(*(ctx+615) >> 6) & 3]` |
+| `sub_707530` | `getPrecisionString` | 12B | varies | `(ctx) -> str` | `off_2033FA0[*(ctx+640)]` |
+| `sub_707C60` | `getAddressingMode` | 12B | varies | `(ctx) -> bool` | `(*(ctx+600) & 0x40) != 0` |
+| `sub_707C80` | `getScopeString` | 22B | varies | `(ctx) -> str` | `off_2033E00[(*(ctx+600) & 0x40) != 0]` |
+| `sub_7075E0` | `getLayoutString` | 22B | varies | `(ctx) -> str` | `off_2033EE0[*(ctx+600) & 1]` -- WMMA/TCGEN05 |
+| `sub_707BE0` | `getShapeString` | 22B | varies | `(ctx) -> str` | `off_2033E30[(*(ctx+600) & 4) != 0]` -- WMMA/TCGEN05 |
+| `sub_7075C0` | `getInstrFlagA` | 7B | varies | `(ctx) -> u8` | `*(ctx+600) & 1` -- WMMA/rsqrt |
+| `sub_707BC0` | `getInstrFlagB` | varies | varies | `(ctx) -> varies` | Secondary flag accessor -- WMMA/rsqrt |
+| `sub_70D3B0` | `getFieldA` | 91B | 2 | `(ctx) -> str` | Returns `".transA"` if operand count matches MMA shape |
+| `sub_70D410` | `getFieldB` | 99B | 2 | `(ctx) -> str` | Returns `".transB"` (symmetric with `getFieldA`) |
+| `sub_70D480` | `getFieldC` | 91B | 2 | `(ctx) -> str` | MMA field C modifier string |
+| `sub_70D4E0` | `getFieldD` | 91B | 2 | `(ctx) -> str` | MMA field D modifier string |
+| `sub_70D360` | `getModifier` | 76B | 1 | `(ctx, pool) -> str` | Reads operand at index 3 or 5 depending on byte 627 |
+| `sub_70D2F0` | `getImmediate` | 107B | 1 | `(ctx, pool) -> str` | Reads operand at +672, conditionally appends second value |
+| `sub_70FCB0` | `getParamA` | varies | varies | `(ctx) -> u64` | Dispatch on `(*(ctx+611) & 0x30)`: selects guardrail constant |
+| `sub_70FCF0` | `getParamB` | varies | varies | `(ctx) -> u64` | Similar dispatch on different bit field |
+| `sub_70E670` | `getParamC` | varies | varies | `(ctx) -> u64` | Third parameter accessor |
+
+### Static String Tables
+
+The accessor functions perform table-driven lookups using static string pointer arrays in `.rodata`. Each table is indexed by a small bit-field extracted from the context object:
+
+| Table Address | Entries | Indexed By | Content |
+|---------------|---------|------------|---------|
+| `off_2032300` | >57 | Operand type code | Type suffix strings (`.f32`, `.u16`, `.b64`, etc.) |
+| `off_2032700` | 4 | `(ctx+609 >> 2) & 3` | Base address mode strings |
+| `off_20327C0` | 4 | `(ctx+615 >> 6) & 3` | FTZ flag strings (empty, `.ftz`, etc.) |
+| `off_2032BA0` | 16 | `(ctx+605 >> 4) & 0xF` | Scale modifier strings |
+| `off_2033060` | 256 | `ctx+620` | Variant name strings |
+| `off_2033720` | 4 | `(ctx+627 >> N) & 3` | Extended operand strings |
+| `off_2033DE0` | 2 | `ctx+600 >> 7` | Address operand strings |
+| `off_2033E00` | 2 | `(ctx+600 & 0x40) != 0` | Scope strings (`.cta`, `.gpu`, etc.) |
+| `off_2033E30` | 2 | `(ctx+600 & 4) != 0` | Shape strings -- WMMA/TCGEN05 |
+| `off_2033EE0` | 2 | `ctx+600 & 1` | Layout strings -- WMMA/TCGEN05 |
+| `off_2033FA0` | indexed by int | `ctx+640` | Precision strings for texture ops |
+
+### Architectural Notes
+
+1. **String interning**: String-returning accessors for type codes <= 0x39 go through a string interning table at `*(ctx+2488)`. The pattern is: look up a candidate string from the static table, then pass it through `sub_426D60` (hash lookup) or `sub_7072A0` (insert-and-return). This deduplicates PTX modifier strings across the entire text generation pass.
+
+2. **Pool allocation**: Accessors that construct new strings (prefixing `"@"`, joining with separators) receive a pool allocator parameter. They allocate from the formatter's 50KB temp buffer via `sub_4280C0` (get pool) -> `sub_424070` (alloc from pool) -> `sub_42BDB0` (abort on failure).
+
+3. **Duplicate functions**: `sub_70B700` (`hasPredicate`, 946 callers) and `sub_70B6E0` (`hasPredicate_v2`, 42 callers) have bytewise-identical bodies. Both return `*(a1+544) != 0`. These are likely methods in different classes (base and derived, or two sibling classes) that were not merged by the linker because they have distinct mangled names.
+
+4. **MMA/tensor accessors**: `getFieldA` through `getFieldD`, `getLayoutString`, and `getShapeString` are used exclusively by WMMA, HMMA, and TCGEN05 instruction formatters. They decode matrix operation modifiers (`.transA`, `.transB`, `.row`, `.col`) from compressed bit fields.
+
 ## Instruction Creation
 
 ### Allocation: `sub_7DD010`
@@ -971,6 +1099,14 @@ The complex def-use chain builder `sub_7E6090` (650 lines decompiled) is the cor
 | `sub_896D50` | 21KB | `InstrMnemTable::init` | Architecture-specific mnemonic table initializer |
 | `sub_6D9690` | 94KB | `Instruction::encode` | Master SASS instruction encoder |
 | `sub_B28E00` | varies | `isReg/isPred/isImm` | Operand type predicates (isel infrastructure) |
+| `sub_5D4190` | 12.9KB | `PTXFormatter::dispatch` | PTX text generation dispatcher (580 formatters) |
+| `sub_710860` | 39B | `PTXCtx::getDataType` | Data type accessor (2,953 callers) |
+| `sub_70B8E0` | 12B | `PTXCtx::getRegOperand` | Register operand accessor (1,449 callers) |
+| `sub_70B910` | 12B | `PTXCtx::getSrcPart0` | Source part 0 accessor (1,656 callers) |
+| `sub_70B700` | 14B | `PTXCtx::hasPredicate` | Predicate presence check (946 callers) |
+| `sub_70CA60` | 11B | `PTXCtx::getOperandType` | Operand type code accessor (480 callers) |
+| `sub_70B710` | 111B | `PTXCtx::getOpcodeString` | Opcode string with "@" prefix (348 callers) |
+| `sub_70FA00` | 10B | `PTXCtx::getTargetSM` | Target SM version accessor (286 callers) |
 
 ## Related Pages
 
