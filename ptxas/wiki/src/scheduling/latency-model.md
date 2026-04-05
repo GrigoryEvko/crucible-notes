@@ -16,6 +16,7 @@ The ptxas instruction scheduler uses a static hardware performance model to esti
 | **FU class mapper** | `sub_8F0CD0` -- maps (opcode, unit_name) to scheduling class |
 | **FU unit query** | `sub_704D30` (14 KB) -- maps SASS opcodes to functional unit IDs |
 | **Cutlass detector** | `sub_8F47E0` -- detects cutlass kernels for tuned scheduling |
+| **Pipe class assigner** | `sub_13710B0` (7.1 KB) -- SASS-level execution pipe assignment |
 
 ## Architecture of the Latency Model
 
@@ -541,6 +542,148 @@ The SSE-optimized accumulation uses `_mm_add_epi32` to add 4 resource counters a
 
 This reflects NVIDIA's investment in hand-tuning their cutlass library's scheduling behavior within ptxas itself.
 
+## Execution Pipe Assignment (sub\_13710B0)
+
+`sub_13710B0` (7.1 KB, 1,088 lines decompiled) is the SASS-backend execution pipe class assigner. It runs in the SASS encoding pipeline (address range 0x1370--0x139F) *after* instruction selection, register allocation, and the main scheduling pass are complete. Where `sub_89FBA0` assigns IR-level scheduling class IDs (2--772+) consumed by the priority and stall-computation passes, `sub_13710B0` writes SASS-level pipe class IDs (0x00--0x141) that control control-word encoding: stall counts, barrier assignments, and dual-issue pairing in the final binary.
+
+### Descriptor Initialization
+
+Before dispatching on the opcode, the function initializes the scheduling descriptor at `a3+196..202` to the "all-pipes" default:
+
+```
+*(DWORD*)(a3+196) |= 0xF8000     // pipe mask = all (bits 15..19)
+*(BYTE*)(a3+200)  |= 0x1F        // read barrier mask = all
+*(WORD*)(a3+198)   = HIWORD | 0x1F0  // throughput class = max
+*(WORD*)(a3+200)  |= 0x3E0       // write barrier mask = all
+*(BYTE*)(a3+199)   = ... | 0x3E  // pipe flags = all set
+```
+
+Then it switches on `*(a2+72) & 0xFFFFCFFF` (the Ori opcode with modifier bits masked), writing a 9-bit pipe class into the low bits of `*(WORD*)(a3+196)` and optionally overriding the pipe mask, sub-class, and pipe flags.
+
+### Pipe Mask Encoding
+
+Bits 15--19 of `*(DWORD*)(a3+196)` select the execution pipe:
+
+| Value | Pipe | Functional units | Resource vector indices |
+|---|---|---|---|
+| `0x08000` | Pipe A | ALU, integer, FP64, conversion | 0 (ALU), 2 (DFMA) |
+| `0x10000` | Pipe B | FP32, tensor, SFU, half-precision | 1 (FMA), 3 (MMA), 8 (SFU) |
+| `0x18000` | Pipe C | Memory, texture, wide FP64 | 4 (LSU), 5 (TEX) |
+| `0xF8000` | All | Default sentinel (no constraint) | -- |
+
+### Sub-Class Encoding
+
+Bits 4--7 of `*(WORD*)(a3+198)` encode the sub-class within the pipe:
+
+| Value | Sub-class | Instruction category |
+|---|---|---|
+| `0x10` | Control flow | Branch, predicate, miscellaneous |
+| `0x20` | Integer ALU | Conversion, barrier, integer ops |
+| `0x30` | FP32 / SFU | Single-precision, half-precision |
+| `0x40` | FP64 / Tensor | Double-precision wide, tensor core |
+
+### Pipe Flags Encoding
+
+Bits 1--5 of `*(BYTE*)(a3+199)` encode sub-unit affinity:
+
+| Value | Meaning |
+|---|---|
+| `0x02` | Narrow ALU sub-unit |
+| `0x04` | ALU (integer / conversion) |
+| `0x06` | Load/store or wide ALU |
+| `0x08` | SFU / half-precision pipe |
+| `0x0A` | FP64 wide (double-precision) |
+| `0x0C` | Tensor core pipe |
+| `0x3E` | All flags set (default) |
+
+### Opcode-to-Pipe-Class Mapping
+
+The complete switch covers 80+ Ori opcodes. Representative mappings:
+
+| Ori opcode | Pipe class | Pipe | Sub-class | SASS instruction | Decision logic |
+|---|---|---|---|---|---|
+| 1 | 0x08 | -- | 0x10 | IMAD | Always |
+| 2--7 (wide) | 0x03 | B (0x10000) | 0x30 | IMAD\_WIDE, IADD3, etc. | `sub_7D6780` = true |
+| 2--7 (wide, v6=6) | 0x03 | C (0x18000) | 0x40 | LOP3 (wide, FP64) | Opcode 6, wide |
+| 2--7 (narrow) | 0x0C | A (0x08000) | -- | IMAD, IADD3, etc. | Narrow, type != 19 |
+| 2--7 (narrow, t=19) | 0x7B | -- | -- | IMAD (BF16/FP8 type) | Type 19 path |
+| 8 (flag clear) | 0x33 | -- | -- | IABS (no guard) | Operand flag bit 0 |
+| 8 (flag set) | 0x34 | -- | -- | IABS (guarded) | Operand flag bit 0 |
+| 0x10 (flagged) | 0x68 | -- | -- | ATOM (flagged) | Operand bit 2 |
+| 0x10 (mem=3) | 0x67 | -- | -- | ATOM (shared) | `sub_7DFFC0` = 3 |
+| 0x10 (mem=4) | 0x69 | -- | -- | ATOM (constant) | `sub_7DFFC0` = 4 |
+| 0x10 (other) | 0x66 | -- | -- | ATOM (global) | Default |
+| 0x12 (no 0x400) | 0x3D | -- | -- | FADD (standard) | Operand bit 10 clear |
+| 0x12 (0x400 set) | 0x78 | -- | -- | FADD (const-bank) | Operand bit 10 set |
+| 0x17 (op1 reg6) | 0x37 | -- | -- | S2R (tensor reg, op1) | `*(desc+64)` = 6 |
+| 0x17 (op2 reg6) | 0x36 | -- | -- | S2R (tensor reg, op2) | `*(desc+64)` = 6 |
+| 0x17 (other) | 0x38 | -- | -- | S2R (standard) | Neither operand reg6 |
+| 0x18 | 0x04 | A (0x08000) | 0x20 | FSETP | Always |
+| 0x24 (wide) | 0x14 | B (0x10000) | 0x30 | PRMT (FP width) | `sub_7D6780` = true |
+| 0x24 (narrow) | 0x11 | B (0x10000) | 0x30 | PRMT (integer) | `sub_7D6780` = false |
+| 0x33 | 0x21 | A (0x08000) | 0x20 | IDP | Always; flags 0x06 |
+| 0x3C (mem ops) | 0x2B--0x32 | -- | -- | STG variants | 6-way split on flags |
+| 0x3E (mem ops) | 0x2D--0x2E | -- | -- | LDL variants | Flag / no-flag split |
+| 0x42 | 0x5D | -- | -- | MUFU (SFU) | Always |
+| 0x4D | 0x84--0x85 | B (0x10000) | 0x40 | WGMMA-class | Extended tensor fields |
+| 0x4E (mem ops) | 0x2F--0x30 | -- | -- | LD (generic) | Flag / no-flag split |
+| 0x66 | 0x09 | B (0x10000) | 0x30 | DEPBAR | Always; flags 0x08 |
+| 0x82 (ext) | 0x17 | -- | -- | NANOTRAP (extended) | `sub_A9AB10` = true |
+| 0x82 (ctrl) | 0x13 | all (0xF8000) | 0x10 | NANOTRAP (control) | vtable+640 |
+| 0xC9--0xCA (wide) | 0x07 | A (0x08000) | -- | DFMA, DADD (wide) | `sub_7D6780` = true |
+| 0xD1 | 0x05 | A (0x08000) | 0x20 | DFMA | Always |
+| 0xD2 | 0x0A | A (0x08000) | 0x30 | DFMA variant | Sub-class 0x30, flag 0x04 |
+| 0xF0 | 0x0F | A (0x08000) | -- | F2F | Flags 0x04 |
+| 0x10E | 0x7E | B (0x10000) | -- | HMMA\_16 | Flags 0x08 |
+| 0x117 | 0x80 | B (0x10000) | 0x40 | HMMA\_32 | Tensor pipe; flags 0x0C |
+| 0x11A | 0x81 | B (0x10000) | 0x40 | IMMA | Tensor pipe |
+| default | 0x88 | -- | -- | (unrecognized) | Sentinel |
+
+### Decision Axes
+
+The function dispatches on three axes beyond the opcode:
+
+1. **Data type width**: `sub_7D6780(*(a2+76))` returns true for wide types (FP64). Wide types route to pipe A or C with sub-class 0x30 or 0x40; narrow types route to pipe A with sub-class 0x20.
+
+2. **Memory access classification**: `sub_7DFFC0(a2, code_obj)` returns a memory space code (3 = shared, 4 = constant). Used for ATOM (case 0x10) to split into 4 pipe classes by memory space.
+
+3. **Operand register class**: `*(descriptor+64)` from the register descriptor. Class 6 (tensor/accumulator register file) triggers distinct pipe classes for S2R (case 0x17) and DFMA/DADD variants.
+
+Additionally, two architectural gates control tensor instruction classes:
+- `*(a1+25)` flag and `sub_1370F40` gate tensor-extended pipe classes. When disabled, tensor instructions fall through to class 0x141 (a sentinel).
+- `vtable+3184` on the code object checks a feature gate for CALL instruction classification.
+
+### Memory Instruction Pipe Variants
+
+Load/store instructions (cases 0x3C, 0x3E, 0x4E) receive a 6-way pipe class split based on two properties:
+
+| Property | Test method |
+|---|---|
+| Same-source vs different-source | `sub_91E7A0(a2, 0)` vs `sub_91E7A0(a2, 1)` |
+| Has flag operand | `sub_91E860(code_obj, a2, i)` returns 8 |
+
+| Variant | STG (0x3C) | LDL (0x3E) | LD (0x4E) |
+|---|---|---|---|
+| Same-src, no flag | 0x31 | (n/a) | (n/a) |
+| Same-src, flagged | 0x32 | (n/a) | (n/a) |
+| Diff-src, no flag | 0x2B | 0x2D | 0x2F |
+| Diff-src, flagged | 0x2C | 0x2E | 0x30 |
+
+This fine-grained split allows the SASS encoder to select different stall counts and barrier patterns depending on whether the load/store has a predicate guard and whether the source address register is shared with another operand.
+
+### Type-19 Special Path
+
+When `sub_7D6780` returns false (not wide) and `*(a2+76) == 19`, several instruction groups receive distinct pipe classes in the 0x7A--0x7D range:
+
+| Ori opcode group | Standard class | Type-19 class | Likely type |
+|---|---|---|---|
+| 2--7 (narrow) | 0x0C | 0x7B | BF16 / FP8 |
+| 0x6E--0x72 (narrow) | 0x0B | 0x7A | BF16 / FP8 |
+| 0x8B--0x8C (narrow) | 0x0D | 0x7C | BF16 / FP8 |
+| 0xC9--0xCA | 0x10/0x12 | 0x7D | BF16 / FP8 |
+
+Type 19 likely corresponds to BF16 or FP8, which require different pipeline routing than standard FP16/FP32/FP64 types on Hopper and Blackwell architectures.
+
 ## Function Map
 
 | Address | Size | Identity |
@@ -604,6 +747,14 @@ This reflects NVIDIA's investment in hand-tuning their cutlass library's schedul
 | `sub_A09530` | 91 lines | UpdateStallCycles -- per-instruction stall update |
 | `sub_A9CDE0` | -- | IsHotMemory -- global/texture classification |
 | `sub_A9CF90` | -- | IsColdMemory -- constant/shared classification |
+| `sub_13710B0` | 7.1 KB | **AssignPipeClass** -- SASS-level pipe assignment |
+| `sub_1370F40` | ~500 B | CheckTensorFeature -- gates tensor pipe classes |
+| `sub_7D6780` | ~100 B | IsWideType -- true for FP64/wide types |
+| `sub_7DFFC0` | ~200 B | ClassifyMemAccess -- 3=shared, 4=constant |
+| `sub_7E3640` | ~100 B | GetCustomPipe -- 5-bit pipe sub-class |
+| `sub_91E7A0` | ~100 B | GetSrcEncoding -- source operand encoding query |
+| `sub_91E860` | ~100 B | GetOperandType -- operand type code |
+| `sub_A9AB10` | ~100 B | NeedsExtEncoding -- extended encoding check |
 
 ## Cross-References
 
