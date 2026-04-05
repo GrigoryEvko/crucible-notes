@@ -324,6 +324,116 @@ The ABI engine sits between the optimization passes and the register allocator i
 
 The ABI engine produces new SASS instructions via `sub_934630` / `sub_9314F0` (instruction builder/inserter) and uses `sub_91BF30` (temp register allocation) for scratch registers needed during lowering. During final emission, the encoding functions in Zone B (`0x1A01000`--`0x1A76F30`) convert the ABI-lowered instructions into binary SASS words.
 
+## ABI State Object Layout
+
+The ABI engine operates on three nested data structures: the **ABI engine context** (the `this` pointer passed as `a1` to all ABI functions), the **per-callee ABI specification** (one per callee in the call graph), and **parameter/return descriptor entries** (one per parameter or return value). All offsets are byte offsets from the structure base.
+
+### ABI Engine Context
+
+The top-level per-function ABI state, passed as `a1` to `sub_19D1AF0`, `sub_19CA730`, `sub_19CDFF0`, and `sub_19D1720`. Total size is at least 4672 bytes.
+
+| Offset | Size | Type | Field | Notes |
+|--------|------|------|-------|-------|
+| `+0` | 8 | `ptr` | `vtable` | Dispatch table; method at `+144` dispatches per-callee validation, `+152` selects register reservation strategy |
+| `+8` | 8 | `ptr` | `func_ctx` | Pointer to per-function compilation context (1716+ bytes); accessed everywhere as `*(_QWORD *)(a1+8)` |
+| `+16` | 1 | `byte` | `abi_mode_flags` | Master ABI mode selector; 0 = no ABI lowering, nonzero = full pipeline |
+| `+64` | 4 | `int` | `max_param_offset` | Highest parameter register offset seen during callee iteration |
+| `+76` | 4 | `int` | `preserved_param_start` | Start register for preserved parameter range |
+| `+80` | 4 | `int` | `preserved_param_align` | Alignment requirement for preserved parameter range |
+| `+88` | 8 | `ptr` | `current_callee_entry` | Pointer to the callee entry node being processed in the current iteration |
+| `+97` | 1 | `byte` | `skip_popcount` | When set, skips the register usage population count (`sub_19C99B0`) |
+| `+98` | 1 | `byte` | `has_return_addr_spec` | Set to 1 when any callee has a return address ABI specification |
+| `+4428` | 4 | `int` | `cached_reg_R3` | Cached physical register ID for R3 (from `sub_7FA420(regfile, 6, 3)`) |
+| `+4432` | 4 | `int` | `cached_reg_R2` | Cached physical register ID for R2 (from `sub_7FA420(regfile, 6, 2)`) |
+| `+4449` | 1 | `byte` | `first_callee_seen` | Set after the first callee with an ABI spec is processed; controls whether per-class reservation bitmaps are populated or inherited |
+| `+4456` | 16+ | `bitvec` | `param_alloc_bitmap` | Bitvector tracking which physical registers have been assigned to parameters; manipulated via `sub_BDBB80` (set bit), `sub_BDDCB0` (find highest), `sub_BDDD40` (popcount) |
+| `+4472` | 4 | `int` | `param_alloc_count` | Number of registers allocated for parameter passing |
+| `+4480` | 16+ | `bitvec` | `retval_alloc_bitmap` | Bitvector tracking which physical registers have been assigned to return values |
+| `+4496` | 4 | `int` | `retval_alloc_count` | Number of registers allocated for return values |
+| `+4528` | 144 | `bitvec[6]` | `per_class_reservation` | Per-register-class ABI reservation bitmaps; 6 entries (classes 1--6), 24 bytes each; the loop in `sub_19D1AF0` iterates `v148` from 1 to 6, incrementing the pointer by 3 qwords per iteration |
+
+The `param_alloc_bitmap` and `retval_alloc_bitmap` are used after parameter/return allocation to compute the effective register file occupancy. The master setup reads the highest set bit in each (`sub_BDDCB0`) to determine `func_ctx+361` (total register demand) and compares against `func_ctx+367` (register file limit).
+
+### Per-Callee ABI Specification
+
+Pointed to by `*(callee_entry + 64)`. One instance per callee in the call graph. Describes how parameters are passed, return values are received, and the return address is placed. Accessed as `v3`/`v12`/`v14` (cast to `_DWORD *`) in the decompiled code, so integer-indexed fields are at 4-byte stride.
+
+| Offset | Size | Type | Field | Notes |
+|--------|------|------|-------|-------|
+| `+0` | 4 | `int` | `param_count` | Number of parameter descriptor entries |
+| `+4` | 4 | `int` | `return_count` | Number of return value descriptor entries |
+| `+8` | 8 | `ptr` | `param_descriptors` | Pointer to array of 32-byte parameter descriptor entries |
+| `+16` | 8 | `ptr` | `return_descriptors` | Pointer to array of 32-byte return value descriptor entries |
+| `+24` | 4 | `int` | `return_addr_register` | Explicit return address register number; -1 = unassigned |
+| `+28` | 4 | `int` | `return_addr_mode` | Return address placement strategy (see table below) |
+| `+32` | 4 | `int` | `first_param_register` | First register available for parameter passing; -1 = use default |
+| `+36` | 4 | `int` | `available_reg_count` | Number of registers available; -1 = target default, -2 = computed from target descriptor |
+| `+40` | 1 | `byte` | `ret_addr_before_params` | If set, return address is placed before the parameter range |
+| `+44` | 4 | `int` | `preserved_reg_type` | Preserved register specification type; 1 triggers per-register scratch bitmap construction |
+| `+48` | 8 | `uint64` | `scratch_gpr_bitmask` | Bit 1 (`& 2`) = scratch classification active for GPR return address register |
+| `+57` | 1 | `byte` | `has_abi_spec` | Master enable: 0 = callee has no ABI specification, 1 = specification is active |
+| `+58` | 1 | `byte` | `allocation_complete` | Set to 1 after parameter/return allocation finishes successfully |
+| `+64` | 8 | `ptr` | `abi_detail_ptr` | Pointer to extended ABI detail sub-object (preserved bitmasks, scratch classification) |
+| `+80` | 8 | `uint64` | `preserved_pred_bitmask` | Per-predicate-register preserved bitmask; bit N = predicate register N is preserved |
+| `+88` | 4 | `uint32` | `preserved_class_flags` | Bit 0 (`& 1`) = GPR preserved set active; bit 1 (`& 2`) = scratch classification active |
+| `+96` | 1 | `byte` | `return_addr_validated` | Set to 1 after `sub_19CDFF0` completes validation for this callee |
+
+Return address mode values (field `+28`):
+
+| Value | Mode | Behavior |
+|-------|------|----------|
+| 1 | Fixed | Return address at `first_param_register + 2` (e.g., R6 when base is R4) |
+| 2 | Regular | General-purpose register, validated `< max_reg` |
+| 3 | Uniform | Uniform register (UR), requires SM75+ (`func_ctx+1408 & 0x02`) |
+| 5 | Computed | Derived from parameter layout, auto-aligned to even register boundary |
+
+### Parameter/Return Descriptor Entry (32 bytes)
+
+Each parameter or return value is described by a 32-byte entry. The allocator iterates the parameter array with stride 32 (`v34 += 32` per parameter) and the return array identically (`v43 += 32` per return value).
+
+| Offset | Size | Type | Field | Notes |
+|--------|------|------|-------|-------|
+| `+0` | 4 | `int` | `element_count` | Number of elements (e.g., 4 for a `float4`) |
+| `+4` | 4 | `int` | `element_size` | Size per element in bytes (e.g., 4 for `float`) |
+| `+8` | 4 | `int` | `alignment_hint` | Alignment in bytes, clamped to `[4, 16]`; 8 = even-aligned, 16 = quad-aligned |
+| `+12` | 1 | `byte` | `is_register_allocated` | 0 = stack-passed (fallback), 1 = register-allocated |
+| `+16` | 4 | `int` | `assigned_register_id` | Physical register ID assigned by the allocator (from `sub_7FA420`) |
+
+The total byte size is `element_count * element_size`. The register count is `ceil(total_bytes / 4)`, computed as `(total + 3) >> 2`. The alignment mask applied to register slot selection is `-(alignment_hint >> 2)`, producing a bitmask that enforces natural alignment: 8-byte parameters require even-aligned base registers, 16-byte parameters require 4-register-aligned bases.
+
+### 2048-Bit Free-List Bitmap (Stack Local)
+
+The parameter allocator (`sub_19CA730`) constructs a 2048-bit free-list bitmap as a **stack-local** variable (not stored in the engine context). It is declared as `v103[31]` (248 bytes of QWORD array) plus `v104` (4 bytes), `v105` (2 bytes), and `v106` (1 byte), totaling 255 bytes.
+
+```
+Initialization:
+  memset(v103, 0xFF, 248)     // 248 bytes all-ones
+  v104 = 0xFFFFFFFF           // 4 bytes
+  v105 = 0xFFFF               // 2 bytes
+  v106 = 0xFF                 // 1 byte
+  Result: 2040 bits all-ones (255 bytes)
+```
+
+A bit value of **1** means the register slot is free; **0** means occupied. The bitmap is indexed relative to `first_param_register`, not absolute R0. When a contiguous run of free slots is found for a parameter, the allocator zeroes the corresponding bytes using a size-optimized zeroing sequence (special-cased for lengths < 4, == 4, and >= 8 bytes). After allocation, the assigned registers are also recorded in the persistent bitvectors at `+4456` (parameters) and `+4480` (return values) via `sub_BDBB80`.
+
+The bitmap supports up to 2040 register slots, far exceeding the 255-register GPR limit. This over-provisioning accommodates the allocator's use for both parameter and return value allocation in a single bitmap, and provides headroom for potential multi-class allocation in future architectures.
+
+### Target Descriptor Fields Referenced by ABI Engine
+
+The ABI engine accesses the target descriptor (at `func_ctx+1584`) through these offsets during ABI setup:
+
+| Offset | Type | Purpose |
+|--------|------|---------|
+| `+372` | `int` | SM generation index (value `>> 12`; 3=Kepler, 4=Maxwell, 5=Pascal+, 9=Hopper, >9=Blackwell) |
+| `+452` | `int` | SM version number; `> 4` gates 64-bit return address pair semantics |
+| `+616` | `int` | Available register count ceiling for the target |
+| `+636` | `int` | Register count subtraction base (for computed available_reg_count) |
+| `+896` | `vfunc` | Register range query; called with `(target, func_ctx, &query, 6)`, returns low/high range pair at `query+24` |
+| `+2096` | `vfunc` | Register class capacity query; called with `(target, reg_class)` |
+| `+3000` | `vfunc` | Validator callback; `nullsub_464` = no-op (validation skipped) |
+
+The vtable call at `+896` takes a 32-byte query structure initialized to `{hi=-1 lo=0, 0, 0, 0, 0, 148, 148, -1}`. The result at query `+24` (as two 32-bit halves) returns the reserved register range boundaries. This is used by warnings 7014 (reserved range overlaps parameters) and 7017 (insufficient registers for reservation).
+
 ## ABI Validation Diagnostics
 
 The ABI engine emits 15 distinct warning codes (7001--7017) from six functions. Two codes are unused in this binary version (7007, 7018). All codes share the contiguous hex ID range `0x1B59`--`0x1B69` and are emitted through two parallel paths: `sub_7EEFA0` (standalone diagnostic buffer) and `sub_895530` (context-attached diagnostic using the compilation context at `*(func+48)`).
