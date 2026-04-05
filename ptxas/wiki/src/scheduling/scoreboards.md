@@ -1,5 +1,7 @@
 # Scoreboards & Dependency Barriers
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The NVIDIA GPU hardware uses a software-managed scoreboard system for instruction-level hazard tracking. Unlike CPUs that detect dependencies in hardware, NVIDIA's warp schedulers rely on per-instruction metadata -- encoded in a **control word** -- to determine when an instruction's operands are available, when a warp should yield, and which dependency barriers to set or wait on. ptxas generates this metadata in three pipeline phases (114--116) that together produce the final scoreboard annotations embedded in the SASS binary.
 
 | | |

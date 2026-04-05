@@ -312,19 +312,20 @@ The register field writer (`sub_1B72F60`, 483 callers) packs the encoded registe
 
 ### Scheduling Phase Pressure Counters
 
-The scheduler maintains 9 (or 10) per-block register pressure counters at offsets 48--84 of the per-BB scheduling record (72 bytes per basic block). These counters track live register counts for each register class:
+The scheduler maintains 10 per-block register pressure counters at offsets +4 through +40 of the per-BB scheduling record (72 bytes per basic block). At BB entry, these are copied into the scheduler context at context offsets +48 through +87. The counters track live register counts for each register class:
 
-| Counter offset | Register class |
-|----------------|---------------|
-| +48 (idx 12) | R (general-purpose) |
-| +52 (idx 13) | P (predicate) |
-| +56 (idx 14) | UR (uniform) |
-| +60 (idx 15) | UP (uniform predicate) |
-| +64 (idx 16) | B (barrier) |
-| +68 (idx 17) | (reserved / extended) |
-| +72 (idx 18) | (reserved / extended) |
-| +76 (idx 19) | (reserved / extended) |
-| +80 (idx 20) | (reserved / extended) |
+| BB record offset | Context offset (idx) | Register class |
+|------------------|----------------------|---------------|
+| +4 | +48 (idx 12) | R (general-purpose) |
+| +8 | +52 (idx 13) | P (predicate) |
+| +12 | +56 (idx 14) | UR (uniform) |
+| +16 | +60 (idx 15) | UP (uniform predicate) |
+| +20 | +64 (idx 16) | B (barrier) |
+| +24 | +68 (idx 17) | (arch-specific class 0) |
+| +28 | +72 (idx 18) | (arch-specific class 1) |
+| +32 | +76 (idx 19) | (arch-specific class 2) |
+| +36 | +80 (idx 20) | (arch-specific class 3) |
+| +40 | +84 (idx 21) | (arch-specific class 4 / control total) |
 
 The spill cost analyzer (`sub_682490`, 14 KB) allocates two stack arrays (`v94[511]` and `v95[538]`) as per-register-class pressure delta arrays. For each instruction, it computes pressure increments and decrements based on the instruction's register operand definitions and uses.
 
@@ -642,5 +643,5 @@ The function references 28 static lookup tables that map instruction attribute v
 - [Fat-Point Algorithm](../regalloc/algorithm.md) -- pressure arrays, constraint types, selection loop
 - [GPU ABI](../regalloc/abi.md) -- reserved registers, parameter passing, return address
 - [Spilling](../regalloc/spilling.md) -- spill/reload for each register class
-- [Scheduler](../scheduling/overview.md) -- 9 per-block pressure counters
+- [Scheduler](../scheduling/overview.md) -- 10 per-block pressure counters at record +4..+40
 - [SASS Encoding](../codegen/encoding.md) -- how the descriptor drives instruction word layout

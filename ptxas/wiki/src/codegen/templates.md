@@ -1,5 +1,7 @@
 # Newton-Raphson & Math Templates
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 NVIDIA GPUs lack hardware integer dividers and native FP64 arithmetic units on the SFU. When ptxas encounters PTX operations such as `div.s32`, `div.u64`, `rcp.f64`, `sqrt.f64`, or `rsqrt.f64`, it expands them into multi-instruction SASS sequences that synthesize the result from simpler hardware primitives. These expansions are the **math templates** -- pre-built instruction sequence generators that emit 20--100+ SASS instructions per PTX operation, using the MUFU (Multi-Function Unit) for initial approximations and Newton-Raphson iterations for refinement.
 
 The template subsystem lives at `0x1700000`--`0x172A090` in the ptxas binary: 36 functions occupying ~180 KB. It is invoked during instruction selection by the master lowering dispatcher `sub_AED3C0` whenever the selected instruction requires multi-instruction expansion.

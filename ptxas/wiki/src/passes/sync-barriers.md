@@ -1,5 +1,7 @@
 # Synchronization & Barriers
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The ptxas synchronization pipeline manages the insertion, optimization, and expansion of all GPU synchronization and barrier instructions. Eight phases span the full compilation pipeline, from early memory-ordering fence insertion through post-scheduling dependency barrier fixup. These phases collectively translate the PTX memory model into the hardware synchronization primitives required by each SM architecture: thread block barriers (`BAR`), memory barriers (`MEMBAR`), dependency barriers (`DEPBAR`), warp-level synchronization (`WARPSYNC`/`BSYNC`/`BSSY`), and asynchronous barriers (`MBARRIER`).
 
 | | |

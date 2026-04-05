@@ -1,5 +1,7 @@
 # Debug Information
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 ptxas generates DWARF-based debug information for cuda-gdb and other GPU debuggers. The debug subsystem spans three distinct code regions: an early-pipeline DWARF line table generator at `0x45A`--`0x45C` that encodes PTX-level source mappings, a mid-pipeline SASS-level emitter at `0x860`--`0x868` that produces both `.debug_line` and `.nv_debug_line_sass` sections along with register mapping tables, and a late-stage DWARF processor/dumper cluster at `0x1CBF`--`0x1CC9` that handles `.debug_info`, `.debug_abbrev`, `.debug_loc`, and `.debug_frame` parsing and emission. The design follows a two-tier model: PTX-level debug info records source file/line to PTX instruction mappings, while SASS-level debug info records the final PTX-to-SASS address correspondence after all optimizations. NVIDIA extends standard DWARF with proprietary sections (`.nv_debug_line_sass`, `.nv_debug_info_reg_sass`, `.nv_debug_info_reg_type`, `.nv_debug_info_ptx`) and Mercury-namespace variants (`.nv.merc.debug_*`) for Capsule Mercury binaries.
 
 | | |

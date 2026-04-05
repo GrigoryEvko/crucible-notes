@@ -1,5 +1,7 @@
 # Math Intrinsics
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 ptxas provides built-in IEEE-compliant math functions for operations that have no single-instruction hardware implementation. When a PTX instruction like `div.rn.f64`, `rcp.rn.f32`, `sqrt.rn.f64`, or `rsqrt.approx.f64` is encountered, ptxas either emits a single MUFU (Multi-Function Unit) instruction for approximate results, or generates a multi-instruction SASS sequence using Newton-Raphson refinement for IEEE-compliant precision. For operations too complex to inline, ptxas emits a call to one of 70 registered `__cuda_sm20_*` helper functions.
 
 | | |

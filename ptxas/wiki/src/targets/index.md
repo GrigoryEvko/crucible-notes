@@ -1,5 +1,7 @@
 # SM Architecture Map
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 ptxas validates the `--gpu-name` target against three sorted lookup tables, constructs a profile object with family metadata and a `CUDA_ARCH` macro value, then populates seven parallel dispatch tables that drive capability checks, code generation factory selection, performance modeling, and occupancy calculation throughout the compiler. The default target is `sm_75` (Turing). Every downstream decision -- instruction legality, encoder selection, register file geometry, scheduling latencies -- routes through the profile object built here.
 
 | | |

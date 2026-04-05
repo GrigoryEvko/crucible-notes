@@ -1,5 +1,7 @@
 # Copy Propagation & CSE
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 Copy propagation and common subexpression elimination in ptxas are spread across four dedicated pipeline phases (49, 50, 64, 83) plus a forward copy propagation sub-pass (`OriCopyProp`) embedded inside every [GeneralOptimize](general-optimize.md) bundle. Together these passes form the value-redundancy elimination subsystem: they detect computations that produce values already available elsewhere in the program, then eliminate the redundant instructions or replace them with cheaper copies.
 
 The four dedicated phases run at specific pipeline positions chosen to exploit opportunities created by preceding transformations. GvnCse (phase 49) runs after mid-level expansion and argument enforcement when the IR is maximally normalized. OriReassociateAndCommon (phase 50) immediately follows GvnCse to catch near-misses through algebraic normalization. LateOriCommoning (phase 64) runs after predication (phase 63) converts branches into predicated instructions, exposing new redundancies. OriBackCopyPropagate (phase 83) runs late in the pipeline to shorten MOV chains before register allocation.

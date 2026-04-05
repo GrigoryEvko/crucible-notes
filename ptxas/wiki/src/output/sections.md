@@ -1,5 +1,7 @@
 # Section Catalog & EIATTR
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 A CUDA cubin is a standard ELF container with NVIDIA-proprietary extensions. ptxas v13.0.88 populates it with approximately 4*(N+M) sections minimum for a program with N entry kernels and M device functions. Each section carries a specific kind of data -- SASS instructions, constant bank contents, relocation entries, per-kernel resource metadata (EIATTR), shared memory layout, debug information, or Mercury-encoded streams for deferred finalization. This page catalogs every section type ptxas can emit, the NVIDIA-specific ELF section types used, the section ordering rules, and the complete EIATTR attribute encoding.
 
 | | |

@@ -1,5 +1,7 @@
 # DUMPIR & NamedPhases
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The DUMPIR knob and NamedPhases option are the two primary mechanisms for inspecting ptxas's internal IR at arbitrary points in the 159-phase optimization pipeline. DUMPIR is an OCG string knob that triggers an IR dump after a named phase completes. NamedPhases is a separate OCG string knob (index 298) that restricts the pipeline to execute only the specified phases, effectively allowing selective phase execution and reordering. Both knobs accept phase names resolved through a case-insensitive binary search over a sorted table of 144 phase names (`sub_C641D0`, 305 bytes).
 
 | | |

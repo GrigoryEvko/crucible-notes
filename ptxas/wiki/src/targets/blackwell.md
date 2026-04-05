@@ -1,5 +1,7 @@
 # Blackwell (SM 100--121)
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 ptxas v13.0.88 handles five Blackwell-era base targets -- sm_100, sm_103, sm_110, sm_120, sm_121 -- spanning datacenter, automotive, consumer, and DGX product lines. All share the codegen factory value 36864 (generation 9, `9 << 12`) and the `"Blackwell"` family string internally, despite being distinct microarchitectures. The defining Blackwell feature is **Capsule Mercury** (capmerc) as the default binary output format, automatically enabled for SM numbers exceeding 99. The datacenter variants (sm_100, sm_103, sm_110) support **tcgen05** (5th-generation tensor cores with dedicated tensor memory); the consumer variants (sm_120, sm_121) do not.
 
 | | |
@@ -122,6 +124,29 @@ The secondary variant assignment at `sub_8E4400` maps codegen factory values to 
 | 36869 | 5 | sm_120, sm_121 |
 
 These variant indices select different entries within the per-SM latency tables, allowing the scheduler to use silicon-specific pipeline timing.
+
+## Hardware Resource Geometry
+
+Per-SM hardware resource limits used by ptxas for register allocation, occupancy calculations, and scheduling decisions. Extracted from `sub_8688F0` (universal baseline), `sub_8E4400` (scheduler partition geometry), and `sub_ABF250` (occupancy calculator). See [targets/index.md -- Per-SM Resource Geometry Table](index.md#per-sm-resource-geometry-table) for the complete table across all architectures.
+
+| SM | Regs/SM | Max Regs/Thread | Max Threads/CTA | Warps/SM | Max CTAs/SM | Sched Partitions | Dispatch Slots | Configurable Shared Memory | Conf |
+|---|---|---|---|---|---|---|---|---|---|
+| `sm_100` | 65,536 | 255 | 1,024 | 64 | 32 | 16 / 240 | 240 | 48 / 100 / 132 / 164 / 228 KB | 90% |
+| `sm_103` | 65,536 | 255 | 1,024 | 64 | 32 | 16 / 240 | 240 | (same as sm\_100) | 88% |
+| `sm_110` | 65,536 | 255 | 1,024 | 64 | 32 | 16 / 240 | 240 | (same as sm\_100) | 85% |
+| `sm_120` | 65,536 | 255 | 1,024 | 64 | 32 | 16 / 240 | 240 | 48 / 100 / 132 / 164 / 228 KB | 88% |
+| `sm_121` | 65,536 | 255 | 1,024 | 64 | 32 | 16 / 240 | 240 | (same as sm\_120) | 85% |
+
+**Column definitions:**
+- **Regs/SM**: Total 32-bit registers per streaming multiprocessor. 65,536 universally for sm\_75+.
+- **Max Regs/Thread**: Maximum registers a single thread can use. 255 universally (`sub_8688F0` offset +612).
+- **Max Threads/CTA**: Maximum threads per cooperative thread array (block).
+- **Warps/SM**: Total concurrent warps per SM. Determines peak occupancy.
+- **Max CTAs/SM**: Maximum concurrent CTAs per SM.
+- **Sched Partitions / Dispatch Slots**: From `sub_8E4400` offset +18 (packed DWORD) and offset +22 (WORD).
+- **Configurable Shared Memory**: Valid shared memory sizes per CTA, selected by `cudaFuncSetAttribute`.
+
+All Blackwell targets share the 16-partition / 240-slot geometry (identical to Hopper sm\_90). The `a` and `f` sub-variants within each SM share the same geometry -- differentiation is in compatibility metadata and feature exposure, not in resource limits. The primary distinction across Blackwell SMs is in the latency tables and tcgen05 availability, not in the scheduling partition structure.
 
 ## Capsule Mercury (capmerc) -- Default Output Format
 

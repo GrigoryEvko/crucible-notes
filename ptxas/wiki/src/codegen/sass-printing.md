@@ -1,5 +1,7 @@
 # SASS Text Generation
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 Phases 129 (`DumpNVuCodeText`) and 130 (`DumpNVuCodeHex`) convert the internal instruction stream into human-readable SASS assembly text and raw hex dumps respectively. The text output is the same format produced by `cuobjdump --dump-sass` and is used for `--verbose` output, `DUMPIR` diagnostics, `--forcetext` mode, `--out-sass` dumps, and the `--self-check` roundtrip verification pipeline. The subsystem spans two distinct address ranges: a PTX-level text generation system (580 formatter functions at `0x4DA340`--`0x5A8E40`) and a SASS-level disassembly renderer (~123 virtual printer methods at `0x17F8000`--`0x181FFFF`).
 
 | | |

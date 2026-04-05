@@ -1,13 +1,15 @@
 # Synchronization & Warp Intrinsics
 
-This page documents how ptxas v13.0.88 handles the lowering of synchronization primitives and warp-level intrinsic operations from PTX source through Ori IR to final SASS instructions. The coverage spans warp vote, shuffle, match, and redux operations; thread-block barriers; memory barriers and fences; warp-level synchronization; and asynchronous barriers (mbarrier).
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
+This page documents how ptxas v13.0.88 handles the lowering of synchronization primitives and warp-level intrinsic operations from PTX source through Ori IR to final SASS instructions. The coverage spans warp vote, shuffle, match, and redux operations; thread-block barriers; memory barriers and fences; warp-level synchronization; asynchronous barriers (mbarrier); and atomic/reduction intrinsic lowering.
 
 | | |
 |---|---|
-| **PTX codegen handlers** | `sub_580E50` (vote), `sub_5801D0` (shfl), `sub_58A730` (match), `sub_567680` (redux), `sub_524FB0` (bar), `sub_570290` (barrier), `sub_500BF0` (bar.arrive), `sub_570940` (barrier.arrive), `sub_52D590` (bar.red), `sub_5889B0` (barrier.red), `sub_56A5A0` (bar.warp), `sub_4DB410` (membar) |
+| **PTX codegen handlers** | `sub_580E50` (vote), `sub_5801D0` (shfl), `sub_58A730` (match), `sub_567680` (redux), `sub_524FB0` (bar), `sub_570290` (barrier), `sub_500BF0` (bar.arrive), `sub_570940` (barrier.arrive), `sub_52D590` (bar.red), `sub_5889B0` (barrier.red), `sub_56A5A0` (bar.warp), `sub_4DB410` (membar), `sub_6C0D90` (atom/red) |
 | **Intrinsic IDs** | `0x01`--`0x11` (reduxsync, 17), `0x89`--`0x1FA` (sm70 warp/barrier/wmma, 370) |
-| **Ori IR opcodes** | 96 (barrier), 119 (vote), 130 (BAR/sync internal) |
-| **SASS opcodes** | `VOTE`, `VOTEU`, `BAR`, `BAR_INDEXED`, `MATCH`, `MEMBAR`, `WARPSYNC`, `BSYNC`, `BSSY`, `DEPBAR`, `ERRBAR`, `ELECT`, `NANOSLEEP` |
+| **Ori IR opcodes** | 96 (barrier), 119 (vote), 130 (`HSET2` in ROT13; sync internal / shared-mem LEA), 314 (atom/red) |
+| **SASS opcodes** | `VOTE`, `VOTEU`, `BAR`, `BAR_INDEXED`, `MATCH`, `MEMBAR`, `WARPSYNC`, `BSYNC`, `BSSY`, `DEPBAR`, `ERRBAR`, `ELECT`, `NANOSLEEP`, `ATOM`, `ATOMG`, `ATOMS`, `RED` |
 | **Blackwell additions** | `FENCE_G`, `FENCE_S`, `FENCE_T`, `CGABAR_ARV`, `CGABAR_GET`, `CGABAR_SET`, `CGABAR_WAIT`, `CGAERRBAR`, `SYNCS_BASIC`, `SYNCS_LD_UNIFM` |
 | **Optimizer phases** | 25 (StageAndFence), 26 (OriRemoveRedundantBarriers), 42 (ExpandMbarrier), 71 (OptimizeSyncInstructions), 72 (LateExpandSyncInstructions), 99, 100, 114 |
 | **Intrinsic detection** | `sub_A9A410` (sm70 warp-sync prefix matcher), `sub_A94440` (mbarrier classifier) |
@@ -23,7 +25,7 @@ ptxas groups synchronization and warp operations into three Ori IR opcode catego
 |---|---|---|---|
 | 96 | Barrier | `bar.sync`, `bar.red`, `bar.arrive`, `barrier.*` | `0x200001` (bit 0 + bit 21) |
 | 119 | Vote | `vote.{all,any,uni,ballot}`, `match.*`, `redux.*`, `activemask`, `elect.sync` | `0x1` (bit 0 only) |
-| 130 | Sync internal | BAR/MEMBAR pseudo-ops during optimization | Used by phases 26, 71 for redundancy analysis |
+| 130 (`HSET2`) | Sync internal | BAR/MEMBAR pseudo-ops during optimization (actual SASS `BAR` = 61, `MEMBAR` = 111) | Used by phases 26, 71 for redundancy analysis |
 
 The WAR resource mask at opcode 96 (`2097153 = 0x200001`) uniquely identifies barrier instructions to the scoreboard tracker. For all other opcodes, the base mask is 1. The scheduler uses this to insert appropriate stall cycles between barrier producers and consumers.
 
@@ -555,6 +557,126 @@ On sm100+ (Blackwell), a new class of CGA (Cooperative Grid Array) barriers exte
 | `CGABAR_WAIT` | Wait on CGA barrier |
 | `CGAERRBAR` | CGA error barrier |
 
+## Atomic/Reduction Intrinsic Lowering
+
+The OCG atomic/reduction handler at `sub_6C0D90` (19KB, 813 decompiled lines) lowers `atom.*` and `red.*` intrinsic calls into Ori IR opcode 314 instructions. Unlike the warp-level sync handlers (which generate inline PTX via `sprintf`), this function works at the Ori IR level directly: it parses a sub-op parameter array, validates all qualifier combinations, resolves operands to register references, and emits the final instruction through `sub_92C240`. All diagnostics use error code 7308 and the prefix `"Instrinsic - \"%s\""` (the typo is in the binary).
+
+### Parameter Array Parsing
+
+The intrinsic name is decomposed by the OCG name parser (`sub_6C9BC0`) into an integer token array stored at `*(ctx+10704)`. Each token encodes one qualifier dimension of the atomic operation. The handler reads tokens sequentially through a switch-case loop:
+
+| Token | Variable | Semantic | Decoded Value |
+|---|---|---|---|
+| 0 | `memory_order=4` | Memory ordering | Relaxed |
+| 1 | `domain=12`, `is_mmio=1` | Memory domain | MMIO (global, mapped) |
+| 2 | `domain=5` | Memory domain | Shared (`_shared`) |
+| 3 | `scope=5` | Visibility scope | `.cta` |
+| 4 | `scope=6` | Visibility scope | `.gpu` |
+| 5 | `is_noreturn=1` | Return behavior | Reduction (fire-and-forget, no return value) |
+| 6 | `data_size=2` | Operand width | 64-bit (`u64`) |
+| 7 | `data_size=4` | Operand width | Vector (`v2`/`v4`) |
+| 8 | `data_type=12` | Data type | `.f32` |
+| 9 | `data_type=11` | Data type | `.s32` |
+| 10 | `data_type=10` | Data type | `.u32` (also `.u64` when size=2) |
+| 11 | `op=0` | Operation | `.add` |
+| 12 | `op=1` | Operation | `.min` |
+| 13 | `op=2` | Operation | `.max` |
+| 14 | `op=3` | Operation | `.inc` |
+| 15 | `op=4` | Operation | `.dec` |
+| 16 | `op=5` | Operation | `.and` |
+| 17 | `op=6` | Operation | `.or` |
+| 18 | `op=7` | Operation | `.xor` |
+
+Tokens not matching any case are silently skipped. If the parameter array is empty (no tokens), all values take defaults: `data_type=1` (unspecified), `op=-1` (unspecified), `data_size=1` (32-bit), and all flags zero.
+
+### Modifier Word Encoding
+
+The parsed qualifiers are packed into a single 32-bit modifier word that accompanies the Ori instruction through the pipeline to ISel:
+
+```
+Bit [14:13] = type encoding:  00=u32  01=s32  10=u64/f32  11=invalid
+Bit [12:10] = operation:      0=add  1=min  2=max  3=inc  4=dec  5=and  6=or  7=xor
+Bit [8]     = no-return:      1=reduction (red.*)  0=atomic (atom.*)
+Bit [7:5]   = memory order:   4=relaxed (only value supported here)
+Bit [4:2]   = scope:          5=cta  6=gpu
+Bit [1:0]   = operand flags:  bit0=(addr_type==u32)  bit1=(data_type==u32)
+Top nibble  = 0x6 (constant marker: 0x60000000)
+```
+
+The type encoding bits [14:13] are set during cross-validation: `s32` with 32-bit width sets `0x2000`, `u32`/`f32` with 64-bit width sets `0x4000`, and invalid combinations set `0xE000` (with an error).
+
+### Validation Chain
+
+The handler enforces a strict 10-phase validation sequence. Each failure emits error 7308 with a descriptive message:
+
+| Phase | Check | Error Message |
+|---|---|---|
+| 1 | Domain must be `_shared` (5) or `_mmio` (12); otherwise global is assumed but errors if explicitly set to something else | `"Domain param '_shared' or '_global' required"` |
+| 2 | Vector type operand count must match expected operand count from data_size | `"Vector type does not match number of subops"` |
+| 3 | Data type must be explicitly set (not default 1) | `"Type {u32, s32, u64} not specified"` |
+| 4 | Vector width (v12>1) requires u32 (10) or f32 (12) type | `"Vector supported only for {u32, u64}"` |
+| 5 | Operation must be explicitly set (not default -1); emitted twice | `"Op {add, min, max, inc, dec, and, or, xor} not specified"` |
+| 6 | Shared-domain reductions only support `.add` | `"Unsupported non _add global memory reduction"` |
+| 7a | Scope without memory order is deprecated | `"Deprecated scope without memory order semantics"` (warning) |
+| 7b | Memory order requires scope | `"Required scope with memory order semantics"` |
+| 8 | MMIO semantics require global domain | `"Domain param '_global' required for mmio semantics"` |
+| 9 | s32 requires 32-bit; f32+64-bit only with add; otherwise invalid | `"Invalid data type / op combination"` or `"Invalid vector / data type combination"` |
+| 10 | Each data operand's type field must match declared type; address operand must be u32 (10) or f32 (12) | `"Operand type does not match specified type"` / `"Unexpected instrinsic type (%s) in param (%d)"` |
+
+### Operand Resolution and Shared Memory Address Materialization
+
+After validation, the handler resolves up to three operand slots:
+
+1. **Destination/address**: Resolved via `sub_926370` into a 24-bit register ID, then tagged with `0x50000000` (output register class marker).
+
+2. **Source data operand**: Read from the operand descriptor array at `*(ctx+10728)`. Routing depends on bits [30:28] of the operand word:
+   - **Value 5** (shared memory pointer): Allocates a temporary register in class 6 via `sub_91BF30`, then emits an Ori opcode 130 pseudo-instruction via `sub_934630` to materialize the shared memory address into a general register. This extra LEA/MOV is necessary because `ATOMS` requires an explicit register operand, not a symbolic shared-memory reference.
+   - **Value 1** with `!(operand[1] & 0x1000000)`: Direct register reference (24-bit register ID from low bits).
+   - **Otherwise**: Full register resolution through `sub_91D150` + operand legalization through `sub_7DEFA0`.
+
+3. **Second data operand** (MMIO only, `v109=1`): Same three-way resolution for the second source, reading from operand descriptor offset +12.
+
+The final instruction is emitted as:
+
+```
+sub_92C240(output, ctx, 314, data_type, operand_count, operand_buffer, 1)
+```
+
+where Ori opcode 314 represents the unified ATOM/RED operation.
+
+### SASS Opcode Selection
+
+The Ori opcode 314 instruction flows through the optimizer pipeline and reaches ISel (`sub_C0EB10`), which selects the final SASS opcode based on the domain and no-return flag encoded in the modifier word:
+
+| Modifier Bits | SASS Opcode | ROT13 | Table Entry | PTX Equivalent |
+|---|---|---|---|---|
+| domain=global, no-return=0 | `ATOMG` | `NGBZT` | 103 | `atom.global.*` |
+| domain=shared, no-return=0 | `ATOMS` | `NGBZF` | 105 | `atom.shared.*` |
+| domain=generic, no-return=0 | `ATOM` | `NGBZ` | 102 | `atom.*` |
+| no-return=1 | `RED` | `ERQ` | 104 | `red.*` |
+
+The operation bits [12:10] further select the SASS sub-opcode qualifier (`.ADD`, `.MIN`, `.MAX`, `.INC`, `.DEC`, `.AND`, `.OR`, `.XOR`). The type bits [14:13] determine the data type suffix (`.32`, `.64`, `.S32`, `.U32`, `.F32`).
+
+### Scope and Memory Order (sm70+)
+
+When scope and memory order are both present, the modifier word carries them through to ISel where they become SASS instruction modifiers:
+
+- **Scope `.cta`** (token 3, value 5): Atomic is visible only within the CTA
+- **Scope `.gpu`** (token 4, value 6): Atomic is visible to all thread blocks on the device
+- **Memory order relaxed** (token 0, value 4): No ordering guarantees beyond atomicity
+
+The handler does not encode `acquire`, `release`, or `acq_rel` memory orders -- these are handled by the separate memory fence/order handler at `sub_6C1CF0`. The deprecation warning for scope-without-order indicates ptxas is transitioning toward requiring explicit memory order qualifiers for all scoped atomics.
+
+### Limitations and Notable Behavior
+
+1. **No CAS/EXCH tokens**: The parameter array parser has no tokens for `.cas` (compare-and-swap) or `.exch` (exchange). These operations are either encoded through a different OCG intrinsic or use a distinct sub-op encoding not visible in this function's switch-case.
+
+2. **Shared-memory restriction**: Only `atom.shared.add` is supported as a reduction. All other shared-memory reduction operations (`red.shared.{min,max,and,or,xor}`) are rejected.
+
+3. **MMIO path**: Token 1 (domain=MMIO) enables a separate code path that processes two data operands instead of one. This supports the MMIO atomic semantics where both the address and a data value must be explicitly resolved.
+
+4. **Error message bug**: The message `"Unsupported non _add global memory reduction"` fires for shared-memory non-add reductions despite saying "global". This is likely a copy-paste artifact in the ptxas source.
+
 ## Synchronization Pipeline Summary
 
 The complete synchronization processing pipeline spans 8 optimizer phases:
@@ -624,6 +746,10 @@ Complete mapping of all synchronization and warp SASS opcodes, with their ROT13-
 | -- | `CGAERRBAR` | -- | CGA error barrier (sm100+) |
 | -- | `SYNCS_BASIC` | -- | Basic sync (sm100+) |
 | -- | `SYNCS_LD_UNIFM` | -- | Sync with uniform load (sm100+) |
+| `NGBZ` | `ATOM` | 102 | Atomic (generic address space) |
+| `NGBZT` | `ATOMG` | 103 | Atomic (global memory) |
+| `ERQ` | `RED` | 104 | Reduction (fire-and-forget) |
+| `NGBZF` | `ATOMS` | 105 | Atomic (shared memory) |
 
 ## Key Function Reference
 
@@ -651,4 +777,5 @@ Complete mapping of all synchronization and warp SASS opcodes, with their ROT13-
 | `sub_790A40` | RemoveRedundantBarriers | 2,288B | Cross-function barrier elimination |
 | `sub_90A340` | OptimizeSyncInstructions | 1,670B | Sync instruction optimization |
 | `sub_1381DA0` | LateExpandSync | 1,517B | Final sync expansion |
+| `sub_6C0D90` | LowerAtomicRedIntrinsic | ~19KB | OCG `atom.*`/`red.*` to Ori opcode 314 |
 | `sub_C0EB10` | InstructionSelector | 185KB | Main ISel (handles all sync opcodes) |

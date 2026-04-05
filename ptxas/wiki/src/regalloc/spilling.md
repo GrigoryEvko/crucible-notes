@@ -1,5 +1,7 @@
 # Spill Mechanism
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 When the fat-point register allocator cannot fit all simultaneously-live virtual registers into the hardware register budget, it spills excess values to memory and reloads them on demand. The spill subsystem is the second-largest component of the register allocator by code volume, spanning roughly 25 functions and 12,000+ lines of decompiled code. It implements a cost-driven, retry-based spill strategy with two memory targets (local memory and shared memory), a per-class priority queue guidance engine, and a multi-attempt allocation loop that progressively relaxes constraints until allocation succeeds or fails fatally.
 
 | | |

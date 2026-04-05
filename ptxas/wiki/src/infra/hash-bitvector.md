@@ -1,5 +1,7 @@
 # Hash Tables & Bitvectors
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 ptxas contains two independent hash map implementations and a dedicated bitvector library. These three container abstractions underpin nearly every subsystem in the compiler -- from the PTX parser's symbol tables to the optimizer's liveness analysis to the code generator's instruction deduplication cache. This page documents their binary-level layouts, hash algorithms, SIMD acceleration, and usage patterns.
 
 ## Overview

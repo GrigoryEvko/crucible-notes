@@ -1,5 +1,7 @@
 # Binary Layout
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 PTXAS v13.0.88 is a 37,741,528-byte stripped x86-64 ELF executable. Its `.text` section spans 26.2 MB (`0x403520`--`0x1CE2DE2`) containing 40,185 functions. This page maps every byte of the binary to the subsystem that owns it, derived from all 40 sweep reports covering the complete address range.
 
 ## ELF Section Map
@@ -37,17 +39,26 @@ Total file composition:
 | GNU_EH_FRAME | `0x240BF90` | 350 KB | R | Exception handling index |
 | GNU_STACK | `0x0` | 0 | RW | Non-executable stack |
 
-Entry point: `0x42333C` (ELF `e_entry`), which is inside `.plt`. The actual `main` is at `0x409460`.
+Entry point: `0x42333C` (ELF `e_entry`), which is inside `.text` (the CRT startup stub `_start`). The actual `main` is at `0x409460`.
 
 ## Three Subsystems
 
 The `.text` section decomposes into three subsystems with distinct coding styles, data structures, and origins:
 
-| Subsystem | Address Range | Size | Functions | Share |
-|---|---|---|---|---|
-| PTX Frontend | `0x400000`--`0x67F000` | 2.9 MB | ~2,592 | 11% |
-| Ori Optimizer | `0x67F000`--`0xC52000` | 5.8 MB | ~11,001 | 22% |
-| SASS Backend | `0xC52000`--`0x1CE3000` | 17.6 MB | ~26,592 | 67% |
+```
+  .text linear address map (26.2 MB)
+  0x403520                 0x67F000        0xC52000                          0x1CE2DE2
+  |--- PTX Frontend 2.9 MB ---|-- Ori Optimizer 5.8 MB --|---- SASS Backend 17.6 MB ----|
+  |          11%               |          22%             |              67%              |
+  |  parsers, validators,      | passes, regalloc,        | encoding handlers, ISel,      |
+  |  intrinsics, formatters    | scheduling, CFG analysis  | peephole, codecs, ABI, ELF    |
+```
+
+| Subsystem | Address Range | Size | Functions | Share | Avg Fn Size | Largest Function |
+|---|---|---|---|---|---|---|
+| PTX Frontend | `0x403520`--`0x67F000` | 2.9 MB | ~2,592 | 11% | ~1,170 B | `sub_46E000` (93 KB, opcode table builder) |
+| Ori Optimizer | `0x67F000`--`0xC52000` | 5.8 MB | ~11,001 | 22% | ~550 B | `sub_926A30` (155 KB decomp, interference graph) |
+| SASS Backend | `0xC52000`--`0x1CE2DE2` | 17.6 MB | ~26,592 | 67% | ~690 B | `sub_169B190` (280 KB, master ISel dispatch) |
 
 The backend dominates the binary because SASS instruction encoding is template-generated code: each of the ~4,000 encoding handler functions is a standalone vtable entry, never called directly. The optimizer has the highest function density (many small pass helpers), while the frontend has the largest average function size (complex validators and parsers).
 
@@ -55,11 +66,13 @@ The backend dominates the binary because SASS instruction encoding is template-g
 
 The table below maps every address range in the `.text` section to its subsystem, function count, and key entry points. Data is aggregated from the 30 sweep partitions (p1.01 through p1.30).
 
-### PTX Frontend (`0x400000`--`0x67F000`, 2.9 MB)
+### PTX Frontend (`0x403520`--`0x67F000`, 2.9 MB)
+
+> **Note on the `0x400000`--`0x403520` gap.** The LOAD segment begins at `0x400000`, but the first 13.6 KB before `.text` contains the ELF header (64 B at `0x400000`), program headers (7 entries, 392 B), `.interp` (28 B, path to `ld-linux-x86-64.so.2`), `.hash` / `.gnu.hash` (symbol hash tables), `.dynsym` / `.dynstr` (dynamic symbol table, 146 entries), `.gnu.version` / `.gnu.version_r` (symbol versioning), `.rela.plt` (PLT relocations, 146 entries), and the `.plt` stub table (2,336 B, 146 stubs at `0x402C00`--`0x403520`). These are standard ELF infrastructure, not ptxas application code. The first ptxas function begins at `0x403520`.
 
 | Address Range | Size | Functions | Subsystem | Key Functions |
 |---|---|---|---|---|
-| `0x402C00`--`0x430000` | 180 KB | ~300 | Runtime infrastructure: pool allocator, hash maps, TLS, diagnostics, error reporting, string utilities | `sub_424070` (pool alloc, 3809 callers), `sub_4280C0` (TLS context, 3928 callers), `sub_426150` (hash insert, 2800 callers), `sub_42FBA0` (diagnostic emitter, 2350 callers), `sub_427630` (MurmurHash3) |
+| `0x403520`--`0x430000` | 178 KB | ~300 | Runtime infrastructure: pool allocator, hash maps, TLS, diagnostics, error reporting, string utilities | `sub_424070` (pool alloc, 3809 callers), `sub_4280C0` (TLS context, 3928 callers), `sub_426150` (hash insert, 2800 callers), `sub_42FBA0` (diagnostic emitter, 2350 callers), `sub_427630` (MurmurHash3) |
 | `0x430000`--`0x460000` | 200 KB | ~120 | CLI parsing and compilation driver: option registration, argument parser, target configuration, register/resource constraints, Chrome trace JSON parser | `sub_446240` (real main, 11 KB), `sub_432A00` (option registration, 6 KB), `sub_434320` (option parser, 10 KB), `sub_43B660` (register constraint calc), `sub_439880` (trace JSON parser) |
 | `0x460000`--`0x4D5000` | 470 KB | ~350 | PTX instruction validators: per-opcode semantic checkers for MMA, WMMA, load/store, cvt, atomics, barriers, tensormap, async copy | `sub_4B2F20` (general validator, 52 KB), `sub_4CE6B0` (Bison parser, 48 KB), `sub_4C5FB0` (operand validator, 28 KB), `sub_4C2FD0` (WMMA/MMA validator, 12 KB), `sub_4A73C0` (tensormap validator, 11 KB) |
 | `0x4D5000`--`0x5AA000` | 872 KB | 581 | PTX instruction text generation: 580 per-opcode formatters that convert internal IR to PTX assembly text, plus a built-in function declaration emitter | `sub_5D4190` (formatter dispatch, 13 KB), `sub_5FF700` (builtin decl emitter, 34 KB), ~580 formatter functions (avg 1.5 KB each) |
@@ -77,7 +90,7 @@ The table below maps every address range in the `.text` section to its subsystem
 | `0xAA8000`--`0xB7D000` | 862 KB | 4,493 | GMMA/WGMMA pipeline optimizer, ISel, and instruction emission: GMMA register allocation, warpgroup sync injection, instruction emission helpers (SASS encoder dispatch), post-scheduling IR statistics, operand legalization, 1,269 tiny vtable dispatchers (~160 bytes each), live range analysis, scheduler-integrated mega-pass | `sub_AED3C0` (mega scheduling/ISel pass, 137 KB decomp), `sub_AF7DF0`/`sub_AF7200` (register decode helpers), ~1,269 vtable dispatchers |
 | `0xB7D000`--`0xC52000` | 870 KB | 1,086 | CFG analysis, bitvectors, and IR manipulation: ~390 instruction operand pattern matchers, bitvector dataflow framework (alloc, OR, AND, XOR, clear, iterate), CFG analysis (edge printing, reverse post-order, DOT graph dump), scoreboard and instruction classification, sync analysis | `sub_BDC000` (bitvector infra), `sub_BDE8B0` (CFG/RPO/DOT), `sub_BE2E40` (scoreboard classification), ~390 operand pattern matchers |
 
-### SASS Backend (`0xC52000`--`0x1CE3000`, 17.6 MB)
+### SASS Backend (`0xC52000`--`0x1CE2DE2`, 17.6 MB)
 
 | Address Range | Size | Functions | Subsystem | Key Functions |
 |---|---|---|---|---|
@@ -100,7 +113,7 @@ The table below maps every address range in the `.text` section to its subsystem
 | `0x19A2000`--`0x1A77000` | 880 KB | 1,393 | GPU ABI/calling convention + SM89/90 encoders: Zone A (250 KB, 276 functions) implements the NVIDIA GPU calling convention -- parameter register allocation, return address placement, scratch/preserved classification, convergent boundary enforcement, coroutine SUSPEND semantics, uniform register support, per-SM ABI lowering (sm\_35 through sm\_100+). Zone B (480 KB) has ~1,117 supplementary SASS encoding vtable handlers. | `sub_19D1AF0` (master ABI setup, 5.6 KB), 276 ABI functions, ~1,117 encoding handlers |
 | `0x1A77000`--`0x1B4C000` | 829 KB | 1,518 | SASS emission backend (4 SM families): Zone A has 1,083 bit-field packing encoders spanning sm\_50 through sm\_100+. Zone B has 339 instruction lowering/expansion functions (two SM families: sm\_8x and sm\_9x/10x). Zone C has 84 Ampere/Ada/Hopper-era encoders. Zone D has 92 Blackwell-era encoders. | `sub_1B6B250` (register-class-to-HW mapping, 254 callers), 1,083 emitters, 339 lowering functions |
 | `0x1B4C000`--`0x1C21000` | 876 KB | 1,974 | SASS emission + format descriptors: register-class encoding tables (Zone A), per-SM instruction bit-field encoders (Zone B), instruction emission orchestrators (Zone C), multi-operand dispatch emitters (Zone D), mirrored SM-variant emitters (Zone E), instruction format descriptors (Zone F, `0x1C05`--`0x1C21`). | 487 functions exceed 2 KB decompiled |
-| `0x1C21000`--`0x1CE3000` | 780 KB | 1,628 | Library layer: custom ELF emitter (CUBIN output), capsule Mercury ELF (`.nv.capmerc` debug metadata), section layout and memory allocation (shared/constant/local/global), relocation resolution (branch targets, UFT/UDT, YIELD-to-NOP), call graph analysis (recursion detection, dead function elimination), DWARF debug generation (`.debug_info`/`.debug_line`/`.debug_frame`), option parsing library, thread pool (pthread-based), JSON builder, GNU Make jobserver client, C++ name demangler (Itanium ABI), ELF file writer | `sub_1C9F280` (ELF emitter, 97 KB decomp), `sub_1CABD60` (section allocator, 67 KB), `sub_1CC9800` (EIATTR builder, 90 KB), `sub_1CDC780` (demangler, 93 KB), `sub_1CB53A0` (ELF world init), `sub_1CD48C0` (relocation resolver, 22 KB), `sub_1CBB920` (recursion detector), `sub_1CB18B0` (thread pool), `sub_1CD13A0` (file writer, 11 KB) |
+| `0x1C21000`--`0x1CE2DE2` | 776 KB | 1,628 | Library layer: custom ELF emitter (CUBIN output), capsule Mercury ELF (`.nv.capmerc` debug metadata), section layout and memory allocation (shared/constant/local/global), relocation resolution (branch targets, UFT/UDT, YIELD-to-NOP), call graph analysis (recursion detection, dead function elimination), DWARF debug generation (`.debug_info`/`.debug_line`/`.debug_frame`), option parsing library, thread pool (pthread-based), JSON builder, GNU Make jobserver client, C++ name demangler (Itanium ABI), ELF file writer | `sub_1C9F280` (ELF emitter, 97 KB decomp), `sub_1CABD60` (section allocator, 67 KB), `sub_1CC9800` (EIATTR builder, 90 KB), `sub_1CDC780` (demangler, 93 KB), `sub_1CB53A0` (ELF world init), `sub_1CD48C0` (relocation resolver, 22 KB), `sub_1CBB920` (recursion detector), `sub_1CB18B0` (thread pool), `sub_1CD13A0` (file writer, 11 KB) |
 
 ## .rodata Contents (7.5 MB)
 
@@ -184,19 +197,11 @@ These eight functions account for 1.2 MB of code (4.8% of `.text`) but only 0.02
 | `sub_1B6B250` | 254 | Register-class-to-hardware-number lookup (SASS emission) |
 | `sub_4279D0` | 185 | String prefix match (`starts_with`) |
 
-The top five functions are all in the runtime infrastructure region (`0x402C00`--`0x42F000`). Together they represent the core allocation, error handling, and data structure layer that the rest of the binary depends on.
-
-## Code Density by Subsystem
-
-| Subsystem | Functions | Total Size | Avg Size/Fn | Largest Function |
-|---|---|---|---|---|
-| PTX Frontend | ~2,592 | 2.9 MB | ~1,170 B | `sub_46E000` (93 KB, opcode table builder) |
-| Ori Optimizer | ~11,001 | 5.8 MB | ~550 B | `sub_926A30` (155 KB decomp, interference graph) |
-| SASS Backend | ~26,592 | 17.6 MB | ~690 B | `sub_169B190` (280 KB, master ISel dispatch) |
-
-The frontend has the highest average function size because it contains complex multi-thousand-line validators and parsers. The optimizer has the lowest average because it is dominated by small phase helper functions and vtable stubs. The backend is intermediate: its average is pulled down by 2,095 tiny bitfield accessors but pulled up by thousands of 1--2 KB encoding handlers.
+The top five functions are all in the runtime infrastructure region (`0x403520`--`0x42F000`). Together they represent the core allocation, error handling, and data structure layer that the rest of the binary depends on.
 
 ## Binary Composition by Purpose
+
+Estimated from function classification across 30 sweep reports (p1.01--p1.30). Each function was assigned to a single purpose category based on its dominant behavior; functions straddling categories (e.g., a scheduling pass that also emits SASS) are attributed to the category consuming the larger share of their code.
 
 | Purpose | Estimated Size | Share of .text |
 |---|---|---|

@@ -1,5 +1,7 @@
 # Basic Blocks & Control Flow Graph
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 ptxas maintains a custom CFG infrastructure built entirely from scratch -- no LLVM `BasicBlock`, no LLVM `MachineBasicBlock`, no LLVM dominator framework. Basic blocks are stored in contiguous arrays, edges are stored in FNV-1a hash maps, and RPO / backedge / loop information is computed by dedicated functions in the `0xBDE000`--`0xBE2400` address range.
 
 ## Key Facts

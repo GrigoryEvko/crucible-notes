@@ -1,5 +1,7 @@
 # Optimization Levels
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The `--opt-level` (`-O`) flag controls how aggressively ptxas optimizes during the 159-phase pipeline. The option is parsed into a 32-bit integer at options block offset `+148` by `sub_434320` (line 216: `sub_1C96470(v10, "opt-level", a3 + 148, 4)`). The default value is **3**. The documented range is 0--4, but the internal NvOpt recipe system supports levels 0--5, and the scheduler and rematerialization passes distinguish level 5 from lower values.
 
 The optimization level propagates through the compilation context and is read by individual passes via `sub_7DDB50` (232 bytes at `0x7DDB50`), which combines the opt-level check with a knob 499 guard. Passes that call `sub_7DDB50` receive the opt-level value (stored at compilation context offset `+2104`) only if knob 499 is enabled; otherwise, the function returns 1 (effectively clamping the level to O1 behavior).
@@ -413,3 +415,22 @@ jle    return                  ; skip if opt_level <= 1
 - [Sync & Barriers](../passes/sync-barriers.md) -- Per-pass opt_level thresholds
 - [Loop Passes](../passes/loop-passes.md) -- O4/O5 aggressive loop peeling
 - [Optimization Pipeline](../pipeline/optimizer.md) -- Pipeline-level O0 vs O1+ gating
+
+## Key Functions
+
+| Address | Size | Role | Confidence |
+|---------|------|------|------------|
+| `sub_434320` | -- | CLI option parser; parses `--opt-level` at line 216, handles `--Ofast-compile` at lines 635--679, sets `allow-expensive-optimizations` default at line 768 | 0.95 |
+| `sub_431A40` | -- | Debug mode override; forces opt-level to 0, disables cloning, resets register-usage-level when `-g` is active | 0.95 |
+| `sub_7DDB50` | 232B | Opt-level accessor; returns `ctx+2104` opt-level if knob 499 is enabled, otherwise returns 1 (O1 fallback). Called by 20+ passes as the runtime opt-level gate | 0.95 |
+| `sub_1C96470` | -- | Generic CLI argument reader; called by `sub_434320` to read `--opt-level` into options block offset `+148` | 0.85 |
+| `sub_67EB60` | -- | Fast-path knob query vtable function; identified inside `sub_7DDB50` for knob 499 check | 0.80 |
+| `sub_6614A0` | -- | Knob state direct-read function; used by `sub_7DDB50` to read knob 499 via direct field access at offset 35928 | 0.80 |
+| `sub_78B430` | -- | `OriLoopSimplification` execute function; checks opt_level for aggressive loop peeling (O4+) | 0.85 |
+| `sub_913A30` | -- | `SinkRemat` core (phase 28); two-tier opt-level guard: skips at O0--O1, limited at O2--O4, full cutlass mode at O5 | 0.90 |
+| `sub_8D0640` | -- | Scheduling infrastructure; selects forward (O1--O2) vs reverse (O3+) scheduling direction | 0.85 |
+| `sub_8CBAD0` | -- | `PreScheduleSetup`; called with `opt_level > 2` boolean to configure scheduling direction | 0.85 |
+| `sub_957160` | -- | Fat-point greedy register allocator; does not directly branch on opt-level but is affected indirectly | 0.90 |
+| `sub_A36360` | 52KB | Master scoreboard control word generator (phase 115, O1+ path) | 0.90 |
+| `sub_A23CF0` | 54KB | DAG list scheduler heuristic for barrier assignment (phase 115, O1+ path) | 0.90 |
+| `sub_C173E0` | -- | NvOpt level validator; emits `"Invalid nvopt level : %d."` for out-of-range values | 0.85 |

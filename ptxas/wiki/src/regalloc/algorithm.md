@@ -1,5 +1,7 @@
 # Fat-Point Allocation Algorithm
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The ptxas register allocator uses a fat-point greedy algorithm. For each virtual register, it scans a per-physical-register pressure array, picks the slot with the lowest interference count, and commits the assignment. There is no graph coloring, no simplify-select-spill loop, and no worklist -- just two 512-DWORD pressure histograms and a linear scan. This page documents the algorithm in full detail: pressure array construction, constraint evaluation, register selection, assignment propagation, the retry loop, and the supporting knobs.
 
 | | |

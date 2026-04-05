@@ -472,6 +472,257 @@ Complete list of NVIDIA CUDA section types used during merging:
 | `0x70000065`-`0x70000075` | 1879048293-1879048309 | `SHT_CUDA_CONSTANT1`-`17` | Constant banks 1-17 |
 | `0x70000086` | 1879048326 | `SHT_CUDA_COMPAT` | Compatibility attributes |
 
+## Section Type Dispatch Table (`sub_45E3C0`)
+
+The section type classifier (`sub_45E3C0`, called from `merge_elf` at `sub_45E7D0`) is the central dispatch point that maps every input section to its output NVIDIA CUDA type. The function takes the input section's `sh_type`, section name, and flags, then reclassifies it for the output ELF. The full dispatch logic, reconstructed from decompilation:
+
+### Name-Based Reclassification (NOBITS Sections)
+
+When the input `sh_type` is `SHT_NOBITS` (8), the section carries no data in the ELF file but reserves address space. The classifier checks the section name to determine which GPU memory space it belongs to:
+
+```
+Input sh_type = SHT_NOBITS (8):
+
+    if name starts with ".nv.global"          -> SHT_CUDA_GLOBAL          (0x70000007)
+    else if name starts with ".nv.shared."    -> SHT_CUDA_SHARED          (0x7000000A)
+    else if name starts with ".nv.shared.reserved."
+                                              -> SHT_CUDA_SHARED_RESERVED (0x70000015)
+    else if name starts with ".nv.local."     -> SHT_CUDA_LOCAL           (0x70000009)
+    else                                      -> remains SHT_NOBITS (8)
+```
+
+The comparison lengths are exact: `.nv.global` uses `memcmp(name, ".nv.global", 10)`, `.nv.shared.` uses 11 bytes (note trailing dot), `.nv.shared.reserved.` uses 20 bytes, and `.nv.local.` uses 10 bytes. The ordering matters: `.nv.shared.reserved.` is checked *after* `.nv.shared.`, so a `.nv.shared.reserved.foo` section first matches `.nv.shared.` and gets type `0x7000000A`, not `0x70000015`. However, this is the order in both the classifier function and in `merge_elf` itself -- the `.nv.shared.reserved.` check only fires if the `.nv.shared.` check fails, meaning a section named exactly `.nv.shared.reserved.foo` would match `.nv.shared.` first (11-byte prefix match). The reserved variant only matches section names that do NOT begin with `.nv.shared.` at the 11-byte level but DO begin with `.nv.shared.reserved.` at the 20-byte level -- which is impossible. In `merge_elf`, the same sequence appears at lines 975-993 of the decompilation, confirming this is the actual production logic in the binary. In practice, `.nv.shared.reserved.` names are constructed by ptxas to always match the longer prefix in contexts where the 11-byte check is skipped or where the section already has type `0x70000015` from the input cubin.
+
+### Name-Based Reclassification (PROGBITS Sections)
+
+When the input `sh_type` is `SHT_PROGBITS` (1), the section contains initialized data. Two name prefixes trigger reclassification:
+
+```
+Input sh_type = SHT_PROGBITS (1):
+
+    if name starts with ".nv.constant"        -> SHT_CUDA_CONSTANT0 + strtol(name+12, NULL, 10)
+                                                  (0x70000064 + bank_number)
+    else if name starts with ".nv.global.init" -> SHT_CUDA_GLOBAL_INIT    (0x70000008)
+    else                                       -> remains SHT_PROGBITS (1)
+```
+
+The constant bank number extraction `strtol(name + 12, NULL, 10)` parses the decimal digit(s) immediately after `.nv.constant`. This produces:
+
+| Section name | Bank number | Output type |
+|---|---|---|
+| `.nv.constant0` | 0 | `0x70000064` |
+| `.nv.constant1` | 1 | `0x70000065` |
+| `.nv.constant2` | 2 | `0x70000066` |
+| ... | ... | ... |
+| `.nv.constant10` | 10 | `0x7000006E` |
+| `.nv.constant17` | 17 | `0x70000075` |
+
+Per-entry constant sections like `.nv.constant0.my_kernel` also match -- `strtol("0.my_kernel", NULL, 10)` correctly returns 0 because `strtol` stops at the first non-numeric character.
+
+### Pre-classified CUDA Types
+
+When the input `sh_type` is already `SHT_CUDA_CONSTANT` (`0x70000006`), the section is a constant bank whose bank number must be extracted from the name. This path shares the same `strtol(name + 12, ...)` logic:
+
+```
+Input sh_type = SHT_CUDA_CONSTANT (0x70000006):
+
+    -> SHT_CUDA_CONSTANT0 + strtol(name+12, NULL, 10)
+       (0x70000064 + bank_number)
+```
+
+This handles the case where an input cubin already uses the generic `SHT_CUDA_CONSTANT` type rather than a specific bank type.
+
+### SHT_NOTE Pass-Through
+
+When the input `sh_type` is `SHT_NOTE` (7) and the section flags include `0x1000000` (a CUDA-specific flag indicating a parameter bank), the classifier handles it as a special case. It does not reclassify the type; instead, it updates the parameter bank size field on the note section's associated entry point:
+
+```
+Input sh_type = SHT_NOTE (7) with flags & 0x1000000:
+
+    entry_section = get_section_header(ctx, ctx->param_bank_section)   // ctx+208
+    sym_record = get_sym_record(ctx, entry_section)
+    sym_record.param_size = ctx->param_bank_size                       // ctx+134
+    return ctx->param_bank_section
+```
+
+This path exits early without creating a new output section. The parameter bank note is consumed during merge and its size is recorded on the entry point symbol, not emitted as a separate section.
+
+### All Other Types
+
+Any `sh_type` value that does not match the above cases passes through unchanged. This covers:
+
+- `SHT_PROGBITS` (1) sections without `.nv.constant` or `.nv.global.init` prefix (e.g., `.text.*` function sections)
+- Standard ELF types like `SHT_SYMTAB` (2), `SHT_STRTAB` (3)
+- Already-classified CUDA types in the `0x70000064`-`0x7000007E` range
+
+### Complete Dispatch Summary
+
+```
+sub_45E3C0 dispatch table:
++-------------------------------+----------------------------+---------------------------+
+| Input sh_type                 | Section name prefix        | Output sh_type            |
++-------------------------------+----------------------------+---------------------------+
+| SHT_NOBITS        (8)        | .nv.global                 | 0x70000007 (CUDA_GLOBAL)  |
+| SHT_NOBITS        (8)        | .nv.shared.                | 0x7000000A (CUDA_SHARED)  |
+| SHT_NOBITS        (8)        | .nv.shared.reserved.       | 0x70000015 (CUDA_SH_RSVD) |
+| SHT_NOBITS        (8)        | .nv.local.                 | 0x70000009 (CUDA_LOCAL)   |
+| SHT_NOBITS        (8)        | (other)                    | 8 (unchanged)             |
+| SHT_PROGBITS      (1)        | .nv.constant<N>            | 0x70000064+N (CONSTANT_N) |
+| SHT_PROGBITS      (1)        | .nv.global.init            | 0x70000008 (GLOBAL_INIT)  |
+| SHT_PROGBITS      (1)        | (other)                    | 1 (unchanged)             |
+| SHT_CUDA_CONSTANT (0x70000006)| .nv.constant<N>           | 0x70000064+N (CONSTANT_N) |
+| SHT_NOTE          (7)        | (flags & 0x1000000)        | (early return, no output) |
+| (any other)                   | (any)                      | (unchanged)               |
++-------------------------------+----------------------------+---------------------------+
+```
+
+## Section Type Filter Bitmasks
+
+After reclassification, `merge_elf` uses bitmask-based filters to decide which sections enter each processing pass. Two bitmasks appear in the decompiled code:
+
+### Second-Pass Section Filter (`0x5D05`)
+
+The second pass of `merge_elf` (the section-header loop at `sub_45E7D0` lines 1547-1670) iterates over section headers and decides which ones require output section creation via `sub_45E3C0`. The filter at line 1600-1602:
+
+```c
+LOBYTE(v148) = 0;
+if ((unsigned int)(sh_type - 0x70000006) <= 0xE)       // types 0x70000006..0x70000014
+    v148 = (0x5D05uLL >> ((uint8_t)sh_type - 6)) & 1;
+if ((unsigned int)(sh_type - 0x70000064) > 0x1A && !v148)
+    goto skip;  // section not processed in this pass
+```
+
+The bitmask `0x5D05` = `0101 1101 0000 0101` in binary, indexed by `(low_byte(sh_type) - 6)`. Decoding each bit position:
+
+| Bit | sh_type | Name | In bitmask? | Meaning |
+|---|---|---|---|---|
+| 0 | `0x70000006` | `SHT_CUDA_CONSTANT` | **1** (accepted) | Generic constant: needs bank resolution |
+| 1 | `0x70000007` | `SHT_CUDA_GLOBAL` | 0 (skipped) | Globals handled via pending-merge list |
+| 2 | `0x70000008` | `SHT_CUDA_GLOBAL_INIT` | **1** (accepted) | Initialized globals: overlap-merge path |
+| 3 | `0x70000009` | `SHT_CUDA_LOCAL` | 0 (skipped) | Locals handled in first pass |
+| 4 | `0x7000000A` | `SHT_CUDA_SHARED` | 0 (skipped) | Shared memory handled separately |
+| 5 | `0x7000000B` | (unused) | 0 | |
+| 6 | `0x7000000C` | (unused) | 0 | |
+| 7 | `0x7000000D` | (unused) | 0 | |
+| 8 | `0x7000000E` | `SHT_CUDA_0E` | **1** (accepted) | Undocumented type, processed via sub_45E3C0 |
+| 9 | `0x7000000F` | (unused) | 0 | |
+| 10 | `0x70000010` | `SHT_CUDA_10` | **1** (accepted) | Undocumented type, processed via sub_45E3C0 |
+| 11 | `0x70000011` | `SHT_CUDA_RELOCINFO` | **1** (accepted) | Relocation info sections |
+| 12 | `0x70000012` | `SHT_CUDA_12` | **1** (accepted) | Undocumented type, processed via sub_45E3C0 |
+| 13 | `0x70000013` | (unused) | 0 | |
+| 14 | `0x70000014` | `SHT_CUDA_RELOCINFO_EXT` | **1** (accepted) | Extended relocation sections |
+
+Additionally, any type in the constant bank range `0x70000064` through `0x7000007E` (26 values) is unconditionally accepted regardless of the bitmask. This covers `SHT_CUDA_CONSTANT0` through `SHT_CUDA_CONSTANT17` plus 8 reserved constant bank slots.
+
+Sections that pass this filter enter the `sub_45E3C0` call that creates output sections and maps input-to-output section indices.
+
+The types explicitly skipped by this filter (`SHT_CUDA_GLOBAL`, `SHT_CUDA_LOCAL`, `SHT_CUDA_SHARED`) are not ignored -- they are handled by separate dedicated code paths in the first symbol-iteration pass and the post-merge layout phases.
+
+### NOBITS Data Suppression Mask (`0x400D`)
+
+Inside `sub_45E3C0`, after a section is reclassified and looked up/created, the function decides whether the section should carry data into the overlap-merge function. The bitmask `0x400D` at line 150-151 controls this:
+
+```c
+LOBYTE(v28) = (sh_type != 8);         // start with "has data" = not NOBITS
+if ((unsigned int)(sh_type - 0x70000007) <= 0xE)
+    v28 &= ~(0x400DuLL >> ((uint8_t)sh_type - 7));
+```
+
+`0x400D` = `0100 0000 0000 1101` in binary, indexed by `(low_byte(sh_type) - 7)`:
+
+| Bit | sh_type | Name | In bitmask? | Effect |
+|---|---|---|---|---|
+| 0 | `0x70000007` | `SHT_CUDA_GLOBAL` | **1** | Data pointer suppressed (NOBITS semantics) |
+| 1 | `0x70000008` | `SHT_CUDA_GLOBAL_INIT` | 0 | Data pointer preserved (PROGBITS) |
+| 2 | `0x70000009` | `SHT_CUDA_LOCAL` | **1** | Data pointer suppressed (NOBITS) |
+| 3 | `0x7000000A` | `SHT_CUDA_SHARED` | **1** | Data pointer suppressed (NOBITS) |
+| 4-13 | `0x7000000B`-`0x70000014` | (various) | 0 | Data pointer preserved |
+| 14 | `0x70000015` | `SHT_CUDA_SHARED_RESERVED` | **1** | Data pointer suppressed (NOBITS) |
+
+When a bit is set, the data pointer passed to `merge_overlapping_global` (`sub_432B10`) is forced to NULL. This means the section participates in the overlap-merge algorithm for offset/size tracking but no byte-level data comparison occurs. This is correct because these section types represent uninitialized GPU memory reservations -- their ELF representation has no data payload.
+
+The four NOBITS-semantics types (`GLOBAL`, `LOCAL`, `SHARED`, `SHARED_RESERVED`) all originated from `SHT_NOBITS` (8) input sections. After reclassification, they carry a CUDA-specific type code, but the bitmask preserves their original NOBITS behavior during merge.
+
+## Per-Type Merge Handling
+
+Each section type follows a different merge path through the two passes of `merge_elf`. The following table documents the complete handling for every type:
+
+### Pass 1: Symbol-Level Merge (Symbol Iteration)
+
+The first pass iterates over symbols from the input object and dispatches based on the reclassified section type:
+
+| Reclassified type | Merge handler | Data path | Notes |
+|---|---|---|---|
+| `SHT_PROGBITS` (1) | `sub_45E3C0` -> `sub_432B10` | Overlap merge with data | Text/code sections; creates output via `find_section_by_name` + `section_create` |
+| `SHT_NOBITS` (8, unreclassified) | `sub_45E3C0` -> `sub_432B10` | Overlap merge, no data | Rare: NOBITS sections that didn't match any `.nv.*` prefix |
+| `SHT_CUDA_GLOBAL` (0x70000007) | `sub_45E3C0` -> `sub_432B10` | Overlap merge, NULL data | Size reservation only; actual data deferred to pending-merge list |
+| `SHT_CUDA_GLOBAL_INIT` (0x70000008) | `sub_45E3C0` -> `sub_432B10` | Overlap merge with data | Initialized global data has a real data pointer |
+| `SHT_CUDA_LOCAL` (0x70000009) | `sub_45E3C0` -> `sub_432B10` | Overlap merge, NULL data | Per-entry local: size reservation |
+| `SHT_CUDA_SHARED` (0x7000000A) | `sub_45E3C0` -> `sub_432B10` | Overlap merge, NULL data | Per-entry shared memory reservation |
+| `SHT_CUDA_SHARED_RESERVED` (0x70000015) | `sub_45E3C0` -> `sub_432B10` | Overlap merge, NULL data | tcgen05/reserved shared memory reservation |
+| `SHT_CUDA_CONSTANT0`-`17` (0x70000064-0x75) | `sub_438640` (merge_constant_bank) | Per-entry or global constant merge | Dispatches to per-entry (`sub_434BC0`/`sub_435390`) or global (`sub_4343C0`) overlap merge |
+| `SHT_CUDA_CONSTANT` (0x70000006) | Reclassified to CONSTANT_N, then as above | | Never seen as a final type in pass 1 |
+| Weak function (`STB_WEAK`, type matches param bank) | `sub_438640` | Per-entry constant merge | Weak entries use the constant bank path with entry function section index |
+| Common symbol (`SHN_COMMON` = 0xFFF2) | `sub_440740` -> pending list at `ctx+448` | Deferred to layout | Common symbols accumulate on the pending-globals list |
+| Defined global (`STB_GLOBAL`, section != 0) | `sub_45CD30` -> `sub_440740` | Section creation + symbol mapping | Creates output section, maps symbol, records offset |
+| Shared memory with entry (`STB_LOCAL`, `.nv.shared.`) | `sub_437BB0` or `sub_4379A0` | Per-entry shared memory merge | Dispatches based on `*(v19+57)` (extended smem mode flag) |
+
+### Pass 2: Section-Header Merge (Section Iteration)
+
+The second pass iterates over section headers from the input object. Only section types passing the `0x5D05` bitmask filter or in the constant bank range are processed:
+
+| sh_type | Handler | Processing |
+|---|---|---|
+| `SHT_CUDA_RELOCINFO` (0x70000011) | `sub_45CF00` | Relocation section merge; creates output reloc section of type `0x70000011`, passes `is_rela=1` flag |
+| `SHT_CUDA_RELOCINFO_EXT` (0x70000014) | `sub_45CF00` | Extended relocation merge; creates output of type `0x70000014`, passes `is_rela=0` flag |
+| `SHT_CUDA_CONSTANT0`-`17` (0x70000064-0x7E) | `sub_45E3C0` | Constant bank sections not yet mapped; creates output section and registers mapping |
+| `SHT_CUDA_CONSTANT` (0x70000006) | `sub_45E3C0` | Generic constant: reclassified to specific bank via `strtol` |
+| `SHT_CUDA_GLOBAL_INIT` (0x70000008) | `sub_45E3C0` | Initialized global data sections not yet mapped |
+| `SHT_CUDA_0E` (0x7000000E) | `sub_45E3C0` | Undocumented section type |
+| `SHT_CUDA_10` (0x70000010) | `sub_45E3C0` | Undocumented section type |
+| `SHT_CUDA_12` (0x70000012) | `sub_45E3C0` | Undocumented section type |
+| `SHT_CUDA_SHARED` (0x7000000A) | Direct `sub_45E3C0` | Only when extended smem mode active (`*(v19+57)`) AND not in relocatable mode (`!*(ctx+80)`) |
+| `SHT_NOTE` (7) | Direct `sub_45E3C0` | Only when link mode is not relocatable AND DCE flag (`*(ctx+101)`) is set; output type forced to `0x70000000` (CUDA_INFO) |
+
+### Pass 3: Post-Section Merge (Special Types)
+
+After both symbol and section passes, three special section types are processed inline in `merge_elf`:
+
+| sh_type | Handler | Processing |
+|---|---|---|
+| `SHT_CUDA_INFO` (0x70000000) | Inline in `merge_elf` | Per-entry `.nv.info` sections: EIATTR records are parsed, symbol indices remapped, and data nodes copied to per-function info lists at `ctx+480`. Per-entry sections require resolving the entry function's section mapping. Global `.nv.info` (sh_info=0) is processed directly. |
+| `SHT_CUDA_CALLGRAPH` (0x70000001) | Inline in `merge_elf` | Callgraph edge table: entries are 8-byte (caller_sym, callee_sym) pairs. Each entry's symbol indices are remapped through the symbol mapping table. Dead (deleted) symbols are skipped. Three edge types are dispatched: type -1 (`sub_44B9F0`), type -2 (`sub_44BA60`), type -3 (`sub_44BAA0`), type -4 (`sub_44BF90`). |
+| `SHT_CUDA_CALLGRAPH_INFO` (0x70000002) | Inline in `merge_elf` | Per-function callgraph metadata: symbol indices are remapped and validated. A mismatch between the function's declared info and the current input triggers a fatal error via `sub_467460`. |
+| `SHT_CUDA_FUNCDATA` (0x70000004) | Inline in `merge_elf` | Debug function data records: variable-length records containing (sym_index, name_offset, count, data[count*2]). Each record is copied into an arena allocation and appended to the funcdata list at `ctx+480`. Attribute type 3 entries have their name offsets resolved via `sub_43D690`. |
+| `SHT_CUDA_COMPAT` (0x70000086) | Inline in `merge_elf` | Compatibility attribute section: a byte stream of (type, data) pairs. Parsed sequentially with a switch on attribute type (0-7). Dispatches to `sub_451920` for ISA class (type 2), address size (type 3), and other compatibility checks. Validates architecture compatibility. Enforces that `.nv.compat` data is present via fatal error if missing. |
+
+### Relocation Section Merge
+
+Relocation sections (`SHT_RELA`=4 and `SHT_REL`=9) are handled through a dedicated path in the second pass. When `merge_elf` encounters a section with `sh_type` 4 or 9, it:
+
+1. Reads the relocation section's `sh_info` field to find the target section it applies to
+2. Loads the target section's header to determine the target's type
+3. Validates that the target type is in the expected range using the same `0x5D05` bitmask and constant bank range check. If the target type is unexpected, it emits `"unexpected reloc section"`
+4. Maps the target section through `sub_45E3C0` if not already mapped
+5. For each relocation entry, remaps the symbol index through the input-to-output symbol mapping table
+6. Skips relocations targeting deleted (dead) symbols, with special handling for `.debug_line`, `.nv_debug_line_sass`, and `.debug_frame` sections (these are silently skipped for weak symbols already processed)
+
+The relocation merge also detects weak-entry-related relocations targeting `.nv.constant` sections and removes them when the weak entry has been resolved: `"remove weak reloc for %s"`.
+
+### Reserved Shared Memory Symbols
+
+Sections reclassified to `SHT_CUDA_SHARED` with `STB_LOCAL` binding and specific symbol names trigger reserved shared memory tracking:
+
+| Symbol name | SMEM partition type |
+|---|---|
+| `__nv_reservedSMEM_tcgen05_partition` | 2 (tcgen05) |
+| `__nv_reservedSMEM_allocation_phase` | 1 (general) |
+| `__nv_reservedSMEM_allocation_mask` | 1 (general) |
+| `__nv_reservedSMEM_tmem_allocation_pipeline_mbarrier` | 1 (general) |
+| `__nv_reservedSMEM_tmem_allocation_pipeline_mbarrier_parity` | 1 (general) |
+
+The partition type is stored at `ctx+664`. If different input objects disagree on the partition type, `merge_elf` emits a fatal error (diagnostic descriptor at `unk_2A5B8C0`). These symbols are Blackwell-era (sm_100+) reserved shared memory regions for tensor core generation 05 operations.
+
 ## Function Map
 
 | Address | Name | Size | Role |
@@ -493,6 +744,12 @@ Complete list of NVIDIA CUDA section types used during merging:
 | `0x435B60` | `merge_overlapping_host` | 11,014 B | Overlap merge with `.nv.host` reference |
 | `0x438640` | `merge_constant_bank` | 4,043 B | Merge data into constant bank (global or per-entry) |
 | `0x4339A0` | `constant_dedup` | 13,199 B | Find duplicate 32/64-bit constants, alias symbols |
+| `0x45E3C0` | `section_type_classify` | ~700 B | Reclassify input sh_type by name prefix, create/lookup output section |
+| `0x45CF00` | `merge_reloc_section` | ~1,500 B | Merge relocation section (CUDA_RELOCINFO / RELOCINFO_EXT) |
+| `0x437BB0` | `merge_shared_entry` | ~700 B | Per-entry shared memory merge (extended smem mode) |
+| `0x4379A0` | `merge_shared_local` | ~800 B | Per-entry shared/local memory merge (standard mode) |
+| `0x440740` | `add_global_symbol` | ~1,200 B | Create global symbol record, add to pending list or section |
+| `0x45CD30` | `create_entry_section` | ~600 B | Create output section for a defined entry-point symbol |
 | `0x449A80` | `hash_lookup` | ~500 B | Generic hash table lookup |
 | `0x448E70` | `hash_insert` | ~500 B | Generic hash table insert |
 
@@ -512,6 +769,13 @@ Complete list of NVIDIA CUDA section types used during merging:
 | `"entry data cannot be GLOBAL"` | `sub_438640` | Per-entry constant has GLOBAL binding |
 | `"entry data should have offset"` | `sub_438640` | Per-entry constant missing explicit offset |
 | `"bank SHT not CUDA_CONSTANT_?"` | `sub_438640` | Section type not in constant bank range |
+| `"unexpected reloc section"` | `sub_45E7D0` | Relocation targets a section type not in valid range |
+| `"section not mapped"` | `sub_45E7D0` | `.nv.info` references a section with no output mapping |
+| `"duplicate param bank on weak entry %s"` | `sub_45E3C0` | Weak entry's param bank already exists (verbose only) |
+| `"weak %s already processed"` | `sub_45E7D0` | Weak entry/section already merged from prior object (verbose only) |
+| `"skip mercury section %i"` | `sub_45E7D0` | Mercury section skipped during merge (verbose only) |
+| `"remove weak reloc for %s"` | `sub_45E7D0` | Weak relocation to constant section removed (verbose only) |
+| `"unknown .nv.compat attribute (%x) encoutered."` | `sub_45E7D0` | Unrecognized compat attribute type (verbose warning) |
 
 ## Cross-References
 

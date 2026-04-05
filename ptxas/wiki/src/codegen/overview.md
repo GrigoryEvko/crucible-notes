@@ -1,10 +1,12 @@
 # Code Generation Overview
 
-The SASS code generation subsystem converts optimized Ori IR into executable GPU machine code. It is the largest subsystem in ptxas by every metric: approximately 12,000 functions, 9 MB of binary code, and nine functions so large that Hex-Rays cannot decompile them. The pipeline spans phases 112--159 of the 159-phase PhaseManager and comprises seven interlinked subsystems -- instruction selection, SASS binary encoding, peephole optimization, the Mercury encoding pipeline, Newton-Raphson math templates, SASS text generation, and ELF output packaging. Every subsystem dispatches through per-SM-family tables, so the same high-level flow produces correct output for targets from Kepler (sm_30) through Blackwell Ultra (sm_121).
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
+The SASS code generation subsystem converts optimized Ori IR into executable GPU machine code. It is the largest subsystem in ptxas by every metric: approximately 12,000 functions, 9 MB of binary code, and nine functions so large that Hex-Rays cannot decompile them. The pipeline spans phases 112--158 of the 159-phase PhaseManager and comprises seven interlinked subsystems -- instruction selection, SASS binary encoding, peephole optimization, the Mercury encoding pipeline, Newton-Raphson math templates, SASS text generation, and ELF output packaging. Every subsystem dispatches through per-SM-family tables, so the same high-level flow produces correct output for targets from Kepler (sm_30) through Blackwell Ultra (sm_121).
 
 | | |
 |---|---|
-| **Pipeline phases** | 112--159 (code generation spans the final third of the pipeline) |
+| **Pipeline phases** | 112--158 (code generation spans the final third of the pipeline) |
 | **Total functions** | ~12,000 (ISel, encoding, peephole, Mercury, formatters, ELF) |
 | **Total binary size** | ~9 MB of machine code |
 | **Non-decompilable functions** | 9 (3 peephole + 6 encoding megadispatchers) |
@@ -56,6 +58,53 @@ The SASS code generation subsystem converts optimized Ori IR into executable GPU
  .cubin / .o (NVIDIA custom ELF)
 ```
 
+## Phase-to-Subsystem Map
+
+The code generation pipeline occupies phases 112--158. This table maps each phase to its subsystem and documents the six-stage Mercury core that is the dominant path for SM 75+ targets.
+
+| Phase | Name | Subsystem | Detail page |
+|---|---|---|---|
+| 112 | `PlaceBlocksInSourceOrder` | Block layout | [cfg.md](../ir/cfg.md) |
+| 113 | `PostFixForMercTargets` | Mercury pre-fixup | [mercury.md](./mercury.md) |
+| 114 | `FixUpTexDepBarAndSync` | Scoreboard / sync | [scoreboards.md](../scheduling/scoreboards.md) |
+| 115 | `AdvancedScoreboardsAndOpexes` | Scoreboard hook | [scoreboards.md](../scheduling/scoreboards.md) |
+| 116 | `ProcessO0WaitsAndSBs` | Scoreboard (-O0) | [scoreboards.md](../scheduling/scoreboards.md) |
+| 117 | `MercEncodeAndDecode` | Mercury core | [mercury.md](./mercury.md) |
+| 118 | `MercExpandInstructions` | Mercury core | [mercury.md](./mercury.md) |
+| 119 | `MercGenerateWARs1` | Mercury core | [mercury.md](./mercury.md) |
+| 120 | `MercGenerateOpex` | Mercury core | [mercury.md](./mercury.md) |
+| 121 | `MercGenerateWARs2` | Mercury core | [mercury.md](./mercury.md) |
+| 122 | `MercGenerateSassUCode` | Mercury core | [mercury.md](./mercury.md) |
+| 123 | `ComputeVCallRegUse` | Post-Mercury bookkeeping | -- |
+| 124 | `CalcRegisterMap` | Post-Mercury bookkeeping | -- |
+| 125 | `UpdateAfterPostRegAlloc` | Post-Mercury bookkeeping | -- |
+| 126 | `ReportFinalMemoryUsage` | Reporting | [dumpir.md](../config/dumpir.md) |
+| 127 | `AdvancedPhaseOriPhaseEncoding` | Encoding hook | -- |
+| 128 | `UpdateAfterFormatCodeList` | Post-Mercury bookkeeping | -- |
+| 129 | `DumpNVuCodeText` | SASS text output | [sass-printing.md](./sass-printing.md) |
+| 130 | `DumpNVuCodeHex` | SASS hex output | [dumpir.md](../config/dumpir.md) |
+| 131 | `DebuggerBreak` | Debug | -- |
+| 132 | `UpdateAfterConvertUnsupportedOps` | Late cleanup | -- |
+| 133 | `MergeEquivalentConditionalFlow` | Late cleanup | -- |
+| 134 | `AdvancedPhaseAfterMidExpansion` | Late cleanup hook | -- |
+| 135 | `AdvancedPhaseLateExpandSyncInstructions` | Late cleanup hook | -- |
+| 136 | `LateMergeEquivalentConditionalFlow` | Late cleanup | -- |
+| 137 | `LateExpansionUnsupportedOpsMid` | Late lowering | -- |
+| 138 | `OriSplitHighPressureLiveRanges` | Late regalloc fixup | -- |
+| 139--158 | *(architecture-specific)* | Arch backends | [phase-manager.md](../passes/phase-manager.md) |
+
+Subsystem grouping summary:
+
+| Subsystem | Phases | Key property |
+|---|---|---|
+| Block layout | 112 | Restores source-order block placement |
+| Scoreboard / sync | 113--116 | Pre-Mercury texture and dependency bar fixups |
+| Mercury core | 117--122 | Six-stage encode-expand-WAR-opex-WAR-emit pipeline |
+| Post-Mercury bookkeeping | 123--128 | Register maps, data structure refresh |
+| SASS output + debug | 129--131 | Text/hex dumps and debugger hook |
+| Late cleanup | 132--138 | Conditional merging, late lowering, live-range splits |
+| Arch-specific | 139--158 | 20 backend-overridable phases (no-op by default) |
+
 ## Scale
 
 | Subsystem | Functions | Binary size | Key entry point |
@@ -78,84 +127,9 @@ Nine functions exceed the decompilation threshold: the three peephole mega-dispa
 
 ## Instruction Selection
 
-ISel converts abstract Ori IR operations into concrete SASS instruction forms using SelectionDAG-style pattern matching. Unlike upstream LLVM's TableGen-driven ISel, ptxas uses handwritten C++ matchers compiled into ~750 functions that are invoked from the ISel driver via per-opcode dispatch tables.
+ISel converts abstract Ori IR operations into concrete SASS instruction forms using SelectionDAG-style pattern matching. Unlike upstream LLVM's TableGen-driven ISel, ptxas uses handwritten C++ matchers compiled into ~750 functions invoked from the ISel driver via per-opcode dispatch tables. The ISel driver (`sub_B285D0`, 9 KB, 66 callees) selects architecture-variant builders based on the SM version. The mega-selector (`sub_C0EB10`, 185 KB) handles the full IR-to-SASS mapping through a giant switch over instruction opcodes. Four nearly identical dispatch functions (15,049 bytes each) at `sub_B128E0`--`sub_B12920` provide architecture-variant opcode routing, all jumping to shared handler code at `0x1C39xxx`.
 
-### ISel Driver -- `sub_B285D0` (9 KB)
-
-The top-level ISel coordinator is a vtable entry point with 66 callees. It selects the appropriate instruction builder variant based on target architecture and instruction properties:
-
-```c
-// Simplified ISel driver
-void ISel_LowerInstruction(context, instruction) {
-    int sm = *(context + 184);          // SM version
-    int opcode = instruction[18] & 0xFFFFCFFF;
-
-    // Select architecture-variant builder
-    if (sm == 14)
-        Builder_VariantA(context, instruction);    // sub_B1FA20
-    else
-        Builder_VariantB(context, instruction);    // sub_B20E00
-
-    // Apply post-ISel modifiers
-    ApplyModifiers(context, instruction);           // sub_B1D670
-    SetProperties(context, instruction);            // sub_B241A0
-}
-```
-
-### ISel Mega-Selector -- `sub_C0EB10` (185 KB)
-
-The largest function in the ISel range. It handles the full IR-to-SASS mapping through a giant switch/case over instruction opcodes, with per-opcode logic that reads operands, checks constraints, and emits corresponding SASS instructions. It handles special cases like shared memory alias resolution (`"__nv_reservedSMEM_offset_0_alias"`).
-
-### DAG Pattern Matchers -- 750 functions at `0xB30000`--`0xB7D000`
-
-Every matcher shares an identical prototype and follows a strict check-and-report protocol:
-
-```c
-// Prototype (all 750 matchers)
-char match(int64_t ctx, int64_t instr, int32_t *template_id, int32_t *priority);
-
-// Algorithm
-bool match_pattern_XXX(ctx, instr, template_id, priority) {
-    // 1. Check instruction properties via DAG node field reader
-    if (sub_10AE5C0(ctx, instr, 7) != 21)   return false;   // field 7 must be 21
-    if (sub_10AE5C0(ctx, instr, 163) != 705) return false;   // field 163 must be 705
-
-    // 2. Check operand count and types
-    if (sub_B28F50(instr) != 2)              return false;   // need 2 source operands
-    void *op0 = sub_B28F30(instr, 0);                        // get operand 0
-    if (!sub_B28E10(op0))                    return false;   // must be GPR
-
-    // 3. Check register class (1023 = wildcard)
-    int regclass = sub_B28E00(op0);
-    if (regclass != 1023 && regclass != 3)   return false;
-
-    // 4. Report match with priority
-    *template_id = THIS_TEMPLATE_ID;
-    *priority = THIS_PRIORITY;
-    return true;
-}
-```
-
-Helper functions used by all matchers:
-
-| Address | Purpose |
-|---|---|
-| `sub_10AE5C0` | Read DAG node field by ID (field_id to value) |
-| `sub_10AE590` | Write DAG node field (opcode_class, encoding) |
-| `sub_10AE640` | Modify DAG node (multi-field update, 5 args) |
-| `sub_B28F50` | Get source operand count |
-| `sub_B28F30` | Get operand by index (returns 24-byte operand record) |
-| `sub_B28F40` | Get result operand count |
-| `sub_B28E00` | Decode register class from packed field |
-| `sub_B28E10` | Validate operand is GPR |
-| `sub_B28E20` | Validate operand is immediate/constant |
-| `sub_B28E40` | Validate operand is valid register |
-| `sub_B28E80` | Check operand is predicate register |
-| `sub_B28E90` | Check operand is uniform register |
-
-### Architecture Dispatch Tables -- 4 copies at `sub_B128E0`--`sub_B12920`
-
-Four nearly identical functions (15,049 bytes each) provide architecture-variant opcode dispatch. Each contains a massive switch on `*(a3+12)` (the opcode word field) with all cases jumping to shared code at `0x1C39xxx`. The four copies serve different SM architecture families. Additionally, opcode variant selectors like `sub_B0BE00` (19 KB, opcode class 194) and `sub_B0AA70` (5 KB, opcode class 306) map sub-variant indices to specific SASS encoding slots through a `sub_10AE590(ctx, inst, class, base+K)` pattern.
+See [Instruction Selection](./isel.md) for the full DAG matcher protocol, helper function table, architecture dispatch tables, and operand variant selectors.
 
 ## SASS Binary Encoding
 
@@ -167,15 +141,6 @@ The encoding subsystem translates ISel output into packed binary SASS machine co
 - **530 encoding table initializers** at `0xC66000`--`0xD27000`, each populating one instruction format row
 - **3-level opcode hierarchy**: major (9 bits), minor (8 bits), sub-opcode (7 bits)
 - **Instruction widths**: 64-bit (format code 1), 128-bit (format code 2), 256-bit (format code 8)
-
-The four type-specific operand encoders handle the majority of encoding traffic:
-
-| Encoder | Size | Callers | Operand type |
-|---|---|---|---|
-| `sub_7BC030` | 814 B | 6,147 | Register (R0-R255, UR0-UR63) |
-| `sub_7BCF00` | 856 B | 1,657 | Immediate / constant-buffer |
-| `sub_7BC5C0` | 416 B | 1,449 | Predicate (PT, P0-P6) |
-| `sub_7B9D60` | 408 B | n/a | Reuse flags + guard predicate |
 
 ## Peephole Optimization
 
@@ -191,121 +156,66 @@ All three use identical architecture: a 373-case primary switch on the 16-bit op
 
 ## Mercury Pipeline
 
-Mercury is NVIDIA's intermediate encoding layer between the optimizer's Ori IR and native SASS machine code. It occupies phases 113--122 and forms a six-stage sub-pipeline. The full architecture is documented in [Mercury Encoder Pipeline](./mercury.md). The positioning within the codegen flow:
+Mercury is NVIDIA's intermediate encoding layer between the optimizer's Ori IR and native SASS machine code. It occupies phases 113--122 and forms a six-stage sub-pipeline. Three output modes are controlled by `--binary-kind`: `mercury` (SM 75--99), `capmerc` (SM 100+, with embedded PTX source and relocation metadata), and `sass` (explicit direct SASS output). The master encoder `sub_6D9690` (94 KB) is the largest backend function, with the orchestrator `sub_6F52F0` (23 KB, 18 parameters) driving the full stage sequence.
 
-```
-Phase 113  PostFixForMercTargets          Late Ori fixups for Mercury targets
-Phase 114  FixUpTexDepBarAndSync          Texture dependency bars + sync fixups
-Phase 115  AdvancedScoreboardsAndOpexes   Arch hook point (noop by default)
-Phase 116  ProcessO0WaitsAndSBs           -O0 scoreboard insertion
-                                          ──────────────────────────────
-Phase 117  MercEncodeAndDecode            ┐
-Phase 118  MercExpandInstructions         │  Six-stage Mercury core
-Phase 119  MercGenerateWARs1              │
-Phase 120  MercGenerateOpex               │
-Phase 121  MercGenerateWARs2              │
-Phase 122  MercGenerateSassUCode          ┘
-```
-
-Key functions:
-
-| Address | Size | Identity |
-|---|---|---|
-| `sub_6D9690` | 94 KB | Master encoder -- largest backend function, massive switch on instruction type |
-| `sub_6FFDC0` | 66 KB | Opex body -- generates scoreboards, computes latency waits |
-| `sub_6F2BF0` | 59 KB | Decode pipeline -- encode Ori to Mercury, decode back, verify roundtrip |
-| `sub_C3CC60` | 26 KB | MercExpand::run -- expand pseudo-instructions to concrete SASS |
-| `sub_6F52F0` | 23 KB | RunStages orchestrator (18 parameters) |
-| `sub_6E4110` | 24 KB | MercGenerateSassUCode -- final SASS microcode emission |
-| `sub_6FBC20` | 7.4 KB | WAR hazard generation (runs twice: before and after opex) |
-
-Three output modes controlled by `--binary-kind`:
-
-| Mode | Default for | Mercury mode flag |
-|---|---|---|
-| `mercury` | SM 75--99 | `*(DWORD*)(context+385) == 2` |
-| `capmerc` | SM 100+ (Blackwell) | Same flag, plus embedded PTX source + relocation metadata |
-| `sass` | Explicit only | Direct SASS binary output |
+See [Mercury Encoder Pipeline](./mercury.md) for the six-stage architecture, key function table, and output mode details. See [Capsule Mercury & Finalization](./capmerc.md) for the SM 100+ variant.
 
 ## Newton-Raphson Templates
 
-Double-precision operations that lack dedicated hardware support (DDIV, DRCP, DSQRT, DRSQRT) are lowered into multi-instruction SASS sequences that implement Newton-Raphson iterative refinement. The template system lives at `0x1700000`--`0x1722D60` and is organized in a two-level hierarchy:
+Double-precision operations lacking dedicated hardware (DDIV, DRCP, DSQRT, DRSQRT) are lowered into multi-instruction SASS sequences implementing Newton-Raphson iterative refinement. The template system at `0x1700000`--`0x1722D60` comprises 36 functions organized in a two-level hierarchy: a top-level handler per operation delegates to a coordinator that allocates up to 298 virtual registers and chains 5--7 sub-expander functions. The register-count dispatcher `sub_1704070` selects between full inline, partial inline, and template-based expansion paths based on register file pressure (thresholds: 20,479 / 16,383).
 
-### Template Hierarchy
-
-```
-sub_170E8B0 (DDIV handler, 1.2 KB)
-  └─ sub_170E260 (DDIV coordinator, 1.6 KB)
-       │  Allocates 298 virtual registers from dword_23993E0 table
-       │  Names templates: "__ori_template_DDIV1/2/3"
-       │  Creates 240-byte SASS instruction buffer
-       │
-       ├─ sub_1704180 — DDIV sequence part 1
-       ├─ sub_1705820 — DDIV sequence part 2 (7.5 KB, ~100 SASS instructions)
-       ├─ sub_17075A0 — DDIV sequence part 3
-       ├─ sub_1709130 — DDIV sequence part 4
-       ├─ sub_170AE80 — DDIV sequence part 5
-       └─ sub_170CBD0 — DDIV sequence part 6
-
-sub_1718D60 (DRCP/DSQRT handler, 790 B)
-  └─ sub_1718790 (DRCP/DSQRT coordinator, 1.5 KB)
-       └─ 7 sub-expanders
-
-sub_17276C0 (DRSQRT handler, 1 KB)
-  └─ sub_1720D60 (DRSQRT coordinator, 1.4 KB)
-       └─ sub-expanders
-
-sub_1727130 (Multi-precision FP coordinator, 1.4 KB)
-```
-
-Sub-expanders emit dense SASS sequences including IMAD, FSETP, MOV, SHR, FADD, and MUFU instructions -- the characteristic pattern of Newton-Raphson iterative division/square-root. Each instruction is emitted via `sub_9314F0(buf, ctx, opcode, func, operand_count, operands)` and `sub_934630`.
-
-### Register-Count Dispatch
-
-The DDIV/DRCP dispatcher `sub_1704070` (263 bytes) selects between three expansion strategies based on the target register file size:
-
-```c
-int reg_count = *(*(context + 1584) + 372);
-if (reg_count > 20479)
-    LargeRegPath(args);      // sub_1702990: full inline expansion
-else if (reg_count > 16383)
-    MediumRegPath(args);     // sub_1701F10: partial inline
-else
-    SmallRegPath(args);      // sub_1701860: template-based (call to __ori_template_DDIV)
-```
-
-When register pressure is low (small-register path), the coordinator builds named template objects (`"__ori_template_DDIV1/2/3"`) that become named code sections in the output. The template is built lazily on first use and cached at `*(handler+12)`.
+See [Newton-Raphson Templates](./templates.md) for the complete template hierarchy, register-count dispatch logic, and sub-expander details.
 
 ## SASS Text Generation
 
-Phase 129 (`DumpNVuCodeText`) converts the internal instruction stream into human-readable SASS assembly text for `--verbose` output and `--out-sass` dumps. The subsystem is documented in detail in [SASS Text Generation](./sass-printing.md).
+Phase 129 (`DumpNVuCodeText`) converts the internal instruction stream into human-readable SASS assembly text for `--verbose` output and `--out-sass` dumps. The dispatcher `sub_5D4190` (12.9 KB) routes 81 named opcodes via direct string comparison and 473 via hash-based switch to 580 template-generated formatter functions at `0x4DA340`--`0x5A8E40` (~850 KB). All formatters use a monolithic 1.8 MB format string table -- an unusual design that trades memory for formatting speed.
 
-### Architecture
-
-```
-sub_5D4190 (12.9 KB, instruction text format dispatcher)
-  ├─ 81 named opcodes (direct string comparison)
-  ├─ 473 hash-dispatched opcodes (hash-based switch)
-  └─ 580 formatter functions at 0x4DA340-0x5A8E40 (~850 KB)
-       └─ Each: alloc 50 KB buffer → sprintf via format table → shrink-copy → free
-```
-
-All 580 formatter functions are template-generated (mechanically identical structure). They use a monolithic format string table (~1.8 MB) containing pre-assembled PTX/SASS text templates -- an unusual design that trades memory for formatting speed.
-
-The WMMA (tensor core) formatters are the largest, accounting for 34 KB (4% of the range) due to the combinatorial explosion of matrix shapes, data types, and layouts.
+See [SASS Text Generation](./sass-printing.md) for the full formatter architecture and opcode routing details.
 
 ## ELF/Cubin Output
 
-The final stage packages the encoded SASS binary into NVIDIA's custom ELF format (.cubin/.o). The ELF emitter chain is:
+The final stage packages the encoded SASS binary into NVIDIA's custom ELF format (.cubin/.o). The kernel finalizer `sub_612DE0` (47 KB) feeds the master ELF emitter `sub_1C9F280` (97 KB), which delegates to symbol table emission (`sub_713710`), relocation generation (`sub_7163C0`), string table construction (`sub_7122C0`), and section layout finalization (`sub_716DC0`).
 
-```
-sub_612DE0 (47 KB, kernel finalizer)
-  └─ sub_1C9F280 (97 KB, master ELF emitter — largest post-codegen function)
-       ├─ sub_713710 (14 KB) — emit symbol table entries
-       ├─ sub_7163C0 (13 KB) — emit relocation entries
-       ├─ sub_7122C0 (12 KB) — build string table
-       └─ sub_716DC0 (10 KB) — finalize section layout
-```
+See [ELF/Cubin Output](../output/elf-emitter.md) for section catalog, relocation format, and EIATTR attribute encoding.
+
+## Intrinsic Lowering
+
+The OCG (On-Chip Global) intrinsic system at `0x6C0000`--`0x6D0000` handles PTX builtin operations for SM 100+ targets. The master intrinsic table at `sub_6C9EB0` (13 KB) initializes a 10,664-byte dispatch table with prefix `"__nv_ptx_builtin_ocg_"`, covering operations from basic add/load/store through SM 100 tensor core (tcgen05) and bulk async copy:
+
+| Handler | Size | Operations |
+|---|---|---|
+| `sub_6C0D90` | 19 KB | Atomic reduce (atom.add/min/max/cas -- 54 validation strings) |
+| `sub_6C3470` | 20 KB | cp.async.bulk (bulk async copy) |
+| `sub_6C1CF0` | 16 KB | mbarrier (arrive, wait, test, counted variants) |
+| `sub_6C4DA0` | 15 KB | Load/store with scope, memory order, domain validation |
+| `sub_6D4350` | 30 KB | MMA intrinsics (HMMA, IMMA, DMMA variants) |
+| `sub_6D7AF0` | 19 KB | TCGen05 MMA (SM 100, 5th generation tensor core) |
+
+Intrinsic parameter validators at `sub_6BDB60`--`sub_6BF910` enforce type, sub-operation, and memory domain constraints. NVIDIA consistently misspells "intrinsic" as "instrinsic" in all validation error strings.
+
+## Post-Scheduling Statistics
+
+Eight SM-variant statistics printers at `sub_ABBA50`--`sub_ABEB50` (7,603 bytes each, spaced 0x700 apart) generate `"# [...] "` comments with comprehensive post-codegen metrics: instruction counts, register usage, spill/refill bytes, estimated latency and occupancy, per-functional-unit instruction estimates, MMA counts, and throughput figures. The per-unit instruction counter `sub_ABF590` (17 KB) uses SSE2 operations for batch updates.
+
+## Operand Legalization
+
+Post-register-allocation operand legalization rewrites instructions that cannot be directly encoded in SASS:
+
+| Address | Size | Purpose |
+|---|---|---|
+| `sub_AB3C30` | 32 KB | Post-RA instruction legalization (opcodes 288, 167, 185, 241, 299, 300, 317) |
+| `sub_AB2D50` | 18 KB | Per-class operand legalization (opcode 307 = ternary/FMA-like) |
+| `sub_ACF4D0` | 14 KB | Constraint solver -- splits instructions when direct encoding fails |
+| `sub_AB8940` | 19 KB | Register move coalescing / copy elimination |
+| `sub_AC2750` | 36 KB | Operand-to-encoding converter (36-byte operand records) |
+
+When legalization requires instruction splitting, `sub_ACF4D0` creates new instructions via `sub_934630` (instruction constructor). The constraint solver tries alternative encodings before resorting to splits.
+
+## WGMMA Pipeline (SM 90+)
+
+The WGMMA (Warp Group Matrix Multiply-Accumulate) pipeline optimizer at `0xACE000`--`0xAE6000` manages asynchronous tensor core execution for Hopper and later. It automatically inserts `warpgroup.arrive` and `warpgroup.wait` fences to ensure correct register handoff. The warning emitter (`sub_ACE480`) issues `"Potential Performance Loss"` advisories (codes 7509--7511) when pipelining fails due to extern calls, insufficient registers, or ill-formed pipeline stages.
+
+See [WGMMA Pipeline Optimizer](../passes/gmma-pipeline.md) for the full call tree, register pressure estimator, and serialization warning details.
 
 ## Per-SM Architecture Dispatch
 
@@ -332,106 +242,22 @@ Architecture-specific dispatch points across the codegen pipeline:
 | Statistics | 8 SM-variant printer clones at `sub_ABBA50`--`sub_ABEB50` | 7,603 bytes each, 0x700 spacing |
 | NR templates | Register-count-based dispatch at `sub_1704070` | Thresholds: 20479 / 16383 |
 
-## Intrinsic Lowering
-
-The OCG (On-Chip Global) intrinsic system at `0x6C0000`--`0x6D0000` handles PTX builtin operations for SM 100+ targets. The master intrinsic table at `sub_6C9EB0` (13 KB) initializes a 10,664-byte dispatch table with prefix `"__nv_ptx_builtin_ocg_"`, covering operations from basic add/load/store through SM 100 tensor core (tcgen05) and bulk async copy:
-
-| Handler | Size | Operations |
-|---|---|---|
-| `sub_6C0D90` | 19 KB | Atomic reduce (atom.add/min/max/cas -- 54 validation strings) |
-| `sub_6C3470` | 20 KB | cp.async.bulk (bulk async copy) |
-| `sub_6C1CF0` | 16 KB | mbarrier (arrive, wait, test, counted variants) |
-| `sub_6C4DA0` | 15 KB | Load/store with scope, memory order, domain validation |
-| `sub_6C8100` | -- | cp.async.tensor (TMA, SM 90+) |
-| `sub_6C5A40` | -- | Cache control (CCTL: shallow/deep, ldc/ldcu, iv/ivall) |
-| `sub_6C60B0` | -- | Distributed shared memory (selfcast/broadcast) |
-| `sub_6D4350` | 30 KB | MMA intrinsics (HMMA, IMMA, DMMA variants) |
-| `sub_6D7AF0` | 19 KB | TCGen05 MMA (SM 100, 5th generation tensor core) |
-
-Intrinsic parameter validators at `sub_6BDB60`--`sub_6BF910` enforce type, sub-operation, and memory domain constraints. NVIDIA consistently misspells "intrinsic" as "instrinsic" in all validation error strings (e.g., `"Unexpected instrinsic param number (%d)"`).
-
-## Post-Scheduling Statistics
-
-Eight SM-variant statistics printers at `sub_ABBA50`--`sub_ABEB50` (7,603 bytes each, spaced 0x700 apart) generate DUMPIR output as `"# [...] "` comments. These print comprehensive post-codegen metrics:
-
-- Instruction counts and register usage (R-regs, UR-regs)
-- Spill metrics (`LSpillB`, `LRefillB`)
-- Estimated latency, occupancy, divergent branch count
-- Per-functional-unit instruction estimates: adu, alu, cbu, fma2x, fma, half, transcendental, ipa, lsu, redux, schedDisp, tex, ttu, udp
-- MMA instruction counts: imma16816, imma16832, immaSp, dmma, fma64, hmma variants
-- Issue/unit/warp/register throughput
-- Texture binding stats (CB-Bound, UR-Bound, Bindless)
-
-The per-unit instruction counter `sub_ABF590` (17 KB) uses SSE2 operations for batch counter updates.
-
-## Operand Legalization
-
-Post-register-allocation operand legalization rewrites instructions that cannot be directly encoded in SASS:
-
-| Address | Size | Purpose |
-|---|---|---|
-| `sub_AB3C30` | 32 KB | Post-RA instruction legalization (opcodes 288, 167, 185, 241, 299, 300, 317) |
-| `sub_AB2D50` | 18 KB | Per-class operand legalization (opcode 307 = ternary/FMA-like) |
-| `sub_ACF4D0` | 14 KB | Constraint solver -- splits instructions when direct encoding fails |
-| `sub_AB8940` | 19 KB | Register move coalescing / copy elimination |
-| `sub_AC2750` | 36 KB | Operand-to-encoding converter (36-byte operand records) |
-
-When legalization requires instruction splitting, `sub_ACF4D0` creates new instructions via `sub_934630` (instruction constructor). The constraint solver tries alternative encodings before resorting to splits.
-
-## WGMMA Pipeline (SM 90+)
-
-The WGMMA (Warp Group Matrix Multiply-Accumulate) pipeline optimizer at `0xACE000`--`0xAE6000` manages asynchronous tensor core execution for Hopper and later architectures. It automatically inserts `warpgroup.arrive` and `warpgroup.wait` fences to ensure correct register handoff between producer and consumer instructions:
-
-```
-sub_AE4F70 (coordinator, outside analyzed range)
-  ├─ sub_ADDDF0 (21 KB) — pass entry point (vtable)
-  │    └─ sub_ADCA60 (22 KB) — scheduling coordinator
-  │         └─ sub_ADBD30 (24 KB) — register pressure estimator
-  │              ├─ sub_ADAD60 (8 KB) — live range limiter
-  │              └─ sub_AD9C20 (14 KB) — per-class register allocator
-  ├─ sub_ADEB40 (43 KB) — warpgroup sync fence insertion
-  │    strings: "warpgroup.arrive is injected in around line %d..."
-  │             "warpgroup.wait is injected in around line %d..."
-  ├─ sub_AE17C0 (38 KB) — pipeline stage builder
-  └─ sub_ACE480 (23 KB) — serialization warning emitter (9 reasons)
-```
-
-The warning emitter (`sub_ACE480`) issues `"Potential Performance Loss"` advisories (codes 7509--7511) when WGMMA pipelining fails due to: extern calls, cross-function pipelines, insufficient registers, ill-formed pipeline stages, non-WGMMA instructions touching accumulator/input registers, or program dependence on compiler-inserted warpgroup fences.
-
-## Function Map
+## Function Map (Top 10)
 
 | Address | Size | Identity |
 |---|---|---|
 | `sub_169B190` | 280 KB | Generic peephole dispatcher (all SM, 762 matchers) |
-| `sub_143C440` | 233 KB | SM 120 peephole dispatcher (1,087 matchers) |
-| `sub_198BCD0` | 233 KB | Post-scheduling peephole dispatcher (1,336 matchers) |
-| `sub_C0EB10` | 185 KB | Main instruction selector (500+ locals, giant switch) |
-| `sub_10C0B20` | 180 KB | Encoding `setField` megadispatcher (3,109 callers) |
 | `sub_10D5E60` | 197 KB | Encoding `getFieldOffset` megadispatcher (961 callers) |
 | `sub_10E32E0` | 187 KB | Encoding `hasField` megadispatcher (72 callers) |
+| `sub_C0EB10` | 185 KB | Main instruction selector (500+ locals, giant switch) |
+| `sub_10C0B20` | 180 KB | Encoding `setField` megadispatcher (3,109 callers) |
 | `sub_10CCD80` | 142 KB | Encoding `setFieldDefault` megadispatcher (4 callers) |
 | `sub_1C9F280` | 97 KB | Master ELF emitter |
 | `sub_6D9690` | 94 KB | Mercury master encoder (instruction type switch) |
 | `sub_6FFDC0` | 66 KB | Mercury opex body (scoreboard generation) |
 | `sub_6E8EB0` | 64 KB | BasicBlock::Initialize (encoder state, opcode descriptors) |
-| `sub_6F2BF0` | 59 KB | DecodePipeline::DecodeAndExpand (roundtrip verification) |
-| `sub_612DE0` | 47 KB | Kernel finalizer / ELF builder |
-| `sub_ADEB40` | 43 KB | WGMMA sync fence insertion |
-| `sub_AE17C0` | 38 KB | WGMMA pipeline stage builder |
-| `sub_AC2750` | 36 KB | Operand-to-encoding converter |
-| `sub_AB3C30` | 32 KB | Post-RA instruction legalization |
-| `sub_C3CC60` | 26 KB | MercExpand::run (pseudo-instruction expansion) |
-| `sub_6E4110` | 24 KB | MercGenerateSassUCode (final SASS emission) |
-| `sub_6F52F0` | 23 KB | Mercury RunStages orchestrator (18 parameters) |
-| `sub_ACE480` | 23 KB | WGMMA serialization warning emitter |
-| `sub_AB2D50` | 18 KB | Operand legalization (per-class) |
-| `sub_ABF590` | 17 KB | Per-unit instruction counter (SSE2 batch update) |
-| `sub_5D4190` | 12.9 KB | SASS text format dispatcher (580 targets) |
-| `sub_6C9EB0` | 13 KB | OCG intrinsic table initializer |
-| `sub_B285D0` | 9 KB | ISel lowering driver (66 callees) |
-| `sub_6FBC20` | 7.4 KB | WAR hazard generation pass |
-| `sub_170E260` | 1.6 KB | DDIV template coordinator (298 virtual registers) |
-| `sub_7B9B80` | 216 B | Bitfield insert primitive (18,347 callers) |
+
+See [function-map.md](../function-map.md) for the complete table (~30 entries with all codegen functions).
 
 ## Cross-References
 

@@ -1,6 +1,6 @@
 # DWARF Processing
 
-nvlink contains a complete DWARF-2/3 debug information processing subsystem at address range `0x1D10000`--`0x1D20570`. This subsystem parses, validates, and re-emits standard DWARF sections carried in CUDA device ELF objects, handling abbreviation tables, compilation units, type information, location expressions, and line number programs. The implementation supports both 32-bit and 64-bit address sizes and recognizes NVIDIA-specific attribute extensions such as `DW_AT_NV_general_flags` (code `0x2703`). All DWARF encoding uses LEB128/ULEB128 variable-length integers, decoded through a shared codec subsystem with SSE-accelerated variants at `0x1D00000`--`0x1D0FFF0`.
+nvlink contains a complete DWARF-2/3 debug information processing subsystem at address range `0x1D10000`--`0x1D20570`. This subsystem parses, validates, and re-emits standard DWARF sections carried in CUDA device ELF objects, handling abbreviation tables, compilation units, type information, location expressions, and line number programs. The implementation supports both 32-bit and 64-bit address sizes and recognizes seven vendor-specific attribute extensions from four vendors: NVIDIA (`DW_AT_NV_general_flags`), MIPS/GCC (`DW_AT_MIPS_linkage_name`), GNU (`DW_AT_GNU_pubnames`), and PGI (`DW_AT_PGI_lbase`/`soffset`/`lstride`). Of these, `DW_AT_MIPS_linkage_name` and the PGI triplet have unique processing logic; the others are recognized for display but passed through opaquely. All DWARF encoding uses LEB128/ULEB128 variable-length integers, decoded through a shared codec subsystem with SSE-accelerated variants at `0x1D00000`--`0x1D0FFF0`.
 
 This page documents the core parsing functions. For the NVIDIA-specific extensions and Mercury debug section variants, see [NVIDIA Debug Extensions](nvidia-extensions.md). For line-table merging during the link phase, see [Line Table Merging](line-tables.md).
 
@@ -15,7 +15,7 @@ This page documents the core parsing functions. For the NVIDIA-specific extensio
 | Abbreviation buffer | 2048 bytes initial, grows by 2x when full |
 | Abbreviation entry size | 32 bytes per slot |
 | Maximum attributes per DIE | 256 (hard limit with fatal error) |
-| NVIDIA-specific attributes | `DW_AT_NV_general_flags` at code 9987 (`0x2703`) |
+| Vendor-specific attributes | 7 total: NVIDIA (1), MIPS/GCC (1), GNU (1), PGI (3), sentinel (1) |
 | Section type classifier | `sub_12D4370` at `0x12D4370` |
 | Top-level entry point | `sub_1D166F0` at `0x1D166F0` (allocates 95,968-byte context) |
 
@@ -254,21 +254,97 @@ The attribute name lookup (`sub_1D16DF0` at `0x1D16DF0`, 330 lines) is a deeply 
 
 ### Vendor Extensions
 
-| Code (decimal) | Code (hex) | Name | Vendor |
-|---|---|---|---|
-| 8199 | `0x2007` | `DW_AT_MIPS_linkage_name` | MIPS/GCC |
-| 8500 | `0x2134` | `DW_AT_GNU_pubnames` | GNU |
-| 9987 | `0x2703` | `DW_AT_NV_general_flags` | NVIDIA |
-| 14848 | `0x3A00` | `DW_AT_PGI_lbase` | PGI |
-| 14849 | `0x3A01` | `DW_AT_PGI_soffset` | PGI |
-| 14850 | `0x3A02` | `DW_AT_PGI_lstride` | PGI |
-| 16383 | `0x3FFF` | `DW_AT_hi_user` | Standard |
+| Code (decimal) | Code (hex) | Name | Vendor | Unique Handling |
+|---|---|---|---|---|
+| 8199 | `0x2007` | `DW_AT_MIPS_linkage_name` | MIPS/GCC | Yes -- name priority, pubnames/pubtypes |
+| 8500 | `0x2134` | `DW_AT_GNU_pubnames` | GNU | No -- name lookup only |
+| 9987 | `0x2703` | `DW_AT_NV_general_flags` | NVIDIA | No -- name lookup only |
+| 14848 | `0x3A00` | `DW_AT_PGI_lbase` | PGI | Yes -- DW_OP expression decoding |
+| 14849 | `0x3A01` | `DW_AT_PGI_soffset` | PGI | Yes -- DW_OP expression decoding |
+| 14850 | `0x3A02` | `DW_AT_PGI_lstride` | PGI | Yes -- DW_OP expression decoding |
+| 16383 | `0x3FFF` | `DW_AT_hi_user` | Standard | No -- sentinel value |
 
-The NVIDIA-specific `DW_AT_NV_general_flags` at code `0x2703` is used by the CUDA toolchain to annotate device functions with GPU-specific properties. The PGI attributes reflect nvlink's heritage from the PGI/NVIDIA HPC compiler toolchain. Unknown attribute codes produce a diagnostic:
+Unknown attribute codes produce a diagnostic to stderr:
 
 ```
 Unknown Attribute value %d
 ```
+
+The if/else tree structure in `sub_1D16DF0` (not a compiler-generated switch table) suggests this was hand-written or came from a legacy code generator. The vendor attribute codes fall in the DWARF user-defined ranges: `0x2000`--`0x2FFF` for vendor-specific use (MIPS, GNU, NVIDIA), and `0x3A00`--`0x3FFF` for the upper user range (PGI, sentinel).
+
+### DW_AT_MIPS_linkage_name (0x2007) -- Linkage Name Priority
+
+`DW_AT_MIPS_linkage_name` is the most extensively handled vendor attribute in the DWARF subsystem. Originally defined by SGI for the MIPS ABI, it was adopted by GCC and Clang as the de facto standard for encoding the mangled (C++ linkage) name of a symbol before DWARF-4 introduced `DW_AT_linkage_name` (code 0x76). The CUDA toolchain emits it in device ELF objects for mangled kernel names.
+
+nvlink gives `DW_AT_MIPS_linkage_name` **priority over `DW_AT_name`** when extracting the canonical name of a DIE. This affects three functions:
+
+**DIE tree walker (`sub_1D1BE80`)**: When processing `DW_TAG_subprogram` (tag 46), the walker has a special check at the attribute dispatch level. If the current attribute is `DW_AT_name` (3) and the previous attribute stored in the DIE context (offset `+48`) was `DW_AT_MIPS_linkage_name` (8199), the walker **skips** the `DW_AT_name` extraction entirely -- the linkage name already captured is the canonical identifier. Conversely, if the attribute *is* `DW_AT_MIPS_linkage_name`, the walker proceeds directly to the name extraction path. The pseudocode for the relevant check:
+
+```c
+// Inside DIE tree walker, attribute dispatch for DW_TAG_subprogram (46):
+if (current_attr == DW_AT_name) {
+    if (die_ctx->prev_attr == DW_AT_MIPS_linkage_name)
+        goto skip;   // linkage name already captured, ignore DW_AT_name
+}
+if (current_attr == DW_AT_MIPS_linkage_name) {
+    goto extract_name;  // treat as the canonical name
+}
+```
+
+**Pubnames emitter (`sub_1D19900`)** and **pubtypes emitter (`sub_1D193E0`)**: Both use an identical priority pattern when building the `.debug_pubnames` / `.debug_pubtypes` name index. For each abbreviation entry's attribute list, they check:
+
+```c
+if (attr == DW_AT_MIPS_linkage_name ||
+    (attr == DW_AT_name && prev_captured_name != DW_AT_MIPS_linkage_name))
+{
+    // Extract name string from the stream, allocate arena copy
+    prev_captured_name = attr;
+}
+```
+
+This means: if a DIE has both `DW_AT_name` and `DW_AT_MIPS_linkage_name`, the mangled linkage name always wins. The `DW_AT_name` is only used as a fallback when no linkage name is present. After capturing via `DW_AT_MIPS_linkage_name`, encountering `DW_AT_name` has no effect on the stored name. This guarantees that pubnames/pubtypes entries use the mangled C++ name when available, which matches what host-side linkers and debuggers expect.
+
+### DW_AT_GNU_pubnames (0x2134) -- GCC .debug_gnu_pubnames
+
+`DW_AT_GNU_pubnames` is a boolean attribute added to `DW_TAG_compile_unit` DIEs by GCC when the `.debug_gnu_pubnames` section is present. This is the GCC extension for accelerated name lookup (later standardized as `.debug_names` in DWARF-5). nvlink recognizes the attribute name for display in verbose mode but does **not** perform any special processing on its value -- the attribute is decoded generically through the form value reader like any other boolean or constant. The `.debug_pubnames` section itself is carried through as an opaque blob in the Mercury output (`.nv.merc.debug_pubnames`).
+
+### DW_AT_NV_general_flags (0x2703) -- NVIDIA GPU Function Properties
+
+`DW_AT_NV_general_flags` at code 9987 (`0x2703`) is NVIDIA's sole custom DWARF attribute in the vendor extension range. It is used by the CUDA toolchain (cicc/ptxas) to annotate `DW_TAG_subprogram` DIEs with GPU-specific function properties in device ELF `.debug_info` sections.
+
+Despite being the only NVIDIA-proprietary attribute, `DW_AT_NV_general_flags` has **no special handling** in the nvlink DWARF subsystem beyond the name lookup in `sub_1D16DF0`. The attribute value is:
+
+- Decoded generically by the form value reader (`sub_1D1B540`) according to whatever `DW_FORM_*` is specified in the abbreviation table (typically `DW_FORM_data4` for a 32-bit flags word or `DW_FORM_data2`)
+- Not examined, filtered, or modified by the DIE tree walker (`sub_1D1BE80`)
+- Not referenced by the pubnames or pubtypes emitters
+- Passed through opaquely to the Mercury output
+
+The exact bit layout of the flags value was not determined from decompilation of nvlink alone -- the flags are produced by cicc and consumed by cuda-gdb and other NVIDIA debug tools. The attribute code `0x2703` falls in the `0x2000`--`0x3FFF` user-defined range (specifically in the `0x2700`--`0x27FF` sub-range that appears to be reserved for NVIDIA).
+
+### PGI Extensions (0x3A00--0x3A02) -- Fortran Array Descriptors
+
+The three PGI attributes reflect nvlink's lineage from the PGI (Portland Group / NVIDIA HPC SDK) compiler toolchain. They encode Fortran array descriptor components:
+
+| Attribute | Code | Purpose |
+|---|---|---|
+| `DW_AT_PGI_lbase` | `0x3A00` | Lower bound base address of the array descriptor |
+| `DW_AT_PGI_soffset` | `0x3A01` | Section (stride) offset within the descriptor |
+| `DW_AT_PGI_lstride` | `0x3A02` | Element stride (distance between consecutive elements) |
+
+These are typically encoded as `DW_FORM_block1` values containing DWARF location expressions (`DW_OP_*` sequences). The form value reader (`sub_1D1B540`) explicitly includes all three PGI codes in its location-expression decode check:
+
+```c
+// In sub_1D1B540, DW_FORM_block1 handler:
+if (attr == DW_AT_location       ||   // 2
+    attr == DW_AT_data_location   ||   // 81
+    (attr - 14848) <= 2u          ||   // DW_AT_PGI_lbase/soffset/lstride
+    attr == DW_AT_stride_size)         // 46
+{
+    // Invoke DW_OP expression decoder (sub_1D1A920) on block contents
+}
+```
+
+This means the PGI array descriptor attributes are treated as first-class location expressions by the DWARF subsystem -- their block values are decoded through the full `DW_OP_*` interpreter (`sub_1D1A920`), producing human-readable location descriptions in verbose mode. This is the same treatment given to standard location attributes like `DW_AT_location` and `DW_AT_data_location`.
 
 ## DW_OP Expression Decoder: sub_1D1A920
 

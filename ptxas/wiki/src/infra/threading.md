@@ -1,5 +1,7 @@
 # Thread Pool & Concurrency
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 ptxas compiles multiple entry functions (kernels) in a single PTX input file. When `--split-compile` or `--allow-expensive-optimizations` is active, the compilation driver dispatches each kernel to a worker thread for parallel DAGgen+OCG+ELF+DebugInfo processing. The threading infrastructure lives in two address ranges: the TLS system at `0x4280xx`--`0x4286xx` (front-end) and the thread pool at `0x1CB17xx`--`0x1CB1Axx` (shared infrastructure).
 
 | | |

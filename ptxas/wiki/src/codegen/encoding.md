@@ -730,6 +730,150 @@ The total SM100 codec spans roughly 2.5 MB of binary code across approximately 4
 
 Other SM targets (SM75 Turing, SM80 Ampere, SM86 Ada, SM89 Lovelace, SM90a Hopper, SM103 Blackwell Ultra, SM120 consumer Blackwell) have parallel encoder populations in the p1.14, p1.15, p1.17--p1.22 address ranges, each with matched xmmword constants for their architecture-specific instruction set.
 
+## Per-SM Instruction Format Descriptors
+
+316 instruction format descriptor functions at 0x1732170--0x17A9B70 form the shared, architecture-neutral instruction pattern database. Unlike the per-SM encoder stubs (replicated per architecture at separate address ranges), these descriptors are a single set of functions that describe every SASS opcode variant's encoding geometry: bitfield layout, operand slot configuration, and modifier schema. They are invoked exclusively through virtual dispatch (zero static callers) from the ISel passes (`sub_A4BC60`, `sub_A4D3F0`) via the FNV-1a hash-based instruction matcher at `sub_1731440`.
+
+### Descriptor Template
+
+Every descriptor function initializes an Encoding Context object through a fixed 4-phase sequence:
+
+```c
+// Phase 1: Opcode header (5 calls for 64-bit, 6 for 128-bit)
+sub_7B9B80(a1, 0,    4, FORMAT_CODE);   // bits[3:0]     format: 1=64b, 2=128b
+sub_7B9B80(a1, 4,    3, 0);             // bits[6:4]     sched group slot
+sub_7B9B80(a1, 0x84, 3, 0);             // bits[134:132] ext flag (128-bit ONLY)
+sub_7B9B80(a1, 8,    9, MAJOR_OP);      // bits[16:8]    9-bit major opcode
+sub_7B9B80(a1, 0x11, 8, MINOR_OP);      // bits[24:17]   8-bit minor opcode
+sub_7B9B80(a1, 0x19, 7, FORMAT_ID);     // bits[31:25]   7-bit format ID
+
+// Phase 2: Format layout descriptor (Tier 1) -- selects operand geometry
+*(__m128i*)(a1 + 8) = xmmword_23FXXXX;  // 128-bit format template from rodata
+// + bulk copy of 3 x 10 DWORD arrays into a1+24..a1+140
+
+// Phase 3: Architecture modifier table (Tier 2) -- selects per-SM encoding
+*(__m128i*)(a1 + 404) = xmmword_YYYYYYY;  // per-SM modifier constants
+*(DWORD*)(a1 + 420) = VAL1;               // explicit modifier overrides
+*(DWORD*)(a1 + 424) = VAL2;
+
+// Phase 4: Operand count + standard encoding tail
+*(DWORD*)(a1 + 144) = NUM_OPERANDS;       // 0--7
+sub_7B9D30(a1);                            // clear constant buffer table
+sub_7B9D60(a1, a2, 0);                     // encode reuse + guard predicate
+// Then: opcode extraction, register encoding, modifier field packing
+```
+
+### Two-Tier xmmword Architecture
+
+Each descriptor loads two classes of xmmword constants that together fully specify the instruction encoding:
+
+**Tier 1 (at `a1+8`): Format Layout Descriptor.** Selects the instruction format -- operand slot sizes, types, and field layout. These are the 16 format groups documented in the "Instruction Format Group Catalog" section above. Addresses in the `0x23F1xxx`--`0x23F2xxx` rodata range.
+
+**Tier 2 (at `a1+404`): Architecture Modifier Table.** Selects per-SM encoding variations for the same format layout. Two instructions with the same Tier 1 descriptor but targeting different architectures use different Tier 2 constants. Addresses span three rodata ranges:
+
+| Rodata Range | Group | Functions | Paired With |
+|---|---|---|---|
+| `0x202A280`--`0x202A2B0` | A | ~40 | `202A290` or `202A2A0`+`202A2B0` at `a1+420` |
+| `0x22F1B30`--`0x22F1B50` | B/C | ~8 | None (single 16B block) |
+| `0x22F1BA0`--`0x22F1BB0` | D | ~3 | None |
+| `0x22F1AA0`--`0x22F1AE0` | E | ~3 | (observed in SM100 encoder range) |
+| `0x22F1C20`--`0x22F1C30` | F | ~2 | Paired at `a1+404`/`a1+420` |
+| `0x23B2DE0` | G | 4 | None (rare/specialized) |
+
+### SM Generation Mapping
+
+The Tier 2 modifier groups correspond to GPU architecture generations. The mapping is inferred from operand table sizes (larger = newer), function counts per group (fewer = newer/specialized), and cross-reference with the per-SM encoder stubs at known address ranges:
+
+| Modifier Address | Probable SM Range | ISA Family | Confidence |
+|---|---|---|---|
+| `0x202A280`--`0x202A2B0` | sm_50--sm_75 | Maxwell / Pascal / Volta / Turing | MEDIUM |
+| `0x22F1B30`--`0x22F1B50` | sm_80--sm_86 | Ampere / Ada | MEDIUM |
+| `0x22F1BA0`--`0x22F1BB0` | sm_89--sm_90a | Lovelace / Hopper | MEDIUM |
+| `0x22F1AA0`--`0x22F1AE0` | sm_100+ | Blackwell datacenter | MEDIUM |
+| `0x22F1C20`--`0x22F1C30` | sm_103 / sm_120 | Blackwell Ultra / consumer | LOW |
+| `0x23B2DE0` | Cross-arch | Specialized / rare instructions | LOW |
+
+The progression from `0x202A` to `0x22F1` to `0x23B2` in rodata address space mirrors the SM generation ordering. Group A (Maxwell--Turing) is the most populous, consistent with the longest-supported ISA family. Groups E and F have the fewest functions, consistent with the newest architectures that introduce fewer format changes.
+
+### Format Code Distribution
+
+| Format Code | Instruction Width | Descriptor Count | sub_7B9B80 Header Calls | Notes |
+|---|---|---|---|---|
+| 1 | 64-bit | ~120 | 5 (no `0x84` call) | Simple moves, branches, barriers, NOP-like control |
+| 2 | 128-bit | ~194 | 6 (includes `0x84`) | ALU, load/store, texture, tensor core |
+| 8 | 256-bit | 2 | Extended | IMAD.WIDE with 16 constant-bank slots |
+
+### Descriptor-Initialized Context Fields
+
+The format descriptor writes these fields into the Encoding Context object. All offsets are decimal:
+
+| Offset | Size | Initialized By | Content |
+|---|---|---|---|
+| `+8` | 16B | Phase 2 (Tier 1 xmmword) | Format layout descriptor |
+| `+24`--`+60` | 40B | Phase 2 (bulk copy) | Operand slot sizes (10 DWORDs) |
+| `+64`--`+100` | 40B | Phase 2 (bulk copy) | Operand slot types (10 DWORDs) |
+| `+104`--`+140` | 40B | Phase 2 (bulk copy) | Operand slot flags (10 DWORDs) |
+| `+144` | 4B | Phase 4 | Operand count (0--7) |
+| `+404` | 16B | Phase 3 (Tier 2 xmmword) | Architecture modifier table |
+| `+420` | 4B | Phase 3 (scalar) | Architecture modifier field 1 |
+| `+424` | 4B | Phase 3 (scalar) | Architecture modifier field 2 |
+
+### Pipeline Position
+
+The format descriptors bridge ISel pattern matching and per-SM encoding:
+
+```
+ISel Pattern Matcher (sub_1731440, FNV-1a hash on *(a2+12))
+  |
+  v  (virtual dispatch via vtable)
+Format Descriptor (one of 316 at 0x1732170--0x17A9B70)
+  Writes: a1+0..a1+144   (format layout + operand geometry)
+  Writes: a1+404..a1+424  (architecture modifier table)
+  |
+  v  (encoding context passed down)
+Per-SM Encoder Stub (e.g. 0xD27xxx for SM100)
+  Reads: format context from descriptor
+  Writes: a1+544..a1+703  (1280-bit encoding buffer)
+```
+
+### Representative Examples
+
+**`sub_1732170` -- 64-bit float conversion (single-dest):**
+
+| Field | Value | Meaning |
+|---|---|---|
+| Format code | 1 | 64-bit instruction |
+| Major opcode | 0x0C | Float conversion family |
+| Minor opcode | 0x0D | Variant D |
+| Format ID | 5 | Short-form general (23F1F08) |
+| Tier 1 | `xmmword_23F1F08` | Short-form general, 27 opcode classes |
+| Tier 2 | `xmmword_22F1B30` | Group B (Ampere/Ada) |
+| Operand count | 3 | Register operands at 0x50, 0x60, 0x70 |
+| Modifier fields | 12 | Spanning `a1+544` and `a1+552` |
+
+**`sub_1740200` -- 128-bit IMAD.WIDE (dual-dest):**
+
+| Field | Value | Meaning |
+|---|---|---|
+| Format code | 2 | 128-bit instruction |
+| Major opcode | 0x23 | IMAD.WIDE family |
+| Minor opcode | 0x12 | Variant with modifier 0x13 |
+| Format ID | 0x13 | Tensor/extended ALU (23F2678) |
+| Tier 1 | `xmmword_23F2678` | Extended ALU, 7 opcode classes |
+| Tier 2 | `xmmword_202A280` | Group A (Maxwell--Turing) |
+| Dual-dest | Yes | `0x84` field present, set to 0 |
+
+**`sub_1732E90` -- 128-bit extended complex:**
+
+| Field | Value | Meaning |
+|---|---|---|
+| Format code | 2 | 128-bit instruction |
+| Major opcode | 0x0C | Float conversion family |
+| Minor opcode | 0x0C | Same as major (self-referencing variant) |
+| Format ID | 0x19 | Extended complex (23F29A8) |
+| Tier 1 | `xmmword_23F29A8` | Extended complex, 8 opcode classes |
+| Tier 2 | `xmmword_22F1B30` | Group B (Ampere/Ada) |
+
 ## Operand Encoding Patterns
 
 The 576 encoder functions in the p1.12 range use 52 distinct operand encoding patterns. The most common:
@@ -1049,6 +1193,115 @@ The compiler chose a decision tree over a table lookup, likely because the C++ s
 | `sub_1B985B0` | 6,852 B | `0x804` | `sub_1BAD6D0` | HIGH |
 | `sub_1B9A430` | 6,884 B | `0x807` | `sub_1BB1110` | HIGH |
 | `sub_1B9C220` | 6,884 B | `0x81A` | `sub_1BAD920` | HIGH |
+
+## SM89/90 Codec Layer
+
+SM89 (Ada Lovelace) and SM90 (Hopper) share a pre-encoding instruction reordering layer absent from SM100 (Blackwell). This layer sits above the three-layer encoding pipeline: it manipulates Mercury IR instruction lists to optimize instruction interleaving before the encoding stubs pack bitfields. The entire cluster spans addresses 0x1226E80--0x1233D70, roughly 261 KB of compiled code across 18 functions.
+
+### Call Chain
+
+```
+sub_C60910 / sub_C5FEF0   SM-target dispatch (Level 0, 0xC5xxxx range)
+  |
+  v
+sub_1233D70 (6 KB)         Orchestrator: guards on knob 487 and O-level > 1,
+  |                        sets up cost-function parameters, calls A then B
+  |
+  +-> sub_122AD60 (112 KB)  Pass A: classify instructions + reorder within blocks
+  +-> sub_122F650 (105 KB)  Pass B: scheduling-aware emission ordering across blocks
+  +-> sub_A112C0            Post-pass finalization
+```
+
+The orchestrator `sub_1233D70` is called only when optimization level exceeds 2 (`sub_7DDB50(ctx) > 1`). It reads floating-point cost weights from the target descriptor via knob offsets +7200, +7560, +7128, +7272 and passes them through to both passes. Default base weights are `1.8, -0.8, 3.2, -2.2`.
+
+### Pass A: Instruction Classification and Reordering (`sub_122AD60`)
+
+4,118 decompiled lines. Traverses every instruction in each basic block and sorts them into 4 linked-list queues by instruction category:
+
+| Category | Return Code | Instruction Type | Queue Role |
+|----------|:-----------:|:----------------:|------------|
+| Branch / control-flow | 0 | type 9 (BRA, EXIT, RET, ...) | Held at block boundaries |
+| Load | 1 | type 12 (LDG, LDS, ...) | Scheduled early for latency hiding |
+| Store | 2 | type 5 (STG, STS, ...) | Deferred to maximize distance from load |
+| General ALU | 4 | type 4 (IADD, FFMA, ...) | Interleaved between memory ops |
+| Uncategorized | 3 | other / missing info | Treated as general |
+
+The classifier is `sub_1228670` (30 lines), which reads the instruction scheduling class via `sub_7E2FE0` and returns 0--4. A companion predicate `sub_1228EF0` (38 lines) returns 0 for types 9, 5, and 12 (the "special" categories), 1 for everything else.
+
+After classification, Pass A performs register-class-aware instruction motion: it uses `sub_91BF30` (register class builder), `sub_91E390` (class query), and `sub_91E610` (class intersection) to verify that moving an instruction does not violate register-class constraints. Instructions that pass the check have their operand flags updated at `+48` (bit 0x40 = "moved" marker) and `+96` (copy-chain tracking).
+
+The reordering step `sub_122AA30` (186 lines) performs the final within-block interleaving. `sub_1227D90` (522 lines) handles the actual linked-list surgery: unlink an instruction from its current position and reinsert it at a new location.
+
+### Pass B: Scheduling-Aware Emission Ordering (`sub_122F650`)
+
+3,917 decompiled lines. Takes the classified instruction lists from Pass A and determines the emission order that optimizes scheduling. Operates on 8 bitvector arrays allocated via the `sub_BDxxxx` bitvector library:
+
+| Bitvector | Purpose |
+|-----------|---------|
+| v521 | Main liveness set (all instructions) |
+| v523 | Load-group register liveness |
+| v525 | Store-group register liveness |
+| v527 | ALU-group register liveness |
+| v529 | Control-flow register liveness |
+| v531 | Cross-block interference set |
+| v533 | Scheduling priority set |
+| v535 | Secondary interference set |
+
+Each bitvector is sized to the function's total register count (`*(ctx+224)`). Pass B iterates through instructions, populates the bitvectors with defined-register information via `sub_BDBC70` (set bit), then merges category-specific vectors into the main set via `sub_BDC5F0` (union) in an order determined by the dependency analysis.
+
+The single switch at line 2578 dispatches on the instruction category:
+
+```
+case 4 (ALU):     merge load + store + ALU vectors into main
+case 3 (branch):  merge load vector only
+case 0 (uncategorized): merge store vector only
+case 2 (load):    merge ALU vector only
+case 1 (store):   no merge (control-flow kept separate)
+```
+
+Knob-derived flags control reordering aggressiveness:
+- Knob at target offset +7416 (index ~103): enable load reordering
+- Knob at target offset +7488: enable general reordering
+- All reordering disabled when `*(ctx+1584)+372 == 12288` (specific regalloc config)
+
+Pass B also maintains a red-black tree structure for the emission schedule, with standard left/right/parent pointers at node offsets 0, 8, 16.
+
+### Differences from SM100
+
+| Aspect | SM89/90 | SM100 (Blackwell) |
+|--------|---------|-------------------|
+| Pre-encode reordering | Present (sub_122AD60 + sub_122F650) | Absent -- scheduling integrated into own pass |
+| Instruction classification | 5-category scheme (branch/load/store/ALU/other) | 370-category opcode dispatch via megafunctions |
+| Cost model | Floating-point heuristic (4 tunable weights) | Table-driven via hardware profile records |
+| Liveness tracking | 8 bitvectors per block | Handled in scheduling pass, not in encoding |
+| Knob control | Knobs 103, 106, 218, 230, 487, 501 | Different knob set for Blackwell scheduler |
+| Register class validation | sub_91BF30/sub_91E390 per-move check | Per-instruction class check at encoding time |
+| Binary encoder calls | None -- IR-level manipulation only | sub_7B9B80 (18,347 callers) |
+
+The SM89/90 pair operates entirely at the Mercury IR level and produces no packed instruction bits. It rewrites the instruction linked lists in each basic block to optimize scheduling, after which the standard encoding pipeline (Layers 1--3) runs on the reordered sequence. SM100 Blackwell does not need this layer because its scheduling infrastructure (documented in scheduling/algorithm.md) already integrates instruction ordering into the scheduling pass itself.
+
+### SM89/90 Codec Function Map
+
+| Address | Size | Lines | Identity | Confidence |
+|---------|-----:|------:|----------|-----------|
+| `sub_1233D70` | 6 KB | 321 | **sm89_orchestrator** -- guards, cost params, calls A+B | HIGH |
+| `sub_122AD60` | 112 KB | 4,118 | **sm89_classify_reorder** -- instruction classification + block reordering | HIGH |
+| `sub_122F650` | 105 KB | 3,917 | **sm89_emission_order** -- scheduling-aware emission ordering | HIGH |
+| `sub_122AA30` | ~3 KB | 186 | **local_reorder** -- within-block instruction interleaving | HIGH |
+| `sub_1227D90` | ~9 KB | 522 | **instruction_reinsert** -- unlink + reinsert at new position | HIGH |
+| `sub_122F1E0` | ~6 KB | 330 | **scheduling_heuristic** -- cost-function comparison for emission order | MEDIUM |
+| `sub_1228670` | ~0.5 KB | 30 | **instruction_classify** -- 5-category classifier (returns 0--4) | CERTAIN |
+| `sub_1228EF0` | ~0.5 KB | 38 | **is_special** -- predicate: types 9/5/12 return false | CERTAIN |
+| `sub_1226E80` | ~0.3 KB | 22 | **list_prepend** -- insert instruction at list head | CERTAIN |
+| `sub_1226EB0` | ~5 KB | 274 | **instruction_finalize** -- post-reorder operand fixup | HIGH |
+| `sub_1227820` | ~1 KB | 77 | **operand_offset_update** -- adjust operand offsets after move | HIGH |
+| `sub_1227B60` | ~0.5 KB | 31 | **motion_check** -- can instruction move to new position? | HIGH |
+| `sub_1228FA0` | ~2 KB | 100 | **regclass_propagate** -- propagate register class after move | HIGH |
+| `sub_12292B0` | ~0.5 KB | 38 | **queue_init_A** -- initialize classification queue | HIGH |
+| `sub_1229330` | ~0.5 KB | 38 | **queue_init_B** -- initialize classification queue | HIGH |
+| `sub_1229BD0` | ~2 KB | 107 | **tree_rebalance** -- red-black tree rebalance | MEDIUM |
+| `sub_122A050` | ~1 KB | 77 | **pre_pass_init** -- initialize pass A state object | HIGH |
+| `sub_122A1A0` | ~2 KB | 139 | **block_resize** -- resize bitvector for new block count | HIGH |
 
 ## Function Map
 

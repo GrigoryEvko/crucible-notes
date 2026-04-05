@@ -1,5 +1,7 @@
 # GMMA/WGMMA Pipeline
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The GMMA pipeline handles warpgroup matrix multiply-accumulate (WGMMA) instructions introduced with SM 90 (Hopper). Two dedicated compiler phases -- `OriPropagateGmma` (phase 85) and `FixupGmmaSequence` (phase 87) -- transform the IR to satisfy the hardware's strict pipelining requirements for asynchronous tensor-core operations. These are the only passes in ptxas whose sole purpose is WGMMA instruction handling.
 
 WGMMA operates at warpgroup granularity (4 warps executing in lockstep). The hardware requires a specific sequencing protocol: `wgmma.fence` to open a pipeline stage, a sequence of `wgmma.mma_async` operations that share accumulator registers, `wgmma.commit_group` to close the stage, and `wgmma.wait_group` to synchronize on completion. Between the fence and wait, strict constraints govern which registers can be touched by non-WGMMA instructions. Violating these constraints forces the compiler to serialize the WGMMA pipeline, destroying throughput.

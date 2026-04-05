@@ -1,5 +1,7 @@
 # Tensor Core Intrinsics
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 ptxas supports five generations of tensor core operations spanning SM 70 through SM 100. The binary contains three major codegen handlers -- `sub_5C7A50` (173KB, WMMA), `sub_5C10A0` (120KB, MMA), and `sub_5BBC30` (90KB, tcgen05.mma) -- plus four WGMMA handlers, eleven tcgen05 instruction handlers, and ~400 numeric MMA hash table entries. Together these constitute ~500KB of code generation logic dedicated to tensor core instructions, making this the single largest functional subsystem in ptxas.
 
 | | |

@@ -1,5 +1,7 @@
 # GeneralOptimize Bundles
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The `GeneralOptimize*` passes are compound optimization bundles that run multiple sub-transformations in sequence on each basic block, repeating until no further changes occur (fixed-point iteration). They serve as the primary IR cleanup mechanism throughout the pipeline: after any major transformation introduces new dead code, redundant copies, or foldable constants, a GeneralOptimize pass re-normalizes the IR before the next major phase.
 
 Six instances exist at strategic positions in the 159-phase pipeline. Despite sharing the "GeneralOptimize" name prefix, the six instances decompose into three distinct implementation families -- a lightweight block-iteration variant, a heavyweight bitvector-tracked orchestrator, and an indirect vtable dispatch stub. Each family shares a common architectural pattern (per-block iteration with convergence check) but invokes different sub-pass combinations and has different gate conditions.

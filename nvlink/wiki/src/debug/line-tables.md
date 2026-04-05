@@ -466,42 +466,220 @@ After all functions have been processed, the builder calls `sub_12D04E0` one fin
 
 ## NVIDIA-Proprietary Extended Opcodes
 
-nvlink's DWARF line tables include several extended opcodes not defined in the DWARF standard:
+nvlink's DWARF line tables include two proprietary extended opcodes not defined in the DWARF standard. Both are emitted using the standard DWARF extended opcode mechanism: a `0x00` escape byte, followed by a ULEB128 length, followed by the sub-opcode byte and its operands. Standard DWARF consumers that encounter these opcodes will skip them correctly because the length prefix allows unknown extended opcodes to be passed over.
 
-| Opcode | Hex | Context | Meaning |
+Both opcodes are emitted by the LTO-side encoder (`sub_12D04E0`) and by the linker-side merger (`sub_480570`). They appear only in `.nv_debug_line_sass` sections (the NVIDIA SASS-level line tables), never in standard `.debug_line` sections, because they carry NVIDIA-specific inline context and statement metadata that standard DWARF debuggers do not understand.
+
+### DW_LNE_NV_set_context (0x90)
+
+Sets the inline context for subsequent line table rows. This opcode tracks which inlined function call site the following instructions belong to.
+
+**Encoding:**
+
+```
+Byte 0:      0x00        (extended opcode escape)
+Byte 1:      length      (ULEB128 = context_leb_len + offset_leb_len + 1)
+Byte 2:      0x90        (sub-opcode: DW_LNE_NV_set_context)
+Bytes 3..N:  context_id  (ULEB128 — inline context index into the context table)
+Bytes N+1..: func_offset (ULEB128 — byte offset of the inlined function)
+```
+
+The `context_id` operand is a zero-based index into the per-CU inline context table. Each entry in this table records the source file, source line, and base address of an inlined call site. When `context_id` is 0, the state machine returns to the top-level (non-inlined) function context.
+
+The `func_offset` operand is the byte offset of the inlined function within the compilation unit. For inlined functions whose source file name follows NVIDIA's `"filename.cu+12345"` convention, this offset is parsed from the `+`-delimited suffix via `sscanf("%llu")`.
+
+**Emission logic in sub_12D04E0** (lines 668--766 of the decompiled source):
+
+```c
+// When context map is present and context changes
+if (context_map && context_map[entry_index].context != state->current_context) {
+    emit_byte(state, 0x00);                     // extended escape
+    length_offset = state->write_pos;
+    emit_byte(state, 0x00);                     // placeholder for length
+    emit_byte(state, 0x90);                     // DW_LNE_NV_set_context
+
+    uleb128_encode(context_map[entry_index].context, &leb_buf, 255);
+    emit_bytes(state, leb_buf, leb_len);        // context_id
+    ctx_len = leb_len;
+
+    uleb128_encode(context_map[entry_index].func_offset, &leb_buf, 255);
+    emit_bytes(state, leb_buf, leb_len);        // func_offset
+
+    // patch length = ctx_len + offset_len + 1 (for sub-opcode byte)
+    state->buffer[length_offset] = ctx_len + leb_len + 1;
+    state->current_context = context_map[entry_index].context;
+}
+```
+
+The linker-side emitter (`sub_480570` at lines 289--355) uses an identical encoding but sources the context index from a lookup table at `a2 + 72` and the function offset from `v7[2].m128i_u32[2]`. The diagnostic strings for encoding failures are `"when generating LEB128 number for setting context"` and `"when generating LEB128 number for setting function Offset"`.
+
+**State machine effect:** Updates the internal `current_context` register (`state[32]`) and `current_func_offset` register (`state[33]`). Does not emit a matrix row.
+
+### DW_LNE_NV_set_stmt (0x92)
+
+Sets the `is_stmt` (is-statement) flag for subsequent line table rows. While standard DWARF provides `DW_LNS_negate_stmt` (opcode 6) to toggle the flag, NVIDIA uses this extended opcode to set it to an explicit value, which avoids ambiguity in the presence of complex inlining where the toggle semantic becomes error-prone.
+
+**Encoding:**
+
+```
+Byte 0:    0x00        (extended opcode escape)
+Byte 1:    length      (ULEB128 = is_stmt_leb_len + 1)
+Byte 2:    0x92        (sub-opcode: DW_LNE_NV_set_stmt)
+Bytes 3..: is_stmt_val (ULEB128 — 0 = not a statement, 1 = statement)
+```
+
+The `is_stmt_val` operand is the low bit of the entry's flags field (`entry->flags & 1`). In practice, the encoded ULEB128 is always a single byte (0 or 1), so the total extended opcode sequence is 4 bytes: `{0x00, 0x02, 0x92, 0x00}` or `{0x00, 0x02, 0x92, 0x01}`.
+
+**Emission logic in sub_12D04E0** (lines 504--563 of the decompiled source):
+
+```c
+// When has_is_stmt flag is set and is_stmt value differs from state
+if (has_is_stmt && (entry->flags & 1) != state->is_stmt_current) {
+    emit_byte(state, 0x00);                     // extended escape
+    length_offset = state->write_pos;
+    emit_byte(state, 0x00);                     // placeholder (skips +1 byte)
+    emit_byte(state, 0x92);                     // DW_LNE_NV_set_stmt
+
+    uleb128_encode(entry->flags & 1, &leb_buf, 255);
+    emit_bytes(state, leb_buf, leb_len);        // is_stmt value
+
+    // patch length = leb_len + 1 (for sub-opcode byte)
+    state->buffer[length_offset] = leb_len + 1;
+    state->is_stmt_current = entry->flags & 1;
+}
+```
+
+Note: the decompiled code writes the sub-opcode as `*(_BYTE *)(v83 + v82 + 1) = -110`, where `-110` as a signed byte is `0x92` (146 unsigned). The length placeholder at `v82` (one position before) is patched after the operand is encoded.
+
+The diagnostic string for encoding failure is `"when generating LEB128 number for setting prologue"`, which reveals NVIDIA's internal nomenclature: they refer to this opcode as the "prologue" marker, reflecting its primary use case of distinguishing function prologue instructions (where `is_stmt = 0`) from body instructions (where `is_stmt = 1`).
+
+**State machine effect:** Updates the internal `is_stmt_current` register (`state[39]`). Does not emit a matrix row.
+
+### Extended Opcode Summary
+
+| Sub-opcode | Hex | Decimal | Signed byte | Name | Operands |
+|---|---|---|---|---|---|
+| `DW_LNE_end_sequence` | 0x01 | 1 | 1 | End sequence | (none) |
+| `DW_LNE_set_address` | 0x02 | 2 | 2 | Set address | 4-byte or 8-byte address |
+| `DW_LNE_NV_set_context` | 0x90 | 144 | -112 | Set inline context | ULEB128 context_id, ULEB128 func_offset |
+| `DW_LNE_NV_set_stmt` | 0x92 | 146 | -110 | Set is_stmt flag | ULEB128 is_stmt_val |
+
+Sub-opcodes 0x01 and 0x02 are standard DWARF. Sub-opcodes 0x90 and 0x92 are NVIDIA-proprietary. The gap at 0x91 is unused in the current binary -- no emitter or consumer references this value.
+
+### Wire Format Examples
+
+**Set inline context to index 3, function offset 0x100:**
+```
+00              extended escape
+04              length = 4 bytes (1 sub-opcode + 1 context_id + 2 func_offset)
+90              DW_LNE_NV_set_context
+03              context_id = 3 (ULEB128)
+80 02           func_offset = 256 (ULEB128: 0x80 0x02)
+```
+
+**Set is_stmt to 1 (mark as statement):**
+```
+00              extended escape
+02              length = 2 bytes (1 sub-opcode + 1 value)
+92              DW_LNE_NV_set_stmt
+01              is_stmt = 1 (ULEB128)
+```
+
+**Set is_stmt to 0 (mark as non-statement / prologue):**
+```
+00              extended escape
+02              length = 2 bytes
+92              DW_LNE_NV_set_stmt
+00              is_stmt = 0 (ULEB128)
+```
+
+**End of sequence:**
+```
+00              extended escape
+01              length = 1 byte
+01              DW_LNE_end_sequence
+```
+
+## Standard DWARF Opcodes Used
+
+The complete set of standard DWARF opcodes emitted by nvlink:
+
+| Opcode | Value | Operands | Meaning |
 |---|---|---|---|
-| 0x90 | 144 | Extended | Set inline context (context_id + function_offset) |
-| 0x92 | 146 | Extended | Set prologue/is_stmt flag |
+| `DW_LNS_copy` | 1 | 0 | Emit a row to the line table matrix |
+| `DW_LNS_advance_pc` | 2 | 1 (ULEB128) | Advance address register by operand bytes |
+| `DW_LNS_advance_line` | 3 | 1 (SLEB128) | Advance line register by signed operand |
+| `DW_LNS_set_file` | 4 | 1 (ULEB128) | Set file register to operand (1-based) |
+| `DW_LNS_set_column` | 5 | 1 (ULEB128) | Set column register (declared in header, not emitted in practice) |
+| `DW_LNS_negate_stmt` | 6 | 0 | Toggle is_stmt register (declared in header, not emitted -- 0x92 used instead) |
+| `DW_LNS_set_basic_block` | 7 | 0 | Set basic_block flag (declared in header, not emitted) |
+| `DW_LNS_const_add_pc` | 8 | 0 | Advance address by `(255 - opcode_base) / line_range` (declared, not emitted) |
+| `DW_LNS_fixed_advance_pc` | 9 | 1 (uhalf) | Advance address by fixed 16-bit value (declared, not emitted) |
+| Special opcodes | 10--255 | 0 | Compact line + address advance, emit row |
 
-These appear inside DWARF extended opcode sequences (opcode 0, then ULEB128 length, then sub-opcode). Standard DWARF consumers will skip them correctly since the length prefix allows unknown extended opcodes to be ignored.
+In practice, the encoder only emits opcodes 1--4 and special opcodes 10--255. Opcodes 5--9 are declared in the standard opcode lengths table (required by the DWARF header format) but never generated. The `DW_LNS_negate_stmt` toggle (opcode 6) is superseded by the `DW_LNE_NV_set_stmt` (0x92) extended opcode for explicit value setting.
 
-The standard DWARF opcodes used are:
+### Standard Opcode Lengths Table
 
-| Opcode | Value | Meaning |
-|---|---|---|
-| `DW_LNS_copy` | 1 | Emit a row to the line table matrix |
-| `DW_LNS_advance_pc` | 2 | Advance address by ULEB128 operand |
-| `DW_LNS_advance_line` | 3 | Advance line by SLEB128 operand |
-| `DW_LNS_set_file` | 4 | Set file register to ULEB128 operand |
-| `DW_LNS_negate_stmt` | 6 | Toggle is_stmt register |
-| `DW_LNE_end_sequence` | 1 (ext) | Mark end of sequence, reset registers |
-| Special opcodes | 10--255 | Compact line + address advance |
+The header declares 9 standard opcodes (opcode_base - 1) with the following operand counts, initialized at `sub_12D1990` offset +82 as the packed value `0x101010100`:
+
+```
+std_opcode_lengths[0] = 0   // DW_LNS_copy:            no operands
+std_opcode_lengths[1] = 1   // DW_LNS_advance_pc:      1 ULEB128
+std_opcode_lengths[2] = 1   // DW_LNS_advance_line:    1 SLEB128
+std_opcode_lengths[3] = 1   // DW_LNS_set_file:        1 ULEB128
+std_opcode_lengths[4] = 1   // DW_LNS_set_column:      1 ULEB128
+std_opcode_lengths[5] = 0   // DW_LNS_negate_stmt:     no operands
+std_opcode_lengths[6] = 0   // DW_LNS_set_basic_block: no operands
+std_opcode_lengths[7] = 0   // DW_LNS_const_add_pc:    no operands
+std_opcode_lengths[8] = 1   // DW_LNS_fixed_advance_pc: 1 uhalf
+```
 
 ## DWARF Parameters
 
-nvlink uses the following DWARF line number program parameters:
+nvlink uses the following DWARF line number program parameters, confirmed by the state machine initializer at `sub_12D1990` (packed as `0x0EFB0101` at byte offset +76):
 
-| Parameter | Value | Description |
+| Parameter | Value | Byte Offset | Description |
+|---|---|---|---|
+| `minimum_instruction_length` | 1 | +76 | Minimum instruction unit in bytes |
+| `default_is_stmt` | 1 | +77 | All lines are statements by default |
+| `line_base` | -5 | +78 (signed) | Minimum line delta encodable in special opcode |
+| `line_range` | 14 | +79 | Number of line values encodable per address step |
+| `opcode_base` | 10 | +80 | First special opcode value |
+
+### Special Opcode Computation
+
+The special opcode formula follows the DWARF standard exactly:
+
+```
+special_opcode = (line_delta - line_base) + (line_range * addr_delta) + opcode_base
+               = (line_delta + 5) + (14 * addr_delta) + 10
+```
+
+The encoder applies this in two steps (decompiled line 772):
+
+```c
+// Check line delta fits in the window: line_base <= line_delta < line_base + line_range
+if (line_delta + 5 > 13)       // equivalently: line_delta > 8 or line_delta < -5
+    goto use_standard_opcodes;
+
+// Compute special opcode
+special = 14 * addr_delta + line_delta + opcode_base + 5;
+if (special > 255)             // does not fit in a single byte
+    goto use_standard_opcodes;
+
+emit_byte(state, special);     // single byte encodes both deltas + emits row
+```
+
+The encodable ranges with these parameters:
+
+| Property | Range | Notes |
 |---|---|---|
-| `opcode_base` | 10 | First special opcode value |
-| `line_base` | -5 | Minimum line delta encodable in special opcode |
-| `line_range` | 14 | Number of line values encodable per address step |
-| `minimum_instruction_length` | varies | Depends on target (typically 4 or 8 for SASS) |
-| `default_is_stmt` | 1 | All lines are statements by default |
+| Line delta | -5 to +8 | 14 values (line_range) |
+| Address delta | 0 to 17 | `floor((255 - opcode_base) / line_range)` = 17 |
+| Special opcode range | 10 to 255 | 246 possible values |
 
-The special opcode range with these parameters is:
-- Line delta: -5 to +8 (14 values)
-- Address delta: 0 to 17 (for opcodes 10 through 255, covering `(255 - 10) / 14 = 17` address steps)
+When line or address deltas exceed these ranges, the encoder falls back to standard opcodes (`DW_LNS_advance_line` + `DW_LNS_advance_pc` + `DW_LNS_copy`). The fallback paths also handle the case where `addr_delta == 0` (line advance only) or `line_delta == 0` (address advance only), emitting only the necessary standard opcodes plus `DW_LNS_copy`.
 
 ## Buffer Management
 

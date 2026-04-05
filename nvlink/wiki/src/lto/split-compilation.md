@@ -149,6 +149,265 @@ Each work item is a 40-byte structure:
 | 32 | 4 | `mode` | Compilation mode (0=normal, 6=SASS) |
 | 36 | 4 | `result` | Return code from `sub_4BD760` (written by worker) |
 
+## Work Item Lifecycle
+
+A work item is a 40-byte structure that carries all inputs needed for one split's ptxas compilation and receives the result. This section traces a single work item through five phases: creation, submission, dequeue, compilation, and result collection.
+
+### Phase 1: Creation (main thread)
+
+After `sub_4BC6F0` (libnvvm compile) returns, the main thread has a contiguous PTX blob and a sizes array (`v362`). It allocates N work items as a contiguous block and an output-pointer array, then populates each work item from globals and per-split data.
+
+```c
+// Allocate work item array: 40 bytes * num_splits (arena memory)
+work_items_base = arena_alloc(40 * num_splits);    // sub_426AA0
+
+// Allocate output pointer array: 8 bytes * num_splits (arena memory)
+outputs = arena_alloc(8 * num_splits);              // sub_426AA0
+
+// Build shared ptxas option string (once, shared across all items)
+options = build_ptxas_options();                     // sub_429BA0
+
+// Populate each work item from globals and per-split PTX pointer
+cursor = work_items_base;
+for (i = 0; i < num_splits; i++) {
+    // offset 0: pointer to this split's slot in the outputs array
+    *(uint64_t *)(cursor + 0)  = &outputs[i];
+
+    // offset 8: pointer to this split's null-terminated PTX string
+    //   (copied from libnvvm's contiguous output into arena memory,
+    //    sliced by the sizes array v362)
+    *(uint64_t *)(cursor + 8)  = split_ptx[i];
+
+    // offset 16: target SM architecture (e.g. 89, 100)
+    *(uint32_t *)(cursor + 16) = dword_2A5F314;     // sm_version
+
+    // offset 20: 64-bit addressing flag (inverted byte_2A5F2C0)
+    *(uint8_t  *)(cursor + 20) = (byte_2A5F2C0 == 0);
+
+    // offset 21: 64-bit machine flag (dword_2A5F30C == 64)
+    *(uint8_t  *)(cursor + 21) = (dword_2A5F30C == 64);
+
+    // offset 22: debug info flag (inverted byte_2A5F310)
+    *(uint8_t  *)(cursor + 22) = (byte_2A5F310 != 0);
+
+    // offset 24: shared ptxas option string (same pointer for all items)
+    *(uint64_t *)(cursor + 24) = options;
+
+    // offset 32: compilation mode (0=normal, 6=SASS-only via byte_2A5F225)
+    *(uint32_t *)(cursor + 32) = dword_2A5B528;
+
+    // offset 36: result code (uninitialized -- written by worker)
+    // Not set during creation; worker writes here
+
+    cursor += 40;
+}
+```
+
+Key observations from the decompiled main at line 1224--1248:
+- The `addr64` flag at offset 20 is the *inverse* of `byte_2A5F2C0` (the `v85 = byte_2A5F2C0 == 0` pattern).
+- The `debug` flag at offset 22 is the *inverse* of `byte_2A5F310` (same negation pattern).
+- The `options` pointer at offset 24 is shared across all work items. It points to a single option string built by `sub_429BA0`. This is safe because workers only read it.
+- The `mode` at offset 32 comes from `dword_2A5B528`, which was set earlier: 6 if `byte_2A5F225` (SASS mode), 0 otherwise.
+
+### Phase 2: Submission (main thread)
+
+Each populated work item is submitted to the thread pool as a `(function, arg)` pair:
+
+```c
+for (i = 0; i < num_splits; i++) {
+    if (!thread_pool_submit(pool, split_compile_worker, &work_items[i]))
+        fatal("Call to ptxjit failed in extended split compile mode");
+}
+```
+
+Inside `thread_pool_submit` (`sub_43FF50`), each call:
+
+1. Allocates a 24-byte task node via `malloc(0x18)`:
+   - Offset 0: function pointer (`split_compile_worker` = `sub_4264B0`)
+   - Offset 8: argument pointer (address of this work item within the contiguous block)
+   - Offset 16: next pointer (set to NULL, unused by the priority queue)
+2. Locks the pool mutex
+3. Pushes the task node into the priority queue (`sub_44DD10`)
+4. Increments `pending_count`
+5. Broadcasts on `task_cond` to wake all sleeping workers
+6. Unlocks the pool mutex
+
+The broadcast (not signal) wakes all workers, not just one. With N tasks submitted in rapid succession, this means up to N workers can wake simultaneously on the first submission. Subsequent submissions find workers already awake and dequeuing.
+
+### Phase 3: Dequeue (worker thread)
+
+Each worker thread runs `start_routine` at `0x43FC80` in an infinite loop. On dequeue:
+
+```c
+// Worker is holding pool->mutex
+task = priority_queue_pop(pool->task_queue);   // sub_44DE20
+pool->pending_count--;
+pool->active_count++;
+pthread_mutex_unlock(&pool->mutex);
+```
+
+The task node contains the function pointer and the work item address. The worker calls:
+
+```c
+task->func(task->arg);   // split_compile_worker(&work_items[i])
+free(task);              // frees the 24-byte malloc'd task node
+```
+
+After execution, the worker re-acquires the mutex, decrements `active_count`, and signals `done_cond` if both `active_count` and `pending_count` are zero (the "all done" condition).
+
+### Phase 4: Compilation (worker thread)
+
+`sub_4264B0` (the split-compile worker, 48 bytes) is a thin unpacker. It reads each field from the work item structure at its known offset and forwards them as arguments to `sub_4BD760`:
+
+```c
+// sub_4264B0 -- decompiled form
+void split_compile_worker(work_item *item) {
+    *(int32_t *)((char *)item + 36) = sub_4BD760(
+        *(uint64_t *)((char *)item + 0),    // output_ptr
+        *(uint64_t *)((char *)item + 8),    // ptx_data
+        *(uint32_t *)((char *)item + 16),   // sm_version
+        *(uint8_t  *)((char *)item + 20),   // addr64
+        *(uint8_t  *)((char *)item + 21),   // is_64bit
+        *(uint8_t  *)((char *)item + 22),   // debug
+        *(uint64_t *)((char *)item + 24),   // options
+        *(uint32_t *)((char *)item + 32)    // mode
+    );
+}
+```
+
+The return value of `sub_4BD760` is an elfLink error code (0--13), written directly into offset 36 of the work item. This is the only field the worker writes; all other fields are read-only inputs.
+
+Inside `sub_4BD760`, the compilation proceeds through the embedded ptxas API:
+
+```
+sub_4CDD60(&ctx)              create compiler context
+sub_4CE3B0(ctx, mode)         set compilation mode (0 or 6)
+sub_4CE2F0(ctx, sm_version)   set target SM architecture
+sub_4CE380(ctx)               enable 64-bit addressing (if addr64)
+sub_4CE640(ctx, 1)            enable 64-bit machine mode (if is_64bit)
+sub_4CE3E0(ctx, options)      add ptxas option string
+sub_4CE070(ctx, ptx_data)     add PTX input data
+sub_4CE8C0(ctx)               compile
+sub_4CE670(ctx, &buf, &count, &size)  retrieve output chunks
+```
+
+After compilation, `sub_4CE670` returns the output chunk count. Two paths:
+
+**Multi-chunk path** (count != 1): The PTX was split by libnvvm. The function enters the `setjmp`-protected output copy path. It allocates arena memory via `sub_4307C0`, copies the compiled binary with `memcpy`, and stores the pointer through `output_ptr` (writing to `outputs[i]`). The `setjmp`/`longjmp` wrapper catches arena allocation failures or memcpy errors and maps them to error code 1 (`ELFLINK_INTERNAL`).
+
+**Single-chunk fallback** (count == 1): The PTX was not actually split (e.g., libnvvm decided splitting was not beneficial). The function adds extra architecture options (`-m64` or `-m32`) and a debug option (address `30616008` which is the string `"-g"`), then re-retrieves via `sub_4BE350`. This fallback handles the case where split-compile was requested but libnvvm produced only one chunk.
+
+Return codes from `sub_4BD760`:
+
+| Code | Condition |
+|---:|---|
+| 0 | Success, output written to `*output_ptr` |
+| 1 | Success with warning (longjmp recovery set a warning flag) |
+| 5 | Compilation failed (`sub_4CE8C0` error, or output retrieval failed, or option-setting failed) |
+| 7 | NVVM error (`sub_4CE8C0` returned 3, mapping to `ELFLINK_NVVM_ERROR`) |
+| 8 | Output not relocatable (cubin retrieval via `sub_4BE350` failed and no error string) |
+
+### Phase 5: Result Collection (main thread)
+
+After all submissions, the main thread waits for completion and then iterates:
+
+```c
+thread_pool_wait(pool);       // sub_43FFE0 -- blocks until active==0 && pending==0
+thread_pool_destroy(pool);    // sub_43FE70 -- shutdown flag, wait for threads, free
+
+for (i = 0; i < num_splits; i++) {
+    // 1. Check error code at offset 36 of each work item
+    check_ptxas_error(work_items_base[i * 40 + 36], "<lto ptx>");  // sub_4297B0
+
+    // 2. Retrieve compiled cubin from output array
+    cubin = outputs[i];
+
+    // 3. Validate and add to output ELF
+    if (!validate_and_add(elfw, cubin, "lto.cubin", &is_mercury))  // sub_426570
+        fatal("Ptxjit compilation failed in extended split compile mode");
+
+    // 4. Mercury post-link transform (sm > 89 only)
+    if (sm_version > 0x59 && (!sass_mode || needs_mercury(cubin)) && !is_mercury)
+        mercury_post_link(&cubin, "lto.cubin", sm_version, &env, 0);  // sub_4275C0
+
+    // 5. Merge into output ELF
+    merge_elf(elfw);           // sub_45E7D0
+
+    // 6. Free the split PTX string (arena memory)
+    arena_free(split_ptx[i]);  // sub_431000
+}
+
+// Free the work items block and split PTX pointer array
+arena_free(work_items_base);   // sub_431000
+arena_free(split_ptx_array);   // sub_431000
+```
+
+The error check at step 1 (`sub_4297B0`) handles three cases:
+- Code 0: success, no action
+- Code 7 (`ELFLINK_NVVM_ERROR`): emits a fatal diagnostic unless `byte_2A5F298` is set (cudadevrt tolerance mode) or the source contains "cudadevrt"
+- All other non-zero codes: translates via `sub_4BC270` to a human-readable string and emits a fatal diagnostic
+
+Steps 3--5 run serially in the main thread. The `validate_and_add` function (`sub_426570`) performs architecture verification: it checks the compiled cubin's ELF headers against the target SM, validates the machine class (32/64-bit), and verifies format compatibility. The Mercury post-link step (`sub_4275C0`) is only invoked for sm > 89 (Blackwell and later) and transforms the cubin for the Mercury execution model.
+
+### Lifecycle Diagram
+
+```
+main thread                          worker threads (N)
+===========                          ==================
+
+libnvvm compile
+  sub_4BC6F0()
+    |
+    v
+split PTX into N chunks
+    |
+    v
+allocate work_items[N]               (sleeping on task_cond)
+allocate outputs[N]
+    |
+    v
+for each split i:
+  populate work_items[i]
+  submit(worker, &items[i])  ------->  wake on task_cond
+    |                                  dequeue task
+    |                                  call split_compile_worker()
+    |                                    read offsets 0..32
+    |                                    sub_4BD760() -- ptxas compile
+    |                                    write offset 36 (result)
+    |                                    write *output_ptr (cubin)
+    |                                  free task node
+    |                                  decrement active_count
+    |                                  signal done_cond if all done
+    v                                    |
+thread_pool_wait()  <----(done_cond)----+
+thread_pool_destroy()
+    |
+    v
+for each split i:
+  check work_items[i].result
+  validate outputs[i]
+  mercury transform (if sm>89)
+  merge into output ELF
+  free split PTX[i]
+    |
+    v
+free work_items, free split_ptx_array
+```
+
+### Thread Safety Notes
+
+The design achieves thread safety through strict partitioning:
+
+1. **No shared mutable state between workers.** Each worker reads from its own 40-byte work item and writes to two locations: offset 36 (result code) in its own item, and `*output_ptr` (its own slot in the output array). No two workers touch the same memory.
+
+2. **Read-only shared data.** The `options` pointer at offset 24 points to a single string built by the main thread before any submission. All workers read it; none write it.
+
+3. **Arena allocator thread safety.** `sub_4BD760` allocates output memory via `sub_4307C0` (arena allocator). The arena uses per-memspace mutexes (visible at offset 7128 in the memspace structure in `sub_431000`), so concurrent arena allocations from different workers are safe.
+
+4. **No synchronization inside the worker.** `sub_4264B0` contains no locks, atomics, or synchronization primitives. It is a pure function of its input (the work item pointer) plus the thread-safe ptxas API calls.
+
+5. **The `setjmp`/`longjmp` in `sub_4BD760` is thread-local.** The `env` buffer is on the stack of each worker thread, so concurrent longjmps do not interfere.
+
 ## Worker Function
 
 `sub_4264B0` at `0x4264B0` is the per-split worker. It unpacks the 40-byte work item and calls `sub_4BD760`:
@@ -390,6 +649,11 @@ for (i = 0; i < num_splits; i++) {
 | `0x44DC60` | `pqueue_create` | 192 B | Creates priority queue with comparator and initial capacity |
 | `0x44DD10` | `pqueue_push` | 224 B | Inserts element, sifts up |
 | `0x44DE20` | `pqueue_pop` | 288 B | Removes root element, sifts down |
+| `0x4297B0` | `check_ptxas_error` | ~320 B | Checks elfLink return code, emits fatal diagnostic on failure |
+| `0x426570` | `validate_and_add` | ~1,200 B | Validates compiled cubin arch/class, adds to output ELF writer |
+| `0x4275C0` | `mercury_post_link` | ~512 B | Mercury finalizer post-link transform (sm > 89) |
+| `0x431000` | `arena_free` | ~720 B | Returns arena-allocated memory to the memspace free list |
+| `0x4BC6F0` | `libnvvm_compile` | -- | Compiles linked NVVM IR, produces PTX and split metadata |
 
 ## Key Globals
 

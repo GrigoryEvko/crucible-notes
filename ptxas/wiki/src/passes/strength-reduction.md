@@ -1,5 +1,7 @@
 # Strength Reduction
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 Phase 21 (`OriStrengthReduce`) replaces expensive arithmetic operations with cheaper equivalents in the Ori IR. It runs early in the optimization pipeline -- after loop simplification (phase 18) and live range splitting (phase 19), but before loop unrolling (phase 22) and software pipelining (phase 24). This placement is deliberate: strength reduction benefits from canonicalized loop structure and benefits subsequent loop transformations by simplifying induction variable expressions.
 
 Strength reduction in ptxas is not a single monolithic pass. It is distributed across three layers, each operating at a different abstraction level:
@@ -30,13 +32,13 @@ Strength reduction in ptxas is not a single monolithic pass. It is distributed a
 
 The execute wrapper (`sub_C5FB30`) gates on multi-function compilation (function count > 1 via `sub_7DDB50`) and delegates to `sub_752E40` with parameters `(context, 0, 0, 0)`.
 
-`sub_752E40` is the core. It performs a single-pass walk over the instruction list, focusing on a specific intermediate opcode (137 decimal, masked with `& 0xFFFFCFFF` to strip modifier bits in the opcode field at instruction offset +72). In the ROT13 name table, opcode 137 is `SM73_FIRST` (a generation boundary marker name), but this opcode is used at runtime as an IMAD-like multiply-accumulate instruction in its pre-lowered form. The actual SASS IMAD is opcode 1.
+`sub_752E40` is the core. It performs a single-pass walk over the instruction list, focusing on a specific intermediate opcode -- opcode 137 (`SM73_FIRST`), masked with `& 0xFFFFCFFF` to strip modifier bits in the opcode field at instruction offset +72. The ROT13 name `SM73_FIRST` is a generation boundary marker name, but the Ori IR reuses this opcode slot at runtime for IMAD-like multiply-accumulate instructions in their pre-lowered form. The actual SASS `IMAD` is opcode 1.
 
 ### Algorithm
 
 The pass executes in two phases within a single call:
 
-**Phase 1 -- Trivial multiply elimination.** The first loop walks the instruction list (`*(context+272)` is the list head). For each instruction with masked opcode == 137:
+**Phase 1 -- Trivial multiply elimination.** The first loop walks the instruction list (`*(context+272)` is the list head). For each instruction with masked opcode == 137 (`SM73_FIRST`; IMAD-like):
 
 1. Check if the destination register (operand at +84) has no uses (`*(def+56) == NULL`) AND the source chain is empty (`*src_chain == NULL`). If both hold, delete the instruction via `sub_9253C0` -- it is dead.
 2. Otherwise, for each source operand (iterating from operand count - 1 down to 0):
@@ -57,7 +59,7 @@ The pass executes in two phases within a single call:
    - If the operand was not yet marked (flag `0x100` bit not set), initialize it and mark as "needs strength reduction"
    - Traverse the use chain as a worklist: for each user of the replaced register, check if *its* uses also need updating, growing the worklist dynamically (doubling allocation via pool allocator)
 2. Track how many source operands were rewritten (`v72` counter)
-3. After processing all operands of an instruction: if the instruction is still opcode 137 (`SM73_FIRST` in ROT13; used as IMAD-like) and certain conditions hold (destination matches source pattern, specific operand bit patterns), either delete it or convert it to opcode `0x82` (130 decimal; `HSET2` in ROT13, used as an internal MOV-like marker -- actual SASS MOV is opcode 19)
+3. After processing all operands of an instruction: if the instruction is still opcode 137 (`SM73_FIRST`; IMAD-like) and certain conditions hold (destination matches source pattern, specific operand bit patterns), either delete it or convert it to opcode 130 / `0x82` (`HSET2` in ROT13; used as an internal MOV-like marker -- actual SASS `MOV` is opcode 19)
 
 The worklist traversal is the key algorithmic insight: when a multiply's result feeds into another multiply, the chain of strength reductions propagates transitively through the def-use graph.
 
@@ -73,7 +75,7 @@ sub_C5FB30 (execute wrapper)
         +-- sub_7468B0 / vtable+152: check knob 487 (optimization enabled)
         |
         +-- Phase 1: Walk instruction list (*(ctx+272))
-        |     +-- For opcode 137 instructions:
+        |     +-- For opcode 137 (`SM73_FIRST`; IMAD-like) instructions:
         |     |     +-- sub_9253C0: delete dead instructions
         |     |     +-- sub_91BF30: allocate replacement registers
         |     |
@@ -89,7 +91,7 @@ sub_C5FB30 (execute wrapper)
         |     |     +-- sub_745A80: create replacement register
         |     |     +-- Worklist propagation through use chain
         |     |
-        |     +-- Convert trivial IMAD to MOV (opcode 0x82)
+        |     +-- Convert trivial IMAD to MOV (opcode 130 / `0x82`, `HSET2`; MOV-like)
         |     +-- sub_9253C0: delete fully reduced instructions
         |
         +-- sub_7B52B0: optional post-reduction scheduling pass

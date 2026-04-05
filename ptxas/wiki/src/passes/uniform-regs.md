@@ -1,5 +1,7 @@
 # Uniform Register Optimization
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 Four passes in the ptxas pipeline collectively manage the conversion of general-purpose register (R) values to uniform registers (UR) on sm_75+ targets. The UR register file is a dedicated 63-entry, 32-bit register bank shared across all threads in a warp: every thread reads the same value from a given UR. By routing warp-uniform computations through the UR file, ptxas reduces R-register pressure (the dominant occupancy limiter), enables the UR-specific ALU datapath, and avoids broadcasting the same value 32 times across the register file.
 
 | | |

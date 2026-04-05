@@ -1,5 +1,7 @@
 # The Ori Internal Representation
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 Ori -- short for "Original IR" -- is ptxas's sole intermediate representation. It is a fully proprietary, SASS-level IR with virtual registers, its own CFG infrastructure, and a partial-SSA discipline. Ori has no relationship to LLVM IR: there is no LLVM Value hierarchy, no LLVM-style use-def chains, no SSA dominance-frontier construction. Every IR-level optimization pass in ptxas (prefixed `Ori` in the NamedPhases table: `OriCopyProp`, `OriSanitize`, `OriBranchOpt`, `OriLoopSimplification`, `OriStrengthReduce`, `OriDoPredication`, etc.) operates on this representation.
 
 The key design decision that distinguishes Ori from PTX: **Ori uses SASS opcode names, not PTX mnemonics.** After the MercConverter pass (`sub_9F1A90`, 35KB) runs, every instruction carries the name of the hardware SASS instruction it will become -- `IMAD`, `FFMA`, `LDG`, `STG`, `BAR`, `BRA`, `EXIT`, etc. -- just with virtual (not physical) register operands. This means the optimizer already knows exactly which hardware functional unit each instruction will execute on, enabling accurate latency modeling and scheduling from the earliest optimization phases.
@@ -308,7 +310,7 @@ Selected confirmed opcodes (from multiple independent functions):
 | 72 | CALL / JMP | Function call or jump |
 | 91 | ATOM | Atomic memory operation |
 | 92 | RED | Reduction operation |
-| 95 | EXIT / RET | Function exit or return |
+| 95 | STS | Store to shared memory (ROT13: `FGF`). Note: EXIT = opcode 77 (`RKVG`), RET = opcode 72 (`ERG`) |
 | 155 | LD variant | Load instruction |
 | 173 | ST variant | Store instruction |
 | 183 | LD.E | Extended load (`& 0xFFFFCFFF` mask removes modifier bits) |
@@ -639,3 +641,34 @@ The hot/cold classifier pair (`sub_A9CDE0` / `sub_A9CF90`) consumes the internal
 - [PTX-to-Ori Lowering](../pipeline/ptx-to-ori.md) -- how PTX becomes Ori
 - [Optimizer](../pipeline/optimizer.md) -- the 159-phase optimization pipeline
 - [Hash Tables and Bitvectors](../infra/hash-bitvector.md) -- FNV-1a maps and SSE2 bitvectors used by the CFG
+
+## Key Functions
+
+| Address | Size | Role | Confidence |
+|---------|------|------|------------|
+| `sub_A3B080` | -- | Code Object constructor; allocates ~1136-byte per-function IR container (vtable at `0x21EE238`) | 0.90 |
+| `sub_A4B8F0` | -- | Register count formula: `total_R = v5[159] + v5[102]`, `instr_count = v5[335] - v5[341]` | 0.90 |
+| `sub_A3A7E0` | -- | Stats emitter; prints per-function profile (instruction count, register count, occupancy, latency) | 0.90 |
+| `sub_BE21D0` | 1.4KB | `CFG::dumpDOT`; emits Graphviz DOT output for the control flow graph | 0.92 |
+| `sub_BDE150` | 9KB | `CFG::computeRPO`; explicit DFS stack, assigns reverse post-order numbers into Code Object +720 array | 0.92 |
+| `sub_BDE8B0` | 2KB | `CFG::printEdges`; FNV-1a lookup, prints `"bix%d -> bix%d\n"` | 0.92 |
+| `sub_BDEA50` | 4KB | `CFG::dumpRPOAndBackedges`; RPO traversal order + backedge debug dump | 0.92 |
+| `sub_BE0690` | 54KB | `CFG::buildAndAnalyze`; main CFG constructor -- predecessors, successors, RPO, loop detection | 0.92 |
+| `sub_BE2330` | 4KB | `CFG::computeDominators`; post-build dominator and loop analysis with bitvector operations | 0.92 |
+| `sub_BE7390` | -- | `InstructionInfo` constructor; initializes 322-entry ROT13 opcode name table at object offset +4184 | 0.90 |
+| `sub_9F1A90` | 35KB | MercConverter pass; transforms PTX-derived opcodes into SM-specific SASS opcodes | 0.92 |
+| `sub_9ED2D0` | 25KB | Opcode switch inside MercConverter; dispatches per-opcode legalization | 0.90 |
+| `sub_91C840` | -- | Memory space classifier; maps PTX-level space identifiers (0--23) to internal category numbers | 0.98 |
+| `sub_A9CDE0` | -- | Hot/cold memory classifier (hot path); partitions instructions by memory category for scheduling | 0.85 |
+| `sub_A9CF90` | -- | Hot/cold memory classifier (cold path); complement of `sub_A9CDE0` | 0.85 |
+| `sub_A60B60` | 24KB | Register stat collector; enumerates ~25 register sub-classes (R, P, B, UR, UP, UB, Tensor/Acc, etc.) | 0.85 |
+| `sub_A55D80` | -- | Register allocator verifier; classifies 10 operand-kind problem categories for regalloc validation | 0.95 |
+| `sub_40848E` | -- | Operand extended-flag checker; tests `(word1 & 0xFE000000) != 0` across all operands | 0.85 |
+| `sub_405769` | -- | Operand flag tester; tests `0x1000000` and `0x6000000` combinations in operand word 1 | 0.85 |
+| `sub_404AD0` | -- | Peephole guard; verifies `(word1 & 0xFE000000) == 0` before allowing peephole transforms | 0.85 |
+| `sub_B28E10` | -- | `isRegOperand`; ISel pattern matcher operand predicate | 0.90 |
+| `sub_B28E20` | -- | `isPredOperand`; ISel pattern matcher operand predicate | 0.90 |
+| `sub_B28E40` | -- | `isImmOperand`; ISel pattern matcher operand predicate | 0.90 |
+| `sub_B28E80` | -- | `isConstOperand`; ISel pattern matcher operand predicate | 0.90 |
+| `sub_B28E90` | -- | `isUReg`; ISel pattern matcher operand predicate | 0.90 |
+| `sub_B28E00` | -- | `getRegClass`; returns register class (1023 = wildcard, 1 = GPR) | 0.90 |

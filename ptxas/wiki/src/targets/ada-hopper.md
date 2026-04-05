@@ -1,5 +1,7 @@
 # Ada Lovelace & Hopper (SM 89--90a)
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 ptxas handles SM 89 (Ada Lovelace -- RTX 4090, L40S) and SM 90/90a (Hopper -- H100, H200) as adjacent but architecturally distinct targets. Ada shares the Ampere codegen factory (28673) and is stored internally as `"Ampere"`-family despite being a different microarchitecture. Hopper gets its own codegen factory (32768), its own family string `"Hopper"`, and introduces the largest single-generation feature addition in ptxas: WGMMA, thread-block clusters, TMA, setmaxnreg, and distributed shared memory.
 
 | | SM 89 (Ada) | SM 90 (Hopper) | SM 90a (Hopper accel) |
@@ -344,6 +346,26 @@ encoded >  36863  -> 16 warps, 240 slots   (Hopper+)
 ```
 
 Note: sm_89 (encoded 28677) falls in the `<= 32767` range, giving it 7 warps / 208 slots. But the separate warp geometry lookup uses a different cascade where sm_89 (as Ampere class) gets 8 warps / 224 slots. The dual-cascade structure reflects the fact that different subsystems query different profile fields.
+
+## Hardware Resource Geometry
+
+Per-SM hardware resource limits used by ptxas for register allocation, occupancy calculations, and scheduling decisions. Extracted from `sub_8688F0` (universal baseline), `sub_8E4400` (scheduler partition geometry), and `sub_ABF250` (occupancy calculator). See [targets/index.md -- Per-SM Resource Geometry Table](index.md#per-sm-resource-geometry-table) for the complete table across all architectures.
+
+| SM | Regs/SM | Max Regs/Thread | Max Threads/CTA | Warps/SM | Max CTAs/SM | Sched Partitions | Dispatch Slots | Configurable Shared Memory | Conf |
+|---|---|---|---|---|---|---|---|---|---|
+| `sm_89` | 65,536 | 255 | 1,536 | 48 | 16 | 7 / 208 | 208 | 48 / 100 KB | 90% |
+| `sm_90` | 65,536 | 255 | 1,024 | 64 | 32 | 8 / 224 | 224 | 48 / 100 / 132 / 164 / 228 KB | 90% |
+
+**Column definitions:**
+- **Regs/SM**: Total 32-bit registers per streaming multiprocessor. 65,536 universally for sm\_75+.
+- **Max Regs/Thread**: Maximum registers a single thread can use. 255 universally (`sub_8688F0` offset +612).
+- **Max Threads/CTA**: Maximum threads per cooperative thread array (block).
+- **Warps/SM**: Total concurrent warps per SM. Determines peak occupancy.
+- **Max CTAs/SM**: Maximum concurrent CTAs per SM.
+- **Sched Partitions / Dispatch Slots**: From `sub_8E4400` offset +18 (packed DWORD) and offset +22 (WORD).
+- **Configurable Shared Memory**: Valid shared memory sizes per CTA, selected by `cudaFuncSetAttribute`.
+
+sm\_90a shares sm\_90's geometry -- the `a` suffix affects only compatibility metadata, not hardware resource limits. The jump from sm\_89 (7 partitions, 208 slots, 48 warps) to sm\_90 (8 partitions, 224 slots, 64 warps) is the largest single-generation scheduling capacity increase in the binary, directly supporting Hopper's 4-warp warpgroup execution model.
 
 ## MMA Instruction Validators
 

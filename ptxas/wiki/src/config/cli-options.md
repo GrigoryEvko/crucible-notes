@@ -1,5 +1,7 @@
 # CLI Options
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 ptxas v13.0.88 accepts approximately 160 command-line options: 51 documented in `--help` output and roughly 109 internal/undocumented options discovered through binary analysis. All option names are registered via `sub_432A00` (6,427 bytes at `0x432A00`) using a generic option framework shared with other NVIDIA tools. The framework library (`sub_1C960C0`--`sub_1C97640`) supports short options (`-X`), long options (`--name`), and four value types: boolean toggle, list append, scalar value, and multi-value. Internal option names are stored ROT13-encoded in the binary.
 
 | | |

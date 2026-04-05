@@ -1,5 +1,7 @@
 # EIATTR Attribute Catalog
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 EIATTR (ELF Info ATTRibute) is NVIDIA's proprietary metadata system embedded in `.nv.info` ELF sections within CUBIN files. Every CUDA kernel carries EIATTR records that tell the GPU driver how many registers to allocate, how much shared memory to reserve, what barriers the kernel uses, and dozens of other resource descriptors. Without this metadata, the driver cannot launch the kernel -- it has no way to determine the kernel's hardware resource footprint.
 
 ptxas v13.0.88 defines 97 EIATTR codes, numbered 0 through 96 (`0x00`--`0x60`). The code-to-name mapping was extracted from the pointer table at VA `0x23FDC20` in the ptxas binary (16-byte entries: 8-byte string pointer + 8-byte metadata word, indexed by code number). The string names reside at `0x23FC6C7`--`0x23FD040`. Code assignments were cross-verified against the nvlink v13.0.88 pointer table at `0x1D37D60`, confirming identical enumeration across both tools.

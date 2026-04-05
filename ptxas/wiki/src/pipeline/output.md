@@ -1,5 +1,7 @@
 # ELF/Cubin Output
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 After all per-kernel SASS encoding completes, ptxas enters the ELF output phase -- the final stage of the compilation pipeline. This phase transforms the accumulated per-kernel SASS bytes, relocation metadata, constant bank data, shared memory layouts, and debug information into a complete NVIDIA CUBIN file. The CUBIN is a standard ELF container with NVIDIA-proprietary extensions: machine type `EM_CUDA` (`0xBE`), non-standard ELF class bytes, CUDA-specific section types, and a rich per-entry metadata system called EIATTR. The output pipeline is a custom implementation with no libelf dependency -- ptxas constructs every byte of the ELF from scratch, including headers, section tables, symbol tables, string tables, relocations, and program headers.
 
 The output phase handles three binary kinds: **SASS** (raw resolved SASS, legacy default), **Mercury** (SM 75--99 default), and **Capsule Mercury** (SM 100+ default, supporting deferred finalization). All three produce a valid CUBIN ELF; the difference is whether the `.text` sections contain final SASS bytes or Mercury-encoded streams that a downstream finalizer resolves at link or load time.

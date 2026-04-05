@@ -1,5 +1,7 @@
 # Predication (If-Conversion)
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 `OriDoPredication` (phase 63) is the if-conversion pass in ptxas. It transforms short conditional branch regions into predicated straight-line code, eliminating branches by guarding individual instructions with predicate registers. On NVIDIA GPUs, where all threads in a warp execute in lockstep, eliminating divergent branches avoids the performance penalty of serialized path execution under the SIMT model.
 
 | | |

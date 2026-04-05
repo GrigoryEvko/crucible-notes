@@ -1,5 +1,7 @@
 # Knobs System
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The knobs system is ptxas's internal configuration mechanism -- a separate layer beneath the public CLI flags that exposes 1,294 tuning parameters to NVIDIA developers. Every significant compiler heuristic (register allocation thresholds, scheduling priorities, pass enable/disable, peephole rules) has a corresponding knob. The system is shared with cicc via a common header (`generic_knobs_impl.h`) but ptxas instantiates it twice: once for the DAG scheduler pipeline (99 knobs) and once for the OCG (Optimizing Code Generator) backend (1,195 knobs). All knob names are stored ROT13-encoded in the binary, a lightweight obfuscation that prevents casual `strings` discovery while being trivially reversible.
 
 The knobs infrastructure lives primarily in two address regions: `0x6F0000`--`0x6F8000` (DAG knob instantiation, shared with the Mercury SASS pipeline) and `0x797000`--`0x7A2000` (OCG knob instantiation, the larger set). Both regions are compiled from the same template in `generic_knobs_impl.h`.

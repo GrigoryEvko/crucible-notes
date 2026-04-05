@@ -1,5 +1,7 @@
 # Late Expansion & Legalization
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The ptxas pipeline contains six legalization passes spread across the 159-phase sequence. Their collective job is to replace Ori IR operations that the target SM cannot execute natively with equivalent sequences of legal instructions. "Unsupported ops" means exactly this: operations that exist in the PTX ISA or internal Ori representation but have no single-instruction mapping on the compilation target. The replacement may be an inline expansion (a sequence of simpler instructions), a call to a libdevice helper function, or an SM-specific intrinsic sequence.
 
 The six passes run at deliberately different pipeline positions because each intervening group of optimization passes can expose new unsupported operations or create new legalization opportunities.
@@ -350,7 +352,7 @@ sub_13A6280(context, instruction, 5, insert_point, ...)  // src2
 
 **Architecture-specific delegation.** Cases 70, 243, 245-247, 254-255, 257-259, 262 delegate entirely to `vtable+2816`. Cases 280-281 delegate to `vtable+2328` with adjusted operand counts. These are SM-specific instructions (tensor core, WGMMA, bulk copy) where operand constraints vary by architecture.
 
-**Opcode rewriting.** Case 137 (MOV) rewrites the opcode field itself: to `0x82` (130) for conditional MOV, or to `0x109` (265) for MOV-from-special-register when the source is in register class 4.
+**Opcode rewriting.** Case 137 (SM73_FIRST boundary marker, ROT13: `FZ73_SVEFG`; note: MOV = opcode 19) rewrites the opcode field itself: to `0x82` (130) for conditional MOV, or to `0x109` (265) for MOV-from-special-register when the source is in register class 4.
 
 **Passthrough.** Cases 22, 24, 34, 38, 44, 45, 59, 73, 74, 77, 83, 106, 135, 161, 180, 182, 192, 194, 198, 209, 213-215, 221, 297, 352 and the `default` case require no operand legalization and exit immediately.
 

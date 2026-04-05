@@ -1,5 +1,7 @@
 # Custom ELF Emitter
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 ptxas builds its ELF/cubin output without libelf or any external ELF library. The entire ELF construction pipeline is a custom implementation spread across approximately 20 functions in the `0x1C99`--`0x1CD1` address range, totaling roughly 300 KB of binary code. At the center is a 672-byte in-memory object called the "ELF world" (`ELFW`), which owns all sections, symbols, and string tables. The emitter writes standard ELF headers with NVIDIA extensions: `EM_CUDA` (`0xBE` / 190) as the machine type, NVIDIA-specific section types (`SHT_CUDA_INFO` = `0x70000064`), and CUDA-specific ELF flags encoding the SM architecture version. The design handles both 32-bit and 64-bit ELF classes, with the class byte at ELF offset 4 set to `'3'` (32-bit) or `'A'` (64-bit). Finalization is a single-pass algorithm that orders sections into 8 priority buckets, assigns file offsets with alignment, and handles the ELF extended section index mechanism (`SHN_XINDEX`) when the section count exceeds 65,280.
 
 | | |

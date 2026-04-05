@@ -733,13 +733,13 @@ The DUMPIR diagnostic output includes `For Dma Loop` and `For Math Loop` section
 
 | Knob Name | Type | Default | Description |
 |---|---|---|---|
-| `OkToPipelineNoUnroll` | INT | **0** | Allow pipelining even when unrolling was also suppressed |
-| `PipelineHoistCondLimit` | INT | **0** | Maximum condition complexity for hoisting in pipelined loops |
-| `PipelineHoistRRegPressureLimit` | INT | **0** | R-register pressure limit for hoisting inside pipelined body |
-| `PipelineHoistPRegPressureLimit` | INT | **0** | P-register pressure limit for hoisting inside pipelined body |
-| `PipelineMIOVQToInstRatio` | INT | **0** | MIOVQ-to-instruction ratio threshold for pipeline profitability |
-| `PipelineMultiOutputTex` | INT | **0** | Enable pipelining of loops with multi-output texture instructions |
-| `PipelineSpecUsesInHeadOnly` | INT | **0** | Restrict speculative uses to loop header only |
+| `OkToPipelineNoUnroll` | INT | **0** (disabled) | Allow pipelining even when unrolling was also suppressed |
+| `PipelineHoistCondLimit` | INT | **unset** | Maximum condition complexity for hoisting in pipelined loops |
+| `PipelineHoistRRegPressureLimit` | INT | **unset** | R-register pressure limit for hoisting inside pipelined body |
+| `PipelineHoistPRegPressureLimit` | INT | **unset** | P-register pressure limit for hoisting inside pipelined body |
+| `PipelineMIOVQToInstRatio` | DBL | **unset** | MIOVQ-to-instruction ratio threshold for pipeline profitability |
+| `PipelineMultiOutputTex` | INT | **0** (disabled) | Enable pipelining of loops with multi-output texture instructions |
+| `PipelineSpecUsesInHeadOnly` | INT | **0** (disabled) | Restrict speculative uses to loop header only |
 
 ### GPU-Specific Pipeline Concerns
 
@@ -1244,25 +1244,25 @@ function HoistInvariantsCore(context):
 
 | Knob Name | Type | Default | Description |
 |---|---|---|---|
-| `HoistBudget` | INT | **0** | Maximum number of instructions to hoist per loop |
-| `HoistLoopInvBudget` | INT | **0** | Budget specifically for loop-invariant hoisting |
-| `HoistConservativeScale` | INT | **0** | Scale factor for conservative mode (reduces budget) |
-| `HoistLate` | INT | **0** | Enable/disable late LICM passes (66, 79, 88) |
+| `HoistBudget` | FLOAT | **10** | Maximum number of instructions to hoist per loop (0 = unlimited) |
+| `HoistLoopInvBudget` | FLOAT | **22** (early) / **100** (late) | Budget specifically for loop-invariant hoisting; pass_id 0 uses 22, pass_id > 0 uses 100 |
+| `HoistConservativeScale` | INT | **10** (divisor) | Inner-loop budget divisor; budget /= scale when hoisting from inner loops |
+| `HoistLate` | INT | per-block policy | Per-block hoisting policy (0=always, 1=inner only, 3=never) |
 | `HoistCBOMode` | INT | **0** | Constant-buffer-object hoisting mode |
-| `HoistCBOLoad` | INT | **0** | Enable hoisting of CBO load instructions |
-| `HoistCBOFromLoopWithColdNest` | INT | **0** | Hoist CBO loads even from loops with cold nesting |
-| `HoistCBOHighCostSBInstRatioThreshold` | INT | **0** | Scoreboard cost threshold for CBO hoisting |
-| `HoistCBOLoadIDOMTravseLimit` | INT | **0** | IDOM traversal limit for CBO load hoisting |
-| `HoistCBORRegPressureLimitApplyRate` | INT | **0** | R-register pressure limit application rate |
-| `HoistTexToInstRatioHigh` | INT | **0** | High texture-to-instruction ratio threshold for aggressive hoisting |
-| `HoistTexToInstRatioLow` | INT | **0** | Low texture-to-instruction ratio threshold for conservative hoisting |
-| `DisableNestedHoist` | BOOL | **false** | Disable hoisting from nested loops |
-| `NestedHoistInnerThreshold` | INT | **0** | Inner loop instruction threshold for nested hoisting |
-| `NestedHoistOuterThreshold` | INT | **0** | Outer loop instruction threshold for nested hoisting |
-| `UseNewLoopInvariantRoutineForHoisting` | INT | **0** | Use updated invariance check routine |
-| `MaxMidHeaderSizeRateForAggressiveHoist` | INT | **0** | Header size rate threshold for aggressive hoisting |
-| `EnableHoistLowLatencyInstMidBlock` | INT | **0** | Hoist low-latency instructions from mid-block positions |
-| `MovWeightForSinkingHoisting` | INT | **0** | Weight for MOV instructions in sink/hoist decisions |
+| `HoistCBOLoad` | INT | **unset** | Enable hoisting of CBO load instructions |
+| `HoistCBOFromLoopWithColdNest` | INT | **1** (enabled) | Hoist CBO loads even from loops with cold nesting |
+| `HoistCBOHighCostSBInstRatioThreshold` | INT | **unset** | Scoreboard cost threshold for CBO hoisting |
+| `HoistCBOLoadIDOMTravseLimit` | INT | **4** | IDOM traversal limit for CBO load hoisting |
+| `HoistCBORRegPressureLimitApplyRate` | INT | **80** | R-register pressure limit application rate (percentage) |
+| `HoistTexToInstRatioHigh` | DBL | **0.045** | High texture-to-instruction ratio threshold for aggressive hoisting |
+| `HoistTexToInstRatioLow` | DBL | **0.03** | Low texture-to-instruction ratio threshold for conservative hoisting |
+| `DisableNestedHoist` | BOOL | **false** | Disable hoisting from nested loops (false = nested hoisting allowed) |
+| `NestedHoistInnerThreshold` | INT | **22** / **100** | Inner loop instruction threshold for nested hoisting (same value as `HoistLoopInvBudget`) |
+| `NestedHoistOuterThreshold` | INT | **10** | Outer loop instruction threshold for nested hoisting (same value as `HoistBudget`) |
+| `UseNewLoopInvariantRoutineForHoisting` | BOOL | **false** | Use updated set-based invariance check routine (legacy single-pass is default) |
+| `MaxMidHeaderSizeRateForAggressiveHoist` | INT | **2** | Maximum LICM iteration count (limits repeated hoisting passes) |
+| `EnableHoistLowLatencyInstMidBlock` | BOOL | **false** | Hoist low-latency instructions from mid-block positions |
+| `MovWeightForSinkingHoisting` | DBL | **0.25** | Weight for MOV instructions in sink/hoist decisions |
 
 ### GPU-Specific LICM Concerns
 
@@ -1284,8 +1284,8 @@ Fuses adjacent loops with compatible bounds and no inter-loop data dependencies 
 
 | Knob Name | Type | Default | Description |
 |---|---|---|---|
-| `PerformLoopFusion` | BOOL | **false** | Master enable for loop fusion |
-| `PerformLoopFusionBudget` | INT | **0** | Maximum instruction count in fused body |
+| `PerformLoopFusion` | INT | **0** (disabled) | Master enable for loop fusion; must be explicitly set to a nonzero value |
+| `PerformLoopFusionBudget` | FLOAT | **unset** | Maximum instruction count in fused body |
 
 ### Fusion Criteria
 

@@ -1,5 +1,7 @@
 # Allocator Architecture
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The ptxas register allocator is a fat-point greedy allocator, not a graph-coloring allocator. There is no interference graph, no Chaitin-Briggs simplify-select-spill loop, and no graph coloring in the main allocation path. Instead, the allocator maintains per-physical-register pressure histograms (512-DWORD arrays) and greedily assigns each virtual register to the physical slot with the lowest interference count. This design trades theoretical optimality for speed on the very large register files of NVIDIA GPUs (up to 255 GPRs per thread).
 
 A secondary live-range-based infrastructure (~80 functions at `0x994000`--`0x9A1000`) supports coalescing, splitting, and pre-coloring but feeds results into the fat-point allocator rather than replacing it.

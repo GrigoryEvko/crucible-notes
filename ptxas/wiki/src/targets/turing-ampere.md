@@ -1,5 +1,7 @@
 # Turing & Ampere (SM 75--88)
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 SM 75 through SM 88 span two microarchitecture generations that ptxas treats as a contiguous feature band. sm_75 (Turing) is the **default target** for ptxas v13.0.88 -- when `--gpu-name` is omitted, `sub_6784B0` returns `sm_75`. The Ampere targets (sm_80, sm_86, sm_87, sm_88) share generation-7 SASS encoding and add incremental tensor core and async-copy capabilities. sm_89 (Ada Lovelace) is architecturally Ampere-derived internally but is covered in [Ada & Hopper](ada-hopper.md) because it bridges to sm_90 features.
 
 | | |
@@ -356,6 +358,29 @@ This secondary encoding uses `(gen << 12)` with generation 5 for Ampere in the B
 | Sub-arch variant | default | default | 2 | 3 | 4 |
 | Separate HW latency table | Yes | Yes (2) | Yes | Yes | ? |
 | Family string | Turing | Ampere | Ampere | Ampere | Ampere |
+
+## Hardware Resource Geometry
+
+Per-SM hardware resource limits used by ptxas for register allocation, occupancy calculations, and scheduling decisions. Extracted from `sub_8688F0` (universal baseline), `sub_8E4400` (scheduler partition geometry), and `sub_ABF250` (occupancy calculator). See [targets/index.md -- Per-SM Resource Geometry Table](index.md#per-sm-resource-geometry-table) for the complete table across all architectures.
+
+| SM | Regs/SM | Max Regs/Thread | Max Threads/CTA | Warps/SM | Max CTAs/SM | Sched Partitions | Dispatch Slots | Configurable Shared Memory | Conf |
+|---|---|---|---|---|---|---|---|---|---|
+| `sm_75` | 65,536 | 255 | 1,024 | 32 | 16 | 7 / 208 | 208 | 32 / 48 / 64 KB | 90% |
+| `sm_80` | 65,536 | 255 | 2,048 | 64 | 32 | 7 / 208 | 208 | 48 / 100 / 132 / 164 KB | 90% |
+| `sm_86` | 65,536 | 255 | 1,536 | 48 | 16 | 7 / 208 | 208 | 48 / 100 KB | 90% |
+| `sm_87` | 65,536 | 255 | 1,536 | 48 | 16 | 7 / 208 | 208 | 48 / 100 / 164 KB | 90% |
+| `sm_88` | 65,536 | 255 | 1,536 | 48 | 16 | 7 / 208 | 208 | (same as sm\_86) | 85% |
+
+**Column definitions:**
+- **Regs/SM**: Total 32-bit registers per streaming multiprocessor. 65,536 universally for sm\_75+.
+- **Max Regs/Thread**: Maximum registers a single thread can use. 255 universally (`sub_8688F0` offset +612).
+- **Max Threads/CTA**: Maximum threads per cooperative thread array (block).
+- **Warps/SM**: Total concurrent warps per SM. Determines peak occupancy.
+- **Max CTAs/SM**: Maximum concurrent CTAs per SM.
+- **Sched Partitions / Dispatch Slots**: From `sub_8E4400` offset +18 (packed DWORD) and offset +22 (WORD).
+- **Configurable Shared Memory**: Valid shared memory sizes per CTA, selected by `cudaFuncSetAttribute`.
+
+All Turing/Ampere targets share the 7-partition / 208-slot scheduling geometry. The major resource difference is sm\_80 (A100 datacenter) with 2,048 max threads and 64 warps vs. the consumer/embedded parts (sm\_86--88) with 1,536 max threads and 48 warps. sm\_75 (Turing) is the most constrained with 1,024 max threads and 32 warps.
 
 ## Codegen Factory Gating Patterns
 

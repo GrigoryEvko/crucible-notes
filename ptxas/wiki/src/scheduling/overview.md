@@ -1,5 +1,7 @@
 # Instruction Scheduler Overview
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The ptxas instruction scheduler is a priority list scheduler with a 3-phase architecture. A single top-level orchestrator (`sub_8D0640`, ScheduleInstructions) drives three passes through one unified scheduling engine (`sub_688DD0`), each configured by a mode parameter that selects a different optimization objective: register pressure reduction, ILP/latency hiding, or dynamic batch optimization for tensor warpgroup operations. The scheduler runs twice in the ptxas pipeline -- once before register allocation on virtual registers (pre-scheduling) and once after physical register assignment (post-scheduling).
 
 The scheduler consumes a dependency DAG built over the instruction list and produces a final instruction ordering together with SASS control words encoding stall counts, yield hints, barrier assignments, and scoreboard dependencies. The entire subsystem spans roughly 436 KB of code (0x893000--0x8FE000) with an additional 250 KB of supporting infrastructure in the 0x67F000--0x6A0000 range.
@@ -165,7 +167,7 @@ function ScheduleEngine(sched, mode, arg3, rebuild):
         // allocates 72-byte per-BB records, queries knobs 595 (PreserveSchedOrderSame), 743 (SchedCrossBlockInstsToSpeculate), 747 (SchedCrossBlockTexToSpeculate)
 
     for each bb in sched.basic_blocks:
-        // 9 register pressure counters at offsets 48-84
+        // 10 register pressure counters from per-BB record +4..+40 into context +48..+87
         InitResourceTracking(sched, bb)          // sub_A091C0
         ReadyList = BuildReadyList(sched)        // sub_6820B0
 
@@ -183,7 +185,7 @@ function ScheduleEngine(sched, mode, arg3, rebuild):
                     ReadyList.insert(successor)
 ```
 
-The engine manages **9 register pressure counters** at scheduler offsets 48--84, corresponding to the GPU register classes: R (general), P (predicate), UR (uniform), UP (uniform predicate), B (barrier), and several architecture-specific classes.
+The engine manages **10 register pressure counters** at scheduler context offsets 48--87 (copied from the [per-block record](#per-block-scheduling-record-72-bytes) offsets +4--+40 at BB entry). These correspond to the GPU register classes: R (general), P (predicate), UR (uniform), UP (uniform predicate), B (barrier), and 5 architecture-specific classes. Counter [0] (R class) uses a separate update path; counters [1]--[9] are decremented from a per-opcode resource cost table during the scheduling loop.
 
 ## Ready List Construction
 
@@ -586,6 +588,73 @@ Each instruction has a pointer at `instr+40` (`sched_slot`) to a separate heap-a
 
 Functions exceeding 16383 instructions (`*(a1+372) > 0x3FFF`) trigger chunk-based scheduling via `sub_A9DDD0` (11.5 KB). The function is split into chunks that are scheduled independently and then merged. This avoids quadratic blowup in the dependency DAG construction for very large kernels.
 
+## Per-Block Scheduling Record (72 bytes)
+
+`sub_6833F0` (InitScheduleRegion, 10 KB) allocates an array of `(numBBs + 1)` records at 72 bytes each, stored at `scheduler+184`. Each record tracks the register pressure snapshot, region context pointers, and scheduling characteristic flags for a single basic block. The scheduling engine loads a BB's pressure state from this record at region entry and saves it back when moving to the next BB.
+
+### Field Map
+
+| Offset | Size | Type | Init | Name | Purpose |
+|---|---|---|---|---|---|
+| +0 | 4 | `i32` | 0 | `crossBlockId` | Non-zero when the BB is active/scheduled; set to the predecessor BB index during cross-block merging. Tested as a boolean gate by 8+ functions before processing a BB. |
+| +4 | 4 | `i32` | 0 | `pressure[0]` | Register pressure snapshot -- R (general-purpose 32-bit registers) |
+| +8 | 4 | `i32` | 0 | `pressure[1]` | Register pressure snapshot -- P (predicate registers) |
+| +12 | 4 | `i32` | 0 | `pressure[2]` | Register pressure snapshot -- UR (uniform registers) |
+| +16 | 4 | `i32` | 0 | `pressure[3]` | Register pressure snapshot -- UP (uniform predicate registers) |
+| +20 | 4 | `i32` | 0 | `pressure[4]` | Register pressure snapshot -- B (barrier registers) |
+| +24 | 4 | `i32` | 0 | `pressure[5]` | Register pressure snapshot -- arch-specific class 0 |
+| +28 | 4 | `i32` | 0 | `pressure[6]` | Register pressure snapshot -- arch-specific class 1 |
+| +32 | 4 | `i32` | 0 | `pressure[7]` | Register pressure snapshot -- arch-specific class 2 |
+| +36 | 4 | `i32` | 0 | `pressure[8]` | Register pressure snapshot -- arch-specific class 3 |
+| +40 | 4 | `i32` | 0 | `pressure[9]` | Register pressure snapshot -- arch-specific class 4 / control total |
+| +44 | 4 | -- | -- | (padding) | Not initialized, not accessed |
+| +48 | 8 | `ptr` | 0 | `regionContext` | Pointer to 136-byte per-region scheduling state allocated by `sub_682F10`. Contains region boundaries, mode flags, and instruction range metadata. |
+| +56 | 8 | `ptr` | 0 | `regionContext2` | Second region context pointer, written via successor-BB index mapping. Dereferenced by `sub_681C00` to check barrier presence (bit 4 of pointed-to byte). |
+| +64 | 1 | `byte` | `& 0x80` | `flags` | Per-BB characteristic flags (see below). Low 7 bits cleared on init; bit 7 preserved. |
+| +65 | 7 | -- | -- | (padding) | Padding to 72-byte stride |
+
+### Pressure Counter Transfer
+
+At the start of each BB's scheduling pass, `sub_A091C0` (InitResourceTracking) copies the 10 DWORDs at record offsets +4 through +40 into the scheduler context at context offsets +48 through +87. The scheduling engine then updates the context counters as instructions are scheduled. When cross-block scheduling produces a new pressure snapshot, the engine writes it back with SSE bulk stores:
+
+```
+*(OWORD*)(record + 4)  = pressure[0..3]    // 16 bytes via _mm_store_si128
+*(OWORD*)(record + 20) = pressure[4..7]    // 16 bytes via _mm_store_si128
+*(QWORD*)(record + 36) = pressure[8..9]    // 8 bytes
+```
+
+During the main scheduling loop, the engine decrements `pressure[1]` through `pressure[9]` (9 counters) from a 40-byte per-opcode resource cost table. `pressure[0]` (R class) is handled via a separate path.
+
+### Flags Byte (+64)
+
+| Bit | Name | Set by | Meaning |
+|---|---|---|---|
+| 0 | `crossBlockBoundary` | `sub_688DD0` (ScheduleEngine) | BB is a cross-block scheduling boundary |
+| 1 | `regionActive` | `sub_688DD0` (ScheduleEngine) | BB belongs to an active scheduling region |
+| 2 | `hasCall` | `sub_6833F0` for opcode 96 | BB contains a CALL instruction |
+| 3 | `hasBranch` | `sub_6833F0` for opcodes 188, 190 | BB contains a branch instruction |
+| 4 | `hasBarrierInstr` | `sub_6833F0` via `sub_7DF3A0` test (bit 6) | BB contains a barrier-flagged instruction |
+| 5 | `hasLongLatencyOp` | `sub_6833F0` for memory/texture/tensor opcodes; also vtable[183] arch check | BB contains a long-latency operation (memory, texture, or tensor) |
+| 6 | `crossBlockTarget` | `sub_6833F0` cross-block merge | BB is the target of a cross-block scheduling region |
+| 7 | (preserved) | Not cleared during init | Carries data from a prior pipeline stage; purpose unknown |
+
+The opcodes that set bit 5 (`hasLongLatencyOp`): 18 (with knob 62 gate), 23, 26, 32, 57, 81, 101, 124 (with knob 461 gate), 178, 188, 190, 197, 236, 248, 271, 315. Additionally, any instruction where vtable[183] returns true (architecture-specific long-latency classification) sets bit 5.
+
+### Cross-Block Scheduling Setup
+
+After per-BB initialization, `sub_6833F0` walks the CFG to identify cross-block scheduling opportunities, gated by knob 744 (`SchedCrossBlockReorder`). For each predecessor-successor pair within the speculative distance threshold (knobs 743 `SchedCrossBlockInstsToSpeculate` and 747 `SchedCrossBlockTexToSpeculate`):
+
+1. Sets `record[pred].crossBlockId = succ_bb_index` (marks predecessor active).
+2. Clears bit 6 of `record[pred].flags` (predecessor is not a cross-block target).
+3. Sets bit 6 of `record[succ].flags` (successor is a cross-block target).
+4. Calls `sub_682F10` to allocate the 136-byte region scheduling context and store pointers at `record[pred]+48` and `record[succ]+56`.
+
+```
++0                  +4                                           +44  +48              +56              +64  +72
+| crossBlockId (4B) | pressure[0..9] (40B = 10 x i32)           |pad | regionCtx (8B) | regionCtx2 (8B)| fl | pad  |
++-------------------+----+----+----+----+----+----+----+----+----+----+----------------+----------------+----+------+
+```
+
 ## Scheduler Context Object Layout
 
 The scheduling context object (`sched` / `a1`) is the central state structure passed as the first argument to every function in the scheduling subsystem. It is populated by `sub_A95DC0` (SchedulingContext::configure, 35 KB) which reads dozens of knob values and architecture parameters. The object spans approximately 1600 bytes, from a vtable pointer at offset 0 through architecture-specific SSE vectors at offset +1584.
@@ -598,7 +667,7 @@ The scheduling context object (`sched` / `a1`) is the central state structure pa
 | +8 | 8 | `ptr` | funcContext | Pointer to CompilationContext; all func/arch queries go through this |
 | +16 | 8 | `ptr` | allocator | Memory allocator interface (vtable-dispatched alloc/free) |
 | +40 | 8 | `ptr` | preHookVtable | Pre-scheduling callback (mode-specific polymorphic hook) |
-| +48 | 36 | `int32[9]` | regPressureCounters | Per-register-class live counts: R, P, UR, UP, B, and 4 arch-specific |
+| +48 | 40 | `int32[10]` | regPressureCounters | Per-register-class live counts (copied from per-BB record +4..+40): R, P, UR, UP, B, and 5 arch-specific. The engine decrements counters [1]..[9] in the scheduling loop; counter [0] (R class) uses a separate path. |
 | +60 | 4 | `int32` | mode | Scheduling mode: 0 = ILP/Latency, 1 = ReduceReg, 2 = DynBatch |
 | +88 | 4 | `int32` | maxBBDepth | Maximum dependency depth across all basic blocks |
 | +92 | 4 | `int32` | maxBBDepthNonTensor | Maximum depth excluding tensor instructions |
@@ -739,7 +808,7 @@ SchedulerContext (~1600 bytes)
 +--------+--------+--------+--------+--------+--------+--------+--------+
 |+0  vtable       |+8  funcContext   |+16 allocator    |+24 (padding)    |
 +--------+--------+--------+--------+--------+--------+--------+--------+
-|+32 (padding)    |+40 preHookVtable |+48  regPressureCounters[0..8]     |
+|+32 (padding)    |+40 preHookVtable |+48  regPressureCounters[0..9]     |
 +--------+--------+--------+--------+--------+--------+--------+--------+
 |  ...counters... |+60 mode |+64..84 |+88  maxBBDepth  |+92 maxBBDpthNT |
 +---------+-------+---------+--------+---------+-------+--------+--------+

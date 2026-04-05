@@ -1,5 +1,7 @@
 # GPU ABI & Calling Convention
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The ptxas ABI engine implements the NVIDIA GPU calling convention for device-side function calls. It manages parameter register allocation, return address placement, scratch/preserved register classification, and per-function ABI lowering across the full range of SM architectures (sm\_35 through sm\_100+). The engine runs as a multi-pass pipeline invoked per-kernel from the per-function compilation driver (`sub_98F430`), positioned between optimization passes and the register allocator. It spans approximately 250 KB (276 functions) at address range `0x19C6230`--`0x1A00FFF`.
 
 | | |

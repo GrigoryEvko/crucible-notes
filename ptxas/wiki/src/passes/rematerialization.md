@@ -1,5 +1,7 @@
 # Rematerialization
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 Rematerialization is the compiler technique of recomputing a value near its use instead of keeping the original definition live across a long range. In ptxas, rematerialization is implemented through three cooperating pipeline phases and tightly integrated with the register allocator's spill-vs-remat decision logic. On GPUs, where register pressure directly determines occupancy and therefore throughput, aggressive rematerialization is one of the most performance-critical optimizations in the entire pipeline.
 
 | | |

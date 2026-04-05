@@ -1,5 +1,7 @@
 # Hot/Cold Partitioning
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 ptxas implements hot/cold partitioning across three dedicated phases that mark cold blocks, reorganize loop internals, and restructure whole-function control flow to improve instruction cache utilization and warp scheduling efficiency. The system operates at two distinct granularities: instruction-level classification (used by the scheduler's priority function) and block-level classification (used by code layout and predication). Both are static heuristics -- no hardware performance counters are read at runtime -- though profile-guided data from phase 20 (`PerformPGO`) can influence block weights when available.
 
 | | |
@@ -106,7 +108,7 @@ The cold annotation is stored in the BasicBlock flags field at offset +28 of the
 | Consumer | Phase | Usage |
 |----------|-------|-------|
 | `OriDoPredication` | 63 | Knob 582: skips if-conversion of cold regions (divergence penalty acceptable in cold code) |
-| Scheduling priority | 97--101 | Bit 5 of 8-bit priority: cold instructions get lower scheduling priority (value 1 = cold, 0 = hot) |
+| Scheduling priority | 97--101 | Bit 5 of 8-bit priority: hot instructions get higher scheduling priority (1 = hot, 0 = cold) |
 | `OptimizeHotColdInLoop` | 108 | Reads cold flags to identify which loop blocks to move |
 | `OptimizeHotColdFlow` | 109 | Reads cold flags for whole-function layout |
 | `PlaceBlocksInSourceOrder` | 112 | Final block ordering uses cold annotations |
@@ -178,7 +180,7 @@ The instruction-level hot/cold classification feeds directly into the scheduler'
 ```
 Bit 7: yield-related
 Bit 6: yield
-Bit 5: hot/cold (0 = hot = higher priority, 1 = cold = lower priority)
+Bit 5: hot/cold (1 = hot = higher priority, 0 = cold = lower priority)
 Bit 4: register pressure overflow
 Bit 3: same-BB preference
 Bit 2: stall-free

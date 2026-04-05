@@ -1,5 +1,7 @@
 # Methodology
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 This page documents how the reverse engineering of ptxas v13.0.88 was performed. It serves as a transparency record so readers can assess the confidence of any claim in this wiki, and as a practical guide for anyone who wants to reproduce or extend the analysis.
 
 ## Scope and Scale

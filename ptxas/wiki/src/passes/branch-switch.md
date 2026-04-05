@@ -1,5 +1,7 @@
 # Branch & Switch Optimization
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 Four phases in the ptxas pipeline transform branch and switch-statement control flow in the Ori IR. Two phases optimize switch statements (phases 14 and 30), one performs general branch simplification (phase 15), and one flattens nested conditional branches (phase 38). Together they reduce branch count, eliminate unreachable code, and prepare the CFG for downstream passes like predication (phase 63), liveness analysis (phase 16), and loop canonicalization (phase 18).
 
 These phases operate on the Ori IR before register allocation and scheduling. At this pipeline stage, branch instructions use the Ori `OEN` opcode (SASS `BRA`), conditional execution is controlled by predicate registers (P0--P6, PT), and the CFG is a hash-map-based structure with FNV-1a-keyed successor/predecessor edges.

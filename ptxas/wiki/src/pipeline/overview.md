@@ -1,5 +1,7 @@
 # Compilation Pipeline Overview
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 This page maps the complete end-to-end flow of a PTX assembly through ptxas v13.0.88, from the initial CLI invocation to the final ELF/cubin binary output. Each stage is a self-contained subsystem with its own address range, data structures, and failure modes. The links below lead to dedicated pages with reimplementation-grade detail for every stage.
 
 ## Pipeline Diagram

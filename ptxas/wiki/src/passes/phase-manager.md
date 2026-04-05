@@ -1,5 +1,7 @@
 # Phase Manager Infrastructure
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The PhaseManager is the central orchestration layer in ptxas. It owns the entire 159-phase optimization and code generation pipeline, constructs each phase as a polymorphic object via an abstract factory, and drives execution through a virtual dispatch loop. Every compilation unit passes through the same PhaseManager sequence: construct all 159 phase objects, iterate the phase index array calling `execute()` on each, optionally collect per-phase timing and memory statistics, then tear down. The PhaseManager also hosts an optional NvOptRecipe sub-manager (440 bytes) for architecture-specific "advanced phase" hooks that inject additional processing at 16 defined points in the pipeline.
 
 The design is a textbook Strategy + Abstract Factory pattern: a 159-case switch statement maps phase indices to vtable pointers, each vtable provides `execute()`, `isNoOp()`, and `getName()` virtual methods, and the dispatch loop iterates a flat index array that defines execution order. This makes the pipeline fully data-driven -- reordering, disabling, or injecting phases requires only modifying the index array, not the dispatch logic.
@@ -479,7 +481,9 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 
 ## Complete Phase Table
 
-### Stage 1: Initial Setup (phases 0--12)
+> **Stage numbering.** The 7 groups below are a coarse summary of the 159-phase OCG pipeline. The authoritative fine-grained grouping is the 10-stage scheme in the [Pass Inventory](../passes/index.md) (OCG-Stage 1--10). The 7-group table here collapses several of those stages for brevity; phase boundaries differ slightly. When citing a stage by number, prefer the Pass Inventory's 10-stage numbering.
+
+### Group 1: Initial Setup (phases 0--12)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
@@ -497,7 +501,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 11 | `ReplaceUniformsWithImm` | Replace uniform register loads with immediates |
 | 12 | `OriSanitize` | IR consistency checks |
 
-### Stage 2: Early Optimization (phases 13--36)
+### Group 2: Early Optimization (phases 13--36)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
@@ -526,7 +530,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 35 | `OriHoistInvariantsEarly` | Early loop-invariant hoisting |
 | 36 | `EmitPSI` | Emit program state information |
 
-### Stage 3: Mid-Level Optimization (phases 37--58)
+### Group 3: Mid-Level Optimization (phases 37--58)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
@@ -553,7 +557,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 57 | `RemoveASTToDefaultValues` | Remove AST nodes set to default values |
 | 58 | `GeneralOptimizeLate` | Late GeneralOptimize |
 
-### Stage 4: Late Optimization (phases 59--95)
+### Group 4: Late Optimization (phases 59--95)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
@@ -595,7 +599,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 94 | `FinalInspectionPass` | Final IR validity checks |
 | 95 | `SetAfterLegalization` | Mark legalization complete |
 
-### Stage 5: Scheduling and Register Allocation (phases 96--105)
+### Group 5: Scheduling and Register Allocation (phases 96--105)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
@@ -610,7 +614,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 104 | `AdvancedPhasePostExpansion` | **Hook** -- after post-expansion |
 | 105 | `ApplyPostRegAllocWars` | Apply post-regalloc write-after-read fixes |
 
-### Stage 6: Post-Schedule and Code Generation (phases 106--131)
+### Group 6: Post-Schedule and Code Generation (phases 106--131)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
@@ -641,7 +645,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 130 | `DumpNVuCodeHex` | Dump NV microcode as hex (debug) |
 | 131 | `DebuggerBreak` | Debugger breakpoint (debug) |
 
-### Stage 7: Late Cleanup (phases 132--158)
+### Group 7: Late Cleanup (phases 132--158)
 
 | Index | Phase Name | Purpose |
 |---|---|---|

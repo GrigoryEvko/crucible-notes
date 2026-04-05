@@ -1,5 +1,7 @@
 # PTX Instruction Table
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 Complete catalog of PTX instructions recognized by ptxas v13.0.88 (CUDA 12.8 / PTX ISA 8.7). All entries are verified against the binary: instruction names come from the Flex lexer's 552 token rules, type signatures from the instruction table builder's 1,141 descriptor registrations (`sub_46E000` calling `sub_46BED0`), and formatter names from the 580 PTX text generation functions dispatched by `sub_5D4190`. Internal-only instructions (prefixed with `_`) are included where they appear in the binary but are marked accordingly.
 
 | | |
@@ -738,3 +740,23 @@ Instructions introduced in PTX ISA 8.0--8.7 (CUDA 12.0--12.8), verified from SM 
 - [Intrinsic Table](../intrinsics/index.md) -- 608 built-in helper functions
 - [SM Architecture Map](../targets/index.md) -- architecture version requirements
 - [SASS Opcode Catalog](./sass-opcodes.md) -- SASS equivalents of PTX instructions
+
+## Key Functions
+
+| Address | Size | Role | Confidence |
+|---------|------|------|------------|
+| `sub_46E000` | 93KB | Instruction table builder; runs once during parser init, makes 1,141 calls to `sub_46BED0` to register all PTX instruction descriptors | 0.95 |
+| `sub_46BED0` | -- | Instruction descriptor registrar; called 1,141 times with operand encoding, opcode ID, type flags, SM requirement | 0.95 |
+| `sub_46C690` | -- | Instruction lookup entry point; dispatches to `sub_46C6E0` for name-to-descriptor matching | 0.90 |
+| `sub_46C6E0` | 6.4KB | Instruction name matcher; resolves PTX mnemonic strings to instruction table descriptors | 0.90 |
+| `sub_5D4190` | 12.9KB | PTX text formatter dispatch; 81-string + 473-entry hash table routing to per-instruction formatters | 0.90 |
+| `sub_489390` | -- | SM version gate; validates minimum SM architecture for each instruction | 0.85 |
+| `sub_489050` | -- | PTX ISA version gate; validates minimum PTX version for each instruction | 0.85 |
+| `sub_4BFED0` | -- | WMMA shape validator; checks legal WMMA shape combinations (`.m16n16k16`, `.m32n8k16`, etc.) | 0.85 |
+| `sub_451680` | -- | UFT stub generator; synthesizes `_jcall` wrappers for unified-function-stub entries | 0.90 |
+| `sub_451730` | -- | Parser initialization; calls `sub_46E000` to build the instruction table | 0.85 |
+| `sub_4DD860` | -- | `_ldldu` PTX text formatter; handles internal unified load-uniform instruction | 0.85 |
+| `sub_4AEB60` | 3.7KB | `_ldsm` validator; validates `.s8.s4`/`.u8.u4` format rules for shared matrix loads | 0.85 |
+| `sub_465030` | -- | MMA type triple registrar; called by 135 `_mma.warpgroup` handlers to register (src, dst, acc) type combinations | 0.85 |
+| `sub_424070` | -- | Instruction descriptor allocator; creates 368-byte descriptor nodes for each registered instruction | 0.85 |
+| `sub_1CB0850` | -- | Width bitset registrar; registers valid bit-widths (e.g., `F32` -> `.f32` only) into per-operand bitsets | 0.80 |
