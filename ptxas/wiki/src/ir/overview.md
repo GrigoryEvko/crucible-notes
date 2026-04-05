@@ -74,17 +74,11 @@ Every function under compilation is represented by a single Code Object -- a ~11
 | +24 | `u32` | `sm_version` | SM target (encoded: 12288=sm30, 20481=sm50, 36865=sm90) |
 | +72 | `ptr` | `code_buf` | Output code object buffer |
 | +88 | `ptr` | `reg_file` | Register descriptor array. `*(ctx+88)+8*regId` -> descriptor |
-| +99 | `u32` | `ur_count` | Uniform register (UR) count |
-| +102 | `u32` | `r_alloc` | R-register count (allocated) |
 | +152 | `ptr` | `sym_table` | Symbol/constant lookup array |
-| +159 | `u32` | `r_reserved` | R-register count (reserved) |
 | +272 | `ptr` | `instr_head` | Instruction linked-list head |
 | +296 | `ptr` | `bb_array` | Basic block array pointer (40B per entry) |
 | +304 | `u32` | `bb_index` | Basic block array count/current index |
 | +312 | `ptr` | `options` | `OptionsManager*` for knob queries |
-| +335 | `u32` | `instr_hi` | Instruction count (upper bound) |
-| +341 | `u32` | `instr_lo` | Instruction count (lower bound) |
-| +372 | `u32` | `instr_total` | Total instruction count (>0x3FFF triggers chunked scheduling) |
 | +648 | `ptr` | `succ_map` | CFG successor edge hash table |
 | +680 | `ptr` | `backedge_map` | CFG backedge hash table |
 | +720 | `ptr` | `rpo_array` | Reverse post-order array (`int*`) |
@@ -96,11 +90,23 @@ Every function under compilation is represented by a single Code Object -- a ~11
 | +1664 | `ptr` | `knob_container` | Knob container pointer (for `-knob` queries) |
 | +1928 | `ptr` | `codegen_ctx` | Code object / code generation context |
 
-Register count formula (from `sub_A4B8F0`):
+### Register and Instruction Counts (SM Backend Object)
+
+The register counts and instruction counts live in the **SM backend object** at `*(code_obj+1584)`, accessed via DWORD-indexed fields (not Code Object byte offsets). Earlier versions of this page incorrectly listed these as Code Object offsets +99, +102, +159, +335, +341 -- those are DWORD indices, making the actual byte offsets 396, 408, 636, 1340, and 1364 respectively within the SM backend.
+
+| DWORD Index | Byte Offset | Type | Field | Description |
+|-------------|-------------|------|-------|-------------|
+| `[99]` | +396 | `u32` | `ur_count` | Uniform register (UR) count |
+| `[102]` | +408 | `u32` | `r_alloc` | R-register count (allocated) |
+| `[159]` | +636 | `u32` | `r_reserved` | R-register count (reserved) |
+| `[335]` | +1340 | `u32` | `instr_hi` | Instruction count (upper bound) |
+| `[341]` | +1364 | `u32` | `instr_lo` | Instruction count (lower bound) |
+
+Register count formula (from `sub_A4B8F0`, where `v5 = *(_DWORD **)(ctx + 1584)`):
 
 ```
-total_R_regs      = field[159] + field[102]   // reserved + allocated
-instruction_count = field[335] - field[341]   // upper - lower
+total_R_regs      = v5[159] + v5[102]   // reserved + allocated
+instruction_count = v5[335] - v5[341]   // upper - lower
 ```
 
 The stats emitter at `sub_A3A7E0` prints a detailed per-function profile:
@@ -244,6 +250,41 @@ type field (bits 28-30):
   5 = symbol/const operand  -> index into *(ctx+152) symbol table
 ```
 
+### Operand Word 1 (Upper 4 Bytes)
+
+Each 8-byte operand slot has two DWORDs. Word 0 (documented above) carries type/modifier/index. Word 1 carries extended flags:
+
+```
+Word 1 (at instr + 84 + 8*i + 4):
+
+ 31  30  29  28  27  26  25  24  23                             0
++---+---+---+---+---+---+---+---+-------------------------------+
+|     reserved / mod flags      |CB |      auxiliary data        |
++---+---+---+---+---+---+---+---+-------------------------------+
+                             ^
+                             bit 24: const-bank flag (CB)
+
+Bits 25-31 (mask 0xFE000000): extended modifier flags
+  When any bit is set, the operand has special semantics.
+  Peephole matchers bail out early if (word1 & 0xFE000000) != 0.
+  Bit 25 (0x2000000): operand reuse / negation extension
+  Bit 26 (0x4000000): absolute-value modifier (|x|)
+
+Bit 24 (mask 0x1000000): const-bank flag
+  When set, indicates the source references a constant bank (c[N][offset]).
+  The scheduler uses this to distinguish FADD (standard) from FADD (const-bank)
+  for latency modeling (see scheduling/latency-model.md).
+
+Bits 0-23: auxiliary data
+  For symbol/const operands (type 5): constant bank number
+  For predicate guards (type 6): predicate sense (true/false)
+  For register operands (type 1): typically zero
+```
+
+Evidence: `sub_40848E` checks `(word1 & 0xFE000000) != 0` across all operands; `sub_405769` tests both `0x1000000` and `0x6000000` combinations; `sub_404AD0` verifies `(word1 & 0xFE000000) == 0` before allowing peephole transforms. Confirmed in 30+ decompiled functions (confidence 0.92).
+
+### Extraction Pattern
+
 Extraction pattern (appears in 50+ functions):
 
 ```c
@@ -251,6 +292,10 @@ uint32_t operand = *(uint32_t*)(instr + 84 + 8 * i);
 int type    = (operand >> 28) & 7;
 int index   = operand & 0xFFFFF;
 int mods    = (operand >> 20) & 0xFF;
+
+uint32_t word1 = *(uint32_t*)(instr + 84 + 8 * i + 4);
+bool has_const_bank = (word1 & 0x1000000) != 0;
+bool has_ext_mods   = (word1 & 0xFE000000) != 0;
 ```
 
 ### Opcode Constants
@@ -405,6 +450,35 @@ Phase 73  ConvertAllMovPhiToMov  <-- SSA destruction
 
 All optimizations between these two phases can rely on the single-definition property of `MovPhi` nodes for reaching-definition analysis.
 
+### MovPhi Instruction Format
+
+A `MovPhi` is not a distinct opcode -- it reuses the MOV opcode (19) with a distinguishing flag in the instruction's auxiliary fields. Phase 73 (`ConvertAllMovPhiToMov`) converts MovPhi to plain MOV by clearing this flag, without changing the opcode value.
+
+```
+MovPhi operand layout:
+  +72  opcode         = 19 (MOV)
+  +76  opcode_aux     = flag distinguishing MovPhi from plain MOV
+  +80  operand_count  = 2*N + 1  (variable, one destination + N source-predecessor pairs)
+
+  operand[0]:           destination register (the merged value)
+  operand[1], [2]:      {source_reg, predecessor_bix} for predecessor 0
+  operand[3], [4]:      {source_reg, predecessor_bix} for predecessor 1
+  ...
+  operand[2*N-1], [2*N]: {source_reg, predecessor_bix} for predecessor N-1
+```
+
+This is the operational equivalent of an SSA phi node. For a CFG merge with two predecessors:
+
+```
+;; PTX-level CFG:            ;; Ori MovPhi:
+;;   bix1 defines R7         ;;
+;;   bix2 defines R9         ;;   MovPhi R3, R7, bix1, R9, bix2
+;;   bix3 merges             ;;
+;;   uses R3                 ;;   "if from bix1, R3 = R7; if from bix2, R3 = R9"
+```
+
+Phase 23 (`GenerateMovPhi`) inserts these at merge points where a register has different reaching definitions from different predecessors. Phase 73 destructor linearizes them: it inserts a `MOV R3, R7` at the end of bix1 and a `MOV R3, R9` at the end of bix2, then deletes the MovPhi.
+
 ## Operand Kinds
 
 The IR supports 10 distinct operand kinds, identified through the register allocator verifier (`sub_A55D80`) and the instruction selection pattern matcher infrastructure.
@@ -461,17 +535,99 @@ PTX is a virtual ISA -- a stable interface between the compiler frontend and the
 
 The MercConverter pass is the boundary: it transforms PTX-derived intermediate opcodes into SM-specific SASS opcodes by dispatching through a large opcode switch (`sub_9ED2D0`, 25KB). After MercConverter, the string `"After MercConverter"` appears in diagnostic output, and the IR is fully in SASS-opcode form. Each instruction then carries enough information for the scheduler to compute accurate latencies, throughputs, and functional-unit assignments.
 
+## Worked Example: `add.f32` to FADD
+
+This traces a single PTX instruction through the Ori representation, showing exactly how the opcode, operands, and register references are encoded in memory.
+
+### PTX Input
+
+```
+add.f32 %f3, %f1, %f2
+```
+
+After MercConverter (`sub_9F1A90`), this becomes the Ori instruction:
+
+```
+FADD R3, R1, R2
+```
+
+The type qualifier `.f32` disappears -- the "F" in FADD encodes the float type. Register names `%f1`, `%f2`, `%f3` become virtual register IDs R1, R2, R3 in the R (GPR) register file.
+
+### Instruction Object in Memory
+
+FADD is opcode 12 in the ROT13 name table (ROT13: `SNQQ`, at `InstructionInfo+4184+16*12`). The 296-byte instruction object:
+
+```
+Offset  Value              Field
+------  -----------------  ---------------------
++0      prev_ptr           Linked-list prev
++8      next_ptr           Linked-list next
++16     <id>               Unique instruction ID
++72     0x0000000C         opcode = 12 (FADD)
++80     0x00000003         operand_count = 3
++84     0x10000003         operand[0] word0: dst R3
++88     0x00000000         operand[0] word1: no ext flags
++92     0x10000001         operand[1] word0: src R1
++96     0x00000000         operand[1] word1: no ext flags
++100    0x10000002         operand[2] word0: src R2
++104    0x00000000         operand[2] word1: no ext flags
+```
+
+### Operand Decoding
+
+Take operand[0] word0 = `0x10000003`:
+
+```
+  0x10000003 in binary:
+    bit 31     = 0       (no sign/negate)
+    bits 28-30 = 001     (type = 1 = register operand)
+    bits 20-27 = 00000000 (no modifiers)
+    bits 0-19  = 00003   (register index = 3)
+```
+
+The register index resolves through the register descriptor array:
+
+```c
+reg_desc = *(ptr*)(*(ptr*)(code_obj + 88) + 8 * 3);
+// reg_desc + 64: reg_file_type = 2 (R / GPR file)
+// reg_desc + 12: register number = 3
+```
+
+If the source operand were a constant-bank reference (e.g., `FADD R3, R1, c[0][0x10]`), operand[2] would have type=5 (symbol/constant) in word0 and the const-bank flag (`0x1000000`) set in word1. The scheduler distinguishes these two FADD variants for latency modeling: standard FADD gets throughput class `0x3D`, while const-bank FADD gets `0x78`.
+
 ## Memory Space Classification
 
-Memory operands carry a space type (resolved by `sub_91C840`):
+Memory operands carry a space type enum, resolved by `sub_91C840` which maps the PTX-level space identifier to an internal category number. The full input enumeration (from complete decompilation of `sub_91C840`, confidence 0.98):
 
-| Type | Space | Hot/Cold |
-|------|-------|----------|
-| 4 | Shared memory | Depends on variant |
-| 5 | Constant memory | Cold |
-| 6 | Global memory | Hot |
+| Input | PTX Space | Internal Category | Notes |
+|-------|-----------|-------------------|-------|
+| 0 | (none) | -- | Unmapped, no memory space |
+| 1 | Register / generic | 16 | Register file address |
+| 2 | Code / function | 12 | Function address |
+| 3 | (gap) | -- | Unmapped |
+| 4 | `.shared` | 1 | Shared memory |
+| 5 | `.const` | 3 | Constant memory |
+| 6 | `.global` | 11 | Global memory |
+| 7 | `.local` | 2 | Local memory |
+| 8 | (gap) | -- | Unmapped |
+| 9 | `.local` (variant) | 2 | Same as 7, alternate encoding |
+| 10--11 | (gap) | -- | Unmapped |
+| 12 | `.param` | 4 | Parameter memory |
+| 13 | Generic (unqualified) | 0 | Generic address space |
+| 14 | `.tex` | 8 | Texture memory |
+| 15 | `.surf` | 17 | Surface memory |
+| 16 | Spill space | 7 | Register spill/fill scratch |
+| 17 | (gap) | -- | Unmapped |
+| 18 | (instruction-dependent) | varies | Sub-classifies by opcode at `a2[1]` |
+| 19 | `.uniform` | 15 | Uniform (sm_75+) |
+| 20 | `.global` (extended) | 6 | Global, extended variant |
+| 21 | `.const` (extended) | 5 | Constant, extended store-to-global path |
+| 22 | `.const` (extended, alt) | 5 | Constant, alternate extended |
+| 23 | `.surf` / tensor (ext) | 18 | Surface/tensor extended (sm_90+) |
 
-The hot/cold classifier pair (`sub_A9CDE0` / `sub_A9CF90`) uses this to partition instructions for scheduling. Hot memory operations (global loads/stores, certain atomics) have long latencies and benefit from aggressive scheduling; cold operations (constant loads) have shorter latencies and are treated more conservatively.
+Case 18 (`0x12`) uses a sub-switch on the opcode value at `a2[1]` to further classify: opcodes 7, 43, 45, 53 map to category 6 (global-like); opcode 111 and opcodes in the 183--199 range map to category 5 (constant-like); opcodes 54 and 189 map to category 9 (special).
+
+The hot/cold classifier pair (`sub_A9CDE0` / `sub_A9CF90`) consumes the internal category to partition instructions for scheduling. Hot memory operations (global loads/stores, certain atomics -- category 11) have long latencies and benefit from aggressive scheduling; cold operations (constant loads -- category 3) have shorter latencies and are treated more conservatively.
 
 ## Related Pages
 
