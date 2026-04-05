@@ -1,460 +1,351 @@
 # Function Map
 
 > **Binary**: ptxas v13.0.88, 37.7 MB stripped ELF, ~40,000 functions  
-> **Scope**: ~200 key identified functions organized by subsystem  
-> **Source**: Extracted from p1.01-p1.30 sweep reports (40 files, 34,880 lines of analysis)
+> **Documented**: 2,063 unique functions across 70 wiki pages  
+> **This page**: Top ~100 most cross-referenced functions, plus routing tables  
+> **Complete listings**: Each wiki page has its own Function Map section with full details
 
-This page catalogs the most important identified functions in ptxas, organized by subsystem in approximate pipeline order. All addresses are for the v13.0.88 binary.
+This page is the central lookup index for identified functions in ptxas. It lists the functions that appear most frequently across the wiki (cross-cutting infrastructure and major entry points), and provides routing tables to find any function by address range or subsystem.
 
-**Confidence levels**: CERTAIN = named in symbols or strings, structure fully understood. HIGH = strong evidence from strings and call patterns (>90%). MEDIUM = structural analysis with partial string evidence (70-90%).
-
----
-
-## 1. Entry Point & Static Initialization
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x409460` | 84 B | `main` (program entry) | CERTAIN | 1 | Sets unbuffered stdio, delegates to `0x446240` |
-| `0x4094C0` | 204 B | `ctor_001` -- thread infra init | HIGH | 0 | pthread_key_create, mutex init, priority range |
-| `0x4095D0` | 17,007 B | `ctor_003` -- PTX opcode name table | HIGH | 0 | ~900 ROT13-encoded PTX mnemonic entries |
-| `0x40D860` | 80,397 B | `ctor_005` -- tuning knob registry | HIGH | 0 | 2000+ ROT13 Mercury knob names + hex defaults |
-| `0x421290` | 7,921 B | `ctor_007` -- scheduler knob registry | HIGH | 0 | 98 ROT13 scheduler knobs (XBlockWait, WarDeploy, etc.) |
-
-`ctor_005` is the largest static initializer in the binary (80 KB). All three ROT13 ctors use character rotation A-M+13, N-Z-13 as a light obfuscation layer over internal NVIDIA names.
+**Confidence levels**: CERTAIN = named in symbols or strings. HIGH = strong evidence from strings and call patterns (>90%). MEDIUM = structural analysis with partial string evidence (70-90%).
 
 ---
 
-## 2. Memory Allocator
+## Core Infrastructure
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x424070` | 2,098 B | `pool_alloc(pool, size)` | HIGH | 3,809 | Custom slab allocator, 8-byte aligned |
-| `0x4248B0` | 923 B | `pool_free(ptr)` | HIGH | 1,215 | Coalescing free, boundary tags for large blocks |
-| `0x424C50` | 488 B | `pool_realloc(ptr, new_size)` | MEDIUM | 27 | Delegates to pool_alloc + memcpy |
-| `0x42BDB0` | 14 B | `fatal_OOM_handler` | HIGH | 3,825 | Tiny wrapper, called on every allocation failure |
+These functions appear in 10+ wiki pages -- they are the universal building blocks called by nearly every subsystem.
 
-Pool struct layout: free list bins at +2128, mutex at +7128. Small allocs (<=4999 B) use size-binned free lists; large allocs use boundary-tag coalescing. Thread-safe via pthread_mutex_lock/unlock.
+| Address | Identity | Pages | Callers | Notes |
+|---------|----------|:-----:|--------:|-------|
+| `0x424070` | `pool_alloc(pool, size)` | 19 | 3,809 | Custom slab allocator, 8-byte aligned |
+| `0x4248B0` | `pool_free(ptr)` | 8 | 1,215 | Coalescing free, boundary tags |
+| `0x4280C0` | `get_thread_local_context` | 10 | 3,928 | Most-called function in ptxas; 280-byte TLS struct |
+| `0x42BDB0` | `fatal_OOM_handler` | 8 | 3,825 | Called on every allocation failure |
+| `0x426150` | `hashmap_put(map, key, value)` | 11 | 2,800 | Open-addressing + chaining, auto-resize |
+| `0x426D60` | `hashmap_get(map, key)` | 11 | 422 | Returns value or 0 |
+| `0x425CA0` | `hashmap_create(hash_fn, cmp_fn, cap)` | 7 | 127 | Integer/pointer/custom hash modes |
+| `0x427630` | `murmurhash3_x86_32(str)` | 5 | 73 | Constants: 0xcc9e2d51, 0x1b873593 |
+| `0x42D850` | `hashset_insert(set, key)` | 4 | 282 | Hash set variant |
+| `0x42FBA0` | `diagnostic_emit(desc, loc, fmt...)` | 7 | 2,350 | Central error/warning reporter |
+| `0x42F590` | `fatal_internal_error(desc, ...)` | 8 | 3,825 | Assertion handler |
+| `0x4279D0` | `starts_with(str, prefix)` | 4 | 185 | Returns suffix pointer or 0 |
+| `0x42CA60` | `list_push_front(node, head_ptr)` | 4 | 298 | Pool-allocated linked list |
+| `0xBDBA60` | `bitvector_allocate` | 8 | many | (bits+31)>>5 word count |
+| `0xBDCDE0` | `bitvector_or_assign` (SSE2) | 5 | many | `_mm_or_si128` on 128-bit chunks |
 
----
-
-## 3. Thread-Local Storage
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x4280C0` | 597 B | `get_thread_local_context` | HIGH | 3,928 | The most-called function in ptxas |
-
-Returns a 280-byte per-thread struct via `pthread_getspecific`. Contains error/warning flags, memory pool pointer, diagnostic suppression flags, pthread_cond_t (+128), pthread_mutex_t (+176), sem_t (+216).
-
----
-
-## 4. Hash Map Infrastructure
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x425CA0` | 114 B | `hashmap_create(hash_fn, cmp_fn, cap)` | HIGH | 127 | Detects integer/pointer hash modes |
-| `0x425D20` | 121 B | `hashmap_destroy(map)` | MEDIUM | 63 | Frees buckets, entries, map struct |
-| `0x426150` | 2,534 B | `hashmap_put(map, key, value)` | HIGH | 2,800 | Open-addressing + chained buckets, auto-resize |
-| `0x426D60` | 345 B | `hashmap_get(map, key)` | HIGH | 422 | Returns value or 0 if not found |
-| `0x426EC0` | 349 B | `hashmap_contains(map, key)` | HIGH | 29 | Returns 1/0 |
-| `0x427630` | 273 B | `murmurhash3_x86_32(str)` | HIGH | 73 | Constants: 0xcc9e2d51, 0x1b873593 |
-| `0x42D850` | 2,531 B | `hashset_insert(set, key)` | HIGH | 282 | Hash set variant with auto-resize |
-
-Three hash modes selected by flags at offset 84 bits 4-7: mode 0 = custom function pointers, mode 1 = pointer hash (`key>>11 ^ key>>8 ^ key>>5`), mode 2 = integer hash.
+> **Details**: [Memory Pools](infra/memory-pools.md), [Hash & Bitvector](infra/hash-bitvector.md), [Threading](infra/threading.md)
 
 ---
 
-## 5. Linked List & String Utilities
+## Compilation Driver & CLI
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x4279D0` | 51 B | `starts_with(str, prefix)` | HIGH | 185 | Returns suffix pointer or 0 |
-| `0x42CA60` | 81 B | `list_push_front(node, head_ptr)` | HIGH | 298 | Allocates 16-byte node via pool_alloc |
-| `0x42CC30` | 34 B | `list_count(head)` | HIGH | 48 | Simple `for(n=0; p; p=p->next) n++` |
+| Address | Identity | Pages | Callers | Notes |
+|---------|----------|:-----:|--------:|-------|
+| `0x409460` | `main` | 5 | 1 | Delegates to `0x446240` |
+| `0x446240` | `real_main` (top-level driver) | 13 | 1 | Orchestrates entire pipeline |
+| `0x4428E0` | `ptx_input_setup` | 6 | 1 | Version/target validation |
+| `0x43CC70` | `per_entry_compile_unit` | 5 | 1 | Processes each entry through pipeline |
+| `0x43F400` | `function_abi_config` | 4 | 1 | Parameter regs, return addr, scratch |
+| `0x43A400` | `compilation_target_config` | 7 | 1 | SM-specific defaults |
+| `0x43B660` | `register_constraint_calculator` | 5 | 1 | Balances .maxnreg, occupancy |
+| `0x432A00` | `option_registration` | 9 | 1 | CLI option definitions |
+| `0x434320` | `option_parser` | 9 | 1 | Validates combinations, applies state |
 
----
-
-## 6. Diagnostics & Error Reporting
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x42FBA0` | 2,388 B | `diagnostic_emit(desc, loc, fmt...)` | HIGH | 2,350 | Central error/warning/info/fatal reporter |
-| `0x42F590` | varies | `fatal_internal_error(desc, ...)` | HIGH | 3,825 | Called from OOM handler and assertions |
-| `0x4275F0` | 8 B | `exit_wrapper(code)` | HIGH | 1 | Indirect call through function pointer table |
-| `0x403588` | 75 B | `print_usage_and_exit()` | HIGH | 1 | "Usage : %s [options] ..." |
-
-Severity levels in descriptor byte at `*a1`: 0=suppress, 1-2=info, 3=warning (or error via `--Werror`), 4=error\*, 5=error, 6=fatal (triggers `longjmp`). Machine-readable tags: `@E@`, `@W@`, `@O@`, `@I@`. Source-line display caches file offsets every 10 lines.
+> **Details**: [Pipeline Entry](pipeline/entry.md), [Pipeline Overview](pipeline/overview.md), [CLI Options](config/cli-options.md)
 
 ---
 
-## 7. Command-Line Parsing
+## PTX Front End
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x432A00` | 6,427 B | `option_registration` | HIGH | 1 | Defines all recognized CLI options |
-| `0x434320` | 10,289 B | `option_parser` | HIGH | 1 | Validates combinations, applies to state |
-| `0x439880` | 2,935 B | `chrome_trace_json_parser` | HIGH | 1 | For `--fdevice-time-trace` |
-| `0x43A400` | 4,696 B | `compilation_target_config` | HIGH | 1 | SM-specific defaults (cache, texturing) |
-| `0x43B660` | 3,843 B | `register_constraint_calculator` | HIGH | 1 | Balances .maxnreg, occupancy, .minnctapersm |
+| Address | Identity | Pages | Callers | Notes |
+|---------|----------|:-----:|--------:|-------|
+| `0x46E000` | `instruction_table_builder` | 9 | 1 | 93 KB, 1168 callees, one per PTX opcode |
+| `0x451730` | `parser_setup` (special register init) | 9 | 1 | %ntid, %laneid, %clock, etc. |
+| `0x4CE6B0` | `bison_parser` (directive/decl) | 7 | 1 | .local_maxnreg, .alias, .pragma |
+| `0x720F00` | `flex_lexer` (ptxlex / yylex) | 8 | 2 | ~550 Flex rules, DFA scanner |
+| `0x4B2F20` | `ptx_validator_general` | 4 | 1 | Validates texture, surface, cvt, call |
+| `0x4C5FB0` | `ptx_validator_mma_wmma_tcgen05` | 4 | 1 | MMA, WMMA, tensor core validation |
+| `0x71F630` | `preprocessor_dispatch` | 4 | 1 | .MACRO, .ELSE, .INCLUDE |
+| `0x489050` | `ptx_to_ori_converter` | 5 | 1 | PTX AST to ORI IR translation |
 
-Options registered include: `--register-usage-level`, `--cloning`, `--verbose`, `--version-ls`, `--compile-functions`, `--input-as-string`, `--suppress-stack-size-warning`, `--fast-compile`, `--warn-on-spills`, `--compiler-stats`, `--fdevice-time-trace`.
-
----
-
-## 8. Compilation Driver
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x446240` | 11,064 B | `real_main` (top-level driver) | HIGH | 1 | Orchestrates entire pipeline |
-| `0x4428E0` | 13,774 B | `ptx_input_setup` | HIGH | 1 | Version/target validation, dummy entries |
-| `0x43CC70` | 5,425 B | `per_entry_compile_unit` | HIGH | 1 | Processes each entry through pipeline |
-| `0x43F400` | 9,078 B | `function_abi_config` | HIGH | 1 | Parameter regs, return addr, scratch regs |
-| `0x441780` | 3,975 B | `tools_patch_handler` | MEDIUM | 1 | `--compile-as-tools-patch`, cuda_sanitizer |
-
-`real_main` prints timing breakdowns: Parse-time, CompileUnitSetup-time, DAGgen-time, OCG-time, ELF-time, DebugInfo-time, plus `CompileTime` and `PeakMemoryUsage`.
+> **Details**: [PTX Parser](pipeline/ptx-parser.md), [PTX Directives](pipeline/ptx-directives.md), [PTX to ORI](pipeline/ptx-to-ori.md)
 
 ---
 
-## 9. PTX Parser & Lexer
+## Static Initialization
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x451730` | 14,135 B | `parser_setup` (special register init) | HIGH | 1 | Inits %ntid, %laneid, %clock, etc. |
-| `0x46E000` | 93,037 B | `instruction_table_builder` | HIGH | 1 | 1168 callees, one per PTX opcode |
-| `0x4CE6B0` | 48,263 B | `bison_parser` (directive/decl) | HIGH | 1 | .local_maxnreg, .alias, .pragma, etc. |
-| `0x720F00` | ~64 KB | `flex_lexer` (ptxlex / yylex) | CERTAIN | 2 | ~550 Flex rules, DFA scanner |
-| `0x4B2F20` | 52,600 B | `ptx_validator_general` | HIGH | 1 | Validates texture, surface, cvt, call, etc. |
-| `0x4C5FB0` | 28,537 B | `ptx_validator_mma_wmma_tcgen05` | HIGH | 1 | MMA, WMMA, tensor core validation |
+| Address | Identity | Pages | Callers | Notes |
+|---------|----------|:-----:|--------:|-------|
+| `0x4094C0` | `ctor_001` -- thread infra init | 4 | 0 | pthread_key_create, mutex |
+| `0x4095D0` | `ctor_003` -- PTX opcode name table | 6 | 0 | ~900 ROT13-encoded PTX mnemonics |
+| `0x40D860` | `ctor_005` -- tuning knob registry | 6 | 0 | 80 KB, 2000+ ROT13 knob names |
+| `0x421290` | `ctor_007` -- scheduler knob registry | 4 | 0 | 98 ROT13 scheduler knobs |
 
-### Preprocessor
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x71F630` | ~14 KB | `preprocessor_dispatch` | HIGH | 1 | .MACRO, .ELSE, .INCLUDE dispatch |
-| `0x71E2B0` | ~32 KB | `conditional_handler` (.ELSE/.ELIF) | HIGH | 1 | Conditional preprocessing |
-| `0x71DCA0` | ~8.4 KB | `macro_definition` (.MACRO) | HIGH | 1 | Handles nested .MACRO definitions |
-| `0x71C310` | ~8.3 KB | `include_handler` (.INCLUDE) | HIGH | 1 | Recursive include file processing |
-
-The instruction_table_builder (93 KB) is the largest front-end function. It calls one handler-setup function per PTX opcode, registering accepted type combinations (e.g., `F32F32`, `I32I8I8I32`, `_mma.warpgroup`).
+> **Details**: [Pipeline Entry](pipeline/entry.md), [Binary Layout](binary-layout.md)
 
 ---
 
-## 10. Intrinsic Infrastructure
+## Phase Manager & Optimization Framework
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x5D1660` | ~46 KB | `intrinsic_table_register` (608 entries) | CERTAIN | 1 | Master intrinsic name-to-ID table |
-| `0x5D4190` | ~41 KB | `intrinsic_dispatch_builder` | CERTAIN | 1 | PTX opcode -> codegen handler mapping |
-| `0x5FF700` | ~354 KB | `intrinsic_prototype_emitter` | CERTAIN | 1 | Giant switch generating .weak .func decls |
+| Address | Identity | Pages | Callers | Notes |
+|---------|----------|:-----:|--------:|-------|
+| `0xC60D30` | `phase_factory` (159-case switch) | 12 | 1 | Allocates phase objects |
+| `0xC62720` | `PhaseManager_ctor` | 10 | 2 | 159-entry phase table |
+| `0xC64F70` | `phase_dispatch_loop` | 5 | 2 | Executes phases, reports timing |
+| `0xC64310` | `per_phase_timing_reporter` | 5 | 1 | "[Total N KB] [Freeable N KB]" |
+| `0xC641D0` | `phase_name_to_index_lookup` | 5 | 3 | Binary search, case-insensitive |
+| `0x7DDB50` | `phase_run_dispatch` | 14 | many | Vtable-based phase execution |
+| `0x9F4040` | `NamedPhases_parse_and_build` | 6 | 1 | "shuffle", "OriCopyProp", etc. |
+| `0x798B60` | `NamedPhases_parser` | 4 | 2 | PTXAS_DISABLE env var parsing |
+| `0x799250` | `IsPassDisabled` | 5 | 4 | Checks knob index 185 |
+| `0xA36360` | `pass_sequence_builder` | 6 | 1 | Constructs NvOptRecipe pass list |
 
-The 608 registered intrinsics span: `__cuda_reduxsync_*` (17), `__cuda_sanitizer_*` (7), `__cuda_sm20_*` (70 math), `__cuda_sm70_*` (~370 Volta+: barrier, shfl, vote, wmma), `__cuda_sm80_*` (14 Ampere), `__cuda_sm_9x_*` (38 Hopper sub-byte MMA), `__cuda_sm_10x_*` (10 Blackwell tcgen05).
-
-The dispatch builder maps PTX opcodes to codegen handlers: `div`, `rem`, `rcp`, `sqrt`, `tex`, `wmma.mma`, `mma`, `wgmma.mma_async`, `tcgen05.mma`, `barrier`, `shfl`, `vote`, `ldmatrix`, `cp.async.bulk`, `multimem`, and ~100 more.
-
-The prototype emitter (354 KB) is the single largest function by code size in the entire binary.
-
----
-
-## 11. Tensor Core Codegen
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x5C7A50` | ~173 KB | `wmma_mma_codegen` | HIGH | 1 | All shapes, types, layouts |
-| `0x5C10A0` | ~120 KB | `mma_codegen` (mma.sync API) | HIGH | 1 | m8n8k4 through m16n8k256 |
-| `0x5BBC30` | ~90 KB | `tcgen05_mma_codegen` (Blackwell) | HIGH | 1 | 5th-gen tensor core operations |
-
-Each codegen function allocates a 50,000-byte buffer and builds PTX code via sequential `sprintf()` calls. They query instruction properties via accessor functions at `a1+1096`: feature checks, operand counts, data types, accumulator types, layouts, MMA shapes, sparse modes.
+> **Details**: [Phase Manager](passes/phase-manager.md), [Pass Inventory](passes/index.md), [Optimizer Pipeline](pipeline/optimizer.md)
 
 ---
 
-## 12. OCG Intrinsic Lowering
+## ORI IR & Instruction Access
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x6A97B0` | ~26 KB | `intrinsic_lowering_main` | MEDIUM | 1 | Large switch-based lowering |
-| `0x6C9EB0` | ~13 KB | `ocg_builtin_name_lookup` | HIGH | 1 | Master Blackwell+ OCG name table |
-| `0x6C0D90` | ~19 KB | `atomic_reduction_lowering` | HIGH | 1 | Validates atomic ops, memory domains |
-| `0x6C1CF0` | ~16 KB | `memory_fence_order_lowering` | MEDIUM | 1 | Scope validation, memory ordering |
-| `0x6C3470` | ~20 KB | `intrinsic_type_validation` | MEDIUM | 1 | Note: typo "instrinsic" in binary |
-| `0x6BC560` | ~4.9 KB | `constant_bank_handler` | HIGH | 1 | Manages `c[%d]` bank references |
+| Address | Identity | Pages | Callers | Notes |
+|---------|----------|:-----:|--------:|-------|
+| `0x9253C0` | `instruction_operand_get` | 11 | many | Operand accessor on ORI instructions |
+| `0x7E6090` | `instruction_modifier_set` | 10 | many | IR modification helper |
+| `0x781F80` | `instruction_iterator` | 12 | many | Doubly-linked list traversal |
+| `0x7DF3A0` | `instruction_property_query` | 5 | many | Instruction flag/attribute checker |
+| `0x91BF30` | `register_type_query` | 8 | many | Register class/type inspection |
+| `0x9314F0` | `register_class_id_query` | 7 | 1,547 | Most-called non-trivial regalloc fn |
+| `0x931920` | `register_class_compat_checker` | 6 | 328 | Pair register class handling |
+| `0x934630` | `register_id_packer` | 9 | 856 | Packs reg#/class/type into 32-bit |
+| `0xB28E00` | `ir_node_type_query` | 5 | many | Node kind discrimination |
+| `0xB28E90` | `ir_node_field_accessor` | 6 | many | Generic field getter |
 
-The OCG builtin table at `0x6C9EB0` covers: `cp_async_commit`, `cp_async_wait`, `f32add`, `bf16x4`, `acqblk`, `preexit`, `red_async`, `mbarrier`, `tcmma`, `gdesc`, `breuse`, `tcshift`, `memclear`, `sparsify`, `spfactor2to4`.
-
----
-
-## 13. Instruction Encoding Core
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x6D9690` | ~94 KB | `master_instruction_encoder` | CERTAIN | 1 | Opcode switch: 61=FFMA, 416-468=sm100+ |
-| `0x6D4350` | ~30 KB | `secondary_instruction_encoder` | HIGH | 1 | Additional opcode ranges |
-| `0x6D7AF0` | ~19 KB | `instruction_format_builder` | MEDIUM | 1 | Non-standard encoding modes |
-
-The master encoder (94 KB) handles: case 61 = FFMA/FADD, cases 64/66 = integer ALU, cases 416-468 = sm100+ instructions (TCMMA, TMA, barriers). Instruction word prefix `0x60000000` marks the SASS control word. Uses `sub_91D160` for register-to-encoding mapping.
+> **Details**: [Instructions](ir/instructions.md), [Registers](ir/registers.md), [Data Structures](ir/data-structures.md), [CFG](ir/cfg.md)
 
 ---
 
-## 14. SASS Code Generation
+## Intrinsic Infrastructure
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x6E4110` | ~24 KB | `sass_codegen_main` | HIGH | 1 | EmitSASSForFunction, FNV-1a BB hash |
-| `0x6E8EB0` | ~64 KB | `encoder_state_init` | HIGH | 1 | SM-specific: sm100 (XOR 1/8), sm103 (XOR 0x10/0x40) |
-| `0x6E66D0` | ~37 KB | `encode_instruction_bytes` | MEDIUM | 1 | Per-instruction byte encoding |
-| `0x6E57B0` | ~8.9 KB | `opcode_table_entry_writer` | HIGH | many | Populates encoding descriptor table |
+| Address | Identity | Pages | Callers | Notes |
+|---------|----------|:-----:|--------:|-------|
+| `0x5D1660` | `intrinsic_table_register` (608 entries) | 7 | 1 | Master name-to-ID table |
+| `0x5D4190` | `intrinsic_dispatch_builder` | 13 | 1 | PTX opcode -> codegen handler mapping |
+| `0x5FF700` | `intrinsic_prototype_emitter` | 5 | 1 | 354 KB -- largest function in binary |
+| `0x5C7A50` | `wmma_mma_codegen` | 4 | 1 | 173 KB, all shapes/types/layouts |
+| `0x5C10A0` | `mma_codegen` (mma.sync) | 4 | 1 | 120 KB, m8n8k4 through m16n8k256 |
+| `0x5BBC30` | `tcgen05_mma_codegen` (Blackwell) | 5 | 1 | 90 KB, 5th-gen tensor core |
+| `0x70FA00` | `ocg_intrinsic_handler` | 8 | 1 | OCG-level intrinsic routing |
+| `0x6A97B0` | `intrinsic_lowering_main` | 4 | 1 | 26 KB, switch-based lowering |
+| `0x6C9EB0` | `ocg_builtin_name_lookup` | 5 | 1 | Blackwell+ OCG name table |
 
-SASS codegen iterates instruction linked list, classifying by type: -1=pseudo, 36=call, 4/137=special, 7/8/38/10/51=branch/jump. Uses FNV-1a hash (seed `0x811C9DC5`, prime 16777619) for branch target resolution.
-
----
-
-## 15. SASS Pipeline
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x6F52F0` | ~23 KB | `SASS_pipeline_run_stages` | HIGH | 1 | Mercury SASS compilation pipeline |
-| `0x6F8AC0` | ~14 KB | `compilation_driver_run_pipeline` | MEDIUM | 1 | Top-level pipeline driver |
+> **Details**: [Intrinsics Index](intrinsics/index.md), [Math Intrinsics](intrinsics/math.md), [Tensor Intrinsics](intrinsics/tensor.md), [Sync & Warp](intrinsics/sync-warp.md)
 
 ---
 
-## 16. Instruction Scheduling
+## Register Allocator
 
-### Scheduling Engine (lower address range)
+| Address | Identity | Pages | Callers | Notes |
+|---------|----------|:-----:|--------:|-------|
+| `0x9721C0` | `regalloc_entry` ("REGALLOC GUIDANCE") | 6 | 1 | Top-level allocator entry |
+| `0x957160` | `fatpoint_allocator_core` | 7 | 1 | Core fatpoint graph coloring |
+| `0x96D940` | `spill_guidance_engine` | 5 | 1 | Determines spill strategy |
+| `0x971A90` | `full_alloc_with_spill_retry` | 4 | 1 | "NOSPILL REGALLOC" path |
+| `0x9714E0` | `regalloc_failure_reporter` | 6 | 1 | "Register allocation failed..." |
+| `0x926A30` | `interference_graph_builder` | 9 | 7 | 22 KB, SSE bitvectors |
+| `0x92C240` | `liveness_bitvector_ops` | 5 | 87 | Set/clear/query with aliasing |
+| `0x917A60` | `opcode_to_regclass_mapping` | 4 | 221 | Massive switch |
+| `0x910840` | `ConvertMemoryToRegisterOrUniform` | 5 | 1 | Pass driver |
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x688DD0` | ~20 KB | `scheduler_engine` (main BB loop) | HIGH | 1 | ReduceReg / DynBatch mode selection |
-| `0x6820B0` | ~1.6 KB | `build_ready_list` | HIGH | 1 | Finds zero-dependency instructions |
-| `0x682490` | ~14 KB | `reg_pressure_delta_analyzer` | HIGH | 1 | 511+538 element stack arrays |
-| `0x6833F0` | ~10 KB | `pre_schedule_setup` | HIGH | 1 | 72-byte per-BB records, DAG init |
-| `0x68B9C0` | ~46 KB | `dependency_graph_builder` | MEDIUM | 1 | RAW/WAR/WAW hazard analysis |
-| `0x68A690` | ~31 KB | `alternate_scheduling_pass` | MEDIUM | 1 | Alternative heuristic strategy |
-
-### Scheduling Orchestrator (upper address range)
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x8D0640` | ~3.9 KB | `ScheduleInstructions` (top-level) | CERTAIN | 1 | String: "ScheduleInstructions" |
-| `0x8C9320` | ~10 KB | `scheduling_priority_function` | HIGH | 0 (vtable) | ~300 local vars, core heuristic |
-| `0x8CBAD0` | 581 B | `pre_scheduling_bb_scan` | HIGH | 1 | Enforces 4095-instruction BB limit |
-| `0x8CD160` | ~1.4 KB | `forward_scheduling_pass` | HIGH | 2 | Per-BB forward scheduling |
-| `0x8CD6E0` | 201 B | `reverse_scheduling_driver` | HIGH | 1 | Reverse post-order iteration |
-| `0x8CEE80` | ~1.8 KB | `register_budget_with_occupancy` | HIGH | 1 | Knob 740: pressure coeff (default 0.045) |
-| `0x8CF880` | ~3.5 KB | `pre_scheduling_analysis` | HIGH | 1 | Instruction scanning and classification |
-| `0x8BF890` | 224 B | `dynbatch_context_allocator` | HIGH | 2 | 184-byte context, resource vector |
-
-Three-phase scheduling: (1) ReduceReg -- minimize register pressure (mode=0x39), (2) Reverse scheduling -- main pass via `sub_8CD6E0`, (3) DynBatch -- iterative refinement (max 16 iterations via knob 805). Register budget: `regcount - (regcount >> 6)` = 98.4% utilization.
+> **Details**: [RegAlloc Overview](regalloc/overview.md), [RegAlloc Algorithm](regalloc/algorithm.md), [Spilling](regalloc/spilling.md), [ABI](regalloc/abi.md)
 
 ---
 
-## 17. SASS Mnemonic Table & HW Profiles
+## Instruction Scheduling
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x896D50` | ~21 KB | `sass_mnemonic_table_init` (ROT13) | CERTAIN | 1 | ~400+ SASS instruction names |
-| `0x89FBA0` | ~16 KB | `instruction_latency_init` | HIGH | 3 | Encoding/latency property tables |
+| Address | Identity | Pages | Callers | Notes |
+|---------|----------|:-----:|--------:|-------|
+| `0x8D0640` | `ScheduleInstructions` (top-level) | 7 | 1 | String: "ScheduleInstructions" |
+| `0x688DD0` | `scheduler_engine` (main BB loop) | 5 | 1 | ReduceReg / DynBatch selection |
+| `0x8C9320` | `scheduling_priority_function` | 4 | 0 | ~300 locals, core heuristic |
+| `0x68B9C0` | `dependency_graph_builder` | 4 | 1 | RAW/WAR/WAW hazard analysis |
+| `0x6820B0` | `build_ready_list` | 5 | 1 | Zero-dependency instructions |
+| `0x8CD6E0` | `reverse_scheduling_driver` | 4 | 1 | Reverse post-order iteration |
+| `0x8CEE80` | `register_budget_with_occupancy` | 4 | 1 | Pressure coeff default 0.045 |
+| `0x8E4400` | `hw_profile_table_init` | 6 | 3 | Encoding/latency property tables |
+| `0xA9CDE0` | `scheduling_metadata_builder` | 6 | 1 | Per-instruction sched metadata |
+| `0xA9CF90` | `scheduling_metadata_accessor` | 5 | many | Sched metadata field queries |
+| `0xAED3C0` | `scheduling_optimization_mega_pass` | 4 | 0 | 137 KB, ~560 locals, largest vtable pass |
 
-ROT13 decoding examples: `NPDOHYX`->ACQBULK, `SNQQ2`->FADD2, `SRAPR.T`->FENCE.G, `VZNQ.JVQR`->IMAD.WIDE, `WZC_VZZ`->JMP\_IMM, `YQTFGF`->LDGSTS, `ONE.FLAP.QRSRE_OYBPXVAT`->BAR.SYNC.DEFER\_BLOCKING.
-
----
-
-## 18. Peephole Optimization
-
-### IR-Level Peephole Passes
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x83EF00` | ~29 KB | `main_peephole_pass` (vtable Run) | HIGH | 0 (vtable) | Largest peephole, 392 callees |
-| `0x8380A0` | ~12 KB | `secondary_peephole_pass` | HIGH | 0 (vtable) | Instruction combining/lowering |
-| `0x849C60` | ~13 KB | `peephole_isel_refinement` | HIGH | 0 (vtable) | Instruction selection refinement |
-| `0x853380` | ~12 KB | `peephole_rewrite_phase` | MEDIUM | 1 | 182 callees, broad pattern matching |
-
-### SASS-Level Peephole Mega-Dispatchers
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x169B190` | 279,985 B | `isel_pattern_dispatch` (master) | CERTAIN | 1 | **Largest function in ptxas**: 65,999 insns |
-| `0x143C440` | ~233 KB | `sm120_peephole_dispatch` | HIGH | 1 | SM120 (RTX 50 / Pro), 373-case switch |
-| `0x198BCD0` | ~233 KB | `sm100_peephole_dispatch` | HIGH | 1 | SM100 (datacenter Blackwell), 1336 callees |
-
-`0x169B190` is the single largest function in the entire ptxas binary (280 KB, too large for Hex-Rays). It tries 762 pattern matcher functions against each input PTX instruction, selects the best-scoring match, and records which SASS expansion template to use. Each of the three mega-dispatchers follows the same architecture: primary switch on instruction opcode, inner calls to ~1000+ pattern matchers, instruction rewrite on match.
+> **Details**: [Scheduling Overview](scheduling/overview.md), [Scheduling Algorithm](scheduling/algorithm.md), [Latency Model](scheduling/latency-model.md), [Scoreboards](scheduling/scoreboards.md)
 
 ---
 
-## 19. Pattern Matchers & Template Expanders
+## Codegen & ISel
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x164E010` | ~2.8 KB | `pattern_matcher` (template 10) | HIGH | 1 | Example: 5 operands, score=18 |
-| `0x169A650` | ~4.7 KB | `pattern_matcher` (template 2) | HIGH | 1 | 7 source operands, score=23 |
-| `0x1656AC0` | ~8.4 KB | `pattern_matcher` (multi-field) | HIGH | 1 | 12+ modifier checks, 9 src operands |
-| `0x170E260` | ~1.6 KB | `ddiv_template_coordinator` | HIGH | 1 | DDIV Newton-Raphson coordinator |
-| `0x1705820` | ~7.5 KB | `ddiv_sub_expander` | HIGH | 1 | DDIV multi-instruction expansion |
-| `0x1701140` | ~8.7 KB | `template_register_builder` | HIGH | 1 | Virtual register array allocation |
-| `0x1718D60` | ~790 B | `drcp_dsqrt_coordinator` | HIGH | 1 | DRCP/DSQRT sequence wrapper |
-| `0x17276C0` | ~1.0 KB | `drsqrt_multi_precision_coord` | HIGH | 1 | DRSQRT multi-precision expansion |
+| Address | Identity | Pages | Callers | Notes |
+|---------|----------|:-----:|--------:|-------|
+| `0x169B190` | `isel_pattern_dispatch` (master) | 5 | 1 | 280 KB, 65,999 insns -- largest function |
+| `0x143C440` | `sm120_peephole_dispatch` | 4 | 1 | SM120 (RTX 50), 373-case switch |
+| `0x198BCD0` | `sm100_peephole_dispatch` | 4 | 1 | SM100 (Blackwell), 1336 callees |
+| `0x83EF00` | `main_peephole_pass` | 6 | 0 | 29 KB, 392 callees |
+| `0x6D9690` | `master_instruction_encoder` | 7 | 1 | 94 KB, opcode switch |
+| `0x6E4110` | `sass_codegen_main` | 4 | 1 | EmitSASSForFunction, FNV-1a BB hash |
+| `0x6F52F0` | `SASS_pipeline_run_stages` | 5 | 1 | Mercury SASS compilation pipeline |
+| `0x9ED2D0` | `MercConverter_entry` | 6 | 1 | ORI to Mercury IR conversion |
+| `0x9F1A90` | `MercConverter_builder` | 6 | 1 | Mercury instruction construction |
 
-762 pattern matcher functions share the same signature: `char match(ctx, instr, *template_id, *priority)`. They validate opcode fields, operand counts, register types, and immediate ranges. On match, they set a template ID and priority score. Template expanders implement Newton-Raphson sequences for DDIV, DRCP, DSQRT, DRSQRT.
-
----
-
-## 20. Bitfield Packing & Encoding Helpers
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x7B9B80` | 216 B | `bitfield_insert(insn, off, wid, val)` | CERTAIN | **18,347** | **Most-called function by caller count** |
-| `0x7B9D30` | 38 B | `clear_const_buffer_slots` | HIGH | 2,408 | memset(a1+468, 0xFF, 64) |
-| `0x7B9D60` | 408 B | `encode_reuse_flags_predicate` | HIGH | 2,408 | 1-bit reuse + 5-bit predicate |
-| `0x7BC030` | 814 B | `encode_register_operand` | HIGH | 6,147 | 1-bit presence + 4-bit type + 10-bit reg |
-| `0x7BC5C0` | 416 B | `encode_immediate_const_operand` | HIGH | 1,449 | Constant buffer index or immediate |
-| `0x7BCF00` | 856 B | `encode_predicate_register` | HIGH | 1,657 | PT=14, 2-bit type + 3-bit condition |
-
-`bitfield_insert` operates on a 1280-bit (160-byte) instruction word at `a1+544`. It inserts `value` at `bit_offset` for `bit_width` bits using 64-bit chunk iteration. Called from every SASS encoder body.
-
-### Tiny Field Encoders
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x10B6180` | 21 B | `1_bit_boolean_encoder` | HIGH | 8,091 | E.g., .S/.U, .STRONG |
-| `0x10B6160` | 21 B | `1_bit_encoder` (variant) | HIGH | 2,205 | |
-| `0x10B6140` | 21 B | `1_bit_encoder` (variant 2) | HIGH | 1,645 | |
-| `0x10B6220` | 22 B | `3_bit_field_encoder` | HIGH | 363 | |
-| `0x10B2D90` | 27 B | `2_bit_field_encoder` | MEDIUM | 538 | Data type, addressing mode |
-| `0x10B5580` | 25 B | `5_bit_field_encoder` | MEDIUM | 475 | Shift amount, immediate |
-| `0x10B4650` | 25 B | `4_bit_field_encoder` | MEDIUM | 330 | |
+> **Details**: [ISel](codegen/isel.md), [Encoding](codegen/encoding.md), [Peephole](codegen/peephole.md), [Mercury](codegen/mercury.md), [Templates](codegen/templates.md)
 
 ---
 
-## 21. Knobs System
+## Bitfield Encoding
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x79B240` | 518 B | `GetKnobIndex` | CERTAIN | 2 | ROT13 name lookup, case-insensitive |
-| `0x79D070` | 2,312 B | `ReadKnobsFile` | CERTAIN | 1 | Parses `[knobs]` section from file |
-| `0x79F540` | 3,640 B | `ParseKnobValue` | CERTAIN | 1 | 12-type switch: bool/int/float/string/... |
-| `0x7A0C10` | 1,745 B | `KnobsInit` | HIGH | 4 | State constructor, 72 bytes per knob |
-| `0x79D990` | 7,073 B | `ProcessKnobs` (top-level) | HIGH | 1 | File + pragma + numbered config |
-| `0x79B530` | 3,296 B | `ProcessKnobLine` | HIGH | 2 | `[WHEN condition] knobname = value` |
-| `0x798B60` | 1,776 B | `NamedPhases_parser` | CERTAIN | 2 | PTXAS_DISABLE env var parsing |
-| `0x799250` | 56 B | `IsPassDisabled` | HIGH | 4 | Checks knob index 185 |
-| `0x7992A0` | 894 B | `IsPassDisabledForFunction` | HIGH | 1 | Per-function overrides via FNV-1a hash |
+| Address | Identity | Pages | Callers | Notes |
+|---------|----------|:-----:|--------:|-------|
+| `0x7B9B80` | `bitfield_insert(insn, off, wid, val)` | 9 | **18,347** | Most-called by caller count |
+| `0x7BC030` | `encode_register_operand` | 4 | 6,147 | 1-bit + 4-bit type + 10-bit reg |
+| `0x7B9D60` | `encode_reuse_flags_predicate` | 4 | 2,408 | 1-bit reuse + 5-bit predicate |
+| `0x7BC5C0` | `encode_immediate_const_operand` | 4 | 1,449 | Const buffer index or immediate |
+| `0x7BCF00` | `encode_predicate_register` | 4 | 1,657 | PT=14, 2-bit type + 3-bit condition |
+| `0x10B6180` | `1_bit_boolean_encoder` | 3 | 8,091 | .S/.U, .STRONG, etc. |
 
-Knob values are stored in 72-byte slots at `(a2[9] + 72*knob_index)`. ParseKnobValue handles 12 types: (1) boolean, (2) integer, (3) integer+extra, (4) integer range, (5) integer list, (6) float, (7) double, (8/11) string, (9) when-string, (10) value-pair list, (12) opcode list.
+> **Details**: [Encoding](codegen/encoding.md), [SASS Printing](codegen/sass-printing.md)
 
 ---
 
-## 22. Register Allocator
+## ELF / CUBIN Output
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x9721C0` | varies | `regalloc_entry` ("REGALLOC GUIDANCE") | CERTAIN | 1 | Top-level allocator entry point |
-| `0x957160` | varies | `fatpoint_allocator_core` | HIGH | 1 | Core fatpoint graph coloring |
-| `0x96D940` | varies | `spill_guidance_engine` | HIGH | 1 | Determines spill strategy |
-| `0x971A90` | varies | `full_alloc_with_spill_retry` | HIGH | 1 | "NOSPILL REGALLOC" path |
-| `0x9714E0` | varies | `regalloc_failure_reporter` | CERTAIN | 1 | "Register allocation failed..." |
-| `0x9539C0` | varies | `smem_spilling_handler` | HIGH | 1 | "Smem spilling should not be enabled..." |
-| `0x926A30` | 22,116 B | `interference_graph_builder` | HIGH | 7 | 155 KB decompiled, SSE bitvectors |
-| `0x92C240` | 8,033 B | `liveness_bitvector_ops` | HIGH | 87 | Set/clear/query with register aliasing |
-| `0x9314F0` | 403 B | `register_class_id_query` | HIGH | 1,547 | Most-called non-trivial in range |
-| `0x931920` | 2,007 B | `register_class_compat_checker` | HIGH | 328 | Pair register class handling |
-| `0x934630` | 1,213 B | `register_id_packer` | HIGH | 856 | Packs reg#/class/type into 32-bit |
-| `0x917A60` | 6,832 B | `opcode_to_regclass_mapping` | HIGH | 221 | Massive switch, pure computation |
-| `0x925510` | 341 B | `instruction_reorder` | HIGH | 13 | Doubly-linked list move-before |
-| `0x910840` | ~2.1 KB | `ConvertMemoryToRegisterOrUniform` | CERTAIN | 1 | Pass driver |
-| `0x8FFDE0` | 573 B | `HoistInvariants` (pass driver) | CERTAIN | 4 | Checks knob, calls sub_A112C0 |
+| Address | Identity | Pages | Callers | Notes |
+|---------|----------|:-----:|--------:|-------|
+| `0x612DE0` | `section_attr_builder` | 11 | 1 | 76 KB, ELF section/attribute config |
+| `0x1C9F280` | `master_elf_emitter` | 9 | 1 | Complete CUBIN assembly |
+| `0x1CB53A0` | `elf_world_init` | 7 | 1 | 672-byte ELFW context |
+| `0x1CB68D0` | `symbol_table_builder` | 5 | 1 | .symtab from internal symbols |
+| `0x1CABD60` | `master_section_allocator` | 5 | 1 | Shared/const/local memory |
+| `0x1CB3570` | `add_function_section` | 5 | 44 | Creates .text.FUNCNAME + .rela |
+| `0x1CD48C0` | `relocation_processor` | 5 | 1 | Relocation section emission |
+| `0x1C9B110` | `mercury_capsule_builder` | 4 | 1 | Creates embedded .nv.merc ELF |
 
-The fatpoint-based allocator uses 2052-byte bitmask arrays (512 x 32-bit words = 16,384 bits) to track live registers. The interference graph builder (`0x926A30`) is the largest function in the allocator range at 22 KB binary / 155 KB decompiled.
+> **Details**: [ELF Emitter](output/elf-emitter.md), [Sections](output/sections.md), [Relocations](output/relocations.md), [Debug Info](output/debug-info.md), [Capsule Mercury](codegen/capmerc.md)
 
 ---
 
-## 23. Post-Regalloc & Named Phases
+## Knobs System
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x9F4040` | ~49 KB | `NamedPhases_parse_and_build` | CERTAIN | 1 | strcmp: "shuffle", "OriCopyProp", etc. |
-| `0xA3A7E0` | varies | `statistics_reporter` | HIGH | 1 | "# %d instructions, %d R-regs" |
-| `0xA46CE0` | varies | `scheduling_guidance_reporter` | HIGH | 1 | "SCHEDULING GUIDANCE:" |
-| `0xA55D80` | varies | `regalloc_verification` | HIGH | 1 | "REMATERIALIZATION PROBLEM..." |
-| `0xAED3C0` | ~137 KB | `scheduling_optimization_mega_pass` | HIGH | 0 (vtable) | ~560 local vars, largest vtable pass |
+| Address | Identity | Pages | Callers | Notes |
+|---------|----------|:-----:|--------:|-------|
+| `0x79B240` | `GetKnobIndex` | 6 | 2 | ROT13 name lookup, case-insensitive |
+| `0x79D070` | `ReadKnobsFile` | 5 | 1 | Parses `[knobs]` section from file |
+| `0x79F540` | `ParseKnobValue` | 4 | 1 | 12-type switch: bool/int/float/string/... |
+| `0x79D990` | `ProcessKnobs` (top-level) | 4 | 1 | File + pragma + numbered config |
+| `0xA0F020` | `knob_conditional_evaluator` | 5 | many | `[WHEN condition]` handler |
 
----
-
-## 24. Phase Manager
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0xC60D30` | 3,554 B | `phase_factory` (159-case switch) | CERTAIN | 1 | Allocates phase objects |
-| `0xC62720` | 4,734 B | `PhaseManager_ctor` | CERTAIN | 2 | Sets up 159-entry phase table |
-| `0xC61B20` | 1,753 B | `PhaseManager_dtor` | HIGH | 2 | Tears down NvOptRecipe + phases |
-| `0xC64F70` | 1,455 B | `phase_dispatch_loop` | CERTAIN | 2 | Executes phases, reports timing |
-| `0xC64310` | 3,168 B | `per_phase_timing_reporter` | HIGH | 1 | "[Total N KB] [Freeable N KB]" |
-| `0xC62200` | 888 B | `pool_consumption_reporter` | HIGH | 1 | "[Pool Consumption = N]" |
-| `0xC641D0` | 305 B | `phase_name_to_index_lookup` | HIGH | 3 | Binary search, case-insensitive |
-| `0xC639A0` | 1,535 B | `case_insensitive_quicksort` | HIGH | 1 | Iterative, median-of-three pivot |
-
-The phase factory allocates one of 159 phase objects, each a 16-byte struct with vtable: `+0` execute, `+8` isNoOp, `+16` getName. The dispatch loop prints "All Phases Summary" at the end.
+> **Details**: [Knobs](config/knobs.md), [Opt Levels](config/opt-levels.md)
 
 ---
 
-## 25. Instruction Encoder Table Bodies
+## Target-Specific Code
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0xD27000`+ | ~592 funcs | `sass_encoder_bodies` | HIGH | 0 (vtable) | Avg 1,473 B each |
+| Address | Identity | Pages | Callers | Notes |
+|---------|----------|:-----:|--------:|-------|
+| `0x6765E0` | `target_profile_selector` | 7 | 1 | SM-dependent profile dispatch |
+| `0x607DB0` | `target_feature_query` | 7 | many | SM feature capability checks |
+| `0x896D50` | `sass_mnemonic_table_init` (ROT13) | 4 | 1 | ~400+ SASS instruction names |
+| `0x89FBA0` | `instruction_latency_init` | 4 | 3 | Encoding/latency property tables |
 
-592 nearly-identical functions encoding SASS instruction variants. 16 format groups (10 x 128-bit, 5 x 64-bit). Largest group: Format 3 (`xmmword_23F1DF8`) = 145 encoders. Each encoder: set opcode bitfields, load format descriptor from rodata, encode operands into 1280-bit instruction word.
-
----
-
-## 26. Bitvector Infrastructure
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0xBDBA60` | varies | `bitvector_allocate` | HIGH | many | (bits+31)>>5 word count |
-| `0xBDCDE0` | varies | `bitvector_or_assign` (SSE2) | HIGH | many | `_mm_or_si128` on 128-bit chunks |
-| `0xBDCF40` | varies | `bitvector_or_if_changed` | HIGH | many | Returns bool for fixed-point iteration |
-| `0xBDC5F0` | varies | `bitvector_and_assign` (SSE2) | HIGH | many | `_mm_and_si128` |
-| `0xBDC790` | varies | `bitvector_and_if_changed` | HIGH | many | Backward dataflow fixed-point |
-| `0xBDDAA0` | varies | `bitvector_xor_assign` (SSE2) | HIGH | many | `_mm_xor_si128` |
-
-SIMD-accelerated bitvector library. Layout: `{ data_ptr, word_count, capacity, bit_count }`. Manual SSE alignment via `-(ptr>>2) & 3`. The `_if_changed` variants scan for `(~dst & src) != 0` before applying.
+> **Details**: [Targets Index](targets/index.md), [Turing-Ampere](targets/turing-ampere.md), [Ada-Hopper](targets/ada-hopper.md), [Blackwell](targets/blackwell.md), [tcgen05](targets/tcgen05.md)
 
 ---
 
-## 27. DWARF Debug Info
+## Subsystem Routing Table
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x45C3A0` | 9,041 B | `dwarf_line_info_generator` | HIGH | 1 | "$LDWend", function debug map |
-| `0x45A870` | 5,293 B | `dwarf_leb128_encoder` | HIGH | 1 | File number, prologue, line advance |
-| `0x866BB0` | 3,273 B | `debug_line_section_generator` | HIGH | 2 | .debug_line + .nv_debug_line_sass |
-| `0x867880` | varies | `debug_info_entry` (top-level) | HIGH | 1 | Calls line table generator twice |
+To find a specific function, locate it by address range or subsystem topic in this table. Each page contains a detailed Function Map section with complete listings.
 
----
+### By Subsystem Topic
 
-## 28. ELF / CUBIN Output
+| Subsystem | Primary Pages | Functions |
+|-----------|---------------|----------:|
+| Memory allocator, pools | [memory-pools.md](infra/memory-pools.md) | 30 |
+| Hash maps, bitvectors, sets | [hash-bitvector.md](infra/hash-bitvector.md) | 51 |
+| Threading, TLS, jobserver | [threading.md](infra/threading.md) | 41 |
+| CLI parsing, option handling | [cli-options.md](config/cli-options.md) | 17 |
+| Tuning knobs (2000+ knobs) | [knobs.md](config/knobs.md) | 56 |
+| Optimization levels | [opt-levels.md](config/opt-levels.md) | 14 |
+| DumpIR debug output | [dumpir.md](config/dumpir.md) | 14 |
+| Compilation pipeline | [overview.md](pipeline/overview.md), [entry.md](pipeline/entry.md) | 56+25 |
+| PTX lexer & parser | [ptx-parser.md](pipeline/ptx-parser.md) | 75 |
+| PTX directives | [ptx-directives.md](pipeline/ptx-directives.md) | 41 |
+| PTX-to-ORI translation | [ptx-to-ori.md](pipeline/ptx-to-ori.md) | 41 |
+| Optimizer pipeline | [optimizer.md](pipeline/optimizer.md) | 28 |
+| ORI instruction IR | [instructions.md](ir/instructions.md) | 80 |
+| CFG construction | [cfg.md](ir/cfg.md) | 18 |
+| Register representation | [registers.md](ir/registers.md) | 40 |
+| IR data structures | [data-structures.md](ir/data-structures.md) | 74 |
+| Phase manager (159 phases) | [phase-manager.md](passes/phase-manager.md) | 26 |
+| Copy propagation, CSE, GVN | [copy-prop-cse.md](passes/copy-prop-cse.md) | 65 |
+| General optimization passes | [general-optimize.md](passes/general-optimize.md) | 71 |
+| Loop optimization (unroll, LICM, SWP) | [loop-passes.md](passes/loop-passes.md) | 92 |
+| Branch/switch optimization | [branch-switch.md](passes/branch-switch.md) | 24 |
+| Strength reduction | [strength-reduction.md](passes/strength-reduction.md) | 25 |
+| Predication | [predication.md](passes/predication.md) | 28 |
+| Rematerialization | [rematerialization.md](passes/rematerialization.md) | 55 |
+| Liveness analysis | [liveness.md](passes/liveness.md) | 42 |
+| Sync barriers | [sync-barriers.md](passes/sync-barriers.md) | 66 |
+| Late legalization | [late-legalization.md](passes/late-legalization.md) | 59 |
+| Hot/cold splitting | [hot-cold.md](passes/hot-cold.md) | 10 |
+| GMMA pipelining | [gmma-pipeline.md](passes/gmma-pipeline.md) | 47 |
+| Uniform registers | [uniform-regs.md](passes/uniform-regs.md) | 22 |
+| Register allocator core | [algorithm.md](regalloc/algorithm.md) | 50 |
+| Spilling | [spilling.md](regalloc/spilling.md) | 54 |
+| ABI handling | [abi.md](regalloc/abi.md) | 87 |
+| Scheduling overview | [overview.md](scheduling/overview.md) | 112 |
+| Scheduling algorithm | [algorithm.md](scheduling/algorithm.md) | 121 |
+| Latency model & HW profiles | [latency-model.md](scheduling/latency-model.md) | 78 |
+| Scoreboards & barriers | [scoreboards.md](scheduling/scoreboards.md) | 56 |
+| ISel pattern matching | [isel.md](codegen/isel.md) | 182 |
+| SASS encoding | [encoding.md](codegen/encoding.md) | 92 |
+| Peephole optimization | [peephole.md](codegen/peephole.md) | 67 |
+| Mercury IR conversion | [mercury.md](codegen/mercury.md) | 79 |
+| SASS templates | [templates.md](codegen/templates.md) | 46 |
+| SASS printing / renderer | [sass-printing.md](codegen/sass-printing.md) | 96 |
+| Capsule Mercury | [capmerc.md](codegen/capmerc.md) | 20 |
+| Intrinsic infrastructure | [index.md](intrinsics/index.md) | 159 |
+| Math intrinsics | [math.md](intrinsics/math.md) | 42 |
+| Tensor core intrinsics | [tensor.md](intrinsics/tensor.md) | 45 |
+| Sync & warp intrinsics | [sync-warp.md](intrinsics/sync-warp.md) | 65 |
+| SM targets & features | [index.md](targets/index.md) | 70 |
+| ELF emitter | [elf-emitter.md](output/elf-emitter.md) | 29 |
+| ELF sections | [sections.md](output/sections.md) | 33 |
+| Debug info (DWARF) | [debug-info.md](output/debug-info.md) | 33 |
+| Relocations | [relocations.md](output/relocations.md) | 19 |
 
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x1CB53A0` | 3,480 B | `elf_world_init` | HIGH | 1 | 672-byte ELFW context, standard sections |
-| `0x1C9F280` | 15,263 B | `master_elf_emitter` (97 KB decomp) | HIGH | 1 | Complete CUBIN assembly |
-| `0x1C9DC60` | 5,663 B | `section_layout_calculator` | HIGH | 1 | Section offsets/sizes/alignment |
-| `0x1CB68D0` | 9,578 B | `symbol_table_builder` | HIGH | 1 | .symtab from internal symbols |
-| `0x1CB3570` | 1,963 B | `add_function_section` | HIGH | 44 | Creates .text.FUNCNAME + .rela |
-| `0x1CB91C0` | 2,668 B | `elf_structure_dumper` | HIGH | 1 | Debug print: header, sections, symbols |
-| `0x1CABD60` | 11,856 B | `master_section_allocator` (67 KB) | HIGH | 1 | Shared/const/local memory allocation |
-| `0x1CA92F0` | 2,804 B | `shared_memory_graph_allocator` | HIGH | 1 | Interference graph for shared objects |
+### By Address Range
 
-Standard sections created: `.shstrtab`, `.strtab`, `.symtab`, `.symtab_shndx`, `.note.nv.tkinfo`, `.note.nv.cuinfo`, `.nv.uft.entry`. Magic constant `0x70000064` = `SHT_CUDA_INFO`. The master section allocator handles global shared, per-entry shared, extern shared, reserved shared (`.nv.reservedSmem.begin/cap/offset0`), local memory, and OCG constant bank merging.
+Functions in the binary are clustered by subsystem. This table maps address ranges to the pages that document them.
 
----
-
-## 29. Capsule Mercury
-
-| Address | Size | Name / Identity | Confidence | Callers | Notes |
-|---------|------|----------------|------------|---------|-------|
-| `0x1C9B110` | 4,585 B | `mercury_capsule_builder` | HIGH | 1 | Creates embedded .nv.merc ELF |
-| `0x1C9C300` | 3,816 B | `capmerc_section_processor` | HIGH | 1 | .nv.capmerc, .merc, KNOBS data |
-| `0x1CA2E40` | 3,152 B | `mercury_section_cloner` | HIGH | 1 | Duplicates sections into .nv.merc.* |
-| `0x1CA3A90` | 6,289 B | `section_merger_emitter` | HIGH | 1 | Merge/combine pass for merc sections |
+| Address Range | Primary Subsystem | Key Pages |
+|---------------|-------------------|-----------|
+| `0x400000`-`0x424000` | Entry, static init, main | [entry.md](pipeline/entry.md), [binary-layout.md](binary-layout.md) |
+| `0x424000`-`0x42E000` | Memory pools, hash maps, lists | [memory-pools.md](infra/memory-pools.md), [hash-bitvector.md](infra/hash-bitvector.md) |
+| `0x42E000`-`0x446000` | Diagnostics, CLI parsing | [cli-options.md](config/cli-options.md), [entry.md](pipeline/entry.md) |
+| `0x446000`-`0x452000` | Compilation driver | [overview.md](pipeline/overview.md), [entry.md](pipeline/entry.md) |
+| `0x452000`-`0x4D5000` | PTX parser & validator | [ptx-parser.md](pipeline/ptx-parser.md), [ptx-directives.md](pipeline/ptx-directives.md) |
+| `0x4D5000`-`0x5AA000` | PTX-to-ORI, early IR | [ptx-to-ori.md](pipeline/ptx-to-ori.md), [instructions.md](ir/instructions.md) |
+| `0x5AA000`-`0x612000` | Intrinsic infrastructure | [index.md](intrinsics/index.md), [math.md](intrinsics/math.md), [tensor.md](intrinsics/tensor.md) |
+| `0x612000`-`0x67F000` | Section builder, target config | [sections.md](output/sections.md), [index.md](targets/index.md) |
+| `0x67F000`-`0x6E4000` | Scheduling engine, OCG lowering, encoding | [overview.md](scheduling/overview.md), [encoding.md](codegen/encoding.md) |
+| `0x6E4000`-`0x754000` | SASS codegen, SASS pipeline | [mercury.md](codegen/mercury.md), [overview.md](pipeline/overview.md) |
+| `0x754000`-`0x7C0000` | Liveness, knobs, bitfield encoding | [liveness.md](passes/liveness.md), [knobs.md](config/knobs.md), [encoding.md](codegen/encoding.md) |
+| `0x7C0000`-`0x8FE000` | Peephole, SASS mnemonics, scheduling upper | [peephole.md](codegen/peephole.md), [algorithm.md](scheduling/algorithm.md) |
+| `0x8FE000`-`0x9D3000` | Register allocator | [overview.md](regalloc/overview.md), [algorithm.md](regalloc/algorithm.md), [abi.md](regalloc/abi.md) |
+| `0x9D3000`-`0xAA8000` | Post-regalloc, named phases, remat | [rematerialization.md](passes/rematerialization.md), [phase-manager.md](passes/phase-manager.md) |
+| `0xAA8000`-`0xC52000` | Mega-passes, sync barriers, dataflow | [sync-barriers.md](passes/sync-barriers.md), [general-optimize.md](passes/general-optimize.md) |
+| `0xC52000`-`0xD27000` | Phase manager, phase factory | [phase-manager.md](passes/phase-manager.md), [optimizer.md](pipeline/optimizer.md) |
+| `0xD27000`-`0x10B7000` | 592 SASS encoder bodies | [encoding.md](codegen/encoding.md), [isel.md](codegen/isel.md) |
+| `0x10B7000`-`0x1225000` | Field encoders, ISel helpers | [encoding.md](codegen/encoding.md), [isel.md](codegen/isel.md) |
+| `0x1225000`-`0x13CF000` | Bitvector, ISel coordinators | [hash-bitvector.md](infra/hash-bitvector.md), [isel.md](codegen/isel.md) |
+| `0x13CF000`-`0x17F8000` | SM-specific ISel, pattern matchers, templates | [isel.md](codegen/isel.md), [templates.md](codegen/templates.md) |
+| `0x17F8000`-`0x1C21000` | SASS printing, peephole mega-dispatchers | [sass-printing.md](codegen/sass-printing.md), [peephole.md](codegen/peephole.md) |
+| `0x1C21000`-`0x1CE3000` | ELF emitter, capsule mercury, relocations | [elf-emitter.md](output/elf-emitter.md), [capmerc.md](codegen/capmerc.md) |
 
 ---
 
@@ -463,7 +354,7 @@ Standard sections created: `.shstrtab`, `.strtab`, `.symtab`, `.symtab_shndx`, `
 ### Top 10 Most-Called Functions
 
 | Rank | Address | Identity | Callers |
-|------|---------|----------|---------|
+|------|---------|----------|--------:|
 | 1 | `0x7B9B80` | bitfield_insert | 18,347 |
 | 2 | `0x10B6180` | 1-bit boolean encoder | 8,091 |
 | 3 | `0x7BC030` | encode_register_operand | 6,147 |
@@ -478,17 +369,36 @@ Standard sections created: `.shstrtab`, `.strtab`, `.symtab`, `.symtab_shndx`, `
 ### Top 5 Largest Functions
 
 | Rank | Address | Identity | Size |
-|------|---------|----------|------|
+|------|---------|----------|-----:|
 | 1 | `0x5FF700` | intrinsic_prototype_emitter | 354 KB |
 | 2 | `0x169B190` | isel_pattern_dispatch | 280 KB |
 | 3 | `0x198BCD0` | sm100_peephole_dispatch | 233 KB |
 | 4 | `0x143C440` | sm120_peephole_dispatch | 233 KB |
 | 5 | `0x5C7A50` | wmma_mma_codegen | 173 KB |
 
-### Confidence Distribution
+### Top 10 Most Cross-Referenced (by wiki page count)
 
-| Level | Count | Description |
-|-------|-------|-------------|
-| CERTAIN | ~25 | Named in symbols or strings |
-| HIGH | ~140 | Strong evidence, >90% confidence |
-| MEDIUM | ~30 | Structural analysis, 70-90% |
+| Rank | Address | Identity | Pages |
+|------|---------|----------|------:|
+| 1 | `0x424070` | pool_alloc | 19 |
+| 2 | `0x7DDB50` | phase_run_dispatch | 14 |
+| 3 | `0x446240` | real_main | 13 |
+| 3 | `0x5D4190` | intrinsic_dispatch_builder | 13 |
+| 5 | `0x781F80` | instruction_iterator | 12 |
+| 5 | `0xC60D30` | phase_factory | 12 |
+| 7 | `0x9253C0` | instruction_operand_get | 11 |
+| 7 | `0x612DE0` | section_attr_builder | 11 |
+| 7 | `0x426150` | hashmap_put | 11 |
+| 7 | `0x426D60` | hashmap_get | 11 |
+
+### Documentation Coverage
+
+| Metric | Count |
+|--------|------:|
+| Total unique functions documented | 2,063 |
+| Wiki pages with function maps | 70 |
+| Functions in 5+ pages (high cross-reference) | 89 |
+| Functions in 1 page only (subsystem-internal) | 1,324 |
+| Confidence CERTAIN | ~40 |
+| Confidence HIGH | ~1,400 |
+| Confidence MEDIUM | ~620 |
