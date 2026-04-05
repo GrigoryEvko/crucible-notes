@@ -174,21 +174,308 @@ This indirection means the actual optimization behavior for phases 46 and 65 is 
 
 The sub-passes that run inside a GeneralOptimize iteration are not named individually in the binary -- they are inline code within the per-block processing functions. Based on the decompiled logic, the following sub-transformations are identifiable:
 
-### Copy Propagation
+### Copy Propagation Algorithm
 
 **String evidence:** `"OriCopyProp"` at `0x21E6CE1` appears in the phase name table at index 22, confirming that copy propagation is a recognized sub-pass within the system.
 
-The copy propagation logic in `sub_908EB0` (phase 29) walks the instruction linked list of each basic block. For each instruction:
+Two distinct copy propagation algorithms exist across the GeneralOptimize variants:
 
-1. Reads the opcode field at `instr+72` (masked with `& 0xCF00`) against known move/copy opcodes
-2. **Opcode 97** (register-to-register move): follows the def-use chain via the lookup at `*(ctx+296) + 8 * *(int32_t*)(instr+84) & 0xFFFFFF`. When a single-use move chain is detected, the destination is replaced with the source throughout all uses. The change flag `v10` is set to track propagation, and subsequent instructions check liveness via `sub_7DF3A0`
-3. **Opcode 18** (predicated copy): calls `sub_8F2E50` to check if the copy is eligible for propagation. When eligible and `v21` is true (an additional gate from the vtable dispatch at `*(comp_unit+1312)`), the operand at position `instr + 8*(operand_count + ~((opcode>>11)&2)) + 84` is marked with `0x400` (propagated under predicate)
-4. **Opcode 124** (conditional select / phi-like move): also dispatches through `sub_8F2E50`. When the operand type field (`& 0xF`) is 1 (integer constant), calls `sub_8F29C0` for predicate analysis. When the type is not 1 but `sub_8F29C0` succeeds and certain flag bits (`& 0x1B`) are clear, falls through to direct propagation. Otherwise invokes the two-pass predicate simplifier `sub_908A60` with direction flags 1 (forward) and 0 (backward)
+#### Algorithm A: Chain-Matching Copy Propagation (Phase 13 -- `sub_753600`)
 
-The propagation sets flags on instruction operand fields:
-- Bit 8 (`0x100`): marks operand as propagated
-- Bit 9 (`0x200`): marks operand for deferred cleanup. The combined mask `0xFFFFFDF0 | 0x201` clears the old type bits and sets both "propagated" and "immediate-eligible"
-- Bit 10 (`0x400`): marks as "propagated under predicate"
+Phase 13's copy propagation operates by matching structurally equivalent instruction pairs connected through single-use def-use chains. The 253-line function `sub_753600` uses a **state structure** (8 `int64_t` fields, allocated on the stack at `rbp-0x88` in `sub_7917F0`) that accumulates matched chain endpoints:
+
+```
+sub_753600 State Layout (8 qwords)
+  state[0] = ctx           -- Code Object pointer (set by caller)
+  state[1] = match_start   -- first matched instruction in chain
+  state[2] = match_end     -- last matched instruction in chain
+  state[3] = def_entry_a   -- first definition chain entry (from sub_753520)
+  state[4] = reg_entry     -- register/BB entry for replacement target
+  state[5] = def_entry_b   -- extended chain entry (second level)
+  state[6] = reg_entry_b   -- extended register/BB entry
+```
+
+The algorithm proceeds in eight steps:
+
+```
+// sub_753600 -- Phase 13 copy propagation (decompiled pseudocode)
+function copy_prop_early(state, basic_block):
+    ctx = state[0]
+    first_instr = *(basic_block[1])              // head of instruction list
+
+    // Step 1: Entry gate -- only process blocks starting with EXIT/RET
+    if first_instr.opcode != 95: return false    // opcode 95 = EXIT/RET
+    if first_instr.operand_count != 5: return false
+    format = first_instr[25] & 7
+    if format != 3 and format != 4: return false // must be imm or reg source
+
+    // Step 2: Single-use chain check
+    use_link = basic_block[17]                   // use-def chain link
+    if use_link == NULL: return false
+    if *use_link == NULL: return false
+    if **use_link != NULL: return false           // must be SINGLE consumer
+
+    // Step 3: Follow to defining instruction via opcode-97 anchor
+    next_instr = *(basic_block[1] + 8)           // linked list next
+    if next_instr.opcode != 97: return false     // must be def anchor
+    reg_entry = *(ctx+296)[ next_instr.bb_index ] // BB/def lookup
+
+    // Step 4: Walk def-use chain to find structural match
+    chain_a = follow_chain_filtered(state, reg_entry)  // sub_753520
+    if chain_a == NULL: return false
+    state[3] = chain_a
+
+    // Step 5: Walk reverse chain from chain_a
+    chain_b = follow_reverse_chain(state, chain_a)     // sub_753570
+    if chain_b == NULL: return false
+    state[1] = chain_b
+    state[2] = chain_b
+
+    // Step 6: Structural equivalence check
+    endpoint_instr = *(chain_b[1])
+    if endpoint_instr.opcode != 95: return false
+    if !instruction_equivalent(first_instr, endpoint_instr): return false
+                                                       // sub_7E7380
+
+    // Step 7: Operand-level matching
+    if operand formats differ (format-4 parity mismatch): return false
+    if reg_indices match AND metadata matches AND modifiers match:
+        goto apply   // direct match
+
+    // Step 7b: Deep sub-DAG equivalence (for non-trivial patterns)
+    if both sources are register type (bits 28-30 == 1)
+       and both have use_count <= 1
+       and both defining instructions have opcode 119
+       and no aliasing hazards (sub_748570)
+       and sub_1245740(ctx, def_a, def_b, 2):   // depth-2 DAG compare
+        goto apply
+
+    return false
+
+apply:
+    // Step 8: Record replacement target
+    state[4] = register_entry_for_replacement
+    // Optionally follow one more chain level for state[5]/state[6]
+    return true   // caller invokes sub_753B50 to rewrite
+```
+
+The **chain walker** `sub_753480` (43 lines) is the core of this algorithm. It follows single-use, single-def chains within a basic block:
+
+```
+// sub_753480 -- def-use chain walker (at 0x753480)
+function follow_chain(ctx, entry, &skip_flag):
+    skip_flag = false
+    if entry == NULL: return NULL
+    current = entry
+    loop:
+        if check_multi_condition_skip(current):   // sub_7E5120
+            skip_flag = true                      // chain crossed a skip point
+
+        if current[16] == NULL: break             // no next-use link
+        if *current[16] != NULL: break            // MULTI-USE: stop
+
+        if current[17] == NULL: break             // no def link
+        if *current[17] != NULL: break            // MULTI-DEF: stop
+
+        def_bb_idx = *(current[17] + 8)
+        instr_bb_idx = *(current[1] + 8).bb_index  // at +24
+        if def_bb_idx != instr_bb_idx: break      // CROSS-BB: stop
+
+        next_instr = *(current[1] + 8)
+        if next_instr.opcode == 97:               // def anchor
+            current = *(ctx+296)[ def_bb_idx ]    // follow chain
+            continue
+        else:
+            return NULL                           // chain broken
+
+    return current                                // last valid entry
+```
+
+Key properties of this walker:
+- Only follows **single-use** chains (`current[16]` must have exactly one consumer)
+- Only follows **single-def** chains (`current[17]` must have exactly one producer)
+- Only follows **intra-block** chains (definition and use must share the same BB index)
+- Only traverses through **opcode 97** (definition anchor) instructions
+- The `check_multi_condition_skip` (`sub_7E5120`, 18 lines) tests four conditions: vtable dispatch at `ctx+1784`, block ordering bounds at `ctx+1776`, instruction flags at `+283` bit 0, and knob 91
+
+The helper `sub_753520` wraps `sub_753480` with an additional opcode-93 gate: the chain endpoint's instruction must have opcode 93 (internal CALL variant) and the use-chain at `entry[16]` must be empty. `sub_753570` performs the reverse direction check, verifying that following the chain backward from a given entry reaches the expected starting point with matching register indices.
+
+#### Algorithm B: Forward Walk with Flag Marking (Phase 29 -- `sub_908EB0`)
+
+Phase 29's copy propagation walks the instruction linked list sequentially from `*(ctx+272)` (instruction list head) and marks eligible operands with flag bits for later consumption. The 217-line function `sub_908EB0` maintains three key state variables:
+
+| Variable | Type | Purpose |
+|----------|------|---------|
+| `v10` | `bool` | "previous instruction was a recognized copy" -- gates liveness fallback |
+| `v11` | `int64_t` | Current definition tracking entry (BB array pointer, from opcode 97) |
+| `v21` | `char` | Architecture-allows-predicate-marking flag (from vtable at `**(ctx+1584)+1312`) |
+
+```
+// sub_908EB0 -- Phase 29 forward copy propagation (decompiled pseudocode)
+function copy_prop_forward(ctx):
+    // Gate checks: option 487, option 231, option 461, function count,
+    // architecture check via sub_7DC0E0, vtable dispatch at +1312
+    v21 = check_arch_predicate_marking(ctx)
+
+    sub_781F80(ctx, 1)         // initialize per-instruction flags
+    v10 = initial_gate_flag    // from option 487 check
+    v11 = 0                    // no current definition context
+
+    for instr in instruction_list(ctx+272):
+        opcode = instr.opcode & ~0x3000          // mask bits 12-13
+
+        switch opcode:
+        case 97:   // DEFINITION ANCHOR
+            v10 = initial_gate_flag              // reset copy-tracking
+            v11 = *(ctx+296)[ instr.operand[0] & 0xFFFFFF ]
+            // Updates definition context -- subsequent opcodes 18/124
+            // reference v11 for their propagation decisions
+            continue
+
+        case 18:   // SET-PREDICATE (FSETP/ISETP)
+            if sub_8F2E50(ctx, instr):           // eligible?
+                v10 = false                       // suppress liveness check
+                if v21:                           // arch supports pred marking?
+                    dst_idx = count + ~((opcode>>11) & 2)
+                    instr.operand[dst_idx] |= 0x400   // mark: propagated-under-predicate
+            continue
+
+        case 124:  // CONDITIONAL SELECT
+            if !sub_8F2E50(ctx, instr): continue
+            dst = instr.operand[ count + ~((opcode>>11) & 2) ]
+
+            if (ctx+1379) & 7 == 0:              // simple mode
+                dst |= 0x100                      // mark: propagated
+                continue
+
+            if (dst & 0xF) == 1:                  // integer constant type
+                if !sub_8F29C0(ctx): continue     // arch check
+                // fall through to direct marking
+            else:
+                if !sub_8F29C0(ctx) or (ctx+1379 & 0x1B) != 0:
+                    // Two-pass predicate simplifier
+                    sub_908A60(ctx, v11, instr, 1, &hit, &partial)  // forward
+                    if hit: goto mark_propagated
+                    if !partial:
+                        sub_908A60(ctx, v11, instr, 0, &hit, &partial) // backward
+                        if hit: goto mark_propagated
+                        if !partial: continue     // no match at all
+                // Direct propagation: convert operand type
+                dst = (dst & 0xFFFFFDF0) | 0x201  // clear type, set reg+deferred
+                continue
+
+            // Liveness-gated propagation check for extended chains
+            if !v10 or v21:
+                mark_propagated:
+                instr.operand[dst_idx] |= 0x100   // mark: propagated
+            else:
+                // Follow definition chain from v11 for additional candidates
+                follow_and_check_chain(ctx, v11, instr)
+            continue
+
+        default:
+            if !v10:                               // no prior copy recognized
+                status = sub_7DF3A0(instr, ctx)   // liveness check
+                v10 = (*status & 0xC) != 0        // live uses exist?
+            continue
+```
+
+#### Target Opcodes in Copy Propagation Context
+
+| Opcode | IR Meaning | Role in Copy Prop | Evidence |
+|--------|-----------|-------------------|---------|
+| 97 | Definition anchor / label marker | Updates the current definition tracking context (`v11`). Its operand `instr+84 & 0xFFFFFF` is an index into the BB array at `ctx+296`, retrieving the BasicBlock descriptor for the definition point. All subsequent propagation decisions for opcodes 18 and 124 reference this context. | `sub_908EB0` lines 74--78: `v11 = *(*(a1+296) + 8 * (*(v9+84) & 0xFFFFFF))` |
+| 18 | `FSETP`/`ISETP` (set predicate) | A predicate-setting comparison instruction. Copy propagation treats it as a "predicated copy" target: when source operands have type 2 or 3 (predicate/uniform register) and pass `sub_91D150` register constraint checks, the destination predicate can be folded into consumers. Marked with `0x400` when the architecture supports it. | `sub_908EB0` lines 84--96, `sub_8F2E50` lines 19--61 |
+| 124 | Conditional select (phi-like) | A two-source selection instruction controlled by a predicate. Copy propagation attempts to simplify it to a direct assignment when one source is a constant or when structural analysis shows the predicate is trivially true/false. Marked with `0x100` or type-converted via `(operand & 0xFFFFFDF0) | 0x201`. | `sub_908EB0` lines 82--198, `sub_8F2E50` lines 42--51 |
+
+#### Flag Bit Semantics
+
+The propagation marks operands with three flag bits on the destination operand word at `instr + 84 + 8*dst_idx`:
+
+| Bit | Mask | Name | Set When | Effect |
+|-----|------|------|----------|--------|
+| 8 | `0x100` | Propagated | Conditional select (opcode 124) is eligible for propagation AND the architecture/mode checks pass | Downstream apply-changes passes replace all uses of this destination with its source operand. Checked as a guard in `sub_8F2E50`: `if (dst & 0x100) return false` prevents double-propagation. |
+| 9 | `0x200` | Deferred cleanup | Combined with type-field rewriting: `(operand & 0xFFFFFDF0) | 0x201` | Signals that the operand encoding was converted from immediate/constant format to register format during propagation. The apply-changes pass must update the instruction's encoding to reflect the new operand type. Bit 9 is always set together with type bits `0x1` (register type). |
+| 10 | `0x400` | Propagated under predicate | Set-predicate instruction (opcode 18) is eligible AND the architecture flag `v21` is true (vtable dispatch at `**(ctx+1584)+1312` returned non-zero) | Marks a conditional propagation: the destination predicate can be folded into consumers, but only if the guarding predicate is maintained. Distinguished from `0x100` because the propagation is predicate-dependent rather than unconditional. |
+
+#### Eligibility Checker: `sub_8F2E50`
+
+The 64-line function `sub_8F2E50` is the central gatekeeper for both opcodes 18 and 124. Decompiled logic:
+
+```c
+// sub_8F2E50 -- copy/fold eligibility (from decompiled code at 0x8F2E50)
+function is_eligible(ctx, instr):
+    opcode = instr[18] with BYTE1 &= 0xCF       // mask bits 12-13
+
+    if opcode == 18:                              // set-predicate
+        dst = instr[2 * (count + ~((opcode>>11)&2)) + 21]
+        type_nibble = (dst >> 2) & 0xF
+        if type_nibble == 10: return false        // type 10: never foldable
+        if type_nibble == 0 and !(dst & 0x400):   // no type bits, not yet marked
+            // Architecture-gated source operand check
+            vtable_fn = **(ctx+1584) + 1320
+            if vtable_fn == sub_7D7240:           // sentinel: direct check
+                if (instr[23] >> 28) & 7 not in {2, 3}: return false
+            else:
+                if vtable_fn() returns true: goto opcode_124_check
+            // Register constraint check on both source operands
+            if sub_91D150(ctx, instr[23] & 0xFFFFFF): goto opcode_124_check
+            if sub_91D150(ctx, instr[25] & 0xFFFFFF): goto opcode_124_check
+            return true
+        return false
+
+    opcode_124_check:
+    if opcode == 124:                             // conditional select
+        dst = instr[2 * (count + ~((opcode>>11)&2)) + 21]
+        if dst & 0x100: return false              // already propagated
+        if dst & 0x70: return false               // has modifier bits
+        type = dst & 0xF
+        sm_version = *(*(ctx+1584) + 372)
+        if (type == 1 or type == 2)               // integer or float
+           and (sm_version <= 20479 or !(dst & 0x1C00)):  // SM gate
+            return true
+
+    return false
+```
+
+The SM version threshold **20479** (`0x4FFF`) divides pre-Turing architectures (where constant propagation through conditional selects is unconditionally safe) from newer architectures that require the constraint bits at `dst & 0x1C00` to be zero.
+
+#### Architecture Predicate Query: `sub_8F29C0`
+
+The 9-line function `sub_8F29C0` at `0x8F29C0` determines whether the compilation unit's target architecture supports predicate-aware copy propagation:
+
+```c
+// sub_8F29C0 -- architecture predicate query (decompiled verbatim)
+bool check_arch_predicate(int64_t ctx) {
+    int64_t comp_unit = *(int64_t*)(ctx + 1584);
+    return sub_7DC0E0(comp_unit)          // primary arch capability
+        || sub_7DC050(comp_unit)          // secondary arch capability
+        || sub_7DC030(comp_unit);         // tertiary arch capability
+}
+```
+
+This same query is used inside `sub_908A60` (the two-pass predicate simplifier) to initialize the default "safe to transform" flag before instruction-level analysis refines the answer.
+
+#### Two-Pass Predicate Simplifier: `sub_908A60`
+
+When simple eligibility checks pass for opcode 124 but additional predicate analysis is needed (specifically: when `sub_8F29C0` returns false OR `ctx+1379 & 0x1B` has bits set), the two-pass predicate simplifier `sub_908A60` at `0x908A60` is invoked. It takes a direction argument (`1` = forward, `0` = backward) and scans the instruction stream in the specified direction looking for matching definitions:
+
+- **Forward pass** (`a4=1`): Starts from the current definition context `v11`, walks forward through the block's instruction list. For each instruction, dispatches on opcode: 97 updates tracking context, 124/18 checks eligibility via `sub_8F2E50`, others check liveness. Uses a hash-set membership test (`sub_767240`) to avoid visiting the same instruction twice.
+- **Backward pass** (`a4=0`): Starts from the definition chain at `v11+136`, walks backward through linked definitions with the same opcode dispatch logic.
+
+The function outputs two flags: `out_a` (full match found -- propagation is safe) and `out_b` (partial match found -- further analysis may help). Phase 29 invokes forward first; if forward finds neither a full nor partial match, it invokes backward. This handles PHI-like merge patterns where the definition chain has both forward paths (normal control flow) and backward paths (loop back-edges).
+
+#### Comparison of Algorithm A vs Algorithm B
+
+| Aspect | Phase 13 (`sub_753600`) | Phase 29 (`sub_908EB0`) |
+|--------|------------------------|------------------------|
+| Pattern | Chain matching (pair structural equivalence) | Forward walk with flag marking |
+| Opcodes handled | 95 (entry gate), 93 (chain gate), 97 (anchor), 119 (deep eq) | 97 (anchor), 18 (pred copy), 124 (cond select) |
+| Chain depth | Multi-level (follows through opcode 97 anchors) | Single-level (immediate operand check) |
+| Result mechanism | Direct instruction rewriting via `sub_753B50` | Flag marking (`0x100`/`0x200`/`0x400`), consumed later |
+| Convergence | Fixed-point loop in `sub_7917F0` (option 464 cap) | Single pass, flags consumed by subsequent iterations |
+| Complexity | 253 lines + 5 helper functions | 217 lines + 4 helper functions |
+| Scope | Intra-block, single-use chains only | Intra-block, all instructions in sequence |
 
 ### Constant Folding Patterns
 
@@ -827,7 +1114,7 @@ The `"ConvertMemoryToRegisterOrUniform"` named-phase gate at `0x21DD228` allows 
 | `0x903A10` | Register bank helper (Mid) | Per-instruction register bank assignment for LD/ST materialization |
 | `0x8F3FE0` | Register constraint fold validator (Mid) | Validates all source operand types are 2/3 and `sub_91D150` constraints match cached values; queries `vtable[904]` for element size and `vtable[936]` for fold metadata |
 | `0x8F2E50` | Fold eligibility check | Two-path dispatch: opcode 18 checks source types 2/3 + `sub_91D150` constraints; opcode 124 checks dest type 1/2 + SM <= 20479 threshold + constraint bits `& 0x1C00` |
-| `0x8F29C0` | Predicate analysis helper | Determines if predicate condition allows propagation |
+| `0x8F29C0` | Architecture predicate query | 9 lines; returns `sub_7DC0E0(cu) \|\| sub_7DC050(cu) \|\| sub_7DC030(cu)` on `ctx+1584` |
 | `0x908A60` | Two-pass predicate simplify | Called with direction flag (1 = forward, 0 = backward) |
 | `0x785E20` | Change tracking reset | Resets per-block change flags |
 | `0x781F80` | Instruction flag init | Initializes per-instruction optimization flags (~1800 lines) |
