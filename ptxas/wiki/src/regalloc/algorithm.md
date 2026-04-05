@@ -732,6 +732,130 @@ The per-instruction assignment core loop (3722 lines, the largest function in pa
 8. Tracks first-spill-candidate (`alloc+1354`) and fallback-spill-candidate (`alloc+1355`)
 9. On allocation failure for an instruction, calls `sub_96CE90` which recursively invokes `sub_9680F0` with different flags for the spill fallback path
 
+## Post-Allocation Verification
+
+After register allocation completes, a verification pass called "memcheck" (NVIDIA's internal name, unrelated to Valgrind) compares reaching definitions before and after allocation. Every instruction's operands are checked: the set of definitions that could reach each use must be preserved, or any change must be explained by a known-safe transformation (spill/refill, rematerialization, predicate packing). Unexplained changes indicate an allocator bug.
+
+The verification runs inside the post-regalloc scheduling pass (`sub_A8B680`), after all register assignments are finalized and spill/reload instructions have been inserted.
+
+### Verification Call Flow
+
+```
+sub_A8B680 (PostAllocPass::run)
+  +-- sub_A5B1C0   build pre/post def-use chains (48KB, all instructions)
+  +-- sub_A76030   MemcheckPass::run -- entry point
+        |
+        for each instruction in function:
+        |   +-- sub_A56790  fast per-instruction check (returns bool)
+        |   |     true  -> skip (defs match)
+        |   |     false -> deep verify
+        |   |
+        |   +-- sub_A54140  look up pre-regalloc def set
+        |   +-- sub_A54140  look up post-regalloc def set
+        |   +-- sub_A75CC0  deep single-instruction verification
+        |         +-- sub_A56400  build Additions list (new defs)
+        |         +-- sub_A56400  build Removals list (lost defs)
+        |         +-- sub_A55D80  diagnostic reporter (10 error codes)
+        |               +-- sub_A55D20  print uninitialized-def detail
+        |
+        printf("TOTAL MISMATCH %d   MISMATCH ON OLD %d\n", ...)
+```
+
+### Fast Check vs Deep Verify
+
+The fast check (`sub_A56790`) performs a lightweight comparison per instruction. It returns true when pre-regalloc and post-regalloc reaching definitions match exactly. Only on failure does the verifier invoke the expensive deep path (`sub_A75CC0`), which:
+
+1. Builds two difference lists -- "Additions" (defs present after but not before) and "Removals" (defs present before but not after).
+2. Classifies each difference as either `BENIGN (explainable)` or `POTENTIAL PROBLEM` by pattern-matching against known-safe transformations: spill-store/refill-load pairs, P2R/R2P predicate packing, bit-spill patterns, and rematerialized instructions.
+3. For each unexplained difference, creates an error record with a category code (1--10), pointers to the offending instructions, and operand type flags.
+
+### Error Categories
+
+The reporter (`sub_A55D80`) dispatches on the error code at `record+24`:
+
+| Code | Name | Message | Trigger |
+|------|------|---------|---------|
+| 1 | Spill-refill mismatch | `Failed to find matching spill for refilling load that is involved in this operand computation` | A post-regalloc refill load has no corresponding spill store. The verifier walks the spill-refill chain and cannot find the matching pair. |
+| 2 | Refill reads uninitialized | `This operand was fully defined before register allocation, however refill that is involved in this operand computation reads potentially uninitialized memory` | The refill reads from a stack slot that was never written -- the spill store was optimized away or placed on a non-executing path. |
+| 3 | P2R-R2P pattern failure | `Failed to establish match for P2R-R2P pattern involved in this operand computation` | Predicate-to-register / register-to-predicate instruction pairs used to spill predicate registers through GPRs have a broken chain -- the matching counterpart is missing. |
+| 4 | Bit-spill-refill failure | `Failed to establish match for bit-spill-refill pattern involved in this operand computation` | The bit-packing variant of predicate spilling (multiple predicates packed into GPR bits) failed pattern matching. Same root cause as code 3 but for the packed representation. |
+| 5 | Uninitialized value introduced | `Before register allocation this operand was fully defined, now an uninitialized value can reach it` | Pre-regalloc: all paths to this use had a definition. Post-regalloc: at least one path has no definition. The register holds a stale value from a prior computation. Typically caused by a spill placed on the wrong path or a definition eliminated during allocation. |
+| 6 | Extra defs introduced | `After reg-alloc there are some extra def(s) that participate in this operand computation. They were not used this way before the allocation.` | The post-regalloc definition set is a strict superset of the pre-regalloc set. New definitions were introduced through register reuse or aliasing. When the extra def involves a short/byte type in a wider register, the reporter prints: `Does this def potentially clobber upper bits of a register that is supposed to hold unsigned short or unsigned byte?` and suggests `-knob IgnorePotentialMixedSizeProblems`. |
+| 7 | Rematerialization mismatch | `Rematerialization problem: Old instruction: [%d] New instruction: [%d]` | A rematerialized instruction does not match the original. The new instruction created to recompute a value differs from the original in an unexpected way. |
+| 8 | P2R-R2P base destroyed | `Some instruction(s) are destroying the base of P2R-R2P pattern involved in this operand computation` | The GPR holding packed predicate bits is overwritten between the P2R store and R2P restore by another instruction that defs the same physical register. |
+| 9 | Bit-spill base destroyed | `Some instruction(s) are destroying the base of bit-spill-refill pattern involved in this operand computation` | Same as code 8 but for the bit-packing spill variant. The base register holding packed predicate bits is overwritten between store and restore. |
+| 10 | Definitions disappeared | `During register allocation we did not add any new definitions for this operand and yet some original old ones disappeared` | The post-regalloc definition set is a strict subset of the pre-regalloc set. Definitions were removed without replacement by spill/refill or rematerialization. |
+
+### Reporter Output Format
+
+When `DUMPIR=AllocateRegisters` is enabled (knob ID 266), the reporter (`sub_A55D80`) prints a structured diagnostic per mismatch:
+
+```
+=== ... (110 '=' banner) ===
+REMATERIALIZATION PROBLEM. New Instruction [N] Old Instruction [M]   // only if instruction changed
+INSTRUCTION: [N]
+=== ... ===
+
+Operand # K
+Producers for operand K of instruction [N] before register allocation:
+  [42] def opr # 0 for src opr # 2
+  [38] def opr # 1 for src opr # 2
+
+Producers for operand # K of instruction [N] after register allocation:
+  [42] def opr # 0 for src opr # 2
+  [55] def opr # 0 for src opr # 2          // <-- new, from refill
+
+Additions
+  [55] def opr # 0 src opr # 2  BENIGN (explainable)
+
+Removals
+  [38] def opr # 1 src opr # 2  POTENTIAL PROBLEM
+
+<error-category-specific message from the table above>
+```
+
+If `DUMPIR=AllocateRegisters` is not enabled and mismatches exist, the verifier prints a one-shot suggestion:
+
+```
+Please use -knob DUMPIR=AllocateRegisters for debugging
+```
+
+The one-shot flag at `verifier+1234` ensures this message appears at most once per allocation attempt.
+
+### Mismatch Counters
+
+The verifier tracks two counters reported at the end of the pass:
+
+| Offset | Counter | Meaning |
+|--------|---------|---------|
+| `verifier+1236` | Total mismatches | Instructions where post-regalloc defs differ from pre-regalloc defs in an unexplained way. |
+| `verifier+1240` | Old mismatches | Subset of total mismatches that represent pre-existing issues -- the pre-regalloc def chain was already empty (no reaching definitions before allocation either). These are not regressions from the current allocation attempt. |
+
+### Knob Interactions
+
+| Knob | Effect |
+|------|--------|
+| `DUMPIR=AllocateRegisters` (ID 266) | Enables verbose per-mismatch diagnostic output. Without this, only the summary line and suggestion are printed. |
+| `IgnorePotentialMixedSizeProblems` | Suppresses the mixed-size aliasing warning in error code 6 (extra defs involving short/byte types in wider registers). |
+| `memcheck` flag at `function+1384` | Gates whether verification runs at all. When zero, `sub_A76030` is not called. |
+
+### Verification Function Map
+
+| Address | Size | Role |
+|---------|------|------|
+| `sub_A54140` | -- | Def-use chain lookup (hash table query into pre/post maps) |
+| `sub_A55D20` | ~100B | Print uninitialized-def warning helper |
+| `sub_A55D80` | 1454B | Diagnostic reporter -- 10 error categories, structured output |
+| `sub_A56400` | -- | Build additions/removals lists for deep comparison |
+| `sub_A56560` | 698B | Verify single operand's reaching definitions |
+| `sub_A56790` | ~250B | Per-instruction fast check (returns bool pass/fail) |
+| `sub_A5B1C0` | 8802B | Full-function def-use chain builder (pre and post regalloc) |
+| `sub_A60B60` | 4560B | Pre/post chain comparison engine |
+| `sub_A62480` | -- | Reset scratch arrays between operand checks |
+| `sub_A75220` | 2640B | Compare reaching definitions (builds diff lists) |
+| `sub_A75CC0` | 866B | Deep single-instruction verifier (classifies diffs) |
+| `sub_A76030` | 770B | MemcheckPass::run -- verification entry point |
+
 ## Function Map
 
 | Address | Lines | Role |
