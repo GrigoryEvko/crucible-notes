@@ -51,7 +51,7 @@ Layer 3: Runtime Query
 
 ### Scheduling Descriptor Layout
 
-Each instruction carries a scheduling descriptor at offsets 196--200 from its scheduling metadata pointer. The descriptor is a packed bit-field:
+Each instruction carries a scheduling descriptor at offsets 196--200 within the 296-byte Ori instruction object (not the SchedNode). The descriptor is a packed bit-field:
 
 ```
 Descriptor at a3+196 (DWORD, 32 bits):
@@ -628,8 +628,8 @@ The complete switch covers 80+ Ori opcodes. Representative mappings:
 | 0x4D | 0x84--0x85 | B (0x10000) | 0x40 | WGMMA-class | Extended tensor fields |
 | 0x4E (mem ops) | 0x2F--0x30 | -- | -- | LD (generic) | Flag / no-flag split |
 | 0x66 | 0x09 | B (0x10000) | 0x30 | DEPBAR | Always; flags 0x08 |
-| 0x82 (ext) | 0x17 | -- | -- | NANOTRAP (extended) | `sub_A9AB10` = true |
-| 0x82 (ctrl) | 0x13 | all (0xF8000) | 0x10 | NANOTRAP (control) | vtable+640 |
+| 0x82 / 130 (ext) | 0x17 | -- | -- | NANOTRAP (extended); `HSET2` in ROT13 | `sub_A9AB10` = true |
+| 0x82 / 130 (ctrl) | 0x13 | all (0xF8000) | 0x10 | NANOTRAP (control); `HSET2` in ROT13 | vtable+640 |
 | 0xC9--0xCA (wide) | 0x07 | A (0x08000) | -- | DFMA, DADD (wide) | `sub_7D6780` = true |
 | 0xD1 | 0x05 | A (0x08000) | 0x20 | DFMA | Always |
 | 0xD2 | 0x0A | A (0x08000) | 0x30 | DFMA variant | Sub-class 0x30, flag 0x04 |

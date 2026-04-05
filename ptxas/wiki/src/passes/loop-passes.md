@@ -1136,7 +1136,7 @@ After all checks pass, `sub_8F7AE0` physically moves each invariant instruction 
 4. **Unlink and reinsert.** For each invariant instruction:
    - `sub_9253C0(code_object, instruction, 1)`: unlinks the instruction from the current block.
    - `sub_91E290(code_object, instruction)`: inserts at the preheader insertion point.
-   - Creates or updates scheduling metadata at `instruction+32`: sets bit 1 at `offset+13` to mark the instruction as hoisted (prevents the scheduler from reordering it back into the loop).
+   - Updates the Ori instruction's control word at `instruction+32` (not the SchedNode): sets bit 1 at byte offset +13 to mark the instruction as hoisted (prevents the scheduler from reordering it back into the loop).
 5. **Destination register tracking.** For each output operand, if the defining instruction at `reg+56` differs from the current instruction, sets `context+44` (hoisted_cbo flag). For pass_id == 2, additionally sets `reg+48 bit 26` if the register class is in {2, 3, 4} (GPR classes) and the preheader has the convergence flag.
 6. **Special IADD3 handling.** For pass_id == 3, instructions with opcode 130 (`IADD3`), flag `0x1000`, and a negative byte at `+90` (carry chain) receive special treatment via `sub_9232B0` which adjusts the carry-out register linkage before movement.
 

@@ -74,14 +74,15 @@ function BuildReadyList(sched):
         if instr.opcode == 52:                    // NOP / BB boundary marker
             continue                              // follow to real instruction
 
-        if *(DWORD*)(instr + 8) == 0:             // dep_count == 0
-            *(QWORD*)(instr + 16) = sched[5]      // link to current head
+        metadata = *(QWORD*)(instr + 40)          // SchedNode pointer
+        if *(DWORD*)(metadata + 8) == 0:          // depCount == 0
+            *(QWORD*)(metadata + 16) = sched[5]   // link to current head
             sched[5] = instr                       // new head
             vtable_callback(sched, 104, instr)     // insertion hook
-            *(DWORD*)(instr + 28) = 0              // reset latency counter
+            *(DWORD*)(metadata + 28) = 0           // reset latency counter
 ```
 
-The ready list is a singly-linked list threaded through instruction offset `+16`. Sort order is maintained at insertion time by the priority function -- each new instruction is inserted at its correct position so that the head of the list is always the highest-priority candidate.
+The ready list is a singly-linked list threaded through SchedNode offset `+16` (the `nextReady` field). Sort order is maintained at insertion time by the priority function -- each new instruction is inserted at its correct position so that the head of the list is always the highest-priority candidate. All `metadata+N` offsets throughout the scheduling pages refer to fields within the SchedNode block pointed to by `instr+40` (`sched_slot`), not offsets from the instruction object itself. See the [SchedNode layout](overview.md#per-instruction-scheduling-metadata-schednode) for the complete field map.
 
 Opcode 52 instructions are phantom BB boundary markers. The builder skips them but follows their linked-list successors to reach real instructions beyond the boundary.
 
@@ -584,31 +585,27 @@ Pressure state fields:
 
 When `current_pressure > scheduler+432`, the priority function sets bit 4 (pressure overflow) in the encoding, biasing the scheduler toward instructions that release registers.
 
-## Per-Instruction Scheduling Metadata
+## Per-Instruction Scheduling Metadata (SchedNode)
 
-Each instruction node carries scheduling state at fixed offsets from the node base:
+Each instruction has a pointer at `instr+40` to a heap-allocated SchedNode block. The offsets below are relative to the SchedNode base, **not** the 296-byte Ori instruction. See the [SchedNode layout](overview.md#per-instruction-scheduling-metadata-schednode) for the authoritative field map.
 
 | Offset | Type | Content |
 |---|---|---|
 | +8 | int32 | `dep_count` -- unsatisfied predecessor count (0 = ready) |
 | +16 | QWORD | `next_ready` -- linked-list pointer in ready list |
-| +24 | int32 | `scheduled_position` (-1 = unscheduled) |
+| +24 | int32 | `bbSlot` -- 1-based BB position (-1 = unscheduled) |
 | +28 | int32 | `latency_counter` -- current stall counter |
-| +32 | int64 | Earliest available cycle |
-| +40 | int32 | Latest deadline cycle |
+| +32 | int32 | `earliestCycle` -- earliest available cycle |
+| +40 | int32 | `latestDeadline` -- latest deadline cycle |
 | +44 | int32 | Barrier group index |
-| +72 | int32 | Opcode (BYTE1 masked with 0xCF for base opcode) |
-| +80 | int32 | Operand count |
-| +84 | varies | Operand descriptors (16-bit per operand) |
-| +88 | int32 | Max predecessor cycle |
-| +92 | int32 | Max dependency cycle |
+| +88 | int32 | `maxPredecessorCycle` |
+| +92 | int32 | `maxDependencyCycle` |
 | +108 | byte | Flags: bit 0 = barrier target, bit 1 = has dependency, bit 2 = early schedulable, bit 3 = late schedulable, bit 4 = has register operand |
 | +111 | byte | Flags: bit 7 = uses expensive register file |
-| +144 | int32 | Scheduling slot |
-| +164 | int32 | Resource class (FU index 0--9) |
-| +236 | int32 | Instruction latency |
 
-Sentinel values: position -1 (unscheduled), latency 0x1869F (99999 = infinity).
+The scheduling loop also reads Ori instruction fields directly (not via the SchedNode): `instr+72` (opcode), `instr+80` (operand count), `instr+84` (operand descriptors).
+
+Sentinel values: bbSlot -1 (unscheduled), latency 0x1869F (99999 = infinity).
 
 The `dep_count` field at +8 is the key scheduling control: it counts unsatisfied predecessors in the dependency DAG. When a predecessor is scheduled, the engine decrements every successor's `dep_count`. When `dep_count` reaches zero, the instruction becomes ready and is inserted into the ready list.
 
@@ -647,7 +644,7 @@ Internal structure:
    - Check boundary condition (`v236`) -- break if done
 5. Track first-pass initialization via `v215`
 
-This function accesses instruction fields at offsets +24 (BB id), +72 (opcode), +144 (scheduling slot), +164 (resource class), and +236 (latency).
+This function accesses the Ori instruction's opcode at `instr+72`, plus SchedNode fields (via `instr+40` pointer): `+24` (bbSlot), `+144` (scheduling slot), `+164` (resource class), and `+236` (latency).
 
 ## Specialized Scheduling Strategies
 
