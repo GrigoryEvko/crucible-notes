@@ -42,6 +42,27 @@ SASS instructions use three widths, selected per opcode during encoding:
 
 The 3-level opcode hierarchy within the encoded instruction word is: major (9 bits, at bits [8:16]) / minor (8 bits, at bits [17:24]) / sub-opcode (7 bits, at bits [25:31]). See the [encoding page](../codegen/encoding.md) for full details.
 
+## Duplicate Mnemonic Entries
+
+Five entries in the table share a SASS mnemonic with an earlier index. These are **not** errors in the table -- they are distinct IR opcodes that happen to produce the same assembly mnemonic but with different binary encodings, operand widths, or functional-unit routing. The duplicates fall into two categories:
+
+**Category A -- SM-generation re-introduction.** The same operation is re-implemented for a newer GPU generation with a different SASS major opcode and encoding path, typically because the tensor core or ALU microarchitecture changed:
+
+| Later Index | Earlier Index | Mnemonic | Why re-introduced |
+|-------------|---------------|----------|--------------------|
+| 215 (sm_90) | 180 (sm_82) | DMMA | Hopper warpgroup-aware TC path (enc. cat. 515 vs 434) |
+| 220 (sm_90) | 14 (sm_70) | FMNMX | Hopper adds 5-entry operand sub-mode table (enc. cat. 534 vs 510) |
+
+**Category B -- Operand-width extension.** Blackwell Ultra (sm_104) adds 64-bit operand variants of existing integer ALU instructions. The SASS printer appends a `.64` suffix at render time; the IR name table stores the same base mnemonic for both widths:
+
+| Later Index | Earlier Index | Mnemonic | What the later index adds |
+|-------------|---------------|----------|---------------------------|
+| 284 (sm_104) | 37 (sm_70) | IMNMX | 32-bit form, new encoding path |
+| 285 (sm_104) | 37 (sm_70) | IMNMX | 64-bit form (`IMNMX.64`, `.64.UI`, `.64.LO`) |
+| 288 (sm_104) | 7 (sm_70) | ISETP | 64-bit comparison (`ISETP.64`, `.64.UI`, `.64.LO`) |
+
+Binary evidence: in the constructor `sub_7A5D10`, indices 284 and 285 store identical `"VZAZK"` string pointers at adjacent 16-byte slots (`v2+8728` and `v2+8744`). The SASS printer (`sub_7CB560`) maps them to `IMNMX` vs `IMNMX.64` based on operand metadata.
+
 ## Base ISA -- sm_70 (Volta) and Later (Indices 0--135)
 
 These opcodes are available on all SM architectures supported by ptxas v13.0.
@@ -56,13 +77,13 @@ These opcodes are available on all SM architectures supported by ptxas v13.0.
 | 4 | `OZFX` | **BMSK** | Generate bitmask from position and width |
 | 5 | `FTKG` | **SGXT** | Sign-extend from specified bit position |
 | 6 | `YBC3` | **LOP3** | Three-input logic operation (arbitrary LUT) |
-| 7 | `VFRGC` | **ISETP** | Integer compare and set predicate |
+| 7 | `VFRGC` | **ISETP** | Integer compare and set predicate (32-bit; re-introduced at index 288 for sm_104 with 64-bit support) |
 | 8 | `VNOF` | **IABS** | Integer absolute value |
 | 9 | `YRN` | **LEA** | Load effective address (shift-add) |
 | 10 | `FUS` | **SHF** | Funnel shift (concatenate two regs, shift) |
 | 33 | `VQC` | **IDP** | Integer dot product (4-element) |
 | 34 | `VQR` | **IDE** | Integer dot expand |
-| 37 | `VZAZK` | **IMNMX** | Integer min/max |
+| 37 | `VZAZK` | **IMNMX** | Integer min/max (32-bit only; re-introduced at indices 284--285 for sm_104 with 32/64-bit split) |
 | 38 | `CBCP` | **POPC** | Population count (count set bits) |
 | 39 | `SYB` | **FLO** | Find leading one (bit scan) |
 | 53 | `OERI` | **BREV** | Bit reverse |
@@ -74,7 +95,7 @@ These opcodes are available on all SM architectures supported by ptxas v13.0.
 | 11 | `SSZN` | **FFMA** | FP32 fused multiply-add |
 | 12 | `SNQQ` | **FADD** | FP32 add |
 | 13 | `SZHY` | **FMUL** | FP32 multiply |
-| 14 | `SZAZK` | **FMNMX** | FP32 min/max |
+| 14 | `SZAZK` | **FMNMX** | FP32 min/max (base encoding cat. 510; re-introduced at index 220 for sm_90 with extended operand modes) |
 | 15 | `SFJMNQQ` | **FSWZADD** | FP32 swizzle add (cross-lane partial reduction) |
 | 16 | `SFRG` | **FSET** | FP32 compare and set result register |
 | 17 | `SFRY` | **FSEL** | FP32 select (conditional move) |
@@ -329,7 +350,7 @@ Ampere additions. New MMA shapes, gather/scatter metadata, and reduction variant
 | 177 | `OZZN_168128` | **BMMA_168128** | Binary MMA, 16x8x128 shape |
 | 178 | `OZZN_168256` | **BMMA_168256** | Binary MMA, 16x8x256 shape |
 | 179 | `PYZNQ` | **CLMAD** | Carry-less multiply-add (GF(2) arithmetic) |
-| 180 | `QZZN` | **DMMA** | FP64 matrix multiply-accumulate |
+| 180 | `QZZN` | **DMMA** | FP64 matrix multiply-accumulate (Ampere; encoding category 434; re-introduced at index 215 for Hopper with different TC path) |
 | 181 | `UZZN_FC_1688` | **HMMA_SP_1688** | FP16 sparse MMA, 16x8x8 |
 | 182 | `USZN2_ZZN` | **HFMA2_MMA** | FP16 FMA2, MMA variant |
 | 183 | `UZAZK2` | **HMNMX2** | Packed FP16x2 min/max |
@@ -386,7 +407,7 @@ Hopper additions. Major expansion: CGA (Cooperative Grid Array) barriers, fences
 |-----|-------|----------|-------------|
 | 213 | `PERNGRCBYVPL` | **CREATEPOLICY** | Create scheduling/cache policy |
 | 214 | `PIGN` | **CVTA** | Convert address space (generic to specific) |
-| 215 | `QZZN` | **DMMA** | FP64 matrix multiply-accumulate (sm_90 variant) |
+| 215 | `QZZN` | **DMMA** | FP64 matrix multiply-accumulate (Hopper re-introduction; encoding category 515 vs 434 for index 180; uses warpgroup-aware tensor core path, shared dispatch with CVTA at case 0xD6/0xD7 in `sub_6575D0`) |
 | 216 | `RYRPG` | **ELECT** | Elect a leader lane in warp |
 | 217 | `RAQPBYYRPGVIR` | **ENDCOLLECTIVE** | End collective operation scope |
 
@@ -396,7 +417,7 @@ Hopper additions. Major expansion: CGA (Cooperative Grid Array) barriers, fences
 |-----|-------|----------|-------------|
 | 218 | `SRAPR_T` | **FENCE_G** | Fence, global scope |
 | 219 | `SRAPR_F` | **FENCE_S** | Fence, shared/CTA scope |
-| 220 | `SZAZK` | **FMNMX** | (Duplicate entry -- FP min/max in sm_90 context) |
+| 220 | `SZAZK` | **FMNMX** | FP32 min/max (Hopper re-introduction; encoding category 534 vs 510 for index 14; adds 5-entry operand sub-mode table via `dword_2026FC0` for extended rounding/precision modes not in base encoding) |
 
 ### GMMA (Group Matrix Multiply-Accumulate)
 
@@ -534,12 +555,12 @@ Blackwell Ultra additions. Uniform FP operations, additional integer widths, con
 |-----|-------|----------|-------------|
 | 282 | `VNQQ` | **IADD** | Integer add (two-input, distinct from IADD3) |
 | 283 | `HIVNQQ` | **UVIADD** | Uniform vector integer add |
-| 284 | `VZAZK` | **IMNMX** | Integer min/max (sm_104 variant) |
-| 285 | `VZAZK` | **IMNMX** | (Duplicate entry) |
+| 284 | `VZAZK` | **IMNMX** | Integer min/max, 32-bit operands (sm_104 re-introduction; new Blackwell Ultra encoding path distinct from base index 37) |
+| 285 | `VZAZK` | **IMNMX** | Integer min/max, 64-bit operands (SASS prints as `IMNMX.64`; consecutive with 284 to form the 32/64-bit pair; `.64.UI` and `.64.LO` sub-modifiers select unsigned/low-half comparison modes) |
 | 286 | `HVZAZK` | **UIMNMX** | Uniform integer min/max |
 | 287 | `HIVZAZK` | **UVIMNMX** | Uniform vector integer min/max |
-| 288 | `VFRGC` | **ISETP** | Integer set-predicate (sm_104 variant) |
-| 289 | `HVFRGC` | **UISETP** | Uniform integer set-predicate (sm_104 variant) |
+| 288 | `VFRGC` | **ISETP** | Integer set-predicate (sm_104 re-introduction; supports 64-bit operand comparison as `ISETP.64` with `.64.UI`/`.64.LO` sub-modifiers; new encoding path, case 0x120 in `sub_7482B0` and `sub_8380A0`) |
+| 289 | `HVFRGC` | **UISETP** | Uniform integer set-predicate (sm_104 re-introduction of index 141; pairs with ISETP index 288 for 64-bit uniform comparison) |
 
 ### Data Movement Extensions
 
