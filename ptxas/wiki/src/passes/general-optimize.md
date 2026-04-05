@@ -203,8 +203,8 @@ function copy_prop_early(state, basic_block):
     ctx = state[0]
     first_instr = *(basic_block[1])              // head of instruction list
 
-    // Step 1: Entry gate -- only process blocks starting with EXIT/RET
-    if first_instr.opcode != 95: return false    // opcode 95 = EXIT/RET
+    // Step 1: Entry gate -- only process blocks starting with control-flow terminator
+    if first_instr.opcode != 95: return false    // opcode 95 = STS in ROT13; used as terminator class
     if first_instr.operand_count != 5: return false
     format = first_instr[25] & 7
     if format != 3 and format != 4: return false // must be imm or reg source
@@ -298,7 +298,7 @@ Key properties of this walker:
 - Only traverses through **opcode 97** (definition anchor) instructions
 - The `check_multi_condition_skip` (`sub_7E5120`, 18 lines) tests four conditions: vtable dispatch at `ctx+1784`, block ordering bounds at `ctx+1776`, instruction flags at `+283` bit 0, and knob 91
 
-The helper `sub_753520` wraps `sub_753480` with an additional opcode-93 gate: the chain endpoint's instruction must have opcode 93 (internal CALL variant) and the use-chain at `entry[16]` must be empty. `sub_753570` performs the reverse direction check, verifying that following the chain backward from a given entry reaches the expected starting point with matching register indices.
+The helper `sub_753520` wraps `sub_753480` with an additional opcode-93 gate: the chain endpoint's instruction must have opcode 93 (`OUT_FINAL` in ROT13; used as an internal chain-link marker) and the use-chain at `entry[16]` must be empty. `sub_753570` performs the reverse direction check, verifying that following the chain backward from a given entry reaches the expected starting point with matching register indices.
 
 #### Algorithm B: Forward Walk with Flag Marking (Phase 29 -- `sub_908EB0`)
 
@@ -802,7 +802,7 @@ The function only triggers on instructions matching a narrow pattern:
 
 ```c
 // sub_753600 entry guard
-if (instr[18] == 95           // opcode 95 (EXIT/RET-class with guard predicate)
+if (instr[18] == 95           // opcode 95 (STS in ROT13; used as terminator class)
     && instr[20] == 5         // exactly 5 operands
     && (instr[25] & 7) - 3 <= 1)  // operand format 3 (register) or 4 (immediate)
 {
@@ -816,11 +816,11 @@ The restriction to opcode 95 means this simplifier targets conditional exit/retu
 
 After the entry guard passes, `sub_753600` executes a 9-step algorithm:
 
-**Step 1 -- Def-chain traversal.** Reads the use-list pointer at `instr[17]` (offset 136). Checks that the use-list head exists, points to a single definition (head's first element is null), and that the next instruction in the chain has opcode 97 (label/scheduling copy).
+**Step 1 -- Def-chain traversal.** Reads the use-list pointer at `instr[17]` (offset 136). Checks that the use-list head exists, points to a single definition (head's first element is null), and that the next instruction in the chain has opcode 97 (`STG` in ROT13; used as definition anchor/label).
 
 **Step 2 -- Register resolution.** Follows the register index through the register table at `ctx+296` to resolve the first chain link to a concrete register entry. Both chain paths (via `instr[17]+8` field, "use-list index", and via the register table) must point to the same entry.
 
-**Step 3 -- First pair detection** via `sub_753520`. This helper calls `sub_753480` to walk the single-def chain forward, looking for an instruction with opcode 93 (CALL/branch encoded). At each step, `sub_753480` checks:
+**Step 3 -- First pair detection** via `sub_753520`. This helper calls `sub_753480` to walk the single-def chain forward, looking for an instruction with opcode 93 (`OUT_FINAL` in ROT13; used as a chain-link marker). At each step, `sub_753480` checks:
 - `sub_7E5120` -- is the current entry eligible for chain-following? (checks constant bank membership, block region flags, and opcode 91 via `sub_7A1A90`)
 - The use-list pointer at `entry[16]` has a null head (single use)
 - The use-list pointer at `entry[17]` has a null head (single def)

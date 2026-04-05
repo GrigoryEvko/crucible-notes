@@ -55,7 +55,7 @@ Phase 70   OriPropagateVaryingSecond
 The three-phase design is deliberate:
 
 - **Phase 28 (early)**: Runs after SSA construction and pipelining but before the main optimization passes. Sinks instructions closer to their uses and identifies candidates. This is the most complex of the three phases.
-- **Phase 54 (mode setter)**: A trivial phase that writes `4` to `ctx+1552` (the optimization state register), signaling to downstream passes that rematerialization mode is active. Its `isNoOp()` returns 1 in the default vtable, meaning it executes unconditionally through the dispatch loop without timing overhead.
+- **Phase 54 (mode setter)**: A trivial phase that writes `4` to `ctx+1552` (the pipeline progress counter), signaling to downstream passes that rematerialization mode is active. Its `isNoOp()` returns 1 in the default vtable, meaning the dispatch loop **skips** its `execute()` by default. The phase is only active when an architecture backend overrides the vtable to return 0, at which point the single-store execute body runs.
 - **Phase 69 (late)**: Runs after predication (phase 63) and loop fusion (phase 59), which restructure control flow and create new rematerialization opportunities that did not exist at phase 28 time. Also runs after `OriHoistInvariantsLate` (phase 66), which may have extended live ranges by hoisting invariants.
 
 ## Phase 28: SinkRemat
@@ -236,7 +236,7 @@ function sub_A11060(state):
             first_pass = false
             while instr:
                 opcode = instr->opcode & 0xFFFFCFFF
-                if opcode == 97:           // MOV instruction
+                if opcode == 97:           // STG in ROT13; used as definition anchor/label marker
                     changed |= sub_A10DF0(state, instr)
                 next = instr->next
                 sub_A107B0(state, instr, &sink_flag, &changed_flag,
@@ -325,10 +325,10 @@ function sub_A107B0(state, instr, sink_flag_out, changed_out, remat_flag_out,
 
 `sub_A105F0` (77 lines) determines if an instruction can be sunk to a single-use block. It enforces strict criteria:
 
-1. **Opcode filter**: Only opcode `0x5F` (95 = an immediate/constant load variant) with `state->byte_92` clear
+1. **Opcode filter**: Only opcode `0x5F` (95; `STS` in the ROT13 name table, used here as a constant/immediate load variant marker) with `state->byte_92` clear
 2. **Single-use check** via `sub_A07940`: The instruction must have exactly one use
 3. **Dominator check**: The use must be in a block dominated by the definition block
-4. **MOV chain check**: If the instruction feeds a MOV (opcode 93), verifies through an FNV-1a hash table that the MOV's definition matches the expected pattern
+4. **MOV chain check**: If the instruction feeds opcode 93 (`OUT_FINAL` in ROT13; used here as a MOV-like chain link), verifies through an FNV-1a hash table that the definition matches the expected pattern
 5. **Cost check** via `sub_A0C4A0`: Verifies that sinking reduces pressure (returns the pressure delta)
 
 When sinking succeeds, the instruction is physically moved in the linked list via `sub_92E1B0` (insert at new position) and `sub_9253C0` (remove from old position).
@@ -347,8 +347,8 @@ From `sub_911030` and `sub_A11060`, the eligible opcode set (after masking `opco
 | 50 | SHF | Funnel shift (1 cycle) |
 | 77 | IMAD | Integer multiply-add (1 cycle on modern SM) |
 | 83 | ISETP | Integer set-predicate (1 cycle) |
-| 93 | MOV | Register move (0--1 cycles, often eliminated) |
-| 95 | Constant/immediate load | Constant materialization |
+| 93 | `OUT_FINAL` in ROT13; used as MOV-like marker | Register move (0--1 cycles, often eliminated). Actual SASS MOV is opcode 19. |
+| 95 | `STS` in ROT13; used as constant-load marker | Constant materialization |
 | 297 | LOP3 | 3-input logic (1 cycle) |
 | 352 | SEL | Conditional select (1 cycle) |
 
@@ -565,7 +565,7 @@ The optimization level gating:
 | `0xC5EF40` | `sub_C5EF40` | 7 | getName() -> returns 54 |
 | `0xC5EF50` | `sub_C5EF50` | 7 | isNoOp() -> returns 1 |
 
-Phase 54 is a degenerate phase. Its execute body is a single store: `*(ctx + 1552) = 4`. Its `isNoOp()` returns 1, so the dispatch loop records timing and names but may not call execute in all code paths. The value 4 written to `ctx+1552` sets the "remat mode" flag that `sub_A11060` checks (`if *(ctx+1552) > 4` triggers the cross-block second pass).
+Phase 54 is a degenerate phase. Its execute body is a single store: `*(ctx + 1552) = 4`. Its `isNoOp()` returns 1, so the dispatch loop **skips** `execute()` by default -- the phase does nothing unless an architecture backend overrides the vtable to activate it. When active, the value 4 written to `ctx+1552` advances the pipeline progress counter, which `sub_A11060` checks (`if *(ctx+1552) > 4` triggers the cross-block second pass).
 
 ### Phase 69 (OriDoRemat)
 
@@ -613,7 +613,7 @@ The `sub_A105F0` sinkability check runs first in `sub_A107B0`. Only if sinking f
 
 ## Architectural Notes
 
-The three-phase structure with an interleaved flag-setter (phase 54) suggests the rematerialization infrastructure evolved over multiple ptxas generations. Phase 54's `isNoOp() = 1` behavior is unusual -- it indicates this phase was likely once a full pass that was later simplified to a flag write, with its analysis logic migrated into phase 69.
+The three-phase structure with an interleaved flag-setter (phase 54) suggests the rematerialization infrastructure evolved over multiple ptxas generations. Phase 54's `isNoOp() = 1` default means its `execute()` is skipped unless an architecture backend activates it by overriding the vtable. This indicates the phase was likely once a full pass that was later simplified to a flag write, with its analysis logic migrated into phase 69.
 
 The CUTLASS-specific iterative mode in phase 28 (`sub_913A30`) reveals that NVIDIA's matrix-multiply library is important enough to warrant dedicated compiler heuristics. The `strstr("cutlass")` check is a name-based pattern match on the function name, not a property of the IR itself. This coupling between compiler optimization and library naming conventions is a pragmatic choice for a production compiler targeting known workloads.
 

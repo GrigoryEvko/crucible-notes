@@ -265,7 +265,7 @@ function generate_spill_code(alloc, ctx, mode):
             // Accumulate spill cost weighted by block frequency
             vreg.spill_cost += spill_weight * block_frequency(instr.block)
 
-        // Handle call instructions (opcode 97): callee-save constraints
+        // Handle call instructions (opcode 97; STG in ROT13, used as CALL marker -- actual CALL is opcode 71)
         if instr.opcode == 97:
             handle_callee_save(alloc, instr)
 

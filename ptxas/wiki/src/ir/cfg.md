@@ -195,7 +195,7 @@ Growth policy: rehash when `total_elements > num_unique_keys` (load factor > 1.0
 
 `AnalyzeControlFlow` is phase 3 in the 159-phase optimizer pipeline. It runs immediately after the parser builds the initial instruction list and before any optimization. This phase:
 
-1. **Populates the successor edge hash table** at Code Object +648 by scanning the last instruction of each basic block. Branch instructions (opcode 93 = `BRA`, opcode 95 = conditional/`EXIT`) provide the target block indices.
+1. **Populates the successor edge hash table** at Code Object +648 by scanning the last instruction of each basic block. Branch instructions (opcode 67 = `BRA`, opcode 77 = `EXIT`; the code also checks opcodes 93 and 95 which are `OUT_FINAL` and `STS` respectively in the ROT13 name table but serve as internal control-flow markers in this context) provide the target block indices.
 2. **Computes the backedge map** at Code Object +680 by identifying edges where the target has a lower or equal block index position in the DFS tree.
 3. **Builds the reverse post-order (RPO) array** at Code Object +720 via iterative DFS.
 4. **Identifies loop headers and backedges** for later loop optimization passes.
@@ -300,7 +300,7 @@ If a natural loop has multiple entry points, `sub_78B430` transforms it into a s
 - Knob 487 (queried via the knob vtable at +152)
 
 Two code paths handle different branch types:
-- **Opcode 93 (BRA):** Calls `sub_9253C0` to rewrite the branch target
+- **Opcode 93 (`OUT_FINAL` in the ROT13 name table; used here as a control-flow boundary marker):** Calls `sub_9253C0` to rewrite the branch target
 - **Conditional branches:** Calls `sub_748BF0` to insert a new preheader block and redirect edges
 
 After transformation, `sub_931920` is called to split blocks and update the instruction list.
@@ -360,7 +360,7 @@ The `--dont-merge-basicblocks` (alias `-no-bb-merge`) CLI flag prevents the opti
 
 Block index 0 (`bix0`) is always the function entry block. It is the first element in the `bb_array` and the root of the RPO traversal. The entry block has no predecessors (its predecessor list at +136 is NULL).
 
-The exit block is the block containing the `EXIT` instruction (opcode 95). For functions with multiple exit points, each `EXIT`-containing block is a CFG sink. The RPO computation assigns these the highest RPO numbers. The `SetControlFlowOpLastInBB` phase (phase 6) ensures each `EXIT` is the final instruction in its block.
+The exit block is the block containing the `EXIT` instruction (opcode 77 = `EXIT` in the ROT13 name table). For functions with multiple exit points, each `EXIT`-containing block is a CFG sink. The RPO computation assigns these the highest RPO numbers. The `SetControlFlowOpLastInBB` phase (phase 6) ensures each `EXIT` is the final instruction in its block.
 
 The `CFG::buildAndAnalyze` function (`sub_BE0690`) checks the terminator opcode at instruction offset +28. Opcodes 4 and 7 (internal control-flow opcodes) receive special treatment during edge construction:
 
@@ -368,8 +368,8 @@ The `CFG::buildAndAnalyze` function (`sub_BE0690`) checks the terminator opcode 
 |--------|------|---------------|
 | 4 | Unconditional branch | Single successor edge to target block |
 | 7 | Conditional branch | Two successor edges (taken + fall-through) |
-| 93 | `BRA` | Unconditional branch (SASS-level) |
-| 95 | `EXIT` / conditional | No successors (CFG sink) or conditional fall-through |
+| 93 | `OUT_FINAL` | ROT13 name is OUT_FINAL; used as a control-flow boundary marker in CFG construction |
+| 95 | `STS` | ROT13 name is STS; used as a control-flow terminator marker in CFG construction |
 
 ## CFG Update Protocol
 

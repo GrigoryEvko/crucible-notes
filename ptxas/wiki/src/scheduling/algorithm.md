@@ -158,7 +158,7 @@ The function scans the full ready list in a single pass (not limited by knob 770
 | Address | Size | Purpose |
 |---|---|---|
 | `sub_8C67A0` | 3.7 KB | Compute per-instruction resource cost. Calls `sub_A08A00` (resource model) three times: mode 1 = instruction's own cost, mode 2 = operand release cost, mode 3 = combined BB-level impact. Uses SSE `_mm_add_epi32` for vector accumulation. |
-| `sub_8C7290` | 5.1 KB | Copy 10-element int32 resource vector from per-BB table at `scheduler+672`. SSE `_mm_loadu_si128` bulk copy. Special case: opcode 97 (control) returns base scheduler state with zeroed deltas. |
+| `sub_8C7290` | 5.1 KB | Copy 10-element int32 resource vector from per-BB table at `scheduler+672`. SSE `_mm_loadu_si128` bulk copy. Special case: opcode 97 (`STG` in ROT13; used as control/boundary marker) returns base scheduler state with zeroed deltas. |
 | `sub_8C7720` | 20 KB | Red-black tree operations for instruction reordering within BB. Maintains a balanced BST of scheduling candidates for O(log N) insertion, removal, and priority update. |
 | `sub_8C7120` | -- | Barrier tracking state update. |
 | `sub_693BC0` | -- | Memory space classification and latency query. |
@@ -640,7 +640,7 @@ Internal structure:
 3. Check resource conflicts (`sub_687410`)
 4. **Inner loop** (`while(2)` infinite loop with break conditions):
    - Check if ready list is empty -- break if so
-   - Check opcode 97 (NOP/scheduling barrier) -- special handling
+   - Check opcode 97 (`STG` in ROT13; used as scheduling barrier/control marker) -- special handling
    - Select best instruction from ready list
    - Schedule it: assign cycle, update resources, process edges
    - For each successor: decrement `dep_count`, add to ready list if zero

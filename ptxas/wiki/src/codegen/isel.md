@@ -101,7 +101,7 @@ void MercConverter_Dispatch(context, instruction) {
     int opcode = *(DWORD*)(instruction + 72);
     BYTE1(opcode) &= 0xCF;
 
-    // Special case: opcode 130 with GPR operand -> clear predication
+    // Special case: opcode 130 (HSET2 in ROT13; internal marker) with GPR operand -> clear predication
     if (opcode == 130) {
         int operand = *(DWORD*)(instruction + 84);
         if (((operand >> 28) & 7) == 1 && reg_type(operand) == 6)

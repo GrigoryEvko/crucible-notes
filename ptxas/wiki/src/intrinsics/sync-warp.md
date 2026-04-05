@@ -574,7 +574,7 @@ The progression is: early fence insertion (25) -> cross-function barrier elimina
 
 ### Ori IR Opcode 130 -- Sync Analysis Target
 
-The optimizer phases 26 and 71 identify synchronization instructions by checking for Ori opcode 130. For each barrier instruction found:
+The optimizer phases 26 and 71 identify synchronization instructions by checking for Ori opcode 130 (`HSET2` in the ROT13 name table; used as an internal Ori IR marker for barrier/sync instructions -- actual SASS BAR is opcode 61, MEMBAR is opcode 111). For each barrier instruction found:
 
 1. Extract the destination operand from `field+84`
 2. Resolve the register through the register table at `context+88`

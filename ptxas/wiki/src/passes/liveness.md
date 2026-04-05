@@ -242,7 +242,7 @@ Not all instructions with dead destinations can be removed. The DCE must preserv
 - **Texture operations** with side effects
 - **Instructions with volatile flags**
 
-The opcode mask `& 0xCFFF` (seen in `sub_A06A60`) strips modifier bits to obtain the base opcode for side-effect classification. Opcodes 93 (call), 94/95 (block boundaries), 97 (branch), and 52 (NOP/texture) receive special handling.
+The opcode mask `& 0xCFFF` (seen in `sub_A06A60`) strips modifier bits to obtain the base opcode for side-effect classification. Opcodes 93 (`OUT_FINAL` in the ROT13 name table; used as a call-like marker -- actual CALL is opcode 71), 94 (`LDS`)/95 (`STS`) (used as block boundary markers), 97 (`STG`; used as a branch-like marker -- actual BRA is opcode 67), and 52 (`AL2P_INDEXED`; used as NOP/boundary) receive special handling.
 
 ### DCE Integration
 
@@ -325,7 +325,7 @@ The scheduler uses liveness to:
 The dependency graph builder (`sub_A0F970`, `sub_A0D800`) uses liveness to:
 - Determine which registers are live at block boundaries
 - Identify anti-dependencies (WAR) that constrain scheduling
-- Track callee-clobbered registers at call sites (opcode 93)
+- Track callee-clobbered registers at call sites (opcode 93; `OUT_FINAL` in ROT13, used as call-like marker -- actual CALL is opcode 71)
 
 ### Multi-Set Register Manager
 

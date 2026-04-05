@@ -611,7 +611,7 @@ The three infrastructure functions called at the beginning are shared with the G
 4. If domination holds, replaces the current instruction's destination with the matched instruction's destination
 5. Returns true if commoning succeeded, false otherwise
 
-A related commoning pattern was confirmed from `sub_90A340` (1670 bytes, 21 callees), which performs commoning on opcode 130 (MOV) instructions. From the decompilation, the operand comparison loop:
+A related commoning pattern was confirmed from `sub_90A340` (1670 bytes, 21 callees), which performs commoning on opcode 130 (`HSET2` in the ROT13 name table; used as an internal marker for MOV-like instructions -- actual SASS MOV is opcode 19) instructions. From the decompilation, the operand comparison loop:
 
 ```c
 // Operand-by-operand equivalence check within commoning body
@@ -819,7 +819,7 @@ Three Ori opcodes are candidates for forward copy propagation:
 
 | Opcode | Meaning | Propagation Rule |
 |---|---|---|
-| 97 | Register-to-register MOV | Replace uses of destination with source |
+| 97 | Definition anchor (`STG` in ROT13; used internally as a register-to-register MOV/definition marker -- actual SASS MOV is opcode 19) | Replace uses of destination with source |
 | 18 | Predicated copy | Propagate only under matching predicate guard |
 | 124 | Conditional select (CSEL) | Propagate when select condition is provably constant |
 

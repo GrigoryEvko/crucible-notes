@@ -30,7 +30,7 @@ Strength reduction in ptxas is not a single monolithic pass. It is distributed a
 
 The execute wrapper (`sub_C5FB30`) gates on multi-function compilation (function count > 1 via `sub_7DDB50`) and delegates to `sub_752E40` with parameters `(context, 0, 0, 0)`.
 
-`sub_752E40` is the core. It performs a single-pass walk over the instruction list, focusing on a specific intermediate opcode (137 decimal, masked with `& 0xFFFFCFFF` to strip modifier bits in the opcode field at instruction offset +72). This opcode represents an IMAD-like multiply-accumulate instruction in its pre-lowered form.
+`sub_752E40` is the core. It performs a single-pass walk over the instruction list, focusing on a specific intermediate opcode (137 decimal, masked with `& 0xFFFFCFFF` to strip modifier bits in the opcode field at instruction offset +72). In the ROT13 name table, opcode 137 is `SM73_FIRST` (a generation boundary marker name), but this opcode is used at runtime as an IMAD-like multiply-accumulate instruction in its pre-lowered form. The actual SASS IMAD is opcode 1.
 
 ### Algorithm
 
@@ -57,7 +57,7 @@ The pass executes in two phases within a single call:
    - If the operand was not yet marked (flag `0x100` bit not set), initialize it and mark as "needs strength reduction"
    - Traverse the use chain as a worklist: for each user of the replaced register, check if *its* uses also need updating, growing the worklist dynamically (doubling allocation via pool allocator)
 2. Track how many source operands were rewritten (`v72` counter)
-3. After processing all operands of an instruction: if the instruction is still opcode 137 (IMAD-like) and certain conditions hold (destination matches source pattern, specific operand bit patterns), either delete it or convert it to opcode `0x82` (MOV)
+3. After processing all operands of an instruction: if the instruction is still opcode 137 (`SM73_FIRST` in ROT13; used as IMAD-like) and certain conditions hold (destination matches source pattern, specific operand bit patterns), either delete it or convert it to opcode `0x82` (130 decimal; `HSET2` in ROT13, used as an internal MOV-like marker -- actual SASS MOV is opcode 19)
 
 The worklist traversal is the key algorithmic insight: when a multiply's result feeds into another multiply, the chain of strength reductions propagates transitively through the def-use graph.
 

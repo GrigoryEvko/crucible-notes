@@ -7,7 +7,7 @@ The ptxas synchronization pipeline manages the insertion, optimization, and expa
 | **Phases** | 25, 26, 42, 71, 72, 99, 100, 114 |
 | **Categories** | Lowering (25, 42, 72), Optimization (26, 71), Scheduling (99, 100, 114) |
 | **Pipeline span** | Phase 25 (early optimization) through phase 114 (post-scheduling) |
-| **Key opcodes** | `BAR` (opcode 95), `MEMBAR`, `DEPBAR`, `BSYNC`, `BSSY`, `WARPSYNC`, `MBARRIER.*` |
+| **Key opcodes** | `BAR` (opcode 61), `MEMBAR` (opcode 111), `DEPBAR`, `BSYNC`, `BSSY`, `WARPSYNC`, `MBARRIER.*`. Note: the code uses opcode 130 (`HSET2` in the ROT13 name table) as an internal marker for barrier/sync instructions in the Ori IR. |
 | **Architecture gates** | Phases 100, 114 dispatch through architecture vtable; phase 42 dispatches through backend vtable at `ctx+1584` offset `0x168` |
 | **Related EIATTR** | `EIATTR_SYNC_STACK`, `EIATTR_NUM_BARRIERS`, `EIATTR_NUM_MBARRIERS`, `EIATTR_MBARRIER_INSTR_OFFSETS`, `EIATTR_GEN_ERRBAR_AT_EXIT`, `EIATTR_SW_WAR_MEMBAR_SYS_INSTR_OFFSETS` |
 | **CLI options** | `--assume-extern-functions-do-not-sync`, `--no-membermask-overlap`, `--print-potentially-overlapping-membermasks` |
@@ -26,7 +26,7 @@ Thread block barriers synchronize all threads within a cooperative thread array 
 - `bar.arrive N` -- signal arrival without blocking
 - `barrier.cta.{sync,arrive,red}` -- PTX 8.0+ cluster-aware variants
 
-In SASS, these map to the `BAR` instruction family with opcode 95. The `EIATTR_NUM_BARRIERS` metadata records the maximum barrier index used, which the hardware uses to partition the convergence barrier file.
+In SASS, these map to the `BAR` instruction family (opcode 61 in the ROT13 name table). The Ori IR uses opcode 130 (`HSET2` in the ROT13 name table) as an internal barrier/sync marker. The `EIATTR_NUM_BARRIERS` metadata records the maximum barrier index used, which the hardware uses to partition the convergence barrier file.
 
 ```
 PTX:     bar.sync 0;
@@ -209,11 +209,11 @@ The main analysis function (2,288 bytes) operates through several stages:
 
 5. **Block iteration** (`sub_769300`, `sub_752AB0`): Builds block-level analysis structures for the function.
 
-6. **Redundancy analysis**: For each barrier instruction (opcode 130, i.e., `BAR`/`MEMBAR`), checks whether the barrier's destination register is live in any successor block. If the barrier result is dead (no thread could observe it before the next dominating barrier), the barrier is eliminated.
+6. **Redundancy analysis**: For each barrier instruction (opcode 130; `HSET2` in the ROT13 name table, but used as the internal Ori IR marker for barrier/sync instructions -- actual SASS BAR is opcode 61, MEMBAR is opcode 111), checks whether the barrier's destination register is live in any successor block. If the barrier result is dead (no thread could observe it before the next dominating barrier), the barrier is eliminated.
 
 7. **Block-level merging** (`sub_75EAE0`, `sub_75E2F0`): Merges barriers at block boundaries where adjacent blocks have compatible barrier scopes.
 
-The algorithm checks barriers by walking the instruction chain and testing opcode 130 (the internal Ori opcode for barrier/sync instructions). For each barrier, it extracts the destination operand (`field+84`), resolves the register through the register table at `context+88`, and tests whether the register's use-count (`reg+24`) indicates the barrier result is consumed.
+The algorithm checks barriers by walking the instruction chain and testing opcode 130 (`HSET2` in the ROT13 name table; used as the internal Ori IR opcode for barrier/sync instructions -- not the actual HSET2 half-precision set instruction). For each barrier, it extracts the destination operand (`field+84`), resolves the register through the register table at `context+88`, and tests whether the register's use-count (`reg+24`) indicates the barrier result is consumed.
 
 ---
 
@@ -341,7 +341,7 @@ sub_90A340(ctx):
     sub_775010(ctx)
     sub_7E6090(ctx, 0, 0, 0, 32)
 
-    // Walk instruction list, find opcode 130 (BAR/sync)
+    // Walk instruction list, find opcode 130 (HSET2 in ROT13; internal barrier/sync marker)
     for instr = ctx->first_instr; instr; instr = instr->next:
         if instr->opcode != 130: continue
 
@@ -366,7 +366,7 @@ sub_90A340(ctx):
     cleanup_lists()
 ```
 
-The pass iterates the flat instruction list (not per-block), checking every instruction with opcode 130 (the internal Ori IR opcode for barrier/synchronization instructions). For each barrier, it examines the operand to determine:
+The pass iterates the flat instruction list (not per-block), checking every instruction with opcode 130 (`HSET2` in the ROT13 name table; used as the internal Ori IR opcode for barrier/synchronization instructions). For each barrier, it examines the operand to determine:
 
 1. Whether the barrier result register is consumed by any subsequent instruction
 2. Whether the barrier can be merged with an adjacent barrier of the same scope
@@ -509,9 +509,9 @@ The per-block processor (3,045 bytes, 53 callees) is the core of sync insertion.
 1. **Allocates temporary liveness bitsets** via `sub_BDBA60` (bitvector alloc)
 2. **Copies block-entry live set** from `ctx+832` via `sub_BDC300`
 3. **Walks instructions forward**, examining each opcode (masked by `0xCFFF`):
-   - Opcode 93 (call): copies callee-save register set, handles arguments
-   - Opcode 95 (barrier): AND-merges successor block live sets
-   - Opcode 97 (branch): tests if live set changed since block entry
+   - Opcode 93 (`OUT_FINAL` in ROT13; used here as a call-like control-flow marker -- actual CALL is opcode 71): copies callee-save register set, handles arguments
+   - Opcode 95 (`STS` in ROT13; used here as a barrier/terminator marker -- actual BAR is opcode 61): AND-merges successor block live sets
+   - Opcode 97 (`STG` in ROT13; used here as a branch/control marker -- actual BRA is opcode 67): tests if live set changed since block entry
 4. **Inserts sync instructions** where data dependencies cross synchronization boundaries
 5. **Updates uniform register liveness** at `ctx+856` when `ctx+1378 bit 3` is set
 

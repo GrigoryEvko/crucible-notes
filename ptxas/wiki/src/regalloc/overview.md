@@ -110,8 +110,8 @@ The outer retry loop (355 lines) that wraps the core allocator with a two-phase 
 
 ```
 function alloc_with_spill_retry(alloc_state, ctx, class_id):
-    max_attempts = query_knob(638)                    // default varies
-    attempt_limit = query_knob(639)
+    no_retarget = query_knob(638)                     // RegAllocNoRetargetPrefs (bool)
+    num_trials  = query_knob(639)                     // RegAllocNumNonSpillTrials (int)
 
     // Phase 1: NOSPILL
     pre_allocation_pass(alloc_state)                  // sub_94A020
@@ -123,7 +123,7 @@ function alloc_with_spill_retry(alloc_state, ctx, class_id):
         return
 
     // Phase 2: SPILL retry loop
-    for attempt in 1..max_attempts:
+    for attempt in 1..num_trials:
         guidance = compute_spill_guidance(ctx, attempt)    // sub_96D940
         result = fatpoint_allocate(alloc_state, ctx, SPILL)
         record_best_result(alloc_state, result)
@@ -165,7 +165,7 @@ function fatpoint_allocate(alloc_state, ctx, mode):
     primary[512]   = {0}                              // SSE2 memset
     secondary[512] = {0}
 
-    threshold = query_knob(684)                       // default 50
+    threshold = query_knob(684)                       // RegAllocThresholdForDiscardConflicts, default 50
 
     for each vreg in alloc_state.register_list:       // linked list at +744
         // Populate interference bitmaps for this vreg
@@ -197,7 +197,7 @@ function fatpoint_allocate(alloc_state, ctx, mode):
     return alloc_state.register_count + 1
 ```
 
-The interference threshold (knob 684, default 50) is the key heuristic parameter. Slots with interference above this value are skipped entirely, forcing the allocator toward less-contested register slots even if they are not globally minimal.
+The interference threshold (`RegAllocThresholdForDiscardConflicts`, knob 684, default 50) is the key heuristic parameter. Slots with interference above this value are discarded (skipped entirely), forcing the allocator toward less-contested register slots even if they are not globally minimal.
 
 ## Register Assignment: sub\_94FDD0
 
@@ -268,7 +268,7 @@ Spilling triggers when the fat-point allocator cannot find a physical register w
 | LMEM (local memory) | Default spill destination. Per-thread private memory. |
 | SMEM (shared memory) | Alternative spill destination. Faster but shared across CTA. Assertion: "Smem spilling should not be enabled when functions use abi." |
 
-Spill setup (`sub_939BD0`, 65 lines) selects configuration based on OCG knob 623 and the cost threshold at `alloc+776`:
+Spill setup (`sub_939BD0`, 65 lines) selects configuration based on `RegAllocEstimatedLoopIterations` (knob 623) and the cost threshold at `alloc+776`:
 
 | Condition | Bucket size | Alignment | Max size |
 |-----------|-------------|-----------|----------|
@@ -283,7 +283,7 @@ Two important pre-passes run before the main allocator:
 
 ### ConvertMemoryToRegisterOrUniform
 
-Entry: `sub_910840` (327 lines). Promotes stack variables to registers or uniform registers. Gated by `sub_8F3EA0` (eligibility check) and OCG knob 487.
+Entry: `sub_910840` (327 lines). Promotes stack variables to registers or uniform registers. Gated by `sub_8F3EA0` (eligibility check) and `NumOptPhasesBudget` (knob 487, budget type).
 
 ```
 sub_910840 (entry, string: "ConvertMemoryToRegisterOrUniform")
@@ -295,9 +295,9 @@ sub_910840 (entry, string: "ConvertMemoryToRegisterOrUniform")
 
 ### Pre-Allocation Pass
 
-Entry: `sub_94A020` (331 lines). Assigns physical registers to high-priority operands before the main allocator runs. Gated by knobs 628 (enable), 629 (coalescing), and 618 (uniform).
+Entry: `sub_94A020` (331 lines). Assigns physical registers to high-priority operands before the main allocator runs. Gated by `RegAllocMacForce` (knob 628, bool), `RegAllocMacVregAllocOrder` (knob 629, int), and `RegAllocCoalescing` (knob 618, bool).
 
-For allocation modes 3, 5, or 6: iterates basic blocks calling `sub_9499E0` (per-block scanner) and `sub_93ECB0` (per-operand pre-assigner). Priority levels from knob 646: `1` = read operands, `2` = write operands, `3` = both.
+For allocation modes 3, 5, or 6: iterates basic blocks calling `sub_9499E0` (per-block scanner) and `sub_93ECB0` (per-operand pre-assigner). Priority levels from `RegAllocPrefMacOperands` (knob 646): `1` = read operands, `2` = write operands, `3` = both.
 
 Uses an opcode eligibility bitmask table (shift-based membership test on `opcode - 22`) to filter which instructions are candidates for pre-assignment.
 
@@ -357,9 +357,9 @@ Arena-allocated hash tables for pre-assigned registers. Each table is a 3-QWORD 
 | +400 | 24 | -- | 0 | Exclusion secondary: {base, count, capacity} |
 | +424 | 4 | DWORD | 0 | Exclusion secondary: element count |
 | +432 | 8 | ptr | =+352 | Exclusion alias B |
-| +440 | 1 | BYTE | 0 | Enable pre-alloc flag (knob 628) |
-| +441 | 1 | BYTE | 0 | Enable uniform flag (knob 618) |
-| +442 | 1 | BYTE | 0 | Enable coalescing flag (knob 629) |
+| +440 | 1 | BYTE | 0 | MAC force pre-alloc flag (`RegAllocMacForce`, knob 628) |
+| +441 | 1 | BYTE | 0 | Coalescing enable flag (`RegAllocCoalescing`, knob 618) |
+| +442 | 1 | BYTE | 0 | MAC vreg alloc order (`RegAllocMacVregAllocOrder`, knob 629) |
 | +443 | 1 | BYTE | 0 | Per-class mode flag (set by vtable+296 callback) |
 
 ### Per-Class Bitvector Sets (+448 -- +695)
@@ -596,21 +596,21 @@ Occupancy-aware register budget interpolation. Computes a dynamic register budge
 
 ## Key Knobs
 
-73+ OCG knobs control register allocation heuristics. The most important ones identified:
+73+ OCG knobs control register allocation heuristics. The most important ones identified (names decoded from ROT13 binary strings):
 
-| Knob | Role | Default / Notes |
-|------|------|-----------------|
-| 381 | HoistInvariants policy | 0=always, 1=inner loops, 3=never |
-| 487 | ConvertMemoryToRegisterOrUniform enable | -- |
-| 618 | Uniform register pre-allocation enable | -- |
-| 623 | Spill mode selector | Value at offset+224 = spill limit |
-| 628 | Pre-allocation pass enable | -- |
-| 629 | Coalescing pre-allocation enable | -- |
-| 638 | Max spill attempts | -- |
-| 639 | Spill attempt limit | -- |
-| 646 | Pre-assign priority | 1=read, 2=write, 3=both |
-| 684 | Interference threshold | Default 50 |
-| 934 | Per-block allocation tracking | -- |
+| Knob | Name | Type | Role |
+|------|------|------|------|
+| 381 | *(not yet decoded)* | -- | HoistInvariants policy: 0=always, 1=inner loops, 3=never |
+| 487 | `NumOptPhasesBudget` | BDGT | Budget counter that gates ConvertMemoryToRegisterOrUniform |
+| 618 | `RegAllocCoalescing` | bool | Enables register coalescing in the allocator |
+| 623 | `RegAllocEstimatedLoopIterations` | STR | Loop iteration estimate hint for spill cost weighting |
+| 628 | `RegAllocMacForce` | bool | Forces MAC-level pre-allocation path |
+| 629 | `RegAllocMacVregAllocOrder` | INT | Vreg processing order during MAC allocation |
+| 638 | `RegAllocNoRetargetPrefs` | bool | Disables retarget-preference optimization |
+| 639 | `RegAllocNumNonSpillTrials` | INT | Non-spill allocation trials before allowing spills |
+| 646 | `RegAllocPrefMacOperands` | INT | MAC operand preference level (1=read, 2=write, 3=both) |
+| 684 | `RegAllocThresholdForDiscardConflicts` | INT | Interference discard threshold. Default 50 |
+| 934 | `UseNewLoopInvariantRoutineForHoisting` | bool | Selects new LICM routine for HoistInvariants pre-pass |
 
 ## Function Map
 

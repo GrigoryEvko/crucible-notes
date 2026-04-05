@@ -349,7 +349,7 @@ The scheduler uses these values in the priority function (`sub_8C9320`) to disti
 
 1. Verifies the target architecture supports dual-issue via `sub_7DC0E0`.
 2. For opcode 183 (LD/ST variant): checks memory space via `sub_693BC0`. Memory spaces 4, 16, 2, 11, 3, 1, and 7 all qualify for long-latency classification.
-3. For opcode 130 (generic): queries via vtable+640 whether the instruction is recognized as long-latency.
+3. For opcode 130 (`HSET2` in the ROT13 name table; used as a generic internal marker): queries via vtable+640 whether the instruction is recognized as long-latency.
 4. Queries the scheduling oracle (`sub_8BF3A0`) for the instruction's estimated latency.
 5. Returns `true` if the estimated latency exceeds **19 cycles**.
 
