@@ -728,7 +728,7 @@ The per-instruction assignment core loop (3722 lines, the largest function in pa
 4. Manages three bitvector masks per instruction: assigned, must-not-spill, and used
 5. Detects rematerialization opportunities (flag `v570`) and calls `sub_93AC90`
 6. Detects bank conflicts via `sub_9364B0` and resolves them
-7. Handles special opcodes: 187 (LOAD), 97 (STORE), 52 (BRANCH), 236 (CALL)
+7. Handles special opcodes: 187 / IMMA_16832 (`VZZN_16832`, behavioral: LOAD), 97 / STG (`FGT`, behavioral: STORE), 52 / BB boundary (behavioral: BRANCH), 236 / UBLKPF (`HOYXCS`, behavioral: CALL)
 8. Tracks first-spill-candidate (`alloc+1354`) and fallback-spill-candidate (`alloc+1355`)
 9. On allocation failure for an instruction, calls `sub_96CE90` which recursively invokes `sub_9680F0` with different flags for the spill fallback path
 
@@ -856,6 +856,137 @@ The verifier tracks two counters reported at the end of the pass:
 | `sub_A75CC0` | 866B | Deep single-instruction verifier (classifies diffs) |
 | `sub_A76030` | 770B | MemcheckPass::run -- verification entry point |
 
+## Occupancy-Aware Budget Model
+
+The allocator maintains a 144-byte budget pressure model at `alloc+1600`--`alloc+1744` that adjusts the effective register budget based on thread occupancy. The model is initialized by `sub_947150` (the allocator constructor) and consumed by the spill guidance function `sub_96D940`. The goal: kernels that need high occupancy get tighter register budgets (more aggressive spilling), while kernels that can tolerate low occupancy get relaxed budgets (more registers, fewer spills).
+
+### Coefficient Initialization
+
+Three knob-overridable coefficients control the interpolation:
+
+| Field | Offset | Knob | Knob Name | Type | Default | Meaning |
+|-------|--------|------|-----------|------|---------|---------|
+| coeffA | +1632 | 664 | `RegAllocSpillBitLowRegScale` | DBL | 0.2 | Scale at low register counts (piecewise default value) |
+| coeffB | +1640 | 661 | `RegAllocSpillBitHighRegScale` | DBL | 1.0 | Scale at high register counts (linear model y\_max) |
+| coeffC | +1648 | 665 | `RegAllocSpillBitMediumRegScale` | DBL | 0.3 | Scale at medium register counts (linear model y\_min) |
+
+Two integer knobs set the tier boundaries:
+
+| Field | Offset | Knob | Knob Name | Type | Default | Meaning |
+|-------|--------|------|-----------|------|---------|---------|
+| maxThreads | +1624 | 663 | `RegAllocSpillBitLowRegCountHeur` | INT | 119 | Low register count tier boundary |
+| pressureThresh | +1628 | 660 | `RegAllocSpillBitHighRegCountHeur` | INT | 160 | High register count tier boundary |
+
+All five knobs use the standard OCG type-check pattern: byte at `knobArray + 72*index` encodes 0 (use default), 1 (use INT value at +8), or 3 (use DBL value at +8).
+
+### Piecewise Interpolation Table
+
+After reading the knobs, `sub_947150` queries the target descriptor for the hardware maximum thread count (vtable slot 90, offset +720). This value is clamped to `maxThreads - 1` if a knob override is active. The result becomes `totalThreads` -- the kernel's maximum achievable occupancy.
+
+An optional override through the function-object vtable at `context+1584` (vtable slot 118, offset +944) can adjust the architectural register limit. When the override is active, it calls `override_fn(totalThreads, param, 255.0)` and sets the adjusted limit to `255 - result`. When inactive, the limit stays at 255.
+
+The piecewise array stores 7 `(value, x-coordinate)` pairs that define a step function mapping register counts to scale factors:
+
+```
+interpTable[0] = coeffA    interpTable[1] = maxThreads
+interpTable[2] = coeffA    interpTable[3] = pressureThresh
+interpTable[4] = coeffA    interpTable[5] = adjustedLimit     // 255 or (255 - override)
+interpTable[6] = coeffB
+```
+
+This means: for register counts up to `maxThreads` (default 119), the budget scale is coeffA (0.2); from `maxThreads` to `pressureThresh` (160), still coeffA; from `pressureThresh` to the adjusted limit (255), still coeffA; and beyond that boundary, coeffB (1.0). In practice the piecewise table establishes a two-tier system: a low scale for most of the register range, jumping to the high scale only at the top.
+
+### Linear Interpolation Model
+
+A separate linear model provides continuous interpolation for the spill guidance decision. Two more vtable queries establish the domain:
+
+```
+x_min = target->getMaxOccupancy()    // vtable slot 90 on target descriptor via context+1584
+x_max = target->getMinOccupancy()    // vtable slot 96 (offset +768) on function-object via context+1584
+y_min = coeffC                       // 0.3
+y_max = coeffB                       // 1.0
+slope = (coeffB - coeffC) / (x_max - x_min)
+```
+
+The slope is stored at `alloc+1736`. Since `x_max` (minimum occupancy, meaning fewest concurrent threads = most registers allowed) is typically greater than `x_min` (maximum occupancy, meaning most concurrent threads = fewest registers), the slope is positive: as the function moves toward allowing more registers (fewer threads), the budget fraction increases.
+
+### Spill Guidance Consumption
+
+The spill guidance function `sub_96D940` (line 1520 in the decompiled output) uses the linear model to compute a dynamic spill threshold:
+
+```
+budget_fraction = (current_reg_count - x_min) * slope + y_min
+spill_threshold = budget_fraction * (class_budget - class_floor + 1)
+```
+
+Where:
+- `current_reg_count`: the current register allocation count for this class (from `alloc+884` indexed by class)
+- `class_budget` and `class_floor`: per-class allocation bounds at `alloc + 32*class + 884` and `alloc + 32*class + 880`
+- For paired registers, `current_reg_count` is halved: `(count + 1) >> 1`
+
+The comparison at line 1527:
+
+```
+if (spill_count + unspilled_need_spill + current_reg_count) > spill_threshold:
+    trigger_spill(sub_948B80)
+```
+
+If the total pressure (live registers needing spill + those already marked for spill + current allocation count) exceeds the occupancy-adjusted threshold, the allocator triggers a spill. The `sub_948B80` call adds the current VR to the spill candidate queue.
+
+### Worked Example
+
+For a Blackwell SM100 kernel with default knobs:
+
+| Parameter | Value | Source |
+|-----------|-------|--------|
+| coeffA | 0.2 | Knob 664 default |
+| coeffB | 1.0 | Knob 661 default |
+| coeffC | 0.3 | Knob 665 default |
+| maxOccupancy (x\_min) | 240 | SM100 target vtable slot 90 |
+| minOccupancy (x\_max) | 480 | SM100 target vtable slot 96 |
+| slope | (1.0 - 0.3) / (480 - 240) = 0.00292 | Computed |
+
+If the current GPR class has a budget of 128 and floor of 0 (range = 129), and the function currently uses 300 registers:
+
+```
+budget_fraction = (300 - 240) * 0.00292 + 0.3 = 0.475
+spill_threshold = 0.475 * 129 = 61.3
+```
+
+If more than 61 VRs are pending spill or already allocated, the allocator triggers a spill rather than attempting to fit another register. With fewer registers in play (say 250), the fraction drops to 0.329 and the threshold tightens to 42 -- more aggressive spilling at higher occupancy targets.
+
+### Budget Model Field Summary
+
+| Offset | Size | Type | Init | Field |
+|--------|------|------|------|-------|
+| +1600 | 8 | ptr | `ctx[2]->+208` | Function object pair pointer |
+| +1608 | 8 | ptr | 0 | Auxiliary pointer (unused at init) |
+| +1616 | 8 | QWORD | `0xFFFFFFFF` | Occupancy upper bound |
+| +1624 | 4 | DWORD | 119 / knob 663 | maxThreads (low reg count tier boundary) |
+| +1628 | 4 | DWORD | 160 / knob 660 | pressureThresh (high reg count tier boundary) |
+| +1632 | 8 | double | 0.2 / knob 664 | coeffA (low-register scale) |
+| +1640 | 8 | double | 1.0 / knob 661 | coeffB (high-register scale / y\_max) |
+| +1648 | 8 | double | 0.3 / knob 665 | coeffC (medium-register scale / y\_min) |
+| +1656 | 8 | double | (computed) | totalThreads as double |
+| +1664 | 8 | double | = coeffA | interpTable[0]: value for tier 0 |
+| +1672 | 8 | double | = maxThreads | interpTable[1]: x-boundary for tier 0 |
+| +1680 | 8 | double | = coeffA | interpTable[2]: value for tier 1 |
+| +1688 | 8 | double | = pressureThresh | interpTable[3]: x-boundary for tier 1 |
+| +1696 | 8 | double | = coeffA | interpTable[4]: value for tier 2 |
+| +1704 | 8 | double | = adjustedLimit | interpTable[5]: x-boundary for tier 2 |
+| +1712 | 8 | double | = coeffB | interpTable[6]: value for tier 3 (final) |
+| +1720 | 8 | double | (computed) | x\_min: max occupancy thread count |
+| +1728 | 8 | double | = coeffC | y\_min (linear model intercept at x\_min) |
+| +1736 | 8 | double | (computed) | slope: (coeffB - coeffC) / (minOcc - maxOcc) |
+| +1744 | 8 | ptr | 0 | Tail sentinel |
+
+### Post-Init: sub\_939BD0
+
+Immediately after building the interpolation tables, `sub_947150` calls `sub_939BD0` which configures the spill guidance lookup strategy at `alloc+1784`. This function queries knob 623 (`RegAllocEstimatedLoopIterations`) through the function-object vtable:
+
+- **If knob 623 is set**: the spill guidance uses the knob's value to estimate loop iteration counts, passed to the lookup strategy via vtable slot 3 (offset +24).
+- **If knob 623 is unset**: the lookup strategy is initialized with default parameters. When the budget model's auxiliary weight at `alloc+776` is zero, the strategy uses `(8, 4, 0x100000)`; otherwise `(16, 16, 0x100000)`.
+
 ## Function Map
 
 | Address | Lines | Role |
@@ -866,8 +997,10 @@ The verifier tracks two counters reported at the end of the pass:
 | `sub_93E9D0` | 125 | Pre-assign individual operand |
 | `sub_93ECB0` | 194 | Pre-assign registers (per-instruction dispatcher) |
 | `sub_93FBE0` | 940 | Per-iteration allocation state reset |
+| `sub_939BD0` | 63 | Spill guidance strategy initializer (knob 623 query) |
 | `sub_939CE0` | 23 | Register consumption counter (pair-aware) |
 | `sub_9446D0` | 29 | Register skip predicate (special regs, exclusion set) |
+| `sub_947150` | ~700 | Allocator constructor (budget model + interpolation init) |
 | `sub_94A020` | 331 | Pre-allocation pass (knobs 628/629/618) |
 | `sub_94FDD0` | 155 | Register assignment + alias propagation |
 | `sub_950100` | 205 | Pre-allocated candidate applier (FNV-1a lookup) |
