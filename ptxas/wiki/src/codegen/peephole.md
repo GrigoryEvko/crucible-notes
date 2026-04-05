@@ -1,5 +1,7 @@
 # Peephole Optimization
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The peephole optimization pass in ptxas is the single largest subsystem by code volume
 in the entire binary.  Three monolithic dispatch functions -- totaling approximately
 750 KB of machine code -- implement a brute-force pattern-match-and-rewrite engine
@@ -473,6 +475,115 @@ functions.  Each encoder packs a 128-bit SASS instruction word using
 | `sub_13B9D50` | small | isUniformRegister(byte) | HIGH |
 | `sub_13B9DC0` | small | opcodeIdentity(uint) -- passthrough | CERTAIN |
 | `sub_1909030` | small | opcodePassthrough (post-schedule context) | HIGH |
+
+## Macro Instruction Expansion (`sub_8127C0`)
+
+Separate from the three pattern-match-and-rewrite mega-dispatchers, ptxas contains
+a dedicated macro instruction expansion pass at `sub_8127C0` (10,720 bytes).  This
+pass resolves register-file constraints for composite instructions -- cases where
+source or destination operands span register files or where multi-word results need
+splitting into narrower instruction sequences.
+
+It is called from the master lowering dispatcher `sub_8380A0` and runs before
+instruction scheduling.
+
+### Two-phase algorithm
+
+**Phase 1 -- Operand scanning and constraint annotation.**
+The pass iterates every instruction in the function's linked list (traversing via
+`instr+8`).  For each instruction, it reads the opcode at `instr+72` and dispatches
+through a 15-family if-else cascade.  For each opcode, it calls
+`sub_812550` (`getOperandConstraint`) on each source operand to determine
+register-file affinity:
+
+| Return value | Meaning |
+|-------------|---------|
+| 0 | Unconstrained |
+| -2 | Constrained to register file B (e.g., even-aligned pair) |
+| -3 | Constrained to register file A (e.g., odd-aligned pair) |
+| -1 | Conflict / unresolvable |
+
+The pass annotates register descriptor entries (indexed via `ctx+88`) at `reg+76`
+(constraint code) and `reg+80` (target width code), and builds a linked list of
+instructions requiring expansion (linked via `instr+56`).  Registers consumed by
+expansion are marked dead (`reg+64 = 5`).
+
+**Phase 2 -- Instruction rewriting.**
+If any instruction requires expansion, the pass iterates the worklist and performs
+actual rewrites: replacing composite instructions with equivalent sequences,
+inserting new instructions via the `sub_930040` / `sub_92FF10` / `sub_92E720`
+emitters, and deleting originals via `sub_9253C0`.  Register-file mapping uses two
+lookup tables: `dword_21D5EE0[26]` (for constraint -2) and `dword_21D5F60[16]`
+(for constraint -3).
+
+Between phases, a cleanup loop removes worklist entries with conflicting constraints
+(both operands invalid), resetting `reg+76 = -1`.
+
+### Opcodes handled
+
+| Opcode | Mnemonic | Expansion pattern |
+|--------|----------|-------------------|
+| 10 | `SHF` | Three-source constraint check; emits `I2IP` (36) + new `SHF` when sources span register files |
+| 18 | `FSETP` | Predicate operand finalization when operand count == 6 and modifier bits match |
+| 29 | `PMTRIG` | Last-operand extraction and finalization |
+| 36 | `I2IP` | Destination register marking and two-source constraint checking |
+| 60 | `LEPC` | Store/load legalization: validates flags, checks register file == 6, recursive chain validation via `sub_812480` |
+| 62, 78, 79 | `BAR_INDEXED`, `RTT`, `BSYNC` | Same legalization path as `LEPC` |
+| 95, 96 | `STS`, `LDG` | Last-operand extraction for stores; two-source vector-width constraint checking for loads |
+| 97 | `STG` | Source registration for expansion tracking |
+| 130 | `HSET2` | Validates single-def destination, recursive source constraint chains; inserts `HSET2` rewrites or converts to opcode-201 stores |
+| 137 | `SM73_FIRST` | Same path as `HSET2` |
+| 149 | `UFLO` | Two-source validation; marks destination with width code 20; vectorization combining |
+| 151 | `UIMAD` | Shared three-source path with `SHF` |
+| 190 | `LDGDEPBAR` | Shared last-operand path with `PMTRIG` |
+| 201, 202 | `QMMA_16816`, `QMMA_16832` | Full multi-operand legalization; inserts barrier instructions for QMMA |
+| 283 | `UVIADD` | Penultimate operand extraction and type resolution |
+| 290 | `MOV` (sm_104) | Same constraint path as `SHF`/`UIMAD` |
+| bit 12 set | (arch-specific) | Last-operand extraction for architecture-extended instructions |
+
+### `sub_812550` -- `getOperandConstraint`
+
+The single most-called helper (32 call sites), this 40-byte function reads the
+constraint code from the register descriptor for a given operand reference:
+
+```c
+int getOperandConstraint(int64_t ctx, uint32_t *operand_ref) {
+    int modifier_bits = operand_ref[1];
+    int constraint = reg_array[*operand_ref & 0xFFFFFF].constraint;  // reg+76
+    if ((modifier_bits & 0xFE000000) == 0)
+        return constraint;      // no sub-register modifier => raw value
+    // Apply modifier-aware transformations:
+    //   constraint -2 + certain modifier combos => -3 or -1
+    //   constraint -3 + modifier bit 0x3C000000 => -1; + sign bit => -2
+    ...
+}
+```
+
+### `sub_812480` -- `validateOperandChain`
+
+Recursively walks use-def chains through `HSET2` (130) and `SM73_FIRST` (137)
+instructions to verify that an entire operand chain is compatible with a target
+register file.  Uses `sub_A9BD00` to resolve the register file for a width code,
+then checks `reg+76` and `reg+80` agreement.
+
+### Knob gate
+
+Option 183 (target profile offset 13176) controls the expansion distance threshold.
+When enabled, a secondary value at profile+13184 sets the maximum distance between
+a register definition and its use before the constraint is considered violated.
+Default threshold: 7.
+
+### Function map
+
+| Address | Size | Identity | Confidence |
+|---------|------|----------|------------|
+| `sub_8127C0` | 10,720 B | ExpandMacroInstructions (main pass) | HIGH |
+| `sub_812550` | 40 B | getOperandConstraint | HIGH |
+| `sub_812480` | ~170 B | validateOperandChain | HIGH |
+| `sub_8125E0` | ~450 B | canExpandStoreChain | MEDIUM |
+| `sub_800470` | small | isLegalizable | MEDIUM |
+| `sub_800360` | small | resolveOperandType | MEDIUM |
+| `sub_800400` | small | finalizeOperand | MEDIUM |
 
 ## Cross-References
 
