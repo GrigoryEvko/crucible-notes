@@ -10,8 +10,8 @@ All 159 phases have names in the static name table at `off_22BD0C0` (159 entries
 | **Named (static table)** | 159 (all have entries in `off_22BD0C0`) |
 | **Late-pipeline phases** | 20 (indices 139--158, added after the original 0--138 design) |
 | **Gate passes (AdvancedPhase)** | 17 conditional hooks |
-| **Update passes** | 6 data-structure refresh passes |
-| **Report passes** | 6 diagnostic/dump passes |
+| **Update passes** | 9 data-structure refresh passes (6 in main table + 3 in static name table, not yet positioned) |
+| **Report passes** | 10 diagnostic/dump passes (9 in main table + 1 in static name table, not yet positioned) |
 | **GeneralOptimize instances** | 6 compound optimization bundles |
 | **Liveness/DCE instances** | 5 (including EarlyOriSimpleLiveDead) |
 | **LICM instances** | 4 |
@@ -36,6 +36,35 @@ Each phase is tagged with one of 10 categories. These are not present in the bin
 
 Phases 139--158 are late-pipeline phases covering Mercury encoding, scoreboards, register map computation, diagnostics, and a terminal NOP. They have the same vtable infrastructure as phases 0--138 and are fully named in the static table.
 
+## Numbering Discrepancy
+
+> **Warning:** The phase numbers 0--138 on this page use a compressed numbering scheme established before the full 159-entry name table was discovered (P2-14). The true static name table at `off_22BD0C0` contains 159 entries indexed 0--158, and 16 of the 20 newly-discovered names occupy indices within the 0--138 range. In the true table, these 16 entries sit at their listed indices, and all subsequent phases shift up. The wiki's compressed numbering diverges from the true binary indices starting around phase 8.
+>
+> Phases 139--158 are correctly numbered (they match the true static table indices). A full renumbering of phases 0--138 to match the true binary indices is deferred as a separate task because it would affect cross-references across 40+ wiki pages.
+
+The 16 omitted name table entries (with their true static table indices) are:
+
+| True Index | Name | Category | Relationship to Wiki |
+|---|---|---|---|
+| 22 | `OriCopyProp` | Optimization | Sub-pass within all 6 GeneralOptimize bundles; also injected into Mercury pipeline |
+| 32 | `OptimizeNaNOrZero` | Optimization | Standalone NaN/zero folding pass; not documented under current wiki numbering |
+| 37 | `ConvertMemoryToRegisterOrUniform` | Optimization | Sub-pass of GeneralOptimizeMid; gated by knob 487; `sub_910840` |
+| 41 | `Vectorization` | Optimization | Load/store vectorization; gated by `DisableReadVectorization`/`DisableWriteVectorization` knobs |
+| 57 | `OriCommoning` | Optimization | Commoning sub-pass; related to `LateOriCommoning` (wiki phase 64) |
+| 69 | `OriSimpleLiveDead` | Optimization | Liveness/DCE sub-pass; related to `EarlyOriSimpleLiveDead` (wiki phase 10) |
+| 73 | `LateVectorization` | Optimization | Late vectorization (2nd instance, after optimization exposes new opportunities) |
+| 77 | `SinkCodeIntoBlock` | Optimization | Code sinking; `sub_78DB70`; `DisablePhases=SinkCodeIntoBlock` gate |
+| 103 | `LateEnforceArgumentRestrictions` | Lowering | Late counterpart to `EnforceArgumentRestrictions` (wiki phase 48) |
+| 114 | `ScheduleInstructions` | Scheduling | Worker for `AdvancedPhasePreSched`; `sub_8D0640` (22 KB) |
+| 115 | `UpdateAfterScheduleInstructions` | Cleanup | IR metadata refresh after scheduling completes |
+| 118 | `UpdateAfterOriDoSyncronization` | Cleanup | IR metadata refresh after sync insertion (wiki phase 99) |
+| 120 | `ReportBeforeRegisterAllocation` | Reporting | DUMPIR target; diagnostic dump before register allocation |
+| 122 | `AllocateRegisters` | RegAlloc | Worker for `AdvancedPhaseAllocReg`; canonical allocator entry |
+| 124 | `UpdateAfterOriAllocateRegisters` | Cleanup | IR metadata refresh after register allocation |
+| 127 | `PostExpansion` | Lowering | Worker for `AdvancedPhasePostExpansion`; post-RA expansion |
+
+All 16 are valid DUMPIR targets (resolvable through `sub_C641D0` binary search over the phase name table). Several are also valid `DisablePhases` targets.
+
 ## Gate Passes (AdvancedPhase)
 
 Seventeen phases are conditional extension points whose `isNoOp()` returns `true` in the default vtable. They exist as insertion points for architecture backends and optimization-level overrides. When a specific SM target or `-O` level requires additional processing at a given pipeline position, the backend overrides the phase's vtable to provide a real `execute()` implementation.
@@ -44,11 +73,22 @@ Gate passes bracket major pipeline transitions. For example, phases 4 and 7 brac
 
 The naming convention is consistent: `AdvancedPhase` prefix followed by the pipeline position or action name. One exception is `AdvancedScoreboardsAndOpexes` (phase 115), which uses `Advanced` without `Phase`.
 
+### Gate Pass Worker Correspondence
+
+Several gate passes dispatch to named worker functions when activated by a backend. The worker names appear in the static name table and are valid DUMPIR/NamedPhases targets:
+
+| Gate Pass (Wiki #) | Worker Function (True Table Index) | Evidence |
+|---|---|---|
+| `AdvancedPhasePreSched` (97) | `ScheduleInstructions` [114] | `sub_8D0640`, string `"ScheduleInstructions"` |
+| `AdvancedPhaseAllocReg` (101) | `AllocateRegisters` [122] | String `"Please use -knob DUMPIR=AllocateRegisters"` at `sub_9714E0` |
+| `AdvancedPhasePostExpansion` (104) | `PostExpansion` [127] | Post-RA expansion dispatch |
+| `AdvancedPhasePostFixUp` (111) | `PostFixUp` [140] | Target vtable+0x148 dispatch |
+
 See [Optimization Levels](../config/opt-levels.md) for per-gate activation rules.
 
 ## Update Passes
 
-Six phases refresh data structures invalidated by preceding transformations:
+Nine phases refresh data structures invalidated by preceding transformations. Six are documented at specific wiki phase numbers; three additional update phases exist in the static name table but are not yet mapped to wiki phase numbers (see Numbering Discrepancy above):
 
 | Phase | Name | Refreshes |
 |---|---|---|
@@ -58,18 +98,22 @@ Six phases refresh data structures invalidated by preceding transformations:
 | 132 | `UpdateAfterConvertUnsupportedOps` | Rebuilds IR metadata after late unsupported-op expansion |
 | 150 | `UpdateAfterPostRegAlloc` | Late-pipeline duplicate: rebuilds IR metadata after post-RA processing (no-op by default) |
 | 154 | `UpdateAfterFormatCodeList` | Late-pipeline duplicate: rebuilds IR data structures after FormatCodeList (no-op by default) |
+| *(true 115)* | `UpdateAfterScheduleInstructions` | Refreshes IR after scheduling completes (omitted from compressed numbering) |
+| *(true 118)* | `UpdateAfterOriDoSyncronization` | Refreshes IR after sync insertion (omitted from compressed numbering) |
+| *(true 124)* | `UpdateAfterOriAllocateRegisters` | Refreshes IR after register allocation (omitted from compressed numbering) |
 
-These are lightweight passes that call into the IR's internal consistency maintenance routines. They do not transform the IR -- they only update auxiliary data structures (liveness bitmaps, instruction lists, block layout caches) so that downstream passes see a coherent view. Phases 150 and 154 are late-pipeline duplicates whose `isNoOp()` returns 1 by default; they only activate when a backend requires a second update cycle.
+These are lightweight passes that call into the IR's internal consistency maintenance routines. They do not transform the IR -- they only update auxiliary data structures (liveness bitmaps, instruction lists, block layout caches) so that downstream passes see a coherent view. Phases 150 and 154 are late-pipeline duplicates whose `isNoOp()` returns 1 by default; they only activate when a backend requires a second update cycle. The three `*(true N)*` entries are in the static name table at the indicated indices but are not yet assigned wiki phase numbers.
 
 ## Report Passes
 
-Nine phases produce diagnostic output. They are no-ops unless specific debug options are enabled (e.g., `--stat=phase-wise`, `DUMPIR`, `--keep`):
+Ten phases produce diagnostic output. They are no-ops unless specific debug options are enabled (e.g., `--stat=phase-wise`, `DUMPIR`, `--keep`):
 
 | Phase | Name | Output |
 |---|---|---|
 | 9 | `ReportInitialRepresentation` | Dumps the Ori IR immediately after initial lowering |
 | 96 | `ReportBeforeScheduling` | Dumps the IR as it enters the scheduling/RA stage |
 | 102 | `ReportAfterRegisterAllocation` | Dumps the IR after register allocation completes |
+| *(true 120)* | `ReportBeforeRegisterAllocation` | Dumps IR before register allocation; omitted from compressed numbering (name at `0x22BD068`) |
 | 126 | `ReportFinalMemoryUsage` | Prints memory pool consumption summary |
 | 129 | `DumpNVuCodeText` | SASS text disassembly (`cuobjdump`-style) |
 | 130 | `DumpNVuCodeHex` | Raw SASS hex dump |
@@ -244,11 +288,11 @@ Synchronization insertion, WAR fixup, register allocation, 64-bit register handl
 
 | # | Phase Name | Category | O-Level | Description | Detail Page |
 |---|---|---|---|---|---|
-| 97 | `AdvancedPhasePreSched` | Gate |  | Hook before scheduling; no-op by default |  |
+| 97 | `AdvancedPhasePreSched` | Gate |  | Hook before scheduling; when active, dispatches to `ScheduleInstructions` (`sub_8D0640`, true table index 114) | [Scheduling](../scheduling/overview.md) |
 | 98 | `BackPropagateVEC2D` | Optimization |  | Backward-propagates 2D vector register assignments |  |
 | 99 | `OriDoSyncronization` | Scheduling | **> 1** | Inserts synchronization instructions (`BAR`, `DEPBAR`, `MEMBAR`) per GPU memory model | [Sync & Barriers](sync-barriers.md) |
 | 100 | `ApplyPostSyncronizationWars` | Scheduling | **> 1** | Fixes write-after-read hazards exposed by sync insertion | [Sync & Barriers](sync-barriers.md) |
-| 101 | `AdvancedPhaseAllocReg` | Gate |  | Register allocation driver hook -- actual allocator is entirely backend-specific | [RegAlloc Architecture](../regalloc/overview.md) |
+| 101 | `AdvancedPhaseAllocReg` | Gate |  | Register allocation driver hook; when active, dispatches to `AllocateRegisters` (true table index 122); `DUMPIR=AllocateRegisters` targets this | [RegAlloc Architecture](../regalloc/overview.md) |
 | 102 | `ReportAfterRegisterAllocation` | Reporting |  | Dumps IR after register allocation (no-op unless diagnostic options enabled) |  |
 | 103 | `Get64bRegComponents` | RegAlloc |  | Splits 64-bit register pairs into 32-bit components for architectures that require it | [RegAlloc Architecture](../regalloc/overview.md) |
 
@@ -258,14 +302,14 @@ Post-expansion, NOP removal, hot/cold optimization, block placement, scoreboard 
 
 | # | Phase Name | Category | O-Level | Description | Detail Page |
 |---|---|---|---|---|---|
-| 104 | `AdvancedPhasePostExpansion` | Gate |  | Hook after post-RA expansion; no-op by default |  |
+| 104 | `AdvancedPhasePostExpansion` | Gate |  | Hook after post-RA expansion; when active, dispatches to `PostExpansion` (true table index 127) |  |
 | 105 | `ApplyPostRegAllocWars` | RegAlloc |  | Fixes write-after-read hazards exposed by register allocation |  |
 | 106 | `AdvancedPhasePostSched` | Gate |  | Hook after post-scheduling; no-op by default |  |
 | 107 | `OriRemoveNopCode` | Cleanup |  | Removes NOP instructions and dead code inserted as placeholders |  |
 | 108 | `OptimizeHotColdInLoop` | Optimization |  | Separates hot and cold paths within loops for cache locality | [Hot/Cold](hot-cold.md) |
 | 109 | `OptimizeHotColdFlow` | Optimization |  | Separates hot and cold paths at the function level | [Hot/Cold](hot-cold.md) |
 | 110 | `PostSchedule` | Scheduling | **> 0** | Post-scheduling pass: finalizes instruction ordering | [Scheduling](../scheduling/overview.md) |
-| 111 | `AdvancedPhasePostFixUp` | Gate |  | Hook after post-fixup; no-op by default |  |
+| 111 | `AdvancedPhasePostFixUp` | Gate |  | Hook after post-fixup; when active, dispatches to `PostFixUp` (phase 140, target vtable+0x148) |  |
 | 112 | `PlaceBlocksInSourceOrder` | Cleanup |  | Determines final basic block layout in the emitted binary |  |
 | 113 | `PostFixForMercTargets` | Encoding |  | Fixes up instructions for Mercury encoding requirements | [Mercury](../codegen/mercury.md) |
 | 114 | `FixUpTexDepBarAndSync` | Scheduling |  | Fixes texture dependency barriers and sync instructions post-scheduling | [Scoreboards](../scheduling/scoreboards.md) |
@@ -374,6 +418,8 @@ The Mercury phases (141--147) are gated by flag bits at `ctx+0x570`/`ctx+0x571`,
 | `ComputeVCallRegUse` | 2 | 123, 148 |
 | `CalcRegisterMap` | 2 | 124, 149 |
 | `DebuggerBreak` | 2 | 131, 157 |
+| `Vectorization`/`LateVectorization` | 2 | *(true 41, 73)* -- omitted from compressed numbering |
+| `EnforceArgumentRestrictions`/`Late...` | 2 | 48 (wiki), *(true 103)* -- late variant omitted |
 
 ## Cross-References
 
@@ -397,4 +443,17 @@ The Mercury phases (141--147) are gated by flag bits at `ctx+0x570`/`ctx+0x571`,
 - [Scoreboards & Dependency Barriers](../scheduling/scoreboards.md) -- phases 114, 115, 116
 - [Mercury Encoder](../codegen/mercury.md) -- phases 113, 117--122, 141--147, 153
 - [Optimization Levels](../config/opt-levels.md) -- O-level gating of gate passes
-- [DUMPIR & NamedPhases](../config/dumpir.md) -- user-specified phase reordering
+- [DUMPIR & NamedPhases](../config/dumpir.md) -- user-specified phase targeting and reordering
+
+## Key Functions
+
+| Address | Size | Role | Confidence |
+|---------|------|------|------------|
+| `sub_C60D30` | -- | Phase factory switch; allocates each of the 159 phases as a 16-byte polymorphic object with a 5-slot vtable (`execute`, `getIndex`, `isNoOp`, NULL, NULL) | 0.92 |
+| `sub_7DDB50` | 232B | Opt-level accessor; runtime gate called by 20+ pass execute functions to check opt-level threshold | 0.95 |
+| `sub_A36360` | 52KB | Master scoreboard control word generator; per-opcode dispatch for phase 115 (`AdvancedScoreboardsAndOpexes`) | 0.90 |
+| `sub_A23CF0` | 54KB | DAG list scheduler heuristic; barrier assignment for phase 115 scoreboard generation | 0.90 |
+| `sub_9F1A90` | 35KB | MercConverter infrastructure; drives instruction-level legalization for Mercury phases 117--122 via visitor pattern | 0.92 |
+| `sub_9ED2D0` | 25KB | Opcode switch inside MercConverter; dispatches per-opcode legalization/conversion | 0.90 |
+| `sub_9F3760` | -- | Phase 141 (`MercConverter`) execute function; initial Mercury conversion of Ori instructions | 0.85 |
+| `sub_18F21F0` | -- | Phase 142 (`MercEncodeAndDecode`) execute function; encode/decode round-trip verification | 0.85 |
