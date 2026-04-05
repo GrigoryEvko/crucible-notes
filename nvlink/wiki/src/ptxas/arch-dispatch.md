@@ -153,24 +153,92 @@ int64_t codegen_opts_sm75(DWORD *arch, int regs, int smem,
 
 ## Architecture Registration Table
 
-The following table lists every architecture string registered in `sub_15C0CE0`, grouped by silicon target. Within each group, all variants share identical function pointers for all 7 maps.
+The following table lists every architecture string registered in `sub_15C0CE0`, grouped by silicon target. Within each group, all variants share identical function pointers for all 7 maps (6 function pointer maps plus the A0 data pointer map).
 
-| Group | Arch Strings | Silicon | Map B8 (cpf_optx) | Map B0 (cpf_optx_alt) | Map A8 (nv.info) | Map 90 (perf) | Map 88 (codegen) |
-|---|---|---|---|---|---|---|---|
-| 1 | `sm_75` | Turing | `sub_15C2AA0` | `sub_15C2A70` | `sub_15C3210` | `sub_15C1C80` | `sub_15C2610` |
-| 2 | `sm_80` | Ampere GA100 | `sub_15C2BF0` | `sub_15C2BC0` | `sub_15C3310` | `sub_15C1EB0` | `sub_15C28B0` |
-| 3 | `sm_86` | Ampere GA10x | `sub_15C2C80` | `sub_15C2CB0` | `sub_15C3B60` | `sub_15C1EF0` | `sub_15C1FF0` |
-| 4 | `sm_87` | Jetson Orin | `sub_15C2E30` | `sub_15C2D10` | `sub_15C3C60` | `sub_15C1FD0` | `sub_15C2990` |
-| 5 | `sm_88` | Ampere ext. | `sub_15C2DA0` | `sub_15C2DD0` | `sub_15C3A60` | `sub_15C1E30` | `sub_15C2530` |
-| 6 | `sm_89` | Ada Lovelace | `sub_15C2D40` | `sub_15C2C20` | `sub_15C3740` | `sub_15C1F90` | `sub_15C2370` |
-| 7 | `sm_90`, `sm_90a` | Hopper | `sub_15C2CE0` | `sub_15C2B30` | `sub_15C3520` | `sub_15C1ED0` | `sub_15C2290` |
-| 8 | `sm_100`, `sm_100a`, `sm_100f` | Blackwell | `sub_15C2B60` | `sub_15C2B00` | `sub_15C3840` | `sub_15C1FB0` | `sub_15C27D0` |
-| 9 | `sm_110`, `sm_110a`, `sm_110f` | Thor | `sub_15C2E60` | `sub_15C1E80` | `sub_15C3950` | `sub_15C1F30` | `sub_15C21B0` |
-| 10 | `sm_103`, `sm_103a`, `sm_103f` | Blackwell Ultra | `sub_15C1E50` | `sub_15C2C50` | `sub_15C3630` | `sub_15C1F50` | `sub_15C20D0` |
-| 11 | `sm_120`, `sm_120a`, `sm_120f` | RTX 50 consumer | `sub_15C2D70` | `sub_15C2B90` | `sub_15C1D20` | `sub_15C1F10` | `sub_15C2450` |
-| 12 | `sm_121`, `sm_121a`, `sm_121f` | DGX Spark | `sub_15C2E00` | `sub_15C2AD0` | `sub_15C3410` | `sub_15C1F70` | `sub_15C26F0` |
+| Group | Arch Strings | Silicon | Map B8 (cpf_optx) | Map B0 (cpf_optx_alt) | Map A8 (nv.info) | Map A0 (CC data) | Map 90 (perf) | Map 88 (codegen) |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `sm_75` | Turing | `sub_15C2AA0` | `sub_15C2A70` | `sub_15C3210` | `byte_2A5EE40` | `sub_15C1C80` | `sub_15C2610` |
+| 2 | `sm_80` | Ampere GA100 | `sub_15C2BF0` | `sub_15C2BC0` | `sub_15C3310` | `byte_2A5EE3C` | `sub_15C1EB0` | `sub_15C28B0` |
+| 3 | `sm_86` | Ampere GA10x | `sub_15C2C80` | `sub_15C2CB0` | `sub_15C3B60` | `byte_2A5EE38` | `sub_15C1EF0` | `sub_15C1FF0` |
+| 4 | `sm_87` | Jetson Orin | `sub_15C2E30` | `sub_15C2D10` | `sub_15C3C60` | `byte_2A5EE34` | `sub_15C1FD0` | `sub_15C2990` |
+| 5 | `sm_88` | Ampere ext. | `sub_15C2DA0` | `sub_15C2DD0` | `sub_15C3A60` | `byte_2A5EE30` | `sub_15C1E30` | `sub_15C2530` |
+| 6 | `sm_89` | Ada Lovelace | `sub_15C2D40` | `sub_15C2C20` | `sub_15C3740` | `byte_2A5EE2C` | `sub_15C1F90` | `sub_15C2370` |
+| 7 | `sm_90`, `sm_90a` | Hopper | `sub_15C2CE0` | `sub_15C2B30` | `sub_15C3520` | `asc_2A5EE28` | `sub_15C1ED0` | `sub_15C2290` |
+| 8 | `sm_100`, `sm_100a`, `sm_100f` | Blackwell | `sub_15C2B60` | `sub_15C2B00` | `sub_15C3840` | `byte_2A5EE24` | `sub_15C1FB0` | `sub_15C27D0` |
+| 9 | `sm_110`, `sm_110a`, `sm_110f` | Thor | `sub_15C2E60` | `sub_15C1E80` | `sub_15C3950` | `byte_2A5EE20` | `sub_15C1F30` | `sub_15C21B0` |
+| 10 | `sm_103`, `sm_103a`, `sm_103f` | Blackwell Ultra | `sub_15C1E50` | `sub_15C2C50` | `sub_15C3630` | `asc_2A5EE1C` | `sub_15C1F50` | `sub_15C20D0` |
+| 11 | `sm_120`, `sm_120a`, `sm_120f` | RTX 50 consumer | `sub_15C2D70` | `sub_15C2B90` | `sub_15C1D20` | `asc_2A5EE18` | `sub_15C1F10` | `sub_15C2450` |
+| 12 | `sm_121`, `sm_121a`, `sm_121f` | DGX Spark | `sub_15C2E00` | `sub_15C2AD0` | `sub_15C3410` | `asc_2A5EE14` | `sub_15C1F70` | `sub_15C26F0` |
 
-Map A0 (compute capability) entries also include `compute_XX` aliases for each `sm_XX` key. The total registration count: 12 SMs x 7 maps = 84 entries, plus 10 variant aliases (90a, 100a/f, 110a/f, 103a/f, 120a/f, 121a/f) x 7 maps = 70 entries. The `compute_XX` aliases add another entry per distinct silicon for map A0 only, totaling 22 compute_ entries. Grand total: **154 `sub_448E70` insert calls** (plus the 22 compute_ entries already counted within the 154).
+### Per-Arch-String Dispatch Table
+
+The complete per-architecture-string dispatch table below expands every variant alias. This is the full set of 22 architecture strings exactly as registered in `sub_15C0CE0`, in registration order. Each row shows the 6 function pointer addresses and the A0 data pointer stored for that exact key string. Rows sharing a silicon group are identical -- listed individually to serve as a lookup reference for any arch string encountered in the binary.
+
+```
+Arch String  B8 (cpf_optx)  B0 (cpf_alt)   A8 (nv.info)   A0 (CC data)    90 (perf)      88 (codegen)
+-----------  -------------  -------------  -------------  --------------  -------------  -------------
+sm_75        sub_15C2AA0    sub_15C2A70    sub_15C3210    byte_2A5EE40    sub_15C1C80    sub_15C2610
+sm_80        sub_15C2BF0    sub_15C2BC0    sub_15C3310    byte_2A5EE3C    sub_15C1EB0    sub_15C28B0
+sm_86        sub_15C2C80    sub_15C2CB0    sub_15C3B60    byte_2A5EE38    sub_15C1EF0    sub_15C1FF0
+sm_87        sub_15C2E30    sub_15C2D10    sub_15C3C60    byte_2A5EE34    sub_15C1FD0    sub_15C2990
+sm_88        sub_15C2DA0    sub_15C2DD0    sub_15C3A60    byte_2A5EE30    sub_15C1E30    sub_15C2530
+sm_89        sub_15C2D40    sub_15C2C20    sub_15C3740    byte_2A5EE2C    sub_15C1F90    sub_15C2370
+sm_90        sub_15C2CE0    sub_15C2B30    sub_15C3520    asc_2A5EE28     sub_15C1ED0    sub_15C2290
+sm_90a       sub_15C2CE0    sub_15C2B30    sub_15C3520    asc_2A5EE28     sub_15C1ED0    sub_15C2290
+sm_100       sub_15C2B60    sub_15C2B00    sub_15C3840    byte_2A5EE24    sub_15C1FB0    sub_15C27D0
+sm_100a      sub_15C2B60    sub_15C2B00    sub_15C3840    byte_2A5EE24    sub_15C1FB0    sub_15C27D0
+sm_100f      sub_15C2B60    sub_15C2B00    sub_15C3840    byte_2A5EE24    sub_15C1FB0    sub_15C27D0
+sm_110       sub_15C2E60    sub_15C1E80    sub_15C3950    byte_2A5EE20    sub_15C1F30    sub_15C21B0
+sm_110a      sub_15C2E60    sub_15C1E80    sub_15C3950    byte_2A5EE20    sub_15C1F30    sub_15C21B0
+sm_110f      sub_15C2E60    sub_15C1E80    sub_15C3950    byte_2A5EE20    sub_15C1F30    sub_15C21B0
+sm_103       sub_15C1E50    sub_15C2C50    sub_15C3630    asc_2A5EE1C     sub_15C1F50    sub_15C20D0
+sm_103a      sub_15C1E50    sub_15C2C50    sub_15C3630    asc_2A5EE1C     sub_15C1F50    sub_15C20D0
+sm_103f      sub_15C1E50    sub_15C2C50    sub_15C3630    asc_2A5EE1C     sub_15C1F50    sub_15C20D0
+sm_120       sub_15C2D70    sub_15C2B90    sub_15C1D20    asc_2A5EE18     sub_15C1F10    sub_15C2450
+sm_120a      sub_15C2D70    sub_15C2B90    sub_15C1D20    asc_2A5EE18     sub_15C1F10    sub_15C2450
+sm_120f      sub_15C2D70    sub_15C2B90    sub_15C1D20    asc_2A5EE18     sub_15C1F10    sub_15C2450
+sm_121       sub_15C2E00    sub_15C2AD0    sub_15C3410    asc_2A5EE14     sub_15C1F70    sub_15C26F0
+sm_121a      sub_15C2E00    sub_15C2AD0    sub_15C3410    asc_2A5EE14     sub_15C1F70    sub_15C26F0
+sm_121f      sub_15C2E00    sub_15C2AD0    sub_15C3410    asc_2A5EE14     sub_15C1F70    sub_15C26F0
+```
+
+### Map A0 Compute Capability Aliases
+
+In addition to the 22 `sm_XX` keys above, map A0 also registers `compute_XX` aliases that point to the same static byte arrays. These aliases allow lookups by either `sm_XX` or `compute_XX` naming convention. The full set of A0 entries (44 total: 22 sm_ keys + 22 compute_ keys):
+
+```
+sm_ key      compute_ alias   Data pointer      Notes
+-----------  ---------------  ---------------   -----
+sm_75        compute_75       byte_2A5EE40
+sm_80        compute_80       byte_2A5EE3C
+sm_86        compute_86       byte_2A5EE38
+sm_87        compute_87       byte_2A5EE34
+sm_88        compute_88       byte_2A5EE30
+sm_89        compute_89       byte_2A5EE2C
+sm_90        compute_90       asc_2A5EE28       shared with sm_90a / compute_90a
+sm_90a       compute_90a      asc_2A5EE28
+sm_100       compute_100      byte_2A5EE24      shared with sm_100a/f
+sm_100a      compute_100a     byte_2A5EE24
+sm_100f      compute_100f     byte_2A5EE24
+sm_110       compute_110      byte_2A5EE20      shared with sm_110a/f
+sm_110a      compute_110a     byte_2A5EE20
+sm_110f      compute_110f     byte_2A5EE20
+sm_103       compute_103      asc_2A5EE1C       shared with sm_103a/f
+sm_103a      compute_103a     asc_2A5EE1C
+sm_103f      compute_103f     asc_2A5EE1C
+sm_120       compute_120      asc_2A5EE18       shared with sm_120a/f
+sm_120a      compute_120a     asc_2A5EE18
+sm_120f      compute_120f     asc_2A5EE18
+sm_121       compute_121      asc_2A5EE14       shared with sm_121a/f
+sm_121a      compute_121a     asc_2A5EE14
+sm_121f      compute_121f     asc_2A5EE14
+```
+
+The data pointers are arranged contiguously in `.data` at descending addresses from `0x2A5EE40` (sm_75) to `0x2A5EE14` (sm_121), each 4 bytes apart, holding the 4-byte compute capability version encoding for that silicon target.
+
+### Registration Count Breakdown
+
+Map A0 (compute capability) entries also include `compute_XX` aliases for each `sm_XX` key. The total registration count: 12 SMs x 6 function maps = 72 entries, plus 10 variant aliases (90a, 100a/f, 110a/f, 103a/f, 120a/f, 121a/f) x 6 function maps = 60 entries, totaling 132 function map inserts. Map A0 adds 22 sm_ keys + 22 compute_ keys = 44 data pointer inserts. Grand total: **132 + 22 = 154 `sub_448E70` insert calls** (the 22 compute_ entries are already counted within the 154).
 
 ## Variant Pointer Sharing
 
