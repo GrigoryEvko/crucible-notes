@@ -770,9 +770,18 @@ All four instances share the same core implementation:
 | `sub_7DDB50` | 156 bytes | Optimization guard: checks knob 499, block count > 2 |
 | `sub_8FFDE0` | 573 bytes | HoistInvariants orchestrator: iterates blocks, queries knob 381, dispatches inner worker |
 | `sub_8FF780` | 1,622 bytes | LICM inner worker: identifies and moves invariant instructions |
-| `sub_8F8BC0` | -- | Instruction movement helper |
-| `sub_74D720` | -- | Loop boundary analysis |
+| `sub_8FEAC0` | 2,053 bytes | Invariance marking: forward/backward operand scan per block |
+| `sub_8F76E0` | 90 bytes | Per-instruction invariance test: checks output register def-block |
+| `sub_8F7770` | 810 bytes | Hoisting safety check: operand class + latency analysis |
+| `sub_8F8CB0` | 658 bytes | Profitability check: budget-weighted score vs latency penalty |
+| `sub_8F7DD0` | 374 bytes | Transitive invariance propagation through def-use chains |
+| `sub_8F7AE0` | 558 bytes | Instruction mover: unlinks from loop, inserts at preheader |
+| `sub_8FF2D0` | 1,186 bytes | Budget computation + invariant marking + hoist dispatch |
+| `sub_8F8BC0` | 257 bytes | Instruction counting: header/body weight via isNoOp |
+| `sub_74D720` | 353 bytes | Loop boundary analysis: barrier/jump/predecessor checks |
 | `sub_74F500` | -- | Preheader location finder |
+| `sub_7DF3A0` | 88 bytes | Opcode flags table lookup (side-effect classification) |
+| `sub_7E0540` | 156 bytes | Observable side-effect checker (memory, call, barrier) |
 
 ### Execute Flow
 
@@ -837,72 +846,396 @@ The LICM pass queries OCG knob 381 (`sub_7A1A90` / `sub_7A1B80`) per basic block
 
 This per-block granularity allows the knob system to selectively disable hoisting in specific loop nests (e.g., those known to be register-pressure-critical).
 
-### LICM Algorithm (sub_8FF780)
+### Guard Function (sub_7DDB50)
+
+Before the LICM core runs, `sub_7DDB50` (156 bytes) gates execution on two conditions:
+
+1. **Knob 499 enabled.** Queries the allocator vtable at +72 for OCG knob 499 (the master LICM switch). If disabled, returns 1 which causes the orchestrator to bail (since 1 <= 2).
+2. **Rate limiter.** When knob 499 is enabled, the guard checks a pair of counters at `allocator[9]+35936` (max invocations) and `allocator[9]+35940` (current count). If the current count has reached the maximum, returns 1. Otherwise increments the counter and returns the actual basic block count from `code_object+2104`. This bounds the number of LICM invocations for compile-time control in functions with many loops.
+3. **Block count > 2.** The orchestrator (`sub_8FFDE0`) checks the return value: if <= 2, no hoisting is attempted. Single-block functions have no loops; two-block functions have at most a trivial loop not worth processing.
+
+### LICM Invariant Detection Algorithm
+
+The invariance detection pipeline runs inside `sub_8FF2D0` (1,186 bytes), which is called from `sub_8FF780` once per loop nest level. It executes five stages in sequence: budget computation, forward invariance marking, backward non-invariance marking, transitive propagation, and profitability gating.
+
+#### Stage 1: Budget Computation (sub_8FF2D0)
+
+```
+function ComputeHoistBudget(context, block, is_simple, num_preds, hoist_mode, is_inner):
+    // Base budget from knob 483 (HoistBudget)
+    if QueryKnob(483):
+        budget = QueryKnobValue(483)                 // 0 = unlimited
+    else:
+        budget = 10                                  // default
+
+    // CBO budget from knob 482
+    if QueryKnob(482):
+        cbo_budget = QueryKnobValue(482)
+    else:
+        cbo_budget = (pass_id == 0) ? 22 : 100
+
+    // Adjust by loop type and depth
+    if pass_id > 0 and is_simple:
+        budget = (hoist_mode < 2) ? cbo_budget : 300
+    else if pass_id == 0 and is_simple:
+        budget = (hoist_mode < 2) ? cbo_budget : 200
+
+    // Conservative multiplier for Late3
+    if pass_id == 3:
+        budget *= 100                                // generous once decided to hoist
+
+    // Split budget among back-edge blocks
+    if hoist_mode == 3:                              // processing back-edge block
+        budget /= num_preds
+
+    // Inner-loop divisor from knob 380
+    if is_inner:
+        if QueryKnob(380):
+            budget /= QueryKnobValue(380)
+        else:
+            budget /= 10
+```
+
+#### Stage 2: Forward Invariance Marking (sub_8FEAC0, a3=1)
+
+The forward pass iterates every instruction in the basic block and marks each register operand's invariance status based on where it was defined.
+
+```
+function MarkInvariants_Forward(context, block_index):
+    block = blocks[block_index]
+    header_depth = context.header_depth
+    loop_depth_range = [context.header_depth, context.max_depth]
+
+    // Two code paths based on knob 934 (UseNewLoopInvariantRoutineForHoisting)
+    if QueryKnob(934):
+        // Advanced path: set-based computation via sub_768BF0 + sub_8F7280
+        return MarkInvariants_SetBased(context, block_index)
+
+    // Default path: single-pass scan
+    for each instruction in block (linked list: block+0 .. sentinel at block+8):
+        has_side_effect = isNoOp(instruction)            // vtable+1824
+        opcode = instruction+72 (masked: BYTE1 &= 0xCF)
+        num_operands = instruction+80
+
+        // Special case: opcode 195 + first dst is reg class 9 (predicate)
+        is_predicate_def = (opcode == 195 and dst_reg.class == 9)
+
+        is_invariant = true
+        for each operand from LAST to FIRST:             // reverse scan
+            operand = instruction + 84 + 8*i
+            type = (operand >> 28) & 7
+
+            if type != 1:                                // not a register
+                continue                                 // immediates are always invariant
+
+            if IsFixedRegister(operand, code_object):    // sub_7DEB90
+                continue                                 // e.g., RZ, PT — always available
+
+            if pass_id == 3:                             // Late3 extra check
+                if IsSpecialRegClass(operand, code_object):  // sub_7DA2F0
+                    // Exception: IADD3 (opcode 130, flag 0x1000) carry-out
+                    if not (opcode == 130 and flag_0x1000 and is_penultimate_operand):
+                        continue
+
+            reg = RegisterDescriptor(code_object, operand & 0xFFFFFF)
+
+            if reg.def_block (reg+76) == block_index:
+                // Defined in THIS block — not invariant for this loop
+                is_invariant = false
+            else if context.is_multi_depth:
+                def_instr = reg.def_instruction (reg+56)
+                if def_instr is null or reg has pinned bit:
+                    handle_predicate_invariance()
+                else:
+                    def_block = blocks[def_instr.block_index]
+                    def_depth = def_block.loop_depth (offset +144)
+                    if def_depth < header_depth or def_depth > max_depth:
+                        reg.use_count (reg+80) = 0       // mark as loop-external
+                    else:
+                        is_invariant = false
+                        reg.def_block (reg+76) = block_index
+            else:
+                reg.use_count (reg+80) = 0               // simple loop: mark external
+
+        // Side-effect check for the entire instruction
+        flags = LookupOpcodeFlags(instruction, code_object)  // sub_7DF3A0
+        if (flags & 2) != 0:                             // has memory/control side effect
+            is_invariant = false
+
+        if MemoryOverlapsLoopLiveSet(instruction):       // sub_74F5E0
+            is_invariant = false
+
+        if is_multi_depth and HasObservableSideEffects(instruction):  // sub_7E0540
+            is_invariant = false
+
+        // Mark destination operands
+        for each dst_operand (bit 31 set = definition):
+            if type == 1 and not pinned:
+                if is_invariant:
+                    reg.def_block = block_index           // mark for hoisting
+                else:
+                    reg.use_count += 1                    // count loop-internal uses
+```
+
+The key insight is that invariance is determined by **definition site**: if every source register was defined outside the loop (or in a block already processed), the instruction is invariant. Immediates and constants are trivially invariant. The check is not purely structural -- it uses the `reg+76` field which gets updated as hoisting proceeds, allowing transitive invariance discovery.
+
+#### Stage 3: Backward Non-Invariance Marking (sub_8FEAC0, a3=0)
+
+The backward pass uses the same function with `a3=0`. Instead of marking definitions as external, it marks operands whose definitions are inside the loop as non-invariant by setting `reg.def_block = block_index`. This clears any false positives from the forward pass where a register appeared invariant but its defining instruction depends on a loop-variant value.
+
+For destination operands, the backward pass increments `reg.use_count` for all non-pinned register definitions, building the use-count information needed by the profitability check.
+
+#### Stage 4: Transitive Invariance Propagation (sub_8F7DD0)
+
+After the two marking passes, `sub_8F7DD0` propagates invariance transitively through the instruction chain. This handles the case where instruction A is invariant and defines register R, and instruction B uses R and is otherwise invariant -- the forward pass may have marked B as non-invariant because R's definition was in the loop, but A (the definer) is itself invariant.
+
+```
+function PropagateInvariance(context, block_index):
+    block = blocks[block_index]
+    side_effect_mask = 0
+
+    for each instruction in block:
+        aliases_memory = CheckMemoryAlias(code_object, instruction)  // sub_74F5E0
+
+        for each operand (type == 1, register):
+            reg = RegisterDescriptor(operand)
+
+            if operand is definition (bit 31 set):
+                if isNoOp(instruction):
+                    if IsInvariant(instruction, block_index):      // sub_8F76E0
+                        side_effect_mask |= reg.flags & 0x3
+                    else:
+                        reg.flags |= aliases_memory ? 1 : 0
+                else:
+                    reg.flags |= (has_side_effect ? 1 : 0) | 2
+            else:  // use
+                if has_side_effect:
+                    reg.def_block = block_index            // taint defining register
+                else:
+                    reg.use_count += 1
+
+    return side_effect_mask
+```
+
+#### Stage 5: Profitability Check (sub_8F8CB0)
+
+The final gate before hoisting. Computes a cost-benefit ratio and rejects hoisting if the ratio is unfavorable.
+
+```
+function IsProfitable(context, block_index, budget, is_hoist_safe):
+    header_weight = context.header_insn_count            // from sub_8F8BC0
+    body_weight = context.body_insn_count
+
+    // Scoring weights depend on pass aggressiveness and safety
+    if is_hoist_safe:
+        noOp_weight = (pass_id == 0) ? 60 : 150
+        real_weight = 5
+    else:
+        noOp_weight = (pass_id == 0) ? 12 : 30
+        real_weight = 1
+
+    score = 0
+    latency_penalty = 0
+    instruction_count = 0
+
+    for each instruction in block:
+        instruction_count += 1
+        if IsInvariant(instruction, block_index):        // sub_8F76E0
+            if isNoOp(instruction):
+                score += noOp_weight
+            else:
+                score += 1
+                for each dst_operand with scoreboard flag:
+                    score += real_weight
+                    latency = GetLatencyClass(instruction)  // sub_91E860
+                    latency_penalty += (latency > 4) ? 2 : 1
+        else:
+            for each high-latency dst_operand:
+                latency_penalty += (latency > 4) ? 2 : 1
+
+    // Final decision: weighted score vs latency cost
+    if pass_id == 0:                                     // aggressive
+        denominator = real_weight * instruction_count
+    else:
+        denominator = body_weight / 3 + header_weight
+
+    return denominator != 0 and (score * budget) / (real_weight * denominator) >= latency_penalty
+```
+
+The profitability check encodes a fundamental GPU tradeoff: hoisting reduces dynamic instruction count (proportional to trip count) but extends live ranges (increasing register pressure and reducing occupancy). The `budget` parameter, which varies by 100x between pass_id 0 and 3, controls how aggressively this tradeoff is resolved. Pass_id 0 (Early) uses the smallest denominator, making it easiest to exceed the threshold.
+
+#### Per-Instruction Invariance Test (sub_8F76E0)
+
+The leaf-level invariance test used by stages 4 and 5 is a simple definition-site check:
+
+```
+function IsInvariant(instruction, current_block_index):
+    num_operands = instruction.operand_count             // inst+80
+    if num_operands == 0:
+        return false
+
+    // Find the last "interesting" operand (skip immediates/constants)
+    // Immediates have type bits in the 0x70000000 range
+    last_operand = scan backwards from operand[num_operands-1]
+                   while (operand XOR 0x70000000) & 0x70000000 == 0
+
+    // Check: is this a register definition outside the current block?
+    if last_operand is negative (bit 31 = definition)
+       and type_bits == 1 (register)
+       and not pinned (byte+7 bit 0 == 0):
+        reg = RegisterDescriptor(last_operand & 0xFFFFFF)
+        return reg.def_block (reg+76) != current_block_index
+
+    return false
+```
+
+This is the most-called function in the LICM pipeline. It checks whether an instruction's primary output register was defined outside the current block -- if so, the instruction is considered invariant (already hoisted or defined in a dominating block).
+
+### Side-Effect Blocking Rules
+
+An instruction is blocked from hoisting if any of the following conditions hold, regardless of operand invariance:
+
+| Check | Function | Condition |
+|---|---|---|
+| Memory store | `sub_7DF3A0` | Flags byte bits 2-3 set and bit 5 clear |
+| Memory barrier | `sub_74D720` | Opcode 159 (`BAR.SYNC`), 32 (`MEMBAR`), or 271 (barrier variant) |
+| Indirect jump | `sub_74D720` | Opcode 236 (`BRX`) |
+| Volatile/atomic access | `sub_7DFA80` | Called from `sub_7E0540`; detects volatile or atomic memory |
+| Function call | vtable+1456 | `isBarrier()` returns true |
+| Texture side effect | `sub_7DF3A0` | Flags byte bit 6 set with operand modifier flag |
+| Address-space effect | `sub_7E0540` | Opcodes 85/109 (memory ops) with `(flags+20 & 2) != 0` |
+
+The boundary analysis (`sub_74D720`) also produces a 5-byte result array that gates the entire loop:
+
+| Byte | Meaning | Effect |
+|---|---|---|
+| 0 | Has external predecessor (outside loop depth range) | Skip loop (not a natural loop) |
+| 1 | Non-header block with different nesting | Marks as complex multi-depth loop |
+| 2 | Contains barrier instruction | Skip loop entirely |
+| 3 | Contains indirect jump | Skip loop entirely |
+| 4 | Multi-depth safety flag | AND-ed with `sub_7E5120` per inner block |
+
+### Instruction Counting (sub_8F8BC0)
+
+Before the profitability check, `sub_8F8BC0` counts instructions in the loop header and body separately. It walks the instruction linked list for each block in the loop and classifies each instruction using `isNoOp` (vtable+1824):
+
+- **No-op instruction** (scheduling placeholder, predicate set, etc.): weight **1**
+- **Real instruction** (ALU, memory, branch, etc.): weight **30**
+
+The header count is stored at `context+64` and the body count at `context+68`. The profitability formula uses these to normalize the hoisting score: a loop with a heavy header relative to the body benefits less from hoisting.
+
+### Instruction Movement (sub_8F7AE0)
+
+After all checks pass, `sub_8F7AE0` physically moves each invariant instruction from the loop body to the preheader:
+
+1. **Invariance re-check.** Calls `sub_8F76E0` one final time per instruction. Instructions whose invariance status changed during the marking passes are skipped.
+2. **Knob 484 gate.** Queries the allocator for knob 484; if disabled, no movement occurs. This provides a fine-grained override separate from the loop-level knob 381.
+3. **Preheader creation.** On the first hoisted instruction, creates or locates the preheader block:
+   - If the loop has an existing preheader block (`context+16` non-null): clones it via `sub_931920`, copies convergence flags from the original preheader's `offset+282 bit 3`, and links it into the CFG via `sub_8F7610`.
+   - If no preheader exists: creates a new block via `sub_92E1F0` and links it.
+4. **Unlink and reinsert.** For each invariant instruction:
+   - `sub_9253C0(code_object, instruction, 1)`: unlinks the instruction from the current block.
+   - `sub_91E290(code_object, instruction)`: inserts at the preheader insertion point.
+   - Creates or updates scheduling metadata at `instruction+32`: sets bit 1 at `offset+13` to mark the instruction as hoisted (prevents the scheduler from reordering it back into the loop).
+5. **Destination register tracking.** For each output operand, if the defining instruction at `reg+56` differs from the current instruction, sets `context+44` (hoisted_cbo flag). For pass_id == 2, additionally sets `reg+48 bit 26` if the register class is in {2, 3, 4} (GPR classes) and the preheader has the convergence flag.
+6. **Special IADD3 handling.** For pass_id == 3, instructions with opcode 130 (`IADD3`), flag `0x1000`, and a negative byte at `+90` (carry chain) receive special treatment via `sub_9232B0` which adjusts the carry-out register linkage before movement.
+
+### Multi-Depth Loop Handling
+
+For loops with nesting depth > 1 (inner loops within the hoisting target), `sub_8FF780` performs multiple rounds of `sub_8FF2D0` calls:
+
+1. **Header block.** First call processes the loop header with `hoist_mode = 0`.
+2. **Intermediate blocks.** For each depth level between `header_depth+1` and `max_depth`, checks if the block's parent depth (`block+148`) matches the header depth. If the block is a back-edge predecessor of the loop header, uses `hoist_mode = 3`. Otherwise, checks a dominance bitmap at `block[25] + 4*(depth >> 5)`: if bit `(1 << depth)` is set, uses `hoist_mode = 1` (dominated); otherwise `hoist_mode = 2` (non-dominated).
+3. **Back-edge block.** Final call with `hoist_mode = 3` and the deepest back-edge block index, ensuring the budget is split among back-edge predecessors.
+
+Multi-depth permission is gated by knob 220 (queried at `allocator[9]+15840` for the fast path) and the `DisableNestedHoist` knob. When hoisting from an inner loop to the header of an outer loop, an additional constraint applies:
+
+```
+allow_nested = allow_nested_hoist AND is_simple_loop
+               AND body_insn_count > 1
+               AND num_predecessors == 1
+               AND body_insn_count < header_insn_count * max_iterations
+```
+
+This prevents hoisting from inner loops where the cost (extended live range across multiple loop levels) exceeds the benefit (reduced inner-loop dynamic count).
+
+### LICM Outer Loop (sub_8FF780)
+
+The complete outer driver that iterates over all loop nests:
 
 ```
 function HoistInvariantsCore(context):
     code_object = context.code_object
     pass_id = context.pass_id
 
-    // Read configuration from allocator offsets
-    max_iterations = read_config(allocator + 34632)  // 0 = unlimited
-    if max_iterations == 1:
-        max_iterations = read_config(allocator + 34640)
+    // Read iteration limit from allocator+34632
+    config_byte = allocator[34632]
+    max_iterations = (config_byte == 0) ? 2
+                   : (config_byte == 1) ? allocator[34640]
+                   : 0                                   // unlimited
 
-    allow_nested_hoist = read_config(allocator + 20016) != 0
+    allow_nested_hoist = (allocator[20016] != 0)
 
-    RebuildInstructionList(code_object, 1)            // sub_781F80
-    RecomputeRegisterPressure(code_object, 1, 0, 0, 0) // sub_7E6090
-    RecomputeLoopDepths(code_object, 0)               // sub_773140
+    // Prepare IR
+    RebuildInstructionList(code_object, 1)               // sub_781F80
+    RecomputeRegisterPressure(code_object, 1, 0, 0, 0)  // sub_7E6090
+    RecomputeLoopDepths(code_object, 0)                  // sub_773140
 
     if code_object.flags[176] & 2 and pass_id > 1:
-        RecomputeLoopNesting(code_object)             // sub_789280
+        RecomputeLoopNesting(code_object)                // sub_789280
 
-    // Iterate from innermost loop outward
-    rpo = code_object.rpo_array                       // offset +512
-    block_count = code_object.rpo_count               // offset +520
-    start = blocks[rpo[block_count]]                  // innermost loop header
-    deepest_back = -1
+    // Clear prior invariance markers
+    for each block in instruction list:
+        block.marker (offset +76) = 0xFFFFFFFF
 
-    while start is valid:
-        if start has no predecessors or no successors:
+    // Iterate from innermost loop outward (last RPO entry first)
+    current = blocks[rpo[block_count]]
+
+    while current is valid:
+        if current has no predecessors or no first instruction:
             advance; continue
 
-        // Determine loop header and nesting
-        header_depth = start.loop_depth               // offset +144
-        back_depth = start.loop_depth_equal           // offset +152
+        // Count predecessors at >= current loop depth
+        header_depth = current.loop_depth                // offset +144
+        for each predecessor:
+            if pred.loop_depth >= header_depth:
+                num_at_depth++; track deepest back-edge index
 
-        // Find preheader: predecessor with strictly lower loop depth
-        preheader = FindPreheader(code_object, start)
-        if not preheader:
-            continue
+        if num_at_depth == 0:                            // not a loop header
+            advance; continue
 
-        // Analyze loop boundaries
-        AnalyzeBoundaries(code_object, header_depth, back_depth, &info)
-        if info.has_cross_edges or info.has_breaks:
-            continue
+        // Simple vs multi-depth
+        if max_depth == header_depth:
+            is_simple = true
+        else:
+            info = AnalyzeBoundaries(code_object, header_depth, max_depth)
+            if has_external_pred or has_barrier or has_indirect_jump:
+                advance; continue
+            if !MultiDepthAllowed(knob_220):
+                advance; continue
+            context.is_multi_depth = true
 
-        // Query knob 381 for hoisting policy
-        policy = QueryKnob381(allocator, 381, start)
-        if not ShouldHoist(policy, pass_id):          // pass_id-dependent filter
-            continue
+        // Find preheader and query knob 381
+        context.insert_pt = FindPreheader(code_object, current, ...)
+        if !ShouldHoist(QueryKnob381(381, current), pass_id, opt_level):
+            advance; continue
 
-        // Find insertion point in preheader
-        insert_pt = FindInsertionPoint(code_object, start, preheader)
+        // Count instruction weights
+        CountInstructions(context)                       // sub_8F8BC0
 
-        // Scan all instructions in the loop body
-        for each instruction in loop body (forward order):
-            if AllOperandsDefinedOutsideLoop(instruction, header_depth):
-                if IsSafeToHoist(instruction):        // no side effects, no barriers
-                    MoveInstruction(instruction, insert_pt)  // sub_8F8BC0
-                    context.changed = true
-                    context.hoisted_count++
+        // === CORE HOISTING PIPELINE (per loop) ===
+        sub_8FF2D0(context, header_block, ...)           // header block
 
-        // Post-hoist: optionally re-analyze
-        if context.changed and pass_id <= 2:
-            if context.hoisted_tex or context.hoisted_cbo:
-                RebuildDependencies(code_object)
-                RerunAnalysis(code_object, pass_id == 0 ? 1 : -1)
+        if context.is_multi_depth:
+            for depth in (header_depth+1 .. max_depth-1):
+                sub_8FF2D0(context, block_at_depth, ..., hoist_mode, ...)
+            sub_8FF2D0(context, back_edge_block, ..., 3, ...)  // back-edge
+
+        // Post-hoist cleanup
+        if context.changed and current.num_back_edge_successors > 1:
+            RebuildInstructionList(code_object, 0)
+
+        advance to next loop
 ```
 
 ### Hoisting Knobs
