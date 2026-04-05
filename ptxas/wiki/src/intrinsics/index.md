@@ -1,11 +1,12 @@
 # Intrinsic Table Architecture (607 Registered Entries)
 
-ptxas maintains two separate intrinsic subsystems that together cover every CUDA runtime helper function, every PTX opcode requiring inline code generation, and every Blackwell+ OCG builtin operation. The first subsystem (`sub_5D1660` + `sub_5D4190` + `sub_5FF700`) handles 607 classical CUDA intrinsics and PTX opcode dispatch through a name-to-ID hash map and a giant prototype generator. The second subsystem (`sub_6C9EB0` and its handler cluster at `0x6C0000`--`0x6CC000`) handles OCG (Optimized Code Generation) builtins for SM100+ targets. Both subsystems use the same hash map infrastructure (`sub_425CA0` / `sub_426150` / `sub_426D60`) documented in [Hash Tables & Bitvectors](../infra/hash-bitvector.md).
+ptxas maintains two separate intrinsic subsystems that together cover every CUDA runtime helper function, every PTX opcode requiring inline code generation, and every Blackwell+ OCG builtin operation. The first subsystem (`sub_5D1660` + `sub_5D4190` + `sub_5D7430` + `sub_5FF700`) handles 607 classical CUDA intrinsics and PTX opcode dispatch through a name-to-ID hash map, a body template name table, and a giant prototype generator. The second subsystem (`sub_6C9EB0` and its handler cluster at `0x6C0000`--`0x6CC000`) handles OCG (Optimized Code Generation) builtins for SM100+ targets. Both subsystems use the same hash map infrastructure (`sub_425CA0` / `sub_426150` / `sub_426D60`) documented in [Hash Tables & Bitvectors](../infra/hash-bitvector.md).
 
 | | |
 |---|---|
 | **Master registration** | `sub_5D1660` (46KB) -- 607 CUDA intrinsics, name-to-integer-ID hash map (608 table slots, ID 0 = null) |
 | **Opcode dispatch** | `sub_5D4190` (41KB) -- ~120 PTX opcodes to codegen handlers + ~400 MMA hash entries |
+| **Body template names** | `sub_5D7430` (161KB) -- 1,079 intrinsic names constructed from .rodata prefixes + type suffixes, stored in hash map at +824 |
 | **Prototype generator** | `sub_5FF700` (354KB) -- switch generating `.weak .func` PTX declarations |
 | **OCG intrinsic table** | `sub_6C9EB0` (13KB) -- `__nv_ptx_builtin_ocg_*` dispatch for SM100+ |
 | **OCG router** | `sub_6CC690` (22KB) -- routes OCG calls to type-specific handlers |
@@ -23,31 +24,45 @@ ptxas maintains two separate intrinsic subsystems that together cover every CUDA
 ## System Overview
 
 ```
-PTX source
-  |
-  v
-sub_5D4190 ─────────────────────────────────────────────────────────────────┐
-  │ (1) Calls sub_5D1660 to populate intrinsic ID table (607 entries)       │
-  │ (2) Registers ~120 PTX opcode -> codegen handler mappings               │
-  │ (3) Registers ~400 MMA hash -> codegen handler mappings                 │
+sub_451730 (intrinsic lowering context constructor)
+  │
+  ├── sub_5D4190(ctx)  ── register PTX opcode & MMA handlers ──────────────┐
+  │     │ (1) Calls sub_5D1660 to populate intrinsic ID table (607 entries) │
+  │     │ (2) Registers ~120 PTX opcode -> codegen handler mappings         │
+  │     │ (3) Registers ~400 MMA hash -> codegen handler mappings           │
+  │     │                                                                   │
+  │     ├─ Hash map at +808  ── PTX opcode name -> codegen function ptr     │
+  │     │    "div"     -> sub_5B76D0  (64KB)                                │
+  │     │    "sqrt"    -> sub_5B4040  (49KB)                                │
+  │     │    "wmma.mma"-> sub_5C7A50  (173KB)                               │
+  │     │    "mma"     -> sub_5C10A0  (120KB)                               │
+  │     │    ... ~116 more                                                  │
+  │     │                                                                   │
+  │     ├─ Hash map at +816  ── numeric MMA hash -> codegen handler ptr     │
+  │     │    "2644314910" -> sub_4DDB80                                     │
+  │     │    ... ~399 more (shape/type/layout combinations)                 │
+  │     │                                                                   │
+  │     └─ ID table at +1056 ── 9728-byte array (memcpy from unk_1D4D940)  │
+  │        Hash map at +1064 ── name -> integer ID (sub_5D1660, 607)        │
+  │        Count at +1072 = 608 (includes null ID 0 slot)                   │
   │                                                                         │
-  ├─ Hash map at a1+808  ── PTX opcode name -> codegen function pointer     │
-  │    "div"     -> sub_5B76D0  (64KB)                                      │
-  │    "sqrt"    -> sub_5B4040  (49KB)                                      │
-  │    "wmma.mma"-> sub_5C7A50  (173KB)                                     │
-  │    "mma"     -> sub_5C10A0  (120KB)                                     │
-  │    ... ~116 more                                                        │
+  ├── sub_4CE230(ctx)  ── register modifier keywords (GUARD, PRED, ...)     │
   │                                                                         │
-  ├─ Hash map at a1+816  ── numeric MMA hash -> codegen function pointer    │
-  │    "2644314910" -> sub_4DDB80                                           │
-  │    ... ~399 more (shape/type/layout combinations)                       │
+  ├── sub_5D7430(ctx, sregs)  ── body template name table (161KB) ──────────┤
+  │     │ 1,079 entries, each constructed from:                             │
+  │     │   16-byte .rodata prefix (e.g. "__cuda_sm20_div_")               │
+  │     │ + 4-byte type suffix (e.g. "s16\0", "u64\0", "rn_f")            │
+  │     │ → registered into hash map at +824 with sequential integer IDs    │
+  │     │                                                                   │
+  │     └─ Hash map at +824  ── intrinsic name -> body template ID          │
+  │          "__cuda_sm20_div_s16" -> 0                                     │
+  │          "__cuda_sm20_div_u16" -> 1                                     │
+  │          ... 1,079 total entries                                        │
   │                                                                         │
-  └─ ID table at a1+1056 ── 9728-byte array (memcpy from unk_1D4D940)      │
-     Hash map at a1+1064 ── name -> integer ID (sub_5D1660, 607 entries)    │
-     Count at a1+1072 = 608 (includes null ID 0 slot)                       │
+  └── sub_451330("<fermi macros>", ...)  ── load Fermi macro library        │
                                                                             │
 sub_5FF700 (354KB) ─────────────────────────────────────────────────────────┘
-  │ switch(intrinsic_case_number) with hundreds of cases
+  │ switch(body_template_id) with hundreds of cases
   │ Each case: allocate buffer via sub_4DA340, strcpy() PTX prototype
   │
   │ case 0:  ".weak .func (.reg .s32 %d) __cuda_sm20_div_s16
@@ -140,6 +155,62 @@ This 41KB function first calls `sub_5D1660(a1)` to populate the intrinsic ID tab
 ### Numeric MMA Hash Table (at `a1+816`)
 
 ~400 entries where the key is a numeric string representation of a hash value (e.g., `"2644314910"`) that encodes a specific MMA shape/type/layout combination. The hash encodes the instruction variant completely: matrix dimensions (m16n8k16, m16n8k32, etc.), data type (f16, bf16, tf32, f32, f64, s8, u8, s4, u4, b1), and layout (row/col combinations). Each entry maps to a codegen handler function pointer. This avoids a multi-dimensional lookup by collapsing the full variant space into a single hash probe.
+
+## Body Template Name Table -- `sub_5D7430`
+
+At 161KB of machine code (0x5D7430--0x5FF700), this is the largest function in the intrinsic infrastructure by code size and the 6th largest function in the entire ptxas binary. IDA failed to decompile it; all analysis comes from raw x86-64 disassembly. The function constructs a third hash map (at context offset +824 / `0x338`) containing 1,079 entries that map dynamically constructed `__cuda_*` intrinsic names to sequential body template IDs (0--1078).
+
+### Why It Exists
+
+The master registration table (`sub_5D1660`) maps 607 intrinsic names to logical IDs. But the prototype generator (`sub_5FF700`) needs a finer-grained mapping: each *variant* of an intrinsic (type-specialized, rounding-mode-specialized, address-space-specialized) gets its own body template. The 1,079 body templates exceed the 607 logical intrinsics because multiple templates can implement the same logical intrinsic with different type specializations.
+
+### Name Construction Algorithm
+
+The function contains zero string references because it constructs all 1,079 names at runtime. For each entry:
+
+1. **Allocate** a 20-byte buffer via `sub_424070(allocator, 20)`
+2. **Copy prefix** (16 bytes) from `.rodata` via SSE `movdqa` + `movups` (e.g., `"__cuda_sm20_div_"`)
+3. **Append suffix** (4 bytes) via `movl` immediate at offset +16 (e.g., `"s16\0"`, `"u64\0"`, `"rn_f"`)
+4. **Register** via `sub_426150(context+824, buffer, template_id)` with sequential integer IDs
+
+### Prefix/Suffix Examples
+
+| .rodata Prefix (16B) | Suffix (4B) | Complete Name |
+|---|---|---|
+| `__cuda_sm20_div_` | `s16\0` | `__cuda_sm20_div_s16` |
+| `__cuda_sm20_div_` | `u16\0` | `__cuda_sm20_div_u16` |
+| `__cuda_sm20_div_` | `u64\0` | `__cuda_sm20_div_u64` |
+| `__cuda_sm20_div_` | `s64\0` | `__cuda_sm20_div_s64` |
+| `__cuda_sm20_div_` | `rn_f` | `__cuda_sm20_div_rn_f...` (truncated at 20B, continued by next entry) |
+| `__cuda_sm20_rem_` | `s16\0` | `__cuda_sm20_rem_s16` |
+| `__cuda_sm20_rcp_` | ... | `__cuda_sm20_rcp_...` |
+| `__cuda_sm20_sqrt` | ... | `__cuda_sm20_sqrt_...` |
+| `__cuda_sm3x_div_` | ... | `__cuda_sm3x_div_...` |
+| `__cuda_sm20_dblr` | ... | `__cuda_sm20_dblrcp_...` |
+
+### Statistics
+
+| Metric | Value |
+|---|---|
+| Machine code size | 164,560 bytes (0x5D7430--0x5FF700) |
+| `sub_426150` calls | 1,079 |
+| Unique .rodata prefix addresses | 533 |
+| Hash map destination | context+824 (0x338) |
+| Buffer size per entry | 20 bytes |
+| IDA decompilation | Failed (function too large/repetitive) |
+
+### Context Hash Map Summary
+
+The intrinsic lowering context object holds five hash maps and one flat table:
+
+| Offset | Field | Builder | Contents | Entries |
+|---|---|---|---|---|
+| +808 | opcode handlers | `sub_5D4190` | PTX opcode name -> codegen fn ptr | ~120 |
+| +816 | MMA hash handlers | `sub_5D4190` | numeric hash -> codegen fn ptr | ~400 |
+| +824 | **body templates** | **`sub_5D7430`** | **intrinsic name -> template ID** | **1,079** |
+| +1056 | descriptor table | `sub_5D1660` | 608 x 16B intrinsic descriptor slots | 608 |
+| +1064 | ID map | `sub_5D1660` | intrinsic name -> logical ID (1-607) | 607 |
+| +1072 | count | `sub_5D1660` | 608 (includes null slot 0) | -- |
 
 ## Instruction Property Accessors
 
