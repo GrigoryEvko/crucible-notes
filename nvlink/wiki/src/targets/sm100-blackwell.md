@@ -401,25 +401,232 @@ The SM100 opcode table constructor at `sub_1782540` (111,076 bytes, 3,227 lines)
 
 ### tcgen05 Intrinsics
 
-SM100 introduces the tcgen05 (Tensor Core Generation 5) subsystem with dedicated PTX-level intrinsics. The code generation infrastructure resides at `0x16E0000`--`0x16E3AB0` and includes:
+SM100 introduces the tcgen05 (Tensor Core Generation 5) subsystem with dedicated PTX-level intrinsics. The code generation infrastructure resides at `0x16E0000`--`0x16E3AB0` and spans 14+ functions handling type classification, bounds checking, tensor memory address computation, MMA operand setup, and argument type mapping.
 
-**Instruction type classifier** (`sub_16E0A70`, 17,302 bytes, 322 lines): Chains ~50 type-check predicates against the instruction object to classify tcgen05 MMA variants into integer type IDs 1-54. Types 1-8 map to base types, 18-29 to extended variants. Classification keys include modifiers: `_expand16bit`, `_pack16bit`, `_maxabs`, `_minabs`, `_fused`, `_blockscale`, `_ashift`.
+The two PTX instruction mnemonics are `tcgen05.mma` (standard) and `tcgen05.mma.ws` (warp-specialized). Modifier suffixes include `_expand16bit`, `_pack16bit`, `_maxabs`, `_minabs`, `_fused`, `_blockscale`, and `_ashift`.
 
-**Guardrails codegen** (`sub_16E1DB0`, 10,365 bytes, 325 lines): Generates boundary-checking code for tcgen05 tensor operations. Emits inline PTX with string templates:
-- `__cuda__sm10x_tcgen05_guardrails_in_physical_bounds_` -- validates tensor memory addresses
-- `__cuda__sm10x_tcgen05_guardrails_are_columns_allocated_` -- validates column allocation
+#### Instruction Type Classifier
 
-**Tensor memory address computation** (`sub_16E2410`): Emits `add.u32 %s, %s, %s;` for tmem address calculation. References `__cuda_sm_100_tcgen05_tmem_addr`.
+`sub_16E0A70` (17,302 bytes, 322 lines) classifies a tcgen05 MMA instruction into one of 54 type IDs by chaining predicate functions against the instruction object's type field at `*(*(a1+8))`. Each predicate is a trivial equality check (`*a1 == N`); the classifier tests them in priority order and returns the first matching type ID, or 0 if no predicate matches.
 
-**Address base conversion** (`sub_16E2610`): Emits `cvt.u32.u64` for 64-bit to 32-bit address conversion for tmem operations.
+The 54 predicate functions live at `0x12B5670`--`0x12B5C20` (16 bytes each, all identical in structure). The complete classifier chain and resulting type ID assignment:
 
-**MMA operand setup** (four functions at `0x16E27D0`--`0x16E2D70`): Configure tensor memory for:
-- `__cuda_sm10x_tcgen05_mma_tmemD` -- destination tensor memory
-- `__cuda_sm10x_tcgen05_mma_tmemA` -- source A tensor memory
-- `__cuda_sm10x_tcgen05_mma_scaleTmemA` -- scale tensor for matrix A
-- `__cuda_sm10x_tcgen05_mma_scaleTmemB` -- scale tensor for matrix B
+| Priority | Predicate | Internal Value | Type ID | Category |
+|---|---|---|---|---|
+| 1 | `sub_12B5670` | 1 | 1 | Base types |
+| 2 | `sub_12B5680` | 2 | 2 | Base types |
+| 3 | `sub_12B5690` | 3 | 3 | Base types |
+| 4 | `sub_12B56A0` | 4 | 4 | Base types |
+| 5 | `sub_12B56B0` | 5 | 5 | Base types |
+| 6 | `sub_12B56C0` | 6 | 6 | Base types |
+| 7 | `sub_12B56D0` | 7 | 7 | Base types |
+| 8 | `sub_12B56E0` | 8 | 8 | Base types |
+| 9 | `sub_12B5700` | 18 | 18 | Extended type A |
+| 10 | `sub_12B5710` | 19 | 19 | Extended type A |
+| 11 | `sub_12B5720` | 21 | 21 | Extended type A |
+| 12 | `sub_12B5730` | 23 | 23 | Extended type A |
+| 13 | `sub_12B5740` | 24 | 24 | Extended type A |
+| 14 | `sub_12B5780` | 10 | 10 | Extended type B |
+| 15 | `sub_12B5790` | 11 | 11 | Extended type B |
+| 16 | `sub_12B57A0` | 13 | 13 | Extended type B |
+| 17 | `sub_12B57B0` | 15 | 15 | Extended type B |
+| 18 | `sub_12B57C0` | 16 | 16 | Extended type B |
+| 19 | `sub_12B58D0` | 25 | 25 | Blockscale types |
+| 20 | `sub_12B58E0` | 26 | 26 | Blockscale types |
+| 21 | `sub_12B5960` | 27 | 27 | Blockscale types |
+| 22 | `sub_12B5950` | 29 | 29 | Blockscale types |
+| 23 | `sub_12B5940` | 28 | 28 | Blockscale types |
+| 24 | `sub_12B5970` | 33 | 33 | Quantized types |
+| 25 | `sub_12B58F0` | 32 | 32 | Quantized types |
+| 26 | `sub_12B5900` | 30 | 30 | Quantized types |
+| 27 | `sub_12B5910` | 31 | 31 | Quantized types |
+| 28 | `sub_12B5B50` | 34 | 34 | Mixed-precision types |
+| 29 | `sub_12B5920` | 35 | 35 | Mixed-precision types |
+| 30 | `sub_12B5930` | 36 | 36 | Mixed-precision types |
+| 31 | `sub_12B5980` | 37 | 37 | Mixed-precision types |
+| 32 | `sub_12B5B30` | 42 | 42 | Sparse types |
+| 33 | `sub_12B5B40` | 43 | 43 | Sparse types |
+| 34 | `sub_12B5990` | 38 | 38 | FP8/FP6/FP4 types |
+| 35 | `sub_12B5A80` | 39 | 39 | FP8/FP6/FP4 types |
+| 36 | `sub_12B5A90` | 40 | 40 | FP8/FP6/FP4 types |
+| 37 | `sub_12B5AA0` | 41 | 41 | FP8/FP6/FP4 types |
+| 38 | `sub_12B5AB0` | 44 | 44 | Ashift types |
+| 39 | `sub_12B5AC0` | 45 | 45 | Ashift types |
+| 40 | `sub_12B5AD0` | 46 | 46 | Ashift types |
+| 41 | `sub_12B5B00` | 47 | 47 | Fused types |
+| 42 | `sub_12B5B10` | 48 | 48 | Fused types |
+| 43 | `sub_12B5AF0` | 50 | 50 | Pack/Expand types |
+| 44 | `sub_12B5AE0` | 49 | 49 | Pack/Expand types |
+| 45 | `sub_12B5B20` | 51 | 51 | Pack/Expand types |
+| 46 | `sub_12B5BA0` | 52 | 52 | MXQ types |
+| 47 | `sub_12B5BB0` | 56 | 56 | MXQ types |
+| 48 | `sub_12B5BF0` | 53 | 53 | MXQ types |
+| 49 | `sub_12B5C00` | 54 | 54 | MXQ types |
+| 50 | `sub_12B5BC0` | 58 | 58 | Maxabs types |
+| 51 | `sub_12B5BE0` | 59 | 59 | Maxabs types |
+| 52 | `sub_12B5C10` | 55 | 55 | Extended sparse |
+| 53 | `sub_12B5C20` | 60 | 60 | Extended sparse |
 
-**Arguments type mapper** (`sub_16E3AB0`, 18,623 bytes, 337 lines): Maps arrays of tcgen05 instruction arguments to numeric type IDs. Iterates over the argument array (base offset 796 stores count, result at offset 944), calling the same type-check chain as the instruction classifier.
+Type IDs 9, 12, 14, 17, 20, 22, 57 are absent from the enum -- either reserved for future expansion or used by related subsystems not routed through this classifier.
+
+The type ID groupings inferred from the classification order and the modifier suffix strings:
+
+- **IDs 1--8**: Base MMA types (standard precision combinations -- the 8 fundamental `tcgen05.mma` configurations)
+- **IDs 10--16**: Extended base types with non-standard precision or accumulator widths
+- **IDs 18--24**: Extended type A variants (wider accumulator or non-standard rounding)
+- **IDs 25--29**: Blockscale variants (`_blockscale` modifier -- block-level scaling for MX formats)
+- **IDs 30--33**: Quantized MMA types (`tcmma_*_q` / `tcmma_*_mxq` internal names)
+- **IDs 34--37**: Mixed-precision variants (asymmetric A/B input types)
+- **IDs 38--41**: FP8/FP6/FP4 narrow-type variants (e4m3, e5m2, e3m2, e2m3, e2m1 combinations)
+- **IDs 42--43**: Sparse MMA variants (structured sparsity -- 2:4 or 4:8 patterns)
+- **IDs 44--46**: Ashift variants (`_ashift` modifier -- arithmetic shift on matrix A)
+- **IDs 47--48**: Fused variants (`_fused` modifier -- fused accumulation)
+- **IDs 49--51**: Pack/Expand variants (`_pack16bit`, `_expand16bit` modifiers)
+- **IDs 52--56**: MXQ (Mixed-precision Quantized) types (`_blockscale` + quantization)
+- **IDs 58--59**: Maxabs/Minabs variants (`_maxabs`, `_minabs` reduction modifiers)
+- **ID 55**: Extended sparse variant
+- **ID 60**: Extended sparse variant (last in chain)
+
+#### Guardrails Code Generation
+
+`sub_16E1DB0` (10,365 bytes, 325 lines) generates inline PTX boundary-checking code that validates tensor memory accesses before `tcgen05.mma` execution. This is a compiler-inserted safety mechanism -- the guardrails are weak functions that can be overridden at link time.
+
+**Symbol selection** (line 67--73): The function selects one of two guardrail symbol prefixes based on the instruction opcode at offset 776:
+
+| Opcode | Symbol Prefix |
+|---|---|
+| 149 | `__cuda__sm10x_tcgen05_guardrails_are_columns_allocated_` |
+| other | `__cuda__sm10x_tcgen05_guardrails_in_physical_bounds_` |
+
+Both prefixes get `nCols` appended to form the final guardrail variable name (e.g., `__cuda__sm10x_tcgen05_guardrails_in_physical_bounds_nCols`).
+
+**nCols computation** (line 82--318): The number of columns accessed by the MMA instruction is computed via a multi-level dispatch. The first dispatch key is `BYTE2(v63) & 0x1C` -- a 3-bit field extracted from the instruction descriptor at offset 632:
+
+| Field Value | nCols Computation |
+|---|---|
+| `0x10` (16) | Constant: `mov.u32 %s, 8` |
+| `0x14` (20) | Dynamic: reads descriptor field at offset 634, dispatches on `(byte >> 5)` -- see sub-table below |
+| `0x18` (24) | Register: copies from operand at offset 664 via `mov.u32 %s, %s` |
+| `0x1C` (28) | Register: copies from operand at offset 656 via `mov.u32 %s, %s` |
+| other | Falls through to instruction-opcode-based dispatch |
+
+**Instruction-opcode nCols table** (lines 103--128): When none of the above field values match, the byte at offset 620 (`v4`, signed char interpreted as instruction opcode) determines nCols:
+
+| Opcode (signed) | Opcode (unsigned) | nCols Base | nCols (with scale) | Interpretation |
+|---|---|---|---|---|
+| -87 (0xA9) | 169 | 16 / 8 | scaled | 16-col MMA types |
+| -83 (0xAD) | 173 | 16 / 8 | scaled | 16-col MMA types |
+| -78 (0xB2) | 178 | 16 / 8 | scaled | 16-col MMA types |
+| -86 (0xAA) | 170 | 2 / 1 | scaled | 2-col MMA types |
+| -82 (0xAE) | 174 | 2 / 1 | scaled | 2-col MMA types |
+| -85 (0xAB) | 171 | 4 / 2 | scaled | 4-col MMA types |
+| -84 (0xAC) | 172 | 8 / 4 | scaled | 8-col MMA types |
+| -81 (0xAF) | 175 | 8 / 4 | scaled | 8-col MMA types |
+| -80 (0xB0) | 176 | 8 / 4 | scaled | 8-col MMA types |
+| -79 (0xB1) | 177 | 8 / 4 | scaled | 8-col MMA types |
+
+The nCols value is modified by two flags in the instruction descriptor at offset 624 (`v62.m128i_i8[8]`):
+- `& 0x03` (CTA group flag): If nonzero, the base nCols is doubled (nCols = nCols_wide instead of nCols_narrow)
+- `& 0x78` (scale factor flag): If nonzero, nCols is multiplied by `sub_12AB660(v5)` where `v5 = (byte >> 3) & 0xF` is a 4-bit index into the scale lookup table at `dword_1F24300` (values indexed 0--7)
+
+**Dynamic descriptor dispatch** (field value `0x14`, lines 158--318): When the field value is 0x14, a secondary 3-bit dispatch on `*(a1+634) >> 5` selects one of 6 nCols computation strategies:
+
+| Case | PTX Emitted | Semantics |
+|---|---|---|
+| 1 | `mov.u32 %s, 8` | Constant 8 columns |
+| 2 | `and.b32 %s, 0x7E0000, %s; shr.u32 %s, %s, 17; mul.lo.u32 %s, %s, 8; mov.u32 %s, %s;` | Extract bits[22:17] from descriptor, multiply by 8 |
+| 3 (with FP16 inputs) | `mov.u32 %s, 4` | Constant 4 columns for FP16 |
+| 3 (other) | `and.b32 %s, 0x1F000000, %s; shr.u32 %s, %s, 24; mul.lo.u32 %s, %s, 16; setp.eq.u32 %s, %s, 128; selp.u32 %s, 2, 4, %s;` | Extract bits[28:24], multiply by 16, select 2 or 4 based on result |
+| 4 | `and.b32 %s, 0x7E0000, %s; shr.u32 %s, %s, 17; mul.lo.u32 %s, %s, 8; cvt.rp.f32.u32 %s, %s; div.rp.f32 %s, %s, 64.0; cvt.rpi.u32.f32 %s, %s; mul.lo.u32 %s, %s, 2;` | Extract bits[22:17], multiply by 8, divide by 64 rounding up, multiply by 2 |
+| 5 | `mov.u32 %s, 2` | Constant 2 columns |
+
+Case 3 checks whether either matrix A (offset 611, bits[5:4]) or matrix B (offset 627, bits[5:4]) uses FP16 format (`== 1`). If so, nCols is fixed at 4; otherwise, a full bitfield extraction from the descriptor determines the value dynamically.
+
+Case 4 is notable for using floating-point arithmetic (`cvt.rp.f32.u32`, `div.rp.f32`, `cvt.rpi.u32.f32`) to compute a ceiling division -- `nCols = ceil(bits * 8 / 64) * 2`. This computes the number of 64-byte-aligned column groups needed.
+
+#### Tensor Memory Address Computation
+
+Five functions generate the inline PTX for computing tensor memory (tmem) addresses used by `tcgen05.mma` operands:
+
+| Address | Size | Symbol | Operand | Source Offset |
+|---|---|---|---|---|
+| `sub_16E2410` | 111 lines | `__cuda_sm_100_tcgen05_tmem_addr` | General tmem | Offset 648 (opcode-dependent) |
+| `sub_16E2610` | 93 lines | `__cuda_sm10x_tcgen05_mma_tmemD` | Destination D | Offset 648 (slot 0) |
+| `sub_16E27D0` | 93 lines | `__cuda_sm10x_tcgen05_mma_tmemA` | Source A | Offset 656 (slot 1) |
+| `sub_16E2990` | 99 lines | `__cuda_sm10x_tcgen05_mma_scaleTmemA` | Scale A | Offset 648 + 8*N (dynamic) |
+| `sub_16E2B80` | 99 lines | `__cuda_sm10x_tcgen05_mma_scaleTmemB` | Scale B | Offset 648 + 8*N (dynamic) |
+
+A sixth function at `sub_16E2D70` (93 lines) handles `__cuda_sm10x_tcgen05_mma_spMetaTmem` -- the sparsity metadata tensor memory address, reading from offset 672 (slot 3).
+
+Each function follows the same two-path pattern:
+
+1. **32-bit tmem address** (when the address operand type is `sub_12B5850` or `sub_12B56C0`, internal type 6): Emits a simple `add.u32`:
+   ```
+   add.u32 %s, <symbol>, %s, %s;
+   ```
+
+2. **64-bit tmem address** (all other types): Wraps in a scoped register block with 64-to-32-bit conversion:
+   ```
+   {.reg .b32 __cuda_sm_100_tcgen05_tmem_addr_base;
+   cvt.u32.u64 __cuda_sm_100_tcgen05_tmem_addr_base, %s;
+   add.u32 %s, __cuda_sm_100_tcgen05_tmem_addr_base, %s;
+   }
+   ```
+
+The scale operand functions (`sub_16E2990`, `sub_16E2B80`) dynamically select their operand slot: `scaleTmemA` uses slot `5 - (cta_group_flag == 0)` and `scaleTmemB` uses slot `6 - (cta_group_flag == 0)`, where `cta_group_flag = (*(a1+627) & 0x30)`.
+
+#### Return Value / Input Operand Marshalling
+
+Two functions handle parameter passing to/from the tcgen05 MMA helper functions:
+
+**Output marshalling** (`sub_16E1A80`, 47 lines): Iterates over the operand list at offset 648, emitting `ld.param.b32 %s, [%s + %d]` for each register result. The return array symbol depends on the opcode:
+- Opcode 143: `__cuda_sm_100_tcgen05_ld_red_funcRetArr` (load-reduce variant)
+- Opcode 160: `__cuda_sm_100_tcgen05_ld_funcRetArr` (standard load variant)
+
+For reduce operations (`sub_12A9290` returns true), an additional operand is appended from offset 656.
+
+**Input marshalling** (`sub_16E1BC0`, 30 lines): Iterates over the input operand list at offset 648 (slot determined by `*(a1+596) - 1`), emitting `st.param.b32 [%s + %d], %s` for each register input. Uses the symbol `__cuda_sm_100_tcgen05_st_funcInputArr`.
+
+#### Arguments Type Mapper
+
+`sub_16E3AB0` (18,623 bytes, 337 lines) performs the same type classification as `sub_16E0A70` but operates on an array of tcgen05 instruction arguments rather than a single instruction. It iterates over the argument array (count at offset 796, result stored at offset 944), calling the identical predicate chain to assign numeric type IDs.
+
+#### Guardrail Trap Functions
+
+The guardrails infrastructure defines five weak trap functions that are called when bounds violations are detected. These are declared as PTX prototypes embedded in the binary:
+
+| Symbol | Parameters | Purpose |
+|---|---|---|
+| `__cuda_sm10x_tcgen05_guardrail_trap_access_out_of_physical_bounds` | `oob_access_col_no`, `instr_kind` | Out-of-bounds column access |
+| `__cuda_sm10x_tcgen05_guardrail_trap_unallocated_columns_access` | `col_no_accessed`, `alloced_mask`, `instr_kind` | Access to unallocated column |
+| `__cuda_sm10x_tcgen05_guardrail_trap_invalid_datapath_alignment` | `dp_lane`, `matrix_kind`, `valid_alignment_kind` | Misaligned datapath access |
+| `__cuda_sm10x_tcgen05_guardrail_trap_sp_used_in_unsupported_env` | `idesc_sp_enabled`, `idesc`, `mma_kind`, `ptx_target`, `is_family_portable` | Sparsity used in unsupported context |
+| `__cuda_sm10x_tcgen05_guardrails_check_column_allocation` | `start_col_num`, `num_of_cols`, `inst_kind` | Column allocation verification (returns `retVal`) |
+
+Two additional check functions return a result value:
+
+| Symbol | Parameters | Purpose |
+|---|---|---|
+| `__cuda_sm10x_tcgen05_guardrails_check_physical_bounds` | `start_col_num`, `num_of_cols`, `inst_kind` | Physical bounds check (returns `retVal`) |
+| `__cuda_sm10x_tcgen05_guardrails_check_datapath_alignment` | `tmemAddr`, `iDesc`, `cta_group`, `hasWS`, `hasSP`, `matrix_kind` | Datapath alignment check (returns `retVal`) |
+
+All are declared `.weak .func` (overridable at link time) and use `.FORCE_INLINE` for the check variants, ensuring they are inlined at every call site.
+
+#### Additional tcgen05 Symbols
+
+Beyond MMA, the tcgen05 infrastructure references additional symbols for load, store, and load-reduce operations:
+
+| Symbol | Usage |
+|---|---|
+| `__cuda_sm_100_tcgen05_tmem_addr` | General tmem address for ld/st operations |
+| `__cuda_sm_100_tcgen05_ld_funcRetArr` | Return array for tcgen05 loads |
+| `__cuda_sm_100_tcgen05_ld_red_funcRetArr` | Return array for tcgen05 load-reduce |
+| `__cuda_sm_100_tcgen05_st_funcInputArr` | Input array for tcgen05 stores |
+| `__cuda_sm_100_tcgen05_ld_immhalfSplitOff` | Half-split offset for loads (opcode 0xAA) |
+| `__cuda_sm_100_tcgen05_ld_red_immhalfSplitOff` | Half-split offset for load-reduce (opcode 0xAA) |
+| `__cuda_sm_100_tcgen05_st_immhalfSplitOff` | Half-split offset for stores (opcode 0xAA) |
+
+The EIATTR system tracks tcgen05 MMA usage through two compatibility attributes: `EICOMPAT_ATTR_INST_TCGEN05_MMA` (current) and `EICOMPAT_ATTR_INST_TCGEN05_MMA_DEPRECATED` (legacy).
 
 ### Decoder Opcode Classes for Blackwell-New Instructions
 
