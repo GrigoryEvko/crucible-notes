@@ -402,6 +402,280 @@ Hardware errata requiring instruction-level patching by the driver. Each WAR att
 | 86 | `0x56` | `EIATTR_UNKNOWN` | -- | Unknown attribute placeholder. |
 | 96 | `0x60` | `EIATTR_ERROR_LAST` | -- | Upper bound sentinel for the enum range. Code 96 is never emitted; it serves as a bound check (`if (attr_code > 0x2F)` at line 760 of the builder). |
 
+## Payload Format Reference (Codes 0--32)
+
+Per-attribute wire-format documentation derived from `sub_1CC9800` (master EIATTR builder), `sub_1CC86D0` (per-entry stack emitter), `sub_1CC8950` (barrier/register propagator), and `sub_1CC85F0` (TLV record emitter). Payload layouts describe the bytes that follow the 4-byte TLV header.
+
+For Indexed-format (`0x04`) attributes the first 4 payload bytes are always a u32 symbol index. The remaining bytes (if any) carry the value. For Sized-format (`0x03`) attributes the value is encoded directly in the 16-bit size field of the TLV header -- there are no additional payload bytes.
+
+### Sentinel Codes (0--1)
+
+| Code | Hex | Name | Payload |
+|---:|---:|---|---|
+| 0 | `0x00` | `EIATTR_ERROR` | None. Never emitted. |
+| 1 | `0x01` | `EIATTR_PAD` | None. Padding, ignored by parser. |
+
+### Texture and Image Binding (2, 6--9, 14, 19--22)
+
+All Indexed attributes in this group share the same 8-byte payload layout: `[sym_index:4][value:4]`. The builder's first switch (line 722) routes all of these through the same symbol-index resolution path.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index     Per-function symbol table index
+0x04    4     value         Attribute-specific (see per-code table)
+```
+
+| Code | Hex | Name | `value` field semantics |
+|---:|---:|---|---|
+| 2 | `0x02` | `EIATTR_IMAGE_SLOT` | Image slot number (texture unit binding point) |
+| 6 | `0x06` | `EIATTR_IMAGE_OFFSET` | Byte offset within image descriptor table |
+| 7 | `0x07` | `EIATTR_IMAGE_SIZE` | Image descriptor size in bytes |
+| 8 | `0x08` | `EIATTR_TEXTURE_NORMALIZED` | `0` = unnormalized, `1` = normalized coordinates |
+| 9 | `0x09` | `EIATTR_SAMPLER_INIT` | Packed sampler initialization parameters |
+| 19 | `0x13` | `EIATTR_SAMPLER_FORCE_UNNORMALIZED` | Sampler ID to force unnormalized |
+| 21 | `0x15` | `EIATTR_BINDLESS_TEXTURE_BANK` | Constant bank ID for bindless texture descriptors |
+| 22 | `0x16` | `EIATTR_BINDLESS_SURFACE_BANK` | Constant bank ID for bindless surface descriptors |
+
+**Code 14 (`0x0E`) -- `EIATTR_TEXID_SAMPID_MAP`**: Free format. Variable-length array of u32 pairs mapping texture IDs to sampler IDs.
+
+```
+Payload: repeating [tex_id:4][samp_id:4] pairs
+Size:    N * 8 bytes (N = number of tex-sampler bindings)
+```
+
+**Code 20 (`0x14`) -- `EIATTR_BINDLESS_IMAGE_OFFSETS`**: Free format. Array of u32 byte offsets for bindless image descriptor references in the kernel's constant bank. Each u32 is a symbol index that gets resolved during link.
+
+```
+Payload: u32[] symbol indices (resolved to byte offsets at link)
+Size:    N * 4 bytes
+```
+
+### Jump Table Relocations (3)
+
+**Code 3 (`0x03`) -- `EIATTR_JUMPTABLE_RELOCS`**: Free format. Array of u32 byte offsets into the `.text` section where jump table relocations are needed.
+
+```
+Payload: u32[] byte offsets into .text
+Size:    N * 4 bytes
+```
+
+### CTAIDZ Flag (4)
+
+**Code 4 (`0x04`) -- `EIATTR_CTAIDZ_USED`**: Indexed format, zero-value flag attribute. Presence of the record signals the kernel reads `%ctaid.z`. SM-version gated via `sub_1C97840(0x04, sm_version)`.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index     Per-function symbol
+(no value field -- presence is the signal)
+```
+
+The builder creates this record with two different format bytes depending on context: `0x04` (Indexed) via the TLV emitter, or `0x01` (Free) via inline construction (magic `0x0401`). Both encode the same semantic: flag-only, no value.
+
+### Resource Allocation (5, 16--18, 25, 27, 30)
+
+**Codes 5, 16, 17, 18** -- Indexed, 8-byte payload `[sym_index:4][value:4]`:
+
+| Code | Hex | Name | `value` field semantics |
+|---:|---:|---|---|
+| 5 | `0x05` | `EIATTR_MAX_THREADS` | Maximum threads per block (from `.maxntid`) |
+| 16 | `0x10` | `EIATTR_REQNTID` | Required thread count per dimension (from `.reqntid`) |
+| 17 | `0x11` | `EIATTR_FRAME_SIZE` | Per-thread local memory frame size in bytes |
+| 18 | `0x12` | `EIATTR_MIN_STACK_SIZE` | Minimum per-thread stack size in bytes |
+
+`EIATTR_FRAME_SIZE` is weak-symbol filtered: dropped when a weak function is replaced by a stronger definition (bitmask `0x800800020000`).
+
+`EIATTR_MIN_STACK_SIZE` is emitted by `sub_1CC86D0` with `sub_1CC85F0(a1, 0x12, 8, buf, 0)` where `buf` is `[sym_index:4][min_stack:4]`. A sentinel value of `-1` in `min_stack` means "not yet computed." When `sm_version == 0xFF00` (Mercury), the record is suppressed.
+
+**Code 25 (`0x19`) -- `EIATTR_CBANK_PARAM_SIZE`**: Sized format (`0x03`). Value encoded directly in the 16-bit size field. No separate payload bytes.
+
+```
+TLV header: [fmt=0x03][code=0x19][param_bank_size:2]
+Total record: 4 bytes (header only)
+```
+
+**Code 27 (`0x1B`) -- `EIATTR_MAXREG_COUNT`**: Sized format (`0x03`). Value encoded in the low byte of the 16-bit size field (range 0--255). Per-compilation-unit hint, not per-function. Set by `--maxrregcount` CLI flag or `.maxnreg` PTX directive.
+
+```
+TLV header: [fmt=0x03][code=0x1B][maxreg:2]
+Total record: 4 bytes (header only)
+Effective range: low byte only (0--255), high byte 0
+```
+
+Binary evidence: second switch case `0x1B` (line 1094) reads `*(u8*)(v150+2)` -- the low byte of the size field -- as the register count value.
+
+**Code 30 (`0x1E`) -- `EIATTR_CRS_STACK_SIZE`**: Indexed format, 4-byte value payload. Emitted by `sub_1CC86D0` with `sub_1CC85F0(a1, 0x1E, 4, buf, sym_index)`.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index     Per-function symbol
+0x04    4     crs_bytes     Call-Return-Stack size in bytes
+```
+
+Total record: 12 bytes (4 header + 8 payload). Diagnostic `"conflicting crs_stack attribute"` fires when two records target the same function.
+
+### Parameter Bank Layout (10--12, 23--24)
+
+**Code 10 (`0x0A`) -- `EIATTR_PARAM_CBANK`**: Indexed format, packed value.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+0x04    4     cbank_desc    lo16 = bank number, hi16 = byte offset
+```
+
+Typical value: bank=0, offset=`0x160` (standard CUDA kernel parameter ABI).
+
+**Codes 11 (`0x0B`) and 12 (`0x0C`)** -- Free format, variable-length u32 arrays:
+
+`EIATTR_SMEM_PARAM_OFFSETS` (`0x0B`):
+```
+Payload: u32[] byte offsets within shared memory, one per parameter
+Size:    N * 4 bytes
+```
+
+`EIATTR_CBANK_PARAM_OFFSETS` (`0x0C`):
+```
+Payload: u32[] packed entries, one per parameter
+         Each u32: lo16 = byte offset in cbank, hi16 = parameter size
+Size:    N * 4 bytes
+```
+
+**Code 23 (`0x17`) -- `EIATTR_KPARAM_INFO`**: Free format, complex per-parameter descriptors. This is the only attribute in codes 0--32 with a multi-field sub-record structure.
+
+```
+Payload: repeating 12-byte per-parameter entries:
+  Offset  Size  Field
+  ------  ----  -----
+  0x00    4     param_index       Ordinal position (0-based)
+  0x04    4     param_offset      Byte offset in constant bank
+  0x08    2     param_size        Size in bytes
+  0x0A    1     log_alignment     log2(alignment)
+  0x0B    1     flags             Bit flags (pointer, ordinal, etc.)
+Size: N * 12 bytes
+```
+
+Special behavior: the builder exempts `KPARAM_INFO` from being zeroed when its symbol index resolves to 0 (line 755: `(_BYTE)v5 == 23` check). This allows global-scope parameter info records.
+
+**Code 24 (`0x18`) -- `EIATTR_SMEM_PARAM_SIZE`**: Indexed, `[sym_index:4][smem_param_bytes:4]`.
+
+### Synchronization (13)
+
+**Code 13 (`0x0D`) -- `EIATTR_SYNC_STACK`**: Indexed format.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+0x04    4     sync_depth    lo16 = stack depth (u16), hi16 = 0
+```
+
+Binary evidence: case `0x0D` (line 1038) reads `*(u16**)(v150+8)` as a pointer to a u16 value. The depth value (`v343`) is a 16-bit unsigned integer. Used with `sub_1CBD8F0` for sync stack tracking.
+
+### External Symbol References (15)
+
+**Code 15 (`0x0F`) -- `EIATTR_EXTERNS`**: Free format, most complex processing of any attribute in the 0--32 range.
+
+```
+Payload: u32[] symbol table indices
+Size:    N * 4 bytes (N = size_field / 4)
+```
+
+The builder handles EXTERNS in both switches:
+- First switch (line 779): iterates the u32 array, resolving each symbol index through the link-time symbol table. Dead symbols (resolved to 0) are zeroed in-place.
+- Second switch (line 1054): collects extern refs into a set (`v643`) for the current function.
+- Emission (line 1706): `sub_1CC85F0(a1, 0x0F, 4*count, buf, sym_index)` emits the final record.
+- The size field encodes `N * 4` and the element count is recovered as `size >> 2`.
+
+### Metadata Query (26)
+
+**Code 26 (`0x1A`) -- `EIATTR_QUERY_NUMATTRIB`**: Indexed, `[sym_index:4][num_attributes:4]`.
+
+### Instruction Offset Tables (28--29)
+
+Both attributes are Free format carrying arrays of u32 byte offsets into the `.text` section.
+
+**Code 28 (`0x1C`) -- `EIATTR_EXIT_INSTR_OFFSETS`**:
+```
+Payload: u32[] byte offsets of EXIT instructions
+Size:    N * 4 bytes
+```
+
+Confirmed by the builder's loop (line 2011): code 28 is explicitly checked and skipped past the symbol-resolution path, confirming the payload is a simple offset array with no embedded symbol indices.
+
+**Code 29 (`0x1D`) -- `EIATTR_S2RCTAID_INSTR_OFFSETS`**:
+```
+Payload: u32[] byte offsets of S2R SR_CTAID.* instructions
+Size:    N * 4 bytes
+```
+
+At line 2001, code 29 triggers CNP (CUDA Nested Parallelism) wrapper generation. The symbol index from the record is added to the CNP wrapper list, driving emission of `NEED_CNP_WRAPPER` (code 31) and `NEED_CNP_PATCH` (code 32) records.
+
+### CUDA Nested Parallelism Flags (31--32)
+
+Both are Indexed-format flag attributes with no value payload. They are always emitted as a pair.
+
+**Code 31 (`0x1F`) -- `EIATTR_NEED_CNP_WRAPPER`**:
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+(no value -- flag only, presence is the signal)
+```
+
+SM-version gated: `sub_1C97840(0x1F, sm_version)`. Builder constructs with internal format `0x01` (magic `0x1F01` = 7937). Emitted for every function that the S2RCTAID analysis identified as needing a CNP wrapper.
+
+**Code 32 (`0x20`) -- `EIATTR_NEED_CNP_PATCH`**:
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+(no value -- flag only, presence is the signal)
+```
+
+SM-version gated: `sub_1C97840(0x20, sm_version)`. Builder constructs with internal format `0x01` (magic `0x2001` = 8193). Emitted for every function in the CNP call tree.
+
+### Payload Format Summary (Codes 0--32)
+
+| Code | Name | Wire Fmt | Payload size | Payload layout |
+|---:|---|---:|---:|---|
+| 0 | `ERROR` | -- | 0 | none |
+| 1 | `PAD` | -- | 0 | none |
+| 2 | `IMAGE_SLOT` | `0x04` | 8 | `[sym:4][slot_id:4]` |
+| 3 | `JUMPTABLE_RELOCS` | `0x01` | N*4 | `u32[]` byte offsets |
+| 4 | `CTAIDZ_USED` | `0x04` | 4 | `[sym:4]` flag-only |
+| 5 | `MAX_THREADS` | `0x04` | 8 | `[sym:4][max_threads:4]` |
+| 6 | `IMAGE_OFFSET` | `0x04` | 8 | `[sym:4][offset:4]` |
+| 7 | `IMAGE_SIZE` | `0x04` | 8 | `[sym:4][size:4]` |
+| 8 | `TEXTURE_NORMALIZED` | `0x04` | 8 | `[sym:4][normalized:4]` |
+| 9 | `SAMPLER_INIT` | `0x04` | 8 | `[sym:4][params:4]` |
+| 10 | `PARAM_CBANK` | `0x04` | 8 | `[sym:4][lo16=bank,hi16=off:4]` |
+| 11 | `SMEM_PARAM_OFFSETS` | `0x01` | N*4 | `u32[]` param offsets |
+| 12 | `CBANK_PARAM_OFFSETS` | `0x01` | N*4 | `u32[]` `lo16=off,hi16=size` |
+| 13 | `SYNC_STACK` | `0x04` | 8 | `[sym:4][depth_u16:4]` |
+| 14 | `TEXID_SAMPID_MAP` | `0x01` | N*8 | `[tex_id:4][samp_id:4]` pairs |
+| 15 | `EXTERNS` | `0x01` | N*4 | `u32[]` symbol indices |
+| 16 | `REQNTID` | `0x04` | 8 | `[sym:4][reqntid:4]` |
+| 17 | `FRAME_SIZE` | `0x04` | 8 | `[sym:4][frame_bytes:4]` |
+| 18 | `MIN_STACK_SIZE` | `0x04` | 8 | `[sym:4][stack_bytes:4]` |
+| 19 | `SAMPLER_FORCE_UNNORM` | `0x04` | 8 | `[sym:4][sampler_id:4]` |
+| 20 | `BINDLESS_IMAGE_OFFSETS` | `0x01` | N*4 | `u32[]` sym indices |
+| 21 | `BINDLESS_TEXTURE_BANK` | `0x04` | 8 | `[sym:4][bank_id:4]` |
+| 22 | `BINDLESS_SURFACE_BANK` | `0x04` | 8 | `[sym:4][bank_id:4]` |
+| 23 | `KPARAM_INFO` | `0x01` | N*12 | 12B per-param descriptors |
+| 24 | `SMEM_PARAM_SIZE` | `0x04` | 8 | `[sym:4][size_bytes:4]` |
+| 25 | `CBANK_PARAM_SIZE` | `0x03` | 0 | value in TLV size field |
+| 26 | `QUERY_NUMATTRIB` | `0x04` | 8 | `[sym:4][count:4]` |
+| 27 | `MAXREG_COUNT` | `0x03` | 0 | value in TLV size field (u8) |
+| 28 | `EXIT_INSTR_OFFSETS` | `0x01` | N*4 | `u32[]` .text byte offsets |
+| 29 | `S2RCTAID_INSTR_OFFSETS` | `0x01` | N*4 | `u32[]` .text byte offsets |
+| 30 | `CRS_STACK_SIZE` | `0x04` | 8 | `[sym:4][crs_bytes:4]` |
+| 31 | `NEED_CNP_WRAPPER` | `0x04` | 4 | `[sym:4]` flag-only |
+| 32 | `NEED_CNP_PATCH` | `0x04` | 4 | `[sym:4]` flag-only |
+
 ## Generation Pipeline
 
 EIATTR attributes are generated during Phase 6 of the ELF output pipeline, after all per-kernel SASS encoding and memory allocation have completed. The generation is orchestrated by two functions working in sequence.
