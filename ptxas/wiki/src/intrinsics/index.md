@@ -513,6 +513,143 @@ Notable validation strings from the tcgen05 MMA handler:
 - `"fused and l16dp32bit must be specified together"`
 - `"Inputs vector length is inconsistent with layout and num modifiers"`
 
+### OCG Intrinsic Lowering Pipeline -- `sub_6A97B0` + `sub_6CC690`
+
+The full end-to-end flow that takes a PTX `call.uni __nv_ptx_builtin_ocg_*` intrinsic and produces a binary SASS instruction passes through five stages. Three are data-structure manipulation (matching, cleanup), two are instruction encoding (operand assembly, SASS emission).
+
+```
+sub_6B5F30 (intrinsic lowering driver)
+  |
+  ├─ sub_6B40C0 ── pre-processing
+  |
+  ├─ sub_6A97B0 (LowerIntrinsicOp, 26KB) ──────────────────────────────┐
+  |     │                                                               |
+  |     │ Phase 1: SASS instruction matching                            |
+  |     │   For each intrinsic call node in linked list [a1+32..a1+40): |
+  |     │     Walk operand tree at node+288                             |
+  |     │     For each leaf: read instruction ID at leaf+24             |
+  |     │     Search RB-tree at context+760 for matching SASS defn      |
+  |     │     On match: store ptr at node+464, back-link at SASS+440    |
+  |     │                                                               |
+  |     │ Phase 2: Unmatched node garbage collection                    |
+  |     │   If node+464 == 0 (no SASS match):                          |
+  |     │     Walk use-def chain at node+40..48                         |
+  |     │     Delete matching RB-tree entries (full rebalance via       |
+  |     │       sub_6A92E0)                                             |
+  |     │     Unlink node from work list                                |
+  |     │     Release internal resources (operands, types)              |
+  |     │     Return node to free pool at a1+80                         |
+  |     │                                                               |
+  |     │ Phase 3: Secondary cleanup (re-scan remaining nodes)          |
+  |     │   Nodes with SASS match but no definition link:               |
+  |     │     Clear back-pointer, clean up, recycle to free pool        |
+  |     │                                                               |
+  |     │ Key data: context+760 = RB-tree root (SASS instruction defs)  |
+  |     │           context+768/776 = min/max pointers                  |
+  |     │           context+784 = tree node count                       |
+  |     │           context+792 = tree free list                        |
+  |                                                                     |
+  ├─ (post-processing: sub_693D00 per remaining node) ─────────────────┘
+  |
+  v
+sub_6D9690 (master SASS encoder, 94KB)
+  |
+  ├─ sub_6D9290 (OCG vtable entry point) ────────────────────────────────┐
+  |     │                                                                |
+  |     │ 1. Extract intrinsic name from IR node                         |
+  |     │ 2. Call sub_6C9BC0(this+120, name)  ── ParseOCGBuiltinName     |
+  |     │      Strips "__nv_ptx_builtin_ocg_" prefix                     |
+  |     │      Iterates 43 operation slots (248B each) in OCG table      |
+  |     │      Matches operation name, then parses '_'-delimited sub-ops |
+  |     │      Output: this+10688 = operation enum (0..42)               |
+  |     │              this+10704 = int[] of sub-op indices              |
+  |     │              this+10712 = sub-op count                         |
+  |     │ 3. Fall through to sub_6D8B20 for secondary dispatch           |
+  |                                                                      |
+  ├─ sub_6CC690 (OCGRouter, 22KB) ──────────────────────────────────────┘
+  |     │
+  |     │ Input: (self, instruction_node, sass_descriptor)
+  |     │
+  |     │ 1. Read SASS opcode from descriptor+8
+  |     │ 2. Read target profile from context+1584
+  |     │    Key profile fields:
+  |     │      +503  = operand decode flag
+  |     │      +1012 = target SM enum
+  |     │      +1020 = extended address mode
+  |     │      +1021 = barrier mode
+  |     │      +1041 = memory order capabilities bitmask
+  |     │
+  |     │ 3. Vtable dispatch (off_202CF48):
+  |     │    vtable[2]  = OpcodeValidator   (default: sub_6BC1D0)
+  |     │    vtable[24] = ScopeValidator    (default: sub_6BCE50)
+  |     │    vtable[25] = MemOrderValidator (default: sub_6BBEC0)
+  |     │    Each is compared by address; if overridden, calls the
+  |     │    custom validator; if default, uses inline fast-path.
+  |     │
+  |     │ 4. Opcode-range dispatch (descriptor+8):
+  |     │    178..189: Memory ops (ld_mc, st)  -> SASS enum 243/245/247
+  |     │    416..420, 434: Reduction/atomic    -> SASS enum 243/246/261
+  |     │    445..448: Barrier/fence            -> memory op path
+  |     │    467: cp.async.tensor/special       -> SASS enum 70 or 257
+  |     │    default: zero-init modifiers, use raw descriptor
+  |     │
+  |     │ 5. Operand assembly into v134[] (312-byte buffer):
+  |     │    sub_6CAFD0: decode src/dst registers -> v134[8..10]
+  |     │    sub_6CAE80: encode uniform operands  -> v134[16]
+  |     │    sub_6CAF50: encode scope/mem-order   -> v134[13]
+  |     │    sub_6CBA50: encode barrier level     -> v134[26..28]
+  |     │
+  |     │ 6. Build control words:
+  |     │    v134[26] = 0x60000000 | modifier_bits
+  |     │    v134[27] = 0x60000000 | ordering | barrier | write_mask
+  |     │    v134[28] = 0x60000000 | scope_flags | 0x81000
+  |     │
+  |     v
+  sub_6CB8A0 (EmitSASS)
+        │
+        │ Input: (self, sass_opcode_enum, instr_node, v134[], flags...)
+        │ 1. Read SM version from profile+372 (>> 12)
+        │ 2. sub_6CB4B0: final operand validation
+        │ 3. sub_C3F490(opcode, ...): look up SASS encoding template
+        │ 4. Encode instruction word from template + v134[] operands
+        │ 5. sub_9253C0: commit encoded instruction to output
+```
+
+**Internal SASS opcode enum values** assigned by the router (not binary SASS opcodes -- these are routing keys that `sub_C3F490` maps to encoding templates):
+
+| Enum | Hex | Meaning |
+|---|---|---|
+| 70 | `0x46` | Memory-ordered load/store/atomic (with barrier) |
+| 243 | `0xF3` | Default memory operation |
+| 245 | `0xF5` | Load variant (LD/LDG/LDS) |
+| 246 | `0xF6` | Reduction/atomic default |
+| 247 | `0xF7` | Fenced memory operation (LDGSTS) |
+| 257 | `0x101` | Async copy without memory order |
+| 261 | `0x105` | Atomic with pre-existing value read |
+
+**Operand buffer layout** (v134[], 39 QWORDs passed to `sub_6CB8A0`):
+
+| Slot | Content |
+|---|---|
+| 0--3 | Reserved (zero) |
+| 4 | Barrier register (`0x90000000 \| reg`) |
+| 5--7 | Extra source operands (from instruction node) |
+| 8--10 | Primary operands (from `sub_6CAFD0` decode) |
+| 11 | Secondary operand (LDC, conditional loads) |
+| 12 | Predicate thread operand |
+| 13 | Scope / memory-order (from `sub_6CAF50`) |
+| 14 | Cache mode operand |
+| 15 | Memory fence operand |
+| 16 | Uniform / extended operand (from `sub_6CAE80`) |
+| 17 | Memory ordering constant / barrier tracking |
+| 19--21 | Source address (bulk/tensor ops) |
+| 22--24 | Destination address (bulk/tensor ops) |
+| 25 | Extra predicate (opcode 187 only) |
+| 26 | Control word 0: `0x60000000 \| modifier_bits` |
+| 27 | Control word 1: `0x60000000 \| ordering \| flags` |
+| 28 | Control word 2: `0x60000000 \| scope \| 0x81000` |
+| 29 | Write mask operand (conditional) |
+
 ## Intrinsic Families by SM Generation
 
 Each SM generation introduces new intrinsic families while preserving all earlier ones. The per-SM intrinsic table initializer functions (`sub_60AXXX` cluster, registered in Map 3 of the [capability dispatch](../targets/index.md)) control which intrinsics are available on each target.
@@ -615,23 +752,28 @@ For OCG intrinsics on SM100+:
 PTX source: call.uni __nv_ptx_builtin_ocg_tcmma, (%args...);
                     |
                     v
-            sub_6C9EB0 OCG table lookup
+            sub_6A97B0 (LowerIntrinsicOp, 26KB)
+            Matches call node to SASS instruction via RB-tree at ctx+760
+            Garbage-collects unmatched nodes
+                    |
+                    v
+            sub_6D9290 -> sub_6C9BC0 (ParseOCGBuiltinName)
             Strips "__nv_ptx_builtin_ocg_" prefix
-            Looks up operation name in 10,664-byte table
+            Parses op name + sub-ops from 43-slot table (sub_6C9EB0)
                     |
                     v
-            sub_6CC690 OCG router
-            Dispatches to type-specific handler via vtable
+            sub_6CC690 (OCGRouter, 22KB)
+            Vtable dispatch: validates opcode, scope, memory order
+            Decodes operands into 312-byte buffer via sub_6CAFD0 cluster
+            Builds control words (0x60000000 | modifier_bits)
                     |
                     v
-            Handler (e.g., sub_6C8100 for tensor ops)
-            Validates parameters, types, memory domains
-            Reports errors via "Unexpected instrinsic..." strings
-                    |
-                    v
-            SASS encoding (sub_6D9690, 94KB)
-            Encodes validated intrinsic into binary SASS
+            sub_6CB8A0 (EmitSASS)
+            Looks up encoding template via sub_C3F490(sass_opcode_enum)
+            Encodes instruction word, commits to output via sub_9253C0
 ```
+
+See [OCG Intrinsic Lowering Pipeline](#ocg-intrinsic-lowering-pipeline----sub_6a97b0--sub_6cc690) for the full five-stage breakdown with operand buffer layout and internal SASS opcode enum values.
 
 ## Per-SM Intrinsic Initializers
 
@@ -677,8 +819,8 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
 | `sub_5AB460` | 45KB | `cp.async.bulk.tensor` codegen (1D--5D, tile/im2col) | 95% |
 | `sub_5B0CD0` | 44KB | `rcp` codegen (f32/f64 reciprocal, all rounding modes) | 95% |
 | `sub_6C9EB0` | 13KB | OCG intrinsic table init (`__nv_ptx_builtin_ocg_*`) | 95% |
-| `sub_6CC690` | 22KB | OCG intrinsic router (vtable dispatch) | 80% |
-| `sub_6C9BC0` | -- | OCG name resolver (op name -> enum) | 80% |
+| `sub_6CC690` | 22KB | OCG router -- vtable-dispatched operand assembly and SASS emission | 90% |
+| `sub_6C9BC0` | -- | OCG name parser -- decomposes `__nv_ptx_builtin_ocg_X_Y_Z` into enum + sub-op array | 95% |
 | `sub_6C0D90` | 19KB | OCG atomic/reduction handler | 90% |
 | `sub_6C1CF0` | 16KB | OCG mbarrier handler | 88% |
 | `sub_6C3470` | 20KB | OCG cp.async.bulk handler | 85% |
@@ -692,7 +834,19 @@ Sub-variants (e.g., sm_100a, sm_100f) share the same initializer as their base S
 | `sub_6D69B0` | 12KB | TCGen05 MMA validator | 80% |
 | `sub_6BDE20` | 7KB | Intrinsic operand expansion | 88% |
 | `sub_6BEC60` | 5.8KB | LDC/S2R intrinsic handlers | 90% |
-| `sub_6A97B0` | 26KB | Intrinsic lowering main (switch-based) | 85% |
+| `sub_6A97B0` | 26KB | LowerIntrinsicOp -- SASS matching and unmatched-node GC | 90% |
+| `sub_6B5F30` | -- | Intrinsic lowering driver (calls `sub_6B40C0` then `sub_6A97B0`) | 90% |
+| `sub_6D9290` | -- | OCG vtable entry point (calls `sub_6C9BC0` then `sub_6D8B20`) | 85% |
+| `sub_6CB8A0` | -- | SASS instruction emitter (template lookup via `sub_C3F490`) | 80% |
+| `sub_6CAFD0` | -- | Operand decoder (registers into v134[] slots) | 85% |
+| `sub_6CAE80` | -- | Uniform operand encoder | 85% |
+| `sub_6CAF50` | -- | Scope / memory-order encoder | 85% |
+| `sub_6CBA50` | -- | Barrier-level encoder | 85% |
+| `sub_6CB4B0` | -- | Operand validator (called by `sub_6CB8A0`) | 80% |
+| `sub_6A92E0` | -- | RB-tree fixup (rotation/recolor after deletion) | 90% |
+| `sub_6BC1D0` | -- | Default opcode validator (vtable[2] of `off_202CF48`) | 90% |
+| `sub_6BCE50` | -- | Default scope validator (vtable[24]) | 90% |
+| `sub_6BBEC0` | -- | Default memory-order validator (vtable[25]) | 90% |
 
 ## Cross-References
 
