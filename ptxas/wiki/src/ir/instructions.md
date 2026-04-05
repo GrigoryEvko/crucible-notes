@@ -533,67 +533,295 @@ The ~400 opcodes group into these functional categories:
 
 ## Instruction Descriptor Table
 
-The `InstructionInfo` class at `sub_BE7390` (inheriting from the base class at `sub_738E20`) provides a per-opcode descriptor table consulted by every pass in the compiler. The base class constructor `sub_738E20` initializes an 11,240+ byte object.
+The `InstructionInfo` class at `sub_BE7390` (inheriting from the base class at `sub_738E20`) provides a per-opcode descriptor table consulted by every pass in the compiler. The derived constructor calls the base class constructor `sub_738E20`, then populates the ROT13 name table, allocates the per-opcode descriptor block, and queries SM-specific configuration knobs. The resulting object is ~11,240 bytes inline plus a 10,288-byte dynamically allocated descriptor block.
+
+### Construction Sequence
+
+`sub_BE7390(this, parent_context)` executes in this order:
+
+1. **Base class init** (`sub_738E20`): sets vtable, stores parent pointer, allocates the opcode-to-descriptor mapping array (512 bytes, 64 QWORD slots), zeroes all four descriptor data areas (+744..+3624), queries SM version and stores at +3728, allocates per-opcode property array (`4 * sm_opcode_count` bytes at +4112), allocates a reference-counted descriptor block (24 bytes at +4136), queries knobs 812/867/822/493 for configuration. Sets `+4132 = 8` and `+4176 = 0` (init incomplete).
+2. **Override vtable**: `+0 = off_233ADC0` (derived vtable).
+3. **Populate ROT13 name table**: 322 inline entries (indices 0-321) at offsets +4184..+9328, each 16 bytes (`{char* name_ptr, u64 length}`).
+4. **Bulk-copy name table tail**: `qmemcpy(+9336, unk_22B2320, 0x508)` -- 80 additional entries (indices 322-401), total 402 opcode names ending at offset 10624.
+5. **Initialize post-table fields**: zero offsets +10624..+10680.
+6. **Store sentinels**: `+11200 = -2`, `+11224 = 0xFFFFFFFF`.
+7. **Set constants**: `+4048 = 2`, `+4056 = 10`, `+3733 = 1`.
+8. **Descriptor defaults** (`sub_1370BD0`): populates scheduling templates and operand defaults at +192..+704.
+9. **Override property mode**: `+4132 = 7` (overwriting base class's 8).
+10. **Allocate descriptor block**: 10,288 bytes via the MemoryManager, partitioned into 3 sections.
+11. **Query SM-specific config**: reads `parent->+1664->+72->+55080` and stores result at +10648.
 
 ### InstructionInfo Object Layout
 
-| Offset | Content |
-|--------|---------|
-| +0 | Vtable pointer (`off_233ADC0` in derived, `off_21DB6E8` / `off_21B4790` in base) |
-| +8 | Parent context pointer |
-| +92 | Scheduling parameters (16 bytes, XMM loaded) |
-| +108 | Descriptor index sentinel |
-| +112 | Descriptor index sentinel |
-| +168 | Opcode-to-descriptor mapping array pointer |
-| +176 | Mapping array count |
-| +180 | Mapping array capacity |
-| +184 | Packed descriptor flags (`0x4000000000`) |
-| +744 | Extended descriptor data start |
-| +2156 | Secondary descriptor area |
-| +2212 | Tertiary descriptor area |
-| +3624 | Quaternary descriptor area |
-| +3728 | SM version / opcode count (from architecture query) |
-| +4048 | Constant: 2 |
-| +4056 | Constant: 10 |
-| +4112 | Per-opcode property array pointer |
-| +4120 | Per-opcode property count |
-| +4132 | Constant: 7 (initial), set to 8 post-init |
-| +4136 | Reference-counted descriptor block |
-| +4176 | Initialization complete flag |
-| +4184 | ROT13 opcode name table start (16 bytes per entry) |
-| +10624 | Per-opcode descriptor array (allocated as 10,288 bytes) |
-| +10648 | Additional config value |
-| +10656 | Descriptor block pointer |
-| +11200 | Sentinel: -2 |
-| +11208 | Architecture-specific handler |
+The complete byte-level field map, derived from `sub_BE7390` (derived constructor), `sub_738E20` (base constructor), and `sub_1370BD0` (descriptor defaults init).
 
-### Per-Opcode Descriptor Block
+#### Region 1: Vtable, Parent, and Core Identity (+0 to +91)
 
-At offset +10624, a 10,288-byte block is allocated and split into three sections:
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| +0 | 8 | `ptr` | `vtable` | `off_233ADC0` (derived); base chain: `off_21DB6E8` / `off_21B4790` |
+| +8 | 8 | `ptr` | `parent_ctx` | Parent compilation context pointer |
+| +44 | 8 | `u64` | `operand_counts` | Packed pair `0x100000001`: lo=1 dst, hi=1 src (base default) |
 
-```c
-// From sub_BE7390, lines 686-694:
-block = allocate(10288);
-block[0]    = 0;             // section 0 header
-block[641]  = 0;             // section 1 header (at 641 * 8 = 5128 bytes)
-block[1284] = parent_ctx;    // section 2: back-pointer (at 1284 * 8 = 10272 bytes)
-block[1285] = instr_info;    // section 2: self-pointer
-memset(&block[1] ... block[640], 0, 5128 bytes);  // zero section 0
+#### Region 2: Scheduling Defaults and Flags (+92 to +159)
+
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| +92 | 16 | `xmm` | `sched_defaults` | Scheduling parameter defaults (loaded from `xmmword_2029FE0`) |
+| +108 | 4 | `i32` | `desc_idx_a` | Descriptor index sentinel = 0 |
+| +112 | 4 | `i32` | `desc_idx_b` | Descriptor index sentinel = -1 (`0xFFFFFFFF`) |
+| +116 | 1 | `u8` | `flag_116` | = 0 |
+| +117 | 1 | `u8` | `flag_117` | = 0 |
+| +118 | 1 | `u8` | `flag_118` | = 1 |
+| +120 | 3 | `u8[3]` | `flags_120` | All = 0 |
+| +136 | 4 | `i32` | `sentinel_136` | = -1 (`0xFFFFFFFF`) |
+| +148 | 8 | `u64` | `reserved_148` | = 0 |
+
+#### Region 3: Opcode-to-Descriptor Mapping (+160 to +191)
+
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| +160 | 8 | `ptr` | `mapping_allocator` | MemoryManager used for mapping array |
+| +168 | 8 | `ptr` | `mapping_array` | Dynamically allocated QWORD array (initial: 512 bytes, 64 entries) |
+| +176 | 4 | `i32` | `mapping_count` | Current entry count (initially 63) |
+| +180 | 4 | `i32` | `mapping_capacity` | Current capacity (initially 64) |
+| +184 | 8 | `u64` | `packed_flags` | = `0x4000000000` (bit 38: descriptor config flag) |
+
+#### Region 4: Descriptor Defaults (+192 to +704, set by `sub_1370BD0`)
+
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| +192 | 8 | `u64` | `default_operand_cfg` | Packed `0x200000002`: lo=2, hi=2 |
+| +200 | 4 | `u32` | `default_dst_count` | = 4 |
+| +208 | 4 | `u32` | `default_modifier` | = 2 |
+| +216 | 16 | `xmm` | `sched_template_a` | Scheduling template (from `xmmword_233B1E0`) |
+| +240 | 4 | `u32` | `default_operand_w` | = 4 |
+| +448 | 8 | `u64` | `section_marker_448` | = 1 |
+| +456 | 4 | `u32` | `section_id_456` | = 2 |
+| +464 | 4 | `u32` | `section_id_464` | = 3 |
+| +472 | 16 | `xmm` | `sched_template_b` | Scheduling template (from `xmmword_233B1F0`) |
+| +496 | 4 | `u32` | `default_value_496` | = 5 |
+
+Gaps within +204..+447 and +500..+695 are zero-initialized by `sub_1370BD0`.
+
+#### Region 5: Primary Descriptor Data (+744 to +2155)
+
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| +744 | 8 | `u64` | `desc_data_start` | Primary area header = 0 |
+| +752..+2155 | 1404 | `u8[]` | `desc_data` | Zero-initialized per-opcode descriptor records |
+
+#### Region 6: Secondary Descriptor Area (+2156 to +2211)
+
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| +2156 | 8 | `u64` | `secondary_header` | = 0 |
+| +2164..+2211 | 48 | `u8[]` | `secondary_data` | Zero-initialized |
+
+#### Region 7: Tertiary Descriptor Area (+2212 to +3623)
+
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| +2212 | 8 | `u64` | `tertiary_header` | = 0 |
+| +2220..+3623 | 1404 | `u8[]` | `tertiary_data` | Zero-initialized |
+| +2372 | 4 | `u32` | `desc_record_type_a` | = 4 (set by derived constructor) |
+| +2400 | 4 | `u32` | `desc_record_type_b` | = 4 (set by derived constructor) |
+
+#### Region 8: Quaternary Descriptor Area and Target Config (+3624 to +3735)
+
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| +3624 | 8 | `u64` | `quaternary_header` | = 0 |
+| +3640..+3664 | 32 | `u64[4]` | `quat_ptrs` | All = 0 |
+| +3672 | 1 | `u8` | `is_sm75_plus` | = 1 if SM ID >= 16389, else 0 |
+| +3673 | 1 | `u8` | `target_flag_bit6` | Bit 6 of `*(target+1080)` |
+| +3674 | 1 | `u8` | `target_flag_bit7` | Bit 7 of `*(target+1080)` |
+| +3675..+3682 | 8 | `u8[8]` | `zero_pad` | All = 0 |
+| +3684 | 32 | `u128[2]` | `zero_pad_3684` | = 0 |
+| +3716..+3717 | 2 | `u8[2]` | `flags_3716` | = 0 |
+| +3720 | 4 | `u32` | `value_3720` | = 0 |
+| +3724 | 1 | `u8` | `flag_3724` | = 1 |
+| +3725 | 1 | `u8` | `flag_3725` | = 0 |
+| +3728 | 4 | `u32` | `sm_opcode_count` | SM version / total opcode count from arch query |
+| +3732 | 1 | `u8` | `knob_812_flag` | Knob 812 derived flag |
+| +3733 | 1 | `u8` | `derived_flag` | = 1 (set by derived constructor; base leaves at 0) |
+
+#### Region 9: Scheduling Configuration (+4016 to +4111)
+
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| +4016 | 16 | `u128` | `sched_config_a` | = 0 |
+| +4032 | 8 | `u64` | `sched_config_b` | = 0 |
+| +4040 | 16 | `xmm` | `sched_constants` | Loaded from `xmmword_21B4EE0` |
+| +4048 | 4 | `u32` | `constant_2` | = 2 (derived overrides base default 0) |
+| +4056 | 4 | `u32` | `constant_10` | = 10 (derived overrides base default `0x7FFFFFFF`) |
+| +4060..+4064 | 8 | `u32[2]` | `zero_pad` | = 0 |
+| +4072 | 8 | `u64` | `sched_ptr` | = 0 |
+| +4080 | 8 | `u64` | `sched_ext` | = 0 |
+| +4088 | 1 | `u8` | `flag_4088` | = 0 |
+| +4089 | 1 | `u8` | `knob_867_flag` | = 1 if knob absent; = `(knob_value == 1)` otherwise |
+| +4090 | 1 | `u8` | `flag_4090` | = 0 |
+| +4092 | 4 | `u32` | `knob_822_value` | Default 7; overridden by knob 822 |
+| +4096 | 4 | `u32` | `knob_493_value` | Default 5; overridden by knob 493 |
+
+#### Region 10: Per-Opcode Property Array (+4112 to +4183)
+
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| +4112 | 8 | `ptr` | `property_array` | Allocated: `4 * sm_opcode_count` bytes; 4 bytes per opcode |
+| +4120 | 4 | `u32` | `property_count` | = `4 * !hasExtendedPredicates` (0 or 4) |
+| +4124 | 4 | `u32` | `property_aux` | = 0 |
+| +4128 | 1 | `u8` | `property_init_flag` | = 1 |
+| +4132 | 4 | `u32` | `property_mode` | Base sets 8, derived overwrites to 7 |
+| +4136 | 8 | `ptr` | `ref_counted_block` | 24-byte block: `[refcount=2, data=0, allocator_ptr]` |
+| +4144..+4160 | 24 | `u64[3]` | `rc_aux` | All = 0 |
+| +4176 | 1 | `u8` | `init_complete` | = 0 initially; set to 1 after full initialization |
+
+#### Region 11: ROT13 Opcode Name Table (+4184 to +10623)
+
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| +4184 | 5152 | `struct[322]` | `opcode_names[0..321]` | 322 inline entries, each 16 bytes: `{char* name, u64 len}` |
+| +9336 | 1288 | `struct[80+]` | `opcode_names[322..401]` | Bulk-copied from `unk_22B2320` (80 entries + 8B trailing) |
+
+Total: 402 named opcodes. Index `N` is at offset `4184 + 16*N`. The `getName` accessor at `sub_BEBAC0` computes `this + 4184 + 16 * opcode` directly.
+
+#### Region 12: Descriptor Block Control (+10624 to +10687)
+
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| +10624 | 8 | `u64` | `block_ctrl_a` | = 0 |
+| +10632 | 8 | `u64` | `block_ctrl_b` | = 0 |
+| +10648 | 4 | `u32` | `arch_config` | SM-specific config from `target+55080/55088` |
+| +10656 | 8 | `ptr` | `descriptor_block` | Pointer to allocated 10,288-byte per-opcode descriptor block |
+| +10664 | 8 | `ptr` | `block_allocator` | MemoryManager that allocated the descriptor block |
+| +10672 | 8 | `u64` | `block_aux_a` | = 0 |
+| +10680 | 8 | `u64` | `block_aux_b` | = 0 |
+
+#### Region 13: Sentinels and Architecture Handler (+11200 to +11240)
+
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| +11200 | 4 | `i32` | `sentinel` | = -2 (`0xFFFFFFFE`) |
+| +11208 | 8 | `ptr` | `arch_handler` | = `parent_ctx->+16` (MemoryManager) |
+| +11216 | 8 | `u64` | `zero_11216` | = 0 |
+| +11224 | 8 | `u64` | `sentinel_11224` | = `0xFFFFFFFF` |
+| +11232 | 1 | `u8` | `flag_11232` | = 0 |
+| +11236 | 4 | `u32` | `zero_11236` | = 0 |
+
+### Per-Opcode Descriptor Block (10,288 bytes)
+
+Allocated by the derived constructor and stored at `+10656`. The block is `10288 / 8 = 1286` QWORD entries, partitioned into three sections:
+
+```
++--------------------+  block + 0
+| Section 0 header   |  QWORD[0] = 0
++--------------------+  block + 8
+| Section 0 payload  |  QWORD[1..640]  = all zero (memset)
+| (640 slots)        |  Per-opcode descriptors for opcodes 0..639
++--------------------+  block + 5128
+| Section 1 header   |  QWORD[641] = 0
++--------------------+  block + 5136
+| Section 1 payload  |  QWORD[642..1283]  (NOT explicitly zeroed)
+| (642 slots)        |  Modifier-variant descriptors (opcode | 0x1000, etc.)
++--------------------+  block + 10272
+| Section 2 (16B)    |  QWORD[1284] = parent_ctx  (back-pointer)
+|                    |  QWORD[1285] = instr_info   (self back-pointer)
++--------------------+  block + 10288
 ```
 
-This gives `10288 / 8 = 1286` QWORD entries. With two 641-entry sections (one per half), this yields **641 descriptor slots** per section, close to the "1,141 instruction descriptors" mentioned in other analyses (the remaining ~500 may come from the architecture-specific sub-tables built by `sub_896D50`).
+**Section 0** (5,128 bytes): 641 QWORD slots. Only the payload (slots 1..640, 5,120 bytes) is explicitly zeroed. Each slot corresponds to a base opcode index. With 402 named opcodes, ~240 slots remain spare.
 
-### Architecture-Specific Sub-Tables
+**Section 1** (5,144 bytes): 643 QWORD slots. The header is zeroed but the payload is NOT explicitly zeroed -- it relies on the arena allocator's default behavior or lazy initialization during opcode registration. Likely stores modifier-variant descriptors (e.g., entries for `opcode | 0x1000` when bits 12-13 carry sub-operation modifiers).
 
-The architecture-specific mnemonic table initializer at `sub_896D50` (21KB) is called from `sub_7A4650`. It builds extended instruction property tables including:
+**Section 2** (16 bytes): Two back-pointers for navigating from the descriptor block back to its owning objects (parent compilation context and the InstructionInfo instance).
 
-- Latency values per functional unit
-- Throughput (instructions per cycle)
-- Port masks (which execution units can handle each opcode)
-- Encoding class identifiers
-- Register class requirements per operand position
+### Architecture-Specific Sub-Tables (sub_896D50, 26,888 bytes)
 
-These are accessed through virtual dispatch on the `InstructionInfo` vtable, with 40+ tiny property accessor stubs at `0x859F80`-`0x85A5F0` and `0x868500`-`0x869700`.
+The architecture-specific extended property object is NOT stored inside InstructionInfo. It is lazily allocated by `sub_7A4650`, which gates on `target+372 == 0x8000` (sm_80 / Ampere targets). The allocation is 26,888 bytes, constructed by `sub_896D50(block, parent_context)`.
+
+#### sub_896D50 Object Layout
+
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| +0 | 8 | `ptr` | `vtable` | `off_21DADF8` |
+| +8 | 8 | `ptr` | `parent_ctx` | From construction parameter |
+| +40 | 8 | `ptr` | `allocator_base` | MemoryManager from `parent->+16` |
+
+**Property Array A** (at sub-object +56):
+
+| Sub-offset | Field | Description |
+|------------|-------|-------------|
+| +56 | `ptr` | Array pointer: 64 bytes per entry, 772 entries (49,408 bytes allocated) |
+| +64 | `i32` | Count = 771 |
+| +68 | `i32` | Capacity = 772 |
+
+Each 64-byte entry: bytes [0..11] initialized to `0xFF` (pipeline-unassigned sentinel), bytes [12..63] zeroed. Stores latency, throughput, port mask, and register class requirements per opcode.
+
+**Property Array B** (at sub-object +80):
+
+| Sub-offset | Field | Description |
+|------------|-------|-------------|
+| +80 | `ptr` | Array pointer: 36 bytes per entry, 772 entries (27,792 bytes allocated) |
+| +88 | `i32` | Count = 771 |
+| +92 | `i32` | Capacity = 772 |
+
+Each 36-byte entry: all zeroed. Stores encoding class, format identifiers, operand encoding rules.
+
+**Property Array C** (at sub-object +176):
+
+| Sub-offset | Field | Description |
+|------------|-------|-------------|
+| +176 | `ptr` | Array pointer: 16 bytes per entry, 35 entries (560 bytes allocated) |
+| +184 | `i32` | Count = 34 |
+| +188 | `i32` | Capacity = 35 |
+
+Each 16-byte entry: zeroed. Stores functional unit properties for major FU categories.
+
+**Property Array D** (at sub-object +200):
+
+| Sub-offset | Field | Description |
+|------------|-------|-------------|
+| +200 | `ptr` | Array pointer: 16 bytes per entry, 35 entries (560 bytes allocated) |
+| +208 | `i32` | Count = 34 |
+
+Parallel table for alternate functional unit configurations.
+
+**Dimension Table** (at sub-object +472):
+
+| Sub-offset | Field | Description |
+|------------|-------|-------------|
+| +472 | `ptr` | 168-byte block: `[count=40, entries[0..39]]`, 4 bytes per entry, zero-initialized |
+
+**Alphabetical SASS Name Table** (at sub-object +11360):
+
+Starting at offset +11360, `sub_896D50` populates an alphabetically sorted ROT13 name table using the same `{char*, u64}` format. Unlike the InstructionInfo name table (indexed by opcode), this table is sorted by decoded mnemonic name and includes modifier variants:
+
+- `OZZN.168128` (BMMA.168128)
+- `PPGY.P.YQP.VINYY` (CCTL.C.LDC.IVALL)
+- `VZNQ.JVQR.ERNQ.NO` (IMAD.WIDE.READ.AB)
+- `VZZN.FC.{168128.*|16864.*8.*8}` (IMMA.SP.{...} -- regex patterns for variant matching)
+
+This table is used for SASS assembly parsing and opcode-to-encoding resolution, where a single base opcode may map to multiple encoding variants distinguished by modifier suffixes.
+
+**Knob-derived fields:**
+
+| Sub-offset | Field | Source |
+|------------|-------|--------|
+| +108 | `i32` | Knob 803 value (instruction scheduling latency override) |
+| +468 | `u8` | = 0 |
+| +469 | `u8` | = 1 |
+| +470 | `u8` | = 1 |
+
+#### Accessor Stubs
+
+40+ tiny vtable accessor stubs at `0x859F80`-`0x85A5F0` and `0x868500`-`0x869700` provide virtual dispatch access to per-opcode properties. Typical pattern:
+
+```c
+int getLatency(ArchSpecificInfo* this, int opcode) {
+    return *(int*)(this->property_array_a + 64 * opcode + latency_offset);
+}
+```
 
 ## Instruction Creation
 
