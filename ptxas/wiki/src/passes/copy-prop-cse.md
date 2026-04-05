@@ -95,15 +95,164 @@ procedure GvnCse(function F):
 
 6. **Structural equivalence.** After hash collision, `sub_7E7380` performs full structural comparison: (a) opcodes masked with `& 0xFFFFCFFF` to strip modifier bits 12-13, (b) data types at offset `+76`, (c) operand counts at offset `+80`, (d) per-operand encoding and modifier values, (e) register class/type at offset `+64`. Instructions with volatile flags (bit `0x20` at register descriptor offset `+48`) and barrier-type registers (type 9) are excluded from CSE entirely.
 
+### GVN Algorithm Details (Binary Trace)
+
+The GVN-CSE body was located by reading SM backend vtable slot 23 (offset `+0xB8`) from all seven SM backend vtables in the ptxas binary. The actual function pointer varies by SM generation:
+
+| SM Backend | Vtable | Slot 23 Function | Behavior |
+|---|---|---|---|
+| SM30 (Kepler) | `off_2029DD0` | `sub_661250` | Returns 0 -- **NO-OP** |
+| SM50 (Maxwell) | `off_21B4A50` | `sub_661250` | Returns 0 -- **NO-OP** |
+| SM60 (Pascal) | `off_22B2A58` | `sub_BEE590` | Real GVN-CSE |
+| SM70 (Volta) | `off_21D82B0` | `sub_BEE590` | Real GVN-CSE |
+| SM80 (Ampere) | `off_21B2D30` | `sub_661250` | Returns 0 -- **NO-OP** |
+| SM89 (Ada) | `off_21C0C68` | `sub_661250` | Returns 0 -- **NO-OP** |
+| SM90+ (Hopper) | `off_21D6860` | `sub_BEE590` | Real GVN-CSE |
+
+**GVN-CSE (phase 49) is a no-op on Kepler, Maxwell, Ampere, and Ada.** It only executes on Pascal, Volta, and Hopper/Blackwell. SM80/SM89 backends rely on LateOriCommoning (phase 64) and the GeneralOptimize sub-passes for CSE coverage instead. This is a deliberate per-generation decision embedded in each SM backend's vtable.
+
+#### Call Chain
+
+```
+GvnCse::execute (0xC5F000)
+  -> sm_backend->vtable[23]  (indirect dispatch)
+     -> sub_BEE590           (GVN entry, SM60/70/90)
+        -> sub_781F80(ctx, 0) (rebuild def chains, mode=full)
+        -> sub_BEE370         (mode dispatcher)
+           -- queries knob 402 via knob_container->vtable[9] --
+           mode 0: disabled, return
+           mode 1: sub_BEA450  (simple GVN)
+           mode 2: sub_BEAD00  (standard dominator-guided GVN)
+           mode 3-6: sub_BED7E0 (full GVN with extended block scope)
+```
+
+#### Mode Dispatcher (`sub_BEE370`)
+
+The mode is determined by knob 402 (`EnableGvnCseMode`), queried through `knob_container->vtable[9](402)`. Additional flags modulate the choice:
+
+- SM backend flag at `sm_backend+1106` bit 6 (`0x40`): when set, enables modes 5-6 (enhanced scope)
+- Context flag at `context+1416` bit 0: further adjusts between mode 5 and mode 6
+- SM version threshold `sm_backend+372 <= 0x7FFF` (32767): gates extended-block pre-pass `sub_BED430` via knob 210
+
+Before the standard GVN (`sub_BEAD00`), the mode dispatcher may invoke `sub_BED430` -- an extended basic block (EBB) pre-pass that identifies and marks multi-block CSE opportunities within single-entry regions.
+
+#### Full GVN Body (`sub_BED7E0`, 689 lines, ~18KB binary)
+
+This is the most complete GVN variant (modes 3-6). Reconstructed pseudocode:
+
+```
+procedure FullGvnCse(gvn_state S):
+    context = S.context
+    mode_flags = S.mode & ~0x02            // strip bit 1
+    extended_scope = (mode_flags - 5)      // >1 enables cross-block scope
+
+    // Phase 1: Initialization
+    block_count = context.block_count      // at +376
+    visited[] = allocate_zeroed(block_count + 1)   // one byte per block
+    build_dominator_tree(context)                   // sub_7846D0
+    scope_tree = new_scoped_tree()                  // sub_661750
+    rpo = context.rpo_ordering                      // at +792
+
+    // Phase 2: RPO block walk
+    for i = 0 to rpo.count - 1:
+        block_idx = rpo.indices[i]
+        block = context.block_table[block_idx]      // context+368
+        if block.head == NULL or block.flags & SKIP:
+            continue
+
+        first_instr = lookup_first_instruction(block)
+        dominator_candidate = NULL
+        has_redundant = false
+
+        for each instr in block:
+            // Per-instruction knob gate (knob 257)
+            if knob_query(257, instr):
+                break to next block boundary
+
+            eligible = check_eligibility(instr)     // sub_BEA1E0
+
+            if eligible:
+                visited[block_idx] = not block.visited_flag
+
+            elif opcode_masked(instr) in {32, 159}: // branch, return
+                propagate visited flag from predicate operand
+
+            elif opcode_masked(instr) == 145:       // barrier/sync
+                safe = sm_backend->vtable[371](instr)
+                if safe: mark_as_candidate
+
+            // Check dominator for existing equivalent
+            idom_ref = instr.idom_ref               // at +148
+            if idom_ref != 0:
+                dom_block = resolve_idom(context, idom_ref)
+                if dom_block dominates current position:
+                    leader = dom_block.first_instr
+                    if leader.opcode != 292:        // not already a MOV
+                        replace_with_mov(context, leader, 0x124)
+
+        record_block_in_scope_tree(scope_tree, block_idx)
+
+    // Phase 3: Post-processing dominated blocks
+    for each (node, bit_pos) in scope_tree.bit_iterate():
+        block_idx = bit_pos | (node.data << 6)
+        block_record = reg_table[block_idx]
+        cse_dominated_block(S, block_record)        // sub_BEA5F0
+
+    // Phase 4: Cleanup
+    flush_deferred_instructions(scope_tree)
+    destroy_scoped_tree(scope_tree)
+```
+
+Key observations from the binary:
+
+1. **Block walk order is RPO.** The outer loop reads `context+792` -- a struct containing `{int count; int indices[]}` -- and iterates in that order. The RPO array is pre-computed by `sub_7846D0` which also builds the dominator tree.
+
+2. **The value table is a register-indexed array, not a hash map.** Values are stored in `context+296` (an array of pointers indexed by the 24-bit register/value identifier from the operand encoding at `instruction+84`). This gives O(1) lookup by register ID. The dominator tree is used for scoping, not a stack-based hash table.
+
+3. **Dominator scoping uses a balanced binary tree with bitset nodes.** Each tree node stores a 64-bit bitset of block indices, traversed with `tzcnt` for efficient iteration. Block index is recovered as `bit_position | (node_data << 6)`, supporting up to 64 * depth blocks.
+
+4. **Replacement is MOV insertion.** When a redundant instruction is found, the pass calls `sub_9314F0(context, 0x124, 1, 0, 0)` to generate a replacement MOV instruction (opcode `0x124` = 292 decimal). The original computation is recorded at `context+232` (source) and `context+264` (metadata) before the MOV is generated.
+
+5. **Barrier instructions (opcode 145) have a dedicated safety check** via `sm_backend->vtable[371]` (offset `+2968`), which is an architecture-specific predicate that determines whether an instruction can be CSE'd across a barrier boundary.
+
+#### Instruction Eligibility (`sub_BEA1E0`)
+
+| Opcode (masked) | Category | Condition |
+|---|---|---|
+| 16 | Register copy / PHI | Always, unless last operand bit 1 set |
+| 183 | Memory load/compute | Bit 5 of last operand, or `sub_91BC40` safety check |
+| 119 | GPU special | SM flag `+1106` bit 6 required; operand bit 1 |
+| 186 | GPU special | SM flag `+1106` bit 6 required; operand bit 0 |
+| 211 | GPU special | SM flag `+1106` bit 6 required; operand bit 2 |
+| 283 | GPU special | SM flag `+1106` bit 6 required; operand bit 3 |
+| 122 | Conditional | Type 2-3: always; type 7-8: bit 7 set |
+| 310 | Specialized | `(flags & 0xF) == 2` and `(flags & 0x30) != 0x30` |
+| 145 | Barrier/sync | Separate `sm_backend->vtable[371]` check |
+| all others | -- | Not eligible |
+
+Opcodes 119, 186, 211, 283 are only CSE-eligible when `sm_backend+1106` bit 6 (`0x40`) is set. This bit appears to be an architecture-specific capability flag enabling extended CSE for certain GPU-specific instruction classes.
+
+#### Per-Dominated-Block CSE (`sub_BEA5F0`)
+
+After the RPO walk populates the scope tree, `sub_BEA5F0` processes each dominated block:
+
+1. **SM version gate**: if `sm_backend+372 <= 28671` (SM70 or earlier), enables a special operand canonicalization path for commutative operations
+2. **Instruction walk**: iterates via `block+128` child pointer chain
+3. **Dominator ordering**: compares `instruction+144` (dominator number) to test dominance
+4. **Commutative canonicalization** (opcode 95): calls `sm_backend->vtable[79]` (offset `+632`) to sort operands by value number. Rewrites operand encoding with flags `0x60000000` and `0x40000000` to mark canonicalized operands
+5. **Replacement**: calls `sub_931920` to insert copy instructions when a dominating equivalent is found
+
 ### GPU-Specific CSE Constraints
 
 GPU CSE must respect constraints that do not arise in CPU compilers:
 
 - **Divergence.** A uniform subexpression (same value across all threads in a warp) can be safely hoisted. A divergent subexpression may have different values per thread and must only be CSE'd within the same control-flow path. The GvnCse pass runs after `AnalyzeUniformsForSpeculation` (phase 27), which provides divergence annotations.
 
-- **Barrier sensitivity.** A computation that reads shared memory before a `BAR.SYNC` cannot be commoned with an identical computation after the barrier, because intervening threads may have written different values. Memory operations with barrier dependencies are assigned unique value numbers.
+- **Barrier sensitivity.** A computation that reads shared memory before a `BAR.SYNC` cannot be commoned with an identical computation after the barrier, because intervening threads may have written different values. Memory operations with barrier dependencies are assigned unique value numbers. The actual barrier check is performed by `sm_backend->vtable[371]` (offset `+2968`), an architecture-specific predicate.
 
 - **Register pressure.** Aggressive CSE can increase register pressure by extending the live range of the representative value. The `EnableGvnCse` knob allows the pass to be disabled when register pressure is the binding constraint.
+
+- **Per-SM enablement.** GVN-CSE is only active on SM60, SM70, and SM90+. SM80/SM89 rely on LateOriCommoning (phase 64) and GeneralOptimize sub-passes instead. This per-generation selection is embedded in the SM backend vtable at slot 23.
 
 ---
 
@@ -535,11 +684,13 @@ The `CopyPropUseReachingDefs` knob is particularly significant: when enabled, th
 
 ## Complete Knob Reference
 
-All 22 knobs controlling copy propagation and CSE:
+All 24 knobs controlling copy propagation and CSE:
 
 | Knob | ROT13 | Address | Controls |
 |---|---|---|---|
 | `EnableGvnCse` | `RanoyrTiaPfr` | `0x21BDA50` | Master enable for phase 49 |
+| `EnableGvnCseMode` | -- | knob 402 | GVN mode selector (0=off, 1=simple, 2=standard, 3-6=full) |
+| `EnableGvnCsePerInstr` | -- | knob 257 | Per-instruction GVN enablement gate |
 | `AllowReassociateCSE` | `NyybjErnffbpvngrPFR` | `0x21C0180` | Master enable for reassociation CSE |
 | `ReassociateCSEBudget` | `ErnffbpvngrPFROhqtrg` | `0x21BA810` | Instruction budget |
 | `ReassociateCSEWindow` | `ErnffbpvngrPFRJvaqbj` | `0x21BA7D0` | Sliding window size |
@@ -617,6 +768,17 @@ Phase 83: OriBackCopyPropagate
 | `0xC5F000` | 16 B | GvnCse::execute | Thunk to sm_backend (context+0x630)->vtable[23] |
 | `0xC5F010` | 6 B | GvnCse::getName | Returns 49 |
 | `0xC5F020` | 6 B | GvnCse::isNoOp | Returns 0 (enabled) |
+| `sub_BEE590` | ~200 B | GvnCse body (SM60/70/90) | Entry point: rebuilds def chains, dispatches to mode |
+| `sub_BEE370` | ~550 B | GvnCse mode dispatcher | Queries knob 402, selects mode 0-6 |
+| `sub_BED7E0` | ~18 KB | FullGvnCse (modes 3-6) | RPO block walk + dominator-scoped CSE, 689 lines |
+| `sub_BEAD00` | ~2.5 KB | StandardGvnCse (mode 2) | Dominator-guided GVN for SM < 32K threshold |
+| `sub_BEA5F0` | ~9 KB | PerDominatedBlockCse | Per-block CSE within dominator subtree, commutative canon |
+| `sub_BEA450` | ~2 KB | SimpleGvn (mode 1) | Basic GVN variant |
+| `sub_BEA1E0` | ~500 B | GvnCse eligibility check | Opcode-based CSE eligibility (16,122,145,183,186,...) |
+| `sub_BED430` | ~2 KB | EBB pre-pass | Extended basic block identification (gated by knob 210) |
+| `sub_661250` | 6 B | GvnCse no-op stub | Returns 0 (SM30/50/80/89 vtable slot 23) |
+| `sub_7846D0` | -- | Build dominator tree | Also computes RPO ordering at context+792 |
+| `sub_661750` | -- | Scoped value tree | Init/destroy balanced BST for dominator scoping |
 | `0xC604D0` | 42 B | OriReassociate::execute | Dispatches to sm_backend (context+1584)->vtable[44] |
 | `0xC5EFE0` | 6 B | OriReassociate::getName | Returns 50 |
 | `0xC5EFF0` | 6 B | OriReassociate::isNoOp | Returns 0 (enabled) |
