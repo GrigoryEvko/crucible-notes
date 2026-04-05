@@ -153,73 +153,262 @@ Performs full unrolling of loops with known small trip counts and partial unroll
 
 ### Function Map
 
-| Function | Size | Role |
-|---|---|---|
-| `sub_83EF00` | 29,444 bytes | Top-level unrolling driver (trip count analysis, heuristics, body duplication) |
-| `sub_80B700` | 1,408 bytes | Per-loop unroll decision (eligibility check, parameter lookup) |
-| `sub_80BC80` | 130 bytes | Single-loop unroll wrapper (calls `sub_80B700`) |
-| `sub_A1F5D0` | 7,402 bytes | Unroll body replication engine (copies instructions, adjusts IVs) |
-| `sub_7E39B0` | 181 bytes | Unroll rejection diagnostic table lookup |
-| `sub_A3A7E0` | 1,236 bytes | Post-unroll statistics (DUMPIR output) |
+**Correction (P1-04):** The W023 report incorrectly listed `sub_83EF00` as the unrolling driver. That function is the MainPeepholeOptimizer (confirmed by p1.06a sweep). The actual unrolling call chain starts at `sub_1392E30`.
+
+| Function | Size | Role | Confidence |
+|---|---|---|---|
+| `sub_1392E30` | 25 lines | Phase 22 execute entry: guards, calls initializer + driver + cleanup | HIGH |
+| `sub_1389AF0` | 593 lines | Unrolling context initializer: reads all knobs from OCG profile | HIGH |
+| `sub_1390B30` | 1,598 lines | Main unrolling driver: per-loop decision, factor selection, dispatch | HIGH |
+| `sub_138A6E0` | 774 lines | Post-unroll cleanup: frees working structures | HIGH |
+| `sub_7E5120` | 19 lines | Nounroll/skip check: pragma flag, convergence, knob 91 | HIGH |
+| `sub_7F5D20` | 99 lines | Rejection recording: indexes string table at `0x21D1EA0` | HIGH |
+| `sub_138E3E0` | 125 lines | Loop body scanner: three-pass analysis (header, forward, backward) | HIGH |
+| `sub_13858C0` | 42 lines | Loop back-edge locator | HIGH |
+| `sub_1385E90` | ~200 lines | Trip count bound extractor (init, limit, stride from IV) | MEDIUM |
+| `sub_1383620` | 1,157 lines | Full unroll profitability evaluator (foldable constants, addresses) | MEDIUM |
+| `sub_1387C30` | ~400 lines | Partial unroll body replicator | MEDIUM |
+| `sub_13880F0` | ~200 lines | Post-unroll CFG fixup | MEDIUM |
+| `sub_1385950` | ~300 lines | Induction variable analysis | MEDIUM |
+| `sub_138E9C0` | ~400 lines | IV stride/direction verification | MEDIUM |
+| `sub_1385CC0` | ~200 lines | IV constant detection | MEDIUM |
+| `sub_13829F0` | ~200 lines | Profitability: foldable constant load counting | MEDIUM |
+| `sub_A3A7E0` | 1,236 lines | Post-unroll statistics (DUMPIR output) | HIGH |
+
+### Unrolling Decision Algorithm
+
+The unrolling decision is a multi-stage pipeline implemented in `sub_1390B30`. The function iterates over loops in reverse RPO order (innermost first, matching the RPO array at code_object+512) and applies a series of eligibility checks, trip count analysis, factor selection, and profitability evaluation before committing to the unroll.
+
+#### Entry Guard (`sub_1392E30`)
+
+```
+function OriLoopUnrolling_Execute(code_object):
+    if code_object.flags[1368] & 1 == 0:           // optimization disabled
+        return
+    if code_object.flags[1397] & 0xC0 == 0x40:     // global nounroll override
+        return
+    if DUMPIR_skip("LoopUnrolling"):                // sub_799250
+        return
+    if CountBlocks(code_object) <= 2:               // sub_7DDB50
+        return
+    if not QueryKnob(487, true):                    // master loop pass guard
+        return
+
+    ctx = InitializeContext(code_object)             // sub_1389AF0
+    RunUnrolling(ctx)                                // sub_1390B30
+    Cleanup(ctx)                                     // sub_138A6E0
+```
+
+#### Context Initialization and Knob Defaults (`sub_1389AF0`)
+
+The initializer reads unrolling parameters from the OCG profile object. Each knob uses a three-valued flag: 0 = use hardcoded default, 1 = use integer override, 2 = use float override, 3 = use double override. The defaults recovered from binary:
+
+| Context Field | Profile Offset | Default | Knob Name (inferred) |
+|---|---|---|---|
+| `ctx+168` (int32) | +31320 | **140** | `UnrollBudget` |
+| `ctx+172` (float) | +31032 | **0.25** | `UnrollFlexableFullLimit` |
+| `ctx+176` (int32) | +30960 | **4** | `UnrollUnknownCount` |
+| `ctx+180` (int32) | +30816 | **4** | `UnrollSmallLoopLimit` |
+| `ctx+184` (dbl) | +64656 | **0.4** | `LoopUnrollLargePartOfShaderPct` |
+| `ctx+192` (float) | +31392 | **15.0** | `UnrollInstLimit` |
+| `ctx+196` (int32) | +64872 | **50** | `UnrollPregThreshold` |
+| `ctx+200` (int32) | +31248 | **2** | `UnrollExtraInstPerPercentSaving` |
+| `ctx+204` (int32) | +31176 | **200** | `UnrollFullInstLimit` |
+| `ctx+208` (int32) | +64296 | **46** | `LoopUnrollNumExtraInstBase` |
+
+Boolean and integer knobs read via vtable dispatch:
+
+| Knob ID | Profile Offset | Default | Knob Name |
+|---|---|---|---|
+| 437 | +31464 | true | `LoopUnroll` (master enable) |
+| 894 | +64368 | true | `LoopUnrollNonInnermost` |
+| 897 | +64584 | true | `UnrollMultiBlockLoops` |
+| 902 | +64944 | true | `UnrollVariableBounds` |
+| 896 | +64512 | 0 | `LoopUnrollFactor` (INT override; 0 = heuristic) |
+| 895 | +64440 | 0 | `EpilogueLoopUnrollCount` |
+| 900 | +64800 | 0 | `LoopUnrollNumInstTex` |
+| 903 | +65016 | false | `DisablePartialUnrollOverflowCheck` |
+
+String knob: knob 427 (profile+30744) returns the `LoopUnrollFactor` per-block override string, with the format `"-N-"` to skip block N, `"+N+"` to force-unroll block N, `"-"` to skip all, `"+"` to force all.
+
+#### Nounroll Pragma Check (`sub_7E5120`)
+
+Returns true (suppress unrolling) when **any** of these conditions hold:
+
+1. **Convergence constraint**: The back-edge analysis context at code_object+1784 is active, and the loop header's entry in the back-edge table (code_object+1776+16) is valid and within the convergence limit. This suppresses unrolling of warp-synchronous loops.
+2. **PTX `nounroll` pragma**: Byte 292 of the block descriptor at `(code_object+368 + 8*block_idx)` has bit 1 set. This bit is set during PTX-to-Ori lowering when the `nounroll` pragma string (at `0x1CFE126`) is parsed.
+3. **Instruction-level marker**: Byte 283 of the loop header instruction has bit 0 set.
+4. **Per-block knob**: OCG knob 91 is set for this block (queried via `sub_7A1A90`).
+
+#### Main Decision Flowchart (`sub_1390B30`)
+
+```
+function RunUnrolling(ctx):
+    code_object = ctx.code_object
+
+    // Phase 1: Read master enable and per-block override string
+    master_enable = QueryKnob(437)                   // LoopUnroll
+    override_string = QueryKnobString(427)           // "-N-" / "+N+" format
+    RecomputeRegisterPressure(code_object)            // sub_7E6090
+    RebuildInstructionList(code_object)               // sub_781F80
+
+    // Phase 2: Pre-scan -- count inlinable calls and non-unrollable instructions
+    for each instruction in code_object.instruction_list:
+        if opcode == 97 (BRX):
+            if callee.entry_block == callee.exit_block:
+                inlinable_calls++
+                if trip_count > 1:
+                    multi_exit |= AnalyzeMultiExit(ctx, callee)
+
+    // Phase 3: Iterate loops in reverse RPO (innermost first)
+    rpo_count = code_object.rpo_count                // offset +520
+    for idx = rpo_count-1 downto 0:
+        block = code_object.blocks[code_object.rpo[idx]]
+
+        // ── Step A: nounroll annotation propagation ──
+        if block.nounroll_annotation:                // byte +246
+            propagate nounroll to all blocks at >= same nesting depth
+
+        // ── Step B: eligibility filter ──
+        if block.loop_depth == 0:          continue  // not a loop
+        if block.loop_depth != block.loop_depth_equal: continue
+        if block.nounroll and not ctx.force_all:     continue
+
+        // ── Step C: structure analysis ──
+        latch = LocateBackEdge(ctx, block)           // sub_13858C0
+        if not latch:                    continue
+        exit_inst = latch.last_instruction
+        if exit_inst.opcode != 95:                   // not conditional branch
+            Reject(block, 13); continue              // indirect jump
+
+        // ── Step D: nounroll / convergence check ──
+        if CheckNounroll(block, code_object):        // sub_7E5120
+            Reject(block, 11); continue
+
+        // ── Step E: execution frequency analysis ──
+        freq_header = code_object.freq_table[header_reg]
+        freq_latch  = code_object.freq_table[latch_reg]
+        is_hot = (freq_latch > 999) and (freq_header > 0)
+                 and (freq_latch / freq_header > 3)
+
+        // ── Step F: body analysis ──
+        body_info = ScanLoopBody(ctx, block, latch)  // sub_138E3E0
+        // body_info contains: tex_count, body_size, foldable_ldc_count,
+        //                     has_cross_edges, mem_count
+        if body_info.has_cross_edges:    continue
+
+        // ── Step G: budget computation ──
+        budget_scale = QueryKnobDouble(898, 0.5)     // default 0.5
+        scaled_body = (int)(budget_scale * body_size)
+        remaining = total_budget - body_size - scaled_body - ...
+
+        // ── Step H: per-block override check ──
+        if override_string:
+            needle = "-{block_id}-"
+            if override_string == "-" or strstr(override_string, needle):
+                continue                             // skip this block
+            needle = "+{block_id}+"
+            if override_string == "+" or strstr(override_string, needle):
+                force_unroll = true
+
+        // ── Step I: pragma force-unroll ──
+        if flags[1397] & 0xC0 == 0x80:              // PTX pragma force
+            force_unroll = true
+
+        // ── Step J: non-innermost filter ──
+        if not ctx.allow_non_innermost and not force_unroll:
+            if 10 * body_info.tex_count < remaining:
+                Reject(block, 7); continue
+
+        // ── Step K: factor selection ──
+        if force_unroll:
+            factor = 1 << ctx.force_factor           // power-of-2 override
+        else if known_trip_count:
+            factor = trip_count
+            // Budget-constrain: while factor * body_cost > UnrollBudget:
+            //     factor--
+            if factor > 4 and trip_count == 1:
+                factor &= ~3                         // round to mult-of-4
+            if factor <= 1:
+                Reject(block, 12); continue
+        else:
+            if body_size <= 49 and body_info.tex_count > 0:
+                factor = 2                           // conservative default
+            else:
+                factor = max(1, UnrollBudget / body_cost)
+
+        // ── Step L: knob override ──
+        if QueryKnob(429):                           // LoopUnrollFactor INT
+            factor = GetKnobInt(429)
+
+        // ── Step M: IV analysis ──
+        iv_info = AnalyzeIV(ctx, latch)              // sub_1385950
+        if not iv_info:             Reject(block, 14); continue
+        if not ValidateIV(ctx, iv_info):             // sub_1387870
+                                    Reject(block, 14); continue
+        bound = ExtractBound(ctx, iv_info)           // sub_1385E90
+        if not bound or bound.opcode != 2:
+                                    Reject(block, 16); continue
+        if bound.def_block.predecessor_count != 1:
+                                    Reject(block, 17); continue
+        if bound.init_reg == bound.limit_reg:
+                                    Reject(block, 18); continue
+        stride_ok = VerifyStride(ctx, block, latch, iv_info, bound)
+        if stride_ok & 2:          Reject(block, 17); continue
+        if stride_ok & 1:          Reject(block, 18); continue
+
+        // ── Step N: detect constant trip count ──
+        const_iv = DetectConstantIV(ctx, iv_info)    // sub_1385CC0
+
+        // ── Step O: profitability for full unroll ──
+        if factor == trip_count and single_block_body:
+            if CheckFoldableProfitability(ctx, block, iv_info, factor):
+                ReplicateFullUnroll(ctx, block, factor) // sub_1383620
+                stats.unrolled_count++
+                continue
+
+        // ── Step P: partial unroll execution ──
+        if factor >= 2:
+            remainder = trip_count % factor
+            iterations_per_copy = (trip_count - remainder) / factor
+            block.iterations_per_copy = iterations_per_copy
+            if remainder > 0:
+                for r = 0 to remainder-1:
+                    DuplicateBody(ctx, block)         // sub_932E40
+            ReplicatePartialUnroll(ctx, block, latch,
+                factor, remainder)                    // sub_1387C30
+            stats.unrolled_count++
+        else:
+            Reject(block, 24)                         // budget exceeded
+
+    // Phase 4: Post-unroll fixup
+    stats.non_unrolled = total_loops - stats.unrolled - stats.failed
+    if any_unrolled:
+        RebuildBackEdges(code_object)                 // sub_7846F0
+        RerunLiveness(code_object)                    // sub_A0F020
+        RerunControlFlow(code_object)                 // sub_752E40
+        MarkModified(code_object)                     // sub_7B52B0
+```
 
 ### Unroll Rejection Table
 
-When a loop cannot be unrolled, the pass records a coded reason from a 24-entry rejection table at `0x21D1980`. Each entry is a 36-byte structure with fields `{a2, a3, a4, loop_type, is_single_iteration, param5, param6, param7, result_param}`. The rejection codes and their meanings:
+When a loop cannot be unrolled, `sub_7F5D20` records the reason by indexing a string pointer array at `0x21D1EA0`. The diagnostic strings contain hex codes like `"0x80000001 - Not unrolled: Irregular loop"` -- these hex values are part of the printed message text, not the internal array index. The W023 report originally described a 36-byte structure table at `0x21D1980`; that table belongs to the operand range lookup in the peephole optimizer (`sub_7E39B0`), not the unrolling pass. The actual internal rejection codes are simple integers indexing the string array:
 
 | Code | Category | Reason |
 |---|---|---|
-| `0x80000001` | Irregular loop | Multiple back-edges or irreducible control flow |
-| `0x80000002` | Irregular loop | Loop body contains complex CFG (cross-edges between inner blocks) |
-| `0x80000003` | Ineligible instruction | Loop body contains a barrier (`BAR.SYNC`) |
-| `0x80000004` | Ineligible instruction | Loop body contains an indirect jump |
-| `0x80000005` | Ineligible instruction | Loop body contains a function call |
-| `0x80000006` | Ineligible instruction | Loop body modifies the stack pointer |
-| `0x80000007`--`0x8000000C` | Performance | Heuristic rejected: body too large, register pressure too high, or savings insufficient |
-| `0x8000000D` | Unsupported loop type | Do-while with non-standard exit |
-| `0x8000000E`--`0x80000017` | Unsupported exit condition | Exit condition is not a simple compare-and-branch against an induction variable |
-| `0x80000010`--`0x80000012` | Unsupported index variable | Induction variable has non-unit stride, is used as a pointer, or has complex update |
-| `0x80000018` | Unsupported loop type | Infinite loop or loop with no analyzable exit |
+| 7 | Performance | Body too large relative to texture savings (`10 * tex_count < remaining_budget`) |
+| 11 | Pragma/knob | PTX `nounroll` pragma, convergence constraint, or per-block knob 91 |
+| 12 | Budget | Partial unroll factor reduced to 1 (no factor >= 2 fits within `UnrollBudget`) |
+| 13 | Ineligible | Loop exit contains BRX (indirect jump, opcode 95 with special flags) |
+| 14 | Unsupported IV | Induction variable analysis failed (`sub_1385950` or `sub_1387870`) |
+| 15 | Unsupported IV | IV register class is not integer (class 1) or pointer (class 2/3) |
+| 16 | Trip count | Trip count bound extraction failed (`sub_1385E90`) |
+| 17 | Irregular | IV definition block has multiple predecessors, or stride/direction verification failed |
+| 18 | Trip count | IV initial value register equals IV limit register (degenerate zero-trip loop) |
+| 19 | Unsupported IV | IV stride sign inconsistent between loop header and induction increment |
+| 24 | Budget | Catch-all: budget exceeded after all factor reduction attempts |
 
-### Unrolling Algorithm
-
-```
-function OriLoopUnrolling(code_object):
-    for each loop in RPO order (innermost first):
-        // Step 1: Eligibility check
-        rejection = CheckEligibility(loop)          // sub_80B700
-        if rejection:
-            RecordRejection(loop, rejection)         // 36-byte table entry
-            continue
-
-        // Step 2: Analyze trip count
-        trip_count = AnalyzeTripCount(loop)          // known constant, variable, or unknown
-
-        // Step 3: Determine unroll factor
-        if trip_count is compile-time constant:
-            if trip_count * body_size <= UnrollFullInstLimit:
-                factor = trip_count                  // full unroll
-            else:
-                factor = ComputePartialFactor(trip_count, body_size)
-        else:
-            if body_size <= UnrollSmallLoopLimit:
-                factor = UnrollUnknownCount          // knob-controlled default
-            else:
-                factor = 1                           // no unroll
-
-        // Step 4: Profitability check
-        if not IsProfitable(loop, factor):
-            RecordRejection(loop, PERFORMANCE_REJECTION)
-            continue
-
-        // Step 5: Replicate body
-        UnrollBody(loop, factor)                     // sub_A1F5D0
-        AdjustInductionVariables(loop, factor)
-        UpdateCFG(loop, factor)
-
-        // Step 6: Handle remainder
-        if trip_count % factor != 0 and trip_count is variable:
-            EmitEpilogueLoop(loop, trip_count % factor)
-```
+The diagnostic output is gated by `flags[1421] & 0x20` (DUMPIR verbose mode). When enabled, the rejection string is recorded in a hash map keyed by the loop header instruction node, using FNV-1a hashing of the node's block index.
 
 ### Heuristic Thresholds (Knobs)
 
@@ -262,7 +451,9 @@ The unrolling decision is controlled by a rich set of OCG knobs. All knob names 
 
 **Texture instruction scheduling.** Texture fetches have high latency (hundreds of cycles). Unrolling loops containing texture operations is especially profitable because it exposes independent fetches that the scheduler can overlap. The `LoopUnrollNumInstTex` and `UnrollTex3DPercentSavedThreshold` knobs give extra weight to texture-heavy loops.
 
-**PTX `nounroll` pragma.** The PTX string `nounroll` at `0x1CFE126` is parsed during PTX-to-Ori lowering and sets a flag on the loop that suppresses unrolling unconditionally.
+**PTX `nounroll` pragma.** The PTX string `nounroll` at `0x1CFE126` is parsed during PTX-to-Ori lowering and sets bit 1 of byte 292 in the block descriptor at `(code_object+368 + 8*block_idx)`. The check is performed by `sub_7E5120`, which also tests three additional suppression conditions: the convergence constraint (back-edge table at code_object+1776), an instruction-level marker (byte 283 bit 0), and per-block knob 91. Any single condition is sufficient to suppress unrolling for that loop (rejection code 11).
+
+**Convergence constraint.** When the back-edge analysis context at code_object+1784 is active (indicating warp-synchronous code), the unroller checks whether the loop header falls within the convergence region. If it does, unrolling is suppressed to avoid breaking warp-level synchronization guarantees. This is particularly important for cooperative groups and ballot-based algorithms.
 
 ### DUMPIR Statistics
 
