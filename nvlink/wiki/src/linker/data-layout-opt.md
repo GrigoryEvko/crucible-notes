@@ -13,6 +13,11 @@ The pass is enabled by `--optimize-data-layout` and disabled by `--no-opt`. Thes
 | **Reachability check** | `sub_43FB70` at `0x43FB70` (symbol entry-function reachability) |
 | **Data copy** | `sub_433760` at `0x433760` (section data append with alignment) |
 | **Large-value dedup** | `sub_433870` at `0x433870` (byte-level memcmp deduplication for 12..64 byte values) |
+| **Overlap validation** | `sub_4343C0` at `0x4343C0` (section data overlap detection and identity check) |
+| **32-bit hash function** | `sub_44E120` at `0x44E120` (identity: returns key unchanged) |
+| **64-bit hash function** | `sub_44E1C0` at `0x44E1C0` (shift-xor: `(k>>11) ^ (k>>8) ^ (k>>5)`) |
+| **64-bit xor-fold hash** | `sub_44E150` at `0x44E150` (custom hash: `lo32 ^ hi32`) |
+| **Hash table create** | `sub_4489C0` at `0x4489C0` (allocate 112-byte header, set mode tag) |
 | **CLI enable** | `--optimize-data-layout` (stored in `byte_2A5F2A8`, maps to elfw+83) |
 | **CLI disable** | `--no-opt` (stored in `byte_2A5F2A9`, maps to elfw+90) |
 | **Verbose gate** | `elfw+64, bit 1` (debug/verbose flags) |
@@ -170,34 +175,85 @@ if (existing != NULL && val != 0) {
 
 ### Large-Value Deduplication (12--64 Bytes)
 
-For values of sizes 12, 16, 20, 24, 32, 48, and 64 bytes, the function delegates to `sub_433870` (`dedup_memcmp`). Each size class has its own linked list (parameters `a6` through `a12`). The linked list stores previously seen values, and deduplication uses byte-level `memcmp`:
+For values of sizes 12, 16, 20, 24, 32, 48, and 64 bytes, the function delegates to `sub_433870` (`dedup_memcmp`, 216 bytes at `0x433870`). Each size class has its own singly-linked list (parameters `a6` through `a12`). The function signature, reconstructed from the decompiled output:
 
 ```c
 // sub_433870 -- dedup_memcmp
-// a1: elfw*, a2: list**, a3: size, a4: data_node,
-// a5: sym_value_out, a6: sym_name_out, a7: section_size_ptr, a8: section_idx
-
-node = *a2;  // head of seen-values list for this size class
-while (node != NULL) {
-    existing = node->payload;
-    if (existing->alignment == data_node->alignment &&
-        memcmp(data_node->data, existing->data, size) == 0) {
-        // Match found
-        sym = get_symbol(elfw, existing->sym_index);
-        // verbose: "found duplicate %d byte value, alias %s to %s"
-        *sym_value_out = sym->value;
-        return;
-    }
-    node = node->next;
-}
-// No match -- copy data to target section
-aligned_offset = align_up(*a7, data_node->alignment)
-*sym_value_out = aligned_offset
-section_data_copy(elfw, section_idx, data, alignment, size)
-list_prepend(data_node, a2);
+// Address: 0x433870, Size: 216 bytes
+//
+// a1: elfw*           -- linker context
+// a2: list_head**     -- pointer to head of seen-values list for this size class
+// a3: int             -- expected data size (12, 16, 20, 24, 32, 48, or 64)
+// a4: data_node*      -- 40-byte data node from the source symbol list
+//       +0:  void*    data_ptr       (pointer to raw constant bytes)
+//       +8:  uint64_t name_or_id     (symbol name/reference)
+//       +16: uint64_t alignment      (required alignment in bytes)
+//       +24: uint64_t data_size      (redundant with a3)
+//       +32: uint32_t sym_index      (symbol table index)
+// a5: int64_t*        -- output: receives the assigned offset in target section
+// a6: const char**    -- output: receives the symbol name (for verbose logging)
+// a7: int64_t*        -- pointer to target_section->size (updated on copy)
+// a8: uint32_t        -- target section index
 ```
 
-The linked-list approach for large values (rather than a hash table) is reasonable because these sizes are rare in practice -- most GPU constants are 4 or 8 bytes (scalar floats, doubles, pointers). The `memcmp` comparison is O(n) in the number of previously seen values for a given size class, but with the small typical count, this is faster than computing a hash over the full value.
+The algorithm walks the linked list, comparing alignment and content byte-for-byte:
+
+```c
+void dedup_memcmp(elfw* ctx, list_node** head, int size,
+                  data_node* node, int64_t* offset_out,
+                  const char** name_out, int64_t* section_size,
+                  uint32_t target_idx)
+{
+    list_node* cur = *head;
+    uint64_t align = node->alignment;      // offset +16 of data_node
+    void*    data  = node->data_ptr;       // offset +0
+
+    while (cur != NULL) {
+        data_node* existing = cur->payload;
+
+        // Two-stage comparison:
+        //   1. Alignment must match (fast integer compare, rejects most)
+        //   2. Byte-exact content match via memcmp
+        if (existing->alignment == align &&
+            memcmp(data, existing->data_ptr, size) == 0)
+        {
+            // Duplicate found -- look up the canonical symbol's offset
+            symbol* sym = get_symbol(ctx, existing->sym_index);
+
+            if (ctx->verbose_layout)    // (*(ctx+64) & 2)
+                fprintf(stderr,
+                    "found duplicate %d byte value, alias %s to %s\n",
+                    size, *name_out, sym->name);
+
+            *offset_out = sym->value;   // alias to existing offset
+            return;
+        }
+        cur = cur->next;
+    }
+
+    // No match found -- allocate space in the target section
+    int64_t current_size = *section_size;
+    if (current_size % align)
+        current_size = current_size + align - (current_size % align);
+
+    *offset_out = current_size;
+    section_data_copy(ctx, target_idx, data, align, node->data_size);
+
+    // Prepend this data_node to the seen-values list (sub_4644C0)
+    // so future duplicates will find it
+    list_prepend(node, head);
+}
+```
+
+Key observations from the decompiled code:
+
+- **Alignment check first**: The alignment comparison (`existing->alignment == align`) acts as a cheap filter before the expensive `memcmp`. Constants with different alignment requirements are never considered duplicates even if their byte content matches, because merging them would require the stricter alignment for all users.
+
+- **Prepend, not append**: New entries are prepended to the list head via `sub_4644C0` (generic linked-list prepend). This means recently seen values are found first, which is beneficial when translation units define constants in similar order.
+
+- **No hash, no index**: The linked-list approach for large values (rather than a hash table) is a deliberate tradeoff. These sizes are rare in practice -- most GPU constants are 4 or 8 bytes (scalar floats, doubles, pointers). The O(n) linear scan with `memcmp` is faster than computing and comparing a hash for the small typical population of each size class. A program with 50 distinct `float4` (16-byte) constants would require at most 50 comparisons per lookup, each of which is a single 16-byte `memcmp` -- likely a single SSE instruction on x86-64.
+
+- **Size-class isolation**: Each of the seven supported large sizes has an independent list. A 16-byte constant is never compared against a 32-byte constant. This eliminates the need for a size field in the comparison and keeps each list short.
 
 ### Values Outside Standard Size Classes
 
@@ -231,6 +287,224 @@ for each reloc_node in *a14:
 The check `reloc->offset >= original_value && reloc->offset < original_value + size` identifies relocations that fall within the address range of the source constant. The offset is then recomputed relative to the new position in the merged section: `new_offset = old_offset + (new_address - old_address)`.
 
 This relocation rewriting is what makes the "optimize ocg constant reloc offset from %lld to %lld" message appear in verbose output. Each time a constant is placed or aliased, all relocations pointing into its original range are patched to point into the new location.
+
+## Section Data Overlap Validation (`sub_4343C0`)
+
+When constant data is copied into a target section, the section data append function delegates to `sub_4343C0` (`overlap_validate`, at `0x4343C0`). This function maintains a sorted linked list of data fragments within each section and validates that new data does not conflict with existing content at overlapping offsets.
+
+### Function Signature
+
+```c
+// sub_4343C0 -- overlap_validate
+// Address: 0x4343C0
+//
+// a1: elfw*           -- linker context (reinterpreted as FILE* by decompiler)
+// a2: uint32_t        -- symbol index associated with this data
+// a3: uint32_t        -- target section index
+// a4: void*           -- pointer to data bytes to write
+// a5: uint64_t        -- offset within target section (-1 = append at end)
+// a6: uint32_t        -- alignment requirement
+// a7: size_t          -- data size in bytes
+```
+
+### Overlap Detection Algorithm
+
+The function maintains a sorted linked list of data records attached to each section (at section header offset +72). Each record is a 40-byte node:
+
+```
+data_record (40 bytes):
+  +0:  void*     data_ptr         -- pointer to raw bytes
+  +8:  uint64_t  offset           -- offset within section
+  +16: uint64_t  alignment        -- alignment used during placement
+  +24: uint64_t  size             -- data size
+  +32: uint32_t  sym_index        -- originating symbol index
+  +36: uint32_t  padding          -- (zeroed)
+```
+
+The insertion algorithm searches for the correct position in offset-sorted order, checking for three overlap cases:
+
+```c
+void overlap_validate(elfw* ctx, uint32_t sym_idx, uint32_t sec_idx,
+                      void* data, uint64_t offset, uint32_t align, size_t size)
+{
+    section* sec = get_section(ctx, sec_idx);
+
+    // --- Section size update ---
+    // If offset == -1 (sentinel): append at current section end
+    // If offset + size > section_size: extend section
+    // If offset < section_size and offset + size > section_size:
+    //   verbose: "offset %lld goes past section %d size"
+    //   extend anyway (allow partial overlap past end)
+
+    // --- ELF NOBITS (0x70000002) section special case ---
+    // For NOBITS-like sections, pads data to 128 bytes with
+    // fill pattern 0xF804002D01 (an NVIDIA NOP encoding) before insertion
+
+    // --- Allocate new data record ---
+    data_record* rec = arena_alloc(40);
+    rec->data_ptr   = data;
+    rec->offset     = offset;
+    rec->alignment  = align;
+    rec->size       = size;
+    rec->sym_index  = sym_idx;
+
+    // Update symbol's value and size from this record
+    if (sym_idx != 0) {
+        symbol* sym = get_symbol(ctx, sym_idx);
+        sym->size = size;
+        if (is_defined_symbol(sym))
+            sym->value = offset;
+    }
+
+    // --- Find insertion point in sorted list ---
+    if (offset == -1) {
+        // Append to tail of list
+        list_append(rec, &sec->data_list);
+        return;
+    }
+
+    node* prev = NULL;
+    node* cur  = sec->data_list;
+
+    if (!cur) {
+        // Empty list -- just insert
+        list_prepend(rec, &sec->data_list);
+        return;
+    }
+
+    data_record* cur_rec = cur->payload;
+    uint64_t cur_offset  = cur_rec->offset;
+    uint64_t cur_size    = cur_rec->size;
+
+    // Walk list to find correct sorted position
+    while (cur && cur_rec->offset < offset) {
+        if (cur_rec->offset + cur_rec->size > offset) {
+            // CASE 1: New data starts inside existing record
+            goto validate_partial_overlap;
+        }
+        prev = cur;
+        cur  = cur->next;
+        if (cur) cur_rec = cur->payload;
+    }
+
+    if (!cur || data == NULL || size == 0 || !cur_rec->size) {
+        // No overlap possible -- insert at this position
+        list_insert_after(rec, prev, &sec->data_list);
+        return;
+    }
+
+    if (offset == cur_rec->offset) {
+        // CASE 2: Exact start-offset match with existing record
+        goto validate_exact_overlap;
+    }
+
+    if (cur_rec->size >= size || offset + size != cur_rec->size + cur_rec->offset) {
+        // Non-overlapping or size mismatch -- just insert
+        list_insert_after(rec, prev ? prev : cur, &sec->data_list);
+        return;
+    }
+
+    // CASE 3: New data extends to exactly where existing record ends
+    // (tail overlap -- new data covers existing record's suffix)
+    goto validate_tail_overlap;
+}
+```
+
+### Three Overlap Cases
+
+**Case 1: Partial forward overlap** -- The new data's start offset falls strictly inside an existing record's range (`existing.offset < new.offset < existing.offset + existing.size`):
+
+```c
+validate_partial_overlap:
+    // verbose: "offset %lld (sym %d) overlaps in section %d"
+
+    // Verify the new data does not extend past the existing record
+    if (offset + size > cur_rec->offset + cur_rec->size)
+        fatal_error("overlapping data spans too much");
+
+    // Verify overlapping bytes are identical
+    void* overlap_ptr = cur_rec->data_ptr + (offset - cur_rec->offset);
+    if (memcmp(data, overlap_ptr, size) != 0)
+        fatal_error("overlapping non-identical data");
+
+    // Overlap is valid (identical content) -- merge symbol tracking
+    hash_insert(sym_dedup_table, sym_idx, cur_rec->sym_index);
+    free_record(rec);
+```
+
+**Case 2: Exact offset match** -- The new data starts at exactly the same offset as an existing record. Two sub-cases:
+
+```c
+validate_exact_overlap:
+    // verbose: "offset %lld (sym %d) overlaps in section %d"
+
+    if (size <= cur_rec->size) {
+        // 2a: New data is same size or smaller -- verify prefix match
+        if (memcmp(data, cur_rec->data_ptr, size) != 0)
+            fatal_error("overlapping non-identical data");
+        // Discard new record, merge symbol into existing
+        free_record(rec);
+        hash_insert(sym_dedup_table, sym_idx, cur_rec->sym_index);
+    } else {
+        // 2b: New data is LARGER -- it subsumes the existing record
+        // Verify the existing content matches the corresponding prefix
+        if (memcmp(data, cur_rec->data_ptr, cur_rec->size) != 0)
+            fatal_error("overlapping non-identical data");
+        // Replace existing record with new (larger) one
+        cur->payload = rec;
+        free_record(cur_rec);
+        hash_insert(sym_dedup_table, cur_rec->sym_index, sym_idx);
+
+        // Check if the next record is also subsumed
+        node* next = cur->next;
+        if (next) {
+            data_record* next_rec = next->payload;
+            if (next_rec->offset < offset + size) {
+                // Next record overlaps with new data
+                if (offset + size != next_rec->offset + next_rec->size)
+                    fatal_error("overlapping data spans too much");
+                // Verify trailing overlap bytes match
+                size_t tail_off = next_rec->offset - offset;
+                if (memcmp(data + tail_off, next_rec->data_ptr,
+                           size - next_rec->size) != 0)
+                    fatal_error("overlapping non-identical data");
+                // Absorb next record -- unlink and merge symbol
+                cur->next = next->next;
+                free_record(next_rec);
+                hash_insert(sym_dedup_table, next_rec->sym_index, sym_idx);
+            }
+        }
+    }
+```
+
+**Case 3: Tail overlap** -- The new data ends at exactly the same offset as an existing record (`new.offset + new.size == existing.offset + existing.size`) and is larger than the existing record:
+
+```c
+validate_tail_overlap:
+    // verbose: "offset %lld (sym %d) overlaps in section %d"
+    size_t overlap_size = cur_rec->size;
+    void* tail_in_new = data + size - overlap_size;
+
+    if (memcmp(tail_in_new, cur_rec->data_ptr, overlap_size) != 0)
+        fatal_error("overlapping non-identical data");
+
+    // Replace existing with new larger record
+    cur->payload = rec;
+    free_record(cur_rec);
+    hash_insert(sym_dedup_table, cur_rec->sym_index, sym_idx);
+```
+
+### Validation Invariants
+
+The overlap validation enforces three strict invariants:
+
+1. **Content identity**: Any bytes that are covered by both an existing record and a new record must be bitwise identical. A `memcmp` mismatch triggers a fatal error (`"overlapping non-identical data"` via `sub_467460`).
+
+2. **Span containment**: A new record may partially overlap an existing record only if it is fully contained within the existing record's range, or if it fully subsumes the existing record. "Crossing" overlaps where neither contains the other trigger `"overlapping data spans too much"`.
+
+3. **Sorted order**: Records are maintained in ascending offset order within the linked list, enabling the single-pass walk to detect all overlaps.
+
+These checks are critical for correctness: when multiple translation units contribute the same constant (e.g., a `__constant__` variable defined in a header included by multiple `.cu` files), their data regions may legally overlap in the merged section. The validation ensures the link is sound -- overlapping regions contain identical content, so the merged section is well-defined.
 
 ## The Two Invocation Contexts
 
@@ -326,20 +600,224 @@ for each reloc in elfw+376:
 
 ## Hash Table Implementation
 
-The dedup hash tables are created by `sub_4489C0` with architecture-specific hash and comparison functions:
+### Creation and Mode Selection
 
-| Hash table | Hash function | Compare function | Bucket count | Key type |
+The dedup hash tables are created by `sub_4489C0` (`htab_create`), which allocates a 112-byte header and sets up the bucket array and entry pool. The constructor accepts three arguments: a hash function pointer, a compare function pointer, and an initial capacity hint.
+
+```c
+// sub_4489C0 -- htab_create
+// a1: hash_fn   -- hash function pointer
+// a2: cmp_fn    -- equality comparison function pointer
+// a3: capacity  -- initial capacity hint (rounded up to power of two)
+htab* htab_create(hash_fn a1, cmp_fn a2, uint32_t a3) {
+    htab* t = htab_alloc(a3);             // sub_448840: allocates header + arrays
+    t->hash_fn_custom   = a1;             // offset +0
+    t->cmp_fn_custom    = a2;             // offset +8
+
+    // Fast-path recognition: if the function pointers match known
+    // simple implementations, set a mode tag in the header to avoid
+    // indirect call overhead during lookup/insert.
+    if (a2 == sub_44E130 && a1 == sub_44E120) {
+        // 32-bit identity hash + int equality
+        // Set bits [7:4] of header+84 to 0x2 --> mode 2 (modular)
+        t->flags = (t->flags & 0xF00F) | 0x0020;
+    }
+    if (a2 == sub_44E1E0 && a1 == sub_44E1C0) {
+        // Shift-xor hash + int64 equality
+        // Set bits [7:4] of header+84 to 0x1 --> mode 1 (shift-xor)
+        t->flags = (t->flags & 0xF00F) | 0x0010;
+    }
+    return t;
+}
+```
+
+The mode tag stored at `header+84` bits [7:4] controls which fast path the lookup and insert functions use, eliminating indirect function-call overhead for the two most common hash table configurations.
+
+| Hash table | Hash function | Compare function | Mode tag | Key type |
 |---|---|---|---|---|
-| 32-bit values (`a4`) | `sub_44E120` | `sub_44E130` | 256 | `uint32_t` zero-extended to 64-bit |
-| 64-bit values (`a5`) | `sub_44E150` | `sub_44E160` | 256 | `uint64_t` |
+| 32-bit values (`a4`) | `sub_44E120` (identity) | `sub_44E130` (int ==) | 2 (modular) | `uint32_t` zero-extended to 64-bit |
+| 64-bit values (`a5`) | `sub_44E1C0` (shift-xor) | `sub_44E1E0` (int64 ==) | 1 (shift-xor) | `uint64_t` |
 
-The lookup function `sub_449A80` implements open-addressing hash lookup with three dispatch modes (selected by bits 4..7 of the table header at offset +84):
+### Hash Functions
 
-- **Mode 0**: Uses the table's custom hash function (at offset +0 or +16 depending on a flag at offset +32) to compute the bucket index, then walks a linked list of entries checking equality via the custom compare function.
-- **Mode 1**: Hash is computed as `(key >> 11) ^ (key >> 8) ^ (key >> 5)`, masked to bucket count. This is the fast path for small integer keys (used for 32-bit constant values).
-- **Mode 2**: Hash is `key & mask` (simple modular hash for 64-bit keys).
+The two hash functions used by the constant dedup tables are trivially simple, optimized for speed over distribution quality -- acceptable because constant values in GPU programs have low collision rates in practice.
 
-Each bucket contains a chain of indices into a flat entry array at table offset +88. Each entry is 16 bytes: the key at offset +0 and the value (symbol pointer) at offset +8. The sentinel value `0xFFFFFFFF` marks the end of a chain.
+**32-bit identity hash** (`sub_44E120` at `0x44E120`):
+
+```c
+// The key IS the hash. For 32-bit constant values, this gives perfect
+// distribution when values are distinct (common case: each float literal
+// has a unique bit pattern).
+uint32_t hash_identity(uint32_t key) {
+    return key;
+}
+```
+
+**64-bit xor-fold hash** (`sub_44E150` at `0x44E150`):
+
+```c
+// Folds a 64-bit key into 32 bits by XORing the high and low halves.
+// For doubles, this combines the exponent+sign bits (high word) with
+// the mantissa (low word), producing reasonable spread.
+uint32_t hash_xor_fold(uint64_t key) {
+    return (uint32_t)key ^ (uint32_t)(key >> 32);
+}
+```
+
+**Shift-xor hash** (`sub_44E1C0` at `0x44E1C0`):
+
+```c
+// Three-way shift-xor used as the fast-path hash for mode 1 tables.
+// This is the function recognized by htab_create to trigger mode 1.
+// Applied to the 64-bit key; the three shifts (11, 8, 5) mix nearby
+// bits to spread clustered values across buckets.
+uint32_t hash_shift_xor(uint64_t key) {
+    return (uint32_t)(key >> 11) ^ (uint32_t)(key >> 8) ^ (uint32_t)(key >> 5);
+}
+```
+
+In practice, the 32-bit dedup table uses the identity hash with mode 2 (modular: `key & mask`), and the 64-bit dedup table uses the shift-xor hash with mode 1. Both mode 1 and mode 2 inline the hash computation into the lookup/insert hot path, avoiding the overhead of an indirect call through a function pointer.
+
+### Header Layout (112 Bytes)
+
+The hash table header allocated by `sub_448840` has the following layout:
+
+| Offset | Size | Field | Description |
+|---|---|---|---|
+| +0 | 8 | `hash_fn` | Custom hash function pointer (mode 0 path) |
+| +8 | 8 | `cmp_fn` | Custom compare function pointer (mode 0 path) |
+| +16 | 8 | `hash_fn_alt` | Alternate hash function (used when `+32` flag is set) |
+| +24 | 8 | `cmp_fn_alt` | Alternate compare function |
+| +32 | 8 | `use_alt_fns` | Non-zero selects `+16`/`+24` over `+0`/`+8` in mode 0 |
+| +40 | 4 | `bucket_mask` | `bucket_count - 1` (always a power-of-two minus one) |
+| +48 | 8 | `entry_count` | Current number of entries stored |
+| +56 | 4 | `xor_checksum` | Running XOR of all inserted hash values (offset +56, `*((_DWORD *)v3 + 14)`) |
+| +64 | 8 | `load_limit` | Resize threshold (initially `4 << ceil_log2(capacity)`) |
+| +72 | 4 | `scan_cursor` | Bitmap scan position for free-slot search |
+| +76 | 4 | `entry_capacity` | Current capacity of the entry array |
+| +80 | 4 | `bitmap_capacity` | Current capacity of the occupancy bitmap |
+| +84 | 2 | `flags` | Bits [1:0]: entry array ownership, bits [3:2]: bitmap ownership, bits [7:4]: mode tag (0/1/2) |
+| +88 | 8 | `entries` | Pointer to flat array of 16-byte entries `[key:8, value:8]` |
+| +96 | 8 | `bitmap` | Pointer to uint32 occupancy bitmap (1 = slot occupied) |
+| +104 | 8 | `buckets` | Pointer to array of `bucket_count` pointers to chain arrays |
+
+### Bucket Chain Structure
+
+Each bucket slot in the `buckets` array (at header offset +104) is a pointer to a dynamically-sized chain array. The chain array layout is:
+
+```
++0:  uint32_t  capacity    -- max number of index entries before realloc
++4:  uint32_t  idx[0]      -- first entry index
++8:  uint32_t  idx[1]      -- second entry index
+...
++N:  uint32_t  0xFFFFFFFF  -- sentinel (end of chain)
+```
+
+A NULL bucket pointer means no entries hash to that bucket. When a chain needs to grow beyond its capacity, `sub_448E70` allocates a new array of size `2 * old_capacity + 2`, copies the existing indices, and frees the old chain via `sub_431000`.
+
+### Entry Array
+
+The entry pool (at header offset +88) is a flat array of 16-byte slots:
+
+```
+entry[i] = {
+    +0: uint64_t  key       -- the constant value (zero-extended for 32-bit)
+    +8: uint64_t  value     -- pointer to the canonical symbol record
+}
+```
+
+New entries are allocated by scanning the occupancy bitmap for the first zero bit (using `_BitScanForward` on the bitwise complement). The bitmap at header offset +96 tracks which entry slots are in use -- one bit per slot, packed into 32-bit words.
+
+### Lookup Algorithm (`sub_449A80`)
+
+The lookup function `sub_449A80` implements hash lookup with three dispatch modes selected by bits [7:4] of header+84:
+
+```c
+// sub_449A80 -- htab_lookup
+// a1: htab*        -- hash table header
+// a2: uint64_t     -- key to look up
+// Returns: value (symbol*) if found, 0 if not found
+symbol* htab_lookup(htab* t, uint64_t key) {
+    uint8_t mode = (t->flags >> 4) & 0xF;
+    uint32_t bucket_idx;
+
+    switch (mode) {
+    case 1:  // Shift-xor fast path (64-bit dedup table)
+        bucket_idx = t->bucket_mask &
+                     ((uint32_t)(key >> 11) ^
+                      (uint32_t)(key >> 8)  ^
+                      (uint32_t)(key >> 5));
+        break;
+    case 2:  // Modular fast path (32-bit dedup table)
+        bucket_idx = t->bucket_mask & (uint32_t)key;
+        break;
+    default: // Mode 0: indirect call through function pointer
+        uint32_t h;
+        if (t->use_alt_fns)
+            h = t->hash_fn_alt(key);
+        else
+            h = t->hash_fn(key);
+        bucket_idx = t->bucket_mask & h;
+        break;
+    }
+
+    uint32_t* chain = t->buckets[bucket_idx];
+    if (!chain)
+        return NULL;
+
+    // Walk the chain; chain[0] is capacity, entries start at chain[1]
+    uint32_t* p = chain + 1;        // skip capacity field
+    while (*p != 0xFFFFFFFF) {
+        entry_t* e = &t->entries[*p];
+        if (mode == 0) {
+            // Use custom compare function
+            if (t->use_alt_fns ? t->cmp_fn_alt(e->key, key)
+                               : t->cmp_fn(e->key, key))
+                return e->value;
+        } else {
+            // Modes 1 and 2: direct integer equality
+            if (e->key == key)
+                return e->value;
+        }
+        p++;
+    }
+    return NULL;
+}
+```
+
+### Insert and Resize (`sub_448E70`)
+
+The insert function `sub_448E70` first attempts a lookup; if the key exists, it replaces the value and returns the old value. If the key is new:
+
+1. **Find free entry slot**: Scans the occupancy bitmap starting at `scan_cursor` for the first word with a zero bit. Uses `_BitScanForward(~bitmap[i])` to find the exact bit position. If all existing bitmap words are full, grows the bitmap by doubling.
+
+2. **Grow entry array if needed**: If the free slot index exceeds `entry_capacity`, doubles the entry array via realloc (or arena alloc + memcpy if arena-managed).
+
+3. **Write entry**: Sets `entries[slot].key = key` and `entries[slot].value = value`.
+
+4. **Append to chain**: Finds the bucket chain for the key's hash. If the chain exists, appends the slot index before the sentinel. If the chain's index count exceeds its capacity, reallocates at `2 * old_capacity + 2`. If no chain exists, creates a new 12-byte chain `[capacity=1, slot_idx, 0xFFFFFFFF]`.
+
+5. **Update occupancy**: Sets the bit in the bitmap, XORs the hash into the running checksum, increments `entry_count`.
+
+6. **Resize check**: If `entry_count` exceeds `load_limit`, triggers a full rehash:
+   - Doubles `bucket_mask` to `2 * old_mask + 1` (doubles bucket count).
+   - Doubles `load_limit`.
+   - Allocates a new bucket pointer array, zeroes it.
+   - Frees all old chain arrays via `sub_431000`.
+   - Walks the occupancy bitmap: for each occupied slot, recomputes the hash (via indirect call through `hash_fn`), and inserts the slot index into the new chain for the new bucket. This rehash loop uses the same chain-append logic with capacity tracking.
+
+The rehash ensures amortized O(1) insert. The load factor threshold is `4 << ceil_log2(initial_capacity)` initially, doubling on each rehash.
+
+### Dedup Table Sizing for Constants
+
+Both dedup tables are created with an initial capacity hint of 256 (passed from the layout phase). After `sub_45CB00` (`ceil_log2`) and `sub_448840`:
+
+- `ceil_log2(256)` = 8
+- `bucket_count` = `1 << 8` = 256
+- `bucket_mask` = 255
+- `load_limit` = `4 << 8` = 1024
+
+So each table starts with 256 buckets and will not rehash until it holds more than 1024 entries. For typical CUDA programs with hundreds of distinct constants, no rehash occurs.
 
 ## CLI Option Interaction
 
