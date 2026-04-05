@@ -1,6 +1,6 @@
 # SM89 Ada
 
-The SM89/90 backend occupies `0x100C000`--`0x11EA000` (1.9 MB, 978 functions) and is the shared code generation pipeline for Ada Lovelace (sm_89) and Hopper (sm_90/sm_90a) architectures within the embedded ptxas compiler. Despite covering two commercially distinct GPU families, nvlink classifies SM89 under the "Ampere" architecture family internally -- there is no separate "Ada" string in the binary. The SM version number is parsed numerically from the `--gpu-name` option and dispatched through a lookup table at `dword_1EED2E0`.
+The SM89/90 backend occupies `0x100C000`--`0x11EA000` (1.9 MB, 978 functions) and is the shared code generation pipeline for Ada Lovelace (sm_89) and Hopper (sm_90/sm_90a) architectures within the embedded ptxas compiler. Despite covering two commercially distinct GPU families, the linker treats them as a single backend family that diverges only through runtime feature flags and per-architecture dispatch table entries. The ISA class string `"Ada"` is registered for sm_89 and `"Hopper"` for sm_90 in the profile descriptor table built by `sub_484F50` (line 468 / line 517 of the registration function). The SM version number is parsed numerically from the `--gpu-name` option and dispatched through a lookup table at `dword_1EED2E0`.
 
 This page documents the complete backend: the instruction encoder table, the compilation driver, the option parser, the instruction selector (including the 226 KB mega-hub), the ELF/cubin output generator, the symbol resolver, and the instruction scheduler.
 
@@ -30,6 +30,154 @@ Feature flag configuration at `sub_1100E50` reads the SM version from the codege
 | SM >= 17 | sm_100 equivalent | Feature v19 (Blackwell) |
 
 Feature 33 is the only flag gated to the sm_89/sm_90 pair specifically. It is disabled when flag 618 (device-debug) is set, suggesting it controls an optimization that interferes with debug info generation.
+
+## Ada vs Hopper: Concrete Binary Differences
+
+Although SM89 and SM90 share the same 1.9 MB backend, the binary distinguishes them at four levels: the profile descriptor, the dispatch table function pointers, the backend initialization constants, and ISA version validation. This section catalogs every difference found in the decompiled code.
+
+### Profile Descriptor Flags
+
+The profile registration function `sub_484F50` builds a 136-byte descriptor per SM target via `sub_484DB0`. After constructing the sm_89 descriptor, the code sets:
+
+```
+v47->m128i_i8[3] = 1;   // byte[3] of the sm_89 profile descriptor
+```
+
+This flag is **unique to sm_89** -- it is not set for sm_90, sm_90a, or any other SM target in the entire registration function. The corresponding byte[4] flag is reserved for "a" and "f" sub-variants (sm_90a, sm_100a, sm_100f, etc.) and is never set on sm_89.
+
+**What byte[3] gates.** The profile descriptor byte[3] is propagated through the ELF section merger and instruction validation infrastructure (`sub_46EE00`, `sub_46C690`). Ada Lovelace is the only architecture that supports the full fixed-function graphics pipeline (tessellation, geometry shading, rasterization) at the SM level -- Hopper (sm_90) is a datacenter-only GPU that drops fixed-function graphics hardware. Setting byte[3] = 1 on the sm_89 descriptor marks it as a **graphics-capable** architecture, gating tessellation-related code paths in the linker's section merging and instruction validation. When the linker processes shader sections that require graphics pipeline stages, this flag determines whether the target supports them.
+
+### Dispatch Table: Seven Slots, All Functionally Distinct
+
+The `sub_15C0CE0` registration function populates seven callback tables (`qword_2A644B8` through `qword_2A64488`) for each SM target. SM89 and SM90 have different function pointer addresses in all six callback slots (plus a different internal version constant in slot A0):
+
+| Slot | Table | sm_89 | sm_90 / sm_90a | Functional Difference |
+|---|---|---|---|---|
+| B8 | Pre-compilation | `sub_15C2D40` | `sub_15C2CE0` | Identical behavior: both call `sub_166DA30(a2, 0)` and look up `"cpf_optx"` |
+| B0 | Compilation | `sub_15C2C20` | `sub_15C2B30` | Identical behavior: both call `sub_166DA30(a2, 1)` and look up `"cpf_optx"` |
+| A8 | Backend init | `sub_15C3740` | `sub_15C3520` | **Different** -- see below |
+| A0 | Internal version | `byte_2A5EE2C` | `asc_2A5EE28` | Different integer constant (sm_89 = internal 29, sm_90 = internal 30) |
+| 90 | Perf-stats | `sub_15C1F90` | `sub_15C1ED0` | Identical behavior: both emit `dword_2A5EEF0` warning for `"sm_20"` / `"--perf-stats"` |
+| 88 | Resource calc | `sub_15C2370` | `sub_15C2290` | Identical algorithm: same register file size / occupancy calculation |
+| 98 | Cleanup | (via `qword_2A64498`) | (via `qword_2A64498`) | Not individually registered per-arch for sm_89/90 |
+
+Despite having six distinct function addresses, only **one slot (A8)** has materially different behavior between sm_89 and sm_90. The remaining five are duplicated code (same algorithm, different object addresses) -- a consequence of the template-based dispatch architecture where each SM target gets its own instantiation even when the logic is identical.
+
+### Backend Initialization: sub_15C3740 (Ada) vs sub_15C3520 (Hopper)
+
+The A8 slot handler initializes the per-function codegen context. Both functions call `sub_189F230(a3)` to allocate the context, then diverge in two places:
+
+**1. Resource descriptor field at offset +348.**
+
+```c
+// sm_89 (Ada):
+*(_DWORD *)(v6 + 348) = 28677;     // 0x7005
+
+// sm_90 (Hopper):
+*(_DWORD *)(v6 + 348) = 0x8000;    // 32768
+```
+
+This field encodes a hardware resource limit passed to the instruction scheduling and register allocation subsystems. The value `0x7005` for Ada encodes a composite: the low 12 bits (0x005 = 5) likely represent a thread-group granularity parameter, while the upper bits (0x7000) encode a shared memory bank configuration. Hopper's clean power-of-two value `0x8000` (32768) reflects its larger shared memory capacity (228 KB vs Ada's 100 KB per SM) and simplified bank geometry.
+
+**2. Hopper-only conditional at a2+355.**
+
+```c
+// sm_90 only (not present in sm_89):
+if ( *(_BYTE *)(a2 + 355) )
+    v7[107] = 0;
+```
+
+Offset 355 of the module options structure corresponds to the `--blocks-are-clusters` flag. When this flag is set on Hopper, the backend zeroes context field 107 (offset 428), which disables a per-block optimization that assumes independent thread blocks. This reflects Hopper's Thread Block Cluster feature, where multiple blocks form cooperative groups that share distributed shared memory. Ada does not support clusters, so this conditional is absent from its backend init.
+
+### Feature 33: Tensor Core Extensions
+
+The `sub_1100E50` feature flag configurator gates feature 33 on the exact condition:
+
+```c
+if ( (unsigned int)(v4 - 29) > 1 || *(_BYTE *)(a2 + 618) )
+    sub_16E3AA0(v8, 33, 0);     // disabled
+else
+    sub_16E3AA0(v8, 33, 1);     // enabled
+```
+
+This enables feature 33 only when the internal SM version is 29 or 30 (sm_89 or sm_90) **and** flag 618 (`--device-debug`) is not set. Feature 33 is persisted as feature name index 28 via `sub_12B5EF0(table, 28)` and recorded as the key-value pair `"feature_28" = "true"` in the codegen metadata.
+
+Both Ada and Hopper share this feature when debug mode is off. The debug-mode suppression indicates feature 33 controls an optimization (likely tensor core instruction scheduling or fusion) that produces SASS sequences incompatible with DWARF-based single-stepping.
+
+### Internal SM Version Mapping
+
+The `sub_15C3DD0` lookup function resolves target strings to internal version numbers via the `qword_2A644A0` hash table. The internal versions, inferred from the `sub_1100E50` threshold checks and `dword_1EED2E0` indexing (range check `version - 7 <= 0x1B`), follow this scheme:
+
+| Internal Version | Real SM | Architecture | Notes |
+|---|---|---|---|
+| 7 | sm_35 | Kepler | Minimum supported (inferred from range base) |
+| 8 | sm_37 | Kepler (GK210) | |
+| 9 | sm_50 | Maxwell | Feature: special load-cache behavior |
+| 10 | sm_52/53 | Maxwell | Feature: special load-cache behavior |
+| 11 | sm_60 | Pascal | Feature: v16, v17 enabled (>= 11) |
+| 12 | sm_61/62 | Pascal | |
+| 13 | sm_70/72 | Volta | |
+| 14 | sm_75 | Turing | Feature: v14 enabled (>= 14) |
+| ... | ... | ... | |
+| 29 | sm_89 | **Ada** | Feature 33 enabled |
+| 30 | sm_90 | **Hopper** | Feature 33 enabled |
+| ... | ... | ... | |
+
+The `dword_1EED2E0` array at index `(version - 7)` maps internal versions to architecture family codes used by the register allocator and instruction scheduler. SM89 and SM90 share the same family code, confirming they use identical scheduling and register allocation logic.
+
+### ISA Version Gating
+
+The instruction validation infrastructure (`sub_145EFB0`) checks ISA version compatibility when encountering architecture-specific instructions:
+
+```c
+// For sm_89-only instructions (e.g., Ada-specific shader instructions):
+if ( sub_12B3090(*(_DWORD *)(a1 + 960)) ||
+     *(_QWORD *)(a1 + 152) && sub_12A8360(*(_DWORD *)(a1 + 168), 89) )
+{
+    sprintf(v56, "%s on sm_89", s);
+    // Check ISA version 8.1 requirement
+    sub_1441FB0(a1, 8, 1, v125, a3);
+}
+```
+
+Instructions gated to sm_90 or later use `sub_143E480(a1, 0x5A)` (where `0x5A` = 90) to test `target_SM <= 90`. When an instruction requires Hopper and the target is Ada, the validator emits an error referencing `"sm_90"` as the minimum required architecture.
+
+The PTX ISA version requirements are:
+- PTX ISA 8.1 for sm_89-specific instructions (Ada tessellation/graphics pipeline instructions)
+- PTX ISA 7.8 for pre-Ada instructions
+- PTX ISA 8.0+ for sm_90-specific instructions (Hopper cluster/DMA features)
+
+### Compilation Driver SM Version Checks
+
+The main compilation driver `sub_1112F30` contains three SM-version-dependent code paths that distinguish behavior above and below the sm_90 boundary:
+
+| Line | Condition | Effect |
+|---|---|---|
+| 606 | `*(a1+376) <= 16` | Gates a pre-Blackwell codegen path (affects both Ada and Hopper identically) |
+| 991 | `*(a1+376) > 26` | If internal version > 26 (sm_86+), emits `"sm_90"` in warp-synchronous behavior warning |
+| 1150 | `*(a1+376) <= 26` | Gates tensor-memory-access-check; for sm_89 and sm_90 (both > 26), the check is inverted |
+| 1303 | `*(a1+376) > 26` | Second tensor-memory-access gate for multi-function compilation mode |
+
+None of these conditions distinguish sm_89 from sm_90 specifically -- they both fall on the same side of every threshold (both have internal version > 26). The only per-architecture differentiation occurs through the feature flag configurator and the backend init constants documented above.
+
+### Summary of Differences
+
+| Aspect | SM89 Ada | SM90 Hopper |
+|---|---|---|
+| ISA class string | `"Ada"` | `"Hopper"` |
+| Profile byte[3] | **1** (graphics-capable) | 0 |
+| Profile byte[4] | 0 | 0 (1 for sm_90a) |
+| Internal version | 29 | 30 |
+| Backend init +348 | `0x7005` (28677) | `0x8000` (32768) |
+| Cluster support | No (no byte+355 check) | Yes (`--blocks-are-clusters` gate) |
+| Feature 33 | Enabled (unless debug) | Enabled (unless debug) |
+| Shared memory limit | 100 KB/SM | 228 KB/SM |
+| Thread Block Clusters | Not supported | Supported |
+| Fixed-function graphics | Supported (tessellation, raster) | Not supported (datacenter only) |
+| `-D__CUDA_ARCH__` | `890` | `900` |
+| PTX ISA for new insns | 8.1 | 8.0+ |
+| Dispatch table code | All 6 slots unique addresses | All 6 slots unique addresses |
+| Dispatch table behavior | 5 of 6 functionally identical to sm_90 | 5 of 6 functionally identical to sm_89 |
 
 ## Instruction Encoder Templates (0x100C000--0x10FFFFF)
 
