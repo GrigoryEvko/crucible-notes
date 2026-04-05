@@ -1,5 +1,7 @@
 # SASS Instruction Encoding
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 The SASS instruction encoder is the single largest subsystem in ptxas by function count. It translates the internal Ori IR instruction representation into packed binary SASS machine code for a specific SM target. The encoder comprises approximately 4,000 template-generated handler functions dispatched through function-pointer tables indexed by opcode, plus six massive switch-dispatch megafunctions that route field-level queries by instruction category. The core encoding primitive is a single 216-byte bitfield-insert function (`sub_7B9B80`) called from 18,347 sites throughout the binary. NVIDIA internally names this pipeline phase "Ori Phase Encoding" within the Mercury assembler backend.
 
 | | |
@@ -879,6 +881,174 @@ The variant field (bits[17:24], 8 bits) has a distribution that peaks at variant
 | 0x07 | 10 | 0x0F--0x2F | decreasing |
 
 Maximum observed variant value is 0x2F (47), giving up to 48 sub-operations per major opcode.
+
+## SASS Emission Backend
+
+The final stage of the encoding pipeline operates at the instruction-word level: 11 per-instruction-form bitfield packers at addresses 0x1B79940--0x1B9C220 take a pre-decoded instruction descriptor and pack all fields into a 128-bit SASS instruction word. These functions sit at Level 2 of a 4-level emission hierarchy:
+
+```
+Level 0: SM-target dispatch    (0xC4DF70, 0xC53330, 0xC54090, 0xC59610, 0xC5ABE0, 0xC5B5C0)
+Level 1: Emission orchestrators (Zone C: 0x1BA0000-0x1BE5000, ~150 functions)
+Level 2: Per-form bit packers   (Zone B: 0x1B79940-0x1B9C220, 11 functions, THIS SECTION)
+Level 3: Register class encoders (Zone A: 0x1B4C000-0x1B76000, ~40 functions)
+```
+
+Each function has exactly 1 caller and 0 callees (pure bitfield packing, no external calls). Sizes range from 6836 to 6980 bytes of compiled code. All 11 share an identical combinator body (verified: same 453 `LABEL_xxx` targets, same 75 unique OR-mask constants, same max comparison value of 27). They differ only in two things: the opcode base constant, and the prologue field-packing sequence.
+
+### Input / Output Interface
+
+```c
+int *__fastcall emit_instruction_form_X(int *a1) {
+    // a1 = pre-decoded instruction descriptor (array of 32-bit ints)
+    // Returns: pointer to output buffer (also accessible at *((_QWORD*)a1 + 14))
+    int *result = *((_QWORD *)a1 + 14);  // output = 128-bit instruction word
+    // result[0] = instruction bits [31:0]   (opcode base, guard pred, sched group)
+    // result[1] = instruction bits [63:32]  (register operand fields, modifiers)
+    // result[2] = instruction bits [95:64]  (immediate/offset, auxiliary fields)
+    // result[3] = instruction bits [127:96] (predicate control, combinator encoding)
+}
+```
+
+The input struct `a1` is a flat array of pre-extracted instruction fields. Fields `a1[0]` through `a1[3]` carry common header values; `a1[4]` through `a1[15]` carry instruction-specific operand data (which indices are used depends on the instruction form).
+
+### Phase 1: Prologue -- Opcode Base and Field Packing
+
+Every function begins with the same template, parameterized by different constants:
+
+```c
+// 1. Load output buffer pointer
+result = *((_QWORD *)a1 + 14);
+
+// 2. OR opcode base into result[0] -- unique 12-bit constant per function
+*result |= OPCODE_BASE;  // e.g., 0xA1E, 0x81B, 0x803
+
+// 3. Pack guard predicate: bits [14:12] of result[0]
+*result |= ((unsigned short)a1[1] << 12) & 0x7000;
+
+// 4. Pack scheduling group: bits [16:15] of result[0]
+*result |= (unsigned short)((unsigned short)a1[2] << 15);
+
+// 5. Pack predicate encoding: bits [25:20] of result[3]
+result[3] |= (a1[3] << 20) & 0x3F00000;
+
+// 6. Pack instruction-specific operand fields (VARIES PER FUNCTION)
+//    Each function packs a different set of a1[6..15] fields into
+//    result[0], result[1], result[2] using different shifts and masks.
+
+// 7. Set base combinator mask: bits [17:14] of result[3] = 0x3F
+result[3] |= 0xFC000;
+```
+
+The prologue is the sole source of variation between functions. The field-packing differs in which `a1[]` indices are used, which shift amounts are applied, and which `result[]` DWORDs are targeted.
+
+### The 11 Functions and Their Opcode Bases
+
+| Function | Size | Opcode Base | Family | Caller Chain |
+|----------|-----:|-------------|--------|-------------|
+| `sub_1B79940` | 6,900 B | `0xA1B` | 0xAxx | `sub_1BA5340` via `sub_C4DF70` |
+| `sub_1B7B440` | 6,868 B | `0x81B` | 0x8xx | `sub_1BA5340` via `sub_C4DF70` |
+| `sub_1B87740` | 6,852 B | `0x238` | 0x2xx | `sub_1BA8D80` via `sub_C53330` |
+| `sub_1B89350` | 6,836 B | `0x213` | 0x2xx | `sub_1BA8E80` via `sub_C54090` |
+| `sub_1B8FFE0` | 6,852 B | `0x202` | 0x2xx | `sub_1BA8D80` via `sub_C53330` |
+| `sub_1B92590` | 6,868 B | `0x803` | 0x8xx | `sub_1BACB10` (direct) |
+| `sub_1B94390` | 6,964 B | `0x21D` | 0x2xx | `sub_1BACDC0` via `sub_C59610` |
+| `sub_1B95ED0` | 6,980 B | `0xA1E` | 0xAxx | `sub_1BACDC0` via `sub_C59610` |
+| `sub_1B985B0` | 6,852 B | `0x804` | 0x8xx | `sub_1BAD6D0` (direct) |
+| `sub_1B9A430` | 6,884 B | `0x807` | 0x8xx | `sub_1BB1110` via `sub_C5ABE0` |
+| `sub_1B9C220` | 6,884 B | `0x81A` | 0x8xx | `sub_1BAD920` via `sub_C5B5C0` |
+
+The opcode bases cluster into three families by high nibble:
+- **0x2xx** (4 functions): bases 0x202, 0x213, 0x21D, 0x238
+- **0x8xx** (5 functions): bases 0x803, 0x804, 0x807, 0x81A, 0x81B
+- **0xAxx** (2 functions): bases 0xA1B, 0xA1E
+
+### Phase 2: Combinator -- 3-Axis Predicate Encoding into result[3]
+
+After the prologue, all 11 functions execute an identical ~1900-line decision tree. This combinator reads three integer values from the input struct and produces a single 32-bit mask that is ORed into `result[3]`.
+
+The three axes are:
+- **axis0** = `a1[0]`: instruction class selector, values 0..5 (6 values)
+- **axis1** = `a1[4]`: slot/form index, values 1..27 (26 populated, gap at 16)
+- **axis2** = `a1[N]`: sub-mode flag, values 0 or 1 (N varies per function -- a1[8], a1[9], a1[10], a1[11], or a1[15])
+
+The combinator exits immediately if all three axes are zero (`!(axis0 | axis1 | axis2)`). Otherwise it walks a nested decision tree that tests axis0 values (0 through 5), axis1 values (1 through 27), and axis2 values (0 or 1), and ORs the appropriate mask into `result[3]`:
+
+```c
+// Reconstructed combinator logic (pseudocode):
+if (axis0 == 0 && axis1 == 0 && axis2 == 0) return;
+
+// For axis0 values 1-5 combined with axis1 values 1-15:
+// result[3] |= prefix_for_axis0 | 0xFC000 | (axis1 << 9)
+//
+// For axis1 values 17-27 combined with axis2:
+// result[3] |= base_mask_for_axis1  (if axis2 == 0)
+// result[3] |= extended_mask_for_axis1  (if axis2 == 1)
+```
+
+### Combinator Mask Encoding
+
+The 75 unique masks in the FC/FD series decompose as:
+
+```
+result[3] bit layout for combinator-generated fields:
+  bits [17:14] = 0x3F  (always set by prologue base 0xFC000)
+  bits [13:9]  = slot_index  (5-bit, derived from axis1, values 1-27)
+  bits [28:26] = axis0 prefix encoding (3-bit, for axis0 values 1-5)
+```
+
+The 5 prefix values correspond to axis0 encodings 1-5:
+
+| axis0 Value | Prefix OR'd | Prefix Bits [28:26] |
+|-------------|-------------|---------------------|
+| 0 | `0x00000` | 000 (no prefix) |
+| 1 | `0x40xxxxx` | 001 |
+| 2 | `0x80xxxxx` | 010 |
+| 3 | `0xC0xxxxx` | 011 |
+| 4 | `0x100xxxxx` | 100 |
+| 5 | `0x140xxxxx` | 101 |
+
+Combined with 15 slot values (axis1 = 1..15), this produces 5 x 15 = 75 masks in the `0xFC200`--`0x140FCE00` range.
+
+For axis1 values 17--27, the masks shift into the `0xFE200`--`0xFF600` range. These slots use only the "no prefix" and "prefix 0x100" variants (axis0 values 0 and 4), and the axis2 flag selects between the two. This gives an additional 12 unique masks for the high-slot range (11 base + 11 extended, minus shared ones, equals 12 unique).
+
+### Why the Combinator Exists
+
+The combinator encodes an architecture-independent mapping from a 3-dimensional instruction property coordinate to a hardware-specific bitfield pattern in the predicate/control section of the 128-bit instruction word. This section (bits [127:96]) controls:
+- Guard predicate assignment (bits [25:20] from prologue)
+- Scheduling mode (bits [17:14] base + combinator overlay)
+- Instruction form variant (bits [13:9] from combinator)
+- Predicate class / condition code routing (bits [28:26] from combinator)
+
+The identical combinator across all 11 functions confirms that this is not an opcode-specific encoding but rather a cross-cutting encoding for predicate/scheduling state that applies uniformly to all instruction forms.
+
+### Equivalent Lookup Table
+
+The entire 2000-line decision tree can be replaced by a flat table of 6 x 28 x 3 = 504 entries:
+
+```c
+// Equivalent reconstruction:
+static const uint32_t combinator_table[6][28][3] = { ... };
+// Access: result[3] |= combinator_table[axis0][axis1][axis2];
+// Table size: 504 * 4 = 2,016 bytes (vs ~6,800 bytes of code per function)
+```
+
+The compiler chose a decision tree over a table lookup, likely because the C++ source used nested switch/case statements (or if/else chains with early return), and the optimizer did not convert this to a table at -O2.
+
+### Zone B Function Map (Emission Cluster)
+
+| Address | Size | Opcode Base | Caller | Confidence |
+|---------|-----:|-------------|--------|-----------|
+| `sub_1B79940` | 6,900 B | `0xA1B` | `sub_1BA5340` | HIGH |
+| `sub_1B7B440` | 6,868 B | `0x81B` | `sub_1BA5340` | HIGH |
+| `sub_1B87740` | 6,852 B | `0x238` | `sub_1BA8D80` | HIGH |
+| `sub_1B89350` | 6,836 B | `0x213` | `sub_1BA8E80` | HIGH |
+| `sub_1B8FFE0` | 6,852 B | `0x202` | `sub_1BA8D80` | HIGH |
+| `sub_1B92590` | 6,868 B | `0x803` | `sub_1BACB10` | HIGH |
+| `sub_1B94390` | 6,964 B | `0x21D` | `sub_1BACDC0` | HIGH |
+| `sub_1B95ED0` | 6,980 B | `0xA1E` | `sub_1BACDC0` | HIGH |
+| `sub_1B985B0` | 6,852 B | `0x804` | `sub_1BAD6D0` | HIGH |
+| `sub_1B9A430` | 6,884 B | `0x807` | `sub_1BB1110` | HIGH |
+| `sub_1B9C220` | 6,884 B | `0x81A` | `sub_1BAD920` | HIGH |
 
 ## Function Map
 

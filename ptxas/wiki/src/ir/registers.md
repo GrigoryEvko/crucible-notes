@@ -1,5 +1,7 @@
 # Register Model (R / UR / P / UP)
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 ptxas models four hardware register files plus two auxiliary barrier register files. Every Ori instruction references registers from one or more of these files. During the optimization phases (0--158), registers carry virtual numbers; the fat-point register allocator (phase 159+) maps them to physical hardware slots. This page documents the register files, the virtual/physical register descriptor, the 7 allocator register classes, wide register conventions, special registers, the operand encoding format, pressure tracking, and SM-specific limits.
 
 ## Four Register Files
@@ -456,6 +458,182 @@ The register class name table at `off_21D2400` is a pointer array indexed by the
 | `sub_B28E20` | -- | `isPredOperand` | Predicate: is this a predicate operand? |
 | `sub_B28E90` | -- | `isUReg` | Predicate: is this a uniform register? |
 
+## Opcode Register Class Table
+
+Every Ori opcode carries an implicit register class contract: which register files its operands may reference, what data widths are valid, and which addressing modes apply. The function `sub_6575D0` (49 KB, `buildEncodingDescriptor`) is the central dispatch that translates each instruction's opcode into a packed encoding descriptor consumed by the SASS encoder.
+
+### Function Signature
+
+```c
+// sub_6575D0 -- buildEncodingDescriptor
+// a1 = compiler context
+// a2 = Ori instruction node pointer
+// a3 = output: 4-DWORD packed encoding descriptor
+char buildEncodingDescriptor(Context *a1, Instruction *a2, uint32_t *a3);
+```
+
+### Architecture
+
+The function is a two-level dispatch:
+
+1. **Outer switch** on the Ori opcode at `*(instr->info + 8)` -- 168 unique case values spanning opcodes 3 (`IADD3`) through 0xF5 (`PIXLD`).
+
+2. **Inner encoding** per opcode (or group): assigns an encoding category ID to `a3[0]`, then calls the bitfield packers to fill `a3[1..2]` with register class attributes.
+
+Two helper functions pack fields into the descriptor:
+
+| Function | Role | Call count | Field ID range |
+|----------|------|------------|----------------|
+| `sub_917A60` (`packRegClassField`) | Bitfield encoder -- field IDs 91--340 map to specific bit positions in `a3[1]` and `a3[2]` | 112 | 91--340 |
+| `sub_A2FF00` (`packOperandField`) | Alternate encoder for operand-level slots (data type, memory space) | 28 | 3--71 |
+
+### Encoding Category Assignment
+
+The encoding category at `a3[0]` selects which SASS instruction format template the downstream per-SM encoder uses. Key mappings (opcode index to encoding category):
+
+| Opcode(s) | SASS mnemonic | Category | Register class summary |
+|-----------|--------------|----------|----------------------|
+| 3 | `IADD3` | 489 | R dest, R/UR sources, P carry |
+| 4 | `BMSK` | 106 | R only |
+| 5--6 | `SGXT` / `LOP3` | 490--491 | R dest, R/UR sources |
+| 7 | `ISETP` | 59 | P dest, R/UR sources + memory ordering fields |
+| 8 | `IABS` | 60 | R dest, R source + memory ordering fields |
+| 0x0E--0x10 | `FSET`/`FSEL`/`FSETP` | 510 | R/P dest, FP operation variant |
+| 0x11/0x12/0x18 | `FSETP`/`MOV`/`PRMT` | 517 | FP comparison, combine, data width (IDs 288--299) |
+| 0x15--0x16 | `P2R`/`R2P` | 524--525 | P-to-R or R-to-P conversion |
+| 0x19 | `VOTE` | 526 | R dest, optional memory class |
+| 0x1A | `CS2R` variant | 527 | UR source width (494--496), data type from `a2+92` |
+| 0x1B | `CS2R_32` | 497 | Source width (494/495/496), predicate flag (ID 270) |
+| 0x1E | `IPA` | 494 | Interpolation mode (440--442), flat/smooth (443/444) |
+| 0x1F | `MUFU` | 501 | Subfunction (445--447), precision (450--459) |
+| 0x20 | `SHF` | 502 | Direction (461--463), source class (464--466), clamp, data type |
+| 0x21 | `SHFL` | 503 | Mode (470/471), operand classes (472--482) |
+| 0x22--0x23 | `I2I`/`I2IP` | 55/56 | Integer conversion type (23 entries in `dword_2026B20`) |
+| 0x28--0x2A | `IPA`/`MUFU` ext | 512 | Extended encoding variants (428--430) |
+| 0x2B--0x2C | `F2F`/`F2F_X` | 513 | Conversion direction (432/433), saturation (434/435) |
+| 0x2D | `FRND` | 516 | Rounding variant (526), mode (528/529) |
+| 0x51--0x53 | `AL2P`, `AL2P_IDX` | 437--438 | Bindless flag (ID 148), predicate (ID 147) |
+| 0x54--0x56 | `BMOV_B`/`BMOV_R`/`BMOV` | 423--424 | B-register class |
+| 0x64--0x67 | `SETLMEMBASE`/`ATOM` | 156/463 | Atom-vs-red (ID 178), data width (ID 181) |
+| 0x68 | `BRX` | 468 | Target (ID 190), call convention (IDs 191--192) |
+| 0x6A/0x6C/0x6D | `JMP`/`JMX`/`CALL` | 469 | Control flow target class (ID 176) |
+| 0x77--0x79 | `BSSY`/`BREAK`/`BSYNC` | 528--530 | Sync mode (ID 324), variant (ID 325) |
+| 0x82 | `NANOTRAP` | 487 | Trap operation class (ID 257), has-source (ID 256) |
+| 0x9E--0x9F | Hopper+ instrs | 535--536 | Hopper class A/B (IDs 337--338) |
+| 0xAF--0xB2 | `LD`/`ST` variants | 431--446 | Full modifier set: uniform (91), pair (92--102) |
+| 0xB8--0xBE | `LDG`/`STG`/`LDL`/`STL` | 449--456 | Cache policy (131), float mode (134), width (131) |
+| 0xC1 | Conditional | 10/13 | Branch type (ID 167), divergent (ID 168) |
+| 0xC8 | `PRMT` | 24 | Permute selector (ID 65/66) |
+| 0xC9--0xD3 | Texture/surface | 61/455 | Texture data type (IDs 17/18), surface (IDs 19--22) |
+| 0xD6--0xD7 | `DMMA`/`CVTA` | 515 | Direction (304), predicate (305), data type (306) |
+| 0xDA--0xDB | `SUATOM` | 521/533 | Data width (326--331), sync mode (328) |
+| 0xDC | `SURED` | 534 | Data width (331), type (335--336), sync (333) |
+| 0xE0 | `WGMMA` | 500 | Data type (198), enable (199), barrier (201) |
+| 0xF5 | `PIXLD` | 532 | Mode from `dword_2026AA0` (ID 323) |
+
+### Extended Opcode Path (Memory/Atomic Sub-dispatch)
+
+When the opcode falls in the 0xF6--0x10C range (memory/atomic extended instructions), a separate sub-dispatch applies. The function `sub_44AC80` gates entry; `sub_44AC60` and `sub_44AC70` select among three encoding categories:
+
+| Category | Gate function | Meaning |
+|----------|--------------|---------|
+| 441 | default | Base memory operation |
+| 442 | `sub_44AC60` true | Predicated memory variant |
+| 443 | `sub_44AC70` true | Extended memory variant |
+
+Within each category, the sub-opcode selects register class fields:
+
+| Sub-opcode | Register class (field 115) | Data width (field 113) |
+|------------|---------------------------|----------------------|
+| 0xF6/0xFF/0x106 | 69 (class A) | 60 (standard) |
+| 0xF7/0x100/0x107 | 71 (class B) | 60 (standard) |
+| 0xF8/0x102/0x109 | 0 (default) | 63 (wide) |
+| 0xF9/0x103/0x10A | 0 (default) | 61 (narrow) |
+| 0xFA/0x104/0x10B | 0 (default) | 62 (medium) |
+| 0xFB | 0 (default) | 65 (type A) |
+| 0xFC | 0 (default) | 66 (type B) |
+| 0xFD | 0 (default) | 68 (type C) |
+| 0xFE/0x105/0x10C | 0 (from table) | 64 (from `dword_2026C30`) |
+| 0x101/0x108 | 72 (class C) | 60 (standard) |
+
+### Packed Descriptor Layout
+
+The output descriptor `a3` is a 4-DWORD (16-byte) structure:
+
+| DWORD | Content |
+|-------|---------|
+| `a3[0]` | Encoding category ID (0--542) -- selects SASS format template |
+| `a3[1]` | Packed bitfield: memory space (bits 0--3), address type (bits 4--7) |
+| `a3[2]` | Packed bitfield: register class attributes (data width, type, modifiers) |
+| `a3[3]` | Auxiliary flags (bit 1 = texture scope, bit 29 = special) |
+| `a3[4]` | Operand count override (set to 12 for KILL/extended mem ops) |
+
+### Register Class Field Groups
+
+The 112 calls to `packRegClassField` (`sub_917A60`) use field IDs organized into functional groups. Each field ID maps to a specific bit range in the output descriptor via a mask-and-OR encoding:
+
+```c
+// Example: field 113 (data width) -- bits 7-9 of a3[2]
+case 113:
+    val = dword_21DEB20[a3_value - 61];  // 8-entry lookup
+    a3[2] = (val << 7) | (a3[2] & 0xFFFFF87F);
+    break;
+
+// Example: field 91 (uniform flag) -- bit 16 of a3[2]
+case 91:
+    a3[2] = ((value == 1) << 16) | (a3[2] & 0xFFFEFFFF);
+    break;
+```
+
+| Field group | IDs | Bits written | Purpose |
+|-------------|-----|-------------|---------|
+| Core class | 91--102 | `a3[2]` bits 5--22 | Uniform, pair, predicate, data type, saturate, negate, abs, complement |
+| Data width | 113--117 | `a3[2]` bits 0--9 | Width code, uniform-mem, source regclass, type specifier, write-back |
+| Load/store | 118--134 | `a3[1]` + `a3[2]` | Memory space, address type, cache policy, atomic op, scope, float mode |
+| Texture/surface | 135--165 | `a3[2]` bits 1--31 | Texture type, dimension, LOD mode, ordering, acquire, scope hint |
+| Control flow | 167--202 | `a3[2]` bits 1--6 | Branch type, divergent, WGMMA data type/enable/barrier |
+| FP/conversion | 230--264 | `a3[2]` various | FP operation, comparison, combine, interpolation, MUFU, SHF, SHFL |
+| Extended | 269--299 | `a3[2]` various | CS2R, FSETP, rounding, data type wide, destination regclass |
+| Hopper/Blackwell | 304--340 | `a3[2]` various | DMMA, WGMMA, TMA hints, surface sync, Hopper-specific classes |
+
+### Sub-handler Functions
+
+Complex opcode families delegate register class encoding to dedicated sub-functions:
+
+| Function | Opcodes handled | Purpose |
+|----------|----------------|---------|
+| `sub_650390` | TEX, TLD, texture family | Texture register class (sampler, coordinate, LOD) |
+| `sub_650220` | LDG, STG, LD, ST, ATOM, RED | Memory instruction register class |
+| `sub_651330` | FMUL (opcode 0x0D) | FP multiply register class |
+| `sub_650920` | LEA, special (0x09, 0x72, 0x74, 0x7A, 0x80, 0x81) | LEA / special instruction |
+| `sub_650A90` | I2I, F2F, conversions (0x24--0x27, 0xE2--0xEB) | Type conversion register class |
+| `sub_652190` | Branch/call (0x13, 0x14, 0x17) | Branch/call register class |
+| `sub_653B90` | Misc (0x0C) | Miscellaneous instruction |
+| `sub_650C80` | Memory barrier modifiers | Applied when `(a2+56) & 0x4F0` is nonzero |
+| `sub_651A90` | Texture modifiers (0x83) | Applied before texture encoding |
+| `sub_62D5D0` | Memory space computation | Computes memory space tag from operand types |
+
+### Lookup Tables
+
+The function references 28 static lookup tables that map instruction attribute values to register class encoding values:
+
+| Table | Size | Used by field(s) | Content |
+|-------|------|-------------------|---------|
+| `dword_21DEB80` | 5 | 94 | Data type encoding |
+| `dword_21DEB50` | 3 | 107, 115, 145, 157, 165 | 3-value encoding (reused across 5 fields) |
+| `dword_21DEB20` | 8 | 113 | Data width code |
+| `dword_21DEB00` | 7 | 116, 126, 131, 170 | Type encoding (reused across 4 fields) |
+| `dword_21DEAE0` | 5 | 119/123, 136, 143, 159 | Variant table (reused across 4 fields) |
+| `dword_21DEAA0` | 13 | 120 | Memory space code |
+| `dword_21DEA60` | 10 | 121, 135/151 | Address/texture type |
+| `dword_21DEA20` | 15 | 124/125 | Reduction type |
+| `dword_21DE9F0` | 6 | 129/130, 150 | Scope code |
+| `dword_2026C30` | 6 | 116 (ext path) | Sub-opcode to data type |
+| `dword_2026C80` | 20 | 165 (surface) | Surface operation codes |
+| `dword_2026E20` | 17 | 286 | Data type (wide) |
+| `dword_2026AC0` | 16 | 198 | WGMMA data type |
+| `dword_2026B20` | 23 | I2I conversion | Integer conversion type |
+
 ## Related Pages
 
 - [Ori IR Overview](./overview.md) -- register files in the context of the full IR
@@ -465,3 +643,4 @@ The register class name table at `off_21D2400` is a pointer array indexed by the
 - [GPU ABI](../regalloc/abi.md) -- reserved registers, parameter passing, return address
 - [Spilling](../regalloc/spilling.md) -- spill/reload for each register class
 - [Scheduler](../scheduling/overview.md) -- 9 per-block pressure counters
+- [SASS Encoding](../codegen/encoding.md) -- how the descriptor drives instruction word layout
