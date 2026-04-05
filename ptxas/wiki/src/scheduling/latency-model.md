@@ -234,18 +234,133 @@ Each SM-specific function populates entries in the 96-byte-per-record output arr
 
 ### 96-Byte Schedule Record Format
 
-Each record in the HW table occupies 96 bytes (6 x 16-byte XMM slots):
+Each record in the HW table occupies 96 bytes (6 x 16-byte XMM slots). Records are stored in a growable array at `*(context+56)` with count at `*(context+64)` and capacity at `*(context+68)`. The array grows by 1.5x when full. Records are copied using three `_mm_loadu_si128` operations (offsets 0, 16, 32) plus manual field-by-field copy for offsets 48--95; the string at +48 is reference-cloned via `sub_714160` when the string-backed flag is set.
 
 ```
-Offset  Size  Content
- 0..15  16B   Header: record type (WORD at +0), flags, size fields
-16..31  16B   Latency/throughput data
-32..39  8B    Pointer to parent record or scheduling class
-40..47  8B    Size/count field (e.g., 128 for barrier entry)
-48      1B    Active flag
-88      1B    String-backed flag (1 = has allocated string name)
-80..87  8B    Pointer to name string (if string-backed)
+Offset  Size   Field               Content
+------  ----   -----               -------
+ 0..1   WORD   type_code           Record type (see type table below)
+ 2..3   WORD   (padding)           Zero
+ 4..7   DWORD  aux_size            Type-dependent:
+                                     root (type 1): table_size
+                                     barrier ('M'): 128 (fixed)
+                                     wait/scoreboard ('5'/'6'): 36
+                                     sched entry (23): 0
+ 8..15  8B     (reserved)          Zero
+16..19  DWORD  cost_product        Scheduling cost (latency x throughput product)
+                                     - Standard entry (23): a2 * a3
+                                     - Category header ('!'): entry_count from config+528
+                                     - Wait/scoreboard: 280 (fixed sentinel)
+                                     - SM-specific (','): 4 * class_count
+20..21  WORD   base_latency        Base latency in cycles (standard entries only)
+22..23  WORD   dual_issue_flags    Dual-issue compatibility mask (standard entries only)
+24..31  8B     (reserved)          Zero
+32..39  QWORD  data_ptr            Pointer to type-specific data block:
+                                     - Root: parent profile object
+                                     - Wait/scoreboard: dependency tracking table
+                                     - Barrier: barrier data array
+                                     - Category headers: 0
+40..47  QWORD  data_size           Byte count of data block at data_ptr:
+                                     - Root: table_size; barrier: 128
+                                     - Wait/scoreboard: 36; headers: 0
+48      BYTE   inline_flag         0 = data_ptr/data_size carry raw data
+                                   1 = this record uses the inline string buffer
+49..63  15B    inline_str_buf      Inline NUL-terminated string (max 15 chars)
+64..71  QWORD  parent_ptr          Back-pointer: SM-specific entries point to table
+                                   root; category headers point to profile object
+72..79  8B     (reserved)          Zero
+80..87  QWORD  string_buf_ptr      Pointer to growable string buffer (32-byte header:
+                                   data_ptr, size, capacity, allocator) for variable-
+                                   length sub-records; self-references +48 when inline
+88      BYTE   string_backed_flag  1 = record owns allocated string data at +80
+                                   0 = no allocated string (uses inline or none)
+89..95  7B     (padding)           Zero
 ```
+
+#### Record Type Codes
+
+Records are polymorphic -- the type code at offset +0 selects the interpretation of fields +16..+31, +32..+47, and the sub-record format stored in the growable buffer at +80.
+
+| Type | ASCII | Creator | Role |
+|---|---|---|---|
+| 1 | -- | `sub_8E5CA0` | Root container (wraps entire HW table) |
+| 23 | -- | `sub_8E6B40` | Standard scheduling entry (latency + throughput + dual-issue) |
+| 33 | `'!'` | `sub_8E5740` | Category header (begins a named section with string list) |
+| 44 | `','` | `sub_8E8480` et al. | SM-specific table entry (per-architecture class data) |
+| 45 | `'-'` | `sub_8E5CA0` | Barrier section header (links 128-byte barrier table) |
+| 49 | `'1'` | `sub_8E5530` | Dimension entries (contains 12-byte sub-records) |
+| 53 | `'5'` | `sub_8E7110` | Scoreboard entry (dependency tracking, data\_size=36) |
+| 54 | `'6'` | `sub_8E6F20` | Wait dependency entry (dependency table, data\_size=36) |
+| 57 | `'9'` | `sub_8E5740` | Category footer (closes the section opened by type 33) |
+| 59 | `';'` | `sub_8E5310` | Variant section (contains 20-byte sub-records) |
+| 60 | `'<'` | `sub_8E6760` | Group boundary marker (separates scheduling groups) |
+| 69 | `'E'` | `sub_8E6950` | Barrier entry (a2 = stall count in cost\_product field) |
+| 77 | `'M'` | `sub_8E6D40` | Barrier/sync data entry (data\_ptr = barrier array, 128B) |
+| 87 | `'W'` | `sub_8E4F20` | Supplementary weight entry (variable-length string data) |
+
+#### Sub-Record Formats in the Growable Buffer (+80)
+
+Records with `string_backed_flag=1` carry variable-length sub-records in the growable buffer. The buffer header at `*(record+80)` is a 32-byte object: `{data_ptr, size (DWORD), capacity (DWORD), allocator_ptr}`.
+
+**Type 59 (';') -- Variant sub-records (20 bytes each):**
+
+Created by `sub_8E5310` iterating the variant list at `config+536`:
+
+```
+Sub-record layout (20 bytes):
+  +0   DWORD   source_data       Variant source identifier
+  +4   WORD    flags             Variant flags
+  +6   WORD    zero              Reserved
+  +8   DWORD   throughput_value  Throughput for this variant
+  +12  DWORD   aux_value         Auxiliary parameter
+  +16  DWORD   zero              Reserved
+```
+
+The main record additionally stores: `+16 = start_index` (from `config+544`), `+20 = record_index`, `+24 = back_ref` to previous category.
+
+**Type 49 ('1') -- Dimension sub-records (12 bytes each):**
+
+Created by `sub_8E5530` traversing the BST at `config+592`:
+
+```
+Sub-record layout (12 bytes):
+  +0   WORD    node_flags        BST node flags (from node+38)
+  +2   WORD    zero              Reserved
+  +4   DWORD   node_value        BST node value (from node+32)
+  +8   DWORD   node_child        BST node child pointer (low 32 bits of node+24)
+```
+
+**Type 44 (',') -- SM-specific class descriptor (16 bytes + packed bitmasks):**
+
+Created by `sub_8E8480` and other SM-specific builders, followed by a call to `sub_8E3AD0` which appends packed bitmask DWORDs:
+
+```
+Initial 16-byte descriptor:
+  +0   DWORD   class_flags = 2   Fixed flag value
+  +4   WORD    zero              Reserved
+  +8   QWORD   mask              Latency mask (0xFFFFFFFF00000000)
+
+Followed by bitmask DWORDs (4 bytes each, one per 8 scheduling classes):
+  Each DWORD encodes 4 bits per entry (4 entries x 4 properties):
+    bit 4*i+0:  entry[i].field_0 != 1
+    bit 4*i+1:  entry[i].field_4 != 1
+    bit 4*i+2:  entry[i].field_8 != 1
+    bit 4*i+3:  entry[i].field_12 != 1
+  Source entries are 20 bytes apart in the input array.
+```
+
+#### Assembly Sequence
+
+`sub_8E5CA0` orchestrates the complete table by emitting records in this order:
+
+1. **Barrier header** (type `'-'`, conditional on `config+336`): links the 128-byte barrier data table at `config+272`.
+2. **Root container** (type 1): `data_ptr = profile_object`, `data_size = table_size`.
+3. **Category header + footer** (types `'!'` / `'9'`): emitted by `sub_8E5740`, which enumerates named sections from `config+520..528`.
+4. **Variant section** (type `';'`): emitted by `sub_8E5310` if `config+544 != 0`.
+5. **Supplementary weights** (type `'W'`): emitted by `sub_8E4F20` if `config+640 != -1`.
+6. **Dimension entries** (type `'1'`): emitted by `sub_8E5530` if `config+608 > 0`.
+
+After all records are appended, the function computes the total serialized size (with 16-byte alignment padding per data block), allocates the output buffer, and writes a 32-byte header per record into the linear output at `context+104`.
 
 ### Architecture Dispatch Table
 
@@ -686,75 +801,79 @@ Type 19 likely corresponds to BF16 or FP8, which require different pipeline rout
 
 ## Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_693BC0` | 22 lines | MemorySpaceClassify -- return memory space code |
-| `sub_695530` | 606 lines | ComputeLatencies -- per-BB latency computation |
-| `sub_704D30` | 14 KB | GetFunctionalUnit -- SASS opcode to FU mapping |
-| `sub_73A1D0` | ~6 KB | LDSLatencyStats -- shared memory latency stats |
-| `sub_73A7F0` | ~6 KB | LDGLatencyStats -- global memory latency stats |
-| `sub_73ADF0` | 6.5 KB | XU64LatencyStats -- extended unit latency stats |
-| `sub_73B360` | 28.7 KB | MacLoopSchedulingAnalytics -- latency hiding report |
-| `sub_799860` | 2.9 KB | ClassifyInstructionLatency |
-| `sub_89FBA0` | 85 KB | **SetOpcodeLatencies** -- per-opcode scheduling class |
-| `sub_8B5400` | 14 KB | ScheduleForLatency -- latency-optimized scheduling |
-| `sub_8B77C0` | 15 KB | DualIssueScheduler -- dual-issue scheduling engine |
-| `sub_8BDC40` | 7.9 KB | DualIssuePairing -- instruction pair selection |
-| `sub_8C67A0` | 3.7 KB | ComputeResourceCost -- per-instruction FU cost |
-| `sub_8C7290` | 5.1 KB | GetResourceVector -- SSE-optimized copy |
-| `sub_8CCF80` | 2.3 KB | IsLongLatencyOp -- latency > 19 check |
-| `sub_8CF5D0` | 3.5 KB | CheckDualIssueEligibility |
-| `sub_8D3E20` | 2.1 KB | ComputeStallCycles -- required stall count |
-| `sub_8D7760` | 41 KB | StallAndBarrierInsertion -- encode stalls/barriers |
-| `sub_8E3AD0` | -- | CopyProfileEntries -- finalize HW table |
-| `sub_8E4400` | 3.3 KB | **InitHWProfile\_Warp** -- warp dispatch params |
-| `sub_8E4920` | 6.9 KB | BuildScoreboardEntries -- scoreboard BST |
-| `sub_8E5CA0` | 20 KB | **EmitScheduleOutput** -- scheduling control words |
-| `sub_8E6760` | 2.9 KB | EmitGroupBoundary -- group boundary marker |
-| `sub_8E6B40` | 2.9 KB | EmitSchedEntry -- standard scheduling entry |
-| `sub_8E6D40` | 2.9 KB | EmitBarrierEntry -- barrier/sync entry |
-| `sub_8E6F20` | 2.9 KB | EmitWaitEntry -- wait dependency entry |
-| `sub_8E7110` | 2.9 KB | EmitScoreboardEntry -- scoreboard entry |
-| `sub_8E7300` | 3.3 KB | HWTable\_sm70 -- Volta latency table |
-| `sub_8E7540` | 2.9 KB | HWTable\_sm72 -- Xavier latency table |
-| `sub_8E7720` | 3.5 KB | HWTable\_sm75 -- Turing latency table |
-| `sub_8E7940` | 2.9 KB | HWTable\_sm80\_base -- Ampere base table |
-| `sub_8E7B40` | 3.3 KB | HWTable\_sm80 -- Ampere full table |
-| `sub_8E7D80` | 4.4 KB | HWTable\_sm86 -- GA10x table |
-| `sub_8E8070` | 3.5 KB | HWTable\_sm87 -- Orin table |
-| `sub_8E8280` | 3.1 KB | HWTable\_sm89 -- Ada Lovelace table |
-| `sub_8E8480` | 5.2 KB | HWTable\_sm90 -- Hopper table |
-| `sub_8E8780` | 4.6 KB | HWTable\_sm90a -- Hopper accelerated table |
-| `sub_8E8A90` | 3.0 KB | HWTable\_sm100 -- Blackwell DC table |
-| `sub_8E8CB0` | 949 B | HWTable\_sm100\_short -- Blackwell supplementary |
-| `sub_8E8DB0` | 1.7 KB | HWTable\_sm103 -- Blackwell Ultra table |
-| `sub_8E8F60` | 618 B | HWTable\_sm103\_short -- BU supplementary |
-| `sub_8E9000` | 2.9 KB | HWTable\_sm120 -- RTX 50xx table |
-| `sub_8E92E0` | 5.5 KB | HWTable\_sm120\_ext -- RTX 50xx extended |
-| `sub_8E97B0` | 8.8 KB | HWTable\_universal -- fallback table |
-| `sub_8E9DC0` | 4.8 KB | EmitLatencyEntry -- HW table entry helper |
-| `sub_8EFA10` | 18 KB | EmitScheduleReport -- statistics output |
-| `sub_8F0CD0` | 24 B | MapFUClassID -- (opcode, name) to class |
-| `sub_8F1EB0` | 15 KB | EncodeScheduleWords -- SASS control word output |
-| `sub_8F3130` | 1.0 KB | EncodeStallField |
-| `sub_8F31F0` | 6.1 KB | EncodeBarrierField |
-| `sub_8F3650` | 2.7 KB | EncodeYieldField |
-| `sub_8F3860` | 3.0 KB | EncodeScoreboardField |
-| `sub_8F4140` | 5.6 KB | EncodeFullControlWord |
-| `sub_8F47E0` | ~50 B | DetectCutlass -- strstr for "cutlass" |
-| `sub_A08910` | 39 lines | GetRegisterLatency -- operand cost query |
-| `sub_A08A00` | 345 lines | ResourceModel -- 3-mode FU cost computation |
-| `sub_A09530` | 91 lines | UpdateStallCycles -- per-instruction stall update |
-| `sub_A9CDE0` | -- | IsHotMemory -- global/texture classification |
-| `sub_A9CF90` | -- | IsColdMemory -- constant/shared classification |
-| `sub_13710B0` | 7.1 KB | **AssignPipeClass** -- SASS-level pipe assignment |
-| `sub_1370F40` | ~500 B | CheckTensorFeature -- gates tensor pipe classes |
-| `sub_7D6780` | ~100 B | IsWideType -- true for FP64/wide types |
-| `sub_7DFFC0` | ~200 B | ClassifyMemAccess -- 3=shared, 4=constant |
-| `sub_7E3640` | ~100 B | GetCustomPipe -- 5-bit pipe sub-class |
-| `sub_91E7A0` | ~100 B | GetSrcEncoding -- source operand encoding query |
-| `sub_91E860` | ~100 B | GetOperandType -- operand type code |
-| `sub_A9AB10` | ~100 B | NeedsExtEncoding -- extended encoding check |
+| Address | Size | Identity | Confidence |
+|---|---|---|---|
+| `sub_693BC0` | 22 lines | MemorySpaceClassify -- return memory space code | HIGH |
+| `sub_695530` | 606 lines | ComputeLatencies -- per-BB latency computation | HIGH |
+| `sub_704D30` | 14 KB | GetFunctionalUnit -- SASS opcode to FU mapping | HIGH |
+| `sub_73A1D0` | ~6 KB | LDSLatencyStats -- shared memory latency stats | HIGH |
+| `sub_73A7F0` | ~6 KB | LDGLatencyStats -- global memory latency stats | HIGH |
+| `sub_73ADF0` | 6.5 KB | XU64LatencyStats -- extended unit latency stats | HIGH |
+| `sub_73B360` | 28.7 KB | MacLoopSchedulingAnalytics -- latency hiding report | HIGH |
+| `sub_799860` | 2.9 KB | ClassifyInstructionLatency | HIGH |
+| `sub_89FBA0` | 85 KB | **SetOpcodeLatencies** -- per-opcode scheduling class | HIGH |
+| `sub_8B5400` | 14 KB | ScheduleForLatency -- latency-optimized scheduling | MEDIUM |
+| `sub_8B77C0` | 15 KB | DualIssueScheduler -- dual-issue scheduling engine | MEDIUM |
+| `sub_8BDC40` | 7.9 KB | DualIssuePairing -- instruction pair selection | MEDIUM |
+| `sub_8C67A0` | 3.7 KB | ComputeResourceCost -- per-instruction FU cost | HIGH |
+| `sub_8C7290` | 5.1 KB | GetResourceVector -- SSE-optimized copy | HIGH |
+| `sub_8CCF80` | 2.3 KB | IsLongLatencyOp -- latency > 19 check | HIGH |
+| `sub_8CF5D0` | 3.5 KB | CheckDualIssueEligibility | HIGH |
+| `sub_8D3E20` | 2.1 KB | ComputeStallCycles -- required stall count | HIGH |
+| `sub_8D7760` | 41 KB | StallAndBarrierInsertion -- encode stalls/barriers | HIGH |
+| `sub_8E3AD0` | -- | CopyProfileEntries -- finalize HW table | MEDIUM |
+| `sub_8E4400` | 3.3 KB | **InitHWProfile\_Warp** -- warp dispatch params | HIGH |
+| `sub_8E4920` | 6.9 KB | BuildScoreboardEntries -- scoreboard BST | HIGH |
+| `sub_8E4D80` | 15 lines | StringRefCleanup -- decref string in record copy | HIGH |
+| `sub_8E4F20` | ~1.5 KB | EmitWeightEntry -- supplementary weight record (type 'W') | HIGH |
+| `sub_8E5310` | ~1.5 KB | EmitVariantSection -- variant sub-records (type ';') | HIGH |
+| `sub_8E5530` | ~1.5 KB | EmitDimensionEntries -- dimension sub-records (type '1') | HIGH |
+| `sub_8E5CA0` | 20 KB | **EmitScheduleOutput** -- scheduling control words | HIGH |
+| `sub_8E6760` | 2.9 KB | EmitGroupBoundary -- group boundary marker | HIGH |
+| `sub_8E6B40` | 2.9 KB | EmitSchedEntry -- standard scheduling entry | HIGH |
+| `sub_8E6D40` | 2.9 KB | EmitBarrierEntry -- barrier/sync entry | HIGH |
+| `sub_8E6F20` | 2.9 KB | EmitWaitEntry -- wait dependency entry | HIGH |
+| `sub_8E7110` | 2.9 KB | EmitScoreboardEntry -- scoreboard entry | HIGH |
+| `sub_8E7300` | 3.3 KB | HWTable\_sm70 -- Volta latency table | CERTAIN |
+| `sub_8E7540` | 2.9 KB | HWTable\_sm72 -- Xavier latency table | CERTAIN |
+| `sub_8E7720` | 3.5 KB | HWTable\_sm75 -- Turing latency table | CERTAIN |
+| `sub_8E7940` | 2.9 KB | HWTable\_sm80\_base -- Ampere base table | CERTAIN |
+| `sub_8E7B40` | 3.3 KB | HWTable\_sm80 -- Ampere full table | CERTAIN |
+| `sub_8E7D80` | 4.4 KB | HWTable\_sm86 -- GA10x table | CERTAIN |
+| `sub_8E8070` | 3.5 KB | HWTable\_sm87 -- Orin table | CERTAIN |
+| `sub_8E8280` | 3.1 KB | HWTable\_sm89 -- Ada Lovelace table | CERTAIN |
+| `sub_8E8480` | 5.2 KB | HWTable\_sm90 -- Hopper table | CERTAIN |
+| `sub_8E8780` | 4.6 KB | HWTable\_sm90a -- Hopper accelerated table | CERTAIN |
+| `sub_8E8A90` | 3.0 KB | HWTable\_sm100 -- Blackwell DC table | CERTAIN |
+| `sub_8E8CB0` | 949 B | HWTable\_sm100\_short -- Blackwell supplementary | CERTAIN |
+| `sub_8E8DB0` | 1.7 KB | HWTable\_sm103 -- Blackwell Ultra table | CERTAIN |
+| `sub_8E8F60` | 618 B | HWTable\_sm103\_short -- BU supplementary | CERTAIN |
+| `sub_8E9000` | 2.9 KB | HWTable\_sm120 -- RTX 50xx table | CERTAIN |
+| `sub_8E92E0` | 5.5 KB | HWTable\_sm120\_ext -- RTX 50xx extended | CERTAIN |
+| `sub_8E97B0` | 8.8 KB | HWTable\_universal -- fallback table | CERTAIN |
+| `sub_8E9DC0` | 4.8 KB | EmitLatencyEntry -- HW table entry helper | HIGH |
+| `sub_8EFA10` | 18 KB | EmitScheduleReport -- statistics output | HIGH |
+| `sub_8F0CD0` | 24 B | MapFUClassID -- (opcode, name) to class | HIGH |
+| `sub_8F1EB0` | 15 KB | EncodeScheduleWords -- SASS control word output | HIGH |
+| `sub_8F3130` | 1.0 KB | EncodeStallField | HIGH |
+| `sub_8F31F0` | 6.1 KB | EncodeBarrierField | HIGH |
+| `sub_8F3650` | 2.7 KB | EncodeYieldField | HIGH |
+| `sub_8F3860` | 3.0 KB | EncodeScoreboardField | HIGH |
+| `sub_8F4140` | 5.6 KB | EncodeFullControlWord | HIGH |
+| `sub_8F47E0` | ~50 B | DetectCutlass -- strstr for "cutlass" | CERTAIN |
+| `sub_A08910` | 39 lines | GetRegisterLatency -- operand cost query | HIGH |
+| `sub_A08A00` | 345 lines | ResourceModel -- 3-mode FU cost computation | HIGH |
+| `sub_A09530` | 91 lines | UpdateStallCycles -- per-instruction stall update | HIGH |
+| `sub_A9CDE0` | -- | IsHotMemory -- global/texture classification | HIGH |
+| `sub_A9CF90` | -- | IsColdMemory -- constant/shared classification | HIGH |
+| `sub_13710B0` | 7.1 KB | **AssignPipeClass** -- SASS-level pipe assignment | HIGH |
+| `sub_1370F40` | ~500 B | CheckTensorFeature -- gates tensor pipe classes | HIGH |
+| `sub_7D6780` | ~100 B | IsWideType -- true for FP64/wide types | HIGH |
+| `sub_7DFFC0` | ~200 B | ClassifyMemAccess -- 3=shared, 4=constant | HIGH |
+| `sub_7E3640` | ~100 B | GetCustomPipe -- 5-bit pipe sub-class | MEDIUM |
+| `sub_91E7A0` | ~100 B | GetSrcEncoding -- source operand encoding query | MEDIUM |
+| `sub_91E860` | ~100 B | GetOperandType -- operand type code | MEDIUM |
+| `sub_A9AB10` | ~100 B | NeedsExtEncoding -- extended encoding check | MEDIUM |
 
 ## Cross-References
 
