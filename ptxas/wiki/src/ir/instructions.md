@@ -1,5 +1,7 @@
 # Instructions & Opcodes
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 This page documents the Ori IR instruction representation: in-memory layout, opcode encoding, operand model, instruction flags, creation/iteration APIs, the master descriptor table, and opcode categories. All offsets are from `ptxas v13.0.88` (37.7 MB stripped x86-64 ELF).
 
 ## Instruction Object Layout
@@ -1105,6 +1107,120 @@ The complex def-use chain builder `sub_7E6090` (650 lines decompiled) is the cor
 6. Handles CSE matching: compares operand arrays of instructions with matching opcode, operand count, and auxiliary data to detect redundant computations
 7. Takes parameter `a5` as a bitmask of register file types to process (bit per register class)
 
+## Instruction Lowering Handler -- `sub_65D640` (48 KB)
+
+The central PTX-to-Ori instruction lowering handler lives at `sub_65D640`. It is installed at vtable offset +32 in the ISel Phase 1 dispatch table (`sub_660CE0`) and called through the vtable for every PTX instruction during lowering.
+
+**Signature:** `int64 sub_65D640(context*, bb_ref, ptx_node*, ori_instr*)`
+
+The function reads the PTX opcode from `*(*(ptx_node+32)+8)` and dispatches through a ~60-case switch. An entry gate (`sub_44AC80`) diverts certain opcode types to an alternate handler (`sub_656600`). The function calls `sub_A2FD90` (operand setter) 59 times to populate Ori operands on the resulting instructions.
+
+### Opcode Case Map
+
+| Case(s) | PTX family | Handler | Description |
+|---|---|---|---|
+| 5 | `prmt` (byte permute) | inline | Decodes 8-bit per-byte channel mask, sets 2 operands |
+| 6 | `prmt` (extended) | inline | Two-operand permute with address computation via `sub_6294E0` |
+| 10 | `mov` (special) | inline | Clears immediate flag for float type 109 |
+| 12 | (delegated) | `sub_659F90` | -- |
+| 13 | multi-operand expansion | inline | Expands via `sub_62E840`, resolves type 87 (address) and 97 (register) operands |
+| 17, 18, 24 | `mov`/`cvt` variants | `sub_652FA0` | -- |
+| 19, 20, 23 | surface ops | inline | ~200 lines: multi-register data, `sub_6273E0` operand classification, up to 4 data regs + address |
+| 34, 35 | load/store | inline | Optional address resolution gated on `(ptx_node+61 & 0xC)` |
+| 45, 238 | conversion | inline | Rewrites operand type to 20 (integer), binds address via `sub_6294E0` |
+| 68, 71 | register indirect rewrite | inline | Checks operand size == 8, rewrites descriptor to type 110 |
+| 81 | instruction expansion | inline | Creates IADD3 (opcode 38) with constant 0, reg class 12 |
+| 82 | instruction expansion | inline | Rewrites to opcode 162 with IADD3 operand |
+| 84 | load expansion | inline | Creates IADD3 with offset, flags 0x2000 |
+| 85 | operand reorder | inline | 3-operand shuffle |
+| 87 | reg class adjustment | inline | Table lookup at `dword_2026C60`, swaps operands 1/2, sets opcode 150 |
+| 88 | matrix config | inline | MMA dimension table at `dword_2026C48`, sets fields 179/180 |
+| 104 | 4-wide load | inline | Creates 4-operand instruction, address binding via `sub_6294E0` |
+| 110 | (delegated) | `sub_652610` | -- |
+| 123 | **generic addressing** | inline | Converts flat-to-specific addresses; SM-version-dependent multi-instruction sequences |
+| 124, 125 | **cvta / isspacep** | inline | Address space conversion; creates CVTA opcode 538/539 on SM > 0x1A |
+| 130 | instruction fusion | inline | Fuses instruction if operand count is not 3 or 4 |
+| 165 | (delegated) | `sub_65BF40` | -- |
+| 175--178 | **texture addr_mode** | inline | Resolves `.addr_mode_0/1/2` attributes from texture descriptor |
+| 179 | atomic address mode | inline | Classifies atomic op type, creates SEL + ATOM sequence |
+| 180 | (delegated) | `sub_65CE90` | -- |
+| 181, 182 | (delegated) | `sub_64FF20` | -- |
+| 183 | conditional atomic | inline | State space 0x20: rewrites to opcode 71 with mask 0xFF01010101 |
+| 184--190 | surface/texture lowering | inline | Handles SULD/SUST/SURED (opcodes 449-456); SM-dependent operand resolution |
+| 197, 198 | call site lowering | inline | Same-module vs cross-module call dispatch |
+| 201--204, 208--211 | wide load/store | inline | `.v2`/`.v4` multi-element operations with IADD3 offset computation |
+| 206, 207, 212, 213 | 3-op wide load/store | inline | 3-operand variants of wide memory operations |
+| 221, 222 | TMA operations | inline | Sets field 197 with value 365/366 |
+
+### Addressing Mode Types
+
+ptxas handles four distinct addressing mode categories during instruction lowering, all resolved by `sub_65D640`:
+
+#### 1. Texture Addressing Modes (per-dimension)
+
+Cases 175--178 resolve `.addr_mode_0`, `.addr_mode_1`, `.addr_mode_2` attributes from texture descriptors. These are the PTX `txq` query targets.
+
+The function walks the texture descriptor's attribute linked list at `*(descriptor+16)+24`, comparing each attribute name string:
+
+```c
+// Pseudocode for cases 175-178:
+addr_mode_0 = addr_mode_1 = addr_mode_2 = 0;
+found = false;
+for (node = attr_list_head; node != NULL; node = *node) {
+    name = *(node[1] + 16);    // attribute name string
+    value = *(*(node[1] + 24) + 16);  // integer value
+    if (strcmp(name, "addr_mode_0") == 0)  { addr_mode_0 = value; found = true; }
+    else if (strcmp(name, "addr_mode_1") == 0)  { addr_mode_1 = value; found = true; }
+    else if (strcmp(name, "addr_mode_2") == 0)  { addr_mode_2 = value; found = true; }
+}
+```
+
+For 2D textures (state space byte & 0xB0 == 0x20), the function checks `addr_mode_0 == addr_mode_1`. For 3D textures (0x30), it checks all three equal. If modes are uniform (all equal), the instruction gets a single addressing mode flag (field 91 = 1 for clamp_to_border). If modes differ, it delegates to `sub_64FC90` for a multi-instruction lowering that handles per-dimension mode selection.
+
+#### 2. Generic-to-Specific Address Conversion (case 123)
+
+Converts flat/generic pointers to specific memory space pointers. The address space ID from `*(ptx_node+40)` selects the conversion strategy:
+
+| Space ID | Memory space | Strategy |
+|---|---|---|
+| 4 | shared | `sub_654A90` (direct conversion) |
+| 5 | combined | OR of global + shared + local conversions |
+| 6 | local | `sub_64F7A0` with register pair 101/102 |
+| 7 | generic (flat) | SM-dependent: `sub_654FB0` (SM <= 0x1A) or SHR/AND extraction + SEL mux (SM > 0x10) |
+| 8 | global | `sub_64F7A0` with register pair 98/99 |
+
+For generic space on older architectures (SM <= 0x1A with feature flag via `sub_61AF90`), a simpler single-instruction path is used. On newer architectures, a multi-instruction sequence extracts the space tag from the upper address bits.
+
+#### 3. Address Space Conversion (cases 124--125, cvta/isspacep)
+
+The `cvta` (Convert Address) and `isspacep` (Is Space Predicate) instructions convert between generic and specific address spaces. For global space (type 8) on SM > 0x1A, the handler creates CVTA with opcode 538 (isspacep) or 539 (cvta) and sets register class 7 with width 4 or 16 bytes.
+
+#### 4. Memory Addressing Modes (implicit)
+
+Memory addressing modes for load/store/atomic instructions are not enumerated as named constants. Instead, they emerge from the operand construction patterns in cases 19--23, 34--35, 81--84, 104, 201--213:
+
+| Pattern | PTX syntax | Ori representation |
+|---|---|---|
+| Register indirect | `[%rd1]` | Operand type 87 from `sub_629E40` |
+| Register + offset | `[%rd1+16]` | Register operand + immediate via `sub_6273E0` |
+| Constant bank | `c[2][0x100]` | Constant operand via `sub_620320` (type 12) |
+| Immediate address | `.local` space | Constant value via `sub_620320` |
+| Base + index | `[%rd1], %r2` | Two-operand form |
+
+### ISel Phase 1 Dispatch Vtable
+
+`sub_660CE0` constructs a 17-slot vtable at context offset +3784 for the ISel Phase 1 instruction handlers:
+
+| Offset | Handler | Size | Role |
+|---|---|---|---|
+| +0 | `sub_650840` | -- | Primary handler |
+| +8 | `sub_64EEB0` | -- | Operand handler |
+| +16 | `sub_64F270` | -- | Type handler |
+| +24 | `sub_6575D0` | 49 KB | Register-class-to-opcode dispatch |
+| +32 | `sub_65D640` | 48 KB | **Instruction lowering (this function)** |
+| +40 | `sub_64EDD0` | -- | Auxiliary handler |
+| +128 | `sub_64EEC0` | -- | Lowering helper |
+
 ## Key Function Reference
 
 | Address | Size | Function | Description |
@@ -1123,6 +1239,9 @@ The complex def-use chain builder `sub_7E6090` (650 lines decompiled) is the cor
 | `sub_738E20` | 10KB | `InstrDescTable::init` | Base instruction descriptor table constructor |
 | `sub_BE7390` | 16KB | `InstructionInfo::init` | InstructionInfo constructor (ROT13 table + descriptors) |
 | `sub_896D50` | 21KB | `InstrMnemTable::init` | Architecture-specific mnemonic table initializer |
+| `sub_65D640` | 48KB | `InstrLowering::handle` | PTX-to-Ori instruction lowering handler (60+ opcode cases, addressing mode resolution) |
+| `sub_660CE0` | 0.3KB | `InstrLowering::initVtable` | Constructs ISel Phase 1 dispatch vtable (17 slots) |
+| `sub_6575D0` | 49KB | `RegClassOpcodeDispatch::handle` | Register-class-to-opcode dispatch (vtable +24 sibling) |
 | `sub_6D9690` | 94KB | `Instruction::encode` | Master SASS instruction encoder |
 | `sub_B28E00` | varies | `isReg/isPred/isImm` | Operand type predicates (isel infrastructure) |
 | `sub_5D4190` | 12.9KB | `PTXFormatter::dispatch` | PTX text generation dispatcher (580 formatters) |
@@ -1143,4 +1262,5 @@ The complex def-use chain builder `sub_7E6090` (650 lines decompiled) is the cor
 - [Peephole Optimization](../codegen/peephole.md) -- Instruction rewriting passes
 - [SASS Encoding](../codegen/encoding.md) -- How Ori instructions become SASS binary
 - [Instruction Selection](../codegen/isel.md) -- Pattern matching for instruction selection
+- [PTX-to-Ori Pipeline](../pipeline/ptx-to-ori.md) -- Full lowering pipeline context for `sub_65D640`
 - [Scheduling](../scheduling/overview.md) -- 3-phase instruction scheduler
