@@ -231,7 +231,7 @@ The complete switch covers opcodes 1--352. Cases route to three dispatch mechani
 | 119 | `vtable[28]` (+224) | Specific class |
 | 120, 121, 126, 127, 128, 280, 281 | `vtable[27]` (+216) | Barrier/sync group |
 | 122, 123, 310, 311, 312 | `vtable[26]` (+208) | Related group |
-| 130, 169 | `vtable[29]` (+232) | Move/convert group |
+| 130 (`HSET2`), 169 | `vtable[29]` (+232) | Move/convert group (130 is MOV-like internally; actual SASS `MOV` = 19) |
 | 157 | `vtable[84]` (+672) | Specific class |
 | 176, 177 | `vtable[34]` (+272) | Paired operations |
 | 183, 288 | `vtable[36]` (+288) | Paired operations |
@@ -919,6 +919,61 @@ Key encoding dispatch details:
 
 The expansion creates new instruction nodes, links them into the doubly-linked list, and deletes the original pseudo-instruction. After all expansions, `sub_C3E030` performs post-expansion verification. The expansion engine also uses `sub_719D00` (50 KB), which builds output for expanded instructions across different operand widths (32/64/128-bit, predicate) -- four near-identical code blocks corresponding to template instantiations over operand width types.
 
+## OCG Encoding Template Lookup -- `sub_C3F490`
+
+The OCG (Optimized Code Generation) intrinsic pipeline on SM100+ does not use the ISel mega-selector or DAG pattern matchers. Instead, the OCG router (`sub_6CC690`, documented in [Intrinsics](../intrinsics/index.md#ocg-intrinsic-lowering-pipeline----sub_6a97b0--sub_6cc690)) assigns each instruction one of 7 **internal routing values** and passes it to the SASS instruction emitter `sub_6CB8A0`. These routing values are **not** Ori IR opcodes, **not** binary SASS opcodes, and **not** encoding slot indices from `word_22B4B60`. They are a small, closed set of keys that exist solely to select an operand gathering template inside `sub_C3F490`.
+
+### Routing values assigned by the OCG router
+
+| Value | Hex | Instruction class | Assigned when |
+|---|---|---|---|
+| 70 | `0x46` | Memory-ordered load/store/atomic (with barrier) | Barrier register present (`v108 != 0` in conditional paths) |
+| 243 | `0xF3` | Default memory operation | Fallback for general memory ops without barrier or special fence |
+| 245 | `0xF5` | Load variant (LD/LDG/LDS) | Load-type operations (from OCG load/store handler) |
+| 246 | `0xF6` | Reduction/atomic default | Atomic operations and reductions |
+| 247 | `0xF7` | Fenced memory operation (LDGSTS) | Operations requiring memory fence semantics |
+| 257 | `0x101` | Async copy without memory order | Bulk copy ops when no barrier: `v108 == 0` selects 257, else 70 |
+| 261 | `0x105` | Atomic with pre-existing value read | Atomic exchange / compare-and-swap returning old value |
+
+### How `sub_C3F490` maps routing values to encoding templates
+
+`sub_C3F490` is a pure lookup function (184 bytes) that takes a routing value plus 7 boolean modifier flags and returns a pointer to an operand gathering template in `.data` at `0x22B8960`--`0x22BB460`. The function is a nested if-else tree: the first-level switch selects on the routing value, then inner branches refine the template based on the modifier flags.
+
+```
+sub_C3F490(routing_value, a2..a8) -> template_ptr
+    a2: has pre-existing-value operand (used only by value 257)
+    a3: SM generation > sm_7x (SM80+)
+    a4: has predicate attachment
+    a5: has scope/fence operand (SM generation > sm_8x && memory_order == 4)
+    a6: (always 0 from OCG emitter, used by MercExpand callers)
+    a7: (always 0 from OCG emitter, used by MercExpand callers)
+    a8: (always 0 from OCG emitter, used by MercExpand callers)
+```
+
+The OCG emitter (`sub_6CB8A0`) always passes `a6=a7=a8=0`, which means the OCG path only reaches a subset of template leaves. The MercExpand callers (`sub_C41100`, `sub_C40420`, `sub_C40B90`, `sub_C42330`) pass all 7 flags and can reach the full template space. The returned template is a packed array: `template[0]` is the operand count, followed by operand slot indices that reference positions in the 39-QWORD operand buffer (v134[]). The emitter iterates over these indices, gathers the tagged operand words, builds control words from bitfields, and calls `sub_9314F0` to commit the encoded instruction.
+
+Two additional routing values (254, 262) are handled by `sub_C3F490` but are **never assigned by the OCG router** -- they originate exclusively from the MercExpand memory instruction handlers, where the routing value is read from the instruction's opcode field (`instr[18]` masked with `& 0xCFFF`).
+
+| Value | Hex | Origin | Instruction class |
+|---|---|---|---|
+| 254 | `0xFE` | MercExpand only | Extended memory format (operand gather mode 3) |
+| 262 | `0x106` | MercExpand only | Wide memory format (operand gather mode 0, with scope/fence branches) |
+
+### Template address space
+
+The 40+ distinct templates returned by `sub_C3F490` occupy a contiguous `.data` region:
+
+| Address range | Routing values served |
+|---|---|
+| `0x22B8960`--`0x22B8E60` | 257 (async copy variants) |
+| `0x22B8E60`--`0x22B9360` | 70 (barrier memory variants) |
+| `0x22B9360`--`0x22B9860` | 262 (MercExpand wide memory) |
+| `0x22B9860`--`0x22B9E60` | 247, 245 (fenced / load variants) |
+| `0x22B9E60`--`0x22BA960` | 243, 246, 70 (default / reduction / barrier sub-variants) |
+| `0x22BA960`--`0x22BB460` | Leaf templates for bare operand forms (no modifiers) |
+
+Each template is 256 bytes (0x100). For a given routing value, the modifier flags select progressively simpler templates as flags are cleared: the most complex template (all modifiers active) is reached first in the if-chain, and the simplest (no modifiers) is the final fallback.
+
 ## Addressing Mode Selection
 
 Addressing mode selection is distributed across Phases 1 and 2. During Phase 1, the operand processing function `sub_6273E0` (44 KB) classifies PTX operand forms into internal categories. During Phase 2, the ISel driver and Mercury encoder select the optimal SASS addressing mode based on the register-allocated operand forms.
@@ -1030,6 +1085,13 @@ The key architectural difference: LLVM performs instruction selection once, then
 | `sub_BFEA30` | tiny | Default vtable[3] stub (extension handler, no-op) | VERY HIGH |
 | `sub_BFEF10` | -- | Register bank capacity check / grow | MEDIUM |
 | `word_22B4B60` | -- | Static opcode-to-encoding-index table (`uint16[222]`, default backend) | VERY HIGH |
+| `sub_C3F490` | 184 B | OCG encoding template lookup (routing value + 7 flags -> template ptr) | VERY HIGH |
+| `sub_6CB8A0` | -- | OCG SASS instruction emitter (calls `sub_C3F490` then `sub_9314F0`) | HIGH |
+| `sub_C41100` | -- | MercExpand memory encoder (calls `sub_C3F490` with full flag set) | HIGH |
+| `sub_C40420` | -- | MercExpand memory encoder variant (calls `sub_C3F490`) | HIGH |
+| `sub_C40B90` | -- | MercExpand memory encoder variant (calls `sub_C3F490`) | HIGH |
+| `sub_C42330` | -- | MercExpand memory encoder variant (calls `sub_C3F490`) | HIGH |
+| `unk_22B8960`--`unk_22BB460` | ~11 KB | Operand gathering templates (40+ entries, 256 B each) | HIGH |
 
 ## Cross-References
 
@@ -1039,5 +1101,6 @@ The key architectural difference: LLVM performs instruction selection once, then
 - [Mercury Encoder Pipeline](./mercury.md) -- Mercury master encoder, MercExpand
 - [Peephole Optimization](./peephole.md) -- post-ISel pattern rewrites (3 mega-dispatchers)
 - [Newton-Raphson Templates](./templates.md) -- DDIV/DRCP/DSQRT expansion sequences
+- [Intrinsics: OCG Lowering Pipeline](../intrinsics/index.md#ocg-intrinsic-lowering-pipeline----sub_6a97b0--sub_6cc690) -- OCG router that assigns routing values, operand buffer layout
 - [Ori IR](../ir/overview.md) -- instruction format, opcode field layout
 - [SASS Opcodes](../reference/sass-opcodes.md) -- target instruction set
