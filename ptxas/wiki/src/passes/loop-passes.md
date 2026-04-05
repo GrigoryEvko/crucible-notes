@@ -1,5 +1,7 @@
 # Loop Passes
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 Eight phases in the ptxas pipeline transform loops in the Ori IR: one canonicalizer (phase 18), one unroller (phase 22), one software pipeliner (phase 24), four LICM instances (phases 35, 66, 79, 88), and one fusion pass (phase 59). Together they account for the largest category of repeated-pass instances in the pipeline -- the LICM family alone runs four times because intervening transformations (predication, legalization, GMMA fixup) continuously expose new invariants.
 
 ptxas is not built on LLVM. Its loop infrastructure is a custom, non-SSA representation operating directly on the Ori IR's basic-block graph. Loop detection is performed by `AnalyzeControlFlow` (phase 3), which identifies back-edges, computes dominators, and annotates each basic block with a loop nesting depth stored at block offset +144. This nesting depth is the primary loop identity used by all eight passes.
@@ -134,14 +136,14 @@ The pass also inspects the convergence flag at offset +1380 (bit 7). When set, i
 
 ### Related Knobs
 
-| Knob Name | Description |
-|---|---|
-| `LoopInversion` | Enable loop inversion (do-while to while conversion) |
-| `LoopInversionBudget` | Maximum instruction count for loop inversion |
-| `LoopPeelInversion` | Enable loop peeling combined with inversion |
-| `EnableSingleThreadPeelingLoops` | Enable peeling for single-thread execution paths |
-| `GenPeelingLoopsForSyncs` | Generate peeling loops around sync instructions |
-| `AssertIfPeelingLoopForTexSurf` | Assert (debug) if peeling a loop for texture/surface ops |
+| Knob Name | Default | Description |
+|---|---|---|
+| `LoopInversion` | enabled | Enable loop inversion (do-while to while conversion) |
+| `LoopInversionBudget` | unset | Maximum instruction count for loop inversion |
+| `LoopPeelInversion` | disabled | Enable loop peeling combined with inversion |
+| `EnableSingleThreadPeelingLoops` | unset | Enable peeling for single-thread execution paths |
+| `GenPeelingLoopsForSyncs` | unset | Generate peeling loops around sync instructions |
+| `AssertIfPeelingLoopForTexSurf` | unset | Assert (debug) if peeling a loop for texture/surface ops |
 
 ---
 
@@ -210,7 +212,7 @@ The initializer reads unrolling parameters from the OCG profile object. Each kno
 | `ctx+176` (int32) | +30960 | **4** | `UnrollUnknownCount` |
 | `ctx+180` (int32) | +30816 | **4** | `UnrollSmallLoopLimit` |
 | `ctx+184` (dbl) | +64656 | **0.4** | `LoopUnrollLargePartOfShaderPct` |
-| `ctx+192` (float) | +31392 | **15.0** | `UnrollInstLimit` |
+| `ctx+192` (float) | +31392 | **20.0** | `UnrollInstLimit` |
 | `ctx+196` (int32) | +64872 | **50** | `UnrollPregThreshold` |
 | `ctx+200` (int32) | +31248 | **2** | `UnrollExtraInstPerPercentSaving` |
 | `ctx+204` (int32) | +31176 | **200** | `UnrollFullInstLimit` |
@@ -414,34 +416,34 @@ The diagnostic output is gated by `flags[1421] & 0x20` (DUMPIR verbose mode). Wh
 
 The unrolling decision is controlled by a rich set of OCG knobs. All knob names are stored ROT13-encoded in the binary:
 
-| Knob Name | Type | Description |
-|---|---|---|
-| `LoopUnroll` | BOOL | Master enable for loop unrolling |
-| `LoopUnrollFactor` | INT | Override unroll factor (0 = heuristic) |
-| `UnrollBudget` | INT | Maximum total instruction count after unrolling |
-| `UnrollInstLimit` | INT | Maximum instructions in a single unrolled loop body |
-| `UnrollFullInstLimit` | INT | Maximum body size for *full* unrolling |
-| `UnrollFlexableFullLimit` | INT | Flexible full-unroll limit (adjusted by loop characteristics) |
-| `UnrollSmallLoopLimit` | INT | Body size threshold below which loops are always fully unrolled |
-| `UnrollPregThreshold` | INT | Maximum predicate register pressure for unrolling |
-| `UnrollMultiBlockLoops` | BOOL | Allow unrolling of multi-basic-block loop bodies |
-| `UnrollVariableBounds` | BOOL | Allow unrolling when trip count is not compile-time constant |
-| `UnrollUnknownCount` | INT | Default trip count assumption when count is unknown |
-| `UnrollUnknownInstLimit` | INT | Maximum body size for unrolling with unknown trip count |
-| `UnrollExtraInstPerPercentSaving` | INT | Instructions allowed per percent of cycle saving |
-| `UnrollTex3DPercentSavedThreshold` | INT | Minimum savings percent for 3D texture loops |
-| `UnrollProfiledColdInstsScale` | INT | Scale factor for instruction count in profiled-cold blocks |
-| `LoopUnrollExtraFoldableLdcWeight` | INT | Extra weight for foldable constant loads in unroll benefit |
-| `LoopUnrollFoldableAddrWeight` | INT | Weight for foldable address computations |
-| `LoopUnrollLargePartOfShaderPct` | INT | Percentage threshold: loop is "large part of shader" |
-| `LoopUnrollNumExtraInstBase` | INT | Base extra instruction allowance per unroll iteration |
-| `LoopUnrollNumInstSmallLoop` | INT | Instruction count defining "small loop" |
-| `LoopUnrollNumInstTex` | INT | Texture instruction count bonus for unrolling |
-| `LoopUnrollSingleLoopSavedPctFactor` | INT | Savings factor for single-loop shaders |
-| `LoopUnrollNonInnermost` | BOOL | Allow unrolling of non-innermost loops |
-| `LoopUnrollUnknownMultiBlock` | BOOL | Allow multi-block unroll with unknown bounds |
-| `EpilogueLoopUnrollCount` | INT | Unroll count for epilogue (remainder) loops |
-| `DisablePartialUnrollOverflowCheck` | BOOL | Skip overflow check on partial unroll count |
+| Knob Name | Type | Default | Description |
+|---|---|---|---|
+| `LoopUnroll` | BOOL | **true** | Master enable for loop unrolling |
+| `LoopUnrollFactor` | INT | **0** | Override unroll factor (0 = heuristic) |
+| `UnrollBudget` | INT | **140** | Maximum total instruction count after unrolling |
+| `UnrollInstLimit` | FLOAT | **20.0** | Maximum instructions in a single unrolled loop body |
+| `UnrollFullInstLimit` | INT | **200** | Maximum body size for *full* unrolling |
+| `UnrollFlexableFullLimit` | FLOAT | **0.25** | Flexible full-unroll limit (adjusted by loop characteristics) |
+| `UnrollSmallLoopLimit` | INT | **4** | Body size threshold below which loops are always fully unrolled |
+| `UnrollPregThreshold` | INT | **50** | Maximum predicate register pressure for unrolling |
+| `UnrollMultiBlockLoops` | BOOL | **true** | Allow unrolling of multi-basic-block loop bodies |
+| `UnrollVariableBounds` | BOOL | **true** | Allow unrolling when trip count is not compile-time constant |
+| `UnrollUnknownCount` | INT | **4** | Default trip count assumption when count is unknown |
+| `UnrollUnknownInstLimit` | INT | **0** | Maximum body size for unrolling with unknown trip count |
+| `UnrollExtraInstPerPercentSaving` | INT | **2** | Instructions allowed per percent of cycle saving |
+| `UnrollTex3DPercentSavedThreshold` | INT | **0** | Minimum savings percent for 3D texture loops |
+| `UnrollProfiledColdInstsScale` | INT | **0** | Scale factor for instruction count in profiled-cold blocks |
+| `LoopUnrollExtraFoldableLdcWeight` | INT | **0** | Extra weight for foldable constant loads in unroll benefit |
+| `LoopUnrollFoldableAddrWeight` | INT | **0** | Weight for foldable address computations |
+| `LoopUnrollLargePartOfShaderPct` | DOUBLE | **0.4** | Percentage threshold: loop is "large part of shader" |
+| `LoopUnrollNumExtraInstBase` | INT | **46** | Base extra instruction allowance per unroll iteration |
+| `LoopUnrollNumInstSmallLoop` | INT | **0** | Instruction count defining "small loop" |
+| `LoopUnrollNumInstTex` | INT | **0** | Texture instruction count bonus for unrolling |
+| `LoopUnrollSingleLoopSavedPctFactor` | INT | **0** | Savings factor for single-loop shaders |
+| `LoopUnrollNonInnermost` | BOOL | **true** | Allow unrolling of non-innermost loops |
+| `LoopUnrollUnknownMultiBlock` | BOOL | **false** | Allow multi-block unroll with unknown bounds |
+| `EpilogueLoopUnrollCount` | INT | **0** | Unroll count for epilogue (remainder) loops |
+| `DisablePartialUnrollOverflowCheck` | BOOL | **false** | Skip overflow check on partial unroll count |
 
 ### GPU-Specific Unrolling Concerns
 
@@ -709,14 +711,14 @@ The pipe assignment value 8 corresponds to the long-latency functional unit (mem
 
 The `GemmPipeliner*` family of knobs controls a specialized pipelining mode for GEMM (matrix multiply) loops:
 
-| Knob Name | Description |
-|---|---|
-| `GemmPipelinerEnabled` | Master enable for GEMM-specific pipelining |
-| `GemmPipelinerPipelineDepthEnforceDeltaFull` | Pipeline depth adjustment for full enforcement |
-| `GemmPipelinerPipelineDepthEnforceDeltaPartial` | Pipeline depth adjustment for partial enforcement |
-| `GemmPipelinerDependenciesPopbl` | Dependency resolution policy between DMA and compute stages |
-| `GemmPipelinerScoreboardHashPopbl` | Scoreboard hash policy for GEMM barrier tracking |
-| `GemmPipelinerUseRegisterCalculation` | Use register-based calculation for pipeline depth vs. fixed |
+| Knob Name | Type | Default | Description |
+|---|---|---|---|
+| `GemmPipelinerEnabled` | BOOL | **false** | Master enable for GEMM-specific pipelining |
+| `GemmPipelinerPipelineDepthEnforceDeltaFull` | INT | **0** | Pipeline depth adjustment for full enforcement |
+| `GemmPipelinerPipelineDepthEnforceDeltaPartial` | INT | **0** | Pipeline depth adjustment for partial enforcement |
+| `GemmPipelinerDependenciesPopbl` | BOOL | **false** | Dependency resolution policy between DMA and compute stages |
+| `GemmPipelinerScoreboardHashPopbl` | BOOL | **false** | Scoreboard hash policy for GEMM barrier tracking |
+| `GemmPipelinerUseRegisterCalculation` | INT | **0** | Use register-based calculation for pipeline depth vs. fixed |
 
 The extended pipelining in `sub_92C240` (8KB) handles GEMM-like patterns where the loop body contains WGMMA/IMMA instructions. From decompilation:
 
@@ -729,15 +731,15 @@ The DUMPIR diagnostic output includes `For Dma Loop` and `For Math Loop` section
 
 ### Other Pipelining Knobs
 
-| Knob Name | Description |
-|---|---|
-| `OkToPipelineNoUnroll` | Allow pipelining even when unrolling was also suppressed |
-| `PipelineHoistCondLimit` | Maximum condition complexity for hoisting in pipelined loops |
-| `PipelineHoistRRegPressureLimit` | R-register pressure limit for hoisting inside pipelined body |
-| `PipelineHoistPRegPressureLimit` | P-register pressure limit for hoisting inside pipelined body |
-| `PipelineMIOVQToInstRatio` | MIOVQ-to-instruction ratio threshold for pipeline profitability |
-| `PipelineMultiOutputTex` | Enable pipelining of loops with multi-output texture instructions |
-| `PipelineSpecUsesInHeadOnly` | Restrict speculative uses to loop header only |
+| Knob Name | Type | Default | Description |
+|---|---|---|---|
+| `OkToPipelineNoUnroll` | INT | **0** | Allow pipelining even when unrolling was also suppressed |
+| `PipelineHoistCondLimit` | INT | **0** | Maximum condition complexity for hoisting in pipelined loops |
+| `PipelineHoistRRegPressureLimit` | INT | **0** | R-register pressure limit for hoisting inside pipelined body |
+| `PipelineHoistPRegPressureLimit` | INT | **0** | P-register pressure limit for hoisting inside pipelined body |
+| `PipelineMIOVQToInstRatio` | INT | **0** | MIOVQ-to-instruction ratio threshold for pipeline profitability |
+| `PipelineMultiOutputTex` | INT | **0** | Enable pipelining of loops with multi-output texture instructions |
+| `PipelineSpecUsesInHeadOnly` | INT | **0** | Restrict speculative uses to loop header only |
 
 ### GPU-Specific Pipeline Concerns
 
@@ -1240,27 +1242,27 @@ function HoistInvariantsCore(context):
 
 ### Hoisting Knobs
 
-| Knob Name | Description |
-|---|---|
-| `HoistBudget` | Maximum number of instructions to hoist per loop |
-| `HoistLoopInvBudget` | Budget specifically for loop-invariant hoisting |
-| `HoistConservativeScale` | Scale factor for conservative mode (reduces budget) |
-| `HoistLate` | Enable/disable late LICM passes (66, 79, 88) |
-| `HoistCBOMode` | Constant-buffer-object hoisting mode |
-| `HoistCBOLoad` | Enable hoisting of CBO load instructions |
-| `HoistCBOFromLoopWithColdNest` | Hoist CBO loads even from loops with cold nesting |
-| `HoistCBOHighCostSBInstRatioThreshold` | Scoreboard cost threshold for CBO hoisting |
-| `HoistCBOLoadIDOMTravseLimit` | IDOM traversal limit for CBO load hoisting |
-| `HoistCBORRegPressureLimitApplyRate` | R-register pressure limit application rate |
-| `HoistTexToInstRatioHigh` | High texture-to-instruction ratio threshold for aggressive hoisting |
-| `HoistTexToInstRatioLow` | Low texture-to-instruction ratio threshold for conservative hoisting |
-| `DisableNestedHoist` | Disable hoisting from nested loops |
-| `NestedHoistInnerThreshold` | Inner loop instruction threshold for nested hoisting |
-| `NestedHoistOuterThreshold` | Outer loop instruction threshold for nested hoisting |
-| `UseNewLoopInvariantRoutineForHoisting` | Use updated invariance check routine |
-| `MaxMidHeaderSizeRateForAggressiveHoist` | Header size rate threshold for aggressive hoisting |
-| `EnableHoistLowLatencyInstMidBlock` | Hoist low-latency instructions from mid-block positions |
-| `MovWeightForSinkingHoisting` | Weight for MOV instructions in sink/hoist decisions |
+| Knob Name | Type | Default | Description |
+|---|---|---|---|
+| `HoistBudget` | INT | **0** | Maximum number of instructions to hoist per loop |
+| `HoistLoopInvBudget` | INT | **0** | Budget specifically for loop-invariant hoisting |
+| `HoistConservativeScale` | INT | **0** | Scale factor for conservative mode (reduces budget) |
+| `HoistLate` | INT | **0** | Enable/disable late LICM passes (66, 79, 88) |
+| `HoistCBOMode` | INT | **0** | Constant-buffer-object hoisting mode |
+| `HoistCBOLoad` | INT | **0** | Enable hoisting of CBO load instructions |
+| `HoistCBOFromLoopWithColdNest` | INT | **0** | Hoist CBO loads even from loops with cold nesting |
+| `HoistCBOHighCostSBInstRatioThreshold` | INT | **0** | Scoreboard cost threshold for CBO hoisting |
+| `HoistCBOLoadIDOMTravseLimit` | INT | **0** | IDOM traversal limit for CBO load hoisting |
+| `HoistCBORRegPressureLimitApplyRate` | INT | **0** | R-register pressure limit application rate |
+| `HoistTexToInstRatioHigh` | INT | **0** | High texture-to-instruction ratio threshold for aggressive hoisting |
+| `HoistTexToInstRatioLow` | INT | **0** | Low texture-to-instruction ratio threshold for conservative hoisting |
+| `DisableNestedHoist` | BOOL | **false** | Disable hoisting from nested loops |
+| `NestedHoistInnerThreshold` | INT | **0** | Inner loop instruction threshold for nested hoisting |
+| `NestedHoistOuterThreshold` | INT | **0** | Outer loop instruction threshold for nested hoisting |
+| `UseNewLoopInvariantRoutineForHoisting` | INT | **0** | Use updated invariance check routine |
+| `MaxMidHeaderSizeRateForAggressiveHoist` | INT | **0** | Header size rate threshold for aggressive hoisting |
+| `EnableHoistLowLatencyInstMidBlock` | INT | **0** | Hoist low-latency instructions from mid-block positions |
+| `MovWeightForSinkingHoisting` | INT | **0** | Weight for MOV instructions in sink/hoist decisions |
 
 ### GPU-Specific LICM Concerns
 
@@ -1280,10 +1282,10 @@ Fuses adjacent loops with compatible bounds and no inter-loop data dependencies 
 
 ### Knobs
 
-| Knob Name | Description |
-|---|---|
-| `PerformLoopFusion` | Master enable for loop fusion |
-| `PerformLoopFusionBudget` | Maximum instruction count in fused body |
+| Knob Name | Type | Default | Description |
+|---|---|---|---|
+| `PerformLoopFusion` | BOOL | **false** | Master enable for loop fusion |
+| `PerformLoopFusionBudget` | INT | **0** | Maximum instruction count in fused body |
 
 ### Fusion Criteria
 
