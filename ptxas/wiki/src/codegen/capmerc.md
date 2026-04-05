@@ -1,5 +1,7 @@
 # Capsule Mercury & Finalization
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 Capsule Mercury ("capmerc") is a packaging format that wraps Mercury-encoded instruction streams with relocation metadata, debug information, and a snapshot of compilation knobs, enabling deferred finalization for a target SM that may differ from the original compilation target. Where standard Mercury produces a fully-resolved SASS binary bound to a single SM, capmerc produces an intermediate ELF object that a downstream tool (the driver or linker) can finalize into native SASS at load time. This is the default output format for all SM 100+ targets (Blackwell, Jetson Thor, consumer RTX 50-series). The capmerc data lives in `.nv.capmerc<funcname>` per-function ELF sections alongside 21 types of `.nv.merc.*` auxiliary sections carrying cloned debug data, memory-space metadata, and Mercury-specific relocations. Finalization can be "opportunistic" -- the same capmerc object may be finalized for different SMs within or across architectural families, controlled by `--opportunistic-finalization-lvl`.
 
 | | |
@@ -303,6 +305,205 @@ The eight `R_MERCURY_8_*` types enable patching individual bytes within a 64-bit
 ### Relocation Resolution
 
 The master relocation resolver `sub_1CD48C0` (22KB) handles both standard and capmerc relocations. For R_MERCURY_UNIFIED, it converts internal relocation type 103 to type 1 (standard absolute). The resolver iterates relocation entries and handles: alias redirections, dead-function relocation skipping, `__UFT_OFFSET` / `__UDT_OFFSET` pseudo-relocations, PC-relative branch validation, NVRS (register spill) relocations, and YIELD-to-NOP conversion for forward progress guarantees.
+
+## Mercury Section Binary Layouts
+
+### Section Classifier Algorithm -- `sub_1C98C60`
+
+The 9KB classifier uses a two-stage guard-then-waterfall pattern to identify `.nv.merc.*` sections from their ELF section headers.
+
+**Stage 1: sh_type range check (fast rejection).** The section's `sh_type` is tested against two NVIDIA processor-specific ranges:
+
+| Range | sh_type span | Decimal | Qualifying types |
+|---|---|---|---|
+| A | `0x70000006`..`0x70000014` | SHT_LOPROC+6..+20 | Filtered by bitmask `0x5D05` |
+| B | `0x70000064`..`0x7000007E` | SHT_LOPROC+100..+126 | All accepted (memory-space data) |
+| Special | `1` | SHT_PROGBITS | Accepted (generic debug data) |
+
+Within Range A, the bitmask `0x5D05` (binary `0101_1101_0000_0101`) selects seven specific types:
+
+| Bit | sh_type | Hex | Section types |
+|---|---|---|---|
+| 0 | SHT_LOPROC+6 | `0x70000006` | Memory-space clones |
+| 2 | SHT_LOPROC+8 | `0x70000008` | `.nv.merc.nv.shared.reserved` |
+| 8 | SHT_LOPROC+14 | `0x7000000E` | `.nv.merc.debug_line` |
+| 10 | SHT_LOPROC+16 | `0x70000010` | `.nv.merc.debug_frame` |
+| 11 | SHT_LOPROC+17 | `0x70000011` | `.nv.merc.debug_info` |
+| 12 | SHT_LOPROC+18 | `0x70000012` | `.nv.merc.nv_debug_line_sass` |
+| 14 | SHT_LOPROC+20 | `0x70000014` | `.nv.merc.debug_loc`, `.nv.merc.debug_ranges`, `.nv.merc.nv_debug_info_reg_*` |
+
+**Stage 2: Name-based disambiguation (expensive path).** When `sh_flags` bit 28 (`0x10000000`, `SHF_NV_MERC`) is set, the classifier calls `sub_1CB9E50()` to retrieve the section name and performs sequential `strcmp()` against 15 names, returning 1 on the first match. The check order matches the declaration order in the ELF structure table above. `sub_4279D0` is used for `.nv.merc.nv_debug_ptx_txt` as a prefix match rather than exact match.
+
+### SHF_NV_MERC Flag (`0x10000000`)
+
+Bit 28 of `sh_flags` is an NVIDIA extension: **SHF_NV_MERC**. All `.nv.merc.*` sections carry this flag. It serves two purposes:
+
+1. **Fast filtering** -- the classifier checks this bit before string comparisons, giving O(1) rejection for the common case of non-merc sections.
+2. **Namespace separation** -- during section index remapping (`sub_1C99BB0`), sections with `SHF_NV_MERC` are remapped into a separate merc section index space. The finalizer uses this flag to identify which sections require relocation patching during off-target finalization.
+
+### `.nv.capmerc<funcname>` -- Capsule Data Layout
+
+The per-function capsule section contains the full marker stream, SASS data, KNOBS block, and optionally replicated constant bank data. The section is created by `sub_1C9C300`.
+
+ELF section header:
+
+| Field | Value |
+|---|---|
+| sh_type | `1` (SHT_PROGBITS) |
+| sh_flags | `0x10000000` (SHF_NV_MERC) |
+| sh_addralign | 16 |
+
+Section data is organized as four consecutive regions:
+
+```
+         .nv.capmerc<funcname> Section Data
+         ====================================
+
+         ┌──────────────────────────────────────────────────────┐
+         │ Marker Stream     (variable length)                  │
+         │   Repeating TLV records:                             │
+         │     [type:1B] [sub:1B] [payload:varies]              │
+         │                                                      │
+         │   Type 2: 4 bytes total   [02] [sub] [00 00]        │
+         │     Boolean flags (has_exit, has_crs, sampling_mode) │
+         │                                                      │
+         │   Type 3: 4 bytes total   [03] [sub] [WORD:value]   │
+         │     Short values (desc_version, stack_frame_size,    │
+         │     atomic flags, min_sm_version)                    │
+         │                                                      │
+         │   Type 4: variable        [04] [sub] [WORD:size] ..  │
+         │     Variable-length blocks (register counts, KNOBS   │
+         │     data, barrier info, relocation payloads)         │
+         │                                                      │
+         │   Terminal marker: sub-type 95 (min_sm + CRS depth)  │
+         ├──────────────────────────────────────────────────────┤
+         │ SASS Data Block   (sass_data_size bytes)             │
+         │   Mercury-encoded instruction bytes identical to     │
+         │   what .text.<func> would contain for the compile    │
+         │   target; byte-for-byte match with phase 122 output  │
+         ├──────────────────────────────────────────────────────┤
+         │ KNOBS Block       (knobs_section_size bytes)         │
+         │   Serialized key-value pairs from marker sub-type 90 │
+         │   "KNOBS" tag separates knob pairs from generic KV   │
+         │   Contains: optimization level, target parameters,   │
+         │   feature flags, all codegen-affecting knob values   │
+         ├──────────────────────────────────────────────────────┤
+         │ Constant Bank Data (const_bank_size bytes, optional) │
+         │   Replicated .nv.constant0 data for deferred binding │
+         │   Only present when the function references constant │
+         │   bank data that the finalizer may need to patch     │
+         └──────────────────────────────────────────────────────┘
+```
+
+### `.nv.merc.debug_info` -- Cloned DWARF Debug Info
+
+The cloner (`sub_1CA2E40`) produces a byte-for-byte copy of the source `.debug_info` section, placed into the merc namespace with modified ELF section header properties.
+
+ELF section header:
+
+| Field | Value |
+|---|---|
+| sh_type | `0x70000011` (SHT_LOPROC + 17) |
+| sh_flags | `0x10000000` (SHF_NV_MERC) |
+| sh_addralign | 1 |
+
+Section data is standard DWARF `.debug_info` format:
+
+```
+         .nv.merc.debug_info Section Data
+         ==================================
+
+         ┌──────────────────────────────────────────────────────┐
+         │ Compilation Unit Header                              │
+         │   +0x00  unit_length    : 4B (DWARF-32) or 12B (-64)│
+         │   +0x04  version        : 2B (typically DWARF 4)    │
+         │   +0x06  debug_abbrev_offset : 4B → .nv.merc.debug_abbrev │
+         │   +0x0A  address_size   : 1B (8 for 64-bit GPU)    │
+         ├──────────────────────────────────────────────────────┤
+         │ DIE Tree (Debug Information Entries)                  │
+         │   Sequence of entries, each:                         │
+         │     abbrev_code  : ULEB128                           │
+         │     attributes   : per abbreviation definition       │
+         │                                                      │
+         │   Cross-section references (via relocations):        │
+         │     DW_FORM_strp     → .nv.merc.debug_str            │
+         │     DW_FORM_ref_addr → .nv.merc.debug_info           │
+         │     DW_FORM_sec_offset → .nv.merc.debug_line etc.    │
+         └──────────────────────────────────────────────────────┘
+```
+
+The critical difference from standard `.debug_info`: all cross-section offset references point to other `.nv.merc.*` sections, not the original `.debug_*` sections. The `.nv.merc.rela.debug_info` relocation table handles rebinding these offsets during finalization.
+
+### `.nv.merc.rela` / `.nv.merc.rela<secname>` -- Mercury Relocations
+
+Mercury relocation sections use standard `Elf64_Rela` on-disk format (24 bytes per entry) but encode Mercury-specific relocation types with a `0x10000` offset in the type field.
+
+ELF section header:
+
+| Field | Value |
+|---|---|
+| sh_type | `4` (SHT_RELA) |
+| sh_flags | `0x10000000` (SHF_NV_MERC) |
+| sh_addralign | 8 |
+| sh_entsize | 24 |
+| sh_link | symtab section index |
+| sh_info | target section index |
+
+Section names are constructed by `sub_1C980F0` as `".nv.merc.rela"` + suffix (e.g., `".nv.merc.rela.debug_info"`).
+
+On-disk entry layout (standard `Elf64_Rela`, 24 bytes):
+
+```
+         .nv.merc.rela Entry (24 bytes on disk)
+         ========================================
+
+         ┌─────────┬──────┬────────────────────────────────────────────┐
+   0x00  │ QWORD   │  8B  │ r_offset — byte position in target section │
+   0x08  │ DWORD   │  4B  │ r_type — relocation type                   │
+         │         │      │   Standard: 1=R_NV_ABS64, etc.             │
+         │         │      │   Mercury:  r_type > 0x10000               │
+         │         │      │   Decoded:  r_type - 0x10000 → R_MERCURY_* │
+   0x0C  │ DWORD   │  4B  │ r_sym — symbol table index                 │
+   0x10  │ QWORD   │  8B  │ r_addend — signed addend value             │
+         └─────────┴──────┴────────────────────────────────────────────┘
+```
+
+During resolution (`sub_1CD48C0`), the 24-byte on-disk entries are loaded into a 32-byte in-memory representation that adds two section index fields:
+
+```
+         In-Memory Relocation Entry (32 bytes)
+         =======================================
+
+         ┌─────────┬──────┬────────────────────────────────────────────┐
+   0x00  │ QWORD   │  8B  │ r_offset — byte position in target section │
+   0x08  │ DWORD   │  4B  │ r_type — relocation type                   │
+   0x0C  │ DWORD   │  4B  │ r_sym — symbol table index                 │
+   0x10  │ QWORD   │  8B  │ r_addend — signed addend value             │
+   0x18  │ DWORD   │  4B  │ r_sec_idx — target section index           │
+   0x1C  │ DWORD   │  4B  │ r_addend_sec — addend section index        │
+         └─────────┴──────┴────────────────────────────────────────────┘
+```
+
+The extra 8 bytes enable cross-section targeting: `r_sec_idx` identifies which section `r_offset` is relative to, and `r_addend_sec` identifies the section contributing the addend base address. When `r_addend_sec != 0`, the resolver adds that section's load address to `r_offset` before patching.
+
+The resolver detects Mercury relocation types via `r_type > 0x10000`, subtracts `0x10000`, then dispatches through a Mercury-specific handler table (`off_2407B60`) rather than the standard CUDA relocation table (`off_2408B60`).
+
+### Complete sh_type Map
+
+| sh_type | Hex | Section types |
+|---|---|---|
+| 1 | `0x00000001` | `.nv.capmerc<func>`, `.nv.merc.debug_abbrev` (PROGBITS variant), `.nv.merc.debug_str`, `.nv.merc.nv_debug_ptx_txt` |
+| 4 | `0x00000004` | `.nv.merc.rela*` (SHT_RELA) |
+| SHT_LOPROC+6 | `0x70000006` | `.nv.merc.<memory-space>` clones |
+| SHT_LOPROC+8 | `0x70000008` | `.nv.merc.nv.shared.reserved` |
+| SHT_LOPROC+14 | `0x7000000E` | `.nv.merc.debug_line` |
+| SHT_LOPROC+16 | `0x70000010` | `.nv.merc.debug_frame` |
+| SHT_LOPROC+17 | `0x70000011` | `.nv.merc.debug_info` |
+| SHT_LOPROC+18 | `0x70000012` | `.nv.merc.nv_debug_line_sass` |
+| SHT_LOPROC+20 | `0x70000014` | `.nv.merc.debug_loc`, `.nv.merc.debug_ranges`, `.nv.merc.nv_debug_info_reg_sass`, `.nv.merc.nv_debug_info_reg_type` |
+| SHT_LOPROC+100..+126 | `0x70000064`..`0x7000007E` | Memory-space variant sections (constant banks, shared, local, global) |
+
+The `.nv.merc.*` debug sections reuse the same `sh_type` values as their non-merc counterparts (`.debug_info` uses `0x70000011` in both namespaces). The `SHF_NV_MERC` flag (`0x10000000`) in `sh_flags` is the distinguishing marker.
 
 ## Self-Check Mechanism
 
