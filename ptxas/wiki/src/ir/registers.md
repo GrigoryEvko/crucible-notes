@@ -21,25 +21,29 @@ ptxas models four hardware register files plus two auxiliary barrier register fi
 
 ## Seven Allocator Register Classes
 
-The fat-point allocator processes 7 register classes. Class 0 is the cross-class constraint propagation channel and is skipped in the main allocation loop. Classes 1--6 are allocated independently, in order:
+The fat-point allocator processes 7 register classes, indexed by the `reg_type` field at `vreg+64`. Class 0 is the cross-class constraint propagation channel and is skipped in the main allocation loop. Classes 1--6 are allocated independently, in order. The allocator distribution loop in `sub_9721C0` (lines 520--549) reads `*(int*)(vreg+64)` and uses it directly as the class bucket index, guarded by `reg_type <= 6`:
 
-| Class ID | Name | Width | HW limit | VR type field | Description |
-|----------|------|-------|----------|---------------|-------------|
-| 0 | (unified) | -- | -- | -- | Cross-class constraint propagation (skipped) |
-| 1 | R | 32-bit | 255 | 1 | General-purpose registers (R0--R254) |
-| 2 | P | 1-bit | 7 | 3 | Predicate registers (P0--P6) |
-| 3 | B | 1-bit | 16 | 9 | Barrier registers (B0--B15) |
-| 4 | UR | 32-bit | 63 | 1 | Uniform general-purpose (UR0--UR62) |
-| 5 | UP | 1-bit | 7 | 3 | Uniform predicate (UP0--UP6) |
-| 6 | UB | 1-bit | 16 | 9 | Uniform barrier (UB0--UB15) |
+| Class ID | Name | Width | HW limit | Description |
+|----------|------|-------|----------|-------------|
+| 0 | (unified) | -- | -- | Cross-class constraint propagation (skipped) |
+| 1 | R | 32-bit | 255 | General-purpose registers (R0--R254) |
+| 2 | R (alt) | 32-bit | 255 | GPR variant (used for RZ sentinel, stat collector alternate) |
+| 3 | UR | 32-bit | 63 | Uniform general-purpose (UR0--UR62) |
+| 4 | UR (ext) | 32-bit | 63 | Uniform GPR variant (triggers flag update at +1369 in constructor) |
+| 5 | P / UP | 1-bit | 7 | Predicate registers (P0--P6, UP0--UP6) |
+| 6 | Tensor/Acc | 32-bit | varies | Tensor/accumulator registers for MMA/WGMMA operations |
 
-The VR type field at `vreg+64` distinguishes GPR (1), predicate (3), and barrier (9) within each class. The allocator class at `vreg+12` determines which of the 7 per-class allocation passes handles a given virtual register.
+The class ID is the `reg_type` value stored at `vreg+64`. The allocator class at `vreg+12` is a separate field used for instruction-level classification, not for the per-class allocation passes. The allocator's per-class linked lists at `alloc[3*reg_type + 138]` are populated directly from `vreg+64`.
 
-Per-class state is initialized via the target descriptor vtable call `vtable[896](alloc_state, class_id)`, which populates per-class register file descriptors at `alloc[114..156]` (three 8-byte entries per class: range min, range max, and file state pointer).
+Per-class state is initialized via the target descriptor vtable call `vtable[896](alloc_state, class_id)`, which populates per-class register file descriptors at `alloc[114..156]` (four 8-byte entries per class).
 
 ### Barrier Registers
 
-Barrier registers (B and UB) are a distinct register file used by the `BAR`, `DEPBAR`, `BSSY`, and `BSYNC` instructions for warp-level and CTA-level synchronization. B0--B15 are the non-uniform barrier registers; UB0--UB15 are the uniform variant. The allocator handles them as class 3 (B) and class 6 (UB).
+Barrier registers (B and UB) are a distinct register file used by the `BAR`, `DEPBAR`, `BSSY`, and `BSYNC` instructions for warp-level and CTA-level synchronization. B0--B15 are the non-uniform barrier registers; UB0--UB15 are the uniform variant. Barrier registers have `reg_type = 9`, which is above the `<= 6` cutoff for the main allocator class buckets. They are handled by a separate allocation mechanism outside the 7-class system.
+
+### Tensor/Accumulator Registers (Class 6)
+
+Class 6 registers are created during intrinsic lowering of tensor core operations (MMA, WGMMA, HMMA, DMMA). Over 30 intrinsic lowering functions in the 0x6B--0x6D address range call `sub_91BF30(ptr, ctx, 6)` to create these registers. The GMMA pipeline pass (`sub_ADA740`, `sub_69E590`) identifies accumulator operands by checking `*(vreg+64) == 6`. The accumulator counting function at `sub_78C6B0` uses the pair-mode bits at `vreg+48` (bits 20--21) to determine whether a type-6 register consumes 1 or 2 physical R slots.
 
 ## Virtual Register Descriptor
 
@@ -112,20 +116,23 @@ For predicate types (a3 == 2 or a3 == 3), the flags word at +48 is initialized t
 
 This enum determines the register file a VR belongs to. It is used by the register class name table at `off_21D2400` to map type values to printable strings ("R", "UR", "P", etc.) for diagnostic output such as `"Referencing undefined register: %s%d"`.
 
-| Value | File | Description |
-|-------|------|-------------|
-| 1 | R | General-purpose register (32-bit) |
-| 2 | R | General-purpose register (alternate, used in stat collector) |
-| 3 | UR | Uniform register (32-bit) |
-| 4 | -- | Extended / uniform (triggers flag update in constructor) |
-| 5 | P | Predicate register (1-bit) |
-| 6 | R | General register (alternate classification) |
-| 7 | P | Predicate register (alternate, physical = 0 at init) |
-| 9 | B | Barrier register |
-| 10 | R2 | Extended register pair (64-bit, two consecutive R regs) |
-| 11 | R4 | Extended register quad (128-bit, four consecutive R regs) |
+| Value | File | Alloc class | Description |
+|-------|------|-------------|-------------|
+| 1 | R | 1 | General-purpose register (32-bit) |
+| 2 | R (alt) | 2 | GPR variant (RZ sentinel in `sub_7D82E0`, stat collector alternate) |
+| 3 | UR | 3 | Uniform register (32-bit) |
+| 4 | UR (ext) | 4 | Uniform GPR variant (triggers flag update at +1369 in constructor) |
+| 5 | P / UP | 5 | Predicate register (1-bit); covers both P and UP |
+| 6 | Tensor/Acc | 6 | Tensor/accumulator register for MMA/WGMMA operations |
+| 7 | P (alt) | -- | Predicate variant (physical = 0 at init); above allocator cutoff |
+| 8 | -- | -- | Extended type (created by `sub_83EF00`); above allocator cutoff |
+| 9 | B / UB | -- | Barrier register; above allocator cutoff, separate allocation |
+| 10 | R2 | -- | Extended register pair (64-bit, two consecutive R regs) |
+| 11 | R4 | -- | Extended register quad (128-bit, four consecutive R regs) |
 
-The stat collector at `sub_A60B60` (24 KB) enumerates approximately 25 register sub-classes including R, P, B, UR, UP, UB, SRZ, PT, RZ, and others by iterating vtable getter functions per register class.
+Values 0--6 are within the allocator's class system (the distribution loop in `sub_9721C0` guards with `reg_type <= 6`). Values 7+ are handled by separate mechanisms. The `off_21D2400` name table is indexed by reg_type and provides display strings for diagnostic output.
+
+The stat collector at `sub_A60B60` (24 KB) enumerates approximately 25 register sub-classes including R, P, B, UR, UP, UB, Tensor/Acc, SRZ, PT, RZ, and others by iterating vtable getter functions per register class.
 
 ## Wide Registers
 

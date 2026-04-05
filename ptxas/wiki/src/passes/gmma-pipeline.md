@@ -120,7 +120,7 @@ sub_AE5030  (2,967B -- SM gate, iteration over basic blocks)
 `sub_ADA740` (146 bytes) collects the set of registers that are accumulators for a given instruction. It iterates over an instruction's operands, checking:
 - Operand type tag `(operand >> 28) & 7 == 1` (register operand)
 - Not an immediate-flagged operand (`(byte_flag & 1) == 0`)
-- Register class `== 6` (tensor/accumulator register class)
+- `reg_type == 6` at `vreg+64` (tensor/accumulator register class)
 
 Matching registers are added to a bitvector-like set via `sub_768AB0`.
 
@@ -230,7 +230,7 @@ The fixup pass maintains a state machine as it walks through instructions within
 
 ### Register Conflict Detection
 
-Register class 6 is the tensor/accumulator register class. The conflict check compares operand register IDs against the active accumulator bitvector using a balanced binary search tree (`v238` / `v148` in the decompilation). The tree is keyed by `register_id >> 8` (register bank) with a 64-bit bitmap per node tracking individual registers within the bank:
+Register type 6 (`vreg+64 == 6`) is the tensor/accumulator register class. The conflict check compares operand register IDs against the active accumulator bitvector using a balanced binary search tree (`v238` / `v148` in the decompilation). The tree is keyed by `register_id >> 8` (register bank) with a 64-bit bitmap per node tracking individual registers within the bank:
 
 ```c
 bit_index = register_id & 0x3F;
@@ -312,7 +312,7 @@ The Mercury encoder at `sub_62E890` (118 KB) handles the SASS-level encoding of 
 | Arrive opcode (masked) | 271 | `opcode & 0xFFFFCFFF` for `_warpgroup.arrive/wait` |
 | Commit opcode | 323 | Ori opcode for `_warpgroup.commit_batch` |
 | Call opcode | 236 | Forces pipeline break |
-| Accum register class | 6 | Register class ID for tensor/accumulator regs |
+| Accum reg\_type | 6 | `vreg+64` value for tensor/accumulator regs |
 | Accum src tag | `0x90000000` | High nibble tag for source accumulator encoding |
 | Accum dst tag | `0x10000000` | High nibble tag for destination accumulator encoding |
 | FNV-1a prime | 16777619 | Hash function prime for register set lookup |
@@ -352,7 +352,7 @@ The Mercury encoder at `sub_62E890` (118 KB) handles the SASS-level encoding of 
 
 - [Pass Inventory](index.md) -- phases 85, 87 in the 159-phase table
 - [Synchronization & Barriers](sync-barriers.md) -- warpgroup barriers, `DEPBAR` generation
-- [Register Model](../ir/registers.md) -- register class 6 (tensor/accumulator)
+- [Register Model](../ir/registers.md) -- reg\_type 6 (tensor/accumulator, allocator class 6)
 - [Register Allocator](../regalloc/overview.md) -- live range pressure from WGMMA accumulators
 - [Mercury Encoder](../codegen/mercury.md) -- SASS encoding of WGMMA instructions
 - [Uniform Register Optimization](uniform-regs.md) -- phase 86 between the two GMMA phases

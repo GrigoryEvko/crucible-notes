@@ -331,7 +331,7 @@ The descriptor format allows the hardware to fetch matrix data directly from sha
 | WGMMA opcode | 309 | Ori opcode for `wgmma.mma_async` |
 | Arrive opcode (masked) | 271 | `opcode & 0xFFFFCFFF` for `_warpgroup.arrive/wait` |
 | Commit opcode | 323 | Ori opcode for `_warpgroup.commit_batch` |
-| Accum register class | 6 | Register class for tensor/accumulator registers |
+| Accum reg\_type | 6 | `vreg+64` value for tensor/accumulator registers |
 | Accum src tag | `0x90000000` | High nibble tag for source accumulator set |
 | Accum dst tag | `0x10000000` | High nibble tag for destination accumulator set |
 
@@ -580,6 +580,6 @@ The cubin output includes tensor-core-specific EIATTR attributes:
 - [Ada & Hopper Targets](../targets/ada-hopper.md) -- SM 89/90 feature gates, WGMMA details
 - [Turing & Ampere Targets](../targets/turing-ampere.md) -- SM 75--88 tensor core introduction
 - [Latency Model](../scheduling/latency-model.md) -- HMMA/IMMA/DMMA functional unit scheduling
-- [Register Model](../ir/registers.md) -- Register class 6 (tensor/accumulator)
+- [Register Model](../ir/registers.md) -- reg\_type 6 (tensor/accumulator, allocator class 6)
 - [Mercury Encoder](../codegen/mercury.md) -- SASS encoding of MMA instructions
 - [ELF Output](../output/sections.md) -- EIATTR_SPARSE_MMA_MASK, EIATTR_TCGEN05_*
