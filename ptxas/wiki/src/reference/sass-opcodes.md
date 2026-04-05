@@ -1,5 +1,7 @@
 # SASS Opcode Catalog
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 Complete reference table of all SASS opcode mnemonics known to ptxas v13.0.88. Extracted from the ROT13-encoded opcode name table in the `InstructionInfo` constructor (`sub_7A5D10`, vtable `off_233ADC0`). The table stores exactly 322 named entries (indices 0--321) at object offset +0x1058, with each entry occupying 16 bytes (8-byte string pointer + 8-byte length). A parallel constructor `sub_BE7390` initializes an identical table. Immediately after the name table, a 322-element identity-mapped index array (0x508 bytes of 4-byte integers 0..321) is bulk-copied from `unk_21C0E00` to object offset +0x2478; this is a separate data structure (encoding category map), not additional opcode names.
 
 All SASS mnemonic strings in the ptxas binary are ROT13-obfuscated. The cleartext names shown here are the result of applying ROT13 decoding to the stored strings.
@@ -701,6 +703,151 @@ From the encoding page analysis, the approximate distribution of 64-bit vs 128-b
 **256-bit format (format code 0x8):** IMAD.WIDE variants with 16 constant-bank operand slots. Extremely rare -- only 2 encoder functions use this format.
 
 The 64-bit short-form encoders cover 27 opcode classes across 174 encoder functions total. The 128-bit encoders cover the remaining ~75+ opcode classes across 912+ encoder functions.
+
+## SM100 Encoding Variant Counts
+
+Per-opcode variant counts for the SM100 (Blackwell datacenter) SASS encoder, extracted from the 683 concrete encoding handler functions at `0xED1520`--`0xFA5F10`. Each function encodes one (opcode, operand-form) pair -- e.g., `FFMA reg,reg,reg` vs `FFMA reg,reg,imm` vs `FFMA reg,reg,pred`. The "Enc ID" column is the numeric value written to `*(WORD*)(a2+12)` by each handler, which maps to the SASS binary major opcode through the encoding dispatch megafunctions. The "SASS Mnemonic" column gives the canonical name from the 322-entry ROT13 opcode name table in `InstructionInfo`. Where two encoder IDs map to the same mnemonic (e.g. IADD3 IDs 0+1, LOP3 IDs 4+10), both are listed; the "Combined" column gives the merged count for that instruction.
+
+Source: sweep report `p1.14-sweep-0xED1000-0xFA6000.txt`, ptxas v13.0.88.
+
+### Integer ALU
+
+| Enc ID | Variants | SASS Mnemonic | Combined | Formats |
+|--------|----------|---------------|----------|---------|
+| 0 | 8 | IADD3 | 13 (IDs 0+1) | 23F1DF8, 23F1F08 |
+| 1 | 5 | IADD3 | | 23F1DF8, 23F1F08 |
+| 15 | 19 | IMAD | 19 | 23F1DF8, 23F2018 |
+| 40 | 23 | IMAD (wide) | 23 | 23F1DF8, 23F21B0 |
+| 42 | 34 | IMAD (extended) | 34 | 23F1DF8, 23F21B0 |
+| 4 | 4 | LOP3 | 12 (IDs 4+10) | 23F2018 |
+| 10 | 8 | LOP3 | | 23F2018 |
+| 34 | 33 | ISETP | 33 | 23F1DF8, 23F29A8 |
+| 30 | 2 | IMNMX | 2 | 23F1D70 |
+| 43 | 13 | FLO | 13 | 23F1D70, 23F1DF8 |
+| 44 | 4 | IABS | 4 | 23F1F08, 23F1F90 |
+| 47 | 5 | POPC | 5 | 23F1F08, 23F1F90 |
+| 49 | 2 | BREV | 2 | 23F1DF8 |
+| 21 | 5 | SHF | 5 | 23F1DF8, 23F1F08 |
+| 84 | 6 | SHF | 6 | 23F1F08, 23F1F90 |
+| **Subtotal** | | | **171** | |
+
+### FP32 ALU
+
+| Enc ID | Variants | SASS Mnemonic | Combined | Formats |
+|--------|----------|---------------|----------|---------|
+| 13 | 30 | FFMA | 30 | 23F2018..23F2EF8 |
+| 14 | 11 | FADD | 11 | 23F1F90, 23F2E70 |
+| 22 | 18 | FMUL | 18 | 23F1DF8..23F2678 |
+| 31 | 2 | FMNMX | 2 | 23F1D70 |
+| 35 | 30 | FSETP | 30 | many formats |
+| 33 | 2 | FSET/CSET | 2 | 23F2238 |
+| 38 | 2 | FSWZADD | 2 | 23F2128 |
+| 103 | 9 | extended FMA | 9 | 23F1DF8..23F2678 |
+| **Subtotal** | | | **104** | |
+
+### FP64 ALU
+
+| Enc ID | Variants | SASS Mnemonic | Combined | Formats |
+|--------|----------|---------------|----------|---------|
+| 59 | 6 | DFMA | 6 | 23F2678, 23F2EF8 |
+| 91 | 2 | DADD | 2 | 23F1DF8 |
+| 57 | 5 | DMUL | 5 | 23F1F08 |
+| 65 | 6 | DSETP | 6 | 23F2678, 23F2EF8 |
+| **Subtotal** | | | **19** | |
+
+### FP16 / Half-Precision
+
+| Enc ID | Variants | SASS Mnemonic | Combined | Formats |
+|--------|----------|---------------|----------|---------|
+| 23 | 18 | HFMA2/HMUL2 | 18 | 23F1DF8..23F2678 |
+| 37 | 34 | HSETP2/DSETP | 34 | 23F1DF8, 23F21B0 |
+| **Subtotal** | | | **52** | |
+
+### Data Movement
+
+| Enc ID | Variants | SASS Mnemonic | Combined | Formats |
+|--------|----------|---------------|----------|---------|
+| 18 | 78 | MOV | 78 | many formats |
+| 32 | 28 | SEL | 28 | 23F1D70, 23F1DF8 |
+| 71 | 45 | P2R/R2P | 45 | many formats |
+| 19 | 3 | PRMT | 3 | 23F1C60, 23F1D70 |
+| 20 | 3 | LEA | 3 | 23F1DF8, 23F1F08 |
+| 6 | 5 | S2R | 5 | 23F1F08, 23F1F90 |
+| 7 | 2 | CS2R | 2 | 23F2018 |
+| **Subtotal** | | | **164** | |
+
+### Memory
+
+| Enc ID | Variants | SASS Mnemonic | Combined | Formats |
+|--------|----------|---------------|----------|---------|
+| 27 | 24 | LDG/STG | 24 | 23F1F08, 23F29A8 |
+| 77 | 18 | LDS/STS | 18 | 23F29A8 |
+| 94 | 16 | LDL/STL | 16 | 23F29A8 |
+| 74 | 6 | ST | 6 | 23F1DF8, 23F1F08 |
+| 50 | 5 | ATOM/ATOMG | 5 | 23F1DF8, 23F1F08 |
+| 81 | 6 | RED | 6 | 23F1F08, 23F1F90 |
+| 100 | 3 | SULD | 3 | 23F1DF8, 23F1F08 |
+| **Subtotal** | | | **78** | |
+
+### Tensor Core
+
+| Enc ID | Variants | SASS Mnemonic | Combined | Formats |
+|--------|----------|---------------|----------|---------|
+| 78 | 35 | HMMA/IMMA | 35 | 23F1DF8, 23F29A8 |
+| 90 | 5 | BMMA/QMMA | 5 | 23F2678 |
+| **Subtotal** | | | **40** | |
+
+### Texture
+
+| Enc ID | Variants | SASS Mnemonic | Combined | Formats |
+|--------|----------|---------------|----------|---------|
+| 5 | 1 | TLD | 1 | 23F1F08 |
+| 8 | 2 | TEX | 2 | 23F1DF8, 23F1F90 |
+| 9 | 1 | TLD4 | 1 | 23F1F08 |
+| 88 | 2 | TEX (variant) | 2 | 23F1F08 |
+| **Subtotal** | | | **6** | |
+
+### Predicate / Warp
+
+| Enc ID | Variants | SASS Mnemonic | Combined | Formats |
+|--------|----------|---------------|----------|---------|
+| 79 | 7 | PLOP3 | 7 | 23F1F08..23F2018 |
+| 82 | 6 | VOTE | 6 | 23F1F08, 23F1F90 |
+| 48 | 7 | SHFL | 7 | 23F1D70, 23F1DF8 |
+| **Subtotal** | | | **20** | |
+
+### Control Flow / Sync
+
+| Enc ID | Variants | SASS Mnemonic | Combined | Formats |
+|--------|----------|---------------|----------|---------|
+| 17 | 1 | BRA | 1 | 23F1F08 |
+| 73 | 10 | BAR | 10 | 23F1F08, 23F2238 |
+| 92 | 1 | DEPBAR | 1 | 23F1F08 |
+| 98 | 1 | MEMBAR | 1 | 23F1F08 |
+| 11 | 14 | MUFU | 14 | 23F1F08, 23F1F90 |
+| 45 | 1 | NOP | 1 | 23F1D70 |
+| 46 | 1 | YIELD/EXIT | 1 | 23F2238 |
+| **Subtotal** | | | **29** | |
+
+### Totals
+
+| Category | Encoder Functions | Distinct Opcodes |
+|----------|-------------------|------------------|
+| Integer ALU | 171 | 15 (across 10 mnemonics) |
+| FP32 ALU | 104 | 8 |
+| FP64 ALU | 19 | 4 |
+| FP16 | 52 | 2 |
+| Data Movement | 164 | 7 |
+| Memory | 78 | 7 |
+| Tensor Core | 40 | 2 |
+| Texture | 6 | 4 |
+| Predicate/Warp | 20 | 3 |
+| Control/Sync | 29 | 7 |
+| **Total** | **683** | **59** |
+
+The top 5 instructions by variant count -- MOV (78), P2R/R2P (45), HMMA/IMMA (35), IMAD extended (34), HSETP2/DSETP (34) -- account for 226 of 683 encoders (33%). MOV alone accounts for 11.4% of all encoder functions because every possible source type (GPR, uniform reg, immediate, constant bank, predicate, special reg) and every destination type requires a separate encoder with a distinct operand signature and bitfield extraction sequence.
+
+The 21 encoding format descriptors (xmmword groups) cluster into three tiers by usage: heavy (165+141+101 = 407 functions across 3 formats), medium (87+47+36 = 170 across 3 formats), and light (106 functions across 15 formats). The heavy-tier formats (23F1F08, 23F1DF8, 23F29A8) are the simple/compact, primary ALU, and memory/load-store formats respectively -- these three alone cover 60% of all SM100 encoders.
 
 ## Internal Index vs. Numeric Opcode
 
