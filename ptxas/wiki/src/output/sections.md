@@ -4,6 +4,7 @@ A CUDA cubin is a standard ELF container with NVIDIA-proprietary extensions. ptx
 
 | | |
 |---|---|
+| **Section attribute builder** | `sub_60FBF0` (76 KB decompiled -- per-kernel section config + codegen launch) |
 | **Section creator** | `sub_1CB3570` (1,963 bytes, 44 call sites) |
 | **Text section creator** | `sub_1CB42D0` (SHF_ALLOC \| SHF_EXECINSTR) |
 | **nvinfo section creator** | `sub_1CC7FB0` (creates `.nv.info` / `.nv.info.<func>`) |
@@ -787,10 +788,166 @@ Each shared object's final offset is `group_offset[its_color]`. The total extern
 | `sub_1CA5360` | -- | Shared object comparison function (sort key) |
 | `sub_1CA5A00` | -- | Shared memory data copier (offset overlap check) |
 
+## Section Attribute Builder -- `sub_60FBF0`
+
+The per-kernel section attribute builder `sub_60FBF0` (76 KB decompiled, 2,541 lines, VA `0x60FBF0`) runs once for each kernel entry point and device function. It assembles the full per-function section configuration object (648 bytes), parses compile option overrides, remaps PTX memory space codes to ELF section type IDs, conditionally creates three section types, then invokes the Mercury codegen pipeline (`sub_6F52F0`, DecodePipeline::RunStages).
+
+### Inputs
+
+The function takes three parameters:
+
+| Parameter | Content |
+|---|---|
+| `a1` | Per-function descriptor: SM version (`a1[0..1]`), key-value option list (`a1+38`), assembler flags (`a1+39`), global/extern symbol lists (`a1+6`, `a1+7`), boolean flags (`a1+180..182`) |
+| `a2` | Compilation context: config base (`a2+248`), function list (`a2+136`), optional symbol tables for textures (`a2+112`), surfaces (`a2+120`), globals (`a2+72`), sass_map flag (`a2+232`), mutex (`a2+240`), ELFW object (`a2+32`), target descriptor (`a2+56`) |
+| `a3` | Output handle (released and reallocated at function entry) |
+
+### Option Parsing
+
+The function iterates the key-value list at `a1+38` and matches five string keys by character-by-character comparison:
+
+```c
+// Simplified from sub_60FBF0 lines ~638-812
+for (int i = 0; i < list_length(a1->options); i++) {
+    const char** kv = list_get(a1->options, i);
+    if (strcmp(kv[0], "deviceDebug") == 0)
+        config->deviceDebug = 1;                // config+24
+    else if (strcmp(kv[0], "lineInfo") == 0)
+        config->lineInfo = 1;                   // config+25
+    else if (strcmp(kv[0], "optLevel") == 0) {
+        if (!config->optLevel_locked)            // config+108
+            config->optLevel = strtol(kv[1], ...);  // config+104
+    }
+    else if (strcmp(kv[0], "IsCompute") == 0)
+        config->isCompute = (strcmp(kv[1], "True") == 0);  // config+184
+    else if (strcmp(kv[0], "IsPIC") == 0)
+        config->isPIC = (strcmp(kv[1], "True") == 0);      // config+191
+}
+```
+
+Additional inputs read from `a1` and `a2`:
+
+| Source | Config field | Description |
+|---|---|---|
+| `a2+408` | config+44 | Optimization level from compilation context |
+| `a1+180` | config+190 | Negated boolean flag |
+| `a1+181` | config+188 | Boolean flag |
+| `a1+182` | config+189 | Boolean flag |
+| `word_2020620[a2+64 - 20]` | `v31+4` | SM version lookup table (SM 20..121 range) |
+
+### Memory Space Type Remapping
+
+PTX internal memory space type codes in the `0x10000` range are remapped to compact ELF section type IDs by the helper `sub_60DA40` (and inline copies). This remapping is applied to every symbol in the global, extern, texture, surface, and per-function symbol lists:
+
+| PTX Code | Hex | Section Type ID | Memory Space |
+|---:|---|---:|---|
+| 65538 | `0x10002` | 83 | `.nv.shared` (per-kernel) |
+| 65539 | `0x10003` | 80 | `.nv.constant0` (kernel params) |
+| 65540 | `0x10004` | 84 | `.nv.local` (spill memory) |
+| 65541 | `0x10005` | 81 | `.nv.constant1` |
+| 65542 | `0x10006` | 82 | `.nv.constant2` |
+| 65544 | `0x10008` | 85 | `.nv.constant3` |
+| 65545 | `0x10009` | 86 | `.nv.constant4` |
+| 65546 | `0x1000A` | 87 | `.nv.constant5` |
+| 65576 | `0x10028` | 88 | `.nv.global.init` |
+| 65577 | `0x10029` | 89 | `.nv.global` |
+| 65586 | `0x10032` | 93 | High constant bank |
+| 65587 | `0x10033` | 90 | High constant bank |
+| 65598 | `0x1003E` | 91 | Texture/surface descriptor |
+| 65599 | `0x1003F` | 92 | Texture/surface descriptor |
+
+Special handling: when the space code is `0x10003` (constant0) and the compilation mode is relocatable (`*(a3+48) == 12`), the descriptor's needs_reloc flag (byte 33) is set to 1, indicating the constant0 section requires special relocation handling during linking.
+
+The value `65596` (`0x1003C`) serves as a threshold -- symbols with `(space_type - 0x1003C) < 2` are counted into the texture/surface allocation arrays.
+
+### Conditional Section Creation
+
+Three per-kernel sections are conditionally created:
+
+**`.sass_map.<func>`** -- created when `*(a2+232) != 0` (sass_map generation enabled):
+
+```c
+if (context->sass_map_enabled) {                 // a2+232
+    descriptor = alloc(64);                       // 64-byte section descriptor
+    memset(descriptor, 0, 64);
+    pthread_mutex_lock(context->mutex);           // a2+240
+    // Allocate instruction tree node and connect to codegen state
+    name = sprintf(".sass_map%s", func_name);     // ".sass_map" + func_name
+    descriptor->name = name;
+    pthread_mutex_unlock(context->mutex);
+}
+```
+
+**`.nv.local.<func>`** -- created when the register spill size (config+112) is non-zero:
+
+```c
+if (config->spill_size != 0) {                   // config+112
+    descriptor = alloc(64);
+    descriptor->size = config->spill_size;
+    // Name: ".nv.local." + bare_func_name (skip ".text." prefix)
+    name = sprintf(".nv.local.%s", func_name + 6);
+}
+```
+
+The spill size at config+112 is set from the sum of the register spill count and frame size when the spill flag is non-zero.
+
+**`.nv.constant<N>.<func>`** -- created when:
+1. The compilation mode field equals 2 (`*(a1->target+48) == 2`)
+2. No pre-existing constant section exists (`*(a1+172) == 0`)
+3. The function's symbol list is empty
+
+```c
+if (mode == 2 && !has_constant_section && no_symbols) {
+    descriptor = alloc(64);
+    int bank = target->get_section_type() - 0x70000064;
+    int size;
+    if (func_const_size <= target->get_min_const_size())
+        size = target->get_min_const_size();     // vtable+80
+    else
+        size = target->get_max_const_size();     // vtable+88
+    descriptor->size = size + func_const_size;
+    name = sprintf(".nv.constant%d.%s", bank, bare_func_name);
+    descriptor->data = calloc(descriptor->size);
+}
+```
+
+### Assembler Flag Processing
+
+The assembler flag list at `a1+39` is iterated. Each entry's value string (at offset +8) is split on spaces via `strtok_r`. Each token is validated by `sub_60F790`, which constructs a temporary 656-byte object to test the flag. Valid tokens are concatenated with spaces and appended to config+48 (the toolkit info string that ends up in `.note.nv.tkinfo`).
+
+### Codegen Pipeline Invocation
+
+After configuration, the function calls `sub_6F52F0` (DecodePipeline::RunStages) with 18 parameters including the configuration object, all 7 descriptor arrays, the ELFW context, and the function name. The return code is mapped:
+
+| `sub_6F52F0` return | `sub_60FBF0` return | Meaning |
+|---|---|---|
+| 0 | 0 | Success |
+| 1 | 14 | Mercury encode failure |
+| 2 | 22 | Mercury decode failure |
+
+### Post-Pipeline Section Registration
+
+After the Mercury pipeline returns successfully:
+
+1. Calls `sub_60DD30` twice for pre/post code region finalization
+2. Calls `sub_60DBE0` for each optional symbol table (texture, surface, global) to register their sections with the ELFW emitter
+3. Calls `sub_1CB9C30` on the ELFW object (`a2+32`) to commit all sections
+4. If SM version <= `0x45` (SM 69): creates UFT/UDT entries (section types 68/69) for each resolved symbol
+5. Under mutex lock, ORs the per-function WAR bitmask (`config+232..240`) into the global accumulator at `a2+504`
+
+### Thread Safety
+
+All shared state modifications are protected by the mutex at `a2+240`:
+- String length accumulator updates (`a2+296`, `a2+304`) for string table pre-allocation
+- WAR bitmask accumulation (`a2+504`)
+- `.sass_map` section setup (instruction tree access)
+- Instruction merge from secondary codegen contexts (`a2+80`, `a2+88`)
+
 ## Key Functions
 
 | Address | Size | Purpose |
 |---|---|---|
+| `sub_60FBF0` | ~76 KB decompiled | Per-kernel section attribute builder (section above) |
 | `sub_1CC9800` | 14,764 B (90 KB decompiled) | EIATTR builder -- master nvinfo section constructor |
 | `sub_1CC8950` | 2,634 B | EIATTR propagator -- barrier/register cross-function propagation |
 | `sub_1CC85F0` | ~200 B | EIATTR record emitter -- writes one TLV record |
