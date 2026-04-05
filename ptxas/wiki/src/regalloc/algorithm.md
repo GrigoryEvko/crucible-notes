@@ -5,7 +5,7 @@ The ptxas register allocator uses a fat-point greedy algorithm. For each virtual
 | | |
 |---|---|
 | **Core allocator** | `sub_957160` (1658 lines) -- fat-point coloring engine |
-| **Pressure builder** | `sub_957020` -- populates primary and secondary arrays |
+| **Occupancy bitvector** | `sub_957020` -- resizes bitvector; `sub_94C9E0` -- marks slot ranges |
 | **Interference builder** | `sub_926A30` (4005 lines) -- constraint solver |
 | **Assignment** | `sub_94FDD0` (155 lines) -- write physical reg, propagate aliases |
 | **Pre-allocation** | `sub_94A020` (331 lines) -- pre-assign high-priority operands |
@@ -24,7 +24,7 @@ The core allocator (`sub_957160`) allocates two stack-local arrays at the start 
 
 Both arrays are zeroed using SSE2 vectorized `_mm_store_si128` loops aligned to 16-byte boundaries. The zeroing loop processes 128 bits per iteration, covering 512 DWORDs in approximately 128 iterations.
 
-For each virtual register in the allocation worklist (linked list at `alloc+744`), the allocator calls `sub_957020` to populate the pressure arrays. This function walks the virtual register's constraint list (`vreg+144`) and, for each constraint, increments the appropriate pressure array entries at the physical register slots that conflict with the current virtual register. The result is a histogram: `primary[slot]` holds the total interference weight for physical register `slot`, accumulated over all constraints of all previously-assigned virtual registers that conflict with the current one.
+For each virtual register in the allocation worklist (linked list at `alloc+744`), the allocator zeroes the pressure arrays and then walks the VR's constraint list (`vreg+144`). For each constraint, it increments the appropriate pressure array entries at the physical register slots that conflict with the current virtual register. The result is a histogram: `primary[slot]` holds the total interference weight for physical register `slot`, accumulated over all constraints of all previously-assigned virtual registers that conflict with the current one. The full per-VR algorithm is documented in the Pressure Computation Algorithm section below.
 
 The secondary array accumulates a separate cost metric used for tie-breaking. It captures weaker interference signals -- preferences and soft constraints that do not represent hard conflicts but indicate suboptimal placement.
 
@@ -44,6 +44,347 @@ alloc.budget = v231                         // stored at alloc+60
 The hardware limit comes from the target descriptor and reflects the physical register file size for the current class (e.g. 255 for GPRs, 7 for predicates). The `+7` headroom allows the allocator to explore slightly beyond the architectural limit before triggering a hard failure -- this is clamped during assignment by the register budget check in `sub_94FDD0`.
 
 The register budget at `alloc+1524` interacts with `--maxrregcount` and `--register-usage-level` (values 0--10). The CLI-specified maximum register count is stored in the compilation context and propagated to the allocator as the hard ceiling. The `register-usage-level` option modulates the target: level 0 means no restriction, level 10 means minimize register usage as aggressively as possible. The per-class register budget stored at `alloc+32*class+884` reflects this interaction.
+
+### Occupancy Bitvector
+
+After computing the budget, the allocator initializes an occupancy bitvector (`sub_957020` + `sub_94C9E0`) that tracks which physical register slots are already assigned. The bitvector is sized to `ceil(budget / 64)` 64-bit words. For each VR being allocated, `sub_94C9E0` sets bits covering the VR's footprint in the bitvector using a word-level OR with computed masks:
+
+```
+function mark_occupancy(bitvec, range, alignment):
+    lo_word = alignment >> 6
+    hi_word = min(alignment + 64, range) >> 6
+    hi_mask = ~(0xFFFFFFFFFFFFFFFF >> (64 - (range & 63)))
+    lo_mask = 0xFFFFFFFFFFFFFFFF >> (~alignment & 63)
+
+    for word_idx in lo_word .. lo_word + (lo_word - hi_word):
+        mask = 0xFFFFFFFFFFFFFFFF
+        if word_idx == hi_word:  mask &= hi_mask
+        if word_idx == last:     mask &= lo_mask
+        bitvec[word_idx] |= mask
+```
+
+During the fatpoint scan, a set bit means "slot occupied -- skip it." This prevents the allocator from considering slots already committed to other VRs in the current round.
+
+## Pressure Computation Algorithm
+
+The per-VR pressure computation is the core of the fat-point allocator. For each unassigned virtual register, the allocator builds a fresh pressure histogram, selects the minimum-cost physical register slot, and commits the assignment. The algorithm has seven steps, all executed inside the main loop of `sub_957160` (lines 493--1590 of the decompiled output).
+
+### Step 1: VR Geometry
+
+For each VR, the allocator computes the physical register footprint via `sub_7DAFD0`:
+
+```
+function aligned_width(vreg):
+    stride = 1 << vreg.alignment                // vreg+72, uint8
+    size   = vreg.width                          // vreg+74, uint16
+    return (-stride) & (stride + size - 1)       // = ceil(size / stride) * stride
+```
+
+| stride | size | result | Meaning |
+|--------|------|--------|---------|
+| 1 | 1 | 1 | Single register |
+| 1 | 2 | 2 | Unaligned pair |
+| 2 | 2 | 2 | Aligned pair |
+| 2 | 3 | 4 | Aligned quad (rounded up) |
+
+The pair mode is extracted from `(vreg+48 >> 20) & 3`:
+
+| pair_mode | step_size | Behavior |
+|-----------|-----------|----------|
+| 0 | `stride` | Normal single-width scan |
+| 1 | `stride` | Paired mode -- `is_paired = 1`, scan ceiling doubled |
+| 3 | `2 * stride` | Double-width -- aligned width doubled, step by 2x stride |
+
+### Step 2: Scan Range
+
+The scan range defines which physical register slots are candidates:
+
+```
+function compute_scan_range(alloc, vreg):
+    max_slot = alloc.budget                          // alloc+1524
+    if vreg.flags & 0x400000:                        // per-class ceiling override
+        class_limit = alloc.class_limits[alloc.current_class]
+        if max_slot > class_limit:
+            max_slot = class_limit
+
+    ceiling = ((max_slot + 1) << is_paired) - 1
+    start   = vtable[320](alloc, vreg, bitvec)       // class-specific start offset
+    alignment = alloc.scan_alignment << is_paired     // alloc+1556
+    scan_width = alloc.slot_count + 4                 // alloc+1584 + 4
+
+    return (start, ceiling, scan_width, alignment)
+```
+
+The `+4` on scan_width provides padding beyond the register file limit. For pair modes, the ceiling is shifted left: double for `is_paired`, quad for pair_mode 3 with the `0x40` flag at `ctx+1369`.
+
+### Step 3: Zero Pressure Arrays
+
+Before accumulating interference for this VR, both arrays are zeroed over `scan_width` DWORDs:
+
+```
+function zero_pressure(primary[], secondary[], scan_width):
+    if scan_width > 14 and arrays_dont_overlap:
+        // SSE2 vectorized path: zero 4 DWORDs per iteration
+        for i in 0 .. scan_width/4:
+            _mm_store_si128(&primary[4*i],  zero_128)
+            _mm_store_si128(&secondary[4*i], zero_128)
+        // scalar cleanup for remainder
+    else:
+        // scalar path
+        for i in 0 .. scan_width:
+            primary[i]   = 0
+            secondary[i] = 0
+```
+
+The SSE2 path has a non-overlap guard (`secondary >= primary + 16 || primary >= secondary + 16`) to ensure the vectorized stores do not alias. The scalar path is used for narrow scan ranges (width <= 14).
+
+### Step 4: Constraint Walk
+
+The allocator iterates the constraint list at `vreg+144`. For VRs with alias chains (coalesced registers via `vreg+32`), the walk processes constraints for the entire chain, accumulating pressure from all aliases into the same arrays. Each constraint node is a 24-byte structure:
+
+| Offset | Type | Field |
+|--------|------|-------|
+| +0 | pointer | Next constraint (linked list) |
+| +8 | int32 | Constraint type (0--15) |
+| +12 | int32 | Target VR index or physical register |
+| +16 | int32 | Weight (interference cost) |
+| +20 | uint8 | Soft flag (skip in later iterations) |
+
+The constraint type dispatches to different accumulation patterns:
+
+```
+function accumulate_pressure(primary[], secondary[], constraint_list, scan_width,
+                             base_offset, pair_mode, half_width_mode, iteration):
+    soft_count = 0
+    for node in constraint_list:
+        // --- Soft constraint relaxation (iteration > 0) ---
+        if node.soft_flag and iteration > 0:
+            soft_count++
+            skip_threshold = iteration * knob_weight    // OCG knob at +46232
+            if soft_count <= skip_threshold:
+                continue                                // relax this constraint
+            if bank_aware and soft_count > relaxation_ceiling:
+                continue
+
+        type   = node.type
+        target = node.target
+        weight = node.weight
+
+        switch type:
+            case 0:  // Point interference
+                phys = lookup_vreg(target).physical_reg
+                if phys < 0: continue                   // target unassigned
+                offset = phys - base_offset
+                if offset < 0 or offset >= scan_width: continue
+                if half_width_mode:
+                    offset = 2 * offset + hi_half_bit(target)
+                primary[offset] += weight
+
+            case 1:  // Exclude-one
+                if half_width_mode:
+                    offset = 2 * offset + hi_half_bit(target)
+                for slot in 0 .. scan_width:
+                    if slot != offset:
+                        primary[slot] += weight
+
+            case 2:  // Exclude-all-but (target is the only allowed slot)
+                for slot in 0 .. scan_width:
+                    if slot != target:
+                        primary[slot] += weight
+
+            case 3:  // Below-point (same as exclude-all-but, downward liveness)
+                for slot in 0 .. scan_width:
+                    if target > slot:
+                        primary[slot] += weight
+
+            case 5:  // Paired-low (even slots only)
+                primary[offset] += weight
+                // For pair_mode 3: also primary[offset+1] += weight
+
+            case 6:  // Paired-high (odd slots only)
+                primary[offset + 1] += weight
+
+            case 7:  // Aligned-pair (both halves)
+                primary[offset] += weight
+                primary[offset + 1] += weight
+
+            case 8:  // Phi-related (parity-strided accumulation)
+                parity = compute_phi_parity(target, vreg)
+                for slot in parity .. scan_width step 2:
+                    primary[slot] += weight
+
+            case 11: // Paired-even-parity
+                for slot in 0 .. scan_width:
+                    if slot != offset:
+                        primary[slot] += weight
+
+            case 12: // Paired-odd-parity
+                inverse = compute_odd_inverse(offset, pair_mode)
+                for slot in 0 .. scan_width:
+                    if slot != inverse:
+                        primary[slot] += weight
+
+            case 13: // Paired-parity-group (even-only exclusion)
+                if offset & 1: continue
+                for slot in 0 .. scan_width:
+                    if slot != offset + 1:
+                        primary[slot] += weight
+
+            case 14: // Paired-parity-extended (odd-only exclusion)
+                if !(offset & 1): continue
+                for slot in 0 .. scan_width:
+                    if slot != offset - 1:
+                        primary[slot] += weight
+
+            case 15: // Range (SECONDARY array)
+                range_end = min(offset, scan_width)
+                // SSE2 vectorized: broadcast weight, add to secondary[0..range_end]
+                for slot in 0 .. range_end:                 // vectorized
+                    secondary[slot] += weight
+                // Tail: slots beyond (range_end + pair_width)
+                for slot in range_end .. scan_width:
+                    if slot >= offset + pair_width:
+                        secondary[slot] += weight
+
+            default: // Types 4, 9, 10 and custom extensions
+                vtable[240](alloc, primary, 514, node, scan_width, offset, pair_flag)
+```
+
+Type 15 (range) is the only constraint type that writes to the secondary array. All others write to primary. This is the architectural decision that makes secondary a pure tie-breaker: it captures long-range preference signals while primary captures hard interference.
+
+#### SSE2 Vectorization in Constraint Walk
+
+Three inner loops use SSE2 intrinsics:
+
+1. **Type 0 (point) with large width:** `_mm_add_epi32` adds the broadcast weight to 4 primary slots per iteration. Alignment pre-loop handles the first 1--3 slots to reach 16-byte alignment.
+
+2. **Type 15 (range) secondary accumulation:** `_mm_shuffle_epi32(_mm_cvtsi32_si128(weight), 0)` broadcasts the weight to all 4 lanes. The vectorized loop processes 4 secondary slots per iteration with `_mm_add_epi32(_mm_load_si128(...), broadcast)`.
+
+3. **Type 8 (phi) stride-2 accumulation:** Uses `_mm_shuffle_ps` with mask 136 (0b10001000) to extract every-other element, then `_mm_add_epi32` to accumulate. This implements stride-2 addition across the primary array.
+
+### Step 5: Iteration-Dependent Constraint Relaxation
+
+On retry iterations (iteration > 0), the allocator progressively relaxes soft constraints to reduce pressure:
+
+```
+function should_skip_soft_constraint(soft_count, iteration, knob_weight,
+                                     knob_ceiling, bank_aware):
+    threshold = iteration * knob_weight           // more skipped each retry
+    if soft_count <= threshold:
+        return true                               // skip (relax)
+    if !bank_aware:
+        return true
+    if soft_count > (total_soft - iteration * knob_ceiling):
+        return true                               // beyond ceiling
+    return false
+```
+
+The relaxation formula means: on iteration N, the first `N * knob_weight` soft constraints are ignored. The `knob_ceiling` parameter (OCG knob at offset +46304) controls how aggressively the tail is also relaxed. This trades bank-conflict quality for register pressure reduction, allowing the allocator to find assignments that fit within the budget on later retries.
+
+### Step 6: Fatpoint Selection (Minimum Scan)
+
+After pressure accumulation, the allocator scans for the physical register slot with the lowest cost:
+
+```
+function select_fatpoint(primary[], secondary[], start, ceiling, budget,
+                         step_size, shift, occupancy_bv, threshold,
+                         first_pass, bank_mode, bank_mask, prev_assignment):
+    best_slot     = start
+    best_primary  = 0
+    best_secondary = 0
+
+    // --- Pre-scan threshold check (first pass only) ---
+    if first_pass:
+        for slot in start .. ceiling step step_size:
+            if occupancy_bv[slot]: continue        // already occupied
+            if primary[slot >> shift] > threshold:  // knob 684, default 50
+                first_pass = false                  // congestion detected
+                break
+
+    // --- Main scan ---
+    slot = start
+    while slot < budget and slot < alloc.slot_count << is_paired:
+        // Occupancy filter
+        if slot < bv_size and occupancy_bv[slot]:
+            slot += step_size; continue
+
+        p = primary[slot >> shift]
+        s = secondary[slot >> shift]
+
+        if prev_assignment >= 0:                    // not first VR
+            if first_pass:
+                if s >= best_secondary:
+                    slot += step_size; continue     // secondary-only comparison
+            else:
+                if p > best_primary:
+                    slot += step_size; continue
+                if p == best_primary and s >= best_secondary:
+                    slot += step_size; continue
+
+        // Bank conflict filter
+        if bank_mode and ((slot ^ prev_assignment) & bank_mask) == 0:
+            slot += step_size; continue             // same bank → skip
+
+        // Ceiling check
+        if slot > ceiling:
+            best_slot = slot; break                 // accept (over ceiling)
+
+        // Accept this slot
+        if slot < scan_width_shifted:
+            best_secondary = secondary[slot >> shift]
+            best_primary   = primary[slot >> shift]
+            if best_secondary == 0 and (best_primary == 0 or first_pass):
+                best_slot = slot; break             // zero-cost → immediate accept
+            best_slot = slot
+            slot += step_size; continue
+
+        best_slot = slot
+        best_primary = 0
+        break
+
+    return best_slot
+```
+
+Key design decisions in the fatpoint scan:
+
+**Two-mode comparison.** On the first pass (`first_pass = true`, iteration 0), the scan uses secondary cost as the sole criterion, ignoring primary. This makes the first attempt pure-affinity-driven: it places VRs at their preferred locations based on copy/phi hints in the secondary array. On subsequent passes, primary cost dominates and secondary breaks ties.
+
+**Immediate zero-cost accept.** When a slot has both `primary == 0` and `secondary == 0` (or just `primary == 0` on first pass), the scan terminates immediately. This means the first zero-interference slot wins -- no further searching. Combined with the priority ordering of VRs, this produces a fast, greedy assignment.
+
+**Bank-conflict avoidance.** The bank mask (`-8` for pair mode 1, `-4` otherwise) partitions the register file into banks. The filter `((slot ^ prev_assignment) & mask) == 0` ensures consecutive assignments land in different banks, reducing bank conflicts in the SASS execution units.
+
+**Occupancy bitvector filtering.** The bitvector provides O(1) per-slot filtering of already-assigned registers. Bits are set by `sub_94C9E0` for each committed assignment, preventing the scan from considering occupied slots.
+
+### Step 7: Commit and Advance
+
+The selected slot is committed via `sub_94FDD0`:
+
+```
+alloc.cumulative_pressure += best_primary       // alloc+788
+sub_94FDD0(alloc, ctx, iteration, vreg, &local_state, best_slot, best_primary)
+vreg = vreg.next                                 // vreg+128, advance worklist
+```
+
+The cumulative pressure counter at `alloc+788` tracks the total interference weight across all VR assignments in this attempt. The retry driver uses this to compare attempts.
+
+### End-of-Round Result
+
+After all VRs are processed, the allocator computes the result (lines 1594--1641):
+
+```
+peak_usage = alloc+1580                          // max physical register used
+class_slot = ctx+1584 + 4 * mode + 384
+*class_slot = peak_usage
+
+if peak_usage > 0x989677 + 6:                    // sanity threshold (~10M)
+    emit_error("Register allocation failed with register count of '%d'."
+               " Compile the program with a higher register target",
+               alloc+1524 + 1)
+
+return peak_usage + 1                            // number of registers used
+```
+
+The return value feeds into the retry driver's comparison: `target >= result` means success (the allocation fits within the register budget).
 
 ## Constraint Types
 
@@ -301,16 +642,16 @@ for class_id in 1..6:
 
 Classes 1--6 are initialized via the target descriptor vtable at offset `+896`. The vtable call `vtable[896](alloc_state, class_id)` populates per-class register file descriptors at `alloc[114..156]` (four 8-byte entries per class). The class IDs correspond to `reg_type` values (1 = R, 2 = R alt, 3 = UR, 4 = UR ext, 5 = P/UP, 6 = Tensor/Acc). Barrier registers (`reg_type = 9`) are above the `<= 6` cutoff and handled separately.
 
-| Class ID | Name | Type | File size | Description |
-|----------|------|------|-----------|-------------|
-| 1 | R | GPR | up to 255 | General-purpose 32-bit registers |
-| 2 | P | pred | up to 7 | Predicate registers |
-| 3 | B | bar | up to 16 | Barrier registers |
-| 4 | UR | ugpr | up to 63 | Uniform general-purpose registers |
-| 5 | UP | upred | up to 7 | Uniform predicate registers |
-| 6 | UB | ubar | up to 16 | Uniform barrier registers |
+| Class ID | Name | Width | HW Limit | Description |
+|----------|------|-------|----------|-------------|
+| 1 | R | 32-bit | 255 | General-purpose registers (R0--R254) |
+| 2 | R (alt) | 32-bit | 255 | GPR variant (RZ sentinel, stat collector alternate) |
+| 3 | UR | 32-bit | 63 | Uniform general-purpose registers (UR0--UR62) |
+| 4 | UR (ext) | 32-bit | 63 | Uniform GPR variant (triggers flag update at +1369 in constructor) |
+| 5 | P / UP | 1-bit | 7 | Predicate registers (P0--P6, UP0--UP6) |
+| 6 | Tensor/Acc | 32-bit | varies | Tensor/accumulator registers for MMA/WGMMA operations |
 
-Class 0 (unified/cross-class) is skipped in the main loop. It is used for cross-class constraint propagation during the interference building phase. Classes 3 (UR) and 6 (Tensor/Acc) have early-out conditions: if `alloc+348 == 2` (class 3) or `alloc+332 == 2` (class 6), allocation is skipped because no VRs of that class exist.
+Class 0 (unified/cross-class) is skipped in the main loop. It is used for cross-class constraint propagation during the interference building phase. Classes 3 (UR) and 6 (Tensor/Acc) have early-out conditions: if `alloc+348 == 2` (class 3) or `alloc+332 == 2` (class 6), allocation is skipped because no VRs of that class exist. Barrier registers (B, UB) have `reg_type = 9`, which is above the `<= 6` allocator cutoff and are handled by a separate mechanism outside the 7-class system.
 
 Before the per-class loop, virtual registers are distributed into class-specific linked lists (lines 520--549 of `sub_9721C0`):
 
@@ -407,7 +748,9 @@ The per-instruction assignment core loop (3722 lines, the largest function in pa
 | `sub_94FDD0` | 155 | Register assignment + alias propagation |
 | `sub_950100` | 205 | Pre-allocated candidate applier (FNV-1a lookup) |
 | `sub_956130` | 873 | Register class interference mask builder (SSE2) |
-| `sub_957020` | -- | Pressure bitmap setup (per-VR constraint walk) |
+| `sub_957020` | 24 | Occupancy bitvector resizer (arena-backed realloc + memset) |
+| `sub_94C9E0` | 59 | Occupancy bitmask range setter (word-level OR with masks) |
+| `sub_7DAFD0` | 7 | VR aligned width computation (`ceil(size/stride)*stride`) |
 | `sub_957160` | 1658 | Core fat-point allocator (coloring engine) |
 | `sub_9680F0` | 3722 | Per-instruction assignment core loop |
 | `sub_96D940` | 2983 | Spill guidance (7-class priority queues) |
