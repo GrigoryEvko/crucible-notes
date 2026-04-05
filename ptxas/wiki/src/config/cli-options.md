@@ -227,23 +227,33 @@ Tables below use these markers:
 
 ## Workaround Flags
 
-Hardware and software bug workarounds tied to internal NVIDIA bug-tracking IDs. All names are ROT13-encoded in the binary. These flags toggle specific code paths that avoid known errata or compiler defects. New workarounds appear (and old ones become permanent) with each ptxas release.
+Hardware and software bug workarounds tied to internal NVIDIA bug-tracking IDs. All names are ROT13-encoded in the binary (e.g., `fj2614554` decodes to `sw2614554`). These flags toggle specific code paths that avoid known errata or compiler defects. New workarounds appear (and old ones become permanent) with each ptxas release. The validator in `sub_434320` enforces architecture restrictions: a flag set on an unsupported architecture is silently cleared with a diagnostic.
 
-| Long Name | Short Name | Type | Default | Description |
-|---|---|---|---|---|
-| `--sw2614554` **(internal)** | -- | bool | (varies) | Bug workaround |
-| `--sw2837879` **(internal)** | -- | bool | (varies) | Bug workaround |
-| `--sw1729687` **(internal)** | -- | bool | (varies) | Bug workaround |
-| `--sw200428197` **(internal)** | -- | bool | (varies) | Tools-patch / ABI setup workaround |
-| `--sw200387803` **(internal)** | -- | bool | (varies) | Bug workaround |
-| `--sw200764156` **(internal)** | -- | bool | (varies) | Bug workaround |
-| `--sw4575628` **(internal)** | -- | bool | (varies) | Cache/texturing target-config workaround |
-| `--sw200531531` **(internal)** | -- | bool | (varies) | Bug workaround |
-| `--sw200380282` **(internal)** | -- | bool | (varies) | Bug workaround |
-| `--sw4915215` **(internal)** | -- | bool | (varies) | Bug workaround; default `true` noted in binary |
-| `--sw4936628` **(internal)** | -- | bool | (varies) | Bug workaround |
+| Long Name | Short Name | Type | Default | Arch Gate | Description |
+|---|---|---|---|---|---|
+| `--sw2614554` **(internal)** | -- | bool | false | all | Thread-safety workaround; incompatible with `--split-compile`. When set, forces single-threaded compilation -- validator emits `"'--sw2614554' ignored because of '--split-compile'"` and disables split-compile. Addresses a race condition in the parallel optimizer. |
+| `--sw2837879` **(internal)** | -- | bool | false | all | Backend codegen workaround. No architecture gating or validator logic; consumed directly in DAG/OCG pipeline phases. Specific behavioral effect not traced beyond registration. |
+| `--sw1729687` **(internal)** | -- | bool | false | sm_50--sm_53 | Maxwell-era hardware errata workaround. Validator checks `(arch_ordinal - 14) > 2` and clears the flag with a warning on any architecture beyond sm_53. Activates an alternate codegen path on Maxwell GPUs. |
+| `--sw200428197` **(internal)** | -- | bool | false | sm_80+ | Sanitizer-compatible ABI workaround. Forces scratch register reservation for CUDA sanitizer instrumentation state and applies ABI-minimum register counts. Consumed in function/ABI setup (`sub_43F400`, `sub_441780`) alongside `--compile-as-tools-patch`. Validator clears it with `"-arch=X ignored because of --sw200428197"` on sm_75 and earlier. |
+| `--sw200387803` **(internal)** | -- | bool | false | deprecated | Retired workaround. Setting it triggers a deprecation advisory (`dword_29FBDB0`) but no behavioral change -- the underlying fix has been permanently integrated. |
+| `--sw200764156` **(internal)** | -- | bool | **true** | sm_90 only | Hopper-specific hardware errata. Default is `true` (unique among all `sw*` flags). Help text reads `"Enable/Disable sw200764156"`, confirming it is a toggle that can be turned off. On any architecture other than sm_90, the user-set value is discarded: `"option -arch=X ignored because of --sw200764156"`. |
+| `--sw4575628` **(internal)** | -- | bool | false | sm_100+ | Cache and texturing mode workaround. Validator clears it with a warning on architectures sm_100 and earlier. In target configuration (`sub_43A400`), the target profile at offset +2465 independently determines whether the workaround is needed; if both the profile and the CLI flag are set simultaneously, the CLI flag is cleared with `"--sw4575628 conflicts with specified texturing mode"`. |
+| `--sw200531531` **(internal)** | -- | bool | (varies) | unknown | Known only from ROT13 decode (`fj200531531`). No help text, no validator cross-references, no decompiled consumption. Consumed in backend passes not covered by available decompiled functions. |
+| `--sw200380282` **(internal)** | -- | bool | (varies) | unknown | Known only from ROT13 decode (`fj200380282`). Same as `--sw200531531` -- registered but with no traceable validator or target configuration logic. |
+| `--sw4915215` **(internal)** | -- | bool | false | all (behavior varies) | Generation-dependent workaround. On Blackwell (sm_100+, generation=100), when enabled alongside non-PIC mode, emits informational `"sw4915215=true"`. On other architectures, emits a different informational. Behavioral effect is in backend codegen. |
+| `--sw4936628` **(internal)** | -- | bool | false | all | Stored at options block offset +503, adjacent to `--blocks-are-clusters` in the registration sequence. No architecture gating in the validator. Specific behavioral effect requires deeper backend tracing; registration proximity suggests cluster/CTA-level code generation relevance. |
 
-There are also three EIATTR-level workarounds visible in the binary that are set based on target architecture rather than CLI flags: `EIATTR_SW1850030_WAR`, `EIATTR_SW2393858_WAR`, `EIATTR_SW2861232_WAR`.
+### EIATTR-Level Workarounds
+
+Three EIATTR attributes encode workaround metadata directly in the output ELF. These are set by target architecture rather than CLI flags -- ptxas emits them unconditionally when the target requires it, and the GPU driver applies fixups at load time.
+
+| EIATTR Code | Name | Knob Name | Description |
+|---|---|---|---|
+| 42 (`0x2A`) | `EIATTR_SW1850030_WAR` | `OneFlapJne1850030` | Instruction offsets requiring driver-side fixup for HW bug 1850030. |
+| 48 (`0x30`) | `EIATTR_SW2393858_WAR` | `OneFlapJne2393858` | Instruction offsets requiring driver-side fixup for HW bug 2393858. |
+| 53 (`0x35`) | `EIATTR_SW2861232_WAR` | -- | Instruction offsets for HW bug 2861232 workaround. |
+| 54 (`0x36`) | `EIATTR_SW_WAR` | -- | Generic software workaround container (variable payload). |
+| 71 (`0x47`) | `EIATTR_SW_WAR_MEMBAR_SYS_INSTR_OFFSETS` | -- | Offsets of `MEMBAR.SYS` instructions needing software workaround. |
 
 ## Tool and Patch Modes
 
@@ -313,7 +323,7 @@ These options control the Mercury intermediate encoding and Capsule Mercury form
 
 ## Constant Bank Allocation
 
-These control which NVIDIA constant bank (c[N]) is used for various data categories. All are ROT13-encoded.
+NVIDIA GPUs provide 18 hardware constant banks (`c[0]` through `c[17]`), each a 64 KB read-only memory segment accessible by all threads in a warp with uniform-address broadcast -- loads from constant banks cost a single memory transaction when all threads in the warp read the same address. The compiler assigns different data categories (kernel parameters, driver state, user constants, PIC tables, etc.) to separate banks to avoid address-space collisions. These options override the default bank assignments; all are ROT13-encoded.
 
 | Long Name | Short Name | Type | Default | Description |
 |---|---|---|---|---|
