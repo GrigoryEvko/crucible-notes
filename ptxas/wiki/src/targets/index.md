@@ -233,6 +233,108 @@ Related encoded values seen in the binary:
 36865-36869 = sm_103..121     // 9 << 12 | 1..5
 ```
 
+## Hardware Resource Geometry
+
+ptxas assembles per-SM hardware parameters from three data sources: `sub_8688F0` (universal baseline), `sub_8E4400` (scheduler partition geometry), and `sub_ABF250` (occupancy calculator properties). These parameters control register allocation limits, shared memory partitioning, occupancy calculations, and scheduling decisions throughout the compiler.
+
+### Universal Constants (sub\_8688F0)
+
+`sub_8688F0` sets the baseline hardware profile shared by all SM 75+ targets. These values are architecture-invariant within the ptxas v13.0.88 binary:
+
+| Parameter | Value | Binary Evidence | Profile Offset |
+|---|---|---|---|
+| Warp size | 32 threads | `*(a1+1472) = 32` | +1472 |
+| Max registers per thread | 255 | `*(a1+612) = 0xFF0000003F` | +612 |
+| Register file per SM | 65,536 x 32-bit | Derived: `max_warps = 65536 / (regcount * 32)` | -- |
+| Dependency barriers per warp | 6 | `*(a1+604) = 6` | +604 |
+| Named barriers per CTA | 16 | `barrier_arrive_0` through `barrier_arrive_15` intrinsics | -- |
+| Static shared memory base | 48 KB (49,152 B) | `*(a1+1484) = 49152` | +1484 |
+| Shared memory config base | 1 MB (1,048,576 B) | `*(v6+344) = 0x100000` in all per-SM inits | profile +344 |
+
+The register file size of 65,536 registers is confirmed by the EIATTR_REGCOUNT formula (code 0x2F): `max_warps_per_SM = total_registers / (regcount * warp_size)`, and by explicit reference in codegen/templates.md ("the entire physical register file is 65,536 32-bit registers shared across all active warps").
+
+### Per-SM Resource Geometry Table
+
+Combines binary evidence (sub\_8E4400 scheduling profile, sub\_8688F0 baseline, sub\_ABF250 occupancy properties, sub\_60AXXX per-SM initializers) with NVIDIA public specifications for parameters not stored as scalar constants in the binary. Confidence column rates how directly the value was extracted from the binary vs. inferred from public documentation.
+
+| SM | Regs/SM | Max Regs/Thread | Max Threads/CTA | Warps/SM | Max CTAs/SM | Sched Partitions | Dispatch Slots | Configurable Shared Memory | Conf |
+|---|---|---|---|---|---|---|---|---|---|
+| `sm_75` | 65,536 | 255 | 1,024 | 32 | 16 | 7 / 208 | 208 | 32 / 48 / 64 KB | 90% |
+| `sm_80` | 65,536 | 255 | 2,048 | 64 | 32 | 7 / 208 | 208 | 48 / 100 / 132 / 164 KB | 90% |
+| `sm_86` | 65,536 | 255 | 1,536 | 48 | 16 | 7 / 208 | 208 | 48 / 100 KB | 90% |
+| `sm_87` | 65,536 | 255 | 1,536 | 48 | 16 | 7 / 208 | 208 | 48 / 100 / 164 KB | 90% |
+| `sm_88` | 65,536 | 255 | 1,536 | 48 | 16 | 7 / 208 | 208 | (same as sm\_86) | 85% |
+| `sm_89` | 65,536 | 255 | 1,536 | 48 | 16 | 7 / 208 | 208 | 48 / 100 KB | 90% |
+| `sm_90` | 65,536 | 255 | 1,024 | 64 | 32 | 8 / 224 | 224 | 48 / 100 / 132 / 164 / 228 KB | 90% |
+| `sm_100` | 65,536 | 255 | 1,024 | 64 | 32 | 16 / 240 | 240 | 48 / 100 / 132 / 164 / 228 KB | 90% |
+| `sm_103` | 65,536 | 255 | 1,024 | 64 | 32 | 16 / 240 | 240 | (same as sm\_100) | 88% |
+| `sm_110` | 65,536 | 255 | 1,024 | 64 | 32 | 16 / 240 | 240 | (same as sm\_100) | 85% |
+| `sm_120` | 65,536 | 255 | 1,024 | 64 | 32 | 16 / 240 | 240 | 48 / 100 / 132 / 164 / 228 KB | 88% |
+| `sm_121` | 65,536 | 255 | 1,024 | 64 | 32 | 16 / 240 | 240 | (same as sm\_120) | 85% |
+
+**Column definitions:**
+- **Regs/SM**: Total 32-bit registers per streaming multiprocessor. 65,536 universally for sm\_75+.
+- **Max Regs/Thread**: Maximum registers a single thread can use. 255 universally (`sub_8688F0` offset +612).
+- **Max Threads/CTA**: Maximum threads per cooperative thread array (block). Not stored as a ptxas constant; derived from `warps_per_SM * warp_size / max_CTAs`.
+- **Warps/SM**: Total concurrent warps per SM. Determines peak occupancy.
+- **Max CTAs/SM**: Maximum concurrent CTAs per SM.
+- **Sched Partitions / Dispatch Slots**: From `sub_8E4400` offset +18 (packed DWORD) and offset +22 (WORD). The scheduler partition count is the number of warp scheduler units; dispatch slots is the total scheduling capacity.
+- **Configurable Shared Memory**: Valid shared memory sizes per CTA, selected by `cudaFuncSetAttribute`. Stored as pointer-to-table at profile offsets +1488/+1496; sm\_75 has 3 entries, later architectures have more.
+
+**sm\_88 note**: No known product ships on sm\_88. It shares all handler functions with sm\_86. Listed parameters are inherited; actual hardware behavior is unverifiable.
+
+### Scheduler Partition Geometry (sub\_8E4400 Detail)
+
+The packed DWORD at offset +18 of the warp-level profile encodes scheduler partition counts. The WORD at offset +22 is the dispatch slot count -- a scheduling capacity value distinct from the raw warp count.
+
+| Codegen Factory Range | Packed DWORD | Hex | Partitions | Dispatch Slots | SM Era |
+|---|---|---|---|---|---|
+| <= 20479 | 458,759 | `0x00070007` | 7 | 96 | sm\_50 (Maxwell) |
+| 20480 -- 24575 | 786,444 | `0x000C000C` | 12 | 176 | sm\_60 (Pascal) |
+| 24576 -- 28672 | 851,981 | `0x000D000D` | 13 | 192 | sm\_70 (Volta) |
+| 28673 -- 32767 | 917,518 | `0x000E000E` | 14 | 208 | sm\_75 -- sm\_89 |
+| 32768 -- 36863 | 983,055 | `0x000F000F` | 15 | 224 | sm\_90 (Hopper) |
+| > 36863 | 1,048,592 | `0x00100010` | 16 | 240 | sm\_100+ (Blackwell) |
+
+The dispatch slot count increases monotonically across generations, reflecting wider scheduling capacity. All sm\_75 through sm\_89 targets (Turing, Ampere, Ada Lovelace) share identical scheduling partition geometry despite their hardware differences -- the differentiation occurs in the per-SM latency tables, not in the partition structure.
+
+### Shared Memory Configuration Tables
+
+ptxas stores configurable shared memory sizes as a pointer + count pair at profile offsets +1488 and +1496. The driver uses this table to validate `cudaFuncSetAttribute(cudaFuncAttributeMaxDynamicSharedMemorySize, ...)` calls.
+
+`sub_8688F0` sets the sm\_75 configuration:
+
+```
+*(a1+1488) = &unk_21D9168    // pointer to shared memory size table
+*(a1+1496) = 3               // 3 valid configurations
+```
+
+For sm\_75 (Turing), the 3 entries correspond to 32 KB, 48 KB, and 64 KB configurable shared memory. The L1/shared partitioning on Turing splits the 96 KB unified data cache between L1 and shared memory.
+
+For sm\_80 (Ampere), the configurable shared memory extends to 164 KB, reflecting the larger shared memory/L1 combined capacity. `sub_ABF250` records the maximum as 167,936 bytes (163.8 KB) for the base sm\_60 path and 233,472 bytes (228 KB) for sm\_70+ paths, though these values encode via xmmword constants that depend on the specific SM variant.
+
+For sm\_90+ (Hopper, Blackwell), `sub_ABF250` populates a maximum configurable value of 233,472 bytes (228 KB), supporting the opt-in extended shared memory mode added in Hopper.
+
+### Register Allocation Mechanics
+
+ptxas allocates registers in units determined by the register allocation granularity stored in `sub_ABF250`:
+
+| SM Generation | Alloc Granularity | a2\[6\]\[1\] | a2\[6\]\[2\] | Notes |
+|---|---|---|---|---|
+| sm\_30 -- sm\_60 | 64 registers / warp | 63 | 1 | Allocates in blocks of 2 regs/thread |
+| sm\_70+ | 256 registers / warp | 255 | 2 | Allocates in blocks of 8 regs/thread |
+
+The register allocation unit directly affects occupancy. With 256-register granularity on sm\_75+, a kernel using 33 registers effectively consumes 40 (rounded up to the next multiple of 8), which means each warp uses `40 * 32 = 1280` of the 65,536 available registers, allowing up to 51 warps -- but capped by the hardware limit of 32 warps on sm\_75.
+
+The formula the GPU driver uses (from EIATTR\_REGCOUNT documentation):
+
+```
+effective_regs = ceil(regcount / alloc_granularity) * alloc_granularity
+regs_per_warp  = effective_regs * warp_size
+max_warps      = min(registers_per_SM / regs_per_warp, hw_max_warps)
+max_CTAs       = min(max_warps / warps_per_CTA, hw_max_CTAs)
+```
+
 ## SM Version Encoding
 
 The raw SM version number stored in profile objects and code object headers uses a packed integer format. This is the value at `v4[93]` in the code object builder (`sub_A465F0`):
@@ -363,6 +465,10 @@ Codegen factory value: 36864 (same as sm_100). Architecturally a distinct consum
 | `sub_60B040` | 4.5KB | Stress test options (`"stress-maxrregcount"`, etc.) | 85% |
 | `sub_6765E0` | 54KB | SM profile object construction (family, CUDA_ARCH, lto) | 95% |
 | `sub_6784B0` | -- | Default architecture -- returns sm_75 | 99% |
+| `sub_8688F0` | 31 lines | Universal HW profile baseline (warp size, regs, barriers, shmem) | 95% |
+| `sub_8E4400` | 3.3KB | Warp-level HW profile: scheduler partitions, dispatch slots | 95% |
+| `sub_ABF250` | ~600B | Occupancy property table: configurable shmem, reg alloc granularity | 90% |
+| `sub_A95DC0` | ~1.8KB | Extended HW profile: architecture-specific shmem config | 85% |
 | `sub_A465F0` | 14KB | Code object header builder (SM version -> ELF fields) | 88% |
 
 ## Profile Object Layout (1936 bytes)
