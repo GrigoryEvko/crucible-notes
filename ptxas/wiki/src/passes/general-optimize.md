@@ -231,10 +231,10 @@ function copy_prop_early(state, basic_block):
     state[1] = chain_b
     state[2] = chain_b
 
-    // Step 6: Structural equivalence check
+    // Step 6: Predicate-operand compatibility check
     endpoint_instr = *(chain_b[1])
     if endpoint_instr.opcode != 95: return false
-    if !instruction_equivalent(first_instr, endpoint_instr): return false
+    if !predicate_operand_compatible(first_instr, endpoint_instr): return false
                                                        // sub_7E7380
 
     // Step 7: Operand-level matching
@@ -828,11 +828,11 @@ After the entry guard passes, `sub_753600` executes a 9-step algorithm:
 
 **Step 4 -- Second pair detection** via `sub_753570`. Starting from the first pair's result, follows the chain one more step looking for a second opcode-93 instruction that references back to the same register as the first pair's target.
 
-**Step 5 -- Instruction equivalence check** via `sub_7E7380`:
+**Step 5 -- Predicate-operand compatibility check** via `sub_7E7380`:
 
 ```c
-// sub_7E7380 -- structural instruction equivalence
-bool instruction_equivalent(Instr* a, Instr* b) {
+// sub_7E7380 -- predicate-operand compatibility check (narrow, not full structural)
+bool predicate_operand_compatible(Instr* a, Instr* b) {
     bool a_has_pred = (a->opcode & 0x1000) != 0;  // bit 12: predicated
     bool b_has_pred = (b->opcode & 0x1000) != 0;
     if (a_has_pred != b_has_pred)
@@ -845,7 +845,7 @@ bool instruction_equivalent(Instr* a, Instr* b) {
         // Compare preceding operand pair (full 64-bit equality)
         return a->operands[a->operand_count - 2] == b->operands[b->operand_count - 2];
     }
-    return true;  // both unpredicated: structurally equivalent at this level
+    return true;  // both unpredicated: predicate-compatible at this level
 }
 ```
 
@@ -1203,56 +1203,56 @@ The `"ConvertMemoryToRegisterOrUniform"` named-phase gate at `0x21DD228` allows 
 
 ## Function Map
 
-| Address | Name | Role |
-|---|---|---|
-| `0xC5F940` | Phase 13 execute | Tail-calls `0x1C64BF0` (single-func) or `sub_7917F0` (multi-func) |
-| `0xC5FC50` | Phase 29 execute | Checks count > 1, calls `sub_908EB0` |
-| `0xC5FD70` | Phase 37 execute | Checks count > 1, calls `sub_910840` |
-| `0xC60840` | Phase 46 execute | Indirect vtable dispatch through `comp_unit->vtable[0x1C0]` |
-| `0xC5FF20` | Phase 58 execute | Checks count > 1, calls `sub_8F7080` |
-| `0xC60550` | Phase 65 execute | Checks count > 1, indirect dispatch through `comp_unit->vtable[392]` |
-| `0x7917F0` | `GeneralOptimizeEarly` body | Multi-function path: iterates blocks, fixed-point loop with `sub_753600` |
-| `0x908EB0` | `GeneralOptimize` body | Per-block copy prop + predicate simplification with flag marking |
-| `0x910840` | `GeneralOptimizeMid` body | Full suite with mem-to-reg; delegates to `sub_905B50` + `sub_90FBA0` |
-| `0x8F7080` | `GeneralOptimizeLate` body | Bitvector-tracked 7-counter pass; calls `sub_8F6FA0` |
-| `0x753600` | Per-block sub-pass runner (Early) | Structural equivalence detection on def-use chains; returns boolean changed |
-| `0x753B50` | Per-block apply changes (Early) | Instruction rewriting: `sub_931920`, `sub_932E80`, `sub_749090`, `sub_9253C0` |
-| `0x753480` | Chain walker (Early) | Walks single-def chain forward, checking `sub_7E5120` eligibility |
-| `0x753520` | Pair detector (Early) | Finds opcode-93 instruction in chain via `sub_753480` |
-| `0x753570` | Secondary pair detector (Early) | Finds second opcode-93 link referencing back to primary |
-| `0x753DB0` | Chain tail finder (Early) | Walks opcode-97 links to find end of chain |
-| `0x753E30` | Secondary chain matcher (Early) | Handles register renaming boundaries; stores `a1[7..9]` |
-| `0x753F70` | Vtable rewrite dispatcher (Early) | Calls `comp_unit->vtable[656]`; constructs opcode-93 replacements |
-| `0x7E5120` | Chain eligibility predicate | Checks constant bank, block region, opcode 91 |
-| `0x8F6530` | Per-block sub-pass runner (Late) | 6-slot circular buffer; 7-counter change tracking; 550-line function |
-| `0x8F6FA0` | Block iterator (Late) | Walks block list calling `sub_8F6530` per block; single pass, no iteration |
-| `0x905B50` | Setup/init (Mid) | ~500 lines; creates bitvector infrastructure; 3 tracked structures |
-| `0x90FBA0` | Main loop (Mid) | Cost-based instruction-level iteration with register bank analysis |
-| `0x90EF70` | Register promotion (Mid) | Memory-to-register conversion; threshold-based (default 0.93, knob 136) |
-| `0x903A10` | Register bank helper (Mid) | Per-instruction register bank assignment for LD/ST materialization |
-| `0x8F3FE0` | Register constraint fold validator (Mid) | Validates all source operand types are 2/3 and `sub_91D150` constraints match cached values; queries `vtable[904]` for element size and `vtable[936]` for fold metadata |
-| `0x8F2E50` | Fold eligibility check | Two-path dispatch: opcode 18 checks source types 2/3 + `sub_91D150` constraints; opcode 124 checks dest type 1/2 + SM <= 20479 threshold + constraint bits `& 0x1C00` |
-| `0x8F29C0` | Architecture predicate query | 9 lines; returns `sub_7DC0E0(cu) \|\| sub_7DC050(cu) \|\| sub_7DC030(cu)` on `ctx+1584` |
-| `0x908A60` | Two-pass predicate simplify | Called with direction flag (1 = forward, 0 = backward) |
-| `0x785E20` | Change tracking reset | Resets per-block change flags |
-| `0x781F80` | Instruction flag init | Initializes per-instruction optimization flags (~1800 lines) |
-| `0x7E6090` | Use-def chain builder | Builds operand use-def chains; called with `(ctx, 0, 0, 0, 0)` |
-| `0x7E6AD0` | Def-use link builder | Builds def-use/use-def bidirectional links |
-| `0x7DF3A0` | Liveness check | Returns status pointer; bits 2-3 (`& 0xC`) indicate live uses |
-| `0x7E7380` | Instruction equivalence | Compares two instructions for structural equivalence |
-| `0x747F40` | Negation flag extractor | Extracts negation modifier from operand encoding |
-| `0x747F80` | Absolute-value flag extractor | Extracts abs modifier from operand encoding |
-| `0x748570` | Alias hazard check | Returns true if operand has aliasing hazard |
-| `0x1245740` | Sub-DAG equivalence | Compares two instruction sub-DAGs for structural equivalence (arg 2 = depth) |
-| `0x91D150` | Register constraint lookup | Trivial: `return *(*(ctx+440) + 4*reg_index)`; 0 = no fold-blocking constraint |
-| `0x91E860` | Use-count estimator | Returns estimated use count for cost-based decisions (used by phase 37) |
-| `0xA9BD30` | Register-class remapper | Maps opcode indices in set {1,2,3,7,11,15,20,24} via `vtable[632]`; writes `value \| 0x60000000` (constant class marker) |
-| `0x1249B50` | SASS-level integer ALU fold | Combines IMAD_WIDE/IADD3/SGXT/CCTLT (opcodes 2,3,5,110) with MOV source pairs via `sub_1249940` and `sub_1245740` |
-| `0x1249940` | MOV-pair fold combiner | Matches two MOV-from-immediate (opcode 139) instructions feeding an ALU op; validates structural equivalence at depth 1 and 2 |
-| `0x7E19E0` | Operand info extractor | Builds 52-byte operand descriptor for opcodes 2,3,5,6,7; classifies source types and constant bank membership |
-| `0x7DC0E0` | Architecture capability check A | Checks compilation unit capability flag; used by `sub_8F29C0` for predicate fold safety |
-| `0x7DC050` | Architecture capability check B | Secondary capability check for `sub_8F29C0` |
-| `0x7DC030` | Architecture capability check C | Tertiary capability check for `sub_8F29C0` |
+| Address | Name | Role | Confidence |
+|---|---|---|---|
+| `0xC5F940` | Phase 13 execute | Tail-calls `0x1C64BF0` (single-func) or `sub_7917F0` (multi-func) | CERTAIN |
+| `0xC5FC50` | Phase 29 execute | Checks count > 1, calls `sub_908EB0` | CERTAIN |
+| `0xC5FD70` | Phase 37 execute | Checks count > 1, calls `sub_910840` | CERTAIN |
+| `0xC60840` | Phase 46 execute | Indirect vtable dispatch through `comp_unit->vtable[0x1C0]` | CERTAIN |
+| `0xC5FF20` | Phase 58 execute | Checks count > 1, calls `sub_8F7080` | CERTAIN |
+| `0xC60550` | Phase 65 execute | Checks count > 1, indirect dispatch through `comp_unit->vtable[392]` | CERTAIN |
+| `0x7917F0` | `GeneralOptimizeEarly` body | Multi-function path: iterates blocks, fixed-point loop with `sub_753600` | HIGH |
+| `0x908EB0` | `GeneralOptimize` body | Per-block copy prop + predicate simplification with flag marking | HIGH |
+| `0x910840` | `GeneralOptimizeMid` body | Full suite with mem-to-reg; delegates to `sub_905B50` + `sub_90FBA0` | HIGH |
+| `0x8F7080` | `GeneralOptimizeLate` body | Bitvector-tracked 7-counter pass; calls `sub_8F6FA0` | HIGH |
+| `0x753600` | Per-block sub-pass runner (Early) | Structural equivalence detection on def-use chains; returns boolean changed | HIGH |
+| `0x753B50` | Per-block apply changes (Early) | Instruction rewriting: `sub_931920`, `sub_932E80`, `sub_749090`, `sub_9253C0` | HIGH |
+| `0x753480` | Chain walker (Early) | Walks single-def chain forward, checking `sub_7E5120` eligibility | HIGH |
+| `0x753520` | Pair detector (Early) | Finds opcode-93 instruction in chain via `sub_753480` | HIGH |
+| `0x753570` | Secondary pair detector (Early) | Finds second opcode-93 link referencing back to primary | HIGH |
+| `0x753DB0` | Chain tail finder (Early) | Walks opcode-97 links to find end of chain | MEDIUM |
+| `0x753E30` | Secondary chain matcher (Early) | Handles register renaming boundaries; stores `a1[7..9]` | MEDIUM |
+| `0x753F70` | Vtable rewrite dispatcher (Early) | Calls `comp_unit->vtable[656]`; constructs opcode-93 replacements | HIGH |
+| `0x7E5120` | Chain eligibility predicate | Checks constant bank, block region, opcode 91 | HIGH |
+| `0x8F6530` | Per-block sub-pass runner (Late) | 6-slot circular buffer; 7-counter change tracking; 550-line function | HIGH |
+| `0x8F6FA0` | Block iterator (Late) | Walks block list calling `sub_8F6530` per block; single pass, no iteration | HIGH |
+| `0x905B50` | Setup/init (Mid) | ~500 lines; creates bitvector infrastructure; 3 tracked structures | HIGH |
+| `0x90FBA0` | Main loop (Mid) | Cost-based instruction-level iteration with register bank analysis | HIGH |
+| `0x90EF70` | Register promotion (Mid) | Memory-to-register conversion; threshold-based (default 0.93, knob 136) | HIGH |
+| `0x903A10` | Register bank helper (Mid) | Per-instruction register bank assignment for LD/ST materialization | MEDIUM |
+| `0x8F3FE0` | Register constraint fold validator (Mid) | Validates all source operand types are 2/3 and `sub_91D150` constraints match cached values; queries `vtable[904]` for element size and `vtable[936]` for fold metadata | HIGH |
+| `0x8F2E50` | Fold eligibility check | Two-path dispatch: opcode 18 checks source types 2/3 + `sub_91D150` constraints; opcode 124 checks dest type 1/2 + SM <= 20479 threshold + constraint bits `& 0x1C00` | HIGH |
+| `0x8F29C0` | Architecture predicate query | 9 lines; returns `sub_7DC0E0(cu) \|\| sub_7DC050(cu) \|\| sub_7DC030(cu)` on `ctx+1584` | HIGH |
+| `0x908A60` | Two-pass predicate simplify | Called with direction flag (1 = forward, 0 = backward) | HIGH |
+| `0x785E20` | Change tracking reset | Resets per-block change flags | MEDIUM |
+| `0x781F80` | Instruction flag init | Initializes per-instruction optimization flags (~1800 lines) | MEDIUM |
+| `0x7E6090` | Use-def chain builder | Builds operand use-def chains; called with `(ctx, 0, 0, 0, 0)` | HIGH |
+| `0x7E6AD0` | Def-use link builder | Builds def-use/use-def bidirectional links | HIGH |
+| `0x7DF3A0` | Liveness check | Returns status pointer; bits 2-3 (`& 0xC`) indicate live uses | HIGH |
+| `0x7E7380` | Predicate-operand compatibility | Narrow check: predicate modifier parity + last-operand 24-bit ID + penultimate 8-byte encoding (not full structural comparison) | HIGH |
+| `0x747F40` | Negation flag extractor | Extracts negation modifier from operand encoding | HIGH |
+| `0x747F80` | Absolute-value flag extractor | Extracts abs modifier from operand encoding | HIGH |
+| `0x748570` | Alias hazard check | Returns true if operand has aliasing hazard | MEDIUM |
+| `0x1245740` | Sub-DAG equivalence | Compares two instruction sub-DAGs for structural equivalence (arg 2 = depth) | HIGH |
+| `0x91D150` | Register constraint lookup | Trivial: `return *(*(ctx+440) + 4*reg_index)`; 0 = no fold-blocking constraint | CERTAIN |
+| `0x91E860` | Use-count estimator | Returns estimated use count for cost-based decisions (used by phase 37) | MEDIUM |
+| `0xA9BD30` | Register-class remapper | Maps opcode indices in set {1,2,3,7,11,15,20,24} via `vtable[632]`; writes `value \| 0x60000000` (constant class marker) | HIGH |
+| `0x1249B50` | SASS-level integer ALU fold | Combines IMAD_WIDE/IADD3/SGXT/CCTLT (opcodes 2,3,5,110) with MOV source pairs via `sub_1249940` and `sub_1245740` | HIGH |
+| `0x1249940` | MOV-pair fold combiner | Matches two MOV-from-immediate (opcode 139) instructions feeding an ALU op; validates structural equivalence at depth 1 and 2 | HIGH |
+| `0x7E19E0` | Operand info extractor | Builds 52-byte operand descriptor for opcodes 2,3,5,6,7; classifies source types and constant bank membership | MEDIUM |
+| `0x7DC0E0` | Architecture capability check A | Checks compilation unit capability flag; used by `sub_8F29C0` for predicate fold safety | MEDIUM |
+| `0x7DC050` | Architecture capability check B | Secondary capability check for `sub_8F29C0` | MEDIUM |
+| `0x7DC030` | Architecture capability check C | Tertiary capability check for `sub_8F29C0` | MEDIUM |
 
 ## Cross-References
 

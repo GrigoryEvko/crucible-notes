@@ -692,71 +692,71 @@ Functions exceeding **16383 instructions** (`*(a1+372) > 0x3FFF`) trigger chunk-
 
 ## Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_6820B0` | 1.5 KB | BuildReadyList -- zero-dep instruction scan |
-| `sub_682200` | -- | UnlinkFromReadyList -- remove and update deps |
-| `sub_682490` | 14 KB | RegisterPressureAnalyzer -- per-class deltas |
-| `sub_6833F0` | 10 KB | InitScheduleRegion -- per-BB setup, knob query |
-| `sub_685700` | -- | InitSchedulingState -- loop initialization |
-| `sub_685A10` | 11 KB | InstructionBarrierCheck -- opcode analysis |
-| `sub_687080` | -- | ReadyListManagementHelper |
-| `sub_687410` | -- | ResourceConflictCheck |
-| `sub_687FE0` | 12 KB | ScheduleBlock -- per-BB scheduling entry |
-| `sub_688DD0` | 20 KB | **ScheduleEngine** -- unified 3-mode core loop |
-| `sub_68A690` | 31 KB | BuildDependencies -- def-use chain DAG |
-| `sub_68B9C0` | 46 KB | MainSchedulingLoop -- combined DAG + scheduling |
-| `sub_692200` | 18 KB | SchedulingHeuristic -- priority with FP scoring |
-| `sub_695530` | 15 KB | ComputeLatencies -- instruction latency computation |
-| `sub_69B7D0` | 17 KB | TopologicalSort -- valid execution ordering |
-| `sub_69F170` | 12 KB | CriticalPathAnalysis -- DAG critical path |
-| `sub_893100` | 17 KB | ClassifyInstruction -- opcode/operand analysis |
-| `sub_894290` | 27 KB | BuildOperandDependencies -- operand-level edges |
-| `sub_89C550` | 14 KB | InnerScheduleLoop -- inner scheduling iteration |
-| `sub_89EFC0` | 16 KB | ReadyListManager -- BST management |
-| `sub_8A9D80` | 21 KB | DepthFirstSchedule |
-| `sub_8AB750` | 9.8 KB | CriticalPathCompute |
-| `sub_8B1190` | 16 KB | ScheduleWithBacktrack |
-| `sub_8B2D90` | 18 KB | GlobalScheduleOpt -- cross-BB scheduling |
-| `sub_8B4590` | 13 KB | PermuteSchedule -- permutation search |
-| `sub_8B5400` | 14 KB | ScheduleForLatency |
-| `sub_8B6D60` | 12 KB | ScheduleForPressure |
-| `sub_8B77C0` | 15 KB | DualIssueScheduler |
-| `sub_8B8900` | 12 KB | TensorScheduler |
-| `sub_8B9390` | 23 KB | SoftwarePipeline |
-| `sub_8BAAE0` | 15 KB | LoopScheduler |
-| `sub_8BB9C0` | 8.2 KB | PrefetchScheduler |
-| `sub_8BC0B0` | 6.1 KB | BarrierCoalescence |
-| `sub_8BC990` | 7.6 KB | ScoreboardOpt |
-| `sub_8BCFA0` | 6.8 KB | WarpScheduleOpt |
-| `sub_8BDC40` | 7.9 KB | DualIssuePairing |
-| `sub_8BE320` | 25 KB | ComplexSchedulePass |
-| `sub_8C67A0` | 3.7 KB | ComputeResourceCost -- per-instruction FU cost |
-| `sub_8C7120` | -- | BarrierTrackingUpdate |
-| `sub_8C7290` | 5.1 KB | GetResourceVector -- SSE-optimized copy |
-| `sub_8C7720` | 20 KB | ReorderInstructions -- red-black tree |
-| `sub_8C9320` | 47 KB | **ComputePriority** -- 8-bit packed heuristic |
-| `sub_8CBAD0` | 2.9 KB | PreScheduleSetup -- BB scan, 4095-instr limit |
-| `sub_8CCF80` | 2.3 KB | IsLongLatencyOp -- latency > 19 check |
-| `sub_8CD160` | 9.3 KB | ScheduleBasicBlock -- per-BB ordering loop |
-| `sub_8CF880` | 28 KB | BuildDependencyGraph -- pre-scan stage 1 |
-| `sub_8D0640` | 22 KB | ScheduleInstructions -- top-level orchestrator |
-| `sub_8D1730` | 19 KB | ExecuteSchedulePass |
-| `sub_8D2510` | 3.6 KB | UpdateDependencies -- post-schedule dep update |
-| `sub_8D3150` | 2.0 KB | CheckResourceConflict |
-| `sub_8D32D0` | 14 KB | ScheduleInstruction -- schedule single instruction |
-| `sub_8D3D60` | 1.4 KB | InsertStall |
-| `sub_8D3E20` | 2.1 KB | ComputeStallCycles |
-| `sub_8D4000` | 3.0 KB | InsertBarrier |
-| `sub_8D5E00` | 38 KB | MainSchedulingLoop -- workhorse |
-| `sub_8D7760` | 41 KB | StallAndBarrierInsertion -- control word generation |
-| `sub_8D9930` | 19 KB | BuildDependencyEdges -- RAW/WAR/WAW/memory/barrier |
-| `sub_925510` | 341 bytes | MoveInstruction -- doubly-linked list relink |
-| `sub_A08A00` | -- | ResourceModel -- FU cost query (3 modes) |
-| `sub_A091C0` | -- | InitResourceTracking |
-| `sub_A09530` | 365 bytes | UpdateStallCycles -- per-instruction latency update |
-| `sub_A09D40` | -- | UpdateWARTracking -- anti-dependency tracking |
-| `sub_A9DDD0` | 11.5 KB | HandleLargeFunction -- chunk-based scheduling |
+| Address | Size | Identity | Confidence |
+|---|---|---|---|
+| `sub_6820B0` | 1.5 KB | BuildReadyList -- zero-dep instruction scan | HIGH |
+| `sub_682200` | -- | UnlinkFromReadyList -- remove and update deps | HIGH |
+| `sub_682490` | 14 KB | RegisterPressureAnalyzer -- per-class deltas | HIGH |
+| `sub_6833F0` | 10 KB | InitScheduleRegion -- per-BB setup, knob query | HIGH |
+| `sub_685700` | -- | InitSchedulingState -- loop initialization | MEDIUM |
+| `sub_685A10` | 11 KB | InstructionBarrierCheck -- opcode analysis | HIGH |
+| `sub_687080` | -- | ReadyListManagementHelper | MEDIUM |
+| `sub_687410` | -- | ResourceConflictCheck | MEDIUM |
+| `sub_687FE0` | 12 KB | ScheduleBlock -- per-BB scheduling entry | HIGH |
+| `sub_688DD0` | 20 KB | **ScheduleEngine** -- unified 3-mode core loop | HIGH |
+| `sub_68A690` | 31 KB | BuildDependencies -- def-use chain DAG | HIGH |
+| `sub_68B9C0` | 46 KB | MainSchedulingLoop -- combined DAG + scheduling | HIGH |
+| `sub_692200` | 18 KB | SchedulingHeuristic -- priority with FP scoring | HIGH |
+| `sub_695530` | 15 KB | ComputeLatencies -- instruction latency computation | HIGH |
+| `sub_69B7D0` | 17 KB | TopologicalSort -- valid execution ordering | HIGH |
+| `sub_69F170` | 12 KB | CriticalPathAnalysis -- DAG critical path | HIGH |
+| `sub_893100` | 17 KB | ClassifyInstruction -- opcode/operand analysis | HIGH |
+| `sub_894290` | 27 KB | BuildOperandDependencies -- operand-level edges | HIGH |
+| `sub_89C550` | 14 KB | InnerScheduleLoop -- inner scheduling iteration | HIGH |
+| `sub_89EFC0` | 16 KB | ReadyListManager -- BST management | HIGH |
+| `sub_8A9D80` | 21 KB | DepthFirstSchedule | MEDIUM |
+| `sub_8AB750` | 9.8 KB | CriticalPathCompute | MEDIUM |
+| `sub_8B1190` | 16 KB | ScheduleWithBacktrack | MEDIUM |
+| `sub_8B2D90` | 18 KB | GlobalScheduleOpt -- cross-BB scheduling | MEDIUM |
+| `sub_8B4590` | 13 KB | PermuteSchedule -- permutation search | MEDIUM |
+| `sub_8B5400` | 14 KB | ScheduleForLatency | MEDIUM |
+| `sub_8B6D60` | 12 KB | ScheduleForPressure | MEDIUM |
+| `sub_8B77C0` | 15 KB | DualIssueScheduler | MEDIUM |
+| `sub_8B8900` | 12 KB | TensorScheduler | MEDIUM |
+| `sub_8B9390` | 23 KB | SoftwarePipeline | MEDIUM |
+| `sub_8BAAE0` | 15 KB | LoopScheduler | MEDIUM |
+| `sub_8BB9C0` | 8.2 KB | PrefetchScheduler | MEDIUM |
+| `sub_8BC0B0` | 6.1 KB | BarrierCoalescence | MEDIUM |
+| `sub_8BC990` | 7.6 KB | ScoreboardOpt | MEDIUM |
+| `sub_8BCFA0` | 6.8 KB | WarpScheduleOpt | MEDIUM |
+| `sub_8BDC40` | 7.9 KB | DualIssuePairing | MEDIUM |
+| `sub_8BE320` | 25 KB | ComplexSchedulePass | MEDIUM |
+| `sub_8C67A0` | 3.7 KB | ComputeResourceCost -- per-instruction FU cost | HIGH |
+| `sub_8C7120` | -- | BarrierTrackingUpdate | MEDIUM |
+| `sub_8C7290` | 5.1 KB | GetResourceVector -- SSE-optimized copy | HIGH |
+| `sub_8C7720` | 20 KB | ReorderInstructions -- red-black tree | HIGH |
+| `sub_8C9320` | 47 KB | **ComputePriority** -- 8-bit packed heuristic | HIGH |
+| `sub_8CBAD0` | 2.9 KB | PreScheduleSetup -- BB scan, 4095-instr limit | HIGH |
+| `sub_8CCF80` | 2.3 KB | IsLongLatencyOp -- latency > 19 check | HIGH |
+| `sub_8CD160` | 9.3 KB | ScheduleBasicBlock -- per-BB ordering loop | HIGH |
+| `sub_8CF880` | 28 KB | BuildDependencyGraph -- pre-scan stage 1 | HIGH |
+| `sub_8D0640` | 22 KB | ScheduleInstructions -- top-level orchestrator | HIGH |
+| `sub_8D1730` | 19 KB | ExecuteSchedulePass | HIGH |
+| `sub_8D2510` | 3.6 KB | UpdateDependencies -- post-schedule dep update | HIGH |
+| `sub_8D3150` | 2.0 KB | CheckResourceConflict | MEDIUM |
+| `sub_8D32D0` | 14 KB | ScheduleInstruction -- schedule single instruction | HIGH |
+| `sub_8D3D60` | 1.4 KB | InsertStall | HIGH |
+| `sub_8D3E20` | 2.1 KB | ComputeStallCycles | HIGH |
+| `sub_8D4000` | 3.0 KB | InsertBarrier | HIGH |
+| `sub_8D5E00` | 38 KB | MainSchedulingLoop -- workhorse | HIGH |
+| `sub_8D7760` | 41 KB | StallAndBarrierInsertion -- control word generation | HIGH |
+| `sub_8D9930` | 19 KB | BuildDependencyEdges -- RAW/WAR/WAW/memory/barrier | HIGH |
+| `sub_925510` | 341 bytes | MoveInstruction -- doubly-linked list relink | HIGH |
+| `sub_A08A00` | -- | ResourceModel -- FU cost query (3 modes) | HIGH |
+| `sub_A091C0` | -- | InitResourceTracking | MEDIUM |
+| `sub_A09530` | 365 bytes | UpdateStallCycles -- per-instruction latency update | HIGH |
+| `sub_A09D40` | -- | UpdateWARTracking -- anti-dependency tracking | MEDIUM |
+| `sub_A9DDD0` | 11.5 KB | HandleLargeFunction -- chunk-based scheduling | MEDIUM |
 
 ## Per-SM Scheduling Backends
 
@@ -966,43 +966,43 @@ This propagation allows scheduling decisions in callee functions to influence ca
 
 ### Backend B + C Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_1233D70` | 1.5 KB | SM89/90 CodecScheduleEntry -- pass phase 5, float weight init |
-| `sub_122AD60` | 17.5 KB | ForwardCodecScheduler -- BST list scheduling, FNV-1a hash tracking |
-| `sub_122F650` | 18.2 KB | BackwardCodecScheduler -- reverse pass, barrier/scoreboard integration |
-| `sub_123ADD0` | 5.8 KB | CodecDependencyGraphBuilder -- dispatched via vtable |
-| `sub_12371D0` | 3.8 KB | CodecInstructionClassifier -- convergence-based property testing |
-| `sub_123E0D0` | -- | CodecSchedulePreparation -- instruction characterization |
-| `sub_A112C0` | -- | CodecSchedulePostFixup -- result finalization |
-| `sub_1908D90` | -- | RBTScheduleOrchestrator -- pre/post mode dispatch |
-| `sub_1906090` | -- | RBTScheduleDriver -- per-block loop, 368-byte block stride |
-| `sub_1902B70` | 19 KB | RBTCoreListScheduler -- RB-tree priority queue loop |
-| `sub_1904B70` | 26 KB | RBTSolutionEvaluator -- constraint check, score threshold, hash commit |
-| `sub_19043F0` | 10 KB | RBTConstraintValidator -- mode 5/6 feasibility |
-| `sub_19038E0` | 15 KB | RBTInitialEvaluation -- per-block constraint bootstrapping |
-| `sub_18F3CB0` | 16 KB | RBTPressureCostModel -- SIMD register pressure computation |
-| `sub_18FFD70` | 23 KB | RBTRecursiveCostPropagation -- call-graph-aware scoring |
-| `sub_1902100` | 15 KB | RBTDependencyUpdate -- post-scheduling DAG maintenance |
-| `sub_18FD370` | -- | RBTreeInsert -- 3-key balanced insertion + fix-up |
-| `sub_18FCDA0` | -- | RBTreeExtractMax -- pop highest-priority node |
-| `sub_18F7EC0` | -- | RBTreeReset -- tree cleanup |
-| `sub_18F8580` | -- | RBTRegisterPressureInit -- pressure state initialization |
-| `sub_18F5460` | -- | RBTLatencyLookup -- vtable-dispatched latency query |
-| `sub_18FDAF0` | -- | RBTScoreComputation -- double-precision weighted score |
-| `sub_1906510` | 14 KB | RBTHashLookup -- FNV-1a instruction ID hash table |
-| `sub_18FB850` | -- | RBTHashResize -- power-of-2 growth, 0.5 load factor |
-| `sub_1901200` | -- | RBTScorePropagationDriver -- calls sub_18FFD70 |
-| `sub_19081F0` | 17 KB | RBTBlockDependencyGraphBuild -- per-block DAG construction |
-| `sub_19072F0` | 14 KB | RBTInterBlockScheduling -- cross-BB register dependency |
-| `sub_18FEE60` | -- | RBTScheduleStateCreate -- 528-byte state construction |
-| `sub_18FE320` | -- | RBTScheduleDataPrepare -- pre-scheduling data setup |
-| `sub_18F94C0` | -- | RBTCleanup -- state teardown |
-| `sub_C5FFC0` | -- | DispatchPreSchedule -- SM gate -> Backend C (mode 1) |
-| `sub_C5FFF0` | -- | DispatchPostSchedule -- SM gate -> Backend C (mode 0) |
-| `sub_C5FEF0` | -- | DispatchCodecSchedule -- SM gate -> Backend B |
-| `sub_C60910` | -- | DispatchConditionalCodecSchedule -- SM gate + knob override |
-| `sub_7DDB50` | -- | GetSmVersionIndex -- reads context+2104 |
+| Address | Size | Identity | Confidence |
+|---|---|---|---|
+| `sub_1233D70` | 1.5 KB | SM89/90 CodecScheduleEntry -- pass phase 5, float weight init | HIGH |
+| `sub_122AD60` | 17.5 KB | ForwardCodecScheduler -- BST list scheduling, FNV-1a hash tracking | HIGH |
+| `sub_122F650` | 18.2 KB | BackwardCodecScheduler -- reverse pass, barrier/scoreboard integration | HIGH |
+| `sub_123ADD0` | 5.8 KB | CodecDependencyGraphBuilder -- dispatched via vtable | MEDIUM |
+| `sub_12371D0` | 3.8 KB | CodecInstructionClassifier -- convergence-based property testing | MEDIUM |
+| `sub_123E0D0` | -- | CodecSchedulePreparation -- instruction characterization | MEDIUM |
+| `sub_A112C0` | -- | CodecSchedulePostFixup -- result finalization | MEDIUM |
+| `sub_1908D90` | -- | RBTScheduleOrchestrator -- pre/post mode dispatch | HIGH |
+| `sub_1906090` | -- | RBTScheduleDriver -- per-block loop, 368-byte block stride | HIGH |
+| `sub_1902B70` | 19 KB | RBTCoreListScheduler -- RB-tree priority queue loop | HIGH |
+| `sub_1904B70` | 26 KB | RBTSolutionEvaluator -- constraint check, score threshold, hash commit | HIGH |
+| `sub_19043F0` | 10 KB | RBTConstraintValidator -- mode 5/6 feasibility | HIGH |
+| `sub_19038E0` | 15 KB | RBTInitialEvaluation -- per-block constraint bootstrapping | MEDIUM |
+| `sub_18F3CB0` | 16 KB | RBTPressureCostModel -- SIMD register pressure computation | HIGH |
+| `sub_18FFD70` | 23 KB | RBTRecursiveCostPropagation -- call-graph-aware scoring | HIGH |
+| `sub_1902100` | 15 KB | RBTDependencyUpdate -- post-scheduling DAG maintenance | HIGH |
+| `sub_18FD370` | -- | RBTreeInsert -- 3-key balanced insertion + fix-up | HIGH |
+| `sub_18FCDA0` | -- | RBTreeExtractMax -- pop highest-priority node | HIGH |
+| `sub_18F7EC0` | -- | RBTreeReset -- tree cleanup | HIGH |
+| `sub_18F8580` | -- | RBTRegisterPressureInit -- pressure state initialization | MEDIUM |
+| `sub_18F5460` | -- | RBTLatencyLookup -- vtable-dispatched latency query | MEDIUM |
+| `sub_18FDAF0` | -- | RBTScoreComputation -- double-precision weighted score | HIGH |
+| `sub_1906510` | 14 KB | RBTHashLookup -- FNV-1a instruction ID hash table | HIGH |
+| `sub_18FB850` | -- | RBTHashResize -- power-of-2 growth, 0.5 load factor | HIGH |
+| `sub_1901200` | -- | RBTScorePropagationDriver -- calls sub_18FFD70 | MEDIUM |
+| `sub_19081F0` | 17 KB | RBTBlockDependencyGraphBuild -- per-block DAG construction | HIGH |
+| `sub_19072F0` | 14 KB | RBTInterBlockScheduling -- cross-BB register dependency | MEDIUM |
+| `sub_18FEE60` | -- | RBTScheduleStateCreate -- 528-byte state construction | MEDIUM |
+| `sub_18FE320` | -- | RBTScheduleDataPrepare -- pre-scheduling data setup | MEDIUM |
+| `sub_18F94C0` | -- | RBTCleanup -- state teardown | MEDIUM |
+| `sub_C5FFC0` | -- | DispatchPreSchedule -- SM gate -> Backend C (mode 1) | CERTAIN |
+| `sub_C5FFF0` | -- | DispatchPostSchedule -- SM gate -> Backend C (mode 0) | CERTAIN |
+| `sub_C5FEF0` | -- | DispatchCodecSchedule -- SM gate -> Backend B | CERTAIN |
+| `sub_C60910` | -- | DispatchConditionalCodecSchedule -- SM gate + knob override | CERTAIN |
+| `sub_7DDB50` | -- | GetSmVersionIndex -- reads context+2104 | HIGH |
 
 ## Cross-References
 

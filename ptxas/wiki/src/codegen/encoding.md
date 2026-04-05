@@ -505,6 +505,154 @@ The most commonly used modifier-encoding functions:
 
 Modifier fields per instruction range from 0 (simple control instructions) to 18 (the most complex encoder, `sub_D89C90` for opcode class 0x5A). The average is approximately 6 modifier fields per encoder. Bit positions in `a1+544` concentrate in bits 48-63; bit positions in `a1+552` concentrate in bits 0-11.
 
+## Physical Register Encoding
+
+The SASS instruction encoder uses a two-stage pipeline to convert abstract virtual registers into hardware register fields in the final instruction word. The first stage (Ori encoding, described above in "Register Operand Encoder") packs register type and number into operand slots within the 1280-bit encoding buffer. The second stage (SASS emission) maps the compiler's abstract `(register_class, sub_index)` pair into an 8-bit hardware register number and writes it into the final 128-bit instruction word. This second stage is implemented by the register-class encoding tables at address range 0x1B4C000--0x1B76000 (Zone A of the emission backend).
+
+### Class-to-Hardware Formula
+
+`sub_1B6B250` (2965 bytes, 254 callers, 0 callees) is a fully unrolled lookup table that implements the mapping:
+
+```
+hardware_reg = register_class * 32 + sub_index
+```
+
+The function takes two integer arguments `(a1, a2)` where `a1` is the register class (0--5) and `a2` is the sub-register index within that class. It is compiled as a deeply nested if-chain covering all 156 valid `(class, index)` combinations. The decompiler output is 495 lines of cascading conditionals, but every return value satisfies the formula `a1 * 32 + a2` exactly:
+
+```c
+// sub_1B6B250 -- reconstructed from decompiled lookup table
+__int64 register_class_to_hardware(int reg_class, int sub_index) {
+    // Returns reg_class * 32 + sub_index for all valid inputs.
+    // Valid classes: 0, 1, 2, 3, 4, 5
+    // Valid sub-indices: 1..15, 17..27 (index 0 and 16 excluded)
+    // Returns 0 for any unmatched input (fallthrough).
+}
+```
+
+The guard wrapper `sub_1B73060` (19 bytes, 483 callers) short-circuits the no-register case:
+
+```c
+// sub_1B73060 -- guard wrapper
+__int64 encode_register_guarded(__int64 ctx, int reg_class, int sub_index) {
+    if (reg_class | sub_index)
+        return register_class_to_hardware(reg_class, sub_index);
+    else
+        return 0;  // no register
+}
+```
+
+### Per-Class Hardware Number Ranges
+
+Each class occupies a 32-number stride in the hardware register namespace. Within each stride, indices 1--15 and 17--27 are populated (26 registers per class). Index 0 maps to the no-register sentinel via the guard wrapper. Index 16 is absent from the lookup table -- a gap in every class.
+
+| Class | a1 | Hardware Range | Populated Indices | Gap | Likely Register File |
+|-------|---:|---------------|-------------------|-----|---------------------|
+| 0 | 0 | 0--27 | 1--15, 17--27 | 16 | R (GPR primary) |
+| 1 | 1 | 32--59 | 1--15, 17--27 | 48 | R (GPR secondary) |
+| 2 | 2 | 64--91 | 1--15, 17--27 | 80 | P (predicate) |
+| 3 | 3 | 96--123 | 1--15, 17--27 | 112 | UR (uniform GPR) |
+| 4 | 4 | 128--155 | 1--15, 17--27 | 144 | UR (uniform ext) |
+| 5 | 5 | 160--187 | 1--15, 17--27 | 176 | P/UP (uniform pred) |
+
+Hardware numbers 28--31 (and the corresponding padding in each class) are unused, providing alignment to 32-register boundaries. The maximum hardware register number produced by the table is 187 (class 5, index 27). The 8-bit encoding field can represent 0--255, so values 188--255 are reserved.
+
+The index-16 gap in every class is consistent across all 6 classes. This likely corresponds to a hardware-reserved slot or a register numbering convention where physical register `class*32+16` has special semantics (potentially a sentinel or a register-file-boundary marker).
+
+### Split Bitfield Writer
+
+`sub_1B72F60` (32 bytes, 483 callers) writes the 8-bit hardware register number into the SASS instruction word. The encoding is split across two non-contiguous bitfields within a single DWORD:
+
+```c
+// sub_1B72F60 -- register field writer (decompiled verbatim)
+__int64 write_register_field(__int64 a1, int encoded_reg) {
+    __int64 buf = *(_QWORD *)(a1 + 112);   // instruction encoding buffer
+    __int64 result = *(_DWORD *)(buf + 12)  // DWORD at byte offset 12
+                   | ((_WORD)encoded_reg << 9) & 0x3E00u;     // low 5 bits -> [13:9]
+    *(_DWORD *)(buf + 12) = result
+                   | (encoded_reg << 21) & 0x1C000000;        // high 3 bits -> [28:26]
+    return result;
+}
+```
+
+Bit-level layout within the DWORD at `*(instruction_buffer + 12)`:
+
+```
+DWORD bits:  31 30 29 28 27 26 25 24 23 22 21 20 19 18 17 16 15 14 13 12 11 10  9  8  7 ..  0
+                      [  h2:h0  ]                                      [ l4:l3:l2:l1:l0 ]
+                      hw[7:5]                                          hw[4:0]
+```
+
+The DWORD at byte offset 12 covers bits [127:96] of the 128-bit instruction word. In full instruction coordinates:
+
+| Field | DWORD Bits | Instruction Bits | Width | Content |
+|-------|-----------|------------------|-------|---------|
+| Low | [13:9] | [109:105] | 5 bits | `hardware_reg[4:0]` |
+| High | [28:26] | [124:122] | 3 bits | `hardware_reg[7:5]` |
+
+The 12-bit gap between instruction bits [121] and [110] is occupied by other instruction fields (modifiers, flags, secondary operand encodings). This split-field design is common in GPU ISAs where instruction bits are at a premium and different fields must be routed to different functional unit inputs.
+
+`sub_1B72FE0` (32 bytes, 104 callers) is byte-identical to `sub_1B72F60` but occupies a different vtable slot, used by a secondary operand encoding path.
+
+### Extended Register Encoder
+
+`sub_1B6EA20` (7194 bytes, 25 callers) extends the base encoding with operand modifier support. It takes 5 parameters:
+
+```c
+// sub_1B6EA20 -- register encoding with modifiers
+__int64 encode_register_with_modifiers(
+    int reg_class,      // a1: register class (0-5)
+    int sub_index,      // a2: sub-register index
+    int negation,       // a3: .NEG modifier flag
+    int abs_value,      // a4: |.ABS| modifier flag
+    int type_modifier   // a5: type cast modifier
+);
+```
+
+When all modifier flags are zero (`a3 | a4 | a5 == 0`), the function returns the same value as `sub_1B6B250` -- the base `class * 32 + index` result. When modifiers are present, the function continues into extended encoding logic that packs modifier bits alongside the register number. The guard wrapper `sub_1B748C0` (35 bytes, 104 callers) provides the same no-register short-circuit for the extended variant.
+
+Additional encoding variants for different operand positions include `sub_1B6D590`, `sub_1B70640`, `sub_1B71AD0`, `sub_1B748F0`, and `sub_1B76100` (5264--6106 bytes each, 2--49 callers each). All share the same nested-if structural pattern and operate on the same class/index domain.
+
+### Encoding Pipeline Summary
+
+The complete register encoding pipeline from virtual register to instruction bits:
+
+```
+Virtual Register (vreg+64 = reg_type, vreg+68 = physical_reg)
+  |
+  v
+[Ori Encoder -- sub_7BC030, 6147 callers]
+  Reads: operand+20 (reg_type_raw), operand+4 (reg_num)
+  Writes: 1-bit presence + 4-bit type + 10-bit number into 1280-bit buffer
+  |
+  v
+[SASS Emission -- sub_1B6B250 via sub_1B73060, 483 callers]
+  Input: (register_class, sub_index)
+  Formula: hardware_reg = class * 32 + sub_index
+  Output: 8-bit hardware register number (0-187)
+  |
+  v
+[Bitfield Writer -- sub_1B72F60, 483 callers]
+  Input: 8-bit hardware register number
+  Output: split across instruction bits [109:105] and [124:122]
+```
+
+### Zone A Function Map
+
+| Function | Size | Callers | Role | Confidence |
+|----------|-----:|--------:|------|-----------|
+| `sub_1B6B250` | 2,965 B | 254 | Core `class*32+index` lookup table | HIGH |
+| `sub_1B6EA20` | 7,194 B | 25 | Extended encoding with modifier bits | HIGH |
+| `sub_1B73060` | 19 B | 483 | Guard wrapper for `sub_1B6B250` | CERTAIN |
+| `sub_1B748C0` | 35 B | 104 | Guard wrapper for `sub_1B70640` | CERTAIN |
+| `sub_1B72F60` | 32 B | 483 | Split bitfield register writer | HIGH |
+| `sub_1B72FE0` | 32 B | 104 | Identical writer (different vtable slot) | HIGH |
+| `sub_1B73080` | 6,106 B | 88 | 3-operand register encoding (class, index, modifier) | HIGH |
+| `sub_1B6D590` | 5,264 B | varies | Register encoding variant (operand position A) | HIGH |
+| `sub_1B70640` | varies | varies | Register encoding variant (operand position B) | HIGH |
+| `sub_1B71AD0` | varies | varies | Register encoding variant (operand position C) | HIGH |
+| `sub_1B748F0` | varies | varies | Register encoding variant (operand position D) | HIGH |
+| `sub_1B76100` | varies | varies | Register encoding variant (operand position E) | HIGH |
+
 ## Decoder Functions
 
 97 decoder functions in the 0xEB3040--0xED0FE0 range reverse the encoding: they extract operand information from packed SASS bitfields back into Ori IR representation. The decoder entry point is `sub_EB3040`, a dispatcher that performs binary search on the instruction type word (`*(a2+12)`, `*(a2+14)`, `*(a2+15)`) against a table at `off_22E6380`. For instruction types 120/121, it falls through to the generic decoder `sub_7BFAE0`.
@@ -734,36 +882,36 @@ Maximum observed variant value is 0x2F (47), giving up to 48 sub-operations per 
 
 ## Function Map
 
-| Address | Size | Callers | Identity |
-|---------|------|---------|----------|
-| `sub_7B9B80` | 216 B | 18,347 | **bitfield_insert** -- core packer into 1280-bit buffer |
-| `sub_7B9D30` | 38 B | 2,408 | **clear_cbuf_slots** -- memset(a1+468, 0xFF, 64) |
-| `sub_7B9D60` | 408 B | 2,408 | **encode_reuse_predicate** -- reuse flags + guard predicate |
-| `sub_7BC030` | 814 B | 6,147 | **encode_register** -- GPR operand encoder |
-| `sub_7BC360` | ~500 B | 126 | **encode_uniform_register** -- UR operand encoder |
-| `sub_7BC5C0` | 416 B | 1,449 | **encode_predicate** -- predicate operand encoder |
-| `sub_7BCF00` | 856 B | 1,657 | **encode_immediate** -- immediate/cbuf operand encoder |
-| `sub_7BD260` | ~300 B | 96 | **decode_finalize** -- extract control bits |
-| `sub_7BD3C0` | ~500 B | 286 | **decode_register** -- GPR operand decoder |
-| `sub_7BD650` | ~400 B | 115 | **decode_register_alt** -- destination register decoder |
-| `sub_7BE090` | ~400 B | 50 | **decode_predicate** -- predicate operand decoder |
-| `sub_10B6180` | 21 B | 8,091 | **encode_bool_field** -- 1-bit opcode-to-control mapping |
-| `sub_10B6160` | 21 B | 2,205 | **encode_bool_field_B** -- 1-bit flag variant |
-| `sub_10B6140` | 21 B | 1,645 | **encode_bool_field_C** -- 1-bit flag variant |
-| `sub_10AFF80` | 11 KB | 3 | **instruction_constructor** -- 32-param object builder |
-| `sub_10ADF90` | 2.2 KB | 357 | **instruction_unlink** -- linked-list remove + recycle |
-| `sub_10B0BE0` | 6.5 KB | -- | **hash_table_insert_64** -- FNV-1a, 8-byte key, 4x resize |
-| `sub_10B1C30` | 3.9 KB | -- | **hash_table_insert_32** -- FNV-1a, 4-byte key |
-| `sub_10C0B20` | 180 KB | 3,109 | **setField** -- field value writer dispatch |
-| `sub_10D5E60` | 197 KB | 961 | **getFieldOffset** -- field bit-position lookup dispatch |
-| `sub_10E32E0` | 187 KB | 72 | **hasField** -- field existence query dispatch |
-| `sub_10CCD80` | 142 KB | 4 | **setFieldDefault** -- default value writer dispatch |
-| `sub_10CAD70` | 68 KB | 74 | **getOperandFieldOffset** -- per-operand field offset dispatch |
-| `sub_10C7690` | 65 KB | 288 | **setOperandField** -- per-operand field writer dispatch |
-| `sub_AF7DF0` | -- | 7,355 | **encoded_to_ir_register** -- hardware reg to IR translation |
-| `sub_AF7200` | -- | 552 | **encoded_to_ir_predicate** -- hardware pred to IR translation |
-| `sub_EB3040` | 1.9 KB | -- | **decode_dispatcher** -- binary search on instruction type |
-| `sub_112CDA0` | 8.9 KB | -- | **register_pair_encoder** -- 40-pair mapping via if-chain |
+| Address | Size | Callers | Identity | Confidence |
+|---------|------|---------|----------|---|
+| `sub_7B9B80` | 216 B | 18,347 | **bitfield_insert** -- core packer into 1280-bit buffer | CERTAIN |
+| `sub_7B9D30` | 38 B | 2,408 | **clear_cbuf_slots** -- memset(a1+468, 0xFF, 64) | HIGH |
+| `sub_7B9D60` | 408 B | 2,408 | **encode_reuse_predicate** -- reuse flags + guard predicate | HIGH |
+| `sub_7BC030` | 814 B | 6,147 | **encode_register** -- GPR operand encoder | HIGH |
+| `sub_7BC360` | ~500 B | 126 | **encode_uniform_register** -- UR operand encoder | HIGH |
+| `sub_7BC5C0` | 416 B | 1,449 | **encode_predicate** -- predicate operand encoder | HIGH |
+| `sub_7BCF00` | 856 B | 1,657 | **encode_immediate** -- immediate/cbuf operand encoder | HIGH |
+| `sub_7BD260` | ~300 B | 96 | **decode_finalize** -- extract control bits | HIGH |
+| `sub_7BD3C0` | ~500 B | 286 | **decode_register** -- GPR operand decoder | HIGH |
+| `sub_7BD650` | ~400 B | 115 | **decode_register_alt** -- destination register decoder | HIGH |
+| `sub_7BE090` | ~400 B | 50 | **decode_predicate** -- predicate operand decoder | HIGH |
+| `sub_10B6180` | 21 B | 8,091 | **encode_bool_field** -- 1-bit opcode-to-control mapping | HIGH |
+| `sub_10B6160` | 21 B | 2,205 | **encode_bool_field_B** -- 1-bit flag variant | HIGH |
+| `sub_10B6140` | 21 B | 1,645 | **encode_bool_field_C** -- 1-bit flag variant | HIGH |
+| `sub_10AFF80` | 11 KB | 3 | **instruction_constructor** -- 32-param object builder | HIGH |
+| `sub_10ADF90` | 2.2 KB | 357 | **instruction_unlink** -- linked-list remove + recycle | HIGH |
+| `sub_10B0BE0` | 6.5 KB | -- | **hash_table_insert_64** -- FNV-1a, 8-byte key, 4x resize | HIGH |
+| `sub_10B1C30` | 3.9 KB | -- | **hash_table_insert_32** -- FNV-1a, 4-byte key | HIGH |
+| `sub_10C0B20` | 180 KB | 3,109 | **setField** -- field value writer dispatch | HIGH |
+| `sub_10D5E60` | 197 KB | 961 | **getFieldOffset** -- field bit-position lookup dispatch | HIGH |
+| `sub_10E32E0` | 187 KB | 72 | **hasField** -- field existence query dispatch | HIGH |
+| `sub_10CCD80` | 142 KB | 4 | **setFieldDefault** -- default value writer dispatch | MEDIUM |
+| `sub_10CAD70` | 68 KB | 74 | **getOperandFieldOffset** -- per-operand field offset dispatch | HIGH |
+| `sub_10C7690` | 65 KB | 288 | **setOperandField** -- per-operand field writer dispatch | HIGH |
+| `sub_AF7DF0` | -- | 7,355 | **encoded_to_ir_register** -- hardware reg to IR translation | HIGH |
+| `sub_AF7200` | -- | 552 | **encoded_to_ir_predicate** -- hardware pred to IR translation | HIGH |
+| `sub_EB3040` | 1.9 KB | -- | **decode_dispatcher** -- binary search on instruction type | HIGH |
+| `sub_112CDA0` | 8.9 KB | -- | **register_pair_encoder** -- 40-pair mapping via if-chain | HIGH |
 
 ## Cross-References
 

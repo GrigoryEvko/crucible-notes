@@ -627,28 +627,28 @@ Debug strings include `" spill-regill bug "` and `" bit-spill bug "` (both with 
 
 ## Function Map
 
-| Address | Lines | Role |
-|---------|-------|------|
-| `sub_939BD0` | 65 | Spill allocator setup (knob 623 dispatch) |
-| `sub_93C0B0` | 582 | Spill range optimizer |
-| `sub_93D070` | 155 | Best allocation result recorder |
-| `sub_93E290` | 397 | Spill candidate node creator (192-byte arena nodes) |
-| `sub_93F130` | 544 | Spill code inserter |
-| `sub_93FBE0` | 940 | Per-iteration state reset / slot assignment |
-| `sub_940EF0` | 764 | Alternate spill slot assignment path |
-| `sub_944740` | 138 | Interference count at program point |
-| `sub_9449B0` | 418 | Cross-block liveness range calculator |
-| `sub_94B200` | 642 | Spill weight accumulator |
-| `sub_94E620` | 617 | Spill cost accumulator / liveness annotator |
-| `sub_94F150` | 561 | Spill code generation (main entry) |
-| `sub_94FDD0` | 155 | Register assignment + spill trigger |
-| `sub_9539C0` | 1,873 | SMEM (shared memory) spill allocator |
-| `sub_9714E0` | 290 | Allocation finalization / error emission |
-| `sub_96D940` | 2,983 | Spill guidance engine (7 class-parallel queues) |
-| `sub_971A90` | 355 | NOSPILL / SPILL retry driver |
-| `sub_9850F0` | 520 | SASS-level spill instruction generator |
-| `sub_9997D0` | -- | Spill cost initialization |
-| `sub_9998A0` | -- | Spill cost computation |
-| `sub_999950` | -- | Spill cost comparison |
-| `sub_999AA0` | -- | Spill benefit estimation |
-| `sub_9A8270` | -- | Live range spill cost computation (14 KB) |
+| Address | Lines | Role | Confidence |
+|---------|-------|------|---|
+| `sub_939BD0` | 65 | Spill allocator setup (knob 623 dispatch) | HIGH |
+| `sub_93C0B0` | 582 | Spill range optimizer | HIGH |
+| `sub_93D070` | 155 | Best allocation result recorder | HIGH |
+| `sub_93E290` | 397 | Spill candidate node creator (192-byte arena nodes) | HIGH |
+| `sub_93F130` | 544 | Spill code inserter | HIGH |
+| `sub_93FBE0` | 940 | Per-iteration state reset / slot assignment | HIGH |
+| `sub_940EF0` | 764 | Alternate spill slot assignment path | MEDIUM |
+| `sub_944740` | 138 | Interference count at program point | HIGH |
+| `sub_9449B0` | 418 | Cross-block liveness range calculator | HIGH |
+| `sub_94B200` | 642 | Spill weight accumulator | HIGH |
+| `sub_94E620` | 617 | Spill cost accumulator / liveness annotator | HIGH |
+| `sub_94F150` | 561 | Spill code generation (main entry) | HIGH |
+| `sub_94FDD0` | 155 | Register assignment + spill trigger | HIGH |
+| `sub_9539C0` | 1,873 | SMEM (shared memory) spill allocator | HIGH |
+| `sub_9714E0` | 290 | Allocation finalization / error emission | MEDIUM |
+| `sub_96D940` | 2,983 | Spill guidance engine (7 class-parallel queues) | HIGH |
+| `sub_971A90` | 355 | NOSPILL / SPILL retry driver | HIGH |
+| `sub_9850F0` | 520 | SASS-level spill instruction generator | HIGH |
+| `sub_9997D0` | -- | Spill cost initialization | MEDIUM |
+| `sub_9998A0` | -- | Spill cost computation | MEDIUM |
+| `sub_999950` | -- | Spill cost comparison | MEDIUM |
+| `sub_999AA0` | -- | Spill benefit estimation | MEDIUM |
+| `sub_9A8270` | -- | Live range spill cost computation (14 KB) | MEDIUM |

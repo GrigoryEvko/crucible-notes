@@ -841,20 +841,20 @@ The verifier tracks two counters reported at the end of the pass:
 
 ### Verification Function Map
 
-| Address | Size | Role |
-|---------|------|------|
-| `sub_A54140` | -- | Def-use chain lookup (hash table query into pre/post maps) |
-| `sub_A55D20` | ~100B | Print uninitialized-def warning helper |
-| `sub_A55D80` | 1454B | Diagnostic reporter -- 10 error categories, structured output |
-| `sub_A56400` | -- | Build additions/removals lists for deep comparison |
-| `sub_A56560` | 698B | Verify single operand's reaching definitions |
-| `sub_A56790` | ~250B | Per-instruction fast check (returns bool pass/fail) |
-| `sub_A5B1C0` | 8802B | Full-function def-use chain builder (pre and post regalloc) |
-| `sub_A60B60` | 4560B | Pre/post chain comparison engine |
-| `sub_A62480` | -- | Reset scratch arrays between operand checks |
-| `sub_A75220` | 2640B | Compare reaching definitions (builds diff lists) |
-| `sub_A75CC0` | 866B | Deep single-instruction verifier (classifies diffs) |
-| `sub_A76030` | 770B | MemcheckPass::run -- verification entry point |
+| Address | Size | Role | Confidence |
+|---------|------|------|---|
+| `sub_A54140` | -- | Def-use chain lookup (hash table query into pre/post maps) | HIGH |
+| `sub_A55D20` | ~100B | Print uninitialized-def warning helper | HIGH |
+| `sub_A55D80` | 1454B | Diagnostic reporter -- 10 error categories, structured output | HIGH |
+| `sub_A56400` | -- | Build additions/removals lists for deep comparison | MEDIUM |
+| `sub_A56560` | 698B | Verify single operand's reaching definitions | HIGH |
+| `sub_A56790` | ~250B | Per-instruction fast check (returns bool pass/fail) | HIGH |
+| `sub_A5B1C0` | 8802B | Full-function def-use chain builder (pre and post regalloc) | HIGH |
+| `sub_A60B60` | 4560B | Pre/post chain comparison engine | HIGH |
+| `sub_A62480` | -- | Reset scratch arrays between operand checks | MEDIUM |
+| `sub_A75220` | 2640B | Compare reaching definitions (builds diff lists) | HIGH |
+| `sub_A75CC0` | 866B | Deep single-instruction verifier (classifies diffs) | HIGH |
+| `sub_A76030` | 770B | MemcheckPass::run -- verification entry point | HIGH |
 
 ## Occupancy-Aware Budget Model
 
@@ -989,30 +989,30 @@ Immediately after building the interpolation tables, `sub_947150` calls `sub_939
 
 ## Function Map
 
-| Address | Lines | Role |
-|---------|-------|------|
-| `sub_926A30` | 4005 | Fat-point interference builder / constraint solver |
-| `sub_93D070` | 155 | Best result recorder (multi-criterion comparison) |
-| `sub_93E290` | 397 | Spill candidate node creator (192-byte arena alloc) |
-| `sub_93E9D0` | 125 | Pre-assign individual operand |
-| `sub_93ECB0` | 194 | Pre-assign registers (per-instruction dispatcher) |
-| `sub_93FBE0` | 940 | Per-iteration allocation state reset |
-| `sub_939BD0` | 63 | Spill guidance strategy initializer (knob 623 query) |
-| `sub_939CE0` | 23 | Register consumption counter (pair-aware) |
-| `sub_9446D0` | 29 | Register skip predicate (special regs, exclusion set) |
-| `sub_947150` | ~700 | Allocator constructor (budget model + interpolation init) |
-| `sub_94A020` | 331 | Pre-allocation pass (knobs 628/629/618) |
-| `sub_94FDD0` | 155 | Register assignment + alias propagation |
-| `sub_950100` | 205 | Pre-allocated candidate applier (FNV-1a lookup) |
-| `sub_956130` | 873 | Register class interference mask builder (SSE2) |
-| `sub_957020` | 24 | Occupancy bitvector resizer (arena-backed realloc + memset) |
-| `sub_94C9E0` | 59 | Occupancy bitmask range setter (word-level OR with masks) |
-| `sub_7DAFD0` | 7 | VR aligned width computation (`ceil(size/stride)*stride`) |
-| `sub_957160` | 1658 | Core fat-point allocator (coloring engine) |
-| `sub_9680F0` | 3722 | Per-instruction assignment core loop |
-| `sub_96D940` | 2983 | Spill guidance (7-class priority queues) |
-| `sub_971A90` | 355 | NOSPILL / SPILL retry driver |
-| `sub_9714E0` | -- | Post-allocation finalization |
-| `sub_9721C0` | 1086 | Register allocation entry point |
-| `sub_936FD0` | -- | Final fallback allocation |
-| `sub_9375C0` | -- | VR priority sort |
+| Address | Lines | Role | Confidence |
+|---------|-------|------|---|
+| `sub_926A30` | 4005 | Fat-point interference builder / constraint solver | HIGH |
+| `sub_93D070` | 155 | Best result recorder (multi-criterion comparison) | HIGH |
+| `sub_93E290` | 397 | Spill candidate node creator (192-byte arena alloc) | HIGH |
+| `sub_93E9D0` | 125 | Pre-assign individual operand | HIGH |
+| `sub_93ECB0` | 194 | Pre-assign registers (per-instruction dispatcher) | HIGH |
+| `sub_93FBE0` | 940 | Per-iteration allocation state reset | HIGH |
+| `sub_939BD0` | 63 | Spill guidance strategy initializer (knob 623 query) | HIGH |
+| `sub_939CE0` | 23 | Register consumption counter (pair-aware) | HIGH |
+| `sub_9446D0` | 29 | Register skip predicate (special regs, exclusion set) | HIGH |
+| `sub_947150` | ~700 | Allocator constructor (budget model + interpolation init) | HIGH |
+| `sub_94A020` | 331 | Pre-allocation pass (knobs 628/629/618) | HIGH |
+| `sub_94FDD0` | 155 | Register assignment + alias propagation | HIGH |
+| `sub_950100` | 205 | Pre-allocated candidate applier (FNV-1a lookup) | HIGH |
+| `sub_956130` | 873 | Register class interference mask builder (SSE2) | HIGH |
+| `sub_957020` | 24 | Occupancy bitvector resizer (arena-backed realloc + memset) | HIGH |
+| `sub_94C9E0` | 59 | Occupancy bitmask range setter (word-level OR with masks) | HIGH |
+| `sub_7DAFD0` | 7 | VR aligned width computation (`ceil(size/stride)*stride`) | CERTAIN |
+| `sub_957160` | 1658 | Core fat-point allocator (coloring engine) | HIGH |
+| `sub_9680F0` | 3722 | Per-instruction assignment core loop | HIGH |
+| `sub_96D940` | 2983 | Spill guidance (7-class priority queues) | HIGH |
+| `sub_971A90` | 355 | NOSPILL / SPILL retry driver | HIGH |
+| `sub_9714E0` | -- | Post-allocation finalization | MEDIUM |
+| `sub_9721C0` | 1086 | Register allocation entry point | HIGH |
+| `sub_936FD0` | -- | Final fallback allocation | MEDIUM |
+| `sub_9375C0` | -- | VR priority sort | MEDIUM |

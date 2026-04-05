@@ -421,7 +421,7 @@ The function queries three knobs that control scheduling behavior:
 
 New instructions created by opex use `sub_10B1F90` (instruction allocator) and `sub_10AE590` (operand configuration).
 
-## Stage 6: SASS Microcode Emission
+## Stage 5: SASS Microcode Emission
 
 | | |
 |---|---|
@@ -648,58 +648,58 @@ Phase 117 (MercEncodeAndDecode) reads Ori IR nodes via the master encoder `sub_6
 
 ## Function Map
 
-| Address | Size | Identity |
-|---|---|---|
-| `sub_9F1A90` | 35KB | MercConverter::ConvertInstruction (opcode dispatch, phase 5/141) |
-| `sub_9EF5E0` | 27KB | MercConverter::ReorganizeOperands (post-conversion lowering) |
-| `sub_9ED2D0` | 25KB | MercConverter::Dispatch (master opcode switch, `& 0xCF` mask) |
-| `sub_9F3340` | 7KB | MercConverter::Run (orchestrator, calls 9F1A90 then 9EF5E0) |
-| `sub_9EC160` | ~2KB | MergeSort (linked-list merge sort for operand chains) |
-| `sub_7BFC30` | ~4KB | MercConverter::ValidateEncoding (returns -1 on failure) |
-| `sub_9CE210` | ~6KB | MercConverter::FallbackConvert (recursive re-encoding) |
-| `sub_6D9690` | 94KB | MercuryEncode::EncodeInstruction (master switch) |
-| `sub_6FFDC0` | 66KB | MercuryPipeline::EmitInstructions (opex body) |
-| `sub_6E8EB0` | 64KB | BasicBlock::Initialize (encoder state init) |
-| `sub_6F2BF0` | 59KB | DecodePipeline::DecodeAndExpand |
-| `sub_719D00` | 50KB | ExpansionEngine::buildOutput |
-| `sub_726E00` | 30.6KB | Instruction encoding + FNV-1a dedup cache |
-| `sub_C3CC60` | 26KB | MercExpand::run (pseudo-instruction expansion) |
-| `sub_6FC810` | 24KB | MercuryPipeline::Configure |
-| `sub_6E4110` | 24KB | MercGenerateSassUCode (final SASS emission) |
-| `sub_6F52F0` | 23KB | DecodePipeline::RunStages (orchestrator) |
-| `sub_C3BCD0` | 19KB | MercExpand::expandControlFlow |
-| `sub_6FF070` | 18KB | Predicate handling in expansion |
-| `sub_C3E030` | 18KB | MercExpand::finalizeExpansion |
-| `sub_C37A10` | 16KB | MercExpand::expandInstruction |
-| `sub_C38180` | 13KB | MercExpand::expandInstruction (complex cases) |
-| `sub_7266A0` | 11.7KB | FNV-1a hash table (instruction cache) |
-| `sub_733870` | 10KB | Source operand encoder |
-| `sub_C39B40` | 10KB | MercExpand::expandMemoryOp |
-| `sub_6FAA90` | 7.9KB | WAR stall insertion |
-| `sub_735290` | 7.6KB | Per-instruction SASS encoding pipeline |
-| `sub_6FBC20` | 7.4KB | WAR generation main pass |
-| `sub_C3B560` | 8KB | MercExpand::expandTexture |
-| `sub_734D20` | 8.1KB | Complex operand encoder (texture/surface/barrier) |
-| `sub_C3A460` | 6KB | MercExpand::expandAtomicOp |
-| `sub_734370` | 6.1KB | Immediate operand encoder |
-| `sub_733FA0` | 5.1KB | Instruction operand encoder |
-| `sub_734820` | 4.1KB | Predicate operand encoder |
-| `sub_734AD0` | 3.3KB | Memory operand encoder |
-| `sub_6FA5B0` | 2.5KB | WAR hazard detector |
-| `sub_7032A0` | 2.3KB | RunMercOpexPass (entry) |
-| `sub_6FC280` | 1.8KB | Create pipeline context |
-| `sub_6FA7B0` | 1.7KB | InsertWAITDP (opcode 246) |
-| `sub_703480` | 1.4KB | RunOpexPass (entry) |
-| `sub_6FA930` | 1.4KB | InsertScoreboardBarrier (opcode 54) |
-| `sub_10AF8C0` | ~0.5KB | MercNode::Allocate (160-byte node allocator, core initializer) |
-| `sub_10B1F90` | ~0.2KB | MercNode::Create (wrapper: allocate + dedup cache + sched state) |
-| `sub_10B1EE0` | ~0.2KB | MercNode::Clone (wrapper: allocate from clone source) |
-| `sub_10B14B0` | ~0.2KB | MercNode::CreateBBBoundary (creates sentinel pair, opcode 0xFFFF) |
-| `sub_6FAFD0` | ~1KB | InsertScoreboardStalls (allocate NOP stall nodes) |
-| `sub_6FA430` | ~0.5KB | InsertNOP (allocate NOP barrier nodes) |
-| `sub_7B9B80` | 216B | Bitfield insert primitive (18,347 callers) |
-| `sub_7B9D30` | 38B | Clear constant buffer slot table |
-| `sub_7B9D60` | 408B | Encode reuse flags + predicate |
+| Address | Size | Identity | Confidence |
+|---|---|---|---|
+| `sub_9F1A90` | 35KB | MercConverter::ConvertInstruction (opcode dispatch, phase 5/141) | HIGH |
+| `sub_9EF5E0` | 27KB | MercConverter::ReorganizeOperands (post-conversion lowering) | HIGH |
+| `sub_9ED2D0` | 25KB | MercConverter::Dispatch (master opcode switch, `& 0xCF` mask) | HIGH |
+| `sub_9F3340` | 7KB | MercConverter::Run (orchestrator, calls 9F1A90 then 9EF5E0) | HIGH |
+| `sub_9EC160` | ~2KB | MergeSort (linked-list merge sort for operand chains) | HIGH |
+| `sub_7BFC30` | ~4KB | MercConverter::ValidateEncoding (returns -1 on failure) | HIGH |
+| `sub_9CE210` | ~6KB | MercConverter::FallbackConvert (recursive re-encoding) | MEDIUM |
+| `sub_6D9690` | 94KB | MercuryEncode::EncodeInstruction (master switch) | HIGH |
+| `sub_6FFDC0` | 66KB | MercuryPipeline::EmitInstructions (opex body) | HIGH |
+| `sub_6E8EB0` | 64KB | BasicBlock::Initialize (encoder state init) | MEDIUM |
+| `sub_6F2BF0` | 59KB | DecodePipeline::DecodeAndExpand | MEDIUM |
+| `sub_719D00` | 50KB | ExpansionEngine::buildOutput | MEDIUM |
+| `sub_726E00` | 30.6KB | Instruction encoding + FNV-1a dedup cache | HIGH |
+| `sub_C3CC60` | 26KB | MercExpand::run (pseudo-instruction expansion) | HIGH |
+| `sub_6FC810` | 24KB | MercuryPipeline::Configure | MEDIUM |
+| `sub_6E4110` | 24KB | MercGenerateSassUCode (final SASS emission) | HIGH |
+| `sub_6F52F0` | 23KB | DecodePipeline::RunStages (orchestrator) | MEDIUM |
+| `sub_C3BCD0` | 19KB | MercExpand::expandControlFlow | HIGH |
+| `sub_6FF070` | 18KB | Predicate handling in expansion | MEDIUM |
+| `sub_C3E030` | 18KB | MercExpand::finalizeExpansion | HIGH |
+| `sub_C37A10` | 16KB | MercExpand::expandInstruction | HIGH |
+| `sub_C38180` | 13KB | MercExpand::expandInstruction (complex cases) | HIGH |
+| `sub_7266A0` | 11.7KB | FNV-1a hash table (instruction cache) | HIGH |
+| `sub_733870` | 10KB | Source operand encoder | MEDIUM |
+| `sub_C39B40` | 10KB | MercExpand::expandMemoryOp | HIGH |
+| `sub_6FAA90` | 7.9KB | WAR stall insertion | HIGH |
+| `sub_735290` | 7.6KB | Per-instruction SASS encoding pipeline | MEDIUM |
+| `sub_6FBC20` | 7.4KB | WAR generation main pass | HIGH |
+| `sub_C3B560` | 8KB | MercExpand::expandTexture | HIGH |
+| `sub_734D20` | 8.1KB | Complex operand encoder (texture/surface/barrier) | MEDIUM |
+| `sub_C3A460` | 6KB | MercExpand::expandAtomicOp | HIGH |
+| `sub_734370` | 6.1KB | Immediate operand encoder | MEDIUM |
+| `sub_733FA0` | 5.1KB | Instruction operand encoder | MEDIUM |
+| `sub_734820` | 4.1KB | Predicate operand encoder | MEDIUM |
+| `sub_734AD0` | 3.3KB | Memory operand encoder | MEDIUM |
+| `sub_6FA5B0` | 2.5KB | WAR hazard detector | HIGH |
+| `sub_7032A0` | 2.3KB | RunMercOpexPass (entry) | HIGH |
+| `sub_6FC280` | 1.8KB | Create pipeline context | MEDIUM |
+| `sub_6FA7B0` | 1.7KB | InsertWAITDP (opcode 246) | HIGH |
+| `sub_703480` | 1.4KB | RunOpexPass (entry) | HIGH |
+| `sub_6FA930` | 1.4KB | InsertScoreboardBarrier (opcode 54) | HIGH |
+| `sub_10AF8C0` | ~0.5KB | MercNode::Allocate (160-byte node allocator, core initializer) | HIGH |
+| `sub_10B1F90` | ~0.2KB | MercNode::Create (wrapper: allocate + dedup cache + sched state) | HIGH |
+| `sub_10B1EE0` | ~0.2KB | MercNode::Clone (wrapper: allocate from clone source) | HIGH |
+| `sub_10B14B0` | ~0.2KB | MercNode::CreateBBBoundary (creates sentinel pair, opcode 0xFFFF) | HIGH |
+| `sub_6FAFD0` | ~1KB | InsertScoreboardStalls (allocate NOP stall nodes) | HIGH |
+| `sub_6FA430` | ~0.5KB | InsertNOP (allocate NOP barrier nodes) | HIGH |
+| `sub_7B9B80` | 216B | Bitfield insert primitive (18,347 callers) | CERTAIN |
+| `sub_7B9D30` | 38B | Clear constant buffer slot table | HIGH |
+| `sub_7B9D60` | 408B | Encode reuse flags + predicate | HIGH |
 
 ## Cross-References
 

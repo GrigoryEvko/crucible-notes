@@ -719,42 +719,42 @@ Two diagnostic functions handle these errors: `sub_895530` emits directly when s
 
 ## Function Map
 
-| Address | Size | Identity | Phase |
-|---|---|---|---|
-| `sub_C5FBC0` | 34 | StageAndFence execute wrapper | 25 |
-| `sub_1392E30` | 166 | StageAndFence entry | 25 |
-| `sub_1389AF0` | 3,049 | StageAndFence setup | 25 |
-| `sub_1390B30` | 8,956 | StageAndFence core (fence insertion) | 25 |
-| `sub_138A6E0` | 3,408 | StageAndFence teardown | 25 |
-| `sub_C60BD0` | 334 | OriRemoveRedundantBarriers execute wrapper | 26 |
-| `sub_790A40` | 2,288 | OriRemoveRedundantBarriers main | 26 |
-| `sub_790020` | 1,200 | Post-RA scheduling helper | 26 |
-| `sub_7904D0` | 1,381 | Pre-RA optimization helper | 26 |
-| `sub_7923A0` | 2,344 | Barrier placement optimization | 26 |
-| `sub_792CD0` | 1,360 | Top-level barrier pass | 26 |
-| `0xC5F110` | 6 | ExpandMbarrier execute (vtable dispatch) | 42 |
-| `sub_C60080` | 34 | OptimizeSyncInstructions execute wrapper | 71 |
-| `sub_90A340` | 1,670 | OptimizeSyncInstructions main | 71 |
-| `sub_18F6930` | 185 | Sync optimization predicate | 71 |
-| `sub_C600B0` | 34 | LateExpandSyncInstructions execute wrapper | 72 |
-| `sub_1381DA0` | 1,517 | LateExpandSyncInstructions entry | 72 |
-| `sub_1381CD0` | 206 | LateExpandSyncInstructions core driver | 72 |
-| `sub_C5FAD0` | 34 | OriDoSyncronization execute wrapper | 99 |
-| `sub_A0F020` | 2,375 | DAG scheduler entry (sync insertion) | 99 |
-| `sub_A0D800` | -- | Dependency DAG builder | 99 |
-| `sub_A06A60` | 3,045 | Per-block sync processor | 99 |
-| `sub_A0B5E0` | -- | Uninitialized register check | 99 |
-| `sub_C607A0` | 51 | ApplyPostSyncronizationWars execute wrapper | 100 |
-| `sub_C60600` | 51 | FixUpTexDepBarAndSync execute wrapper | 114 |
-| `sub_A9C550` | 2,178 | Barrier instruction lowering | -- |
-| `sub_80F400` | 1,779 | Sync instruction SASS lowering | -- |
-| `sub_AA3BB0` | 2,726 | MBARRIER encoding | -- |
-| `sub_AA33C0` | -- | MBARRIER mnemonic builder | -- |
-| `sub_775010` | 18 | Barrier liveness computation entry | -- |
-| `sub_6D8B20` | 432 lines | OCG intrinsic body dispatcher (28-case switch) | -- |
-| `sub_6C0D90` | 812 lines | Atomic/reduction intrinsic lowering (scope+order) | -- |
-| `sub_6C1CF0` | 633 lines | Mbarrier intrinsic lowering (arrive/wait/test) | -- |
-| `sub_6C4DA0` | 647 lines | Fence/load-store intrinsic lowering (scope+domain) | -- |
+| Address | Size | Identity | Phase | Confidence |
+|---|---|---|---|---|
+| `sub_C5FBC0` | 34 | StageAndFence execute wrapper | 25 | CERTAIN |
+| `sub_1392E30` | 166 | StageAndFence entry | 25 | HIGH |
+| `sub_1389AF0` | 3,049 | StageAndFence setup | 25 | HIGH |
+| `sub_1390B30` | 8,956 | StageAndFence core (fence insertion) | 25 | HIGH |
+| `sub_138A6E0` | 3,408 | StageAndFence teardown | 25 | HIGH |
+| `sub_C60BD0` | 334 | OriRemoveRedundantBarriers execute wrapper | 26 | CERTAIN |
+| `sub_790A40` | 2,288 | OriRemoveRedundantBarriers main | 26 | HIGH |
+| `sub_790020` | 1,200 | Post-RA scheduling helper | 26 | MEDIUM |
+| `sub_7904D0` | 1,381 | Pre-RA optimization helper | 26 | MEDIUM |
+| `sub_7923A0` | 2,344 | Barrier placement optimization | 26 | MEDIUM |
+| `sub_792CD0` | 1,360 | Top-level barrier pass | 26 | MEDIUM |
+| `0xC5F110` | 6 | ExpandMbarrier execute (vtable dispatch) | 42 | CERTAIN |
+| `sub_C60080` | 34 | OptimizeSyncInstructions execute wrapper | 71 | CERTAIN |
+| `sub_90A340` | 1,670 | OptimizeSyncInstructions main | 71 | HIGH |
+| `sub_18F6930` | 185 | Sync optimization predicate | 71 | HIGH |
+| `sub_C600B0` | 34 | LateExpandSyncInstructions execute wrapper | 72 | CERTAIN |
+| `sub_1381DA0` | 1,517 | LateExpandSyncInstructions entry | 72 | HIGH |
+| `sub_1381CD0` | 206 | LateExpandSyncInstructions core driver | 72 | HIGH |
+| `sub_C5FAD0` | 34 | OriDoSyncronization execute wrapper | 99 | CERTAIN |
+| `sub_A0F020` | 2,375 | DAG scheduler entry (sync insertion) | 99 | HIGH |
+| `sub_A0D800` | -- | Dependency DAG builder | 99 | MEDIUM |
+| `sub_A06A60` | 3,045 | Per-block sync processor | 99 | HIGH |
+| `sub_A0B5E0` | -- | Uninitialized register check | 99 | MEDIUM |
+| `sub_C607A0` | 51 | ApplyPostSyncronizationWars execute wrapper | 100 | CERTAIN |
+| `sub_C60600` | 51 | FixUpTexDepBarAndSync execute wrapper | 114 | CERTAIN |
+| `sub_A9C550` | 2,178 | Barrier instruction lowering | -- | HIGH |
+| `sub_80F400` | 1,779 | Sync instruction SASS lowering | -- | HIGH |
+| `sub_AA3BB0` | 2,726 | MBARRIER encoding | -- | HIGH |
+| `sub_AA33C0` | -- | MBARRIER mnemonic builder | -- | MEDIUM |
+| `sub_775010` | 18 | Barrier liveness computation entry | -- | MEDIUM |
+| `sub_6D8B20` | 432 lines | OCG intrinsic body dispatcher (28-case switch) | -- | HIGH |
+| `sub_6C0D90` | 812 lines | Atomic/reduction intrinsic lowering (scope+order) | -- | HIGH |
+| `sub_6C1CF0` | 633 lines | Mbarrier intrinsic lowering (arrive/wait/test) | -- | HIGH |
+| `sub_6C4DA0` | 647 lines | Fence/load-store intrinsic lowering (scope+domain) | -- | HIGH |
 
 ## Pipeline Position and Data Flow
 

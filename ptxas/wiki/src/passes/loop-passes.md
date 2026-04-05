@@ -487,16 +487,16 @@ The two layers cooperate: Phase 24 transforms the loop structure (instruction re
 
 | Function | Size | Role | Confidence |
 |---|---|---|---|
-| `sub_926A30` | 22,116 bytes | Per-instruction operand latency annotator and encoding rewriter | High |
-| `sub_91A0F0` | 5,550 bytes | Opcode-to-latency-class classifier (~350 opcodes, 13 distinct classes) | High |
-| `sub_9203A0` | 4,881 bytes | Pipeline stage cost calculator (ResMII computation, FP cost accumulation) | Medium |
-| `sub_921820` | 1,592 bytes | Prolog/epilog code generator | Medium |
-| `sub_9202D0` | 207 bytes | Two-operand pipeline feasibility check (returns 60=reject, 130=accept) | High |
-| `sub_91E610` | 399 bytes | Register-class-based latency lookup (class 4→26, class 5/2→20) | High |
-| `sub_91E900` | 470 bytes | Pipe-assignment-based stall cycle calculator (32/64 cycle caps) | High |
-| `sub_92C0D0` | 358 bytes | Per-instruction annotation wrapper (calls `sub_926A30`, checks opcode changes) | High |
-| `sub_92C240` | 8,033 bytes | Extended GEMM-loop pipeliner (SM90+ TMA pipeline depth management) | Medium |
-| `sub_8B9390` | 22,841 bytes | Post-RA software pipelining scheduling variant (in scheduler subsystem) | Medium |
+| `sub_926A30` | 22,116 bytes | Per-instruction operand latency annotator and encoding rewriter | HIGH |
+| `sub_91A0F0` | 5,550 bytes | Opcode-to-latency-class classifier (~350 opcodes, 13 distinct classes) | HIGH |
+| `sub_9203A0` | 4,881 bytes | Pipeline stage cost calculator (ResMII computation, FP cost accumulation) | MEDIUM |
+| `sub_921820` | 1,592 bytes | Prolog/epilog code generator | MEDIUM |
+| `sub_9202D0` | 207 bytes | Two-operand pipeline feasibility check (returns 60=reject, 130=accept) | HIGH |
+| `sub_91E610` | 399 bytes | Register-class-based latency lookup (class 4→26, class 5/2→20) | HIGH |
+| `sub_91E900` | 470 bytes | Pipe-assignment-based stall cycle calculator (32/64 cycle caps) | HIGH |
+| `sub_92C0D0` | 358 bytes | Per-instruction annotation wrapper (calls `sub_926A30`, checks opcode changes) | HIGH |
+| `sub_92C240` | 8,033 bytes | Extended GEMM-loop pipeliner (SM90+ TMA pipeline depth management) | MEDIUM |
+| `sub_8B9390` | 22,841 bytes | Post-RA software pipelining scheduling variant (in scheduler subsystem) | MEDIUM |
 
 **Correction (P1-06):** The original function map listed `sub_926A30` as the "main pipelining engine (modulo scheduling)." Decompilation reveals it is the per-instruction operand latency annotator -- it iterates over each operand of an instruction, calls `sub_91A0F0` to classify the operand's latency class, and rewrites the operand encoding with the latency annotation. The modulo scheduling loop transformation is distributed across the remaining functions, with `sub_9203A0` computing stage costs and `sub_921820` generating prolog/epilog code.
 
@@ -761,27 +761,27 @@ Hoists computations that produce the same result on every loop iteration out of 
 
 All four instances share the same core implementation:
 
-| Function | Size | Role |
-|---|---|---|
-| `sub_C5FE00` | 34 bytes | Phase 35 execute wrapper |
-| `sub_C5FE30` | 34 bytes | Phase 66 execute wrapper |
-| `sub_C5FE60` | 34 bytes | Phase 79 execute wrapper |
-| `sub_C5FE90` | 34 bytes | Phase 88 execute wrapper |
-| `sub_7DDB50` | 156 bytes | Optimization guard: checks knob 499, block count > 2 |
-| `sub_8FFDE0` | 573 bytes | HoistInvariants orchestrator: iterates blocks, queries knob 381, dispatches inner worker |
-| `sub_8FF780` | 1,622 bytes | LICM inner worker: identifies and moves invariant instructions |
-| `sub_8FEAC0` | 2,053 bytes | Invariance marking: forward/backward operand scan per block |
-| `sub_8F76E0` | 90 bytes | Per-instruction invariance test: checks output register def-block |
-| `sub_8F7770` | 810 bytes | Hoisting safety check: operand class + latency analysis |
-| `sub_8F8CB0` | 658 bytes | Profitability check: budget-weighted score vs latency penalty |
-| `sub_8F7DD0` | 374 bytes | Transitive invariance propagation through def-use chains |
-| `sub_8F7AE0` | 558 bytes | Instruction mover: unlinks from loop, inserts at preheader |
-| `sub_8FF2D0` | 1,186 bytes | Budget computation + invariant marking + hoist dispatch |
-| `sub_8F8BC0` | 257 bytes | Instruction counting: header/body weight via isNoOp |
-| `sub_74D720` | 353 bytes | Loop boundary analysis: barrier/jump/predecessor checks |
-| `sub_74F500` | -- | Preheader location finder |
-| `sub_7DF3A0` | 88 bytes | Opcode flags table lookup (side-effect classification) |
-| `sub_7E0540` | 156 bytes | Observable side-effect checker (memory, call, barrier) |
+| Function | Size | Role | Confidence |
+|---|---|---|---|
+| `sub_C5FE00` | 34 bytes | Phase 35 execute wrapper | CERTAIN |
+| `sub_C5FE30` | 34 bytes | Phase 66 execute wrapper | CERTAIN |
+| `sub_C5FE60` | 34 bytes | Phase 79 execute wrapper | CERTAIN |
+| `sub_C5FE90` | 34 bytes | Phase 88 execute wrapper | CERTAIN |
+| `sub_7DDB50` | 156 bytes | Optimization guard: checks knob 499, block count > 2 | HIGH |
+| `sub_8FFDE0` | 573 bytes | HoistInvariants orchestrator: iterates blocks, queries knob 381, dispatches inner worker | HIGH |
+| `sub_8FF780` | 1,622 bytes | LICM inner worker: identifies and moves invariant instructions | HIGH |
+| `sub_8FEAC0` | 2,053 bytes | Invariance marking: forward/backward operand scan per block | HIGH |
+| `sub_8F76E0` | 90 bytes | Per-instruction invariance test: checks output register def-block | HIGH |
+| `sub_8F7770` | 810 bytes | Hoisting safety check: operand class + latency analysis | HIGH |
+| `sub_8F8CB0` | 658 bytes | Profitability check: budget-weighted score vs latency penalty | HIGH |
+| `sub_8F7DD0` | 374 bytes | Transitive invariance propagation through def-use chains | HIGH |
+| `sub_8F7AE0` | 558 bytes | Instruction mover: unlinks from loop, inserts at preheader | HIGH |
+| `sub_8FF2D0` | 1,186 bytes | Budget computation + invariant marking + hoist dispatch | HIGH |
+| `sub_8F8BC0` | 257 bytes | Instruction counting: header/body weight via isNoOp | HIGH |
+| `sub_74D720` | 353 bytes | Loop boundary analysis: barrier/jump/predecessor checks | HIGH |
+| `sub_74F500` | -- | Preheader location finder | MEDIUM |
+| `sub_7DF3A0` | 88 bytes | Opcode flags table lookup (side-effect classification) | HIGH |
+| `sub_7E0540` | 156 bytes | Observable side-effect checker (memory, call, barrier) | HIGH |
 
 ### Execute Flow
 
