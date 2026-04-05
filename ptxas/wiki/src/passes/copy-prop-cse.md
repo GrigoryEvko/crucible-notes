@@ -93,7 +93,7 @@ procedure GvnCse(function F):
 
 5. **Predicate handling.** Predicated instructions (`@P0 IADD R1, R2, R3`) hash the predicate register's value number as an additional operand. Two identical computations under different predicates are distinct values.
 
-6. **Structural equivalence.** After hash collision, `sub_7E7380` performs full structural comparison: (a) opcodes masked with `& 0xFFFFCFFF` to strip modifier bits 12-13, (b) data types at offset `+76`, (c) operand counts at offset `+80`, (d) per-operand encoding and modifier values, (e) register class/type at offset `+64`. Instructions with volatile flags (bit `0x20` at register descriptor offset `+48`) and barrier-type registers (type 9) are excluded from CSE entirely.
+6. **Predicate-operand compatibility (`sub_7E7380`).** After opcode and type matching in the caller, `sub_7E7380` performs a focused predicate-operand compatibility check (30 lines, 150 bytes). The function tests: (a) predicate modifier parity -- `instr+73` bit 4 versus `instr+72` bit 12 (`0x1000`); if one instruction has a predicate modifier and the other does not, they are incompatible; (b) last operand 24-bit value ID -- `(instr + 84 + 8*(operand_count-1)) & 0xFFFFFF` must match; (c) second-to-last operand 8-byte encoding -- the two dwords immediately before the last operand slot must be identical. The broader structural comparison (opcodes masked with `& 0xFFFFCFFF`, data types at `+76`, operand counts at `+80`, full per-operand encoding, register class at `+64`) is performed by each of the 21 callers of `sub_7E7380`, not by the function itself. Instructions with volatile flags (bit `0x20` at register descriptor offset `+48`) and barrier-type registers (type 9) are excluded from CSE by the callers' pre-checks.
 
 ### GVN Algorithm Details (Binary Trace)
 
@@ -128,13 +128,174 @@ GvnCse::execute (0xC5F000)
 
 #### Mode Dispatcher (`sub_BEE370`)
 
-The mode is determined by knob 402 (`EnableGvnCseMode`), queried through `knob_container->vtable[9](402)`. Additional flags modulate the choice:
+The mode is determined by knob 402 (`EnableGvnCseMode`), queried through two vtable calls on the knob container at `context+1664`:
 
-- SM backend flag at `sm_backend+1106` bit 6 (`0x40`): when set, enables modes 5-6 (enhanced scope)
-- Context flag at `context+1416` bit 0: further adjusts between mode 5 and mode 6
-- SM version threshold `sm_backend+372 <= 0x7FFF` (32767): gates extended-block pre-pass `sub_BED430` via knob 210
+1. **Boolean query** -- `knob_container->vtable[9](402)` (offset `+72`): checks if the knob is set at all. The dispatcher has a fast-path optimization: when `vtable[9]` is `sub_6614A0` (the standard implementation), it reads directly from `knob_container+72+28944` instead of dispatching through the vtable.
+2. **Integer query** -- `knob_container->vtable[15](402)` (offset `+120`): reads the mode value as an integer. Similarly fast-pathed when `vtable[15]` is `sub_661470`.
 
-Before the standard GVN (`sub_BEAD00`), the mode dispatcher may invoke `sub_BED430` -- an extended basic block (EBB) pre-pass that identifies and marks multi-block CSE opportunities within single-entry regions.
+If both queries return truthy, the integer value selects the GVN variant:
+
+| Mode | Function | Description |
+|---|---|---|
+| 0 | (none) | Pass disabled, return immediately |
+| 1 | `sub_BEA450` | Simple single-block GVN (111 lines, ~2KB) |
+| 2 | `sub_BEAD00` | Standard dominator-guided GVN (157 lines, ~2.5KB) |
+| 3 | `sub_BED7E0` | Full GVN (when `sm_backend+1106` bit 6 AND `context+1416` bit 0) |
+| 4 | `sub_BED7E0` | Full GVN (remapped to mode 2 if bit 6 is clear) |
+| 5-6 | `sub_BED7E0` | Full GVN with extended block scope |
+| >6 | (none) | Return immediately (no operation) |
+
+Additional flags modulate the mode selection:
+
+- SM backend flag at `sm_backend+1106` bit 6 (`0x40`): when set, enables modes 5-6 (enhanced scope). When clear and mode is 4, the dispatcher remaps to mode 2.
+- Context flag at `context+1416` bit 0: when set (and bit 6 is set), selects mode 3 over mode 5-6.
+- SM version threshold `sm_backend+372 <= 0x7FFF` (32767): gates the EBB pre-pass `sub_BED430` via knob 210.
+
+Before the standard GVN (`sub_BEAD00`), the mode dispatcher may invoke `sub_BED430` -- an extended basic block (EBB) pre-pass that identifies and marks multi-block CSE opportunities within single-entry regions. The EBB pre-pass is called unless: (a) SM version > `0x7FFF`, AND (b) knob 210 is set or `context+1368` bit 0 is clear.
+
+#### Simple GVN (`sub_BEA450`, Mode 1)
+
+Mode 1 provides the lightest GVN variant -- single-scope CSE without cross-dominator lookup. Reconstructed pseudocode:
+
+```
+procedure SimpleGvn(gvn_state S):
+    context = S.context
+    first_reg = operand_24bit(first_instr(context+272))
+    value_record = context.reg_table[first_reg]       // context+296
+    if not value_record: return
+
+    for each value_record in linked order:
+        if knob_query(257, value_record): break        // per-instruction gate
+
+        first_instr = value_record.head                // value_record[0]
+        sentinel = value_record.sentinel               // value_record[1]
+        eligible = false
+
+        for each instr from first_instr to sentinel:
+            if not eligible:
+                eligible = check_eligibility(instr)    // sub_BEA1E0
+                if eligible: advance and check sentinel
+            if instr.opcode_masked == 145:             // barrier
+                if sm_backend->vtable[371](instr):     // safe to CSE
+                    mark eligible
+                else: break scope
+
+        if eligible:
+            // Directly generate MOV replacement -- no dominator check
+            context+232 = value_record.head
+            context+264 = value_record.head->field_20
+            sub_9314F0(context, 0x124, 1, 0, 0)       // insert MOV 292
+
+        advance to next block via opcode 97 (block header) -> field +24
+```
+
+This variant does not examine the immediate-dominator chain at `instruction+148`. It only replaces redundancies that are visible within the current value record's instruction list (effectively single-block scope).
+
+#### Standard GVN (`sub_BEAD00`, Mode 2)
+
+Mode 2 extends the simple GVN with cross-dominator CSE. After finding an eligible instruction and reaching the end of a block, it follows the immediate-dominator chain:
+
+```
+procedure StandardGvn(gvn_state S, char cross_block_flag):
+    // ... (same entry and block walk as SimpleGvn) ...
+
+    // After eligibility walk reaches sentinel:
+    idom = instr.field_148                             // immediate dominator index
+    if idom != 0:
+        dom_record = context.reg_table[context.idom_map[idom]]  // context+296[context+512[4*idom]]
+        if dom_record and (not cross_block_flag or dom_record.opcode != 1):
+            if not dominance_check(S, value_record):   // sub_BEA3B0
+                leader = dom_record.head
+                if leader.next.opcode != 292:          // not already a MOV
+                    context+232 = leader
+                    context+264 = leader.field_20
+                    sub_9314F0(context, 0x124, 1, 0, 0)   // insert MOV
+
+    // Fallback: if idom chain is empty, try block-level CSE
+    block_desc = context.block_table[instr.field_164]  // context+368
+    if block_desc+280 bit 0 is clear:
+        leader = reg_table[operand_24bit(block_desc.first_instr)]
+        if leader.next.opcode != 292:
+            generate MOV replacement
+```
+
+The `cross_block_flag` parameter (passed from the mode dispatcher) controls whether the standard GVN allows replacement when the dominator has `opcode == 1` (a block-header sentinel). When set, it skips such cases to avoid unsafe cross-block hoisting.
+
+#### Dominance Check with Cache (`sub_BEA3B0`)
+
+The dominance check is guarded by `context+1377` bit 5 (`0x20`). When this flag is clear, the function returns 0 immediately (no dominance, meaning "safe to CSE" -- the caller inverts the result).
+
+When the flag is set, the function implements a single-entry global cache to accelerate repeated dominator queries:
+
+```
+procedure DominanceCheck(gvn_state S, value_record vr):
+    if not (context+1377 & 0x20): return 0           // no extended scope
+
+    idom = vr.field_148
+    if idom == 0: return 1                             // no dominator -> can't CSE
+
+    dom_record = reg_table[idom_map[idom]]
+    if dom_record == NULL: return 1
+
+    // Check global cache (single-entry, TLS-safe through static storage)
+    if dom_record == cached_key:                       // qword_2A12A08
+        return cached_result ^ 1                       // byte_2A129FE[0] ^ 1
+
+    // Cache miss: compute dominator ordering via sub_74D720
+    if idom >= 0 and vr.field_152 >= 0:
+        cached_key = dom_record
+        sub_74D720(context, idom, vr.field_152, &cached_result)
+        return cached_result ^ 1
+    else:
+        return 1                                       // negative index -> can't CSE
+```
+
+The cache stores a single `(key, result)` pair in global statics `qword_2A12A08` and `byte_2A129FE`. This is effective because the GVN walk processes instructions within a block sequentially, and many consecutive instructions share the same dominator. The cache hit rate is high for blocks dominated by a single predecessor.
+
+#### EBB Pre-Pass (`sub_BED430`)
+
+The Extended Basic Block (EBB) pre-pass runs before mode 2 GVN when the SM version and knob conditions are met. It identifies cross-block CSE opportunities within single-entry CFG regions.
+
+```
+procedure EbbPrePass(gvn_state S):
+    // Phase 1: Clear previous markings
+    for each block B in linked order:
+        B.field_264 = 0                               // clear EBB marking
+
+    // Phase 2: Find first CSE-eligible instruction
+    for each instr in instruction list:
+        if check_eligibility(instr) and instr.opcode != 211:
+            break  // found seed
+    if not found: return
+
+    // Phase 3: Build dominator tree and compute block ordering
+    sub_7846D0(context)                                // dominator tree + RPO
+    sub_A12EA0(context, walker_context, visitor)       // dominator tree walk
+    sub_775010(context)                                // predecessor setup
+    sub_773140(context, 0)                             // successor setup
+    sub_770E60(context, 0)                             // block ordering
+
+    // Phase 4: Mark CSE candidates on every instruction
+    for each instr in instruction list:
+        if check_eligibility(instr) and instr.opcode != 211:
+            instr.field_48 = 1                         // mark as CSE candidate
+        else:
+            instr.field_48 = 0
+
+    // Phase 5: Propagate eligibility through operand chains
+    sub_BED0A0(walker_state)                           // fixed-point propagation
+
+    // Phase 6: Evaluate cross-block candidates
+    for each value_record in RPO order:
+        if knob_query(257, vr): continue               // per-instruction gate
+        idom = vr.field_148
+        if idom != 0:
+            dom_record = resolve_idom(context, idom)
+            if dom_record and dom_record.field_264 == 0:
+                dom_record.field_264 = sub_BEA000(walker, dom_record, 0) ? 2 : 1
+```
+
+The EBB propagation engine (`sub_BED0A0`) is a fixed-point iteration that propagates CSE eligibility backward through operand use-chains. For each instruction with `field_48` bit 0 set, it follows the operand-to-instruction back-references at `context+88` to mark defining instructions as eligible too. The iteration continues until no more changes occur. This ensures that an entire expression tree is marked eligible when any of its consumers is eligible.
 
 #### Full GVN Body (`sub_BED7E0`, 689 lines, ~18KB binary)
 
@@ -241,6 +402,50 @@ After the RPO walk populates the scope tree, `sub_BEA5F0` processes each dominat
 3. **Dominator ordering**: compares `instruction+144` (dominator number) to test dominance
 4. **Commutative canonicalization** (opcode 95): calls `sm_backend->vtable[79]` (offset `+632`) to sort operands by value number. Rewrites operand encoding with flags `0x60000000` and `0x40000000` to mark canonicalized operands
 5. **Replacement**: calls `sub_931920` to insert copy instructions when a dominating equivalent is found
+
+#### Scope Tree Bit-Iteration Detail
+
+The scope tree post-processing (lines 498-664 of `sub_BED7E0`) uses a binary tree where each node contains a 4-word (32-byte) bitset region starting at `node+32`. The iteration:
+
+1. Start at the leftmost node: follow `node->left` until NULL
+2. Scan the 4-word bitset region (`node+32` through `node+64`), finding each set bit via `tzcnt` (x86 trailing-zero-count)
+3. Recover the block index: `bit_position | (((word_offset_in_node | (node.field_24 << 2)) << 6))`
+4. After processing a bit, mask it out: `word &= ~(0xFFFFFFFFFFFFFFFF >> (64 - (bit_pos + 1)))`
+5. When current word is exhausted, advance to next word in the 4-word region
+6. When all 4 words are exhausted, follow parent/right-child links to traverse the tree in order
+
+Each block index recovered from the tree triggers a call to `sub_BEA5F0` for per-dominated-block CSE. The tree structure allows the scope walk to skip large ranges of blocks that have no CSE candidates, making it efficient for sparse CFGs.
+
+#### GVN Function Map
+
+| Address | Name | Size | Role |
+|---|---|---|---|
+| `sub_BEE590` | GvnEntry | ~200B | Entry point (vtable slot 23, SM60/70/90) |
+| `sub_BEE370` | ModeDispatcher | ~550B | Selects GVN variant via knob 402 |
+| `sub_BED7E0` | FullGvn | ~18KB | Full GVN body (modes 3-6, RPO + scope tree) |
+| `sub_BED430` | EbbPrePass | ~2KB | Extended basic block pre-pass |
+| `sub_BED0A0` | EbbPropagate | ~3KB | EBB eligibility propagation (fixed-point) |
+| `sub_BEC880` | EbbInit | -- | EBB state initialization |
+| `sub_BEAD00` | StandardGvn | ~2.5KB | Standard dominator-guided GVN (mode 2) |
+| `sub_BEA5F0` | PerBlockCse | ~9KB | Per-dominated-block CSE + commutative canon. |
+| `sub_BEA450` | SimpleGvn | ~2KB | Simple single-block GVN (mode 1) |
+| `sub_BEA3B0` | DomCheckCached | ~300B | Dominance check with global cache |
+| `sub_BEA1E0` | EligibilityCheck | ~500B | Instruction eligibility (7 opcode classes) |
+| `sub_BEA000` | EbbCandidateCheck | ~700B | EBB candidate dominator-chain walk |
+| `sub_7E7380` | PredicateCompat | ~150B | Predicate-operand compatibility check |
+| `sub_661250` | NoOp | ~6B | No-op stub (SM30/50/80/89) |
+| `sub_7846D0` | BuildDomTree | -- | Dominator tree + RPO ordering builder |
+| `sub_661750` | ScopeTreeInit | -- | Scoped value tree init/destroy |
+| `sub_9314F0` | InsertMov | -- | Instruction insertion (generates MOV 292) |
+| `sub_934630` | InsertMulti | -- | Instruction insertion (multi-operand variant) |
+| `sub_931920` | InsertNode | -- | Instruction node insertion into linked list |
+| `sub_9253C0` | DeleteInstr | -- | Instruction deletion |
+| `sub_6B4520` | RecordBlock | -- | Block recording for dominator scoping |
+| `sub_74D720` | DomOrdering | -- | Dominator ordering comparison |
+| `sub_69DD70` | TreeExtract | -- | Tree node extraction (deferred processing) |
+| `sub_7A1A90` | KnobQuery | -- | Knob query (per-instruction enablement) |
+| `sub_91BC40` | MemSafetyCheck | -- | Memory operation safety check |
+| `sub_A12EA0` | DomTreeWalk | -- | Dominator tree walker (EBB discovery) |
 
 ### GPU-Specific CSE Constraints
 
