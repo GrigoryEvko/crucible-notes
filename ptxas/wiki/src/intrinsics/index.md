@@ -160,9 +160,63 @@ This 41KB function first calls `sub_5D1660(a1)` to populate the intrinsic ID tab
 
 At 161KB of machine code (0x5D7430--0x5FF700), this is the largest function in the intrinsic infrastructure by code size and the 6th largest function in the entire ptxas binary. IDA failed to decompile it; all analysis comes from raw x86-64 disassembly. The function constructs a third hash map (at context offset +824 / `0x338`) containing 1,079 entries that map dynamically constructed `__cuda_*` intrinsic names to sequential body template IDs (0--1078).
 
-### Why It Exists
+### Why 1,079 Body Templates for 607 Logical Intrinsics
 
-The master registration table (`sub_5D1660`) maps 607 intrinsic names to logical IDs. But the prototype generator (`sub_5FF700`) needs a finer-grained mapping: each *variant* of an intrinsic (type-specialized, rounding-mode-specialized, address-space-specialized) gets its own body template. The 1,079 body templates exceed the 607 logical intrinsics because multiple templates can implement the same logical intrinsic with different type specializations.
+The master registration table (`sub_5D1660`) maps 607 intrinsic names to logical IDs. The body template table (`sub_5D7430`) maps 1,079 variant-specific names to prototype generator case numbers. The 1.78x expansion has one dominant cause: **WMMA template proliferation across GPU generations**.
+
+The 204 logical WMMA entries in `sub_5D1660` cover only the original sm_70 Volta shapes (m16n16k16/m32n8k16/m8n32k16 with f16/f32 types). But the body template table includes all later-generation WMMA variants -- sm7x sub-byte/bit, sm72 integer, sm8x tf32/bf16/f64 -- that were added as hardware evolved. These ~416 extra WMMA templates have no matching entry in the 607 logical ID table; they exist only in the body template hash map and the prototype generator switch.
+
+Non-WMMA intrinsics map approximately 1:1 between logical IDs and body templates. The math operations (div, rcp, sqrt) are already fully type-specialized at the logical level -- each rounding-mode/type combination is a separate logical intrinsic.
+
+Three sources of expansion beyond the 607 logical entries:
+
+1. **Later-generation WMMA variants** (~416 template-only entries):
+   - sm7x sub-byte WMMA (s4/u4 m8n8k32) + bit WMMA (m8n8k128): ~231 templates
+   - sm72 integer WMMA (m16n16k16/m32n8k16/m8n32k16 integer types): ~105 templates
+   - sm8x tf32 WMMA (m16n16k8) + bf16/f64 WMMA: ~80 templates
+2. **Aligned warp sync variants** (~13 extra templates): `matchsync_aligned`, `votesync_aligned`, `votesync_ballot_groupwise`, `query_activemask`/`query_activemask_groupwise` for cooperative group support
+3. **Additional SM100 specializations** (~8 extra templates): `tcgen05_alloc_two_sm`, extra guardrails check variants, `get_warp_rank`
+
+Conversely, 18 sm1xx bulk copy intrinsics have logical IDs but zero body templates -- they bypass the template/prototype mechanism entirely and are lowered directly to inline PTX by the opcode dispatch handlers (`sub_593210`, `sub_5AB460`).
+
+### Template Distribution Table
+
+| Logical Group | Logical | Template | Factor |
+|---|---|---|---|
+| SM20 IEEE math (div, rem, rcp, sqrt, bfe/bfi) | 70 | 70 | 1.0x |
+| SM3x optimized division | 4 | 4 | 1.0x |
+| SM62 integer dot product | 2 | 2 | 1.0x |
+| SM70 barriers | 170 | 170 | 1.0x |
+| SM70 warp sync (match, vote, shfl, query) | 19 | 32 | 1.7x |
+| SM70 WMMA (f16/f32 original Volta) | 204 | 249 | 1.2x |
+| SM7x WMMA extended (sub-byte, bit) | 0 | 231 | tmpl-only |
+| SM72 WMMA (integer) | 0 | 105 | tmpl-only |
+| SM8x WMMA (tf32, bf16, f64) | 0 | 80 | tmpl-only |
+| SM80 cache policy | 3 | 4 | 1.3x |
+| SM8x direct MMA | 14 | 14 | 1.0x |
+| SM9x Hopper sub-byte/bit MMA | 51 | 52 | 1.0x |
+| SM10x Blackwell MMA metadata | 10 | 10 | 1.0x |
+| SM100 tcgen05 + guardrails | 11 | 19 | 1.7x |
+| SM100+ bulk copy / TMA | 18 | 0 | (no templates) |
+| Redux sync primitives | 17 | 17 | 1.0x |
+| Compute-sanitizer hooks | 7 | 7 | 1.0x |
+| Video instruction emulation | 7 | 7 | 1.0x |
+| **Total** | **607** | **1,073** | **1.78x** |
+
+WMMA subtotal: 204 logical entries expand to 665 body templates (3.3x). Non-WMMA: 403 logical entries map to 408 templates (~1.0x). The remaining 7 templates (1,080 prototype switch cases minus 1,073 classified) are sanitizer/cache variants where IDA produced `qmemcpy` instead of `strcpy`, preventing exact name extraction.
+
+The sm70 WMMA group itself expands from 204 to 249 templates because the prototype generator includes `update_ptr` and `desc` (descriptor-based addressing) variants of certain load/store operations that the logical table does not separate.
+
+The three "tmpl-only" WMMA rows (sm7x/sm72/sm8x) are the single largest contributor to the expansion. They represent ~416 templates with zero logical ID counterparts. These families use `.FORCE_INLINE .func` linkage in their prototypes instead of the `.weak .func` used by the original sm70 WMMA entries:
+
+```
+sm70 (original):   .weak .func (...) __cuda_sm70_wmma_m16n16k16_load_a_col (...)
+sm72 (integer):    .FORCE_INLINE .func (...) __cuda_sm72_Integer_wmma_m16n16k16_load_a_row (...)
+sm7x (sub-byte):   .FORCE_INLINE .func (...) __cuda_sm7x_sub_byte_wmma_m8n8k32_load_a_row (...)
+sm8x (tf32):       .FORCE_INLINE .func (...) __cuda_sm8x_tf32_wmma_m16n16k8_load_a_row (...)
+```
+
+The `.FORCE_INLINE` directive forces inlining at every call site rather than emitting a separate callable function. The later-gen WMMA implementations are more complex and performance-sensitive, making per-call-site specialization profitable.
 
 ### Name Construction Algorithm
 
@@ -173,20 +227,40 @@ The function contains zero string references because it constructs all 1,079 nam
 3. **Append suffix** (4 bytes) via `movl` immediate at offset +16 (e.g., `"s16\0"`, `"u64\0"`, `"rn_f"`)
 4. **Register** via `sub_426150(context+824, buffer, template_id)` with sequential integer IDs
 
-### Prefix/Suffix Examples
+The 533 unique .rodata prefix addresses fan out through multiple suffixes per prefix:
 
-| .rodata Prefix (16B) | Suffix (4B) | Complete Name |
-|---|---|---|
-| `__cuda_sm20_div_` | `s16\0` | `__cuda_sm20_div_s16` |
-| `__cuda_sm20_div_` | `u16\0` | `__cuda_sm20_div_u16` |
-| `__cuda_sm20_div_` | `u64\0` | `__cuda_sm20_div_u64` |
-| `__cuda_sm20_div_` | `s64\0` | `__cuda_sm20_div_s64` |
-| `__cuda_sm20_div_` | `rn_f` | `__cuda_sm20_div_rn_f...` (truncated at 20B, continued by next entry) |
-| `__cuda_sm20_rem_` | `s16\0` | `__cuda_sm20_rem_s16` |
-| `__cuda_sm20_rcp_` | ... | `__cuda_sm20_rcp_...` |
-| `__cuda_sm20_sqrt` | ... | `__cuda_sm20_sqrt_...` |
-| `__cuda_sm3x_div_` | ... | `__cuda_sm3x_div_...` |
-| `__cuda_sm20_dblr` | ... | `__cuda_sm20_dblrcp_...` |
+```
+.rodata prefix (16B)       suffix (4B)     result (20B buffer)
+───────────────────────    ───────────     ──────────────────────
+"__cuda_sm20_div_"    +    "s16\0"    =   "__cuda_sm20_div_s16"
+"__cuda_sm20_div_"    +    "u16\0"    =   "__cuda_sm20_div_u16"
+"__cuda_sm20_div_"    +    "u64\0"    =   "__cuda_sm20_div_u64"
+"__cuda_sm20_div_"    +    "s64\0"    =   "__cuda_sm20_div_s64"
+"__cuda_sm20_div_"    +    "rn_f"     =   "__cuda_sm20_div_rn_f" (truncated)
+"__cuda_sm20_rem_"    +    "s16\0"    =   "__cuda_sm20_rem_s16"
+"__cuda_sm20_rcp_"    +    "rn_f"     =   "__cuda_sm20_rcp_rn_f" (truncated)
+"__cuda_sm70_barr"    +    "ier_"     =   "__cuda_sm70_barrier_" (prefix chain)
+```
+
+Names truncated at the 20-byte buffer limit are still sufficient for hash map lookup -- the full untruncated name appears only inside the prototype string in `sub_5FF700`.
+
+### Worked Example: Division (Cases 0--26)
+
+The `__cuda_sm20_div` operation illustrates the template-to-prototype mapping. Division has 19 logical IDs and 19 body templates (1:1 ratio) because each type/rounding/precision variant is already a separate logical intrinsic. The suffix encodes the type specialization:
+
+| Case | Body Template Name | Type Suffix | PTX Signature |
+|---|---|---|---|
+| 0 | `__cuda_sm20_div_s16` | `s16` | `(.reg .s32 %d) ... (.reg .s32 %a0, .reg .s32 %a1)` |
+| 1 | `__cuda_sm20_div_u16` | `u16` | `(.reg .u32 %d) ... (.reg .u32 %a0, .reg .u32 %a1)` |
+| 4 | `__cuda_sm20_div_u64` | `u64` | `(.reg .u64 %rdv1) ... (.reg .u64 %rda1, .reg .u64 %rda2)` |
+| 5 | `__cuda_sm20_div_s64` | `s64` | `(.reg .u64 %rdv1) ... (.reg .u64 %rda1, .reg .u64 %rda2)` |
+| 9 | `__cuda_sm20_div_rn_f32` | `rn_f` | `(.reg .f32 %fv1) ... (.reg .f32 %fa1, .reg .f32 %fa2)` |
+| 10 | `__cuda_sm20_div_rd_f32` | `rd_f` | `(.reg .f32 %fv1) ... (.reg .f32 %fa1, .reg .f32 %fa2)` |
+| 14 | `__cuda_sm20_div_rn_ftz_f32` | `rn_f` | `(.reg .f32 %fv1) ... (.reg .f32 %fa1, .reg .f32 %fa2)` |
+| 22 | `__cuda_sm20_div_ru_f64_v2` | `ru_f` | `(.reg .f64 %fdv1) ... (.reg .f64 %fda1, .reg .f64 %fda2)` |
+| 25 | `__cuda_sm20_div_rn_f64_full` | `rn_f` | `(.reg .f64 %fdv1) ... (.reg .f64 %fda1, .reg .f64 %fda2)` |
+
+Cases 2--3 (rem s16/u16), 6--7 (rem s64/u64) are interleaved between the division entries. Cases 8, 13 are `_slowpath` variants that implement Newton-Raphson refinement fallbacks. Cases 18--21 are the sm3x-optimized division variants with the same suffix scheme. Note: s16/u16 division uses `.s32`/`.u32` register types because PTX has no 16-bit register class; the 16-bit operation is performed by 32-bit hardware with appropriate sign/zero extension.
 
 ### Statistics
 
