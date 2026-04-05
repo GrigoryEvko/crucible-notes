@@ -97,8 +97,8 @@ The vtable+104 callback provides a polymorphic insertion hook. Different schedul
 |---|---|---|---|
 | 7 (MSB) | yield-related | Instruction is near a yield boundary | Higher priority ensures yield hints align with scheduling boundaries |
 | 6 | yield flag | Instruction triggers or participates in a yield sequence | Controls warp scheduler round-robin interaction |
-| 5 | hot-cold | Memory access temperature (0 = hot, 1 = cold) | Hot = global/texture/surface loads with long latencies; cold = constant/shared |
-| 4 | pressure overflow | Current register pressure exceeds budget | When set, scheduler prefers instructions that release registers |
+| 5 | hot-cold | Memory access temperature (1 = hot, 0 = cold) | Hot = global/texture/surface loads with long latencies; cold = constant/shared |
+| 4 | hot-cold / pressure | Packed byte holds hot-cold flag; pressure overflow acts as comparison override | See Priority Function Internals for the dual mechanism |
 | 3 | same-BB preference | Instruction belongs to the currently-scheduled BB | Discourages cross-BB instruction motion |
 | 2 | stall-free | Scheduling this instruction introduces zero stall cycles | All producer latencies have completed |
 | 1 | latency-bound | Instruction is on the DAG critical path | Prioritizes latency-sensitive dependency chains |
@@ -110,40 +110,47 @@ Higher numeric value = higher priority. Bit 7 is the most significant criterion:
 
 The hot-cold flag (bit 5) classifies memory operations by expected latency:
 
-- **Hot** (bit 5 = 0, higher priority): global memory loads (`LDG`), texture fetches (`TEX`, `TLD`), surface operations. These have high latency (hundreds of cycles) and benefit most from early scheduling to overlap with computation.
-- **Cold** (bit 5 = 1, lower priority): constant memory loads (`LDC`), shared memory operations (`LDS`, `STS`). These have low latency and do not need early scheduling.
+- **Hot** (bit 5 = 1, higher priority): global memory loads (`LDG`), texture fetches (`TEX`, `TLD`), surface operations. These have high latency (hundreds of cycles) and benefit most from early scheduling to overlap with computation. Detected by `sub_A9CDE0`.
+- **Cold** (bit 5 = 0, lower priority): constant memory loads (`LDC`), shared memory operations (`LDS`, `STS`). These have low latency and do not need early scheduling. Detected by `sub_A9CF90`, which also suppresses the pressure-overflow and critical-path extension signals.
 
-Classification uses `sub_A9CDE0` (hot detection) and `sub_A9CF90` (cold detection). Memory space type is determined by `sub_693BC0`, which returns space codes: 3 = shared, 16 = global, 2 = local, 11 = surface, 7 = constant, 1 = generic.
+Classification uses `sub_A9CDE0` (hot detection) and `sub_A9CF90` (cold detection). Memory space type is determined by `sub_693BC0`, which returns space codes: 3 = shared, 16 = global, 2 = local, 11 = surface, 7 = constant, 1 = generic. Hot-cold tracking is gated by `scheduler+523` and `scheduler+532`; when the hot-cold budget (`scheduler+532`) reaches zero, the feature deactivates for the remainder of the BB.
 
 ### Pressure Overflow
 
-Bit 4 is set when the current live register count exceeds the register budget target at `scheduler+432`. In this state, the priority function biases toward instructions whose operands are last-use -- scheduling such instructions frees registers and reduces pressure. This is the primary mechanism by which the ReduceReg phase achieves its objective: the mode sets a tight register budget, causing bit 4 to activate frequently and driving the scheduler toward pressure-reducing orderings.
+Bit 4 in the packed byte holds the hot-cold flag (see above). The pressure overflow signal is a separate Boolean computed by checking all four register classes (GPR, predicate, address, UGP) against their respective limits. When any class exceeds its budget, the pressure overflow flag activates and acts as a **comparison override**: the candidate wins regardless of the packed priority byte, forcing the scheduler to select the instruction that relieves register pressure. This is the primary mechanism by which the ReduceReg phase achieves its objective: the mode sets a tight register budget via `scheduler+178`, causing pressure overflow to activate frequently and driving the scheduler toward pressure-reducing orderings. See the Priority Function Internals section for the exact per-class threshold checks.
 
 ### Priority Evaluation Sequence
 
 The priority function evaluates criteria in this order for each candidate instruction:
 
-1. Read instruction metadata: opcode, operands, latency, barrier state
-2. `sub_8C67A0`: compute resource cost, update per-BB resource table
-3. `sub_8C7290`: copy 10-element resource vector (SSE-optimized)
-4. Evaluate register pressure: compare live count vs budget (`scheduler+432`)
-5. Evaluate stall-free: check if all producers have completed (earliest cycle at metadata `+32`)
-6. Evaluate critical path: check DAG depth from instruction to sink (`scheduler+464, +380`)
-7. Evaluate FU contention: check if instruction's execution unit is saturated
-8. `sub_8C7120`: update barrier tracking state
-9. Evaluate hot/cold: classify memory operations
-10. Pack all 8 criteria into the priority integer
+1. `sub_8C7290`: extract 4-class register deltas, same-BB flag, and per-BB resource vector (SSE-optimized)
+2. Compute yield saturation: check write-barrier counters for predicate, GPR, and UGP register classes against their ceilings (7, 7, and `target_desc+624` respectively)
+3. `sub_8C67A0`: compute per-instruction resource cost if BB slot not yet committed
+4. `sub_8C7120`: update barrier tracking state (if `metadata+111` bit 7 set)
+5. Evaluate register pressure: compute per-class overflow against budget (`scheduler+432`) and per-class limits; derive pressure-overflow Boolean
+6. Evaluate stall-free: compare earliest cycle (`metadata+32`) vs current cycle (`scheduler+480`)
+7. Evaluate critical path: compare barrier-target count vs depth threshold (`scheduler+464`)
+8. Evaluate yield bits: opcode 39 (yield-related) and opcode 96 (yield flag from `scheduler+524`)
+9. Pack 8 bits into priority byte
+10. Evaluate hot/cold: `sub_A9CDE0` / `sub_A9CF90` (only when `scheduler+523` active)
+11. Multi-stage comparison against running best: resource vectors, then XOR-based bit scan, then secondary tiebreakers
 
-The priority function is called once per ready instruction per scheduling step. To limit overhead, knob 770 (priority queue depth, default 4) restricts full evaluation to the top N candidates from the ready list. Remaining candidates use a cached priority from their initial insertion.
+The function scans the full ready list in a single pass (not limited by knob 770 for the scan itself). Knob 770 (priority queue depth, default 4) controls the depth threshold mechanism for critical-path activation, not the number of candidates evaluated.
 
 ### Key Internal Variables
 
 | Variable | Source | Content |
 |---|---|---|
-| `v224` | `scheduler+432` | Register budget target |
-| `v222` | derived | Reduced register budget (ReduceReg mode) |
-| `v266` | knob 770 | Priority queue depth (default 4) |
-| `v235` | knob 769 | Per-BB scheduling flag |
+| `budget_hw` | `sub_6818D0(scheduler, scheduler[432] - scheduler[412])` | Register budget in HW register units |
+| `reduced_hw` | `sub_6818D0(scheduler, budget - budget/16)` | Tighter budget for critical-path threshold (or knob 760 override) |
+| `queue_depth` | knob 770 | Depth threshold parameter (default 4); controls critical-path activation |
+| `per_bb_flag` | knob 769 | Per-BB scheduling flag; when set, resets yield state between BBs |
+| `scheduler+420` | state | Spill-mode countdown; when > 0, forces aggressive scheduling with bit 1 = 1 |
+| `scheduler+464` | state | Depth threshold -- number of barrier targets that must be ready before critical-path activates |
+| `scheduler+480` | state | Current scheduling cycle; used for stall-free evaluation |
+| `scheduler+523` | state | Hot-cold tracking enable flag; gated by knob |
+| `scheduler+524` | state | Current yield state; propagated to CONTROL instructions via bit 6 |
+| `scheduler+532` | state | Hot-cold budget counter; decremented per cold instruction, disables tracking at zero |
 | `scheduler+672` | allocation | Per-BB resource cost table (84 bytes per slot) |
 
 ### Support Subroutines
@@ -156,6 +163,275 @@ The priority function is called once per ready instruction per scheduling step. 
 | `sub_8C7120` | -- | Barrier tracking state update. |
 | `sub_693BC0` | -- | Memory space classification and latency query. |
 | `sub_6818D0` | -- | Register count to hardware-aligned unit conversion. |
+
+### Priority Function Internals
+
+The full logic of `sub_8C9320` divides into three phases: (1) pre-scan the ready list to collect aggregate BB statistics, (2) iterate the ready list a second time evaluating each candidate and maintaining a running best, and (3) update scheduler state and return the winner. The function signature is `(scheduler, &second_best) -> best_instruction`.
+
+#### Phase 1: Pre-Scan Statistics
+
+Before priority evaluation begins, the function iterates the entire ready list (linked via `metadata+16`) and accumulates per-BB statistics that feed into the per-instruction priority decisions:
+
+| Variable | Init | Accumulation | Meaning |
+|---|---|---|---|
+| `shared_mem_count` | 0 | `++` when opcode 183 and `sub_693BC0` returns space 3 | Count of shared-memory operations in ready list |
+| `neg_reg_deficit` | 0 | `+= delta` when register delta < 0 | Total register pressure reduction from ready instructions |
+| `max_dep_cycle` | -1 | `max(current, metadata+92)` | Highest dependency cycle among all ready instructions |
+| `max_pred_cycle` | 0 | `max(current, metadata+88)` | Highest predecessor cycle among all ready instructions |
+| `barrier_count` | 0 | `++` when `metadata+108 & 1` | Count of barrier-target instructions in ready list |
+| `dep_flag_count` | 0 | `++` when `metadata+108 & 2` | Count of instructions with dependency-set flag |
+| `pos_pressure_sum` | 0 | `+= delta` when register delta > 0 | Total register pressure increase from ready instructions |
+| `filtered_pressure` | 0 | `+= delta` when within depth threshold | Pressure increase from depth-eligible instructions |
+| `max_barrier_slot` | -1 | `max(current, metadata+24)` for barrier targets | Latest BB slot among barrier-target instructions |
+| `min_barrier_latency` | 99999 | `min(current, metadata+28)` for barrier targets | Shortest latency counter among barrier-target instructions |
+| `max_nonbarrier_cycle` | -1 | `max(current, metadata+32)` for non-barrier | Latest earliest-available-cycle for non-barrier instructions |
+| `any_stall_free` | 0 | `\|= (metadata+32 >= 0)` | Whether any instruction can issue without stalling |
+| `total_ready` | 0 | `++` for every instruction | Total instructions in ready list |
+| `preferred_instr` | NULL | non-barrier instr with max `metadata+24` | The program-order-latest non-barrier instruction |
+
+The pre-scan also maintains a depth-threshold table: an array of up to 32 barrier-target instruction pointers sorted by their latency counter (`metadata+28`). This table is scanned to compute `scheduler+464` (depth threshold) and `scheduler+380` (latency cutoff), which control when the critical-path bit activates.
+
+#### Phase 2: Register Budget Prologue
+
+Before the main loop, the function computes two register budgets from `scheduler+432` (target register count):
+
+```
+budget_base = scheduler[432] - scheduler[412]     // target minus committed
+
+if ReduceReg_mode (scheduler+178):               // ReduceReg tightens budget
+    if scheduler[416] < 0:
+        budget_base -= (scheduler[432] / 8) + 3   // reduce by ~12.5% + 3
+    else:
+        budget_base -= scheduler[416]              // explicit reduction
+
+budget_hw    = RegToHWUnits(scheduler, budget_base)     // sub_6818D0
+reduced_hw   = RegToHWUnits(scheduler, budget_base - budget_base/16)
+                                                         // ~6.25% tighter
+
+if knob_760_active:
+    reduced_hw = RegToHWUnits(scheduler, budget_base - knob_760_value)
+
+queue_depth  = 4                                  // default
+if knob_770_active:
+    queue_depth = knob_770_value                  // override
+```
+
+`budget_hw` sets the threshold for bit 4 (pressure overflow). `reduced_hw` provides a tighter threshold used in the critical-path assessment. `queue_depth` (knob 770) limits how many candidates receive full priority evaluation; the rest use cached values from initial insertion.
+
+#### Phase 3: Per-Bit Computation
+
+For each instruction in the ready list, `sub_8C7290` extracts its per-register-class deltas (4 classes: GPR, predicate, address, UGP) and the same-BB flag. Then each priority bit is computed:
+
+**Bit 7 -- Yield-related.** Determined by opcode. Only opcode 39 (YIELD instruction variant) can set this bit. The condition checks the last operand's low 2 bits:
+
+```
+if opcode_masked == 39:
+    operand_index = operand_count - 1 - ((opcode >> 11) & 2)
+    yield_related = (instr[84 + 8*operand_index] & 3) == 0
+else:
+    yield_related = 0
+```
+
+When set, the instruction is a yield boundary marker and receives absolute highest priority regardless of all other heuristics.
+
+**Bit 6 -- Yield flag.** Set only for opcode 96 (CONTROL instruction):
+
+```
+if opcode_masked == 96:
+    yield_flag = scheduler[524]       // current yield state
+else:
+    yield_flag = 0
+
+// Post-adjustment: suppress when hot/pressure bits dominate
+if (bit5_set || bit4_set):
+    yield_flag = 0
+    if metadata[32] < scheduler[480]:    // behind schedule
+        yield_flag = scheduler[396] ? original_yield : 0
+```
+
+The yield flag propagates the scheduler's warp yield state only through CONTROL instructions, ensuring yield hints align with scheduling barriers.
+
+**Bit 5 -- Hot-cold classification.** Requires hot-cold tracking to be active (`scheduler+523` set, gated by `scheduler+532 > 0`):
+
+```
+if hot_cold_active:
+    is_hot = sub_A9CDE0(target_desc, context, instruction)
+else:
+    is_hot = 0
+
+// Cold detection suppresses priority
+if sub_A9CF90(target_desc, context, instruction):    // is_cold?
+    pressure_overflow = 0                             // suppress bit 4
+    critical_extension = 0                            // suppress lookahead
+```
+
+`sub_A9CDE0` returns true for global memory loads (`LDG`), texture fetches (`TEX`, `TLD`), and surface operations -- instructions with latencies in the hundreds of cycles. `sub_A9CF90` returns true for constant loads (`LDC`), shared memory operations (`LDS`/`STS`) -- low-latency operations. Hot instructions (bit 5 = 1) get higher priority to schedule early and overlap their long latencies with computation. Cold instructions (bit 5 = 0) are deprioritized.
+
+**Bit 4 -- Pressure overflow.** This bit does NOT appear directly in the initial packing as a single variable. Instead, the pressure overflow signal (`v81` in decompiled source) feeds into the candidate comparison logic as an override. The mechanism:
+
+```
+// For barrier-target instructions:
+budget_in_units = RegToHWUnits(scheduler, scheduler[432])
+headroom        = RegToHWUnits(scheduler, 8)
+if budget_in_units > headroom + scheduler[72]:   // plenty of headroom
+    pressure_overflow = 0
+elif latency_counter > min_barrier_latency + 9:  // far from ready
+    pressure_overflow = 0
+else:
+    // Check all 4 register classes against their limits:
+    overflow = false
+    overflow |= (scheduler[72] + gpr_delta > budget_hw)
+    overflow |= (scheduler[68] + pred_delta > 7)
+    overflow |= (scheduler[56] + addr_delta > 7)
+    overflow |= (scheduler[60] + ugp_delta >= target_desc[624])
+    pressure_overflow = overflow
+```
+
+When pressure_overflow = 1, the candidate wins the comparison regardless of other bits -- it is the scheduler's mechanism for emergency register pressure relief. In the packed byte's bit 4 position, the hot-cold flag occupies the slot. The pressure overflow signal operates at a higher level: it can force the candidate to win even when its packed priority byte is lower.
+
+**Bit 3 -- Same-BB preference.** Output parameter from `sub_8C7290`:
+
+```
+same_bb = sub_8C7290.output_param_5     // boolean from resource copy
+```
+
+Set when the instruction belongs to the currently-scheduled basic block. Instructions imported from other BBs by global scheduling get `same_bb = 0`, reducing their priority relative to local instructions.
+
+**Bit 2 -- Stall-free.** Computed from the earliest-available-cycle field:
+
+```
+if countdown_active (scheduler[420] != 0):
+    if metadata[32] < scheduler[480] AND instr != preferred_instr:
+        stall_free = 0
+        if pressure_plus_reg_sum > 0:
+            goto full_evaluation    // positive pressure = needs analysis
+    else:
+        stall_free = 1
+else:
+    // Normal mode: stall-free when producers have completed
+    if metadata[32] >= scheduler[480]:
+        stall_free = 1
+    elif instr == preferred_instr:
+        stall_free = 1
+    else:
+        stall_free = 0
+```
+
+`metadata+32` is the instruction's earliest available cycle -- the latest completion time among all its producer instructions. `scheduler+480` is the current scheduling cycle. When earliest >= current, all producers have retired and the instruction can issue with zero pipeline stalls.
+
+**Bit 1 -- Critical-path / latency-bound.** Complex multi-path computation:
+
+```
+if countdown_active (scheduler[420] != 0):
+    // Spill mode: almost always critical
+    if !(barrier_bits_set_in_priority):
+        if slot_limit_exceeded:
+            critical = 1
+        else:
+            critical = !(pressure_sum <= 0 && max_reg_class == 0)
+    else:
+        critical = 0
+else:
+    // Normal mode: depth threshold comparison
+    if barrier_count >= scheduler[464]:
+        critical = 1      // enough barriers ready -> critical path active
+    else:
+        critical = 0
+```
+
+In spill mode (active when `scheduler+420 > 0`), the critical-path bit is set for nearly all instructions to maximize scheduling throughput. In normal mode, it activates when the number of barrier-target instructions in the ready list meets or exceeds the depth threshold computed during the pre-scan, indicating that the scheduler is processing a latency-critical dependency chain.
+
+**Bit 0 -- Tiebreaker (barrier-target).** Read directly from instruction metadata:
+
+```
+tiebreaker = metadata[108] & 1      // barrier-target flag
+```
+
+Barrier-target instructions (those waiting on a hardware barrier) get bit 0 = 1. Since this is the lowest-priority bit, it only affects ordering when all higher bits are identical. Scheduling barrier targets promptly allows the barrier resource to be retired sooner, freeing scoreboard entries for other instructions.
+
+#### Packed Byte Assembly
+
+The 8 bits are packed into a single byte using shift-and-mask arithmetic:
+
+```
+priority = (yield_related    << 7)         // bit 7
+         | (yield_flag       << 6) & 0x7F  // bit 6
+         | (hot_cold         << 5) & 0x3F  // bit 5  (initially yield copy)
+         | (hot_flag         << 4) & 0x3F  // bit 4
+         | (same_bb          << 3) & 0x0F  // bit 3
+         | (stall_free       << 2) & 0x0F  // bit 2
+         | (critical_path    << 1) & 0x03  // bit 1
+         | (tiebreaker       << 0) & 0x03  // bit 0
+```
+
+The `& 0xNN` masks ensure each bit occupies exactly one position. In the initial packing, bit 5 and bit 6 both derive from the yield variable; the hot-cold flag (`sub_A9CDE0` result) overwrites bit 5 in subsequent repackings that occur during the spill-mode and comparison paths.
+
+#### Candidate Comparison
+
+The comparison between the current candidate and the running best is NOT a simple integer comparison of the packed bytes. The function performs a multi-stage refinement:
+
+1. **Resource vector comparison**: If knob-gated architecture checks pass (SM index > 5 at `context+1704`), a 4-tuple lexicographic comparison of per-register-class resource vectors occurs first. The four classes are compared in order: GPR delta, predicate delta, address delta, UGP delta. The first class that differs determines the winner.
+
+2. **Priority byte XOR scan**: When resource vectors are equal, the function XORs the current and best packed bytes and checks differing bits in this order:
+   - Bit 4 (0x10) -- pressure: winner has bit 4 set (higher pressure need)
+   - Bit 6 (0x40) -- yield: winner has bit 6 set (yield participation)
+   - Bit 1 (0x02) -- critical: winner has bit 1 set
+   - Bit 2 (0x04) -- stall-free: winner has bit 2 set
+   - Bit 5 (0x20) -- hot-cold: winner has bit 5 set (hot memory op)
+
+3. **Secondary tiebreakers** (when all checked bits match):
+   - Barrier group index (`v213` vs `v253`)
+   - Latency counter comparison (`v223` vs `v248`)
+   - Bit 7 yield-related (only when shared-memory count > 0)
+   - Contention score (a derived value incorporating register overflow penalty: `contention + 2 * RegToHWUnits(pressure_delta) - pressure_sum_sign`)
+   - Slot manager cycles (scheduling cost estimate from `sub_682490`)
+   - Earliest available cycle (`metadata+32`)
+   - Dependency cycle (`metadata+92`)
+   - Latest deadline (`metadata+40`)
+   - Register delta magnitude
+
+4. **Positional fallback**: When all heuristic comparisons are tied, the instruction with the higher BB slot (`metadata+24`) wins, preserving original program order.
+
+The multi-stage comparison explains why the packed byte uses non-obvious bit ordering. Bits 4, 6, 1, 2, 5 are checked before bit 7 in the refinement path, even though bit 7 is the MSB. The packed byte enables fast ready-list insertion sort (integer comparison), while the full comparison function provides nuanced selection for the actual scheduling decision.
+
+#### Scheduler State Updates
+
+After selecting the best candidate, the function updates scheduler state:
+
+```
+// Spill mode countdown
+if winner is barrier-target:
+    scheduler[420] = computed_countdown - 1
+    scheduler[396] -= 1                       // spill sequence counter
+    if metadata[32] >= 0:
+        scheduler[400] -= 1                   // stall-free counter
+        if stall_free_count==0 AND remaining>0 AND countdown>1:
+            scheduler[420] = 0                // force exit spill mode
+            scheduler[464] = -1               // reset depth threshold
+else:
+    // Non-barrier winner in countdown mode
+    if !(barrier_bits in priority) AND slot_cost within budget:
+        // do nothing, continue countdown
+    else:
+        scheduler[420] = 0                    // exit spill mode
+        scheduler[464] = -1                   // reset depth threshold
+
+// Slot manager update (when winner has positive scheduling cost)
+if best_cost > 0 AND slotManager[76] > 0:
+    if slotManager[140]:
+        slotManager[28] += slotManager[44]    // advance base
+        slotManager[76] = 0                   // reset count
+        slotManager[80] = NULL                // reset anchor
+    best.metadata[28] = sub_682490(...)       // recompute latency
+
+// Hot-cold counter update
+if hot_cold_active AND winner is cold (sub_A9CF90 returns true):
+    scheduler[532] -= 1                       // decrement hot-cold budget
+elif hot_flag was set for winner:
+    scheduler[523] = 0                        // disable hot-cold tracking
+```
+
+The function returns the best instruction pointer and writes the second-best to `*a2` for lookahead scheduling.
 
 ## Dependency DAG Construction
 
