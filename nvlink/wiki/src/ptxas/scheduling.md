@@ -375,6 +375,740 @@ The scheduling and register allocation passes form a feedback loop. The key inte
 
 5. **Scheduling guidance feeds back to the user.** The `SCHEDULING GUIDANCE` and `REGALLOC GUIDANCE` output sections at `0x19C0000`--`0x1A00000` report the combined effect of scheduling and register allocation decisions.
 
+## Reconstructed Pre-RA Scheduling Algorithm
+
+The following pseudocode is reconstructed from the decompiled binary. Addresses are given for cross-reference with the decompiled sources.
+
+### Initialization: DAG Setup and Instruction Classification (`sub_1864ED0`, lines 128--338)
+
+Before the scheduling loop runs, the list-scheduler core performs per-basic-block initialization. Each instruction in the block is assigned a scheduling record, classified, and linked into the dependency DAG.
+
+```
+function list_scheduler_init(sched_ctx):
+    // sched_ctx is the 840+ byte scheduling context
+
+    max_reg_pressure_threshold = knob_table[624]
+    sched_ctx.has_barrier = false
+    sched_ctx.barrier_count = 0
+    sched_ctx.pending_list = null
+    sched_ctx.completed_flag = false
+    sched_ctx.reduce_reg_mode = false
+
+    // Clear the ready-set bitset
+    clear_bitset(sched_ctx.ready_set)              // offset +248
+
+    // Max instructions before ready-set overflow (knob gated):
+    //   if arch_capability <= 28671: max_in_flight = 64
+    //   else:                        max_in_flight = INT_MAX (0x7FFFFFFF)
+    // Further overridden by knob at offset +55944
+    if knob_table[55944] == 1:
+        max_in_flight = knob_table[55952]
+
+    // Phase 1: walk every instruction in the basic block
+    inst_index = 0
+    has_many_calls = false
+    has_many_textures = false
+    has_many_shared = false
+    call_count = 0
+
+    for each instruction inst in basic_block:
+        dag_node = inst.dag_info                   // 40-byte node at inst+40
+        dag_node.block_position = inst_index
+        inst.schedule_order = -1                    // unscheduled sentinel
+
+        // Allocate 84-byte per-instruction scheduling record (offset +672)
+        sched_rec = sched_ctx.records[inst_index]  // 48-byte record array at +280
+        clear(sched_rec)                           // zero all 20 DWORDs
+
+        // Build dependency edges: call sub_185D760 (register pressure tracker)
+        track_register_operands(sched_ctx, inst, &pressure_lo, &pressure_hi)
+
+        // Classify instruction
+        opcode = inst.opcode & 0xFFFFCFFF          // mask out irrelevant bits
+        if opcode == 96 and sched_ctx.has_cutlass:
+            // CUTLASS-relevant instruction: add to pending list
+            node = arena_alloc(16)
+            node.inst = inst
+            node.next = sched_ctx.pending_list      // offset +264
+            sched_ctx.pending_list = node
+
+        // Check if instruction is a call/barrier via vtable dispatch
+        is_barrier = vtable[45](sched_ctx.target, inst)
+        dag_node.flags.is_barrier = is_barrier
+
+        if is_barrier:
+            call_count++
+            sched_ctx.has_barrier = true
+            has_many_calls |= ((inst.flags >> 2) ^ 1) & 1
+
+        // Walk operands to classify destination registers
+        for each operand op in inst.operands:
+            tag = (op >> 28) & 7
+            if tag != 1:                           // not a register reference
+                continue
+            if op < 0:                             // definition (negative tag)
+                reg = lookup_register(op & 0xFFFFFF)
+                if reg.type == 4:                  // call-clobbered register class
+                    sched_ctx.barrier_count++
+                    dag_node.max_pred_height = max(dag_node.max_pred_height,
+                                                    block_position)
+                if reg.type == 5: has_many_calls++
+                if reg.type == 2: has_many_textures++
+                if reg.type == 3: has_many_shared++
+            else:                                  // use (positive tag)
+                reg = lookup_register(op & 0xFFFFFF)
+                if reg.live_range > max_in_flight and reg.type == 6:
+                    dag_node.flags.has_long_dep = true
+
+        inst_index++
+```
+
+### DAG Construction and Critical-Path Computation (`sub_1864ED0`, lines 340--683)
+
+After initialization, the scheduler computes scheduling heights (critical path from each instruction to the block exit), builds predecessor/successor bitsets, and propagates dependency weights.
+
+```
+function compute_dag_heights(sched_ctx):
+    // Phase 2: compute scheduling height for each instruction.
+    // Height = (target_max_latency - instruction_latency) accounting for
+    //          memory hierarchy distance.
+    //
+    // The base latency comes from the ISA model (vtable call),
+    // adjusted by register-class-specific penalties.
+
+    max_latency_in_block = 0
+
+    for each instruction inst in basic_block (forward):
+        dag_node = inst.dag_info
+        sched_rec = sched_ctx.records[dag_node.block_position]
+
+        // Union predecessor dependency bitsets into this node
+        for each predecessor pred of inst:
+            bitset_union(sched_rec.dep_set, pred_sched_rec.dep_set)
+
+        // Compute base instruction latency via ISA model
+        isa_info = inst.isa_descriptor                // from inst+32
+        base_latency = isa_info[2]                    // latency field
+        if base_latency > max_latency_in_block:
+            max_latency_in_block = base_latency
+
+        // Add memory-hierarchy adjustment based on instruction class flags:
+        //   has_many_textures -> add isa_info[4] (texture penalty)
+        //   has_many_shared  -> add isa_info[6] (shared mem penalty)
+        //   has_many_calls   -> add isa_info[5] (call penalty)
+        adjusted_latency = base_latency
+        if sched_ctx.has_many_textures:
+            adjusted_latency += isa_info[4]
+        if sched_ctx.has_many_shared:
+            adjusted_latency += isa_info[6]
+        if sched_ctx.has_many_calls:
+            adjusted_latency += isa_info[5]
+        adjusted_latency = scale_latency(sched_ctx, adjusted_latency)
+                                                      // sub_167AA60
+
+        // Scheduling height = max_latency - adjusted_latency
+        //   (earlier instructions get higher heights -> higher priority)
+        sched_rec.height = max_latency_in_block - adjusted_latency
+
+        // Check predecessors for "schedulable" status
+        num_preds = count_predecessors(inst)
+        if num_preds == 0:
+            // Instruction has no unscheduled predecessors -> initially ready
+            sched_rec.flags |= READY
+            sched_rec.successor_pressure = 0
+        else:
+            // Count how many pred operand types force serialization
+            single_pred = (count of non-register predecessors <= 1)
+            sched_rec.flags.single_pred = single_pred
+
+            // Accumulate successor pressure:
+            //   For each predecessor that is itself ready and has
+            //   a compatible dependency, add its height + successor weight
+            successor_pressure = 0
+            for each predecessor pred:
+                if pred is READY and dependency_is_compatible(inst, pred):
+                    pred_rec = sched_ctx.records[pred.block_position]
+                    successor_pressure += pred_rec.height + pred_rec.weight
+                    pred_rec.flags |= HAS_READY_SUCCESSOR
+
+            sched_rec.successor_pressure = successor_pressure
+
+        // Net register delta: positive if this instruction is a net producer,
+        //   negative if net consumer.
+        //   height + successor_pressure < 0 => instruction is a net consumer
+        //     -> mark as UNREADY (needs predecessors to complete first)
+        //     -> add to blocked set
+        if sched_rec.height + successor_pressure < 0:
+            add_to_blocked_set(sched_ctx, dag_node)
+            // Also compute total_blocked_height for scheduling priority
+            sched_rec.total_blocked_height = sum of all successors' heights
+        else:
+            // Ready: add to ready bitset
+            clear_bit(sched_rec.flags, UNREADY)
+            set_bit(sched_ctx.ready_set, dag_node.block_position)
+            set_bit(sched_rec.dep_set, dag_node.block_position)
+
+        // Backward cross-block dependency edges:
+        //   Walk operand definitions backwards; if a def's block_position
+        //   is earlier, add a dependency edge from that def to this use.
+        for each operand op in inst.operands (backwards):
+            if op is register_ref and op.def_block_position < inst.block_position:
+                bitset_union(records[op.def_block_position].dep_set,
+                             sched_rec.dep_set)
+
+        // Store final priority metrics
+        sched_rec.weight = successor_pressure (negated for consumers)
+        sched_rec.tiebreak = 0
+        sched_rec.cumulative_height = 0
+
+    // Phase 3: propagate heights through the DAG
+    //   For instructions with positive height, propagate to successors.
+    //   For instructions with negative height (consumers), propagate
+    //   the negated height as a "pull" to predecessors.
+    for each instruction inst in basic_block:
+        sched_rec = sched_ctx.records[inst.block_position]
+        if sched_rec.height != 0:
+            for each successor succ in sched_rec.dep_set:
+                succ_rec = sched_ctx.records[succ]
+                if sched_rec.height >= 0:
+                    succ_rec.tiebreak += sched_rec.height
+                else:
+                    succ_rec.weight -= sched_rec.height
+
+    // Phase 4: handle CUTLASS pending instructions
+    if sched_ctx.pending_list is not null:
+        bitset_subtract(sched_ctx.cutlass_set, sched_ctx.ready_set)
+        for each inst in sched_ctx.pending_list:
+            bitset_union(sched_ctx.ready_set, sched_rec.dep_set)
+
+    // Phase 5: finalize the scheduling window
+    //   Mark the last instruction as the scheduling boundary.
+    sched_ctx.schedule_limit = -1
+    for inst = sched_ctx.last_inst; inst != null; inst = inst.prev:
+        if not is_pseudo_instruction(inst):
+            break
+        retire_instruction(sched_ctx, inst)         // sub_185DC90
+```
+
+### Ready-Queue Selection and Batch Window (`sub_18592C0`)
+
+The ready-queue selector picks the next instruction to issue from the ready set. It uses a batch-window heuristic to avoid excessive scheduling granularity.
+
+```
+function select_next_instruction(sched_ctx, schedule_state):
+    // Reset batch window state
+    sched_ctx.min_batch_height = INT_MAX            // +488
+    sched_ctx.best_pressure = -1                    // +516
+    sched_ctx.max_latency_seen = 0                  // +496
+    sched_ctx.batch = empty                         // +536 array of pointers
+
+    // Copy the sorted ready-list snapshot into a traversal iterator
+    copy_sorted_readyset(sched_ctx.iterator, schedule_state.sorted_set)
+
+    // Compute batch window size:
+    //   target_batch = min(max_batch, num_ready_instructions)
+    //   If no anti-dep pressure and target < num_ready:
+    //     batch_window = num_ready / ceil(num_ready / target)  [balanced]
+    //     or num_ready / 2 if slightly over
+    target_batch = sched_ctx.max_batch_size          // +404
+    num_ready = sched_ctx.num_ready                  // +396
+    batch_window = min(target_batch, num_ready)
+    if target_batch < num_ready and not sched_ctx.has_anti_dep_pressure:
+        if num_ready >= 2 * target_batch:
+            batch_window = num_ready / ceil(num_ready / target_batch)
+        else:
+            batch_window = num_ready / 2
+
+    // Walk the ready set in priority order (sorted by height descending)
+    batch_count = 0
+
+    for each candidate in ready_set (priority order):
+        latency = scale_latency(sched_ctx, sched_ctx.current_max_pressure)
+
+        // Skip candidates that would violate scoreboard constraints
+        if batch_count > 0:
+            opcode = candidate.opcode & 0xFFFFCFFF
+            if opcode == 96 and sched_ctx.has_cutlass:
+                // CUTLASS barrier: stop batching, yield to next block
+                sched_ctx.yield_flag = true
+                break
+
+            // Check if candidate would cause a scoreboard stall
+            if candidate.dag_info.min_height <= sched_ctx.min_batch_height:
+                for each scoreboard entry sb in sched_ctx.scoreboard_window:
+                    sb_slot = sb.dag_info.slot_id
+                    if sb_slot < (candidate.dep_mask & 0x7FFFFFFF)
+                       and bit_is_set(candidate.dep_bitset, sb_slot):
+                        // Candidate would stall on this scoreboard entry
+                        break to COMMIT_CANDIDATE
+
+            // Check if candidate has no outstanding dependencies
+            if candidate has no live predecessors:
+                goto SKIP_TO_NEXT
+
+        // Record highest latency seen
+        if candidate.isa_info.latency > sched_ctx.max_latency_seen:
+            sched_ctx.max_latency_seen = candidate.isa_info.latency
+        goto COMMIT_CANDIDATE
+
+    SKIP_TO_NEXT:
+        // Detect register-pressure excursion and truncate batch
+        cumulative_pressure = sched_ctx.current_pressure
+                            + sched_ctx.max_latency_seen
+                            - sched_ctx.pressure_baseline
+        if cumulative_pressure + sched_ctx.best_pressure >= latency:
+            if batch_count > 0:
+                sched_ctx.pressure_exceeded = true
+                // Truncate batch if pressure would blow budget
+                break
+            sched_ctx.max_latency_seen = 0
+            sched_ctx.pressure_baseline = candidate.isa_info.latency
+
+        // Add candidate to batch
+        sched_ctx.min_batch_height = candidate.dag_info.min_height
+        sched_ctx.batch[batch_count] = candidate
+        batch_count++
+        sched_ctx.last_batch_position = candidate.block_position
+
+        if batch_count == batch_window:
+            break
+
+        // Track max latency among batch members for tiebreaking
+        if candidate.dag_info.max_height > sched_ctx.best_pressure:
+            sched_ctx.best_pressure = candidate.dag_info.max_height
+
+    COMMIT_CANDIDATE:
+        advance iterator to next candidate
+
+    // Post-selection: if batch is smaller than half the ready set and
+    //   pressure is not exceeded, trim the batch further to balance
+    //   ILP against register pressure.
+    if batch_count < num_ready:
+        if 2 * target_batch > num_ready and not pressure_exceeded:
+            // Adaptive trimming: walk batch backwards, remove
+            //   entries that are in the same scheduling group
+            //   (same min_height and negative max_height)
+            trim_target = (num_ready + 1) / 2
+            or (num_ready - sched_ctx.unpressured_count) / 2
+            while batch_count > trim_target:
+                last = sched_ctx.batch[batch_count - 1]
+                if last.dag_info.min_height > trim_target
+                   or last.dag_info.max_height >= 0:
+                    break
+                batch_count--
+            batch_window = min(batch_window, trim_target)
+```
+
+### Instruction Issue and Dependency Retirement (`sub_185DC90`)
+
+When an instruction is issued, its scheduling record is updated and all successor dependency counts are decremented.
+
+```
+function issue_instruction(sched_ctx, instruction):
+    // Look up the instruction's scheduling record
+    dag_node = instruction.dag_info
+    block_pos = dag_node.block_position
+    sched_rec = sched_ctx.records[block_pos]         // 48-byte record
+
+    if sched_rec.height == 0:
+        goto REMOVE_FROM_READY
+
+    if sched_rec.height < 0:
+        // This instruction was a net register consumer.
+        // Propagate its negative height to all successors, reducing
+        // their "weight" (pending predecessor contribution).
+        for each successor succ_pos in sched_rec.dep_set:
+            succ_rec = sched_ctx.records[succ_pos]
+            succ_rec.weight += sched_rec.height      // height is negative
+    else:
+        // Net producer: propagate positive height to successors,
+        // reducing their tiebreak/priority accumulator.
+        for each successor succ_pos in sched_rec.dep_set:
+            succ_rec = sched_ctx.records[succ_pos]
+            succ_rec.tiebreak -= sched_rec.height
+
+REMOVE_FROM_READY:
+    // Remove instruction from the ready bitset
+    clear_bit(sched_ctx.ready_set, block_pos)
+```
+
+### Instruction Latency Calculation (`sub_1850760`)
+
+The latency calculator computes the expected completion time for an instruction, considering the target architecture's pipeline model.
+
+```
+function compute_latency(sched_ctx, instruction):
+    dag_node = instruction.dag_info
+    isa_encoding = dag_node.encoding_bits & 0x1FF    // 9-bit opcode class
+    latency_table_ptr = dag_node.latency_ptr         // ISA-model pointer
+
+    base_latency = dag_node.hardware_latency          // field at +184
+    if base_latency is valid (not 0x80000000):
+        goto APPLY_MODIFIERS
+
+    // Opcode-specific latency lookup
+    switch isa_encoding:
+        case 215:  // LDGSTS (async global-to-shared copy)
+            base_latency = sched_ctx.ldgsts_latency   // offset +26824
+            if base_latency == -1: goto FALLBACK
+
+        case 221:  // LDSM (load shared matrix)
+            base_latency = sched_ctx.ldsm_latency     // offset +26828
+            if base_latency == -1:
+                // Compute from matrix dimensions:
+                operand_size = extract_matrix_size(instruction)
+                is_transposed = extract_transpose_flag(instruction)
+                return lookup_matrix_latency(sched_ctx.latency_model,
+                    operand_size, is_transposed, isa_encoding) / 4
+
+        case 2:    // IMAD with special predicate
+            if is_special_predicate(instruction):
+                base_latency = sched_ctx.imad_special_latency  // +10644
+                if base_latency != -1: goto APPLY_MODIFIERS
+
+        case 94, 166:  // TEX / SULD (texture / surface load)
+            if not is_texture_opcode_442(instruction):
+                base_latency = sched_ctx.tex_base_latency  // +10640
+                if base_latency != -1: goto APPLY_MODIFIERS
+                base_latency = sched_ctx.default_latency   // +228
+                goto APPLY_MODIFIERS
+
+        case 191:  // TLD4 (texture gather)
+            if is_texture_opcode_442(instruction):
+                operand_shift = extract_operand_size(instruction)
+                base_latency = lookup_banked_latency(sched_ctx,
+                    sched_ctx.default_latency, 4 << (operand_shift & 3))
+                goto APPLY_MODIFIERS
+
+        default:   // Memory instructions with known opcode class
+            if is_texture_opcode_442(instruction):
+                // Compute strided latency for memory ops
+                element_size = lookup_element_size(instruction)
+                num_elements = extract_element_count(instruction) + 1
+                base_latency = lookup_banked_latency(sched_ctx,
+                    sched_ctx.default_latency, element_size * num_elements)
+                if base_latency != -1: goto APPLY_MODIFIERS
+
+    FALLBACK:
+        if latency_table_ptr is null:
+            if isa_encoding == 152 or isa_encoding == 142:
+                base_latency = 1    // NOP-like instructions
+            else:
+                base_latency = lookup_from_isa_model(sched_ctx, instruction)
+        else:
+            base_latency = hash_table_lookup(sched_ctx.latency_hash,
+                                              latency_table_ptr)
+
+    APPLY_MODIFIERS:
+        // Apply warp-scheduling modifier if enabled
+        if sched_ctx.warp_sched_enabled:  // vtable offset +232
+            if is_eligible_for_warp_discount(sched_ctx, instruction):
+                base_latency -= sched_ctx.warp_discount  // offset +2400
+
+        return base_latency
+```
+
+### Per-Block Scheduling Pass (`sub_1681A70`)
+
+The per-block scheduling pass is the workhorse called for each basic block. It drives the list-scheduling loop that picks instructions from the ready set and emits them in scheduled order.
+
+```
+function schedule_basic_block(sched_ctx, strategy_callback, bb_offset, init_flag):
+    // Initialize timing infrastructure
+    reset_timing(sched_ctx.compilation_ctx)
+
+    if init_flag:
+        initialize_liveness(sched_ctx)
+        initialize_register_state(sched_ctx)
+
+    sched_ctx.max_latency = 0
+    sched_ctx.total_instructions = 0
+    sched_ctx.pressure_overflow = false
+
+    // Allocate per-function register tracking arrays
+    num_registers = compilation_ctx.register_count + 1
+    alloc_tracking_array(sched_ctx, num_registers)
+
+    // Query knobs for scheduling parameters
+    batch_size = query_knob(743)                     // max batch size
+    anti_dep_weight = query_knob(747)                // anti-dependency weight
+
+    // Iterate over each sub-function (for split compilation)
+    for each sub_function in reverse order:
+        is_recursive = check_recursion(sub_function)
+        sched_ctx.current_function = sub_function
+
+        // Select strategy based on compilation mode
+        if sched_ctx.mode == 1:  // ReduceReg
+            check_pass_gate("ScheduleInstructionsReduceReg", sub_function)
+        elif sched_ctx.mode == 2:  // DynBatch
+            check_pass_gate("ScheduleInstructionsDynBatch", sub_function)
+
+        // Resolve scheduling parameters from ISA model
+        pressure_info = lookup_pressure(sched_ctx.isa_model, sub_function)
+
+        // Set up register-pressure snapshot
+        subtract_pressure_baseline(sched_ctx, pressure_info)
+        update_pressure_from_live_in(sched_ctx)
+
+        // Walk each basic block in the sub-function
+        cursor = sub_function.last_block
+        while cursor is not null:
+            // Get next block to schedule via strategy callback
+            //   strategy_callback dispatches to one of:
+            //     - default list scheduler
+            //     - ReduceReg pressure-minimizing scheduler
+            //     - DynBatch throughput scheduler
+            next_block = strategy_callback(sched_ctx, cursor, bb_offset)
+            if next_block is null:
+                break
+
+            // Track max instruction height for this block
+            if next_block.dag_info.height > sched_ctx.max_latency:
+                sched_ctx.max_latency = next_block.dag_info.height
+
+            // Insert scheduled block into output sequence
+            insert_scheduled_block(sched_ctx, next_block, cursor)
+
+            // Update register pressure tracking after scheduling
+            update_register_pressure(sched_ctx, next_block)
+
+            // Handle call instructions (opcode 97):
+            //   On a call boundary, the scheduler crosses to a new
+            //   sub-function. Register state is snapshotted and
+            //   the pressure tracker walks forward into the callee.
+            if next_block.opcode == 97:
+                push_call_context(sched_ctx, next_block)
+                cursor = next_block
+                continue
+
+            // Record per-block scheduling statistics
+            block_max_latency = next_block.isa_info.latency
+            if block_max_latency > sched_ctx.total_instructions:
+                sched_ctx.total_instructions = block_max_latency
+            if not is_recursive:
+                if block_max_latency > sched_ctx.non_recursive_max:
+                    sched_ctx.non_recursive_max = block_max_latency
+
+            cursor = next_block
+
+        // Record final pressure statistics
+        compilation_ctx.peak_pressure = sched_ctx.total_instructions
+        compilation_ctx.non_recursive_peak = sched_ctx.non_recursive_max
+
+    // Cleanup
+    free_tracking_arrays(sched_ctx)
+```
+
+### Three-Mode Strategy Dispatch (`sub_1867D60`)
+
+The block scheduler core selects between the three scheduling strategies and wraps the per-block pass.
+
+```
+function block_scheduler_core(sched_ctx):
+    compilation_ctx = sched_ctx.compilation_ctx
+    isa_model = compilation_ctx.isa_model_ptr          // offset [198]
+
+    // Run pre-scheduling peepholes
+    optimize_nan_or_zero(sched_ctx, compilation_ctx)   // sub_1866FA0
+    invoke_vtable_232(sched_ctx)                       // pre-scheduling hook
+
+    // Phase 1: Insert barrier-crossing dependency edges
+    //   For each instruction in the function, if the ISA model says
+    //   it crosses a barrier (vtable[183]), insert a serialization
+    //   edge via sub_18B91C0 (add dependency with kind=8).
+    if compilation_ctx.flags & 0x10:
+        for each instruction inst in function:
+            if isa_model.crosses_barrier(inst):
+                add_serialization_edge(compilation_ctx, inst)
+
+    // Phase 2: Gate the pass on the "ScheduleInstructions" knob
+    if pass_is_disabled("ScheduleInstructions"):
+        return
+
+    // Phase 3: Analyze function structure
+    max_block_height = compute_max_block_height(compilation_ctx)
+    initialize_scheduling_infrastructure(sched_ctx, max_block_height)
+
+    // Phase 4: Configure for ReduceReg mode
+    if compilation_ctx.flags & 0x10:     // extended register file
+        register_budget = 2 * (compilation_ctx.register_count + 1)
+    else:
+        register_budget = compilation_ctx.register_count + 1
+    allocate_pressure_tracking(sched_ctx, register_budget)
+
+    // Phase 5: Determine scheduling mode
+    //   Query knobs 776 (ReduceReg ILP budget), 778 (ReduceReg latency
+    //   budget), scale them through the latency model, then run
+    //   "ScheduleInstructionsReduceReg" pass if not gated.
+    ilp_budget = query_knob(776)
+    latency_budget = query_knob(778)
+    ilp_budget = scale_latency(sched_ctx, ilp_budget)
+    latency_budget = scale_latency(sched_ctx, latency_budget)
+
+    if pass_not_gated("ScheduleInstructionsReduceReg"):
+        // Run ReduceReg mode: sched_ctx.mode = 1
+        set_mode(sched_ctx, REDUCE_REG)
+        sched_ctx.max_batch = 0x39                     // 57 instructions
+        run_scheduling_pass(sched_ctx, mode=0x39)      // sub_1681A70
+        // Reset per-instruction state for next pass
+        clear_instruction_state(compilation_ctx)
+
+    // Phase 6: Configure default scheduling mode
+    set_mode(sched_ctx, DEFAULT)
+    sched_ctx.max_batch = query_knob(805)              // batch size
+    if sched_ctx.max_batch > 16: sched_ctx.max_batch = 16
+    sched_ctx.anti_dep_limit = query_knob(741)         // default: 3
+    sched_ctx.pressure_limit = query_knob(761)         // default: 3 or 6 or 12
+
+    // Phase 7: Check CUTLASS workload pattern
+    sched_ctx.is_cutlass = check_cutlass_workload(sched_ctx)  // sub_1866CF0
+
+    // Phase 8: Run DynBatch mode if applicable
+    if pass_not_gated("ScheduleInstructionsDynBatch"):
+        // Check knob 742 or auto-detect based on instruction mix
+        if query_knob(742) or auto_detect_dynbatch(compilation_ctx):
+            set_mode(sched_ctx, DYNBATCH)
+            run_scheduling_pass(sched_ctx, mode=0x41)  // 65 instructions
+
+    // Phase 9: Final default scheduling pass
+    set_mode(sched_ctx, DEFAULT)
+    run_scheduling_pass(sched_ctx, mode=0x49)          // 73 instructions
+
+    // Cleanup
+    free_pressure_tracking(sched_ctx)
+```
+
+### Register Pressure Delta Computation (`sub_185D760`)
+
+The register pressure tracker scans each instruction's operands and records which physical register ranges are defined or consumed. This drives the pressure-aware scheduling decisions.
+
+```
+function track_register_operands(sched_ctx, instruction, out_lo, out_hi):
+    // Walk operands in reverse order (last operand to first)
+    num_ops = instruction.operand_count - 1
+    if num_ops < 0:
+        return
+
+    arena = sched_ctx.arena                           // offset +840
+
+    for op_index = num_ops downto 0:
+        operand = instruction.operands[op_index]
+        tag = (operand >> 28) & 7
+
+        if tag != 1:                                  // not a register
+            continue
+        if (operand & 0xFFFFFF) - 41 <= 3:            // pseudo-register
+            continue
+        if operand < 0:                               // definition operand
+            continue
+
+        // Look up the register descriptor
+        reg = register_table[operand & 0xFFFFFF]
+
+        // Allocate a 16-byte tracking node
+        node = arena_alloc(arena, 16)
+        node.instruction = instruction
+
+        // Link into the register's use chain
+        prev_head = reg.use_chain_head                 // offset +104
+        if prev_head is null:
+            // First use of this register in this block
+            add_to_active_list(sched_ctx, reg)         // link at +680
+            reg.use_chain_next = null                   // +112
+        node.next = prev_head
+        reg.use_chain_head = node
+
+        // Check if register is "wide" (exceeds scheduling horizon)
+        if sched_ctx.pressure_limit < reg.live_range
+           and reg.type == 6
+           and reg is not pseudo:
+            // Wide register: track in the register-file bitmap
+            //   The bitmap at offset +728 records which register
+            //   groups are actively tracked for pressure.
+            phys_reg = reg.physical_number
+            stride = phys_reg * (has_extended_regfile ? 2 : 1)
+            bitmap_word = stride >> 6
+            bitmap_bit = 1 << stride
+
+            // Grow bitmap if necessary
+            ensure_bitmap_capacity(sched_ctx, bitmap_word + 1)
+            sched_ctx.register_bitmap[bitmap_word] |= bitmap_bit
+
+            // If extended register file (paired mode),
+            //   also set the paired register bit
+            if has_extended_regfile:
+                paired_stride = stride + 1
+                sched_ctx.register_bitmap[paired_stride >> 6] |= (1 << paired_stride)
+
+    // Update output pressure counters
+    *out_lo += definitions_in_lo_class
+    *out_hi += definitions_in_hi_class
+```
+
+### Register Pressure Heuristic in the Priority Function (`sub_1859F10`)
+
+In ReduceReg mode, the priority function penalizes instructions that would increase register pressure beyond a configurable threshold.
+
+```
+function pressure_aware_priority(sched_ctx, instruction, reg_info):
+    // Query knob 780 for pressure tracking granularity
+    // (auto-incremented on each call)
+    granularity = query_knob_780_autoincrement()
+
+    opcode = instruction.opcode & 0xFFFFCFFF
+    if opcode != 288 and opcode != 183:   // not a memory or barrier op
+        return 0                          // no pressure adjustment
+
+    // Look up the register class and bank that this instruction writes to
+    reg_class = reg_info[3]               // register class index
+    num_elements = reg_info[2]            // number of registers written
+
+    // Check current pressure in this class
+    current_bank_pressure = sched_ctx.class_pressure[reg_class]
+    if current_bank_pressure != 0:
+        // Compute maximum pressure across all active banks
+        max_bank_pressure = 0
+        if num_elements == 1:
+            // Single-element: check both base and paired register
+            for each active bank in (current_bank_pressure bitmask):
+                p = max(sched_ctx.base_pressure[bank],
+                        sched_ctx.paired_pressure[bank])
+                max_bank_pressure = max(max_bank_pressure, p)
+        else:
+            // Multi-element: check only base pressure
+            for each active bank in (current_bank_pressure bitmask):
+                max_bank_pressure = max(max_bank_pressure,
+                                         sched_ctx.base_pressure[bank])
+
+        // If max pressure exceeds threshold, penalize this instruction
+        if max_bank_pressure >= sched_ctx.pressure_threshold:  // offset +1036
+            // For definitions that write the first bank, set class=0
+            //   to force it to schedule first (relieve pressure)
+            if (current_bank_pressure & 1) != 0:
+                reg_info[3] = 0
+            return                        // signal: instruction is pressure-hot
+    else:
+        // No active pressure in this class
+        // Look up paired class pressure
+        paired_pressure = sched_ctx.class_pressure[reg_class + 33]
+        if num_elements == 1:
+            paired_pressure = max(paired_pressure,
+                                   sched_ctx.paired_pressure[reg_class])
+        if paired_pressure >= sched_ctx.pressure_threshold:
+            return                        // still pressure-hot
+
+    // Extract destination operand information for latency-based
+    //   priority: wider destinations get higher priority to free
+    //   registers sooner.
+    dest_operand = instruction.operands[dest_index]
+    dest_reg = register_table[dest_operand & 0xFFFFFF]
+    num_dest_regs = compute_dest_width(instruction)
+    latency_penalty = compute_latency(sched_ctx, instruction) * num_dest_regs
+
+    return latency_penalty               // higher = schedule sooner
+```
+
 ## Key Address Summary
 
 ### Pre-RA Scheduling (`0x1850000`--`0x186F000`)
