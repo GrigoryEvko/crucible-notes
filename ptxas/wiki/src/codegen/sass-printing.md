@@ -294,67 +294,271 @@ Five formatters additionally use string-based SM comparison via `sub_70FA10`:
 - `sub_577BA0` (`dp2a.hi`): SM string comparison
 - `sub_583190` (`rsqrt`): checks `"sm_103"`
 
-## SASS Disassembly Printer Subsystem
+## SASS Disassembly Renderer
 
-The SASS-level printer at `0x17F8000`--`0x181FFFF` handles disassembly of binary-encoded SASS instructions. Unlike the PTX formatters which work from the high-level IR, these printers decode the binary instruction representation and emit text through a virtual builder/visitor interface.
+The SASS-level renderer at `0x17F8000`--`0x181FFFF` (~160 KB, ~123 virtual entry points) converts binary-encoded SASS instructions into textual SASS assembly. Unlike the PTX formatters (Level 1) which work from the high-level Ori IR via `sprintf` chains, the SASS renderer decodes the binary instruction encoding and drives a builder/visitor object through a structured sequence of `emit_*` calls. The builder's concrete implementation determines the output format -- text for `--out-sass`, comparison data for `--self-check`, or binary encoding verification.
+
+### Internal Layers
+
+The subsystem splits into five layers by address range and function role:
+
+| Layer | Range | Count | Role |
+|-------|-------|-------|------|
+| A: Encoding templates | `0x17F8000`--`0x180FFFF` | ~75 | Build per-opcode operand layout descriptors |
+| B: Accessor vtable methods | `0x1810700`--`0x1810BFF` | ~15 | ISA version/class discriminator predicates |
+| C: Format-class printers | `0x1810D20`--`0x18167FF` | ~50 | Workhorses: decode operands + emit through builder |
+| D: Complex multi-format printers | `0x1817000`--`0x181CFFF` | ~15 | Texture, multi-operand, predicated printers |
+| E: Post-processing hooks | `0x181E000`--`0x181FFFF` | ~8 | ISA-override detection, fixup dispatch |
+
+All ~123 entry points have zero static callers, confirming they are virtual method overrides dispatched through vtables. The printer dispatch layer at `0xAA8000`--`0xACA000` (`sub_AA9330`, `sub_AA9860`, `sub_AAB9C0`, `sub_AC99D0`) invokes them.
+
+### Rendering Protocol
+
+Every SASS printer receives `(a1, a2)` where `a1` is the printer context (builder pointer at `a1+24`) and `a2` is the binary-encoded instruction. The rendering follows a fixed protocol:
+
+```
+1. vtable[0](builder, instruction_kind_id)     // begin_instruction
+2. vtable[3760](builder, sync_mode)            // set_sync_type (if applicable)
+3. vtable[3768](builder)                       // begin_operand_list
+4. sub_9DB7E0(a1, a2, 1)                       // emit predicate guard (@Px)
+5. For each operand:
+   a. sub_9D12F0(&buf, a1, a2, idx, stride, mode, flag)  // encode -> 64B struct
+   b. vtable[16](builder, kind_id, buf...)                // emit_operand
+6. vtable[3952](builder)                       // emit_saturation (.SAT)
+7. vtable[3960](builder)                       // emit_ftz (.FTZ)
+8. vtable[3968](builder)                       // emit_negate (.NEG)
+9. vtable[4072](builder)                       // emit_cache_operation
+10. vtable[4080](builder)                      // emit_eviction_hint
+11. vtable[4160](builder)                      // end_instruction
+```
+
+The protocol is directly visible in decompiled code. In `sub_1812F60` (16-DWORD immediate printer), the function begins with `vtable[0](builder, 89)` (begin instruction kind 89), calls `vtable[3760]` for sync type, `vtable[3768]` for begin operand list, `sub_9DB7E0` for predicate guard, then loops 16 times calling `vtable[272]` (create integer operand) followed by `vtable[16]` (emit operand) with kind IDs 55 through 70 -- one per DWORD.
+
+In `sub_1810D20` (comparison-mode printer), the function first reads the modifier word from the operand array at `instruction+84`, switches on `(modifier >> 4) & 0xF`, calls `vtable[3528]`/`vtable[3536]` to configure comparison mode and variant, then emits 2--3 operands via the standard `sub_9D12F0` + `vtable[16]` sequence.
 
 ### Builder/Visitor Vtable
 
-The builder object at `*(a1 + 24)` exposes a massive vtable with ~520 method slots:
+The builder object at `*(a1 + 24)` exposes a vtable spanning 4,160+ bytes (~520 method slots at 8 bytes each). The complete set of identified methods:
 
-| Vtable offset | Method | Purpose |
-|---------------|--------|---------|
-| +16 | `emit_operand` | Emit a decoded operand |
-| +208 | `emit_literal` | Emit a literal string |
-| +272 | `emit_integer` | Emit an integer value |
-| +368 | `set_address_space` | Set memory address space qualifier |
-| +936 | `begin_predicate` | Open predicate guard block |
-| +944 | `end_predicate` | Close predicate guard block |
-| +1760 | `set_rounding_mode` | Emit rounding mode modifier |
-| +3520 | `set_width` | Set operand width |
-| +3560 | `set_conversion` | Set conversion modifier |
-| +3760 | `set_sync_type` | Set synchronization type |
-| +3768 | `begin_operands` | Open operand section |
-| +3824 | `emit_tex_header` | Emit texture header index |
-| +3952 | `emit_saturation` | Emit `.SAT` flag |
-| +3960 | `emit_ftz` | Emit `.FTZ` flag |
-| +3968 | `emit_negate` | Emit negate modifier |
-| +4072 | `emit_cache_op` | Emit cache operation hint |
-| +4080 | `emit_eviction` | Emit cache eviction priority |
-| +4160 | `end_statement` | Close instruction statement |
+| Offset | Method | Category |
+|--------|--------|----------|
+| +0 | `begin_instruction(kind_id)` | Framing |
+| +8 | `get_current_instruction()` | Accessor |
+| +16 | `emit_operand(kind_id, operand_buf...)` | Core emission |
+| +24 | `post_process_operand()` | After-emit hook |
+| +112 | `get_register_size_32()` | Register geometry |
+| +120 | `get_register_size_64()` | Register geometry |
+| +128 | `create_register_operand()` | Operand factory |
+| +152 | `create_memory_operand()` | Operand factory |
+| +192 | `create_special_operand()` | Operand factory |
+| +208 | `create_literal_operand()` | Operand factory |
+| +272 | `create_integer_operand(value)` | Operand factory |
+| +304 | `create_register_ref_operand()` | Operand factory |
+| +368 | `set_address_space()` | Memory qualifier |
+| +936 | `begin_predicate_guard()` | Predicate block |
+| +944 | `end_predicate_guard()` | Predicate block |
+| +984 | `set_predicate_mode()` | Predicate negate/true |
+| +1000 | `emit_modifier()` | Generic modifier |
+| +1056 | `set_offset_mode()` | Address offset |
+| +1128 | `emit_width_qualifier()` | `.B32`, `.B64` |
+| +1392 | `set_comparison_flag()` | Comparison type |
+| +1760 | `set_rounding_mode()` | `.RN`, `.RZ`, `.RM`, `.RP` |
+| +1936 | `begin_sync_block()` | Sync scope |
+| +1944 | `end_sync_block()` | Sync scope |
+| +2016 | `set_sync_width()` | Sync width |
+| +2024 | `set_sync_depth()` | Sync depth |
+| +2584 | `set_uniform_flag()` | `.U` modifier |
+| +2960 | `set_address_mode()` | Address mode |
+| +2992 | `set_cache_level_a()` | Cache hint (L1) |
+| +3000 | `set_cache_level_b()` | Cache hint (L2) |
+| +3096 | `set_comparison_type()` | Second comparison slot |
+| +3128 | `set_source_type_a()` | Source type |
+| +3136 | `set_source_type_b()` | Source type |
+| +3144 | `set_interlock_mode()` | Memory ordering |
+| +3152 | `begin_comparison_block()` | Comparison section |
+| +3160 | `set_comparison_width()` | Comparison width |
+| +3520 | `set_data_width()` | Operand width |
+| +3528 | `set_comparison_mode()` | Comparison config |
+| +3536 | `set_comparison_variant()` | Comparison variant |
+| +3560 | `set_conversion_type()` | Conversion modifier |
+| +3576 | `begin_conversion()` | Conversion block |
+| +3760 | `set_sync_type()` | Synchronization type |
+| +3768 | `begin_operand_list()` | Operand section |
+| +3776 | `emit_rounding_decoration()` | Rounding modifier |
+| +3824 | `emit_texture_header()` | Texture header index |
+| +3952 | `emit_saturation_flag()` | `.SAT` |
+| +3960 | `emit_ftz_flag()` | `.FTZ` |
+| +3968 | `emit_negate_flag()` | `.NEG` |
+| +4072 | `emit_cache_operation()` | Cache operation hint |
+| +4080 | `emit_eviction_hint()` | Eviction priority |
+| +4160 | `end_instruction()` | Framing |
 
-### Instruction Format Class Printers
+Different concrete visitor implementations produce different output formats. The vtable design means adding a new output format (e.g., JSON, binary verification) requires only a new visitor class with no changes to any of the ~123 printer functions.
 
-The printer functions at `0x1810D20`--`0x1816FC0` handle specific instruction format classes. Each reads the format class from `instruction+76`, subtracts 11 for table indexing via `dword_23B39E0[]`, and dispatches to the appropriate rendering logic:
+### Encoding Template Builders (Layer A)
 
-| Function | Size | Purpose |
-|----------|------|---------|
-| `sub_1810D20` | 8.8 KB | Comparison-mode instructions (SETP, SET) |
-| `sub_18111F0` | 11.6 KB | Wide-operand instructions (8 sequential operand slots) |
-| `sub_1811E20` | 11.6 KB | Wide-operand with special encodings |
-| `sub_1812890` | 10.5 KB | Combined register + constant operand instructions |
-| `sub_1812F60` | 15.3 KB | 16-DWORD immediate instructions (bulk constant loads) |
-| `sub_18141C0` | 6.5 KB | Per-operand comparison mode |
-| `sub_1814660` | 7.1 KB | Load/store with address space encoding |
-| `sub_1814B10` | 17.6 KB | Load/store with predication and constant buffer |
-| `sub_18189C0` | 45.2 KB | Texture/surface instruction printer (largest) |
-| `sub_181B370` | 27.8 KB | Multi-operand instructions (VOTE, etc.) |
-| `sub_181CF60` | 14.0 KB | Predicated instruction printer |
-| `sub_181D9B0` | 12.6 KB | Load/store variant printer |
+~75 functions at `0x17F8000`--`0x180FFFF` build per-opcode instruction format descriptors that define the expected operand signature. Each function:
 
-The texture/surface printer `sub_18189C0` is the largest at 45.2 KB. It handles the full TEX, TLD, TXQ, SULD, SUST, and SURED instruction families through a giant switch on opcodes 18, 119, 186, 211, 283, and 315. It uses lookup tables `dword_23B39E0[10]` for format class mapping and `word_23B3A58[4]` for subtype resolution, and calls `sub_1817C50` (12.8 KB) for texture header index computation.
+1. Sets the SASS opcode ID: `*(a2+12) = opcode_number`
+2. Loads a 128-bit format descriptor: `*(a1+8) = xmmword_23Fxxxx` (from rodata)
+3. Fills up to 10 operand slots at `a1+24`..`a1+120` with type codes, register class IDs, and modifier flags
+4. Writes expected-value constraints at `a1+64`..`a1+160` (-1 = any)
+5. Writes type constraint modifiers at `a1+104`..`a1+200`
 
-### Encoding Template Builders
-
-Functions at `0x17F8000`--`0x180FFFF` (~75 functions) build instruction format descriptors. Each sets:
+From `sub_17F8210` (opcode 274):
 
 ```c
-*(a2+12) = SASS_OPCODE_ID;           // e.g., 274, 285, 172
-*(a1+8)  = xmmword_23Fxxxx;          // 128-bit descriptor from rodata
-// a1+24..32 = operand type/register/immediate slots (up to 10)
+*(a2+12) = 274;                                          // SASS opcode ID
+*(a1+8)  = _mm_loadu_si128(&xmmword_23F21B0);           // 128-bit descriptor
+*(a1+24) = 10;   // operand 0: predicate register type
+*(a1+64) = -1;   // operand 0: any value accepted
+*(a1+104) = 0;   // operand 0: no modifier constraint
+*(a1+28) = 17;   // operand 1: specific register class
+*(a1+68) = -1;   // operand 1: any value
+*(a1+108) = 3;   // operand 1: modifier constraint 3
+// ... remaining operands bulk-copied via SSE from xmmword_23F1C60 table
 ```
 
-These are vtable entry points with zero static callers, confirming virtual dispatch.
+The 128-bit descriptors at `xmmword_23F1xxx`--`23F2xxx` encode canonical operand layouts. The bulk SSE copies (`_mm_load_si128`/`_mm_loadu_si128`) fill 4 operand slots per iteration, making the template builders compact despite handling up to 10 operand positions.
+
+### Format-Class Printers (Layer C)
+
+The instruction's format class at `instruction+76` determines which printer handles it. The dispatch computes `index = format_class - 11`, then looks up `dword_23B39E0[index]` for the encoding strategy:
+
+| Strategy | Value | Description |
+|----------|-------|-------------|
+| Default | 0 | Standard register fields |
+| Wide | 1 | 9-bit register fields, 8 sequential operands |
+| Pair | 2 | 2x register fields per operand |
+| Extended | 3 | Extra modifier bits |
+| Special | 4+ | Texture header, 16-DWORD immediate |
+
+Printer functions for each format class:
+
+| Function | Size | Format class | Evidence |
+|----------|------|-------------|----------|
+| `sub_1810D20` | 8.8 KB | Comparison-mode | Switches on `(modifier >> 4) & 0xF`: case 4 emits comparison with two variants, case 6 emits single-variant. Calls `vtable[3528]`/`vtable[3536]` for comparison config |
+| `sub_18111F0` | 11.6 KB | Wide-operand | 8 sequential `sub_9D12F0` calls with indices 0--7 |
+| `sub_1811E20` | 11.6 KB | Wide + special | Both `sub_9D12F0` and `sub_9CF740` calls |
+| `sub_1812890` | 10.5 KB | Register + constant | `sub_9CF8A0` for constant folding |
+| `sub_1812F60` | 15.3 KB | 16-DWORD immediate | `sub_7E4CF0` iterator, 16x `vtable[272]` + `vtable[16]` with kind IDs 55--70 |
+| `sub_18141C0` | 6.5 KB | Per-operand comparison | Dispatch entry from `sub_1820000` |
+| `sub_1814660` | 7.1 KB | Load/store | `sub_C49400` + `sub_9CEB50` for address space |
+| `sub_1814B10` | 17.6 KB | Load/store + predicated | `sub_C49400`, `sub_91E860`, `sub_91C840`, `sub_9CEB50` |
+| `sub_1815810` | 12.7 KB | Wide variant | Similar to `sub_1811E20` |
+| `sub_1816000` | 13.1 KB | Data-type qualified | `sub_9E9910` for data type emission |
+| `sub_18167F0` | 11.8 KB | Memory-access | `sub_9E7B00` for address space qualifier, `sub_A3B930` for operand modifier |
+| `sub_1816FC0` | 6.4 KB | Modifier-heavy | Checks bits 6, 7, 14 of operand word for negate/absolute modifiers |
+
+### Texture/Surface Printer (Layer D)
+
+The texture/surface printer `sub_18189C0` is the largest at 45.2 KB. It handles the complete texture and surface instruction families:
+
+```
+sub_18189C0 (45.2 KB, 1361 lines)
+  ├─ Read opcode at +72, mask to canonical form
+  ├─ Giant switch on opcodes:
+  │    18 (FADD/FMUL?), 119 (MUFU?), 186 (TEX),
+  │    211 (TLD), 283 (SULD), 315 (SUST)
+  ├─ Check operand modifier bits for predication/negation
+  ├─ dword_23B39E0[format_class-11] → subtype (values 0-4)
+  ├─ word_23B3A58[subtype] → builder kind ID
+  ├─ Emit predicate: vtable[89], begin_operand_list
+  ├─ sub_9DB7E0 → predicate guard
+  ├─ For each operand: sub_9D12F0 → builder->emit_operand
+  ├─ If format > 9: sub_1817C50 (12.8KB) → texture header index
+  │    └─ Linearizes from 2D bit fields: bits[0:8] x bits[9:17] → index 0-52
+  ├─ Emit cache/eviction: vtable[4080], vtable[4072]
+  ├─ Emit saturation/ftz: vtable[3952], vtable[3960], vtable[3968]
+  └─ Return 1 on success
+```
+
+The multi-operand printer `sub_181B370` (27.8 KB) handles instructions with many operand variants (VOTE at opcode `0x7A`, multi-op at `0x138`), emitting up to 12 sequential operands through `sub_9CEF90` (extended operand encoder) and `sub_9CF740` (immediate encoder).
+
+### ISA-Override Detection (Layer E)
+
+`sub_181E1D0` (7.3 KB) is a post-processing fixup dispatcher called from `sub_AA9330`. It performs ISA-target-aware fixups by comparing vtable method pointers against known discriminator functions:
+
+```c
+// If the current ISA target has the DEFAULT implementation:
+if (vtable[111] == sub_1810B90)   // default comparison handler
+    apply_default_fixup();
+// Otherwise the target has OVERRIDDEN the method:
+else
+    apply_specialized_fixup();    // e.g., sub_1BCBB90 for arch-specific
+```
+
+This mechanism supports 45 opcodes (`0x12`, `0x16`, `0x24`, ..., `0x141`) and dispatches to architecture-specific post-processors (`sub_1BCBB90`, `sub_1BCC2D0`, `sub_BCCF80`, `sub_1BCF120`) or re-emits modifiers via `sub_9E9910`/`sub_9E9A70`.
+
+The discriminator functions at `0x1810700`--`0x1810BFF` (~15 tiny functions) serve as sentinel values: `sub_1810720`, `sub_1810750`, `sub_18108A0`, `sub_18108D0`, `sub_1810B90`. Their identity (which function pointer is stored) determines which specialization path the fixup dispatcher takes.
+
+### Instruction Object Layout
+
+The binary instruction object (`a2`) used by all SASS printers:
+
+| Offset | Size | Field |
+|--------|------|-------|
+| +0 | 8 | Context/vtable pointer |
+| +8 | 8 | ISA context pointer (register file, instruction info table) |
+| +24 | 8 | Builder/visitor object pointer |
+| +32 | 8 | Operand metadata pointer |
+| +40 | 1 | Half-precision flag |
+| +48 | 8 | Operand modifier context |
+| +72 | 4 | Opcode (bits 12--13 are variant flags, masked via `&0xCFFF`) |
+| +76 | 4 | Format class (subtract 11 for `dword_23B39E0[]` indexing) |
+| +80 | 4 | Operand count |
+| +84+ | 8*N | Operand array (N operands, 8 bytes each) |
+
+Each 8-byte operand slot encodes:
+
+| Bits | Word | Field |
+|------|------|-------|
+| 28--30 | 0 | Operand type tag: 1=register, 4=address, 5=constant buffer, 7=special |
+| 0--23 | 0 | Register/constant index |
+| 24--27 | 0 | Modifier flags |
+| 0 | 1 | Negate |
+| 1 | 1 | Absolute value |
+| 20 | 1 | Constant pool flag (`0x100000`) |
+| 29 | 1 | Sign extension (`0x20000000`) |
+| 30 | 1 | Uniform flag (`0x40000000`) |
+| 31 | 1 | Negation modifier (`0x80000000`) |
+
+### Global Lookup Tables
+
+| Table | Size | Index | Purpose |
+|-------|------|-------|---------|
+| `dword_23B39E0[10]` | 40 B | `format_class - 11` | Format class to encoding strategy (0--4) |
+| `word_23B3A58[4]` | 8 B | Subtype from above | Subtype to builder `kind_id` mapping |
+| `dword_23B3A20[14]` | 56 B | `register_class - 3` | Register class to comparison type ID |
+| `dword_23B3980[7]` | 28 B | `width_field - 1` | Encoded width to builder width value |
+| `xmmword_23F1xxx`--`23F2xxx` | ~16 B each | Per-opcode | 128-bit operand layout descriptor templates |
+
+### SASS Renderer Function Map
+
+| Address | Size | Callers | Identity | Confidence |
+|---------|------|---------|----------|------------|
+| `sub_17F8210` | ~1.3 KB | 0 (vtable) | Encoding template builder (opcode 274) | 95% |
+| `sub_1810D20` | 8.8 KB | 0 (vtable) | Comparison-mode format-class printer | 90% |
+| `sub_18111F0` | 11.6 KB | 0 (vtable) | Wide-operand format-class printer | 85% |
+| `sub_1811E20` | 11.6 KB | 0 (vtable) | Wide-operand + special encoding printer | 85% |
+| `sub_1812890` | 10.5 KB | 0 (vtable) | Register + constant operand printer | 85% |
+| `sub_1812F60` | 15.3 KB | 0 (vtable) | 16-DWORD immediate printer | 90% |
+| `sub_18141C0` | 6.5 KB | 0 (vtable) | Per-operand comparison printer | 85% |
+| `sub_1814660` | 7.1 KB | 0 (vtable) | Load/store with address space printer | 85% |
+| `sub_1814B10` | 17.6 KB | 0 (vtable) | Load/store + predication printer | 85% |
+| `sub_1815810` | 12.7 KB | 0 (vtable) | Wide-operand variant printer | 80% |
+| `sub_1816000` | 13.1 KB | 0 (vtable) | Data-type qualified printer | 85% |
+| `sub_18167F0` | 11.8 KB | 0 (vtable) | Memory-access instruction printer | 85% |
+| `sub_1816FC0` | 6.4 KB | 0 (vtable) | Modifier-heavy instruction printer | 85% |
+| `sub_1817C50` | 12.8 KB | ~1 | Texture header index encoder | 90% |
+| `sub_18189C0` | 45.2 KB | 0 (vtable) | Texture/surface instruction printer | 92% |
+| `sub_181B370` | 27.8 KB | 0 (vtable) | Multi-operand instruction printer | 88% |
+| `sub_181CF60` | 14.0 KB | 0 (vtable) | Predicated instruction printer | 85% |
+| `sub_181D9B0` | 12.6 KB | 0 (vtable) | Load/store variant printer | 80% |
+| `sub_181E1D0` | 7.3 KB | ~1 | ISA-override fixup dispatcher | 90% |
+| `sub_181E630` | 14.7 KB | ~1 | Comparison instruction post-processor | 88% |
+| `sub_181F000` | 7.6 KB | ~1 | Data-type specialized printer | 75% |
+| `sub_181F4F0` | 17.3 KB | ~1 | Multi-variant data-type printer | 80% |
 
 ## CLI Integration
 
