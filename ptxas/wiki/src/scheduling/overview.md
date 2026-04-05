@@ -96,6 +96,57 @@ Goal: batch-aware scheduling for GMMA/WGMMA warpgroup tensor operations. Groups 
 - Context initialization (`sub_8C1BA0`): sets batch window to 0xFFFFFFFF (sentinel), copies register liveness from `func+832`.
 - The mode byte 0x41 selects batch-aware priority weights.
 
+### DynBatch Context Object (184 bytes)
+
+`sub_8BF890` allocates a 184-byte DynBatch context from the scheduling arena at `sched+840` and stores the pointer at `sched+272`. The object is a flat structure containing a function context reference, a 20-slot working array, and a pointer to a variable-length per-BB sub-array.
+
+| Offset | Size | Type | Init | Name | Purpose |
+|---|---|---|---|---|---|
+| +0 | 8 | `ptr` | funcCtx | funcContext | Pointer to CompilationContext (copied from `sched+8`) |
+| +8 | 160 | `QWORD[20]` | 0 | batchWorkArray | Fixed-size working array for batch state tracking; likely holds instruction pointers or batch boundary markers during scheduling |
+| +168 | 8 | `ptr` | alloc'd | perBBArray | Per-BB batch tracking sub-array; `8 * numBBs` bytes, zero-initialized. Each 8-byte entry holds a batch start/end instruction pointer for one basic block |
+| +176 | 4 | `DWORD` | 0 | flags | Status/control flags |
+| +180 | 4 | -- | -- | (padding) | Pad to 184-byte allocation |
+
+The per-BB sub-array size is derived from `*(sched+392)` (maxBBSizeForAlloc), with an overflow check capping the multiplication at `0xFFFFFFFFFFFFFFF` (2^60 - 1) entries.
+
+### DynBatch Working State (in scheduler context)
+
+The bulk of the DynBatch working state lives directly in the scheduler context, initialized by `sub_8C1BA0` (InitDynBatchState). These fields are used by the priority function during Phase 3 scheduling.
+
+| Offset | Size | Type | Init | Name | Purpose |
+|---|---|---|---|---|---|
+| +464 | 4 | `int32` | 0 | batchSlotCount | Number of instructions accumulated in the current batch |
+| +468 | 4 | `int32` | -- | prevBatchSize | Size of previously-completed batch |
+| +476 | 4 | `int32` | adj | adjustedBatchTarget | Adjusted batch depth target; capped to `min(maxStallCycles, batchTargetCount)`, halved when `2 * maxStall > target` |
+| +480 | 4 | `int32` | -- | lastBatchEndPos | Scheduling position of the last instruction in the current batch |
+| +488 | 8 | `QWORD` | 0xFFFFFFFF | batchWindow | Batch window start BB offset; sentinel 0xFFFFFFFF means "no batch active" |
+| +492 | 4 | `int32` | 0 | regDelta | Register pressure delta accumulator across batch boundaries |
+| +496 | 4 | `int32` | 0 | maxRegInBatch | Maximum register pressure observed within current batch |
+| +500 | 4 | `int32` | from +72 | regBaseCount | Base register count; copied from `sched+72`, reset on batch boundary |
+| +504 | 8 | `QWORD` | 0 | maxRegSpan | Maximum register span (pressure peak minus baseline) across all batches |
+| +508 | 4 | `int32` | 0 | regBaseline | Register count baseline for delta computation |
+| +512 | 4 | `int32` | 0 | minOverflowCost | Minimum overflow cost; updated when batch exceeds register budget |
+| +516 | 4 | `int32` | -1 | batchDepthLimit | Per-batch maximum depth; -1 = unlimited (overwritten from BB analysis) |
+| +520 | 1 | `byte` | 0 | batchOverflow | Set to 1 when batch exceeds register budget + base count |
+| +521 | 1 | `byte` | 0 | batchAbort | Set to 1 when opcode 96 (WGMMA commit) detected with `sched+524` flag |
+| +536+ | var | `ptr[]` | -- | batchSlots | Array of instruction pointers in the current batch; `sched+536 + 8*i` for slot `i` |
+
+The batch target adjustment algorithm in `sub_8C1BA0`:
+```
+adjustedTarget = maxStallCycles           // from sched+404
+if maxStallCycles > batchTargetCount:
+    adjustedTarget = batchTargetCount     // cap to target
+if batchTargetCount > maxStallCycles:
+    if batchMode == 0 and maxStallCycles < batchTargetCount:
+        if batchTargetCount >= 2 * maxStallCycles:
+            adjustedTarget = batchTargetCount / ceil(batchTargetCount / maxStallCycles)
+        else:
+            adjustedTarget = batchTargetCount / 2
+```
+
+When a batch boundary is detected (instruction's BB start offset exceeds the batch window), `sub_8C1BA0` evaluates the batch: it computes the register pressure delta, checks whether the batch overflows the combined register budget (`regBaseCount + regDelta + maxRegSpan`), and either accepts the batch or trims it by walking backward through the `batchSlots` array to find a smaller valid batch.
+
 ## Unified Scheduling Engine
 
 `sub_688DD0` (20 KB) is the single engine that all three phases invoke. Its behavior is parameterized by:

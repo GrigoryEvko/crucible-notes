@@ -368,6 +368,151 @@ The scoreboard tracking state is maintained in the scheduling context object. Ke
 
 The `*(ctx+1040) & 0x20` flag controls whether the architecture supports texture-specific scoreboard handling. The `*(ctx+1090) & 4` flag enables the fast-path scoreboard assignment for known instruction patterns.
 
+## Scoreboard Object Layout (952 bytes)
+
+The scoreboard object is allocated by `sub_8D0640` (ScheduleInstructions) when the architecture feature flag `*(func+1385) & 4` is set. The 952-byte allocation goes through the function context's vtable-dispatched allocator at `*(func+16)`, and the constructor `sub_69A1A0` initializes it. The pointer is stored at `func+1864`.
+
+The object has three regions: 35 reference-counted counter slots, a linked-list/tree node for active barrier tracking, and 14 barrier tracking records.
+
+### Region 1: Counter Slots (offsets +0 to +272)
+
+35 QWORD pointer slots, each pointing to an externally-allocated 24-byte counter node. Each counter node has the layout:
+
+```
+Counter node (24 bytes):
+  +0   QWORD   refcount (initialized to 1)
+  +8   QWORD   value (initialized to 0)
+  +16  QWORD   allocator back-reference
+```
+
+The 35 slots are organized as barrier state / stall counter pairs for each register class, plus additional scoreboard tracking counters:
+
+| Offset | Slot | Purpose |
+|---|---|---|
+| +0 | 0 | R (general-purpose register) barrier state |
+| +8 | 1 | R stall counter |
+| +16 | 2 | P (predicate register) barrier state |
+| +24 | 3 | P stall counter |
+| +32 | 4 | UR (uniform register) barrier state |
+| +40 | 5 | UR stall counter |
+| +48 | 6 | UP (uniform predicate) barrier state |
+| +56 | 7 | UP stall counter |
+| +64 | 8 | B (barrier register) barrier state |
+| +72 | 9 | B stall counter |
+| +80 | 10 | Arch-specific class 5 barrier state |
+| +88 | 11 | Arch-specific class 5 stall counter |
+| +96 | 12 | Arch-specific class 6 barrier state |
+| +104 | 13 | Arch-specific class 6 stall counter |
+| +112 | 14 | Arch-specific class 7 barrier state |
+| +120 | 15 | Arch-specific class 7 stall counter |
+| +128 | 16 | Arch-specific class 8 barrier state |
+| +136 | 17 | Arch-specific class 8 stall counter |
+| +144--+272 | 18--34 | Additional scoreboard tracking counters (17 slots) |
+
+Total: 35 slots x 8 bytes = 280 bytes.
+
+### Region 2: Linked List / Tree Node (offsets +280 to +391)
+
+This region contains an intrusive data structure (linked list or red-black tree node) used for tracking active barrier assignments. It cross-references counter slots from Region 1.
+
+| Offset | Size | Type | Init | Purpose |
+|---|---|---|---|---|
+| +280 | 8 | `ptr` | from `a2+16` | Allocator reference (arena/memory pool) |
+| +288 | 8 | `QWORD` | 0 | List sentinel / null node |
+| +296 | 8 | `ptr` | `&self+304` | List head pointer |
+| +304 | 8 | `ptr` | `&self+288` | Forward link (points to sentinel) |
+| +312 | 8 | `QWORD` | 0 | Node data |
+| +320 | 8 | `ptr` | `&self+288` | Backward link (points to sentinel) |
+| +328 | 8 | `ptr` | `&self+304` | Secondary forward link |
+| +336 | 4 | `DWORD` | 2 | Node type / RB-tree color (2 = initial) |
+| +344 | 8 | `ptr` | slot 1 ref | Cross-reference to counter slot 1 (R stall counter); refcount incremented |
+| +352 | 8 | `QWORD` | 0 | Pending producer instruction pointer |
+| +360 | 8 | `QWORD` | 0 | Set cycle timestamp |
+| +368 | 8 | `QWORD` | 0 | Consumer list head |
+| +376 | 4 | `DWORD` | 0 | Active flag / barrier index |
+| +384 | 8 | `ptr` | slot 19 ref | Cross-reference to counter slot 19 |
+
+Total: 112 bytes.
+
+### Region 3: Barrier Tracking Records (offsets +392 to +951)
+
+14 identical 40-byte records, each tracking one dependency barrier register. The first 6 records correspond to the 6 hardware dependency barriers per warp. Records 6--12 are extended/spare slots for overflow or future barrier model expansion (sm_100+). Record 13 uses a different initialization path (`sub_6996C0` instead of `sub_69A120`), suggesting it serves as a sentinel or special-purpose record.
+
+Per-record layout (40 bytes):
+
+| Offset (within record) | Size | Type | Init | Purpose |
+|---|---|---|---|---|
+| +0 | 8 | `QWORD` | 0 | Barrier status: FREE (0), PENDING, COMPLETED |
+| +8 | 8 | `QWORD` | 0 | Producer instruction pointer (or NULL when free) |
+| +16 | 8 | `QWORD` | 0 | Set cycle / consumer tracking state |
+| +24 | 4 | `DWORD` | 0 | Barrier flags / consumer count |
+| +28 | 4 | -- | -- | (padding) |
+| +32 | 8 | `ptr` | slot 19 ref | Cross-reference to counter slot 19 (allocator back-pointer) |
+
+Record index to offset mapping:
+
+| Record | Offset | Hardware Barrier |
+|---|---|---|
+| 0 | +392 | Dependency barrier 0 |
+| 1 | +432 | Dependency barrier 1 |
+| 2 | +472 | Dependency barrier 2 |
+| 3 | +512 | Dependency barrier 3 |
+| 4 | +552 | Dependency barrier 4 |
+| 5 | +592 | Dependency barrier 5 |
+| 6 | +632 | Extended / spare 0 |
+| 7 | +672 | Extended / spare 1 |
+| 8 | +712 | Extended / spare 2 |
+| 9 | +752 | Extended / spare 3 |
+| 10 | +792 | Extended / spare 4 |
+| 11 | +832 | Extended / spare 5 |
+| 12 | +872 | Extended / spare 6 |
+| 13 | +912 | Sentinel record (different init via `sub_6996C0`) |
+
+Tail pointer:
+
+| Offset | Size | Type | Purpose |
+|---|---|---|---|
+| +944 | 8 | `ptr` | Counter reference for sentinel record (from slot 25) |
+
+Total: 14 records x 40 bytes = 560 bytes + 8 byte tail = 568 bytes.
+
+### Memory Layout Diagram
+
+```
+ScoreboardObject (952 bytes)
++--------+--------+--------+--------+--------+--------+--------+--------+
+|+0 slot0 (R bar) |+8 slot1 (R stl) |+16 slot2 (P bar)|+24 slot3 (P stl)|
++--------+--------+--------+--------+--------+--------+--------+--------+
+|+32 slot4 (UR)   |+40 slot5 (UR)   |+48 slot6 (UP)   |+56 slot7 (UP)   |
++--------+--------+--------+--------+--------+--------+--------+--------+
+|+64 slot8 (B)    |+72 slot9 (B)    |+80..+272 slots 10--34             |
++--------+--------+--------+--------+--------+--------+--------+--------+
+|+280 allocRef    |+288 sentinel    |+296 listHead    |+304 fwdLink     |
++--------+--------+--------+--------+--------+--------+--------+--------+
+|+312 nodeData    |+320 bwdLink     |+328 secFwd      |+336 type |      |
++--------+--------+--------+--------+--------+--------+--------+--------+
+|+344 slotRef     |+352 producer    |+360 setCycle    |+368 consumers   |
++--------+--------+--------+--------+--------+--------+--------+--------+
+|+376 flags|      |+384 slotRef19  |                                    |
++--------+--------+--------+--------+--------+--------+--------+--------+
+|+392  barrierRecord[0]  (40B)      |+432  barrierRecord[1]  (40B)      |
++--------+--------+--------+--------+--------+--------+--------+--------+
+|+472  barrierRecord[2]             |+512  barrierRecord[3]             |
++--------+--------+--------+--------+--------+--------+--------+--------+
+|+552  barrierRecord[4]             |+592  barrierRecord[5]             |
++--------+--------+--------+--------+--------+--------+--------+--------+
+|+632..+912  barrierRecords[6..13]  (8 extended / spare records)        |
++--------+--------+--------+--------+--------+--------+--------+--------+
+|+944 tailPtr     |+952 END                                             |
++--------+--------+--------+--------+--------+--------+--------+--------+
+```
+
+### Design Notes
+
+The counter nodes use reference counting (initial refcount = 1, incremented when cross-referenced from Region 2 or Region 3). This enables sharing counter state across multiple tracking contexts -- for example, when the scheduling passes for pre-scheduling and post-scheduling need to track the same barrier state.
+
+The 14 barrier records provide 6 slots for the hardware barrier registers plus 8 extended slots. Current architectures use exactly 6 dependency barriers per warp, but the extended slots provide headroom for the expanded barrier model hinted at in sm_100+ configurations (see `*(ctx+1040) & 0x10` extended barriers flag).
+
 ## Stall Count Computation
 
 The stall count is the minimum number of cycles the warp scheduler must wait before issuing the instruction. It is computed from the dependency distance to the instruction's producers.
