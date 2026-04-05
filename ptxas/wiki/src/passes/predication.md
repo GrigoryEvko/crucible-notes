@@ -48,7 +48,7 @@ The branching version requires 6 instructions (including `BSSY`/`BSYNC` converge
 The pass operates in three layers:
 
 1. **Entry and gating** (`sub_1381DA0`): checks the `"Predication"` disable flag and knob 487, initializes working state, calls the driver.
-2. **Iterative driver** (`sub_1381CD0`): initializes the scheduler context via vtable dispatch at `sched_ctx+1296`, then calls the main loop up to 3 times (controlled by a knob at options offset 41768) with different aggressiveness settings.
+2. **Iterative driver** (`sub_1381CD0`): initializes via the SM backend's vtable dispatch at `sm_backend+1296`, then calls the main loop up to 3 times (controlled by a knob at options offset 41768) with different aggressiveness settings.
 3. **Main RPO loop** (`sub_1381010`): walks the RPO block order, identifies candidate branch regions, evaluates profitability, and applies the transformation.
 
 ### Entry Point -- `sub_1381DA0`
@@ -89,13 +89,13 @@ The `context+1385` byte has bit 0 set during predication execution, which signal
 
 ```
 sub_1381CD0(state):
-    // Initialize scheduler context
-    sched_ctx = *(context+1584)
-    init_fn = vtable(sched_ctx)+1296
+    // Initialize via SM backend
+    sm_backend = *(context+1584)
+    init_fn = vtable(sm_backend)+1296
     if init_fn == sub_7D82C0:       // fast path: zero-init
         clear state fields
     else:
-        init_fn(sched_ctx, state)    // backend-specific init
+        init_fn(sm_backend, state)   // backend-specific init
 
     bb_count = *(context+520)
     if bb_count <= 1: return 0       // nothing to if-convert
@@ -281,7 +281,7 @@ For each instruction in the candidate block:
 
 2. **MOV counting** (opcode 130): Instructions with opcode 130 (`HSET2` in the ROT13 name table; the code treats this value as an internal marker for MOV-like operations) that match specific operand patterns increment a separate MOV counter at `state+4`, used to adjust profitability thresholds. The actual SASS MOV instruction is opcode 19.
 
-3. **Predicable instruction check** (`sub_137D8B0`): Each instruction is tested via the backend's `canPredicate` vtable method at `sched_ctx+1424`. Instructions that cannot be predicated (atomics, certain memory operations, barriers) cause the scan to fail.
+3. **Predicable instruction check** (`sub_137D8B0`): Each instruction is tested via the SM backend's `canPredicate` vtable method at `sm_backend+1424`. Instructions that cannot be predicated (atomics, certain memory operations, barriers) cause the scan to fail.
 
 4. **Speculative execution safety**: For load instructions (opcode 125 after masking), the memory space is queried via `sub_91C840`. The result is tested against the bitmask `0x90E`:
    - Bit 1: register file space -- safe
@@ -291,7 +291,7 @@ For each instruction in the candidate block:
    - Bit 11: (internal type) -- safe
    - Global memory, surface memory, texture memory -- **not safe** (side effects or traps on invalid addresses)
 
-5. **Extra-latency check**: Instructions matching opcodes in the set `{22, 23, 41, 42, 55, 57, 352, 297}` (long-latency operations including texture, surface, and certain memory ops) have their latency contribution tallied at `state+16` via the scheduler's `getExtraLatency` method at `sched_ctx+1392`.
+5. **Extra-latency check**: Instructions matching opcodes in the set `{22, 23, 41, 42, 55, 57, 352, 297}` (long-latency operations including texture, surface, and certain memory ops) have their latency contribution tallied at `state+16` via the SM backend's `getExtraLatency` method at `sm_backend+1392`.
 
 6. **Predicate-register conflict**: If any destination operand writes to the same predicate register that the branch uses as its guard, the region cannot be if-converted (the predicate would be clobbered before all instructions are guarded).
 
@@ -524,7 +524,7 @@ The bitmask `0x90E` identifies memory spaces safe for speculation:
 When the standard profitability check is inconclusive, `sub_1380810` (980 bytes) analyzes the fall-through continuation of the merge block. The idea: even if the region itself is borderline, if the code immediately after the merge point contains long-latency operations (loads, texture fetches), the predicated version may be better because the scheduler can overlap the predicated instructions with those long-latency operations.
 
 The function walks instructions in the merge block's successor(s), counting:
-- Long-latency memory operations (via `sched_ctx+1824` predicability check)
+- Long-latency memory operations (via `sm_backend+1824` predicability check)
 - Load instructions to specific memory spaces (again using the `0x90E` mask)
 - Total instruction count
 

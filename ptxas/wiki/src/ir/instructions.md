@@ -894,7 +894,7 @@ void InsertBefore(CodeObject* ctx, Instr* instr, Instr* before) {
 Before removing an instruction (`sub_7E0030`, called from both `sub_9253C0` and `sub_925510`), the compiler checks whether the removal is legal. This function examines:
 
 - Whether the instruction is an `STS` (store shared, base opcode 95) with specific operand count and data type patterns (operand_count - adj == 5 with data type codes 1, 2, or 4 prevent removal)
-- Whether a target-specific scheduler hook (vtable offset 2128 on the scheduler context at Code Object +1584) vetoes the removal
+- Whether a target-specific scheduler hook (vtable offset 2128 on the SM backend at compilation context +1584) vetoes the removal
 - Whether the instruction is a `PLOP3` (predicate logic, opcode 23) writing to a special register (register file type 9 at descriptor +64)
 - Whether the dead-code check (`sub_7DF3A0`) clears the instruction, excluding opcodes 93 (`OUT_FINAL`), 124 (`DMUL`), and 248 (SM90+ opcode) which have required side effects
 - Whether the opcode class has a "must keep" flag in the per-opcode property array at Code Object +776 (`byte[4*opcode + 2] & 4`)

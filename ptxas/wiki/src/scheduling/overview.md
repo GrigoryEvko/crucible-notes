@@ -43,10 +43,13 @@ function ScheduleInstructions(sched):
         if sched.flags & 0x100:
             sched.warp_analysis = alloc(856)  // sub_6BB7C0
 
-    // 5. Initialize per-instruction scheduling metadata
-    for instr in all_instructions:
-        instr[7] = 0; instr[13] = 0
-        instr[19] = 0; instr[21] = -1        // sentinel
+    // 5. Reset per-instruction SchedNode fields between passes
+    //    (iterates func+104 metadata chain, NOT instruction list)
+    for sched_node in func.sched_node_list:       // linked via func+104
+        sched_node.depChainHead  = 0              // QWORD +56
+        sched_node.extendedState = 0              // QWORD +104
+        sched_node.schedulingCost  = 0            // DWORD +76
+        sched_node.schedulingClass = -1           // DWORD +84, sentinel
 
     // 6. Phase 1 — ReduceReg
     if KnobGetBool("ScheduleInstructionsReduceReg"):
@@ -274,7 +277,7 @@ SSE intrinsics (`_mm_add_epi32`) are used for vector accumulation.
 
 ```
 function ComputeRegisterBudget(sched):
-    hw = sched.func.hw_profile         // at func+1584
+    hw = sched.func.sm_backend          // at func+1584 (provides hw latency profiles)
     maxRegs = hw[154]                   // architecture register limit
 
     coeff = KnobGetDouble(740)          // default 0.045
@@ -514,22 +517,70 @@ The scheduler uses two allocator strategies:
 
 2. **Free-list allocator** (`sub_8DA6D0`): free-list with block coalescing for persistent scheduling data. Maintains multiple free lists for different size classes. Blocks larger than 0x1FF bytes go to a separate large-block list. Adjacent free blocks are merged on deallocation.
 
-## Per-Instruction Scheduling Data
+## Per-Instruction Scheduling Metadata (SchedNode)
 
-Each instruction carries a scheduling metadata block accessed at fixed offsets from the instruction node:
+Each instruction has a pointer at `instr+40` (`sched_slot`) to a separate heap-allocated scheduling metadata block called a SchedNode. The metadata offsets documented throughout the scheduling pages (e.g., `metadata+24`, `metadata+32`, `metadata+108`) are relative to this SchedNode, **not** to the 296-byte Ori instruction object itself. The SchedNode block is at least 112 bytes; all nodes are linked into a singly-linked list at `func+104` (Code Object offset +104), separate from the instruction linked list at `func+272`.
 
-| Offset | Type | Content |
-|---|---|---|
-| +24 | int32 | Scheduled position (-1 = unscheduled) |
-| +32 | int64 | Earliest possible cycle |
-| +40 | int32 | Latest deadline cycle |
-| +44 | int32 | Barrier group index |
-| +88 | int32 | Max predecessor cycle |
-| +92 | int32 | Max dependency cycle |
-| +108 | byte | Flags: bit 0 = barrier target, bit 1 = has dependency, bit 2 = early schedulable, bit 3 = late schedulable, bit 4 = has register operand |
-| +111 | byte | Flags: bit 7 = uses expensive register file |
+### SchedNode Layout
 
-Sentinel values: position -1 (unscheduled), latency 0x1869F (99999 = infinity).
+| Offset | Size | Type | Init | Name | Purpose |
+|---|---|---|---|---|---|
+| +0 | 8 | `ptr` | -- | `nextInList` | Singly-linked next pointer for the `func+104` metadata chain |
+| +8 | 4 | `i32` | 0 | `depCount` | Unsatisfied dependency count; decremented as predecessors are scheduled; instruction is ready when this reaches 0 |
+| +12 | 4 | -- | -- | (pad) | Alignment padding |
+| +16 | 8 | `ptr` | -- | `nextReady` | Ready list singly-linked next pointer; threaded by `sub_6820B0` (BuildReadyList) |
+| +24 | 4 | `i32` | seq | `bbSlot` | 1-based position within the BB (assigned sequentially by `sub_8D9930`); used for program-order tiebreaking in priority decisions |
+| +28 | 4 | `i32` | 0 | `latencyCounter` | Remaining latency cycles until the instruction's result is available; reset to 0 when placed on the ready list; updated by `sub_A09530` (UpdateStallCycles) |
+| +32 | 4 | `i32` | -- | `earliestCycle` | Earliest available cycle -- the latest completion time among all producer instructions; stall-free when `earliestCycle >= scheduler+480` (current cycle) |
+| +36 | 4 | -- | -- | (reserved) | Alignment padding or internal use |
+| +40 | 4 | `i32` | 0 | `latestDeadline` | Latest deadline cycle for scheduling; secondary tiebreaker in the candidate comparison cascade |
+| +44 | 4 | `i32` | -- | `barrierGroupIndex` | Barrier group assignment; identifies which of the 6 hardware barriers this instruction participates in |
+| +48 | 4 | `i32` | -- | `schedulingFenceCode` | Scheduling fence code from knob 313 (`FenceCode`) / 314 (`FenceInterference`) checks; controls per-instruction scheduling boundaries |
+| +56 | 8 | `i64` | 0 | `depChainHead` | Dependency chain data; reset to 0 between scheduling passes |
+| +76 | 4 | `i32` | 0 | `schedulingCost` | Per-instruction scheduling cost; accumulated during priority evaluation; reset between passes |
+| +84 | 4 | `i32` | -1 | `schedulingClass` | Scheduling class index assigned by the latency model (`sub_89FBA0`); indexes into per-architecture latency tables; -1 = unclassified (sentinel) |
+| +88 | 4 | `i32` | -- | `maxPredecessorCycle` | Highest cycle value among predecessor instructions; used in the priority pre-scan to compute `max_pred_cycle` |
+| +92 | 4 | `i32` | -- | `maxDependencyCycle` | Highest cycle value along the dependency chain; used to compute `max_dep_cycle` for critical-path analysis |
+| +104 | 8 | `i64` | 0 | `extendedState` | Extended scheduling state; reset to 0 between scheduling passes |
+| +108 | 1 | `byte` | -- | `flags` | Primary flag byte: bit 0 = barrier-target, bit 1 = has-dependency-set, bit 2 = fence-early (knob 314), bit 3 = fence-late (knob 313), bit 4 = has-register-operand |
+| +111 | 1 | `byte` | -- | `extendedFlags` | Extended flags: bit 7 = uses expensive register file (triggers barrier tracking update in `sub_8C7120`) |
+
+### Relationship to the Instruction Object
+
+```
+ Ori Instruction (296 bytes)              SchedNode (>= 112 bytes)
+ +--------------------------+             +---------------------------+
+ | +0:  prev (BB list)      |   instr+40  | +0:  nextInList           |
+ | +8:  next (BB list)      |---sched_slot-->                         |
+ | +16: id                  |             | +8:  depCount             |
+ | +72: opcode              |             | +16: nextReady            |
+ | +80: operand_count       |             | +24: bbSlot               |
+ | +84: operands[]          |             | +28: latencyCounter       |
+ |                          |             | +32: earliestCycle        |
+ |                          |             | +40: latestDeadline       |
+ |                          |             | +88: maxPredecessorCycle  |
+ |                          |             | +92: maxDependencyCycle   |
+ |                          |             | +108: flags               |
+ +--------------------------+             +---------------------------+
+```
+
+### Lifecycle
+
+1. **Allocation**: `InitScheduleData` (vtable[29], called from `sub_8D0640`) allocates one SchedNode per instruction from the scheduling arena and stores the pointer at `instr+40`. Nodes are linked into the `func+104` chain.
+
+2. **Initialization**: `sub_8D9930` (EdgeBuilder) initializes `depCount`, `bbSlot`, `latencyCounter`, `latestDeadline`, and `flags` while building dependency edges. Between scheduling phases, the orchestrator resets pass-specific fields: `+56 = 0`, `+104 = 0`, `DWORD+76 = 0`, `DWORD+84 = -1`.
+
+3. **Population**: The dependency graph builder populates `depCount` from edge analysis. Critical-path computation fills `earliestCycle`, `maxPredecessorCycle`, and `maxDependencyCycle`.
+
+4. **Use**: `sub_6820B0` (BuildReadyList) checks `depCount == 0` and threads ready instructions via `nextReady`. `sub_8C9320` (PriorityFunction) reads all fields to compute the 8-bit scheduling priority.
+
+5. **Cleanup**: `sub_8E3A80` (ArenaFreeAll) reclaims all SchedNode blocks when the scheduling pass completes.
+
+### Sentinel Values
+
+- `bbSlot = -1`: unscheduled (set during inter-pass reset at `DWORD+84`)
+- `latencyCounter = 99999` (`0x1869F`): infinity (used as `min_barrier_latency` initial value in the priority pre-scan)
+- `earliestCycle` bit 31 set (`>= 0x80000000`): not-yet-available (tested in `sub_8C9320` pre-scan via `< 0x80000000` comparison)
 
 ## Large Function Handling
 

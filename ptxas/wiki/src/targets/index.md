@@ -508,7 +508,7 @@ These fields receive non-zero values during construction. Offsets are byte offse
 | +1216 | D | 1 | sub_43A400 | `vendor_flag` -- set to 1 during ELF builder initialization | 85% |
 | +1385 | B | 0 (bits) | runtime | `scheduling_feature_flags` -- bitfield, 21+ consumer sites | 99% |
 | +1536 | Q | 1832 | sub_C1B7A0 | `dynamic_region_offset` -- points to tail SSE constant region start | 90% |
-| +1552 | Q | 0 | runtime | `pipeline_phase_counter` -- values 16-19 checked in scoreboard guards | 95% |
+| +1552 | Q | 0 | runtime | `pipeline_progress` -- monotonically increasing counter (values 0--21); scoreboard guards check 16--19 | 95% |
 | +1584 | Q | `nullsub_856` | sub_C1B7A0 | `sm_backend_vtable_ptr` -- THE central polymorphic pointer; initialized to null stub | 99% |
 | +1684 | D | CLI value | per-SM init | `cli_option_value` -- `*(a1+108)` passthrough from compiler driver | 90% |
 | +1840 | D | 1 | per-SM init | `elf_section_data` -- initially 1 (enable), later overwritten with ptr | 85% |

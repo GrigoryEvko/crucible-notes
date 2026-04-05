@@ -220,7 +220,7 @@ At `-O1` and above, phase 115 runs the full analysis, and phase 116's `isNoOp()`
 
 The function takes the scheduling context (`a1`), the instruction node (`a2`), and several SIMD/float parameters encoding latency weights and architecture-specific constants. It begins by:
 
-1. Loading the function context from `*(a1+8)` and the hardware profile from `*(func+1584)`
+1. Loading the function context from `*(a1+8)` and the SM backend from `*(func+1584)` (the `sm_backend` field; provides hardware latency profiles)
 2. Calling `sub_7E1750` to classify the instruction
 3. Extracting the opcode from `*(a2+72)` with the standard mask (`BYTE1 &= 0xCF`)
 4. Switching on the masked opcode to determine the encoding strategy
@@ -231,7 +231,7 @@ The master switch at the entry of `sub_A36360` routes instructions by opcode cla
 
 | Opcode Class | Handler | Description |
 |---|---|---|
-| 2, 3, 5, 7 | Inline (LABEL_18 path) | Standard ALU/memory with full barrier analysis. Checks operand subtype 9--10 and architecture feature at `*(hwprofile+1037) & 0x20`. Calls `sub_A32C70` for operand analysis, then `sub_A31040` for field encoding. |
+| 2, 3, 5, 7 | Inline (LABEL_18 path) | Standard ALU/memory with full barrier analysis. Checks operand subtype 9--10 and architecture feature at `*(sm_backend+1037) & 0x20`. Calls `sub_A32C70` for operand analysis, then `sub_A31040` for field encoding. |
 | 6 | `sub_A34B70` | Wait barrier mask encoding for specific memory operations |
 | 10, 149, 151, 290 | Inline (large block) | Extended operations with special barrier handling. Calls `sub_A32A20` for multi-operand setup, then processes register-type checks at offset +64 (type==5 triggers additional barrier logic). |
 | All others | Per-field encoder chain | Default path through the six encoder functions |
@@ -527,7 +527,7 @@ function ComputeStallCount(ctx, instr):
         if producer == NULL:
             continue
         distance = instr.cycle - producer.cycle
-        latency = GetLatency(producer.opcode, ctx.hw_profile)
+        latency = GetLatency(producer.opcode, ctx.sm_backend)
         required_wait = latency - distance
         if required_wait > 0:
             max_stall = max(max_stall, required_wait)
@@ -544,7 +544,7 @@ function ComputeStallCount(ctx, instr):
     return stall
 ```
 
-The stall count computation uses the hardware latency profile at `*(func+1584)` to look up per-opcode latencies. The latency tables are architecture-specific; see [Latency Model](latency-model.md).
+The stall count computation uses the SM backend at `*(func+1584)` (`sm_backend`) to look up per-opcode latencies from the architecture's hardware latency tables; see [Latency Model](latency-model.md).
 
 ### Yield Flag
 
@@ -561,7 +561,7 @@ function ComputeYield(ctx, instr, stall):
     return 0
 ```
 
-The yield threshold is read from the hardware profile and varies by architecture. On sm_80+ it is typically 4 cycles.
+The yield threshold is read from the SM backend's latency table and varies by architecture. On sm_80+ it is typically 4 cycles.
 
 ## Mercury Opex Path (Phase 120)
 

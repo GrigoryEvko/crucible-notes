@@ -331,7 +331,7 @@ Late merge operations, late unsupported-op expansion, high-pressure live range s
 | 149 | `CalcRegisterMap` | RegAlloc |  | Computes the final physical-to-logical register mapping; gated by `ctx+0x590` bit 1 | [RegAlloc Architecture](../regalloc/overview.md) |
 | 150 | `UpdateAfterPostRegAlloc` | Cleanup |  | Rebuilds IR metadata after post-RA processing (no-op by default, `isNoOp=1`) |  |
 | 151 | `ReportFinalMemoryUsage` | Reporting |  | Prints memory pool consumption summary (no-op by default, `isNoOp=1`) |  |
-| 152 | `AdvancedPhaseOriPhaseEncoding` | Gate |  | Phase encoding gate; when active, sets `ctx+0x610 = 0x15` to mark encoding boundary |  |
+| 152 | `AdvancedPhaseOriPhaseEncoding` | Gate |  | Phase encoding gate; when active, sets `ctx+0x610` (`pipeline_progress`) `= 0x15` (21) to mark encoding boundary |  |
 | 153 | `FormatCodeList` | Encoding |  | Formats the instruction list for ELF output; dispatches through `ctx+0x648` vtable+0x10 | [Mercury](../codegen/mercury.md) |
 | 154 | `UpdateAfterFormatCodeList` | Cleanup |  | Rebuilds IR data structures after FormatCodeList reformats instructions (no-op by default, `isNoOp=1`) |  |
 | 155 | `DumpNVuCodeText` | Reporting |  | Dumps human-readable SASS text disassembly; guarded by `ctx+0x598 > 0` and `ctx+0x740` non-null |  |

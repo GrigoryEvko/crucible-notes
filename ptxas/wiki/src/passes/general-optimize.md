@@ -145,7 +145,7 @@ The Mid2 and Late2 variants use indirect vtable dispatch to call their sub-pass 
 
 **Phase 46** (`GeneralOptimizeMid2`) at `0xC60840`:
 ```asm
-mov  rdi, [rsi+0x630]      ; load compilation_unit->field_1584
+mov  rdi, [rsi+0x630]      ; load sm_backend (compilation_context+1584)
 mov  rax, [rdi]             ; load vtable
 mov  rax, [rax+0x1C0]      ; load vtable slot 56 (offset 0x1C0 = 448)
 cmp  rax, 0x7D6DD0          ; compare against no-op sentinel
