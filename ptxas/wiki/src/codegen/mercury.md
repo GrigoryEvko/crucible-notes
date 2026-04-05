@@ -1,0 +1,600 @@
+# Mercury Encoder Pipeline
+
+Mercury is NVIDIA's intermediate encoding layer between the optimizer's Ori IR and native SASS machine code. It is not a direct binary encoding of SASS -- it is a separate representation that contains pseudo-instructions, lacks dependency barriers, and requires multiple transformation passes before it becomes executable GPU code. The Mercury pipeline occupies phases 113--122 of the 159-phase PhaseManager, forming a six-stage sub-pipeline: encode/decode verification, pseudo-instruction expansion, two WAR-hazard passes (one before and one after operation expansion), scoreboard/latency generation ("opex"), and final SASS microcode emission. All recent GPU architectures (SM 75+) use Mercury as the encoding backend; SM 100+ (Blackwell) defaults to "Capsule Mercury" (`capmerc`), a variant that embeds additional metadata for relocatable patching.
+
+| | |
+|---|---|
+| **Pipeline phases** | 113--122 (8 active phases within Mercury sub-pipeline) |
+| **Core orchestrator** | `sub_6F52F0` (23KB, RunStages -- 18 parameters) |
+| **Master encoder** | `sub_6D9690` (94KB, EncodeInstruction -- largest backend function) |
+| **Opex body** | `sub_6FFDC0` (66KB, EmitInstructions -- scoreboard generation) |
+| **Expansion pass** | `sub_C3CC60` (26KB, MercExpand::run) |
+| **WAR generator** | `sub_6FBC20` (7.4KB, GenerateWARHazards) |
+| **SASS emitter** | `sub_6E4110` (24KB, MercGenerateSassUCode) |
+| **Bitfield insert** | `sub_7B9B80` (216 bytes, 18,347 callers across binary) |
+| **Encoding table funcs** | 530 functions at `0xC66000`--`0xD27000` |
+| **Mercury mode flag** | `*(DWORD*)(context+385) == 2` |
+| **Mode check** | `sub_10ADF10` returns bool from target descriptor |
+| **CLI option** | `--binary-kind mercury,capmerc,sass` |
+
+## Architecture
+
+```
+Phase 113  PostFixForMercTargets          Late Ori fixups for Mercury targets
+Phase 114  FixUpTexDepBarAndSync          Texture dependency bars + sync fixups
+Phase 115  AdvancedScoreboardsAndOpexes   Arch hook point (noop by default)
+Phase 116  ProcessO0WaitsAndSBs           -O0 scoreboard insertion
+                                          ──────────────────────────────
+Phase 117  MercEncodeAndDecode            ┐
+Phase 118  MercExpandInstructions         │  Six-stage Mercury core
+Phase 119  MercGenerateWARs1              │
+Phase 120  MercGenerateOpex               │
+Phase 121  MercGenerateWARs2              │
+Phase 122  MercGenerateSassUCode          ┘
+
+sub_6F52F0 (23KB orchestrator, 18 params)
+  │
+  ├─ [1] Decode:     sub_6F2BF0 (59KB)  — Encode Ori→Mercury binary, decode back
+  │      └─ sub_6D9690 (94KB master encoder switch)
+  │           ├─ sub_6D2750 — append operand word
+  │           ├─ sub_6D28C0 — commit encoded instruction
+  │           ├─ sub_6D9580 — encode literal values
+  │           └─ sub_931690 — create instruction record
+  │
+  ├─ [2] Expansion:  sub_C3CC60 (26KB)  — Expand pseudo-instructions to SASS
+  │      ├─ sub_C37A10 (16KB) — expandInstruction (jump table dispatch)
+  │      ├─ sub_C39B40 (10KB) — expandMemoryOp
+  │      ├─ sub_C3A460 (6KB)  — expandAtomicOp
+  │      ├─ sub_C3B560 (8KB)  — expandTexture
+  │      ├─ sub_C3BCD0 (19KB) — expandControlFlow
+  │      └─ sub_C3E030 (18KB) — finalizeExpansion
+  │
+  ├─ [3] WAR pass 1: sub_6FBC20 (7.4KB) — DEPBAR/scoreboard for pre-opex hazards
+  │      ├─ sub_6FA5B0 — detect WAR hazard per instruction
+  │      ├─ sub_6FA930 — insert scoreboard barrier (opcode 54)
+  │      ├─ sub_6FA7B0 — insert WAITDP (opcode 246)
+  │      └─ sub_6FAA90 — insert stall cycles
+  │
+  ├─ [4] Opex:       sub_6FFDC0 (66KB)  — Generate scoreboards + latency waits
+  │      └─ sub_703480 (1.4KB entry) or sub_7032A0 (2.3KB MercOpex entry)
+  │
+  ├─ [5] WAR pass 2: sub_6FBC20          — Same pass, re-run for opex-introduced hazards
+  │
+  └─ [6] SASS emit:  sub_6E4110 (24KB)  — Final SASS microcode generation
+         └─ sub_735290 — per-instruction encoding pipeline
+              ├─ sub_733FA0 — encode instruction operands
+              ├─ sub_734370 — encode immediates
+              ├─ sub_734820 — encode predicates
+              ├─ sub_734AD0 — encode memory operands
+              └─ sub_734D20 — encode complex operands (texture/surface/barrier)
+```
+
+Each stage logs its completion via trace infrastructure: `"After Decode"`, `"After Expansion"`, `"After WAR post-expansion"`, `"After Opex"`, `"After WAR post-opexing"`.
+
+## Mercury vs SASS vs Capsule Mercury
+
+The ptxas CLI (`sub_703AB0`) accepts `--binary-kind` with three values:
+
+| Mode | CLI value | Default for | Description |
+|---|---|---|---|
+| Mercury | `mercury` | SM 75--99 | Traditional Mercury intermediate encoding |
+| Capsule Mercury | `capmerc` | SM 100+ (Blackwell) | Mercury + embedded PTX source + relocation metadata |
+| Raw SASS | `sass` | (explicit only) | Direct SASS binary output |
+
+Additional CLI flags:
+- `--cap-merc` -- force Capsule Mercury generation
+- `--self-check` -- roundtrip verification: reconstitute SASS from capmerc, compare with original
+- `--out-sass` -- dump reconstituted SASS from capmerc
+
+Mercury mode is flagged at `*(DWORD*)(context+385) == 2`. The function `sub_10ADF10` queries the target descriptor to determine whether Mercury encoding is active for the current architecture.
+
+## Stage 1: MercEncodeAndDecode -- Roundtrip Verification
+
+| | |
+|---|---|
+| **Phase** | 117 |
+| **Orchestrator** | `sub_6F52F0` (23KB, 18 parameters) |
+| **Decode worker** | `sub_6F2BF0` (59KB) |
+| **String** | `"After EncodeAndDecode"` |
+
+This phase encodes the Ori IR instruction stream into Mercury binary form, then immediately decodes it back and verifies that the decoded result matches the original. This is a self-consistency check that catches encoding bugs early -- if the roundtrip fails, the instruction cannot be correctly represented in Mercury format.
+
+The orchestrator `sub_6F52F0` passes the entire pipeline state (18 parameters) to `sub_6F2BF0`, which performs the actual encode-decode cycle using the master encoder `sub_6D9690`.
+
+### Master Encoder -- `sub_6D9690` (94KB)
+
+The central SASS instruction encoding function and the single largest function in the ptxas backend. It contains a massive `switch` statement on the instruction type field (read from `instruction+8`) with cases covering every SASS instruction format.
+
+```c
+// Simplified encoding flow
+void EncodeInstruction(context, instruction) {
+    int type = *(int*)(instruction + 8);
+    uint64_t base = 0x2000000000LL;     // encoding base constant
+
+    switch (type) {
+    case 61:    // FFMA with literal operand
+        sub_6D9580(ctx, operand);       // encode literal
+        break;
+    case 455:   // complex multi-operand format
+        // ... bit-field extraction and assembly ...
+        break;
+    // ... hundreds of cases ...
+    }
+
+    // Common: append operand words, commit
+    sub_6D2750(ctx, word);              // append 8-byte operand word
+    sub_6D28C0(ctx);                    // commit instruction record
+}
+```
+
+Encoding details:
+- Instructions are encoded as sequences of 8-byte words
+- Operand word type prefix in bits `[31:28]`: `0x1` = register, `0x5` = immediate/constant, `0x6` = control/modifier, `0x7` = literal, `0x9` = special
+- Control words carry the `0x60000000` prefix
+- Architecture-specific bits accumulated in a flags variable, with SM 100+ extensions via knob 4176
+- `sub_7D6860` handles data type encoding (FP32/FP64/INT, etc.)
+- `sub_C00BF0` provides opcode lookup from the encoding tables
+- `sub_91D160` handles register operand encoding
+
+### Instruction Word Format
+
+The Mercury instruction word is a 1280-bit (160-byte, 20-QWORD) structure located at offset `+544` in the encoder object. All bit-field insertions use `sub_7B9B80`:
+
+```c
+// sub_7B9B80 -- bitfield insert (216 bytes, 18,347 callers)
+// Signature: (encoder_obj, bit_offset, bit_width, value)
+void bitfield_insert(void *a1, int bit_offset, int bit_width, uint64_t value) {
+    uint64_t mask = (1ULL << bit_width) - 1;
+    int qword_idx = bit_offset >> 6;
+    int bit_pos   = bit_offset & 63;
+    *(uint64_t *)(a1 + 8 * qword_idx + 544) |= (value & mask) << bit_pos;
+    // handles cross-QWORD boundary cases in a loop up to bit 1280
+}
+```
+
+Two companion helpers run before operand encoding:
+- `sub_7B9D30` (38 bytes) -- clears the 16-entry constant buffer slot table at `a1+468` to `0xFF`
+- `sub_7B9D60` (408 bytes) -- encodes reuse flags (1 bit) and predicate register index (5 bits) into the instruction word
+
+### Encoding Table Functions (530 functions)
+
+The range `0xC66000`--`0xD27000` contains 530 functions that each initialize one row of the instruction format table. Every function calls `sub_7B9B80` multiple times to describe the SASS bit layout for one instruction format variant:
+
+```c
+// Example: sub_C6CF40 — one instruction format initializer
+void init_format_XYZ(void *a1) {
+    sub_7B9B80(a1, 0,    4, 1);       // bits[0:3]   = opcode field = 1
+    sub_7B9B80(a1, 4,    3, 0);       // bits[4:6]   = format = 0
+    sub_7B9B80(a1, 8,    9, 0xC);     // bits[8:16]  = subopcode = 12
+    sub_7B9B80(a1, 0x11, 8, 0x13);    // bits[17:24] = modifier = 19
+    sub_7B9B80(a1, 0x19, 7, 5);       // bits[25:31] = unit = 5
+}
+```
+
+Function sizes are remarkably uniform (1000--1600 bytes), reflecting mechanical code generation -- roughly 10 functions per ISA opcode group, covering all SASS formats for SM 100+.
+
+## Stage 2: MercExpandInstructions -- Pseudo-Instruction Expansion
+
+| | |
+|---|---|
+| **Phase** | 118 |
+| **Entry** | `sub_C3CC60` (26KB, MercExpand::run) |
+| **Strings** | `"After MercExpand"`, `"EXPANDING"` |
+
+Mercury uses abstract instruction forms that may map to multiple real SASS instructions. This phase expands every pseudo-instruction into its concrete SASS equivalent sequence. The expansion is type-dispatched:
+
+| Handler | Size | Instruction class |
+|---|---|---|
+| `sub_C37A10` | 16KB | General instruction expansion (jump table with 4+ cases) |
+| `def_C37B2E` | 13KB | Complex expansion cases (default handler, creates new nodes) |
+| `sub_C39B40` | 10KB | Memory operations (LDG, STG, LDS, etc.) |
+| `sub_C3A460` | 6KB | Atomic operations |
+| `sub_C3B560` | 8KB | Texture operations |
+| `sub_C3BCD0` | 19KB | Control flow (branches, jumps, calls) |
+
+`sub_C3CC60` iterates over every instruction in the function, dispatching to the appropriate handler. Handlers create new instruction nodes, link them into the list, and delete the original pseudo-instruction. After all expansions, `sub_C3E030` (18KB) performs finalization and cleanup.
+
+The expansion engine also uses `sub_719D00` (50KB), which builds output for expanded instructions across different operand widths (32/64/128-bit, predicate). The four nearly identical code blocks within that function correspond to template instantiations over operand width types.
+
+## Stage 3: WAR Hazard Resolution (Phases 119, 121)
+
+| | |
+|---|---|
+| **Phases** | 119 (MercGenerateWARs1), 121 (MercGenerateWARs2) |
+| **Entry** | `sub_6FC220` / `sub_6FC240` |
+| **Main pass** | `sub_6FBC20` (7.4KB) |
+| **String** | `"After MercWARs"` |
+| **Knob** | #16 (WAR generation control) |
+
+Write-After-Read hazards occur when an instruction reads a register that a later instruction will overwrite -- the hardware pipeline can execute them out of order, causing the read to see the wrong value. The WAR pass inserts explicit DEPBAR (dependency barrier) instructions and scoreboard annotations to force correct ordering.
+
+Two passes are needed: WAR1 runs after expansion but before opex, and WAR2 runs after opex. The second pass exists because opex itself introduces new instructions (scoreboard waits, synchronization barriers) that create additional WAR hazards not present in the pre-opex stream.
+
+### WAR Pass Algorithm -- `sub_6FBC20`
+
+```c
+// Simplified WAR generation pass
+void GenerateWARs(context) {
+    // Guard conditions
+    if (!(context->instr_flags & 1))  return;  // no WAR-sensitive instrs
+    if (context->mode != 2)           return;  // not Mercury mode
+
+    // Per-instruction walk
+    for (instr = first; instr != end; instr = instr->next) {
+        // Detect hazard
+        int severity = DetectWARHazard(state, instr);  // sub_6FA5B0
+
+        if (severity >= 3) {
+            InsertScoreboardBarrier(state, instr);       // sub_6FA930, opcode 54
+            InsertWAITDP(state, instr);                  // sub_6FA7B0, opcode 246
+            InsertWARStalls(state, instr, severity);     // sub_6FAA90
+        }
+    }
+
+    PostWARAdjustment(state);    // sub_6FB850
+    FinalizeWARPass(state);      // sub_6FB350
+}
+```
+
+### WAR Hazard Detection -- `sub_6FA5B0` (2.5KB)
+
+The detector classifies instructions by opcode:
+- **Always hazardous** (opcodes 49, 248, 92): unconditionally increment the WAR counter
+- **Conditionally hazardous** (opcode 75): partial hazard depending on operand configuration
+- **Special handling** (opcodes 35, 246): store/scoreboard instructions with custom WAR rules
+- **Filtered out**: `(opcode - 34) > 0x2C` plus bitmask `0x100000400001` for irrelevant types
+
+Architecture-specific hazard rules are dispatched through vtable methods at offsets +968, +1008, +528, and +504.
+
+The detector maintains per-instruction state:
+- `*(DWORD*)(state+2)` -- WAR counter (incremented per detected hazard)
+- `*(DWORD*)(state+3)` -- severity level (3 = medium, 4 = high)
+
+### Inserted Instructions
+
+**DEPBAR / Scoreboard barrier** (opcode 54) -- `sub_6FA930`:
+- Created when `*(BYTE*)(instr+48) & 0x10` is set (barrier-needed flag)
+- Barrier type extracted from bits 7:5 of the flag byte
+- Encoding: `*(DWORD*)(new_instr+56) = 4` (barrier format)
+- Control bits: `*(DWORD*)(new_instr+48) &= 0xFFF83FFF | 0x50000`
+
+**WAITDP** (opcode 246) -- `sub_6FA7B0`:
+- Skipped if a WAITDP already exists at the insertion point
+- Operands configured with codes 102/467 and 301/1520
+- Uses FNV-1a hash lookup for instruction deduplication
+
+**Stall cycles** -- `sub_6FAA90` (7.9KB):
+- Computes required stall cycles from architecture-specific latency tables
+- Vtable methods at +888, +896, +904 for stall calculation
+- GPU family dispatch: `v8[14] == 9` triggers specific handling
+- Adjusts stall count fields in the instruction control word
+
+## Stage 4: Opex -- Operation Expansion
+
+| | |
+|---|---|
+| **Phase** | 120 (MercGenerateOpex) |
+| **Entry** | `sub_703480` (1.4KB, RunOpexPass) |
+| **MercOpex entry** | `sub_7032A0` (2.3KB, RunMercOpexPass) |
+| **Body** | `sub_6FFDC0` (66KB) |
+| **String** | `"After MercOpex"` |
+| **Knobs** | #17 (expansion options), #743 (reduce-reg), #747 (dynamic batch) |
+
+"Operation expansion" is the most complex stage. It generates the dependency scoreboards, computes latency waits, and inserts synchronization barriers that the hardware needs to manage instruction-level parallelism. After opex, the instruction stream contains all the scheduling metadata required for correct execution.
+
+### Entry Points
+
+Two entry paths exist, both calling the same `sub_6FFDC0` body:
+
+**`sub_703480`** (RunOpexPass, 1.4KB):
+1. Creates pipeline context via `sub_6FC280`
+2. Queries knob #17 to disable WAR penalty flags: `*(context->flags+52) &= ~0x10`
+3. Architecture check: `*(DWORD*)(context+52) == 20481` (SM 100a)
+4. For SM 100a: queries knob at offset 1296/1304 for loop unroll factor
+5. Sets Mercury mode: `*(DWORD*)(context+385) = 2`
+6. Calls `sub_6FFDC0` for actual expansion
+
+**`sub_7032A0`** (RunMercOpexPass, 2.3KB):
+- Nearly identical to `sub_703480`
+- Additionally calls `sub_10ADF10` to verify Mercury mode is active
+- Allocates 40-byte + 24-byte records for Mercury-specific context
+- Calls `sub_6FED20` to destroy previous Mercury context before creating new one
+
+### Opex Body -- `sub_6FFDC0` (66KB)
+
+This 66KB function with 200+ local variables performs:
+1. **Instruction iteration** -- walks the instruction list per basic block
+2. **Latency computation** -- determines execution latency for each instruction based on opcode, functional unit, and architecture
+3. **Scoreboard allocation** -- assigns dependency scoreboard entries to track producer-consumer relationships
+4. **Wait insertion** -- inserts `DEPBAR.WAIT` instructions where a consumer must wait for a producer to complete
+5. **Stall count computation** -- sets per-instruction stall counts in the scheduling control word
+6. **Barrier generation** -- inserts memory barriers and synchronization points
+
+The function queries three knobs that control scheduling behavior:
+- **Knob #17**: expansion options, WAR penalty flag control
+- **Knob #743**: reduce-reg scheduling mode (minimize register pressure)
+- **Knob #747**: dynamic batch scheduling mode
+
+New instructions created by opex use `sub_10B1F90` (instruction allocator) and `sub_10AE590` (operand configuration).
+
+## Stage 6: SASS Microcode Emission
+
+| | |
+|---|---|
+| **Phase** | 122 (MercGenerateSassUCode) |
+| **Entry** | `sub_6E4110` (24KB) |
+
+The final stage converts the fully expanded, WAR-resolved, scoreboard-annotated Mercury stream into native SASS binary. This is the point of no return -- after this phase, the output is executable GPU machine code.
+
+`sub_6E4110` takes 8 parameters (context, instruction list, descriptors, format info, ...) and dispatches to the per-instruction encoding pipeline:
+
+```
+sub_6E4110 (24KB, final SASS emission)
+  ├─ sub_735290 — per-instruction encoding pipeline
+  │    ├─ sub_733FA0 (5.1KB)  — encode instruction operands
+  │    │    └─ sub_733870 (10KB) — source operand encoder
+  │    ├─ sub_734370 (6.1KB)  — encode immediates
+  │    ├─ sub_734820 (4.1KB)  — encode predicates
+  │    ├─ sub_734AD0 (3.3KB)  — encode memory operands
+  │    └─ sub_734D20 (8.1KB)  — encode complex operands (texture/surface/barrier)
+  ├─ sub_726E00 (30.6KB) — instruction encoding with FNV-1a dedup cache
+  │    └─ sub_7266A0 (11.7KB) — hash table lookup (24-byte entries, separate chaining)
+  ├─ sub_6E3F80 (2.2KB) — encode branch offsets
+  ├─ sub_6E3560 (2.6KB) — finalize scheduling control words
+  └─ sub_712E70 (9.6KB) — handle relocations (cross-BB branch targets)
+```
+
+The encoding pipeline uses FNV-1a hashing (seed `0x811C9DC5`, multiplier `16777619`) to cache instruction encodings and avoid re-encoding identical instructions.
+
+## Architecture-Specific Dispatch
+
+Architecture selection reads `*(int*)(config + 372) >> 12` to determine the SM generation. A vtable at `*(context+416)` with approximately 200 methods provides per-architecture behavior for encoding, latency tables, and hazard rules.
+
+| SM generation | `config+372 >> 12` | SM versions |
+|---|---|---|
+| Kepler | 3 | sm_30--sm_37 |
+| Maxwell | 5 | sm_50--sm_53 |
+| Pascal | 6 | sm_60--sm_62 |
+| Volta/Turing | 7 | sm_70--sm_75 |
+| Ampere | 8 | sm_80--sm_89 |
+| Hopper | 9 | sm_90--sm_90a |
+| Blackwell | (10+) | sm_100--sm_121 |
+
+The encoder state initializer `sub_6E8EB0` (64KB) sets architecture-specific flags and populates the opcode descriptor table (40+ entries mapping internal opcode IDs to encoding words). For SM 80 (`0x5000`) it sets bits 1 and 8; for SM 84 (`0x5004`) it sets bits 16 and 64.
+
+Vtable dispatch helpers at `0xC65530`--`0xC656E0`:
+- `sub_C65530` -- 3-key dispatch (opcode, subop1, subop2), binary search through 24-byte table entries
+- `sub_C65600` -- instruction-keyed dispatch, reads keys from `instr+12/14/15`
+- `sub_C656E0` -- instruction-keyed dispatch with fallback to default handler `sub_9B3020`
+
+## Data Structures
+
+### Mercury Instruction Word
+
+```
+Offset  Size    Field
+------  ------  --------------------------------------------------
++0      8B      vtable pointer (encoder object)
++468    64B     Constant buffer slot table (16 x DWORD, cleared to 0xFF)
++532    4B      Constant buffer slot count
++544    160B    Instruction word (1280 bits = 20 QWORDs)
+                — populated by sub_7B9B80 bitfield inserts
+                — max addressable bit: 1280
+```
+
+### SASS Encoding Record (~264 bytes)
+
+Output of `sub_6D9690`. Contains the encoded instruction words, operand data, and metadata. The encoding base constant is `0x2000000000LL`.
+
+### Pipeline Context
+
+```
+Offset  Size    Field
+------  ------  --------------------------------------------------
++52     4B      Architecture ID (20481 = sm100a)
++236    1B      Uses shared memory flag
++284    4B      Function flags (bits 0, 3, 7 checked by WAR pass)
++385    4B      Mercury mode flag (2 = Mercury/Capsule mode)
++416    8B      Architecture vtable pointer (~200 virtual methods)
+```
+
+### Scheduling Control Word (per SASS instruction)
+
+```
+Offset  Size    Field
+------  ------  --------------------------------------------------
++48     4B      Control bits (barrier flags at bits 17:13)
++56     4B      Encoding format (4 = barrier format)
++144    4B      Scheduling slot
++164    4B      Resource class
++168    1B      Stall bits
++236    4B      Latency value
+```
+
+## Mercury Instruction Node Layout
+
+The Mercury pipeline (phases 117--122) operates on its own instruction representation, distinct from the 296-byte Ori IR instruction node documented in [Instructions & Opcodes](../ir/instructions.md). The master encoder `sub_6D9690` (phase 117) reads Ori IR nodes and produces Mercury instruction nodes; all subsequent phases -- expansion, WAR resolution, opex, and SASS emission -- operate exclusively on Mercury nodes.
+
+### Allocation
+
+Mercury instruction nodes are allocated by `sub_10AF8C0` (92 lines), which either recycles a node from a per-block free list or allocates exactly **160 bytes** from the arena. The primary API wrappers are `sub_10B1F90` and `sub_10B1EE0`, which call `sub_10AF8C0` and perform additional bookkeeping (FNV-1a deduplication cache registration, scheduling state propagation).
+
+### Node Layout (160 bytes)
+
+| Offset | Size | Type | Init value | Field | Description |
+|--------|------|------|-----------|-------|-------------|
+| +0 | 8 | `ptr` | 0 | `next` | Forward pointer in per-block doubly-linked list |
+| +8 | 8 | `ptr` | 0 | `prev` | Backward pointer in per-block doubly-linked list |
+| +16 | 8 | `ptr` | source loc | `source_loc` | Source location copied from context (slot 124) |
+| +24 | 4 | `u32` | 772 (0x304) | `node_type` | Constant type marker -- never modified after init |
+| +28 | 2 | `u16` | 0xFFFF | `opcode` | SASS opcode number (0xFFFF = sentinel / BB boundary) |
+| +30 | 1 | `u8` | 0xFF | `sub_key_1` | Encoding sub-key 1 (format variant selector) |
+| +31 | 1 | `u8` | 0xFF | `sub_key_2` | Encoding sub-key 2 (modifier selector) |
+| +32 | 4 | `u32` | counter | `sequence_id` | Monotonically increasing ID; FNV-1a dedup key |
+| +36 | 4 | --- | --- | (padding) | Alignment to 8-byte boundary |
+| +40 | 8 | `ptr` | ctx | `context_ptr` | Back-pointer to allocator / code-object base |
+| +48 | 8 | `u64` | 0 | `encoded_data_0` | Encoded operand / property data |
+| +56 | 8 | `u64` | 0xFFFFFFFF | `sentinel_56` | Sentinel / uninitialized marker |
+| +64 | 8 | `u64` | 0 | `encoded_data_1` | Encoded operand / property data |
+| +72 | 8 | `u64` | 0 | `encoded_data_2` | Encoded operand / property data |
+| +80 | 8 | `u64` | 0 | `encoded_data_3` | Encoded operand / property data |
+| +88 | 8 | `i64` | -1 | `sentinel_88` | Sentinel (end-of-data marker) |
+| +96 | 8 | `i64` | -1 | `sentinel_96` | Sentinel |
+| +104 | 8 | `u64` | 0xFFFFFFFF | `sentinel_104` | Sentinel |
+| +112 | 8 | `u64` | 0 | `reserved_112` | Reserved (zeroed) |
+| +120 | 8 | `u64` | 0 | `reserved_120` | Reserved (zeroed) |
+| +128 | 8 | `ptr` | alloc'd | `sched_ctrl_ptr` | Pointer to 60-byte scheduling control record |
+| +136 | 8 | `ptr` | ctx sched | `sched_context` | Context scheduling state (context slot 52) |
+| +144 | 8 | `i64` | 0xFFFFFFFF | `sched_slot` | Scheduling slot (sentinel = unscheduled) |
+| +148 | 4 | `u32` | 0 | `node_flags` | Node flags (bit 1 = BB boundary, bit 10 = 0x400) |
+| +152 | 4 | `u32` | 0xFFFFFFFF | `block_seq` | Basic-block sequence number |
+
+The opcode field at +28 carries the Mercury/SASS opcode number. Known values include: 0xFFFF (sentinel, BB boundary marker), 54 (DEPBAR -- dependency barrier), 246 (WAITDP -- wait for dependency pipeline). All other values are SASS instruction opcodes.
+
+### Scheduling Control Record (60 bytes)
+
+Each Mercury instruction node points (via +128) to a separately allocated 60-byte scheduling control record. This record carries barrier state, stall counts, and encoding format metadata that the WAR and opex passes read and modify.
+
+| Offset | Size | Type | Init | Field | Description |
+|--------|------|------|------|-------|-------------|
+| +0 | 16 | `xmm` | SSE const | `header` | SSE-initialized from `xmmword_2027620` |
+| +16 | 16 | `xmm` | SSE const | `latency` | SSE-initialized from `xmmword_202DC90` |
+| +32 | 1 | `u8` | 0 | `flag_32` | General-purpose flag byte |
+| +36 | 8 | `i64` | -1 | `barrier_state` | Barrier tracking sentinel |
+| +44 | 4 | `u32` | 0 | `stall_count` | Stall cycle count |
+| +48 | 4 | `u32` | 0xEE (low byte) | `control_bits` | Scheduling control word; bits 17:13 = barrier type |
+| +56 | 4 | `u32` | 0 | `encoding_format` | Format discriminator (1 = basic, 4 = barrier, 15 = NOP stall) |
+
+The `control_bits` field at sched+48 is the primary target of WAR pass modifications:
+
+```
+Bits 17:13  — barrier type (masked via 0xFFF83FFF then OR'd with type << 13)
+Bit  4      — barrier-needed flag (in byte at sched+50)
+Bits  7:5   — barrier sub-type (in byte at sched+50)
+```
+
+WAR insertion functions modify this field with specific patterns:
+- `sub_6FA930` (InsertScoreboardBarrier): `sched[48] = (sched[48] & 0xFFF83FFF) | 0x50000`; clears bit 4 of sched[50]; sets `sched[56] = 4`
+- `sub_6FA430` (InsertNOP): `sched[48] = (sched[48] & 0xFFF83FFF) | 0x44000`; clears bit 4 of sched[50]; sets `sched[56] = 1`
+- `sub_6FAFD0` (InsertStall): `sched[48] = (sched[48] & 0xFFF83FFF) | 0x3C000`; sets bit 4 of sched[50]; sets `sched[56] = 15`
+
+### Linked-List Structure
+
+Mercury nodes form a doubly-linked list per basic block, managed through the `next` (+0) and `prev` (+8) pointers:
+
+```
+           head (ctx+40)                          tail (ctx+32)
+              |                                      |
+              v                                      v
+         [node_0]  <-->  [node_1]  <-->  ...  <-->  [node_N]
+         next=node_1     next=node_2                 next=0
+         prev=0          prev=node_0                 prev=node_{N-1}
+```
+
+New nodes are inserted before the reference node by `sub_10AF8C0`. The WAR pass (`sub_6FBC20`) iterates forward through the list; `sub_6FB850` (PostWARAdjustment) iterates backward, skipping sentinel nodes (opcode == 0xFFFF).
+
+### FNV-1a Deduplication
+
+The `sequence_id` at +32 serves as the FNV-1a hash key for the instruction deduplication cache. The hash is computed over the 4-byte ID using the standard FNV-1a parameters (seed `0x811C9DC5`, multiplier `16777619`). The cache resides at context+488 (hash table pointer) with capacity at context+496 and entry count at context+480. Each hash table entry is 24 bytes with separate chaining via pointer at entry+0, key at entry+8, and value (Mercury encoding record pointer) at entry+16.
+
+### Relationship to Ori IR Instruction Node
+
+The Mercury node is distinct from the Ori IR instruction node:
+
+| Property | Ori IR node | Mercury node |
+|----------|-------------|--------------|
+| Size | 296 bytes | 160 bytes |
+| Allocator | `sub_7DD010` | `sub_10AF8C0` |
+| Opcode location | +72 (32-bit word) | +28 (16-bit) |
+| Operand model | Packed array at +84 | Encoded data at +48..+120 |
+| Scheduling | Pointer at +40 | Pointer at +128 (60-byte record) |
+| List linkage | +0 / +8 (prev/next) | +0 / +8 (next/prev) |
+| Pipeline phases | 1--116 | 117--122 |
+
+Phase 117 (MercEncodeAndDecode) reads Ori IR nodes via the master encoder `sub_6D9690` and produces Mercury nodes. All subsequent Mercury pipeline phases operate on Mercury nodes exclusively.
+
+## Configuration
+
+| Knob | Purpose | Context |
+|---|---|---|
+| 16 | WAR generation control | Checked in `sub_6FBC20` |
+| 17 | Expansion/opex options; disables WAR penalty flags | `sub_703480` entry |
+| 595 | Scheduling enable check | Scheduling pre-check |
+| 743 | Scheduling reduce-reg mode | `sub_6FFDC0` opex body |
+| 747 | Scheduling dynamic batch mode | `sub_6FFDC0` opex body |
+| 4176 | SM 100+ extension bits for encoding | `sub_6D9690` encoder |
+
+## Diagnostic Strings
+
+| String | Source | Trigger |
+|---|---|---|
+| `"After Decode"` | `sub_6F2BF0` | Decode stage completion |
+| `"After Expansion"` | `sub_6F2BF0` | Expansion stage completion |
+| `"After WAR post-expansion"` | `sub_6F2BF0` | WAR pass 1 completion |
+| `"After Opex"` | `sub_6F2BF0` | Opex stage completion |
+| `"After WAR post-opexing"` | `sub_6F2BF0` | WAR pass 2 completion |
+| `"After MercWARs"` | `sub_6FC240` | WAR pass trace |
+| `"After MercOpex"` | `sub_7032A0` | Opex pass trace |
+| `"After MercExpand"` | `sub_C3DFC0` | Expansion pass trace |
+| `"After EncodeAndDecode"` | `0x23D1A60` | Roundtrip verification |
+| `"EXPANDING"` | `0xC381B3` | Active instruction expansion |
+| `"ENCODING"` | `0x21C2880` | Active instruction encoding |
+
+## Function Map
+
+| Address | Size | Identity |
+|---|---|---|
+| `sub_6D9690` | 94KB | MercuryEncode::EncodeInstruction (master switch) |
+| `sub_6FFDC0` | 66KB | MercuryPipeline::EmitInstructions (opex body) |
+| `sub_6E8EB0` | 64KB | BasicBlock::Initialize (encoder state init) |
+| `sub_6F2BF0` | 59KB | DecodePipeline::DecodeAndExpand |
+| `sub_719D00` | 50KB | ExpansionEngine::buildOutput |
+| `sub_726E00` | 30.6KB | Instruction encoding + FNV-1a dedup cache |
+| `sub_C3CC60` | 26KB | MercExpand::run (pseudo-instruction expansion) |
+| `sub_6FC810` | 24KB | MercuryPipeline::Configure |
+| `sub_6E4110` | 24KB | MercGenerateSassUCode (final SASS emission) |
+| `sub_6F52F0` | 23KB | DecodePipeline::RunStages (orchestrator) |
+| `sub_C3BCD0` | 19KB | MercExpand::expandControlFlow |
+| `sub_6FF070` | 18KB | Predicate handling in expansion |
+| `sub_C3E030` | 18KB | MercExpand::finalizeExpansion |
+| `sub_C37A10` | 16KB | MercExpand::expandInstruction |
+| `sub_C38180` | 13KB | MercExpand::expandInstruction (complex cases) |
+| `sub_7266A0` | 11.7KB | FNV-1a hash table (instruction cache) |
+| `sub_733870` | 10KB | Source operand encoder |
+| `sub_C39B40` | 10KB | MercExpand::expandMemoryOp |
+| `sub_6FAA90` | 7.9KB | WAR stall insertion |
+| `sub_735290` | 7.6KB | Per-instruction SASS encoding pipeline |
+| `sub_6FBC20` | 7.4KB | WAR generation main pass |
+| `sub_C3B560` | 8KB | MercExpand::expandTexture |
+| `sub_734D20` | 8.1KB | Complex operand encoder (texture/surface/barrier) |
+| `sub_C3A460` | 6KB | MercExpand::expandAtomicOp |
+| `sub_734370` | 6.1KB | Immediate operand encoder |
+| `sub_733FA0` | 5.1KB | Instruction operand encoder |
+| `sub_734820` | 4.1KB | Predicate operand encoder |
+| `sub_734AD0` | 3.3KB | Memory operand encoder |
+| `sub_6FA5B0` | 2.5KB | WAR hazard detector |
+| `sub_7032A0` | 2.3KB | RunMercOpexPass (entry) |
+| `sub_6FC280` | 1.8KB | Create pipeline context |
+| `sub_6FA7B0` | 1.7KB | InsertWAITDP (opcode 246) |
+| `sub_703480` | 1.4KB | RunOpexPass (entry) |
+| `sub_6FA930` | 1.4KB | InsertScoreboardBarrier (opcode 54) |
+| `sub_10AF8C0` | ~0.5KB | MercNode::Allocate (160-byte node allocator, core initializer) |
+| `sub_10B1F90` | ~0.2KB | MercNode::Create (wrapper: allocate + dedup cache + sched state) |
+| `sub_10B1EE0` | ~0.2KB | MercNode::Clone (wrapper: allocate from clone source) |
+| `sub_10B14B0` | ~0.2KB | MercNode::CreateBBBoundary (creates sentinel pair, opcode 0xFFFF) |
+| `sub_6FAFD0` | ~1KB | InsertScoreboardStalls (allocate NOP stall nodes) |
+| `sub_6FA430` | ~0.5KB | InsertNOP (allocate NOP barrier nodes) |
+| `sub_7B9B80` | 216B | Bitfield insert primitive (18,347 callers) |
+| `sub_7B9D30` | 38B | Clear constant buffer slot table |
+| `sub_7B9D60` | 408B | Encode reuse flags + predicate |
+
+## Cross-References
+
+- [Instructions & Opcodes](../ir/instructions.md) -- Ori IR instruction node layout (296 bytes, input to Mercury encoder)
+- [Code Generation Overview](./overview.md) -- high-level codegen pipeline context
+- [SASS Instruction Encoding](./encoding.md) -- detailed bit-level encoding format
+- [Capsule Mercury & Finalization](./capmerc.md) -- capmerc variant and `--self-check`
+- [Scoreboards & Dependency Barriers](../scheduling/scoreboards.md) -- DEPBAR/WAITDP semantics
+- [Phase Manager](../passes/phase-manager.md) -- 159-phase pipeline infrastructure
+- [Optimization Levels](../config/opt-levels.md) -- `-O0` vs higher-level scoreboard behavior
+- [Knobs System](../config/knobs.md) -- knob #16, #17, #743, #747 details
