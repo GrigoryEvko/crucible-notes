@@ -1,5 +1,7 @@
 # Instruction Selection
 
+> *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+
 Instruction selection in ptxas is a two-phase process that converts PTX virtual ISA operations into concrete SASS machine opcodes. Unlike LLVM, which uses a single SelectionDAG or GlobalISel framework, ptxas distributes instruction selection across two distinct pipeline stages separated by the entire optimization pipeline: **Phase 1** converts PTX opcodes to Ori IR opcodes during initial lowering (phase 5, `ConvertUnsupportedOps`), and **Phase 2** converts Ori IR to final SASS binary forms during code generation (phases 112--122, ISel driver + Mercury encoder). The two phases serve fundamentally different purposes: Phase 1 legalizes the IR so the optimizer can reason about it, while Phase 2 selects the optimal machine encoding for the target architecture after register allocation and scheduling are complete.
 
 | | |
@@ -13,6 +15,7 @@ Instruction selection in ptxas is a two-phase process that converts PTX virtual 
 | **Arch dispatch tables** | 4 copies at `sub_B128E0`--`sub_B12920` (15,049 bytes each) |
 | **Mercury master encoder** | `sub_6D9690` (94 KB, instruction type switch) |
 | **MercExpand** | `sub_C3CC60` (26 KB, pseudo-instruction expansion) |
+| **SM120 pattern coordinator** | `sub_13AF3D0` (137 KB, 130-case switch, opcodes 2--352) |
 | **Opcode variant selectors** | `sub_B0BE00` (19 KB, class 194), `sub_B0AA70` (5 KB, class 306) |
 
 ## Architecture
@@ -56,7 +59,8 @@ PTX source text
      |  PHASE 2: Ori-to-SASS Selection & Encoding (phases 112+)
      |
      |  sub_B285D0 (ISel driver, 9KB)
-     |    -> sub_C0EB10 (mega-selector, 185KB)
+     |    -> sub_C0EB10 (mega-selector, 185KB, default backend)
+     |    -> sub_13AF3D0 (pattern coordinator, 137KB, SM120 backend)
      |    -> sub_B1FA20 / sub_B20E00 (builder variants)
      |    -> sub_B28F60..sub_B74C60 (~801 DAG pattern matchers)
      |    -> sub_B128E0..sub_B12920 (4 arch dispatch tables)
@@ -835,6 +839,187 @@ The simplest matchers skip operand validation entirely and rely solely on opcode
 | `sub_B28EE0` | `isType11` | `(tag) -> bool` | `tag == 11` |
 | `sub_B28EF0` | `isType8` | `(tag) -> bool` | `tag == 8` |
 
+### SM120 Pattern Coordinator -- `sub_13AF3D0` (137 KB)
+
+The largest ISel function in the binary (137 KB, 4,225 lines, 570+ locals). It is an architecture-specific operand-emission coordinator that runs in Phase 2 as a **parallel backend** to the mega-selector `sub_C0EB10`. The two do not call each other -- they are mutually exclusive implementations of the same ISel protocol, selected per-SM by the vtable in the ISel driver. The mega-selector covers opcodes 7--221 for the default backend; the coordinator covers opcodes 2--352 for the SM120 (consumer RTX 50xx / enterprise Pro) backend.
+
+#### Position in the ISel Pipeline
+
+```
+sub_B285D0 (ISel driver, 9 KB)
+  -> selects builder variant by SM version
+     -> Builder variant vtable dispatch
+        |
+        +-- DEFAULT BACKEND: sub_C0EB10 (mega-selector, 185 KB)
+        |     opcodes 7..221, dual-switch, word_22B4B60 encoding table
+        |
+        +-- SM120 BACKEND: sub_A29220 (instruction iterator, 435 lines)
+              -> sub_13AF3D0 (pattern coordinator, 137 KB)
+                   opcodes 2..352, single switch, inline operand emission
+```
+
+The coordinator is called once per instruction by `sub_A29220`, which walks the instruction list. Before entering the main switch, the coordinator performs a predication pre-test: if bit `0x1000` is set in the opcode word and the opcode is not 169, it queries `vtable[3232/8]` and optionally emits the last source operand via `sub_13A6AE0`.
+
+#### Dispatch Structure
+
+The coordinator reads the opcode from `*(instr+72)` with the standard `BYTE1 & 0xCF` mask (identical to Phase 1's MercConverter) and enters a single 130-case switch. Unlike the mega-selector's dual-switch encoding-slot translation, the coordinator emits operands inline -- each case directly calls `sub_13A6280` (the operand emitter) with explicit operand indices.
+
+```c
+// sub_13AF3D0 -- simplified dispatch skeleton
+char PatternCoordinator(context *a1, instruction *a2, output *a3,
+                        pattern_table *a4, flags a5, int a6) {
+    int opcode = *(DWORD*)(a2 + 72);
+    BYTE1(opcode) &= 0xCF;
+
+    // Pre-dispatch: predication check when bit 0x1000 is set
+    if ((*(a2+72) & 0x1000) && opcode != 169) {
+        if (vtable[3232/8] == sub_868720 || vtable[3232/8]())
+            EmitLastSource(a1[1], a2, operand_count - 2*flag, a3);
+    }
+
+    // Setup output context
+    vtable[104/8](output_ctx, a1, &context_ref);
+
+    switch (opcode) {
+    case 2: case 4: case 7:     // FMA/MAD 2-source
+        operand_span = 16; src_count = 2;
+        goto SHARED_FMA_HANDLER;
+    case 3: case 5:             // FMA/MAD 3-source
+        operand_span = 24; src_count = 3;
+        goto SHARED_FMA_HANDLER;
+    case 6:                     // IMAD/IADD3 with 3+ sources
+        EmitOperand(ctx, instr, 3, out);
+        EmitOperand(ctx, instr, 4, out);
+        EmitOperand(ctx, instr, 5, out);
+        break;
+    case 8:                     // Pure vtable dispatch (vtable+2328)
+        vtable[2328/8](a1, a2, operand_count, a3, a5, 0);
+        break;
+    case 10: case 11: case 151: case 152: case 290: case 291:
+        vtable[2768/8](a1, a2, a3, a4, a5);   // Memory load/store
+        break;
+    case 16:                    // Texture/surface (163-line handler)
+        for (i = first_src; i < last_src; i++)
+            EmitOperand(ctx, instr, i, out);   // loop up to 15 operands
+        break;
+    // ... 120 more cases ...
+    case 329:                   // Variable-count loop + vtable+2328
+        for (i = 0; i < src_count; i++)
+            EmitOperand(ctx, instr, i, out);
+        vtable[2328/8](a1, a2, remaining, a3, a5, 0, 0, 0);
+        break;
+    default:
+        break;                  // no-op passthrough
+    }
+}
+```
+
+#### Opcode Case Routing
+
+The 130 distinct case labels (spanning 82 distinct handler blocks) cover the full SASS opcode range including SM100+/SM120 extensions:
+
+| Opcodes | Handler pattern | Instruction family |
+|---|---|---|
+| 2, 3, 4, 5, 7 | Shared FMA handler with operand-span parametrization | FMA/MAD variants (32/64-bit) |
+| 6 | Inline 3-source emission + optional operands 6/7 | IMAD/IADD3 wide |
+| 8 | Pure vtable+2328 delegation | Builder-only instructions |
+| 10, 11, 151, 152, 290, 291 | vtable+2768 delegation | Memory load/store |
+| 16 | 163-line operand loop (up to 15 sources) | Texture/surface |
+| 20, 21 | vtable+2680/2688 with stub check | Memory/store alternates |
+| 22, 77, 83, 297, 352 | vtable+2744 with `nullsub_463` check | Control flow |
+| 24, 34, 209, 213, 214 | Passthrough: emit src 1 + dst 2 | Simple 2-operand ALU |
+| 29, 95, 96, 190 | Conditional operand-6 check | Predicate-source instructions |
+| 38, 59, 106, 180, 182, 192, 194, 215, 221 | Single `EmitOperand(1)` at high SM | Generic ALU |
+| 42, 53, 55 | `EmitOperand(1)` | Paired ALU |
+| 60, 61, 62, 63, 64 | Comparison / inner sub-opcode switch (case 61: 5 sub-cases) | Compare / set-predicate |
+| 88, 89 | Variable source count (2 or 3) with sign-dependent offsets | Extended FMA |
+| 110, 111, 114, 115, 117 | Warp operand emission | Warp shuffle / vote |
+| 120, 121, 126, 127 | Barrier handler with operand loop at LABEL_53 | Barrier / sync |
+| 139, 140, 141, 143 | `sub_13A4DA0` for commutative operand selection | Commutative ALU |
+| 183 | Extended memory with register-class-6 check | Wide memory |
+| 201, 202, 204 | vtable+2328 delegation | Async / bulk operations |
+| 270, 279, 282, 285, 325--328 | Goto LABEL_53 (barrier/sync shared handler) | Extended memory / warp |
+| 280, 281 | vtable+2896 with `nullsub_239` check, then LABEL_53 | Sync instructions |
+| 329 | Variable-count operand loop + vtable+2328 | Variable-width encoding |
+
+#### Three Competing-Match Selection Mechanisms
+
+The coordinator selects among competing pattern matchers through three mechanisms:
+
+**1. LABEL_750 -- vtable alternate-match dispatch.** Six opcode paths (cases 6, 36, 130, 137, plus opcodes reaching LABEL_119 when `sub_7D6850` confirms a double-precision operand) jump to LABEL_750:
+
+```c
+LABEL_750:
+    replacement = vtable[16/8](output_ctx, instruction);
+    *output = replacement;
+    return;
+```
+
+This is the "try architecture-specific alternate" escape hatch. The vtable slot at offset +16 on the ISel context object points to an SM-specific matcher. If it succeeds, the coordinator's inline emission is entirely bypassed and the replacement instruction is written to the output.
+
+**2. `sub_13A4DA0` -- commutative operand position selector.** Called 12 times for commutative instructions (FMA, IADD3, comparison) where source operands can be swapped for better encoding. The function holds up to 4 pattern entries at offsets +12/+16 through +36/+40, each a `(lo_word, hi_word_mask)` pair. It tests operand properties via `sub_13A48E0` against each entry; the first match returns a preferred operand index. The coordinator then calls `sub_13A6280` with the returned index instead of the default.
+
+```c
+// sub_13A4DA0 -- simplified
+int SelectOperandSlot(pattern_table, instruction, default_slot, alt_slot, out_match) {
+    if (!pattern_table->active) return default_slot;
+    uint64_t operand_desc = GetOperandDescriptor(instruction, default_slot);
+    for (i = 0; i < pattern_table->count; i++) {  // up to 4 entries
+        if (operand_desc matches pattern_table->entry[i])
+            { *out_match = entry[i].preferred; return default_slot; }
+    }
+    // Repeat with alt_slot if no match on default_slot
+    operand_desc = GetOperandDescriptor(instruction, alt_slot);
+    for (i = 0; i < pattern_table->count; i++) {
+        if (operand_desc matches pattern_table->entry[i])
+            { *out_match = entry[i].preferred; return alt_slot; }
+    }
+    return default_slot;
+}
+```
+
+**3. Inline vtable override checks.** Many cases test whether a vtable function pointer equals a known null-stub before calling it. The stub addresses serve as sentinel values -- when the vtable slot has been overridden by an SM-specific implementation, the coordinator calls the override:
+
+| Vtable offset | Default stub | Purpose |
+|---|---|---|
+| +2680 | `sub_A8CBE0` | Memory operation alternate matcher |
+| +2688 | `sub_A8CBF0` | Store operation alternate matcher |
+| +2744 | `nullsub_463` | Control flow alternate |
+| +2632 | `nullsub_233` | Move/convert alternate |
+| +2760 | `nullsub_235` | Atomic/barrier alternate |
+| +2896 | `nullsub_239` | Sync instruction alternate |
+| +3232 | `sub_868720` | Pre-dispatch predication alternate |
+| +3112 | `sub_A8CCA0` | MADC alternate (case 36) |
+
+When the vtable slot holds the stub, the coordinator skips the call and proceeds with its inline emission logic.
+
+#### Primary Callee: `sub_13A6280` (239 lines)
+
+The operand emitter, called 83 times. It reads the operand at `instruction[operand_index + 10]` (each operand is 8 bytes starting at `instruction + 84`), checks the type tag at bits `[31:28]`, and emits:
+
+- **Tag 1 (register):** fast-path returns if register class == 6 (UB/dead register). Otherwise reads the register descriptor from `*(context+88)[reg_index]`, checks register class at descriptor offset +64.
+- **Tags 2/3 (constant/immediate):** calls `sub_7DBC80` to validate constant-bank availability, then `sub_A9A290` for type-5 immediate expansion. Delegates to vtable methods at `*(*(context+1584) + 1504)` and `*(*(context+1584) + 3248)`.
+- **Other types:** pass through to the vtable dispatch chain.
+
+The third parameter (operand index) ranges from 0 to 7 across the coordinator's call sites, with 0/1/2/3 being the most common (corresponding to the first 4 source operands in the Ori IR instruction layout).
+
+#### Function Map Additions
+
+| Address | Size | Identity | Confidence |
+|---|---|---|---|
+| `sub_13AF3D0` | 137 KB | SM120 ISel pattern coordinator (130-case switch, 83x operand emission) | HIGH |
+| `sub_A29220` | 435 lines | Instruction iterator / coordinator caller (per-instruction walk) | HIGH |
+| `sub_13A6280` | 239 lines | Operand emitter (type-tag dispatch, register class 6 fast-path) | HIGH |
+| `sub_13A7410` | -- | Destination operand emitter (with register class 6 check) | MEDIUM |
+| `sub_13A6AE0` | -- | Pre-dispatch source emitter (predicated instruction operands) | MEDIUM |
+| `sub_13A4DA0` | 180 lines | Commutative operand position selector (4-entry pattern table) | HIGH |
+| `sub_13A6F90` | -- | Extended destination emitter (3rd variant, class 6 check) | MEDIUM |
+| `sub_13A6790` | -- | Fenced memory operand emitter | MEDIUM |
+| `sub_13A45E0` | -- | Extra operand emitter (operands 6/7 for wide instructions) | MEDIUM |
+| `sub_13A5ED0` | -- | Modifier flag emitter (operands with 0x18000000 bits) | MEDIUM |
+| `sub_13A75D0` | -- | Register class 6 (UB) operand substitution handler | MEDIUM |
+| `sub_13A48E0` | -- | Operand property extractor (for sub_13A4DA0 matching) | MEDIUM |
+
 ### Architecture Dispatch Tables -- 4 Copies at `sub_B128E0`--`sub_B12920`
 
 Four nearly identical functions (15,049 bytes each) provide architecture-variant opcode dispatch. Despite being only 13 binary bytes each (3 instructions -- a thunk into shared code at `0x1C39xxx`), the decompiled output is 79,562 bytes due to the massive shared switch statement they jump into.
@@ -1058,7 +1243,17 @@ The key architectural difference: LLVM performs instruction selection once, then
 | `sub_B13E10` | 6 KB | Basic modifier dispatcher (21 callees) | HIGH |
 | `sub_B0AA70` | 5 KB | Opcode variant selector (class 306) | HIGH |
 | `sub_9DA5C0` | 2 KB | Opcode class 1 handler | MEDIUM |
-| `sub_13AF3D0` | 137 KB | ISel pattern coordinator (vtable dispatch to matchers) | HIGH |
+| `sub_13AF3D0` | 137 KB | SM120 ISel pattern coordinator (130-case switch, 83x `sub_13A6280`, opcodes 2--352) | HIGH |
+| `sub_A29220` | ~17 KB | SM120 instruction iterator (calls `sub_13AF3D0` per instruction) | HIGH |
+| `sub_13A6280` | ~10 KB | Operand emitter (type-tag dispatch, register class 6 fast-path) | HIGH |
+| `sub_13A4DA0` | ~7 KB | Commutative operand position selector (4-entry pattern table) | HIGH |
+| `sub_13A7410` | -- | Destination operand emitter (with register class 6 check) | MEDIUM |
+| `sub_13A6AE0` | -- | Pre-dispatch source emitter (predicated instruction operands) | MEDIUM |
+| `sub_13A6F90` | -- | Extended destination emitter (3rd variant, class 6 check) | MEDIUM |
+| `sub_13A6790` | -- | Fenced memory operand emitter | MEDIUM |
+| `sub_13A45E0` | -- | Extra operand emitter (wide instruction operands 6/7) | MEDIUM |
+| `sub_13A5ED0` | -- | Modifier flag emitter (operands with 0x18000000 bits) | MEDIUM |
+| `sub_13A48E0` | -- | Operand property extractor (for `sub_13A4DA0` matching) | MEDIUM |
 | `sub_10AE5C0` | tiny | DAGNode_ReadField (field_id to value, delegates to `sub_10D5E60`) | VERY HIGH |
 | `sub_10AE590` | tiny | DAGNode_WriteField (single field write) | VERY HIGH |
 | `sub_10AE640` | tiny | DAGNode_WriteFields (multi-field update) | VERY HIGH |
