@@ -15,6 +15,7 @@ Mercury is NVIDIA's intermediate encoding layer between the optimizer's Ori IR a
 | **Encoding table funcs** | 530 functions at `0xC66000`--`0xD27000` |
 | **Mercury mode flag** | `*(DWORD*)(context+385) == 2` |
 | **Mode check** | `sub_10ADF10` returns bool from target descriptor |
+| **MercConverter** | `sub_9F3340` (7KB orchestrator), `sub_9EF5E0` (27KB operand reorganization) |
 | **CLI option** | `--binary-kind mercury,capmerc,sass` |
 
 ## Architecture
@@ -87,6 +88,109 @@ Additional CLI flags:
 - `--out-sass` -- dump reconstituted SASS from capmerc
 
 Mercury mode is flagged at `*(DWORD*)(context+385) == 2`. The function `sub_10ADF10` queries the target descriptor to determine whether Mercury encoding is active for the current architecture.
+
+## MercConverter -- Operand Reorganization for Encoding
+
+| | |
+|---|---|
+| **Phase** | 141 (MercConverter) |
+| **Orchestrator** | `sub_9F3340` (7KB) |
+| **Post-conversion lowering** | `sub_9EF5E0` (27KB) |
+| **Opcode dispatch** | `sub_9ED2D0` (25KB, shared with phase 5) |
+| **Strings** | `"CONVERTING"`, `"After MercConverter"` |
+
+Phase 141 runs the MercConverter infrastructure a second time, after the full optimization pipeline has completed. While phase 5 (`ConvertUnsupportedOps`) performs the initial PTX-to-SASS opcode conversion early in the pipeline, phase 141 re-invokes the same machinery to handle instructions that were introduced or modified by optimization passes (rematerialization, peephole, loop transformations) and may contain PTX-derived opcodes that were never legalized. After phase 141 completes, the `"After MercConverter"` diagnostic string appears, and every instruction in the IR carries a valid SASS opcode ready for Mercury encoding.
+
+The orchestrator `sub_9F3340` runs two steps sequentially:
+
+1. **Opcode conversion** (`sub_9F1A90`, 35KB): the main MercConverter dispatch documented in [ISel](./isel.md). Converts any remaining PTX-derived opcodes to SASS equivalents via the master switch in `sub_9ED2D0`. Gated by `*(BYTE*)(*(context+8) + 1398) & 0x20`.
+
+2. **Operand reorganization** (`sub_9EF5E0`, 27KB): post-conversion lowering that restructures operand lists into a form the Mercury encoder can consume directly. Gated by `*(BYTE*)(*(context+16) + 1048) != 0` AND `*(context+104) != 0` (non-empty instruction BST).
+
+### Post-Conversion Lowering -- `sub_9EF5E0` (27KB)
+
+This function transforms the BST (binary search tree) of converted instructions produced by step 1 into encoding-ready conversion nodes. For each instruction record in the BST, it performs three operations:
+
+**1. Operand sort.** Calls `sub_9EC160`, a linked-list merge sort (Floyd's slow/fast pointer midpoint, recursive split-and-merge) that sorts the operand chain by the operand index at entry+16. This establishes a canonical ordering required by the encoder.
+
+**2. Contiguous/gap partitioning.** Walks the sorted operand list and classifies each operand into one of two sublists:
+
+```c
+// Simplified partitioning logic (lines 215-348 of decompilation)
+for (op = first; op != sentinel; op = op->next) {
+    int cur_idx  = *(DWORD*)(op + 16);
+    int next_idx = *(DWORD*)(op->next + 16);
+
+    if (next_idx - cur_idx == 32) {
+        // Consecutive register indices -> contiguous sublist
+        append_to_contiguous_list(node, cur_idx);
+    } else {
+        // Non-consecutive -> gap sublist (stores both cur and next index)
+        append_to_gap_list(node, cur_idx, prev_idx);
+    }
+}
+```
+
+The stride of 32 reflects the operand index encoding: `index = register_number * 32 + modifier_bits`. Contiguous operands (stride-32 sequences like R0, R1, R2, R3) represent packed register groups -- common in wide loads (`LDG.128`), GMMA matrix operands, and multi-register moves. The encoder can represent these as a single register-range specifier. Gap operands break the stride and require individual encoding slots.
+
+**3. Conversion node construction.** Allocates a 168-byte conversion node per instruction, inserts it into a per-record BST sorted by `(block_id, sub_block_id)`, and links the two operand sublists:
+
+```
+Conversion Node (168 bytes):
+  +0     8B    BST left child
+  +8     8B    BST right child
+  +16    8B    BST parent
+  +24    4B    block_id
+  +28    4B    sub_block_id
+  +32    48B   Contiguous operand doubly-linked list (6 pointers)
+  +80    4B    Contiguous operand count
+  +88    8B    Contiguous list ref-counted handle
+  +96    48B   Gap operand doubly-linked list (6 pointers)
+  +144   4B    Gap operand count
+  +152   8B    Gap list ref-counted handle
+  +160   1B    Flags
+```
+
+BST insertion calls `sub_7C11F0` for red-black tree rebalancing. The record tracks min/max block IDs at `record+32` and `record+40` for range queries.
+
+### Encoding Validation and Fallback
+
+After building the conversion node, the function attempts encoding:
+
+```c
+// Lines 949-982 of decompilation
+nullsub_644(*(a1+16), node, "CONVERTING");      // diagnostic trace
+int result = sub_7BFC30(node);                   // encoding validation
+
+if (result == -1) {
+    // Encoding failed: recursive fallback
+    sub_9CE210(a1, node);
+    // Continue with next instruction in BST
+} else {
+    // Encoding succeeded: emit to output
+    *(node + 4) = result;                        // store encoding index
+    output_slot = vtable_alloc(*(a1+24), 120);   // allocate output record
+    *(output_slot + 96) = node;                  // link conversion node
+    sub_9314F0(&scratch, *(a1+8), 0xF, 1, 1,    // emit SASS instruction
+               &control_word);                   // control = 0x60000000
+}
+```
+
+`sub_7BFC30` validates the conversion node by traversing its operand tree and checking that the contiguous/gap partition can be represented in the target encoding format. It returns the encoding index on success, or -1 if the instruction's operand pattern cannot be encoded in the available formats.
+
+On failure, `sub_9CE210` (a recursive fallback) re-processes the instruction using a different encoding strategy -- typically splitting the operand group into smaller sub-groups that each fit the available encoding width. This handles edge cases like wide operations with mixed register classes.
+
+### Relationship to Phase 5
+
+Phase 5 and phase 141 share the same code (`sub_9F3340` orchestrator, `sub_9ED2D0` dispatch, `sub_9EF5E0` post-conversion). The difference is context:
+
+| Property | Phase 5 | Phase 141 |
+|---|---|---|
+| Pipeline position | Before optimization | After optimization, before Mercury encoding |
+| Purpose | Convert PTX opcodes to SASS | Re-legalize instructions introduced by optimizer |
+| Input | Raw Ori IR with PTX opcodes | Optimized Ori IR with possibly-illegal opcodes |
+| Output | Optimizer-ready SASS-opcode IR | Encoding-ready IR for Mercury phase 142+ |
+| Gate flag | `*(context+1398) & 0x20` | Same flag, re-checked |
 
 ## Stage 1: MercEncodeAndDecode -- Roundtrip Verification
 
@@ -536,6 +640,8 @@ Phase 117 (MercEncodeAndDecode) reads Ori IR nodes via the master encoder `sub_6
 | `"After MercWARs"` | `sub_6FC240` | WAR pass trace |
 | `"After MercOpex"` | `sub_7032A0` | Opex pass trace |
 | `"After MercExpand"` | `sub_C3DFC0` | Expansion pass trace |
+| `"After MercConverter"` | `0x9F3818` | MercConverter phase completion |
+| `"CONVERTING"` | `sub_9EF5E0` | Active operand reorganization (per instruction) |
 | `"After EncodeAndDecode"` | `0x23D1A60` | Roundtrip verification |
 | `"EXPANDING"` | `0xC381B3` | Active instruction expansion |
 | `"ENCODING"` | `0x21C2880` | Active instruction encoding |
@@ -544,6 +650,13 @@ Phase 117 (MercEncodeAndDecode) reads Ori IR nodes via the master encoder `sub_6
 
 | Address | Size | Identity |
 |---|---|---|
+| `sub_9F1A90` | 35KB | MercConverter::ConvertInstruction (opcode dispatch, phase 5/141) |
+| `sub_9EF5E0` | 27KB | MercConverter::ReorganizeOperands (post-conversion lowering) |
+| `sub_9ED2D0` | 25KB | MercConverter::Dispatch (master opcode switch, `& 0xCF` mask) |
+| `sub_9F3340` | 7KB | MercConverter::Run (orchestrator, calls 9F1A90 then 9EF5E0) |
+| `sub_9EC160` | ~2KB | MergeSort (linked-list merge sort for operand chains) |
+| `sub_7BFC30` | ~4KB | MercConverter::ValidateEncoding (returns -1 on failure) |
+| `sub_9CE210` | ~6KB | MercConverter::FallbackConvert (recursive re-encoding) |
 | `sub_6D9690` | 94KB | MercuryEncode::EncodeInstruction (master switch) |
 | `sub_6FFDC0` | 66KB | MercuryPipeline::EmitInstructions (opex body) |
 | `sub_6E8EB0` | 64KB | BasicBlock::Initialize (encoder state init) |
@@ -590,6 +703,7 @@ Phase 117 (MercEncodeAndDecode) reads Ori IR nodes via the master encoder `sub_6
 
 ## Cross-References
 
+- [ISel & Opcode Selection](./isel.md) -- MercConverter opcode dispatch table (`sub_9ED2D0`), handler details
 - [Instructions & Opcodes](../ir/instructions.md) -- Ori IR instruction node layout (296 bytes, input to Mercury encoder)
 - [Code Generation Overview](./overview.md) -- high-level codegen pipeline context
 - [SASS Instruction Encoding](./encoding.md) -- detailed bit-level encoding format
