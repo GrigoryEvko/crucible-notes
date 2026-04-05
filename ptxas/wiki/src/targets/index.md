@@ -21,7 +21,7 @@ ptxas validates the `--gpu-name` target against three sorted lookup tables, cons
 
 ## Complete SM Table
 
-23 active SM base targets ship in ptxas v13.0.88. Each base target optionally has `a` (accelerated) and/or `f` (feature-reduced) sub-variants. The `CUDA_ARCH` column shows the value the `-D__CUDA_ARCH__` macro expands to.
+23 active SM base targets ship in ptxas v13.0.88 (plus 9 legacy and 2 internal/alias entries retained in the validation table for backward compatibility). Each base target optionally has `a` (accelerated) and/or `f` (feature-reduced) sub-variants. The `CUDA_ARCH` column shows the value the `-D__CUDA_ARCH__` macro expands to.
 
 | SM | `__CUDA_ARCH` | Family | Product | Codegen Factory | Status | Deep Dive |
 |---|---|---|---|---|---|---|
@@ -66,11 +66,12 @@ The base variant (no suffix) produces SASS that runs on the named architecture a
 | `sm_90` | `sm_90a` | -- | `90a0` | -- |
 | `sm_100` | `sm_100a` | `sm_100f` | `100a0` | `100f0` |
 | `sm_103` | `sm_103a` | `sm_103f` | `103a0` | `103f0` |
+| `sm_101` | `sm_101a` | `sm_101f` | -- | -- |
 | `sm_110` | `sm_110a` | `sm_110f` | `110a0` | `110f0` |
 | `sm_120` | `sm_120a` | `sm_120f` | `120a0` | `120f0` |
 | `sm_121` | `sm_121a` | `sm_121f` | `121a0` | `121f0` |
 
-sm_75 through sm_89 have no `a` or `f` variants. sm_90 has only the `a` variant (no `f`). All Blackwell-era targets (sm_100+) have both `a` and `f`.
+sm_75 through sm_89 have no `a` or `f` variants. sm_90 has only the `a` variant (no `f`). All Blackwell-era targets (sm_100+) have both `a` and `f`. `sm_101` is a legacy alias for `sm_110` (Jetson Thor, original internal designation); it passes validation but is not registered as a profile object, so its `CUDA_ARCH` values are not populated.
 
 ## SM Validation Tables
 
@@ -78,34 +79,40 @@ Target name validation uses three sorted arrays searched via `bsearch()`. The CL
 
 ### Base Table -- `unk_1D16220` (32 entries)
 
-Contains all valid base SM names without suffix. Includes legacy architectures no longer supported for active compilation but retained for validation:
+Contains all valid base SM names without suffix, sorted by numeric SM ID. Includes legacy architectures no longer supported for active compilation but retained for validation, plus two internal/alias entries. Each entry is 12 bytes: `{uint32 sm_id, uint32 ptx_major, uint32 ptx_minor}`. The bsearch comparison (`sub_484B70`) compares the numeric `sm_id` extracted from the `--gpu-name` string via `sscanf`.
 
 ```
-sm_20, sm_21, sm_30, sm_32, sm_35, sm_37,     // Fermi/Kepler (legacy)
-sm_50, sm_52, sm_53,                           // Maxwell (legacy)
-sm_60, sm_61, sm_62,                           // Pascal (legacy)
-sm_70, sm_72, sm_73,                           // Volta (legacy)
-sm_75,                                         // Turing (active)
-sm_80, sm_86, sm_87, sm_88, sm_89,             // Ampere/Ada (active)
-sm_90,                                         // Hopper (active)
-sm_100, sm_103, sm_110, sm_120, sm_121         // Blackwell (active)
+sm_10, sm_11, sm_12, sm_13,                    // Tesla (legacy, PTX 1.0--1.2)
+sm_20, sm_21,                                  // Fermi (legacy, PTX 2.0)
+sm_30, sm_32, sm_35, sm_37,                    // Kepler (legacy, PTX 3.0--4.1)
+sm_50, sm_52, sm_53,                           // Maxwell (legacy, PTX 4.0--4.2)
+sm_60, sm_61, sm_62,                           // Pascal (legacy, PTX 5.0)
+sm_70, sm_72,                                  // Volta (legacy, PTX 6.0--6.1)
+sm_75,                                         // Turing (active, PTX 6.3)
+sm_80, sm_82, sm_86, sm_87, sm_88, sm_89,      // Ampere/Ada (active, PTX 6.2--7.8)
+sm_90,                                         // Hopper (active, PTX 7.8)
+sm_100, sm_101, sm_103, sm_110, sm_120, sm_121 // Blackwell (active, PTX 8.6--9.0)
 ```
+
+**sm_82** (PTX 6.2): Undocumented internal Ampere target. Not registered in `sub_6765E0` (no profile object). Serves as the SASS opcode generation boundary (`SM82_FIRST`/`SM82_LAST`, opcode indices 172--193). The anomalously low PTX version requirement (6.2 vs sm_80's 7.0) suggests it was an early development target added before PTX ISA versioning was finalized.
+
+**sm_101** (PTX 8.6): Original internal designation for Jetson Thor, renamed to sm_110 in a later CUDA release. Both entries coexist in the validation table for backward compatibility with PTX files referencing the old name. `sub_6765E0` registers only sm_110; sm_101 is validation-only.
 
 ### Accelerated Table -- `unk_1D161C0` (7 entries)
 
 ```
-sm_90a, sm_100a, sm_103a, sm_110a, sm_120a, sm_121a
+sm_90a, sm_100a, sm_101a, sm_103a, sm_110a, sm_120a, sm_121a
 ```
 
-One Hopper entry, five Blackwell entries.
+One Hopper entry, six Blackwell entries. `sm_101a` is the legacy alias for `sm_110a` (Jetson Thor, original internal designation).
 
 ### Feature-Reduced Table -- `unk_1D16160` (6 entries)
 
 ```
-sm_100f, sm_103f, sm_110f, sm_120f, sm_121f
+sm_100f, sm_101f, sm_103f, sm_110f, sm_120f, sm_121f
 ```
 
-No Hopper entry (sm_90 has no `f` variant). All Blackwell-era.
+No Hopper entry (sm_90 has no `f` variant). All Blackwell-era. `sm_101f` is the legacy alias for `sm_110f`.
 
 ## Architecture Registration -- `sub_6765E0`
 
