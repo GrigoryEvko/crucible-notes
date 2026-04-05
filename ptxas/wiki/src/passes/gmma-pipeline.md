@@ -240,22 +240,263 @@ is_conflict = (node->bitmap[bank_offset + 4] >> bit_index) & 1;
 
 ## Serialization Warnings
 
-When the pipeline cannot be formed correctly, `sub_ACE480` emits one of 10 distinct performance warnings. Each has a unique diagnostic code and is gated by a per-function warning flag at `context->field_208 + 72 + 26280`:
+When the pipeline cannot be formed correctly, `sub_ACE480` (1,908 bytes) emits one of 10 distinct performance warnings. The function receives a packed 64-bit error code: the low 4 bits select the warning case (1--10) and the high 32 bits identify the function that triggered the failure. The function name is resolved via a vtable callback: `context->field_0->vtable[18]->method_1(context->field_0->vtable[18], function_id)`.
 
-| Code | Hex | Condition |
+### Warning Emission Mechanism
+
+Each warning is gated by a per-function flag at `context->field_208 + 72 + 26280`:
+
+- **Byte == 1 with DWORD at +26288 nonzero:** Emit via `sub_895530` (direct diagnostic with source location). Falls back to `sub_7EEFA0` (format-to-buffer, no location) if the source location callback at `context->vtable + 48` is null.
+- **Byte != 1 (default):** Emit via `sub_7FA2C0` (warning-once gate, keyed on hex code at `context + 154`). If the gate passes (first occurrence for this function), emits via `sub_895670` (diagnostic through `context->vtable + 128` callback). This prevents the same warning from being emitted multiple times for the same function.
+
+All warnings use the prefix `"Potential Performance Loss: wgmma.mma_async instructions are serialized due to ..."`.
+
+### Serialization Warning Table
+
+| Case | Hex | Decimal | Message suffix | Source function |
+|---|---|---|---|---|
+| 1 | `0x1D55` | 7509 | `...the presence of Extern calls in the function '%s'` | `sub_ADEB40` |
+| 2 | `0x1D56` | 7510 | `...wgmma pipeline crossing function boundary at a function call in the function '%s'` | `sub_ADEB40` |
+| 3 | `0x1D57` | 7511 | `...insufficient register resources for the wgmma pipeline in the function '%s'` | `sub_ADA7E0`, orchestrator fallback |
+| 4 | `0x1D58` | 7512 | `...insufficient register resources for the function '%s'` | orchestrator resource check |
+| 5 | `0x1D59` | 7513 | `...non wgmma instructions defining input registers of a wgmma between start and end of the pipeline stage in the function '%s'` | `sub_ADEB40`, `sub_AE17C0` |
+| 6 | `0x1D5A` | 7514 | `...non wgmma instructions reading accumulator registers of a wgmma between start and end of the pipeline stage in the function '%s'` | `sub_AE17C0` |
+| 7 | `0x1D5B` | 7515 | `...non wgmma instructions defining accumulator registers of a wgmma between start and end of the pipeline stage in the function '%s'` | `sub_ADEB40`, `sub_AE17C0` |
+| 8 | `0x1D5C` | 7516 | `...ill formed pipeline stage in the function '%s'` | `sub_AE3D40` structural check |
+| 9 | `0x1D5E` | 7518 | `...program dependence on compiler-inserted WG.DP in divergent path in the function '%s'` | `sub_ADEB40` finalization |
+| 10 | `0x1D60` | 7520 | `...program dependence on compiler-inserted WG.AR in divergent path in the function '%s'` | `sub_ADEB40` finalization |
+
+Note: The hex codes are not contiguous. Codes `0x1D5D` (7517) and `0x1D5F` (7519) are advisory injection warnings, not serialization warnings (see below).
+
+### Advisory Injection Warnings
+
+During successful (non-serialized) pipeline fixup, `sub_ADEB40` emits advisory warnings when it injects warpgroup synchronization instructions. These are gated by knob check at `sub_ACBCA0` and the per-instruction flag at `bb_info + 282` bit 3:
+
+| Hex | Decimal | Message |
 |---|---|---|
-| 1 | `0x1D55` | Extern (external function) calls in the function prevent pipelining |
-| 2 | `0x1D56` | WGMMA pipeline crosses a function call boundary |
-| 3 | `0x1D57` | Insufficient register resources for the WGMMA pipeline |
-| 4 | `0x1D58` | Insufficient register resources for the function overall |
-| 5 | `0x1D59` | Non-WGMMA instructions define input registers within a pipeline stage |
-| 6 | `0x1D5A` | Non-WGMMA instructions read accumulator registers within a pipeline stage |
-| 7 | `0x1D5B` | Non-WGMMA instructions define accumulator registers within a pipeline stage |
-| 8 | `0x1D5C` | Ill-formed pipeline stage structure |
-| 9 | `0x1D5D` | Program dependence on compiler-inserted `WG.DP` in divergent path |
-| 10 | `0x1D5E` | Program dependence on compiler-inserted `WG.AR` in divergent path |
+| `0x1D5D` | 7517 | `"warpgroup.wait is injected in around line %d by compiler to allow use of registers defined by GMMA in function '%s'"` |
+| `0x1D5F` | 7519 | `"warpgroup.arrive is injected in around line %d by compiler to allow use of registers in GMMA in function '%s'"` |
 
-The warnings are in the "Potential Performance Loss" category. Each warning message includes the function name via a callback through `context->field_0->vtable[18]->method_1(context->field_0->vtable[18], function_id)`.
+These are informational: they indicate the compiler successfully handled a register conflict by inserting synchronization, without falling back to serialization.
+
+### Detailed Trigger Conditions
+
+#### Case 1 (`0x1D55`): Extern calls prevent pipelining
+
+**Trigger.** During the instruction walk in `sub_ADEB40`, a call instruction (Ori opcode 236) is encountered within a WGMMA pipeline stage, or an operand references a basic block with no instructions (opaque/extern function target). The compiler cannot verify that the callee preserves the accumulator register state.
+
+**Detection code.** In `sub_ADEB40`: when `opcode == 236` (function call), or when a callee basic block's instruction pointer is null (`*(_QWORD*)v114 == 0`), `v206` is set to 1.
+
+**Code pattern that causes it:**
+```cuda
+wgmma.fence;
+extern_function_call();  // <-- triggers case 1
+wgmma.mma_async ...;
+wgmma.commit_group;
+wgmma.wait_group;
+```
+
+**Fix.** Mark the callee as `__forceinline__` so the compiler can see its register usage. Move non-inlineable function calls outside the fence--wait region. Restructure the kernel so that no opaque calls occur between `wgmma.fence` and `wgmma.wait_group`.
+
+#### Case 2 (`0x1D56`): Pipeline crosses function call boundary
+
+**Trigger.** The bitvector conflict check finds a non-WGMMA instruction's register operand colliding with the active accumulator bitvector, at a point where the pipeline already has active state from a preceding call-boundary violation. Specifically, the register is looked up in the balanced binary tree (`node->bitmap[bank_offset + 4] >> bit_index`) and if the conflict bit is set while `v206` was already zero, it is promoted to case 2.
+
+**Detection code.** In `sub_ADEB40` lines 418--426: after the accumulator bitvector lookup returns a match, `v206` is set to 2 (the first conflict after a call boundary was detected).
+
+**Code pattern that causes it:**
+```cuda
+// Function A:
+wgmma.fence;
+wgmma.mma_async ...;
+call function_B();  // pipeline spans across this call
+wgmma.commit_group; // in function_B or after return
+wgmma.wait_group;
+```
+
+**Fix.** Keep the entire fence--mma--commit--wait sequence within a single function. Do not split WGMMA pipeline stages across function boundaries.
+
+#### Case 3 (`0x1D57`): Insufficient register resources for pipeline
+
+**Trigger.** Three distinct paths produce this code:
+
+1. `sub_ADA7E0` returns 3 when its internal call to `sub_AD5120()` fails (line 233). This function attempts to propagate accumulator tracking through the FNV-1a hash table, and failure means the pipeline's register sets cannot be simultaneously tracked.
+2. `sub_AE3D40` (structural validation) returns with low byte 0, meaning `sub_ACE3D0()` rejected the pipeline structure. The orchestrator uses case 3 as the generic fallback (`v20 = 3` at line 66 of `sub_AE4F70`).
+3. `sub_AD8F90` (secondary validation) returns with low byte 0 similarly.
+
+**Code pattern that causes it:**
+```cuda
+// Too many concurrent accumulators
+wgmma.fence;
+wgmma.mma_async D0, ...;  // accum set 0
+wgmma.mma_async D1, ...;  // accum set 1
+wgmma.mma_async D2, ...;  // accum set 2
+// ... many more with distinct accumulators
+wgmma.commit_group;
+wgmma.wait_group;
+```
+
+**Fix.** Reduce the number of concurrent WGMMA operations with distinct accumulator register sets. Split large tile computations into smaller stages with intervening waits. Reduce accumulator tile dimensions.
+
+#### Case 4 (`0x1D58`): Insufficient register resources for function
+
+**Trigger.** The function's overall register pressure (including non-WGMMA code) is too high. The WGMMA pipeline requires dedicated accumulator register banks, and if the function's total register demand exceeds what is available after reserving the pipeline's needs, serialization is triggered.
+
+**Code pattern that causes it:**
+```cuda
+__global__ void kernel(...) {
+    float local_array[256];     // high register pressure
+    complex_computation(local_array);
+    wgmma.fence;
+    wgmma.mma_async ...;       // needs accumulator regs too
+    wgmma.commit_group;
+    wgmma.wait_group;
+}
+```
+
+**Fix.** Reduce register usage in the kernel: use shared memory for large arrays, reduce live variable counts, split the kernel into smaller functions. Compile with `-maxrregcount` to force spilling of non-critical values.
+
+#### Case 5 (`0x1D59`): Non-WGMMA defines input registers
+
+**Trigger.** Two paths:
+
+1. In `sub_ADEB40` (lines 960--990): for each non-WGMMA instruction within a pipeline stage, operand position 4 (WGMMA input operands) is checked. If a non-WGMMA instruction writes to a register that a WGMMA uses as matrix A or B input, and the write is in the same basic block (`v84+24 == v36[6]`) and after the WGMMA (`v84+52 > v36[13]`), the conflict is flagged.
+2. In `sub_AE17C0` (lines 384--386): `sub_AE0D20()` validates the pipeline's input register sets against arrive/wait annotations. Failure at either the arrive set (offset +69) or wait set (offset +74) returns code 5.
+
+**Code pattern that causes it:**
+```cuda
+wgmma.fence;
+// desc_a = make_descriptor(smem_ptr);
+wgmma.mma_async D, desc_a, desc_b;
+desc_a = make_descriptor(smem_ptr + offset);  // <-- redefines input
+wgmma.mma_async D, desc_a, desc_b;            // uses redefined input
+wgmma.commit_group;
+wgmma.wait_group;
+```
+
+**Fix.** Compute all WGMMA input values (descriptors, pointers) before `wgmma.fence`. Use separate register variables for distinct input values within a single pipeline stage. If different tiles need different descriptors, pre-compute them all before entering the pipeline.
+
+#### Case 6 (`0x1D5A`): Non-WGMMA reads accumulators
+
+**Trigger.** Detected only by `sub_AE17C0` (late consistency check), at two points:
+
+1. Lines 707--741: for each WGMMA instruction, operand 0 (accumulator) is examined via `sub_AD4BE0`/`sub_ACBB60`. If the accumulator data set is non-empty (`!sub_ACC3A0`), a non-WGMMA instruction reads from an in-flight accumulator register.
+2. Lines 870--885: same check in a per-basic-block iteration context.
+
+**Code pattern that causes it:**
+```cuda
+wgmma.fence;
+wgmma.mma_async D, A, B;
+float val = D[0];              // <-- reads accumulator before wait
+wgmma.commit_group;
+wgmma.wait_group;
+```
+
+**Fix.** Move all reads of accumulator registers after `wgmma.wait_group`. The accumulator values are undefined until the wait completes. If the compiler cannot automatically insert a `warpgroup.wait` at the read point (e.g., divergent control flow), serialization occurs.
+
+#### Case 7 (`0x1D5B`): Non-WGMMA defines accumulators
+
+**Trigger.** Three paths:
+
+1. In `sub_ADEB40` (lines 994--1028): for each non-WGMMA instruction, operand position 3 is checked. If the operand is a register (not immediate, tag != `0x70000000`), and it belongs to the same basic block and pipeline stage, and the defining instruction's opcode (after masking) is not 309 (wgmma.mma_async), the conflict is flagged.
+2. In `sub_AE17C0` (lines 684--703): `sub_AD4CC0` checks WGMMA accumulator operands against the conflict set. If a match is found and the set is non-empty, code 7 is returned.
+3. In `sub_AE17C0` (lines 1296--1302): a catch-all at the end of the late validation walk.
+
+**Code pattern that causes it:**
+```cuda
+wgmma.fence;
+D[0] = 0.0f;                   // <-- writes to accumulator
+wgmma.mma_async D, A, B;       // D is accumulator
+wgmma.commit_group;
+wgmma.wait_group;
+```
+
+**Fix.** Initialize accumulators before `wgmma.fence`, or use the WGMMA `.useC` mode to let the hardware handle accumulator initialization. Never write to accumulator registers from non-WGMMA instructions inside a pipeline stage.
+
+#### Case 8 (`0x1D5C`): Ill-formed pipeline stage
+
+**Trigger.** `sub_AE3D40` (structural validation) detects that the fence/mma/commit/wait structure is malformed. The function walks the WGMMA sequence and checks structural properties via `sub_ACE3D0`. When the structure check fails (line 447), an error with low byte 0 is returned. The orchestrator maps structural failures to code 3 as fallback, but code 8 is emitted when `sub_ADEB40` detects the stage state machine in an inconsistent state.
+
+**Code pattern that causes it:**
+```cuda
+wgmma.fence;
+if (condition) {
+    wgmma.mma_async D, A, B;
+    wgmma.commit_group;        // commit only on one path
+}
+wgmma.wait_group;              // wait on all paths -- mismatch
+```
+
+**Fix.** Ensure each `wgmma.fence` is matched by exactly one `wgmma.commit_group` and one `wgmma.wait_group` on every control flow path. Keep pipeline stages in straight-line code. Do not use `goto`, early `return`, or conditional branches between fence and wait.
+
+#### Case 9 (`0x1D5E`): WG.DP in divergent path
+
+**Trigger.** During the finalization pass in `sub_ADEB40` (lines 1308--1370), the compiler iterates over `warpgroup.wait` injection points. For each injection, it checks the basic block's convergence flag at `bb_info + 282` bit 3. If bit 3 is NOT set (block is divergent) and `v206` was previously zero, `v206` is set to 9 with the function ID from the basic block at offset +200.
+
+WG.DP = `WARPGROUP.DEPBAR` (dependency barrier), the SASS-level instruction that implements `warpgroup.wait`.
+
+**Code pattern that causes it:**
+```cuda
+wgmma.fence;
+wgmma.mma_async D, A, B;
+wgmma.commit_group;
+if (threadIdx.x < 64) {        // warp-divergent condition
+    use(D[0]);                  // compiler needs WG.DP here, but path is divergent
+}
+wgmma.wait_group;
+```
+
+**Fix.** Ensure WGMMA pipeline stages execute in uniform (non-divergent) control flow. Move conditional logic outside the fence--wait region. Use predication instead of branching for minor variations within a stage.
+
+#### Case 10 (`0x1D60`): WG.AR in divergent path
+
+**Trigger.** During the finalization pass in `sub_ADEB40` (lines 1242--1306), the compiler iterates over `warpgroup.arrive` injection points. When the compiler needs to inject a `warpgroup.arrive` (to start a new pipeline stage after a conflict) but the injection point is in a divergent basic block, `v206` is set to 10. This occurs at line 1302 when a knob-gated diagnostic check at `sub_ACBCA0` indicates the injection is not suppressed but the block divergence prevents safe insertion.
+
+WG.AR = `WARPGROUP.ARRIVE` (arrival barrier), the SASS-level instruction that synchronizes warpgroup warps before entering a pipeline stage.
+
+**Code pattern that causes it:**
+```cuda
+if (threadIdx.x < 64) {        // divergent
+    wgmma.fence;               // <-- compiler needs WG.AR, but divergent
+    wgmma.mma_async D, A, B;
+    wgmma.commit_group;
+    wgmma.wait_group;
+}
+```
+
+**Fix.** Same as case 9. Keep pipeline stage entry points (fences) and exit points (waits) in uniform control flow. All warps in the warpgroup must execute the same WGMMA pipeline structure.
+
+### Orchestrator Error Code Flow
+
+The orchestrator `sub_AE4F70` calls validation functions in sequence. Each returns a packed 64-bit value with the error code in the low bits and a function identifier in the high 32 bits:
+
+```
+sub_AE4F70
+  │
+  ├─ sub_ADEB40 (primary fixup)
+  │    returns: 1, 2, 5, 7, 9, 10 in low 4 bits
+  │    (0 = success)
+  │
+  ├─ sub_ADA7E0 (pipeline consistency)
+  │    returns: 3 if FNV-1a accumulator tracking fails
+  │    (0 = success)
+  │
+  ├─ sub_AE3D40 (structural validation)
+  │    returns: low byte 1 = pass, low byte 0 = fail
+  │    (orchestrator maps fail to case 3)
+  │
+  ├─ sub_AD8F90 (secondary validation)
+  │    returns: low byte 1 = pass, low byte 0 = fail
+  │    (orchestrator maps fail to case 3)
+  │
+  ├─ sub_AE4710 (finalize metadata) -- only on success
+  │
+  └─ sub_AE17C0 (late consistency)
+       returns: 5, 6, 7 in low bits
+       (0 = success)
+```
+
+Any nonzero result triggers the serialization path: `*(BYTE*)(context->field_0->field_1584 + 1920) = 1`, followed by `sub_ACE480` (warning emission) and `sub_AE47B0` (pipeline collapse).
 
 The serialization fallback function `sub_AE47B0` replaces the pipelined WGMMA sequence with individual fence/mma/commit/wait groups per operation, which is functionally correct but eliminates all overlap between tensor core operations.
 
@@ -318,7 +559,10 @@ The Mercury encoder at `sub_62E890` (118 KB) handles the SASS-level encoding of 
 | FNV-1a prime | 16777619 | Hash function prime for register set lookup |
 | FNV-1a offset | `0x811C9DC5` | Hash function offset basis |
 | Live range warning | `0x1CEF` | Warning code for excessive live ranges |
-| Serialization base | `0x1D55` | Base warning code for serialization reasons |
+| Serialization base | `0x1D55` | First serialization warning code (extern calls) |
+| Serialization end | `0x1D60` | Last serialization warning code (WG.AR divergent) |
+| Advisory wait inject | `0x1D5D` | Advisory: warpgroup.wait injected |
+| Advisory arrive inject | `0x1D5F` | Advisory: warpgroup.arrive injected |
 
 ## Key Function Table
 
