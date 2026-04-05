@@ -107,46 +107,50 @@ int adj = (*(uint32_t*)(instr + 72) >> 11) & 2;  // 0 or 2
 int dst_count = *(uint32_t*)(instr + 80) - adj;
 ```
 
-### Selected Opcode Values
+### Canonical Opcode Reference
 
-These numeric opcode values are confirmed across multiple independent decompiled functions (scheduling, encoding, regalloc, peephole):
+The opcode value stored at instruction+72 is the same index into the ROT13 name table at `InstructionInfo+4184`. There is a single numbering system -- the ROT13 table index IS the runtime opcode. This was verified by tracing `sub_BEBAC0` (getName), which computes `InstructionInfo + 4184 + 16 * opcode` with no remapping.
 
-| Base Opcode | SASS Mnemonic | Category | Evidence |
-|-------------|---------------|----------|----------|
-| 18 | `FSETP` / `ISETP` | Set predicate | `sub_7E0030` switch |
-| 23 | `MOV` variant | Data move | `sub_7E0030` case 23 |
-| 25 | `NOP` | No-op | ROT13 table index 25 |
-| 29 | — | Predicated op | `sub_7E0650` switch |
-| 47 | `NOP` / barrier | Barrier variant | Scheduling ready list (opcode 52 in some contexts) |
-| 52 | BB boundary | Basic block delimiter | Ready list skip, `sub_6820B0` |
-| 54 | `BMOV` | Barrier move | `sub_7E6090` case 54 |
-| 72 | `CALL` | Function call | ROT13 table index 71 |
-| 77 | `EXIT` | Thread exit | ROT13 table index 77 |
-| 91 | `ATOM` | Atomic memory op | Encoding switch confirmed |
-| 92 | `RED` | Reduction | Encoding switch confirmed |
-| 93 | `CALL` (encoded) | Call variant | Spill handling, `sub_94F150` |
-| 94 | `OUT` / `OUT_FINAL` | Tessellation output | `sub_7E0650` case 94 |
-| 95 | `EXIT` / `RET` | Exit/return | `sub_7E0030`, `sub_9253C0` |
-| 97 | `CALL` (label) | Label/NOP in sched | Scheduling resource copy |
-| 119 | — | Predicated variant | `sub_7E0030` case 119 |
-| 122 | — | Memory op variant | `sub_7E0030` case 122 |
-| 145 | — | Predicated mem | `sub_7E0030` case 145 |
-| 155 | `LD` variant | Load | Overview page |
-| 173 | `ST` variant | Store | Overview page |
-| 183 | `LD.E` | Extended load | `& 0xFFFFCFFF` mask |
-| 186 | — | Predicated op | `sub_7E0030` case 186 |
-| 190 | — | Has predicate guard | `sub_7E0650` |
-| 195 | `CALL` variant | Call | Reg pressure analyzer |
-| 211 | — | Predicated op | `sub_7E0030` case 211 |
-| 246 | Special | Special handling | BB size scanner sets flag |
-| 263 | — | Skip dst split | `sub_7E6090` case 263 |
-| 267 | `ST` variant | Store | `& 0xFFFFCFFF` mask |
-| 268 | `LD` variant | Load | `& 0xFFFFCFFF` mask |
-| 283 | — | Has predicate guard | `sub_7E0030` case 283 |
-| 287 | — | Has predicate guard | `sub_7E0650` |
-| 288 | `ST.E` | Extended store | Overview page |
-| 310 | — | Multi-src variant | `sub_7E0030` case 310 |
-| 315 | — | Multi-src variant | `sub_7E0030` case 315 |
+The following table lists frequently-referenced opcodes from decompiled code, with their canonical SASS mnemonic names from the ROT13 table. Each opcode appears in 10+ decompiled functions reading `*(instr+72)`.
+
+| Base Opcode | SASS Mnemonic | Category | Reference Count |
+|-------------|---------------|----------|-----------------|
+| 0 | `ERRBAR` | Error barrier (internal) | Sentinel in scheduler |
+| 1 | `IMAD` | Integer multiply-add | 100+ functions |
+| 7 | `ISETP` | Integer set-predicate | `sub_7E0030` switch |
+| 18 | `FSETP` | FP set-predicate | `sub_7E0030` switch |
+| 19 | `MOV` | Move | 80+ functions |
+| 23 | `PLOP3` | Predicate 3-input logic | `sub_7E0030` case 23 |
+| 25 | `NOP` | No-op | Scheduling, peephole |
+| 52 | `AL2P_INDEXED` | BB boundary pseudo-opcode | `sub_6820B0`, 100+ |
+| 54 | `BMOV_B` | Barrier move (B) | `sub_7E6090` case 54 |
+| 61 | `BAR` | Barrier synchronization | Sync passes |
+| 67 | `BRA` | Branch | `sub_74ED70`, CFG builders |
+| 71 | `CALL` | Function call | `sub_7B81D0`, ABI, spill |
+| 72 | `RET` | Return | `sub_74ED70` (with 67) |
+| 77 | `EXIT` | Exit thread | `sub_7E4150`, CFG sinks |
+| 93 | `OUT_FINAL` | Tessellation output (final) | `sub_734AD0`, 25+ |
+| 94 | `LDS` | Load shared | `sub_7E0650` case 94 |
+| 95 | `STS` | Store shared | `sub_7E0030`, 40+ |
+| 96 | `LDG` | Load global | Memory analysis |
+| 97 | `STG` | Store global | `sub_6820B0`, 30+ |
+| 102 | `ATOM` | Atomic | Encoding switch |
+| 104 | `RED` | Reduction | Encoding switch |
+| 111 | `MEMBAR` | Memory barrier | Sync passes |
+| 119 | `SHFL` | Warp shuffle | `sub_7E0030` case 119 |
+| 122 | `DFMA` | Double FP fused mul-add | `sub_7E0030` case 122 |
+| 130 | `HSET2` | Half-precision set (packed) | 20+ functions |
+| 135 | `INTRINSIC` | Compiler intrinsic (pseudo) | ISel, lowering |
+| 137 | `SM73_FIRST` | SM gen boundary (real instr) | Strength reduction |
+| 183 | sm_82+ opcode | Extended mem operation | `& 0xFFFFCFFF` mask |
+
+**Important caveats:**
+
+1. **Opcode 52** (`AL2P_INDEXED` in name table) is universally used as a **basic block delimiter** in 100+ decompiled functions. The SASS mnemonic name may be vestigial; no decompiled code uses it for attribute-to-patch operations.
+
+2. **SM boundary markers** (136=`SM70_LAST`, 137=`SM73_FIRST`, etc.) have marker names in the ROT13 table but are valid runtime opcodes. Instructions with these opcode values exist in the IR and are processed by optimization passes (e.g., strength reduction operates on opcode 137).
+
+3. **Earlier versions of this page** had a "Selected Opcode Values" table that assigned incorrect SASS mnemonics based on behavioral inference rather than the ROT13 name table. Those labels (93=BRA/CALL, 95=EXIT, 97=CALL/label, 130=MOV) were wrong. The correct labels are: 93=`OUT_FINAL`, 95=`STS`, 97=`STG`, 130=`HSET2`. Branch/call/exit are at 67=`BRA`, 71=`CALL`, 77=`EXIT`.
 
 ### Opcode Ranges by SM Generation
 
@@ -661,9 +665,10 @@ void InsertBefore(CodeObject* ctx, Instr* instr, Instr* before) {
 
 Before removing an instruction (`sub_7E0030`, called from both `sub_9253C0` and `sub_925510`), the compiler checks whether the removal is legal. This function examines:
 
-- Whether the instruction is an `EXIT`-class opcode (base opcode 95) with specific operand patterns
+- Whether the instruction is an `STS` (store shared, base opcode 95) with specific operand count and data type patterns (operand_count - adj == 5 with data type codes 1, 2, or 4 prevent removal)
 - Whether a target-specific scheduler hook (vtable offset 2128 on the scheduler context at Code Object +1584) vetoes the removal
-- Whether the instruction is a `MOV` variant (opcode 23) writing to a special register (register file type 9 at descriptor +64)
+- Whether the instruction is a `PLOP3` (predicate logic, opcode 23) writing to a special register (register file type 9 at descriptor +64)
+- Whether the dead-code check (`sub_7DF3A0`) clears the instruction, excluding opcodes 93 (`OUT_FINAL`), 124 (`DMUL`), and 248 (SM90+ opcode) which have required side effects
 - Whether the opcode class has a "must keep" flag in the per-opcode property array at Code Object +776 (`byte[4*opcode + 2] & 4`)
 
 ## Instruction Iteration
@@ -693,7 +698,7 @@ while (instr) {
 
 ### Block-Scoped Iteration
 
-When iterating within a specific basic block (used by scheduling, regalloc, and peephole passes), the block's head instruction pointer at block_entry +0 is the starting point, and iteration continues until the next block boundary (opcode 52) or the list tail:
+When iterating within a specific basic block (used by scheduling, regalloc, and peephole passes), the block's head instruction pointer at block_entry +0 is the starting point, and iteration continues until the next block boundary (opcode 52, named `AL2P_INDEXED` in the ROT13 table but universally used as a BB delimiter pseudo-opcode) or the list tail:
 
 ```c
 // Block info at code_obj+976, 40 bytes per block
