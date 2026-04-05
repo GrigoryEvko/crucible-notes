@@ -676,6 +676,288 @@ SM-version gated: `sub_1C97840(0x20, sm_version)`. Builder constructs with inter
 | 31 | `NEED_CNP_WRAPPER` | `0x04` | 4 | `[sym:4]` flag-only |
 | 32 | `NEED_CNP_PATCH` | `0x04` | 4 | `[sym:4]` flag-only |
 
+## Payload Format Reference (Codes 33--64)
+
+Continuation of the per-attribute wire-format documentation. Same sources and conventions as the 0--32 section above.
+
+### Metadata Flags (33--34, 36, 43)
+
+**Code 33 (`0x21`) -- `EIATTR_EXPLICIT_CACHING`**: Indexed format, flag-only. Signals the kernel uses explicit cache control directives (`ld.ca`, `ld.cg`, etc.). SM-gated via `sub_1C97840(0x21, sm_version)`.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+(no value -- flag only)
+```
+
+Binary evidence: magic `0x2101` (line 1733). Emitted when cache-on flag (`v648`) is set. When both cache-on and cache-off flags are set simultaneously (conflicting directives), `sub_1CC8100` (cache conflict resolver) is called instead of emitting this record. The diagnostic `"Turning caching %s for entry '%s' as per its request"` logs cache resolution decisions.
+
+**Code 34 (`0x22`) -- `EIATTR_ISTYPEP_USED`**: Indexed format, flag-only. Signals the kernel uses `isspacep` (type predicate) instructions.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+(no value -- flag only)
+```
+
+No special builder logic -- passes through the default path.
+
+**Code 36 (`0x24`) -- `EIATTR_SUQ_USED`**: Indexed format, flag-only. Signals the kernel uses surface query instructions.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+(no value -- flag only)
+```
+
+No special builder logic.
+
+**Code 43 (`0x2B`) -- `EIATTR_WMMA_USED`**: Indexed format, flag-only. Signals the kernel uses Warp Matrix Multiply-Accumulate instructions. First attribute introduced in the Volta era (`meta=2`).
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+(no value -- flag only)
+```
+
+No special builder logic.
+
+### Resource Allocation (35, 47, 50, 55--56, 59)
+
+**Code 35 (`0x23`) -- `EIATTR_MAX_STACK_SIZE`**: Indexed format, 4-byte value. Maximum per-thread stack size for recursive call chains, computed via call-graph propagation in `sub_1CC8950`.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+0x04    4     max_stack_bytes   Maximum stack size in bytes
+```
+
+Binary evidence: second switch case `0x23` (line 1128) reads `v354[1]` as the stack size value and stores it in the per-entry array `s[]`. Weak-symbol filtered: bitmask `0x800800060000` includes this code. Mercury suppression: when `sm_version == 0xFF00`, the code byte is zeroed, dropping the record.
+
+**Code 47 (`0x2F`) -- `EIATTR_REGCOUNT`**: Indexed format, 4-byte value. Physical register count per thread. The single most important attribute for GPU occupancy: `max_warps_per_SM = total_registers / (regcount * warp_size)`.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+0x04    4     regcount          Physical registers per thread
+```
+
+Binary evidence: second switch case `0x2F` (line 1176) resolves the symbol and stores the record pointer in `v642[]` (per-entry regcount array). Diagnostic `"invalid index"` (line 1180) fires if the symbol resolves to null. Weak-symbol filtered: bitmask `0x800800060000` includes this code.
+
+**Code 50 (`0x32`) -- `EIATTR_SHARED_SCRATCH`**: Indexed format, 4-byte value. Shared memory scratch space allocated for register spilling.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+0x04    4     scratch_bytes     Shared scratch size in bytes
+```
+
+No special builder logic.
+
+**Code 55 (`0x37`) -- `EIATTR_CUDA_API_VERSION`**: Indexed format, 4-byte value. Records the CUDA API version the kernel was compiled for.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+0x04    4     api_version       CUDA API version number
+```
+
+No special builder logic -- passes through the default path.
+
+**Code 56 (`0x38`) -- `EIATTR_NUM_MBARRIERS`**: Sized format (`0x03`), value encoded in the TLV size field. Number of memory barrier (`mbarrier`) objects used by the kernel.
+
+```
+TLV header: [fmt=0x03][code=0x38][mbar_count:2]
+Total record: 4 bytes (header only)
+```
+
+Binary evidence: magic `0x3803` (14339) at lines 1664 and 2446. The mbarrier count is stored in the 16-bit size field: `*((_WORD *)v511 + 1) = v651` (line 1669). SM-gated via `sub_1C97840(0x38, sm_version)` at lines 1654 and 2436.
+
+Accumulative semantics: the builder sums mbarrier counts from callees during call-graph propagation (second switch case `0x38` at line 1183, falling through to LABEL\_331). If any callee reports `-1` (unknown), the sum stays `-1` (lines 1255--1256). The emission loop at lines 2407--2454 propagates the count to all entry points that call the function.
+
+**Code 59 (`0x3B`) -- `EIATTR_SAM_REGION_STACK_SIZE`**: Indexed format, 8-byte payload. SAM (Streaming Asynchronous Memory) region stack size.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+0x04    4     sam_stack_bytes   SAM region stack size in bytes
+```
+
+Binary evidence: emitted by `sub_1CC86D0` at line 114: `sub_1CC85F0(a1, 0x3B, 8, buf, 0)` where buf is `[sym_index:4][sam_stack:4]`. Only emitted when `sub_1CBD9E0(a1, a2)` returns nonzero, indicating the kernel actually uses SAM regions. Second switch case `0x3B` (line 1186) calls `sub_1CBD940(a1, sym, value)` to record the SAM stack size.
+
+### Cache Control (38)
+
+**Code 38 (`0x26`) -- `EIATTR_LOAD_CACHE_REQUEST`**: Indexed format, 4-byte value. Per-kernel cache mode configuration. Controls whether the driver enables explicit caching for this kernel.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+0x04    4     cache_mode        0 = off, nonzero = on
+```
+
+Binary evidence: second switch case `0x26` (line 1134) is the most complex handler in this range. The builder first checks the function kind: if `(byte & 3) == 1` (device function), the record is dropped by zeroing the code byte (line 1141). For entry-point kernels, the verbose trace `"Turning caching %s for entry '%s' as per its request"` is emitted (line 1153), where `%s` is either `"OFF"` or `"ON"`. When cache\_mode is nonzero: adds the symbol to the caching-on list (`v639[]`) and sets the per-entry status to 2. When cache\_mode is zero: sets status to 1 (off). The `v648` and `v655` flags track the presence of on/off requests for conflict detection.
+
+### Global Flags (44)
+
+**Code 44 (`0x2C`) -- `EIATTR_HAS_PRE_V10_OBJECT`**: Value format (`0x02`), global scope. Signals the compilation unit contains pre-CUDA 10 compiled code.
+
+```
+TLV header: [fmt=0x02][code=0x2C][size:2]
+Payload:    [flags:4]
+Total record: 8 bytes
+```
+
+Binary evidence: top-level gating at line 686--688 checks three conditions: link mode (`v609 == 2`), toolkit version (`> 0x63`), and SM compatibility (`sub_1C97840(0x2C, sm_version)`). The magic `0x2C01` at line 709 constructs the record with internal format byte 0x01, which the emitter translates to Value format (0x02) for the wire encoding since the record is global scope. This is the only Value-format attribute in the 33--64 range.
+
+### Instruction Offset Tables (37, 39--40, 45--46, 48--49, 52, 57--58)
+
+All attributes in this group use Free format (`0x01`) carrying variable-length arrays of u32 byte offsets into the kernel's `.text` section. None have explicit switch cases in the builder -- they pass through the default path. The payload layout for all is identical:
+
+```
+Payload: u32[] byte offsets into .text section
+Size:    N * 4 bytes (N = size_field / 4)
+```
+
+| Code | Hex | Name | Offset semantics |
+|---:|---:|---|---|
+| 37 | `0x25` | `LD_CACHEMOD_INSTR_OFFSETS` | Load instructions with explicit cache modifier |
+| 39 | `0x27` | `ATOM_SYS_INSTR_OFFSETS` | Atomic instructions with `.sys` scope |
+| 40 | `0x28` | `COOP_GROUP_INSTR_OFFSETS` | Cooperative group instructions |
+| 45 | `0x2D` | `ATOMF16_EMUL_INSTR_OFFSETS` | Emulated FP16 atomic instructions |
+| 48 | `0x30` | `SW2393858_WAR` | HW bug 2393858 patch locations |
+| 49 | `0x31` | `INT_WARP_WIDE_INSTR_OFFSETS` | Integer warp-wide instructions |
+| 52 | `0x34` | `INDIRECT_BRANCH_TARGETS` | Valid targets of indirect branches |
+| 57 | `0x39` | `MBARRIER_INSTR_OFFSETS` | Memory barrier instructions |
+| 58 | `0x3A` | `COROUTINE_RESUME_OFFSETS` | Coroutine resume point offsets |
+
+**Code 46 (`0x2E`) -- `EIATTR_ATOM16_EMUL_INSTR_REG_MAP`**: Free format, but NOT a simple offset array. Carries a register map for 16-bit atomic emulation with a structured per-entry layout rather than flat offsets. The exact sub-record layout is not fully determined from the builder alone (constructed by a separate pass).
+
+```
+Payload: structured register-map entries (not flat u32[] offsets)
+Size:    variable
+```
+
+### Software Workarounds (42, 48, 53--54)
+
+All use Free format (`0x01`) with u32 offset arrays. The driver patches the instructions at the listed byte offsets during kernel load.
+
+| Code | Hex | Name |
+|---:|---:|---|
+| 42 | `0x2A` | `SW1850030_WAR` |
+| 48 | `0x30` | `SW2393858_WAR` |
+| 53 | `0x35` | `SW2861232_WAR` |
+| 54 | `0x36` | `SW_WAR` |
+
+`SW_WAR` (`0x36`) is a generic container -- unlike the numbered WAR attributes, its payload format may include sub-type discriminators, though the builder treats it as a flat pass-through.
+
+### Cluster and Cooperative Launch (41, 61--63)
+
+**Code 41 (`0x29`) -- `EIATTR_COOP_GROUP_MASK_REGIDS`**: Indexed, 4-byte value.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+0x04    4     mask_regids       Register IDs for cooperative group masks
+```
+
+**Code 61 (`0x3D`) -- `EIATTR_CTA_PER_CLUSTER`**: Indexed, 4-byte value.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+0x04    4     ctas_per_cluster  Number of CTAs per cluster (Hopper sm_90+)
+```
+
+**Code 62 (`0x3E`) -- `EIATTR_EXPLICIT_CLUSTER`**: Indexed, flag-only.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+(no value -- flag only, presence signals explicit cluster dimensions)
+```
+
+**Code 63 (`0x3F`) -- `EIATTR_MAX_CLUSTER_RANK`**: Indexed, 4-byte value.
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    4     sym_index
+0x04    4     max_rank          Maximum cluster rank for scheduling
+```
+
+### Compilation Metadata (51, 60, 64)
+
+**Code 51 (`0x33`) -- `EIATTR_STATISTICS`**: Free format. Variable-length compilation statistics (instruction counts, etc.). Internal diagnostic data not consumed by the GPU driver.
+
+```
+Payload: structured statistics data (format varies)
+Size:    variable
+```
+
+**Code 60 (`0x3C`) -- `EIATTR_PER_REG_TARGET_PERF_STATS`**: Free format. Per-register-target performance statistics for the profiler.
+
+```
+Payload: structured performance data (format varies)
+Size:    variable
+```
+
+**Code 64 (`0x40`) -- `EIATTR_INSTR_REG_MAP`**: Free format. Instruction-to-register mapping for profiling and debugging tools.
+
+```
+Payload: structured register-map data
+Size:    variable
+```
+
+### Payload Format Summary (Codes 33--64)
+
+| Code | Name | Wire Fmt | Payload size | Payload layout |
+|---:|---|---:|---:|---|
+| 33 | `EXPLICIT_CACHING` | `0x04` | 4 | `[sym:4]` flag-only |
+| 34 | `ISTYPEP_USED` | `0x04` | 4 | `[sym:4]` flag-only |
+| 35 | `MAX_STACK_SIZE` | `0x04` | 8 | `[sym:4][max_stack_bytes:4]` |
+| 36 | `SUQ_USED` | `0x04` | 4 | `[sym:4]` flag-only |
+| 37 | `LD_CACHEMOD_INSTR_OFFSETS` | `0x01` | N*4 | `u32[]` .text byte offsets |
+| 38 | `LOAD_CACHE_REQUEST` | `0x04` | 8 | `[sym:4][cache_mode:4]` |
+| 39 | `ATOM_SYS_INSTR_OFFSETS` | `0x01` | N*4 | `u32[]` .text byte offsets |
+| 40 | `COOP_GROUP_INSTR_OFFSETS` | `0x01` | N*4 | `u32[]` .text byte offsets |
+| 41 | `COOP_GROUP_MASK_REGIDS` | `0x04` | 8 | `[sym:4][mask_regids:4]` |
+| 42 | `SW1850030_WAR` | `0x01` | N*4 | `u32[]` .text byte offsets |
+| 43 | `WMMA_USED` | `0x04` | 4 | `[sym:4]` flag-only |
+| 44 | `HAS_PRE_V10_OBJECT` | `0x02` | 4 | `[flags:4]` global |
+| 45 | `ATOMF16_EMUL_INSTR_OFFSETS` | `0x01` | N*4 | `u32[]` .text byte offsets |
+| 46 | `ATOM16_EMUL_INSTR_REG_MAP` | `0x01` | var | structured register map |
+| 47 | `REGCOUNT` | `0x04` | 8 | `[sym:4][regcount:4]` |
+| 48 | `SW2393858_WAR` | `0x01` | N*4 | `u32[]` .text byte offsets |
+| 49 | `INT_WARP_WIDE_INSTR_OFFSETS` | `0x01` | N*4 | `u32[]` .text byte offsets |
+| 50 | `SHARED_SCRATCH` | `0x04` | 8 | `[sym:4][scratch_bytes:4]` |
+| 51 | `STATISTICS` | `0x01` | var | structured stats data |
+| 52 | `INDIRECT_BRANCH_TARGETS` | `0x01` | N*4 | `u32[]` .text byte offsets |
+| 53 | `SW2861232_WAR` | `0x01` | N*4 | `u32[]` .text byte offsets |
+| 54 | `SW_WAR` | `0x01` | var | generic WAR data |
+| 55 | `CUDA_API_VERSION` | `0x04` | 8 | `[sym:4][api_version:4]` |
+| 56 | `NUM_MBARRIERS` | `0x03` | 0 | value in TLV size field (u16) |
+| 57 | `MBARRIER_INSTR_OFFSETS` | `0x01` | N*4 | `u32[]` .text byte offsets |
+| 58 | `COROUTINE_RESUME_OFFSETS` | `0x01` | N*4 | `u32[]` .text byte offsets |
+| 59 | `SAM_REGION_STACK_SIZE` | `0x04` | 8 | `[sym:4][sam_stack_bytes:4]` |
+| 60 | `PER_REG_TARGET_PERF_STATS` | `0x01` | var | structured perf data |
+| 61 | `CTA_PER_CLUSTER` | `0x04` | 8 | `[sym:4][ctas:4]` |
+| 62 | `EXPLICIT_CLUSTER` | `0x04` | 4 | `[sym:4]` flag-only |
+| 63 | `MAX_CLUSTER_RANK` | `0x04` | 8 | `[sym:4][max_rank:4]` |
+| 64 | `INSTR_REG_MAP` | `0x01` | var | structured register map |
+
 ## Generation Pipeline
 
 EIATTR attributes are generated during Phase 6 of the ELF output pipeline, after all per-kernel SASS encoding and memory allocation have completed. The generation is orchestrated by two functions working in sequence.
@@ -815,7 +1097,7 @@ A corrected variant `EIATTR_AT_ENTRY_FRAGMENTS` exists at `0x2405DA1`, and `EIAT
 | `sub_1CC8950` | 2,634 B | Barrier/register propagator | Propagates resource counts across call graph |
 | `sub_1CC85F0` | ~180 B | TLV record emitter | Writes individual EIATTR records to the nvinfo linked list |
 | `sub_1C97840` | ~100 B | SM-version gate | Checks if an EIATTR code is valid for a given SM target |
-| `sub_1CC86D0` | ~600 B | EIATTR helper | Cache preference attribute helper |
+| `sub_1CC86D0` | ~600 B | Per-entry stack emitter | Emits `MIN_STACK_SIZE` (0x12), `CRS_STACK_SIZE` (0x1E), `SAM_REGION_STACK_SIZE` (0x3B) per function |
 | `sub_1CC84A0` | ~400 B | EIATTR helper | Attribute lookup helper |
 | `sub_1CC83F0` | ~200 B | EIATTR helper | Section flag extractor |
 | `sub_1CC8100` | ~1 KB | Cache conflict resolver | Resolves conflicting cache preference attributes |
