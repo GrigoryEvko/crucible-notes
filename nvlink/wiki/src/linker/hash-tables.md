@@ -190,54 +190,120 @@ After insertion, the XOR-hash accumulator at offset 56 is updated (`entry_xor_ha
 
 The resize doubles the capacity of bucket chains, the entry array, and the bitmap array as needed throughout this process. All allocations go through the arena allocator (`sub_4307C0`), with realloc handled by `sub_4313A0` when the array was arena-owned or by fresh allocation plus copy when the array was externally provided (tracked by flags bits 0-3).
 
-### String Hash: MurmurHash3 Variant
+### String Hash: MurmurHash3\_x86\_32
 
-The custom string hash function at `sub_44E000` implements a MurmurHash3-style algorithm operating on 4-byte chunks of the input string:
+The custom string hash function at `sub_44E000` (336 bytes) is a faithful implementation of Austin Appleby's MurmurHash3\_x86\_32 algorithm, adapted for null-terminated C strings. Every constant, rotation amount, and mixing step matches the [reference implementation](https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp) exactly. The seed is hardcoded to `0`.
+
+#### Algorithm Constants
+
+| Constant | Hex | Signed 32-bit | Role |
+|---|---|---|---|
+| c1 | `0xCC9E2D51` | `-862048943` | Body mix: first multiply on k |
+| c2 | `0x1B873593` | `461845907` | Body mix: second multiply on k |
+| m | `5` | `5` | Body mix: multiply on h |
+| n | `0xE6546B64` | `-430675100` | Body mix: additive constant on h |
+| fmix1 | `0x85EBCA6B` | `-2048144789` | Finalization: first multiply |
+| fmix2 | `0xC2B2AE35` | `-1028477387` | Finalization: second multiply |
+
+These are identical to the reference MurmurHash3\_x86\_32 constants. The rotation widths are 15 (on k) and 13 (on h).
+
+#### Body: 4-byte Block Processing
+
+The main loop reads 4 bytes at a time as a little-endian `uint32_t` and mixes them into the running hash `h`. Because the input is a null-terminated string (not a length-prefixed buffer), the loop condition checks all four bytes for NUL instead of comparing against a pre-computed block count:
 
 ```c
 uint32_t murmur3_string_hash(const char *str) {
-    uint32_t h = 0;
-    uint32_t len = 0;
+    uint32_t h = 0;          // seed = 0
+    uint32_t len = 0;        // accumulated length for finalization
 
-    // Process 4 bytes at a time
+    // Body: process 4 bytes at a time
     while (str[0] && str[1] && str[2] && str[3]) {
-        uint32_t k = *(uint32_t *)str;
-        k *= 0xCC9E2D51;           // -862048943
+        uint32_t k = *(uint32_t *)str;      // little-endian load
+        k *= 0xCC9E2D51;                    // c1
         k = rotl32(k, 15);
-        k *= 0x1B873593;           // 461845907
+        k *= 0x1B873593;                    // c2
         h ^= k;
         h = rotl32(h, 13);
-        h = h * 5 - 0x19AB949C;   // 5h - 430675100
+        h = h * 5 + 0xE6546B64;            // 5h - 430675100
         len += 4;
         str += 4;
     }
+```
 
-    // Process remaining 1-3 bytes (tail)
+The decompiled form at `sub_44E000` encodes the body as a `while(1)` loop with per-byte NUL checks after each 4-byte block, matching this logic exactly. The variable `v3` is `h`, `v2` tracks `len`, and `v7` is the advancing string pointer.
+
+#### Tail: Remaining 1-3 Bytes
+
+After the main loop exits (because one of the next four bytes is NUL), the function determines how many tail bytes remain (1, 2, or 3) by probing successive bytes. The tail bytes are packed into a `uint32_t` in little-endian order using a right-to-left byte-shift loop, then mixed with the same c1/c2 constants but without the rotate-13 or multiply-by-5 step:
+
+```c
+    // Tail: 1-3 remaining bytes
     int tail_len = 0;
-    if (str[0]) { tail_len = 1; if (str[1]) { tail_len = 2; if (str[2]) tail_len = 3; } }
+    if (str[0]) { tail_len = 1;
+        if (str[1]) { tail_len = 2;
+            if (str[2]) tail_len = 3;
+        }
+    }
     if (tail_len > 0) {
         uint32_t k = 0;
         for (int i = tail_len - 1; i >= 0; --i)
-            k = (k << 8) | str[i];
+            k = (k << 8) | str[i];          // pack little-endian
         len += tail_len;
-        k *= 0xCC9E2D51;
+        k *= 0xCC9E2D51;                    // c1
         k = rotl32(k, 15);
-        k *= 0x1B873593;
+        k *= 0x1B873593;                    // c2
         h ^= k;
     }
+```
 
-    // Finalization mix (fmix32)
-    h ^= len;
+In the decompiled code this appears as the `LABEL_4`/`LABEL_20` paths: `v1` holds `tail_len`, the `do { v4 = byte | (v4 << 8); }` loop packs the bytes, and the expression `461845907 * __ROL4__(-862048943 * v4, 15)` is the c1-rotate-c2 mix.
+
+#### Finalization: fmix32
+
+The finalization avalanche step is applied after XOR-ing in the total byte length. This is the standard `fmix32` from MurmurHash3, which ensures that every bit of the output depends on every bit of the input:
+
+```c
+    // Finalization: fmix32
+    h ^= len;                               // fold in total length
     h ^= h >> 16;
-    h *= 0x85EBCA77;               // -2048144789
+    h *= 0x85EBCA6B;                        // fmix1
     h ^= h >> 13;
-    h *= 0xC2B2AE3D;               // -1028477387
+    h *= 0xC2B2AE35;                        // fmix2
     h ^= h >> 16;
     return h;
 }
 ```
 
-The constants `0xCC9E2D51`, `0x1B873593`, `0x85EBCA77`, and `0xC2B2AE3D` are the standard MurmurHash3\_x86\_32 constants. This is a textbook MurmurHash3 implementation adapted to null-terminated strings (it checks for null bytes instead of using a pre-computed length).
+The decompiled code expresses `fmix32` as a single deeply nested return expression. Expanding `v2 = len`, `v3 = h` (pre-finalization):
+
+```
+t0 = v2 ^ v3                               // h ^= len
+t1 = t0 ^ (t0 >> 16)                       // h ^= h >> 16
+t2 = t1 * 0x85EBCA6B   (= -2048144789)     // h *= fmix1
+t3 = t2 ^ (t2 >> 13)                       // h ^= h >> 13
+t4 = t3 * 0xC2B2AE35   (= -1028477387)     // h *= fmix2
+t5 = t4 ^ (t4 >> 16)                       // h ^= h >> 16  (return value)
+```
+
+All six steps match the reference fmix32 exactly.
+
+#### Spec Compliance Verification
+
+| Property | Reference MurmurHash3\_x86\_32 | nvlink `sub_44E000` | Match |
+|---|---|---|---|
+| Seed | Caller-supplied | Hardcoded `0` | Restricted |
+| c1 | `0xCC9E2D51` | `0xCC9E2D51` | Yes |
+| c2 | `0x1B873593` | `0x1B873593` | Yes |
+| k rotation | `rotl32(k, 15)` | `__ROL4__(k, 15)` | Yes |
+| h rotation | `rotl32(h, 13)` | `__ROL4__(h, 13)` | Yes |
+| Body combine | `h = h * 5 + 0xE6546B64` | `5 * h - 430675100` | Yes (same value) |
+| Tail packing | Little-endian byte accumulation | `(k << 8) \| byte` right-to-left loop | Yes |
+| fmix multiply 1 | `0x85EBCA6B` | `-2048144789` (= `0x85EBCA6B`) | Yes |
+| fmix multiply 2 | `0xC2B2AE35` | `-1028477387` (= `0xC2B2AE35`) | Yes |
+| fmix shifts | `>> 16`, `>> 13`, `>> 16` | `>> 16`, `>> 13`, `>> 16` | Yes |
+| Input model | `(key, len)` pair | Null-terminated string | Adapted |
+
+The only deviation from the reference spec is the input model: standard MurmurHash3 takes a `(const void *key, int len, uint32_t seed)` triple, while nvlink's version walks a null-terminated string, accumulating `len` as a side effect. This means it cannot hash strings containing embedded NUL bytes, which is not a concern for linker symbol names. The seed is fixed at `0`, eliminating the caller parameter.
 
 ### Usage in the Linker
 
