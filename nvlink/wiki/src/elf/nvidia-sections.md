@@ -108,7 +108,7 @@ The compiler reserves fixed shared memory regions for hardware features (tensor 
 
 Associated symbols expose the reserved shared memory allocations to device code:
 
-| Symbol | Purpose |
+| Symbol | Description |
 |---|---|
 | `__nv_reservedSMEM_allocation_mask` | Bitmask controlling which reservation slots are active |
 | `__nv_reservedSMEM_allocation_phase` | Phase counter for multi-phase allocation |
@@ -130,21 +130,21 @@ CUDA provides 18 constant memory banks (0--17), each mapped to a hardware consta
 |---|---|---|---|
 | `.nv.constant0` | `0x70000064` | 0 | Primary constant bank. Holds kernel parameters (`__constant__` variables) and driver-injected constants. This is the only bank guaranteed to be present. |
 | `.nv.constant1` | `0x70000065` | 1 | General-purpose constant bank. |
-| `.nv.constant2` | `0x70000066` | 2 | |
-| `.nv.constant3` | `0x70000067` | 3 | |
-| `.nv.constant4` | `0x70000068` | 4 | |
-| `.nv.constant5` | `0x70000069` | 5 | |
-| `.nv.constant6` | `0x7000006A` | 6 | |
-| `.nv.constant7` | `0x7000006B` | 7 | |
-| `.nv.constant8` | `0x7000006C` | 8 | |
-| `.nv.constant9` | `0x7000006D` | 9 | |
-| `.nv.constant10` | `0x7000006E` | 10 | |
-| `.nv.constant11` | `0x7000006F` | 11 | |
-| `.nv.constant12` | `0x70000070` | 12 | |
-| `.nv.constant13` | `0x70000071` | 13 | |
-| `.nv.constant14` | `0x70000072` | 14 | |
-| `.nv.constant15` | `0x70000073` | 15 | |
-| `.nv.constant16` | `0x70000074` | 16 | |
+| `.nv.constant2` | `0x70000066` | 2 | — |
+| `.nv.constant3` | `0x70000067` | 3 | — |
+| `.nv.constant4` | `0x70000068` | 4 | — |
+| `.nv.constant5` | `0x70000069` | 5 | — |
+| `.nv.constant6` | `0x7000006A` | 6 | — |
+| `.nv.constant7` | `0x7000006B` | 7 | — |
+| `.nv.constant8` | `0x7000006C` | 8 | — |
+| `.nv.constant9` | `0x7000006D` | 9 | — |
+| `.nv.constant10` | `0x7000006E` | 10 | — |
+| `.nv.constant11` | `0x7000006F` | 11 | — |
+| `.nv.constant12` | `0x70000070` | 12 | — |
+| `.nv.constant13` | `0x70000071` | 13 | — |
+| `.nv.constant14` | `0x70000072` | 14 | — |
+| `.nv.constant15` | `0x70000073` | 15 | — |
+| `.nv.constant16` | `0x70000074` | 16 | — |
 | `.nv.constant17` | `0x70000075` | 17 | Highest constant bank. |
 
 Constant banks are per-entry: the naming convention `<bank>.<funcname>` (e.g., `.nv.constant0.my_kernel`) creates entry-specific constant sections. The merge primitive `merge_constant_bank_data` (`sub_438640`) handles these, using the pattern `sprintf("%s.%s", bank_type_name, entry_name)`. It validates with the assertion `"bank SHT not CUDA_CONSTANT_?"`.
@@ -155,7 +155,7 @@ The constant deduplication pass `optimize_constant_dedup` (`sub_4339A0`) finds i
 
 Several constant banks have named aliases for specific purposes:
 
-| Section name | Purpose |
+| Section name | Description |
 |---|---|
 | `.nv.constant.entry_params` | Kernel launch parameters. The driver writes actual argument values here before each kernel launch. Maps to constant bank 0. |
 | `.nv.constant.driver` | Driver-injected constants. Contains values the driver sets at load time (grid dimensions, thread counts, etc.). |

@@ -325,7 +325,7 @@ The exact bit layout of the flags value was not determined from decompilation of
 
 The three PGI attributes reflect nvlink's lineage from the PGI (Portland Group / NVIDIA HPC SDK) compiler toolchain. They encode Fortran array descriptor components:
 
-| Attribute | Code | Purpose |
+| Attribute | Code | Description |
 |---|---|---|
 | `DW_AT_PGI_lbase` | `0x3A00` | Lower bound base address of the array descriptor |
 | `DW_AT_PGI_soffset` | `0x3A01` | Section (stride) offset within the descriptor |
@@ -582,7 +582,7 @@ The signed SSE decoder (`sub_1D10120`, 69,928 bytes -- the largest function in t
 
 ## Helper Functions
 
-| Function | Address | Size | Purpose |
+| Function | Address | Size | Description |
 |---|---|---|---|
 | `sub_1D16C20` | `0x1D16C20` | ~200 B | Arena allocator wrapper (allocates via context arena) |
 | `sub_1D17510` | `0x1D17510` | ~80 B | Read 1 byte (`uint8_t`) from stream, advance pointer |

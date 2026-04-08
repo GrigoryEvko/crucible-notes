@@ -13,13 +13,13 @@ Complete alphabetical catalog of every ELF section name recognized by nvlink v13
 
 ## Code Sections
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 1 | `.text.<funcname>` | `0x01` | `SHT_PROGBITS` | SASS machine code for a single kernel or device function. Each `__global__` or `__device__` function produces a `.text.<mangled_name>` section. |
 
 ## Info and Metadata
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 2 | `.nv.callgraph` | `0x70000002` | `SHT_CUDA_CALLGRAPH` | Caller-callee edge table for dead code elimination and stack size propagation. Built by `build_callgraph_section` (`sub_44D200`). |
 | 3 | `.nv.compat` | `0x70000006` | `SHT_CUDA_COMPAT` | Forward/backward compatibility attribute table. Validated at merge time (error string contains typo: `"encoutered"`). |
@@ -31,7 +31,7 @@ Complete alphabetical catalog of every ELF section name recognized by nvlink v13
 
 ## Relocation Sections
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 9 | `.nv.rel.action` | `0x70000004` | `SHT_CUDA_RELOCINFO` | CUDA relocation action table (multi-step relocation recipes for bindless textures, etc.). |
 | 10 | `.nv.resolvedrela` | `0x70000005` | `SHT_CUDA_RESOLVED_RELA` | Preserved relocations for driver-side patching (`--preserve-relocs`). Created by `emit_resolved_relocations` (`sub_46ADC0`). |
@@ -41,7 +41,7 @@ Complete alphabetical catalog of every ELF section name recognized by nvlink v13
 
 ## Global Memory
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 14 | `.nv.global` | `0x70000007` | `SHT_CUDA_GLOBAL` | Uninitialized global device memory (`__device__` BSS). Input arrives as `SHT_NOBITS`, reclassified by linker. |
 | 15 | `.nv.global.init` | `0x70000008` | `SHT_CUDA_GLOBAL_INIT` | Initialized global device memory (`__device__` with initializer). Carries `SHT_PROGBITS` data. |
@@ -49,7 +49,7 @@ Complete alphabetical catalog of every ELF section name recognized by nvlink v13
 
 ## Local Memory (Per-Thread)
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 17 | `.nv.local.<funcname>` | `0x70000009` | `SHT_CUDA_LOCAL` | Per-kernel thread-private storage (register spills, local arrays). Input type `SHT_NOBITS`, reclassified. Merged by `merge_overlapping_local_data` (`sub_437E20`). |
 
@@ -57,7 +57,7 @@ String in binary: `.nv.local.` (prefix; function name appended at runtime).
 
 ## Shared Memory (Per-CTA)
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 18 | `.nv.shared.<funcname>` | `0x7000000A` | `SHT_CUDA_SHARED` | Per-kernel shared memory (`__shared__` variables). Input `SHT_NOBITS`. Layout optimized by `shared_memory_optimizer` (`sub_436BD0`). |
 | 19 | `.nv.reservedSmem` | `0x70000015` | `SHT_CUDA_SHARED_RESERVED` | Base reserved shared memory section. |
@@ -71,7 +71,7 @@ String in binary: `.nv.shared.` (prefix; function name appended at runtime).
 
 ## Constant Memory (Banks 0--17)
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 25 | `.nv.constant0` | `0x70000064` | `SHT_CUDA_CONSTANT0` | Constant bank 0 (kernel parameters, driver-managed). |
 | 26 | `.nv.constant1` | `0x70000065` | `SHT_CUDA_CONSTANT1` | Constant bank 1. |
@@ -100,7 +100,7 @@ The generic prefix `.nv.constant` (without a bank digit) also appears in the bin
 
 These are logical names for constant memory regions within specific banks. They appear as section name suffixes (e.g., `.nv.constant0.entry_params`) or as standalone lookup keys.
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 43 | `.nv.constant.driver` | `0x70000064`+ | (bank alias) | Driver-injected constants (grid dims, thread counts). |
 | 44 | `.nv.constant.entry_image_header_indices` | `0x70000064`+ | (bank alias) | Maps entry points to image header array positions. |
@@ -112,7 +112,7 @@ These are logical names for constant memory regions within specific banks. They 
 
 ## Unified Tables (UFT/UDT/UIDX)
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 50 | `.nv.udt` | `0x01` | `SHT_PROGBITS` | Unified Descriptor Table (cross-module texture/surface access). |
 | 51 | `.nv.udt.entry` | `0x01` | `SHT_PROGBITS` | UDT entry metadata (UUID-to-slot mapping). |
@@ -122,7 +122,7 @@ These are logical names for constant memory regions within specific banks. They 
 
 ## Texture and Surface Descriptors
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 55 | `.nv.independent.samplerrefDescSize` | `0x01` | `SHT_PROGBITS` | Descriptor size for independent-mode sampler references. |
 | 56 | `.nv.independent.texrefDescSize` | `0x01` | `SHT_PROGBITS` | Descriptor size for independent-mode texture references. |
@@ -131,7 +131,7 @@ These are logical names for constant memory regions within specific banks. They 
 
 ## Note Sections
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 59 | `.note.nv.cuinfo` | `0x07` | `SHT_NOTE` | CUDA compilation info (target arch, CUDA version, ABI-affecting options). |
 | 60 | `.note.nv.cuver` | `0x07` | `SHT_NOTE` | CUDA toolkit version stamp. |
@@ -139,7 +139,7 @@ These are logical names for constant memory regions within specific banks. They 
 
 ## Debug Sections -- NVIDIA Proprietary
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 62 | `.nv_debug.shared` | `0x08` | `SHT_NOBITS` | Debug-mode shared memory for instrumentation (`-g` builds only). |
 | 63 | `.nv_debug_info_ptx` | `0x01` | `SHT_PROGBITS` | Embedded PTX source text for source-level debugging. |
@@ -153,7 +153,7 @@ The prefix `.nv_debug_` appears in the binary as a string used with `strncmp` to
 
 The linker recognizes any section with prefix `.debug_` as a standard DWARF section. Common instances in cubins:
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 67 | `.debug_abbrev` | `0x01` | `SHT_PROGBITS` | DWARF abbreviation table. |
 | 68 | `.debug_aranges` | `0x01` | `SHT_PROGBITS` | DWARF address range table. |
@@ -173,7 +173,7 @@ The string `.debug_` appears as a prefix matcher. The variant `.debug_str+` also
 
 These sections support incremental linking through hash-based relocation tracking. Each letter encodes the content type: **K**ey, **C**ode, **D**ata; and the scope: **E**xternal, **I**nternal. Processed by `hrk_section_process` (`sub_4AF3C0`) and `hrc_hrd_section_process` (`sub_4B02A0`).
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 78 | `.nvHRCE` | `0x01` | `SHT_PROGBITS` | Hash Relocation Code External -- external code hash entries. |
 | 79 | `.nvHRCI` | `0x01` | `SHT_PROGBITS` | Hash Relocation Code Internal -- internal code hash entries. |
@@ -188,14 +188,14 @@ All Mercury sections carry `SHF_CUDA_MERCURY` (`0x10000000`) in `sh_flags`. The 
 
 ### Mercury Container
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 84 | `.nv.merc` | `0x01` | `SHT_PROGBITS` | Top-level Mercury container holding the encoded Mercury instruction stream for a single kernel. FNLZR reads, rewrites (opex expansion, scheduling, register assignment), and replaces with final SASS `.text`. |
 | 85 | `.nv.merc.tmp` | `0x01` | `SHT_PROGBITS` | Temporary Mercury section used during FNLZR rewrite passes. |
 
 ### Mercury DWARF Debug
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 86 | `.nv.merc.debug_abbrev` | `0x01` | `SHT_PROGBITS` | Mercury DWARF abbreviation table. |
 | 87 | `.nv.merc.debug_aranges` | `0x01` | `SHT_PROGBITS` | Mercury DWARF address range table. |
@@ -211,7 +211,7 @@ All Mercury sections carry `SHF_CUDA_MERCURY` (`0x10000000`) in `sh_flags`. The 
 
 ### Mercury NVIDIA Debug
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 97 | `.nv.merc.nv_debug_info_reg_sass` | `0x01` | `SHT_PROGBITS` | Mercury register liveness at SASS level. |
 | 98 | `.nv.merc.nv_debug_info_reg_type` | `0x01` | `SHT_PROGBITS` | Mercury register type annotations. |
@@ -220,7 +220,7 @@ All Mercury sections carry `SHF_CUDA_MERCURY` (`0x10000000`) in `sh_flags`. The 
 
 ### Mercury Structural
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 101 | `.nv.merc.nv.shared.reserved.` | `0x08` | `SHT_NOBITS` | Mercury reserved shared memory region. Prefix -- suffix is the reservation ID (e.g., `tcgen05_partition`). |
 | 102 | `.nv.merc.rela` | `0x04` | `SHT_RELA` | Mercury relocation section. Contains `Elf64_Rela` records referencing the Mercury symbol table. |
@@ -237,7 +237,7 @@ SECTIONS {
 }
 ```
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 104 | `.nv_fatbin` | `0x01` | `SHT_PROGBITS` | Raw fat binary payload containing cubins for all target architectures. |
 | 105 | `.nvFatBinSegment` | `0x01` | `SHT_PROGBITS` | Primary fat binary segment (`__cudaFatBinaryData` structure). |
@@ -245,7 +245,7 @@ SECTIONS {
 
 ## Standard ELF Infrastructure
 
-| # | Name | sh_type (hex) | sh_type (constant) | Purpose |
+| # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
 | 107 | `.shstrtab` | `0x03` | `SHT_STRTAB` | Section header string table (section name strings). |
 | 108 | `.strtab` | `0x03` | `SHT_STRTAB` | String table for symbol names. |
@@ -318,103 +318,103 @@ Every section-name string found in the nvlink v13.0.88 binary that matches ELF s
 | `.debug_` | #67--77 | Prefix matcher for all DWARF sections |
 | `.debug_str+` | -- | Internal variant for merged debug string pools |
 | `.merc.tmp` | #85 | Appears as `.nv.merc.tmp` after prefix construction |
-| `.note.nv.cuinfo` | #59 | |
-| `.note.nv.cuver` | #60 | |
-| `.note.nv.tkinfo` | #61 | |
-| `.nv.callgraph` | #2 | |
-| `.nv.compat` | #3 | |
+| `.note.nv.cuinfo` | #59 | — |
+| `.note.nv.cuver` | #60 | — |
+| `.note.nv.tkinfo` | #61 | — |
+| `.nv.callgraph` | #2 | — |
+| `.nv.compat` | #3 | — |
 | `.nv.constant` | #25--42 | Generic prefix (no bank digit) for `strncmp` matching |
-| `.nv.constant.driver` | #43 | |
-| `.nv.constant.entry_image_header_indices` | #44 | |
-| `.nv.constant.entry_params` | #45 | |
-| `.nv.constant.optimizer` | #46 | |
-| `.nv.constant.pic` | #47 | |
-| `.nv.constant.tools_data` | #48 | |
-| `.nv.constant.user` | #49 | |
-| `.nv.constant0` | #25 | |
-| `.nv.constant1` | #26 | |
-| `.nv.constant2` | #27 | |
-| `.nv.constant3` | #28 | |
-| `.nv.constant4` | #29 | |
-| `.nv.constant5` | #30 | |
-| `.nv.constant6` | #31 | |
-| `.nv.constant7` | #32 | |
-| `.nv.constant8` | #33 | |
-| `.nv.constant9` | #34 | |
-| `.nv.constant10` | #35 | |
-| `.nv.constant11` | #36 | |
-| `.nv.constant12` | #37 | |
-| `.nv.constant13` | #38 | |
-| `.nv.constant14` | #39 | |
-| `.nv.constant15` | #40 | |
-| `.nv.constant16` | #41 | |
-| `.nv.constant17` | #42 | |
-| `.nv.global` | #14 | |
-| `.nv.global.init` | #15 | |
-| `.nv.host` | #16 | |
-| `.nv.independent.samplerrefDescSize` | #55 | |
-| `.nv.independent.texrefDescSize` | #56 | |
-| `.nv.info` | #4 | |
+| `.nv.constant.driver` | #43 | — |
+| `.nv.constant.entry_image_header_indices` | #44 | — |
+| `.nv.constant.entry_params` | #45 | — |
+| `.nv.constant.optimizer` | #46 | — |
+| `.nv.constant.pic` | #47 | — |
+| `.nv.constant.tools_data` | #48 | — |
+| `.nv.constant.user` | #49 | — |
+| `.nv.constant0` | #25 | — |
+| `.nv.constant1` | #26 | — |
+| `.nv.constant2` | #27 | — |
+| `.nv.constant3` | #28 | — |
+| `.nv.constant4` | #29 | — |
+| `.nv.constant5` | #30 | — |
+| `.nv.constant6` | #31 | — |
+| `.nv.constant7` | #32 | — |
+| `.nv.constant8` | #33 | — |
+| `.nv.constant9` | #34 | — |
+| `.nv.constant10` | #35 | — |
+| `.nv.constant11` | #36 | — |
+| `.nv.constant12` | #37 | — |
+| `.nv.constant13` | #38 | — |
+| `.nv.constant14` | #39 | — |
+| `.nv.constant15` | #40 | — |
+| `.nv.constant16` | #41 | — |
+| `.nv.constant17` | #42 | — |
+| `.nv.global` | #14 | — |
+| `.nv.global.init` | #15 | — |
+| `.nv.host` | #16 | — |
+| `.nv.independent.samplerrefDescSize` | #55 | — |
+| `.nv.independent.texrefDescSize` | #56 | — |
+| `.nv.info` | #4 | — |
 | `.nv.local.` | #17 | Prefix; `<funcname>` appended |
-| `.nv.merc` | #84 | |
+| `.nv.merc` | #84 | — |
 | `.nv.merc.` | #84 | Prefix form (with trailing dot) |
-| `.nv.merc.debug_abbrev` | #86 | |
-| `.nv.merc.debug_aranges` | #87 | |
-| `.nv.merc.debug_frame` | #88 | |
-| `.nv.merc.debug_info` | #89 | |
-| `.nv.merc.debug_line` | #90 | |
-| `.nv.merc.debug_loc` | #91 | |
-| `.nv.merc.debug_macinfo` | #92 | |
-| `.nv.merc.debug_pubnames` | #93 | |
-| `.nv.merc.debug_pubtypes` | #94 | |
-| `.nv.merc.debug_ranges` | #95 | |
-| `.nv.merc.debug_str` | #96 | |
+| `.nv.merc.debug_abbrev` | #86 | — |
+| `.nv.merc.debug_aranges` | #87 | — |
+| `.nv.merc.debug_frame` | #88 | — |
+| `.nv.merc.debug_info` | #89 | — |
+| `.nv.merc.debug_line` | #90 | — |
+| `.nv.merc.debug_loc` | #91 | — |
+| `.nv.merc.debug_macinfo` | #92 | — |
+| `.nv.merc.debug_pubnames` | #93 | — |
+| `.nv.merc.debug_pubtypes` | #94 | — |
+| `.nv.merc.debug_ranges` | #95 | — |
+| `.nv.merc.debug_str` | #96 | — |
 | `.nv.merc.nv.shared.reserved.` | #101 | Prefix; reservation ID appended |
-| `.nv.merc.nv_debug_info_reg_sass` | #97 | |
-| `.nv.merc.nv_debug_info_reg_type` | #98 | |
-| `.nv.merc.nv_debug_line_sass` | #99 | |
-| `.nv.merc.nv_debug_ptx_txt` | #100 | |
-| `.nv.merc.rela` | #102 | |
-| `.nv.merc.symtab_shndx` | #103 | |
-| `.nv.metadata` | #6 | |
-| `.nv.prototype` | #7 | |
+| `.nv.merc.nv_debug_info_reg_sass` | #97 | — |
+| `.nv.merc.nv_debug_info_reg_type` | #98 | — |
+| `.nv.merc.nv_debug_line_sass` | #99 | — |
+| `.nv.merc.nv_debug_ptx_txt` | #100 | — |
+| `.nv.merc.rela` | #102 | — |
+| `.nv.merc.symtab_shndx` | #103 | — |
+| `.nv.metadata` | #6 | — |
+| `.nv.prototype` | #7 | — |
 | `.nv.ptx.const0.size` | #8 | Metadata key, not a real section |
-| `.nv.rel.action` | #9 | |
-| `.nv.reservedSmem` | #19 | |
-| `.nv.reservedSmem.begin` | #20 | |
-| `.nv.reservedSmem.cap` | #21 | |
-| `.nv.reservedSmem.end` | #22 | |
-| `.nv.reservedSmem.offset0` | #23 | |
-| `.nv.reservedSmem.offset1` | #24 | |
-| `.nv.resolvedrela` | #10 | |
+| `.nv.rel.action` | #9 | — |
+| `.nv.reservedSmem` | #19 | — |
+| `.nv.reservedSmem.begin` | #20 | — |
+| `.nv.reservedSmem.cap` | #21 | — |
+| `.nv.reservedSmem.end` | #22 | — |
+| `.nv.reservedSmem.offset0` | #23 | — |
+| `.nv.reservedSmem.offset1` | #24 | — |
+| `.nv.resolvedrela` | #10 | — |
 | `.nv.shared.` | #18 | Prefix; `<funcname>` appended |
-| `.nv.surfrefDescSize` | #57 | |
-| `.nv.udt` | #50 | |
-| `.nv.udt.entry` | #51 | |
-| `.nv.uft` | #52 | |
-| `.nv.uft.entry` | #53 | |
-| `.nv.uft.rel` | #11 | |
-| `.nv.uidx` | #54 | |
-| `.nv.unified.texrefDescSize` | #58 | |
-| `.nvFatBinSegment` | #105 | |
-| `.nvHRCE` | #78 | |
-| `.nvHRCI` | #79 | |
-| `.nvHRDE` | #80 | |
-| `.nvHRDI` | #81 | |
-| `.nvHRKE` | #82 | |
-| `.nvHRKI` | #83 | |
-| `.nv_debug.shared` | #62 | |
+| `.nv.surfrefDescSize` | #57 | — |
+| `.nv.udt` | #50 | — |
+| `.nv.udt.entry` | #51 | — |
+| `.nv.uft` | #52 | — |
+| `.nv.uft.entry` | #53 | — |
+| `.nv.uft.rel` | #11 | — |
+| `.nv.uidx` | #54 | — |
+| `.nv.unified.texrefDescSize` | #58 | — |
+| `.nvFatBinSegment` | #105 | — |
+| `.nvHRCE` | #78 | — |
+| `.nvHRCI` | #79 | — |
+| `.nvHRDE` | #80 | — |
+| `.nvHRDI` | #81 | — |
+| `.nvHRKE` | #82 | — |
+| `.nvHRKI` | #83 | — |
+| `.nv_debug.shared` | #62 | — |
 | `.nv_debug_` | #62--66 | Prefix matcher for NVIDIA debug sections |
-| `.nv_debug_info_ptx` | #63 | |
-| `.nv_debug_info_reg_sass` | #64 | |
-| `.nv_debug_info_reg_type` | #65 | |
-| `.nv_fatbin` | #104 | |
+| `.nv_debug_info_ptx` | #63 | — |
+| `.nv_debug_info_reg_sass` | #64 | — |
+| `.nv_debug_info_reg_type` | #65 | — |
+| `.nv_fatbin` | #104 | — |
 | `.rela%s` | #12 | Format string; `%s` = target section name |
 | `.rel%s` | #13 | Format string; `%s` = target section name |
-| `.shstrtab` | #107 | |
-| `.strtab` | #108 | |
-| `.symtab` | #109 | |
+| `.shstrtab` | #107 | — |
+| `.strtab` | #108 | — |
+| `.symtab` | #109 | — |
 | `.text.` | #1 | Prefix; `<funcname>` appended |
-| `__nv_relfatbin` | #106 | |
+| `__nv_relfatbin` | #106 | — |
 
 **Total: 109 cataloged section entries** (numbered #1--#109), covering all 95 distinct section-name strings found in the nvlink binary plus 14 per-bank constant entries (`.nv.constant1`--`.nv.constant17` share the same pattern but have distinct string literals in the binary).

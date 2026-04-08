@@ -78,13 +78,13 @@ Fifteen trivial inline functions at `0xF16030`--`0xF160F0` classify operand type
 | `0xF16100` | `sm75_is_kind_7` | `a1 == 7` | Unknown | LOW |
 | `0xF16110` | `sm75_is_kind_11` | `a1 == 11` | Unknown | LOW |
 
-The identity function at `0xF16030` is used as both a register-class accessor (return value compared against 1023/1/2/4/5) and a generic field value passthrough. A second identity function at `0xF16130` likely has a different type signature in the original source.
+The identity function at `0xF16030` is used as both a register-class accessor (return value compared against 1023/1/2/4/5) and a generic field value passthrough. A second identity function at `0xF16130` has a different type signature in the original source (both compile to identical machine code, but they occupy distinct vtable slots).
 
 The predicate pair `sub_F160B0` / `sub_F160C0` is always called as `sub_F160B0(v) || sub_F160C0(v)` -- accepting either PT (always true, kind 3) or PN (always false, kind 15), matching the SASS convention where a predicate guard can be either polarity.
 
 ### Operand Kind Tag Summary
 
-| Kind | Symbol | Meaning | Predicate Address |
+| Type | Symbol | Meaning | Predicate Address |
 |---|---|---|---|
 | 1 | IMM | Immediate / constant value | `0xF16050` |
 | 2 | REG | General register operand | `0xF16040` |
@@ -193,7 +193,7 @@ Each performs a deeply-nested sequence of checks:
 
 The 276 matchers group into 12 functional categories by the instruction families they match:
 
-| Category | Address Range | Count | Representative Patterns |
+| Type | Address Range | Count | Representative Patterns |
 |---|---|---|---|
 | NOP / barrier | `0xF16150`--`0xF163A0` | ~5 | NOP variant (pattern 33, priority 4), control flow simple (42, 8) |
 | HMMA (tensor core) | `0xF1C3F0`--`0xF20D10` | ~10 | HMMA f16/f32 (4, 15), HMMA f64 (13, 15), HMMA with UR (9, 15) |
@@ -331,7 +331,7 @@ The SM75 backend relies on shared infrastructure functions used across all ISel 
 
 ### IR Node Accessors
 
-| Function | Signature | Purpose | Callers |
+| Function | Signature | Description | Callers |
 |---|---|---|---|
 | `sub_A49150` | `(ctx, node, field_id) -> value` | Read instruction attribute by field ID | 30,768 (binary-wide) |
 | `sub_530FD0` | `(node) -> count` | Get explicit operand count | Universal |
@@ -342,7 +342,7 @@ The SM75 backend relies on shared infrastructure functions used across all ISel 
 
 ### Operand Binding Functions
 
-| Function | Purpose |
+| Function | Description |
 |---|---|
 | `sub_4C6380(ctx, node, op, off, rc)` | Bind source register operand |
 | `sub_4C60F0(ctx, node, op, off, rc)` | Bind general register operand |
@@ -477,6 +477,15 @@ Field IDs passed to `sub_A49150` to query instruction attributes. These are the 
 
 ## Cross-References
 
+### nvlink Internal
 - [Embedded ptxas: Architecture Overview](../ptxas/overview.md) -- full address map including SM75 backend position
 - [Instruction Selection Hubs](../ptxas/isel-hubs.md) -- the five mega-hub dispatch functions
 - [IR Nodes](../ptxas/ir-nodes.md) -- IR node structure and accessor functions
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- SM75 vtable registration and callbacks
+- [Architecture Profiles](arch-profiles.md) -- SM75 profile in the linker database
+- [SM80 Ampere](sm80-ampere.md) -- successor ISel backend
+
+### Sibling Wikis
+- [ptxas: Turing/Ampere](../../../../ptxas/wiki/src/targets/turing-ampere.md) -- standalone ptxas SM75/SM80 target documentation
+- [ptxas: ISel](../../../../ptxas/wiki/src/codegen/isel.md) -- standalone ptxas instruction selection
+- [cicc: SM70-89](../../../../cicc/wiki/src/targets/sm70-89.md) -- cicc compiler SM75 through SM89 targets

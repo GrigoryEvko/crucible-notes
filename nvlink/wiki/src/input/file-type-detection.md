@@ -400,7 +400,7 @@ The `EM_CUDA` value 190 is NVIDIA's registered ELF machine type. It is the defin
 
 ## Function Map
 
-| Address | Size | Identity | Purpose |
+| Address | Size | Identity | Description |
 |---|---|---|---|
 | `0x462620` | 3,579 B | `path_split` | Decomposes file path into dir / basename / extension |
 | `0x43D970` | 17 B | `is_elf` | Checks 4-byte ELF magic `0x464C457F` |

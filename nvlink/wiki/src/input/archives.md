@@ -315,7 +315,7 @@ This ensures that dependency metadata members never reach the type dispatch syst
 
 The functions called from `main()` are not the low-level parsers directly. Instead, four thin wrappers at `0x4BDAC0`-`0x4BDB60` provide a normalized API with return code translation through `dword_1D48A50`:
 
-| Wrapper | Address | Delegates to | Purpose |
+| Wrapper | Address | Delegates to | Description |
 |---|---|---|---|
 | `sub_4BDAC0` | `0x4BDAC0` | `sub_487C20` | Open: allocate context from buffer |
 | `sub_4BDAF0` | `0x4BDAF0` | `sub_487E10` | Next: advance to next member |
@@ -400,7 +400,7 @@ In the library search path, the two-pass search strategy first checks for file e
 
 ## Function Map
 
-| Address | Size | Identity | Purpose |
+| Address | Size | Identity | Description |
 |---|---|---|---|
 | `0x487A90` | 51 B | `is_archive` | Tests buffer for `"!<arch>\n"` or `"!<thin>\n"` magic |
 | `0x487C20` | 2,549 B | `archive_open` | Allocates 80-byte context, sets thin flag, copies path |

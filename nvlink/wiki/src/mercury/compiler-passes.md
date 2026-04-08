@@ -40,28 +40,28 @@ Listed in registration order (highest `ctor_007` address first, which correspond
 
 | # | ROT13 string | Decoded name | Bit offset | String addr | Registration addr |
 |---|---|---|---|---|---|
-| 1 | `ZrephelHfrNpgvirGuernqPbyyrpgvirVafgf` | **MercuryUseActiveThreadCollectiveInsts** | `0x3e40` | `0x23F2B00` | `0x426080` |
-| 2 | `ZrephelGenpxZhygvErnqfJneYngrapl` | **MercuryTrackMultiReadsWarLatency** | `0x3e30` | `0x23F2B40` | `0x426030` |
-| 3 | `ZrephelGrcvqNjnerFo` | **MercuryTepidAwareSb** | `0x3e20` | `0x23F2B70` | `0x425FE0` |
-| 4 | `ZrephelCerfhzrKoybpxJnvgOrarsvpvny` | **MercuryPresumeXblockWaitBeneficial** | `0x3e18` | `0x23F2BA0` | `0x425F90` |
-| 5 | `ZrephelZretrCebybthrOybpxf` | **MercuryMergePrologueBlocks** | `0x3e10` | `0x23F2BD0` | `0x425F40` |
-| 6 | `ZrephelVffhrQrynlJOFgnyyFrysYbbc` | **MercuryIssueDelayWBStallSelfLoop** | `0x3e00` | `0x23F2C00` | `0x425EF0` |
-| 7 | `ZrephelVafregKoybpxJnvg` | **MercuryInsertXblockWait** | `0x3df0` | `0x23F2C30` | `0x425EA0` |
-| 8 | `ZrephelVafregOnpxrqtrQrcone` | **MercuryInsertBackedgeDepbar** | `0x3de0` | `0x23F2C60` | `0x425E50` |
-| 9 | `ZrephelVafregNffhzrf` | **MercuryInsertAssumes** | `0x3dd0` | `0x23F2C90` | `0x425E00` |
-| 10 | `ZrephelTraFnffHPbqr` | **MercuryGenSassUCode** | `0x3dc0` | `0x23F2CB0` | `0x425DB0` |
-| 11 | `ZrephelSbeprHaxabjaGptra05Ngge` | **MercuryForceUnknownTcgen05Attr** | `0x3db9` | `0x23F2CD0` | `0x425D60` |
-| 12 | `ZrephelSbeprVFNPynff` | **MercuryForceISAClass** | `0x3db8` | `0x23F2D00` | `0x425D10` |
-| 13 | `ZrephelRapbqrArjJbexreSvyrf` | **MercuryEncodeNewWorkerFiles** | `0x3db0` | `0x23F2D20` | `0x425CC0` |
-| 14 | `ZrephelRapbqrQrpbqr` | **MercuryEncodeDecode** | `0x3da0` | `0x23F2D50` | `0x425C70` |
-| 15 | `ZrephelQhzcVafgfNfOvanel` | **MercuryDumpInstsAsBinary** | `0x3d90` | `0x23F2D70` | `0x425C20` |
-| 16 | `ZrephelQvfnoyrYrtnyvmngvbaBsGrkGbHEObhaq` | **MercuryDisableLegalizationOfTexToURBound** | `0x3d80` | `0x23F2DA0` | `0x425BD0` |
-| 17 | `ZrephelQrcFgntrCersreAbaYvirvaCFO` | **MercuryDepStagePreferNonLiveinPSB** | `0x3d78` | `0x23F2DE0` | `0x425B80` |
-| 18 | `ZrephelPbairegreFgngf` | **MercuryConverterStats** | `0x3d70` | `0x23F2E10` | `0x425B30` |
-| 19 | `ZrephelPbafhzrNffhzrf` | **MercuryConsumeAssumes** | `0x3d60` | `0x23F2E30` | `0x425AE0` |
-| 20 | `ZrephelPbzcnpgrqNffhzrf` | **MercuryCompactedAssumes** | `0x3d50` | `0x23F2E50` | `0x425A90` |
-| 21 | `ZrephelNffhzrCGKCbegnovyvgl` | **MercuryAssumePTXPortability** | `0x3d40` | `0x23F2E80` | `0x425A40` |
-| 22 | `NqinaprqFOPebffOybpxZrephelNffhzr` | **AdvancedSBCrossBlockMercuryAssume** | `0x5b0` | `0x23FC820` | `0x4129E0` |
+| 1 | `ZrephelHfrNpgvirGuernqPbyyrpgvirVafgf` | **MercuryUseActiveThreadCollectiveInsts** | `0x3E40` | `0x23F2B00` | `0x426080` |
+| 2 | `ZrephelGenpxZhygvErnqfJneYngrapl` | **MercuryTrackMultiReadsWarLatency** | `0x3E30` | `0x23F2B40` | `0x426030` |
+| 3 | `ZrephelGrcvqNjnerFo` | **MercuryTepidAwareSb** | `0x3E20` | `0x23F2B70` | `0x425FE0` |
+| 4 | `ZrephelCerfhzrKoybpxJnvgOrarsvpvny` | **MercuryPresumeXblockWaitBeneficial** | `0x3E18` | `0x23F2BA0` | `0x425F90` |
+| 5 | `ZrephelZretrCebybthrOybpxf` | **MercuryMergePrologueBlocks** | `0x3E10` | `0x23F2BD0` | `0x425F40` |
+| 6 | `ZrephelVffhrQrynlJOFgnyyFrysYbbc` | **MercuryIssueDelayWBStallSelfLoop** | `0x3E00` | `0x23F2C00` | `0x425EF0` |
+| 7 | `ZrephelVafregKoybpxJnvg` | **MercuryInsertXblockWait** | `0x3DF0` | `0x23F2C30` | `0x425EA0` |
+| 8 | `ZrephelVafregOnpxrqtrQrcone` | **MercuryInsertBackedgeDepbar** | `0x3DE0` | `0x23F2C60` | `0x425E50` |
+| 9 | `ZrephelVafregNffhzrf` | **MercuryInsertAssumes** | `0x3DD0` | `0x23F2C90` | `0x425E00` |
+| 10 | `ZrephelTraFnffHPbqr` | **MercuryGenSassUCode** | `0x3DC0` | `0x23F2CB0` | `0x425DB0` |
+| 11 | `ZrephelSbeprHaxabjaGptra05Ngge` | **MercuryForceUnknownTcgen05Attr** | `0x3DB9` | `0x23F2CD0` | `0x425D60` |
+| 12 | `ZrephelSbeprVFNPynff` | **MercuryForceISAClass** | `0x3DB8` | `0x23F2D00` | `0x425D10` |
+| 13 | `ZrephelRapbqrArjJbexreSvyrf` | **MercuryEncodeNewWorkerFiles** | `0x3DB0` | `0x23F2D20` | `0x425CC0` |
+| 14 | `ZrephelRapbqrQrpbqr` | **MercuryEncodeDecode** | `0x3DA0` | `0x23F2D50` | `0x425C70` |
+| 15 | `ZrephelQhzcVafgfNfOvanel` | **MercuryDumpInstsAsBinary** | `0x3D90` | `0x23F2D70` | `0x425C20` |
+| 16 | `ZrephelQvfnoyrYrtnyvmngvbaBsGrkGbHEObhaq` | **MercuryDisableLegalizationOfTexToURBound** | `0x3D80` | `0x23F2DA0` | `0x425BD0` |
+| 17 | `ZrephelQrcFgntrCersreAbaYvirvaCFO` | **MercuryDepStagePreferNonLiveinPSB** | `0x3D78` | `0x23F2DE0` | `0x425B80` |
+| 18 | `ZrephelPbairegreFgngf` | **MercuryConverterStats** | `0x3D70` | `0x23F2E10` | `0x425B30` |
+| 19 | `ZrephelPbafhzrNffhzrf` | **MercuryConsumeAssumes** | `0x3D60` | `0x23F2E30` | `0x425AE0` |
+| 20 | `ZrephelPbzcnpgrqNffhzrf` | **MercuryCompactedAssumes** | `0x3D50` | `0x23F2E50` | `0x425A90` |
+| 21 | `ZrephelNffhzrCGKCbegnovyvgl` | **MercuryAssumePTXPortability** | `0x3D40` | `0x23F2E80` | `0x425A40` |
+| 22 | `NqinaprqFOPebffOybpxZrephelNffhzr` | **AdvancedSBCrossBlockMercuryAssume** | `0x5B0` | `0x23FC820` | `0x4129E0` |
 
 Pass 22 (`AdvancedSBCrossBlockMercuryAssume`) is registered separately from the main Mercury block, within the `AdvancedSB*` option group at `0x4129E0`. It bridges the Mercury assume system with the cross-block scoreboard analysis.
 
@@ -242,7 +242,7 @@ When `MercuryConverterStats` (pass 18) is enabled, the converter prints statisti
 
 [V] Two top-level options control whether Mercury semantics and resources are active. Both are verified from `nvlink_strings.json` xrefs (each string has exactly one xref from `ctor_007`):
 
-| Option (ROT13) | Decoded | String addr | Registration addr | Purpose |
+| Option (ROT13) | Decoded | String addr | Registration addr | Description |
 |---|---|---|---|---|
 | `HfrZrepFrznagvpf` | **UseMercSemantics** | `0x23F34F0` | `0x424BE0` | Enables Mercury instruction semantics throughout the compiler. When set, the instruction selector, scheduler, and register allocator use Mercury-aware behavior. |
 | `HfrZrepErfbheprf` | **UseMercResources** | `0x23F3510` | `0x424B90` | Enables Mercury resource modeling (functional unit counts, scoreboard counts, pipeline depths). Controls whether the scheduler uses the Mercury hardware resource model or the legacy SASS model. |
@@ -257,28 +257,28 @@ These two options are the master switches. The 22 per-pass options provide fine-
 
 | Decoded name | Bit offset | Relevance |
 |---|---|---|
-| `AdvancedSBCrossBlockMercuryAssume` | `0x5b0` | Enables Mercury assumes in cross-block scoreboard analysis |
-| `AdvancedSBDepbarBackedge` | `0x5d0` | Controls dependency barrier insertion at backedges (feeds `MercuryInsertBackedgeDepbar`) |
+| `AdvancedSBCrossBlockMercuryAssume` | `0x5B0` | Enables Mercury assumes in cross-block scoreboard analysis |
+| `AdvancedSBDepbarBackedge` | `0x5D0` | Controls dependency barrier insertion at backedges (feeds `MercuryInsertBackedgeDepbar`) |
 | `AdvancedSBReqBackedge` | `0x660` | Requires scoreboard entry at backedges |
 | `AdvancedSBReqBeforeUsingLiveInPsb` | `0x670` | Requires entry before using live-in values in PSB (feeds `MercuryDepStagePreferNonLiveinPSB`) |
 | `AdvancedSBReqCommit` | `0x678` | Requires scoreboard commit at specific points |
 | `AdvancedSBDepStageReuse` | `0x610` | Controls dependency-stage reuse policy |
 | `AdvancedSBDepStageReuseStallThreshold` | `0x620` | Stall threshold for dependency-stage reuse |
-| `AdvancedSBCrossBlock` | `0x59c` | Master switch for cross-block scoreboard analysis |
-| `AdvancedSBCrossBlockBudget` | `0x5a0` | Limits computational budget for cross-block analysis |
-| `AdvancedSBCrossBlockOnCallee` | `0x5b8` | Extends cross-block analysis across call boundaries |
-| `AdvancedSBDeleteUnpredSameVQVsb` | `0x5c0` | Deletes unpredicated same-VQ virtual scoreboard entries |
-| `AdvancedSBDepbarDistanceInTime` | `0x5f0` | Controls dependency barrier distance measured in time units |
-| `AdvancedSBDepbarDistanceInNumCandidates` | `0x5e0` | Controls dependency barrier distance in candidate count |
+| `AdvancedSBCrossBlock` | `0x59C` | Master switch for cross-block scoreboard analysis |
+| `AdvancedSBCrossBlockBudget` | `0x5A0` | Limits computational budget for cross-block analysis |
+| `AdvancedSBCrossBlockOnCallee` | `0x5B8` | Extends cross-block analysis across call boundaries |
+| `AdvancedSBDeleteUnpredSameVQVsb` | `0x5C0` | Deletes unpredicated same-VQ virtual scoreboard entries |
+| `AdvancedSBDepbarDistanceInTime` | `0x5F0` | Controls dependency barrier distance measured in time units |
+| `AdvancedSBDepbarDistanceInNumCandidates` | `0x5E0` | Controls dependency barrier distance in candidate count |
 | `AdvancedSBDepbarMultipleVqCandidate` | `0x600` | Allows multiple VQ candidates for dependency barriers |
 | `AdvancedSBDiffXBlockRdSb` | `0x630` | Differentiates cross-block read scoreboard entries |
 | `AdvancedSBFirstLLSBPsb` | `0x640` | Controls first long-latency scoreboard in PSB allocation |
 | `AdvancedSBPruningBudget` | `0x650` | Limits pruning budget for scoreboard optimization |
 | `AdvancedSBReserved1` | `0x680` | Reserved scoreboard option slot 1 |
 | `AdvancedSBReservedHMMA` | `0x690` | Reserved for HMMA (half-precision matrix multiply) scoreboard |
-| `AdvancedSBReservedLLNonDepbar` | `0x6a0` | Reserved for long-latency non-depbar scoreboard |
-| `AdvancedSBReservedLLNonDepbarSplitSbSize` | `0x6b0` | Split scoreboard size for LL non-depbar |
-| `AdvancedSBReservedLLNonDepbarSplitSbThreshold` | `0x6c0` | Split scoreboard threshold for LL non-depbar |
+| `AdvancedSBReservedLLNonDepbar` | `0x6A0` | Reserved for long-latency non-depbar scoreboard |
+| `AdvancedSBReservedLLNonDepbarSplitSbSize` | `0x6B0` | Split scoreboard size for LL non-depbar |
+| `AdvancedSBReservedLLNonDepbarSplitSbThreshold` | `0x6C0` | Split scoreboard threshold for LL non-depbar |
 
 ## Diagnostic Messages
 
@@ -344,10 +344,47 @@ Pass behavior descriptions marked **[V]** are derived from sources 1 and 2. Desc
 
 ## Cross-References
 
+### nvlink Internal
 - [Mercury Overview](overview.md) -- what Mercury is and why it exists
 - [Mercury ELF Sections](elf-sections.md) -- `.nv.merc.*` section layout consumed by these passes
 - [Capsule Mercury Format](capmerc-format.md) -- the output format produced by `MercGenerateSassUCode`
 - [FNLZR](fnlzr.md) -- the post-link finalizer that runs these passes
 - [R_MERCURY Relocations](r-mercury-relocations.md) -- relocation types resolved during Mercury expansion
 - [Scheduling](../ptxas/scheduling.md) -- the general scheduling framework that Mercury extends
+- [Peephole](../ptxas/peephole.md) -- ORI peephole passes (copy-prop, DCE) integrated with Mercury
 - [ROT13 Passes Reference](../reference/rot13-passes.md) -- full catalog of all 30,349 ROT13-encoded strings
+
+### Sibling Wikis
+- [ptxas: Mercury Encoder Pipeline](../../../../ptxas/wiki/src/codegen/mercury.md) -- standalone ptxas Mercury encoder (phases 113--122 in ptxas numbering) with ptxas-native function addresses. The stage names and ordering are identical: MercEncodeAndDecode, MercExpandInstructions, MercGenerateWARs1, MercGenerateOpex, MercGenerateWARs2, MercGenerateSassUCode. Key ptxas addresses: orchestrator `sub_6F52F0` (23KB), master encoder `sub_6D9690` (94KB), expansion `sub_C3CC60` (26KB), WAR generator `sub_6FBC20` (7.4KB), SASS emitter `sub_6E4110` (24KB).
+- [ptxas: Capsule Mercury & Finalization](../../../../ptxas/wiki/src/codegen/capmerc.md) -- standalone ptxas capmerc output and finalization pipeline.
+
+**MercExpand sub-handlers**: ptxas wiki documents expansion sub-handlers at different addresses: `sub_C37A10` (16KB, expandInstruction), `sub_C39B40` (10KB, expandMemoryOp), `sub_C3A460` (6KB, expandAtomicOp), `sub_C3B560` (8KB, expandTexture), `sub_C3BCD0` (19KB, expandControlFlow). These correspond to the nvlink embedded copies documented in this page.
+
+**MercConverter**: ptxas wiki documents MercConverter at `sub_9F3340` (7KB orchestrator) + `sub_9EF5E0` (27KB operand reorganization). nvlink's embedded copies are at `sub_1977B70` (35KB) and `sub_1919030` (92KB) respectively -- different sizes due to additional linking-specific code in the nvlink version.
+
+## Confidence Assessment
+
+| Claim | Rating | Evidence |
+|---|---|---|
+| 22 ROT13-encoded Mercury passes registered in `ctor_007` | **HIGH** | All 22 ROT13 strings verified at exact addresses in `nvlink_strings.json`. Each has exactly 1 xref to the `ctor_007` address range (`0x412790`--`0x426260`). |
+| 6 plaintext pipeline stages in master phase table | **HIGH** | All 6 stage name strings verified: `MercEncodeAndDecode` (`0x2443CA2`), `MercExpandInstructions` (`0x2443CB6`), `MercGenerateWARs1` (`0x2443CCD`), `MercGenerateOpex` (`0x2443CDF`), `MercGenerateWARs2` (`0x2443CF0`), `MercGenerateSassUCode` (`0x2443D02`). |
+| Pipeline stage table base at `0x24443F0` | **HIGH** | Xref addresses for stage names form a contiguous 8-byte-spaced sequence starting at `0x24443F0`. |
+| ROT13 decoder `sub_1A40AC0` (SIMD-accelerated, 15,629 bytes) | **MEDIUM** | Function exists. SIMD usage inferred from `_mm_load_si128` in decompiler output. Size from function bounds. |
+| Pass catalog: all 22 decoded names, bit offsets, string addrs, registration addrs | **HIGH** | Every ROT13 string verified at stated address. Registration addresses confirmed via xref data. Decoded names match ROT13 decode of each string character-by-character. |
+| Bit offsets concentrated in `0x3d40`--`0x3e40` (256 bytes) | **HIGH** | Offset values decoded from ROT13 hex strings paired with each pass. Range verified. |
+| `AdvancedSBCrossBlockMercuryAssume` at offset `0x5b0` (separate from main block) | **HIGH** | ROT13 string `NqinaprqFOPebffOybpxZrephelNffhzr` at `0x23FC820` verified. Registration at `0x4129E0` is outside the `0x425A40`--`0x426080` main block. |
+| MercExpand dispatch `sub_5FDDB0` (25.5KB, switch on IR opcode type) | **HIGH** | Decompiled file `sub_5FDDB0_0x5fddb0.c` exists. Switch cases 0, 5, 8, 9, 11, 12, 17, -1, 120 verified. |
+| MercExpand entry `sub_5FF110` prints `"After MercExpand"` | **HIGH** | Decompiled file exists. String `"After MercExpand"` at `0x1DFE320` verified with xref to `0x5FF15E`. |
+| MercConverter `sub_1977B70` (35KB) prints `"After MercConverter"` | **HIGH** | String at `0x241F913` verified. Xref to `0x19798F8` confirmed. Related strings `"shuffle"`, `"NamedPhases"` verified at referenced function. |
+| MercWARs entry `sub_4A47F0` prints `"After MercWARs"` | **HIGH** | String at `0x1D41C60` verified. Xref to `0x4A480A` confirmed. |
+| MercOpex entry `sub_4ABB70` prints `"After MercOpex"` | **HIGH** | String at `0x1D41C6F` verified. Xref to `0x4ABC3E` confirmed. |
+| MercOpex expander `sub_4A8690` (66KB / 2602 lines, largest Mercury function) | **HIGH** | Function exists at stated address. Size from function bounds. Line count from decompiler. |
+| MercConverter named phases: shuffle, swap1--6, dce1--3, cpy1--3, OriPerformLiveDead, OriCopyProp | **HIGH** | All phase name strings verified with xrefs to `sub_197A120` (ORI named-phase manager). |
+| MercConverter instruction converter `sub_1919030` (92KB) refs `"CONVERTING"` | **HIGH** | Function exists. String `"CONVERTING"` verified with xref to this function. `"Internal compiler error."` also confirmed. |
+| `UseMercSemantics` at `0x23F34F0` and `UseMercResources` at `0x23F3510` | **HIGH** | Both ROT13 strings verified at exact addresses. Each has 1 xref to `ctor_007`. |
+| `DumpMercOpCounts` at `0x2A62EE0` (ROT13 `QhzcZrepBcPbhagf`) | **HIGH** | ROT13 string verified at stated address. Located in `ctor_004` (separate from `ctor_007`). |
+| Knobs infrastructure at `sub_498720` (59KB), source path `generic_knobs_impl.h` | **MEDIUM** | Function exists. Source path string verified in error messages within the function. 1,287 knob count is approximate from string scanning. |
+| Tepid scheduler subsystem `0x16F6000`--`0x1740000` (~296KB) | **MEDIUM** | Address range from sweep analysis. `"TepidMacUtil"` at `0x23EF746` and `"TepidTime"` at `0x23F0851` verified. Metric strings confirmed. |
+| Pass behavior descriptions marked [N] (inferred from decoded names) | **MEDIUM** | Names are extremely descriptive and self-documenting. Corroborated by related infrastructure (e.g., `MercuryTrackMultiReadsWarLatency` corroborated by `MercGenerateWARs1`/`MercGenerateWARs2` stages). Exact implementation details may differ from inferred behavior. |
+| `byte_2A5F222` set when sm > 99 (Mercury mode activation) | **HIGH** | Verified from decompiled initialization code. Multiple functions check this global. |
+| 28 `AdvancedSB*` scoreboard options | **MEDIUM** | Count from enumeration of AdvancedSB-prefixed ROT13 strings. Individual option names and offsets verified but total count may differ by 1--2 due to boundary definition of the option group. |

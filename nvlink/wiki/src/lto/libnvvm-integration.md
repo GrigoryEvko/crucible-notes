@@ -158,7 +158,7 @@ The callback registrar (code `0xBEEF`) takes four arguments. The fourth argument
 
 `sub_4BC6F0` is the largest and most complex function in the nvvm integration layer at 13,602 bytes. It orchestrates the full compile-and-extract sequence.
 
-Unlike the other two wrappers, this function does **not** use `setjmp`/`longjmp` for crash recovery -- if libnvvm crashes during compilation, the process terminates. The rationale is likely that compilation is the expensive operation and partial recovery would leave the program in an inconsistent state anyway.
+Unlike the other two wrappers, this function does **not** use `setjmp`/`longjmp` for crash recovery -- if libnvvm crashes during compilation, the process terminates. The rationale is that compilation is the expensive operation and partial recovery would leave the program in an inconsistent state -- the compiled result buffer, log buffer, and program handle would all be in undefined states after a crash.
 
 ### Symbol Resolution
 
@@ -406,7 +406,7 @@ Phase 3 (compilation):
 
 Every symbol resolved from `libnvvm.so` by nvlink via `dlsym`:
 
-| # | Symbol | Resolution site | Decompiled line | Public API? | Purpose |
+| # | Symbol | Resolution site | Decompiled line | Public API? | Description |
 |---|---|---|---|---|---|
 | 1 | `nvvmCreateProgram` | `sub_4BC290` | line 53 | Yes | Create compilation program handle |
 | 2 | `nvvmCompileProgram` | `sub_4BC6F0` | line 164 | Yes | Compile accumulated IR modules |
@@ -460,3 +460,17 @@ This protects nvlink from crashes inside libnvvm.so. If libnvvm triggers a signa
 | `"compile linked lto ir:"` | `main()` | Before invoking `sub_4BC6F0` |
 | `"whole program compile"` | `main()` | LTO produced single output, whole-program mode |
 | `"relocatable compile"` | `main()` | LTO produced single relocatable output |
+
+## Cross-References
+
+- [LTO Overview](overview.md) -- high-level pipeline context for libnvvm within nvlink
+- [Option Forwarding](option-forwarding.md) -- how CLI flags are assembled into the option vector passed to `nvvmCompileProgram`
+- [Whole vs Partial LTO](whole-vs-partial.md) -- decision logic that determines whether libnvvm output is whole-program or relocatable
+- [Split Compilation](split-compilation.md) -- thread pool that parallelizes ptxas assembly of libnvvm's PTX output
+- [LTO IR Format Versions](ir-format-versions.md) -- `lto_` profile tags that identify NVVM IR modules fed to libnvvm
+- [Dead Code Elimination](../linker/dead-code-elimination.md) -- linker-level DCE that interacts with LTO via `byte_2A5F214`
+
+### Sibling Wiki
+
+- **cicc wiki**: [LTO & Module Optimization](../../../../cicc/wiki/src/lto/index.md) -- the compiler-side LTO pipeline inside libnvvm. Documents the five-pass IR optimization (GlobalOpt, inliner, devirtualization, ThinLTO import) that runs when `nvvmCompileProgram` is called
+- **cicc wiki**: [Module Summary](../../../../cicc/wiki/src/lto/module-summary.md) -- NVModuleSummary builder used by ThinLTO import decisions inside libnvvm

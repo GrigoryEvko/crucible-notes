@@ -23,7 +23,7 @@ nvlink enforces architecture compatibility at three distinct points: during inpu
 |---|---|---|---|
 | +0 | 4 bytes | `arch_number` | SM version number (e.g. 100 for sm_100) |
 | +4 | 1 byte | `has_suffix` | Nonzero if an `a` or `f` suffix was present |
-| +5 | 1 byte | (padding) | |
+| +5 | 1 byte | (padding) | — |
 | +6 | 1 byte | `is_virtual` | 1 if prefix was `compute_` |
 | +7 | 1 byte | `is_native` | 1 if prefix was `sm_` or `sass_` |
 | +8 | 1 byte | `same_decade_flag` | Controls whether same-decade rule applies |
@@ -224,7 +224,7 @@ A source architecture's capability mask at `*(record + 16)` is a bitfield indica
 
 ### Debug Environment Variable
 
-Both `sub_4709E0` and `sub_470DA0` check for the environment variable `CAN_FINALIZE_DEBUG`. When set, its value is parsed as an integer via `strtol`. The exact effect is not fully reversed, but the presence of this variable enables diagnostic output from the finalization compatibility pipeline, likely printing the remapped architectures and compatibility decisions to stderr.
+Both `sub_4709E0` and `sub_470DA0` check for the environment variable `CAN_FINALIZE_DEBUG`. When set, its value is parsed as an integer via `strtol`. The exact effect is not fully reversed, but the presence of this variable enables diagnostic output from the finalization compatibility pipeline, printing the remapped architectures and compatibility decisions to stderr (inferred from the `strtol` parse and the diagnostic string references in the surrounding code).
 
 ## Input File Validation (sub_426570)
 
@@ -325,9 +325,15 @@ For the `a` variants (sm_100a, sm_120a, etc.), all entries become exact-match on
 
 ## Cross-References
 
+### nvlink Internal
 - [Architecture Profiles](arch-profiles.md) -- the profile database initialization that populates `qword_2A5F8D8`
 - [Cubin Loading](../input/cubin-loading.md) -- the full cubin validation path that calls `sub_4878A0` and `sub_426570`
 - [Finalization Phase](../pipeline/finalize.md) -- the linker finalization phase that triggers `sub_4709E0`
 - [Versions](../versions.md) -- toolkit version numbering, PTX ISA version, and the SM architecture table
 - [Mercury / FNLZR](../mercury/fnlzr.md) -- the post-link finalizer that uses capability mask checks
 - [SM 100--121 Targets](sm100-blackwell.md) -- per-architecture details for the Blackwell family
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- embedded ptxas dispatch tables for per-SM codegen
+
+### Sibling Wikis
+- [ptxas: SM Architecture Map](../../../../ptxas/wiki/src/targets/index.md) -- standalone ptxas target validation and family grouping
+- [cicc: Targets Index](../../../../cicc/wiki/src/targets/index.md) -- cicc compiler target compatibility definitions

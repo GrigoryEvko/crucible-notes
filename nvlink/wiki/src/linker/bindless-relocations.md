@@ -15,7 +15,7 @@ The CUDA source-level mechanism works as follows:
 
 The architecture profile vtable controls whether bindless is supported at all:
 
-| Vtable offset | Query | Purpose |
+| Vtable offset | Query | Description |
 |---|---|---|
 | `+296` | `supports_bindless()` | Gate: returns nonzero if bindless mode is active |
 | `+304` | `bindless_texture_type()` | Returns the ELF section type for the bindless texture constant bank |
@@ -138,7 +138,7 @@ __int64 __fastcall descriptor_list_layout(__int64 a1, _QWORD* a2);
 
 The core logic of `sub_438DD0` iterates the global relocation list (`elfw+376`) and classifies each relocation record by its type code (lower 32 bits of the 8-byte relocation info field at `record+8`). The following types trigger bindless processing (reach the `LABEL_32` handler):
 
-| Decimal | Hex | Inferred name | Category |
+| Decimal | Hex | Inferred name | Type |
 |---|---|---|---|
 | 5 | `0x05` | `R_CUDA_ABS32_20` | 32-bit absolute |
 | 12 | `0x0C` | `R_CUDA_ABS32_HI20` | 32-bit absolute high |
@@ -176,7 +176,7 @@ The types span four generations of encoding evolution:
 - **Hopper+** (115): Added for sm90 Hopper architecture.
 - **Mercury** (65539-65540): Range `0x10000+` is the Mercury (sm100+ / Blackwell) relocation namespace, with bindless variants at offsets 3 and 4.
 
-Types that explicitly **do not** trigger bindless processing (skip to `LABEL_19`) despite being numerically adjacent: 26 (`0x1A`), 27 (`0x1B`), 28 (`0x1C`). These correspond to non-bindless relocation types (likely `R_CUDA_32`, `R_CUDA_64`, and `R_CUDA_CONST` or similar).
+Types that explicitly **do not** trigger bindless processing (skip to `LABEL_19`) despite being numerically adjacent: 26 (`0x1A`), 27 (`0x1B`), 28 (`0x1C`). These correspond to non-bindless relocation types (`R_CUDA_32`, `R_CUDA_64`, and a third type in the same numeric range -- see the [R_CUDA Catalog](../reference/r-cuda-catalog.md) for exact type assignments).
 
 ## Complete Pseudocode: `process_bindless_references` (`sub_438DD0`)
 
@@ -1509,7 +1509,7 @@ For kernel_B: texture_count=1, sampler_count=0, surface_count=1 -- all within li
 
 After `sub_438DD0` completes, the relocation list contains both the rewritten input relocations and the newly emitted resolved relocations:
 
-| Reloc | Type | Symbol | Target section | Purpose |
+| Reloc | Type | Symbol | Target section | Description |
 |---|---|---|---|---|
 | R1' | 22 | 15 (`$NVLINKBINDLESSOFF_tex_shared`) | `.text.helper` | Instruction patch |
 | R2' | 23 | 16 (`$NVLINKBINDLESSOFF_samp_shared`) | `.text.helper` | Instruction patch |
@@ -1573,3 +1573,28 @@ With verbose mode enabled (`elfw+64 bit 1` set, corresponding to `-v` on the com
 | `0x4647D0` | `sort_linked_list` | (shared) | Merge-sort a linked list with comparator function |
 | `0x432810` | `reloc_compare_compact` | (shared) | Comparator: compact relocs by section then type |
 | `0x432840` | `reloc_compare_standard` | (shared) | Comparator: standard relocs by section then type |
+
+## Cross-References
+
+- [R\_CUDA Relocations](r-cuda-relocations.md) -- relocation type catalog including bindless types (R\_CUDA\_TEX\_\*, R\_CUDA\_SURF\_\*)
+- [Relocation Application Engine](relocation-engine.md) -- bit-field patching engine that applies bindless relocations after this pass
+- [Section Merging](section-merging.md) -- merge phase that populates the descriptor lists consumed here
+- [Symbol Resolution](symbol-resolution.md) -- symbol lookup infrastructure used by `find_or_create_symbol`
+- [Data Layout Optimization](data-layout-opt.md) -- constant bank deduplication that runs on the same constant sections
+- [Layout Phase](../pipeline/layout.md) -- parent phase that orchestrates bindless processing (Phase 2)
+- [Relocation Phase](../pipeline/relocate.md) -- downstream phase that applies the rewritten relocations
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| `sub_438DD0` at 0x438DD0 processes bindless relocations (12,779 bytes) | HIGH | Decompiled `sub_438DD0_0x438dd0.c` exists; line 182: `sprintf(v88, "$NVLINKBINDLESSOFF_%s", ...)` confirmed |
+| Synthetic symbol naming: `$NVLINKBINDLESSOFF_<name>` | HIGH | String `"$NVLINKBINDLESSOFF_%s"` confirmed in decompiled code and `nvlink_strings.json` |
+| `"no bindless ref in section %s"` diagnostic | HIGH | Decompiled `sub_438DD0` line 303: exact format string |
+| Mercury detection via `elfw+7 == 0x41` ('A') | HIGH | Consistent with Mercury relocation namespace detection across all linker functions |
+| Bindless relocation type classification (types 5, 12, 17-18, 22-25, 29-30, 38-39, 42, 46, 50-51, 54-55, 59, 64-66, 115, 65539-65540) | HIGH | Type dispatch reconstructed from decompiled `sub_438DD0` switch/if-else chain |
+| Architecture vtable offsets +296 (supports_bindless), +304 (bindless_texture_type), +312 (bindless_surface_type) | MEDIUM | Vtable offsets inferred from decompiled function pointer calls; consistent across multiple bindless functions |
+| `sub_43CDA0` (6,937 bytes) resolves bindless type symbols per entry | MEDIUM | Decompiled file `sub_43CDA0_0x43cda0.c` exists; function purpose inferred from calling context |
+| Per-section bitmask for tracking bindless-containing sections | MEDIUM | Reconstructed from Phase C of `sub_438DD0` pseudocode analysis |
+| Descriptor sizes from vtable offsets +440 (texture) and +448 (surface) | MEDIUM | Inferred from decompiled function calls; vtable layout consistent with architecture profile |
+| `sub_4324B0` creates per-entry constant bank section | LOW | Function exists but not individually verified; role inferred from calling context in layout phase |

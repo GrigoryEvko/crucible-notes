@@ -8,20 +8,20 @@ nvlink v13.0.88 defines 19 distinct `.nv.merc.*` section names. They fall into f
 
 ### Container
 
-| Section name | Purpose |
+| Section name | Description |
 |---|---|
 | `.nv.merc` | Top-level Mercury container. Holds the encoded Mercury instruction stream for a single kernel. This is the primary payload section that the FNLZR reads, rewrites (opex expansion, scheduling, register assignment), and replaces with final SASS `.text`. |
 
 ### Structural Sections
 
-| Section name | Purpose |
+| Section name | Description |
 |---|---|
 | `.nv.merc.rela` | Mercury-specific relocation entries. Contains `Elf64_Rela` records whose symbol and section indices reference the Mercury symbol table rather than the standard cubin `.symtab`. Emitted by `ELF_EmitSectionHeaders` (`sub_1CF2100`) and read during the FNLZR relocation pass. |
 | `.nv.merc.symtab_shndx` | Extended symbol table section index array. Mirrors the standard ELF `SHT_SYMTAB_SHNDX` mechanism: when a Mercury symbol references a section index >= `SHN_LORESERVE` (0xFF00), the true index is stored here. Emitted by `ELF_ProcessRelocations` (`sub_1CEF5B0`) and the complete object writer (`sub_1CF3720`). |
 
 ### Shared Memory Reservation
 
-| Section name | Purpose |
+| Section name | Description |
 |---|---|
 | `.nv.merc.nv.shared.reserved.` | Per-kernel reserved shared memory within the Mercury container. This is the Mercury-side equivalent of the top-level `.nv.shared.reserved.*` sections. The name is a prefix -- the full section name is formed by appending the reservation identifier (e.g., `tcgen05_partition`). Emitted by `sub_1CEC390` and referenced at string address `0x24582E8`. |
 
@@ -29,7 +29,7 @@ nvlink v13.0.88 defines 19 distinct `.nv.merc.*` section names. They fall into f
 
 These 10 sections mirror the standard DWARF debug section layout, but scoped under the `.nv.merc` namespace so they travel alongside the Mercury instruction stream and can be updated in lockstep when FNLZR rewrites the code.
 
-| Section name | DWARF equivalent | Purpose |
+| Section name | DWARF equivalent | Description |
 |---|---|---|
 | `.nv.merc.debug_abbrev` | `.debug_abbrev` | DWARF abbreviation tables. Maps abbreviation codes to tag/attribute pairs. |
 | `.nv.merc.debug_aranges` | `.debug_aranges` | Address range tables. Maps address ranges to compilation units for fast lookup. |
@@ -47,7 +47,7 @@ These 10 sections mirror the standard DWARF debug section layout, but scoped und
 
 These 4 sections carry NVIDIA-proprietary debug data that has no standard DWARF equivalent. They are emitted by `ELF_EmitSASSDebugSections` (`sub_1CED7C0`).
 
-| Section name | Purpose |
+| Section name | Description |
 |---|---|
 | `.nv.merc.nv_debug_ptx_txt` | Embedded PTX source text. Stores the PTX assembly corresponding to this kernel, enabling source-level debugging at the PTX layer. |
 | `.nv.merc.nv_debug_line_sass` | SASS-level line mapping. Maps final SASS instruction addresses to source lines, parallel to `.nv.merc.debug_line` but at the SASS granularity rather than Mercury granularity. |
@@ -575,7 +575,7 @@ For the Mercury symbol table section (`sh_type == 0x70000085`), `sh_link` is not
 
 The relocation application phase uses two 64-byte-per-entry dispatch tables to apply fixups:
 
-| Table address | Range | Purpose |
+| Table address | Range | Description |
 |---|---|---|
 | `off_245A160` | Standard CUDA relocations `0`..`0x73` | `R_CUDA_*` fixups for standard cubin sections |
 | `off_2459160` | Mercury relocations `0x10000`..`0x1003F` | `R_MERCURY_*` fixups for Mercury sections |
@@ -599,6 +599,7 @@ Type 1 writes the resolved value directly. Type 19 writes zero. Types 22--29 app
 
 ## Cross-References
 
+### nvlink Internal
 - [Mercury Overview](overview.md) -- what Mercury is and why it exists
 - [Capsule Mercury Format](capmerc-format.md) -- the capmerc container that wraps Mercury + SASS
 - [FNLZR](fnlzr.md) -- the post-link finalizer that consumes Mercury sections
@@ -608,3 +609,33 @@ Type 1 writes the resolved value directly. Type 19 writes zero. Types 22--29 app
 - [Output Phase](../pipeline/output.md) -- Mercury output path with FNLZR invocation
 - [NV_INFO / EIATTR](../elf/nv-info.md) -- EIATTR encoding format reference
 - [Device ELF Format](../elf/device-elf-format.md) -- Elf64_Ehdr and Elf64_Shdr layout details
+
+### Sibling Wikis
+- [ptxas: Capsule Mercury & Finalization](../../../../ptxas/wiki/src/codegen/capmerc.md) -- standalone ptxas capmerc format: Mercury section classifier (`sub_1C98C60`, 9KB, 15 `.nv.merc.*` names), capsule descriptor (328 bytes), per-function Mercury payload structure. Section types and names are identical between ptxas (producer) and nvlink (consumer).
+- [ptxas: Mercury Encoder Pipeline](../../../../ptxas/wiki/src/codegen/mercury.md) -- standalone ptxas Mercury encode/decode pipeline that emits these sections.
+
+## Confidence Assessment
+
+| Claim | Rating | Evidence |
+|---|---|---|
+| 19 distinct `.nv.merc.*` section names | **HIGH** | All 19 section name strings verified at addresses `0x24582E8`--`0x2458D00` in `nvlink_strings.json`. First xrefs to emitter functions confirmed. |
+| `.nv.merc` prefix at `0x2458305` | **HIGH** | String verified at exact address. Multiple xrefs confirmed: `sub_1CEC4C0`, `sub_1CEC660`, `sub_1CF72E0`, `sub_1CF7F30`. |
+| `.nv.merc.` prefix at `0x1D40605` (used for strncmp matching) | **HIGH** | String verified. Xrefs from `sub_4748F0` and `sub_471700` confirmed. |
+| `sh_type = 0x70000016` (SHT_CUDA_MERC) | **HIGH** | Hex value verified from decompiled `sub_1CEE030` (ELF_BuildSectionTable). Assignment `shdr->sh_type = 0x70000016` explicit in code. |
+| `sh_type = 0x7000000C` (SHT_CUDA_FUNCBODY) | **HIGH** | Verified from decompiled section builder. Header copy + overwrite pattern confirmed. |
+| `sh_type = 0x7000000D` (SHT_CUDA_FUNCGROUP) | **HIGH** | Verified from decompiled section builder. Zero-init + type assignment confirmed. |
+| `sh_type = 0x70000085` (SHT_NV_MERC_SYMTAB) | **HIGH** | Verified from decompiled code. Referenced in skip filter `sub_1CECBB0`. |
+| Mercury flag `0x10000000` in `sh_flags` (bit 28) | **HIGH** | Verified from decompiled merge function `sub_45E7D0`. Bitmask `0x10000000` check explicit. `"skip mercury section %i"` string confirms skip behavior. |
+| `ELF_EmitDebugSections` (`sub_1CED0E0`, 9,262 bytes) emits 10 DWARF sections | **HIGH** | Function exists at stated address. All 10 debug section name strings verified with xrefs pointing to this function. Emission order confirmed from xref addresses. |
+| `ELF_EmitSASSDebugSections` (`sub_1CED7C0`, 6,757 bytes) emits 5 NVIDIA sections | **HIGH** | Function exists. All 5 section name strings verified with xrefs. |
+| `ELF_EmitMercContainer` (`sub_1CEC4C0`) uses sprintf to build section name | **MEDIUM** | Function exists. String construction logic inferred from decompiled code. The `sprintf` pattern with `.nv.merc` prefix is consistent but the exact format string usage is from decompiler interpretation. |
+| Per-kernel Mercury section layout: 4-byte symbol index + merc_data blob | **MEDIUM** | Layout inferred from decompiled `sub_1CEE030` at address `0x1CEF150`. The 4-byte prefix write and memcpy pattern are clear, but field naming is inferred. |
+| `ELF_MercSectionSetup` (`sub_1CEC660`) constant bank mapping | **MEDIUM** | Function exists. Constant bank name mapping (`.driver`, `.optimizer`, `.user`, `.pic`, `.tools_data`) inferred from vtable dispatch in decompiled code. Exact tag names from code patterns. |
+| `ELF_WriteCompleteObject` (`sub_1CF3720`, 99 KB, ~3200 lines) | **HIGH** | Decompiled file exists at stated address. Size confirmed from function bounds. SSE-accelerated header copy pattern verified. |
+| Section skip filter `sub_1CECBB0` (3,426 bytes) -- list of skipped section types | **MEDIUM** | Function exists. Skip conditions enumerated from decompiled switch/if-chain. Individual `sh_type` values verified but the complete list may have minor omissions. |
+| NV_INFO re-encoding EIATTR codes (0x0A, 0x11, 0x15/0x16, etc.) | **MEDIUM** | EIATTR code values from decompiled switch statement in `sub_1CF3720`. Code-to-name mapping uses the EIATTR catalog from the nv-info.md page. Handling descriptions inferred from code paths. |
+| Relocation dispatch tables at `off_2459160` / `off_245A160` | **HIGH** | Table addresses verified from decompiled relocation application code. 64-byte-per-entry format confirmed from indexing arithmetic. |
+| Section index remapping via `v225` array in `ELF_BuildSectionTable` | **MEDIUM** | Remapping array and fixup loop verified from decompiled `sub_1CEE030`. Variable name `v225` is decompiler-assigned. |
+| `ELF_EmitSpecialSections` (`sub_1CEDD50`) routes debug sections to cached data | **MEDIUM** | Function exists. Priority-list name matching pattern confirmed from decompiled code. Context offsets (+72, +80, +88, etc.) verified. |
+| Merge phase skips Mercury sections with verbose trace | **HIGH** | `"skip mercury section %i"` at `0x1D3BCB7` verified. Xref to `sub_45E7D0` (merge function, 89,156 bytes) confirmed. |
+| `0x5D05` bitmask for PROGBITS family detection | **LOW** | Hex value from decompiled code. Interpretation as a section type family bitmask is inferred from context. May be a multi-field encoded value rather than a simple bitmask. |

@@ -174,7 +174,7 @@ fn fnlzr_engine(arch, elf_data, out_buf, out_size, self_check_data, option_str, 
 
 Key data structures initialized here:
 
-| Variable | Stack offset | Size | Purpose |
+| Variable | Stack offset | Size | Description |
 |---|---|---|---|
 | `env` | rbp-0x328 | 200 bytes | `jmp_buf` for setjmp/longjmp error trap |
 | `v419[]` | rbp-0x258 | 600 bytes (75 qwords) | Module context array; carries all state between phases |
@@ -1163,3 +1163,41 @@ FNLZR: Ending JIT
 ### Self-Check Mode
 
 Pass `--self-check` to enable re-compilation verification. The engine compiles the input, then recompiles its own output, and compares the two at the section, symbol, and relocation level. Mismatches produce error codes 17, 18, or 19 with no additional diagnostic text -- the caller must inspect the return code.
+
+### Sibling Wikis
+
+- [ptxas: Capsule Mercury & Finalization](../../../../ptxas/wiki/src/codegen/capmerc.md) -- standalone ptxas finalizer at `sub_612DE0` (47KB), which performs fastpath optimization for off-target finalization. The nvlink FNLZR engine (`sub_4748F0`) shares the same finalization logic but at different addresses due to static linking. Self-check verifier: `sub_720F00` (64KB Flex lexer) + `sub_729540` (35KB comparator). Off-target compatibility: `sub_60F290`.
+- [ptxas: Mercury Encoder Pipeline](../../../../ptxas/wiki/src/codegen/mercury.md) -- standalone ptxas Mercury pipeline that FNLZR re-invokes during finalization.
+
+## Confidence Assessment
+
+| Claim | Rating | Evidence |
+|---|---|---|
+| `sub_4275C0` front-end dispatcher (3,989 bytes / 162 lines) | **HIGH** | Decompiled file `sub_4275C0_0x4275c0.c` exists. Size, line count, and 5-parameter signature verified. |
+| `sub_4748F0` core engine (48,730 bytes / 1,830 lines / 25 params) | **HIGH** | Decompiled file `sub_4748F0_0x4748f0.c` exists. Size, line count, and parameter count verified from decompiled code. |
+| JIT wrapper at `sub_52DD50` (~600 bytes) | **HIGH** | Function exists. `"FNLZR: JIT Path"` string at `0x1DF8C40` verified with xref to `0x52DDE1`. |
+| FNLZR diagnostic strings (12 total) | **HIGH** | All 12 FNLZR strings verified in `nvlink_strings.json`: `"FNLZR: Input ELF: %s"` at `0x1D32381`, `"FNLZR: Post-Link Mode"` at `0x1D32397`, `"FNLZR: Pre-Link Mode"` at `0x1D323BD`, and 9 more. |
+| `--edbg` bit 0 enables FNLZR trace via `dword_2A5F308` | **HIGH** | Global variable referenced in decompiled `sub_4275C0`. Bit 0 check `(dword_2A5F308 & 1)` explicit. |
+| Config struct: 160 bytes (20 qwords) | **HIGH** | `memset(v28, 0, 160)` explicit in decompiled `sub_4275C0`. Field layout verified from assignment patterns. |
+| Pre-link (a5=0) vs Post-link (a5=1) mode selection | **HIGH** | Parameter `a5` usage verified in decompiled code. Guard conditions for each mode confirmed. |
+| ELF class byte `0x41` = Mercury, `0x07` = standard cubin | **HIGH** | Verified from decompiled `sub_4748F0` Phase 2 switch on `hdr+7`. |
+| ELF subtype `0xFF00` = Mercury | **HIGH** | Check `elf_subtype == 0xFF00` explicit in decompiled Phase 2. |
+| Version ceiling `profile_version > 0x101` returns error 25 | **HIGH** | Explicit comparison in decompiled Phase 2. Return value 25 confirmed. |
+| `"Final memory space"` arena at `0x1D405E8` | **HIGH** | String verified at exact address. Used in `sub_432020` call in Phase 2. |
+| 10-phase pipeline structure in `sub_4748F0` | **HIGH** | All 10 phases identified from decompiled code flow analysis. Phase boundaries determined by functional grouping of sequential code blocks. |
+| Phase 1 setjmp/longjmp error recovery | **HIGH** | `_setjmp` call verified in decompiled code. Return value 6 on longjmp confirmed. |
+| Phase 3 fastpath: `sub_470DA0` capability bitmask check | **HIGH** | Function exists. Decompiled code shows bitmask mapping: 'd'->1, 'g'->8, 'n'->2, 'y'->64. |
+| Architecture remapping: 104->120, 130->107, 101->110 | **HIGH** | Switch/if-chain in decompiled `sub_4709E0` and `sub_470DA0` with exact mapping values. |
+| Phase 4: 656-byte CU descriptor with vtable at `off_1D49C58` | **HIGH** | Allocation `sub_4B6F40(656, ...)` explicit. vtable assignment `*(qword*)(cu + 0) = off_1D49C58` confirmed. |
+| Phase 4: 256-byte architecture profile descriptor | **HIGH** | `arena_alloc(alloc_ctx, 256)` followed by `memset(v350, 0, 256)` explicit in decompiled code. |
+| Phase 5 tkinfo scanning: note type 2000, tool names "nvlink" and "nvJIT API" | **HIGH** | `strcmp(tool_name, "nvlink")` and `strcmp(tool_name, "nvJIT API")` explicit in decompiled code. Note type 2000 check confirmed. |
+| Phase 6 ELF writer dispatch: `sub_1CF3720` (complete) vs `sub_1CF7F30` (relocatable) | **HIGH** | Both function calls verified in decompiled Phase 6. Conditional dispatch on `*(byte*)(v350 + 186)` confirmed. |
+| Phase 8 tkinfo version string `"Cuda compilation tools, release 13.0, V13.0.88"` | **HIGH** | String verified at `0x1D33D18` in `nvlink_strings.json`. |
+| Phase 9 self-check: recursive `sub_4748F0` invocation | **HIGH** | Recursive call with `self_check_data != NULL` verified in decompiled code. Error codes 17, 18, 19 confirmed. |
+| Phase 9 `.nv.merc.` prefix stripping (8-byte skip) | **MEDIUM** | `sub_44E3A0` call with `.nv.merc.` prefix verified. The 8-byte vs 9-byte skip interpretation involves decompiler pointer arithmetic nuance. |
+| Phase 10 cleanup: 3-level fall-through chain (LABEL_3/4/5) | **HIGH** | Fall-through structure verified from decompiled code. Resource tracking flags `v352`, `v353`, `v385` confirmed. |
+| Return codes (0, 4, 5, 6, 7, 11, 17, 18, 19, 25) | **HIGH** | All return values verified from decompiled code at their respective error sites. |
+| 6 call sites in `main()` + 2 in `sub_42AF40` | **MEDIUM** | Call site count from xref analysis. Exact count may vary by 1 if indirect calls are included. |
+| `CAN_FINALIZE_DEBUG` environment variable | **HIGH** | `getenv("CAN_FINALIZE_DEBUG")` call verified in decompiled `sub_4709E0`. `strtol` parse confirmed. |
+| CLI options: `--binary-kind`, `--cap-merc`, `--self-check`, `--out-sass`, etc. | **HIGH** | All option strings verified in `nvlink_strings.json`. Help text strings confirmed at stated addresses. |
+| `sub_471700` finalization orchestrator (78,516 bytes) | **HIGH** | Decompiled file `sub_471700_0x471700.c` exists. Size from function bounds. Called from `sub_4748F0` Phase 6. |

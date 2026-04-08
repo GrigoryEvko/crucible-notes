@@ -387,7 +387,7 @@ The function pointer `qword_2A77DD0` is the entry point into the embedded ptxas 
 
 The base argument slots (indices 0-4) are populated from a static table at `off_1D48AE8` / `off_1D48AF0`. These contain the pre-configured options that are always passed:
 
-| Slot | Typical Content | Purpose |
+| Slot | Typical Content | Description |
 |---|---|---|
 | 0 | Architecture string | `"--gpu-name=sm_XX"` |
 | 1 | Addressing mode | `"-m64"` or `"-m32"` |

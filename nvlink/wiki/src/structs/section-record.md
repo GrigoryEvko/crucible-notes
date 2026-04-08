@@ -287,15 +287,15 @@ During the finalization phase (`sub_445000`), all sections are sorted into canon
 
 ### Priority Buckets
 
-| Bucket | Priority | Criterion | Category |
+| Bucket | Priority | Criterion | Type |
 |---|---|---|---|
 | 0 | Lowest | `SHT_NULL` | Null section (index 0) |
-| 1 | | `SHT_PROGBITS` with no allocation flags | Non-allocated data |
-| 2 | | `SHT_RELA` (4), `SHT_HASH` (9), `SHT_CUDA_HASH` (0x70000003) | Relocation/hash tables |
-| 3 | | `SHF_ALLOC` flag set (no exec, no write) | Read-only allocated |
-| 4 | | `SHF_EXECINSTR` flag set | Executable code (.text) |
-| 5 | | `SHF_WRITE` flag set | Writable data |
-| 6 | | `SHT_NOTE`, or CUDA types 0x70000004..0x7000001A, 0x70000006 | Metadata/CUDA notes |
+| 1 | — | `SHT_PROGBITS` with no allocation flags | Non-allocated data |
+| 2 | — | `SHT_RELA` (4), `SHT_HASH` (9), `SHT_CUDA_HASH` (0x70000003) | Relocation/hash tables |
+| 3 | — | `SHF_ALLOC` flag set (no exec, no write) | Read-only allocated |
+| 4 | — | `SHF_EXECINSTR` flag set | Executable code (.text) |
+| 5 | — | `SHF_WRITE` flag set | Writable data |
+| 6 | — | `SHT_NOTE`, or CUDA types 0x70000004..0x7000001A, 0x70000006 | Metadata/CUDA notes |
 | 7 | Highest | No data and no compressed data | Empty/placeholder |
 
 ### Counting Sort Algorithm

@@ -4,7 +4,7 @@ NVIDIA uses ROT13 to obfuscate internal names throughout the nvlink v13.0.88 bin
 
 ## Overview
 
-| Category | Encoded Count | Address Region | Key Prefix |
+| Type | Encoded Count | Address Region | Key Prefix |
 |---------:|--------------:|----------------|------------|
 | SASS opcode mnemonics | ~320 per arch table | `0x1769B50` (SM70), `0x1782540` (SM100), `0x1848F70` (SM120) | uppercase: `VZNQ`, `SZHY` |
 | Mercury builtins | 644 | `0x25168`--`0x26344` (string pool) | `ZREPHEL_` |
@@ -372,30 +372,30 @@ Three per-architecture opcode table constructors populate ROT13-encoded instruct
 
 All 22 Mercury-specific passes are registered in `ctor_007` at addresses `0x425A40`--`0x426080`. Each is a boolean enable/disable flag stored at a bit offset within the global options structure. The prefix `ZREPHEL` decodes to `MERCURY` -- the Blackwell (SM100+) codename.
 
-| ROT13 Name | Decoded Name | Bit Offset | Reg. Address | Category |
+| ROT13 Name | Decoded Name | Bit Offset | Reg. Address | Type |
 |------------|-------------|-----------|-------------|----------|
-| `ZrephelNffhzrCGKCbegnovyvgl` | MercuryAssumePTXPortability | `0x3d40` | `0x425A40` | assume |
-| `ZrephelPbzcnpgrqNffhzrf` | MercuryCompactedAssumes | `0x3d50` | `0x425A90` | assume |
-| `ZrephelPbafhzrNffhzrf` | MercuryConsumeAssumes | `0x3d60` | `0x425AE0` | assume |
-| `ZrephelPbairegreFgngf` | MercuryConverterStats | `0x3d70` | `0x425B30` | diagnostics |
-| `ZrephelQrcFgntrCersreAbaYvirvaCFO` | MercuryDepStagePreferNonLiveinPSB | `0x3d78` | `0x425B80` | scoreboard |
-| `ZrephelQvfnoyrYrtnyvmngvbaBsGrkGbHEObhaq` | MercuryDisableLegalizationOfTexToURBound | `0x3d80` | `0x425BD0` | legalization |
-| `ZrephelQhzcVafgfNfOvanel` | MercuryDumpInstsAsBinary | `0x3d90` | `0x425C20` | diagnostics |
-| `ZrephelRapbqrQrpbqr` | MercuryEncodeDecode | `0x3da0` | `0x425C70` | encoding |
-| `ZrephelRapbqrArjJbexreSvyrf` | MercuryEncodeNewWorkerFiles | `0x3db0` | `0x425CC0` | encoding |
-| `ZrephelSbeprVFNPynff` | MercuryForceISAClass | `0x3db8` | `0x425D10` | ISA/target |
-| `ZrephelSbeprHaxabjaGptra05Ngge` | MercuryForceUnknownTcgen05Attr | `0x3db9` | `0x425D60` | ISA/target |
-| `ZrephelTraFnffHPbqr` | MercuryGenSassUCode | `0x3dc0` | `0x425DB0` | codegen |
-| `ZrephelVafregNffhzrf` | MercuryInsertAssumes | `0x3dd0` | `0x425E00` | assume |
-| `ZrephelVafregOnpxrqtrQrcone` | MercuryInsertBackedgeDepbar | `0x3de0` | `0x425E50` | scoreboard |
-| `ZrephelVafregKoybpxJnvg` | MercuryInsertXblockWait | `0x3df0` | `0x425EA0` | scoreboard |
-| `ZrephelVffhrQrynlJOFgnyyFrysYbbc` | MercuryIssueDelayWBStallSelfLoop | `0x3e00` | `0x425EF0` | scoreboard |
-| `ZrephelZretrCebybthrOybpxf` | MercuryMergePrologueBlocks | `0x3e10` | `0x425F40` | codegen |
-| `ZrephelCerfhzrKoybpxJnvgOrarsvpvny` | MercuryPresumeXblockWaitBeneficial | `0x3e18` | `0x425F90` | scoreboard |
-| `ZrephelGrcvqNjnerFo` | MercuryTepidAwareSb | `0x3e20` | `0x425FE0` | scheduling |
-| `ZrephelGenpxZhygvErnqfJneYngrapl` | MercuryTrackMultiReadsWarLatency | `0x3e30` | `0x426030` | scheduling |
-| `ZrephelHfrNpgvirGuernqPbyyrpgvirVafgf` | MercuryUseActiveThreadCollectiveInsts | `0x3e40` | `0x426080` | ISA/target |
-| `NqinaprqFOPebffOybpxZrephelNffhzr` | AdvancedSBCrossBlockMercuryAssume | `0x5b0` | `0x4129E0` | scoreboard |
+| `ZrephelNffhzrCGKCbegnovyvgl` | MercuryAssumePTXPortability | `0x3D40` | `0x425A40` | assume |
+| `ZrephelPbzcnpgrqNffhzrf` | MercuryCompactedAssumes | `0x3D50` | `0x425A90` | assume |
+| `ZrephelPbafhzrNffhzrf` | MercuryConsumeAssumes | `0x3D60` | `0x425AE0` | assume |
+| `ZrephelPbairegreFgngf` | MercuryConverterStats | `0x3D70` | `0x425B30` | diagnostics |
+| `ZrephelQrcFgntrCersreAbaYvirvaCFO` | MercuryDepStagePreferNonLiveinPSB | `0x3D78` | `0x425B80` | scoreboard |
+| `ZrephelQvfnoyrYrtnyvmngvbaBsGrkGbHEObhaq` | MercuryDisableLegalizationOfTexToURBound | `0x3D80` | `0x425BD0` | legalization |
+| `ZrephelQhzcVafgfNfOvanel` | MercuryDumpInstsAsBinary | `0x3D90` | `0x425C20` | diagnostics |
+| `ZrephelRapbqrQrpbqr` | MercuryEncodeDecode | `0x3DA0` | `0x425C70` | encoding |
+| `ZrephelRapbqrArjJbexreSvyrf` | MercuryEncodeNewWorkerFiles | `0x3DB0` | `0x425CC0` | encoding |
+| `ZrephelSbeprVFNPynff` | MercuryForceISAClass | `0x3DB8` | `0x425D10` | ISA/target |
+| `ZrephelSbeprHaxabjaGptra05Ngge` | MercuryForceUnknownTcgen05Attr | `0x3DB9` | `0x425D60` | ISA/target |
+| `ZrephelTraFnffHPbqr` | MercuryGenSassUCode | `0x3DC0` | `0x425DB0` | codegen |
+| `ZrephelVafregNffhzrf` | MercuryInsertAssumes | `0x3DD0` | `0x425E00` | assume |
+| `ZrephelVafregOnpxrqtrQrcone` | MercuryInsertBackedgeDepbar | `0x3DE0` | `0x425E50` | scoreboard |
+| `ZrephelVafregKoybpxJnvg` | MercuryInsertXblockWait | `0x3DF0` | `0x425EA0` | scoreboard |
+| `ZrephelVffhrQrynlJOFgnyyFrysYbbc` | MercuryIssueDelayWBStallSelfLoop | `0x3E00` | `0x425EF0` | scoreboard |
+| `ZrephelZretrCebybthrOybpxf` | MercuryMergePrologueBlocks | `0x3E10` | `0x425F40` | codegen |
+| `ZrephelCerfhzrKoybpxJnvgOrarsvpvny` | MercuryPresumeXblockWaitBeneficial | `0x3E18` | `0x425F90` | scoreboard |
+| `ZrephelGrcvqNjnerFo` | MercuryTepidAwareSb | `0x3E20` | `0x425FE0` | scheduling |
+| `ZrephelGenpxZhygvErnqfJneYngrapl` | MercuryTrackMultiReadsWarLatency | `0x3E30` | `0x426030` | scheduling |
+| `ZrephelHfrNpgvirGuernqPbyyrpgvirVafgf` | MercuryUseActiveThreadCollectiveInsts | `0x3E40` | `0x426080` | ISA/target |
+| `NqinaprqFOPebffOybpxZrephelNffhzr` | AdvancedSBCrossBlockMercuryAssume | `0x5B0` | `0x4129E0` | scoreboard |
 
 Related global switches (also ROT13-encoded):
 
@@ -617,7 +617,7 @@ The master phase table at `0x2443000`--`0x2445000` contains 151 ROT13-encoded pa
 
 Four families of ELF section names are stored ROT13-encoded in the binary. These annotate SASS-level metadata for memory ordering and data format constraints.
 
-| ROT13 in Binary | Decoded Name | Purpose |
+| ROT13 in Binary | Decoded Name | Description |
 |----------------|-------------|---------|
 | `.flap_erfgevpg::funerq::ernq::zzn::n` | `.sync_restrict::shared::read::mma::a` | Memory sync restriction for shared MMA reads |
 | `.npp::s16` | `.acc::f16` | Accumulator section for FP16 data |

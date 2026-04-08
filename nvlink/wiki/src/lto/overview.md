@@ -202,16 +202,16 @@ Active when `--split-compile` or `--split-compile-extended` is specified:
 | Option | Short | Type | Global | Description |
 |---|---|---|---|---|
 | `--link-time-opt` | `-lto` | bool | `byte_2A5F288` | Enable LTO. Required for IR inputs |
-| `--dlto` | | bool | `byte_2A5F287` | Distributed LTO mode |
-| `--force-partial-lto` | | bool | `byte_2A5F285` | Force partial LTO even when whole-program is possible |
-| `--force-whole-lto` | | bool | `byte_2A5F284` | Force whole-program LTO |
-| `--nvvmpath` | | string | `qword_2A5F278` | Path to `libnvvm.so`. Required with `-lto` |
-| `--emit-ptx` | | bool | `byte_2A5F29A` | Emit intermediate PTX instead of SASS |
-| `--split-compile` | | int | `dword_2A5F260` | Split compilation mode |
-| `--split-compile-extended` | | int | `dword_2A5B514` | Extended split-compile thread count |
-| `--Xnvvm` | | string (multi) | `qword_2A5F230` | Pass-through options to libnvvm/cicc |
-| `--Xptxas` | | string (multi) | `qword_2A5F238` | Pass-through options to embedded ptxas |
-| `--maxrregcount` | | int | `dword_2A5F22C` | Maximum register count per thread |
+| `--dlto` | — | bool | `byte_2A5F287` | Distributed LTO mode |
+| `--force-partial-lto` | — | bool | `byte_2A5F285` | Force partial LTO even when whole-program is possible |
+| `--force-whole-lto` | — | bool | `byte_2A5F284` | Force whole-program LTO |
+| `--nvvmpath` | — | string | `qword_2A5F278` | Path to `libnvvm.so`. Required with `-lto` |
+| `--emit-ptx` | — | bool | `byte_2A5F29A` | Emit intermediate PTX instead of SASS |
+| `--split-compile` | — | int | `dword_2A5F260` | Split compilation mode |
+| `--split-compile-extended` | — | int | `dword_2A5B514` | Extended split-compile thread count |
+| `--Xnvvm` | — | string (multi) | `qword_2A5F230` | Pass-through options to libnvvm/cicc |
+| `--Xptxas` | — | string (multi) | `qword_2A5F238` | Pass-through options to embedded ptxas |
+| `--maxrregcount` | — | int | `dword_2A5F22C` | Maximum register count per thread |
 | `--Ofast-compile` | `-Ofc` | string | `qword_2A5F258` | Compilation speed vs quality tradeoff. Values: `"0"`, `"min"`, `"mid"`, `"max"` |
 
 ## Key Functions
@@ -306,3 +306,10 @@ Each clone set contains 50--60 functions implementing identical lowering logic s
 - [LTO IR Format Versions](ir-format-versions.md) -- NVVM IR bitcode detection and version constraints
 - [Pipeline Overview](../pipeline/overview.md) -- Full 14-phase pipeline context
 - [Architecture Dispatch](../ptxas/arch-dispatch.md) -- SM-variant vtable selection for ISel clones
+- [Merge Phase](../pipeline/merge.md) -- post-LTO merge that integrates compiled cubins into the output ELF
+- [Dead Code Elimination](../linker/dead-code-elimination.md) -- linker-level DCE suppressed during full LTO, active during partial LTO
+- [Symbol Resolution](../linker/symbol-resolution.md) -- symbol handling for LTO-compiled modules merged into the output
+
+### Sibling Wiki
+
+- **cicc wiki**: [LTO & Module Optimization](../../../../cicc/wiki/src/lto/index.md) -- compiler-side LTO pipeline (five-pass IR optimization, inliner cost model, cross-module import). nvlink delegates IR compilation to cicc via libnvvm; this page documents what cicc does with the IR

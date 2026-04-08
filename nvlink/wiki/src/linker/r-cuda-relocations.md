@@ -784,7 +784,7 @@ The error descriptors at `unk_2A5BAB0` (warning) and `unk_2A5BAC0` (error) contr
 
 The complete list of 119 R_CUDA relocation types extracted from nvlink v13.0.88, sorted by name:
 
-| # | Name | Category |
+| # | Name | Type |
 |---|---|---|
 | 1 | `R_CUDA_2_47` | misc |
 | 2 | `R_CUDA_32` | data |
@@ -914,4 +914,28 @@ Note: The catalog contains 119 unique name strings as extracted from the binary.
 - [Finalization Phase](../pipeline/finalize.md) -- second-pass relocation application
 - [Relocation Application Engine](relocation-engine.md) -- the bit-field patching engine
 - [Bindless Relocations](bindless-relocations.md) -- bindless texture/surface resolution
+- [Symbol Resolution](symbol-resolution.md) -- symbol resolution that feeds resolved addresses to relocation application
+- [Section Merging](section-merging.md) -- merge phase that collects `.rela.*` sections from input objects
 - [Binary Layout](../binary-layout.md) -- locations of descriptor tables in the nvlink binary
+
+### Sibling Wiki
+
+- **ptxas wiki**: [Relocations & Symbols](../../../../ptxas/wiki/src/output/relocations.md) -- how ptxas generates R\_CUDA and R\_MERCURY relocation entries during code emission (the producer side of what nvlink consumes)
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| `sub_42F6C0` validates standard table at `off_1D37600` (117 entries, limit 0x75) | HIGH | Decompiled `sub_42F6C0_0x42f6c0.c` line 26: `a1 >= 0x75`; line 25: `&off_1D37600` |
+| `sub_42F6C0` validates attribute table at `off_1D371E0` (65 entries, limit 0x41) | HIGH | Decompiled line 17: `&off_1D371E0`; line 18: `a1 < 0x41` |
+| Attribute type offset is 0x10000 | HIGH | Decompiled line 15: `a1 -= 0x10000` |
+| `sub_42F8C0` arch class mapping: sm<=70 class 1, sm<=72 class 2, sm>=76 class 5, sm 73-75 class 3 | HIGH | Decompiled `sub_42F8C0_0x42f8c0.c`: `2*(a1>=76)+3` formula confirmed |
+| `sub_42F6C0` emits `"unknown attribute"` on bounds violation | HIGH | Decompiled line 21: exact string literal |
+| Five architecture class names at `off_1D371A0` | HIGH | Decompiled line 36: `&off_1D371A0 + v10` |
+| 64-byte descriptor entries at `off_1D3DBE0` (CUDA) and `off_1D3CBE0` (Mercury) | HIGH | Decompiled `sub_468760`: `type_index << 6` indexing confirmed |
+| Application engine `sub_468760` at 0x468760 with 10-parameter signature | HIGH | Decompiled file exists with matching signature |
+| 119 unique R_CUDA type name strings extracted from binary | HIGH | All names extracted from `nvlink_strings.json`; complete catalog verified |
+| `"STO_CUDA_OBSCURE"` emitted by `sub_42F850` | HIGH | String confirmed in `nvlink_strings.json` |
+| Action types and aliases (0x01/0x12/0x2E, 0x06/0x37, 0x07/0x38) | MEDIUM | Reconstructed from decompiled `sub_468760` switch; full per-action verification not performed |
+| Per-architecture vtable with 79 slots from `sub_459640` | MEDIUM | Function exists; slot count inferred from 632-byte allocation (79 * 8) |
+| YIELD relocation forward-progress check at ctx+94 | MEDIUM | Reconstructed from decompiled relocation phase analysis |

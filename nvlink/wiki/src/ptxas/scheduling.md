@@ -1,5 +1,7 @@
 # Instruction Scheduling
 
+> **Note**: This page documents the embedded ptxas copy within nvlink v13.0.88. The standalone ptxas binary has its own comprehensive wiki -- see the [ptxas Reverse Engineering Reference](../../../../ptxas/wiki/src/index.md) for the full compiler reference. For the standalone ptxas scheduling pipeline, see [ptxas Scheduling overview](../../../../ptxas/wiki/src/scheduling/overview.md), [algorithm](../../../../ptxas/wiki/src/scheduling/algorithm.md), [latency model](../../../../ptxas/wiki/src/scheduling/latency-model.md), and [scoreboards](../../../../ptxas/wiki/src/scheduling/scoreboards.md).
+
 The embedded ptxas backend in nvlink v13.0.88 contains two complete instruction scheduling subsystems: the **pre-register-allocation scheduler** (three named strategy modes operating on IR-level instructions) and the **tepid scheduler** (a post-register-allocation pipeline simulator that assigns stall counts, yield hints, and scoreboard barriers to the final SASS instruction stream). Both subsystems run per-function and per-basic-block. Together they span approximately 1.2 MB of code across three address ranges: `0x1680000`--`0x16E0000`, `0x16F6000`--`0x1740000`, and `0x1850000`--`0x186F000`, plus scoreboard/dependency tracking at `0x1B40000`--`0x1B60000`.
 
 ## Overview of the Two Schedulers
@@ -38,7 +40,7 @@ The main driver also conditionally invokes two companion passes that are tightly
 
 The strategy selection function at `0x1857990` (13 KB) chooses between three modes:
 
-| Mode | Pass Name | Purpose | When Selected |
+| Mode | Pass Name | Description | When Selected |
 |---|---|---|---|
 | Default | `ScheduleInstructions` | Maximize ILP and latency hiding | General-purpose kernels |
 | ReduceReg | `ScheduleInstructionsReduceReg` | Minimize register pressure | When register pressure exceeds budget |
@@ -142,7 +144,7 @@ Key sub-passes:
 
 ## Tepid Scheduler (Post-RA)
 
-The tepid scheduler is NVIDIA's post-register-allocation instruction scheduler. It operates on the final SASS instruction stream with physical register assignments, modeling the actual hardware pipeline to produce optimal scheduling control words. The name "tepid" appears in internal string references (`"TepidMacUtil"`, `"TepidTime"`) and likely refers to a "warm" scheduling approach -- not as aggressive as full software pipelining, but more than simple in-order emission.
+The tepid scheduler is NVIDIA's post-register-allocation instruction scheduler. It operates on the final SASS instruction stream with physical register assignments, modeling the actual hardware pipeline to produce optimal scheduling control words. The name "tepid" appears in internal string references (`"TepidMacUtil"`, `"TepidTime"`) and refers to a "warm" scheduling approach -- not as aggressive as full software pipelining, but more than simple in-order emission.
 
 ### Address Ranges
 
@@ -1154,3 +1156,18 @@ function pressure_aware_priority(sched_ctx, instruction, reg_info):
 | `0x1A8A5B0` | 11 KB | Scoreboard pressure analyzer |
 | `0x1A63610` | 14 KB | Barrier assignment pass |
 | `0x1A64080` | 15 KB | Barrier optimizer |
+
+## Cross-References
+
+### nvlink Internal
+- [Embedded ptxas Overview](overview.md) -- scheduling in the 48-pass pipeline (passes 23--38)
+- [Register Allocation](register-allocation.md) -- runs before the tepid scheduler
+- [ISel Hubs](isel-hubs.md) -- runs before scheduling
+- [Peephole](peephole.md) -- peephole passes at `0x1866FA0` interleaved with scheduling
+- [Mercury Compiler Passes](../mercury/compiler-passes.md) -- Mercury-specific scheduling passes (MercWARs, MercOpex)
+
+### Sibling Wikis
+- [ptxas: Scheduling Overview](../../../../ptxas/wiki/src/scheduling/overview.md) -- standalone ptxas scheduling infrastructure
+- [ptxas: Algorithm](../../../../ptxas/wiki/src/scheduling/algorithm.md) -- scheduling algorithm details
+- [ptxas: Latency Model](../../../../ptxas/wiki/src/scheduling/latency-model.md) -- per-instruction latency tables
+- [ptxas: Scoreboards](../../../../ptxas/wiki/src/scheduling/scoreboards.md) -- dependency barrier assignment

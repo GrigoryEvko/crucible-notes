@@ -210,7 +210,7 @@ No direct R_CUDA equivalent exists for these types. They appear to be Mercury-sp
 
 Byte-level PC-relative relocations. These compute `(S + A) - PC` and then extract a single byte at the specified offset from the result. Used for data structures that assemble PC-relative offsets byte-by-byte.
 
-No direct R_CUDA equivalent exists. These are Mercury-specific additions, presumably for use in data tables (jump tables, exception tables) where PC-relative distances are stored in byte-addressable format.
+No direct R_CUDA equivalent exists. These are Mercury-specific additions for use in data tables (jump tables, exception tables) where PC-relative distances are stored in byte-addressable format.
 
 ### Unified Table Relocations (R_MERCURY_UNIFIED_*)
 
@@ -296,7 +296,7 @@ R_MERCURY omits the following R_CUDA relocation categories entirely:
 
 ### Categories Present in R_MERCURY but Absent from R_CUDA
 
-| R_MERCURY Category | Count | Purpose |
+| R_MERCURY Category | Count | Description |
 |---|---|---|
 | `R_MERCURY_PROG_REL64` | 1 | 64-bit PC-relative (CUDA has only 24-bit) |
 | `R_MERCURY_PROG_REL32_LO/HI` | 2 | Split PC-relative (no CUDA equivalent) |
@@ -364,7 +364,7 @@ nvlink includes a self-check mechanism specifically for Mercury relocations. Whe
 
 ## Summary Table by Category
 
-| Category | Indices | Count | Computation | Purpose |
+| Type | Indices | Count | Computation | Description |
 |---|---|---|---|---|
 | Sentinel | 0, 64 | 2 | -- | No-op / bounds marker |
 | Global data | 1 | 1 | `S + A` | Global memory addresses |
@@ -380,4 +380,39 @@ nvlink includes a self-check mechanism specifically for Mercury relocations. Whe
 | PC-relative byte-level | 42--49 | 8 | `byte_n((S + A) - PC)` | PC-relative byte patching |
 | Unified table | 50--59, 62--63 | 12 | `S + A` (full/lo/hi/byte) | UDT/UFT table references |
 | Abs PC-relative (full) | 60--61 | 2 | `\|S + A - PC\|` (32/64) | Unsigned distance full-width |
-| **Total** | | **65** | | |
+| **Total** | — | **65** | — | — |
+
+## Confidence Assessment
+
+| Claim | Rating | Evidence |
+|---|---|---|
+| 65 unique R_MERCURY type names (indices 0--64) | **HIGH** | 71 R_MERCURY strings in `nvlink_strings.json` (65 unique names + 6 duplicate trailing-space variants). Exact count verified by string scan. |
+| Name table at `off_1D371E0` (65 entries, addr range `0x1D35A17`--`0x1D35F4C`) | **HIGH** | All 65 type name strings verified at addresses within stated range. Each string has xrefs to the relocation engine. |
+| Descriptor table at `off_1D3CBE0` (65 entries, 64 bytes each = 4,160 bytes) | **HIGH** | Table address and entry size verified from decompiled `sub_468760` (relocation application engine). 64-byte entry format confirmed from descriptor indexing arithmetic. |
+| ELF type encoding: table index + `0x10000` | **HIGH** | Verified from decompiled relocation dispatch logic in `sub_468760`. The `0x10000` offset subtraction is explicit in the code. |
+| ELF class byte `0x41` ('A') distinguishes Mercury from CUDA | **HIGH** | Verified from decompiled `sub_4275C0` and `sub_4748F0`. The `0x41` check at `hdr+7` gates Mercury-specific code paths. |
+| Application engine `sub_468760` shared with R_CUDA | **HIGH** | Decompiled file `sub_468760_0x468760.c` exists. Dual descriptor table selection (Mercury vs CUDA) confirmed in code. |
+| Descriptor format: 12-byte header + 3x 16-byte actions + 4-byte sentinel | **MEDIUM** | 64-byte entry size verified. Internal field layout (bit_offset, bit_width, action_type) inferred from decompiled action execution code. Exact header/sentinel structure is derived from field access patterns. |
+| R_MERCURY vs R_CUDA comparison table | **HIGH** | Type-by-type comparison verified from both name tables in `nvlink_strings.json`. Semantic equivalence claims based on identical descriptor action patterns for matching types. |
+| Categories omitted from R_MERCURY (25 instruction-specific, CONST_FIELD, bindless, etc.) | **HIGH** | Absence verified by complete enumeration of all 65 R_MERCURY names. No `R_MERCURY_CONST_FIELD`, `R_MERCURY_BINDLESS`, `R_MERCURY_INSTRUCTION64/128`, etc. exist in the string table. |
+| Mercury-specific types: PROG_REL64, PROG_REL32_LO/HI, PROG_REL8_*, ABS_PROG_REL* | **HIGH** | All type names verified in `nvlink_strings.json`. No corresponding `R_CUDA_PROG_REL64`, `R_CUDA_PROG_REL8_*`, or `R_CUDA_ABS_PROG_REL*` exist. |
+| Trailing-space variants at `0x1D3CB71` and `0x1D3CB88` | **MEDIUM** | Two strings with trailing spaces verified in string table. Interpretation as formatting artifacts is inferred (not confirmed by code analysis). |
+| Attribute relocation table limit check `type_index >= 0x41` | **HIGH** | Verified from decompiled validation function `sub_42F6C0`. The `0x41` (65) limit is explicit. |
+| EIATTR_MERCURY_ISA_VERSION and EIATTR_MERCURY_FINALIZER_OPTIONS | **HIGH** | Both attribute name strings verified at `0x1D36F31` and `0x1D37170` in `nvlink_strings.json`. |
+| Self-check infrastructure strings | **HIGH** | All 7 self-check/diagnostic strings verified at exact addresses. |
+| Unified table synthetic symbols (`__UFT_OFFSET`, `__UDT_OFFSET`, etc.) | **MEDIUM** | Symbol names verified from decompiled relocation processing code. The "resolved to type 0" behavior is inferred from code flow analysis. |
+| `R_MERCURY_UNIFIED32_LO/HI` added later than main unified block | **LOW** | Inferred from non-contiguous index placement (indices 62--63 vs 50--59). No version history available to confirm chronology. |
+| `R_MERCURY_ABS_PROG_REL32_LO/HI` added before full-width variants | **LOW** | Same reasoning: non-contiguous indices (40--41 vs 60--61). Chronological ordering is speculative. |
+
+## Cross-References
+
+### nvlink Internal
+- [Mercury Overview](overview.md) -- Mercury architecture and string evidence
+- [Mercury ELF Sections](elf-sections.md) -- `.nv.merc.rela` section that carries these relocations
+- [Capsule Mercury Format](capmerc-format.md) -- capmerc container format
+- [FNLZR](fnlzr.md) -- finalizer that applies Mercury relocations
+- [R_CUDA Relocations](../linker/r-cuda-relocations.md) -- the 119 R_CUDA relocation types (comparable structure)
+- [Section Merging](../linker/section-merging.md) -- relocation processing during merge
+
+### Sibling Wikis
+- [ptxas: Capsule Mercury & Finalization](../../../../ptxas/wiki/src/codegen/capmerc.md) -- standalone ptxas capmerc relocation emission (Mercury rela entry format, relocation table layout)

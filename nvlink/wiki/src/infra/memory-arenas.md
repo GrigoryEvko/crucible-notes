@@ -50,14 +50,14 @@ The arena tier provides the underlying page allocations. The OCG memspace tier s
 
 `main()` creates two top-level arenas at startup via `arena_create_named` (`sub_432020`):
 
-| Arena name | Variable | Purpose | Lifetime |
+| Arena name | Variable | Description | Lifetime |
 |---|---|---|---|
 | `"nvlink option parser"` | `v338` in main | Holds all option-parsing allocations (strings, lists, paths) | Created at init, destroyed at cleanup |
 | `"nvlink memory space"` | `v339` in main | Holds all linker working data (sections, symbols, relocations) | Created at init, destroyed at cleanup |
 
 Additional arenas are created dynamically during execution:
 
-| Arena name | Created by | Purpose |
+| Arena name | Created by | Description |
 |---|---|---|
 | `"elfw memory space"` | `elfw_create` (`sub_4438F0`) | Per-ELF-wrapper allocations for section data, symbol tables |
 | `"<anonymous>"` | Various | Unnamed child arenas for scoped temporary allocation |
@@ -403,7 +403,7 @@ int64_t arena_context_swap(int64_t new_arena, void *unused) {
 }
 ```
 
-The metadata structure accessed via `sub_44F410` appears to be either TLS or a global per-thread array. The pointer at offset +24 is the "active arena" for the calling thread. Offset +96 holds the debug hash table pointer when `byte_2A5BAD0` is set.
+The metadata structure accessed via `sub_44F410` is either TLS or a global per-thread array (the access pattern through `sub_44F410` is consistent with thread-local storage, but the exact mechanism is not determined from decompilation). The pointer at offset +24 is the "active arena" for the calling thread. Offset +96 holds the debug hash table pointer when `byte_2A5BAD0` is set.
 
 ## OCG Memspace Allocator (sub_4882A0)
 
@@ -432,16 +432,16 @@ The class index is computed as `(requested + 7) >> 3` -- the requested size roun
 |------:|---------------------:|----------------------:|-------|
 | 0 | 0 | 0 | Sink for exhausted chunks (0 remaining) |
 | 1 | 8 | 1--8 | Minimum useful allocation |
-| 2 | 16 | 9--16 | |
+| 2 | 16 | 9--16 | — |
 | 3 | 24 | 17--24 | Matches chunk header size |
-| 4 | 32 | 25--32 | |
-| 5 | 40 | 33--40 | |
+| 4 | 32 | 25--32 | — |
+| 5 | 40 | 33--40 | — |
 | ... | ... | ... | Each class covers an 8-byte range |
-| 16 | 128 | 121--128 | |
-| 32 | 256 | 249--256 | |
-| 64 | 512 | 505--512 | |
-| 96 | 768 | 761--768 | |
-| 126 | 1,008 | 1,001--1,008 | |
+| 16 | 128 | 121--128 | — |
+| 32 | 256 | 249--256 | — |
+| 64 | 512 | 505--512 | — |
+| 96 | 768 | 761--768 | — |
+| 126 | 1,008 | 1,001--1,008 | — |
 | 127 | 1,016 | 1,009--1,016 | Largest size class |
 
 **Class index formula** (verified from decompiled code at `0x4882A0`):
@@ -733,7 +733,7 @@ The error state is tracked in the arena metadata byte at offset +1 (accessible v
 
 ## Global Variables
 
-| Address | Name | Purpose |
+| Address | Name | Description |
 |---|---|---|
 | `byte_2A5BAD0` | `debug_alloc_flag` | Non-zero enables debug tracking hash table for all allocations |
 | `dword_2A5F384` | `emergency_page_count` | Number of reserved emergency pages available for OOM recovery |

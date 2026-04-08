@@ -639,7 +639,7 @@ std_opcode_lengths[8] = 1   // DW_LNS_fixed_advance_pc: 1 uhalf
 
 nvlink uses the following DWARF line number program parameters, confirmed by the state machine initializer at `sub_12D1990` (packed as `0x0EFB0101` at byte offset +76):
 
-| Parameter | Value | Byte Offset | Description |
+| Parameter | Value | Offset | Description |
 |---|---|---|---|
 | `minimum_instruction_length` | 1 | +76 | Minimum instruction unit in bytes |
 | `default_is_stmt` | 1 | +77 | All lines are statements by default |

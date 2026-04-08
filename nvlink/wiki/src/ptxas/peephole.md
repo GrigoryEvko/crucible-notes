@@ -269,7 +269,7 @@ int ori_build_sequence(context_t *ctx, opcode_table_t *table, int32_t *dest) {
 
 The pass objects live in a table indexed by opcode ID. Each pass object has a standard vtable layout:
 
-| Vtable offset | Method | Purpose |
+| Vtable offset | Method | Description |
 |---|---|---|
 | +0 | `destructor` | Cleanup |
 | +8 | `getName()` | Returns pass name string (e.g., `"swap1"`) |
@@ -405,7 +405,7 @@ The FNV-1a hash is used for pattern matching in a hash table at offset +752 in t
 
 `sub_19733B0` (879 lines) is the core per-instruction ORI dispatcher. It reads the instruction opcode from field +72 (masked with `BYTE1(v) &= 0xCF` to clear modifier bits), then dispatches through a switch statement covering ~150 SASS opcode cases to ~50 distinct handler functions:
 
-| Opcode ID(s) | Handler | Category |
+| Opcode ID(s) | Handler | Type |
 |---|---|---|
 | 1 | `sub_19606A0` | Simple ALU (single operand rewrite) |
 | 2, 3, 4, 5, 7 | `vtable[0]` (virtual dispatch) | Generic instruction handler |
@@ -575,7 +575,7 @@ This pass optimizes texture fetch instruction sequences. On NVIDIA GPUs, texture
 
 ### TexNodep Sub-Functions
 
-| Address | Size | Identity | Purpose |
+| Address | Size | Identity | Description |
 |---|---|---|---|
 | `sub_19938E0` | 39 KB | `TexNodep_optimization_pass` | Main driver (self-recursive) |
 | `sub_1995100` | 9 KB | `tex_node_analysis` | Analyze texture operation dependencies |
@@ -749,7 +749,12 @@ The peephole passes are controlled by the internal knob system and compiler opti
 
 ## Cross-References
 
+### nvlink Internal
 - [Embedded ptxas Overview](overview.md) -- complete address map and compilation pipeline context
 - [Instruction Scheduling](scheduling.md) -- the main ScheduleInstructions pass that invokes OptimizeNaNOrZero
 - [Register Allocation](register-allocation.md) -- the regalloc pass that TexNodep runs after
 - [IR Nodes](ir-nodes.md) -- the IR node structure manipulated by peephole passes
+- [Mercury Compiler Passes](../mercury/compiler-passes.md) -- Mercury-specific ORI pass integration
+
+### Sibling Wikis
+- [ptxas: Peephole Optimization](../../../../ptxas/wiki/src/codegen/peephole.md) -- standalone ptxas peephole pass (three 250KB dispatch functions)

@@ -62,7 +62,7 @@ void phase_timer(const char *label, float elapsed) {
         fprintf(stderr, "%s time: %f\n", label, elapsed);
     } else {
         g_timer_started = 1;               // byte_2A5F1C0 = 1
-        // nullsub_2() -- no-op, likely stripped initialization
+        // nullsub_2() -- no-op (stripped initialization)
     }
     timer_start(&g_timer);                 // sub_45CCD0(&unk_2A5F1B0)
 }
@@ -72,7 +72,7 @@ This is the core timing checkpoint. On the first call (typically with label `"in
 
 The decompiler shows `float a2` as the second parameter, but in practice the elapsed value is computed inside `sub_45CCE0` and the fprintf uses the return value from that call. The `a2` parameter in the prototype is a decompiler artifact from the x87 floating-point return convention.
 
-The `nullsub_2()` call on the first-time path is a no-op stub -- likely a stripped logging or tracing call that was compiled out in the release build.
+The `nullsub_2()` call on the first-time path is a no-op stub -- a stripped logging or tracing call that was compiled out in the release build.
 
 ## Stderr Timing Output
 
@@ -151,7 +151,7 @@ source file name , phase name , phase input files , phase output file , arch , t
 
 The function handles three cases:
 1. **Filename is `"-"`**: writes the header to stdout.
-2. **File already exists** (`sub_462DF0` returns true): skips writing the header, because the file was presumably initialized by a previous invocation and will be appended to.
+2. **File already exists** (`sub_462DF0` returns true): skips writing the header, because the file was initialized by a previous invocation and will be appended to.
 3. **New file**: creates the file, writes the header, closes it.
 
 ### Row Output -- sub_432340
@@ -268,7 +268,7 @@ main() {
 
 The timer uses a minimal set of global variables:
 
-| Address | Type | Name | Purpose |
+| Address | Type | Name | Description |
 |---|---|---|---|
 | `0x2A5F1B0` | `struct timeval` (16 bytes) | `g_timer` | Stores the `tv_sec`/`tv_usec` of the last checkpoint |
 | `0x2A5F1C0` | `uint8_t` | `g_timer_started` | 0 before first `phase_timer` call, 1 after |

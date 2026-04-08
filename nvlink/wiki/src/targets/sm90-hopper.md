@@ -108,7 +108,7 @@ Four bitfield extraction helpers are used by both functions, corresponding to di
 | 4, 5, 6, 7, 8 | Specific incompatibility type |
 | 10, 12 | Required conversion |
 
-The type values 1--5 likely correspond to GPR, predicate, uniform, special register, and constant bank reference. The `query_mode` parameter (`a3`) selects between two interpretation modes.
+The type values 1--5 correspond to GPR, predicate, uniform, special register, and constant bank reference (inferred from the dispatch logic and register file size constants at each branch). The `query_mode` parameter (`a3`) selects between two interpretation modes.
 
 ### Encoder Functions (0xA87CE0 -- 0xB25D50)
 
@@ -256,7 +256,7 @@ Functions `sub_403941` and `sub_4038C0` implement the bitmap membership test on 
 
 The following instruction classes have been identified in the SM90 codec through decoder analysis:
 
-| Class ID | Mnemonic | Category | Notes |
+| Class ID | Mnemonic | Type | Notes |
 |---|---|---|---|
 | 2 | MOV | Data movement | Register-to-register move |
 | 34 | UMOV | Uniform data movement | Uniform register move |

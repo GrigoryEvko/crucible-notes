@@ -21,7 +21,7 @@ For standard DWARF section processing, see [DWARF Processing](dwarf-processing.m
 
 ## NVIDIA Debug Section Catalog
 
-| Section Name | Purpose | Writer Function | Mercury Output Name |
+| Section Name | Description | Writer Function | Mercury Output Name |
 |---|---|---|---|
 | `.nv_debug_line_sass` | SASS-level line number mappings | (line table pipeline) | `.nv.merc.nv_debug_line_sass` |
 | `.nv_debug_info_reg_sass` | Register allocation debug data | `sub_181B160` | `.nv.merc.nv_debug_info_reg_sass` |

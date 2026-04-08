@@ -103,7 +103,7 @@ nvlink v13.0.88 defines 97 EIATTR (ELF Info ATTRibute) codes, numbered 0 through
 
 All 97 codes in numeric order. Use this as the authoritative reference when parsing `.nv.info` TLV records.
 
-| Code | Hex | Name | Format | Category |
+| Code | Hex | Name | Format | Type |
 |---:|---:|---|---|---|
 | 0 | `0x00` | `EIATTR_ERROR` | -- | Sentinel |
 | 1 | `0x01` | `EIATTR_PAD` | -- | Sentinel |

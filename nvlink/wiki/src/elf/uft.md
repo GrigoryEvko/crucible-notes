@@ -159,7 +159,7 @@ uft_reorder_entries(ctx, uft_data, entry_data,
 
 The linker creates several synthetic symbols that reference the `.nv.uft` section. These are created on demand by `sub_162E070` (ptxas-side) the first time each symbol name is encountered, and by `sub_444A20` (linker-side classifier that returns true for any of the eight unified synthetic names):
 
-| Symbol | Context field offset | Purpose |
+| Symbol | Context field offset | Description |
 |---|---|---|
 | `__UFT_OFFSET` | `a1[3768]` | Offset within constant memory where the UFT base pointer resides; used by `_jcall` stubs |
 | `__UDT_OFFSET` | `a1[3769]` | Same for UDT |
@@ -822,7 +822,7 @@ When `!ctx->is_abi && ctx->is_indirect_calls` is true and the ptxas internal cod
 
 The compiler also emits two auxiliary symbols related to indirect function calls:
 
-| Symbol | Memory space | Purpose |
+| Symbol | Memory space | Description |
 |---|---|---|
 | `__funcAddrTab_c` | Constant memory (`.nv.constant`) | Table of function addresses in constant memory, read by indirect call dispatch logic |
 | `__funcAddrTab_g` | Global memory | Table of function addresses in global memory, used when constant memory is full |

@@ -111,17 +111,17 @@ The `sub_15C3DD0` lookup function resolves target strings to internal version nu
 | Internal Version | Real SM | Architecture | Notes |
 |---|---|---|---|
 | 7 | sm_35 | Kepler | Minimum supported (inferred from range base) |
-| 8 | sm_37 | Kepler (GK210) | |
+| 8 | sm_37 | Kepler (GK210) | — |
 | 9 | sm_50 | Maxwell | Feature: special load-cache behavior |
 | 10 | sm_52/53 | Maxwell | Feature: special load-cache behavior |
 | 11 | sm_60 | Pascal | Feature: v16, v17 enabled (>= 11) |
-| 12 | sm_61/62 | Pascal | |
-| 13 | sm_70/72 | Volta | |
+| 12 | sm_61/62 | Pascal | — |
+| 13 | sm_70/72 | Volta | — |
 | 14 | sm_75 | Turing | Feature: v14 enabled (>= 14) |
-| ... | ... | ... | |
+| ... | ... | ... | — |
 | 29 | sm_89 | **Ada** | Feature 33 enabled |
 | 30 | sm_90 | **Hopper** | Feature 33 enabled |
-| ... | ... | ... | |
+| ... | ... | ... | — |
 
 The `dword_1EED2E0` array at index `(version - 7)` maps internal versions to architecture family codes used by the register allocator and instruction scheduler. SM89 and SM90 share the same family code, confirming they use identical scheduling and register allocation logic.
 
@@ -206,7 +206,7 @@ The only differences between functions are the constant table address (`xmmword_
 
 ### Encoder Sub-Ranges by Opcode Type
 
-| Sub-Range | Count | Category | Notes |
+| Sub-Range | Count | Type | Notes |
 |---|---|---|---|
 | `0x100C000`--`0x1030000` | ~100 | Arithmetic/Logic | Opcode 104, standard ALU variants |
 | `0x1030000`--`0x1060000` | ~100 | Floating-point | FP modifiers via `sub_50E300`/`sub_50E320`/`sub_50E380` |
@@ -307,7 +307,7 @@ Registers the user-facing option descriptions via `sub_42F130`. This is the "hel
 
 Called once per function to initialize the 360-byte codegen context. Key initialization:
 
-| Context Offset | Value | Purpose |
+| Context Offset | Value | Description |
 |---|---|---|
 | 24 | `sub_1100DE0` | Codegen callback |
 | 64 | `"ptxocg.0.0"` | Producer string |

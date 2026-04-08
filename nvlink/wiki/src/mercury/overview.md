@@ -4,7 +4,7 @@ Mercury is NVIDIA's internal codename for a new GPU ISA binary format that repla
 
 ## String Evidence Summary
 
-| Category | Count | Address Range | Examples |
+| Type | Count | Address Range | Examples |
 |---|---|---|---|
 | `mercury` / `Mercury` | 82 | `0x1D35A17`--`0x245EF38` | `R_MERCURY_ABS64`, `EIATTR_MERCURY_ISA_VERSION`, `mercury,capmerc,sass` |
 | `Zrephel` / `ZREPHEL` | 667 | `0x1D42C80`--`0x1D4DF80` | ROT13-encoded SASS builtins: `ZREPHEL_zoneevre_neevir` = `MERCURY_mbarrier_arrive` |
@@ -124,7 +124,7 @@ The opcode tag at +28 is a 16-bit signed integer. Pre-expansion opcodes are abst
 
 Each instruction also carries an attribute bag accessible via `sub_A49150(context, ir_body, attr_id)` and `sub_A49120(context, ir_body, attr_id, value)`. Key attribute IDs observed in the expansion pass:
 
-| Attribute ID | Purpose | Observed Values |
+| Attribute ID | Description | Observed Values |
 |---|---|---|
 | 5 | Data type class | 12 = predicate type |
 | 88 | Post-expansion flag | 408 = "was MercExpand'd" marker |
@@ -969,7 +969,7 @@ Capsule Mercury is the new ELF binary format for SM100+ targets. It wraps Mercur
 
 The 20 `.nv.merc.*` section names identified in the binary:
 
-| Section Name | Purpose |
+| Section Name | Description |
 |---|---|
 | `.nv.merc` | Main Mercury instruction section |
 | `.nv.merc.rela` | Mercury relocation entries |
@@ -1024,7 +1024,7 @@ Two EIATTR (ELF Info Attribute) types are Mercury-specific:
 
 Four EICOMPAT (ELF Info Compatibility) attributes relate to Mercury and finalization:
 
-| Attribute | String Address | Purpose |
+| Attribute | String Address | Description |
 |---|---|---|
 | `EICOMPAT_ATTR_MERCURY_ISA_MAJOR_MINOR_VERSION` | `0x245EF08` | Mercury ISA version (major.minor) |
 | `EICOMPAT_ATTR_MERCURY_ISA_PATCH_VERSION` | `0x245EF38` | Mercury ISA patch version |
@@ -1064,7 +1064,7 @@ See [FNLZR (Finalizer)](fnlzr.md) for detailed analysis of the finalization subs
 
 The final Mercury pipeline stage is `MercGenerateSassUCode` (`0x2443D02`, xref `0x2444418`), which converts the Mercury internal representation into SASS microcode -- the actual GPU-executable instruction encoding. Related dump utilities exist:
 
-| Function | String Address | Purpose |
+| Function | String Address | Description |
 |---|---|---|
 | `DumpNVuCodeText` | `0x2443DA2` | Dump microcode in text format |
 | `DumpNVuCodeHex` | `0x2443DB2` | Dump microcode in hex format |
@@ -1073,8 +1073,47 @@ The `.ucode` section name at `0x1EEC922` and `EIATTR_UCODE_SECTION_DATA` at `0x1
 
 ## Cross-References
 
+### nvlink Internal
 - [Capsule Mercury Format](capmerc-format.md) -- detailed capmerc ELF layout and encoding
 - [R_MERCURY Relocations](r-mercury-relocations.md) -- the 67 Mercury relocation types
 - [Mercury ELF Sections](elf-sections.md) -- the 20 `.nv.merc.*` sections
 - [Mercury Compiler Passes](compiler-passes.md) -- MercExpand, MercConverter, MercWARs, MercOpex
 - [FNLZR (Finalizer)](fnlzr.md) -- SASS-to-Mercury and Mercury-to-SASS conversion
+- [Embedded ptxas Overview](../ptxas/overview.md) -- MercExpand mega-hub at `0x5B1D80` in the address map
+- [ISel Hubs](../ptxas/isel-hubs.md) -- MercExpand is the 5th mega-hub dispatch function
+- [SM100 Blackwell](../targets/sm100-blackwell.md) -- Mercury is the default encoding for SM100+ targets
+- [Output Phase](../pipeline/output.md) -- Mercury output path in the linker pipeline
+
+### Sibling Wikis
+- [ptxas: Mercury Encoder Pipeline](../../../../ptxas/wiki/src/codegen/mercury.md) -- standalone ptxas Mercury encoder (phases 113--122: encode/decode, MercExpand, WAR, opex, UCode emission)
+- [ptxas: Capsule Mercury & Finalization](../../../../ptxas/wiki/src/codegen/capmerc.md) -- standalone ptxas capmerc output format, Mercury section binary layouts, finalization pipeline
+- [ptxas: SASS Encoding](../../../../ptxas/wiki/src/codegen/encoding.md) -- SASS instruction encoding that Mercury wraps
+
+## Confidence Assessment
+
+| Claim | Rating | Evidence |
+|---|---|---|
+| Mercury = ROT13("Zrephel") obfuscation scheme | **HIGH** | 667 ZREPHEL strings verified in `nvlink_strings.json` (addr range `0x1D42C80`--`0x1D4DF80`). ROT13 decode confirmed character-by-character. |
+| 667 ZREPHEL builtin instruction entries | **HIGH** | Exact count from `nvlink_strings.json` string scan. All entries begin with `ZREPHEL_` prefix. |
+| ROT13 decoder at `sub_1A40AC0` (15,629 bytes, SIMD) | **MEDIUM** | Function exists at stated address in decompiled code. SIMD `_mm_load_si128` usage inferred from decompiler output. Byte count from function bounds. |
+| `--binary-kind` flag parsed from `"mercury,capmerc,sass"` at `0x1D41D03` | **HIGH** | String verified at exact address in `nvlink_strings.json` with xref to `0x4AC55C`. |
+| SM100+ default is capmerc (activation via `byte_2A5F222`) | **HIGH** | String `"Default on sm100+ is capmerc"` verified. Global `byte_2A5F222` confirmed in decompiled `sub_4AC380`. |
+| Architecture compatibility: 104->120, 130->107, 101->110 remapping | **HIGH** | Verified from decompiled `sub_4709E0` and `sub_470DA0`. |
+| Capability bitmask: sm100=1, sm103=8, sm110=2, sm121=64 | **HIGH** | Decompiled from `sub_470DA0`, verified from switch on architecture codes 'd','g','n','y'. |
+| MercExpand engine spans `0x5E4470`--`0x600260` (~112 KB) | **MEDIUM** | Address range from sweep analysis. Entry `sub_5FF110` and dispatch `sub_5FDDB0` verified from decompiled code. Sub-function count (~40) is approximate. |
+| 30 opcode dispatch cases in `sub_5FDDB0` | **HIGH** | Switch statement cases verified from decompiled `sub_5FDDB0` (25.5KB). |
+| IR node layout (offsets +0/+8/+16/+28/+32/+48/+56/+112/+120/+148/+149/+152) | **MEDIUM** | Offsets derived from decompiled code field access patterns. Consistent across multiple functions. Field names are inferred from usage context. |
+| 184-byte target instruction descriptor format | **MEDIUM** | Size inferred from `184 * desc_index` multiplication in decompiled code. Field offsets verified from constraint propagation code. |
+| FNV-1a hash constants (basis=`0x811C9DC5`, prime=16777619) | **HIGH** | Standard FNV-1a constants, verified from decompiled `sub_5F80E0`. |
+| Register state cache: 13 slots, 15 generation counters | **MEDIUM** | Slot count and counter count from decompiled `sub_5EA4F0`. Specific slot-to-register-file mapping is inferred. |
+| String evidence: 82 `mercury`/`Mercury`, 7 `capmerc`, 17 `FNLZR`, 20 `.nv.merc.*` | **HIGH** | Counts verified by scanning `nvlink_strings.json`. Address ranges confirmed. |
+| FNLZR diagnostic strings (`"FNLZR: Input ELF: %s"`, etc.) | **HIGH** | All 12 FNLZR strings verified at exact addresses with xrefs to `sub_4275C0`. |
+| Self-check error strings and MERCSW-125 Jira reference | **HIGH** | 4 self-check strings verified. `MERCSW-125` string confirmed at `0x1F44288`. |
+| `capmerc.cubin` output filename at `0x1D33FA9` | **HIGH** | Verified in `nvlink_strings.json` with xrefs from `0x40A84F` and `0x42A26F`. |
+| Fastpath optimization log string at `0x1D40610` | **HIGH** | Exact string verified in `nvlink_strings.json`. |
+| Mercury uplift error at `0x2458FE8` | **HIGH** | `"Invalid elf provided for mercury uplift."` verified at exact address. |
+| `MercGenerateSassUCode` at `0x2443D02` (pipeline stage) | **HIGH** | String verified. Xref at `0x2444418` confirmed (master phase table entry). |
+| Instruction category distribution (mbarrier=124, barrier=86, etc.) | **MEDIUM** | Counts from categorizing 667 ZREPHEL strings by decoded prefix. Manual categorization may have minor counting errors. |
+| Hopper (SM90) uses Mercury but not as default | **MEDIUM** | Inferred from global flag thresholds (sm > 99 vs sm > 89). Not directly confirmed from string evidence. |
+| `"don't uplift %s"` diagnostic at `0x1D3410E` | **HIGH** | Verified in `nvlink_strings.json` with xref at `0x42BBDC`. |
+| EIATTR/EICOMPAT Mercury attributes at stated addresses | **HIGH** | All 6 attribute strings verified at exact addresses in `nvlink_strings.json`. |

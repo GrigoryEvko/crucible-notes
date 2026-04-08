@@ -316,13 +316,13 @@ Uses `sub_441AC0` (elfw\_add\_section) to create the mandatory sections:
 | `.symtab_shndx` | SHT_SYMTAB_SHNDX (18) | `.symtab` index | 4 | 4 |
 
 For device ELF only:
-| Section | Type | Alignment | Purpose |
+| Section | Type | Alignment | Description |
 |---|---|---|---|
 | `.note.nv.tkinfo` | SHT_NOTE (7) | 0x2000000 | Toolkit info note |
 | `.note.nv.cuinfo` | SHT_NOTE (7) | 0x1000000 | CUDA compilation info |
 
 For non-relocatable output only:
-| Section | Type | Entry size | Purpose |
+| Section | Type | Entry size | Description |
 |---|---|---|---|
 | `.nv.uft.entry` | 0x70000011 | 32 | Unified function table entries |
 
@@ -479,12 +479,12 @@ The vtable is dispatched on SM version during creation:
 | SM range | Handler set | Notes |
 |---|---|---|
 | 30--39 | Kepler handlers | Legacy |
-| 50--59 | Maxwell handlers | |
-| 60--69 | Pascal handlers | |
-| 70--74 | Volta handlers | |
-| 75--79 | Turing handlers | |
-| 80--89 | Ampere/Ada handlers | |
-| 90--99 | Hopper handlers | |
+| 50--59 | Maxwell handlers | — |
+| 60--69 | Pascal handlers | — |
+| 70--74 | Volta handlers | — |
+| 75--79 | Turing handlers | — |
+| 80--89 | Ampere/Ada handlers | — |
+| 90--99 | Hopper handlers | — |
 | 100+ | Mercury (Blackwell+) handlers | New relocation types |
 
 The vtable is called through the context during relocation:

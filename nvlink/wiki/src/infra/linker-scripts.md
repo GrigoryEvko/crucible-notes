@@ -33,7 +33,7 @@ Note the trailing space after `*(__nv_relfatbin) }` on the second section line -
 
 ### The Three Sections
 
-| Section name | ELF convention | Purpose |
+| Section name | ELF convention | Description |
 |---|---|---|
 | `.nvFatBinSegment` | Standard dotted name | Contains the embedded fatbin blob -- the concatenation of device code compiled for all target GPU architectures. This is the primary container that the CUDA runtime locates at program startup. |
 | `__nv_relfatbin` | Non-dotted (double underscore prefix) | Contains a relocatable reference to the fatbin data. The CUDA runtime's registration mechanism (`__cudaRegisterFatBinary`) uses this section to locate the fatbin at load time. The section data begins with the fatbin magic `0xBA55ED50` followed by a size field. |

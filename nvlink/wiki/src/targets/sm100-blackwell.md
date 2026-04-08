@@ -411,7 +411,7 @@ The two PTX instruction mnemonics are `tcgen05.mma` (standard) and `tcgen05.mma.
 
 The 54 predicate functions live at `0x12B5670`--`0x12B5C20` (16 bytes each, all identical in structure). The complete classifier chain and resulting type ID assignment:
 
-| Priority | Predicate | Internal Value | Type ID | Category |
+| Priority | Predicate | Internal Value | Type ID | Type |
 |---|---|---|---|---|
 | 1 | `sub_12B5670` | 1 | 1 | Base types |
 | 2 | `sub_12B5680` | 2 | 2 | Base types |
@@ -595,7 +595,7 @@ For reduce operations (`sub_12A9290` returns true), an additional operand is app
 
 The guardrails infrastructure defines five weak trap functions that are called when bounds violations are detected. These are declared as PTX prototypes embedded in the binary:
 
-| Symbol | Parameters | Purpose |
+| Symbol | Parameters | Description |
 |---|---|---|
 | `__cuda_sm10x_tcgen05_guardrail_trap_access_out_of_physical_bounds` | `oob_access_col_no`, `instr_kind` | Out-of-bounds column access |
 | `__cuda_sm10x_tcgen05_guardrail_trap_unallocated_columns_access` | `col_no_accessed`, `alloced_mask`, `instr_kind` | Access to unallocated column |
@@ -605,7 +605,7 @@ The guardrails infrastructure defines five weak trap functions that are called w
 
 Two additional check functions return a result value:
 
-| Symbol | Parameters | Purpose |
+| Symbol | Parameters | Description |
 |---|---|---|
 | `__cuda_sm10x_tcgen05_guardrails_check_physical_bounds` | `start_col_num`, `num_of_cols`, `inst_kind` | Physical bounds check (returns `retVal`) |
 | `__cuda_sm10x_tcgen05_guardrails_check_datapath_alignment` | `tmemAddr`, `iDesc`, `cta_group`, `hasWS`, `hasSP`, `matrix_kind` | Datapath alignment check (returns `retVal`) |

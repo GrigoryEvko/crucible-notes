@@ -601,15 +601,15 @@ The bitmask `0x5D05` = `0101 1101 0000 0101` in binary, indexed by `(low_byte(sh
 | 2 | `0x70000008` | `SHT_CUDA_GLOBAL_INIT` | **1** (accepted) | Initialized globals: overlap-merge path |
 | 3 | `0x70000009` | `SHT_CUDA_LOCAL` | 0 (skipped) | Locals handled in first pass |
 | 4 | `0x7000000A` | `SHT_CUDA_SHARED` | 0 (skipped) | Shared memory handled separately |
-| 5 | `0x7000000B` | (unused) | 0 | |
-| 6 | `0x7000000C` | (unused) | 0 | |
-| 7 | `0x7000000D` | (unused) | 0 | |
+| 5 | `0x7000000B` | (unused) | 0 | — |
+| 6 | `0x7000000C` | (unused) | 0 | — |
+| 7 | `0x7000000D` | (unused) | 0 | — |
 | 8 | `0x7000000E` | `SHT_CUDA_0E` | **1** (accepted) | Undocumented type, processed via sub_45E3C0 |
-| 9 | `0x7000000F` | (unused) | 0 | |
+| 9 | `0x7000000F` | (unused) | 0 | — |
 | 10 | `0x70000010` | `SHT_CUDA_10` | **1** (accepted) | Undocumented type, processed via sub_45E3C0 |
 | 11 | `0x70000011` | `SHT_CUDA_RELOCINFO` | **1** (accepted) | Relocation info sections |
 | 12 | `0x70000012` | `SHT_CUDA_12` | **1** (accepted) | Undocumented type, processed via sub_45E3C0 |
-| 13 | `0x70000013` | (unused) | 0 | |
+| 13 | `0x70000013` | (unused) | 0 | — |
 | 14 | `0x70000014` | `SHT_CUDA_RELOCINFO_EXT` | **1** (accepted) | Extended relocation sections |
 
 Additionally, any type in the constant bank range `0x70000064` through `0x7000007E` (26 values) is unconditionally accepted regardless of the bitmask. This covers `SHT_CUDA_CONSTANT0` through `SHT_CUDA_CONSTANT17` plus 8 reserved constant bank slots.
@@ -661,7 +661,7 @@ The first pass iterates over symbols from the input object and dispatches based 
 | `SHT_CUDA_SHARED` (0x7000000A) | `sub_45E3C0` -> `sub_432B10` | Overlap merge, NULL data | Per-entry shared memory reservation |
 | `SHT_CUDA_SHARED_RESERVED` (0x70000015) | `sub_45E3C0` -> `sub_432B10` | Overlap merge, NULL data | tcgen05/reserved shared memory reservation |
 | `SHT_CUDA_CONSTANT0`-`17` (0x70000064-0x75) | `sub_438640` (merge_constant_bank) | Per-entry or global constant merge | Dispatches to per-entry (`sub_434BC0`/`sub_435390`) or global (`sub_4343C0`) overlap merge |
-| `SHT_CUDA_CONSTANT` (0x70000006) | Reclassified to CONSTANT_N, then as above | | Never seen as a final type in pass 1 |
+| `SHT_CUDA_CONSTANT` (0x70000006) | Reclassified to CONSTANT_N, then as above | — | Never seen as a final type in pass 1 |
 | Weak function (`STB_WEAK`, type matches param bank) | `sub_438640` | Per-entry constant merge | Weak entries use the constant bank path with entry function section index |
 | Common symbol (`SHN_COMMON` = 0xFFF2) | `sub_440740` -> pending list at `ctx+448` | Deferred to layout | Common symbols accumulate on the pending-globals list |
 | Defined global (`STB_GLOBAL`, section != 0) | `sub_45CD30` -> `sub_440740` | Section creation + symbol mapping | Creates output section, maps symbol, records offset |

@@ -86,7 +86,7 @@ The inner Mercury payload is distributed across multiple ELF sections with the `
 
 ### Section Catalog
 
-| Section name | Purpose |
+| Section name | Description |
 |---|---|
 | `.nv.merc` | Mercury code payload (per-function) |
 | `.nv.merc.rela` | Mercury-specific relocation table |
@@ -306,7 +306,7 @@ The JIT path uses `setjmp` for error handling across its multiple compilation ph
 
 ## Global Variables
 
-| Address | Type | Name | Purpose |
+| Address | Type | Name | Description |
 |---|---|---|---|
 | `byte_2A5F222` | byte | mercury_mode | Set when arch > sm\_99 |
 | `byte_2A5F225` | byte | capmerc_mode | Set alongside mercury_mode |
@@ -318,6 +318,7 @@ The JIT path uses `setjmp` for error handling across its multiple compilation ph
 
 ## Cross-References
 
+### nvlink Internal
 - [R\_MERCURY Relocations](r-mercury-relocations.md) -- full catalog of Mercury relocation types
 - [Mercury ELF Sections](elf-sections.md) -- detailed `.nv.merc.*` section layout
 - [FNLZR Post-Link](fnlzr.md) -- FNLZR binary rewriter internals
@@ -327,3 +328,33 @@ The JIT path uses `setjmp` for error handling across its multiple compilation ph
 - [Architecture Profiles](../targets/arch-profiles.md) -- SM100+ architecture database
 - [Fatbin Extraction](../input/fatbin-extraction.md) -- fatbin member type 16 handling
 - [CLI Options](../pipeline/cli-options.md) -- `--binary-kind` and related flags
+
+### Sibling Wikis
+- [ptxas: Capsule Mercury & Finalization](../../../../ptxas/wiki/src/codegen/capmerc.md) -- standalone ptxas capmerc format (Mercury section binary layouts, sh_type map, classifier algorithm, rela entry format, finalization levels)
+- [ptxas: Mercury Encoder Pipeline](../../../../ptxas/wiki/src/codegen/mercury.md) -- standalone ptxas Mercury encode/decode pipeline (phases 113--122)
+
+## Confidence Assessment
+
+| Claim | Rating | Evidence |
+|---|---|---|
+| `--binary-kind=capmerc` is default for sm100+ | **HIGH** | String `"mercury,capmerc,sass"` at `0x1D41D03` verified. Option parser `sub_4AC380` decompiled (9,967 bytes, 429 lines). |
+| ELF type `0xFF00` for capmerc | **HIGH** | Decompiled from `sub_4275C0` and `sub_4748F0`: ELF subtype check `elf_subtype == 0xFF00`. |
+| `sub_4AC380` option parser (9,967 bytes, 429 lines) | **HIGH** | Decompiled file `sub_4AC380_0x4ac380.c` exists and confirms size/line count. |
+| `byte_2A5F222` = Mercury mode, `byte_2A5F225` = capmerc mode | **HIGH** | Both globals referenced in decompiled `sub_4AC380` and `sub_4275C0`. |
+| `sub_45C950` serialize-to-memory path | **MEDIUM** | Function address confirmed from decompiled code. `"in-memory-ELF-image"` string at `0x1D3236D` verified. Role inferred from call context. |
+| FNLZR dispatch `sub_4275C0` (3,989 bytes) | **HIGH** | Decompiled file exists. Size and parameter count verified. All call sites confirmed. |
+| FNLZR engine `sub_4748F0` (48,730 bytes, 1,830 lines, 25 params) | **HIGH** | Decompiled file exists. Size, line count, and parameter count verified. |
+| Finalization orchestrator `sub_471700` (78,516 bytes) | **HIGH** | Decompiled file exists. vtable `off_1D49C58`, 256-byte profile, 656-byte CU confirmed. |
+| `sub_5207A0` SASS reconstitution (18,673 bytes) | **MEDIUM** | Function exists at stated address. Size from function bounds. Role inferred from call context and string proximity. |
+| Fatbin member type 16 = capmerc | **MEDIUM** | Inferred from decompiled `sub_42AF40` fatbin extraction logic. No direct string evidence for the numeric value 16. |
+| Self-check validates text/debug/relocation independently | **HIGH** | Three distinct error strings verified at `0x2458F38`, `0x2458F70`, `0x2458FA8`. MERCSW-125 reference at `0x1F44288`. |
+| `--self-check`, `--out-sass`, `--fastpath-off` CLI options | **HIGH** | All option strings verified in `nvlink_strings.json`. Help text strings confirmed. |
+| Opportunistic finalization levels 0--3 | **MEDIUM** | `EICOMPAT_ATTR_ENABLE_OPPORTUNISTIC_FINALIZATION` verified at `0x245EED8`. Exact level semantics partially inferred from code paths. |
+| Decade-family matching (`arch1/10 == arch2/10`) | **HIGH** | Integer division comparison verified in decompiled `sub_4709E0`. |
+| Version ceiling `> 0x101` returns error 25 | **HIGH** | Verified from decompiled `sub_4748F0` Phase 2. |
+| `"Failed to create finalizer thread"` at `0x2458EC0` | **HIGH** | Verified in `nvlink_strings.json`. Confirms thread-based finalization. |
+| JIT entry `sub_52E060` (47,095 bytes) | **MEDIUM** | Function exists. JIT diagnostic strings verified (`"FNLZR: JIT Path"` at `0x1DF8C40`). |
+| Section catalog: 19 `.nv.merc.*` names | **HIGH** | All 19 section name strings verified at addresses `0x24582E8`--`0x2458D00`. Xrefs to emitter functions confirmed. |
+| `"skip mercury section %i"` at `0x1D3BCB7` | **HIGH** | String verified at exact address with xref to `0x45F624`. |
+| Hash Relocation sections `.nvHRKE`/`.nvHRKI`/`.nvHRCE`/`.nvHRCI`/`.nvHRDE`/`.nvHRDI` | **MEDIUM** | Section names inferred from decompiled code. Not individually verified in string scan. |
+| `"SASS generation failed"` error string | **MEDIUM** | Not individually verified in `nvlink_strings.json` scan. May exist at an unchecked address. |
