@@ -100,79 +100,17 @@ Quick-reference table of every command-line flag recognized by nvlink v13.0.88. 
 
 Public flags use flag bits `0x00` or `0x10` (the `0x10` bit enables `--no-<name>` negation, not hiding). Hidden flags have bit 2 set. Internal flags have bit 3 set and are reserved for NVIDIA developer use.
 
-## Multi-Value Flags
+## Notes
 
-These flags accept repeated occurrences; each use appends to a linked list (multiplicity = 2):
+**Multi-value flags.** Flags marked "Multi-value" in the Description column accept repeated occurrences; each use appends to a linked list. Example: `-lcudadevrt -lm -L/usr/local/cuda/lib64`.
 
-| Flag | Short | Typical Usage |
-|---|---|---|
-| `--library` | `-l` | `-lcudadevrt -lm` |
-| `--library-path` | `-L` | `-L/usr/local/cuda/lib64 -L./libs` |
-| `--host-linker-options` | `-Xlinker` | `-Xlinker --as-needed -Xlinker -rpath=/opt/lib` |
-| `--kernels-used` | `-kernels-used` | `--kernels-used myKernel --kernels-used other` |
-| `--variables-used` | `-variables-used` | `--variables-used myGlobal` |
-| `--Xptxas` | `-Xptxas` | `-Xptxas -O3 -Xptxas -v` |
-| `--Xnvvm` | `-Xnvvm` | `-Xnvvm -opt=3` |
-| `--options-file` | `-optf` | `-optf build_flags.txt` |
+**Boolean-with-value flags.** Four bool flags are registered with multiplicity 1, meaning they accept an explicit `true`/`false` argument rather than being simple presence-toggles: `--disable-smem-reservation`, `--enable-extended-smem`, `--verbose-tkinfo`, `--device-stack-protector`.
 
-## Boolean-with-Value Flags
-
-Two flags are registered as bool type (1) but with multiplicity 1, meaning they accept an explicit `true`/`false` argument rather than being simple presence-toggles:
-
-| Flag | Default | Usage |
-|---|---|---|
-| `--disable-smem-reservation` | `false` | `--disable-smem-reservation true` |
-| `--enable-extended-smem` | `false` | `--enable-extended-smem true` |
-| `--verbose-tkinfo` | `false` | `--verbose-tkinfo true` |
-| `--device-stack-protector` | `false` | `--device-stack-protector true` |
-
-## Mutual Exclusion Rules
-
-The following flag pairs produce a fatal error if both are specified:
-
-| Flag A | Flag B |
-|---|---|
-| `--no-opt` | `--optimize-data-layout` |
-| `--dump-callgraph` | `--dump-callgraph-no-demangle` |
-| `--use-host-info` | `--ignore-host-info` |
-| `--force-partial-lto` | `--force-whole-lto` |
-
-## Dependency Rules
-
-| Flag | Requires | Error if Missing |
-|---|---|---|
-| `--nvvmpath` | `--lto` or `--dlto` | `"-nvvmpath should be specified with -lto"` |
-| `--emit-ptx` | `--lto` or `--dlto` | Fatal error |
-| `--Ofast-compile` | `--lto` or `--dlto` | Fatal error |
-| `--force-partial-lto` | `--dlto` | Fatal error |
-| `--force-whole-lto` | `--dlto` | Fatal error |
-| `--suppress-debug-info` | `--debug` | Fatal error (conflict with "no -g") |
-| `--machine 32` | SM <= 72 | Fatal error on SM >= 90 |
-
-## Architecture-Gated Behavior
-
-Several flags have behavior that changes based on the target SM:
-
-| Condition | Effect |
-|---|---|
-| SM <= 19 | Fatal error: unsupported architecture |
-| SM > 72 | New-style ELF flag set; 32-bit machine rejected |
-| SM > 89 | SASS output mode enabled; `--preserve-relocs` emits warning |
-| SM > 99 | Mercury mode activated; SASS output forced; partial-LTO disabled |
-| `--fdcmpt` + `--uumn` + SM <= 69 | Fatal error |
-
-## Response Files
-
-nvlink supports two equivalent mechanisms for reading flags from a file:
-
-1. **`--options-file <path>`** / **`-optf <path>`** -- explicit flag, processed by the parser's file-list infrastructure.
-2. **`@<path>`** -- shorthand processed during `option_parse_argv`. When the parser encounters an argument starting with `@`, it opens the referenced file and expands its contents as additional arguments in-place.
-
-Both mechanisms are recursive: a response file may reference other response files.
+**Response files.** nvlink supports `--options-file <path>` / `-optf <path>` and the shorthand `@<path>`. Both are recursive: a response file may reference other response files.
 
 ## Cross-References
 
-- [CLI Option Parsing](../pipeline/cli-options.md) -- full implementation details: parser infrastructure, option entry layout, registration sequence, post-extraction validation logic, global variable map.
+- [CLI Option Parsing](../pipeline/cli-options.md) -- parser infrastructure, option entry layout, registration sequence, post-extraction validation, mutual-exclusion rules, dependency rules, architecture-gated behavior, global variable map.
 - [Pipeline Overview](../pipeline/overview.md) -- how parsed flags drive mode dispatch.
 - [LTO Option Forwarding](../lto/option-forwarding.md) -- how `--Xptxas`, `--Xnvvm`, `--maxrregcount`, and `--Ofast-compile` are forwarded to cicc/ptxas.
 - [Dead Code Elimination](../linker/dead-code-elimination.md) -- how `--kernels-used`, `--variables-used`, `--use-host-info`, and `--ignore-host-info` drive DCE.
