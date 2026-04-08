@@ -180,24 +180,258 @@ A special pseudo-section `.nv.ptx.const0.size` appears during the merge phase. I
 
 GPU instructions that load from constant memory encode the bank index and byte offset within the instruction word. At link time, the constant bank sections may be relocated (e.g., because multiple TUs contribute constants to the same bank and the linker must assign non-overlapping offsets). nvlink uses the `R_CUDA_CONST_FIELD*` relocation family to patch constant memory offsets into instruction encoding fields:
 
-| Reloc type | Width | Bit pos | Architectures |
-|---|---|---|---|
-| `R_CUDA_CONST_FIELD19_20` | 19 | 20 | All |
-| `R_CUDA_CONST_FIELD19_23` | 19 | 23 | All |
-| `R_CUDA_CONST_FIELD19_26` | 19 | 26 | All |
-| `R_CUDA_CONST_FIELD19_28` | 19 | 28 | All |
-| `R_CUDA_CONST_FIELD19_40` | 19 | 40 | All |
-| `R_CUDA_CONST_FIELD21_20` | 21 | 20 | sm_75+ |
-| `R_CUDA_CONST_FIELD21_23` | 21 | 23 | sm_75+ |
-| `R_CUDA_CONST_FIELD21_26` | 21 | 26 | sm_75+ |
-| `R_CUDA_CONST_FIELD21_38` | 21 | 38 | sm_75+ |
-| `R_CUDA_CONST_FIELD22_37` | 22 | 37 | sm_75+ |
+| Reloc type | Index | Width | Bit pos | Architectures |
+|---|---|---|---|---|
+| `R_CUDA_CONST_FIELD19_20` | 50 | 19 | 20 | All |
+| `R_CUDA_CONST_FIELD19_23` | 25 | 19 | 23 | All |
+| `R_CUDA_CONST_FIELD19_26` | 38 | 19 | 26 | All |
+| `R_CUDA_CONST_FIELD19_28` | 24 | 19 | 28 | All |
+| `R_CUDA_CONST_FIELD19_40` | 64 | 19 | 40 | All |
+| `R_CUDA_CONST_FIELD21_20` | 54 | 21 | 20 | sm_75+ |
+| `R_CUDA_CONST_FIELD21_23` | 39 | 21 | 23 | sm_75+ |
+| `R_CUDA_CONST_FIELD21_26` | 36 | 21 | 26 | sm_75+ |
+| `R_CUDA_CONST_FIELD21_38` | 66 | 21 | 38 | sm_75+ |
+| `R_CUDA_CONST_FIELD22_37` | 115 | 22 | 37 | sm_75+ |
 
 The naming convention `R_CUDA_CONST_FIELD<W>_<B>` means: extract `W` bits starting at bit position `B` from the instruction word, and write the constant bank offset (byte offset divided by 4, i.e., dword-addressed) into that field.
 
 The 19-bit variants address up to 512 K dwords = 2 MB of byte-addressable constant memory per bank. The 21-bit and 22-bit variants, introduced with sm_75 (Turing), expand the addressable range to 8 MB and 16 MB respectively. In practice, the hardware bank size limit is 64 KB for most architectures, so the larger fields provide headroom for future expansion or for the compiler to encode additional information in the upper bits.
 
 For Mercury (sm_100+) architectures, constant bank relocations are part of the broader `R_CUDA_CONST_FIELD*` family (10 types in the Mercury relocation table) but are resolved through the FNLZR post-link transformation rather than by nvlink directly.
+
+### Relocation Descriptor: Action Type 0x09 (SHIFTED_2)
+
+All `R_CUDA_CONST_FIELD*` descriptors use action type `0x09` (`abs_shifted`) as their primary action. This action computes:
+
+```c
+value = (symbol_value + addend) >> 2;
+```
+
+The right-shift by 2 converts the byte offset within the constant bank section to a DWORD (4-byte) offset, matching the hardware's DWORD-addressed constant memory indexing. The DWORD offset is then written into the specified bit field of the instruction word.
+
+The `section_type_delta` parameter passed to the relocation engine is computed as:
+
+```c
+section_type_delta = parent_section->sh_type - 0x70000064;
+```
+
+For constant bank sections, `0x70000064` is `SHT_CUDA_CONSTANT0`, so the delta equals the bank number (0 for `.nv.constant0`, 2 for `.nv.constant2`, etc.). The bank index is not patched by the `R_CUDA_CONST_FIELD*` relocation itself -- it is encoded directly in the instruction by the compiler (the compiler knows the target bank at compile time from the memory space of the referenced variable). The relocation only patches the **offset** portion of the `c[bank][offset]` reference.
+
+### Worked Example: R_CUDA_CONST_FIELD19_28
+
+This example traces a constant bank relocation end-to-end, from the source CUDA code through the ELF relocation entry to the patched SASS instruction. `R_CUDA_CONST_FIELD19_28` (standard table index 24) is the most common constant field relocation on pre-Turing architectures. It writes a 19-bit DWORD offset into bits [28:47) of a 64-bit SASS instruction word.
+
+**Scenario**: Two translation units each define variables in `__constant__` memory. After merging, the linker assigns a constant `myConst` to byte offset `0x100` within the merged `.nv.constant0` section. A kernel `vectorAdd` references `myConst` via a load instruction. The target architecture is sm_70 (Volta).
+
+#### Step 0: Source Code and Compilation
+
+```c
+// a.cu
+__constant__ float params[64];         // 256 bytes at offset 0x000
+
+// b.cu
+__constant__ float myConst = 3.14f;    // 4 bytes
+__global__ void vectorAdd(float* out) {
+    out[threadIdx.x] = myConst;        // load from c[0][offset_of_myConst]
+}
+```
+
+The compiler (ptxas) generates a SASS instruction that loads from constant bank 0. At compile time, `myConst` is at offset 0x0 within `b.cu`'s local `.nv.constant0` section. The compiler encodes the bank index (0) directly in the instruction, but marks the offset field with a relocation because linking will change the offset:
+
+```
+; Before relocation (from b.o):
+; Instruction loads from c[0][0x0] -- offset not yet resolved
+;
+; SASS mnemonic (sm_70):
+;   MOV R0, c[0x0][0x0]
+;
+; The 64-bit instruction word encodes:
+;   bits [27:23] = 0x00 (bank index 0, encoded by compiler)
+;   bits [46:28] = 0x00000 (19-bit DWORD offset, to be relocated)
+```
+
+#### Step 1: ELF Relocation Entry
+
+The compiler emits a `.rela.text.vectorAdd` entry:
+
+```
+Elf64_Rela {
+    r_offset = 0x080,                    // byte offset of target instruction in .text
+    r_info   = ELF64_R_INFO(sym, 24),    // symbol index + type 24 (R_CUDA_CONST_FIELD19_28)
+    r_addend = 0                         // no addend
+}
+```
+
+The symbol referenced by `sym` points to `myConst` in the `.nv.constant0` section of `b.o`.
+
+#### Step 2: Section Merging (Phase 5)
+
+During the merge phase, `sub_438640` merges constant bank data from both TUs into a single output `.nv.constant0` section:
+
+```
+Input a.o:  .nv.constant0  256 bytes (params[64])    -> output offset 0x000
+Input b.o:  .nv.constant0    4 bytes (myConst)        -> output offset 0x100
+                                                          (aligned to 256-byte boundary)
+```
+
+After merging, `myConst` has a final byte offset of `0x100` within the output `.nv.constant0` section. The symbol's `st_value` is updated to `0x100`.
+
+#### Step 3: Relocation Resolution (Phase 7)
+
+The relocation engine (`sub_469D60`) processes the relocation record. It performs these steps:
+
+**3a. Symbol resolution**: Look up the symbol for `myConst`. The resolved symbol value is `0x100` (the byte offset within the merged `.nv.constant0`).
+
+**3b. Descriptor table selection**: The target is CUDA (not Mercury), so the engine selects the CUDA table at `off_1D3DBE0`.
+
+**3c. Section type computation**: The parent section's `sh_type` is `0x70000064` (`SHT_CUDA_CONSTANT0`). The section type delta is:
+
+```
+section_type_delta = 0x70000064 - 0x70000064 = 0  (bank 0)
+```
+
+This value is passed as parameter `a9` to the application engine but is not used by the `abs_shifted` action -- it would only matter if the descriptor included `sec_type_lo` or `sec_type_hi` actions.
+
+**3d. Data buffer lookup**: The engine walks the chunk list at the target section's offset `+72` to find the memory buffer containing the instruction at offset `0x080`.
+
+**3e. Verbose trace** (when `--verbose` is active):
+
+```
+resolve reloc 24 for sym=<N>+0 at <section=<M>,offset=0x80>
+```
+
+#### Step 4: Descriptor Lookup and Application
+
+The engine calls `sub_468760` with relocation type index 24. The descriptor is at:
+
+```
+descriptor = off_1D3DBE0 + (24 << 6) = off_1D3DBE0 + 1536
+```
+
+The 64-byte descriptor for `R_CUDA_CONST_FIELD19_28` contains:
+
+```
+Offset  Bytes (hex)                           Interpretation
+------  -----------                           --------------
++0      xx xx xx xx xx xx xx xx xx xx xx xx   Header (12 bytes, used by sub_46ADC0)
++12     1C 00 00 00                           action[0].bit_offset  = 28
++16     13 00 00 00                           action[0].bit_width   = 19
++20     09 00 00 00                           action[0].action_type = 0x09 (SHIFTED_2)
++24     00 00 00 00                           action[0].reserved    = 0
++28     00 00 00 00                           action[1].bit_offset  = 0
++32     00 00 00 00                           action[1].bit_width   = 0
++36     00 00 00 00                           action[1].action_type = 0x00 (END)
++40     00 00 00 00                           action[1].reserved    = 0
++44     00 00 00 00                           action[2]: END
++60     xx xx xx xx                           Sentinel
+```
+
+The engine processes one action: SHIFTED_2 at bit offset 28, width 19.
+
+#### Step 5: Value Computation (Action 0x09)
+
+The engine executes the `SHIFTED_2` action:
+
+```c
+// Initial value = symbol_value = 0x100 (byte offset of myConst)
+value = 0x100;
+
+// Action 0x09: right-shift by 2 to convert byte offset to DWORD offset
+value >>= 2;
+// value = 0x100 >> 2 = 0x40  (64 in decimal, i.e., DWORD 64)
+```
+
+The DWORD offset `0x40` is the value that will be written into the instruction. This represents `myConst` at byte address `0x100` in the hardware's DWORD-addressed constant memory space. The ISA will interpret this as `c[0][0x100]` because it internally multiplies the DWORD index by 4 to get the byte address.
+
+#### Step 6: Bit-Field Extraction (Old Value)
+
+Since `is_absolute == false`, the engine first extracts the existing 19-bit field from the instruction word. Assume the pre-relocation instruction word is:
+
+```
+patch_ptr -> 0x0000_0000_0000_F900
+```
+
+(This encodes a MOV instruction with bank=0 and offset=0 before relocation.)
+
+```c
+old = bitfield_extract(patch_ptr, 28, 19);
+// end_bit = 28 + 19 = 47, which is <= 64 (single-word case)
+// old = *patch_ptr << (64 - 47) >> (64 - 19)
+//      = 0x0000_0000_0000_F900 << 17 >> 45
+//      = 0x0000_0001_F200_0000 >> 45
+//      = 0x00000
+old = 0;
+```
+
+The engine adds: `value = value + old = 0x40 + 0 = 0x40`.
+
+#### Step 7: Bit-Field Write
+
+The engine writes `0x40` into the 19-bit field at bit position 28:
+
+```c
+bit_offset = 28, bit_width = 19, end_bit = 47
+
+// Construct a mask with 19 ones at bit positions [28:47):
+mask = (-1ULL << (64 - 19)) >> (64 - 47)
+     = 0xFFFF_E000_0000_0000 >> 17
+     = 0x0000_7FFF_F000_0000
+
+// Position the value (0x40) into the same bit range:
+//   0x40 << 45 = 0x0008_0000_0000_0000   (2^51, since 0x40 = 2^6, 6+45 = 51)
+//   >> 17      = 0x0000_0004_0000_0000   (value now sits at bits [28:47))
+value_positioned = (0x40ULL << (64 - 19)) >> (64 - 47)
+                 = 0x0000_0004_0000_0000
+
+// Read-modify-write: clear bits [28:47), then OR in the new value:
+*patch_ptr = (*patch_ptr & ~mask) | value_positioned
+           = (0x0000_0000_0000_F900 & 0xFFFF_8000_0FFF_FFFF) | 0x0000_0004_0000_0000
+           = 0x0000_0004_0000_F900
+```
+
+#### Step 8: Result Summary
+
+The instruction word before and after relocation:
+
+```
+BEFORE:  0x0000_0000_0000_F900   MOV R0, c[0x0][0x0]
+AFTER:   0x0000_0004_0000_F900   MOV R0, c[0x0][0x100]
+
+Bit layout of the patched 64-bit instruction word:
+
+  63       47  46          28  27    23  22               0
+  +---------+---------------+--------+--------------------+
+  | (upper) | 0x00040=0x40  | bank=0 |    (opcode etc)    |
+  |         | 19-bit DWORD  | 5-bit  |                    |
+  |         |   offset      | bank   |                    |
+  +---------+---------------+--------+--------------------+
+
+  bits [63:47] = 0x0000 (scheduling/predicate fields, unchanged)
+  bits [46:28] = 0x00040 (19-bit DWORD offset = 0x40 = 64 decimal)
+  bits [27:23] = 0x00 (bank index 0, not touched by this relocation)
+  bits [22:0]  = 0xF900 (opcode, destination register, etc.)
+
+  Hex verification: 0x00040 << 28 = 0x0000_0004_0000_0000
+                    0x0000_0004_0000_0000 | 0x0000_F900 = 0x0000_0004_0000_F900  (matches)
+```
+
+The hardware interprets the 19-bit field as a DWORD offset: `0x40 * 4 = 0x100` bytes, which is the merged byte offset of `myConst` in `.nv.constant0`.
+
+#### Verification
+
+The end-to-end chain can be verified:
+
+```
+Source:      __constant__ float myConst          (in b.cu)
+Section:     .nv.constant0 (bank 0, sh_type = 0x70000064)
+Merge:       a.cu contributes 256 bytes -> myConst lands at byte offset 0x100
+Reloc type:  R_CUDA_CONST_FIELD19_28 (index 24)
+Action:      0x09 (SHIFTED_2): value = 0x100 >> 2 = 0x40
+Encoding:    19 bits of 0x40 written at bit position 28
+ISA decode:  c[0][0x40 * 4] = c[0][0x100] (correct)
+```
+
+For a different bank -- say `.nv.constant2` (OCG, `sh_type = 0x70000066`) -- the only difference is the bank index field (bits [27:23]) which the compiler sets to `0x02`. The `R_CUDA_CONST_FIELD*` relocation logic is identical; it only ever patches the offset field, not the bank field.
 
 ## Overlap Merge and Validation
 
