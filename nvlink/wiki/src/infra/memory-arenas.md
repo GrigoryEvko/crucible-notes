@@ -762,7 +762,7 @@ A separate handler at `sub_4B9E70` handles allocation failures in the OCG/ptxas 
 - [Hash Tables](../linker/hash-tables.md) -- LinkerHash used for child-arena tracking and page trees
 - [ELF Parsing](../input/elf-parsing.md) -- per-ELF arenas ("elfw memory space")
 - [Serialization](../elf/serialization.md) -- arena-backed growable buffers
-- **ptxas wiki**: [Memory Pool Allocator](../../../../ptxas/wiki/src/infra/memory-pools.md) -- same two-tier design (7,136-byte pool object, size-class free lists, large-block page lists, per-pool mutex at offset +7128) shared between nvlink and ptxas; nvlink's `sub_4307C0` is the nvlink-specific build of the same allocator as ptxas's `sub_424070`
+- **ptxas wiki**: [Memory Pool Allocator](../../ptxas/infra/memory-pools.html) -- same two-tier design (7,136-byte pool object, size-class free lists, large-block page lists, per-pool mutex at offset +7128) shared between nvlink and ptxas; nvlink's `sub_4307C0` is the nvlink-specific build of the same allocator as ptxas's `sub_424070`
 
 ## Confidence Assessment
 

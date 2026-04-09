@@ -1080,3 +1080,23 @@ The compilation driver supports two execution models, selected by `ctx->thread_c
 **Parallel mode** (`thread_count > 0`): A thread pool is created via `sub_43FDB0`. For each function, a work item containing the full per-function state snapshot (360 bytes + 3 local hash maps + pipeline snapshot) is allocated and enqueued. Each thread executes `sub_1107420`, which calls `sub_1102B30` (the error-wrapped compile) and records timing. After the barrier wait (`sub_43FFE0`), the main thread performs a sequential merge pass: it restores each function's snapshot, merges local maps back into shared maps, and calls `codegen_finalize`. This is the same `--split-compile-extended` mechanism available in standalone ptxas.
 
 The thread pool implementation uses a producer-consumer work queue. `sub_43FF50` enqueues items, and worker threads dequeue and execute them. The barrier at `sub_43FFE0` blocks until all items complete. The pool is destroyed by `sub_43FE70`. If an optional synchronization state (`qword_2A64430`) is non-null, each worker checks for compilation errors after completing its work item via `sub_1D1E060` / `sub_1D1E300`.
+
+## Cross-References
+
+### nvlink Internal
+- [IR Nodes](ir-nodes.md) -- IR node structure and universal accessor functions
+- [ISel Hubs](isel-hubs.md) -- the five mega-hub instruction selector dispatch functions
+- [Peephole](peephole.md) -- peephole optimization passes (ORI, scheduling-phase, linker-level)
+- [PTX Parsing](ptx-parsing.md) -- the embedded PTX assembler frontend
+- [Register Allocation](register-allocation.md) -- graph-coloring register allocator with spilling
+- [Scheduling](scheduling.md) -- pre-RA and tepid (post-RA) instruction schedulers
+- [Architecture Dispatch](arch-dispatch.md) -- per-SM vtable dispatch system
+- [Mercury Overview](../mercury/overview.md) -- Mercury ISA encoding pipeline
+- [FNLZR](../mercury/fnlzr.md) -- post-link binary rewriter for Mercury targets
+- [LTO Overview](../lto/overview.md) -- how the LTO pipeline invokes the embedded compiler
+
+### Sibling Wikis
+- [ptxas: Pipeline Overview](../../ptxas/pipeline/overview.html) -- standalone ptxas 159-phase compilation pipeline
+- [ptxas: Entry Point](../../ptxas/pipeline/entry.html) -- standalone ptxas main() and option parsing
+- [ptxas: Optimizer](../../ptxas/pipeline/optimizer.html) -- standalone ptxas optimization passes
+- [ptxas: Codegen Overview](../../ptxas/codegen/overview.html) -- standalone ptxas code generation

@@ -1,5 +1,7 @@
 # Register Allocation
 
+> **Note**: This page documents the embedded ptxas copy within nvlink v13.0.88. The standalone ptxas binary has its own comprehensive wiki -- see the [ptxas Reverse Engineering Reference](../../ptxas/index.html) for the full compiler reference. For the standalone ptxas register allocator, see [ptxas Register Allocation overview](../../ptxas/regalloc/overview.html, [algorithm](../../ptxas/regalloc/algorithm.html), and [spilling](../../ptxas/regalloc/spilling.html).
+
 The register allocation subsystem in nvlink's embedded ptxas backend occupies approximately 400 KB of code across two primary address ranges: `0x189C000`--`0x18FC000` (core regalloc, ~120 functions) and `0x18FC000`--`0x191A000` (setmaxnreg/CTA-reconfig, ~55 functions). An additional ~120 verification functions at `0x196C000`--`0x1A00000` validate allocation correctness post-hoc. Together these form the largest single pass in the compiler backend -- the top-level driver alone (`AllocateRegisters_main_driver` at `0x18988D0`) is 71 KB, and the per-instruction encoding function at `0x18AE2D0` is 155 KB, the largest function in the entire 1.7 MB backend core region.
 
 Register allocation follows a graph-coloring model with iterative spilling, operating across three distinct register classes simultaneously: general-purpose R-registers (R0--R255), uniform UR-registers (UR0--UR63, SM75+), and predicate registers (P0--P6). The allocator supports two alternative spill targets -- local memory (lmem, the traditional spill slot) and shared memory (smem, an NVIDIA-proprietary optimization controlled by a ROT13-obfuscated knob). For Blackwell and later architectures (SM100+), the system integrates with the `setmaxnreg` CTA register reconfiguration infrastructure that enables dynamic register budget adjustment within a kernel.
@@ -1178,3 +1180,17 @@ The complete register allocation subsystem, listed by pipeline stage:
 | `0x19E12A0` | 49 KB | `AllocateRegisters_post_verify_driver` |
 | `0x19FA010` | 22 KB | `verify_full_pass_driver` |
 | `0x19FC110` | 5 KB | `verify_post_regalloc_driver` |
+
+## Cross-References
+
+### nvlink Internal
+- [Embedded ptxas Overview](overview.md) -- regalloc at `0x189C000`--`0x18FC000` in address map
+- [Scheduling](scheduling.md) -- runs after register allocation
+- [ISel Hubs](isel-hubs.md) -- runs before register allocation
+- [IR Nodes](ir-nodes.md) -- IR register fields modified by the allocator
+
+### Sibling Wikis
+- [ptxas: Register Allocation Overview](../../ptxas/regalloc/overview.html) -- standalone ptxas register allocation
+- [ptxas: Algorithm](../../ptxas/regalloc/algorithm.html) -- graph-coloring algorithm details
+- [ptxas: Spilling](../../ptxas/regalloc/spilling.html) -- spill code generation
+- [ptxas: ABI](../../ptxas/regalloc/abi.html) -- calling convention and register partitioning

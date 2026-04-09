@@ -920,7 +920,7 @@ Note: The catalog contains 119 unique name strings as extracted from the binary.
 
 ### Sibling Wiki
 
-- **ptxas wiki**: [Relocations & Symbols](../../../../ptxas/wiki/src/output/relocations.md) -- how ptxas generates R\_CUDA and R\_MERCURY relocation entries during code emission (the producer side of what nvlink consumes)
+- **ptxas wiki**: [Relocations & Symbols](../../ptxas/output/relocations.html) -- how ptxas generates R\_CUDA and R\_MERCURY relocation entries during code emission (the producer side of what nvlink consumes)
 
 ## Confidence Assessment
 

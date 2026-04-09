@@ -948,3 +948,41 @@ This register propagation through the UFT is critical for correctness: if a kern
 - [Bindless Relocations](../linker/bindless-relocations.md) -- Analogous system for texture/surface descriptors
 - [Dead Code Elimination](../linker/dead-code-elimination.md) -- Interaction with UFT stub reachability
 - [CLI Options](../pipeline/cli-options.md) -- `--uidx-file` option documentation
+
+**Sibling wikis (ptxas):**
+
+- [ptxas: Relocations & Symbols](../../ptxas/output/relocations.html) -- R_CUDA_UNIFIED and R_MERCURY_UNIFIED relocation type definitions from the ptxas perspective
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| Reorder function sub_4637B0 (10,141 bytes) | HIGH | Decompiled file sub_4637B0_0x4637b0.c exists |
+| Setup function sub_463F70 (3,978 bytes) | HIGH | Decompiled file sub_463F70_0x463f70.c exists |
+| Entry merge sub_442820 (5,371 bytes) | HIGH | Decompiled file sub_442820_0x442820.c exists |
+| UIDX magic 0x58444E495446557F ("\x7fUFTINDX") | HIGH | Verified in sub_463490 decompiled code: `*(_QWORD *)a2 != 0x58444E495446557FLL` |
+| "matching uuid not found" string | HIGH | String at 0x1D3C3A2 confirmed in nvlink_strings.json, xref to sub_4637B0 |
+| "uft map conflict: 0x%llx" string | HIGH | String at 0x1D3C354 confirmed in nvlink_strings.json, xref to sub_4637B0 |
+| "duplicate ids in uft.entry" string | HIGH | String at 0x1D3C36E confirmed in nvlink_strings.json, xref to sub_4637B0 |
+| "entry was already found?" string | HIGH | String at 0x1D3C389 confirmed in nvlink_strings.json, xref to sub_4637B0 |
+| "Re-ordering UFT entries" / "Re-ordering UDT entries" | HIGH | Strings at 0x1D3C33B and 0x1D3C322 confirmed, xref to sub_4637B0 |
+| "missing nv.uft.entry" string | HIGH | String at 0x1D3C49C confirmed in nvlink_strings.json, xref to sub_463F70 |
+| "Number of .nv.uft jump slots != ..." string | HIGH | String at 0x1D3C530 confirmed in nvlink_strings.json |
+| "size of uidx window != nv.uft" / "!= nv.udt" | HIGH | Strings at 0x1D3C4B1 and 0x1D3C510 confirmed |
+| "Patching real symidx in UFT Entry..." | HIGH | String at 0x1D3C1C0 confirmed, xref to sub_4633A0 |
+| "Adding UFT Entry" trace | HIGH | String at 0x1D3C5B8 confirmed, xref to sub_464240 |
+| "UFT symbol name %s not unique so search" | HIGH | String at 0x1D3C2E0 confirmed, xref to sub_463660 |
+| __cuda_uf_stub_ prefix string | HIGH | String at 0x1D39DE8 confirmed; PTX stub template at 0x1F23A60 confirmed |
+| __UFT_OFFSET, __UDT_OFFSET synthetic symbols | HIGH | Strings at 0x1D3A025 and 0x1D3A032 confirmed, xrefs to sub_444A20 |
+| "Unified symbols found but index file not specified." | HIGH | String at 0x1D39850 confirmed in nvlink_strings.json |
+| "Indirect function call requires ABI" | HIGH | String at 0x23F24B0 confirmed in nvlink_strings.json |
+| "malformed uidx input" / "not uidx input" | HIGH | Strings at 0x1D3C229 confirmed, xref to sub_463490 |
+| .nv.uft section string | HIGH | String at 0x1D39F74 confirmed, xref to sub_442820 |
+| .nv.uft.entry section string | HIGH | String at 0x1D39FD7 confirmed, xref to sub_4438F0 |
+| 32-byte entry record layout (symidx/flags/offset/uuid) | HIGH | Pointer arithmetic in sub_4637B0 decompiled code: stride=32, uuid at +16/+24 |
+| SHT_NVIDIA_UFT_ENTRY = 0x70000011 | HIGH | Value passed as sh_type in section creation calls |
+| UUID XOR hash key = uuid_hi ^ uuid_lo | MEDIUM | Inferred from hash map construction in sub_4637B0; specific XOR operation visible but decompiler obfuscates |
+| Mercury interleaving (DPC mode 2) | MEDIUM | Code path exists in sub_4637B0 but specific padding calculation is partially reconstructed |
+| Unified relocation type remapping table (102-113) | MEDIUM | Switch at 0x46A720 in sub_469D60; individual case mappings partially verified |
+| CUDA relocation types 102-113 names | HIGH | R_CUDA_UNIFIED* names confirmed in nvlink_strings.json |
+| Mercury relocation types 0x10032-0x1003F | HIGH | R_MERCURY_UNIFIED* names confirmed in nvlink_strings.json |

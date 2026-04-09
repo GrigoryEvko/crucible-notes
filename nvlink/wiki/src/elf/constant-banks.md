@@ -563,12 +563,45 @@ These relocation sections hold the `R_CUDA_CONST_FIELD*` entries that the reloca
 | `"%lld bytes cmem[%d]"` | `sub_43D2A0` | Per-bank constant memory verbose |
 | `"Constant register limit exceeded"` | `sub_16B4620` | Bank usage exceeds hardware limit |
 
-## Related Pages
+## Cross-References
 
-- [Section Merging](../linker/section-merging.md) -- full merge phase mechanics, per-entry section naming
+**Internal (nvlink wiki):**
+
+- [Section Merging](../linker/section-merging.md) -- Full merge phase mechanics, per-entry section naming
 - [Data Layout Optimization](../linker/data-layout-opt.md) -- OCG constant dedup engine in detail
-- [R_CUDA Relocations](../linker/r-cuda-relocations.md) -- complete R_CUDA_CONST_FIELD* catalog
-- [Bindless Relocations](../linker/bindless-relocations.md) -- constant bank 3 for bindless descriptors
+- [R\_CUDA Relocations](../linker/r-cuda-relocations.md) -- Complete R\_CUDA\_CONST\_FIELD\* catalog
+- [Bindless Relocations](../linker/bindless-relocations.md) -- Constant bank 3 for bindless descriptors
 - [Dead Code Elimination](../linker/dead-code-elimination.md) -- OCG constant section removal
 - [Layout Phase](../pipeline/layout.md) -- Phase 9 constant bank layout orchestration
-- [NVIDIA Sections](nvidia-sections.md) -- full CUDA section type catalog
+- [NVIDIA Section Types](nvidia-sections.md) -- Full CUDA section type catalog including constant bank `sh_type` range
+- [.nv.info Metadata](nv-info.md) -- EIATTR attributes that reference constant banks (EIATTR\_KPARAM\_INFO, EIATTR\_CBANK\_PARAM\_SIZE)
+- [Section Catalog](../reference/section-catalog.md) -- Alphabetical index of all section names including `.nv.constant*` entries
+- [Symbol Resolution](../linker/symbol-resolution.md) -- How `__constant__` symbols are resolved across TUs
+
+**Sibling wikis:**
+
+- [ptxas: Sections](../../ptxas/output/sections.html) -- How ptxas creates constant bank sections in its output cubins
+- [ptxas: EIATTR Reference](../../ptxas/reference/eiattr.html) -- EIATTR constants emitted by ptxas that describe constant bank usage
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| SHT_CUDA_CONSTANT0 = 0x70000064 | HIGH | Verified in sub_438640: `a9 - 1879048292` where 1879048292 = 0x70000064 |
+| Bank type formula 0x70000064 + N | HIGH | Arithmetic in sub_438640 confirmed; bank number parsed via strtol at offset 12 |
+| "bank SHT not CUDA_CONSTANT_?" string | HIGH | String at 0x1D38950 confirmed in nvlink_strings.json, xref to sub_438640 |
+| Name table at 0x1D3A8E0 (18+7 entries) | HIGH | .nv.constant0 at 0x1D3A4C0, .nv.constant1 at 0x1D3A4CE confirmed in nvlink_strings.json |
+| Merge function sub_438640 (4,043 bytes) | HIGH | Decompiled file sub_438640_0x438640.c exists |
+| Overlap merge sub_4343C0 (11,838 bytes) | HIGH | Decompiled file sub_4343C0_0x4343c0.c exists |
+| Dedup engine sub_4339A0 (13,199 bytes) | HIGH | Decompiled file sub_4339A0_0x4339a0.c exists |
+| "found duplicate value 0x%x, alias %s to %s" string | HIGH | String at 0x1D38888 confirmed in nvlink_strings.json |
+| "optimize ocg constant reloc offset from %lld to %lld" string | HIGH | String at 0x1D388B8 confirmed in nvlink_strings.json |
+| "optimize OCG constants for %s, old size = %lld" string | HIGH | String at 0x1D39028 confirmed in nvlink_strings.json |
+| "overlapping non-identical data" string | HIGH | String at 0x1D387D8 confirmed, xref to sub_432B10 |
+| 7 specialized banks (entry_params, driver, optimizer, user, pic, tools_data, image_header_indices) | HIGH | All 7 names confirmed in nvlink_strings.json at 0x1D3A5C4-0x1D3A880 |
+| R_CUDA_CONST_FIELD relocation table (10 types) | HIGH | Relocation type names confirmed in nvlink_strings.json; sub_469D60 processes them |
+| SHIFTED_2 action (0x09) right-shift by 2 | MEDIUM | Descriptor layout reconstructed from relocation engine; shift value inferred from DWORD addressing semantics |
+| Worked example (R_CUDA_CONST_FIELD19_28 bit layout) | MEDIUM | Bit positions and widths from descriptor table; end-to-end flow is a reconstruction |
+| Per-entry section naming "%s.%s" pattern | HIGH | sprintf pattern visible in sub_438640 decompiled code |
+| 64 KB bank size limit | MEDIUM | Referenced as typical value from vtable offset +32; architecture-dependent, not individually verified per arch |
+| OCG dedup hash tables (256 buckets) | MEDIUM | Hash table structure inferred from decompiled sub_4339A0; bucket count is approximate |

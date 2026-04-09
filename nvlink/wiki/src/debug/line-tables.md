@@ -728,9 +728,37 @@ During regular (non-LTO) linking, `.debug_line` sections from multiple input cub
 
 These functions follow the same DWARF header format as the LTO path but operate on pre-parsed line table entries from input ELF `.debug_line` sections rather than generating them from scratch.
 
+## Sibling Wiki Cross-References
+
+The line table data that nvlink merges originates from two upstream toolchain stages:
+
+- **ptxas wiki** -- [Debug Information](../../ptxas/output/debug-info.html): ptxas generates both `.debug_line` (PTX-level) and `.nv_debug_line_sass` (SASS-level) sections. The SASS line table builder at `sub_866BB0` produces the per-CU fragments that nvlink's LTO-side generator (`sub_12D04E0`) replaces during link-time optimization, and that the linker-side merger (`sub_4776E0`--`sub_478A20`) concatenates during regular linking.
+- **cicc wiki** -- [Debug Info Pipeline](../../cicc/pipeline/debug-info-pipeline.html): cicc emits `.loc` and `.file` directives in PTX output, which ptxas then converts to DWARF line program bytes. The `-generate-line-info` flag at cicc controls whether `DILocation` metadata is preserved through the optimizer -- this directly determines whether nvlink receives any line table data to merge.
+
 ## Cross-References
 
 - [Section Merging](../linker/section-merging.md) -- section creation and data copy primitives
 - [DWARF Processing](dwarf-processing.md) -- broader DWARF debug info pipeline
 - [NVIDIA Extensions](nvidia-extensions.md) -- `.nv_debug_line_sass` and other NVIDIA-specific debug sections
 - [ELF Serialization](../elf/serialization.md) -- final section output to ELF
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| Header builder `sub_181A320` at `0x181A320` (16,225 bytes) | HIGH | Decompiled file `sub_181A320_0x181a320.c` present at exact address |
+| Line program encoder `sub_12D04E0` at `0x12D04E0` (33,592 bytes) | HIGH | Decompiled file `sub_12D04E0_0x12d04e0.c` present at exact address |
+| Master debug section builder `sub_12D2010` (56,450 bytes) | HIGH | Decompiled file `sub_12D2010_0x12d2010.c` present at exact address |
+| State machine initializer `sub_12D1990` | HIGH | Decompiled code confirms allocation and buffer initialization pattern |
+| Section selection: `a3 == 0` for `.debug_line`, `a3 > 0` for `.nv_debug_line_sass` | HIGH | Strings `.nv_debug_line_sass` at `0x241282C` area; section name dispatch confirmed in decompiled `sub_181A320` |
+| DWARF parameters: `line_base=-5`, `line_range=14`, `opcode_base=10` | HIGH | Packed constant `0x0EFB0101` documented at `sub_12D1990` offset +76; the values decode correctly: `0x01` (min_instr_length=1), `0x01` (default_is_stmt=1), `0xFB` (line_base=-5 signed), `0x0E` (line_range=14) |
+| Special opcode formula matches DWARF standard | HIGH | Formula `(line_delta + 5) + 14 * addr_delta + 10` is standard DWARF with the documented parameters |
+| NVIDIA extended opcode `DW_LNE_NV_set_context` (0x90) | HIGH | Encoding logic documented with decompiled line references; LEB128 diagnostic strings `"when generating LEB128 number for setting context"` at `0x1F25D40` and `"when generating LEB128 number for setting function Offset"` at `0x1F25D78` confirmed |
+| NVIDIA extended opcode `DW_LNE_NV_set_stmt` (0x92) | HIGH | Diagnostic string `"when generating LEB128 number for setting prologue"` at `0x1F25CA0` confirmed; sub-opcode value `-110` as signed byte = `0x92` is mathematically correct |
+| `$LDWend` label resolution | HIGH | String `$LDWend` at `0x1F25DB2` confirmed in strings file |
+| LEB128 encoding diagnostics (file number, timestamp, file size, address advance, line advance) | HIGH | All five diagnostic strings confirmed at `0x1F25C70`--`0x1F25D10` and `0x24127D0`--`0x2412800` |
+| Linker-side merger functions at `0x470000`--`0x480000` | HIGH | All five functions confirmed in decompiled/: `sub_4776E0`, `sub_477A60`, `sub_477E10`, `sub_4783C0`, `sub_478A20`, plus `sub_480570` |
+| State machine object layout (464 bytes, four buffers) | MEDIUM | Decompiled `sub_12D1990` confirms buffer allocation pattern; exact 464-byte size inferred from allocation calls and field layout but not directly readable from decompiled output |
+| Grid dimension encoder `sub_12D4440` (7,692 bytes) | HIGH | Decompiled file present at exact address |
+| Parallel vs. serial mode dispatch | MEDIUM | Claim based on `module_ctx[2]` null check for dispatch; function pointer pattern is consistent but parallel thread safety details (hash map with mutex lock/unlock) are inferred from helper function addresses |
+| Buffer growth: 8,000 / 8,000 / 8,000 / 256,000 initial sizes | MEDIUM | Initial sizes inferred from decompiled allocation calls in `sub_12D1990`; exact constants hard to read due to decompiler optimization of allocation parameters |

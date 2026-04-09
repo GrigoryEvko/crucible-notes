@@ -14,11 +14,11 @@ Option parsing is a self-contained subsystem at addresses `0x42C510`--`0x42F640`
 | `0x42F130` | `option_register` | 4936 B | Registers a single option: allocates 120-byte entry, populates fields, inserts into both hash tables |
 | `0x42E5A0` | `option_parse_argv` | 9518 B | Parses argc/argv against registered options, handles `--`/`-` prefix, `=` assignment, response files (`@file`), unknown-option collection |
 | `0x42E390` | `option_get_value` | 2910 B | Extracts a parsed option value into a caller-supplied variable (1/4/8 byte copy depending on type) |
-| `0x42E580` | `option_was_specified` | ~512 B | Returns boolean: was this option present on the command line? Used for presence-detection vs. value extraction |
+| `0x42E580` | `option_was_specified` | 163 B | Returns boolean: was this option present on the command line? Used for presence-detection vs. value extraction |
 | `0x42D700` | `option_format_help` | 5589 B | Formats a single option's help entry: `"--%s%s%s%s"`, `"(-%s)"`, appends default/allowed values |
 | `0x42DBC0` | `option_validate_value` | 5065 B | Validates parsed value against type constraints: `"32-bit integer"`, `"64-bit integer"`, `"32-bit hex"`, `"64-bit hex"` |
-| `0x42F560` | `option_print_help` | ~2048 B | Iterates all registered options and calls `option_format_help` for each |
-| `0x42F640` | `option_generate_tkinfo` | ~1024 B | Serializes parsed option state into tkinfo section data |
+| `0x42F560` | `option_print_help` | 1116 B | Iterates all registered options and calls `option_format_help` for each |
+| `0x42F640` | `option_generate_tkinfo` | 430 B | Serializes parsed option state into tkinfo section data |
 | `0x42C510` | `option_hash_lookup` | 4190 B | Hash table operations for O(1) option lookup by name |
 
 ### Parser Object Layout (56 bytes)
@@ -126,7 +126,7 @@ The remainder of this page documents the implementation-level details: how each 
 | `relocatable-link` | `byte_2A5F1E8` | type=bool, mult=0, flags=0 |
 | `shared` | `byte_2A5F1D8` | type=bool, mult=0, flags=4 |
 
-The `gen-host-linker-script` option accepts keywords `lcs-aug` and `lcs-abs` (default: `lcs-abs`). The value `lcs-aug` sets `dword_2A77DC0 = 2` (augmented script), while `lcs-abs` sets it to `1` (absolute script).
+The `gen-host-linker-script` option accepts keywords `lcs-aug` and `lcs-abs` (default: `lcs-abs`). The value `lcs-aug` sets `dword_2A77DC0 = 1` (standalone SECTIONS fragment, 130 bytes, written to file or stdout), while `lcs-abs` sets it to `2` (full augmented script: `ld --verbose` pipeline + append SECTIONS + `ld -T` validation). The mapping is computed by a byte-by-byte compare against the literal `"lcs-aug"` at `sub_427AE0` lines 1012-1027 (see [Mode Dispatch](mode-dispatch.md#how-ghls-sets-the-mode)).
 
 ### Debug Options
 
@@ -525,5 +525,36 @@ After `nvlink_parse_options` returns, the parser object itself is no longer refe
 - [Environment Variables](../config/env-vars.md) -- environment variables that supplement CLI options (e.g., `LIBRARY_PATH`)
 - [Architecture Profiles](../targets/arch-profiles.md) -- how `--arch` maps to the per-architecture vtable used throughout the pipeline
 - [Compatibility](../targets/compatibility.md) -- cross-architecture matching rules gated by the parsed SM number
-- **cicc wiki**: [CLI Flags](../../../../cicc/wiki/src/config/cli-flags.md) -- cicc compiler CLI flags. The parser framework (option entry struct, hash table lookup, argv scanning) is shared infrastructure between nvlink, cicc, and ptxas
-- **ptxas wiki**: [CLI Options](../../../../ptxas/wiki/src/config/cli-options.md) -- ptxas CLI options, using the same shared parser framework
+- **cicc wiki**: [CLI Flags](../../cicc/config/cli-flags.html) -- cicc compiler CLI flags. The parser framework (option entry struct, hash table lookup, argv scanning) is shared infrastructure between nvlink, cicc, and ptxas
+- **ptxas wiki**: [CLI Options](../../ptxas/config/cli-options.html) -- ptxas CLI options, using the same shared parser framework
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| Parser address range `0x42C510`--`0x42F640` | **HIGH** | All 10 function files exist in `decompiled/` with matching addresses |
+| `sub_42DFE0` (`option_parser_create`), 4,539 B | **HIGH** | `stat -c%s` confirms exactly 4,539 bytes |
+| `sub_42F130` (`option_register`), 4,936 B | **HIGH** | `stat -c%s` confirms exactly 4,936 bytes |
+| `sub_42E5A0` (`option_parse_argv`), 9,518 B | **HIGH** | `stat -c%s` confirms exactly 9,518 bytes |
+| `sub_42E390` (`option_get_value`), 2,910 B | **HIGH** | `stat -c%s` confirms exactly 2,910 bytes |
+| `sub_42D700` (`option_format_help`), 5,589 B | **HIGH** | `stat -c%s` confirms exactly 5,589 bytes |
+| `sub_42DBC0` (`option_validate_value`), 5,065 B | **HIGH** | `stat -c%s` confirms exactly 5,065 bytes |
+| `sub_42C510` (`option_hash_lookup`), 4,190 B | **HIGH** | `stat -c%s` confirms exactly 4,190 bytes |
+| `sub_42E580` (`option_was_specified`), 163 B | **HIGH** | `stat -c%s` confirms exactly 163 bytes |
+| `sub_42F560` (`option_print_help`), 1,116 B | **HIGH** | `stat -c%s` confirms exactly 1,116 bytes |
+| `sub_42F640` (`option_generate_tkinfo`), 430 B | **HIGH** | `stat -c%s` confirms exactly 430 bytes |
+| `nvlink_parse_options` at `0x427AE0`, 30,272 B, 1,299 lines | **HIGH** | `stat -c%s` = 30,272; `wc -l` = 1,299 |
+| 68 option registrations via `sub_42F130` | **HIGH** | `grep -c sub_42F130` in `sub_427AE0` returns exactly 68 |
+| Parser object layout (56 bytes) | **MEDIUM** | Inferred from decompiled allocation size and field access patterns; not directly labeled |
+| Option entry layout (120 bytes) | **MEDIUM** | Inferred from `sub_42F130` allocation and field offsets; consistent across all call sites |
+| Type codes (0=file-list, 1=bool, 2=string, 4=integer) | **HIGH** | Visible in `sub_42E390` value extraction and `sub_42F130` registration code |
+| `"nvlink option parser"` arena string | **HIGH** | String at `0x1d34123` in `nvlink_strings.json` |
+| `"trap-into-debugger"` option string | **HIGH** | String at `0x1d3294f` in `nvlink_strings.json` |
+| `"-nvvmpath should be specified with -lto"` validation | **HIGH** | String at `0x1d33dc8` in `nvlink_strings.json` |
+| `"-fdcmpt"` forward-compatibility flag | **HIGH** | String at `0x1d32aa4` in `nvlink_strings.json` |
+| `"Ofast-compile"` accepts `0/min/mid/max` | **HIGH** | String at `0x1d32324` in `nvlink_strings.json`; values from decompiled switch-case |
+| Global variable address map (80+ entries) | **HIGH** | Cross-verified against decompiled `sub_427AE0`; addresses match `option_get_value` calls |
+| Mutual-exclusion table (10 conflict pairs) | **HIGH** | Error calls visible in `sub_427AE0` decompiled code after extraction |
+| `dword_2A77DC0 = !v8 + 1` for gen-host-linker-script | **HIGH** | Line 1027 of `sub_427AE0` shows `dword_2A77DC0 = !v8 + 1` |
+| Architecture validation: sm > 19, sm > 72, sm > 99 thresholds | **HIGH** | Threshold comparisons visible in `sub_427AE0` decompiled code |
+| Compilation mode `dword_2A5B528` values (0/2/4/6) | **MEDIUM** | Values inferred from conditional assignments in `sub_427AE0`; exact semantics partially interpreted |

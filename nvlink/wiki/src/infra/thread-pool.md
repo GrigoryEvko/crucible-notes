@@ -1,8 +1,15 @@
 # Thread Pool
 
-nvlink contains a custom thread pool built on pthreads. It is used exclusively for parallelizing the PTX-to-SASS assembly step during LTO split compilation (see [Split Compilation](../lto/split-compilation.md)). All other linker phases -- merge, layout, relocation, finalization -- run single-threaded on the main thread. The pool is created, used, and destroyed within a single scope in `main()`, and does not persist across pipeline phases.
+nvlink contains a custom thread pool built on pthreads. It parallelizes two distinct PTX-to-SASS assembly paths, both within the LTO pipeline:
 
-The thread count is controlled by `-split-compile-extended=N`. When N is 0 or unspecified, the pool auto-detects via `sysconf(_SC_NPROCESSORS_ONLN)`. When N is 1, the split-compile path runs single-threaded and the pool is never created.
+1. **LTO split-compile** (`main()` at line ~1208) -- Splits a single PTX stream into N chunks and assembles them concurrently. Controlled by `-split-compile-extended=N`.
+2. **Embedded ptxas per-kernel compilation** (`sub_1112F30` at line ~1889) -- Compiles each kernel in a multi-kernel PTX input as a separate task. Controlled by the `--split-compile` option forwarded to the embedded ptxas subsystem.
+
+All other linker phases -- merge, layout, relocation, finalization -- run single-threaded on the main thread. Each pool instance is created, used, and destroyed within a single scope and does not persist across pipeline phases.
+
+For the LTO split-compile path, the thread count is controlled by `-split-compile-extended=N`. When N is 0 or unspecified, the pool auto-detects via `sysconf(_SC_NPROCESSORS_ONLN)`. When N is 1, the split-compile path runs single-threaded and the pool is never created. The embedded ptxas path reads the thread count from offset +668 in the compilation driver state block.
+
+All threads are created with the default `pthread_attr_t` (NULL), which means the default stack size applies (typically 8 MB on Linux, governed by `RLIMIT_STACK`).
 
 ## Control Block Layout
 
@@ -245,9 +252,9 @@ With the always-true comparator: the parent always "beats" its children, so the 
 
 Frees both the element array and the queue struct by calling `sub_431000` (arena free) twice. Called during `thread_pool_destroy` before the shutdown broadcast.
 
-## Usage in main()
+## Usage Site 1: LTO Split-Compile in main()
 
-The thread pool appears exactly once in the nvlink pipeline, inside the LTO split-compile path in `main()` at approximately line 1208 of the decompiled output:
+The first usage is the LTO split-compile path in `main()` at approximately line 1208 of the decompiled output. This splits a single PTX stream (produced by libnvvm from linked NVVM IR) into N chunks and assembles each chunk on a worker thread.
 
 ```c
 // Auto-detect thread count if not specified
@@ -281,7 +288,258 @@ for (i = 0; i < num_splits; i++) {
 }
 ```
 
-The worker function is `sub_4264B0` at `0x4264B0`, a 48-byte wrapper that unpacks a 40-byte work item and calls `sub_4BD760` (ptxas split compile). Each work item is described in [Split Compilation -- Work Item Layout](../lto/split-compilation.md#path-3-extended-split-compile-multi-threaded).
+The worker function is `sub_4264B0` at `0x4264B0`, a small wrapper that unpacks a 40-byte work item and calls `sub_4BD760` (ptxas split compile):
+
+```c
+// sub_4264B0 -- split_compile_worker (18 bytes of logic)
+void split_compile_worker(work_item_t *item) {
+    item->result = sub_4BD760(
+        item->output_ptr,      // offset  0: pointer to output slot
+        item->ptx_chunk,       // offset  8: PTX chunk string
+        item->sm_arch,         // offset 16: SM architecture number
+        item->has_nvvm,        // offset 20: byte flag
+        item->machine_64,      // offset 21: byte flag (64-bit machine)
+        item->has_flag,        // offset 22: byte flag
+        item->options_ptr,     // offset 24: compilation options
+        item->version_num      // offset 32: version number
+    );
+}
+```
+
+### LTO Work Item Layout (40 bytes)
+
+```
+split_work_item_t (40 bytes, arena-allocated via sub_426AA0)
+================================================================
+Offset  Size  Field          Description
+----------------------------------------------------------------
+  0      8    output_ptr     Pointer to output slot in results array
+  8      8    ptx_chunk      Pointer to PTX chunk string
+ 16      4    sm_arch        SM architecture number (dword_2A5F314)
+ 20      1    has_nvvm       byte_2A5F2C0 != 0
+ 21      1    machine_64     dword_2A5F30C == 64
+ 22      1    has_flag       byte_2A5F310 != 0
+ 23      1    (padding)
+ 24      8    options_ptr    Pointer to compilation options string
+ 32      4    version_num    dword_2A5B528
+ 36      4    result_code    Written by worker (return value of sub_4BD760)
+```
+
+Each work item is described in [Split Compilation -- Work Item Layout](../lto/split-compilation.md#path-3-extended-split-compile-multi-threaded).
+
+## Usage Site 2: Embedded ptxas Per-Kernel Compilation
+
+The second usage is the embedded ptxas compilation driver `sub_1112F30` at line ~1889. When a PTX input contains multiple kernels and `--split-compile N` (with N > 1) is active, each kernel is submitted as a separate task to the thread pool for parallel DAGgen + OCG + ELF generation.
+
+This path also supports optional GNU Make jobserver integration (see [MAKEFLAGS Jobserver Integration](#makeflags-jobserver-integration) below).
+
+```c
+// sub_1112F30, lines 1889-1944 -- embedded ptxas compilation driver
+thread_count = *(int *)(state + 668);              // from --split-compile option
+jobserver_status = 255;                            // default: not attempted
+
+// Initialize jobserver if --jobserver flag is set
+if (*(byte *)(state + 993)) {                      // offset 993 = --jobserver flag
+    jobserver_status = jobserver_init(&qword_2A64430, thread_count);
+    if (jobserver_status == 5 || jobserver_status == 6)
+        warn("GNU Jobserver support requested, but no compatible "
+             "jobserver found. Ignoring '--jobserver'");
+    else if (jobserver_status != 0)
+        warn("Jobserver requested, but an error occurred");
+}
+
+// Create thread pool
+pool = thread_pool_create(thread_count);           // sub_43FDB0
+
+// Submit one task per kernel
+for (i = 0; i < num_kernels; i++) {
+    work = arena_alloc(48);                        // 48-byte work item
+    populate_kernel_work(work, kernel_list[i]);
+    if (jobserver_flag && jobserver_status == 0)
+        work->jobserver = qword_2A64430;           // offset 40: jobserver client
+    else
+        work->jobserver = NULL;
+    thread_pool_submit(pool, kernel_compile_worker, work);
+}
+
+// Wait and destroy
+thread_pool_wait(pool);                            // sub_43FFE0
+thread_pool_destroy(pool);                         // sub_43FE70
+
+// Return remaining jobserver tokens
+if (qword_2A64430 && jobserver_cleanup(&qword_2A64430))
+    warn("Jobserver requested, but an error occurred");
+```
+
+### Per-Kernel Work Item Layout (48 bytes)
+
+```
+kernel_work_item_t (48 bytes, arena-allocated via sub_4307C0)
+================================================================
+Offset  Size  Field          Description
+----------------------------------------------------------------
+  0     16    kernel_data    Copied from kernel descriptor offsets 312-327
+ 16      8    reserved       Zero-initialized
+ 24      8    kernel_desc2   Copied from kernel descriptor offset 328
+ 32      8    kernel_ptr     Pointer to kernel descriptor
+ 40      8    jobserver      Pointer to jobserver client (or NULL)
+```
+
+### Per-Kernel Worker Function (`sub_1107420` at `0x1107420`)
+
+The worker acquires a jobserver token (if available), compiles the kernel via `sub_1102B30`, records timing metrics, then releases the jobserver token:
+
+```c
+void kernel_compile_worker(kernel_work_item_t *item) {
+    // Acquire jobserver token (if jobserver is active)
+    if (item->jobserver && jobserver_acquire() != 0)
+        warn("Jobserver requested, but an error occurred");
+
+    // Compile the kernel
+    sub_1102B30(item->kernel_ptr, item->kernel_desc2 + 64,
+                ...);
+
+    // Record timing metrics
+    timing_entry = kernel_ptr->timing_array + 112 * kernel_id;
+    timing_entry->compile_time = end_time - start_time;
+
+    // Release jobserver token (if jobserver is active)
+    if (item->jobserver && jobserver_release() != 0)
+        warn("Jobserver requested, but an error occurred");
+
+    arena_free(item);
+}
+```
+
+## MAKEFLAGS Jobserver Integration
+
+The embedded ptxas compilation path (usage site 2) optionally integrates with the GNU Make jobserver protocol. When `--jobserver` is passed as an embedded ptxas option, the thread pool workers coordinate with GNU Make to respect the global `-j N` parallelism limit. This prevents oversubscription when nvlink is invoked as part of a larger `make -j` build.
+
+### Activation
+
+The `--jobserver` flag is registered in `sub_1103030` as a boolean option and stored at offset +609 in the embedded ptxas options struct. In the outer compilation driver state block (`sub_1112F30`), this maps to offset +993.
+
+### Jobserver Client Initialization (`sub_1D1EF30` at `0x1D1EF30`)
+
+When the jobserver flag is active, `sub_1D1EF30` is called with a pointer to the global `qword_2A64430` and the thread count. It allocates a 296-byte jobserver client struct via `sub_1D26B40(296, ...)`, then calls `sub_1D1E740` to parse `MAKEFLAGS`. The struct also creates an internal pipe (`pipe()` syscall) and spawns a reader thread for async token notification.
+
+### MAKEFLAGS Parser (`sub_1D1E740` at `0x1D1E740`)
+
+Reads `MAKEFLAGS` from the environment and extracts the jobserver connection parameters. Only the `--jobserver-auth=` token format is recognized (string at `0x245F2BC`). The older `--jobserver-fds=` variant from GNU Make < 4.2 is not supported.
+
+Two transport protocols are handled:
+
+**FIFO mode** (`--jobserver-auth=fifo:<path>`): Opens the named pipe at `<path>` with flags `O_RDWR | O_NONBLOCK` (value 0x802). The single file descriptor is stored at both offsets +188 (read) and +192 (write) of the jobserver struct.
+
+**Pipe mode** (`--jobserver-auth=<read_fd>,<write_fd>`): Parses two comma-separated integers as file descriptor numbers. Both substrings are validated to contain only digits via `sub_1D27410`. Each fd is `dup()`'d and the duplicate has `FD_CLOEXEC` set via `fcntl(fd, F_SETFD, FD_CLOEXEC)`. If either `dup` or `fcntl` fails, the read fd is closed and status is set to 7.
+
+### Status Codes
+
+All status updates use `_InterlockedCompareExchange(status, new, 0)` for atomic initialization.
+
+| Status | Meaning |
+|---|---|
+| 0 | Success -- jobserver initialized |
+| 5 | `MAKEFLAGS` environment variable not set |
+| 6 | `--jobserver-auth=` token not found in `MAKEFLAGS` |
+| 7 | Parse error, `open` failure, `dup` failure, or `fcntl` failure |
+| 11 | Write/read error on jobserver pipe |
+| 12 | Token release failure |
+
+### Token Protocol
+
+Workers call `sub_1D1E300` (acquire) before compiling a kernel and `sub_1D1E480` (release) after. The acquire function reads one byte from the jobserver pipe to claim a token; the release function writes one byte back. Internal coordination uses a condition variable and counters within the 296-byte struct to handle the case where all tokens are in use (workers block until a token is returned).
+
+The first token is "free" -- the initial-token flag at offset +8 of the jobserver struct is set to 1, so the first worker skips the pipe read. Subsequent workers must acquire real tokens from the Make jobserver.
+
+### Error Messages
+
+| Address | String |
+|---|---|
+| `0x1F440A8` | `GNU Jobserver support requested, but no compatible jobserver found. Ignoring '--jobserver'` |
+| `0x1F44108` | `Jobserver requested, but an error occurred` |
+
+### Relationship to ptxas
+
+ptxas has an identical jobserver client at `sub_1CC7300` (see [ptxas: Threading -- Jobserver](../../ptxas/infra/threading.html)). Both use the same `sub_1D1E740` parser and `sub_1D1EF30` initialization code, compiled from NVIDIA's shared `generic_jobserver_impl` infrastructure.
+
+## Worked Example: Thread Pool Lifecycle
+
+This traces a concrete execution of the LTO split-compile path with 4 PTX chunks and 2 worker threads:
+
+```
+Thread 0 (main)                     Thread 1 (worker)       Thread 2 (worker)
+═══════════════                     ═════════════════       ═════════════════
+dword_2A5B514 = 2
+pool = calloc(1, 0xB8)
+  thread_array = calloc(2, 16)
+  mutex_init, cond_init x2
+  pqueue = sub_44DC60(always_1, 0)
+  pthread_create → T1              ──→ lock(mutex)
+  pthread_detach(T1)                   pending==0, wait(task_cond)
+  pthread_create → T2                                      ──→ lock(mutex)
+  pthread_detach(T2)                                           pending==0, wait(task_cond)
+  return pool
+                                    [sleeping on task_cond] [sleeping on task_cond]
+
+submit(pool, worker, &item[0])
+  task0 = malloc(24)
+  lock(mutex)
+  pqueue_push(task0)
+  pending = 1
+  broadcast(task_cond)             ──→ wake up!             ──→ wake up!
+  unlock(mutex)                        pending=1, pop→task0     pending=0, back to wait
+                                       pending=0, active=1
+submit(pool, worker, &item[1])         unlock(mutex)
+  task1 = malloc(24)                   task0->func(arg)         [sleeping]
+  lock(mutex)                          ...compiling...
+  pqueue_push(task1)
+  pending = 1
+  broadcast(task_cond)                                      ──→ wake up!
+  unlock(mutex)                                                 pop→task1, active=2
+                                                                unlock(mutex)
+submit(pool, worker, &item[2])                                  task1->func(arg)
+  task2 = malloc(24)
+  lock(mutex)                      ...finishes task0...
+  pqueue_push(task2)               lock(mutex)
+  pending = 1 (now 2 total)        active=1
+  broadcast(task_cond)             pop→task2
+  unlock(mutex)                    pending=0, active=2
+                                   unlock(mutex)
+submit(pool, worker, &item[3])     task2->func(arg)
+  task3 = malloc(24)
+  lock(mutex)
+  pqueue_push(task3)                                        ...finishes task1...
+  pending = 1                                               lock(mutex)
+  broadcast(task_cond)                                      active=1
+  unlock(mutex)                                             pop→task3
+                                                            pending=0, active=2
+thread_pool_wait(pool)                                      unlock(mutex)
+  lock(mutex)                                               task3->func(arg)
+  pending=0 but active=2
+  wait(done_cond)                  ...finishes task2...
+                                   lock(mutex)
+                                   active=1                 ...finishes task3...
+                                   unlock(mutex)            lock(mutex)
+                                   [sleep on task_cond]     active=0, pending=0
+                                                            signal(done_cond) ──→ wake main
+  ──→ active=0, pending=0, break                            unlock(mutex)
+  unlock(mutex)                                             [sleep on task_cond]
+
+thread_pool_destroy(pool)
+  lock(mutex)
+  pqueue_destroy
+  pending=0, shutdown=1
+  broadcast(task_cond)             ──→ shutdown! exit loop  ──→ shutdown! exit loop
+  unlock(mutex)                        thread_count--           thread_count--
+                                       signal(done_cond)        signal(done_cond)
+  lock(mutex)                          unlock(mutex)            unlock(mutex)
+  thread_count==0, break               return NULL              return NULL
+  unlock(mutex)
+  mutex_destroy, cond_destroy x2
+  free(thread_array)
+  free(pool)
+```
 
 ## Memory Allocation Strategy
 
@@ -314,6 +572,8 @@ There is no spurious-wakeup protection beyond the while-loop re-check of the pre
 
 ## Function Map
 
+### Thread Pool Core
+
 | Address | Name | Size | Role |
 |---|---|---|---|
 | `0x43FD90` | `thread_pool_get_nproc` | 18 B | Returns CPU count via `sysconf(83)` |
@@ -323,32 +583,64 @@ There is no spurious-wakeup protection beyond the while-loop re-check of the pre
 | `0x43FFE0` | `thread_pool_wait` | 128 B | Blocks until `pending == 0 && active == 0` |
 | `0x43FE70` | `thread_pool_destroy` | 224 B | Two-phase shutdown, frees all pool memory |
 | `0x43FC70` | `comparator_true` | 8 B | Always returns 1; makes heap behave as FIFO |
+
+### Priority Queue
+
+| Address | Name | Size | Role |
+|---|---|---|---|
 | `0x44DC60` | `pqueue_create` | 192 B | Allocates 32-byte queue struct with comparator |
 | `0x44DD10` | `pqueue_push` | 224 B | Heap insert with sift-up |
 | `0x44DE20` | `pqueue_pop` | 288 B | Heap remove-min with sift-down |
 | `0x44DC40` | `pqueue_destroy` | 48 B | Frees queue struct and backing array |
 
+### Worker Functions
+
+| Address | Name | Size | Role |
+|---|---|---|---|
+| `0x4264B0` | `split_compile_worker` | ~48 B | LTO split-compile: unpacks 40-byte work item, calls `sub_4BD760` |
+| `0x1107420` | `kernel_compile_worker` | ~240 B | Per-kernel: acquires jobserver token, calls `sub_1102B30`, releases token |
+
+### Jobserver Integration
+
+| Address | Name | Size | Role |
+|---|---|---|---|
+| `0x1D1E740` | `parse_makeflags` | ~600 B | Parses `MAKEFLAGS` for `--jobserver-auth=` |
+| `0x1D1EF30` | `jobserver_init` | ~560 B | Allocates 296-byte jobserver client, calls `parse_makeflags`, creates internal pipe |
+| `0x1D1E300` | `jobserver_acquire` | ~320 B | Acquires one token from the jobserver (reads 1 byte from pipe) |
+| `0x1D1E480` | `jobserver_release` | ~400 B | Releases one token back to the jobserver (writes 1 byte to pipe) |
+| `0x1D1E060` | `jobserver_cleanup` | -- | Returns remaining tokens and cleans up jobserver state |
+
+### Embedded ptxas Compilation Driver
+
+| Address | Name | Size | Role |
+|---|---|---|---|
+| `0x1112F30` | `compilation_driver` | ~9 KB | Embedded ptxas main compilation loop; usage site 2 for thread pool |
+| `0x1104950` | `ptxas_option_parse` | ~7 KB | Parses embedded ptxas CLI flags (including `--jobserver` at offset +609) |
+| `0x1103030` | `ptxas_option_register` | ~1 KB | Registers embedded ptxas CLI flag definitions |
+
 ## Key Globals
 
 | Address | Name | Type | Description |
 |---|---|---|---|
-| `dword_2A5B514` | `split_compile_extended` | `int` | Thread count for extended split compile. 0 = auto-detect, 1 = single-threaded (no pool created), N > 1 = N workers |
+| `dword_2A5B514` | `split_compile_extended` | `int` | Thread count for LTO extended split compile. 0 = auto-detect, 1 = single-threaded (no pool created), N > 1 = N workers |
+| `qword_2A64430` | `jobserver_client` | `void *` | Pointer to 296-byte jobserver client struct (NULL when jobserver not active) |
 
 ## Cross-References
 
 **Internal (nvlink wiki):**
 
-- [Split Compilation](../lto/split-compilation.md) -- The LTO split-compile pipeline that is the sole consumer of the thread pool, including work item layout and the `split_compile_worker` function
+- [Split Compilation](../lto/split-compilation.md) -- The LTO split-compile pipeline, including work item layout and the `split_compile_worker` function
 - [LTO Overview](../lto/overview.md) -- High-level LTO pipeline diagram showing where multi-threaded PTX-to-SASS assembly fits
 - [Pipeline Entry](../pipeline/entry.md) -- `main()` thread pool lifecycle at lines ~1208--1286 of the decompiled output
 - [Memory Arenas](memory-arenas.md) -- Arena allocator thread safety: the queue uses arena allocation while task nodes use `malloc`/`free`
 - [Error Reporting](error-reporting.md) -- Per-thread TLS diagnostic state (`sub_44F410`) that the thread pool workers inherit
 - [CLI Flags](../config/cli-flags.md) -- `-split-compile-extended=N` option controlling thread count
+- [Environment Variables](../config/env-vars.md) -- `MAKEFLAGS` environment variable documentation with full MAKEFLAGS parser analysis
 
 **Sibling wikis:**
 
-- [ptxas: Threading](../../../ptxas/wiki/src/infra/threading.md) -- ptxas has a structurally identical thread pool (`sub_1CB18B0`, 184-byte pool struct, 24-byte task nodes, `pthread_detach` + condition-variable shutdown) used for parallel kernel compilation
-- [ptxas: Memory Pools](../../../ptxas/wiki/src/infra/memory-pools.md) -- ptxas memory pool allocator that parallels nvlink's arena system
+- [ptxas: Threading](../../ptxas/infra/threading.html) -- ptxas has a structurally identical thread pool (`sub_1CB18B0`, 184-byte pool struct, 24-byte task nodes, `pthread_detach` + condition-variable shutdown) used for parallel kernel compilation. The pool constructor, worker loop, submit, wait, and destroy functions are compiled from the same source.
+- [ptxas: Memory Pools](../../ptxas/infra/memory-pools.html) -- ptxas memory pool allocator that parallels nvlink's arena system
 
 ## Confidence Assessment
 
@@ -366,9 +658,19 @@ There is no spurious-wakeup protection beyond the while-loop re-check of the pre
 | `pthread_cond_broadcast` on submit | HIGH | `sub_43FF50`: `pthread_cond_broadcast((pthread_cond_t *)(a1 + 64))` |
 | `pthread_cond_signal` on done_cond | HIGH | `start_routine`: `pthread_cond_signal(v1)` where `v1 = a1 + 112` |
 | `thread_pool_get_nproc` returns `sysconf(83)` | HIGH | `sub_43FD90` decompiled: `return sysconf(83);` -- exact one-liner |
+| Default pthread stack size (NULL attr) | HIGH | `sub_43FDB0`: `pthread_create(..., 0, ...)` -- NULL attr argument |
 | `-split-compile-extended` CLI option | HIGH | Strings `"-split-compile-extended=%d"` at `0x1d32268` and `"-split-compile-extended"` at `0x1d32283` |
 | "Unable to create thread pool" error message | HIGH | String at `0x1d342db` in strings JSON |
 | Task queue uses `sub_43FC70` comparator (always returns 1) | HIGH | `sub_43FDB0`: `sub_44DC60(sub_43FC70, 0)` passes comparator function; `sub_43FC70` is an 8-byte function |
 | Priority queue struct is 32 bytes, arena-allocated | MEDIUM | `sub_44DC60` allocates from arena; 32-byte size inferred from field layout |
 | FIFO behavior from always-true comparator | MEDIUM | Logical deduction from heap sift-up/sift-down behavior when comparator always returns 1; insertion-order preservation validated by analysis |
 | Shared design with ptxas thread pool | HIGH | ptxas `sub_1CB18B0` has identical 184-byte struct, same `pthread_detach` pattern, same 24-byte task nodes, same condition-variable protocol |
+| Second usage site in `sub_1112F30` | HIGH | `sub_43FDB0`/`sub_43FF50`/`sub_43FFE0`/`sub_43FE70` calls at decompiled lines 1906/1935/1943/1944 |
+| `--jobserver` flag at embedded ptxas offset +609 | HIGH | `sub_1104950` line 284: `sub_42E390(v11, "jobserver", (a3 + 609), 1u)` |
+| Jobserver client struct is 296 bytes | HIGH | `sub_1D1EF30`: `sub_1D26B40(296, ...)` -- exact allocation size |
+| MAKEFLAGS parsed by `sub_1D1E740` | HIGH | `getenv("MAKEFLAGS")` at line 57 of decompiled `sub_1D1E740` |
+| `--jobserver-auth=` is the only recognized token format | HIGH | `sub_1D27380(&ptr, "--jobserver-auth=", -1, 17)` -- string literal match |
+| FIFO mode opens with `O_RDWR | O_NONBLOCK` (0x802) | HIGH | `open(file, 2050)` in `sub_1D1E740` -- 2050 decimal = 0x802 |
+| Pipe mode uses `dup()` + `fcntl(FD_CLOEXEC)` | HIGH | `dup(v31)` then `fcntl(v32, 2, 2048)` in `sub_1D1E740` |
+| Worker `sub_1107420` acquires/releases jobserver tokens | HIGH | Calls `sub_1D1E300()` at line 20 and `sub_1D1E480()` at line 57 |
+| Per-kernel work item is 48 bytes | HIGH | `sub_4307C0(v203, 48)` at `sub_1112F30` line 1918 |

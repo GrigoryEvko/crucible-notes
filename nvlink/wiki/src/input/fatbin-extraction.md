@@ -746,5 +746,5 @@ Return code 7 receives special treatment in `sub_42AF40`: when the `a5` flag (bi
 - [Mercury Overview](../mercury/overview.md) -- Mercury member type (16) handling and the FNLZR post-link transform
 - [LTO Overview](../lto/overview.md) -- the batch LTO compilation phase that consumes registered IR modules from fatbin extraction
 - [ELF Device Format](../elf/device-elf-format.md) -- cubin ELF format that fatbin members contain
-- **ptxas wiki**: [Output Phase](../../../../ptxas/wiki/src/pipeline/output.md) -- ptxas cubin output format (the producer of the cubin/mercury members that fatbin containers hold)
-- **ptxas wiki**: [Capsule Mercury](../../../../ptxas/wiki/src/codegen/capmerc.md) -- capsule mercury format for fatbin type-16 members
+- **ptxas wiki**: [Output Phase](../../ptxas/pipeline/output.html) -- ptxas cubin output format (the producer of the cubin/mercury members that fatbin containers hold)
+- **ptxas wiki**: [Capsule Mercury](../../ptxas/codegen/capmerc.html) -- capsule mercury format for fatbin type-16 members

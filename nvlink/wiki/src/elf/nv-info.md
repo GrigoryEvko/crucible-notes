@@ -13,12 +13,17 @@ nvlink both reads and writes `.nv.info` sections. During the merge phase it pars
 | Section name (per-function) | `.nv.info.<function_name>` |
 | Record format | Type-Length-Value (TLV), 4-byte aligned |
 | Known attribute count | 97 EIATTR codes: 0--96 (v13.0.88) |
-| Parser function | `sub_44E8B0` (`parse_nvinfo_section`, 4,780 bytes) |
-| Single-attribute parser | `sub_44E590` (`parse_nvinfo_attribute`, 4,555 bytes) |
+| Attribute validation | `sub_42F760`: rejects codes > `0x60` (96) as `"unknown attribute"` |
+| Section creation | `sub_4504B0` (global: line 46, per-function: line 63) |
+| Record node creation (indexed) | `sub_450B70` (`create_eiattr_indexed_record`) |
+| Record node creation (any format) | `sub_4508F0` (`create_eiattr_node`) |
 | Encoder function | `sub_468760` (`nvinfo_encode`, 14,322 bytes) |
 | Master emission function | `sub_15C58F0` (78,811 bytes -- largest nv.info emitter) |
 | Emission function count | ~190 functions at `0x15CF070`--`0x160FFFF` |
+| Name table | 97 x 16-byte entries at VA `0x1D37D60` (8-byte string ptr + 8-byte metadata) |
+| Diagnostic format string | `"nvinfo <fmt=%d,attr=%d,size=%d>, secidx=%d"` |
 | Validation error | `"Invalid section type in .nv.info section header"` |
+| Global update error | `"error while updating global nvinfo section"` |
 
 ## Section Variants
 
@@ -28,9 +33,13 @@ A cubin contains two kinds of `.nv.info` sections, distinguished by name:
 
 A single section named `.nv.info` with `sh_link = 0` (no associated symbol). This contains attributes that apply to the entire compilation unit -- CUDA API version, compatibility flags, and shared metadata that is not specific to any one kernel.
 
+`sub_4504B0` creates this section when called with `a2 = 0` (no symbol index). It calls `sub_4411D0` to find an existing `.nv.info` section; if none exists, it creates one via `sub_441AC0` with type `0x70000000`, alignment 4, and `sh_flags = 0`.
+
 ### Per-Function `.nv.info.<name>`
 
 One section per kernel or device function, named `.nv.info.<function_name>` with `sh_link` pointing to the symbol table entry for that function. These sections carry per-kernel resource descriptors: register count, barrier count, stack sizes, parameter bank layout, and instruction-offset tables for various runtime patching needs.
+
+`sub_4504B0` creates per-function sections when called with `a2 != 0`. It constructs the name via `sprintf(buf, "%s.%s", ".nv.info", func_name)` where `func_name` is looked up from the symbol at offset +32. The section is created with `sh_flags = 0x40` and `sh_link` pointing to the owning symbol. After creation, `sub_4426D0` links the section to the function's symbol entry.
 
 During the merge phase (`sub_45E7D0`), nvlink identifies `.nv.info` sections by checking `sh_type == 0x70000000`. The `sh_link` field determines whether a record is global (link=0) or per-function (link = symbol index). The merge function translates symbol indices from input-local to output-global using its mapping tables.
 
@@ -38,35 +47,55 @@ During the merge phase (`sub_45E7D0`), nvlink identifies `.nv.info` sections by 
 
 Each `.nv.info` section contains a flat sequence of 4-byte-aligned TLV (Type-Length-Value) records. There is no section header or record count -- the parser walks from byte 0 to `sh_size`, consuming records sequentially.
 
-### Record Layout
+### On-Disk Record Layout
 
 ```
 Offset  Size  Field
 ------  ----  -----
 0x00    1     format      Format byte (determines payload structure)
 0x01    1     attr_code   EIATTR type code (identifies the attribute)
-0x02    2     size        Payload size in bytes (little-endian)
+0x02    2     size        Payload size in bytes (little-endian uint16)
 0x04    var   payload     Attribute-specific data (size bytes)
 ```
 
-Total record size = 4 + `size`, padded to 4-byte alignment.
+Total record size = 4 + `size`, padded to 4-byte alignment. The maximum theoretical payload is 65,535 bytes (16-bit size field), though in practice payloads rarely exceed a few hundred bytes.
+
+### In-Memory Node Layout (Linker Internal)
+
+nvlink stores parsed TLV records as 16-byte linked-list nodes in an arena-allocated chain at `elfw+392`. Each node has:
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    1     format       Format byte (0x01--0x04)
+0x01    1     attr_code    EIATTR type code
+0x02    2     size         Payload size in bytes
+0x04    4     secidx       Output section index (from sub_4504B0)
+0x08    8     payload_ptr  Pointer to arena-allocated payload data
+```
+
+Nodes are linked via a separate linked-list structure managed by `sub_4644C0` (list-append). The diagnostic function at `sub_4478F0` iterates this list and prints each record as: `"nvinfo <fmt=%d,attr=%d,size=%d>, secidx=%d"` using fields at bytes 0, 1, 2, and 4 respectively.
 
 ### Format Byte
 
 The format byte at offset 0 controls how the payload is interpreted:
 
-| Format | Name | Payload structure |
-|---|---|---|
-| `0x01` | Free format | Raw bytes, attribute-specific layout |
-| `0x02` | Value format | Single 32-bit value (no symbol index) |
-| `0x03` | Sized format | 16-bit value + padding |
-| `0x04` | Indexed format | `[sym_index:4] [value:4]` -- per-symbol attribute |
+| Format | Name | Payload structure | Usage |
+|---|---|---|---|
+| `0x01` | Free format | Raw bytes, attribute-specific layout | Instruction offset tables, parameter info, WAR patches |
+| `0x02` | Value format | Single 32-bit value (no symbol index) | Module-wide flags (`HAS_PRE_V10_OBJECT`, `NUM_BARRIERS` in some paths) |
+| `0x03` | Sized format | 16-bit value in the size field | `MAXREG_COUNT`, `CBANK_PARAM_SIZE`, `MERCURY_ISA_VERSION` |
+| `0x04` | Indexed format | `[sym_index:4] [value:4]` -- per-symbol attribute | Most per-function resource attributes |
 
 Format `0x04` (indexed) is the most common for per-function attributes. The 4-byte symbol index at payload offset 0 identifies which function the attribute applies to. The linker uses this index for symbol remapping during merge and for extracting per-function properties during finalization.
 
+Format `0x03` (sized) encodes the value directly in the 16-bit `size` field of the TLV header, with no additional payload bytes. This is used for small integer attributes like `MAXREG_COUNT` and `CBANK_PARAM_SIZE`.
+
+Format `0x01` (free) carries variable-length data. The `size` field gives the byte count. Offset tables use arrays of 4-byte instruction offsets; `KPARAM_INFO` uses structured records; `EXTERNS` uses arrays of symbol indices.
+
 ### Parsing Pseudocode
 
-From the decompiled `parse_nvinfo_section` and the `.nv.info` scan in `merge_weak_function`:
+From the decompiled merge path in `sub_45E7D0` (lines 1900--2052):
 
 ```c
 uint8_t *ptr = section_data;
@@ -78,26 +107,68 @@ while (ptr < end) {
     uint16_t size      = *(uint16_t *)(ptr + 2);
 
     if (format == 0x04) {
-        // Indexed format: first 4 bytes of payload = symbol index
-        uint32_t sym_idx = *(uint32_t *)(ptr + 4);
-        uint32_t value   = *(uint32_t *)(ptr + 8);
-        process_indexed_attribute(attr_code, sym_idx, value);
-    } else if (format == 0x02) {
-        // Value format: single 32-bit immediate
-        uint32_t value = *(uint32_t *)(ptr + 4);
-        process_global_attribute(attr_code, value);
-    } else {
-        // Free/sized format: attribute-specific handling
-        process_raw_attribute(attr_code, ptr + 4, size);
-    }
+        /* Indexed format: first 4 bytes of payload = symbol index */
+        uint32_t *payload = arena_alloc_copy(ptr + 4, size);
 
-    ptr += 4 + ALIGN_UP(size, 4);  // advance to next record
+        /* Symbol index remapping per attr_code */
+        switch (attr_code) {
+        case 2: case 6: case 7: case 8: case 9:      /* texture/image */
+        case 18: case 19: case 20: case 23: case 38:  /* param/cache */
+        case 69:                                       /* kparam_info_v2 */
+            payload[0] = sym_map[payload[0]];          /* remap first sym_idx */
+            break;
+        case 10:  /* PARAM_CBANK -- remap with lazy symbol creation */
+            payload[0] = sym_map_or_create(payload[0]);
+            break;
+        case 15:  /* EXTERNS -- remap all uint32 entries */
+            for (i = 0; i < size/4; i++)
+                payload[i] = sym_map[payload[i]];
+            break;
+        case 17: case 35: case 47: case 59:  /* resource attrs */
+            /* Check if symbol was deleted (weak-replaced) */
+            if (is_deleted[payload[0]]) { ptr += 4 + size; continue; }
+            payload[0] = sym_map[payload[0]];
+            break;
+        case 55:  /* CUDA_API_VERSION -- version compatibility check */
+            validate_cuda_api_version(payload[0]);
+            break;
+        case 79:  /* AT_ENTRY_FRAGMENTS -- fragment type analysis */
+            analyze_fragment_types(payload, size/4);
+            break;
+        default:
+            break;
+        }
+
+        node = create_nvinfo_node(format, attr_code, nv_info_secidx);
+        node->payload = payload;
+        node->size = size;
+    } else {
+        /* Non-indexed: just create node with header, no payload copy */
+        node = create_nvinfo_node(format, attr_code, nv_info_secidx);
+        node->size = size;
+        ptr += 4;  /* advance past header only, size already in node */
+    }
+    ptr = ptr + 4 + ALIGN_UP(size, 4);
 }
 ```
 
 ## EIATTR Attribute Catalog
 
-nvlink v13.0.88 defines 97 EIATTR (ELF Info ATTRibute) codes, numbered 0 through 96. The name-to-code mapping was extracted directly from the pointer table at VA `0x1D37D60` in the nvlink binary (16-byte entries: 8-byte string pointer + 8-byte metadata, indexed by code). The string names reside at `0x1D36819`--`0x1D37170`. Codes were verified against cubin TLV records produced by ptxas/nvcc v13.1 and cross-checked against the `compute_entry_properties` (`sub_451D80`) dispatch table. The following tables list all 97 attributes organized by functional category.
+nvlink v13.0.88 defines 97 EIATTR (ELF Info ATTRibute) codes, numbered 0 through 96. The name-to-code mapping was extracted directly from the pointer table at VA `0x1D37D60` in the nvlink binary (16-byte entries: 8-byte string pointer + 8-byte metadata, indexed by code). The string names reside at `0x1D36819`--`0x1D37170`. Codes were verified against cubin TLV records produced by ptxas/nvcc v13.1 and cross-checked against the `compute_entry_properties` (`sub_451D80`) dispatch table. The validation function `sub_42F760` confirms 97 codes by rejecting any `attr_code > 0x60`.
+
+### Name Table Structure
+
+The EIATTR name table is a contiguous array of 97 x 16-byte entries at VA `0x1D37D60`. Each entry:
+
+```
+Offset  Size  Field
+------  ----  -----
+0x00    8     name_ptr          Pointer to null-terminated string (e.g., "EIATTR_REGCOUNT")
+0x08    4     min_toolkit_ver   Minimum CUDA toolkit version that supports this attribute
+0x0C    4     usage_policy      0=warn, 1=error, 2=silently drop when version too old
+```
+
+The table is indexed by EIATTR code number. `sub_42F760` reads `dword_1D37D68[4 * attr_code]` (the `min_toolkit_ver` field at offset +8) to check whether the current toolkit version (`elfw+624`) supports the attribute. If the toolkit version is too old, the `usage_policy` determines whether to emit a warning, error, or silently omit the record.
 
 ### Complete Code Table (Sequential)
 
@@ -203,6 +274,229 @@ All 97 codes in numeric order. Use this as the authoritative reference when pars
 | 95 | `0x5F` | `EIATTR_MERCURY_ISA_VERSION` | Sized | Mercury |
 | 96 | `0x60` | `EIATTR_ERROR_LAST` | -- | Sentinel |
 
+## Most Important EIATTR Entries
+
+This section provides detailed format information for the EIATTR entries that are most critical to GPU kernel launch, driver resource allocation, and the linker's own processing.
+
+### EIATTR_REGCOUNT (0x2F) -- Register Count
+
+The single most important occupancy-determining attribute. The GPU driver computes `max_warps_per_SM = total_registers / (regcount * warp_size)` to determine how many warps can execute concurrently.
+
+```
+Format: 0x04 (Indexed)
+On-disk layout (12 bytes total):
+  Byte 0:     0x04    (indexed format)
+  Byte 1:     0x2F    (EIATTR_REGCOUNT)
+  Bytes 2-3:  0x0008  (size = 8 bytes)
+  Bytes 4-7:  sym_idx (uint32, function symbol index)
+  Bytes 8-11: regcount (uint32, physical register count per thread)
+```
+
+nvlink creates REGCOUNT records via `sub_450B70(elfw, 0x2F, 8, payload_ptr, sym_idx, 0)`. The payload is an 8-byte pair: `[sym_idx:4][regcount:4]`.
+
+**Linker operations on REGCOUNT:**
+
+1. **Weak resolution** (`sub_45D180`): When competing weak definitions exist, REGCOUNT is extracted to choose the winner. The definition with fewer registers wins, maximizing occupancy.
+
+2. **Weak stripping** (`sub_45D180`): Bitmask `0x800800020000` marks REGCOUNT (bit 47), FRAME_SIZE (bit 17), and MAX_STACK_SIZE (bit 35) as resource attributes. When a weak symbol is replaced, records matching these codes for the discarded definition are zeroed (`*(_BYTE *)(record + 1) = 0`, overwriting attr_code to ERROR). The debug message `"remove weak nvinfo"` is printed when zeroing the entire nv.info section, and `"remove weak frame_size"` when zeroing individual resource records.
+
+3. **Propagation** (`sub_450ED0`): `propagate_register_counts` walks the callgraph and propagates the maximum register count from callees to each entry kernel. If a callee uses more registers than the entry kernel, the entry kernel's REGCOUNT is raised to match. The verbose trace `"regcount %d for %s propagated to entry %s"` logs each propagation.
+
+4. **Validation**: If no REGCOUNT is found for an entry function, the linker emits `"no regcount?"` via the error system. If a max-regcount-limited entry function calls a callee with a higher register count, it prints: `"entry function '%s' with max regcount of %d calls function '%s' with regcount of %d"`.
+
+### EIATTR_NUM_BARRIERS (0x4C) -- Named Barrier Count
+
+Controls how many named barrier slots the CTA hardware allocates. Most architectures support up to 16 barriers per CTA.
+
+```
+Format: 0x04 (Indexed) when read from input cubins
+        0x02 (Value) when synthesized by the linker during finalization
+On-disk layout (indexed, 12 bytes):
+  Byte 0:     0x04    (indexed format)
+  Byte 1:     0x4C    (EIATTR_NUM_BARRIERS)
+  Bytes 2-3:  size
+  Bytes 4-7:  sym_idx
+  Bytes 8-11: barrier_count
+Linker-synthesized layout (internal node):
+  Byte 0:     0x02    (value format)
+  Byte 1:     0x4C    (EIATTR_NUM_BARRIERS)
+  Byte 2:     barrier_count (stored in the size field low byte)
+  Byte 3:     0x00
+  Bytes 4-7:  secidx  (output section index)
+```
+
+**Barrier migration from section flags:** The barrier count is also encoded in the section flags of `.text` sections as bits 26:20 (7 bits, mask `0x07F00000`). During finalization, if a kernel has no `EIATTR_NUM_BARRIERS` record but its section flags carry a non-zero barrier count, the linker synthesizes one. The verbose message is:
+
+```
+"Creating new EIATTR_NUM_BARRIERS and moving barcount %d
+ from section flags of %s to nvinfo for entry symbol %s"
+```
+
+After creating the nv.info record, the section flags are cleared: `sh_flags &= 0xF80FFFFF`.
+
+**Barrier propagation:** If a callee requires more barriers than the entry kernel's current count, the linker propagates the higher count: `"Propagating higher barcount %d to the section flags of %s of entry symbol %s"`.
+
+### EIATTR_FRAME_SIZE (0x11) -- Per-Thread Local Memory Frame
+
+```
+Format: 0x04 (Indexed)
+Payload: [sym_idx:4][frame_size:4]
+frame_size: bytes of local memory per thread (register spills + local arrays)
+```
+
+One of the three resource attributes stripped during weak symbol replacement (bitmask bit 17). The frame size determines the `.nv.local.<funcname>` section size visible to the driver.
+
+### EIATTR_MAX_STACK_SIZE (0x23) -- Maximum Stack Size
+
+```
+Format: 0x04 (Indexed)
+Payload: [sym_idx:4][max_stack_bytes:4]
+```
+
+The worst-case per-thread stack allocation, computed by propagating CRS (Call-Return Stack) sizes through the callgraph. If the driver allocates less than this, the kernel will corrupt memory. If it allocates more, occupancy drops unnecessarily.
+
+One of the three resource attributes stripped during weak replacement (bitmask bit 35).
+
+### EIATTR_MIN_STACK_SIZE (0x12) -- Minimum Stack Size
+
+```
+Format: 0x04 (Indexed)
+Payload: [sym_idx:4][min_stack_bytes:4]
+```
+
+The non-recursive stack size minimum. Used when the callgraph has no recursion and the exact stack depth is statically known. For recursive kernels, the linker emits `"Stack size for entry function '%s' cannot be statically determined"`.
+
+### EIATTR_CRS_STACK_SIZE (0x1E) -- Call-Return Stack Size
+
+```
+Format: 0x04 (Indexed)
+Payload: [sym_idx:4][crs_bytes:4]
+```
+
+Size of the call-return stack for nested function calls. Propagated through the callgraph to compute per-entry worst-case stack requirements.
+
+### EIATTR_SAM_REGION_STACK_SIZE (0x3B) -- SAM Region Stack
+
+```
+Format: 0x04 (Indexed)
+Payload: [sym_idx:4][sam_stack_bytes:4]
+```
+
+SAM (Streaming Asynchronous Memory) region stack size. Processed by `sub_44C880` during `compute_entry_properties` (case `0x3B` at line 1322 in `sub_451D80`). One of the resource attributes subject to symbol index remapping during merge (same case group as 17, 35, 47).
+
+### EIATTR_MAX_THREADS (0x05) -- Maximum Threads Per Block
+
+```
+Format: 0x04 (Indexed)
+Payload: [sym_idx:4][max_threads:4]
+max_threads: maximum threads per block (from .maxntid PTX directive)
+```
+
+### EIATTR_REQNTID (0x10) -- Required Thread Count
+
+```
+Format: 0x04 (Indexed)
+Payload: [sym_idx:4][reqntid:4]
+reqntid: required thread count per dimension (from .reqntid PTX directive)
+```
+
+### EIATTR_MAXREG_COUNT (0x1B) -- Maximum Register Hint
+
+```
+Format: 0x03 (Sized)
+On-disk layout (4 bytes total, no payload):
+  Byte 0:     0x03    (sized format)
+  Byte 1:     0x1B    (EIATTR_MAXREG_COUNT)
+  Bytes 2-3:  maxreg  (uint16, from --maxrregcount or .maxnreg)
+```
+
+This is a compiler hint, not an absolute limit. The value comes from `--maxrregcount` or the `.maxnreg` PTX directive. Uses sized format (0x03) -- the value is encoded directly in the 16-bit size field with no additional payload.
+
+### EIATTR_NUM_MBARRIERS (0x38) -- Memory Barrier Count
+
+```
+Format: 0x04 (Indexed)
+Payload: [sym_idx:4][num_mbarriers:4]
+```
+
+Number of `mbarrier` objects used by the kernel. Processed in `compute_entry_properties` at case `0x38`.
+
+### EIATTR_PARAM_CBANK (0x0A) -- Parameter Constant Bank
+
+```
+Format: 0x04 (Indexed)
+Payload: [sym_idx:4][bank_offset:4]
+bank_offset: packed {bank_number:16, offset:16}
+```
+
+Identifies which constant bank and at what offset kernel parameters begin. During merge, the symbol index is remapped with lazy symbol creation (case 10 in the merge switch). The linker may need to create a new symbol table entry if the constant bank symbol doesn't yet exist in the output.
+
+### EIATTR_CBANK_PARAM_SIZE (0x19) -- Constant Bank Parameter Size
+
+```
+Format: 0x03 (Sized)
+Value: uint16 in the size field = parameter constant bank size in bytes
+```
+
+### EIATTR_KPARAM_INFO (0x17) -- Kernel Parameter Info
+
+```
+Format: 0x01 (Free)
+Payload: variable-length array of parameter descriptors
+  Each descriptor: [ordinal:2][offset:2][size:2][?:2] (8 bytes per param)
+```
+
+Describes the type, size, and alignment of each kernel parameter. The v2 variant (`EIATTR_KPARAM_INFO_V2`, code 69/0x45) carries additional fields.
+
+### EIATTR_EXTERNS (0x0F) -- External Symbol References
+
+```
+Format: 0x01 (Free)
+Payload: array of uint32 symbol indices
+  Each 4-byte entry is one external symbol reference
+```
+
+During merge, every 4-byte entry in the payload is remapped through the symbol index translation table (case 15 in the merge switch). During finalization, `compute_entry_properties` creates new EXTERNS records via `sub_450B70(elfw, 0x0F, 4*count, payload, root_kernel_sym, ...)`.
+
+### EIATTR_CUDA_API_VERSION (0x37) -- CUDA API Version
+
+```
+Format: 0x04 (Indexed)
+Payload: [sym_idx:4][api_version:4]
+api_version: encoded CUDA version (e.g., 0x83 = CUDA 13.1)
+```
+
+During merge, this attribute triggers a version compatibility check (case 55). If the input's CUDA API version exceeds the linker's current maximum (`elfw+628`), the linker emits an error. This prevents linking objects compiled for a newer CUDA version than the linker supports.
+
+### EIATTR_AT_ENTRY_FRAGMENTS (0x4F) -- Entry Fragments (Blackwell)
+
+```
+Format: 0x01 (Free)
+Payload: array of uint32 fragment type descriptors
+```
+
+During merge, each 4-byte entry is analyzed for fragment types: values 4--5 indicate type 1, values 6--7 indicate type 2. The detected fragment type is stored at `elfw+664`. If conflicting fragment types are found across inputs, an error is emitted. During finalization, EXTERNS-style record creation via `sub_450B70(elfw, 0x4F, size, payload, root_sym, ...)`.
+
+### EIATTR_RESERVED_SMEM_USED (0x41) -- Reserved Shared Memory
+
+```
+Format: 0x04 (Indexed)
+Payload: [sym_idx:4][flags:4]
+```
+
+Processed in `compute_entry_properties` at case `0x41`. The linker resolves the owning section through `sub_442270` and checks if the referenced `.nv.reservedSmem.*` section has content. Related sections in the binary: `.nv.reservedSmem.begin`, `.nv.reservedSmem.cap`, `.nv.reservedSmem.offset0`, `.nv.reservedSmem.offset1`, `.nv.reservedSmem.end`.
+
+### EIATTR_SHARED_SCRATCH (0x32) -- Shared Scratch Space
+
+```
+Format: 0x04 (Indexed)
+Payload: [sym_idx:4][scratch_size:4]
+```
+
+Shared memory scratch space used for register spilling when the register file is exhausted.
+
+## Attributes by Category
+
 ### Resource Allocation (GPU Driver Critical)
 
 These attributes directly control how the GPU driver allocates hardware resources for kernel launch. Incorrect values cause silent performance degradation or launch failure.
@@ -227,7 +521,7 @@ These describe how kernel parameters are laid out in constant memory bank 0 (`c[
 
 | Code | Hex | Name | Format | Description |
 |---:|---:|---|---|---|
-| 10 | `0x0A` | `EIATTR_PARAM_CBANK` | Indexed | Constant bank number and offset for kernel parameters. |
+| 10 | `0x0A` | `EIATTR_PARAM_CBANK` | Indexed | Constant bank number and offset for kernel parameters. Merge uses lazy symbol creation for remapping. |
 | 25 | `0x19` | `EIATTR_CBANK_PARAM_SIZE` | Sized | Size of the parameter constant bank in bytes. |
 | 24 | `0x18` | `EIATTR_SMEM_PARAM_SIZE` | Indexed | Size of shared memory parameter region. |
 | 11 | `0x0B` | `EIATTR_SMEM_PARAM_OFFSETS` | Free | Offsets of parameters within shared memory. |
@@ -338,7 +632,7 @@ Hardware errata requiring instruction-level patching by the driver.
 |---:|---:|---|---|---|
 | 72 | `0x48` | `EIATTR_GRAPHICS_GLOBAL_CBANK` | Indexed | Global constant bank for graphics shaders. |
 | 73 | `0x49` | `EIATTR_SHADER_TYPE` | Indexed | Shader type (vertex, fragment, compute, etc.). |
-| 74 | `0x4A` | `EIATTR_VRC_CTA_INIT_COUNT` | Indexed | Virtual Register Count CTA init count. |
+| 74 | `0x4A` | `EIATTR_VRC_CTA_INIT_COUNT` | Indexed | Virtual Register Count CTA init count. Processed in `compute_entry_properties` (case `0x4A`) -- resolves owning section and tracks max value per entry function. |
 
 ### Blackwell+ Features (sm_100+)
 
@@ -363,46 +657,119 @@ Hardware errata requiring instruction-level patching by the driver.
 
 | Code | Hex | Name | Format | Description |
 |---:|---:|---|---|---|
-| 0 | `0x00` | `EIATTR_ERROR` | -- | Invalid/error sentinel. |
+| 0 | `0x00` | `EIATTR_ERROR` | -- | Invalid/error sentinel. Used to "delete" records: the merge sets `attr_code = 0` to suppress them. |
 | 1 | `0x01` | `EIATTR_PAD` | -- | Padding record (ignored by parser). |
 | 86 | `0x56` | `EIATTR_UNKNOWN` | -- | Unknown attribute placeholder. |
 | 96 | `0x60` | `EIATTR_ERROR_LAST` | -- | Upper bound sentinel for the main enum range. |
 
 ## How nvlink Processes .nv.info
 
-### During Merge (Input Processing)
+### Phase 1: Merge (Input Processing)
 
-When `merge_elf` (`sub_45E7D0`) encounters a section with `sh_type == 0x70000000`, it enters the `.nv.info` processing path in Phase 5 (section header iteration). The merge function:
+When `merge_elf` (`sub_45E7D0`) encounters a section with `sh_type == 0x70000000` (line 1854 of decompiled code), it enters the `.nv.info` processing path. This path:
 
-1. **Remaps symbol indices**: For format `0x04` (indexed) records, the 4-byte symbol index in the payload is translated from input-local to output-global using the `map_symbol_index` table.
+1. **Resolves the target section**: If `sh_link != 0`, the symbol is looked up via the input symbol table, mapped to the output symbol index, and the per-function `.nv.info.<name>` section is created or found via `sub_4504B0`.
 
-2. **Skips weak-processed attributes**: Records whose symbol index appears in the `weak_processed` array are silently dropped for EIATTR codes where `attr_code <= 0x2F` and `_bittest64(0x800800020000, attr_code)` is true. The three codes matching this bitmask are 17 (`0x11`, FRAME_SIZE), 35 (`0x23`, MAX_STACK_SIZE), and 47 (`0x2F`, REGCOUNT). The rationale: when a weak function is replaced, its resource descriptors must not contaminate the replacement.
+2. **Walks TLV records sequentially**: The parser runs `while (ptr < end)` where `end = section_data + sh_size`. For each record, it reads `format = ptr[0]`, `attr_code = ptr[1]`, `size = *(uint16*)(ptr+2)`.
 
-3. **Appends to output**: Surviving records are appended to the output ELF's `.nv.info` or `.nv.info.<name>` section.
+3. **Dispatches on format byte**: If `format == 0x04` (indexed), the payload is copied to arena memory and symbol indices within the payload are remapped. If `format != 0x04`, the record header is stored directly (no payload copy needed for non-indexed records).
 
-### During Weak Symbol Resolution
+4. **Per-attribute symbol remapping** (format 0x04 only): A switch on `attr_code` determines how symbol indices within the payload are translated:
 
-`merge_weak_function` (`sub_45D180`) extracts the register count (EIATTR code 47) for competing weak definitions. It first checks a cached value at offset +47 of the symbol's nvinfo record. If zero, it falls back to scanning all `SHT_CUDA_INFO` sections:
+| Switch cases | Attribute codes | Remapping behavior |
+|---|---|---|
+| 2,6,7,8,9,18,19,20,23,38,69 | IMAGE_SLOT through KPARAM_INFO_V2 | Remap first uint32 (simple `sym_map[payload[0]]`) |
+| 10 | PARAM_CBANK | Remap with lazy symbol creation (creates unnamed symbol if needed) |
+| 15 | EXTERNS | Remap every uint32 in the payload array |
+| 17,35,47,59 | FRAME_SIZE, MAX_STACK_SIZE, REGCOUNT, SAM_REGION_STACK_SIZE | Remap sym_idx, but skip record entirely if source symbol was deleted |
+| 55 | CUDA_API_VERSION | Version compatibility validation (no remap, but error if version mismatch) |
+| 79 | AT_ENTRY_FRAGMENTS | Fragment type analysis (scan payload for type 1/2 markers) |
+| default | All others | Pass through without remapping |
+
+5. **Weak symbol handling**: For already-processed weak symbols, the entire `.nv.info` section is skipped with verbose message `"weak %s already processed"`.
+
+### Phase 2: Weak Symbol Resolution
+
+`merge_weak_function` (`sub_45D180`) strips resource attributes from the discarded weak definition. It walks the output's nv.info linked list at `elfw+392` and for each node:
+
+```c
+int64_t bitmask = 0x800800020000LL;  // bits 17, 35, 47
+for (node = list_head; node != NULL; node = node->next) {
+    if (node->secidx == target_nv_info_secidx) {
+        // Section matches the discarded weak -- zero the entire record
+        if (verbose) fprintf(stderr, "remove weak nvinfo\n");
+    } else {
+        uint8_t code = node->attr_code;
+        if (code <= 0x2F && _bittest64(&bitmask, code)
+            && payload[0] == target_sym_idx) {
+            // Resource attribute for the discarded symbol -- zero it
+            if (verbose) fprintf(stderr, "remove weak frame_size\n");
+        } else {
+            continue;  // keep this record
+        }
+    }
+    node->attr_code = 0;  // overwrite to EIATTR_ERROR (suppressed)
+}
+```
+
+The three codes matching bitmask `0x800800020000`:
+- Bit 17 = `EIATTR_FRAME_SIZE` (0x11)
+- Bit 35 = `EIATTR_MAX_STACK_SIZE` (0x23)
+- Bit 47 = `EIATTR_REGCOUNT` (0x2F)
+
+The rationale: when a weak function is replaced, the replacement's resource descriptors are the ones that matter. The discarded definition's REGCOUNT, FRAME_SIZE, and MAX_STACK_SIZE would be incorrect for the replacement and must not contaminate the output.
+
+### Phase 3: Pre-Finalization (Callgraph Processing)
+
+`sub_44C030` (the EIATTR serialization builder, called from `sub_44DB00` in the pre-finalization fixup) processes the callgraph to prepare nv.info data:
+
+1. **Callgraph traversal**: Iterates all callgraph entries starting at `elfw+408`. For each function pair (caller, callee), resolves the callee's callgraph node and links it to the caller's callee list.
+
+2. **Recursion detection**: Uses a two-flag approach (bytes at offsets +48 and +49 in callgraph nodes). If recursion is detected, the function is marked as recursive (`"recursion at function %d"`). Recursive functions cannot have statically-determined stack sizes.
+
+3. **Callee list propagation**: For each entry function, the transitive closure of callees is computed. Each callee's entry is added to the entry function's "reachable" list via `sub_4644C0`.
+
+### Phase 4: Finalization (Output Generation)
+
+`compute_entry_properties` (`sub_451D80`, 97,969 bytes -- the largest function in the linker) runs during the finalization phase. It operates on all nv.info records and computes derived properties for each kernel entry point:
+
+**4a. Symbol index fixup**: For indexed records with codes 2, 6--10, 17--20, 23, 35, 38, 47, 59, 69 (the same set as in merge remapping), the function re-resolves symbol indices through the positive/negative symbol mapping tables (`elfw+456`/`elfw+464`). If a symbol was deleted but the record still references it, `attr_code` is set to 0 (suppressed).
+
+**4b. Register count propagation** (`sub_450ED0`): Walks the callgraph and propagates the maximum register count from callees to each entry kernel.
+
+```c
+for each entry_function in callgraph:
+    regcount = entry_function.regcount;
+    for each callee in transitive_callees(entry_function):
+        if callee.regcount > regcount:
+            /* Raise entry's count to match */
+            entry_function.regcount = callee.regcount;
+            if (verbose)
+                fprintf(stderr, "regcount %d for %s propagated to entry %s\n",
+                    callee.regcount, callee.name, entry_function.name);
+```
+
+If no REGCOUNT record exists for an entry function (e.g., it was a leaf function with the count stored in section flags), the linker creates one via `sub_450B70(elfw, 0x2F, 8, payload, 0, 0)`. The payload is `[sym_idx:4][regcount:4]`.
+
+**4c. Barrier count creation and propagation**: When a kernel's section flags contain a barrier count (bits 26:20 of `sh_flags`) but no `EIATTR_NUM_BARRIERS` record exists, the function creates one:
 
 ```
-for each section with sh_type == 0x70000000:
-    walk TLV records looking for format=0x04, attr_code=0x2F, matching sym_index
-    if found: return *(uint32_t*)(record + 8)
+"Creating new EIATTR_NUM_BARRIERS and moving barcount %d
+ from section flags of %s to nvinfo for entry symbol %s"
 ```
 
-The register count determines which weak definition to keep -- fewer registers wins, maximizing occupancy.
+The linker then clears the barrier bits from section flags (`sh_flags &= 0xF80FFFFF`) because the nv.info record is now the authoritative source.
 
-### During Finalization (Output Generation)
+If a callee's barrier count exceeds the entry kernel's:
 
-`compute_entry_properties` (`sub_451D80`, 97,969 bytes -- the largest function in the linker) runs during the finalization phase. It computes derived properties for each kernel entry point:
+```
+"Propagating higher barcount %d to the section flags of %s of entry symbol %s"
+"Propagating higher barcount %d to the section %s of entry symbol %s"
+```
 
-1. **Register count propagation**: `propagate_register_counts` (`sub_450ED0`) walks the callgraph and propagates the maximum register count from callees to each entry kernel. The verbose trace `"regcount %d for %s propagated to entry %s"` logs this propagation.
+**4d. EXTERNS and AT_ENTRY_FRAGMENTS creation**: For entry functions, the finalization phase creates EIATTR_EXTERNS (0x0F) and EIATTR_AT_ENTRY_FRAGMENTS (0x4F) records for the transitive closure of external references and fragment descriptors.
 
-2. **Barrier count creation**: When a kernel's section flags contain a barrier count but no `EIATTR_NUM_BARRIERS` record exists, the function creates one: `"Creating new EIATTR_NUM_BARRIERS and moving barcount %d from section flags of %s to nvinfo for entry symbol %s"`.
-
-3. **Stack size computation**: Frame sizes and CRS stack sizes are propagated through the callgraph to compute per-entry worst-case stack requirements.
-
-4. **Encoding**: `nvinfo_encode` (`sub_468760`, 14,322 bytes) serializes computed properties into TLV records using SSE2 intrinsics for efficient byte packing.
+**4e. Encoding**: `nvinfo_encode` (`sub_468760`, 14,322 bytes) serializes the in-memory linked-list nodes into on-disk TLV records using SSE2/AVX intrinsics for efficient bitfield packing. The encoder processes a descriptor array of 4 x uint32 entries per field, with the third uint32 serving as a type code that dispatches to one of ~15 encoding strategies (cases 0 through 0x12 in the encoder's switch).
 
 ## Emission Subsystem (Embedded ptxas)
 
@@ -477,27 +844,69 @@ The `.nv.info` section is not just metadata for tools -- it is the primary input
 
 A corrected variant `EIATTR_AT_ENTRY_FRAGMENTS` also exists at `0x245E8D9`, suggesting awareness of the typo but preservation of the original for backward compatibility. Similarly, `EIATTR_COROUTINE_RESUME_ID_OFFSETS` at `0x245F010` is an alternate name for code 58 (`EIATTR_COROUTINE_RESUME_OFFSETS`), used in the embedded ptxas compiler.
 
-### Name Table Structure
-
-The EIATTR name table is a contiguous array of 97 16-byte entries at VA `0x1D37D60` in the nvlink binary. Each entry consists of an 8-byte pointer to a null-terminated string name and an 8-byte metadata word. The table is indexed by EIATTR code number (0 through 96). The metadata word encodes format hints and minimum toolkit version compatibility -- entries 0--42 have metadata `0x0000000000000001`, while entries 43+ carry version fields in their upper 32 bits.
-
 ### Diagnostic Strings
 
 ```
-"no new register count found for %s, checking .nv.info"       (0x1D3BA68)
-"no original register count found for %s, checking .nv.info"   (0x1D3BAA0)
-"regcount %d for %s propagated to entry %s"                    (0x1D3B070)
-"no regcount?"                                                 (0x1D3AF6C)
+"nvinfo <fmt=%d,attr=%d,size=%d>, secidx=%d"            (sub_4478F0 debug dump)
+"no new register count found for %s, checking .nv.info"  (0x1D3BA68)
+"no original register count found for %s, checking .nv.info" (0x1D3BAA0)
+"regcount %d for %s propagated to entry %s"              (0x1D3B070)
+"no regcount?"                                           (0x1D3AF6C)
 "entry function '%s' with max regcount of %d calls function
- '%s' with regcount of %d"                                     (0x1D39930)
+ '%s' with regcount of %d"                               (0x1D39930)
+"Creating new EIATTR_NUM_BARRIERS and moving barcount %d
+ from section flags of %s to nvinfo for entry symbol %s" (0x1D3AF88)
+"Propagating higher barcount %d to the section flags of
+ %s of entry symbol %s"                                  (sub_450ED0)
+"remove weak nvinfo"                                     (sub_45D180 debug)
+"remove weak frame_size"                                 (sub_45D180 debug)
+"weak %s already processed"                              (sub_45E7D0 merge)
+"error while updating global nvinfo section"             (embedded ptxas)
+"Stack size for entry function '%s' cannot be
+ statically determined"                                  (sub_451D80)
 ```
-
-These diagnostic messages appear when `--verbose` is active and reveal the register count propagation algorithm in action.
 
 ## Cross-References
 
+- [NVIDIA Section Types](nvidia-sections.md) -- `SHT_CUDA_INFO` definition and section flag encoding
+- [Section Catalog](../reference/section-catalog.md) -- `.nv.info` and `.nv.info.<funcname>` catalog entries
 - [Weak Symbol Handling](../linker/weak-symbols.md) -- Register count extraction from `.nv.info` during weak resolution
 - [Section Merging](../linker/section-merging.md) -- `.nv.info` section merge with symbol index remapping
 - [Finalization Phase](../pipeline/finalize.md) -- `compute_entry_properties` and `propagate_register_counts`
 - [Architecture Dispatch](../ptxas/arch-dispatch.md) -- Per-SM nv.info emitter callback registration
 - [Constant Banks](constant-banks.md) -- `EIATTR_PARAM_CBANK` and `EIATTR_CBANK_PARAM_SIZE` interaction
+
+**Sibling wikis (ptxas):**
+
+- [ptxas: Section Catalog & EIATTR](../../ptxas/output/sections.html) -- ptxas-side EIATTR emission pipeline and section type constants
+- [ptxas: EIATTR Reference](../../ptxas/reference/eiattr.html) -- EIATTR attribute code reference from the ptxas perspective
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| SHT_CUDA_INFO = 0x70000000 | HIGH | Verified in merge_elf dispatch (line 1854) and sub_4504B0 calls |
+| 97 EIATTR codes (0-96) | HIGH | `sub_42F760` rejects `attr_code > 0x60` (96); all 97 names in nvlink_strings.json |
+| Name table at VA 0x1D37D60 (16-byte entries) | HIGH | `sub_42F760` accesses `dword_1D37D68[4*a1]` and `off_1D37D60[2*a1]` confirming 16-byte stride |
+| Name table metadata: [min_version:4, usage_policy:4] | HIGH | `sub_42F760` tests metadata[0] > toolkit_version and dispatches on metadata[1] (0=warn, 1=error, 2=drop) |
+| TLV format: [format:1][attr:1][size:2][payload:var] | HIGH | Confirmed by diagnostic format string `"nvinfo <fmt=%d,attr=%d,size=%d>, secidx=%d"` and merge parser at sub_45E7D0:1900 |
+| Internal node: [fmt:1][attr:1][size:2][secidx:4][payload_ptr:8] | HIGH | Confirmed by sub_4508F0 which sets all fields, and sub_4478F0 which prints them |
+| Format bytes 0x01--0x04 meaning | HIGH | Verified in merge parser: format==4 triggers payload copy + remap; format!=4 skips payload |
+| Weak symbol bitmask 0x800800020000 = bits 17,35,47 | HIGH | Verified: `_bittest64(&0x800800020000, n)` matches FRAME_SIZE(17), MAX_STACK_SIZE(35), REGCOUNT(47) |
+| Merge per-attribute remap switch cases | HIGH | Cases 2,6,7,8,9,10,15,17,18,19,20,23,35,38,47,55,59,69,79 verified in sub_45E7D0:1917-1997 |
+| sub_4504B0 creates .nv.info sections | HIGH | Decompiled: global path at line 46 (sh_flags=0), per-function at line 63 (sh_flags=0x40) |
+| sub_450B70 creates indexed EIATTR nodes | HIGH | Decompiled: sets format=4, attr=a2, size=a3, calls sub_4504B0 and sub_4644C0 |
+| sub_4508F0 creates any-format nodes | HIGH | Decompiled: sets format=a2, attr=a3, secidx=a4, 16-byte arena allocation |
+| EIATTR_NUM_BARRIERS synthesized as format=0x02 | HIGH | `*(_WORD *)v86 = 19458` (0x4C02) = format 0x02, attr 0x4C confirmed in sub_450ED0:207 |
+| Barrier count from section flags bits 26:20 | HIGH | `(*(_DWORD *)(v8 + 8) >> 20) & 0x7F` extracts 7-bit barrier count; cleared with `0xF80FFFFF` mask |
+| Register count propagation via callgraph | HIGH | `"regcount %d for %s propagated to entry %s"` at sub_450ED0:417 |
+| sub_42F760 validates attr_code <= 0x60 | HIGH | Decompiled: `if (a1 > 0x60u) { error("unknown attribute"); return 0; }` |
+| Parser sub_44E8B0 is nv.info parser | LOW | sub_44E8B0 is actually a string tokenizer (handles quotes/brackets/escapes); the page's original claim was incorrect. The actual TLV parser is inline in sub_45E7D0 (merge) and sub_451D80 (finalize). |
+| Encoder sub_468760 (14,322 bytes) | HIGH | Decompiled file exists; SSE2 constants and bitfield packing confirmed |
+| Master emission sub_15C58F0 (78,811 bytes) | HIGH | Decompiled file exists |
+| Four master emitter functions | HIGH | All four decompiled files exist |
+| ~190 per-attribute handlers at 0x15CF070 | MEDIUM | Range confirmed by decompiled file enumeration; exact count is approximate |
+| FNV-1a hash (offset basis 0x811C9DC5) in emitter | MEDIUM | Hash constant seen in decompiled code; specific usage context inferred from pattern matching |
+| sub_44C030 is callgraph-based nv.info builder | HIGH | Decompiled: accesses callgraph at elfw+408, handles recursion detection, builds callee lists |
+| CUDA API version 0x83 = CUDA 13.1 | MEDIUM | Value observed in cubin output; mapping to CUDA version is conventional |
+| EIATTR_AT_ENTRY_FRAGEMENTS typo | HIGH | String at 0x1D36E0F confirmed in nvlink_strings.json with typo preserved |

@@ -617,3 +617,46 @@ The DWARF parser performs pervasive bounds checking through a consistent pattern
 3. **Bounds check**: `if (required_offset > capacity) fatal(ASSERT_BOUNDS);`
 
 These correspond to the three error codes referenced as `dword_2A5F0D0` (null pointer), `dword_2A5F0B0` (invalid state), and `dword_2A5F0A0` (out of bounds). The assertions are implemented as calls to `sub_467460` which is the global diagnostic/assertion handler. This pattern appears on virtually every byte read throughout the DWARF subsystem, giving strong protection against malformed input but contributing significantly to code size.
+
+## Cross-References
+
+**Internal (nvlink wiki):**
+
+- [NVIDIA Debug Extensions](nvidia-extensions.md) -- Six proprietary debug sections (`.nv_debug_*`) processed alongside standard DWARF sections
+- [Line Table Merging](line-tables.md) -- DWARF line program merging during linking, including NVIDIA extended opcodes
+- [Mercury Debug Sections](mercury-debug.md) -- Mercury-format debug sections with `.nv.merc.*` prefix and the Mercury section dispatcher
+- [Debug Options](options.md) -- CLI flags controlling debug section emission (`-g`, `--no-debug`, debug section output matrix)
+- [Mercury ELF Sections](../mercury/elf-sections.md) -- The 11 standard DWARF mirrors under `.nv.merc.*` namespace
+- [Error Reporting](../infra/error-reporting.md) -- `sub_467460` diagnostic handler used by DWARF bounds-check assertions
+- [Section Merging](../linker/section-merging.md) -- How debug sections are classified and routed during `merge_elf`
+
+**Sibling wikis:**
+
+The debug information lifecycle spans three toolchain components. For the upstream generation stages:
+
+- [ptxas: Debug Info](../../ptxas/output/debug-info.html) -- DWARF line table generation (PTX-level and SASS-level), `.nv_debug_info_reg_sass`/`.nv_debug_info_reg_type` emission, Mercury debug section classifiers, and the `--device-debug`/`--lineinfo` flag semantics within ptxas
+- [cicc: Debug Info Pipeline](../../cicc/pipeline/debug-info-pipeline.html) -- Four-stage debug metadata lifecycle from CUDA source through the LLVM optimizer to PTX `.loc`/`.file` directives. Covers the three compilation modes (`-g`, `-generate-line-info`, neither), the five stripping passes, and the NVVM container `DebugInfo` enum (`NONE`/`LINE_INFO`/`DWARF`)
+
+nvlink's DWARF processing subsystem consumes the output of both upstream stages: cicc produces PTX with `@@DWARF` directives and `.loc`/`.file` metadata, ptxas compiles this to SASS and emits the standard and NVIDIA-proprietary debug sections, and nvlink merges and re-emits these sections during linking.
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| DWARF subsystem at `0x1D10000`--`0x1D20570` | HIGH | All key functions (`sub_1D166F0`, `sub_1D17C90`, `sub_1D16C60`, `sub_1D16DF0`, `sub_1D1A920`, `sub_1D1B540`, `sub_1D1BE80`, `sub_1D1D2F0`) confirmed present in decompiled/ at exact addresses |
+| Top-level entry `sub_1D166F0` allocates 95,968-byte context | HIGH | Decompiled code: `malloc(0x176E0u)` at line 31, and `0x176E0` = 95,968 decimal |
+| Magic value `38110068` at context offset +224 | HIGH | Decompiled `sub_1D1D2F0`: `*(_QWORD *)(a1 + 224) = 38110068` at line 69 |
+| CU header size = 11 bytes (DWARF-2/3) | HIGH | Decompiled `sub_1D1D2F0`: `*(_DWORD *)(v14 + 196) = 11` at line 267 |
+| Context offsets +192 through +216 for CU fields | HIGH | Decompiled code stores to +192, +196, +200, +204, +208, +212, +216 exactly as documented |
+| Abbreviation table 2048 bytes initial, 32 bytes per entry | HIGH | Decompiled `sub_1D17C90` exists at exact address; string `"unexpectedly too many dwarf attributes for any DW_TAG entry!"` confirmed in strings at `0x245DD70` |
+| DW_FORM name lookup `sub_1D16C60` -- 22 forms | HIGH | Decompiled file present; string `"Unknown FORM value %d"` at `0x245D5B4` |
+| DW_AT vendor extensions (MIPS, GNU, NV, PGI) | HIGH | All four vendor attribute name strings confirmed: `DW_AT_MIPS_linkage_name` at `0x245DB8A`, `DW_AT_GNU_pubnames` at `0x245DBA2`, `DW_AT_NV_general_flags` at `0x245DBF7`, `DW_AT_PGI_lbase/soffset/lstride` at `0x245DBB5`--`0x245DBD7` |
+| `DW_AT_MIPS_linkage_name` priority over `DW_AT_name` | MEDIUM | String evidence confirms attribute exists; priority logic inferred from decompiled `sub_1D1BE80` (1,059-line function too complex for full verification but attribute dispatch structure is consistent) |
+| DW_OP expression decoder `sub_1D1A920` opcodes | HIGH | All DW_OP format strings confirmed in strings: `DW_OP_addr`, `DW_OP_constu`, `DW_OP_const4u`, `DW_OP_xderef`, `DW_OP_breg%d`, `DW_OP_fbreg`, `DW_OP_deref_size`, `DW_OP_lit%u`, `DW_OP_reg%d`, `DW_OP_stack_value`, `DW_OP_plus_uconst` at addresses `0x245DEE0`--`0x245DFAC` |
+| `.nv_debug_info_ptx` processed by CU parser | HIGH | String `.nv_debug_info_ptx` at `0x245E6D4` with xref into `sub_1D1D2F0` |
+| Section type classifier `sub_12D4370` assigns IDs 1--6 | HIGH | Decompiled file present at exact address |
+| Bounds checking pattern with three error codes | HIGH | Decompiled `sub_1D1D2F0` calls `sub_467460(dword_2A5F0D0)`, `sub_467460(dword_2A5F0B0)`, `sub_467460(dword_2A5F0A0)` exactly as documented |
+| LEB128 codec subsystem with SSE acceleration | MEDIUM | Function addresses confirmed in decompiled/; SSE claim based on function sizes (50--70 KB) which are consistent with SIMD loop unrolling, but individual SSE instructions not verified in decompiled output |
+| DWARF versions 2 and 3 only (no 4 or 5) | HIGH | String `"Dwarf version %d is not supported"` at `0x1DFC8C8` confirms version validation; DWARF-4/5 forms (`DW_FORM_sec_offset`, `DW_FORM_exprloc`) absent from form table |
+| `DW_FORM_indirect` triggers `exit(1)` | MEDIUM | String `"Warning: we should not get here! - DW_FORM_indirect"` not found in strings search, but the decompiled `sub_1D1B540` would need full reading to confirm; claim is plausible given the function's error handling pattern |
+| Verbose mode printing format strings | HIGH | Format strings `"Compilation Unit @ offset 0x%zx:"` at `0x245E6E8`, `"Abbrev Offset:    %d"` at `0x245E6A4`, `"Contents of the .debug_abbrev section:"` at `0x245DD48` all confirmed |

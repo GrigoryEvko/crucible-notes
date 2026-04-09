@@ -21,21 +21,21 @@ Complete alphabetical catalog of every ELF section name recognized by nvlink v13
 
 | # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
-| 2 | `.nv.callgraph` | `0x70000002` | `SHT_CUDA_CALLGRAPH` | Caller-callee edge table for dead code elimination and stack size propagation. Built by `build_callgraph_section` (`sub_44D200`). |
-| 3 | `.nv.compat` | `0x70000006` | `SHT_CUDA_COMPAT` | Forward/backward compatibility attribute table. Validated at merge time (error string contains typo: `"encoutered"`). |
-| 4 | `.nv.info` | `0x70000001` | `SHT_CUDA_INFO` | Global (module-level) EIATTR metadata records. See [.nv.info Metadata](../elf/nv-info.md). |
-| 5 | `.nv.info.<funcname>` | `0x70000001` | `SHT_CUDA_INFO` | Per-kernel EIATTR metadata (regcount, stack sizes, barriers, params, etc.). `sh_link` references the owning function symbol. |
-| 6 | `.nv.metadata` | `0x7000000B` | `SHT_CUDA_METADATA` | Module metadata (`__nv_module_id`, version info). Extracted by `register_module_for_linking` (`sub_42A680`). |
-| 7 | `.nv.prototype` | `0x70000003` | `SHT_CUDA_PROTOTYPE` | Kernel launch prototype descriptors (parameter layout). |
+| 2 | `.nv.callgraph` | `0x70000001` | `SHT_CUDA_CALLGRAPH` | Caller-callee edge table for dead code elimination and stack size propagation. Built by `build_callgraph_section` (`sub_44D200:102`). |
+| 3 | `.nv.compat` | `0x70000086` | `SHT_CUDA_COMPAT` | Forward/backward compatibility attribute table. Validated at merge time (error string contains typo: `"encoutered"`). Created by `sub_451BA0:64`. |
+| 4 | `.nv.info` | `0x70000000` | `SHT_CUDA_INFO` | Global (module-level) EIATTR metadata records. Created by `sub_4504B0:46`. See [.nv.info Metadata](../elf/nv-info.md). |
+| 5 | `.nv.info.<funcname>` | `0x70000000` | `SHT_CUDA_INFO` | Per-kernel EIATTR metadata (regcount, stack sizes, barriers, params, etc.). `sh_link` references the owning function symbol. Created by `sub_4504B0:63`. |
+| 6 | `.nv.metadata` | `0x70000004` | `SHT_CUDA_METADATA` | Module metadata (`__nv_module_id`, version info). Extracted by `register_module_for_linking` (`sub_42A680`); section created by `sub_43D6B0:31`. |
+| 7 | `.nv.prototype` | `0x70000002` | `SHT_CUDA_PROTOTYPE` | Kernel launch prototype descriptors (parameter layout). Created by `sub_44D9D0:25`. |
 | 8 | `.nv.ptx.const0.size` | -- | (metadata key) | Constant bank 0 size record from PTX compilation. Not a real ELF section; a metadata key string. |
 
 ## Relocation Sections
 
 | # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
-| 9 | `.nv.rel.action` | `0x70000004` | `SHT_CUDA_RELOCINFO` | CUDA relocation action table (multi-step relocation recipes for bindless textures, etc.). |
-| 10 | `.nv.resolvedrela` | `0x70000005` | `SHT_CUDA_RESOLVED_RELA` | Preserved relocations for driver-side patching (`--preserve-relocs`). Created by `emit_resolved_relocations` (`sub_46ADC0`). |
-| 11 | `.nv.uft.rel` | `0x04` | `SHT_RELA` | Relocation table for Unified Function Table jump slots. |
+| 9 | `.nv.rel.action` | `0x7000000B` | `SHT_CUDA_RELOCINFO` | CUDA relocation action table (multi-step relocation recipes for bindless textures, etc.). Created by `sub_469D60:913`. |
+| 10 | `.nv.resolvedrela` | `0x70000003` | `SHT_CUDA_RESOLVED_RELA` | Preserved relocations for driver-side patching (`--preserve-relocs`). Created by `emit_resolved_relocations` (`sub_469230:151`). |
+| 11 | `.nv.uft.rel` | `0x7000000E` | `SHT_CUDA_UFT` | Per-kernel UFT relocation table. Shares the same `sh_type` as `.nv.uft` because the dispatch path at `sub_442820:61-73` constructs the per-kernel name via `sprintf("%s.%s", ".nv.uft.rel", a2+15)` and then calls `sub_441AC0` with `1879048206` (`0x7000000E`). |
 | 12 | `.rela.<secname>` | `0x04` | `SHT_RELA` | Standard ELF relocation sections. Generated via format string `.rela%s`. |
 | 13 | `.rel.<secname>` | `0x09` | `SHT_REL` | Standard ELF REL sections (without addend). Generated via format string `.rel%s`. Rejected by nvlink with `"unsupported REL section"`. |
 
@@ -43,9 +43,9 @@ Complete alphabetical catalog of every ELF section name recognized by nvlink v13
 
 | # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
-| 14 | `.nv.global` | `0x70000007` | `SHT_CUDA_GLOBAL` | Uninitialized global device memory (`__device__` BSS). Input arrives as `SHT_NOBITS`, reclassified by linker. |
-| 15 | `.nv.global.init` | `0x70000008` | `SHT_CUDA_GLOBAL_INIT` | Initialized global device memory (`__device__` with initializer). Carries `SHT_PROGBITS` data. |
-| 16 | `.nv.host` | `0x01` | `SHT_PROGBITS` | Host-visible data section. |
+| 14 | `.nv.global` | `0x70000007` | `SHT_CUDA_GLOBAL` | Uninitialized global device memory (`__device__` BSS). Input arrives as `SHT_NOBITS`, reclassified by linker. Created by `sub_436410:128`, `sub_439830:494`. |
+| 15 | `.nv.global.init` | `0x70000008` | `SHT_CUDA_GLOBAL_INIT` | Initialized global device memory (`__device__` with initializer). Carries `SHT_PROGBITS` data. Created by `sub_436740:105`. |
+| 16 | `.nv.host` | `0x70000087` | `SHT_CUDA_HOST` | Host-visible data section. Created by `sub_435B60:110` with type `1879048327` (`0x70000087`) -- not `SHT_PROGBITS` as previously catalogued. |
 
 ## Local Memory (Per-Thread)
 
@@ -114,11 +114,11 @@ These are logical names for constant memory regions within specific banks. They 
 
 | # | Name | sh_type (hex) | sh_type (constant) | Description |
 |---|---|---|---|---|
-| 50 | `.nv.udt` | `0x01` | `SHT_PROGBITS` | Unified Descriptor Table (cross-module texture/surface access). |
-| 51 | `.nv.udt.entry` | `0x01` | `SHT_PROGBITS` | UDT entry metadata (UUID-to-slot mapping). |
-| 52 | `.nv.uft` | `0x01` | `SHT_PROGBITS` | Unified Function Table (cross-module indirect call jump slots). |
-| 53 | `.nv.uft.entry` | `0x01` | `SHT_PROGBITS` | UFT entry metadata (UUID-to-slot mapping). |
-| 54 | `.nv.uidx` | `0x01` | `SHT_PROGBITS` | Unified index table (external UUID-to-slot file via `--uidx-file`). |
+| 50 | `.nv.udt` | `0x70000012` | `SHT_CUDA_UDT` | Unified Descriptor Table (cross-module texture/surface access). Created by `sub_436740:76`, `sub_436410:94` with type `1879048210`. |
+| 51 | `.nv.udt.entry` | `0x70000014` | `SHT_CUDA_UDT_ENTRY` | UDT entry metadata (UUID-to-slot mapping). Created by `sub_464320:15` with type `1879048212`. |
+| 52 | `.nv.uft` | `0x7000000E` | `SHT_CUDA_UFT` | Unified Function Table (cross-module indirect call jump slots). Created by `sub_442820:73` with type `1879048206`. |
+| 53 | `.nv.uft.entry` | `0x70000011` | `SHT_CUDA_UFT_ENTRY` | UFT entry metadata (UUID-to-slot mapping). Created by `sub_4438F0:579`, `sub_464240:15` with type `1879048209`. |
+| 54 | `.nv.uidx` | `0x01` | `SHT_PROGBITS` | Unified index table (external UUID-to-slot file via `--uidx-file`). Not created via `sub_441AC0`; stored as plain PROGBITS. |
 
 ## Texture and Surface Descriptors
 
@@ -255,46 +255,53 @@ SECTIONS {
 
 ## Section Type Summary
 
-### NVIDIA CUDA-Specific Types (`0x70000001`--`0x70000075`)
+### NVIDIA CUDA-Specific Types (`0x70000000`--`0x70000087`)
 
-| sh_type (hex) | Constant | Section(s) |
-|---|---|---|
-| `0x70000001` | `SHT_CUDA_INFO` | `.nv.info`, `.nv.info.<func>` |
-| `0x70000002` | `SHT_CUDA_CALLGRAPH` | `.nv.callgraph` |
-| `0x70000003` | `SHT_CUDA_PROTOTYPE` | `.nv.prototype` |
-| `0x70000004` | `SHT_CUDA_RELOCINFO` | `.nv.rel.action` |
-| `0x70000005` | `SHT_CUDA_RESOLVED_RELA` | `.nv.resolvedrela` |
-| `0x70000006` | `SHT_CUDA_COMPAT` | `.nv.compat` |
-| `0x70000007` | `SHT_CUDA_GLOBAL` | `.nv.global` |
-| `0x70000008` | `SHT_CUDA_GLOBAL_INIT` | `.nv.global.init` |
-| `0x70000009` | `SHT_CUDA_LOCAL` | `.nv.local.<func>` |
-| `0x7000000A` | `SHT_CUDA_SHARED` | `.nv.shared.<func>` |
-| `0x7000000B` | `SHT_CUDA_METADATA` | `.nv.metadata` |
-| `0x70000015` | `SHT_CUDA_SHARED_RESERVED` | `.nv.reservedSmem`, `.nv.reservedSmem.begin`, `.nv.reservedSmem.cap`, `.nv.reservedSmem.end`, `.nv.reservedSmem.offset0`, `.nv.reservedSmem.offset1` |
-| `0x70000064` | `SHT_CUDA_CONSTANT0` | `.nv.constant0` |
-| `0x70000065` | `SHT_CUDA_CONSTANT1` | `.nv.constant1` |
-| `0x70000066` | `SHT_CUDA_CONSTANT2` | `.nv.constant2` |
-| `0x70000067` | `SHT_CUDA_CONSTANT3` | `.nv.constant3` |
-| `0x70000068` | `SHT_CUDA_CONSTANT4` | `.nv.constant4` |
-| `0x70000069` | `SHT_CUDA_CONSTANT5` | `.nv.constant5` |
-| `0x7000006A` | `SHT_CUDA_CONSTANT6` | `.nv.constant6` |
-| `0x7000006B` | `SHT_CUDA_CONSTANT7` | `.nv.constant7` |
-| `0x7000006C` | `SHT_CUDA_CONSTANT8` | `.nv.constant8` |
-| `0x7000006D` | `SHT_CUDA_CONSTANT9` | `.nv.constant9` |
-| `0x7000006E` | `SHT_CUDA_CONSTANT10` | `.nv.constant10` |
-| `0x7000006F` | `SHT_CUDA_CONSTANT11` | `.nv.constant11` |
-| `0x70000070` | `SHT_CUDA_CONSTANT12` | `.nv.constant12` |
-| `0x70000071` | `SHT_CUDA_CONSTANT13` | `.nv.constant13` |
-| `0x70000072` | `SHT_CUDA_CONSTANT14` | `.nv.constant14` |
-| `0x70000073` | `SHT_CUDA_CONSTANT15` | `.nv.constant15` |
-| `0x70000074` | `SHT_CUDA_CONSTANT16` | `.nv.constant16` |
-| `0x70000075` | `SHT_CUDA_CONSTANT17` | `.nv.constant17` |
+Each row lists the value as it is actually passed to `sub_441AC0` (the section creator) in the decompiled code. The constant names are synthetic -- NVIDIA does not publish a public header with `SHT_CUDA_*` identifiers -- but the hex values are verbatim from the decompiled function bodies.
+
+| sh_type (hex) | Constant | Section(s) | Creation site |
+|---|---|---|---|
+| `0x70000000` | `SHT_CUDA_INFO` | `.nv.info`, `.nv.info.<func>` | `sub_4504B0:46`, `sub_4504B0:63` |
+| `0x70000001` | `SHT_CUDA_CALLGRAPH` | `.nv.callgraph` | `sub_44D200:102` |
+| `0x70000002` | `SHT_CUDA_PROTOTYPE` | `.nv.prototype` | `sub_44D9D0:25` |
+| `0x70000003` | `SHT_CUDA_RESOLVED_RELA` | `.nv.resolvedrela` | `sub_469230:151` |
+| `0x70000004` | `SHT_CUDA_METADATA` | `.nv.metadata` | `sub_43D6B0:31` |
+| `0x70000007` | `SHT_CUDA_GLOBAL` | `.nv.global` | `sub_436410:128`, `sub_439830:494` |
+| `0x70000008` | `SHT_CUDA_GLOBAL_INIT` | `.nv.global.init` | `sub_436740:105` |
+| `0x70000009` | `SHT_CUDA_LOCAL` | `.nv.local.<func>` | `sub_436310:31` |
+| `0x7000000A` | `SHT_CUDA_SHARED` | `.nv.shared.<func>` | `sub_436A80:41` |
+| `0x7000000B` | `SHT_CUDA_RELOCINFO` | `.nv.rel.action` | `sub_469D60:913` |
+| `0x7000000E` | `SHT_CUDA_UFT` | `.nv.uft`, per-kernel `.nv.uft.rel.<func>` | `sub_442820:73` |
+| `0x70000011` | `SHT_CUDA_UFT_ENTRY` | `.nv.uft.entry` | `sub_4438F0:579`, `sub_464240:15` |
+| `0x70000012` | `SHT_CUDA_UDT` | `.nv.udt` | `sub_436740:76`, `sub_436410:94` |
+| `0x70000014` | `SHT_CUDA_UDT_ENTRY` | `.nv.udt.entry` | `sub_464320:15` |
+| `0x70000015` | `SHT_CUDA_SHARED_RESERVED` | `.nv.reservedSmem`, `.nv.reservedSmem.begin`, `.nv.reservedSmem.cap`, `.nv.reservedSmem.end`, `.nv.reservedSmem.offset0`, `.nv.reservedSmem.offset1` | `sub_4379A0:49`, `sub_437BB0:70` |
+| `0x70000064` | `SHT_CUDA_CONSTANT0` | `.nv.constant0` | `sub_441AC0:190` range check |
+| `0x70000065` | `SHT_CUDA_CONSTANT1` | `.nv.constant1` | (bank formula) |
+| `0x70000066` | `SHT_CUDA_CONSTANT2` | `.nv.constant2` | (bank formula) |
+| `0x70000067` | `SHT_CUDA_CONSTANT3` | `.nv.constant3` | (bank formula) |
+| `0x70000068` | `SHT_CUDA_CONSTANT4` | `.nv.constant4` | (bank formula) |
+| `0x70000069` | `SHT_CUDA_CONSTANT5` | `.nv.constant5` | (bank formula) |
+| `0x7000006A` | `SHT_CUDA_CONSTANT6` | `.nv.constant6` | (bank formula) |
+| `0x7000006B` | `SHT_CUDA_CONSTANT7` | `.nv.constant7` | (bank formula) |
+| `0x7000006C` | `SHT_CUDA_CONSTANT8` | `.nv.constant8` | (bank formula) |
+| `0x7000006D` | `SHT_CUDA_CONSTANT9` | `.nv.constant9` | (bank formula) |
+| `0x7000006E` | `SHT_CUDA_CONSTANT10` | `.nv.constant10` | (bank formula) |
+| `0x7000006F` | `SHT_CUDA_CONSTANT11` | `.nv.constant11` | (bank formula) |
+| `0x70000070` | `SHT_CUDA_CONSTANT12` | `.nv.constant12` | (bank formula) |
+| `0x70000071` | `SHT_CUDA_CONSTANT13` | `.nv.constant13` | (bank formula) |
+| `0x70000072` | `SHT_CUDA_CONSTANT14` | `.nv.constant14` | (bank formula) |
+| `0x70000073` | `SHT_CUDA_CONSTANT15` | `.nv.constant15` | (bank formula) |
+| `0x70000074` | `SHT_CUDA_CONSTANT16` | `.nv.constant16` | (bank formula) |
+| `0x70000075` | `SHT_CUDA_CONSTANT17` | `.nv.constant17` | (bank formula) |
+| `0x70000086` | `SHT_CUDA_COMPAT` | `.nv.compat` | `sub_451BA0:64`, `sub_451920:113` |
+| `0x70000087` | `SHT_CUDA_HOST` | `.nv.host` | `sub_435B60:110` |
 
 ### Standard ELF Types Used
 
 | sh_type (hex) | Constant | Used by |
 |---|---|---|
-| `0x01` | `SHT_PROGBITS` | `.text.<func>`, `.nv.host`, `.nv.uft`, `.nv.udt`, `.nv.uidx`, `.nv.uft.entry`, `.nv.udt.entry`, descriptor sizes, `.nv_fatbin`, `.nvFatBinSegment`, `__nv_relfatbin`, `.nvHR*`, `.nv.merc.*` (code/debug), all `.debug_*`, all NVIDIA debug |
+| `0x01` | `SHT_PROGBITS` | `.text.<func>`, `.nv.uidx`, descriptor sizes, `.nv_fatbin`, `.nvFatBinSegment`, `__nv_relfatbin`, `.nvHR*`, `.nv.merc.*` (code/debug), all `.debug_*`, all NVIDIA debug |
 | `0x02` | `SHT_SYMTAB` | `.symtab` |
 | `0x03` | `SHT_STRTAB` | `.strtab`, `.shstrtab` |
 | `0x04` | `SHT_RELA` | `.rela.<secname>`, `.nv.uft.rel`, `.nv.merc.rela` |
@@ -418,3 +425,85 @@ Every section-name string found in the nvlink v13.0.88 binary that matches ELF s
 | `__nv_relfatbin` | #106 | — |
 
 **Total: 109 cataloged section entries** (numbered #1--#109), covering all 95 distinct section-name strings found in the nvlink binary plus 14 per-bank constant entries (`.nv.constant1`--`.nv.constant17` share the same pattern but have distinct string literals in the binary).
+
+## Cross-References
+
+**Internal (nvlink wiki):**
+
+- [NVIDIA Section Types](../elf/nvidia-sections.md) -- Detailed semantics for each section category: type constants, flags, merge handlers, and lifecycle
+- [Constant Banks](../elf/constant-banks.md) -- Deep dive on `.nv.constant*` sections: bank numbering, dedup, hardware limits
+- [.nv.info Metadata](../elf/nv-info.md) -- EIATTR attribute format and the 90+ constants carried in `.nv.info` sections
+- [Unified Function Tables](../elf/uft.md) -- UFT/UDT section management for `.nv.uft`, `.nv.udt`, `.nv.uidx`
+- [Mercury ELF Sections](../mercury/elf-sections.md) -- The 19 `.nv.merc.*` Mercury sections (entries #84--#102)
+- [R\_CUDA Catalog](r-cuda-catalog.md) -- Relocation type catalog for relocations referencing these sections
+- [Section Merging](../linker/section-merging.md) -- `merge_elf` name-prefix dispatch that classifies input sections
+- [Device ELF Format](../elf/device-elf-format.md) -- ELF header and standard infrastructure sections (`.symtab`, `.strtab`, `.shstrtab`)
+
+**Sibling wikis:**
+
+- [ptxas: Sections](../../ptxas/output/sections.html) -- How ptxas creates the sections that nvlink consumes and merges
+- [ptxas: EIATTR Reference](../../ptxas/reference/eiattr.html) -- EIATTR constants that populate `.nv.info` sections
+
+## Confidence Assessment
+
+**Verification scope:** All 109 catalog entries were cross-checked against `nvlink_strings.json` (96 NVIDIA/fatbin-section strings total). The first argument passed to the section creator `sub_441AC0(elf_ctx, name, sh_type, flags, link, info, entsize, align)` was compared to the `sh_type` column for 13 sections by reading the decompiled call sites.
+
+**Totals:** 109 catalog rows covering **95 distinct section-name strings**. Name verification: **95 / 95** strings found verbatim in `nvlink_strings.json`. `sh_type` verification: **16 spot-checked**, **all 16 now match the catalog** after the P081 correction pass that re-derived every NVIDIA-specific value from the `sub_441AC0` creation sites listed in the table below.
+
+### Section-name spot checks (10 of 95)
+
+| Entry | Confidence | Evidence |
+|-------|-----------|----------|
+| `.nv.callgraph` | HIGH | String at `0x1D3ABFF` (2 xrefs); created by `sub_44D200` line 102 (`sub_441AC0(..., ".nv.callgraph", 1879048193, ...)`) |
+| `.nv.info` | HIGH | String at `0x1D3AE7A` (3 xrefs); created by `sub_4504B0` lines 46 + 63 (per-function variant); type `1879048192` |
+| `.nv.metadata` | HIGH | String at `0x1D39190` (1 xref); created by `sub_43D6B0` line 31; type `1879048196` |
+| `.nv.prototype` | HIGH | String at `0x1D3AC21` (2 xrefs); created by `sub_44D9D0` line 25; type `1879048194` |
+| `.nv.rel.action` | HIGH | String at `0x1D3CB08` (1 xref); created by `sub_469D60` line 913; type `1879048203` |
+| `.nv.resolvedrela` | HIGH | String at `0x1D3C968` (4 xrefs); created by `sub_469230` line 151; type `1879048195` |
+| `.nv.compat` | HIGH | String at `0x1D391DB` (5 xrefs); created by `sub_451BA0` line 64 and `sub_451920` line 113; type `1879048326` |
+| `.nv.global` | HIGH | String at `0x1D38935` (10 xrefs); created by `sub_439830` line 494 and `sub_436410` line 128; type `1879048199` |
+| `.nv.constant0` | HIGH | String at `0x1D3A4C0` (5 xrefs); matched by prefix `.nv.constant` string at `0x1D3BC16` (19 xrefs) |
+| `.nv.merc.symtab_shndx` | HIGH | String at `0x2458490` (2 xrefs); strcpy'd by `sub_1CEE030` line 287 in Mercury finalizer |
+
+### `sh_type` verification table (post-P081 correction)
+
+Every NVIDIA-specific `sh_type` in the catalog was re-derived from the `sub_441AC0(ctx, name, sh_type, ...)` argument in the decompiled creation site. The table below records the verification and stands as the authoritative source for the main catalog tables above.
+
+| Section | Catalog value | Decompiled value (`sub_441AC0` arg) | Match? | Decompiled source |
+|---|---|---|---|---|
+| `.nv.info` | `0x70000000` | `0x70000000` (`1879048192`) | YES | `sub_4504B0:46`, `sub_4504B0:63` |
+| `.nv.callgraph` | `0x70000001` | `0x70000001` (`1879048193`) | YES | `sub_44D200:102` |
+| `.nv.prototype` | `0x70000002` | `0x70000002` (`1879048194`) | YES | `sub_44D9D0:25` |
+| `.nv.resolvedrela` | `0x70000003` | `0x70000003` (`1879048195`) | YES | `sub_469230:151` |
+| `.nv.metadata` | `0x70000004` | `0x70000004` (`1879048196`) | YES | `sub_43D6B0:31` |
+| `.nv.global` | `0x70000007` | `0x70000007` (`1879048199`) | YES | `sub_436410:128`, `sub_439830:494` |
+| `.nv.global.init` | `0x70000008` | `0x70000008` (`1879048200`) | YES | `sub_436740:105` |
+| `.nv.local.<func>` | `0x70000009` | `0x70000009` (`1879048201`) | YES | `sub_436310:31` |
+| `.nv.shared.<func>` | `0x7000000A` | `0x7000000A` (`1879048202`) | YES | `sub_436A80:41` |
+| `.nv.rel.action` | `0x7000000B` | `0x7000000B` (`1879048203`) | YES | `sub_469D60:913` |
+| `.nv.uft` | `0x7000000E` | `0x7000000E` (`1879048206`) | YES | `sub_442820:73` |
+| `.nv.uft.entry` | `0x70000011` | `0x70000011` (`1879048209`) | YES | `sub_4438F0:579`, `sub_464240:15` |
+| `.nv.udt` | `0x70000012` | `0x70000012` (`1879048210`) | YES | `sub_436740:76`, `sub_436410:94` |
+| `.nv.udt.entry` | `0x70000014` | `0x70000014` (`1879048212`) | YES | `sub_464320:15` |
+| `.nv.reservedSmem*` | `0x70000015` | `0x70000015` (`1879048213`) | YES | `sub_4379A0:49`, `sub_437BB0:70` |
+| `.nv.constant0`..`17` | `0x70000064+N` | `0x70000064+N` | YES | Constant-bank range check `(sh_type - 0x70000064) <= 0x1A` in `sub_441AC0:190`, `sub_438DD0:119` |
+| `.nv.compat` | `0x70000086` | `0x70000086` (`1879048326`) | YES | `sub_451BA0:64`, `sub_451920:113` |
+| `.nv.host` | `0x70000087` | `0x70000087` (`1879048327`) | YES | `sub_435B60:110` |
+
+**P081 correction history:** An earlier revision of this catalog assigned `sh_type` values via a flawed sequential increment pattern starting from `.nv.info = 0x70000001`. The correct assignment begins at `.nv.info = 0x70000000` and is not contiguous -- four identifiers in the `0x70000005`--`0x7000000D` range are unused in the nvlink creator, and `.nv.compat` / `.nv.host` live in a separate `0x70000086`--`0x70000087` block. All wrong values from that pattern have been replaced with the actual arguments observed in the `sub_441AC0` calls cited above.
+
+Cross-reference with the [ptxas Sections](../../ptxas/output/sections.html) page: ptxas also uses `SHT_CUDA_INFO = 0x70000000`, which is consistent with nvlink's creator. The ptxas wiki's earlier claim that `SHT_CUDA_CALLGRAPH = 0x70000064` conflicts with nvlink's `0x70000001` -- the ptxas wiki entry at that page (line 90) still needs correction.
+
+| Aspect | Confidence | Basis |
+|---|---|---|
+| Section names (all 109 entries) | HIGH | 95 / 95 distinct name strings verified in `nvlink_strings.json`. Ten entries spot-checked to their creation sites in decompiled code (see table above) |
+| `sh_type` hex values (NVIDIA-specific) | HIGH | All 16 spot-checked values now match the decompiled `sub_441AC0` call-site arguments. See P081 correction table above |
+| `sh_type` hex values (standard ELF) | HIGH | `SHT_PROGBITS` / `SHT_STRTAB` / `SHT_SYMTAB` / `SHT_RELA` / `SHT_NOTE` / `SHT_NOBITS` / `SHT_REL` / `SHT_SYMTAB_SHNDX` match the ELF specification |
+| `sh_type` symbolic constants (`SHT_CUDA_*`) | LOW | Synthetic names invented for this catalog. NVIDIA does not publish a header with these identifiers; the name strings themselves are not present in the binary. The numeric values are authoritative; only the `SHT_CUDA_*` identifier strings are speculative |
+| Constant-bank formula (`0x70000064 + N`) | HIGH | The base `0x70000064` is a hard-coded comparison constant in `sub_441AC0:190`, `sub_438DD0:119`, `sub_4422D0:35`, `sub_445000:548`, `sub_445000:1708`, `sub_4401F0:9`, `sub_438640:59`, `sub_458190:6`, `sub_458EC0:6`, `sub_459090:6`, and 12+ other sites. The range check `(sh_type - 0x70000064) <= 0x1A` confirms 27 valid constant-bank types (0x70000064..0x7000007E) |
+| Mercury section flag (`SHF_CUDA_MERCURY` = `0x10000000`) | MEDIUM | Flag bit is consistent with the Mercury-skip logic in the merge phase (`sub_4748F0` at lines 1648, 1663, 1689, 1703 filters by `.nv.merc.` prefix, not by flag). Flag encoding inferred from `sh_flags` field extraction in Mercury processing; symbolic name is synthetic |
+| Section creation function addresses | HIGH | All cited `sub_*` addresses verified to exist in `nvlink/decompiled/` and confirmed to invoke `sub_441AC0`: `sub_44D200` (callgraph), `sub_44D9D0` (prototype), `sub_43D6B0` (metadata), `sub_4504B0` (info), `sub_469230` (resolvedrela), `sub_469D60` (rel.action), `sub_451BA0`/`sub_451920` (compat), `sub_436310` (local), `sub_436A80` (shared), `sub_4379A0`/`sub_437BB0` (reservedSmem), `sub_436410`/`sub_439830` (global), `sub_436740` (global.init, udt), `sub_4438F0`/`sub_464240` (uft.entry), `sub_464320` (udt.entry), `sub_435B60` (host), `sub_42A680` (register_module_for_linking), `sub_437E20` (merge_overlapping_local_data), `sub_436BD0` (shared_memory_optimizer), `sub_4AF3C0` (hrk_section_process), `sub_4B02A0` (hrc_hrd_section_process), `sub_46ADC0` (emit_resolved_relocations) |
+| Completeness (109 entries / 95 strings) | HIGH | `jq '.[] \| select(.value \| test("^\\.nv\\.\|^\\.nvHR\|^\\.nv_\|^\\.note\\.nv\|^__nv_relfatbin\|^\\.nvFatBin\|^\\.rel"))'` over `nvlink_strings.json` produced 96 rows (including two generic prefix matchers `.nv.constant`, `.nv.merc.`); all accounted for in the catalog |
+| Hash-relocation letter meanings (K/C/D + E/I) | MEDIUM | Mnemonic (Key/Code/Data/External/Internal) inferred from name pattern and the processing functions `hrk_section_process` (`sub_4AF3C0`) and `hrc_hrd_section_process` (`sub_4B02A0`); no decoded narrative in the binary strings |
+| Section descriptions ("Purpose" column) | MEDIUM | Most descriptions are grounded in decompiled behavior (callgraph builder, reservedSmem allocator, constant dedup, etc.). A subset (`.nv.host`, `.nv.uidx`, `.nv.udt.entry`, `.nv.independent.*DescSize`) is inferred from naming and from the handler functions that match the prefix, without a direct behavioral trace |
+| Fatbin linker script sections | MEDIUM | Linker script template extracted from string table; section names confirmed but template formatting is reconstructed |

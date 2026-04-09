@@ -786,9 +786,9 @@ The fast path in `strbuf_vsprintf` uses a 1024-byte stack buffer. If the formatt
 
 **Sibling wikis:**
 
-- [ptxas: Threading](../../../ptxas/wiki/src/infra/threading.md) -- ptxas-side threading infrastructure that shares the TLS pattern
-- [cicc: Diagnostics](../../../cicc/wiki/src/infra/diagnostics.md) -- cicc diagnostic subsystem for comparison with nvlink's error reporting architecture
-- [cicc: Knobs](../../../cicc/wiki/src/config/knobs.md) -- cicc environment variable controls analogous to nvlink's `NVLINK_DEBUG`
+- [ptxas: Threading](../../ptxas/infra/threading.html) -- ptxas-side threading infrastructure that shares the TLS pattern
+- [cicc: Diagnostics](../../cicc/infra/diagnostics.html) -- cicc diagnostic subsystem for comparison with nvlink's error reporting architecture
+- [cicc: Knobs](../../cicc/config/knobs.html) -- cicc environment variable controls analogous to nvlink's `NVLINK_DEBUG`
 
 ## Confidence Assessment
 

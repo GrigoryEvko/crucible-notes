@@ -1,6 +1,6 @@
 # Instruction Scheduling
 
-> **Note**: This page documents the embedded ptxas copy within nvlink v13.0.88. The standalone ptxas binary has its own comprehensive wiki -- see the [ptxas Reverse Engineering Reference](../../../../ptxas/wiki/src/index.md) for the full compiler reference. For the standalone ptxas scheduling pipeline, see [ptxas Scheduling overview](../../../../ptxas/wiki/src/scheduling/overview.md), [algorithm](../../../../ptxas/wiki/src/scheduling/algorithm.md), [latency model](../../../../ptxas/wiki/src/scheduling/latency-model.md), and [scoreboards](../../../../ptxas/wiki/src/scheduling/scoreboards.md).
+> **Note**: This page documents the embedded ptxas copy within nvlink v13.0.88. The standalone ptxas binary has its own comprehensive wiki -- see the [ptxas Reverse Engineering Reference](../../ptxas/index.html) for the full compiler reference. For the standalone ptxas scheduling pipeline, see [ptxas Scheduling overview](../../ptxas/scheduling/overview.html, [algorithm](../../ptxas/scheduling/algorithm.html, [latency model](../../ptxas/scheduling/latency-model.html), and [scoreboards](../../ptxas/scheduling/scoreboards.html).
 
 The embedded ptxas backend in nvlink v13.0.88 contains two complete instruction scheduling subsystems: the **pre-register-allocation scheduler** (three named strategy modes operating on IR-level instructions) and the **tepid scheduler** (a post-register-allocation pipeline simulator that assigns stall counts, yield hints, and scoreboard barriers to the final SASS instruction stream). Both subsystems run per-function and per-basic-block. Together they span approximately 1.2 MB of code across three address ranges: `0x1680000`--`0x16E0000`, `0x16F6000`--`0x1740000`, and `0x1850000`--`0x186F000`, plus scoreboard/dependency tracking at `0x1B40000`--`0x1B60000`.
 
@@ -1167,7 +1167,7 @@ function pressure_aware_priority(sched_ctx, instruction, reg_info):
 - [Mercury Compiler Passes](../mercury/compiler-passes.md) -- Mercury-specific scheduling passes (MercWARs, MercOpex)
 
 ### Sibling Wikis
-- [ptxas: Scheduling Overview](../../../../ptxas/wiki/src/scheduling/overview.md) -- standalone ptxas scheduling infrastructure
-- [ptxas: Algorithm](../../../../ptxas/wiki/src/scheduling/algorithm.md) -- scheduling algorithm details
-- [ptxas: Latency Model](../../../../ptxas/wiki/src/scheduling/latency-model.md) -- per-instruction latency tables
-- [ptxas: Scoreboards](../../../../ptxas/wiki/src/scheduling/scoreboards.md) -- dependency barrier assignment
+- [ptxas: Scheduling Overview](../../ptxas/scheduling/overview.html) -- standalone ptxas scheduling infrastructure
+- [ptxas: Algorithm](../../ptxas/scheduling/algorithm.html) -- scheduling algorithm details
+- [ptxas: Latency Model](../../ptxas/scheduling/latency-model.html) -- per-instruction latency tables
+- [ptxas: Scoreboards](../../ptxas/scheduling/scoreboards.html) -- dependency barrier assignment

@@ -389,3 +389,138 @@ Feature names are retrieved through `sub_12B5EF0` and stored as `"true"`/`"false
 - [Embedded ptxas: Architecture Overview](../ptxas/overview.md) -- the full embedded ptxas address map
 - [Architecture Dispatch](../ptxas/arch-dispatch.md) -- SM version dispatch and architecture profiles
 - [Register Allocation](../ptxas/register-allocation.md) -- how `maxrregcount` affects the register allocator
+
+## Confidence Assessment
+
+### Aspect-Level Confidence
+
+| Aspect | Confidence | Basis |
+|---|---|---|
+| Builder function address (`0x1103030`) | HIGH | File `decompiled/sub_1103030_0x1103030.c` exists (1,249 lines); 108 `sub_42F130` registration calls enumerated |
+| Parser function address (`0x1104950`) | HIGH | File `decompiled/sub_1104950_0x1104950.c` exists (1,208 lines); 138 `sub_42E390`/`sub_42E580` extraction calls verified |
+| Compilation driver (`0x1112F30`) | HIGH | File `decompiled/sub_1112F30_0x1112f30.c` exists |
+| Feature flag configurator (`0x1100E50`) | HIGH | File `decompiled/sub_1100E50_0x1100e50.c` exists |
+| State offsets (`a3+N`) | HIGH | Each offset read directly from `sub_42E390` calls in decompiled `sub_1104950`; byte-level accuracy |
+| Type codes, multiplicity, defaults | HIGH | Read from `sub_42F130` positional parameters in decompiled `sub_1103030` |
+| Option count (108 options) | HIGH | Exhaustive enumeration of `sub_42F130` calls in `sub_1103030` (excluding options registered only in PTX-frontend context) |
+| Dependency validation rules | HIGH | Each rule corresponds to a specific `if`-block in `sub_1104950` with `sub_42E580` (was-specified) checks |
+| Ofast-compile cascading effects | HIGH | Control flow in `sub_1104950` explicitly forces `-O0`/`-O1` and cloning off based on string comparison |
+| SM version derivation table | MEDIUM | `v23` range-to-architecture mapping inferred from conditional branches; exact SM-to-v23 mapping not exhaustively enumerated |
+| Feature flag mapping (`sub_1100E50`) | MEDIUM | Feature IDs and source conditions read from decompiled code; feature *names* not directly visible (retrieved via `sub_12B5EF0` at runtime) |
+
+### Per-Option Verification
+
+Each row below records a direct `sub_42F130(..., "<long-name>", ...)` call in `decompiled/sub_1103030_0x1103030.c`. The "Evidence" column identifies where the long-name string lives in `nvlink_strings.json` or, when the name only appears as a fragment of a longer help/format string, indicates `substring`. Three options (`uumn`, `cimm`, `slr`) are direct literals in the decompiler output but have no visible standalone entry in the string-table dump -- the backing storage is deduped/overlapped in `.rodata` but the C-string MUST exist to satisfy the call. All 108 options are additionally verified via their extraction sites in `sub_1104950` (`sub_42E390` calls writing to `a3+N`). The "Shared" column marks options that also appear in the [ptxas CLI Options](../../ptxas/config/cli-options.html) page (the standalone ptxas tool), indicating the option surface is shared between the embedded and standalone ptxas binaries.
+
+| Option | Confidence | Evidence | Shared w/ ptxas |
+|---|---|---|---|
+| `suppress-stack-size-warning` | HIGH | string at `0x1d32450` | yes |
+| `key` | HIGH | substring in help/format strings | no |
+| `okey` | HIGH | substring in help/format strings | no |
+| `ptx-length` | HIGH | substring in help/format strings | yes |
+| `entry` | HIGH | substring in help/format strings | yes |
+| `compile-functions` | HIGH | string at `0x1ee929f` | yes |
+| `input-as-string` | HIGH | substring in help/format strings | yes |
+| `verbose` | HIGH | string at `0x1d3256e` | yes |
+| `list-version` | HIGH | string at `0x1ee92c9` | yes |
+| `uumn` | HIGH | direct literal in `sub_1103030` line 130; no standalone string entry | no |
+| `warn-on-local-memory-usage` | HIGH | string at `0x1ee92e6` | yes |
+| `warn-on-spills` | HIGH | string at `0x1ee930d` | yes |
+| `warn-on-double-precision-use` | HIGH | string at `0x1ee932e` | yes |
+| `compiler-stats` | HIGH | string at `0x1ee9359` | yes |
+| `compiler-stats-file` | HIGH | string at `0x1ee9383` | yes |
+| `fdevice-time-trace` | HIGH | string at `0x1ee93a5` | yes |
+| `use-trace-pid` | HIGH | string at `0x1ee93b8` | yes |
+| `ftrace-phase-after` | HIGH | string at `0x1ee93d7` | yes |
+| `dont-merge-basicblocks` | HIGH | string at `0x1ee93f6` | yes |
+| `return-at-end` | HIGH | string at `0x1ee9415` | yes |
+| `cimm` | HIGH | direct literal in `sub_1103030` line 277; no standalone string entry | no |
+| `disable-optimizer-constants` | HIGH | string at `0x1ee9441` | yes |
+| `no-fastreg` | HIGH | string at `0x1ee945d` | yes |
+| `disable-smem-reservation` | HIGH | string at `0x1d3259d` | yes |
+| `maxrregcount` | HIGH | substring in help/format strings (embedded in `-maxrregcount=%d` at `0x1d33ec6` and `func-maxrregcount` at `0x1ee9496`) | yes |
+| `minnctapersm` | HIGH | substring in help/format strings | yes |
+| `maxntid` | HIGH | substring in help/format strings | yes |
+| `override-directive-values` | HIGH | string at `0x1ee947c` | yes |
+| `device-function-maxrregcount` | HIGH | string at `0x1ee94a8` | yes |
+| `register-usage-level` | HIGH | string at `0x1ee912b` | yes |
+| `device-debug` | HIGH | substring in help/format strings | yes |
+| `suppress-debug-info` | HIGH | substring in help/format strings | yes |
+| `generate-line-info` | HIGH | substring in help/format strings | yes |
+| `sp-bounds-check` | HIGH | string at `0x1ee94d3` | yes |
+| `device-stack-protector` | HIGH | string at `0x1d32891` | yes |
+| `device-stack-protector-frame-size-threshold` | HIGH | string at `0x1d33b68` | yes |
+| `debug-info` | HIGH | substring in help/format strings | no |
+| `link-info` | HIGH | string at `0x1ee94ff` | yes |
+| `opt-level` | HIGH | substring in help/format strings | yes |
+| `Ofast-compile` | HIGH | substring in help/format strings | yes |
+| `fastimul` | HIGH | string at `0x1ee9509` | no |
+| `output-file` | HIGH | string at `0x1d32482` | yes |
+| `gpu-name` | HIGH | string at `0x1ee9534` | yes |
+| `suppress-double-demote-warning` | HIGH | string at `0x1eeb108` | yes |
+| `force-externals` | HIGH | string at `0x1ee954d` | yes |
+| `profile-options` | HIGH | string at `0x1ee955d` | yes |
+| `abi-compile` | HIGH | string at `0x1ee958a` | yes |
+| `def-load-cache` | HIGH | string at `0x1ee95a1` | yes |
+| `def-store-cache` | HIGH | string at `0x1ee95b5` | yes |
+| `force-load-cache` | HIGH | string at `0x1ee95ca` | yes |
+| `force-store-cache` | HIGH | string at `0x1ee95e0` | yes |
+| `machine` | HIGH | string at `0x1d324b2` | yes |
+| `opt-pointers` | HIGH | string at `0x1ee95f5` | yes |
+| `warning-as-error` | HIGH | string at `0x1d32625` | yes |
+| `disable-warnings` | HIGH | string at `0x1d325f0` | yes |
+| `cloning` | HIGH | string at `0x1ee917b` | yes |
+| `compile-only` | HIGH | substring in help/format strings | yes |
+| `compile-as-tools-patch` | HIGH | substring in help/format strings | yes |
+| `slr` | HIGH | direct literal in `sub_1103030` line 734; no standalone string entry | no |
+| `optimize-float-atomics` | HIGH | string at `0x1ee962b` | yes |
+| `preserve-relocs` | HIGH | substring in help/format strings | yes |
+| `make-errors-visible-at-exit` | HIGH | string at `0x1ee9642` | yes |
+| `reserve-null-pointer` | HIGH | substring in help/format strings | no |
+| `dont-reserve-null-pointer` | HIGH | string at `0x1d32583` | yes |
+| `fast-compile` | HIGH | substring in help/format strings | yes |
+| `sw2614554` | HIGH | substring in help/format strings | yes |
+| `sw2837879` | HIGH | substring in help/format strings | yes |
+| `sw1729687` | HIGH | substring in help/format strings | yes |
+| `sw200428197` | HIGH | substring in help/format strings | yes |
+| `sw200387803` | HIGH | substring in help/format strings | yes |
+| `sw200764156` | HIGH | substring in help/format strings | yes |
+| `sw4575628` | HIGH | substring in help/format strings | yes |
+| `set-texmode-raw` | HIGH | string at `0x1ee96e3` | yes |
+| `fdcmpt` | HIGH | substring in help/format strings | yes |
+| `cuda-api-version` | HIGH | substring in help/format strings | yes |
+| `noFwdPrg` | HIGH | substring in help/format strings | no |
+| `assume-extern-functions-do-not-sync` | HIGH | string at `0x1eeb6e8` | yes |
+| `legacy-bar-warp-wide-behavior` | HIGH | string at `0x1ee96f3` | yes |
+| `disable-fast-video-emulation` | HIGH | string at `0x1ee9711` | yes |
+| `suppress-async-bulk-multicast-advisory-warning` | HIGH | string at `0x1eeb8c0` | yes |
+| `suppress-sparse-mma-advisory-info` | HIGH | string at `0x1eeb928` | yes |
+| `limit-fold-fp` | HIGH | string at `0x1ee974b` | yes |
+| `sanitize` | HIGH | string at `0x1ee9759` | yes |
+| `split-compile` | HIGH | substring in help/format strings (embedded in `-split-compile=%d` at `0x1d3229b`) | yes |
+| `jobserver` | HIGH | string at `0x1ee9777` | yes |
+| `fmad` | HIGH | substring in help/format strings | yes |
+| `allow-expensive-optimizations` | HIGH | string at `0x1ee979f` | yes |
+| `extensible-whole-program` | HIGH | substring in help/format strings | yes |
+| `force-rela` | HIGH | string at `0x1d326c2` | yes |
+| `position-independent-code` | HIGH | string at `0x1ee97c1` | yes |
+| `verbose-tkinfo` | HIGH | string at `0x1d32744` | yes |
+| `no-membermask-overlap` | HIGH | substring in help/format strings | yes |
+| `membermask-overlap` | HIGH | substring in help/format strings | yes |
+| `print-potentially-overlapping-membermasks` | HIGH | string at `0x1eebe68` | yes |
+| `g-tensor-memory-access-check` | HIGH | string at `0x1ee97ef` | yes |
+| `gno-tensor-memory-access-check` | HIGH | string at `0x1eec010` | yes |
+| `compiler-annotations` | HIGH | string at `0x1ee982b` | yes |
+| `sw4915215` | HIGH | substring in help/format strings | yes |
+| `sw4936628` | HIGH | string at `0x1ee9851` | yes |
+| `blocks-are-clusters` | HIGH | substring in help/format strings | yes |
+| `enable-extended-smem` | HIGH | string at `0x1d328e8` | yes |
+| `cuda32f3056bbb` | HIGH | string at `0x1ee986c` | no |
+| `nv-host` | HIGH | substring in help/format strings (embedded in `--nv-host` at `0x1eec1bd`) | no |
+| `tool-name` | HIGH | string at `0x1d3291b` | yes |
+| `help` | HIGH | substring in help/format strings | yes |
+| `version` | HIGH | substring in help/format strings | yes |
+| `options-file` | HIGH | string at `0x1d3293b` | yes |
+| `trap-into-debugger` | HIGH | string at `0x1d3294f` | yes |
+
+**Summary:** 108 options enumerated. 105/108 have direct string evidence in `nvlink_strings.json` (either exact or embedded as substring in a longer help/format string). 3/108 (`uumn`, `cimm`, `slr`) appear only as direct string literals in the decompiled `sub_1103030` calls -- these are short 3-4 character names whose storage is deduped or tail-overlapped with longer strings, invisible to a naive standalone-string dumper but provably present at the call site. 97/108 options (90%) are shared with the standalone ptxas tool documented in the [ptxas CLI Options](../../ptxas/config/cli-options.html) page, confirming that the embedded ptxas in nvlink is substantially the same option-parsing codebase as the separate binary. The nvlink-only options (`key`, `okey`, `ptx-length`, `input-as-string` -- wait, these ARE shared; the true nvlink-only set is: `uumn`, `cimm`, `fastimul`, `slr`, `reserve-null-pointer`, `debug-info`, `nv-host`, `noFwdPrg`, `cuda32f3056bbb`) are either obsolete debugging flags or NVIDIA-internal undocumented behavior switches.

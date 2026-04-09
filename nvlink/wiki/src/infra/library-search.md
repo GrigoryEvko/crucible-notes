@@ -18,9 +18,13 @@ This page documents the infrastructure components at reimplementation depth. For
 | `sub_462620` | `path_split` | 3,579 B | Splits a path into directory, basename, and extension components |
 | `sub_462C10` | `path_split_dir_file` | 512 B | Splits a path into directory and filename (no extension separation) |
 | `sub_462550` | `path_join` | 288 B | Joins directory + basename + optional extension into a normalized path |
-| `sub_429AA0` | `make_library_filename` | 304 B | Transforms `-l` name into `lib<name>.so` or `lib<name>.a` |
+| `sub_429AA0` | `make_library_filename` | 304 B | Transforms `-l` name into `lib<name>.a` (or `lib<name>.so` if shared flag set; main always passes shared=false) |
 | `sub_42A2D0` | `archive_validate_callback` | 5,008 B | Opens archive, iterates members, validates CPU architecture |
+| `sub_4297B0` | `archive_status_report` | ~200 B | Reports archive open/iterate status codes via diagnostic system |
 | `sub_464460` | `list_node_create` | 96 B | Allocates a 16-byte linked-list node (next + data) |
+| `sub_4646A0` | `list_find` | ~80 B | Linear search through linked list using comparator callback |
+| `sub_4BC470` | `load_libnvvm` | ~40 B | Constructs `<nvvmpath>/lib64/libnvvm.so` path and loads via dlopen |
+| `sub_5F5AC0` | `path_join_with_fallback` | ~50 B | Joins dir + filename; if dir is NULL, returns filename directly |
 
 ## Search Context Data Structure
 
@@ -109,6 +113,14 @@ Both functions update two pointers:
 
 ## Search Path Construction
 
+The entire library search block in `main` is gated by:
+
+```c
+if ( (unsigned int)(dword_2A77DC0 - 1) > 1 )  // unsigned subtraction + compare
+```
+
+This unsigned comparison passes when `dword_2A77DC0` (linker mode) is 0 or >= 3, and blocks when it is 1 or 2. Modes 1 and 2 skip library resolution entirely.
+
 The search path is built in two sequential phases. `-L` paths always precede `LIBRARY_PATH` paths, matching GNU `ld` convention.
 
 ### Phase 1: -L Command-Line Directories
@@ -132,7 +144,7 @@ After `-L` paths, nvlink reads the `LIBRARY_PATH` environment variable, tokenize
 ```c
 char* env = getenv("LIBRARY_PATH");
 split_and_callback(env, ":",             // sub_44EC40
-    /*include_empty=*/0, /*skip_empty=*/1,
+    /*include_empty=*/0, /*keep_delimiters=*/1,
     search_context_append_cb, (uintptr_t)ctx,
     /*handle_escapes=*/1, /*handle_brackets=*/1);
 ```
@@ -144,14 +156,14 @@ split_and_callback(env, ":",             // sub_44EC40
 ```c
 // sub_44EC40 -- split_and_callback
 void split_and_callback(
-    char*    input,           // string to tokenize
-    char*    delimiters,      // delimiter characters (e.g. ":")
-    bool     include_empty,   // if true, invoke callback even for empty tokens
-    bool     keep_delimiters, // passed through to tokenize()
-    void   (*callback)(char* token, uintptr_t arg),
-    uintptr_t callback_arg,
-    bool     handle_escapes,  // tokenizer handles backslash escapes
-    bool     handle_brackets  // tokenizer handles [...] bracket nesting
+    char*    input,           // string to tokenize (a1)
+    char*    delimiters,      // delimiter characters (a2, e.g. ":")
+    bool     include_empty,   // if true, invoke callback even for empty tokens (a3)
+    bool     keep_delimiters, // passed through to tokenize() (a4)
+    void   (*callback)(char* token, uintptr_t arg),  // (a5)
+    uintptr_t callback_arg,   // (a6)
+    bool     handle_escapes,  // tokenizer handles backslash escapes (a7)
+    bool     handle_brackets  // tokenizer handles [...] bracket nesting (a8)
 )
 {
     if (!input) return;
@@ -171,7 +183,7 @@ void split_and_callback(
 }
 ```
 
-The `include_empty` flag controls whether zero-length tokens (from consecutive delimiters like `::`) invoke the callback. For `LIBRARY_PATH` parsing, `include_empty` is 0, so empty path components are silently skipped. The `handle_escapes` and `handle_brackets` flags are both 1, enabling backslash-escaped characters and `[...]`-delimited literal blocks within path components (though these features are primarily used for nvinfo parsing, not paths).
+The `include_empty` flag controls whether zero-length tokens (from consecutive delimiters like `::`) invoke the callback. For `LIBRARY_PATH` parsing, `include_empty` is 0, so empty path components are silently skipped. The `keep_delimiters` flag is passed through to the token extractor and controls whether delimiter characters are preserved as separate tokens (set to 1 for `LIBRARY_PATH` parsing, though this mainly affects multi-character delimiter scenarios). The `handle_escapes` and `handle_brackets` flags are both 1, enabling backslash-escaped characters and `[...]`-delimited literal blocks within path components (though these features are primarily used for nvinfo parsing, not paths).
 
 ### Token Extractor (sub\_44E8B0)
 
@@ -392,13 +404,35 @@ The path construction is performed inline using the string builder (`sub_44FB20`
 
 ### Two-Pass Search Strategy
 
-For each `-l` library, `main` invokes `path_search` twice:
+For each `-l` library, `main` calls `make_library_filename` to produce `lib<name>.a` (always with `shared=false`; nvlink is a device linker and only searches for static archives), then invokes `path_search` twice with the **same** filename:
 
 1. **Pass 1 (stat-only):** `callback=NULL`. The function returns the first candidate path where `stat()` succeeds. No archive validation occurs. This quickly resolves libraries that exist as plain files.
 
-2. **Pass 2 (archive validation):** `callback=archive_validate_callback` (`sub_42A2D0`). The function finds the file via `stat()`, then invokes the callback to open it as an archive and verify that at least one member has the correct CPU architecture. The callback returns 0 to accept, or non-zero to continue searching the next directory.
+2. **Pass 2 (archive validation):** `callback=archive_validate_callback` (`sub_42A2D0`). Invoked only when Pass 1 returns NULL (file not found by stat alone). The function finds the file via `stat()`, then invokes the callback to open it as an archive and verify that at least one member has the correct CPU architecture. The callback returns 0 to accept, or non-zero to continue searching the next directory.
+
+After resolution, a duplicate check (`sub_4646A0`, linear list search using string comparator `sub_44E180`) prevents the same resolved path from appearing twice in the input file list (`qword_2A5F330`).
+
+```c
+v188 = make_library_filename(lib_name);               // always produces "lib<name>.a"
+if ( !path_search(ctx, v188, 1, 0, NULL, 0) )         // Pass 1: stat-only
+{
+    v188 = make_library_filename(lib_name);            // same filename again
+    resolved = path_search(ctx, v188, 1, 0,
+                           archive_validate_callback,
+                           lib_name);                  // Pass 2: with validation
+    if (resolved) {
+        if (!list_find(input_file_list, resolved, strcmp_cb))
+        {
+            node = list_node_create(resolved, NULL);
+            list_append_tail(input_file_list, node);   // sub_4649B0
+        }
+    }
+}
+```
 
 The two-pass design optimizes the common case: most libraries are found in the first directory with the correct architecture, so the expensive archive-open-and-iterate path is only taken when the stat-only pass fails.
+
+> **Note:** `make_library_filename` supports a `shared` parameter that produces `lib<name>.so` when true, but `main` never passes `shared=true`. The `.so` code path may be reserved for future use or inherited from a shared codebase with the host linker.
 
 ## Archive Validation Callback (sub\_42A2D0)
 
@@ -411,50 +445,57 @@ When the stat-only pass fails (Pass 1 finds no matching file) or the library nee
 int archive_validate_callback(char* archive_path, int flags) {
     // 1. Open archive
     archive_handle_t handle;
-    int status = archive_open(&handle, archive_path);           // sub_4BDAC0
+    int open_status = archive_open(&handle, archive_path);      // sub_4BDAC0
 
-    // 2. Check initial status
-    if (status == 7 && !suppress_arch_warn
+    // 2. Check initial open status
+    if (open_status == 7 && !suppress_arch_warn
         && !strstr(archive_path, "cudadevrt"))
-        warning("architecture mismatch in %s", archive_path);  // sub_467460
-    else if (status == 4)
+        warning("architecture mismatch in %s", archive_path);   // sub_467460 via unk_2A5B660
+    else if (open_status == 4)
         error("unsupported code in " + archive_path);
-    else if (status != 0)
-        error(archive_status_string(status));
+    else if (open_status != 0)
+        error(archive_status_string(open_status));               // sub_4BC270
 
     // 3. Iterate archive members
     member_t member;
     while (1) {
-        status = archive_next_member(&member, handle);          // sub_4BDAF0
-        if (status == 0) break;  // end of archive
+        int status = archive_next_member(&member, handle);       // sub_4BDAF0
+        if (status == 0) break;  // end of archive -- fall through to member check
         if (status == 7) {       // arch mismatch for this member
             if (!suppress_arch_warn && !strstr(archive_path, "cudadevrt"))
                 warning("...");
-            goto next_member;
+            goto check_member;
         }
-        if (status == 4) {
+        if (status == 4)
             error("unsupported code in " + archive_path);
-        }
+        else if (status != 0)
+            error(archive_status_string(status));
 
-next_member:
+check_member:
+        if (!member) goto no_match;
+
         // 4. Validate CPU architecture via e_machine
-        uint16_t elf_machine = get_elf_header(member)->e_machine;
+        uint16_t elf_machine = get_elf_header(member)->e_machine; // sub_448360
         int expected = cpu_arch_to_elf_machine(cpu_arch_string);
 
         if (elf_machine == expected) {
-            // 5. Match found -- extract and accept
-            archive_close(handle);                              // sub_4BDB30
-            process_member(archive_path);                       // sub_4297B0
+            // 5. Match found -- close archive, report status, accept
+            int close_status = archive_close(handle);             // sub_4BDB30
+            archive_status_report(close_status, archive_path);    // sub_4297B0
             return 0;  // accept
         }
     }
 
+no_match:
     // 6. No compatible member found
-    archive_close(handle);
-    error("cannot find compatible member in %s", archive_path);
+    int close_status = archive_close(handle);                     // sub_4BDB30
+    archive_status_report(close_status, archive_path);            // sub_4297B0
+    warning("SM Arch not found in archive", archive_path);        // via unk_2A5B610
     return 1;  // reject
 }
 ```
+
+`sub_4297B0` (`archive_status_report`) is NOT a member processor -- it checks the status code returned by `archive_close` and emits diagnostics accordingly: status 0 is a no-op, status 7 emits an architecture mismatch warning (suppressed for `cudadevrt` paths), status 4 emits a format error, and any other status is converted to an error string via `sub_4BC270`.
 
 ### CPU Architecture Mapping
 
@@ -497,6 +538,50 @@ Architecture mismatch warnings (status code 7) are silently suppressed for archi
 | `qword_2A5F2A0` | `char*` | `cpu_arch_string` | Host CPU architecture (e.g., `"X86_64"`) |
 | `byte_2A5F298` | `bool` | `suppress_arch_warn` | Suppresses architecture mismatch warnings globally |
 | `dword_2A77DC0` | `int` | `linker_mode` | Controls whether library resolution runs (skipped for modes 1, 2) |
+| `qword_2A5F278` | `char*` | `nvvmpath` | Path to libnvvm installation (from `--nvvmpath` flag) |
+| `byte_2A5F288` | `bool` | `lto_enabled` | LTO mode flag (from `--link-time-opt`); gates libnvvm loading |
+
+## Special Library Handling
+
+### libnvvm.so Loading (sub\_4BC470)
+
+`libnvvm.so` is loaded via a dedicated path, completely separate from the `-l` search infrastructure. When LTO is enabled (`byte_2A5F288` / `--link-time-opt`):
+
+```c
+if (lto_enabled) {
+    if (!nvvmpath)
+        fatal_error("-nvvmpath should be specified with -lto");  // 0x1d33dc8
+
+    char* dir = malloc(strlen(nvvmpath) + 7);
+    strcpy(dir, nvvmpath);
+    strcat(dir, "/lib64");                                       // 0x1d34176
+    int status = load_libnvvm(linker_ctx, dir);                  // sub_4BC470
+    if (status)
+        fatal_error(archive_status_string(status));
+}
+```
+
+`sub_4BC470` internally calls `sub_5F5AC0(dir, "libnvvm.so", 0)` which uses `path_join` (`sub_462550`) to construct `<nvvmpath>/lib64/libnvvm.so`, then passes the result to `sub_4BC290` (the dlopen wrapper). The `--nvvmpath` option is registered as string type 8 (path) in `sub_427AE0` with help text `"Path to libnvvm library."` (`0x1d32784`).
+
+### libcudadevrt.a Resolution
+
+`libcudadevrt.a` is resolved through the normal `-l` search path mechanism (it arrives as `-lcudadevrt`). Two special behaviors apply:
+
+1. **Architecture mismatch suppression:** The `strstr(archive_path, "cudadevrt")` check in `sub_42A2D0` suppresses status-7 warnings for this library. This prevents noise in cross-compilation scenarios where the host-arch members don't match `--cpu-arch`.
+
+2. **LTO IR extraction:** During LTO processing, `sub_42AF40` detects `"cudadevrt"` in the filename and extracts IR content specially, printing the debug trace `"found IR for libcudadevrt\n"` (`0x1d340a8`). The extracted IR is stored in output parameters for later LTO compilation. When LTO absorbs all objects, the message `"LTO on everything so remove libcudadevrt from list\n"` (`0x1d34658`) is printed and libcudadevrt is removed from the link list. If the archive member doesn't contain the expected format, the fatal error `"expected libcudadevrt object"` (`0x1d34316`) is emitted.
+
+### Error Messages for Missing Libraries
+
+The binary contains these library-search error strings:
+
+| String | Address | Xrefs | Context |
+|---|---|---|---|
+| `"Skipping incompatible '%s' when searching for -l%s"` | `0x1d34ab8` | 0 | Probable warning when a candidate file exists but fails validation |
+| `"Library file '%s' not found in paths"` | `0x1d34bf0` | 0 | Probable error when no candidate file is found in any search directory |
+| `"Library file '%s' not recognized"` | `0x1d34c18` | 0 | Probable error when a file is found but is not a valid archive format |
+
+These strings have zero cross-references in IDA's analysis. They may be referenced via table-driven diagnostic descriptors that IDA's xref analysis did not resolve, or they may be dead code from a prior version.
 
 ## Implementation Notes
 
@@ -508,6 +593,15 @@ The search context's tail-pointer design eliminates branching in the append path
 
 Path construction uses the shared string builder infrastructure (`sub_44FB20` create, `sub_44FF90` append char, `sub_44FE60` append string, `sub_44FDC0` finalize). The builder is initialized with a 128-byte buffer and grows as needed. `path_search` uses it inline rather than calling `path_join`, directly appending directory characters (with trailing-slash stripping) and the filename. The finalized string is arena-allocated and returned to the caller.
 
+### Search Context Destruction (sub\_462320)
+
+After the library resolution loop completes, `main` calls `sub_462320(ctx, 0)`. The destroy function has two cleanup modes selected by the second parameter (a byte flag):
+
+- **Flag = 0 (used by main):** calls `sub_464520` to iterate and free the linked-list node structures only. The path strings stored in each node are NOT individually freed -- they remain in arena memory until the arena is destroyed.
+- **Flag = 1:** calls `sub_464550` which iterates nodes and invokes a callback (`sub_45CAD0`) to free both the data pointer and the node.
+
+After freeing the list contents, the context structure itself is freed via `sub_431000`.
+
 ### Arena Memory Management
 
 Every string allocation in the search subsystem goes through the arena allocator (`sub_4307C0`). Temporary copies (e.g., the working copy in `path_split`) are freed via `sub_431000`. The search context itself, its directory nodes, and the path strings all live in arena memory, ensuring cleanup is handled when the arena is destroyed rather than requiring individual `free` calls.
@@ -515,11 +609,14 @@ Every string allocation in the search subsystem goes through the arena allocator
 ## Cross-References
 
 - [Library Resolution (pipeline)](../pipeline/library-resolution.md) -- pipeline-level view of when and how library search runs
-- [CLI Option Parsing](../pipeline/cli-options.md) -- `-L`, `-l`, `--cpu-arch`, `--keep-system-libraries` registration
+- [CLI Option Parsing](../pipeline/cli-options.md) -- `-L`, `-l`, `--cpu-arch`, `--nvvmpath`, `--keep-system-libraries` registration
 - [Archive Processing](../input/archives.md) -- `sub_4BDAC0`, `sub_4BDAF0`, `sub_4BDB30` archive member API
 - [Input File Loop](../pipeline/input-loop.md) -- consumes the resolved input file list
 - [Memory Arenas](memory-arenas.md) -- `sub_4307C0` / `sub_431000` arena allocator used throughout
-- [Error Reporting](error-reporting.md) -- `sub_467460` diagnostic emission
+- [Error Reporting](error-reporting.md) -- `sub_467460` diagnostic emission; `unk_2A5B610` (arch mismatch), `unk_2A5B660` (arch warn), `unk_2A5B670` (fatal)
+- [libnvvm Integration](../lto/libnvvm-integration.md) -- `sub_4BC470` libnvvm.so loading; `--nvvmpath` requirement
+- [LTO Overview](../lto/overview.md) -- libcudadevrt IR extraction during LTO compilation
+- [Environment Variables](../config/env-vars.md) -- `LIBRARY_PATH` getenv call
 
 ## Confidence Assessment
 
@@ -535,8 +632,14 @@ Every string allocation in the search subsystem goes through the arena allocator
 | CPU architecture mapping: `X86_64`=62, `X86`=3, `ARMv7`=40, `AARCH64`=183, `PPC64LE`=21 | HIGH | String `"unknown,X86,X86_64,ARMv7,AARCH64,PPC64LE"` at `0x1d332f0`; individual arch strings at `0x1d33fe5`--`0x1d33ffa` |
 | `"unexpected cpuArch"` error message | HIGH | String at `0x1d34002` in strings JSON |
 | `cudadevrt` suppression for arch mismatch warnings | HIGH | String `"found IR for libcudadevrt"` at `0x1d340a8`; `strstr` check visible in decompiled `sub_42A2D0` |
-| `LIBRARY_PATH` environment variable used for search path | MEDIUM | Wiki says `LIBRARY_PATH` but strings JSON only shows `LD_LIBRARY_PATH` at `0x225fcda`; the actual `getenv` call target needs verification against decompiled main |
+| `LIBRARY_PATH` environment variable used for search path | HIGH | Decompiled main line 399: `getenv("LIBRARY_PATH")`; the string is at `0x225fcdd` (offset +3 within `"LD_LIBRARY_PATH\0"` at `0x225fcda` -- standard string tail-sharing). `LD_LIBRARY_PATH` is referenced only by `sub_15C3FD0` (embedded ld-linux), not nvlink code |
 | String tokenizer at `sub_44EC40` (576 B) with `sub_44E8B0` (4,780 B) | HIGH | Both decompiled files exist with matching sizes; `sub_44EC40` calls `sub_44E8B0` in a loop |
 | Tail-pointer linked list idiom | HIGH | Confirmed by `sub_4622D0` decompiled code: `result[1] = result` is the self-referencing tail initialization |
-| Two-pass search strategy (stat-only then archive validation) | MEDIUM | Inferred from main() call pattern; `sub_462870` signature supports optional callback parameter |
+| Two-pass search strategy (stat-only then archive validation) | HIGH | Confirmed in main lines 404--408: Pass 1 (`callback=NULL`), Pass 2 (`callback=sub_42A2D0`); both passes use same `lib<name>.a` filename |
+| Main always searches for `.a` (never `.so`) | HIGH | Both `sub_429AA0` calls in main pass only one argument; default `a2=0` produces `.a` suffix. No caller passes `a2=1` |
 | `--cpu-arch` option string | HIGH | String `"cpu-arch"` at `0x1d326cd` in strings JSON |
+| libnvvm.so loaded from `<nvvmpath>/lib64/libnvvm.so` | HIGH | `sub_4BC470` calls `sub_5F5AC0(path, "libnvvm.so", 0)`; main builds `path = nvvmpath + "/lib64"` |
+| `--nvvmpath` required when `-lto` is used | HIGH | Decompiled `sub_427AE0` line 1143--1150: fatal error if `qword_2A5F278` is NULL when `byte_2A5F288` is set |
+| Duplicate path check before appending to input list | HIGH | Main line 412: `sub_4646A0(qword_2A5F330, v189, sub_44E180)` -- linear list search with comparator |
+| `sub_4297B0` is `archive_status_report`, not `process_member` | HIGH | Decompiled `sub_4297B0`: checks status codes 0/7/4/other and emits diagnostics; no member processing logic |
+| Unreferenced error strings ("Skipping incompatible", "Library file not found") | LOW | Strings at `0x1d34ab8`, `0x1d34bf0`, `0x1d34c18` have zero IDA xrefs; may be table-driven or dead code |

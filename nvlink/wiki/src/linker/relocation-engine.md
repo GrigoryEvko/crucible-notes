@@ -1,140 +1,714 @@
 # Relocation Application Engine
 
-The relocation application engine is the bit-level instruction patching core of nvlink's relocation pipeline. Its primary function `sub_468760` (14,322 bytes, 582 decompiled lines at `0x468760`) receives a descriptor-table entry for a given relocation type and a pointer into the section data buffer, then modifies specific bit fields of one or more 64-bit words to encode the resolved relocation value. Two helper functions handle the bit-field arithmetic: `sub_468670` (extraction) and `sub_4685B0` (insertion). A companion function `sub_46ADC0` (11,515 bytes at `0x46ADC0`) handles post-relocation output when `--preserve-relocs` is active, writing `.nv.resolvedrela` sections with remapped symbol indices and extracted bit-field addends.
+The relocation application engine is the bit-level instruction patching core of nvlink's relocation pipeline. It comprises three tightly-coupled layers: the main relocation loop (`sub_469D60`), the descriptor-driven action dispatcher (`sub_468760`), and two bit-field helper functions (`sub_468670` for extraction and `sub_4685B0` for insertion). Together they transform unresolved relocation records into patched instruction words and data, encoding resolved symbol addresses into the non-byte-aligned bit fields that GPU instructions use for immediates, offsets, and function descriptors.
 
-This page documents the engine's internal structure in reimplementation-grade detail. For the surrounding pipeline context -- how the relocation linked list is walked, how symbol resolution feeds into the engine, and how the descriptor table is selected -- see [Relocation Phase](../pipeline/relocate.md).
+This page documents all three layers in reimplementation-grade detail. For the surrounding pipeline context -- how the relocation phase fits between layout and finalization, the 10-step resolution algorithm, alias chain resolution, dead function filtering, and unified relocation remapping -- see [Relocation Phase](../pipeline/relocate.md). For the catalog of relocation type names and their descriptor table entries, see [R\_CUDA Relocations](r-cuda-relocations.md).
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
-| Application engine | `sub_468760` at `0x468760` (14,322 bytes) |
+| Main relocation loop | `sub_469D60` at `0x469D60` (26,578 bytes, 985 lines) |
+| Action dispatcher | `sub_468760` at `0x468760` (14,322 bytes, 582 lines) |
 | Bit-field extractor | `sub_468670` at `0x468670` (~240 bytes) |
 | Bit-field writer | `sub_4685B0` at `0x4685B0` (~240 bytes) |
 | Resolved-rela emitter | `sub_46ADC0` at `0x46ADC0` (11,515 bytes) |
-| Called by | `sub_469D60` (apply\_relocations) during the "relocate" phase |
 | CUDA descriptor table | `off_1D3DBE0` -- indexed by raw R\_CUDA type |
 | Mercury descriptor table | `off_1D3CBE0` -- indexed by R\_MERCURY type minus `0x10000` |
-| Descriptor entry size | 64 bytes (4 actions of 16 bytes each) |
+| Descriptor entry size | 64 bytes (12-byte header + 3 x 16-byte action slots + 4-byte sentinel) |
 | Maximum bit-field width | 128 bits (spans up to three 64-bit words) |
+| SSE optimization | `_mm_loadu_si128` for 128-bit relocation record loading |
 
-## Application Engine: sub_468760
+## Architecture Overview
+
+```
+sub_469D60 (apply_relocations)                       MAIN LOOP
+ |
+ |  for each reloc_node in linked list at ctx+376:
+ |    1. Load 32-byte relocation record via _mm_loadu_si128 (2x 128-bit)
+ |    2. Resolve addend symbol (sub_440590)
+ |    3. Select descriptor table (Mercury vs CUDA)
+ |    4. Resolve target symbol, get section record
+ |    5. Handle special cases (aliases, dead funcs, unified remapping)
+ |    6. Walk section data chunks to find patch_ptr
+ |    7. Call sub_468760 (action dispatcher)
+ |    8. Unlink node from list, optionally preserve for resolved-rela
+ |
+ +---> sub_468760 (action dispatcher)                ACTION LOOP
+        |
+        |  descriptor = table + (type << 6)
+        |  for each action in descriptor[+12..+60]:
+        |    switch (action_type):
+        |      case 1/0x12/0x2E: ABS_FULL
+        |      case 6/0x37:      ABS_LO
+        |      case 7/0x38:      ABS_HI
+        |      case 8:           PC_REL_SIZE
+        |      case 9:           SHIFTED_2
+        |      case 0xA:         SEC_TYPE_LO
+        |      case 0xB:         SEC_TYPE_HI
+        |      case 0x10:        PC_REL
+        |      case 0x13/0x14:   CLEAR
+        |      case 0x16-0x1D,0x2F-0x36: MASKED_SHIFT
+        |
+        +---> sub_468670 (extract old value)         BIT-FIELD READ
+        +---> sub_4685B0 (write new value)           BIT-FIELD WRITE
+```
+
+## Main Relocation Loop: sub_469D60
+
+### Signature
+
+```c
+char apply_relocations(
+    void*               ctx,          // a1: linker context object
+    pthread_mutexattr_t* mutex_attr   // a2: mutex attributes (passed through)
+);
+```
+
+### Relocation Record Format
+
+Each relocation is stored as a 32-byte record accessed through a singly-linked list at `ctx+376`. Each list node is a 16-byte pair: `[next_ptr, record_ptr]`. The 32-byte record is loaded as two 128-bit SSE values via `_mm_loadu_si128`:
+
+```c
+// At line 236-237 of sub_469D60:
+v162 = _mm_loadu_si128(v5);        // bytes [0:16]  of reloc record
+v163 = _mm_loadu_si128(v5 + 1);    // bytes [16:32] of reloc record
+```
+
+The record layout:
+
+```
+Offset  Size    Field             Access in decompiled code
+------  ------  ----------------  ---------------------------------
++0      int64   addend            v5->m128i_i64[0]
++8      int32   reloc_type        (uint32_t)(v5->m128i_i64[1])
++12     int32   symbol_index      SHIDWORD(v5->m128i_i64[1])  (v5->m128i_i32[3])
++16     uint32  section_idx       v5[1].m128i_u32[2]
++20     uint32  sym_addend_idx    v5[1].m128i_i32[3]
++24     int64   extra             v5[1].m128i_i64[0]
+```
+
+The SSE `_mm_loadu_si128` loads are an optimization: rather than reading individual fields with scalar loads, the entire 32-byte record is loaded in two unaligned 128-bit operations, which the CPU can handle efficiently. The decompiler shows the record stored in `__m128i` typed variables (`v5` is an `__m128i*`), with fields accessed through the union members `.m128i_i32[]`, `.m128i_u32[]`, and `.m128i_i64[]`.
+
+### Loop Structure Pseudocode
+
+```c
+void apply_relocations(linker_ctx* ctx, pthread_mutexattr_t* mutex_attr) {
+    // Initialize output buffers
+    int64_t  output_value = 0;
+    __m128i  record_lo, record_hi;
+    uint16_t link_type = *(uint16_t*)(ctx + 16);
+
+    if (!*(uint8_t*)(ctx + 81))
+        sub_44DB00(ctx);              // pre-pass initialization
+
+    reloc_node* node = *(reloc_node**)(ctx + 376);
+    reloc_node* prev = NULL;
+
+    while (node != NULL) {
+        reloc_record* rec = node->record;
+
+        // ---- Step 1: Addend symbol resolution ----
+        uint32_t sym_addend_idx = rec->sym_addend_idx;   // offset +20
+        if (sym_addend_idx != 0) {
+            symbol_rec* sym = sub_440590(ctx, sym_addend_idx);
+            rec->addend += *(int64_t*)(sym + 8);
+        }
+
+        // ---- Step 2: Architecture-dependent table selection ----
+        uint32_t reloc_type = (uint32_t)rec->reloc_info;
+        uint32_t flags_mask = (*(uint8_t*)(ctx + 7) == 'A') ? 1 : 0x80000000;
+        uint32_t adjusted_type;
+        void** descriptor_table;
+
+        if (flags_mask & *(uint32_t*)(ctx + 48)) {
+            // Mercury path
+            descriptor_table = &off_1D3CBE0;
+            if (reloc_type != 0) {
+                if (reloc_type <= 0x10000)
+                    error("unexpected reloc");
+                adjusted_type = reloc_type - 0x10000;
+            } else {
+                adjusted_type = 0;
+            }
+        } else {
+            // CUDA path
+            descriptor_table = &off_1D3DBE0;
+            adjusted_type = reloc_type;
+        }
+
+        // ---- Step 3: Symbol resolution ----
+        symbol_rec* target_sym = sub_440590(ctx, rec->symbol_index);
+        int sym_section = sub_440350(ctx, target_sym);
+
+        // ---- Step 4: Section lookup ----
+        section_rec* sec = sub_442270(ctx, rec->section_idx);
+        section_rec* parent = sub_442270(ctx, sec->parent_idx);  // +44
+
+        // ---- Step 5: Special handling ----
+        // (UFT/UDT magic section 0x6FFFFF0E, alias chains, dead func filtering,
+        //  unified relocation remapping -- see pipeline/relocate.md for full detail)
+
+        // ---- Step 6: Descriptor compatibility check ----
+        // Validate PC-relative branch is within same section:
+        if (descriptor_table[5 * adjusted_type] == 16 &&
+            rec->section_idx != parent->output_idx)
+            error("PC relative branch address should be in the same section");
+
+        // ---- Step 7: Locate patch address in section data ----
+        chunk_node* chunk = *(chunk_node**)(parent + 72);
+        uint64_t target_offset = rec->addend;
+        uint64_t* patch_ptr = NULL;
+
+        while (chunk) {
+            chunk_data* data = chunk->data;
+            if (target_offset >= data->base) {
+                uint64_t delta = target_offset - data->base;
+                if (delta < data->size) {
+                    patch_ptr = data->buffer + delta;
+                    break;
+                }
+            }
+            chunk = chunk->next;
+        }
+        if (!patch_ptr)
+            error("reloc address not found");
+
+        // ---- Step 8: Verbose trace ----
+        if (*(uint8_t*)(ctx + 64) & 4)
+            fprintf(stderr, "resolve reloc %d for sym=%d+%lld at "
+                    "<section=%d,offset=%llx>\n",
+                    reloc_type, rec->symbol_index,
+                    rec->extra, rec->section_idx, rec->addend);
+
+        // ---- Step 9: Apply via action dispatcher ----
+        bool is_absolute = (sec->sh_type == 4);  // SHT_RELA
+        int success = sub_468760(
+            descriptor_table,           // a1: table base
+            adjusted_type,              // a2: type index
+            is_absolute,                // a3: absolute flag
+            patch_ptr,                  // a4: instruction word pointer
+            rec->extra,                 // a5: extra offset field
+            rec->addend,                // a6: addend / section offset
+            *(uint64_t*)(target_sym + 8),  // a7: resolved symbol value
+            *(uint32_t*)(target_sym + 28), // a8: symbol st_size
+            parent->sh_type - 0x6FFFFF84,  // a9: section type delta
+            &output_value               // a10: receives extracted old value
+        );
+
+        if (!success)
+            error("unexpected NVRS");
+
+        // ---- Step 10: Unlink node and optionally preserve ----
+        reloc_node* next = node->next;
+        if (prev)
+            prev->next = next;
+        else
+            *(reloc_node**)(ctx + 376) = next;
+
+        // Preserve-relocs path (--preserve-relocs, byte at ctx+85)
+        if (*(uint8_t*)(ctx + 85) &&
+            ((target_sym->st_bind & 3) != 1 ||     // not STB_LOCAL
+             (sym_section != 0 && parent_has_data)))
+        {
+            if (sec->sh_type != 4)     // not SHT_RELA
+                rec->extra = output_value;
+            sub_4644C0(rec, ctx + 384);  // append to preserve-relocs list
+        } else {
+            sub_431000(node->record);    // free record
+        }
+        sub_431000(node);                // free list node
+
+        node = prev ? *prev->next_field : *(reloc_node**)(ctx + 376);
+    }
+
+    // ---- Post-loop: .nv.rel.action emission (non-Mercury, link_type == 2) ----
+    // ... (see section below)
+}
+```
+
+### SSE Relocation Record Loading
+
+The use of `_mm_loadu_si128` at line 236-237 of the decompiled code is a deliberate optimization. Instead of 8 separate 32-bit loads (or 4 separate 64-bit loads) to access the 32-byte relocation record, the compiler (or original author) uses two 128-bit unaligned loads:
+
+```c
+v162 = _mm_loadu_si128(v5);        // load bytes [0:15]  into xmm register
+v163 = _mm_loadu_si128(v5 + 1);    // load bytes [16:31] into xmm register
+```
+
+The `_mm_loadu_si128` intrinsic generates a single `MOVDQU` instruction on x86-64, which loads 16 bytes from an unaligned address into an XMM register. This is cache-friendly (two cache-line-width loads vs. many scattered accesses) and avoids potential store-forwarding stalls. The individual fields are then extracted from the `__m128i` values using union member access (`.m128i_i32[n]`, `.m128i_i64[n]`).
+
+### Symbol Resolution During Relocation
+
+Symbol resolution in `sub_469D60` is a multi-step process:
+
+1. **Addend symbol resolution** (`sym_addend_idx` at record offset +20): If nonzero, `sub_440590(ctx, sym_addend_idx)` returns the symbol record, and `*(int64_t*)(sym + 8)` (the resolved symbol value) is added to the record's addend at offset +0. This implements the `S + A` (symbol + addend) pattern.
+
+2. **Target symbol resolution** (`symbol_index` at record offset +12): `sub_440590(ctx, SHIDWORD(rec->reloc_info))` returns the target symbol record. The symbol's resolved address at offset +8 becomes the `a7` (symbol\_value) argument to `sub_468760`.
+
+3. **Section-relative vs absolute**: The `is_absolute` flag (parameter `a3` to the action dispatcher) is derived from whether the target section type equals `SHT_RELA` (type 4). When `is_absolute == true`, the engine computes `value = symbol_value + extra_offset` and writes it directly. When false (the common case), the engine first extracts the existing bit-field value from the instruction word, adds it to the symbol value, and writes back the sum -- implementing addend-based relocation.
+
+4. **Alias chain traversal**: When a target symbol is a weak function (`STT_FUNC` = 2) with an unresolved value (offset +8 is zero), the function follows the alias chain via `sub_440350` to find the canonical definition. The verbose trace `"change alias reloc %s to %s\n"` is emitted when this occurs.
+
+### Section Data Chunk Walk
+
+Section data in nvlink is not stored as a flat buffer. Instead, each section record has a linked list of data chunks at offset +72. Each chunk node has the structure:
+
+```
+chunk_node:
+    [0]  next pointer     (chunk_node* or NULL)
+    [1]  data descriptor  (chunk_data*)
+
+chunk_data:
+    [0]  buffer pointer   (void*)
+    [1]  base offset      (uint64_t) -- starting offset within section
+    [3]  size             (uint64_t) -- number of bytes in this chunk
+```
+
+The relocation loop walks this list linearly to find the chunk containing `target_offset`:
+
+```c
+while (chunk) {
+    chunk_data* data = chunk->data;
+    if (target_offset >= data->base) {
+        uint64_t delta = target_offset - data->base;
+        if (delta < data->size) {
+            patch_ptr = (uint64_t*)(data->buffer + delta);
+            break;
+        }
+    }
+    chunk = chunk->next;
+}
+```
+
+The `patch_ptr` is then passed directly to the action dispatcher, which reads and modifies the instruction word(s) at that address.
+
+## Descriptor Table Lookup
+
+### Table Selection
+
+The descriptor table is selected based on the architecture flag at `ctx+7`:
+
+| Architecture | Flag byte | Descriptor table | Relocation type normalization |
+|---|---|---|---|
+| Mercury (SM100+) | `'A'` (0x41) | `off_1D3CBE0` | `type -= 0x10000` (Mercury types are CUDA types + 65536) |
+| CUDA (pre-Mercury) | Other | `off_1D3DBE0` | `type` used directly |
+
+### Descriptor Entry Structure
+
+Each descriptor entry is located at `table_base + (reloc_type_index << 6)`, yielding a 64-byte record. The `<< 6` shift is equivalent to multiplying by 64 (the entry size). The 64-byte layout is:
+
+```
+Byte offset  Size    Field
+-----------  ------  -----------------------------------------------
++0           12 B    Header (3 x uint32: flags, mode, reserved)
+                     Used by sub_46ADC0 for preserve-relocs extraction;
+                     field at +5 (in uint32 units, i.e. +20 bytes) holds
+                     the descriptor mode (16 = PC-relative)
++12          16 B    action[0]  {bit_offset, bit_width, action_type, reserved}
++28          16 B    action[1]  {bit_offset, bit_width, action_type, reserved}
++44          16 B    action[2]  {bit_offset, bit_width, action_type, reserved}
++60          4 B     Sentinel   (address stored in v100, marks end of action array)
+```
+
+Each action slot is 16 bytes = 4 x `uint32_t`:
+
+```c
+struct reloc_action {
+    uint32_t bit_offset;    // starting bit position in instruction word
+    uint32_t bit_width;     // number of bits to patch
+    uint32_t action_type;   // operation code (0 = END/skip)
+    uint32_t reserved;      // unused / flags
+};
+```
+
+### Descriptor Header and Preserve-Relocs Extraction
+
+The 12-byte header at the start of each descriptor entry is not used by the action dispatcher (`sub_468760`), but it is consumed by the resolved-rela emitter (`sub_46ADC0`). During preserve-relocs processing, `sub_46ADC0` reads three field specifications from the header at uint32 offsets (+3,+4,+5), (+7,+8,+9), and (+11,+12,+13), each encoding a bit-field extraction recipe for recovering the instruction-encoded portions of the relocation value after patching.
+
+## Action Dispatcher: sub_468760
 
 ### Signature
 
 ```c
 int reloc_apply_engine(
-    void*          descriptor_table,   // a1: off_1D3CBE0 or off_1D3DBE0
-    uint32_t       reloc_type_index,   // a2: normalized type index into table
-    bool           is_absolute,        // a3: 1 if symbol has absolute address
-    uint64_t*      patch_ptr,          // a4: pointer into section data (instruction word)
-    int64_t        extra_offset,       // a5: reloc_record->extra field
-    int            section_offset,     // a6: addend / section base offset
-    uint64_t       symbol_value,       // a7: resolved symbol address
-    uint32_t       symbol_size,        // a8: symbol st_size
-    uint32_t       section_type_delta, // a9: section_type - 0x6FFFFF84
-    int64_t*       output_value        // a10: receives computed original value
+    void*       descriptor_table,    // a1: off_1D3CBE0 or off_1D3DBE0
+    uint32_t    reloc_type_index,    // a2: normalized type index into table
+    bool        is_absolute,         // a3: 1 if symbol has absolute address
+    uint64_t*   patch_ptr,           // a4: pointer into section data
+    int64_t     extra_offset,        // a5: reloc_record->extra field
+    int         section_offset,      // a6: addend / section base offset
+    uint64_t    symbol_value,        // a7: resolved symbol address
+    uint32_t    symbol_size,         // a8: symbol st_size
+    uint32_t    section_type_delta,  // a9: section_type - 0x6FFFFF84
+    int64_t*    output_value         // a10: receives extracted old value
 );
 // Returns 1 on success, 0 on unrecognized action type.
 ```
 
-### Value Computation
+### Initialization and Value Computation
 
-Before the action loop begins, the engine computes the **relocation value** `v10`:
+Before the action loop begins, the engine performs three setup operations:
 
 ```c
-uint64_t value = symbol_value;      // a7
+// Line 122-128 of decompiled sub_468760:
+uint64_t value = symbol_value;           // a7 -> v10
 if (is_absolute)
-    value = symbol_value + extra_offset;  // a7 + a5
+    value = symbol_value + extra_offset; // a7 + a5
+*output_value = 0;                       // zero the output
+
+// Pre-load SSE constants for masked-shift actions:
+__m128i mask0 = _mm_load_si128(&xmmword_1D3F8E0);  // mask table [0:1]
+__m128i mask1 = _mm_load_si128(&xmmword_1D3F8F0);  // mask table [2:3]
+__m128i mask2 = _mm_load_si128(&xmmword_1D3F900);  // mask table [4:5]
+__m128i mask3 = _mm_load_si128(&xmmword_1D3F910);  // mask table [6:7]
+
+// Compute descriptor entry pointer and action boundaries:
+uint64_t desc_entry = table_base + ((uint64_t)reloc_type_index << 6);
+uint32_t* action_ptr = (uint32_t*)(desc_entry + 12);   // first action
+uint32_t* sentinel   = (uint32_t*)(desc_entry + 60);   // end marker
 ```
 
-When `is_absolute` is false (the common case for relative/addend-based relocations), `value` starts as the raw symbol address. Each action type can further transform this value before writing it to the instruction word.
+The four SSE constant loads (`_mm_load_si128`) happen once at function entry. They load 64 bytes of mask data into local storage, avoiding repeated memory access during the masked-shift action cases. The shift table (`xmmword_1D3F920` and `xmmword_1D3F930`) is loaded on-demand inside the masked-shift case body.
 
-The engine also zeroes `*output_value` at entry. Actions that extract the existing bit-field from the instruction word store the extracted value there, making it available to the caller for preserve-relocs processing.
+### Action Loop Pseudocode
 
-### Descriptor Table Layout
+```c
+while (true) {
+    uint32_t action_type = action_ptr[2];    // v15[2] = action_type
 
-Each descriptor entry is located at `descriptor_table + (reloc_type_index << 6)`, yielding a 64-byte record. The first 12 bytes are a header (unused by the engine). The remaining 48 bytes hold up to three actions at offsets `+12`, `+28`, and `+44`, with a sentinel end marker at offset `+60`:
+    switch (action_type) {
+    case 0:  // END
+        action_ptr += 4;                     // advance to next 16-byte slot
+        if (action_ptr == sentinel) return 1;
+        continue;
 
+    case 1: case 0x12: case 0x2E: {          // ABS_FULL
+        uint32_t bit_off = action_ptr[0];
+        uint32_t bit_wid = action_ptr[1];
+
+        // Fast path: full 64-bit word write
+        if (bit_off == 0 && bit_wid == 64) {
+            if (!is_absolute) {
+                *output_value = *patch_ptr;
+                value += *patch_ptr;
+            }
+            *patch_ptr = value;
+            action_ptr += 4;
+            if (action_ptr == sentinel) return 1;
+            continue;
+        }
+
+        // General path: bit-field write
+        if (!is_absolute) {
+            int64_t old = bitfield_extract(patch_ptr, bit_off, bit_wid);
+            value += old;
+            *output_value = old;
+        }
+        action_ptr += 4;
+        bitfield_write(patch_ptr, value, bit_off, bit_wid);
+        if (action_ptr == sentinel) return 1;
+        continue;
+    }
+
+    case 6: case 0x37: {                     // ABS_LO (low 32 bits)
+        uint32_t bit_off = action_ptr[0];
+        uint32_t bit_wid = action_ptr[1];
+        uint32_t lo = (uint32_t)value;       // truncate to low 32 bits
+
+        if (!is_absolute) {
+            int64_t old = bitfield_extract(patch_ptr, bit_off, bit_wid);
+            *output_value = old;
+            lo = (uint32_t)value + old;
+        }
+        write_bitfield_inline(patch_ptr, lo, bit_off, bit_wid);
+        action_ptr += 4;
+        if (action_ptr == sentinel) return 1;
+        continue;
+    }
+
+    case 7: case 0x38: {                     // ABS_HI (high 32 bits)
+        uint32_t bit_off = action_ptr[0];
+        uint32_t bit_wid = action_ptr[1];
+        uint32_t hi = (uint32_t)(value >> 32);  // HIDWORD
+
+        if (!is_absolute) {
+            int64_t old = bitfield_extract(patch_ptr, bit_off, bit_wid);
+            *output_value = old;
+            hi = (uint32_t)(value >> 32) + old;
+        }
+        write_bitfield_inline(patch_ptr, hi, bit_off, bit_wid);
+        action_ptr += 4;
+        if (action_ptr == sentinel) return 1;
+        continue;
+    }
+
+    case 8: {                                // PC_REL_SIZE
+        uint32_t bit_off = action_ptr[0];
+        uint32_t bit_wid = action_ptr[1];
+
+        if (is_absolute) {
+            value = extra_offset + symbol_size;
+        } else {
+            int64_t old = bitfield_extract(patch_ptr, bit_off, bit_wid);
+            value = old + symbol_size;
+            *output_value = old;
+        }
+        write_bitfield_inline(patch_ptr, value, bit_off, bit_wid);
+        action_ptr += 4;
+        if (action_ptr == sentinel) return 1;
+        continue;
+    }
+
+    case 9: {                                // SHIFTED_2 (>> 2)
+        value >>= 2;                        // byte offset to DWORD offset
+        uint32_t bit_off = action_ptr[0];
+        uint32_t bit_wid = action_ptr[1];
+
+        if (!is_absolute) {
+            int64_t old = bitfield_extract(patch_ptr, bit_off, bit_wid);
+            value += old;
+            *output_value = old;
+        }
+        write_bitfield_inline(patch_ptr, value, bit_off, bit_wid);
+        action_ptr += 4;
+        if (action_ptr == sentinel) return 1;
+        continue;
+    }
+
+    case 0xA: {                              // SEC_TYPE_LO
+        uint32_t bit_off = action_ptr[0];
+        uint32_t bit_wid = action_ptr[1];
+        value = section_type_delta & (uint64_t)(255 >> (8 - bit_wid));
+
+        if (!is_absolute)
+            value += bitfield_extract(patch_ptr, bit_off, bit_wid);
+        write_bitfield_inline(patch_ptr, value, bit_off, bit_wid);
+        action_ptr += 4;
+        if (action_ptr == sentinel) return 1;
+        continue;
+    }
+
+    case 0xB: {                              // SEC_TYPE_HI
+        uint32_t bit_off = action_ptr[0];
+        uint32_t bit_wid = action_ptr[1];
+        value = ((uint64_t)section_type_delta >> 4) & (255 >> (8 - bit_wid));
+
+        if (!is_absolute)
+            value += bitfield_extract(patch_ptr, bit_off, bit_wid);
+        write_bitfield_inline(patch_ptr, value, bit_off, bit_wid);
+        action_ptr += 4;
+        if (action_ptr == sentinel) return 1;
+        continue;
+    }
+
+    case 0x10: {                             // PC_REL
+        uint32_t bit_off = action_ptr[0];
+        uint32_t bit_wid = action_ptr[1];
+
+        if (!is_absolute) {
+            int64_t old = bitfield_extract(patch_ptr, bit_off, bit_wid);
+            value += old;
+            *output_value = old;
+        }
+        uint64_t pc_value = (int32_t)value - section_offset;
+        write_bitfield_inline(patch_ptr, pc_value, bit_off, bit_wid);
+        action_ptr += 4;
+        if (action_ptr == sentinel) return 1;
+        continue;
+    }
+
+    case 0x13: case 0x14: {                  // CLEAR
+        uint32_t bit_off = action_ptr[0];
+        uint32_t bit_wid = action_ptr[1];
+        // Write all zeros -- no extraction, no value computation
+        write_bitfield_zero(patch_ptr, bit_off, bit_wid);
+        action_ptr += 4;
+        if (action_ptr == sentinel) return 1;
+        continue;
+    }
+
+    case 0x16: case 0x17: case 0x18: case 0x19:
+    case 0x1A: case 0x1B: case 0x1C: case 0x1D:
+    case 0x2F: case 0x30: case 0x31: case 0x32:
+    case 0x33: case 0x34: case 0x35: case 0x36: {  // MASKED_SHIFT
+        uint32_t idx = action_type - 22;
+        uint32_t bit_off = action_ptr[0];
+        uint32_t bit_wid = action_ptr[1];
+
+        // Load shift table on demand
+        uint32_t shift_table[8];
+        _mm_store_si128(&shift_table[0], _mm_load_si128(&xmmword_1D3F920));
+        _mm_store_si128(&shift_table[4], _mm_load_si128(&xmmword_1D3F930));
+
+        // mask_table was pre-loaded at function entry
+        uint64_t mask  = mask_table[idx];
+        uint32_t shift = shift_table[idx];
+
+        if (!is_absolute) {
+            int64_t old = bitfield_extract(patch_ptr, bit_off, bit_wid);
+            value += old;
+            *output_value = old;
+        }
+        value = (mask & value) >> shift;
+        write_bitfield_inline(patch_ptr, value, bit_off, bit_wid);
+        action_ptr += 4;
+        if (action_ptr == sentinel) return 1;
+        continue;
+    }
+
+    default:
+        return 0;  // unrecognized action type -> caller emits "unexpected NVRS"
+    }
+}
 ```
-Offset   Field
-------   -----
-+0       (header, 12 bytes, skipped by engine)
-+12      action[0].bit_offset     (uint32)
-+16      action[0].bit_width      (uint32)
-+20      action[0].action_type    (uint32)
-+24      action[0].reserved       (uint32)
-+28      action[1].bit_offset
-+32      action[1].bit_width
-+36      action[1].action_type
-+40      action[1].reserved
-+44      action[2].bit_offset
-+48      action[2].bit_width
-+52      action[2].action_type
-+56      action[2].reserved
-+60      sentinel (checked as end of action array)
+
+### Complete Action Code Table
+
+The following table enumerates every action code handled by the switch statement in `sub_468760`:
+
+| Code | Hex | Name | Value computation | Notes |
+|---|---|---|---|---|
+| 0 | 0x00 | END | None | Advance to next slot; terminate if at sentinel |
+| 1 | 0x01 | ABS\_FULL | `value` (unchanged) | Standard absolute write. Fast path when `bit_offset==0 && bit_width==64`: direct 64-bit word write bypassing all bit-field logic |
+| 6 | 0x06 | ABS\_LO | `(uint32_t)value` | Low 32 bits of the relocation value |
+| 7 | 0x07 | ABS\_HI | `(uint32_t)(value >> 32)` | High 32 bits of the relocation value |
+| 8 | 0x08 | PC\_REL\_SIZE | `extracted_old + symbol_size` | When `is_absolute`: `extra_offset + symbol_size`. Encodes PC-relative offset plus symbol size |
+| 9 | 0x09 | SHIFTED\_2 | `value >> 2` | Right-shift by 2 for 4-byte-aligned (DWORD) addresses. Converts byte offsets to DWORD indices |
+| 10 | 0x0A | SEC\_TYPE\_LO | `section_type_delta & (255 >> (8 - bit_width))` | Low bits of the section type offset, masked to fit bit\_width |
+| 11 | 0x0B | SEC\_TYPE\_HI | `(section_type_delta >> 4) & (255 >> (8 - bit_width))` | High bits of the section type offset, shifted right by 4 then masked |
+| 16 | 0x10 | PC\_REL | `(int32_t)value - section_offset` | PC-relative: sign-extends value to 32-bit, subtracts the section offset (argument a6) |
+| 18 | 0x12 | ABS\_FULL\_ALT1 | Same as code 1 | Alternate ABS\_FULL code; shares identical case body |
+| 19 | 0x13 | CLEAR | Zero | Clears the target bit field to all-zeros |
+| 20 | 0x14 | CLEAR\_ALT | Zero | Alternate CLEAR code; shares identical case body with 0x13 |
+| 22 | 0x16 | MASKED\_SHIFT\_0 | `(value & mask_table[0]) >> shift_table[0]` | Table-driven mask-and-shift, index 0 |
+| 23 | 0x17 | MASKED\_SHIFT\_1 | `(value & mask_table[1]) >> shift_table[1]` | Table-driven mask-and-shift, index 1 |
+| 24 | 0x18 | MASKED\_SHIFT\_2 | `(value & mask_table[2]) >> shift_table[2]` | Table-driven mask-and-shift, index 2 |
+| 25 | 0x19 | MASKED\_SHIFT\_3 | `(value & mask_table[3]) >> shift_table[3]` | Table-driven mask-and-shift, index 3 |
+| 26 | 0x1A | MASKED\_SHIFT\_4 | `(value & mask_table[4]) >> shift_table[4]` | Table-driven mask-and-shift, index 4 |
+| 27 | 0x1B | MASKED\_SHIFT\_5 | `(value & mask_table[5]) >> shift_table[5]` | Table-driven mask-and-shift, index 5 |
+| 28 | 0x1C | MASKED\_SHIFT\_6 | `(value & mask_table[6]) >> shift_table[6]` | Table-driven mask-and-shift, index 6 |
+| 29 | 0x1D | MASKED\_SHIFT\_7 | `(value & mask_table[7]) >> shift_table[7]` | Table-driven mask-and-shift, index 7 |
+| 46 | 0x2E | ABS\_FULL\_ALT2 | Same as code 1 | Second alternate ABS\_FULL code |
+| 47 | 0x2F | MASKED\_SHIFT\_25 | `(value & mask_table[25]) >> shift_table[25]` | Table-driven mask-and-shift, index 25 |
+| 48 | 0x30 | MASKED\_SHIFT\_26 | `(value & mask_table[26]) >> shift_table[26]` | Table-driven mask-and-shift, index 26 |
+| 49 | 0x31 | MASKED\_SHIFT\_27 | `(value & mask_table[27]) >> shift_table[27]` | Table-driven mask-and-shift, index 27 |
+| 50 | 0x32 | MASKED\_SHIFT\_28 | `(value & mask_table[28]) >> shift_table[28]` | Table-driven mask-and-shift, index 28 |
+| 51 | 0x33 | MASKED\_SHIFT\_29 | `(value & mask_table[29]) >> shift_table[29]` | Table-driven mask-and-shift, index 29 |
+| 52 | 0x34 | MASKED\_SHIFT\_30 | `(value & mask_table[30]) >> shift_table[30]` | Table-driven mask-and-shift, index 30 |
+| 53 | 0x35 | MASKED\_SHIFT\_31 | `(value & mask_table[31]) >> shift_table[31]` | Table-driven mask-and-shift, index 31 |
+| 54 | 0x36 | MASKED\_SHIFT\_32 | `(value & mask_table[32]) >> shift_table[32]` | Table-driven mask-and-shift, index 32 |
+| 55 | 0x37 | ABS\_LO\_ALT | Same as code 6 | Alternate ABS\_LO code; shares case body |
+| 56 | 0x38 | ABS\_HI\_ALT | Same as code 7 | Alternate ABS\_HI code; shares case body |
+
+Action codes not in this table (0x02-0x05, 0x0C-0x0F, 0x11, 0x15, 0x1E-0x2D, 0x39+) fall to the `default` case and return 0 (failure).
+
+### The 3-Slot Action Model
+
+Each 64-byte descriptor entry supports up to 3 active action slots (at offsets +12, +28, +44), bounded by a 4-byte sentinel at offset +60. This is a critical design choice: a single R\_CUDA relocation type can perform up to 3 sequential bit-field modifications to the same instruction word. This enables complex multi-field relocations like:
+
+- **HI/LO pairs within a single instruction**: Action[0] writes the low 16 bits at one bit position, action[1] writes the high 16 bits at another position, all in one relocation record.
+- **Section type encoding**: Action[0] writes SEC\_TYPE\_LO, action[1] writes SEC\_TYPE\_HI to different bit positions.
+- **Mixed clear-and-write**: Action[0] clears one field, action[1] writes the value to another field.
+
+The iteration logic:
+
+```c
+// v15 starts at desc_entry + 12 (first action)
+// v100 = desc_entry + 60 (sentinel)
+// Each iteration: v15 += 4 (advance by 4 uint32s = 16 bytes)
+// Loop terminates when v15 == v100 OR action_type == 0 (END)
 ```
 
-The engine reads `v15` as a pointer that starts at offset `+12` (the first action) and advances by 4 `uint32` slots (16 bytes) per action. The loop terminates when `v15` reaches the sentinel at offset `+60` or when `action_type == 0`.
-
-### Action Type Switch
-
-The engine's core is a `while(2)` loop with a `switch` on `action_type`. Each case computes a value, optionally extracts the old field, and writes the new value into the target bit field. The following table summarizes all action codes:
-
-| Code(s) | Name | Value computation | Notes |
-|---|---|---|---|
-| 0 | END | None | Advance to next action; terminate if at sentinel |
-| 1, 0x12, 0x2E | ABS\_FULL | `value` (unchanged) | Standard absolute write. Special case: if `bit_offset==0` and `bit_width==64`, writes `value` directly to the 64-bit word instead of using bit-field logic |
-| 6, 0x37 | ABS\_LO | Low 32 bits of `value` (`value & 0xFFFFFFFF`) | Extract low word; written through the general multi-word bit-field path |
-| 7, 0x38 | ABS\_HI | High 32 bits of `value` (`value >> 32`) | Extract high word; written through the general multi-word bit-field path |
-| 8 | PC\_REL\_SIZE | `extracted_old + symbol_size` | PC-relative plus symbol size; when `is_absolute`, uses `extra_offset + symbol_size` |
-| 9 | SHIFTED\_2 | `value >> 2` | Right-shift by 2 for 4-byte-aligned addresses |
-| 0xA | SEC\_TYPE\_LO | `section_type_delta & mask` where `mask = 255 >> (8 - bit_width)` | Encodes low bits of the section type offset |
-| 0xB | SEC\_TYPE\_HI | `(section_type_delta >> 4) & mask` | Encodes high bits of the section type offset, shifted right by 4 |
-| 0x10 | PC\_REL | `(int32_t)value - section_offset` | PC-relative: sign-extends value to 32-bit then subtracts the section offset |
-| 0x13, 0x14 | CLEAR | Zero | Clears the target bit field to all-zeros |
-| 0x16--0x1D, 0x2F--0x36 | MASKED\_SHIFT | `(value & mask_table[code-22]) >> shift_table[code-22]` | Table-driven mask-and-shift; 16 entries loaded from `xmmword_1D3F8E0`..`xmmword_1D3F930` as pairs of (mask, shift) indexed by `action_type - 22` |
-| Other | ERROR | -- | Returns 0 (failure); caller emits `"unexpected NVRS"` |
+Most CUDA relocation types use only action[0] with action[1].action\_type == 0 (END). Multi-action types include certain 128-bit instruction relocations and the section-type encoding pairs.
 
 ### Actions 0x16--0x36: Table-Driven Masked Shift
 
-Cases 0x16 through 0x1D and 0x2F through 0x36 share a single code path that uses two parallel lookup tables stored in SSE constants:
+These 16 action codes share a single code path that uses two SSE-loaded lookup tables:
 
-- **Mask table** (`v119[]`): 8 packed `uint64_t` values loaded from `xmmword_1D3F8E0`, `xmmword_1D3F8F0`, `xmmword_1D3F900`, `xmmword_1D3F910`. These are bitmasks applied to the relocation value before shifting.
-- **Shift table** (`v118[]`): 8 packed `uint32_t` values loaded from `xmmword_1D3F920`, `xmmword_1D3F930`. These are right-shift amounts applied after masking.
+- **Mask table** (`v119[]`): 8 `uint64_t` values (64 bytes total) from `xmmword_1D3F8E0` through `xmmword_1D3F910`. These are AND-masks applied to the relocation value before shifting.
+- **Shift table** (`v118[]`): 8 `uint32_t` values (32 bytes total) from `xmmword_1D3F920` and `xmmword_1D3F930`. These are right-shift amounts.
 
-The index into both tables is `action_type - 22`. The computation is:
+The index into both tables is `action_type - 22`. The computation:
 
 ```c
-uint64_t mask  = mask_table[action_type - 22];
-uint32_t shift = shift_table[action_type - 22];
+uint32_t idx = action_type - 22;
+uint64_t mask  = mask_table[idx];     // from v119
+uint32_t shift = shift_table[idx];    // from v118
 value = (value & mask) >> shift;
 ```
 
-This supports extraction of arbitrary byte lanes, half-words, or other sub-fields from a wide relocation value before writing to the target bit field. The 16 table slots cover the range of action codes 0x16--0x1D (8 codes) plus 0x2F--0x36 (8 codes), mapping to indices 0--7 and 25--32 respectively after subtracting 22. The gap between 0x1E and 0x2E is handled by other dedicated cases or falls to the default error path.
+The 16 action codes map to table indices as follows:
+
+| Action code range | Decimal range | Table index range |
+|---|---|---|
+| 0x16 -- 0x1D | 22 -- 29 | 0 -- 7 |
+| 0x2F -- 0x36 | 47 -- 54 | 25 -- 32 |
+
+The gap between indices 8 and 24 corresponds to the action codes 0x1E through 0x2E. Action code 0x2E is handled by the ABS\_FULL case, and codes 0x1E through 0x2D fall to the default error path. The mask table has 8 `uint64_t` entries (indices 0--7) covering the first group; the second group (indices 25--32) accesses into the same 64-byte memory region at a higher offset, reading from the pre-loaded SSE vectors.
+
+This table-driven approach eliminates the need for 16 separate switch cases, each with a hardcoded mask and shift. It supports extraction of arbitrary byte lanes, half-words, and sub-fields from the relocation value -- for example, extracting bits [16:24) of a 64-bit address and placing them into an 8-bit instruction field.
 
 ### Action 1/0x12/0x2E: Fast Path for Full-Width Writes
 
-The most common action type has a fast path: when `bit_offset == 0` and `bit_width == 64`, the engine bypasses all bit-field logic and writes `value` directly to `*patch_ptr`:
+The most common action type has an optimized fast path. When `bit_offset == 0` and `bit_width == 64`, the engine bypasses all bit-field logic and writes `value` directly:
 
 ```c
 if (bit_offset == 0 && bit_width == 64) {
     if (!is_absolute) {
-        *output_value = *patch_ptr;
-        value += *patch_ptr;
+        *output_value = *patch_ptr;   // save old value for preserve-relocs
+        value += *patch_ptr;          // S + A pattern
     }
     *patch_ptr = value;
-    return 1;
+    // advance and return
 }
 ```
 
-This handles the common case of a 64-bit absolute relocation targeting a full instruction word or data pointer. When `is_absolute` is false (relative mode), the existing word value is read first, added to the relocation value, and stored back -- the standard `S + A` (symbol + addend) pattern.
+This handles 64-bit absolute relocations targeting full data pointers (e.g., `R_CUDA_ABS64_0` patching a function pointer in a `.nv.global` data section). No masking, no shifting, just a direct load-add-store.
 
-For narrower bit fields, the standard extraction/insertion path is taken.
+For narrower bit fields (the far more common case for instruction patching), the engine follows the general extraction/insertion path using the bit-field helpers.
+
+### Inlined Bit-Field Write Pattern
+
+For all action types except the full-width fast path, the engine performs the bit-field write inline rather than always calling `sub_4685B0`. The pattern, visible in every case body, is:
+
+```c
+// 1. Normalize bit_offset to find the target word
+uint64_t* words = patch_ptr;
+int local_offset = bit_offset;
+if (bit_offset > 63) {
+    local_offset = (bit_offset - 64) & 0x3F;
+    words = &patch_ptr[((bit_offset - 64) >> 6) + 1];
+}
+
+// 2. Check if field spans multiple 64-bit words
+int total_bits = local_offset + bit_width;
+if (total_bits <= 64) {
+    // Single-word case: inline read-modify-write
+    uint64_t mask = (-1ULL << (64 - bit_width)) >> (64 - total_bits);
+    *words = (*words & ~mask) | (value << (64 - bit_width) >> (64 - total_bits));
+} else {
+    // Multi-word case: loop through intermediate words using sub_4685B0
+    int num_intermediate = ((total_bits - 65) >> 6);
+    uint64_t* end_word = &words[num_intermediate + 1];
+    int off = local_offset;
+    do {
+        sub_4685B0(words, value, off, 64 - off);
+        value >>= (64 - off);
+        off = 0;
+        words++;
+    } while (words != end_word);
+    // Adjust total_bits and bit_width for final word
+    total_bits = total_bits - (num_intermediate << 6) - 64;
+    bit_width = total_bits;
+    // Final word: inline read-modify-write as above
+    *words = (*words & ~mask) | (value << (64 - bit_width) >> (64 - total_bits));
+}
+```
+
+`sub_4685B0` is called only for intermediate words in multi-word spans. The final word is always patched inline.
 
 ## Bit-Field Extractor: sub_468670
-
-The extractor reads an arbitrary bit field from an array of 64-bit words. It is called by the application engine in non-absolute mode to recover the existing instruction value before the relocation is applied.
 
 ### Signature
 
@@ -148,33 +722,46 @@ int64_t bitfield_extract(
 
 ### Algorithm
 
-1. **Word selection**: If `bit_offset >= 64`, advance the pointer by `bit_offset / 64` words and reduce `bit_offset` to `bit_offset % 64`.
+```c
+int64_t bitfield_extract(uint64_t* words, int bit_offset, int bit_width) {
+    // 1. Word normalization: advance pointer if offset >= 64
+    if (bit_offset > 63) {
+        uint32_t excess = bit_offset - 64;
+        bit_offset = excess & 0x3F;       // reduce modulo 64
+        words += (excess >> 6) + 1;       // advance by (excess/64 + 1) words
+    }
 
-2. **Single-word case**: If `bit_offset + bit_width <= 64`, extract inline:
-   ```c
-   return *words << (64 - (bit_offset + bit_width)) >> (64 - bit_width);
-   ```
-   This left-shifts to drop the higher bits above the field, then right-shifts to align the field to bit 0.
+    int total = bit_width + bit_offset;
 
-3. **Multi-word case**: If the field spans two or three 64-bit words, the function calls itself recursively:
-   ```c
-   low_part  = bitfield_extract(words, bit_offset, 64 - bit_offset);
-   if (total_bits - 64 > 64) {
-       // Spans 3 words (field > 128 bits impossible, but handles up to 192)
-       mid_part  = bitfield_extract(words + 1, 0, 64);
-       high_part = bitfield_extract(words + 2, 0, total_bits - 128);
-   } else {
-       // Spans 2 words
-       high_part = words[1] << (128 - total_bits) >> (64 - (total_bits - 64));
-   }
-   return low_part | (high_part << (64 - bit_offset));
-   ```
+    // 2. Single-word case
+    if (total <= 64) {
+        return *words << (64 - total) >> (64 - bit_width);
+    }
 
-The recursion depth is bounded at 2 (for the three-word case) because GPU instructions are at most 128 bits wide, and the maximum practical field width is 128 bits. The two-word path is the common case: a field that straddles a 64-bit boundary within a 128-bit instruction.
+    // 3. Multi-word case (recursive)
+    int64_t low_part = bitfield_extract(words, bit_offset, 64 - bit_offset);
+
+    int64_t mid_or_high;
+    if (total - 64 > 64) {
+        // Spans 3 words (very rare: field > 64 bits crossing two boundaries)
+        mid_or_high = bitfield_extract(words + 1, 0, 64);
+        bitfield_extract(words + 2, 0, total - 128);  // return value unused
+    } else {
+        // Spans 2 words (common: 128-bit instruction with field crossing boundary)
+        mid_or_high = words[1] << (128 - total) >> (64 - (total - 64));
+    }
+
+    return low_part | (mid_or_high << (64 - bit_offset));
+}
+```
+
+The single-word extraction formula `*words << (64 - total) >> (64 - bit_width)` works by:
+1. Left-shifting to push the bits above the field off the top of the 64-bit register
+2. Right-shifting to align the field to bit 0
+
+The recursion depth is bounded at 2 (for the three-word case). In practice, GPU instructions are at most 128 bits wide, so the two-word path (field straddling one 64-bit boundary) is the only multi-word case encountered.
 
 ## Bit-Field Writer: sub_4685B0
-
-The writer inserts a value into an arbitrary bit field across one or more 64-bit words. It is the inverse of the extractor.
 
 ### Signature
 
@@ -189,50 +776,139 @@ void bitfield_write(
 
 ### Algorithm
 
-1. **Word selection**: Same normalization as the extractor -- advance pointer by `bit_offset / 64` words, reduce offset modulo 64.
+```c
+void bitfield_write(uint64_t* words, uint64_t value, int bit_offset, int bit_width) {
+    // 1. Word normalization
+    if (bit_offset > 63) {
+        uint32_t excess = bit_offset - 64;
+        bit_offset = excess & 0x3F;
+        words += (excess >> 6) + 1;
+    }
 
-2. **Multi-word case**: If `bit_offset + bit_width > 64`, the function iterates through intermediate words:
-   ```c
-   while (words != end_word) {
-       *words = (*words & ~(-1ULL << bit_offset)) | (value << bit_offset);
-       value >>= (64 - bit_offset);
-       bit_offset = 0;
-       words++;
-   }
-   remaining_width = adjusted_remaining;
-   ```
-   Each intermediate word receives the low bits of `value` starting at `bit_offset`, then `value` is shifted right by the consumed bits. After the loop, `bit_offset` resets to 0 for subsequent words.
+    uint32_t total = bit_width + bit_offset;
 
-3. **Final word**: The last (or only) word is patched using a read-modify-write with masks:
-   ```c
-   uint64_t mask = (-1ULL << (64 - bit_width)) >> (64 - (bit_offset + bit_width));
-   *words = (*words & ~mask) | ((value << (64 - bit_width)) >> (64 - (bit_offset + bit_width)));
-   ```
-   This constructs a mask with `bit_width` ones positioned at `bit_offset`, clears those bits in the target word, and ORs in the value positioned at the same location.
+    // 2. Multi-word loop (intermediate words)
+    if (total > 64) {
+        uint64_t* end_word = &words[((total - 65) >> 6) + 1];
+        do {
+            // Clear bits above bit_offset, OR in value shifted to position
+            uint64_t keep_mask = ~(-1LL << bit_offset);
+            *words = (*words & keep_mask) | (value << bit_offset);
+            value >>= (64 - bit_offset);
+            bit_offset = 0;
+            words++;
+        } while (words != end_word);
+        // Adjust for remaining bits
+        total = total - (((total - 65) >> 6) << 6) - 64;
+        bit_width = total;
+    }
+
+    // 3. Final (or only) word: masked read-modify-write
+    uint64_t mask = (-1ULL << (64 - bit_width)) >> (64 - total);
+    *words = (*words & ~mask) | (value << (64 - bit_width) >> (64 - total));
+}
+```
 
 ### Mask Construction Detail
 
-The mask formula `(-1ULL << (64 - W)) >> (64 - (O + W))` works as follows:
-- `(-1ULL << (64 - W))` creates `W` ones in the top bits: e.g., for W=8, `0xFF00000000000000`
-- `>> (64 - (O + W))` shifts the ones down so the lowest one lands at position O
+The mask formula `(-1ULL << (64 - W)) >> (64 - (O + W))` constructs a window of `W` ones starting at bit position `O`:
 
-The value insertion `(value << (64 - W)) >> (64 - (O + W))` performs the corresponding alignment of the value bits into the mask position.
+```
+Step 1: (-1ULL << (64 - W))   -> W ones in the top bits
+        Example (W=8): 0xFF00_0000_0000_0000
 
-## Application Engine Integration with Action Loop
+Step 2: >> (64 - (O + W))     -> shift the window down to start at bit O
+        Example (O=20, W=8):   0x0000_000F_F000_0000
+        (8 ones at positions 20..27)
+```
 
-For all action types except the full-width fast path, the application engine follows a common pattern after computing the value:
+The value insertion `(value << (64 - W)) >> (64 - (O + W))` performs the same alignment:
 
-1. **Normalize bit\_offset**: If `bit_offset > 63`, compute `word_advance = bit_offset / 64` and `local_offset = bit_offset % 64`, advance `patch_ptr` by `word_advance`.
+```
+Step 1: (value << (64 - W))   -> left-align value in the register
+Step 2: >> (64 - (O + W))     -> shift down to the target position
+```
 
-2. **Check span**: If `local_offset + bit_width <= 64`, it is a single-word patch. Otherwise, multi-word.
+This two-step approach ensures that only the lower `W` bits of `value` are placed, and they land exactly at the position defined by the mask.
 
-3. **Multi-word loop**: Call `sub_4685B0` for each intermediate 64-bit word, shifting `value` right by the consumed bits after each word.
+## .nv.rel.action Section Emission
 
-4. **Final word**: Apply the mask-and-insert formula to the last word.
+At the end of `sub_469D60` (lines 884--985 in the decompiled output), after all relocations have been applied, the function generates a `.nv.rel.action` section for non-Mercury relocatable links (`link_type == 2`). This section encodes the relocation descriptor actions in a compact format that downstream tools can use to re-apply relocations.
 
-5. **Advance**: Move `v15` to the next action (16 bytes forward). If at the sentinel (`v100`), return 1. Otherwise continue the loop.
+The emission logic:
 
-The engine inlines this pattern rather than always delegating to `sub_4685B0`. For the final word of a multi-word span, and for all single-word patches, the engine performs the read-modify-write directly in the switch body. `sub_4685B0` is called only for intermediate words in multi-word spans.
+```c
+if (link_type == 2 && !mercury_flag) {
+    int max_type = sub_42F690();        // get max relocation type for this arch
+    if (max_type != 116) {              // not at maximum (all types present)
+        // Create header record: 8-byte entry containing the starting type index
+        header = sub_4307C0(section, 8);
+        header->type_index = max_type;
+        sub_4644C0(header, ctx + 480);
+
+        // Create action records: 8 bytes per (116 - max_type) entries
+        int count = 116 - max_type;
+        action_buf = sub_4307C0(section, 8 * count);
+        memset(action_buf, 0, 8 * count);
+        sub_4644C0(action_buf, ctx + 480);
+
+        // Emit section
+        section_idx = sub_441AC0(ctx, ".nv.rel.action", 0x7000000B, 0, 0, 0, 8, 8);
+        sub_4343C0(ctx, section_idx, 0, header, 0, 8, 8);
+
+        // Iterate descriptor table entries, convert to compact format
+        uint8_t* out = action_buf;
+        uint32_t* desc = (uint32_t*)(max_type * 64 + 30661612);
+        int skipped = 0;
+
+        while (true) {
+            int action_type = desc[2];      // action_type at +8 in action slot
+            if (action_type == 0) {
+                skipped++;
+                goto next;
+            }
+            if (action_type == 21 || action_type == 9) {
+                out[0] = 0;
+                out[1] = 2 * (action_type == 9);
+            } else if (action_type == 1 || (action_type - 22) <= 7) {
+                out[0] = (action_type == 1) ? 0 : (action_type - 22);
+                out[1] = 0;                 // no shift flag
+            } else if ((action_type - 30) <= 7) {
+                out[0] = 1;                 // group 1
+                out[1] = 0;
+            } else if ((action_type - 38) <= 7) {
+                out[0] = 2;                 // group 2
+                out[1] = 0;
+            } else if ((action_type - 46) <= 10) {
+                out[0] = 9;                 // group 9
+                out[1] = 0;
+            } else if (action_type == 3) {
+                out[0] = 3;
+                out[1] = 0;
+            } else {
+                out[0] = 0;
+                out[1] = 0;
+            }
+            // Copy remaining descriptor fields
+            out[2] = desc[3];               // reserved field
+            out[3] = desc[1];               // bit_width
+            out[4] = desc[0];               // bit_offset
+            out[5] = desc[7];               // action[1].reserved
+            out[6] = desc[5];               // action[1].action_type
+            out[7] = desc[4];               // action[1].bit_offset
+        next:
+            out += 8;
+            desc += 16;                     // advance by 64 bytes (16 uint32s)
+            if (out == end_of_buffer)
+                break;
+        }
+        // Write compacted data, excluding skipped entries
+        sub_4343C0(ctx, section_idx, 0, action_buf, 8, 8, 8 * (count - skipped));
+    }
+}
+```
+
+The `.nv.rel.action` section uses `sh_type = 0x7000000B` (`SHT_CUDA_RELOCINFO`). It provides a compact 8-byte-per-type representation of the relocation actions, allowing the CUDA runtime or downstream linker to interpret and re-apply relocations without access to the full 64-byte descriptor table.
 
 ## Resolved-Rela Emitter: sub_46ADC0
 
@@ -255,111 +931,119 @@ This function walks two linked lists and writes relocation records into output `
 
 ### Primary List: ctx+376
 
-The first loop walks the relocation list at `ctx+376`. This is the main resolved-relocation list, containing entries that were applied during the relocation phase but retained for output. For each entry:
+The first loop walks the relocation list at `ctx+376`, processing entries that were applied during the relocation phase but retained for output. For each entry:
 
 1. **ELF class check**: Reads `ctx+4` (ELF class byte) and `ctx+16` (link type). Class 1 = ELF32-style relocations; class 2 = RELA-style.
 
-2. **Symbol addend resolution**: If the entry's symbol addend index (at record offset `+28`) is nonzero:
-   - Calls `sub_444720` to remap the symbol index from internal to output numbering.
-   - Calls `sub_440590` to look up the symbol record.
-   - Validates that the symbol's resolved value (at symbol offset `+8`) is not `-1`. If it is, emits the fatal error `"symbol never allocated"`.
-   - Adds the resolved symbol value to the record's addend (at record offset `+0`).
+2. **Symbol addend resolution**: If the entry's symbol addend index (at record offset `+28`) is nonzero, calls `sub_444720` to remap the symbol index and `sub_440590` to look up the symbol record. Validates that the resolved value at symbol offset `+8` is not `-1` (fatal: `"symbol never allocated"`). Adds the resolved value to the record's addend.
 
-3. **Section lookup**: Calls `sub_442270` twice -- once for the target section (record offset `+24`), once for its parent section (at section offset `+44`).
+3. **Section lookup**: Calls `sub_442270` for the target section and its parent section (at section offset `+44`).
 
-4. **Offset validation**: The parent section's data size (at offset `+32`) must be nonzero and must be greater than the relocation's target offset (record offset `+0`). If the offset exceeds the size: `"relocation is past end of offset"`.
+4. **Offset validation**: The parent section's data size (at offset `+32`) must be nonzero and must exceed the relocation's target offset (fatal: `"relocation is past end of offset"`).
 
-5. **Descriptor-driven bit-field extraction**: When `ctx+89` is set and the section type is not 4 (SHT\_RELA), the function selects the appropriate descriptor table (Mercury vs. CUDA, same dual-table logic as the main engine) and performs up to three rounds of bit-field extraction from the already-patched instruction data:
-   - Reads the descriptor entry at the relocation type's offset.
-   - For each of three field specifications at descriptor offsets `(+3,+4,+5)`, `(+7,+8,+9)`, and `(+11,+12,+13)` (in uint32 units): if the "present" flag (descriptor field `+5`, `+9`, or `+13`) is nonzero, extracts a bit field using `sub_468670` and accumulates it into the record's extra addend at offset `+16`.
-   - This recovers the instruction-encoded portions of the relocation value after patching, so the output `.nv.resolvedrela` record carries the full resolved addend for re-application.
+5. **Descriptor-driven bit-field extraction**: When `ctx+89` is set and the section type is not 4, the function selects the appropriate descriptor table and performs up to three rounds of bit-field extraction using `sub_468670`. For each of three field specifications at descriptor offsets (+3,+4,+5), (+7,+8,+9), and (+11,+12,+13) in uint32 units: if the "present" flag is nonzero, extracts a bit field and accumulates it into the record's extra addend at offset `+16`.
 
-6. **Section data location**: Same chunk-list walk as the main engine. The section record at offset `+72` holds a linked list of data chunks. Each chunk node has: `[0]` next pointer, `[1]` data pointer. The data structure has: `[0]` buffer pointer, `[1]` base offset, `[3]` size. The function searches for the chunk containing the target offset. On failure: `"reloc address not found"`.
+6. **Section data location**: Same chunk-list walk as the main engine. The section record at offset `+72` holds a linked list of data chunks. On failure: `"reloc address not found"`.
 
-7. **Symbol index remapping**: Calls `sub_444720` to remap the relocation's symbol index (record offset `+12`) from internal numbering to output ELF `.symtab` numbering.
+7. **Symbol index remapping**: Calls `sub_444720` to remap the relocation's symbol index from internal to output ELF `.symtab` numbering.
 
-8. **Rela section creation**: Calls `sub_442760` to find or create the `.rela` output section for the target section. On failure: `"rela section never allocated"`.
+8. **Rela section creation**: Calls `sub_442760` to find or create the `.rela` output section. On failure: `"rela section never allocated"`.
 
-9. **Output record writing**: The format depends on ELF class:
-   - **RELA (class == 2)**: Calls `sub_4336B0` with a 24-byte record (8-byte offset, 8-byte info, 8-byte addend) at the record pointer, writing 8 bytes starting at record offset `+0` for a total of 24 bytes.
-   - **REL (class != 2)**: Packs the symbol index and type into a compact format: `info = (sym_index << 8) + (type & 0xFF)`. Writes the offset (from record offset `+16`) into record offset `+8`. Calls `sub_4336B0` with 12 bytes at record offset `+4`.
+9. **Output record writing**: For RELA (class == 2): 24-byte record `{offset, info, addend}`. For REL (class != 2): packs `info = (sym_index << 8) + (type & 0xFF)` and writes 12 bytes.
 
 ### Secondary List: ctx+384
 
-When `ctx+85` is set (preserve-relocs), a second loop processes the list at `ctx+384`. This list contains relocations that are candidates for the `.nv.resolvedrela` output. The selection criteria are:
+A second loop processes `ctx+384`. Selection criteria:
+- Parent section has nonzero data size
+- Architecture flag check passes
+- Symbol type == 13 (STT\_CUDA\_TEXTURE/SURFACE-related), binding field `& 0xE0` == 64 (0x40)
 
-1. The parent section's data size must be nonzero (section has allocated data).
-2. The architecture flag check passes (Mercury vs. CUDA path).
-3. The symbol must satisfy: section type == 1 (with bit `0x04` set in the section flags at offset `+8`), the symbol info low nibble == 13, and the symbol binding field (`+5`) masked with `0xE0` equals 64.
-
-For qualifying entries, the function:
-- Looks up the section name from the parent section record (at offset `+96`).
-- Constructs the output section name by prepending `".nv.resolvedrela"` to the section name via `sprintf`.
-- Calls `sub_4411D0` to find or create that section by name.
-- Writes the relocation record in the same REL/RELA format as the primary list.
-
-The section name is cached: if two consecutive relocations target the same section, the `sprintf` and `sub_4411D0` calls are skipped and the previous section index is reused.
-
-## Worked Example: Patching a 24-bit Immediate at Bit Offset 20
-
-Consider a SASS instruction word at `patch_ptr` with a 24-bit immediate field starting at bit 20. The descriptor action specifies `bit_offset=20`, `bit_width=24`, `action_type=1` (ABS\_FULL). The resolved symbol value is `0x1A2B3C`.
-
-1. **Normalize**: `bit_offset=20 < 64`, so `words = patch_ptr`, `local_offset = 20`.
-
-2. **Span check**: `20 + 24 = 44 <= 64`, single-word case.
-
-3. **Extract old value** (if not absolute):
-   ```
-   old = *words << (64 - 44) >> (64 - 24)
-       = *words << 20 >> 40
-   ```
-   This isolates the 24 bits at positions 20..43.
-
-4. **Compute new value**: `value = symbol_value + old` (for addend relocation).
-
-5. **Build mask**: `mask = (-1ULL << 40) >> (64 - 44) = (-1ULL << 40) >> 20 = 0x00000FFFFFF00000`.
-
-6. **Write**: `*words = (*words & ~mask) | ((value << 40) >> 20)`.
-
-For a 128-bit SASS instruction where a field straddles the 64-bit boundary (e.g., `bit_offset=56`, `bit_width=32`), the engine would:
-- Write the low 8 bits (64 - 56 = 8) into the first word via `sub_4685B0`.
-- Write the remaining 24 bits starting at offset 0 of the next word using the final-word mask formula.
+For qualifying entries, the function constructs the output section name by prepending `".nv.resolvedrela"` to the parent section name, calls `sub_4411D0` to find or create that section, and writes the relocation record. Section names are cached: if consecutive relocations target the same section, the lookup is skipped.
 
 ## Error Conditions
 
 | Error string | Severity | Source function | Condition |
 |---|---|---|---|
+| `"unexpected reloc"` | Fatal | `sub_469D60` | Relocation type nonzero but <= 0x10000 in Mercury mode |
+| `"reloc address not found"` | Fatal | `sub_469D60`, `sub_46ADC0` | Target offset not in any section data chunk |
+| `"unexpected NVRS"` | Fatal | `sub_469D60` | `sub_468760` returned 0 (unrecognized action type) |
+| `"PC relative branch address should be in the same section"` | Fatal | `sub_469D60` | PC-relative relocation crosses section boundary |
 | `"symbol never allocated"` | Fatal | `sub_46ADC0` | Symbol value is `-1` during resolved-rela emission |
 | `"relocation is past end of offset"` | Fatal | `sub_46ADC0` | Relocation offset exceeds section data size |
 | `"rela section never allocated"` | Fatal | `sub_46ADC0` | Could not find or create `.nv.resolvedrela` section |
-| `"unexpected reloc"` | Fatal | `sub_46ADC0` | Relocation type is <= 0x10000 in Mercury mode (invalid normalization) |
-| `"reloc address not found"` | Fatal | `sub_46ADC0` | Target offset not in any section data chunk |
-| `"unexpected NVRS"` | Fatal | `sub_469D60` | `sub_468760` returned 0 (unrecognized action type) |
+
+## Diagnostic Traces
+
+All traces are gated by `(ctx->verbose_flags & 4) != 0` (bit 2 of the debug flags at `ctx+64`):
+
+| Trace string | When emitted |
+|---|---|
+| `"resolve reloc %d for sym=%d+%lld at <section=%d,offset=%llx>\n"` | Per-relocation resolution trace |
+| `"change alias reloc %s to %s\n"` | Weak alias chain followed to canonical symbol |
+| `"ignore reloc on dead func %s\n"` | Relocation dropped because target function is dead |
+| `"replace unified reloc %d with %d\n"` | Unified table relocation type remapped to base |
+| `"ignore reloc on UFT_OFFSET\n"` | UFT\_OFFSET relocation dropped when UDT mode inactive |
+| `"Ignoring the reloc to convert YIELD to NOP due to forward progress requirement.\n"` | YIELD conversion suppressed |
 
 ## Function Map
 
 | Address | Size | Identity | Role |
 |---|---|---|---|
-| `0x468760` | 14,322 B | `reloc_apply_engine` | Descriptor-driven bit-field patching engine |
+| `0x469D60` | 26,578 B | `apply_relocations` | Main relocation phase; iterates linked list, calls engine |
+| `0x468760` | 14,322 B | `reloc_apply_engine` | Descriptor-driven action dispatcher; 30 action codes |
 | `0x468670` | ~240 B | `bitfield_extract` | Extracts arbitrary bit field from instruction word(s) |
 | `0x4685B0` | ~240 B | `bitfield_write` | Writes value into arbitrary bit field in instruction word(s) |
 | `0x46ADC0` | 11,515 B | `emit_resolved_rela` | Writes `.nv.resolvedrela` sections for preserve-relocs |
-| `0x469D60` | 26,578 B | `apply_relocations` | Main relocation phase; calls the engine |
-| `0x445000` | 55,681 B | `finalize_elf` | Finalization phase; uses vtable instead of engine |
+| `0x445000` | 55,681 B | `finalize_elf` | Finalization phase; second relocation pass using vtable |
 | `0x459640` | 16,109 B | `reloc_vtable_create` | Per-arch relocation handler vtable (used by finalization) |
+| `0x42F690` | ~256 B | `reloc_max_type` | Returns maximum relocation type for current architecture |
+| `0x42F6C0` | ~512 B | `reloc_validate` | Validates relocation type and selects descriptor table |
 | `0x444720` | ~2 KB | `sym_remap_index` | Remaps symbol index for output ELF numbering |
 | `0x440590` | ~2 KB | `sym_idx_to_record` | Symbol index to record pointer accessor |
+| `0x440350` | ~2 KB | `sym_get_section` | Gets section index containing a symbol |
 | `0x442270` | ~2 KB | `sec_idx_to_record` | Section index to record pointer accessor |
 | `0x442760` | ~2 KB | `sec_find_or_create_rela` | Finds or creates `.rela` section for target |
 | `0x4336B0` | ~2 KB | `section_write_data` | Writes bytes into section data buffer |
 | `0x4411D0` | ~2 KB | `section_find_by_name` | Finds section by name string |
+| `0x441AC0` | ~2 KB | `section_create` | Creates a new section with given attributes |
+| `0x4343C0` | ~2 KB | `section_append_data` | Appends data to section buffer at offset |
+| `0x463660` | ~2 KB | `uft_get_offset` | UFT/UDT offset resolver |
+| `0x4644C0` | ~1 KB | `list_append` | Appends node to singly-linked list |
+| `0x431000` | ~1 KB | `arena_free` | Frees an arena-allocated block |
 | `0x467460` | ~2 KB | `error_emit` | Variadic error emission |
 
 ## Cross-References
 
-- [Relocation Phase](../pipeline/relocate.md) -- Pipeline context: linked-list walk, symbol resolution, descriptor table selection
+- [Relocation Phase](../pipeline/relocate.md) -- Pipeline context: the 10-step resolution algorithm, alias chains, dead function filtering, unified remapping, and 3 worked examples showing complete before/after hex dumps
 - [Finalization Phase](../pipeline/finalize.md) -- Second relocation pass using per-arch vtable dispatch
-- [R\_CUDA Relocations](r-cuda-relocations.md) -- CUDA-specific relocation type catalog
+- [R\_CUDA Relocations](r-cuda-relocations.md) -- CUDA-specific relocation type catalog with all 119 type names and their descriptor entries
 - [Unified Function Tables](../elf/uft.md) -- UFT/UDT structures referenced by unified relocations
 - [Symbol Resolution](symbol-resolution.md) -- How symbols are resolved before relocation
-- [Bindless Relocations](bindless-relocations.md) -- Bindless texture/surface relocation handling
+- [Bindless Relocations](bindless-relocations.md) -- Bindless texture/surface relocation handling using the `.nv.rel.action` section
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| `sub_468760` at 0x468760, 10-parameter signature | **HIGH** | Decompiled `sub_468760_0x468760.c` confirms address and 10-parameter function signature |
+| `sub_469D60` at 0x469D60, 26,578 bytes | **HIGH** | Decompiled `sub_469D60_0x469d60.c` confirms address, 985 lines |
+| `sub_468670` (bitfield\_extract) at 0x468670 with recursive multi-word support | **HIGH** | Decompiled `sub_468670_0x468670.c`: recursive calls at lines 24, 29-30; shift pattern `<< (64 - v5) >> (64 - a3)` confirmed |
+| `sub_4685B0` (bitfield\_write) uses mask `(-1ULL << (64-W)) >> (64-(O+W))` | **HIGH** | Decompiled `sub_4685B0_0x4685b0.c` line 35-36: exact mask formula confirmed |
+| Relocation record loaded via `_mm_loadu_si128` (2x 128-bit) | **HIGH** | Decompiled `sub_469D60` lines 236-237: `v162 = _mm_loadu_si128(v5)`, `v163 = _mm_loadu_si128(v5 + 1)` |
+| Descriptor table indexed by `type_index << 6` (64 bytes per entry) | **HIGH** | Decompiled `sub_468760` line 126: `v12 = a1 + ((unsigned __int64)a2 << 6)` |
+| Action pointer starts at descriptor+12, sentinel at +60 | **HIGH** | Decompiled `sub_468760` lines 130-132: `v15 = (unsigned int *)(v12 + 12)`, `v100 = (unsigned int *)(v12 + 60)` |
+| Each action is 16 bytes (4 x uint32), advance by `v15 += 4` | **HIGH** | All case bodies in `sub_468760` advance with `v15 += 4` |
+| Fast path: `bit_offset==0 && bit_width==64` for direct word write | **HIGH** | Decompiled line 145: `if ( *v15 || v19 != 64 )` guards the fast path |
+| CUDA table at `off_1D3DBE0`, Mercury table at `off_1D3CBE0` | **HIGH** | Decompiled `sub_469D60` lines 202, 214: both addresses confirmed |
+| Mercury type normalization: `type -= 0x10000` | **HIGH** | Decompiled `sub_469D60` line 203: `v148 = v9 - 0x10000` |
+| 30 distinct action codes in switch statement | **HIGH** | Exhaustive enumeration from decompiled `sub_468760` switch cases |
+| Masked-shift tables at `xmmword_1D3F8E0`--`xmmword_1D3F930` | **HIGH** | Decompiled `sub_468760` lines 123-131, 518-526: all six SSE vector addresses confirmed |
+| `.nv.rel.action` section with sh\_type `0x7000000B` | **HIGH** | Decompiled `sub_469D60` line 913: `sub_441AC0(v2, ".nv.rel.action", 1879048203, ...)` where 1879048203 = 0x7000000B |
+| Chunk-list walk for section data at section record offset +72 | **HIGH** | Decompiled `sub_469D60` line 522: `v107 = *(_QWORD **)(v53 + 72)` |
+| `"unexpected NVRS"` on engine failure | **HIGH** | Decompiled `sub_469D60` line 436: `sub_467460(dword_2A5B990, "unexpected NVRS")` |
+| `"reloc address not found"` error | **HIGH** | Decompiled `sub_469D60` line 547: `sub_467460(dword_2A5B990, "reloc address not found")` |
+| `"PC relative branch address should be in the same section"` | **HIGH** | Decompiled `sub_469D60` line 410 |
+| Preserve-relocs list at `ctx+384` | **MEDIUM** | Decompiled `sub_469D60` line 454: `sub_4644C0((__int64)v5, (pthread_mutexattr_t *)(v2 + 384))` |
+| Resolved-rela emitter dual-list processing (ctx+376, ctx+384) | **MEDIUM** | Inferred from `sub_46ADC0` decompiled analysis; offsets consistent with linker context |
+| Action type names (ABS\_FULL, ABS\_LO, etc.) | **MEDIUM** | Names are editorial labels based on observed behavior; the binary does not contain symbolic names for action codes |
+| `.nv.rel.action` compact format (8 bytes per type) | **MEDIUM** | Reconstructed from decompiled `sub_469D60` lines 913--979; field assignments inferred from pointer arithmetic |

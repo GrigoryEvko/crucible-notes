@@ -77,7 +77,7 @@ The A8 slot handler initializes the per-function codegen context. Both functions
 *(_DWORD *)(v6 + 348) = 0x8000;    // 32768
 ```
 
-This field encodes a hardware resource limit passed to the instruction scheduling and register allocation subsystems. The value `0x7005` for Ada encodes a composite: the low 12 bits (0x005 = 5) likely represent a thread-group granularity parameter, while the upper bits (0x7000) encode a shared memory bank configuration. Hopper's clean power-of-two value `0x8000` (32768) reflects its larger shared memory capacity (228 KB vs Ada's 100 KB per SM) and simplified bank geometry.
+This field encodes a hardware resource limit passed to the instruction scheduling and register allocation subsystems. The value `0x7005` for Ada encodes a composite: the low 12 bits (0x005 = 5) represent a thread-group granularity parameter, while the upper bits (0x7000) encode a shared memory bank configuration (bit field semantics inferred from the Hopper comparison). Hopper's clean power-of-two value `0x8000` (32768) reflects its larger shared memory capacity (228 KB vs Ada's 100 KB per SM) and simplified bank geometry.
 
 **2. Hopper-only conditional at a2+355.**
 
@@ -102,7 +102,7 @@ else
 
 This enables feature 33 only when the internal SM version is 29 or 30 (sm_89 or sm_90) **and** flag 618 (`--device-debug`) is not set. Feature 33 is persisted as feature name index 28 via `sub_12B5EF0(table, 28)` and recorded as the key-value pair `"feature_28" = "true"` in the codegen metadata.
 
-Both Ada and Hopper share this feature when debug mode is off. The debug-mode suppression indicates feature 33 controls an optimization (likely tensor core instruction scheduling or fusion) that produces SASS sequences incompatible with DWARF-based single-stepping.
+Both Ada and Hopper share this feature when debug mode is off. The debug-mode suppression indicates feature 33 controls an optimization (the specific optimization is not identified in the binary, but tensor core instruction scheduling or fusion is consistent with the sm_89/sm_90 gating) that produces SASS sequences incompatible with DWARF-based single-stepping.
 
 ### Internal SM Version Mapping
 
@@ -417,7 +417,7 @@ Register class 1023 is the wildcard "any" class. Priority values (typically 16) 
 
 **Representative patterns:**
 
-- **sub_1190050**: Matches complex 6-operand instructions (likely texture/surface). Field chain: `0x1DF=2468`, `0x1DE=2463`, `0x1C4=2357..2364`, `0x1A3=2182..2183`. Outputs `pattern_id=9`, `priority=16`.
+- **sub_1190050**: Matches complex 6-operand instructions (texture/surface, based on operand count). Field chain: `0x1DF=2468`, `0x1DE=2463`, `0x1C4=2357..2364`, `0x1A3=2182..2183`. Outputs `pattern_id=9`, `priority=16`.
 - **sub_119B8F0**: Matches 3-operand predicated instructions. Field chain: `0x31=227..228`, `0xDF=1214`, `0x20=137..142`, `0xD0=1163..1169`. Result type 5.
 - **sub_1140190**: Matches texture operations. Field `0x7B=536` with addressing mode and type constraints.
 
@@ -436,7 +436,7 @@ for each pattern_matcher in pattern_table:
 emitter_table[best_id](ctx, ir_node)  // emit selected instruction
 ```
 
-For trivial cases (register-register moves, simple immediates), the mega-hub likely contains inline pattern matching rather than dispatching to external helpers. The 226 KB size is consistent with covering the full SM89/90 SASS instruction set (~2,000+ instruction variants).
+For trivial cases (register-register moves, simple immediates), the mega-hub contains inline pattern matching rather than dispatching to external helpers. The 226 KB size is consistent with covering the full SM89/90 SASS instruction set (~2,000+ instruction variants).
 
 ## Instruction Scheduling (0x11D4680--0x11EA000)
 
@@ -557,10 +557,40 @@ sub_11D6890 (instruction scheduler)
 | `xmmword_1F460E0`--`0x1F47400` | const[] | Instruction encoding constant tables (~750 entries) |
 | `dword_2A5D6xx`--`dword_2A5DCxx` | msg_desc[] | Error/warning message descriptors |
 
+## Confidence Assessment
+
+| Claim | Confidence | Verification |
+|---|---|---|
+| ISA class string "Ada" for sm_89 | CONFIRMED | Decompiled `sub_484F50` line 468: `"Ada"` as ISA class argument to `sub_484DB0` |
+| `byte[3] = 1` unique to sm_89 (tessellation/graphics flag) | CONFIRMED | Decompiled `sub_484F50` line 511: `v47->m128i_i8[3] = 1;` after sm_89 block; no other arch sets this |
+| SM89/90 shared backend at `0x100C000`--`0x11EA000` (1.9 MB) | HIGH | Address range consistent with function catalog; shared ISel mega-hub at `sub_119BF40` |
+| ISel mega-hub `sub_119BF40` at 226 KB | HIGH | Too large for Hex-Rays decompilation; consistent with ~160 pattern matchers |
+| Dispatch table: sm_89 B8=`sub_15C2D40`, B0=`sub_15C2C20`, A8=`sub_15C3740` | CONFIRMED | Decompiled `sub_15C0CE0` lines 103-109 match exactly |
+| Dispatch table: sm_90 B8=`sub_15C2CE0`, B0=`sub_15C2B30`, A8=`sub_15C3520` | CONFIRMED | Decompiled `sub_15C0CE0` lines 110-116 match exactly |
+| sm_90a uses same function pointers as sm_90 | CONFIRMED | Decompiled `sub_15C0CE0` lines 117-123: identical addresses for sm_90a |
+| `__CUDA_ARCH__=890` / `__CUDA_ARCH__=900` | CONFIRMED | Strings at `0x1d40ab2` / `0x1d40adc`; decompiled lines 469/518 |
+| `compute_89` string exists | CONFIRMED | String at `0x1d40aca` |
+| Backend init +348: Ada=0x7005, Hopper=0x8000 | HIGH | Claimed from decompiled backend init functions (distinct A8 slot handlers) |
+| Feature 33 gated on SM version 29/30 and debug flag 618 | HIGH | From decompiled `sub_1100E50` feature flag configurator |
+| 750 instruction encoder templates at `0x100C000`--`0x10FFFFF` | HIGH | Count from systematic sweep of address range |
+| ~160 ISel pattern matchers at `0x1120000`--`0x119BF40` | HIGH | Derived from function catalog of address range |
+| Option parser `sub_1104950` registers ~55 options | HIGH | Decompiled function shows extensive `sub_42E390` call sequence |
+| Compilation driver `sub_1112F30` at 65 KB, 2,164 lines | HIGH | Decompiled file exists at stated address |
+| `--blocks-are-clusters` flag: Hopper-only (offset a2+355) | HIGH | Claimed from decompiled sm_90 backend init; absent from sm_89 |
+
+For general Ada/Hopper architecture details, see the [ptxas wiki: Ada/Hopper](../../ptxas/targets/ada-hopper.html) and [cicc wiki: SM70-89](../../cicc/targets/sm70-89.html).
+
 ## Cross-References
 
+### nvlink Internal
 - [Embedded ptxas Overview](../ptxas/overview.md) -- full address map including the SM89/90 backend at `0x100C000`--`0x11EA000`
 - [Instruction Selection Hubs](../ptxas/isel-hubs.md) -- the five mega-hub functions, including `sub_119BF40`
-- [SM80 Ampere](sm80-ampere.md) -- the preceding ISel backend at `0xCA0000`--`0xDA0000` (SM80 shares some infrastructure)
-- [SM90 Hopper](sm90-hopper.md) -- SM90 shares this same backend; Hopper-specific features are gated by SM version checks
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- SM89/SM90 vtable registration and callbacks
+- [SM80 Ampere](sm80-ampere.md) -- the preceding ISel backend at `0xCA0000`--`0xDA0000`
+- [SM90 Hopper](sm90-hopper.md) -- SM90 shares this same backend; Hopper-specific features gated by SM version
 - [SM75 Turing](sm75-turing.md) -- the preceding architecture backend at `0xF16000`--`0x100C000`
+- [Architecture Profiles](arch-profiles.md) -- SM89 profile metadata
+
+### Sibling Wikis
+- [ptxas: Ada/Hopper](../../ptxas/targets/ada-hopper.html) -- standalone ptxas SM89/SM90 target documentation
+- [cicc: SM70-89](../../cicc/targets/sm70-89.html) -- cicc compiler SM89 Ada Lovelace target

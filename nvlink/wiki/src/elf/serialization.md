@@ -185,13 +185,13 @@ The serializer reads these fields from the ELF wrapper:
 | `+4` | `uint8` | `uint8` | `e_ident[EI_CLASS]` (1=ELF32, 2=ELF64) |
 | `+7` | `uint8` | `uint8` | `e_ident[EI_OSABI]` ('A' = 0x41 for special flag handling) |
 | `+16` | `uint16` | `uint16` | `e_type` (2 = `ET_EXEC`) |
-| `+28` | `uint32` | -- | `e_shoff` (section header table offset) |
-| `+32` | `uint32` | -- | `e_shoff` (ELF32 layout) / `e_flags` (ELF64 context) |
+| `+28` | `uint32` | -- | `e_phoff` (ELF32 program header offset; computed by serializer as `e_shoff + e_shnum * e_shentsize`) |
+| `+32` | `uint32` | `uint64` | ELF32: `e_shoff`. ELF64: `e_phoff` (standard Elf64\_Ehdr field; serializer computes `e_shoff + e_shnum * e_shentsize` and writes here before Phase 1) |
 | `+40` | -- | `uint64` | `e_shoff` (ELF64 section header offset) |
-| `+44` | `uint16` | -- | `e_phnum` (ELF32) |
+| `+44` | `uint16` | -- | `e_phnum` (ELF32; written by serializer preamble) |
 | `+46` | `uint16` | -- | `e_shentsize` (ELF32, always 40) |
 | `+48` | `uint16/uint32` | `uint32` | `e_shnum` / `e_flags` (dual-use by class) |
-| `+56` | -- | `uint16` | `e_phnum` (ELF64) |
+| `+56` | -- | `uint16` | `e_phnum` (ELF64; written by serializer preamble) |
 | `+58` | -- | `uint16` | `e_shentsize` (ELF64, always 64) |
 | `+60` | -- | `uint16` | `e_shnum` (ELF64) |
 | `+304` | `uint32` | `uint32` | strtab entry count |
@@ -464,7 +464,7 @@ for (uint32_t s = 0; s < e_shnum; s++) {
 
 The section order array at `elfw+368` maps logical indices to the ordered list, ensuring section headers appear in the canonical order that matches the `sh_offset` assignments from the layout phase.
 
-The loop iterates `e_shnum - 1` times (from 0 to `e_shnum - 1`), with the termination condition checking `4 * (e_shnum - 1) + 4 != offset` where `offset` advances by 4 per iteration (indexing into the 32-bit section order array).
+The loop iterates `e_shnum` times (for indices 0 through `e_shnum - 1`), with the termination condition checking `4 * (e_shnum - 1) + 4 != offset` where `offset` advances by 4 per iteration (indexing into the 32-bit section order array).
 
 ### Phase 10: Program Header Table (sub\_45BAA0)
 
@@ -472,81 +472,124 @@ This phase is conditional. It executes only when:
 1. `e_type == ET_EXEC` (value 2 at `elfw+16`), AND
 2. The `v126` flag is set (true when no special `e_flags` masking suppresses program headers)
 
+For ELF64, `v126` is true when `(e_flags & mask) == 0` where `mask` is 1 if `e_ident[7] == 'A'`, else 0x80000000. For ELF32, `v126` is always true when `e_type == ET_EXEC`.
+
 `sub_45BAA0` constructs a proper ELF-standard program header table on the stack and writes it as a single blob at the end of the file. It first iterates all sections to compute cumulative sizes for the `.shstrtab` and `.strtab` regions (using `sub_438BB0` for alignment accumulation), then builds 2 to 4 program header entries.
+
+#### Preamble: e\_phoff and e\_phnum Computation
+
+Before Phase 1 writes the ELF header, `sub_45BF00` computes `e_phoff` and `e_phnum` when `e_type == ET_EXEC` and flag suppression is not active. The function iterates all sections via the order array, capturing the `sh_offset` of the first section with flag bit 0 set (`.shstrtab`-group base) and the first with flag bit 1 set (`.strtab`-group base). The program header count is then:
+
+```c
+int phnum = 2;                            // PT_PHDR + final PT_LOAD (always present)
+if (strtab_base != 0)   phnum = 3;       // + PT_LOAD for .strtab segment
+if (shstrtab_base != 0) phnum++;         // + PT_LOAD for .shstrtab segment
+
+// Write e_phnum into ELF header
+// ELF32: *(uint16*)(elfw+44) = phnum
+// ELF64: *(uint16*)(elfw+56) = phnum
+
+// Compute e_phoff = e_shoff + e_shnum * e_shentsize
+// (program headers placed immediately after section header table)
+// ELF32: *(uint32*)(elfw+28) = *(uint32*)(elfw+32) + e_shnum * e_shentsize
+// ELF64: *(uint64*)(elfw+32) = *(uint64*)(elfw+40) + e_shnum * e_shentsize
+```
+
+These values are written into the wrapper's ELF header fields _before_ Phase 1 serializes the header, so the on-disk header already contains the correct `e_phoff` and `e_phnum`.
 
 #### Section Scan
 
 The function walks all sections via the section order array, classifying each by flags bits at `sec+8` (ELF64) or `sec+8` (ELF32):
-- **Flag bit 0 set** (`.shstrtab`-group): Accumulates the section's alignment-adjusted size via `sub_438BB0`. Tracks the last such section's `sh_offset` to compute the segment base.
-- **Flag bit 1 set** (`.strtab`-group): Records `sh_offset + sh_size` to compute the `.strtab` segment extent.
+- **Flag bit 0 set** (`.shstrtab`-group): For NOBITS-type sections, accumulates the section's alignment-adjusted size via `sub_438BB0`. For non-NOBITS sections, computes `sh_offset + sh_size - shstrtab_base` as the file extent. Tracks the last such section to determine the segment's total file and memory extent.
+- **Flag bit 1 set** (`.strtab`-group): Records `sh_offset + sh_size - strtab_base` to compute the `.strtab` segment extent.
 
-For NOBITS-type sections within the `.shstrtab` group, the alignment contribution is accumulated but no file data is counted (same bitmask check as Phase 7b).
+For NOBITS-type sections within the `.shstrtab` group, the alignment contribution is accumulated but no file data is counted (same bitmask check as Phase 7b). The accumulated NOBITS size is added to `p_memsz` but not `p_filesz` for the `.shstrtab` segment.
 
 #### Program Header Construction -- ELF64
 
-When `elf_class == 2`, each program header entry is 56 bytes (`sizeof(Elf64_Phdr)`):
+When `elf_class == 2`, each program header entry is 56 bytes (`sizeof(Elf64_Phdr)`). The entries are built on the stack and written as a single contiguous blob:
 
 ```c
-// Entry 0: PT_LOAD for section header table
 Elf64_Phdr phdr[4];
 memset(phdr, 0, sizeof(phdr));
 
-phdr[0].p_type   = PT_LOAD;           // 1
-phdr[0].p_flags  = PF_R | PF_W;       // 6
-phdr[0].p_offset = e_shoff;
-phdr[0].p_filesz = e_shnum * 64;      // section header table size
-phdr[0].p_memsz  = e_shnum * 64;
+// Entry 0 (always present): PT_PHDR -- self-referential program header entry
+phdr[0].p_type   = PT_PHDR;          // 6
+phdr[0].p_flags  = PF_R | PF_X;      // 5
+phdr[0].p_offset = e_phoff;          // = e_shoff + e_shnum * 64
+phdr[0].p_filesz = e_phnum * 56;     // program header table size
+phdr[0].p_memsz  = e_phnum * 56;
 phdr[0].p_align  = 8;
 
-int count = 2;  // minimum: PT_LOAD + PT_PHDR
+int slot = 1;   // next available slot
+int next = 2;   // potential next count after optional entries
 
-// Entry 1 (optional): PT_LOAD for .strtab
+// Entry 1 (optional): PT_LOAD for .strtab segment
 if (strtab_base != 0) {
     phdr[1].p_type   = PT_LOAD;       // 1
-    phdr[1].p_flags  = PF_R | PF_W;   // 6
+    phdr[1].p_flags  = PF_R | PF_X;   // 5
     phdr[1].p_offset = strtab_base;
     phdr[1].p_filesz = strtab_extent;
     phdr[1].p_memsz  = strtab_extent;
     phdr[1].p_align  = 8;
-    count = 3;
+    slot = 2;
+    next = 3;
 }
 
-// Entry 2 (optional): PT_LOAD for .shstrtab
+// Entry N (optional): PT_LOAD for .shstrtab segment
 if (shstrtab_base != 0) {
-    phdr[count-1].p_type   = PT_LOAD;
-    phdr[count-1].p_flags  = PF_R | PF_W;
-    phdr[count-1].p_offset = shstrtab_base;
-    phdr[count-1].p_filesz = shstrtab_extent + accumulated_size;
-    phdr[count-1].p_memsz  = shstrtab_extent + accumulated_size;
-    phdr[count-1].p_align  = 8;
-    count++;
+    phdr[slot].p_type   = PT_LOAD;    // 1
+    phdr[slot].p_flags  = PF_R | PF_W;  // 6
+    phdr[slot].p_offset = shstrtab_base;
+    phdr[slot].p_filesz = shstrtab_file_extent;
+    phdr[slot].p_memsz  = shstrtab_file_extent + nobits_accumulated;
+    phdr[slot].p_align  = 8;
+    slot = next;
 }
 
-// Last entry: PT_PHDR (self-referential)
-phdr[count-1].p_type   = PT_LOAD;     // encodes as PT_LOAD with flags 5
-phdr[count-1].p_flags  = PF_R | PF_X; // 5
-phdr[count-1].p_offset = e_shoff;
-phdr[count-1].p_filesz = count * 56;
-phdr[count-1].p_memsz  = count * 56;
-phdr[count-1].p_align  = 8;
+// Last entry: PT_LOAD covering the program header table itself
+phdr[slot].p_type   = PT_LOAD;       // 1
+phdr[slot].p_flags  = PF_R | PF_X;   // 5
+phdr[slot].p_offset = e_phoff;
+phdr[slot].p_filesz = e_phnum * 56;
+phdr[slot].p_memsz  = e_phnum * 56;
+phdr[slot].p_align  = 8;
 
 // Write entire array
-elf_write(writer, phdr, count * 56);
+elf_write(writer, phdr, e_phnum * 56);
 ```
+
+Note: the first entry is `PT_PHDR` (type 6), which identifies the program header table to the ELF loader. The last entry is `PT_LOAD` (type 1), which ensures the program header table data is actually loaded into memory. Both entries point to the same file region (`e_phoff`), which is standard ELF practice. The `.strtab` segment uses `PF_R|PF_X` (5), while the `.shstrtab` segment uses `PF_R|PF_W` (6).
 
 #### Program Header Construction -- ELF32
 
-When `elf_class == 1`, each entry is 32 bytes (`sizeof(Elf32_Phdr)`). The structure differs in field ordering: `{p_type, p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_flags, p_align}` -- all 32-bit fields. The same 2-to-4 entry construction applies with 32-bit addresses and sizes.
+When `elf_class == 1`, each entry is 32 bytes (`sizeof(Elf32_Phdr)`). The structure differs in field ordering -- note that `p_flags` is at offset +24 in ELF32 (after `p_filesz`/`p_memsz`), not at offset +4 as in ELF64:
+
+```
+Elf32_Phdr: { p_type(+0), p_offset(+4), p_vaddr(+8), p_paddr(+12),
+              p_filesz(+16), p_memsz(+20), p_flags(+24), p_align(+28) }
+```
+
+The same 2-to-4 entry construction applies with 32-bit addresses and sizes:
 
 ```c
-phdr32[0].p_type   = PT_LOAD;
-phdr32[0].p_flags  = PF_R | PF_W;     // 6
-phdr32[0].p_offset = e_shoff;
-phdr32[0].p_filesz = e_shnum * 40;
-phdr32[0].p_memsz  = e_shnum * 40;
-phdr32[0].p_align  = 4;               // 4-byte alignment for ELF32
-// ... same pattern with 32-bit values ...
+phdr32[0].p_type   = PT_PHDR;        // 6
+phdr32[0].p_flags  = PF_R | PF_X;    // 5
+phdr32[0].p_offset = e_phoff;        // = e_shoff + e_shnum * 40
+phdr32[0].p_filesz = e_phnum * 32;
+phdr32[0].p_memsz  = e_phnum * 32;
+phdr32[0].p_align  = 4;              // 4-byte alignment for ELF32
+// ... same entry pattern as ELF64 with 32-bit values ...
 ```
+
+#### Entry Summary
+
+| Entry | Type | Flags | Offset | Size | Condition |
+|-------|------|-------|--------|------|-----------|
+| 0 | `PT_PHDR` (6) | `PF_R\|PF_X` (5) | `e_phoff` | `e_phnum * phdr_size` | Always |
+| 1 | `PT_LOAD` (1) | `PF_R\|PF_X` (5) | `strtab_base` | `strtab_extent` | `strtab_base != 0` |
+| N | `PT_LOAD` (1) | `PF_R\|PF_W` (6) | `shstrtab_base` | file + NOBITS | `shstrtab_base != 0` |
+| Last | `PT_LOAD` (1) | `PF_R\|PF_X` (5) | `e_phoff` | `e_phnum * phdr_size` | Always |
 
 ## Size Computation: sub\_45C980
 
@@ -612,6 +655,56 @@ The serialization order reflects nvlink's canonical section layout. The first fo
 
 The string tables are serialized _before_ any section data because their content is needed by the ELF header's `e_shstrndx` and the symbol table's `st_name` fields. The symtab goes next because it references both string tables. All remaining sections follow in the order determined by the layout phase.
 
+## Serialization Trace: Minimal ELF64 Output
+
+This trace illustrates the byte-level output for a minimal ELF64 `ET_EXEC` binary with 6 sections (null, `.shstrtab`, `.strtab`, `.symtab`, `.text`, `.data`), 2 symbols, `.shstrtab` totaling 40 bytes of strings, `.strtab` totaling 20 bytes, `e_shoff = 0x200`, and `e_shentsize = 64`.
+
+```
+Preamble (before Phase 1):
+  Iterate sections -> find strtab_base, shstrtab_base
+  e_phnum = 4  (both bases non-zero)
+  e_phoff = 0x200 + 6*64 = 0x380
+  Write e_phnum and e_phoff into ELF header fields
+
+Phase 1: [0x000..0x03F]  64 bytes   ELF64 header
+  e_ident, e_type=2(ET_EXEC), e_phoff=0x380, e_shoff=0x200,
+  e_phnum=4, e_shnum=6, e_shentsize=64
+
+Phase 2: [0x040]          1 byte    NUL separator
+  0x00 (serves as .shstrtab[0] empty string terminator)
+
+Phase 3: [0x041..0x068]  ~40 bytes  .shstrtab string data
+  ".shstrtab\0" ".strtab\0" ".symtab\0" ".text\0" ".data\0"
+
+Phase 4: [0x069..0x07D]  ~21 bytes  NUL + .strtab string data
+  0x00 "main\0" "_start\0"
+
+Phase 5: [0x07E..0x07F]  ~2 bytes   Zero padding to .symtab offset
+  Pad from running_offset (0x7E) to section[3].sh_offset (0x80)
+
+Phase 6: [0x080..0x0AF]  48 bytes   .symtab content
+  2 x Elf64_Sym (24 bytes each)
+
+Phase 7: [0x0B0..0x1FF]  ~336 bytes Section data for indices 4-5
+  Section 4 (.text): inter-section pad + fragment data
+  Section 5 (.data): inter-section pad + fragment data
+
+Phase 8: [varies..0x1FF] padding    Zero fill to reach e_shoff
+  Pad from running_offset to 0x200
+
+Phase 9: [0x200..0x37F]  384 bytes  6 section headers
+  6 x Elf64_Shdr (64 bytes each) in canonical order
+
+Phase 10: [0x380..0x45F]  224 bytes  4 program headers
+  Entry 0: PT_PHDR  | PF_R|PF_X | offset=0x380 | size=224
+  Entry 1: PT_LOAD  | PF_R|PF_X | strtab_base   | strtab_extent
+  Entry 2: PT_LOAD  | PF_R|PF_W | shstrtab_base  | shstrtab_extent
+  Entry 3: PT_LOAD  | PF_R|PF_X | offset=0x380  | size=224
+
+Total: 0x460 bytes = e_phoff + 4*56 = 0x380 + 0xE0
+       (matches compute_elf_size: e_shoff + shnum*shentsize + 224)
+```
+
 ## Error Handling
 
 Three fatal error conditions can terminate the serializer:
@@ -620,7 +713,7 @@ Three fatal error conditions can terminate the serializer:
 |---|---|---|
 | `"writing file"` | `elf_write()` returns fewer bytes than requested | I/O failure (disk full, broken pipe, etc.) |
 | `"Negative size encountered"` | Section offset < running offset | Layout phase produced overlapping sections |
-| `"<name> section size mismatch"` | Fragment data total < `sh_size` | Section data corrupted or incompletely populated |
+| `"<name> section size mismatch"` | Fragment data total > `sh_size` | Section data exceeds declared size (corrupted or incompletely laid out) |
 
 All three call `sub_467460` which is the linker's fatal error handler. The first argument (`&unk_2A5B990`) is the error context object; the second is the error message string. The handler does not return.
 
@@ -688,6 +781,14 @@ All three call `sub_467460` which is the linker's fatal error handler. The first
 | Phase 7: fragment list traversal at sec+72 | MEDIUM | Fragment list structure inferred from pointer arithmetic; node layout reconstructed |
 | Phase 9: section headers (64/40 bytes each) | HIGH | shdr_size selection verified; loop over section_order array confirmed |
 | Phase 10: program header table (sub_45BAA0) | HIGH | Conditional call to sub_45BAA0 verified in sub_45BF00 |
+| Phase 10 entry 0 = PT\_PHDR(6), PF\_R\|PF\_X(5) | HIGH | sub_45BAA0 line 139: `v52 = 0x500000006LL`; LODWORD=6=PT\_PHDR, HIDWORD=5=PF\_R\|PF\_X |
+| Phase 10 last entry = PT\_LOAD(1), PF\_R\|PF\_X(5) | HIGH | sub_45BAA0 line 170: `v53[v32-1] = 0x500000001LL` |
+| Phase 10 p\_offset = e\_phoff (not e\_shoff) | HIGH | sub_45BAA0 line 137: `v53[0]=v25` where `v25=*(a2+32)=e_phoff`; sub_45BF00 line 258 sets `*(a2+32)=*(a2+40)+shnum*shentsize` |
+| Phase 10 strtab segment flags = PF\_R\|PF\_X(5) | HIGH | sub_45BAA0 line 146: `0x500000001LL` |
+| Phase 10 shstrtab segment flags = PF\_R\|PF\_W(6) | HIGH | sub_45BAA0 line 162: `0x600000001LL` |
+| e\_phoff = e\_shoff + shnum \* shentsize | HIGH | sub_45BF00 line 258 (ELF64), line 252 (ELF32) |
+| e\_phnum preamble computation (2/3/4 entries) | HIGH | sub_45BF00 lines 239-244: conditional on strtab\_base and shstrtab\_base |
+| ELF32 v126=1 always (no flag suppression) | HIGH | sub_45BF00 line 178: `v126 = 1` reached for all ELF32 ET\_EXEC paths |
 | NOBITS bitmask 0x400D in Phase 7b | HIGH | Same bitmask appears in sub_45BAA0 and serialization engine |
 | Canonical section ordering (0=null, 1=shstrtab, 2=strtab, 3=symtab) | HIGH | Verified from section creation order in sub_4438F0 constructor |
 | e_shnum overflow encoding (0 -> sh_size of section 0) | MEDIUM | Standard ELF mechanism; code path exists in sub_45C980 but rarely exercised |

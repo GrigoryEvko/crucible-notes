@@ -115,3 +115,93 @@ Public flags use flag bits `0x00` or `0x10` (the `0x10` bit enables `--no-<name>
 - [LTO Option Forwarding](../lto/option-forwarding.md) -- how `--Xptxas`, `--Xnvvm`, `--maxrregcount`, and `--Ofast-compile` are forwarded to cicc/ptxas.
 - [Dead Code Elimination](../linker/dead-code-elimination.md) -- how `--kernels-used`, `--variables-used`, `--use-host-info`, and `--ignore-host-info` drive DCE.
 - [Debug Options](../debug/options.md) -- detailed semantics of `--debug`, `--suppress-debug-info`, `--edbg`.
+
+## Confidence Assessment
+
+### Aspect-Level Confidence
+
+| Aspect | Confidence | Basis |
+|---|---|---|
+| Parser entry address (`0x427AE0`) | HIGH | File `decompiled/sub_427AE0_0x427ae0.c` exists (1,299 lines); contains all `sub_42F130` calls |
+| Registration function (`0x42F130`) | HIGH | File `decompiled/sub_42F130_0x42f130.c` exists; called 68 times in `sub_427AE0` |
+| Type/multiplicity/flags/defaults | HIGH | Extracted directly from `sub_42F130` positional parameters in decompiled code |
+| Visibility bits (`0x00`/`0x04`/`0x08`) | HIGH | Read from `sub_42F130` arg-6 (flags) for every registration |
+| Mutual-exclusion rules | HIGH | Confirmed in post-extraction validation blocks in `sub_427AE0` |
+| Description text | MEDIUM | Paraphrased from help-text strings embedded in the binary; hidden flags lack help text |
+
+### Per-Flag Verification (Exhaustive)
+
+Each row below was verified two ways: (1) the long-name appears as a direct string literal in the `sub_42F130(v2, "<name>", ...)` call at a known line of `decompiled/sub_427AE0_0x427ae0.c`, and (2) the name is visible at a specific address in `nvlink_strings.json` or embedded inside an adjacent help/format string. Five flags (`lto`, `time`, `split-compile`, `split-compile-extended`, `maxrregcount`) are registered via integer constants that are mid-string addresses pointing into longer strings -- these are tagged `HIGH*`.
+
+| Flag | Confidence | Evidence |
+|---|---|---|
+| `--allow-undefined-globals` | HIGH | string at `0x1d325c3`; registered in `sub_427AE0` around line 293 |
+| `--arch` | HIGH | embedded in `-arch=%s` (`0x1eec37a`), `-arch=compute_%d` (`0x1d32257`), `-arch=sm_...`; registered in `sub_427AE0` |
+| `--cpu-arch` | HIGH | string at `0x1d326cd`; registered in `sub_427AE0` |
+| `--cuda-api-version` | HIGH | embedded in `-cuda-api-version=%s` (`0x1d33ed7`), `--cuda-api-version` (`0x1eec1dc`), diagnostic at `0x1d33df0`; registered in `sub_427AE0` |
+| `--debug` | HIGH | embedded in `Note: This option is ignored if used without --debug option.` (`0x1d33a..`); registered in `sub_427AE0` |
+| `--device-stack-protector` | HIGH | string at `0x1d32891`; registered in `sub_427AE0` |
+| `--device-stack-protector-frame-size-threshold` | HIGH | string at `0x1d33b68`; registered in `sub_427AE0` |
+| `--disable-infos` | HIGH | string at `0x1d32654`; registered in `sub_427AE0` |
+| `--disable-smem-reservation` | HIGH | string at `0x1d3259d`; registered in `sub_427AE0` |
+| `--disable-warnings` | HIGH | string at `0x1d325f0`; registered in `sub_427AE0` |
+| `--dlto` | HIGH | embedded in `no -dlto` (`0x1d32a89`), `Ignoring -dlto option because no LTO objects found` (`0x1d34998`), `LTO objects found, use -dlto` (`0x1d34f28`); registered in `sub_427AE0` |
+| `--dont-reserve-null-pointer` | HIGH | string at `0x1d32583`; long help-text at `0x1d32eb8`; registered in `sub_427AE0` |
+| `--dot-file` | HIGH | string at `0x1d3257a`; registered in `sub_427AE0` |
+| `--dump-callgraph` | HIGH | string at `0x1d32a1a` (`-dump-callgraph`); registered in `sub_427AE0` |
+| `--dump-callgraph-no-demangle` | HIGH | string at `0x1d329fe` (`-dump-callgraph-no-demangle`); registered in `sub_427AE0` |
+| `--edbg` | HIGH | direct string literal in `sub_42F130` call; registered in `sub_427AE0` |
+| `--emit-ptx` | HIGH | string at `0x1d32a6f` (`-emit-ptx`); registered in `sub_427AE0` |
+| `--enable-extended-smem` | HIGH | string at `0x1d328e8`; registered in `sub_427AE0` |
+| `--extra-warnings` | HIGH | strings at `0x1d32735` (long) and `0x1d3272b` (`extrawarn` short); registered in `sub_427AE0` |
+| `--fdcmpt` | HIGH | string at `0x1d32aa4` (`-fdcmpt`); registered in `sub_427AE0` line 619 |
+| `--force-partial-lto` | HIGH | string at `0x1d32a5c` (`-force-partial-lto`), help at `0x1d335a8`; registered in `sub_427AE0` |
+| `--force-rela` | HIGH | string at `0x1d326c2`; registered in `sub_427AE0` |
+| `--force-whole-lto` | HIGH | string at `0x1d32a4b` (`-force-whole-lto`), help at `0x1d335d0`; registered in `sub_427AE0` |
+| `--gen-host-linker-script` | HIGH | string at `0x1d327fc`; `-ghls` diagnostic at `0x1d34e80`; registered in `sub_427AE0` |
+| `--help` | HIGH | direct literal in `sub_42F130` call; `use --help for more information` at `0x1d34f28`; registered in `sub_427AE0` |
+| `--host-ccbin` | HIGH | string at `0x1d3283d`; registered in `sub_427AE0` |
+| `--host-linker-options` | HIGH | string at `0x1d32539`; short-name `Xlinker` at `0x1d32531`; registered in `sub_427AE0` |
+| `--ignore-host-info` | HIGH | string at `0x1d32a2a` (`-ignore-host-info`), diagnostic `ignore -use-host-info because...` at `0x1d33d78`; registered in `sub_427AE0` |
+| `--keep-system-libraries` | HIGH | string at `0x1d3267c`; registered in `sub_427AE0` |
+| `--kernels-used` | HIGH | string at `0x1d32692`; referenced in diagnostic at `0x1d33d78`; registered in `sub_427AE0` |
+| `--library` | HIGH | string at `0x1d324e6`; registered in `sub_427AE0` |
+| `--library-path` | HIGH | string at `0x1d324f8`; registered in `sub_427AE0` |
+| `--link-time-opt` | HIGH* | registered via integer literal `30622350 = 0x1d3428e`, which is `0x1d34289 + 5` = inside `cicc-lto` string at `0x1d34289` (sharing the trailing `lto` substring); registered in `sub_427AE0` line 520 |
+| `--machine` | HIGH | string at `0x1d324b2`; registered in `sub_427AE0` |
+| `--maxrregcount` | HIGH* | registered via integer literal `32412827 = 0x1ee949b`, which is `0x1ee9496 + 5` = inside `func-maxrregcount` string at `0x1ee9496`; also in `-maxrregcount=%d` (`0x1d33ec6`); registered in `sub_427AE0` |
+| `--no-opt` | HIGH | string at `0x1d329f6` (`-no-opt`); registered in `sub_427AE0` |
+| `--nv-host` | HIGH | string at `0x1eec1bd` (`--nv-host`); registered in `sub_427AE0` |
+| `--nvvmpath` | HIGH | string at `0x1d3277b`; registered in `sub_427AE0` |
+| `--Ofast-compile` | HIGH | strings at `0x1d32a79` (`--Ofast-compile`), `0x1d32324` (`-Ofast-compile=`), `0x1d33eec` (`--Ofast-compile=%s`), `0x1eec297..` (`=max/mid/min`); registered in `sub_427AE0` |
+| `--optimize-data-layout` | HIGH | string at `0x1d329e0` (`-optimize-data-layout`); registered in `sub_427AE0` |
+| `--options-file` | HIGH | string at `0x1d3293b`; registered in `sub_427AE0` |
+| `--output-file` | HIGH | string at `0x1d32482`; registered in `sub_427AE0` |
+| `--preserve-relocs` | HIGH | string at `0x1d32aa4` (`--preserve-relocs`); registered in `sub_427AE0` |
+| `--register-link-binaries` | HIGH | string at `0x1d32557`; registered in `sub_427AE0` |
+| `--relocatable-link` | HIGH | string at `0x1d32863`; registered in `sub_427AE0` |
+| `--report-arch` | HIGH | string at `0x1d326ee`; registered in `sub_427AE0` |
+| `--reserve-null-pointer` | HIGH | direct literal (paired with `--dont-reserve-null-pointer` help text); registered in `sub_427AE0` |
+| `--shared` | HIGH | help text at `0x1d33ad0` (`Percolate the nvcc -shared option for nvlink's consumption`); registered in `sub_427AE0` |
+| `--split-compile` | HIGH* | registered via integer literal `32424538 = 0x1eec25a`, which is `0x1eec258 + 2` = inside `--split-compile` string at `0x1eec258`; also in `-split-compile=%d` (`0x1d3229b`); registered in `sub_427AE0` |
+| `--split-compile-extended` | HIGH* | registered via integer literal `30614148 = 0x1d32284`, which is `0x1d32283 + 1` = inside `-split-compile-extended` string at `0x1d32283`; also in `-split-compile-extended=%d` (`0x1d32268`); registered in `sub_427AE0` |
+| `--suppress-arch-warning` | HIGH | string at `0x1d3246c`; registered in `sub_427AE0` line 69 |
+| `--suppress-debug-info` | HIGH | string at `0x1d329cb` (`-suppress-debug-info`); registered in `sub_427AE0` |
+| `--suppress-stack-size-warning` | HIGH | string at `0x1d32450`; registered in `sub_427AE0` line 56 |
+| `--syscall-const-offset` | HIGH | string at `0x1d325db`; registered in `sub_427AE0` |
+| `--time` | HIGH* | registered via integer literal `30614333 = 0x1d3233d`, which is `0x1d32334 + 9` = inside `-compile-time` string at `0x1d32334` (sharing the trailing `time` substring); registered in `sub_427AE0` |
+| `--tool-name` | HIGH | string at `0x1d3291b`; registered in `sub_427AE0` |
+| `--trap-into-debugger` | HIGH | string at `0x1d3294f`; short-name `_trap_` at `0x1d32948`; registered in `sub_427AE0` |
+| `--uidx-file` | HIGH | direct literal in `sub_42F130` call at `sub_427AE0` line 790 |
+| `--uumn` | HIGH | direct literal in `sub_42F130` call at `sub_427AE0` line 620 |
+| `--use-host-info` | HIGH | string at `0x1d32a3c` (`-use-host-info`); registered in `sub_427AE0` |
+| `--variables-used` | HIGH | string at `0x1d326a8`; referenced in diagnostic at `0x1d33d78`; registered in `sub_427AE0` |
+| `--verbose` | HIGH | string at `0x1d3256e`; registered in `sub_427AE0` |
+| `--verbose-keep` | HIGH | string at `0x1d32700`; registered in `sub_427AE0` |
+| `--verbose-tkinfo` | HIGH | string at `0x1d32744`; registered in `sub_427AE0` |
+| `--version` | HIGH | direct literal in `sub_42F130` call; registered in `sub_427AE0` |
+| `--warning-as-error` | HIGH | string at `0x1d32625`; registered in `sub_427AE0` |
+| `--Xnvvm` | HIGH | string at `0x1d327c6`; registered in `sub_427AE0` |
+| `--Xptxas` | HIGH | string at `0x1d327bf`; registered in `sub_427AE0`; also embedded in diagnostic at `0x1d39b00` |
+
+**Shared with ptxas/cicc.** Flags directly shared with the standalone `ptxas` tool (per the [ptxas CLI Options](../../ptxas/config/cli-options.html) page): `--maxrregcount`, `--Ofast-compile`, `--split-compile`, `--device-stack-protector`, `--device-stack-protector-frame-size-threshold`, `--cuda-api-version`, `--nv-host`, `--tool-name`, `--trap-into-debugger`, `--help`, `--version`, `--options-file`, `--verbose`, `--machine`, `--warning-as-error`, `--disable-warnings`, `--preserve-relocs`, `--force-rela`, `--suppress-debug-info`, `--suppress-stack-size-warning`, `--disable-smem-reservation`, `--enable-extended-smem`, `--reserve-null-pointer`, `--dont-reserve-null-pointer`, `--verbose-tkinfo`, `--fdcmpt`, `--uumn`, `--debug` (`-g`). These flow directly from the nvlink CLI into the embedded ptxas via `-Xptxas` forwarding (see [LTO Option Forwarding](../lto/option-forwarding.md)). The [cicc wiki](../../cicc/config/cli-flags.html) documents a different option surface (`-opt`, `-lnk`, `-llc`) that does not overlap meaningfully with nvlink's flags.

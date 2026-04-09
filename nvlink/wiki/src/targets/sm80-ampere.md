@@ -1,10 +1,267 @@
 # SM80-88 Ampere
 
-The SM80 ISel backend occupies a contiguous 1 MB region at `0xCA0000`--`0xDA0000` within nvlink's `.text` section. It contains the complete instruction selection, operand emission, bitfield packing, and binary encoding pipeline for Ampere-class GPUs (GA100, GA102, GA104, etc.) covering sm_80, sm_86, sm_87, and sm_88. The sm_88 variant is new in CUDA 13.0 (nvlink v13.0.88).
+The Ampere family in nvlink v13.0.88 covers four compute capabilities -- sm_80, sm_86, sm_87, and sm_88 -- all sharing the ISA class string `"Ampere"`, the same ISel backend at `0xCA0000`--`0xDA0000` (1 MB), and the same 128-bit SASS instruction encoding introduced by Turing. The sm_88 variant is new in CUDA 13.0. None of the four Ampere targets carry `'a'` or `'f'` suffix variants (unlike Blackwell targets), so the profile database contains exactly 12 Ampere profile entries: 4 real, 4 virtual, and 4 LTO.
 
-This page documents the internal structure of the backend, the three-phase compilation pipeline it implements, and the full function catalog derived from the sweep of the address range.
+For general Ampere architecture details (hardware specs, PTX ISA requirements, codegen factory encoding, scheduler parameters, latency tables), see the [ptxas wiki: Turing/Ampere](../../ptxas/targets/turing-ampere.html). For cicc-level feature gates and optimizer flag configuration, see the [cicc wiki: SM70-89](../../cicc/targets/sm70-89.html). This page focuses on the nvlink-internal per-sub-architecture data: profile registration, capability vectors, dispatch table function pointers, and the ISel backend shared by all four.
 
-## Address Map
+## Per-Architecture Profiles
+
+### Profile Registration in sub_484F50
+
+The profile database initializer `sub_484F50` (53,974 bytes) registers the four Ampere architectures in numeric order. Each architecture produces three profile objects via `sub_484DB0` (real `sm_`, virtual `compute_`, LTO `lto_`), which are inserted into the global hash map at `qword_2A5F8D8`. The Ampere block spans lines 288--462 of the decompiled source.
+
+| SM | Registration Lines | `sub_484DB0` Args | Variables |
+|---|---|---|---|
+| sm_80 | 288--331 | `(0, 0, "sm_80", "sm_80", "Ampere", "-D__CUDA_ARCH__=800", "sm_80")` | `v14` (real), `v15` (virtual) |
+| sm_86 | 332--377 | `(0, 0, "sm_86", "sm_86", "Ampere", "-D__CUDA_ARCH__=860", "sm_86")` | `v22` (real), `v23` (virtual) |
+| sm_87 | 378--420 | `(0, 0, "sm_87", "sm_87", "Ampere", "-D__CUDA_ARCH__=870", "sm_87")` | `v31` (real), `v32` (virtual) |
+| sm_88 | 421--462 | `(0, 0, "sm_88", "sm_88", "Ampere", "-D__CUDA_ARCH__=880", "sm_88")` | `v39` (real), `v40` (virtual) |
+
+The registration pattern for each is identical:
+
+```c
+// 1. Create real profile (is_virtual=0, is_lto=0)
+sm_80 = ArchProfile::create(0, 0, "sm_80", "sm_80", "Ampere",
+                            "-D__CUDA_ARCH__=800", "sm_80");
+
+// 2. Create virtual profile (is_virtual=1, is_lto=0)
+compute_80 = ArchProfile::create(1, 0, "compute_80", "compute_80", "Ampere",
+                                 "-D__CUDA_ARCH__=800", "compute_80");
+
+// 3. Link real <-> virtual
+sm_80->virtual_ptr = compute_80;       // offset +72
+compute_80->virtual_ptr = compute_80;  // self-ref
+
+// 4. Insert into hash map
+LinkerHash::insert(qword_2A5F8D8, "sm_80", sm_80);
+LinkerHash::insert(qword_2A5F8D8, "compute_80", compute_80);
+
+// 5. Create LTO profile (is_virtual=1, is_lto=1)
+lto_80 = ArchProfile::create(1, 1, "lto_80", "compute_80", NULL,
+                             "-D__CUDA_ARCH__=800", "lto_80");
+lto_80->virtual_ptr = compute_80;
+LinkerHash::insert(qword_2A5F8D8, "lto_80", lto_80);
+
+// 6. Build compatibility lists
+list_append(compute_80->compat_list_2, sm_80);    // offset +64
+list_append(sm_80->compat_list_2, compute_80);
+list_append(sm_80->compat_list_1, sm_80);          // offset +56: family
+list_append(sm_80->compat_list_0, sm_80);          // offset +48: cross-variant
+
+// 7. Copy capability vectors from rodata
+sm_80->capability[0] = xmmword_1D40F10;   // offset +80
+sm_80->capability[1] = xmmword_1D40F40;   // offset +96
+sm_80->capability[2] = xmmword_1D40F30;   // offset +112
+```
+
+After registering each sub-architecture, `sub_484F50` links it into the Ampere family chain. sm_86 is appended to sm_80's family list (`compat_list_0` and `compat_list_1`), sm_87 and sm_88 follow the same chaining to sm_86's lists (which transitively connect back to sm_80).
+
+The `dword_2A5F8CC = 80` assignment (line 326) sets the default minimum architecture to sm_80 -- any link operation that does not specify an explicit `--arch` flag defaults to this value.
+
+### Architecture Identity Matrix
+
+| Property | sm_80 | sm_86 | sm_87 | sm_88 |
+|---|---|---|---|---|
+| ISA class string | `"Ampere"` | `"Ampere"` | `"Ampere"` | `"Ampere"` |
+| Family string | `"Ampere"` | `"Ampere"` | `"Ampere"` | `"Ampere"` |
+| `__CUDA_ARCH__` | `800` | `860` | `870` | `880` |
+| Preprocessor define | `-D__CUDA_ARCH__=800` | `-D__CUDA_ARCH__=860` | `-D__CUDA_ARCH__=870` | `-D__CUDA_ARCH__=880` |
+| Suffix variants | None | None | None | None |
+| Profile byte[3] (finalization class) | 0 | 0 | 0 | 0 |
+| Products | GA100 (A100, A30) | GA10x (RTX 3090/3080/3070/3060, A40, A16) | GA10B (Jetson Orin AGX/NX/Nano) | Undocumented (CUDA 13.0) |
+| Same-decade group (SM/10) | 8 | 8 | 8 | 8 |
+
+All four share same-decade group 8, which also includes sm_89 (Ada). This means code compiled for sm_80 is compatible with any target in the 80--89 range via the same-decade rule (see the [Compatibility](compatibility.md) page).
+
+### Capability Vectors
+
+Each profile stores three 128-bit XMM vectors at offsets +80, +96, and +112. These encode hardware capability bitmasks checked by the finalization pipeline (`sub_470DA0`). The vectors are loaded from rodata constants in `sub_484F50`:
+
+| Architecture | Vec 0 (offset +80) | Vec 1 (offset +96) | Vec 2 (offset +112) | Source Lines |
+|---|---|---|---|---|
+| sm_75 (Turing) | `xmmword_1D40F10` | `xmmword_1D40F20` | `xmmword_1D40F30` | 283--287 |
+| **sm_80** | `xmmword_1D40F10` | **`xmmword_1D40F40`** | `xmmword_1D40F30` | 325--331 |
+| **sm_86** | `xmmword_1D40F10` | **`xmmword_1D40F50`** | `xmmword_1D40F30` | 370--374 |
+| **sm_87** | `xmmword_1D40F10` | `xmmword_1D40F50` (copied from sm_86) | `xmmword_1D40F30` | 416--420 |
+| **sm_88** | `xmmword_1D40F10` | `xmmword_1D40F50` (copied from sm_87) | `xmmword_1D40F30` | 458--462 |
+| sm_89 (Ada) | `xmmword_1D40F10` | `xmmword_1D40F60` | `xmmword_1D40F30` | 499--505 |
+
+The rodata symbols encode these capability tiers:
+
+| Symbol | Role | Architectures Using It |
+|---|---|---|
+| `xmmword_1D40F10` | Universal base (Vec 0) | All architectures sm_75--sm_121 |
+| `xmmword_1D40F20` | Turing feature set (Vec 1) | sm_75 only |
+| `xmmword_1D40F30` | Pre-Blackwell ISA version (Vec 2) | sm_75 through sm_90a |
+| `xmmword_1D40F40` | Ampere-base feature set (Vec 1) | sm_80, sm_90, sm_100, sm_103 |
+| `xmmword_1D40F50` | Ampere-86+ feature set (Vec 1) | sm_86, sm_87, sm_88 |
+| `xmmword_1D40F60` | Ada/Thor/RTX-50 feature set (Vec 1) | sm_89, sm_110, sm_120, sm_121 |
+| `xmmword_1D40F70` | Blackwell ISA version (Vec 2) | sm_100 onward |
+
+Key observations:
+
+- **Vec 0 is constant** across all architectures. It encodes the universal baseline capabilities.
+- **Vec 1 differentiates sub-architectures.** sm_80 gets `xmmword_1D40F40` (Ampere base), while sm_86/87/88 share `xmmword_1D40F50` (extended Ampere). The sm_86 value propagates to sm_87 and sm_88 through copy chains (`v211 = v29` at line 375; `v210 = v37` at line 418), not through independent rodata loads. This means sm_86, sm_87, and sm_88 are capability-identical from the finalization pipeline's perspective.
+- **Vec 2 is constant** within the pre-Blackwell group. All Ampere targets use `xmmword_1D40F30`.
+- **The Ampere-to-Ada boundary** is marked by the Vec 1 change from `xmmword_1D40F50` (sm_86/87/88) to `xmmword_1D40F60` (sm_89).
+
+### What Distinguishes Each Sub-Architecture
+
+**sm_80 (GA100 -- datacenter Ampere).** The base Ampere target and generational anchor. It uses `xmmword_1D40F40` for Vec 1, which differs from the sm_86+ value `xmmword_1D40F50`. This means sm_80's capability mask is a strict subset of sm_86's -- code finalized for sm_86 is not guaranteed to be re-finalizable for sm_80 without capability mask verification. sm_80's codegen factory is 28673 (`0x7001`), placing it at sub-variant 1 within generation 7. In the ptxas scheduler, sm_80 falls through to the default variant (0 or 1) and uses baseline latency tables.
+
+**sm_86 (GA10x -- consumer/enterprise Ampere).** Extends sm_80 with `xmmword_1D40F50` capability bits. The codegen factory is 28674 (`0x7002`, sub-variant 2). In the ptxas scheduler, sm_86 maps to sub-architecture variant 2, receiving tuned scheduling parameters distinct from sm_80's baseline. The ptxas latency table for sm_86 (`sub_8E7D80`, 4.4 KB) is the largest in the Ampere family, reflecting the different pipeline characteristics of the RTX 30xx consumer die versus the A100 datacenter die.
+
+**sm_87 (GA10B -- Jetson Orin).** Capability-identical to sm_86 (same Vec 1 `xmmword_1D40F50`, copied at line 418 via `v37 = _mm_load_si128(&v211)` where `v211` holds sm_86's vector). The codegen factory is 28675 (`0x7003`, sub-variant 3). The ptxas scheduler maps it to variant 3, giving Orin its own latency profile (`sub_8E8070`, 3.5 KB). This is the only material binary difference between sm_86 and sm_87 in nvlink -- the capability mask, ISel patterns, and encoding pipeline are identical.
+
+**sm_88 (undocumented -- CUDA 13.0).** Capability-identical to sm_86 and sm_87 (same Vec 1, copied at line 458 via the sm_87 chain). The codegen factory is 28676 (`0x7004`, sub-variant 4). The ptxas scheduler maps it to variant 4, shared with sm_110 (Jetson Thor). No separate latency table was found in the ptxas sweep data -- sm_88 may share sm_86's or sm_87's table. No public product ships on sm_88; it may represent an unreleased Ampere derivative or internal validation target.
+
+## Dispatch Table (sub_15C0CE0)
+
+The dispatch table initializer `sub_15C0CE0` registers seven callback function pointers per architecture into hash maps (`qword_2A644B8` through `qword_2A64488`). Each callback serves a specific role in the embedded compilation pipeline.
+
+### Slot Assignments
+
+| Slot | Hash Map | sm_75 (Turing) | sm_80 | sm_86 | sm_87 | sm_88 |
+|---|---|---|---|---|---|---|
+| B8 | Pre-compilation | `sub_15C2AA0` | `sub_15C2BF0` | `sub_15C2C80` | `sub_15C2E30` | `sub_15C2DA0` |
+| B0 | Compilation | `sub_15C2A70` | `sub_15C2BC0` | `sub_15C2CB0` | `sub_15C2D10` | `sub_15C2DD0` |
+| A8 | Backend init | `sub_15C3210` | `sub_15C3310` | `sub_15C3B60` | `sub_15C3C60` | `sub_15C3A60` |
+| A0 | Internal version | `byte_2A5EE40` | `byte_2A5EE3C` | `byte_2A5EE38` | `byte_2A5EE34` | `byte_2A5EE30` |
+| 90 | Perf-stats | `sub_15C1C80` | `sub_15C1EB0` | `sub_15C1EF0` | `sub_15C1FD0` | `sub_15C1E30` |
+| 88 | Resource calc | `sub_15C2610` | `sub_15C28B0` | `sub_15C1FF0` | `sub_15C2990` | `sub_15C2530` |
+
+Each `compute_` prefix variant receives the same internal version constant as its real counterpart (e.g., `compute_80` = `byte_2A5EE3C`, `compute_86` = `byte_2A5EE38`).
+
+### Backend Init Functions (Slot A8)
+
+The A8 slot handlers are the only callbacks with architecturally significant differences between Ampere sub-architectures. Each allocates a per-function codegen context via `sub_189F230(a3)` and writes a per-SM codegen factory value at offset +348:
+
+| SM | A8 Handler | Factory Value | Hex | Encoding |
+|---|---|---|---|---|
+| sm_75 | `sub_15C3210` | 24577 | `0x6001` | Generation 6, sub-variant 1 |
+| sm_80 | `sub_15C3310` | 28673 | `0x7001` | Generation 7, sub-variant 1 |
+| sm_86 | `sub_15C3B60` | 28674 | `0x7002` | Generation 7, sub-variant 2 |
+| sm_87 | `sub_15C3C60` | 28675 | `0x7003` | Generation 7, sub-variant 3 |
+| sm_88 | `sub_15C3A60` | 28676 | `0x7004` | Generation 7, sub-variant 4 |
+
+The codegen factory encodes `(isa_generation << 12) | sub_variant`. All four Ampere targets are generation 7 (bits 12--15 = 0x7), differing only in the low 12-bit sub-variant field. The factory value controls:
+
+1. **Scheduler profile selection** in `sub_8E4400`: all four fall into the 7-warp / 208-dispatch-slot bucket (factory range 24577--28676, threshold <= 32767).
+2. **Sub-architecture variant** for latency tuning: sm_80 gets default variant, sm_86 gets variant 2, sm_87 gets variant 3, sm_88 gets variant 4.
+3. **Instruction encoding table** selection: each sub-variant can enable/disable specific instruction forms.
+
+All other fields at +344 (shared memory config base, `0x100000` = 1 MB) and the remaining context fields are identical across all four Ampere handlers.
+
+### Internal Version Numbers
+
+The internal version numbers at `qword_2A644A0` are stored as 4-byte integers at decreasing addresses, each 4 bytes apart. From the version mapping table in the [SM89 Ada page](sm89-ada.md):
+
+| Address | SM | Internal Version | Notes |
+|---|---|---|---|
+| `byte_2A5EE40` | sm_75 | 14 | Turing baseline |
+| `byte_2A5EE3C` | sm_80 | (inferred 25) | Ampere base |
+| `byte_2A5EE38` | sm_86 | (inferred 26) | First sub-arch > 26 threshold triggers |
+| `byte_2A5EE34` | sm_87 | (inferred 27) | Orin |
+| `byte_2A5EE30` | sm_88 | (inferred 28) | Undocumented |
+| `byte_2A5EE2C` | sm_89 | 29 | Ada (confirmed) |
+
+The specific internal versions for sm_80--sm_88 are inferred from the address spacing pattern and the known threshold at `*(a1+376) > 26` (sm_86+, confirmed in the compilation driver `sub_1112F30` line 991). The sm_89 value of 29 is confirmed from decompiled code. The gap between sm_75 (internal 14) and sm_80 (inferred 25) reflects deprecated architectures in the 15--24 range that were removed from the profile database but whose internal version slots remain allocated.
+
+## Ampere vs Turing: Generational Differences
+
+The transition from Turing (sm_75, generation 6) to Ampere (sm_80, generation 7) manifests in nvlink at several levels. For hardware and ISA-level details, see [ptxas wiki: Turing/Ampere](../../ptxas/targets/turing-ampere.html). Within nvlink specifically:
+
+### Profile-Level Changes
+
+| Aspect | sm_75 (Turing) | sm_80 (Ampere) |
+|---|---|---|
+| ISA class string | `"Turing"` | `"Ampere"` |
+| ISA generation | 6 | 7 |
+| Codegen factory | 24577 (`0x6001`) | 28673 (`0x7001`) |
+| Vec 1 capability | `xmmword_1D40F20` | `xmmword_1D40F40` |
+| Same-decade group | 7 | 8 |
+| Default arch flag | -- | `dword_2A5F8CC = 80` |
+
+### Capability Boundary
+
+The Vec 1 change from `xmmword_1D40F20` (Turing) to `xmmword_1D40F40` (Ampere) marks a hard capability boundary. Code finalized for sm_80 cannot be re-finalized for sm_75 -- the capability mask comparison in `sub_470DA0` will fail because Ampere capabilities are a superset of Turing capabilities. The reverse direction (sm_75 code on sm_80 targets) is permitted by the same-decade rule only if both are in the same family linked list, which they are not (different decades: 7 vs 8).
+
+### ISel Backend Independence
+
+Despite sharing the same 128-bit instruction encoding format, sm_75 and sm_80 use completely separate ISel backends:
+
+| Property | SM75 (Turing) | SM80 (Ampere) |
+|---|---|---|
+| Address range | `0xF16000`--`0x100C000` (984 KB) | `0xCA0000`--`0xDA0000` (1 MB) |
+| Mega-hub | `sub_FBB810` (280 KB) | `sub_D5FD70` (239 KB) |
+| Pattern matchers | 276 | 259 |
+| SASS opcodes | -- | 19 (in LTO subset) |
+
+The Ampere ISel is slightly smaller than Turing's despite being a later generation. The reduction in pattern matchers (276 to 259) reflects instruction set refinement rather than feature removal -- Ampere reorganized and consolidated some multi-variant patterns.
+
+### Feature Gates in cicc and ptxas
+
+From the [cicc wiki: SM70-89](../../cicc/targets/sm70-89.html), the Ampere-specific features enabled at the sm_80 threshold include:
+
+- **C++20 `__VA_OPT__` support** via `unk_4D041B8`
+- **`llvm.nvvm.branch.if.convergent`** intrinsic (sm_80+, distinct from the sm_70+ `branch.if.all.convergent`)
+- **L2 cache hint atomics** (PTX 7.3+)
+- **cp.async.bulk patterns** for asynchronous memory copy
+
+From the [ptxas wiki: Turing/Ampere](../../ptxas/targets/turing-ampere.html), the sm_82 SASS opcode boundary defines 22 Ampere-era opcode slots (indices 172--193) covering sparse MMA, binary tensor core shapes, FP64 tensor MMA, async copy infrastructure, and warp-wide reduction.
+
+## Family Linkage
+
+The Ampere family linked list built by `sub_484F50` chains all four sub-architectures through `compat_list_1` (offset +56) and `compat_list_0` (offset +48):
+
+```
+sm_80.compat_list_1 -> { sm_80, sm_86, sm_87, sm_88 }
+sm_86.compat_list_1 -> { sm_86 }
+    also: sm_86 appended to sm_80's compat_list_0 and compat_list_1
+sm_87.compat_list_1 -> { sm_87 }
+    also: sm_87 appended to sm_86's compat_list_0 and compat_list_1
+sm_88.compat_list_1 -> { sm_88 }
+    also: sm_88 appended to sm_87's compat_list_0 and compat_list_1
+```
+
+Additionally, sm_89 (Ada) links into the Ampere family chain:
+
+```c
+// sub_484F50 lines 507--510:
+list_append(sm_80->compat_list_0, sm_89);       // v14[3].m128i_i64[0] = sm_80's list
+list_append(sm_80->compat_list_1, sm_89);       // v14[3].m128i_i64[1] = sm_80's list
+list_append(sm_86->compat_list_0, sm_89);       // v22[3].m128i_i64[0] = sm_86's list
+list_append(sm_86->compat_list_1, sm_89);       // v22[3].m128i_i64[1] = sm_86's list
+```
+
+This means sm_89 (Ada) is in the same compatibility family as the Ampere targets. The same-decade rule (80/10 = 89/10 = 8) already ensures this, but the explicit linkage provides direct traversal without arithmetic.
+
+### Worked Compatibility Example: sm_80 vs sm_86
+
+Consider linking a cubin compiled for `sm_80` into a final binary targeting `sm_86`.
+
+1. **`sub_4878A0`** parses both architecture strings: `record_a = {arch_number=80, is_virtual=0, has_suffix=0}`, `record_b = {arch_number=86, is_virtual=0, has_suffix=0}`.
+2. Neither record is virtual, so the function does not reject on the "both virtual" check.
+3. `record_a.has_suffix` is 0, so the function enters Case 1: `profile_family_match(sm_80.family_list, sm_86)`.
+4. `sub_465450` traverses sm_80's `compat_list_1`: `{ sm_80, sm_86, sm_87, sm_88 }`. sm_86 is found in the list.
+5. **Result: compatible.** The linker accepts the sm_80 cubin into the sm_86 link.
+
+The reverse direction (sm_86 cubin targeting sm_80) follows a different path:
+
+1. Parse: `record_a = {86, ...}`, `record_b = {80, ...}`.
+2. Case 1: `profile_family_match(sm_86.family_list, sm_80)`.
+3. sm_86's `compat_list_1` contains `{ sm_86 }` -- it does **not** contain sm_80.
+4. **Result: incompatible.** sm_86 code cannot be linked for sm_80.
+
+This asymmetry reflects the forward-compatibility guarantee: code compiled for a lower SM within a family runs on higher SMs, but not the reverse.
+
+However, capability mask verification at finalization time (`sub_470DA0`) adds a second check: even if the linker accepts the cubin, re-finalization will compare the capability vectors. Since sm_80 uses `xmmword_1D40F40` (Vec 1) and sm_86 uses `xmmword_1D40F50` (Vec 1), the sm_86 target has a superset of sm_80's capabilities. The finalization check passes for sm_80-compiled code targeting sm_86 but would fail for sm_86-compiled code targeting sm_80 if any sm_86-specific capability bits were used.
+
+## ISel Backend (0xCA0000--0xDA0000)
+
+All four Ampere sub-architectures share a single ISel backend. The backend is variant-agnostic -- it produces identical SASS encoding for sm_80, sm_86, sm_87, and sm_88. Any differences between sub-architectures are resolved upstream in the dispatch table (slot A8 codegen factory) and downstream in the scheduler (latency tables), not within the ISel code itself.
+
+### Address Map
 
 | Range | Size | Subsystem | Functions |
 |---|---|---|---|
@@ -16,15 +273,11 @@ This page documents the internal structure of the backend, the three-phase compi
 
 Total analyzed functions (>3 KB): 413. The mega-hub at `sub_D5FD70` is 239 KB (55,985 instructions, 1,340 callees) and too large for Hex-Rays to decompile. It is the third-largest function in the binary after the SM75 mega-hub (`sub_FBB810`, 280 KB) and the `cuda_builtin_prototype_generator` (`sub_15B86A0`, 345 KB).
 
-## Three-Phase Pipeline
+### Three-Phase Pipeline
 
 Every IR instruction processed by this backend passes through three phases in sequence: instruction selection, operand emission, and binary encoding. The output is a 128-bit SASS instruction word ready for insertion into the device ELF `.text` section.
 
-### Phase 1: Instruction Selection
-
-The mega-hub `sub_D5FD70` iterates all 259 pattern matcher functions for the current IR instruction. Each pattern matcher receives `(ctx, ir_node, &pattern_id, &priority)` and tests a single candidate encoding against the IR instruction's attributes and operand types. If all constraints pass and the pattern's priority exceeds the current best, the matcher writes its pattern ID and priority into the output slots. After all matchers run, the mega-hub dispatches to the emitter for the winning pattern.
-
-The ISel protocol:
+**Phase 1: Instruction Selection.** The mega-hub `sub_D5FD70` iterates all 259 pattern matcher functions. Each matcher receives `(ctx, ir_node, &pattern_id, &priority)` and tests a single candidate encoding. The highest-priority match wins.
 
 ```
 for each pattern_matcher in sm80_pattern_table[0..258]:
@@ -35,44 +288,15 @@ for each pattern_matcher in sm80_pattern_table[0..258]:
 sm80_emitter_table[best_id](ctx, ir_node)
 ```
 
-Each pattern matcher queries:
-- Instruction attributes via `sub_A49150(ctx, ir_node, slot_id)` -- up to 12 attribute checks per pattern
-- Definition (output) operand count via `sub_530FD0(ir_node)`
-- Use (input) operand count via `sub_530FC0(ir_node)`
-- Individual operands via `sub_530FB0(ir_node, index)`
-- Operand type predicates: `isGPR` (`sub_CDD600`), `isPredicate` (`sub_CDD610`), `isUniformReg` (`sub_CDD630`), `isImmediate` (`sub_CDD670`), `isConstBuf` (`sub_CDD680`)
-- Register file via `sub_CDD5F0(reg_id)`
+Each pattern matcher queries: instruction attributes via `sub_A49150(ctx, ir_node, slot_id)` (up to 12 attribute checks per pattern), definition/use operand counts via `sub_530FD0`/`sub_530FC0`, individual operands via `sub_530FB0(ir_node, index)`, and operand type predicates: `isGPR` (`sub_CDD600`), `isPredicate` (`sub_CDD610`), `isUniformReg` (`sub_CDD630`), `isImmediate` (`sub_CDD670`), `isConstBuf` (`sub_CDD680`).
 
-Priority values range from 14 (least specific, fallback patterns) to 34 (most specific, highly constrained patterns). Higher priority means more attribute checks and narrower operand constraints.
+Priority values range from 14 (least specific, fallback patterns) to 34 (most specific, heavily constrained patterns). Higher priority means more attribute checks and narrower operand constraints.
 
-### Phase 2: Operand Emission
+**Phase 2: Operand Emission.** The winning pattern dispatches to an operand emission function from Zone 1 (`0xCA0000`--`0xCDC000`). Each emitter handles one (opcode, format) combination and populates a structured instruction descriptor: opcode ID at `*(a2+12)`, encoding format at `*(a2+14)`, max operand slot count at `*(a2+15)`, modifier flags via setter functions, and decoded register operands.
 
-The winning pattern dispatches to an operand emission function from Zone 1 (`0xCA0000`--`0xCDC000`). Each emitter handles one (opcode, format) combination and populates a structured instruction descriptor:
+**Phase 3: Binary Encoding.** Zone 3 functions (`0xD9A400`--`0xDA0000`, 17 functions) produce the final 128-bit SASS binary instruction word using SSE2 intrinsics (`_mm_or_si128`) for efficient 128-bit bulk operations.
 
-1. Store opcode ID at `*(a2+12)` (WORD)
-2. Store encoding format at `*(a2+14)` (BYTE)
-3. Store maximum operand slot count at `*(a2+15)` (BYTE)
-4. Set instruction modifiers via setter functions (rounding mode, data type, negation, saturation, etc.)
-5. Decode register operands from the IR instruction's 128-bit packed word at `*(a1+16)` using shift/mask operations
-6. Call `emitRegOperand` / `emitPredicateOperand` / `emitAddrOperand` for each operand slot
-7. Apply special-case fixups for specific operand ID combinations
-
-The descriptor serves as the intermediate representation between pattern selection and binary encoding. Format IDs observed: 0 (RR), 1 (RI), 2 (RC), 3 (RR.ALT), 4 (RR.P), 5 (RI.P), 6 (RC.P), 7 (SHFL), 8 (RR.3SRC), 9 (RI.P2), 10 (RR.WIDE), 11 (RR.ADD), 13 (TCA), 14 (TCB), 15 (TCC), 17 (TCD), 18 (TCE), 19 (RR.MEM), 23 (TC.ALT), 24 (TC.ALT2), 42 (TC.WIDE1), 43 (TC.WIDE2), 44 (TC.WIDE3), 45 (TC.WIDE4).
-
-### Phase 3: Binary Encoding
-
-Zone 3 functions (`0xD9A400`--`0xDA0000`, 17 functions) take the fully populated instruction descriptor and produce the final 128-bit SASS binary instruction word:
-
-1. Call `setBitfield` (`sub_4C28B0`) to lay down opcode base bits
-2. Load instruction template from static tables via SIMD `_mm_loadu_si128`
-3. Initialize instruction buffer via `initInsnFromTemplate` (`sub_4C2A90`)
-4. Encode register operand slots via `encodeOperandSlot0` (`sub_4C4D60`) and `encodeOperandSlot1` (`sub_4C5C30`)
-5. Pack modifier flags into the binary instruction
-6. Set scheduling information and dependency barriers
-
-The encoding functions use SSE2 intrinsics (`_mm_or_si128`) for efficient 128-bit bulk operations on the instruction word.
-
-## Instruction Set Coverage
+### Instruction Set Coverage
 
 The SM80 backend handles 19 distinct SASS opcodes with a total of 80 (opcode, format) emission variants:
 
@@ -100,9 +324,9 @@ The SM80 backend handles 19 distinct SASS opcodes with a total of 80 (opcode, fo
 
 These 19 opcodes represent the core compute-intensive instructions that the linker's embedded ptxas must emit during LTO compilation. The full Ampere ISA is substantially larger; instructions that never appear in LTO-generated code (control flow, barriers, texture, surface, etc.) are handled by separate codec tables at `0xC00070`--`0xC50970`.
 
-## ISel Pattern Classes
+### ISel Pattern Classes
 
-The 259 ISel pattern matchers divide into 9 functional classes, each covering a specific instruction category:
+The 259 ISel pattern matchers divide into 9 functional classes:
 
 | Class | Patterns | Address Range | Target Opcodes |
 |---|---|---|---|
@@ -116,7 +340,7 @@ The 259 ISel pattern matchers divide into 9 functional classes, each covering a 
 | Tensor core | 27 | `0xD3E000`--`0xD52000` | HMMA (all TC formats) |
 | Predicate/select | 26 | `0xD52000`--`0xD5FD70` | SEL, predicate combinations |
 
-Priority levels range from 14 to 34. The priority system ensures more specific patterns (e.g., a pattern requiring GPR+Pred+UReg+Imm with 11 attribute checks at priority 31) win over generic fallbacks (e.g., GPR+Imm with 3 attribute checks at priority 14). Within each class, patterns form a lattice from general to specific:
+Priority levels range from 14 to 34. The priority system ensures more specific patterns win over generic fallbacks. Within each class, patterns form a lattice from general to specific:
 
 | Priority Range | Attribute Checks | Operand Constraint Level | Example |
 |---|---|---|---|
@@ -126,86 +350,34 @@ Priority levels range from 14 to 34. The priority system ensures more specific p
 | 24--27 | 8--9 | Heavily constrained | UReg-only with 9 attribute checks |
 | 28--34 | 10--12 | Highly constrained | FMA with 12 attribute checks, priority 34 |
 
-## Bitfield Packing Functions
+### Encoding Formats
 
-Zone 1 contains 75 bitfield packing functions (embedded within the `0xCA0000`--`0xCDC000` range alongside operand emitters). These translate the instruction descriptor's register IDs, opcode fields, and modifiers into bit positions within the 128-bit SASS instruction word. Each function follows the pattern:
+The format field at `*(a2+14)` selects the operand encoding layout. Formats observed across all 19 opcodes:
 
-1. Merge fixed opcode template bits via `_mm_or_si128`
-2. Translate virtual register IDs to SASS encoding via `encodeRegId` (`sub_A50D10`)
-3. Pack register fields at specific bit offsets (11--20 shift-pack operations per function)
-4. Handle the zero-register sentinel: register ID 1023 maps to RZ, predicate ID 31 maps to PT (true predicate)
-5. Encode source operands (registers, immediates, constant buffer references)
-6. Pack modifier fields (rounding, data type, flags) into instruction bits
-
-Packing functions are grouped by the instruction class they serve:
-
-| Class | Functions | Shift-Pack Ops | Notes |
-|---|---|---|---|
-| FADD/FMUL/MUFU/HADD2/SHFL | 26 | 11--16 | Arithmetic + special function encoding |
-| IMAD/FFMA/LEA | 3 | 13--15 | Multiply-add class encoding |
-| FFMA | 4 | 15 | Fused multiply-add specific |
-| FFMA/DSETP | 12 | 13--16 | FMA and FP64 comparison encoding |
-| HMMA (Tensor Core) | 4 | 16 | Tensor core with fixed 16-bitfield layout |
-| HMMA/IMAD.WIDE | 10 | 14--20 | Wide operand encoding (most complex) |
-
-The HMMA/IMAD.WIDE class has the most complex packing with up to 20 shift-pack operations per function, reflecting the wide operand formats required by tensor core and 64-bit multiply-add instructions.
-
-## Operand Type Predicates
-
-Fifteen small predicate functions at `0xCDD5F0`--`0xCDD690` classify operands by type. These are called thousands of times by the ISel pattern matchers:
-
-| Address | Identity | Check |
+| Format ID | Name | Description |
 |---|---|---|
-| `sub_CDD5F0` | `getRegFile` | Extract register file from register ID |
-| `sub_CDD600` | `isGPR` | Operand is a general-purpose register |
-| `sub_CDD610` | `isPredicate` | Operand is a predicate register |
-| `sub_CDD630` | `isUniformReg` | Operand is a uniform register |
-| `sub_CDD670` | `isImmediate` | Operand is an immediate value |
-| `sub_CDD680` | `isConstBuf` | Operand is a constant buffer reference |
+| 0 | RR | Register-Register (both sources in GPRs) |
+| 1 | RI | Register-Immediate (one immediate source) |
+| 2 | RC | Register-ConstantBuffer (one source from constant memory) |
+| 3 | RR.ALT | Register-Register alternate encoding |
+| 4 | RR.P | Register-Register with predicate output |
+| 5 | RI.P | Register-Immediate with predicate output |
+| 6 | RC.P | Register-ConstantBuffer with predicate output |
+| 7 | SHFL | Warp shuffle encoding |
+| 8 | RR.3SRC | Register-Register with 3 register sources |
+| 9 | RI.P2 | Register-Immediate with dual predicate output |
+| 10 | RR.WIDE | Register-Register with wide (64-bit) result |
+| 11 | RR.ADD | Register-Register addition-specific encoding |
+| 13--18 | TCA--TCE | Tensor Core formats A through E |
+| 19 | RR.MEM | Register-Register memory-mapped encoding |
+| 23--24 | TC.ALT/TC.ALT2 | Tensor Core alternate compact formats |
+| 42--45 | TC.WIDE1--4 | Tensor Core wide formats 1 through 4 |
 
-Operand type combinations observed in ISel patterns: GPR, GPR+Imm, GPR+Pred, GPR+Pred+Imm, GPR+Pred+UReg, GPR+Pred+UReg+Imm, GPR+UReg+Imm, UReg, UReg+Imm. The most common combination is GPR+Pred+UReg+Imm (used by 89 of the 259 patterns).
+### Emission Function Catalog
 
-## Instruction Modifier Setters
+The following tables list all 80 operand emission functions in Zone 1, organized by opcode. Each row is one (opcode, format) combination.
 
-The operand emission functions call external setter functions to configure instruction modifiers on the descriptor. These setters are shared across all SM backends:
-
-| Address | Identity | Modifier |
-|---|---|---|
-| `sub_509100` | `setDnzMode` | Denormalized-number-as-zero mode |
-| `sub_509160` | `setRoundingMode` | IEEE rounding mode (RN, RZ, RP, RM) |
-| `sub_509760` | `setAbsolute` | Absolute value modifier |
-| `sub_509890` | `setEvictFirst` | Cache eviction hint |
-| `sub_509950` | `setCacheLevel` | Cache level targeting |
-| `sub_509B00` | `setScope` | Memory scope (CTA, GPU, SYS) |
-| `sub_509B20` | `setEviction` | Eviction policy |
-| `sub_50AC80` | `setCacheOp` | Cache operation type |
-| `sub_50ACD0` | `setMemoryType` | Memory type qualifier |
-| `sub_50B160` | `setComparison` | Comparison predicate (LT, GT, EQ, NE, ...) |
-| `sub_50B300` | `setNegation` | Source operand negation |
-| `sub_50B500` | `setDataType` | Data type (F32, F16, S32, U32, ...) |
-| `sub_50B900` | `setStrongOrder` | Strong memory ordering |
-| `sub_50BD00` | `setSaturation` | Output saturation clamp |
-| `sub_50BDA0` | `setAddrSpace` | Address space (global, shared, local) |
-| `sub_50C060` | `setFtzMode` | Flush-to-zero for denormals |
-
-Not every instruction uses every modifier. The modifier set per instruction family:
-
-| Instruction | Key Modifiers |
-|---|---|
-| FFMA | rounding, evictFirst, cacheOp, memoryType |
-| FADD | rounding, absolute, negation, dataType, saturation |
-| FMUL | dnzMode, rounding, absolute, negation, dataType |
-| MUFU | rounding, absolute, comparison, negation, dataType |
-| LDG | rounding, evictFirst, cacheOp, memoryType, strongOrder |
-| IMAD.WIDE | rounding, evictFirst, cacheOp, memoryType, addrSpace |
-| ISETP/IMNMX | rounding, evictFirst, scope, eviction, cacheOp |
-| HADD2 | rounding, absolute, negation, dataType, saturation |
-
-## Emission Function Catalog
-
-The following table lists all 80 operand emission functions identified in Zone 1, organized by opcode. Each row is one (opcode, format) combination.
-
-### HMMA (Tensor Core) -- 11 variants
+#### HMMA (Tensor Core) -- 11 variants
 
 | Address | Identity | Format | Size | Notes |
 |---|---|---|---|---|
@@ -221,7 +393,7 @@ The following table lists all 80 operand emission functions identified in Zone 1
 | `sub_CD7EE0` | sm80_emit_HMMA_TC.WIDE1 | 42 | 11,188 B | Complex multi-variant with fixup tables |
 | `sub_CD8AC0` | sm80_emit_HMMA_TC.WIDE3 | 44 | 11,204 B | Complex multi-variant with fixup tables |
 
-### FFMA -- 12 variants
+#### FFMA -- 12 variants
 
 | Address | Identity | Format | Size |
 |---|---|---|---|
@@ -238,7 +410,7 @@ The following table lists all 80 operand emission functions identified in Zone 1
 | `sub_CC4AF0` | sm80_emit_FFMA_RR.WIDE | 10 | 3,685 B |
 | `sub_CC5440` | sm80_emit_FFMA_RR.ADD | 11 | 3,701 B |
 
-### LDG (Global Memory Load) -- 9 variants
+#### LDG (Global Memory Load) -- 9 variants
 
 | Address | Identity | Format | Size |
 |---|---|---|---|
@@ -254,7 +426,7 @@ The following table lists all 80 operand emission functions identified in Zone 1
 
 The RR/RI/RC/RR.ALT base forms are substantially larger (~11 KB each) than the predicated (.P) and shuffle forms (~3.5 KB), reflecting the complex cache hierarchy modifiers (`strongOrder`, `eviction`, `scope`, `cacheOp`, `memoryType`) that the base forms must encode.
 
-### IMAD.WIDE (64-bit Multiply-Add) -- 9 variants
+#### IMAD.WIDE (64-bit Multiply-Add) -- 9 variants
 
 | Address | Identity | Format | Size |
 |---|---|---|---|
@@ -268,9 +440,9 @@ The RR/RI/RC/RR.ALT base forms are substantially larger (~11 KB each) than the p
 | `sub_CD2C90` | sm80_emit_IMAD.WIDE_SHFL | 7 | 5,078 B |
 | `sub_CD21D0` | sm80_emit_IMAD.WIDE_RR.3SRC | 8 | 4,873 B |
 
-IMAD.WIDE has the largest base-form emitters at ~12.7 KB each, exceeding even LDG. The wide result format requires handling both the low and high 32-bit halves of the 64-bit product, with separate register pair allocation for the destination.
+IMAD.WIDE has the largest base-form emitters at ~12.7 KB each. The wide result format requires handling both halves of the 64-bit product, with separate register pair allocation.
 
-### Remaining Opcodes
+#### Remaining Opcodes
 
 | Address | Identity | Format | Size |
 |---|---|---|---|
@@ -316,67 +488,75 @@ IMAD.WIDE has the largest base-form emitters at ~12.7 KB each, exceeding even LD
 | `sub_CB5380` | sm80_emit_HADD2_RR | 0 | 5,434 B |
 | `sub_CB67F0` | sm80_emit_HADD2_RI | 1 | 5,648 B |
 
-Notable size outliers: `sm80_emit_FADD_RC` at 44,490 bytes (1,415 lines) is the single largest emission function, followed by `sm80_emit_FADD_RI` at 27,061 bytes (865 lines). Both require extensive fixup tables for the constant-buffer and immediate operand forms of FP32 addition with negation, absolute value, saturation, and data type modifiers.
+Notable size outliers: `sm80_emit_FADD_RC` at 44,490 bytes is the single largest emission function, followed by `sm80_emit_FADD_RI` at 27,061 bytes. Both require extensive fixup tables for the constant-buffer and immediate operand forms of FP32 addition with negation, absolute value, saturation, and data type modifiers.
 
-## External Dependencies
+### Bitfield Packing Functions
 
-The SM80 backend calls into shared infrastructure functions across the binary:
+Zone 1 contains 75 bitfield packing functions. These translate the instruction descriptor's register IDs, opcode fields, and modifiers into bit positions within the 128-bit SASS instruction word:
 
-### IR Accessors
-
-| Address | Identity | Callers | Role |
+| Class | Functions | Shift-Pack Ops | Notes |
 |---|---|---|---|
-| `sub_530FB0` | `getOperand(idx)` | 31,399 | Universal operand accessor |
-| `sub_530FC0` | `getNumUses()` | -- | Count use (input) operands |
-| `sub_530FD0` | `getNumDefs()` | -- | Count definition (output) operands |
-| `sub_A49150` | `getInsnAttribute` | 30,768 | Query instruction attribute by slot ID |
-| `sub_A49720` | `hasSpecialAttribute` | -- | Check for special encoding flag |
+| FADD/FMUL/MUFU/HADD2/SHFL | 26 | 11--16 | Arithmetic + special function encoding |
+| IMAD/FFMA/LEA | 3 | 13--15 | Multiply-add class encoding |
+| FFMA | 4 | 15 | Fused multiply-add specific |
+| FFMA/DSETP | 12 | 13--16 | FMA and FP64 comparison encoding |
+| HMMA (Tensor Core) | 4 | 16 | Tensor core with fixed 16-bitfield layout |
+| HMMA/IMAD.WIDE | 10 | 14--20 | Wide operand encoding (most complex) |
 
-### Operand Emitters
+### Operand Type Predicates
+
+Fifteen small predicate functions at `0xCDD5F0`--`0xCDD690` classify operands by type:
+
+| Address | Identity | Check |
+|---|---|---|
+| `sub_CDD5F0` | `getRegFile` | Extract register file from register ID |
+| `sub_CDD600` | `isGPR` | Operand is a general-purpose register |
+| `sub_CDD610` | `isPredicate` | Operand is a predicate register |
+| `sub_CDD630` | `isUniformReg` | Operand is a uniform register |
+| `sub_CDD670` | `isImmediate` | Operand is an immediate value |
+| `sub_CDD680` | `isConstBuf` | Operand is a constant buffer reference |
+
+### Instruction Modifier Setters
+
+| Address | Identity | Modifier |
+|---|---|---|
+| `sub_509100` | `setDnzMode` | Denormalized-number-as-zero mode |
+| `sub_509160` | `setRoundingMode` | IEEE rounding mode (RN, RZ, RP, RM) |
+| `sub_509760` | `setAbsolute` | Absolute value modifier |
+| `sub_509890` | `setEvictFirst` | Cache eviction hint |
+| `sub_509950` | `setCacheLevel` | Cache level targeting |
+| `sub_509B00` | `setScope` | Memory scope (CTA, GPU, SYS) |
+| `sub_509B20` | `setEviction` | Eviction policy |
+| `sub_50AC80` | `setCacheOp` | Cache operation type |
+| `sub_50ACD0` | `setMemoryType` | Memory type qualifier |
+| `sub_50B160` | `setComparison` | Comparison predicate (LT, GT, EQ, NE, ...) |
+| `sub_50B300` | `setNegation` | Source operand negation |
+| `sub_50B500` | `setDataType` | Data type (F32, F16, S32, U32, ...) |
+| `sub_50B900` | `setStrongOrder` | Strong memory ordering |
+| `sub_50BD00` | `setSaturation` | Output saturation clamp |
+| `sub_50BDA0` | `setAddrSpace` | Address space (global, shared, local) |
+| `sub_50C060` | `setFtzMode` | Flush-to-zero for denormals |
+
+### External Dependencies
+
+The SM80 backend calls into shared infrastructure functions:
 
 | Address | Identity | Role |
 |---|---|---|
+| `sub_530FB0` | `getOperand(idx)` | Universal operand accessor (31,399 callers) |
+| `sub_530FC0` | `getNumUses()` | Count use (input) operands |
+| `sub_530FD0` | `getNumDefs()` | Count definition (output) operands |
+| `sub_A49150` | `getInsnAttribute` | Query instruction attribute by slot ID (30,768 callers) |
 | `sub_4FF010` | `emitRegOperand` | Emit register operand to descriptor |
 | `sub_4FF150` | `emitPredicateOperand` | Emit predicate operand to descriptor |
 | `sub_4FF280` | `emitAddrOperand` | Emit address/memory operand to descriptor |
-| `sub_50C790` | `getReuse` | Get register reuse flag for scheduling |
-
-### Encoding Primitives
-
-| Address | Identity | Role |
-|---|---|---|
 | `sub_4C28B0` | `setBitfield` | Core primitive: pack value into 128-bit instruction at bit offset |
 | `sub_4C2A90` | `initInsnFromTemplate` | Initialize instruction buffer from static template |
 | `sub_4C4D60` | `encodeOperandSlot0` | Encode register into operand slot 0 |
 | `sub_4C5C30` | `encodeOperandSlot1` | Encode register into operand slot 1 |
 | `sub_A50D10` | `encodeRegId` | Translate virtual register ID to SASS encoding |
-| `sub_4FEFF0` | `resolveAddress` | Resolve address operand from raw bits |
-
-### Lookup Tables
-
-| Address | Identity | Role |
-|---|---|---|
-| `sub_403BDB` | `bitmaskLookup_fuzzy` | Fuzzy bitmask table lookup |
-| `sub_403C5C` | `bitmaskLookup_exact` | Exact bitmask table lookup |
-
-## SM Variant Support
-
-The SM80 backend covers four Ampere-class compute capabilities:
-
-| SM Version | Architecture | GPUs | Notes |
-|---|---|---|---|
-| sm_80 | GA100 | A100, A30 | Data center, first Ampere |
-| sm_86 | GA102/GA104/GA106/GA107 | RTX 3090/3080/3070/3060, A40, A16 | Consumer and enterprise |
-| sm_87 | GA10B | Jetson Orin (AGX, NX, Nano) | Embedded/automotive |
-| sm_88 | -- | -- | New in CUDA 13.0 (nvlink v13.0.88) |
-
-All four variants share the same ISel backend, emission functions, and encoding pipeline. Variant-specific behavior is handled upstream in the SM dispatch tables (`sub_15C0CE0`) via per-SM callback registration, not within this backend's code. The backend's pattern matchers and emitters are variant-agnostic -- they produce identical SASS encoding for all sm_8x targets, with differences (if any) resolved at the callback level before ISel runs.
-
-The sm_88 addition in CUDA 13.0 is notable because it was not present in earlier toolkit releases. Its callback registration follows the same pattern as sm_86/87, suggesting minimal ISA divergence from the base sm_80 encoding.
 
 ## Relationship to Other Backends
-
-The SM80 backend at 1 MB is smaller than the SM75 (Turing) backend at 984 KB and substantially smaller than the SM89/90 (Ada/Hopper) backend at 1.9 MB. Size comparison of mega-hubs:
 
 | Backend | Mega-Hub | Size | Pattern Matchers |
 |---|---|---|---|
@@ -385,27 +565,37 @@ The SM80 backend at 1 MB is smaller than the SM75 (Turing) backend at 984 KB and
 | **SM80 (Ampere)** | **`sub_D5FD70`** | **239 KB** | **259** |
 | SM89/90 (Ada/Hopper) | `sub_119BF40` | 231 KB | ~160 |
 
-Despite having fewer ISel patterns than SM75, the SM80 mega-hub matches the SM50-7x hub at 239 KB. The larger pattern count in SM75 (276 vs 259) correlates with its larger hub size (280 KB), confirming the linear relationship between pattern count and hub size.
+Despite having fewer ISel patterns than SM75, the SM80 mega-hub matches the SM50-7x hub at 239 KB. The SM89/90 backend at 1.9 MB is substantially larger overall, though its mega-hub is smaller, because it includes 750 instruction encoder template instantiations that the SM80 backend does not require.
 
-## Encoding Format Summary
+## Confidence Assessment
 
-The format field at `*(a2+14)` selects the operand encoding layout. Formats observed across all 19 opcodes:
-
-| Format ID | Name | Description |
+| Claim | Confidence | Verification |
 |---|---|---|
-| 0 | RR | Register-Register (both sources in GPRs) |
-| 1 | RI | Register-Immediate (one immediate source) |
-| 2 | RC | Register-ConstantBuffer (one source from constant memory) |
-| 3 | RR.ALT | Register-Register alternate encoding |
-| 4 | RR.P | Register-Register with predicate output |
-| 5 | RI.P | Register-Immediate with predicate output |
-| 6 | RC.P | Register-ConstantBuffer with predicate output |
-| 7 | SHFL | Warp shuffle encoding |
-| 8 | RR.3SRC | Register-Register with 3 register sources |
-| 9 | RI.P2 | Register-Immediate with dual predicate output |
-| 10 | RR.WIDE | Register-Register with wide (64-bit) result |
-| 11 | RR.ADD | Register-Register addition-specific encoding |
-| 13--18 | TCA--TCE | Tensor Core formats A through E |
-| 19 | RR.MEM | Register-Register memory-mapped encoding |
-| 23--24 | TC.ALT/TC.ALT2 | Tensor Core alternate compact formats |
-| 42--45 | TC.WIDE1--4 | Tensor Core wide formats 1 through 4 |
+| ISA class string `"Ampere"` for sm_80/86/87/88 | CONFIRMED | Decompiled `sub_484F50` lines 293, 337, 383, 426: `"Ampere"` for all four |
+| `__CUDA_ARCH__` values: 800, 860, 870, 880 | CONFIRMED | Decompiled `sub_484F50` lines 294, 338, 384, 427 |
+| Codegen factory values: 28673, 28674, 28675, 28676 | CONFIRMED | Decompiled `sub_15C3310` +348=28673, `sub_15C3B60` +348=28674, `sub_15C3C60` +348=28675, `sub_15C3A60` +348=28676 |
+| Dispatch table: all 7 slots per SM | CONFIRMED | Decompiled `sub_15C0CE0` lines 75--102 |
+| Dispatch table: sm_88 encoding table = `sub_15C3A60` | CONFIRMED | Decompiled `sub_15C0CE0` line 98 |
+| Capability Vec 1: sm_80 = `xmmword_1D40F40`, sm_86/87/88 = `xmmword_1D40F50` | CONFIRMED | Decompiled `sub_484F50` lines 328 (F40), 370 (F50), 418 (copy), 458 (copy) |
+| sm_86/87/88 capability-identical (same Vec 1 via copy chain) | HIGH | Copy chain `v211`->`v210` traced through lines 375, 418, 458 |
+| sm_88 new in CUDA 13.0 | HIGH | String at `0x1d40a9a`; not in earlier toolkit versions |
+| SM80 ISel backend at `0xCA0000`--`0xDA0000` (1 MB) | HIGH | Address range consistent with function catalog and mega-hub location |
+| 259 ISel pattern matchers, 80 emission variants | HIGH | Derived from systematic sweep of address range |
+| Internal version numbers (sm_80=25 through sm_88=28) | MEDIUM | Inferred from address spacing and `*(a1+376) > 26` threshold |
+| Family linkage: sm_89 links into sm_80/sm_86 chains | CONFIRMED | Decompiled `sub_484F50` lines 507--510 |
+| FADD_RC largest emitter at 44,490 B | MEDIUM | Size from function boundary analysis |
+| Three-phase pipeline (ISel, emission, encoding) | HIGH | Architectural pattern consistent across all SM backends |
+
+## Cross-References
+
+### nvlink Internal
+- [Architecture Profiles](arch-profiles.md) -- SM80 family profiles in the linker database, struct layout, capability vector table
+- [SM75 Turing](sm75-turing.md) -- predecessor ISel backend
+- [SM89 Ada](sm89-ada.md) -- successor backend, dispatch table comparison
+- [Compatibility Checking](compatibility.md) -- same-decade rule, family linkage, capability mask verification
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- per-arch function pointer dispatch mechanism
+- [ISel Hubs](../ptxas/isel-hubs.md) -- SM80 mega-hub `sub_D5FD70` (239 KB)
+
+### Sibling Wikis
+- [ptxas: Turing/Ampere](../../ptxas/targets/turing-ampere.html) -- standalone ptxas SM80 target documentation (codegen factory encoding, scheduler profiles, latency tables, SASS encoding format)
+- [cicc: SM70-89](../../cicc/targets/sm70-89.html) -- cicc compiler SM80 through SM88 feature gates (`__VA_OPT__`, convergent branches, L2 cache hint atomics)

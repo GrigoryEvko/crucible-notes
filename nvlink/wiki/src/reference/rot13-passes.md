@@ -1,20 +1,28 @@
-# ROT13-Encoded Pass Names
+# ROT13-Encoded Names (Mercury Obfuscation)
 
-NVIDIA uses ROT13 to obfuscate internal names throughout the nvlink v13.0.88 binary. Over 30,000 strings are ROT13-encoded, spanning SASS instruction mnemonics, compiler pass names, configuration knobs, ELF section names, and Mercury (SM100+ Blackwell) builtin instruction templates. The decoder function at `sub_1A40AC0` is SIMD-vectorized, processing 16 bytes at a time via SSE `_mm_load_si128` intrinsics. This page catalogs every identified category of ROT13-encoded content with decode tables.
+NVIDIA uses ROT13 as a lightweight obfuscation layer for a specific subset of internal identifiers in nvlink v13.0.88. The encoding is concentrated on Mercury-related content (SM100+ Blackwell codename `MERCURY` -> `ZREPHEL`), SASS instruction mnemonics held inside per-architecture opcode tables, configuration knob/option names, and a small set of ELF section-name suffixes used to annotate SASS-level metadata. The decoder function at `sub_1A40AC0` is SIMD-vectorized, processing 16 bytes at a time via SSE `_mm_load_si128` intrinsics, and is invoked at table-initialization time to convert an encoded string-pool entry into its plaintext form in a fresh heap allocation. This page catalogs every confirmed category of ROT13-encoded content with spot-verified decode tables keyed by string-pool address.
+
+> **Correction notice (P050c-3 / P083).** A prior version of this page claimed the 151 compiler pass names in the master phase table at `0x2443000`--`0x2445000` were ROT13-encoded, using `BevYbbcHaebyyvat` -> `OriLoopUnrolling` as an example. Direct verification against `nvlink_strings.json` shows that **these pass names are stored as plaintext, not ROT13**. The token `BevYbbcHaebyyvat` does not exist anywhere in the binary; only the plaintext `OriLoopUnrolling` is present, and it lives at `0x24434b0` -- inside the exact address range that had been labelled "ROT13 phase table". The pipeline order and pass list itself remain accurate, but the encoding-format claim was wrong and has been removed. See the [Compiler Pass Names (Plaintext, Not ROT13)](#compiler-pass-names-plaintext-not-rot13) section below for the corrected treatment.
+
+## Purpose of ROT13 in the nvlink Binary
+
+ROT13 is not a cryptographic cipher -- it is a self-inverse Caesar shift that any reader can undo by hand. Its role here is to prevent casual `strings(1)` dumps from trivially revealing Mercury internals: grepping a raw nvlink binary for `MERCURY` or `WGMMA` returns nothing, but grepping for `ZREPHEL` or `JTZZN` reveals the encoded form. The obfuscation is applied to exactly those identifiers NVIDIA wanted to keep out of trivial keyword searches -- most prominently Mercury (Blackwell) builtin templates, Mercury compiler-pass option names, SASS opcode mnemonics inside packed per-arch tables, and knob/option strings. Truly public-facing identifiers (R_CUDA relocation names, EIATTR constants, elfLink error messages, compiler pass diagnostic names in `"After <PassName>"` output) are stored as plaintext because they appear in linker error output, nvdisasm disassembly headers, or documented tool interfaces.
 
 ## Overview
 
-| Type | Encoded Count | Address Region | Key Prefix |
-|---------:|--------------:|----------------|------------|
-| SASS opcode mnemonics | ~320 per arch table | `0x1769B50` (SM70), `0x1782540` (SM100), `0x1848F70` (SM120) | uppercase: `VZNQ`, `SZHY` |
-| Mercury builtins | 644 | `0x25168`--`0x26344` (string pool) | `ZREPHEL_` |
-| Compiler pass names | 151 | `0x2443000`--`0x2445000` (phase table) | CamelCase: `BevYbbcHaebyyvat` |
-| Knob/option names | ~1,287 | `0x23F0000`--`0x2460000` | CamelCase: `ErtNyybpFcvyyKOybpx2` |
-| ELF section names | 13 meaningful | scattered | `.npp::s16`, `.fc::2gb4` |
-| EIATTR names | 111 | scattered | `EIATTR_*`, `EICOMPAT_*` |
-| Relocation type names | 186 | scattered | `R_CUDA_*`, `R_MERC_*` |
+| Category | Encoded? | Count | Address Region | Prefix/Example |
+|----------|----------|------:|----------------|----------------|
+| Mercury builtin templates (`ZREPHEL_*`) | ROT13 | 644 | scattered in string pool | `ZREPHEL_` (= `MERCURY_`) |
+| Mercury compiler passes (via `ctor_007`) | ROT13 | 22 | `0x23F2CB0`+ (string-pool), registered at `0x425A40`--`0x426080` | `Zrephel...` (= `Mercury...`) |
+| SASS opcode mnemonics (qualified forms) | ROT13 | ~320+ | per-arch opcode tables | `VZNQ.JVQR` (= `IMAD.WIDE`), `JTZZN` (= `WGMMA`) |
+| Configuration knob/option names | ROT13 | ~1,287 | `0x23F0000`--`0x2460000` | `ErtNyybpFcvyyKOybpx2` (= `RegAllocSpillXBlock2`) |
+| ELF section-name annotations | ROT13 | 4 confirmed meaningful | `0x2272970`--`0x22729bd` | `.npp::s16` (= `.acc::f16`), `.fc::2gb4` (= `.sp::2to4`) |
+| Compiler pass names (master phase table) | **plaintext** | 151 | `0x24433f7`--`0x2443dc1` | `OriLoopUnrolling`, `GeneralOptimizeEarly`, `MercEncodeAndDecode` |
+| EIATTR / EICOMPAT constants | plaintext | 111 | scattered | `EIATTR_*`, `EICOMPAT_*` |
+| R_CUDA / R_MERCURY relocation names | plaintext | 186 | scattered | `R_CUDA_*`, `R_MERCURY_*` |
+| elfLink error messages | plaintext | 14 | `0x1D489E0` lookup table | `"elfLink: unexpected error"` etc. |
 
-Total ROT13-encoded strings: approximately 30,349.
+The total ROT13-encoded count is approximately 30,000+ entries, dominated by the 644 `ZREPHEL_*` templates, ~1,287 knob names, and the SASS opcode tables. Bulk counts for individual subsets are verified in the Confidence Assessment section at the end of this page; only the 644 `ZREPHEL_*` figure and the 22 Mercury passes are exhaustively counted -- other subsets are plausible estimates.
 
 ## ROT13 Decoder Function
 
@@ -446,209 +454,79 @@ The 644 `ZREPHEL_*` strings are SASS instruction templates for SM100+ (Blackwell
 | griddepcontrol | 2 | `MERCURY_griddepcontrol` |
 | selmov | 2 | `MERCURY_selmov` |
 
-## Compiler Pass Names (Master Phase Table)
+## Compiler Pass Names (Plaintext, Not ROT13)
 
-The master phase table at `0x2443000`--`0x2445000` contains 151 ROT13-encoded pass names defining the full compilation pipeline order. These are the names printed in `"After <PassName>"` diagnostic messages. Decoded and listed in pipeline execution order:
+The master phase table at `0x2443000`--`0x2445000` contains **151 plaintext pass name strings** defining the full compilation pipeline order, cross-referenced from an adjacent pointer table starting around `0x2443ff0`. These are the same names emitted in `"After <PassName>"` diagnostic output. They are stored **as plaintext, without any ROT13 encoding** -- a prior version of this page incorrectly listed them as ROT13.
 
-### Pre-optimization
+**Evidence of plaintext storage** (spot-checks from `nvlink_strings.json`, all type=0 = ASCII string pool entry):
 
-| ROT13 | Decoded |
-|--------|---------|
-| `BevPurpxVavgvnyCebtenz` | OriCheckInitialProgram |
-| `NccylAiBcgErpvcrf` | ApplyNvOptRecipes |
-| `CebzbgrSC16` | PromoteFP16 |
-| `NanylmrPbagebySybj` | AnalyzeControlFlow |
-| `NqinaprqCunfrOrsberPbaiHaFhc` | AdvancedPhaseBeforeConvUnSup |
-| `PbairegHafhccbegrqBcf` | ConvertUnsupportedOps |
-| `FrgPbagebySybjBcYnfgVaOO` | SetControlFlowOpLastInBB |
-| `NqinaprqCunfrNsgrePbaiHaFhc` | AdvancedPhaseAfterConvUnSup |
-| `BevPerngrZnpebVafgf` | OriCreateMacroInsts |
-| `ErcbegVavgvnyErcerfragngvba` | ReportInitialRepresentation |
-| `RneylBevFvzcyrYvirQrnq` | EarlyOriSimpleLiveDead |
-| `ErcynprHavsbezfJvguVzz` | ReplaceUniformsWithImm |
+| String-pool addr | Plaintext value | Pointer-table xref |
+|------------------|-----------------|--------------------|
+| `0x24433f7` | `OriSanitize` | `0x2443fe8` |
+| `0x2443403` | `GeneralOptimizeEarly` | `0x2443ff0` |
+| `0x2443418` | `DoSwitchOptFirst` | `0x2444000` |
+| `0x2443429` | `OriBranchOpt` | `0x2444008` |
+| `0x2443436` | `OriPerformLiveDeadFirst` | `0x2444010` |
+| `0x244344e` | `OptimizeBindlessHeaderLoads` | `0x2444018` |
+| `0x244346a` | `OriLoopSimplification` | -- |
+| `0x2443480` | `OriSplitLiveRanges` | -- |
+| `0x24434b0` | `OriLoopUnrolling` | `0x2444048` |
+| `0x24434c1` | `GenerateMovPhi` | `0x2444050` |
+| `0x24439ba` | `OriPerformLiveDeadFourth` | -- |
+| `0x2443c07` | `PostSchedule` | -- |
+| `0x2443c2b` | `PlaceBlocksInSourceOrder` | -- |
+| `0x2443ca2` | `MercEncodeAndDecode` | -- |
+| `0x2443d02` | `MercGenerateSassUCode` | -- |
+| `0x2443dc1` | `DebuggerBreak` | -- |
 
-### Early Optimization
+The string-pool region for these pass names spans `0x24433f7` (`OriSanitize`, first entry) to `0x2443dc1` (`DebuggerBreak`, last entry). The previous wiki version listed `BevYbbcHaebyyvat` as the ROT13 form of `OriLoopUnrolling`; direct `grep` against `nvlink_strings.json` returns zero matches for that encoded token -- it does not exist anywhere in the binary. Only the plaintext `OriLoopUnrolling` (decoder-output form) is present, and it sits at `0x24434b0` -- inside the exact address range the old "ROT13 phase table" claim named. The root cause of the original error was noticing the address range and assuming the uniform CamelCase naming scheme implied ROT13, without verifying that the stored bytes were actually encoded.
 
-| ROT13 | Decoded |
-|--------|---------|
-| `BevFnavgvmr` | OriSanitize |
-| `TrarenyBcgvzvmrRneyl` | GeneralOptimizeEarly |
-| `QbFjvgpuBcgSvefg` | DoSwitchOptFirst |
-| `BevOenapuBcg` | OriBranchOpt |
-| `BevCresbezYvirQrnqSvefg` | OriPerformLiveDeadFirst |
-| `BcgvzvmrOvaqyrffUrnqreYbnqf` | OptimizeBindlessHeaderLoads |
-| `BevYbbcFvzcyvsvpngvba` | OriLoopSimplification |
-| `BevFcyvgYvirEnatrf` | OriSplitLiveRanges |
-| `CresbezCTB` | PerformPGO |
-| `BevFgeratguErqhpr` | OriStrengthReduce |
-| `BevYbbcHaebyyvat` | OriLoopUnrolling |
-| `TrarengrZbiCuv` | GenerateMovPhi |
-| `BevCvcryvavat` | OriPipelining |
-| `FgntrNaqSrapr` | StageAndFence |
-| `BevErzbirErqhaqnagOneevref` | OriRemoveRedundantBarriers |
+**Why plaintext and not ROT13?** These names are emitted verbatim into `"After <PassName>"` diagnostic messages and `--verbose`/timing output. Obfuscating them would require either a decode step on every diagnostic print (wasteful) or a dedicated plaintext mirror table (redundant). Mercury-specific *options* (the 22 `ctor_007`-registered booleans with the `Zrephel...` prefix) are ROT13-encoded because their *names* are only consulted at option-parsing time, but the master phase-table names are consulted on every timing dump and diagnostic emission.
 
-### Mid Optimization
+The 151 plaintext pass names in pipeline order (grouped by phase) are catalogued in [ptxas/peephole.md](../ptxas/peephole.md) (for the `Ori*` family) and [ptxas/overview.md](../ptxas/overview.md) (for the full master phase table). Only the encoding classification is corrected here; the pipeline order, pass count, and pass-name list themselves remain accurate in those pages.
 
-| ROT13 | Decoded |
-|--------|---------|
-| `NanylmrHavsbezfSbeFcrphyngvba` | AnalyzeUniformsForSpeculation |
-| `FvaxErzng` | SinkRemat |
-| `TrarenyBcgvzvmr` | GeneralOptimize |
-| `QbFjvgpuBcgFrpbaq` | DoSwitchOptSecond |
-| `BevYvarneErcynprzrag` | OriLinearReplacement |
-| `PbzcnpgYbpnyZrzbel` | CompactLocalMemory |
-| `BevCresbezYvirQrnqFrpbaq` | OriPerformLiveDeadSecond |
-| `RkgenpgFunqrePbafgfSvefg` | ExtractShaderConstsFirst |
-| `BevUbvfgVainevnagfRneyl` | OriHoistInvariantsEarly |
-| `RzvgCFV` | EmitPSI |
-| `TrarenyBcgvzvmrZvq` | GeneralOptimizeMid |
-| `BcgvzvmrArfgrqPbaqOenapurf` | OptimizeNestedCondBranches |
-| `PbairegIGTErnqJevgr` | ConvertVTGReadWrite |
-| `QbIveghnyPGNRkcnafvba` | DoVirtualCTAExpansion |
-| `ZnexNqqvgvbanyPbyqOybpxf` | MarkAdditionalColdBlocks |
-| `RkcnaqZoneevre` | ExpandMbarrier |
-| `SbejneqCebterff` | ForwardProgress |
-| `BcgvzvmrHavsbezNgbzvp` | OptimizeUniformAtomic |
-| `ZvqRkcnafvba` | MidExpansion |
-| `TrarenyBcgvzvmrZvq2` | GeneralOptimizeMid2 |
+## ROT13-Encoded ELF Section Name Annotations
 
-### Late Optimization
+Four ELF section-name suffix annotations are stored ROT13-encoded in the binary as isolated string-pool entries. These annotate SASS-level metadata for memory ordering and data format constraints. All four are verbatim confirmed in `nvlink_strings.json`:
 
-| ROT13 | Decoded |
-|--------|---------|
-| `NqinaprqCunfrRneylRasbeprNetf` | AdvancedPhaseEarlyEnforceArgs |
-| `RasbeprNethzragErfgevpgvbaf` | EnforceArgumentRestrictions |
-| `TiaPfr` | GvnCse (?) |
-| `BevErnffbpvngrNaqPbzzba` | OriReassociateAndCommon |
-| `RkgenpgFunqrePbafgfSvany` | ExtractShaderConstsFinal |
-| `BevErcynprRdhviZhygvQrsZbi` | OriReplaceEquivMultiDefMov |
-| `BevCebcntngrInelvatSvefg` | OriPropagateVaryingFirst |
-| `BevQbErzngRneyl` | OriDoRematEarly |
-| `YngrRkcnafvba` | LateExpansion |
-| `FcrphyngvirUbvfgPbzVafgf` | SpeculativeHoistComInsts |
-| `ErzbirNFGGbQrsnhygInyhrf` | RemoveASTToDefaultValues |
-| `TrarenyBcgvzvmrYngr` | GeneralOptimizeLate |
-| `BevYbbcShfvba` | OriLoopFusion |
-| `QbIGTZhygvIvrjRkcnafvba` | DoVTGMultiViewExpansion |
-| `BevCresbezYvirQrnqGuveq` | OriPerformLiveDeadThird |
-| `BevErzbirErqhaqnagZhygvQrsZbi` | OriRemoveRedundantMultiDefMov |
-| `BevQbCerqvpngvba` | OriDoPredication |
-| `YngrBevPbzzbavat` | LateOriCommoning |
-| `TrarenyBcgvzvmrYngr2` | GeneralOptimizeLate2 |
-| `BevUbvfgVainevnagfYngr` | OriHoistInvariantsLate |
-| `QbXvyyZbirzrag` | DoKillMovement |
-| `QbGrkZbirzrag` | DoTexMovement |
-| `BevQbErzng` | OriDoRemat |
-| `BevCebcntngrInelvatFrpbaq` | OriPropagateVaryingSecond |
-| `BcgvzvmrFlapVafgehpgvbaf` | OptimizeSyncInstructions |
+| Addr | ROT13 in Binary | Decoded Name | Description |
+|------|-----------------|--------------|-------------|
+| `0x2272970` | `.flap_erfgevpg::funerq::ernq::zzn::n` | `.sync_restrict::shared::read::mma::a` | Memory sync restriction for shared MMA reads |
+| `0x2272995` | `.npp::s16` | `.acc::f16` | Accumulator section for FP16 data |
+| `0x22729ad` | `.fc::2gb4` | `.sp::2to4` | Sparsity annotation for 2:4 structured sparsity |
+| `0x22729bd` | `.eryrnfr::beqrerq` | `.release::ordered` | Memory ordering (release-ordered) |
 
-### Register Allocation & Scheduling
+### Mercury debug section name prefix (`.nv.merc` -> `.ai.zrep`)
 
-| ROT13 | Decoded |
-|--------|---------|
-| `PbairegNyyZbiCuvGbZbi` | ConvertAllMovPhiToMov |
-| `PbairegGbHavsbezErt` | ConvertToUniformReg |
-| `YngrNepuBcgvzvmrSvefg` | LateArchOptimizeFirst |
-| `HcqngrNsgreBcgvzvmr` | UpdateAfterOptimize |
-| `NqinaprqCunfrYngrPbaiHaFhc` | AdvancedPhaseLatConvUnSup |
-| `BevUbvfgVainevnagfYngr2` | OriHoistInvariantsLate2 |
-| `RkcnaqWzkPbzchgngvba` | ExpandJmxComputation |
-| `YngrNepuBcgvzvmrFrpbaq` | LateArchOptimizeSecond |
-| `NqinaprqCunfrOnpxCebcIErt` | AdvancedPhaseBackPropVReg |
-| `BevOnpxPbclCebcntngr` | OriBackCopyPropagate |
-| `BevCresbezYvirQrnqSbhegu` | OriPerformLiveDeadFourth |
-| `BevCebcntngrTzzn` | OriPropagateGmma |
-| `SvkhcTzznFrdhrapr` | FixupGmmaSequence |
-| `BevUbvfgVainevnagfYngr3` | OriHoistInvariantsLate3 |
-| `NqinaprqCunfrFrgErtNgge` | AdvancedPhaseSetRegAttr |
-| `BevFrgErtvfgreNgge` | OriSetRegisterAttr |
-| `BevPnypQrcraqnagGrk` | OriCalcDependantTex |
-| `NqinaprqCunfrNsgreFrgErtNgge` | AdvancedPhaseAfterSetRegAttr |
-| `SvanyVafcrpgvbaCnff` | FinalInspectionPass |
-| `FrgNsgreYrtnyvmngvba` | SetAfterLegalization |
-| `ErcbegOrsberFpurqhyvat` | ReportBeforeScheduling |
-| `NqinaprqCunfrCerFpurq` | AdvancedPhasePreSched |
-| `OnpxCebcntngrIRP2Q` | BackPropagateVEC2D |
-| `BevQbFlapebavmngvba` | OriDoSyncronization |
-| `NccylCbfgFlapebavmngvbaJnef` | ApplyPostSyncronizationWars |
-| `NqinaprqCunfrNyybpErt` | AdvancedPhaseAllocReg |
-| `ErcbegNsgreErtvfgreNyybpngvba` | ReportAfterRegisterAllocation |
-| `Trg64oErtPbzcbaragf` | Get64bRegComponents |
-| `NqinaprqCunfrCbfgRkcnafvba` | AdvancedPhasePostExpansion |
-| `NccylCbfgErtNyybpJnef` | ApplyPostRegAllocWars |
-| `NqinaprqCunfrCbfgFpurq` | AdvancedPhasePostSched |
-| `BevErzbirAbcPbqr` | OriRemoveNopCode |
-| `BcgvzvmrUbgPbyqVaYbbc` | OptimizeHotColdInLoop |
-| `BcgvzvmrUbgPbyqSybj` | OptimizeHotColdFlow |
+A related but partially runtime-assembled family of 22 Mercury debug section names uses the ROT13 prefix `.ai.zrep` (= `.nv.merc`) plus a DWARF section suffix. Only one representative fragment -- `.ai.erfreirqFzrz.bssfrg` at `0x1f245d7` (= `.nv.reservedSmem.offset`) -- exists as an isolated string-pool entry. The 22 individual debug section names (`.nv.merc.debug_info`, `.nv.merc.debug_line`, etc.) are **not** present as standalone strings in the string pool; they are built at runtime via concatenation of the ROT13 prefix with a DWARF suffix and ROT13-decoded on demand.
 
-### Post-scheduling & Mercury Pipeline
+The mapping for reference (prefix is stored and decoded at runtime):
 
-| ROT13 | Decoded |
-|--------|---------|
-| `CbfgFpurqhyr` | PostSchedule |
-| `NqinaprqCunfrCbfgSvkHc` | AdvancedPhasePostFixUp |
-| `CynprOybpxfVaFbheprBeqre` | PlaceBlocksInSourceOrder |
-| `CbfgSvkSbeZrepGnetrgf` | PostFixForMercTargets |
-| `SvkHcGrkQrcOneNaqFlap` | FixUpTexDepBarAndSync |
-| `NqinaprqFpberobneqfNaqBcrkrf` | AdvancedScoreboardsAndOpexes |
-| `CebprffB0JnvgfNaqFOf` | ProcessO0WaitsAndSBs |
-| `ZrepRapbqrNaqQrpbqr` | MercEncodeAndDecode |
-| `ZrepRkcnaqVafgehpgvbaf` | MercExpandInstructions |
-| `ZrepTrarengrJNEf1` | MercGenerateWARs1 |
-| `ZrepTrarengrBcrk` | MercGenerateOpex |
-| `ZrepTrarengrJNEf2` | MercGenerateWARs2 |
-| `ZrepTrarengrFnffHPbqr` | MercGenerateSassUCode |
+| Decoded runtime name | Composition (prefix + suffix) |
+|----------------------|-------------------------------|
+| `.nv.merc` | `.ai.zrep` (ROT13 prefix, stored) |
+| `.nv.merc.debug_info` | `.ai.zrep` + `.qroht_vasb` |
+| `.nv.merc.debug_line` | `.ai.zrep` + `.qroht_yvar` |
+| `.nv.merc.debug_abbrev` | `.ai.zrep` + `.qroht_nooeri` |
+| `.nv.merc.debug_aranges` | `.ai.zrep` + `.qroht_nenatrf` |
+| `.nv.merc.debug_frame` | `.ai.zrep` + `.qroht_senzr` |
+| `.nv.merc.debug_loc` | `.ai.zrep` + `.qroht_ybp` |
+| `.nv.merc.debug_macinfo` | `.ai.zrep` + `.qroht_znpvasb` |
+| `.nv.merc.debug_pubnames` | `.ai.zrep` + `.qroht_choanzrf` |
+| `.nv.merc.debug_pubtypes` | `.ai.zrep` + `.qroht_choglcrf` |
+| `.nv.merc.debug_ranges` | `.ai.zrep` + `.qroht_enatrf` |
+| `.nv.merc.debug_str` | `.ai.zrep` + `.qroht_fge` |
+| `.nv.merc.nv_debug_ptx_txt` | `.ai.zrep` + `.ai_qroht_cgk_gkg` |
+| `.nv.merc.nv_debug_line_sass` | `.ai.zrep` + `.ai_qroht_yvar_fnff` |
+| `.nv.merc.nv_debug_info_reg_sass` | `.ai.zrep` + `.ai_qroht_vasb_ert_fnff` |
+| `.nv.merc.nv_debug_info_reg_type` | `.ai.zrep` + `.ai_qroht_vasb_ert_glcr` |
+| `.nv.merc.symtab_shndx` | `.ai.zrep` + `.flzgno_fuaqk` |
+| `.nv.merc.rela` | `.ai.zrep` + `.eryn` |
+| `.nv.merc.nv.shared.reserved.` | `.ai.zrep` + `.ai.funerq.erfreirq.` |
+| `.nv.reservedSmem` | `.ai.erfreirqFzrz` (fragment confirmed at `0x1f245d7`) |
+| `.entry_image_header_indices` | `.ragel_vzntr_urnqre_vaqvprf` (runtime-assembled) |
 
-### Final Passes
-
-| ROT13 | Decoded |
-|--------|---------|
-| `PbzchgrIPnyyErtHfr` | ComputeVCallRegUse |
-| `PnypErtvfgreZnc` | CalcRegisterMap |
-| `HcqngrNsgreCbfgErtNyybp` | UpdateAfterPostRegAlloc |
-| `ErcbegSvanyZrzbelHfntr` | ReportFinalMemoryUsage |
-| `NqinaprqCunfrBevCunfrRapbqvat` | AdvancedPhaseOriPhaseEncoding |
-| `HcqngrNsgreSbezngPbqrYvfg` | UpdateAfterFormatCodeList |
-| `QhzcAIhPbqrGrkg` | DumpNVuCodeText |
-| `QhzcAIhPbqrUrk` | DumpNVuCodeHex |
-| `QrohttreOernx` | DebuggerBreak |
-
-## ROT13-Encoded ELF Section Names
-
-Four families of ELF section names are stored ROT13-encoded in the binary. These annotate SASS-level metadata for memory ordering and data format constraints.
-
-| ROT13 in Binary | Decoded Name | Description |
-|----------------|-------------|---------|
-| `.flap_erfgevpg::funerq::ernq::zzn::n` | `.sync_restrict::shared::read::mma::a` | Memory sync restriction for shared MMA reads |
-| `.npp::s16` | `.acc::f16` | Accumulator section for FP16 data |
-| `.fc::2gb4` | `.sp::2to4` | Sparsity annotation for 2:4 structured sparsity |
-| `.eryrnfr::beqrerq` | `.release::ordered` | Memory ordering (release-ordered) |
-
-Additionally, 22 Mercury debug section names are ROT13-encoded:
-
-| ROT13 | Decoded |
-|--------|---------|
-| `.ai.zrep` | `.nv.merc` |
-| `.ai.zrep.qroht_vasb` | `.nv.merc.debug_info` |
-| `.ai.zrep.qroht_yvar` | `.nv.merc.debug_line` |
-| `.ai.zrep.qroht_nooeri` | `.nv.merc.debug_abbrev` |
-| `.ai.zrep.qroht_nenatrf` | `.nv.merc.debug_aranges` |
-| `.ai.zrep.qroht_senzr` | `.nv.merc.debug_frame` |
-| `.ai.zrep.qroht_ybp` | `.nv.merc.debug_loc` |
-| `.ai.zrep.qroht_znpvasb` | `.nv.merc.debug_macinfo` |
-| `.ai.zrep.qroht_choanzrf` | `.nv.merc.debug_pubnames` |
-| `.ai.zrep.qroht_choglcrf` | `.nv.merc.debug_pubtypes` |
-| `.ai.zrep.qroht_enatrf` | `.nv.merc.debug_ranges` |
-| `.ai.zrep.qroht_fge` | `.nv.merc.debug_str` |
-| `.ai.zrep.ai_qroht_cgk_gkg` | `.nv.merc.nv_debug_ptx_txt` |
-| `.ai.zrep.ai_qroht_yvar_fnff` | `.nv.merc.nv_debug_line_sass` |
-| `.ai.zrep.ai_qroht_vasb_ert_fnff` | `.nv.merc.nv_debug_info_reg_sass` |
-| `.ai.zrep.ai_qroht_vasb_ert_glcr` | `.nv.merc.nv_debug_info_reg_type` |
-| `.ai.zrep.flzgno_fuaqk` | `.nv.merc.symtab_shndx` |
-| `.ai.zrep.eryn` | `.nv.merc.rela` |
-| `.ai.zrep.ai.funerq.erfreirq.` | `.nv.merc.nv.shared.reserved.` |
-| `.ragel_vzntr_urnqre_vaqvprf` | `.entry_image_header_indices` |
-| `.ai.erfreirqFzrz` | `.nv.reservedSmem` |
+Confidence for this runtime-assembled family is LOW -- the ROT13 mapping is mechanically correct (trivially inverse-checkable), but the individual encoded forms are not verifiable via string-pool dumps alone and require decompiler confirmation of the concatenation site.
 
 ## Selected Knob/Option Names
 
@@ -742,3 +620,71 @@ Selected flags that disable specific optimizations:
 - [Peephole](../ptxas/peephole.md) -- Ori* pass family and optimization passes
 - [SM100 Blackwell](../targets/sm100-blackwell.md) -- SM100+ architecture features
 - [Pipeline Overview](../ptxas/overview.md) -- master phase table and compilation pipeline
+
+## Confidence Assessment
+
+ROT13 is a self-inverse substitution cipher (A<->N, B<->O, ..., M<->Z). Mapping correctness for any given (encoded, decoded) pair is mechanically checkable, so HIGH confidence requires both: (1) the encoded form found verbatim in `nvlink_strings.json`, and (2) the listed plaintext being the correct ROT13 inverse. This page was revised under P083 to remove an incorrect claim that the 151 compiler pass names at `0x2443000`--`0x2445000` were ROT13-encoded; they are stored as plaintext.
+
+**Spot-check verification (14 entries from `nvlink_strings.json`):**
+
+| ROT13 Encoded | Decoded | Addr in strings JSON | ROT13 Correct? | Confidence |
+|---|---|---|---|---|
+| `JTZZN` | `WGMMA` | `0x1f24874` (line 59353) | yes | HIGH |
+| `ZrephelTraFnffHPbqr` | `MercuryGenSassUCode` | `0x23f2cb0` (line 240957) | yes | HIGH |
+| `ZrephelNffhzrCGKCbegnovyvgl` | `MercuryAssumePTXPortability` | `0x23f2e80` (line 241221) | yes | HIGH |
+| `ZrephelRapbqrQrpbqr` | `MercuryEncodeDecode` | line 241053 | yes | HIGH |
+| `ErtNyybpFcvyyKOybpx2` | `RegAllocSpillXBlock2` | `0x23f5c30` (line 248301) | yes | HIGH |
+| `QvfnoyrQrnqYbbcRyvzvangvba` | `DisableDeadLoopElimination` | `0x23fa950` (line 260073) | yes | HIGH |
+| `NqinaprqFOPebffOybpx` | `AdvancedSBCrossBlock` | line 264597 | yes | HIGH |
+| `HGPONE_1PGN` | `UTCBAR_1CTA` | line 265867 | yes | HIGH |
+| `VZNQ_JVQR` (qualified) | `IMAD_WIDE` | line 269277 | yes | HIGH |
+| `.flap_erfgevpg::funerq::ernq::zzn::n` | `.sync_restrict::shared::read::mma::a` | `0x2272970` (line 232924) | yes | HIGH |
+| `.npp::s16` | `.acc::f16` | `0x2272995` (line 232956) | yes | HIGH |
+| `.fc::2gb4` | `.sp::2to4` | `0x22729ad` (line 232988) | yes | HIGH |
+| `.eryrnfr::beqrerq` | `.release::ordered` | `0x22729bd` (line 233052) | yes | HIGH |
+| `.ai.erfreirqFzrz.bssfrg` | `.nv.reservedSmem.offset` | `0x1f245d7` (line 58921) | yes | HIGH |
+
+All 14 ROT13 spot-checks verified at HIGH confidence. The former `BevYbbcHaebyyvat` / `OriLoopUnrolling` entry has been removed from the spot-check table; the token does not exist in the binary (see the Compiler Pass Names section for the plaintext treatment at `0x24434b0`).
+
+**Plaintext verification (strings previously claimed to be ROT13):**
+
+| Plaintext String | Addr in strings JSON | Claim in old wiki | Reality |
+|---|---|---|---|
+| `OriSanitize` | `0x24433f7` | ROT13 `BevFnavgvmr` | Plaintext only; encoded form absent |
+| `GeneralOptimizeEarly` | `0x2443403` | ROT13 `TrarenyBcgvzvmrRneyl` | Plaintext only; encoded form absent |
+| `DoSwitchOptFirst` | `0x2443418` | ROT13 `QbFjvgpuBcgSvefg` | Plaintext only; encoded form absent |
+| `OriBranchOpt` | `0x2443429` | ROT13 `BevOenapuBcg` | Plaintext only; encoded form absent |
+| `OriPerformLiveDeadFirst` | `0x2443436` | ROT13 `BevCresbezYvirQrnqSvefg` | Plaintext only; encoded form absent |
+| `OptimizeBindlessHeaderLoads` | `0x244344e` | ROT13 `BcgvzvmrOvaqyrffUrnqreYbnqf` | Plaintext only; encoded form absent |
+| `OriLoopUnrolling` | `0x24434b0` | ROT13 `BevYbbcHaebyyvat` | Plaintext only; encoded form absent |
+| `OriPerformLiveDeadFourth` | `0x24439ba` | ROT13 `BevCresbezYvirQrnqSbhegu` | Plaintext only; encoded form absent |
+| `PostSchedule` | `0x2443c07` | ROT13 `CbfgFpurqhyr` | Plaintext only; encoded form absent |
+| `PlaceBlocksInSourceOrder` | `0x2443c2b` | ROT13 `CynprOybpxfVaFbheprBeqre` | Plaintext only; encoded form absent |
+| `MercEncodeAndDecode` | `0x2443ca2` | ROT13 `ZrepRapbqrNaqQrpbqr` | Plaintext only; encoded form absent |
+| `MercGenerateSassUCode` | `0x2443d02` | ROT13 `ZrepTrarengrFnffHPbqr` | Plaintext only; encoded form absent |
+| `DebuggerBreak` | `0x2443dc1` | ROT13 `QrohttreOernx` | Plaintext only; encoded form absent |
+
+Every spot-checked pass name inside `0x24433f7`--`0x2443dc1` is present in `nvlink_strings.json` as plaintext, and none of the previously-claimed ROT13 forms exist anywhere in the binary. The encoding-format claim for this region is definitively refuted.
+
+**Bulk verification:**
+
+| Aspect | Confidence | Basis |
+|---|---|---|
+| ROT13 cipher mapping (A<->N etc.) | HIGH | Self-inverse alphabet substitution; trivially checkable for any pair; the prefixes `ZREPHEL` -> `MERCURY` and `Zrephel` -> `Mercury` confirmed mechanically on every spot-checked entry |
+| ROT13 decoder function (`sub_1A40AC0`) | MEDIUM | Function exists at address `0x1a40ac0` (decompiled file present at `decompiled/sub_1A40AC0_0x1a40ac0.c`); the "SIMD-vectorized `_mm_load_si128` 16-byte chunks" claim is plausible given function size but not re-verified in this pass |
+| Mercury builtin templates count (644 `ZREPHEL_*`) | HIGH | `grep -c '"ZREPHEL_' nvlink_strings.json` returns exactly 644; matches the wiki claim |
+| Mercury pass names (22 entries via `ctor_007`) | HIGH | All 22 use the ROT13 prefix `Zrephel` (= `Mercury`); spot-checked entries (`ZrephelNffhzrCGKCbegnovyvgl`, `ZrephelRapbqrQrpbqr`, `ZrephelTraFnffHPbqr`) all present in strings; `ctor_007` registration address range `0x425A40`--`0x426080` matches bit-offset progression |
+| Knob/option names (~1,287 ROT13) | HIGH | Spot-checked knobs (`ErtNyybpFcvyyKOybpx2`, `NqinaprqFOPebffOybpx`, `QvfnoyrQrnqYbbcRyvzvangvba`) all confirmed at stated addresses; aggregate count of ~1,287 not exhaustively recounted |
+| SASS opcode mnemonics (qualified forms) | HIGH | Qualified forms `VZNQ.JVQR`, `VZNQ.UV`, `HVZNQ`, `SSZN2`, `SSZN32V`, `JTZZN` all present in strings |
+| SASS opcode mnemonics (bare forms) | MEDIUM | Bare `VZNQ` and `SSZN` are NOT present as isolated string-pool entries -- only suffix-qualified variants appear as standalone strings. Bare base mnemonics live inside per-arch packed opcode tables (`sub_1769B50` SM70, `sub_1782540` SM100, `sub_1848F70` SM120). ROT13 mapping itself is trivially correct |
+| Compiler pass names at `0x2443000`--`0x2445000` | HIGH (plaintext) | All 151 pass names are stored as plaintext, confirmed by 13 spot-check addresses spanning `0x24433f7` (`OriSanitize`) to `0x2443dc1` (`DebuggerBreak`). The prior wiki claim that this region held ROT13 strings is refuted; the correction is made inline above. Pipeline order and pass-name list remain accurate |
+| ELF section-name annotations (4 meaningful) | HIGH | `.flap_erfgevpg::funerq::ernq::zzn::n` (`0x2272970`), `.npp::s16` (`0x2272995`), `.fc::2gb4` (`0x22729ad`), `.eryrnfr::beqrerq` (`0x22729bd`) all confirmed in strings at consecutive addresses; ROT13 decodes verified |
+| Mercury debug section names (22 `.ai.zrep.*` entries) | LOW | None of the 22 listed `.ai.zrep.qroht_*` ROT13 forms appear as isolated strings in the binary string pool. Only one `.ai.*` ROT13 fragment (`.ai.erfreirqFzrz.bssfrg` = `.nv.reservedSmem.offset`) is present at `0x1f245d7`. The 22 debug section names are constructed at runtime via concatenation (`.ai.zrep` prefix + DWARF section suffix, both ROT13), decoded after concatenation. ROT13 mapping itself is correct |
+| Total ROT13-encoded string count (~30,000+) | LOW | Aggregate figure is plausible but not verified by direct counting; only specific subsets (644 `ZREPHEL_*`, 22 Mercury passes, ~20 spot-checked knobs/opcodes/sections) were exactly counted |
+| Architecture / opcode counts per arch (SM70 ~130, SM100 ~400, SM120 ~400+) | MEDIUM | Constructor function sizes match the wiki listing; per-arch entry counts not individually re-verified in this pass |
+
+### Revision history
+
+- **P050c-3** -- added initial Confidence Assessment; detected and flagged that compiler pass names at `0x2443000`--`0x2445000` are plaintext, not ROT13.
+- **P083** -- full page rewrite to remove the incorrect "ROT13 compiler phase table" section and replace it with an explicit plaintext catalogue with spot-verified addresses. Purpose section added. Overview table restructured to distinguish ROT13 from plaintext categories. Mercury debug section names relabelled as "runtime-assembled from ROT13 prefix + suffix" to reflect that the 22 individual forms are not present as isolated strings.
+

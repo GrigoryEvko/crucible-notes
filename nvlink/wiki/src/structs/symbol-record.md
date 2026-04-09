@@ -74,15 +74,18 @@ The low two bits encode standard ELF visibility (`STV_DEFAULT` = 0, `STV_INTERNA
 
 ```c
 // sub_42F850 -- check STO_CUDA_OBSCURE flag
-void check_sto_cuda_obscure(uint32_t warn_level, ..., uint64_t st_value) {
-    if ((st_value & 0x80000000000) != 0 && warn_level <= 4) {
-        // Bit 43 of the value is set -- CUDA obscure symbol
+// NOTE: the 7th argument is *v26 (first qword of the symbol record), NOT st_value.
+// The first qword spans bytes 0-7: st_name(0-3) + st_info(4) + st_other(5) + st_shndx(6-7).
+// Bit 43 of that qword = bit 11 of the high 32-bit half = bit 3 of st_other (the visibility byte).
+void check_sto_cuda_obscure(uint32_t warn_level, ..., uint64_t hdr_qword0) {
+    if ((hdr_qword0 & 0x80000000000LL) != 0 && warn_level <= 4) {
+        // Bit 3 of st_other is set -- STO_CUDA_OBSCURE flag
         emit_diagnostic(WARN, "", "STO_CUDA_OBSCURE", severity_text[warn_level - 1]);
     }
 }
 ```
 
-The warning level is stored at `elfw+624` and is set via `sub_440210`. When bit 43 of the symbol's `st_value` is set, the symbol carries the CUDA-specific "obscure" attribute -- a visibility modifier that affects how the symbol participates in resolution across compilation units. The diagnostic is emitted at warning levels 1 through 4 (controlled by `--extra-warnings` / `--warning-as-error`).
+The warning level is stored at `elfw+624` and is set via `sub_440210`. When bit 3 of the symbol's `st_other` byte (bit 43 of the header qword, mask `0x08` in `st_other`) is set, the symbol carries the CUDA-specific "obscure" attribute -- a visibility modifier that affects how the symbol participates in resolution across compilation units. The diagnostic is emitted at warning levels 1 through 4 (controlled by `--extra-warnings` / `--warning-as-error`).
 
 ## The `st_shndx` Field and the 0xFFFF Virtual Marker
 
@@ -395,10 +398,10 @@ During constant bank optimization, when two symbols point to identical data, one
 | `0x440BE0` | `elfw_add_symbol` | Full symbol creation with duplicate detection |
 | `0x442CA0` | `elfw_add_function_symbol` | Specialized function-symbol creation with UFT merge |
 | `0x444720` | `elfw_remap_symbol_index` | Translate old index through post-DCE remap tables |
-| `0x440280` | `elfw_symbol_is_func` | Return `true` if `st_info & 0xF == STT_FUNC` (2) |
-| `0x440260` | `elfw_symbol_has_extended` | Check whether the symbol uses extended section indices |
-| `0x4402A0` | `elfw_get_symbol_flags` | Extract internal flags word at offset +48 |
-| `0x4402C0` | `elfw_get_symbol_raw_flags` | Return raw `uint32_t` at offset +48 |
+| `0x440280` | `elfw_byte4_eq_2` | Return `true` if byte 4 of passed pointer equals 2. Callers pass elfw contexts (checking ELF class byte in header), NOT symbol records |
+| `0x440260` | `elfw_check_flag` | Test a flag bit at elfw+48 conditional on byte 7 of elfw == 'A' (0x41). Operates on elfw, not symbol |
+| `0x4402A0` | `elfw_get_flags` | Extract flags field at `elfw+48` (operates on elfw, NOT symbol) |
+| `0x4402C0` | `elfw_get_raw_flags` | Return raw `uint32_t` at `elfw+48` (operates on elfw, NOT symbol) |
 | `0x42F850` | `check_sto_cuda_obscure` | Emit diagnostic if bit 43 of value is set |
 | `0x44B940` | `callgraph_register_function` | Register STT_FUNC symbol in callgraph at `+408` |
 
@@ -430,3 +433,62 @@ During constant bank optimization, when two symbols point to identical data, one
 - [Section Record](section-record.md) -- companion data structure for sections
 - [Hash Tables](../linker/hash-tables.md) -- hash map implementation backing name lookups
 - [Serialization](../elf/serialization.md) -- `.symtab` output format
+
+## Confidence Assessment
+
+Each claim below was verified against decompiled functions (`sub_440BE0`, `sub_440590`, `sub_444720`, `sub_4438F0`, `sub_4419F0`, `sub_441A30`, `sub_440350`, `sub_4405C0`, `sub_42F850`), string references in `nvlink_strings.json`, and raw research report W082. Re-verified in P050b pass (2026-04-09).
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| Symbol record size = 48 bytes | HIGH | `sub_440BE0` calls `sub_4307C0((__int64)v21, 48)` and initializes three 16-byte OWORDs |
+| Zero-init via three OWORD stores | HIGH | `*(_OWORD *)v26 = 0; *((_OWORD *)v26 + 1) = 0; *((_OWORD *)v26 + 2) = 0;` |
+| `st_name` at offset 0 (uint32) | HIGH | First 4 bytes zeroed by OWORD, then hash-map entry value patched at return |
+| `st_info` at offset 4 | HIGH | `*((_BYTE *)v26 + 4) = (a3 & 0xF) + 16 * a4` in `sub_440BE0` |
+| Binding encoded as high nibble (`<< 4`) | HIGH | `16 * a4` = shift by 4 = high nibble |
+| Type encoded as low nibble | HIGH | `a3 & 0xF` = low 4 bits |
+| `st_other` at offset 5 | HIGH | `*((_BYTE *)v26 + 5) = a5` (visibility arg) |
+| `st_shndx` at offset 6 (uint16) | HIGH | `*((_WORD *)v26 + 3) = v17` (word 3 = byte 6); `*(unsigned __int16 *)(v12 + 6)` accessor |
+| `0xFFFF` sentinel for virtual/extended sections | HIGH | `if (v17 <= 0xFEFF || v17 == 65522) *((_WORD *)v26 + 3) = v17; else *((_WORD *)v26 + 3) = -1` (=0xFFFF) |
+| `SHN_COMMON` (0xFFF2 = 65522) passes through directly | HIGH | Exact constant `65522` in `sub_440BE0` comparison |
+| `st_value` at offset 8 (uint64) | HIGH | `v26[1] = a7` in `sub_440BE0` (qword 1 = byte 8) |
+| `st_size` at offset 16 (uint64) | HIGH | `v26[2] = a9` (qword 2 = byte 16) |
+| `sym_index` at offset 24 (int32) | HIGH | `*((_DWORD *)v26 + 6) = v29` or `-v41` (dword 6 = byte 24) |
+| `func_ordinal` at offset 28 (int32) | HIGH | `*((_DWORD *)v26 + 7) = v57` where `v57 = *(_DWORD *)(a1 + 416) + 1` |
+| `name_str` at offset 32 (char*) | HIGH | `v26[4] = v55` where `v55 = strcpy(v54, a2)` (qword 4 = byte 32) |
+| Field at offset 40 (`alias_chain`) | MEDIUM | `*((_DWORD *)v26 + 10) = 0` at end of creation. Zero-init confirmed; "alias chain" semantic name comes from `sub_4339A0` constant-dedup path not fully traced here |
+| Reserved/padding at offset 44 | HIGH | Not assigned in constructor; left as zero from initial OWORD stores |
+| First 24 bytes match `Elf64_Sym` | HIGH | Field layout (name, info, other, shndx, value, size) matches ELF spec exactly |
+| Positive symbol array at `elfw+344` | HIGH | `sub_440590`: `return sub_464DB0(*(_QWORD *)(a1 + 344), a2);` for positive idx |
+| Negative symbol array at `elfw+352` | HIGH | `sub_440590`: `return sub_464DB0(*(_QWORD *)(a1 + 352), -a2);` for negative idx |
+| Global binding (`STB_GLOBAL`=1) -> negative array | HIGH | `if (a4 == 1) { *((_DWORD *)v26 + 6) = -sub_464BB0(*(_QWORD *)(a1 + 352)); }` |
+| Local/weak -> positive array | HIGH | `else { *((_DWORD *)v26 + 6) = sub_464BB0(*(_QWORD *)(a1 + 344)); }` |
+| Symbol name hash table at `elfw+288` | HIGH | `sub_449A80(*(void **)(a1 + 288), a2)` in `sub_440BE0` |
+| Section name hash table at `elfw+296` | HIGH | Parallel verified in `sub_441AC0` construction |
+| 12-byte hash map entry with name + index | HIGH | `sub_4307C0(v47, 12); *v28 = 0; *((_DWORD *)v28 + 2) = 0;` then `*(_DWORD *)v28 = result` |
+| `strtab_entry_count` counter at `elfw+304` | HIGH | `++*(_DWORD *)(a1 + 304);` on new name insertion |
+| Extended section index tables at `elfw+592` / `elfw+600` | HIGH | `*(_QWORD *)(a1 + 592) = sub_464AE0(0x10000); *(_QWORD *)(a1 + 600) = sub_464AE0(0x10000);` |
+| Extended tables sized 0x10000 (65,536) entries | HIGH | Exact constant in allocation calls |
+| Pos remap at `elfw+456` (post-DCE) | HIGH | `v58 = *(_QWORD *)(a1 + 456)` in remap path |
+| Neg remap at `elfw+464` (post-DCE) | HIGH | `v30 = *(unsigned int *)(*(_QWORD *)(a1 + 464) + 4 * v63)` |
+| `"reference to deleted symbol"` fires when remap returns 0 | HIGH | Explicit string literal and fatal call in both pos and neg paths |
+| String `"reference to deleted symbol"` present in binary | HIGH | Found at line 11766 in `nvlink_strings.json` |
+| `sub_444720` remap function address | HIGH | Verified from binary via function address decompilation |
+| `STO_CUDA_OBSCURE` check via `sub_42F850` | HIGH | `sub_42F850(*(_DWORD *)(a1 + 624), v30, ..., *v26);` at end of creation |
+| Warning level stored at `elfw+624` | HIGH | First arg to `sub_42F850` is `*(_DWORD *)(a1 + 624)` |
+| String `"STO_CUDA_OBSCURE"` in binary | HIGH | Found at line 7176 in `nvlink_strings.json` |
+| Bit 43 of first qword triggers STO_CUDA_OBSCURE | HIGH | `sub_42F850`: `(a7 & 0x80000000000LL) != 0`. Caller passes `*v26` (first qword of symbol record), NOT `st_value`. Bit 43 corresponds to bit 3 of `st_other` at byte 5. Wiki prose originally said "st_value" which was incorrect and has been fixed in this pass |
+| Function ordinal counter at `elfw+416` | HIGH | `v57 = *(_DWORD *)(a1 + 416) + 1; *(_DWORD *)(a1 + 416) = v57;` |
+| Callgraph registration via `sub_44B940` | HIGH | `sub_44B940(a1, (unsigned int)result);` when `a3 == 2` (STT_FUNC) |
+| Callgraph guard at `elfw+81` (byte) | HIGH | `if (*(_BYTE *)(a1 + 81) && a3 == 2)` fires `"adding function after callgraph completed"` |
+| String `"adding function after callgraph completed"` | HIGH | Present in binary (checked via wider string grep) |
+| "Adding global symbols of same name" diagnostic | HIGH | `if (*((_BYTE *)v28 + 4) >> 4 == 1) sub_467460(..., "adding global symbols of same name"...)` |
+| String `"adding global symbols of same name"` | HIGH | Found at line 12311 in `nvlink_strings.json` |
+| `sub_440590` as central symbol dispatcher | HIGH | Exact 10-line function decompiled to sign-dispatch logic |
+| Binding constants `STB_LOCAL=0, STB_GLOBAL=1, STB_WEAK=2` | HIGH | Standard ELF spec values; `a4 == 1` branch matches STB_GLOBAL |
+| Type constants `STT_NOTYPE=0, STT_OBJECT=1, STT_FUNC=2, STT_SECTION=3` | HIGH | Standard ELF spec; `a3 == 2` branch matches STT_FUNC |
+| Name_map_entry layout (12 bytes: 8 unused + 4 sym_index) | MEDIUM | Constructor zeros first qword and dword; layout consistent but specific field semantics inferred |
+| "alias_chain" name for field at +40 | MEDIUM | Field is zeroed at creation; linkage logic lives in `sub_4339A0` constant dedup which was not directly verified in this pass |
+| Serialization order: null -> positive -> negative | MEDIUM | Consistent with ELF ABI requirement (`sh_info` marks local/global boundary). Exact serialization in `sub_445000` not verified in this pass |
+| `sh_info` of `.symtab` = first global index | MEDIUM | Standard ELF requirement; exact assignment point in `sub_445000` not directly verified here |
+| `.symtab_shndx` emitted when extended tables exist | MEDIUM | Logical consistency with `SHN_XINDEX` spec; exact trigger condition not verified in this pass |
+| `"move string %s to fixed area"` debug path | LOW | Page claims this is emitted in verbose mode; string exists in binary but trigger condition not verified in this pass |

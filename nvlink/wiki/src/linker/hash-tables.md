@@ -529,3 +529,41 @@ The FNV hash tables serve the instruction descriptor subsystem within the embedd
 | Growth factor | 2x bucket count + 1 | 4x bucket count |
 | Allocator | Arena allocator (`sub_4307C0`) | Ref-counted allocator with vtable |
 | Thread safety | Not inherent (caller must synchronize) | Not inherent (caller must synchronize) |
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| `sub_448840` allocates 112-byte struct | HIGH | Decompiled `sub_448840`: `sub_4307C0(v3, 112)` at line 37 confirms exact size |
+| `sub_4489C0` detects mode via function pointer comparison | HIGH | Decompiled `sub_4489C0`: compares `a2 == sub_44E130 && a1 == sub_44E120` (mode 2) and `a2 == sub_44E1E0 && a1 == sub_44E1C0` (mode 1); flag bitmask `0xF00F \| 0x20` / `0x10` confirmed |
+| Mode flags stored at offset 84 (word 42) | HIGH | Decompiled `sub_4489C0` line 12: `*((_WORD *)result + 42)` = offset 84 |
+| `sub_44E000` implements MurmurHash3\_x86\_32 with seed 0 | HIGH | Decompiled: constants `-862048943` (0xCC9E2D51), `461845907` (0x1B873593), `5`, `-430675100` (0xE6546B64), `-2048144789` (0x85EBCA6B), `-1028477387` (0xC2B2AE35) all confirmed; rotations `__ROL4__(k, 15)` and `__ROL4__(h, 13)` confirmed |
+| MurmurHash3 fmix32 shifts: >>16, >>13, >>16 | HIGH | Decompiled `sub_44E000` return expression: `(v2 ^ v3 ^ ((v2 ^ v3) >> 16))` then `>> 13` then `>> 16` confirmed |
+| `sub_44E120` (identity hash) returns `a1` unchanged | HIGH | Decompiled: single-line `return a1;` |
+| `sub_44E150` (xor-fold) returns `lo32 ^ hi32` | HIGH | Decompiled: `return (unsigned int)a1 ^ HIDWORD(a1);` |
+| `sub_44E1C0` (shift-xor) returns `(a>>11)^(a>>8)^(a>>5)` | HIGH | Decompiled: `return (unsigned int)(a1 >> 11) ^ (unsigned int)(a1 >> 8) ^ (unsigned int)(a1 >> 5);` |
+| `sub_44E1E0` (ptr\_equal) returns `a1 == a2` | HIGH | Decompiled: `return a1 == a2;` |
+| `sub_44E130` (int\_equal) returns `a1 == a2` | HIGH | Decompiled: `return a1 == a2;` |
+| `sub_44E180` (strcmp\_equal) uses `strcmp` | HIGH | Decompiled: `return strcmp(a1, a2) == 0;` |
+| `sub_449A80` lookup dispatches on `(flags >> 4) & 0xF` | HIGH | Decompiled: `v2 = *(_WORD *)(a1 + 84) >> 4; if (v2 == 1)...else if (v2 == 2)...` |
+| Bucket array at offset +104, entries at +88, bucket\_mask at +40 | HIGH | Decompiled `sub_449A80`: `*(_QWORD *)(a1 + 104)` (buckets), `*(_QWORD *)(a1 + 88)` (entries), `*(_DWORD *)(a1 + 40)` (mask) |
+| Chain terminated by 0xFFFFFFFF sentinel | HIGH | Decompiled `sub_449A80`: `if ((_DWORD)v14 == -1) break;` |
+| Entries are 16 bytes (key:8 + value:8) | HIGH | Decompiled: `16 * v14` stride for entry array access in `sub_449A80` |
+| FNV-1a offset basis `0x811C9DC5`, prime `16777619` | HIGH | Decompiled `sub_A4B770` line 47-57: literal `0x811C9DC5` and `16777619` in unrolled 8-byte hash |
+| FNV rehash `sub_A4B5E0` allocates 24 bytes per bucket | HIGH | Decompiled `sub_A4B5E0` line 30: `24 * a2` allocation size |
+| FNV rehash initial bucket count 8 | HIGH | Decompiled `sub_A4B770` line 44: `sub_A4B5E0(a1, 8u)` when bucket array NULL |
+| `sub_448840` bucket\_mask = (1 << ceil\_log2(n)) - 1 | HIGH | Decompiled: `v2 = 1 << v1; ... *((_DWORD *)v6 + 10) = v2 - 1;` |
+| `sub_448840` load\_limit = 4 << ceil\_log2(n) | HIGH | Decompiled: `v6[8] = (unsigned int)(4 << v1);` at QWORD offset 8 (byte offset 64) |
+| Mode 0 context path via has\_context at offset +32 | HIGH | Decompiled `sub_449A80`: `if (*(_QWORD *)(a1 + 32))` dispatches between offset +16 (context hash) and offset +0 (direct hash) |
+| FNV node size 168 bytes for uint64 key variant | MEDIUM | Inferred from `sub_A4B770` allocation size and SSE copy patterns; exact size matches decompiled bulk-copy offsets |
+| FNV node size 32 bytes for uint32 key variant | MEDIUM | Inferred from `sub_A4C360` allocation and field access patterns |
+| FNV collision-count rehash heuristic `collision > entry && entry > bucket/2` | MEDIUM | Reconstructed from `sub_A4B770` post-insert conditionals; growth factor 4x confirmed from argument to `sub_A4B5E0` |
+| Struct layout offsets (full 112-byte header table) | MEDIUM | Individual offset reads confirmed across `sub_448840`, `sub_4489C0`, `sub_449A80`, and `sub_448E70`; complete field-by-field layout reconstructed from aggregate evidence |
+
+## Cross-References
+
+- [Symbol Resolution](symbol-resolution.md) -- primary consumer of the linker hash table (name-to-symbol map at elfw+288)
+- [Section Merging](section-merging.md) -- section name-to-index hash table at elfw+296
+- [Data Layout Optimization](data-layout-opt.md) -- 32-bit and 64-bit value dedup hash tables for constant bank optimization
+- [Dead Code Elimination](dead-code-elimination.md) -- liveness set operations use the same hash infrastructure
+- [Bindless Relocations](bindless-relocations.md) -- symbol lookup via `find_or_create_symbol` backed by the hash table

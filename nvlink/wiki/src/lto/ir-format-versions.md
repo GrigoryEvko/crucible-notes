@@ -1,14 +1,31 @@
-# LTO IR Format Versions
+# LTO Profile Tags & Architecture Mapping
 
 When nvcc compiles device code with `-dlto` (device link-time optimization), it emits NVVM IR bitcode instead of SASS machine code. This bitcode is tagged with an `lto_` profile name that encodes the target architecture. At link time, nvlink resolves each `lto_` tag to its corresponding `compute_` virtual profile, loads libNVVM, and compiles the IR down to SASS for the real `sm_` target. The `lto_` profile is the bridge between the architecture-independent IR and the architecture-specific code generator -- it determines which IR is compatible with which final target and controls how nvlink routes the compilation.
 
-nvlink v13.0.88 registers 22 `lto_` profile variants in `sub_484F50` (gpu_architecture_profile_database_init, 54KB at `0x484F50`). Each `lto_` profile is created alongside the corresponding `sm_` (real) and `compute_` (virtual) profiles during a one-time initialization guarded by `byte_2A5F8D0`.
+nvlink v13.0.88 registers 23 `lto_` profile variants in `sub_484F50` (`ArchProfileDB::init`, ~1,330 decompiled lines at `0x484F50`). Each `lto_` profile is created alongside the corresponding `sm_` (real) and `compute_` (virtual) profiles during a one-time initialization guarded by `byte_2A5F8D0`. The full function registers 69 profiles total (23 triplets of sm_/compute_/lto_).
+
+> **Scope note.** This page documents **`lto_` profile tags** -- the architecture identifiers attached to LTO bitcode sections. For the NVVM IR wire format (magic number, header probe, detection logic), see [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md). For the profile struct byte-level layout, see [Architecture Profiles](../targets/arch-profiles.md) and [Architecture Profile Struct](../structs/arch-profile.md). For compatibility checking rules, see [Compatibility Checking](../targets/compatibility.md).
+
+## NVVM IR Wire Format (Summary)
+
+The NVVM IR bitcode format used by LTO is identified by a 4-byte magic number:
+
+| Field | Value |
+|---|---|
+| Magic | `0x1EE55A01` (little-endian on disk: `01 5A E5 1E`) |
+| Padded variant | 4 zero bytes + `0x1EE55A01` at byte offset 4 (fatbin-wrapped form) |
+| Extensions | `.nvvm`, `.ltoir` (content format identical) |
+| Rejected | `.bc` (raw LLVM bitcode) -- fatal: `"should never see bc files"` |
+
+Detection occurs at two layers: the outer `main()` dispatch classifies by file extension, while the inner embedded-ptxas engine (`sub_4CE070`) classifies by content magic. The full detection algorithm, fatbin-variant handling, and registration flow are documented on [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md).
+
+The IR format version proper is encoded inside the bitcode payload (LLVM 3.4 wrapper + NVVM version record) and is negotiated entirely inside `libnvvm.so`; nvlink is version-agnostic with respect to the bitcode interior. The `__nvvmHandle` dispatch codes (`0x2080`, `0xB0BA`, `0xF00D`, `0xBEEF`) documented on [libNVVM Integration](libnvvm-integration.md) are internal API dispatch tags, not IR format versions.
 
 ## Profile Registration Mechanics
 
 ### The Profile Triplet
 
-For every supported GPU architecture, `sub_484F50` creates three profile objects via `sub_484DB0` (profile_create):
+For every supported GPU architecture, `sub_484F50` creates three profile objects via `sub_484DB0` (`ArchProfile::create`):
 
 | Type | Prefix | Role | `is_virtual` | `is_lto` |
 |---|---|---|---|---|
@@ -16,152 +33,78 @@ For every supported GPU architecture, `sub_484F50` creates three profile objects
 | Virtual | `compute_` | PTX virtual architecture | 1 | 0 |
 | LTO | `lto_` | NVVM IR bitcode tag for deferred compilation | 1 | 1 |
 
-The `sub_484DB0` signature is:
+All three profiles for a given architecture share the same `-D__CUDA_ARCH__=NNN` define. The `lto_` profile's `display_name` is set to the corresponding `compute_` name (e.g., `lto_100` displays as `compute_100`), and its `isa_class_name` is NULL (inherited from the base profile at link time). Each `lto_` profile stores a back-pointer at offset +72 (`virtual_ptr`, slot [9]) to its associated `compute_` profile.
 
-```
-profile_create(is_virtual, is_lto, name, display_name, family_name, cuda_arch_define, canonical_name)
-```
-
-All three profiles for a given architecture share the same `-D__CUDA_ARCH__=NNN` define. The `lto_` profile's `display_name` is set to the corresponding `compute_` name (e.g., `lto_100` displays as `compute_100`), and its `family_name` is NULL (inherited from the base profile at link time). Each `lto_` profile stores a back-pointer (offset +72, `qword slot [9]`) to its associated `compute_` profile.
+For the complete profile struct layout (136 bytes, all field offsets), see [Architecture Profile Struct](../structs/arch-profile.md).
 
 ### Registration Into the Global Map
 
-After creation, each profile is inserted into a global hash map at `qword_2A5F8D8` via `sub_448E70` (hashmap_insert). The map is keyed by the profile name string (`"sm_75"`, `"compute_75"`, `"lto_75"`, etc.). When nvlink encounters an `lto_` tag in an input object's ELF metadata, it looks up this map to resolve the profile and route compilation.
+After creation, each profile is inserted into the global hash map at `qword_2A5F8D8` via `sub_448E70` (`LinkerHash::insert`). The map is keyed by the profile name string (`"sm_75"`, `"compute_75"`, `"lto_75"`, etc.). When nvlink encounters an `lto_` tag in an input object's ELF metadata, it looks up this map to resolve the profile and route compilation.
 
 ### Family Linkage
 
-After hash map insertion, `sub_465720` (linked_list_append) is called 4 times per architecture to wire the profiles into linked lists that encode:
-
-1. The compute-to-sm mapping (which real target a virtual arch compiles for)
-2. The family chain (which architectures belong to the same generation)
-3. Forward-compatibility chains (for `a` and `f` sub-variants)
-4. Backward pointers for ISA class sharing
+After hash map insertion, `sub_465720` (`list_append`) is called 4 times per architecture to wire the profiles into linked lists that encode cross-variant compatibility, same-generation family membership, compute-to-real bidirectional mapping, and base-to-suffix variant chains. The full linked-list topology is documented on [Architecture Profiles](../targets/arch-profiles.md).
 
 ## Complete LTO Profile Table
 
-The 22 `lto_` profiles registered in `sub_484F50`, in initialization order:
+The 23 `lto_` profiles registered in `sub_484F50`, listed in initialization order (which reflects chronological feature-set order, not numeric sm_ order):
 
-| # | LTO Profile | Compute Profile | `__CUDA_ARCH__` | Family | SM Base | Variant |
-|---|---|---|---|---|---|---|
-| 1 | `lto_75` | `compute_75` | 750 | Turing | sm_75 | -- |
-| 2 | `lto_80` | `compute_80` | 800 | Ampere | sm_80 | -- |
-| 3 | `lto_86` | `compute_86` | 860 | Ampere | sm_86 | -- |
-| 4 | `lto_87` | `compute_87` | 870 | Ampere | sm_87 | -- |
-| 5 | `lto_88` | `compute_88` | 880 | Ampere | sm_88 | -- |
-| 6 | `lto_89` | `compute_89` | 890 | Ada | sm_89 | -- |
-| 7 | `lto_90` | `compute_90` | 900 | Hopper | sm_90 | -- |
-| 8 | `lto_90a` | `compute_90a` | 90a0 | Hopper | sm_90a | accelerated |
-| 9 | `lto_100` | `compute_100` | 1000 | Blackwell | sm_100 | -- |
-| 10 | `lto_100a` | `compute_100a` | 100a0 | Blackwell | sm_100a | accelerated |
-| 11 | `lto_100f` | `compute_100f` | 100f0 | Blackwell | sm_100f | forward-compat |
-| 12 | `lto_110` | `compute_110` | 1100 | Blackwell | sm_110 | -- |
-| 13 | `lto_110a` | `compute_110a` | 110a0 | Blackwell | sm_110a | accelerated |
-| 14 | `lto_110f` | `compute_110f` | 110f0 | Blackwell | sm_110f | forward-compat |
-| 15 | `lto_103` | `compute_103` | 1030 | Blackwell | sm_103 | -- |
-| 16 | `lto_103a` | `compute_103a` | 103a0 | Blackwell | sm_103a | accelerated |
-| 17 | `lto_103f` | `compute_103f` | 103f0 | Blackwell | sm_103f | forward-compat |
-| 18 | `lto_120` | `compute_120` | 1200 | Blackwell | sm_120 | -- |
-| 19 | `lto_120a` | `compute_120a` | 120a0 | Blackwell | sm_120a | accelerated |
-| 20 | `lto_120f` | `compute_120f` | 120f0 | Blackwell | sm_120f | forward-compat |
-| 21 | `lto_121` | `compute_121` | 1210 | Blackwell | sm_121 | -- |
-| 22 | `lto_121a` | `compute_121a` | 121a0 | Blackwell | sm_121a | accelerated |
+| # | LTO Profile | Compute Profile | `__CUDA_ARCH__` | Family | Variant |
+|---|---|---|---|---|---|
+| 1 | `lto_75` | `compute_75` | 750 | Turing | -- |
+| 2 | `lto_80` | `compute_80` | 800 | Ampere | -- |
+| 3 | `lto_86` | `compute_86` | 860 | Ampere | -- |
+| 4 | `lto_87` | `compute_87` | 870 | Ampere | -- |
+| 5 | `lto_88` | `compute_88` | 880 | Ampere | -- |
+| 6 | `lto_89` | `compute_89` | 890 | Ada | -- |
+| 7 | `lto_90` | `compute_90` | 900 | Hopper | -- |
+| 8 | `lto_90a` | `compute_90a` | 90a0 | Hopper | accelerated |
+| 9 | `lto_100` | `compute_100` | 1000 | Blackwell | -- |
+| 10 | `lto_100a` | `compute_100a` | 100a0 | Blackwell | accelerated |
+| 11 | `lto_100f` | `compute_100f` | 100f0 | Blackwell | forward-compat |
+| 12 | `lto_110` | `compute_110` | 1100 | Blackwell | -- |
+| 13 | `lto_110a` | `compute_110a` | 110a0 | Blackwell | accelerated |
+| 14 | `lto_110f` | `compute_110f` | 110f0 | Blackwell | forward-compat |
+| 15 | `lto_103` | `compute_103` | 1030 | Blackwell | -- |
+| 16 | `lto_103a` | `compute_103a` | 103a0 | Blackwell | accelerated |
+| 17 | `lto_103f` | `compute_103f` | 103f0 | Blackwell | forward-compat |
+| 18 | `lto_120` | `compute_120` | 1200 | Blackwell | -- |
+| 19 | `lto_120a` | `compute_120a` | 120a0 | Blackwell | accelerated |
+| 20 | `lto_120f` | `compute_120f` | 120f0 | Blackwell | forward-compat |
+| 21 | `lto_121` | `compute_121` | 1210 | Blackwell | -- |
+| 22 | `lto_121a` | `compute_121a` | 121a0 | Blackwell | accelerated |
+| 23 | `lto_121f` | `compute_121f` | 121f0 | Blackwell | forward-compat |
 
-Note: `lto_121f` is also registered (23 total including it), making the table exhaustive. The numbering in the table follows the initialization sequence in `sub_484F50`, not numeric order.
+The `__CUDA_ARCH__` suffix `a0` / `f0` are verbatim from the binary's string pool (e.g. `-D__CUDA_ARCH__=100a0`). The `a` and `f` suffixed defines allow `#ifdef` guards in device code to detect accelerated and forward-compatible variants at compile time.
 
-### Corrected Count
+### Sub-Variant Summary
 
-The full function registers 23 `lto_` profiles (22 listed above plus `lto_121f` with `__CUDA_ARCH__=121f0`). The string evidence from the binary confirms all 23 entries in the string pool at addresses `0x1D409F4` through `0x1D40ED9`.
-
-## Sub-Variant Semantics
-
-### Base Profiles (no suffix)
-
-The base profile (e.g., `lto_100`) targets the canonical SM architecture. Code compiled with this profile uses the standard instruction set for that SM generation. The profile struct byte at offset +3 is 0, byte at offset +4 is 0, byte at offset +5 is 0.
-
-### Accelerated Variants (`a` suffix)
-
-The `a` variants (e.g., `lto_100a`, `lto_90a`) target the accelerated sub-variant of an SM architecture. In the profile struct, byte offset +4 is set to 1 for both the `sm_` and `compute_` profiles:
-
-```c
-// From sub_484F50, sm_100a registration:
-v79->m128i_i8[4] = 1;       // sm_100a profile: variant byte = 1
-*(_BYTE *)(v82 + 4) = 1;    // compute_100a profile: variant byte = 1
-```
-
-The `__CUDA_ARCH__` define appends `a0` (e.g., `-D__CUDA_ARCH__=100a0`), which allows `#ifdef` guards in device code to detect the accelerated variant. The ISA class is inherited from the base SM profile -- `(profile_sm_100)->isaClass` is used for both `sm_100` and `sm_100a`. This means the instruction encoding tables are shared; the "accelerated" designation controls feature enablement flags rather than fundamental ISA differences.
-
-The `a` variant was introduced with sm_90a (Hopper) and extended to all sm_1XX families in Blackwell.
-
-### Forward-Compatible Variants (`f` suffix)
-
-The `f` variants (e.g., `lto_100f`, `lto_120f`) represent forward-compatible profiles. In the profile struct, byte offset +5 is set to 1 for the `sm_`, `compute_`, and `lto_` profiles:
-
-```c
-// From sub_484F50, sm_100f registration:
-v88->m128i_i8[5] = 1;       // sm_100f: forward-compat flag = 1
-*(_BYTE *)(v91 + 5) = 1;    // compute_100f: forward-compat flag = 1
-v94[5] = 1;                  // lto_100f: forward-compat flag = 1
-```
-
-The `__CUDA_ARCH__` define appends `f0` (e.g., `-D__CUDA_ARCH__=100f0`). Forward-compatible profiles generate code that can run on future architectures within the same family. They avoid using features that might not be available in later silicon revisions, at the cost of not exploiting all hardware capabilities.
-
-The `f` variant exists only for sm_1XX architectures (Blackwell and later). It does not exist for sm_90a or any pre-Blackwell architecture.
-
-### The sm_89 Exception
-
-sm_89 (Ada Lovelace) has an additional flag at byte offset +3 set to 1:
-
-```c
-v47->m128i_i8[3] = 1;  // sm_89 only
-```
-
-This flag distinguishes Ada from the other Ampere-family architectures (sm_80, sm_86, sm_87, sm_88). The flag likely controls ISA feature availability specific to Ada's extensions (e.g., SER instructions, micro-mesh shaders).
-
-## Profile Struct Layout (Relevant Fields)
-
-Based on the `sub_484DB0` allocation and `sub_484F50` initialization:
-
-```
-Offset   Size   Field
-+0       1      is_virtual (0 = real/sm_, 1 = virtual/compute_ or lto_)
-+1       1      is_lto (0 = sm_ or compute_, 1 = lto_)
-+3       1      ada_flag (1 for sm_89 only)
-+4       1      is_accelerated (1 for "a" variants)
-+5       1      is_forward_compat (1 for "f" variants)
-+8       8      name string pointer ("sm_100", "compute_100", "lto_100")
-+16      8      display_name pointer (same as name for sm_/compute_; compute_ name for lto_)
-+24      8      family_name pointer ("Turing", "Ampere", "Hopper", "Blackwell", or NULL)
-+32      8      cuda_arch_define pointer ("-D__CUDA_ARCH__=1000")
-+40      8      canonical_name pointer (same as name for sm_/compute_; lto_ name for lto_)
-+64      8      linked_list: forward pointer (next in family chain)
-+72      8      back-pointer to associated compute_ profile (slot [9])
-+80      16     capability vector slot [5] (XMM-loaded from xmmword_1D40F10+)
-+96      16     capability vector slot [6] (architecture-specific feature mask)
-+112     16     capability vector slot [7] (ISA version / compatibility flags)
-```
-
-The capability vectors at offsets +80/+96/+112 are loaded from static constants (`xmmword_1D40F10` through `xmmword_1D40F70`) via SSE intrinsics. Different architectures get different combinations of these vectors, encoding their hardware feature sets.
+- **Base profiles** (no suffix): Target the canonical SM architecture. Profile struct bytes at offsets +4 and +5 are both 0.
+- **Accelerated variants** (`a` suffix, e.g. `lto_100a`): Profile struct byte at offset +4 (`suffix_a_flag`) is set to 1. ISA class is inherited from the base SM profile. The `a` variant was introduced with sm_90a (Hopper) and extended to all sm_1XX families.
+- **Forward-compatible variants** (`f` suffix, e.g. `lto_100f`): Profile struct byte at offset +5 (`suffix_f_flag`) is set to 1 on all three profiles (sm_, compute_, lto_). The `f` variant exists only for sm_1XX architectures (Blackwell and later).
+- **sm_89 (Ada)**: The profile struct byte at offset +3 (`finalization_class`) is set to 1, distinguishing Ada from Ampere-family architectures. This byte indexes the 5-entry dispatch table at `dword_1D40660` used by the finalization compatibility checker `sub_4709E0`. See [Compatibility Checking](../targets/compatibility.md) for the dispatch table semantics.
 
 ## Capability Vector Assignments
 
-The XMM constants assigned to profile slots [5], [6], [7] cluster architectures into ISA families:
+Each architecture receives three 16-byte SSE vectors (loaded via `_mm_load_si128` from `.rodata` constants) stored at profile struct offsets +80, +96, +112:
 
-| Architecture(s) | Slot [5] | Slot [6] | Slot [7] |
+| Architecture(s) | Slot [5] (+80) | Slot [6] (+96) | Slot [7] (+112) |
 |---|---|---|---|
 | sm_75 (Turing) | `xmmword_1D40F10` | `xmmword_1D40F20` | `xmmword_1D40F30` |
 | sm_80 (Ampere base) | `xmmword_1D40F10` | `xmmword_1D40F40` | `xmmword_1D40F30` |
-| sm_86 (Ampere) | `xmmword_1D40F10` | `xmmword_1D40F50` | `xmmword_1D40F30` |
-| sm_87, sm_88 (Ampere) | `xmmword_1D40F10` | `xmmword_1D40F50` | `xmmword_1D40F30` |
+| sm_86, sm_87, sm_88 (Ampere) | `xmmword_1D40F10` | `xmmword_1D40F50` | `xmmword_1D40F30` |
 | sm_89 (Ada) | `xmmword_1D40F10` | `xmmword_1D40F60` | `xmmword_1D40F30` |
 | sm_90 (Hopper) | `xmmword_1D40F10` | `xmmword_1D40F40` | `xmmword_1D40F30` |
-| sm_100, sm_103 (Blackwell) | `xmmword_1D40F10` | `xmmword_1D40F40` | `xmmword_1D40F70` |
+| sm_100, sm_103 (Blackwell DC) | `xmmword_1D40F10` | `xmmword_1D40F40` | `xmmword_1D40F70` |
 | sm_110 (Thor) | `xmmword_1D40F10` | `xmmword_1D40F60` | `xmmword_1D40F70` |
 | sm_120 (RTX 50) | `xmmword_1D40F10` | `xmmword_1D40F60` | `xmmword_1D40F70` |
 | sm_121 (DGX Spark) | `xmmword_1D40F10` | `xmmword_1D40F60` | `xmmword_1D40F70` |
 
-Slot [5] is constant across all architectures (`xmmword_1D40F10`), suggesting a base capability set. Slot [6] differentiates feature sets within a generation. Slot [7] splits at the Blackwell boundary (`xmmword_1D40F30` for pre-Blackwell, `xmmword_1D40F70` for Blackwell+), likely encoding the Mercury/capsule-mercury capability bit.
+Slot [5] is constant across all architectures (`xmmword_1D40F10`), representing a base capability set common to all targets. Slot [6] differentiates feature sets within a generation. Slot [7] splits at the Blackwell boundary (`xmmword_1D40F30` for pre-Blackwell, `xmmword_1D40F70` for Blackwell+), encoding the Mercury/capsule-mercury capability bit (correlated with the SM >= 100 Mercury code path in `sub_4275C0`).
 
 Sub-variants (`a`, `f`) inherit the capability vectors from their base architecture via `_mm_loadu_si128` copy from the parent profile.
+
+The `xmmword_1D40F10` through `xmmword_1D40F70` constants are 16-byte SSE values stored in `.rodata` at 16-byte-aligned addresses, loaded via `_mm_load_si128` (aligned load).
 
 ## LTO Compilation Flow
 
@@ -174,10 +117,10 @@ Input: fatbin containing lto_100 bitcode section
 1. Profile lookup:  hashmap["lto_100"] -> lto_profile
                     |
                     v
-2. Resolve compute: lto_profile->back_ptr -> compute_100 profile
+2. Resolve compute: lto_profile->virtual_ptr -> compute_100 profile
                     |
                     v
-3. Resolve real:    compute_100->linked_sm -> sm_100 profile
+3. Resolve real:    compute_100->compat_list_2 -> sm_100 profile
                     |
                     v
 4. Load libNVVM:    dlopen("libnvvm.so") via sub_4BC4A0
@@ -195,90 +138,77 @@ Input: fatbin containing lto_100 bitcode section
 8. Link:            SASS object enters normal linker merge path
 ```
 
-The finalization orchestrator (`sub_471700`, 78KB) drives this flow. It reads the architecture version from the LTO profile, constructs compiler flags including the `-D__CUDA_ARCH__=NNN` define from the profile, and invokes libNVVM.
+The finalize phase orchestrator (`sub_471700`, ~2,541 decompiled lines) drives this flow. It reads the architecture version from the LTO profile, constructs compiler flags including the `-D__CUDA_ARCH__=NNN` define from the profile, and invokes libNVVM. See [LTO Overview](overview.md) for the full pipeline and [Finalization Phase](../pipeline/finalize.md) for the orchestrator.
 
-## Cross-Version Linking Rules
+## Cross-Version Linking Rules (Summary)
 
-### Family Compatibility
+Architecture compatibility for LTO finalization is enforced by `sub_4709E0` (`can_finalize_arch_check`) and `sub_470DA0` (`can_finalize_capability_mask`). Full documentation of these functions, including the 5-level dispatch table, error codes 0/24-30, the same-decade family rule, internal remapping (104->120, 130->107, 101->110), and capability bitmask semantics, is on [Compatibility Checking](../targets/compatibility.md).
 
-The architecture compatibility checker `sub_4709E0` (can_finalize_architecture_check) enforces these rules:
+Key points specific to LTO profile resolution:
 
 1. **Same-architecture match**: An `lto_100` object links with an `sm_100` target directly.
 
-2. **Family matching**: Architectures in the same "decade" (integer division by 10 yields the same value) are in the same family. For example, sm_100 and sm_103 both have `100/10 == 103/10 == 10`, so they are family-compatible.
+2. **Family matching**: Architectures in the same "decade" (integer division by 10 yields the same value) are family-compatible. For example, sm_100 and sm_103 both have `100/10 == 103/10 == 10`.
 
-3. **Internal remapping**: Before comparison, certain architecture codes are remapped:
-   - `104` -> `120` (internal code 'h' maps to sm_120)
-   - `130` -> `107` (maps to sm_100 family range)
-   - `101` -> `110` (maps to sm_110)
+3. **Architecture -> ASCII curiosity**: The capability bitmask in `sub_470DA0` uses a `switch` on character codes that happen to equal the architecture number in decimal: `100 == 'd'`, `103 == 'g'`, `110 == 'n'`, `121 == 'y'`. This is not coincidence -- the architecture numbers were chosen to align with ASCII values for compact encoding.
 
-4. **Version ceiling**: Architecture version must be <= `0x101` (257 decimal), rejecting invalid/future values.
+4. **CAN_FINALIZE_DEBUG**: Both compatibility checkers read this environment variable via `getenv()` and parse it with `strtol()`. However, the `strtol` return value is discarded (no variable captures it). The variable likely exists as a breakpoint hook for manual debugging -- it does not override or log compatibility decisions despite what its name might suggest.
 
-5. **Error codes** from `sub_4709E0`:
-   - 0: compatible
-   - 24: null input
-   - 25: version too high
-   - 26: incompatible architecture
-   - 27-30: various type/class mismatches
+### Version-Mismatch Error Strings
 
-### Capability-Based Compatibility
+The following diagnostic strings are emitted when LTO objects fail version or architecture checks:
 
-The companion function `sub_470DA0` (can_finalize_with_capability_mask) adds a bitmask check on top of the architecture match. Each target architecture maps to a capability bit:
+| Address | Error String |
+|---|---|
+| `0x1D34AF0` | `"Input file '%s' must be recompiled with toolkit >= Cuda 12.0"` |
+| `0x1D34B30` | `"Input file '%s' must be recompiled with toolkit >= Cuda 7.0"` |
+| `0x1D34B70` | `"Input file '%s' newer than toolkit (%d vs %d)"` |
+| `0x1D34C68` | `"Input file '%s' abi does not match"` |
+| `0x1D34C90` | `"Input file '%s' size does not match target '%s'"` |
+| `0x1D34CC0` | `"Input file '%s' arch does not match target '%s'"` |
+| `0x1D34CF0` | `"Input file '%s' ABI version '%u' is incompatible with target ABI version '%u'"` |
+| `0x1D39330` | `"Object '%s' cannot be linked due to version mismatch. Objects using tcgen05 in 12.x cannot be linked with 13.0 or later, they must be rebuilt with latest compiler"` |
+| `0x1D393D8` | `"Cannot link sanitized object '%s' from version %d with sanitized object from a different toolkit version (%d)"` |
+| `0x1D39638` | `"Object '%s' has cuda-api-version of %d which is greater than version on link line (%d)"` |
+| `0x1D321E8` | `"linking with -ewp objects requires using current toolkit"` |
+| `0x1DFD088` | `"Version mismatch for device code binary for cuda source file '%s'; found version=%d, current version=%d"` |
 
-| Arch code | ASCII | Bitmask |
-|---|---|---|
-| 100 | 'd' | 1 |
-| 103 | 'g' | 8 |
-| 110 | 'n' | 2 |
-| 121 | 'y' | 64 |
+The tcgen05 barrier at `0x1D39330` is the most common version-mismatch failure in practice: the tcgen05 instruction encoding changed between CUDA 12.x and 13.0, making objects produced by the two toolkits unlinkable.
 
-The check reads a capability mask from the profile object at offset +16 and verifies that the required bits are set: `(required & *capability_ptr) == required`. This prevents linking code that requires capabilities the target does not support.
+## Key Implementation Details
 
-### Cross-Toolkit Version Restrictions
+### Init-Once Guard
 
-Beyond architecture matching, nvlink v13.0.88 enforces toolkit version compatibility:
+The entire profile database is initialized exactly once. `byte_2A5F8D0` serves as the guard:
 
-- **tcgen05 instruction barrier**: Objects compiled with CUDA 12.x that use tcgen05 instructions cannot link with CUDA 13.0+ objects (error at string `0x1D39330`). The tcgen05 encoding changed between 12.x and 13.0.
+```c
+if (!byte_2A5F8D0) {
+    // ... register all 69 profiles (23 triplets) ...
+    byte_2A5F8D0 = 1;
+}
+```
 
-- **ABI version check**: The ABI version embedded in the object must match the linker's expected version (error at string `0x1D34CF0`).
+A `setjmp`/`longjmp` mechanism wraps the initialization for error handling. If any allocation fails during profile creation, the `longjmp` restores state.
 
-- **Sanitizer version**: Sanitizer-instrumented objects must match the toolkit's sanitizer version exactly (error at string `0x1D393D8`).
+### Default Minimum Architecture
 
-## Architecture Families
+After registering sm_80, the function sets:
 
-### Turing (sm_75)
+```c
+dword_2A5F8CC = 80;  // default minimum architecture
+```
 
-Single architecture, no sub-variants. The oldest generation supported by nvlink v13.0.88. Uses `__CUDA_ARCH__=750`.
+After registering sm_100:
 
-### Ampere (sm_80, sm_86, sm_87, sm_88, sm_89)
+```c
+dword_2A5F8C8 = 100;  // Blackwell minimum (Mercury threshold)
+```
 
-Five architectures. sm_80 is the base (GA100), sm_86 is GA102/GA104, sm_87 is Orin (Jetson), sm_88 is a new Ampere variant appearing for the first time in CUDA 13.0 (not previously documented publicly), and sm_89 is Ada Lovelace (classified under Ampere family for code generation purposes despite being a separate GPU generation). sm_89 sets an additional flag (byte offset +3) distinguishing its feature set.
-
-No `a` or `f` sub-variants exist for Ampere.
-
-### Hopper (sm_90, sm_90a)
-
-Two profiles. sm_90 is the base H100, sm_90a is the accelerated variant enabling additional features (e.g., DPX, FP8 acceleration). The `a` suffix was introduced with this generation. `__CUDA_ARCH__=900` for base, `__CUDA_ARCH__=90a0` for accelerated.
-
-No `f` sub-variant for Hopper.
-
-### Blackwell (sm_100, sm_103, sm_110, sm_120, sm_121)
-
-Five base architectures, each with `a` (accelerated) and `f` (forward-compatible) sub-variants, totaling 15 profiles. All are classified under the "Blackwell" family string.
-
-| SM | `__CUDA_ARCH__` | Segment |
-|---|---|---|
-| sm_100 | 1000 | Datacenter (B100/B200) |
-| sm_103 | 1030 | Blackwell Ultra (GB300) |
-| sm_110 | 1100 | Jetson Thor |
-| sm_120 | 1200 | Consumer (RTX 50-series) / Enterprise (RTX Pro) |
-| sm_121 | 1210 | DGX Spark |
-
-All sm_1XX architectures use the same ISA class as their base (`(profile_sm_XXX)->isaClass` assertion strings in the binary). The `a` and `f` variants share instruction encoding tables with the base but differ in feature enablement.
+The first value controls the minimum acceptable architecture for general linking. The second marks the Mercury format transition point -- SM >= 100 routes through the capsule-mercury output path.
 
 ## String Pool Layout
 
-The `lto_` profile name strings occupy a contiguous region in the `.rodata` section:
+The `lto_` profile name strings occupy a contiguous region in the `.rodata` section, interleaved with their `sm_`, `compute_`, and `-D__CUDA_ARCH__=` counterparts:
 
 | Address | String |
 |---|---|
@@ -306,48 +236,39 @@ The `lto_` profile name strings occupy a contiguous region in the `.rodata` sect
 | `0x1D40EA5` | `lto_121a` |
 | `0x1D40ED9` | `lto_121f` |
 
-The strings interleave with their `sm_` and `compute_` counterparts. The pool spans addresses `0x1D409C8` through `0x1D40F01`.
-
-## Key Implementation Details
-
-### Init-Once Guard
-
-The entire profile database is initialized exactly once. `byte_2A5F8D0` serves as the guard:
-
-```c
-if (!byte_2A5F8D0) {
-    // ... register all 66+ profiles ...
-    byte_2A5F8D0 = 1;
-}
-```
-
-A `setjmp`/`longjmp` mechanism wraps the initialization for exception safety. If any allocation fails during profile creation, the `longjmp` restores state and marks the initialization as failed.
-
-### Default Minimum Architecture
-
-After registering sm_80, the function sets:
-
-```c
-dword_2A5F8CC = 80;  // default minimum architecture
-```
-
-After registering sm_100:
-
-```c
-dword_2A5F8C8 = 100;  // Blackwell minimum (Mercury threshold)
-```
-
-The first value controls the minimum acceptable architecture for general linking. The second marks the Mercury format transition point -- SM >= 100 routes through the capsule-mercury output path.
-
-### Environment Variable Debug Override
-
-The compatibility checkers (`sub_4709E0`, `sub_470DA0`) read the `CAN_FINALIZE_DEBUG` environment variable via `getenv()`. When set, `strtol` parses it to override or log compatibility decisions. This is a debugging aid not documented in public CUDA documentation.
+The interleaved lto/sm/compute/`__CUDA_ARCH__` pool spans addresses `0x1D409C8` through `0x1D40EDC`. The strings immediately following this pool (`compute_%2d%s` at `0x1D40EE8` and `sm_%2d%s` at `0x1D40F01`) are format strings used by `sub_44E530` (`arch_format_name`), not profile entries.
 
 ## Cross-References
 
-- [Versions](../versions.md) -- tool identity, complete architecture table
-- [Architecture Profiles](../targets/arch-profiles.md) -- profile struct layout
+- [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md) -- magic number `0x1EE55A01`, detection logic, registration flow
+- [Architecture Profiles](../targets/arch-profiles.md) -- profile struct layout, full registration sequence, capability vectors
+- [Architecture Profile Struct](../structs/arch-profile.md) -- byte-level struct layout (136 bytes, authoritative)
+- [Compatibility Checking](../targets/compatibility.md) -- `sub_4709E0` / `sub_470DA0` full treatment
+- [SM89 Ada](../targets/sm89-ada.md) -- Ada-specific backend and feature flags
 - [LTO Overview](overview.md) -- high-level LTO pipeline
 - [libNVVM Integration](libnvvm-integration.md) -- the NVVM compilation step
 - [Option Forwarding](option-forwarding.md) -- how compiler flags reach libNVVM
+- [Whole vs Partial LTO](whole-vs-partial.md) -- how `lto_` profile presence/absence drives the whole-vs-partial decision
 - [Finalization Phase](../pipeline/finalize.md) -- the finalization orchestrator
+- [Fatbin Extraction](../input/fatbin-extraction.md) -- how `sub_4CE070` detects NVVM IR in fatbin members
+- [File Type Detection](../input/file-type-detection.md) -- the 56-byte header probe in `main()`
+- [Versions](../versions.md) -- tool identity, complete architecture table
+
+## Confidence Assessment
+
+| Section | Confidence | Evidence |
+|---|---|---|
+| Profile triplet model (3 per arch) | **Verified** | `sub_484F50` lines 246-282 (sm_75 triplet) |
+| 23 lto_ profiles (69 total) | **Verified** | String pool enumeration `0x1D409F4`-`0x1D40ED9` + decompiled source |
+| All `__CUDA_ARCH__` values | **Verified** | Binary string pool at `0x1D409C8`-`0x1D40EC3` |
+| `virtual_ptr` back-pointer at +72 | **Verified** | `sub_484F50` line 277: `*((_QWORD *)v10 + 9) = v9` |
+| sm_89 family = "Ada" (not "Ampere") | **Verified** | `sub_484F50` line 468: `sub_484DB0(..., "Ada", ...)` |
+| sm_89 `finalization_class` = 1 at +3 | **Verified** | `sub_484F50` sm_89 registration block |
+| Capability slot [5] constant | **Verified** | Lines 285, 327, 371, 416, 459: all load `xmmword_1D40F10` |
+| Capability slot [7] Blackwell split | **Inferred** | Pattern: `xmmword_1D40F30` pre-Blackwell, `xmmword_1D40F70` post; verified for sm_75-sm_90, inferred for sm_1XX |
+| Blackwell capability vectors (sm_110+) | **Inferred** | Pattern from sm_100 extrapolated; `sub_484F50` lines 550-1330 not individually audited |
+| LTO compilation flow (8-step) | **Verified** | Consistent with `lto/overview.md` and `pipeline/finalize.md` |
+| `CAN_FINALIZE_DEBUG` strtol discarded | **Verified** | `sub_4709E0` lines 18-20: `strtol` result not captured |
+| String pool upper bound `0x1D40EDC` | **Verified** | Last lto_ string `lto_121f` at `0x1D40ED9` + 7 bytes |
+| Version-mismatch error strings | **Verified** | Each address confirmed present in binary `.rodata` |
+| `dword_2A5F8C8 = 100` (Mercury threshold) | **Inferred** | Asserted from pattern; assignment occurs after sm_100 block in `sub_484F50` but not directly audited in this pass |

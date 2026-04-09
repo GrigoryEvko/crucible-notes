@@ -461,6 +461,254 @@ This protects nvlink from crashes inside libnvvm.so. If libnvvm triggers a signa
 | `"whole program compile"` | `main()` | LTO produced single output, whole-program mode |
 | `"relocatable compile"` | `main()` | LTO produced single relocatable output |
 
+## Worked Example: Complete libnvvm API Trace
+
+This section traces every call into `libnvvm.so` for a concrete two-input LTO link:
+
+```
+nvcc -dlto -arch=sm_90 a.cu b.cu -o app
+```
+
+After host-compilation and fatbin extraction, nvcc invokes nvlink with two NVVM IR inputs (`a.lto.o` and `b.lto.o`), a `--nvvmpath=/usr/local/cuda/nvvm` option, and a `-arch=sm_90` compile option. The trace below shows the exact sequence of `dlopen`, `dlsym`, and API calls that nvlink makes into libnvvm, with the decompiled call-site addresses next to each call. Tags in the rightmost column identify the decompiled source file and line number so the reader can re-derive the trace from the binary.
+
+### Step-by-Step Call Trace
+
+```
+Step 1: PATH CONSTRUCTION                     main() line 516-518           (addr 0x40A4E4)
+    path = concat(qword_2A5F278, "/lib64")    via sub_426AA0 + strcat
+    // qword_2A5F278 holds "--nvvmpath" argument value,
+    // e.g. "/usr/local/cuda/nvvm"
+    // Result: "/usr/local/cuda/nvvm/lib64"
+
+Step 2: ENTER LIBRARY LOADER                  main() line 519               (addr 0x40A500)
+    handle_or_err = sub_4BC470(elfw, path)
+        |
+        +-- sub_4BC470 line 8               (addr 0x4BC470)
+        |     lib = sub_5F5AC0(path, "libnvvm.so", 0)
+        |         |
+        |         +-- sub_5F5AC0 line 10    (addr 0x5F5AC0)
+        |         |     full_path = sub_462550(path, "libnvvm.so", 0)
+        |         |     // full_path = "/usr/local/cuda/nvvm/lib64/libnvvm.so"
+        |         |
+        |         +-- sub_5F5AC0 line 11    (addr 0x5F5AC0)
+        |               return sub_463360(full_path, 0)
+        |                   |
+        |                   +-- sub_463360 line 6    (addr 0x463360)
+        |                         // flag = (a2==0) + 1 = 0 + 1 + 1 = 2
+        |                         // Linux RTLD_NOW == 2
+        |                         return dlopen(full_path, RTLD_NOW)
+        |
+        +-- sub_4BC470 line 9               (addr 0x4BC470)
+              return sub_4BC290(elfw, NULL, handle)
+
+Step 3: nvvmCreateProgram                    sub_4BC290 line 53             (addr 0x4BC290)
+    // elfw[640] = handle                    // sub_4BC290 line 32
+    fn_create = dlsym(elfw[640], "nvvmCreateProgram")
+    if (fn_create == NULL)  return 10;       // "nvvm dlsym failed"
+    rc = fn_create(&elfw[648])               // sub_4BC290 line 57
+    if (rc != NVVM_SUCCESS) return 1;
+    // elfw[648] now holds the nvvmProgram handle
+
+Step 4: ADD MODULE "a.lto.o"                  sub_4BC4A0 line 55             (addr 0x4BC4A0)
+    // Called from sub_42AF40 line 270 (addr 0x42B02A) during the input loop
+    handle_fn = dlsym(elfw[640], "__nvvmHandle")
+    if (!handle_fn) return 10;
+    add_module_fn = handle_fn(0x2080)        // sub_4BC4A0 line 70
+    if (!add_module_fn) return 10;
+    rc = add_module_fn(elfw[648],
+                       "a.lto.o",            // module name (from input loop)
+                       ir_bytes_a,           // bitcode pointer
+                       ir_size_a)            // bitcode length
+    if (rc != 0) return 11;                  // sub_4BC4A0 line 111
+
+Step 5: ADD MODULE "b.lto.o"                  sub_4BC4A0 line 55             (addr 0x4BC4A0)
+    // Second iteration of the same input loop
+    handle_fn = dlsym(elfw[640], "__nvvmHandle")  // resolved again, not cached
+    add_module_fn = handle_fn(0x2080)
+    rc = add_module_fn(elfw[648], "b.lto.o", ir_bytes_b, ir_size_b)
+
+Step 6: REGISTER POST-LINK CALLBACK           main() line 987-1008           (addr 0x40BFDA)
+    // Conditional: only when -vkeep (byte_2A5F29B) is set
+    handle_fn = dlsym(elfw[640], "__nvvmHandle")         // line 987
+    if (!handle_fn) fatal("could not find __nvvmHandle") // line 991
+    callback_reg = handle_fn(0xBEEF)                     // line 997
+    if (!callback_reg) fatal("could not find CALLBACK Handle") // line 1001
+    rc = callback_reg(elfw[648],
+                      sub_4299E0,            // callback function pointer
+                      NULL,                  // user data
+                      0xF00D)                // subsystem tag (line 1007)
+    if (rc != 0) fatal("error in LTO callback") // line 1008
+
+Step 7: BUILD OPTION ARRAY                    sub_4BC6F0 line 202            (addr 0x4BC6F0)
+    s = sub_4307C0(arena, 8 * (8 + 8))       // capacity = user_count + 8
+    // User options from --Xnvvm (a9 parameter):
+    s[0] = "-arch=sm_90"
+    // Scan for "--force-device-c"; not found -> v30=1 (append host-refs OK)
+    // elfw[97] (force_device_c flag) not set -> skip host-ref append
+    // elfw[98] (variables_flag) not set -> skip "-variables" append
+    option_count = 1
+
+Step 8: nvvmCompileProgram                    sub_4BC6F0 line 391            (addr 0x4BC6F0)
+    // Decompiled signature uses 6 registers; libnvvm reads only the first 3
+    rc = fn_compile(elfw[648],               // RDI: program handle
+                    option_count,            // RSI: 1
+                    option_array,            // RDX: {"-arch=sm_90"}
+                    <dead>, <dead>, <dead>)
+    sub_431000(option_array, option_count)   // free the array (line 392)
+    //
+    // rc == 0                -> *a5 = 1 (full success),  goto LABEL_56
+    // rc == 100              -> *a5 = 0 (partial/reloc), goto LABEL_56
+    // rc == anything else    -> v93 = 1, v94 = fn_error(rc)
+    //
+    // In this example rc == 0. Continue to log + result extraction.
+
+Step 9: nvvmGetProgramLogSize                 sub_4BC6F0 line 412            (addr 0x4BC6F0)
+    if (fn_log_size(elfw[648], &log_size) != 0)  return 1;
+    // log_size = size_including_NUL
+
+Step 10: nvvmGetProgramLog (if log_size > 1)  sub_4BC6F0 line 423            (addr 0x4BC6F0)
+    log_buf = arena_alloc(log_size)          // line 419
+    list_append(log_buf, &elfw[480])         // sub_4644C0 line 422
+    if (fn_log(elfw[648], log_buf) != 0) return 1;
+    // Log is now owned by the elfw log context at offset 480
+
+Step 11: nvvmGetCompiledResultSize            sub_4BC6F0 line 447            (addr 0x4BC6F0)
+    if (fn_result_size(elfw[648], &ptx_size) != 0) return 1;
+    // ptx_size = number of bytes in the PTX string (including NUL)
+
+Step 12: __nvvmHandle(0xF00D) -> count        sub_4BC6F0 line 451            (addr 0x4BC6F0)
+    if (fn_count(elfw[648], &module_count) != 0) return 1;
+    // module_count == 1 for whole-program LTO (single PTX output)
+    // module_count >  1 for split-compile (multiple PTX blobs)
+
+Step 13: __nvvmHandle(0xB0BA) -> array        sub_4BC6F0 line 467            (addr 0x4BC6F0)
+    // Only executed when module_count > 1
+    module_array = arena_alloc(8 * module_count)  // line 458
+    *cubin_array_out = module_array               // line 464
+    if (fn_array(elfw[648], module_count, module_array) != 0) return 1;
+
+Step 14: nvvmGetCompiledResult                sub_4BC6F0 line 480            (addr 0x4BC6F0)
+    ptx_buf = arena_alloc(ptx_size)          // line 472
+    *ptx_out = ptx_buf                       // line 478
+    list_append(ptx_buf, &elfw[480])         // sub_4644C0 line 479
+    if (fn_get_result(elfw[648], ptx_buf) != 0) return 1;
+    // ptx_buf now holds:
+    //     "//\n// Generated by NVIDIA NVVM Compiler\n// ...\n.version 8.3\n
+    //      .target sm_90\n.address_size 64\n ... "
+
+Step 15: nvvmDestroyProgram                   sub_4BC6F0 line 481            (addr 0x4BC6F0)
+    return fn_destroy(&elfw[648]) != 0 ? 1 : 0;
+    // Note: pointer to the handle, not the handle itself.
+    // libnvvm nulls elfw[648] on success.
+```
+
+### API Call Ordering (All 10 libnvvm Entry Points)
+
+The full ordered list of libnvvm API calls for a two-module LTO compile with `-vkeep`, in execution order:
+
+| # | API | Input | Output | Call Site | Addr |
+|---|---|---|---|---|---|
+| 1 | `dlopen("libnvvm.so", RTLD_NOW)` | full path | lib handle | `sub_463360` line 6 | `0x463360` |
+| 2 | `nvvmCreateProgram(&prog)` | -- | `prog` | `sub_4BC290` line 57 | `0x4BC290` |
+| 3 | `__nvvmHandle(0x2080)(prog, "a.lto.o", a_bytes, a_size)` | module 1 | -- | `sub_4BC4A0` line 86 | `0x4BC4A0` |
+| 4 | `__nvvmHandle(0x2080)(prog, "b.lto.o", b_bytes, b_size)` | module 2 | -- | `sub_4BC4A0` line 86 | `0x4BC4A0` |
+| 5 | `__nvvmHandle(0xBEEF)(prog, sub_4299E0, NULL, 0xF00D)` | callback | -- | `main()` line 1007 | `0x409800` |
+| 6 | `nvvmCompileProgram(prog, 1, {"-arch=sm_90"})` | options | rc | `sub_4BC6F0` line 391 | `0x4BC6F0` |
+| 7 | `nvvmGetProgramLogSize(prog, &log_size)` | -- | size | `sub_4BC6F0` line 412 | `0x4BC6F0` |
+| 8 | `nvvmGetProgramLog(prog, log_buf)` | -- | log text | `sub_4BC6F0` line 423 | `0x4BC6F0` |
+| 9 | `nvvmGetCompiledResultSize(prog, &ptx_size)` | -- | size | `sub_4BC6F0` line 447 | `0x4BC6F0` |
+| 10 | `__nvvmHandle(0xF00D)(prog, &count)` | -- | count | `sub_4BC6F0` line 451 | `0x4BC6F0` |
+| 11 | `nvvmGetCompiledResult(prog, ptx_buf)` | -- | PTX string | `sub_4BC6F0` line 480 | `0x4BC6F0` |
+| 12 | `nvvmDestroyProgram(&prog)` | -- | -- | `sub_4BC6F0` line 481 | `0x4BC6F0` |
+
+For `force_device_c` compilation or a compile that produces multiple output modules, one additional call -- `__nvvmHandle(0xB0BA)(prog, count, array)` at `sub_4BC6F0` line 467 -- executes between steps 10 and 11.
+
+### Option Vector Contents
+
+For the concrete example above the option vector passed to `nvvmCompileProgram` is:
+
+```
+option_count = 1
+option_array = {
+    "-arch=sm_90"       // from the -arch option, forwarded via sub_426CD0
+}
+```
+
+If the link had used `nvcc -dlto -dc` (relocatable mode), `sub_427AE0` would set `elfw[97] = 1` and `--Xnvvm="--force-device-c"` would be added to the user options. The option scanner in `sub_4BC6F0` lines 213--235 would match `"--force-device-c"` (17-byte strncmp on line 219, comparing to the string literal at the loop start), set `v25 = 1`, and compute `v30 = (~v25) & 1 = 0` -- which suppresses host-reference option appending. The final vector would look like:
+
+```
+option_count = 2
+option_array = {
+    "-arch=sm_90",
+    "--force-device-c",
+}
+```
+
+If instead `elfw[97] == 1` and `--force-device-c` is **not** in the user options (host-reference compile mode), up to seven additional options are appended:
+
+```
+option_count = 1 + (up to 6 host-ref) + (0 or 1 "-variables")
+option_array = {
+    "-arch=sm_90",
+    "-host-ref-ek=<kernel_list>",      // sub_4BC6F0 line 260, from elfw[520]
+    "-host-ref-ik=<kernel_list>",      // line 283, from elfw[528]
+    "-host-ref-ec=<const_list>",       // line 306, from elfw[536]
+    "-host-ref-ic=<const_list>",       // line 329, from elfw[544]
+    "-host-ref-eg=<global_list>",      // line 351, from elfw[552]
+    "-host-ref-ig=<global_list>",      // line 375, from elfw[560]
+    "-variables",                      // line 386, when elfw[98] is set
+}
+```
+
+Each host-ref option is a concatenation of a 13-character prefix (`-host-ref-XX=`) and a symbol-list string that `sub_43FBC0` extracts from the corresponding elfw field. Options are only appended if `sub_43FBC0` returns non-NULL for that field.
+
+### Error Handling Per API Call
+
+Every libnvvm API invocation is wrapped by a return-code check. The decompiled code follows one of four error-handling patterns depending on the call site and severity:
+
+| Pattern | Used by | What happens on failure |
+|---|---|---|
+| **Return 10 ("dlsym failed")** | All 8 `dlsym` calls + the 2 `__nvvmHandle` dispatches in `sub_4BC6F0` (lines 165, 169, 173, 176, 179, 182, 185, 190, 193, 197) | Returns 10 immediately from `sub_4BC6F0`. No cleanup -- the program handle from `nvvmCreateProgram` leaks in this path but only until `main()` exits. |
+| **Return 10 + setjmp rollback** | `sub_4BC4A0` line 68 (`dlsym("__nvvmHandle")` NULL) and line 83 (`__nvvmHandle(0x2080)` NULL) | Returns 10 after restoring the saved setjmp state. The caller (`sub_42AF40` line 271 or `sub_427A10` line 22) translates the code via `sub_4BC270` and emits an error via `sub_467460`. |
+| **Return 1 ("API failure")** | `nvvmGetProgramLogSize` (line 412), `nvvmGetProgramLog` on >1 result (line 423), `nvvmGetCompiledResultSize` (line 447), `__nvvmHandle(0xF00D)` (line 451), `__nvvmHandle(0xB0BA)` (line 467), `nvvmGetCompiledResult` (line 480), `nvvmDestroyProgram` (line 481) | Returns 1 from `sub_4BC6F0`. Returning 1 is interpreted by `main()` as a generic libnvvm error; `main()` line 1085 translates it via `sub_4BC270(1) = "elfLink: bad argument"` and emits a diagnostic via `sub_467460`. |
+| **Return 8 + concatenated log** | `nvvmCompileProgram` failure path (lines 440, 487) | Retrieves the error string via `nvvmGetErrorString` (line 402), optionally concatenates it with the program log (line 438), stores the combined string in `*a6` (line 439), and returns 8. `main()` treats code 8 as "compile failed, error text in `*a6`" and prints the stored error to stderr before aborting. |
+
+The `sub_4BC290` init function has its own error codes:
+
+| Code | Trigger | Location |
+|---|---|---|
+| 0 | Success or library already loaded | line 28 |
+| 1 | NULL elfw context, or `nvvmCreateProgram` returned non-zero | lines 24, 81 |
+| 10 | NULL library handle, or `dlsym("nvvmCreateProgram")` failed | lines 29, 95 |
+
+And `sub_4BC4A0` (module-add wrapper):
+
+| Code | Trigger | Location |
+|---|---|---|
+| 0 | Success | line 52 via LABEL_3 |
+| 1 | setjmp fired during any libnvvm call | line 49 via LABEL_3 with error flag |
+| 10 | `dlsym("__nvvmHandle")` or `__nvvmHandle(0x2080)` returned NULL | lines 68, 83 |
+| 11 | `__nvvmHandle(0x2080)` returned a function pointer but calling it returned non-zero | line 111 |
+
+When the caller sees a non-zero return from any of these three wrappers, it calls `sub_4BC270(rc)` to translate the integer code into a string. `sub_4BC270` is a simple dispatch over an offset table `off_1D489E0` for codes `0..13`; codes outside this range map to the literal string `"elfLink: unexpected error"`.
+
+### The PTX Output
+
+On success the PTX string stored in `*ptx_out` (first argument of `sub_4BC6F0`) is the whole-program compiled result. `main()` retains this pointer via `v119 = sub_426AA0(p_src)` around line 1041 and hands it to the split-compile thread pool (`sub_4BC6F0`'s caller in `main()` at line 1014) which allocates per-kernel copies at lines 1049-1068 and enqueues them for embedded ptxas. Each worker thread instantiates a `PtxToElf` session and runs the ptxas backend against the sliced PTX; see [Split Compilation](split-compilation.md) for the thread-pool lifecycle.
+
+The PTX text consumed by the embedded ptxas has the exact format documented in the cicc wiki's [PTX Emission](../../cicc/pipeline/emission.html) section: a NUL-terminated ASCII string beginning with NVVM header comments, followed by `.version`, `.target`, and `.address_size` directives, then the global variable, function, and entry point definitions. Because `nvvmCompileProgram` was driven through the public API (not the raw PTX backend), the output already reflects all LTO-time optimizations -- GlobalOpt, inliner, devirtualization, and (when applicable) ThinLTO import decisions that ran inside libnvvm during step 8 above.
+
+### Verbose-Keep Intermediate Files
+
+When `-vkeep` is active, step 6 of the trace registers `sub_4299E0` as a post-link callback. Inside libnvvm, after the LTO passes have linked and optimized the merged IR but before PTX emission, libnvvm calls the registered callback twice -- once with the linked bitcode (`void *data, size_t size`) and once with the linked PTX (same signature, different data). `sub_4299E0` writes each invocation to disk:
+
+```
+nvlink -lto-post-link -o /tmp/.../linked_lto.bc
+nvlink -lto-post-link -o /tmp/.../linked_lto.ptx
+```
+
+The filename suffix (`.bc` vs `.ptx`) is determined by the internal tempfile naming in `sub_462550`; the open mode is chosen at `sub_4299E0` lines 16-25 based on whether the filename contains `".ptx"`. These intermediate files are the primary debugging mechanism for LTO issues -- they let the user inspect what libnvvm actually produced before the split-compile phase sliced and re-assembled the PTX.
+
 ## Cross-References
 
 - [LTO Overview](overview.md) -- high-level pipeline context for libnvvm within nvlink
@@ -472,5 +720,7 @@ This protects nvlink from crashes inside libnvvm.so. If libnvvm triggers a signa
 
 ### Sibling Wiki
 
-- **cicc wiki**: [LTO & Module Optimization](../../../../cicc/wiki/src/lto/index.md) -- the compiler-side LTO pipeline inside libnvvm. Documents the five-pass IR optimization (GlobalOpt, inliner, devirtualization, ThinLTO import) that runs when `nvvmCompileProgram` is called
-- **cicc wiki**: [Module Summary](../../../../cicc/wiki/src/lto/module-summary.md) -- NVModuleSummary builder used by ThinLTO import decisions inside libnvvm
+- **cicc wiki**: [LTO & Module Optimization](../../cicc/lto/index.html) -- the compiler-side LTO pipeline inside libnvvm. Documents the five-pass IR optimization (GlobalOpt, inliner, devirtualization, ThinLTO import) that runs when `nvvmCompileProgram` is called (step 8 in the worked example above). The LTO entry point is `sub_12F5F30` at `0x12F5F30` in the cicc binary
+- **cicc wiki**: [Module Summary](../../cicc/lto/module-summary.html) -- `NVModuleSummary` builder (`sub_D7D4E0` at `0xD7D4E0`) used by ThinLTO import decisions inside libnvvm. Runs between `__nvvmHandle(0x2080)` module addition (steps 3--4) and `nvvmCompileProgram` (step 6 of the worked example)
+- **cicc wiki**: [Inliner Cost Model](../../cicc/lto/inliner-cost.html) -- the cost analysis that determines which cross-module inlining decisions happen inside libnvvm after all modules are added
+- **cicc wiki**: [PTX Emission](../../cicc/pipeline/emission.html) -- the back-end that produces the PTX string returned via `nvvmGetCompiledResult` in step 11 of the worked example

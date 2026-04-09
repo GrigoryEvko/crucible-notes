@@ -121,11 +121,11 @@ asc_2A5EE14  -> compute_121 byte array (shared with sm_121a, sm_121f)
 
 ### Map 98: reserved (`qword_2A64498`)
 
-Created during initialization but no `sub_448E70` insert calls are observed in the decompiled code. This map is allocated and remains empty. It may be reserved for a future vtable category or populated by a code path not captured in the current decompilation.
+Created during initialization but no `sub_448E70` insert calls are observed in the decompiled code. This map is allocated and remains empty. It is either reserved for a future vtable category or populated by a code path not captured in the current decompilation.
 
 ### Map 90: perf-stats callback (`qword_2A64490`)
 
-Each entry is a function pointer with signature `int (*)(void)`. All observed callbacks call `sub_467460(dword_2A5EEF0, "sm_20", "--perf-stats")`, suggesting they query the option database for the `--perf-stats` flag relative to a baseline `sm_20` profile. Despite using the same pattern, each SM registers a distinct function address -- likely for future per-SM perf-stats customization or to allow hot-patching.
+Each entry is a function pointer with signature `int (*)(void)`. All observed callbacks call `sub_467460(dword_2A5EEF0, "sm_20", "--perf-stats")`, which queries the option database for the `--perf-stats` flag relative to a baseline `sm_20` profile. Despite using the same pattern, each SM registers a distinct function address -- for future per-SM perf-stats customization or to allow hot-patching (the distinct addresses ensure the dispatch table can differentiate callers).
 
 Representative decompilation (sm_75 entry, `sub_15C1C80`):
 ```c
@@ -436,3 +436,18 @@ per-instruction encoder (SM100+ at 0x620000)   -- emit 128-bit SASS word
 4. **Double-checked locking.** The init function checks `byte_2A644C0` twice: once without the lock (fast path for already-initialized case) and once after acquiring mutex 5 (correctness under concurrent access). This is the standard DCL pattern for lazy singletons.
 
 5. **11-byte wrappers.** The ISel mega-hub wrappers at `0x5272D0`--`0x527310` are remarkable for their size: each is exactly 11 bytes of x86-64 code (`mov rdi, rsi; mov rsi, rdx; jmp target`). They exist solely to adapt a 3-argument vtable calling convention to a 2-argument function, discarding the self pointer. The zero direct callers confirm they are invoked exclusively through function pointer indirection.
+
+## Cross-References
+
+### nvlink Internal
+- [Embedded ptxas Overview](overview.md) -- full address map and compilation pipeline
+- [ISel Hubs](isel-hubs.md) -- the five mega-hub functions selected by these dispatch tables
+- [Architecture Profiles](../targets/arch-profiles.md) -- the linker-side architecture profile database at `sub_484F50`
+- [Compatibility](../targets/compatibility.md) -- architecture compatibility checking in the linker
+
+### Sibling Wikis
+- [ptxas: SM Architecture Map](../../ptxas/targets/index.html) -- standalone ptxas target dispatch (7 parallel hash maps via `sub_607DB0`)
+- [ptxas: Turing/Ampere](../../ptxas/targets/turing-ampere.html) -- SM75/SM80 target details
+- [ptxas: Ada/Hopper](../../ptxas/targets/ada-hopper.html) -- SM89/SM90 target details
+- [ptxas: Blackwell](../../ptxas/targets/blackwell.html) -- SM100+ target details
+- [cicc: Targets Index](../../cicc/targets/index.html) -- cicc compiler target dispatch

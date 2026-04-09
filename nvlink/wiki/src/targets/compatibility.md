@@ -323,6 +323,26 @@ For the `a` variants (sm_100a, sm_120a, etc.), all entries become exact-match on
 | `qword_2A5F8D8` | `g_profile_hashmap` | `void *` | Hash map of architecture profiles (name -> profile struct) |
 | `dword_1D40660` | `g_finalize_dispatch` | `int[5]` | Finalization class -> compatibility level mapping |
 
+## Confidence Assessment
+
+| Claim | Confidence | Verification |
+|---|---|---|
+| `sub_4878A0` core compatibility check, 328 B | CONFIRMED | Decompiled file exists; logic matches: parses two arch strings, compares profiles, same-decade rule at line 68 (`v19 / 0xA == v20 / 0xA`) |
+| SM 101/110 cross-mapping exception | CONFIRMED | Decompiled `sub_4878A0` line 55: `if ( v19 == 101 \|\| v20 == 101 \|\| v19 == 110 \|\| v20 == 110 )` exactly matches wiki description |
+| `sub_4709E0` finalization check, remapping 104->120, 130->107, 101->110 | CONFIRMED | Decompiled lines 22-31: `case 104: v4 = 120; case 130: v4 = 107; case 101: v4 = 110;` exactly matches wiki |
+| Return codes 0/24/25/26/27-30 | CONFIRMED | Decompiled code returns 24 (null), 25 (version > 0x101), 26 (incompatible), 29 (class 2 error); matches wiki table |
+| `dword_1D40660` finalization dispatch table | CONFIRMED | Decompiled line 59: `v9 = dword_1D40660[v8];` with v8 = a1[3] byte |
+| `CAN_FINALIZE_DEBUG` env var | CONFIRMED | Decompiled lines 17-19 in both `sub_4709E0` and `sub_470DA0`: `getenv("CAN_FINALIZE_DEBUG")`; string at `0x1d40080` |
+| `sub_470DA0` capability bitmask: d=1, g=8, n=2, y=64 | CONFIRMED | Decompiled lines 95-106: `case 'd': v12 = 1; case 'g': v12 = 8; case 'n': v12 = 2; case 'y': v12 = 64;` exactly matches |
+| Same-decade rule (arch / 10) for family grouping | CONFIRMED | Decompiled `sub_4878A0` line 68: `v19 / 0xA == v20 / 0xA` |
+| `a` variant requires exact match | CONFIRMED | Decompiled `sub_4878A0` line 47: `if (v6[7]) { LOBYTE(v13) = v20 == v19; }` |
+| `sub_426570` validates arch and adds inputs | HIGH | Function exists at stated address; 7,427 B size claimed |
+| Version check `a1[3] > 0x101` | CONFIRMED | Decompiled `sub_4709E0` line 50: `*((_WORD *)a1 + 3) > 0x101u` |
+| Compatibility matrix (sm_100/103/110/120/121) | HIGH | Derived from confirmed remapping and decade rules; special cases for 110 at decompiled line 70-76 |
+| tcgen05 cross-version incompatibility | MEDIUM | Address `0x1D39330` claimed; not independently verified in decompiled code |
+
+For general architecture compatibility concepts, see the [ptxas wiki targets](../../ptxas/targets/index.html).
+
 ## Cross-References
 
 ### nvlink Internal
@@ -335,5 +355,5 @@ For the `a` variants (sm_100a, sm_120a, etc.), all entries become exact-match on
 - [Architecture Dispatch](../ptxas/arch-dispatch.md) -- embedded ptxas dispatch tables for per-SM codegen
 
 ### Sibling Wikis
-- [ptxas: SM Architecture Map](../../../../ptxas/wiki/src/targets/index.md) -- standalone ptxas target validation and family grouping
-- [cicc: Targets Index](../../../../cicc/wiki/src/targets/index.md) -- cicc compiler target compatibility definitions
+- [ptxas: SM Architecture Map](../../ptxas/targets/index.html) -- standalone ptxas target validation and family grouping
+- [cicc: Targets Index](../../cicc/targets/index.html) -- cicc compiler target compatibility definitions

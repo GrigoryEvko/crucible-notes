@@ -771,3 +771,47 @@ Offset  Size  Description
 | SM100 opcode table size | 111,076 bytes / 3,227 lines |
 | SM70 opcode table size | 24,230 bytes / 733 lines |
 | SM100-to-SM70 ISA size ratio | ~4.6x |
+
+## Confidence Assessment
+
+| Claim | Confidence | Verification |
+|---|---|---|
+| ISA class string "Blackwell" for sm_100 | CONFIRMED | Decompiled `sub_484F50` line 609: `"Blackwell"`; string at `0x1d40b6e` |
+| `__CUDA_ARCH__=1000` | CONFIRMED | String at `0x1d40b59`; decompiled line 617 |
+| Three sub-variants: sm_100, sm_100a, sm_100f | CONFIRMED | Strings at `0x1d40b78`/`0x1d40bae`/`0x1d40be2`; dispatch table in `sub_15C0CE0` |
+| Dispatch table: sm_100 encoding table = `sub_15C3840` | CONFIRMED | Decompiled `sub_15C0CE0` line 126: `sub_448E70(qword_2A644A8, "sm_100", sub_15C3840)` |
+| 8 MB encoding infrastructure across four regions | HIGH | Region sizes from systematic binary analysis; addresses consistent with function catalog |
+| 1,975 encoders + 648 decoders + 1,613 descriptors = 4,236 | HIGH | Counts from comprehensive sweep; cross-checked with dispatch table sizes |
+| 118 instruction families under 3 major opcodes | HIGH | Family count from systematic opcode table analysis |
+| `sub_4C28B0` bitfield insertion at bits[3:0], [6:4], [16:8], [24:17], [31:25] | HIGH | Encoder template pattern confirmed across multiple decompiled encoders |
+| ROT13 mnemonic table: ZREPHEL = MERCURY | HIGH | ROT13 decoding of string found in opcode table constructor |
+| tcgen05 intrinsics: `tcgen05.mma`, `tcgen05.mma.ws` | HIGH | PTX mnemonic strings referenced in `sub_16E0A70` type classifier |
+| 54 tcgen05 type IDs from predicate chain | HIGH | Decompiled `sub_16E0A70` at 322 lines with complete predicate chain |
+| Guardrail symbols (`__cuda__sm10x_tcgen05_guardrails_*`) | HIGH | Symbol name strings referenced in decompiled `sub_16E1DB0` |
+| Encoder dispatch `sub_E43C20` (92 lines) | HIGH | Address and size consistent with function catalog |
+| Decoder dispatch `sub_EFE6C0` (93 lines) | HIGH | Address and size consistent with function catalog |
+| SM100 opcode table constructor `sub_1782540` (111,076 B) | HIGH | One of the largest functions; address consistent |
+| Master encoder `sub_17F2670` (156,611 B) -- largest function in binary | HIGH | Size claim from function boundary analysis; consistent with claimed 4,858 lines |
+| Format descriptor tables (`xmmword_1E30DA0`, etc.) | HIGH | Rodata addresses from decompiled encoder functions |
+| Major opcode 3 has only 1 encoder (HSETP2) | MEDIUM | Derived from opcode distribution analysis; single format-3 instruction |
+
+For general Blackwell architecture details, see the [ptxas wiki: Blackwell](../../ptxas/targets/blackwell.html) and [cicc wiki: SM100 Blackwell](../../cicc/targets/sm100-blackwell.html).
+
+## Cross-References
+
+### nvlink Internal
+- [Embedded ptxas Overview](../ptxas/overview.md) -- SM100+ codec at `0xDA0000`--`0xF16000` and `0x620000`--`0xA70000`
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- SM100/100a/100f vtable registration and callbacks
+- [Architecture Profiles](arch-profiles.md) -- SM100 profile in linker database
+- [Compatibility](compatibility.md) -- SM100 finalization compatibility and capability bitmasks
+- [SM103/110/120/121](sm103-121.md) -- derived Blackwell-family architectures
+- [Mercury Overview](../mercury/overview.md) -- Mercury encoding is the default for SM100+
+- [FNLZR](../mercury/fnlzr.md) -- finalizer for Mercury/capmerc SM100+ output
+- [Capsule Mercury Format](../mercury/capmerc-format.md) -- capmerc output format for SM100+
+
+### Sibling Wikis
+- [ptxas: Blackwell](../../ptxas/targets/blackwell.html) -- standalone ptxas SM100+ target documentation
+- [ptxas: tcgen05](../../ptxas/targets/tcgen05.html) -- standalone ptxas tcgen05 tensor intrinsics
+- [ptxas: Mercury Encoder](../../ptxas/codegen/mercury.html) -- Mercury pipeline for SM100+ encoding
+- [ptxas: Capsule Mercury](../../ptxas/codegen/capmerc.html) -- capmerc format in standalone ptxas
+- [cicc: SM100 Blackwell](../../cicc/targets/sm100-blackwell.html) -- cicc compiler SM100 Blackwell target

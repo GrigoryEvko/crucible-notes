@@ -513,3 +513,17 @@ Use-def chains are the fundamental data structure for SSA-based optimizations in
 | `0x1E31240` | Register class size table | Indexed by format byte |
 | `0x1E311D0` | Optimization level mapping | 5 entries |
 | `0x1D4AED0` | Scheduling mode mapping | 4 entries |
+
+## Cross-References
+
+### nvlink Internal
+- [Embedded ptxas Overview](overview.md) -- full address map showing IR node location at `0x530000`--`0x620000`
+- [ISel Hubs](isel-hubs.md) -- ISel mega-hubs that consume IR nodes via `sub_530FB0` and `sub_A49150`
+- [Register Allocation](register-allocation.md) -- regalloc pass that reads/modifies IR node register fields
+- [Peephole](peephole.md) -- peephole passes that rewrite IR node operands
+
+### Sibling Wikis
+- [ptxas: IR Overview](../../ptxas/ir/overview.html) -- standalone ptxas Ori IR architecture
+- [ptxas: IR Instructions](../../ptxas/ir/instructions.html) -- Ori instruction representation
+- [ptxas: IR Registers](../../ptxas/ir/registers.html) -- register file and classes
+- [ptxas: IR Data Structures](../../ptxas/ir/data-structures.html) -- CFG and data structure internals

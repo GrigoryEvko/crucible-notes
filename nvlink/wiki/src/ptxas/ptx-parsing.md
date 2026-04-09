@@ -993,6 +993,6 @@ The validators enforce feature availability across GPU generations. This table s
 - [LTO Overview](../lto/overview.md) -- how LTO pipeline feeds PTX to the embedded parser
 
 ### Sibling Wikis
-- [ptxas: PTX Parser](../../../../ptxas/wiki/src/pipeline/ptx-parser.md) -- standalone ptxas PTX parsing infrastructure
-- [ptxas: PTX-to-Ori](../../../../ptxas/wiki/src/pipeline/ptx-to-ori.md) -- standalone ptxas PTX-to-Ori IR lowering
-- [ptxas: PTX Directives](../../../../ptxas/wiki/src/pipeline/ptx-directives.md) -- directive handling in standalone ptxas
+- [ptxas: PTX Parser](../../ptxas/pipeline/ptx-parser.html) -- standalone ptxas PTX parsing infrastructure
+- [ptxas: PTX-to-Ori](../../ptxas/pipeline/ptx-to-ori.html) -- standalone ptxas PTX-to-Ori IR lowering
+- [ptxas: PTX Directives](../../ptxas/pipeline/ptx-directives.html) -- directive handling in standalone ptxas

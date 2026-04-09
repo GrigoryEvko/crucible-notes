@@ -1085,9 +1085,9 @@ The `.ucode` section name at `0x1EEC922` and `EIATTR_UCODE_SECTION_DATA` at `0x1
 - [Output Phase](../pipeline/output.md) -- Mercury output path in the linker pipeline
 
 ### Sibling Wikis
-- [ptxas: Mercury Encoder Pipeline](../../../../ptxas/wiki/src/codegen/mercury.md) -- standalone ptxas Mercury encoder (phases 113--122: encode/decode, MercExpand, WAR, opex, UCode emission)
-- [ptxas: Capsule Mercury & Finalization](../../../../ptxas/wiki/src/codegen/capmerc.md) -- standalone ptxas capmerc output format, Mercury section binary layouts, finalization pipeline
-- [ptxas: SASS Encoding](../../../../ptxas/wiki/src/codegen/encoding.md) -- SASS instruction encoding that Mercury wraps
+- [ptxas: Mercury Encoder Pipeline](../../ptxas/codegen/mercury.html) -- standalone ptxas Mercury encoder (phases 113--122: encode/decode, MercExpand, WAR, opex, UCode emission)
+- [ptxas: Capsule Mercury & Finalization](../../ptxas/codegen/capmerc.html) -- standalone ptxas capmerc output format, Mercury section binary layouts, finalization pipeline
+- [ptxas: SASS Encoding](../../ptxas/codegen/encoding.html) -- SASS instruction encoding that Mercury wraps
 
 ## Confidence Assessment
 

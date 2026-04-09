@@ -757,4 +757,4 @@ The peephole passes are controlled by the internal knob system and compiler opti
 - [Mercury Compiler Passes](../mercury/compiler-passes.md) -- Mercury-specific ORI pass integration
 
 ### Sibling Wikis
-- [ptxas: Peephole Optimization](../../../../ptxas/wiki/src/codegen/peephole.md) -- standalone ptxas peephole pass (three 250KB dispatch functions)
+- [ptxas: Peephole Optimization](../../ptxas/codegen/peephole.html) -- standalone ptxas peephole pass (three 250KB dispatch functions)

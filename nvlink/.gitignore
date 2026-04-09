@@ -1,0 +1,53 @@
+# IDA Pro Database Files
+*.idb
+*.i64
+*.id0
+*.id1
+*.id2
+*.nam
+*.til
+
+# IDA Pro Backup Files
+*.idb~
+*.i64~
+
+# IDA Pro Dump Directories (large output)
+decompiled/
+disasm/
+graphs/
+
+# Binary and data files
+*.bin
+*.so
+*.a
+nvlink
+
+# Large JSON artifacts
+nvlink_functions.json
+nvlink_xrefs.json
+nvlink_callgraph.json
+nvlink_callgraph.dot
+nvlink_rodata.bin
+nvlink_comments.json
+nvlink_strings.json
+nvlink_names.json
+nvlink_imports.json
+nvlink_segments.json
+
+# IDA Pro Logs
+ida_analysis.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Analysis Logs
+*.log
+
+# Temporary Analysis Files
+*.tmp
+*.bak
+
+# mdBook build output
+wiki/book/

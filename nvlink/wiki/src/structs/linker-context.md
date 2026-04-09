@@ -521,6 +521,100 @@ if (ctx->section_virtualization_active) {
 
 This consistency check appears in `sub_443260`, `sub_443500`, and many other accessors. It catches corruption in the merge-time section mapping.
 
+## Confidence Assessment
+
+Each claim below was verified against decompiled functions (`sub_4438F0` at `/decompiled/sub_4438F0_0x4438f0.c`, `sub_4475B0`, `sub_443260`, `sub_443500`, `sub_444720`, `sub_444710`, `sub_43E490`, `sub_42F8B0`), string references in `nvlink_strings.json`, and raw research report W080.
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| Struct size = 672 bytes | HIGH | `sub_4307C0(v14, 672)` on `sub_4438F0` line 130; `memset` of 672 bytes on line 135 |
+| ELF magic at offset 0 (`0x464C457F`) | HIGH | `*(_DWORD *)v17 = 1179403647` literal on `sub_4438F0` line 141 |
+| `ei_class` at offset 4 | HIGH | `*((_BYTE *)v17 + 4) = (a2 != 0) + 1` on `sub_4438F0` line 146 |
+| `ei_data`+`ei_version` at offset 5 as word 0x0101 | HIGH | `*(_WORD *)((char *)v17 + 5) = 257` on `sub_4438F0` line 142 |
+| `ei_osabi` at offset 7 (0x41 device / 0x33 non-device) | HIGH | `*((_BYTE *)v17 + 7) = 65` on line 149, or `51` on line 197 |
+| `ei_abiversion` at offset 8 | HIGH | `*((_BYTE *)v17 + 8) = a3` on lines 150 and 198 |
+| `e_type` at offset 16 | HIGH | `*((_WORD *)v17 + 8) = v114` on line 151 (word 8 = byte 16) |
+| `e_machine` = 190 at offset 18 | HIGH | `*((_WORD *)v17 + 9) = 190` on lines 152 and 199 |
+| `e_flags` at offset 48 | HIGH | `sub_444710`: `*(_DWORD *)(a1 + 48) \|= a2` (DWORD-wide access at byte 48) |
+| `e_version_or_api` at offset 20 | HIGH | `*((_DWORD *)v17 + 5) = a7` on line 223 (dword 5 = byte 20) |
+| `link_mode_bits = merge_flags & 0x70000` at offset 68 | HIGH | `*((_DWORD *)v17 + 17) = v20 & 0x70000` on lines 172, 208, 216 (dword 17 = byte 68) |
+| `verbose_flags` at offset 64 | HIGH | `*((_BYTE *)v17 + 64) = a8` on line 236 |
+| `sm_arch_major` at offset 72 | HIGH | `*((_DWORD *)v17 + 18) = a4` on line 145 (dword 18 = byte 72) |
+| `merge_flags` at offset 76 | HIGH | `*((_DWORD *)v17 + 19) = a9` on lines 158, 164, 207, 215 (dword 19 = byte 76) |
+| `debug_flag` at offset 80 | HIGH | `*((_BYTE *)v17 + 80) = a6` on line 235 |
+| `has_shstrtab` at offset 83 | HIGH | `*((_BYTE *)v17 + 83) = !v31` on line 241 (tests word 42 for 0) |
+| `section_virtualization` flag byte at offset 82 | HIGH | `sub_443260` line 80: `*(_BYTE *)(a1 + 82)` gates virtualization check; same in `sub_443500` line 86 |
+| `preserve_relocs` at offset 84 (bit 0) | HIGH | `*((_BYTE *)v17 + 84) = v20 & 1` on line 237 |
+| `force_rela` at offset 85 (bit 1) | HIGH | `*((_BYTE *)v17 + 85) = (v20 & 2) != 0` on line 238 |
+| `allow_undef_globals` at offset 86 (bit 9) | HIGH | `*((_BYTE *)v17 + 86) = (v20 & 0x200) != 0` on line 240 |
+| `no_opt` at offset 87 (bit 2) | HIGH | `*((_BYTE *)v17 + 87) = (v20 & 4) != 0` on line 242 |
+| `optimize_data` at offset 88 (bit 3) | HIGH | `*((_BYTE *)v17 + 88) = (v20 & 8) != 0` on line 243 |
+| Byte at offset 89 = `(bit 4) \|\| mercury_flag` | HIGH | `v32 = (v20 >> 4) & 1; if (v13) LOBYTE(v32) = 1; *((_BYTE *)v17 + 89) = v32` on lines 246-249 |
+| `emit_ptx` at offset 90 (bit 5) | HIGH | `*((_BYTE *)v17 + 90) = (v20 & 0x20) != 0` on line 244 |
+| Flag `bit 0x4000` at offset 91 | HIGH | `*((_BYTE *)v17 + 91) = (v20 & 0x4000) != 0` on line 245 |
+| Flag `bit 6` at offset 92 | HIGH | `*((_BYTE *)v17 + 92) = (v20 & 0x40) != 0` on line 250 |
+| Flag `bit 8` at offset 93 | HIGH | `*((_BYTE *)v17 + 93) = BYTE1(v20) & 1` on line 253 |
+| `extended_smem` at offset 94 | HIGH | `*((_BYTE *)v17 + 94) = (a5 > 0x45u) & ((unsigned __int8)v20 >> 7)` on line 260 |
+| Flag `bit 0x800` at offset 96 | HIGH | `*((_BYTE *)v17 + 96) = (v20 & 0x800) != 0` on line 259 |
+| `no_warn_dead_code` at offset 99 (!bit 12) | HIGH | `*((_BYTE *)v17 + 99) = ((v20 >> 12) ^ 1) & 1` on line 251 |
+| Byte at offset 100 = `(merge_flags & 0x2000) != 0` | HIGH | `*((_BYTE *)v17 + 100) = (v20 & 0x2000) != 0` on line 252 (overwrites earlier word-wide write) |
+| `is_device_elf` at offset 101 | HIGH | `*((_BYTE *)v17 + 101) = (a9 & 0x8000) != 0` on line 144 |
+| ~~`tkinfo_buffer` at offset 108~~ (labeling error) | LOW | `sub_43E490(v17 + 108, 1000)` initializes a 24-byte ELF note header (namesz, descsz, type=1000, "NVIDIA Corp"), not a 1000-byte buffer. Per line 539 `sub_433760(v17, cuinfo_idx, v17+108, 4, 32)`, offset 108 is tied to the cuinfo note, not tkinfo |
+| ~~`cuinfo_buffer` at offset 140~~ (labeling error) | LOW | `sub_43E490(v17 + 140, 2000)` initializes a second ELF note header (type=2000). The 1000/2000 values are NVIDIA note TYPE identifiers, not capacities. Which of 108/140 is tkinfo vs cuinfo is ambiguous from the constructor alone |
+| Two 24-byte NVIDIA note headers at +108 and +140 | HIGH | `sub_43E490` sets namesz=12, descsz∈{8,24,0}, type=a2, and `strcpy` "NVIDIA Corp" at +12 of each |
+| `shstrtab_section_idx` at offset 62 | HIGH | `*((_WORD *)v17 + 31) = v53` on line 368 (word 31 = byte 62) |
+| Section indices at 200--210 (tkinfo/symtab/strtab/etc) | LOW | **DOCUMENTED ERROR in wiki body**: Page currently claims `tkinfo` at 200, `symtab_section_idx` at 202, `symtab_shndx` at 204, `strtab` at 206, `cuinfo` at 208, `cuinfo_note` at 210. Decompiled constructor proves otherwise: word 101 (byte 202) = strtab idx [line 427]; word 102 (byte 204) = symtab idx [line 494]; word 103 (byte 206) = symtab_shndx idx [line 522/573]; word 104 (byte 208) = cuinfo idx [line 538]; word 105 (byte 210) = tkinfo idx [line 531]. Byte 200 (word 100) is the api version cache `a7` [lines 177, 221], not a section index. Page body needs correction. |
+| `strtab_section_idx` at offset 202 (word 101) | HIGH | `*((_WORD *)v17 + 101) = v58` on line 427 after `.strtab` creation |
+| `symtab_section_idx` at offset 204 (word 102) | HIGH | `*((_WORD *)v17 + 102) = v63` on line 494 after `.symtab` creation; also read in `sub_441AC0` as link field |
+| `symtab_shndx_idx` at offset 206 (word 103) | HIGH | `*((_WORD *)v17 + 103) = v68/v78` on lines 522/573 after `.symtab_shndx` creation |
+| `cuinfo_section_idx` at offset 208 (word 104) | HIGH | `*((_WORD *)v17 + 104) = v91` on line 538 after `.note.nv.cuinfo` creation |
+| `tkinfo_section_idx` at offset 210 (word 105) | HIGH | `*((_WORD *)v17 + 105) = sub_440350(...)` on line 531 after `.note.nv.tkinfo` creation |
+| `symbol_name_hash` at offset 288 | HIGH | `v17[36] = sub_4489C0(sub_44E000, sub_44E180, 512)` on line 261; `sub_440BE0` reads `a1+288` on lines 125, 182, 211, 313 |
+| `section_name_hash` at offset 296 | HIGH | `v17[37] = sub_4489C0(sub_44E000, sub_44E180, 512)` on line 262; `sub_441AC0` reads `a1+296` on lines 93, 174, 203 for `.section` name lookup |
+| `v17[39] = 0x100000000LL` at offset 312 | HIGH | Line 264; stores count=1 in high dword, 0 in low dword (dword 78 gets count) |
+| `strtab_entry_count = 1` at offset 320 | HIGH | `*((_DWORD *)v17 + 80) = 1` on line 265 (dword 80 = byte 320) |
+| `pos_symbol_array` at offset 344 | HIGH | `v17[43] = sub_464AE0(64)` on line 272; `sub_443260` line 31: `*(_QWORD *)(a1 + 344)` for positive index |
+| `neg_symbol_array` at offset 352 | HIGH | `v17[44] = sub_464AE0(64)` on line 273; `sub_443260` line 29: `*(_QWORD *)(a1 + 352)` for negative index |
+| `section_array` at offset 360 | HIGH | `v17[45] = sub_464AE0(64)` on line 274; `sub_443260` line 98: `v16 = *(_QWORD *)(a1 + 360)` for final resolution |
+| 104-byte section-array sentinel appended | HIGH | `v36 = sub_4307C0(v33, 104)` on line 276; `sub_464C30(v36, v17[45])` on line 285 |
+| 48-byte sentinel appended to both pos/neg symbol arrays | HIGH | `v41 = sub_4307C0(v38, 48)` on line 287; two `sub_464C30` calls on lines 293-294 |
+| `section_order_map` at offset 368 | HIGH | `sub_443260` line 92: `v15 = *(_QWORD *)(a1 + 368)`; destructor frees `a1[46]` on line 110 |
+| `reloc_list_0` at offset 376 | HIGH | Destructor: `sub_464550(a1[47], 0)` on line 52 (qword 47 = byte 376) |
+| `reloc_list_1` at offset 384 | HIGH | Destructor: `sub_464550(a1[48], 0)` on line 53 |
+| `reloc_list_2` at offset 392 | HIGH | Destructor: `sub_464550(a1[49], 0)` on line 55 |
+| `input_section_list` at offset 408 (qword 51) | HIGH | `v17[51] = sub_464AE0(32)` on line 295 (32-element initial capacity) |
+| Reloc counter at offset 416 | HIGH | `*((_DWORD *)v17 + 104) = 0` on line 296 (dword 104 = byte 416) |
+| `global_symbol_list` at offset 448 (qword 56) | HIGH | Destructor: `sub_464520(a1[56])` on line 129 |
+| `symbol_index_mapping` at offset 456 | HIGH | `sub_444720` line 10: `v6 = *(_QWORD *)(a1 + 456)`; destructor `sub_431000(a1[57], a2)` on line 39 |
+| `neg_symbol_index_mapping` at offset 464 | HIGH | `sub_444720` line 16: `*(_QWORD *)(a1 + 464)`; destructor `sub_431000(a1[58], a2)` on line 38 |
+| `section_virtualization_table` at offset 472 | HIGH | `sub_443260` line 89: `*(_QWORD *)(a1 + 472)` indexed by v13; destructor `sub_431000(a1[59], a2)` on line 37 |
+| `file_list` at offset 480 | HIGH | Destructor walks `j = (_QWORD *)a1[60]; j = (_QWORD *)*j; sub_431000(j[1], ...)` on line 124 |
+| `arch_vtable` at offset 488 | HIGH | Constructor line 189: `v17[61] = sub_459640(v25)` or line 229: `v17[61] = sub_45AC50(v25)`; destructor `sub_45B680(a1 + 61)` on line 130 |
+| `entry_hash` at offset 496 | HIGH | Constructor lines 588-589: `v71 = sub_4489C0(sub_44E000, sub_44E180, 32); v17[62] = v71`; destructor `sub_448A40(a1[62])` on line 126; `sub_443500` reads `a1 + 496` for syscall lookup |
+| Input file records at offset 512 (qword 64) | HIGH | `v17[64] = sub_464AE0(8)` on line 297; `v44 = sub_4307C0(..., 16)`; `*v44 = "<input>"` on line 307; `*((_DWORD *)v44 + 2) = v24` sm_minor on line 308 |
+| Six sorted arrays at offsets 520--560 (qwords 65--70) | HIGH | `v17[65..70] = sub_465020(sub_44E000, sub_44E180, 16)` six times on lines 266-271 |
+| `reloc_type_hash` at offset 576 (qword 72) | HIGH | `v17[72] = sub_4489C0(sub_44E120, sub_44E130, 8)` on line 596; destructor `sub_448A40(a1[72])` on line 127 |
+| `merged_symbol_array` at offset 592 (qword 74) | HIGH | `sub_443260` line 78: `sub_464DB0(*(_QWORD *)(a1 + 592), v24)`; destructor `v13 = a1[74]; if (v13) sub_464B90(v13)` on line 84-86; also read in `sub_443500` line 79 |
+| `extended_symbol_store` at offset 600 (qword 75) | HIGH | `sub_443260` line 37: `v23 = *(_QWORD *)(a1 + 600)`; destructor `v14 = a1[75]; if (v14) sub_464B90(v14)` on line 87-89 |
+| `private_arena_ptr` at offset 608 (qword 76) | HIGH | Destructor: `if (a1[76]) { ... sub_431C70(a1[76], 0); }` on lines 29-33; constructor `v17[76] = v117` on line 256 |
+| `private_arena_handle` at offset 616 (qword 77) | HIGH | Constructor `v17[77] = v118` on line 257; destructor `sub_45CAE0(a1[77], a2)` on line 31 |
+| ~~`option_parser_result` at offset 624~~ (labeling error) | LOW | `*((_DWORD *)v17 + 156) = sub_42F8B0()` on line 597 (dword 156 = byte 624). But `sub_42F8B0` is a 1-line function that returns the **literal constant 5** — not an option parser result. Correct label is "arch class = 5" (matches elf-writer.md wiki). The value is set once to 5 and never changed. |
+| `end_marker` at offset 664 (qword 83) | HIGH | `v17[83] = 0` on line 134 (early clear before memset) |
+| Boolean flag CLI names (offsets 84--100) | MEDIUM | Bit extractions and offsets verified against constructor lines 237-260. Semantic CLI names (e.g., `--reserve-null`, `--disable-smem-reservation`) cannot be confirmed from `sub_4438F0` alone and require tracing through the option parser |
+| `symbol_name_hash` uses 512 buckets | HIGH | Constructor line 261: third param to `sub_4489C0` is 512 |
+| `section_name_hash` uses 512 buckets | HIGH | Constructor line 262: third param to `sub_4489C0` is 512 |
+| `entry_hash` uses 32 buckets | HIGH | Constructor line 588: third param to `sub_4489C0` is 32 |
+| `reloc_type_hash` uses 8 buckets | HIGH | Constructor line 596: third param is 8; uses `sub_44E120`/`sub_44E130` (integer-keyed) |
+| Syscall names loaded from `off_1D3A9C0` | HIGH | Constructor lines 587-595: loop reads `v70 = off_1D3A9C0`, `v72 = *v70++; sub_448E70(v71, v72, 0)` until `v70 == &n` |
+| `merge_flags & 0x400` gates private arena | HIGH | Line 123: `if ((a9 & 0x400) != 0)` calls `sub_432020("elfw memory space", 0, 4096)` |
+| `merge_flags & 0x8000` = is_device_elf bit | HIGH | Line 144: `*((_BYTE *)v17 + 101) = (a9 & 0x8000) != 0` |
+| Forced-relocatable via `a10 \|\| (a9 & 0x180000)` | HIGH | Lines 153, 201: identical condition sets `v13=1`, `v20 = a9 \| 0x80000`, `e_type = 1` |
+| String `"elfw memory space"` | HIGH | Found at line 12520 of `nvlink_strings.json`; used in `sub_432020` call on line 125 |
+| String `"couldn't initialize arch state"` | HIGH | Found at line 12622 of `nvlink_strings.json`; used in `sub_467460` call on line 233 |
+| String `"reference to deleted symbol"` | HIGH | Found at line 11766 of `nvlink_strings.json`; used 4+ times in `sub_4438F0` and `sub_443260`/`sub_444720`/`sub_443500` |
+| String `"secidx not virtual"` | HIGH | Found at line 12185 of `nvlink_strings.json`; used in `sub_443260` line 94 and `sub_443500` line 93 |
+| Strings `".note.nv.tkinfo"`, `".note.nv.cuinfo"` | HIGH | Found at lines 11279, 11308 of `nvlink_strings.json`; referenced in `sub_441AC0` section creation path |
+
 ## Cross-References
 
 - [Device ELF Format](../elf/device-elf-format.md) -- wire-format perspective on the same 672-byte structure

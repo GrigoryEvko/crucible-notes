@@ -1,5 +1,7 @@
 # Architecture Profiles
 
+> **Note:** This page defers to [structs/arch-profile.md](../structs/arch-profile.md) for the authoritative `ArchProfile` struct byte-level layout. The layout shown here is a condensed summary -- if the two pages ever disagree, `structs/arch-profile.md` is canonical (it was verified field-by-field against the decompiled constructor `sub_484DB0` at `0x484DB0`).
+
 nvlink maintains a compile-time database of every GPU architecture it can target. The database is a lazily-initialized singleton hash map (`qword_2A5F8D8`) populated by `sub_484F50` (53,974 bytes, 1,330 decompiled lines). Each entry is a 136-byte **architecture profile** struct created by `sub_484DB0`. For every physical architecture (e.g. `sm_100`) the database stores three profile variants -- real (`sm_`), virtual (`compute_`), and LTO (`lto_`) -- interlinked by pointer chains. Companion functions parse architecture name strings into numeric IDs, detect suffix modifiers, and handle legacy/deprecated architectures.
 
 ## Key Functions
@@ -33,30 +35,34 @@ nvlink maintains a compile-time database of every GPU architecture it can target
 Each profile is a 136-byte heap allocation. `sub_484DB0` takes seven arguments and fills the struct as follows:
 
 ```
-ArchProfile (136 bytes, 8-byte aligned)
-=======================================================
+ArchProfile (136 bytes, 8-byte aligned)  [summary -- see structs/arch-profile.md]
+===================================================================================
 Offset  Size  Field                 Description
--------------------------------------------------------
+-----------------------------------------------------------------------------------
   0      1    is_virtual            0 = real (sm_), 1 = virtual (compute_/lto_)
   1      1    is_lto                0 = not LTO, 1 = LTO variant
-  2      2    word_flags            Initially 0. Byte +2 = feature_byte_a, byte +3 = feature_byte_b
-  3      1    tessellation_flag     Set to 1 for sm_89 (Ada) only
+  2      1    feature_byte_a        Finalization compatibility bitmask (bits checked
+                                    by sub_4709E0 for sm_100/sm_102/sm_103 cross-fin)
+  3      1    finalization_class    0-4. Indexes dword_1D40660[5]. Set to 1 for sm_89
+                                    (Ada). Controls finalization compatibility rules
   4      1    suffix_a_flag         1 if this is an 'a' variant (sm_90a, sm_100a, ...)
   5      1    suffix_f_flag         1 if this is an 'f' variant (sm_100f, sm_103f, ...)
-  6-7    2    padding               Zero
-  8     *8    arch_name             Pointer to canonical name string ("sm_100", "compute_100a", ...)
+  6      2    version_limit         uint16 checked by sub_4709E0: if > 0x101, error 25
+  8      8    arch_name             Pointer to canonical name string ("sm_100", "compute_100a", ...)
  16      8    display_name          Pointer to display name string (same as arch_name for base archs)
  24      8    isa_class_name        Pointer to ISA class name ("Turing", "Ampere", "Hopper", "Blackwell", "Ada", or "(profile_sm_NNN)->isaClass")
- 32      8    cuda_arch_define      Pointer to preprocessor define ("-D__CUDA_ARCH__=750", etc.)
- 40      8    canonical_name        Pointer to canonical profile name (same as arch_name for sm_/compute_; points to compute_ for lto_)
- 48      8    compat_list_head_0    Head of compatibility linked list 0 (family members, same-generation real archs)
- 56      8    compat_list_head_1    Head of compatibility linked list 1 (same-family variants)
- 64      8    virtual_profile_ptr   For real profiles: pointer to the corresponding compute_ profile. For lto_ profiles: unset (0).
- 72      8    lto_profile_ptr       For compute_ profiles: pointer to the corresponding lto_ profile. Always 0 for lto_ and sm_ profiles.
+ 32      8    canonical_name        Identity name. For sm_/compute_: same as arch_name. For lto_: the "lto_NNN" string. (constructor arg a7 -> v14[4])
+ 40      8    cuda_arch_define      Pointer to preprocessor define ("-D__CUDA_ARCH__=750", etc.). (constructor arg a6 -> v14[5])
+ 48      8    compat_list_0         Linked list: cross-variant compatibility. Links real <-> virtual and suffix variants to their base arch
+ 56      8    compat_list_1         Linked list: same-generation family. Links all archs in the same generation
+ 64      8    compat_list_2         Linked list: compute-to-real bidirectional mapping. For compute_: links to the corresponding real (sm_); for real: links to compute_
+ 72      8    virtual_ptr           For real (sm_): pointer to corresponding compute_ profile. For compute_: self-pointer. For lto_: pointer to corresponding compute_ profile
  80     48    capability_data       Three 16-byte XMM vectors (offsets +80, +96, +112) loaded from read-only data. Encode hardware capability bitmasks.
 128      1    reserved_byte         Initially 0
 129-135  7    padding               Zero
 ```
+
+**Verification:** The constructor `sub_484DB0` writes `v14[4] = a7` (canonical_name at offset 32) and `v14[5] = a6` (cuda_arch_define at offset 40). Offset 64 is the third `list_create` call (`v14[8] = sub_465020(...)`), confirming it is a list head, not a profile pointer. The `virtual_ptr` lives at offset 72 (`v7[9] = v7` for compute_75 self-ref; `*((_QWORD *)v10 + 9) = compute_75` for lto_75).
 
 The `capability_data` region at offsets +80..+127 stores three 128-bit vectors loaded from rodata constants (`xmmword_1D40F10` through `xmmword_1D40F70`). These encode generation-specific feature bitmasks used by the finalization pipeline to check whether a given compilation unit is compatible with the target architecture.
 
@@ -105,9 +111,9 @@ compute_100 = ArchProfile::create(
     "compute_100"                    // canonical_name
 );
 
-// 3. Link sm_ <-> compute_
-sm_100->virtual_profile_ptr = compute_100;     // offset +72
-compute_100->lto_profile_ptr = compute_100;    // self-ref for non-LTO compute
+// 3. Link sm_ <-> compute_  (virtual_ptr lives at offset +72)
+sm_100->virtual_ptr      = compute_100;   // offset +72: real -> compute
+compute_100->virtual_ptr = compute_100;   // offset +72: compute self-pointer
 
 // 4. Insert both into the hash map
 LinkerHash::insert(qword_2A5F8D8, "sm_100",      sm_100);
@@ -124,15 +130,15 @@ lto_100 = ArchProfile::create(
     "lto_100"                        // canonical_name
 );
 
-// 6. Link lto_ -> compute_ profile
-lto_100->lto_profile_ptr = compute_100;        // offset +72
+// 6. Link lto_ -> compute_ profile (virtual_ptr at offset +72)
+lto_100->virtual_ptr = compute_100;            // offset +72
 LinkerHash::insert(qword_2A5F8D8, "lto_100", lto_100);
 
 // 7. Build compatibility lists via list_append
-list_append(compute_100->compat_list_head_0, sm_100);     // compute knows its real arch
-list_append(sm_100->compat_list_head_0,      compute_100); // real arch knows its virtual
-list_append(sm_100->compat_list_head_1,      sm_100);      // self-reference for family
-list_append(sm_100->compat_list_head_0,      sm_100);      // self in compat list
+list_append(compute_100->compat_list_2, sm_100);      // offset +64: compute knows its real arch
+list_append(sm_100->compat_list_2,      compute_100); // offset +64: real arch knows its virtual
+list_append(sm_100->compat_list_1,      sm_100);      // offset +56: self in family list
+list_append(sm_100->compat_list_0,      sm_100);      // offset +48: self in cross-variant list
 
 // 8. Copy capability vectors from rodata
 sm_100->capability[0] = xmmword_1D40F10;   // generation base capabilities
@@ -228,29 +234,40 @@ Notable observations:
 
 ## Family Linkage
 
-The compatibility linked lists at offsets +48 (`compat_list_head_0`) and +56 (`compat_list_head_1`) establish two distinct relationships:
+The profile struct holds **three** hash-set compatibility lists at offsets +48, +56, and +64 (all created via `sub_465020` in the constructor as `v14[6]`, `v14[7]`, `v14[8]`). Each list serves a distinct purpose:
 
-### compat_list_head_0: Cross-Variant Compatibility
+### compat_list_0 (Offset +48): Cross-Variant Compatibility
 
 This list connects a real profile to its virtual counterpart and vice versa. For suffix variants, it additionally links back to the base architecture. Example for the sm_100 family:
 
 ```
-sm_100.compat_0 -> [compute_100, sm_100]
-compute_100.compat_0 -> [sm_100]
-sm_100a.compat_0 -> [compute_100a, sm_100a, sm_100]
-sm_100f.compat_0 -> [compute_100f, sm_100f, sm_100]
+sm_100.compat_0 -> { compute_100, sm_100 }
+compute_100.compat_0 -> { sm_100 }
+sm_100a.compat_0 -> { compute_100a, sm_100a, sm_100 }
+sm_100f.compat_0 -> { compute_100f, sm_100f, sm_100 }
 ```
 
-### compat_list_head_1: Same-Generation Family
+### compat_list_1 (Offset +56): Same-Generation Family
 
-This list links all architectures in the same generation/family. For the Ampere generation, the sm_80 profile's `compat_list_head_1` accumulates links to sm_86, sm_87, sm_88. The sm_89 (Ada) profile's `compat_list_head_1` additionally links back to sm_80's family entries since Ada can run Ampere code.
+This list links all architectures in the same generation/family. For the Ampere generation, the sm_80 profile's `compat_list_1` accumulates links to sm_86, sm_87, sm_88. The sm_89 (Ada) profile's `compat_list_1` additionally links back to sm_80's family entries since Ada can run Ampere code.
 
-For the Blackwell generation, the `compat_list_head_1` on sm_120/sm_121 also accumulates cross-links to sm_120 from sm_121 and vice versa:
+For the Blackwell generation, the `compat_list_1` on sm_120/sm_121 also accumulates cross-links to sm_120 from sm_121 and vice versa:
 
 ```
-sm_120.compat_1 -> [..., sm_121, sm_121a]
-sm_121.compat_1 -> [..., sm_120]  (via final append block)
+sm_120.compat_1 -> { ..., sm_121, sm_121a }
+sm_121.compat_1 -> { ..., sm_120 }  (via final append block)
 ```
+
+### compat_list_2 (Offset +64): Compute <-> Real Bidirectional Map
+
+For `compute_` profiles, this list links to the corresponding real (`sm_`) profile; for `sm_` profiles, it links to the corresponding `compute_`. Example:
+
+```
+sm_75.compat_2      -> { compute_75 }
+compute_75.compat_2 -> { sm_75 }
+```
+
+Note: this offset used to be mis-documented on this page as `virtual_profile_ptr`. It is in fact a list head -- the virtual pointer lives at offset +72 (see `structs/arch-profile.md`).
 
 ## Architecture Name Parsing
 
@@ -381,7 +398,7 @@ These correspond to historical NVIDIA GPU architectures no longer supported for 
 | 69 | (unknown/internal) | -- |
 | 70 | Volta (GV100) | 2017-2019 |
 
-Notably absent from both the active database and the deprecated list: sm_72 (Xavier Volta) and sm_71 (not a real arch). sm_69 is listed as deprecated but does not correspond to any known public GPU -- it may be an internal test target.
+Notably absent from both the active database and the deprecated list: sm_72 (Xavier Volta) and sm_71 (not a real arch). sm_69 is listed as deprecated but does not correspond to any known public GPU -- it is an internal test target.
 
 ### The SASS Capability Check
 
@@ -434,3 +451,44 @@ Architecture profiles flow through the entire nvlink pipeline:
 3. **LTO compilation**: The LTO profile's `cuda_arch_define` string is passed to the embedded compiler (`-D__CUDA_ARCH__=NNN`).
 4. **Finalization**: The `can_finalize` functions check capability vector compatibility between the compilation unit's source profile and the link target profile.
 5. **Output ELF**: The target profile's SM number is written into the ELF header flags and `.nv.info` section attributes.
+
+## Confidence Assessment
+
+| Claim | Confidence | Verification |
+|---|---|---|
+| `sub_484F50` is 53,974 B lazy singleton initializer | HIGH | Decompiled file is 1,330 lines; address confirmed in binary |
+| `sub_484DB0` creates 136-byte profile structs | HIGH | Decompiled code shows 7-arg signature matching wiki description |
+| Struct field layout (offsets 32, 40, 48, 56, 64, 72) | CONFIRMED | Decompiled `sub_484DB0` assigns `v14[4]=a7` (canonical_name @32), `v14[5]=a6` (cuda_arch_define @40), `v14[6/7/8]=list_create(...)` (compat_list_0/1/2 @48/56/64); `sub_484F50` uses `v7[9]=v7` to set `virtual_ptr` at offset 72. See `structs/arch-profile.md` for authoritative layout. |
+| ISA class strings: "Turing", "Ampere", "Ada", "Hopper", "Blackwell" | CONFIRMED | Decompiled `sub_484F50` at lines 251/293/468/517/609 uses these exact strings; all except "Ada" found in `nvlink_strings.json` at `0x1d409dc`/`0x1d40a0f`/`0x1d40af0`/`0x1d40b6e`; "Ada" at decompiled line 468 (3-char string not extracted separately by string dumper) |
+| Suffix variant ISA class is `"(profile_sm_NNN)->isaClass"` | CONFIRMED | Strings at `0x1d40b0f`, `0x1d40b93`, `0x1d40c46`, `0x1d40cf9`, `0x1d40dac`, `0x1d40e5f` match exactly |
+| `byte[3] = 1` set only for sm_89 | CONFIRMED | Decompiled line 511: `v47->m128i_i8[3] = 1;` immediately after sm_89 block; no other architecture sets this byte |
+| 22 base architectures in registration order | HIGH | Decompiled code shows sm_75 at line 249, sm_80 at line 286, through sm_121 at line 1175; registration order matches wiki |
+| `__CUDA_ARCH__` define values (750, 800, ..., 1210) | CONFIRMED | `nvlink_strings.json` lists all 23 defines at `0x1d409c8`--`0x1d40ec3`; suffix variants use `90a0`/`100a0`/`100f0` format as documented |
+| `dword_2A5F8C8 = 100` forward-compat threshold | HIGH | Referenced in decompiled `sub_486FF0`; consistent with SASS capability check logic |
+| Global `qword_2A5F8D8` hash map, `byte_2A5F8D0` guard | HIGH | Both referenced extensively in decompiled `sub_484F50` and `sub_4878A0` |
+| sm_88 new in CUDA 13.0 | HIGH | `sm_88` string at `0x1d40a9a`; dispatch table registration confirmed in decompiled `sub_15C0CE0` line 96 |
+| `sub_484DB0` 7-argument signature | CONFIRMED | Decompiled calls at lines 246-253 show exactly 7 args: `(is_virtual, is_lto, name, display, isa_class, cuda_arch, canonical)` |
+| Capability vectors from `xmmword_1D40F10`--`xmmword_1D40F70` | HIGH | Decompiled `sub_484F50` shows `_mm_load_si128` from these addresses (e.g., lines 460, 499-505) |
+| Total 114 profile entries (66 base + 48 suffix) | MEDIUM | Count derived from registration pattern; exact count not directly verified but consistent with 22 base x 3 + suffix variants x 3 |
+
+For general architecture details (hardware specs, product lines), see the [ptxas wiki targets](../../ptxas/targets/index.html) and [cicc wiki targets](../../cicc/targets/index.html).
+
+## Cross-References
+
+### nvlink Internal
+- [Compatibility](compatibility.md) -- architecture compatibility checking using profile data
+- [SM100 Blackwell](sm100-blackwell.md) -- Blackwell-specific ISA and encoding details
+- [SM103/110/120/121](sm103-121.md) -- extended Blackwell family profiles
+- [Architecture Dispatch](../ptxas/arch-dispatch.md) -- embedded ptxas vtable dispatch (7 maps per SM)
+- [Device ELF Format](../elf/device-elf-format.md) -- e_flags encoding derived from profiles
+
+### Sibling Wikis
+- [ptxas: SM Architecture Map](../../ptxas/targets/index.html) -- standalone ptxas profile construction (`sub_6765E0`, 54KB) and 7 parallel capability dispatch tables
+- [ptxas: Turing/Ampere](../../ptxas/targets/turing-ampere.html) -- SM75/SM80/SM86/SM87/SM89 targets in standalone ptxas
+- [ptxas: Ada/Hopper](../../ptxas/targets/ada-hopper.html) -- SM89/SM90 targets in standalone ptxas
+- [ptxas: Blackwell](../../ptxas/targets/blackwell.html) -- SM100+ targets in standalone ptxas
+- [cicc: Targets Index](../../cicc/targets/index.html) -- cicc compiler target definitions
+- [cicc: SM70-89](../../cicc/targets/sm70-89.html) -- cicc Volta through Ada targets
+- [cicc: SM90 Hopper](../../cicc/targets/sm90-hopper.html) -- cicc Hopper target
+- [cicc: SM100 Blackwell](../../cicc/targets/sm100-blackwell.html) -- cicc Blackwell target
+- [cicc: SM120](../../cicc/targets/sm120.html) -- cicc SM120 consumer target

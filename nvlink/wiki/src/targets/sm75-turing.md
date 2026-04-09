@@ -475,6 +475,27 @@ Field IDs passed to `sub_A49150` to query instruction attributes. These are the 
 
 **128-bit instruction encoding.** SM75 uses 128-bit SASS instructions (two 64-bit words at context offsets +544 and +552). The `sub_4C28B0` primitive packs arbitrary-width bit fields at arbitrary positions within these two words. Modifier fields are extracted from the IR node and encoded at precise bit positions, with different emit+encode variants differing only in which bits they set within the 128-bit word.
 
+## Confidence Assessment
+
+| Claim | Confidence | Verification |
+|---|---|---|
+| ISA class string "Turing" for sm_75 | CONFIRMED | Decompiled `sub_484F50` line 251: `"Turing"`; string in `nvlink_strings.json` at `0x1d409dc` |
+| SM75 backend at `0xF16000`--`0x100C000` (984 KB) | HIGH | Address range consistent with decompiled function addresses in the catalog; mega-hub at `sub_FBB810` falls within range |
+| Mega-hub `sub_FBB810` at 280 KB, 65,999 instructions | HIGH | Size claim derived from binary analysis; too large for Hex-Rays decompilation consistent with other mega-hubs |
+| 276 pattern matchers at `0xF16150`--`0xFBB780` | HIGH | Pattern addresses verified against decompiled function catalog; representative patterns like `sub_FBB780` (fallback) confirmed |
+| 15 operand predicates at `0xF16030`--`0xF160F0` | HIGH | Address range and trivial predicate structure consistent with ISel infrastructure |
+| Operand kind tags: 1=IMM, 2=REG, 10=UREG, etc. | HIGH | Consistent with shared infrastructure used across SM75/80/89/90 backends |
+| Priority-based linear scan ISel architecture | HIGH | Protocol described matches mega-hub structure: iterate all matchers, pick highest priority |
+| 18 emitter functions at `0xF10080`--`0xF15A50` | HIGH | Addresses consistent with function catalog |
+| Opcode families: 18 (int ALU), 104 (FP32), 126 (memory) | HIGH | Opcode numbers from decompiled emit+encode functions at `*(a2+12)` assignments |
+| Register class 1023 = wildcard | HIGH | Consistent across all ISel backends; sentinel value used in operand matching |
+| Dispatch table: sm_75 encoding table = `sub_15C3210` | CONFIRMED | Decompiled `sub_15C0CE0` shows sm_75 registration (earlier in file) |
+| `__CUDA_ARCH__=750` | CONFIRMED | String at `0x1d409c8`; decompiled `sub_484F50` line 252 |
+| 128-bit instruction encoding at ctx+544/+552 | HIGH | Consistent across all SM75+ backends; encoding word offsets documented |
+| Field ID dictionary (500+ field IDs) | MEDIUM | Field IDs from pattern matcher analysis; individual values not independently verified but consistent with `sub_A49150` usage |
+
+For general SM75 architecture details, see the [ptxas wiki: Turing/Ampere](../../ptxas/targets/turing-ampere.html) and [cicc wiki: SM70-89](../../cicc/targets/sm70-89.html).
+
 ## Cross-References
 
 ### nvlink Internal
@@ -486,6 +507,6 @@ Field IDs passed to `sub_A49150` to query instruction attributes. These are the 
 - [SM80 Ampere](sm80-ampere.md) -- successor ISel backend
 
 ### Sibling Wikis
-- [ptxas: Turing/Ampere](../../../../ptxas/wiki/src/targets/turing-ampere.md) -- standalone ptxas SM75/SM80 target documentation
-- [ptxas: ISel](../../../../ptxas/wiki/src/codegen/isel.md) -- standalone ptxas instruction selection
-- [cicc: SM70-89](../../../../cicc/wiki/src/targets/sm70-89.md) -- cicc compiler SM75 through SM89 targets
+- [ptxas: Turing/Ampere](../../ptxas/targets/turing-ampere.html) -- standalone ptxas SM75/SM80 target documentation
+- [ptxas: ISel](../../ptxas/codegen/isel.html) -- standalone ptxas instruction selection
+- [cicc: SM70-89](../../cicc/targets/sm70-89.html) -- cicc compiler SM75 through SM89 targets

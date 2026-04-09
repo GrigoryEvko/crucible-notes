@@ -60,60 +60,98 @@ Device ELFs use three `e_type` values, each representing a different linking sta
 | `ET_EXEC` | `2` | Executable cubin | Normal final link output (non-Mercury) |
 | `0xFF00` | 65280 | Mercury relocatable | Pre-link Mercury object (`sm >= 100`) before finalization |
 
-The `e_type` is stored at `elfw+16` (the standard ELF header offset for `e_type` in Elf64). In the constructor:
+The `e_type` is stored at `elfw+16` (the standard ELF header offset for `e_type` in Elf64). It is set directly from the first parameter (`a1`) of `elfw_create`:
 
 ```c
-// e_type selection in elfw_create
-if (a9 & 0x8000) {
-    // Device ELF path
-    if (a10 || (a9 & 0x180000)) {
-        // Relocatable mode
-        v17->e_type = ET_REL;    // 1
-        v20 = a9 | 0x80000;     // set relocatable flag in merge_flags
-    } else {
-        // Final executable
-        v17->e_type = 4;        // intermediate value, becomes ET_EXEC
-    }
-}
+// e_type assignment in elfw_create (sub_4438F0)
+v114 = (__int16)a1;                    // truncate first parameter to 16 bits
+*(WORD *)(v17 + 16) = v114;           // e_type = a1
 ```
 
-For the legacy (OSABI `0x33`) path, the `e_type` is set from the `a7` parameter directly (`v17->e_type = a7`), which is the API version or type code from the caller.
+The caller determines the value:
+
+```c
+// In sub_1406B40 (link output path):
+v39 = 65280;                           // 0xFF00 (Mercury)
+if (!is_mercury)
+    v39 = (is_relocatable == 0) + 1;   // 1 = ET_REL, 2 = ET_EXEC
+sub_4438F0(v39, ...);
+
+// In main_0x409800:
+sub_4438F0((byte_2A5F1E8 == 0) + 1, ...);   // 1 or 2
+```
+
+**Important**: The constructor also writes values `1` or `4` to `*(DWORD *)(v17 + 48)` (byte offset 48 = `e_flags`), which are the `link_state` flags seeded into `e_flags` before the SM architecture is ORed in. These are **not** `e_type` writes despite appearing at a confusingly similar DWORD offset in decompiled output.
+
+For the legacy (OSABI `0x33`) path, the `e_type` is also set from the first parameter.
 
 ## ELF Flags (`e_flags`)
 
-The `e_flags` field encodes the SM architecture, debug state, and several ABI attributes. The encoding differs between OSABI `0x41` and OSABI `0x33`.
+The `e_flags` field encodes the SM architecture and a link-state tag. The encoding differs between OSABI `0x41` and OSABI `0x33`. Debug state and other ABI attributes are stored in the `merge_flags` field of the `elfw` struct (offset 76), not in `e_flags` itself.
 
 ### OSABI 0x41 (64-bit GPU) -- `e_flags` Layout
 
 | Bits | Width | Field | Description |
 |---|---|---|---|
-| [7:0] | 8 | `sm_minor` | SM minor version (e.g., `0` for sm\_90, `a` encoded as letter) |
-| [15:8] | 8 | `sm_major` | SM major architecture number (e.g., 90 = 0x5A for Hopper) |
-| [19:16] | 4 | `link_flags` | Linker control flags (bit 16 = SASS present, bit 17 = reserved, bit 18 = relocatable, bit 19 = Mercury) |
-| [31:20] | 12 | `reserved` | Reserved / additional flag bits |
+| [7:0] | 8 | `link_state` | Link state flags: `0x01` = relocatable, `0x04` = executable (SASS present). The SM architecture reader (`sub_4402A0`) ignores these bits entirely. |
+| [23:8] | 16 | `sm_major` | SM major architecture number (e.g., 90 = 0x5A for Hopper). Extracted by the reader as `(uint16_t)(e_flags >> 8)`. Current SM values (all < 256) only occupy bits [15:8]; bits [23:16] are zero but architecturally part of the field. |
+| [31:24] | 8 | `reserved` | Zero in all observed outputs |
 
-The constructor packs the architecture as `(sm_major << 8) | existing_flags`:
+The SM minor version is **not** stored in `e_flags` for OSABI `0x41`. It is stored internally in the `elfw` struct at offset 134 (`*(WORD *)(elfw + 134) = a5`).
+
+The constructor packs the architecture as `(sm_major << 8) | link_state`:
 
 ```c
-// Device ELF (OSABI 0x41) flags encoding
-// a4 = SM major version, a5 = SM minor version
-v17->e_flags = (a4 << 8) | v22;     // v22 carries e_type and reloc flags
-// The SM minor goes into the lower 8 bits:
-// e_ident[EI_ABIVERSION] / e_flags[7:0]
+// Device ELF (OSABI 0x41) flags encoding in sub_4438F0
+// a4 = SM major version
+// Step 1: set link_state at DWORD offset 12 (= byte offset 48 = e_flags)
+if (relocatable)
+    *(DWORD *)(v17 + 48) = 1;       // link_state = 0x01 (relocatable)
+else
+    *(DWORD *)(v17 + 48) = 4;       // link_state = 0x04 (executable)
+
+// Step 2: OR in sm_major shifted left 8
+v22 = *(DWORD *)(v17 + 48);         // read back 1 or 4
+*(DWORD *)(v17 + 48) = (a4 << 8) | v22;   // e_flags = (sm_major << 8) | link_state
+```
+
+The SM architecture reader (`sub_4402A0`) confirms this encoding:
+
+```c
+// sub_4402A0 -- get_sm_arch(elfw)
+uint32_t flags = *(DWORD *)(elfw + 48);       // e_flags
+if (*(BYTE *)(elfw + 7) == 0x41)              // OSABI == 0x41?
+    return (uint16_t)(flags >> 8);             // bits [23:8] = sm_major
+return (uint8_t)flags;                         // bits [7:0] for OSABI 0x33
+```
+
+The relocatable flag is checked by `sub_443260`:
+
+```c
+// sub_443260 -- relocatable check
+uint32_t mask = 0x80000000;          // OSABI 0x33 default
+if (*(BYTE *)(elfw + 7) == 0x41)
+    mask = 1;                         // OSABI 0x41: bit 0 = relocatable
+if ((mask & *(DWORD *)(elfw + 48)) == 0)
+    // Not relocatable
 ```
 
 ### OSABI 0x33 (32-bit GPU) -- `e_flags` Layout
 
 | Bits | Width | Field | Description |
 |---|---|---|---|
-| [7:0] | 8 | `sm_arch` | SM architecture number directly (e.g., 75 for Turing) |
-| [15:8] | 8 | `sm_minor` | SM minor version shifted up by 16 |
-| [30] | 1 | `is_relocatable` | Set to `0x80000000` when relocatable |
+| [7:0] | 8 | `sm_major` | SM architecture number directly (e.g., 75 for Turing). Extracted by `sub_4402A0` as `(uint8_t)e_flags`. |
+| [15:8] | 8 | `reserved` | Zero / unused gap |
+| [23:16] | 8 | `sm_minor` | SM minor version. Packed via `(a5 << 16)` in the constructor. |
+| [30:24] | 7 | `reserved` | Zero |
+| [31] | 1 | `is_relocatable` | Set to `1` (making the full DWORD `0x80000000`) when relocatable |
 
 ```c
-// 32-bit GPU (OSABI 0x33) flags encoding
-v17->e_flags = sm_major | (sm_minor << 16) | relocatable_bit;
-// where relocatable_bit is 0x80000000 if relocatable, 0 otherwise
+// 32-bit GPU (OSABI 0x33) flags encoding in sub_4438F0
+// a4 = sm_major (v19), a5 = sm_minor, v22 = relocatable_bit
+*(DWORD *)(v17 + 48) = v19 | (a5 << 16) | v22;
+// v22 = 0x80000000 if relocatable, 0 otherwise
+// Result: e_flags = sm_major[7:0] | sm_minor[23:16] | reloc[31]
 ```
 
 ### Flag Bit Decomposition
@@ -157,7 +195,7 @@ The constructor extracts individual flag bits from the `merge_flags` parameter (
 | 16 | 2 | `e_type` | ELF type (1, 2, or 0xFF00) |
 | 18 | 2 | `e_machine` | `190` (0xBE) always |
 | 20 | 4 | `e_version` | API version (`a7`), or `1` for device ELF |
-| 48 | 4 | `e_flags` | Architecture + flags (encoding depends on OSABI) |
+| 48 | 4 | `e_flags` | OSABI 0x41: `(sm_major << 8) \| link_state`; OSABI 0x33: `sm_major \| (sm_minor << 16) \| reloc_bit` |
 | 62 | 2 | `shstrtab_idx` | Section index of `.shstrtab` |
 | 64 | 1 | `verbose_flags` | `a8` parameter (verbose output level) |
 | 68 | 4 | `link_mode` | `a9 & 0x70000` -- link mode control bits |
@@ -331,34 +369,66 @@ Both paths call the same `sub_45BF00` serializer with an abstract write interfac
 
 ## Architecture Encoding Examples
 
-Here is how several SM architectures are encoded in `e_flags` under OSABI `0x41`:
+Here is how several SM architectures are encoded in `e_flags` under OSABI `0x41`. The formula is `e_flags = (sm_major << 8) | link_state` where `link_state` is `0x01` (relocatable) or `0x04` (executable):
 
-| Architecture | `sm_major` | `sm_minor` | `e_flags` (hex) | `e_flags` (binary, bits 15:0) |
+### Relocatable Objects (`link_state = 0x01`)
+
+| Architecture | `sm_major` | `e_flags` (hex) | Breakdown |
+|---|---|---|---|
+| sm\_50 (Maxwell) | 50 (0x32) | `0x00003201` | `(50 << 8) \| 1` |
+| sm\_70 (Volta) | 70 (0x46) | `0x00004601` | `(70 << 8) \| 1` |
+| sm\_75 (Turing) | 75 (0x4B) | `0x00004B01` | `(75 << 8) \| 1` |
+| sm\_80 (Ampere) | 80 (0x50) | `0x00005001` | `(80 << 8) \| 1` |
+| sm\_86 (Ampere) | 86 (0x56) | `0x00005601` | `(86 << 8) \| 1` |
+| sm\_89 (Ada) | 89 (0x59) | `0x00005901` | `(89 << 8) \| 1` |
+| sm\_90 (Hopper) | 90 (0x5A) | `0x00005A01` | `(90 << 8) \| 1` |
+| sm\_100 (Blackwell) | 100 (0x64) | `0x00006401` | `(100 << 8) \| 1` |
+| sm\_103 (Blackwell Ultra) | 103 (0x67) | `0x00006701` | `(103 << 8) \| 1` |
+| sm\_120 (RTX 50xx) | 120 (0x78) | `0x00007801` | `(120 << 8) \| 1` |
+| sm\_121 (DGX Spark) | 121 (0x79) | `0x00007901` | `(121 << 8) \| 1` |
+
+### Executable Cubins (`link_state = 0x04`)
+
+| Architecture | `sm_major` | `e_flags` (hex) | Breakdown |
+|---|---|---|---|
+| sm\_75 (Turing) | 75 (0x4B) | `0x00004B04` | `(75 << 8) \| 4` |
+| sm\_80 (Ampere) | 80 (0x50) | `0x00005004` | `(80 << 8) \| 4` |
+| sm\_89 (Ada) | 89 (0x59) | `0x00005904` | `(89 << 8) \| 4` |
+| sm\_90 (Hopper) | 90 (0x5A) | `0x00005A04` | `(90 << 8) \| 4` |
+| sm\_100 (Blackwell) | 100 (0x64) | `0x00006404` | `(100 << 8) \| 4` |
+| sm\_120 (RTX 50xx) | 120 (0x78) | `0x00007804` | `(120 << 8) \| 4` |
+
+### OSABI 0x33 Examples
+
+| Architecture | `sm_major` | `sm_minor` | Relocatable | `e_flags` (hex) |
 |---|---|---|---|---|
-| sm\_75 (Turing) | 75 (0x4B) | 0 | `0x004B00xx` | `0100_1011_0000_0000` + link flags |
-| sm\_80 (Ampere) | 80 (0x50) | 0 | `0x005000xx` | `0101_0000_0000_0000` + link flags |
-| sm\_89 (Ada) | 89 (0x59) | 0 | `0x005900xx` | `0101_1001_0000_0000` + link flags |
-| sm\_90 (Hopper) | 90 (0x5A) | 0 | `0x005A00xx` | `0101_1010_0000_0000` + link flags |
-| sm\_90a (Hopper+) | 90 (0x5A) | `a` | `0x005A00xx` | minor in ABI version field |
-| sm\_100 (Blackwell) | 100 (0x64) | 0 | `0x006400xx` | `0110_0100_0000_0000` + link flags |
+| sm\_50 (Maxwell) | 50 | 0 | no | `0x00000032` |
+| sm\_75 (Turing) | 75 | 0 | yes | `0x8000004B` |
 
-The SM minor variant letter (e.g., `a` in sm\_90a) is stored in the ELF ABI version field (`e_ident[EI_ABIVERSION]`) for OSABI `0x41` device ELFs, and additionally in `elfw` offset `e_type` (word at offset 16) and the minor version tracking fields.
+### SM Minor / Variant Handling
+
+The SM minor variant (e.g., the `a` in `sm_90a`) is **not** stored in `e_flags` for OSABI `0x41` device ELFs. It is tracked internally in the `elfw` struct at offset 134 (`*(WORD *)(elfw + 134) = a5`). The `e_ident[EI_ABIVERSION]` field carries an ABI protocol version number (typically 7 or 8), not the SM minor letter.
 
 ## Relocatable vs Executable Flag Logic
 
 The constructor has a two-source relocatable detection:
 
 ```c
-// Relocatable detection in elfw_create
+// Relocatable detection in elfw_create (sub_4438F0)
 bool is_reloc = a10;                        // explicit flag from caller
 if (!is_reloc)
     is_reloc = (a9 & 0x180000) != 0;       // bits 19 or 20 in merge_flags
 
 if (is_reloc) {
-    e_type = ET_REL;                        // 1
-    merge_flags |= 0x80000;                 // ensure bit 19 is set
+    // For OSABI 0x41: seeds e_flags with link_state = 1 (relocatable)
+    *(DWORD *)(v17 + 48) = 1;              // e_flags initial = 0x01
+    merge_flags |= 0x80000;                // ensure bit 19 is set
     force_rela = true;                      // always use RELA for relocatable output
+} else {
+    // For OSABI 0x41: seeds e_flags with link_state = 4 (executable)
+    *(DWORD *)(v17 + 48) = 4;              // e_flags initial = 0x04
 }
+// e_type is set separately from the first parameter (a1), NOT here.
 ```
 
 When bit 19 (`0x80000`) is set in `merge_flags`, the ELF is relocatable. The constructor also forces `force_rela = true` for all relocatable outputs, ensuring `.rela.*` sections (with explicit addends) rather than `.rel.*` sections are used. This simplifies the relocation engine since addends do not need to be read from section data.
@@ -395,10 +465,46 @@ Device ELFs receive the NVIDIA-specific note sections for tool kit information a
 
 2. **Arena-owned memory.** When `a9 & 0x400` is set, the constructor creates a dedicated "elfw memory space" arena. All allocations for this ELF (sections, symbols, strings) come from this arena, enabling bulk deallocation by destroying the arena rather than tracking individual allocations.
 
-3. **Dual encoding schemes.** The OSABI `0x41` vs `0x33` split creates two parallel code paths throughout the constructor. OSABI `0x41` puts the SM major in bits [15:8] of `e_flags` and uses device-specific note sections. OSABI `0x33` puts the SM directly in bits [7:0] and uses a simpler flag layout. Modern CUDA targets always use OSABI `0x41`.
+3. **Dual encoding schemes.** The OSABI `0x41` vs `0x33` split creates two parallel code paths throughout the constructor. OSABI `0x41` puts the SM major in bits [23:8] of `e_flags` (extracted as `(uint16_t)(e_flags >> 8)` by `sub_4402A0`) with a link-state tag in bits [7:0], and uses device-specific note sections. OSABI `0x33` puts the SM major directly in bits [7:0] and the SM minor in bits [23:16], with a simpler flag layout. Modern CUDA targets always use OSABI `0x41`.
 
-4. **Mercury detection via `e_flags`.** The Mercury flag (bit 19 in merge_flags, mapped to `e_flags` bits 16--18 as `0x70000`) identifies objects that require post-link binary rewriting by the FNLZR (Finalizer). Mercury objects use `e_type = 0xFF00` to distinguish themselves from standard relocatable or executable cubins.
+4. **Mercury detection via `e_type`.** Mercury objects are identified by `e_type = 0xFF00` (`ET_LOPROC`), set in the caller (`sub_1406B40`) when the Mercury flag at `a1 + 505` is active. The link-mode bits from `merge_flags` (`a9 & 0x70000`) are stored separately in the `elfw` struct at offset 68, not in `e_flags`. Mercury objects require post-link binary rewriting by the FNLZR (Finalizer).
 
 5. **Eager section creation.** The constructor pre-creates `.shstrtab`, `.strtab`, `.symtab`, and `.symtab_shndx` regardless of whether they will contain data. This simplifies the merge phase, which can unconditionally reference these sections by their fixed internal indices. The `.symtab_shndx` section exists to support more than 65,279 sections (the ELF limit before extended section numbering is required).
 
 6. **Section name preloading.** The constructor iterates a static table of known NVIDIA section names and registers them in a hash table at `elfw+496`. This enables O(1) lookup of section names like `.nv.global`, `.nv.constant0`, `.nv.shared.`, etc. during the merge phase, rather than linear scanning.
+
+## ptxas Wiki Cross-References
+
+The device ELF format described here is the same format ptxas generates as output. For the ptxas-side ELF construction (which uses a parallel 672-byte `ELFW` struct), see the ptxas wiki:
+
+- [Custom ELF Emitter](../../ptxas/output/elf-emitter.html) -- ptxas-side ELFW constructor (`sub_1CB53A0`), section creator, serializer
+- [Section Catalog & EIATTR](../../ptxas/output/sections.html) -- section types emitted by ptxas, EIATTR encoding
+- [Relocations & Symbols](../../ptxas/output/relocations.html) -- R_CUDA and R_MERCURY relocation type definitions
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| `e_machine` = 0xBE (190, EM_CUDA) | DEFINITIVE | Verified in sub_4438F0: `*((_WORD *)v17 + 9) = 190` at offset +18 |
+| ELF magic = 0x464C457F | DEFINITIVE | Verified in sub_4438F0: `*(_DWORD *)v17 = 1179403647` = 0x464C457F |
+| OSABI 0x41 for device ELF (a9 & 0x8000) | DEFINITIVE | Verified: `*((_BYTE *)v17 + 7) = 65` (0x41) when `a9 & 0x8000` |
+| OSABI 0x33 for 32-bit GPU path | DEFINITIVE | Verified: `*((_BYTE *)v17 + 7) = 51` (0x33) in else branch |
+| e_flags [7:0] = link_state (NOT sm_minor) | DEFINITIVE | Constructor seeds 1 or 4 into e_flags; reader sub_4402A0 extracts SM via `>> 8`; sub_443260 checks bit 0 for relocatable |
+| e_flags [23:8] = sm_major (16-bit field) | DEFINITIVE | sub_4402A0 returns `(uint16_t)(e_flags >> 8)` for OSABI 0x41 |
+| OSABI 0x33: e_flags = sm_major \| (sm_minor << 16) \| reloc_bit | DEFINITIVE | sub_4438F0 line 224: `v19 \| (a5 << 16) \| v22` |
+| e_type = 0xFF00 for Mercury | DEFINITIVE | sub_1406B40 line 202: `v39 = 65280` when `*(BYTE *)(a1 + 505)` set |
+| e_type set from first parameter (a1) | DEFINITIVE | sub_4438F0 line 151: `*(WORD *)(v17 + 16) = v114` where `v114 = (int16)a1` |
+| 672-byte elfw struct allocation | DEFINITIVE | Verified in sub_4438F0: `sub_4307C0(v14, 672)` |
+| EI_CLASS = (a2 != 0) + 1 | DEFINITIVE | Verified: `*((_BYTE *)v17 + 4) = (a2 != 0) + 1` |
+| EI_DATA + EI_VERSION = 0x0101 | DEFINITIVE | Verified: `*(_WORD *)((char *)v17 + 5) = 257` (0x0101) |
+| EI_ABIVERSION = a3 (protocol version, not sm_minor) | HIGH | Main passes 7 or 8; sub_1406B40 passes 0, 2, 7, or 8 |
+| "elfw memory space" arena string | HIGH | String at 0x1D39FA3 confirmed in nvlink_strings.json |
+| "couldn't initialize arch state" error | HIGH | String at 0x1D39FE8 confirmed in nvlink_strings.json |
+| Flag decomposition bits 0-19 | HIGH | Verified bit-by-bit in sub_4438F0 |
+| Relocatable detection: a10 \|\| (a9 & 0x180000) | HIGH | Verified in sub_4438F0 |
+| link_state = 0x04 means executable | HIGH | sub_4438F0 line 163; no contradicting reader found |
+| Section type bitmask 0x400D validation | MEDIUM | Verified in sub_43DD30, bitmask matches but inner logic complex |
+| tkinfo alignment 0x2000000, cuinfo 0x1000000 | HIGH | Verified: `sub_441AC0(... ".note.nv.tkinfo", 7, 0x2000000, ...)` |
+| Architecture hex examples (sm_75 etc) | HIGH | Derived from verified `(a4 << 8) \| link_state` formula |
+| .symtab_shndx (SHT_SYMTAB_SHNDX = 18) | HIGH | String ".symtab_shndx" exists in constructor xrefs |
+| SM minor not in e_flags for OSABI 0x41 | HIGH | sm_minor (a5) only stored at elfw offset 134 in device path; not ORed into e_flags |

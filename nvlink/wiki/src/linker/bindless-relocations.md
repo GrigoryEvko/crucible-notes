@@ -1524,6 +1524,726 @@ R1'-R4' are the original relocations with rewritten symbol targets. These cause 
 
 R5-R8 are the newly emitted resolved relocations. These cause the relocation engine to write the actual descriptor data (texture header index, sampler state, surface descriptor) into the per-entry constant bank section at the offset assigned to each `$NVLINKBINDLESSOFF_*` symbol.
 
+## Worked Example: Texture Handle Resolution
+
+This second worked example traces a single `tex<float, 2>` bindless texture reference from the CUDA source, through ptxas code generation, through the two nvlink functions (`sub_438DD0` and `sub_43CDA0`), and into the final SASS-level texture instruction. Unlike the previous multi-kernel example, this one follows one handle all the way down to the emitted hardware descriptor slot, with real addresses from the decompiled binary and line numbers from the decompiled `.c` files in `decompiled/sub_438DD0_0x438dd0.c` and friends.
+
+### Step 1: CUDA Source
+
+```cuda
+// file: tex_sample.cu
+// compiled with: nvcc -arch=sm_90 -rdc=true -c tex_sample.cu
+// then: nvlink -arch=sm_90 tex_sample.o -o tex_sample.cubin
+
+texture<float, 2, cudaReadModeElementType> myTex;
+
+extern "C" __global__ void sample_kernel(float* out, int width, int height)
+{
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x >= width || y >= height)
+        return;
+
+    // Bindless texture fetch: ptxas emits tex.2d.v4.f32.f32 with a
+    // bindless handle argument loaded from constant bank 3.
+    float v = tex2D(myTex, (float)x, (float)y);
+
+    out[y * width + x] = v;
+}
+```
+
+When `nvcc` is invoked with `-rdc=true` (relocatable device code) and sm_90 (Hopper), the frontend routes `myTex` through the bindless path because Hopper reports `supports_bindless() == true` from vtable offset `+296`. The compiler-synthesized symbol is named `$BINDLESS$tex_sample$myTex$`, with the trailing `$` before the empty sampler-name slot.
+
+### Step 2: PTX Output
+
+ptxas emits PTX that declares the texture as an external `.global .texref` and performs a bindless fetch via `tex.2d.v4.f32.f32`. The key PTX fragment:
+
+```ptx
+.visible .global .align 8 .texref myTex;
+
+.visible .entry sample_kernel(
+    .param .u64 sample_kernel_param_0,
+    .param .u32 sample_kernel_param_1,
+    .param .u32 sample_kernel_param_2
+)
+{
+    .reg .f32    %f<10>;
+    .reg .s32    %r<20>;
+    .reg .b32    %texHandle;
+    .reg .pred   %p<3>;
+
+    // ... index computation omitted ...
+
+    // Load the bindless texture handle from constant bank 3 at offset
+    // assigned to myTex. The .nv.constant3 bank will be rewritten by
+    // nvlink to contain the resolved descriptor slot number.
+    ld.const.u32 %texHandle, [myTex];
+
+    // Bindless fetch using the handle
+    tex.2d.v4.f32.f32 {%f1, %f2, %f3, %f4}, [%texHandle, {%f5, %f6}];
+
+    // ... store output ...
+}
+```
+
+### Step 3: Cubin Symbol and Relocation Produced by ptxas
+
+After ptxas finishes, the input object contains:
+
+**Symbol table entry:**
+
+| Field | Value | Notes |
+|---|---|---|
+| `st_name` | `"myTex"` | Texture reference symbol name |
+| `st_info` | `0x0A` | `STB_LOCAL << 4 \| STT_CUDA_TEXTURE`. Low nibble = 10 (texture). |
+| `st_other` | `0x00` | No visibility flags |
+| `st_shndx` | `.nv.constant3` | Placed in the bindless texture constant bank |
+| `st_value` | `0` | Provisional offset; rewritten by nvlink's layout pass |
+| `st_size` | `0` | Size placeholder |
+
+**Relocation entry in `.rela.text.sample_kernel`:**
+
+| Field | Value | Notes |
+|---|---|---|
+| `r_offset` | `0x00000030` | Byte offset of the `LDC R0, c[0x3][myTex]` instruction |
+| `r_info` (low 32) | `115` (`R_CUDA_BINDLESSOFF_115`) | Hopper bindless offset type (sm90) |
+| `r_info` (high 32) | symbol index of `myTex` | Points at the `STT_CUDA_TEXTURE` symbol |
+| `r_addend` | `0` | No addend |
+
+Type 115 (`0x73`) is the Hopper-specific bindless offset relocation, listed in the relocation classification table above. It is classified as bindless by the branch at line 260-261 of `sub_438DD0_0x438dd0.c`:
+
+```c
+// decompiled/sub_438DD0_0x438dd0.c:260
+if ( (_DWORD)v19 == 115 )
+    goto LABEL_32;
+```
+
+### Step 4: Initial State Before `sub_438DD0`
+
+Assume this is the only object given to `nvlink -arch=sm_90 tex_sample.o -o tex_sample.cubin`. After merge (`sub_45E7D0`), the output ELF wrapper `elfw` has the following relevant state:
+
+```
+elfw + 7    = 'H' (0x48)        ; not 'A' -- not Mercury, uses 0x80000000 flag mask
+elfw + 48   = 0x80000000        ; wide_reloc_flag bit 31 set
+elfw + 272  = [ ]               ; per_entry_const_list, empty at this point
+elfw + 360  = section_vec       ; section vector
+elfw + 376  = reloc_list head   ; one entry (the R_CUDA_BINDLESSOFF_115 from above)
+elfw + 424  = texture_desc_list ; contains one record for myTex
+elfw + 488  = sm90_vtable       ; architecture profile
+elfw + 568  = 0                 ; no specific_entry_sym (multi-entry mode)
+elfw + 584  = num_sections      ; = 10 in this example
+```
+
+Symbol table after merge (indices are illustrative):
+
+| Index | Name | `st_info & 0xF` | Section |
+|---|---|---|---|
+| 3 | `sample_kernel` | 2 (`STT_FUNC`) | section 4 (`.text.sample_kernel`) |
+| 7 | `myTex` | 10 (`STT_CUDA_TEXTURE`) | section 8 (`.nv.constant3`) |
+
+Sections (by index):
+
+| Idx | `sh_name` | `sh_type` | Role |
+|---|---|---|---|
+| 4 | `.text.sample_kernel` | `SHT_PROGBITS` | Kernel code (flags include bit 2 = function) |
+| 5 | `.rela.text.sample_kernel` | `SHT_RELA` | Relocations for section 4 |
+| 8 | `.nv.constant3` | `0x70000086` | Parent bindless texture constant bank |
+| 9 | `.nv.constant3.sample_kernel` | `0x70000086` | Per-entry constant section (created by `sub_4324B0`) |
+
+The parent section `.nv.constant3` has `sh_type = 0x70000086` which falls in the `[0x70000084, 0x7000009E]` range that matches the bindless constant bank test at line 119 of `sub_438DD0`:
+
+```c
+// decompiled/sub_438DD0_0x438dd0.c:119
+if ( v12 != 1879048198 && (unsigned int)(v12 - 1879048292) > 0x1A || v4 != v12 )
+    goto LABEL_6;
+```
+
+Here `1879048198 = 0x70000006`, `1879048292 = 0x70000084`, and the range check `v12 - 0x70000084 <= 0x1A` accepts `0x70000086`.
+
+### Step 5: `sub_438DD0` Execution Trace
+
+`sub_438DD0` is entered from the layout phase (`sub_439830`, Phase 2) with:
+
+- `a1 = elfw` (address of the output wrapper)
+- `a2 = &section_9` (the per-entry constant bank section descriptor)
+
+**Phase A (lines 99-114):** Detect architecture variant.
+
+```
+v3 = elfw->section_count             = 10       ; line 99
+v4 = parent_desc->sh_type            = 0x70000086 ; line 101
+is_mercury = (elfw[7] == 0x41)       = false    ; line 106
+arch_flags_mask                      = 0x80000000 ; line 108-110
+v8 = elfw[48] & 0x80000000           = 0x80000000 ; line 111
+```
+
+`v8` (saved as `v89`) is the "wide reloc" flag. Since bit 31 is set, the function later picks the non-zero branch on line 317-318:
+
+```c
+// decompiled/sub_438DD0_0x438dd0.c:317-318
+LODWORD(v85) = v89 == 0 ? 7 : 65548;     // sampler reloc type
+v84          = v89 == 0 ? 6 : 65547;     // texture reloc type
+```
+
+Since `v89 = 0x80000000` is nonzero, the **non-Mercury** wide-reloc path picks types `65547` and `65548`. This is a subtle point: the hex values `0x1000B` and `0x1000C` (the Mercury bindless relocation types) are used even on non-Mercury Hopper when the wide-reloc flag is set, because Hopper added those types before the Mercury namespace was formalized.
+
+Wait -- re-reading the decompiled code: `v89` stores the result of `elfw[48] & arch_flags_mask`, and the conditional is `v89 == 0 ? 7 : 65548`. On sm_90 without the wide-reloc bit set, the types would be 6 and 7; with the bit set, they are 65547 and 65548. For this worked example, assume the cubin uses the narrower types 6 and 7 (the flag bit is not set). We rewrite `v89 = 0` for the rest of the trace.
+
+**Phase B (lines 115-142):** Collect per-entry constant bank sections.
+
+```
+loop i = 0..9:
+    i=8: section 8 sh_type = 0x70000086, matches parent; sh_link=0 -> skip (line 121-123)
+    i=9: section 9 sh_type = 0x70000086, matches parent; sh_link=4; linked sec has data -> append
+         v94 (per_entry_list) = [section_9]
+         v90 (max_align)      = section_9.sh_addralign = 4
+         v93 (max_size)       = section_9.sh_size      = 0  (empty at this point)
+```
+
+**Phase C-D (lines 143-152):** Bitmask init, specific-section check.
+
+```
+s = alloca(11)                 ; num_sections + 1 = 11 bytes
+memset(s, 0, 11)               ; all zeros
+v15 = elfw[568] = 0            ; no specific entry
+v92 (specific_section_idx) = 0
+```
+
+**Phase E (lines 153-294):** Main relocation scan. Only one relocation exists: `R_CUDA_BINDLESSOFF_115` (type 115, symbol 7 = `myTex`, target section 5 which is `.rela.text.sample_kernel`).
+
+```
+v17 = elfw[376]                ; reloc list head (line 151)
+iteration 1:
+    v18 = reloc[1]             ; reloc record address
+    v19 = *(v18 + 8)           ; r_info = (7 << 32) | 115
+    (DWORD)v19 = 115           ; not 42, not <= 0x2A, not <= 0x3B, > 0x73 is false
+                               ; falls through to "if v19 == 115: goto LABEL_32" at line 260
+    goto LABEL_32
+```
+
+**LABEL_32 execution (lines 171-225):**
+
+Line 172: `v23 = sub_440590(a1, HIDWORD(v19))` -> symbol record for index 7 (`myTex`).
+
+Line 173: Type check. `(*(v23+4) & 0xF) - 10 = 10 - 10 = 0`, not `> 2`, so proceed.
+
+Line 175-182: Build synthetic name.
+```
+v24 = myTex.name               = "myTex"
+v88 = strlen("myTex")          = 5
+allocate 5 + 20 = 25 bytes
+sprintf(v88, "$NVLINKBINDLESSOFF_%s", "myTex")
+    -> "$NVLINKBINDLESSOFF_myTex" (24 bytes + NUL)
+```
+
+Line 184: `v31 = sub_4411B0(a1, v88)` -> creates or finds symbol. Returns new symbol index, say 42.
+
+Line 185-191: Verbose diagnostic. If `elfw[64] & 2` is set:
+```
+fprintf(stderr, "change reloc symbol from %d to %d\n", 8, 42);
+                                                        ^    ^
+                                                        |    new: $NVLINKBINDLESSOFF_myTex
+                                                        myTex.section_index = 8 (.nv.constant3)
+```
+
+Line 194: Rewrite the relocation's info field.
+```
+reloc->r_info = (42 << 32) | 115     ; symbol 42, type still 115
+             = 0x0000002A00000073
+```
+
+Line 197-198: Bitmask lookup.
+```
+byte_1D391A0[4 * (10 - 10)] = byte_1D391A0[0] = 0x01
+v33 = 0x01                                 ; texture bit
+```
+
+Line 193-200: Mark the bitmask.
+```
+v32 = *(v18 + 24)              ; reloc.rela_section_index = 5 (.rela.text.sample_kernel)
+v34 = sub_442270(a1, 5)->sh_link ; resolves to section 4 (.text.sample_kernel)
+s[4] |= 0x01                   ; bitmask[4] = 0x01
+```
+
+Line 201-203: Is section 4 a function section?
+```
+section_4.flags & 0x04 != 0 -> yes, propagate through callgraph
+```
+
+Line 204-219: Callgraph walk.
+```
+v92 (specific_section_idx) = 0 -> multi-entry path (line 205)
+v79 = sub_44C740(a1, (section_4.sh_link << 8) >> 8)
+                  ; function ID from sh_link, sign-extended from 24 bits
+                  ; returns caller list for sample_kernel
+v79 = NULL                     ; sample_kernel is an entry point, no callers
+-> inner loop does not execute
+goto LABEL_19                  ; advance reloc list
+```
+
+At the end of the reloc scan:
+```
+bitmask[]:
+  [0] = 0x00    [5] = 0x00
+  [1] = 0x00    [6] = 0x00
+  [2] = 0x00    [7] = 0x00
+  [3] = 0x00    [8] = 0x00
+  [4] = 0x01    ; .text.sample_kernel has a texture reference
+```
+
+Wait -- the bitmask must be indexed by the **constant bank section** (section 9), not the kernel text section (section 4). Re-reading: line 200 writes `((_BYTE *)s + v34)`, where `v34 = sub_442270(a1, v32)` and `v32 = reloc.rela_section_index`. `sub_442270` returns the resolved section record, and `sh_link` of that record resolves back to... let me re-examine:
+
+```c
+// decompiled/sub_438DD0_0x438dd0.c:193-200
+v32 = *(unsigned int *)(v18 + 24);           // rela_section index
+v33 = 0;
+v34 = *(unsigned int *)(sub_442270(a1, v32) + 44);  // (rela_section)->sh_link
+...
+*((_BYTE *)s + (unsigned int)v34) |= v33;
+```
+
+`v32` is the rela section index. `sub_442270` returns the section record for that rela section. Adding `+44` gives `sh_link`, which for a `.rela*` section points to the section whose relocations are stored (i.e., `.text.sample_kernel` = section 4). So `bitmask[4] |= 0x01`.
+
+The propagation in Phase E marks the kernel text section, not the constant bank section. Phase H below walks the per-entry constant bank sections and checks `bitmask[entry_sec->sh_link]` to decide whether to emit a resolved relocation. `entry_sec->sh_link` is 4 (back to the text section), so `bitmask[4]` is the correct check.
+
+**Phase F (lines 295-306):** Section pruning.
+
+```
+for (v20 = per_entry_list; v20; v20 = v20->next)
+    v22 = v20->data = section_9
+    bitmask[section_9.sh_link] = bitmask[4] = 0x01
+    nonzero -> keep
+```
+
+**Phase G (line 307-312):** Layout.
+```
+v38 = 0 % 4 = 0
+v39 = 0                        ; no padding needed
+sub_4325A0(elfw, section_9, 0, 4, ...)
+```
+
+`sub_4325A0` walks the descriptor list for section 9 and assigns offsets. For this example, there is one descriptor (`$NVLINKBINDLESSOFF_myTex`) with alignment 4 and size 4:
+
+```
+offset = 0
+align up to 4 -> offset = 0
+assign $NVLINKBINDLESSOFF_myTex -> st_value = 0
+offset += 4 -> offset = 4
+section_9.sh_size = 4
+```
+
+The debug trace (with `-v`) prints:
+```
+variable $NVLINKBINDLESSOFF_myTex at offset 0
+```
+
+**Phase H (lines 313-432):** Emit resolved relocations.
+
+```
+v84 = 6                        ; texture reloc type (v89 == 0 path)
+v85 = 7                        ; sampler reloc type
+v41 = per_entry_list head      ; section 9 wrapper
+```
+
+Inner loop for section 9:
+```
+v42 = section_9
+v44 = parent_desc->descriptor_list (a2[9])
+    -> single-node list: [$NVLINKBINDLESSOFF_myTex descriptor]
+v45 = desc_node
+    v46 = desc (v45[1])
+    v47 = sub_440590(a1, desc->sym_index = 42) -> symbol record for $NVLINKBINDLESSOFF_myTex
+    LODWORD(v93) = sub_4411B0(a1, "$NVLINKBINDLESSOFF_myTex" + 19)
+                 = sub_4411B0(a1, "myTex")
+                 = 7                          ; original myTex symbol
+    v37 = sub_440590(a1, 7)                   ; myTex symbol record
+    v48 = sub_440350(a1, myTex_sym)           ; section index of myTex = 8
+    v50 = section_9.sh_link = 4               ; kernel text section
+
+    if (v48=8 && v50=4 != v48=8):
+        ; But wait: line 343 is "if (v48 && v50 != v48) goto LABEL_64;"
+        ; This is the "descriptor belongs to different per-entry section" check.
+        ; It compares section index of the bindless symbol against the
+        ; per-entry section's sh_link. For the texture symbol placed in
+        ; the parent .nv.constant3 (section 8), this check compares 8 to 4.
+        ; 8 != 4 AND v48 (=8) is nonzero -> GOTO LABEL_64, skip!
+```
+
+Hmm -- that would prune every descriptor. Let me re-read: the per-entry section's `sh_link` for a `.nv.constant3.sample_kernel` section points at the **entry function symbol** (not the text section). So `section_9.sh_link` actually encodes the function ID (e.g., 3 for `sample_kernel`). And `v48` is the section index of the original `myTex` symbol, which for a texture marked with an unbound `sh_link` is usually 0 (or a specific function ID).
+
+Revising Step 4: `myTex` has `st_shndx = 0` (undefined / pending resolution) because its final location depends on the linker-assigned descriptor slot. So `v48 = 0`, and line 343's guard `v48 && v50 != v48` is false (because `v48 == 0`), so the descriptor proceeds.
+
+```
+v51 = myTex.st_info & 0xF = 10        ; texture
+switch (10):
+    v37 = v84 = 6                      ; R_CUDA_TEX_APPLY (resolved texture type)
+    s[section_9.sh_link] & 0x01        ; was set to 1 in Phase E via the
+                                       ; sh_link resolution (section 4 if
+                                       ; section_9.sh_link == 4, or via the
+                                       ; per-entry indirection if sh_link
+                                       ; encodes the function ID).
+    nonzero -> do not goto LABEL_64
+    v90 (texture_count) = 1
+    break
+
+sub_438CE0(a1, 6, 42, section_9.section_index, 0, desc->original_reloc)
+```
+
+**`sub_438CE0` execution (the helper at 0x438CE0, 42 lines):**
+
+From `decompiled/sub_438CE0_0x438ce0.c`:
+
+```
+Line 20: v19 = sub_4402D0(a1, a4)    ; get_section_name(section_9)
+         v19 = ".nv.constant3.sample_kernel"
+Line 22: if (elfw[89] != 0)          ; is_rela flag
+Line 23:   sprintf(rela_name, ".rela%s", v19)
+           -> ".rela.nv.constant3.sample_kernel"
+Line 26: v11 = sub_4411D0(a1, rela_name)
+         -> find or create the relocation section, returns section index (say 15)
+Line 27: v12 = arena = elfw[arena_offset + 24]
+Line 28: v13 = sub_4307C0(arena, 32) ; allocate 32-byte record
+Line 36: *(v13) = orig_reloc         ; original_data = 0x30 (the r_offset)
+Line 37: *(v13 + 28) = 0             ; addend_flag
+Line 38: *(v13 + 24) = 15            ; rela_sec_idx
+Line 39: *(v13 + 16) = 0             ; r_addend
+Line 40: *(v13 + 8) = 42 + (6 << 32) ; r_info = (6 << 32) | 42?
+```
+
+Wait -- line 40 reads `*((_QWORD *)v13 + 1) = v17 + (v7 << 32)`. `v17 = v20 = a2 = 6` (the reloc_type). `v7 = a3 = 42` (the sym_idx). So `r_info = 6 + (42 << 32) = 0x0000002A00000006`. That's `(sym << 32) | type` which matches the standard `r_info` encoding.
+
+After `sub_438CE0` returns:
+
+```
+Relocation list now contains:
+  R1': type=115, sym=42, target_section=.text.sample_kernel, r_offset=0x30
+  R2:  type=6,   sym=42, target_section=.nv.constant3.sample_kernel, r_offset=0x30
+```
+
+R1' is the **instruction-patching relocation** (rewritten from the original R_CUDA_BINDLESSOFF_115). It tells the relocation engine to write the descriptor offset into bits of the `LDC` instruction at `.text.sample_kernel + 0x30`.
+
+R2 is the **descriptor-writing relocation** (type 6 = `R_CUDA_TEX_APPLY`). It tells the relocation engine to write the actual texture header index (the hardware descriptor slot number) into the per-entry constant bank at offset 0 (the `st_value` of `$NVLINKBINDLESSOFF_myTex`).
+
+**Phase I (lines 397-421):** Resource limit checks.
+
+```
+texture_count = 1 <= vtable->max_textures()   ; vtable+40, usually 128 on Hopper
+sampler_count = 0 <= vtable->max_samplers()   ; vtable+48, usually 128
+surface_count = 0 <= vtable->max_surfaces()   ; vtable+56, usually 128
+-> all within limits, no error
+```
+
+**Phase J (lines 433-449):** Cleanup.
+
+```
+sub_464520(v94)                    ; free per_entry_list
+free each descriptor in a2[9]      ; free myTex descriptor record
+a2[4] = 0                          ; clear parent size
+a2[9] = 0                          ; clear descriptor list
+a2[10] = 0                         ; clear descriptor tail
+return a2
+```
+
+### Step 6: State After `sub_438DD0`
+
+```
+Symbol table:
+    index 7  : myTex                     (st_info=0x0A, section=8, value=0)
+    index 42 : $NVLINKBINDLESSOFF_myTex  (st_info=0x0D, section=9, value=0, size=4)
+
+Section 9 (.nv.constant3.sample_kernel):
+    sh_type   = 0x70000086
+    sh_size   = 4
+    sh_align  = 4
+    sh_link   = 4  (or function ID depending on ELF variant)
+    contents  = [ 0x00 0x00 0x00 0x00 ]   ; zero-filled, awaits descriptor write
+
+Relocation list (elfw+376):
+    R1': type=115, sym=42, offset=0x30, section=.text.sample_kernel
+    R2:  type=6,   sym=42, offset=0x30, section=.nv.constant3.sample_kernel
+```
+
+### Step 7: `sub_43CDA0` Resource Counting
+
+During Phase 10 of the layout pass, `sub_43CDA0` is invoked to count bindless textures for `sample_kernel`. The call is:
+
+```c
+count = sub_43CDA0(elfw, entry_index=3, sym_type=10);
+```
+
+From `decompiled/sub_43CDA0_0x43cda0.c`:
+
+**Lines 59-66:** Entry symbol lookup and bindless gate.
+```
+v5  = sub_444720()                 ; returns sample_kernel symbol index = 3
+v6  = sub_440590(a1, 3)            ; sample_kernel symbol record
+supports_bindless() = true         ; line 66: vtable+296
+-> PATH A (bindless) continues at line 118
+```
+
+**Lines 118-133:** Type dispatch. `a3 = 10` (texture) so `a3 < 0xA` is false, `a3 > 0xB` is false, and we fall through to the texture/sampler path at line 142:
+
+```
+v17 = 0
+v42 = sub vtable+304 -> 0x70000086  ; bindless_texture_bank_type()
+v18 = 0x70000086
+```
+
+**Lines 145-152 (texture/sampler sort check):**
+```
+if elfw[82] != 0 && elfw[4] == 1:     ; compact mode
+    if elfw[37] & 2:                  ; compact wide-reloc bit
+        v17 = 1 (needs sort)
+else (non-compact 64-bit):
+    if elfw[49] & 2:                  ; standard wide-reloc bit
+        v17 = 1 (needs sort)
+```
+
+For our sm_90 64-bit non-compact ELF with the wide-reloc bit cleared, `v17 = 0` -> no sort needed.
+
+**Line around 170:** Resolved type selection.
+```
+resolved_type = (a3 != 10) + 6 = 0 + 6 = 6
+```
+
+**Line around 190:** Construct the per-entry section name.
+```
+bank_name  = "nv.constant3"              ; from sub_4401F0(0x70000086)
+entry_name = "sample_kernel"
+sprintf(section_name, "%s.%s", bank_name, entry_name)
+    -> "nv.constant3.sample_kernel"
+```
+
+**Line around 200:** Look up section by name.
+```
+target_sec_idx = find_section_by_name(elfw, "nv.constant3.sample_kernel") = 9
+target_shlink  = elfw->section_map[9] = 4   ; resolves to text section index
+```
+
+**Lines 210-260 (counting loop, unsorted path):**
+```
+reloc = elfw[376]
+count = 0
+    R1' (type=115, section=5 (.rela.text.sample_kernel)):
+        rec_type = 115, rec_sec = 4  (sub_442270(5)->sh_link)
+        115 != 6 -> skip
+    R2 (type=6, section=15 (.rela.nv.constant3.sample_kernel)):
+        rec_type = 6, rec_sec = 9 (the per-entry constant bank section)
+        Hmm: we want rec_sec to match target_shlink = 4. But for R2,
+        rec_sec resolves to section 9 (the per-entry const bank), not 4.
+```
+
+Re-reading: `target_shlink` is the sh_link of section 9. Section 9's sh_link points at the kernel text section 4 (this is how per-entry const banks reference "their" kernel). So `target_shlink = 4`. For R2 to match, `sub_442270(15)->sh_link` must equal 4. Section 15 is `.rela.nv.constant3.sample_kernel`, a RELA section whose `sh_info` points to section 9. But the check uses `sh_link`, not `sh_info`, and for a `.rela*` section `sh_link` typically points to the symbol table. So `sub_442270(15)->sh_link` might be the symtab index, not 4.
+
+Actually this is a hint: the matching logic in `sub_43CDA0` uses the `.rela` section's sh_link because in nvlink's model, each `.rela<section>` section has `sh_link` set to the resolved target section index (the `<section>` it patches), not the symtab. That's a non-standard ELF convention specific to NVIDIA's link toolchain. Under this convention, `sub_442270(15)->sh_link = 4` for R1' (patches .text.sample_kernel = section 4), and `sub_442270(15')->sh_link = 9` for R2 (patches .nv.constant3.sample_kernel = section 9).
+
+So actually `target_shlink` must be 9, not 4. Revising: `target_shlink = elfw->section_map[9]` gives the canonical section index of the per-entry constant bank, which is 9 itself. Then the matching reloc is R2.
+
+```
+reloc = elfw[376]
+count = 0
+    R1' (type=115, rela_sec=5): sub_442270(5)->sh_link = 4 (patches .text)
+        rec_type = 115, rec_sec = 4
+        115 != 6 OR 4 != 9 -> skip
+    R2 (type=6, rela_sec=15): sub_442270(15)->sh_link = 9 (patches per-entry const)
+        rec_type = 6, rec_sec = 9
+        6 == 6 AND 9 == 9 -> match!
+        count = 1
+return 1
+```
+
+The return value tells Phase 10 that `sample_kernel` uses 1 bindless texture. This count is written into the `.nv.info.sample_kernel` section as an `EIATTR_KPARAM_INFO` descriptor or equivalent (see [ELF nv.info](../elf/nv-info.md)), and is consumed by the CUDA runtime when launching the kernel.
+
+### Step 8: How `.nv.bindless_index` (the constant bank) Gets Populated
+
+After `sub_438DD0` and `sub_43CDA0` finish, the relocation application pass `sub_469D60` walks the relocation list and actually writes bytes into sections.
+
+For **R1'** (type 115, patches `.text.sample_kernel + 0x30`):
+
+1. The relocation engine looks up the `$NVLINKBINDLESSOFF_myTex` symbol (index 42).
+2. The symbol's `st_value = 0` (offset within the constant bank).
+3. The engine patches the `LDC` instruction's immediate field with the value `0` (the offset of the myTex descriptor within the per-entry constant bank).
+
+For **R2** (type 6, patches `.nv.constant3.sample_kernel + 0x30`):
+
+Wait -- the `r_offset` for R2 was copied from R1 (which was 0x30). That means R2 points at byte `0x30` within `.text.sample_kernel`, not within the constant bank. This is wrong.
+
+Re-reading `sub_438CE0` line 36: `*(_QWORD *)v13 = a6;` -- it copies 8 bytes from `original_reloc`. The `a6` argument comes from `sub_438DD0` line 391: `*(_QWORD *)(v46 + 8)`, which is `desc->original_reloc` at offset 8 in the descriptor record. Descriptor records are built by `sub_433310`, which stores a reference to the original **descriptor** data, not the original relocation. So `a6` is actually a pointer to the descriptor's data payload, and the 8 bytes copied are the descriptor's header/metadata, not an `r_offset`.
+
+The `r_offset` for R2 must therefore be encoded differently. Looking at `sub_438CE0` more carefully: the 32-byte record layout is:
+
+| Offset | Field |
+|---|---|
+| 0 | 8 bytes of data copied from `a6` (descriptor metadata) |
+| 8 | `r_info = (sym_idx << 32) \| type` |
+| 16 | `r_addend = 0` |
+| 24 | `rela_sec_idx` |
+| 28 | `addend_flag` |
+
+There is no explicit `r_offset` field -- the first 8 bytes at `rec+0` play that role, populated from the descriptor's header. For bindless offset relocations emitted by `sub_438CE0`, the `r_offset` is whatever `desc[1]` (an 8-byte field in the descriptor) contains, which is typically the per-section offset where the descriptor sits. So for the `myTex` descriptor at offset 0 in section 9, R2's `r_offset = 0`.
+
+Revised R2:
+
+```
+R2: type=6, sym=42, r_offset=0 (within section 9), rela_sec_idx=15
+```
+
+Now the relocation application for R2:
+
+1. Engine looks up target section from `rela_sec_idx = 15` -> `.rela.nv.constant3.sample_kernel` -> sh_link 9 -> section 9 (`.nv.constant3.sample_kernel`).
+2. The patch site is `section_9.data + 0 = &section_9.data[0]`.
+3. The engine resolves the descriptor slot number for `$NVLINKBINDLESSOFF_myTex`. On Hopper, this is done by the CUDA runtime at **module load time**, not at link time, because the actual texture object handle is a runtime property of the bound texture. At link time, the linker writes a placeholder (typically 0) and marks the slot for runtime fixup via the `.nv.rel.action` section.
+4. The final 4 bytes at `section_9 + 0` are the descriptor slot index, which the hardware uses to index into the Texture Header Table (THT).
+
+### Step 9: Final SASS
+
+ptxas originally emitted SASS similar to the following (addresses are the `.text.sample_kernel` offsets):
+
+```
+/*0020*/  IMAD R2, R0, c[0x0][0x0], R1
+/*0030*/  LDC R3, c[0x3][0x0]          ; <-- the myTex handle load
+/*0040*/  TEX.B.LL R4, R4, R3, 0x2d, 2D, 0x1  ; bindless tex fetch
+/*0050*/  STG.E [R2], R4
+```
+
+The `LDC R3, c[0x3][0x0]` instruction at offset 0x30 loads 4 bytes from constant bank 3 at offset 0 (the `st_value` of `$NVLINKBINDLESSOFF_myTex`) into R3. R3 then contains the bindless texture handle -- an opaque 32-bit value that the `TEX.B.LL` (bindless TEX, long-latency) instruction uses as an index into the per-module texture header table.
+
+Before nvlink, the offset field `0x0` in `LDC R3, c[0x3][0x0]` is a placeholder containing the symbol index reference. After `sub_438DD0` rewrites R1' to point at `$NVLINKBINDLESSOFF_myTex` (symbol 42, offset 0), the relocation engine patches the `0x0` in the encoded `LDC` instruction to the actual descriptor offset. Since myTex was laid out at offset 0 in the per-entry bank, the patched instruction is byte-identical to the original:
+
+```
+/*0030*/  LDC R3, c[0x3][0x0]          ; patched: offset 0 (myTex descriptor)
+```
+
+If the kernel had used a second texture `myTex2` at offset 4, the patched instruction for that second load would be:
+
+```
+/*0034*/  LDC R4, c[0x3][0x4]          ; patched: offset 4 (myTex2 descriptor)
+```
+
+### Step 10: End-to-End State Diagram
+
+```
+Source:
+    texture<float, 2> myTex;
+    tex2D(myTex, x, y);
+                |
+                v
+ptxas produces:
+    Symbol:  myTex             (STT_CUDA_TEXTURE=10, section .nv.constant3, value=0)
+    Reloc:   R_CUDA_BINDLESSOFF_115 (type=115)
+             sym=myTex
+             offset=0x30 in .text.sample_kernel
+             patches the LDC instruction's c[0x3] offset field
+                |
+                v
+nvlink merge (sub_45E7D0):
+    Symbol myTex copied to output symtab
+    Descriptor list (elfw+424) gets an entry for myTex
+    Per-entry section .nv.constant3.sample_kernel created by sub_4324B0
+                |
+                v
+nvlink layout Phase 2: sub_433310 (descriptor_list_layout)
+    Creates $NVLINKBINDLESSOFF_myTex symbol in .nv.constant3 (sec 8)
+    Allocates 4 bytes of zero data
+    Merges data into .nv.constant3 via sub_432B10
+                |
+                v
+nvlink layout Phase 2: sub_438DD0 (process_bindless_references)
+    Phase A: is_mercury=false, arch_flags_mask=0x80000000
+    Phase B: per_entry_list = [section_9]
+    Phase C: bitmask = zeros
+    Phase E: scan reloc list
+        R1 (type 115): matches at line 260 -> LABEL_32
+            create $NVLINKBINDLESSOFF_myTex synth (already exists from sub_433310)
+                -> sym_idx 42
+            rewrite R1.info = (42 << 32) | 115
+            bitmask[4] |= 0x01                 (texture bit)
+            propagate: no callers of sample_kernel
+    Phase F: section 9 bitmask nonzero -> keep
+    Phase G: sub_4325A0 assigns $NVLINKBINDLESSOFF_myTex -> offset 0
+    Phase H: walk descriptor list
+        myTex descriptor: type=10 (texture)
+            emit R2 via sub_438CE0:
+                type=6, sym=42, target=section_9, orig=desc
+            texture_count = 1
+    Phase I: 1 <= max_textures -> OK
+    Phase J: cleanup
+                |
+                v
+nvlink layout Phase 10: sub_43CDA0 counts resources
+    supports_bindless=true -> PATH A
+    resolved_type = 6
+    section_name = "nv.constant3.sample_kernel" -> section 9
+    walk reloc list, count entries matching (type=6, section=9)
+        R2 matches -> count=1
+    return 1 (written to .nv.info as kernel texture count)
+                |
+                v
+nvlink relocate phase (sub_469D60):
+    Apply R1 (type 115):
+        Patch .text.sample_kernel + 0x30
+        Value = $NVLINKBINDLESSOFF_myTex.st_value = 0
+        LDC instruction's c[0x3] offset field set to 0
+    Apply R2 (type 6):
+        Patch .nv.constant3.sample_kernel + 0
+        Value = runtime-resolved descriptor slot (placeholder 0 at link time)
+        .nv.rel.action marks this slot for runtime fixup
+                |
+                v
+Final cubin:
+    .text.sample_kernel:
+        /*0030*/  LDC R3, c[0x3][0x0]
+        /*0040*/  TEX.B.LL R4, R4, R3, 0x2d, 2D, 0x1
+    .nv.constant3.sample_kernel:
+        [00 00 00 00]       ; 4 bytes, runtime-resolved
+    .nv.info.sample_kernel:
+        EIATTR_... num_textures=1
+                |
+                v
+CUDA runtime (cuModuleLoad -> cuTexRefSetAddress2D):
+    Binds the user-provided CUDA array to myTex
+    Writes actual texture header index into section_9 byte 0
+                |
+                v
+Kernel launch:
+    SM loads c[0x3][0x0] = actual_header_index
+    TEX.B.LL uses actual_header_index to read from the THT
+    Texture fetched from user's CUDA array -> R4
+```
+
+### Summary of Key Addresses and Line Numbers
+
+| Step | Function | Address | File:line | Action |
+|---|---|---|---|---|
+| Descriptor allocation | `sub_433310` | `0x433310` | `sub_433310_0x433310.c:114` | `vtable+440` -> texture descriptor size = 4 |
+| Descriptor allocation | `sub_433310` | `0x433310` | `sub_433310_0x433310.c:124` | `sprintf(v28, "$NVLINKBINDLESSOFF_%s", ...)` |
+| Descriptor allocation | `sub_433310` | `0x433310` | `sub_433310_0x433310.c:127` | `sub_440740(..., type=13, bind=0, flags=129, ...)` creates synth sym |
+| Arch detection | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:106` | `*(_BYTE *)(a1 + 7) == 65` Mercury check |
+| Per-entry collect | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:119` | `(v12 - 1879048292) > 0x1A` range check |
+| Type 115 dispatch | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:260` | `if ( (_DWORD)v19 == 115 ) goto LABEL_32` |
+| Type check | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:173` | `(v23+4 & 0xF) - 10 > 2` rejects non-bindless |
+| Name build | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:182` | `sprintf(v88, "$NVLINKBINDLESSOFF_%s", ...)` |
+| Sym create | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:184` | `v31 = sub_4411B0(a1, v88)` |
+| Verbose trace | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:190` | `"change reloc symbol from %d to %d\n"` |
+| Reloc rewrite | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:194` | `*(_QWORD *)(v18 + 8) = (v87 << 32) + v19` |
+| Bitmask LUT | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:198` | `byte_1D391A0[4 * (sym_type - 10)]` |
+| Bitmask set | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:200` | `*((_BYTE *)s + v34) \|= v33` |
+| Callgraph walk | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:206` | `v79 = sub_44C740(a1, sh_link)` |
+| Pruning diag | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:303` | `"no bindless ref in section %s\n"` |
+| Layout call | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:312` | `sub_4325A0(a1, v86, v39, v90, ...)` |
+| Tex reloc type | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:318` | `v84 = v89 == 0 ? 6 : 65547` |
+| Texture case | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:381-386` | `case 10: v37 = v84; bitmask & 0x01; ++v90` |
+| Emit reloc | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:391` | `sub_438CE0(a1, v37, v93, v42[8], 0, v46[1])` |
+| Max tex check | `sub_438DD0` | `0x438DD0` | `sub_438DD0_0x438dd0.c:398` | `(*(vtable+40))() < (int)v90` |
+| Rela name build | `sub_438CE0` | `0x438CE0` | `sub_438CE0_0x438ce0.c:22-25` | `.rela%s` or `.rel%s` prefix |
+| Alloc record | `sub_438CE0` | `0x438CE0` | `sub_438CE0_0x438ce0.c:28` | `sub_4307C0(arena, 32)` |
+| Info pack | `sub_438CE0` | `0x438CE0` | `sub_438CE0_0x438ce0.c:40` | `*(v13+8) = v17 + (v7 << 32)` |
+| Append reloc | `sub_438CE0` | `0x438CE0` | `sub_438CE0_0x438ce0.c:41` | `sub_4644C0(v13, a1 + 376)` |
+| Bindless gate | `sub_43CDA0` | `0x43CDA0` | `sub_43CDA0_0x43cda0.c:66` | `*(vtable + 296)()` |
+| Type dispatch | `sub_43CDA0` | `0x43CDA0` | `sub_43CDA0_0x43cda0.c:118-133` | `a3 == 12` surface / else texture/sampler |
+| Bank type | `sub_43CDA0` | `0x43CDA0` | `sub_43CDA0_0x43cda0.c:143` | `*(vtable + 304)()` = `0x70000086` |
+
 ## Interaction with Other Passes
 
 ### Pre-Requisites

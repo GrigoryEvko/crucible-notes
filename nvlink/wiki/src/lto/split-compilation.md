@@ -662,3 +662,11 @@ for (i = 0; i < num_splits; i++) {
 | `dword_2A5B514` | `split_compile_extended` | `int` | Thread count for extended split compile. Default 1 (single-threaded). Value 0 triggers auto-detect via `sysconf` |
 | `dword_2A5B518` | `split_compile_value` | `int` | Number of splits requested from libnvvm |
 | `dword_2A5F260` | `split_compile_state` | `int` | Consensus state machine: 0=none, 1=absent, 2=present, 3=mixed, 4=conflict |
+
+## Cross-References
+
+- [LTO Overview](overview.md) -- pipeline context showing where split compilation fits (Step 3: PTX Assembly)
+- [Option Forwarding](option-forwarding.md) -- how `-split-compile` and `-split-compile-extended` are forwarded to cicc
+- [libnvvm Integration](libnvvm-integration.md) -- libnvvm produces the PTX that split compilation parallelizes
+- [Whole vs Partial LTO](whole-vs-partial.md) -- split compilation interacts with partial mode (Path 3 dispatch)
+- [Merge Phase](../pipeline/merge.md) -- per-split cubins are merged via `merge_elf` after assembly
