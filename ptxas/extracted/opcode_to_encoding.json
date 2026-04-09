@@ -1,0 +1,899 @@
+{
+  "opcode_to_encoding": {
+    "count": 222,
+    "sentinel_value": 355,
+    "source_va": "0x22B4B60",
+    "non_zero_count": 127,
+    "sentinel_count": 10,
+    "entries": [
+      {
+        "opcode": 0,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 1,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 2,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 3,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 4,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 5,
+        "encoding_slot": 160
+      },
+      {
+        "opcode": 6,
+        "encoding_slot": 241
+      },
+      {
+        "opcode": 7,
+        "encoding_slot": 148
+      },
+      {
+        "opcode": 8,
+        "encoding_slot": 97
+      },
+      {
+        "opcode": 9,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 10,
+        "encoding_slot": 93
+      },
+      {
+        "opcode": 11,
+        "encoding_slot": 94
+      },
+      {
+        "opcode": 12,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 13,
+        "encoding_slot": 95
+      },
+      {
+        "opcode": 14,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 15,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 16,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 17,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 18,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 19,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 20,
+        "encoding_slot": 29
+      },
+      {
+        "opcode": 21,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 22,
+        "encoding_slot": 37
+      },
+      {
+        "opcode": 23,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 24,
+        "encoding_slot": 188
+      },
+      {
+        "opcode": 25,
+        "encoding_slot": 190
+      },
+      {
+        "opcode": 26,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 27,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 28,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 29,
+        "encoding_slot": 32
+      },
+      {
+        "opcode": 30,
+        "encoding_slot": 271
+      },
+      {
+        "opcode": 31,
+        "encoding_slot": 159
+      },
+      {
+        "opcode": 32,
+        "encoding_slot": 72
+      },
+      {
+        "opcode": 33,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 34,
+        "encoding_slot": 55
+      },
+      {
+        "opcode": 35,
+        "encoding_slot": 42
+      },
+      {
+        "opcode": 36,
+        "encoding_slot": 53
+      },
+      {
+        "opcode": 37,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 38,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 39,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 40,
+        "encoding_slot": 355
+      },
+      {
+        "opcode": 41,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 42,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 43,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 44,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 45,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 46,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 47,
+        "encoding_slot": 224
+      },
+      {
+        "opcode": 48,
+        "encoding_slot": 235
+      },
+      {
+        "opcode": 49,
+        "encoding_slot": 355
+      },
+      {
+        "opcode": 50,
+        "encoding_slot": 150
+      },
+      {
+        "opcode": 51,
+        "encoding_slot": 87
+      },
+      {
+        "opcode": 52,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 53,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 54,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 55,
+        "encoding_slot": 16
+      },
+      {
+        "opcode": 56,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 57,
+        "encoding_slot": 98
+      },
+      {
+        "opcode": 58,
+        "encoding_slot": 153
+      },
+      {
+        "opcode": 59,
+        "encoding_slot": 183
+      },
+      {
+        "opcode": 60,
+        "encoding_slot": 288
+      },
+      {
+        "opcode": 61,
+        "encoding_slot": 18
+      },
+      {
+        "opcode": 62,
+        "encoding_slot": 302
+      },
+      {
+        "opcode": 63,
+        "encoding_slot": 303
+      },
+      {
+        "opcode": 64,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 65,
+        "encoding_slot": 248
+      },
+      {
+        "opcode": 66,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 67,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 68,
+        "encoding_slot": 283
+      },
+      {
+        "opcode": 69,
+        "encoding_slot": 164
+      },
+      {
+        "opcode": 70,
+        "encoding_slot": 168
+      },
+      {
+        "opcode": 71,
+        "encoding_slot": 130
+      },
+      {
+        "opcode": 72,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 73,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 74,
+        "encoding_slot": 12
+      },
+      {
+        "opcode": 75,
+        "encoding_slot": 13
+      },
+      {
+        "opcode": 76,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 77,
+        "encoding_slot": 172
+      },
+      {
+        "opcode": 78,
+        "encoding_slot": 30
+      },
+      {
+        "opcode": 79,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 80,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 81,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 82,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 83,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 84,
+        "encoding_slot": 86
+      },
+      {
+        "opcode": 85,
+        "encoding_slot": 88
+      },
+      {
+        "opcode": 86,
+        "encoding_slot": 89
+      },
+      {
+        "opcode": 87,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 88,
+        "encoding_slot": 187
+      },
+      {
+        "opcode": 89,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 90,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 91,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 92,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 93,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 94,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 95,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 96,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 97,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 98,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 99,
+        "encoding_slot": 1
+      },
+      {
+        "opcode": 100,
+        "encoding_slot": 25
+      },
+      {
+        "opcode": 101,
+        "encoding_slot": 33
+      },
+      {
+        "opcode": 102,
+        "encoding_slot": 38
+      },
+      {
+        "opcode": 103,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 104,
+        "encoding_slot": 44
+      },
+      {
+        "opcode": 105,
+        "encoding_slot": 45
+      },
+      {
+        "opcode": 106,
+        "encoding_slot": 59
+      },
+      {
+        "opcode": 107,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 108,
+        "encoding_slot": 60
+      },
+      {
+        "opcode": 109,
+        "encoding_slot": 62
+      },
+      {
+        "opcode": 110,
+        "encoding_slot": 68
+      },
+      {
+        "opcode": 111,
+        "encoding_slot": 71
+      },
+      {
+        "opcode": 112,
+        "encoding_slot": 78
+      },
+      {
+        "opcode": 113,
+        "encoding_slot": 79
+      },
+      {
+        "opcode": 114,
+        "encoding_slot": 106
+      },
+      {
+        "opcode": 115,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 116,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 117,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 118,
+        "encoding_slot": 147
+      },
+      {
+        "opcode": 119,
+        "encoding_slot": 149
+      },
+      {
+        "opcode": 120,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 121,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 122,
+        "encoding_slot": 179
+      },
+      {
+        "opcode": 123,
+        "encoding_slot": 180
+      },
+      {
+        "opcode": 124,
+        "encoding_slot": 192
+      },
+      {
+        "opcode": 125,
+        "encoding_slot": 191
+      },
+      {
+        "opcode": 126,
+        "encoding_slot": 199
+      },
+      {
+        "opcode": 127,
+        "encoding_slot": 215
+      },
+      {
+        "opcode": 128,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 129,
+        "encoding_slot": 221
+      },
+      {
+        "opcode": 130,
+        "encoding_slot": 225
+      },
+      {
+        "opcode": 131,
+        "encoding_slot": 2
+      },
+      {
+        "opcode": 132,
+        "encoding_slot": 10
+      },
+      {
+        "opcode": 133,
+        "encoding_slot": 48
+      },
+      {
+        "opcode": 134,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 135,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 136,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 137,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 138,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 139,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 140,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 141,
+        "encoding_slot": 120
+      },
+      {
+        "opcode": 142,
+        "encoding_slot": 126
+      },
+      {
+        "opcode": 143,
+        "encoding_slot": 129
+      },
+      {
+        "opcode": 144,
+        "encoding_slot": 139
+      },
+      {
+        "opcode": 145,
+        "encoding_slot": 143
+      },
+      {
+        "opcode": 146,
+        "encoding_slot": 151
+      },
+      {
+        "opcode": 147,
+        "encoding_slot": 163
+      },
+      {
+        "opcode": 148,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 149,
+        "encoding_slot": 200
+      },
+      {
+        "opcode": 150,
+        "encoding_slot": 201
+      },
+      {
+        "opcode": 151,
+        "encoding_slot": 206
+      },
+      {
+        "opcode": 152,
+        "encoding_slot": 207
+      },
+      {
+        "opcode": 153,
+        "encoding_slot": 208
+      },
+      {
+        "opcode": 154,
+        "encoding_slot": 213
+      },
+      {
+        "opcode": 155,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 156,
+        "encoding_slot": 214
+      },
+      {
+        "opcode": 157,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 158,
+        "encoding_slot": 216
+      },
+      {
+        "opcode": 159,
+        "encoding_slot": 217
+      },
+      {
+        "opcode": 160,
+        "encoding_slot": 219
+      },
+      {
+        "opcode": 161,
+        "encoding_slot": 227
+      },
+      {
+        "opcode": 162,
+        "encoding_slot": 229
+      },
+      {
+        "opcode": 163,
+        "encoding_slot": 290
+      },
+      {
+        "opcode": 164,
+        "encoding_slot": 7
+      },
+      {
+        "opcode": 165,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 166,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 167,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 168,
+        "encoding_slot": 36
+      },
+      {
+        "opcode": 169,
+        "encoding_slot": 355
+      },
+      {
+        "opcode": 170,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 171,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 172,
+        "encoding_slot": 110
+      },
+      {
+        "opcode": 173,
+        "encoding_slot": 115
+      },
+      {
+        "opcode": 174,
+        "encoding_slot": 114
+      },
+      {
+        "opcode": 175,
+        "encoding_slot": 117
+      },
+      {
+        "opcode": 176,
+        "encoding_slot": 196
+      },
+      {
+        "opcode": 177,
+        "encoding_slot": 254
+      },
+      {
+        "opcode": 178,
+        "encoding_slot": 255
+      },
+      {
+        "opcode": 179,
+        "encoding_slot": 256
+      },
+      {
+        "opcode": 180,
+        "encoding_slot": 257
+      },
+      {
+        "opcode": 181,
+        "encoding_slot": 258
+      },
+      {
+        "opcode": 182,
+        "encoding_slot": 259
+      },
+      {
+        "opcode": 183,
+        "encoding_slot": 260
+      },
+      {
+        "opcode": 184,
+        "encoding_slot": 261
+      },
+      {
+        "opcode": 185,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 186,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 187,
+        "encoding_slot": 262
+      },
+      {
+        "opcode": 188,
+        "encoding_slot": 243
+      },
+      {
+        "opcode": 189,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 190,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 191,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 192,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 193,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 194,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 195,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 196,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 197,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 198,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 199,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 200,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 201,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 202,
+        "encoding_slot": 96
+      },
+      {
+        "opcode": 203,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 204,
+        "encoding_slot": 169
+      },
+      {
+        "opcode": 205,
+        "encoding_slot": 178
+      },
+      {
+        "opcode": 206,
+        "encoding_slot": 197
+      },
+      {
+        "opcode": 207,
+        "encoding_slot": 239
+      },
+      {
+        "opcode": 208,
+        "encoding_slot": 154
+      },
+      {
+        "opcode": 209,
+        "encoding_slot": 0
+      },
+      {
+        "opcode": 210,
+        "encoding_slot": 195
+      },
+      {
+        "opcode": 211,
+        "encoding_slot": 175
+      },
+      {
+        "opcode": 212,
+        "encoding_slot": 355
+      },
+      {
+        "opcode": 213,
+        "encoding_slot": 355
+      },
+      {
+        "opcode": 214,
+        "encoding_slot": 355
+      },
+      {
+        "opcode": 215,
+        "encoding_slot": 355
+      },
+      {
+        "opcode": 216,
+        "encoding_slot": 355
+      },
+      {
+        "opcode": 217,
+        "encoding_slot": 309
+      },
+      {
+        "opcode": 218,
+        "encoding_slot": 170
+      },
+      {
+        "opcode": 219,
+        "encoding_slot": 355
+      },
+      {
+        "opcode": 220,
+        "encoding_slot": 355
+      },
+      {
+        "opcode": 221,
+        "encoding_slot": 0
+      }
+    ]
+  }
+}

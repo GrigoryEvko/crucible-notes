@@ -1,0 +1,137 @@
+{
+  "occupancy_constants": {
+    "count": 8,
+    "formula": "max_warps = (-granularity & (2 * half_reg_file / regs)) - offset",
+    "formula_source": "sub_A99FE0 (7 lines)",
+    "entries": [
+      {
+        "va": "0x229C400",
+        "label": "base_occupancy_params",
+        "dwords": [
+          6,
+          128,
+          32768,
+          255
+        ],
+        "dwords_hex": [
+          "0x00000006",
+          "0x00000080",
+          "0x00008000",
+          "0x000000FF"
+        ]
+      },
+      {
+        "va": "0x229C410",
+        "label": "secondary_param_block",
+        "dwords": [
+          63,
+          7,
+          7,
+          16
+        ],
+        "dwords_hex": [
+          "0x0000003F",
+          "0x00000007",
+          "0x00000007",
+          "0x00000010"
+        ]
+      },
+      {
+        "va": "0x229C420",
+        "label": "primary_occupancy_params",
+        "dwords": [
+          4,
+          2048,
+          8,
+          2
+        ],
+        "dwords_hex": [
+          "0x00000004",
+          "0x00000800",
+          "0x00000008",
+          "0x00000002"
+        ]
+      },
+      {
+        "va": "0x229C430",
+        "label": "sm60_sm70_base",
+        "dwords": [
+          32,
+          32,
+          64,
+          32
+        ],
+        "dwords_hex": [
+          "0x00000020",
+          "0x00000020",
+          "0x00000040",
+          "0x00000020"
+        ]
+      },
+      {
+        "va": "0x229C440",
+        "label": "common_sm30_sm75",
+        "dwords": [
+          6,
+          128,
+          65536,
+          255
+        ],
+        "dwords_hex": [
+          "0x00000006",
+          "0x00000080",
+          "0x00010000",
+          "0x000000FF"
+        ]
+      },
+      {
+        "va": "0x229C450",
+        "label": "sm35_sm37_variants",
+        "dwords": [
+          32,
+          32,
+          48,
+          16
+        ],
+        "dwords_hex": [
+          "0x00000020",
+          "0x00000020",
+          "0x00000030",
+          "0x00000010"
+        ]
+      },
+      {
+        "va": "0x229C460",
+        "label": "sm3x_sm7x_variants",
+        "dwords": [
+          32,
+          32,
+          48,
+          24
+        ],
+        "dwords_hex": [
+          "0x00000020",
+          "0x00000020",
+          "0x00000030",
+          "0x00000018"
+        ]
+      },
+      {
+        "va": "0x229C470",
+        "label": "sm70plus_granularity2",
+        "dwords": [
+          80,
+          7,
+          7,
+          16
+        ],
+        "dwords_hex": [
+          "0x00000050",
+          "0x00000007",
+          "0x00000007",
+          "0x00000010"
+        ]
+      }
+    ]
+  }
+}

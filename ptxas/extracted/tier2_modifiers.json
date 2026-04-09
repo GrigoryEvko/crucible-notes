@@ -1,0 +1,230 @@
+{
+  "tier2_modifier_tables": {
+    "groups": [
+      {
+        "label": "group_A_maxwell_turing",
+        "va_start": "0x202A280",
+        "sm_range": "sm_50-sm_75",
+        "entry_count": 4,
+        "entries": [
+          {
+            "offset": 0,
+            "lo": "0x0000000100000000",
+            "hi": "0x0000000100000001",
+            "dwords": [
+              0,
+              1,
+              1,
+              1
+            ]
+          },
+          {
+            "offset": 16,
+            "lo": "0x0000000100000002",
+            "hi": "0x0000000100000003",
+            "dwords": [
+              2,
+              1,
+              3,
+              1
+            ]
+          },
+          {
+            "offset": 32,
+            "lo": "0x0000000100000000",
+            "hi": "0x0000000100000002",
+            "dwords": [
+              0,
+              1,
+              2,
+              1
+            ]
+          },
+          {
+            "offset": 48,
+            "lo": "0x0000000100000003",
+            "hi": "0x0000000100000004",
+            "dwords": [
+              3,
+              1,
+              4,
+              1
+            ]
+          }
+        ]
+      },
+      {
+        "label": "group_B_ampere_ada",
+        "va_start": "0x22F1B30",
+        "sm_range": "sm_80-sm_89",
+        "entry_count": 3,
+        "entries": [
+          {
+            "offset": 0,
+            "lo": "0x0000000200000000",
+            "hi": "0x0000000100000001",
+            "dwords": [
+              0,
+              2,
+              1,
+              1
+            ]
+          },
+          {
+            "offset": 16,
+            "lo": "0x0000000100000000",
+            "hi": "0x0000000200000001",
+            "dwords": [
+              0,
+              1,
+              1,
+              2
+            ]
+          },
+          {
+            "offset": 32,
+            "lo": "0x0000000100000002",
+            "hi": "0x0000000200000003",
+            "dwords": [
+              2,
+              1,
+              3,
+              2
+            ]
+          }
+        ]
+      },
+      {
+        "label": "group_D_lovelace_hopper",
+        "va_start": "0x22F1BA0",
+        "sm_range": "sm_89-sm_90",
+        "entry_count": 2,
+        "entries": [
+          {
+            "offset": 0,
+            "lo": "0x0000000100000001",
+            "hi": "0x0000000100000003",
+            "dwords": [
+              1,
+              1,
+              3,
+              1
+            ]
+          },
+          {
+            "offset": 16,
+            "lo": "0x0000000200000000",
+            "hi": "0x0000000100000002",
+            "dwords": [
+              0,
+              2,
+              2,
+              1
+            ]
+          }
+        ]
+      },
+      {
+        "label": "group_E_blackwell_dc",
+        "va_start": "0x22F1AA0",
+        "sm_range": "sm_100-sm_103",
+        "entry_count": 4,
+        "entries": [
+          {
+            "offset": 0,
+            "lo": "0x0000000200000000",
+            "hi": "0x0000000200000001",
+            "dwords": [
+              0,
+              2,
+              1,
+              2
+            ]
+          },
+          {
+            "offset": 16,
+            "lo": "0x0000000100000004",
+            "hi": "0x0000000100000005",
+            "dwords": [
+              4,
+              1,
+              5,
+              1
+            ]
+          },
+          {
+            "offset": 32,
+            "lo": "0x0000000200000000",
+            "hi": "0x0000000200000003",
+            "dwords": [
+              0,
+              2,
+              3,
+              2
+            ]
+          },
+          {
+            "offset": 48,
+            "lo": "0x0000000200000004",
+            "hi": "0x0000000200000005",
+            "dwords": [
+              4,
+              2,
+              5,
+              2
+            ]
+          }
+        ]
+      },
+      {
+        "label": "group_F_blackwell_consumer",
+        "va_start": "0x22F1C20",
+        "sm_range": "sm_120-sm_121",
+        "entry_count": 2,
+        "entries": [
+          {
+            "offset": 0,
+            "lo": "0x0000000400000000",
+            "hi": "0x0000000400000001",
+            "dwords": [
+              0,
+              4,
+              1,
+              4
+            ]
+          },
+          {
+            "offset": 16,
+            "lo": "0x0000000400000002",
+            "hi": "0x0000000400000003",
+            "dwords": [
+              2,
+              4,
+              3,
+              4
+            ]
+          }
+        ]
+      },
+      {
+        "label": "group_G_cross_arch",
+        "va_start": "0x23B2DE0",
+        "sm_range": "cross-architecture",
+        "entry_count": 1,
+        "entries": [
+          {
+            "offset": 0,
+            "lo": "0x0000000100000000",
+            "hi": "0x0000000400000001",
+            "dwords": [
+              0,
+              1,
+              1,
+              4
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

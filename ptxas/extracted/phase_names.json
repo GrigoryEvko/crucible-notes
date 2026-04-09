@@ -1,0 +1,803 @@
+{
+  "phase_names": {
+    "source_va": "0x22BD0C0",
+    "count": 159,
+    "entries": [
+      {
+        "index": 0,
+        "name": "OriCheckInitialProgram",
+        "string_va": "0x22BC429"
+      },
+      {
+        "index": 1,
+        "name": "ApplyNvOptRecipes",
+        "string_va": "0x22BC440"
+      },
+      {
+        "index": 2,
+        "name": "PromoteFP16",
+        "string_va": "0x22BC452"
+      },
+      {
+        "index": 3,
+        "name": "AnalyzeControlFlow",
+        "string_va": "0x22BC45E"
+      },
+      {
+        "index": 4,
+        "name": "AdvancedPhaseBeforeConvUnSup",
+        "string_va": "0x22BC471"
+      },
+      {
+        "index": 5,
+        "name": "ConvertUnsupportedOps",
+        "string_va": "0x22BC48E"
+      },
+      {
+        "index": 6,
+        "name": "SetControlFlowOpLastInBB",
+        "string_va": "0x22BC4A4"
+      },
+      {
+        "index": 7,
+        "name": "AdvancedPhaseAfterConvUnSup",
+        "string_va": "0x22BC4BD"
+      },
+      {
+        "index": 8,
+        "name": "UpdateAfterConvertUnsupportedOps",
+        "string_va": "0x22BCF10"
+      },
+      {
+        "index": 9,
+        "name": "OriCreateMacroInsts",
+        "string_va": "0x22BC4D9"
+      },
+      {
+        "index": 10,
+        "name": "ReportInitialRepresentation",
+        "string_va": "0x22BC4ED"
+      },
+      {
+        "index": 11,
+        "name": "EarlyOriSimpleLiveDead",
+        "string_va": "0x22BC509"
+      },
+      {
+        "index": 12,
+        "name": "ReplaceUniformsWithImm",
+        "string_va": "0x22BC520"
+      },
+      {
+        "index": 13,
+        "name": "OriSanitize",
+        "string_va": "0x22BC537"
+      },
+      {
+        "index": 14,
+        "name": "GeneralOptimizeEarly",
+        "string_va": "0x22BC543"
+      },
+      {
+        "index": 15,
+        "name": "MergeEquivalentConditionalFlow",
+        "string_va": "0x22BCF38"
+      },
+      {
+        "index": 16,
+        "name": "DoSwitchOptFirst",
+        "string_va": "0x22BC558"
+      },
+      {
+        "index": 17,
+        "name": "OriBranchOpt",
+        "string_va": "0x22BC569"
+      },
+      {
+        "index": 18,
+        "name": "OriPerformLiveDeadFirst",
+        "string_va": "0x22BC576"
+      },
+      {
+        "index": 19,
+        "name": "OptimizeBindlessHeaderLoads",
+        "string_va": "0x22BC58E"
+      },
+      {
+        "index": 20,
+        "name": "OriLoopSimplification",
+        "string_va": "0x22BC5AA"
+      },
+      {
+        "index": 21,
+        "name": "OriSplitLiveRanges",
+        "string_va": "0x22BC5C0"
+      },
+      {
+        "index": 22,
+        "name": "OriCopyProp",
+        "string_va": "0x21E6CE1"
+      },
+      {
+        "index": 23,
+        "name": "PerformPGO",
+        "string_va": "0x22BC5D3"
+      },
+      {
+        "index": 24,
+        "name": "OriStrengthReduce",
+        "string_va": "0x22BC5DE"
+      },
+      {
+        "index": 25,
+        "name": "OriLoopUnrolling",
+        "string_va": "0x22BC5F0"
+      },
+      {
+        "index": 26,
+        "name": "GenerateMovPhi",
+        "string_va": "0x22BC601"
+      },
+      {
+        "index": 27,
+        "name": "OriPipelining",
+        "string_va": "0x22BC610"
+      },
+      {
+        "index": 28,
+        "name": "StageAndFence",
+        "string_va": "0x22BC61E"
+      },
+      {
+        "index": 29,
+        "name": "OriRemoveRedundantBarriers",
+        "string_va": "0x22BC62C"
+      },
+      {
+        "index": 30,
+        "name": "AnalyzeUniformsForSpeculation",
+        "string_va": "0x22BC647"
+      },
+      {
+        "index": 31,
+        "name": "SinkRemat",
+        "string_va": "0x22BC665"
+      },
+      {
+        "index": 32,
+        "name": "OptimizeNaNOrZero",
+        "string_va": "0x21DD150"
+      },
+      {
+        "index": 33,
+        "name": "GeneralOptimize",
+        "string_va": "0x22BC66F"
+      },
+      {
+        "index": 34,
+        "name": "DoSwitchOptSecond",
+        "string_va": "0x22BC67F"
+      },
+      {
+        "index": 35,
+        "name": "OriLinearReplacement",
+        "string_va": "0x22BC691"
+      },
+      {
+        "index": 36,
+        "name": "CompactLocalMemory",
+        "string_va": "0x22BC6A6"
+      },
+      {
+        "index": 37,
+        "name": "ConvertMemoryToRegisterOrUniform",
+        "string_va": "0x21DD228"
+      },
+      {
+        "index": 38,
+        "name": "OriPerformLiveDeadSecond",
+        "string_va": "0x22BC6B9"
+      },
+      {
+        "index": 39,
+        "name": "ExtractShaderConstsFirst",
+        "string_va": "0x22BC6D2"
+      },
+      {
+        "index": 40,
+        "name": "OriHoistInvariantsEarly",
+        "string_va": "0x22BC6EB"
+      },
+      {
+        "index": 41,
+        "name": "Vectorization",
+        "string_va": "0x21D3ABE"
+      },
+      {
+        "index": 42,
+        "name": "EmitPSI",
+        "string_va": "0x22BC703"
+      },
+      {
+        "index": 43,
+        "name": "GeneralOptimizeMid",
+        "string_va": "0x22BC70B"
+      },
+      {
+        "index": 44,
+        "name": "OptimizeNestedCondBranches",
+        "string_va": "0x22BC71E"
+      },
+      {
+        "index": 45,
+        "name": "ConvertVTGReadWrite",
+        "string_va": "0x22BC739"
+      },
+      {
+        "index": 46,
+        "name": "DoVirtualCTAExpansion",
+        "string_va": "0x22BC74D"
+      },
+      {
+        "index": 47,
+        "name": "MarkAdditionalColdBlocks",
+        "string_va": "0x22BC763"
+      },
+      {
+        "index": 48,
+        "name": "ExpandMbarrier",
+        "string_va": "0x22BC77C"
+      },
+      {
+        "index": 49,
+        "name": "ForwardProgress",
+        "string_va": "0x22BC78B"
+      },
+      {
+        "index": 50,
+        "name": "OptimizeUniformAtomic",
+        "string_va": "0x22BC79B"
+      },
+      {
+        "index": 51,
+        "name": "MidExpansion",
+        "string_va": "0x22BC7B1"
+      },
+      {
+        "index": 52,
+        "name": "AdvancedPhaseAfterMidExpansion",
+        "string_va": "0x22BCF58"
+      },
+      {
+        "index": 53,
+        "name": "GeneralOptimizeMid2",
+        "string_va": "0x22BC7BE"
+      },
+      {
+        "index": 54,
+        "name": "AdvancedPhaseEarlyEnforceArgs",
+        "string_va": "0x22BC7D2"
+      },
+      {
+        "index": 55,
+        "name": "EnforceArgumentRestrictions",
+        "string_va": "0x22BC7F0"
+      },
+      {
+        "index": 56,
+        "name": "GvnCse",
+        "string_va": "0x22BC80C"
+      },
+      {
+        "index": 57,
+        "name": "OriCommoning",
+        "string_va": "0x22BC94D"
+      },
+      {
+        "index": 58,
+        "name": "OriReassociateAndCommon",
+        "string_va": "0x22BC813"
+      },
+      {
+        "index": 59,
+        "name": "ExtractShaderConstsFinal",
+        "string_va": "0x22BC82B"
+      },
+      {
+        "index": 60,
+        "name": "OriReplaceEquivMultiDefMov",
+        "string_va": "0x22BC844"
+      },
+      {
+        "index": 61,
+        "name": "OriPropagateVaryingFirst",
+        "string_va": "0x22BC85F"
+      },
+      {
+        "index": 62,
+        "name": "OriDoRematEarly",
+        "string_va": "0x22BC878"
+      },
+      {
+        "index": 63,
+        "name": "LateExpansion",
+        "string_va": "0x22BC888"
+      },
+      {
+        "index": 64,
+        "name": "SpeculativeHoistComInsts",
+        "string_va": "0x22BC896"
+      },
+      {
+        "index": 65,
+        "name": "RemoveASTToDefaultValues",
+        "string_va": "0x22BC8AF"
+      },
+      {
+        "index": 66,
+        "name": "GeneralOptimizeLate",
+        "string_va": "0x22BC8C8"
+      },
+      {
+        "index": 67,
+        "name": "OriLoopFusion",
+        "string_va": "0x22BC8DC"
+      },
+      {
+        "index": 68,
+        "name": "DoVTGMultiViewExpansion",
+        "string_va": "0x22BC8EA"
+      },
+      {
+        "index": 69,
+        "name": "OriSimpleLiveDead",
+        "string_va": "0x22BC50E"
+      },
+      {
+        "index": 70,
+        "name": "OriPerformLiveDeadThird",
+        "string_va": "0x22BC902"
+      },
+      {
+        "index": 71,
+        "name": "OriRemoveRedundantMultiDefMov",
+        "string_va": "0x22BC91A"
+      },
+      {
+        "index": 72,
+        "name": "OriDoPredication",
+        "string_va": "0x22BC938"
+      },
+      {
+        "index": 73,
+        "name": "LateVectorization",
+        "string_va": "0x21D3ABA"
+      },
+      {
+        "index": 74,
+        "name": "LateOriCommoning",
+        "string_va": "0x22BC949"
+      },
+      {
+        "index": 75,
+        "name": "GeneralOptimizeLate2",
+        "string_va": "0x22BC95A"
+      },
+      {
+        "index": 76,
+        "name": "OriHoistInvariantsLate",
+        "string_va": "0x22BC96F"
+      },
+      {
+        "index": 77,
+        "name": "SinkCodeIntoBlock",
+        "string_va": "0x21B5E6C"
+      },
+      {
+        "index": 78,
+        "name": "DoKillMovement",
+        "string_va": "0x22BC986"
+      },
+      {
+        "index": 79,
+        "name": "DoTexMovement",
+        "string_va": "0x22BC995"
+      },
+      {
+        "index": 80,
+        "name": "OriDoRemat",
+        "string_va": "0x22BC9A3"
+      },
+      {
+        "index": 81,
+        "name": "OriPropagateVaryingSecond",
+        "string_va": "0x22BC9AE"
+      },
+      {
+        "index": 82,
+        "name": "OptimizeSyncInstructions",
+        "string_va": "0x22BC9C8"
+      },
+      {
+        "index": 83,
+        "name": "AdvancedPhaseLateExpandSyncInstructions",
+        "string_va": "0x22BCF78"
+      },
+      {
+        "index": 84,
+        "name": "LateExpandSyncInstructions",
+        "string_va": "0x22BC9E1"
+      },
+      {
+        "index": 85,
+        "name": "ConvertAllMovPhiToMov",
+        "string_va": "0x22BC9FC"
+      },
+      {
+        "index": 86,
+        "name": "ConvertToUniformReg",
+        "string_va": "0x22BCA12"
+      },
+      {
+        "index": 87,
+        "name": "LateArchOptimizeFirst",
+        "string_va": "0x22BCA26"
+      },
+      {
+        "index": 88,
+        "name": "UpdateAfterOptimize",
+        "string_va": "0x22BCA3C"
+      },
+      {
+        "index": 89,
+        "name": "AdvancedPhaseLateConvUnSup",
+        "string_va": "0x22BCA50"
+      },
+      {
+        "index": 90,
+        "name": "LateExpansionUnsupportedOps",
+        "string_va": "0x22BCA6B"
+      },
+      {
+        "index": 91,
+        "name": "LateMergeEquivalentConditionalFlow",
+        "string_va": "0x22BCFA0"
+      },
+      {
+        "index": 92,
+        "name": "OriHoistInvariantsLate2",
+        "string_va": "0x22BCA87"
+      },
+      {
+        "index": 93,
+        "name": "LateExpansionUnsupportedOpsMid",
+        "string_va": "0x22BCFC8"
+      },
+      {
+        "index": 94,
+        "name": "ExpandJmxComputation",
+        "string_va": "0x22BCA9F"
+      },
+      {
+        "index": 95,
+        "name": "LateArchOptimizeSecond",
+        "string_va": "0x22BCAB4"
+      },
+      {
+        "index": 96,
+        "name": "AdvancedPhaseBackPropVReg",
+        "string_va": "0x22BCACB"
+      },
+      {
+        "index": 97,
+        "name": "OriBackCopyPropagate",
+        "string_va": "0x22BCAE5"
+      },
+      {
+        "index": 98,
+        "name": "OriSplitHighPressureLiveRanges",
+        "string_va": "0x22BCFE8"
+      },
+      {
+        "index": 99,
+        "name": "OriPerformLiveDeadFourth",
+        "string_va": "0x22BCAFA"
+      },
+      {
+        "index": 100,
+        "name": "OriPropagateGmma",
+        "string_va": "0x22BCB13"
+      },
+      {
+        "index": 101,
+        "name": "InsertPseudoUseDefForConvUR",
+        "string_va": "0x22BCB24"
+      },
+      {
+        "index": 102,
+        "name": "FixupGmmaSequence",
+        "string_va": "0x22BCB40"
+      },
+      {
+        "index": 103,
+        "name": "LateEnforceArgumentRestrictions",
+        "string_va": "0x22BD008"
+      },
+      {
+        "index": 104,
+        "name": "OriHoistInvariantsLate3",
+        "string_va": "0x22BCB52"
+      },
+      {
+        "index": 105,
+        "name": "AdvancedPhaseSetRegAttr",
+        "string_va": "0x22BCB6A"
+      },
+      {
+        "index": 106,
+        "name": "OriSetRegisterAttr",
+        "string_va": "0x22BCB82"
+      },
+      {
+        "index": 107,
+        "name": "OriCalcDependantTex",
+        "string_va": "0x22BCB95"
+      },
+      {
+        "index": 108,
+        "name": "AdvancedPhaseAfterSetRegAttr",
+        "string_va": "0x22BCBA9"
+      },
+      {
+        "index": 109,
+        "name": "LateExpansionUnsupportedOps2",
+        "string_va": "0x22BCBC6"
+      },
+      {
+        "index": 110,
+        "name": "FinalInspectionPass",
+        "string_va": "0x22BCBE3"
+      },
+      {
+        "index": 111,
+        "name": "SetAfterLegalization",
+        "string_va": "0x22BCBF7"
+      },
+      {
+        "index": 112,
+        "name": "ReportBeforeScheduling",
+        "string_va": "0x22BCC0C"
+      },
+      {
+        "index": 113,
+        "name": "AdvancedPhasePreSched",
+        "string_va": "0x22BCC23"
+      },
+      {
+        "index": 114,
+        "name": "ScheduleInstructions",
+        "string_va": "0x21DB4A8"
+      },
+      {
+        "index": 115,
+        "name": "UpdateAfterScheduleInstructions",
+        "string_va": "0x22BD028"
+      },
+      {
+        "index": 116,
+        "name": "BackPropagateVEC2D",
+        "string_va": "0x22BCC39"
+      },
+      {
+        "index": 117,
+        "name": "OriDoSyncronization",
+        "string_va": "0x22BCC4C"
+      },
+      {
+        "index": 118,
+        "name": "UpdateAfterOriDoSyncronization",
+        "string_va": "0x22BD048"
+      },
+      {
+        "index": 119,
+        "name": "ApplyPostSyncronizationWars",
+        "string_va": "0x22BCC60"
+      },
+      {
+        "index": 120,
+        "name": "ReportBeforeRegisterAllocation",
+        "string_va": "0x22BD068"
+      },
+      {
+        "index": 121,
+        "name": "AdvancedPhaseAllocReg",
+        "string_va": "0x22BCC7C"
+      },
+      {
+        "index": 122,
+        "name": "AllocateRegisters",
+        "string_va": "0x21F0229"
+      },
+      {
+        "index": 123,
+        "name": "ReportAfterRegisterAllocation",
+        "string_va": "0x22BCC92"
+      },
+      {
+        "index": 124,
+        "name": "UpdateAfterOriAllocateRegisters",
+        "string_va": "0x22BD088"
+      },
+      {
+        "index": 125,
+        "name": "Get64bRegComponents",
+        "string_va": "0x22BCCB0"
+      },
+      {
+        "index": 126,
+        "name": "AdvancedPhasePostExpansion",
+        "string_va": "0x22BCCC4"
+      },
+      {
+        "index": 127,
+        "name": "PostExpansion",
+        "string_va": "0x22BCCD1"
+      },
+      {
+        "index": 128,
+        "name": "ApplyPostRegAllocWars",
+        "string_va": "0x22BCCDF"
+      },
+      {
+        "index": 129,
+        "name": "AdvancedPhasePostSched",
+        "string_va": "0x22BCCF5"
+      },
+      {
+        "index": 130,
+        "name": "OriRemoveNopCode",
+        "string_va": "0x22BCD0C"
+      },
+      {
+        "index": 131,
+        "name": "OptimizeHotColdInLoop",
+        "string_va": "0x22BCD1D"
+      },
+      {
+        "index": 132,
+        "name": "OptimizeHotColdFlow",
+        "string_va": "0x22BCD33"
+      },
+      {
+        "index": 133,
+        "name": "PostSchedule",
+        "string_va": "0x22BCD47"
+      },
+      {
+        "index": 134,
+        "name": "AdvancedPhasePostFixUp",
+        "string_va": "0x22BCD54"
+      },
+      {
+        "index": 135,
+        "name": "PlaceBlocksInSourceOrder",
+        "string_va": "0x22BCD6B"
+      },
+      {
+        "index": 136,
+        "name": "PostFixForMercTargets",
+        "string_va": "0x22BCD84"
+      },
+      {
+        "index": 137,
+        "name": "FixUpTexDepBarAndSync",
+        "string_va": "0x22BCD9A"
+      },
+      {
+        "index": 138,
+        "name": "AdvancedScoreboardsAndOpexes",
+        "string_va": "0x22BCDB0"
+      },
+      {
+        "index": 139,
+        "name": "ProcessO0WaitsAndSBs",
+        "string_va": "0x22BCDCD"
+      },
+      {
+        "index": 140,
+        "name": "PostFixUp",
+        "string_va": "0x22BCD61"
+      },
+      {
+        "index": 141,
+        "name": "MercConverter",
+        "string_va": "0x21E5C39"
+      },
+      {
+        "index": 142,
+        "name": "MercEncodeAndDecode",
+        "string_va": "0x22BCDE2"
+      },
+      {
+        "index": 143,
+        "name": "MercExpandInstructions",
+        "string_va": "0x22BCDF6"
+      },
+      {
+        "index": 144,
+        "name": "MercGenerateWARs1",
+        "string_va": "0x22BCE0D"
+      },
+      {
+        "index": 145,
+        "name": "MercGenerateOpex",
+        "string_va": "0x22BCE1F"
+      },
+      {
+        "index": 146,
+        "name": "MercGenerateWARs2",
+        "string_va": "0x22BCE30"
+      },
+      {
+        "index": 147,
+        "name": "MercGenerateSassUCode",
+        "string_va": "0x22BCE42"
+      },
+      {
+        "index": 148,
+        "name": "ComputeVCallRegUse",
+        "string_va": "0x22BCE58"
+      },
+      {
+        "index": 149,
+        "name": "CalcRegisterMap",
+        "string_va": "0x22BCE6B"
+      },
+      {
+        "index": 150,
+        "name": "UpdateAfterPostRegAlloc",
+        "string_va": "0x22BCE7B"
+      },
+      {
+        "index": 151,
+        "name": "ReportFinalMemoryUsage",
+        "string_va": "0x22BCE93"
+      },
+      {
+        "index": 152,
+        "name": "AdvancedPhaseOriPhaseEncoding",
+        "string_va": "0x22BCEAA"
+      },
+      {
+        "index": 153,
+        "name": "FormatCodeList",
+        "string_va": "0x22BCED3"
+      },
+      {
+        "index": 154,
+        "name": "UpdateAfterFormatCodeList",
+        "string_va": "0x22BCEC8"
+      },
+      {
+        "index": 155,
+        "name": "DumpNVuCodeText",
+        "string_va": "0x22BCEE2"
+      },
+      {
+        "index": 156,
+        "name": "DumpNVuCodeHex",
+        "string_va": "0x22BCEF2"
+      },
+      {
+        "index": 157,
+        "name": "DebuggerBreak",
+        "string_va": "0x22BCF01"
+      },
+      {
+        "index": 158,
+        "name": "NOP",
+        "string_va": "0x21E6C80"
+      }
+    ]
+  }
+}

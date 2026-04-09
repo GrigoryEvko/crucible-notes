@@ -1,0 +1,81 @@
+{
+  "binary": "/home/grigory/iprit/nvopen-tools/ptxas/ptxas",
+  "binary_sha256": "daba837a68265cae38c832d13399b61dab811891de9b8914defddef143b849f2",
+  "binary_size": 37741528,
+  "ptxas_version": "v13.0.88",
+  "cuda_toolkit": "13.0",
+  "va_base": "0x400000",
+  "rodata_range": "0x1CE2E00-0x240BF90",
+  "rodata_size": 7508368,
+  "extraction_tables": {
+    "opcode_names": "opcode_names.json",
+    "encoding_cat_map": "encoding_category_map.json",
+    "format_descriptors": "format_descriptors.json",
+    "opcode_to_encoding": "opcode_to_encoding.json",
+    "occupancy_consts": "occupancy_constants.json",
+    "smem_configs": "shared_memory_configs.json",
+    "isel_dispatch": "isel_dispatch_tables.json",
+    "encoding_consts": "encoding_constants.json",
+    "phase_names": "phase_names.json",
+    "tier2_modifiers": "tier2_modifiers.json",
+    "knob_strings": "knob_strings.json"
+  },
+  "derived_tables": {
+    "opcode_master": "opcode_master.json",
+    "encoding_geometry": "encoding_geometry.json"
+  },
+  "files": {
+    "encoding_category_map.json": {
+      "size": 3563,
+      "sha256": "1b1aa7f4f79900bb804b0a9543b4ac1ff80073593a3b67aaf758b1b653d29c60"
+    },
+    "encoding_constants.json": {
+      "size": 7174,
+      "sha256": "a76899c4ecdd84e3bec4c34db73f89d8363dbb3dd2f9c9ad3314442acdeaac4c"
+    },
+    "encoding_geometry.json": {
+      "size": 98791,
+      "sha256": "195c99da2222cfbd9363c06f2ad1022bf4f9e64ad2d304d9f3c68f402573ced6"
+    },
+    "format_descriptors.json": {
+      "size": 10985,
+      "sha256": "e67a248c7347bed89a5644d447d94f6f69a8b10caebc8ddc2389d499817d350e"
+    },
+    "isel_dispatch_tables.json": {
+      "size": 34066,
+      "sha256": "e7288a490212d1095bb5812a6deb771cfbb5aafdc50f5120822e17847b05b5b9"
+    },
+    "knob_strings.json": {
+      "size": 194137,
+      "sha256": "238a27e893c447824a6787ffb44a955def9b1a58ff14f9e64c167fbed416217b"
+    },
+    "occupancy_constants.json": {
+      "size": 2597,
+      "sha256": "5197abe612b4f27ac8d4a62bad8e142b7ca7a21afa9c60254830feba6c16a2a4"
+    },
+    "opcode_master.json": {
+      "size": 8276,
+      "sha256": "c9f26e209f33e60280c1d7ab8ad1bb5837dcf0e8c0655d339953505f59115d37"
+    },
+    "opcode_names.json": {
+      "size": 70385,
+      "sha256": "9ffbb3d152eac683fafff130d0ce1154243aa0648c4c7a0efcc919af45f98560"
+    },
+    "opcode_to_encoding.json": {
+      "size": 15158,
+      "sha256": "845b5db85e5d91c8a6a8df9461f314cd05c4a4ac6307deef7c4c8910a3fbc4e1"
+    },
+    "phase_names.json": {
+      "size": 17875,
+      "sha256": "c6a680f80ce5b42d928175881fc34efdbcd5e2322de84ffafa18cc3a6ca3a3bc"
+    },
+    "shared_memory_configs.json": {
+      "size": 585,
+      "sha256": "559d05d9c2228103d4301beb1c4c143883fabdcaa590aa54cf236bf07a77d481"
+    },
+    "tier2_modifiers.json": {
+      "size": 4937,
+      "sha256": "cf96ecf36ec0ccc6b4ded5545a89cf323643371061adb1accfb2306b23f6d700"
+    }
+  }
+}

@@ -1,0 +1,367 @@
+{
+  "opcode_master": {
+    "count": 45,
+    "entries": [
+      {
+        "index": 0,
+        "mnemonic": "VABSDIFF4",
+        "rot13": "INOFQVSS4",
+        "sm_gen": "sm70",
+        "encoding_category": 0,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 1,
+        "mnemonic": "VABSDIFF",
+        "rot13": "INOFQVSS",
+        "sm_gen": "sm70",
+        "encoding_category": 1,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 2,
+        "mnemonic": "CSMTEST",
+        "rot13": "PFZGRFG",
+        "sm_gen": "sm70",
+        "encoding_category": 2,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 3,
+        "mnemonic": "PMTRIG",
+        "rot13": "CZGEVT",
+        "sm_gen": "sm70",
+        "encoding_category": 3,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 4,
+        "mnemonic": "CS2R_64",
+        "rot13": "PF2E_64",
+        "sm_gen": "sm70",
+        "encoding_category": 4,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 5,
+        "mnemonic": "CS2R_32",
+        "rot13": "PF2E_32",
+        "sm_gen": "sm70",
+        "encoding_category": 5,
+        "isel_encoding_slot": 160
+      },
+      {
+        "index": 6,
+        "mnemonic": "VOTE",
+        "rot13": "IBGR",
+        "sm_gen": "sm70",
+        "encoding_category": 6,
+        "isel_encoding_slot": 241
+      },
+      {
+        "index": 7,
+        "mnemonic": "NOP",
+        "rot13": "ABC",
+        "sm_gen": "sm70",
+        "encoding_category": 7,
+        "isel_encoding_slot": 148
+      },
+      {
+        "index": 8,
+        "mnemonic": "PRMT",
+        "rot13": "CEZG",
+        "sm_gen": "sm70",
+        "encoding_category": 8,
+        "isel_encoding_slot": 97
+      },
+      {
+        "index": 9,
+        "mnemonic": "PLOP3",
+        "rot13": "CYBC3",
+        "sm_gen": "sm70",
+        "encoding_category": 9,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 10,
+        "mnemonic": "R2P",
+        "rot13": "E2C",
+        "sm_gen": "sm70",
+        "encoding_category": 10,
+        "isel_encoding_slot": 93
+      },
+      {
+        "index": 11,
+        "mnemonic": "P2R",
+        "rot13": "C2E",
+        "sm_gen": "sm70",
+        "encoding_category": 11,
+        "isel_encoding_slot": 94
+      },
+      {
+        "index": 12,
+        "mnemonic": "SEL",
+        "rot13": "FRY",
+        "sm_gen": "sm70",
+        "encoding_category": 12,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 13,
+        "mnemonic": "MOV",
+        "rot13": "ZBI",
+        "sm_gen": "sm70",
+        "encoding_category": 13,
+        "isel_encoding_slot": 95
+      },
+      {
+        "index": 14,
+        "mnemonic": "FSETP",
+        "rot13": "SFRGC",
+        "sm_gen": "sm70",
+        "encoding_category": 14,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 15,
+        "mnemonic": "FSEL",
+        "rot13": "SFRY",
+        "sm_gen": "sm70",
+        "encoding_category": 15,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 16,
+        "mnemonic": "FSET",
+        "rot13": "SFRG",
+        "sm_gen": "sm70",
+        "encoding_category": 16,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 17,
+        "mnemonic": "FSWZADD",
+        "rot13": "SFJMNQQ",
+        "sm_gen": "sm70",
+        "encoding_category": 17,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 18,
+        "mnemonic": "FMNMX",
+        "rot13": "SZAZK",
+        "sm_gen": "sm70",
+        "encoding_category": 18,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 19,
+        "mnemonic": "FMUL",
+        "rot13": "SZHY",
+        "sm_gen": "sm70",
+        "encoding_category": 19,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 20,
+        "mnemonic": "FADD",
+        "rot13": "SNQQ",
+        "sm_gen": "sm70",
+        "encoding_category": 20,
+        "isel_encoding_slot": 29
+      },
+      {
+        "index": 21,
+        "mnemonic": "FFMA",
+        "rot13": "SSZN",
+        "sm_gen": "sm70",
+        "encoding_category": 21,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 22,
+        "mnemonic": "SHF",
+        "rot13": "FUS",
+        "sm_gen": "sm70",
+        "encoding_category": 22,
+        "isel_encoding_slot": 37
+      },
+      {
+        "index": 23,
+        "mnemonic": "LEA",
+        "rot13": "YRN",
+        "sm_gen": "sm70",
+        "encoding_category": 23,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 24,
+        "mnemonic": "IABS",
+        "rot13": "VNOF",
+        "sm_gen": "sm70",
+        "encoding_category": 24,
+        "isel_encoding_slot": 188
+      },
+      {
+        "index": 25,
+        "mnemonic": "ISETP",
+        "rot13": "VFRGC",
+        "sm_gen": "sm70",
+        "encoding_category": 25,
+        "isel_encoding_slot": 190
+      },
+      {
+        "index": 26,
+        "mnemonic": "LOP3",
+        "rot13": "YBC3",
+        "sm_gen": "sm70",
+        "encoding_category": 26,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 27,
+        "mnemonic": "SGXT",
+        "rot13": "FTKG",
+        "sm_gen": "sm70",
+        "encoding_category": 27,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 28,
+        "mnemonic": "BMSK",
+        "rot13": "OZFX",
+        "sm_gen": "sm70",
+        "encoding_category": 28,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 29,
+        "mnemonic": "IADD3",
+        "rot13": "VNQQ3",
+        "sm_gen": "sm70",
+        "encoding_category": 29,
+        "isel_encoding_slot": 32
+      },
+      {
+        "index": 30,
+        "mnemonic": "IMAD_WIDE",
+        "rot13": "VZNQ_JVQR",
+        "sm_gen": "sm70",
+        "encoding_category": 30,
+        "isel_encoding_slot": 271
+      },
+      {
+        "index": 31,
+        "mnemonic": "IMAD",
+        "rot13": "VZNQ",
+        "sm_gen": "sm70",
+        "encoding_category": 31,
+        "isel_encoding_slot": 159
+      },
+      {
+        "index": 32,
+        "mnemonic": "ERRBAR",
+        "rot13": "REEONE",
+        "sm_gen": "sm70",
+        "encoding_category": 32,
+        "isel_encoding_slot": 72
+      },
+      {
+        "index": 33,
+        "mnemonic": "Lm",
+        "rot13": "Yz",
+        "sm_gen": "sm70",
+        "encoding_category": 33,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 34,
+        "mnemonic": "cLm",
+        "rot13": "pYz",
+        "sm_gen": "sm70",
+        "encoding_category": 34,
+        "isel_encoding_slot": 55
+      },
+      {
+        "index": 35,
+        "mnemonic": "Fm",
+        "rot13": "Sz",
+        "sm_gen": "sm70",
+        "encoding_category": 35,
+        "isel_encoding_slot": 42
+      },
+      {
+        "index": 36,
+        "mnemonic": "Fe",
+        "rot13": "Sr",
+        "sm_gen": "sm70",
+        "encoding_category": 36,
+        "isel_encoding_slot": 53
+      },
+      {
+        "index": 37,
+        "mnemonic": "Fe",
+        "rot13": "Sr",
+        "sm_gen": "sm70",
+        "encoding_category": 37,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 38,
+        "mnemonic": "Fe",
+        "rot13": "Sr",
+        "sm_gen": "sm70",
+        "encoding_category": 38,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 39,
+        "mnemonic": "Dm",
+        "rot13": "Qz",
+        "sm_gen": "sm70",
+        "encoding_category": 39,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 40,
+        "mnemonic": "Dm",
+        "rot13": "Qz",
+        "sm_gen": "sm70",
+        "encoding_category": 40,
+        "isel_encoding_slot": 355
+      },
+      {
+        "index": 41,
+        "mnemonic": "cJm",
+        "rot13": "pWz",
+        "sm_gen": "sm70",
+        "encoding_category": 41,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 42,
+        "mnemonic": "mm",
+        "rot13": "zz",
+        "sm_gen": "sm70",
+        "encoding_category": 42,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 43,
+        "mnemonic": "Em",
+        "rot13": "Rz",
+        "sm_gen": "sm70",
+        "encoding_category": 43,
+        "isel_encoding_slot": 0
+      },
+      {
+        "index": 44,
+        "mnemonic": "Fe",
+        "rot13": "Sr",
+        "sm_gen": "sm70",
+        "encoding_category": 44,
+        "isel_encoding_slot": 0
+      }
+    ]
+  }
+}
