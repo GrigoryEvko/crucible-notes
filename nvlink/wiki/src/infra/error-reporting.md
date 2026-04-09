@@ -48,7 +48,7 @@ The first DWORD of each diagnostic descriptor (`*a1`) encodes the severity. `dia
 | Error | 5 | `"error   "` | `off_1D3B7A8` | `qword_2A5F8A0[2]` (error) | Records error flag; sets "had errors" state |
 | Fatal | 6 | `"fatal   "` | `off_1D3B7A8` | `qword_2A5F8A0[4]` (fatal) | Terminates via `longjmp` or `fatal_exit` |
 
-The `off_1D3B7A8` pointer references the ANSI color-reset/error-color token (likely red), shared by error* / error / fatal.
+The `off_1D3B7A8` pointer references the ANSI color-reset/error-color token (red), shared by error* / error / fatal.
 
 ### Severity Dispatch Logic
 
@@ -772,3 +772,42 @@ The fast path in `strbuf_vsprintf` uses a 1024-byte stack buffer. If the formatt
 | `qword_1D3C740` | `char*[7]` | `prefix_table` | Severity-to-prefix-string lookup table |
 | `byte_1D3C728` | `uint8_t[7]` | `channel_map` | Severity-to-channel-index mapping |
 | `0x2A5B530..0x2A5BB70` | `DiagDescriptor[88]` | `diag_descriptors` | Static diagnostic descriptor table (16 bytes each) |
+
+## Cross-References
+
+**Internal (nvlink wiki):**
+
+- [Memory Arenas](memory-arenas.md) -- Arena allocator used by string buffer functions (`sub_44FB20`, `sub_4307C0`) for message assembly
+- [Environment Variables](../config/env-vars.md) -- `__NVLINK_STDERR_REDIRECT` and `NVLINK_DEBUG` env vars that affect diagnostic output routing
+- [CLI Flags](../config/cli-flags.md) -- `--disable-warnings`, `-w`, `-Werror`, `--trap-into-debugger` flags that modulate diagnostic severity
+- [elfLink Error Codes](../reference/elflink-errors.md) -- elfLink subsystem error codes (0--13) that route through `diag_emit` for user-visible messages
+- [Thread Pool](thread-pool.md) -- Per-thread TLS state (`sub_44F410`) shared between the thread pool and diagnostic infrastructure
+- [Pipeline Entry](../pipeline/entry.md) -- `main()` error recovery via `setjmp`/`longjmp` that `fatal_exit` and `diag_emit` severity 6 trigger
+
+**Sibling wikis:**
+
+- [ptxas: Threading](../../../ptxas/wiki/src/infra/threading.md) -- ptxas-side threading infrastructure that shares the TLS pattern
+- [cicc: Diagnostics](../../../cicc/wiki/src/infra/diagnostics.md) -- cicc diagnostic subsystem for comparison with nvlink's error reporting architecture
+- [cicc: Knobs](../../../cicc/wiki/src/config/knobs.md) -- cicc environment variable controls analogous to nvlink's `NVLINK_DEBUG`
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| `diag_emit` at `sub_467460` is the variadic entry point | HIGH | Decompiled `sub_467460` starts with `va_start(arg, a1)` and checks `*(BYTE*)(a1 + 4)` for suppression -- matches descriptor layout |
+| Severity levels 0-6 with described prefixes | HIGH | Strings `"error   "` at `0x1d3c672` and `"fatal   "` at `0x1d3c690` confirmed in strings JSON; both 8 chars with trailing spaces |
+| `fatal_exit` at `sub_44A440` checks `byte_2A5F358` then abort/exit | HIGH | Decompiled exactly: `if (byte_2A5F358) abort(); sub_44A420(1u);` |
+| Assertion failure format string | HIGH | `sub_458000` decompiled: `"Assertion failure at %s, line %d: "` with `qword_2A5F880` / `dword_2A5F878` -- matches string at `0x1d3b7b0` |
+| `--trap-into-debugger` flag at `byte_2A5F358` | HIGH | `sub_44A440` reads `byte_2A5F358`; string `"trap-into-debugger"` at `0x1d3294f`; `"Trap into debugger upon assertion failures"` at `0x1d33c80` |
+| `-Werror` / `-w` / `--disable-infos` CLI options | HIGH | Strings `"Werror"` at `0x1d3261e`, `"disable-warnings"` at `0x1d325f0`, `"disable-infos"` at `0x1d32654` all confirmed |
+| 88 diagnostic descriptors in BSS `0x2A5B530`--`0x2A5BB70` | MEDIUM | Descriptor count derived from systematic xref analysis of `sub_467460` call sites; individual descriptors verified at representative addresses |
+| `unk_2A5B990` accounts for 230 call sites (internal assertions) | HIGH | This is the most-referenced descriptor; assertion messages like `"section not found"` (at `0x1f45d28`), `"symbol not found"` (at `0x1d38978`), `"overlapping non-identical data"` (at `0x1d387d8`) all confirmed in strings |
+| Sentinel descriptor `unk_2A5BB70` used by `fatal_alloc` | HIGH | `sub_45CAC0` decompiled as one-liner: `return sub_467460(&unk_2A5BB70, ...)` |
+| TLS state block is 0x118 bytes (280) via pthread TLS | HIGH | `sub_44F410` decompiled references `pthread_getspecific`/`pthread_setspecific` and allocates via `malloc(0x118)` |
+| Per-thread state includes `longjmp_buf_ptr` at offset 8 | MEDIUM | Offset derived from decompiled `sub_467460` code paths that read `*(QWORD*)(tls + 8)` before `longjmp` call |
+| Source snippet display with line-index hash table | MEDIUM | Inferred from decompiled `sub_467A70` (13,105 B) which contains `fopen`/`fgetc`/`fseek` patterns; exact hash-table indexing logic complex to verify |
+| Output channel table `qword_2A5F8A0[5]` | MEDIUM | Channel array referenced in decompiled `sub_467460` via severity-indexed access; exact array size inferred from severity count |
+| `channel_write` at `sub_45B7B0` dispatches by type field | MEDIUM | Function exists (192 B decompiled) with switch-like structure on first field |
+| Warning-to-error promotion when `tls_state[50] != 0` | HIGH | Decompiled `sub_467460` shows conditional severity override when `-Werror` flag is set |
+| ANSI color tokens `@W@`, `@I@`, `@O@` | MEDIUM | Token strings inferred from decompiled string builder operations; not directly found as standalone strings (embedded in format logic) |
+| `has_color_support` at `sub_4684A0` reads TLS flag | HIGH | Function exists in decompiled output (16 B), returns a byte from the TLS state |

@@ -292,3 +292,37 @@ To reimplement the timing infrastructure:
 5. **No cleanup**: There is no "finalize timer" function. The timer state is global and lives for the process lifetime. The last `phase_timer("write")` call prints the write-phase time and restarts the timer, but nothing ever reads the restarted value.
 
 6. **Thread safety**: The global timer is not thread-safe. It is only called from `main()` on the main thread. The LTO split-compile thread pool does not use these timing functions.
+
+## Cross-References
+
+**Internal (nvlink wiki):**
+
+- [Pipeline Overview](../pipeline/overview.md) -- The 9 timing tags map directly to pipeline phases described here
+- [Pipeline Entry](../pipeline/entry.md) -- `main()` timing checkpoint placement at phase boundaries
+- [LTO Overview](../lto/overview.md) -- LTO pipeline stages that generate the `cicc-lto` and `ptxas-lto` timing tags
+- [Split Compilation](../lto/split-compilation.md) -- The thread pool runs between `cicc-lto` and `ptxas-lto` timing checkpoints
+- [CLI Flags](../config/cli-flags.md) -- `--verbose` flag that gates stderr timing output (bit 5, mask `0x20`)
+- [Environment Variables](../config/env-vars.md) -- Internal timing-file option controlling CSV output path
+- [Error Reporting](error-reporting.md) -- Fatal error handler (`sub_467460`) called when CSV file cannot be opened
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| `timer_start` at `sub_45CCD0` wraps `gettimeofday` | HIGH | Decompiled: `return gettimeofday(a1, 0);` -- one-liner, exact match |
+| `timer_stop` at `sub_45CCE0` computes milliseconds via float arithmetic | HIGH | Decompiled: `(float)(LODWORD(v2.tv_sec) - *a1) * 1000.0 + (float)(LODWORD(v2.tv_usec) - a1[2]) / 1000.0` |
+| `phase_timer` at `sub_4279C0` checks `byte_2A5F1C0` started flag | HIGH | Decompiled: `if (byte_2A5F1C0)` then `fprintf(stderr, "%s time: %f\n", ...)` else `byte_2A5F1C0 = 1` |
+| Format string `"%s time: %f\n"` | HIGH | `sub_4279C0` decompiled shows exact string; confirmed at `0x1d32413` in strings JSON |
+| Global timer state at `unk_2A5F1B0` | HIGH | Both `sub_45CCD0` and `sub_45CCE0` reference `&unk_2A5F1B0` in decompiled code |
+| Started flag at `byte_2A5F1C0` | HIGH | `sub_4279C0` decompiled: `byte_2A5F1C0 = 1` on first call |
+| CSV header string | HIGH | `sub_432270` decompiled: `fwrite("source file name , phase name , phase input files , phase output file , arch , tool, metric , unit\n", 1u, 0x63u, ...)` -- exact match; string at `0x1d38698` |
+| CSV header size is 0x63 (99) bytes | HIGH | `sub_432270` decompiled: `fwrite(..., 1u, 0x63u, ...)` |
+| CSV row format `"%.4f , ms"` | HIGH | `sub_432340` decompiled: `fprintf(v10, "%s , %s , %s , %s , %s , %s , %.4f , ms\n", ...)` |
+| CSV file opened in append mode ("a") per row | HIGH | `sub_432340` decompiled: `fopen(filename, "a")` |
+| File-exists check skips header rewrite | HIGH | `sub_432270` decompiled: `if ((unsigned __int8)sub_462DF0(filename)) return nullsub_2()` |
+| "-" filename maps to stdout | HIGH | `sub_432270`: `if (*filename == 45 && !filename[1])` writes to `stdout`; `sub_432340` same pattern |
+| Timing file path at `qword_2A5F290` | MEDIUM | Referenced indirectly through main() call patterns; not directly verified in timer functions |
+| Verbose gate `elfw+64 & 0x20` (bit 5) | MEDIUM | Gate condition inferred from main() decompilation; exact bit position verified at representative call sites |
+| 9 timing tags: init, read, cicc-lto, ptxas-lto, merge, layout, relocate, finalize, write | MEDIUM | Tag strings inferred from main() decompilation flow; `"%s time: %f\n"` format used at each checkpoint |
+| `nullsub_2` is a no-op stub | HIGH | Decompiled file `nullsub_2_0x45ccc0.c` exists and is a no-op |
+| Timing CSV error uses `unk_2A5B890` descriptor | HIGH | Both `sub_432270` and `sub_432340` call `sub_467460(&unk_2A5B890, filename)` on `fopen` failure |

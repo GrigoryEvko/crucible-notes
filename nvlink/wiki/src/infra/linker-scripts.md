@@ -290,3 +290,37 @@ The `lcs-aug` mode is available for cases where `nvcc` wants only the CUDA fragm
 | `sub_476D90` | `0x476D90` | Consumer side -- validates host ELF contains the three CUDA sections |
 | `sub_476D80` | `0x476D80` | Predicate -- checks for `.nvFatBinSegment` section existence |
 | `sub_476EC0` | `0x476EC0` | Section name lookup predicate used by the above |
+
+## Cross-References
+
+**Internal (nvlink wiki):**
+
+- [CLI Flags](../config/cli-flags.md) -- `-ghls` / `--gen-host-linker-script` option and its `lcs-aug` / `lcs-abs` argument values
+- [Environment Variables](../config/env-vars.md) -- `--host-ccbin` setting that determines the host compiler used for script generation
+- [Pipeline Entry](../pipeline/entry.md) -- `main()` lines 1743--1936 where the linker script generation logic resides
+- [NVIDIA Section Types](../elf/nvidia-sections.md) -- Fatbin sections (`.nvFatBinSegment`, `__nv_relfatbin`, `.nv_fatbin`) referenced in the SECTIONS template
+- [Host ELF Input](../input/host-elf.md) -- Host ELF processing that validates the presence of the three CUDA sections
+- [Fatbin Extraction](../input/fatbin-extraction.md) -- How embedded fatbins in host objects are located and extracted
+- [Error Reporting](error-reporting.md) -- `sub_467460` fatal error emission on script generation or validation failure
+- [Memory Arenas](memory-arenas.md) -- Arena allocator (`sub_426AA0`, `sub_431000`) for command string buffer management
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| SECTIONS template string with 3 CUDA sections | HIGH | Exact string at `0x1d34450` in strings JSON: `"SECTIONS\n{\n\t.nvFatBinSegment : { *(.nvFatBinSegment) }\n\t__nv_relfatbin : { *(__nv_relfatbin) } \n\t.nv_fatbin : { *(.nv_fatbin) }\n}\n"` |
+| Template size is 130 bytes (0x82) | MEDIUM | String length matches approximately; the `fwrite` size was inferred from decompiled main() |
+| `-ghls` / `--gen-host-linker-script` option | HIGH | Strings `"gen-host-linker-script"` at `0x1d327fc` and `"Input files are not allowed with -ghls option"` at `0x1d34e80` |
+| `lcs-aug` and `lcs-abs` mode values | HIGH | String `"lcs-aug,lcs-abs"` at `0x1d3282d`; `"lcs-aug"` standalone at `0x1d329bd` |
+| `system()` wrapper at `sub_42FA70` | HIGH | Decompiled: calls `system(v9)` after optional `fprintf(stream, "#$ %s\n", a6)` for verbose trace |
+| Verbose trace prefix `"#$ "` | HIGH | `sub_42FA70` decompiled: `fprintf(stream, "#$ %s\n", a6)` -- exact format |
+| collect2 detection pipeline string | HIGH | Exact string at `0x1d343d8`: `' 2>&1 \| grep collect2  \| grep -wo -e -pie -e "-z [^[:space:]]*" -e "-m [^[:space:]]*" -e -r -e -shared  \| tr "\\n" " "'` |
+| `ld --verbose` extraction command | HIGH | String `"ld --verbose "` at `0x1d3415a` in strings JSON |
+| `ld -T` validation command | HIGH | String `"ld -T "` at `0x1d3416f` |
+| Validation uses `grep 'no input files'` | HIGH | Exact string `" 2>&1 \| grep 'no input files' > /dev/null"` at `0x1d34508` |
+| `--host-ccbin` option for host compiler | HIGH | String `"host-ccbin"` at `0x1d3283d` |
+| `--shared` and `-r` linker flags | HIGH | String `"Percolate the nvcc -shared option"` at `0x1d33ad0`; `-shared` and `-r` in collect2 grep pipeline |
+| Section names `.nvFatBinSegment`, `__nv_relfatbin`, `.nv_fatbin` | HIGH | Individual strings at `0x1d40770`, `0x1d40781`, `0x1d40790` in strings JSON |
+| Consumer function `sub_476D90` validates host ELF sections | HIGH | Decompiled file exists; calls `sub_476EC0` for section-name lookup |
+| Mode variable `dword_2A77DC0` values 1 and 2 | MEDIUM | Inferred from main() decompiled conditional branching; not directly visible as named constant |
+| Signal handler in `sub_42FA70` checks `v10 & 0x7F` for tool termination | HIGH | Decompiled: `if (__OFSUB__((v10 & 0x7F) + 1, 1))` followed by `sub_467460(&unk_2A5BB00, ...)` for signal and `sub_467460(&unk_2A5BB40, ...)` for core dump |

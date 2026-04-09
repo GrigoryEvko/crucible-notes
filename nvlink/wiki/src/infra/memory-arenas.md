@@ -762,3 +762,26 @@ A separate handler at `sub_4B9E70` handles allocation failures in the OCG/ptxas 
 - [Hash Tables](../linker/hash-tables.md) -- LinkerHash used for child-arena tracking and page trees
 - [ELF Parsing](../input/elf-parsing.md) -- per-ELF arenas ("elfw memory space")
 - [Serialization](../elf/serialization.md) -- arena-backed growable buffers
+- **ptxas wiki**: [Memory Pool Allocator](../../../../ptxas/wiki/src/infra/memory-pools.md) -- same two-tier design (7,136-byte pool object, size-class free lists, large-block page lists, per-pool mutex at offset +7128) shared between nvlink and ptxas; nvlink's `sub_4307C0` is the nvlink-specific build of the same allocator as ptxas's `sub_424070`
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| Two-tier arena design (arena_alloc + OCG memspace) | HIGH | Decompiled `sub_4307C0` (10,704 B) and `sub_4882A0` (2,516 B) both exist and match described signatures |
+| Arena control block is 7,136 bytes | HIGH | `sub_432020` calls `sub_4307C0(arena, 7136)` -- literal 7136 visible in decompiled code |
+| Named arenas "nvlink option parser" and "nvlink memory space" | HIGH | Both strings confirmed in `nvlink_strings.json` at `0x1d34123` and `0x1d34138` |
+| "elfw memory space" child arena | HIGH | String confirmed at `0x1d39fa3` in strings JSON |
+| "<anonymous>" fallback name | HIGH | `sub_432020` decompiled code shows `"<anonymous>"` literal when src is NULL; string at `0x1d38688` |
+| Free-list array at offset 2128, 625 buckets | MEDIUM | Offset arithmetic inferred from decompiled `sub_4307C0` index calculations; bucket count derived from `(size & ~7)` formula with max 4,999 |
+| Page-list array at offset 64, 64 entries x 32 bytes | MEDIUM | Derived from decompiled large-block allocation path arithmetic in `sub_4307C0` |
+| Mutex at offset 7128 | HIGH | `sub_432020` writes mutex pointer at `v10[891]` = offset `891 * 8 = 7128`; parent mutex read at `a2 + 7128` |
+| Default page size 0x10000 (64 KB) | HIGH | `sub_432020` decompiled: `v6 = 0x10000` when `!a3` (no hint) |
+| OOM handler calls `sub_467460(&unk_2A5BB70)` | HIGH | `sub_45CAC0` decompiled: directly calls `sub_467460` with `&unk_2A5BB70` |
+| OCG memspace uses 128 size classes, 8-byte granularity | HIGH | `sub_4882A0` decompiled: `v3 = (a2 + 7) >> 3`, check `v3 <= 0x7F` (127) |
+| OCG 1 MB page allocation | HIGH | `sub_4882A0` decompiled: `0x100000` constant visible in new-page path |
+| Debug allocator flag at `byte_2A5BAD0` | MEDIUM | Referenced in decompiled `sub_4307C0` but exact debug-mode paths are complex to trace |
+| Emergency page reserve mechanism | MEDIUM | `dword_2A5F384` and `qword_2A5F390` referenced in null-arena path of `sub_4307C0` |
+| Arena stats format strings | HIGH | Strings "Nrof small block pages", "Nrof large block pages", "Total allocated", "@@ small block size" all confirmed in strings JSON |
+| OCG stats format "Memory space statistics for 'OCG mem space'" | HIGH | Exact string at `0x1d40fd8` in strings JSON |
+| Shared allocator design with ptxas | HIGH | ptxas `sub_424070` pool object is also 7,136 bytes with identical layout (offset +2128 free lists, +7128 mutex); same size-class formula |

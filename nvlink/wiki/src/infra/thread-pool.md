@@ -333,3 +333,42 @@ There is no spurious-wakeup protection beyond the while-loop re-check of the pre
 | Address | Name | Type | Description |
 |---|---|---|---|
 | `dword_2A5B514` | `split_compile_extended` | `int` | Thread count for extended split compile. 0 = auto-detect, 1 = single-threaded (no pool created), N > 1 = N workers |
+
+## Cross-References
+
+**Internal (nvlink wiki):**
+
+- [Split Compilation](../lto/split-compilation.md) -- The LTO split-compile pipeline that is the sole consumer of the thread pool, including work item layout and the `split_compile_worker` function
+- [LTO Overview](../lto/overview.md) -- High-level LTO pipeline diagram showing where multi-threaded PTX-to-SASS assembly fits
+- [Pipeline Entry](../pipeline/entry.md) -- `main()` thread pool lifecycle at lines ~1208--1286 of the decompiled output
+- [Memory Arenas](memory-arenas.md) -- Arena allocator thread safety: the queue uses arena allocation while task nodes use `malloc`/`free`
+- [Error Reporting](error-reporting.md) -- Per-thread TLS diagnostic state (`sub_44F410`) that the thread pool workers inherit
+- [CLI Flags](../config/cli-flags.md) -- `-split-compile-extended=N` option controlling thread count
+
+**Sibling wikis:**
+
+- [ptxas: Threading](../../../ptxas/wiki/src/infra/threading.md) -- ptxas has a structurally identical thread pool (`sub_1CB18B0`, 184-byte pool struct, 24-byte task nodes, `pthread_detach` + condition-variable shutdown) used for parallel kernel compilation
+- [ptxas: Memory Pools](../../../ptxas/wiki/src/infra/memory-pools.md) -- ptxas memory pool allocator that parallels nvlink's arena system
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| Pool control block is 184 bytes (0xB8) via `calloc(1, 0xB8)` | HIGH | `sub_43FDB0` decompiled: `calloc(1u, 0xB8u)` -- exact match |
+| Thread array is `calloc(nmemb, 0x10)` (16 bytes per thread) | HIGH | `sub_43FDB0` decompiled: `calloc(nmemb, 0x10u)` |
+| `thread_count` at offset 168 (QWORD index 21) | HIGH | `sub_43FDB0`: `*((_QWORD *)v1 + 21) = nmemb` -- offset `21 * 8 = 168` |
+| `pending_count` at offset 16 (DWORD index 4) | HIGH | `sub_43FDB0`: `*((_DWORD *)v1 + 4) = 0` -- offset `4 * 4 = 16`; `sub_43FF50` increments `*(_DWORD *)(a1 + 16)` |
+| Mutex at offset 24, task_cond at 64, done_cond at 112 | HIGH | `sub_43FDB0`: `pthread_mutex_init(v1 + 24)`, `pthread_cond_init(v1 + 64)`, `pthread_cond_init(v1 + 112)` |
+| Shutdown flag at offset 176 (byte) | HIGH | `sub_43FE70` (destroy): `ptr[176] = 1`; `start_routine`: `if (a1[176])` |
+| `active_count` at offset 160 | HIGH | `sub_43FFE0` (wait): `if (!*(_QWORD *)(a1 + 160))` break when not shutdown |
+| Workers are detached via `pthread_detach` | HIGH | `sub_43FDB0` loop: `pthread_create` then `pthread_detach(v4)` |
+| Task nodes are 24 bytes via `malloc(0x18)` | HIGH | `sub_43FF50`: `v4 = malloc(0x18u)` -- exact match |
+| `pthread_cond_broadcast` on submit | HIGH | `sub_43FF50`: `pthread_cond_broadcast((pthread_cond_t *)(a1 + 64))` |
+| `pthread_cond_signal` on done_cond | HIGH | `start_routine`: `pthread_cond_signal(v1)` where `v1 = a1 + 112` |
+| `thread_pool_get_nproc` returns `sysconf(83)` | HIGH | `sub_43FD90` decompiled: `return sysconf(83);` -- exact one-liner |
+| `-split-compile-extended` CLI option | HIGH | Strings `"-split-compile-extended=%d"` at `0x1d32268` and `"-split-compile-extended"` at `0x1d32283` |
+| "Unable to create thread pool" error message | HIGH | String at `0x1d342db` in strings JSON |
+| Task queue uses `sub_43FC70` comparator (always returns 1) | HIGH | `sub_43FDB0`: `sub_44DC60(sub_43FC70, 0)` passes comparator function; `sub_43FC70` is an 8-byte function |
+| Priority queue struct is 32 bytes, arena-allocated | MEDIUM | `sub_44DC60` allocates from arena; 32-byte size inferred from field layout |
+| FIFO behavior from always-true comparator | MEDIUM | Logical deduction from heap sift-up/sift-down behavior when comparator always returns 1; insertion-order preservation validated by analysis |
+| Shared design with ptxas thread pool | HIGH | ptxas `sub_1CB18B0` has identical 184-byte struct, same `pthread_detach` pattern, same 24-byte task nodes, same condition-variable protocol |

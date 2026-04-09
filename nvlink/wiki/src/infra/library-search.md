@@ -520,3 +520,23 @@ Every string allocation in the search subsystem goes through the arena allocator
 - [Input File Loop](../pipeline/input-loop.md) -- consumes the resolved input file list
 - [Memory Arenas](memory-arenas.md) -- `sub_4307C0` / `sub_431000` arena allocator used throughout
 - [Error Reporting](error-reporting.md) -- `sub_467460` diagnostic emission
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| Search context is 16 bytes with self-referencing tail pointer | HIGH | `sub_4622D0` decompiled: `sub_4307C0(v2, 16)`, then `*result = 0; result[1] = result` -- self-reference confirmed |
+| `search_context_append` at `sub_462500` takes `(ctx, path)` | HIGH | Decompiled: `sub_464460(a2, 0)` then `**(_QWORD **)(a1 + 8) = result; *(_QWORD *)(a1 + 8) = result` |
+| `search_context_append_cb` at `sub_462520` swaps argument order `(path, ctx)` | HIGH | Decompiled: `sub_464460(a1, 0)` then operates on `a2` -- argument swap confirmed |
+| `make_library_filename` uses DWORD trick `0x0062696C` for "lib" | HIGH | `sub_429AA0` decompiled: `*(_DWORD *)v4 = 6449516` which is `0x62696C` = `"lib\0"` little-endian |
+| `.so` suffix via DWORD `0x006F732E` | HIGH | `sub_429AA0` decompiled: `*(_DWORD *)stpcpy(v8, v5) = (_DWORD)&loc_6F732E` -- address encodes `.so\0` |
+| `.a` suffix via `strcpy` | HIGH | `sub_429AA0` decompiled: `strcpy(stpcpy(v8, v5), ".a")` |
+| `path_search` at `sub_462870` (4,905 B) iterates directories with `stat()` | HIGH | Decompiled function exists (large, matches described size); uses `stat` for existence check |
+| CPU architecture mapping: `X86_64`=62, `X86`=3, `ARMv7`=40, `AARCH64`=183, `PPC64LE`=21 | HIGH | String `"unknown,X86,X86_64,ARMv7,AARCH64,PPC64LE"` at `0x1d332f0`; individual arch strings at `0x1d33fe5`--`0x1d33ffa` |
+| `"unexpected cpuArch"` error message | HIGH | String at `0x1d34002` in strings JSON |
+| `cudadevrt` suppression for arch mismatch warnings | HIGH | String `"found IR for libcudadevrt"` at `0x1d340a8`; `strstr` check visible in decompiled `sub_42A2D0` |
+| `LIBRARY_PATH` environment variable used for search path | MEDIUM | Wiki says `LIBRARY_PATH` but strings JSON only shows `LD_LIBRARY_PATH` at `0x225fcda`; the actual `getenv` call target needs verification against decompiled main |
+| String tokenizer at `sub_44EC40` (576 B) with `sub_44E8B0` (4,780 B) | HIGH | Both decompiled files exist with matching sizes; `sub_44EC40` calls `sub_44E8B0` in a loop |
+| Tail-pointer linked list idiom | HIGH | Confirmed by `sub_4622D0` decompiled code: `result[1] = result` is the self-referencing tail initialization |
+| Two-pass search strategy (stat-only then archive validation) | MEDIUM | Inferred from main() call pattern; `sub_462870` signature supports optional callback parameter |
+| `--cpu-arch` option string | HIGH | String `"cpu-arch"` at `0x1d326cd` in strings JSON |
