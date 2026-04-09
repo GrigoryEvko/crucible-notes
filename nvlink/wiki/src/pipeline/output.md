@@ -136,7 +136,7 @@ Mode 3 is constructed by `sub_45B950` (for `sub_45C920`). It opens the output FI
 
 Mode 2 uses a growable vector backed by arena-allocated chunks. The `sub_44FC10` (vector\_append) function manages this: each chunk is a 24-byte header (`capacity`, `remaining`, `data_ptr`) linked into a list. When the current chunk cannot hold the incoming write, a new chunk is allocated (sized to at least the vector's default chunk size or the write size, whichever is larger), the data is copied, and the chunk is appended to the list. The linker context's total byte count at offset `+8` of the vector is incremented after each write.
 
-Mode 1 (no-op) is never explicitly constructed in the observed output paths but exists as a valid mode in the switch -- likely used internally for dry-run size estimation.
+Mode 1 (no-op) is never explicitly constructed in the observed output paths but exists as a valid mode in the switch. Its purpose is not determined from the decompiled code; it may serve as a dry-run size estimation mode or a placeholder for an unused output target.
 
 ### Writer Cleanup: sub\_45B6A0
 
@@ -192,15 +192,15 @@ for (k = 0; k < pad_count; k++)
     write(0x00);                          // zero fill
 ```
 
-### Phase 5: Program Headers
+### Phase 5: Symbol Table (.symtab)
 
-Program headers are stored in the ordered list at `elfw+344`. Each entry is 16 bytes for ELF32, 24 bytes for ELF64 (the raw `Elf_Phdr` size stored in these nvlink internal structures -- note that standard ELF `Phdr` is 32/56 bytes; these are compacted internal representations). The function writes them sequentially:
+The positive symbol array at `elfw+344` is serialized as the `.symtab` section content. Each entry is 24 bytes for ELF64 (`Elf64_Sym`) or 16 bytes for ELF32 (`Elf32_Sym`). The internal `SymbolRecord` layout is arranged so that its leading bytes already match the ELF-standard `Sym` on-disk format:
 
 ```
-phdr_size = (elf_class == 2) ? 24 : 16;   // per-entry size in internal format
-for (p = 0; p < list_size(elfw->phdr_list); p++)
-    write(phdr_list[p], phdr_size);
-    running_offset += phdr_size;
+sym_entry_size = (elf_class == 2) ? 24 : 16;
+for (p = 0; p < sorted_array_count(elfw->pos_symbol_array); p++)  // elfw+344
+    write(pos_symbol_array[p], sym_entry_size);
+    running_offset += sym_entry_size;
 ```
 
 ### Phase 6: Section Data
@@ -413,3 +413,57 @@ Two additional error conditions exist in `sub_45BF00`:
 | `0x44CCF0` | `callgraph_dump_dot` | Writes callgraph in Graphviz DOT format |
 | `0x4275C0` | `fnlzr_post_link` | FNLZR post-link binary rewriter dispatch |
 | `0x4748F0` | `fnlzr_engine` | FNLZR engine entry point (called by `sub_4275C0`) |
+| `0x45CAC0` | `fatal_alloc_failure` | Trivial wrapper: fatal error on buffer allocation failure |
+| `0x43DA80` | `compute_elf_extent` | Computes total byte extent of ELF image from headers |
+| `0x462C10` | `path_decompose` | Splits path into directory and basename components |
+| `0x462550` | `path_reassemble` | Reassembles path with new extension suffix |
+| `0x43D990` | `release_elf_wrapper` | Frees pre-FNLZR ELF wrapper after transform |
+
+## See Also
+
+- [Pipeline Overview](overview.md) -- Phase 13 in the full pipeline sequence
+- [Finalization Phase](finalize.md) -- the preceding phase that produces a serialization-ready ELF
+- [Entry Point & Main](entry.md) -- `main()` orchestrating the Mercury vs non-Mercury output path
+- [Mercury / FNLZR](../mercury/fnlzr.md) -- the FNLZR post-link binary rewriter for sm >= 100
+- [Capsule Mercury Format](../mercury/capmerc-format.md) -- the output format produced by FNLZR
+- [ELF Serialization](../elf/serialization.md) -- the ELF byte-level format written by `serialize_elf`
+- [Device ELF Format](../elf/device-elf-format.md) -- `e_ident`, `e_type`, `e_machine` fields in the output header
+- [Program Headers](../elf/program-headers.md) -- PHDR table written by `sub_45BAA0`
+- [ELF Writer Structure](../structs/elf-writer.md) -- the `elfw` object consumed by serialization
+- [Mode Dispatch](mode-dispatch.md) -- how mode 1/2 produces linker scripts instead of ELF
+- [Dead Code Elimination](../linker/dead-code-elimination.md) -- callgraph used by `--dot-file` output
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| `sub_45BF00` (serialize_elf), 13,258 B, 532 lines | **HIGH** | `stat -c%s` = 13,258; `wc -l` = 532 |
+| `sub_45B6D0` (elf_write polymorphic writer), 5 modes | **HIGH** | Decompiled switch-case at `sub_45B6D0` shows exactly modes 0--4 with matching semantics |
+| `sub_45BAA0` (program header emitter), 5,657 B, 228 lines | **HIGH** | `stat -c%s` = 5,657; `wc -l` = 228 |
+| `sub_45C920` (write_elf_to_file) | **HIGH** | `decompiled/sub_45C920_0x45c920.c` exists |
+| `sub_45C950` (write_elf_to_memory) | **HIGH** | `decompiled/sub_45C950_0x45c950.c` exists |
+| `sub_45C980` (compute_elf_size) | **HIGH** | `decompiled/sub_45C980_0x45c980.c` exists (40 lines) |
+| `sub_44CCF0` (callgraph_dump_dot) | **HIGH** | `decompiled/sub_44CCF0_0x44ccf0.c` exists |
+| `sub_4275C0` (fnlzr_post_link), 3,989 B | **HIGH** | `stat -c%s` = 3,989 bytes |
+| `"writing file"` error string | **HIGH** | String at `0x1d3b828` in `nvlink_strings.json` |
+| `"Negative size encountered"` error string | **HIGH** | String at `0x1d3b84c` in `nvlink_strings.json` |
+| `" section size mismatch"` error string | **HIGH** | String at `0x1d3b835` in `nvlink_strings.json` |
+| `"digraph callgraph {"` DOT output | **HIGH** | String at `0x1d3ac2f` in `nvlink_strings.json` |
+| `"DEFINE_REGISTER_FUNC(%s)"` macro output | **HIGH** | String at `0x1d34399` in `nvlink_strings.json` |
+| `"FNLZR: Post-Link Mode"` verbose string | **HIGH** | String at `0x1d32397` in `nvlink_strings.json` |
+| `"FNLZR: Starting %s"` verbose string | **HIGH** | String at `0x1d323ed` in `nvlink_strings.json` |
+| `"FNLZR: Ending %s"` verbose string | **HIGH** | String at `0x1d32401` in `nvlink_strings.json` |
+| `"in-memory-ELF-image"` buffer name | **HIGH** | String at `0x1d3236d` in `nvlink_strings.json` |
+| `"_cuda_device_runtime_"` substring check | **HIGH** | String at `0x1d34383` in `nvlink_strings.json` |
+| `"sass.cubin"` / `"capmerc.cubin"` suffix strings | **HIGH** | Strings at `0x1d33f9e` and `0x1d33fa9` in `nvlink_strings.json` |
+| Host linker script `SECTIONS { .nvFatBinSegment ... }` | **HIGH** | Exact section block found at `0x1d34450` in `nvlink_strings.json` |
+| `"ld --verbose"` for script generation | **HIGH** | String at `0x1d3415a` in `nvlink_strings.json` |
+| `"collect2"` pipeline for flag extraction | **HIGH** | String at `0x1d343d8` with grep pipeline in `nvlink_strings.json` |
+| Writer mode 3 = FILE*, mode 4 = memcpy | **HIGH** | Verified in `sub_45B6D0` decompiled code: case 3 calls `fwrite`, case 4 calls `memcpy` with advancing pointer |
+| Writer mode 0 = callback, 1 = no-op, 2 = vector | **HIGH** | Case 0 uses indirect call, case 1 returns `a3` (size), case 2 calls `sub_44FC10` (vector_append) |
+| Mercury path: compute size, serialize to buffer, FNLZR, fwrite | **HIGH** | Sequence visible in `main_0x409800.c`: `sub_45C980` -> `sub_45C950` -> `sub_4275C0` -> `fwrite` |
+| Writer context layout (40 bytes) | **MEDIUM** | Inferred from field accesses at offsets +0, +8, +16, +24, +32 in `sub_45B6D0` and constructors |
+| Size computation constants (128 / 224 bytes for phdr space) | **MEDIUM** | Values visible in `sub_45C980` decompiled code; interpretation as `4 * 32` and `4 * 56` is editorial |
+| Serialization order (9 phases: header, shstrtab, strtab, padding, phdrs, sections, post-padding, shdrs, phdr table) | **MEDIUM** | Ordering matches decompiled control flow in `sub_45BF00`; phase boundaries are editorial grouping |
+| `sub_4748F0` is the FNLZR engine entry point | **HIGH** | Called from `sub_4275C0` in decompiled code |
+| All 21 function addresses in the function reference table | **HIGH** | All verified to exist in `decompiled/` directory |

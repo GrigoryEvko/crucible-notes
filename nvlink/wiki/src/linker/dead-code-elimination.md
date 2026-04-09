@@ -681,7 +681,7 @@ The in-memory section table has four sections marked dead (flag byte bit 0 set, 
 
 ### Remap Table Construction (`elfw+456` / `elfw+464`)
 
-After DCE, the layout phase walks the section array at `ctx+360` in order and assigns each surviving section a new dense index. For each old-index *i*, it writes `(ctx+456)[i] = new_i` where `new_i` is the compacted index, or 0 for sections that were killed. The parallel array at `ctx+464` handles negative section IDs (which refer to the separate negative-index vector at `ctx+352`, used for synthesized sections that are created late in the pipeline).
+After DCE, the layout phase walks the section array at `ctx+360` in order and assigns each surviving section a new dense index. For each old-index *i*, it writes `(ctx+456)[i] = new_i` where `new_i` is the compacted index, or 0 for sections that were killed. The parallel array at `ctx+464` handles negative symbol indices (which refer to the negative symbol array at `ctx+352`, used for symbols created late in the pipeline such as synthesized stubs).
 
 Before Phase 1 runs, both remap pointers are NULL -- `sub_4411F0` and `sub_440350` check `a1[57]` / `*(a1+456)` and return the input unchanged when the table does not exist yet. After DCE, the layout phase allocates the arrays and fills them based on the surviving sections.
 

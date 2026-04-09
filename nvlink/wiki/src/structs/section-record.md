@@ -107,7 +107,7 @@ uint32_t section_create(elfw *ctx, const char *name, uint32_t sh_type,
 7. **Automatic relocation section creation** (conditional): If all three conditions are met:
    - Link mode is not relocatable (`ctx+16 != 1`)
    - DCE flag is set (`byte ctx+83`)
-   - Section type is in the CUDA constant range (`0x70000064` through `0x7000007E`) or is `SHT_CUDA_COMPAT` (`0x70000006`)
+   - Section type is in the CUDA constant range (`0x70000064` through `0x7000007E`) or is `SHT_CUDA_CONSTANT` (`0x70000006`)
 
    Then the function queries whether a companion relocation section already exists. It builds the name via `sprintf(buf, ".rela%s", name)` or `sprintf(buf, ".rel%s", name)` depending on the RELA flag at `byte ctx+89`. If no companion exists, it recursively calls itself to create one:
 
@@ -291,7 +291,7 @@ During the finalization phase (`sub_445000`), all sections are sorted into canon
 |---|---|---|---|
 | 0 | Lowest | `SHT_NULL` | Null section (index 0) |
 | 1 | — | `SHT_PROGBITS` with no allocation flags | Non-allocated data |
-| 2 | — | `SHT_RELA` (4), `SHT_HASH` (9), `SHT_CUDA_HASH` (0x70000003) | Relocation/hash tables |
+| 2 | — | `SHT_RELA` (4), `SHT_REL` (9), `SHT_CUDA_RESOLVED_RELA` (0x70000003) | Relocation tables |
 | 3 | — | `SHF_ALLOC` flag set (no exec, no write) | Read-only allocated |
 | 4 | — | `SHF_EXECINSTR` flag set | Executable code (.text) |
 | 5 | — | `SHF_WRITE` flag set | Writable data |
@@ -373,7 +373,7 @@ The automatic `.rela`/`.rel` creation in `sub_441AC0` deserves special attention
 
 1. **Not relocatable mode**: `elfw+16 != 1` (the output is a final executable, not a `.o`).
 2. **DCE is active**: `byte elfw+83` is set.
-3. **Section type is in the constant bank range**: `(sh_type - 0x70000064) <= 0x1A` (covers `SHT_CUDA_CONSTANT0` through `SHT_CUDA_CONSTANT17` plus nearby types) or `sh_type == 0x70000006` (`SHT_CUDA_COMPAT`).
+3. **Section type is in the constant bank range**: `(sh_type - 0x70000064) <= 0x1A` (covers `SHT_CUDA_CONSTANT0` through `SHT_CUDA_CONSTANT17` plus nearby types) or `sh_type == 0x70000006` (`SHT_CUDA_CONSTANT`, the generic constant base type).
 
 Additionally, within that check, the function calls a virtual method at `ctx+488 + 296` to verify that the architecture profile supports relocations for this section type. Two more virtual calls at offsets 304 and 312 check whether the section type matches the profile's relocation section type.
 
@@ -473,3 +473,69 @@ For section names, mode 0 is used with string hash/compare. The hash function pr
 - [NVIDIA Section Types](../elf/nvidia-sections.md) -- catalog of all CUDA-specific `sh_type` values
 - [Device ELF Format](../elf/device-elf-format.md) -- the overall ELF structure that section records describe
 - [Hash Tables](../linker/hash-tables.md) -- the hash table infrastructure used for section and symbol name lookup
+
+## Confidence Assessment
+
+Each claim below was verified against decompiled functions (`sub_441AC0`, `sub_442270`, `sub_433760`, `sub_4438F0`, `sub_4475B0`), string references in `nvlink_strings.json`, and raw research report W083. Re-verified in P050b pass (2026-04-09).
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| Section record size = 104 bytes | HIGH | `sub_441AC0` calls `sub_4307C0(v14, 104)` followed by 104-byte memset; same allocation in `sub_4438F0` for null section |
+| Constructor at `0x441AC0` | HIGH | Decompiled file `sub_441AC0_0x441ac0.c` exists |
+| Accessor at `0x442270` | HIGH | Decompiled file `sub_442270_0x442270.c`; 20-line virtual-map-aware accessor |
+| Data append at `0x433760` | HIGH | Decompiled file `sub_433760_0x433760.c`; exact logic verified |
+| Arena allocation via `sub_4307C0` | HIGH | All allocations use this path |
+| `sh_type` at offset 0 (uint32) | HIGH | `*(_DWORD *)v19 = v27` (reused path); else retained from zero-init |
+| `sh_type_ext` at offset 4 (uint32 from arg a3) | HIGH | `*((_DWORD *)v19 + 1) = a3` in both new and reuse paths |
+| `sh_flags` at offset 8 (qword from arg a4) | HIGH | `v19[1] = v29` where `v29 = v95 = a4` |
+| `sh_flags` semantics (SHF_ALLOC/WRITE/EXECINSTR) | HIGH | `if (*(_BYTE *)(a1 + 81) && (v95 & 4) != 0)` checks `SHF_EXECINSTR` bit |
+| Reserved qword at offset 16 | MEDIUM | Zero-initialized by memset; not explicitly written in constructor. Purpose unverified |
+| `sh_offset` at offset 24 (qword) | MEDIUM | Zero-init; semantic "file offset assigned during serialization" is inferred consistency with Elf64_Shdr |
+| `sh_size` at offset 32 (qword) | HIGH | `v9[4]` in `sub_433760` read/written as section size: `v16 = v9[4]; v9[4] = v16 + a5` |
+| `sh_info` at offset 40 (uint32) | HIGH | `*((_DWORD *)v19 + 10) = v93 = a5` (dword 10 = byte 40) |
+| `sh_link` at offset 44 (uint32) | HIGH | `*((_DWORD *)v19 + 11) = v94 = a6` |
+| `sh_addralign` at offset 48 (qword) | HIGH | `v19[6] = a7` in constructor; `*(_QWORD *)(result + 48)` updated in `sub_433760` |
+| `sh_entsize` at offset 56 (qword) | HIGH | `v19[7] = a8` in constructor |
+| `section_index` at offset 64 (uint32) | HIGH | `*((_DWORD *)v19 + 16) = v29` where `v29 = *(_DWORD *)(a1 + 584) + 1` |
+| Counter at `elfw+584` | HIGH | `LODWORD(v29) = *(_DWORD *)(a1 + 584) + 1; *(_DWORD *)(a1 + 584) = v29;` |
+| Padding at offset 68 | MEDIUM | Natural alignment gap; not assigned in constructor |
+| `data_list_head` at offset 72 | HIGH | `v9[9]` in `sub_433760`; `if (v9[9] == 0) sub_4644C0(v15, v9 + 9)` |
+| `data_list_tail` at offset 80 | HIGH | `v9[10]` in `sub_433760`; used for O(1) append |
+| Reserved qword at offset 88 | MEDIUM | Zero-init; not assigned in observed paths |
+| `name_ptr` at offset 96 | HIGH | `v19[12] = v28` (reuse path) or `v19[12] = v66` (new path via strcpy) |
+| Data node size = 40 bytes | HIGH | `sub_4307C0(v10, 40)` in `sub_433760` |
+| Data node: source_data at offset 0 | HIGH | `*v15 = a3` (a3 = source data pointer) |
+| Data node: offset field at offset 8 (qword) | HIGH | `v15[1] = v16` where `v16` is aligned section size |
+| Data node: alignment at offset 16 (qword) | HIGH | `v15[2] = v7` where `v7 = a4` (alignment arg) |
+| Data node: data_size at offset 24 (qword) | HIGH | `v15[3] = a5` |
+| Data node: next_ptr at offset 32 | HIGH | First OWORD zero-inits bytes 8-23 (offset+alignment), then `*(_OWORD *)(v15 + 3) = 0` clears bytes 24-39. Tail linkage: `sub_4644C0(v15, v9 + 9)` |
+| Callgraph guard byte at `elfw+81` | HIGH | `if (*(_BYTE *)(a1 + 81) && (v95 & 4) != 0)` in `sub_441AC0` |
+| String `"adding function section after callgraph completed"` | HIGH | Found at line 12357 in `nvlink_strings.json` |
+| Virtual section flag byte at `elfw+82` | HIGH | `if (*(_BYTE *)(a1 + 82))` in both `sub_441AC0` and `sub_442270` |
+| DCE flag byte at `elfw+83` | HIGH | `*(_BYTE *)(a1 + 83)` check controls companion-reloc creation |
+| Virtualization table at `elfw+472` | HIGH | `*(_QWORD *)(a1 + 472) + 4LL * v11` in `sub_441AC0` virtual check |
+| Reverse map at `elfw+368` | HIGH | `*(_QWORD *)(a1 + 368)` = `v7` in `sub_442270` |
+| Section vector at `elfw+360` | HIGH | `sub_464C30(v19, *(_QWORD *)(a1 + 360))` appends to section vector |
+| Section name hash at `elfw+296` | HIGH | `v12 = *(_QWORD *)(a1 + 296); v13 = sub_449A80(v12, a2);` |
+| Counter `sec_name_count` at `elfw+312` | HIGH | `++*(_DWORD *)(a1 + 312);` on new name |
+| `secidx not virtual` fatal error | HIGH | String found at line 12185 in `nvlink_strings.json`; exact call in `sub_441AC0`/`sub_442270` |
+| `tail data node not found` fatal error | HIGH | String found at line 9729 in `nvlink_strings.json`; fires when `v9[10] == 0` in `sub_433760` |
+| Arch vtable virtual calls at offsets 296/304/312 | HIGH | `(*(__int64 (**)(void))(*(_QWORD *)(a1 + 488) + 296LL))()` verified exactly |
+| Constant-range relocation creation gate (0x70000064 -- 0x7000007E) | HIGH | `(unsigned int)(a3 - 1879048292) <= 0x1A` where `1879048292 = 0x70000064` and `+ 0x1A = 0x7000007E` |
+| SHT_CUDA_CONSTANT (0x70000006) as alternate relocation type | HIGH | `|| a3 == 1879048198` where `1879048198 = 0x70000006` (generic constant base type, NOT SHT_CUDA_COMPAT which is 0x70000086) |
+| RELA vs REL gate via byte at `elfw+89` | HIGH | `if (*(_BYTE *)(a1 + 89)) sprintf(v91, ".rela%s", a2);` |
+| `.rela<name>` and `.rel<name>` companion names | HIGH | Exact `sprintf` format strings |
+| Relocatable-mode gate (`*(_WORD *)(a1 + 16) != 1`) | HIGH | `if (*(_WORD *)(a1 + 16) != 1 && *(_BYTE *)(a1 + 83) && ...)` |
+| Companion section links to symtab at `elfw+204` (word) | MEDIUM | Wiki claims `ctx+204`. Decompiled code shows `*((_WORD *)v17 + 102) = v63` after `.symtab` creation, which is byte offset 204. Confirmed via `sub_4438F0` analysis |
+| 12-byte hash entry for section name | HIGH | `sub_4307C0(v56, 12)` + zero-init |
+| `SHN_XINDEX` (0xFFFF) handling | HIGH | Same logic as symbol record; extended tables at `elfw+592`/+600 |
+| 8-bucket counting sort during finalization | MEDIUM | Described in wiki but exact `sub_445000` counting-sort code not verified in this pass |
+| Bucket classification rules (SHT_NULL, SHT_PROGBITS, etc.) | LOW | Descriptive order asserted; bucket boundaries not directly verified against decompiled counting sort |
+| 0xFF00 section count overflow -> e_shnum=0, shdr[0].sh_size | MEDIUM | Consistent with ELF spec (`SHN_LORESERVE`); exact assignment site not verified in this pass |
+| String `"overflow number of sections %d"` | MEDIUM | Claimed to be verbose diagnostic; presence in binary not directly verified in this pass |
+| Lifecycle: creation -> merge -> layout -> finalize | HIGH | Correct pipeline order matches `main()` dispatch |
+| `sub_4411F0` (section_copy) at 12,184 bytes | HIGH | Function address and size verifiable from binary |
+| `sub_464C30` (vector append) and `sub_464DB0` (vector get) | HIGH | Used throughout constructor and accessor paths |
+| Callgraph function counter at `elfw+416` | HIGH | Cross-verified from `sub_440BE0` increment path |
+| Positive symbol array at `elfw+344`, negative symbol array at `elfw+352` | HIGH | Cross-verified via `sub_440590` dispatch: `a2 < 0` selects +352, else +344 |
+| Mode 0/1/2 hash table comparison | MEDIUM | Described behavior consistent with `sub_4489C0` hash-mode parameter but not fully traced in this pass |

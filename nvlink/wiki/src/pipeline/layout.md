@@ -62,9 +62,9 @@ Key fields accessed on the elfw object `a1`:
 | `+264` | `list*` | Extern shared memory section list |
 | `+272` | `list*` | Per-entry constant bank section list |
 | `+280` | `list*` | Per-entry local data section list |
-| `+344` | `vec*` | Local symbol vector |
-| `+352` | `vec*` | Global symbol vector |
-| `+360` | `vec*` | All-symbols vector |
+| `+344` | `vec*` | Positive symbol array (symbols with index >= 0) |
+| `+352` | `vec*` | Negative symbol array (symbols with index < 0) |
+| `+360` | `vec*` | Section array (all section records) |
 | `+376` | `list*` | Relocation record list |
 | `+424` | `list*` | Texture descriptor list |
 | `+432` | `list*` | Sampler descriptor list |
@@ -474,6 +474,292 @@ Output state (after layout):
   relocations          -- targets rewritten for constant overlap/merge
 ```
 
+## Worked Example: Section Layout Computation
+
+This example traces a single invocation of `sub_439830` on a small merged ELF with two kernels and demonstrates exactly how each byte offset is produced. All arithmetic matches the decompiled control flow of `sub_4325A0` (section layout engine) and `sub_433760` (data-copy primitive).
+
+### Setup: Input Merged ELF
+
+After the merge phase (`sub_45E7D0`), the `elfw` object holds the following sections. Section sizes are the totals accumulated during merge; the per-symbol offsets *within* each section are what the layout phase is about to compute or re-compute.
+
+| Section | Type | Size | Align | Flags | Purpose |
+|---|---|---|---|---|---|
+| `.text.kernel_a` | `SHT_PROGBITS` | 2048 B | 128 | AX | SASS for `kernel_a` |
+| `.text.kernel_b` | `SHT_PROGBITS` | 1024 B | 128 | AX | SASS for `kernel_b` |
+| `.nv.constant0.kernel_a` | `SHT_PROGBITS` (cbank0) | 256 B | 4 | A | Driver param bank (kernel_a) |
+| `.nv.constant0.kernel_b` | `SHT_PROGBITS` (cbank0) | 128 B | 4 | A | Driver param bank (kernel_b) |
+| `.nv.constant2` | `SHT_PROGBITS` (cbank2) | 4096 B | 16 | A | User const bank, shared between both kernels |
+| `.nv.shared.kernel_a` | `SHT_NOBITS` (smem) | 128 B | 16 | AW | Per-entry shared for `kernel_a` |
+| `.nv.shared` | `SHT_NOBITS` (smem) | -- | 8 | AW | Two globals: `g_tmp` (64 B, align 8) and `g_hist` (96 B, align 16) |
+
+Both kernels contain `R_CUDA_ABS32_LO_20` relocations into `.nv.shared` (global shared variables `g_tmp` and `g_hist`) and `R_CUDA_CONST_FIELD` relocations into `.nv.constant2`. `.nv.constant0.kernel_a` contains three symbols and `.nv.constant0.kernel_b` contains two, both split out during merge (Phase 9a's OCG path).
+
+The relevant `elfw` field state at the start of layout:
+
+```
+elfw+90  (no_opt_flag)     = 0     -- optimizer enabled
+elfw+80  (EWP flag)        = 0     -- no early-write-pass
+elfw+16  (link_mode)       = 0     -- final link, not -r
+elfw+228 (.nv.shared idx)  = 14    -- global shared exists
+elfw+256 (per-entry smem)  = list{.nv.shared.kernel_a}
+elfw+272 (per-entry cbank) = list{.nv.constant0.kernel_a, .nv.constant0.kernel_b, .nv.constant2}
+```
+
+### Step 1: Per-Section Symbol Offsets (`sub_4325A0`)
+
+The layout engine is called on each data-bearing section. `.text.*` sections are **not** touched by `sub_439830` -- they hold fully resolved SASS after merge and have stable internal layout. Only shared/constant/global data sections have their symbol offsets reassigned.
+
+#### Step 1a: `.nv.constant0.kernel_a` (Phase 9b)
+
+Symbol list after merge (in insertion order):
+
+| Symbol | Size | Align |
+|---|---|---|
+| `__cudaparm_kernel_a_ptr_out` | 8 | 8 |
+| `__cudaparm_kernel_a_count` | 4 | 4 |
+| `__cudaparm_kernel_a_scale` | 4 | 4 |
+| `__cudaparm_kernel_a_bias` | 4 | 4 |
+| `__cudaparm_kernel_a_mode` | 4 | 4 |
+
+`sub_4325A0` first calls `sub_4647D0(section+72, sub_432440)` to stable-sort by alignment (decreasing). The list becomes `{ptr_out, count, scale, bias, mode}` (unchanged here -- insertion was already sorted). It then walks the list:
+
+```
+current = 0
+ptr_out: align=8   -> roundup(0,8)=0    -> value=0,  current=0+8=8
+count:   align=4   -> roundup(8,4)=8    -> value=8,  current=8+4=12
+scale:   align=4   -> roundup(12,4)=12  -> value=12, current=12+4=16
+bias:    align=4   -> roundup(16,4)=16  -> value=16, current=16+4=20
+mode:    align=4   -> roundup(20,4)=20  -> value=20, current=20+4=24
+```
+
+Stored back: `section+32 (total_size) = 24`. Verbose trace: `variable __cudaparm_kernel_a_ptr_out at offset 0` etc. The driver will later prepend the built-in 0x160-byte `gridDim/blockDim/...` header at runtime, so these user-visible offsets start at 0.
+
+#### Step 1b: `.nv.constant0.kernel_b` (Phase 9b)
+
+Symbol list:
+
+| Symbol | Size | Align |
+|---|---|---|
+| `__cudaparm_kernel_b_ptr_in` | 8 | 8 |
+| `__cudaparm_kernel_b_ptr_out` | 8 | 8 |
+| `__cudaparm_kernel_b_n` | 4 | 4 |
+
+Walk:
+
+```
+current = 0
+ptr_in:  align=8 -> value=0,  current=8
+ptr_out: align=8 -> value=8,  current=16
+n:       align=4 -> value=16, current=20
+```
+
+`section+32 = 20`. Note: the section's internal size is the tight 20, but the section's own `sh_addralign` will be promoted to 8 (the max symbol alignment seen) by the line `if (v11 > *(_QWORD *)(a2 + 48)) *(_QWORD *)(a2 + 48) = v11;` in `sub_4325A0`.
+
+#### Step 1c: `.nv.constant2` (Phase 9b, shared user cbank)
+
+This section is referenced by **both** kernels, so it is laid out as a single unified bank. Symbols (post-merge, after any dedup from Phase 9c):
+
+| Symbol | Size | Align |
+|---|---|---|
+| `lookup_table` | 2048 | 16 |
+| `coeffs` | 1024 | 16 |
+| `weights` | 768 | 16 |
+| `masks` | 128 | 8 |
+| `thresholds` | 16 | 4 |
+
+Walk:
+
+```
+current = 0
+lookup_table: align=16 -> roundup(0,16)=0       -> value=0,    current=2048
+coeffs:       align=16 -> roundup(2048,16)=2048 -> value=2048, current=3072
+weights:      align=16 -> roundup(3072,16)=3072 -> value=3072, current=3840
+masks:        align=8  -> roundup(3840,8)=3840  -> value=3840, current=3968
+thresholds:   align=4  -> roundup(3968,4)=3968  -> value=3968, current=3984
+```
+
+`section+32 = 3984`. The section occupies bytes `[0, 3984)` within cbank2; the remaining `4096 - 3984 = 112` bytes are unused padding at the bank's tail. The hardware cbank2 window for a kernel is a fixed 64 KB slice of constant memory; only the bytes covered by actual symbols are materialized in the output ELF.
+
+Verbose trace for this section:
+
+```
+constant entry .nv.constant2:
+variable lookup_table at offset 0
+variable coeffs at offset 2048
+variable weights at offset 3072
+variable masks at offset 3840
+variable thresholds at offset 3968
+```
+
+### Step 2: Shared Memory Overlap Graph (Phase 4)
+
+Both kernels reference the globals in `.nv.shared`. The shared memory optimizer (`sub_436BD0`) determines which variables interfere.
+
+**Step 2a: scan relocations and build reachability sets.** `sub_439830` walks `elfw+376` (the relocation list) and for each relocation that targets a `.nv.shared` symbol, identifies which entry function owns the referencing `.text.*` section. This produces:
+
+```
+g_tmp   -> {kernel_a, kernel_b}   (both kernels call a helper that touches g_tmp)
+g_hist  -> {kernel_a}             (only kernel_a updates the histogram)
+s_local -> {kernel_a}             (from .nv.shared.kernel_a, per-entry)
+```
+
+**Step 2b: build interference graph.** Two shared vars interfere iff their entry-sets overlap:
+
+```
+              g_tmp    g_hist   s_local
+    g_tmp     --       X        X       (both share kernel_a)
+    g_hist    X        --       X       (both live in kernel_a)
+    s_local   X        X        --
+```
+
+An edge means "cannot share an address." In ASCII:
+
+```
+           +--------+
+           | g_tmp  |
+           +--------+
+            /      \
+           /        \
+          /          \
+   +--------+    +---------+
+   | g_hist |----| s_local |
+   +--------+    +---------+
+```
+
+Every pair interferes because `kernel_a` touches all three. Result: no aliasing is possible; each variable needs its own offset. Verbose trace: no `"global shared %s only used in entry %d"` lines are emitted (each var has more than one user or is already entry-local).
+
+**Step 2c: lay out `.nv.shared` globals.** `sub_4325A0` is called (via the optimized path in `sub_436BD0` which reduces to the plain layout here since no merging is possible):
+
+```
+current = 0
+g_hist: align=16 -> roundup(0,16)=0   -> value=0,  current=96
+g_tmp:  align=8  -> roundup(96,8)=96  -> value=96, current=160
+```
+
+Sort pulled `g_hist` ahead of `g_tmp` (higher alignment first). `section+32 = 160`. Global shared high-water mark = 160.
+
+**Step 2d: lay out `.nv.shared.kernel_a` (Phase 4c).** `kernel_a` reaches the global shared region (its relocation set contains `g_tmp` and `g_hist`), so the per-entry layout starts **after** the global high-water mark. `sub_436BD0` calls `sub_4325A0` with `initial_offset = roundup(160, per_entry_align)`.
+
+Per-entry symbols in `.nv.shared.kernel_a`:
+
+| Symbol | Size | Align |
+|---|---|---|
+| `s_local` (shared tile) | 128 | 16 |
+
+```
+initial = 160
+s_local: align=16 -> roundup(160,16)=160 -> value=160, current=160+128=288
+```
+
+`section+32 = 288`. Verbose: `shared entry .nv.shared.kernel_a:` then `variable s_local at offset 160`.
+
+**Step 2e: `kernel_b` has no per-entry `.nv.shared.kernel_b`.** Its shared memory requirement is just the global region it reaches (`g_tmp` at offset 96). If `kernel_b` did **not** reach any global shared variable, the verbose trace would emit `entry kernel_b does not reach global shared` and its hypothetical per-entry section would start at offset 0 instead of 160 -- this is the key optimization: non-overlapping kernels can reuse the low shared addresses.
+
+Final per-kernel shared memory footprints:
+
+| Kernel | Shared high-water | Composition |
+|---|---|---|
+| `kernel_a` | 288 B | `g_hist[0..96) + g_tmp[96..160) + s_local[160..288)` |
+| `kernel_b` | 160 B | `g_hist[0..96) + g_tmp[96..160)` (g_hist addr exists but is dead for b) |
+
+### Step 3: Constant Bank Layout Summary
+
+After Phase 9 completes, the final per-bank picture is:
+
+```
+cbank0 / kernel_a:
+    +0    +---------------------+
+          | __cudaparm_ptr_out  |  (8 B)
+    +8    +---------------------+
+          | __cudaparm_count    |  (4 B)
+    +12   +---------------------+
+          | __cudaparm_scale    |  (4 B)
+    +16   +---------------------+
+          | __cudaparm_bias     |  (4 B)
+    +20   +---------------------+
+          | __cudaparm_mode     |  (4 B)
+    +24   +---------------------+
+    ...   (driver fills rest)
+
+cbank0 / kernel_b:
+    +0    +---------------------+
+          | __cudaparm_ptr_in   |  (8 B)
+    +8    +---------------------+
+          | __cudaparm_ptr_out  |  (8 B)
+    +16   +---------------------+
+          | __cudaparm_n        |  (4 B)
+    +20   +---------------------+
+
+cbank2 (shared by both kernels):
+    +0    +---------------------+
+          | lookup_table        |  (2048 B, align 16)
+    +2048 +---------------------+
+          | coeffs              |  (1024 B, align 16)
+    +3072 +---------------------+
+          | weights             |  (768 B, align 16)
+    +3840 +---------------------+
+          | masks               |  (128 B, align 8)
+    +3968 +---------------------+
+          | thresholds          |  (16 B, align 4)
+    +3984 +---------------------+
+          | (padding up to 4096)|
+    +4096 +---------------------+
+```
+
+Both kernels see the **same** cbank2 addresses -- that is the whole point of a non-per-entry constant bank. In contrast, cbank0 is split per entry because the parameter layout differs between kernels.
+
+### Step 4: Final File `sh_offset` Table
+
+The layout phase only assigns symbol offsets *within* sections; file offsets (`sh_offset` in each section header) are materialized later during the output phase (`sub_452010` / writer sub-pipeline), which walks the section list and places each section sequentially in the ELF file respecting `sh_addralign`.
+
+For the merged ELF described above, assuming a standard 64-byte ELF64 header and no program headers (typical for a `.cubin` fragment before fatbinary wrap), the file layout is:
+
+| # | Section | `sh_type` | `sh_addralign` | `sh_size` | Raw write start | `sh_offset` (aligned) | `sh_offset + sh_size` |
+|---|---|---|---|---|---|---|---|
+| 0 | `NULL` | `SHT_NULL` | 0 | 0 | -- | 0 | 0 |
+| 1 | `.text.kernel_a` | `PROGBITS` | 128 | 2048 | 64 | **128** | 2176 |
+| 2 | `.text.kernel_b` | `PROGBITS` | 128 | 1024 | 2176 | **2176** | 3200 |
+| 3 | `.nv.constant0.kernel_a` | `PROGBITS` | 8 | 24 | 3200 | **3200** | 3224 |
+| 4 | `.nv.constant0.kernel_b` | `PROGBITS` | 8 | 20 | 3224 | **3224** | 3244 |
+| 5 | `.nv.constant2` | `PROGBITS` | 16 | 3984 | 3244 | **3248** | 7232 |
+| 6 | `.nv.shared` | `NOBITS` | 16 | 160 | 7232 | **7232** | 7232 |
+| 7 | `.nv.shared.kernel_a` | `NOBITS` | 16 | 288 | 7232 | **7232** | 7232 |
+| 8 | `.shstrtab` | `STRTAB` | 1 | ~120 | 7232 | **7232** | 7352 |
+| 9 | `.symtab` | `SYMTAB` | 8 | ... | 7352 | **7360** | ... |
+| 10 | `.strtab` | `STRTAB` | 1 | ... | ... | ... | ... |
+
+Alignment padding events to notice:
+
+- Section 1 (`.text.kernel_a`) aligns from raw 64 up to 128: **64 bytes of zero padding** immediately after the ELF header.
+- Section 2 (`.text.kernel_b`) is already 128-aligned at 2176 (since 2048 was a multiple of 128): **no padding**.
+- Section 3 (`.nv.constant0.kernel_a`) at 3200 is 8-aligned already: **no padding**.
+- Section 4 (`.nv.constant0.kernel_b`) at 3224 is 8-aligned: **no padding**.
+- Section 5 (`.nv.constant2`) at 3244 must align to 16: **4 bytes of padding** (3244 -> 3248).
+- Sections 6 and 7 are `SHT_NOBITS`: they occupy zero bytes in the file, so their `sh_offset` is set to the current write position but the cursor does **not** advance past them. Both record `sh_offset = 7232`.
+- Section 9 (`.symtab`) aligns 7352 -> 7360: **8 bytes of padding**.
+
+The section content cursor therefore advances: `64 -> 128 -> 2176 -> 3200 -> 3224 -> 3244 -> 3248 -> 7232` (data sections done) `-> 7352 -> 7360 -> ...` (metadata sections). Total file padding: `64 + 4 + 8 = 76` bytes.
+
+### Step 5: Order of Offset Assignment
+
+For reference, the exact order in which `sub_439830` assigns offsets for this example is:
+
+1. **Phase 1** (global data): no `.nv.global` pending, skipped.
+2. **Phase 3** (global init): no `.nv.global.init`, skipped.
+3. **Phase 4b** (global shared): `g_hist=0`, `g_tmp=96`. Section size = 160.
+4. **Phase 4c** (per-entry shared): `.nv.shared.kernel_a.s_local = 160`. Section size = 288.
+5. **Phase 5** (extern shared): no extern shared in this example, skipped.
+6. **Phase 6** (reserved shared): no `.nv.reservedSmem` used, skipped.
+7. **Phase 7** (local data): no `.nv.local.*`, skipped.
+8. **Phase 8** (overlapped constant replacement): dedup table empty, skipped.
+9. **Phase 9a** (OCG split): cbank0 was already per-entry, no split needed.
+10. **Phase 9b** (non-OCG constants): `.nv.constant0.kernel_a` -> symbols at 0/8/12/16/20 (size 24). `.nv.constant0.kernel_b` -> symbols at 0/8/16 (size 20). `.nv.constant2` -> symbols at 0/2048/3072/3840/3968 (size 3984).
+11. **Phase 9c** (constant merge): `merge-constants` flag was clear, skipped.
+12. **Phase 9d** (OCG size optimization): cbank0 sizes (24 and 20) are well under the 64 KB limit, no optimization.
+13. **Phase 10** (resource counting + UFT): textures/samplers/surfaces = 0; `sub_463F70` creates empty `.nv.uft`/`.nv.udt`.
+
+At this point `sub_439830` returns and control passes to the relocation phase (`sub_469D60`), which uses the offsets assigned above to patch `R_CUDA_ABS32_LO_20` (for `g_tmp`/`g_hist`/`s_local`) and `R_CUDA_CONST_FIELD` (for `lookup_table`/`coeffs`/etc.) into the already-finalized `.text.*` bytes.
+
 ## Cross-References
 
 - [Pipeline Overview](overview.md) -- layout phase in the context of the full 14-phase pipeline
@@ -490,3 +776,45 @@ Output state (after layout):
 - [Section Record](../structs/section-record.md) -- per-section metadata records updated during layout
 - [Symbol Record](../structs/symbol-record.md) -- per-symbol records whose `value` field is assigned during layout
 - [Dead Code Elimination](../linker/dead-code-elimination.md) -- callgraph reachability analysis that determines which symbols are live for layout
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| `sub_439830` at `0x439830`, 65,776 bytes, ~2,173 lines | **HIGH** | `stat -c%s` = 65,776; `wc -l` = 2,173 |
+| Single argument `(elfw*)` signature | **HIGH** | Decompiled: `size_t __fastcall sub_439830(__int64 a1)` |
+| `"global shared %s only used in entry %d"` | **HIGH** | String at `0x1d389a8` in `nvlink_strings.json` |
+| `"remove unused global shared %s"` | **HIGH** | String at `0x1d389d0` in `nvlink_strings.json` |
+| `"variable %s at offset %d"` | **HIGH** | String at `0x1d38739` in `nvlink_strings.json` |
+| `"esh %s has offset %d"` | **HIGH** | String at `0x1d38bcb` in `nvlink_strings.json` |
+| `"entry %s does not reach global shared"` | **HIGH** | String at `0x1d38da8` in `nvlink_strings.json` |
+| `"shared entry %s:"` | **HIGH** | String at `0x1d38be1` in `nvlink_strings.json` |
+| `"extern shared variable %s at offset %lld"` | **HIGH** | String found in `nvlink_strings.json` (partial match at `0x1d38a80`) |
+| `"overlapping sets %d and %d"` | **HIGH** | String at `0x1d38c02` in `nvlink_strings.json` |
+| `"reloc of extern shared %d replaced with symbol %d"` | **HIGH** | String at `0x1d38e28` in `nvlink_strings.json` |
+| `"local entry %s:"` | **HIGH** | String at `0x1d38c7c` in `nvlink_strings.json` |
+| `"constant entry %s:"` | **HIGH** | String at `0x1d38c8d` in `nvlink_strings.json` |
+| `"found duplicate value 0x%x, alias %s to %s"` | **HIGH** | String at `0x1d38888` in `nvlink_strings.json` |
+| `"remove unused constant %s"` | **HIGH** | String at `0x1d38cf9` in `nvlink_strings.json` |
+| `"layout and merge section %s"` | **HIGH** | String at `0x1d38d46` in `nvlink_strings.json` |
+| `"optimize space in %s (%d)"` | **HIGH** | String at `0x1d38ccf` in `nvlink_strings.json` |
+| `"need new ocg section %s"` | **HIGH** | String at `0x1d38ca1` in `nvlink_strings.json` |
+| `"new OCG constant size = %lld"` | **HIGH** | String at `0x1d38d8a` in `nvlink_strings.json` |
+| `"ocg const optimization didn't help so give up"` | **HIGH** | String at `0x1d39058` in `nvlink_strings.json` |
+| `"reset ocg constant reloc offset from %lld to %lld"` | **HIGH** | String at `0x1d38f60` in `nvlink_strings.json` |
+| `"should only reach here with no opt"` assertion | **HIGH** | String at `0x1d38758` in `nvlink_strings.json` |
+| `"tail data node not found"` assertion | **HIGH** | String at `0x1d38839` in `nvlink_strings.json` |
+| `"shared variable %s updated offset to %lld"` | **HIGH** | String found in `nvlink_strings.json` |
+| `TEMP_MERGED_CONSTANTS` / `TEMP_OCG_CONSTANTS` temp sections | **HIGH** | Strings at `0x1d38d30` and `0x1d38d77` in `nvlink_strings.json` |
+| `.nv.reservedSmem.begin` / `.cap` / `.offset0` symbols | **HIGH** | `".nv.reservedSmem.begin"` at `0x1d38c37` in `nvlink_strings.json` |
+| `.nv.global.init` section reference | **HIGH** | String at `0x1d38940` in `nvlink_strings.json` |
+| `.nv.uft` / `.nv.udt` sections | **HIGH** | Strings at `0x1d39f74` and `0x1d38924` in `nvlink_strings.json` |
+| `sub_436BD0` (shared memory optimizer), 15,711 B | **HIGH** | `stat -c%s` = 15,711 bytes |
+| `sub_4339A0` (constant dedup), 13,199 B | **HIGH** | `stat -c%s` = 13,199 bytes |
+| `sub_438DD0` (process_bindless_refs), 12,779 B | **HIGH** | `stat -c%s` = 12,779 bytes |
+| `sub_463F70` (uft_setup_sections), 3,978 B | **HIGH** | `stat -c%s` = 3,978 bytes |
+| All 14 function addresses in the key sub-functions table | **HIGH** | All verified to exist in `decompiled/` directory |
+| 10-phase sequential execution order | **MEDIUM** | Phase ordering matches decompiled control flow in `sub_439830`; sub-phase boundaries are editorial grouping |
+| `elfw` field offsets (+7, +16, +48, +64, +80, +81, etc.) | **MEDIUM** | Consistent with decompiled pointer arithmetic; individual offsets are inferred from `a1 + N` patterns |
+| Architecture vtable offsets (+32, +40, +48, +136, +296, etc.) | **MEDIUM** | Offsets inferred from decompiled indirect calls `*(fn*)(a1 + 488 + N)`; consistent across the codebase |
+| Interference graph algorithm for shared memory optimization | **MEDIUM** | Algorithmic description inferred from control flow of `sub_436BD0`; graph-coloring terminology is editorial |

@@ -568,9 +568,9 @@ Before the dedup engine runs, the layout phase performs a pre-pass (visible in t
 
 The pre-pass walks:
 
-1. **Local symbols** (`elfw+344`): For each symbol with type code `0xD` (constant data) in the source section, calls `sub_43FB70` to check reachability. Reachable constants are copied to a `TEMP_USER_DATA` section and inserted into a dedup hash table. Unreachable constants have their binding changed to LOCAL (bits masked: `sym+5 = (sym+5 & 0xFC) | 1`), effectively hiding them. Verbose: `"local constant %s at offset %lld"` or `"remove unused constant %s"`.
+1. **Positive symbol array** (`elfw+344`): For each symbol with type code `0xD` (constant data) in the source section, calls `sub_43FB70` to check reachability. Reachable constants are copied to a `TEMP_USER_DATA` section and inserted into a dedup hash table. Unreachable constants have their binding changed to LOCAL (bits masked: `sym+5 = (sym+5 & 0xFC) | 1`), effectively hiding them. Verbose: `"local constant %s at offset %lld"` or `"remove unused constant %s"`.
 
-2. **Global symbols** (`elfw+352`): Same logic, but for globally-visible constants. Alignment defaults to `min(size, 8)` if no explicit alignment is recorded. Verbose: `"constant %s at offset %lld"` or `"remove unused constant %s"`.
+2. **Negative symbol array** (`elfw+352`): Same logic, but for globally-visible constants. Alignment defaults to `min(size, 8)` if no explicit alignment is recorded. Verbose: `"constant %s at offset %lld"` or `"remove unused constant %s"`.
 
 After scanning both vectors, the pre-pass lays out the temporary section via `sub_4325A0`, then replaces the original section's contents:
 
@@ -914,9 +914,42 @@ Result: merged section is 16 bytes instead of 20, and c3 shares c1's storage.
 
 **Relocation list surgery.** The OCG relocation rewriting removes matched relocations from the singly-linked list in-place. The predecessor pointer `v42`/`v52`/`v66`/`v72` (depending on which code path) tracks the previous node for unlinking. If the match is the first node, `*a14` (the list head) is updated directly; otherwise, the predecessor's next pointer skips the matched node.
 
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| `sub_4339A0` at 0x4339A0, 15-parameter signature | HIGH | Decompiled `sub_4339A0`: function at 0x4339a0 with parameters `(a1..a15)` including `char a13`, `_QWORD *a14`, `__int64 a15` exactly matching wiki |
+| Hash table create `sub_4489C0` mode detection for 32-bit and 64-bit | HIGH | Decompiled `sub_4489C0`: compares `sub_44E130`/`sub_44E120` for mode 2 and `sub_44E1E0`/`sub_44E1C0` for mode 1; bitmask `0xF00F \| 0x20` / `0x10` confirmed |
+| Identity hash `sub_44E120` returns key unchanged | HIGH | Decompiled: `return a1;` |
+| XOR-fold hash `sub_44E150` returns `lo32 ^ hi32` | HIGH | Decompiled: `return (unsigned int)a1 ^ HIDWORD(a1);` |
+| Shift-xor hash `sub_44E1C0` returns `(a>>11)^(a>>8)^(a>>5)` | HIGH | Decompiled: exact expression confirmed |
+| `sub_433870` (dedup\_memcmp) 8-parameter function matching wiki signature | HIGH | Decompiled: `sub_433870(a1, a2, a3, a4, a5, a6, a7, a8)` with memcmp at line 33, alignment check `*(_QWORD *)(v13 + 16) == v10` at line 33 |
+| `sub_433870` emits `"found duplicate %d byte value, alias %s to %s"` | HIGH | Decompiled line 42: `fprintf(stderr, "found duplicate %d byte value, alias %s to %s\n", ...)` and string at addr 0x1d38858 in `nvlink_strings.json` |
+| `sub_433870` checks alignment before memcmp | HIGH | Decompiled line 33: `*(_QWORD *)(v13 + 16) == v10` (alignment at data\_node+16) precedes `memcmp` |
+| `sub_433870` uses `sub_4644C0` for list prepend on miss | HIGH | Decompiled line 54: `return sub_4644C0(a4, a2);` |
+| `sub_433760` (section\_data\_copy) allocates 40-byte node | HIGH | Decompiled: `sub_4307C0(v10, 40)` at line 28 |
+| `sub_433760` updates `sh_addralign` at section offset +48 | HIGH | Decompiled line 25: `if ( v7 > *(_QWORD *)(result + 48) ) *(_QWORD *)(result + 48) = v7;` |
+| `sub_433760` emits `"tail data node not found"` assertion | HIGH | Decompiled line 53: string literal confirmed; also at addr 0x1d38839 in `nvlink_strings.json` |
+| `sub_433760` computes aligned offset `v16 + v7 - v16 % v7` | HIGH | Decompiled lines 37-40: `v17 = v16 % v7; v18 = v16 + v7 - v16 % v7; if (v17) v16 = v18;` |
+| Verbose gate at `elfw+64, bit 1` | HIGH | Decompiled `sub_433870` line 41: `if ( (*(_BYTE *)(a1 + 64) & 2) != 0 )` |
+| `"found duplicate value 0x%x, alias %s to %s"` string | HIGH | String at addr 0x1d38888 in `nvlink_strings.json` |
+| `"found duplicate 64bit value 0x%llx, alias %s to %s"` string | HIGH | String at addr 0x1d388f0 in `nvlink_strings.json` |
+| `"optimize ocg constant reloc offset from %lld to %lld"` string | HIGH | String at addr 0x1d388b8 in `nvlink_strings.json` |
+| `"optimize OCG constants for %s, old size = %lld"` string | HIGH | String at addr 0x1d39028 in `nvlink_strings.json` |
+| `"optimize space in %s (%d)"` string | HIGH | String at addr 0x1d38ccf in `nvlink_strings.json` |
+| `"remove unused constant %s"` string | HIGH | String at addr 0x1d38cf9 in `nvlink_strings.json` |
+| `"no symbol for reloc section %d at offset %lld?"` string | HIGH | String at addr 0x1d38fc0 in `nvlink_strings.json` |
+| CLI flags `--no-opt` at `byte_2A5F2A9` and `--optimize-data-layout` at `byte_2A5F2A8` | MEDIUM | Inferred from option parsing patterns in `sub_427AE0`; flag offsets reconstructed from layout phase conditional checks |
+| Size-class dispatch: 4, 8, 12, 16, 20, 24, 32, 48, 64 bytes | MEDIUM | Reconstructed from `sub_4339A0` switch-case structure matching parameters `a6`..`a12` to specific sizes; confirmed via parameter count and linked-list bucket pattern |
+| OCG relocation rewriting appears 4 times in `sub_4339A0` | MEDIUM | Inferred from decompiled code structure showing repeated reloc-walk patterns with predecessor tracking; exact count reconstructed from block analysis |
+| Phase 9c uses `a13=1`, Phase 9d uses `a13=0` with non-null `a15` | MEDIUM | Reconstructed from `sub_439830` call sites into `sub_4339A0`; parameter passing patterns match documented behavior |
+
 ## Related Pages
 
 - [Layout Phase](../pipeline/layout.md) -- parent phase (sub_439830) containing all 10 layout sub-phases
 - [Section Merging](section-merging.md) -- how sections from multiple TUs are combined before dedup
 - [Dead Code Elimination](dead-code-elimination.md) -- callgraph-based reachability that feeds into constant liveness
 - [Hash Tables](hash-tables.md) -- general hash table infrastructure used by the dedup engine
+- [Symbol Resolution](symbol-resolution.md) -- symbol records whose offsets are modified during constant dedup
+- [Bindless Relocations](bindless-relocations.md) -- bindless descriptor sections in the same constant banks optimized here
+- [R\_CUDA Relocations](r-cuda-relocations.md) -- R\_CUDA\_CONST\_FIELD relocations rewritten during OCG dedup
