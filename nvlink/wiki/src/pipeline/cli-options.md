@@ -340,7 +340,7 @@ Both options have their "was specified" flags stored separately (`byte_2A5F1FF` 
 | `uumn` | `byte_2A5F227` | type=bool, mult=0, flags=4 |
 | `time` | `qword_2A5F290` | type=string, mult=1, flags=0 |
 
-`fdcmpt` appears to be a forward-compatibility flag. It is validated post-extraction: if `fdcmpt` is set but `uumn` is not set, a warning is emitted (`"-fdcmpt"`). If both are set but SM <= 69, a fatal error is produced. The exact semantics are unclear but the flag interacts with data-model compatibility across architectures.
+`fdcmpt` is a forward-compatibility flag. It is validated post-extraction: if `fdcmpt` is set but `uumn` is not set, a warning is emitted (`"-fdcmpt"`). If both are set but SM <= 69, a fatal error is produced. The flag controls data-model compatibility across architectures (exact semantics not fully determined from decompilation).
 
 `uumn` is a companion to `fdcmpt` and has no help text.
 
@@ -511,3 +511,19 @@ nvlink_parse_options(argc, argv);                        // sub_427AE0
 ```
 
 After `nvlink_parse_options` returns, the parser object itself is no longer referenced. All option values have been extracted into the global variables listed above, and the rest of the linker pipeline accesses those globals directly.
+
+## Cross-References
+
+- [CLI Flags Reference](../config/cli-flags.md) -- complete alphabetically-sorted quick-reference table of all 68 flags with types, defaults, and visibility
+- [Pipeline Overview](overview.md) -- how parsed flags drive mode dispatch and the 14-phase pipeline
+- [Entry Point & Main](entry.md) -- `main()` calling context for `nvlink_parse_options`
+- [Mode Dispatch](mode-dispatch.md) -- how `dword_2A77DC0` (set during option parsing) selects the code path
+- [ptxas Option Forwarding](../config/ptxas-options.md) -- how `--Xptxas` options are forwarded to the embedded ptxas compiler
+- [LTO Option Forwarding](../lto/option-forwarding.md) -- how `--Xptxas`, `--Xnvvm`, `--maxrregcount`, and `--Ofast-compile` are forwarded to cicc/ptxas during LTO
+- [Dead Code Elimination](../linker/dead-code-elimination.md) -- how `--kernels-used`, `--variables-used`, `--use-host-info`, and `--ignore-host-info` drive DCE
+- [Debug Options](../debug/options.md) -- detailed semantics of `--debug`, `--suppress-debug-info`, `--edbg`
+- [Environment Variables](../config/env-vars.md) -- environment variables that supplement CLI options (e.g., `LIBRARY_PATH`)
+- [Architecture Profiles](../targets/arch-profiles.md) -- how `--arch` maps to the per-architecture vtable used throughout the pipeline
+- [Compatibility](../targets/compatibility.md) -- cross-architecture matching rules gated by the parsed SM number
+- **cicc wiki**: [CLI Flags](../../../../cicc/wiki/src/config/cli-flags.md) -- cicc compiler CLI flags. The parser framework (option entry struct, hash table lookup, argv scanning) is shared infrastructure between nvlink, cicc, and ptxas
+- **ptxas wiki**: [CLI Options](../../../../ptxas/wiki/src/config/cli-options.md) -- ptxas CLI options, using the same shared parser framework

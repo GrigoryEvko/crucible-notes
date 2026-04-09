@@ -473,3 +473,20 @@ Output state (after layout):
   .nv.uft/.nv.udt     -- UFT sections created and validated
   relocations          -- targets rewritten for constant overlap/merge
 ```
+
+## Cross-References
+
+- [Pipeline Overview](overview.md) -- layout phase in the context of the full 14-phase pipeline
+- [Merge Phase](merge.md) -- preceding phase that produces the merged elfw consumed by layout
+- [Relocation Phase](relocate.md) -- succeeding phase that patches instruction/data bytes against addresses assigned here
+- [Section Merging](../linker/section-merging.md) -- how sections are merged during Phase 9 before layout assigns addresses
+- [Data Layout Optimization](../linker/data-layout-opt.md) -- the constant deduplication and overlap merge sub-algorithms called from layout
+- [Bindless Relocations](../linker/bindless-relocations.md) -- Phase 2 bindless resource processing detail (`sub_438DD0`)
+- [Unified Function Tables](../elf/uft.md) -- Phase 10 UFT/UDT section creation and validation (`sub_463F70`)
+- [Constant Banks](../elf/constant-banks.md) -- `.nv.constant0`/`.nv.constant2` layout and R\_CUDA\_CONST\_FIELD relocations
+- [Program Headers](../elf/program-headers.md) -- how laid-out sections map to ELF program headers in the output
+- [Architecture Profiles](../targets/arch-profiles.md) -- the vtable at `elfw+488` queried throughout layout for architecture-specific limits
+- [ELF Writer Structure](../structs/elf-writer.md) -- the elfw data structure that layout mutates
+- [Section Record](../structs/section-record.md) -- per-section metadata records updated during layout
+- [Symbol Record](../structs/symbol-record.md) -- per-symbol records whose `value` field is assigned during layout
+- [Dead Code Elimination](../linker/dead-code-elimination.md) -- callgraph reachability analysis that determines which symbols are live for layout

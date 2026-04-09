@@ -400,3 +400,37 @@ The pipeline is single-threaded except for two points:
 The merge phase (Phase 9) is the single largest bottleneck for link time in typical workloads: `merge_elf` at 89KB is called once per input object, and each call performs a full traversal of the input's section table with symbol resolution, relocation copying, and metadata merging.
 
 The five timing tags that typically dominate are `"read"` (file I/O and format detection), `"merge"` (the O(n * sections) merge loop), and `"layout"` (the O(functions^2) callgraph propagation). For LTO builds, `"cicc-lto"` and `"ptxas-lto"` dominate overwhelmingly, since they invoke full compiler backends.
+
+## Cross-References
+
+### Pipeline Phase Pages
+- [Entry Point & Main](entry.md) -- `main()` at `0x409800`: the 57,970-byte orchestrator function
+- [CLI Option Parsing](cli-options.md) -- Phase 2: parser infrastructure, option entry layout, global variable map
+- [Mode Dispatch](mode-dispatch.md) -- Phase 3: device link vs. host linker script vs. register-link
+- [Library Resolution](library-resolution.md) -- Phase 4: `LIBRARY_PATH` search and `-l` flag resolution
+- [Input File Loop](input-loop.md) -- Phase 7: file type detection, per-format dispatch, module registration
+- [Merge Phase](merge.md) -- Phase 9: `merge_elf` (89KB), weak resolution, section/symbol merging
+- [Layout Phase](layout.md) -- Phase 10: shared memory, constant dedup, section address assignment
+- [Relocation Phase](relocate.md) -- Phase 11: `apply_relocations` (27KB), UFT/UDT processing
+- [Finalization Phase](finalize.md) -- Phase 12: final reloc patching, Mercury FNLZR, callgraph build
+- [Output Phase](output.md) -- Phase 13: ELF serialization, dot-file output
+
+### Input Processing Pages
+- [File Type Detection](../input/file-type-detection.md) -- 56-byte header probe and magic number classification
+- [Cubin Loading](../input/cubin-loading.md) -- cubin validation, arch checking, FNLZR dispatch
+- [Fatbin Extraction](../input/fatbin-extraction.md) -- fatbin container format, architecture matching, member extraction
+- [PTX Input & JIT](../input/ptx-input.md) -- embedded ptxas compilation path for PTX inputs
+- [NVVM IR / LTO IR Input](../input/nvvm-ir-input.md) -- IR module registration and LTO prerequisites
+- [Archive Processing](../input/archives.md) -- `.a` archive iteration and libcudadevrt handling
+
+### Supporting Subsystems
+- [CLI Flags Reference](../config/cli-flags.md) -- all 68 flags with types, defaults, visibility
+- [Timing Infrastructure](../infra/timing.md) -- CSV timing output and phase tag strings
+- [Error Reporting](../infra/error-reporting.md) -- the five-level diagnostic system
+- [Memory Arenas](../infra/memory-arenas.md) -- arena-based allocation backing the pipeline
+- [LTO Overview](../lto/overview.md) -- Phase 8 LTO sub-pipeline detail
+- [Mercury Overview](../mercury/overview.md) -- Mercury/CapMerc processing for sm >= 100
+
+### Sibling Wikis
+- **ptxas wiki**: [Pipeline Overview](../../../../ptxas/wiki/src/pipeline/overview.md) -- standalone ptxas 159-phase compilation pipeline; the same compiler is embedded in nvlink for PTX JIT and LTO assembly
+- **cicc wiki**: [Pipeline Overview](../../../../cicc/wiki/src/pipeline/overview.md) -- cicc CUDA compiler pipeline; its `libnvvm.so` is loaded via `dlopen` during LTO Phase 8
