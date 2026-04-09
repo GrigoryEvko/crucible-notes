@@ -501,6 +501,245 @@ The `remove_section` primitive performs the same pattern for every section it re
 4. Free the list head via `sub_464520`, null both list pointers (`+72` and `+80`)
 5. Print `"removed un-used section %s (%d)\n"` when verbose
 
+## Worked Example: Callgraph Sweep DCE
+
+This section walks through an end-to-end DCE run on a miniature merged object. The example is constructed to exercise every liveness test that matters in practice: an entry point, a directly-called helper, a transitively-called helper, and a fully unreferenced function. All addresses and field offsets match the decompiled `sub_44AD40` exactly; hash values are shown in the same form that the string-interner (`sub_449A80`) stores them.
+
+### Setup
+
+Four device functions survive the merge phase and land in the callgraph vector at `ctx+408`:
+
+| Name | Kind | Section name | Liveness story |
+|---|---|---|---|
+| `main_kernel` | `__global__` | `.text.main_kernel` | Entry point (reached via `<<<>>>`) |
+| `helper_a` | `__device__` | `.text.helper_a` | Called by `main_kernel` |
+| `helper_b` | `__device__` | `.text.helper_b` | Called by `helper_a` (transitive) |
+| `dead_fn` | `__device__` | `.text.dead_fn` | Never referenced anywhere |
+
+After the merge phase, the section table (stored in the section array at `ctx+360`, accessed via `sub_442270`) contains the following entries. Column meanings: **Idx** is the section index (slot into the `ctx+360` vector); **sh_type** is the raw ELF type; **Flags** is the `section+5` byte (internal); **Sym** is the section-symbol index (`section+24`, later remapped via `ctx+456`); **Info** is the `sh_info` linkage used by `sub_442760`:
+
+```
+   Idx  Section name                sh_type      Flags  Sym  Info  Notes
+   ───  ──────────────────────────  ───────────  ─────  ───  ────  ─────────────────────────
+    1   .text.main_kernel           PROGBITS     0x10    1    0    SHF_EXECINSTR, entry
+    2   .nv.info.main_kernel        0x70000000   0x00   12    1    EIATTR stream
+    3   .rela.text.main_kernel      RELA  (=9)   0x00   13    1    Relocations for (1)
+    4   .nv.note.main_kernel        NOTE  (=4)   0x00   14    1    Per-kernel note
+    5   .text.helper_a              PROGBITS     0x00    2    0    Ordinary device func
+    6   .rela.text.helper_a         RELA  (=9)   0x00   15    5    Relocations for (5)
+    7   .text.helper_b              PROGBITS     0x00    3    0    Ordinary device func
+    8   .text.dead_fn               PROGBITS     0x00    4    0    The sacrifice
+    9   .rela.text.dead_fn          RELA  (=9)   0x00   16    8    Relocations for (8)
+   10   .nv.info.dead_fn            0x70000000   0x00   17    8    EIATTR stream
+   11   .nv.constant.dead_fn        PROGBITS     0x00   18    8    OCG constant pool
+```
+
+The flag byte on `.text.main_kernel` has bit `0x10` set by the front end to mark the section as a kernel entry -- `sub_44A520` reads this byte and returns true for section type `STT_SECTION (=3, low nibble of byte+4)` with `flags & 0x10` set.
+
+The callgraph vector at `ctx+408` holds one node per function. Each node is 64 bytes; the fields read by `sub_44AD40` are:
+
+```
+   offset   field                 type   notes
+   ──────   ───────────────────   ─────  ─────────────────────────────────────
+      +0    section_id            i32    negative => from ctx+352, positive => ctx+344
+      +8    callee_list head      ptr    outgoing edges, linked via node+0
+     +16    callee_list tail      ptr    used by append path in merge phase
+     +24    caller_list head      ptr    reverse edges (populated as callees are added)
+     +40    attribute_list / r-l  ptr    used for caller_list in Phase 2 check
+     +50    address_taken         u8     nonzero if a fn-pointer reloc observed
+```
+
+For our four functions the post-merge callgraph looks like this (callee edges on the left, caller edges in brackets):
+
+```
+   cg[1]  main_kernel  (sym 1)    callees -> helper_a            [callers: —       ]  addr_taken=0
+   cg[2]  helper_a     (sym 2)    callees -> helper_b            [callers: main_kernel ]  addr_taken=0
+   cg[3]  helper_b     (sym 3)    callees -> —                   [callers: helper_a    ]  addr_taken=0
+   cg[4]  dead_fn      (sym 4)    callees -> —                   [callers: —       ]  addr_taken=0
+```
+
+Four string-interner hashes are live at this point. These come from `sub_449A80` which looks up an `int*` keyed on the name. For this example the hashes resolve to the displayed section-symbol IDs:
+
+```
+   sub_449A80(ctx+288, ".text.main_kernel")     -> int*  =  1
+   sub_449A80(ctx+288, ".text.helper_a")        -> int*  =  2
+   sub_449A80(ctx+288, ".text.helper_b")        -> int*  =  3
+   sub_449A80(ctx+288, ".text.dead_fn")         -> int*  =  4
+```
+
+The liveness seeder (`sub_426AE0`) has already processed host info and inserted `"main_kernel"` into the external-kernel set at `ctx+520`. No `--kernels-used` / `--variables-used` was passed, so `ctx+568` (the forced-root slot) is zero.
+
+### Phase 1 Iteration
+
+`sub_44AD40` begins by calling `sub_464BB0(*(ctx+408))` to get the callgraph node count (5: slot 0 reserved plus four functions), then iterates `v4 = 1 .. 4`. For each iteration we show the values of the key locals as they are computed:
+
+**Iteration 1 -- `cg[1] = main_kernel`**
+
+```
+v7      = sub_464DB0(ctx+408, 1)            = cg[1] node ptr
+v12     = sub_440590(ctx, *v7 = 1)          = section record for idx 1 (.text.main_kernel)
+v13     = *(ctx+568)                        = 0                (no forced root)
+v14     = *v7                               = 1                (section id)
+v6      = sub_44A520(ctx, 1)                = TRUE             (flags 0x10 ⇒ entry)
+```
+
+`sub_44A520` reads `section+5 = 0x10`, takes the `(v9 & 0x10) != 0` branch, and -- because `sub_43FB20` returns false -- checks `*(ctx[51] + 50)` which is the address-taken byte. Even if zero, the outer test already established entry status via the subsequent path; the function returns 1. The `if (!v6 && ...)` guard in `sub_44AD40` short-circuits and the loop moves on. `cg[1]` is untouched.
+
+**Iteration 2 -- `cg[2] = helper_a`**
+
+```
+v7      = cg[2] node ptr
+v12     = section record for idx 5 (.text.helper_a)
+v6      = sub_44A520(ctx, 2)                = FALSE            (flags 0x00)
+*((_QWORD*)v7 + 5)                          = caller_list head (non-NULL; main_kernel)
+```
+
+The condition `!v6 && !*((_QWORD*)v7+5)` is false because the caller list is non-NULL, so Test 2 ("has callers") keeps `helper_a` alive. No further tests run. The loop moves on.
+
+**Iteration 3 -- `cg[3] = helper_b`**
+
+Same shape as iteration 2: `sub_44A520` returns false, but the caller list (holding the `helper_a -> helper_b` edge) is non-NULL. Test 2 passes. `helper_b` is kept.
+
+**Iteration 4 -- `cg[4] = dead_fn`**
+
+```
+v7      = cg[4] node ptr
+v12     = section record for idx 8 (.text.dead_fn)
+v6      = sub_44A520(ctx, 4)                = FALSE
+*((_QWORD*)v7 + 5)                          = NULL             (no callers)
+*((_BYTE*)v7 + 50)                          = 0                (not address-taken)
+```
+
+Control falls into the big `else if ((unsigned int)sub_440350(ctx, v12, ...))` block. `sub_440350` reads `*(u16*)(v12+6) == 0xFFFF`, takes the post-merge remap path, and returns a nonzero symbol index -- so we do **not** defer. `sub_443500` returns false (not a CUDA syscall). The flag byte is `0x00`, so `v28 & 4 == 0`, and `sub_440230(0)` returns false (the section has no UF-stub prefix).
+
+All seven tests have now failed to keep `dead_fn` alive. The removal cascade begins.
+
+### Removal Cascade for `dead_fn`
+
+With `-v` active (`ctx+64` low bit), the first diagnostic is printed:
+
+```
+dead function 4(dead_fn)
+```
+
+**Stage 1.** `*(section+5) = (flags & 0xFC) | 0x01` sets the callgraph-side death bit. For idx 8 this flips from `0x00` to `0x01`.
+
+**Stage 2.** The code section itself is neutralized:
+
+```
+v34 = sub_440350(ctx, v12, ...)             = 4      (resolved sym idx)
+v162 = sub_440590(ctx, 4)                   = section record for idx 8
+v40 = sub_440350(ctx, v162, ...)            = 4      (self-resolution for sanity)
+v46 = sub_442270(ctx, 4, ...)               = sym record for sec sym 4
+*(v46 + 32) = 0                              ; data_ptr = NULL
+*(v46 + 48) = 1                              ; size = sentinel 1
+walk *(v46+72) reloc list, sub_431000 each, sub_464520 head
+*(v46 + 72) = 0; *(v46 + 80) = 0
+```
+
+Verbose output:
+```
+removed un-used section .text.dead_fn (4)
+```
+
+**Stage 3.** `sub_442760(ctx, 4, 0x70000000)` walks the sh_info chain looking for the NVIDIA info section whose `+44` field equals 4. It finds idx 10 (`.nv.info.dead_fn`), and the same zero+sentinel pattern applies:
+```
+removed un-used section .nv.info.dead_fn (17)
+```
+
+**Stage 4.** `sub_442760(ctx, 4, 9)` finds idx 9 (`.rela.text.dead_fn`):
+```
+removed un-used section .rela.text.dead_fn (16)
+```
+
+**Stage 5.** `sub_442760(ctx, 4, 4)` (SHT_NOTE) returns 0 -- `dead_fn` had no per-function note, so nothing happens here.
+
+**Stage 6.** The OCG constant section is located by name rather than sh_info. The writer vtable at `*(ctx+488) + 136` yields the OCG prefix (`".nv.constant"` in this build); `sprintf(s, "%s.%s", prefix, "dead_fn")` gives `".nv.constant.dead_fn"`. `sub_4411D0(ctx, s)` returns 11. `sub_442270(ctx, 11)` pulls the record; its `+44 (sh_info)` is 8, matching our code section idx, so the single-instance path runs and prints:
+```
+removed un-used section .nv.constant.dead_fn (18)
+```
+
+**Stage 7.** `dead_fn` does not have `flags & 0x10` (kernel-entry) set, so the `.nv.shared.dead_fn` / `.nv.local.dead_fn` cleanup is **skipped**. This is only reached for kernel entries -- the per-kernel constant bank, dynamic shared memory, and local stack sections are owned by the entry point, not by ordinary device functions.
+
+**Cleanup.** The three lists attached to the callgraph node are freed, the node itself is freed, and `sub_464D10(*(ctx+408), 4, 0)` nulls slot 4 of the callgraph vector.
+
+### State After Phase 1
+
+No entries were deferred (`v165` is still NULL -- `sub_464740(NULL)` returns 0), so Phase 2 is skipped entirely and `sub_44AD40` returns.
+
+The callgraph vector now holds:
+
+```
+   cg[0]  (reserved)
+   cg[1]  main_kernel     (untouched)
+   cg[2]  helper_a        (untouched)
+   cg[3]  helper_b        (untouched)
+   cg[4]  NULL            (slot cleared by sub_464D10)
+```
+
+The in-memory section table has four sections marked dead (flag byte bit 0 set, data_ptr=NULL, size=1). The section records themselves are still in the `ctx+360` section array -- DCE does not compact the vector in place, it only marks. Compaction happens later, when the layout phase rebuilds the final section table and populates the remap arrays at `ctx+456` and `ctx+464`.
+
+### Remap Table Construction (`elfw+456` / `elfw+464`)
+
+After DCE, the layout phase walks the section array at `ctx+360` in order and assigns each surviving section a new dense index. For each old-index *i*, it writes `(ctx+456)[i] = new_i` where `new_i` is the compacted index, or 0 for sections that were killed. The parallel array at `ctx+464` handles negative section IDs (which refer to the separate negative-index vector at `ctx+352`, used for synthesized sections that are created late in the pipeline).
+
+Before Phase 1 runs, both remap pointers are NULL -- `sub_4411F0` and `sub_440350` check `a1[57]` / `*(a1+456)` and return the input unchanged when the table does not exist yet. After DCE, the layout phase allocates the arrays and fills them based on the surviving sections.
+
+For our example the forward remap table `*(ctx+456)` ends up as:
+
+```
+   old idx   new idx   comment
+   ───────   ───────   ────────────────────────────────────
+      0         0      reserved slot
+      1         1      .text.main_kernel         (kept)
+      2         2      .nv.info.main_kernel      (kept)
+      3         3      .rela.text.main_kernel    (kept)
+      4         4      .nv.note.main_kernel      (kept)
+      5         5      .text.helper_a            (kept)
+      6         6      .rela.text.helper_a       (kept)
+      7         7      .text.helper_b            (kept)
+      8         0      .text.dead_fn             ← killed, remap=0
+      9         0      .rela.text.dead_fn        ← killed, remap=0
+     10         0      .nv.info.dead_fn          ← killed, remap=0
+     11         0      .nv.constant.dead_fn      ← killed, remap=0
+```
+
+After DCE the forward remap table contains no holes (because `dead_fn` sat at the end of the vector), but in general a kill anywhere in the middle causes all higher slots to shift down. Any later call to `sub_4411F0` or `sub_440350` that receives an old-index 8, 9, 10, or 11 will first read `(ctx+456)[old]`, see zero, and trigger the `"reference to deleted symbol"` error via `sub_467460` -- this is how the linker catches stale references that survived DCE (e.g., a relocation in some other surviving section that still points at a dead function).
+
+The negative-side remap `*(ctx+464)` is empty for this example because no synthesized negative-index sections were created; it would be populated identically if the merge phase had produced any (e.g., synthesized stubs for `__cuda_syscall_*` targets).
+
+The `ctx+472` "secidx virtual" guard array -- consulted whenever `*(ctx+82)` is set -- stores a reverse lookup so that `sub_442270` can assert `*(ctx+472)[a2] -> ctx+368[] -> a2` is consistent. After DCE, the four killed slots have their virtual-mapping entries zeroed, so any accidental access through `sub_442270` will fail the `"secidx not virtual"` assertion instead of silently returning stale data.
+
+### Final Merged ELF
+
+When the layout phase completes, the output ELF contains exactly seven sections derived from the four original kept sections, in the dense post-remap order:
+
+```
+   [ 1] .text.main_kernel        PROGBITS    AX      sym 1
+   [ 2] .nv.info.main_kernel     0x70000000  —       sym 2
+   [ 3] .rela.text.main_kernel   RELA        I       sym 3 → (1)
+   [ 4] .nv.note.main_kernel     NOTE        —       sym 4
+   [ 5] .text.helper_a           PROGBITS    AX      sym 5
+   [ 6] .rela.text.helper_a      RELA        I       sym 6 → (5)
+   [ 7] .text.helper_b           PROGBITS    AX      sym 7
+```
+
+The symbol table has had `dead_fn` and its section symbols stripped; because the forward remap maps slots 8-11 to 0, any stale reloc addend or debug entry referencing those slots now resolves to the STN_UNDEF symbol and triggers the `"reference to deleted symbol"` diagnostic path rather than producing a dangling pointer.
+
+Full verbose transcript for this example:
+
+```
+add referenced external kernel: main_kernel
+use host info
+dead function 4(dead_fn)
+removed un-used section .text.dead_fn (4)
+removed un-used section .nv.info.dead_fn (17)
+removed un-used section .rela.text.dead_fn (16)
+removed un-used section .nv.constant.dead_fn (18)
+```
+
+No `dead function` line is emitted for `main_kernel`, `helper_a`, or `helper_b` because each survives at a different liveness test: `main_kernel` at Test 1 (entry point), `helper_a` at Test 2 (has caller `main_kernel`), `helper_b` at Test 2 (has caller `helper_a`). Note in particular that DCE does **not** perform a recursive traversal from roots -- it relies on the caller list at `node+40` already being populated by the merge phase so that every transitively-live function has a non-NULL caller list by the time Phase 1 visits it. A bug in the caller-list construction would manifest here as a transitively-reachable function getting killed because its caller list was never linked.
+
 ## Interaction with `--keep-system-libraries`
 
 The `--keep-system-libraries` flag (`byte_2A5F2C2`) interacts with DCE through the `cudadevrt` handling path. Normally, when full LTO is active and all translation units were compiled to IR, `main()` detects that `cudadevrt` is unnecessary and removes it from the input list:
@@ -611,3 +850,34 @@ When host info is incomplete across input objects:
 ```
 incomplete so ignore host info
 ```
+
+## Cross-References
+
+- [Symbol Resolution](symbol-resolution.md) -- symbol lookup used by `resolve_section_symbol` and liveness seeding
+- [Weak Symbols](weak-symbols.md) -- weak resolution runs before DCE during the merge phase
+- [Section Merging](section-merging.md) -- merge phase that builds the callgraph consumed by DCE
+- [Data Layout Optimization](data-layout-opt.md) -- constant dedup that uses DCE liveness information (reachability check via `sub_43FB70`)
+- [LTO Overview](../lto/overview.md) -- LTO pipeline performs its own IR-level DCE, suppressing the linker-level pass
+- [Whole vs Partial LTO](../lto/whole-vs-partial.md) -- `--force-partial-lto` re-enables linker DCE alongside LTO
+- [Merge Phase](../pipeline/merge.md) -- pipeline phase that precedes DCE
+- [Layout Phase](../pipeline/layout.md) -- pipeline phase that follows DCE
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| `sub_44AD40` at 0x44AD40 is the core DCE function | HIGH | Decompiled `sub_44AD40_0x44ad40.c` exists; contains `"dead function %d(%s)"` at line 209 |
+| `"dead function %d(%s)\n"` diagnostic string | HIGH | Decompiled line 209: exact format string confirmed |
+| `"removed un-used section %s (%d)\n"` diagnostic string | HIGH | Decompiled lines 244, 277, 310, 343, 386, 389, 441, 444: string appears 8+ times |
+| `"function %d(%s) has address taken but no call to it"` diagnostic | HIGH | Decompiled line 195: exact format string confirmed |
+| `"incomplete so ignore host info"` string | HIGH | String confirmed in `nvlink_strings.json` |
+| `"__cuda_uf_stub_"` prefix check for UF stubs (never eliminated) | HIGH | String confirmed in `nvlink_strings.json`; used in `sub_440230` |
+| Phase 1 iterates callgraph vector at ctx+408 from index 1 | HIGH | Decompiled `sub_44AD40` loop structure starts from index 1 through count-1 |
+| Seven liveness tests in priority cascade (forced root, callers, address-taken, resolution, syscall, pinned, UF-stub) | HIGH | All test branches visible in decompiled code; address-taken at entry+50, caller_list at entry+40 confirmed |
+| Phase 2 deferred re-examination with exhaustive caller scan | HIGH | Two-phase structure visible in decompiled code; deferred list via `sub_4644C0` |
+| Section removal cascade: code, .nv.info, .rela, .nv.note, OCG constants, shared/local | HIGH | Multiple `"removed un-used section"` emissions in decompiled code confirm multi-section removal |
+| `sub_426AE0` gate function with `mark_used` flag at `byte_2A5F214` | HIGH | Function exists in decompiled output; global variable addresses consistent with option parser |
+| Six host-info category dispatchers at `sub_43F020` through `sub_43F340` | MEDIUM | Functions inferred from `sub_426AE0` dispatch; individual decompiled files not all verified |
+| Kernel name wildcard normalization `*name*` in `sub_43F360` | MEDIUM | Reconstructed from decompiled analysis; wrapping logic consistent with `arena_sprintf` patterns |
+| `--dump-callgraph` DOT output via `sub_44CCF0` | MEDIUM | Function address referenced; DOT format inferred from string evidence |
+| Guard condition `(!lto \|\| force_partial_lto)` for DCE activation | MEDIUM | Reconstructed from main() decompiled analysis; flag addresses consistent |

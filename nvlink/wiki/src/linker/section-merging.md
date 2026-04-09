@@ -40,7 +40,7 @@ nvlink maintains two hash tables on the elfw (ELF wrapper) object for section lo
 
 | Offset | Hash table | Keyed by | Maps to |
 |---|---|---|---|
-| `+288` | Name-to-symbol table | Section name string | Symbol index (positive for local, negative for global) |
+| `+288` | Symbol name hash table | Symbol/section name string | Symbol index (positive for local, negative for global) |
 | `+296` | Name-to-section table | Section name string | Section index in the section vector |
 
 Both tables use the same hash/compare infrastructure (`sub_4489C0` / `sub_449A80` / `sub_448E70`). The name-to-section table is the primary lookup mechanism for section merging.
@@ -465,8 +465,11 @@ Complete list of NVIDIA CUDA section types used during merging:
 | `0x70000008` | 1879048200 | `SHT_CUDA_GLOBAL_INIT` | Global init data (.nv.global.init) |
 | `0x70000009` | 1879048201 | `SHT_CUDA_LOCAL` | Local data (.nv.local.*) |
 | `0x7000000A` | 1879048202 | `SHT_CUDA_SHARED` | Shared memory (.nv.shared.*) |
-| `0x70000011` | 1879048209 | `SHT_CUDA_RELOCINFO` | Relocation info (.nv.rel.*) |
-| `0x70000014` | 1879048212 | `SHT_CUDA_RELOCINFO_EXT` | Extended reloc (.nv.rela.*) |
+| `0x7000000B` | 1879048203 | `SHT_CUDA_RELOCINFO` | Relocation action table (.nv.rel.action) |
+| `0x7000000E` | 1879048206 | `SHT_CUDA_UFT` | Unified Function Table (.nv.uft) |
+| `0x70000011` | 1879048209 | `SHT_CUDA_UFT_ENTRY` | UFT entry metadata (.nv.uft.entry) |
+| `0x70000012` | 1879048210 | `SHT_CUDA_UDT` | Unified Descriptor Table (.nv.udt) |
+| `0x70000014` | 1879048212 | `SHT_CUDA_UDT_ENTRY` | UDT entry metadata (.nv.udt.entry) |
 | `0x70000015` | 1879048213 | `SHT_CUDA_SHARED_RESERVED` | Reserved shared memory |
 | `0x70000064` | 1879048292 | `SHT_CUDA_CONSTANT0` | Constant bank 0 |
 | `0x70000065`-`0x70000075` | 1879048293-1879048309 | `SHT_CUDA_CONSTANT1`-`17` | Constant banks 1-17 |
@@ -604,13 +607,13 @@ The bitmask `0x5D05` = `0101 1101 0000 0101` in binary, indexed by `(low_byte(sh
 | 5 | `0x7000000B` | (unused) | 0 | — |
 | 6 | `0x7000000C` | (unused) | 0 | — |
 | 7 | `0x7000000D` | (unused) | 0 | — |
-| 8 | `0x7000000E` | `SHT_CUDA_0E` | **1** (accepted) | Undocumented type, processed via sub_45E3C0 |
+| 8 | `0x7000000E` | `SHT_CUDA_UFT` | **1** (accepted) | Unified Function Table (.nv.uft) |
 | 9 | `0x7000000F` | (unused) | 0 | — |
-| 10 | `0x70000010` | `SHT_CUDA_10` | **1** (accepted) | Undocumented type, processed via sub_45E3C0 |
-| 11 | `0x70000011` | `SHT_CUDA_RELOCINFO` | **1** (accepted) | Relocation info sections |
-| 12 | `0x70000012` | `SHT_CUDA_12` | **1** (accepted) | Undocumented type, processed via sub_45E3C0 |
+| 10 | `0x70000010` | (unused in v13.0) | **1** (accepted) | Bit set but no known section type at this value |
+| 11 | `0x70000011` | `SHT_CUDA_UFT_ENTRY` | **1** (accepted) | UFT entry metadata (.nv.uft.entry) |
+| 12 | `0x70000012` | `SHT_CUDA_UDT` | **1** (accepted) | Unified Descriptor Table (.nv.udt) |
 | 13 | `0x70000013` | (unused) | 0 | — |
-| 14 | `0x70000014` | `SHT_CUDA_RELOCINFO_EXT` | **1** (accepted) | Extended relocation sections |
+| 14 | `0x70000014` | `SHT_CUDA_UDT_ENTRY` | **1** (accepted) | UDT entry metadata (.nv.udt.entry) |
 
 Additionally, any type in the constant bank range `0x70000064` through `0x7000007E` (26 values) is unconditionally accepted regardless of the bitmask. This covers `SHT_CUDA_CONSTANT0` through `SHT_CUDA_CONSTANT17` plus 8 reserved constant bank slots.
 
@@ -673,14 +676,14 @@ The second pass iterates over section headers from the input object. Only sectio
 
 | sh_type | Handler | Processing |
 |---|---|---|
-| `SHT_CUDA_RELOCINFO` (0x70000011) | `sub_45CF00` | Relocation section merge; creates output reloc section of type `0x70000011`, passes `is_rela=1` flag |
-| `SHT_CUDA_RELOCINFO_EXT` (0x70000014) | `sub_45CF00` | Extended relocation merge; creates output of type `0x70000014`, passes `is_rela=0` flag |
+| `SHT_CUDA_UFT_ENTRY` (0x70000011) | `sub_45CF00` | UFT entry metadata merge; creates output section of type `0x70000011`, passes `is_rela=1` flag |
+| `SHT_CUDA_UDT_ENTRY` (0x70000014) | `sub_45CF00` | UDT entry metadata merge; creates output of type `0x70000014`, passes `is_rela=0` flag |
 | `SHT_CUDA_CONSTANT0`-`17` (0x70000064-0x7E) | `sub_45E3C0` | Constant bank sections not yet mapped; creates output section and registers mapping |
 | `SHT_CUDA_CONSTANT` (0x70000006) | `sub_45E3C0` | Generic constant: reclassified to specific bank via `strtol` |
 | `SHT_CUDA_GLOBAL_INIT` (0x70000008) | `sub_45E3C0` | Initialized global data sections not yet mapped |
-| `SHT_CUDA_0E` (0x7000000E) | `sub_45E3C0` | Undocumented section type |
-| `SHT_CUDA_10` (0x70000010) | `sub_45E3C0` | Undocumented section type |
-| `SHT_CUDA_12` (0x70000012) | `sub_45E3C0` | Undocumented section type |
+| `SHT_CUDA_UFT` (0x7000000E) | `sub_45E3C0` | Unified Function Table (.nv.uft) |
+| (0x70000010) | `sub_45E3C0` | Bitmask-accepted but no known section type at this value in v13.0 |
+| `SHT_CUDA_UDT` (0x70000012) | `sub_45E3C0` | Unified Descriptor Table (.nv.udt) |
 | `SHT_CUDA_SHARED` (0x7000000A) | Direct `sub_45E3C0` | Only when extended smem mode active (`*(v19+57)`) AND not in relocatable mode (`!*(ctx+80)`) |
 | `SHT_NOTE` (7) | Direct `sub_45E3C0` | Only when link mode is not relocatable AND DCE flag (`*(ctx+101)`) is set; output type forced to `0x70000000` (CUDA_INFO) |
 
@@ -776,6 +779,46 @@ The partition type is stored at `ctx+664`. If different input objects disagree o
 | `"skip mercury section %i"` | `sub_45E7D0` | Mercury section skipped during merge (verbose only) |
 | `"remove weak reloc for %s"` | `sub_45E7D0` | Weak relocation to constant section removed (verbose only) |
 | `"unknown .nv.compat attribute (%x) encoutered."` | `sub_45E7D0` | Unrecognized compat attribute type (verbose warning) |
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| `sub_4411D0` at 0x4411D0 looks up section name at elfw+296 | HIGH | Decompiled: `sub_449A80(*(_QWORD *)(a1 + 296), a2)` returns `*v2` or 0 |
+| `sub_442270` at 0x442270 retrieves section by index from elfw+360 | HIGH | Decompiled file exists; virtual mapping check at `ctx+472` confirmed in decompiled `sub_440350` pattern |
+| `sub_4325A0` at 0x4325A0 asserts `"section not found"` when `a2` is NULL | HIGH | Decompiled line 26: `if (!a2) sub_467460(&unk_2A5B990, "section not found", ...)` |
+| `sub_4325A0` sorts symbol list via `sub_4647D0` with comparator `sub_432440` | HIGH | Decompiled line 30: `sub_4647D0(a2 + 72, sub_432440)` |
+| `sub_4325A0` uses natural alignment capped at 8 when explicit alignment is 0 | HIGH | Decompiled lines 63-68: `v24 = 8; if (v23 <= 8) v24 = *(_QWORD *)(v10 + 24);` |
+| `sub_4325A0` asserts `"should only reach here with no opt"` via elfw+90 check | HIGH | Decompiled line 76-77: `if (!*(_BYTE *)(a1 + 90))` then `"should only reach here with no opt"` string; string at addr 0x1d38758 in `nvlink_strings.json` |
+| `sub_4325A0` emits `"variable %s at offset %d"` when verbose | HIGH | Decompiled line 55: `fprintf(stderr, "variable %s at offset %d\n", ...)` with `(*(_BYTE *)(a1 + 64) & 2)` gate; string at addr 0x1d38739 in `nvlink_strings.json` |
+| `sub_4325A0` extended\_smem\_mode flag at elfw+100 | HIGH | Decompiled line 27: `if (!*(_BYTE *)(a1 + 100) \|\| ...)` controls sort bypass |
+| `sub_433760` at 0x433760 allocates 40-byte data node | HIGH | Decompiled: `sub_4307C0(v10, 40)` confirmed |
+| `sub_433760` updates section size at section+32 | HIGH | Decompiled line 43: `v9[4] = v16 + a5;` (QWORD index 4 = offset 32) |
+| `sub_433760` asserts `"tail data node not found"` | HIGH | Decompiled line 53: string literal confirmed in code and at addr 0x1d38839 |
+| `sub_45E3C0` at 0x45E3C0 classifies NOBITS by name prefix | HIGH | Decompiled: `memcmp(v18, ".nv.global", 0xA)`, `memcmp(v18, ".nv.shared.", 0xB)`, `memcmp(v18, ".nv.shared.reserved.", 0x14)`, `memcmp(v18, ".nv.local.", 0xA)` with hex types 1879048199/202/213/201 |
+| `sub_45E3C0` constant bank: `strtol(name+12, 0, 10) + 1879048292` | HIGH | Decompiled line 102: `strtol(v18 + 12, 0, 10) + 1879048292` (1879048292 = 0x70000064) |
+| `sub_45E3C0` PROGBITS `.nv.global.init` -> type 1879048200 (0x70000008) | HIGH | Decompiled line 93-94: `memcmp(v18, ".nv.global.init", 0xF)` then `v13 = 1879048200` |
+| `sub_45E3C0` SHT\_NOTE (7) with flags & 0x1000000 early return | HIGH | Decompiled line 105: `if (v13 == 7 && (v49 & 0x1000000) != 0)` |
+| Section type filter bitmask `0x5D05` in `sub_45E7D0` | HIGH | Decompiled: `(0x5D05uLL >> ((unsigned __int8)v145 - 6)) & 1` at line 1601 |
+| NOBITS data suppression bitmask `0x400D` in `sub_45E3C0` | HIGH | Decompiled line 151: `v28 &= ~(0x400DuLL >> ((unsigned __int8)v13 - 7));` |
+| `sub_432B10` at 0x432B10 (`merge_overlapping_global`) 11,683 bytes | HIGH | Decompiled file `sub_432B10_0x432b10.c` exists at correct address |
+| `sub_4343C0` at 0x4343C0 (`merge_overlapping_constant`) exists | HIGH | Decompiled file confirms function at address; 7 parameters matching wiki signature |
+| `sub_438640` at 0x438640 (`merge_constant_bank`) exists | HIGH | Decompiled file confirms function at address with 10 parameters |
+| `"overlapping non-identical data"` string | HIGH | String at addr 0x1d387d8 in `nvlink_strings.json` |
+| `"overlapping data spans too much"` string | HIGH | String at addr 0x1d387f8 in `nvlink_strings.json` |
+| `"offset %lld goes past section %d size"` string | HIGH | String at addr 0x1d38780 in `nvlink_strings.json` |
+| `"adding function section after callgraph completed"` string | HIGH | String at addr 0x1d39ec8 in `nvlink_strings.json` |
+| `"entry data cannot be GLOBAL"` string | HIGH | String at addr 0x1d38a9f in `nvlink_strings.json` |
+| `"bank SHT not CUDA_CONSTANT_?"` string | HIGH | String at addr 0x1d38950 in `nvlink_strings.json` |
+| `"unexpected reloc section"` string | HIGH | String at addr 0x1d3bcd0 in `nvlink_strings.json` |
+| `"local data should have offset"` string | HIGH | String at addr 0x1d38ade in `nvlink_strings.json` |
+| `"unknown .nv.compat attribute (%x) encoutered"` string | HIGH | String at addr 0x1d3b1b8 in `nvlink_strings.json` (note: "encoutered" typo is in the original binary) |
+| `__nv_reservedSMEM_tcgen05_partition` string | HIGH | String at addr 0x1d3bd08 in `nvlink_strings.json` |
+| `__nv_reservedSMEM_allocation_phase` string | HIGH | String at addr 0x1d3bd30 in `nvlink_strings.json` |
+| Section record 104 bytes with fields at documented offsets | MEDIUM | Offset reads at +32 (size), +48 (addralign), +72 (symbol\_list) confirmed across `sub_4325A0` and `sub_433760`; complete layout reconstructed from multiple functions |
+| Data node 40 bytes with data\_ptr at +0, alignment at +16, size at +24, sym\_index at +32 | MEDIUM | Offsets confirmed in `sub_433870` and `sub_4325A0` decompiled code; +16 (alignment), +24 (data\_size), +32 (sym\_index) verified |
+| Per-entry section lists at elfw+256/+264/+272/+280 | MEDIUM | Inferred from `sub_438640` and `sub_439830` parameter passing patterns; not all offsets individually verified |
+| Five overlap-merge functions follow identical algorithm with different error messages | MEDIUM | Two confirmed (`sub_432B10`, `sub_4343C0`) share same structure; remaining three (`sub_437E20`, `sub_434BC0`, `sub_435390`) inferred from file size similarity and address range |
 
 ## Cross-References
 
