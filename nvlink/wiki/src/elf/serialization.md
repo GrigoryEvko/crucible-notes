@@ -198,9 +198,9 @@ The serializer reads these fields from the ELF wrapper:
 | `+312` | `uint32` | `uint32` | shstrtab entry count |
 | `+328` | `ptr` | `ptr` | strtab string array |
 | `+336` | `ptr` | `ptr` | shstrtab string array |
-| `+344` | `ptr` | `ptr` | program header ordered list |
-| `+360` | `ptr` | `ptr` | section ordered list |
-| `+368` | `ptr` | `ptr` | section order index array |
+| `+344` | `ptr` | `ptr` | positive symbol array (`pos_symbol_array`) -- serialized as `.symtab` content |
+| `+360` | `ptr` | `ptr` | section array (`section_array`) -- all section records |
+| `+368` | `ptr` | `ptr` | section order index array (maps output slot -> section index) |
 
 ### Complete Write Sequence
 
@@ -210,7 +210,7 @@ Phase 2:  1 byte null padding
 Phase 3:  .shstrtab contents (null-terminated section name strings)
 Phase 4:  .strtab contents (null-terminated symbol name strings)
 Phase 5:  Alignment padding to section[3].sh_offset
-Phase 6:  Program headers (internal compact format)
+Phase 6:  .symtab contents (Elf32_Sym / Elf64_Sym entries from pos_symbol_array)
 Phase 7:  Section data (sections 4..N-1, with fragment-list traversal)
 Phase 8:  Post-section padding to e_shoff
 Phase 9:  Section headers (40 or 64 bytes each)
@@ -294,22 +294,24 @@ running_offset = target;
 
 Section 3 is the `.symtab` section in nvlink's canonical ordering: index 0 = null, 1 = `.shstrtab`, 2 = `.strtab`, 3 = `.symtab`. The alignment padding ensures the symbol table (and subsequent sections) begin at their computed file offsets.
 
-### Phase 6: Program Headers
+### Phase 6: Symbol Table Contents (.symtab)
 
-Program headers are stored in the ordered list at `elfw+344`. The per-entry size in the internal compact representation is 24 bytes for ELF64, 16 bytes for ELF32:
+After Phase 5 pads to the `.symtab` section's file offset, the serializer iterates the **positive symbol array** at `elfw+344` (`pos_symbol_array`, a `SortedArray*` of 48-byte `SymbolRecord` entries) and writes the first 24 bytes (ELF64) or 16 bytes (ELF32) of each record. The internal `SymbolRecord` is laid out so that its leading bytes already match the ELF-standard `Elf64_Sym` / `Elf32_Sym` on-disk format, so a direct memcpy produces the `.symtab` contents:
 
 ```c
-size_t phdr_entry_size = (elf_class == 2) ? 24 : 16;
-uint32_t phdr_count = list_size(elfw->phdr_list);   // sub_464BB0
+size_t sym_entry_size = (elf_class == 2) ? 24 : 16;   // Elf64_Sym / Elf32_Sym
+size_t sym_count = sorted_array_count(elfw->pos_symbol_array);  // sub_464BB0(+344)
 
-for (uint32_t p = 0; p < phdr_count; p++) {
-    void* phdr = list_get(elfw->phdr_list, p);      // sub_464DB0
-    elf_write(writer, phdr, phdr_entry_size);
-    running_offset += phdr_entry_size;
+for (uint32_t p = 0; p < sym_count; p++) {
+    SymbolRecord* sym = sorted_array_get(elfw->pos_symbol_array, p);  // sub_464DB0(+344)
+    elf_write(writer, sym, sym_entry_size);
+    running_offset += sym_entry_size;
 }
 ```
 
-These are nvlink's internal compact program header records, not standard `Elf_Phdr` structures. The full ELF-standard program header table is constructed later in Phase 10 by `sub_45BAA0`.
+The `pos_symbol_array` holds all locally-indexed symbols (index 0 = null symbol, then local symbols and section symbols). Global/weak symbols (negative indices) are materialized into the positive array by the finalize phase before serialization; by the time `sub_45BF00` runs, `pos_symbol_array` contains every symbol that belongs in `.symtab`.
+
+Note: this phase writes **symbol table content**, not program headers. nvlink does not emit a program header table here. The ELF-standard program header table, when needed, is constructed and written by `sub_45BAA0` in Phase 10. That function reads the section array at `elfw+360` (via the order array at `elfw+368`) to synthesize `Elf_Phdr` entries from section metadata.
 
 ### Phase 7: Section Data
 
@@ -353,10 +355,10 @@ The bitmask `0x400D` = binary `0100 0000 0000 1101` selects these offsets from `
 
 | Bit | Offset | Type Value | Identity |
 |-----|--------|------------|----------|
-| 0 | +0 | `0x70000008` | `SHT_CUDA_NOBITS` (BSS-like, `.nv.bss`) |
-| 2 | +2 | `0x7000000A` | `SHT_CUDA_RELOCINFO` (no file data) |
-| 3 | +3 | `0x7000000B` | `SHT_CUDA_RESOLVEDRELA` (no file data) |
-| 14 | +14 | `0x70000016` | `SHT_CUDA_UFT` (unified function table, no data in section) |
+| 0 | +0 | `0x70000008` | `SHT_CUDA_GLOBAL_INIT` (has NOBITS semantics in this bitmask context) |
+| 2 | +2 | `0x7000000A` | `SHT_CUDA_SHARED` (shared memory, no file data) |
+| 3 | +3 | `0x7000000B` | `SHT_CUDA_RELOCINFO` (relocation action table, no file data in this context) |
+| 14 | +14 | `0x70000016` | `SHT_CUDA_MERC` (per-kernel Mercury section, no data in this context) |
 
 Combined with `SHT_NOBITS` (8), these five types produce no bytes in the serialized output. Their `sh_size` contributes to memory-only segments but occupies zero file space.
 
@@ -640,3 +642,52 @@ All three call `sub_467460` which is the linker's fatal error handler. The first
 | `0x464DB0` | `list_get` | -- | Ordered list element accessor |
 | `0x464BB0` | `list_size` | -- | Ordered list count accessor |
 | `0x467460` | `fatal_error` | -- | Fatal error reporter (does not return) |
+
+## Cross-References
+
+**Internal (nvlink wiki):**
+
+- [ELF Writer](../structs/elf-writer.md) -- The 672-byte `elfw` struct layout and the 40-byte polymorphic writer context used by the serializer
+- [Program Headers](program-headers.md) -- Phase 10 program header table construction (`sub_45BAA0`) called as the final serialization step
+- [Device ELF Format](device-elf-format.md) -- ELF header encoding, `e_shoff`/`e_shnum` fields, and class-dependent field widths
+- [NVIDIA Section Types](nvidia-sections.md) -- Section type constants and the NOBITS bitmask (`0x400D`) used in Phase 7b to skip no-data sections
+- [Output Writing](../pipeline/output.md) -- Pipeline dispatch that selects between `write_elf_to_file` and `write_elf_to_memory` entry points
+- [Layout Phase](../pipeline/layout.md) -- Computes section offsets (`sh_offset`) and `e_shoff` that the serializer uses for alignment padding
+- [Mercury FNLZR](../mercury/fnlzr.md) -- Mercury path pre-allocates buffer via `compute_elf_size`, serializes to memory, then passes to FNLZR
+- [Memory Arenas](../infra/memory-arenas.md) -- Arena allocator (`sub_4307C0`) used by writer factories and vector-backed mode 2
+- [Section Merging](../linker/section-merging.md) -- Builds the fragment linked lists at `sec+72` that Phase 7c traverses during section data emission
+
+**Sibling wikis:**
+
+- [ptxas: ELF Emitter](../../ptxas/output/elf-emitter.html) -- ptxas-side ELF serialization for comparison with nvlink's output path
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| Serialization engine sub_45BF00 (13,258 bytes, 532 lines) | HIGH | Decompiled file sub_45BF00_0x45bf00.c exists |
+| Polymorphic writer sub_45B6D0 (5 modes) | HIGH | Verified in sub_45B6D0 decompiled code: switch with cases 0-4, exact mode behavior confirmed |
+| Mode 3 = FILE* (fwrite), mode 4 = memcpy with advancing cursor | HIGH | Verified in sub_45B6D0: case 3 calls fwrite, case 4 calls memcpy and advances +32 |
+| Mode 2 = vector append (sub_44FC10) | HIGH | Verified in sub_45B6D0: case 2 calls sub_44FC10; decompiled file exists |
+| Mode 0 = callback via offset +8, mode 1 = no-op | HIGH | Verified in sub_45B6D0: case 0 calls through +8 pointer, case 1 falls through to return |
+| NULL writer defaults to stdout (fwrite) | HIGH | Verified in sub_45B6D0: first `if (!a1)` returns `fwrite(a2, 1, a3, stdout)` |
+| File-mode factory sub_45B950 | HIGH | Decompiled file sub_45B950_0x45b950.c exists |
+| Memory-mode factory sub_45BA30 | HIGH | Decompiled file sub_45BA30_0x45ba30.c exists |
+| Writer destructor sub_45B6A0 | HIGH | Decompiled file sub_45B6A0_0x45b6a0.c exists |
+| Writer context = 40 bytes | MEDIUM | Inferred from arena allocation size; consistent across factory functions |
+| File entry sub_45C920, memory entry sub_45C950 | HIGH | Both decompiled files exist |
+| Size computation sub_45C980 | HIGH | Decompiled file exists; 128/224 constants verified |
+| "writing file" error string | HIGH | String at 0x1D3B828 confirmed in nvlink_strings.json |
+| "Negative size encountered" error string | HIGH | String at 0x1D3B84C confirmed in nvlink_strings.json, xref to sub_45BF00 |
+| "section size mismatch" error string | HIGH | String at 0x1D3B835 confirmed in nvlink_strings.json, xref to sub_45BF00 |
+| 10-phase write sequence | HIGH | Phase structure verified against sub_45BF00 decompiled code flow |
+| Phase 1: ELF header (64/52 bytes) | HIGH | Header size selection by elf_class verified in decompiled code |
+| Phase 2: single NUL padding byte | HIGH | Single zero-byte write visible in decompiled code after header |
+| Phase 3-4: shstrtab then strtab string tables | HIGH | Loop over string arrays at +336/+312 and +328/+304 verified |
+| Phase 5: alignment padding to section[3] offset | HIGH | Gap computation from running offset to section 3's sh_offset verified |
+| Phase 7: fragment list traversal at sec+72 | MEDIUM | Fragment list structure inferred from pointer arithmetic; node layout reconstructed |
+| Phase 9: section headers (64/40 bytes each) | HIGH | shdr_size selection verified; loop over section_order array confirmed |
+| Phase 10: program header table (sub_45BAA0) | HIGH | Conditional call to sub_45BAA0 verified in sub_45BF00 |
+| NOBITS bitmask 0x400D in Phase 7b | HIGH | Same bitmask appears in sub_45BAA0 and serialization engine |
+| Canonical section ordering (0=null, 1=shstrtab, 2=strtab, 3=symtab) | HIGH | Verified from section creation order in sub_4438F0 constructor |
+| e_shnum overflow encoding (0 -> sh_size of section 0) | MEDIUM | Standard ELF mechanism; code path exists in sub_45C980 but rarely exercised |

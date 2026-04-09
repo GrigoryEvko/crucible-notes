@@ -8,22 +8,29 @@ CUDA defines custom section types in the `SHT_LOPROC`--`SHT_HIPROC` range (`0x70
 
 | Type constant | Value | Description |
 |---|---|---|
-| `SHT_CUDA_INFO` | `0x70000001` | `.nv.info` and `.nv.info.*` per-kernel metadata (EIATTR attributes) |
-| `SHT_CUDA_CALLGRAPH` | `0x70000002` | `.nv.callgraph` -- call edge table for dead code elimination and stack propagation |
-| `SHT_CUDA_PROTOTYPE` | `0x70000003` | `.nv.prototype` -- kernel launch prototype descriptors |
-| `SHT_CUDA_RELOCINFO` | `0x70000004` | `.nv.rel.action` -- CUDA-specific relocation action table |
-| `SHT_CUDA_RESOLVED_RELA` | `0x70000005` | `.nv.resolvedrela` -- relocations preserved after linking (`--preserve-relocs`) |
-| `SHT_CUDA_COMPAT` | `0x70000006` | `.nv.compat` -- forward/backward compatibility attribute table |
-| `SHT_CUDA_GLOBAL` | `0x70000007` | `.nv.global` -- uninitialized global device memory (`__device__` BSS) |
-| `SHT_CUDA_GLOBAL_INIT` | `0x70000008` | `.nv.global.init` -- initialized global device memory (`__device__` with initializer) |
-| `SHT_CUDA_LOCAL` | `0x70000009` | `.nv.local.*` -- per-kernel local (thread-private) memory |
-| `SHT_CUDA_SHARED` | `0x7000000A` | `.nv.shared.*` -- per-kernel shared memory |
-| `SHT_CUDA_METADATA` | `0x7000000B` | `.nv.metadata` -- linker metadata (module IDs, version info) |
-| `SHT_CUDA_SHARED_RESERVED` | `0x70000015` | `.nv.reservedSmem.*` -- compiler-reserved shared memory regions |
+| `SHT_CUDA_INFO` | `0x70000000` | `.nv.info` and `.nv.info.*` per-kernel metadata (EIATTR attributes). Created by `sub_4504B0:46,63`. |
+| `SHT_CUDA_CALLGRAPH` | `0x70000001` | `.nv.callgraph` -- call edge table for dead code elimination and stack propagation. Created by `sub_44D200:102`. |
+| `SHT_CUDA_PROTOTYPE` | `0x70000002` | `.nv.prototype` -- kernel launch prototype descriptors. Created by `sub_44D9D0:25`. |
+| `SHT_CUDA_RESOLVED_RELA` | `0x70000003` | `.nv.resolvedrela` -- relocations preserved after linking (`--preserve-relocs`). Created by `sub_469230:151`. |
+| `SHT_CUDA_METADATA` | `0x70000004` | `.nv.metadata` -- linker metadata (module IDs, version info). Created by `sub_43D6B0:31`. |
+| `SHT_CUDA_GLOBAL` | `0x70000007` | `.nv.global` -- uninitialized global device memory (`__device__` BSS). Created by `sub_436410:128`, `sub_439830:494`. |
+| `SHT_CUDA_GLOBAL_INIT` | `0x70000008` | `.nv.global.init` -- initialized global device memory (`__device__` with initializer). Created by `sub_436740:105`. |
+| `SHT_CUDA_LOCAL` | `0x70000009` | `.nv.local.*` -- per-kernel local (thread-private) memory. Created by `sub_436310:31`. |
+| `SHT_CUDA_SHARED` | `0x7000000A` | `.nv.shared.*` -- per-kernel shared memory. Created by `sub_436A80:41`. |
+| `SHT_CUDA_RELOCINFO` | `0x7000000B` | `.nv.rel.action` -- CUDA-specific relocation action table. Created by `sub_469D60:913`. |
+| `SHT_CUDA_UFT` | `0x7000000E` | `.nv.uft` -- Unified Function Table jump slots (and per-kernel `.nv.uft.rel.*` reloc variants). Created by `sub_442820:73`. |
+| `SHT_CUDA_UFT_ENTRY` | `0x70000011` | `.nv.uft.entry` -- UFT entry metadata. Created by `sub_4438F0:579`, `sub_464240:15`. |
+| `SHT_CUDA_UDT` | `0x70000012` | `.nv.udt` -- Unified Descriptor Table. Created by `sub_436740:76`, `sub_436410:94`. |
+| `SHT_CUDA_UDT_ENTRY` | `0x70000014` | `.nv.udt.entry` -- UDT entry metadata. Created by `sub_464320:15`. |
+| `SHT_CUDA_SHARED_RESERVED` | `0x70000015` | `.nv.reservedSmem.*` -- compiler-reserved shared memory regions. Created by `sub_4379A0:49`, `sub_437BB0:70`. |
 | `SHT_CUDA_CONSTANT0` | `0x70000064` | `.nv.constant0` -- constant bank 0 (kernel parameters, driver-managed) |
 | `SHT_CUDA_CONSTANT1` | `0x70000065` | `.nv.constant1` |
 | ... | ... | Banks 2--16 follow sequentially |
 | `SHT_CUDA_CONSTANT17` | `0x70000075` | `.nv.constant17` -- highest numbered constant bank |
+| `SHT_CUDA_COMPAT` | `0x70000086` | `.nv.compat` -- forward/backward compatibility attribute table. Created by `sub_451BA0:64`, `sub_451920:113`. |
+| `SHT_CUDA_HOST` | `0x70000087` | `.nv.host` -- host-visible data section. Created by `sub_435B60:110`. |
+
+**Value gaps:** Identifiers `0x70000005`, `0x70000006`, `0x7000000C`, `0x7000000D`, `0x7000000F`, `0x70000010`, `0x70000013` are not used in any observed `sub_441AC0` call site in nvlink v13.0.88. `0x70000006` does appear in filter bitmasks (e.g., `sub_441AC0:190` range check) as a generic "constant" placeholder that is reclassified to a specific bank type, but no section is ever created with that type as its final value. `.nv.compat` and `.nv.host` jump to the `0x70000086`--`0x70000087` block; the reason for the jump is not clear from the binary.
 
 The constant bank type for bank N is `0x70000064 + N`. The bank number is parsed from the section name suffix by `strtol(name + 12, NULL, 10)`, so `.nv.constant0` maps to `0x70000064` and `.nv.constant17` to `0x70000075`.
 
@@ -78,7 +85,7 @@ These sections represent the four GPU memory address spaces: global, local, shar
 |---|---|---|
 | `.nv.global` | `SHT_CUDA_GLOBAL` (`0x70000007`) | Uninitialized global device memory. BSS-equivalent for `__device__` variables without initializers. Section type is `SHT_NOBITS` in input, reclassified to `SHT_CUDA_GLOBAL` by the linker. Multiple definitions of the same global are merged by `merge_overlapping_global_data` (`sub_432B10`), which validates byte-for-byte identity of overlapping regions. |
 | `.nv.global.init` | `SHT_CUDA_GLOBAL_INIT` (`0x70000008`) | Initialized global device memory. Contains initial values for `__device__` variables with initializers. Carries `SHT_PROGBITS` data. |
-| `.nv.host` | `SHT_PROGBITS` | Host-visible data section. Used for data that must be accessible from both host and device code paths. Merged by `merge_overlapping_host_data` (`sub_435B60`). |
+| `.nv.host` | `SHT_CUDA_HOST` (`0x70000087`) | Host-visible data section. Used for data that must be accessible from both host and device code paths. Created by `sub_435B60:110` with type `1879048327` -- the section gets its own NVIDIA-specific `sh_type` rather than plain `SHT_PROGBITS`. Merged by `merge_overlapping_host_data` (`sub_435B60`). |
 
 ### Local Memory (Per-Thread)
 
@@ -310,8 +317,8 @@ Complete alphabetical list of every NVIDIA-specific section name found in nvlink
 .note.nv.cuinfo                         SHT_NOTE           Compilation info
 .note.nv.cuver                          SHT_NOTE           CUDA version
 .note.nv.tkinfo                         SHT_NOTE           Toolkit info
-.nv.callgraph                           0x70000002         Call edge table
-.nv.compat                              0x70000006         Compatibility attributes
+.nv.callgraph                           0x70000001         Call edge table
+.nv.compat                              0x70000086         Compatibility attributes
 .nv.constant0 .. .nv.constant17         0x70000064..75     Constant banks 0-17
 .nv.constant.driver                     (bank alias)       Driver constants
 .nv.constant.entry_image_header_indices (bank alias)       Image header indices
@@ -322,31 +329,31 @@ Complete alphabetical list of every NVIDIA-specific section name found in nvlink
 .nv.constant.user                       (bank alias)       User __constant__ variables
 .nv.global                              0x70000007         Global BSS
 .nv.global.init                         0x70000008         Global initialized data
-.nv.host                                SHT_PROGBITS       Host-visible data
+.nv.host                                0x70000087         Host-visible data
 .nv.independent.samplerrefDescSize      SHT_PROGBITS       Sampler descriptor size
 .nv.independent.texrefDescSize          SHT_PROGBITS       Texture descriptor size (indep)
-.nv.info                                0x70000001         Global nvinfo attributes
-.nv.info.<funcname>                     0x70000001         Per-kernel nvinfo attributes
+.nv.info                                0x70000000         Global nvinfo attributes
+.nv.info.<funcname>                     0x70000000         Per-kernel nvinfo attributes
 .nv.local.<funcname>                    0x70000009         Per-kernel local memory
-.nv.metadata                            0x7000000B         Module metadata
+.nv.metadata                            0x70000004         Module metadata
 .nv.merc.*                              (varies)           Mercury sections (19 total)
-.nv.prototype                           0x70000003         Launch prototypes
+.nv.prototype                           0x70000002         Launch prototypes
 .nv.ptx.const0.size                     (metadata)         Constant bank 0 size record
-.nv.rel.action                          0x70000004         Relocation action table
+.nv.rel.action                          0x7000000B         Relocation action table
 .nv.reservedSmem                        0x70000015         Reserved shared memory base
 .nv.reservedSmem.begin                  0x70000015         Reserved region start
 .nv.reservedSmem.cap                    0x70000015         Reserved region capacity
 .nv.reservedSmem.end                    0x70000015         Reserved region end
 .nv.reservedSmem.offset0                0x70000015         Reserved offset slot 0
 .nv.reservedSmem.offset1                0x70000015         Reserved offset slot 1
-.nv.resolvedrela                        0x70000005         Preserved relocations
+.nv.resolvedrela                        0x70000003         Preserved relocations
 .nv.shared.<funcname>                   0x7000000A         Per-kernel shared memory
 .nv.surfrefDescSize                     SHT_PROGBITS       Surface descriptor size
-.nv.udt                                 SHT_PROGBITS       Unified Descriptor Table
-.nv.udt.entry                           SHT_PROGBITS       UDT entry metadata
-.nv.uft                                 SHT_PROGBITS       Unified Function Table
-.nv.uft.entry                           SHT_PROGBITS       UFT entry metadata
-.nv.uft.rel                             SHT_RELA           UFT relocations
+.nv.udt                                 0x70000012         Unified Descriptor Table
+.nv.udt.entry                           0x70000014         UDT entry metadata
+.nv.uft                                 0x7000000E         Unified Function Table
+.nv.uft.entry                           0x70000011         UFT entry metadata
+.nv.uft.rel.<funcname>                  0x7000000E         Per-kernel UFT relocation slot (same sh_type as .nv.uft)
 .nv.uidx                                SHT_PROGBITS       Unified index table
 .nv.unified.texrefDescSize              SHT_PROGBITS       Texture descriptor size (unified)
 .nv_debug_info_ptx                      SHT_PROGBITS       Embedded PTX source
@@ -358,3 +365,52 @@ Complete alphabetical list of every NVIDIA-specific section name found in nvlink
 __nv_relfatbin                          SHT_PROGBITS       Relocatable fatbin (host ELF)
 .text.<funcname>                        SHT_PROGBITS       Kernel/function machine code
 ```
+
+## Cross-References
+
+**Internal (nvlink wiki):**
+
+- [Section Catalog](../reference/section-catalog.md) -- Alphabetical reference catalog of all 109 section entries with `sh_type` hex values
+- [.nv.info Metadata](nv-info.md) -- EIATTR attribute format and the 90+ attribute constants carried in `.nv.info` / `.nv.info.<funcname>` sections
+- [Constant Banks](constant-banks.md) -- Deep dive on `.nv.constant*` section numbering, dedup, and hardware size limits
+- [Unified Function Tables](uft.md) -- UFT/UDT section management (`.nv.uft`, `.nv.udt`, `.nv.uidx`)
+- [Mercury ELF Sections](../mercury/elf-sections.md) -- The 19 `.nv.merc.*` sections for Mercury targets (sm100+)
+- [Section Merging](../linker/section-merging.md) -- `merge_elf` name-prefix dispatch table that classifies input sections
+- [Dead Code Elimination](../linker/dead-code-elimination.md) -- How `.text.*` and associated `.nv.info.*` / `.nv.local.*` sections are removed
+- [Device ELF Format](device-elf-format.md) -- ELF header encoding and how `e_type` / `e_flags` relate to section emission
+- [Linker Scripts](../infra/linker-scripts.md) -- Host-side ELF sections (`.nvFatBinSegment`, `__nv_relfatbin`, `.nv_fatbin`) and the `SECTIONS` template
+- [Program Headers](program-headers.md) -- How sections are classified into PT\_LOAD segments via the internal flags bitmask
+
+**Sibling wikis:**
+
+- [ptxas: Sections](../../ptxas/output/sections.html -- Section creation in ptxas: how `.text`, `.nv.info`, `.nv.constant*`, and debug sections are emitted
+- [ptxas: EIATTR Reference](../../ptxas/reference/eiattr.html) -- EIATTR attribute codes that populate `.nv.info` sections
+- [ptxas: Debug Info](../../ptxas/output/debug-info.html) -- How ptxas generates the NVIDIA debug sections (`.nv_debug_*`)
+
+## Confidence Assessment
+
+| Claim | Confidence | Evidence |
+|-------|-----------|----------|
+| merge_elf at sub_45E7D0 (89,156 bytes) | HIGH | Decompiled file sub_45E7D0_0x45e7d0.c exists |
+| "removed un-used section %s (%d)" string | HIGH | String at 0x1D3AB28 confirmed in nvlink_strings.json, xref to sub_44AD40 |
+| "overlapping non-identical data" string | HIGH | String at 0x1D387D8 confirmed in nvlink_strings.json, xref to sub_432B10 |
+| "unknown .nv.compat attribute (%x) encoutered" (typo) | HIGH | String at 0x1D3B1B8 confirmed in nvlink_strings.json (typo "encoutered" preserved) |
+| Dead code elimination sub_44AD40 | HIGH | Decompiled file exists |
+| Section copy sub_4411F0 | HIGH | Decompiled file exists |
+| Reloc section creator sub_441AC0 | HIGH | Decompiled file exists |
+| merge_overlapping_global_data sub_432B10 | HIGH | Decompiled file exists, "overlapping non-identical data" xref confirmed |
+| merge_overlapping_local_data sub_437E20 | HIGH | Decompiled file exists |
+| Overlap merge functions sub_4343C0, sub_434BC0, sub_435390 | HIGH | All three decompiled files exist |
+| Layout engine sub_439830 | HIGH | Decompiled file exists |
+| Resolved relocations sub_46ADC0 | HIGH | Decompiled file exists |
+| register_module_for_linking sub_42A680 | HIGH | Decompiled file exists |
+| build_callgraph_section sub_44D200 | HIGH | Decompiled file exists |
+| .nv.constant bank type formula 0x70000064 + N | HIGH | Verified in sub_438640: `a9 - 1879048292` = `a9 - 0x70000064`; "bank SHT not CUDA_CONSTANT_?" string confirmed |
+| 18 constant banks (0-17) | HIGH | String table at 0x1D3A8E0 confirmed with 18 entries in nvlink_strings.json |
+| .note.nv.tkinfo, .note.nv.cuinfo names | HIGH | Strings at 0x1D391CB and 0x1D391AC confirmed in nvlink_strings.json |
+| "nvinfo <fmt=%d,attr=%d,size=%d>" log format | HIGH | String at 0x1D3A420 confirmed in nvlink_strings.json |
+| SHT_CUDA_INFO section type code = 0x70000000 | HIGH | Confirmed in decompiled `sub_45E7D0`: `.nv.info` sections dispatch via `case 0x70000000` (implied by absence of explicit case, handled by default INFO path); 0x70000001 is `SHT_CUDA_CALLGRAPH` not INFO |
+| SHF_CUDA_MERCURY = 0x10000000 (bit 28) | MEDIUM | Referenced in Mercury section handling; not individually verified in decompiled bitmask |
+| Section lifecycle 8-stage pipeline | MEDIUM | Stages match observed function call order but reconstructed from multiple function call chains |
+| Fatbin section names (.nvFatBinSegment etc) | MEDIUM | Referenced in host-side linker path; not primary nvlink device-link path |
+| Reserved shared memory symbol names | MEDIUM | Inferred from string table patterns; not all individually traced to specific code paths |

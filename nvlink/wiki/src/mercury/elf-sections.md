@@ -401,7 +401,7 @@ The function at `0x1CECBB0` (3,426 bytes) determines which sections should be **
 
 - Sections with `sh_type == 0x70000016` (`SHT_CUDA_MERC`) that have the `0x10` flag in byte 11
 - Sections with `sh_type == 0x70000085` (`SHT_NV_MERC_SYMTAB`) that have the `0x10` flag
-- Sections with `sh_type == 0x7000000A` (`SHT_CUDA_NOBITS`)
+- Sections with `sh_type == 0x7000000A` (`SHT_CUDA_SHARED`)
 - Sections named `.nv.shared.*` with `sh_type == SHT_NOBITS(8)` or `0x70000015`
 - Sections named `.nv.shared.reserved.*`
 - Sections named `.nv.local.*`
@@ -611,8 +611,8 @@ Type 1 writes the resolved value directly. Type 19 writes zero. Types 22--29 app
 - [Device ELF Format](../elf/device-elf-format.md) -- Elf64_Ehdr and Elf64_Shdr layout details
 
 ### Sibling Wikis
-- [ptxas: Capsule Mercury & Finalization](../../../../ptxas/wiki/src/codegen/capmerc.md) -- standalone ptxas capmerc format: Mercury section classifier (`sub_1C98C60`, 9KB, 15 `.nv.merc.*` names), capsule descriptor (328 bytes), per-function Mercury payload structure. Section types and names are identical between ptxas (producer) and nvlink (consumer).
-- [ptxas: Mercury Encoder Pipeline](../../../../ptxas/wiki/src/codegen/mercury.md) -- standalone ptxas Mercury encode/decode pipeline that emits these sections.
+- [ptxas: Capsule Mercury & Finalization](../../ptxas/codegen/capmerc.html) -- standalone ptxas capmerc format: Mercury section classifier (`sub_1C98C60`, 9KB, 15 `.nv.merc.*` names), capsule descriptor (328 bytes), per-function Mercury payload structure. Section types and names are identical between ptxas (producer) and nvlink (consumer).
+- [ptxas: Mercury Encoder Pipeline](../../ptxas/codegen/mercury.html) -- standalone ptxas Mercury encode/decode pipeline that emits these sections.
 
 ## Confidence Assessment
 
