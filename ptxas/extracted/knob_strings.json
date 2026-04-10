@@ -1,6 +1,6 @@
 {
   "knob_strings": {
-    "total_count": 1145,
+    "total_count": 1142,
     "regions": [
       {
         "start": "0x21B6000",
@@ -14,12 +14,6 @@
       }
     ],
     "entries": [
-      {
-        "va": "0x21B62B8",
-        "rot13": "ABI",
-        "name": "NOV",
-        "region": "OCG knobs (ctor_005)"
-      },
       {
         "va": "0x21B64C8",
         "rot13": "NamedPhases",
@@ -6255,12 +6249,6 @@
         "region": "DAG knobs (ctor_007)"
       },
       {
-        "va": "0x21DC228",
-        "rot13": "LSU_T",
-        "name": "YFH_G",
-        "region": "DAG knobs (ctor_007)"
-      },
-      {
         "va": "0x21DC22E",
         "rot13": "XU64",
         "name": "KH64",
@@ -6876,12 +6864,6 @@
         "va": "0x21DD228",
         "rot13": "ConvertMemoryToRegisterOrUniform",
         "name": "PbairegZrzbelGbErtvfgreBeHavsbez",
-        "region": "DAG knobs (ctor_007)"
-      },
-      {
-        "va": "0x21DD37B",
-        "rot13": "IED",
-        "name": "VRQ",
         "region": "DAG knobs (ctor_007)"
       }
     ]

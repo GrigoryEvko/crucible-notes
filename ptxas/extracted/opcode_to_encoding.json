@@ -5,6 +5,7 @@
     "source_va": "0x22B4B60",
     "non_zero_count": 127,
     "sentinel_count": 10,
+    "max_value": 355,
     "entries": [
       {
         "opcode": 0,

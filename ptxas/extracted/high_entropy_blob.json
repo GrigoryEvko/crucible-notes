@@ -1,0 +1,14 @@
+{
+  "high_entropy_blob": {
+    "start_va": "0x1D4FE00",
+    "end_va": "0x201CE00",
+    "size_bytes": 2936832,
+    "size_mb": 2.8,
+    "sha256": "0a8c461124f786666f98f7eb6d3bcf4d846b7d9099f6729d48b106def796a099",
+    "overall_entropy_bits": 7.998,
+    "first_page_entropy": 7.7563,
+    "last_page_entropy": 7.5921,
+    "header_hex_16b": "0060f201000000000000000000000000",
+    "note": "Near-maximum entropy (8.00 bits/byte) suggests compressed/encrypted data. Likely NVVM IR templates, pre-built code sequences, or encoded lookup tables."
+  }
+}

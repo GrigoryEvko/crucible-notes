@@ -43,7 +43,8 @@
         -1
       ],
       "active_slots": 1,
-      "wiki_encoder_count": 70
+      "wiki_encoder_count": 70,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F1F08",
@@ -88,7 +89,8 @@
         -1
       ],
       "active_slots": 1,
-      "wiki_encoder_count": 215
+      "wiki_encoder_count": 215,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F1F90",
@@ -133,7 +135,8 @@
         -1
       ],
       "active_slots": 1,
-      "wiki_encoder_count": 20
+      "wiki_encoder_count": 20,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F2238",
@@ -178,7 +181,8 @@
         -1
       ],
       "active_slots": 1,
-      "wiki_encoder_count": 17
+      "wiki_encoder_count": 17,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F2C50",
@@ -223,7 +227,8 @@
         -1
       ],
       "active_slots": 1,
-      "wiki_encoder_count": 1
+      "wiki_encoder_count": 1,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F1DF8",
@@ -268,7 +273,8 @@
         -1
       ],
       "active_slots": 2,
-      "wiki_encoder_count": 202
+      "wiki_encoder_count": 202,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F2018",
@@ -313,7 +319,8 @@
         -1
       ],
       "active_slots": 2,
-      "wiki_encoder_count": 26
+      "wiki_encoder_count": 26,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F2128",
@@ -358,7 +365,8 @@
         -1
       ],
       "active_slots": 2,
-      "wiki_encoder_count": 2
+      "wiki_encoder_count": 2,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F21B0",
@@ -403,7 +411,8 @@
         -1
       ],
       "active_slots": 2,
-      "wiki_encoder_count": 135
+      "wiki_encoder_count": 135,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F2348",
@@ -448,7 +457,8 @@
         -1
       ],
       "active_slots": 2,
-      "wiki_encoder_count": 11
+      "wiki_encoder_count": 11,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F25F0",
@@ -493,7 +503,8 @@
         -1
       ],
       "active_slots": 2,
-      "wiki_encoder_count": 21
+      "wiki_encoder_count": 21,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F2678",
@@ -538,7 +549,8 @@
         -1
       ],
       "active_slots": 2,
-      "wiki_encoder_count": 143
+      "wiki_encoder_count": 143,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F2810",
@@ -583,7 +595,8 @@
         -1
       ],
       "active_slots": 2,
-      "wiki_encoder_count": 6
+      "wiki_encoder_count": 6,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F29A8",
@@ -628,7 +641,8 @@
         -1
       ],
       "active_slots": 2,
-      "wiki_encoder_count": 152
+      "wiki_encoder_count": 152,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F2DE8",
@@ -673,7 +687,8 @@
         -1
       ],
       "active_slots": 2,
-      "wiki_encoder_count": 2
+      "wiki_encoder_count": 2,
+      "descriptor_size_bytes": 136
     },
     {
       "va": "0x23F2EF8",
@@ -718,7 +733,8 @@
         -1
       ],
       "active_slots": 2,
-      "wiki_encoder_count": 9
+      "wiki_encoder_count": 9,
+      "descriptor_size_bytes": 136
     }
   ]
 }

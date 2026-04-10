@@ -18,7 +18,8 @@
     "encoding_consts": "encoding_constants.json",
     "phase_names": "phase_names.json",
     "tier2_modifiers": "tier2_modifiers.json",
-    "knob_strings": "knob_strings.json"
+    "knob_strings": "knob_strings.json",
+    "blob_metadata": "high_entropy_blob.json"
   },
   "derived_tables": {
     "opcode_master": "opcode_master.json",
@@ -38,40 +39,44 @@
       "sha256": "195c99da2222cfbd9363c06f2ad1022bf4f9e64ad2d304d9f3c68f402573ced6"
     },
     "format_descriptors.json": {
-      "size": 10985,
-      "sha256": "e67a248c7347bed89a5644d447d94f6f69a8b10caebc8ddc2389d499817d350e"
+      "size": 11561,
+      "sha256": "319b2a87237e77b71edb0c8655d2db342b153f5367784ac3f4aecec3468c0fd2"
+    },
+    "high_entropy_blob.json": {
+      "size": 543,
+      "sha256": "76181c53cd2766327aa3fb3918565d5b2c477ba6944bc5f1ed6b8510c878b77a"
     },
     "isel_dispatch_tables.json": {
-      "size": 34066,
-      "sha256": "e7288a490212d1095bb5812a6deb771cfbb5aafdc50f5120822e17847b05b5b9"
+      "size": 34131,
+      "sha256": "3ec239ac775d69c2f34d4af07c5d346498e174556ea857285f39f2ec794a02ce"
     },
     "knob_strings.json": {
-      "size": 194137,
-      "sha256": "238a27e893c447824a6787ffb44a955def9b1a58ff14f9e64c167fbed416217b"
+      "size": 193737,
+      "sha256": "8dfc258e59673d9f1d82a348ab4634177016950a46dff821dc1bc9b0c945aaf1"
     },
     "occupancy_constants.json": {
       "size": 2597,
       "sha256": "5197abe612b4f27ac8d4a62bad8e142b7ca7a21afa9c60254830feba6c16a2a4"
     },
     "opcode_master.json": {
-      "size": 8276,
-      "sha256": "c9f26e209f33e60280c1d7ab8ad1bb5837dcf0e8c0655d339953505f59115d37"
+      "size": 61412,
+      "sha256": "55dc5053bcc64d9d9d4abca13802dc792b8637195d3572031a1f3891097d5791"
     },
     "opcode_names.json": {
-      "size": 70385,
-      "sha256": "9ffbb3d152eac683fafff130d0ce1154243aa0648c4c7a0efcc919af45f98560"
+      "size": 99926,
+      "sha256": "bdb34f0afe1cdea8926ded77d84f346374e32d4defba0e85c3fd8bd5c64df9e9"
     },
     "opcode_to_encoding.json": {
-      "size": 15158,
-      "sha256": "845b5db85e5d91c8a6a8df9461f314cd05c4a4ac6307deef7c4c8910a3fbc4e1"
+      "size": 15180,
+      "sha256": "bd74c011b783565230e04e6269a67b3369fedfe41cec975c64dc0223e7d807a3"
     },
     "phase_names.json": {
       "size": 17875,
       "sha256": "c6a680f80ce5b42d928175881fc34efdbcd5e2322de84ffafa18cc3a6ca3a3bc"
     },
     "shared_memory_configs.json": {
-      "size": 585,
-      "sha256": "559d05d9c2228103d4301beb1c4c143883fabdcaa590aa54cf236bf07a77d481"
+      "size": 645,
+      "sha256": "b3d4438d0fb7da7b395911096dd4b09fca46b746ae7c54f9e7a926a75a4f3b68"
     },
     "tier2_modifiers.json": {
       "size": 4937,

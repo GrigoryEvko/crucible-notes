@@ -100,10 +100,10 @@ class BinaryReader:
         return list(struct.unpack_from(f'<{count}Q', self.data, off))
 
     def is_in_text(self, va: int) -> bool:
-        return TEXT_START <= va <= TEXT_END
+        return TEXT_START <= va < TEXT_END
 
     def is_in_rodata(self, va: int) -> bool:
-        return RODATA_START <= va <= RODATA_END
+        return RODATA_START <= va < RODATA_END
 
     def sha256(self) -> str:
         return hashlib.sha256(self.data).hexdigest()
@@ -115,22 +115,18 @@ def rot13(s: str) -> str:
 
 # ─── Table 1: ROT13 Opcode Name Table ──────────────────────────────────
 
-# The InstructionInfo constructor at sub_7A5D10 stores 322 name entries.
-# Each entry is a {char*, uint64} pair at object+4184. We extract by
-# scanning the known string region and cross-referencing with the
-# encoding category map (Table 2) which has exactly 322 entries.
+# The InstructionInfo constructor at sub_BE7390 / sub_7A5D10 stores 322
+# name entries as {char*, uint64} pairs at object+4184. The 322 ROT13
+# opcode name strings are packed in REVERSE order (opcode 321 "LAST" first,
+# opcode 0 "ERRBAR" last) in a dense region at 0x21C1336-0x21C1DDE.
+# We extract them by byte-scanning this region and reversing.
 
-# Known string cluster for opcode names: 0x21C1D00 - 0x21C2200
-OPCODE_NAME_REGION_START = 0x21C1D00
-OPCODE_NAME_REGION_END   = 0x21C2200
+# Dense packed opcode name region (reverse order: LAST..ERRBAR)
+OPCODE_NAME_REGION_START = 0x21C1336  # first byte of "YNFG" (rot13 of "LAST")
+OPCODE_NAME_REGION_END   = 0x21C1DDE  # byte after ERRBAR's NUL terminator
+OPCODE_NAME_COUNT        = 322
 
-# InstructionInfo name table: 322 entries of {ptr, len} at object+4184
-# The object is constructed at runtime, but we can find the name string
-# pointers by scanning the constructor code. Instead, we use the encoding
-# category map (Table 2) at unk_21C0E00 as an index anchor — it has
-# exactly 322 entries, one per opcode.
-
-# SM generation boundary markers (from sass-opcodes.md)
+# SM generation boundary markers (verified against InstructionInfo constructor)
 SM_BOUNDARIES = {
     "SM70_LAST": 136, "SM73_FIRST": 137, "SM73_LAST": 171,
     "SM82_FIRST": 172, "SM82_LAST": 193,
@@ -142,65 +138,111 @@ SM_BOUNDARIES = {
     "LAST": 321
 }
 
+# Validation: known opcode-to-mnemonic mappings from decompiled code
+OPCODE_SPOT_CHECKS = {
+    0: "ERRBAR", 1: "IMAD", 7: "ISETP", 18: "FSETP", 19: "MOV",
+    23: "PLOP3", 25: "NOP", 52: "AL2P_INDEXED", 54: "BMOV_B",
+    61: "BAR", 67: "BRA", 71: "CALL", 72: "RET", 77: "EXIT",
+    93: "OUT_FINAL", 94: "LDS", 95: "STS", 96: "LDG", 97: "STG",
+    102: "ATOM", 104: "RED", 111: "MEMBAR", 119: "SHFL", 122: "DFMA",
+    130: "HSET2", 135: "INTRINSIC", 136: "SM70_LAST", 137: "SM73_FIRST",
+    171: "SM73_LAST", 172: "SM82_FIRST", 193: "SM82_LAST",
+    206: "SM90_FIRST", 252: "SM90_LAST", 253: "SM100_FIRST",
+    280: "SM100_LAST", 281: "SM104_FIRST", 320: "SM104_LAST", 321: "LAST",
+}
+
 
 def extract_opcode_names(br: BinaryReader) -> dict:
-    """Extract 322-entry ROT13 opcode name table by scanning the constructor's
-    string references. We find names by locating the InstructionInfo name
-    table pointer array in the constructor sub_BE7390 / sub_7A5D10."""
+    """Extract 322-entry ROT13 opcode name table from the dense packed
+    string region in .rodata. Names are stored in reverse order (opcode 321
+    first, opcode 0 last). We scan the region byte-by-byte, collect all
+    NUL-terminated strings, then reverse to get opcode-indexed order."""
 
-    # The name table at InstructionInfo+4184 is an array of 322 x {ptr(8), len(8)}
-    # = 322 x 16 = 5152 bytes. The pointers reference ROT13 strings in .rodata.
-    #
-    # Strategy: scan the known .rodata region for all short ROT13-decodable strings
-    # that look like SASS mnemonics, then order them by the constructor's
-    # initialization sequence.
-    #
-    # Simpler approach: the constructor sub_7A5D10 writes sequential LEA instructions
-    # that load string addresses. We find these by searching for the string pattern
-    # in the binary.
+    # Byte-scan the dense packed region for NUL-terminated ASCII strings.
+    # We read raw bytes directly to avoid cstring() issues with max_len.
+    start_off = br._off(OPCODE_NAME_REGION_START)
+    end_off = br._off(OPCODE_NAME_REGION_END)
+    raw_data = br.data[start_off:end_off]
 
-    # Scan the opcode name region for NUL-terminated ASCII strings
-    names_raw = []
-    va = OPCODE_NAME_REGION_START
-    while va < OPCODE_NAME_REGION_END:
+    forward_entries = []  # in file order: opcode 321 first, opcode 0 last
+    pos = 0
+    while pos < len(raw_data):
+        if raw_data[pos] == 0:
+            pos += 1
+            continue
+        nul = raw_data.find(b'\x00', pos)
+        if nul < 0:
+            break
         try:
-            s = br.cstring(va, max_len=64)
-            if len(s) >= 2 and s.isascii() and all(c.isalnum() or c in '_.' for c in s):
-                decoded = rot13(s)
-                names_raw.append({"va": va, "rot13": s, "mnemonic": decoded, "length": len(s)})
-                va += len(s) + 1  # skip past NUL
-            else:
-                va += 1
-        except (ValueError, UnicodeDecodeError):
-            va += 1
+            s = raw_data[pos:nul].decode('ascii')
+            d = rot13(s)
+            va = OPCODE_NAME_REGION_START + pos
+            forward_entries.append({"va": va, "rot13": s, "mnemonic": d, "length": len(s)})
+        except UnicodeDecodeError:
+            pass
+        pos = nul + 1
+
+    # Reverse to get opcode-indexed order (index 0 = ERRBAR, index 321 = LAST)
+    entries = list(reversed(forward_entries))
+
+    # Validate count
+    if len(entries) != OPCODE_NAME_COUNT:
+        print(f"    WARNING: Expected {OPCODE_NAME_COUNT} opcode names, found {len(entries)}", file=sys.stderr)
+
+    # Spot-check known opcodes
+    spot_check_failures = []
+    for idx, expected in OPCODE_SPOT_CHECKS.items():
+        if idx < len(entries):
+            actual = entries[idx]["mnemonic"]
+            if actual != expected:
+                spot_check_failures.append(f"opcode {idx}: expected {expected}, got {actual}")
+        else:
+            spot_check_failures.append(f"opcode {idx}: index out of range")
+
+    if spot_check_failures:
+        for f in spot_check_failures:
+            print(f"    SPOT CHECK FAIL: {f}", file=sys.stderr)
 
     # Also scan the extended mnemonic region (0x2034000-0x203A000) for Mercury names
+    mercury_start = 0x2034000
+    mercury_end = 0x203A000
+    merc_start_off = br._off(mercury_start)
+    merc_end_off = br._off(mercury_end)
+    merc_data = br.data[merc_start_off:merc_end_off]
+
     mercury_names = []
-    for scan_va in range(0x2034000, 0x203A000):
+    pos = 0
+    while pos < len(merc_data):
+        if merc_data[pos] == 0:
+            pos += 1
+            continue
+        nul = merc_data.find(b'\x00', pos)
+        if nul < 0:
+            break
         try:
-            s = br.cstring(scan_va, max_len=80)
-            if len(s) >= 4 and s.isascii() and all(c.isalnum() or c in '_.' for c in s):
+            s = merc_data[pos:nul].decode('ascii')
+            if len(s) >= 4 and all(c.isalnum() or c in '_.' for c in s):
                 decoded = rot13(s)
                 if decoded.startswith(('MERCURY_', 'HMMA', 'IMMA', 'BMMA', 'DMMA',
                                        'QMMA', 'OMMA', 'GMMA', 'UTC', 'FENCE',
                                        'SYNCS', 'CCTL', 'ACQBULK')):
-                    mercury_names.append({"va": scan_va, "rot13": s, "mnemonic": decoded})
-                scan_va += len(s) + 1
-            else:
-                scan_va += 1
-        except (ValueError, UnicodeDecodeError):
-            scan_va += 1
+                    va = mercury_start + pos
+                    mercury_names.append({"va": va, "rot13": s, "mnemonic": decoded})
+        except UnicodeDecodeError:
+            pass
+        pos = nul + 1
 
     return {
         "opcode_names": {
-            "primary_count": len(names_raw),
+            "primary_count": len(entries),
             "primary_region": f"0x{OPCODE_NAME_REGION_START:X}-0x{OPCODE_NAME_REGION_END:X}",
-            "entries": names_raw[:322],  # cap at 322
+            "entries": entries,
             "sm_boundaries": SM_BOUNDARIES,
+            "spot_check_failures": spot_check_failures,
         },
         "mercury_extended_names": {
             "count": len(mercury_names),
-            "entries": mercury_names[:800],
+            "entries": mercury_names,
         }
     }
 
@@ -248,8 +290,19 @@ FORMAT_DESCRIPTORS = [
 
 
 def extract_format_descriptors(br: BinaryReader) -> dict:
+    """Extract encoding format descriptors. Each descriptor is:
+    - 16 bytes: xmmword (format metadata: width code, slot count, etc.)
+    - 40 bytes: 10 x u32 slot_sizes (0xFFFFFFFF = unused)
+    - 40 bytes: 10 x u32 slot_types (0xFFFFFFFF = unused)
+    - 40 bytes: 10 x u32 slot_flags (0xFFFFFFFF = unused)
+    Total: 136 bytes per descriptor."""
+
     results = []
     for va, label, width, enc_count in FORMAT_DESCRIPTORS:
+        # Validate VA is in .rodata
+        if not br.is_in_rodata(va):
+            print(f"    WARNING: Format descriptor {label} VA 0x{va:X} not in .rodata", file=sys.stderr)
+
         lo, hi = br.xmm(va)
         # The three 10-DWORD arrays follow immediately after the xmmword
         arr_base = va + 16
@@ -264,6 +317,20 @@ def extract_format_descriptors(br: BinaryReader) -> dict:
 
         active = sum(1 for s in slot_sizes if s != -1)
 
+        # Validate: active slots should have reasonable sizes (1-64 bits)
+        for i, s in enumerate(slot_sizes):
+            if s != -1 and (s < 1 or s > 64):
+                print(f"    WARNING: {label} slot_sizes[{i}] = {s} (outside 1-64 range)", file=sys.stderr)
+
+        # Validate: unused slots should be contiguous at the end
+        found_unused = False
+        for i, s in enumerate(slot_sizes):
+            if s == -1:
+                found_unused = True
+            elif found_unused:
+                print(f"    WARNING: {label} has gap in slot_sizes at index {i}", file=sys.stderr)
+                break
+
         results.append({
             "va": f"0x{va:X}",
             "label": label,
@@ -275,6 +342,7 @@ def extract_format_descriptors(br: BinaryReader) -> dict:
             "slot_flags": slot_flags,
             "active_slots": active,
             "wiki_encoder_count": enc_count,
+            "descriptor_size_bytes": 136,
         })
 
     return {"format_descriptors": results}
@@ -288,9 +356,22 @@ OPCODE_ENC_SENTINEL = 355
 
 
 def extract_opcode_to_encoding(br: BinaryReader) -> dict:
+    """Extract word_22B4B60: the opcode-to-encoding-slot lookup table.
+    Used by the mega-selector sub_C0EB10 PATH B as:
+        if (opcode <= 0xDD) encoding_index = word_22B4B60[opcode]
+    This is an array of 222 u16 entries (opcodes 0-221 = 0x00-0xDD).
+    Sentinel value 355 (0x163) means "no encoding / extended opcode path"."""
+
     entries = br.u16_array(OPCODE_ENC_TABLE_VA, OPCODE_ENC_TABLE_COUNT)
     non_zero = sum(1 for e in entries if e != 0)
     sentinel_count = sum(1 for e in entries if e == OPCODE_ENC_SENTINEL)
+    max_val = max(entries) if entries else 0
+
+    # Validate: no entry should exceed 355 (the sentinel)
+    invalid = [(i, e) for i, e in enumerate(entries) if e > OPCODE_ENC_SENTINEL]
+    if invalid:
+        for idx, val in invalid[:5]:
+            print(f"    WARNING: opcode_to_encoding[{idx}] = {val} exceeds sentinel {OPCODE_ENC_SENTINEL}", file=sys.stderr)
 
     return {
         "opcode_to_encoding": {
@@ -299,6 +380,7 @@ def extract_opcode_to_encoding(br: BinaryReader) -> dict:
             "source_va": f"0x{OPCODE_ENC_TABLE_VA:X}",
             "non_zero_count": non_zero,
             "sentinel_count": sentinel_count,
+            "max_value": max_val,
             "entries": [
                 {"opcode": i, "encoding_slot": entries[i]}
                 for i in range(OPCODE_ENC_TABLE_COUNT)
@@ -353,29 +435,48 @@ SMEM_SM75_TABLE_VA   = 0x21D9168
 
 
 def extract_shared_memory_configs(br: BinaryReader) -> dict:
-    # Read global table — scan for zero-terminated DWORD array
+    """Extract shared memory configuration tables.
+    The global table at 0x21FB640 contains 11 ascending size values (0 to 335872)
+    terminated by a 0. The sm_75 table at 0x21D9168 has 3 entries for Turing."""
+
+    # Read global table: scan for monotonically ascending values then a zero
     global_sizes = []
     va = SMEM_GLOBAL_TABLE_VA
-    for i in range(20):
+    for i in range(30):
         val = br.u32(va + i * 4)
-        global_sizes.append(val)
-        if i > 2 and val == 0 and br.u32(va + (i + 1) * 4) == 0:
+        if i > 0 and val == 0:
             break
+        if i > 0 and val < global_sizes[-1]:
+            # Non-monotonic: end of table
+            break
+        global_sizes.append(val)
 
-    # Read sm_75 table (3 entries known)
-    sm75_sizes = br.u32_array(SMEM_SM75_TABLE_VA, 3)
+    # Read sm_75 table: 3 entries (0, 32768, 65536) then 0 terminator
+    sm75_raw = br.u32_array(SMEM_SM75_TABLE_VA, 10)
+    sm75_sizes = []
+    for i, v in enumerate(sm75_raw):
+        if i > 0 and v == 0:
+            break
+        sm75_sizes.append(v)
+
+    # Validate: global table sizes should be multiples of 1024 (except 0)
+    for s in global_sizes:
+        if s != 0 and s % 1024 != 0:
+            print(f"    WARNING: SMEM global size {s} not 1KB-aligned", file=sys.stderr)
 
     return {
         "shared_memory_configs": {
             "global_table": {
                 "va": f"0x{SMEM_GLOBAL_TABLE_VA:X}",
+                "count": len(global_sizes),
                 "sizes_bytes": global_sizes,
                 "sizes_kb": [s // 1024 for s in global_sizes if s > 0],
             },
             "sm_75": {
                 "va": f"0x{SMEM_SM75_TABLE_VA:X}",
-                "count": 3,
+                "count": len(sm75_sizes),
                 "sizes_bytes": sm75_sizes,
+                "sizes_kb": [s // 1024 for s in sm75_sizes if s > 0],
             },
         }
     }
@@ -393,10 +494,22 @@ def extract_isel_dispatch_tables(br: BinaryReader) -> dict:
     count = total_bytes // 8
     ptrs = br.ptr_array(ISEL_DISPATCH_VA, count)
 
-    # Validate pointers
+    # Validate pointers: every entry must be a valid .text address
     valid = sum(1 for p in ptrs if br.is_in_text(p))
     sentinel = sum(1 for p in ptrs if p == ISEL_SENTINEL_VA)
     unique = len(set(ptrs))
+
+    # Range check: all pointers should be within the ISel DAG pattern matcher range
+    # (0xB28F60-0xB7D000) or the sentinel (0xBA9E23) or nearby mega-selector code
+    isel_range_count = sum(1 for p in ptrs if 0xB00000 <= p <= 0xBC0000)
+    invalid_ptrs = [(i, p) for i, p in enumerate(ptrs) if not br.is_in_text(p)]
+
+    if invalid_ptrs:
+        for idx, p in invalid_ptrs[:5]:
+            print(f"    WARNING: ISel dispatch[{idx}] = 0x{p:X} is not in .text", file=sys.stderr)
+
+    if valid != count:
+        print(f"    WARNING: {count - valid} ISel dispatch pointers are not valid .text addresses", file=sys.stderr)
 
     return {
         "isel_dispatch_tables": {
@@ -404,9 +517,11 @@ def extract_isel_dispatch_tables(br: BinaryReader) -> dict:
             "end_va": f"0x{ISEL_DISPATCH_END:X}",
             "total_pointers": count,
             "valid_text_pointers": valid,
+            "invalid_text_pointers": count - valid,
             "sentinel_count": sentinel,
             "sentinel_va": f"0x{ISEL_SENTINEL_VA:X}",
             "unique_targets": unique,
+            "isel_range_pointers": isel_range_count,
             "pointers": [f"0x{p:X}" for p in ptrs],
         }
     }
@@ -514,29 +629,41 @@ KNOB_STRING_REGIONS = [
 
 
 def extract_knob_strings(br: BinaryReader) -> dict:
+    """Extract ROT13-encoded knob name strings from .rodata.
+    Uses direct byte scanning to avoid cstring() issues."""
+
     all_knobs = []
-    for start, end, label in KNOB_STRING_REGIONS:
-        va = start
-        while va < end:
+    for region_start, region_end, label in KNOB_STRING_REGIONS:
+        start_off = br._off(region_start)
+        end_off = br._off(region_end)
+        raw = br.data[start_off:end_off]
+
+        pos = 0
+        while pos < len(raw):
+            if raw[pos] == 0:
+                pos += 1
+                continue
+            nul = raw.find(b'\x00', pos)
+            if nul < 0:
+                break
             try:
-                s = br.cstring(va, max_len=128)
-                if (len(s) >= 3 and s.isascii() and
+                s = raw[pos:nul].decode('ascii')
+                if (len(s) >= 3 and
                     all(c.isalnum() or c == '_' for c in s) and
                     any(c.isupper() for c in s)):
                     decoded = rot13(s)
                     # Filter: knob names are CamelCase or UPPER_CASE
-                    if (decoded[0].isupper() and len(decoded) >= 3):
+                    if decoded[0].isupper() and len(decoded) >= 3:
+                        va = region_start + pos
                         all_knobs.append({
                             "va": f"0x{va:X}",
                             "rot13": s,
                             "name": decoded,
                             "region": label,
                         })
-                    va += len(s) + 1
-                else:
-                    va += 1
-            except (ValueError, UnicodeDecodeError):
-                va += 1
+            except UnicodeDecodeError:
+                pass
+            pos = nul + 1
 
     return {
         "knob_strings": {
@@ -544,6 +671,79 @@ def extract_knob_strings(br: BinaryReader) -> dict:
             "regions": [{"start": f"0x{s:X}", "end": f"0x{e:X}", "label": l}
                         for s, e, l in KNOB_STRING_REGIONS],
             "entries": all_knobs,
+        }
+    }
+
+
+# ─── Table 12: High-Entropy Blob Metadata ─────────────────────────────
+
+# The .rodata section contains a ~2.80 MB region of near-maximum entropy
+# (8.00 bits/byte), spanning VA 0x1D4FE00 to 0x201CE00. This is likely
+# compressed or encrypted data (e.g., NVVM IR templates, pre-built code
+# sequences, or encoded lookup tables). We document its boundaries and
+# compute a fingerprint without extracting the raw data.
+
+HIGH_ENTROPY_BLOB_START = 0x1D4FE00
+HIGH_ENTROPY_BLOB_END   = 0x201CE00
+
+
+def extract_high_entropy_blob_metadata(br: BinaryReader) -> dict:
+    """Document the high-entropy blob region in .rodata without extracting
+    the raw bytes (it would be ~2.8 MB of incompressible data).
+    Computes SHA-256 fingerprint and boundary entropy measurements."""
+    import math
+
+    blob_start_off = br._off(HIGH_ENTROPY_BLOB_START)
+    blob_end_off = br._off(HIGH_ENTROPY_BLOB_END)
+    blob_size = blob_end_off - blob_start_off
+    blob_data = br.data[blob_start_off:blob_end_off]
+
+    # SHA-256 of the blob
+    blob_hash = hashlib.sha256(blob_data).hexdigest()
+
+    # Overall entropy
+    freq = [0] * 256
+    for b in blob_data:
+        freq[b] += 1
+    entropy = 0.0
+    for f in freq:
+        if f > 0:
+            p = f / blob_size
+            entropy -= p * math.log2(p)
+
+    # Entropy at boundaries (first/last 4KB)
+    def page_entropy(page_data: bytes) -> float:
+        f = [0] * 256
+        for b in page_data:
+            f[b] += 1
+        e = 0.0
+        n = len(page_data)
+        for c in f:
+            if c > 0:
+                p = c / n
+                e -= p * math.log2(p)
+        return e
+
+    first_page_ent = page_entropy(blob_data[:4096])
+    last_page_ent = page_entropy(blob_data[-4096:])
+
+    # Check for known header signatures
+    header_bytes = blob_data[:16]
+    header_hex = header_bytes.hex()
+
+    return {
+        "high_entropy_blob": {
+            "start_va": f"0x{HIGH_ENTROPY_BLOB_START:X}",
+            "end_va": f"0x{HIGH_ENTROPY_BLOB_END:X}",
+            "size_bytes": blob_size,
+            "size_mb": round(blob_size / (1024 * 1024), 2),
+            "sha256": blob_hash,
+            "overall_entropy_bits": round(entropy, 4),
+            "first_page_entropy": round(first_page_ent, 4),
+            "last_page_entropy": round(last_page_ent, 4),
+            "header_hex_16b": header_hex,
+            "note": "Near-maximum entropy (8.00 bits/byte) suggests compressed/encrypted data. "
+                    "Likely NVVM IR templates, pre-built code sequences, or encoded lookup tables.",
         }
     }
 
@@ -561,17 +761,29 @@ def build_opcode_master(names: dict, cat_map: dict, enc_table: dict) -> dict:
     for e in enc_entries:
         enc_lookup[e["opcode"]] = e["encoding_slot"]
 
-    # Determine SM generation per opcode
-    def sm_gen(idx):
-        for name, boundary in sorted(SM_BOUNDARIES.items(), key=lambda x: x[1]):
-            if idx <= boundary:
-                if "LAST" in name:
-                    gen = name.replace("_LAST", "").replace("_FIRST", "")
-                    return gen.lower()
-        return "sm_104+"
+    # Determine SM generation per opcode using a proper interval check.
+    # Boundaries define half-open intervals: [0, SM70_LAST] = sm_70,
+    # [SM73_FIRST, SM73_LAST] = sm_73, etc.
+    SM_RANGES = [
+        (0,   136, "sm_70"),
+        (137, 171, "sm_73"),
+        (172, 193, "sm_82"),
+        (194, 199, "sm_86"),
+        (200, 205, "sm_89"),
+        (206, 252, "sm_90"),
+        (253, 280, "sm_100"),
+        (281, 320, "sm_104"),
+        (321, 321, "sentinel"),
+    ]
+
+    def sm_gen(idx: int) -> str:
+        for lo, hi, gen in SM_RANGES:
+            if lo <= idx <= hi:
+                return gen
+        return "unknown"
 
     records = []
-    for i in range(min(322, len(name_entries))):
+    for i in range(min(OPCODE_NAME_COUNT, len(name_entries))):
         entry = name_entries[i] if i < len(name_entries) else {}
         records.append({
             "index": i,
@@ -670,6 +882,7 @@ def main():
         ("phase_names",        "phase_names.json",          extract_phase_names),
         ("tier2_modifiers",    "tier2_modifiers.json",      extract_tier2_modifiers),
         ("knob_strings",       "knob_strings.json",         extract_knob_strings),
+        ("blob_metadata",      "high_entropy_blob.json",    extract_high_entropy_blob_metadata),
     ]
 
     for key, filename, func in extractors:

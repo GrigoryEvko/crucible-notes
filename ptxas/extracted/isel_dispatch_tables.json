@@ -4,9 +4,11 @@
     "end_va": "0x22B1480",
     "total_pointers": 1878,
     "valid_text_pointers": 1878,
+    "invalid_text_pointers": 0,
     "sentinel_count": 272,
     "sentinel_va": "0xBA9E23",
     "unique_targets": 1607,
+    "isel_range_pointers": 1209,
     "pointers": [
       "0xBB3972",
       "0xBB38F3",
