@@ -5,7 +5,7 @@
     "entry_width": "u16",
     "encoding": "bits[15:12]=major*10, [11:8]=minor, [7:0]=variant",
     "non_zero_count": 27,
-    "valid_sm_count": 20,
+    "valid_sm_count": 18,
     "entries": [
       {
         "index": 0,
@@ -675,9 +675,8 @@
         "index": 120,
         "code": 21472,
         "code_hex": "0x53E0",
-        "sm": "sm_53v224",
-        "sm_num": 53,
-        "variant": 224
+        "sm": null,
+        "note": "implausible"
       },
       {
         "index": 121,
@@ -700,9 +699,8 @@
         "index": 124,
         "code": 21552,
         "code_hex": "0x5430",
-        "sm": "sm_54v48",
-        "sm_num": 54,
-        "variant": 48
+        "sm": null,
+        "note": "implausible"
       },
       {
         "index": 125,

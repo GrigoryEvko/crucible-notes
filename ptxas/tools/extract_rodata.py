@@ -2408,7 +2408,7 @@ def extract_sm_version_codes(br: BinaryReader) -> dict:
         elif variant > 5:
             suffix = f"v{variant}"
         sm_str = f"sm_{sm_num}{suffix}"
-        if sm_num < 10 or sm_num > 200:
+        if sm_num < 10 or sm_num > 200 or variant > 10:
             print(f"    WARNING: Index {i} code 0x{v:04X} decodes to implausible {sm_str}",
                   file=sys.stderr)
             decoded.append({"index": i, "code": v, "code_hex": f"0x{v:04X}",
