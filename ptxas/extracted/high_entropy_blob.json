@@ -7,8 +7,36 @@
     "sha256": "0a8c461124f786666f98f7eb6d3bcf4d846b7d9099f6729d48b106def796a099",
     "overall_entropy_bits": 7.998,
     "first_page_entropy": 7.7563,
+    "post_header_entropy": 7.9512,
     "last_page_entropy": 7.5921,
     "header_hex_16b": "0060f201000000000000000000000000",
-    "note": "Near-maximum entropy (8.00 bits/byte) suggests compressed/encrypted data. Likely NVVM IR templates, pre-built code sequences, or encoded lookup tables."
+    "header": {
+      "entry_count": 20,
+      "size_bytes": 320,
+      "pointers": [
+        "0x01F26000",
+        "0x01F24340",
+        "0x01F23CA0",
+        "0x01F235E0",
+        "0x01F21B40",
+        "0x01F200A0",
+        "0x01F1E5E0",
+        "0x01F1CB20",
+        "0x01F1BB60",
+        "0x01F1ABA0",
+        "0x01F19BE0",
+        "0x01F18C20",
+        "0x01F17C60",
+        "0x01F16CA0",
+        "0x01F15CE0",
+        "0x01F14D20",
+        "0x01F14860",
+        "0x01F143A0",
+        "0x01F13EC0",
+        "0x01F139E0"
+      ],
+      "note": "Descending u32 pointers into .rodata, each in a 16-byte slot (12 bytes padding)."
+    },
+    "note": "320-byte structured header (20 rodata pointers) followed by ~2.8 MB of near-maximum entropy data (8.00 bits/byte). Likely compressed/encrypted NVVM IR templates, pre-built code sequences, or encoded lookup tables."
   }
 }

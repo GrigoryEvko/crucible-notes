@@ -35,24 +35,24 @@
       "sha256": "a76899c4ecdd84e3bec4c34db73f89d8363dbb3dd2f9c9ad3314442acdeaac4c"
     },
     "encoding_geometry.json": {
-      "size": 98791,
-      "sha256": "195c99da2222cfbd9363c06f2ad1022bf4f9e64ad2d304d9f3c68f402573ced6"
+      "size": 209942,
+      "sha256": "361d1ab5fdb1e340ba9dd0131cd327761a43c4d5f65efc761614bc4429faaece"
     },
     "format_descriptors.json": {
-      "size": 11561,
-      "sha256": "319b2a87237e77b71edb0c8655d2db342b153f5367784ac3f4aecec3468c0fd2"
+      "size": 26020,
+      "sha256": "46775910bac6477c02a19ef543594cbc733be867f75a6a0f3c2b964082160a03"
     },
     "high_entropy_blob.json": {
-      "size": 543,
-      "sha256": "76181c53cd2766327aa3fb3918565d5b2c477ba6944bc5f1ed6b8510c878b77a"
+      "size": 1278,
+      "sha256": "d8b69c87c02faa3f92c5cce98485821ff9549b9b0bc715b8261e48279bbf2f05"
     },
     "isel_dispatch_tables.json": {
       "size": 34131,
       "sha256": "3ec239ac775d69c2f34d4af07c5d346498e174556ea857285f39f2ec794a02ce"
     },
     "knob_strings.json": {
-      "size": 193737,
-      "sha256": "8dfc258e59673d9f1d82a348ab4634177016950a46dff821dc1bc9b0c945aaf1"
+      "size": 223497,
+      "sha256": "2f0eea074c2b989974ee381816d4cc7aaf3956358a51d5bbfb6759e7d2dbb074"
     },
     "occupancy_constants.json": {
       "size": 2597,

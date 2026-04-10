@@ -268,42 +268,57 @@ def extract_encoding_category_map(br: BinaryReader) -> dict:
 
 # ─── Table 3: Encoding Format Descriptors ──────────────────────────────
 
-FORMAT_DESCRIPTORS = [
-    # (va, label, width_bits, wiki_encoder_count)
-    (0x23F1D70, "64b_B",    64,  70),
-    (0x23F1F08, "64b_A",    64, 215),
-    (0x23F1F90, "64b_C",    64,  20),
-    (0x23F2238, "64b_D",    64,  17),
-    (0x23F2C50, "64b_E",    64,   1),
-    (0x23F1DF8, "128b_0x03", 128, 202),
-    (0x23F2018, "128b_0x07", 128,  26),
-    (0x23F2128, "128b_0x09", 128,   2),
-    (0x23F21B0, "128b_0x0A", 128, 135),
-    (0x23F2348, "128b_0x0D", 128,  11),
-    (0x23F25F0, "128b_0x12", 128,  21),
-    (0x23F2678, "128b_0x13", 128, 143),
-    (0x23F2810, "128b_0x16", 128,   6),
-    (0x23F29A8, "128b_0x19", 128, 152),
-    (0x23F2DE8, "128b_0x21", 128,   2),
-    (0x23F2EF8, "128b_0x23", 128,   9),
-]
+# The format descriptor region is a contiguous array of 34 entries at 136-byte
+# stride starting at 0x23F1D70.  Each entry contains a 16-byte xmmword header
+# followed by 3 x 10 DWORD arrays (slot_sizes, slot_types, slot_flags).
+# The first DWORD of the xmmword is the format ID used by the encoder.
+# wiki_encoder_count is 0 for descriptors not yet catalogued in the wiki.
+
+FORMAT_DESCRIPTOR_REGION_START = 0x23F1D70
+FORMAT_DESCRIPTOR_STRIDE = 136
+FORMAT_DESCRIPTOR_COUNT = 34
+
+# Labels for the 16 descriptors previously identified in the wiki.
+# Key: VA -> (label, wiki_encoder_count).
+_WIKI_LABELS = {
+    0x23F1D70: ("64b_B",      70),
+    0x23F1DF8: ("128b_0x03", 202),
+    0x23F1F08: ("64b_A",     215),
+    0x23F1F90: ("64b_C",      20),
+    0x23F2018: ("128b_0x07",  26),
+    0x23F2128: ("128b_0x09",   2),
+    0x23F21B0: ("128b_0x0A", 135),
+    0x23F2238: ("64b_D",      17),
+    0x23F2348: ("128b_0x0D",  11),
+    0x23F25F0: ("128b_0x12",  21),
+    0x23F2678: ("128b_0x13", 143),
+    0x23F2810: ("128b_0x16",   6),
+    0x23F29A8: ("128b_0x19", 152),
+    0x23F2C50: ("64b_E",       1),
+    0x23F2DE8: ("128b_0x21",   2),
+    0x23F2EF8: ("128b_0x23",   9),
+}
 
 
 def extract_format_descriptors(br: BinaryReader) -> dict:
-    """Extract encoding format descriptors. Each descriptor is:
-    - 16 bytes: xmmword (format metadata: width code, slot count, etc.)
+    """Extract encoding format descriptors by scanning the contiguous 34-entry
+    region at 136-byte stride.  Each descriptor is:
+    - 16 bytes: xmmword (format metadata: format_id, slot_count, width_code, ...)
     - 40 bytes: 10 x u32 slot_sizes (0xFFFFFFFF = unused)
     - 40 bytes: 10 x u32 slot_types (0xFFFFFFFF = unused)
     - 40 bytes: 10 x u32 slot_flags (0xFFFFFFFF = unused)
     Total: 136 bytes per descriptor."""
 
     results = []
-    for va, label, width, enc_count in FORMAT_DESCRIPTORS:
-        # Validate VA is in .rodata
+    for idx in range(FORMAT_DESCRIPTOR_COUNT):
+        va = FORMAT_DESCRIPTOR_REGION_START + idx * FORMAT_DESCRIPTOR_STRIDE
+
         if not br.is_in_rodata(va):
-            print(f"    WARNING: Format descriptor {label} VA 0x{va:X} not in .rodata", file=sys.stderr)
+            print(f"    WARNING: Format descriptor [{idx}] VA 0x{va:X} not in .rodata", file=sys.stderr)
 
         lo, hi = br.xmm(va)
+        fmt_id = br.u32(va)  # first DWORD is the format ID
+
         # The three 10-DWORD arrays follow immediately after the xmmword
         arr_base = va + 16
         slot_sizes = br.u32_array(arr_base, 10)
@@ -316,6 +331,16 @@ def extract_format_descriptors(br: BinaryReader) -> dict:
         slot_flags = [x if x != 0xFFFFFFFF else -1 for x in slot_flags]
 
         active = sum(1 for s in slot_sizes if s != -1)
+
+        # Derive instruction width from active slot count: 1 slot = 64-bit, 2+ = 128-bit
+        width = 64 if active <= 1 else 128
+
+        # Use wiki label if catalogued, otherwise auto-generate from format ID
+        if va in _WIKI_LABELS:
+            label, enc_count = _WIKI_LABELS[va]
+        else:
+            label = f"{width}b_0x{fmt_id:02X}_idx{idx}"
+            enc_count = 0
 
         # Validate: active slots should have reasonable sizes (1-64 bits)
         for i, s in enumerate(slot_sizes):
@@ -332,8 +357,10 @@ def extract_format_descriptors(br: BinaryReader) -> dict:
                 break
 
         results.append({
+            "index": idx,
             "va": f"0x{va:X}",
             "label": label,
+            "format_id": fmt_id,
             "instruction_width": width,
             "xmmword_lo": f"0x{lo:016X}",
             "xmmword_hi": f"0x{hi:016X}",
@@ -342,7 +369,7 @@ def extract_format_descriptors(br: BinaryReader) -> dict:
             "slot_flags": slot_flags,
             "active_slots": active,
             "wiki_encoder_count": enc_count,
-            "descriptor_size_bytes": 136,
+            "descriptor_size_bytes": FORMAT_DESCRIPTOR_STRIDE,
         })
 
     return {"format_descriptors": results}
@@ -618,19 +645,50 @@ def extract_tier2_modifiers(br: BinaryReader) -> dict:
 
 # ─── Table 11: Knob Name Strings ───────────────────────────────────────
 
-# Knob names are ROT13 strings in .rodata referenced by ctor_005.
+# Knob names are ROT13-encoded strings in .rodata referenced by ctor_005.
 # The knob descriptor table itself is in .bss (runtime-initialized).
 # We extract only the name strings from .rodata.
+#
+# IMPORTANT: The knob region also contains plaintext constant strings
+# (shader stage names like VERTEX/COMPUTE, error messages, etc.) that
+# are NOT ROT13-encoded.  We tag each entry with is_rot13 to distinguish.
 
 KNOB_STRING_REGIONS = [
     (0x21B6000, 0x21C1000, "OCG knobs (ctor_005)"),
     (0x21DB000, 0x21DE000, "DAG knobs (ctor_007)"),
 ]
 
+# Known plaintext constants in the knob regions that are NOT ROT13-encoded.
+# These are shader stage names, config strings, and function/pass names
+# embedded alongside actual ROT13-encoded knob names.
+_KNOB_PLAINTEXT_CONSTANTS = frozenset({
+    "NamedPhases", "VERTEX", "VERTEX_A", "VERTEX_AB", "VERTEX_B",
+    "TESSELLATION", "TESSELLATION_INIT", "PIXEL", "GEOMETRY", "COMPUTE",
+    "DUMP_KNOBS_TO_FILE",
+    # Function/pass names that appear as plaintext in the knob region
+    "ParseKnobValue", "ReadKnobsFile", "ScheduleInstructions",
+    "OptimizeNaNOrZero", "ConvertMemoryToRegisterOrUniform",
+})
+
+
+def _is_rot13_encoded(raw_str: str) -> bool:
+    """Determine if a binary string is ROT13-encoded (actual knob name)
+    or plaintext (non-knob constant that happens to be in the region).
+
+    ROT13 is a self-inverse cipher, so it's mathematically impossible to
+    distinguish ROT13 from plaintext without semantic knowledge.  We use
+    an explicit allowlist of known plaintext constants (shader stage names,
+    function names, config strings) and treat everything else as ROT13,
+    which is correct for the vast majority of entries in the knob regions."""
+    return raw_str not in _KNOB_PLAINTEXT_CONSTANTS
+
 
 def extract_knob_strings(br: BinaryReader) -> dict:
     """Extract ROT13-encoded knob name strings from .rodata.
-    Uses direct byte scanning to avoid cstring() issues."""
+    Uses direct byte scanning to avoid cstring() issues.
+    Each entry includes is_rot13 flag: True = actual knob name (ROT13 in
+    binary, 'name' field is the decoded human-readable form), False =
+    plaintext constant ('rot13' field is the actual identifier)."""
 
     all_knobs = []
     for region_start, region_end, label in KNOB_STRING_REGIONS:
@@ -654,20 +712,27 @@ def extract_knob_strings(br: BinaryReader) -> dict:
                     decoded = rot13(s)
                     # Filter: knob names are CamelCase or UPPER_CASE
                     if decoded[0].isupper() and len(decoded) >= 3:
+                        is_rot13 = _is_rot13_encoded(s)
                         va = region_start + pos
                         all_knobs.append({
                             "va": f"0x{va:X}",
                             "rot13": s,
-                            "name": decoded,
+                            "name": decoded if is_rot13 else s,
+                            "is_rot13": is_rot13,
                             "region": label,
                         })
             except UnicodeDecodeError:
                 pass
             pos = nul + 1
 
+    rot13_count = sum(1 for k in all_knobs if k["is_rot13"])
+    plain_count = len(all_knobs) - rot13_count
+
     return {
         "knob_strings": {
             "total_count": len(all_knobs),
+            "rot13_count": rot13_count,
+            "plaintext_count": plain_count,
             "regions": [{"start": f"0x{s:X}", "end": f"0x{e:X}", "label": l}
                         for s, e, l in KNOB_STRING_REGIONS],
             "entries": all_knobs,
@@ -690,7 +755,13 @@ HIGH_ENTROPY_BLOB_END   = 0x201CE00
 def extract_high_entropy_blob_metadata(br: BinaryReader) -> dict:
     """Document the high-entropy blob region in .rodata without extracting
     the raw bytes (it would be ~2.8 MB of incompressible data).
-    Computes SHA-256 fingerprint and boundary entropy measurements."""
+    Computes SHA-256 fingerprint and boundary entropy measurements.
+
+    The blob starts with a structured header of 20 x 16-byte entries,
+    each containing a single u32 pointer (to .rodata) followed by 12
+    zero bytes.  The pointers are descending and point into the rodata
+    section.  After this 320-byte header, the data transitions to
+    near-maximum entropy."""
     import math
 
     blob_start_off = br._off(HIGH_ENTROPY_BLOB_START)
@@ -700,6 +771,20 @@ def extract_high_entropy_blob_metadata(br: BinaryReader) -> dict:
 
     # SHA-256 of the blob
     blob_hash = hashlib.sha256(blob_data).hexdigest()
+
+    # Scan header: count 16-byte entries where bytes [4:16] are all zero
+    header_entry_count = 0
+    header_pointers = []
+    for i in range(min(100, blob_size // 16)):
+        off = i * 16
+        d0 = struct.unpack_from('<I', blob_data, off)[0]
+        rest = blob_data[off + 4:off + 16]
+        if rest == b'\x00' * 12 and d0 > 0x1000000:
+            header_entry_count += 1
+            header_pointers.append(f"0x{d0:08X}")
+        else:
+            break
+    header_size = header_entry_count * 16
 
     # Overall entropy
     freq = [0] * 256
@@ -711,7 +796,7 @@ def extract_high_entropy_blob_metadata(br: BinaryReader) -> dict:
             p = f / blob_size
             entropy -= p * math.log2(p)
 
-    # Entropy at boundaries (first/last 4KB)
+    # Entropy at boundaries
     def page_entropy(page_data: bytes) -> float:
         f = [0] * 256
         for b in page_data:
@@ -726,10 +811,10 @@ def extract_high_entropy_blob_metadata(br: BinaryReader) -> dict:
 
     first_page_ent = page_entropy(blob_data[:4096])
     last_page_ent = page_entropy(blob_data[-4096:])
+    # Entropy of the data AFTER the structured header
+    post_header_ent = page_entropy(blob_data[header_size:header_size + 4096]) if blob_size > header_size + 4096 else 0.0
 
-    # Check for known header signatures
-    header_bytes = blob_data[:16]
-    header_hex = header_bytes.hex()
+    header_hex = blob_data[:16].hex()
 
     return {
         "high_entropy_blob": {
@@ -740,10 +825,18 @@ def extract_high_entropy_blob_metadata(br: BinaryReader) -> dict:
             "sha256": blob_hash,
             "overall_entropy_bits": round(entropy, 4),
             "first_page_entropy": round(first_page_ent, 4),
+            "post_header_entropy": round(post_header_ent, 4),
             "last_page_entropy": round(last_page_ent, 4),
             "header_hex_16b": header_hex,
-            "note": "Near-maximum entropy (8.00 bits/byte) suggests compressed/encrypted data. "
-                    "Likely NVVM IR templates, pre-built code sequences, or encoded lookup tables.",
+            "header": {
+                "entry_count": header_entry_count,
+                "size_bytes": header_size,
+                "pointers": header_pointers,
+                "note": "Descending u32 pointers into .rodata, each in a 16-byte slot (12 bytes padding).",
+            },
+            "note": "320-byte structured header (20 rodata pointers) followed by ~2.8 MB of "
+                    "near-maximum entropy data (8.00 bits/byte). Likely compressed/encrypted "
+                    "NVVM IR templates, pre-built code sequences, or encoded lookup tables.",
         }
     }
 
