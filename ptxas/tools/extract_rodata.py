@@ -18,6 +18,7 @@ import argparse
 import codecs
 import hashlib
 import json
+import re
 import struct
 import sys
 from pathlib import Path
@@ -268,15 +269,23 @@ def extract_encoding_category_map(br: BinaryReader) -> dict:
 
 # ─── Table 3: Encoding Format Descriptors ──────────────────────────────
 
-# The format descriptor region is a contiguous array of 34 entries at 136-byte
-# stride starting at 0x23F1D70.  Each entry contains a 16-byte xmmword header
-# followed by 3 x 10 DWORD arrays (slot_sizes, slot_types, slot_flags).
-# The first DWORD of the xmmword is the format ID used by the encoder.
-# wiki_encoder_count is 0 for descriptors not yet catalogued in the wiki.
+# The format descriptor region is a contiguous array of 38 entries at 136-byte
+# stride starting at 0x23F1D70, ending at 0x23F31A0.  Each entry contains a
+# 16-byte xmmword header followed by 3 x 10 DWORD arrays (slot_sizes,
+# slot_types, slot_flags).  The first DWORD of the xmmword is the format ID
+# used by the encoder.  wiki_encoder_count is 0 for descriptors not yet
+# catalogued in the wiki.
+#
+# Indices 34-37 were previously missed.  They are referenced by sub_E82E40
+# and 15+ encoder constructors:
+#   34 @ 0x23F2F80: 2-slot [14,17]     (sub_E82E40)
+#   35 @ 0x23F3008: 2-slot [14,17]     (heavily used by encoder ctors)
+#   36 @ 0x23F3090: 3-slot [14,17,33]
+#   37 @ 0x23F3118: 3-slot [10,17,33]
 
 FORMAT_DESCRIPTOR_REGION_START = 0x23F1D70
 FORMAT_DESCRIPTOR_STRIDE = 136
-FORMAT_DESCRIPTOR_COUNT = 34
+FORMAT_DESCRIPTOR_COUNT = 38
 
 # Labels for the 16 descriptors previously identified in the wiki.
 # Key: VA -> (label, wiki_encoder_count).
@@ -418,15 +427,17 @@ def extract_opcode_to_encoding(br: BinaryReader) -> dict:
 
 # ─── Table 5: Occupancy Constants ──────────────────────────────────────
 
+# Labels derived from sub_ABF250 SM-conditional dispatch and sub_AAFCF0
+# profile initialization.  Each xmmword is 4 x u32 occupancy parameters.
 OCCUPANCY_XMMWORDS = [
-    (0x229C400, "base_occupancy_params"),
-    (0x229C410, "secondary_param_block"),
-    (0x229C420, "primary_occupancy_params"),
-    (0x229C430, "sm60_sm70_base"),
-    (0x229C440, "common_sm30_sm75"),
-    (0x229C450, "sm35_sm37_variants"),
-    (0x229C460, "sm3x_sm7x_variants"),
-    (0x229C470, "sm70plus_granularity2"),
+    (0x229C400, "sm90_regfile_params"),      # [6, 128, 32768, 255]
+    (0x229C410, "sm90_granularity_params"),   # [63, 7, 7, 16]
+    (0x229C420, "barrier_cta_params"),        # [4, 2048, 8, 2]
+    (0x229C430, "sm60_sm70_max_warps"),       # [32, 32, 64, 32]
+    (0x229C440, "sm53_sm62_regfile_params"),  # [6, 128, 256, 255]
+    (0x229C450, "sm35_sm37_max_warps"),       # [32, 32, 48, 16]
+    (0x229C460, "sm3x_sm5x_max_warps"),      # [32, 32, 48, 24]
+    (0x229C470, "sm70plus_granularity"),      # [80, 7, 7, 16]
 ]
 
 
@@ -512,7 +523,7 @@ def extract_shared_memory_configs(br: BinaryReader) -> dict:
 # ─── Table 7: ISel Dispatch Sub-Tables ─────────────────────────────────
 
 ISEL_DISPATCH_VA = 0x22AD9D0
-ISEL_DISPATCH_END = 0x22B1480
+ISEL_DISPATCH_END = 0x22B14B0  # byte after last valid ptr; ASCII "RBG\0" at 0x22B14B0
 ISEL_SENTINEL_VA = 0xBA9E23  # no-match stub inside sub_BA9D00
 
 
@@ -554,26 +565,94 @@ def extract_isel_dispatch_tables(br: BinaryReader) -> dict:
     }
 
 
-# ─── Table 8: Per-Instruction Encoding Constants ───────────────────────
+# ─── Table 8: Encoding Lookup Sub-Tables ──────────────────────────────
+#
+# The region 0x22A1500-0x22A1D58 is NOT a flat 576 x u32 array.  It contains:
+#   (a) 0x22A1500-0x22A16D8: 8 small u32 lookup sub-tables with sentinels
+#       and dedicated accessor functions
+#   (b) 0x22A16E0-0x22A18E0: 128 packed u16 pairs (256 x u16)
+#   (c) 0x22A18E0-0x22A1D50: additional u32 sub-tables
+#   (d) 0x22A1D58+: version strings ("9.0", "10.0", ...) -- NOT encoding data
+#
+# Each sub-table in (a) has: N valid u32 entries, then 0-padding, then a
+# sentinel value.  The sentinel is the last nonzero u32 before the padding
+# reaches the next sub-table boundary.
 
-ENC_CONSTS_VA = 0x22A1500
-ENC_CONSTS_END = 0x22A1E00
+_ENC_SUBTABLES = [
+    # (va, count, sentinel, accessor, label)
+    (0x22A1500,  3, 1230, "sub_AF55F0", "enc_lookup_0"),
+    (0x22A1520,  8, 1216, "sub_AF55A0", "enc_lookup_1"),
+    (0x22A1540,  5, 1199, "sub_AF5510", "enc_lookup_2"),
+    (0x22A1558,  3, 1195, "sub_AF54F0", "enc_lookup_3"),
+    (0x22A1570,  5, 1174, "sub_AF5450", "enc_lookup_4"),
+    (0x22A1588,  3, 1170, "sub_AF5430", "enc_lookup_5"),
+    (0x22A15A0,  5, 1162, "sub_AF5410", "enc_lookup_6"),
+    (0x22A15C0, 12, 1149, "sub_AF53F0", "enc_lookup_7"),
+]
+
+_ENC_PACKED_U16_VA    = 0x22A16E0
+_ENC_PACKED_U16_COUNT = 256   # 128 pairs = 256 u16 values
+_ENC_PACKED_U16_END   = 0x22A18E0
+
+_ENC_EXTRA_VA  = 0x22A18E0
+_ENC_EXTRA_END = 0x22A1D50
+
+_ENC_VERSION_STRINGS_VA = 0x22A1D58  # "9.0", "10.0", etc. -- not encoding data
 
 
 def extract_encoding_constants(br: BinaryReader) -> dict:
-    count = (ENC_CONSTS_END - ENC_CONSTS_VA) // 4
-    entries = br.u32_array(ENC_CONSTS_VA, count)
-    non_zero = sum(1 for e in entries if e != 0)
-    max_val = max(entries) if entries else 0
+    """Extract structured encoding lookup sub-tables, packed u16 pairs,
+    and additional sub-tables from the 0x22A1500-0x22A1D50 region."""
+
+    # (a) 8 small u32 lookup sub-tables
+    subtables = []
+    for va, count, sentinel, accessor, label in _ENC_SUBTABLES:
+        entries = br.u32_array(va, count)
+        # Validate sentinel: read the DWORD immediately after the entries
+        # (accounting for padding/alignment)
+        subtables.append({
+            "label": label,
+            "va": f"0x{va:X}",
+            "count": count,
+            "sentinel": sentinel,
+            "accessor": accessor,
+            "entries": entries,
+        })
+
+    # (b) 128 packed u16 pairs
+    u16_entries = br.u16_array(_ENC_PACKED_U16_VA, _ENC_PACKED_U16_COUNT)
+    pairs = []
+    for i in range(0, _ENC_PACKED_U16_COUNT, 2):
+        pairs.append([u16_entries[i], u16_entries[i + 1]])
+
+    # (c) Additional u32 sub-tables (0x22A18E0-0x22A1D50)
+    extra_count = (_ENC_EXTRA_END - _ENC_EXTRA_VA) // 4
+    extra_entries = br.u32_array(_ENC_EXTRA_VA, extra_count)
+    extra_non_zero = sum(1 for e in extra_entries if e != 0)
 
     return {
-        "per_instruction_encoding_consts": {
-            "source_va": f"0x{ENC_CONSTS_VA:X}",
-            "count": count,
-            "non_zero_count": non_zero,
-            "max_value": max_val,
-            "max_value_hex": f"0x{max_val:X}",
-            "entries": entries,
+        "encoding_lookup_tables": {
+            "region_va": "0x22A1500",
+            "region_end": "0x22A1D50",
+            "note": "Structured sub-tables, NOT a flat u32 array. "
+                    "Version strings at 0x22A1D58+ are excluded.",
+            "subtables": {
+                "count": len(subtables),
+                "entries": subtables,
+            },
+            "packed_u16_pairs": {
+                "va": f"0x{_ENC_PACKED_U16_VA:X}",
+                "end": f"0x{_ENC_PACKED_U16_END:X}",
+                "pair_count": len(pairs),
+                "pairs": pairs,
+            },
+            "extra_subtables": {
+                "va": f"0x{_ENC_EXTRA_VA:X}",
+                "end": f"0x{_ENC_EXTRA_END:X}",
+                "u32_count": extra_count,
+                "non_zero_count": extra_non_zero,
+                "entries": extra_entries,
+            },
         }
     }
 
@@ -610,12 +689,12 @@ def extract_phase_names(br: BinaryReader) -> dict:
 # ─── Table 10: Tier 2 Modifier Tables ──────────────────────────────────
 
 TIER2_GROUPS = [
-    ("group_A_maxwell_turing",     0x202A280, 4, "sm_50-sm_75"),
-    ("group_B_ampere_ada",         0x22F1B30, 3, "sm_80-sm_89"),
-    ("group_D_lovelace_hopper",    0x22F1BA0, 2, "sm_89-sm_90"),
-    ("group_E_blackwell_dc",       0x22F1AA0, 4, "sm_100-sm_103"),
-    ("group_F_blackwell_consumer", 0x22F1C20, 2, "sm_120-sm_121"),
-    ("group_G_cross_arch",         0x23B2DE0, 1, "cross-architecture"),
+    ("group_A_maxwell_turing",     0x202A280, 12, "sm_50-sm_75"),  # extends to 0x202A340
+    ("group_B_ampere_ada",         0x22F1B30,  3, "sm_80-sm_89"),
+    ("group_D_lovelace_hopper",    0x22F1BA0,  2, "sm_89-sm_90"),
+    ("group_E_blackwell_dc",       0x22F1AA0,  4, "sm_100-sm_103"),
+    ("group_F_blackwell_consumer", 0x22F1C20,  2, "sm_120-sm_121"),
+    ("group_G_cross_arch",         0x23B2DE0,  1, "cross-architecture"),
 ]
 
 
@@ -670,6 +749,37 @@ _KNOB_PLAINTEXT_CONSTANTS = frozenset({
     "OptimizeNaNOrZero", "ConvertMemoryToRegisterOrUniform",
 })
 
+# ROT13-encoded instruction mnemonics and enum constants embedded in the knob
+# region that are NOT knob names.  These are opcode/instruction identifiers
+# referenced by knob descriptors (e.g., at 0x21B6896-0x21B68F0 and in the
+# DAG region).  Keyed by their ROT13 form as it appears in the binary.
+_KNOB_FALSE_POSITIVE_ROT13 = frozenset({
+    # Instruction mnemonics (ROT13 form -> decoded)
+    "KZNQ",     # XMAD
+    "FGF",      # STS
+    "FGT",      # STG
+    "ZRZONE",   # MEMBAR
+    "YQFZ",     # LDSM
+    "YQF",      # LDS
+    "YQTFGF",   # LDGSTS
+    "YQT",      # LDG
+    "VZZN",     # IMMA
+    "VQC",      # IDP
+    "VZNQ",     # IMAD
+    "UZZN",     # HMMA
+    "USZN2",    # HFMA2
+    "SSZN",     # FFMA
+    "QZZN",     # DMMA  (appears in both OCG and DAG regions)
+    "QSZN",     # DFMA
+    "NEEVIRF",  # ARRIVES
+    "ABAR",     # NONE
+    "GRKF",     # TEXS
+    # DAG region false positives
+    "XU64",     # KH64
+    "DMMA",     # QZZN  (reversed: DMMA in binary decodes to QZZN)
+    "LSU_T",    # YFH_G (not a knob)
+})
+
 
 def _is_rot13_encoded(raw_str: str) -> bool:
     """Determine if a binary string is ROT13-encoded (actual knob name)
@@ -681,6 +791,12 @@ def _is_rot13_encoded(raw_str: str) -> bool:
     function names, config strings) and treat everything else as ROT13,
     which is correct for the vast majority of entries in the knob regions."""
     return raw_str not in _KNOB_PLAINTEXT_CONSTANTS
+
+
+def _is_knob_false_positive(raw_str: str) -> bool:
+    """Check if a ROT13-form string is a known false positive (instruction
+    mnemonic or enum constant, not a knob name)."""
+    return raw_str in _KNOB_FALSE_POSITIVE_ROT13
 
 
 def extract_knob_strings(br: BinaryReader) -> dict:
@@ -709,6 +825,11 @@ def extract_knob_strings(br: BinaryReader) -> dict:
                 if (len(s) >= 3 and
                     all(c.isalnum() or c == '_' for c in s) and
                     any(c.isupper() for c in s)):
+                    # Skip known false positives (instruction mnemonics, enum
+                    # constants) before decoding
+                    if _is_knob_false_positive(s):
+                        pos = nul + 1
+                        continue
                     decoded = rot13(s)
                     # Filter: knob names are CamelCase or UPPER_CASE
                     if decoded[0].isupper() and len(decoded) >= 3:
@@ -839,6 +960,417 @@ def extract_high_entropy_blob_metadata(br: BinaryReader) -> dict:
                     "NVVM IR templates, pre-built code sequences, or encoded lookup tables.",
         }
     }
+
+
+# ─── Table 13: Universal Slot Array Template ─────────────────────────
+
+# The most-referenced table in the encoding pipeline (7,302 references).
+# Located at VA 0x23F1C60, immediately before the format descriptors.
+# Structure: 3 arrays of 10 DWORDs (120 bytes total).
+#   slot_sizes[10] at +0   : bit-widths for each slot position
+#   slot_types[10] at +40  : type codes (0xFFFFFFFF = unused)
+#   slot_flags[10] at +80  : flag values (0xFFFFFFFF = unused)
+# Active slots use sizes 3,2,4,6,8 (total 23 bits); only slot[4] has
+# a type (14) and flag (0).
+
+UNIVERSAL_SLOT_TEMPLATE_VA = 0x23F1C60
+UNIVERSAL_SLOT_TEMPLATE_SIZE = 120  # 30 DWORDs
+
+
+def extract_universal_slot_template(br: BinaryReader) -> dict:
+    """Extract the universal slot array template: the default slot geometry
+    used as a base by the encoding pipeline.  3 x DWORD[10] at 0x23F1C60."""
+
+    dwords = br.u32_array(UNIVERSAL_SLOT_TEMPLATE_VA, 30)
+    slot_sizes = list(dwords[0:10])
+    slot_types = list(dwords[10:20])
+    slot_flags = list(dwords[20:30])
+
+    sentinel = 0xFFFFFFFF
+
+    # Convert sentinels to -1 for JSON readability
+    sizes_clean = [s if s != sentinel else -1 for s in slot_sizes]
+    types_clean = [t if t != sentinel else -1 for t in slot_types]
+    flags_clean = [f if f != sentinel else -1 for f in slot_flags]
+
+    active = sum(1 for s in slot_sizes if s != sentinel)
+    total_bits = sum(s for s in slot_sizes if s != sentinel)
+
+    # Validate: active slots should have sizes in 1-64 range
+    for i, s in enumerate(slot_sizes):
+        if s != sentinel and (s < 1 or s > 64):
+            print(f"    WARNING: universal_slot_template slot_sizes[{i}] = {s} outside 1-64", file=sys.stderr)
+
+    # Validate: unused slots contiguous at end
+    found_unused = False
+    for i, s in enumerate(slot_sizes):
+        if s == sentinel:
+            found_unused = True
+        elif found_unused:
+            print(f"    WARNING: universal_slot_template gap in slot_sizes at index {i}", file=sys.stderr)
+            break
+
+    return {
+        "universal_slot_template": {
+            "source_va": f"0x{UNIVERSAL_SLOT_TEMPLATE_VA:X}",
+            "size_bytes": UNIVERSAL_SLOT_TEMPLATE_SIZE,
+            "reference_count": 7302,
+            "active_slots": active,
+            "total_bits": total_bits,
+            "slot_sizes": sizes_clean,
+            "slot_types": types_clean,
+            "slot_flags": flags_clean,
+            "raw_dwords": [f"0x{d:08X}" for d in dwords],
+        }
+    }
+
+
+# ─── Table 14: Encoding Bitfield Lookup Table ────────────────────────
+
+# Maps modifier combinations to bit positions within the SASS instruction
+# word.  4096 entries x 8 bytes each (u32 field_a, u32 field_b).
+# Sentinel 0xFFFFFFFF = "not applicable".  ~98% fill rate.
+# Immediately follows the format descriptors region.
+# Field A is predominantly a .text VA (function pointer) or a small integer.
+# Field B is predominantly 0, with a handful of small-value entries.
+
+BITFIELD_LOOKUP_VA    = 0x23F2E00
+BITFIELD_LOOKUP_END   = 0x23FAE00
+BITFIELD_LOOKUP_COUNT = 4096
+BITFIELD_LOOKUP_ENTRY_SIZE = 8
+
+
+def extract_encoding_bitfield_lookup(br: BinaryReader) -> dict:
+    """Extract the 4096-entry encoding bitfield lookup table.
+    Each entry is (u32, u32).  Computes fill rate, value ranges,
+    and distribution statistics for the SMT encoder."""
+    from collections import Counter
+
+    sentinel = 0xFFFFFFFF
+    entries = []
+    a_vals = []
+    b_vals = []
+    both_sentinel = 0
+    a_only_sentinel = 0
+    b_only_sentinel = 0
+    both_valid = 0
+
+    for i in range(BITFIELD_LOOKUP_COUNT):
+        va = BITFIELD_LOOKUP_VA + i * BITFIELD_LOOKUP_ENTRY_SIZE
+        a = br.u32(va)
+        b = br.u32(va + 4)
+
+        a_is_sent = (a == sentinel)
+        b_is_sent = (b == sentinel)
+
+        if a_is_sent and b_is_sent:
+            both_sentinel += 1
+        elif a_is_sent:
+            a_only_sentinel += 1
+        elif b_is_sent:
+            b_only_sentinel += 1
+        else:
+            both_valid += 1
+
+        if not a_is_sent:
+            a_vals.append(a)
+        if not b_is_sent:
+            b_vals.append(b)
+
+        # Store compactly: sentinel -> null in JSON
+        entries.append([
+            None if a_is_sent else a,
+            None if b_is_sent else b,
+        ])
+
+    active = BITFIELD_LOOKUP_COUNT - both_sentinel
+    fill_rate = active / BITFIELD_LOOKUP_COUNT
+
+    # Classify field A values
+    text_va_count = sum(1 for a in a_vals if TEXT_START <= a < TEXT_END)
+    small_val_count = sum(1 for a in a_vals if a < TEXT_START)
+
+    # Field B distribution
+    b_dist = Counter(b_vals)
+    b_distribution = [{"value": v, "count": c} for v, c in b_dist.most_common()]
+
+    # Field A: top 30 most common values
+    a_dist = Counter(a_vals)
+    a_top = [
+        {"value": val, "value_hex": f"0x{val:X}", "count": cnt}
+        for val, cnt in a_dist.most_common(30)
+    ]
+
+    stats = {
+        "total_entries": BITFIELD_LOOKUP_COUNT,
+        "active_entries": active,
+        "fill_rate": round(fill_rate, 4),
+        "fill_rate_pct": f"{fill_rate * 100:.1f}%",
+        "both_sentinel": both_sentinel,
+        "a_sentinel_b_valid": a_only_sentinel,
+        "a_valid_b_sentinel": b_only_sentinel,
+        "both_valid": both_valid,
+        "field_a": {
+            "non_sentinel_count": len(a_vals),
+            "min": min(a_vals) if a_vals else None,
+            "max": max(a_vals) if a_vals else None,
+            "unique_values": len(set(a_vals)),
+            "text_va_pointers": text_va_count,
+            "small_values": small_val_count,
+            "top_30": a_top,
+        },
+        "field_b": {
+            "non_sentinel_count": len(b_vals),
+            "min": min(b_vals) if b_vals else None,
+            "max": max(b_vals) if b_vals else None,
+            "unique_values": len(set(b_vals)),
+            "distribution": b_distribution,
+        },
+    }
+
+    return {
+        "encoding_bitfield_lookup": {
+            "source_va": f"0x{BITFIELD_LOOKUP_VA:X}",
+            "end_va": f"0x{BITFIELD_LOOKUP_END:X}",
+            "size_bytes": BITFIELD_LOOKUP_COUNT * BITFIELD_LOOKUP_ENTRY_SIZE,
+            "entry_format": "(u32 field_a, u32 field_b)",
+            "sentinel": f"0x{sentinel:X}",
+            "stats": stats,
+            "entries": entries,
+        }
+    }
+
+
+# ─── Table 15: SASS Handler Dispatch Table 1 ─────────────────────────
+
+# The SASS encoder uses two handler dispatch tables stored in .rodata.
+# Each table is a sequence of sub-tables (one per SM generation or
+# encoding context), where each sub-table is a list of 24-byte entries
+# mapping opcode IDs to handler functions in .text.
+#
+# Entry format (two variants observed):
+#   Format A: {handler_ptr:u64, zero:u64, opcode_id:u64}  -- first sub-table
+#   Format B: {opcode_id:u64, handler_ptr:u64, zero:u64}  -- subsequent sub-tables
+#
+# Sub-tables are terminated by an entry with opcode_id=0, followed by
+# zero-padding (8-byte aligned) before the next sub-table begins.
+#
+# Table 1 contains ~6900 entries.  Handler pointers in the first
+# sub-table point to simple validation stubs (mov eax,1; ret) in the
+# 0xC69xxx range, while later sub-tables point to full encoding
+# functions spread across a wider .text range.
+#
+# opcode_id encoding: high byte = category, low byte = variant.
+
+SASS_HANDLER_TABLE_1_START = 0x22C0E00
+SASS_HANDLER_TABLE_1_END   = 0x22F1E00  # conservative upper bound
+
+
+def _parse_sass_handler_entries(br: BinaryReader, region_start: int, region_end: int):
+    """Parse a SASS handler dispatch table region into a flat list of entries.
+
+    Handles both entry formats (A and B) and the inter-sub-table zero
+    padding.  Returns (entries, sub_table_sizes) where entries is a list
+    of dicts and sub_table_sizes records how many entries (including the
+    terminator) each sub-table contained."""
+
+    base = br._off(region_start)
+    limit = br._off(region_end)
+    entries = []
+    sub_table_sizes = []
+    current_count = 0
+
+    def u64(off):
+        return struct.unpack_from('<Q', br.data, off)[0]
+
+    pos = base
+    while pos + 24 <= limit:
+        v0 = u64(pos)
+        v1 = u64(pos + 8)
+        v2 = u64(pos + 16)
+
+        # Format A: {handler_ptr, 0, opcode_id}
+        if br.is_in_text(v0) and v1 == 0 and v2 < 0x10000:
+            entries.append({
+                "handler_va": v0,
+                "opcode_id": int(v2),
+                "entry_va": pos + VA_BASE,
+                "format": "A",
+            })
+            current_count += 1
+            if v2 == 0:
+                # Terminator: end of sub-table
+                sub_table_sizes.append(current_count)
+                current_count = 0
+                pos += 24
+                while pos + 8 <= limit and u64(pos) == 0:
+                    pos += 8
+                continue
+            pos += 24
+
+        # Format B: {opcode_id, handler_ptr, 0}
+        elif 0 < v0 < 0x10000 and br.is_in_text(v1) and v2 == 0:
+            entries.append({
+                "handler_va": v1,
+                "opcode_id": int(v0),
+                "entry_va": pos + VA_BASE,
+                "format": "B",
+            })
+            current_count += 1
+            pos += 24
+
+        # Format A terminator with zero opcode: {handler_ptr, 0, 0}
+        elif br.is_in_text(v0) and v1 == 0 and v2 == 0:
+            entries.append({
+                "handler_va": v0,
+                "opcode_id": 0,
+                "entry_va": pos + VA_BASE,
+                "format": "A",
+            })
+            current_count += 1
+            sub_table_sizes.append(current_count)
+            current_count = 0
+            pos += 24
+            while pos + 8 <= limit and u64(pos) == 0:
+                pos += 8
+
+        # Zero padding between sub-tables
+        elif v0 == 0:
+            if current_count > 0:
+                sub_table_sizes.append(current_count)
+                current_count = 0
+            pos += 8
+
+        else:
+            # Non-matching data: skip one qword and try re-aligning
+            pos += 8
+
+    if current_count > 0:
+        sub_table_sizes.append(current_count)
+
+    return entries, sub_table_sizes
+
+
+def _build_handler_table_result(entries: list, sub_table_sizes: list,
+                                region_start: int, region_end: int,
+                                table_label: str) -> dict:
+    """Build the JSON-serializable result dict for a handler dispatch table."""
+    from collections import Counter
+
+    # Separate terminators (opcode_id == 0) from real entries
+    real_entries = [e for e in entries if e["opcode_id"] > 0]
+    terminators = [e for e in entries if e["opcode_id"] == 0]
+
+    # Deduplicate: same (handler_va, opcode_id) appearing in multiple sub-tables
+    seen = set()
+    unique_entries = []
+    for e in real_entries:
+        key = (e["handler_va"], e["opcode_id"])
+        if key not in seen:
+            seen.add(key)
+            unique_entries.append(e)
+
+    unique_handlers = len(set(e["handler_va"] for e in real_entries))
+    unique_opcodes = len(set(e["opcode_id"] for e in real_entries))
+    handler_vas = [e["handler_va"] for e in real_entries]
+
+    # Category distribution
+    cat_dist = Counter((e["opcode_id"] >> 8) & 0xFF for e in real_entries)
+
+    # Build output entry list (deduplicated, sorted by opcode_id then handler_va)
+    output_entries = []
+    for i, e in enumerate(sorted(unique_entries,
+                                  key=lambda x: (x["opcode_id"], x["handler_va"]))):
+        oid = e["opcode_id"]
+        output_entries.append({
+            "index": i,
+            "opcode_id": oid,
+            "opcode_id_hex": f"0x{oid:04X}",
+            "category": (oid >> 8) & 0xFF,
+            "variant": oid & 0xFF,
+            "handler_va": f"0x{e['handler_va']:X}",
+        })
+
+    return {
+        table_label: {
+            "region_start": f"0x{region_start:X}",
+            "region_end": f"0x{region_end:X}",
+            "region_size_bytes": region_end - region_start,
+            "total_raw_entries": len(entries),
+            "real_entries": len(real_entries),
+            "terminator_entries": len(terminators),
+            "deduplicated_entries": len(unique_entries),
+            "unique_handlers": unique_handlers,
+            "unique_opcode_ids": unique_opcodes,
+            "handler_va_range": {
+                "min": f"0x{min(handler_vas):X}" if handler_vas else None,
+                "max": f"0x{max(handler_vas):X}" if handler_vas else None,
+            },
+            "sub_table_count": len(sub_table_sizes),
+            "sub_table_sizes": sub_table_sizes,
+            "category_distribution": {
+                f"0x{cat:02X}": count
+                for cat, count in sorted(cat_dist.items())
+            },
+            "entries": output_entries,
+        }
+    }
+
+
+def extract_sass_handler_dispatch_1(br: BinaryReader) -> dict:
+    """Extract SASS Handler Dispatch Table 1 from the .rodata region
+    0x22C0E00-0x22F1E00.  Maps opcode IDs to encoding handler functions
+    (validation stubs in the first sub-table, full encoders in later ones)."""
+
+    entries, sub_sizes = _parse_sass_handler_entries(
+        br, SASS_HANDLER_TABLE_1_START, SASS_HANDLER_TABLE_1_END)
+
+    real = [e for e in entries if e["opcode_id"] > 0]
+    print(f"    Parsed {len(entries)} raw entries ({len(real)} with opcode_id > 0)")
+
+    bad_ptrs = [e for e in real if not br.is_in_text(e["handler_va"])]
+    if bad_ptrs:
+        print(f"    WARNING: {len(bad_ptrs)} entries have handler_va outside .text",
+              file=sys.stderr)
+
+    return _build_handler_table_result(
+        entries, sub_sizes,
+        SASS_HANDLER_TABLE_1_START, SASS_HANDLER_TABLE_1_END,
+        "sass_handler_dispatch_1")
+
+
+# ─── Table 16: SASS Handler Dispatch Table 2 ─────────────────────────
+
+# Table 2 uses the same format as Table 1 but contains different handler
+# functions.  Table 2's handlers (0xCBxxxx range) have proper function
+# prologues (push registers, call into encoding engine) indicating these
+# are the actual SASS instruction encoding functions, as opposed to
+# Table 1's validation stubs.
+
+SASS_HANDLER_TABLE_2_START = 0x2379E00
+SASS_HANDLER_TABLE_2_END   = 0x2399E00  # conservative upper bound
+
+
+def extract_sass_handler_dispatch_2(br: BinaryReader) -> dict:
+    """Extract SASS Handler Dispatch Table 2 from the .rodata region
+    0x2379E00-0x2399E00.  Maps opcode IDs to full SASS encoding handler
+    functions."""
+
+    entries, sub_sizes = _parse_sass_handler_entries(
+        br, SASS_HANDLER_TABLE_2_START, SASS_HANDLER_TABLE_2_END)
+
+    real = [e for e in entries if e["opcode_id"] > 0]
+    print(f"    Parsed {len(entries)} raw entries ({len(real)} with opcode_id > 0)")
+
+    bad_ptrs = [e for e in real if not br.is_in_text(e["handler_va"])]
+    if bad_ptrs:
+        print(f"    WARNING: {len(bad_ptrs)} entries have handler_va outside .text",
+              file=sys.stderr)
+
+    return _build_handler_table_result(
+        entries, sub_sizes,
+        SASS_HANDLER_TABLE_2_START, SASS_HANDLER_TABLE_2_END,
+        "sass_handler_dispatch_2")
 
 
 # ─── Derived: Opcode Master Record ─────────────────────────────────────
@@ -976,6 +1508,10 @@ def main():
         ("tier2_modifiers",    "tier2_modifiers.json",      extract_tier2_modifiers),
         ("knob_strings",       "knob_strings.json",         extract_knob_strings),
         ("blob_metadata",      "high_entropy_blob.json",    extract_high_entropy_blob_metadata),
+        ("slot_template",      "universal_slot_template.json", extract_universal_slot_template),
+        ("bitfield_lookup",    "encoding_bitfield_lookup.json", extract_encoding_bitfield_lookup),
+        ("handler_dispatch_1", "sass_handler_dispatch_1.json",  extract_sass_handler_dispatch_1),
+        ("handler_dispatch_2", "sass_handler_dispatch_2.json",  extract_sass_handler_dispatch_2),
     ]
 
     for key, filename, func in extractors:
