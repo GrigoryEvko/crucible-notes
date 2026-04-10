@@ -864,13 +864,34 @@ def extract_knob_strings(br: BinaryReader) -> dict:
 # ─── Table 12: High-Entropy Blob Metadata ─────────────────────────────
 
 # The .rodata section contains a ~2.80 MB region of near-maximum entropy
-# (8.00 bits/byte), spanning VA 0x1D4FE00 to 0x201CE00. This is likely
+# (8.00 bits/byte), spanning VA 0x1D4FF40 to 0x201CE00. This is likely
 # compressed or encrypted data (e.g., NVVM IR templates, pre-built code
 # sequences, or encoded lookup tables). We document its boundaries and
 # compute a fingerprint without extracting the raw data.
+#
+# Layout immediately preceding the blob:
+#   0x1D4B778 - 0x1D4D938 : 8-byte pointer table (1080 entries, points to 0x60xxxx)
+#   0x1D4D938 - 0x1D4D950 : 24 bytes zero alignment padding
+#   0x1D4D950 - 0x1D4FF40 : 16-byte blob offset index (607 entries, 9712 bytes)
+#                            Each entry: u64 offset into the blob + u64 tag (0 or 3).
+#                            Offsets are monotonically decreasing, pointing into
+#                            the 0x1F1xxxx-0x201xxxx range (within the blob itself).
+#                            7 entries carry tag=3 (clustered at 0x1D4DA60-0x1D4DAC0);
+#                            the remaining 600 entries have tag=0.
+#   0x1D4FF40 - 0x201CE00 : High-entropy SASS blob (pure data, no header)
+#
+# NOTE: The 512-byte region 0x1D4FE00-0x1D50000 that appeared as a "gap" is
+# fully accounted for: bytes 0x1D4FE00-0x1D4FF40 are the last 20 entries of
+# the blob offset index, and bytes 0x1D4FF40-0x1D50000 are the first 192 bytes
+# of the high-entropy blob. There is no padding or gap here.
 
-HIGH_ENTROPY_BLOB_START = 0x1D4FE00
+HIGH_ENTROPY_BLOB_START = 0x1D4FF40
 HIGH_ENTROPY_BLOB_END   = 0x201CE00
+
+# The blob offset index that precedes the blob.
+BLOB_OFFSET_INDEX_START = 0x1D4D950
+BLOB_OFFSET_INDEX_END   = 0x1D4FF40  # == HIGH_ENTROPY_BLOB_START
+BLOB_OFFSET_INDEX_ENTRY_COUNT = 607
 
 
 def extract_high_entropy_blob_metadata(br: BinaryReader) -> dict:
@@ -878,11 +899,9 @@ def extract_high_entropy_blob_metadata(br: BinaryReader) -> dict:
     the raw bytes (it would be ~2.8 MB of incompressible data).
     Computes SHA-256 fingerprint and boundary entropy measurements.
 
-    The blob starts with a structured header of 20 x 16-byte entries,
-    each containing a single u32 pointer (to .rodata) followed by 12
-    zero bytes.  The pointers are descending and point into the rodata
-    section.  After this 320-byte header, the data transitions to
-    near-maximum entropy."""
+    The blob at 0x1D4FF40 begins immediately with high-entropy data (no
+    structured header). The preceding blob offset index (607 x 16-byte
+    entries at 0x1D4D950-0x1D4FF40) is extracted separately."""
     import math
 
     blob_start_off = br._off(HIGH_ENTROPY_BLOB_START)
@@ -893,21 +912,28 @@ def extract_high_entropy_blob_metadata(br: BinaryReader) -> dict:
     # SHA-256 of the blob
     blob_hash = hashlib.sha256(blob_data).hexdigest()
 
-    # Scan header: count 16-byte entries where bytes [4:16] are all zero
-    header_entry_count = 0
-    header_pointers = []
-    for i in range(min(100, blob_size // 16)):
-        off = i * 16
-        d0 = struct.unpack_from('<I', blob_data, off)[0]
-        rest = blob_data[off + 4:off + 16]
-        if rest == b'\x00' * 12 and d0 > 0x1000000:
-            header_entry_count += 1
-            header_pointers.append(f"0x{d0:08X}")
-        else:
-            break
-    header_size = header_entry_count * 16
+    # Extract the preceding blob offset index
+    idx_start_off = br._off(BLOB_OFFSET_INDEX_START)
+    idx_end_off = br._off(BLOB_OFFSET_INDEX_END)
+    idx_data = br.data[idx_start_off:idx_end_off]
+    idx_entry_count = (idx_end_off - idx_start_off) // 16
 
-    # Overall entropy
+    index_entries = []
+    tagged_count = 0
+    for i in range(idx_entry_count):
+        off = i * 16
+        offset_val = struct.unpack_from('<Q', idx_data, off)[0]
+        tag = struct.unpack_from('<Q', idx_data, off + 8)[0]
+        entry_va = BLOB_OFFSET_INDEX_START + i * 16
+        index_entries.append({
+            "va": f"0x{entry_va:X}",
+            "offset": f"0x{offset_val:X}",
+            "tag": int(tag),
+        })
+        if tag != 0:
+            tagged_count += 1
+
+    # Overall entropy of the blob
     freq = [0] * 256
     for b in blob_data:
         freq[b] += 1
@@ -932,8 +958,6 @@ def extract_high_entropy_blob_metadata(br: BinaryReader) -> dict:
 
     first_page_ent = page_entropy(blob_data[:4096])
     last_page_ent = page_entropy(blob_data[-4096:])
-    # Entropy of the data AFTER the structured header
-    post_header_ent = page_entropy(blob_data[header_size:header_size + 4096]) if blob_size > header_size + 4096 else 0.0
 
     header_hex = blob_data[:16].hex()
 
@@ -946,17 +970,22 @@ def extract_high_entropy_blob_metadata(br: BinaryReader) -> dict:
             "sha256": blob_hash,
             "overall_entropy_bits": round(entropy, 4),
             "first_page_entropy": round(first_page_ent, 4),
-            "post_header_entropy": round(post_header_ent, 4),
             "last_page_entropy": round(last_page_ent, 4),
-            "header_hex_16b": header_hex,
-            "header": {
-                "entry_count": header_entry_count,
-                "size_bytes": header_size,
-                "pointers": header_pointers,
-                "note": "Descending u32 pointers into .rodata, each in a 16-byte slot (12 bytes padding).",
+            "first_16_bytes_hex": header_hex,
+            "blob_offset_index": {
+                "start_va": f"0x{BLOB_OFFSET_INDEX_START:X}",
+                "end_va": f"0x{BLOB_OFFSET_INDEX_END:X}",
+                "entry_count": idx_entry_count,
+                "size_bytes": idx_end_off - idx_start_off,
+                "tagged_entries": tagged_count,
+                "tag_values": "0 (normal) or 3 (7 entries at 0x1D4DA60-0x1D4DAC0)",
+                "offset_range": f"{index_entries[-1]['offset']}-{index_entries[0]['offset']}" if index_entries else "N/A",
+                "note": "Monotonically decreasing offsets into the SASS blob. "
+                        "Each entry is 16 bytes: u64 blob_offset + u64 tag.",
             },
-            "note": "320-byte structured header (20 rodata pointers) followed by ~2.8 MB of "
-                    "near-maximum entropy data (8.00 bits/byte). Likely compressed/encrypted "
+            "note": "~2.8 MB of near-maximum entropy data (8.00 bits/byte) starting "
+                    "immediately at 0x1D4FF40. Preceded by a 607-entry blob offset "
+                    "index (0x1D4D950-0x1D4FF40). Likely compressed/encrypted "
                     "NVVM IR templates, pre-built code sequences, or encoded lookup tables.",
         }
     }
@@ -2155,6 +2184,111 @@ def extract_register_class_aux(br: BinaryReader) -> dict:
     return {"register_class_aux": regions}
 
 
+# ─── Table 24b: Register Class Constraint Tables ─────────────────────
+#
+# Per-SM register operand constraint tables stored at struct offset +0x70
+# by sub_ABF590.  Each table is 72 rows of 16 x u32 (64 bytes per row,
+# 4608 bytes total).  The last field d[15] is the active_group_count
+# indicating how many (class_id, sub_a, sub_b) triplets are populated:
+#
+#   d[0..2]   = group 0: (class_id, sub_a, sub_b)
+#   d[3..5]   = group 1: (class_id, sub_a, sub_b)
+#   d[6..8]   = group 2: (class_id, sub_a, sub_b)
+#   d[9..11]  = group 3: (class_id, sub_a, sub_b)
+#   d[12..14] = group 4: (class_id, sub_a, sub_b)
+#   d[15]     = active_group_count (1..5 for SM 5x; varies for other SMs)
+#
+# SM 3x records may contain embedded 32-bit .rodata VA pointers in the
+# class_id fields (e.g., d[0], d[4], d[8], d[12] > 0x1000000).
+#
+# Rows 0-39 typically have d[0]=0 (anonymous / inline constraints).
+# Rows 40-71 have d[0]>0 (class-based constraints referencing a
+# register class ID from the regclass_aux table).
+#
+# SM dispatch mapping (from sub_ABF590):
+#   SM 30-35 (0x3001-0x3005): 0x2274780
+#   SM 40-41 (0x4000-0x4001): 0x22516C0
+#   SM 50-55 (0x5000-0x5005): 0x21FDC00
+
+REGCLASS_CONSTRAINT_REGIONS = [
+    ("sm_5x", 0x21FDC00, 0x21FEE00),
+    ("sm_4x", 0x22516C0, 0x22528C0),
+    ("sm_3x", 0x2274780, 0x2275980),
+]
+
+
+def extract_register_class_constraints(br: BinaryReader) -> dict:
+    """Extract per-SM register class constraint tables from .rodata.
+    Each region is 72 rows of 64-byte records (16 x u32) describing
+    register operand constraints with grouped (class, sub_a, sub_b) triplets."""
+
+    regions = []
+    for sm_label, start_va, end_va in REGCLASS_CONSTRAINT_REGIONS:
+        size = end_va - start_va
+        record_count = size // 64
+
+        if size % 64 != 0:
+            print(f"    WARNING: {sm_label} constraint region size {size} not "
+                  f"divisible by 64", file=sys.stderr)
+
+        records = []
+        group_count_hist = {}
+        has_embedded_ptrs = False
+
+        for i in range(record_count):
+            va = start_va + i * 64
+            d = br.u32_array(va, 16)
+            group_count = d[15]
+            group_count_hist[group_count] = group_count_hist.get(group_count, 0) + 1
+
+            # Detect embedded .rodata pointers (SM 3x uses truncated 32-bit VAs)
+            embedded_vas = []
+            for gi in range(5):
+                cid = d[gi * 3]
+                if RODATA_START <= cid <= RODATA_END:
+                    has_embedded_ptrs = True
+                    embedded_vas.append(f"0x{cid:X}")
+
+            # Parse groups
+            groups = []
+            for gi in range(5):
+                base_idx = gi * 3
+                cid, sub_a, sub_b = d[base_idx], d[base_idx + 1], d[base_idx + 2]
+                if cid != 0 or sub_a != 0 or sub_b != 0:
+                    entry = {"class_id": cid, "sub_a": sub_a, "sub_b": sub_b}
+                    if RODATA_START <= cid <= RODATA_END:
+                        entry["class_id_is_va"] = True
+                        entry["class_id_hex"] = f"0x{cid:X}"
+                    groups.append(entry)
+
+            rec = {
+                "index": i,
+                "va": f"0x{va:X}",
+                "active_group_count": group_count,
+                "groups": groups,
+                "raw_u32": d,
+            }
+            if embedded_vas:
+                rec["embedded_va_refs"] = embedded_vas
+            records.append(rec)
+
+        regions.append({
+            "sm_generation": sm_label,
+            "start_va": f"0x{start_va:X}",
+            "end_va": f"0x{end_va:X}",
+            "size_bytes": size,
+            "record_count": record_count,
+            "record_stride": 64,
+            "has_embedded_rodata_pointers": has_embedded_ptrs,
+            "group_count_distribution": {
+                str(k): v for k, v in sorted(group_count_hist.items())
+            },
+            "records": records,
+        })
+
+    return {"register_class_constraints": regions}
+
+
 # ─── Table 25: Opcode-to-Pipeline Mapping Tables ─────────────────────
 
 # Sorted arrays of (opcode_id:u32, pipeline_flags:u32) pairs that map
@@ -2672,6 +2806,1487 @@ def extract_modifier_format_strings(br: BinaryReader) -> dict:
     }
 
 
+# ─── Table: Modifier Value Lookup Tables ──────────────────────────────
+
+# ~43 small arrays at VA 0x22FCD20-0x22FD580 that map Ori IR modifier
+# enum values to SASS binary encoding values.  Each table is indexed by
+# (ir_modifier_value - enum_base) and returns the corresponding encoding
+# integer (or 0xFFFFFFFF for "invalid").
+#
+# Three element types coexist in the region:
+#   - DWORD arrays: small integer values (modifier mappings), most tables
+#   - BYTE arrays: identity or stride-pattern byte LUTs (64-256 entries)
+#
+# The two most-shared tables are:
+#   dword_22FD498[3] = [0,1,2]   (tristate, 63 helper funcs)
+#   dword_22FD570[4] = [0,1,2,3] (quaternary, 44 helper funcs)
+
+MOD_VALUE_REGION_START = 0x22FCD20
+MOD_VALUE_REGION_END   = 0x22FD580
+
+# Known sub-tables (VA -> (count, label, element_type, usage_count))
+_MOD_VALUE_KNOWN_TABLES = {
+    0x22FCD20: (3,  "rounding_mode_023",     "dword", None),
+    0x22FCD30: (5,  "gap_table_neg1",        "dword", None),
+    0x22FCD50: (6,  "gap_table_dual_neg1",   "dword", None),
+    0x22FCD70: (4,  "swap_01",               "dword", None),
+    0x22FCD80: (4,  "gap_no_3",              "dword", None),
+    0x22FCD90: (4,  "fold_last_two",         "dword", None),
+    0x22FCDA0: (19, "large_jump_9_to_12",    "dword", None),
+    0x22FCDF4: (4,  "fold_3_3",              "dword", None),
+    0x22FCE1C: (15, "complex_remapping_15",  "dword", None),
+    0x22FCE60: (11, "alt_remapping_11",      "dword", None),
+    0x22FCEA4: (18, "pair_fold_group",       "dword", None),
+    0x22FCEF4: (4,  "identity_4a",           "dword", None),
+    0x22FCF10: (13, "compound_remap_13",     "dword", None),
+    0x22FCF50: (6,  "offset_2_to_6",         "dword", None),
+    0x22FCF70: (5,  "rotation",              "dword", None),
+    0x22FCF90: (5,  "fold_0_1_1_2_2",        "dword", None),
+    0x22FCFAC: (2,  "pair_1_3",              "dword", None),
+    0x22FCFC4: (9,  "fold_2_dup",            "dword", None),
+    0x22FCFF0: (9,  "split_block",           "dword", None),
+    0x22FD020: (64, "identity_byte_64",      "byte",  None),
+    0x22FD060: (36, "stride_skip_byte_36",   "byte",  None),
+    0x22FD0A0: (96, "identity_byte_96",      "byte",  None),
+    0x22FD100: (8,  "small_identity_8",      "dword", None),
+    0x22FD150: (6,  "skip_4",                "dword", None),
+    0x22FD170: (5,  "skip_1_3",              "dword", None),
+    0x22FD18C: (9,  "stride_9_then_1_4",     "dword", None),
+    0x22FD1B8: (5,  "fold_1_2_2_3_4",        "dword", None),
+    0x22FD1E0: (13, "jump_5_to_9",           "dword", None),
+    0x22FD220: (256, "identity_byte_256",    "byte",  None),
+    0x22FD320: (3,  "power_encoding_1_3_15", "dword", None),
+    0x22FD354: (10, "identity_7_plus_3",     "dword", 10),
+    0x22FD384: (22, "identity_22",           "dword", None),
+    0x22FD3E4: (17, "identity_17_rotated",   "dword", None),
+    0x22FD440: (13, "identity_8_dup_tail",   "dword", None),
+    0x22FD480: (5,  "identity_5",            "dword", 13),
+    0x22FD498: (3,  "tristate",              "dword", 63),
+    0x22FD4C0: (11, "identity_11",           "dword", None),
+    0x22FD500: (9,  "identity_9",            "dword", None),
+    0x22FD540: (10, "identity_10",           "dword", None),
+    0x22FD570: (4,  "quaternary",            "dword", 44),
+}
+
+
+def extract_modifier_value_tables(br: BinaryReader) -> dict:
+    """Extract modifier value lookup tables from 0x22FCD20-0x22FD580.
+
+    Each sub-table maps IR modifier enum values to SASS encoding values.
+    Tables are identified by their start VA and classified as DWORD or BYTE
+    type depending on element size.  DWORD tables contain individual u32
+    mapping values; BYTE tables contain per-byte identity or stride LUTs."""
+
+    region_off = br._off(MOD_VALUE_REGION_START)
+    region_size = MOD_VALUE_REGION_END - MOD_VALUE_REGION_START
+    raw = br.data[region_off:region_off + region_size]
+
+    tables = []
+
+    for va, (count, label, elem_type, usage) in sorted(_MOD_VALUE_KNOWN_TABLES.items()):
+        off = va - MOD_VALUE_REGION_START
+        if off < 0 or off >= region_size:
+            print(f"    WARNING: modifier table {label} VA 0x{va:X} outside region", file=sys.stderr)
+            continue
+
+        if elem_type == "byte":
+            byte_vals = list(raw[off:off + count])
+            is_identity = (byte_vals == list(range(count)))
+            tables.append({
+                "va": f"0x{va:X}",
+                "label": label,
+                "element_type": "byte",
+                "count": count,
+                "is_identity": is_identity,
+                "values": byte_vals,
+                "usage_count": usage,
+            })
+        else:
+            dword_vals = list(struct.unpack_from(f'<{count}I', raw, off))
+            clean = [v if v != 0xFFFFFFFF else -1 for v in dword_vals]
+            is_identity = (clean == list(range(count)))
+            has_gaps = any(v == -1 for v in clean)
+            tables.append({
+                "va": f"0x{va:X}",
+                "label": label,
+                "element_type": "dword",
+                "count": count,
+                "is_identity": is_identity,
+                "has_invalid_gaps": has_gaps,
+                "values": clean,
+                "usage_count": usage,
+            })
+
+    # Spot-check the two most important tables
+    spot_checks = []
+    tri_off = br._off(0x22FD498)
+    tri = list(struct.unpack_from('<3I', br.data, tri_off))
+    if tri != [0, 1, 2]:
+        spot_checks.append(f"tristate expected [0,1,2] got {tri}")
+
+    quad_off = br._off(0x22FD570)
+    quad = list(struct.unpack_from('<4I', br.data, quad_off))
+    if quad != [0, 1, 2, 3]:
+        spot_checks.append(f"quaternary expected [0,1,2,3] got {quad}")
+
+    if spot_checks:
+        for msg in spot_checks:
+            print(f"    SPOT CHECK FAIL: {msg}", file=sys.stderr)
+
+    identity_count = sum(1 for t in tables if t["is_identity"])
+    dword_count = sum(1 for t in tables if t["element_type"] == "dword")
+    byte_count = sum(1 for t in tables if t["element_type"] == "byte")
+
+    return {
+        "modifier_value_tables": {
+            "region_start": f"0x{MOD_VALUE_REGION_START:X}",
+            "region_end": f"0x{MOD_VALUE_REGION_END:X}",
+            "region_size_bytes": region_size,
+            "total_tables": len(tables),
+            "dword_tables": dword_count,
+            "byte_tables": byte_count,
+            "identity_tables": identity_count,
+            "spot_check_failures": spot_checks,
+            "tables": tables,
+        }
+    }
+
+
+# ─── Table: Instruction Legality Table ────────────────────────────────
+
+# Sparse int32 array at VA 0x22FEE00-0x2339E00 (241,664 bytes = 60,416 DWORDs).
+# Indexed by (opcode, modifier_combination) tuples; non-zero values encode
+# legality flags per SM generation.  ~68.4% of entries are zero (unused combo).
+#
+# Non-zero value categories:
+#   - Small values (< 0x10000): packed modifier/flag encoding
+#   - 0x08000000: standalone flag-only marker
+#   - value | 0x08000000: value with flag bit set
+#   - Large values (0x01xxxxxx range): context-dependent
+
+LEGALITY_TABLE_START = 0x22FEE00
+LEGALITY_TABLE_END   = 0x2339E00
+LEGALITY_TABLE_SIZE  = LEGALITY_TABLE_END - LEGALITY_TABLE_START  # 241,664 bytes
+
+
+def extract_instruction_legality(br: BinaryReader) -> dict:
+    """Extract the instruction legality table as a sparse representation.
+
+    Only non-zero entries are stored, each with its DWORD index and value.
+    The full table has 60,416 entries but only ~19,000 are non-zero."""
+
+    off = br._off(LEGALITY_TABLE_START)
+    count = LEGALITY_TABLE_SIZE // 4
+    raw = struct.unpack_from(f'<{count}I', br.data, off)
+
+    sparse = []
+    for i, v in enumerate(raw):
+        if v != 0:
+            sparse.append({"index": i, "value": v})
+
+    nz_count = len(sparse)
+    zero_pct = 100.0 * (1 - nz_count / count)
+
+    flag_only = 0
+    with_flag = 0
+    small_vals = 0
+    large_vals = 0
+    unique_vals = set()
+
+    for entry in sparse:
+        v = entry["value"]
+        unique_vals.add(v)
+        if v == 0x08000000:
+            flag_only += 1
+        elif v & 0x08000000:
+            with_flag += 1
+        elif v < 0x10000:
+            small_vals += 1
+        else:
+            large_vals += 1
+
+    for entry in sparse:
+        v = entry["value"]
+        if v >= 0x10000:
+            entry["value_hex"] = f"0x{v:X}"
+
+    first_nz_idx = sparse[0]["index"] if sparse else -1
+    last_nz_idx = sparse[-1]["index"] if sparse else -1
+    first_nz_va = LEGALITY_TABLE_START + first_nz_idx * 4 if first_nz_idx >= 0 else 0
+    last_nz_va = LEGALITY_TABLE_START + last_nz_idx * 4 if last_nz_idx >= 0 else 0
+
+    return {
+        "instruction_legality": {
+            "source_va": f"0x{LEGALITY_TABLE_START:X}",
+            "end_va": f"0x{LEGALITY_TABLE_END:X}",
+            "size_bytes": LEGALITY_TABLE_SIZE,
+            "total_entries": count,
+            "nonzero_entries": nz_count,
+            "zero_entries": count - nz_count,
+            "zero_pct": round(zero_pct, 1),
+            "first_nonzero": {
+                "index": first_nz_idx,
+                "va": f"0x{first_nz_va:X}",
+            },
+            "last_nonzero": {
+                "index": last_nz_idx,
+                "va": f"0x{last_nz_va:X}",
+            },
+            "value_categories": {
+                "flag_0x08000000_only": flag_only,
+                "value_with_flag": with_flag,
+                "small_values_lt_0x10000": small_vals,
+                "large_values_ge_0x10000": large_vals,
+            },
+            "unique_nonzero_values": len(unique_vals),
+            "sparse_entries": sparse,
+        }
+    }
+
+
+
+# ─── Table: Operand Resource Strategy Tables ─────────────────────────
+#
+# VA 0x21FAE00 - 0x21FB640 (2,112 bytes).  Between the message/dispatch
+# tables and shared-memory config.  Three sub-regions:
+#   A: Six 7-slot C++ vtables (resource-strategy class hierarchy)
+#   B: Nine switch/jump tables (.text pointers, resource-cost eval)
+#   C: Register-count lookup tables (flag bytes, index map, matrices)
+
+_RESRC_STRATEGY_VA    = 0x21FAE00
+_RESRC_STRATEGY_END   = 0x21FB640
+_RESRC_STRATEGY_BYTES = _RESRC_STRATEGY_END - _RESRC_STRATEGY_VA  # 2112
+
+_RESRC_VTABLE_VAS = [
+    0x21FAE00, 0x21FAE48, 0x21FAE90,
+    0x21FAED8, 0x21FAF20, 0x21FAF68,
+]
+_RESRC_VTABLE_SLOTS  = 7
+_RESRC_VTABLE_STRIDE = 0x48
+
+_RESRC_JUMP_TABLES = [
+    (0x21FAFA0,  7, "operand_type_dispatch"),
+    (0x21FAFD8,  6, "source_field_dispatch"),
+    (0x21FB008, 22, "modifier_case_dispatch"),
+    (0x21FB0B8, 40, "operand_pair_dispatch"),
+    (0x21FB1F8,  7, "dual_operand_dispatch"),
+    (0x21FB230,  6, "cost_eval_A"),
+    (0x21FB260,  6, "cost_eval_B"),
+    (0x21FB290,  6, "cost_eval_C"),
+    (0x21FB2C0,  6, "cost_eval_D"),
+]
+
+_RESRC_FLAGS_VA      = 0x21FB2F0
+_RESRC_IDXMAP_VA     = 0x21FB300
+_RESRC_BASESZ_VA     = 0x21FB320
+_RESRC_MATRIX_A_VA   = 0x21FB340   # u32[42]
+_RESRC_MATRIX_B_VA   = 0x21FB3E8   # u32[150]
+
+_RESRC_FIRST8_A  = [18, 18, 18, 18, 18, 18, 18, 18]
+_RESRC_IDXMAP_EX = [0, 1, 2, 3, 4, 5, 1, 0]
+_RESRC_BASESZ_EX = [48, 50, 38, 41, 46, 46, 0, 0]
+
+
+def extract_operand_resource_strategy(br: BinaryReader) -> dict:
+    """Extract per-SM operand resource strategy tables.
+
+    Region VA 0x21FAE00 - 0x21FB640 (2,112 bytes): six C++ vtables,
+    nine switch/jump tables, and register-count lookup matrices."""
+
+    vtables = []
+    for idx, va in enumerate(_RESRC_VTABLE_VAS):
+        slots = br.ptr_array(va, _RESRC_VTABLE_SLOTS)
+        vtables.append({
+            "index": idx, "va": f"0x{va:X}",
+            "slot_count": _RESRC_VTABLE_SLOTS,
+            "text_pointer_count": sum(1 for p in slots if br.is_in_text(p)),
+            "slots": [f"0x{s:X}" for s in slots],
+        })
+    cs2 = set(vt["slots"][2] for vt in vtables)
+    s2_uniform = len(cs2) == 1
+
+    jump_tables = []
+    jt_total = 0
+    for jva, jcnt, jlbl in _RESRC_JUMP_TABLES:
+        raw = br.ptr_array(jva, jcnt)
+        freq = {}
+        for p in raw:
+            freq[p] = freq.get(p, 0) + 1
+        dft, dfc = max(freq.items(), key=lambda x: x[1])
+        jump_tables.append({
+            "label": jlbl, "va": f"0x{jva:X}", "entry_count": jcnt,
+            "text_pointer_count": sum(1 for p in raw if br.is_in_text(p)),
+            "unique_targets": len(set(raw)),
+            "default_target": f"0x{dft:X}", "default_count": dfc,
+            "entries": [f"0x{p:X}" for p in raw],
+        })
+        jt_total += jcnt
+
+    fb = br.read_bytes(_RESRC_FLAGS_VA, 16)
+    idxmap = br.u32_array(_RESRC_IDXMAP_VA, 8)
+    bsz = br.u32_array(_RESRC_BASESZ_VA, 8)
+    ma = br.u32_array(_RESRC_MATRIX_A_VA, 42)
+    mb = br.u32_array(_RESRC_MATRIX_B_VA, 150)
+
+    def _aruns(v):
+        r, i = [], 0
+        while i < len(v):
+            if i + 2 < len(v):
+                s = v[i + 1] - v[i]
+                if s > 0:
+                    j = i + 1
+                    while j < len(v) and v[j] - v[j - 1] == s:
+                        j += 1
+                    if j - i >= 3:
+                        r.append({"start_index": i, "length": j - i,
+                                  "first": v[i], "last": v[j - 1], "step": s})
+                        i = j
+                        continue
+            i += 1
+        return r
+
+    allv = ma + mb
+    return {
+        "operand_resource_strategy": {
+            "source_va": f"0x{_RESRC_STRATEGY_VA:X}",
+            "end_va": f"0x{_RESRC_STRATEGY_END:X}",
+            "size_bytes": _RESRC_STRATEGY_BYTES,
+            "part_a_vtables": {
+                "count": len(vtables), "slots_per_vtable": _RESRC_VTABLE_SLOTS,
+                "stride_bytes": _RESRC_VTABLE_STRIDE,
+                "slot2_uniform": s2_uniform,
+                "common_slot2": list(cs2)[0] if s2_uniform else None,
+                "vtables": vtables,
+            },
+            "part_b_jump_tables": {
+                "count": len(jump_tables), "total_entries": jt_total,
+                "tables": jump_tables,
+            },
+            "part_c_register_counts": {
+                "flag_bytes": {
+                    "va": f"0x{_RESRC_FLAGS_VA:X}",
+                    "array_a": list(fb[:6]), "array_b": list(fb[5:11]),
+                    "note": "Two parallel u8[6] at base+0 and base+5, indexed by operand type",
+                },
+                "index_map": {
+                    "va": f"0x{_RESRC_IDXMAP_VA:X}", "values": idxmap,
+                    "spot_check": "PASS" if idxmap == _RESRC_IDXMAP_EX else "FAIL",
+                    "note": "Maps operand type (0-7) to register-file array selector (0-5)",
+                },
+                "reg_base_sizes": {
+                    "va": f"0x{_RESRC_BASESZ_VA:X}", "values": bsz,
+                    "spot_check": "PASS" if bsz == _RESRC_BASESZ_EX else "FAIL",
+                    "note": "Base register counts per 3-bit type configuration",
+                },
+                "matrix_a": {
+                    "va": f"0x{_RESRC_MATRIX_A_VA:X}", "element_count": 42,
+                    "first8_spot_check": "PASS" if ma[:8] == _RESRC_FIRST8_A else "FAIL",
+                    "arithmetic_runs": _aruns(ma), "entries": ma,
+                },
+                "matrix_b": {
+                    "va": f"0x{_RESRC_MATRIX_B_VA:X}", "element_count": 150,
+                    "arithmetic_runs": _aruns(mb), "entries": mb,
+                },
+                "value_range": {
+                    "min": min(allv) if allv else 0,
+                    "max": max(allv) if allv else 0,
+                },
+            },
+        }
+    }
+
+
+# ─── Table: Per-SM Encoding Handler Dispatch Tables ───────────────────
+
+# Five dispatch tables in .rodata, one per SM generation group.
+# Each table is an array of 24-byte entries (3 x u64):
+#   {u64 dispatch_opcode, u64 handler_ptr, u64 padding=0}
+#
+# dispatch_opcode = (format_id << 8) | minor_opcode
+# handler_ptr = VA into .text of the encoding handler function
+#
+# Tables are densely packed with some empty (all-zero) slots.
+# Each table has 3000 24-byte slots (72,000 bytes).
+#
+# SM generation mapping (from MERCURY_TABLES.txt):
+#   Table 0: SM 50-7x  (Maxwell/Pascal/Volta) -- base instruction set
+#   Table 1: SM 75     (Turing)
+#   Table 2: SM 100+   (Blackwell)
+#   Table 3: SM 80-8x  (Ampere)
+#   Table 4: SM 86-89  (Ampere GA10x variant)
+
+_MERCURY_DISPATCH_TABLES = [
+    (0x22E7AD0, "sm50_7x",  "SM 50-7x (Maxwell/Pascal/Volta)"),
+    (0x2348FB0, "sm75",     "SM 75 (Turing)"),
+    (0x236E160, "sm100",    "SM 100+ (Blackwell)"),
+    (0x238C9B0, "sm80_8x",  "SM 80-8x (Ampere)"),
+    (0x23A8090, "sm86_89",  "SM 86-89 (Ampere GA10x)"),
+]
+
+_MERCURY_DISPATCH_ENTRY_SIZE = 24
+_MERCURY_DISPATCH_MAX_ENTRIES = 3000
+
+
+def extract_per_sm_handler_dispatch(br: BinaryReader) -> dict:
+    """Extract the 5 per-SM encoding handler dispatch tables.
+
+    Each table maps (format_id << 8 | minor_opcode) to a .text handler
+    function pointer.  Two entry formats coexist:
+      Format A (dominant): {u64 handler, u64 pad=0, u64 opcode}  -- 24 bytes
+      Format B (initial):  {u64 opcode, u64 handler, u64 pad=0}  -- 24 bytes
+    The first few entries use format B; the bulk uses format A.
+    We scan at 8-byte granularity to detect both formats reliably."""
+    from collections import Counter
+
+    table_region_bytes = _MERCURY_DISPATCH_MAX_ENTRIES * _MERCURY_DISPATCH_ENTRY_SIZE
+    all_tables = []
+
+    for table_start, table_id, description in _MERCURY_DISPATCH_TABLES:
+        base_off = br._off(table_start)
+        raw = br.data[base_off:base_off + table_region_bytes]
+
+        seen_pairs = set()
+        entries = []
+
+        def _add(opc: int, hdl: int, byte_off: int, fmt: str):
+            pair = (opc, hdl)
+            if pair in seen_pairs:
+                return
+            seen_pairs.add(pair)
+            fmt_id = (opc >> 8) & 0xFF
+            minor = opc & 0xFF
+            entries.append({
+                "dispatch_opcode": int(opc),
+                "dispatch_opcode_hex": f"0x{opc:04X}",
+                "format_id": fmt_id,
+                "minor_opcode": minor,
+                "handler_va": f"0x{hdl:X}",
+                "entry_format": fmt,
+            })
+
+        # Format A: {handler, 0, opcode} at 8-byte aligned positions
+        for byte_off in range(0, len(raw) - 24, 8):
+            hdl = struct.unpack_from('<Q', raw, byte_off)[0]
+            pad = struct.unpack_from('<Q', raw, byte_off + 8)[0]
+            opc = struct.unpack_from('<Q', raw, byte_off + 16)[0]
+            if br.is_in_text(hdl) and pad == 0 and 0 < opc < 0x10000:
+                _add(opc, hdl, byte_off, "A")
+
+        # Format B: {opcode, handler, 0} -- typically only at the table start
+        for byte_off in range(0, min(512, len(raw) - 16), 8):
+            opc = struct.unpack_from('<Q', raw, byte_off)[0]
+            hdl = struct.unpack_from('<Q', raw, byte_off + 8)[0]
+            pad = struct.unpack_from('<Q', raw, byte_off + 16)[0] if byte_off + 16 < len(raw) else 1
+            if 0 < opc < 0x10000 and br.is_in_text(hdl) and pad == 0:
+                _add(opc, hdl, byte_off, "B")
+
+        # Sort entries by dispatch_opcode for stable output
+        entries.sort(key=lambda e: (e["dispatch_opcode"], e["handler_va"]))
+
+        unique_opcodes = len(set(e["dispatch_opcode"] for e in entries))
+        unique_handlers = len(set(e["handler_va"] for e in entries))
+
+        handler_vas = [int(e["handler_va"], 16) for e in entries]
+        opc_vals = [e["dispatch_opcode"] for e in entries]
+
+        fmt_dist = Counter(e["format_id"] for e in entries)
+        fmt_a = sum(1 for e in entries if e["entry_format"] == "A")
+        fmt_b = sum(1 for e in entries if e["entry_format"] == "B")
+
+        table_end = table_start + table_region_bytes
+
+        all_tables.append({
+            "table_id": table_id,
+            "description": description,
+            "start_va": f"0x{table_start:X}",
+            "end_va": f"0x{table_end:X}",
+            "region_size_bytes": table_region_bytes,
+            "entry_size_bytes": _MERCURY_DISPATCH_ENTRY_SIZE,
+            "total_entries": len(entries),
+            "format_a_entries": fmt_a,
+            "format_b_entries": fmt_b,
+            "unique_dispatch_opcodes": unique_opcodes,
+            "unique_handlers": unique_handlers,
+            "opcode_range": {
+                "min": f"0x{min(opc_vals):04X}" if opc_vals else None,
+                "max": f"0x{max(opc_vals):04X}" if opc_vals else None,
+            },
+            "handler_va_range": {
+                "min": f"0x{min(handler_vas):X}" if handler_vas else None,
+                "max": f"0x{max(handler_vas):X}" if handler_vas else None,
+            },
+            "format_id_distribution": {
+                str(fid): cnt for fid, cnt in sorted(fmt_dist.items())
+            },
+            "entries": entries,
+        })
+
+    # Cross-table analysis
+    opcode_sets = {}
+    for tbl in all_tables:
+        opcode_sets[tbl["table_id"]] = set(e["dispatch_opcode"] for e in tbl["entries"])
+
+    all_opcs = set.intersection(*opcode_sets.values()) if opcode_sets else set()
+    sm_specific = {}
+    for tid, opcs in opcode_sets.items():
+        others = set.union(*(s for t, s in opcode_sets.items() if t != tid))
+        unique_to_this = opcs - others
+        if unique_to_this:
+            sm_specific[tid] = sorted(unique_to_this)
+
+    return {
+        "per_sm_handler_dispatch": {
+            "table_count": len(all_tables),
+            "entry_format": "{u64 dispatch_opcode, u64 handler_ptr, u64 padding}",
+            "opcode_encoding": "(format_id << 8) | minor_opcode",
+            "common_opcodes_all_tables": len(all_opcs),
+            "sm_specific_opcodes": {
+                tid: [f"0x{o:04X}" for o in opcs]
+                for tid, opcs in sm_specific.items()
+            },
+            "tables": all_tables,
+        }
+    }
+
+
+# ─── Table 36: WGMMA/Intrinsic Infrastructure ────────────────────────────
+#
+# The gap at 0x229C480-0x22A1500 (20,608 bytes) sits between the occupancy
+# constants and encoding constants.  It contains interconnected data structures
+# supporting wgmma pipeline scheduling, PTX intrinsic lowering, operand-type
+# polymorphism, and Mercury instruction modifier-to-opcode mapping.
+#
+# Sub-regions (verified via xrefs from .text):
+#
+#   A. 0x229C480-0x229C670: WGMMA pipeline configuration
+#      - u32[12] pipeline parameters (depths, latencies)
+#      - ptr64[22] handler vtable (assigned via mov [rbx], 0x229C4C0 at 0x66344B)
+#      - u32[7] opcode indices + u32[11] enumeration config
+#
+#   B. 0x229C670-0x229CB20: ISel handler table
+#      - ptr64[150] function pointers for instruction selection handlers
+#      - Referenced from sub_9F3340 at 0x9F3D83
+#
+#   C. 0x229CB20-0x229D1C8: Embedded wgmma warning strings
+#      - NUL-terminated ASCII diagnostic messages about wgmma pipeline
+#        serialization (insufficient registers, divergent paths, etc.)
+#
+#   D. 0x229D1C8-0x229D418: Warning string pointers + wgmma config
+#      - ptr64[] pointers into the warning strings above
+#      - Small u32 config values (wgmma group sizes, error codes 0x3001-0x3004)
+#
+#   E. 0x229D418-0x229E2C0: PTX intrinsic handler table
+#      - ptr64[469] function pointers for PTX intrinsic lowering
+#      - Functions in 0x85a, 0x868, 0x7d7, 0xa8e address ranges
+#      - Referenced from sub_ADF4xx and sub_AE04xx
+#
+#   F. 0x229E2C0-0x229E8C0: Operand type vtables
+#      - 16 C++ vtables for polymorphic operand type classes
+#      - Each vtable has 9-11 function pointer entries with NULL separators
+#      - Assigned as *(_QWORD*)result = off_229Exxx in constructor functions
+#
+#   G. 0x229E8C0-0x229E9F8: Intrinsic type name table
+#      - ptr64[39] all pointing to "???" at 0x21CDA50
+#      - Used as char* by sub_6BDB60: off_229E8C0[type_index]
+#
+#   H. 0x229E9F8-0x22A0110: Intrinsic lowering switch jump tables
+#      - ptr64[~736] indirect jump targets for switch dispatch
+#      - Default target 0xAEA750 appears 269 times
+#      - Referenced by sub_AEBE50, sub_AECB60, sub_AEA420 etc.
+#
+#   I. 0x22A0110-0x22A1500: Mercury opcode enum tables
+#      - Mixed u32[] and u16[] lookup arrays
+#      - Map Mercury instruction modifier enum values to SASS opcode IDs
+#      - Used by 80+ sub_AF5xxx functions: return word_22Axxxx[modifier]
+#      - u16 arrays contain sequential values 0x060A-0x0669 (register IDs)
+#      - u32 arrays contain SASS opcode IDs in 652-2855 range
+
+# Precise boundaries for each sub-region
+_WGMMA_INFRA_GAP_START      = 0x229C480
+_WGMMA_INFRA_GAP_END        = 0x22A1500
+
+_WGMMA_PIPELINE_PARAMS_VA   = 0x229C480
+_WGMMA_PIPELINE_PARAMS_N    = 12       # u32 entries
+_WGMMA_HANDLER_VTABLE_VA    = 0x229C4C0
+_WGMMA_HANDLER_VTABLE_N     = 22       # ptr64 entries
+_WGMMA_OPCODE_INDICES_VA    = 0x229C5E0
+_WGMMA_OPCODE_INDICES_N     = 7        # u32 entries
+_WGMMA_ENUM_CONFIG_VA       = 0x229C600
+_WGMMA_ENUM_CONFIG_N        = 18       # u32 entries (includes zeros)
+
+_ISEL_HANDLER_TABLE_VA      = 0x229C670
+_ISEL_HANDLER_TABLE_N       = 150      # ptr64 entries (150 .text ptrs, ends at 0x229CB20)
+
+_WGMMA_WARNINGS_START       = 0x229CB20  # "Potential Performance Loss: wgmma..." starts here
+_WGMMA_WARNINGS_END         = 0x229D1C8
+
+_WGMMA_CONFIG_VA            = 0x229D1C8
+_WGMMA_CONFIG_END           = 0x229D418
+
+_INTRINSIC_HANDLER_TABLE_VA = 0x229D418
+_INTRINSIC_HANDLER_TABLE_N  = 469      # ptr64 entries
+
+_OPERAND_VTABLES_START      = 0x229E2C0
+_OPERAND_VTABLES_END        = 0x229E8C0
+
+_TYPE_NAME_TABLE_VA         = 0x229E8C0
+_TYPE_NAME_TABLE_N          = 39       # ptr64 entries (all -> "???")
+
+_SWITCH_JUMP_TABLE_VA       = 0x229E9F8
+_SWITCH_JUMP_TABLE_END      = 0x22A0110
+
+_MERCURY_ENUM_TABLES_START  = 0x22A0110
+_MERCURY_ENUM_TABLES_END    = 0x22A1500
+
+
+def _extract_wgmma_warning_strings(br: BinaryReader) -> list:
+    """Extract NUL-terminated warning strings from the wgmma warning region."""
+    start_off = br._off(_WGMMA_WARNINGS_START)
+    end_off = br._off(_WGMMA_WARNINGS_END)
+    raw = br.data[start_off:end_off]
+
+    strings = []
+    pos = 0
+    while pos < len(raw):
+        if raw[pos] == 0:
+            pos += 1
+            continue
+        nul = raw.find(b'\x00', pos)
+        if nul < 0:
+            break
+        try:
+            s = raw[pos:nul].decode('ascii')
+            va = _WGMMA_WARNINGS_START + pos
+            strings.append({"va": f"0x{va:X}", "text": s, "length": len(s)})
+        except UnicodeDecodeError:
+            pass
+        pos = nul + 1
+    return strings
+
+
+def _extract_operand_vtables(br: BinaryReader) -> list:
+    """Extract C++ vtables for operand type classes.
+
+    Each vtable is a run of .text pointers terminated by NULL entries.
+    Returns a list of vtable descriptors with function pointer VAs."""
+    start_off = br._off(_OPERAND_VTABLES_START)
+    end_off = br._off(_OPERAND_VTABLES_END)
+
+    vtables = []
+    pos = start_off
+    while pos < end_off:
+        # Skip leading zeros
+        while pos < end_off:
+            val = struct.unpack_from('<Q', br.data, pos)[0]
+            if val != 0:
+                break
+            pos += 8
+
+        if pos >= end_off:
+            break
+
+        # Collect consecutive non-zero code pointers
+        vt_start_va = pos + VA_BASE
+        entries = []
+        while pos < end_off:
+            val = struct.unpack_from('<Q', br.data, pos)[0]
+            if val == 0:
+                break
+            entries.append(f"0x{val:X}")
+            pos += 8
+
+        if entries:
+            text_count = sum(1 for e in entries if br.is_in_text(int(e, 16)))
+            vtables.append({
+                "va": f"0x{vt_start_va:X}",
+                "entry_count": len(entries),
+                "text_pointers": text_count,
+                "entries": entries,
+            })
+
+    return vtables
+
+
+def _extract_mercury_enum_tables(br: BinaryReader) -> list:
+    """Extract Mercury modifier-to-opcode lookup tables.
+
+    These are u32[] and u16[] arrays referenced by sub_AF5xxx functions.
+    Each function checks bounds, indexes an array, and returns an opcode ID.
+    We scan for zero-separated runs of small values."""
+    start_off = br._off(_MERCURY_ENUM_TABLES_START)
+    end_off = br._off(_MERCURY_ENUM_TABLES_END)
+
+    tables = []
+    pos = start_off
+
+    while pos < end_off:
+        # Skip zeros
+        while pos < end_off:
+            val = struct.unpack_from('<H', br.data, pos)[0]
+            if val != 0:
+                break
+            pos += 2
+
+        if pos >= end_off:
+            break
+
+        # Detect element width: u16 pairs vs u32
+        # u16 pairs have both halves in 0x0500-0x06FF range
+        va = pos + VA_BASE
+        val16a = struct.unpack_from('<H', br.data, pos)[0]
+        val16b = struct.unpack_from('<H', br.data, pos + 2)[0]
+        val32 = struct.unpack_from('<I', br.data, pos)[0]
+
+        is_u16_array = (0x0500 <= val16a <= 0x06FF and 0x0500 <= val16b <= 0x06FF)
+
+        if is_u16_array:
+            # Scan u16 entries
+            entries = []
+            while pos < end_off:
+                v = struct.unpack_from('<H', br.data, pos)[0]
+                if v == 0:
+                    break
+                entries.append(v)
+                pos += 2
+            tables.append({
+                "va": f"0x{va:X}",
+                "element_type": "u16",
+                "count": len(entries),
+                "entries": entries,
+                "value_range": [min(entries), max(entries)] if entries else [],
+            })
+        else:
+            # Scan u32 entries
+            entries = []
+            while pos < end_off:
+                v = struct.unpack_from('<I', br.data, pos)[0]
+                if v == 0:
+                    break
+                entries.append(v)
+                pos += 4
+            if entries:
+                tables.append({
+                    "va": f"0x{va:X}",
+                    "element_type": "u32",
+                    "count": len(entries),
+                    "entries": entries,
+                    "value_range": [min(entries), max(entries)] if entries else [],
+                })
+
+    return tables
+
+
+def extract_wgmma_intrinsic_infra(br: BinaryReader) -> dict:
+    """Extract the wgmma/intrinsic infrastructure gap (0x229C480-0x22A1500).
+
+    This 20,608-byte region between the occupancy constants and encoding
+    constants contains interconnected data structures for:
+    - WGMMA pipeline configuration and scheduling
+    - Instruction selection handler dispatch
+    - PTX intrinsic lowering (469 handler functions)
+    - Operand type C++ vtables (16 vtables)
+    - Mercury modifier-to-opcode enum lookup tables
+    """
+
+    # A. WGMMA pipeline parameters
+    pipeline_params = br.u32_array(_WGMMA_PIPELINE_PARAMS_VA, _WGMMA_PIPELINE_PARAMS_N)
+    pipeline_labels = [
+        "pipeline_depth", "max_pending",
+        "stage_latency_0", "stage_latency_1", "stage_latency_2",
+        "stage_latency_3", "stage_latency_4", "stage_latency_5",
+        "special_latency", "stage_latency_6", "stage_latency_7",
+        "max_pipeline_length",
+    ]
+
+    # A. WGMMA handler vtable
+    wgmma_vtable = br.ptr_array(_WGMMA_HANDLER_VTABLE_VA, _WGMMA_HANDLER_VTABLE_N)
+
+    # A. Opcode indices
+    opcode_indices = br.u32_array(_WGMMA_OPCODE_INDICES_VA, _WGMMA_OPCODE_INDICES_N)
+
+    # A. Enum config
+    enum_config = br.u32_array(_WGMMA_ENUM_CONFIG_VA, _WGMMA_ENUM_CONFIG_N)
+
+    # B. ISel handler table
+    isel_handlers = br.ptr_array(_ISEL_HANDLER_TABLE_VA, _ISEL_HANDLER_TABLE_N)
+    isel_text_count = sum(1 for p in isel_handlers if br.is_in_text(p))
+
+    # C. Warning strings
+    warning_strings = _extract_wgmma_warning_strings(br)
+
+    # D. Config block -- mix of pointers and small values
+    config_size = (_WGMMA_CONFIG_END - _WGMMA_CONFIG_VA) // 8
+    config_raw = []
+    for i in range(config_size):
+        va = _WGMMA_CONFIG_VA + i * 8
+        val = br.u64(va)
+        if br.is_in_text(val) or br.is_in_rodata(val):
+            config_raw.append({"offset": i * 8, "type": "ptr", "value": f"0x{val:X}"})
+        elif val == 0:
+            config_raw.append({"offset": i * 8, "type": "zero", "value": 0})
+        else:
+            config_raw.append({"offset": i * 8, "type": "data", "value": int(val)})
+
+    # E. PTX intrinsic handler table
+    intrinsic_handlers = br.ptr_array(_INTRINSIC_HANDLER_TABLE_VA, _INTRINSIC_HANDLER_TABLE_N)
+    intrinsic_text_count = sum(1 for p in intrinsic_handlers if br.is_in_text(p))
+
+    # Group intrinsic handlers by address prefix to show function clusters
+    from collections import Counter
+    prefix_dist = Counter(f"0x{(p >> 12) << 12:X}" for p in intrinsic_handlers if p != 0)
+
+    # F. Operand type vtables
+    operand_vtables = _extract_operand_vtables(br)
+
+    # G. Type name table
+    type_names = []
+    for i in range(_TYPE_NAME_TABLE_N):
+        ptr = br.ptr(_TYPE_NAME_TABLE_VA + i * 8)
+        try:
+            name = br.cstring(ptr, max_len=32)
+        except Exception:
+            name = "<unreadable>"
+        type_names.append({"index": i, "ptr_va": f"0x{ptr:X}", "name": name})
+
+    # H. Switch jump tables
+    jt_start_off = br._off(_SWITCH_JUMP_TABLE_VA)
+    jt_end_off = br._off(_SWITCH_JUMP_TABLE_END)
+    jt_entries = []
+    for off in range(jt_start_off, jt_end_off, 8):
+        val = struct.unpack_from('<Q', br.data, off)[0]
+        jt_entries.append(val)
+
+    jt_nonzero = [v for v in jt_entries if v != 0]
+    jt_unique = len(set(jt_nonzero))
+    jt_default = Counter(jt_nonzero).most_common(1)[0] if jt_nonzero else (0, 0)
+
+    # I. Mercury opcode enum tables
+    mercury_tables = _extract_mercury_enum_tables(br)
+
+    total_size = _WGMMA_INFRA_GAP_END - _WGMMA_INFRA_GAP_START
+
+    return {
+        "wgmma_intrinsic_infra": {
+            "region": {
+                "start_va": f"0x{_WGMMA_INFRA_GAP_START:X}",
+                "end_va": f"0x{_WGMMA_INFRA_GAP_END:X}",
+                "size_bytes": total_size,
+            },
+            "wgmma_pipeline": {
+                "params_va": f"0x{_WGMMA_PIPELINE_PARAMS_VA:X}",
+                "params": {label: val for label, val in zip(pipeline_labels, pipeline_params)},
+                "handler_vtable_va": f"0x{_WGMMA_HANDLER_VTABLE_VA:X}",
+                "handler_vtable": [f"0x{p:X}" for p in wgmma_vtable],
+                "handler_vtable_text_count": sum(1 for p in wgmma_vtable if br.is_in_text(p)),
+                "opcode_indices": opcode_indices,
+                "enum_config": enum_config,
+            },
+            "isel_handler_table": {
+                "va": f"0x{_ISEL_HANDLER_TABLE_VA:X}",
+                "count": _ISEL_HANDLER_TABLE_N,
+                "text_pointer_count": isel_text_count,
+                "entries": [f"0x{p:X}" for p in isel_handlers],
+            },
+            "wgmma_warning_strings": {
+                "region": f"0x{_WGMMA_WARNINGS_START:X}-0x{_WGMMA_WARNINGS_END:X}",
+                "count": len(warning_strings),
+                "entries": warning_strings,
+            },
+            "wgmma_config_block": {
+                "va": f"0x{_WGMMA_CONFIG_VA:X}",
+                "entries": config_raw,
+            },
+            "intrinsic_handler_table": {
+                "va": f"0x{_INTRINSIC_HANDLER_TABLE_VA:X}",
+                "count": _INTRINSIC_HANDLER_TABLE_N,
+                "text_pointer_count": intrinsic_text_count,
+                "handler_prefix_distribution": {
+                    k: v for k, v in prefix_dist.most_common(15)
+                },
+                "entries": [f"0x{p:X}" for p in intrinsic_handlers],
+            },
+            "operand_type_vtables": {
+                "region": f"0x{_OPERAND_VTABLES_START:X}-0x{_OPERAND_VTABLES_END:X}",
+                "count": len(operand_vtables),
+                "vtables": operand_vtables,
+            },
+            "intrinsic_type_names": {
+                "va": f"0x{_TYPE_NAME_TABLE_VA:X}",
+                "count": _TYPE_NAME_TABLE_N,
+                "note": "All entries point to '???' placeholder — types not yet named in binary",
+                "entries": type_names,
+            },
+            "switch_jump_tables": {
+                "region": f"0x{_SWITCH_JUMP_TABLE_VA:X}-0x{_SWITCH_JUMP_TABLE_END:X}",
+                "total_entries": len(jt_entries),
+                "nonzero_entries": len(jt_nonzero),
+                "unique_targets": jt_unique,
+                "default_target": f"0x{jt_default[0]:X}" if jt_default[0] else "none",
+                "default_count": jt_default[1],
+            },
+            "mercury_opcode_enum_tables": {
+                "region": f"0x{_MERCURY_ENUM_TABLES_START:X}-0x{_MERCURY_ENUM_TABLES_END:X}",
+                "table_count": len(mercury_tables),
+                "tables": mercury_tables,
+            },
+        }
+    }
+
+
+# ─── Table 37: Register Allocator Initialization Data ──────────────────
+#
+# VA 0x21EDE00-0x21EFE00 (8,192 bytes).  Sits between dispatch tables
+# (ending at 0x21EDE00) and messages+dispatch (starting at 0x21EFE00).
+#
+# This block is the static initialization data for ptxas's register
+# allocator object (~1024 bytes).  Constructor functions at 0xA3AF80
+# and 0xA46CE0-0xA53B90 load from this region via MOVDQA/MOV.
+#
+# Layout (4 sub-regions):
+#
+#   A. 0x21EDE00-0x21EE41F: Function pointer vtable (196 x ptr64 = 1568 bytes)
+#      - [0..132]   Main per-opcode register-class query dispatch (133 entries).
+#                    122 are "rep ret" stubs; 11 are real handlers.
+#      - [133..136]  4 NULLs (separator)
+#      - [137..141]  SM-variant group 1 (5 entries): reduced method set
+#      - [142..195]  SM-variant groups 2-7 (6 groups of [2-NULL + 7-ptr]):
+#                    Each 7-entry group has layout:
+#                      [0,1] init (same function, duplicated)
+#                      [2]   scan  (shared: 0xA46CE0 across all groups)
+#                      [3]   setup (shared: 0xA3A7E0 across all groups)
+#                      [4]   rewrite (unique per group)
+#                      [5]   verify  (unique per group)
+#                      [6]   alloc   (unique per group)
+#
+#   B. 0x21EE420-0x21EE45F: Sentinel metadata (64 bytes)
+#      - 3 x {lo_u32, hi_u32=0xFFFFFFFF} boundary markers
+#      - 1 x 0xFFFFFFFFFFFFFFFF end-of-list
+#      - u64 count=3 (number of register banks/classes)
+#      - 3 x u64 zero padding
+#
+#   C. 0x21EE460-0x21EFAE0: Register ID arrays (5,760 bytes)
+#      - 10 contiguous u32 arrays, each a sequential run of register IDs.
+#      - Register IDs encoded as (bank << 16 | reg_number):
+#          bank=1 (0x0001xxxx): general-purpose registers, step=1
+#          bank=2 (0x0002xxxx): paired/wide registers, step=2
+#      - Arrays separated by 8-32 byte zero padding.
+#      - Concrete arrays:
+#          240 IDs: bank=1, regs 640..879
+#           34 IDs: bank=1, regs 576..609
+#          --- 824 bytes zero padding ---
+#          240 IDs: bank=1, regs 400..639
+#           32 IDs: bank=1, regs 160..191
+#          136 IDs: bank=2, regs 192..462 (step=2)
+#          --- 32 bytes zero padding ---
+#           16 IDs: bank=1, regs 464..479
+#           48 IDs: bank=2, regs 480..574 (step=2)
+#          240 IDs: bank=1, regs 160..399
+#          168 IDs: bank=1, regs 640..807
+#          --- 32 bytes zero padding ---
+#           64 IDs: bank=1, regs 808..871
+#
+#   D. 0x21EFAE0-0x21EFE00: Terminator sentinel + debug strings (800 bytes)
+#      - xmmword sentinel at 0x21EFAE0: {0, 0xFFFFFFFF, 0, 0}
+#        Loaded via MOVDQA into allocator objects at 0xA3B352 et al.
+#      - u32 0xFFFFFFFF end marker at 0x21EFAE4
+#      - 10 NUL-terminated diagnostic strings for register allocation debugging:
+#        "This def [%d] represents uninitialized value..."
+#        "Please use -knob DUMPIR=AllocateRegisters for debugging"
+#        "REMATERIALIZATION PROBLEM..."
+#        etc.
+
+_REGALLOC_INIT_VA        = 0x21EDE00
+_REGALLOC_INIT_END       = 0x21EFE00
+_REGALLOC_INIT_SIZE      = _REGALLOC_INIT_END - _REGALLOC_INIT_VA  # 8192
+
+_REGALLOC_VTABLE_VA      = 0x21EDE00
+_REGALLOC_VTABLE_COUNT   = 196   # ptr64 entries
+
+_REGALLOC_SENTINEL_VA    = 0x21EE420  # 64 bytes of boundary metadata
+_REGALLOC_REGID_VA       = 0x21EE460  # start of register ID arrays
+_REGALLOC_REGID_END      = 0x21EFAE0  # end of register ID arrays
+_REGALLOC_TERM_VA        = 0x21EFAE0  # xmmword sentinel + debug strings
+_REGALLOC_STRINGS_VA     = 0x21EFAF0  # first debug string
+
+# Number of main per-opcode dispatch entries (before SM-variant groups)
+_REGALLOC_MAIN_DISPATCH  = 133
+# SM-variant sub-groups: group 1 has 5 entries, groups 2-7 have 7 each
+_REGALLOC_VARIANT_GROUPS = 7
+
+
+def extract_regalloc_init(br: BinaryReader) -> dict:
+    """Extract the register allocator initialization data block at 0x21EDE00.
+
+    Contains the allocator vtable, sentinel metadata, register ID arrays,
+    and diagnostic format strings used by the register allocation pass."""
+
+    # ── A. Function pointer vtable ──
+    vtable_ptrs = br.ptr_array(_REGALLOC_VTABLE_VA, _REGALLOC_VTABLE_COUNT)
+
+    # Classify main dispatch entries
+    stub_bytes = b'\xf3\xc3'  # rep ret
+    main_entries = []
+    for i in range(_REGALLOC_MAIN_DISPATCH):
+        va = vtable_ptrs[i]
+        is_text = br.is_in_text(va)
+        is_stub = False
+        if is_text:
+            off = br._off(va)
+            is_stub = br.data[off:off + 2] == stub_bytes
+        main_entries.append({
+            "index": i,
+            "va": f"0x{va:X}" if is_text else "0x0",
+            "is_stub": is_stub,
+            "is_real_handler": is_text and not is_stub,
+        })
+
+    real_handler_indices = [e["index"] for e in main_entries if e["is_real_handler"]]
+    stub_count = sum(1 for e in main_entries if e["is_stub"])
+
+    # Parse SM-variant sub-groups
+    variant_groups = []
+    method_labels = ["init_a", "init_b", "scan", "setup", "rewrite", "verify", "alloc"]
+
+    # Group 1: indices 137..141 (5 entries, reduced method set)
+    g1_ptrs = vtable_ptrs[137:142]
+    g1_labels = ["scan_or_init", "common_init", "variant_scan", "variant_verify", "stub_or_alloc"]
+    g1_entries = []
+    for j, va in enumerate(g1_ptrs):
+        is_text = br.is_in_text(va)
+        g1_entries.append({
+            "slot": j,
+            "label": g1_labels[j] if j < len(g1_labels) else f"slot_{j}",
+            "va": f"0x{va:X}",
+            "is_stub": br.data[br._off(va):br._off(va) + 2] == stub_bytes if is_text else False,
+        })
+    variant_groups.append({
+        "group_index": 1,
+        "vtable_indices": "137..141",
+        "entry_count": len(g1_entries),
+        "entries": g1_entries,
+    })
+
+    # Groups 2-7: indices [144+g*9 .. 144+g*9+6] with 2-NULL separators
+    for g in range(6):
+        base = 144 + g * 9
+        grp_ptrs = vtable_ptrs[base:base + 7]
+        entries = []
+        for j, va in enumerate(grp_ptrs):
+            entries.append({
+                "slot": j,
+                "label": method_labels[j],
+                "va": f"0x{va:X}",
+                "is_shared": (j == 2 and va == 0xA46CE0) or (j == 3 and va == 0xA3A7E0),
+            })
+        variant_groups.append({
+            "group_index": g + 2,
+            "vtable_indices": f"{base}..{base + 6}",
+            "entry_count": len(entries),
+            "entries": entries,
+        })
+
+    # ── B. Sentinel metadata ──
+    sentinel_raw = []
+    for i in range(8):
+        va = _REGALLOC_SENTINEL_VA + i * 8
+        val = br.u64(va)
+        sentinel_raw.append({
+            "offset": i,
+            "value": f"0x{val:016X}",
+            "hi32": f"0x{val >> 32:X}",
+            "lo32": f"0x{val & 0xFFFFFFFF:X}",
+        })
+
+    # ── C. Register ID arrays ──
+    reg_arrays = []
+    regid_bytes = _REGALLOC_REGID_END - _REGALLOC_REGID_VA
+    off = br._off(_REGALLOC_REGID_VA)
+    u32s = list(struct.unpack_from(f'<{regid_bytes // 4}I', br.data, off))
+
+    i = 0
+    while i < len(u32s):
+        if u32s[i] == 0:
+            i += 1
+            continue
+        start = i
+        bank = u32s[i] >> 16
+        # Detect step (bank=2 uses step=2, bank=1 uses step=1)
+        step = 1
+        if start + 1 < len(u32s) and u32s[start + 1] != 0:
+            step = u32s[start + 1] - u32s[start]
+        # Collect contiguous sequential run with this step
+        while i < len(u32s) and u32s[i] != 0 and (u32s[i] >> 16) == bank:
+            if i > start and u32s[i] - u32s[i - 1] != step:
+                break
+            i += 1
+        count = i - start
+        first_reg = u32s[start] & 0xFFFF
+        last_reg = u32s[i - 1] & 0xFFFF
+        arr_va = _REGALLOC_REGID_VA + start * 4
+        reg_arrays.append({
+            "va": f"0x{arr_va:X}",
+            "count": count,
+            "bank": bank,
+            "reg_lo": first_reg,
+            "reg_hi": last_reg,
+            "step": step,
+            "size_bytes": count * 4,
+        })
+
+    total_reg_ids = sum(a["count"] for a in reg_arrays)
+
+    # ── D. Terminator sentinel + debug strings ──
+    term_xmm = br.xmm_dwords(_REGALLOC_TERM_VA)
+
+    debug_strings = []
+    str_start_off = br._off(_REGALLOC_STRINGS_VA)
+    # Read 256 bytes past nominal end to capture the last string whose NUL
+    # terminator falls at 0x21EFE45 (69 bytes beyond the 8 KB gap boundary).
+    str_end_off = br._off(_REGALLOC_INIT_END) + 256
+    str_end_off = min(str_end_off, len(br.data))
+    raw = br.data[str_start_off:str_end_off]
+    pos = 0
+    while pos < len(raw):
+        nul = raw.find(b'\x00', pos)
+        if nul < 0:
+            break
+        if nul > pos:
+            try:
+                txt = raw[pos:nul].decode('ascii')
+                if len(txt) > 2:
+                    debug_strings.append({
+                        "va": f"0x{_REGALLOC_STRINGS_VA + pos:X}",
+                        "text": txt,
+                    })
+            except UnicodeDecodeError:
+                pass
+        pos = nul + 1
+        # Stop once we hit non-string data past the nominal boundary
+        if pos > (_REGALLOC_INIT_END - _REGALLOC_STRINGS_VA) + 128:
+            break
+
+    # Collect unique function VAs across entire vtable
+    all_text_ptrs = sorted(set(
+        p for p in vtable_ptrs if br.is_in_text(p)
+    ))
+
+    return {
+        "regalloc_init": {
+            "region": {
+                "start_va": f"0x{_REGALLOC_INIT_VA:X}",
+                "end_va": f"0x{_REGALLOC_INIT_END:X}",
+                "size_bytes": _REGALLOC_INIT_SIZE,
+            },
+            "vtable": {
+                "va": f"0x{_REGALLOC_VTABLE_VA:X}",
+                "total_entries": _REGALLOC_VTABLE_COUNT,
+                "main_dispatch": {
+                    "count": _REGALLOC_MAIN_DISPATCH,
+                    "stub_count": stub_count,
+                    "real_handler_count": len(real_handler_indices),
+                    "real_handler_indices": real_handler_indices,
+                    "entries": main_entries,
+                },
+                "variant_groups": {
+                    "count": len(variant_groups),
+                    "note": "Per-SM register allocation strategy overrides",
+                    "shared_scan_va": "0xA46CE0",
+                    "shared_setup_va": "0xA3A7E0",
+                    "groups": variant_groups,
+                },
+                "unique_function_vas": [f"0x{v:X}" for v in all_text_ptrs],
+                "unique_function_count": len(all_text_ptrs),
+            },
+            "sentinel_metadata": {
+                "va": f"0x{_REGALLOC_SENTINEL_VA:X}",
+                "size_bytes": 64,
+                "note": "Boundary markers for register bank classes; count=3",
+                "entries": sentinel_raw,
+            },
+            "register_id_arrays": {
+                "region": f"0x{_REGALLOC_REGID_VA:X}-0x{_REGALLOC_REGID_END:X}",
+                "size_bytes": regid_bytes,
+                "array_count": len(reg_arrays),
+                "total_register_ids": total_reg_ids,
+                "encoding_note": "Each u32 = (bank << 16 | reg_number); bank=1 is GP, bank=2 is paired/wide",
+                "arrays": reg_arrays,
+            },
+            "terminator_and_strings": {
+                "sentinel_va": f"0x{_REGALLOC_TERM_VA:X}",
+                "sentinel_xmmword": [f"0x{v:X}" for v in term_xmm],
+                "sentinel_note": "Loaded by MOVDQA into allocator objects as 'no valid register' marker",
+                "debug_string_count": len(debug_strings),
+                "debug_strings": debug_strings,
+            },
+        }
+    }
+
+
+# ─── Table 39: Scheduling Encoder Dispatch Tables ────────────────────
+
+# The 7,680-byte gap at 0x21D9200-0x21DB000 sits between the shared memory
+# sm_75 table (ending ~0x21D9168) and the DAG knob strings (starting 0x21DB000).
+# It contains the core scheduling encoder's dispatch infrastructure:
+#
+# The mega-function at 0x89FBA0 implements per-opcode control word encoding
+# for instruction scheduling.  It uses:
+#
+# 1. A function pointer table for initialization methods (5 code ptrs)
+# 2. SSE bitmask constants and a double 1000000.0 (clock() conversion)
+# 3. A 14-entry resource class dispatch vtable (maps resource class -> handler)
+# 4. A 773-element identity permutation (uint32 array: 0..772)
+# 5. A 330-entry opcode dispatch jump table (main switch on instruction opcode)
+# 6. Two sub-opcode jump tables (6 and 7 entries) for secondary dispatch
+# 7. Scheduling metadata (9 qwords of small integer parameters)
+# 8. Two polymorphic C++ vtables (126 and 65 code ptrs) installed at [object+0]
+#    by mov [rbx], 0x21DA9F8 and mov [rbx], 0x21DADF8
+
+_SCHED_ENC_GAP_START      = 0x21D9200
+_SCHED_ENC_GAP_END        = 0x21DB000
+
+_SCHED_INIT_FPTR_VA       = 0x21D9200   # 8 qwords (5 code ptrs + 3 NULL)
+_SCHED_INIT_FPTR_N        = 8
+
+_SCHED_SSE_CONST_VA       = 0x21D9240   # 16-byte SSE mask + 8-byte double
+_SCHED_DOUBLE_VA          = 0x21D9250   # double 1000000.0
+
+_SCHED_RESOURCE_VTABLE_VA = 0x21D9258   # 14 code ptrs
+_SCHED_RESOURCE_VTABLE_N  = 14
+
+_SCHED_IDENTITY_VA        = 0x21D92E0   # 773 uint32 elements: identity[i] = i
+_SCHED_IDENTITY_N         = 773
+
+_SCHED_OPCODE_JT_VA       = 0x21D9EF8   # 330 qword code ptrs (jmp [rax*8+0x21D9EF8])
+_SCHED_OPCODE_JT_N        = 330
+_SCHED_OPCODE_JT_DEFAULT  = 0x8A2119    # generic handler: call a2d340
+
+_SCHED_SUBOP_JT_A_VA      = 0x21DA948   # 6 qword code ptrs (jmp [rax*8+0x21DA948])
+_SCHED_SUBOP_JT_A_N       = 6
+
+_SCHED_SUBOP_JT_B_VA      = 0x21DA978   # 7 qword code ptrs (jmp [rax*8+0x21DA978])
+_SCHED_SUBOP_JT_B_N       = 7
+
+_SCHED_METADATA_VA        = 0x21DA9B0   # 9 qwords of small-int parameters
+_SCHED_METADATA_N         = 9
+
+_SCHED_POLY_VTABLE_A_VA   = 0x21DA9F8   # 126 code ptrs (installed by mov [rbx], imm)
+_SCHED_POLY_VTABLE_A_N    = 126
+
+_SCHED_POLY_VTABLE_B_VA   = 0x21DADF8   # 65 code ptrs (variant, differs only in [0],[1])
+_SCHED_POLY_VTABLE_B_N    = 65
+
+
+def extract_sched_encoder_dispatch(br: BinaryReader) -> dict:
+    """Extract scheduling encoder dispatch tables from the 0x21D9200 gap.
+
+    This region is the dispatch backbone of the mega-function at 0x89FBA0
+    which encodes scheduling control words into SASS instructions.  It
+    contains jump tables for opcode dispatch, resource class vtables,
+    polymorphic C++ vtables, and numeric constants."""
+
+    from collections import Counter
+
+    # 1. Initialization function pointers
+    init_fptrs = br.ptr_array(_SCHED_INIT_FPTR_VA, _SCHED_INIT_FPTR_N)
+    init_entries = []
+    for i, p in enumerate(init_fptrs):
+        entry = {"index": i, "va": f"0x{p:X}" if p else "NULL"}
+        if p and br.is_in_text(p):
+            entry["valid"] = True
+        elif p == 0:
+            entry["valid"] = True
+        else:
+            entry["valid"] = False
+            print(f"    WARNING: sched_init_fptr[{i}] = 0x{p:X} not in .text",
+                  file=sys.stderr)
+        init_entries.append(entry)
+
+    # 2. SSE constant and double
+    sse_lo, sse_hi = br.xmm(_SCHED_SSE_CONST_VA)
+    sse_dwords = list(br.xmm_dwords(_SCHED_SSE_CONST_VA))
+    timing_double = struct.unpack_from('<d', br.data, br._off(_SCHED_DOUBLE_VA))[0]
+
+    # 3. Resource class dispatch vtable
+    resource_ptrs = br.ptr_array(_SCHED_RESOURCE_VTABLE_VA, _SCHED_RESOURCE_VTABLE_N)
+    resource_invalid = [(i, p) for i, p in enumerate(resource_ptrs) if not br.is_in_text(p)]
+    if resource_invalid:
+        for idx, p in resource_invalid[:5]:
+            print(f"    WARNING: resource_vtable[{idx}] = 0x{p:X} not in .text",
+                  file=sys.stderr)
+    resource_unique = sorted(set(resource_ptrs))
+
+    # 4. Identity permutation -- validate it is actually [0..N-1]
+    identity = br.u32_array(_SCHED_IDENTITY_VA, _SCHED_IDENTITY_N)
+    identity_ok = all(identity[i] == i for i in range(_SCHED_IDENTITY_N))
+    if not identity_ok:
+        bad = [(i, identity[i]) for i in range(_SCHED_IDENTITY_N) if identity[i] != i]
+        print(f"    WARNING: identity table has {len(bad)} non-identity entries",
+              file=sys.stderr)
+
+    # 5. Main opcode dispatch jump table
+    opcode_jt = br.ptr_array(_SCHED_OPCODE_JT_VA, _SCHED_OPCODE_JT_N)
+    opcode_invalid = sum(1 for p in opcode_jt if not br.is_in_text(p))
+    opcode_counter = Counter(opcode_jt)
+    opcode_default_count = opcode_counter.get(_SCHED_OPCODE_JT_DEFAULT, 0)
+    opcode_unique = sorted(set(opcode_jt))
+
+    opcode_entries = []
+    for i, p in enumerate(opcode_jt):
+        entry = {
+            "index": i,
+            "index_hex": f"0x{i:03X}",
+            "handler_va": f"0x{p:X}",
+            "is_default": p == _SCHED_OPCODE_JT_DEFAULT,
+        }
+        opcode_entries.append(entry)
+
+    # 6. Sub-opcode jump tables
+    subop_a = br.ptr_array(_SCHED_SUBOP_JT_A_VA, _SCHED_SUBOP_JT_A_N)
+    subop_b = br.ptr_array(_SCHED_SUBOP_JT_B_VA, _SCHED_SUBOP_JT_B_N)
+
+    # 7. Scheduling metadata
+    metadata_raw = []
+    for i in range(_SCHED_METADATA_N):
+        va = _SCHED_METADATA_VA + i * 8
+        val = br.u64(va)
+        lo, hi = br.u32(va), br.u32(va + 4)
+        metadata_raw.append({"index": i, "qword": int(val), "lo_u32": lo, "hi_u32": hi})
+
+    # 8. Polymorphic vtables
+    poly_a = br.ptr_array(_SCHED_POLY_VTABLE_A_VA, _SCHED_POLY_VTABLE_A_N)
+    poly_b = br.ptr_array(_SCHED_POLY_VTABLE_B_VA, _SCHED_POLY_VTABLE_B_N)
+
+    poly_a_invalid = sum(1 for p in poly_a if not br.is_in_text(p))
+    poly_b_invalid = sum(1 for p in poly_b if not br.is_in_text(p))
+
+    # Compare A vs B: they differ only in [0] and [1]
+    poly_diffs = []
+    for i in range(min(len(poly_a), len(poly_b))):
+        if poly_a[i] != poly_b[i]:
+            poly_diffs.append({
+                "index": i,
+                "vtable_A": f"0x{poly_a[i]:X}",
+                "vtable_B": f"0x{poly_b[i]:X}",
+            })
+
+    total_size = _SCHED_ENC_GAP_END - _SCHED_ENC_GAP_START
+
+    return {
+        "sched_encoder_dispatch": {
+            "region": {
+                "start_va": f"0x{_SCHED_ENC_GAP_START:X}",
+                "end_va": f"0x{_SCHED_ENC_GAP_END:X}",
+                "size_bytes": total_size,
+                "description": "Scheduling encoder dispatch infrastructure for sub_89FBA0",
+            },
+            "init_function_ptrs": {
+                "va": f"0x{_SCHED_INIT_FPTR_VA:X}",
+                "count": _SCHED_INIT_FPTR_N,
+                "entries": init_entries,
+            },
+            "sse_constants": {
+                "va": f"0x{_SCHED_SSE_CONST_VA:X}",
+                "xmm_lo": f"0x{sse_lo:016X}",
+                "xmm_hi": f"0x{sse_hi:016X}",
+                "xmm_dwords": [f"0x{d:08X}" for d in sse_dwords],
+                "note": "Loaded by movdqa at 0x891060 and 0x986F85",
+            },
+            "timing_constant": {
+                "va": f"0x{_SCHED_DOUBLE_VA:X}",
+                "value": timing_double,
+                "note": "double 1000000.0 -- microseconds/second for clock() conversion",
+                "xref": "mov rax, [rip+...] at 0x894362, stored to [obj+0x3f0]",
+            },
+            "resource_class_dispatch": {
+                "va": f"0x{_SCHED_RESOURCE_VTABLE_VA:X}",
+                "count": _SCHED_RESOURCE_VTABLE_N,
+                "unique_functions": len(resource_unique),
+                "unique_function_vas": [f"0x{v:X}" for v in resource_unique],
+                "invalid_pointers": len(resource_invalid),
+                "note": "Maps resource class index to handler; targets compare edx vs 0xB7",
+                "entries": [
+                    {"index": i, "va": f"0x{resource_ptrs[i]:X}"}
+                    for i in range(_SCHED_RESOURCE_VTABLE_N)
+                ],
+            },
+            "identity_permutation": {
+                "va": f"0x{_SCHED_IDENTITY_VA:X}",
+                "count": _SCHED_IDENTITY_N,
+                "element_type": "uint32",
+                "size_bytes": _SCHED_IDENTITY_N * 4,
+                "is_valid_identity": identity_ok,
+                "note": "identity[i] = i for i in 0..772; used as default index mapping",
+            },
+            "opcode_dispatch_jmptable": {
+                "va": f"0x{_SCHED_OPCODE_JT_VA:X}",
+                "end_va": f"0x{_SCHED_OPCODE_JT_VA + _SCHED_OPCODE_JT_N * 8:X}",
+                "count": _SCHED_OPCODE_JT_N,
+                "dispatch_site": "jmp [rax*8 + 0x21D9EF8] at 0x89FC3E",
+                "guard": "cmp r15d, 0x149; ja 0x8A2119 (default handler)",
+                "default_handler": f"0x{_SCHED_OPCODE_JT_DEFAULT:X}",
+                "default_count": opcode_default_count,
+                "specialized_count": _SCHED_OPCODE_JT_N - opcode_default_count,
+                "unique_targets": len(opcode_unique),
+                "invalid_pointers": opcode_invalid,
+                "entries": opcode_entries,
+            },
+            "subop_jmptable_A": {
+                "va": f"0x{_SCHED_SUBOP_JT_A_VA:X}",
+                "count": _SCHED_SUBOP_JT_A_N,
+                "dispatch_site": "jmp [rax*8 + 0x21DA948] at 0x8A0731",
+                "guard": "cmp eax, 5; extracts 3-bit field via sar+and",
+                "entries": [
+                    {"index": i, "va": f"0x{subop_a[i]:X}"}
+                    for i in range(_SCHED_SUBOP_JT_A_N)
+                ],
+            },
+            "subop_jmptable_B": {
+                "va": f"0x{_SCHED_SUBOP_JT_B_VA:X}",
+                "count": _SCHED_SUBOP_JT_B_N,
+                "dispatch_site": "jmp [rax*8 + 0x21DA978] at 0x8A0BD8",
+                "guard": "cmp eax, 6; extracts 4-bit field via and 0xF",
+                "entries": [
+                    {"index": i, "va": f"0x{subop_b[i]:X}"}
+                    for i in range(_SCHED_SUBOP_JT_B_N)
+                ],
+            },
+            "scheduling_metadata": {
+                "va": f"0x{_SCHED_METADATA_VA:X}",
+                "count": _SCHED_METADATA_N,
+                "entries": metadata_raw,
+            },
+            "polymorphic_vtable_A": {
+                "va": f"0x{_SCHED_POLY_VTABLE_A_VA:X}",
+                "end_va": f"0x{_SCHED_POLY_VTABLE_A_VA + _SCHED_POLY_VTABLE_A_N * 8:X}",
+                "count": _SCHED_POLY_VTABLE_A_N,
+                "invalid_pointers": poly_a_invalid,
+                "xref": "mov [rbx], 0x21DA9F8 at 0x89BA32",
+                "note": "Installed as C++ vtable at object+0; 126 virtual method ptrs",
+                "entries": [f"0x{p:X}" for p in poly_a],
+            },
+            "polymorphic_vtable_B": {
+                "va": f"0x{_SCHED_POLY_VTABLE_B_VA:X}",
+                "end_va": f"0x{_SCHED_POLY_VTABLE_B_VA + _SCHED_POLY_VTABLE_B_N * 8:X}",
+                "count": _SCHED_POLY_VTABLE_B_N,
+                "invalid_pointers": poly_b_invalid,
+                "xrefs": [
+                    "mov [rbx], 0x21DADF8 at 0x7CB579",
+                    "mov [rdi], 0x21DADF8 at 0x895E22",
+                    "mov [rdi], 0x21DADF8 at 0x895F92",
+                    "mov [rdi], 0x21DADF8 at 0x896102",
+                ],
+                "note": "Derived-class vtable variant; differs from A only in first 2 entries",
+                "entries": [f"0x{p:X}" for p in poly_b],
+            },
+            "vtable_A_vs_B_diff": {
+                "shared_entries": min(len(poly_a), len(poly_b)) - len(poly_diffs),
+                "differing_entries": len(poly_diffs),
+                "diffs": poly_diffs,
+            },
+        }
+    }
+
+
 # ─── Derived: Opcode Master Record ─────────────────────────────────────
 
 def build_opcode_master(names: dict, cat_map: dict, enc_table: dict) -> dict:
@@ -2821,6 +4436,7 @@ def main():
         ("scoreboard_configs", "per_sm_scoreboard_configs.json", extract_scoreboard_configs),
         ("encoding_trees",     "encoding_trees.json",           extract_encoding_trees),
         ("regclass_aux",       "register_class_aux.json",       extract_register_class_aux),
+        ("regclass_constr",    "register_class_constraints.json", extract_register_class_constraints),
         ("pipeline_map",       "opcode_pipeline_map.json",      extract_opcode_pipeline_map),
         ("sched_vtable",       "scheduling_vtable.json",        extract_scheduling_vtable),
         ("regfile_config",     "register_file_config.json",     extract_register_file_config),
@@ -2829,6 +4445,13 @@ def main():
         ("sm_id_enum",         "sm_id_enumeration.json",        extract_sm_id_enumeration),
         ("extended_sass",      "extended_sass_names.json",      extract_extended_sass_names),
         ("modifier_fmtstrs",   "modifier_format_strings.json",  extract_modifier_format_strings),
+        ("mod_value_tables",   "modifier_value_tables.json",    extract_modifier_value_tables),
+        ("instr_legality",     "instruction_legality.json",     extract_instruction_legality),
+        ("resrc_strategy",     "operand_resource_strategy.json", extract_operand_resource_strategy),
+        ("mercury_dispatch",   "per_sm_handler_dispatch.json",  extract_per_sm_handler_dispatch),
+        ("wgmma_intrinsic",    "wgmma_intrinsic_infra.json",    extract_wgmma_intrinsic_infra),
+        ("regalloc_init",      "regalloc_init_data.json",       extract_regalloc_init),
+        ("sched_enc_dispatch", "sched_encoder_dispatch.json",   extract_sched_encoder_dispatch),
     ]
 
     for key, filename, func in extractors:

@@ -1,0 +1,1550 @@
+{
+  "regalloc_init": {
+    "region": {
+      "start_va": "0x21EDE00",
+      "end_va": "0x21EFE00",
+      "size_bytes": 8192
+    },
+    "vtable": {
+      "va": "0x21EDE00",
+      "total_entries": 196,
+      "main_dispatch": {
+        "count": 133,
+        "stub_count": 122,
+        "real_handler_count": 11,
+        "real_handler_indices": [
+          8,
+          12,
+          68,
+          105,
+          115,
+          127,
+          128,
+          129,
+          130,
+          131,
+          132
+        ],
+        "entries": [
+          {
+            "index": 0,
+            "va": "0xA397B0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 1,
+            "va": "0xA397C0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 2,
+            "va": "0xA397D0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 3,
+            "va": "0xA397E0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 4,
+            "va": "0xA397F0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 5,
+            "va": "0xA39800",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 6,
+            "va": "0xA39810",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 7,
+            "va": "0xA39820",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 8,
+            "va": "0xA3A230",
+            "is_stub": false,
+            "is_real_handler": true
+          },
+          {
+            "index": 9,
+            "va": "0xA39830",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 10,
+            "va": "0xA39840",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 11,
+            "va": "0xA39850",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 12,
+            "va": "0xA3A3A0",
+            "is_stub": false,
+            "is_real_handler": true
+          },
+          {
+            "index": 13,
+            "va": "0xA39860",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 14,
+            "va": "0xA39870",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 15,
+            "va": "0xA39880",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 16,
+            "va": "0xA39890",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 17,
+            "va": "0xA398A0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 18,
+            "va": "0xA398B0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 19,
+            "va": "0xA398C0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 20,
+            "va": "0xA398D0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 21,
+            "va": "0xA398E0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 22,
+            "va": "0xA398F0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 23,
+            "va": "0xA39900",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 24,
+            "va": "0xA39910",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 25,
+            "va": "0xA39920",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 26,
+            "va": "0xA39930",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 27,
+            "va": "0xA39940",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 28,
+            "va": "0xA39950",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 29,
+            "va": "0xA39960",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 30,
+            "va": "0xA39970",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 31,
+            "va": "0xA39980",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 32,
+            "va": "0xA39990",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 33,
+            "va": "0xA399A0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 34,
+            "va": "0xA399B0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 35,
+            "va": "0xA399C0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 36,
+            "va": "0xA399D0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 37,
+            "va": "0xA399E0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 38,
+            "va": "0xA399F0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 39,
+            "va": "0xA39A00",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 40,
+            "va": "0xA39A10",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 41,
+            "va": "0xA39A20",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 42,
+            "va": "0xA39A30",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 43,
+            "va": "0xA39A40",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 44,
+            "va": "0xA39A50",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 45,
+            "va": "0xA39A60",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 46,
+            "va": "0xA39A70",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 47,
+            "va": "0xA39A80",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 48,
+            "va": "0xA39A90",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 49,
+            "va": "0xA39AA0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 50,
+            "va": "0xA39AB0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 51,
+            "va": "0xA39AC0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 52,
+            "va": "0xA39AD0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 53,
+            "va": "0xA39AE0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 54,
+            "va": "0xA39AF0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 55,
+            "va": "0xA39B00",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 56,
+            "va": "0xA39B10",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 57,
+            "va": "0xA39B20",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 58,
+            "va": "0xA39B30",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 59,
+            "va": "0xA39B40",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 60,
+            "va": "0xA39B50",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 61,
+            "va": "0xA39B60",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 62,
+            "va": "0xA39B70",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 63,
+            "va": "0xA39B80",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 64,
+            "va": "0xA39B90",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 65,
+            "va": "0xA39BA0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 66,
+            "va": "0xA39BB0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 67,
+            "va": "0xA39BC0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 68,
+            "va": "0xA3A240",
+            "is_stub": false,
+            "is_real_handler": true
+          },
+          {
+            "index": 69,
+            "va": "0xA39BD0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 70,
+            "va": "0xA39BE0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 71,
+            "va": "0xA39BF0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 72,
+            "va": "0xA39C00",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 73,
+            "va": "0xA39C10",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 74,
+            "va": "0xA39C20",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 75,
+            "va": "0xA39C30",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 76,
+            "va": "0xA39C40",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 77,
+            "va": "0xA39C50",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 78,
+            "va": "0xA39C60",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 79,
+            "va": "0xA39C70",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 80,
+            "va": "0xA39C80",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 81,
+            "va": "0xA39C90",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 82,
+            "va": "0xA39CA0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 83,
+            "va": "0xA39CB0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 84,
+            "va": "0xA39CC0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 85,
+            "va": "0xA39CD0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 86,
+            "va": "0xA39CE0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 87,
+            "va": "0xA39CF0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 88,
+            "va": "0xA39D00",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 89,
+            "va": "0xA39D10",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 90,
+            "va": "0xA39D20",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 91,
+            "va": "0xA39D30",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 92,
+            "va": "0xA39D40",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 93,
+            "va": "0xA39D50",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 94,
+            "va": "0xA39D60",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 95,
+            "va": "0xA39D70",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 96,
+            "va": "0xA39D80",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 97,
+            "va": "0xA39D90",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 98,
+            "va": "0xA39DA0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 99,
+            "va": "0xA39DB0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 100,
+            "va": "0xA39DC0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 101,
+            "va": "0xA39DD0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 102,
+            "va": "0xA39DE0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 103,
+            "va": "0xA39DF0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 104,
+            "va": "0xA39E00",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 105,
+            "va": "0xA3ED80",
+            "is_stub": false,
+            "is_real_handler": true
+          },
+          {
+            "index": 106,
+            "va": "0xA39E10",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 107,
+            "va": "0xA39E20",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 108,
+            "va": "0xA39E30",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 109,
+            "va": "0xA39E40",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 110,
+            "va": "0xA39E50",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 111,
+            "va": "0xA39E60",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 112,
+            "va": "0xA39E70",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 113,
+            "va": "0xA39E80",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 114,
+            "va": "0xA39E90",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 115,
+            "va": "0xA3AF80",
+            "is_stub": false,
+            "is_real_handler": true
+          },
+          {
+            "index": 116,
+            "va": "0xA39EA0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 117,
+            "va": "0xA39EB0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 118,
+            "va": "0xA39EC0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 119,
+            "va": "0xA39ED0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 120,
+            "va": "0xA39EE0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 121,
+            "va": "0xA39EF0",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 122,
+            "va": "0xA39F00",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 123,
+            "va": "0xA39F10",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 124,
+            "va": "0xA39F20",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 125,
+            "va": "0xA39F30",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 126,
+            "va": "0xA39F40",
+            "is_stub": true,
+            "is_real_handler": false
+          },
+          {
+            "index": 127,
+            "va": "0xA39FC0",
+            "is_stub": false,
+            "is_real_handler": true
+          },
+          {
+            "index": 128,
+            "va": "0xA39F50",
+            "is_stub": false,
+            "is_real_handler": true
+          },
+          {
+            "index": 129,
+            "va": "0xA39FE0",
+            "is_stub": false,
+            "is_real_handler": true
+          },
+          {
+            "index": 130,
+            "va": "0xA3A060",
+            "is_stub": false,
+            "is_real_handler": true
+          },
+          {
+            "index": 131,
+            "va": "0xA39F60",
+            "is_stub": false,
+            "is_real_handler": true
+          },
+          {
+            "index": 132,
+            "va": "0xA39F70",
+            "is_stub": false,
+            "is_real_handler": true
+          }
+        ]
+      },
+      "variant_groups": {
+        "count": 7,
+        "note": "Per-SM register allocation strategy overrides",
+        "shared_scan_va": "0xA46CE0",
+        "shared_setup_va": "0xA3A7E0",
+        "groups": [
+          {
+            "group_index": 1,
+            "vtable_indices": "137..141",
+            "entry_count": 5,
+            "entries": [
+              {
+                "slot": 0,
+                "label": "scan_or_init",
+                "va": "0xA46CE0",
+                "is_stub": false
+              },
+              {
+                "slot": 1,
+                "label": "common_init",
+                "va": "0xA3A7E0",
+                "is_stub": false
+              },
+              {
+                "slot": 2,
+                "label": "variant_scan",
+                "va": "0xA4F210",
+                "is_stub": false
+              },
+              {
+                "slot": 3,
+                "label": "variant_verify",
+                "va": "0xA50650",
+                "is_stub": false
+              },
+              {
+                "slot": 4,
+                "label": "stub_or_alloc",
+                "va": "0x894280",
+                "is_stub": true
+              }
+            ]
+          },
+          {
+            "group_index": 2,
+            "vtable_indices": "144..150",
+            "entry_count": 7,
+            "entries": [
+              {
+                "slot": 0,
+                "label": "init_a",
+                "va": "0xA3AD60",
+                "is_shared": false
+              },
+              {
+                "slot": 1,
+                "label": "init_b",
+                "va": "0xA3AD60",
+                "is_shared": false
+              },
+              {
+                "slot": 2,
+                "label": "scan",
+                "va": "0xA46CE0",
+                "is_shared": true
+              },
+              {
+                "slot": 3,
+                "label": "setup",
+                "va": "0xA3A7E0",
+                "is_shared": true
+              },
+              {
+                "slot": 4,
+                "label": "rewrite",
+                "va": "0xA504F0",
+                "is_shared": false
+              },
+              {
+                "slot": 5,
+                "label": "verify",
+                "va": "0xA53840",
+                "is_shared": false
+              },
+              {
+                "slot": 6,
+                "label": "alloc",
+                "va": "0xA48AD0",
+                "is_shared": false
+              }
+            ]
+          },
+          {
+            "group_index": 3,
+            "vtable_indices": "153..159",
+            "entry_count": 7,
+            "entries": [
+              {
+                "slot": 0,
+                "label": "init_a",
+                "va": "0xA3ACC0",
+                "is_shared": false
+              },
+              {
+                "slot": 1,
+                "label": "init_b",
+                "va": "0xA3ACC0",
+                "is_shared": false
+              },
+              {
+                "slot": 2,
+                "label": "scan",
+                "va": "0xA46CE0",
+                "is_shared": true
+              },
+              {
+                "slot": 3,
+                "label": "setup",
+                "va": "0xA3A7E0",
+                "is_shared": true
+              },
+              {
+                "slot": 4,
+                "label": "rewrite",
+                "va": "0xA50560",
+                "is_shared": false
+              },
+              {
+                "slot": 5,
+                "label": "verify",
+                "va": "0xA53930",
+                "is_shared": false
+              },
+              {
+                "slot": 6,
+                "label": "alloc",
+                "va": "0xA48800",
+                "is_shared": false
+              }
+            ]
+          },
+          {
+            "group_index": 4,
+            "vtable_indices": "162..168",
+            "entry_count": 7,
+            "entries": [
+              {
+                "slot": 0,
+                "label": "init_a",
+                "va": "0xA3AE50",
+                "is_shared": false
+              },
+              {
+                "slot": 1,
+                "label": "init_b",
+                "va": "0xA3AE50",
+                "is_shared": false
+              },
+              {
+                "slot": 2,
+                "label": "scan",
+                "va": "0xA46CE0",
+                "is_shared": true
+              },
+              {
+                "slot": 3,
+                "label": "setup",
+                "va": "0xA3A7E0",
+                "is_shared": true
+              },
+              {
+                "slot": 4,
+                "label": "rewrite",
+                "va": "0xA505A0",
+                "is_shared": false
+              },
+              {
+                "slot": 5,
+                "label": "verify",
+                "va": "0xA53980",
+                "is_shared": false
+              },
+              {
+                "slot": 6,
+                "label": "alloc",
+                "va": "0xA39F80",
+                "is_shared": false
+              }
+            ]
+          },
+          {
+            "group_index": 5,
+            "vtable_indices": "171..177",
+            "entry_count": 7,
+            "entries": [
+              {
+                "slot": 0,
+                "label": "init_a",
+                "va": "0xA3AD10",
+                "is_shared": false
+              },
+              {
+                "slot": 1,
+                "label": "init_b",
+                "va": "0xA3AD10",
+                "is_shared": false
+              },
+              {
+                "slot": 2,
+                "label": "scan",
+                "va": "0xA46CE0",
+                "is_shared": true
+              },
+              {
+                "slot": 3,
+                "label": "setup",
+                "va": "0xA3A7E0",
+                "is_shared": true
+              },
+              {
+                "slot": 4,
+                "label": "rewrite",
+                "va": "0xA505B0",
+                "is_shared": false
+              },
+              {
+                "slot": 5,
+                "label": "verify",
+                "va": "0xA53990",
+                "is_shared": false
+              },
+              {
+                "slot": 6,
+                "label": "alloc",
+                "va": "0xA481E0",
+                "is_shared": false
+              }
+            ]
+          },
+          {
+            "group_index": 6,
+            "vtable_indices": "180..186",
+            "entry_count": 7,
+            "entries": [
+              {
+                "slot": 0,
+                "label": "init_a",
+                "va": "0xA3ADB0",
+                "is_shared": false
+              },
+              {
+                "slot": 1,
+                "label": "init_b",
+                "va": "0xA3ADB0",
+                "is_shared": false
+              },
+              {
+                "slot": 2,
+                "label": "scan",
+                "va": "0xA46CE0",
+                "is_shared": true
+              },
+              {
+                "slot": 3,
+                "label": "setup",
+                "va": "0xA3A7E0",
+                "is_shared": true
+              },
+              {
+                "slot": 4,
+                "label": "rewrite",
+                "va": "0xA50630",
+                "is_shared": false
+              },
+              {
+                "slot": 5,
+                "label": "verify",
+                "va": "0xA53B80",
+                "is_shared": false
+              },
+              {
+                "slot": 6,
+                "label": "alloc",
+                "va": "0xA483E0",
+                "is_shared": false
+              }
+            ]
+          },
+          {
+            "group_index": 7,
+            "vtable_indices": "189..195",
+            "entry_count": 7,
+            "entries": [
+              {
+                "slot": 0,
+                "label": "init_a",
+                "va": "0xA3AE00",
+                "is_shared": false
+              },
+              {
+                "slot": 1,
+                "label": "init_b",
+                "va": "0xA3AE00",
+                "is_shared": false
+              },
+              {
+                "slot": 2,
+                "label": "scan",
+                "va": "0xA46CE0",
+                "is_shared": true
+              },
+              {
+                "slot": 3,
+                "label": "setup",
+                "va": "0xA3A7E0",
+                "is_shared": true
+              },
+              {
+                "slot": 4,
+                "label": "rewrite",
+                "va": "0xA50640",
+                "is_shared": false
+              },
+              {
+                "slot": 5,
+                "label": "verify",
+                "va": "0xA53B90",
+                "is_shared": false
+              },
+              {
+                "slot": 6,
+                "label": "alloc",
+                "va": "0xA48630",
+                "is_shared": false
+              }
+            ]
+          }
+        ]
+      },
+      "unique_function_vas": [
+        "0x894280",
+        "0xA397B0",
+        "0xA397C0",
+        "0xA397D0",
+        "0xA397E0",
+        "0xA397F0",
+        "0xA39800",
+        "0xA39810",
+        "0xA39820",
+        "0xA39830",
+        "0xA39840",
+        "0xA39850",
+        "0xA39860",
+        "0xA39870",
+        "0xA39880",
+        "0xA39890",
+        "0xA398A0",
+        "0xA398B0",
+        "0xA398C0",
+        "0xA398D0",
+        "0xA398E0",
+        "0xA398F0",
+        "0xA39900",
+        "0xA39910",
+        "0xA39920",
+        "0xA39930",
+        "0xA39940",
+        "0xA39950",
+        "0xA39960",
+        "0xA39970",
+        "0xA39980",
+        "0xA39990",
+        "0xA399A0",
+        "0xA399B0",
+        "0xA399C0",
+        "0xA399D0",
+        "0xA399E0",
+        "0xA399F0",
+        "0xA39A00",
+        "0xA39A10",
+        "0xA39A20",
+        "0xA39A30",
+        "0xA39A40",
+        "0xA39A50",
+        "0xA39A60",
+        "0xA39A70",
+        "0xA39A80",
+        "0xA39A90",
+        "0xA39AA0",
+        "0xA39AB0",
+        "0xA39AC0",
+        "0xA39AD0",
+        "0xA39AE0",
+        "0xA39AF0",
+        "0xA39B00",
+        "0xA39B10",
+        "0xA39B20",
+        "0xA39B30",
+        "0xA39B40",
+        "0xA39B50",
+        "0xA39B60",
+        "0xA39B70",
+        "0xA39B80",
+        "0xA39B90",
+        "0xA39BA0",
+        "0xA39BB0",
+        "0xA39BC0",
+        "0xA39BD0",
+        "0xA39BE0",
+        "0xA39BF0",
+        "0xA39C00",
+        "0xA39C10",
+        "0xA39C20",
+        "0xA39C30",
+        "0xA39C40",
+        "0xA39C50",
+        "0xA39C60",
+        "0xA39C70",
+        "0xA39C80",
+        "0xA39C90",
+        "0xA39CA0",
+        "0xA39CB0",
+        "0xA39CC0",
+        "0xA39CD0",
+        "0xA39CE0",
+        "0xA39CF0",
+        "0xA39D00",
+        "0xA39D10",
+        "0xA39D20",
+        "0xA39D30",
+        "0xA39D40",
+        "0xA39D50",
+        "0xA39D60",
+        "0xA39D70",
+        "0xA39D80",
+        "0xA39D90",
+        "0xA39DA0",
+        "0xA39DB0",
+        "0xA39DC0",
+        "0xA39DD0",
+        "0xA39DE0",
+        "0xA39DF0",
+        "0xA39E00",
+        "0xA39E10",
+        "0xA39E20",
+        "0xA39E30",
+        "0xA39E40",
+        "0xA39E50",
+        "0xA39E60",
+        "0xA39E70",
+        "0xA39E80",
+        "0xA39E90",
+        "0xA39EA0",
+        "0xA39EB0",
+        "0xA39EC0",
+        "0xA39ED0",
+        "0xA39EE0",
+        "0xA39EF0",
+        "0xA39F00",
+        "0xA39F10",
+        "0xA39F20",
+        "0xA39F30",
+        "0xA39F40",
+        "0xA39F50",
+        "0xA39F60",
+        "0xA39F70",
+        "0xA39F80",
+        "0xA39FC0",
+        "0xA39FE0",
+        "0xA3A060",
+        "0xA3A230",
+        "0xA3A240",
+        "0xA3A3A0",
+        "0xA3A7E0",
+        "0xA3ACC0",
+        "0xA3AD10",
+        "0xA3AD60",
+        "0xA3ADB0",
+        "0xA3AE00",
+        "0xA3AE50",
+        "0xA3AF80",
+        "0xA3ED80",
+        "0xA46CE0",
+        "0xA481E0",
+        "0xA483E0",
+        "0xA48630",
+        "0xA48800",
+        "0xA48AD0",
+        "0xA4F210",
+        "0xA504F0",
+        "0xA50560",
+        "0xA505A0",
+        "0xA505B0",
+        "0xA50630",
+        "0xA50640",
+        "0xA50650",
+        "0xA53840",
+        "0xA53930",
+        "0xA53980",
+        "0xA53990",
+        "0xA53B80",
+        "0xA53B90"
+      ],
+      "unique_function_count": 162
+    },
+    "sentinel_metadata": {
+      "va": "0x21EE420",
+      "size_bytes": 64,
+      "note": "Boundary markers for register bank classes; count=3",
+      "entries": [
+        {
+          "offset": 0,
+          "value": "0x00000000FFFFFFFF",
+          "hi32": "0x0",
+          "lo32": "0xFFFFFFFF"
+        },
+        {
+          "offset": 1,
+          "value": "0xFFFFFFFF00000001",
+          "hi32": "0xFFFFFFFF",
+          "lo32": "0x1"
+        },
+        {
+          "offset": 2,
+          "value": "0xFFFFFFFF00000002",
+          "hi32": "0xFFFFFFFF",
+          "lo32": "0x2"
+        },
+        {
+          "offset": 3,
+          "value": "0xFFFFFFFFFFFFFFFF",
+          "hi32": "0xFFFFFFFF",
+          "lo32": "0xFFFFFFFF"
+        },
+        {
+          "offset": 4,
+          "value": "0x0000000000000003",
+          "hi32": "0x0",
+          "lo32": "0x3"
+        },
+        {
+          "offset": 5,
+          "value": "0x0000000000000000",
+          "hi32": "0x0",
+          "lo32": "0x0"
+        },
+        {
+          "offset": 6,
+          "value": "0x0000000000000000",
+          "hi32": "0x0",
+          "lo32": "0x0"
+        },
+        {
+          "offset": 7,
+          "value": "0x0000000000000000",
+          "hi32": "0x0",
+          "lo32": "0x0"
+        }
+      ]
+    },
+    "register_id_arrays": {
+      "region": "0x21EE460-0x21EFAE0",
+      "size_bytes": 5760,
+      "array_count": 10,
+      "total_register_ids": 1218,
+      "encoding_note": "Each u32 = (bank << 16 | reg_number); bank=1 is GP, bank=2 is paired/wide",
+      "arrays": [
+        {
+          "va": "0x21EE460",
+          "count": 240,
+          "bank": 1,
+          "reg_lo": 640,
+          "reg_hi": 879,
+          "step": 1,
+          "size_bytes": 960
+        },
+        {
+          "va": "0x21EE820",
+          "count": 34,
+          "bank": 1,
+          "reg_lo": 576,
+          "reg_hi": 609,
+          "step": 1,
+          "size_bytes": 136
+        },
+        {
+          "va": "0x21EEBE0",
+          "count": 240,
+          "bank": 1,
+          "reg_lo": 400,
+          "reg_hi": 639,
+          "step": 1,
+          "size_bytes": 960
+        },
+        {
+          "va": "0x21EEFA0",
+          "count": 32,
+          "bank": 1,
+          "reg_lo": 160,
+          "reg_hi": 191,
+          "step": 1,
+          "size_bytes": 128
+        },
+        {
+          "va": "0x21EF020",
+          "count": 136,
+          "bank": 2,
+          "reg_lo": 192,
+          "reg_hi": 462,
+          "step": 2,
+          "size_bytes": 544
+        },
+        {
+          "va": "0x21EF260",
+          "count": 16,
+          "bank": 1,
+          "reg_lo": 464,
+          "reg_hi": 479,
+          "step": 1,
+          "size_bytes": 64
+        },
+        {
+          "va": "0x21EF2A0",
+          "count": 48,
+          "bank": 2,
+          "reg_lo": 480,
+          "reg_hi": 574,
+          "step": 2,
+          "size_bytes": 192
+        },
+        {
+          "va": "0x21EF360",
+          "count": 240,
+          "bank": 1,
+          "reg_lo": 160,
+          "reg_hi": 399,
+          "step": 1,
+          "size_bytes": 960
+        },
+        {
+          "va": "0x21EF720",
+          "count": 168,
+          "bank": 1,
+          "reg_lo": 640,
+          "reg_hi": 807,
+          "step": 1,
+          "size_bytes": 672
+        },
+        {
+          "va": "0x21EF9E0",
+          "count": 64,
+          "bank": 1,
+          "reg_lo": 808,
+          "reg_hi": 871,
+          "step": 1,
+          "size_bytes": 256
+        }
+      ]
+    },
+    "terminator_and_strings": {
+      "sentinel_va": "0x21EFAE0",
+      "sentinel_xmmword": [
+        "0x0",
+        "0xFFFFFFFF",
+        "0x0",
+        "0x0"
+      ],
+      "sentinel_note": "Loaded by MOVDQA into allocator objects as 'no valid register' marker",
+      "debug_string_count": 12,
+      "debug_strings": [
+        {
+          "va": "0x21EFAF0",
+          "text": "This def [%d] represents uninitialized value for this operand. It was fully defined before\n"
+        },
+        {
+          "va": "0x21EFB50",
+          "text": "==========================================================================================================================\n"
+        },
+        {
+          "va": "0x21EFBD0",
+          "text": "Please use -knob DUMPIR=AllocateRegisters for debugging"
+        },
+        {
+          "va": "0x21EFC08",
+          "text": "REMATERIALIZATION PROBLEM. New Instruction [%d] Old Instruction [%d] \n"
+        },
+        {
+          "va": "0x21EFC50",
+          "text": "Producers for operand %d of instruction [%d] before register allocation: \n"
+        },
+        {
+          "va": "0x21EFCA0",
+          "text": "[%d] def opr # %d for src opr # %d\n"
+        },
+        {
+          "va": "0x21EFCC8",
+          "text": "Producers for operand # %d of instruction [%d] after register allocation: \n"
+        },
+        {
+          "va": "0x21EFD18",
+          "text": "[%d] def opr # %d src opr # %d "
+        },
+        {
+          "va": "0x21EFD38",
+          "text": "After reg-alloc there are some extra def(s) that participate in this operand computation."
+        },
+        {
+          "va": "0x21EFD98",
+          "text": "They were not used this way before the allocation."
+        },
+        {
+          "va": "0x21EFDD0",
+          "text": "Does this def potentially clobbers upper bits of a register that is supposed to hold unsigned short or unsigned byte?"
+        },
+        {
+          "va": "0x21EFE48",
+          "text": "Use additional knob: -knob IgnorePotentialMixedSizeProblems to verify..."
+        }
+      ]
+    }
+  }
+}
