@@ -1,0 +1,726 @@
+{
+  "sm_version_codes": {
+    "source_va": "0x2020620",
+    "entry_count": 128,
+    "entry_width": "u16",
+    "encoding": "bits[15:12]=major*10, [11:8]=minor, [7:0]=variant",
+    "non_zero_count": 27,
+    "valid_sm_count": 20,
+    "entries": [
+      {
+        "index": 0,
+        "code": 8192,
+        "code_hex": "0x2000",
+        "sm": "sm_20",
+        "sm_num": 20,
+        "variant": 0
+      },
+      {
+        "index": 1,
+        "code": 8193,
+        "code_hex": "0x2001",
+        "sm": "sm_20a",
+        "sm_num": 20,
+        "variant": 1
+      },
+      {
+        "index": 2,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 3,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 4,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 5,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 6,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 7,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 8,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 9,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 10,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 11,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 12,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 13,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 14,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 15,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 16,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 17,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 18,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 19,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 20,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 21,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 22,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 23,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 24,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 25,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 26,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 27,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 28,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 29,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 30,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 31,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 32,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 33,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 34,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 35,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 36,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 37,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 38,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 39,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 40,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 41,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 42,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 43,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 44,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 45,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 46,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 47,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 48,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 49,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 50,
+        "code": 20480,
+        "code_hex": "0x5000",
+        "sm": "sm_50",
+        "sm_num": 50,
+        "variant": 0
+      },
+      {
+        "index": 51,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 52,
+        "code": 20481,
+        "code_hex": "0x5001",
+        "sm": "sm_50a",
+        "sm_num": 50,
+        "variant": 1
+      },
+      {
+        "index": 53,
+        "code": 24576,
+        "code_hex": "0x6000",
+        "sm": "sm_60",
+        "sm_num": 60,
+        "variant": 0
+      },
+      {
+        "index": 54,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 55,
+        "code": 24577,
+        "code_hex": "0x6001",
+        "sm": "sm_60a",
+        "sm_num": 60,
+        "variant": 1
+      },
+      {
+        "index": 56,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 57,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 58,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 59,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 60,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 61,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 62,
+        "code": 28673,
+        "code_hex": "0x7001",
+        "sm": "sm_70a",
+        "sm_num": 70,
+        "variant": 1
+      },
+      {
+        "index": 63,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 64,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 65,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 66,
+        "code": 28674,
+        "code_hex": "0x7002",
+        "sm": "sm_70b",
+        "sm_num": 70,
+        "variant": 2
+      },
+      {
+        "index": 67,
+        "code": 28675,
+        "code_hex": "0x7003",
+        "sm": "sm_70c",
+        "sm_num": 70,
+        "variant": 3
+      },
+      {
+        "index": 68,
+        "code": 28676,
+        "code_hex": "0x7004",
+        "sm": "sm_70a",
+        "sm_num": 70,
+        "variant": 4
+      },
+      {
+        "index": 69,
+        "code": 28677,
+        "code_hex": "0x7005",
+        "sm": "sm_70f",
+        "sm_num": 70,
+        "variant": 5
+      },
+      {
+        "index": 70,
+        "code": 32768,
+        "code_hex": "0x8000",
+        "sm": "sm_80",
+        "sm_num": 80,
+        "variant": 0
+      },
+      {
+        "index": 71,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 72,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 73,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 74,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 75,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 76,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 77,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 78,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 79,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 80,
+        "code": 36864,
+        "code_hex": "0x9000",
+        "sm": "sm_90",
+        "sm_num": 90,
+        "variant": 0
+      },
+      {
+        "index": 81,
+        "code": 36865,
+        "code_hex": "0x9001",
+        "sm": "sm_90a",
+        "sm_num": 90,
+        "variant": 1
+      },
+      {
+        "index": 82,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 83,
+        "code": 36867,
+        "code_hex": "0x9003",
+        "sm": "sm_90c",
+        "sm_num": 90,
+        "variant": 3
+      },
+      {
+        "index": 84,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 85,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 86,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 87,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 88,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 89,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 90,
+        "code": 36865,
+        "code_hex": "0x9001",
+        "sm": "sm_90a",
+        "sm_num": 90,
+        "variant": 1
+      },
+      {
+        "index": 91,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 92,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 93,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 94,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 95,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 96,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 97,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 98,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 99,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 100,
+        "code": 36868,
+        "code_hex": "0x9004",
+        "sm": "sm_90a",
+        "sm_num": 90,
+        "variant": 4
+      },
+      {
+        "index": 101,
+        "code": 36869,
+        "code_hex": "0x9005",
+        "sm": "sm_90f",
+        "sm_num": 90,
+        "variant": 5
+      },
+      {
+        "index": 102,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 103,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 104,
+        "code": 1,
+        "code_hex": "0x0001",
+        "sm": null,
+        "note": "implausible"
+      },
+      {
+        "index": 105,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 106,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 107,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 108,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 109,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 110,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 111,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 112,
+        "code": 1,
+        "code_hex": "0x0001",
+        "sm": null,
+        "note": "implausible"
+      },
+      {
+        "index": 113,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 114,
+        "code": 16,
+        "code_hex": "0x0010",
+        "sm": null,
+        "note": "implausible"
+      },
+      {
+        "index": 115,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 116,
+        "code": 16,
+        "code_hex": "0x0010",
+        "sm": null,
+        "note": "implausible"
+      },
+      {
+        "index": 117,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 118,
+        "code": 32,
+        "code_hex": "0x0020",
+        "sm": null,
+        "note": "implausible"
+      },
+      {
+        "index": 119,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 120,
+        "code": 21472,
+        "code_hex": "0x53E0",
+        "sm": "sm_53v224",
+        "sm_num": 53,
+        "variant": 224
+      },
+      {
+        "index": 121,
+        "code": 97,
+        "code_hex": "0x0061",
+        "sm": null,
+        "note": "implausible"
+      },
+      {
+        "index": 122,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 123,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 124,
+        "code": 21552,
+        "code_hex": "0x5430",
+        "sm": "sm_54v48",
+        "sm_num": 54,
+        "variant": 48
+      },
+      {
+        "index": 125,
+        "code": 97,
+        "code_hex": "0x0061",
+        "sm": null,
+        "note": "implausible"
+      },
+      {
+        "index": 126,
+        "code": 0,
+        "sm": null
+      },
+      {
+        "index": 127,
+        "code": 0,
+        "sm": null
+      }
+    ]
+  }
+}

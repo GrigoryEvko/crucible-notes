@@ -1,0 +1,378 @@
+{
+  "opcode_pipeline_map": [
+    {
+      "sm_generation": "sm_10x",
+      "start_va": "0x226C780",
+      "end_va": "0x226C878",
+      "size_bytes": 248,
+      "pair_count": 31,
+      "is_sorted": true,
+      "pipeline_flag_histogram": {
+        "0": 1,
+        "1": 22,
+        "2": 1,
+        "3": 6,
+        "4": 1
+      },
+      "entries": [
+        {
+          "index": 0,
+          "opcode_id": 0,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 1,
+          "opcode_id": 1,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 2,
+          "opcode_id": 2,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 3,
+          "opcode_id": 3,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 4,
+          "opcode_id": 4,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 5,
+          "opcode_id": 5,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 6,
+          "opcode_id": 8,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 7,
+          "opcode_id": 9,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 8,
+          "opcode_id": 11,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 9,
+          "opcode_id": 12,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 10,
+          "opcode_id": 13,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 11,
+          "opcode_id": 14,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 12,
+          "opcode_id": 15,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 13,
+          "opcode_id": 16,
+          "pipeline_flags": 0
+        },
+        {
+          "index": 14,
+          "opcode_id": 17,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 15,
+          "opcode_id": 18,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 16,
+          "opcode_id": 19,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 17,
+          "opcode_id": 20,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 18,
+          "opcode_id": 22,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 19,
+          "opcode_id": 23,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 20,
+          "opcode_id": 24,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 21,
+          "opcode_id": 25,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 22,
+          "opcode_id": 28,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 23,
+          "opcode_id": 29,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 24,
+          "opcode_id": 30,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 25,
+          "opcode_id": 32,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 26,
+          "opcode_id": 33,
+          "pipeline_flags": 2
+        },
+        {
+          "index": 27,
+          "opcode_id": 34,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 28,
+          "opcode_id": 36,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 29,
+          "opcode_id": 38,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 30,
+          "opcode_id": 39,
+          "pipeline_flags": 4
+        }
+      ]
+    },
+    {
+      "sm_generation": "sm_7x",
+      "start_va": "0x2244F20",
+      "end_va": "0x2245048",
+      "size_bytes": 296,
+      "pair_count": 37,
+      "is_sorted": true,
+      "pipeline_flag_histogram": {
+        "0": 1,
+        "1": 24,
+        "2": 1,
+        "3": 10,
+        "4": 1
+      },
+      "entries": [
+        {
+          "index": 0,
+          "opcode_id": 0,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 1,
+          "opcode_id": 1,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 2,
+          "opcode_id": 2,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 3,
+          "opcode_id": 3,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 4,
+          "opcode_id": 4,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 5,
+          "opcode_id": 5,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 6,
+          "opcode_id": 8,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 7,
+          "opcode_id": 9,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 8,
+          "opcode_id": 10,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 9,
+          "opcode_id": 11,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 10,
+          "opcode_id": 13,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 11,
+          "opcode_id": 14,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 12,
+          "opcode_id": 15,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 13,
+          "opcode_id": 16,
+          "pipeline_flags": 0
+        },
+        {
+          "index": 14,
+          "opcode_id": 17,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 15,
+          "opcode_id": 18,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 16,
+          "opcode_id": 19,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 17,
+          "opcode_id": 20,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 18,
+          "opcode_id": 21,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 19,
+          "opcode_id": 22,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 20,
+          "opcode_id": 23,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 21,
+          "opcode_id": 24,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 22,
+          "opcode_id": 25,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 23,
+          "opcode_id": 26,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 24,
+          "opcode_id": 27,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 25,
+          "opcode_id": 28,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 26,
+          "opcode_id": 29,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 27,
+          "opcode_id": 30,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 28,
+          "opcode_id": 31,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 29,
+          "opcode_id": 32,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 30,
+          "opcode_id": 33,
+          "pipeline_flags": 2
+        },
+        {
+          "index": 31,
+          "opcode_id": 34,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 32,
+          "opcode_id": 35,
+          "pipeline_flags": 3
+        },
+        {
+          "index": 33,
+          "opcode_id": 36,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 34,
+          "opcode_id": 37,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 35,
+          "opcode_id": 38,
+          "pipeline_flags": 1
+        },
+        {
+          "index": 36,
+          "opcode_id": 39,
+          "pipeline_flags": 4
+        }
+      ]
+    }
+  ]
+}

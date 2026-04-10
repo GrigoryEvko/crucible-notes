@@ -1,0 +1,439 @@
+{
+  "sm_scheduling_seeds": {
+    "source_va": "0x1D16148",
+    "entry_count": 50,
+    "entry_stride": 12,
+    "entry_format": "{u32 sm_id, u32 gen_code, u32 variant}",
+    "active_entries": 45,
+    "null_padding_entries": 5,
+    "sentinel_check": "PASS",
+    "gen_code_legend": {
+      "0": "none",
+      "1": "Fermi",
+      "2": "Kepler",
+      "3": "Maxwell",
+      "4": "Pascal",
+      "5": "Volta",
+      "6": "Turing",
+      "7": "Ampere",
+      "8": "Hopper",
+      "9": "Thor"
+    },
+    "segments": [
+      {
+        "name": "blackwell_thor_subset",
+        "indices": "0-7"
+      },
+      {
+        "name": "hopper_blackwell_subset",
+        "indices": "8-17"
+      },
+      {
+        "name": "full_architecture_list",
+        "indices": "18-49"
+      }
+    ],
+    "entries": [
+      {
+        "index": 0,
+        "sm_id": 0,
+        "sm": null,
+        "gen_code": 0,
+        "gen_name": "none",
+        "variant": 0
+      },
+      {
+        "index": 1,
+        "sm_id": 0,
+        "sm": null,
+        "gen_code": 0,
+        "gen_name": "none",
+        "variant": 0
+      },
+      {
+        "index": 2,
+        "sm_id": 100,
+        "sm": "sm_100",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 8
+      },
+      {
+        "index": 3,
+        "sm_id": 101,
+        "sm": "sm_101",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 8
+      },
+      {
+        "index": 4,
+        "sm_id": 103,
+        "sm": "sm_103",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 8
+      },
+      {
+        "index": 5,
+        "sm_id": 110,
+        "sm": "sm_110",
+        "gen_code": 9,
+        "gen_name": "Thor",
+        "variant": 0
+      },
+      {
+        "index": 6,
+        "sm_id": 120,
+        "sm": "sm_120",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 8
+      },
+      {
+        "index": 7,
+        "sm_id": 121,
+        "sm": "sm_121",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 8
+      },
+      {
+        "index": 8,
+        "sm_id": 0,
+        "sm": null,
+        "gen_code": 0,
+        "gen_name": "none",
+        "variant": 0
+      },
+      {
+        "index": 9,
+        "sm_id": 0,
+        "sm": null,
+        "gen_code": 0,
+        "gen_name": "none",
+        "variant": 0
+      },
+      {
+        "index": 10,
+        "sm_id": 90,
+        "sm": "sm_90",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 0
+      },
+      {
+        "index": 11,
+        "sm_id": 100,
+        "sm": "sm_100",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 6
+      },
+      {
+        "index": 12,
+        "sm_id": 101,
+        "sm": "sm_101",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 6
+      },
+      {
+        "index": 13,
+        "sm_id": 103,
+        "sm": "sm_103",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 8
+      },
+      {
+        "index": 14,
+        "sm_id": 110,
+        "sm": "sm_110",
+        "gen_code": 9,
+        "gen_name": "Thor",
+        "variant": 0
+      },
+      {
+        "index": 15,
+        "sm_id": 120,
+        "sm": "sm_120",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 7
+      },
+      {
+        "index": 16,
+        "sm_id": 121,
+        "sm": "sm_121",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 8
+      },
+      {
+        "index": 17,
+        "sm_id": 0,
+        "sm": null,
+        "gen_code": 0,
+        "gen_name": "none",
+        "variant": 0
+      },
+      {
+        "index": 18,
+        "sm_id": 10,
+        "sm": "sm_10",
+        "gen_code": 1,
+        "gen_name": "Fermi",
+        "variant": 0
+      },
+      {
+        "index": 19,
+        "sm_id": 11,
+        "sm": "sm_11",
+        "gen_code": 1,
+        "gen_name": "Fermi",
+        "variant": 0
+      },
+      {
+        "index": 20,
+        "sm_id": 12,
+        "sm": "sm_12",
+        "gen_code": 1,
+        "gen_name": "Fermi",
+        "variant": 2
+      },
+      {
+        "index": 21,
+        "sm_id": 13,
+        "sm": "sm_13",
+        "gen_code": 1,
+        "gen_name": "Fermi",
+        "variant": 2
+      },
+      {
+        "index": 22,
+        "sm_id": 20,
+        "sm": "sm_20",
+        "gen_code": 2,
+        "gen_name": "Kepler",
+        "variant": 0
+      },
+      {
+        "index": 23,
+        "sm_id": 21,
+        "sm": "sm_21",
+        "gen_code": 2,
+        "gen_name": "Kepler",
+        "variant": 0
+      },
+      {
+        "index": 24,
+        "sm_id": 30,
+        "sm": "sm_30",
+        "gen_code": 3,
+        "gen_name": "Maxwell",
+        "variant": 0
+      },
+      {
+        "index": 25,
+        "sm_id": 32,
+        "sm": "sm_32",
+        "gen_code": 4,
+        "gen_name": "Pascal",
+        "variant": 0
+      },
+      {
+        "index": 26,
+        "sm_id": 35,
+        "sm": "sm_35",
+        "gen_code": 3,
+        "gen_name": "Maxwell",
+        "variant": 1
+      },
+      {
+        "index": 27,
+        "sm_id": 37,
+        "sm": "sm_37",
+        "gen_code": 4,
+        "gen_name": "Pascal",
+        "variant": 1
+      },
+      {
+        "index": 28,
+        "sm_id": 50,
+        "sm": "sm_50",
+        "gen_code": 4,
+        "gen_name": "Pascal",
+        "variant": 0
+      },
+      {
+        "index": 29,
+        "sm_id": 52,
+        "sm": "sm_52",
+        "gen_code": 4,
+        "gen_name": "Pascal",
+        "variant": 1
+      },
+      {
+        "index": 30,
+        "sm_id": 53,
+        "sm": "sm_53",
+        "gen_code": 4,
+        "gen_name": "Pascal",
+        "variant": 2
+      },
+      {
+        "index": 31,
+        "sm_id": 60,
+        "sm": "sm_60",
+        "gen_code": 5,
+        "gen_name": "Volta",
+        "variant": 0
+      },
+      {
+        "index": 32,
+        "sm_id": 61,
+        "sm": "sm_61",
+        "gen_code": 5,
+        "gen_name": "Volta",
+        "variant": 0
+      },
+      {
+        "index": 33,
+        "sm_id": 62,
+        "sm": "sm_62",
+        "gen_code": 5,
+        "gen_name": "Volta",
+        "variant": 0
+      },
+      {
+        "index": 34,
+        "sm_id": 70,
+        "sm": "sm_70",
+        "gen_code": 6,
+        "gen_name": "Turing",
+        "variant": 0
+      },
+      {
+        "index": 35,
+        "sm_id": 72,
+        "sm": "sm_72",
+        "gen_code": 6,
+        "gen_name": "Turing",
+        "variant": 1
+      },
+      {
+        "index": 36,
+        "sm_id": 75,
+        "sm": "sm_75",
+        "gen_code": 6,
+        "gen_name": "Turing",
+        "variant": 3
+      },
+      {
+        "index": 37,
+        "sm_id": 80,
+        "sm": "sm_80",
+        "gen_code": 7,
+        "gen_name": "Ampere",
+        "variant": 0
+      },
+      {
+        "index": 38,
+        "sm_id": 82,
+        "sm": "sm_82",
+        "gen_code": 6,
+        "gen_name": "Turing",
+        "variant": 2
+      },
+      {
+        "index": 39,
+        "sm_id": 86,
+        "sm": "sm_86",
+        "gen_code": 7,
+        "gen_name": "Ampere",
+        "variant": 1
+      },
+      {
+        "index": 40,
+        "sm_id": 87,
+        "sm": "sm_87",
+        "gen_code": 7,
+        "gen_name": "Ampere",
+        "variant": 4
+      },
+      {
+        "index": 41,
+        "sm_id": 88,
+        "sm": "sm_88",
+        "gen_code": 7,
+        "gen_name": "Ampere",
+        "variant": 3
+      },
+      {
+        "index": 42,
+        "sm_id": 89,
+        "sm": "sm_89",
+        "gen_code": 7,
+        "gen_name": "Ampere",
+        "variant": 8
+      },
+      {
+        "index": 43,
+        "sm_id": 90,
+        "sm": "sm_90",
+        "gen_code": 7,
+        "gen_name": "Ampere",
+        "variant": 8
+      },
+      {
+        "index": 44,
+        "sm_id": 100,
+        "sm": "sm_100",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 6
+      },
+      {
+        "index": 45,
+        "sm_id": 101,
+        "sm": "sm_101",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 6
+      },
+      {
+        "index": 46,
+        "sm_id": 103,
+        "sm": "sm_103",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 8
+      },
+      {
+        "index": 47,
+        "sm_id": 110,
+        "sm": "sm_110",
+        "gen_code": 9,
+        "gen_name": "Thor",
+        "variant": 0
+      },
+      {
+        "index": 48,
+        "sm_id": 120,
+        "sm": "sm_120",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 7
+      },
+      {
+        "index": 49,
+        "sm_id": 121,
+        "sm": "sm_121",
+        "gen_code": 8,
+        "gen_name": "Hopper",
+        "variant": 8
+      }
+    ]
+  }
+}

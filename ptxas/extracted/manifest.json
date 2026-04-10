@@ -29,7 +29,17 @@
     "supp_pass_names": "supplemental_pass_names.json",
     "latency_tables": "per_sm_latency_tables.json",
     "dep_rules": "per_sm_dependency_rules.json",
-    "scoreboard_configs": "per_sm_scoreboard_configs.json"
+    "scoreboard_configs": "per_sm_scoreboard_configs.json",
+    "encoding_trees": "encoding_trees.json",
+    "regclass_aux": "register_class_aux.json",
+    "pipeline_map": "opcode_pipeline_map.json",
+    "sched_vtable": "scheduling_vtable.json",
+    "regfile_config": "register_file_config.json",
+    "sm_version_codes": "sm_version_codes.json",
+    "sm_sched_seeds": "sm_scheduling_seeds.json",
+    "sm_id_enum": "sm_id_enumeration.json",
+    "extended_sass": "extended_sass_names.json",
+    "modifier_fmtstrs": "modifier_format_strings.json"
   },
   "derived_tables": {
     "opcode_master": "opcode_master.json",
@@ -56,6 +66,14 @@
       "size": 323717,
       "sha256": "28b9fe12ca33eaa284f34f52eebbb645428fea7461762c1b0791c88cc9ff80c5"
     },
+    "encoding_trees.json": {
+      "size": 2532131,
+      "sha256": "3127accfc1190b8b6ae4c413a75d3b85225567acd18baeb0e7579afebc4195d3"
+    },
+    "extended_sass_names.json": {
+      "size": 70517,
+      "sha256": "ad41502bdbbe941af1df7004576c1502dab116e902af115e86ba7a0d0bec4408"
+    },
     "format_descriptors.json": {
       "size": 29093,
       "sha256": "e6dbd87c2d4bd7536fddf7cadc924072c5e979f62ba9abe5ae673b691dc33e74"
@@ -72,6 +90,10 @@
       "size": 220131,
       "sha256": "04f86f9a858fa725d03c59036c7c4fbbff5ecfd0a5ee7c8e7a07ccf4b7d2ed51"
     },
+    "modifier_format_strings.json": {
+      "size": 97329,
+      "sha256": "b03c50d08ec8e9fdf6a9b69f53aac22988e26cec1858066fc8b208c0e40cf2da"
+    },
     "occupancy_constants.json": {
       "size": 2605,
       "sha256": "6a5dc103cec5fb6386845cb545308d131570dff39542d2ff14212d20e7987659"
@@ -87,6 +109,10 @@
     "opcode_names.json": {
       "size": 99926,
       "sha256": "bdb34f0afe1cdea8926ded77d84f346374e32d4defba0e85c3fd8bd5c64df9e9"
+    },
+    "opcode_pipeline_map.json": {
+      "size": 7525,
+      "sha256": "730c3f538571bab7713744ecc3cbc3896cb480ae012b470e19c14ee1c94636a0"
     },
     "opcode_to_encoding.json": {
       "size": 15180,
@@ -108,6 +134,14 @@
       "size": 17875,
       "sha256": "c6a680f80ce5b42d928175881fc34efdbcd5e2322de84ffafa18cc3a6ca3a3bc"
     },
+    "register_class_aux.json": {
+      "size": 145773,
+      "sha256": "d6160b59fdcd046e0e51afa922fb9d244811e775672fa489cbc25e531773467b"
+    },
+    "register_file_config.json": {
+      "size": 28054,
+      "sha256": "20dd00f2c6364e4be0cc2f905804cbba313d24bc1fa5100a2aa8951ae8e9146c"
+    },
     "sass_handler_dispatch_1.json": {
       "size": 1258804,
       "sha256": "c4a4b246c602fd3090ef57d5ae726204a11eb6eff97e4723cfb102adcb4933c8"
@@ -116,9 +150,25 @@
       "size": 633717,
       "sha256": "b46c10c5390edae0d0f53aa0c84e8916da8c22131db39fba676ca1b7051d3f25"
     },
+    "scheduling_vtable.json": {
+      "size": 17047,
+      "sha256": "f611bfca213f556a5535ce5a39e5613ba13b821af4d9a2657d01b18e8476912e"
+    },
     "shared_memory_configs.json": {
       "size": 645,
       "sha256": "b3d4438d0fb7da7b395911096dd4b09fca46b746ae7c54f9e7a926a75a4f3b68"
+    },
+    "sm_id_enumeration.json": {
+      "size": 3569,
+      "sha256": "564ae0a185c44ffe41de280ae07eb163118433d200450d1146c4da02c09f039f"
+    },
+    "sm_scheduling_seeds.json": {
+      "size": 8582,
+      "sha256": "8be8cd119cff40216a21c30af43cc0df3d2222863dfea1439a0577a4a2c726d8"
+    },
+    "sm_version_codes.json": {
+      "size": 12073,
+      "sha256": "cd601ff37f5d33125f6a7e0f5acc0328cc9c15b39a3cc1ba5a4e3b65e447c86d"
     },
     "supplemental_pass_names.json": {
       "size": 15089,

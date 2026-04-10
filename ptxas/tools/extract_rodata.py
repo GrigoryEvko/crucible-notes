@@ -2310,6 +2310,368 @@ def extract_scheduling_vtable(br: BinaryReader) -> dict:
     }
 
 
+# ─── Table 27: Register File Configuration Constants ─────────────────
+
+# Per-SM resource limits: GPR banks, predicate regs, uniform regs, barriers,
+# warp sizing.  Flat u32 array at VA 0x21CEE00.  The numeric data runs for
+# 2784 entries (11,136 bytes); the remaining 1,152 bytes to 0x21D1E00 are
+# ASCII diagnostic strings that bleed into the page-aligned region boundary.
+
+REGFILE_CONFIG_VA    = 0x21CEE00
+REGFILE_CONFIG_END   = 0x21D1E00   # page-aligned boundary
+REGFILE_CONFIG_BYTES = REGFILE_CONFIG_END - REGFILE_CONFIG_VA  # 12288
+
+_REGFILE_FIRST8 = [120, 120, 64, 256, 32, 8, 32, 4]
+
+
+def extract_register_file_config(br: BinaryReader) -> dict:
+    """Extract per-SM register file configuration constants.
+
+    The region is a flat array of u32 resource limit values.  After the
+    numeric data (max value 256), the remainder of the page-aligned region
+    contains ASCII diagnostic strings which we exclude."""
+
+    total_u32 = REGFILE_CONFIG_BYTES // 4  # 3072
+    raw = br.u32_array(REGFILE_CONFIG_VA, total_u32)
+
+    # Find the boundary between numeric config data and trailing ASCII.
+    numeric_count = total_u32
+    for i, v in enumerate(raw):
+        if v > 4096:
+            numeric_count = i
+            break
+    entries = raw[:numeric_count]
+
+    spot_ok = entries[:8] == _REGFILE_FIRST8
+    if not spot_ok:
+        print(f"    WARNING: First 8 values {entries[:8]} != expected {_REGFILE_FIRST8}",
+              file=sys.stderr)
+
+    val_max = max(entries) if entries else 0
+    val_counts = {}
+    for v in entries:
+        val_counts[v] = val_counts.get(v, 0) + 1
+    top_values = sorted(val_counts.items(), key=lambda x: -x[1])[:10]
+
+    return {
+        "register_file_config": {
+            "source_va": f"0x{REGFILE_CONFIG_VA:X}",
+            "end_va": f"0x{REGFILE_CONFIG_END:X}",
+            "region_bytes": REGFILE_CONFIG_BYTES,
+            "numeric_entry_count": numeric_count,
+            "trailing_ascii_bytes": (total_u32 - numeric_count) * 4,
+            "max_value": val_max,
+            "first8_spot_check": "PASS" if spot_ok else "FAIL",
+            "value_frequency_top10": [
+                {"value": v, "count": c} for v, c in top_values
+            ],
+            "entries": entries,
+        }
+    }
+
+
+# ─── Table 28: SM Version Code Lookup ─────────────────────────────────
+
+# 128-entry u16 table mapping internal ptxas arch indices to SM version
+# codes.  Encoding: bits [15:12] = major tens digit, [11:8] = minor ones
+# digit, [7:0] = variant (0=base, 1=a, 2=b, 3=c, 4=a-alt, 5=f).
+
+SM_VERSION_CODE_VA    = 0x2020620
+SM_VERSION_CODE_COUNT = 128
+
+
+def extract_sm_version_codes(br: BinaryReader) -> dict:
+    """Extract the 128-entry u16 SM version code lookup table."""
+
+    entries = br.u16_array(SM_VERSION_CODE_VA, SM_VERSION_CODE_COUNT)
+
+    decoded = []
+    for i, v in enumerate(entries):
+        if v == 0:
+            decoded.append({"index": i, "code": 0, "sm": None})
+            continue
+        major10 = (v >> 12) & 0xF
+        minor1 = (v >> 8) & 0xF
+        sm_num = major10 * 10 + minor1
+        variant = v & 0xFF
+        suffix = ""
+        if variant == 1:
+            suffix = "a"
+        elif variant == 2:
+            suffix = "b"
+        elif variant == 3:
+            suffix = "c"
+        elif variant == 4:
+            suffix = "a"  # alternate 'a' encoding (sm_90a)
+        elif variant == 5:
+            suffix = "f"
+        elif variant > 5:
+            suffix = f"v{variant}"
+        sm_str = f"sm_{sm_num}{suffix}"
+        if sm_num < 10 or sm_num > 200:
+            print(f"    WARNING: Index {i} code 0x{v:04X} decodes to implausible {sm_str}",
+                  file=sys.stderr)
+            decoded.append({"index": i, "code": v, "code_hex": f"0x{v:04X}",
+                            "sm": None, "note": "implausible"})
+        else:
+            decoded.append({"index": i, "code": v, "code_hex": f"0x{v:04X}",
+                            "sm": sm_str, "sm_num": sm_num, "variant": variant})
+
+    non_zero = [d for d in decoded if d["code"] != 0]
+    valid_sm = [d for d in decoded if d.get("sm") is not None]
+
+    return {
+        "sm_version_codes": {
+            "source_va": f"0x{SM_VERSION_CODE_VA:X}",
+            "entry_count": SM_VERSION_CODE_COUNT,
+            "entry_width": "u16",
+            "encoding": "bits[15:12]=major*10, [11:8]=minor, [7:0]=variant",
+            "non_zero_count": len(non_zero),
+            "valid_sm_count": len(valid_sm),
+            "entries": decoded,
+        }
+    }
+
+
+# ─── Table 29: SM Scheduling Parameter Seeds ─────────────────────────
+
+# Triplet array {sm_id, gen_code, variant} of u32 at VA 0x1D16148.
+# 50 entries (including null-padding slots) terminated by sentinel
+# {0xFF, 0x00, 0xFF00}.  Three logical segments:
+#   [0..7]   : Blackwell/Thor subset with padding
+#   [8..17]  : Hopper/Blackwell subset with padding
+#   [18..49] : Full architecture list (Fermi through Blackwell)
+
+SM_SCHED_SEEDS_VA    = 0x1D16148
+SM_SCHED_SEEDS_COUNT = 50
+
+_GEN_NAMES = {
+    0: "none", 1: "Fermi", 2: "Kepler", 3: "Maxwell", 4: "Pascal",
+    5: "Volta", 6: "Turing", 7: "Ampere", 8: "Hopper", 9: "Thor",
+}
+
+
+def extract_sm_scheduling_seeds(br: BinaryReader) -> dict:
+    """Extract SM scheduling parameter seed triplets."""
+
+    entries = []
+    for i in range(SM_SCHED_SEEDS_COUNT):
+        va = SM_SCHED_SEEDS_VA + i * 12
+        sm_id = br.u32(va)
+        gen_code = br.u32(va + 4)
+        variant = br.u32(va + 8)
+        gen_name = _GEN_NAMES.get(gen_code, f"gen{gen_code}")
+        entries.append({
+            "index": i,
+            "sm_id": sm_id,
+            "sm": f"sm_{sm_id}" if 0 < sm_id < 200 else None,
+            "gen_code": gen_code,
+            "gen_name": gen_name,
+            "variant": variant,
+        })
+
+    # Verify sentinel follows the 50th entry
+    sentinel_va = SM_SCHED_SEEDS_VA + SM_SCHED_SEEDS_COUNT * 12
+    sent_sm = br.u32(sentinel_va)
+    sent_gen = br.u32(sentinel_va + 4)
+    sent_var = br.u32(sentinel_va + 8)
+    sentinel_ok = (sent_sm == 0xFF and sent_gen == 0 and sent_var == 0xFF00)
+    if not sentinel_ok:
+        print(f"    WARNING: Expected sentinel {{0xFF,0,0xFF00}}, got "
+              f"{{0x{sent_sm:X},0x{sent_gen:X},0x{sent_var:X}}}",
+              file=sys.stderr)
+
+    active = [e for e in entries if e["sm_id"] > 0 and e["sm_id"] < 200]
+    null_padding = [e for e in entries if e["sm_id"] == 0]
+
+    return {
+        "sm_scheduling_seeds": {
+            "source_va": f"0x{SM_SCHED_SEEDS_VA:X}",
+            "entry_count": SM_SCHED_SEEDS_COUNT,
+            "entry_stride": 12,
+            "entry_format": "{u32 sm_id, u32 gen_code, u32 variant}",
+            "active_entries": len(active),
+            "null_padding_entries": len(null_padding),
+            "sentinel_check": "PASS" if sentinel_ok else "FAIL",
+            "gen_code_legend": _GEN_NAMES,
+            "segments": [
+                {"name": "blackwell_thor_subset", "indices": "0-7"},
+                {"name": "hopper_blackwell_subset", "indices": "8-17"},
+                {"name": "full_architecture_list", "indices": "18-49"},
+            ],
+            "entries": entries,
+        }
+    }
+
+
+# ─── Table 30: SM ID Enumeration ─────────────────────────────────────
+
+# Canonical list of SM compute capability numbers at VA 0x1CE7F80.
+# 28 u32 entries with 2 null-separator slots (indices 15 and 24).
+
+SM_ID_ENUM_VA    = 0x1CE7F80
+SM_ID_ENUM_COUNT = 28
+
+
+def extract_sm_id_enumeration(br: BinaryReader) -> dict:
+    """Extract the canonical SM ID enumeration table."""
+
+    raw = br.u32_array(SM_ID_ENUM_VA, SM_ID_ENUM_COUNT)
+
+    entries = []
+    sm_ids = []
+    for i, v in enumerate(raw):
+        if v == 0:
+            entries.append({"index": i, "sm_id": 0, "sm": None,
+                            "note": "null separator"})
+        elif v < 200:
+            entries.append({"index": i, "sm_id": v, "sm": f"sm_{v}"})
+            sm_ids.append(v)
+        else:
+            print(f"    WARNING: SM ID enum[{i}] = {v} (out of range)",
+                  file=sys.stderr)
+            entries.append({"index": i, "sm_id": v,
+                            "note": "out of range"})
+
+    expected_sms = {30, 32, 35, 37, 50, 52, 53, 60, 61, 62, 70, 72, 73,
+                    75, 80, 86, 87, 88, 89, 90, 100, 101, 103, 110, 120, 121}
+    found_sms = set(sm_ids)
+    missing = expected_sms - found_sms
+    extra = found_sms - expected_sms
+    if missing:
+        print(f"    WARNING: Missing expected SM IDs: {sorted(missing)}",
+              file=sys.stderr)
+    if extra:
+        print(f"    INFO: Extra SM IDs not in expected set: {sorted(extra)}",
+              file=sys.stderr)
+
+    return {
+        "sm_id_enumeration": {
+            "source_va": f"0x{SM_ID_ENUM_VA:X}",
+            "entry_count": SM_ID_ENUM_COUNT,
+            "active_sm_count": len(sm_ids),
+            "null_separator_indices": [i for i, e in enumerate(entries)
+                                       if e.get("note") == "null separator"],
+            "sm_ids": sm_ids,
+            "coverage_check": {
+                "expected": sorted(expected_sms),
+                "found": sorted(found_sms),
+                "missing": sorted(missing),
+                "extra": sorted(extra),
+            },
+            "entries": entries,
+        }
+    }
+
+
+# ─── Table 31: Extended ROT13 SASS Names ─────────────────────────────
+
+# VA 0x21CAE00-0x21CEE00 (16,384 bytes): ROT13-encoded SASS instruction
+# mnemonics and related strings (FFMA2, FENCE.T, FCHK, ...).
+
+EXTENDED_SASS_NAMES_VA  = 0x21CAE00
+EXTENDED_SASS_NAMES_END = 0x21CEE00
+
+
+def extract_extended_sass_names(br: BinaryReader) -> dict:
+    """Extract ROT13-encoded SASS instruction names from the extended region."""
+
+    region_size = EXTENDED_SASS_NAMES_END - EXTENDED_SASS_NAMES_VA
+    start_off = br._off(EXTENDED_SASS_NAMES_VA)
+    raw = br.data[start_off:start_off + region_size]
+
+    all_strings = []
+    clean_mnemonics = []
+    pos = 0
+    while pos < len(raw):
+        if raw[pos] == 0:
+            pos += 1
+            continue
+        nul = raw.find(b'\x00', pos)
+        if nul < 0:
+            break
+        try:
+            s = raw[pos:nul].decode('ascii')
+            d = rot13(s)
+            va = EXTENDED_SASS_NAMES_VA + pos
+            entry = {"va": f"0x{va:X}", "rot13": s, "decoded": d,
+                     "length": len(s)}
+            if len(s) >= 2:
+                all_strings.append(entry)
+            if (len(s) >= 2 and
+                    any(c.isupper() for c in d) and
+                    all(c.isalnum() or c in '._() *{}|' for c in d)):
+                clean_mnemonics.append(entry)
+        except UnicodeDecodeError:
+            pass
+        pos = nul + 1
+
+    return {
+        "extended_sass_names": {
+            "source_va": f"0x{EXTENDED_SASS_NAMES_VA:X}",
+            "end_va": f"0x{EXTENDED_SASS_NAMES_END:X}",
+            "region_bytes": region_size,
+            "total_strings_ge2": len(all_strings),
+            "clean_mnemonic_count": len(clean_mnemonics),
+            "clean_mnemonics": clean_mnemonics,
+            "all_strings": all_strings,
+        }
+    }
+
+
+# ─── Table 32: ROT13 Modifier Format Strings ─────────────────────────
+
+# VA 0x21C5E00-0x21CAE00 (20,480 bytes): ROT13-encoded instruction modifier
+# format templates (e.g., "SYNCS.ARRIVE.A1TR.ART0.A0TR.A0TX").
+
+MODIFIER_FMTSTR_VA  = 0x21C5E00
+MODIFIER_FMTSTR_END = 0x21CAE00
+
+
+def extract_modifier_format_strings(br: BinaryReader) -> dict:
+    """Extract ROT13-encoded modifier format strings."""
+
+    region_size = MODIFIER_FMTSTR_END - MODIFIER_FMTSTR_VA
+    start_off = br._off(MODIFIER_FMTSTR_VA)
+    raw = br.data[start_off:start_off + region_size]
+
+    all_strings = []
+    format_templates = []
+    pos = 0
+    while pos < len(raw):
+        if raw[pos] == 0:
+            pos += 1
+            continue
+        nul = raw.find(b'\x00', pos)
+        if nul < 0:
+            break
+        try:
+            s = raw[pos:nul].decode('ascii')
+            d = rot13(s)
+            va = MODIFIER_FMTSTR_VA + pos
+            entry = {"va": f"0x{va:X}", "rot13": s, "decoded": d,
+                     "length": len(s)}
+            if len(s) >= 2:
+                all_strings.append(entry)
+            if len(s) >= 3 and '.' in d and any(c.isupper() for c in d):
+                format_templates.append(entry)
+        except UnicodeDecodeError:
+            pass
+        pos = nul + 1
+
+    return {
+        "modifier_format_strings": {
+            "source_va": f"0x{MODIFIER_FMTSTR_VA:X}",
+            "end_va": f"0x{MODIFIER_FMTSTR_END:X}",
+            "region_bytes": region_size,
+            "total_strings_ge2": len(all_strings),
+            "format_template_count": len(format_templates),
+            "format_templates": format_templates,
+            "all_strings": all_strings,
+        }
+    }
+
+
 # ─── Derived: Opcode Master Record ─────────────────────────────────────
 
 def build_opcode_master(names: dict, cat_map: dict, enc_table: dict) -> dict:
@@ -2457,6 +2819,16 @@ def main():
         ("latency_tables",     "per_sm_latency_tables.json",    extract_latency_tables),
         ("dep_rules",          "per_sm_dependency_rules.json",  extract_dependency_rules),
         ("scoreboard_configs", "per_sm_scoreboard_configs.json", extract_scoreboard_configs),
+        ("encoding_trees",     "encoding_trees.json",           extract_encoding_trees),
+        ("regclass_aux",       "register_class_aux.json",       extract_register_class_aux),
+        ("pipeline_map",       "opcode_pipeline_map.json",      extract_opcode_pipeline_map),
+        ("sched_vtable",       "scheduling_vtable.json",        extract_scheduling_vtable),
+        ("regfile_config",     "register_file_config.json",     extract_register_file_config),
+        ("sm_version_codes",   "sm_version_codes.json",         extract_sm_version_codes),
+        ("sm_sched_seeds",     "sm_scheduling_seeds.json",      extract_sm_scheduling_seeds),
+        ("sm_id_enum",         "sm_id_enumeration.json",        extract_sm_id_enumeration),
+        ("extended_sass",      "extended_sass_names.json",      extract_extended_sass_names),
+        ("modifier_fmtstrs",   "modifier_format_strings.json",  extract_modifier_format_strings),
     ]
 
     for key, filename, func in extractors:
