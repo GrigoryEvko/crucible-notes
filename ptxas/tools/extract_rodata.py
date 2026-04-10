@@ -1373,11 +1373,632 @@ def extract_sass_handler_dispatch_2(br: BinaryReader) -> dict:
         "sass_handler_dispatch_2")
 
 
+# ─── Table 17: OKT Knob Descriptors ───────────────────────────────────
+
+# The Opcode Knob Table (OKT) is a contiguous array of 9-pointer tuples
+# starting at VA 0x1CE9E00.  Each tuple is 72 bytes (9 x 8-byte pointers
+# into .rodata string constants).  Layout per entry:
+#   [0] type_str     — "OKT_INT", "OKT_NONE", "OKT_FLOAT", etc.
+#   [1] name_str     — always empty ("") in .rodata; filled at runtime
+#   [2] default_val  — default value as string ("0", "1", etc.)
+#   [3] param1       — type-specific parameter
+#   [4] param2       — type-specific parameter
+#   [5] param3       — type-specific parameter
+#   [6] flags_hex    — hex flags string ("0x1", "0x2", "0x3", etc.)
+#   [7] offset_hex   — hex offset into .bss knob object ("0x5d0", etc.)
+#   [8] separator    — always empty ("") in .rodata
+#
+# The 'name' field is populated at runtime by the knob registration
+# constructors (ctor_005, ctor_007) using the ROT13-encoded knob name
+# strings already extracted in Table 11.
+
+OKT_TABLE_VA    = 0x1CE9E00
+OKT_TABLE_END   = 0x1CFCE00
+OKT_FIELD_COUNT = 9
+OKT_ENTRY_SIZE  = OKT_FIELD_COUNT * 8  # 72 bytes
+
+
+def extract_okt_knob_descriptors(br: BinaryReader) -> dict:
+    """Extract OKT (Opcode Knob Table) descriptors from .rodata.
+
+    Each entry is a 9-tuple of string pointers.  We dereference every
+    pointer and return the resolved strings.  The 'name' field is always
+    empty in the static image (populated at runtime)."""
+
+    region_size = OKT_TABLE_END - OKT_TABLE_VA
+    max_entries = region_size // OKT_ENTRY_SIZE  # upper bound
+
+    entries = []
+    type_counts: dict[str, int] = {}
+
+    for i in range(max_entries):
+        base_va = OKT_TABLE_VA + i * OKT_ENTRY_SIZE
+        type_ptr = br.ptr(base_va)
+
+        # Termination: a null pointer or a pointer outside .rodata
+        if type_ptr == 0 or not br.is_in_rodata(type_ptr):
+            break
+
+        # Read all 9 field pointers
+        fields: list[str] = []
+        for j in range(OKT_FIELD_COUNT):
+            fptr = br.ptr(base_va + j * 8)
+            if fptr == 0:
+                fields.append("")
+            elif br.is_in_rodata(fptr):
+                fields.append(br.cstring(fptr, max_len=128))
+            else:
+                fields.append(f"<ptr_0x{fptr:X}>")
+
+        type_str    = fields[0]
+        name_str    = fields[1]
+        default_val = fields[2]
+        param1      = fields[3]
+        param2      = fields[4]
+        param3      = fields[5]
+        flags_hex   = fields[6]
+        offset_hex  = fields[7]
+        separator   = fields[8]
+
+        type_counts[type_str] = type_counts.get(type_str, 0) + 1
+
+        entry = {
+            "index": i,
+            "type": type_str,
+            "default": default_val,
+            "param1": param1,
+            "param2": param2,
+            "param3": param3,
+            "flags": flags_hex,
+            "bss_offset": offset_hex,
+        }
+
+        # Include name/separator only when non-empty (saves space; they
+        # are always "" in practice for the static image)
+        if name_str:
+            entry["name"] = name_str
+        if separator:
+            entry["separator"] = separator
+
+        entries.append(entry)
+
+    # Validate: bss_offset values should be monotonically non-decreasing hex strings
+    offsets = []
+    for e in entries:
+        try:
+            offsets.append(int(e["bss_offset"], 16))
+        except (ValueError, KeyError):
+            offsets.append(-1)
+
+    monotonic_violations = 0
+    for k in range(1, len(offsets)):
+        if offsets[k] != -1 and offsets[k - 1] != -1 and offsets[k] < offsets[k - 1]:
+            monotonic_violations += 1
+
+    if monotonic_violations:
+        print(f"    INFO: {monotonic_violations} non-monotonic bss_offset transitions in OKT", file=sys.stderr)
+
+    return {
+        "okt_knob_descriptors": {
+            "source_va": f"0x{OKT_TABLE_VA:X}",
+            "end_va": f"0x{OKT_TABLE_END:X}",
+            "entry_count": len(entries),
+            "entry_size_bytes": OKT_ENTRY_SIZE,
+            "type_distribution": dict(sorted(type_counts.items(), key=lambda x: -x[1])),
+            "note": "Name field is always empty in static image; populated at runtime "
+                    "by ctor_005/ctor_007 using ROT13 knob name strings from Table 11.",
+            "entries": entries,
+        }
+    }
+
+
+# ─── Table 18: Embedded PTX Intrinsic Source ─────────────────────────
+
+# The ptxas binary embeds ~1080 PTX function declarations (prototypes)
+# for built-in intrinsics.  These are NUL-terminated ".weak .func ..."
+# strings packed contiguously starting at VA 0x1D1E200.
+#
+# Preceding this block (VA 0x1D15E00-0x1D1E200) is a string table with
+# function names, error messages, and CRC values used by the intrinsic
+# lookup machinery.  We extract both regions.
+
+PTX_INTRINSIC_SOURCE_VA  = 0x1D1E200
+PTX_INTRINSIC_SOURCE_END = 0x1D4B777  # byte after last NUL terminator
+PTX_STRING_TABLE_VA      = 0x1D15E00
+PTX_STRING_TABLE_END     = 0x1D1E200
+
+
+def _extract_func_name(decl: str) -> str:
+    """Extract the function name from a .weak .func PTX declaration."""
+    m = re.search(r'\.func\s+(?:\([^)]*\)\s+)?(\w+)', decl)
+    return m.group(1) if m else ""
+
+
+def _categorize_intrinsic(name: str) -> str:
+    """Assign a category based on the function name prefix."""
+    prefixes = [
+        ("__cuda_sm20_",        "sm20_math"),
+        ("__cuda_sm70_",        "sm70_intrinsics"),
+        ("__cuda_sm80_",        "sm80_intrinsics"),
+        ("__cuda_sm90_",        "sm90_intrinsics"),
+        ("__cuda_sm100_",       "sm100_intrinsics"),
+        ("__cuda_wmma_",        "wmma"),
+        ("__cuda_mma_",         "mma"),
+        ("__cuda_reduxsync_",   "redux_sync"),
+        ("__cuda_sanitizer_",   "sanitizer"),
+        ("__cuda_",             "cuda_other"),
+    ]
+    for prefix, cat in prefixes:
+        if name.startswith(prefix):
+            return cat
+    return "other"
+
+
+def extract_embedded_ptx_intrinsics(br: BinaryReader) -> dict:
+    """Extract embedded PTX intrinsic function declarations from .rodata.
+
+    Returns the full text of each declaration along with parsed metadata
+    (function name, return type, parameter list, category)."""
+
+    # ── PTX function declarations ──
+    start_off = br._off(PTX_INTRINSIC_SOURCE_VA)
+    end_off = br._off(PTX_INTRINSIC_SOURCE_END)
+    ptx_data = br.data[start_off:end_off]
+
+    entries = []
+    categories: dict[str, int] = {}
+    pos = 0
+    while pos < len(ptx_data):
+        if ptx_data[pos] == 0:
+            pos += 1
+            continue
+        nul = ptx_data.find(b'\x00', pos)
+        if nul < 0:
+            break
+        chunk = ptx_data[pos:nul].strip()
+        pos = nul + 1
+        if len(chunk) < 10:
+            continue
+        try:
+            text = chunk.decode('ascii')
+        except UnicodeDecodeError:
+            continue
+        if '.func' not in text:
+            continue
+
+        func_name = _extract_func_name(text)
+        category = _categorize_intrinsic(func_name)
+        categories[category] = categories.get(category, 0) + 1
+
+        # Parse return type from (.reg .type %name) pattern
+        ret_match = re.search(r'\.func\s+\(([^)]+)\)', text)
+        ret_type = ret_match.group(1).strip() if ret_match else "(void)"
+
+        va = PTX_INTRINSIC_SOURCE_VA + (pos - len(chunk) - 1)
+        entries.append({
+            "index": len(entries),
+            "va": f"0x{va:X}",
+            "function_name": func_name,
+            "return_type": ret_type,
+            "category": category,
+            "declaration": text.strip(),
+        })
+
+    # ── Preceding string table ──
+    strtab_start_off = br._off(PTX_STRING_TABLE_VA)
+    strtab_end_off = br._off(PTX_STRING_TABLE_END)
+    strtab_data = br.data[strtab_start_off:strtab_end_off]
+
+    string_table = []
+    pos = 0
+    while pos < len(strtab_data):
+        if strtab_data[pos] == 0:
+            pos += 1
+            continue
+        nul = strtab_data.find(b'\x00', pos)
+        if nul < 0:
+            break
+        chunk = strtab_data[pos:nul]
+        pos = nul + 1
+        if len(chunk) < 3:
+            continue
+        try:
+            text = chunk.decode('ascii')
+            if all(c.isprintable() for c in text):
+                va = PTX_STRING_TABLE_VA + (pos - len(chunk) - 1)
+                string_table.append({"va": f"0x{va:X}", "text": text})
+        except UnicodeDecodeError:
+            pass
+
+    return {
+        "embedded_ptx_intrinsics": {
+            "source_va": f"0x{PTX_INTRINSIC_SOURCE_VA:X}",
+            "end_va": f"0x{PTX_INTRINSIC_SOURCE_END:X}",
+            "size_bytes": PTX_INTRINSIC_SOURCE_END - PTX_INTRINSIC_SOURCE_VA,
+            "entry_count": len(entries),
+            "categories": dict(sorted(categories.items(), key=lambda x: -x[1])),
+            "entries": entries,
+        },
+        "ptx_intrinsic_string_table": {
+            "source_va": f"0x{PTX_STRING_TABLE_VA:X}",
+            "end_va": f"0x{PTX_STRING_TABLE_END:X}",
+            "size_bytes": PTX_STRING_TABLE_END - PTX_STRING_TABLE_VA,
+            "entry_count": len(string_table),
+            "entries": string_table,
+        },
+    }
+
+
+# ─── Table 19: Supplemental Compiler Pass Names (ROT13) ──────────────
+
+# The scheduling/scoreboard pass names are ROT13-encoded CamelCase strings
+# packed in a contiguous region of .rodata.  Unlike the knob name strings
+# (Table 11), these are pure pass/feature identifiers used by the instruction
+# scheduler, scoreboard allocator, and related backend phases.
+#
+# A small number of plaintext entries (OptimizeNaNOrZero, HoistInvariants,
+# ConvertMemoryToRegisterOrUniform) appear at the tail of the region --
+# these are compiler phase names stored without ROT13 encoding.
+
+PASS_NAME_REGION_VA  = 0x21DC308
+PASS_NAME_REGION_END = 0x21DD248  # byte after last entry's NUL
+
+# Known plaintext constants in this region (not ROT13-encoded).
+_PASS_PLAINTEXT = frozenset({
+    "OptimizeNaNOrZero",
+    "HoistInvariants",
+    "ConvertMemoryToRegisterOrUniform",
+})
+
+
+def extract_supplemental_pass_names(br: BinaryReader) -> dict:
+    """Extract ROT13-encoded compiler pass/feature names from .rodata.
+
+    Each entry is a NUL-terminated string.  ROT13-encoded entries are
+    decoded to their human-readable form.  A handful of plaintext entries
+    at the tail of the region are marked with is_rot13=False."""
+
+    start_off = br._off(PASS_NAME_REGION_VA)
+    end_off = br._off(PASS_NAME_REGION_END)
+    data = br.data[start_off:end_off]
+
+    entries = []
+    pos = 0
+    while pos < len(data):
+        if data[pos] == 0:
+            pos += 1
+            continue
+        nul = data.find(b'\x00', pos)
+        if nul < 0:
+            break
+        raw_bytes = data[pos:nul]
+        pos = nul + 1
+
+        try:
+            raw = raw_bytes.decode('ascii')
+        except UnicodeDecodeError:
+            continue
+
+        # Accept only alphanumeric + underscore, minimum 4 chars, starts with upper
+        if len(raw) < 4:
+            continue
+        if not all(c.isalnum() or c in '_' for c in raw):
+            continue
+
+        decoded = rot13(raw)
+
+        # Must look like a CamelCase identifier when decoded
+        if not decoded[0].isupper():
+            continue
+        if not any(c.islower() for c in decoded):
+            continue
+
+        is_rot13 = raw not in _PASS_PLAINTEXT
+        name = decoded if is_rot13 else raw
+        va = PASS_NAME_REGION_VA + (pos - len(raw) - 1)
+
+        entries.append({
+            "va": f"0x{va:X}",
+            "rot13": raw,
+            "name": name,
+            "is_rot13": is_rot13,
+        })
+
+    rot13_count = sum(1 for e in entries if e["is_rot13"])
+    plain_count = len(entries) - rot13_count
+
+    return {
+        "supplemental_pass_names": {
+            "source_va": f"0x{PASS_NAME_REGION_VA:X}",
+            "end_va": f"0x{PASS_NAME_REGION_END:X}",
+            "total_count": len(entries),
+            "rot13_count": rot13_count,
+            "plaintext_count": plain_count,
+            "note": "Scheduling/scoreboard pass and feature names. ROT13-encoded in binary; "
+                    "decoded to human-readable CamelCase. A few tail entries are plaintext.",
+            "entries": entries,
+        }
+    }
+
+
+# ─── Table 20: Per-SM Functional Unit Latency Tables ─────────────────
+
+# Each entry is 72 bytes:
+#   i32  unit_id           (scheduling class ID, matches dep rule field[0])
+#   i32  reserved          (always 0)
+#   u8[8] pipe_masks_a     (per-pipeline availability mask; 0xFF = unused pipeline)
+#   u8[8] pipe_masks_b     (secondary mask/flags; 0xFF = unused)
+#   i32[12] sched_params   (latency, throughput, issue delay, stall counts, etc.)
+#
+# Three shared tables cover all SM generations:
+#   sm_8x_shared:  sm_80/86/89/90/90a  (256 entries)
+#   sm_10x_shared: sm_100/103           (430 entries)
+#   sm_7x_shared:  sm_60/70/72/75      (619 entries)
+
+LATENCY_TABLES = {
+    "sm_8x_shared":  {"start": 0x2297C00, "end": 0x229C400, "sm_list": "sm_80,sm_86,sm_89,sm_90,sm_90a"},
+    "sm_10x_shared": {"start": 0x226C880, "end": 0x2274170, "sm_list": "sm_100,sm_103"},
+    "sm_7x_shared":  {"start": 0x2245060, "end": 0x224FE78, "sm_list": "sm_60,sm_70,sm_72,sm_75"},
+}
+
+LATENCY_ENTRY_SIZE = 72  # bytes
+
+
+def extract_latency_tables(br: BinaryReader) -> dict:
+    """Extract per-SM functional unit latency tables from .rodata.
+    Each 72-byte entry encodes pipeline masks and scheduling parameters
+    for one scheduling class (functional unit type)."""
+
+    all_tables = {}
+    for label, spec in LATENCY_TABLES.items():
+        va_start = spec["start"]
+        va_end = spec["end"]
+        table_size = va_end - va_start
+        entry_count = table_size // LATENCY_ENTRY_SIZE
+        remainder = table_size % LATENCY_ENTRY_SIZE
+
+        if remainder != 0:
+            print(f"    WARNING: {label} size {table_size} not divisible by "
+                  f"{LATENCY_ENTRY_SIZE} (remainder={remainder})", file=sys.stderr)
+
+        entries = []
+        for i in range(entry_count):
+            va = va_start + i * LATENCY_ENTRY_SIZE
+            off = br._off(va)
+            chunk = br.data[off:off + LATENCY_ENTRY_SIZE]
+
+            unit_id = struct.unpack_from('<i', chunk, 0)[0]
+            reserved = struct.unpack_from('<i', chunk, 4)[0]
+            pipe_masks_a = list(chunk[8:16])
+            pipe_masks_b = list(chunk[16:24])
+            sched_params = list(struct.unpack_from('<12i', chunk, 24))
+
+            entries.append({
+                "index": i,
+                "unit_id": unit_id,
+                "reserved": reserved,
+                "pipe_masks_a": pipe_masks_a,
+                "pipe_masks_b": pipe_masks_b,
+                "sched_params": sched_params,
+            })
+
+        # Validate: unit_ids should be non-negative small integers
+        invalid_uids = [(e["index"], e["unit_id"]) for e in entries
+                        if e["unit_id"] < 0 or e["unit_id"] > 10000]
+        if invalid_uids:
+            for idx, uid in invalid_uids[:5]:
+                print(f"    WARNING: {label}[{idx}] unit_id={uid} out of expected range",
+                      file=sys.stderr)
+
+        # Validate: reserved field should always be 0
+        nonzero_reserved = [(e["index"], e["reserved"]) for e in entries
+                            if e["reserved"] != 0]
+        if nonzero_reserved:
+            for idx, val in nonzero_reserved[:5]:
+                print(f"    WARNING: {label}[{idx}] reserved={val} (expected 0)",
+                      file=sys.stderr)
+
+        uid_set = sorted(set(e["unit_id"] for e in entries))
+
+        all_tables[label] = {
+            "va_range": f"0x{va_start:X}-0x{va_end:X}",
+            "size_bytes": table_size,
+            "entry_count": entry_count,
+            "entry_size": LATENCY_ENTRY_SIZE,
+            "sm_list": spec["sm_list"],
+            "unique_unit_ids": len(uid_set),
+            "unit_id_range": [uid_set[0], uid_set[-1]] if uid_set else [],
+            "entries": entries,
+        }
+
+    return {"per_sm_latency_tables": all_tables}
+
+
+# ─── Table 21: Per-SM Dependency Rule Tables ─────────────────────────
+
+# Each entry is 40 bytes = 10 x i32:
+#   i32[0]  unit_id           (scheduling class ID)
+#   i32[1]  rule_type         (dependency type: 0=special, 1=standard)
+#   i32[2]  latency           (minimum cycles before dependent can issue)
+#   i32[3]  throughput_inv    (inverse throughput / issue rate)
+#   i32[4]  barrier_latency   (scoreboard wait threshold, often 56=0x38)
+#   i32[5]  barrier_throughput (scoreboard throughput)
+#   i32[6]  read_latency      (read-after-write latency, -1 = N/A)
+#   i32[7]  write_latency     (write-after-read latency, -1 = N/A)
+#   i32[8]  stall_cycles      (fixed stall count or encoded parameter)
+#   i32[9]  issue_slots       (number of issue slots consumed)
+#
+# Per-SM variant tables (entry count matches the latency table for same generation):
+
+DEP_RULE_TABLES = {
+    "sm_100": {"start": 0x2268440, "end": 0x226C770},
+    "sm_103": {"start": 0x2262720, "end": 0x2266A50},
+    "sm_80":  {"start": 0x2295400, "end": 0x2297C00},
+    "sm_86":  {"start": 0x2292140, "end": 0x2294940},
+    "sm_89":  {"start": 0x228EE80, "end": 0x2291680},
+    "sm_90":  {"start": 0x228BB80, "end": 0x228E380},
+    "sm_90a": {"start": 0x22888C0, "end": 0x228B0C0},
+    "sm_70":  {"start": 0x2237480, "end": 0x223D538},
+    "sm_72":  {"start": 0x223EE60, "end": 0x2244F18},
+    "sm_75":  {"start": 0x222F9E0, "end": 0x2235A98},
+    "sm_60":  {"start": 0x2227F40, "end": 0x222DFF8},
+}
+
+DEP_RULE_ENTRY_SIZE = 40  # bytes
+DEP_RULE_FIELDS = [
+    "unit_id", "rule_type", "latency", "throughput_inv",
+    "barrier_latency", "barrier_throughput", "read_latency",
+    "write_latency", "stall_cycles", "issue_slots",
+]
+
+
+def extract_dependency_rules(br: BinaryReader) -> dict:
+    """Extract per-SM dependency rule tables from .rodata.
+    Each 40-byte entry defines scheduling dependency constraints
+    for one functional unit class on a specific SM variant."""
+
+    all_tables = {}
+    for sm_name, spec in DEP_RULE_TABLES.items():
+        va_start = spec["start"]
+        va_end = spec["end"]
+        table_size = va_end - va_start
+        entry_count = table_size // DEP_RULE_ENTRY_SIZE
+        remainder = table_size % DEP_RULE_ENTRY_SIZE
+
+        if remainder != 0:
+            print(f"    WARNING: {sm_name} dep rules size {table_size} not divisible by "
+                  f"{DEP_RULE_ENTRY_SIZE} (remainder={remainder})", file=sys.stderr)
+
+        entries = []
+        for i in range(entry_count):
+            va = va_start + i * DEP_RULE_ENTRY_SIZE
+            vals = list(struct.unpack_from('<10i', br.data, br._off(va)))
+            entry = {"index": i}
+            for j, name in enumerate(DEP_RULE_FIELDS):
+                entry[name] = vals[j]
+            entries.append(entry)
+
+        uid_set = sorted(set(e["unit_id"] for e in entries))
+        latencies = [e["latency"] for e in entries if e["latency"] >= 0]
+
+        all_tables[sm_name] = {
+            "va_range": f"0x{va_start:X}-0x{va_end:X}",
+            "size_bytes": table_size,
+            "entry_count": entry_count,
+            "entry_size": DEP_RULE_ENTRY_SIZE,
+            "unique_unit_ids": len(uid_set),
+            "unit_id_range": [uid_set[0], uid_set[-1]] if uid_set else [],
+            "latency_range": [min(latencies), max(latencies)] if latencies else [],
+            "entries": entries,
+        }
+
+    return {"per_sm_dependency_rules": all_tables}
+
+
+# ─── Table 22: Per-SM Scoreboard Configuration Tables ────────────────
+
+# Each entry is 88 bytes = 22 x i32:
+#   i32[0..17]  up to 6 triplets of (scoreboard_id, threshold, mask_or_flag)
+#               Unused triplet slots are all-zero.
+#   i32[18..20] padding (always 0)
+#   i32[21]     triplet_count (number of valid triplets in this entry)
+#
+# Per-SM variant tables:
+
+SCOREBOARD_TABLES = {
+    "sm_100": {"start": 0x2266A60, "end": 0x2268440},
+    "sm_103": {"start": 0x2261740, "end": 0x2262720},
+    "sm_80":  {"start": 0x2294940, "end": 0x2295400},
+    "sm_86":  {"start": 0x2291680, "end": 0x2292140},
+    "sm_89":  {"start": 0x228E380, "end": 0x228EE80},
+    "sm_90":  {"start": 0x228B0C0, "end": 0x228BB80},
+    "sm_90a": {"start": 0x2287DC0, "end": 0x22888C0},
+}
+
+SCOREBOARD_ENTRY_SIZE = 88  # bytes
+SCOREBOARD_STRIDE = 22  # i32 count per entry
+SCOREBOARD_MAX_TRIPLETS = 6
+
+
+def extract_scoreboard_configs(br: BinaryReader) -> dict:
+    """Extract per-SM scoreboard configuration tables from .rodata.
+    Each 88-byte entry defines up to 6 scoreboard barrier triplets
+    (scoreboard_id, threshold, mask) that the scheduler uses for
+    dependency tracking on a given functional unit class."""
+
+    all_tables = {}
+    for sm_name, spec in SCOREBOARD_TABLES.items():
+        va_start = spec["start"]
+        va_end = spec["end"]
+        table_size = va_end - va_start
+        full_entries = table_size // SCOREBOARD_ENTRY_SIZE
+        remainder = table_size % SCOREBOARD_ENTRY_SIZE
+
+        raw = br.read_bytes(va_start, table_size)
+
+        # Verify remainder is all zeros (trailing padding)
+        if remainder > 0:
+            trail = raw[full_entries * SCOREBOARD_ENTRY_SIZE:]
+            if any(b != 0 for b in trail):
+                print(f"    WARNING: {sm_name} scoreboard has non-zero trailing "
+                      f"{remainder} bytes", file=sys.stderr)
+
+        entries = []
+        for i in range(full_entries):
+            off = i * SCOREBOARD_ENTRY_SIZE
+            vals = list(struct.unpack_from(f'<{SCOREBOARD_STRIDE}i', raw, off))
+
+            triplet_count = vals[21]
+            triplets = []
+            for t in range(min(triplet_count, SCOREBOARD_MAX_TRIPLETS)):
+                base = t * 3
+                triplets.append({
+                    "scoreboard_id": vals[base],
+                    "threshold": vals[base + 1],
+                    "mask": vals[base + 2],
+                })
+
+            # Validate: padding fields [18..20] should be zero
+            padding = vals[18:21]
+            if any(p != 0 for p in padding):
+                print(f"    WARNING: {sm_name}[{i}] non-zero padding: {padding}",
+                      file=sys.stderr)
+
+            entries.append({
+                "index": i,
+                "triplet_count": triplet_count,
+                "triplets": triplets,
+                "raw_i32": vals,
+            })
+
+        # Statistics
+        max_trip = max((e["triplet_count"] for e in entries), default=0)
+        trip_dist = {}
+        for e in entries:
+            tc = e["triplet_count"]
+            trip_dist[tc] = trip_dist.get(tc, 0) + 1
+
+        all_tables[sm_name] = {
+            "va_range": f"0x{va_start:X}-0x{va_end:X}",
+            "size_bytes": table_size,
+            "entry_count": full_entries,
+            "entry_size": SCOREBOARD_ENTRY_SIZE,
+            "trailing_padding": remainder,
+            "max_triplets_used": max_trip,
+            "triplet_count_distribution": dict(sorted(trip_dist.items())),
+            "entries": entries,
+        }
+
+    return {"per_sm_scoreboard_configs": all_tables}
+
+
 # ─── Derived: Opcode Master Record ─────────────────────────────────────
 
 def build_opcode_master(names: dict, cat_map: dict, enc_table: dict) -> dict:
     """Cross-reference opcode names, encoding categories, and ISel encoding slots."""
     name_entries = names.get("opcode_names", {}).get("entries", [])
+    cat_entries = cat_map.get("encoding_category_map", {}).get("entries", [])
+    enc_entries = enc_table.get("opcode_to_encoding", {}).get("entries", [])
     cat_entries = cat_map.get("encoding_category_map", {}).get("entries", [])
     enc_entries = enc_table.get("opcode_to_encoding", {}).get("entries", [])
 
@@ -1512,6 +2133,12 @@ def main():
         ("bitfield_lookup",    "encoding_bitfield_lookup.json", extract_encoding_bitfield_lookup),
         ("handler_dispatch_1", "sass_handler_dispatch_1.json",  extract_sass_handler_dispatch_1),
         ("handler_dispatch_2", "sass_handler_dispatch_2.json",  extract_sass_handler_dispatch_2),
+        ("okt_knobs",          "okt_knob_descriptors.json",     extract_okt_knob_descriptors),
+        ("ptx_intrinsics",     "embedded_ptx_intrinsics.json",  extract_embedded_ptx_intrinsics),
+        ("supp_pass_names",    "supplemental_pass_names.json",  extract_supplemental_pass_names),
+        ("latency_tables",     "per_sm_latency_tables.json",    extract_latency_tables),
+        ("dep_rules",          "per_sm_dependency_rules.json",  extract_dependency_rules),
+        ("scoreboard_configs", "per_sm_scoreboard_configs.json", extract_scoreboard_configs),
     ]
 
     for key, filename, func in extractors:

@@ -23,13 +23,23 @@
     "slot_template": "universal_slot_template.json",
     "bitfield_lookup": "encoding_bitfield_lookup.json",
     "handler_dispatch_1": "sass_handler_dispatch_1.json",
-    "handler_dispatch_2": "sass_handler_dispatch_2.json"
+    "handler_dispatch_2": "sass_handler_dispatch_2.json",
+    "okt_knobs": "okt_knob_descriptors.json",
+    "ptx_intrinsics": "embedded_ptx_intrinsics.json",
+    "supp_pass_names": "supplemental_pass_names.json",
+    "latency_tables": "per_sm_latency_tables.json",
+    "dep_rules": "per_sm_dependency_rules.json",
+    "scoreboard_configs": "per_sm_scoreboard_configs.json"
   },
   "derived_tables": {
     "opcode_master": "opcode_master.json",
     "encoding_geometry": "encoding_geometry.json"
   },
   "files": {
+    "embedded_ptx_intrinsics.json": {
+      "size": 556072,
+      "sha256": "bcb6df66cef4d221a8a3dbd796d32bca587705c7a908b15f765e911e0f1b8bf5"
+    },
     "encoding_bitfield_lookup.json": {
       "size": 189266,
       "sha256": "26174422b0ee59af762237f0afdca7995bc83ff646668ef2a72e8f0b44458993"
@@ -66,6 +76,10 @@
       "size": 2605,
       "sha256": "6a5dc103cec5fb6386845cb545308d131570dff39542d2ff14212d20e7987659"
     },
+    "okt_knob_descriptors.json": {
+      "size": 219547,
+      "sha256": "86afddbd6d4a01d63e1811ab38d260e822de88997d35dabf388946139d43d8ac"
+    },
     "opcode_master.json": {
       "size": 61412,
       "sha256": "55dc5053bcc64d9d9d4abca13802dc792b8637195d3572031a1f3891097d5791"
@@ -77,6 +91,18 @@
     "opcode_to_encoding.json": {
       "size": 15180,
       "sha256": "bd74c011b783565230e04e6269a67b3369fedfe41cec975c64dc0223e7d807a3"
+    },
+    "per_sm_dependency_rules.json": {
+      "size": 1570307,
+      "sha256": "b8e7ba35de0fc52907efd5eae7ca9f04d9b132c853299b9813373f491c169f37"
+    },
+    "per_sm_latency_tables.json": {
+      "size": 862340,
+      "sha256": "23309840c8caacae9bdd2ec8f2e72870cd439fdc3f20fb6c8d87a22df8d4a5cc"
+    },
+    "per_sm_scoreboard_configs.json": {
+      "size": 174217,
+      "sha256": "f66d475f4cda3717fe132d551a92754a8ccee24f957972839deeb107acf52c47"
     },
     "phase_names.json": {
       "size": 17875,
@@ -93,6 +119,10 @@
     "shared_memory_configs.json": {
       "size": 645,
       "sha256": "b3d4438d0fb7da7b395911096dd4b09fca46b746ae7c54f9e7a926a75a4f3b68"
+    },
+    "supplemental_pass_names.json": {
+      "size": 15089,
+      "sha256": "89cba1d5fa82c2e9af9bd486b0a120ee80cb42b9d1e2d1fe99199058fea11f64"
     },
     "tier2_modifiers.json": {
       "size": 6930,

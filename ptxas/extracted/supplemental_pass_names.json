@@ -1,0 +1,612 @@
+{
+  "supplemental_pass_names": {
+    "source_va": "0x21DC308",
+    "end_va": "0x21DD248",
+    "total_count": 100,
+    "rot13_count": 98,
+    "plaintext_count": 2,
+    "note": "Scheduling/scoreboard pass and feature names. ROT13-encoded in binary; decoded to human-readable CamelCase. A few tail entries are plaintext.",
+    "entries": [
+      {
+        "va": "0x21DC308",
+        "rot13": "KOybpxJnvgBhg",
+        "name": "XBlockWaitOut",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC320",
+        "rot13": "KOybpxJnvgVaBhg",
+        "name": "XBlockWaitInOut",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC340",
+        "rot13": "KOybpxJnvgVaBaGnetrg",
+        "name": "XBlockWaitInOnTarget",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC360",
+        "rot13": "KOybpxJnvgVaBssGnetrg",
+        "name": "XBlockWaitInOffTarget",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC380",
+        "rot13": "JneQrcyblFlapfSyhfu_FJ4397903",
+        "name": "WarDeploySyncsFlush_SW4397903",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC3B0",
+        "rot13": "JnvgGbSbeprPGNFjvgpu",
+        "name": "WaitToForceCTASwitch",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC3D0",
+        "rot13": "JnvgErdSbeRaqTebhc",
+        "name": "WaitReqForEndGroup",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC3F0",
+        "rot13": "JnvgCnqqvatNibvqRTNaqFlap",
+        "name": "WaitPaddingAvoidEGAndSync",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC420",
+        "rot13": "IbygntrJne_FJ4981360CerqvpngrBssQhzzvrf",
+        "name": "VoltageWar_SW4981360PredicateOffDummies",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC450",
+        "rot13": "IbygntrJne_FJ4981360RkgenJnvgf",
+        "name": "VoltageWar_SW4981360ExtraWaits",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC480",
+        "rot13": "IbygntrJne_FJ4981360QhzzlGpzzn",
+        "name": "VoltageWar_SW4981360DummyTcmma",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC4B0",
+        "rot13": "GenpxZhygvErnqfJneYngrapl",
+        "name": "TrackMultiReadsWarLatency",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC4D0",
+        "rot13": "GrcvqNjnerFo",
+        "name": "TepidAwareSb",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC4E8",
+        "rot13": "FgntrVasb",
+        "name": "StageInfo",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC4F8",
+        "rot13": "FcnefrNaabg",
+        "name": "SparseAnnot",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC508",
+        "rot13": "FrysPurpxQroht",
+        "name": "SelfCheckDebug",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC520",
+        "rot13": "FpurqFlapfCunfrpuxYngrapl",
+        "name": "SchedSyncsPhasechkLatency",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC540",
+        "rot13": "FpurqYqfYngrapl",
+        "name": "SchedLdsLatency",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC560",
+        "rot13": "FpurqYnfgUloevqVaOOJvguVffhrEngr",
+        "name": "SchedLastHybridInBBWithIssueRate",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC590",
+        "rot13": "FpniVayvarRkcnafvba",
+        "name": "ScavInlineExpansion",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC5B0",
+        "rot13": "FpniThvqrqRkcnafvba",
+        "name": "ScavGuidedExpansion",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC5D0",
+        "rot13": "FpniQvfnoyrFcvyyvat",
+        "name": "ScavDisableSpilling",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC5F0",
+        "rot13": "FpniQvfnoyrPbagrkg",
+        "name": "ScavDisableContext",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC610",
+        "rot13": "FoKoybpxHfrYbbcUrnqreUrhevfgvp",
+        "name": "SbXblockUseLoopHeaderHeuristic",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC640",
+        "rot13": "FoKOybpxErdPbzzvg",
+        "name": "SbXBlockReqCommit",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC660",
+        "rot13": "FoKOybpxErdOnpxrqtr",
+        "name": "SbXBlockReqBackedge",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC678",
+        "rot13": "FoKOybpxYYFO",
+        "name": "SbXBlockLLSB",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC690",
+        "rot13": "FoKOybpxSbeCfrhqbErtf",
+        "name": "SbXBlockForPseudoRegs",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC6C0",
+        "rot13": "FoKoybpxQrcevbevgvmrNinvyCfoYvirVaGbFhpp",
+        "name": "SbXblockDeprioritizeAvailPsbLiveInToSucc",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC6F0",
+        "rot13": "FoKoybpxPurpxArtngvirFgnyy",
+        "name": "SbXblockCheckNegativeStall",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC720",
+        "rot13": "FoKoybpxNyybpngrIfofSbeYvirVaCfof",
+        "name": "SbXblockAllocateVsbsForLiveInPsbs",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC748",
+        "rot13": "FoKOybpx",
+        "name": "SbXBlock",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC760",
+        "rot13": "FoErdOrsberHfvatYvirVaCfo",
+        "name": "SbReqBeforeUsingLiveInPsb",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC780",
+        "rot13": "FOErqverpgrqBc",
+        "name": "SBRedirectedOp",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC7A0",
+        "rot13": "FoErnqYqtfgfYngrapl",
+        "name": "SbReadLdgstsLatency",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC7C0",
+        "rot13": "FoErnqQzznYngrapl",
+        "name": "SbReadDmmaLatency",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC7E0",
+        "rot13": "FoErnqOnfrYngrapl",
+        "name": "SbReadBaseLatency",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC7F8",
+        "rot13": "FOCehavat",
+        "name": "SBPruning",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC810",
+        "rot13": "FOQvssKOybpxEqFo",
+        "name": "SBDiffXBlockRdSb",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC830",
+        "rot13": "FOQrcFgntrFgnyyGuerfubyq",
+        "name": "SBDepStageStallThreshold",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC850",
+        "rot13": "FOQrcFgntrCersreAbaYvirvaCfo",
+        "name": "SBDepStagePreferNonLiveinPsb",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC880",
+        "rot13": "FOQrconeZhygvcyrIdPnaqvqngr",
+        "name": "SBDepbarMultipleVqCandidate",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC8A0",
+        "rot13": "FOQryrgrHacerqFnzrIDIfo",
+        "name": "SBDeleteUnpredSameVQVsb",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC8C0",
+        "rot13": "FOPbzcyCerq",
+        "name": "SBComplPred",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC8D0",
+        "rot13": "ErfreirFOYYAbaQrcone",
+        "name": "ReserveSBLLNonDepbar",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC8F0",
+        "rot13": "ErfreirFO",
+        "name": "ReserveSB",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC900",
+        "rot13": "CnqqvatNyvtazrag",
+        "name": "PaddingAlignment",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC918",
+        "rot13": "BcJnecBcrkCeri",
+        "name": "OpWarpOpexPrev",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC940",
+        "rot13": "BcrkYriry",
+        "name": "OpexLevel",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC960",
+        "rot13": "BssGnetrgErgheaReebeSbePbaqvgvbanyBeVagreanyVafg",
+        "name": "OffTargetReturnErrorForConditionalOrInternalInst",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC9A0",
+        "rot13": "BssGnetrgPbairegPbaqvgvbanyVafgGbOcgGenc",
+        "name": "OffTargetConvertConditionalInstToBptTrap",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC9D0",
+        "rot13": "ZznFunqbjOvnf",
+        "name": "MmaShadowBias",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DC9F0",
+        "rot13": "ZnkPhzhJnvgFvaprRaqTebhc",
+        "name": "MaxCumuWaitSinceEndGroup",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCA10",
+        "rot13": "AibcgErpvcrZnfx",
+        "name": "NvoptRecipeMask",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCA30",
+        "rot13": "AibcgYbbcAhzore",
+        "name": "NvoptLoopNumber",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCA50",
+        "rot13": "ZrnfherSvanyvmngvbaGvzr",
+        "name": "MeasureFinalizationTime",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCA70",
+        "rot13": "YfhErfOhflFvmr",
+        "name": "LsuResBusySize",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCA90",
+        "rot13": "VffhrSerdhraplCvcr",
+        "name": "IssueFrequencyPipe",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCAB0",
+        "rot13": "VffhrSerdhraplBc",
+        "name": "IssueFrequencyOp",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCAD0",
+        "rot13": "VffhrQrynlJOFgnyyFrysYbbc",
+        "name": "IssueDelayWBStallSelfLoop",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCAF0",
+        "rot13": "VffhrQrynlJOFgnyy",
+        "name": "IssueDelayWBStall",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCB08",
+        "rot13": "VffhrQrynl",
+        "name": "IssueDelay",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCB20",
+        "rot13": "VagevafvpQrfpeSvyr",
+        "name": "IntrinsicDescrFile",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCB40",
+        "rot13": "VafregReeoneOrsberRkvg",
+        "name": "InsertErrbarBeforeExit",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCB60",
+        "rot13": "VafregQrynlHcGb",
+        "name": "InsertDelayUpTo",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCB80",
+        "rot13": "VafregQrynlAhzPlpyrf",
+        "name": "InsertDelayNumCycles",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCBA0",
+        "rot13": "VafregQrynlVafgEnatr",
+        "name": "InsertDelayInstRange",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCBC0",
+        "rot13": "VafregQrynlOrsberVafg",
+        "name": "InsertDelayBeforeInst",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCBE0",
+        "rot13": "VtaberGevivnyVafg",
+        "name": "IgnoreTrivialInst",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCBF8",
+        "rot13": "UrycJvxv",
+        "name": "HelpWiki",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCC05",
+        "rot13": "Uryc",
+        "name": "Help",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCC10",
+        "rot13": "RcvybthrYbbcHaebyyPbhag",
+        "name": "EpilogueLoopUnrollCount",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCC30",
+        "rot13": "RapbqrQrpbqrFnff",
+        "name": "EncodeDecodeSass",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCC48",
+        "rot13": "QhzcECB",
+        "name": "DumpRPO",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCC60",
+        "rot13": "QhzcErpbafgvghgrqOvanel",
+        "name": "DumpReconstitutedBinary",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCC80",
+        "rot13": "QhzcZrepBcPbhagf",
+        "name": "DumpMercOpCounts",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCC95",
+        "rot13": "QhzcVE",
+        "name": "DumpIR",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCCA0",
+        "rot13": "QhzcPST",
+        "name": "DumpCFG",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCCB0",
+        "rot13": "QhzcNaabg",
+        "name": "DumpAnnot",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCCC0",
+        "rot13": "QbIbygntrJne_FJ4981360",
+        "name": "DoVoltageWar_SW4981360",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCCE0",
+        "rot13": "QvfnoyrJne_UJ4403675",
+        "name": "DisableWar_HW4403675",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCD00",
+        "rot13": "QvfnoyrJne_FJ2549067",
+        "name": "DisableWar_SW2549067",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCD20",
+        "rot13": "QvfnoyrFO",
+        "name": "DisableSB",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCD30",
+        "rot13": "QvfnoyrReeoneNsgreZrzone",
+        "name": "DisableErrbarAfterMembar",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCD50",
+        "rot13": "QvfnoyrQrcone",
+        "name": "DisableDepbar",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCD68",
+        "rot13": "QvfnoyrNffhzr",
+        "name": "DisableAssume",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCD80",
+        "rot13": "PbzchgrSXCresZrgevpfJvgubhgXabof",
+        "name": "ComputeFKPerfMetricsWithoutKnobs",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCDA8",
+        "rot13": "PbzcCerqJnvg",
+        "name": "CompPredWait",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCDC0",
+        "rot13": "PbzcvyrZbqr",
+        "name": "CompileMode",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCDD0",
+        "rot13": "PbzcnpgrqNffhzrf",
+        "name": "CompactedAssumes",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCDF0",
+        "rot13": "PSTHfrErphefvirECBGenirefny",
+        "name": "CFGUseRecursiveRPOTraversal",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCE10",
+        "rot13": "OhvyqPST",
+        "name": "BuildCFG",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCE20",
+        "rot13": "OneevreRkrzcgQrcone",
+        "name": "BarrierExemptDepbar",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCE38",
+        "rot13": "OneevreRkrzcg",
+        "name": "BarrierExempt",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCE50",
+        "rot13": "OneQrsreOybpxvat",
+        "name": "BarDeferBlocking",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCE70",
+        "rot13": "OnpxrqtrQrconeBhg",
+        "name": "BackedgeDepbarOut",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCE90",
+        "rot13": "OnpxrqtrQrconeVa",
+        "name": "BackedgeDepbarIn",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DCEB0",
+        "rot13": "NyybjJnvg1RaqTebhc",
+        "name": "AllowWait1EndGroup",
+        "is_rot13": true
+      },
+      {
+        "va": "0x21DD150",
+        "rot13": "OptimizeNaNOrZero",
+        "name": "OptimizeNaNOrZero",
+        "is_rot13": false
+      },
+      {
+        "va": "0x21DD162",
+        "rot13": "HoistInvariants",
+        "name": "HoistInvariants",
+        "is_rot13": false
+      }
+    ]
+  }
+}
