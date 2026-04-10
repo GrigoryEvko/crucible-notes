@@ -6,7 +6,7 @@
     "entries": [
       {
         "va": "0x229C400",
-        "label": "base_occupancy_params",
+        "label": "sm90_regfile_params",
         "dwords": [
           6,
           128,
@@ -22,7 +22,7 @@
       },
       {
         "va": "0x229C410",
-        "label": "secondary_param_block",
+        "label": "sm90_granularity_params",
         "dwords": [
           63,
           7,
@@ -38,7 +38,7 @@
       },
       {
         "va": "0x229C420",
-        "label": "primary_occupancy_params",
+        "label": "barrier_cta_params",
         "dwords": [
           4,
           2048,
@@ -54,7 +54,7 @@
       },
       {
         "va": "0x229C430",
-        "label": "sm60_sm70_base",
+        "label": "sm60_sm70_max_warps",
         "dwords": [
           32,
           32,
@@ -70,7 +70,7 @@
       },
       {
         "va": "0x229C440",
-        "label": "common_sm30_sm75",
+        "label": "sm53_sm62_regfile_params",
         "dwords": [
           6,
           128,
@@ -86,7 +86,7 @@
       },
       {
         "va": "0x229C450",
-        "label": "sm35_sm37_variants",
+        "label": "sm35_sm37_max_warps",
         "dwords": [
           32,
           32,
@@ -102,7 +102,7 @@
       },
       {
         "va": "0x229C460",
-        "label": "sm3x_sm7x_variants",
+        "label": "sm3x_sm5x_max_warps",
         "dwords": [
           32,
           32,
@@ -118,7 +118,7 @@
       },
       {
         "va": "0x229C470",
-        "label": "sm70plus_granularity2",
+        "label": "sm70plus_granularity",
         "dwords": [
           80,
           7,

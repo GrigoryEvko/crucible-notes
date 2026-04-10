@@ -1,0 +1,8309 @@
+{
+  "register_class_constraints": [
+    {
+      "sm_generation": "sm_5x",
+      "start_va": "0x21FDC00",
+      "end_va": "0x21FEE00",
+      "size_bytes": 4608,
+      "record_count": 72,
+      "record_stride": 64,
+      "has_embedded_rodata_pointers": false,
+      "group_count_distribution": {
+        "1": 31,
+        "2": 36,
+        "3": 3,
+        "5": 2
+      },
+      "records": [
+        {
+          "index": 0,
+          "va": "0x21FDC00",
+          "active_group_count": 1,
+          "groups": [],
+          "raw_u32": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 1,
+          "va": "0x21FDC40",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 2,
+          "va": "0x21FDC80",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 2,
+              "sub_b": 2
+            }
+          ],
+          "raw_u32": [
+            0,
+            0,
+            0,
+            1,
+            2,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 3,
+          "va": "0x21FDCC0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 6
+            }
+          ],
+          "raw_u32": [
+            0,
+            0,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 4,
+          "va": "0x21FDD00",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 8
+            }
+          ],
+          "raw_u32": [
+            0,
+            0,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 5,
+          "va": "0x21FDD40",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 10
+            }
+          ],
+          "raw_u32": [
+            0,
+            0,
+            10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 6,
+          "va": "0x21FDD80",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 20
+            },
+            {
+              "class_id": 25,
+              "sub_a": 9,
+              "sub_b": 9
+            }
+          ],
+          "raw_u32": [
+            0,
+            0,
+            20,
+            25,
+            9,
+            9,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 7,
+          "va": "0x21FDDC0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 2,
+              "sub_b": 2
+            }
+          ],
+          "raw_u32": [
+            0,
+            2,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 8,
+          "va": "0x21FDE00",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 4,
+              "sub_b": 8
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 12
+            }
+          ],
+          "raw_u32": [
+            0,
+            4,
+            8,
+            1,
+            0,
+            12,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 9,
+          "va": "0x21FDE40",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 4,
+              "sub_b": 40
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 16
+            }
+          ],
+          "raw_u32": [
+            0,
+            4,
+            40,
+            1,
+            0,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 10,
+          "va": "0x21FDE80",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 4,
+              "sub_b": 42
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 18
+            }
+          ],
+          "raw_u32": [
+            0,
+            4,
+            42,
+            1,
+            0,
+            18,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 11,
+          "va": "0x21FDEC0",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 4,
+              "sub_b": 52
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 16
+            }
+          ],
+          "raw_u32": [
+            0,
+            4,
+            52,
+            1,
+            0,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 12,
+          "va": "0x21FDF00",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 4,
+              "sub_b": 54
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 18
+            }
+          ],
+          "raw_u32": [
+            0,
+            4,
+            54,
+            1,
+            0,
+            18,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 13,
+          "va": "0x21FDF40",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 5,
+              "sub_b": 5
+            }
+          ],
+          "raw_u32": [
+            0,
+            5,
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 14,
+          "va": "0x21FDF80",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 5,
+              "sub_b": 5
+            },
+            {
+              "class_id": 23,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            0,
+            5,
+            5,
+            23,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 15,
+          "va": "0x21FDFC0",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 5,
+              "sub_b": 7
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 12
+            }
+          ],
+          "raw_u32": [
+            0,
+            5,
+            7,
+            1,
+            0,
+            12,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 16,
+          "va": "0x21FE000",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 5,
+              "sub_b": 25
+            },
+            {
+              "class_id": 25,
+              "sub_a": 14,
+              "sub_b": 14
+            }
+          ],
+          "raw_u32": [
+            0,
+            5,
+            25,
+            25,
+            14,
+            14,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 17,
+          "va": "0x21FE040",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 7,
+              "sub_b": 7
+            },
+            {
+              "class_id": 23,
+              "sub_a": 1,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            0,
+            7,
+            7,
+            23,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 18,
+          "va": "0x21FE080",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 7,
+              "sub_b": 7
+            },
+            {
+              "class_id": 23,
+              "sub_a": 11,
+              "sub_b": 11
+            }
+          ],
+          "raw_u32": [
+            0,
+            7,
+            7,
+            23,
+            11,
+            11,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 19,
+          "va": "0x21FE0C0",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 8,
+              "sub_b": 28
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 16
+            }
+          ],
+          "raw_u32": [
+            0,
+            8,
+            28,
+            1,
+            0,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 20,
+          "va": "0x21FE100",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 8,
+              "sub_b": 28
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 40
+            }
+          ],
+          "raw_u32": [
+            0,
+            8,
+            28,
+            1,
+            0,
+            40,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 21,
+          "va": "0x21FE140",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 8,
+              "sub_b": 28
+            },
+            {
+              "class_id": 1,
+              "sub_a": 4,
+              "sub_b": 16
+            }
+          ],
+          "raw_u32": [
+            0,
+            8,
+            28,
+            1,
+            4,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 22,
+          "va": "0x21FE180",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 8,
+              "sub_b": 34
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 40
+            }
+          ],
+          "raw_u32": [
+            0,
+            8,
+            34,
+            1,
+            0,
+            40,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 23,
+          "va": "0x21FE1C0",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 8,
+              "sub_b": 34
+            },
+            {
+              "class_id": 1,
+              "sub_a": 4,
+              "sub_b": 40
+            }
+          ],
+          "raw_u32": [
+            0,
+            8,
+            34,
+            1,
+            4,
+            40,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 24,
+          "va": "0x21FE200",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 8,
+              "sub_b": 40
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 16
+            }
+          ],
+          "raw_u32": [
+            0,
+            8,
+            40,
+            1,
+            0,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 25,
+          "va": "0x21FE240",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 8,
+              "sub_b": 40
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 52
+            }
+          ],
+          "raw_u32": [
+            0,
+            8,
+            40,
+            1,
+            0,
+            52,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 26,
+          "va": "0x21FE280",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 8,
+              "sub_b": 40
+            },
+            {
+              "class_id": 1,
+              "sub_a": 4,
+              "sub_b": 16
+            }
+          ],
+          "raw_u32": [
+            0,
+            8,
+            40,
+            1,
+            4,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 27,
+          "va": "0x21FE2C0",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 8,
+              "sub_b": 46
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 52
+            }
+          ],
+          "raw_u32": [
+            0,
+            8,
+            46,
+            1,
+            0,
+            52,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 28,
+          "va": "0x21FE300",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 8,
+              "sub_b": 46
+            },
+            {
+              "class_id": 1,
+              "sub_a": 4,
+              "sub_b": 52
+            }
+          ],
+          "raw_u32": [
+            0,
+            8,
+            46,
+            1,
+            4,
+            52,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 29,
+          "va": "0x21FE340",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 8,
+              "sub_b": 56
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 32
+            }
+          ],
+          "raw_u32": [
+            0,
+            8,
+            56,
+            1,
+            0,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 30,
+          "va": "0x21FE380",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 8,
+              "sub_b": 56
+            },
+            {
+              "class_id": 1,
+              "sub_a": 4,
+              "sub_b": 32
+            }
+          ],
+          "raw_u32": [
+            0,
+            8,
+            56,
+            1,
+            4,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 31,
+          "va": "0x21FE3C0",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 8,
+              "sub_b": 68
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 32
+            }
+          ],
+          "raw_u32": [
+            0,
+            8,
+            68,
+            1,
+            0,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 32,
+          "va": "0x21FE400",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 8,
+              "sub_b": 68
+            },
+            {
+              "class_id": 1,
+              "sub_a": 4,
+              "sub_b": 32
+            }
+          ],
+          "raw_u32": [
+            0,
+            8,
+            68,
+            1,
+            4,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 33,
+          "va": "0x21FE440",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 10,
+              "sub_b": 40
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            0,
+            10,
+            40,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 34,
+          "va": "0x21FE480",
+          "active_group_count": 3,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 10,
+              "sub_b": 40
+            },
+            {
+              "class_id": 1,
+              "sub_a": 6,
+              "sub_b": 8
+            },
+            {
+              "class_id": 14,
+              "sub_a": 23,
+              "sub_b": 33
+            }
+          ],
+          "raw_u32": [
+            0,
+            10,
+            40,
+            1,
+            6,
+            8,
+            14,
+            23,
+            33,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3
+          ]
+        },
+        {
+          "index": 35,
+          "va": "0x21FE4C0",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 11,
+              "sub_b": 41
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            0,
+            11,
+            41,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 36,
+          "va": "0x21FE500",
+          "active_group_count": 3,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 11,
+              "sub_b": 41
+            },
+            {
+              "class_id": 1,
+              "sub_a": 6,
+              "sub_b": 7
+            },
+            {
+              "class_id": 14,
+              "sub_a": 24,
+              "sub_b": 34
+            }
+          ],
+          "raw_u32": [
+            0,
+            11,
+            41,
+            1,
+            6,
+            7,
+            14,
+            24,
+            34,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3
+          ]
+        },
+        {
+          "index": 37,
+          "va": "0x21FE540",
+          "active_group_count": 5,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 24,
+              "sub_b": 64
+            },
+            {
+              "class_id": 24,
+              "sub_a": 0,
+              "sub_b": 49
+            },
+            {
+              "class_id": 25,
+              "sub_a": 13,
+              "sub_b": 13
+            },
+            {
+              "class_id": 1,
+              "sub_a": 45,
+              "sub_b": 70
+            },
+            {
+              "class_id": 7,
+              "sub_a": 69,
+              "sub_b": 69
+            }
+          ],
+          "raw_u32": [
+            0,
+            24,
+            64,
+            24,
+            0,
+            49,
+            25,
+            13,
+            13,
+            1,
+            45,
+            70,
+            7,
+            69,
+            69,
+            5
+          ]
+        },
+        {
+          "index": 38,
+          "va": "0x21FE580",
+          "active_group_count": 5,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 24,
+              "sub_b": 65
+            },
+            {
+              "class_id": 24,
+              "sub_a": 0,
+              "sub_b": 50
+            },
+            {
+              "class_id": 25,
+              "sub_a": 13,
+              "sub_b": 13
+            },
+            {
+              "class_id": 1,
+              "sub_a": 45,
+              "sub_b": 71
+            },
+            {
+              "class_id": 7,
+              "sub_a": 70,
+              "sub_b": 70
+            }
+          ],
+          "raw_u32": [
+            0,
+            24,
+            65,
+            24,
+            0,
+            50,
+            25,
+            13,
+            13,
+            1,
+            45,
+            71,
+            7,
+            70,
+            70,
+            5
+          ]
+        },
+        {
+          "index": 39,
+          "va": "0x21FE5C0",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 32,
+              "sub_b": 36
+            },
+            {
+              "class_id": 25,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            0,
+            32,
+            36,
+            25,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 40,
+          "va": "0x21FE600",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 4,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 41,
+          "va": "0x21FE640",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 5,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 42,
+          "va": "0x21FE680",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 43,
+          "va": "0x21FE6C0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 3,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            3,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 44,
+          "va": "0x21FE700",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 23,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            23,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 45,
+          "va": "0x21FE740",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 23,
+              "sub_a": 0,
+              "sub_b": 0
+            },
+            {
+              "class_id": 24,
+              "sub_a": 8,
+              "sub_b": 8
+            }
+          ],
+          "raw_u32": [
+            23,
+            0,
+            0,
+            24,
+            8,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 46,
+          "va": "0x21FE780",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 23,
+              "sub_a": 0,
+              "sub_b": 0
+            },
+            {
+              "class_id": 25,
+              "sub_a": 5,
+              "sub_b": 5
+            }
+          ],
+          "raw_u32": [
+            23,
+            0,
+            0,
+            25,
+            5,
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 47,
+          "va": "0x21FE7C0",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 23,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 24,
+              "sub_a": 0,
+              "sub_b": 24
+            }
+          ],
+          "raw_u32": [
+            23,
+            1,
+            1,
+            24,
+            0,
+            24,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 48,
+          "va": "0x21FE800",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 23,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 24,
+              "sub_a": 0,
+              "sub_b": 40
+            }
+          ],
+          "raw_u32": [
+            23,
+            1,
+            1,
+            24,
+            0,
+            40,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 49,
+          "va": "0x21FE840",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 19,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            19,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 50,
+          "va": "0x21FE880",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 24,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            24,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 51,
+          "va": "0x21FE8C0",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 24,
+              "sub_a": 0,
+              "sub_b": 0
+            },
+            {
+              "class_id": 7,
+              "sub_a": 69,
+              "sub_b": 69
+            }
+          ],
+          "raw_u32": [
+            24,
+            0,
+            0,
+            7,
+            69,
+            69,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 52,
+          "va": "0x21FE900",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 24,
+              "sub_a": 0,
+              "sub_b": 0
+            },
+            {
+              "class_id": 7,
+              "sub_a": 70,
+              "sub_b": 70
+            }
+          ],
+          "raw_u32": [
+            24,
+            0,
+            0,
+            7,
+            70,
+            70,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 53,
+          "va": "0x21FE940",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 24,
+              "sub_a": 0,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            24,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 54,
+          "va": "0x21FE980",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 24,
+              "sub_a": 0,
+              "sub_b": 24
+            }
+          ],
+          "raw_u32": [
+            24,
+            0,
+            24,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 55,
+          "va": "0x21FE9C0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 24,
+              "sub_a": 0,
+              "sub_b": 40
+            }
+          ],
+          "raw_u32": [
+            24,
+            0,
+            40,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 56,
+          "va": "0x21FEA00",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 24,
+              "sub_a": 8,
+              "sub_b": 8
+            }
+          ],
+          "raw_u32": [
+            24,
+            8,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 57,
+          "va": "0x21FEA40",
+          "active_group_count": 3,
+          "groups": [
+            {
+              "class_id": 24,
+              "sub_a": 11,
+              "sub_b": 11
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            },
+            {
+              "class_id": 7,
+              "sub_a": 5,
+              "sub_b": 5
+            }
+          ],
+          "raw_u32": [
+            24,
+            11,
+            11,
+            1,
+            0,
+            0,
+            7,
+            5,
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3
+          ]
+        },
+        {
+          "index": 58,
+          "va": "0x21FEA80",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 24,
+              "sub_a": 63,
+              "sub_b": 63
+            }
+          ],
+          "raw_u32": [
+            24,
+            63,
+            63,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 59,
+          "va": "0x21FEAC0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 25,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            25,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 60,
+          "va": "0x21FEB00",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 25,
+              "sub_a": 1,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            25,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 61,
+          "va": "0x21FEB40",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 25,
+              "sub_a": 5,
+              "sub_b": 5
+            }
+          ],
+          "raw_u32": [
+            25,
+            5,
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 62,
+          "va": "0x21FEB80",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 25,
+              "sub_a": 6,
+              "sub_b": 6
+            }
+          ],
+          "raw_u32": [
+            25,
+            6,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 63,
+          "va": "0x21FEBC0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 25,
+              "sub_a": 8,
+              "sub_b": 8
+            }
+          ],
+          "raw_u32": [
+            25,
+            8,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 64,
+          "va": "0x21FEC00",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 25,
+              "sub_a": 9,
+              "sub_b": 9
+            }
+          ],
+          "raw_u32": [
+            25,
+            9,
+            9,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 65,
+          "va": "0x21FEC40",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 25,
+              "sub_a": 25,
+              "sub_b": 25
+            }
+          ],
+          "raw_u32": [
+            25,
+            25,
+            25,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 66,
+          "va": "0x21FEC80",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 25,
+              "sub_a": 30,
+              "sub_b": 30
+            }
+          ],
+          "raw_u32": [
+            25,
+            30,
+            30,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 67,
+          "va": "0x21FECC0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 25,
+              "sub_a": 63,
+              "sub_b": 63
+            }
+          ],
+          "raw_u32": [
+            25,
+            63,
+            63,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 68,
+          "va": "0x21FED00",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 6,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 69,
+          "va": "0x21FED40",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 22,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            22,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 70,
+          "va": "0x21FED80",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 71,
+          "va": "0x21FEDC0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            1,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "sm_generation": "sm_4x",
+      "start_va": "0x22516C0",
+      "end_va": "0x22528C0",
+      "size_bytes": 4608,
+      "record_count": 72,
+      "record_stride": 64,
+      "has_embedded_rodata_pointers": true,
+      "group_count_distribution": {
+        "0": 12,
+        "1": 41,
+        "2": 10,
+        "4": 1,
+        "6": 2,
+        "10": 1,
+        "11": 1,
+        "12": 2,
+        "15": 2
+      },
+      "records": [
+        {
+          "index": 0,
+          "va": "0x22516C0",
+          "active_group_count": 1,
+          "groups": [],
+          "raw_u32": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 1,
+          "va": "0x2251700",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            }
+          ],
+          "raw_u32": [
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 2,
+          "va": "0x2251740",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 8
+            }
+          ],
+          "raw_u32": [
+            0,
+            0,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 3,
+          "va": "0x2251780",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 20
+            },
+            {
+              "class_id": 20,
+              "sub_a": 9,
+              "sub_b": 9
+            }
+          ],
+          "raw_u32": [
+            0,
+            0,
+            20,
+            20,
+            9,
+            9,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 4,
+          "va": "0x22517C0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 1,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 5,
+          "va": "0x2251800",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 1,
+              "sub_b": 21
+            },
+            {
+              "class_id": 20,
+              "sub_a": 10,
+              "sub_b": 10
+            }
+          ],
+          "raw_u32": [
+            0,
+            1,
+            21,
+            20,
+            10,
+            10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 6,
+          "va": "0x2251840",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 2,
+              "sub_b": 2
+            }
+          ],
+          "raw_u32": [
+            0,
+            2,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 7,
+          "va": "0x2251880",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 3,
+              "sub_b": 3
+            }
+          ],
+          "raw_u32": [
+            0,
+            3,
+            3,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 8,
+          "va": "0x22518C0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 9,
+              "sub_b": 9
+            }
+          ],
+          "raw_u32": [
+            0,
+            9,
+            9,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 9,
+          "va": "0x2251900",
+          "active_group_count": 4,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 24,
+              "sub_b": 70
+            },
+            {
+              "class_id": 19,
+              "sub_a": 0,
+              "sub_b": 49
+            },
+            {
+              "class_id": 20,
+              "sub_a": 13,
+              "sub_b": 13
+            },
+            {
+              "class_id": 2,
+              "sub_a": 69,
+              "sub_b": 69
+            }
+          ],
+          "raw_u32": [
+            0,
+            24,
+            70,
+            19,
+            0,
+            49,
+            20,
+            13,
+            13,
+            2,
+            69,
+            69,
+            0,
+            0,
+            0,
+            4
+          ]
+        },
+        {
+          "index": 10,
+          "va": "0x2251940",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 32,
+              "sub_b": 36
+            },
+            {
+              "class_id": 20,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            0,
+            32,
+            36,
+            20,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 11,
+          "va": "0x2251980",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 18,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            18,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 12,
+          "va": "0x22519C0",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 18,
+              "sub_a": 0,
+              "sub_b": 0
+            },
+            {
+              "class_id": 19,
+              "sub_a": 8,
+              "sub_b": 8
+            }
+          ],
+          "raw_u32": [
+            18,
+            0,
+            0,
+            19,
+            8,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 13,
+          "va": "0x2251A00",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 18,
+              "sub_a": 0,
+              "sub_b": 0
+            },
+            {
+              "class_id": 20,
+              "sub_a": 1,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            18,
+            0,
+            0,
+            20,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 14,
+          "va": "0x2251A40",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 18,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 19,
+              "sub_a": 0,
+              "sub_b": 40
+            }
+          ],
+          "raw_u32": [
+            18,
+            1,
+            1,
+            19,
+            0,
+            40,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 15,
+          "va": "0x2251A80",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 13,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            13,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 16,
+          "va": "0x2251AC0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 19,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            19,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 17,
+          "va": "0x2251B00",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 19,
+              "sub_a": 0,
+              "sub_b": 0
+            },
+            {
+              "class_id": 2,
+              "sub_a": 69,
+              "sub_b": 69
+            }
+          ],
+          "raw_u32": [
+            19,
+            0,
+            0,
+            2,
+            69,
+            69,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 18,
+          "va": "0x2251B40",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 19,
+              "sub_a": 0,
+              "sub_b": 40
+            }
+          ],
+          "raw_u32": [
+            19,
+            0,
+            40,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 19,
+          "va": "0x2251B80",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 19,
+              "sub_a": 8,
+              "sub_b": 8
+            }
+          ],
+          "raw_u32": [
+            19,
+            8,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 20,
+          "va": "0x2251BC0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 19,
+              "sub_a": 63,
+              "sub_b": 63
+            }
+          ],
+          "raw_u32": [
+            19,
+            63,
+            63,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 21,
+          "va": "0x2251C00",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 20,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            20,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 22,
+          "va": "0x2251C40",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 20,
+              "sub_a": 1,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            20,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 23,
+          "va": "0x2251C80",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 20,
+              "sub_a": 6,
+              "sub_b": 6
+            }
+          ],
+          "raw_u32": [
+            20,
+            6,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 24,
+          "va": "0x2251CC0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 20,
+              "sub_a": 8,
+              "sub_b": 8
+            }
+          ],
+          "raw_u32": [
+            20,
+            8,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 25,
+          "va": "0x2251D00",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 20,
+              "sub_a": 9,
+              "sub_b": 9
+            }
+          ],
+          "raw_u32": [
+            20,
+            9,
+            9,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 26,
+          "va": "0x2251D40",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 20,
+              "sub_a": 25,
+              "sub_b": 25
+            }
+          ],
+          "raw_u32": [
+            20,
+            25,
+            25,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 27,
+          "va": "0x2251D80",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 20,
+              "sub_a": 26,
+              "sub_b": 26
+            }
+          ],
+          "raw_u32": [
+            20,
+            26,
+            26,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 28,
+          "va": "0x2251DC0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 20,
+              "sub_a": 63,
+              "sub_b": 63
+            }
+          ],
+          "raw_u32": [
+            20,
+            63,
+            63,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 29,
+          "va": "0x2251E00",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 30,
+          "va": "0x2251E40",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 17,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            17,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 31,
+          "va": "0x2251E80",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 32,
+          "va": "0x2251EC0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 8,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 33,
+          "va": "0x2251F00",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 9,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            9,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 34,
+          "va": "0x2251F40",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 10,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 35,
+          "va": "0x2251F80",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 11,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            11,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 36,
+          "va": "0x2251FC0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 3,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            3,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 37,
+          "va": "0x2252000",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 5,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 38,
+          "va": "0x2252040",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 4,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 39,
+          "va": "0x2252080",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 7,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            7,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 40,
+          "va": "0x22520C0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 6,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 41,
+          "va": "0x2252100",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 14,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            14,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 42,
+          "va": "0x2252140",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 15,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            15,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 43,
+          "va": "0x2252180",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 16,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 44,
+          "va": "0x22521C0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 12,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            12,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 45,
+          "va": "0x2252200",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 35990240,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2252AE0"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 35990144,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 35990048
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 35989952,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x22529C0"
+            }
+          ],
+          "raw_u32": [
+            35990240,
+            0,
+            21,
+            0,
+            35990144,
+            0,
+            21,
+            0,
+            35990048,
+            0,
+            21,
+            0,
+            35989952,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x2252AE0",
+            "0x22529C0"
+          ]
+        },
+        {
+          "index": 46,
+          "va": "0x2252240",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 35989856,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2252960"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 35989760,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 35989664
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 35989568,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2252840"
+            }
+          ],
+          "raw_u32": [
+            35989856,
+            0,
+            21,
+            0,
+            35989760,
+            0,
+            21,
+            0,
+            35989664,
+            0,
+            21,
+            0,
+            35989568,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x2252960",
+            "0x2252840"
+          ]
+        },
+        {
+          "index": 47,
+          "va": "0x2252280",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 35989472,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x22527E0"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 35989376,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 35989280
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 35989184,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x22526C0"
+            }
+          ],
+          "raw_u32": [
+            35989472,
+            0,
+            21,
+            0,
+            35989376,
+            0,
+            21,
+            0,
+            35989280,
+            0,
+            21,
+            0,
+            35989184,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x22527E0",
+            "0x22526C0"
+          ]
+        },
+        {
+          "index": 48,
+          "va": "0x22522C0",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 35989088,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2252660"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 35988992,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 35988896
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 35988800,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2252540"
+            }
+          ],
+          "raw_u32": [
+            35989088,
+            0,
+            21,
+            0,
+            35988992,
+            0,
+            21,
+            0,
+            35988896,
+            0,
+            21,
+            0,
+            35988800,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x2252660",
+            "0x2252540"
+          ]
+        },
+        {
+          "index": 49,
+          "va": "0x2252300",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 35988704,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x22524E0"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 35988608,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 35988512
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 35988416,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x22523C0"
+            }
+          ],
+          "raw_u32": [
+            35988704,
+            0,
+            21,
+            0,
+            35988608,
+            0,
+            21,
+            0,
+            35988512,
+            0,
+            21,
+            0,
+            35988416,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x22524E0",
+            "0x22523C0"
+          ]
+        },
+        {
+          "index": 50,
+          "va": "0x2252340",
+          "active_group_count": 6,
+          "groups": [
+            {
+              "class_id": 35988320,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2252360"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 6
+            },
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 6
+            }
+          ],
+          "raw_u32": [
+            35988320,
+            0,
+            21,
+            0,
+            0,
+            0,
+            0,
+            0,
+            6,
+            6,
+            6,
+            0,
+            0,
+            0,
+            6,
+            6
+          ],
+          "embedded_va_refs": [
+            "0x2252360"
+          ]
+        },
+        {
+          "index": 51,
+          "va": "0x2252380",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 6
+            },
+            {
+              "class_id": 10,
+              "sub_a": 10,
+              "sub_b": 12
+            },
+            {
+              "class_id": 13,
+              "sub_a": 15,
+              "sub_b": 23
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            6,
+            6,
+            6,
+            10,
+            10,
+            12,
+            13,
+            15,
+            23,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 52,
+          "va": "0x22523C0",
+          "active_group_count": 15,
+          "groups": [
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 6
+            },
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 6
+            },
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 10
+            },
+            {
+              "class_id": 10,
+              "sub_a": 12,
+              "sub_b": 13
+            }
+          ],
+          "raw_u32": [
+            6,
+            6,
+            6,
+            0,
+            0,
+            0,
+            6,
+            6,
+            6,
+            6,
+            6,
+            10,
+            10,
+            12,
+            13,
+            15
+          ]
+        },
+        {
+          "index": 53,
+          "va": "0x2252400",
+          "active_group_count": 6,
+          "groups": [
+            {
+              "class_id": 23,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 6
+            },
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 6
+            }
+          ],
+          "raw_u32": [
+            23,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            6,
+            6,
+            6,
+            0,
+            0,
+            0,
+            6,
+            6
+          ]
+        },
+        {
+          "index": 54,
+          "va": "0x2252440",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 6
+            },
+            {
+              "class_id": 10,
+              "sub_a": 10,
+              "sub_b": 12
+            },
+            {
+              "class_id": 13,
+              "sub_a": 15,
+              "sub_b": 23
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            6,
+            6,
+            6,
+            10,
+            10,
+            12,
+            13,
+            15,
+            23,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 55,
+          "va": "0x2252480",
+          "active_group_count": 15,
+          "groups": [
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 6
+            },
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 6
+            },
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 10
+            },
+            {
+              "class_id": 10,
+              "sub_a": 12,
+              "sub_b": 13
+            }
+          ],
+          "raw_u32": [
+            6,
+            6,
+            6,
+            0,
+            0,
+            0,
+            6,
+            6,
+            6,
+            6,
+            6,
+            10,
+            10,
+            12,
+            13,
+            15
+          ]
+        },
+        {
+          "index": 56,
+          "va": "0x22524C0",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 23,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            }
+          ],
+          "raw_u32": [
+            23,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            2,
+            2,
+            2,
+            0,
+            0,
+            0,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 57,
+          "va": "0x2252500",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 58,
+          "va": "0x2252540",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            0,
+            0,
+            0,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 59,
+          "va": "0x2252580",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 8,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            }
+          ],
+          "raw_u32": [
+            8,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            2,
+            2,
+            2,
+            0,
+            0,
+            0,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 60,
+          "va": "0x22525C0",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 1,
+              "sub_a": 3,
+              "sub_b": 11
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            1,
+            3,
+            11,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 61,
+          "va": "0x2252600",
+          "active_group_count": 10,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 1,
+              "sub_b": 7
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            0,
+            0,
+            0,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            1,
+            7,
+            10
+          ]
+        },
+        {
+          "index": 62,
+          "va": "0x2252640",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 18,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            18,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 63,
+          "va": "0x2252680",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 2,
+              "sub_a": 1,
+              "sub_b": 4
+            },
+            {
+              "class_id": 7,
+              "sub_a": 10,
+              "sub_b": 18
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            1,
+            1,
+            1,
+            2,
+            1,
+            4,
+            7,
+            10,
+            18,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 64,
+          "va": "0x22526C0",
+          "active_group_count": 11,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 3,
+              "sub_a": 5,
+              "sub_b": 8
+            }
+          ],
+          "raw_u32": [
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            3,
+            5,
+            8,
+            11
+          ]
+        },
+        {
+          "index": 65,
+          "va": "0x2252700",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 19,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            19,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 66,
+          "va": "0x2252740",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 5,
+              "sub_a": 5,
+              "sub_b": 7
+            },
+            {
+              "class_id": 8,
+              "sub_a": 11,
+              "sub_b": 19
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            1,
+            1,
+            1,
+            5,
+            5,
+            7,
+            8,
+            11,
+            19,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 67,
+          "va": "0x2252780",
+          "active_group_count": 12,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 2,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 6
+            },
+            {
+              "class_id": 6,
+              "sub_a": 8,
+              "sub_b": 9
+            }
+          ],
+          "raw_u32": [
+            1,
+            2,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            6,
+            6,
+            8,
+            9,
+            12
+          ]
+        },
+        {
+          "index": 68,
+          "va": "0x22527C0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 20,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            },
+            {
+              "class_id": 2,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            20,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            2,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 69,
+          "va": "0x2252800",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 8
+            },
+            {
+              "class_id": 9,
+              "sub_a": 12,
+              "sub_b": 20
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            1,
+            1,
+            1,
+            6,
+            6,
+            8,
+            9,
+            12,
+            20,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 70,
+          "va": "0x2252840",
+          "active_group_count": 12,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 2,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 6
+            },
+            {
+              "class_id": 6,
+              "sub_a": 8,
+              "sub_b": 9
+            }
+          ],
+          "raw_u32": [
+            1,
+            2,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            6,
+            6,
+            8,
+            9,
+            12
+          ]
+        },
+        {
+          "index": 71,
+          "va": "0x2252880",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 20,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 3
+            },
+            {
+              "class_id": 4,
+              "sub_a": 2,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            20,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            3,
+            4,
+            2,
+            0,
+            0,
+            0,
+            1,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "sm_generation": "sm_3x",
+      "start_va": "0x2274780",
+      "end_va": "0x2275980",
+      "size_bytes": 4608,
+      "record_count": 72,
+      "record_stride": 64,
+      "has_embedded_rodata_pointers": true,
+      "group_count_distribution": {
+        "0": 30,
+        "1": 28,
+        "2": 4,
+        "6": 2,
+        "7": 1,
+        "8": 1,
+        "10": 1,
+        "11": 2,
+        "12": 2,
+        "15": 1
+      },
+      "records": [
+        {
+          "index": 0,
+          "va": "0x2274780",
+          "active_group_count": 1,
+          "groups": [],
+          "raw_u32": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 1,
+          "va": "0x22747C0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 18,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            18,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 2,
+          "va": "0x2274800",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 13,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            13,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 3,
+          "va": "0x2274840",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 19,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            19,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 4,
+          "va": "0x2274880",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 20,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            20,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 5,
+          "va": "0x22748C0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 6,
+          "va": "0x2274900",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 17,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            17,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 7,
+          "va": "0x2274940",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 8,
+          "va": "0x2274980",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 8,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 9,
+          "va": "0x22749C0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 9,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            9,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 10,
+          "va": "0x2274A00",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 10,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 11,
+          "va": "0x2274A40",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 11,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            11,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 12,
+          "va": "0x2274A80",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 3,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            3,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 13,
+          "va": "0x2274AC0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 5,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 14,
+          "va": "0x2274B00",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 4,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 15,
+          "va": "0x2274B40",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 7,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            7,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 16,
+          "va": "0x2274B80",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 6,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 17,
+          "va": "0x2274BC0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 14,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            14,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 18,
+          "va": "0x2274C00",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 15,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            15,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 19,
+          "va": "0x2274C40",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 16,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 20,
+          "va": "0x2274C80",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 12,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            12,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 21,
+          "va": "0x2274CC0",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 36132256,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x22755A0"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 36132160,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 36132064
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 36131968,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275480"
+            }
+          ],
+          "raw_u32": [
+            36132256,
+            0,
+            21,
+            0,
+            36132160,
+            0,
+            21,
+            0,
+            36132064,
+            0,
+            21,
+            0,
+            36131968,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x22755A0",
+            "0x2275480"
+          ]
+        },
+        {
+          "index": 22,
+          "va": "0x2274D00",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 36131872,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275420"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 36131776,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 36131680
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 36131584,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275300"
+            }
+          ],
+          "raw_u32": [
+            36131872,
+            0,
+            21,
+            0,
+            36131776,
+            0,
+            21,
+            0,
+            36131680,
+            0,
+            21,
+            0,
+            36131584,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x2275420",
+            "0x2275300"
+          ]
+        },
+        {
+          "index": 23,
+          "va": "0x2274D40",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 36131488,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x22752A0"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 36131392,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 36131296
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 36131200,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275180"
+            }
+          ],
+          "raw_u32": [
+            36131488,
+            0,
+            21,
+            0,
+            36131392,
+            0,
+            21,
+            0,
+            36131296,
+            0,
+            21,
+            0,
+            36131200,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x22752A0",
+            "0x2275180"
+          ]
+        },
+        {
+          "index": 24,
+          "va": "0x2274D80",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 36131104,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275120"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 36131008,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 36130912
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 36130816,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275000"
+            }
+          ],
+          "raw_u32": [
+            36131104,
+            0,
+            21,
+            0,
+            36131008,
+            0,
+            21,
+            0,
+            36130912,
+            0,
+            21,
+            0,
+            36130816,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x2275120",
+            "0x2275000"
+          ]
+        },
+        {
+          "index": 25,
+          "va": "0x2274DC0",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 36130720,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2274FA0"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 36130624,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 36130528
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 36130432,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2274E80"
+            }
+          ],
+          "raw_u32": [
+            36130720,
+            0,
+            21,
+            0,
+            36130624,
+            0,
+            21,
+            0,
+            36130528,
+            0,
+            21,
+            0,
+            36130432,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x2274FA0",
+            "0x2274E80"
+          ]
+        },
+        {
+          "index": 26,
+          "va": "0x2274E00",
+          "active_group_count": 6,
+          "groups": [
+            {
+              "class_id": 36130336,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2274E20"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 6
+            },
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 6
+            }
+          ],
+          "raw_u32": [
+            36130336,
+            0,
+            21,
+            0,
+            0,
+            0,
+            0,
+            0,
+            6,
+            6,
+            6,
+            0,
+            0,
+            0,
+            6,
+            6
+          ],
+          "embedded_va_refs": [
+            "0x2274E20"
+          ]
+        },
+        {
+          "index": 27,
+          "va": "0x2274E40",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 6
+            },
+            {
+              "class_id": 10,
+              "sub_a": 10,
+              "sub_b": 12
+            },
+            {
+              "class_id": 13,
+              "sub_a": 15,
+              "sub_b": 23
+            },
+            {
+              "class_id": 25,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            6,
+            6,
+            6,
+            10,
+            10,
+            12,
+            13,
+            15,
+            23,
+            25,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 28,
+          "va": "0x2274E80",
+          "active_group_count": 15,
+          "groups": [
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 6
+            },
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 6
+            },
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 10
+            },
+            {
+              "class_id": 10,
+              "sub_a": 12,
+              "sub_b": 13
+            }
+          ],
+          "raw_u32": [
+            6,
+            6,
+            6,
+            0,
+            0,
+            0,
+            6,
+            6,
+            6,
+            6,
+            6,
+            10,
+            10,
+            12,
+            13,
+            15
+          ]
+        },
+        {
+          "index": 29,
+          "va": "0x2274EC0",
+          "active_group_count": 6,
+          "groups": [
+            {
+              "class_id": 23,
+              "sub_a": 25,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 6
+            },
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 6
+            }
+          ],
+          "raw_u32": [
+            23,
+            25,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            6,
+            6,
+            6,
+            0,
+            0,
+            0,
+            6,
+            6
+          ]
+        },
+        {
+          "index": 30,
+          "va": "0x2274F00",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 6
+            },
+            {
+              "class_id": 10,
+              "sub_a": 10,
+              "sub_b": 12
+            },
+            {
+              "class_id": 13,
+              "sub_a": 15,
+              "sub_b": 23
+            },
+            {
+              "class_id": 25,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            6,
+            6,
+            6,
+            10,
+            10,
+            12,
+            13,
+            15,
+            23,
+            25,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 31,
+          "va": "0x2274F40",
+          "active_group_count": 7,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 4
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            0,
+            0,
+            0,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            4,
+            7
+          ]
+        },
+        {
+          "index": 32,
+          "va": "0x2274F80",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 15,
+              "sub_a": 16,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            }
+          ],
+          "raw_u32": [
+            15,
+            16,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            2,
+            2,
+            2,
+            0,
+            0,
+            0,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 33,
+          "va": "0x2274FC0",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 4,
+              "sub_a": 8,
+              "sub_b": 16
+            },
+            {
+              "class_id": 16,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            4,
+            8,
+            16,
+            16,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 34,
+          "va": "0x2275000",
+          "active_group_count": 8,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 4
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            0,
+            0,
+            0,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            4,
+            8
+          ]
+        },
+        {
+          "index": 35,
+          "va": "0x2275040",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 16,
+              "sub_a": 17,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            }
+          ],
+          "raw_u32": [
+            16,
+            17,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            2,
+            2,
+            2,
+            0,
+            0,
+            0,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 36,
+          "va": "0x2275080",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 4,
+              "sub_a": 8,
+              "sub_b": 16
+            },
+            {
+              "class_id": 17,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            4,
+            8,
+            16,
+            17,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 37,
+          "va": "0x22750C0",
+          "active_group_count": 10,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 7
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            0,
+            0,
+            0,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            7,
+            10
+          ]
+        },
+        {
+          "index": 38,
+          "va": "0x2275100",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 18,
+              "sub_a": 19,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            18,
+            19,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 39,
+          "va": "0x2275140",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 6
+            },
+            {
+              "class_id": 7,
+              "sub_a": 10,
+              "sub_b": 18
+            },
+            {
+              "class_id": 19,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            1,
+            1,
+            1,
+            2,
+            2,
+            6,
+            7,
+            10,
+            18,
+            19,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 40,
+          "va": "0x2275180",
+          "active_group_count": 11,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 2
+            },
+            {
+              "class_id": 4,
+              "sub_a": 6,
+              "sub_b": 8
+            }
+          ],
+          "raw_u32": [
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            2,
+            4,
+            6,
+            8,
+            11
+          ]
+        },
+        {
+          "index": 41,
+          "va": "0x22751C0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 19,
+              "sub_a": 20,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            19,
+            20,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 42,
+          "va": "0x2275200",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 5,
+              "sub_a": 5,
+              "sub_b": 7
+            },
+            {
+              "class_id": 8,
+              "sub_a": 11,
+              "sub_b": 19
+            },
+            {
+              "class_id": 20,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            1,
+            1,
+            1,
+            5,
+            5,
+            7,
+            8,
+            11,
+            19,
+            20,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 43,
+          "va": "0x2275240",
+          "active_group_count": 12,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 2,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 6
+            },
+            {
+              "class_id": 6,
+              "sub_a": 8,
+              "sub_b": 9
+            }
+          ],
+          "raw_u32": [
+            1,
+            2,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            6,
+            6,
+            8,
+            9,
+            12
+          ]
+        },
+        {
+          "index": 44,
+          "va": "0x2275280",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 20,
+              "sub_a": 21,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            },
+            {
+              "class_id": 2,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            20,
+            21,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            2,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 45,
+          "va": "0x22752C0",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 8
+            },
+            {
+              "class_id": 9,
+              "sub_a": 12,
+              "sub_b": 20
+            },
+            {
+              "class_id": 21,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            1,
+            1,
+            1,
+            6,
+            6,
+            8,
+            9,
+            12,
+            20,
+            21,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 46,
+          "va": "0x2275300",
+          "active_group_count": 12,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 2,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 6
+            },
+            {
+              "class_id": 6,
+              "sub_a": 8,
+              "sub_b": 9
+            }
+          ],
+          "raw_u32": [
+            1,
+            2,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            6,
+            6,
+            8,
+            9,
+            12
+          ]
+        },
+        {
+          "index": 47,
+          "va": "0x2275340",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 20,
+              "sub_a": 21,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 3
+            },
+            {
+              "class_id": 4,
+              "sub_a": 2,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            20,
+            21,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            3,
+            4,
+            2,
+            0,
+            0,
+            0,
+            1,
+            2
+          ]
+        },
+        {
+          "index": 48,
+          "va": "0x2275380",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 3,
+              "sub_a": 3,
+              "sub_b": 3
+            },
+            {
+              "class_id": 8,
+              "sub_a": 8,
+              "sub_b": 10
+            },
+            {
+              "class_id": 11,
+              "sub_a": 14,
+              "sub_b": 22
+            },
+            {
+              "class_id": 23,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            3,
+            3,
+            3,
+            8,
+            8,
+            10,
+            11,
+            14,
+            22,
+            23,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 49,
+          "va": "0x22753C0",
+          "active_group_count": 0,
+          "groups": [],
+          "raw_u32": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 50,
+          "va": "0x2275400",
+          "active_group_count": 0,
+          "groups": [],
+          "raw_u32": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 51,
+          "va": "0x2275440",
+          "active_group_count": 0,
+          "groups": [],
+          "raw_u32": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 52,
+          "va": "0x2275480",
+          "active_group_count": 0,
+          "groups": [],
+          "raw_u32": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 53,
+          "va": "0x22754C0",
+          "active_group_count": 2,
+          "groups": [
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            },
+            {
+              "class_id": 2,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            2,
+            1,
+            0,
+            0,
+            0,
+            1,
+            2
+          ]
+        },
+        {
+          "index": 54,
+          "va": "0x2275500",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 8
+            },
+            {
+              "class_id": 9,
+              "sub_a": 12,
+              "sub_b": 20
+            },
+            {
+              "class_id": 21,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            1,
+            1,
+            1,
+            6,
+            6,
+            8,
+            9,
+            12,
+            20,
+            21,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 55,
+          "va": "0x2275540",
+          "active_group_count": 11,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 4
+            },
+            {
+              "class_id": 4,
+              "sub_a": 6,
+              "sub_b": 8
+            }
+          ],
+          "raw_u32": [
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            4,
+            4,
+            6,
+            8,
+            11
+          ]
+        },
+        {
+          "index": 56,
+          "va": "0x2275580",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 19,
+              "sub_a": 20,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            },
+            {
+              "class_id": 2,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            19,
+            20,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            2,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 57,
+          "va": "0x22755C0",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 6,
+              "sub_a": 6,
+              "sub_b": 8
+            },
+            {
+              "class_id": 9,
+              "sub_a": 12,
+              "sub_b": 20
+            },
+            {
+              "class_id": 21,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            1,
+            1,
+            1,
+            6,
+            6,
+            8,
+            9,
+            12,
+            20,
+            21,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 58,
+          "va": "0x2275600",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 36134624,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275EE0"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 36134528,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 36134432
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 36134336,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275DC0"
+            }
+          ],
+          "raw_u32": [
+            36134624,
+            0,
+            21,
+            0,
+            36134528,
+            0,
+            21,
+            0,
+            36134432,
+            0,
+            21,
+            0,
+            36134336,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x2275EE0",
+            "0x2275DC0"
+          ]
+        },
+        {
+          "index": 59,
+          "va": "0x2275640",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 36134240,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275D60"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 36134144,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 36134048
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 36133952,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275C40"
+            }
+          ],
+          "raw_u32": [
+            36134240,
+            0,
+            21,
+            0,
+            36134144,
+            0,
+            21,
+            0,
+            36134048,
+            0,
+            21,
+            0,
+            36133952,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x2275D60",
+            "0x2275C40"
+          ]
+        },
+        {
+          "index": 60,
+          "va": "0x2275680",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 36133856,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275BE0"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 36133760,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 36133664
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 36133568,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275AC0"
+            }
+          ],
+          "raw_u32": [
+            36133856,
+            0,
+            21,
+            0,
+            36133760,
+            0,
+            21,
+            0,
+            36133664,
+            0,
+            21,
+            0,
+            36133568,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x2275BE0",
+            "0x2275AC0"
+          ]
+        },
+        {
+          "index": 61,
+          "va": "0x22756C0",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 36133472,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275A60"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 36133376,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 36133280
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 36133184,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275940"
+            }
+          ],
+          "raw_u32": [
+            36133472,
+            0,
+            21,
+            0,
+            36133376,
+            0,
+            21,
+            0,
+            36133280,
+            0,
+            21,
+            0,
+            36133184,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x2275A60",
+            "0x2275940"
+          ]
+        },
+        {
+          "index": 62,
+          "va": "0x2275700",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 36133088,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x22758E0"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 36132992,
+              "sub_b": 0
+            },
+            {
+              "class_id": 21,
+              "sub_a": 0,
+              "sub_b": 36132896
+            },
+            {
+              "class_id": 0,
+              "sub_a": 21,
+              "sub_b": 0
+            },
+            {
+              "class_id": 36132800,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x22757C0"
+            }
+          ],
+          "raw_u32": [
+            36133088,
+            0,
+            21,
+            0,
+            36132992,
+            0,
+            21,
+            0,
+            36132896,
+            0,
+            21,
+            0,
+            36132800,
+            0,
+            21,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x22758E0",
+            "0x22757C0"
+          ]
+        },
+        {
+          "index": 63,
+          "va": "0x2275740",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 36132704,
+              "sub_a": 0,
+              "sub_b": 21,
+              "class_id_is_va": true,
+              "class_id_hex": "0x2275760"
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            36132704,
+            0,
+            21,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            0,
+            0
+          ],
+          "embedded_va_refs": [
+            "0x2275760"
+          ]
+        },
+        {
+          "index": 64,
+          "va": "0x2275780",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 65,
+          "va": "0x22757C0",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            0,
+            0,
+            2,
+            2,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 66,
+          "va": "0x2275800",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 67,
+          "va": "0x2275840",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 7
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1,
+            7,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 68,
+          "va": "0x2275880",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            0,
+            0,
+            2,
+            2,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "index": 69,
+          "va": "0x22758C0",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 0
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 70,
+          "va": "0x2275900",
+          "active_group_count": 0,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            },
+            {
+              "class_id": 1,
+              "sub_a": 0,
+              "sub_b": 0
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 71,
+          "va": "0x2275940",
+          "active_group_count": 1,
+          "groups": [
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 0,
+              "sub_a": 0,
+              "sub_b": 2
+            },
+            {
+              "class_id": 2,
+              "sub_a": 2,
+              "sub_b": 2
+            },
+            {
+              "class_id": 1,
+              "sub_a": 1,
+              "sub_b": 1
+            }
+          ],
+          "raw_u32": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            0,
+            0,
+            2,
+            2,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      ]
+    }
+  ]
+}

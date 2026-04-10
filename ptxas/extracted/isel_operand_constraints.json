@@ -1,0 +1,2653 @@
+{
+  "isel_operand_constraints": {
+    "region": {
+      "start_va": "0x22B8E00",
+      "end_va": "0x22BD0C0",
+      "total_bytes": 17088
+    },
+    "operand_constraint_records": {
+      "source_va": "0x22B8E00",
+      "end_va": "0x22BB560",
+      "record_count": 39,
+      "record_stride": 256,
+      "nonempty_records": 39,
+      "unique_type_ids": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25
+      ],
+      "dispatch_opcodes": {
+        "JMX": 70,
+        "UTMAPF": 243,
+        "UTMALST": 245,
+        "VHMNMX": 246,
+        "VIADD": 247,
+        "CREDUX": 254,
+        "FMNMX3": 257,
+        "UTCBAR_1CTA": 261,
+        "UTCBAR_2CTA": 262
+      },
+      "accessor_function": "sub_C3F490",
+      "callers": [
+        "sub_C40420",
+        "sub_C40B90",
+        "sub_C41100",
+        "sub_C42330",
+        "sub_6CB8A0"
+      ],
+      "records": [
+        {
+          "index": 0,
+          "va": "0x22B8E00",
+          "header": [
+            1,
+            1,
+            1,
+            2
+          ],
+          "type_count": 14,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            8,
+            5,
+            6,
+            16,
+            19,
+            22,
+            20,
+            23,
+            9,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 1,
+          "va": "0x22B8F00",
+          "header": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "type_count": 13,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            16,
+            19,
+            22,
+            20,
+            23,
+            8,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 2,
+          "va": "0x22B9000",
+          "header": [
+            1,
+            1,
+            1,
+            2
+          ],
+          "type_count": 12,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            8,
+            14,
+            9,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 3,
+          "va": "0x22B9100",
+          "header": [
+            1,
+            1,
+            2,
+            0
+          ],
+          "type_count": 11,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            14,
+            8,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 4,
+          "va": "0x22B9200",
+          "header": [
+            1,
+            2,
+            0,
+            0
+          ],
+          "type_count": 7,
+          "type_ids": [
+            1,
+            2,
+            3,
+            8,
+            25,
+            9,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            0
+          ]
+        },
+        {
+          "index": 5,
+          "va": "0x22B9300",
+          "header": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "type_count": 6,
+          "type_ids": [
+            1,
+            2,
+            3,
+            25,
+            8,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            0
+          ]
+        },
+        {
+          "index": 6,
+          "va": "0x22B9400",
+          "header": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "type_count": 15,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            8,
+            17,
+            18,
+            12,
+            9,
+            10,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 7,
+          "va": "0x22B9500",
+          "header": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "type_count": 14,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            17,
+            18,
+            12,
+            8,
+            10,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 8,
+          "va": "0x22B9600",
+          "header": [
+            1,
+            1,
+            1,
+            2
+          ],
+          "type_count": 13,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            17,
+            18,
+            12,
+            8,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 9,
+          "va": "0x22B9700",
+          "header": [
+            1,
+            1,
+            1,
+            2
+          ],
+          "type_count": 13,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            8,
+            17,
+            12,
+            9,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 10,
+          "va": "0x22B9800",
+          "header": [
+            1,
+            1,
+            1,
+            2
+          ],
+          "type_count": 12,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            17,
+            12,
+            8,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 11,
+          "va": "0x22B9900",
+          "header": [
+            1,
+            1,
+            2,
+            0
+          ],
+          "type_count": 15,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            8,
+            14,
+            17,
+            15,
+            9,
+            10,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 12,
+          "va": "0x22B9A00",
+          "header": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "type_count": 14,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            14,
+            17,
+            15,
+            8,
+            10,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 13,
+          "va": "0x22B9B00",
+          "header": [
+            1,
+            1,
+            1,
+            2
+          ],
+          "type_count": 13,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            14,
+            17,
+            15,
+            8,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 14,
+          "va": "0x22B9C00",
+          "header": [
+            1,
+            1,
+            1,
+            2
+          ],
+          "type_count": 15,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            8,
+            14,
+            17,
+            12,
+            9,
+            10,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 15,
+          "va": "0x22B9D00",
+          "header": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "type_count": 14,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            14,
+            17,
+            12,
+            8,
+            10,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 16,
+          "va": "0x22B9E00",
+          "header": [
+            1,
+            1,
+            1,
+            2
+          ],
+          "type_count": 13,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            14,
+            17,
+            12,
+            8,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 17,
+          "va": "0x22B9F00",
+          "header": [
+            1,
+            1,
+            1,
+            2
+          ],
+          "type_count": 13,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            8,
+            5,
+            6,
+            16,
+            19,
+            22,
+            20,
+            23,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 18,
+          "va": "0x22BA000",
+          "header": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "type_count": 11,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            8,
+            14,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 19,
+          "va": "0x22BA100",
+          "header": [
+            1,
+            1,
+            0,
+            0
+          ],
+          "type_count": 20,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            8,
+            16,
+            5,
+            6,
+            7,
+            14,
+            17,
+            12,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            10,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 20,
+          "va": "0x22BA200",
+          "header": [
+            0,
+            1,
+            1,
+            1
+          ],
+          "type_count": 14,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            8,
+            5,
+            6,
+            16,
+            19,
+            22,
+            20,
+            23,
+            10,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 21,
+          "va": "0x22BA300",
+          "header": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "type_count": 14,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            8,
+            17,
+            18,
+            12,
+            10,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 22,
+          "va": "0x22BA400",
+          "header": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "type_count": 14,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            8,
+            14,
+            17,
+            15,
+            10,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 23,
+          "va": "0x22BA500",
+          "header": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "type_count": 14,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            8,
+            14,
+            17,
+            12,
+            10,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 24,
+          "va": "0x22BA600",
+          "header": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "type_count": 19,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            8,
+            16,
+            5,
+            6,
+            7,
+            14,
+            17,
+            12,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 25,
+          "va": "0x22BA700",
+          "header": [
+            0,
+            1,
+            1,
+            1
+          ],
+          "type_count": 13,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            8,
+            5,
+            6,
+            16,
+            19,
+            22,
+            20,
+            23,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 26,
+          "va": "0x22BA800",
+          "header": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "type_count": 13,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            8,
+            17,
+            18,
+            12,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 27,
+          "va": "0x22BA900",
+          "header": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "type_count": 12,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            8,
+            17,
+            12,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 28,
+          "va": "0x22BAA00",
+          "header": [
+            1,
+            1,
+            1,
+            0
+          ],
+          "type_count": 13,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            8,
+            14,
+            17,
+            15,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 29,
+          "va": "0x22BAB00",
+          "header": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "type_count": 13,
+          "type_ids": [
+            1,
+            2,
+            3,
+            4,
+            16,
+            5,
+            6,
+            7,
+            8,
+            14,
+            17,
+            12,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "index": 30,
+          "va": "0x22BAC00",
+          "header": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "type_count": 6,
+          "type_ids": [
+            1,
+            2,
+            3,
+            8,
+            25,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            0
+          ]
+        },
+        {
+          "index": 31,
+          "va": "0x22BAD00",
+          "header": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "type_count": 18,
+          "type_ids": [
+            1,
+            2,
+            3,
+            8,
+            16,
+            5,
+            6,
+            7,
+            14,
+            17,
+            12,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            0
+          ]
+        },
+        {
+          "index": 32,
+          "va": "0x22BAE00",
+          "header": [
+            1,
+            1,
+            1,
+            2
+          ],
+          "type_count": 12,
+          "type_ids": [
+            1,
+            2,
+            3,
+            8,
+            16,
+            5,
+            6,
+            19,
+            22,
+            20,
+            23,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            0
+          ]
+        },
+        {
+          "index": 33,
+          "va": "0x22BAF00",
+          "header": [
+            1,
+            1,
+            1,
+            0
+          ],
+          "type_count": 7,
+          "type_ids": [
+            1,
+            2,
+            3,
+            5,
+            6,
+            7,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            0
+          ]
+        },
+        {
+          "index": 34,
+          "va": "0x22BB000",
+          "header": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "type_count": 12,
+          "type_ids": [
+            1,
+            2,
+            3,
+            16,
+            5,
+            6,
+            7,
+            8,
+            17,
+            18,
+            12,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            0
+          ]
+        },
+        {
+          "index": 35,
+          "va": "0x22BB100",
+          "header": [
+            1,
+            1,
+            1,
+            0
+          ],
+          "type_count": 11,
+          "type_ids": [
+            1,
+            2,
+            3,
+            16,
+            5,
+            6,
+            7,
+            8,
+            17,
+            12,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            0
+          ]
+        },
+        {
+          "index": 36,
+          "va": "0x22BB200",
+          "header": [
+            1,
+            1,
+            0,
+            0
+          ],
+          "type_count": 12,
+          "type_ids": [
+            1,
+            2,
+            3,
+            16,
+            5,
+            6,
+            7,
+            8,
+            14,
+            15,
+            17,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            0
+          ]
+        },
+        {
+          "index": 37,
+          "va": "0x22BB300",
+          "header": [
+            1,
+            1,
+            1,
+            0
+          ],
+          "type_count": 13,
+          "type_ids": [
+            1,
+            2,
+            3,
+            16,
+            5,
+            6,
+            7,
+            8,
+            14,
+            17,
+            12,
+            11,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            0
+          ]
+        },
+        {
+          "index": 38,
+          "va": "0x22BB400",
+          "header": [
+            1,
+            1,
+            1,
+            2
+          ],
+          "type_count": 12,
+          "type_ids": [
+            1,
+            2,
+            3,
+            16,
+            5,
+            6,
+            7,
+            8,
+            14,
+            17,
+            12,
+            0
+          ],
+          "constraint_flags": [
+            2,
+            2,
+            2,
+            2,
+            0
+          ]
+        }
+      ]
+    },
+    "operand_handler_vtable": {
+      "source_va": "0x22BB560",
+      "entry_count": 47,
+      "valid_text_pointers": 47,
+      "unique_targets": 36,
+      "accessors": [
+        "sub_C47430",
+        "sub_C3F730",
+        "sub_C3F970"
+      ],
+      "entries": [
+        "0xC47828",
+        "0xC478A8",
+        "0xC47910",
+        "0xC47978",
+        "0xC479E0",
+        "0xC475E6",
+        "0xC47A50",
+        "0xC47AB8",
+        "0xC47B20",
+        "0xC47568",
+        "0xC477E0",
+        "0xC477B0",
+        "0xC475E6",
+        "0xC47780",
+        "0xC475E6",
+        "0xC475E6",
+        "0xC47750",
+        "0xC475E6",
+        "0xC47700",
+        "0xC48EC0",
+        "0xC48E98",
+        "0xC48E38",
+        "0xC48DC8",
+        "0xC48F18",
+        "0xC49038",
+        "0xC49018",
+        "0xC48FC0",
+        "0xC48F58",
+        "0xC49080",
+        "0xC53F90",
+        "0xC53F28",
+        "0xC53BAC",
+        "0xC53F60",
+        "0xC53BAC",
+        "0xC53BAC",
+        "0xC53EF0",
+        "0xC53BAC",
+        "0xC53E90",
+        "0xC53E48",
+        "0xC53DE0",
+        "0xC53BAC",
+        "0xC53E18",
+        "0xC53BAC",
+        "0xC53BAC",
+        "0xC53DA8",
+        "0xC53BAC",
+        "0xC53D48"
+      ]
+    },
+    "operand_count_mapping": {
+      "source_va": "0x22BB6D8",
+      "end_va": "0x22BB738",
+      "size_bytes": 96,
+      "accessors": [
+        "sub_C47D50",
+        "sub_C48510",
+        "sub_C49450",
+        "sub_C49700",
+        "sub_C499D0"
+      ],
+      "values": [
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3,
+        0,
+        1,
+        2,
+        3,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "instruction_operation_vtable": {
+      "source_va": "0x22BB738",
+      "entry_count": 399,
+      "valid_text_pointers": 399,
+      "null_entries": 0,
+      "unique_targets": 399,
+      "constructor": "sub_9CE030",
+      "note": "C++ vtable assigned via *obj = off_22BB738",
+      "entries": [
+        "0xAA4B70",
+        "0xC5DBB0",
+        "0xA393D0",
+        "0xA393E0",
+        "0xC4D7B0",
+        "0xA3A120",
+        "0xA393F0",
+        "0xC4EC90",
+        "0xC504E0",
+        "0xA39420",
+        "0xC548C0",
+        "0xAA4BB0",
+        "0xC542D0",
+        "0x1BA4AB0",
+        "0xC4D980",
+        "0x1BA4B10",
+        "0x1BA4B80",
+        "0xA394A0",
+        "0xA394B0",
+        "0x1BA5480",
+        "0xAACF80",
+        "0x1BA54C0",
+        "0xA3AEA0",
+        "0xA394E0",
+        "0xC555E0",
+        "0xA39500",
+        "0xA39510",
+        "0xAAC960",
+        "0xC4E8D0",
+        "0xC4E980",
+        "0x1BA5B20",
+        "0xA39550",
+        "0xA39560",
+        "0xC507E0",
+        "0xAA4B80",
+        "0xAA4BC0",
+        "0xC5ABE0",
+        "0xA395B0",
+        "0x1BA5D70",
+        "0xA395D0",
+        "0xC50AA0",
+        "0xAACE00",
+        "0xC58570",
+        "0x1BAAE70",
+        "0xA39610",
+        "0x1BAB0A0",
+        "0x1BAB100",
+        "0xC556C0",
+        "0xAA4BF0",
+        "0xC4EF70",
+        "0xC50E30",
+        "0xC571C0",
+        "0xA39690",
+        "0x1BA9860",
+        "0xA396B0",
+        "0xA396C0",
+        "0xA396D0",
+        "0x1BAC3C0",
+        "0xA3A250",
+        "0xA396F0",
+        "0xC512F0",
+        "0xC550E0",
+        "0xC4F420",
+        "0xC515D0",
+        "0xA39740",
+        "0x1BA4940",
+        "0xAA4BD0",
+        "0xC58870",
+        "0x1BAC540",
+        "0xC58AD0",
+        "0x1BAC940",
+        "0xA397B0",
+        "0xA397C0",
+        "0x1BACB10",
+        "0x1BACB60",
+        "0xC59D00",
+        "0xA39800",
+        "0xA39810",
+        "0xC5A320",
+        "0xAACDE0",
+        "0xA39830",
+        "0x1BAD670",
+        "0x1BAD6D0",
+        "0xA3A3A0",
+        "0xA39860",
+        "0xC55F50",
+        "0xA39880",
+        "0xC55CA0",
+        "0xC487C0",
+        "0xC49110",
+        "0xC48B30",
+        "0xC56450",
+        "0xC56950",
+        "0xC47D50",
+        "0xC5AF00",
+        "0xC5B170",
+        "0xC5B3E0",
+        "0xC48510",
+        "0xC487A0",
+        "0xC4D7D0",
+        "0xC4D8C0",
+        "0xA39970",
+        "0xA39980",
+        "0xA39990",
+        "0x1BA5B80",
+        "0xC5AB60",
+        "0x1BA7CA0",
+        "0x1BAD8D0",
+        "0xAA4BE0",
+        "0xA399F0",
+        "0xA39A00",
+        "0xC4F710",
+        "0xC518D0",
+        "0xC51BB0",
+        "0xA39A40",
+        "0xC55360",
+        "0xC5A0C0",
+        "0xA39A70",
+        "0xC5A7B0",
+        "0xC5B960",
+        "0x1BAE0B0",
+        "0xC5BD20",
+        "0xC5C040",
+        "0xA39AD0",
+        "0xA39AE0",
+        "0xA39AF0",
+        "0xA39B00",
+        "0xA39B10",
+        "0xA39B20",
+        "0xA39B30",
+        "0xC5C990",
+        "0xC5CD20",
+        "0xC5C6F0",
+        "0xC5C840",
+        "0xC5CBE0",
+        "0xC59510",
+        "0xA39BA0",
+        "0xA39BB0",
+        "0x1BA7BF0",
+        "0xAACDC0",
+        "0xA39BD0",
+        "0xA39BE0",
+        "0xC5CF30",
+        "0xA39C00",
+        "0xC5D260",
+        "0xA39C20",
+        "0xC5D550",
+        "0xA39C40",
+        "0xC5D810",
+        "0xA39C60",
+        "0xC5D930",
+        "0xC5DAB0",
+        "0xC48B60",
+        "0xA39CA0",
+        "0xA39CB0",
+        "0xA39CC0",
+        "0xA39CD0",
+        "0xA39CE0",
+        "0xA39CF0",
+        "0xC5C3A0",
+        "0xA39D10",
+        "0xA39D20",
+        "0xA39D30",
+        "0xA39D40",
+        "0xA39D50",
+        "0xA39D60",
+        "0xA39D70",
+        "0xA39D80",
+        "0xA39D90",
+        "0xA39DA0",
+        "0xA39DB0",
+        "0xA39DC0",
+        "0xA39DD0",
+        "0xA39DE0",
+        "0x1BB02D0",
+        "0xA39E00",
+        "0xA3ED80",
+        "0xC51E90",
+        "0xAA4B90",
+        "0xC52190",
+        "0xA39E40",
+        "0xC529C0",
+        "0xAA4BA0",
+        "0x1BB05B0",
+        "0x1BB0FA0",
+        "0xC490A0",
+        "0xA3AF80",
+        "0xC52CE0",
+        "0xC53010",
+        "0xC4FA50",
+        "0xC500B0",
+        "0xC53560",
+        "0xC53330",
+        "0xA39F00",
+        "0xC56B50",
+        "0xC55960",
+        "0xC59610",
+        "0xC54D50",
+        "0xA39FC0",
+        "0xAACCE0",
+        "0xAAC8E0",
+        "0xAAD190",
+        "0x1BA4960",
+        "0xAAC9C0",
+        "0xC4DC80",
+        "0xC4DF70",
+        "0x1BA5580",
+        "0xC4E2F0",
+        "0x1BA5730",
+        "0x1BA5790",
+        "0xC4E610",
+        "0x1BA6570",
+        "0x1BA6580",
+        "0xC54090",
+        "0x1BABFA0",
+        "0x1BAC6D0",
+        "0xC58F20",
+        "0xC590B0",
+        "0x1BAD270",
+        "0xC59250",
+        "0xC5AA00",
+        "0x1BAD830",
+        "0xC5B5C0",
+        "0xC4EA20",
+        "0x1BB06C0",
+        "0xC526B0",
+        "0xC48000",
+        "0xC53A00",
+        "0xAAD400",
+        "0xAAC6F0",
+        "0xAAC8B0",
+        "0xAACC70",
+        "0xAAD0B0",
+        "0xAAC980",
+        "0x1BA4970",
+        "0xABA990",
+        "0xC47220",
+        "0xC47430",
+        "0xC47C60",
+        "0xC48370",
+        "0xC61AD2",
+        "0xC61ABC",
+        "0xC61AA6",
+        "0xC61A90",
+        "0xC61A7A",
+        "0xC61A64",
+        "0xC61A4E",
+        "0xC61A38",
+        "0xC61A22",
+        "0xC61A0C",
+        "0xC619F6",
+        "0xC619E0",
+        "0xC619CA",
+        "0xC619B4",
+        "0xC6199E",
+        "0xC61988",
+        "0xC61972",
+        "0xC6195C",
+        "0xC61946",
+        "0xC61930",
+        "0xC6191A",
+        "0xC61904",
+        "0xC618EE",
+        "0xC618D8",
+        "0xC618C2",
+        "0xC618AC",
+        "0xC61896",
+        "0xC61880",
+        "0xC6186A",
+        "0xC61854",
+        "0xC6183E",
+        "0xC61828",
+        "0xC61812",
+        "0xC617FC",
+        "0xC617E6",
+        "0xC617D0",
+        "0xC617BA",
+        "0xC617A4",
+        "0xC6178E",
+        "0xC61778",
+        "0xC61762",
+        "0xC6174C",
+        "0xC61736",
+        "0xC61720",
+        "0xC6170A",
+        "0xC616F4",
+        "0xC616DE",
+        "0xC616C8",
+        "0xC616B2",
+        "0xC6169C",
+        "0xC61686",
+        "0xC61670",
+        "0xC6165A",
+        "0xC61644",
+        "0xC6162E",
+        "0xC61618",
+        "0xC61602",
+        "0xC615EC",
+        "0xC615D6",
+        "0xC615C0",
+        "0xC615AA",
+        "0xC61594",
+        "0xC6157E",
+        "0xC61568",
+        "0xC61552",
+        "0xC6153C",
+        "0xC61526",
+        "0xC61510",
+        "0xC614FA",
+        "0xC614E4",
+        "0xC614CE",
+        "0xC614B8",
+        "0xC614A2",
+        "0xC6148C",
+        "0xC61476",
+        "0xC61460",
+        "0xC6144A",
+        "0xC61434",
+        "0xC6141E",
+        "0xC61408",
+        "0xC613F2",
+        "0xC613DC",
+        "0xC613C6",
+        "0xC613B0",
+        "0xC6139A",
+        "0xC61384",
+        "0xC6136E",
+        "0xC61358",
+        "0xC61342",
+        "0xC6132C",
+        "0xC61316",
+        "0xC61300",
+        "0xC612EA",
+        "0xC612D4",
+        "0xC612BE",
+        "0xC612A8",
+        "0xC61292",
+        "0xC6127C",
+        "0xC61266",
+        "0xC61250",
+        "0xC6123A",
+        "0xC61224",
+        "0xC6120E",
+        "0xC611F8",
+        "0xC611E2",
+        "0xC611CC",
+        "0xC611B6",
+        "0xC611A0",
+        "0xC6118A",
+        "0xC61174",
+        "0xC6115E",
+        "0xC61148",
+        "0xC61132",
+        "0xC6111C",
+        "0xC61106",
+        "0xC610F0",
+        "0xC610DA",
+        "0xC610C4",
+        "0xC610AE",
+        "0xC61098",
+        "0xC61082",
+        "0xC6106C",
+        "0xC61056",
+        "0xC61040",
+        "0xC6102A",
+        "0xC61014",
+        "0xC60FFE",
+        "0xC60FE8",
+        "0xC60FD2",
+        "0xC60FBC",
+        "0xC60FA6",
+        "0xC60F90",
+        "0xC60F7A",
+        "0xC60F64",
+        "0xC60F4E",
+        "0xC60F38",
+        "0xC60F22",
+        "0xC60F0C",
+        "0xC60EF6",
+        "0xC60EE0",
+        "0xC60ECA",
+        "0xC60EB4",
+        "0xC60E9E",
+        "0xC60E88",
+        "0xC60E72",
+        "0xC60E5C",
+        "0xC60E46",
+        "0xC60E30",
+        "0xC60E1A",
+        "0xC60E04",
+        "0xC60DEE",
+        "0xC60DDB",
+        "0xC60DC8",
+        "0xC60DB5",
+        "0xC60DA2",
+        "0xC60D8F",
+        "0xC60D7C",
+        "0xC60D61",
+        "0xC61AE8"
+      ]
+    },
+    "phase_name_string_pool": {
+      "source_va": "0x22BC3B0",
+      "end_va": "0x22BD0C0",
+      "size_bytes": 3344,
+      "total_strings": 158,
+      "phase_name_strings": 144,
+      "format_strings": 14,
+      "note": "String storage for phase name pointer table at 0x22BD0C0",
+      "strings": [
+        {
+          "va": "0x22BC3B0",
+          "string": "MB",
+          "is_phase_name": false
+        },
+        {
+          "va": "0x22BC3B3",
+          "string": "[Pool Consumption = ",
+          "is_phase_name": false
+        },
+        {
+          "va": "0x22BC3C8",
+          "string": "--",
+          "is_phase_name": false
+        },
+        {
+          "va": "0x22BC3CB",
+          "string": "B ",
+          "is_phase_name": false
+        },
+        {
+          "va": "0x22BC3CE",
+          "string": "\n%s\n",
+          "is_phase_name": false
+        },
+        {
+          "va": "0x22BC3D3",
+          "string": "Before ",
+          "is_phase_name": false
+        },
+        {
+          "va": "0x22BC3DB",
+          "string": "After ",
+          "is_phase_name": false
+        },
+        {
+          "va": "0x22BC3E2",
+          "string": "  ::  ",
+          "is_phase_name": false
+        },
+        {
+          "va": "0x22BC3E9",
+          "string": "[Total ",
+          "is_phase_name": false
+        },
+        {
+          "va": "0x22BC3F1",
+          "string": "]   ",
+          "is_phase_name": false
+        },
+        {
+          "va": "0x22BC3F6",
+          "string": "[Freeable ",
+          "is_phase_name": false
+        },
+        {
+          "va": "0x22BC401",
+          "string": "[Freeable Leaked ",
+          "is_phase_name": false
+        },
+        {
+          "va": "0x22BC413",
+          "string": "%)",
+          "is_phase_name": false
+        },
+        {
+          "va": "0x22BC416",
+          "string": "All Phases Summary",
+          "is_phase_name": false
+        },
+        {
+          "va": "0x22BC429",
+          "string": "OriCheckInitialProgram",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC440",
+          "string": "ApplyNvOptRecipes",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC452",
+          "string": "PromoteFP16",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC45E",
+          "string": "AnalyzeControlFlow",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC471",
+          "string": "AdvancedPhaseBeforeConvUnSup",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC48E",
+          "string": "ConvertUnsupportedOps",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC4A4",
+          "string": "SetControlFlowOpLastInBB",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC4BD",
+          "string": "AdvancedPhaseAfterConvUnSup",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC4D9",
+          "string": "OriCreateMacroInsts",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC4ED",
+          "string": "ReportInitialRepresentation",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC509",
+          "string": "EarlyOriSimpleLiveDead",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC520",
+          "string": "ReplaceUniformsWithImm",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC537",
+          "string": "OriSanitize",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC543",
+          "string": "GeneralOptimizeEarly",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC558",
+          "string": "DoSwitchOptFirst",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC569",
+          "string": "OriBranchOpt",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC576",
+          "string": "OriPerformLiveDeadFirst",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC58E",
+          "string": "OptimizeBindlessHeaderLoads",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC5AA",
+          "string": "OriLoopSimplification",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC5C0",
+          "string": "OriSplitLiveRanges",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC5D3",
+          "string": "PerformPGO",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC5DE",
+          "string": "OriStrengthReduce",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC5F0",
+          "string": "OriLoopUnrolling",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC601",
+          "string": "GenerateMovPhi",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC610",
+          "string": "OriPipelining",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC61E",
+          "string": "StageAndFence",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC62C",
+          "string": "OriRemoveRedundantBarriers",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC647",
+          "string": "AnalyzeUniformsForSpeculation",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC665",
+          "string": "SinkRemat",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC66F",
+          "string": "GeneralOptimize",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC67F",
+          "string": "DoSwitchOptSecond",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC691",
+          "string": "OriLinearReplacement",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC6A6",
+          "string": "CompactLocalMemory",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC6B9",
+          "string": "OriPerformLiveDeadSecond",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC6D2",
+          "string": "ExtractShaderConstsFirst",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC6EB",
+          "string": "OriHoistInvariantsEarly",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC703",
+          "string": "EmitPSI",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC70B",
+          "string": "GeneralOptimizeMid",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC71E",
+          "string": "OptimizeNestedCondBranches",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC739",
+          "string": "ConvertVTGReadWrite",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC74D",
+          "string": "DoVirtualCTAExpansion",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC763",
+          "string": "MarkAdditionalColdBlocks",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC77C",
+          "string": "ExpandMbarrier",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC78B",
+          "string": "ForwardProgress",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC79B",
+          "string": "OptimizeUniformAtomic",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC7B1",
+          "string": "MidExpansion",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC7BE",
+          "string": "GeneralOptimizeMid2",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC7D2",
+          "string": "AdvancedPhaseEarlyEnforceArgs",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC7F0",
+          "string": "EnforceArgumentRestrictions",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC80C",
+          "string": "GvnCse",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC813",
+          "string": "OriReassociateAndCommon",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC82B",
+          "string": "ExtractShaderConstsFinal",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC844",
+          "string": "OriReplaceEquivMultiDefMov",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC85F",
+          "string": "OriPropagateVaryingFirst",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC878",
+          "string": "OriDoRematEarly",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC888",
+          "string": "LateExpansion",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC896",
+          "string": "SpeculativeHoistComInsts",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC8AF",
+          "string": "RemoveASTToDefaultValues",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC8C8",
+          "string": "GeneralOptimizeLate",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC8DC",
+          "string": "OriLoopFusion",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC8EA",
+          "string": "DoVTGMultiViewExpansion",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC902",
+          "string": "OriPerformLiveDeadThird",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC91A",
+          "string": "OriRemoveRedundantMultiDefMov",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC938",
+          "string": "OriDoPredication",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC949",
+          "string": "LateOriCommoning",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC95A",
+          "string": "GeneralOptimizeLate2",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC96F",
+          "string": "OriHoistInvariantsLate",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC986",
+          "string": "DoKillMovement",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC995",
+          "string": "DoTexMovement",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC9A3",
+          "string": "OriDoRemat",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC9AE",
+          "string": "OriPropagateVaryingSecond",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC9C8",
+          "string": "OptimizeSyncInstructions",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC9E1",
+          "string": "LateExpandSyncInstructions",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BC9FC",
+          "string": "ConvertAllMovPhiToMov",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCA12",
+          "string": "ConvertToUniformReg",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCA26",
+          "string": "LateArchOptimizeFirst",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCA3C",
+          "string": "UpdateAfterOptimize",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCA50",
+          "string": "AdvancedPhaseLateConvUnSup",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCA6B",
+          "string": "LateExpansionUnsupportedOps",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCA87",
+          "string": "OriHoistInvariantsLate2",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCA9F",
+          "string": "ExpandJmxComputation",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCAB4",
+          "string": "LateArchOptimizeSecond",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCACB",
+          "string": "AdvancedPhaseBackPropVReg",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCAE5",
+          "string": "OriBackCopyPropagate",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCAFA",
+          "string": "OriPerformLiveDeadFourth",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCB13",
+          "string": "OriPropagateGmma",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCB24",
+          "string": "InsertPseudoUseDefForConvUR",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCB40",
+          "string": "FixupGmmaSequence",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCB52",
+          "string": "OriHoistInvariantsLate3",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCB6A",
+          "string": "AdvancedPhaseSetRegAttr",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCB82",
+          "string": "OriSetRegisterAttr",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCB95",
+          "string": "OriCalcDependantTex",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCBA9",
+          "string": "AdvancedPhaseAfterSetRegAttr",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCBC6",
+          "string": "LateExpansionUnsupportedOps2",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCBE3",
+          "string": "FinalInspectionPass",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCBF7",
+          "string": "SetAfterLegalization",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCC0C",
+          "string": "ReportBeforeScheduling",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCC23",
+          "string": "AdvancedPhasePreSched",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCC39",
+          "string": "BackPropagateVEC2D",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCC4C",
+          "string": "OriDoSyncronization",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCC60",
+          "string": "ApplyPostSyncronizationWars",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCC7C",
+          "string": "AdvancedPhaseAllocReg",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCC92",
+          "string": "ReportAfterRegisterAllocation",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCCB0",
+          "string": "Get64bRegComponents",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCCC4",
+          "string": "AdvancedPhasePostExpansion",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCCDF",
+          "string": "ApplyPostRegAllocWars",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCCF5",
+          "string": "AdvancedPhasePostSched",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCD0C",
+          "string": "OriRemoveNopCode",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCD1D",
+          "string": "OptimizeHotColdInLoop",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCD33",
+          "string": "OptimizeHotColdFlow",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCD47",
+          "string": "PostSchedule",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCD54",
+          "string": "AdvancedPhasePostFixUp",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCD6B",
+          "string": "PlaceBlocksInSourceOrder",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCD84",
+          "string": "PostFixForMercTargets",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCD9A",
+          "string": "FixUpTexDepBarAndSync",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCDB0",
+          "string": "AdvancedScoreboardsAndOpexes",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCDCD",
+          "string": "ProcessO0WaitsAndSBs",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCDE2",
+          "string": "MercEncodeAndDecode",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCDF6",
+          "string": "MercExpandInstructions",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCE0D",
+          "string": "MercGenerateWARs1",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCE1F",
+          "string": "MercGenerateOpex",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCE30",
+          "string": "MercGenerateWARs2",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCE42",
+          "string": "MercGenerateSassUCode",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCE58",
+          "string": "ComputeVCallRegUse",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCE6B",
+          "string": "CalcRegisterMap",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCE7B",
+          "string": "UpdateAfterPostRegAlloc",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCE93",
+          "string": "ReportFinalMemoryUsage",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCEAA",
+          "string": "AdvancedPhaseOriPhaseEncoding",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCEC8",
+          "string": "UpdateAfterFormatCodeList",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCEE2",
+          "string": "DumpNVuCodeText",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCEF2",
+          "string": "DumpNVuCodeHex",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCF01",
+          "string": "DebuggerBreak",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCF10",
+          "string": "UpdateAfterConvertUnsupportedOps",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCF38",
+          "string": "MergeEquivalentConditionalFlow",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCF58",
+          "string": "AdvancedPhaseAfterMidExpansion",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCF78",
+          "string": "AdvancedPhaseLateExpandSyncInstructions",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCFA0",
+          "string": "LateMergeEquivalentConditionalFlow",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCFC8",
+          "string": "LateExpansionUnsupportedOpsMid",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BCFE8",
+          "string": "OriSplitHighPressureLiveRanges",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BD008",
+          "string": "LateEnforceArgumentRestrictions",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BD028",
+          "string": "UpdateAfterScheduleInstructions",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BD048",
+          "string": "UpdateAfterOriDoSyncronization",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BD068",
+          "string": "ReportBeforeRegisterAllocation",
+          "is_phase_name": true
+        },
+        {
+          "va": "0x22BD088",
+          "string": "UpdateAfterOriAllocateRegisters",
+          "is_phase_name": true
+        }
+      ]
+    }
+  }
+}

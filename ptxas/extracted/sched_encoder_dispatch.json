@@ -1,0 +1,2509 @@
+{
+  "sched_encoder_dispatch": {
+    "region": {
+      "start_va": "0x21D9200",
+      "end_va": "0x21DB000",
+      "size_bytes": 7680,
+      "description": "Scheduling encoder dispatch infrastructure for sub_89FBA0"
+    },
+    "init_function_ptrs": {
+      "va": "0x21D9200",
+      "count": 8,
+      "entries": [
+        {
+          "index": 0,
+          "va": "0x89314A",
+          "valid": true
+        },
+        {
+          "index": 1,
+          "va": "0x8935B8",
+          "valid": true
+        },
+        {
+          "index": 2,
+          "va": "0x8935F8",
+          "valid": true
+        },
+        {
+          "index": 3,
+          "va": "0x893618",
+          "valid": true
+        },
+        {
+          "index": 4,
+          "va": "NULL",
+          "valid": true
+        },
+        {
+          "index": 5,
+          "va": "NULL",
+          "valid": true
+        },
+        {
+          "index": 6,
+          "va": "0x88EF70",
+          "valid": true
+        },
+        {
+          "index": 7,
+          "va": "NULL",
+          "valid": true
+        }
+      ]
+    },
+    "sse_constants": {
+      "va": "0x21D9240",
+      "xmm_lo": "0x0000000090FFFFFD",
+      "xmm_hi": "0x00000000F0000000",
+      "xmm_dwords": [
+        "0x90FFFFFD",
+        "0x00000000",
+        "0xF0000000",
+        "0x00000000"
+      ],
+      "note": "Loaded by movdqa at 0x891060 and 0x986F85"
+    },
+    "timing_constant": {
+      "va": "0x21D9250",
+      "value": 1000000.0,
+      "note": "double 1000000.0 -- microseconds/second for clock() conversion",
+      "xref": "mov rax, [rip+...] at 0x894362, stored to [obj+0x3f0]"
+    },
+    "resource_class_dispatch": {
+      "va": "0x21D9258",
+      "count": 14,
+      "unique_functions": 6,
+      "unique_function_vas": [
+        "0x896A50",
+        "0x896A70",
+        "0x896AA0",
+        "0x896AC0",
+        "0x896AF0",
+        "0x896B10"
+      ],
+      "invalid_pointers": 0,
+      "note": "Maps resource class index to handler; targets compare edx vs 0xB7",
+      "entries": [
+        {
+          "index": 0,
+          "va": "0x896AC0"
+        },
+        {
+          "index": 1,
+          "va": "0x896AF0"
+        },
+        {
+          "index": 2,
+          "va": "0x896AF0"
+        },
+        {
+          "index": 3,
+          "va": "0x896A50"
+        },
+        {
+          "index": 4,
+          "va": "0x896AF0"
+        },
+        {
+          "index": 5,
+          "va": "0x896A50"
+        },
+        {
+          "index": 6,
+          "va": "0x896A50"
+        },
+        {
+          "index": 7,
+          "va": "0x896B10"
+        },
+        {
+          "index": 8,
+          "va": "0x896A50"
+        },
+        {
+          "index": 9,
+          "va": "0x896A50"
+        },
+        {
+          "index": 10,
+          "va": "0x896A50"
+        },
+        {
+          "index": 11,
+          "va": "0x896A70"
+        },
+        {
+          "index": 12,
+          "va": "0x896A50"
+        },
+        {
+          "index": 13,
+          "va": "0x896AA0"
+        }
+      ]
+    },
+    "identity_permutation": {
+      "va": "0x21D92E0",
+      "count": 773,
+      "element_type": "uint32",
+      "size_bytes": 3092,
+      "is_valid_identity": true,
+      "note": "identity[i] = i for i in 0..772; used as default index mapping"
+    },
+    "opcode_dispatch_jmptable": {
+      "va": "0x21D9EF8",
+      "end_va": "0x21DA948",
+      "count": 330,
+      "dispatch_site": "jmp [rax*8 + 0x21D9EF8] at 0x89FC3E",
+      "guard": "cmp r15d, 0x149; ja 0x8A2119 (default handler)",
+      "default_handler": "0x8A2119",
+      "default_count": 124,
+      "specialized_count": 206,
+      "unique_targets": 153,
+      "invalid_pointers": 0,
+      "entries": [
+        {
+          "index": 0,
+          "index_hex": "0x000",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 1,
+          "index_hex": "0x001",
+          "handler_va": "0x8A0738",
+          "is_default": false
+        },
+        {
+          "index": 2,
+          "index_hex": "0x002",
+          "handler_va": "0x8A1F6B",
+          "is_default": false
+        },
+        {
+          "index": 3,
+          "index_hex": "0x003",
+          "handler_va": "0x8A1F6B",
+          "is_default": false
+        },
+        {
+          "index": 4,
+          "index_hex": "0x004",
+          "handler_va": "0x8A1F6B",
+          "is_default": false
+        },
+        {
+          "index": 5,
+          "index_hex": "0x005",
+          "handler_va": "0x8A1F6B",
+          "is_default": false
+        },
+        {
+          "index": 6,
+          "index_hex": "0x006",
+          "handler_va": "0x8A1F6B",
+          "is_default": false
+        },
+        {
+          "index": 7,
+          "index_hex": "0x007",
+          "handler_va": "0x8A1F6B",
+          "is_default": false
+        },
+        {
+          "index": 8,
+          "index_hex": "0x008",
+          "handler_va": "0x8A1EF4",
+          "is_default": false
+        },
+        {
+          "index": 9,
+          "index_hex": "0x009",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 10,
+          "index_hex": "0x00A",
+          "handler_va": "0x8A1F34",
+          "is_default": false
+        },
+        {
+          "index": 11,
+          "index_hex": "0x00B",
+          "handler_va": "0x8A1F34",
+          "is_default": false
+        },
+        {
+          "index": 12,
+          "index_hex": "0x00C",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 13,
+          "index_hex": "0x00D",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 14,
+          "index_hex": "0x00E",
+          "handler_va": "0x8A1E8C",
+          "is_default": false
+        },
+        {
+          "index": 15,
+          "index_hex": "0x00F",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 16,
+          "index_hex": "0x010",
+          "handler_va": "0x8A1EC0",
+          "is_default": false
+        },
+        {
+          "index": 17,
+          "index_hex": "0x011",
+          "handler_va": "0x8A1EA6",
+          "is_default": false
+        },
+        {
+          "index": 18,
+          "index_hex": "0x012",
+          "handler_va": "0x8A1A50",
+          "is_default": false
+        },
+        {
+          "index": 19,
+          "index_hex": "0x013",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 20,
+          "index_hex": "0x014",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 21,
+          "index_hex": "0x015",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 22,
+          "index_hex": "0x016",
+          "handler_va": "0x8A0EEF",
+          "is_default": false
+        },
+        {
+          "index": 23,
+          "index_hex": "0x017",
+          "handler_va": "0x8A2045",
+          "is_default": false
+        },
+        {
+          "index": 24,
+          "index_hex": "0x018",
+          "handler_va": "0x8A2022",
+          "is_default": false
+        },
+        {
+          "index": 25,
+          "index_hex": "0x019",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 26,
+          "index_hex": "0x01A",
+          "handler_va": "0x8A20DA",
+          "is_default": false
+        },
+        {
+          "index": 27,
+          "index_hex": "0x01B",
+          "handler_va": "0x8A1C9B",
+          "is_default": false
+        },
+        {
+          "index": 28,
+          "index_hex": "0x01C",
+          "handler_va": "0x8A1C78",
+          "is_default": false
+        },
+        {
+          "index": 29,
+          "index_hex": "0x01D",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 30,
+          "index_hex": "0x01E",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 31,
+          "index_hex": "0x01F",
+          "handler_va": "0x8A1C11",
+          "is_default": false
+        },
+        {
+          "index": 32,
+          "index_hex": "0x020",
+          "handler_va": "0x8A1BF7",
+          "is_default": false
+        },
+        {
+          "index": 33,
+          "index_hex": "0x021",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 34,
+          "index_hex": "0x022",
+          "handler_va": "0x8A0859",
+          "is_default": false
+        },
+        {
+          "index": 35,
+          "index_hex": "0x023",
+          "handler_va": "0x8A0B29",
+          "is_default": false
+        },
+        {
+          "index": 36,
+          "index_hex": "0x024",
+          "handler_va": "0x8A0AF6",
+          "is_default": false
+        },
+        {
+          "index": 37,
+          "index_hex": "0x025",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 38,
+          "index_hex": "0x026",
+          "handler_va": "0x8A0ADC",
+          "is_default": false
+        },
+        {
+          "index": 39,
+          "index_hex": "0x027",
+          "handler_va": "0x8A0AA8",
+          "is_default": false
+        },
+        {
+          "index": 40,
+          "index_hex": "0x028",
+          "handler_va": "0x89FC48",
+          "is_default": false
+        },
+        {
+          "index": 41,
+          "index_hex": "0x029",
+          "handler_va": "0x8A0A6A",
+          "is_default": false
+        },
+        {
+          "index": 42,
+          "index_hex": "0x02A",
+          "handler_va": "0x8A0A50",
+          "is_default": false
+        },
+        {
+          "index": 43,
+          "index_hex": "0x02B",
+          "handler_va": "0x8A09D0",
+          "is_default": false
+        },
+        {
+          "index": 44,
+          "index_hex": "0x02C",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 45,
+          "index_hex": "0x02D",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 46,
+          "index_hex": "0x02E",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 47,
+          "index_hex": "0x02F",
+          "handler_va": "0x89FC48",
+          "is_default": false
+        },
+        {
+          "index": 48,
+          "index_hex": "0x030",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 49,
+          "index_hex": "0x031",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 50,
+          "index_hex": "0x032",
+          "handler_va": "0x8A050C",
+          "is_default": false
+        },
+        {
+          "index": 51,
+          "index_hex": "0x033",
+          "handler_va": "0x8A04AB",
+          "is_default": false
+        },
+        {
+          "index": 52,
+          "index_hex": "0x034",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 53,
+          "index_hex": "0x035",
+          "handler_va": "0x8A0A50",
+          "is_default": false
+        },
+        {
+          "index": 54,
+          "index_hex": "0x036",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 55,
+          "index_hex": "0x037",
+          "handler_va": "0x8A0A50",
+          "is_default": false
+        },
+        {
+          "index": 56,
+          "index_hex": "0x038",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 57,
+          "index_hex": "0x039",
+          "handler_va": "0x8A2045",
+          "is_default": false
+        },
+        {
+          "index": 58,
+          "index_hex": "0x03A",
+          "handler_va": "0x8A0491",
+          "is_default": false
+        },
+        {
+          "index": 59,
+          "index_hex": "0x03B",
+          "handler_va": "0x8A0ADC",
+          "is_default": false
+        },
+        {
+          "index": 60,
+          "index_hex": "0x03C",
+          "handler_va": "0x8A03B2",
+          "is_default": false
+        },
+        {
+          "index": 61,
+          "index_hex": "0x03D",
+          "handler_va": "0x8A06E2",
+          "is_default": false
+        },
+        {
+          "index": 62,
+          "index_hex": "0x03E",
+          "handler_va": "0x8A03B2",
+          "is_default": false
+        },
+        {
+          "index": 63,
+          "index_hex": "0x03F",
+          "handler_va": "0x8A0654",
+          "is_default": false
+        },
+        {
+          "index": 64,
+          "index_hex": "0x040",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 65,
+          "index_hex": "0x041",
+          "handler_va": "0x8A06B5",
+          "is_default": false
+        },
+        {
+          "index": 66,
+          "index_hex": "0x042",
+          "handler_va": "0x8A0398",
+          "is_default": false
+        },
+        {
+          "index": 67,
+          "index_hex": "0x043",
+          "handler_va": "0x8A0375",
+          "is_default": false
+        },
+        {
+          "index": 68,
+          "index_hex": "0x044",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 69,
+          "index_hex": "0x045",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 70,
+          "index_hex": "0x046",
+          "handler_va": "0x8A035B",
+          "is_default": false
+        },
+        {
+          "index": 71,
+          "index_hex": "0x047",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 72,
+          "index_hex": "0x048",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 73,
+          "index_hex": "0x049",
+          "handler_va": "0x8A02FA",
+          "is_default": false
+        },
+        {
+          "index": 74,
+          "index_hex": "0x04A",
+          "handler_va": "0x8A0299",
+          "is_default": false
+        },
+        {
+          "index": 75,
+          "index_hex": "0x04B",
+          "handler_va": "0x8A027F",
+          "is_default": false
+        },
+        {
+          "index": 76,
+          "index_hex": "0x04C",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 77,
+          "index_hex": "0x04D",
+          "handler_va": "0x8A00F2",
+          "is_default": false
+        },
+        {
+          "index": 78,
+          "index_hex": "0x04E",
+          "handler_va": "0x8A03B2",
+          "is_default": false
+        },
+        {
+          "index": 79,
+          "index_hex": "0x04F",
+          "handler_va": "0x8A0097",
+          "is_default": false
+        },
+        {
+          "index": 80,
+          "index_hex": "0x050",
+          "handler_va": "0x8A0036",
+          "is_default": false
+        },
+        {
+          "index": 81,
+          "index_hex": "0x051",
+          "handler_va": "0x89FFE8",
+          "is_default": false
+        },
+        {
+          "index": 82,
+          "index_hex": "0x052",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 83,
+          "index_hex": "0x053",
+          "handler_va": "0x89FE2E",
+          "is_default": false
+        },
+        {
+          "index": 84,
+          "index_hex": "0x054",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 85,
+          "index_hex": "0x055",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 86,
+          "index_hex": "0x056",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 87,
+          "index_hex": "0x057",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 88,
+          "index_hex": "0x058",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 89,
+          "index_hex": "0x059",
+          "handler_va": "0x89FE14",
+          "is_default": false
+        },
+        {
+          "index": 90,
+          "index_hex": "0x05A",
+          "handler_va": "0x89FDFA",
+          "is_default": false
+        },
+        {
+          "index": 91,
+          "index_hex": "0x05B",
+          "handler_va": "0x8A001C",
+          "is_default": false
+        },
+        {
+          "index": 92,
+          "index_hex": "0x05C",
+          "handler_va": "0x8A0002",
+          "is_default": false
+        },
+        {
+          "index": 93,
+          "index_hex": "0x05D",
+          "handler_va": "0x89FDE0",
+          "is_default": false
+        },
+        {
+          "index": 94,
+          "index_hex": "0x05E",
+          "handler_va": "0x8A1A22",
+          "is_default": false
+        },
+        {
+          "index": 95,
+          "index_hex": "0x05F",
+          "handler_va": "0x89FDE0",
+          "is_default": false
+        },
+        {
+          "index": 96,
+          "index_hex": "0x060",
+          "handler_va": "0x8A1E45",
+          "is_default": false
+        },
+        {
+          "index": 97,
+          "index_hex": "0x061",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 98,
+          "index_hex": "0x062",
+          "handler_va": "0x8A1E22",
+          "is_default": false
+        },
+        {
+          "index": 99,
+          "index_hex": "0x063",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 100,
+          "index_hex": "0x064",
+          "handler_va": "0x8A1E08",
+          "is_default": false
+        },
+        {
+          "index": 101,
+          "index_hex": "0x065",
+          "handler_va": "0x8A2045",
+          "is_default": false
+        },
+        {
+          "index": 102,
+          "index_hex": "0x066",
+          "handler_va": "0x8A1DE5",
+          "is_default": false
+        },
+        {
+          "index": 103,
+          "index_hex": "0x067",
+          "handler_va": "0x8A1E5F",
+          "is_default": false
+        },
+        {
+          "index": 104,
+          "index_hex": "0x068",
+          "handler_va": "0x8A1E5F",
+          "is_default": false
+        },
+        {
+          "index": 105,
+          "index_hex": "0x069",
+          "handler_va": "0x8A0E36",
+          "is_default": false
+        },
+        {
+          "index": 106,
+          "index_hex": "0x06A",
+          "handler_va": "0x8A0ADC",
+          "is_default": false
+        },
+        {
+          "index": 107,
+          "index_hex": "0x06B",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 108,
+          "index_hex": "0x06C",
+          "handler_va": "0x8A1F34",
+          "is_default": false
+        },
+        {
+          "index": 109,
+          "index_hex": "0x06D",
+          "handler_va": "0x8A0DE0",
+          "is_default": false
+        },
+        {
+          "index": 110,
+          "index_hex": "0x06E",
+          "handler_va": "0x8A0D60",
+          "is_default": false
+        },
+        {
+          "index": 111,
+          "index_hex": "0x06F",
+          "handler_va": "0x8A0D60",
+          "is_default": false
+        },
+        {
+          "index": 112,
+          "index_hex": "0x070",
+          "handler_va": "0x8A0D60",
+          "is_default": false
+        },
+        {
+          "index": 113,
+          "index_hex": "0x071",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 114,
+          "index_hex": "0x072",
+          "handler_va": "0x8A0D60",
+          "is_default": false
+        },
+        {
+          "index": 115,
+          "index_hex": "0x073",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 116,
+          "index_hex": "0x074",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 117,
+          "index_hex": "0x075",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 118,
+          "index_hex": "0x076",
+          "handler_va": "0x8A205F",
+          "is_default": false
+        },
+        {
+          "index": 119,
+          "index_hex": "0x077",
+          "handler_va": "0x8A1095",
+          "is_default": false
+        },
+        {
+          "index": 120,
+          "index_hex": "0x078",
+          "handler_va": "0x89FD52",
+          "is_default": false
+        },
+        {
+          "index": 121,
+          "index_hex": "0x079",
+          "handler_va": "0x89FD52",
+          "is_default": false
+        },
+        {
+          "index": 122,
+          "index_hex": "0x07A",
+          "handler_va": "0x89FD2E",
+          "is_default": false
+        },
+        {
+          "index": 123,
+          "index_hex": "0x07B",
+          "handler_va": "0x8A20F4",
+          "is_default": false
+        },
+        {
+          "index": 124,
+          "index_hex": "0x07C",
+          "handler_va": "0x8A20C0",
+          "is_default": false
+        },
+        {
+          "index": 125,
+          "index_hex": "0x07D",
+          "handler_va": "0x8A2008",
+          "is_default": false
+        },
+        {
+          "index": 126,
+          "index_hex": "0x07E",
+          "handler_va": "0x89FD52",
+          "is_default": false
+        },
+        {
+          "index": 127,
+          "index_hex": "0x07F",
+          "handler_va": "0x89FD52",
+          "is_default": false
+        },
+        {
+          "index": 128,
+          "index_hex": "0x080",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 129,
+          "index_hex": "0x081",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 130,
+          "index_hex": "0x082",
+          "handler_va": "0x8A1FE7",
+          "is_default": false
+        },
+        {
+          "index": 131,
+          "index_hex": "0x083",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 132,
+          "index_hex": "0x084",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 133,
+          "index_hex": "0x085",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 134,
+          "index_hex": "0x086",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 135,
+          "index_hex": "0x087",
+          "handler_va": "0x8A1588",
+          "is_default": false
+        },
+        {
+          "index": 136,
+          "index_hex": "0x088",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 137,
+          "index_hex": "0x089",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 138,
+          "index_hex": "0x08A",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 139,
+          "index_hex": "0x08B",
+          "handler_va": "0x8A1564",
+          "is_default": false
+        },
+        {
+          "index": 140,
+          "index_hex": "0x08C",
+          "handler_va": "0x8A1564",
+          "is_default": false
+        },
+        {
+          "index": 141,
+          "index_hex": "0x08D",
+          "handler_va": "0x8A152D",
+          "is_default": false
+        },
+        {
+          "index": 142,
+          "index_hex": "0x08E",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 143,
+          "index_hex": "0x08F",
+          "handler_va": "0x8A152D",
+          "is_default": false
+        },
+        {
+          "index": 144,
+          "index_hex": "0x090",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 145,
+          "index_hex": "0x091",
+          "handler_va": "0x8A14FF",
+          "is_default": false
+        },
+        {
+          "index": 146,
+          "index_hex": "0x092",
+          "handler_va": "0x8A15BC",
+          "is_default": false
+        },
+        {
+          "index": 147,
+          "index_hex": "0x093",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 148,
+          "index_hex": "0x094",
+          "handler_va": "0x8A15A2",
+          "is_default": false
+        },
+        {
+          "index": 149,
+          "index_hex": "0x095",
+          "handler_va": "0x8A1F34",
+          "is_default": false
+        },
+        {
+          "index": 150,
+          "index_hex": "0x096",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 151,
+          "index_hex": "0x097",
+          "handler_va": "0x8A1F34",
+          "is_default": false
+        },
+        {
+          "index": 152,
+          "index_hex": "0x098",
+          "handler_va": "0x8A1F34",
+          "is_default": false
+        },
+        {
+          "index": 153,
+          "index_hex": "0x099",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 154,
+          "index_hex": "0x09A",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 155,
+          "index_hex": "0x09B",
+          "handler_va": "0x8A15EA",
+          "is_default": false
+        },
+        {
+          "index": 156,
+          "index_hex": "0x09C",
+          "handler_va": "0x8A1B87",
+          "is_default": false
+        },
+        {
+          "index": 157,
+          "index_hex": "0x09D",
+          "handler_va": "0x8A1420",
+          "is_default": false
+        },
+        {
+          "index": 158,
+          "index_hex": "0x09E",
+          "handler_va": "0x8A13EC",
+          "is_default": false
+        },
+        {
+          "index": 159,
+          "index_hex": "0x09F",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 160,
+          "index_hex": "0x0A0",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 161,
+          "index_hex": "0x0A1",
+          "handler_va": "0x8A1406",
+          "is_default": false
+        },
+        {
+          "index": 162,
+          "index_hex": "0x0A2",
+          "handler_va": "0x8A13C9",
+          "is_default": false
+        },
+        {
+          "index": 163,
+          "index_hex": "0x0A3",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 164,
+          "index_hex": "0x0A4",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 165,
+          "index_hex": "0x0A5",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 166,
+          "index_hex": "0x0A6",
+          "handler_va": "0x8A13A6",
+          "is_default": false
+        },
+        {
+          "index": 167,
+          "index_hex": "0x0A7",
+          "handler_va": "0x8A13EC",
+          "is_default": false
+        },
+        {
+          "index": 168,
+          "index_hex": "0x0A8",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 169,
+          "index_hex": "0x0A9",
+          "handler_va": "0x8A134B",
+          "is_default": false
+        },
+        {
+          "index": 170,
+          "index_hex": "0x0AA",
+          "handler_va": "0x8A1331",
+          "is_default": false
+        },
+        {
+          "index": 171,
+          "index_hex": "0x0AB",
+          "handler_va": "0x8A1317",
+          "is_default": false
+        },
+        {
+          "index": 172,
+          "index_hex": "0x0AC",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 173,
+          "index_hex": "0x0AD",
+          "handler_va": "0x8A12A2",
+          "is_default": false
+        },
+        {
+          "index": 174,
+          "index_hex": "0x0AE",
+          "handler_va": "0x8A1232",
+          "is_default": false
+        },
+        {
+          "index": 175,
+          "index_hex": "0x0AF",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 176,
+          "index_hex": "0x0B0",
+          "handler_va": "0x8A11C0",
+          "is_default": false
+        },
+        {
+          "index": 177,
+          "index_hex": "0x0B1",
+          "handler_va": "0x8A11C0",
+          "is_default": false
+        },
+        {
+          "index": 178,
+          "index_hex": "0x0B2",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 179,
+          "index_hex": "0x0B3",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 180,
+          "index_hex": "0x0B4",
+          "handler_va": "0x8A0ADC",
+          "is_default": false
+        },
+        {
+          "index": 181,
+          "index_hex": "0x0B5",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 182,
+          "index_hex": "0x0B6",
+          "handler_va": "0x8A0ADC",
+          "is_default": false
+        },
+        {
+          "index": 183,
+          "index_hex": "0x0B7",
+          "handler_va": "0x8A1194",
+          "is_default": false
+        },
+        {
+          "index": 184,
+          "index_hex": "0x0B8",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 185,
+          "index_hex": "0x0B9",
+          "handler_va": "0x8A1194",
+          "is_default": false
+        },
+        {
+          "index": 186,
+          "index_hex": "0x0BA",
+          "handler_va": "0x8A12FD",
+          "is_default": false
+        },
+        {
+          "index": 187,
+          "index_hex": "0x0BB",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 188,
+          "index_hex": "0x0BC",
+          "handler_va": "0x8A115F",
+          "is_default": false
+        },
+        {
+          "index": 189,
+          "index_hex": "0x0BD",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 190,
+          "index_hex": "0x0BE",
+          "handler_va": "0x8A115F",
+          "is_default": false
+        },
+        {
+          "index": 191,
+          "index_hex": "0x0BF",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 192,
+          "index_hex": "0x0C0",
+          "handler_va": "0x8A0ADC",
+          "is_default": false
+        },
+        {
+          "index": 193,
+          "index_hex": "0x0C1",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 194,
+          "index_hex": "0x0C2",
+          "handler_va": "0x8A0ADC",
+          "is_default": false
+        },
+        {
+          "index": 195,
+          "index_hex": "0x0C3",
+          "handler_va": "0x8A1110",
+          "is_default": false
+        },
+        {
+          "index": 196,
+          "index_hex": "0x0C4",
+          "handler_va": "0x8A10AF",
+          "is_default": false
+        },
+        {
+          "index": 197,
+          "index_hex": "0x0C5",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 198,
+          "index_hex": "0x0C6",
+          "handler_va": "0x8A1B26",
+          "is_default": false
+        },
+        {
+          "index": 199,
+          "index_hex": "0x0C7",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 200,
+          "index_hex": "0x0C8",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 201,
+          "index_hex": "0x0C9",
+          "handler_va": "0x8A1B03",
+          "is_default": false
+        },
+        {
+          "index": 202,
+          "index_hex": "0x0CA",
+          "handler_va": "0x8A1B03",
+          "is_default": false
+        },
+        {
+          "index": 203,
+          "index_hex": "0x0CB",
+          "handler_va": "0x8A1DCB",
+          "is_default": false
+        },
+        {
+          "index": 204,
+          "index_hex": "0x0CC",
+          "handler_va": "0x8A1AA5",
+          "is_default": false
+        },
+        {
+          "index": 205,
+          "index_hex": "0x0CD",
+          "handler_va": "0x8A1D8E",
+          "is_default": false
+        },
+        {
+          "index": 206,
+          "index_hex": "0x0CE",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 207,
+          "index_hex": "0x0CF",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 208,
+          "index_hex": "0x0D0",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 209,
+          "index_hex": "0x0D1",
+          "handler_va": "0x8A1D6B",
+          "is_default": false
+        },
+        {
+          "index": 210,
+          "index_hex": "0x0D2",
+          "handler_va": "0x8A1DA8",
+          "is_default": false
+        },
+        {
+          "index": 211,
+          "index_hex": "0x0D3",
+          "handler_va": "0x8A19CB",
+          "is_default": false
+        },
+        {
+          "index": 212,
+          "index_hex": "0x0D4",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 213,
+          "index_hex": "0x0D5",
+          "handler_va": "0x8A19A8",
+          "is_default": false
+        },
+        {
+          "index": 214,
+          "index_hex": "0x0D6",
+          "handler_va": "0x8A19E5",
+          "is_default": false
+        },
+        {
+          "index": 215,
+          "index_hex": "0x0D7",
+          "handler_va": "0x8A0ADC",
+          "is_default": false
+        },
+        {
+          "index": 216,
+          "index_hex": "0x0D8",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 217,
+          "index_hex": "0x0D9",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 218,
+          "index_hex": "0x0DA",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 219,
+          "index_hex": "0x0DB",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 220,
+          "index_hex": "0x0DC",
+          "handler_va": "0x8A194A",
+          "is_default": false
+        },
+        {
+          "index": 221,
+          "index_hex": "0x0DD",
+          "handler_va": "0x8A0ADC",
+          "is_default": false
+        },
+        {
+          "index": 222,
+          "index_hex": "0x0DE",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 223,
+          "index_hex": "0x0DF",
+          "handler_va": "0x8A1915",
+          "is_default": false
+        },
+        {
+          "index": 224,
+          "index_hex": "0x0E0",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 225,
+          "index_hex": "0x0E1",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 226,
+          "index_hex": "0x0E2",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 227,
+          "index_hex": "0x0E3",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 228,
+          "index_hex": "0x0E4",
+          "handler_va": "0x8A18B6",
+          "is_default": false
+        },
+        {
+          "index": 229,
+          "index_hex": "0x0E5",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 230,
+          "index_hex": "0x0E6",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 231,
+          "index_hex": "0x0E7",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 232,
+          "index_hex": "0x0E8",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 233,
+          "index_hex": "0x0E9",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 234,
+          "index_hex": "0x0EA",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 235,
+          "index_hex": "0x0EB",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 236,
+          "index_hex": "0x0EC",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 237,
+          "index_hex": "0x0ED",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 238,
+          "index_hex": "0x0EE",
+          "handler_va": "0x8A189C",
+          "is_default": false
+        },
+        {
+          "index": 239,
+          "index_hex": "0x0EF",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 240,
+          "index_hex": "0x0F0",
+          "handler_va": "0x8A183E",
+          "is_default": false
+        },
+        {
+          "index": 241,
+          "index_hex": "0x0F1",
+          "handler_va": "0x8A1D03",
+          "is_default": false
+        },
+        {
+          "index": 242,
+          "index_hex": "0x0F2",
+          "handler_va": "0x8A0ADC",
+          "is_default": false
+        },
+        {
+          "index": 243,
+          "index_hex": "0x0F3",
+          "handler_va": "0x8A1CE9",
+          "is_default": false
+        },
+        {
+          "index": 244,
+          "index_hex": "0x0F4",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 245,
+          "index_hex": "0x0F5",
+          "handler_va": "0x8A1CCF",
+          "is_default": false
+        },
+        {
+          "index": 246,
+          "index_hex": "0x0F6",
+          "handler_va": "0x8A1CB5",
+          "is_default": false
+        },
+        {
+          "index": 247,
+          "index_hex": "0x0F7",
+          "handler_va": "0x8A1D37",
+          "is_default": false
+        },
+        {
+          "index": 248,
+          "index_hex": "0x0F8",
+          "handler_va": "0x8A1D1D",
+          "is_default": false
+        },
+        {
+          "index": 249,
+          "index_hex": "0x0F9",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 250,
+          "index_hex": "0x0FA",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 251,
+          "index_hex": "0x0FB",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 252,
+          "index_hex": "0x0FC",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 253,
+          "index_hex": "0x0FD",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 254,
+          "index_hex": "0x0FE",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 255,
+          "index_hex": "0x0FF",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 256,
+          "index_hex": "0x100",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 257,
+          "index_hex": "0x101",
+          "handler_va": "0x8A1D51",
+          "is_default": false
+        },
+        {
+          "index": 258,
+          "index_hex": "0x102",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 259,
+          "index_hex": "0x103",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 260,
+          "index_hex": "0x104",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 261,
+          "index_hex": "0x105",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 262,
+          "index_hex": "0x106",
+          "handler_va": "0x8A1A08",
+          "is_default": false
+        },
+        {
+          "index": 263,
+          "index_hex": "0x107",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 264,
+          "index_hex": "0x108",
+          "handler_va": "0x8A144E",
+          "is_default": false
+        },
+        {
+          "index": 265,
+          "index_hex": "0x109",
+          "handler_va": "0x8A16D3",
+          "is_default": false
+        },
+        {
+          "index": 266,
+          "index_hex": "0x10A",
+          "handler_va": "0x8A16D3",
+          "is_default": false
+        },
+        {
+          "index": 267,
+          "index_hex": "0x10B",
+          "handler_va": "0x8A16B9",
+          "is_default": false
+        },
+        {
+          "index": 268,
+          "index_hex": "0x10C",
+          "handler_va": "0x8A14E5",
+          "is_default": false
+        },
+        {
+          "index": 269,
+          "index_hex": "0x10D",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 270,
+          "index_hex": "0x10E",
+          "handler_va": "0x8A1468",
+          "is_default": false
+        },
+        {
+          "index": 271,
+          "index_hex": "0x10F",
+          "handler_va": "0x8A1BF7",
+          "is_default": false
+        },
+        {
+          "index": 272,
+          "index_hex": "0x110",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 273,
+          "index_hex": "0x111",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 274,
+          "index_hex": "0x112",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 275,
+          "index_hex": "0x113",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 276,
+          "index_hex": "0x114",
+          "handler_va": "0x8A1658",
+          "is_default": false
+        },
+        {
+          "index": 277,
+          "index_hex": "0x115",
+          "handler_va": "0x8A1604",
+          "is_default": false
+        },
+        {
+          "index": 278,
+          "index_hex": "0x116",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 279,
+          "index_hex": "0x117",
+          "handler_va": "0x8A0EC7",
+          "is_default": false
+        },
+        {
+          "index": 280,
+          "index_hex": "0x118",
+          "handler_va": "0x8A0E50",
+          "is_default": false
+        },
+        {
+          "index": 281,
+          "index_hex": "0x119",
+          "handler_va": "0x8A0E50",
+          "is_default": false
+        },
+        {
+          "index": 282,
+          "index_hex": "0x11A",
+          "handler_va": "0x8A17C4",
+          "is_default": false
+        },
+        {
+          "index": 283,
+          "index_hex": "0x11B",
+          "handler_va": "0x8A1420",
+          "is_default": false
+        },
+        {
+          "index": 284,
+          "index_hex": "0x11C",
+          "handler_va": "0x8A0A6A",
+          "is_default": false
+        },
+        {
+          "index": 285,
+          "index_hex": "0x11D",
+          "handler_va": "0x8A1759",
+          "is_default": false
+        },
+        {
+          "index": 286,
+          "index_hex": "0x11E",
+          "handler_va": "0x8A1824",
+          "is_default": false
+        },
+        {
+          "index": 287,
+          "index_hex": "0x11F",
+          "handler_va": "0x8A1824",
+          "is_default": false
+        },
+        {
+          "index": 288,
+          "index_hex": "0x120",
+          "handler_va": "0x8A1194",
+          "is_default": false
+        },
+        {
+          "index": 289,
+          "index_hex": "0x121",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 290,
+          "index_hex": "0x122",
+          "handler_va": "0x8A1F34",
+          "is_default": false
+        },
+        {
+          "index": 291,
+          "index_hex": "0x123",
+          "handler_va": "0x8A1F34",
+          "is_default": false
+        },
+        {
+          "index": 292,
+          "index_hex": "0x124",
+          "handler_va": "0x8A1017",
+          "is_default": false
+        },
+        {
+          "index": 293,
+          "index_hex": "0x125",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 294,
+          "index_hex": "0x126",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 295,
+          "index_hex": "0x127",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 296,
+          "index_hex": "0x128",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 297,
+          "index_hex": "0x129",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 298,
+          "index_hex": "0x12A",
+          "handler_va": "0x8A1711",
+          "is_default": false
+        },
+        {
+          "index": 299,
+          "index_hex": "0x12B",
+          "handler_va": "0x8A16ED",
+          "is_default": false
+        },
+        {
+          "index": 300,
+          "index_hex": "0x12C",
+          "handler_va": "0x8A1735",
+          "is_default": false
+        },
+        {
+          "index": 301,
+          "index_hex": "0x12D",
+          "handler_va": "0x8A0D3C",
+          "is_default": false
+        },
+        {
+          "index": 302,
+          "index_hex": "0x12E",
+          "handler_va": "0x8A0CF0",
+          "is_default": false
+        },
+        {
+          "index": 303,
+          "index_hex": "0x12F",
+          "handler_va": "0x8A0CCC",
+          "is_default": false
+        },
+        {
+          "index": 304,
+          "index_hex": "0x130",
+          "handler_va": "0x8A0CA8",
+          "is_default": false
+        },
+        {
+          "index": 305,
+          "index_hex": "0x131",
+          "handler_va": "0x8A0CA8",
+          "is_default": false
+        },
+        {
+          "index": 306,
+          "index_hex": "0x132",
+          "handler_va": "0x8A0CA8",
+          "is_default": false
+        },
+        {
+          "index": 307,
+          "index_hex": "0x133",
+          "handler_va": "0x8A0C84",
+          "is_default": false
+        },
+        {
+          "index": 308,
+          "index_hex": "0x134",
+          "handler_va": "0x8A0C60",
+          "is_default": false
+        },
+        {
+          "index": 309,
+          "index_hex": "0x135",
+          "handler_va": "0x8A0BDF",
+          "is_default": false
+        },
+        {
+          "index": 310,
+          "index_hex": "0x136",
+          "handler_va": "0x8A0BB7",
+          "is_default": false
+        },
+        {
+          "index": 311,
+          "index_hex": "0x137",
+          "handler_va": "0x8A0B8A",
+          "is_default": false
+        },
+        {
+          "index": 312,
+          "index_hex": "0x138",
+          "handler_va": "0x89FD0D",
+          "is_default": false
+        },
+        {
+          "index": 313,
+          "index_hex": "0x139",
+          "handler_va": "0x8A08BA",
+          "is_default": false
+        },
+        {
+          "index": 314,
+          "index_hex": "0x13A",
+          "handler_va": "0x8A0902",
+          "is_default": false
+        },
+        {
+          "index": 315,
+          "index_hex": "0x13B",
+          "handler_va": "0x8A08DE",
+          "is_default": false
+        },
+        {
+          "index": 316,
+          "index_hex": "0x13C",
+          "handler_va": "0x8A09AC",
+          "is_default": false
+        },
+        {
+          "index": 317,
+          "index_hex": "0x13D",
+          "handler_va": "0x8A096E",
+          "is_default": false
+        },
+        {
+          "index": 318,
+          "index_hex": "0x13E",
+          "handler_va": "0x8A094A",
+          "is_default": false
+        },
+        {
+          "index": 319,
+          "index_hex": "0x13F",
+          "handler_va": "0x8A0926",
+          "is_default": false
+        },
+        {
+          "index": 320,
+          "index_hex": "0x140",
+          "handler_va": "0x8A2119",
+          "is_default": true
+        },
+        {
+          "index": 321,
+          "index_hex": "0x141",
+          "handler_va": "0x89FCEC",
+          "is_default": false
+        },
+        {
+          "index": 322,
+          "index_hex": "0x142",
+          "handler_va": "0x8A0873",
+          "is_default": false
+        },
+        {
+          "index": 323,
+          "index_hex": "0x143",
+          "handler_va": "0x8A1055",
+          "is_default": false
+        },
+        {
+          "index": 324,
+          "index_hex": "0x144",
+          "handler_va": "0x8A1031",
+          "is_default": false
+        },
+        {
+          "index": 325,
+          "index_hex": "0x145",
+          "handler_va": "0x8A07E9",
+          "is_default": false
+        },
+        {
+          "index": 326,
+          "index_hex": "0x146",
+          "handler_va": "0x8A07E9",
+          "is_default": false
+        },
+        {
+          "index": 327,
+          "index_hex": "0x147",
+          "handler_va": "0x8A0769",
+          "is_default": false
+        },
+        {
+          "index": 328,
+          "index_hex": "0x148",
+          "handler_va": "0x8A0769",
+          "is_default": false
+        },
+        {
+          "index": 329,
+          "index_hex": "0x149",
+          "handler_va": "0x8A0A84",
+          "is_default": false
+        }
+      ]
+    },
+    "subop_jmptable_A": {
+      "va": "0x21DA948",
+      "count": 6,
+      "dispatch_site": "jmp [rax*8 + 0x21DA948] at 0x8A0731",
+      "guard": "cmp eax, 5; extracts 3-bit field via sar+and",
+      "entries": [
+        {
+          "index": 0,
+          "va": "0x8A2279"
+        },
+        {
+          "index": 1,
+          "va": "0x8A217E"
+        },
+        {
+          "index": 2,
+          "va": "0x8A212C"
+        },
+        {
+          "index": 3,
+          "va": "0x8A22D3"
+        },
+        {
+          "index": 4,
+          "va": "0x8A212C"
+        },
+        {
+          "index": 5,
+          "va": "0x8A217E"
+        }
+      ]
+    },
+    "subop_jmptable_B": {
+      "va": "0x21DA978",
+      "count": 7,
+      "dispatch_site": "jmp [rax*8 + 0x21DA978] at 0x8A0BD8",
+      "guard": "cmp eax, 6; extracts 4-bit field via and 0xF",
+      "entries": [
+        {
+          "index": 0,
+          "va": "0x8A06D8"
+        },
+        {
+          "index": 1,
+          "va": "0x8A21F7"
+        },
+        {
+          "index": 2,
+          "va": "0x89FD2E"
+        },
+        {
+          "index": 3,
+          "va": "0x8A21D3"
+        },
+        {
+          "index": 4,
+          "va": "0x89FD0D"
+        },
+        {
+          "index": 5,
+          "va": "0x89FD0D"
+        },
+        {
+          "index": 6,
+          "va": "0x8A2241"
+        }
+      ]
+    },
+    "scheduling_metadata": {
+      "va": "0x21DA9B0",
+      "count": 9,
+      "entries": [
+        {
+          "index": 0,
+          "qword": 0,
+          "lo_u32": 0,
+          "hi_u32": 0
+        },
+        {
+          "index": 1,
+          "qword": 0,
+          "lo_u32": 0,
+          "hi_u32": 0
+        },
+        {
+          "index": 2,
+          "qword": 12884901889,
+          "lo_u32": 1,
+          "hi_u32": 3
+        },
+        {
+          "index": 3,
+          "qword": 0,
+          "lo_u32": 0,
+          "hi_u32": 0
+        },
+        {
+          "index": 4,
+          "qword": 0,
+          "lo_u32": 0,
+          "hi_u32": 0
+        },
+        {
+          "index": 5,
+          "qword": 0,
+          "lo_u32": 0,
+          "hi_u32": 0
+        },
+        {
+          "index": 6,
+          "qword": 8589934592,
+          "lo_u32": 0,
+          "hi_u32": 2
+        },
+        {
+          "index": 7,
+          "qword": 0,
+          "lo_u32": 0,
+          "hi_u32": 0
+        },
+        {
+          "index": 8,
+          "qword": 0,
+          "lo_u32": 0,
+          "hi_u32": 0
+        }
+      ]
+    },
+    "polymorphic_vtable_A": {
+      "va": "0x21DA9F8",
+      "end_va": "0x21DADE8",
+      "count": 126,
+      "invalid_pointers": 0,
+      "xref": "mov [rbx], 0x21DA9F8 at 0x89BA32",
+      "note": "Installed as C++ vtable at object+0; 126 virtual method ptrs",
+      "entries": [
+        "0x895F80",
+        "0x895F80",
+        "0x1377C40",
+        "0x680010",
+        "0x7D5720",
+        "0x7CAC30",
+        "0x89F880",
+        "0x89C550",
+        "0x89D950",
+        "0x89D100",
+        "0x89DF40",
+        "0x89C290",
+        "0x8A3EB0",
+        "0x8BFB00",
+        "0x8BFB50",
+        "0x1378C50",
+        "0x72DBA0",
+        "0x7C3660",
+        "0x1373B50",
+        "0x13750B0",
+        "0x72DF30",
+        "0x738D60",
+        "0x7C9830",
+        "0x7CAB50",
+        "0x895D10",
+        "0x7C23F0",
+        "0x89E540",
+        "0x7C2850",
+        "0x68DCF0",
+        "0x896260",
+        "0x7C9850",
+        "0x7C9840",
+        "0x7C2680",
+        "0x1372ED0",
+        "0x7C2420",
+        "0x1375140",
+        "0x732450",
+        "0x8A3BD0",
+        "0x1378C00",
+        "0x72DAC0",
+        "0x72DB60",
+        "0x72E850",
+        "0x72DB70",
+        "0x7C2410",
+        "0x73E110",
+        "0x72E060",
+        "0x13732F0",
+        "0x72DAD0",
+        "0x72DAE0",
+        "0x72DAF0",
+        "0x72DB50",
+        "0x89C0D0",
+        "0x72F400",
+        "0x72FEE0",
+        "0x72DB00",
+        "0x72DB10",
+        "0x72DB20",
+        "0x72DB30",
+        "0x72EA70",
+        "0xA2A460",
+        "0xA2B330",
+        "0x72DC40",
+        "0x72DC50",
+        "0x89FA60",
+        "0x68DDF0",
+        "0x730F90",
+        "0x1375AF0",
+        "0x8959E0",
+        "0x7C9860",
+        "0x89E4B0",
+        "0x730AE0",
+        "0x89EA50",
+        "0x72FA40",
+        "0x72FA80",
+        "0x8957D0",
+        "0x136F350",
+        "0x7C2400",
+        "0x1378D50",
+        "0x13730A0",
+        "0x13787B0",
+        "0x7C2440",
+        "0x7C2450",
+        "0x7C2460",
+        "0x7C2470",
+        "0x7CA7B0",
+        "0x8957A0",
+        "0x89C510",
+        "0x8A3CE0",
+        "0x89FA90",
+        "0x7CA900",
+        "0x7CA710",
+        "0x7C2430",
+        "0x89EB60",
+        "0xA2D320",
+        "0x136F1A0",
+        "0x136F1C0",
+        "0x8A3B50",
+        "0xA2D300",
+        "0x7C9810",
+        "0x7C97F0",
+        "0x7CAEB0",
+        "0x7253A0",
+        "0x7253B0",
+        "0x7CA980",
+        "0x89EFC0",
+        "0xA2B410",
+        "0x89E2B0",
+        "0x89E280",
+        "0x89E970",
+        "0xA2BB70",
+        "0xA2BD80",
+        "0x8A3F80",
+        "0x89FBA0",
+        "0xA2D050",
+        "0x7C2AA0",
+        "0x7C4450",
+        "0x7C3ED0",
+        "0xA2AD80",
+        "0x895CC0",
+        "0x895AF0",
+        "0x89C2C0",
+        "0x89C3E0",
+        "0x895920",
+        "0x7CA6C0",
+        "0x89EC10",
+        "0x89ED00"
+      ]
+    },
+    "polymorphic_vtable_B": {
+      "va": "0x21DADF8",
+      "end_va": "0x21DB000",
+      "count": 65,
+      "invalid_pointers": 0,
+      "xrefs": [
+        "mov [rbx], 0x21DADF8 at 0x7CB579",
+        "mov [rdi], 0x21DADF8 at 0x895E22",
+        "mov [rdi], 0x21DADF8 at 0x895F92",
+        "mov [rdi], 0x21DADF8 at 0x896102"
+      ],
+      "note": "Derived-class vtable variant; differs from A only in first 2 entries",
+      "entries": [
+        "0x8960F0",
+        "0x895E10",
+        "0x1377C40",
+        "0x680010",
+        "0x7D5720",
+        "0x7CAC30",
+        "0x89F880",
+        "0x89C550",
+        "0x89D950",
+        "0x89D100",
+        "0x89DF40",
+        "0x89C290",
+        "0x8A3EB0",
+        "0x8BFB00",
+        "0x8BFB50",
+        "0x1378C50",
+        "0x72DBA0",
+        "0x7C3660",
+        "0x1373B50",
+        "0x13750B0",
+        "0x72DF30",
+        "0x738D60",
+        "0x7C9830",
+        "0x7CAB50",
+        "0x895D10",
+        "0x7C23F0",
+        "0x89E540",
+        "0x7C2850",
+        "0x68DCF0",
+        "0x896260",
+        "0x7C9850",
+        "0x7C9840",
+        "0x7C2680",
+        "0x1372ED0",
+        "0x7C2420",
+        "0x1375140",
+        "0x732450",
+        "0x8A3BD0",
+        "0x1378C00",
+        "0x72DAC0",
+        "0x72DB60",
+        "0x72E850",
+        "0x72DB70",
+        "0x7C2410",
+        "0x73E110",
+        "0x72E060",
+        "0x13732F0",
+        "0x72DAD0",
+        "0x72DAE0",
+        "0x72DAF0",
+        "0x72DB50",
+        "0x89C0D0",
+        "0x72F400",
+        "0x72FEE0",
+        "0x72DB00",
+        "0x72DB10",
+        "0x72DB20",
+        "0x72DB30",
+        "0x72EA70",
+        "0xA2A460",
+        "0xA2B330",
+        "0x72DC40",
+        "0x72DC50",
+        "0x89FA60",
+        "0x68DDF0"
+      ]
+    },
+    "vtable_A_vs_B_diff": {
+      "shared_entries": 63,
+      "differing_entries": 2,
+      "diffs": [
+        {
+          "index": 0,
+          "vtable_A": "0x895F80",
+          "vtable_B": "0x8960F0"
+        },
+        {
+          "index": 1,
+          "vtable_A": "0x895F80",
+          "vtable_B": "0x895E10"
+        }
+      ]
+    }
+  }
+}

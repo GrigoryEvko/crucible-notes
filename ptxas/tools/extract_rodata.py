@@ -4022,6 +4022,326 @@ def extract_regalloc_init(br: BinaryReader) -> dict:
     }
 
 
+# ─── Table 38: ISel Node Descriptor Tables ───────────────────────────────
+#
+# VA 0x22A5A58-0x22AD9D0 (~32,120 bytes).  Sits between the encoding
+# constants and the ISel dispatch sub-tables.
+#
+# This region contains ISel (instruction selection) node descriptors:
+# C++ vtables for pattern-matching ISel node types, operand sub-type
+# vtables, and sentinel-delimited operand-field-offset blocks that
+# map instruction operands to byte offsets within ISel node structs.
+#
+# Layout:
+#
+#   A. 0x22A5A58-0x22AAE00: ISel vtable pool (21,416 bytes, 13 sub-vtables)
+#      - 4 x 455-entry primary handler tables (per-SM ISel dispatch)
+#      - 4 x ~159-entry secondary handler tables
+#      - 4 x 15-entry operand sub-type vtables (back-referenced by blocks)
+#      - 1 x 129-entry tail vtable
+#
+#   B. 0x22AAE00-0x22ABE20: ISel descriptor object 1 (inline vtable form)
+#      - 30-entry primary method vtable: opcode predicates, pattern matchers
+#      - 15-entry sub-vtable A (operand type ID 0x5004)
+#      - 15-entry sub-vtable B (operand type ID 0x5005)
+#      - 2 self-referencing .rodata pointers to sub-vtables A and B
+#      - 4 x 0x380-byte operand field offset blocks (per-SM variant)
+#
+#   C. 0x22ABE00-0x22AC030: ISel descriptor object 2 (remote vtable form)
+#      - .rodata pointer to 15-entry sub-vtable at 0x22A6DE8
+#      - 1 x 0x210-byte operand field offset block
+#
+#   D. 0x22AC030-0x22AC1A0: Trailing operand field offset data (368 bytes)
+#
+#   E. 0x22AC1A0-0x22AD230: ISel handler dispatch tables
+#      - 146 + 316 .text pointers with mixed metadata gaps
+#
+#   F. 0x22AD230-0x22AD9D0: Final ISel dispatch table (244 ptrs + header)
+#
+# Operand block format (size varies: 0x210, 0x380):
+#   +0x00: u32(0), u32(block_size)
+#   +0x08: u32(2), u32(0), u32(3), u32(0), u32(-1), u32(-1)  -- metadata
+#   then:  sentinel-separated groups of (u32(0), u32(byte_offset)) pairs
+#   last:  .rodata backref pointer + zero padding
+#
+# The (0, offset) pairs are byte offsets into ISel node structs (stride 4).
+
+_ISEL_DESC_VTABLE_POOL_VA    = 0x22A5A58
+_ISEL_DESC_VTABLE_POOL_END   = 0x22AAE00
+
+_ISEL_DESC_OBJ1_VA           = 0x22AAE00
+_ISEL_DESC_OBJ1_HEADER_SIZE  = 0x220
+_ISEL_DESC_OBJ1_BLOCK_COUNT  = 4
+
+_ISEL_DESC_OBJ2_VA           = 0x22ABE00
+_ISEL_DESC_OBJ2_HEADER_SIZE  = 0x20
+
+_ISEL_DESC_TRAILING_VA       = 0x22AC030
+_ISEL_DESC_TRAILING_END      = 0x22AC1A0
+
+_ISEL_DESC_HANDLER_VA        = 0x22AC1A0
+_ISEL_DESC_HANDLER_END       = 0x22AD230
+
+_ISEL_DESC_FINAL_VA          = 0x22AD230
+_ISEL_DESC_FINAL_END         = 0x22AD9D0
+
+
+def _parse_operand_block(br: BinaryReader, block_va: int, block_size: int) -> dict:
+    """Parse one sentinel-delimited operand-field-offset block.
+
+    Returns the block header metadata, sentinel-separated groups of
+    struct byte offsets, and any back-reference pointer at the end.
+    """
+    off = br._off(block_va)
+    vals = list(struct.unpack_from(f'<{block_size // 4}I', br.data, off))
+
+    # Extract small enum values from the header region (indices 2..~16)
+    enum_vals = []
+    for i in range(2, min(len(vals), 20)):
+        v = vals[i]
+        if 0 < v < 100:
+            enum_vals.append(v)
+
+    # Parse sentinel-separated groups of (0, offset) pairs
+    groups = []
+    cur = []
+    backref_ptr = None
+
+    for i in range(0, len(vals) - 1, 2):
+        lo, hi = vals[i], vals[i + 1]
+        if lo == 0xFFFFFFFF and hi == 0xFFFFFFFF:
+            if cur:
+                groups.append(cur)
+                cur = []
+        elif lo == 0 and hi == 0:
+            if cur:
+                groups.append(cur)
+                cur = []
+        elif lo == 0 and 0 < hi < 0x1000:
+            cur.append(hi)
+        elif lo > 0x400000 or hi > 0x400000:
+            full = struct.unpack_from('<Q', br.data, off + i * 4)[0]
+            if br.is_in_rodata(full):
+                backref_ptr = full
+                if cur:
+                    groups.append(cur)
+                    cur = []
+    if cur:
+        groups.append(cur)
+
+    # Drop the size-echo group (single element equal to block_size)
+    groups = [g for g in groups if g != [block_size]]
+
+    annotated = []
+    for g in groups:
+        is_consec = len(g) > 1 and all(g[j + 1] - g[j] == 4 for j in range(len(g) - 1))
+        annotated.append({
+            "field_offsets": [f"0x{o:X}" for o in g],
+            "count": len(g),
+            "consecutive_stride4": is_consec,
+            "range": f"0x{min(g):X}-0x{max(g):X}" if g else None,
+        })
+
+    return {
+        "va": f"0x{block_va:X}",
+        "size_bytes": block_size,
+        "enum_metadata": enum_vals,
+        "offset_group_count": len(annotated),
+        "offset_groups": annotated,
+        "backref_vtable_va": f"0x{backref_ptr:X}" if backref_ptr else None,
+        "total_field_offsets": sum(len(g) for g in groups),
+    }
+
+
+def _extract_isel_vtable_pool(br: BinaryReader) -> list:
+    """Extract sub-vtables from the ISel vtable pool region."""
+    start_off = br._off(_ISEL_DESC_VTABLE_POOL_VA)
+    end_off = br._off(_ISEL_DESC_VTABLE_POOL_END)
+
+    vtables = []
+    pos = start_off
+    while pos < end_off:
+        while pos < end_off:
+            val = struct.unpack_from('<Q', br.data, pos)[0]
+            if val != 0:
+                break
+            pos += 8
+        if pos >= end_off:
+            break
+
+        vt_va = pos + VA_BASE
+        entries = []
+        while pos < end_off:
+            val = struct.unpack_from('<Q', br.data, pos)[0]
+            if not br.is_in_text(val):
+                pos += 8  # skip non-.text value to avoid infinite loop
+                break
+            entries.append(val)
+            pos += 8
+
+        if entries:
+            vtables.append({
+                "va": f"0x{vt_va:X}",
+                "entry_count": len(entries),
+                "entries": [f"0x{p:X}" for p in entries],
+            })
+
+    return vtables
+
+
+def _extract_text_ptr_tables(br: BinaryReader, start_va: int, end_va: int) -> list:
+    """Extract runs of .text pointers from a dispatch region."""
+    start_off = br._off(start_va)
+    end_off = br._off(end_va)
+
+    tables = []
+    pos = start_off
+    while pos < end_off:
+        val = struct.unpack_from('<Q', br.data, pos)[0]
+        if br.is_in_text(val):
+            tbl_va = pos + VA_BASE
+            entries = []
+            while pos < end_off:
+                v = struct.unpack_from('<Q', br.data, pos)[0]
+                if not br.is_in_text(v):
+                    break
+                entries.append(v)
+                pos += 8
+            tables.append({
+                "va": f"0x{tbl_va:X}",
+                "entry_count": len(entries),
+                "entries": [f"0x{p:X}" for p in entries],
+            })
+        else:
+            pos += 8
+    return tables
+
+
+def extract_isel_node_descriptors(br: BinaryReader) -> dict:
+    """Extract ISel node descriptor tables from 0x22A5A58-0x22AD9D0.
+
+    Covers the vtable pool, inline/remote descriptor objects with operand
+    field offset blocks, and the trailing ISel handler dispatch arrays.
+    """
+
+    # A. Vtable pool
+    pool_vtables = _extract_isel_vtable_pool(br)
+    pool_text_count = sum(vt["entry_count"] for vt in pool_vtables)
+
+    # B. Object 1: inline vtable header (0x220 bytes)
+    obj1_primary = br.ptr_array(_ISEL_DESC_OBJ1_VA, 30)
+    obj1_sub_a = br.ptr_array(_ISEL_DESC_OBJ1_VA + 0x100, 15)
+    obj1_sub_b = br.ptr_array(_ISEL_DESC_OBJ1_VA + 0x188, 15)
+    obj1_self_refs = br.ptr_array(_ISEL_DESC_OBJ1_VA + 0x200, 2)
+
+    def _type_id(func_va: int) -> int | None:
+        off = br._off(func_va)
+        if br.data[off] == 0xB8 and br.data[off + 5] == 0xC3:
+            return struct.unpack_from('<I', br.data, off + 1)[0]
+        return None
+
+    sub_a_tid = _type_id(obj1_sub_a[0])
+    sub_b_tid = _type_id(obj1_sub_b[0])
+
+    obj1_blocks = []
+    bva = _ISEL_DESC_OBJ1_VA + _ISEL_DESC_OBJ1_HEADER_SIZE
+    for _ in range(_ISEL_DESC_OBJ1_BLOCK_COUNT):
+        bsize = br.u32(bva + 4)
+        obj1_blocks.append(_parse_operand_block(br, bva, bsize))
+        bva += bsize
+
+    # C. Object 2: remote vtable header (0x20 bytes)
+    obj2_remote = br.ptr(_ISEL_DESC_OBJ2_VA)
+    obj2_bva = _ISEL_DESC_OBJ2_VA + _ISEL_DESC_OBJ2_HEADER_SIZE
+    obj2_bsize = br.u32(obj2_bva + 4)
+    obj2_block = _parse_operand_block(br, obj2_bva, obj2_bsize)
+
+    # D. Trailing operand data
+    trail_off = br._off(_ISEL_DESC_TRAILING_VA)
+    trail_end = br._off(_ISEL_DESC_TRAILING_END)
+    trail_bytes = trail_end - trail_off
+    trail_vals = list(struct.unpack_from(f'<{trail_bytes // 4}I', br.data, trail_off))
+    trail_sents = sum(1 for v in trail_vals if v == 0xFFFFFFFF)
+    trail_offsets = sum(
+        1 for i in range(0, len(trail_vals) - 1, 2)
+        if trail_vals[i] == 0 and 0 < trail_vals[i + 1] < 0x1000
+    )
+
+    # E. Handler dispatch tables (two runs of .text ptrs)
+    handler_tables = _extract_text_ptr_tables(br, _ISEL_DESC_HANDLER_VA, _ISEL_DESC_HANDLER_END)
+
+    # F. Final dispatch table
+    final_tables = _extract_text_ptr_tables(br, _ISEL_DESC_FINAL_VA, _ISEL_DESC_FINAL_END)
+
+    return {
+        "isel_node_descriptors": {
+            "region": {
+                "pool_start_va": f"0x{_ISEL_DESC_VTABLE_POOL_VA:X}",
+                "descriptors_end_va": f"0x{_ISEL_DESC_FINAL_END:X}",
+                "total_size_bytes": _ISEL_DESC_FINAL_END - _ISEL_DESC_VTABLE_POOL_VA,
+            },
+            "vtable_pool": {
+                "va": f"0x{_ISEL_DESC_VTABLE_POOL_VA:X}",
+                "end_va": f"0x{_ISEL_DESC_VTABLE_POOL_END:X}",
+                "size_bytes": _ISEL_DESC_VTABLE_POOL_END - _ISEL_DESC_VTABLE_POOL_VA,
+                "sub_vtable_count": len(pool_vtables),
+                "total_text_pointers": pool_text_count,
+                "sub_vtables": pool_vtables,
+            },
+            "descriptor_object_1": {
+                "va": f"0x{_ISEL_DESC_OBJ1_VA:X}",
+                "end_va": f"0x{bva:X}",
+                "form": "inline_vtable",
+                "primary_vtable": {
+                    "entry_count": 30,
+                    "entries": [f"0x{p:X}" for p in obj1_primary],
+                },
+                "sub_vtable_a": {
+                    "va": f"0x{_ISEL_DESC_OBJ1_VA + 0x100:X}",
+                    "type_id": f"0x{sub_a_tid:X}" if sub_a_tid else None,
+                    "entry_count": 15,
+                    "entries": [f"0x{p:X}" for p in obj1_sub_a],
+                },
+                "sub_vtable_b": {
+                    "va": f"0x{_ISEL_DESC_OBJ1_VA + 0x188:X}",
+                    "type_id": f"0x{sub_b_tid:X}" if sub_b_tid else None,
+                    "entry_count": 15,
+                    "entries": [f"0x{p:X}" for p in obj1_sub_b],
+                },
+                "self_ref_ptrs": [f"0x{r:X}" for r in obj1_self_refs],
+                "operand_block_count": len(obj1_blocks),
+                "operand_blocks": obj1_blocks,
+            },
+            "descriptor_object_2": {
+                "va": f"0x{_ISEL_DESC_OBJ2_VA:X}",
+                "end_va": f"0x{obj2_bva + obj2_bsize:X}",
+                "form": "remote_vtable",
+                "remote_vtable_va": f"0x{obj2_remote:X}",
+                "operand_block": obj2_block,
+            },
+            "trailing_operand_data": {
+                "va": f"0x{_ISEL_DESC_TRAILING_VA:X}",
+                "end_va": f"0x{_ISEL_DESC_TRAILING_END:X}",
+                "size_bytes": trail_bytes,
+                "sentinel_count": trail_sents,
+                "field_offset_pairs": trail_offsets,
+            },
+            "handler_dispatch_tables": {
+                "va": f"0x{_ISEL_DESC_HANDLER_VA:X}",
+                "end_va": f"0x{_ISEL_DESC_HANDLER_END:X}",
+                "table_count": len(handler_tables),
+                "tables": handler_tables,
+            },
+            "final_dispatch_table": {
+                "va": f"0x{_ISEL_DESC_FINAL_VA:X}",
+                "end_va": f"0x{_ISEL_DESC_FINAL_END:X}",
+                "table_count": len(final_tables),
+                "tables": final_tables,
+            },
+        }
+    }
+
+
 # ─── Table 39: Scheduling Encoder Dispatch Tables ────────────────────
 
 # The 7,680-byte gap at 0x21D9200-0x21DB000 sits between the shared memory
@@ -4373,6 +4693,133 @@ def build_encoding_geometry(fmt_desc: dict, tier2: dict) -> dict:
     return {"encoding_geometry": {"format_count": len(combined), "formats": combined}}
 
 
+
+# ─── Table 38: ISel Operand Constraints + Instruction VTable ────────────
+#
+# Gap 0x22B8E00-0x22BD0C0 (17,088 bytes): ISel secondary -> phase name table.
+#   A. 0x22B8E00-0x22BB560: 39 operand constraint records (0x100 stride)
+#   B. 0x22BB560-0x22BB6D8: 47-entry operand handler vtable
+#   C. 0x22BB6D8-0x22BB738: Operand count mapping (96 bytes)
+#   D. 0x22BB738-0x22BC3B0: 399-entry instruction operation vtable
+#   E. 0x22BC3B0-0x22BD0C0: Phase name string pool (3,344 bytes)
+
+_OPERAND_CONSTRAINT_RECORDS_VA     = 0x22B8E00
+_OPERAND_CONSTRAINT_RECORDS_END    = 0x22BB560
+_OPERAND_CONSTRAINT_RECORD_STRIDE  = 0x100
+_OPERAND_CONSTRAINT_RECORD_COUNT   = 39
+_OPERAND_HANDLER_VTABLE_VA         = 0x22BB560
+_OPERAND_HANDLER_VTABLE_COUNT      = 47
+_OPERAND_COUNT_MAPPING_VA          = 0x22BB6D8
+_OPERAND_COUNT_MAPPING_END         = 0x22BB738
+_OPERAND_COUNT_MAPPING_SIZE        = _OPERAND_COUNT_MAPPING_END - _OPERAND_COUNT_MAPPING_VA
+_INSTR_OPERATION_VTABLE_VA         = 0x22BB738
+_INSTR_OPERATION_VTABLE_COUNT      = 399
+_PHASE_NAME_STRPOOL_VA             = 0x22BC3B0
+_PHASE_NAME_STRPOOL_END            = 0x22BD0C0
+
+_OPERAND_CONSTRAINT_DISPATCH = {
+    "JMX": 70, "UTMAPF": 243, "UTMALST": 245, "VHMNMX": 246,
+    "VIADD": 247, "CREDUX": 254, "FMNMX3": 257,
+    "UTCBAR_1CTA": 261, "UTCBAR_2CTA": 262,
+}
+
+
+def extract_isel_operand_constraints(br: BinaryReader) -> dict:
+    """Extract ISel operand constraint records, handler vtables, instruction
+    operation vtable, and phase name string pool."""
+
+    records = []
+    for i in range(_OPERAND_CONSTRAINT_RECORD_COUNT):
+        rec_va = _OPERAND_CONSTRAINT_RECORDS_VA + i * _OPERAND_CONSTRAINT_RECORD_STRIDE
+        header = br.u32_array(rec_va, 4)
+        tc = br.u32(rec_va + 0x60)
+        type_ids = br.u32_array(rec_va + 0x68, tc) if 0 < tc < 30 else []
+        flags = br.u32_array(rec_va + 0xDC, 5)
+        records.append({"index": i, "va": f"0x{rec_va:X}", "header": header,
+                        "type_count": tc, "type_ids": type_ids, "constraint_flags": flags})
+
+    all_type_ids = set()
+    for r in records:
+        all_type_ids.update(r["type_ids"])
+
+    handler_ptrs = br.ptr_array(_OPERAND_HANDLER_VTABLE_VA, _OPERAND_HANDLER_VTABLE_COUNT)
+    mapping_u32s = br.u32_array(_OPERAND_COUNT_MAPPING_VA, _OPERAND_COUNT_MAPPING_SIZE // 4)
+    instr_ptrs = br.ptr_array(_INSTR_OPERATION_VTABLE_VA, _INSTR_OPERATION_VTABLE_COUNT)
+
+    pool_data = br.read_bytes(_PHASE_NAME_STRPOOL_VA,
+                              _PHASE_NAME_STRPOOL_END - _PHASE_NAME_STRPOOL_VA)
+    pool_strings, pos = [], 0
+    while pos < len(pool_data):
+        if pool_data[pos] == 0:
+            pos += 1
+            continue
+        nul = pool_data.find(b'\x00', pos)
+        if nul < 0:
+            break
+        try:
+            s = pool_data[pos:nul].decode('ascii')
+        except UnicodeDecodeError:
+            pos = nul + 1
+            continue
+        pool_strings.append({"va": f"0x{_PHASE_NAME_STRPOOL_VA + pos:X}", "string": s})
+        pos = nul + 1
+
+    phase_ptrs = set(br.ptr_array(PHASE_NAME_TABLE_VA, PHASE_NAME_COUNT))
+    for entry in pool_strings:
+        entry["is_phase_name"] = int(entry["va"], 16) in phase_ptrs
+    phase_n = sum(1 for e in pool_strings if e["is_phase_name"])
+
+    return {"isel_operand_constraints": {
+        "region": {"start_va": f"0x{_OPERAND_CONSTRAINT_RECORDS_VA:X}",
+                   "end_va": f"0x{_PHASE_NAME_STRPOOL_END:X}",
+                   "total_bytes": _PHASE_NAME_STRPOOL_END - _OPERAND_CONSTRAINT_RECORDS_VA},
+        "operand_constraint_records": {
+            "source_va": f"0x{_OPERAND_CONSTRAINT_RECORDS_VA:X}",
+            "end_va": f"0x{_OPERAND_CONSTRAINT_RECORDS_END:X}",
+            "record_count": _OPERAND_CONSTRAINT_RECORD_COUNT,
+            "record_stride": _OPERAND_CONSTRAINT_RECORD_STRIDE,
+            "nonempty_records": sum(1 for r in records if r["type_count"] > 0),
+            "unique_type_ids": sorted(all_type_ids),
+            "dispatch_opcodes": _OPERAND_CONSTRAINT_DISPATCH,
+            "accessor_function": "sub_C3F490",
+            "callers": ["sub_C40420", "sub_C40B90", "sub_C41100",
+                        "sub_C42330", "sub_6CB8A0"],
+            "records": records},
+        "operand_handler_vtable": {
+            "source_va": f"0x{_OPERAND_HANDLER_VTABLE_VA:X}",
+            "entry_count": _OPERAND_HANDLER_VTABLE_COUNT,
+            "valid_text_pointers": sum(1 for p in handler_ptrs if br.is_in_text(p)),
+            "unique_targets": len(set(handler_ptrs)),
+            "accessors": ["sub_C47430", "sub_C3F730", "sub_C3F970"],
+            "entries": [f"0x{p:X}" for p in handler_ptrs]},
+        "operand_count_mapping": {
+            "source_va": f"0x{_OPERAND_COUNT_MAPPING_VA:X}",
+            "end_va": f"0x{_OPERAND_COUNT_MAPPING_END:X}",
+            "size_bytes": _OPERAND_COUNT_MAPPING_SIZE,
+            "accessors": ["sub_C47D50", "sub_C48510", "sub_C49450",
+                          "sub_C49700", "sub_C499D0"],
+            "values": mapping_u32s},
+        "instruction_operation_vtable": {
+            "source_va": f"0x{_INSTR_OPERATION_VTABLE_VA:X}",
+            "entry_count": _INSTR_OPERATION_VTABLE_COUNT,
+            "valid_text_pointers": sum(1 for p in instr_ptrs if br.is_in_text(p)),
+            "null_entries": sum(1 for p in instr_ptrs if p == 0),
+            "unique_targets": len(set(instr_ptrs)),
+            "constructor": "sub_9CE030",
+            "note": "C++ vtable assigned via *obj = off_22BB738",
+            "entries": [f"0x{p:X}" for p in instr_ptrs]},
+        "phase_name_string_pool": {
+            "source_va": f"0x{_PHASE_NAME_STRPOOL_VA:X}",
+            "end_va": f"0x{_PHASE_NAME_STRPOOL_END:X}",
+            "size_bytes": _PHASE_NAME_STRPOOL_END - _PHASE_NAME_STRPOOL_VA,
+            "total_strings": len(pool_strings),
+            "phase_name_strings": phase_n,
+            "format_strings": len(pool_strings) - phase_n,
+            "note": "String storage for phase name pointer table at 0x22BD0C0",
+            "strings": pool_strings},
+    }}
+
+
 # ─── Main ───────────────────────────────────────────────────────────────
 
 def main():
@@ -4452,6 +4899,8 @@ def main():
         ("wgmma_intrinsic",    "wgmma_intrinsic_infra.json",    extract_wgmma_intrinsic_infra),
         ("regalloc_init",      "regalloc_init_data.json",       extract_regalloc_init),
         ("sched_enc_dispatch", "sched_encoder_dispatch.json",   extract_sched_encoder_dispatch),
+        ("isel_op_constr",     "isel_operand_constraints.json", extract_isel_operand_constraints),
+        ("isel_node_desc",     "isel_node_descriptors.json",    extract_isel_node_descriptors),
     ]
 
     for key, filename, func in extractors:

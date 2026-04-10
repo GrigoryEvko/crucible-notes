@@ -1,42 +1,24 @@
 {
   "high_entropy_blob": {
-    "start_va": "0x1D4FE00",
+    "start_va": "0x1D4FF40",
     "end_va": "0x201CE00",
-    "size_bytes": 2936832,
+    "size_bytes": 2936512,
     "size_mb": 2.8,
-    "sha256": "0a8c461124f786666f98f7eb6d3bcf4d846b7d9099f6729d48b106def796a099",
-    "overall_entropy_bits": 7.998,
-    "first_page_entropy": 7.7563,
-    "post_header_entropy": 7.9512,
+    "sha256": "7747c8abf7aa57f385e1ce7e7b779f008e68ea96cd5b02771cb04dfafe093f9b",
+    "overall_entropy_bits": 7.9981,
+    "first_page_entropy": 7.9512,
     "last_page_entropy": 7.5921,
-    "header_hex_16b": "0060f201000000000000000000000000",
-    "header": {
-      "entry_count": 20,
-      "size_bytes": 320,
-      "pointers": [
-        "0x01F26000",
-        "0x01F24340",
-        "0x01F23CA0",
-        "0x01F235E0",
-        "0x01F21B40",
-        "0x01F200A0",
-        "0x01F1E5E0",
-        "0x01F1CB20",
-        "0x01F1BB60",
-        "0x01F1ABA0",
-        "0x01F19BE0",
-        "0x01F18C20",
-        "0x01F17C60",
-        "0x01F16CA0",
-        "0x01F15CE0",
-        "0x01F14D20",
-        "0x01F14860",
-        "0x01F143A0",
-        "0x01F13EC0",
-        "0x01F139E0"
-      ],
-      "note": "Descending u32 pointers into .rodata, each in a 16-byte slot (12 bytes padding)."
+    "first_16_bytes_hex": "3d1d8a7e795bed820afc4e0f32580442",
+    "blob_offset_index": {
+      "start_va": "0x1D4D950",
+      "end_va": "0x1D4FF40",
+      "entry_count": 607,
+      "size_bytes": 9712,
+      "tagged_entries": 7,
+      "tag_values": "0 (normal) or 3 (7 entries at 0x1D4DA60-0x1D4DAC0)",
+      "offset_range": "0x1F139E0-0x201D280",
+      "note": "Monotonically decreasing offsets into the SASS blob. Each entry is 16 bytes: u64 blob_offset + u64 tag."
     },
-    "note": "320-byte structured header (20 rodata pointers) followed by ~2.8 MB of near-maximum entropy data (8.00 bits/byte). Likely compressed/encrypted NVVM IR templates, pre-built code sequences, or encoded lookup tables."
+    "note": "~2.8 MB of near-maximum entropy data (8.00 bits/byte) starting immediately at 0x1D4FF40. Preceded by a 607-entry blob offset index (0x1D4D950-0x1D4FF40). Likely compressed/encrypted NVVM IR templates, pre-built code sequences, or encoded lookup tables."
   }
 }

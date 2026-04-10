@@ -1,7 +1,7 @@
 {
   "knob_strings": {
-    "total_count": 1142,
-    "rot13_count": 1126,
+    "total_count": 1121,
+    "rot13_count": 1105,
     "plaintext_count": 16,
     "regions": [
       {
@@ -126,132 +126,6 @@
         "rot13": "ReadKnobsFile",
         "name": "ReadKnobsFile",
         "is_rot13": false,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B6896",
-        "rot13": "KZNQ",
-        "name": "XMAD",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B689B",
-        "rot13": "FGF",
-        "name": "STS",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B689F",
-        "rot13": "FGT",
-        "name": "STG",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68A3",
-        "rot13": "ZRZONE",
-        "name": "MEMBAR",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68AA",
-        "rot13": "YQFZ",
-        "name": "LDSM",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68AF",
-        "rot13": "YQF",
-        "name": "LDS",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68B3",
-        "rot13": "YQTFGF",
-        "name": "LDGSTS",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68BA",
-        "rot13": "YQT",
-        "name": "LDG",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68BE",
-        "rot13": "VZZN",
-        "name": "IMMA",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68C3",
-        "rot13": "VQC",
-        "name": "IDP",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68C7",
-        "rot13": "VZNQ",
-        "name": "IMAD",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68CC",
-        "rot13": "UZZN",
-        "name": "HMMA",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68D1",
-        "rot13": "USZN2",
-        "name": "HFMA2",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68D7",
-        "rot13": "SSZN",
-        "name": "FFMA",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68DC",
-        "rot13": "QZZN",
-        "name": "DMMA",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68E1",
-        "rot13": "QSZN",
-        "name": "DFMA",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68E8",
-        "rot13": "NEEVIRF",
-        "name": "ARRIVES",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B68F0",
-        "rot13": "ABAR",
-        "name": "NONE",
-        "is_rot13": true,
         "region": "OCG knobs (ctor_005)"
       },
       {
@@ -1091,13 +965,6 @@
         "va": "0x21B7B88",
         "rot13": "GrkGbVafgEngvb",
         "name": "TexToInstRatio",
-        "is_rot13": true,
-        "region": "OCG knobs (ctor_005)"
-      },
-      {
-        "va": "0x21B7BA0",
-        "rot13": "GRKF",
-        "name": "TEXS",
         "is_rot13": true,
         "region": "OCG knobs (ctor_005)"
       },
@@ -7287,20 +7154,6 @@
         "rot13": "ScheduleInstructions",
         "name": "ScheduleInstructions",
         "is_rot13": false,
-        "region": "DAG knobs (ctor_007)"
-      },
-      {
-        "va": "0x21DC22E",
-        "rot13": "XU64",
-        "name": "KH64",
-        "is_rot13": true,
-        "region": "DAG knobs (ctor_007)"
-      },
-      {
-        "va": "0x21DC233",
-        "rot13": "DMMA",
-        "name": "QZZN",
-        "is_rot13": true,
         "region": "DAG knobs (ctor_007)"
       },
       {

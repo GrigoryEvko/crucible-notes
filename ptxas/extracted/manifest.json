@@ -32,6 +32,7 @@
     "scoreboard_configs": "per_sm_scoreboard_configs.json",
     "encoding_trees": "encoding_trees.json",
     "regclass_aux": "register_class_aux.json",
+    "regclass_constr": "register_class_constraints.json",
     "pipeline_map": "opcode_pipeline_map.json",
     "sched_vtable": "scheduling_vtable.json",
     "regfile_config": "register_file_config.json",
@@ -39,7 +40,16 @@
     "sm_sched_seeds": "sm_scheduling_seeds.json",
     "sm_id_enum": "sm_id_enumeration.json",
     "extended_sass": "extended_sass_names.json",
-    "modifier_fmtstrs": "modifier_format_strings.json"
+    "modifier_fmtstrs": "modifier_format_strings.json",
+    "mod_value_tables": "modifier_value_tables.json",
+    "instr_legality": "instruction_legality.json",
+    "resrc_strategy": "operand_resource_strategy.json",
+    "mercury_dispatch": "per_sm_handler_dispatch.json",
+    "wgmma_intrinsic": "wgmma_intrinsic_infra.json",
+    "regalloc_init": "regalloc_init_data.json",
+    "sched_enc_dispatch": "sched_encoder_dispatch.json",
+    "isel_op_constr": "isel_operand_constraints.json",
+    "isel_node_desc": "isel_node_descriptors.json"
   },
   "derived_tables": {
     "opcode_master": "opcode_master.json",
@@ -79,12 +89,24 @@
       "sha256": "e6dbd87c2d4bd7536fddf7cadc924072c5e979f62ba9abe5ae673b691dc33e74"
     },
     "high_entropy_blob.json": {
-      "size": 1278,
-      "sha256": "d8b69c87c02faa3f92c5cce98485821ff9549b9b0bc715b8261e48279bbf2f05"
+      "size": 1061,
+      "sha256": "7d57ff7592ad5248511097da78ed20cd9391b7c4f48457d6799b5110ead863df"
+    },
+    "instruction_legality.json": {
+      "size": 1550321,
+      "sha256": "fbf9276ce1f9b739fdc8140dc3743bba562fe36081d9b0dc6279615f42f576c6"
     },
     "isel_dispatch_tables.json": {
       "size": 34239,
       "sha256": "4c77ca0a9b9c21a5ec05e2c5ce5505867810099363b4e4b93250e3f849222f36"
+    },
+    "isel_node_descriptors.json": {
+      "size": 100238,
+      "sha256": "b86b0b85e2db9955eceeeb51cb7d2e62fea271eb4a4485dfc7345006a436f937"
+    },
+    "isel_operand_constraints.json": {
+      "size": 52702,
+      "sha256": "ce65a2dad9a95784884cd92b94fe92ee0f7970f17753f1065f0dc87dff4dc966"
     },
     "knob_strings.json": {
       "size": 220131,
@@ -93,6 +115,10 @@
     "modifier_format_strings.json": {
       "size": 97329,
       "sha256": "b03c50d08ec8e9fdf6a9b69f53aac22988e26cec1858066fc8b208c0e40cf2da"
+    },
+    "modifier_value_tables.json": {
+      "size": 20705,
+      "sha256": "c4323f22e5f86e55ff93464213cc8048703960a30230f772215212f93e9971e6"
     },
     "occupancy_constants.json": {
       "size": 2605,
@@ -118,9 +144,17 @@
       "size": 15180,
       "sha256": "bd74c011b783565230e04e6269a67b3369fedfe41cec975c64dc0223e7d807a3"
     },
+    "operand_resource_strategy.json": {
+      "size": 12774,
+      "sha256": "8124e682cfb369ea8f49cea1ae95f1dace995fd920e7ec2897c33ad1f9497063"
+    },
     "per_sm_dependency_rules.json": {
       "size": 1570307,
       "sha256": "b8e7ba35de0fc52907efd5eae7ca9f04d9b132c853299b9813373f491c169f37"
+    },
+    "per_sm_handler_dispatch.json": {
+      "size": 2008381,
+      "sha256": "e8b4959146af133ab4652f9cb235046d361e556aa63cca1f7fece5f921b2b2cd"
     },
     "per_sm_latency_tables.json": {
       "size": 862340,
@@ -134,9 +168,17 @@
       "size": 17875,
       "sha256": "c6a680f80ce5b42d928175881fc34efdbcd5e2322de84ffafa18cc3a6ca3a3bc"
     },
+    "regalloc_init_data.json": {
+      "size": 37977,
+      "sha256": "5b0d132b521819145cad2fead11c5d12551bd2084c91e35334d4341ad978eebc"
+    },
     "register_class_aux.json": {
       "size": 145773,
       "sha256": "d6160b59fdcd046e0e51afa922fb9d244811e775672fa489cbc25e531773467b"
+    },
+    "register_class_constraints.json": {
+      "size": 156175,
+      "sha256": "3b0baa40ced2447a61f76247f32bd93996880e601e9fbfafee1f26ba86f52e9e"
     },
     "register_file_config.json": {
       "size": 28054,
@@ -149,6 +191,10 @@
     "sass_handler_dispatch_2.json": {
       "size": 633717,
       "sha256": "b46c10c5390edae0d0f53aa0c84e8916da8c22131db39fba676ca1b7051d3f25"
+    },
+    "sched_encoder_dispatch.json": {
+      "size": 58047,
+      "sha256": "0d7c508ac0f390288a88c698e2da1cc2a8eb8bbf9275accc849195730cda5c53"
     },
     "scheduling_vtable.json": {
       "size": 17047,
@@ -181,6 +227,10 @@
     "universal_slot_template.json": {
       "size": 1162,
       "sha256": "b27dee24bf40a2b19b634307cc4de9d1deb5770acdd8915aa71426aefeaac4ba"
+    },
+    "wgmma_intrinsic_infra.json": {
+      "size": 78459,
+      "sha256": "e970c8b7ea7ce4652a785ad96340a92f46ae5d235847cf9b42dd9e5ed3c42eff"
     }
   }
 }

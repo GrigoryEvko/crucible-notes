@@ -1,14 +1,14 @@
 {
   "isel_dispatch_tables": {
     "source_va": "0x22AD9D0",
-    "end_va": "0x22B1480",
-    "total_pointers": 1878,
-    "valid_text_pointers": 1878,
+    "end_va": "0x22B14B0",
+    "total_pointers": 1884,
+    "valid_text_pointers": 1884,
     "invalid_text_pointers": 0,
-    "sentinel_count": 272,
+    "sentinel_count": 273,
     "sentinel_va": "0xBA9E23",
-    "unique_targets": 1607,
-    "isel_range_pointers": 1209,
+    "unique_targets": 1612,
+    "isel_range_pointers": 1215,
     "pointers": [
       "0xBB3972",
       "0xBB38F3",
@@ -1887,7 +1887,13 @@
       "0xBB987E",
       "0xBB9857",
       "0xBB9830",
-      "0xBB9809"
+      "0xBB9809",
+      "0xBA9E23",
+      "0xBB681F",
+      "0xBB67E6",
+      "0xBB67AD",
+      "0xBB6786",
+      "0xBB675F"
     ]
   }
 }
