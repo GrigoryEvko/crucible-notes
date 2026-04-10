@@ -60,11 +60,12 @@ sub_489000 (process_file_scope_entities)
   |-- Phase 2: Output file opening (.int.c or stdout)
   |-- Phase 3: Boilerplate emission (GCC diagnostics, managed runtime, lambda macros)
   |-- Phase 4: Main entity loop (walk source sequence, dispatch to gen_template)
-  |-- Phase 5: Empty file guard
+  |-- Phase 5: Empty file guard + scope unwind (sub_466C10)
+  |-- [optional] Breakpoint placeholders (qword_1065840 list)
   |-- Phase 6: File trailer (#line, _NV_ANON_NAMESPACE, #include, #undef)
-  |-- Phase 7: Host reference arrays (sub_6BCF80 x 6)
+  |-- Phase 7: Host reference arrays (sub_6BCF80 x 6, conditional on dword_106BFD0/BFCC)
   |
-  +-- sub_4F7B10: close output file
+  +-- sub_4F7B10: close output file (ID 1701)
 ```
 
 ## Phase 1: State Initialization
@@ -297,7 +298,7 @@ When extended lambda mode IS active, these macros are not emitted -- the fronten
 
 ## Phase 4: Main Entity Loop
 
-This is the core of the backend. The function walks the source sequence list (`qword_1065748`), which is a linked list of top-level declarations in the order they appeared in the source file. For each entry, it dispatches based on the entry's kind field at offset `+16`.
+This is the core of the backend. The source sequence cursor `qword_1065748` is initialized from the file scope IL node's declaration list at offset `+256`: `qword_1065748 = *(*(xmmword_126EB60 + 8) + 256)`, where the high qword of `xmmword_126EB60` points to the file scope root (set during `fe_wrapup`). The cursor walks this linked list of top-level declarations in the order they appeared in the source file. For each entry, it dispatches based on the entry's kind field at offset `+16`.
 
 ### Source Sequence Entry Structure
 
@@ -344,6 +345,137 @@ for (i = qword_1065748; i != NULL; ) {
 ```
 
 When the primary cursor is exhausted and an alternate cursor exists, the primary takes the alternate's next pointer and continues. This ensures correct ordering when pragmas split a declaration sequence.
+
+### Full Main Loop Pseudocode
+
+The following pseudocode is derived from the decompiled `sub_489000` (lines 288-558) and shows the complete dispatch logic. The variable `v12` tracks whether any non-pragma entity was emitted (used by the empty file guard in Phase 5). The variable `v14` saves/restores `byte_10657FB` across pragma handling.
+
+```c
+// Initialize source sequence cursor from file scope node
+qword_1065748 = *(xmmword_126EB60_high + 256);  // source sequence list head
+byte_10656F0 = (dword_126EFB4 != 2) + 2;        // linkage: 3=C++, 2=C
+sub_466E60(...);                                  // init output state
+v12 = 0;                                          // no entities emitted yet
+
+while (1) {
+    v14 = byte_10657FB;                           // save pragma-in-progress flag
+
+    i = qword_1065748;                            // primary cursor
+    alt = qword_1065740;                          // alternate cursor
+    modified_primary = false;
+    modified_alt = false;
+
+    while (i != NULL) {
+        kind = *(byte*)(i + 16);
+
+        if (kind == 57) {
+            // --- Pragma interleave ---
+            entity = *(qword*)(i + 24);
+            // Walk past continuation markers (kind 53)
+            for (i = *(qword*)i; i != NULL; ) {
+                if (*(byte*)(i + 16) != 53) break;
+                alt = i;
+                modified_alt = true;
+                i = *(qword*)(*(qword*)(i + 24) + 8);  // follow entity next
+            }
+            if (i == NULL && alt != NULL) {
+                i = *(qword*)alt;
+                alt = NULL;
+                modified_alt = true;
+            }
+            modified_primary = true;
+
+            if (*(byte*)(entity + 9))              // skip_flag set?
+                continue;                          // already processed
+
+            // Commit cursor state
+            qword_1065748 = i;
+            if (modified_alt) qword_1065740 = alt;
+            byte_10657FB = 1;                      // mark pragma context
+
+            // Set source position from pragma entity
+            dword_1065818 = 1;                     // needs line directive
+            qword_1065810 = *(qword*)(entity + 32);
+            qword_126EDE8 = *(qword*)(entity + 32);
+
+            sub_kind = *(byte*)(entity + 8);
+            switch (sub_kind) {
+                case 26:  // STDC pragma
+                    emit_line_start("#pragma ");
+                    emit_raw("STDC ");
+                    switch (*(byte*)(entity + 56)) {
+                        case 1: emit_raw("FP_CONTRACT ");    break;
+                        case 2: emit_raw("FENV_ACCESS ");    break;
+                        case 3: emit_raw("CX_LIMITED_RANGE "); break;
+                        default: assertion("gen_stdc_pragma: bad kind");
+                    }
+                    switch (*(byte*)(entity + 57)) {
+                        case 1: emit_raw("OFF");     break;
+                        case 2: emit_raw("ON");      break;
+                        case 3: emit_raw("DEFAULT"); break;
+                        default: assertion("gen_stdc_pragma: bad value");
+                    }
+                    emit_newline();
+                    break;
+
+                case 21:  // Line directive pragma
+                    emit_line_start("#line ");
+                    byte_10657F9 = 1;
+                    sub_5FCAF0(*(qword*)(entity + 56), 0, &xmmword_1065760);
+                    byte_10657F9 = 0;
+                    emit_newline();
+                    break;
+
+                default:  // Generic pragma (including sub_kind 19)
+                    if (!*(qword*)(entity + 48))
+                        assertion("gen_pragma: NULL pragma_text");
+                    emit_line_start("#pragma ");
+                    emit_raw(*(char**)(entity + 48));
+                    emit_newline();
+                    if (sub_kind == 19)
+                        dword_10656F8 = *(int*)(entity + 56);  // track #pragma pack
+                    break;
+            }
+            byte_10657FB = v14;                    // restore saved flag
+            continue;                              // next iteration
+        }
+
+        // --- Non-pragma entity ---
+        if (modified_primary) qword_1065748 = i;
+        if (modified_alt)     qword_1065740 = alt;
+
+        if (kind == 53) {
+            // Continuation marker: switch to alternate cursor
+            alt = i;
+            modified_alt = true;
+            i = *(qword*)(*(qword*)(i + 24) + 8);
+            continue;
+        }
+
+        if (kind == 52)  // end_of_construct: should never appear at top level
+            sub_4F2930("cp_gen_be.c", 26628,
+                       "process_file_scope_entities",
+                       "Top-level end-of-construct entry", 0);
+
+        v12 = 1;                                   // mark: entity emitted
+        sub_47ECC0(0);                             // gen_template(recursion_level=0)
+        // Loop continues from updated qword_1065748
+    }
+
+    // Exhausted primary cursor; check for pending alternate
+    if (i == NULL && alt != NULL) {
+        i = *(qword*)alt;
+        alt = NULL;
+        // ... continue outer loop
+    } else {
+        break;  // done
+    }
+}
+
+// Final cursor cleanup
+if (modified_primary) qword_1065748 = 0;
+if (modified_alt)     qword_1065740 = alt;
+```
 
 ### Entity Kind Dispatch
 
@@ -557,9 +689,9 @@ This phase is conditional: it only executes when `dword_106BFD0` (CUDA device re
 
 Before the host reference arrays, if `dword_106BFB8` is set, `sub_5B0180` (`write_module_id_to_file`) writes the CRC32-based module identifier to a separate file. This ID is used by the CUDA runtime to match device code fatbinaries with their host-side registration code.
 
-## Phase 5 (Supplemental): Breakpoint Placeholders
+## Breakpoint Placeholders (Between Phase 5 and Phase 6)
 
-Between the main entity loop and the file trailer, if the breakpoint placeholder list (`qword_1065840`) is non-empty, the backend emits debug breakpoint functions:
+After the empty file guard and scope unwinding (`sub_466C10`) but before the file trailer, if the breakpoint placeholder list (`qword_1065840`) is non-empty, the backend emits debug breakpoint functions:
 
 ```c
 static __attribute__((used)) void __nv_breakpoint_placeholder<N>_<name>(void) {
@@ -674,6 +806,7 @@ extern "C" { extern __attribute__((section(".nvHRCE"))) ... }
 ## Cross-References
 
 - [Pipeline Overview](./overview.md) -- where stage 7 fits in the full compilation flow
+- [Frontend Wrapup](./fe-wrapup.md) -- stage 6, produces the finalized IL that the backend consumes
 - [.int.c File Format](../output/int-c-format.md) -- detailed structure of the backend output file
 - [Managed Memory Boilerplate](../output/cuda-runtime.md) -- the `__nv_managed_rt` initialization pattern
 - [Host Reference Arrays](../output/host-reference-arrays.md) -- `.nvHRKI`/`.nvHRDE` section format

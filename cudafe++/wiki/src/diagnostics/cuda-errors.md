@@ -258,7 +258,7 @@ Extended lambdas (`__device__` or `__host__ __device__` lambdas defined within h
 | Tag | Message Template |
 |---|---|
 | `extended_lambda_enclosing_function_generic_lambda` | `An extended %s1 lambda cannot be defined inside a generic lambda expression(%sq2).` |
-| `extended_lambda_enclosing_function_hd_lambda` | `An extended %s1 lambda cannot be defined inside an extended __host__ __device__ lambda expression(%sq2).` |
+| `extended_lambda_enclosing_function_hd_lambda` | `An extended %s1 lambda cannot be defined inside an extended __host__ __device__  lambda expression(%sq2).` (note: double space before "lambda" is present in the binary) |
 | `extended_lambda_inaccessible_ancestor` | `An extended %s1 lambda cannot be defined inside a class (%sq2) with private or protected access within another class` |
 | `extended_lambda_inside_constexpr_if` | `For this host platform/dialect, an extended lambda cannot be defined inside the 'if' or 'else' block of a constexpr if statement` |
 | `extended_lambda_multiple_parent` | `Cannot specify multiple __nv_parent directives in a lambda declaration` |
@@ -306,7 +306,7 @@ Errors related to `<<<...>>>` kernel launch syntax.
 | `device_side_launch_arg_with_user_provided_cctor` | `cannot pass an argument with a user-provided copy-constructor to a device-side kernel launch` |
 | `device_side_launch_arg_with_user_provided_dtor` | `cannot pass an argument with a user-provided destructor to a device-side kernel launch` |
 
-## Category 8: Memory Space and Variable Restrictions (12 messages)
+## Category 8: Memory Space and Variable Restrictions (15 messages)
 
 ### Variable Access Across Spaces
 
@@ -353,7 +353,7 @@ The `__grid_constant__` annotation (compute_70+) marks a kernel parameter as rea
 | `grid_constant_incompat_specialization` | `incompatible __grid_constant__ annotation for parameter %s in function specialization (see previous declaration %p)` |
 | `grid_constant_incompat_instantiation_directive` | `incompatible __grid_constant__ annotation for parameter %s in instantiation directive (see previous declaration %p)` |
 
-## Category 10: JIT Mode (4 messages)
+## Category 10: JIT Mode (5 messages)
 
 JIT mode (`-dc` for device-only compilation) restricts host constructs. These errors guide users toward the `-default-device` flag for unannotated declarations.
 
@@ -421,7 +421,7 @@ CUDA atomics are lowered to PTX instructions with specific size, type, scope, an
 | `nv_atomic_operations_scope_cluster_change_to_device` | `atomic operations' scope of cluster is supported on architecture sm_90 or above. Using device scope instead.` |
 | `nv_atomic_load_store_scope_cluster_change_to_device` | `atomic load and store's scope of cluster is supported on architecture sm_90 or above. Using device scope instead.` |
 
-## Category 13: ASM in Device Code (4 messages)
+## Category 13: ASM in Device Code (6 messages)
 
 Inline assembly constraints are more restrictive in device code (NVPTX backend supports fewer constraint letters than x86).
 
@@ -475,7 +475,7 @@ The `__CUDACC_RTC__name_expr` intrinsic is used by NVRTC to form the mangled nam
 | `name_expr_extra_tokens` | *(extra tokens after name expression)* |
 | `name_expr_internal_error` | *(internal error in name expression processing)* |
 
-## Category 17: Texture and Surface Variables (6 messages)
+## Category 17: Texture and Surface Variables (8 messages)
 
 Texture and surface objects have special memory semantics. These errors enforce that they are not used in ways incompatible with the GPU texture subsystem.
 

@@ -33,7 +33,7 @@ Whole-program mode is the default. All device code for a given translation unit 
 
 ### Constraints Enforced
 
-Three restrictions are enforced exclusively in whole-program mode:
+Five diagnostics are specific to whole-program mode or are closely tied to the internal-linkage consequences of non-RDC compilation:
 
 **1. Inline device/constant/managed variables must have internal linkage.**
 
@@ -68,7 +68,7 @@ unit.
 
 A static stub requires a definition in the same TU. If the instantiation point references a template defined in another header without an explicit instantiation, the stub has no body to emit. The diagnostic tag is `template_global_no_def`.
 
-Both template-related diagnostics recommend either switching to `-rdc=true` or setting `-static-global-template-stub=false`.
+Both template-related diagnostics recommend either switching to `-rdc=true` or setting `-static-global-template-stub=false`. The 4 usage contexts in the binary for `-static-global-template-stub` all appear in error message strings (at addresses `0x88E588` and `0x88E6E0`).
 
 **4. Kernel launch from `__device__` or `__global__` functions requires separate compilation.**
 
@@ -78,6 +78,19 @@ separate compilation mode
 ```
 
 Dynamic parallelism -- launching a kernel from device code (a `__device__` or `__global__` function calling `<<<...>>>`) -- requires the device linker (nvlink) to resolve cross-module kernel references. In whole-program mode, no device linking occurs, so the construct is illegal. The diagnostic tag is `device_launch_no_sepcomp`.
+
+**5. Address of internal linkage device function (bug mitigation).**
+
+```
+address of internal linkage device function (%sq) was taken
+(nv bug 2001144). mitigation: no mitigation required if the
+address is not used for comparison, or if the target function
+is not a CUDA C++ builtin. Otherwise, write a wrapper function
+to call the builtin, and take the address of the wrapper
+function instead
+```
+
+This diagnostic fires in whole-program mode when code takes the address of a `static __device__` function. Because device functions with internal linkage get module-ID-based name mangling, their addresses may differ across compilations or across TUs even when they refer to the "same" function. The warning documents a known NVIDIA bug (2001144) and provides a workaround: wrap the builtin in a non-internal function and take the wrapper's address instead. This diagnostic has no associated tag name -- it is emitted unconditionally when the condition is detected.
 
 ### Deferred Function List
 
@@ -200,6 +213,50 @@ When `--gen_module_id_file` (flag 83) is set, `write_module_id_to_file` (`sub_5B
 
 In the backend output phase, if `dword_106BFB8` (emit-symbol-table flag) is set, `sub_5B0180` is also called to write the module ID before the host reference arrays are emitted.
 
+### Entity-Based Module ID Selection
+
+An alternative module ID source is available through `use_variable_or_routine_for_module_id_if_needed` (`sub_5CF030`, il.c, line 31969, ~65 lines). Rather than computing a hash from file metadata, this function selects a representative entity (variable or function) from the current TU whose mangled name can serve as a stable identifier. The selection criteria are strict:
+
+- Entity kind must be 7 (variable) or 11 (routine), tested via `(kind - 7) & 0xFB == 0`
+- Must have a definition (for variables: offset `+169 != 0`; for routines: has a body)
+- Must not be a class member
+- Must not be in an unnamed namespace
+- Must have storage class `== 0` (no explicit `static`, `extern`, or `register`)
+- Must not be template-related or marked with special compilation flags
+- For routines: must not have explicit specialization, return type must not be a builtin
+
+The selected entity is stored in `qword_126F140` with its kind byte in `byte_126F138` (7 for variable, 11 for routine). This entity's name is then fed into `sub_5AF830` to produce the final module ID string. The entity-based approach provides a more deterministic ID than the PID-based default, since it is derived from source content rather than runtime state.
+
+### Anonymous Namespace Mangling
+
+The module ID directly controls how anonymous namespaces are mangled in the `.int.c` output. The function `sub_6BC7E0` (in `nv_transforms.c`) constructs the anonymous namespace identifier:
+
+```c
+// sub_6BC7E0 implementation:
+if (qword_1286A00)                      // cached?
+    return qword_1286A00;
+module_id = sub_5AF830(0);              // get or compute module ID
+buf = malloc(strlen(module_id) + 12);   // "_GLOBAL__N_" = 11 chars + NUL
+strcpy(buf, "_GLOBAL__N_");
+strcat(buf, module_id);
+qword_1286A00 = buf;                    // cache for reuse
+return buf;
+```
+
+This `_GLOBAL__N_<module_id>` string is emitted in the `.int.c` trailer as:
+
+```c
+#define _NV_ANON_NAMESPACE _GLOBAL__N_<module_id>
+#ifdef _NV_ANON_NAMESPACE
+#endif
+#include "<source_file>"
+#undef _NV_ANON_NAMESPACE
+```
+
+The `#define` gives anonymous namespace entities a stable, unique mangled name that is consistent between the device and host compilation paths. The `#ifdef`/`#endif` guard is defensive -- it tests that the macro was defined (it always is at this point). The `#include` re-includes the original source file with the macro defined, allowing the host compiler to see the anonymous namespace entities with their module-ID-qualified names. The `#undef` cleans up to avoid polluting later inclusions.
+
+The anonymous namespace hash also appears during host reference array name construction. For `static` or anonymous-namespace device entities, the scoped name prefix builder (`sub_6BD2F0`) inserts `_GLOBAL__N_<module_id>` as the namespace component, ensuring the mangled name in the `.nvHR*` section uniquely identifies the entity even across TUs with the same anonymous namespace structure.
+
 ### Usage in Output
 
 The module ID appears in three places in the generated `.int.c` output:
@@ -237,7 +294,7 @@ The `trans_corresp.c` file (address range `0x796E60`--`0x7A3420`, 88 functions) 
 5. **Template parameter comparison** via `sub_7B2260` -- validates template parameter lists match structurally
 6. **Using declaration comparison** -- dispatches by kind: `36` = alias, `6`/`11` = using declaration, `7`/`58` = namespace using declaration
 
-If any comparison fails, the function delegates to `sub_797180` to emit a diagnostic, then falls through to `set_no_trans_unit_corresp`.
+If any comparison fails, the function delegates to `sub_797180` to emit a diagnostic (error codes 1795/1796), then falls through to `f_set_no_trans_unit_corresp` (5 variants at `sub_797B50`-`sub_7981A0` for different entity kinds).
 
 The type node layout used by the correspondence system:
 - Offset `+132`: type kind (9=struct, 10=class, 11=union)
@@ -260,6 +317,14 @@ The type node layout used by the correspondence system:
 | `sub_7A3420` | `check_decl_correspondence_without_body` | Declaration-only case |
 | `sub_7A38A0` | `check_decl_correspondence` | Dispatcher (with/without body) |
 | `sub_7A38D0` | `same_source_position` | Source position comparison |
+| `sub_7999C0` | `find_template_correspondence` | Cross-TU template entity matching (601 lines) |
+| `sub_79A5A0` | `determine_correspondence` | General correspondence determination |
+| `sub_79B8D0` | `mark_canonical_instantiation` | Updates instantiation canonical status |
+| `sub_79C1A0` | `get_canonical_entry_of` | Returns canonical entity for a TU entry |
+| `sub_79D080` | `establish_instantiation_correspondences` | Links instantiations across TUs |
+| `sub_79DFC0` | `set_type_corresp` | Sets type correspondence |
+| `sub_79E760` | `find_routine_correspondence` | Cross-TU function matching |
+| `sub_79F320` | `find_namespace_correspondence` | Cross-TU namespace matching |
 
 ### Correspondence Lifecycle
 
@@ -288,6 +353,70 @@ The cross-TU correspondence system hooks into the 5-pass multi-TU architecture i
 | Post | Cleanup | Calls `sub_796BA0` (copy secondary IL to primary) |
 
 After all five passes complete, `sub_796BA0` copies remaining secondary-TU IL into the primary TU's tree, and scope renumbering fixes up any index conflicts.
+
+## Host Reference Arrays and Linkage Splitting
+
+The six `.nvHR*` ELF sections emitted in the `.int.c` output trailer encode device symbol names for CUDA runtime discovery. These arrays are split along two axes: **symbol type** (kernel, device variable, constant variable) and **linkage** (external, internal). The split is critical for RDC: external-linkage symbols are globally resolvable by `nvlink` across all TUs, while internal-linkage symbols are TU-local and require module-ID-based prefixing to avoid collisions.
+
+| Section | Array Name | Symbol Type | Linkage |
+|---|---|---|---|
+| `.nvHRKE` | `hostRefKernelArrayExternalLinkage` | `__global__` kernel | external |
+| `.nvHRKI` | `hostRefKernelArrayInternalLinkage` | `__global__` kernel | internal |
+| `.nvHRDE` | `hostRefDeviceArrayExternalLinkage` | `__device__` variable | external |
+| `.nvHRDI` | `hostRefDeviceArrayInternalLinkage` | `__device__` variable | internal |
+| `.nvHRCE` | `hostRefConstantArrayExternalLinkage` | `__constant__` variable | external |
+| `.nvHRCI` | `hostRefConstantArrayInternalLinkage` | `__constant__` variable | internal |
+
+The emission is driven by 6 calls to `nv_emit_host_reference_array` (`sub_6BCF80`, 79 lines, `nv_transforms.c`) with parameters `(emit_callback, is_kernel, is_device, is_internal_linkage)`:
+
+```c
+// From sub_489000 (process_file_scope_entities), backend output phase:
+if (dword_106BFD0 || dword_106BFCC) {
+    sub_6BCF80(sub_467E50, 1, 0, 1);  // kernel, internal
+    sub_6BCF80(sub_467E50, 1, 0, 0);  // kernel, external
+    sub_6BCF80(sub_467E50, 0, 1, 1);  // device, internal
+    sub_6BCF80(sub_467E50, 0, 1, 0);  // device, external
+    sub_6BCF80(sub_467E50, 0, 0, 1);  // constant, internal
+    sub_6BCF80(sub_467E50, 0, 0, 0);  // constant, external
+}
+```
+
+Each call iterates a separate global list that was populated during the entity walk:
+
+| List Address | Content |
+|---|---|
+| `unk_1286880` | kernel external |
+| `unk_12868C0` | kernel internal |
+| `unk_1286780` | device external |
+| `unk_12867C0` | device internal |
+| `unk_1286800` | constant external |
+| `unk_1286840` | constant internal |
+
+Entity registration into these lists is performed by `nv_get_full_nv_static_prefix` (`sub_6BE300`, 370 lines, `nv_transforms.c:2164`). This function examines each device-annotated entity and routes it to the appropriate list based on its execution space bits (at entity offset `+182`) and linkage (internal linkage = `static` or anonymous namespace, determined by flags at entity offset `+80`).
+
+For **internal linkage** entities, the function builds a scoped name prefix:
+1. Recursively constructs the scope path via `sub_6BD2F0` (`nv_build_scoped_name_prefix`)
+2. For anonymous namespaces, inserts the `_GLOBAL__N_<module_id>` prefix (via `qword_1286A00`)
+3. Hashes the full path with `format_string_to_sso` (`sub_6BD1C0`)
+4. Constructs the prefix: `off_E7C768 + len + "_" + filename + "_"`
+5. Caches the prefix in `qword_1286760` for reuse
+6. Appends `"_"` and the entity's mangled name
+
+For **external linkage** entities, the path is simpler: the `::` scope-qualified name is used directly without module-ID-based prefixing.
+
+The generated output for each symbol:
+
+```c
+extern "C" {
+    extern __attribute__((section(".nvHRKE")))
+           __attribute__((weak))
+    const unsigned char hostRefKernelArrayExternalLinkage[] = {
+        0x5f, 0x5a, /* ... mangled name bytes ... */ 0x00
+    };
+}
+```
+
+The `__attribute__((weak))` allows multiple TUs to define the same array without linker errors -- the CUDA runtime reads whichever copy survives.
 
 ## Host Stub Linkage Flags
 
@@ -352,7 +481,11 @@ When enabled (`=true`), template `__global__` function stubs receive `static` li
 | `sub_5AF7F0` | `set_module_id` | host_envir.c | ~10 | Setter for cached module ID |
 | `sub_5AF820` | `get_module_id` | host_envir.c | ~3 | Getter for cached module ID |
 | `sub_5B0180` | `write_module_id_to_file` | host_envir.c | ~30 | Writes module ID to file |
-| `sub_6BC7E0` | (anon namespace hash) | -- | ~20 | Generates `_GLOBAL__N_<module_id>` |
+| `sub_5CF030` | `use_variable_or_routine_for_module_id_if_needed` | il.c:31969 | ~65 | Selects representative entity for ID |
+| `sub_6BC7E0` | (anon namespace hash) | nv_transforms.c | ~20 | Generates `_GLOBAL__N_<module_id>` |
+| `sub_6BCF80` | `nv_emit_host_reference_array` | nv_transforms.c | 79 | Emits `.nvHR*` ELF section with symbol names |
+| `sub_6BD2F0` | `nv_build_scoped_name_prefix` | nv_transforms.c | ~95 | Recursive scope-qualified name builder |
+| `sub_6BE300` | `nv_get_full_nv_static_prefix` | nv_transforms.c:2164 | ~370 | Scoped name + host ref array registration |
 | `sub_796BA0` | `copy_secondary_trans_unit_IL_to_primary` | trans_copy.c | ~50 | Copies secondary TU IL to primary |
 | `sub_796C00` | `mark_secondary_IL_entities_used_from_primary` | -- | -- | Marks secondary IL referenced from primary |
 | `sub_796E60` | `canonical_ranking` | trans_corresp.c | -- | Determines canonical TU entry |
@@ -383,6 +516,7 @@ When enabled (`=true`), template `__global__` function stubs receive `static` li
 - [Device/Host Separation](./device-host-separation.md) -- How the single-pass tag-and-filter architecture works
 - [.int.c File Format](../output/int-c-format.md) -- Anonymous namespace mangling and module ID in output
 - [Backend Code Generation](../pipeline/backend.md) -- Module ID output phase
+- [Host Reference Arrays](../output/host-reference-arrays.md) -- `.nvHR*` section format and runtime discovery
 - [CLI Flag Inventory](../config/cli-flags.md) -- Flag indices 47, 48, 77, 83, 87
 - [CUDA Error Catalog](../diagnostics/cuda-errors.md) -- Category 11 (RDC / whole-program diagnostics)
 - [EDG 6.6 Overview](../edg/overview.md) -- Cross-TU correspondence section

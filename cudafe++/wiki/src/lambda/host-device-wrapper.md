@@ -4,7 +4,7 @@ The `__nv_hdl_wrapper_t` template is cudafe++'s type-erased wrapper for `__host_
 
 A second, lightweight path exists for lambdas that have no captures and can convert to a raw function pointer. When `HasFuncPtrConv=true`, the wrapper skips heap allocation entirely and stores the lambda directly as a function pointer via `fp_noobject_caller`, providing a `operator __opfunc_t*()` conversion operator.
 
-Both paths are generated as raw C++ source text by two nearly-identical emitter functions in `nv_transforms.c`: `sub_6BBB10` (non-mutable, `IsMutable=false`, `const operator()`) and `sub_6BBEE0` (mutable, `IsMutable=true`, non-const `operator()`). For each capture count N observed during frontend parsing, the preamble emitter (`sub_6BCC20`) calls both functions twice -- once with `HasFuncPtrConv=0` and once with `HasFuncPtrConv=1` -- producing four partial specializations per capture count per mutability, for a total of eight template specializations per capture count.
+Both paths are generated as raw C++ source text by two nearly-identical emitter functions in `nv_transforms.c`: `sub_6BBB10` (non-mutable, `IsMutable=false`, `const operator()`) and `sub_6BBEE0` (mutable, `IsMutable=true`, non-const `operator()`). For each capture count N observed during frontend parsing, the preamble emitter (`sub_6BCC20`) calls each function twice -- once with `HasFuncPtrConv=0` and once with `HasFuncPtrConv=1` -- producing four partial specializations per capture count: `(non-mutable, no-fptr)`, `(mutable, no-fptr)`, `(non-mutable, fptr)`, `(mutable, fptr)`.
 
 ## Key Facts
 
@@ -19,7 +19,7 @@ Both paths are generated as raw C++ source text by two nearly-identical emitter 
 | Trait deduction | `__nv_hdl_helper_trait_outer<IsMutable, HasFuncPtrConv, CaptureArgs...>` |
 | Bitmap | `unk_1286900` (128 bytes, 1024 bits) |
 | Primary template static_assert | `"nvcc internal error: unexpected number of captures in __host__ __device__ lambda!"` |
-| Specializations per capture count | 8 (2 mutability x 2 HasFuncPtrConv x 2 emitter functions) |
+| Specializations per capture count | 4 (2 mutability x 2 HasFuncPtrConv); each of the 4 `sub_6BCC20` calls emits one specialization |
 | Noexcept variants | Additional 2 trait specializations when `dword_126E270` is set (C++17) |
 
 ## Template Parameters
@@ -48,38 +48,33 @@ struct __nv_hdl_wrapper_t;
 Before any `__nv_hdl_wrapper_t` specialization is emitted, `sub_6BCC20` emits the `__nv_hdl_helper` class inside an anonymous namespace. This class holds the static function pointers that enable type erasure -- the Lambda type is known when the constructor assigns the pointers, but the `operator()`, copy constructor, and destructor access them without knowing the concrete Lambda type.
 
 ```cpp
-namespace {
-template <typename Tag, typename OpFuncR, typename ...OpFuncArgs>
+// Exact binary string (emitted as a single a1() call):
+namespace {template <typename Tag, typename OpFuncR, typename ...OpFuncArgs>
 struct __nv_hdl_helper {
-    typedef void * (*fp_copier_t)(void *);
-    typedef OpFuncR (*fp_caller_t)(void *, OpFuncArgs...);
-    typedef void (*fp_deleter_t)(void *);
-    typedef OpFuncR (*fp_noobject_caller_t)(OpFuncArgs...);
-
-    static fp_copier_t fp_copier;
-    static fp_deleter_t fp_deleter;
-    static fp_caller_t fp_caller;
-    static fp_noobject_caller_t fp_noobject_caller;
+  typedef void * (*fp_copier_t)(void *);
+  typedef OpFuncR (*fp_caller_t)(void *, OpFuncArgs...);
+  typedef void (*fp_deleter_t) (void *);
+  typedef OpFuncR (*fp_noobject_caller_t)(OpFuncArgs...);
+  static fp_copier_t fp_copier;
+  static fp_deleter_t fp_deleter;
+  static fp_caller_t fp_caller;
+  static fp_noobject_caller_t fp_noobject_caller;
 };
 
-// Out-of-line static definitions (one per member, templated):
 template <typename Tag, typename OpFuncR, typename ...OpFuncArgs>
-typename __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_copier_t
-    __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_copier;
+typename __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_copier_t __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_copier;
 
 template <typename Tag, typename OpFuncR, typename ...OpFuncArgs>
-typename __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_deleter_t
-    __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_deleter;
+typename __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_deleter_t __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_deleter;
 
 template <typename Tag, typename OpFuncR, typename ...OpFuncArgs>
-typename __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_caller_t
-    __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_caller;
-
+typename __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_caller_t __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_caller;
 template <typename Tag, typename OpFuncR, typename ...OpFuncArgs>
-typename __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_noobject_caller_t
-    __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_noobject_caller;
+typename __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_noobject_caller_t __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_noobject_caller;
 }
 ```
+
+Note three details in the binary that differ from a hand-written version: (1) `namespace {template` has no newline between the opening brace and `template`, (2) `fp_deleter_t` has a space before `(void *)` that the other typedefs lack: `typedef void (*fp_deleter_t) (void *)`, (3) the blank line between `fp_caller` and `fp_noobject_caller` out-of-line definitions is missing -- they are separated by only one newline.
 
 The anonymous namespace is critical: it gives each translation unit its own copy of the static function pointers, preventing ODR violations when multiple TUs use the same lambda tag type. The `Tag` parameter ensures that different lambda call sites within the same TU get independent function pointer storage even if they share the same `OpFuncR(OpFuncArgs...)` signature.
 
@@ -91,6 +86,62 @@ The anonymous namespace is critical: it gives each translation unit its own copy
 | `fp_caller` | `OpFuncR(*)(void*, OpFuncArgs...)` | Constructor (capturing path) | `operator()` | Casts `void*` back to `Lambda*` and invokes it |
 | `fp_deleter` | `void(*)(void*)` | Constructor (capturing path) | Destructor | Casts `void*` to `Lambda*` and `delete`s it |
 | `fp_noobject_caller` | `OpFuncR(*)(OpFuncArgs...)` | Constructor (non-capturing path) | `operator()` + conversion operator | Stores the lambda directly as a function pointer |
+
+### Type-Erasure Mechanism
+
+The following diagram shows how a `void* data` pointer and the `manager<Lambda>` static functions work together to erase the concrete lambda type:
+
+```
+Construction (concrete Lambda type known):
+============================================
+
+  __nv_hdl_wrapper_t ctor(Tag{}, Lambda &&lam, F1 in1, ...)
+       |
+       |-- data = new Lambda(std::move(lam))          // heap-allocate
+       |
+       |-- __nv_hdl_helper<Tag,...>::fp_copier         // ASSIGN function pointers
+       |       = &manager<Lambda>::do_copy             //   (Lambda type captured here)
+       |-- __nv_hdl_helper<Tag,...>::fp_deleter
+       |       = &manager<Lambda>::do_delete
+       |-- __nv_hdl_helper<Tag,...>::fp_caller
+       |       = &manager<Lambda>::do_call
+
+After construction (Lambda type erased):
+============================================
+
+  __nv_hdl_wrapper_t
+  +----------------------------+
+  | f1, f2, ..., fN            |   captured variable fields (typed)
+  | void *data ----------------+---> heap: Lambda object
+  +----------------------------+
+                                     (concrete type unknown here)
+  operator()(args...):
+       fp_caller(data, args...)
+           |
+           v
+       manager<Lambda>::do_call(void *buf, args...)
+           auto ptr = static_cast<Lambda*>(buf);
+           return (*ptr)(args...);
+
+  Copy ctor:
+       data = fp_copier(in.data)
+           |
+           v
+       manager<Lambda>::do_copy(void *buf)
+           return new Lambda(*static_cast<Lambda*>(buf));
+
+  Move ctor:
+       data = in.data;  in.data = 0;     // pointer steal
+
+  Destructor:
+       fp_deleter(data)
+           |
+           v
+       manager<Lambda>::do_delete(void *buf)
+           delete static_cast<Lambda*>(buf);
+```
+
+The Tag template parameter is critical: it ensures each lambda call site gets its own set of `__nv_hdl_helper` static function pointers. Without Tag, two different lambdas with the same `OpFuncR(OpFuncArgs...)` signature would share the same function pointers, and the second constructor call would overwrite the first's `fp_caller`/`fp_copier`/`fp_deleter`.
 
 ## The Capturing Path (HasFuncPtrConv=false)
 
@@ -147,7 +198,8 @@ struct __nv_hdl_wrapper_t<false, false, NeverThrows, Tag,
     }
 
     // --- Call operator: delegate through type-erased fp_caller ---
-    OpFuncR operator()(OpFuncArgs... args) const noexcept(NeverThrows) {
+    // Binary emits: "OpFuncR operator() (OpFuncArgs... args) " + "const " + "noexcept(NeverThrows) "
+    OpFuncR operator() (OpFuncArgs... args) const noexcept(NeverThrows) {
         return __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>
             ::fp_caller(data, std::forward<OpFuncArgs>(args)...);
     }
@@ -200,18 +252,19 @@ struct __nv_hdl_wrapper_t<false, true, NeverThrows, Tag,
 
     // --- Constructor: store lambda as function pointer ---
     template <typename Lambda>
-    __nv_hdl_wrapper_t(Tag, Lambda &&lam) {
-        __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_noobject_caller = lam;
-    }
+    __nv_hdl_wrapper_t(Tag, Lambda &&lam)
+     { __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_noobject_caller = lam; }
 
     // --- Call operator: invoke through stored function pointer ---
-    OpFuncR operator()(OpFuncArgs... args) const noexcept(NeverThrows) {
+    // Binary: "OpFuncR operator() (OpFuncArgs... args) " + "const " + "noexcept(NeverThrows) "
+    OpFuncR operator() (OpFuncArgs... args) const noexcept(NeverThrows) {
         return __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>
             ::fp_noobject_caller(std::forward<OpFuncArgs>(args)...);
     }
 
     // --- Function pointer conversion operator ---
-    operator __opfunc_t *() const {
+    // Binary: "operator __opfunc_t * () const { ... }"
+    operator __opfunc_t * () const {
         return __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_noobject_caller;
     }
 
@@ -249,7 +302,7 @@ sub_6BBB10(1, N, emit);  // IsMutable=false, HasFuncPtrConv=true
 sub_6BBEE0(1, N, emit);  // IsMutable=true,  HasFuncPtrConv=true
 ```
 
-This produces partial specializations for all eight combinations of `(IsMutable, HasFuncPtrConv, N-captures)` per set bitmap bit. The `NeverThrows` parameter remains a template parameter (not a partial-specialization value), handled at instantiation time.
+This produces four partial specializations per set bitmap bit N. The `NeverThrows` parameter remains a template parameter (not a partial-specialization value), handled at instantiation time. Note in the decompiled binary that the fourth call uses `v9` (which holds `v6` before the post-increment): `v9 = v6++; ... sub_6BBEE0(1, v9, a1);` -- all four calls use the same capture count N.
 
 ## The __nv_hdl_helper_trait_outer Deduction Helper
 
@@ -304,6 +357,8 @@ The trick here is the primary `__nv_hdl_helper_trait` inheriting from a speciali
 
 The C++17 noexcept variants are gated on `dword_126E270`. In C++17, `noexcept` became part of the type system, so `R(C::*)(Args...) noexcept` is a distinct type from `R(C::*)(Args...)`. Without the additional specializations, the compiler would fail to match noexcept member function pointers.
 
+In the decompiled `sub_6BCC20`, the emission is split into three `a1()` calls: (1) the base struct with `const` and non-const specializations (ending with `};` for the non-const spec), (2) conditionally (`if (dword_126E270)`) the `const noexcept` and `noexcept` specializations, and (3) `a1("\n};")` to close the outer struct. This means the closing brace of `__nv_hdl_helper_trait_outer` is always emitted, but the noexcept specializations inside it are conditional. A subtle consequence: in non-C++17 mode, the binary between the non-const `};` and the outer `};` contains only `\n};` -- the inner struct specializations end before the outer struct closes.
+
 ## The __nv_hdl_create_wrapper_t Factory
 
 The factory struct ties everything together. It provides a single static method that the backend emits at each host-device lambda usage site:
@@ -332,41 +387,58 @@ The trailing return type uses `decltype` to invoke the trait chain and deduce th
 
 ### Backend Emission at Lambda Call Site
 
-When `gen_lambda` (`sub_47B890`) encounters a host-device lambda (bit 4 set at `byte[25]`), it emits:
+When `gen_lambda` (`sub_47B890`) encounters a host-device lambda (bit 4 set at `byte[25]`), it emits the factory call in two phases:
 
+**Phase 1** (before lambda body): Opens the factory call with template arguments and the method name:
 ```cpp
 __nv_hdl_create_wrapper_t< IsMutable, HasFuncPtrConv, Tag, CaptureTypes... >
-    ::__nv_hdl_create_wrapper( /* lambda expression */, capture_args... )
+    ::__nv_hdl_create_wrapper(
 ```
 
-The `IsMutable` decision comes from `byte[24] & 0x02` (mutable keyword present). The `HasFuncPtrConv` decision involves three conditions tested in sequence:
+**Phase 2** (after lambda body): The lambda expression is emitted as the first argument to `__nv_hdl_create_wrapper`, then the captured value expressions are appended as trailing arguments, followed by the closing `)`:
+```cpp
+    /* lambda expression emitted inline */,
+    capture_arg1, capture_arg2, ... )
+```
 
-1. The lambda has no captures (capture list head pointer is null).
-2. If `dword_126EFAC` is set and `dword_126EFA4` is clear, and the toolkit version `qword_126EF98` is at most `0xEB27` (60199), `HasFuncPtrConv` is forced to `true`.
-3. Otherwise, if the lambda has no capture-default `=` (bit 4 at `byte[24]` is clear), `HasFuncPtrConv` is `true`.
+This differs from the device lambda path where the original lambda body is wrapped in `#if 0` / `#endif`. In the host-device path, the lambda is passed by rvalue reference to the factory method, which moves it into a heap-allocated copy for type erasure. The captured values are passed separately (via `sub_46E550` at line 323 of the decompiled binary) so the wrapper can store them as typed fields alongside the `void* data`.
 
-This logic is visible at `sub_47B890` lines 62-77 of the decompiled binary.
+The `IsMutable` decision comes from `byte[24] & 0x02` (mutable keyword present). The `HasFuncPtrConv` decision involves nested conditions, all gated on the capture list head being null (`*(_QWORD *)a1 == 0`):
+
+```
+HasFuncPtrConv = false;  // default
+if (capture_list_head == NULL) {
+    if (dword_126EFAC && !dword_126EFA4 && qword_126EF98 <= 0xEB27) {
+        HasFuncPtrConv = true;   // forced true for old toolkit versions
+    } else {
+        // General path: true iff no capture-default '='
+        HasFuncPtrConv = !(byte[24] & 0x10);
+    }
+}
+```
+
+When `dword_126EFAC` is set and `dword_126EFA4` is clear, the toolkit version `qword_126EF98` is compared against `0xEB27` (60199). At or below this threshold, `HasFuncPtrConv` is unconditionally `true`. Above the threshold, it falls through to the general path which checks whether the lambda has a capture-default `=` (bit 4 at `byte[24]`): if no `=` default, then the lambda is captureless and can convert to a function pointer.
+
+This logic is at `sub_47B890` lines 62-77 of the decompiled binary.
 
 ## SFINAE Detection Traits
 
 At the end of the preamble, `sub_6BCC20` emits a detection trait and macro for identifying host-device lambda wrappers:
 
 ```cpp
+// Exact binary string (step 16 in sub_6BCC20, emitted as a single a1() call):
 template <typename>
 struct __nv_extended_host_device_lambda_trait_helper {
-    static const bool value = false;
+  static const bool value = false;
 };
-
-template <bool B1, bool B2, bool B3, typename T1, typename T2, typename... Pack>
-struct __nv_extended_host_device_lambda_trait_helper<
-    __nv_hdl_wrapper_t<B1, B2, B3, T1, T2, Pack...>> {
-    static const bool value = true;
+template <bool B1, bool B2, bool B3, typename T1, typename T2, typename...Pack>
+struct __nv_extended_host_device_lambda_trait_helper<__nv_hdl_wrapper_t<B1, B2, B3, T1, T2, Pack...> > {
+  static const bool value = true;
 };
-
-#define __nv_is_extended_host_device_lambda_closure_type(X) \
-    __nv_extended_host_device_lambda_trait_helper< \
-        typename __nv_lambda_trait_remove_cv<X>::type>::value
+#define __nv_is_extended_host_device_lambda_closure_type(X)  __nv_extended_host_device_lambda_trait_helper< typename __nv_lambda_trait_remove_cv<X>::type>::value
 ```
+
+Note: binary has `typename...Pack` (no space), `Pack...> >` (space between angle brackets -- pre-C++11 syntax), two spaces before `__nv_extended_host_device_lambda_trait_helper` in the macro, and 2-space indentation on `static const bool`.
 
 This allows compile-time detection of whether a type is a host-device lambda wrapper, used internally by the CUDA runtime headers and by `nvcc` to apply special handling to extended host-device lambda closure types.
 
@@ -420,11 +492,40 @@ LABEL_13:
 | Move semantics | Default | Custom move ctor stealing `void*`; moved-from nulled |
 | Destructor | Trivial | Calls `fp_deleter(data)` |
 | `operator()` body | `return 0;` / `__builtin_unreachable()` (placeholder) | Delegates through `fp_caller` or `fp_noobject_caller` |
-| Function pointer conversion | Not supported | `operator __opfunc_t*()` when HasFuncPtrConv=true |
-| Specializations per N | 1 (+ 1 trailing-return) | 4 (mutability x HasFuncPtrConv) per emitter pair = 8 total |
+| Function pointer conversion | Not supported | `operator __opfunc_t * ()` when HasFuncPtrConv=true |
+| Specializations per N | 2 (standard tag + trailing-return tag) | 4 (2 mutability x 2 HasFuncPtrConv) |
 | Template params (partial spec) | `Tag, F1..FN` | `IsMutable, HasFuncPtrConv, NeverThrows, Tag, OpFuncR(OpFuncArgs...), F1..FN` |
 
 The host-device wrapper is fundamentally more complex because it must produce a callable object that works on both host and device. The device-only wrapper can use placeholder operator bodies (`return 0`) because the device compiler sees the original lambda body through a different mechanism. The host-device wrapper must actually call the lambda through the type-erased function pointer table.
+
+## Concrete Example: Host-Device Lambda with One Capture
+
+User code:
+```cpp
+auto add_n = [n] __host__ __device__ (int x) { return x + n; };
+int result = add_n(42);
+```
+
+This lambda has one capture (`n`, by value), is not mutable (default), and cannot convert to a function pointer (it captures). The frontend sets bit 4 at `byte[25]` (host-device wrapper needed) and calls `sub_6BCBF0(1, 1)` to set bit 1 in the host-device bitmap `unk_1286900`.
+
+During preamble emission, `sub_6BCC20` sees bit 1 set and emits four specializations via `sub_6BBB10(0,1)`, `sub_6BBEE0(0,1)`, `sub_6BBB10(1,1)`, `sub_6BBEE0(1,1)`. The relevant one for this lambda (non-mutable, capturing) is from `sub_6BBB10(0,1)`.
+
+At the lambda call site, `gen_lambda` emits:
+```cpp
+__nv_hdl_create_wrapper_t< false, false, __nv_dl_tag<...>, int >
+    ::__nv_hdl_create_wrapper(
+        [n] __host__ __device__ (int x) { return x + n; },
+        n )
+```
+
+The factory method deduces the wrapper type via `__nv_hdl_helper_trait_outer` and constructs:
+```
+__nv_hdl_wrapper_t<false, false, false, Tag, int(int), int>
+```
+
+At runtime on the host: the constructor heap-allocates the lambda, stores `n` as field `f1`, and sets the `fp_caller`/`fp_copier`/`fp_deleter` static function pointers. Calling `add_n(42)` invokes `fp_caller(data, 42)` which casts `void*` back to the lambda type and calls `operator()(42)`.
+
+At runtime on the device: the same wrapper struct is memcpy'd to device memory. The device compiler sees the wrapper's fields and `operator()` which delegates through the function pointer table, resolving to the lambda body.
 
 ## Emitter Function Signature
 

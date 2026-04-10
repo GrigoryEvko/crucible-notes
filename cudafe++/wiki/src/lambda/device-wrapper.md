@@ -29,19 +29,20 @@ The primary template is a static_assert trap -- any instantiation with a non-zer
 This code is emitted verbatim as a single string literal from `sub_6BCC20`:
 
 ```cpp
-template <typename Tag, typename...CapturedVarTypePack>
+// Exact binary string (emitted as a single a1() call in sub_6BCC20):
+template <typename Tag,typename...CapturedVarTypePack>
 struct __nv_dl_wrapper_t {
-    static_assert(sizeof...(CapturedVarTypePack) == 0,
-                  "nvcc internal error: unexpected number of captures!");
+static_assert(sizeof...(CapturedVarTypePack) == 0,"nvcc internal error: unexpected number of captures!");
 };
-
 template <typename Tag>
 struct __nv_dl_wrapper_t<Tag> {
-    __nv_dl_wrapper_t(Tag) { }
-    template <typename...U1>
-    int operator()(U1...) { return 0; }
+__nv_dl_wrapper_t(Tag) { }
+template <typename...U1>
+int operator()(U1...) { return 0; }
 };
 ```
+
+Note: no space after the comma in `Tag,typename...` and no indentation -- this is the literal text injected into the `.int.c` output. The primary template and the zero-capture specialization are emitted as a single string literal.
 
 The primary template's `static_assert` acts as a safety net: if the frontend records a capture count of N but fails to emit the corresponding N-capture specialization, the host compiler will produce a diagnostic rather than silently generating broken code. The zero-capture specialization's `operator()` returns `int(0)` -- this value is never used at runtime because the device compiler dispatches through the tag's encoded function pointer, not through the wrapper's `operator()`.
 
@@ -49,20 +50,47 @@ The primary template's `static_assert` acts as a safety net: if the frontend rec
 
 ### `__nv_dl_tag`
 
-The standard device lambda tag. Three template parameters encode the lambda identity:
+The standard device lambda tag. Three template parameters encode the lambda identity. Exact binary string:
 
 ```cpp
 template <typename U, U func, unsigned>
 struct __nv_dl_tag { };
 ```
 
+The string is `"\ntemplate <typename U, U func, unsigned>\nstruct __nv_dl_tag { };\n"` -- note the leading newline.
+
 | Parameter | Role |
 |---|---|
 | `U` | Type of the lambda's `operator()` (deduced via `decltype`) |
 | `func` | Non-type template parameter: pointer to the lambda's `operator()` |
-| `unsigned` | Unique ID disambiguating lambdas with identical operator types |
+| `unsigned` | Unnamed parameter: unique ID disambiguating lambdas with identical operator types |
 
-The `__NV_LAMBDA_WRAPPER_HELPER(X, Y)` macro (emitted at preamble start) expands to `decltype(X), Y`, providing the `U, func` pair from a single expression.
+The `__NV_LAMBDA_WRAPPER_HELPER(X, Y)` macro (emitted at preamble start) expands to `decltype(X), Y`, providing the `U, func` pair from a single expression. The full macro and helper text emitted as the first `a1()` call:
+
+```cpp
+#define __NV_LAMBDA_WRAPPER_HELPER(X, Y) decltype(X), Y
+template <typename T>
+struct __nvdl_remove_ref { typedef T type; };
+
+template<typename T>
+struct __nvdl_remove_ref<T&> { typedef T type; };
+
+template<typename T>
+struct __nvdl_remove_ref<T&&> { typedef T type; };
+
+template <typename T, typename... Args>
+struct __nvdl_remove_ref<T(&)(Args...)> {
+  typedef T(*type)(Args...);
+};
+
+template <typename T>
+struct __nvdl_remove_const { typedef T type; };
+
+template <typename T>
+struct __nvdl_remove_const<T const> { typedef T type; };
+```
+
+The `__nvdl_remove_ref` specialization for function references (`T(&)(Args...)`) is notable: it converts a function reference type to a function pointer type (`T(*)(Args...)`). This handles the case where a lambda captures a function by reference -- the wrapper field needs a copyable function pointer, not a reference.
 
 ### `__nv_dl_trailing_return_tag`
 
@@ -77,18 +105,21 @@ The additional `Return` parameter carries the user-specified return type. This i
 
 ## Trailing-Return Zero-Capture Specialization
 
-The zero-capture variant for trailing-return lambdas uses `__builtin_unreachable()` instead of `return 0`:
+The zero-capture variant for trailing-return lambdas uses `__builtin_unreachable()` instead of `return 0`. The exact binary text (emitted as two consecutive `a1()` calls):
 
 ```cpp
+template <typename U, U func, typename Return, unsigned>
+struct __nv_dl_trailing_return_tag { };
+
 template <typename U, U func, typename Return, unsigned Id>
 struct __nv_dl_wrapper_t<__nv_dl_trailing_return_tag<U, func, Return, Id> > {
-    __nv_dl_wrapper_t(__nv_dl_trailing_return_tag<U, func, Return, Id>) { }
+  __nv_dl_wrapper_t(__nv_dl_trailing_return_tag<U, func, Return, Id>) { }
 
-    template <typename...U1> Return operator()(U1...) {
-        __builtin_unreachable();
-    }
+  template <typename...U1> Return operator()(U1...) { __builtin_unreachable(); }
 };
 ```
+
+Note: the `__nv_dl_trailing_return_tag` definition and its zero-capture wrapper specialization are emitted together (two strings in immediate succession: the first ends at `{ ` before `__builtin_unreachable`, the second contains `__builtin_unreachable(); }\n}; \n\n` -- note the trailing space before the newlines).
 
 The `__builtin_unreachable()` tells the compiler this code path is never taken, so no return value needs to be materialized. This is safe because the wrapper's `operator()` is never called on the device side -- the device compiler resolves the call through the tag's encoded function pointer directly.
 
@@ -152,7 +183,7 @@ Specializations for array types (emitted by `sub_6BC290`) map `T[D1]...[DN]` to 
 
 The decompiled `sub_6BB790` reveals the emission is entirely printf-based, building C++ source text in a 1064-byte stack buffer (`v29[1064]`) and passing each fragment through the emit callback. The function has two major branches:
 
-**Branch 1: `a1 == 0` (zero captures)** -- Falls through to emit the zero-capture specializations for both `Tag` and `__nv_dl_trailing_return_tag`, with no fields, no constructor parameters, and no initializer list.
+**Branch 1: `a1 == 0` (zero captures)** -- Dead code. Falls through to emit `__nv_dl_wrapper_t(Tag,) :` with a trailing comma and empty initializer list, which would produce syntactically invalid C++. This path is never reached because the bitmap scan loop in `sub_6BCC20` skips bit 0 (`if (v2 && (v3 & 1) != 0)`). The zero-capture case is handled by the primary template's `__nv_dl_wrapper_t<Tag>` specialization emitted unconditionally as a string literal in `sub_6BCC20`.
 
 **Branch 2: `a1 > 0` (N captures)** -- Generates the N-ary specializations through seven sequential loops:
 
@@ -320,50 +351,45 @@ Bit 0 is skipped because the zero-capture case is already handled by the primary
 
 ## Detection Traits
 
-After all wrapper specializations are emitted, `sub_6BCC20` emits SFINAE trait templates that allow compile-time detection of device-lambda wrapper types:
+After all wrapper specializations are emitted, `sub_6BCC20` emits SFINAE trait templates that allow compile-time detection of device-lambda wrapper types. These are emitted AFTER the host-device wrapper infrastructure (steps 7-12 in the emission sequence), not immediately after the device bitmap scan. Each trait + its `#define` macro is emitted as a single `a1()` call:
 
 ```cpp
+// Emitted as one string (step 13 in sub_6BCC20):
 template <typename T>
 struct __nv_extended_device_lambda_trait_helper {
-    static const bool value = false;
+  static const bool value = false;
 };
 template <typename T1, typename...Pack>
 struct __nv_extended_device_lambda_trait_helper<__nv_dl_wrapper_t<T1, Pack...> > {
-    static const bool value = true;
+  static const bool value = true;
 };
-#define __nv_is_extended_device_lambda_closure_type(X) \
-    __nv_extended_device_lambda_trait_helper< \
-        typename __nv_lambda_trait_remove_cv<X>::type>::value
+#define __nv_is_extended_device_lambda_closure_type(X) __nv_extended_device_lambda_trait_helper< typename __nv_lambda_trait_remove_cv<X>::type>::value
 ```
 
-A separate trait detects whether a wrapper uses a trailing-return tag:
+Note: in the binary, the `#define` is a single line (no backslash continuation). The 2-space indentation on `static const bool` matches the binary exactly.
+
+An unwrapper trait strips the wrapper to recover the inner tag type (step 14 in emission):
+
+```cpp
+template<typename T> struct __nv_lambda_trait_remove_dl_wrapper { typedef T type; };
+template<typename T> struct __nv_lambda_trait_remove_dl_wrapper< __nv_dl_wrapper_t<T> > { typedef T type; };
+```
+
+A separate trait detects whether a wrapper uses a trailing-return tag (step 15 in emission):
 
 ```cpp
 template <typename T>
 struct __nv_extended_device_lambda_with_trailing_return_trait_helper {
-    static const bool value = false;
+  static const bool value = false;
 };
 template <typename U, U func, typename Return, unsigned Id, typename...Pack>
-struct __nv_extended_device_lambda_with_trailing_return_trait_helper<
-    __nv_dl_wrapper_t<__nv_dl_trailing_return_tag<U, func, Return, Id>,
-                       Pack...> > {
-    static const bool value = true;
+struct __nv_extended_device_lambda_with_trailing_return_trait_helper<__nv_dl_wrapper_t<__nv_dl_trailing_return_tag<U, func, Return, Id>, Pack...> > {
+  static const bool value = true;
 };
-#define __nv_is_extended_device_lambda_with_preserved_return_type(X) \
-    __nv_extended_device_lambda_with_trailing_return_trait_helper< \
-        typename __nv_lambda_trait_remove_cv<X>::type >::value
+#define __nv_is_extended_device_lambda_with_preserved_return_type(X) __nv_extended_device_lambda_with_trailing_return_trait_helper< typename __nv_lambda_trait_remove_cv<X>::type >::value
 ```
 
-An unwrapper trait strips the wrapper to recover the inner tag type:
-
-```cpp
-template<typename T>
-struct __nv_lambda_trait_remove_dl_wrapper { typedef T type; };
-template<typename T>
-struct __nv_lambda_trait_remove_dl_wrapper< __nv_dl_wrapper_t<T> > {
-    typedef T type;
-};
-```
+Note: the emission order in `sub_6BCC20` is: device trait (step 13), then `__nv_lambda_trait_remove_dl_wrapper` (step 14), then trailing-return trait (step 15), then host-device trait (step 16). The unwrapper appears between the two detection traits, not after both of them.
 
 These traits and macros enable the CUDA runtime headers and device compiler to distinguish wrapped device lambdas from ordinary closure types at compile time, which is necessary for proper template argument deduction in kernel launch expressions.
 

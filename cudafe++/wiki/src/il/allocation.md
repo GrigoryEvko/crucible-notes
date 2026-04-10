@@ -21,17 +21,79 @@ Every IL node in cudafe++ is allocated through a region-based bump allocator imp
 
 ## Region-Based Bump Allocator
 
-The core allocation primitive is `sub_6B7D60` (`region_alloc`), a bump allocator that takes a region ID and requested size, and returns a raw offset into the region's memory block. The caller converts this offset to a pointer by adding the region's base address.
+The core allocation primitive is `sub_6B7D60` (`region_alloc`), a bump allocator that takes a region ID and requested size, and returns a pointer to the allocated block within the region's memory. The caller then writes prefix fields and returns a pointer past the prefix to the node body.
+
+### region_alloc Pseudocode
+
+```c
+// sub_6B7D60 -- region_alloc(region_id, total_size)
+// Returns pointer to start of allocated block within the region.
+void* region_alloc(int region_id, int64_t requested_size) {
+    // Step 1: Align requested size to 8-byte boundary, add 8 for capacity margin
+    int64_t aligned_size = requested_size;
+    if (requested_size == 0) {
+        aligned_size = 8;              // minimum allocation
+    } else if (requested_size & 7) {
+        aligned_size = (requested_size + 7) & ~7;   // round up to 8
+    }
+    int64_t check_size = aligned_size + 8;           // capacity check includes margin
+
+    // Step 2: Get current region block
+    mem_block_t* block = region_table[region_id];    // qword_126EC88[region_id]
+    void* alloc_ptr = block->next_free;              // block[2] = bump pointer
+
+    // Step 3: Check if current block has enough space
+    if (block->end - alloc_ptr < check_size) {
+        // Not enough space -- try free-list or allocate new block
+        bool is_reuse = block->is_reusable;          // block byte +40
+        int64_t block_size;
+        if (is_reuse) {
+            block_size = 2048;                       // small reuse block
+        } else {
+            flush_region(region_table[region_id]);   // sub_6B68D0
+            block_size = 0x10000;                    // 64KB default
+        }
+
+        // Search free-list (qword_1280730) for a suitable block
+        block = find_free_block(aligned_size + 56, block_size);
+        if (!block) {
+            // Allocate fresh block from heap
+            if (block_size < aligned_size + 56)
+                block_size = aligned_size + 56;
+            block_size = (block_size + 7) & ~7;      // align to 8
+            block = malloc(block_size);
+            if (!block) fatal_error(4);              // out of memory
+            block->capacity = block_size;
+            block->end = (char*)block + block_size;
+            block->next_free = block + 6;            // skip 48-byte header
+        }
+
+        // Link new block into region's block chain
+        block->is_reusable = 0;
+        alloc_ptr = block->next_free;
+        block->next = region_table[region_id];
+        region_table[region_id] = block;
+    }
+
+    // Step 4: Bump the pointer
+    total_allocated += aligned_size;                 // qword_1280700
+    block->next_free = (char*)alloc_ptr + aligned_size;
+    alignment_waste += aligned_size - requested_size; // qword_12806F8
+    per_region_total[region_id] += aligned_size;     // qword_126EC50[region_id]
+
+    return alloc_ptr;
+}
+```
 
 ### Region Architecture
 
 ```
 dword_126EC90  = file_scope_region_id   (region 1, persistent)
 dword_126EB40  = current_region_id      (file-scope or per-function)
-dword_126F690  = file-scope base offset
-dword_126F694  = file-scope watermark   (next allocation offset)
+dword_126F690  = file-scope base offset (typically 0)
+dword_126F694  = file-scope prefix size (24 normal, 16 TU-copy)
 dword_126F688  = function-scope base offset
-dword_126F68C  = function-scope watermark
+dword_126F68C  = function-scope prefix size (8)
 qword_126EC88  = region_table           (region index -> memory block)
 qword_126EB90  = scope_table            (region index -> scope entry)
 dword_126EC80  = total_region_count
@@ -46,31 +108,45 @@ Region selection uses a simple identity test: when `dword_126EB40 == dword_126EC
 
 ### Allocation Protocol
 
-Every IL node allocator follows a consistent 13-step protocol:
+Every IL node allocator follows a consistent protocol. The prefix size varies by mode: 24 bytes for file-scope (normal), 16 bytes for file-scope (TU-copy mode), and 8 bytes for function-scope.
+
+**File-scope allocation (normal mode, `dword_126F694 = 24`):**
 
 ```
  1. if (dword_126EFC8) trace_enter(5, "alloc_<name>")
- 2. raw = region_alloc(region_id, watermark + entry_size)
- 3. ptr = raw + base_offset                        // dword_126F690
- 4. if (!dword_106BA08) {                           // not in TU-copy mode
-        ++qword_126F7C0                             // TU copy addr counter
-        *(ptr+0) = 0                                // zero TU copy address slot
-    }
- 5. ++qword_126F750                                 // orphan pointer counter
- 6. *(ptr+8) = 0                                    // zero the next-in-list pointer
- 7. ++qword_126F7D8                                 // IL entry prefix counter
- 8. *(ptr+16) = flags_byte:                         // prefix byte
+ 2. raw = region_alloc(file_scope_region, entry_size + 24)
+ 3. ptr = raw + dword_126F690                       // base offset (typically 0)
+ 4. *(ptr+0)  = 0                                   // zero TU copy address slot (8 bytes)
+    ++qword_126F7C0                                 // TU copy addr counter
+ 5. *(ptr+8)  = 0                                   // zero the next-in-list pointer (8 bytes)
+    ++qword_126F750                                 // orphan pointer counter
+ 6. ++qword_126F7D8                                 // IL entry prefix counter
+ 7. *(ptr+16) = flags_byte:                         // prefix flags (8-byte qword, flags in low byte)
         bit 0 = 1                                   // allocated
-        bit 1 = !dword_106BA08                      // file_scope flag
+        bit 1 = 1                                   // file_scope (not TU-copy)
         bit 3 = dword_126E5FC & 1                   // language flag (C++ vs C)
+ 8. node = ptr + 24                                 // skip 24-byte prefix
  9. ++qword_126F8xx                                 // per-type counter
 10. initialize type-specific fields
 11. copy 96-byte common header from template globals
 12. if (dword_126EFC8) trace_leave()
-13. return ptr + 16                                 // skip 16-byte prefix
+13. return node
 ```
 
-The returned pointer skips the 16-byte prefix (8 bytes for TU-copy address, 8 bytes for the next-in-list link), so all field offsets documented in the IL are relative to this returned pointer. The prefix is accessible at negative offsets (`ptr[-2]` = TU copy addr, `ptr[-1]` = next link).
+**Function-scope allocation (`dword_126F68C = 8`):**
+
+```
+ 1. raw = region_alloc(current_region, entry_size + 8)
+ 2. ptr = raw + dword_126F688                       // function-scope base offset
+ 3. *(ptr+0) = flags_byte:                          // prefix flags (8-byte qword)
+        bit 1 = !dword_106BA08                      // file_scope flag
+        bit 3 = dword_126E5FC & 1                   // language flag
+    (no TU copy slot, no next-in-list slot)
+ 4. node = ptr + 8                                  // skip 8-byte prefix
+ 5. return node
+```
+
+The returned pointer skips the prefix, so all field offsets documented in the IL are relative to this returned pointer. The prefix flags byte is always at `node - 8` regardless of allocation mode. The next-in-list link (file-scope only) is at `node - 16`, and the TU-copy address (normal file-scope only) is at `node - 24`.
 
 ### Common IL Header Template
 
@@ -90,14 +166,23 @@ This template captures the current source position and language state at the mom
 
 ## IL Entry Prefix
 
-Every IL entry has a 16-byte raw prefix preceding the node body:
+Every IL entry has a variable-size raw prefix preceding the node body. The prefix is 24 bytes in normal file-scope mode, 16 bytes in TU-copy file-scope mode, and 8 bytes in function-scope mode.
 
 ```
-Raw allocation:           Node pointer view (ptr = raw + 16):
-+0   [8 bytes]  TU copy   ptr[-2]  translation_unit_copy_address
-+8   [8 bytes]  next      ptr[-1]  next_in_list link
-+16  [1 byte]   flags     ptr[0]   prefix flags byte
-+17  [...]      body      ptr[1..]  node-specific fields
+Normal file-scope (24-byte prefix, ptr = raw + 24):
++0   [8 bytes]  TU copy   ptr - 24   translation_unit_copy_address
++8   [8 bytes]  next      ptr - 16   next_in_list link
++16  [8 bytes]  flags     ptr - 8    prefix flags byte (+ 7 padding)
++24  [...]      body      ptr + 0    node-specific fields
+
+TU-copy file-scope (16-byte prefix, ptr = raw + 16):
++0   [8 bytes]  next      ptr - 16   next_in_list link
++8   [8 bytes]  flags     ptr - 8    prefix flags byte (+ 7 padding)
++16  [...]      body      ptr + 0    node-specific fields
+
+Function-scope (8-byte prefix, ptr = raw + 8):
++0   [8 bytes]  flags     ptr - 8    prefix flags byte (+ 7 padding)
++8   [...]      body      ptr + 0    node-specific fields
 ```
 
 ### Prefix Flags Byte
@@ -110,7 +195,7 @@ Raw allocation:           Node pointer view (ptr = raw + 16):
 | 3 | `0x08` | `language_flag` | `dword_126E5FC & 1` (C++ mode indicator) |
 | 7 | `0x80` | `keep_in_il` | Set by device code marking pass |
 
-Bit 7 is the CUDA-critical `keep_in_il` flag used to select device-relevant declarations. See [Keep-in-IL](./keep-in-il.md) for the marking algorithm. The sign-bit position allows a fast test: `*(signed char*)(entry - 8) < 0` means "keep this entry."
+Bit 7 is the CUDA-critical `keep_in_il` flag used to select device-relevant declarations. See [Keep-in-IL](./keep-in-il.md) for the marking algorithm. The flags byte is always at `entry - 8` regardless of allocation mode, and the sign-bit position allows a fast test: `*(signed char*)(entry - 8) < 0` means "keep this entry."
 
 Some allocators preserve bit 7 across free-list recycling (notably `alloc_local_constant` at `sub_5E1A80` and `alloc_derivation_step` at `sub_5E1EE0`), ensuring that the keep-in-il status is not lost when a node is reclaimed and reissued.
 
@@ -482,7 +567,7 @@ if (dword_106BA08) {              // TU-copy mode
 }
 ```
 
-The different initial watermark values (16 vs 24) account for the TU-copy address slot: when `dword_106BA08 == 0` (normal mode), each allocation prepends an 8-byte TU-copy address, so the initial watermark starts 8 bytes higher.
+The different initial watermark values (16 vs 24) reflect the prefix size in each mode: normal mode uses a 24-byte prefix (8 TU-copy + 8 next-link + 8 flags), while TU-copy mode uses a 16-byte prefix (8 next-link + 8 flags, no TU-copy slot). Function-scope allocations use `dword_126F68C = 8` (8-byte prefix: flags only).
 
 ### clear_free_lists (`sub_5EAF00`)
 

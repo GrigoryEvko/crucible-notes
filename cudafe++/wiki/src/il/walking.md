@@ -27,7 +27,7 @@ The five callback slots are stored as global function pointers. Before any walk,
 | Address | Slot Name | Signature | Purpose |
 |---|---|---|---|
 | `qword_126FB88` | `entry_callback` | `entry_ptr(entry_ptr, entry_kind)` | Called for each entry visited; may return a replacement pointer |
-| `qword_126FB80` | `string_callback` | `void(char_ptr, kind_26, strlen+1)` | Called for each string field (file names, `compiler_version`, `time_of_compilation`) |
+| `qword_126FB80` | `string_callback` | `void(char_ptr, string_kind, byte_length)` | Called for each string field; `string_kind` is 24 (id_name), 25 (string_text), or 26 (other_text); `byte_length` is `strlen+1` for kinds 24/26, field-based for kind 25 |
 | `qword_126FB78` | `pre_walk_check` | `int(entry_ptr, entry_kind)` | Called before descending into an entry; returns nonzero to skip the subtree |
 | `qword_126FB70` | `entry_replace` | `entry_ptr(entry_ptr, entry_kind)` | Called to remap an entry pointer (used during IL copy to translate old pointers to new ones) |
 | `qword_126FB68` | `entry_filter` | `entry_ptr(entry_ptr, entry_kind)` | Called on linked-list heads to filter entries; returning NULL removes the entry from the list |
@@ -131,14 +131,23 @@ for (entry = xmmword_126EB60[0]; entry; entry = entry->child_file) {
 
 Source file entries form a linked list via offset +56 (`child_file`). Each entry holds the file name, full path, and `name_as_written` strings.
 
-**Phase 3: String entries (kind 26 = `other_text`)**
+**Phase 3: main_routine pointer and string entries**
 
-Two specific string entries from the IL header are walked:
+Before walking strings, the function remaps the `main_routine` pointer from the IL header:
 
 ```c
-// compiler_version (qword_126EB78)
-if (entry_replace)
+// main_routine (qword_126EB70, IL header + 0x10)
+if (entry_replace) {
+    il_header.main_routine = entry_replace(il_header.main_routine, 11);
+    // Also remap compiler_version through entry_replace
     compiler_version = entry_replace(compiler_version, 26);
+}
+```
+
+Then two string entries from the IL header are walked as "other text" (kind 26):
+
+```c
+// compiler_version (qword_126EB78, IL header + 0x18)
 if (compiler_version) {
     if (trace_verbosity > 4)
         fprintf(s, "Walking IL tree, string entry kind = %s\n", "other text");
@@ -146,7 +155,13 @@ if (compiler_version) {
         string_callback(compiler_version, 26, strlen(compiler_version) + 1);
 }
 
-// time_of_compilation (qword_126EB80) -- same pattern
+// time_of_compilation (qword_126EB80, IL header + 0x20) -- same pattern
+if (entry_replace)
+    time_of_compilation = entry_replace(time_of_compilation, 26);
+if (time_of_compilation) {
+    if (string_callback)
+        string_callback(time_of_compilation, 26, strlen(time_of_compilation) + 1);
+}
 ```
 
 Strings are walked with kind 26 (`other_text`) and the string callback receives the raw character pointer, the kind, and the length including the null terminator.
@@ -165,26 +180,59 @@ Kind 55 entries are orphaned entities -- declarations that lost their parent sco
 
 **Phase 5: Global entry-kind lists (kinds 1--72)**
 
-The bulk of the walk iterates 45+ global linked lists, one per entry kind. Each list head is stored at a fixed address in the `0x126E610`--`0x126EA80` range, spaced 16 bytes apart:
+The bulk of the walk iterates 45 global linked lists, one per entry kind. Each list head is stored at a fixed address in the `0x126E610`--`0x126EA80` range, with 16-byte spacing. The complete walk order, verified from the decompiled `sub_60E4F0`:
 
-```c
-// Kind 1 (source_file_entry) at qword_126E610
-// Kind 2 (constant) at qword_126E620
-// Kind 3 (parameter) at qword_126E630
-// Kind 4 (routine_type_supplement) at qword_126E640
-// Kind 5 (routine_type_extra) at qword_126E650
-// Kind 6 (type) at qword_126E660
-// Kind 7 (variable) at qword_126E670
-// Kind 8 (field) at qword_126E680
-// Kind 9 (exception_spec) at qword_126E690
-// Kind 10 (exception_spec_type) at qword_126E6A0
-// Kind 11 (routine) at qword_126E6B0
-// ...continues through...
-// Kind 63 (name_qualifier) at qword_126EA70
-// Kind 72 (attribute) at qword_126EA80
-```
+| # | Global Address | Kind | Entry Kind Name |
+|---|---|---|---|
+| 1 | `qword_126E610` | 1 | `source_file_entry` |
+| 2 | `qword_126E620` | 2 | `constant` |
+| 3 | `qword_126E630` | 3 | `param_type` |
+| 4 | `qword_126E640` | 4 | `routine_type_supplement` |
+| 5 | `qword_126E650` | 5 | `routine_type_extra` |
+| 6 | `qword_126E660` | 6 | `type` |
+| 7 | `qword_126E670` | 7 | `variable` |
+| 8 | `qword_126E680` | 8 | `field` |
+| 9 | `qword_126E690` | 9 | `exception_specification` |
+| 10 | `qword_126E6A0` | 10 | `exception_spec_type` |
+| 11 | `qword_126E6B0` | 11 | `routine` |
+| 12 | `qword_126E6C0` | 12 | `label` |
+| 13 | `qword_126E6D0` | 13 | `expr_node` |
+| 14 | `qword_126E6E0` | 14 | (reserved) |
+| 15 | `qword_126E6F0` | 15 | (reserved) |
+| 16 | `qword_126E700` | 16 | `switch_case_entry` |
+| 17 | `qword_126E710` | 17 | `switch_info` |
+| 18 | `qword_126E720` | 18 | `handler` |
+| 19 | `qword_126E730` | 19 | `try_supplement` |
+| 20 | `qword_126E740` | 20 | `asm_supplement` |
+| 21 | `qword_126E750` | 21 | `statement` |
+| 22 | `qword_126E760` | 22 | `object_lifetime` |
+| 23 | `qword_126E770` | 23 | `scope` |
+| 24 | `qword_126E7B0` | 27 | `template_parameter` |
+| 25 | `qword_126E7C0` | 28 | `namespace` |
+| 26 | `qword_126E7D0` | 29 | `using_declaration` |
+| 27 | `qword_126E7E0` | 30 | `dynamic_init` |
+| 28 | `qword_126E810` | 33 | `overriding_virtual_func` |
+| 29 | `qword_126E820` | 34 | (reserved) |
+| 30 | `qword_126E830` | 35 | `derivation_path` |
+| 31 | `qword_126E840` | 36 | `base_class_derivation` |
+| 32 | `qword_126E850` | 37 | (reserved) |
+| 33 | `qword_126E860` | 38 | (reserved) |
+| 34 | `qword_126E870` | 39 | `class_info` |
+| 35 | `qword_126E880` | 40 | (reserved) |
+| 36 | `qword_126E890` | 41 | `constructor_init` |
+| 37 | `qword_126E8A0` | 42 | `asm_entry` |
+| 38 | `qword_126E8E0` | 46 | `lambda` |
+| 39 | `qword_126E8F0` | 47 | `lambda_capture` |
+| 40 | `qword_126E900` | 48 | `attribute` |
+| 41 | `qword_126E9D0` | 61 | `template_param` |
+| 42 | `qword_126E9B0` | 59 | `template_decl` |
+| 43 | `qword_126E9E0` | 62 | `name_reference` |
+| 44 | `qword_126E9F0` | 63 | `name_qualifier` |
+| 45 | `qword_126EA80` | 72 | `attribute` (C++11) |
 
-For each non-empty list, the walk applies the `entry_replace` callback (if present) to each entry before descending, and follows the `next` pointer (at entry-specific offsets, typically offset -16 in the raw allocation, which is the `next_in_list` link in the entry prefix).
+Note the gaps in the walk order: kinds 24-26 (base_class, string_text, other_text), 31-32 (local_static_variable_init, vla_dimension), 43-45 (asm_operand, asm_clobber, reserved), and 49-58 (element_position through hidden_name) are skipped. These entry kinds are either embedded inline within parent entries, accessed only through the recursive descent of `walk_entry_and_subtree`, or have no file-scope lists. Also note that kinds 59 and 61 appear out-of-order (61 before 59) -- this is verified in the binary.
+
+For each non-empty list, the walk applies the `entry_replace` callback (if present) to each entry before descending, and follows the `next` pointer (at offset -16 in the raw allocation, which is the `next_in_list` link in the entry prefix).
 
 **Phase 6: Special trailing lists**
 
@@ -285,8 +333,8 @@ The following table shows the major entry kinds and what the walker visits for e
 
 | Kind | Name | Children Walked |
 |---|---|---|
-| 1 | `source_file_entry` | `file_name` (string), `full_name` (string), `name_as_written` (string), child file list (kind 1, linked via offset +56) |
-| 2 | `constant` | Type reference (kind 6), sub-switch on constant_kind (0--13): string data, address target, complex parts, template param constant |
+| 1 | `source_file_entry` | `file_name` (string, kind 26 at `[0]`), `full_name` (string, kind 26 at `[1]`), `name_as_written` (string, kind 26 at `[2]`), child file list (kind 1, linked via offset +56 at `[5]`), associated entry at `[6]` (kind 1), module info at `[8]` (kind 82) |
+| 2 | `constant` | Type refs at `[14]`/`[15]` (kind 6), expression at `[16]` (kind 13); sub-switch on `constant_kind` byte at +148 (see below) |
 | 3 | `parameter` | Type (kind 6), declared_type (kind 6), default_arg_expr (kind 13), attributes (kind 72) |
 | 6 | `type` | Base type (kind 6), member field list (kind 8), template info (kind 58), scope (kind 23), base class list (kind 24), class_info supplement (kind 39) |
 | 7 | `variable` | Type (kind 6), initializer expression (kind 13), attributes (kind 72), declared_type (kind 6) |
@@ -311,17 +359,119 @@ The following table shows the major entry kinds and what the walker visits for e
 | 55 | `orphaned_entities` | Entity list, scope reference |
 | 58 | `template` | Template parameter list (kind 61), body, specializations list |
 | 72 | `attribute` | Attribute arguments (kind 73), next attribute (kind 72) |
+| 80 | `subobject_path` | Linked list (kind 80), each entry walked recursively |
+
+### Constant Entry Sub-Switch (Case 2)
+
+The constant entry handler is one of the most complex cases. After walking two type references (`[14]`, `[15]` as kind 6) and one expression (`[16]` as kind 13), it dispatches on the `constant_kind` byte at `entry + 148`:
+
+```c
+// Walk shared fields first
+walk(a1[14], 6);   // type
+walk(a1[15], 6);   // declared_type
+walk(a1[16], 13);  // associated expression
+
+// Strip template info if walk_mode_flags set
+if (walk_mode_flags)
+    a1[17] = 0;
+
+switch (constant_kind) {
+    case 0:  /* ck_error */
+    case 1:  /* ck_integer */
+    case 3:  /* ck_float */
+    case 5:  /* ck_imaginary */
+    case 14: /* ck_void */
+        break;  // leaf constants, no children
+
+    case 2:  /* ck_string */
+        // Walk string data at [20] as string_text (kind 25)
+        // Length comes from [19] (not strlen -- may have embedded NULs)
+        if (string_callback)
+            string_callback(a1[20], 25, a1[19]);
+        break;
+
+    case 4:  /* ck_complex */
+        walk(a1[19], 27);   // template_parameter (real/imaginary parts)
+        break;
+
+    case 6:  /* ck_address -- 7 sub-kinds at entry+152 */
+        switch (address_sub_kind) {
+            case 0: entry_replace(a1[20], 11);  break;  // routine
+            case 1: entry_replace(a1[20], 7);   break;  // variable
+            case 2: case 3:
+                walk(a1[20], 2);                break;  // constant (recurse)
+            case 4: entry_replace(a1[20], 6);   break;  // type (typeid)
+            case 5: walk(a1[20], 6);            break;  // type (uuidof, recurse)
+            case 6: entry_replace(a1[20], 12);  break;  // label
+            default: error("bad address const kind");
+        }
+        // Then walk subobject_path list at [22] (kind 80)
+        break;
+
+    case 7:  /* ck_ptr_to_member */
+        entry_replace(a1[19], 36);   // derivation_path
+        walk(a1[20], 62);            // name_reference
+        // Conditional: if a1[21] & 2, replace [22] as routine(11)
+        //             else replace [22] as field(8)
+        break;
+
+    case 8:  /* ck_label_difference */
+        walk(a1[20], 2);             // constant (recurse)
+        break;
+
+    case 9:  /* ck_dynamic_init */
+        walk(a1[19], 30);            // dynamic_init entry
+        break;
+
+    case 10: /* ck_aggregate */
+        // Linked list of constants at [19], each via offset +104
+        for each constant in list: walk(entry, 2);
+        entry_replace(a1[20], 2);    // tail constant
+        break;
+
+    case 11: /* ck_init_repeat */
+        walk(a1[19], 2);            // repeated constant
+        break;
+
+    case 12: /* ck_template_param -- 15 sub-kinds at entry+152 */
+        // Another sub-switch with cases 0-13 + default error
+        break;
+
+    case 13: /* ck_designator */
+        walk(a1[20], 2);            // constant value
+        break;
+
+    case 15: /* ck_reflection */
+        // Walk [20] with kind from entry+152 byte
+        break;
+}
+```
+
+The `walk_mode_flags` field zeroing (`a1[17] = 0`) strips template parameter constant info during IL binary output. This is the template-stripping behavior controlled by argument `a6` of `walk_file_scope_il`.
+
+### String Entry Handling
+
+String fields within entries are walked with three distinct string kind values:
+
+| String Kind | Value | Display Name | Used For | Length Source |
+|---|---|---|---|---|
+| `id_name` | 24 | `"id name"` | Identifier names (variable, function, field names) | `strlen(str) + 1` |
+| `string_text` | 25 | `"string text"` | String literal content (for `ck_string` constants) | Constant's length field `[19]` |
+| `other_text` | 26 | `"other text"` | File names, compiler version, compilation time, asm text | `strlen(str) + 1` |
+
+The `string_text` kind (25) is special: its length comes from the enclosing constant entry's `[19]` field rather than `strlen`, because C/C++ string literals may contain embedded null bytes. All other string kinds use `strlen(str) + 1`.
 
 ### Error Strings
 
 The function contains diagnostic strings from `walk_entry.h` that fire on unexpected sub-kind values:
 
-| String | Triggers When |
-|---|---|
-| `"walk_entry_and_subtree: bad address const kind"` | Unknown `address_constant_kind` in constant entry (kind 2) |
-| `"walk_entry_and_subtree: bad template param constant kind"` | Unknown `template_param_constant_kind` in constant entry (kind 2) |
+| String | Line | Triggers When |
+|---|---|---|
+| `"walk_entry_and_subtree: bad address const kind"` | 883 | Unknown `address_constant_kind` in constant entry (kind 2, sub-kind 6) |
+| `"walk_entry_and_subtree: bad template param constant kind"` | 1035 | Unknown `template_param_constant_kind` in constant entry (kind 2, sub-kind 12) |
+| `"walk_entry_and_subtree: bad constant kind"` | 1051 | Unknown `constant_kind` in constant entry (kind 2) |
 
-These strings confirm the function name and that the dispatch code is generated from `walk_entry.h` rather than hand-written.
+All three errors reference `walk_entry.h` as the source file and `walk_entry_and_subtree` as the function name, confirming the dispatch code is generated from the header file.
 
 ## walk_routine_scope_il (sub_610200)
 
@@ -439,32 +589,19 @@ The keep-in-il pass uses parallel implementations of the walk framework that byp
 
 These specialized walkers are structurally identical to `walk_entry_and_subtree` but replace callback invocations with direct `*(entry - 8) |= 0x80` operations. They exist as separate functions rather than callback-based walks because the keep-in-il marking is performance-critical -- it runs on every CUDA compilation, and eliminating the function-pointer indirection across ~330 recursive calls provides measurable speedup.
 
-## Global Entry-Kind List Map
+## Global Entry-Kind List Layout
 
-The `walk_file_scope_il` function iterates global entry-kind linked lists stored at fixed addresses. The complete mapping:
+The per-kind linked lists are stored in a contiguous global array starting at `0x126E600`, with 16-byte stride. The formula `0x126E600 + kind * 0x10` gives the list head for most entry kinds up to kind 72. The complete walk order with all 51 lists (45 from Phase 5, 3 from Phase 6, plus orphaned entities, source files, and seq_number_lookup) is documented in the Phase 5 table above.
 
-| Address | Kind | Name | Next-Pointer Offset |
+The three trailing lists (Phase 6) are stored outside the contiguous array at separate addresses in the IL header/footer region:
+
+| Address | Kind | Purpose | Next-Pointer Strategy |
 |---|---|---|---|
-| `qword_126EBA0` | 55 | `orphaned_entities` | +0 |
-| `qword_126E610` | 1 | `source_file_entry` | -16 (prefix next) |
-| `qword_126E620` | 2 | `constant` | -16 |
-| `qword_126E630` | 3 | `parameter` | -16 |
-| `qword_126E640` | 4 | `routine_type_supplement` | -16 |
-| `qword_126E650` | 5 | `routine_type_extra` | -16 |
-| `qword_126E660` | 6 | `type` | -16 |
-| `qword_126E670` | 7 | `variable` | -16 |
-| `qword_126E680` | 8 | `field` | -16 |
-| `qword_126E690` | 9 | `exception_specification` | -16 |
-| `qword_126E6A0` | 10 | `exception_spec_type` | -16 |
-| `qword_126E6B0` | 11 | `routine` | -16 |
-| ... | 12--62 | (sequential, 16 bytes apart) | -16 |
-| `qword_126EA70` | 63 | `name_qualifier` | -16 |
-| `qword_126EA80` | 72 | `attribute` | -16 |
-| `qword_126EBE8` | 64 | `seq_number_lookup` | +0 (special) |
-| `qword_126EBE0` | 6 | `external_declarations` (type list) | +104 |
-| `qword_126EC00` | 83 | (extended kind) | +0 |
+| `qword_126EBE8` | 64 | Sequence number lookup entries | Standard `next_in_list` at node prefix |
+| `qword_126EBE0` | 6 | External declarations (type list) | Type-specific next at offset +104 |
+| `qword_126EC00` | 83 | Module declarations (C++20) | Standard `next_in_list` at node prefix |
 
-The lists for kinds 1--72 are contiguous in memory starting at `0x126E610`, with 16-byte spacing. Kinds 64, 6 (external), and 83 are walked separately after the main loop because they use different linking structures.
+The external declarations list (`qword_126EBE0`) is notable: it walks entries as kind 6 (type) but uses a different linked-list strategy (offset +104 rather than the standard prefix next pointer). This is because the external declarations list is a secondary index over type entries that are also present in the main type list at `qword_126E660`.
 
 ## Walk Order Diagram
 
@@ -484,7 +621,8 @@ walk_file_scope_il(callbacks...)
   |     +-- for each file: walk(file, 1)
   |         +-- walks file_name, full_name, child files
   |
-  +-- Phase 3: string entries
+  +-- Phase 3: main_routine + string entries
+  |     +-- entry_replace(main_routine, 11)
   |     +-- string_callback(compiler_version, 26, len)
   |     +-- string_callback(time_of_compilation, 26, len)
   |
@@ -510,8 +648,9 @@ walk_file_scope_il(callbacks...)
 | `"walk_routine_scope_il"` | `sub_610200` | Trace enter |
 | `"Walking IL tree, entry kind = %s\n"` | `sub_604170` | `dword_126EFCC > 4` |
 | `"Walking IL tree, string entry kind = %s\n"` | `sub_604170` / `sub_60E4F0` | `dword_126EFCC > 4` |
-| `"walk_entry_and_subtree: bad address const kind"` | `sub_604170` | Unknown constant sub-kind |
-| `"walk_entry_and_subtree: bad template param constant kind"` | `sub_604170` | Unknown template param constant sub-kind |
+| `"walk_entry_and_subtree: bad address const kind"` | `sub_604170` | Unknown address constant sub-kind (`walk_entry.h:883`) |
+| `"walk_entry_and_subtree: bad template param constant kind"` | `sub_604170` | Unknown template param constant sub-kind (`walk_entry.h:1035`) |
+| `"walk_entry_and_subtree: bad constant kind"` | `sub_604170` | Unknown constant kind (`walk_entry.h:1051`) |
 | `"find_parent_var_of_anon_union_type"` | `sub_603FE0` | Assert at lines 511, 523 |
 | `"find_parent_var_of_anon_union_type: var not found"` | `sub_603FE0` | Variable lookup failed |
 
