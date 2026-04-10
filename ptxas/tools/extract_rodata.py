@@ -1992,6 +1992,324 @@ def extract_scoreboard_configs(br: BinaryReader) -> dict:
     return {"per_sm_scoreboard_configs": all_tables}
 
 
+# ─── Table 23: Encoding Tree Structures ───────────────────────────────
+
+# Two regions of hierarchical tree nodes used in instruction encoding decision
+# trees.  Each region is a flat array of 16-byte entries {u64 ptr, u64 value}.
+# Internal nodes have ptr pointing INTO the same tree region (child list),
+# leaf/data entries have encoding IDs and .text function pointers.
+
+ENCODING_TREES = [
+    {
+        "label": "encoding_tree_1",
+        "start_va": 0x233BE00,
+        "end_va":   0x2353E00,
+        "note": "Primary instruction encoding decision tree",
+    },
+    {
+        "label": "encoding_tree_2",
+        "start_va": 0x235CE00,
+        "end_va":   0x2379E00,
+        "note": "Secondary/extended instruction encoding decision tree",
+    },
+]
+
+
+def extract_encoding_trees(br: BinaryReader) -> dict:
+    """Extract hierarchical encoding decision trees from .rodata.
+
+    Each tree is a flat array of 16-byte slots {u64 ptr, u64 value}.
+    Slots where ptr falls within the tree's own VA range are internal nodes
+    (ptr = child array base, value = child count).  All other non-zero
+    slots are leaf/data entries (encoding IDs, .text function pointers,
+    or padding).  Zero slots are empty."""
+
+    trees = []
+    for spec in ENCODING_TREES:
+        label = spec["label"]
+        start_va = spec["start_va"]
+        end_va = spec["end_va"]
+        size = end_va - start_va
+        entry_count = size // 16
+
+        entries = []
+        internal_count = 0
+        leaf_count = 0
+        zero_count = 0
+
+        for i in range(entry_count):
+            va = start_va + i * 16
+            v0 = br.u64(va)
+            v1 = br.u64(va + 8)
+
+            if v0 == 0 and v1 == 0:
+                zero_count += 1
+                continue  # skip zero padding in output
+
+            is_internal = start_va <= v0 < end_va
+            if is_internal:
+                internal_count += 1
+                entries.append({
+                    "slot": i,
+                    "va": f"0x{va:X}",
+                    "type": "internal",
+                    "child_ptr": f"0x{v0:X}",
+                    "child_count": v1,
+                })
+            else:
+                leaf_count += 1
+                entries.append({
+                    "slot": i,
+                    "va": f"0x{va:X}",
+                    "type": "leaf",
+                    "d0": f"0x{v0:X}",
+                    "d1": f"0x{v1:X}",
+                    "d0_is_text": br.is_in_text(v0) if v0 != 0 else False,
+                    "d1_is_text": br.is_in_text(v1) if v1 != 0 else False,
+                })
+
+        trees.append({
+            "label": label,
+            "start_va": f"0x{start_va:X}",
+            "end_va": f"0x{end_va:X}",
+            "size_bytes": size,
+            "total_slots": entry_count,
+            "internal_nodes": internal_count,
+            "leaf_entries": leaf_count,
+            "zero_slots": zero_count,
+            "note": spec["note"],
+            "entries": entries,
+        })
+
+    return {"encoding_trees": trees}
+
+
+# ─── Table 24: Register Class Auxiliary Tables ────────────────────────
+
+# Per-SM-generation register class descriptor arrays.  Each region is a
+# contiguous array of 64-byte records (16 x u32).  Loaded to the sm_backend
+# object at offsets +112/+120/+128/+136/+144/+152 (six pointer slots).
+#
+# Record layout (16 x u32):
+#   d[0]  = register class ID (3=GP, 1=predicate, 5=uniform, 8=pair, etc.)
+#   d[1]  = sub-variant A
+#   d[2]  = sub-variant B (primary variant index)
+#   d[3]  = auxiliary class ref
+#   d[4]  = range_lo
+#   d[5]  = range_hi
+#   d[6..14] = reserved (zero in current binary)
+#   d[15] = flag: 1=simple, 2=extended (record uses d[3..5])
+
+REGCLASS_AUX_REGIONS = [
+    ("sm_10x", 0x224FE80, 0x22516C0),
+    ("sm_8x",  0x2274180, 0x2274780),
+    ("sm_7x",  0x21FB680, 0x21FDC00),
+]
+
+
+def extract_register_class_aux(br: BinaryReader) -> dict:
+    """Extract per-SM register class auxiliary tables from .rodata.
+    Each region is a flat array of 64-byte records."""
+
+    regions = []
+    for sm_label, start_va, end_va in REGCLASS_AUX_REGIONS:
+        size = end_va - start_va
+        record_count = size // 64
+
+        if size % 64 != 0:
+            print(f"    WARNING: {sm_label} region size {size} not divisible by 64",
+                  file=sys.stderr)
+
+        records = []
+        flag_counts = {1: 0, 2: 0}
+        for i in range(record_count):
+            va = start_va + i * 64
+            d = br.u32_array(va, 16)
+            flag = d[15]
+            flag_counts[flag] = flag_counts.get(flag, 0) + 1
+
+            records.append({
+                "index": i,
+                "va": f"0x{va:X}",
+                "class_id": d[0],
+                "sub_variant_a": d[1],
+                "sub_variant_b": d[2],
+                "aux_class_ref": d[3],
+                "range_lo": d[4],
+                "range_hi": d[5],
+                "flag": flag,
+                "raw_u32": d,
+            })
+
+        regions.append({
+            "sm_generation": sm_label,
+            "start_va": f"0x{start_va:X}",
+            "end_va": f"0x{end_va:X}",
+            "size_bytes": size,
+            "record_count": record_count,
+            "record_stride": 64,
+            "flag_distribution": flag_counts,
+            "records": records,
+        })
+
+    return {"register_class_aux": regions}
+
+
+# ─── Table 25: Opcode-to-Pipeline Mapping Tables ─────────────────────
+
+# Sorted arrays of (opcode_id:u32, pipeline_flags:u32) pairs that map
+# internal opcode IDs to execution pipeline flags for scheduling.
+# Pipeline flags: 0=special, 1=ALU, 2=FP64, 3=SFU/transcendental, 4=other.
+
+OPCODE_PIPELINE_TABLES = [
+    ("sm_10x", 0x226C780, 0x226C878),
+    ("sm_7x",  0x2244F20, 0x2245048),
+]
+
+
+def extract_opcode_pipeline_map(br: BinaryReader) -> dict:
+    """Extract opcode-to-pipeline mapping tables.
+    Each table is a sorted array of (opcode_id:u32, pipeline_flags:u32) pairs."""
+
+    tables = []
+    for sm_label, start_va, end_va in OPCODE_PIPELINE_TABLES:
+        size = end_va - start_va
+        pair_count = size // 8
+
+        if size % 8 != 0:
+            print(f"    WARNING: {sm_label} pipeline map size {size} not divisible by 8",
+                  file=sys.stderr)
+
+        pairs = []
+        prev_opid = -1
+        is_sorted = True
+        flag_histogram = {}
+
+        for i in range(pair_count):
+            va = start_va + i * 8
+            opid = br.u32(va)
+            flags = br.u32(va + 4)
+
+            if opid < prev_opid:
+                is_sorted = False
+            prev_opid = opid
+
+            flag_histogram[flags] = flag_histogram.get(flags, 0) + 1
+
+            pairs.append({
+                "index": i,
+                "opcode_id": opid,
+                "pipeline_flags": flags,
+            })
+
+        if not is_sorted:
+            print(f"    WARNING: {sm_label} pipeline map opcode IDs are NOT sorted",
+                  file=sys.stderr)
+
+        tables.append({
+            "sm_generation": sm_label,
+            "start_va": f"0x{start_va:X}",
+            "end_va": f"0x{end_va:X}",
+            "size_bytes": size,
+            "pair_count": pair_count,
+            "is_sorted": is_sorted,
+            "pipeline_flag_histogram": {str(k): v for k, v in sorted(flag_histogram.items())},
+            "entries": pairs,
+        })
+
+    return {"opcode_pipeline_map": tables}
+
+
+# ─── Table 26: Scheduling Backend Vtable ──────────────────────────────
+
+# The scheduling backend vtable at 0x21DBC80 contains 77 consecutive
+# function pointers for the 656-byte scheduling backend object.
+# Structure: 8 core methods + 3x23 per-SM-generation pipeline query methods.
+#
+# Core methods (indices 0-7):
+#   [0-1] = base dispatch (0x8DA690)
+#   [2]   = complex method A (0x8DC3F0)
+#   [3]   = complex method B (0x8DC620)
+#   [4-7] = base accessors (0x8DA6xx)
+#
+# Pipeline query groups (23 methods each, 3 generations):
+#   Group A [8-30]:  0x8E0Exx-0x8E10xx
+#   Group B [31-53]: 0x8E14xx-0x8E15xx
+#   Group C [54-76]: 0x8E22xx-0x8E24xx
+
+SCHED_VTABLE_VA    = 0x21DBC80
+SCHED_VTABLE_COUNT = 77
+
+
+def extract_scheduling_vtable(br: BinaryReader) -> dict:
+    """Extract the scheduling backend virtual function table."""
+
+    ptrs = br.ptr_array(SCHED_VTABLE_VA, SCHED_VTABLE_COUNT)
+    unique_vas = sorted(set(ptrs))
+
+    # Validate all pointers are in .text
+    invalid = [(i, p) for i, p in enumerate(ptrs) if not br.is_in_text(p)]
+    if invalid:
+        for idx, p in invalid[:5]:
+            print(f"    WARNING: sched_vtable[{idx}] = 0x{p:X} not in .text",
+                  file=sys.stderr)
+
+    # Classify into structural groups
+    core_methods = []
+    pipeline_groups = [[], [], []]  # A, B, C
+
+    for i, va in enumerate(ptrs):
+        entry = {"index": i, "va": f"0x{va:X}"}
+        if i < 8:
+            entry["group"] = "core"
+            core_methods.append(entry)
+        elif i < 31:
+            entry["group"] = "pipeline_A"
+            entry["pipeline_index"] = i - 8
+            pipeline_groups[0].append(entry)
+        elif i < 54:
+            entry["group"] = "pipeline_B"
+            entry["pipeline_index"] = i - 31
+            pipeline_groups[1].append(entry)
+        else:
+            entry["group"] = "pipeline_C"
+            entry["pipeline_index"] = i - 54
+            pipeline_groups[2].append(entry)
+
+    return {
+        "scheduling_vtable": {
+            "source_va": f"0x{SCHED_VTABLE_VA:X}",
+            "end_va": f"0x{SCHED_VTABLE_VA + SCHED_VTABLE_COUNT * 8:X}",
+            "total_entries": SCHED_VTABLE_COUNT,
+            "unique_functions": len(unique_vas),
+            "unique_function_vas": [f"0x{v:X}" for v in unique_vas],
+            "invalid_pointers": len(invalid),
+            "structure": {
+                "core_methods": core_methods,
+                "pipeline_group_A": {
+                    "va_range": "0x8E0Exx-0x8E10xx",
+                    "count": len(pipeline_groups[0]),
+                    "entries": pipeline_groups[0],
+                },
+                "pipeline_group_B": {
+                    "va_range": "0x8E14xx-0x8E15xx",
+                    "count": len(pipeline_groups[1]),
+                    "entries": pipeline_groups[1],
+                },
+                "pipeline_group_C": {
+                    "va_range": "0x8E22xx-0x8E24xx",
+                    "count": len(pipeline_groups[2]),
+                    "entries": pipeline_groups[2],
+                },
+            },
+            "all_entries": [
+                {"index": i, "va": f"0x{ptrs[i]:X}"}
+                for i in range(SCHED_VTABLE_COUNT)
+            ],
+        }
+    }
+
+
 # ─── Derived: Opcode Master Record ─────────────────────────────────────
 
 def build_opcode_master(names: dict, cat_map: dict, enc_table: dict) -> dict:

@@ -1,0 +1,10105 @@
+{
+  "per_sm_scoreboard_configs": {
+    "sm_100": {
+      "va_range": "0x2266A60-0x2268440",
+      "size_bytes": 6624,
+      "entry_count": 75,
+      "entry_size": 88,
+      "trailing_padding": 24,
+      "max_triplets_used": 6,
+      "triplet_count_distribution": {
+        "1": 49,
+        "2": 10,
+        "3": 8,
+        "4": 4,
+        "5": 3,
+        "6": 1
+      },
+      "entries": [
+        {
+          "index": 0,
+          "triplet_count": 2,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 2,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            2,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 1,
+          "triplet_count": 3,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 2,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            2,
+            56,
+            -1,
+            5,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3
+          ]
+        },
+        {
+          "index": 2,
+          "triplet_count": 4,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 2,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            2,
+            56,
+            -1,
+            5,
+            56,
+            -1,
+            15,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            4
+          ]
+        },
+        {
+          "index": 3,
+          "triplet_count": 6,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 2,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 12,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 23,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 34,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            2,
+            56,
+            -1,
+            12,
+            56,
+            -1,
+            15,
+            56,
+            -1,
+            23,
+            56,
+            -1,
+            34,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            6
+          ]
+        },
+        {
+          "index": 4,
+          "triplet_count": 3,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 2,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            2,
+            56,
+            -1,
+            15,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3
+          ]
+        },
+        {
+          "index": 5,
+          "triplet_count": 2,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            5,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 6,
+          "triplet_count": 3,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            5,
+            56,
+            -1,
+            15,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3
+          ]
+        },
+        {
+          "index": 7,
+          "triplet_count": 4,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            5,
+            56,
+            -1,
+            15,
+            56,
+            -1,
+            21,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            4
+          ]
+        },
+        {
+          "index": 8,
+          "triplet_count": 5,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 27,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            5,
+            56,
+            -1,
+            15,
+            56,
+            -1,
+            21,
+            56,
+            -1,
+            27,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            5
+          ]
+        },
+        {
+          "index": 9,
+          "triplet_count": 4,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 23,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            5,
+            56,
+            -1,
+            15,
+            56,
+            -1,
+            23,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            4
+          ]
+        },
+        {
+          "index": 10,
+          "triplet_count": 3,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 19,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            5,
+            56,
+            -1,
+            19,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3
+          ]
+        },
+        {
+          "index": 11,
+          "triplet_count": 3,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            5,
+            56,
+            -1,
+            21,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3
+          ]
+        },
+        {
+          "index": 12,
+          "triplet_count": 3,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 23,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            5,
+            56,
+            -1,
+            23,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3
+          ]
+        },
+        {
+          "index": 13,
+          "triplet_count": 2,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            15,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 14,
+          "triplet_count": 5,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 23,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 27,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            15,
+            56,
+            -1,
+            21,
+            56,
+            -1,
+            23,
+            56,
+            -1,
+            27,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            5
+          ]
+        },
+        {
+          "index": 15,
+          "triplet_count": 4,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 27,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            15,
+            56,
+            -1,
+            21,
+            56,
+            -1,
+            27,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            4
+          ]
+        },
+        {
+          "index": 16,
+          "triplet_count": 2,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 31,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            -1,
+            31,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 17,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 18,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 43,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            0,
+            43,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 19,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 1,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            1,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 20,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 2,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            2,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 21,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 2,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            2,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 22,
+          "triplet_count": 3,
+          "triplets": [
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            5,
+            56,
+            -1,
+            15,
+            56,
+            -1,
+            21,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3
+          ]
+        },
+        {
+          "index": 23,
+          "triplet_count": 5,
+          "triplets": [
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 27,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 31,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            5,
+            56,
+            -1,
+            15,
+            56,
+            -1,
+            21,
+            56,
+            -1,
+            27,
+            56,
+            -1,
+            31,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            5
+          ]
+        },
+        {
+          "index": 24,
+          "triplet_count": 2,
+          "triplets": [
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            5,
+            56,
+            -1,
+            21,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 25,
+          "triplet_count": 3,
+          "triplets": [
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 28,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            5,
+            56,
+            -1,
+            21,
+            56,
+            -1,
+            28,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3
+          ]
+        },
+        {
+          "index": 26,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            5,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 27,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 6,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            6,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 28,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 8,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            12,
+            8,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 29,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 9,
+              "mask": 1
+            }
+          ],
+          "raw_i32": [
+            12,
+            9,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 30,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 12,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            12,
+            12,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 31,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 13,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            12,
+            13,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 32,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 13,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            13,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 33,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            15,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 34,
+          "triplet_count": 2,
+          "triplets": [
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            15,
+            56,
+            -1,
+            21,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 35,
+          "triplet_count": 2,
+          "triplets": [
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 23,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            15,
+            56,
+            -1,
+            23,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 36,
+          "triplet_count": 2,
+          "triplets": [
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 27,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            15,
+            56,
+            -1,
+            27,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 37,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            15,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 38,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 16,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            16,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 39,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 17,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            17,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 40,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 2,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            19,
+            2,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 41,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 3,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            19,
+            3,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 42,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 4,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            19,
+            4,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 43,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 5,
+              "mask": 64
+            }
+          ],
+          "raw_i32": [
+            19,
+            5,
+            64,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 44,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 10,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            19,
+            10,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 45,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 11,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            11,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 46,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 14,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            14,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 47,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 15,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            19,
+            15,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 48,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 17,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            17,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 49,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 19,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            19,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 50,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 21,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            21,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 51,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 23,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            23,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 52,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 25,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            25,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 53,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 26,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            26,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 54,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 28,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            28,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 55,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 31,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            31,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 56,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 33,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            33,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 57,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 35,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            35,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 58,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 36,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            36,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 59,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 38,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            38,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 60,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 39,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            39,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 61,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            21,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 62,
+          "triplet_count": 2,
+          "triplets": [
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 28,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            21,
+            56,
+            -1,
+            28,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 63,
+          "triplet_count": 2,
+          "triplets": [
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": -1
+            },
+            {
+              "scoreboard_id": 31,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            21,
+            56,
+            -1,
+            31,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ]
+        },
+        {
+          "index": 64,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": 1
+            }
+          ],
+          "raw_i32": [
+            21,
+            56,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 65,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 23,
+              "threshold": 45,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            23,
+            45,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 66,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 23,
+              "threshold": 46,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            23,
+            46,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 67,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 23,
+              "threshold": 47,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            23,
+            47,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 68,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 27,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            27,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 69,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 28,
+              "threshold": 0,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            28,
+            0,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 70,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 28,
+              "threshold": 52,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            28,
+            52,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 71,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 28,
+              "threshold": 54,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            28,
+            54,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 72,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 31,
+              "threshold": 56,
+              "mask": -1
+            }
+          ],
+          "raw_i32": [
+            31,
+            56,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 73,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 31,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            31,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 74,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 34,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            34,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    "sm_103": {
+      "va_range": "0x2261740-0x2262720",
+      "size_bytes": 4064,
+      "entry_count": 46,
+      "entry_size": 88,
+      "trailing_padding": 16,
+      "max_triplets_used": 1,
+      "triplet_count_distribution": {
+        "1": 46
+      },
+      "entries": [
+        {
+          "index": 0,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 1,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 43,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            0,
+            43,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 2,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 1,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            1,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 3,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 2,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            2,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 4,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            5,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 5,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 6,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            6,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 6,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 8,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            12,
+            8,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 7,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 9,
+              "mask": 1
+            }
+          ],
+          "raw_i32": [
+            12,
+            9,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 8,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 12,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            12,
+            12,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 9,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 13,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            12,
+            13,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 10,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 13,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            13,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 11,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 14,
+              "threshold": 56,
+              "mask": 1
+            }
+          ],
+          "raw_i32": [
+            14,
+            56,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 12,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            15,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 13,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 16,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            16,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 14,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 17,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            17,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 15,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 18,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            18,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 16,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 2,
+              "mask": 584
+            }
+          ],
+          "raw_i32": [
+            19,
+            2,
+            584,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 17,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 3,
+              "mask": 584
+            }
+          ],
+          "raw_i32": [
+            19,
+            3,
+            584,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 18,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 4,
+              "mask": 1024
+            }
+          ],
+          "raw_i32": [
+            19,
+            4,
+            1024,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 19,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 5,
+              "mask": 1024
+            }
+          ],
+          "raw_i32": [
+            19,
+            5,
+            1024,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 20,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 10,
+              "mask": 64
+            }
+          ],
+          "raw_i32": [
+            19,
+            10,
+            64,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 21,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 14,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            14,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 22,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 17,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            17,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 23,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 19,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            19,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 24,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 21,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            21,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 25,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 23,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            23,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 26,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 25,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            25,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 27,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 26,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            26,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 28,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 28,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            28,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 29,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 31,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            31,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 30,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 33,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            33,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 31,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 35,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            35,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 32,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 36,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            36,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 33,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 38,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            38,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 34,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 39,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            39,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 35,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": 1
+            }
+          ],
+          "raw_i32": [
+            21,
+            56,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 36,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 23,
+              "threshold": 45,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            23,
+            45,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 37,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 23,
+              "threshold": 46,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            23,
+            46,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 38,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 23,
+              "threshold": 47,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            23,
+            47,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 39,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 27,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            27,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 40,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 28,
+              "threshold": 0,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            28,
+            0,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 41,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 28,
+              "threshold": 52,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            28,
+            52,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 42,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 28,
+              "threshold": 54,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            28,
+            54,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 43,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 30,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            30,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 44,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 31,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            31,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 45,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 33,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            33,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    "sm_80": {
+      "va_range": "0x2294940-0x2295400",
+      "size_bytes": 2752,
+      "entry_count": 31,
+      "entry_size": 88,
+      "trailing_padding": 24,
+      "max_triplets_used": 1,
+      "triplet_count_distribution": {
+        "1": 31
+      },
+      "entries": [
+        {
+          "index": 0,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 1,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 2,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            2,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 2,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            5,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 3,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 6,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            6,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 4,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 9,
+              "threshold": 16,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            9,
+            16,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 5,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 9,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            9,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 6,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 11,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            11,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 7,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 13,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            13,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 8,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            15,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 9,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 16,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            16,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 10,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 18,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            18,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 11,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 1,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            1,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 12,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 2,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            19,
+            2,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 13,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 10,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            10,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 14,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 15,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            19,
+            15,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 15,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 17,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            17,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 16,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 19,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            19,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 17,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 21,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            21,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 18,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 23,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            23,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 19,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 26,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            26,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 20,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 28,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            28,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 21,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 31,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            31,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 22,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 33,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            33,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 23,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 35,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            35,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 24,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 36,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            36,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 25,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 39,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            39,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 26,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 20,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            20,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 27,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": 1
+            }
+          ],
+          "raw_i32": [
+            21,
+            56,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 28,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 27,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            27,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 29,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 31,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            31,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 30,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 34,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            34,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    "sm_86": {
+      "va_range": "0x2291680-0x2292140",
+      "size_bytes": 2752,
+      "entry_count": 31,
+      "entry_size": 88,
+      "trailing_padding": 24,
+      "max_triplets_used": 1,
+      "triplet_count_distribution": {
+        "1": 31
+      },
+      "entries": [
+        {
+          "index": 0,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 1,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 2,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            2,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 2,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            5,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 3,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 6,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            6,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 4,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 8,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            12,
+            8,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 5,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 9,
+              "mask": 1
+            }
+          ],
+          "raw_i32": [
+            12,
+            9,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 6,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 12,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            12,
+            12,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 7,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 13,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            12,
+            13,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 8,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 13,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            13,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 9,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            15,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 10,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 16,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            16,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 11,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 18,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            18,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 12,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 2,
+              "mask": 584
+            }
+          ],
+          "raw_i32": [
+            19,
+            2,
+            584,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 13,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 10,
+              "mask": 64
+            }
+          ],
+          "raw_i32": [
+            19,
+            10,
+            64,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 14,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 18,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            19,
+            18,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 15,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 20,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            19,
+            20,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 16,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 22,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            22,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 17,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 24,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            24,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 18,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 27,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            27,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 19,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 29,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            29,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 20,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 32,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            32,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 21,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 34,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            19,
+            34,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 22,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 35,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            35,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 23,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 37,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            37,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 24,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 39,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            39,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 25,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 20,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            20,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 26,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": 1
+            }
+          ],
+          "raw_i32": [
+            21,
+            56,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 27,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 27,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            27,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 28,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 30,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            30,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 29,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 31,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            31,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 30,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 33,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            33,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    "sm_89": {
+      "va_range": "0x228E380-0x228EE80",
+      "size_bytes": 2816,
+      "entry_count": 32,
+      "entry_size": 88,
+      "trailing_padding": 0,
+      "max_triplets_used": 1,
+      "triplet_count_distribution": {
+        "1": 32
+      },
+      "entries": [
+        {
+          "index": 0,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 1,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 2,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            2,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 2,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            5,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 3,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 6,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            6,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 4,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 8,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            12,
+            8,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 5,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 9,
+              "mask": 1
+            }
+          ],
+          "raw_i32": [
+            12,
+            9,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 6,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 12,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            12,
+            12,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 7,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 13,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            12,
+            13,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 8,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 13,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            13,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 9,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            15,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 10,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 16,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            16,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 11,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 18,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            18,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 12,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 2,
+              "mask": 584
+            }
+          ],
+          "raw_i32": [
+            19,
+            2,
+            584,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 13,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 10,
+              "mask": 64
+            }
+          ],
+          "raw_i32": [
+            19,
+            10,
+            64,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 14,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 15,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            19,
+            15,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 15,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 17,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            17,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 16,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 19,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            19,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 17,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 21,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            21,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 18,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 23,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            23,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 19,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 26,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            26,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 20,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 28,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            28,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 21,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 31,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            31,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 22,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 33,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            33,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 23,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 35,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            35,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 24,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 36,
+              "mask": 6
+            }
+          ],
+          "raw_i32": [
+            19,
+            36,
+            6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 25,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 39,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            39,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 26,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 20,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            20,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 27,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": 1
+            }
+          ],
+          "raw_i32": [
+            21,
+            56,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 28,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 27,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            27,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 29,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 30,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            30,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 30,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 31,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            31,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 31,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 33,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            33,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    "sm_90": {
+      "va_range": "0x228B0C0-0x228BB80",
+      "size_bytes": 2752,
+      "entry_count": 31,
+      "entry_size": 88,
+      "trailing_padding": 24,
+      "max_triplets_used": 1,
+      "triplet_count_distribution": {
+        "1": 31
+      },
+      "entries": [
+        {
+          "index": 0,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 1,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 2,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            2,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 2,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            5,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 3,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 6,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            6,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 4,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 8,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            12,
+            8,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 5,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 9,
+              "mask": 1
+            }
+          ],
+          "raw_i32": [
+            12,
+            9,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 6,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 12,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            12,
+            12,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 7,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 13,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            12,
+            13,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 8,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 13,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            13,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 9,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            15,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 10,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 16,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            16,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 11,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 18,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            18,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 12,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 2,
+              "mask": 584
+            }
+          ],
+          "raw_i32": [
+            19,
+            2,
+            584,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 13,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 10,
+              "mask": 64
+            }
+          ],
+          "raw_i32": [
+            19,
+            10,
+            64,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 14,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 18,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            19,
+            18,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 15,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 20,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            19,
+            20,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 16,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 22,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            22,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 17,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 24,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            24,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 18,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 27,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            27,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 19,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 29,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            29,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 20,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 32,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            32,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 21,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 34,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            19,
+            34,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 22,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 35,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            35,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 23,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 37,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            37,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 24,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 39,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            39,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 25,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 20,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            20,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 26,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": 1
+            }
+          ],
+          "raw_i32": [
+            21,
+            56,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 27,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 27,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            27,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 28,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 30,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            30,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 29,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 31,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            31,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 30,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 33,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            33,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    "sm_90a": {
+      "va_range": "0x2287DC0-0x22888C0",
+      "size_bytes": 2816,
+      "entry_count": 32,
+      "entry_size": 88,
+      "trailing_padding": 0,
+      "max_triplets_used": 1,
+      "triplet_count_distribution": {
+        "1": 32
+      },
+      "entries": [
+        {
+          "index": 0,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 0,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            0,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 1,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 2,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            2,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 2,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 5,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            5,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 3,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 6,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            6,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 4,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 8,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            12,
+            8,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 5,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 9,
+              "mask": 1
+            }
+          ],
+          "raw_i32": [
+            12,
+            9,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 6,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 12,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            12,
+            12,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 7,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 12,
+              "threshold": 13,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            12,
+            13,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 8,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 13,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            13,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 9,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 15,
+              "threshold": 56,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            15,
+            56,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 10,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 16,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            16,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 11,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 18,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            18,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 12,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 2,
+              "mask": 584
+            }
+          ],
+          "raw_i32": [
+            19,
+            2,
+            584,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 13,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 10,
+              "mask": 64
+            }
+          ],
+          "raw_i32": [
+            19,
+            10,
+            64,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 14,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 17,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            17,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 15,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 18,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            19,
+            18,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 16,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 20,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            19,
+            20,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 17,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 22,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            22,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 18,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 24,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            24,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 19,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 27,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            27,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 20,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 29,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            29,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 21,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 32,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            32,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 22,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 34,
+              "mask": 16
+            }
+          ],
+          "raw_i32": [
+            19,
+            34,
+            16,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 23,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 35,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            35,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 24,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 37,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            19,
+            37,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 25,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 19,
+              "threshold": 39,
+              "mask": 4
+            }
+          ],
+          "raw_i32": [
+            19,
+            39,
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 26,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 20,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            20,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 27,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 21,
+              "threshold": 56,
+              "mask": 1
+            }
+          ],
+          "raw_i32": [
+            21,
+            56,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 28,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 27,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            27,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 29,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 30,
+              "threshold": 56,
+              "mask": 32
+            }
+          ],
+          "raw_i32": [
+            30,
+            56,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 30,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 31,
+              "threshold": 56,
+              "mask": 2
+            }
+          ],
+          "raw_i32": [
+            31,
+            56,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "index": 31,
+          "triplet_count": 1,
+          "triplets": [
+            {
+              "scoreboard_id": 33,
+              "threshold": 56,
+              "mask": 8
+            }
+          ],
+          "raw_i32": [
+            33,
+            56,
+            8,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ]
+        }
+      ]
+    }
+  }
+}
