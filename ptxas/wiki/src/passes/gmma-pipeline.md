@@ -89,15 +89,136 @@ Accumulator entries are stored with a type tag in the high nibble:
 - `0x90000000 | (encoded_accum & 0xFFFFFF)` -- source accumulator register set
 - `0x10000000 | (encoded_accum & 0xFFFFFF)` -- destination accumulator register set
 
+The encoding word packs a bitvector position and register-set identifier into 24 bits: `bit_offset | (((word_index_in_bv) | (4 * rbt_node_key)) << 6)`. This gives the register allocator a compact handle to identify which accumulator bank a register belongs to.
+
 ### Live Range Limit Check
 
-After accumulator propagation, the pass checks whether the number of active GMMA live ranges exceeds the hardware limit. The limit is stored at offset 56 of the pass object (field `*(DWORD*)(a1 + 56)` = `maxActiveGmmaLiveRanges`). If exceeded, a diagnostic is emitted:
+`sub_ADAD60` performs two limit checks per instruction -- one after encoding source accumulators and one after encoding destination accumulators. Each compares the count of encoded entries against `maxActiveGmmaLiveRanges` stored at pass object offset +56:
+
+```c
+// After source accumulator encoding (tag 0x90000000):
+src_count = pass->accumList.count;            // *(DWORD*)(a1+44) + 1
+if (pass->maxActiveGmmaLiveRanges < src_count)
+    emit_warning(0x1CEF, "GMMA sequence has too many active live ranges (%d), "
+                 "reduce it to bring it under (%d)", src_count, maxActiveGmmaLiveRanges);
+
+// After destination accumulator encoding (tag 0x10000000):
+dst_count = pass->accumList.count - src_count;
+if (pass->maxActiveGmmaLiveRanges < dst_count)
+    emit_warning(0x1CEF, ...same message..., dst_count, maxActiveGmmaLiveRanges);
+```
+
+Warning `0x1CEF` (7407) fires independently for source and destination sets, enabling the compiler to identify which direction (input reuse vs. output fan-out) exceeds the hardware limit. The limit is architecture-dependent and reflects the number of accumulator register banks available to the tensor core pipeline.
+
+### Per-Function Scan: sub_ADCA60
+
+When the simple path is selected (mode byte at +26208 == 1 and sub-field at +26216 nonzero), `sub_ADCA60` performs a single linear scan over the function's basic blocks via the block index array at `codeObj+512`:
 
 ```
-"GMMA sequence has too many active live ranges (%d), reduce it to bring it under (%d)"
+for each BB index in codeObj->blockIndexArray[0 .. codeObj->blockCount-1]:
+    bb = codeObj->bbArray[index]
+    prev_wgmma_idx = -1
+    for each instruction in bb->instrList:
+        opcode = instr->opcode & 0xFFFFCFFF
+        if opcode == 309 (wgmma.mma_async):
+            if prev_wgmma_idx >= 0:
+                // chain consecutive WGMMAs: check if same commit group
+                if prev_instr->field_24 == instr->field_24:
+                    check_commit_group_linkage(prev_instr, instr)
+            if !pass->fastMode:
+                encode_accumulator(instr)     // sub_ADAD60
+            record(instr, &prev_wgmma_idx)
+        elif opcode == 323 (commit_batch):
+            record(instr, &prev_wgmma_idx)
+            // extract pipeline depth from last operand flags
+            depth = (operand_flags >> 2) & 0xF
+            pass->maxPipelineDepth = max(pass->maxPipelineDepth, depth)
+    // after scanning all instrs in this BB:
+    if BB has accumulator-propagation flag (*(BYTE*)(bb+280) & 0x10):
+        sub_ADBD30(pass, BB_index)   // propagate to successors
 ```
 
-This diagnostic uses warning code `0x1CEF` (7407). The limit is architecture-dependent and reflects the number of accumulator register banks available to the tensor core pipeline.
+The per-BB FNV-1a hash table (`pass+184` through `pass+208`) stores accumulator records keyed by the basic block's unique tag at `bb+144`. Each record is a 48-byte node: `{next_ptr[8], bb_tag[4], padding[4], instr_list_ptr[8], instr_list_bound[8], ref_count[4], hash_value[4]}`.
+
+### Cross-BB Propagation: sub_ADBD30
+
+`sub_ADBD30` implements a worklist-driven forward propagation of accumulator liveness across basic block boundaries. The worklist is a dynamic array of 12-byte entries stored at pass object offsets +136 through +156:
+
+| Offset | Type | Field |
+|---|---|---|
+| +16 | `void*[2]` | Per-program-point accumulator state array (16 bytes per slot) |
+| +32 | `int` | High-water mark for state array |
+| +48 | `RBTree*` | Visited-BB set (red-black tree, keyed by `bb_tag >> 8`) |
+| +88 | `int` | `maxActiveGmmaLiveRanges` duplicate for cross-BB check |
+| +96 | `HashTable` | Per-successor pending accumulator records (24-byte nodes) |
+| +136 | `Allocator*` | Memory allocator for worklist entries |
+| +144 | `void*` | Worklist buffer pointer |
+| +152 | `int` | Worklist top index (stack pointer) |
+| +156 | `int` | Worklist buffer capacity |
+| +192 | `int` | Per-BB hash table entry count |
+| +200 | `void*` | Per-BB hash table bucket array |
+| +208 | `uint64` | Per-BB hash table bucket count |
+
+The propagation algorithm:
+
+```
+sub_ADBD30(pass, bb_index):
+    push worklist entry: {bb_id=blockIndexArray[bb_index], cursor=-1, scope_bound=-1}
+    while worklist is not empty:
+        entry = worklist[top]
+        if entry.cursor == -1:              // first visit to this BB
+            bb = bbArray[entry.bb_id]
+            entry.cursor = pass->stateHighWater + 1
+            bb_tag = bb->field_144
+            // FNV-1a lookup: hash bb_tag, probe pass->perBBHashTable
+            record = hash_lookup(pass, bb_tag)
+            if record found AND record has instruction list:
+                // replay recorded WGMMA sequence into this BB
+                for each recorded_instr in record->instrList:
+                    if recorded_instr->opcode == 0x135 (wgmma.mma_async):
+                        // grow state array, record instruction
+                        find_scope_bound(pass, &scope_bound)  // sub_ACECD0
+                        if scope_bound valid:
+                            new_instr = sub_ADAD60(pass, recorded_instr, ...)
+                            // update all state array refs from old to new
+                    elif recorded_instr->opcode == 0x143 (commit_batch):
+                        compute_scope_via_sub_AD9C20(pass, recorded_instr)
+                        if cross-BB commit detected:
+                            insert bb_tag into visited set
+                            goto next worklist entry   // restart outer loop
+            if record not found:
+                insert bb_tag into per-BB hash table (new 48-byte node)
+        else:
+            // entry.cursor != -1: this BB was already partially processed
+            pop and continue
+
+        // after processing this BB, if scope_bound == -1:
+        scope_bound = sub_ACECD0(pass)   // find nearest unprocessed commit
+        clear pending successor hash table
+
+        // propagate to all CFG successors
+        for each successor edge in bb->successorList:
+            succ_bb_id = successor->field_8
+            succ_bb = bbArray[succ_bb_id]
+            succ_tag = succ_bb->field_144
+            // check visited set (RBTree at pass+48): key = succ_tag >> 8
+            if succ_tag NOT in visited set:
+                push worklist entry: {bb_id=succ_bb_id, cursor=-1, scope_bound=-1}
+            else:
+                // successor already has accumulator info
+                // check if live range count exceeds limit
+                pending_record = hash_lookup(pass->pendingHT, succ_tag)
+                if pending_record.ref_count <= pass->maxActiveGmmaLiveRanges:
+                    pending_record.ref_count++
+                    enqueue {succ_bb_id | 0xFFFFFFFF00000000, scope_bound}
+                    // into pass->worklist via sub_AD0A50
+```
+
+The key invariant: each BB is processed at most once per accumulator scope. The visited set (red-black tree at pass+48) prevents re-processing, while the pending hash table (pass+96) tracks how many accumulator live ranges cross into each successor, enforcing the hardware limit.
+
+### Scope Bound Finder: sub_ACECD0
+
+`sub_ACECD0` walks backward through the state array to find the nearest `commit_batch` (opcode 0x143) whose last operand has flags `& 3 == 0` (unprocessed commit). It returns the state array index of this commit, which becomes the scope boundary for subsequent propagation. If no unprocessed commit exists, it returns `-1`, indicating the accumulator scope extends to the function entry. If the current top-of-stack instruction is itself a `wgmma.mma_async` (opcode 0x135), the function returns immediately with the predecessor index, since the scope boundary is already known.
 
 ### Call Chain
 
@@ -105,16 +226,22 @@ This diagnostic uses warning code `0x1CEF` (7407). The limit is architecture-dep
 sub_AE5030  (2,967B -- SM gate, iteration over basic blocks)
   └─ sub_ADCA60  (3,643B -- per-function pipeline analysis)
        └─ sub_ADBD30  (3,364B -- per-block accumulator propagation)
-            └─ sub_ADAD60  (2,170B -- per-instruction accumulator encoding)
-                 ├─ sub_AD4500  -- hash table lookup for register set
-                 ├─ sub_AD4940  -- hash table insert/update
-                 ├─ sub_AD6280  -- register set cache insert
-                 ├─ sub_AD8E50  -- instruction iterator setup
-                 ├─ sub_AD0C50  -- begin accumulator iteration
-                 ├─ sub_AD3EA0  -- advance accumulator iterator
-                 ├─ sub_AD1FA0  -- advance to next accumulator slot
-                 ├─ sub_75A670  -- grow dynamic array (accumulator list)
-                 └─ sub_895530  -- emit diagnostic warning
+       │    ├─ sub_ACECD0  (250B -- backward scope bound finder)
+       │    ├─ sub_ACEC00  (230B -- dominance-aware scope validation)
+       │    ├─ sub_AD0A50  (420B -- worklist push with 12-byte entry copy)
+       │    ├─ sub_AD2830  -- state array growth
+       │    ├─ sub_AD9C20  -- cross-BB commit scope computation
+       │    └─ sub_7436F0  -- RBTree insert (visited-BB set)
+       └─ sub_ADAD60  (2,170B -- per-instruction accumulator encoding)
+            ├─ sub_AD4500  -- hash table lookup for register set
+            ├─ sub_AD4940  -- hash table insert/update
+            ├─ sub_AD6280  -- register set cache insert
+            ├─ sub_AD8E50  -- instruction iterator setup
+            ├─ sub_AD0C50  -- begin accumulator iteration
+            ├─ sub_AD3EA0  -- advance accumulator iterator
+            ├─ sub_AD1FA0  -- advance to next accumulator slot
+            ├─ sub_75A670  -- grow dynamic array (accumulator list)
+            └─ sub_895530  -- emit diagnostic warning
 ```
 
 ### Accumulator Collection Helper
