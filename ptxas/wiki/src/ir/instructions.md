@@ -917,15 +917,25 @@ Total: 322 named opcodes. Index `N` name is at offset `4184 + 16*N`. The `getNam
 
 The 1288-byte block at +9336 is a 322-element `int32` array that maps each opcode index to an **encoding category** number. The SASS mnemonic lookup function (`sub_1377C60`) uses this to resolve a `(mnemonic, arch)` pair to a binary encoding format descriptor.
 
+**Base table (`unk_21C0E00`, 322 x int32 = 0x508 bytes) -- verified identity map:**
+
+Binary extraction of all 322 entries at VA `0x21C0E00` confirms a pure identity mapping:
+
+```
+encoding_category_map[i] = i    for all i in 0..321
+```
+
+Every opcode index maps to itself as the encoding category number. No exceptions, no gaps, no remapping -- the full 1288-byte block is the sequence `{0, 1, 2, 3, ..., 319, 320, 321}` stored as little-endian `int32` values. This means the base constructor establishes a 1:1 correspondence between opcode indices (from the ROT13 name table above) and encoding category numbers.
+
 **Arch-specific source tables:**
 
-| Constructor | Source Table | Content |
+| Constructor | Source Table | Relationship to Base |
 |---|---|---|
-| `sub_7A5D10` (base) | `unk_21C0E00` | Identity map: `map[i] = i` for all `i` in 0..321 |
-| `sub_7C5410` | `unk_21C3600` | Arch-remapped: some entries differ from identity |
-| `sub_BE7390` | `unk_22B2320` | Arch-remapped: some entries differ from identity |
+| `sub_7A5D10` (base) | `unk_21C0E00` | Identity: `map[i] = i` for all 322 entries (verified from binary) |
+| `sub_7C5410` | `unk_21C3600` | Arch-remapped: selected entries differ from identity |
+| `sub_BE7390` | `unk_22B2320` | Arch-remapped: selected entries differ from identity |
 
-The base constructor uses a pure identity map where opcode N maps to encoding category N. Arch-specific constructors override selected entries so the same mnemonic at different opcode indices can map to different encoding formats. For example, DMMA at opcode index 180 maps to encoding category 434 on one arch, while DMMA at opcode index 215 maps to encoding category 515 on another.
+Arch-specific constructors bulk-copy their own variant of this table over the base identity map. The remapped tables share the same 322-entry `int32` format but redirect selected opcode indices to different encoding category numbers so the same mnemonic at different opcode indices can map to different encoding formats. For example, DMMA at opcode index 180 maps to encoding category 434 on one arch, while DMMA at opcode index 215 maps to encoding category 515 on another. Categories above 321 (e.g. 434, 515) index into an extended encoding format space that has no corresponding ROT13 name entry -- they exist only as encoding format keys.
 
 **Reader: `sub_1377C60` (SASS mnemonic lookup)**
 

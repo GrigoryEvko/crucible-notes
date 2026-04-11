@@ -197,12 +197,70 @@ Growth policy: rehash when `total_elements > num_unique_keys` (load factor > 1.0
 
 `AnalyzeControlFlow` is phase 3 in the 159-phase optimizer pipeline. It runs immediately after the parser builds the initial instruction list and before any optimization. This phase:
 
-1. **Populates the successor edge hash table** at Code Object +648 by scanning the last instruction of each basic block. Branch instructions (opcode 67 = `BRA`, opcode 77 = `EXIT`; the code also checks opcodes 93 and 95 which are `OUT_FINAL` and `STS` respectively in the ROT13 name table but serve as internal control-flow markers in this context) provide the target block indices.
+1. **Populates the successor edge hash table** at Code Object +648 by scanning the last instruction of each basic block and classifying it by opcode (see pseudocode below).
 2. **Computes the backedge map** at Code Object +680 by identifying edges where the target has a lower or equal block index position in the DFS tree.
 3. **Builds the reverse post-order (RPO) array** at Code Object +720 via iterative DFS.
 4. **Identifies loop headers and backedges** for later loop optimization passes.
 
 The phase is critical because the Bison parser constructs basic blocks and instruction lists incrementally. `AnalyzeControlFlow` ensures the CFG is fully consistent and annotated before optimization begins.
+
+### Successor Edge Population Algorithm
+
+The core of step 1 walks every basic block, finds its last instruction via the linked list at BB +8, reads the opcode at `instruction+72`, and inserts 0, 1, or 2 successor edges into the FNV-1a hash map at Code Object +648. The opcode determines the successor count:
+
+| Successors | Opcodes | Behavior |
+|------------|---------|----------|
+| 0 | 77 (`EXIT`), 72 (`RET`) | Terminal blocks -- no outgoing edges. `EXIT` terminates the thread; `RET` returns to caller. |
+| 1 | 67 (`BRA`, unconditional), 71 (`CALL`) | Single edge. Unconditional `BRA` targets a single block (operand at `instr+84`). `CALL` falls through to the next block after the callee returns. |
+| 2 | 67 (`BRA`, conditional) | Two edges: taken branch target + fall-through to the next sequential block. Conditional `BRA` is distinguished by having a predicate operand (bit 12 of the opcode word set). |
+| N | 68 (`BRX`) | Multi-way indirect branch (switch lowering). The target count is read from the edge hash table's sub-hash at the `BRX` instruction's jump table operand. Each jump table entry produces one successor edge. |
+| 1 | *all other opcodes* | Fall-through to the next sequential block. Non-control-flow terminators (the block was split at this point by an earlier pass or the parser) get a single fall-through edge to `bb_array[bix + 1]`. |
+
+```
+function populateSuccessorEdges(code_obj):
+    succ_map  = &code_obj[+648]      // FNV-1a hash map (64-byte nodes)
+    bb_array  = code_obj[+296]       // array of BasicBlock pointers
+    bb_count  = code_obj[+304]
+
+    for bix in 0 .. bb_count-1:
+        bb        = bb_array[bix]
+        last_insn = findLastInstruction(bb[+8])   // walk linked list to tail
+        opcode    = *(u32*)(last_insn + 72) & 0xCFFF   // mask modifier bits
+
+        if opcode == 77 or opcode == 72:           // EXIT, RET
+            // 0 successors -- insert empty entry
+            hashMapInsert(succ_map, bix, edge_count=0, targets={})
+
+        else if opcode == 67:                      // BRA
+            target_bix = resolveTarget(last_insn)  // operand -> block index
+            if isConditional(last_insn):           // predicate present
+                // 2 successors: taken + fall-through
+                fall_bix = bix + 1
+                hashMapInsert(succ_map, bix, edge_count=2,
+                              targets={target_bix, fall_bix})
+            else:
+                // 1 successor: unconditional branch
+                hashMapInsert(succ_map, bix, edge_count=1,
+                              targets={target_bix})
+
+        else if opcode == 68:                      // BRX (indirect)
+            jtab = getJumpTable(last_insn)
+            for each entry in jtab:
+                hashMapInsert(succ_map, bix, sub_hash, entry.target_bix)
+
+        else if opcode == 71:                      // CALL
+            // 1 successor: fall-through after return
+            hashMapInsert(succ_map, bix, edge_count=1,
+                          targets={bix + 1})
+
+        else:
+            // non-terminator: fall-through to next block
+            if bix + 1 < bb_count:
+                hashMapInsert(succ_map, bix, edge_count=1,
+                              targets={bix + 1})
+```
+
+The `resolveTarget` function reads the branch target operand at `instr+84` (first operand slot), which holds a block index assigned during parsing. The `isConditional` test checks whether the opcode word has modifier bits indicating a predicate guard -- specifically `(*(u32*)(instr+72) >> 12) & 3` is non-zero for predicated branches. For `BRX` (opcode 68), the multi-edge sub-hash within the 64-byte hash node stores the full set of jump table targets (see [Hash Table Node Layout](#edge-hash-table-data-structures) above).
 
 ### Phase 6: SetControlFlowOpLastInBB
 
@@ -226,28 +284,36 @@ The array is resized with the standard ptxas growth policy: `new_capacity = old 
 
 ### Algorithm
 
-The RPO computation uses a standard iterative DFS with post-order numbering:
+The RPO computation uses iterative DFS with post-order numbering.  Two bit-arrays
+cooperate: `need_expand` marks blocks whose successors have not yet been pushed;
+`in_stack` prevents the same block from being pushed twice (which would happen at
+diamond-shaped joins without the guard).
 
 ```
 function computeRPO(cfg, entry_block):
-    stack = [entry_block]           // Explicit stack at offset +88..+100
-    visited = new BitArray(num_blocks)  // At offset +16..+40
-    in_stack = new BitArray(num_blocks) // At offset +40
-    counter = num_blocks            // Decremented as blocks complete
+    stack = [entry_block]              // Explicit stack at offset +88..+100
+    need_expand = BitArray(num_blocks) // +16  -- 1 = unvisited, cleared on expand
+    in_stack    = BitArray(num_blocks) // +40  -- 1 = currently on stack
+    counter = num_blocks               // Decremented as blocks complete
 
     while stack is not empty:
         bix = stack.top()
-        if visited[bix]:
-            stack.pop()
-            rpo_number[bix] = counter  // *(cfg+64)[bix] = counter
-            rpo_array[counter] = bix   // *(*(cfg+720))[counter] = bix
-            counter--
+
+        if need_expand[bix]:                   // First visit -- push successors
+            need_expand[bix] = 0
+            for each successor s of bix (via hash map lookup):
+                if need_expand[s] and not in_stack[s]:
+                    in_stack[s] = 1
+                    stack.push(s)
             continue
 
-        visited[bix] = true
-        for each successor s of bix (via hash map lookup):
-            if not visited[s]:
-                stack.push(s)
+        stack.pop()
+        if in_stack[bix]:                      // Canonical entry -- assign RPO
+            in_stack[bix] = 0
+            rpo_number[bix] = counter          // *(cfg+64)[bix]  = counter
+            rpo_array[counter] = bix           // *(*(cfg+720))[counter] = bix
+            counter--
+        // else: duplicate stack entry -- silently discard
 
     return counter  // Should be -1 if all blocks reachable
 ```
@@ -286,11 +352,16 @@ Backedges are identified during `CFG::buildAndAnalyze` (`sub_BE0690`, 54KB). A b
 
 The `LoopStructurePass` (`sub_78B430`) combines RPO numbering with backedge analysis to identify natural loops:
 
-1. Calls `sub_781F80` (`BasicBlockAnalysis`) to compute RPO numbers and dominance.
+1. Calls `sub_781F80` (`BasicBlockAnalysis`) to compute RPO numbers, loop detection, and block flags.
 2. Iterates the `bb_array` at Code Object +296.
-3. For each block, checks if `rpo_number` (+144) is non-zero and equals the value at +152 (loop exit RPO marker). Combined with a branch opcode check (`opcode & 0xFFFFFFFD == 0x5D` = `BRA` or conditional branch), this identifies loop header blocks.
-4. Walks the predecessor list to find the backedge source -- the predecessor with the largest RPO number that is still less than the header's RPO.
-5. Walks the successor list to find the loop latch -- the successor with the smallest RPO number greater than the loop preheader's RPO.
+3. For each block, checks three conditions to identify a loop header:
+   - `rpo_number` (+144) is non-zero,
+   - `rpo_number` equals the value at +152 (loop-exit RPO marker), and
+   - the block's first instruction has a terminator-class opcode: `opcode & 0xFFFFFFFD == 0x5D`. The mask `0xFFFFFFFD` clears bit 1, so this matches exactly two Ori opcodes: **93** (`OUT_FINAL`) and **95** (`STS`). These are NOT `BRA` (opcode 67 = `0x43`). In the Ori IR, opcodes 93 and 95 are repurposed as control-flow terminator markers -- their ROT13 names reflect SASS mnemonics, but in loop analysis they denote conditional-exit and unconditional-exit block terminators respectively.
+4. Walks the predecessor list (+136) to find the preheader -- the predecessor whose RPO number is the smallest among those less than the header's RPO.
+5. Walks the successor list (+128) to find the loop exit -- the successor whose RPO number is the largest among those less than the preheader's RPO.
+
+The same masked opcode check (`& 0xFFFFFFFD == 0x5D`) is applied a second time to the latch block's last instruction (at `0x78b6b4` in the binary). Only if both the header and the latch pass the terminator-class test does the transformation proceed.
 
 The RPO range `[header_rpo, exit_rpo]` defines the set of blocks belonging to the loop body. A block with `header_rpo <= block_rpo <= exit_rpo` is inside the loop.
 
@@ -301,37 +372,32 @@ If a natural loop has multiple entry points, `sub_78B430` transforms it into a s
 - The `LoopMakeSingleEntry` pass-disable check (via `sub_799250`)
 - Knob 487 (queried via the knob vtable at +152)
 
-Two code paths handle different branch types:
-- **Opcode 93 (`OUT_FINAL` in the ROT13 name table; used here as a control-flow boundary marker):** Calls `sub_9253C0` to rewrite the branch target
-- **Conditional branches:** Calls `sub_748BF0` to insert a new preheader block and redirect edges
+After the latch passes the terminator check, the raw opcode (without the bit-1 mask) selects the code path:
+- **Opcode == 93 (exact):** Calls `sub_9253C0` to rewrite the branch target directly. This handles the unconditional-exit case.
+- **Opcode == 95:** Calls `sub_748BF0` to insert a new preheader block and redirect edges. Then rewrites the latch's operand encoding with `0x40000000` (taken target) and `0x60000000` (fall-through target) flags, using `sm_backend->vtable[79]` (offset `+632`) to resolve the new target address.
 
-After transformation, `sub_931920` is called to split blocks and update the instruction list.
+After transformation, `sub_931920` splits blocks and updates the instruction list. A post-split check (`cmp dword [rdx+48h], 5Dh` at `0x78b7e0`) tests whether the newly created block ends with opcode 93; if so, no further splitting is needed. Otherwise, a second `sub_931920` + `sub_748BF0` pass inserts an additional block and emits opcode 93 via `sub_92E1B0` as a convergence barrier.
 
 ## Dominance
 
-Dominance is computed by `sub_BE2330` (4KB) and/or within `sub_781F80` (12KB, `BasicBlockAnalysis`). The implementation uses bitvector operations -- each block has a bitvector of dominators, and the fixpoint iteration proceeds in RPO order.
+**Correction:** The earlier attribution of dominance to `sub_BE2330` was wrong. Decompilation of `sub_BE2330` (851 bytes, `0xbe2330-0xbe2683`) shows it is an instruction operand address resolver -- it switches on opcode values (7, 8, 10, 51, 137, 144, 269) and computes branch-target address offsets relative to `4 * ctx->pc_scale + instr->offset`. It has no loop structure, no bitvector operations, and no predecessor iteration.
 
-The bitvector layout used by the dominator computation:
+Dominance information is computed as a byproduct of the RPO/backedge analysis in `sub_BDFB10` (24KB, `CFG::buildRPOAndIdom`). The algorithm is the Cooper-Harvey-Kennedy (CHK) immediate-dominator algorithm, not bitvector-based iterative dataflow. Evidence from the decompilation:
 
-| Offset | Type | Field |
-|--------|------|-------|
-| +0 | `ptr` | `data` -- pointer to `uint32_t[]` words |
-| +8 | `i32` | `word_count` |
-| +12 | `i32` | `capacity` |
-| +16 | `i32` | `bit_count` |
+1. **`sub_BDFB10` allocates two parallel arrays** at CodeObject offsets +720 (`rpo_order[]`) and +744 (`idom[]`), both sized to `num_blocks + 1`, with grow-by-1.5x reallocation (lines 146--260 of the decompiled output).
 
-Evidence for an iterative dataflow approach (rather than Lengauer-Tarjan) comes from the function sizes and patterns: `sub_781F80` at 12KB and `sub_BE2330` at 4KB are both small enough that they likely implement the simple iterative algorithm:
+2. **DFS-based RPO** is computed first by calling either `sub_BDE6C0` (recursive DFS) or `sub_BDE150` (iterative DFS with explicit stack). The choice is gated by a knob query at CodeObject vtable slot +72 with argument 7.
 
+3. **Immediate dominator via RPO-number intersection:** The core loop (at `0xbdff30` in the binary) iterates over backedge successors from the FNV-1a hash map and computes the idom by comparing RPO numbers:
 ```
-dom[entry] = {entry}
-for all other blocks b: dom[b] = all_blocks
-
-repeat until no changes:
-    for each block b in RPO order (skip entry):
-        dom[b] = {b} union (intersection of dom[p] for all predecessors p)
+    if rpo_num[pred] <= rpo_num[current_block]:
+        intersect(pred, current_block)  // walk up idom chains
 ```
+   This comparison (`*(idom_array + pred) <= *(idom_array + block)` at decompiled line 459) is the CHK intersect fingerprint -- two fingers walk up the dominator tree until they meet.
 
-This is adequate for the small CFGs typical of GPU kernels (rarely exceeding a few hundred blocks). The O(n^2) worst case is not a concern at GPU kernel scale.
+4. **No bitvector operations exist** in either function. No `memset(ptr, 0xFF, ...)` initialization, no word-level AND loops, no `word_count`/`bit_count` fields. The speculative bitvector layout table from the earlier version had no binary evidence.
+
+`sub_781F80` (`BasicBlockAnalysis`) consumes the idom results rather than computing them. During its linear instruction walk, it stores the first predecessor's RPO number at BB+152 for loop-header detection and sets dominance-related flags in the BB+280 bitfield (`0x10` = loop header, `0x20` = has predecessor, `0x800000` = in-loop).
 
 ## Block Layout: Phase 112 (PlaceBlocksInSourceOrder)
 
@@ -364,14 +430,7 @@ Block index 0 (`bix0`) is always the function entry block. It is the first eleme
 
 The exit block is the block containing the `EXIT` instruction (opcode 77 = `EXIT` in the ROT13 name table). For functions with multiple exit points, each `EXIT`-containing block is a CFG sink. The RPO computation assigns these the highest RPO numbers. The `SetControlFlowOpLastInBB` phase (phase 6) ensures each `EXIT` is the final instruction in its block.
 
-The `CFG::buildAndAnalyze` function (`sub_BE0690`) checks the terminator opcode at instruction offset +72. Opcodes 4 and 7 (internal control-flow opcodes) receive special treatment during edge construction:
-
-| Opcode | Type | Edge behavior |
-|--------|------|---------------|
-| 4 | Unconditional branch | Single successor edge to target block |
-| 7 | Conditional branch | Two successor edges (taken + fall-through) |
-| 93 | `OUT_FINAL` | ROT13 name is OUT_FINAL; used as a control-flow boundary marker in CFG construction |
-| 95 | `STS` | ROT13 name is STS; used as a control-flow terminator marker in CFG construction |
+The `CFG::buildAndAnalyze` function (`sub_BE0690`) also builds a parallel edge representation for the scheduling-level `block_info` array at Code Object +976. This representation uses a compressed block-type field at `block_info[i]+28` (read as a 16-bit value from the first instruction's +28 field): type 4 = unconditional branch (1 successor), type 7 = conditional branch (2 successors via sub-hash iteration). Opcodes 93 (`OUT_FINAL`) and 95 (`STS`) serve as control-flow boundary markers in loop analysis (see [Natural Loop Detection](#natural-loop-detection) below). The authoritative Ori IR opcode-to-successor mapping is described in the [Successor Edge Population Algorithm](#successor-edge-population-algorithm) pseudocode above.
 
 ## CFG Update Protocol
 
@@ -417,18 +476,18 @@ The `AnalyzeControlFlow` phase (phase 3) is explicitly re-run or incrementally u
 | Address | Size | Identity | Confidence |
 |---------|------|----------|------------|
 | `sub_62BB00` | 16.5KB | `BasicBlock::allocate` -- allocates 136-byte block, initializes fields | HIGH |
-| `sub_781F80` | 12KB | `BasicBlockAnalysis` -- RPO, loop detection, dominance | MEDIUM |
+| `sub_781F80` | 12KB | `BasicBlockAnalysis` -- block walk, loop detection, flag computation | HIGH |
 | `sub_78B430` | 1.2KB | `LoopStructurePass` -- single-entry loop transformation | HIGH |
 | `sub_BDE150` | 9KB | `CFG::computeRPO` -- iterative DFS with explicit stack | HIGH |
-| `sub_BDE6C0` | 3KB | `HashMap::erase` -- remove node from edge hash map | MEDIUM |
+| `sub_BDE6C0` | 3KB | `CFG::computeRPO_recursive` -- recursive DFS RPO traversal | HIGH |
 | `sub_BDE8B0` | 2KB | `CFG::printEdges` -- prints `"bix%d -> bix%d\n"` | HIGH |
 | `sub_BDEA50` | 4KB | `CFG::dumpRPOAndBackedges` -- RPO + backedge debug dump | HIGH |
 | `sub_BDED20` | 12KB | `HashMap::insertOrFind` -- full 64-byte node insert | HIGH |
 | `sub_BDF480` | 10KB | `HashMap::insertOrFind_simple` -- 16-byte node insert | HIGH |
-| `sub_BDFB10` | 24KB | `CFG::buildBlockMap` -- block array init, RPO resize | MEDIUM |
+| `sub_BDFB10` | 24KB | `CFG::buildRPOAndIdom` -- RPO computation + CHK idom algorithm | HIGH |
 | `sub_BE0690` | 54KB | `CFG::buildAndAnalyze` -- master CFG builder | HIGH |
 | `sub_BE21D0` | 1.4KB | `CFG::dumpDOT` -- Graphviz DOT format output | HIGH |
-| `sub_BE2330` | 4KB | `CFG::computeDominators` -- bitvector-based dominance | MEDIUM |
+| `sub_BE2330` | 851B | Instruction operand address resolver -- opcode switch + offset calc | HIGH |
 | `sub_A92C50` | 3.5KB | `PlaceBlocksInSourceOrder` -- block reordering (phase 112) | MEDIUM |
 
 ## CFG Visualization
