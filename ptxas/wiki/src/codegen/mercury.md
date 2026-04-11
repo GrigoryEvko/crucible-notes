@@ -367,6 +367,42 @@ Mercury uses abstract instruction forms that may map to multiple real SASS instr
 
 `sub_C3CC60` iterates over every instruction in the function, dispatching to the appropriate handler. Handlers create new instruction nodes, link them into the list, and delete the original pseudo-instruction. After all expansions, `sub_C3E030` (18KB) performs finalization and cleanup.
 
+#### sub_C37A10 -- expandInstruction jump table
+
+This handler processes general pseudo-instructions. It reads the operand record at `instr+16`, extracts the Ori opcode from field `[2]` (offset +8), and maps it through `byte_22B7B60[opc]` (52-entry LUT, range 0..0x33) to a slot index (default 27 for out-of-range). It then applies predication from field `[4]`: mode 2 = conditional-true (`sub_8F0DC0(slot, 1)`), mode 3 = conditional-false (`sub_8F0DC0(slot, 0)`), mode 4 = uniform (`sub_8F0DF0(slot)`). The main switch dispatches by opcode:
+
+| Case(s) | Vtable offset | Action | Operand source |
+|---|---|---|---|
+| 0 | +16 (`emitArg`) | Emit 2-operand word: mode=10, val=`[6]`, aux=`[7]` | `instr[6..7]` |
+| 1 | +16 (`emitArg`) | Emit 2-operand word: mode=10, val=`[5]`, aux=`[7]` | `instr[5,7]` |
+| 2--6, 8--9, 0xB--0x11, 0x1B--0x21, 0x2C--0x33 | +128 (`setValue`) | Set slot value to `instr[7]`; internal state machine (11 sub-cases on record byte 0: states 0--5,7--8 = direct store; 6,9 = linked-list flush; 0xA = conditional release) | `instr[7]` |
+| 7, 0xA, 0x12, 0x22--0x24, 0x27--0x2A | +112 (`getValue`) | Read current slot value; same 11-state machine, then set record byte to state 4 | (read-only) |
+| 0x17 | +128 (`setValue`) | Set slot value to `instr[7]`, then propagate side flag: if `a4[0]==-1` set it to `instr[11]`, else if mismatch set `instr+132 |= 0x1000` | `instr[7,11]` |
+| 0x18--0x1A | +72/+120/+128 | Conditional max: if `isAllocated(slot)` and `getValue(slot) < instr[7]`, update to `instr[7]`; same 11-state machine on setValue | `instr[7]` |
+| 0x25--0x26 | +24 (`pushWord`) | Triple push: `pushWord(slot, 5, instr[10])`, `pushWord(slot, 5, instr[9])`, `pushWord(slot, 5, instr[7])` | `instr[7,9,10]` |
+| 0x2B | +24 (`pushWord`) | Single push: `pushWord(slot, 12, instr[5])` | `instr[5]` |
+
+Overflow to `def_C37B2E` (at `0xC38180`, 13KB) handles complex cases that create new instruction nodes rather than modifying slot state.
+
+#### sub_C3BCD0 -- expandControlFlow SASS sequence
+
+This handler expands a single control-flow pseudo-instruction into an 8-instruction SASS sequence. It first hashes `instr+32` with FNV-1a (prime 16777619, basis `0x811C9DC5`) to look up a dedup cache at `ctx+488`. Each new instruction is allocated by `sub_10B1EE0`, configured by `sub_10AE590` (field setter) and `sub_10AE3F0`/`sub_10AE640` (operand setters), linked by `vtable+136` (list splice), then committed by `sub_10AF260`.
+
+The emitted sequence (8 instructions, in order of creation):
+
+| # | Opcode (dec) | SASS mnemonic | Field config | Operands |
+|---|---|---|---|---|
+| 1 | 270 | `TCATOMSWS` | field(118, 519), nops=1 | reg(src_class, 8, 1) |
+| 2 | 270 | `TCATOMSWS` | field(118, 519), nops=1 | reg(src_class, src_phys, 1), reg(8, 0, 1) |
+| 3 | 272 | `TCSTSWS` | field(118, 519), nops=1 | reg(src_class, v118, 1), reg(src_class, src_phys, 1), imm(6, 57, 1) |
+| 4 | 39 | `FLO` | field(98, 452) + field(480, 2481), nops=2 | reg(src_class, src_phys, 1) x2, reg(src_class, v118, 1), val(2) |
+| 5 | 47 | `I2F` | field(480, 2481), nops=1 | reg(src_class, src_phys, 1) x2 |
+| 6 | 54 | `BMOV_B` | field(29, 126), nops=1 | reg(src_class, src_phys, 1) x3, imm(11, 0, 2) |
+| 7 | 32 | `VABSDIFF4` | field(332, 1853) + field(398, 2117), nops=1 | reg(src_class, v118, 1), reg(src_class, src_phys, 1), copy(instr+48 + 128) via `sub_10AFAF0`, reg(src_class, v118, 1) |
+| 8 | 270 | `TCATOMSWS` | field(118, 519), nops=1 | reg(src_class, src_phys, 1), reg(8, 0, 1) |
+
+After the 8-instruction sequence, `sub_C35F90` (architecture validator) runs on the result, and `sub_10ADF90` splices the new nodes into the instruction list replacing the original pseudo-instruction. The field IDs (118, 98, 480, 29, 332, 398) correspond to the Mercury field namespace documented in Stage 1; the values (519, 452, 2481, 126, 1853, 2117) are encoding-table indices that select the concrete SASS bit-field layout for each instruction.
+
 The expansion engine also uses `sub_719D00` (50KB), which builds output for expanded instructions across different operand widths (32/64/128-bit, predicate). The four nearly identical code blocks within that function correspond to template instantiations over operand width types.
 
 ## Stage 3: WAR Hazard Resolution (Phases 119, 121)
@@ -411,17 +447,43 @@ void GenerateWARs(context) {
 
 ### WAR Hazard Detection -- `sub_6FA5B0` (2.5KB)
 
-The detector classifies instructions by opcode:
-- **Always hazardous** (opcodes 49, 248, 92): unconditionally increment the WAR counter
-- **Conditionally hazardous** (opcode 75): partial hazard depending on operand configuration
-- **Special handling** (opcodes 35, 246): store/scoreboard instructions with custom WAR rules
-- **Filtered out**: `(opcode - 34) > 0x2C` plus bitmask `0x100000400001` for irrelevant types
+The detector uses a three-stage opcode filter to classify each instruction.
 
-Architecture-specific hazard rules are dispatched through vtable methods at offsets +968, +1008, +528, and +504.
+**Stage 1 -- first bitmask `0x100000400001` (opcodes 34--78).** The range check `(opcode - 34) > 0x2C` admits opcodes 34--78. Within that window the 45-bit bitmask selects three opcodes for architecture-specific vetting via vtable +968 / +1008:
+
+| Bit | Opcode | Mnemonic | Meaning |
+|-----|--------|----------|---------|
+| 0   | 34     | IDE      | Vtable-gated -- non-hazardous only if arch confirms |
+| 22  | 56     | BMOV     | Vtable-gated |
+| 44  | 78     | RTT      | Vtable-gated |
+
+All 42 other opcodes in 34--78 (I2I, I2IP, IMNMX, POPC, FLO, FCHK, IPA, MUFU, F2F, F2F_X, F2I, F2I_X, I2F, I2F_X, FRND, FRND_X, AL2P, AL2P_INDEXED, BREV, BMOV_B, BMOV_R, S2R, B2R, R2B, LEPC, BAR, BAR_INDEXED, SETCTAID, SETLMEMBASE, GETLMEMBASE, DEPBAR, BRA, BRX, JMP, JMX, CALL, RET, BSSY, BREAK, BPT, KILL, EXIT) have their bitmask bit clear and proceed directly to stage 2.
+
+**Stage 2 -- second bitmask `0x800200000100001` (opcodes 71--130) plus opcode 235.** An explicit equality test marks opcode 235 (UBLKRED) as never-hazardous. The range check `(opcode - 71) > 0x3B` admits opcodes 71--130. Within that window the 60-bit bitmask flags four opcodes as unconditionally non-hazardous:
+
+| Bit | Opcode | Mnemonic | Rationale |
+|-----|--------|----------|-----------|
+| 0   | 71     | CALL     | Control flow -- no register write hazard |
+| 20  | 91     | AST      | Attribute store -- write-only |
+| 45  | 116    | PIXLD    | Pixel load -- separate pipe, no WAR |
+| 59  | 130    | HSET2    | Half-precision set -- result is predicate |
+
+If the combined flag (opcode==235 OR second-bitmask bit set) is nonzero the detector returns immediately with counter = 0 (no hazard). All opcodes outside both bitmask windows that are not 235 fall through to the vtable +688 check.
+
+**Stage 3 -- opcode-specific hazard classification.** After the vtable +688 filter (arch-specific blanket non-hazard check), the remaining opcodes are classified:
+
+| Category | Opcodes | Mnemonics | Action |
+|----------|---------|-----------|--------|
+| Always hazardous | 49, 92, 248 | FRND, OUT, VIADDMNMX | ++counter (severity 1) |
+| Conditionally hazardous | 75 | BPT | hazardous unless `sub_10AE600(ctx, operand, 179)` succeeds |
+| Severity 3 (medium) | 35 | I2I | via vtable +528 arch check |
+| Severity 4 (high) | 35, 246 | I2I, VHMNMX | via vtable +504 arch check (I2I); unconditional (VHMNMX) |
 
 The detector maintains per-instruction state:
-- `*(DWORD*)(state+2)` -- WAR counter (incremented per detected hazard)
-- `*(DWORD*)(state+3)` -- severity level (3 = medium, 4 = high)
+- `*(DWORD*)(state+8)` -- WAR counter (incremented per detected hazard)
+- `*(DWORD*)(state+12)` -- severity level (3 = medium, 4 = high)
+
+For severity 3 or 4, `sub_6FA430` inserts `(severity - counter)` additional stall slots before the instruction, then advances the counter to match.
 
 ### Inserted Instructions
 
@@ -435,6 +497,51 @@ The detector maintains per-instruction state:
 - Skipped if a WAITDP already exists at the insertion point
 - Operands configured with codes 102/467 and 301/1520
 - Uses FNV-1a hash lookup for instruction deduplication
+
+**FNV-1a dedup cache** -- `sub_6E4110` offset +128:
+
+The emission pass maintains a hash map that caches previously emitted byte sequences keyed by `(instr_offset, block_base_addr)`.  When emitting the same logical instruction at the same block-relative position, the cache returns the prior encoded result and avoids redundant encoding work.  The cache lives in the emitter context at offsets `+128` (entry count), `+136` (bucket array pointer), `+144` (bucket count, always a power of two).
+
+```
+// --- FNV-1a hash over (instr_offset, block_addr) ---
+// instr_offset = *(DWORD*)(instr+144)    // 4 bytes: assigned byte position
+// block_addr   = current block base addr  // 8 bytes
+fn fnv1a_dedup_key(instr_offset: u32, block_addr: u64) -> u32:
+    h = 0x811C9DC5                          // FNV offset basis
+    for byte in instr_offset.to_le_bytes(): // 4 rounds
+        h = (h ^ byte) * 16777619           // 0x01000193
+    for byte in block_addr.to_le_bytes():   // 8 rounds
+        h = (h ^ byte) * 16777619
+    return h
+
+// --- cache lookup / insert ---
+// bucket_array: pointer to array of 24-byte chained entries
+// bucket_count: power-of-two bucket count (stored at ctx+144)
+// entry layout (24 bytes):
+//   +0  next_ptr   (u64) -- singly-linked chain within bucket
+//   +8  block_addr (u64) -- key part 1
+//   +16 instr_off  (u32) -- key part 2
+//   +24 cached_val (i32) -- cached emission result (signed delta)
+fn dedup_lookup(ctx, instr_offset, block_addr) -> Option<i32>:
+    if ctx.entry_count == 0:
+        return None                         // empty cache → miss
+    h    = fnv1a_dedup_key(instr_offset, block_addr)
+    slot = ctx.bucket_array + 24 * ((ctx.bucket_count - 1) & h)
+    node = *(u64*)slot                      // head of chain
+    while node != 0:
+        if *(u64*)(node+8) == block_addr && *(u32*)(node+16) == instr_offset:
+            return Some(*(i32*)(node+24))   // hit → cached delta
+        node = *(u64*)node                  // follow chain
+    return None                             // miss
+
+// --- bypass conditions ---
+// The cache is skipped entirely when:
+//   1. instr_offset == -1  (instruction not yet assigned a position)
+//   2. The instruction is a branch target (opcode == -1, pseudo-label)
+//   3. The instruction carries a relocation flag (*(BYTE*)(instr+148) & 0x10)
+```
+
+The cached delta is used to compute a relocation adjustment: `delta = cached_val - block_addr`.  Both `sub_6E4110` and `sub_726E00` use the identical FNV-1a constants and per-byte folding pattern; `sub_726E00` hashes only the 4-byte instruction ID for its own microcode sequence cache at context offsets `+744`/`+752`/`+760`.
 
 **Stall cycles** -- `sub_6FAA90` (7.9KB):
 - Computes required stall cycles from architecture-specific latency tables
