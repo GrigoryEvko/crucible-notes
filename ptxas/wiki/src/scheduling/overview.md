@@ -172,7 +172,7 @@ function ScheduleEngine(sched, mode, arg3, rebuild):
         ReadyList = BuildReadyList(sched)        // sub_6820B0
 
         while ReadyList is not empty:
-            best = SelectBestInstruction(sched)  // via priority vtable
+            best = SelectBestInstruction(sched)  // via tagged-pointer vtable dispatch (see below)
             ScheduleInstruction(sched, best)     // sub_682200
             UpdateResourceState(sched, best)     // sub_A09530
             UpdateWARTracking(sched, best)       // sub_A09D40
@@ -184,6 +184,56 @@ function ScheduleEngine(sched, mode, arg3, rebuild):
                 if successor.dep_count == 0:
                     ReadyList.insert(successor)
 ```
+
+### SelectBestInstruction Tagged-Pointer Dispatch
+
+The `mode` argument to `sub_688DD0` is not a simple integer -- it is a **tagged pointer** (low bit = 1). The engine uses this encoding to resolve the polymorphic `SelectBestInstruction` call at runtime without an explicit switch statement:
+
+```
+// Decompiled dispatch at lines 477-480 of sub_688DD0:
+selectFn = (function_ptr) mode                          // raw value: 0x39, 0x41, or 0x49
+if (mode & 1) != 0:                                    // low bit set -> indirect dispatch
+    selectFn = *(function_ptr*)(sched.vtable + mode - 1)  // dereference through vtable
+best = selectFn(sched, &prev_instr, last_scheduled)
+```
+
+The scheduling context stores its vtable pointer at offset +0 (`sched[0] = off_21DBC80`, the 77-entry scheduling function table). The mode byte indexes into this table after stripping the tag bit:
+
+| Mode byte | Phase | `mode - 1` | Vtable offset | Index | Target function |
+|---|---|---|---|---|---|
+| `0x39` (57) | ReduceReg | +56 | `[7]` | core slot 7 | `sub_8DA6A0` -- ReduceRegPriority |
+| `0x41` (65) | DynBatch | +64 | `[8]` | pipeline_A slot 0 | `sub_8E0F18` -- DynBatchPriority |
+| `0x49` (73) | ILP/Latency | +72 | `[9]` | pipeline_A slot 1 | `sub_8E0F90` -- ILPPriority |
+
+The orchestrator `sub_8D0640` invokes the engine three times with these modes:
+
+```
+// Phase 1: ReduceReg -- minimize register pressure
+sched.mode_field = 1                                    // *(DWORD*)(sched+240) = 1
+sched.reduceReg_flag = 1                                // *(BYTE*)(sched+484) = 1
+sub_688DD0(sched, 0x39, 0, false)                       // ReduceReg, no rebuild
+
+// Phase 2: DynBatch -- batch-aware grouping (conditional on knobs)
+sched.mode_field = 2                                    // *(DWORD*)(sched+240) = 2
+sub_688DD0(sched, 0x41, 0, rebuild_flag)                // DynBatch, optional rebuild
+
+// Phase 3: ILP/Latency -- maximize instruction-level parallelism
+sched.mode_field = 0                                    // *(DWORD*)(sched+240) = 0
+sub_688DD0(sched, 0x49, 0, false)                       // ILP, no rebuild
+```
+
+The three priority functions share the same signature `(sched_ctx*, prev_ptr*, last_instr) -> best_instr*` but implement different heuristics. All three call into the common 47 KB priority evaluator `sub_8C9320` which reads `sched.mode_field` at offset +240 to select weight vectors for the 8-bit priority encoding.
+
+#### Pre/Post Scheduling Hooks
+
+In addition to the SelectBest dispatch, the engine calls two polymorphic hooks per basic block via the scheduler context vtable at `sched[0]`:
+
+| Hook | Vtable offset | Called when | Purpose |
+|---|---|---|---|
+| `*(sched.vtable + 40)` | `[5]` = `sub_8DA6B0` | Before `BuildReadyList` | Pre-BB scheduling setup (nullsub in core; overridden by backends) |
+| `*(sched.vtable + 48)` | `[6]` = `sub_8DA680` | After `BuildReadyList` | Post-BB ready-list adjustment (nullsub in core; overridden by backends) |
+
+These hooks are checked against sentinel values (`nullsub_39`, `nullsub_40`) and skipped when the backend provides no override.
 
 The engine manages **10 register pressure counters** at scheduler context offsets 48--87 (copied from the [per-block record](#per-block-scheduling-record-72-bytes) offsets +4--+40 at BB entry). These correspond to the GPU register classes: R (general), P (predicate), UR (uniform), UP (uniform predicate), B (barrier), and 5 architecture-specific classes. Counter [0] (R class) uses a separate update path; counters [1]--[9] are decremented from a per-opcode resource cost table during the scheduling loop.
 
@@ -294,7 +344,6 @@ function ComputeRegisterBudget(sched):
         budget = DualIssueBudget(budget)
 
     pressureCurve = ComputePressureCurve(sched, budget - 2)  // sub_8CE520
-    // Piecewise linear model with parameters (4, 2, 6)
 
     sched.regBudget         = budget     // offset +432
     sched.committedTarget   = ...        // offset +324
@@ -302,7 +351,83 @@ function ComputeRegisterBudget(sched):
     sched.pressureSlack     = ...        // offset +320
 ```
 
-The register pressure curve (`sub_8CE520`) uses a piecewise linear model parameterized by `(4, 2, 6)` or a custom string-encoded function from knob 750 (`SchedEstimatedLoopIterations`).
+### Pressure Curve (`sub_8CE520`)
+
+`sub_8CE520(sched, regLimit, &nopDensity)` computes instruction density over a sliding window to decide whether reducing register pressure would improve ILP. It returns weighted instruction density (double); `nopDensity` receives weighted NOP density. It also writes `sched.usePressure` (offset +522) and `sched.minPhysRegs` (offset +512).
+
+**Seed initialization.** A seed object at `func[223]` (byte offset +1784) drives the curve. Two paths:
+
+- **Default** -- `seed.SetBreakpoints(4, 2, 6)` via vtable slot +16. The three arguments are `windowSize`, `minIssueWidth`, `maxIssueWidth`, defining a piecewise linear mapping from occupancy to effective issue width.
+- **Knob 750 override** -- when `KnobIsSet(750)` is true, fetches the string value of `SchedEstimatedLoopIterations` and calls `seed.ParseString(str)` via vtable slot +24. This encodes custom per-loop iteration hints that replace the (4,2,6) defaults.
+
+If the function has no loops (`sched[668] == 0`), both paths set `usePressure = 0` and return 0.0 immediately.
+
+**Sliding window algorithm:**
+
+```
+function ComputePressureCurve(sched, regLimit):
+    seed = sched.func[223]                          // pressure seed object
+    if KnobIsSet(750):
+        seed.ParseString(KnobGetString(750))        // vtable+24
+    else:
+        seed.SetBreakpoints(4, 2, 6)                // vtable+16
+    if !sched.hasLoops:                             // byte at offset +668
+        sched.usePressure = 0;  return 0.0
+
+    hwBudget = RegToHWUnits(sched, regLimit)        // sub_6818D0
+    W  = min(sched.maxStallCycles, 16)              // offset +404, capped
+    Wt = sched.stallThreshold                       // offset +408
+
+    // Two parallel tracks: A (real instructions), B (NOP-weighted)
+    weightA = 0.0;  totalA = 0.0;  fillA = 0
+    weightB = 0.0;  totalB = 0.0;  fillB = 0
+    loopWt = 1.0
+    peakSpanA = 0;  minPeakA = 0x1869F (sentinel)
+    peakSpanB = 0;  minPeakB = 0x1869F
+
+    for each instruction in BB linked list:
+      if opcode == 52 (loop header) or masked opcode == 96 (BB boundary):
+          totalA += ceil(fillA / W) * loopWt        // flush partial window
+          totalB += ceil(fillB / W) * loopWt
+          fillA = fillB = 0
+          if opcode == 52:
+              loopWt = EstimateTrip(func, bb)       // vtable at func+1784
+          continue to first instruction of new region
+
+      span = instr.programPoint - window.startPoint
+      if isReal(instr):                             // not NOP, not dead
+          // Track A: fill slot, accumulate span
+          if fillA > 0 and accumulated_span > regLimit and > peakSpanA:
+              peakSpanA = accumulated_span
+          if peakSpanA > 0 and minPeakA > peakSpanA:
+              minPeakA = peakSpanA
+          // Reset window on overflow: peakSpanA = 0, weightA += loopWt
+          slot[fillA] = instr.latencyClass
+          fillA++; advance with Wt-wide multi-fill if stallThreshold > 1
+      else:                                         // NOP goes to track B
+          (symmetric logic for track B)
+
+      if window full (fillA == W) or both tracks exhausted:
+          weightA += loopWt;  reset window A
+
+    // Final flush
+    totalA += ceil(fillA / W) * loopWt
+    totalB += ceil(fillB / W) * loopWt
+    bestPeak = min(minPeakA, minPeakB)
+    physRegs = RegToHWUnits(sched, bestPeak)
+    archCap  = hw.vtable[93](hw, totalB, ...)       // hw[154] + hw[159]
+
+    if physRegs > archCap:
+        usePressure = 0                             // exceeds arch limit
+    elif weightA <= totalA:
+        usePressure = (weightB > totalB)            // B-track dominates
+    sched.usePressure  = usePressure                // offset +522
+    sched.minPhysRegs  = physRegs                   // offset +512
+    *nopDensity        = weightB                    // out parameter
+    return weightA
+```
+
+The caller (`sub_8CEE80`) converts densities to an ILP ratio: `ratio = occupancy / density`. It iterates up to 5 candidate budgets (3 when `hw[360] > 2`), picking the one that maximizes the ratio. Knob 740 (default 0.045) scales a per-register penalty when the budget overshoots the live-register count.
 
 ## Dependency Graph
 
