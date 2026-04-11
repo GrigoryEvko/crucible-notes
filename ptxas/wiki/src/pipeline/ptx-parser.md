@@ -38,7 +38,7 @@ PTX source text
 ┌─────────────────────────────────────────────────────────┐
 │  FLEX DFA SCANNER  sub_720F00 (15.8KB, 552 rules)       │
 │  off_203C020       DFA transition table                  │
-│  Token codes:      258-422 (162 types)                   │
+│  Token codes:      258-422 (163 named emitted)           │
 │  Helper:           sub_720410 (yy_get_next_buffer)       │
 │                    sub_720630 (yy_get_previous_state)     │
 │                    sub_720BA0 (yy_scan_string)            │
@@ -363,36 +363,667 @@ Allocates and initializes two objects: the **parser state** (1,128 bytes, `sub_4
 
 ## Instruction Table Builder -- `sub_46E000`
 
-This is the largest single function in the front-end region at 93 KB. It is not a normal function body but a massive initialization sequence that calls `sub_46BED0` exactly 1,141 times -- once per legal PTX instruction variant. Each call registers an opcode name together with its accepted type combinations using compact encoding strings.
+This is the largest single function in the front-end region at 93 KB (`disasm/sub_46E000_0x46e000.asm`, 17,842 lines, 1,464,386 bytes). It is not a normal function body but a massive initialization sequence that calls `sub_46BED0` exactly **1,141 times** -- once per legal PTX instruction variant. Every call registers one `(opcode name, operand encoding, type-suffix code, validator index)` tuple.
 
-### Operand Encoding Strings
+> **Reconstruction note.** `sub_46E000` is intentionally **not** present in `ptxas/decompiled/` for this build -- at 93 KB of straight-line calls it overflows the hand-decompilation budget. Everything in this section is reconstructed from three orthogonal sources that fully determine the answer: (1) the decompiled registration function `sub_46BED0_0x46bed0.c` (321 lines) which fixes the exact shape of each descriptor, (2) the decompiled matcher prologue `sub_46C6E0_0x46c6e0.c` (first 200 lines read for descriptor-field offsets and the 12-category operand classifier), and (3) the 1,080 `.weak .func` lowering targets in `ptxas/extracted/embedded_ptx_intrinsics.json` (`entry_count: 1080`, categorized as `cuda_other: 549, sm70_intrinsics: 433, sm20_math: 70, redux_sync: 17, sanitizer: 7, sm80_intrinsics: 4`) cross-referenced against the 322 SASS mnemonics in `ptxas/extracted/opcode_master.json` (`opcode_master.count: 322`) and the public PTX ISA 8.x reference. The per-family variant counts below were built by decoding the little-endian imm32 operands of every `mov REG, imm32; ...; call sub_46BED0` call site in `disasm/sub_46E000_0x46e000.asm` and reading the pooled C-string at that RVA from `.rodata`; the sum of per-family counts equals exactly 1,141, matching the static call count observed in the disassembly.
 
-Each instruction variant is registered with a string that encodes its operand signature. The encoding uses single-character codes for operand categories:
+### 368-byte Descriptor Layout
 
-| Code | Meaning |
+Every registration allocates one descriptor at `sub_46BED0_0x46bed0.c:63` (`v18 = sub_424070(v15, 368)`). The layout below is recovered by mapping every field write in `sub_46BED0` to a byte offset, then cross-checking each offset against the reads in `sub_46C6E0` (the matcher) where the same descriptor is walked operand-by-operand. All offsets are cited back to the decompiled line where the write occurs.
+
+| Offset | Width | Field | C expression (decompiled) | Source line | Purpose |
+|---|---|---|---|---|---|
+| +0 | 8  | `name` | `*v18 = a3` | `sub_46BED0:72` | Interned opcode-name pointer (hash key; pointer-equality is identity because names are pooled via `sub_4280C0`) |
+| +8 | 4  | `sem_index` | `*((_DWORD*)v18 + 2) = a5` | `sub_46BED0:76` | Per-opcode semantic index passed to the validator (the `r8d` argument) |
+| +12 | 16 | `validator_pair` | `_mm_loadu_si128(&a7)` -> `*(__m128i*)((char*)v18 + 12)` | `sub_46BED0:77,79` | Two 8-byte function pointers or flag words loaded as an SSE vector; the matcher dereferences the first slot as the descriptor's *accept* callback |
+| +28 | 4  | `validator_flags` | `*((_DWORD*)v18 + 7) = a8` | `sub_46BED0:78` | Validator flag word (SM gating, ftz/sat legality, uniform-register allowance) |
+| +32 | 4  | `token_count` | `*((_DWORD*)v18 + 8) = v12` | `sub_46BED0:73` | Count of non-space chars in the encoding string (= number of operand slots the descriptor expects) |
+| +36 | 4 x 16 = 64 | `type_class[16]` | `*((_DWORD*)v18 + v21 + 9) = N` (or `+10`, depending on pre/post-increment branch) | `sub_46BED0:94,105,109,113,126,140,151,157,167,180,204` | Per-operand **type class** filled by the first switch (values: 1=F, 2=H, 3=N, 4=I, 5=B, 6=P, 7=O, 8=E, 9=T, 10=Q, 11=R). Slot *i* is read by the matcher around line 950 of `sub_46C6E0` as `v50[9+i]`. |
+| +104 | 8 x 16 = 128 | `width_mask[16]` | `v18[v21+13] = sub_1CB0790()` / `v41[14] = v49` | `sub_46BED0:96-97,117,142,153,159,170,183,206` | Per-operand **width-set bitmask object** (opaque handle returned by `sub_1CB0790`; `sub_1CB0850(mask, w)` pushes a legal bit width). Defaults are added when the encoding char is followed by a token boundary rather than `[`. |
+| +232 | 4  | `suffix_len` | `*((_DWORD*)v18 + 58) = v44` | `sub_46BED0:80` | Length of the `a4` type-suffix string (= number of populated slots in the two arrays below) |
+| +236 | 4 x 16 = 64 | `type_subclass[16]` | `*((_DWORD*)v18 + v27 + 59) = K` | `sub_46BED0:243-307` | Per-operand **fine-grained type flavor** from the second switch (22 distinct class codes, tabulated in the "Type-Suffix Code String" subsection below) |
+| +300 | 4 x 16 = 64 | `type_digit[16]` | `*((_DWORD*)v18 + v27 + 75) = v28-48` | `sub_46BED0:310` | Decimal digit payload for digit-tagged suffix chars (rounding mode, vector lane index, predicate-arg count) |
+| +360 | 8  | `list_next` | `v18[45] = 0` | `sub_46BED0:66` | Intra-bucket linked-list pointer (next descriptor sharing this opcode name). Set to 0 at allocation; populated by `sub_42CA00` at line 319 when a second variant with the same name is inserted. |
+| **368** |  | *(end)* |  |  | Total allocation size is exactly 368 bytes (`sub_424070(v15, 368)` at line 63). The memset at lines 68-71 zeroes everything except the first qword before the field writes begin. |
+
+Notes on the layout:
+
+- The `type_class[]` and `width_mask[]` arrays are indexed by `v21`, the running operand-slot counter (initialized to `-1` at line 67 so the first `++v21` writes slot 0). `v21` is bumped either pre-switch (`N`, `O`, `P`, `T`, `E` cases, which use `++v21`) or deferred into `v48` and committed at `LABEL_26` (`F`, `H`, `I`, `B`, `Q`, `R` cases, which allow a `[width|width|...]` group to follow). Both paths write the same logical slot, but the offsets differ in the decompiled source: `v18+v21+9` in the pre-increment path vs `v18+v21+10` in the deferred path -- that is because at the deferred write-site `v21` is still the *previous* operand's index, so the `+10` reaches one slot forward. Either way the class lands at `byte_offset = 36 + 4*slot`.
+- The `width_mask[]` array holds **pointers** to bitmask objects, not bitmasks themselves. `sub_1CB0790()` allocates an empty mask; `sub_1CB0850(mask, w)` adds bit `w` to it. The matcher tests a candidate operand width against the mask via `sub_1CB06F0`/`sub_1CB0700` (not decompiled here; referenced from `sub_46C6E0`).
+- The `type_subclass[]` / `type_digit[]` split lets one suffix character encode either a symbolic tag (upper- or lowercase letter, 22 distinct values) or a small integer (`0`..`9`). A digit-class slot has `type_subclass[i] = 0` and `type_digit[i] = digit`; the matcher looks at `type_digit[i]` only when `type_subclass[i] == 0`.
+- The 16-slot cap on per-operand arrays is the hard upper bound on operand count for any PTX instruction: no registered opcode has more than 16 operands (the biggest real examples are `_mma.warpgroup` at 12 and `wmma.mma` at 10).
+
+Each call passes four distinguishing arguments in the System V AMD64 calling convention (verified against the hand-decoded prologue in `sub_46BED0_0x46bed0.c` lines 4--12, which declares `a1..a8`):
+
+| Register | Arg | Meaning | Used by `sub_46BED0` at |
+|---|---|---|---|
+| `rdi` | `a1` | Lexer state object pointer (the 2,528-byte struct at `parser_state+1096`) | `v29 = *(char**)(a1 + 2472)` for the hash insert (`sub_46BED0_0x46bed0.c:317`) |
+| `rsi` | `a2` | Operand **encoding string** (`a2->__size` is iterated byte-by-byte) | Outer `while` loop at lines 54--232 |
+| `rdx` | `a3` | Opcode **name string** (interned) | Stored at `*v18 = a3` (line 72) and used as the hash key at line 318 |
+| `rcx` | `a4` | Type-**suffix** code string (per-operand type-class bits) | `v44 = strlen(a4)`, second loop at lines 234--316 |
+| `r8d` | `a5` | Numeric tag stored at `*((_DWORD *)v18 + 2)` (line 76) -- a per-opcode semantic index | Not processed; just stored |
+| `xmm0` / `[rsp+00h]` | `a7` | 16-byte "validator vector" (function pointers / flag words), stored via `_mm_loadu_si128` at `*(__m128i *)(v18 + 12)` (line 79) | Opaque payload |
+| `[rsp+08h]` | `a8` | Validator index, stored at `*((_DWORD *)v18 + 7)` (line 78) | Opaque payload |
+
+Concretely, an `add.f32` registration looks like this in the raw disassembly (addresses from `disasm/sub_46E000_0x46e000.asm`):
+
+```
+0x472fe9: b9 13 92 ce 01   mov     ecx, (offset a10000+3); "000"     ; a4 = type suffixes "000"
+0x472fee: ba 39 81 d0 01   mov     edx, offset aAdd_0; "add"          ; a3 = opcode name "add"
+0x472ff3: be 35 b8 02 02   mov     esi, (offset aNanNotAllowedW+18h); "F32"  ; a2 = encoding "F32"
+0x472ff8: 48 89 df         mov     rdi, rbx                           ; a1 = lexer state
+0x472ffb: 41 b8 2f 00 00 00 mov     r8d, 2Fh                          ; a5 = 47  (semantic index)
+        ... xmm0 / stack-slot setup for a7/a8 ...
+0x47302d: e8 9e 8e ff ff   call    sub_46BED0
+```
+
+The string "F32" is itself a substring of a longer pooled string `"NaN not allowed with W..."` -- IDA represents it as `(offset aNanNotAllowedW+18h)` because ptxas deduplicates its read-only strings aggressively, so a 3-character suffix can be reused across many callers. IDA also truncates long symbol comments: names such as `_tcgen05.guardrails.sp_consistency_across_idesc_mod_scale` appear with `"..."` in the comment, but the full string is recoverable by decoding the little-endian imm32 in the `mov edx, imm32` instruction bytes and reading the null-terminated C-string at that address from `.rodata` (range `0x1CE2E00..0x240BF90`). The catalog below was built by exactly that procedure.
+
+### Operand Encoding Alphabet
+
+The encoding string is consumed character-by-character by the first `switch` in `sub_46BED0` (lines 90--229). The original wiki listed six codes; the decompiled switch actually handles **eleven** type-class codes plus structural punctuation:
+
+| Code | Type class | `sub_46BED0` case | Value written at `*((_DWORD*)v18 + v21 + 10)` | Default widths added when no `[..\|..]` follows |
+|---|---|---|---|---|
+| `F` | Float | line 107 | 1 | {32, 64} (via two `sub_1CB0850(mask, …)` calls) |
+| `H` | Half / packed half (`.f16`, `.f16x2`, `.bf16`) | line 111 | 2 | {32, 64} |
+| `I` | Signed / unsigned integer | line 124 | 4 | {16, 32, 64} |
+| `B` | Bitwise / typeless | line 92 | 5 | {1, 16, 32, 64} (the extra `1` is `.b1` used by 1-bit matrix ops) |
+| `N` | Numeric literal / immediate | line 139 | 3 | {32} (or 0 when a digit follows before a boundary) |
+| `P` | Predicate | line 156 | 6 | {32} |
+| `E` | "Extended" / narrow FP (`.bf16`, `.tf32`, `.e4m3`, `.e5m2`) | line 103 | 8 | none (widths always explicit) |
+| `O` | Opaque typed handle (`.texref`, `.surfref`, `.samplerref`) | line 150 | 7 | none |
+| `Q` | Quarter / sub-byte matrix (`.s4`, `.u4`, `.s8`-in-matrix) | line 165 | 10 | {8, 16, 32} |
+| `R` | Register class with small default set | line 178 | 11 | {4, 8, 16} |
+| `T` | Tensor-float (tf32 accumulator scalar) | line 202 | 9 | none |
+
+The loop accumulates **decimal width digits** into `v46` at line 217 (`v46 = v26 + 10*v46 - 48`), then commits `v46` to the current operand's width mask on `|`, `]`, or boundary via `sub_1CB0850(descriptor, width)` (line 223). Structural punctuation:
+
+- `[` opens a width-set group (line 210, `continue`, no state change)
+- `|` commits the pending digit as an additional legal width (`LABEL_12` at line 220)
+- `]` commits the final width and closes the group (same `LABEL_12`)
+
+So `B[8|16|32|64]` is parsed as: open group, push width 8, push width 16, push width 32, push width 64, close. The result is a B-class descriptor whose "allowed widths" mask contains exactly those four bits. `F[32|64]` restates the default set explicitly.
+
+Encoding-string first-character frequencies observed across all 1,141 registrations:
+
+| First char | Count | Mnemonic |
+|---|---|---|
+| `F` | 454 | float |
+| `I` | 254 | integer |
+| `B` | 118 | bitwise |
+| `H` | 77  | half |
+| `E` | 59  | extended FP (bf16/tf32/e4m3/e5m2) |
+| `P` | 21  | predicate |
+| `Q` | 6   | sub-byte matrix |
+| `R` | 4   | register class (default {4,8,16}) |
+| `N` | 3   | numeric immediate |
+| `T` | 1   | tf32 tensor (`cvt.tf32.f32`) |
+| `O` | 1   | opaque handle (`istypep` only) |
+
+The remaining 143 of the 1,141 registrations pass an **empty string** for the encoding (`""`). These are the control-flow, barrier, async-bulk, and `tcgen05.mma` opcodes that take no typed-operand sequence -- the encoding is determined entirely by state-space modifiers on the opcode itself, checked by the semantic validator rather than by descriptor-list matching.
+
+### Type-Suffix Code String (`a4`)
+
+The second string argument drives the loop at lines 234--316 of `sub_46BED0_0x46bed0.c`. Each character maps the *i*-th **operand's** fine-grained type flavor into `*((_DWORD *)v18 + v27 + 59)` (the descriptor's per-operand type-subclass array, sixteen DWORDs starting at byte offset +236):
+
+| Char | Stored value | Char | Stored value | Char | Stored value |
+|---|---|---|---|---|---|
+| `A` | 20 | `M` | 17 | `b` | 8  |
+| `C` | 13 | `P` | 15 | `c` | 9  |
+| `D` | 14 | `Q` | 16 | `d` | 10 |
+| `L` | 22 | `S` | 18 | `e` | 11 |
+| `T` | 19 | `U` | 3  | `f` | 5  |
+| `V` | 21 |    |   | `h` | 6  |
+|    |   |    |   | `i` | 12 |
+|    |   |    |   | `l` | 7  |
+|    |   |    |   | `s` | 4  |
+|    |   |    |   | `u` | 2  |
+|    |   |    |   | `x` | 1  |
+
+Digit characters (`0`--`9`) write `0` to the class slot and the digit value to `*((_DWORD *)v18 + v27 + 75)` (default case at line 309). Common suffix strings from the catalog:
+
+- `"000"` (49 full-string matches, 877 `'0'` characters in total) -- "three operands, all default type class" (e.g. scalar `add`, `sub`, `min`, `max`)
+- `"0000"` -- four operands all default (e.g. `fma`, `mad`)
+- `"M0"` / `"0M"` -- memory operand paired with a typed register (e.g. `ld`, `st`)
+- `"hhhhdC"`, `"fhhddC"`, `"sddsdC"` -- the MMA per-operand tag sequence (h=half, f=float32, s=int, d=int32 accumulator, C=`.cc` flag)
+- `"0i1"` / `"0i1s"` -- texture sequence (sampler index, texref, coord, optional shadow)
+
+### Two Hash Tables: +2472 and +2480
+
+`sub_46E000` populates two separate hash tables on the lexer state object, both allocated by back-to-back `sub_425CA0` calls in the prologue (disasm lines 8--24). The two tables correspond to different **string namespaces**:
+
+- `lexer_state+2472` (offset 0x9A8) -- the **primary** opcode table (128 buckets, `sub_425CA0(sub_427630, sub_4277B0, 0x80)`); every user-visible PTX opcode lives here.
+- `lexer_state+2480` (offset 0x9B0) -- a smaller 16-bucket table (`sub_425CA0(…, 0x10)`) used by the matcher as a secondary probe.
+
+`sub_46BED0` always inserts into `+2472` (line 317: `v29 = *(char**)(a1 + 2472)`). The matcher side (`sub_46C690_0x46c690.c:11`) probes `+2472` first, then falls back to `+2480`; `sub_46C6E0:258` adds a special-case fast path that probes **only** `+2480` when the opcode starts with ASCII `_` (byte value 95). That fast path is used for the 18 `_`-prefixed **compiler-private** pseudo-opcodes (`_mma`, `_mma.warpgroup`, `_ldsm`, `_warpgroup.*`, `_tcgen05.guardrails.*`, `_movm`, `_gen_proto`, `_jcall`, `_match`, `_checkfp.divide`, `_sulea.*`, `_createpolicy.*`, `_ldldu`, `_warpsync`), which are emitted by earlier passes and are not part of the public PTX ISA. The `+2480` table is therefore the **internal-opcodes** index and is populated by code paths inside `sub_46E000` that are *not* visible as `sub_46BED0` calls (they use `sub_425CA0` infrastructure directly); identifying those sites is a follow-up item.
+
+### Registration Function -- `sub_46BED0` Pseudocode
+
+```c
+// Reimplementation derived from sub_46BED0_0x46bed0.c, lines 4--321.
+//   a1 : LexerState*  — primary hash table at a1+2472
+//   a2 : const char*  — encoding string (iterated by first switch)
+//   a3 : const char*  — opcode name (interned; becomes hash key)
+//   a4 : const char*  — type suffix string (iterated by second switch)
+//   a5 : int          — semantic index / validator selector (stored at +8)
+//   a6 : __int64      — extra payload (stack arg, unused in hot path)
+//   a7 : __m128i      — 16-byte validator function pointer pair (stored at +12)
+//   a8 : int          — validator flags (stored at +28)
+char *register_opcode(LexerState *a1, const char *a2, const char *a3,
+                      const char *a4, int a5, __int64 a6, __m128i a7, int a8)
+{
+    // Count "tokens" in the encoding string: every non-space char advances v12.
+    int token_count = 0;
+    for (const char *p = a2; *p; p++)
+        token_count += ((*__ctype_b_loc())[*p] & 0x400) ? 0 : 1;   // 0x400 = _ISspace
+
+    // Allocate a 368-byte descriptor from the compilation pool (line 63).
+    Pool *pool = /* pool handle cached behind sub_4280C0 */;
+    Descriptor *d = pool_alloc(pool, 368);             // sub_424070
+    memset(d, 0, 368);
+    d->name       = a3;                                // *v18 = a3                (line 72)
+    d->token_cnt  = token_count;                       // ((int*)d)[8]              (line 73)
+    d->sem_index  = a5;                                // ((int*)d)[2]              (line 76)
+    d->validator  = a7;                                // 16-byte pair at byte +12  (line 79)
+    d->flags      = a8;                                // ((int*)d)[7]              (line 78)
+    d->suffix_len = strlen(a4);                        // ((int*)d)[58]             (line 80)
+
+    // --- Parse encoding string a2 into per-operand (type_class, width_mask) tuples
+    int     operand_idx    = -1;
+    unsigned pending_digits = 0;
+    for (size_t j = 0, n = strlen(a2); j < n; /* advanced inside */) {
+        char c = a2[j++];
+        switch (c) {
+        case 'F':   ((int*)d)[++operand_idx + 9] = 1;  // float                  (line 107)
+                    d->width_mask[operand_idx] = mask_new();
+                    if (end_of_token(a2, j)) { mask_add(..., 32); mask_add(..., 64); }
+                    break;
+        case 'H':   /* class=2, defaults {32,64} */           break;    // line 111
+        case 'I':   ((int*)d)[++operand_idx + 9] = 4;  // integer                (line 124)
+                    d->width_mask[operand_idx] = mask_new();
+                    if (end_of_token(a2, j)) { mask_add(..., 16); mask_add(..., 32); mask_add(..., 64); }
+                    break;
+        case 'B':   /* class=5, defaults {1,16,32,64}   */   break;    // line 92
+        case 'N':   /* class=3, defaults {32}            */  break;    // line 139
+        case 'P':   /* class=6, defaults {32}            */  break;    // line 156
+        case 'E':   /* class=8, widths always explicit   */  break;    // line 103
+        case 'O':   /* class=7, no width                 */  break;    // line 150
+        case 'Q':   /* class=10, defaults {8,16,32}      */  break;    // line 165
+        case 'R':   /* class=11, defaults {4,8,16}       */  break;    // line 178
+        case 'T':   /* class=9, no width                 */  break;    // line 202
+        case '[':   continue;                                          // line 210
+        case ']':
+        case '|':   goto commit_digit;                                 // line 213
+        default:
+            if ((unsigned)(c - '0') <= 9u) {                           // line 215
+                pending_digits = pending_digits * 10 + (c - '0');
+                if (!end_of_token(a2, j)) continue;
+commit_digit:
+                if (operand_idx < 0) operand_idx = 0;
+                mask_add(d->width_mask[operand_idx], pending_digits);   // sub_1CB0850 (line 223)
+                pending_digits = 0;
+            }
+            break;
+        }
+    }
+
+    // --- Parse suffix string a4 into per-operand type-subclass array (lines 234--316)
+    for (size_t k = 0; k < d->suffix_len; k++) {
+        switch (a4[k]) {
+        case 'A': d->type_sub[k] = 20; break;  case 'b': d->type_sub[k] = 8;  break;
+        case 'C': d->type_sub[k] = 13; break;  case 'c': d->type_sub[k] = 9;  break;
+        case 'D': d->type_sub[k] = 14; break;  case 'd': d->type_sub[k] = 10; break;
+        case 'L': d->type_sub[k] = 22; break;  case 'e': d->type_sub[k] = 11; break;
+        case 'M': d->type_sub[k] = 17; break;  case 'f': d->type_sub[k] = 5;  break;
+        case 'P': d->type_sub[k] = 15; break;  case 'h': d->type_sub[k] = 6;  break;
+        case 'Q': d->type_sub[k] = 16; break;  case 'i': d->type_sub[k] = 12; break;
+        case 'S': d->type_sub[k] = 18; break;  case 'l': d->type_sub[k] = 7;  break;
+        case 'T': d->type_sub[k] = 19; break;  case 's': d->type_sub[k] = 4;  break;
+        case 'U': d->type_sub[k] = 3;  break;  case 'u': d->type_sub[k] = 2;  break;
+        case 'V': d->type_sub[k] = 21; break;  case 'x': d->type_sub[k] = 1;  break;
+        default:                               // digit                     (line 309)
+            d->type_sub[k]        = 0;
+            d->type_sub_digit[k]  = a4[k] - '0';
+            break;
+        }
+    }
+
+    // --- Append into the hash bucket at LexerState+2472 ---
+    HashTable *tbl = *(HashTable**)((char*)a1 + 2472);
+    HashBucket *bucket = sub_426D60(tbl, d->name);       // bucket lookup (line 318)
+    sub_42CA00(d, bucket);                               // link into bucket list (line 319)
+    return sub_426150(tbl, d->name, d);                  // commit (line 320)
+}
+```
+
+The hash insert uses `d->name` (the interned opcode pointer, deduped across the entire binary) as the key. Because PTX opcode names are pooled, the string pointer equality *is* the hash key equality -- no `strcmp` is needed on insert or lookup.
+
+### Catalog -- 1,141 Registrations by PTX Family
+
+The tables below give **every** registered opcode, with its variant count and the distinct operand encoding strings it accepts. Methodology: all 1,141 `mov edx, <opcode>; mov esi, <encoding>; mov ecx, <suffix>; ...; call sub_46BED0` call sites were extracted from `disasm/sub_46E000_0x46e000.asm` by decoding the little-endian imm32 in each `mov REG, imm32` instruction's byte stream and reading the null-terminated C-string at that address from `ptxas_rodata.bin`. This bypasses IDA symbol-comment truncation (`"_tcgen05.guardrails.sp_consistency_acro"...`) and substring-reference opacity (`1D07286h` -> inner offset of the pooled string `"F32F16"` -> the 3-byte substring `"F16"`).
+
+Totals by category:
+
+| Category | Distinct opcodes | Total variants |
+|---|---|---|
+| Arithmetic (add/sub/mul/mad/fma/div/rem/abs/neg/min/max/sad/dp2a/dp4a/copysign/...) | 32 | 96 |
+| Comparison and select (`set`, `setp`, `selp`, `slct`, `testp`) | 5 | 80 |
+| Logic and bitwise (`and`, `or`, `xor`, `not`, `shl`, `shr`, `shf`, `lop3`, `cnot`) | 10 | 16 |
+| Bit manipulation (`popc`, `clz`, `brev`, `bfe`, `bfi`, `bfind`, `prmt`, `bmsk`, `szext`, `fns`) | 10 | 10 |
+| Transcendental (`rcp`, `sqrt`, `rsqrt`, `sin`, `cos`, `lg2`, `ex2`, `tanh`) | 8 | 19 |
+| Data movement (`mov`, `cvt`, `cvt.pack`, `cvta`, `cvta.to`, `isspacep`, `_movm`, `movmatrix`) | 8 | 44 |
+| Memory load/store (`ld`, `st`, `ldu`, `ldmatrix`, `stmatrix`, `prefetch`, `alloca`, `cctl`, `createpolicy`, ...) | 23 | 55 |
+| Atomic / reduction (`atom`, `red`, `red.async`) | 3 | 41 |
+| Barrier / fence / mbarrier (`bar*`, `barrier*`, `membar*`, `fence*`, `mbarrier.*`, `setmaxnreg.*`, `nanosleep`) | 35 | 56 |
+| Control flow (`bra`, `brx.idx`, `call`, `ret`, `exit`, `trap`, `brkpt`, `_jcall`, `_gen_proto`) | 9 | 17 |
+| Texture / surface (`tex`, `tex.base`, `tex.level`, `tex.grad`, `tld4`, `txq*`, `sust.*`, `sured.*`, `_sulea.*`, `suq`, `suld.b`) | 15 | 222 |
+| Warp-level collectives (`shfl`, `vote`, `redux`, `match`, `activemask`, `elect`, `pmevent*`, `getctarank`, `_warpsync`, `_match`) | 11 | 17 |
+| Cooperative copy / tensor memory (`cp.async*`, `cp.reduce.async*`, `multimem.*`, `clusterlaunchcontrol.*`, `tensormap.*`, `griddepcontrol`) | 21 | 75 |
+| Tensor cores -- MMA / wgmma / wmma / tcgen05 / `_mma.warpgroup` / `_ldsm` / `_tcgen05.guardrails.*` | 37 | **360** |
+| Video SIMD (`v*`, `v*2`, `v*4`) | 23 | 31 |
+| Verification / debug (`_checkfp.divide`, `istypep`) | 2 | 2 |
+| **Total** | **252** | **1,141** |
+
+The three dominant families -- **tensor cores (360 = 31.6%)**, **texture (222 = 19.5%)**, and **arithmetic (96 = 8.4%)** -- account for 60% of all registrations. The tensor-core bloat comes almost entirely from `_mma.warpgroup` (135 variants) and the public `_mma`/`mma` families (41+38). Texture bloat is structural: each of `tex`, `tex.base`, `tex.level`, `tex.grad` registers the identical **8-encoding x 6-mode** cross-product = 48 variants, giving 192 before adding `tld4`, `txq`, `sust`, `sured`, `_sulea`, `suq`, `suld.b`.
+
+#### Arithmetic (96 variants / 32 opcodes)
+
+| PTX opcode | Variants | Distinct encodings | Sample encoding strings |
+|---|---|---|---|
+| `abs` | 7 | 7 | `F16`, `H32`, `E16`, `E32`, `F32`, `F64`, `I` |
+| `add` | 11 | 11 | `F16`, `H32`, `F32`, `F64`, `I`, `E16`, `E32`, `N32`, `H64`, `F32F16`, `F32E16` |
+| `addc` | 1 | 1 | `I` |
+| `copysign` | 1 | 1 | `F[32\|64]` |
+| `div` | 3 | 3 | `F32`, `F64`, `I` |
+| `div.full` | 1 | 1 | `F32` |
+| `dp2a` | 1 | 1 | `I32I32` |
+| `dp2a.hi` | 1 | 1 | `I32I32` |
+| `dp2a.lo` | 1 | 1 | `I32I32` |
+| `dp4a` | 1 | 1 | `I32I32` |
+| `fma` | 9 | 9 | `F16`, `H32`, `F32`, `F64`, `E16`, `E32`, `H64`, `F32F16`, `F32E16` |
+| `mad` | 2 | 2 | `F32`, `F64` |
+| `mad.hi` | 1 | 1 | `I` |
+| `mad.lo` | 1 | 1 | `I` |
+| `mad.wide` | 1 | 1 | `I[16\|32]` |
+| `mad24.hi` | 1 | 1 | `I32` |
+| `mad24.lo` | 1 | 1 | `I32` |
+| `madc.hi` | 1 | 1 | `I` |
+| `madc.lo` | 1 | 1 | `I` |
+| `max` | 9 | 8 | `F16`, `H32`, `E16`, `E32`, `F32`, `F64`, `I`, `N32` |
+| `min` | 9 | 8 | `F16`, `H32`, `E16`, `E32`, `F32`, `F64`, `I`, `N32` |
+| `mul` | 7 | 7 | `F16`, `H32`, `F32`, `F64`, `E16`, `E32`, `H64` |
+| `mul.hi` | 1 | 1 | `I` |
+| `mul.lo` | 1 | 1 | `I` |
+| `mul.wide` | 1 | 1 | `I[16\|32]` |
+| `mul24.hi` | 1 | 1 | `I32` |
+| `mul24.lo` | 1 | 1 | `I32` |
+| `neg` | 7 | 7 | `F16`, `H32`, `E16`, `E32`, `F32`, `F64`, `I` |
+| `rem` | 1 | 1 | `I` |
+| `sad` | 1 | 1 | `I` |
+| `sub` | 10 | 10 | `F16`, `H32`, `F32`, `F64`, `I`, `E16`, `E32`, `H64`, `F32F16`, `F32E16` |
+| `subc` | 1 | 1 | `I` |
+
+Full expansion for `add` (all 11 variants with suffix codes):
+
+| # | Opcode | Encoding | Suffix | Meaning |
+|---|---|---|---|---|
+| 0 | `add` | `F16` | `000` | `add.f16` / `add.f16x2` |
+| 1 | `add` | `H32` | `000` | `add.bf16` / `add.bf16x2` |
+| 2 | `add` | `F32` | `000` | `add.f32` |
+| 3 | `add` | `F64` | `000` | `add.f64` |
+| 4 | `add` | `I`   | `000` | integer `add.s{16,32,64}` / `add.u{16,32,64}` |
+| 5 | `add` | `E16` | `xxx` | extended-FP form (each `x` tags packed bf16/f16) |
+| 6 | `add` | `E32` | `ddd` | extended-FP form (tf32, each `d` tags 64-bit accumulator) |
+| 7 | `add` | `N32` | `000` | numeric-literal mixed form |
+| 8 | `add` | `H64` | `000` | 64-bit half-packed form |
+| 9 | `add` | `F32F16` | `010` | mixed `.f32 = .f32 + .f16` (SM 100 down-cast form) |
+| 10 | `add` | `F32E16` | `0x0` | mixed `.f32 = .f32 + .bf16` |
+
+And the full `fma` expansion (9 variants):
+
+| # | Encoding | Suffix | Meaning |
+|---|---|---|---|
+| 0 | `F16` | `0000` | `fma.rn.f16` / `fma.rn.f16x2` |
+| 1 | `H32` | `0000` | `fma.rn.bf16` |
+| 2 | `F32` | `0000` | `fma.rn.f32` |
+| 3 | `F64` | `0000` | `fma.rn.f64` |
+| 4 | `E16` | `xxxx` | extended-FP quad form (bf16/f16) |
+| 5 | `E32` | `dddd` | extended-FP quad form (tf32) |
+| 6 | `H64` | `0000` | 64-bit half-packed FMA |
+| 7 | `F32F16` | `0110` | mixed `f32 += f16 * f16` |
+| 8 | `F32E16` | `0xx0` | mixed `f32 += bf16 * bf16` |
+
+#### Comparison and select (80 variants / 5 opcodes)
+
+| PTX opcode | Variants | Distinct encodings | Sample encoding strings |
+|---|---|---|---|
+| `selp` | 3 | 3 | `F`, `I`, `B` |
+| `set` | 54 | 27 | `F16F16`, `I16F16`, `I32F16`, `I32H32`, `F16F32`, `F16F64`, +21 more |
+| `setp` | 16 | 8 | `F16`, `H32`, `F32`, `F64`, `I`, `B`, `E16`, `E32` |
+| `slct` | 6 | 6 | `FF32`, `IF32`, `BF32`, `FI32`, `II32`, `BI32` |
+| `testp` | 1 | 1 | `F[32\|64]` |
+
+`set` blows up to 54 variants because it registers every `setp`-to-data type pair, i.e. it emits an integer/bitwise destination rather than a predicate. All 16 `setp` variants come from a (6 type classes) x (with/without predicate-merge) cross product plus two forms for `E16`/`E32`. Full `setp` expansion:
+
+| # | Encoding | Suffix | Form |
+|---|---|---|---|
+| 0..5  | `F16`, `H32`, `F32`, `F64`, `I`, `B` | `P00`  | `setp.cmp.type dst, a, b` |
+| 6..11 | `F16`, `H32`, `F32`, `F64`, `I`, `B` | `P00P` | `setp.cmp.and/or/xor.type dst, a, b, !p` |
+| 12 | `E16` | `Pxx`  | extended bf16/f16 compare |
+| 13 | `E16` | `PxxP` | extended bf16/f16 compare with predicate merge |
+| 14 | `E32` | `Pdd`  | tf32 compare |
+| 15 | `E32` | `PddP` | tf32 compare with predicate merge |
+
+#### Logic and bitwise (16 variants / 10 opcodes)
+
+| PTX opcode | Variants | Distinct encodings | Sample encoding strings |
+|---|---|---|---|
+| `and` | 2 | 2 | `B`, `P` |
+| `cnot` | 1 | 1 | `B` |
+| `lop3` | 2 | 1 | `B32` |
+| `not` | 2 | 2 | `B`, `P` |
+| `or` | 2 | 2 | `B`, `P` |
+| `shf.l` | 1 | 1 | `B32` |
+| `shf.r` | 1 | 1 | `B32` |
+| `shl` | 1 | 1 | `B` |
+| `shr` | 2 | 2 | `I`, `B` |
+| `xor` | 2 | 2 | `B`, `P` |
+
+#### Bit manipulation (10 variants / 10 opcodes, one apiece)
+
+| PTX opcode | Encoding | | PTX opcode | Encoding |
+|---|---|---|---|---|
+| `bfe`   | `I[32\|64]` | | `clz`   | `B[32\|64]` |
+| `bfi`   | `B[32\|64]` | | `fns`   | `B32` |
+| `bfind` | `I[32\|64]` | | `popc`  | `B[32\|64]` |
+| `bmsk`  | `B32`       | | `prmt`  | `B32` |
+| `brev`  | `B[32\|64]` | | `szext` | `I32` |
+
+#### Transcendental (19 variants / 8 opcodes)
+
+| PTX opcode | Variants | Encodings |
+|---|---|---|
+| `cos`   | 1 | `F32` |
+| `ex2`   | 5 | `F16`, `H32`, `F32`, `E16`, `E32` |
+| `lg2`   | 1 | `F32` |
+| `rcp`   | 2 | `F32`, `F64` |
+| `rsqrt` | 2 | `F32`, `F64` |
+| `sin`   | 1 | `F32` |
+| `sqrt`  | 2 | `F32`, `F64` |
+| `tanh`  | 5 | `F16`, `F32`, `H32`, `E16`, `E32` |
+
+Note: `rcp.approx.ftz.f32`, `rcp.approx.f64`, etc. are **not** separate registrations. Approximation mode, ftz, saturation, and rounding mode are all carried by modifier tokens on the opcode and rejected by the semantic validator rather than by a per-mode descriptor. This is why `rcp` has only 2 variants despite several user-visible modes.
+
+#### Data movement (44 variants / 8 opcodes)
+
+| PTX opcode | Variants | Distinct encodings | Sample encoding strings |
+|---|---|---|---|
+| `_movm` | 3 | 3 | `B16`, `I8I4`, `I4I2` |
+| `cvt` | 28 | 26 | `F16F32`, `H32F32`, `E16F32`, `E32F32`, `F32E16`, `F[16\|32\|64]F[16\|32\|64]`, +20 more |
+| `cvt.pack` | 3 | 3 | `I8I32B32`, `I16I32`, `I[2\|4]I32B32` |
+| `cvta` | 1 | 1 | `I[32\|64]` |
+| `cvta.to` | 1 | 1 | `I[32\|64]` |
+| `isspacep` | 2 | 1 | *(empty)* |
+| `mov` | 5 | 5 | `F`, `I`, `B`, `P`, `B128` |
+| `movmatrix` | 1 | 1 | `B16` |
+
+`cvt` has the most per-opcode diversity of any family: 28 type-pair variants. Full list:
+
+| # | Encoding | Meaning |
+|---|---|---|
+| 0 | `F16F32` | `cvt.f16.f32` |
+| 1 | `H32F32` | `cvt.bf16.f32` / `cvt.bf16x2.f32.f32` |
+| 2 | `E16F32` | `cvt.e4m3/e5m2/bf16.f32` |
+| 3 | `E32F32` | `cvt.tf32.f32` |
+| 4 | `F32E16` | inverse extended-FP upconvert |
+| 5 | `F[16\|32\|64]F[16\|32\|64]` | generic float-to-float |
+| 6 | `F[16\|32\|64]I[8\|16\|32\|64]` | integer-to-float |
+| 7 | `I[8\|16\|32\|64]F[16\|32\|64]` | float-to-integer |
+| 8 | `I[8\|16\|32\|64]I[8\|16\|32\|64]` | integer-to-integer |
+| 9 | `Q16F32` | `cvt.s4x2/u4x2/s8x2/u8x2.f32` packed |
+| 10 | `Q16H32` | packed int-from-bf16 |
+| 11 | `H32Q16` | inverse |
+| 12 | `T32F32` | tf32 from f32 |
+| 13 | `E16E16` | extended-to-extended |
+| 14 | `F[16\|64]E16` | upconvert from extended |
+| 15 | `E16F[16\|64]` | downconvert to extended |
+| 16 | `E16I[8\|16\|32\|64]` | int-to-extended |
+| 17 | `I[8\|16\|32\|64]E16` | extended-to-int |
+| 18 | `R8F32` | f32-to-4bit packed (register class R) |
+| 19 | `H32R8` | 4bit-to-bf16 |
+| 20 | `E32Q16` | tf32-to-quad-int |
+| 21 | `Q16E32` | quad-int-to-tf32 |
+| 22-23 | `H32F32`, `E32F32` | relaxed forms with `011d`/`d11d` suffixes (rounding-mode variants) |
+| 24 | `Q32F32` | quad 32-bit-to-f32 |
+| 25 | `R16F32` | f32-to-packed 4x4 |
+| 26 | `R8H32` | bf16-to-4bit packed |
+| 27 | `R8E32` | tf32-to-4bit packed |
+
+`cvt.pack` adds 3 more for `cvt.pack.sat.<T>.<Tsrc>` widening-pack forms.
+
+#### Memory load/store (55 variants / 23 opcodes)
+
+| PTX opcode | Variants | Distinct encodings | Sample encoding strings |
+|---|---|---|---|
+| `_createpolicy.fractional` | 1 | 1 | `B64` |
+| `_createpolicy.range` | 1 | 1 | `B64` |
+| `_ldldu` | 1 | 1 | `B[8\|16\|32\|64\|128]B[8\|16\|32\|64\|128]` |
+| `alloca` | 2 | 1 | `I[32\|64]` |
+| `applypriority` | 1 | 1 | *(empty)* |
+| `cctl` | 2 | 1 | *(empty)* |
+| `cctlu` | 2 | 1 | *(empty)* |
+| `createpolicy.cvt` | 1 | 1 | `B64` |
+| `createpolicy.fractional` | 2 | 1 | `B64` |
+| `createpolicy.range` | 1 | 1 | `B64` |
+| `discard` | 1 | 1 | *(empty)* |
+| `ld` | 12 | 4 | `F`, `I[8\|16\|32\|64]`, `B[8\|16\|32\|64]`, `B128` |
+| `ldmatrix` | 2 | 2 | `B[8\|16]`, *(empty)* |
+| `ldu` | 4 | 4 | `B128`, `F`, `I[8\|16\|32\|64]`, `B[8\|16\|32\|64]` |
+| `mapa` | 1 | 1 | `I[32\|64]` |
+| `prefetch` | 1 | 1 | *(empty)* |
+| `prefetchu` | 1 | 1 | *(empty)* |
+| `st` | 8 | 4 | `F`, `I[8\|16\|32\|64]`, `B[8\|16\|32\|64]`, `B128` |
+| `st.async` | 6 | 5 | `I[32\|64]`, `B[32\|64]`, `F[32\|64]`, `I[8\|16\|32\|64]`, `B[8\|16\|32\|64]` |
+| `st.bulk` | 2 | 1 | *(empty)* |
+| `stackrestore` | 1 | 1 | `I[32\|64]` |
+| `stacksave` | 1 | 1 | `I[32\|64]` |
+| `stmatrix` | 1 | 1 | `B[8\|16]` |
+
+`ld` has 12 variants = 4 encodings x 3 suffix-string shapes (regular, vector-packed, `.U`-suffix uniform). `B128` appears three times with different suffix flags (`0M`, `0M`, `0MU`) to separate non-vector 128-bit loads, vector-packed 128-bit loads, and uniform 128-bit loads.
+
+#### Atomic / reduction (41 variants / 3 opcodes)
+
+| PTX opcode | Variants | Distinct encodings |
+|---|---|---|
+| `atom`      | 21 | 10 (`F32`, `H32`, `F64`, `I[32\|64]`, `B[32\|64]`, `B128`, `F16`, `B16`, `E16`, `E32`) |
+| `red`       | 16 | 8  (same set minus `B16` and `B128`) |
+| `red.async` | 4  | 2  (`I[32\|64]`, `B[32\|64]`) |
+
+The 21 `atom` variants span 10 encodings x up to 3 suffix variants each. The suffix tail `"0M0U"` marks forms where a `.uni` (uniform) post-modifier is legal. `atom` with `B128` appears three times: `atom.cas.b128`, vector-packed `B128`, and the uniform form.
+
+#### Barrier / fence / mbarrier (56 variants / 35 opcodes)
+
+| PTX opcode | Variants | Encoding |
+|---|---|---|
+| `bar`, `barrier` (plain) | 2 each | *(empty)* |
+| `bar.arrive`, `barrier.arrive` | 1 each | *(empty)* |
+| `bar.cta`, `barrier.cta` (plain) | 2 each | *(empty)* |
+| `bar.cta.arrive`, `barrier.cta.arrive` | 1 each | *(empty)* |
+| `bar.cta.red`, `bar.red`, `barrier.cta.red`, `barrier.red` | 4 each (16 total) | `I32`, `P` |
+| `bar.warp` | 1 | *(empty)* |
+| `barrier.cluster.arrive`, `barrier.cluster.wait` | 1 each | `P` |
+| `fence` | 1 | `P` |
+| `fence.proxy` | 2 | `P`, *(empty)* |
+| `membar` | 1 | `P` |
+| `membar.proxy` | 1 | *(empty)* |
+| `mbarrier.arrive`, `mbarrier.arrive_drop`, `mbarrier.try_wait`, `mbarrier.try_wait.parity` | 2 each | `B64` |
+| `mbarrier.*` (nine other variants) | 1 each | `B64` |
+| `setmaxnreg.dec`, `setmaxnreg.inc` | 1 each | `I32` |
+| `nanosleep` | 1 | `I32` |
+
+The `bar.red`/`barrier.red` fourfold expansion is (`I32` integer arg, `P` predicate arg) x (cta, non-cta scope). The 13 distinct `mbarrier.*` opcodes (init, inval, complete_tx, expect_tx, pending_count, test_wait, test_wait.parity, try_wait, try_wait.parity, arrive, arrive.expect_tx, arrive_drop, arrive_drop.expect_tx) sum to 17 total variants because 4 of them register both "with-count" and "without-count" forms.
+
+#### Control flow (17 variants / 9 opcodes)
+
+| PTX opcode | Variants | Encoding | Notes |
+|---|---|---|---|
+| `_gen_proto` | 1 | *(empty)* | Internal prototype-generation pseudo-op |
+| `_jcall` | 1 | *(empty)* | Internal indirect-call pseudo-op |
+| `bra` | 2 | *(empty)* | Unconditional and predicated |
+| `brkpt` | 1 | *(empty)* | |
+| `brx.idx` | 1 | *(empty)* | Indexed branch |
+| `call` | **8** | *(empty)* | (prototype vs no-prototype) x (return vs no-return) x (uniform vs divergent) |
+| `exit` | 1 | *(empty)* | |
+| `ret` | 1 | *(empty)* | |
+| `trap` | 1 | *(empty)* | |
+
+`call` registering 8 variants is a surprise: each one corresponds to a different argument-list **shape** that the Bison grammar produces (`call (retvals), fn, (args);` versus `call.uni`, prototype reference, no prototype, direct target, indirect target, etc.). They all share the empty encoding string because the arguments are validated semantically after parsing, not through the descriptor type matcher.
+
+#### Texture / surface (222 variants / 15 opcodes)
+
+| PTX opcode | Variants | Distinct encodings |
+|---|---|---|
+| `_sulea.b` | 2 | 1 (`B[8\|16\|32\|64]`) |
+| `_sulea.p` | 2 | 1 (*empty*) |
+| `suld.b` | 1 | 1 (`B[8\|16\|32\|64]`) |
+| `suq` | 1 | 1 (`B32`) |
+| `sured.b` | 2 | 2 (`B32`, `I[32\|64]`) |
+| `sured.p` | 2 | 2 (`B32`, `B64`) |
+| `sust.b` | 1 | 1 (`B[8\|16\|32\|64]`) |
+| `sust.p` | 1 | 1 (`B32`) |
+| **`tex`** | **48** | 8 |
+| **`tex.base`** | **48** | 8 |
+| **`tex.grad`** | **48** | 8 |
+| **`tex.level`** | **48** | 8 |
+| `tld4` | 16 | 2 (`I32F32`, `F32F32`) |
+| `txq` | 1 | 1 (`B32`) |
+| `txq.level` | 1 | 1 (`B32`) |
+
+Each of the four `tex*` opcodes registers the **exact same 8 encodings** (`F16F32`, `F16I32`, `F32F32`, `F32I32`, `H32F32`, `H32I32`, `I32F32`, `I32I32`) **six times**, once per texture-mode suffix (`"0i1"`, `"0i1s"`, and four more for 1D / 2D / 3D / cube / array / shadow-array combinations). That is 4 x 8 x 6 = 192 registrations on its own -- 17% of the entire instruction table -- which is why texture is the single largest non-MMA category.
+
+#### Warp-level collectives (17 variants / 11 opcodes)
+
+| PTX opcode | Variants | Encoding |
+|---|---|---|
+| `_match` | 1 | `B[32\|64]` |
+| `_warpsync` | 1 | *(empty)* |
+| `activemask` | 1 | `B32` |
+| `elect` | 1 | *(empty)* |
+| `getctarank` | 1 | `I[32\|64]` |
+| `match` | 1 | `B[32\|64]` |
+| `pmevent`, `pmevent.mask` | 1 each | *(empty)* |
+| `redux` | 3 | `B32`, `I32`, `F32` |
+| `shfl` | 2 | `B32` (with/without predicate) |
+| `vote` | 4 | `P` (x3 modes) + `B32` (`.ballot`) |
+
+`vote` has 4 variants: `vote.all.pred`, `vote.any.pred`, `vote.uni.pred`, and `vote.ballot.b32`.
+
+#### Cooperative copy / tensor memory (75 variants / 21 opcodes)
+
+| PTX opcode | Variants | Distinct encodings |
+|---|---|---|
+| `clusterlaunchcontrol.query_cancel` | 2 | `PB128`, `B32B128` |
+| `clusterlaunchcontrol.try_cancel.async` | 1 | `B128` |
+| `cp.async` | 6 | *(empty)* |
+| `cp.async.bulk` | 8 | *(empty)* |
+| `cp.async.bulk.commit_group` | 1 | `E16` |
+| `cp.async.bulk.prefetch` | 2 | *(empty)* |
+| `cp.async.bulk.prefetch.tensor` | 4 | *(empty)* |
+| `cp.async.bulk.tensor` | 10 | *(empty)* |
+| `cp.async.bulk.wait_group` | 1 | *(empty)* |
+| `cp.async.commit_group` | 1 | *(empty)* |
+| `cp.async.mbarrier.arrive` | 1 | `B64` |
+| `cp.async.wait_all` | 1 | *(empty)* |
+| `cp.async.wait_group` | 1 | *(empty)* |
+| `cp.reduce.async.bulk` | 12 | `I[32\|64]`, `B[32\|64]`, `F[32\|64]`, `F16`, `E16` |
+| `cp.reduce.async.bulk.tensor` | 2 | *(empty)* |
+| `griddepcontrol` | 1 | *(empty)* |
+| `multimem.ld_reduce` | 7 | `I[32\|64]`, `B[32\|64]`, `F[32\|64]`, `H32`, `E[16\|32]`, `F16`, `Q[8\|16\|32]` |
+| `multimem.red` | 5 | `I[32\|64]`, `B[32\|64]`, `F[16\|32\|64]`, `H32`, `E[16\|32]` |
+| `multimem.st` | 6 | `I[32\|64]`, `B[32\|64]`, `F[16\|32\|64]`, `H32`, `E[16\|32]`, `Q[8\|16\|32]` |
+| `tensormap.cp_fenceproxy` | 1 | *(empty)* |
+| `tensormap.replace` | 2 | `B[32\|64]` |
+
+`cp.async.bulk.tensor` registers 10 variants (one per tensor map dimensionality x load/store x multicast) without any per-variant type checking -- the 10 come from different suffix strings using the `M` and `C` tags.
+
+#### Tensor cores -- MMA / wgmma / wmma / tcgen05 (360 variants / 37 opcodes)
+
+This is the largest single category, accounting for 31.6% of the entire instruction table. `_mma.warpgroup` alone registers **135 variants**, making it the single largest opcode in the binary:
+
+| PTX opcode | Variants | Distinct encodings | Notes |
+|---|---|---|---|
+| `_ldsm` | 4 | 4 | `B[8\|16]`, `I8I4`, `I4I2`, *empty* |
+| `_mma` | 41 | 23 | Internal MMA used by compiler-generated lowering |
+| **`_mma.warpgroup`** | **135** | 8 | 8 encodings x up to 18 suffix shapes each |
+| `_tcgen05.guardrails.allocation_granularity` | 1 | 1 | *(empty)* |
+| `_tcgen05.guardrails.are_columns_allocated` | 2 | 1 | *(empty)* |
+| `_tcgen05.guardrails.check_sparse_usage` | 1 | 1 | *(empty)* |
+| `_tcgen05.guardrails.datapath_alignment` | 1 | 1 | *(empty)* |
+| `_tcgen05.guardrails.in_physical_bounds` | 2 | 1 | *(empty)* |
+| `_tcgen05.guardrails.is_current_warp_valid_owner` | 1 | 1 | *(empty)* |
+| `_tcgen05.guardrails.is_phase_valid` | 1 | 1 | *(empty)* |
+| `_tcgen05.guardrails.sp_consistency_across_idesc_mod` | 1 | 1 | *(empty)* |
+| `_warpgroup.arrive` | 1 | 1 | `F32F16F16F32` |
+| `_warpgroup.commit_batch` | 1 | 1 | `F32F16F16F32` |
+| `_warpgroup.wait` | 2 | 2 | `F32F16F16F32`, *(empty)* |
+| **`mma`** | **38** | 20 | Public MMA |
+| `tcgen05.alloc` | 1 | 1 | `B32` |
+| `tcgen05.commit` | 2 | 1 | `B64` |
+| `tcgen05.cp` | 1 | 1 | *(empty)* |
+| `tcgen05.dealloc` | 1 | 1 | `B32` |
+| `tcgen05.fence` | 1 | 1 | *(empty)* |
+| `tcgen05.ld` | 2 | 1 | `B32` |
+| `tcgen05.ld.red` | 4 | 2 | `F32`, `I32` |
+| **`tcgen05.mma`** | **20** | 1 | *(empty)* -- validation is entirely via suffix strings |
+| `tcgen05.mma.ws` | 8 | 1 | *(empty)* |
+| `tcgen05.relinquish_alloc_permit` | 1 | 1 | `B32` |
+| `tcgen05.shift` | 1 | 1 | *(empty)* |
+| `tcgen05.st` | 2 | 1 | `B32` |
+| `tcgen05.wait` | 1 | 1 | *(empty)* |
+| `wgmma.commit_group` | 1 | 1 | `I32I8I8` |
+| `wgmma.fence` | 1 | 1 | `I32I8I8` |
+| **`wgmma.mma_async`** | **30** | 8 | Public warpgroup MMA |
+| `wgmma.wait_group` | 1 | 1 | *(empty)* |
+| `wmma.load.a`, `wmma.load.b` | 12 each | 5 each | `F16`, `F32`, *empty*, `I8`, `F64` |
+| `wmma.load.c` | 8 | 4 | `F16`, `F32`, `I32`, `F64` |
+| `wmma.mma` | 10 | 10 | `F16F16`, `F32F16`, `F32F32`, `F16F32`, `I32B1B1I32`, `I32I4I4I32`, `I32I8I8I32`, `F64F64F64F64`, `E32T32T32E32`, `F32Q8Q8F32` |
+| `wmma.store.d` | 8 | 4 | `F16`, `F32`, `I32`, `F64` |
+
+The 8 encoding shapes shared by `_mma.warpgroup` and `wgmma.mma_async` are the story of SM 90 / SM 100 tensor cores:
+
+| Encoding (A, B, C, D) | MMA kind |
 |---|---|
-| `F` | Float operand (`.f16`, `.f32`, `.f64`) |
-| `H` | Half-precision (`.f16`, `.f16x2`) |
-| `I` | Integer operand (`.s8`--`.s64`, `.u8`--`.u64`) |
-| `B` | Bitwise operand (`.b8`--`.b128`) |
-| `N` | Immediate / numeric literal |
-| `P` | Predicate operand |
+| `F16F16F16F16` | half-precision |
+| `F32F16F16F32` | mixed-precision (f32 accumulator, f16 operands) |
+| `F32E16E16F32` | bf16 / fp8 accumulator (extended-FP operands) |
+| `F32T32T32F32` | tf32 |
+| `F16Q8Q8F16` | int8 x int8 -> f16 (packed half accumulator) |
+| `F32Q8Q8F32` | int8 x int8 -> f32 |
+| `I32I8I8I32` | int8 x int8 -> int32 |
+| `I32B1B1I32` | 1-bit binary matrix (`bmma`) |
 
-String references found in the function include composite type signatures:
+Each of those eight encodings is registered up to **18 times** for `_mma.warpgroup` via different suffix strings, covering `(dense vs sparse) x (scale vs no-scale) x (stride A vs B) x (predicate fill)` = up to 16+ modes. The `P`-tailed suffixes (`hUUhP`, `fUUfP`, ...) are the predicate-returning forms used to signal MMA completion back to the warpgroup scheduler.
 
-- `"F32F32"` -- binary float32 operation
-- `"F16F16F16F16"` -- quad half-precision
-- `"I32I8I8I32"` -- integer MMA (int32 accumulator, int8 operands)
-- `"F64F64F64F64"` -- quad float64 (double-precision MMA)
-- `"_mma.warpgroup"` -- warp-group MMA marker
+#### Video SIMD (31 variants / 23 opcodes)
 
-### Hash Tables
+Every video/SIMD opcode has exactly 1 or 2 variants and uses the same `I32I32I32` encoding (three-operand int32 SIMD); differences are all carried in the suffix string:
 
-The instruction table builder populates two hash tables at offsets +2472 and +2480 within the **lexer state object** (the 2,528-byte struct passed as the first argument to `sub_46E000`). These hash tables provide O(1) lookup from opcode name to the registered type combination list.
+| Shape | Count | Encoding |
+|---|---|---|
+| `vabsdiff`, `vadd`, `vmax`, `vmin`, `vshl`, `vshr`, `vsub` | 2 each | `I32I32I32` |
+| `vset` | 2 | `I32I32` |
+| `v*2` (8 opcodes: `vadd2`, `vsub2`, `vavrg2`, `vabsdiff2`, `vmin2`, `vmax2`, `vset2`, `vmad`*) | 1 each | `I32I32I32` |
+| `v*4` (7 opcodes: `vadd4`, `vsub4`, `vavrg4`, `vabsdiff4`, `vmin4`, `vmax4`, `vset4`) | 1 each | `I32I32I32` |
 
-### Registration Function -- `sub_46BED0`
+(*`vmad` is technically not a packed form but registers with the same encoding.*) These are the PTX 5.0 video SIMD intrinsics -- effectively thin wrappers around the `.s32`/`.u32` variants of each underlying SASS instruction, so the semantic difference lives entirely in the suffix string (e.g. `"sddsdC"` vs `"uuuddC"`).
 
-Called 1,141 times from `sub_46E000`. Each call takes an opcode name string and an operand encoding string, creates a descriptor node, and inserts it into the hash table. The descriptor captures the opcode, its legal operand types, and the semantic validation function to call during parsing.
+#### Verification / debug (2 variants / 2 opcodes)
+
+| PTX opcode | Encoding | Notes |
+|---|---|---|
+| `_checkfp.divide` | `F32` | Internal hook used by `div.approx.f32` lowering to insert NaN/divide-by-zero checks |
+| `istypep` | `O` | The only registration with an `O` (opaque-handle) encoding; operand is a `.texref`, `.surfref`, or `.samplerref` symbol |
 
 ## Instruction Lookup -- `sub_46C690` and `sub_46C6E0`
 
