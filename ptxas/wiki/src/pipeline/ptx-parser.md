@@ -8,11 +8,11 @@ The ptxas front-end parses PTX assembly text into internal IR using a classic tw
 |---|---|
 | **Flex scanner** | `sub_720F00` (15.8 KB, 64 KB with inlined helpers) |
 | **DFA table** | `off_203C020` (transition/accept array) |
-| **Scanner rules** | ~552 Flex rules, 162 token types (codes 258--422) |
+| **Scanner rules** | ~552 Flex rules, 165 named tokens (codes 258--422) + 25 character literals |
 | **Scanner prefix** | `ptx` (all Flex symbols: `ptxlex`, `ptxensure_buffer_stack`, etc.) |
 | **Bison parser** | `sub_4CE6B0` (48 KB, spans `0x4CE6B0`--`0x4DA337`) |
-| **Grammar size** | ~512 productions, 443 reduction cases |
-| **LALR tables** | `word_1D146A0` (yydefact), `word_1D121A0` (yycheck), `word_1D13360` (yypact), `word_1D150C0` (yypgoto), `byte_1D15960` (yyr2) |
+| **Grammar size** | **513 productions** (443 with custom actions + 70 default), **1,099 states**, **193 terminals**, **182 non-terminals** |
+| **LALR tables** | 9 tables at `0x1D121A0`--`0x1D16148` (≈19.9 KB): `yypact`, `yydefact`, `yytable`, `yycheck`, `yypgoto`, `yydefgoto`, `yyr1`, `yyr2`, `yytranslate` -- see [Grammar Parameters](#grammar-parameters) for VA mapping |
 | **Instruction table builder** | `sub_46E000` (93 KB, 1,141 calls to `sub_46BED0`) |
 | **Instruction lookup** | `sub_46C690` (entry), `sub_46C6E0` (6.4 KB descriptor matcher) |
 | **Macro preprocessor** | `sub_71F630` (14 KB dispatcher), `sub_71E2B0` (32 KB conditional handler) |
@@ -164,15 +164,107 @@ Macro errors are reported through `sub_71BF60` (fatal macro abort) which calls `
 
 ## Bison LALR(1) Parser -- `sub_4CE6B0`
 
-The parser is a standard Bison-generated LALR(1) shift-reduce parser spanning 48 KB (addresses `0x4CE6B0`--`0x4DA337`). It contains ~512 grammar productions with 443 reduction cases. The function calls `ptxlex` (`sub_720F00`) to obtain tokens and uses five LALR tables for state transitions:
+The parser is a standard Bison-generated LALR(1) shift-reduce parser spanning 48 KB (addresses `0x4CE6B0`--`0x4DA337`). It contains exactly **513 grammar productions** (rules 1--513, plus the implicit `$accept` augmentation) with **443 reduction cases** carrying non-default semantic actions; the remaining 70 rules use Bison's default action (`$$ = $1`, no code emitted). The function calls `ptxlex` (`sub_720F00`) to obtain tokens and uses **nine** LALR tables for state transitions, action lookup, and goto computation:
 
-| Table | Address | Bison name | Purpose |
-|---|---|---|---|
-| `word_1D146A0` | `0x1D146A0` | `yydefact` | Default reduction rule for each state |
-| `word_1D121A0` | `0x1D121A0` | `yycheck` | Valid lookahead verification |
-| `word_1D13360` | `0x1D13360` | `yypact` | Parser action table (shift/reduce) |
-| `word_1D150C0` | `0x1D150C0` | `yypgoto` | Goto table for nonterminals |
-| `byte_1D15960` | `0x1D15960` | `yyr2` | Right-hand-side length for each rule |
+| Table | Address | Bison name | Element type | Entries | Purpose |
+|---|---|---|---|---|---|
+| `byte_1D15FA0` | `0x1D15FA0` | `yytranslate` | `uint8` | 423 | External token code → internal terminal index |
+| `word_1D121A0` | `0x1D121A0` | `yycheck` | `int16` | 2,269 | Expected terminal at action-table offset |
+| `word_1D13360` | `0x1D13360` | `yytable` | `int16` | 2,269 | Shift destination / negated reduce rule |
+| `word_1D14520` | `0x1D14520` | `yypgoto` | `int16` | 182 | Goto table offset per non-terminal |
+| `word_1D146A0` | `0x1D146A0` | `yypact` | `int16` | 1,099 | Action-table offset per state |
+| `word_1D14F40` | `0x1D14F40` | `yydefgoto` | `int16` | 182 | Default goto per non-terminal |
+| `word_1D150C0` | `0x1D150C0` | `yydefact` | `int16` | 1,099 | Default reduction rule per state |
+| `word_1D15B80` | `0x1D15B80` | `yyr1` | `int16` | 514 | LHS symbol number per rule |
+| `byte_1D15960` | `0x1D15960` | `yyr2` | `uint8` | 514 | RHS length per rule |
+
+> **Table naming correction.** Earlier versions of this page listed `word_1D146A0` as `yydefact`, `word_1D13360` as `yypact`, and `word_1D150C0` as `yypgoto`. These labels were wrong: the decompiled indexing patterns (below) identify `word_1D146A0` as `yypact` (indexed by state, values range `[-921..2101]` with the `-921` sentinel), `word_1D13360` as `yytable` (indexed by `yypact[state]+token`), and `word_1D150C0` as `yydefact` (indexed by state, values are reduction rule numbers `0..513`). The true `yypgoto` and `yydefgoto` (not previously documented) live at `0x1D14520` and `0x1D14F40`.
+
+### Grammar Parameters
+
+The following constants were recovered by cross-correlating the five hardcoded sentinels in the decompiled state machine with the `.rodata` table sizes and boundary signatures. File references use `sub_4CE6B0_0x4ce6b0.c` in `/ptxas/decompiled/`.
+
+| Bison macro | Value | Derivation |
+|---|---|---|
+| `YYNSTATES` | **1,099** | `yypact` has 1,099 `int16` entries (size `0x1D150C0 - 0x1D146A0 = 0x0A20 = 2,592 B`, last non-zero at byte 2,197; upper bound of `0xA20/2 = 1,296` slots leaves 197 trailing zero-pad bytes). `yydefact` (same index domain) shows exactly 1,099 entries with identical tail. |
+| `YYNTOKENS` | **193** | Extracted directly from decompiled line 2398: `v31 = (unsigned __int16)word_1D15B80[v1136] - 193;` (the `yyr1[rule] - YYNTOKENS` conversion from LHS symbol number to non-terminal index). Cross-verified by `yyr1[1] = 193` (the `$accept` nonterminal's symbol number equals `YYNTOKENS`). Also equals the number of distinct `yytranslate` output values (192 real terminals + undef slot). |
+| `YYNNTS` | **182** | `yydefgoto` and `yypgoto` each have 182 `int16` entries (gap `0x1D150C0 - 0x1D14F40 = 0x180 = 384 B`, last non-zero at byte 363). Independently confirmed: `yyr1` LHS values cover exactly the range `[193..374]` ⇒ `374 - 193 + 1 = 182` distinct non-terminal symbol numbers. Total grammar symbols: `YYNTOKENS + YYNNTS = 375`. |
+| `YYNRULES` | **513** | `yyr1` has 514 `int16` entries (`yyr1[0] = 0` unused, rules 1..513). Gap `0x1D15FA0 - 0x1D15B80 = 0x420 = 1,056 B` ⇒ ≤528 slots; last non-zero at byte 1,027 ⇒ 514 entries. `yyr2` matches: 514 byte-entries, with `yyr2[510..513] = {0,0,0,0}` encoding four epsilon rules (invisible to the "last-non-zero" heuristic). `yydefact` contains values up to 513. **The previous "~512 productions" figure was off by one** -- the switch-case max of 512 (line 7395) is the highest rule number carrying a custom semantic action; rule 513 (`yyr1[513] = 374`, `yyr2[513] = 0`) has a default action and falls through `default: goto LABEL_34;` at line 7398. |
+| `YYLAST` | **2,268** | Hardcoded as `0x8DC` in the bounds checks at decompiled lines 1376 (`if ( (unsigned int)(v4 + v9) > 0x8DC ) goto LABEL_8;`), 1383, 1427, and 2400. `yycheck` and `yytable` each hold `YYLAST + 1 = 2,269` `int16` entries (last non-zero at byte 4,537 of 4,544 allocated). |
+| `YYFINAL` | **3** | Accept state, used at decompiled line 1434 (`if ( i == 3 ) goto LABEL_1306;`) and again at line 7470 (`if ( i != 3 )`), both branching to cleanup and successful return. |
+| `YYPACT_NINF` | **-921** | Initial `v4 = -921` at line 1347, used as the "no shift action" sentinel for `yypact`. 708 of 1,099 states carry this value (≈64% of states have no shift action and rely solely on `yydefact`). |
+| `YYTABLE_NINF` | **-513** | Literal `i == -513` check at line 1500 (`if ( !word_1D13360[v8] \|\| i == -513 )`), the "no action" sentinel for `yytable`. Matches `-YYNRULES` convention. |
+| `YYMAXUTOK` | **422** | Upper bound on external token codes: `if ( v1128 <= 422 )` at line 1372, followed by `yytranslate[v1128]` lookup. Token codes above 422 are treated as undef. `yytranslate` therefore holds exactly 423 entries (`yytranslate[0..422]`). |
+| `YYTERROR` | **1** | Error-recovery lookahead token; `word_1D121A0[yypact + 1] != 1` check at line 1429 tests `yycheck[yypact[state] + YYTERROR] == YYTERROR`. Also `yytranslate[256] = 1` (Bison always places `error` at external code 256). |
+| `YYEMPTY` | **-2** | Initial `v1128 = -2` at line 1351, with `v1128 == -2` guarding the lookahead-empty path at line 1359. |
+| `YYINITDEPTH` | **200** | Initial stack size: `_WORD src[200]` at line 1340 (the `yyssa` on-stack array) and `v1131 = 200` at line 1352. |
+| `YYMAXDEPTH` | **10,000** | Upper bound on stack doubling: `0x2710 = 10,000` at line 1455 (`v34 = 10000; if ( 2 * v1131 <= 0x2710 ) v34 = 2 * v1131;`). On overflow the parser aborts with `"memory exhausted"` (line 1467). |
+| **Start symbol** | **non-terminal 194** (`nt-index 1`) | `yyr1[1] = 193` encodes `$accept` (rule 1 is always `$accept: start $end`). Rule 2 has `yyr1[2] = 195, yyr2[2] = 0` (a midrule-action auxiliary). Rule 3 -- the first substantive rule -- has `yyr1[3] = 194, yyr2[3] = 2`, making **symbol 194** the grammar's start non-terminal (lowest user-declared non-terminal after `$accept`). |
+| Longest RHS | **15** (at rule 190) | Maximum of the 514-entry `yyr2` byte array. |
+| Epsilon rules | **31** | Count of `yyr2[i] == 0` for `i` in `1..513`. |
+
+**Terminal alphabet composition.** The 193 terminals decompose as: `YYEOF` (code 0 → terminal 0), `YYerror` (code 256 → terminal 1), `YYUNDEF` (code 257 → terminal 2), 165 named tokens emitted by the Flex scanner (codes 258--422 → terminals 3--167), and **25 single-character literal tokens** at ASCII codes `! % & ( ) * + , - / : ; < = > ? @ [ \ ] ^ { | } ~` (→ terminals 168--192). This explains the "162 token types (codes 258--422)" figure in the page header as an undercount: the true named-token range is 258--422, i.e. 165 distinct named tokens; with the 25 character literals and the three housekeeping tokens, the grammar's terminal count is 193.
+
+**Memory footprint of the tables.** `.rodata` VA range `0x1D121A0..0x1D161E8` holds ≈19.9 KB of parser data: `yycheck` 4,538 B + `yytable` 4,538 B + `yypgoto` 364 B + `yypact` 2,198 B + `yydefgoto` 364 B + `yydefact` 2,198 B + `yyr2` 514 B + `yyr1` 1,028 B + `yytranslate` 423 B = 16,165 B logical, padded to 19,968 B including inter-table alignment. The 48 KB function body plus tables brings the total Bison footprint to ≈68 KB.
+
+### State Machine Walkthrough
+
+The main parser loop (decompiled lines 1354--1507) follows the textbook Bison deterministic-LALR skeleton:
+
+```
+for ( state = 0; ; yypact_val = yypact[state] )  // line 1354
+{
+    if ( yypact_val == YYPACT_NINF )  goto yydefault;  // line 1357
+    if ( lookahead == YYEMPTY )                        // line 1359
+        lookahead = ptxlex();                          // line 1363 (sub_720F00)
+    if ( lookahead <= 0 )      translated = 0;         // EOF
+    else if ( lookahead > 422 ) translated = 2;         // YYUNDEF
+    else                       translated = yytranslate[lookahead];  // line 1374
+    idx = yypact_val + translated;                     // line 1375
+    if ( idx > YYLAST )        goto yydefault;         // line 1376 (0x8DC)
+    if ( yycheck[idx] != translated ) goto yydefault;  // line 1386
+    // match: perform shift or reduce via yytable
+    action = yytable[idx];                             // line 1497
+    if ( action > 0 )                                  // shift
+        push_state(action);
+    else if ( action == 0 || action == YYTABLE_NINF )  // error
+        goto yyerrlab;
+    else
+        reduce(-action);                               // negated = rule number
+    continue;
+  yydefault:
+    action = yydefact[state];                          // line 1389
+    if ( action != 0 ) reduce(action);
+    else yyerrlab;
+}
+```
+
+After a reduction the goto computation (lines 2392--2403) is:
+
+```
+nt_idx = yyr1[reduced_rule] - YYNTOKENS;  // line 2398 (- 193)
+new_state = yypgoto[nt_idx] + current_state;
+if ( new_state > YYLAST || yycheck[new_state] != current_state )
+    new_state = yydefgoto[nt_idx];        // line 2403
+else
+    new_state = yytable[new_state];       // line 2401
+push_state(new_state);
+```
+
+This is bit-for-bit identical to the Bison 3.x `yacc.c` skeleton (cf. Bison source tree `data/yacc.c`, functions `yybackup:` and `yynewstate:`).
+
+### Conflict Count (Not Recoverable)
+
+Bison's deterministic parser tables preserve only the *winning* action for every (state, terminal) pair; shift-reduce and reduce-reduce conflicts resolved at generation time (via `%left`/`%right`/`%nonassoc` precedence or Bison's default shift-wins rule) leave no trace in `yytable`/`yycheck`. The tables cannot distinguish "state had a single action" from "state had several actions and the generator picked one". We can therefore characterize only the **structural shape** of conflict-resolution, not its count:
+
+- 708 / 1,099 states (≈64%) have `yypact[s] = YYPACT_NINF` (no shift action); these states unconditionally reduce via `yydefact[s]`.
+- 255 states have `yypact[s] ≠ NINF` and `yydefact[s] = 0`: pure "shift-only" states, no default reduction.
+- 136 states have both `yypact[s] ≠ NINF` and `yydefact[s] ≠ 0`: a shift set *and* a default reduction. This is the normal LALR configuration for states where the lookahead set partitions into "shiftable tokens → shift" and "everything else → reduce rule N". These 136 states are the **candidates** where a shift-reduce conflict could have been present in the source grammar and resolved by precedence, but the table shape alone does not prove a conflict occurred.
+- 0 states have both `yypact[s] = NINF` and `yydefact[s] = 0` ⇒ no state is "dead"; every state has at least one action.
+
+The absence of any runtime conflict-handling code (no `yyconfl`/`yyconflp` tables, no GLR dispatch, no `%glr-parser` scaffolding) confirms a clean LALR(1) generation with **zero runtime conflict-resolution logic**. Any conflicts were resolved at generation time and baked into the tables; the generator's statistics (e.g. `"N shift/reduce, M reduce/reduce"`) are gone. If an upper bound is needed for reimplementation purposes, 136 is a conservative overcount of the states that *could* have contained conflicts before resolution.
+
+The parser is definitively not a GLR parser (no `%glr-parser` / `yyconfl` evidence), nor a push-pull API parser (the entry point at line 7490 takes parameters by value and returns a status code synchronously).
 
 ### Direct IR Construction (No AST)
 
