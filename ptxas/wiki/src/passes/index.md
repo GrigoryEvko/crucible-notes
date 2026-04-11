@@ -260,9 +260,140 @@ See [GeneralOptimize Bundles](general-optimize.md) for the sub-pass decompositio
 
 ## O-Level Gating
 
-Twenty-two phases have confirmed optimization-level gates. The **O-Level** column in the table below annotates every phase where the activation threshold has been verified from decompiled `isNoOp()` methods or execute-function guards. Phases without an O-Level annotation run at all optimization levels (O0--O5). Threshold notation: `> N` means the phase requires `opt_level > N`; `== 0` means the phase is active only at O0.
+### Mechanism
 
-See [Optimization Levels](../config/opt-levels.md) for the complete per-phase activation table, the O-level accessor (`sub_7DDB50`), and the NvOpt recipe system.
+The 159-phase pipeline does **not** carry any opt-level metadata on the phase objects themselves. Three binary facts establish this:
+
+1. **Uniform phase construction.** `sub_C60D30` (the 159-case phase factory at `0xC60D30`, 1132 lines) allocates every phase object via the same 5-line body: request 16 bytes from the pool, store a per-case vtable pointer at offset `+0`, store the allocator pointer at `+8`, return. There is no `*(char*)(obj+N) = LEVEL` write anywhere in the switch; every case is byte-identical except for the vtable symbol (cases 0--158 at `sub_C60D30_0xc60d30.c:172--1125`, tail default at 1126--1129). The 16-byte phase object therefore has room for exactly `{vtable, allocator}` and no inline "minimum opt level" field.
+
+2. **The dispatch loop does not consult opt-level.** `sub_C64F70` (the phase iterator at `0xC64F70`, 276 lines) calls each phase's `isNoOp()` virtual (vtable slot `+0x10`) twice per iteration, and then unconditionally calls the phase's `execute()` virtual (vtable slot `+0x00`) via `LABEL_4`:
+
+   ```c
+   // sub_C64F70:86 (first isNoOp check)
+   if ( (*(unsigned __int8 (**)(__int64))(*(_QWORD *)v6 + 16LL))(v6) )
+     goto LABEL_4;             // skips "Before <phase>" diagnostic print
+   /* ... allocate & emit "Before <name>" diagnostic string ... */
+   LABEL_4:
+     (**(void (***)(__int64, __int64))v6)(v6, *a1);   // execute(ctx)
+   // sub_C64F70:162 (second isNoOp check)
+   if ( !(*(unsigned __int8 (**)(__int64))(*(_QWORD *)v6 + 16LL))(v6) )
+     /* ... allocate & emit "After <name>" diagnostic string ... */
+   ```
+
+   The `goto LABEL_4` branch bypasses *only* the diagnostic-string formatting block (lines 88--159); control still falls through to `execute()` at line 161. `isNoOp()` is therefore a **diagnostic-suppression flag**, not an execution gate. The pre-`execute` call at line 86 hides the "Before" string; the post-`execute` call at line 162 hides the "After" string; the `execute()` body itself runs every iteration regardless. See [Phase Manager -- Phase Dispatch Loop](phase-manager.md#phase-dispatch-loop----sub_c64f70) for the full annotated dispatch pseudocode and the `isNoOp` timing discussion.
+
+3. **The gate lives inside each `execute` body.** Phases that honour the `-O` level do so via an early-return prologue in their `execute()` thunk. The canonical pattern (instantiated ~82 times in the `0xC5F7xx`--`0xC60Bxx` range) is:
+
+   ```c
+   // sub_C60140 (representative execute thunk, 8 bytes + prologue)
+   void PhaseN::execute(ocg_ctx* ctx) {
+     if ( (int)sub_7DDB50(ctx) > 1 )    // opt_level > 1 (i.e. O2+)
+       sub_XXXXXX(ctx);                  // tail-call real implementation
+     // else: fall through -- phase was a no-op at this O-level
+   }
+   ```
+
+   `sub_7DDB50` (the opt-level accessor at `0x7DDB50`, 232 bytes) reads the cached 32-bit opt_level field from `ocg_ctx + 2104` (i.e. `ctx + 0x838`), but only when knob 499 is active; otherwise it returns `1`, capping effective behaviour at O1. The knob-499 kill-switch and the iteration-budget counter at `kv->state[35940]` are documented in [Optimization Levels -- Gate Accessor](../config/opt-levels.md#gate-accessor-sub_7ddb50).
+
+**Important corollary.** Because `execute()` is always invoked, every phase's timing record and pre-snapshot (written at `sub_C64F70:72--85`, before the first `isNoOp()` call) are also recorded. `--ftime` output therefore contains a row for all 159 phases in every compilation, including phases that immediately early-returned because the opt-level guard failed. Gated-off phases show near-zero elapsed time rather than being omitted.
+
+### Pseudocode for the full gate mechanism
+
+```c
+// OCG context fields referenced by the gate
+struct ocg_ctx {
+    // ...
+    void*      options_mgr;       // +0x680 (1664)  -- knob query vtable
+    int32_t    opt_level_cached;  // +0x838 (2104)  -- parsed -O level, 0..5
+    // ...
+};
+
+// sub_7DDB50 (0x7DDB50) -- opt-level accessor, called by each phase execute
+int getOptLevel(ocg_ctx* ctx) {
+    OptionsMgr* om  = ctx->options_mgr;           // [ctx+1664]
+    auto        set = om->vtable->setOption;      // [vtbl+152]
+    if (set == sub_67EB60) {
+        auto isSet = om->vtable->isOptionSet;     // [vtbl+72]
+        bool knob_499 = (isSet == sub_6614A0)
+            ? (om->state[35928] != 0)             // direct bss read
+            : isSet(om, 499);                     // virtual query
+        if (!knob_499)
+            return ctx->opt_level_cached;         // honour -O level
+        int used = om->state[35940];              // iteration counter
+        if (om->state[35936] > used) {            // budget not exhausted?
+            om->state[35940] = used + 1;
+            return ctx->opt_level_cached;         // honour -O level
+        }
+    } else if (set(om, 499, 1)) {
+        return ctx->opt_level_cached;             // honour -O level
+    }
+    return 1;                                     // fallback: clamp to O1
+}
+
+// Per-phase execute prologue (replicated in ~82 wrapper thunks)
+void Phase_execute(phase* self, ocg_ctx* ctx) {
+    if ((int)getOptLevel(ctx) > 1) {              // the gate: O2+ only
+        do_the_actual_work(ctx);                  // tail-call real pass
+    }
+    // else: phase is a runtime no-op for this compilation
+}
+
+// sub_C64F70 dispatch loop (pseudocode; isNoOp() only gates diagnostics)
+void PhaseManager::dispatch(int* idx, int n) {
+    for (int i = 0; i < n; i++) {
+        phase* p = phases[idx[i]];
+        append_timing_record(p);                  // unconditional
+        take_pre_snapshot();                      // unconditional
+        if (!p->isNoOp()) print("Before " + p->name);
+        p->execute(ctx);                          // ALWAYS called
+        if (!p->isNoOp()) print("After "  + p->name);
+    }
+}
+```
+
+### The matrix is regular (two-bucket structure at the wrapper layer)
+
+Scanning all phase wrappers in `0xC5F7xx`--`0xC60Bxx` (the per-phase `execute` thunks) for calls to `sub_7DDB50`:
+
+| Gate predicate                                            | Wrappers | Meaning |
+|-----------------------------------------------------------|----------|---------|
+| (none -- wrapper unconditionally calls implementation)    | ~50      | Phase runs at every `-O` level |
+| `(int)sub_7DDB50(ctx) > 1`                                | ~78      | Phase runs at O2, O3, O4, O5 |
+| `(unsigned int)sub_7DDB50(ctx) == 1 && knob_235` (or similar guarded O1 path) | 3--4 | Phase runs at O1 only when an auxiliary knob is set |
+| `> 1 \|\| (ctx+1424 == 199 && == 1)`                       | 1        | Phase 58 `GeneralOptimizeLate` -- O2+ **or** O1 with option-31 extended value 199 (see [General Optimize](general-optimize.md)) |
+
+**Zero layer-1 wrappers** use the thresholds `> 0` (would mean "O1+"), `> 2` ("O3+"), `> 3` ("O4+"), or `> 4` ("O5 only"). Fine-grained opt-level branching (e.g. `opt_level <= 2` in `sub_78DB70`, `<= 3` in `sub_914B40`, `> 2` in `sub_8FB5D0` / `sub_9FC860` / `sub_9F8C00`, `> 3` in `sub_137EE50`) happens **inside** the implementation bodies, *after* the wrapper has already let control through. Those internal decisions toggle sub-algorithms (e.g. forward vs. reverse scheduler pass, loop-peeling depth, remat strategy) rather than enabling or disabling the phase as a whole.
+
+**The phase-to-O-level activity matrix is therefore regular**: the layer-1 wrapper either runs the phase at every level, or gates it at exactly one threshold (`opt_level > 1`). Per-phase irregularity exists only at layer 2 -- inside the implementations that the wrappers call. This collapses the "159 phases × 6 opt-levels" table to a **two-column classification** at the outer dispatch layer:
+
+```
++------------------------------+-------------------------------------+
+|  Category A: always-run       |  Category B: O2+ only               |
+|  (no sub_7DDB50 in wrapper)   |  (wrapper: sub_7DDB50(ctx) > 1)     |
++------------------------------+-------------------------------------+
+|  * All reporting/dump phases  |  * GVN-CSE, LICM, rematerialization |
+|  * All validation phases      |  * Loop unrolling, software pipe    |
+|  * All legalization phases    |  * Predication / if-conversion      |
+|  * All Mercury/SASS encoding  |  * Switch/branch optimization       |
+|  * All register-allocation    |  * Sync-instruction optimization    |
+|  * All AdvancedPhase gates    |  * Barrier removal                  |
+|  * All pseudo/expansion phases|  * Backward copy propagation        |
+|  * Initial setup & cleanup    |  * Speculative hoisting, peephole   |
++------------------------------+-------------------------------------+
+```
+
+### Concrete -O0 vs -O3 phase lists
+
+Resolving the gate with `opt_level = 0` (i.e. `sub_7DDB50` returns 0) against the 159-phase pipeline and the Category-B wrappers identified above:
+
+**At -O0, the following phases early-return (runtime no-ops):**
+Phase 14 `DoSwitchOptFirst` (gate `sub_C5F720`), 15 `OriBranchOpt` (`sub_C5F950`), 22 `OriLoopUnrolling`, 24 `OriPipelining`, 26 `OriRemoveRedundantBarriers`, 28 `SinkRemat`, 30 `DoSwitchOptSecond` (`sub_C5FC80`), 38 `OptimizeNestedCondBranches` (`sub_C5FA70`), 49 `GvnCse`, 54 `OriDoRematEarly`, 58 `GeneralOptimizeLate` (`sub_C603E0`, unless option-31 override), 63 `OriDoPredication`, 69 `OriDoRemat`, 71 `OptimizeSyncInstructions`, 72 `LateExpandSyncInstructions`, 95 `SetAfterLegalization`, 99 `OriDoSyncronization`, 100 `ApplyPostSyncronizationWars`, 110 `PostSchedule`, 115 `AdvancedScoreboardsAndOpexes`, and ~60 other Category-B phases. At `-O0` the scheduling subsystem *does* still run phase 116 `ProcessO0WaitsAndSBs`, which performs the conservative-scoreboard insertion that makes O0 code actually executable -- phase 116 is itself a Category-A wrapper that dispatches to `sub_C5E2A0` only when the target architecture has `sm_version > 0x3FFF`.
+
+**At -O3 (the default), every Category-A wrapper runs**, and every Category-B wrapper also runs because `sub_7DDB50` returns `3` which satisfies `> 1`. The difference between -O2 and -O3 at the wrapper level is therefore **zero phases** -- both levels activate the same 159 wrappers. The -O2/-O3 distinction happens entirely inside the implementation bodies (e.g. scheduling direction in `sub_8D0640`, which branches on `opt_level > 2`). The same is true for -O3 vs. -O4 vs. -O5: identical layer-1 wrapper activation, different internal algorithm selection. Only the `-O0` and `-O1` thresholds produce layer-1 visible skips.
+
+This two-tier design explains why the wiki's "O-Level" column in the 159-phase table below is sparse: most phases have no entry because they always run (Category A) or because the visible O-level branching is buried inside a layer-2 implementation and does not show up at the phase wrapper at all.
+
+See [Optimization Levels](../config/opt-levels.md) for the confirmed per-phase threshold list, the detailed `sub_7DDB50` accessor breakdown, knob 499 kill-switch semantics, the NvOpt recipe system, and the scheduler/RA-specific opt-level interactions.
 
 ---
 
@@ -295,8 +426,8 @@ Branch/switch optimization, loop canonicalization, strength reduction, software 
 
 | # | Bin# | Phase Name | Category | O-Level | Description | Detail Page |
 |---|---|---|---|---|---|---|
-| 14 | 16 | `DoSwitchOptFirst` | Optimization | **> 0** | Optimizes switch statements: jump table generation, case clustering (1st pass) | [Branch & Switch](branch-switch.md) |
-| 15 | 17 | `OriBranchOpt` | Optimization | **> 0** | Branch folding, unreachable block elimination, conditional branch simplification | [Branch & Switch](branch-switch.md) |
+| 14 | 16 | `DoSwitchOptFirst` | Optimization | **> 1** | Optimizes switch statements: jump table generation, case clustering (1st pass); wrapper `sub_C5F720` | [Branch & Switch](branch-switch.md) |
+| 15 | 17 | `OriBranchOpt` | Optimization | **> 1** | Branch folding, unreachable block elimination, conditional branch simplification; wrapper `sub_C5F950` | [Branch & Switch](branch-switch.md) |
 | 16 | 18 | `OriPerformLiveDeadFirst` | Analysis |  | Full liveness analysis + dead code elimination (1st of 4 major instances) | [Liveness](liveness.md) |
 | 17 | 19 | `OptimizeBindlessHeaderLoads` | Optimization |  | Hoists and deduplicates bindless texture header loads |  |
 | 18 | 20 | `OriLoopSimplification` | Optimization | **4--5** | Canonicalizes loops: single entry, single back-edge, preheader insertion; aggressive loop peeling at O4+ | [Loop Passes](loop-passes.md) |
@@ -311,7 +442,7 @@ Branch/switch optimization, loop canonicalization, strength reduction, software 
 | 27 | 30 | `AnalyzeUniformsForSpeculation` | Analysis |  | Identifies uniform values safe for speculative execution | [Uniform Regs](uniform-regs.md) |
 | 28 | 31 | `SinkRemat` | Optimization | **> 1 / > 4** | Sinks instructions closer to uses and marks remat candidates; O2+: basic; O5: full cutlass | [Rematerialization](rematerialization.md) |
 | 29 | 33 | `GeneralOptimize` | Optimization |  | Compound pass: copy prop + const fold + algebraic simplify + DCE (mid-early) | [GeneralOptimize](general-optimize.md) |
-| 30 | 34 | `DoSwitchOptSecond` | Optimization | **> 0** | Second switch optimization pass after loop/branch transformations | [Branch & Switch](branch-switch.md) |
+| 30 | 34 | `DoSwitchOptSecond` | Optimization | **> 1** | Second switch optimization pass after loop/branch transformations; wrapper `sub_C5FC80` | [Branch & Switch](branch-switch.md) |
 | 31 | 35 | `OriLinearReplacement` | Optimization |  | Replaces branch-heavy patterns with linear (branchless) sequences |  |
 | 32 | 36 | `CompactLocalMemory` | Optimization |  | Compacts local memory allocations by eliminating dead slots and reordering |  |
 
@@ -326,7 +457,7 @@ GVN-CSE, reassociation, shader constant extraction, CTA/VTG expansion, argument 
 | 35 | 40 | `OriHoistInvariantsEarly` | Optimization |  | Loop-invariant code motion: hoists invariant computations out of loops (early) | [Loop Passes](loop-passes.md) |
 | 36 | 42 | `EmitPSI` | Lowering |  | Emits PSI (Pixel Shader Input) interpolation setup for graphics shaders |  |
 | 37 | 43 | `GeneralOptimizeMid` | Optimization |  | Compound pass: copy prop + const fold + algebraic simplify + DCE (mid) | [GeneralOptimize](general-optimize.md) |
-| 38 | 44 | `OptimizeNestedCondBranches` | Optimization | **> 0** | Simplifies nested conditional branches into flatter control flow | [Branch & Switch](branch-switch.md) |
+| 38 | 44 | `OptimizeNestedCondBranches` | Optimization | **> 1** | Simplifies nested conditional branches into flatter control flow; wrapper `sub_C5FA70` | [Branch & Switch](branch-switch.md) |
 | 39 | 45 | `ConvertVTGReadWrite` | Lowering |  | Converts vertex/tessellation/geometry shader read/write operations |  |
 | 40 | 46 | `DoVirtualCTAExpansion` | Lowering |  | Expands virtual CTA operations into physical CTA primitives |  |
 | 41 | 47 | `MarkAdditionalColdBlocks` | Analysis |  | Marks basic blocks as cold based on heuristics and profile data | [Hot/Cold](hot-cold.md) |
