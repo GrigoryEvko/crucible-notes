@@ -388,7 +388,201 @@ The region 0x89C550--0x8BE320 contains 17+ specialized scheduling strategies, ea
 | `sub_8BCFA0` | 6.8 KB | Warp schedule optimization | Warp-level yield tuning |
 | `sub_8BE320` | 25 KB | Complex scheduling pass | Multi-strategy combined pass |
 
-These variants are selected based on code characteristics (loop structure, tensor operations, function size) and optimization level.
+### Strategy Selection
+
+The scheduler selects strategies based on code features detected during pre-scheduling analysis (`sub_8CBAD0`). The decision cascades as follows:
+
+```
+function SelectStrategy(BB, scheduler, arch):
+    if BB.is_loop_body AND scheduler.opt_level >= 3:
+        if BB.has_tensor_ops (scheduler+384 == 1):
+            return TensorScheduler         // sub_8B8900
+        if BB.trip_count_known AND BB.instr_count <= 256:
+            swpipe_ii = ComputeII(BB)      // initiation interval
+            if swpipe_ii > 0 AND swpipe_ii < BB.instr_count:
+                return SoftwarePipeline    // sub_8B9390
+        return LoopScheduler               // sub_8BAAE0
+
+    if arch <= sm_52 AND scheduler+328 > 0:  // dual-issue benefit > 0
+        return DualIssueScheduler          // sub_8B77C0
+
+    if BB.instr_count <= 12:
+        return PermuteSchedule             // sub_8B4590  (exhaustive)
+
+    if scheduler.mode == ReduceReg:
+        return PressureOptimized           // sub_8B6D60
+    if scheduler.mode == ILP:
+        return LatencyOptimized            // sub_8B5400
+
+    return DefaultListSchedule             // sub_89C550 with backtracking
+```
+
+The backtracking, dual-issue, tensor, and software pipelining strategies are the most complex. Skeleton pseudocode for each follows.
+
+### Backtracking Scheduler (`sub_8B1190`, 16 KB)
+
+Extends standard list scheduling with depth-bounded rollback. When a scheduled instruction causes a resource conflict or pressure spike, the scheduler undoes previous decisions and tries alternatives.
+
+```
+function ScheduleWithBacktrack(BB, dag, ready_list):
+    // Phase 1: Allocate state snapshots -- 64-byte slots x 773 max depth
+    snapshot_buf = Alloc(773 * 64)         // 49408 bytes
+    for i in 0..772:
+        snapshot_buf[i].sched_id = -1      // unscheduled marker
+        memset(snapshot_buf[i].state, 0, 52)
+
+    history = Alloc(773 * 36)              // per-step resource delta
+    rejection_set = Alloc(35 * 16)         // bitvector of rejected candidates
+    committed = []
+    depth = 0
+    max_backtrack_depth = min(10, BB.instr_count / 4)
+
+    while ready_list is not empty:
+        best = SelectBestInstruction(ready_list, rejection_set[depth])
+        if best == NULL:
+            // All candidates rejected at this depth -- backtrack
+            if depth == 0 OR depth > max_backtrack_depth:
+                // Cannot backtrack further; force-commit cheapest
+                best = ForcePick(ready_list)
+                CommitInstruction(best, committed)
+                continue
+            // Rollback: restore snapshot, add last committed to rejection set
+            depth -= 1
+            RestoreSnapshot(snapshot_buf[depth])
+            rejection_set[depth] |= (1 << committed.pop().slot_id)
+            continue
+
+        // Tentatively schedule
+        SaveSnapshot(snapshot_buf[depth], scheduler_state)
+        cost = EmitInstruction(best, dag)
+        if cost.stalls > threshold OR cost.pressure > budget:
+            // Reject this choice, try next candidate at same depth
+            RestoreSnapshot(snapshot_buf[depth])
+            rejection_set[depth] |= (1 << best.slot_id)
+            continue
+
+        // Accept
+        CommitInstruction(best, committed)
+        depth += 1
+        rejection_set[depth] = 0           // clean slate for next position
+```
+
+### Dual-Issue Scheduler (`sub_8B77C0`, 15 KB)
+
+Pairs compatible instructions into dual-issue slots on architectures that support it (sm_50/Maxwell, sm_52). The outer loop walks scheduling slots; the inner loop finds a co-issuable partner via the dependency rule table.
+
+```
+function DualIssueSchedule(scheduler, slot_start, slot_end, phase_mask):
+    for slot in slot_start..slot_end:
+        if not (phase_mask & (1 << slot)):
+            continue
+        // Iterate candidates in this slot's ready bucket
+        bucket = scheduler.dep_table[slot]     // linked list from sub_8A4820
+        for each candidate in bucket:
+            if candidate.id == -1 OR candidate.id == current_instr:
+                continue
+            pair_record = scheduler.slot_array[candidate.id * 96]
+            // Check pairing compatibility (sub_A9CDE0 / sub_A9CF90)
+            if not IsDualIssuable(pair_record):
+                continue
+            if HasDataDependency(candidate, last_scheduled):
+                continue
+            // Found valid pair -- mark both for co-issue
+            MarkDualIssue(pair_record, slot)
+            scheduler.paired_count += 1
+            break
+    FinalizeSchedule(scheduler)
+```
+
+### Tensor Scheduler (`sub_8B8900`, 12 KB)
+
+Groups HMMA/BMMA/BGMMA tensor core instructions into contiguous blocks, respecting accumulator register lifetimes. Iterates over scheduling slots using a bitmask of active tensor groups.
+
+```
+function TensorSchedule(ctx, group_mask, instr):
+    phase_count = ctx+120                      // number of tensor phases
+    if phase_count < 0:
+        return
+
+    for phase in 0..phase_count:
+        slot_bit = 1 << phase
+        if (slot_bit & group_mask) == 0:
+            continue
+        // Walk the tensor operation list for this phase
+        group_head = ctx.slot_array[phase * 64]
+        entry = group_head.first_op
+        while entry != group_head.sentinel:
+            node = LookupSchedNode(ctx.dag, entry.instr_id)
+            if node == ctx.exit_node:
+                continue
+            // Check if this is an HMMA/BMMA/BGMMA via opcode class at node+166
+            if node.is_tensor_op:
+                // Scan accumulator def/use bitvector (node+104..node+136)
+                for each acc_reg in node.acc_def_bits:
+                    // Verify no intervening non-tensor use of acc_reg
+                    dep_ok = CheckTensorDep(ctx.dep_graph, instr, acc_reg)
+                    if dep_ok AND word(instr+12) != 4:  // not a barrier
+                        group_mask |= slot_bit
+            // Check write-after-read set (node+120..node+136)
+            if node.has_war_deps:
+                // scan WAR bitvectors identically to accumulator defs
+                ...process WAR set with same pattern...
+            entry = entry.next
+```
+
+### Software Pipelining (`sub_8B9390`, 23 KB)
+
+Overlaps successive loop iterations by interleaving instructions from different iterations into a single schedule. Computes the initiation interval (II) and maps instructions to pipeline stages.
+
+```
+function SoftwarePipeline(ctx, loop_desc, stage_mask):
+    trip_count = loop_desc+28                  // extracted from loop analysis
+    prologue_start = trip_count * 24
+
+    // Phase 1: Process pre-existing cross-iteration dependencies
+    if ctx+48 (has_cross_iter_deps):
+        for stage in loop_desc.first_stage .. loop_desc.last_stage:
+            iter = IteratorInit(ctx+56, stage)
+            while iter.valid:
+                if iter.trip_distance > 0:
+                    dep_node = LookupNode(ctx.dag, trip_count)
+                    if dep_node AND dep_node.has_successors:
+                        // Register cross-iteration edge in DAG
+                        for each succ in dep_node.successors:
+                            sub_8B5E20(ctx.slot[succ.id * 96 + 24], stage)
+                iter.advance()
+
+    // Phase 2: Compute per-stage schedule with register class partitioning
+    num_stages = ctx+120
+    has_epilogue = ctx+140
+    if has_epilogue:
+        num_stages += 1
+
+    for stage in num_stages .. (ctx+128 + (ctx+128 == 0) - 1):
+        if not (stage_mask & (1 << stage)):
+            continue
+        slot_base = ctx+264 + (stage << 6)
+        first_instr = slot_base.first_op
+        if first_instr == slot_base.sentinel:
+            continue
+        // Extract instruction's pipeline class from dep info
+        dep_info = *(instr+112)
+        flags = byte(dep_info+48)
+        if (flags & 0x10) AND (flags >> 5) == stage:
+            // Modulo-scheduled position: emit at this stage
+            reg_range = LookupRegRange(ctx+8, dep_info+20)
+            sub_8B9230(ctx, loop_desc, stage_bit)    // fast-path emit
+        else if (flags & 0x01) AND ((flags >> 1) & 7) == stage:
+            // Cross-iteration carried dependency
+            reg_range = LookupRegRange(ctx+8, dep_info+20, offset=40)
+            // Phase 3: Partition into register classes (7 classes)
+            class = ClassifyRegister(ctx+16, reg_offset)
+            // class boundaries: [0], [1], [2], [3], [4], [5], [6+]
+            sub_8B81F0(ctx, loop_desc, instr, class,
+                       reg_offset - class_base, 1, stage)
+```
+
+The 7-class register partitioning (visible in the cascade of comparisons against `ctx+16[0..6]`) maps instruction pipeline slots to hardware register file banks, ensuring the software-pipelined loop body does not exceed any single bank's capacity.
 
 ## Hardware Latency Profiles
 
@@ -424,6 +618,41 @@ The warp-level hardware profile (`sub_8E4400`) maps architecture IDs to dispatch
 | > 36863 | 16 | 240 | sm_90+ (Hopper, Blackwell) |
 
 Sub-architecture variants (stored at profile offset +26) are assigned by specific SM version codes: 8193, 20481, 24576, 28674--28677, 32768, 36864--36869.
+
+### Representative Per-SM Latency Values
+
+The following table shows representative scheduling latencies extracted from the per-SM dependency rule tables (`per_sm_dependency_rules`). Each row is a scheduling class (unit\_id) corresponding to a key instruction category. Values are the `latency` field -- the scheduler's static cycle cost used for DAG edge weights and stall-count computation. The `tp_inv` column gives the inverse throughput (issue-to-issue delay for back-to-back instructions of the same class); 0 means fully pipelined (one per cycle).
+
+| Instruction class | Sched class | sm\_70 | sm\_80 | sm\_86 | sm\_89 | sm\_90 | sm\_100 | sm\_103 |
+|---|---|---|---|---|---|---|---|---|
+| **ALU** (IADD3, predicate) | 2 | 17 / 0 | 17 / 0 | 17 / 0 | 17 / 0 | 17 / 0 | 17 / 0 | 17 / 0 |
+| **ALU** (IMAD, LOP3, SHF) | 3 | 17 / 0 | 17 / 0 | 17 / 0 | 17 / 0 | 17 / 0 | 17 / 0 | 17 / 0 |
+| **FP32** (FFMA, FADD) | 11 | 17 / 0 | 17 / 0 | 17 / 0 | 17 / 0 | 17 / 0 | 17 / 0 | 17 / 0 |
+| **FP64** (DFMA, DADD) | 4 | 42 / 15 | 42 / 15 | 42 / 15 | 42 / 15 | 42 / 15 | 42 / 15 | 42 / 15 |
+| **FP64 pair** (wide DFMA) | 683 | 70 / 31 | 70 / 31 | 70 / 31 | 70 / 31 | 70 / 31 | 70 / 31 | 70 / 31 |
+| **Shared mem** (LDS/STS) | 20 | 28 / 5 | 28 / 5 | 28 / 5 | 28 / 5 | 28 / 5 | 28 / 5 | 28 / 5 |
+| **Global mem** (LDG/STG) | 22 | 28 / 5 | 28 / 5 | 28 / 5 | 28 / 5 | 28 / 5 | 28 / 5 | 28 / 5 |
+| **Texture** (TEX, TLD) | 28 | 74 / 33 | 72 / 34 | 74 / 33 | 74 / 33 | 74 / 33 | 72 / 34 | 74 / 33 |
+| **SFU** (MUFU: RCP, RSQ) | 52 | 48 / 19 | 13 / 19 | 48 / 19 | 48 / 19 | 48 / 19 | 46 / 19 | 48 / 19 |
+| **Tensor** (HMMA/BMMA) | 13 | -- | -- | -- | -- | -- | 46 / 19 | 46 / 19 |
+| **WGMMA** (warpgroup MMA) | 745 | 65 / 28 | -- | -- | -- | -- | 65 / 28 | 65 / 28 |
+| **DMMA** (FP64 tensor) | 118 | 49 / 19 | 15 / 19 | 14 / 19 | 15 / 19 | 14 / 19 | 15 / 19 | 15 / 19 |
+| **Branch** (BRA, JMP) | 130 | 22 / 2 | 22 / 2 | 22 / 2 | 22 / 2 | 22 / 2 | 22 / 2 | 22 / 2 |
+| **Conversion** (I2F, F2I) | 72 | 31 / 12 | 5 / 9 | 31 / 12 | 31 / 12 | 31 / 12 | 31 / 12 | 31 / 12 |
+| **Uniform ALU** (UIMAD) | 15 | 255 / 35 | 255 / 35 | 22 / 2 | 22 / 2 | 22 / 2 | 22 / 2 | 22 / 2 |
+
+*Format: latency / tp\_inv. "--" means the class is absent (instruction unsupported on that SM). Latency 255 is the sentinel for "unsupported" -- the scheduler treats it as maximum stall.*
+
+Key observations from the extracted data:
+
+- **Integer and FP32 ALU latencies are constant across all architectures** (17 cycles, fully pipelined). The scheduler treats these as single-cycle-issue, short-latency operations.
+- **FP64 latency (42) is ~2.5x FP32 (17)**, with inverse throughput 15 vs 0 -- reflecting the hardware rate limiter on double-precision pipes.
+- **Memory latencies (28 cycles) are identical for shared and global memory** in the scheduler's static model. The actual L2/DRAM latency is handled dynamically by the scoreboard; the scheduler uses this as a minimum stall estimate.
+- **Texture is the most expensive non-tensor operation** (72--74 cycles), with inverse throughput 33--34 reflecting the deep texture pipeline.
+- **sm\_80 shows anomalous low values for SFU (13) and conversion (5)** compared to other SMs. This is the base sm\_80 profile; the extended sm\_80 profile (`sub_8E7B40`) applies corrections.
+- **Uniform datapath (class 15) transitions from unsupported (255) on sm\_7x to fully functional (22/2) on sm\_86+**, matching the hardware introduction of the uniform execution unit in Ada Lovelace.
+- **Tensor core classes 13/14 only appear in sm\_100+ dependency rules**, reflecting the Blackwell scheduling model's explicit tensor pipe tracking. Earlier SMs use the WGMMA/HMMA scheduling classes (744, 745, 759) instead.
+- **WGMMA (class 745) has latency 65 and tp\_inv 28** on architectures that support it (sm\_70 uses this slot for a different purpose; the values are meaningful only on sm\_90+/sm\_100+).
 
 See [Latency Model](latency-model.md) for per-opcode latency tables and functional unit mapping.
 
