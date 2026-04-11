@@ -68,7 +68,7 @@ SASS instructions use a 3-level opcode hierarchy packed into the first 32 bits o
 
 The 128-bit format uses 6 initial `sub_7B9B80` calls (including one at offset 0x84 for the extended flag). The 64-bit format uses only 5 (no 0x84 call). This is the reliable way to distinguish the two during analysis.
 
-The maximum variant value observed is 0x2F (47 decimal), so each major opcode can have up to 48 sub-operations, though most have far fewer.
+The maximum OPCODE_MINOR value observed is 0xA2 (162 decimal) for FFMA. The 8-bit field can theoretically encode 256 variants, though most instructions use fewer than 40.
 
 ## Encoder Template
 
@@ -121,6 +121,36 @@ int64_t encode_OPCODE_VARIANT(int64_t a1, int64_t a2) {
     *(int*)(a1 + 152) = 8 * bit_position;
 }
 ```
+
+### Concrete Constants for the Top-5 Encodings
+
+The table below instantiates the template with binary-verified values from five representative encoder functions (SM100, variant 0 unless noted). Each row was extracted from a decompiled handler whose VA is confirmed in the `sass_handler_dispatch_1` dispatch table.
+
+| Field | FFMA (64b) | IMAD (128b) | IADD3 (128b) | MOV.v3 (128b) | LOP3 (64b) |
+|---|---|---|---|---|---|
+| **handler VA** | `0xCC2BE0` | `0xEA7880` | `0xC92210` | `0xE4B390` | `0xCB9DD0` |
+| **opcode_master index** | 11 | 1 | 3 | 19 | 6 |
+| **FORMAT_CODE** | 1 | 2 | 2 | 2 | 1 |
+| **OPCODE_CLASS** | 0x54 (84) | 0x39 (57) | 0x4E (78) | 0x4F (79) | 0x0E (14) |
+| **OPCODE_MINOR** | 0 | 0 | 0 | 3 | 0 |
+| **FORMAT_ID** | 0x0B (11) | 1 | 3 | 0x13 (19) | 6 |
+| **NUM_SOURCE_OPERANDS** | 2 | 5 | 6 | 4 | 2 |
+| **xmmword VA** | `0x23F2238` | `0x23F1CE8` | `0x23F1DF8` | `0x23F2678` | `0x23F1F90` |
+| **descriptor label** | 64b_D | (custom) | 128b_0x03 | 128b_0x13 | 64b_C |
+| **slot_sizes[0..1]** | [10, -1] | [8, 17] | [10, 17] | [12, 17] | [8, -1] |
+| **active slots** | 1 | 2 | 2 | 2 | 1 |
+| **Phase 6 operands** | R@0x50, I@0x60 | R@0x40, P@0x50, R@0x60, I@0x70, I@0x88 | P@0x50, R@0x60, R@0x70, I@0x88, R@0x98, R@0xA8 | R@0x60, R@0x70, R@0x88, R@0x98 | R@0x40, I@0x50 |
+| **reuse flag (Phase 4)** | 0 | 1 | 0 | 0 | 0 |
+
+Notation: R = `sub_7BC030` (register), I = `sub_7BCF00` (immediate/cbuf), P = `sub_7BC5C0` (predicate). The hex value after `@` is the bit offset parameter.
+
+Key observations from these five encodings:
+
+- **OPCODE_CLASS is not the opcode_master index.** FFMA (index 11) encodes as OPCODE_CLASS 0x54; IMAD (index 1) as 0x39. The mapping is a non-trivial hardware-specific remapping.
+- **The same instruction uses different OPCODE_CLASS values across variants.** FFMA var=0 uses 0x54, var=2 uses 0x21, var=3 uses 0x12. The OPCODE_CLASS encodes a (class, data-type) tuple, not just the mnemonic.
+- **FORMAT_ID is constant across all variants of an instruction.** All 18 observed FFMA variants use FORMAT_ID=0x0B; all MOV variants use 0x13. This confirms FORMAT_ID selects the operand format template, not the opcode variant.
+- **IMAD uses a non-standard format descriptor** at `0x23F1CE8` (136 bytes before the first named descriptor at `0x23F1D70`). Its slot layout `[8, 17]` with `slot_types[1]=30` is unique among the 38 named descriptors.
+- **64-bit instructions (FFMA, LOP3) have only 1 active operand slot** in the format descriptor, while 128-bit instructions use 2 slots. The first slot holds register-class metadata; the second holds constant-buffer/immediate layout.
 
 ## Operand Type Encoders
 
@@ -1578,6 +1608,54 @@ Knob-derived flags control reordering aggressiveness:
 - Knob at target offset +7488: enable general reordering
 - All reordering disabled when `*(ctx+1584)+372 == 12288` (specific regalloc config)
 
+**Floating-point cost heuristic.** The orchestrator (`sub_1233D70`, lines 178--225) computes four weight parameters from the target descriptor and passes them to Pass B as doubles. The base weights are hardcoded; two knob-controlled overrides can replace them:
+
+```
+// Orchestrator weight setup (sub_1233D70):
+//
+// Weight pair 1 -- memory instruction priority
+//   base:  w_mem_intercept = 1.8,  w_mem_slope = -0.8
+//   knob at target+7200:  0 = use base,  1/2 = override to (0.0, 1.0),
+//                          3 = read custom intercept from target+7208,
+//                              slope = 1.0 - custom_intercept
+//
+// Weight pair 2 -- ALU instruction priority
+//   base:  w_alu_intercept = 3.2,  w_alu_slope = -2.2
+//   knob at target+7560:  0 = use base,  1/2 = override to (0.0, 1.0),
+//                          3 = read custom intercept from target+7568,
+//                              slope = 1.0 - custom_intercept
+//
+// Normalization (applied to slopes only):
+//   min_regs = (int)vtable_call(ctx+1584, +720)   // minimum register count
+//   max_regs = (int)vtable_call(ctx+1584, +768)   // maximum register count
+//   range    = (double)(max_regs - min_regs)
+//   w_mem_slope_norm = w_mem_slope / range          // passed as a2 to Pass B
+//   w_alu_slope_norm = w_alu_slope / range          // passed as a3 to Pass B
+```
+
+Pass B stores the normalized weights in the state object at double offsets +13 through +19 (byte offsets +104 through +152) and evaluates a quadratic-in-N cost at two call sites to decide whether an instruction group should be emitted or deferred:
+
+```
+// Cost function (sub_122F650, lines 3329-3330 and 3233-3236):
+//
+//   cost(N) = N * ((N - min_regs) * slope + intercept)
+//
+// where N is the current instruction count in the emission window.
+// Expanding:  cost(N) = slope * N^2 + (intercept - slope * min_regs) * N
+//
+// With default weights and min_regs = R_min, max_regs = R_max:
+//
+//   Memory cost:  cost_mem(N) = N * ((N - R_min) * (-0.8 / (R_max - R_min)) + 1.8)
+//   ALU cost:     cost_alu(N) = N * ((N - R_min) * (-2.2 / (R_max - R_min)) + 3.2)
+//
+// The cost is compared against the accumulated emission count
+// (pending + tree_rebalance result from sub_1229BD0).
+// If accumulated count <= floor(cost), the group is accepted into
+// the emission window; otherwise emission is deferred.
+```
+
+Pass B also reads two additional knob-derived constants: a load-density multiplier from target+7128 (default 1.08, knob mode 3 reads custom from +7136) and a block-size threshold from target+7272 (default 32.0, knob mode 3 reads custom from +7280). The threshold is used as `block_size_limit * 7.0` (default 224) to gate a store-dependency scan that adds extra emission slots when a block exceeds the threshold.
+
 Pass B also maintains a red-black tree structure for the emission schedule, with standard left/right/parent pointers at node offsets 0, 8, 16.
 
 ### Differences from SM100
@@ -1586,7 +1664,7 @@ Pass B also maintains a red-black tree structure for the emission schedule, with
 |--------|---------|-------------------|
 | Pre-encode reordering | Present (sub_122AD60 + sub_122F650) | Absent -- scheduling integrated into own pass |
 | Instruction classification | 5-category scheme (branch/load/store/ALU/other) | 370-category opcode dispatch via megafunctions |
-| Cost model | Floating-point heuristic (4 tunable weights) | Table-driven via hardware profile records |
+| Cost model | Quadratic heuristic: `N * ((N - R_min) * slope + intercept)` with weights (1.8, -0.8, 3.2, -2.2) | Table-driven via hardware profile records |
 | Liveness tracking | 8 bitvectors per block | Handled in scheduling pass, not in encoding |
 | Knob control | Knobs 103, 106, 218, 230, 487, 501 | Different knob set for Blackwell scheduler |
 | Register class validation | sub_91BF30/sub_91E390 per-move check | Per-instruction class check at encoding time |
@@ -1603,7 +1681,7 @@ The SM89/90 pair operates entirely at the Mercury IR level and produces no packe
 | `sub_122F650` | 105 KB | 3,917 | **sm89_emission_order** -- scheduling-aware emission ordering | HIGH |
 | `sub_122AA30` | ~3 KB | 186 | **local_reorder** -- within-block instruction interleaving | HIGH |
 | `sub_1227D90` | ~9 KB | 522 | **instruction_reinsert** -- unlink + reinsert at new position | HIGH |
-| `sub_122F1E0` | ~6 KB | 330 | **scheduling_heuristic** -- cost-function comparison for emission order | MEDIUM |
+| `sub_122F1E0` | ~6 KB | 330 | **scheduling_heuristic** -- RB-tree lookup/delete for cost-driven emission order | HIGH |
 | `sub_1228670` | ~0.5 KB | 30 | **instruction_classify** -- 5-category classifier (returns 0--4) | CERTAIN |
 | `sub_1228EF0` | ~0.5 KB | 38 | **is_special** -- predicate: types 9/5/12 return false | CERTAIN |
 | `sub_1226E80` | ~0.3 KB | 22 | **list_prepend** -- insert instruction at list head | CERTAIN |
