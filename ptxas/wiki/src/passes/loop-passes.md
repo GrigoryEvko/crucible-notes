@@ -295,14 +295,42 @@ function RunUnrolling(ctx):
 
         // ── Step F: body analysis ──
         body_info = ScanLoopBody(ctx, block, latch)  // sub_138E3E0
-        // body_info contains: tex_count, body_size, foldable_ldc_count,
-        //                     has_cross_edges, mem_count
+        // body_info 68-byte struct (sub_138C900 accumulates per instruction):
+        //   +0  body_size            instruction count (++per insn)
+        //   +4  foldable_ldc_count   constant loads foldable after unrolling
+        //   +16 tex_count            texture/surface instructions
+        //   +24 call_weight          9 per inlinable single-block call
+        //   +28 mem_flag_count       instructions with memory flag bit 6
+        //   +32 mem_count            memory access instructions
+        //   +36 load_count           qualifying load instructions
+        //   +40 store_count          qualifying store instructions (opcode 18/12)
+        //   +44 has_cross_edges      byte: set if CFG edge leaves loop
+        //   +52 branch_count         internal branches (opcode != 18)
+        //   +56 single_exit_reg      byte: exit register analysis flag
+        //   +60 killed_def_count     register defs killed inside body
+        //   +64 inner_nounroll_cnt   inner blocks that are nounroll
         if body_info.has_cross_edges:    continue
 
         // ── Step G: budget computation ──
+        // Knob 898 controls the penalty scale for inner nounroll blocks.
+        // Access pattern: profile_obj+64728 (type byte), +64736 (double value).
+        // Default 0.5 encoded as IEEE-754 0x3FE0000000000000.
         budget_scale = QueryKnobDouble(898, 0.5)     // default 0.5
-        scaled_body = (int)(budget_scale * body_size)
-        remaining = total_budget - body_size - scaled_body - ...
+        nounroll_penalty = (int)(budget_scale * body_info.inner_nounroll_cnt)
+        remaining = body_info.call_weight
+                  + body_info.body_size
+                  - body_info.foldable_ldc_count
+                  - body_info.killed_def_count
+                  - nounroll_penalty
+        //
+        // Binary: v196 = v224 + (DWORD)v221 - HIDWORD(v221)
+        //                     - HIDWORD(v229) - v61
+        // where v61 = (int)(budget_scale * v230)
+        //
+        // 'remaining' is an adjusted cost metric: higher means more expensive
+        // to unroll.  Used later (Step J) as rejection threshold against
+        // 10 * tex_count, and in the factor-selection loop (Step K) to
+        // bound the maximum unroll factor.
 
         // ── Step H: per-block override check ──
         if override_string:
@@ -322,29 +350,106 @@ function RunUnrolling(ctx):
             if 10 * body_info.tex_count < remaining:
                 Reject(block, 7); continue
 
-        // ── Step K: factor selection ──
+        // ── Step K: factor selection (three budget paths) ──
         if force_unroll:
             factor = 1 << ctx.force_factor           // power-of-2 override
         else if known_trip_count:
+            // Full-unroll gate uses UnrollFullInstLimit (hardcoded 200 in
+            // binary at LABEL_160), NOT UnrollBudget (140).
+            // Three sub-paths depending on trip_count magnitude:
             factor = trip_count
-            // Budget-constrain: while factor * body_cost > UnrollBudget:
-            //     factor--
-            if factor > 4 and trip_count == 1:
-                factor &= ~3                         // round to mult-of-4
-            if factor <= 1:
-                Reject(block, 12); continue
-        else:
-            if body_size <= 49 and body_info.tex_count > 0:
-                factor = 2                           // conservative default
+            if trip_count <= 2:                       // (v97 - 1) <= 1
+                // Path A: small trip count -- attempt full unroll.
+                // Test: 200 / trip_count > body_cost  (lines 652-653)
+                if 200 / trip_count <= body_cost:
+                    factor = 4 / trip_count          // too large; reduced factor
             else:
-                factor = max(1, UnrollBudget / body_cost)
+                // Path B: trip count > 2 -- factor forced to 0.
+                factor = 0                           // will reject or defer to K2
+            if factor <= 0:
+                Reject(block, 12); continue
+            // Note: mult-of-4 rounding (factor &= ~3 when factor > 4 and
+            // trip_count == 1) is applied later in the profitability evaluator
+            // (sub_1387980 / Step N budget loop), not in initial selection.
+        else:                                        // unknown trip count
+            // Sub-case K1: compute tex budget threshold
+            tex_inst = body_info.tex_inst_count       // DWORD2(v226)
+            if QueryKnob(900):                        // LoopUnrollNumInstTex
+                tex_budget = ctx.LoopUnrollNumInstTex  // ctx+224
+            else:
+                tex_budget = min(5 * tex_inst + 22, 100)
+
+            // Sub-case K2: small tex-heavy body (body_size<=49, tex_count>0)
+            if body_info.tex_count > 0 and remaining <= 49:
+                if is_hot and is_multiblock:
+                    if 10 * body_info.tex_count >= remaining:
+                        factor = 2                    // tex-dominated small loop
+                    else:
+                        // fall through to clamp logic (LABEL_152)
+                        if factor > 2: factor = 2
+                else:
+                    // not hot+multiblock: use UnrollUnknownCount
+                    factor = 4                        // default UnrollUnknownCount
+                    need_epilogue = false
+
+            // Sub-case K3: large body or no textures
+            else:
+                if tex_budget <= remaining:
+                    // body fits within tex budget -> clamp logic
+                    if factor > 2: factor = 2
+                else:
+                    // body exceeds tex budget -> use UnrollUnknownCount
+                    factor = 4                        // default UnrollUnknownCount
+                    need_epilogue = false
+
+            // Sub-case K4: final allow_non_innermost fallback
+            // If factor still 0 after above and allow_non_innermost is set:
+            //     factor = 2
 
         // ── Step L: knob override ──
         if QueryKnob(429):                           // LoopUnrollFactor INT
             factor = GetKnobInt(429)
 
         // ── Step M: IV analysis ──
-        iv_info = AnalyzeIV(ctx, latch)              // sub_1385950
+        // AnalyzeIV (sub_1385950): traces SSA def chain from a source operand
+        // of the latch comparison, pattern-matching IADD3(199)/ISETP(201)/LEA(78)
+        // to locate the canonical IV increment instruction.  Returns it or NULL.
+        //
+        // function AnalyzeIV(ctx, operand, cmp_type):        // sub_1385950
+        //   if operand.type != REG: return NULL              // bits 28-30 must be 1
+        //   if operand.word1 & 0xFE000000: return NULL       // no extended flags
+        //   regs = *(*(ctx) + 88)                            // vreg descriptor array
+        //   def = regs[operand.index].def_instr              // vreg+56
+        //   if !def: return NULL
+        //   opc = def.opcode                                 // instr+72
+        //   if (opc-199) & ~2 != 0: return NULL              // must be 199 or 201
+        //   if def.op[0].word1 & 0x603FFFF: return NULL      // dest needs clean flags
+        //   if opc == 201: goto check_isetp                  // ISETP -> skip ahead
+        //   // opc==199 (IADD3): validate & follow op[1]
+        //   if op[1].type != REG or not OperandOK(op[1], cmp_type): return NULL
+        //   def = regs[op[1].index].def_instr
+        //   if !def: return NULL
+        //   if def.opcode == 78:                             // LEA -- look through it
+        //     if op[1].type!=REG or not OperandOK(op[1],cmp_type): return def
+        //     def = regs[op[1].index].def_instr
+        //     if !def: return NULL
+        //   if def.opcode != 201: return def                 // need ISETP
+        // check_isetp:                                       // validate ISETP chain
+        //   if op[1].type != REG or op[1].word1 & 1: return def  // negate bit
+        //   next = regs[op[1].index].def_instr
+        //   if !next or next.opcode != 201: return def
+        //   if next.op[1].type!=REG or next.op[1].word1&1: return def
+        //   if (def.op[2].type - 2) > 1: return def         // src2 must be P(2)/UR(3)
+        //   if not IsLoopInvariant(def.op[2], ctx): return def  // sub_7DB410
+        //   if def.op[3].index & 0xFFFFF7 != 5: return def  // cmp-mode filter
+        //   return next                                      // the IV increment
+        //
+        // OperandOK(op, cmp_type):                           // inline filter
+        //   if op.word1 & 0x1000000: return false            // pair flag set
+        //   if !(op.word1 & 0xFE000000): return true         // no ext flags -> ok
+        //   if op.word1 & 0x38000000: return false
+        //   t = cmp_type & ~8; return t==5 or t==2           // const or pred type
+        iv_info = AnalyzeIV(ctx, latch_operand, cmp_type)     // sub_1385950
         if not iv_info:             Reject(block, 14); continue
         if not ValidateIV(ctx, iv_info):             // sub_1387870
                                     Reject(block, 14); continue
@@ -362,12 +467,85 @@ function RunUnrolling(ctx):
         // ── Step N: detect constant trip count ──
         const_iv = DetectConstantIV(ctx, iv_info)    // sub_1385CC0
 
-        // ── Step O: profitability for full unroll ──
+        // ── Step O: profitability gate + full unroll ──
+        //
+        // Two-stage decision.  sub_13829F0 (CountFoldableOps) scans the
+        // loop body and returns nonzero when constant-load or address
+        // folding makes full unroll worthwhile.  If it passes, sub_1383620
+        // (EvaluateAndEmitFullUnroll, 1157 lines, 14 parameters) performs
+        // a deeper profitability check that can still reject (returning 0)
+        // and, on acceptance, emits the unrolled code in place.
+        //
+        // ── sub_1383620 pseudocode (1157 lines, 14 params) ────────────
+        // Params: ctx, loop_header, iv_info, factor, block_reg_id,
+        //   latch, stride_int(XMM), stride_fp(dbl), [unused], iter_index
+        //   (0=single-exit, 1=multi-exit), exit_instr, back_edge,
+        //   needs_epilogue, is_outermost
+        //
+        // Phase 1 — stride classification and overflow guard
+        //   exit_opc  = exit_instr->opcode          // field +76
+        //   latch_opc = (latch->field_108 >> 0) & 0xFFFFFF
+        //   if iter_index == 1:                      // multi-exit
+        //       latch_opc = vtable_dispatch(ctx, latch_opc)
+        //   iv_dir = classify(exit_opc, latch_opc)
+        //       // 2 = ascending,  5 = descending,  13 = unknown
+        //   if IsIntegerOp(exit_instr->opcode):      // sub_7D6780
+        //       stride_val = ComputeIntStride(exit_instr, ctx)  // sub_7DB140
+        //       total_stride = stride_val * (factor - 1)
+        //       // overflow check per signedness:
+        //       if opc == 11 (signed):   if (factor-1) != total_stride / stride_val: return 0
+        //       if opc == 12 (unsigned): if total_stride / (uint)stride_val != factor-1: return 0
+        //       if opc == 10 (pointer):  if total_stride / stride_val != factor-1: return 0
+        //   else:  // floating-point stride
+        //       stride_fp_val = ComputeFPStride(exit_instr, ctx)  // sub_7DB1E0
+        //       total_stride = (factor - 1.0) * stride_fp_val
+        //
+        // Phase 2 — convergence + operand setup
+        //   if *(ctx+1784) active and mode==1: suppress direction-swap
+        //   build 4-5 InsertAfter anchors (sub_931920 chain)
+        //   new_vreg = AllocVReg(ctx, class=5)        // sub_91BF30
+        //
+        // Phase 3 — body replication
+        //   for i = 0 to factor-1:
+        //       DuplicateIteration(ctx, ...)           // sub_13832A0
+        //
+        // Phase 4 — power-of-two epilogue decomposition
+        //   // Only when is_outermost AND factor > 2 AND !direction_swap
+        //   levels = 31 - CLZ(factor - 1)             // _BitScanReverse
+        //   for k = levels downto 1:
+        //       emit ISETP+BRA block; replicate body 2^k times
+        //       if convergence: update table via sub_13826D0
+        //
+        // Phase 5 — per-iteration bound comparison emission
+        //   // Generates the unrolled comparison chain.
+        //   // Integer path: emits ISETP (opcode 0xC9) + BRA (opcode 0x5F)
+        //   //   per iteration with adjusted bounds:
+        //   //     bound_i = init + stride * i  (via sub_7DAFF0)
+        //   // FP path: emits FSETP + BRA with FP bounds.
+        //   // Direction flag selects comparison sense:
+        //   //   ascending  => 0x5FFFFFFD (LT)
+        //   //   descending => 0x5FFFFFFC (GT)
+        //
+        // Phase 6 — finalization
+        //   emit loop-exit branch (ISETP/FSETP for final iteration)
+        //   mark block as unrolled: block->flags |= 0x2000
+        //   if convergence active:
+        //       transfer convergence ownership to unrolled copies
+        //   return 1   // success; return 0 only on overflow in Phase 1
+        //
+        // ─────────────────────────────────────────────────────────────────
         if factor == trip_count and single_block_body:
-            if CheckFoldableProfitability(ctx, block, iv_info, factor):
-                ReplicateFullUnroll(ctx, block, factor) // sub_1383620
-                stats.unrolled_count++
-                continue
+            foldable = CountFoldableOps(ctx, header, back_edge,
+                           block_reg_id, is_single_exit)  // sub_13829F0
+            if foldable:
+                ok = EvaluateAndEmitFullUnroll(ctx, header, iv_info,
+                         factor, block_reg_id, latch, stride_int,
+                         stride_fp, ..., iter_idx, exit_instr,
+                         back_edge, needs_epilogue,
+                         is_outermost)                     // sub_1383620
+                if ok:
+                    stats.unrolled_count++
+                    continue
 
         // ── Step P: partial unroll execution ──
         if factor >= 2:
@@ -400,7 +578,7 @@ When a loop cannot be unrolled, `sub_7F5D20` records the reason by indexing a st
 |---|---|---|
 | 7 | Performance | Body too large relative to texture savings (`10 * tex_count < remaining_budget`) |
 | 11 | Pragma/knob | PTX `nounroll` pragma, convergence constraint, or per-block knob 91 |
-| 12 | Budget | Partial unroll factor reduced to 1 (no factor >= 2 fits within `UnrollBudget`) |
+| 12 | Budget | Factor selection yielded 0: known trip count > 2 with no fallback, or body exceeds `UnrollFullInstLimit` (200) for trip counts 1-2; also emitted when profitability evaluator budget loop reduces factor to 1 |
 | 13 | Ineligible | Loop exit contains BRX (indirect jump, opcode 95 with special flags) |
 | 14 | Unsupported IV | Induction variable analysis failed (`sub_1385950` or `sub_1387870`) |
 | 15 | Unsupported IV | IV register class is not integer (class 1) or pointer (class 2/3) |
@@ -422,7 +600,7 @@ The unrolling decision is controlled by a rich set of OCG knobs. All knob names 
 | `LoopUnrollFactor` | INT | **0** | Override unroll factor (0 = heuristic) |
 | `UnrollBudget` | INT | **140** | Maximum total instruction count after unrolling |
 | `UnrollInstLimit` | FLOAT | **20.0** | Maximum instructions in a single unrolled loop body |
-| `UnrollFullInstLimit` | INT | **200** | Maximum body size for *full* unrolling |
+| `UnrollFullInstLimit` | INT | **200** | Budget for known-trip-count full unrolling; hardcoded as `200/trip_count > body_cost` gate at LABEL_160 |
 | `UnrollFlexableFullLimit` | FLOAT | **0.25** | Flexible full-unroll limit (adjusted by loop characteristics) |
 | `UnrollSmallLoopLimit` | INT | **4** | Body size threshold below which loops are always fully unrolled |
 | `UnrollPregThreshold` | INT | **50** | Maximum predicate register pressure for unrolling |

@@ -41,10 +41,10 @@ The vtable provides three virtual methods common to all phases:
 | Offset | Signature | Purpose |
 |---|---|---|
 | `+0` | `execute(Phase*, CompilationContext*)` | Run the phase on the IR |
-| `+8` | `isNoOp(Phase*) -> bool` | Return `true` to skip execution |
-| `+16` | `getName(Phase*) -> int` | Return index into the phase name table |
+| `+8` | `getIndex(Phase*) -> int` | Return the factory/table index (0--158) |
+| `+16` | `isNoOp(Phase*) -> bool` | Return 0 for active phases, 1 for gates skipped by default |
 
-Additional vtable slots (`+24` pool alloc, `+32` pool free) are present but belong to the allocator interface, not the phase protocol.
+Vtable slots `+24` and `+32` are NULL in all 159 vtable instances. Memory allocation uses standalone `pool_alloc` (`sub_424070`) / `pool_free` (`sub_4248B0`), not vtable dispatch.
 
 ## Dispatch Loop
 

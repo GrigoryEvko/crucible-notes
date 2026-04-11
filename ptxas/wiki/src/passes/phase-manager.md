@@ -66,10 +66,10 @@ The vtable provides the interface contract:
 | Vtable offset | Method | Signature |
 |---|---|---|
 | `+0` | `execute` | `void execute(phase*, compilation_context*)` |
-| `+8` | `isNoOp` | `bool isNoOp(phase*)` -- returns `true` to skip execution |
-| `+16` | `getName` | `int getName(phase*)` -- returns index into name table |
-| `+24` | `alloc` | `void* alloc(pool*, size_t)` -- pool allocator |
-| `+32` | `free` | `void free(pool*, void*)` -- pool deallocator |
+| `+8` | `getIndex` | `int getIndex(phase*)` -- returns the factory/table index (0--158) |
+| `+16` | `isNoOp` | `bool isNoOp(phase*)` -- returns 0 for active phases, 1 for gates skipped by default |
+| `+24` | *(NULL)* | Unused -- NULL in all 159 vtable instances |
+| `+32` | *(NULL)* | Unused -- NULL in all 159 vtable instances |
 
 The vtable addresses span `off_22BD5C8` (phase 0) through `off_22BEE78` (phase 158), with a stride of `0x28` (40 bytes) between consecutive entries. All vtables reside in `.data.rel.ro`.
 
@@ -78,7 +78,7 @@ The vtable addresses span `off_22BD5C8` (phase 0) through `off_22BEE78` (phase 1
 The factory is a 159-case switch statement that serves as the sole point of phase instantiation. For each case:
 
 1. Extracts the pool allocator from `context->field_16`
-2. Allocates 16 bytes via `pool_alloc` (vtable offset `+24`)
+2. Allocates 16 bytes via `pool_alloc` (`sub_424070`)
 3. Writes the case-specific vtable pointer at offset `+0`
 4. Returns a `{phase_ptr, pool_ptr}` pair
 
@@ -178,10 +178,10 @@ void PhaseManager::destroy() {
         free(r);
     }
 
-    // 3. Destroy each phase via virtual destructor (vtable+32)
+    // 3. Free each phase object via pool_free (sub_4248B0)
     for (int i = 0; i < phase_list_count; i++) {
         auto [phase, pool] = phase_list[i];
-        pool->free(phase);            // invokes vtable+32
+        pool_free(phase);             // sub_4248B0 -- returns 16 bytes to pool
     }
 
     // 4. Free base arrays
@@ -206,24 +206,35 @@ bool PhaseManager::dispatch(int* phase_indices, int count) {
         int idx = phase_indices[i];
         phase* p = this->phase_list[idx].phase;
 
-        // Resolve phase name
-        int name_idx = p->getName();                    // vtable+16
+        // Resolve phase name -- always, even for no-op phases
+        int name_idx = p->getName();                    // vtable+8
         const char* name = this->phase_name_raw_table[name_idx];
 
-        // Record timing entry
+        // Record timing entry -- unconditional, no-op phases get a record too
         append_timing({idx, name, opt_level, flags, metrics});
 
-        // Take pre-execution snapshot
+        // Take pre-execution snapshot -- unconditional
         memory_snapshot_t pre_snap;
-        take_snapshot(&pre_snap);
+        take_snapshot(&pre_snap);                       // sub_8DADE0
 
-        // Execute (unless no-op)
-        if (!p->isNoOp()) {                             // vtable+8
-            p->execute(this->cu);                       // vtable+0
-            // Construct diagnostic: "Before <name>" or "After <name>"
+        // isNoOp() gates diagnostic strings, NOT execute().
+        // execute() is always called; a no-op phase's execute body returns
+        // immediately.  The isNoOp check is performed twice: once before
+        // execute (gates the "Before" string) and once after (gates the
+        // "After" string).  This double-check allows a phase to dynamically
+        // toggle its no-op status during execution.
+        if (!p->isNoOp()) {                             // vtable+16, pre-check
+            diagnostic("Before " + name);               // alloc, write, free
         }
 
-        // Report per-phase stats
+        p->execute(this->cu);                           // vtable+0, ALWAYS called
+
+        if (!p->isNoOp()) {                             // vtable+16, post-check
+            diagnostic("After " + name);                // alloc, write, free
+        }
+
+        // Report per-phase stats -- unconditional when timing_enabled,
+        // regardless of isNoOp() result
         if (this->timing_enabled) {
             report_phase_stats(name, &pre_snap, false); // sub_C64310
             this->flag_byte = 0;
@@ -239,7 +250,16 @@ bool PhaseManager::dispatch(int* phase_indices, int count) {
 }
 ```
 
-The "Before" / "After" diagnostic strings use an interesting encoding trick: the string `"Before "` is stored as the 64-bit integer `0x2065726F666542` in little-endian, allowing the compiler to emit a single `mov` instruction instead of a `memcpy`.
+**isNoOp timing behavior (binary evidence from `0xC64F70`):** The timing record
+(`append_timing` at `+1560`) and the pre-execution memory snapshot (`sub_8DADE0`
+into `var_68`) are both written **before** the first `isNoOp()` call at `0xC65078`.
+When timing is enabled, `sub_C64310` is called at `0xC65121` in the common path
+that both no-op and active phases reach.  A disabled phase therefore appears in the
+timing array with near-zero elapsed time and a zero-delta memory snapshot, rather
+than being omitted.  This means `--ftime` output always shows all 159 phase slots,
+with no-op phases contributing empty rows.
+
+The "Before" / "After" diagnostic strings use an interesting encoding trick: the string `"Before "` is stored as the 64-bit integer `0x2065726F666542` in little-endian, allowing the compiler to emit a single `mov` instruction instead of a `memcpy`. The string `"After "` is stored as two writes: a 4-byte `dword 0x65746641` ("Afte") plus a 2-byte `word 0x2072` ("r ") plus a null terminator byte, totaling 7 bytes at `0xC651F7`--`0xC65208`.
 
 ## Phase Name Lookup -- `sub_C641D0`
 

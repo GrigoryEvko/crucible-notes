@@ -126,7 +126,7 @@ struct BitVector {       // 20 bytes total
 };
 ```
 
-Word count is computed from bit count: `word_count = (bit_count + 31) >> 5`. Memory is allocated via the pool allocator (vtable dispatch at allocator `+24` for alloc, `+32` for free). Reallocation occurs only when the new word count exceeds the current capacity.
+Word count is computed from bit count: `word_count = (bit_count + 31) >> 5`. Memory is allocated via `pool_alloc` (`sub_424070`) and freed via `pool_free` (`sub_4248B0`). Reallocation occurs only when the new word count exceeds the current capacity.
 
 ### Core Operations
 
