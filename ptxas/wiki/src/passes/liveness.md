@@ -48,68 +48,71 @@ Without these intermediate liveness passes, dead code would accumulate through t
 
 ## Dataflow Algorithm
 
-### Classical Backward Liveness
+### Formal Set Equations
 
-ptxas implements textbook backward dataflow analysis. For each basic block B, the analysis computes:
+Let V be the set of all virtual register IDs tracked by the analysis (|V| <= 255 for R registers, <= 64 for UR registers). For each basic block B in CFG = (Blocks, Edges), define:
+
+- **gen(B)** = { r in V | r is used in B before any definition of r in B } (upward-exposed uses)
+- **kill(B)** = { r in V | r is defined in B } (regardless of whether also used)
+
+The gen/kill sets are pre-computed once by scanning each block's instructions in reverse order (`sub_774370`). For each instruction I visited bottom-to-top: every source operand r where r not in kill(B) is added to gen(B); every destination operand d is added to kill(B). Both gen and kill are constant for the duration of the fixed-point iteration.
+
+The dataflow equations over the lattice L = (2^V, subset-eq, union, empty-set):
 
 ```
-LiveIn(B)  = gen(B) | (LiveOut(B) - kill(B))
-LiveOut(B) = Union over all successors S of LiveIn(S)
+LiveOut(B)  =  Union { LiveIn(S) | S in succ(B) }           -- meet (union)
+LiveIn(B)   =  gen(B)  union  ( LiveOut(B) \ kill(B) )      -- transfer
 ```
 
-Where:
-- **gen(B)**: registers used in B before any definition in B (upward-exposed uses)
-- **kill(B)**: registers defined in B (regardless of whether they are also used)
-- **LiveIn(B)**: registers live at the entry of B
-- **LiveOut(B)**: registers live at the exit of B
+The transfer function for block B is F_B(X) = gen(B) union (X \ kill(B)), which ptxas implements as a single fused operation `orWithAndNotIfChanged` (`sub_BDD560`):
+
+```
+dst |= gen | (in & ~kill)     -- SSE2: _mm_or_si128(_mm_or_si128(gen, dst), _mm_andnot_si128(kill, in))
+```
+
+This computes F_B(LiveOut(B)) and unions it into LiveIn(B) without materializing the intermediate set (LiveOut \ kill), returning a boolean `changed` flag by scanning `(~dst_old & new_bits) != 0` before writing.
 
 ### Iterative Fixed-Point Solver
 
-The analysis iterates in reverse post-order (RPO) until no LiveIn/LiveOut set changes:
+The solver (`sub_774370`, called via `sub_775010` -> guard at `ctx+1370` bit 6) operates in two stages:
+
+**Stage 1 -- Initialization.** For every block B in RPO order (array at `ctx+512`, computed by `sub_BDE150`):
 
 ```
-function compute_liveness(func):
-    compute_RPO(func)                              // sub_BDE150
-    
-    // Initialize gen/kill sets per block
-    for each block B in func:
-        gen(B)  = {}
-        kill(B) = {}
-        for each instruction I in B (reverse order):
-            for each source operand r of I:
-                if r not in kill(B):
-                    gen(B) |= {r}
-            for each destination operand d of I:
-                kill(B) |= {d}
-    
-    // Initialize LiveOut to empty for all blocks
-    for each block B:
-        LiveOut(B) = {}
-    
-    // Iterate until fixed point
-    changed = true
-    while changed:
-        changed = false
-        for each block B in reverse RPO:
-            // LiveOut = union of successors' LiveIn
-            for each successor S of B:
-                changed |= LiveOut(B).orIfChanged(LiveIn(S))
-            
-            // LiveIn = gen | (LiveOut - kill)
-            //        implemented as: orWithAndNotIfChanged
-            changed |= LiveIn(B).orWithAndNotIfChanged(
-                            gen(B), LiveOut(B), kill(B))
+LiveIn^0(B)  = empty-set
+LiveOut^0(B) = empty-set          -- bottom of lattice L
 ```
 
-The key optimization is the fused `orWithAndNotIfChanged` operation (`sub_BDD560`), which computes `dst |= gen | (in & ~kill)` and returns whether any bit changed -- all in a single SSE2 pass over the bitvector words. This avoids materializing intermediate bitvectors for `(LiveOut - kill)`.
+Each bitvector is allocated via `sub_BDBAD0` with `(ctx+520)+1` bits, then zeroed. Exit blocks have their LiveOut initialized to the set of callee-saved / return-value registers via `sub_BDBB80` (setBit per register at `block+144`).
 
-### Convergence
+**Stage 2 -- Iteration.** Repeat until no set changes (boolean `changed` stays false for an entire pass):
 
-The analysis converges because:
-1. All sets are initialized to empty (bottom of the lattice).
-2. Each iteration can only add bits (the transfer function is monotone).
-3. The lattice has finite height (bounded by the total number of virtual registers).
-4. RPO traversal order minimizes the number of iterations -- typically 2--3 passes for acyclic code, proportional to loop nesting depth for loops.
+```
+for each block B in reverse RPO order (ctx+512, index ctx+520 downto 0):
+    // Meet: LiveOut(B) = Union { LiveIn(S) | S in succ(B) }
+    for each successor S in successor list at block+128:
+        changed |= LiveOut(B).orIfChanged( LiveIn(S) )          // sub_BDCF40
+
+    // Transfer: LiveIn(B) = gen(B) union (LiveOut(B) \ kill(B))
+    changed |= LiveIn(B).orWithAndNotIfChanged(                  // sub_BDD560
+                    gen(B), LiveOut(B), kill(B))
+```
+
+The `orIfChanged` at `sub_BDCF40` scans `(~dst & src)` word-by-word; if no bit differs it returns false without writing memory. The `orWithAndNotIfChanged` at `sub_BDD560` performs the same early-exit scan then applies the fused `dst |= gen | (in & ~kill)` in a single SSE2 pass starting from the first differing word.
+
+For the dominator-respecting variant (called with flag `a2=1` via `sub_773140`), the iteration additionally intersects LiveOut with the dominator frontier set using `andIfChanged` (`sub_BDC790`) in a secondary inner loop. This prunes liveness across irreducible edges.
+
+### Convergence Argument
+
+The analysis is a forward Kleene iteration on a complete lattice and is guaranteed to converge:
+
+1. **Lattice.** L = (2^V, subset-eq) is a complete lattice with bottom = empty-set and top = V. Height h(L) = |V| (at most 255 for R-class registers, 64 for UR-class).
+
+2. **Monotonicity.** F_B is monotone: if X subset-eq Y then gen(B) union (X \ kill(B)) subset-eq gen(B) union (Y \ kill(B)). The meet operator (union) is likewise monotone. The `orIfChanged` / `orWithAndNotIfChanged` implementations enforce monotonicity structurally -- they can only set bits, never clear them (`dst |= ...`).
+
+3. **Initialization at bottom.** LiveIn^0(B) = LiveOut^0(B) = empty-set for all B. Since empty-set subset-eq F_B(empty-set) for any B, the iterates form an ascending chain.
+
+4. **Termination.** Each iteration either adds at least one bit to some set (strictly ascending) or detects no change and halts. Since h(L) = |V| and there are |Blocks| sets, the maximum number of iterations is bounded by |V| * |Blocks|. In practice, RPO traversal ensures convergence in d+2 iterations where d is the loop nesting depth -- typically 2--3 passes for acyclic code, confirmed by the `changed` boolean collapsing to false within 2 full RPO sweeps on straight-line CFGs.
 
 ## BitVector Implementation
 
@@ -249,6 +252,35 @@ The opcode mask `& 0xCFFF` (seen in `sub_A06A60`) strips modifier bits to obtain
 ### DCE Integration
 
 The OriPerformLiveDead pass combines liveness computation with DCE in a single pass rather than running them as separate analyses. After computing LiveOut sets for each block, the pass walks each block backward: for each instruction, it checks whether every destination register is absent from the current live set. If so and the instruction has no side effects, it is unlinked from the instruction list. Source operands of removed instructions are themselves removed from the live set, potentially enabling cascading removal of further dead instructions within the same backward walk.
+
+### Backward Walk Live Set Update Rule (sub\_A06A60)
+
+The per-block backward walk in `sub_A06A60` maintains a running live set initialized from LiveOut. For each instruction traversed in reverse order, operands are classified by the 3-bit type field `(operand >> 28) & 7`: type 5 identifies predicate registers (tracked separately), type 6 marks the operand-list sentinel (end of operands). The walk applies two updates per instruction:
+
+```
+// Per-instruction live set update (backward direction):
+for each destination operand d of I:
+    reg_id = lookup(ctx+296, d & 0xFFFFFF)   // register table
+    live_set |= kill_set(reg_id)              // sub_BDCDE0: OR into block kill
+    // (destination is defined here, so it exits liveness)
+
+for each source operand s of I:
+    reg_id = lookup(ctx+296, s & 0xFFFFFF)
+    setBit(live_set, reg_id)                  // sub_BDBB80: mark as live
+    // (source is used here, so it enters liveness)
+```
+
+The opcode-specific dispatch handles five special cases that modify this basic rule:
+
+| Masked opcode | Meaning | Live set action |
+|---------------|---------|-----------------|
+| 93 | Call-like | Walk callee's copy chain (opcode 269) adding source regs; add callee-clobbered regs; OR into block kill set |
+| 94 | Block boundary (LDS) | Clear live set (`sub_BDC080`); rebuild from phi-successor list at `ctx+616`; OR reconstructed set into block kill |
+| 95 | Block boundary (STS) | OR destination reg's set into current live set via `sub_BDCDE0`; copy live set into block kill via `sub_BDC1B0` |
+| 97 | Branch-like | OR destination into block kill via `sub_BDC1B0`; when `ctx+1368` bit 4 is set and first in block, test for change via `sub_BDCF40` |
+| 188/190 | Multi-source/predicated | Dispatch to `sub_A06950` to walk the source operand chain; add all reachable source registers to live set |
+
+The change-detection flag returned by `sub_BDCF40` (orIfChanged) drives the iterative fixed-point: if any block's live set changed, the solver re-queues predecessor blocks for another iteration.
 
 ## Phase 19: OriSplitLiveRanges
 
@@ -499,21 +531,21 @@ The dependency graph builder (`sub_A0F970`, `sub_A0D800`) uses liveness to:
 
 ## Data Flow Infrastructure for Scheduling
 
-The scheduling subsystem has its own dataflow infrastructure (separate from the optimizer's OriPerformLiveDead):
+The scheduling subsystem has its own dataflow infrastructure (separate from the optimizer's OriPerformLiveDead). Decompilation reveals these 9 functions implement two reusable data structures -- a **memory allocator** (red-black tree backed free-list) and an **FNV-1a hash table** -- that the scheduler instantiates for its dataflow bookkeeping:
 
-| Address | Size | Identity |
-|---------|------|----------|
-| `sub_8DB070` | 8.2KB | `LivenessInit` -- allocate and initialize per-BB liveness structures |
-| `sub_8DB5F0` | 8.4KB | `LivenessCompute` -- compute liveness per basic block |
-| `sub_8DBAF0` | 16KB | `LivenessAnalysis` -- full liveness analysis (red-black tree interval structure) |
-| `sub_8DC3F0` | 3.0KB | `ComputeDataFlowState` -- scheduling-specific dataflow |
-| `sub_8DC620` | 3.3KB | `UpdateDataFlowOnSchedule` -- update flow after scheduling decisions |
-| `sub_8DC880` | 10KB | `PropagateDataFlow` -- propagate dataflow information |
-| `sub_8DCF20` | 23KB | `BuildDFGForScheduling` -- build scheduling data flow graph |
-| `sub_8DE7A0` | 12KB | `IterativeDataFlow` -- iterative fixed-point solver |
-| `sub_8DEF90` | 2.0KB | `FinalizeDataFlow` -- finalize dataflow results |
+| Address | Size | True identity |
+|---------|------|---------------|
+| `sub_8DB070` | 8.2KB | `PoolAllocator::free` -- coalesces freed blocks into a segregated free-list; blocks <= 512B go to size-class bins at `+96`; larger blocks go to sorted lists at `+72`/`+80` |
+| `sub_8DB5F0` | 8.4KB | `RBTree::rebalance` -- red-black tree fix-up after delete; color flag at node `+40` (0=red, 1=black), children at `+24`/`+32`, parent at `+16` |
+| `sub_8DBAF0` | 16KB | `PoolAllocator::allocFromTree` -- allocates from RB-tree ordered free-list; best-fit search for blocks > 512B, splits remainder back into tree; calls `sub_8DB5F0` for rebalancing |
+| `sub_8DC3F0` | 3.0KB | `PoolAllocator::alloc` -- sized allocation entry point; tries size-class bin at `+96`, then bitmap scan (`tzcnt`), then falls through to `sub_8DBAF0` (tree) and `sub_8DAC50`/`sub_8DAA10` (slab) |
+| `sub_8DC620` | 3.3KB | `PoolAllocator::allocAligned` -- like `sub_8DC3F0` but adds 8 bytes for header alignment; returns `result + 8` to caller |
+| `sub_8DC880` | 10KB | `HashMap::insertOrFind` -- FNV-1a hash (seed `0x811C9DC5`, prime `16777619`) on 4-byte key; 8-bucket initial table; rehashes at load-factor > 50% by allocating 4x buckets and redistributing via `hash % new_size` |
+| `sub_8DCF20` | 23KB | `HashMap::insertOrFindWide` -- FNV-1a hash on 8-byte key (address + ID pair); includes inline `memcpy` for payload transfer to new node; same rehash policy as `sub_8DC880` |
+| `sub_8DE7A0` | 12KB | `HashMap::insertWideWithPayload` -- allocates a 168-byte dataflow node; stores payload at `+32`/`+8`/`+24`; builds two nested hash tables (at offsets `+40` and `+136`); inserts into outer table via FNV-1a on (uint32, uint64) compound key |
+| `sub_8DEF90` | 2.0KB | `HashMap::lookupTwoLevel` -- two-level lookup: first hashes (uint32, uint64) into the outer table to get a dataflow-node ID, then hashes that ID into the inner table at `+80` to retrieve the result pointer |
 
-The `sub_8DBAF0` function implements a red-black tree (evidenced by tree rotations and color flags at node offset `+40` in the decompiled code), used to store liveness intervals as an ordered set. This enables efficient range queries: "which registers are live at program point P?" is answered by a tree search in O(log n) rather than a linear scan.
+The scheduler instantiates these structures at Code Object `+832` to maintain per-block dataflow state. The RB-tree in `sub_8DBAF0`/`sub_8DB5F0` manages the backing memory pool (node `+40` color flag, rotations for balance), not liveness intervals directly. The hash tables in `sub_8DC880`--`sub_8DEF90` store the actual dataflow facts keyed by (block-ID, register-address) pairs, using the standard FNV-1a hash seen throughout ptxas. The two-level lookup in `sub_8DEF90` enables the iterative solver to efficiently query "what is the dataflow state of register R at block B?" without scanning all blocks.
 
 ## sub\_781F80: Basic Block Rebuild
 
@@ -554,10 +586,15 @@ Over 50 call sites reference this function across the optimizer, register alloca
 | `sub_A0F970` | 10KB | DAG construction entry | HIGH (0.95) |
 | `sub_92C240` | 8KB | Liveness bitvector operations (regalloc) | HIGH (87 callers) |
 | `sub_9449B0` | 1.8KB | Liveness range calculator (spill codegen) | HIGH |
-| `sub_8DBAF0` | 16KB | LivenessAnalysis (scheduling) | HIGH (0.85) |
-| `sub_8DB5F0` | 8.4KB | LivenessCompute (per-BB scheduling) | HIGH (0.85) |
-| `sub_8DB070` | 8.2KB | LivenessInit (scheduling) | HIGH (0.85) |
-| `sub_8DE7A0` | 12KB | IterativeDataFlow (scheduling solver) | HIGH (0.80) |
+| `sub_8DB070` | 8.2KB | `PoolAllocator::free` (coalesce + return to free-list) | HIGH (0.95) |
+| `sub_8DB5F0` | 8.4KB | `RBTree::rebalance` (red-black fix-up after delete) | HIGH (0.95) |
+| `sub_8DBAF0` | 16KB | `PoolAllocator::allocFromTree` (RB-tree best-fit alloc) | HIGH (0.95) |
+| `sub_8DC3F0` | 3.0KB | `PoolAllocator::alloc` (sized block entry point) | HIGH (0.95) |
+| `sub_8DC620` | 3.3KB | `PoolAllocator::allocAligned` (header-aligned alloc) | HIGH (0.95) |
+| `sub_8DC880` | 10KB | `HashMap::insertOrFind` (FNV-1a, 4-byte key) | HIGH (0.95) |
+| `sub_8DCF20` | 23KB | `HashMap::insertOrFindWide` (FNV-1a, 8-byte key) | HIGH (0.95) |
+| `sub_8DE7A0` | 12KB | `HashMap::insertWideWithPayload` (168-byte node + nested tables) | HIGH (0.90) |
+| `sub_8DEF90` | 2.0KB | `HashMap::lookupTwoLevel` (outer + inner FNV-1a lookup) | HIGH (0.95) |
 | `sub_A0B5E0` | varies | Uninitialized register detector | HIGH (0.97) |
 | `sub_A7BC80` | 36KB | RegisterSetManager (multi-file liveness) | MEDIUM (0.65) |
 | `sub_BEF110` | 108KB | `OriSplitLiveRanges` core (Phase 19) | HIGH (0.90) |
