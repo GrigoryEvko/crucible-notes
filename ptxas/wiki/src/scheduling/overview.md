@@ -222,6 +222,71 @@ if batchTargetCount > maxStallCycles:
 
 When a batch boundary is detected (instruction's BB start offset exceeds the batch window), `sub_8C1BA0` evaluates the batch: it computes the register pressure delta, checks whether the batch overflows the combined register budget (`regBaseCount + regDelta + maxRegSpan`), and either accepts the batch or trims it by walking backward through the `batchSlots` array to find a smaller valid batch.
 
+### DynBatch Priority Function (sub\_8E0F18 via sub\_8C9320)
+
+Vtable[8] enters the common priority evaluator (`sub_8C9320`) with `mode_field == 2`. Four mechanisms modify the score relative to the ILP/Latency baseline.
+
+**Batch slot accumulation** (`sub_8C1BA0`, re-invoked when `batchSlotCount < 0`):
+
+```
+function InitDynBatchState(sched, funcCtx):               // sub_8C1BA0
+    batchWindow = 0xFFFFFFFF; batchDepthLimit = -1; regBaseCount = regLiveCount
+    for instr in ReadyList:
+        node = instr.schedNode
+        if batchSlotCount > 0:
+            if (instr.opcode & 0xCFFF) == 96 and wgmmaCommitFlag:  // WGMMA.COMMIT
+                batchAbort = 1; break
+            if node.bbStartOffset <= batchWindow:         // inside current batch
+                for each existing batchSlot:              // dependency scan
+                    if slot has data-dep edge to instr: maxRegInBatch = max(...); goto Accept
+                goto Boundary
+        Boundary:
+            if not node.isBarrier:
+                combined = regBaseCount + regDelta + maxRegSpan
+                if RegBudget(sched) < combined: batchOverflow = 1; break
+            if batchSlotCount == 0: batchWindow = node.bbStartOffset
+        Accept:
+            batchSlots[batchSlotCount++] = instr; lastBatchEndPos = node.bbStartOffset
+            if batchSlotCount == adjustedBatchTarget: break
+            batchDepthLimit = max(batchDepthLimit, node.depth)
+```
+
+**Depth-limit tightening** (mode==2 path in `sub_8C9320`): during successor-chain scanning, DynBatch clamps the candidate's minimum depth: `minSuccDepth = succ ? min(minSuccDepth, succ.schedNode.bbStartOffset) : -1`.
+
+**WGMMA/HMMA bonus and batch-membership bits** (8-bit priority vector):
+
+```
+    opcode = candidate.opcode & 0xCFFF
+    hmmaFree   = (opcode == 39) and (operandSlot[adj] & 3) == 0  // HMMA free slot
+    wgmmaBonus = (opcode == 96) and wgmmaCommitFlag               // WGMMA.COMMIT
+    //  bit 7: hmmaFree  6: wgmmaBonus  5: wgmmaBonus  4: cutlassHint
+    //  bit 3: pressureOK  2: batchMember  1: depthOK  0: tiebreaker
+    priorityBits = (hmmaFree<<7)|(wgmmaBonus<<6)|(wgmmaBonus<<5)|(cutlassHint<<4)
+                 | (pressureOK<<3)|(batchMember<<2)|(depthOK<<1)|tiebreaker
+    // suppress wgmma/cutlass bonus when candidate precedes lastBatchEndPos
+    if (wgmmaBonus<<5)|(cutlassHint<<4):
+        if candidate.depth < lastBatchEndPos: wgmmaBonus = batchTargetCount > 0 ? wgmmaBonus : 0
+    batchMember = (batchSlotCount > 0) and (batchSlotCount <= readyBatchCount)
+    if batchCountdown and candidate.depth < lastBatchEndPos: batchMember = 1
+    elif candidate != bestReady and candidate.depth < lastBatchEndPos: batchMember = 0
+```
+
+**Post-selection batch state update**:
+
+```
+    if winner.isBarrier:
+        if not batchCountdown: batchCountdown = ComputeBatchWindow(readyCount, ...)
+        batchTargetCount--; batchCountdown--
+        if winner.depth >= 0: batchMode--
+        // over-large batch detection: force re-init if ratio exceeded
+        if batchMode==0 and batchTargetCount>1 and batchTargetCount-1 < maxStallCycles:
+            batchCountdown=0; batchSlotCount=-1
+        if batchCountdown == 0: batchSlotCount = -1
+    elif batchCountdown > 0:                                  // non-barrier pressure trim
+        if readyCount <= 3: batchCountdown = max(batchCountdown, readyBatchCount)
+        elif totalReadyRegs + regDelta > regBudget: batchCountdown = batchSlotCount
+```
+
 ## Unified Scheduling Engine
 
 `sub_688DD0` (20 KB) is the single engine that all three phases invoke. Its behavior is parameterized by:
