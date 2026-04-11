@@ -626,15 +626,80 @@ instructions requiring expansion (linked via `instr+56`).  Registers consumed by
 expansion are marked dead (`reg+64 = 5`).
 
 **Phase 2 -- Instruction rewriting.**
-If any instruction requires expansion, the pass iterates the worklist and performs
-actual rewrites: replacing composite instructions with equivalent sequences,
-inserting new instructions via the `sub_930040` / `sub_92FF10` / `sub_92E720`
-emitters, and deleting originals via `sub_9253C0`.  Register-file mapping uses two
-lookup tables: `dword_21D5EE0[26]` (for constraint -2) and `dword_21D5F60[16]`
-(for constraint -3).
+If `v187 == 0` (no expansion needed), phase 2 is skipped.  Otherwise a cleanup
+loop purges the worklist: it reads both operand constraint codes, applies modifier-
+bit adjustments (bits 25-31 can transform -2 to -3/-1), and removes entries where
+both resolve to -1.  The loop repeats until no further removals (fixed-point).
+The rewrite loop then dispatches by opcode:
 
-Between phases, a cleanup loop removes worklist entries with conflicting constraints
-(both operands invalid), resetting `reg+76 = -1`.
+```
+for each instr on expansion_worklist (linked via instr+56):
+  opc = instr[72]; dst = &instr[84]; src0 = &instr[92]
+  src1 = &instr[100]; src2 = &instr[108]; reg = regArray[dst & 0xFFFFFF]
+  switch opc:
+
+  case 36 (I2IP), 201 (QMMA_16816), 202 (QMMA_16832):
+    cA = getOperandConstraint(ctx, src0)           // sub_812550
+    if cA not in {-2,-3}: skip
+    w = (cA==-2) ? dword_21D5EE0[src2 & 0xFFFFFF] : dword_21D5F60[src2 & 0xFFFFFF]
+    resolved = resolveOperandType(ctx, src0, w)    // sub_800360
+    if opc==201: instr[108] = resolved | 0x60000000
+    else:        patch slot at nOps + ~((opc>>11) & 2)
+    recomputeProperties(ctx, instr)                // sub_92C0D0
+    if reg.file != 5:                              // dest still live
+      sched = sm_backend->getSchedClass(instr[76]) // vtable[113]
+      if opc==202: emit_barrier(ctx, dword_21D6390[(pen>>9)&0xF], 20, ...)
+      emit_4op(ctx, 36, sched, dst, src0, RZ, resolved)  // sub_930040
+      deleteInstruction(ctx, instr)                // sub_9253C0
+
+  case 18 (FSETP):                                 // nOps==6, modifier filter
+    finalizeOperand(ctx, &instr[116])              // sub_800400
+
+  case 29 (PMTRIG), 95/96 (STS/LDG), 190 (LDGDEPBAR), bit-12 set:
+    if !sub_747EE0(instr): skip
+    idx = nOps + ~((opc>>11) & 2)                  // last-operand index
+    pen = &dst[2*idx]; prev = pen-2
+    pen[0] = resolveOperandType(ctx, prev, pen[0] & 0xFFFFFF) | 0x60000000
+    pen[1] = 0
+
+  case 130 (HSET2), 137 (SM73_FIRST):
+    cA = getOperandConstraint(ctx, src0)
+    if cA not in {-2,-3}: finalizeOperand(ctx, src0); skip
+    w = lookup(cA, src2)                           // same two tables
+    if canExpandStoreChain(ctx, instr):            // sub_8125E0
+      instr[108] = resolved | 0x60000000           // in-place patch
+    else:
+      emit_MOV(ctx, 130, 20, dst, src0)            // sub_92E720
+      emit_store(ctx, 201, instr[76], dst, src0)   // sub_92FF10
+      deleteInstruction(ctx, instr)
+
+  case 149 (UFLO):
+    if getOperandConstraint(ctx, dst) in {-2,-3}:
+      reg.file = 5; if both srcs dead: instr[76] = 20
+    elif sub_7D6780(regArray[src0].width):          // vectorize path
+      emit_I2IP(ctx, 36, instr[76], dst, src0, neg, RZ)
+      deleteInstruction(ctx, instr)
+    else: finalizeOperand(ctx, src0)
+
+  case 10 (SHF), 151 (UIMAD), 290 (MOV sm_104):   // three-source
+    cS0 = getOperandConstraint(ctx, src0)
+    cS1 = getOperandConstraint(ctx, src1)
+    if both dead: finalizeOperand both; instr[76] = 20
+    elif one live, one file==5:
+      emit_I2IP(ctx, 36, w, dst, resolved, RZ, const)
+      emit_replacement(ctx, opc, w, dst, src0, src1)
+      deleteInstruction(ctx, instr)
+    else: finalizeOperand(ctx, src0); finalizeOperand(ctx, src1)
+
+  case 283 (UVIADD):                               // simple extraction
+    pen = &dst[2*(nOps-2)]; prev = pen-2
+    pen[0] = resolveOperandType(ctx, prev, pen[0] & 0xFFFFFF) | 0x60000000
+    pen[1] = 0
+```
+
+Register-file mapping uses `dword_21D5EE0[26]` (constraint -2, width codes 0--25)
+and `dword_21D5F60[16]` (constraint -3, width codes 0--15).  `dword_21D6390[]`
+(indexed by `(operand >> 9) & 0xF`) selects the barrier variant for QMMA_16832.
 
 ### Opcodes handled
 

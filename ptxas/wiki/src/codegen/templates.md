@@ -130,33 +130,66 @@ The static descriptor tables (`dword_23993E0` for DDIV, `dword_2398940` for DRCP
 
 Double-precision division `a / b` has no single-instruction implementation on any NVIDIA GPU. ptxas synthesizes it using Newton-Raphson refinement of a single-precision reciprocal seed.
 
-### Algorithm
+### Algorithm and SASS Pseudocode
 
-The DDIV template produces three code sections containing the following mathematical steps:
+The DDIV template produces three code sections. The pseudocode below is reconstructed from the emission calls in `sub_1704180` (Part 1), `sub_1705820` (Part 2), and `sub_17075A0` (Part 3); register names like `v[N]` refer to virtual register indices from `dword_23993E0`.
 
-**DDIV1 -- Initial reciprocal approximation:**
-1. Extract the high 32 bits of the FP64 divisor `b`
-2. Convert to FP32 and compute `MUFU.RCP` (single-precision reciprocal, ~23 bits of mantissa)
-3. Convert the FP32 result back to a form suitable for FP64 refinement
-4. Handle special cases: divisor is zero, infinity, NaN, or denormal
+```
+; === DDIV1 (sub_1704180): seed generation ===
+    MOV.HI   v[7],  b_hi           ; extract high 32 bits of divisor
+    MOV.LO   v[8],  b_lo           ; extract low 32 bits
+    PRMT     v[9],  v[7], 0x7610   ; extract exponent+mantissa fields
+    LOP3.LUT v[10], v[7], 0x7FF00000, 0  ; isolate exponent (bits 30:20)
+    IADD     v[11], v[10], -bias   ; remove exponent bias
+    MOV      v[12], v[7]           ; save original high word
+    ISETP.NE p0, v[10], 0          ; check if exponent is zero (denormal)
+    ISETP.NE p1, v[10], 0x7FF00000 ; check if exponent is all-ones (inf/NaN)
+    FSETP    p2, |b|, +inf         ; classify: is b infinity?
+    SHR      v[13], v[7], 20       ; shift exponent to low bits
+  @!p0 BRA   DENORMAL_PATH         ; branch if denormal
+  @p1  BRA   SPECIAL_PATH          ; branch if inf/NaN
 
-**DDIV2 -- Newton-Raphson refinement:**
+; === DDIV2 (sub_1705820): Newton-Raphson core ===
+    MOV      v[97], v[13]          ; copy biased exponent to FP32 scratch
+    MUFU.RCP v[99], v[97]          ; ~23-bit FP32 reciprocal seed: x0 ~ 1/b
+    MOV      v[100], v[99]         ; save seed for next step
 
-The classical Newton-Raphson iteration for reciprocal is:
+    ; -- Iteration 1: x1 = x0 * (2 - b * x0), implemented as two DFMAs --
+    DFMA     v[65:66], v[27], v[16], {-x0} ; e1_lo = b * x0 - 1 (residual)
+    MOV.NEG  v[66], v[65], 0x80000000      ; negate: -e1 (flip sign bit)
+    MOV      v[67], 0                       ; zero low word
+    IADD3    v[40], v[67], v[66], v[65]    ; combine correction words
+    ;   ... exponent adjustment (IADD3, MOV pairs for carry propagation) ...
+    ISETP    p3, v[40], threshold_lo       ; check if correction overflows
+    ISETP    p4, v[40], threshold_hi
+  @p3 BRA   ITER1_FIXUP
 
-> x_{n+1} = x_n * (2 - b * x_n)
+    DFMA     v[68:69], v[65:66], v[27], v[16] ; x1 = x0 + x0*e1 (refined)
 
-Each iteration approximately doubles the number of correct bits. Starting from the ~23-bit MUFU.RCP seed:
-- Iteration 1: ~46 bits (exceeds FP64 mantissa precision of 52 bits when combined with correction)
-- A second partial iteration provides the guard bits needed for correct rounding
+    ; -- Iteration 2: x2 = x1 * (2 - b * x1), same DFMA pattern --
+    ISETP    p5, ..., ...
+  @p5 BRA   ITER2_FIXUP
+    DFMA     v[79:80], v[7], v[68:69], {2^54}  ; scale: x1 * b at extended prec
 
-The SASS instruction sequence uses `DFMA` (FP64 fused multiply-add) to implement each iteration step. The FSETP/BRA branches handle edge cases where the intermediate result would overflow or underflow the FP64 range.
+    ; -- Result assembly --
+    DMUL     v[79], v[7], v[85], {2^54}    ; 0x8B: final a * refined_rcp
+    MOV.HI   v[80], v[86], v[79]           ; split into register pair
+    MOV.LO   v[81], v[87], v[79]
+    ;   ... 4 more ISETP/BRA pairs for overflow/underflow guard ...
+    DMUL     v[85], v[9], v[88], {2^54}    ; second-precision multiply
 
-**DDIV3 -- Final multiply and exception handling:**
-1. Compute `a * (1/b)` using the refined reciprocal
-2. Apply IEEE 754 rounding (round-to-nearest-even by default)
-3. Emit the quotient to the destination register pair
-4. Handle overflow to infinity, underflow to zero, and NaN propagation
+; === DDIV3 (sub_17075A0 + sub_1709130): rounding + exceptions ===
+    MUFU.RCP v[rcp2], v[scaled_b]          ; 0x3C: re-seed for correction term
+    POPC     v[t], v[rcp2]                 ; 0x93: population count for rounding
+    IMAD     v[..], v[rcp2], ...           ; 0x6E: integer mantissa fixup (x6)
+    DMUL     v[result], v[a], v[rcp_final] ; 0x8B: final quotient = a * (1/b)
+    ;   ... PRMT/LOP3/IADD3: IEEE 754 rounding logic ...
+    ;   ... ISETP/BRA: overflow->inf, underflow->zero, NaN propagation ...
+    MOV.HI   dst_hi, v[result_hi]          ; write output pair
+    MOV.LO   dst_lo, v[result_lo]
+```
+
+The DDIV template emits ~100--120 SASS instructions across 6 sub-expanders, using 298 virtual registers. The two `DFMA` instructions (opcode 0x122) in Part 2 are the mathematical core -- each implements one Newton-Raphson step that doubles precision from the ~23-bit MUFU.RCP seed to ~46 bits (iteration 1) then to the 52+3 guard bits needed for IEEE-correct rounding. The `DMUL` instructions (opcode 0x8B) with the constant `0x4350000000000000` (2^54) perform the final scaled multiply of `a * (1/b)` at extended precision.
 
 ### SASS Instruction Sequence (sub_1705820)
 
@@ -205,18 +238,35 @@ The DRCP/DSQRT handler (`sub_1718D60`) shares the same lazy-init and template-ca
 | Part 6 | `sub_1717470` | Final multiply `x * rsqrt(x)` to get `sqrt(x)`, exception handling |
 | (shared) | `sub_1701140` | Template scaffolding helper (called by all coordinators) |
 
-The algorithm for `DRCP(b)` = `1/b`:
-1. `MUFU.RCP(float32(b))` provides ~23-bit seed
-2. Two Newton-Raphson iterations: `x_{n+1} = x_n * (2 - b * x_n)`, each using DFMA
-3. Final rounding to FP64 precision
+Both paths share the same coordinator and register pool (289 vregs from `dword_2398940`). The coordinator selects the DRCP path (Parts 1--4) or DSQRT path (Parts 5--6, then shared Parts 2--4) based on the original PTX operation being lowered.
 
-The algorithm for `DSQRT(a)` = `sqrt(a)`:
-1. `MUFU.RSQ(float32(a))` provides ~23-bit `1/sqrt(a)` seed
-2. Refine `1/sqrt(a)` via Newton-Raphson: `y_{n+1} = y_n * (3 - a * y_n^2) / 2`
-3. Compute `sqrt(a) = a * (1/sqrt(a))` using the refined reciprocal square root
-4. Apply IEEE 754 rounding
+### DRCP/DSQRT SASS Pseudocode
 
-Both paths share the same coordinator and register pool. The coordinator selects the DRCP path or DSQRT path based on the original PTX operation being lowered.
+**DRCP** (Parts 1--4) mirrors DDIV's N-R core but outputs the reciprocal directly. Part 1 (`sub_170ED40`) has identical seed extraction (PRMT 0x15, LOP3.LUT 0x14, ISETP 0xC9, SHR 0x19, BRA 0x5F for denormal/inf/NaN guards). Part 2 (`sub_1710280`) emits the same MUFU.RCP + two-DFMA iteration pattern:
+
+```
+    MUFU.RCP x0, float32(b)       ; 0x3C: ~23-bit seed
+    POPC     t, x0                 ; 0x93: mantissa parity for rounding
+    IMAD     t, x0, ...            ; 0x6E: integer mantissa fixup (x4)
+    DMUL     e0, b, x0             ; 0x8B: residual e0 = b*x0 - 1
+    DFMA     x1, x0, -e0, x0      ; 0x122: N-R iter 1 -> ~46 bits
+    DFMA     x2, x1, -e1, x1      ; 0x122: N-R iter 2 -> 52+ bits
+    DMUL     result, x2, scale     ; 0x8B: normalize exponent
+```
+
+**DSQRT** (Parts 5--6) computes `sqrt(a) = a * rsqrt(a)` using integer-mantissa Goldschmidt iteration instead of DFMA. The `DNEG` instruction (opcode 0xB4, unique to sqrt/rsqrt paths) negates the input for residual computation:
+
+```
+    DNEG     neg_a, a              ; 0xB4: -a for residual
+    IMAD     t, a_mant, ...        ; 0x6E: extract mantissa as integer
+    I2F/F2I  y0, t                 ; 0xD5/0xD6: round-trip normalization for seed
+    IMAD     y0sq, y0, y0, 0       ; 0x6E: y0^2 in integer domain
+    IMAD     ay2, y0sq, a_mant, 0  ; 0x6E: a * y0^2
+    IMAD     y1, y0, corr, 0       ; 0x6E: y1 = y0*(3 - a*y0^2)/2
+    ;   ... IMAD chain: sqrt = a * y1 in integer mantissa domain ...
+```
+
+DSQRT uses `IMAD` chains (~4-cycle latency) rather than `DFMA` (~30-cycle latency), trading more instructions for lower total latency when the scheduler keeps the integer ALU busy.
 
 ## FP64 Reciprocal Square Root (DRSQRT)
 
@@ -249,6 +299,30 @@ The hardware flag at `*(config + 1037) & 1` likely distinguishes architectures w
 | Part 3 | `sub_171BB80` | Newton-Raphson iteration 2 |
 | Part 4 | `sub_171D3A0` | Normalization and rounding |
 | Part 5 | `sub_171EFD0` | Exception handling (NaN, infinity, negative, zero) |
+
+### DRSQRT SASS Pseudocode
+
+Reconstructed from `sub_1719080` (Part 1) and `sub_171A260` (Part 2). DRSQRT outputs `1/sqrt(a)` directly, using the same integer-mantissa Goldschmidt approach as DSQRT but without the final `a * rsqrt(a)` multiply.
+
+```
+; === Part 1 (sub_1719080): rsqrt seed via IMAD chain ===
+    MOV      t0, a_hi              ; 0x82: copy FP64 high word
+    DNEG     neg_a, a              ; 0xB4: -a for residual computation
+    POPC     t1, t0                ; 0x93: mantissa parity
+    IMAD     t2, t0, mask, 0       ; 0x6E: extract mantissa as integer (x3)
+    IMAD     t3, t2, t2, 0         ; 0x6E: t3 = t2^2 (integer squaring for seed)
+; === Part 2 (sub_171A260): N-R iteration 1 ===
+    IMAD     r0, y0, y0, 0         ; 0x6E: y0^2
+    IMAD     r1, r0, a_mant, 0     ; 0x6E: a * y0^2
+    IADD     r2, r1, correction    ; 0x02: (3 - a*y0^2)
+    ISETP    p0, r2, threshold     ; 0xC9: overflow guard
+  @p0 BRA   DRSQRT_FIXUP1
+    MOV      y1, r2                ; 0x82: refined estimate
+    ;   ... SSY (0xBC) for convergence after special-case BRA ...
+    ; Parts 3-4: second iteration y2 = y1*(3-a*y1^2)/2, then rounding
+```
+
+The DRSQRT template emits 65 instructions across Parts 1--2. `IMAD` (0x6E) chains dominate: the integer mantissa multiply approach avoids `DFMA` (~30-cycle latency) in favor of `IMAD` (~4-cycle). `DNEG` (0xB4) and `SSY` (0xBC) are unique to the rsqrt paths; `SSY` sets a convergence point for the special-case branches in Part 5.
 
 **Coordinator B** (`sub_1727130`): allocates only 59 virtual registers from `dword_23976E0` and dispatches to the integer division sub-expanders (`sub_1724A20` for 32-bit, `sub_1728930` for 64-bit unsigned, `sub_1727AC0` for 64-bit signed). This path handles the integer division/modulo lowering via `sub_1729B50`.
 
@@ -308,13 +382,137 @@ The complete SASS instruction mix for the 32-bit division template:
 
 ### 64-bit Division
 
-Two variants handle 64-bit operands, both called from `sub_1729B50`:
+Two variants handle 64-bit operands, both called sequentially from `sub_1729B50` (signed first, then unsigned):
 
-- **`sub_1728930`** (16,545 bytes): unsigned 64-bit division. The algorithm is analogous to 32-bit but requires double-width multiply (`IMAD.WIDE`), carry propagation, and additional correction iterations. Emits ~80 SASS instructions.
+#### Unsigned 64-bit -- `sub_1728930`
 
-- **`sub_1727AC0`** (13,776 bytes): signed 64-bit division. Wraps the unsigned algorithm with sign extraction, absolute value computation, and sign fixup of the quotient and remainder.
+**Size:** 16,545 bytes decompiled (634 lines). Emits 41 SASS instructions (including 4 branches).
+**Temporary pool:** indices 29--58 of the parameter array, providing 30 dedicated scratch registers.
 
-Both allocate from the same 59-register pool managed by coordinator B.
+Algorithm for unsigned 64-bit `{a_hi, a_lo} / {b_hi, b_lo}`:
+
+```
+Phase 1 -- Normalization check (4 insns + 1 branch)
+  MOV      t0 = a_hi                            ; 0x82: copy dividend high half
+  MOV.T    t1 = t0, 0x7FFFFFFF                  ; 0x0A: mask sign for magnitude
+  ISETP    p0, t1 >= b_hi                        ; 0xC9: divisor fits 32 bits?
+  MOV      t2 = a_lo                             ; 0x82: copy dividend low half
+  BRA      @p0 -> skip_to_Phase3                 ; 0x5F: shortcut if b_hi != 0
+
+Phase 2 -- Divisor-fits-32-bit fast path (3 insns + 1 branch)
+  MOV      t3 = t2                               ; 0x82: copy divisor_lo
+  MOV      t4 = 0                                ; 0x82: zero-extend
+  ISETP    p1, t3 == t4                          ; 0xC9: divisor-is-zero guard
+  SHR      t5 = normalize(b_lo)                  ; 0x19: align MSB for FP seed
+  BRA      @p1 -> skip_to_Phase4                 ; 0x5F
+
+Phase 3 -- FP reciprocal seed (4 insns + 1 branch)
+  MOV      t6 = 0x7FFFFFFF                       ; 0x82: INT32_MAX exponent guard
+  MOV      t7 = 0x7F800000                       ; 0x82: +Inf overflow sentinel
+  MUFU.RCP rcp = reciprocal(b_normalized)        ; 0x3C: ~23-bit HW approximation
+  ISETP    p2, rcp >= +Inf                       ; 0xC9: overflow check
+  MOV      t8 = rcp                              ; 0x82: save reciprocal seed
+  BRA      @p2 -> overflow_path                  ; 0x5F
+
+Phase 4 -- Refine and scale reciprocal (8 insns + 1 branch)
+  MOV      t9  = 0x3F800000                      ; 0x82: 1.0f for FP correction
+  IADD     rcp = rcp + 1_ULP                     ; 0x02: bump by 1 ULP
+  MOV      t10 = 0x7F800000                      ; 0x82: +Inf for second guard
+  ISETP    p3, rcp >= +Inf                       ; 0xC9: second overflow test
+  SHR      scale = extract_exponent(rcp)         ; 0x19: integer quotient scale
+  BRA      @p3 -> overflow_fixup                 ; 0x5F
+  MOV      t12 = rcp_adjusted                    ; 0x82
+  MOV      t13 = 0                               ; 0x82: carry init
+  MOV      t14 = 0x5F800000                      ; 0x82: 2^64 as FP32
+
+Phase 5 -- Double-width quotient estimation (10 insns)
+  IMAD     q_seed = rcp * a_hi + rcp_scaled      ; 0x6E: initial q estimate
+  MOV      t15 = q_seed                          ; 0x82
+  MOV      t16 = 0x2F800000                      ; 0x82: 2^-32 (scale-down)
+  MOV      t17 = 0x3F000000                      ; 0x82: 0.5f (rounding bias)
+  PRMT     t18 = byte_permute(q_seed)            ; 0xC0: extract hi/lo halves
+  IMAD.W   {h,l} = wide(t18, t16, ...)           ; 0x8B: q refinement (wide)
+  IMAD.W   {h,l} = wide(t18, q_seed, ...)        ; 0x8B: second refinement
+  LOP      carry = merge_carry(...)              ; 0x93: combine carry from wides
+  IMAD     q_cor = correction(...)               ; 0x6E: fix-up multiply-add
+  IMAD     r_est = a - q*b                       ; 0x6E: remainder estimate
+
+Phase 6 -- Final assembly and output (4 insns + conditional tail)
+  IMAD.W   {r_hi,r_lo} = wide_remainder_check    ; 0x8B: double-width r verify
+  MOV      q_out = final_quotient                ; 0x82
+  MOV      r_out = final_remainder               ; 0x82
+  MOV/CALL output = select(div ? q : r)          ; 0x82 or 0xA8: mode-dependent
+  RET                                            ; 0xBC: return from template
+```
+
+The `a1+8` byte flag at the template tail selects division vs. modulo: when set, the result is returned via a `CALL`-variant emitter (`sub_934630`, opcode 0xA8); when clear, a plain `MOV` copies the result.
+
+Key constants allocated via `sub_91D160`:
+
+| Hex literal | IEEE 754 value | Purpose |
+|---|---|---|
+| `0x7FFFFFFF` | INT32_MAX | Magnitude mask / exponent guard |
+| `0x7F800000` | +Inf | Reciprocal overflow sentinel |
+| `0x3F800000` | 1.0f | Unity for ULP correction |
+| `0x5F800000` | 2^64 (1.845e19) | Scale factor for 64-bit range |
+| `0x2F800000` | 2^-32 (2.328e-10) | Upper-half extraction scale |
+| `0x3F000000` | 0.5f | Rounding bias |
+| `0x00000000` | 0 | Zero initializer / carry seed |
+
+Complete SASS instruction mix:
+
+| SASS Opcode | Internal ID | Count | Role |
+|---|---|---|---|
+| MOV | 0x82 | 17 | Register copies and constant loads |
+| MOV (typed) | 0x0A | 1 | Typed move with immediate mask |
+| ISETP | 0xC9 | 4 | Integer predicate comparisons |
+| BRA | 0x5F | 4 | Conditional branches (phase skips) |
+| IMAD | 0x6E | 3 | Integer multiply-add |
+| IMAD.WIDE | 0x8B | 3 | 64-bit wide multiply-add |
+| SHR | 0x19 | 2 | Shift right (normalize, scale) |
+| MUFU.RCP | 0x3C | 1 | Hardware reciprocal seed |
+| IADD | 0x02 | 1 | ULP correction add |
+| PRMT | 0xC0 | 1 | Byte permute (half extraction) |
+| LOP | 0x93 | 1 | Logic op (carry merge) |
+| RET | 0xBC | 1 | Template return |
+| MOV/CALL | 0x82/0xA8 | 1 | Div-vs-mod output select |
+| **Total** | | **41** | |
+
+#### Signed 64-bit -- `sub_1727AC0`
+
+**Size:** 13,776 bytes decompiled (538 lines). Emits 36 instructions (including 1 branch).
+
+The signed variant does NOT call `sub_1728930` -- it inlines its own equivalent unsigned core wrapped with sign handling:
+
+```
+Phase A -- Sign extraction and absolute value (10 insns + 1 branch)
+  MOV      a_hi = dividend_hi                   ; 0x82 x4: copy both halves
+  MOV      a_lo = dividend_lo                   ;   of both operands
+  MOV      b_hi = divisor_hi
+  MOV      b_lo = divisor_lo
+  MOV      guard = 0x727FFFFF                   ; 0x82: ~2^102 sign-safe limit
+  IADD     abs_a = |dividend|                   ; 0x02: negate if MSB set
+              ; uses const 0x0D000000 (~2^-101) as correction offset
+  ISETP    p_neg, sign(a_hi XOR b_hi)           ; 0xC9: quotient sign = XOR
+  MOV      copy for unsigned core               ; 0x82
+  BRA      @p_neg -> fixup_path                 ; 0x5F
+
+Phase B -- Inlined unsigned core (19 insns)
+  ; Same MUFU.RCP -> IMAD -> IMAD.WIDE -> LOP -> IMAD correction
+  ; sequence as sub_1728930 Phases 3-6, operating on |a| / |b|.
+  ; Opcodes: I2F(0xC0), IMAD.WIDE(0x8B x2), IMAD(0x6E x2),
+  ;          LOP(0x93), MOV(0x82 x8), ISETP/BRA for overflow.
+
+Phase C -- Sign fixup and output (6 insns)
+  MOV      q_lo = unsigned_q_lo                 ; 0x82: copy result pair
+  MOV      q_hi = unsigned_q_hi                 ; 0x82
+  MOV      zero = 0                             ; 0x82: negation identity
+  MOV      copy                                 ; 0x82
+  MOV/CALL output = negate_if(p_neg, q)         ; 0x82/0xA8: conditional negate
+  RET                                           ; 0xBC
+```
+
+Together, `sub_1727AC0` (36) + `sub_1728930` (41) = 77 SASS instructions across both signed and unsigned paths (~80 including branch-target labels). Both allocate from the same 59-register pool managed by coordinator B.
 
 ### Division by Constant
 
@@ -418,7 +616,46 @@ The `use_template_call` flag at `template_state + 8` selects between two emissio
 - No named code sections, no convergence barriers
 - A `JMP`/`BRA` (opcode 0x20 or 0x5F) replaces the template return
 
-The template-call path is preferred for functions with multiple DDIV/DRCP/DSQRT operations because it avoids duplicating the large instruction sequence. The inline path is used when the function has only one such operation, or when the register allocator determines that the overhead of the template call mechanism (saving/restoring registers across the call boundary) exceeds the code-size benefit.
+#### Decision Algorithm
+
+The flag is computed once during lazy initialization of the 88-byte template state object (first encounter of a template-eligible instruction in the function). The decision is **not count-based** -- it does not depend on how many DDIV/DRCP/DSQRT operations appear. It is driven purely by compilation-context flags:
+
+```c
+// sub_AED3C0 template state init (identical in cases 48, 49, 138, 180, 222)
+template_state = allocate(88);
+*(uint64_t *)(template_state + 0) = ctx;           // back-pointer
+*(int32_t *)(template_state + 12) = -1;            // template_id (uninitialized)
+*(int32_t *)(template_state + 40) = -1;            // section_id_1
+*(int32_t *)(template_state + 56) = -1;            // section_id_2
+*(int32_t *)(template_state + 76) = -1;            // section_id_3
+
+bool is_recompile = (*(int32_t *)(ctx + 896) == 5);
+uint8_t use_call = previous_iteration_value;       // default 0 on first pass
+if (is_recompile)
+    use_call = (~*(uint8_t *)(ctx + 1412)) >> 7;   // inverted bit 7
+
+*(uint8_t *)(template_state + 8) = use_call;       // use_template_call flag
+*(uint8_t *)(template_state + 9) = (*(int32_t *)(ctx + 352) >= 0);  // opt_level_nonneg
+```
+
+The two inputs:
+
+| Field | Offset | Meaning |
+|---|---|---|
+| `compilation_strategy` | `ctx + 896` | Internal strategy selector (values 0--5). Value 5 = recompilation trial: ptxas is re-lowering the function after a failed register allocation attempt. |
+| `compilation_flags_byte` | `ctx + 1412` | Bit 7 (sign bit): when set, marks the function for forced-inline expansion (e.g. device-debug mode, or a prior pass determined inlining is cheaper). The expression `(~flags >> 7)` yields 1 when bit 7 is clear (template-call allowed), 0 when set (forced inline). |
+
+The pre-scheduling pass `sub_7753F0` applies the same logic with an additional gate:
+
+```c
+// sub_7753F0 lines 538-541
+bool enable_template_calls = false;
+if ((*(uint8_t *)(ctx + 1420) & 1) == 0      // no forced-inline-all flag
+    || (*(uint32_t *)(ctx + 900) - 1) > 1)   // pass_id not in {1, 2}
+    enable_template_calls = (*(int32_t *)(ctx + 896) == 5);
+```
+
+**Summary**: template-call mode activates only when (a) the compilation strategy is 5 (recompilation after regalloc failure), (b) the function is not marked for forced-inline expansion (bit 7 of `ctx+1412` clear), and (c) the forced-inline-all flag at `ctx+1420` is unset or the current pass is not an early trial. On a normal first-pass compilation (strategy != 5), all math templates are inlined unconditionally. The call path appears only during recompilation, where code-size sharing across multiple call sites offsets the convergence-barrier overhead and the extra register pressure from the template-call ABI.
 
 ## SM-Specific Variants
 

@@ -109,6 +109,8 @@ The orchestrator `sub_9F3340` runs two steps sequentially:
 
 2. **Operand reorganization** (`sub_9EF5E0`, 27KB): post-conversion lowering that restructures operand lists into a form the Mercury encoder can consume directly. Gated by `*(BYTE*)(*(context+16) + 1048) != 0` AND `*(context+104) != 0` (non-empty instruction BST).
 
+**Gate flag `byte_1398 & 0x20` -- who sets it.** The flag lives in the SM-backend profile object at byte offset 1398. It is set by the architecture initialization function `sub_7DD480`, which reads the architecture capability word at `profile+1413` and programs byte 1398 based on the encoding-mode bits. Specifically, bit 0x20 is set (`byte_1398 = old & 0x1F | 0x60`) when capability bits 3 (`cap & 0x08`, Mercury-capable) or bits 4-5 (`cap & 0x30 == 0x20`, Capsule-Mercury-capable) are present. When the capability word has `cap & 0x30 == 0x10` (legacy non-Mercury mode), bit 0x20 is left unset (`byte_1398 &= ~0x80`; bit 5 untouched in the 0x10 path). The net effect: bit 0x20 at offset 1398 means "this SM target supports Mercury opcode conversion," and when clear, both phase 5 and phase 141 skip the opcode conversion step entirely, running only operand reorganization (if applicable).
+
 ### Post-Conversion Lowering -- `sub_9EF5E0` (27KB)
 
 This function transforms the BST (binary search tree) of converted instructions produced by step 1 into encoding-ready conversion nodes. For each instruction record in the BST, it performs three operations:
@@ -178,9 +180,38 @@ if (result == -1) {
 }
 ```
 
-`sub_7BFC30` validates the conversion node by traversing its operand tree and checking that the contiguous/gap partition can be represented in the target encoding format. It returns the encoding index on success, or -1 if the instruction's operand pattern cannot be encoded in the available formats.
+`sub_7BFC30` walks the conversion node's BST, accumulates a bit-budget for all operand partitions, and returns an encoding-unit index (0 or 1) or -1 on overflow:
 
-On failure, `sub_9CE210` (a recursive fallback) re-processes the instruction using a different encoding strategy -- typically splitting the operand group into smaller sub-groups that each fit the available encoding width. This handles edge cases like wide operations with mixed register classes.
+```
+validate_encoding(record):                    // sub_7BFC30
+    node = record->bst_root          (+32)    // first conversion node
+    if node == NULL: return 1                  // empty -> trivially valid
+    bits = 4                                   // base overhead (4 bits)
+
+    for each node in BST in-order:
+        contig_count = node->contig_count (+80) - 2    // minus 2 sentinels
+        gap_count    = build_gap_list(node)     - 2    // sub_7BEEC0; also minus 2
+
+        // Per-partition limit: max 15 contiguous, max 15 gap operands
+        if contig_count > 15 OR gap_count > 15:
+            return -1                          // partition too wide
+
+        // Accumulate bit cost: 2-bit node header
+        //   + ceil(10 * contig_count / 8) for contiguous encoding
+        //   + ceil(15 * gap_count    / 8) for gap encoding
+        bits += 2 + ((10 * contig_count + 7) >> 3)
+                  + ((15 * gap_count    + 7) >> 3)
+
+    // Convert total bits to encoding-unit index
+    rounded = bits + 17                        // +17 = 16-bit unit alignment + 1
+    if rounded < 0: rounded = bits + 32        // negative guard (large bit counts)
+    unit_index = rounded >> 4                  // divide by 16
+    return unit_index < 2 ? unit_index : -1    // must fit in units 0 or 1
+```
+
+The 10-bit and 15-bit per-operand costs reflect the contiguous and gap encoding widths: a contiguous operand needs 10 bits (register base + range length), while a gap operand needs 15 bits (two register indices + modifier delta). The ceiling division `(N*W+7)>>3` byte-aligns each partition's contribution.
+
+On failure, `sub_9CE210` (a recursive fallback) re-processes the instruction by splitting the operand group into smaller sub-groups that each fit within the 2-unit encoding budget.
 
 ### Relationship to Phase 5
 
@@ -192,7 +223,7 @@ Phase 5 and phase 141 share the same code (`sub_9F3340` orchestrator, `sub_9ED2D
 | Purpose | Convert PTX opcodes to SASS | Re-legalize instructions introduced by optimizer |
 | Input | Raw Ori IR with PTX opcodes | Optimized Ori IR with possibly-illegal opcodes |
 | Output | Optimizer-ready SASS-opcode IR | Encoding-ready IR for Mercury phase 142+ |
-| Gate flag | `*(context+1398) & 0x20` | Same flag, re-checked |
+| Gate flag | `*(BYTE*)(profile + 1398) & 0x20` (set by `sub_7DD480`) | Same flag, re-checked |
 
 ## Stage 1: MercEncodeAndDecode -- Roundtrip Verification
 

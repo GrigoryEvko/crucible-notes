@@ -180,7 +180,57 @@ See [ELF/Cubin Output](../output/elf-emitter.md) for section catalog, relocation
 
 ## Intrinsic Lowering
 
-The OCG (On-Chip Global) intrinsic system at `0x6C0000`--`0x6D0000` handles PTX builtin operations for SM 100+ targets. The master intrinsic table at `sub_6C9EB0` (13 KB) initializes a 10,664-byte dispatch table with prefix `"__nv_ptx_builtin_ocg_"`, covering operations from basic add/load/store through SM 100 tensor core (tcgen05) and bulk async copy:
+The OCG (On-Chip Global) intrinsic system at `0x6C0000`--`0x6D0000` handles PTX builtin operations for SM 100+ targets. The master intrinsic table at `sub_6C9EB0` (13 KB) initializes a 10,664-byte dispatch structure: vtable at +0, prefix `"__nv_ptx_builtin_ocg_"` at +120, then 43 operation slots of 248 bytes each from +128 through +10,544. Each slot stores the operation name at +0 followed by up to 30 sub-operation/modifier string pointers. The 30 numeric literals IDA left unresolved are string pointers into the rodata segment (e.g., `30471598` = `0x1D0F5AE` = `"u32"`).
+
+Complete dispatch table (43 slots, all sub-operations resolved from binary):
+
+| Slot | Offset | Operation | Sub-operations / modifiers | SASS target |
+|---:|---:|---|---|---|
+| 0 | 128 | `add` | s32, f32, s64, f64, sat | IADD3 / FADD |
+| 1 | 376 | `cp_async_commit` | mem, bulk, shared, global | LDGDEPBAR |
+| 2 | 624 | `cp_async_wait` | mem, bulk, shared, global, read, write | DEPBAR |
+| 3 | 872 | `cache` | tensor, pf, iv, ivall | CCTL / PREFETCH |
+| 4 | 1120 | `ld_mc` | add, min, max, f32add, and, or, xor; f16x2..f16x8, bf16x2..bf16x8, f32..f32x4, f64, u32, s32, s64, u64 | LDG.MC |
+| 5 | 1368 | `ldc` | u32, u64 | LDC |
+| 6 | 1616 | `s2r` | *(none)* | S2R |
+| 7 | 1864 | `acqblk` | *(none)* | barrier acquire |
+| 8 | 2112 | `preexit` | *(none)* | EXIT.KEEPREFCOUNT |
+| 9 | 2360 | `red_async` | release; shared, global; gpu, sys, mmio; v2, v4; u32, s32, u64; add, min, max, inc, dec, and, or, xor | RED.ASYNC |
+| 10 | 2608 | `cp_async_bulk` | mbarrier, counted, shared, global, multicast, sequenced, bytemask | UBLKCP |
+| 11 | 2856 | `cp_red_async_bulk` | mbarrier, counted, shared, global; u32, s32, u64, s64, f16, f32, f32ftz, f64, bf16; add..xor, inc, dec | UBLKCP.RED |
+| 12 | 3104 | `cp_async_tensor` | mbarrier, shared, global; 1d--5d, im2col, multicast | UTMAKCP |
+| 13 | 3352 | `cp_async_prefetch_tensor` | global; 1d--5d, im2col | UTMAPF |
+| 14 | 3600 | `fence_view_async` | all, global, shared, dshared, tensor | FENCE.VIEW.ASYNC |
+| 15 | 3848 | `viadd` | 32, f16x2 | VIADD |
+| 16 | 4096 | `viaddmax` | s32, u32, s16x2, u16x2, relu | VIADDMNMX |
+| 17 | 4344 | `viaddmin` | s32, u32, s16x2, u16x2, relu | VIADDMNMX |
+| 18 | 4592 | `vimax` | s32, u32, s16x2, u16x2, relu | VIMNMX |
+| 19 | 4840 | `vimin` | s32, u32, s16x2, u16x2, relu | VIMNMX |
+| 20 | 5088 | `vimax3` | s32, u32, s16x2, u16x2, relu | VIMNMX3 |
+| 21 | 5336 | `vimin3` | s32, u32, s16x2, u16x2, relu | VIMNMX3 |
+| 22 | 5584 | `write_async` | release; shared, global; gpu, sys, mmio; v2, v4; u8, s8, u16, s16, b32, b64, u32, f64 | STG.ASYNC |
+| 23 | 5832 | `cctl_c` | ldc, ldcu, shallow, deep, iv, ivall | CCTL |
+| 24 | 6080 | `getnextworkid` | selfcast, broadcast | S2R (special) |
+| 25 | 6328 | `fadd2` | ftz; rn, rm, rp, rz | HADD2 |
+| 26 | 6576 | `ffma2` | ftz; rn, rm, rp, rz | HFMA2 |
+| 27 | 6824 | `fmul2` | ftz; rn, rm, rp, rz | HMUL2 |
+| 28 | 7072 | `mnmx` | s32, u32, s64, u64 | IMNMX / FMNMX |
+| 29 | 7320 | `fmax3` | ftz, nan | FMNMX3 |
+| 30 | 7568 | `fmin3` | ftz, nan | FMNMX3 |
+| 31 | 7816 | `tcbar` | cta1, cta2, a1t0, a0tx, flush, multicast, b32, mmareadshma | TCBAR |
+| 32 | 8064 | `tccp` | 128dp256bit, 4dp256bit, 128dp128bit, 2x64dp128bitlw02lw13, 2x64dp128bitlw01lw23, 4x32dp128bit, u4x16p64, u6x16p32; cta1, cta2; b32, b64 | TCCP |
+| 33 | 8312 | `tcmma` | gdesc, tmem; h, i, q, o, mxq; cta1, cta2; ashift, scale, lutb; areuse, akeep, breuse, bkeep; ws; buffer0--buffer3; 2x, 4x, blockscale, impl; b32, b64, u32 | TCMMA |
+| 34 | 8560 | `tcshift` | cta1, cta2, b32 | TCSHIFT |
+| 35 | 8808 | `virtcount` | u32 | scoreboard |
+| 36 | 9056 | `tcatomsws` | and, or, findandset, align, cas; cta1, cta2; b32, b64 | TCATOM.SWS |
+| 37 | 9304 | `tcldsws` | cta1, cta2 | TCLD.SWS |
+| 38 | 9552 | `tcstsws` | cta1, cta2; b32, b64 | TCST.SWS |
+| 39 | 9800 | `memclear` | b32, b64 | MEMCLEAR |
+| 40 | 10048 | `acqshminit` | *(none)* | shmem init barrier |
+| 41 | 10296 | `ldtm` | 16dp128bit..32dp32bit; x1--x128; pack16bit, fused, stat; nan, max, maxabs, min, minabs; u32, s32, f32, b32; sparsify, u2, spfactor2to4 | LDTM |
+| 42 | 10544 | `sttm` | 16dp128bit..32dp32bit; x1--x128; expand16bit, fused; b32 | STTM |
+
+Handler functions that consume this table:
 
 | Handler | Size | Operations |
 |---|---|---|

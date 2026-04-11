@@ -88,7 +88,7 @@ This is the primary text generation system. The 580 formatter functions convert 
 sub_5D4190 (12.9 KB, dispatcher)
   ├─ First: calls sub_5D1660 to initialize intrinsic ID table (608 entries)
   ├─ Registers 121 named opcodes at a1+808 via sub_426150()
-  ├─ Registers ~400 hash-keyed opcodes at a1+816 via sub_426150()
+  ├─ Registers 473 variant-keyed opcodes at a1+816 via sub_426150()
   └─ Dispatches to one of 580 formatters at 0x4DA340-0x5A8E40
        └─ Each: alloc 50 KB → sprintf via format table → shrink-copy → free
 ```
@@ -97,7 +97,16 @@ The dispatcher uses a two-level dispatch strategy:
 
 1. **Named dispatch** (121 opcodes): Direct string-to-function registration for recent or complex instructions. The opcode name string (e.g., `"wmma.load.a"`, `"tcgen05.mma"`, `"barrier.cta"`) is looked up in a hash map at `a1+808`.
 
-2. **Hash dispatch** (~400 opcodes): Numeric hash values of opcode names are used as keys in a second hash map at `a1+816`. The hash values are stored as decimal string representations (e.g., `"2644314910"`, `"605425506"`). This covers the stable ISA core -- arithmetic, logic, loads, stores, branches, conversions.
+2. **Variant-ID dispatch** (473 entries): Composite 32-bit variant identifiers are used as keys in a second hash map at `a1+816`. The caller computes a variant ID from the instruction's internal representation (Ori opcode, PTX type, modifiers), converts it to a decimal string via `sprintf("%u", variant_id)`, and looks up the corresponding formatter. Keys like `"2644314910"` and `"605425506"` are the decimal encodings of these IDs. This covers the stable ISA core -- arithmetic, logic, loads, stores, branches, conversions -- plus MMA/WMMA shape+type+layout variants.
+
+Both maps use the same MurmurHash3-based hash map infrastructure (`sub_427630` for bucket hashing, `sub_426150` for insert, `sub_426D60` for lookup). The variant-ID keys are structured -- bits 8-15 encode a PTX type discriminator (16 unique values spanning 9--24, corresponding to type codes like `.s32`, `.f32`, `.f64`), and related variants (e.g., same opcode with different types) cluster with small numeric deltas. Pairs differing only in layout produce a fixed hi16 delta of 76, confirming the ID encodes multiple orthogonal fields rather than being a hash of the opcode name string.
+
+```
+Variant ID structure (32-bit, approximate field boundaries):
+  bits 0-7:    sub-variant / modifier discriminator (203 unique values)
+  bits 8-15:   PTX type code (16 values: 9=.pred .. 24=.bf16x2)
+  bits 16-31:  opcode + layout composite (467 unique hi16 values)
+```
 
 ### Level 2: SASS Disassembly Renderer
 
@@ -425,15 +434,31 @@ The 128-bit descriptors at `xmmword_23F1xxx`--`23F2xxx` encode canonical operand
 
 ### Format-Class Printers (Layer C)
 
-The instruction's format class at `instruction+76` determines which printer handles it. The dispatch computes `index = format_class - 11`, then looks up `dword_23B39E0[index]` for the encoding strategy:
+The instruction's format class at `instruction+76` determines which printer handles it. The dispatch computes `index = format_class - 11`, then looks up `dword_23B39E0[index]` for the encoding strategy. Full table contents (read from VA `0x23B39E0`, 10 DWORDs):
 
-| Strategy | Value | Description |
-|----------|-------|-------------|
-| Default | 0 | Standard register fields |
-| Wide | 1 | 9-bit register fields, 8 sequential operands |
-| Pair | 2 | 2x register fields per operand |
-| Extended | 3 | Extra modifier bits |
-| Special | 4+ | Texture header, 16-DWORD immediate |
+| Index | Format class | `dword_23B39E0[i]` | Strategy |
+|------:|:------------:|:-------------------:|----------|
+| 0 | 11 | 1 | Wide (9-bit register fields, 8 sequential operands) |
+| 1 | 12 | 3 | Extended (extra modifier bits) |
+| 2 | 13 | 0 | Default (standard register fields) |
+| 3 | 14 | 0 | Default |
+| 4 | 15 | 0 | Default |
+| 5 | 16 | 0 | Default |
+| 6 | 17 | 0 | Default |
+| 7 | 18 | 0 | Default |
+| 8 | 19 | 0 | Default |
+| 9 | 20 | 2 | Pair (2x register fields per operand) |
+
+Only three non-zero strategies exist: Wide (1) for format class 11, Pair (2) for class 20, and Extended (3) for class 12. The remaining seven classes use strategy 0 (Default).
+
+The companion `word_23B3A58[4]` table maps the strategy value to a builder `kind_id` used by the texture/surface printer (VA `0x23B3A58`, 4 WORDs):
+
+| Index (strategy) | `word_23B3A58[i]` | Builder kind ID |
+|------------------:|:-----------------:|-----------------|
+| 0 | 0x00C2 (194) | Default builder |
+| 1 | 0x00D5 (213) | Wide builder |
+| 2 | 0x0083 (131) | Pair builder |
+| 3 | 0x0087 (135) | Extended builder |
 
 Printer functions for each format class:
 
@@ -529,8 +554,8 @@ Each 8-byte operand slot encodes:
 
 | Table | Size | Index | Purpose |
 |-------|------|-------|---------|
-| `dword_23B39E0[10]` | 40 B | `format_class - 11` | Format class to encoding strategy (0--4) |
-| `word_23B3A58[4]` | 8 B | Subtype from above | Subtype to builder `kind_id` mapping |
+| `dword_23B39E0[10]` | 40 B | `format_class - 11` | Format class to encoding strategy: `{1,3,0,0,0,0,0,0,0,2}` |
+| `word_23B3A58[4]` | 8 B | Strategy from above | Strategy to builder kind ID: `{194,213,131,135}` |
 | `dword_23B3A20[14]` | 56 B | `register_class - 3` | Register class to comparison type ID |
 | `dword_23B3980[7]` | 28 B | `width_field - 1` | Encoded width to builder width value |
 | `xmmword_23F1xxx`--`23F2xxx` | ~16 B each | Per-opcode | 128-bit operand layout descriptor templates |
@@ -623,7 +648,7 @@ The 121 named opcodes registered at `a1+808` by `sub_5D4190`:
 | TCGen05 | `tcgen05.alloc`, `tcgen05.relinquish_alloc_permit`, `tcgen05.dealloc`, `tcgen05.ld`, `tcgen05.ld.red`, `tcgen05.st`, `tcgen05.commit`, `tcgen05.cp`, `tcgen05.shift`, `tcgen05.mma`, `tcgen05.mma.ws` |
 | Guardrails | `_tcgen05.guardrails.is_phase_valid`, `.are_columns_allocated`, `.is_current_warp_valid_owner`, `.in_physical_bounds`, `.allocation_granularity`, `.datapath_alignment`, `.sp_consistency_across_idesc_mod`, `.check_sparse_usage` |
 
-The remaining ~400 opcodes (arithmetic, logic, load/store, control flow, etc.) are dispatched through hash values at `a1+816`.
+The remaining 473 opcode variants (arithmetic, logic, load/store, control flow, MMA shape+type+layout combinations) are dispatched through composite variant IDs at `a1+816`.
 
 ## SASS Printer Key Functions
 
