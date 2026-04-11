@@ -170,6 +170,101 @@ The scheduler:
 
 5. **Produces control word fields**: After analysis, the function sets the barrier assignment, stall count, and wait mask for the instruction.
 
+#### Stall-vs-Barrier Decision Algorithm
+
+The core decision lives in `sub_A220A0` (9 KB), called once per source operand that requires dependency tracking. This is the single most critical algorithm in the scoreboard pass -- it decides whether a dependency is expressed as a stall count in the control word or as a barrier register allocation with a wait bit.
+
+```
+function AssignOperandScoreboard(backend, func, instr, operand_idx, insert_pt, sched_state):
+    operand_slot = &instr.operands[operand_idx]          // instr+84 + 8*idx
+    operand_desc = *operand_slot                          // 32-bit packed descriptor
+    desc_type    = (operand_desc >> 28) & 7               // 3-bit type field
+    is_write_dep = operand_slot.byte7 & 1                 // high byte bit 0
+
+    // ---- Gate 1: skip non-trackable registers ----
+    if desc_type == 1 and not is_write_dep:
+        reg_id   = operand_desc & 0xFFFFFF
+        reg_obj  = func.reg_table[reg_id]                 // *(*(func+88) + 8*reg_id)
+        reg_type = *(reg_obj + 64)
+        if reg_type == 3 or reg_id == 41:                 // predicate reg or RZ
+            return                                         // no scoreboard needed
+
+    func.last_sched_ip   = instr.addr                     // *(func+232)
+    func.last_sched_line = instr.line                     // *(func+264)
+
+    // ---- Path A: non-register or write-dependent operand ----
+    if desc_type != 1 or is_write_dep:
+        dep_class = ClassifyOperand(instr, operand_idx)   // sub_91E7A0
+        producer  = FindProducer(func, instr, operand_idx, &dep_class)  // sub_13A48E0
+
+        // Try barrier tracker cache (avoids redundant allocation)
+        if sched_state.has_extended_tracking:              // *(sched_state+24)
+            cached = TryBarrierCacheLookup(sched_state, instr, operand_idx)
+        else:
+            cached = TryBarrierCacheLookup(sched_state+72, instr, operand_idx)
+        if cached: rewrite operand_slot with cached barrier ref; return
+
+        // Write-after-write reuse: check bits 25-26 of operand high word
+        if operand_slot.high & 0x6000000:
+            pipe_unit = backend.vtable[904](backend, dep_class)
+            if pipe_unit == 4: dep_class = 6              // force class 6 for special units
+            else:              dep_class = MapUnitToClass(pipe_unit)  // sub_7D6890
+
+        // Query dependency distance via sub_92E800 -> sub_92C240
+        //   Packs (dep_class & 0xFFFFFF) | 0x90000000 as a distance query
+        //   Opcode 0x82 = overlap test against producer's live range
+        StoreFlaggedProducer(func, instr)                 // *(func+240..252)
+        LookupScoreboardConfig(&config, func, 3)          // sub_91BF30, 3 = read dep
+        stall_result = QueryDepDistance(                   // sub_92E800
+            func, 0x82, dep_class, config, &producer_desc)
+
+        // Rewrite operand slot: replace virtual reg with barrier reg reference
+        operand_slot.low  = (stall_result & 0xFFFFFF) | 0x10000000
+        operand_slot.high &= 0xFEC00000
+        func.sched_marker = 7                             // *(func+240)
+        if *insert_pt == instr.next: *insert_pt = instr.prev
+        return
+
+    // ---- Path B: already-defined register operand ----
+    dep_distance = ComputeDepDistance(func, instr, operand_idx)  // sub_91E610
+    //
+    // sub_91E610 returns distance by register type:
+    //   reg_type 4 (constant bank)  --> 26  (always exceeds MAX_STALL -> barrier)
+    //   reg_type 5 or 2 (UReg/SReg) --> 20  (always exceeds MAX_STALL -> barrier)
+    //   Same-block short-circuit     --> 10  (may fit in stall if close enough)
+    //   General case: sub_91A0F0(opcode, extra, operands, count, idx)
+    //     walks the operand chain computing actual cycle distance
+
+    LookupScoreboardConfig(&config, func, 3)
+    stall_count = config[0]
+    StoreFlaggedProducer(func, instr)
+
+    // sub_92E760 -> sub_92C240 is the unified stall/barrier encoder:
+    //   Packs (stall_count & 0xFFFFFF) | 0x90000000
+    //   Opcode 0xB0 = stall encoding query
+    //   sub_92C240 makes the final decision:
+    //     if result fits 4-bit stall field [0..15] -> stall count in control word
+    //     if result > 15 -> delegates to AllocateBarrier (see Allocation Pseudocode)
+    EncodeStallOrBarrier(result, func, dep_distance, stall_count, operand_slot)
+
+    *(func.last_sched_ip + 88) |= 0x800000               // mark producer as tracked
+    func.sched_marker = 7
+    operand_slot.low = (stall_count & 0xFFFFFF) | (operand_desc & 0xFF000000)
+    return
+```
+
+**Decision summary.** For every source operand, the algorithm computes the distance to the producing instruction and selects one of three outcomes:
+
+| Condition | Action | Control word encoding |
+|-----------|--------|----------------------|
+| `dep_distance <= 15` (MAX_STALL) | Stall: pipeline bubbles absorb the latency | 4-bit `stall_count` field, no barrier used |
+| `dep_distance > 15` and free barrier exists | Barrier: allocate from pool of 6 | `wr_barrier` (3 bits) + `wait_mask` bit on consumer |
+| `dep_distance > 15` and all 6 occupied | Recycle: evict oldest, insert DEPBAR.LE wait | DEPBAR inserted before consumer + barrier reused |
+
+**Operand slot selection.** When an instruction has two candidate operand slots (e.g., dual-source ALU), `sub_13A5D50` (extended tracker) or `sub_13A4DA0` (basic tracker) selects which slot receives the barrier. Both walk the instruction chain backward up to `*(tracker+28)` instructions, matching operand descriptors with a 25-bit mask `(desc_a ^ desc_b) & 0x1FFFFFF` and preferring the slot whose producer appears earlier. This ensures the barrier covers the longer-latency dependency while the shorter one can be absorbed as a stall.
+
+**Per-SM parameters** from `per_sm_scoreboard_configs.json`: each architecture provides up to 75 entries of 88-byte scoreboard configuration records. Each record holds up to 6 triplets of `(scoreboard_id, threshold, mask)` where `threshold` (typically 56) is the instruction-distance cutoff for barrier freeing, and `mask` (-1 = all register classes) controls tracking scope.
+
 ### Key Support Functions
 
 | Address | Size | Purpose |
@@ -309,27 +404,63 @@ State transitions:
 
 ### Allocation Pseudocode
 
+The orchestrator (`sub_A356A0`, EncodeScoreboardFields) drives the three-phase allocation. Phase 1 resolves operand-to-register mappings and extracts the pipe class. Phase 2 selects a barrier index. Phase 3 applies conflict correction when the `ctx+1415` bit 5 flag is set (enabled for non-texture long-latency classes).
+
 ```
 function AllocateBarrier(ctx, producer_instr):
-    // 1. Try to find a free barrier
+    pipe_class = LookupPipeClass(producer_instr)       // from dep_rules[unit_id]
+    barrier_lat = dep_rules[pipe_class].barrier_latency // typically 56 cycles
+
+    // Phase 1: distance-based freeing — release stale barriers (sub_A318F0)
+    //   For each active barrier, compute the instruction distance from its
+    //   producer to the current instruction.  sub_A318F0 calls sub_92F520
+    //   (opcode 0x8B = forward distance, 0x8F = backward distance) to obtain
+    //   paired min/max distances, then applies the min-distance operator
+    //   (sub_9331F0, opcode 5) across both source operand pairs.
+    for i in 0..5:
+        if barrier[i].status == PENDING:
+            dist = InstrDistance(barrier[i].producer, current_ip)  // sub_92F520
+            if dist >= barrier_lat:                                // threshold from table
+                barrier[i].status = FREE
+
+    // Phase 2: type-affinity preference
+    //   When pipe_class matches a previously-assigned barrier's class (e.g.,
+    //   two TEX operations share the same texture pipeline), prefer that index.
+    //   This reduces cross-class contention and lets the HW batch completions.
+    best = -1
     for i in 0..5:
         if barrier[i].status == FREE:
-            barrier[i].status = PENDING
-            barrier[i].producer = producer_instr
-            barrier[i].set_cycle = current_cycle
-            return i
+            if barrier[i].last_pipe_class == pipe_class:
+                best = i; break                         // affinity hit
+            if best == -1: best = i                     // first-free fallback
 
-    // 2. No free barrier: recycle the oldest
-    oldest = argmin(barrier[i].set_cycle for i in 0..5)
+    if best == -1:
+        // All occupied: oldest-first eviction
+        best = argmin(barrier[i].set_cycle for i in 0..5)
+        InsertWaitForBarrier(ctx, best)                 // sub_9253C0
 
-    // 3. Force all consumers of oldest to wait NOW
-    InsertWaitForBarrier(ctx, oldest)
+    barrier[best].status       = PENDING
+    barrier[best].producer     = producer_instr
+    barrier[best].set_cycle    = current_cycle
+    barrier[best].last_pipe_class = pipe_class
+    candidate = best
 
-    // 4. Recycle
-    barrier[oldest].status = PENDING
-    barrier[oldest].producer = producer_instr
-    barrier[oldest].set_cycle = current_cycle
-    return oldest
+    // Phase 3: conflict avoidance (sub_A31390)
+    //   Called when ctx+1415 bit 5 is set.  Builds operand-pair intersection
+    //   vectors for the candidate barrier against all other active barriers.
+    //   Uses sub_9331F0 (min-distance), sub_92FEB0 (opcode 0xC9, register
+    //   bank conflict), sub_9300A0 (opcode 0x24, select-with-threshold),
+    //   and sub_92E850 (opcode 0x82, overlap test) to detect whether any
+    //   live barrier's source/destination set intersects the candidate's.
+    //   If intersection is non-empty, the conflicting barrier's wait is
+    //   merged into the current instruction's wait mask.
+    if ctx.conflict_avoidance_enabled:                  // bit 5 of byte at ctx+1415
+        for i in 0..5 where i != candidate:
+            if barrier[i].status == PENDING:
+                if BarrierSetsConflict(ctx, candidate, i):  // sub_A31390 core
+                    consumer_instr.wait_mask |= (1 << i)
+
+    return candidate
 
 function AssignWaitMask(ctx, consumer_instr):
     wait_mask = 0
@@ -345,13 +476,13 @@ function AssignWaitMask(ctx, consumer_instr):
 
 The allocator uses several heuristics to maximize barrier reuse:
 
-1. **Oldest-first eviction**: When all 6 barriers are occupied, the oldest (earliest set_cycle) is evicted. This maximizes the chance that the evicted operation has already completed.
+1. **Oldest-first eviction**: When all 6 barriers are occupied, the oldest (earliest `set_cycle`) is evicted. This maximizes the chance that the evicted operation has already completed.
 
-2. **Type affinity**: Texture operations preferentially reuse barriers previously assigned to other texture operations, because texture latencies tend to be similar and the texture pipeline may batch completions.
+2. **Type affinity**: The pipe class of the producer is compared against `barrier[i].last_pipe_class`. A match (e.g., two TEX operations, or two LDGSTS operations sharing unit IDs 4-10) wins over first-free. This is visible in `sub_A356A0` at the branch where opcode class 10 routes through the separate `sub_A31F80` path that preserves texture barrier grouping.
 
-3. **Distance-based freeing**: A barrier is marked free without an explicit wait if the instruction distance from the producer exceeds the architecture's maximum latency for that operation class. The `sub_A318F0` function computes this distance.
+3. **Distance-based freeing**: `sub_A318F0` computes paired forward/backward instruction distances from each active barrier's producer to the current instruction. For each operand pair it calls `sub_92F520` with opcodes 0x8B (forward) and 0x8F (backward), then reduces the four distance values via `sub_9331F0` (opcode 5, signed minimum). A barrier is freed without an explicit wait when this distance exceeds `dep_rules[pipe_class].barrier_latency` (56 cycles on sm_100, consistent across all 430 entries in the table).
 
-4. **Conflict avoidance**: `sub_A31390` checks whether a proposed barrier assignment would conflict with an existing barrier that has not yet been waited on. If a conflict is detected, the allocator tries a different barrier index.
+4. **Conflict avoidance**: When `ctx+1415` bit 5 is set, `sub_A31390` performs a 4-register intersection test between the candidate barrier's operand set and each other live barrier. It builds two operand-pair vectors per barrier (source and destination), runs bank-conflict detection (`sub_92FEB0`, opcode 0xC9), threshold selection (`sub_9300A0`, opcode 0x24 with constant 0x6000000D), and overlap tests (`sub_92E850`, opcode 0x82). The output is a 4-element conflict vector written back to the consumer's scoreboard state at `a10[0..3]`. Any nonzero element forces a wait bit for the conflicting barrier.
 
 ## Scoreboard Tracking State
 
@@ -515,6 +646,104 @@ The counter nodes use reference counting (initial refcount = 1, incremented when
 
 The 14 barrier records provide 6 slots for the hardware barrier registers plus 8 extended slots. Current architectures use exactly 6 dependency barriers per warp, but the extended slots provide headroom for the expanded barrier model hinted at in sm_100+ configurations (see `*(ctx+1040) & 0x10` extended barriers flag).
 
+### State Machine Algorithms
+
+The scoreboard object is a passive state store; three scheduling-time operations query and mutate it. All three are called from the control word encoder chain (`sub_A356A0` / `sub_A342E0` / `sub_A34B70`) during Phase 115.
+
+**Counter slot usage.** Slots 0--17 are organized as `(barrier_state, stall_counter)` pairs for each of the 9 register classes (R, P, UR, UP, B, plus 4 arch-specific). The barrier\_state half tracks which hardware barrier index, if any, is currently live for that register class. The stall\_counter half accumulates the minimum stall cycles computed from dependency distances. Slots 18--34 are auxiliary scoreboard counters used by the linked-list node (Region 2) and the 14 barrier records (Region 3) as shared refcounted storage for cross-context state propagation.
+
+```
+// Called from sub_A342E0 (EncodeWriteBarrierIndex) when a long-latency
+// producer is issued and requires a dependency barrier.
+function on_instruction_issued(sb, ctx, producer, reg_class, latency):
+    pair_base = reg_class * 2                  // slot index: 0,2,4,...,16
+    bar_slot  = sb.slots[pair_base]            // counter node for barrier state
+    stl_slot  = sb.slots[pair_base + 1]        // counter node for stall counter
+
+    if latency <= 15:
+        // Short latency: stall count alone suffices.
+        stl_slot.value = max(stl_slot.value, latency)
+        return BARRIER_NONE                    // write_barrier = 7
+
+    // Long latency: allocate a hardware barrier.
+    idx = AllocateBarrier(sb, ctx, producer)   // see existing pseudocode above
+    rec = sb.barrier_records[idx]              // Region 3, offset +392 + idx*40
+    rec.status   = PENDING
+    rec.producer = producer
+    rec.set_cycle = ctx.current_seq            // from *(ctx+264)
+    rec.flags    = 0
+    bar_slot.value = idx                       // remember which barrier owns this class
+    return idx
+```
+
+```
+// Called from sub_A356A0 (EncodeScoreboardFields) / sub_A34B70
+// (EncodeWaitBarrierMask) to bind a barrier to a register class.
+// Executes when the allocator assigns barrier idx to a producer.
+function on_barrier_set(sb, idx, producer, reg_class_mask):
+    rec = sb.barrier_records[idx]
+    rec.status   = PENDING
+    rec.producer = producer
+    rec.set_cycle = ctx.current_seq
+    rec.flags    = 0                           // consumer count reset
+
+    // Cross-reference: bump refcount on the shared counter node.
+    // Records 0-12 share slot 19; record 13 uses slot 25.
+    shared = rec.counter_ref                   // ptr at record+32
+    atomic_inc(shared.refcount)
+
+    // Update the linked-list node in Region 2 when the first
+    // barrier of the block is assigned (tracked via +376 active flag).
+    if sb.region2.active_flag == 0:
+        sb.region2.producer      = producer
+        sb.region2.set_cycle     = ctx.current_seq
+        sb.region2.active_flag   = idx | 0x1   // mark active + barrier index
+```
+
+```
+// Called from sub_A356A0 (EncodeScoreboardFields) when a consumer
+// instruction needs the result protected by barrier idx.
+// Produces wait_mask bits and manages barrier lifecycle.
+function on_barrier_wait(sb, ctx, consumer, idx):
+    rec = sb.barrier_records[idx]
+
+    // Record the consumer; increment flags as a ref-count of waiters.
+    rec.flags += 1
+
+    // Distance-based early release check (sub_A318F0):
+    // If instruction distance from producer exceeds max arch latency,
+    // the barrier has certainly completed in hardware -- release it
+    // without emitting a wait bit.
+    dist = ctx.current_seq - rec.set_cycle
+    if dist > arch_max_latency(rec.producer):
+        release_barrier(sb, idx)
+        return 0                               // no wait bit needed
+
+    // Conflict check (sub_A31390): verify the barrier has not been
+    // recycled since the producer was issued.  If producer != the
+    // current owner, the barrier was force-evicted -- fall back to
+    // a stall count on the consumer instead.
+    if rec.producer != expected_producer(consumer, idx):
+        return 0                               // resolved via stall
+
+    // Normal path: return the wait mask bit for this barrier.
+    return (1 << idx)
+
+function release_barrier(sb, idx):
+    rec = sb.barrier_records[idx]
+    rec.status   = FREE
+    rec.producer = NULL
+    rec.set_cycle = 0
+    rec.flags    = 0
+    // Decrement shared counter refcount; if it drops to 0 the
+    // counter node is returned to the arena (sub_69A120 destructor).
+    shared = rec.counter_ref
+    if atomic_dec(shared.refcount) == 0:
+        arena_free(shared)
+```
+
+**Ref-counting protocol summary.** Every 24-byte counter node starts with `refcount = 1` (owned by its slot in Region 1). When Region 2 or Region 3 cross-references a node, the constructor increments the refcount by 2 (one logical ref for the record, one for the back-pointer chain). The destructor `sub_69A120` decrements and, on reaching zero, walks the node's value-list at `node+8` to deallocate chained sub-nodes before returning the node itself to the arena via `vtable[4]` (offset +32 in the allocator vtable). `sub_6996C0` is identical but used exclusively for the sentinel record (index 13), isolating its teardown from the main barrier pool.
+
 ## Stall Count Computation
 
 The stall count is the minimum number of cycles the warp scheduler must wait before issuing the instruction. It is computed from the dependency distance to the instruction's producers.
@@ -550,20 +779,48 @@ The stall count computation uses the SM backend at `*(func+1584)` (`sm_backend`)
 
 ### Yield Flag
 
-The yield flag is computed by `sub_A333A0` alongside the stall count. The decision:
+The yield flag is computed by `sub_8F3650` (`EncodeYieldField`, 2.7 KB). The function resolves the predecessor instruction from the control word array and decides whether the warp scheduler should switch to another warp after issuing this instruction.
 
 ```
-function ComputeYield(ctx, instr, stall):
-    if stall >= yield_threshold:     // arch-dependent, typically 4
-        return 1                      // long stall: yield to another warp
-    if instr is branch/exit:
-        return 1                      // control flow: always yield
-    if instr.is_last_in_bb and next_bb.has_barrier:
-        return 1                      // barrier boundary: yield
-    return 0
+function EncodeYieldField(out, cw_array):
+    prev = resolve_predecessor(cw_array)          // cw_array[20] - offset - 4
+    if (prev.ctrl_word ^ 0x70000000) & 0x70000000:
+        return 0                                   // not a real instruction
+
+    stall = out[7]                                 // raw stall count from earlier pass
+    if prev.flags & 0x80:                          // bit 0 of byte at +7
+        // Per-instruction override: clamp stall to *(prev_bb_desc+73)
+        stall = min(stall, *(prev_bb_desc + 73))
+    else:
+        // Default path: hardcoded threshold
+        if stall > 3:
+            stall = 4                              // cap at yield_threshold
+
+    out[7] = stall
+    if stall <= 2:
+        return 0                                   // short stall: no yield
+    // stall >= 3: yield to another warp (goto LABEL_6)
+    ...
 ```
 
-The yield threshold is read from the SM backend's latency table and varies by architecture. On sm_80+ it is typically 4 cycles.
+#### Per-Architecture Yield Threshold
+
+The default yield threshold of 4 (`stall > 3` at `sub_8F3650+0x54`) is hardcoded in the default code path and applies uniformly across all SM targets. Per-instruction overrides use a signed byte at `*(instr_desc+73)` in the basic block descriptor, which can lower (but not raise) the threshold for specific instructions.
+
+The scheduling context stores the related stall threshold at `sched_ctx+408` (knob 741, `SchedCountLoadsPerTex`, default 3). This controls the minimum stall floor (not the yield decision directly), but feeds into the same pipeline:
+
+| SM | Generation | Yield threshold | Stall floor (knob 741) | SM backend field |
+|---|---|---|---|---|
+| sm_70 | Volta | 4 | 3 | `*(sm_backend+912)` / 4 |
+| sm_75 | Turing | 4 | 3 | `*(sm_backend+912)` / 4 |
+| sm_80 | Ampere | 4 | 3 | `*(sm_backend+912)` / 4 |
+| sm_86 | Ampere | 4 | 3 | `*(sm_backend+912)` / 4 |
+| sm_89 | Ada | 4 | 3 | `*(sm_backend+912)` / 4 |
+| sm_90 | Hopper | 4 | 3 | `*(sm_backend+912)` / 4 |
+| sm_100 | Blackwell | 4 | 3 | `*(sm_backend+912)` / 4 |
+| sm_120 | Blackwell | 4 | 3 | `*(sm_backend+912)` / 4 |
+
+The yield threshold itself (the `> 3` comparison) does not vary by architecture -- it is a compile-time constant in `sub_8F3650`. What varies per architecture is the **yield batch size** at `sm_backend+912`: for texture-opcode yield sequences (opcode 288 path at `sub_8F3650+0xA8`), the function reads `*(sm_backend+912) / 4` to determine how many texture operations share a single yield group. The SM backend vtable calls at offsets `+904` and `+936` provide the texture group index and batch divisor respectively.
 
 ## Mercury Opex Path (Phase 120)
 
@@ -591,7 +848,7 @@ After the control word fields are computed, the scheduling output pipeline (0x8F
 | `sub_8F1EB0` | 15 KB | EncodeScheduleWords | Main scheduling output encoder -- iterates all instructions and produces control words |
 | `sub_8F3130` | 1.0 KB | EncodeStallField | Packs 4-bit stall count into control word |
 | `sub_8F31F0` | 6.1 KB | EncodeBarrierField | Packs barrier set/wait fields with architecture-specific layout |
-| `sub_8F3650` | 2.7 KB | EncodeYieldField | Packs yield flag |
+| `sub_8F3650` | 2.7 KB | EncodeYieldField | Packs yield flag; hardcoded threshold `stall > 3`; per-instruction override via `*(instr_desc+73)`; texture batch path via `*(sm_backend+912) / 4` |
 | `sub_8F3860` | 3.0 KB | EncodeScoreboardField | Packs scoreboard dependencies |
 | `sub_8F3AB0` | 5.0 KB | EncodeDependencyField | Packs inter-instruction dependency metadata |
 | `sub_8F3DE0` | 1.3 KB | EncodeControlField | Packs control flags |

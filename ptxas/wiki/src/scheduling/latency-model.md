@@ -477,6 +477,67 @@ Offset  Bytes       Field               Decoded
 
 The `cost_product` at offset +16 is the scheduler's primary sorting key: higher values push the instruction later in the schedule. For this predicate class, 68 is a low cost -- compare with FP64 ops (class 4, latency=42, throughput=15) where `cost_product = 42 * 15 = 630`, nearly 10x higher, reflecting the FP64 pipe's lower throughput.
 
+#### End-to-End Latency Lookup Path
+
+The complete path from "I have an instruction" to "its latency in cycles on this SM" involves four pointer dereferences and one vtable dispatch. The following pseudocode traces the exact chain, with byte offsets matching the binary.
+
+```
+// resolve_latency(instr, sched_ctx) -> int
+//   instr:     296-byte Ori instruction object
+//   sched_ctx: scheduling context (carries SM backend + oracle)
+//
+// Step 1: Extract the scheduling class ID.
+//   sub_89FBA0 already ran during instruction lowering and wrote
+//   the class ID into the scheduling descriptor attached to instr.
+//   The descriptor is an auxiliary object whose pointer lives at
+//   instr+40; the class_id sits at descriptor+4.
+//
+//   descriptor = *(QWORD *)(instr + 40)       // SchedNode.desc_ptr
+//   class_id   = *(DWORD *)(descriptor + 4)   // range 1..772+
+//
+// Step 2: Locate the per-SM HW latency table.
+//   The SM backend is reachable from the scheduling context:
+//
+//   sm_backend = *(QWORD *)(*(QWORD *)(sched_ctx + 8) + 1584)
+//   hw_table   = *(QWORD *)(sm_backend + 56)  // growable array base
+//   table_count= *(DWORD *)(sm_backend + 64)   // number of 96-byte records
+//
+// Step 3: Index into the HW table to find the record.
+//   Records are 96 bytes each. The scheduling class ID maps to an
+//   index via the 9-bit latency_index stored at instr+196:
+//
+//   latency_idx = *(WORD *)(instr + 196) & 0x1FF
+//   record      = hw_table + 96 * latency_idx  // 96-byte record pointer
+//
+//   Alternatively, when queried through the oracle vtable, the
+//   record's base_latency is read directly:
+//
+//   base_latency = *(WORD *)(record + 20)       // cycles, from dependency rule
+//
+// Step 4: Query the latency through the oracle (sub_8BF3A0).
+//   The scheduler does not read the record directly -- it dispatches
+//   through a vtable method at *(*(oracle)+56).  The default
+//   implementation (sub_8BF3A0) follows this priority chain:
+//
+//   desc = *(QWORD *)(instr + 40)              // scheduling descriptor
+//   if *(BYTE *)(desc + 108) & 5 != 0:         // special-case flag set?
+//       return *(DWORD *)(oracle + 92)          //   -> use oracle's default latency
+//   override = *(INT16 *)(desc + 104)           // per-instruction override
+//   if override != 0:
+//       return override                         //   -> use the override
+//   opcode = *(DWORD *)(instr + 72) & 0xFFFFCFFF
+//   return *(DWORD *)(oracle + 4 * opcode + 744)  // -> per-opcode latency table
+//
+// Step 5 (optional): Long-latency classification (sub_8CCF80).
+//   Returns true when the resolved latency exceeds 19 cycles.
+//   For load/store (opcode 183): also checks memory space via
+//   sub_693BC0; spaces 1,2,3,4,7,11,16 all qualify regardless.
+//
+//   is_long_latency = (resolve_latency(instr, sched_ctx) > 19)
+```
+
+The pointer chain in Step 2 (`sched_ctx+8` -> `+1584` -> `+56`) is the same indirection used by `sub_8CCF80` at its opening line: `v3 = *(*(*(a1+8) + 1584))`. The 96-byte record stride in Step 3 matches the `96LL * v15` expression in `sub_8E7300` line 98 (`v17 = (__m128i *)(v13 + 96LL * v15)`). The per-opcode table at oracle+744 in Step 4 is a 322-entry DWORD array (one slot per Ori opcode), populated during profile construction.
+
 #### Sub-Record Formats in the Growable Buffer (+80)
 
 Records with `string_backed_flag=1` carry variable-length sub-records in the growable buffer. The buffer header at `*(record+80)` is a 32-byte object: `{data_ptr, size (DWORD), capacity (DWORD), allocator_ptr}`.
@@ -663,14 +724,73 @@ Resets the instruction's resource tracking state:
 
 Then computes per-operand resource contributions by iterating source operands (count at `a3+80`, starting at `a3+84`):
 
-### Mode 2: Differential Cost
+### Mode 2: Differential Cost (Speculative-Rollback)
 
-Computes the differential cost (new minus old):
+Mode 2 computes the *net* resource change from last-use operand releases.  It uses
+a speculative-rollback pattern: run the full operand scan to populate the output
+vector, then undo every side effect on the persistent state so that only the
+caller-visible output survives.
+
 ```
-v55 = a1[0]       // previous instruction cost
-v56 = a1[1045]    // previous delta cost
+function ResourceCost_Mode2(state, ctx, instr_data, bitmask, output, FU_vec):
+    // --- snapshot persistent counters before mutation ---
+    saved_add_count     = state.add_count        // state[0]
+    saved_release_count = state.release_count     // state[1045]
+
+    output[0..9] = 0                              // clear 10-element FU vector
+    sched_node  = instr_data.sched_node           // *(instr_data+32)
+    num_operands = instr_data.operand_count        // *(instr_data+80)
+    pressure_9b  = sched_node.word_12 & 0x1FF     // 9-bit pressure field
+
+    for i in 0 .. num_operands-1:
+        operand = instr_data.operands[i]           // *(instr_data + 84 + 8*i)
+        if operand_type(operand) != REGISTER: continue
+        reg_id = operand & 0xFFFFFF
+        if reg_id in {41,42,43,44}: continue       // skip sentinel registers
+        desc = ctx.reg_table[reg_id]               // *(ctx+88)[reg_id]
+        if desc.reg_class > 6: continue            // non-physical file
+
+        if operand_sign_bit_set(operand):          // bit 31 = last-use flag
+            // --- release path: operand is dead after this instruction ---
+            if not IsLastUseEligible(instr_data, i): continue   // sub_A07C00
+            (start, count, cost) = GetRegisterLatency(ctx, desc, &operand)
+            for k in 0 .. count-1:
+                hw_reg = start + k
+                if bitmask_test(bitmask, hw_reg):   // already consumed
+                    continue
+                output[desc.reg_class] -= cost      // SUBTRACT from FU bucket
+                bitmask_clear(bitmask, hw_reg)       // sub_BDBC70
+                state.release_list[state.release_count++] = hw_reg
+        else:
+            // --- normal path: same as mode 0/1 ---
+            if operand_aux_negative(operand): continue  // byte +6 check
+            (start, count, cost) = GetRegisterLatency(ctx, desc, &operand)
+            for k in 0 .. count-1:
+                hw_reg = start + k
+                if bitmask_test(bitmask, hw_reg): continue
+                output[desc.reg_class] += cost      // ADD to FU bucket
+                bitmask_set(bitmask, hw_reg)         // sub_BDBB80
+                state.add_list[state.add_count++] = hw_reg
+
+    // --- update pressure if new instruction exceeds current ---
+    if output[6] < pressure_9b and pressure_9b != 0:
+        output[6] = pressure_9b                     // *(FU_vec+24)
+
+    // --- rollback: undo every bitmask mutation ---
+    for j in saved_add_count .. state.add_count-1:
+        bitmask_clear(bitmask, state.add_list[j+1])  // undo sets
+    state.add_count = saved_add_count
+
+    for j in saved_release_count .. state.release_count-1:
+        bitmask_set(bitmask, state.release_list[j+1046])  // undo clears
+    state.release_count = saved_release_count
+    // output[0..9] retains the net delta; state is unchanged
 ```
-Then runs the same operand iteration as mode 1 and subtracts the previous values.
+
+The caller (`ComputeResourceCost`) accumulates `output[0..9]` into `slot[10..19]` --
+the "release pressure" half of the 20-element resource vector.  Because the rollback
+restores the bitmask to its pre-mode-2 state, mode 2 is side-effect-free on
+`state` and `bitmask`; it only communicates through the output vector.
 
 ### Mode 3: Pressure Accumulation
 
@@ -750,13 +870,78 @@ The dual-issue benefit score is stored at `scheduler+328` and used by the priori
 
 ### Dual-Issue Constraints
 
-Dual-issue pairs must satisfy:
-1. **Pipe compatibility**: the two instructions must target different functional units (e.g., ALU + FP32, or ALU + load/store). Same-pipe pairs cannot dual-issue.
-2. **Register conflict**: the pair must not have RAW dependencies on the same register within the same cycle.
-3. **Barrier compatibility**: neither instruction may be waiting on a scoreboard barrier.
-4. **Architecture support**: dual-issue is primarily an sm\_50 (Maxwell) feature. Newer architectures (sm\_70+) use wider warp schedulers instead.
+Dual-issue pairs must satisfy all four conditions simultaneously:
 
-For sm\_50, a special register budget function adjusts the register allocation target to account for the reduced register pressure from dual-issue execution.
+1. **Pipe compatibility**: the two instructions must target different functional units. Same-pipe pairs cannot dual-issue.
+2. **No RAW dependency**: the pair must not have a read-after-write hazard on the same register in the same cycle.
+3. **No pending barrier**: neither instruction may be waiting on a scoreboard barrier.
+4. **Architecture gate**: dual-issue is a Maxwell feature (sm\_50/sm\_52). The eligibility check returns false when `target+1032` bit 7 is clear (sm\_70+ architectures).
+
+For sm\_50, a special register budget function adjusts the register allocation target to account for reduced register pressure from dual-issue execution.
+
+### Memory Space Classification for Pairing
+
+`sub_A9CDE0` (IsHotMemory) and `sub_A9CF90` (IsColdMemory) classify LD/ST instructions into two non-overlapping categories that form the pairing basis. Both extract the last source operand's memory space via `sub_91C840`:
+
+| Function | Opcode 183/288 (LD/ST) | Opcode 91/92 (TEX/SULD) | Memory space match |
+|---|---|---|---|
+| `sub_A9CDE0` (hot) | space == 6 (global), or space == 4 with addr\_mode bits 19:21 == 1 | operand low 3 bits == 7 | Global, texture |
+| `sub_A9CF90` (cold) | space == 5 (shared), or space == 4 with addr\_mode bits 19:21 == 2 | `(operand & 1) == 0` and `((operand ^ 6) & 6) == 0` | Shared, constant |
+
+The per-block classifier `sub_A9D140` marks each block with bit flags at `block+264`: bit 0 = has hot instructions, bit 1 = has cold instructions. If any block has both bits set (`(flags & 6) == 6`), dual-issue is disabled for the entire function -- mixed hot/cold blocks defeat the benefit model.
+
+### Pipe Compatibility Matrix
+
+The `pipe_masks_b` field in the HW latency table encodes which pipe classes a scheduling class can pair with for dual-issue. Each byte is a bitmask over the 6 pipe classes. The matrix below summarizes the pairing rules as observed in `sm_7x_shared` (which carries the Maxwell-inherited dual-issue data; `sm_8x_shared` and `sm_10x_shared` set `pipe_masks_b[0..1]` to all-zero, disabling dual-issue at the table level).
+
+| Pipe A (slot 0) | Pipe B (slot 1) | Can co-issue | Evidence |
+|---|---|---|---|
+| ALU (pipe 0) | FP32 (pipe 1) | YES | `pipe_masks_b` bit 1 set on ALU classes |
+| ALU (pipe 0) | LSU (pipe 4) | YES | `pipe_masks_b` bit 2 set on ALU classes |
+| ALU (pipe 0) | SFU (pipe 1b) | YES | SFU shares pipe B slot |
+| FP32 (pipe 1) | ALU (pipe 0) | YES | Symmetric with row 1 |
+| FP32 (pipe 1) | LSU (pipe 4) | YES | `pipe_masks_b` bit 2 set on FP32 classes |
+| LSU (pipe 4) | ALU (pipe 0) | YES | `pipe_masks_b` bit 0 set on LSU classes |
+| LSU (pipe 4) | FP32 (pipe 1) | YES | `pipe_masks_b` bit 1 set on LSU classes |
+| FP64 (pipe 2) | any | NO | FP64 occupies both dispatch slots |
+| Tensor (pipe 3) | any | NO | Tensor occupies both dispatch slots |
+| Control (pipe 6) | any | NO | Branch/sync not dual-issuable |
+| any | same pipe | NO | Same-pipe conflict |
+
+The 337 scheduling classes with non-zero `pipe_masks_b` in `sm_7x_shared` use values 1--35 as a per-class pairing affinity code. The `dual_issue_flags` field at record offset +22 is populated from `pipe_masks_b[0:2]` during 96-byte record construction.
+
+### Pairing Decision Pseudocode
+
+```
+function CheckDualIssueEligibility(scheduler):            // sub_8CF5D0
+    target = scheduler.func.target
+    scheduler.dualIssueBenefit = 0                         // +328
+
+    if target+1032 bit 7 clear:  return 0                  // arch gate
+    if func+1368 bit 1 set:      return 0                  // incompatible function
+
+    if not PerBlockClassify(target):  return 0             // sub_A9D140
+
+    for each basic_block in func (reverse RPO):
+        if block.flags & 3 != 3:  continue                 // need entry+exit edges
+        hot_count = 0;  cold_count = 0
+
+        for each instr in block:
+            weight = (last_src_operand_byte & 7) + 1
+            if IsHotMemory(target, func, instr):           // sub_A9CDE0
+                hot_count += weight
+            elif IsColdMemory(target, func, instr):        // sub_A9CF90
+                cold_count += weight
+
+        if hot_count > 0:
+            score = min(hot_count, cold_count) + cold_total
+            if score > scheduler.dualIssueBenefit:
+                scheduler.dualIssueBenefit = score
+                if score > target+616:  return 0           // exceeds arch limit
+    return 1
+```
+
+The benefit score at `scheduler+328` biases the priority function toward co-issuable pairs, and gates selection of the dual-issue scheduling strategy (`sub_8B77C0`) when `scheduler+328 > 0` and `arch <= sm_52`.
 
 ## Stall Count Computation
 
@@ -781,6 +966,51 @@ function ComputeStallCycles(sched, instr):
         max_wait = max(max_wait, wait)
     return min(max_wait, MaxStallFromKnob(sched))
 ```
+
+### LookupLatency Implementation (sub\_8BF3A0)
+
+`sub_8BF3A0` resolves the edge latency from a predecessor via three priority-ordered sources:
+
+```
+function LookupLatency(sched, pred, instr):           // sub_8BF3A0
+    profile = *(sched+16)                              // scheduler profile object
+    node    = *(pred+40)                               // SchedNode for predecessor
+    // Path 1: barrier/scoreboard override
+    if (*(node+108) & 0x05) != 0:                      // barrier (bit 0) or long-lat (bit 2)
+        return *(profile+92)                           // default barrier latency (arch constant)
+    // Path 2: pre-computed HW table latency (hot path)
+    latency = *(int16*)(node+104)                      // from 96-byte record +20 (base_latency)
+    if latency != 0:
+        return latency                                 // e.g. 17=ALU, 42=FP64
+    // Path 3: per-opcode fallback table
+    opcode = *(pred+72) & 0xFFFFCFFF                   // Ori opcode, modifier bits masked
+    return *(profile + 4*opcode + 744)                 // static 322+ entry table
+```
+
+Path 2 is the common case. Path 1 fires for scoreboard-tracked instructions (global loads, texture). Path 3 covers pseudo-ops that `sub_89FBA0` did not classify.
+
+### MaxStallFromKnob Implementation (sub\_8D0640)
+
+`sub_8D0640` initializes `sched+404` (maxStallCycles) during scheduler setup. The scheduling mode selects which knob applies:
+
+```
+function MaxStallFromKnob(sched):                     // returns *(sched+404)
+    mode = GetSchedulingMode(context)                  // 0=ILP, 1=ReduceReg, 2=DynBatch
+    if context+507 != 0:                               // special "short stall" flag
+        sched+404 = 6                                  // reduced cap for pressure-sensitive kernels
+    else if mode != 2:                                 // ILP or ReduceReg
+        sched+404 = min(*(context+508), 16)            // architecture default
+        if KnobIsSet(ctx, 805):                        // knob 805 override
+            sched+404 = min(GetKnobValue(ctx, 805), 16)
+    else:                                              // DynBatch (mode 2)
+        if KnobIsSet(ctx, 806):                        // knob 806 override
+            sched+404 = min(GetKnobValue(ctx, 806), 16)
+        else:
+            sched+404 = 0                              // no stall cap (fall through)
+    return *(sched+404)                                // ceiling for ComputeStallCycles
+```
+
+Knob 805 tunes ILP/ReduceReg; knob 806 tunes DynBatch. Both clamp to 16 (the 4-bit control word field). The ILP default comes from `context+508` (architecture pipeline depth minus 1).
 
 The encoding function `sub_8F4140` packs the complete control word:
 
@@ -829,12 +1059,93 @@ The SSE-optimized accumulation uses `_mm_add_epi32` to add 4 resource counters a
 
 ## Cutlass-Specific Scheduling
 
-`sub_8F47E0` detects NVIDIA cutlass GEMM kernels by calling `strstr(function_name, "cutlass")`. When detected, the scheduler activates hand-tuned scheduling parameters for matrix multiplication inner loops. This includes:
-- Modified stall counts for the HMMA/WGMMA instruction sequences.
-- Adjusted register pressure targets.
-- Specific barrier placement patterns for double-buffered shared memory.
+### Detection (sub\_8F47E0)
 
-This reflects NVIDIA's investment in hand-tuning their cutlass library's scheduling behavior within ptxas itself.
+`sub_8F47E0` (12 lines) detects Cutlass GEMM kernels via `strstr(function_name, "cutlass")`, where the function name comes from the compilation unit's symbol table through `ctx->symtab->getName(ctx->func_id)`. The result propagates into `ctx+1381` bit 6 (`0x40`). This bit is set by the opcode visitor `sub_92C240` for both HMMA (case 77) and WMMA (case 50) opcodes -- both flow through LABEL\_329, which ORs `0x40` unconditionally. The strstr result gates *downstream consumption* of the bit, not its setting.
+
+### Flag Propagation into the Scheduler
+
+`sub_94A020` (scheduling setup) reads the flag into the per-function scheduling context:
+
+```
+sched->is_cutlass = 0                             // sched+440
+if ctx->flags[1414] & 0x10:                       // matrix-instruction feature gate
+    sched->is_cutlass = (ctx->flags[1381] & 0x40) != 0
+```
+
+The gate at `ctx+1414` bit 4 restricts the Cutlass path to architectures supporting matrix instructions. Two companion fields are set alongside: `sched+441` (knob 618) and `sched+442` (knob 629), providing alternative matrix scheduling modes independent of name detection.
+
+### Barrier Worklist Builder (sub\_8F4820)
+
+When Cutlass is detected, `sub_8F4820` builds a worklist of barrier insertion points for MMA-dominated basic blocks. It reads two hardware-profile fields:
+- `profile+26136`: Cutlass detection mode (byte; `1` = override active)
+- `profile+26144`: Cutlass stall count override (int; replacement value)
+
+The function walks blocks in RPO order, finds the first and last instructions in each MMA/HMMA sequence (matched by `instr+164` slot ID equality), then scans between them for register operands whose source-position index falls below a per-opcode threshold:
+
+| Opcode (masked) | Threshold | Notes |
+|---|---|---|
+| 22 (IMAD) | `sub_7E40E0(instr, 3)` | varies by modifier |
+| 50 (WMMA) | `xmmword_21B2EC0[type*5]` | indexed by data type |
+| 51 (HMMA), 110-111 | 3 | fixed |
+| 77 (MMA) | `sub_7E36C0(2, flags...)` | varies by layout |
+| 83 (BMMA) | `sub_7E3640(instr, 3)` | varies by shape |
+| 112 | 4 | |
+| 279 (STS) | 6 | shared memory store |
+| 289 | 3 | |
+| 297 (HMMA v2) | `sub_7E3790(instr, 3)` | varies by modifier |
+| 352 (WGMMA) | `sub_7E3800(instr, 3)` | varies by modifier |
+
+When a source operand falls below the threshold, `sub_93E9D0` inserts a `(block_id, priority)` pair into the worklist, with priority 1 (if knob 646 returns 2, indicating the low-latency fast path) or 3 (standard). Knob 646 can disable insertion entirely.
+
+### Scheduling Score Adjustment (sub\_939370)
+
+When `sched->is_cutlass` or `sched+441` is nonzero and the barrier worklist is populated (`sched+240 != 0`), the priority scoring functions (`sub_93FBE0`, `sub_93F130`, `sub_939220`) enter barrier-aware mode, restricted to scheduling modes 3, 5, and 6 (`sched+1504`).
+
+`sub_939370` performs an FNV-1a hash lookup (seed `0x811C9DC5`, prime `16777619`) on the basic block ID (`a2+8`) against the barrier hash table at `sched+280..296`. A match returns a packed 64-bit `(stall_target, register_limit)` pair; a miss returns sentinel `0x7FFFFFFF00000000` (no override). The scoring function uses these values to adjust instruction priority by comparing current live-register pressure against the Cutlass-specific register limit and modifying stall insertion around MMA instruction groups.
+
+### Iterative Rematerialization (sub\_913A30)
+
+The Cutlass flag activates an iterative sink+remat path in Phase 28. When `ctx+1381 & 0x40` is set, `sub_913A30` runs the core engine `sub_911030` (2408 lines) in a convergence loop of up to knob 862 iterations (default 5). Each iteration calls `sub_8F5220` (init state), `sub_911030` (sink+remat), `sub_8F59C0` (convergence check), `sub_8F5AD0` (update state), and `sub_909A20` (propagate). Non-Cutlass functions receive a single-pass path via `sub_A0F020` instead. The remat cost model `sub_90B790` also relaxes eligibility for Cutlass: instructions with property bits 2-3 set (normally disqualifying) are permitted when `sub_8F47E0` returns true.
+
+### Join Point: scheduling\_class + pipe\_class --> Final Control Word
+
+The two classification systems operate at different pipeline stages and converge in the control word encoder. `sub_89FBA0` runs during IR-level scheduling to assign a `scheduling_class` (integer stored at `SchedNode+4`, range 2--772+). `sub_13710B0` runs during SASS encoding to assign a `pipe_class` (9-bit value in `*(WORD*)(a3+196) & 0x1FF`, range 0x00--0x141). On Blackwell (sm\_10x), `sub_7C4950` dispatches to `sub_89FBA0` for opcodes it handles natively and falls back to `sub_13710B0` for others, meaning some opcodes get both classifications while others get only `pipe_class`.
+
+The two values are consumed at different points in the stall/barrier computation pipeline:
+
+```
+function EmitControlWord(sched, instr):
+    // --- Phase 1: scheduling_class drives latency and barrier selection ---
+    // sub_8D7760 walks the dependency DAG backward from instr
+    sched_class = *(SchedNode+4)            // assigned by sub_89FBA0
+    for each predecessor:
+        rule = per_sm_dependency_rules[sched_class]   // 40-byte record
+        raw_lat = rule.latency              // RAW cycles (e.g., FFMA=17, LDG=42)
+        barrier_lat = rule.barrier_latency  // when stall > 16, use scoreboard
+        stall_cycles = max(stall_cycles, raw_lat - distance)
+
+    // --- Phase 2: pipe_class drives encoding and reuse ---
+    // sub_89FBA0 LABEL_3 (at 0x8A2119 equivalent) post-processes pipe_class
+    pipe_class = *(WORD*)(a3+196) & 0x1FF   // assigned by sub_13710B0 or sub_89FBA0
+    if pipe_class > 0xCD:                   // high classes skip reuse check
+        goto finalize
+    // sub_A2D340: test register reuse eligibility based on opcode type
+    // opcodes 0x2B ('+'), 0x76 ('v'), 0x41 ('A'), 123, 304..322 bypass
+
+    // --- Phase 3: merge into 21-bit control word ---
+    stall_4bit = min(stall_cycles, MaxStallFromKnob(sched))  // 4 bits, 1..16
+    barrier_3bit = AllocateBarrier(sched, instr)              // 3 bits, 0..5
+    // If raw_lat > stall_max: assign a write barrier (barrier_3bit)
+    // The barrier ID comes from a 6-slot pool, allocated by affinity to
+    // the producer's scheduling_class (long-latency classes get priority)
+    //
+    // pipe_class determines the pipe mask, sub-class, and pipe flags that
+    // feed into dual-issue pairing (same-pipe pairs cannot co-issue) and
+    // resource vector accounting (which of the 10 FU counters to charge)
+```
+
+The critical asymmetry: `scheduling_class` controls *how long* to wait (latency lookup, barrier threshold), while `pipe_class` controls *where* the instruction executes (pipe mask, sub-class, reuse flags). For the 206 opcodes with specialized handlers in `sub_89FBA0`, both values are set in the same switch body -- the function writes `*(v8+4) = <sched_class>` and `*(WORD*)(a3+196) = <pipe_class>` together, then falls through to LABEL\_3 for reuse-flag post-processing. The remaining 124 default-handler opcodes get only `scheduling_class` from `sub_89FBA0` (pipe\_class stays at 0xF8000 = all-pipes sentinel), and the SASS encoder `sub_13710B0` later overwrites the pipe\_class with a SASS-level value for the actual encoding.
 
 ## Execution Pipe Assignment (sub\_13710B0)
 
