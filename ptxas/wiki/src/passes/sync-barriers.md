@@ -135,16 +135,32 @@ sub_1392E30(compilation_unit):
 
 ### Main Pass -- `sub_1390B30`
 
-The main pass (8,956 bytes) is the largest function in this phase group. It:
+The main pass (8,956 bytes, 97 callees) iterates over loops in reverse postorder and decides, for each unrolled loop, whether to insert a fence instruction and at what strength. The function signature passes FP parameters (`double a2, double a3, __m128d a4`) that propagate latency heuristics from the caller into the profitability evaluator.
 
-1. Iterates over the basic block list via the instruction chain (`context+272`)
-2. Identifies memory operations that cross unrolled loop iteration boundaries
-3. Computes fence requirements based on the memory model and target architecture
-4. Calls `sub_A0F020` (the scheduling entry point) to build dependency information and determine where fences are needed
-5. Inserts `fence.proxy` or `MEMBAR` pseudo-instructions at identified locations
-6. Updates the instruction list metadata via `sub_781F80` (basic block refresh)
+**Initialization.** The function reads knob 437 to determine the fence mode: when disabled, `fence_enabled` is false and every loop defaults to "skip". When enabled, the knob value (0 or 2) sets the initial strength level. Knob 429 provides an optional string filter of the form `"-N-"` or `"+N-"` that selectively enables or disables fence insertion for individual loop IDs. After knob reads, `sub_781F80` refreshes basic block metadata and `sub_1387660` prepares loop analysis state.
 
-The function takes floating-point parameters (`double a2, double a3, __m128d a4`), suggesting it incorporates latency and throughput heuristics when deciding fence placement -- preferring to merge adjacent fences or delay fences to overlap with independent computation.
+**Per-loop iteration.** The main loop walks the loop array from `ctx+512` in reverse order (highest loop index first). For each loop body at `ctx+296[loop_id]`:
+
+1. **Induction variable analysis.** `sub_13858C0` locates the IV. If the IV instruction has opcode 95 with subop 5 and specific operand bits, the loop is tagged for special coherence handling; otherwise rejection code 13 is recorded via `sub_7F5D20` (which indexes the debug string table at `0x21D1EA0`).
+
+2. **Cross-iteration coherence check.** The architecture backend vtable (slot at `ctx+1784`) is queried; if the loop body already has sufficient coherence guarantees (`sub_7E5120` returns true), rejection code 11 is recorded and the loop is skipped. For high-iteration loops (count > 999) with a predecessor count > 0, the ratio `iter_count / pred_count > 3` further gates insertion.
+
+3. **Budget computation.** The remaining instruction budget determines whether the loop has enough ILP to tolerate the coherence hazard without an explicit fence:
+   ```
+   budget_scale = QueryKnobDouble(knob 900, 0.5)  // 0x3FE0000000000000
+   budget = total_insns + head_insns - overhead - floor(budget_scale * iter_count)
+   ```
+   If `10 * fence_cost < budget`, the fence is skipped (rejection code 7).
+
+4. **Fence strength selection.** A multi-way decision tree assigns strength 0/1/2/4 based on: whether `fence_enabled` is true and the loop spans multiple blocks; the trip count (`trip_count > 0`) and budget threshold (`budget <= 49`); knob 429 override when present; for cross-block loops, the secondary cost formula `cost = min(5 * loop_depth + 22, 100)` compared against budget; knob 903 forcing `1 << state+228` (power-of-two mode); and strength 4 as a fallback for budget-passing loops without cross-block operands.
+
+5. **Trip count extraction.** `sub_1385950` (IV analysis), `sub_1385E90` (trip count bound), and `sub_1385CC0` (constant IV detection) compute the iteration count. `sub_1383200` returns the comparison mode (1=LE, 2=LT, 3=exact). The iteration count must be positive and representable as `int32`. Rejection codes 14--23 cover failure modes (non-unit stride, wrap-around, non-integral bounds).
+
+6. **Profitability evaluation.** When knob 892 is enabled and both source and target operands are fence-eligible (`sub_7D6780` confirms), `sub_1383620` runs the full unroll profitability evaluator with the fence strength, target block ID, and FP latency parameters. Success increments the backend fence counter at `ctx+1584+348`.
+
+7. **Fence insertion.** `sub_1387C30` performs the insertion, taking the loop descriptor, unroll factor, fence strength, and FP latency parameters. For loops with a non-zero remainder (`trip_count % unroll_factor`), `sub_931920` clones the loop body and `sub_932E40` duplicates instructions across copies. `sub_13880F0` updates CFG successor edges post-insertion.
+
+**Finalization.** After all loops, the unfenced loop count is written to `ctx+1584+352`. If any fences were inserted, `sub_A0F020` (DAG scheduler) rebuilds dependencies incorporating the new fence instructions, then `sub_7B52B0` updates the backend synchronization state.
 
 ---
 
@@ -211,11 +227,66 @@ The main analysis function (2,288 bytes) operates through several stages:
 
 5. **Block iteration** (`sub_769300`, `sub_752AB0`): Builds block-level analysis structures for the function.
 
-6. **Redundancy analysis**: For each barrier instruction (opcode 130; `HSET2` in the ROT13 name table, but used as the internal Ori IR marker for barrier/sync instructions -- actual SASS BAR is opcode 61, MEMBAR is opcode 111), checks whether the barrier's destination register is live in any successor block. If the barrier result is dead (no thread could observe it before the next dominating barrier), the barrier is eliminated.
+6. **Redundancy analysis**: For each barrier instruction (opcode 130), checks whether the barrier's destination register is live in any successor block. If the barrier result is dead (no thread could observe it before the next dominating barrier), the barrier is eliminated.
 
 7. **Block-level merging** (`sub_75EAE0`, `sub_75E2F0`): Merges barriers at block boundaries where adjacent blocks have compatible barrier scopes.
 
-The algorithm checks barriers by walking the instruction chain and testing opcode 130 (`HSET2` in the ROT13 name table; used as the internal Ori IR opcode for barrier/sync instructions -- not the actual HSET2 half-precision set instruction). For each barrier, it extracts the destination operand (`field+84`), resolves the register through the register table at `context+88`, and tests whether the register's use-count (`reg+24`) indicates the barrier result is consumed.
+### Dominance-based redundancy proof -- `sub_1245740`
+
+The per-operand proof (`sub_1245740`, 380 bytes) decides whether operand `a4` in instruction `a3` is dominated by a prior barrier in `a2`. Returns `true` = redundant (safe to eliminate). Arguments: `(ctx, dom_insn, insn, operand_idx)`.
+
+```
+can_eliminate_barrier_operand(ctx, dom_insn, insn, op_idx):
+    word = insn->operands[op_idx]                       // insn + 84 + 8*idx
+    if (word >> 28) & 7 != 1: return true               // non-register operand, trivially safe
+    reg = ctx->reg_table[word & 0xFFFFFF]               // *(ctx+88)[index]
+
+    // Register class gate: only classes 2/3 (barrier regs) need scope analysis
+    if (reg->class - 2) > 1: goto block_compare         // class != 2,3: skip to block-ID test
+    flags = reg->field_48
+    if flags & 0x4000000:  goto block_compare           // volatile -- skip scope analysis
+    if flags & 0x10000000: return false                  // pinned -- never eliminate
+    if !(ctx->byte_1370 & 0x20): return false            // global analysis disabled
+
+    // Loop nesting guard: both blocks must be in the same reducible loop nest
+    bb_insn = ctx->bb_table[insn->block_id]
+    bb_dom  = ctx->bb_table[dom_insn->block_id]
+    if (bb_insn->byte_283 | bb_dom->byte_283) & 0x20: return false  // irreducible region
+    if bb_insn->loop_depth < 0: return false
+    if bb_insn->loop_depth != bb_dom->loop_depth: return false
+
+  block_compare:
+    dom_blk  = dom_insn->block_id
+    insn_blk = insn->block_id
+    if dom_blk == insn_blk:                             // same-block fast path
+        tied = reg->field_56                            // tied definition register
+        if tied:
+            if dom_blk != tied->block_id and reg->use_count == 1: return true
+            if !uniform_warp_check(ctx, insn, dom_insn, tied): return true
+            if ctx->field_1792 and (ctx->byte_1384 & 0x40): return false
+            dom_blk = dom_insn->block_id; insn_blk = insn->block_id
+        is_entry = ctx->byte_908 and (ctx->field_904 == dom_blk)
+        return dominance_verify(ctx, reg, dom_blk, insn_blk, is_entry)
+    // Cross-block: if single-def or no tied-def or tied-def not in insn's block
+    if (reg->byte_50 & 1) or !reg->field_56 or insn_blk != reg->field_56->block_id:
+        return dominance_verify(ctx, reg, dom_blk, insn_blk, false)
+    return true                                         // tied def co-located => dominated
+```
+
+### Dominance verification -- `sub_1244EC0`
+
+The structural verifier (`sub_1244EC0`, 490 bytes) takes `(ctx, reg, dom_block, insn_block, is_entry)`:
+
+- **Pre-colored registers** (class 41/42): always safe (return `true` immediately).
+- **Uniform registers** (class 39): safe only if both blocks' enclosing functions (via `bb->field_164` indexed through `ctx->field_368`) are identical, or neither function has a convergence point (`bb->field_288 == 0` for both).
+- **Tied-definition check**: verifies the def's opcode via `sub_7DEB90` (130 = barrier; 272/273 = memory barrier variants, requiring both source operands to also pass). Checks `ctx->byte_1368` bits: `& 0x10` for loop-awareness, `& 0x04` for cross-function tolerance. When cross-function is set and the def block has convergence depth (`field_148 != 0`), verifies bidirectional dominance via `sub_76ABE0` (bitset test against dominator bitmap at `bb->field_176`).
+- **Same-function check** (`ctx->byte_1368 & 0x02`): safe if both blocks share function index (`bb->field_164`) and arch mode (`ctx->field_896`) is 4 or 5; otherwise requires function index 0 with use-count 1.
+
+### Block-level merging -- `sub_75EAE0` / `sub_75E2F0`
+
+`sub_75EAE0` (240 bytes) drains each basic block's successor list (`bb+128`). For each successor instruction it scans operands for register-type barrier references (`(word >> 28) & 7 == 1`, high bit set, not yet merged) whose register index matches the target barrier register (`a3+8`), then calls `sub_75E2F0`.
+
+`sub_75E2F0` (1,700 bytes) hashes the `(block_id, operand_index, instruction_ptr)` triple via FNV-1a into a merge table (`sub_75DFC0`), allocates a 176-byte record, and populates `[min, max]` program-point intervals: offsets +12/+16 and +20/+24 for barrier-definition operands (opcode `& 0xFFFFCFFF == 137`), +28/+32 and +36/+40 for barrier-use operands. Barrier-def operands are collected into a linked list at record+48 via `sub_685940`; non-def barrier operands increment a counter at record+44. Use-def chain successors are enqueued into a circular BFS work queue (`a1+16`, power-of-two capacity at `a1+40`) for cross-block propagation.
 
 ---
 
@@ -506,18 +577,49 @@ sub_A0F020(ctx):
 
 ### Per-Block Synchronization -- `sub_A06A60`
 
-The per-block processor (3,045 bytes, 53 callees) is the core of sync insertion. For each basic block:
+The per-block processor (3,045 bytes, 53 callees) is the core of sync insertion. It takes six parameters beyond the context: a callback (`a2`) invoked per-instruction to emit sync primitives, the basic block (`a3`), and three mode flags (`a4` = emit-mode, `a5` = cross-block-sync, `a6` = predecessor-tracking). The function maintains a liveness bitvector (`live`, aliased to `ctx+832`) that tracks which virtual registers are live at each program point, plus two temporaries (`bv_kill`, `bv_gen`) allocated when uniform registers are present (`ctx+1378 bit 3`).
 
-1. **Allocates temporary liveness bitsets** via `sub_BDBA60` (bitvector alloc)
-2. **Copies block-entry live set** from `ctx+832` via `sub_BDC300`
-3. **Walks instructions forward**, examining each opcode (masked by `0xCFFF`):
-   - Opcode 93 (`OUT_FINAL` in ROT13; used here as a call-like control-flow marker -- actual CALL is opcode 71): copies callee-save register set, handles arguments
-   - Opcode 95 (`STS` in ROT13; used here as a barrier/terminator marker -- actual BAR is opcode 61): AND-merges successor block live sets
-   - Opcode 97 (`STG` in ROT13; used here as a branch/control marker -- actual BRA is opcode 67): tests if live set changed since block entry
-4. **Inserts sync instructions** where data dependencies cross synchronization boundaries
-5. **Updates uniform register liveness** at `ctx+856` when `ctx+1378 bit 3` is set
+**Initialization.** Copies the block-entry live set into `live` from `bb+40` via `assign`. If uniform registers are active, allocates `bv_kill` and `bv_gen` sized to `ctx+220 + 1` bits each.
 
-The function uses extensive bitvector operations (13 different bitvector functions from the `sub_BDB*`/`sub_BDC*` infrastructure) to track register liveness through synchronization points.
+**Opcode dispatch.** The instruction walk scans from `bb+0` (first instruction) to `bb+8` (end sentinel), reading the masked opcode at `instr+72` with bits 12--13 cleared (`& 0xCFFF`). The dispatch tree selects the sync insertion strategy:
+
+| Masked opcode | Mnemonic | Liveness action | Sync primitive selection |
+|---|---|---|---|
+| 29 (`PMTRIG`) | Control-flow join | Multi-target + last operand is barrier-type: `live = assign(succ_live)`; else `live \|= succ_live` | Propagates to `bb_live` via `copyFrom` |
+| 32 (`VABSDIFF4`) | GMMA wait / fence | Looks up fence target via `ctx+368`; if `a5=0` and block unchanged: `live = assign(target+16)`; if changed: `live \|= target+16` | If `a6`: `live = live & ~(target+112)` then `live \|= (target+64) & (target+16)` |
+| 42, 53, 55 | `MUFU`/`BREV`/`BMOV_R` | `live \|= bb_extension+40` via `OR=` | If `sub_7DF3A0(instr)` bit 1 set: also propagates to `bb_live` |
+| 52 (`AL2P_INDEXED`) | BB boundary pseudo | Saves `bb_ptr`; examines linked successor's opcode (159/32/188) to set `needs_barrier` flag | Deferred barrier: tests successor via vtable+1080 function pointer; on IMMA (188): checks `target+59` for shared-memory flag |
+| 93 (`OUT_FINAL`) | Call / tess output | `live = assign(callee_save_set)` from `ctx+296[target]+24`; at O1 walks chained opcode-269 defs, marking each via `setBit(live, phys_id)` | On sm_gen 4--5: `setBit(live, stack_ptr)` via `ctx+88[39]+12` |
+| 94 (`LDS`) | Exception entry | `live = clearAll()`; for each handler target in `ctx+616[idx]`: `live \|= succ_live` | Propagates to `bb_live` via `copyFrom` |
+| 95 (`STS`) | Barrier / terminator | `live &= succ_live` (AND-merge from `ctx+296[target]+24`) | Propagates merged result to `bb_live` via `copyFrom` |
+| 97 (`STG`) | Branch / jump | Tests `ctx+1368 bit 4`: first visit calls `orIfChanged(succ_live, live)` setting `block_changed` flag | Propagates to `bb_live` via `copyFrom` |
+| 188 (`IMMA`) | Matrix multiply | `sub_A06950` helper; at O1 walks chained opcode-269 defs with `setBit` | `sub_A06950`: `assign` for IMMA, `OR=` for non-IMMA |
+| 190 (`LDGDEPBAR`) | Load-global depbar | `sub_A06950` helper then propagates to `bb_live` | Same as 188 |
+| 271 (arrive) | GMMA arrive | `bv_kill = setAll()`, `bv_gen = clearAll()`; per-successor via `sub_923B30` | Three modes: `a5`: `bv_gen \|= succ+16`; `a6`: `bv_kill &= succ+112`, `bv_gen \|= (succ+64) & (succ+16)`; neither: `orIfChanged(succ+40, live)`, `bv_gen \|= succ+16` |
+
+After each instruction, the callback `a2(ctx, instr, 0, emit_mode, dep_ctx)` is invoked. The callback examines the dependency DAG and emits the appropriate sync primitive (`BAR`, `DEPBAR`, or `MEMBAR`) based on which dependency edges cross the current program point.
+
+**GMMA arrive merge (opcode 271).** The three-bitvector merge after the successor loop: if `block_changed` is false, `live = live & ~bv_kill` (subtract kills); in all cases, `live \|= bv_gen` (add gens). When `a6` is set and the block is unchanged, the stronger operation `live = live & ~bv_kill` followed by `live \|= (succ+64) & (succ+16)` is applied per-successor instead.
+
+**Block-exit fixup.** After the instruction loop completes, if the function has multiple basic blocks (`sub_7DDB50 > 1`), a stack-pointer presence check (`ctx+2132 != -1`) or an architecture vtable+1072 query determines whether the block's exit live set at `bb+16` needs a final `OR=` or `orIfChanged` merge from `live`.
+
+**Bitvector operations (13 functions).** Complete inventory of bitvector primitives:
+
+| # | Address | Name | Sites | Role in sync insertion |
+|---|---------|------|-------|------------------------|
+| 1 | `sub_BDBA60` | `allocate` | 2 | Allocates `bv_kill`, `bv_gen` for UR tracking |
+| 2 | `sub_BDBB80` | `setBit` | 4 | Marks individual regs live (call defs, IMMA defs, stack ptr) |
+| 3 | `sub_BDC050` | `free` | 2 | Releases `bv_kill`, `bv_gen` at function exit |
+| 4 | `sub_BDC080` | `clearAll` | 2 | Zeroes `bv_gen` (opcode 271) or `live` (opcode 94) |
+| 5 | `sub_BDC0A0` | `setAll` | 1 | Fills `bv_kill` with 0xFF (opcode 271: start as "kill everything") |
+| 6 | `sub_BDC1B0` | `copyFrom` | 5 | Propagates `live` to `bb_live` at block terminators |
+| 7 | `sub_BDC300` | `assign` | 7 | Replaces `live` with successor's set (call returns, joins) |
+| 8 | `sub_BDC5F0` | `AND=` | 1 | Intersects kill set with successor info (opcode 271 + `a6`) |
+| 9 | `sub_BDCDE0` | `OR=` | 13 | Primary merge: unions successor/def sets into `live` |
+| 10 | `sub_BDCF40` | `orIfChanged` | 5 | Fixed-point detection: returns 1 if `live` grew |
+| 11 | `sub_BDD140` | `orWithAND` | 2 | Fused `dst \|= a & b` for masked gen-set merge |
+| 12 | `sub_BDD8C0` | `assignANDNOT` | 2 | Fused `dst = a & ~b` for kill-set subtraction |
+| 13 | `sub_A06950` | sync helper | 2 | Wraps `assign`/`OR=` selection for IMMA/LDGDEPBAR opcodes |
 
 ---
 
