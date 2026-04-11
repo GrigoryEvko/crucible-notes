@@ -134,28 +134,75 @@ function sub_913A30(ctx):
 
 ### Core Sink+Remat Driver: sub_A0F020
 
-`sub_A0F020` (494 lines) is the main workhorse of phase 28. It operates on the entire function body, processing basic blocks in reverse postorder through the dominator tree.
+`sub_A0F020` (494 lines) is the main workhorse of phase 28. It wraps the entire function body in an outer fixed-point loop that alternates four stages until quiescence.
 
-The algorithm has two main stages:
+```
+function sink_remat_driver(ctx):                   // sub_A0F020
+    loop:                                          // outer fixed-point
+        changed = false
+        allocate_or_reuse sink_state(ctx+1648)     // 16-byte: {ctx_ptr, flag_A, flag_B}
+        rebuild_def_use(ctx)                       // sub_7846D0
+        setup_liveness_bitvectors(ctx)             // sub_A06460 + sub_BDBAD0
+        compute_block_live_in_out(ctx)             // sub_A06830; per-block via vtable[57]
 
-**Stage 1: Per-block sinking analysis** (via `sub_A06A60` calling `sub_A08250`)
+        // --- Stage 1: Initial sinking pass ---
+        // Traverse RPO array from last to first (reverse postorder, backward).
+        // First attempt uses live_through_mode = (ctx+1368 bit 4) to consult
+        // live-through sets when deciding operand liveness.
+        live_through_mode = (ctx[1368] & 0x10) != 0
+        any_sunk = run_sink_sweep(ctx, sub_A08250, live_through_mode)
+        // If no sinks and live_through_mode was on, retry with it off —
+        // the stricter liveness may reveal new opportunities.
+        if !any_sunk and live_through_mode:
+            any_sunk = run_sink_sweep(ctx, sub_A08250, false)
 
-For each basic block in reverse postorder:
-1. Walk the instruction list backward
-2. For each instruction, check if it has a single use in a dominated block
-3. If so, sink the instruction to the use block (moves the instruction node in the linked list)
-4. Track whether any changes were made for convergence
+        // --- Stage 2: Remat-only sweep ---
+        // Only when ctx+1368 bit 1 is set. Computes live-through per block:
+        //   block+112 = intersect(block+40, block+16)
+        // Then runs sub_A07DA0 in a nested fixed-point (repeat while changed).
+        if ctx[1368] & 2:
+            for each block in RPO order:
+                block.live_through = intersect(block.live_out, block.live_in)
+            do:
+                any_remat = run_sink_sweep(ctx, sub_A07DA0, remat_mode=true)
+            while any_remat
 
-**Stage 2: Cross-block rematerialization** (via `sub_A06A60` calling `sub_A07DA0`)
+        // --- Stage 3: Combined sink pass with kill-set refresh ---
+        // Recomputes kill sets:  block+64 = complement(block+16).
+        // Then runs sub_A08250 again, with the same two-phase
+        // live_through_mode retry as Stage 1.
+        for each block: block.kill = complement(block.live_in)
+        live_through_mode_2 = initial live_through_mode
+        any_sunk_2 = run_sink_sweep(ctx, sub_A08250, live_through_mode_2)
+        if !any_sunk_2 and live_through_mode_2:
+            any_sunk_2 = run_sink_sweep(ctx, sub_A08250, false)
 
-For each basic block in reverse postorder:
-1. Walk the instruction list
-2. For each rematerialization-eligible instruction, check if the cost model approves duplication
-3. If profitable, clone the instruction at the use site and mark the original's result register with the remat flag
+        // --- Stage 4: Speculative chain sinking ---
+        // Gate: ctx+1368 bit 0 AND not (arch_profile+13824 == 1 with field != 0).
+        // Walks live ranges (ctx+296 array). For each live range with a
+        // def-use chain, walks backward through the chain checking each
+        // instruction against sub_A07940 (sinkability predicate) and
+        // vtable[182] (arch-specific reject). Sinks entire chain via
+        // sub_91E070 when all instructions pass.
+        if ctx[1368] & 1 and arch_allows:
+            for each live_range in ctx.live_ranges:
+                if chain_sinkable(live_range):   // see criteria below
+                    sink_chain(live_range)        // sub_91E070
+                    changed = true
 
-The pass alternates between sinking and rematerialization in a fixed-point loop, repeating until no more changes occur. The two worklist callbacks (`sub_A08250` for sinking, `sub_A07DA0` for remat) operate on a per-block basis through a generic block visitor (`sub_A06A60`).
+        if changed and opt_level != 1:
+            rebuild_liveness(ctx)                 // sub_785E20
+            continue                              // re-enter outer loop
+        break
+    cleanup_sink_state(ctx+1648)                  // sub_A0B5E0
+    ctx[1370] &= ~0x10
+```
 
-The block visitor manages per-block liveness bitvectors:
+**Sinking decision criteria** (`sub_A08250`): For each instruction encountered during the backward block walk, the callback examines every source operand. A register operand whose register ID is present in the block's live-in bitvector (`ctx+832`) triggers a single-use test (`sub_A07C00`); if single-use, the register is removed from the live set and recorded for possible rollback. An operand whose register is *not* live (and live-through mode is disabled) is rewritten to dead (`operand = 0xF0000000`). After processing all operands, two final gates must pass: (1) `sub_747FC0` returns false (instruction is not address-taken), and (2) the architecture vtable slot 159 (`vtable+1272`) approves the sink. If either rejects, any bitvector changes are rolled back. Otherwise `sub_9253C0` moves the instruction to its single use site.
+
+**Sinkability predicate** (`sub_A07940`): Returns false (reject) when any of: instruction flag byte has bit 3 set (pinned), signed byte at `insn+28` is negative (side-effecting), architecture opcode-info table has bit 2 set (non-movable) for the opcode, the instruction has address-taken dependencies (`sub_7E0030`), or operand constraints prevent relocation (`sub_7E08E0`). Specific opcodes are unconditionally rejected: 0x10F, 0x20 (32), 0xEC (236). Opcodes 183/288 additionally check `sub_7E25E0` (shared-memory conflict); opcode 250 requires the destination register index to be zero; opcode 315 checks a source-operand bit.
+
+The block visitor (`sub_A06A60`) manages per-block liveness bitvectors:
 - `block+16`: live-in bitvector
 - `block+40`: live-out bitvector
 - `block+64`: kill set

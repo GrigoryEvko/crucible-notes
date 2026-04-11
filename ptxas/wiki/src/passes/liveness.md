@@ -189,21 +189,31 @@ The `IfChanged` variants first scan for any bit that would change (`~dst & new_b
 
 ## Per-Register-File Liveness
 
-GPU register allocation manages multiple independent register files. ptxas tracks liveness separately for each:
+GPU register allocation manages multiple register files. ptxas tracks liveness separately for each file, using independent bitvectors and solvers:
 
-| Register File | Bit Range | Storage |
-|--------------|-----------|---------|
-| **R** (GPR, 32-bit) | Bits 0..254 | Code Object `+832` (main bitvector) |
-| **UR** (uniform GPR) | Bits 0..63 | Code Object `+856` (uniform bitvector) |
-| **P** (predicate, 1-bit) | Separate tracking | Operand type `(v >> 28) & 7 == 5` |
-| **UP** (uniform predicate) | Separate tracking | Flag at Code Object `+1378` bit 4 |
-| **B** (barrier) | Indices 20, 21 | Special-cased in dependency graph |
+| Register File | Bit Range | Storage | Solver |
+|--------------|-----------|---------|--------|
+| **R** (GPR, 32-bit) | Bits 0..254 | Code Object `+832` | Main iterative dataflow |
+| **UR** (uniform GPR) | Bits 0..63 | Code Object `+856` | Parallel solve, conditionally allocated |
+| **P** (predicate, 1-bit) | Per-block set | Operand-level: `(v >> 28) & 7 == 5` | Per-block set operations during scheduling |
+| **UP** (uniform predicate) | Per-block set | Tracked when UR enabled | Same path as P |
+| **B** (barrier, `reg_type=9`) | -- | **Excluded from GEN/KILL** | Ordering deps only (`sub_A0D800`) |
 
-The main liveness bitvector at Code Object `+832` covers R registers. The uniform register bitvector at `+856` is conditionally allocated: it exists only when the flag at Code Object `+1378` bit 4 is set (indicating the function uses uniform registers). The scheduling pass (`sub_A06A60`) allocates both bitvectors via `sub_BDBAD0` and processes them in parallel.
+### Independent Solve Per File
 
-Predicate registers are handled at the operand level during scheduling: the operand type check `((operand >> 28) & 7) == 5` identifies predicate operands, which are tracked in a separate per-block set rather than the main bitvector.
+The R and UR bitvectors are solved independently: each has its own GEN, KILL, and live-in/live-out sets, and the iterative fixed-point converges separately for each. The scheduling entry point (`sub_A0F970`) allocates the R bitvector unconditionally at `func+832` via `sub_BDBAD0`, then conditionally allocates the UR bitvector at `func+856` only when the flag at Code Object `+1368` bit 4 is set (indicating the function uses uniform registers). The per-block scheduler (`sub_A06A60`) processes both bitvectors in the same instruction walk -- for each instruction it updates R liveness at `+832` and, when the `v76` flag (`+1368` bit 4) is set, also updates UR liveness at `+856`. Both updates use the same `orWithAndNotIfChanged` transfer function but operate on separate bitvector objects. When the first scheduling pass fails, `sub_A0F970` supports a "retry without uniform regs" fallback (v63 toggle) that disables UR tracking for the retry attempt.
 
-Barrier registers (IDs 20, 21 for sm >= 4.0) receive special treatment in the dependency graph builder (`sub_A0D800`): they generate ordering dependencies rather than data dependencies, since barriers enforce execution ordering constraints independent of register values.
+### P/UP: Operand-Level Tracking
+
+Predicate registers (P, UP) are not tracked in the main bitvectors. Instead, the scheduling heuristic callback (`sub_A08250`) identifies predicate operands via the operand type discriminator `((operand >> 28) & 7) == 5` and maintains a per-block predicate set separate from the R/UR bitvectors. This lighter-weight tracking suffices because predicate register files are small (7 usable registers per file) and do not benefit from the SSE2-accelerated bitvector machinery designed for the 255-element R file.
+
+### Cross-File Dependency: P2R / R2P
+
+The P2R (predicate-to-register) and R2P (register-to-predicate) instructions create a cross-file data dependency: P2R packs up to 8 predicate bits into a single GPR, and R2P unpacks them back. This coupling matters for two reasons. First, during predicate spilling the allocator uses P2R/R2P pairs to spill predicate registers through GPR stack slots, creating chains where P liveness depends on R liveness of the base GPR. Second, the regalloc verifier (`sub_A55D80`) explicitly validates that every R2P has a matching P2R (case 3: `P2R_R2P_PATTERN_FAILURE`) and that no instruction overwrites the base GPR between the pair (case 8: `P2R_R2P_BASE_DESTROYED`). Despite this coupling, the liveness solvers remain structurally independent -- the cross-file constraint is enforced at the allocator and verifier level rather than by unifying the dataflow lattices.
+
+### Barrier Register Exclusion from GEN/KILL
+
+Barrier registers (`reg_type = 9`, covering B0--B15 and UB0--UB15) are excluded from the standard liveness GEN/KILL computation. The dependency graph builder (`sub_A0D800`, 39 KB) special-cases barrier register operands: rather than adding them to the data-dependency GEN/KILL sets, it creates ordering-only edges in the dependency DAG. This is correct because barrier instructions (BAR, BSSY, BSYNC, DEPBAR) enforce execution ordering constraints between warps or thread groups -- they do not carry data values that participate in the liveness lattice. The barrier register mask at Code Object `+1088` (8 DWORDs) tracks barrier resource availability separately from the per-register-file liveness bitvectors.
 
 ## Phase 10: EarlyOriSimpleLiveDead
 
