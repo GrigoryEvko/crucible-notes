@@ -140,6 +140,181 @@ function zero_pressure(primary[], secondary[], scan_width):
 
 The SSE2 path has a non-overlap guard (`secondary >= primary + 16 || primary >= secondary + 16`) to ensure the vectorized stores do not alias. The scalar path is used for narrow scan ranges (width <= 14).
 
+### Step 3b: Constraint List Construction
+
+Before the pressure walk, the constraint list at `vreg+144` must already be populated. Construction happens during the liveness analysis and interference graph build phases that precede the per-VR allocation loop. Each instruction's operand descriptors are scanned and decomposed into 24-byte constraint nodes appended to the relevant VR's linked list.
+
+#### Operand Descriptor Bit-Field Layout
+
+Each operand in the Ori IR is an 8-byte (two-DWORD) value. The low DWORD encodes the operand kind and register identity:
+
+```
+Low DWORD (operand[0]):
+  bits 31       sign/direction flag (1 = negated or descending)
+  bits 28--30   operand_type (3 bits, 0--7)
+  bits 24--27   modifier / pair extension (bit 24 = pair half selector)
+  bits  0--23   reg_id (24-bit virtual register index)
+
+High DWORD (operand[1]):
+  bits 29       NOT modifier flag
+  bits 26       high-half selector (for 16-bit packed access)
+  bits 25       low-half selector
+  bits 22--24   shift/subfield control
+  bits  0--21   constraint flags / immediate tag
+```
+
+The extraction idiom recurring throughout `sub_926A30`:
+
+```
+operand_type = (operand[0] >> 28) & 7     // 3-bit kind
+reg_id       =  operand[0] & 0xFFFFFF     // 24-bit VR index
+is_register  = (operand_type - 2) <= 1    // types 2,3 = VR operands
+is_special   = (operand_type == 5)        // type 5 = physical/fixed
+pair_bit     = (operand[0] >> 24) & 1     // pair half selector
+```
+
+Operand type values observed in the decompiled code (cross-referenced with `isel_operand_constraints.json` accessor stubs at `sub_10B69E0`..`sub_10BE640` which use `(qword >> 25) & 7` on the 8-byte descriptor at offset +48):
+
+| operand_type | Meaning | Generates constraint? |
+|--------------|---------|----------------------|
+| 0 | Unused / padding | No |
+| 1 | Physical register (pre-assigned) | Yes -- exclude-one or exclude-all-but |
+| 2 | Virtual register (def) | Yes -- point interference at def point |
+| 3 | Virtual register (use) | Yes -- point interference at use point |
+| 4 | Immediate value | No -- no register needed |
+| 5 | Fixed/special register | Yes -- hard constraint to specific slot |
+| 6 | Constant pool reference | No |
+| 7 | Sentinel (end of operand list) | No -- terminates scan |
+
+#### build_constraints Pseudocode
+
+The full constraint builder is `sub_926A30` (4005 lines). Lines 521--803 implement a per-instruction operand normalization pre-pass; lines 803--1058 perform opcode-specific rewriting (merged pairs, constant materialization, dead-operand elimination); constraint extraction proper begins at line 1058. The pseudocode below covers the core three-phase structure.
+
+```
+function build_constraints(ctx, opcode, isel_desc, num_ops, operands):
+    // ---- Phase 0: operand normalization (lines 521--803) ----
+    // Strip the 0x1000 flag: base_opcode = opcode & 0xFFFFCFFF
+    // For base_opcode in {0x3E, 0x4E} or isel_desc == 20:
+    //   set needs_rewrite = true
+    // Walk operands 0..num_ops, re-classify via sub_91A0F0, and
+    // invoke sub_7DB1E0 (operand materializer) when the operand's
+    // constant value needs promotion to a different size.
+    //
+    // For opcodes 183/185/16/288/329: merge the last N operands.
+    // When the penultimate operand is type 5 (fixed) and the last
+    // is type 1 (physical), fold them:
+    //   operand[k]   = (dw0 & 0x8F000000) | 0x10000000 | next_reg_id
+    //   operand[k+1] = (dw1 & 0xFEC00000) | 0x1000000  | orig_reg_id
+    // Propagates NOT/ABS/NEG/shift bits from the adjacent descriptor.
+    // The sentinel (0x70000000) overwrites the consumed slot.
+
+    // ---- Phase 1: gate check + per-operand ctype scan ----
+    // Gate: vtable[152] for knob 87; if ctx.sm_target > 12 or
+    //   per-function disable flag at ctx+1396 is set: return early.
+    // Quick scan for width-8 constraint (vtable+904 returning 8):
+    //   for each operand, call sub_91A0F0 to get ctype, then
+    //   query_class_size(ctx, ctype); if result == 8: set has_wide.
+
+    // ---- Phase 2: per-operand constraint extraction ----
+    for i in 0 .. num_ops:
+        dw0 = operands[2*i]
+        dw1 = operands[2*i + 1]
+
+        op_type = (dw0 >> 28) & 7
+        reg_id  = dw0 & 0xFFFFFF
+
+        if op_type == 7: break                     // sentinel
+        if op_type in {0, 4, 6}: continue          // non-register
+
+        // --- Constraint type classification (sub_91A0F0) ---
+        // Two-level dispatch:
+        //   L1: pair_align = (dw0 >> 26) & 3
+        //       pair_align==1 -> return 20 (paired-low)
+        //       pair_align>=2 -> return 26 (paired-high/both)
+        //   L2: 150+ case opcode switch on base_opcode
+        ctype = classify_constraint(base_opcode, isel_desc,
+                                    operands, num_ops, i)
+
+        // --- VR operand (types 2, 3) ---
+        if (op_type - 2) <= 1:
+            // Constant-fold path (sub_922210, 254 lines).
+            // Fires when modifier bits dw1[26:25] are nonzero and
+            // ctype is not 26 (paired-both cannot fold).
+            if ctype != 26 and (dw1 & 0x6000000) != 0:
+                shift = 0
+                if ctype in {11, 12}:              // parity constraints
+                    if (dw1 & 0x4000000): shift = 32
+                elif ctype == 13:
+                    ctype = 11; shift = (dw1 >> 22) & 0x10
+                elif ctype == 14:
+                    ctype = 12; shift = (dw1 >> 22) & 0x10
+
+                value = *(ctx.const_table + 4 * reg_id)
+                w = query_class_size(ctx, ctype)   // vtable+904
+                if w <= 7:
+                    if is_unsigned(ctype):
+                        value = (value >> shift) & ((1 << 8*w) - 1)
+                    else:
+                        value = sign_extend(value >> shift, 8*w)
+
+                if (dw1 & 0x20000000): value = ~value  // NOT
+                if (dw1 & 0x40000000) and value < 0:
+                    value = -value                      // ABS
+                if dw1 < 0:            value = -value   // NEG
+
+                // Rewrite operand to immediate form
+                if ctype == 20:                    // predicate -> bool
+                    imm = alloc_const(ctx, -(value != 0))
+                    dw0 = (imm & 0xFFFFFF) | 0x24000000
+                elif ctype in {9, 10}:             // 64-bit
+                    imm = alloc_const64(ctx, value, value >> 32)
+                    dw0 = (imm & 0xFFFFFF) | 0x30000000
+                else:                              // 32-bit
+                    imm = alloc_const(ctx, value)
+                    dw0 = (imm & 0xFFFFFF) | 0x20000000
+                operands[2*i] = dw0; operands[2*i+1] = 0
+                continue                           // folded -> no constraint
+
+            // Not foldable: sub_91BA40 handles the non-modifier path.
+            // If needs_rewrite: sub_91B730 (width-aware const promotion)
+            // else: sub_7DB1E0 (plain operand materialization).
+
+        // --- Physical register (type 1) ---
+        elif op_type == 1 and (dw0 >> 56) & 1 == 0:
+            // sub_9267C0: fetches the 44-byte conflict record from
+            // ctx+152, indexed by (reg_id & 0xFFFFF).  The record
+            // has 10 DWORDs + 2 xmmwords encoding the physical
+            // register's conflict set.  query_class_size via
+            // vtable+904 determines width.
+            emit_physical_constraint(ctx, &operands[2*i], ctype,
+                                     base_opcode, operands, num_ops)
+            continue
+
+        // --- Fixed/special (type 5): merged in Phase 0 ---
+        elif op_type == 5: continue
+
+        // --- Other with byte-7 bit clear: skip ---
+        elif (op_type - 2) > 1 and op_type != 5:
+            if (dw0 >> 56) & 1 == 0: continue
+```
+
+The `classify_constraint` function (`sub_91A0F0`, ~500 lines) returns one of approximately 20 unique type IDs. Representative opcode-to-ctype mappings from the decompiled switch:
+
+| Opcode(s) | Operand index condition | Returned ctype |
+|-----------|------------------------|----------------|
+| 0x3C, 0x3E, 0x4E, 0x4F (MOV/SHFL) | `i <= 1` and `num_ops > 2` | `(dw_last & (31 << (5*i+13))) >> (5*i+13)` -- packed 5-bit |
+| 0x10 (CALL) | `i == num_ops-4` or `-3` | `(dw_last & 0x400) ? 10 : 12` |
+| 0x3D (IADD3) | `i==0`, src2 non-VR, v25==3 | 12 |
+| 0x3F (ISETP) | `i == 3` | `(dw_last & 8)==0 ? 12 : 11`; `i==0` -> 12; else 6 |
+| 0xC8..0xDB (barrier/sync) | `i == 0` | 6; else passthrough |
+| 0xFA (REDUX) | `i == 2` | 14; else 10 |
+| 0xFD (VOTE) | `i == 0` | 14; else 10 |
+| 0x16, 0x32 | `i == num_ops-2` | 11 |
+| 0x33 (I2I) | `i in {1,2}` | `(dw_aux & (1<<i))>>i != 1 ? 12 : 11` |
+| default | any | passthrough = isel_desc |
+
+The constraint type IDs 0--15 assigned above correspond to the 15 types documented in the [Constraint Types](#constraint-types) section below. The `isel_operand_constraints.json` records (39 records at `0x22B8E00`, 256-byte stride) define per-opcode constraint profiles: each record's `type_ids` array lists which of the 26 unique operand type IDs (0--25) are valid for that instruction class. The `register_class_constraints.json` records (72 records per SM generation at `0x21FDC00`, 64-byte stride) map each constraint index to `(class_id, sub_a, sub_b)` triplets that route constraints to the correct register class allocator.
+
 ### Step 4: Constraint Walk
 
 The allocator iterates the constraint list at `vreg+144`. For VRs with alias chains (coalesced registers via `vreg+32`), the walk processes constraints for the entire chain, accumulating pressure from all aliases into the same arrays. Each constraint node is a 24-byte structure:
@@ -427,6 +602,53 @@ Each virtual register carries a constraint list at `vreg+144`. The list is a lin
 
 The interference builder iterates this list for every VR being assigned, accumulating weights into the pressure arrays. The total cost of assignment to slot `S` is the sum of all constraint weights that map to `S`.
 
+#### Program Point Computation
+
+Program points are assigned per-block during the fatpoint scan (`sub_925BB0`). Each block maintains a monotonic counter at `block+160`, incremented once per instruction. The resulting index is stored into the instruction node at `instr+68`:
+
+```
+function assign_program_points(block):
+    counter = *(block + 160)            // current point, initially -1
+    for instr in block.instruction_list:
+        counter += 1
+        *(block + 160) = counter
+        *(instr + 68)  = counter        // instruction's program point
+        block.point_table[counter] = &instr.descriptor
+    *(block + 192) += 1                 // total instruction count
+```
+
+Constraint types 0 (point interference) and 3 (below-point) reference program points directly. Type 15 (range) stores an interval `[start_point, end_point]`. The point values are block-local indices, not global addresses.
+
+#### Pair/Alignment Extraction
+
+The pair alignment mode is encoded in two places: bits 26--27 of the operand descriptor dword\[0\], and bits 20--21 of the VR flags at `vreg+48`. The per-operand field is checked first by `sub_91A0F0` to determine the constraint type:
+
+```
+function compute_constraint_type(opcode, operand_desc, operand_index):
+    desc = operand_desc[2 * operand_index]      // dword[0] of 8-byte slot
+    op_type = (desc >> 28) & 7                   // operand type field
+    if op_type not in {2, 3}:                    // not a register operand
+        return opcode_specific_default(opcode)
+
+    pair_align = (desc >> 26) & 3
+    if pair_align != 0:
+        if pair_align == 1:  return 20           // paired-low constraint
+        else:                return 26           // paired-both constraint
+    else:
+        return opcode_dispatch_table(opcode, operand_index)
+```
+
+The pair_align field in the operand descriptor (bits 26--27 of dword\[0\]) encodes:
+
+| pair_align | Meaning | Constraint type returned |
+|------------|---------|------------------------|
+| 0 | Single register | Determined by opcode dispatch |
+| 1 | Low half of pair | 20 (paired-low) |
+| 2 | High half of pair | 26 (paired-high/both) |
+| 3 | Both halves | 26 (paired-both) |
+
+This feeds constraint types 5--7 (paired-low, paired-high, aligned-pair) during pressure accumulation. The bit-24 flag (`0x1000000`) in the descriptor marks a merged pair operand created when `sub_926A30` folds an address-type operand (type 5) with the adjacent register operand (type 1), setting `desc = (desc & 0x8F000000) | 0x10000000 | next_desc & 0xFFFFFF`. The VR-level pair_mode at `(vreg+48 >> 20) & 3` controls the physical register scan stride independently (documented in Step 1 above).
+
 ## Register Selection
 
 After the pressure arrays are populated for a given VR, the allocator scans physical register candidates and selects the one with minimum cost:
@@ -548,13 +770,106 @@ When enabled and the allocation mode is 3, 5, or 6, the pass:
 2. Iterates basic blocks calling `sub_9499E0` (per-block scanner, 304 lines) to identify pre-assignment opportunities.
 3. For each eligible instruction, calls `sub_93ECB0` (194 lines) to pre-assign operands.
 
-`sub_93ECB0` iterates instruction operands in reverse order (last to first). It filters: operands must be type 1 (register), index not 41--44 (architectural predicates) or 39 (special). A switch on the masked opcode determines how many operands qualify: opcode 22 dispatches to `sub_7E40E0`, opcode 50 uses a lookup table, opcodes 77/83/110--112/279/289/297/352 each have dedicated handlers. The function calls `sub_93E9D0` with a priority level determined by OCG knob 646:
+### Per-Block Scanner: sub\_9499E0
+
+The scanner checks each instruction for pair-preassignment opportunities. It runs under two independent flags: `alloc+441` (coalescing-aware scan, gated by knob 569) and `alloc+440` (uniform-MAC scan). The core logic finds the destination operand, then walks subsequent operands looking for pair linkage:
+
+```
+function scan_block_for_prealloc(alloc, insn):
+    ctx = alloc->code_obj->ctx
+    coalesce_scan = *(alloc + 441) AND knob_match(ctx, 569, insn)
+    if NOT coalesce_scan AND NOT *(alloc + 440):
+        return
+
+    opcode = insn->opcode & 0xFFFFCFFF            // mask modifier bits 12-13
+    if NOT is_prealloc_eligible_wide(opcode):      // bitmask + switch test
+        goto tail_checks
+    if NOT get_knob_bool(ctx, 617, 1): return
+
+    if *(alloc + 440):                             // uniform-MAC path
+        if reg_desc[insn->bb_idx]->field_148 == 0: return
+        if NOT is_prealloc_eligible_narrow(opcode): return
+    if knob_match(ctx, 444, insn): return          // exclusion filter
+
+    dest_idx = find_dest_operand(insn, ctx)        // sub_938350
+    if dest_idx == -1: goto tail_checks
+    operands = &insn->operand[0]                   // base at insn+84
+    if operands[dest_idx] >= 0: goto tail_checks   // must have sign bit set
+
+    // walk operands from dest_idx forward, pair-linking via opcode switch
+    for i = dest_idx .. insn->num_operands-1:
+        if operands[i] >= 0: break                 // stop at non-register
+        op_type = (operands[i] >> 28) & 7
+        if op_type != 1: continue
+        boundary = compute_boundary_index(insn)    // opcode switch below
+        target   = &operands[2 * (boundary + (i - dest_idx))]
+        try_pair_preassign(alloc, &operands[i], target)  // sub_9498C0
+
+tail_checks:
+    if NOT coalesce_scan: return
+    if opcode == 130:                              // HSET2
+        if NOT get_knob_bool(ctx, 617, 1): return
+        // pair-link operand[0] -> operand[2] if pair-width permits
+        try_pair_preassign(alloc, &operands[0], &operands[2])
+    if opcode in {272, 273}:                       // TCSTSWS, QFMA4
+        if NOT get_knob_bool(ctx, 617, 1): return
+        // link dest with two source operands via sub_9496B0
+        link_prealloc_pair(alloc, vreg[op[0]], vreg[op[2]], dir=0)
+        link_prealloc_pair(alloc, vreg[op[0]], vreg[op[4]], dir=1)
+```
+
+`find_dest_operand` (`sub_938350`) scans operands left-to-right for the first type-1 register whose `vreg->reg_class` is 3 (UR) or 6 (Tensor/Acc), skipping pair-extension operands (bit 24 clear). Returns index or -1. `try_pair_preassign` (`sub_9498C0`) verifies both operands are type-1 registers outside 41--44, same `reg_class` matching `alloc+1504`, compares pair widths via `(vreg->flags >> 20) & 3`, and calls `link_prealloc_pair` (`sub_9496B0`) with direction 0/1/2 (wider-to-narrower / narrower-to-wider / equal).
+
+### Per-Operand Pre-Assigner: sub\_93ECB0
+
+Iterates operands finding register-typed candidates, uses the opcode switch to classify each as read-side or write-side:
+
+```
+function pre_assign_operands(alloc, insn, block_idx):
+    if insn == NULL OR insn->num_operands == 0: return
+    operands = &insn->operand[0]
+    op_idx = 0
+    while op_idx < insn->num_operands:
+        desc = operands[2 * op_idx]
+        if ((desc >> 28) & 7) != 1: op_idx++; continue  // not a register
+        if (desc & 0xFFFFFF) - 41 <= 3: op_idx++; continue  // skip P0-P3
+        vreg = lookup_vreg(ctx, desc & 0xFFFFFF)
+        if desc < 0:                               // sign bit = output operand
+            if NOT arch_preassign_disabled():       // field_46584/46592 gate
+                pre_assign_one(alloc, vreg, PRIORITY_READ, block_idx, op_idx)
+            goto advance
+        boundary = compute_boundary_index(insn)    // opcode switch below
+        if op_idx < boundary:                      // read-side
+            if knob_match(ctx, 646, insn) AND get_knob_value(ctx, 646, insn) == 2:
+                pre_assign_one(alloc, vreg, PRIORITY_READ, block_idx, op_idx)
+            else:
+                pre_assign_one(alloc, vreg, PRIORITY_WRITE, block_idx, op_idx)
+        else:                                      // write-side
+            pre_assign_one(alloc, vreg, PRIORITY_BOTH, block_idx, op_idx)
+    advance:
+        op_idx = scan_for_next_register(operands, n_ops, op_idx + 1)
+```
+
+The **opcode boundary switch** is identical in both functions. Maps masked opcode to the index separating read (below) from write (at or above) operands:
+
+| Masked opcode | SASS | Boundary | Source |
+|---------------|------|----------|--------|
+| 22 | R2P | `sub_7E40E0(insn, 3)` | Per-instruction query |
+| 50 | ATOM | `LUT[5 * ((last_op >> 2) & 3)]` | Packed table at `xmmword_21B2EC0` |
+| 51, 110--111, 113--114, 289 | AL2P..SUATOM, UISETP | 3 | Fixed |
+| 77 | EXIT | `sub_7E36C0(2, ...)` | Modifier-dependent |
+| 83 | TEX | `sub_7E3640(insn, 3)` | Texture descriptor query |
+| 112 | SULD | 4 | Fixed |
+| 279 | FENCE\_T | 6 | Fixed |
+| 297 | UFMUL | `sub_7E3790(insn, 3)` | Per-instruction query |
+| 352 | SEL | `sub_7E3800(insn, 3)` | Per-instruction query |
+| (other) | -- | -1 | No pre-assignment |
 
 | Priority | Meaning |
 |----------|---------|
-| 1 | Pre-assign read operands only |
-| 2 | Pre-assign write operands only |
-| 3 | Pre-assign both read and write operands |
+| 1 (READ) | Pre-assign read operands only |
+| 2 (WRITE) | Pre-assign write operands only |
+| 3 (BOTH) | Pre-assign both read and write operands |
 
 `sub_93E9D0` (125 lines) creates a spill candidate node via `sub_93E290` (allocates 192-byte structures from the arena freelist at `alloc+232`), marks the live range via `sub_93DBD0` (356 lines), and recursively processes dependent operands via `sub_93EC50`.
 
@@ -600,20 +915,119 @@ Exit conditions within the NOSPILL loop:
 
 ### Phase 2: SPILL
 
-If all NOSPILL attempts fail, the driver invokes spill guidance:
+If all NOSPILL attempts fail, the driver records the last NOSPILL result (`sub_93D070` with attempt=99), then enters the spill phase via `sub_9714E0` (312 lines). This is a feedback loop between three components: a guidance engine that selects spill victims, a state rebuilder that resets interference, and the core allocator running in spill-aware mode.
+
+#### Step 1: Spill codegen setup
+
+If spill instructions have not been generated for this class (flag at `alloc+865`), `sub_9714E0` calls `sub_939BD0` (spill strategy init) and `sub_94F150` (spill codegen to LMEM), then records the starting register count:
 
 ```
-guidance = sub_96D940(ctx, guidance_array, attempt_no)   // 2983 lines
+function spill_phase(alloc, max_attempts, class, best):
+    if alloc.prev_reg_count + 1 >= max_attempts:
+        return {spilled=false}
+    if not alloc.spill_triggered:                  // alloc+865
+        sub_939BD0(alloc)                          // spill lookup strategy
+        sub_94F150(alloc, ctx, 1)                  // emit spill/reload to LMEM
+    alloc.spill_start = alloc.prev_reg_count + 1   // alloc+1516
 ```
 
-The spill guidance function builds priority queues of spill candidates for each of the 7 register classes. Each guidance entry is an 11112-byte working structure containing 128-element bitmask arrays. The function contains 7 near-identical code blocks (one per class), likely unrolled from a C++ template.
+#### Step 2: Guidance-driven VR spill marking
 
-After spill guidance, a final allocation attempt runs via `sub_9714E0` (finalize/spill). If this also fails, `sub_936FD0` (fallback allocation) makes a last-ditch effort. If that fails too, register assignments are cleared to `-1` and the allocator reports:
+The target vtable (slot 848) determines how many extra registers the architecture offers. With a nonzero spill budget, VRs are marked with the spill sentinel:
 
 ```
-"Register allocation failed with register count of '%d'.
- Compile the program with a higher register target"
+    spill_budget = vtable[856](target, alloc.spill_start)
+    alloc.spill_count = spill_budget               // alloc+1520
+    if spill_budget > 0:
+        vtable[216](alloc)                         // pre-spill hook
+        for vreg in alloc.class_list:              // alloc+736
+            entry = alloc.guidance_bitmask[vreg.register_class]
+            slot  = entry.base + entry.count
+            entry.count += 1
+            alloc.guidance_slots[slot] = 163       // sentinel: spill this VR
 ```
+
+The validation gate (vtable slot 280) checks viability. On rejection, markings are unwound:
+
+```
+    if spill_budget > 0 and not vtable[280](alloc):
+        alloc.spill_count = 0
+        for vreg in alloc.class_list:
+            alloc.guidance_bitmask[vreg.register_class].count -= 1
+        sub_940EF0(alloc, ctx)                     // rebuild clean state
+```
+
+#### Step 3: Interference rebuild (`sub_940EF0`)
+
+`sub_940EF0` (503 lines) resets allocation state for the current class. It walks six priority buckets at `alloc+72..184`, clearing `vreg+104` for every VR, then re-triages each:
+
+```
+function rebuild_interference(alloc, ctx):
+    alloc.cost_array = arena_alloc(num_regs + 1)   // alloc+856, zeroed
+    alloc.available  = spill_start - class_base     // alloc+56
+    for bucket in {alloc+72, +96, +120, +144, +168}:
+        for vreg in bucket: vreg.back_ptr = NULL
+        bucket = empty
+    alloc.best_candidate = -1                       // alloc+1532
+    for vreg in alloc.class_list:
+        vreg.back_ptr = NULL; vreg.intf_sum = 0     // +104, +92
+        vreg.flags &= ~0x1                          // clear bit 0 of +48
+        if vreg.is_preassigned: continue            // bit 5 of +48
+        vreg.phys_reg = -1                          // +68
+        cost = sub_938EA0(alloc, vreg)              // spill cost
+        vreg.intf_sum = cost
+        if cost > alloc.high_threshold:             // alloc+768
+            insert(bucket_HIGH, vreg)               // alloc+120
+        elif vreg.has_constraint and (vreg.flags & 0x80000):
+            insert(bucket_HIGH, vreg)
+        elif sub_939220(alloc, vreg, available):    // trivially colorable?
+            insert(bucket_LOW, vreg)                // alloc+72
+        else:
+            insert(bucket_NORMAL, vreg)             // alloc+96
+```
+
+#### Step 4: Spill-aware core allocation
+
+The core allocator runs via `sub_957160` with attempt=99 (spill-mode sentinel). The architecture vtable (slot 168) adjusts the result:
+
+```
+    result = sub_957160(alloc, ctx, 99)
+    result = vtable[168](alloc, class, result, alloc.prev_reg_count)
+    if alloc.prev_reg_count + 1 >= result:          // fits budget
+        alloc.spill_count = 0; return success
+    elif result == 0x989677+8:                      // hard failure
+        // "Register allocation failed with register count of '%d'."
+```
+
+#### Step 5: Guidance engine invocation
+
+If still over budget, the driver calls `sub_96D940` (2983 lines) for refined spill candidates:
+
+```
+    if result > budget and spill_count == 0:
+        sub_93D070(&best, class, 99, result, pressure, alloc, cost)
+        if not best.has_valid:
+            result = sub_936FD0(&best, result)      // fallback reduction
+    alloc.final_count = result - 1                  // alloc+1560
+    sub_96D940(alloc, ctx, class)                   // guidance engine
+    target.spill_result[class] = alloc.spill_count
+```
+
+The guidance engine allocates an 11112-byte structure with 7 priority queues (qword offsets 0, 166, 188, 210, 232), each backed by `ceil(max_regs/64)` qword bitmask arrays. Per basic block it: (1) populates live-range bitmasks via `sub_95BC90`, (2) coalesces split ranges via `sub_93CD20` when not pre-split, (3) walks instructions dispatching on opcode (52=entry, 54=restore, 72=call, 97=exit, 269=special), (4) invokes `sub_9680F0` in guidance mode or `sub_966490` for pair/quad VRs, (5) updates live bitmasks via `sub_BDBB80` and rebuilds pressure via `sub_952AE0`. After the walk, `sub_93C0B0` consumes the queues to mark spill victims. For class 6, `sub_9539C0` handles accumulator-specific logic.
+
+#### Step 6: VR flag feedback
+
+On success (high byte == 0), VRs with bit 18 of `vreg+48` (`0x40000`, "must-spill") lacking bit 9 (`0x200`, "materialized") are counted at `ctx+1584 + 4*class + 412`. On failure (high byte != 0), physical assignments are cleared:
+
+```
+    if failed:
+        for vreg in alloc.class_list:
+            if not (vreg.flags & 0x20) and vreg.reg_type != 8:
+                vreg.phys_reg = -1
+    // Debug: "{class}-CLASS SPILLING REGALLOC ({spill|no-spill}), N used, M allocated"
+```
+
+The outer loop in `sub_9721C0` retries `sub_971A90` while nonzero, with arena cleanup (`sub_8E3A80`) between attempts.
 
 ### SMEM Spill Activation
 
@@ -681,18 +1095,145 @@ This mode is intended for fast compilation (`--fast-compile`) where compilation 
 
 ## Interference Builder: sub\_926A30
 
-The interference builder (4005 lines) is the largest single function in the allocator. It constructs the constraint lists that feed the pressure arrays. For each basic block and each instruction within it, the builder:
+The interference builder (4005 lines) is the largest single function in the allocator. It combines instruction rewriting (constant folding, operand normalization, pair merging) with constraint extraction in a single pass over each basic block's instruction list.
 
-1. Iterates instruction operands. Each operand is a 32-bit descriptor:
-   - Bits 27--25: operand type (1 = register, 6 = special, 7 = immediate)
-   - Bits 23--0: register/variable ID
-   - Bit 31: sign/direction flag
-   - Bit 24: pair extension bit
-2. For register operands (type 1), extracts the VR ID and looks up the VR object.
-3. Determines the constraint type based on the operand's role (def, use, or both), the instruction's properties, and the VR's pair mode.
-4. Creates a constraint node and appends it to the VR's constraint list.
-5. For paired registers (type 3 in the operand descriptor), generates two constraints: one for the low half and one for the high half (distinguished by bit 23).
-6. Uses SSE2 vectorized loops for bulk weight accumulation when processing large basic blocks with many live registers.
+### Operand Descriptor Bit-Field Layout (low DWORD of 8-byte operand)
+
+```
+  31  30 29 28  27 26 25 24  23 ............ 0
+ +---+--------+--+--+--+---+------------------+
+ |sgn| op_type|  modifiers |      reg_id      |
+ +---+--------+--+--+--+---+------------------+
+   1    3 bits    4 bits        24 bits
+
+Extraction idiom (appears 100+ times in the decompiled source):
+  op_type  = (dword0 >> 28) & 7        // bits 30:28
+  reg_id   = dword0 & 0xFFFFFF         // bits 23:0
+  pair_ext = (dword0 >> 24) & 1        // bit 24
+  sign     = dword0 >> 31              // bit 31
+
+Register operand test:  (op_type - 2) <= 1   // types 2 (def), 3 (use)
+Special operand test:   op_type == 5
+Sentinel test:          op_type == 7          // end of operand list
+```
+
+### Main Loop Pseudocode
+
+```
+function sub_926A30(ctx, opcode, op_category, operand_count, operands, flags, ...):
+    // --- Phase 0: early exit & opcode canonicalization ---
+    if opcode == 109:  return opcode              // NOP, nothing to process
+    masked_opcode = opcode & 0xFFFFCFFF           // clear bits 12-13
+    is_eligible = 0
+    if masked_opcode == 0x3E or masked_opcode == 78:
+        is_eligible = 1
+    else if *op_category == 20 and (ctx.flags1377 & 2) != 0:
+        is_eligible = 1
+    else:
+        is_eligible = sub_7D66E0(*op_category)    // query: category needs rewrite?
+
+    // --- Phase 1: forward operand walk with constraint type resolution ---
+    for i = 0 to operand_count - 1:
+        op_ptr  = operands + 8 * i
+        dword0  = *(u32*)op_ptr
+        op_type = (dword0 >> 28) & 7
+        kind    = op_type - 2                     // 0=def, 1=use for VR operands
+
+        // Eligible-operand rewriting: fold address/pair operands
+        if is_eligible and kind <= 1:
+            adjusted_count = *operand_count - ((opcode >> 11) & 2)
+            if i < adjusted_count:
+                new_cat = sub_91A0F0(masked_opcode, *op_category,
+                                     operands, adjusted_count, i)
+                if sub_7D66E0(new_cat):
+                    sub_7DB1E0(op_ptr, ctx, new_cat)   // rewrite operand
+            op_type = (*(u32*)op_ptr >> 28) & 7        // re-extract after rewrite
+            kind    = op_type - 2
+
+        // Skip non-register, non-special operands
+        if kind > 1 and op_type != 5 and (*(u8*)(op_ptr+7) & 1) == 0:
+            continue
+
+        // Resolve constraint category for this operand position
+        constraint_cat = sub_91A0F0(masked_opcode, *op_category,
+                                    operands, operand_count, i)
+
+        // Dispatch: VR operands -> full constraint builder,
+        //           fixed/special  -> lightweight path
+        if kind <= 1:                                  // type 2 or 3
+            sub_922210(ctx, masked_opcode, op_ptr, constraint_cat,
+                       operands, operand_count, weight)
+        else:
+            sub_9267C0(ctx, op_ptr, constraint_cat, masked_opcode,
+                       operands, operand_count)
+
+    // --- Phase 2: pair-merge for 0x1000-flagged instructions ---
+    if (opcode & 0x1000) != 0:
+        penult = operands + 8*(operand_count - 2)
+        last   = operands + 8*(operand_count - 1)
+        if (*(u32*)(last+4) & 0x20000000) != 0:       // pair-merge flag
+            *(u32*)(last+4) ^= 0x20000000
+            resolved = backend_vtable[79](backend, *(u32*)last & 0xFFFFFF)
+            *(u32*)(last+4) = 0
+            *(u32*)last = (resolved & 0xFFFFFF) | 0x60000000
+
+    // --- Phase 3: address-operand folding (opcodes 183/185/16/288/329) ---
+    if masked_opcode in {183, 185, 16, 288, 329}:
+        skip = select_addr_skip(masked_opcode)        // 4 or 5
+        slot = operand_count - ((opcode >> 11) & 2) - skip
+        addr_op = operands + 8 * slot
+        if (*(u32*)addr_op >> 28 & 7) == 5:           // type 5 = address
+            next_op = operands + 8 * (slot + 1)
+            if (*(u32*)next_op >> 28 & 7) == 1        // type 1 = reg
+               and (*(u8*)(next_op+7) & 1) == 0:
+                // Fold: reg_id from next, mark type-1 with pair bit
+                *(u32*)addr_op = (*(u32*)addr_op & 0x8F000000)
+                               | 0x10000000
+                               | (*(u32*)next_op & 0xFFFFFF)
+                propagate_modifier_flags(addr_op, next_op)
+                *(u64*)next_op = 0x70000000            // sentinel (type 7)
+
+    // --- Phase 4: constant-folding gate ---
+    if not ocg_knob_query(ctx, 87, 1):  return opcode
+    if ctx.opt_level > 12 or sub_7DDB50(ctx) == 1:
+        return opcode
+
+    // Determine if first operand is a foldable constant
+    has_const_src = 0
+    if operand_count > 0 and *(i32*)operands < 0:     // sign bit = const
+        fmt = (*(u16*)(operands+6)) & 3
+        if   fmt == 1: has_const_src = 1               // integer
+        elif fmt == 2: has_const_src = 0               // float, skip
+        else: has_const_src = backend_vtable[8](backend, opcode, *op_category)
+
+    // --- Phase 5: constant expression evaluation (30+ opcodes) ---
+    // Extract constant values:  const_val = *(u64*)(ctx.const_table + 4*reg_id)
+    //
+    // Opcode dispatch (selected from the binary):
+    //   2  (ADD):  result = const_a + const_b; clamp on signed overflow
+    //   35 (SEL):  result = const_pred ? const_a : const_b
+    //   79 (MUL):  result = const_a * const_b
+    //  110 (MAD):  fold to ADD+MUL pair
+    //  137 (IMAD): delegate to sub_9216C0 for 3-operand fold
+    //  139 (IMUL): 64-bit product
+    //  149 (ISHR): result = const_a >> const_b
+    //  201 (SHR):  byte-width from vtable[113]
+    //  213 (IMNMX):min/max per sign mode
+    //  272 (PRMT): byte permutation
+    //
+    // After folding, instruction becomes:
+    //   opcode = 130 (MOV), operand_count = 2
+    //   operands[1] = sub_91CDD0(ctx, folded_value) | (type << 28)
+
+    // --- Phase 6: multi-operand normalization ---
+    // sub_91EFC0: emit constraint records into VR constraint lists
+    // sub_9229F0: MAD -> ADD+shift strength reduction
+    // sub_91FCB0: MUFU path rewriting
+    // sub_924120: bank-conflict pair splitting
+    // sub_9203A0: three-operand instruction merging
+    // sub_91ED40: write rewritten instruction back
+    return opcode
+```
 
 The builder queries multiple OCG knobs via vtable dispatches at offsets +72, +120, +152, +224, +256, +272, and +320. These knobs modulate constraint weights and enable/disable specific constraint categories (e.g. bank-conflict-aware constraints are gated by knob 641).
 
@@ -722,17 +1263,104 @@ When the current attempt improves over the best, the recorder allocates a per-re
 
 ## Per-Instruction Assignment: sub\_9680F0
 
-The per-instruction assignment core loop (3722 lines, the largest function in part 2 of the allocator) handles the actual instruction-by-instruction walk during allocation:
+The per-instruction assignment core loop (3722 lines, the largest function in part 2 of the allocator) handles the actual instruction-by-instruction walk during allocation.
 
-1. Iterates instructions via linked list (`v87 = *(_QWORD *)v87`)
-2. For each instruction, calls `sub_961A60` to attempt register assignment
-3. Tracks register pressure via `v86` counter and 256-bit bitvectors at `alloc+1342..1350`
-4. Manages three bitvector masks per instruction: assigned, must-not-spill, and used
-5. Detects rematerialization opportunities (flag `v570`) and calls `sub_93AC90`
-6. Detects bank conflicts via `sub_9364B0` and resolves them
-7. Handles special opcodes: 187 / IMMA_16832 (`VZZN_16832`, behavioral: LOAD), 97 / STG (`FGT`, behavioral: STORE), 52 / BB boundary (behavioral: BRANCH), 236 / UBLKPF (`HOYXCS`, behavioral: CALL)
-8. Tracks first-spill-candidate (`alloc+1354`) and fallback-spill-candidate (`alloc+1355`)
-9. On allocation failure for an instruction, calls `sub_96CE90` which recursively invokes `sub_9680F0` with different flags for the spill fallback path
+### Initialization
+
+The function begins by computing the register pair stride from the register class descriptor. The `pair_mode` field at `reg_class+48` bits 20--21 selects the stride:
+
+| pair\_mode | stride | operand divisor | pair width |
+|-----------|--------|-----------------|------------|
+| 0 (single) | 2 | /2 | 4 |
+| 1 (half-pair) | 1 | /1 | 2 |
+| 3 (quad) | 4 | /4 | 8 |
+
+The function then builds the **assigned** bitvector (`alloc+1342..1345`, 256 bits) by enumerating physical registers belonging to the target class. It walks the register-file linked list from `backend[11]`, setting one bit per physical register slot. For register pairs, each physical register occupies two slots (`slot * 2`).
+
+### Operand Pre-Scan and Bank Conflict Detection
+
+Before entering the main loop, the function scans operands of the block's header instruction in reverse order (last to first). For each operand of type 1 (register) whose physical index is not 41--44 (architectural predicates):
+
+```
+for operand_idx = num_operands-1 downto 0:
+    op = insn.operands[operand_idx]
+    if op.type != REG or (op.phys_index - 41) <= 3:
+        continue
+    slot = find_slot(op.phys_index)       // lookup in alloc+36 table
+    used[slot >> 6] |= (1 << slot)       // mark in used bitvector (alloc+1350)
+    if insn.live_out[operand_idx] == NULL:
+        must_not_spill[slot >> 6] |= (1 << slot)  // (alloc+1346)
+    if op.is_write and slot <= 255:
+        bank_result = sub_9364B0(insn, operand_idx, op.phys_index)
+        if bank_result != 1:              // conflict detected
+            assigned[slot >> 6] &= ~(1 << slot)   // unmark from assigned
+```
+
+### Rematerialization Flag
+
+A vtable call on the strategy object (`alloc[1]`) detects rematerialization. When the vtable entry is `sub_9360F0` (default), the flag falls back to `insn.opcode == 187`. This `remat_flag` (`v570`) gates later calls to `sub_93AC90`.
+
+### Main Instruction Loop
+
+```
+pressure = 0; assign_count = 0        // v86, v558
+first_spill = NULL                     // alloc+1355: set when assign_count > 3
+fallback_spill = NULL                  // alloc+1356: set when assign_count > 30
+spill_point = NULL                     // alloc+1354
+insn = block.first_insn                // v87: linked-list head
+while insn != NULL:
+    opcode = insn.next.opcode          // look-ahead to successor
+    // --- pressure: count live registers from operands (reverse, skip idx 41..44) ---
+    for each register operand:
+        vr = backend.vreg_table[op.phys_index]
+        if vr.class == alloc.class and vr.priority > alloc.threshold:
+            pressure += is_pair(vr) ? 2 : 1
+    if sub_7DF3A0(insn, backend) & 1:  // pinned -- skip assignment
+        goto advance
+    // --- attempt register assignment ---
+    ok = sub_961A60(alloc, insn, &scratch, &remat_state,
+                    half_count, reg_class_desc, allow_spill_flag)
+    if !ok: goto ASSIGNMENT_FAILED
+    assign_count++
+    // --- BB boundary (opcode 52): reset spill tracking ---
+    if insn reached new BB:
+        first_spill = fallback_spill = spill_point = NULL
+    else:
+        // --- opcode 97 (STG): early spill point if class 1-3 or sub_936CF0 ---
+        // --- opcode 236 (UBLKPF/CALL): exit to finalization immediately ---
+        if !spill_point and sub_7E0F50(insn, backend):
+            if !first_spill and assign_count > 3 and opcode != 187:
+                first_spill = insn; snapshot pressure to alloc+1357
+            if !fallback_spill and assign_count > 30 and alloc.flag_804:
+                fallback_spill = insn
+    if opcode != 187 and !spill_point:  // 187 = IMMA_16832 (LOAD) -> remat source
+        remat_flag = check_next_is_load(insn)
+    sub_93B760(alloc, interference_set, insn)
+  advance:
+    insn = insn.next                   // v87 = *v87
+```
+
+### Post-Loop: Spill Decision and Recursive Fallback
+
+After the loop exits, the function selects a spill point and attempts to commit:
+
+```
+if remat_candidate:       spill_insn = remat_candidate
+elif spill_point:         spill_insn = spill_point
+else:                     spill_insn = first_spill
+
+result = sub_964130(alloc, block, reg_class_desc, half_count,
+                    ..., spill_insn, 0)
+if result >= 0:           // success: tail-call self for remaining instructions
+    sub_9680F0(alloc, ctx, block, class_idx, budget, mode, 0, flags)
+    return
+// commit failed -- recursive spill fallback
+sub_96CE90(alloc, block, class_idx, budget, &mode, ctx)
+```
+
+`sub_96CE90` re-invokes `sub_9680F0` with modified spill-permission flags, allowing registers previously protected by `must_not_spill` to be spilled. This is the escalation mechanism from pressure-only allocation to actual spill insertion.
+
+If allocation still fails (`v122 != 0` at LABEL\_160), the function emits: `"Register allocation failed with register count of '%d'. Compile the program with a higher register target"`. The count is `alloc.threshold + 1`, or for class 6, `sub_9372B0(alloc)` (accounting for uniform register reservations).
 
 ## Post-Allocation Verification
 

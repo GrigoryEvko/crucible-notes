@@ -273,86 +273,428 @@ After bitvector iteration, each stack-local queue header is built by `sub_8BE190
 
 ### Algorithm
 
+Three phases: (A) stack-local queue init, (B) structure alloc + instruction walk, (C) finalization.
+
+#### Phase A -- Per-class bitvector copy and sort
+
 ```
-function compute_spill_guidance(ctx, guidance_array, attempt):
+function compute_spill_guidance(ctx, alloc, attempt):
+    // Zero two 127-DWORD bitmask arrays (SSE2, 16B/iter, 0x1F iters).
+    // Sentinel 0x80 at offsets +284 and +808.
+    zero_sse2(bitmask[0..1], 127); bitmask[0][-1] = bitmask[1][-1] = 0x80
+    queue_headers[7]  // stack-local 168B: 0=R,1=P,2=B,3=UR,4=UP,5=UB,6=Acc
+    arena = ctx+16
     for class_id in 0..6:
-        entry = &guidance_array[class_id]
+        hdr = { storage=arena, data=0, max_index=-1, count=0 }
+        if alloc.max_index[class_id] >= 0:
+            n = alloc.max_index[class_id] + 1
+            bitvec_resize(hdr, n)                      // sub_6E6650
+            sse2_copy(hdr.data + hdr.count, alloc.data, n)
+            hdr.count += n
+    build_overflow_queue(queue_headers)                 // sub_8BE190
+    queue_headers.run_counter += 7
+    sort_queue(queue_headers)                           // sub_7553C0
 
-        // 1. Initialize working bitmask arrays
-        zero_fill(entry.bitmasks, 128 elements)
-
-        // 2. Iterate live range bitvectors
-        for each live_range in class[class_id]:
-            // 3. Compute set intersection with other live ranges
-            intersect(entry.bitmasks, live_range.bitvector)
-
-        // 4. Build priority queue of spill candidates
-        build_priority_queue(entry)               // sub_8BE190
-
-        // 5. Sort by spill cost (ascending -- cheapest to spill first)
-        sort_priority_queue(entry)                // sub_7553C0
+    // Same copy-and-sort for 5 priority queue blocks at QWORD offsets
+    // [166], [188], [210], [232], [256] (22 QWORDs each, 6 entries/block).
+    for block_id in 0..4:
+        qblk = &g[166 + block_id * 22]; qblk.count = 0
+        for class_id in 0..6: /* identical init + bitvec copy */
+        build_overflow_queue(qblk_end); qblk.count += 7; sort_queue(qblk_end)
 ```
+
+#### Phase B -- Structure init and instruction walk
+
+```
+    g = arena_alloc(ctx+16, 11112)                     // guidance structure
+    g[0] = ctx; g[3] = alloc+16; g[4..6] = 0          // back-ptrs + counters
+    // Init circular doubly-linked list [1324]--[1329] (self-referential).
+    // Alloc two 24B candidate nodes (type=2) at g[1331], g[1332].
+    // Per-class bitvec: sub_957020 allocates ceil(vreg_count/64) QWORDs.
+    sub_95BC90(g, ctx.active_class, ctx.block_list, ctx.class_limit, attempt > 5)
+    if !ctx.class_nospill[attempt]: sub_93CD20(g)      // candidate pre-eval
+    vtable_call(ctx, slot_39)                           // arch-specific init
+    if get_knob(622)==1 and !g[1338]:                   // knob 622 gate
+        g[1338] = arena_alloc(ctx+16, 128)              // walk context
+
+    for insn in block_list(ctx+280):                    // instruction walk
+      switch insn.opcode:
+        case 72: update_block_counters(g)               // block boundary
+        case 54: load_block_state(g, func_node)         // function entry
+        case 97: update_high_water_mark(g)              // block exit
+                 check_block_boundary(alloc, insn)      // sub_9363E0
+        default: // ordinary instruction -- per-operand walk:
+          for op_idx in 0..insn.operand_count:
+            op = insn.operands[op_idx]
+            if (op>>28)&7 != 1: continue               // not a VR reference
+            vr_id = op & 0xFFFFFF
+            if vr_id in 41..44: continue               // skip special regs
+            vreg = vr_table[vr_id]; cls = vreg+64
+            if op < 0:                                  // DEF (bit 31 set)
+                sub_91E860(alloc, insn, op_idx)         // remat cost
+                cost = sub_93BE80(ctx, insn, op_idx)    // spill cost
+                insert_candidate(&qh[cls], vreg, cost)  // sub_9370A0
+            else:                                       // USE
+                remove_candidate(&qh[cls], vreg)        // sub_9365A0
+            // Cross-class demotion (sub_936610): for subsequent operands
+            // whose class <= attempt and range-end <= budget, remove them.
+            if cls < attempt:
+              for j in op_idx+1..insn.operand_count:
+                ref = vr_table[insn.operands[j] & 0xFFFFFF]
+                if ref+64 <= attempt and ref+68 <= budget[ref+64]:
+                    remove_candidate(&qh[ref+64], ref)
+          // Cost propagation:
+          if first_use_in_block:
+              sub_93BF50(ctx, insn, &qh, class_limit)  // candidate eval
+          if should_propagate:
+              sub_9680F0(g, &qh, insn, ...)             // per-insn assignment
+        case 52: // BB entry: set bits for [class_min..class_max] per class,
+          // AND-subtract liveout (sub_BDC180 first visit / sub_BDCDE0 re-visit).
+          // Iterate set bits; remove VRs with cls<=attempt, end<=budget.
+```
+
+#### Phase C -- Finalization
+
+```
+    if ctx.class_nospill[ctx.active_class]:
+        sub_96CFA0(g); arena_free(arena, g)            // cleanup only
+    else:
+        sub_93C0B0(ctx, g, attempt)                     // finalize scores
+        if attempt == 6 and ctx.uniform_spill_count > 0:
+            sub_9539C0(ctx, g)                          // uniform spill fixup
+        for cls in 0..g.max_class_index:                // emit guidance
+            entry = g[13] + 24*cls
+            if entry.reg_count > 0:
+                emit_spill_guidance(alloc.spill_table, entry)
+        sub_96CFA0(g); arena_free(arena, g)
+    for i in (run_counter-1) downto 0:                  // final re-sort
+        sort_queue(&queue_headers[i])                   // sub_7553C0
+```
+
+#### Per-VR cost comparison (`sub_7553C0`)
+
+Single-pass bitvector drain: if `max_index < 0` return (empty). Otherwise reset `max_index = -1` and delegate to `vtable_call(storage, slot_4)`. Slot 4 walks the bitvector from highest set bit downward, yielding VR indices in descending cost order (cheapest-to-spill first).
+
+#### Candidate insertion (`sub_9370A0`) and removal (`sub_9365A0`)
+
+Insertion is gated on the VR pair/width field `vreg+48` bits 20--21:
+
+| Bits 20--21 | Width | Insertion behavior |
+|-------------|-------|--------------------|
+| 0 | single | Set bit `vreg+68` in class bitvector |
+| 1 | pair | No insertion (pairs not independently spillable) |
+| 3 | quad | Set `vreg+68`; if cost tag == 2, also set `vreg+68 + 1` |
+
+The `a4` tie-break parameter (values 0/4/8) selects single-bit vs double-bit paths for quad-width VRs. Removal clears bit `vreg+68`; for 64-bit pairs (`(vreg+48 ^ 0x300000) & 0x300000 == 0`), also clears `vreg+68 + 1`. Both operations guard against exceeding bitvector capacity (`(max_index+1) << 6`).
 
 The guidance output is consumed by the retry loop: after each failed allocation attempt, the allocator consults the guidance to decide which virtual registers to allow to spill on the next attempt.
 
 ## Spill Cost Model
 
-The allocator uses a multi-level cost model to evaluate which registers are cheapest to spill.
+The allocator uses a multi-level cost model to evaluate which registers are cheapest to spill. The model combines per-instruction frequency weighting, knob-controlled thresholds, and a density-based eligibility gate into a single unified cost per virtual register.
 
 ### Per-virtual-register weights
 
 | Field | Type | Meaning |
 |-------|------|---------|
-| `vreg+40` | float | Primary spill cost (accumulated from usage frequency) |
-| `vreg+76` | float | Secondary spill cost (alternate weighting) |
+| `vreg+28` | float | Primary spill cost (accumulated from usage frequency) |
+| `vreg+32` | float | Secondary spill cost (use-after-last-def weighting) |
+| `vreg+40` | float | Normalized spill cost (primary / live range length) |
+| `vreg+76` | float | Alternate cost (architecture-specific adjustments) |
 | `vreg+80` | int | Spill flag: 0 = not spilled, 1 = spilled |
 
 ### Allocator-level accumulators
 
 | Field | Type | Meaning |
 |-------|------|---------|
-| `alloc+1568` | double | Total spill-store cost |
-| `alloc+1576` | float | Total spill-load cost |
+| `alloc+1568` | double | Total spill-store cost (summed over all spilled vregs) |
+| `alloc+1576` | float | Total spill-load cost (summed over all refilled vregs) |
 
-### Default cost weight
+### Unified spill cost formula
 
-The base spill cost weight is **15.0** for normal register classes, reduced to **3.0** for register classes under high pressure. The selection is made by a per-class flag at `alloc + 32 * class_id + 893`:
+```
+function compute_spill_cost(alloc, vreg, regclass):
+    // Step 1: Select base weight from register pressure state
+    if alloc.high_pressure_flag[regclass]:          // byte at alloc + 32*regclass + 893
+        base_weight = 3.0                           // encourage spilling under pressure
+    else:
+        base_weight = 15.0                          // default: penalize spilling
 
-```c
-float spill_weight = 15.0f;
-if (*(uint8_t*)(alloc + 32 * regclass + 893))
-    spill_weight = 3.0f;    // high-pressure class: lower cost to encourage spilling
+    // Step 2: Accumulate cost per instruction touching this vreg
+    vreg.primary_cost = 0.0                         // vreg+28
+    vreg.secondary_cost = 0.0                       // vreg+32
+    for each instr that defs or uses vreg:
+        freq = block_frequency(instr.block)         // vtable callback at +8; loop depth
+        vreg.primary_cost += base_weight * freq
+
+        // Extra penalty for values consumed far from their definition
+        if instr is_use and instr.program_point > vreg.last_def_point:
+            vreg.secondary_cost += base_weight * freq
+
+    // Step 3: Fold into allocator-wide accumulators on spill commit
+    //   (triggered when vreg.flags bit 18 is set = needs-spill)
+    alloc.total_store_cost += (double)vreg.primary_cost     // alloc+1568
+    alloc.total_load_cost  += vreg.secondary_cost           // alloc+1576
 ```
 
-### Block frequency weighting
+### Spill eligibility gate (sub\_9997D0)
 
-Spill cost is multiplied by the enclosing loop's nesting depth, obtained via a block frequency callback at vtable offset `+8`. Inner-loop spills receive higher penalties, discouraging the allocator from spilling values that are live across loop back-edges.
+Before a vreg enters the spill candidate set, it must pass two knob-controlled thresholds and a density check. The knobs reside in the options block reachable through `ctx->pipeline->options + offset`:
 
-### Best-result comparison
+```
+function is_spill_eligible(alloc, vreg, num_candidates):
+    // Threshold 1: primary cost floor (default 0.9, knob at opts+38952)
+    primary_floor = 0.9
+    mode = opts.override_mode[38952]
+    if mode == 2:  primary_floor = opts.value[38960]    // user override
+    if mode == 1:  primary_floor = 0.0                  // disabled
 
-`sub_93D070` (155 lines) records the best allocation result across retry attempts. Comparison uses tie-breaking priority:
+    if vreg.primary_cost < primary_floor:               // vreg+28
+        return false
 
-1. Register count (lower is better)
-2. Cost metric (double at `result+56`)
-3. Spill count
-4. Register class width
+    // Threshold 2: secondary cost floor (default 1.0, knob at opts+38880)
+    secondary_floor = 1.0
+    mode = opts.override_mode[38880]
+    if mode == 2:  secondary_floor = opts.value[38888]
+    if mode == 1:  secondary_floor = 0.0
 
-An inverse density metric `128 / register_count` is used for secondary comparison. The per-variable assignment array is saved to a backup when a new best is found.
+    if vreg.secondary_cost <= secondary_floor:          // vreg+32
+        return false
+
+    // Density gate: registers consumed per candidate must stay under budget
+    phys_class = resolve_regclass(vreg)
+    regs_per_candidate = alloc.class_reg_count[phys_class] / num_candidates
+    return regs_per_candidate < alloc.density_budget    // int at alloc+484
+```
+
+### Zero-cost pruning (sub\_999AA0)
+
+After initial cost computation, `sub_999AA0` (162 lines) walks the interference graph and removes any vreg whose `primary_cost == 0.0` from the candidate list. This avoids wasting spill slots on dead or single-use values that would have zero benefit from spilling. The function also decrements the per-node degree count and recycles freed nodes into the allocator's free list at `alloc+144`.
+
+### Max-pressure query (sub\_99A0B0)
+
+`sub_99A0B0` (224 lines) computes the peak number of simultaneously live defs across all blocks spanned by a live range. It walks instructions in program order within each spanned block, counting def operands whose register class matches the target class. Special register IDs 41--44 (PT, P0--P3) are excluded. The peak is stored at `alloc.peak_defs` (DWORD at offset `402*4`) and is used to gauge whether spilling a particular vreg would meaningfully relieve pressure.
+
+### Best-result comparison (sub\_93D070)
+
+Called after every allocation attempt to decide whether the current result improves on the stored best, and if so, snapshot the full VR-to-physical assignment.
+
+**Best-result structure layout** (base pointer `best`, 88 bytes + variable backup array):
+
+| Offset | Field | Stored from |
+|--------|-------|-------------|
+| `best[2]` | budget threshold | set externally |
+| `best[3]` | total attempt count | set externally |
+| `best[10]` | best reg count | `v7` (possibly remapped `reg_count`) |
+| `best[11]` | class width | `reg_count` (raw input) |
+| `best[13]` | inverse density | `128 / reg_count` |
+| `best[16]` | best pressure | `max_pressure` |
+| `best+56` (double) | best cost | `cost` |
+| `best[12]`, `best[17]` | aux counters | from `alloc->subsys+1528`, `+1564` |
+| `(QWORD)(best+32)` | backup array ptr | arena-allocated on first call |
+| `best+24` (byte) | improved flag | 0 = no improvement, 1 = improved |
+
+```
+function record_best_result(best, ctx, attempt, reg_count, max_pressure, arena, cost):
+    // Step 0: class-specific register count remapping via vtable slot 89
+    v7 = reg_count
+    remap_fn = ctx->alloc->subsys->vtable[89]          // offset 712
+    if remap_fn != identity_stub:                       // sub_693720
+        v7 = remap_fn(ctx->alloc->subsys, ctx, reg_count)
+    inv_density = 128 / reg_count
+
+    // Step 1: first-ever call (attempt == 0, best[3] == 1)
+    if attempt == 0:
+        best.improved = 1
+        if best.attempt_count == 1:                     // single-attempt mode
+            if reg_count <= best[2] + 1: return         // within budget, skip save
+        best.backup = arena_alloc(arena, (vreg_count + 1) * 4)
+        goto save_state
+
+    // Step 2: budget gate -- require current within threshold
+    threshold = min(reg_count, best.class_width)
+    if best[2] + 1 < threshold:
+        // Over budget: fall back to cost/pressure/width comparison
+        if best.cost == cost:
+            improved = (max_pressure < best.pressure)
+            if max_pressure == best.pressure:
+                improved = (reg_count < best.class_width)
+        else:
+            improved = (cost < best.cost)
+        best.improved = improved
+        if !improved: return
+        goto check_shortcircuit
+
+    // Step 3: within budget -- lexicographic (reg_count, inv_density) comparison
+    if best.reg_count <= v7 and best.inv_density >= inv_density:
+        // Existing best is at least as good on primary+secondary keys
+        // Tie-break on pressure, then class_width
+        if (best.reg_count != v7 or max_pressure >= best.pressure) \
+           and (max_pressure != best.pressure or best.class_width <= reg_count):
+            best.improved = 0                           // no improvement
+            return
+    best.improved = 1
+
+check_shortcircuit:
+    if attempt == 99: return                            // probe-only mode
+    if attempt == best.attempt_count - 1:               // final attempt
+        cap = best[2] + 1
+        if reg_count <= cap: return cap                 // clamp to budget
+
+save_state:
+    // Step 4: record new best scalars
+    best.class_width    = reg_count
+    best.reg_count      = v7
+    best.inv_density    = 128 / reg_count
+    best.pressure       = max_pressure
+    best.cost           = cost
+    best.aux_counter_a  = ctx->alloc->subsys->child[1528]  // e.g. spill store count
+    best.aux_counter_b  = ctx->alloc->subsys->child[1564]  // e.g. spill load count
+
+    // Step 5: snapshot per-VR assignment (skip for special class width 0x989677+8)
+    if reg_count != SPECIAL_CLASS_WIDTH:
+        vr = vr_list_head(best->ctx)                    // linked list via vreg+120
+        while vr != NULL:
+            idx         = vr.id                         // vreg+12
+            phys_reg    = vr.assigned_reg               // vreg+68
+            is_pair_hi  = (vr.pair_width >> 23) & 1     // bit 23 of vreg+48
+            best.backup[idx] = is_pair_hi + 2 * phys_reg
+            vr = vr.next                                // vreg+120
+        // Also snapshot subsystem auxiliary state
+        best[18] = ctx->alloc->subsys[408]
+        best[20] = ctx->alloc->subsys[400]
+```
+
+The backup array encodes each VR's physical register assignment as `2*phys_reg + pair_high_bit`, allowing exact restoration when the allocator commits the best result. The `is_pair_hi` bit distinguishes the low vs high half of a register pair so the restore path can reconstruct pair assignments without re-running the pair allocator.
 
 ### Spill cost infrastructure
 
-A suite of functions at `0x998000`--`0x99E000` implements the cost computation:
+| Address | Size | Role | Detail |
+|---------|------|------|--------|
+| `sub_9997D0` | 44 lines | Eligibility gate | Two-threshold + density check (see pseudocode above) |
+| `sub_9998A0` | 57 lines | Has-constrained check | Hash table walk at `alloc+712`; true if any vreg has bit 3 |
+| `sub_999950` | 74 lines | Constraint-aware compare | Calls `sub_998450` for setup, walks block order checking interference |
+| `sub_999AA0` | 162 lines | Zero-cost pruning | Removes cost-0 vregs from interference graph; recycles to free list |
+| `sub_999D10` | 102 lines | Phi/copy aggregation | For opcode 96 (phi), aggregates cost across coalesced operand chains |
+| `sub_999F00` | 100 lines | Per-block cost array | Grows 12B-per-block array; copies `{block_id, store_cost, load_cost}` tuples |
+| `sub_99A0B0` | 224 lines | Max-pressure query | Peak simultaneous defs per live range span (excludes regs 41--44) |
+| `sub_9A8270` | ~580 lines | Live range spill driver | 14 KB; drains worklists, checks bitvector membership, commits per-range spills |
 
-| Address | Role |
-|---------|------|
-| `sub_9997D0` | Spill cost initialization |
-| `sub_9998A0` | Spill cost computation |
-| `sub_999950` | Spill cost comparison |
-| `sub_999AA0` | Spill benefit estimation |
-| `sub_999D10` | Spill cost aggregation |
-| `sub_999F00` | Spill cost finalization |
-| `sub_99A0B0` | Range spill cost query |
-| `sub_9A8270` | Live range spill cost (14 KB) |
+#### Has-constrained check (`sub_9998A0`)
+
+Walks the hash table rooted at `alloc+712` (populated by `sub_995110`). Each bucket chain is a linked list of nodes; the function scans every node checking `byte +12 bit 3` (the "constrained" flag). Returns 1 immediately on the first constrained node found, 0 if the entire table is exhausted. When `alloc+720 == 0` (table empty), returns 0 without walking.
+
+#### Constraint-aware interference check (`sub_999950`)
+
+```
+function check_constrained_interference(alloc, block_range):
+    setup_live_state(alloc, block_range)                 // sub_998450
+    if not has_constrained_vreg(alloc):                  // sub_9998A0
+        return PROCEED                                   // no constrained -- safe
+
+    // Phase 1: walk successor blocks of the range
+    if alloc.pass_count > 1:                             // alloc+756
+        succ = block_range.successor_list                // block_range[17]
+        while succ:
+            if alloc.hash_count > 0:                     // alloc+720
+                entry = hash_lookup(alloc+712, bb_node(succ.bb_id))
+                if entry and (entry.flags & 0x4):        // constrained bit
+                    goto phase2
+            succ = succ.next
+        return NO_INTERFERENCE
+
+    // Phase 2: walk RPO block list for cross-block check
+    phase2:
+    found = false
+    for i in 1..alloc.block_count:                       // alloc+520
+        block = block_table[rpo_order[i]]
+        if dominates(alloc, block_range, block):         // sub_76ABE0
+            result = check_single_block(alloc, block)    // sub_995740
+            if not result:  return PROCEED
+            found = result
+        elif found:
+            return PROCEED                               // past dominated region
+    return NO_INTERFERENCE
+```
+
+#### Phi/copy aggregation (`sub_999D10`)
+
+For opcode 96 (phi/merge nodes), traces through coalesced operand chains to find the source live range that can absorb the phi cost. Validates a diamond CFG pattern: a phi with exactly two predecessors, each with a single predecessor, both merging from the same dominator. When this pattern holds and the source vreg has `use_count == 1` and is not constrained (bit 1 at `vreg+51`), returns the source vreg pointer for cost aggregation. Returns null (byte `+8 = 0`) when the pattern does not match or the opcode is not 96.
+
+#### Per-block cost array builder (`sub_999F00`)
+
+```
+function build_block_cost_array(alloc):
+    block_info = *(alloc+8) -> +72                       // current block descriptor
+    if not block_info:  return
+    max_id = block_info.max_id                           // +32
+    if max_id + 1 > alloc.cost_array_size + 1:           // alloc+592
+        // Grow with 1.5x policy
+        new_cap = old_cap + (old_cap + 1) / 2
+        if new_cap < max_id + 1:  new_cap = max_id + 1
+        buf = arena_alloc(arena, 12 * new_cap)           // vtable+24
+        memcpy(buf, old_buf, 12 * (old_size + 1))
+        arena_free(arena)                                // vtable+32
+        alloc.cost_array = buf                           // alloc+584
+        alloc.cost_capacity = new_cap                    // alloc+596
+    // Zero-fill new slots as {0, 0, 0}
+    for i in (old_size+1)..max_id:
+        cost_array[i] = {0, 0, 0}                       // 12 bytes each
+    alloc.cost_array_size = max_id                       // alloc+592
+    // Copy per-block tuples from block descriptor
+    src = block_info.entry_base + 16                     // +48 with 16B stride
+    for j in 0..block_info.entry_count:                  // +36
+        idx = src[j].block_id
+        cost_array[idx] = {src[j].val_a, src[j].val_b, src[j].val_c}
+```
+
+Each entry is a 12-byte record indexed by basic block ID. The 1.5x growth policy avoids reallocation churn when processing functions with many blocks.
+
+#### Live range spill driver (`sub_9A8270`)
+
+The largest spill cost function (580 lines, 14 KB). Four phases:
+
+```
+function drive_live_range_spills(alloc, loop_info, result_ptr):
+    // Phase 1 -- drain 3 worklists (at alloc+123/+138/+156) into free pools
+    //   via sub_69DD70 pop; recycle interval nodes (alloc[144..150]) via vtable+32.
+    //   If has_secondary_map (DWORD[202]): drain alloc[102..103] -> alloc[100].
+    //   If has_bucket_array (DWORD[304]): recycle alloc[153..154] per-bucket.
+    drain_all_worklists(alloc)
+
+    // Phase 2 -- early exit
+    *result_ptr = 0
+    if alloc.pass_count <= 1 and alloc.mode > 1:  return 0
+    if alloc.block_count == 0:                     return 0
+
+    // Phase 3 -- per-block RPO walk
+    best_range = NULL; conflict_range = NULL; seq = 1
+    for block in rpo_order[1..block_count]:
+        range = block_to_range(block)
+        if not in_live_set(alloc, range):  continue      // sub_995740
+        for insn in range.instructions:
+            // Bitvector membership: dense alloc[57][vr>>6] bit (vr&63),
+            // then sparse BST at alloc+156 keyed by vr>>8.
+            if has_interference_map and constrained(insn):
+                if is_loop_entry(insn):                  // sub_7E0F50
+                    analyze_interval(alloc, insn)        // sub_99CF80
+                    if split_required(insn):  continue   // sub_9A3690
+                    if insn in inner_loops:
+                        mark_inner_loop(alloc, insn, 2)  // sub_9A29C0
+                    else:
+                        // Commit: add to candidate set (alloc+128),
+                        // collect operand VR refs into worklist B (alloc+138),
+                        // call try_commit (sub_9A79A0), finalize (sub_9A2D90),
+                        // then mark_spill_candidate or try_evict_or_split.
+                        // Arch callback: vtable slot 227 (offset 1816).
+                        commit_or_evict(alloc, &best_range, range, insn, seq++)
+
+    // Phase 4 -- reconcile: conflict_range must equal best_range (or NULL)
+    if conflict_range and conflict_range != best_range:  return 0
+    if best_range and *result_ptr:
+        if best_range.block_id != result_ptr.block_id:  return 0
+    return best_range
+```
 
 ## Spill Code Generation
 
@@ -440,6 +782,64 @@ else
 
 When knob 623 is enabled, the knob value at offset `+224` supplies a custom spill limit, passed to the spill allocator init function via vtable `+24`.
 
+### Spill pool object
+
+The spill pool lives at `alloc+1784` and is accessed through a vtable. Its fields:
+
+| Offset | Type | Field |
+|--------|------|-------|
+| +0 | ptr | Vtable pointer |
+| +8 | u32 | Bucket size (bytes per slot: 8 or 16) |
+| +12 | u32 | Alignment (4 or 16) |
+| +16 | u32 | Pool tail offset (next free byte, starts at 0) |
+| +20 | u32 | Max pool size (0x100000 = 1 MB) |
+| +24 | ptr | Free list head (singly-linked freed slots) |
+| +32 | u32 | Free list count |
+
+The vtable provides two initialization methods and one allocator:
+
+| Slot | Offset | Signature | Role |
+|------|--------|-----------|------|
+| 2 | +16 | `init(pool, bucket_size, align, max)` | Default init (from `sub_939BD0`) |
+| 3 | +24 | `init_custom(pool, limit)` | Knob-623 custom limit init |
+| 4 | +32 | `allocate(pool) -> offset` | Allocate one slot, returns byte offset |
+| 5 | +40 | `release(pool, offset)` | Return slot to free list |
+
+### Slot allocation algorithm
+
+```
+function init_spill_pool(pool, bucket_size, alignment, max_size):
+    pool.bucket_size = bucket_size          // 8 or 16
+    pool.alignment   = alignment            // 4 or 16
+    pool.tail_offset = 0                    // bump pointer starts at 0
+    pool.max_size    = max_size             // 0x100000 (1 MB)
+    pool.free_head   = NULL
+    pool.free_count  = 0
+
+function allocate_lmem_slot(pool) -> int:
+    // Step 1: Try free-list reuse (slots from dead live ranges)
+    if pool.free_head != NULL:
+        slot_offset      = pool.free_head.offset
+        pool.free_head   = pool.free_head.next
+        pool.free_count -= 1
+        return slot_offset
+
+    // Step 2: Bump-allocate from pool tail
+    offset = align_up(pool.tail_offset, pool.alignment)
+    if offset + pool.bucket_size > pool.max_size:
+        fatal("local memory pool exhausted")    // 1 MB limit
+    pool.tail_offset = offset + pool.bucket_size
+    return offset
+
+function release_lmem_slot(pool, offset):
+    // Prepend to free list for LIFO reuse
+    node          = {offset, pool.free_head}
+    pool.free_head = node
+    pool.free_count += 1
+```
+
+Slot reuse occurs when `sub_93FBE0` resets per-iteration state: it walks all virtual registers, sets `vreg+68 = -1` for any vreg not pinned (flag `0x20` clear and class != 8), and returns their previously-assigned LMEM offsets to the free list via `release_lmem_slot`. On the next allocation attempt, those offsets are recycled for different vregs whose live ranges no longer overlap the original occupants.
+
 ### SASS instruction sequences
 
 `sub_9850F0` (520 lines) generates the actual SASS load/store instruction sequences for spill traffic. Architecture-specific registers drive the address computation:
@@ -508,32 +908,187 @@ SMEM spilling activates when all of the following hold:
 3. The class has virtual registers to allocate (`vreg_count > 0`)
 4. The function does not use ABI calling conventions
 
-### Algorithm
+### Two execution paths
+
+The function selects between a **fast path** and a **full path** based on three conditions:
+
+| Condition | Test | Fast path if |
+|-----------|------|--------------|
+| Candidate count | `vreg_count` from `ctx+104` descriptor | `<= 4` |
+| ABI mode | `ctx+1368` bit 2 | clear |
+| Extended flag | `ctx+1380` bit 6 | clear |
+
+If any condition fails, the full path runs. The fast path handles 1--4 uniform/accumulator registers with a single linear instruction walk (decompiled lines 1715--1862). The full path builds an explicit cost model and candidate list.
+
+### Per-CTA SMEM pool partitioning
+
+Both paths read `smem_sym = *(ctx+104)->qword[0]`. The runtime SMEM pool available for spilling is partitioned per-CTA. Pool sizes come from the shared memory configuration table at `0x21FB640`: 11 tiers from 0 to 328 KB on SM 8.x+, or three tiers (0/32/64 KB) on SM 7.5 (table at `0x21D9168`). The allocator carves slots in 4-byte quanta (one 32-bit register width), so slot indices are always multiples of 4.
+
+### Algorithm (full path)
 
 ```
 function smem_spill_allocate(alloc, ctx):
-    // 1. Assert no ABI conflict
-    assert(not function_uses_abi())
+    // Step 1 -- ABI guard
+    if ctx.device_type == 4 and ctx.flags_1368 & 0x4:
+        fatal("Smem spilling should not be enabled when functions use abi.")
 
-    // 2. Allocate per-block tracking (24-byte slots)
-    tracking = arena_alloc(24 * numBlocks)
+    vreg_count = ctx_descriptor.dword[3]        // candidate count
+    smem_sym   = ctx_descriptor.qword[0]        // SMEM allocation symbol
+    if vreg_count == 0:
+        alloc.smem_slot_count = 0               // alloc+1520
+        return
 
-    // 3. Set up SSE-width bitmaps for shared memory tracking
-    init_smem_bitmaps(alloc)
+    // Step 2 -- cost bitmap: one double per 4-register group
+    bitmap_slots = (vreg_count + 3) >> 2        // ceil(vreg_count / 4)
+    cost_array   = arena_alloc(8 * bitmap_slots + 8)
+    cost_array[0] = bitmap_slots                // length prefix
+    memset(&cost_array[1], 0, 8 * bitmap_slots) // all costs = 0.0
 
-    // 4. Walk instruction list, identify spill candidates
-    for each vreg marked for spill:
-        // 5. Allocate shared memory slot
-        slot = allocate_smem_slot(alloc)
-        vreg.smem_slot = slot
+    // Step 3 -- callee hash table (FNV-1a indexed, sub_754DE0)
+    //   Tracks which callees touch SMEM and need preservation.
+    callee_ht = hash_table_new(initial_buckets=8)
 
-        // 6. Generate shared memory load/store
-        insert_sts_instruction(slot, vreg)   // STS (store to smem)
-        insert_lds_instruction(slot, vreg)   // LDS (load from smem)
+    // Step 4 -- first instruction walk: score candidates
+    //   Walks ctx.instruction_list (linked list at ctx+272).
+    for each instr in instruction_list:
+        opc = instr.opcode & 0xFFFFCFFF         // mask out predicate bits
 
-    // 7. Update shared memory allocation bitmap
-    update_smem_allocation(alloc)
+        if opc == 97:   // spill callback
+            ctx.vtable_1784[1](instr_operand, 1, 1)
+
+        if opc == 72:   // CALL -- check if callee has SMEM flag
+            callee = lookup_function(instr.operand_id)
+            if callee.smem_eligible:
+                callee_ht.insert(callee.id)      // FNV-1a hash of callee ID
+
+        if opc == 130:  // operand referencing callee in callee_ht
+            if callee_ht.contains(operand.callee_id):
+                record_candidate(instr)
+
+        if opc == 183 or opc == 288:             // LDS / STS
+            if last_source_operand == smem_sym:
+                reg_bytes = query_reg_byte_width(ctx, instr.subop)  // vtable+904
+                slot_bytes = align4(reg_bytes * (operand.type_bits + 1))
+                for offset = 0 to slot_bytes step 4:
+                    node = alloc_candidate_node()    // 32 bytes
+                    node.slot_id  = base_offset + offset
+                    node.width    = (offset == 0) ? slot_bytes : 4
+                    can_reuse     = alloc.vtable[36](alloc, instr, offset, callee_ht)
+                    cost_idx      = node.slot_id / 4
+                    if can_reuse and cost_array[cost_idx] >= 0.0:
+                        if opc == 288:               // STS
+                            cost_array[cost_idx] += block_freq * 0.5
+                        else:                        // LDS (183)
+                            cost_array[cost_idx] += block_freq
+                    else:
+                        cost_array[cost_idx] = -1.0  // permanently ineligible
+                    candidate_list.append(node)      // doubly-linked
+
+    // Step 5 -- propagate costs to candidate nodes, then sort
+    for each node in candidate_list:
+        node.score = cost_array[node.slot_id / 4]
+    sort_candidates_descending(candidate_list)       // sub_9535C0
+
+    // Step 6 -- greedy slot assignment with bitmap coalescing
+    smem_offset  = alloc.smem_slot_count * 4         // alloc+1520
+    assigned_ht  = hash_table_new()                  // sub_7BE7B0
+    free_slot_ht = hash_table_new()
+
+    for each node in candidate_list (descending score):
+        if node.score <= 0.0:  break                 // no benefit
+        if smem_offset + 4 > smem_pool_limit:  break // budget exhausted
+
+        if assigned_ht.contains(align4(node.slot_id)):
+            continue                                 // already handled
+
+        // Probe sub-slot coverage; build bitmap v79 = |= 1 << (offset/4)
+        coverage = 0;  assigned_count = 0
+        for sub = 0 to node.width step 4:
+            if not assigned_ht.contains(node.slot_id + sub):
+                coverage |= 1 << (sub >> 2)
+                assigned_count++
+
+        if assigned_count == 0:
+            // Remove node from candidate list; recycle to free list
+            continue
+
+        // Coalesce adjacent sub-slots into wider STS/LDS (sub_945C40)
+        if (coverage & 0x3) == 0x3:                  // bits 0,1 -> 8B at +0
+            emit_coalesced_node(node.slot_id, width=8)
+        elif (coverage & 0x1):                       // bit 0 only -> 4B at +0
+            emit_coalesced_node(node.slot_id, width=4)
+        if (coverage & 0xC) == 0xC:                  // bits 2,3 -> 8B at +8
+            emit_coalesced_node(node.slot_id + 8, width=8)
+
+        assigned_ht.insert(node); smem_offset += 4
+
+    // Remove fully-covered or zero-benefit nodes; recycle to pool+8.
+
+    // Step 7 -- physical SMEM offset assignment for free slots
+    running_offset = 0
+    for each surviving node in candidate_list:
+        for sub = 0 to node.width step 4:
+            global_id = node.slot_id + sub
+            if not free_slot_ht.contains(global_id):
+                free_slot_ht.insert(global_id, running_offset)
+                running_offset += 4
+
+    // Step 8 -- second instruction walk: emit STS/LDS replacements
+    smem_base_vreg = create_vreg(ctx, class=12, flags=0x4000)  // sub_926500
+
+    for each instr where opc in {183, 288} and last_source == smem_sym:
+        reg_bytes  = query_reg_byte_width(ctx, instr.subop)
+        type_width = (operand.type_bits & 7) + 1
+        total_regs = type_width
+        if instr.subop == 19:  total_regs = 2 * type_width     // 64-bit
+        if instr.subop == 13:  total_regs = ceil(type_width+1, 2) // packed
+
+        for i = 0 to total_regs:
+            assigned = assigned_ht.lookup(base + 4*i)
+            free_off = free_slot_ht.lookup(base + 4*i)
+
+            if assigned >= 0:
+                // SMEM address encoding: slot*32 + lane_offset
+                //   Activated when vtable[108] returns > 0 or ctx+1421 bit 0 set
+                addr = 32 * (assigned & ~3) + (assigned & 3)
+                // sub_930440 emits STS (opcode 0x120) or LDS instruction
+                emit_smem_spill(ctx, opc, instr.subop, src_operand,
+                                smem_base_sym, addr, vector_width)
+                // Adjust byte counters
+                if opc == 288: func_props.SSpillB  -= bytes  // +224
+                else:          func_props.SRefillB -= bytes  // +228
+            else:
+                // Emit from free pool using original smem_sym
+                emit_smem_spill(ctx, opc, instr.subop, src_operand,
+                                smem_sym, free_off, vector_width)
+
+            // Link to original instruction's live range (sub_93CB10)
+            if instr.live_range_id > 0:
+                link = sub_93CB10(alloc, instr, 4 * i)
+                new_instr.dword[12] = link.dword[2]
+
+        delete_instruction(ctx, instr)
+        ctx.rewrite_state = 7                        // ctx+240
+
+    alloc.smem_slot_count = smem_offset / 4          // alloc+1520
 ```
+
+### Fast path (vreg_count <= 4)
+
+When `vreg_count <= 4`, ABI bit is clear, and extended flag 0x40 is clear, the function skips the cost model entirely. It walks the instruction list once, looking for STS (opcode 288) and LDS (opcode 183) that reference `smem_sym`. For each match it directly calls `sub_92E720` to emit the replacement instruction with opcode `0x82` (class 12). If the instruction carries a predicate (bit 12 set), `sub_7DA5A0` handles predicate lowering before emission. The SMEM base address is the constant `268435496` (`0x10000028`), encoding address-space 1 (shared) with offset 0x28. Register width is derived from `vtable+904`; for widths <= 3 bytes, a packed flag (bit 25 or 26) is set in the operand word.
+
+### Bitmap coverage tracking
+
+The coverage bitmap (`v79` in the decompiled source) tracks which 4-byte sub-slots within a candidate have been assigned. It uses a `1 << (offset >> 2)` scheme:
+
+| Bitmap bits | Meaning | Coalesced width |
+|-------------|---------|-----------------|
+| `0b0001` | Slot +0 assigned | 4 bytes |
+| `0b0011` | Slots +0, +4 assigned | 8 bytes (merged STS.64) |
+| `0b1100` | Slots +8, +12 assigned | 8 bytes at +8 |
+| `0b1111` | All four sub-slots | 16 bytes (two STS.64) |
+
+This coalescing feeds `sub_945C40` which adjusts the candidate list node widths, ensuring the final STS/LDS instructions use the widest possible memory transaction.
 
 ### SMEM symbols
 
@@ -626,6 +1181,54 @@ The `SpillRefill` pass attempts to match and optimize these patterns. Error stri
 3. `"Some instruction(s) are destroying the base of bit-spill-refill pattern involved in this operand computation"` -- instructions between spill and refill clobber the base address register
 
 Debug strings include `" spill-regill bug "` and `" bit-spill bug "` (both with typos present in the binary).
+
+### Pattern matching algorithm
+
+The memcheck verifier (`sub_A73F30`, 806 lines) drives the matching. For each post-allocation instruction whose reaching definitions changed, it classifies the instruction and dispatches to one of three pattern-specific matchers:
+
+```
+// sub_A73F30 -- simplified dispatch for spill/refill verification
+match_spill_refill_pairs(verifier, post_insn, operand_idx):
+
+    // --- Path A: standard spill-refill (type_id 8) ---
+    if is_spill_store(ctx, post_insn):                  // sub_A56CE0: opcode == 183 (STL)
+        chain = find_matching_spill(verifier, post_insn) // sub_A677C0
+        if chain.insn_id == -1:
+            emit_error(1)  // "Failed to find matching spill for refilling load"
+            return
+        // Walk chain entries; verify each candidate store's slot matches the refill
+        for entry in chain.entries:
+            if entry.bitmask & class_mask == 0:
+                continue
+            if entry.store_insn == NULL:
+                emit_error(2)  // "refill reads potentially uninitialized memory"
+                return
+            verify_slot_match(verifier, entry)  // compare slot IDs
+        return  // matched
+
+    // --- Path B: P2R/R2P predicate spill (type_id 8, predicate variant) ---
+    if is_p2r_r2p(ctx, post_insn):                      // sub_A57590
+        if not clobber_check_ok(verifier, post_insn):    // sub_A56F80
+            emit_error(8)  // "destroying the base of P2R-R2P pattern"
+            return
+        return  // matched
+
+    // --- Path C: bit-spill (type_id 10) ---
+    if insn.num_operands > 2 and (insn.flags & 0x10):   // predicate-packed bit-spill
+        if is_bit_spill_pattern(ctx, post_insn):         // sub_A53DB0
+            if not clobber_check_ok(verifier, post_insn): // sub_A56F80
+                emit_error(9)  // "destroying the base of bit-spill-refill pattern"
+                return
+            return  // matched
+
+    // ... fall through to other verifier checks (remat, extra defs, etc.)
+```
+
+**`find_matching_spill`** (`sub_A677C0`) uses an FNV-1a hash map keyed on instruction ID to locate the spill chain node corresponding to a refill load. It verifies that the store and load target the same basic block (via the remapped-instruction map), then returns a chain structure containing the matched store instruction and a bitmask of register classes involved.
+
+**`clobber_check_ok`** (`sub_A56F80`) iterates the def-use chain of the matched spill-store node. For each def whose operand index matches the target, it looks up the defining instruction in the remapped-instruction map. If any such instruction was remapped (indicating an intervening write to the same physical register), the check returns false -- the base register was clobbered between spill and refill.
+
+**`is_spill_store` / `is_refill_load`** (`sub_A56CE0` / `sub_A56DE0`) check the instruction opcode (183 for STL, 288 for LDL), then verify the source/dest vreg has spill flags set (bit 14 or bit 17 in `vreg_desc+36`), and confirm the register class == 2.
 
 ## Function Map
 

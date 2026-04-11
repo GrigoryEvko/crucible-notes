@@ -277,6 +277,144 @@ Spill setup (`sub_939BD0`, 65 lines) selects configuration based on `RegAllocEst
 | Cost threshold == 0 | 8 | 4 | 1 MB |
 | Cost threshold != 0 | 16 | 16 | 1 MB |
 
+### Guidance consumption by the retry loop
+
+The retry driver `sub_9714E0` (290 lines) triggers `sub_96D940` on each failed allocation attempt with a decremented register target (`alloc+1560 = target - 1`). The guidance engine builds the 11,112-byte structure, then the result is consumed in two phases depending on whether the current register class uses a "fast-path" mode (byte at `ctx + 32*class_id + 893`).
+
+**Phase A -- Instruction walk and candidate insertion** (lines 1663--2757 of `sub_96D940`): walks the instruction list (`ctx+280`) and for each instruction with register operands calls `sub_9680F0` (per-instruction assignment) and `sub_9365A0` (candidate removal) to populate the per-class priority queues in the stack-local 7-entry array (`v514[3 * class_id]`).
+
+**Phase B -- Guidance extraction** (`sub_93C0B0`, 582 lines): after the walk completes, the allocator reads the guidance output and marks VRs for spilling on the next attempt.
+
+```
+// sub_93C0B0 -- consume guidance to mark spill candidates
+function extract_spill_marks(ctx, guidance, class_id):
+    if ctx[32 * ctx.alloc_mode + 893]:             // fast-path class: skip
+        return
+    queue_base = guidance[13]                       // offset +104: candidate queue base
+    pressure   = queue_base[3]                      // +12: max live pressure count
+    if pressure <= 0:
+        return
+
+    // Build a 256-byte cost profile from spill/reload instruction pairs
+    cost_profile[256] = {0}                         // stack-local
+    overflow_bitvec = bitvec_alloc(pressure >> 2)   // sub_BDBA60
+    insn = *(ctx+8).insn_list_head                  // ctx->code_obj+280
+
+    // Walk instructions, accumulate per-slot cost
+    for each insn in instruction_list:
+        opcode = insn+72
+        if opcode == 54:                            // BB_ENTRY marker
+            // save/restore queue state from queue_base
+            continue
+        if opcode == 52:                            // BB_END marker
+            bitvec_clear(overflow_bitvec)            // sub_BDC080
+            // scan block's live-out set for VRs exceeding budget
+            for vr in block_live_out(insn):
+                if vr.class == class_id AND vr.assigned > ctx.attempt_budget:
+                    if NOT vr.flags & 0x200:        // skip uniform registers
+                        slot = 4 * (vr.assigned - ctx.spill_start)
+                        if vr.flags & 0x800000: slot += 2  // paired-hi half
+                        bitvec_set(overflow_bitvec, slot / 4)
+                        if vr.flags & 0x300000 match: // double-width
+                            bitvec_set(overflow_bitvec, slot/4 + 1)
+            continue
+
+        if opcode_masked == 183 OR opcode_masked == 288:  // STL/LDL spill ops
+            // Match spill instruction signature against queue_base[0..1]
+            operand_tail = insn+84 + 8*(insn.num_operands - adjust - 5)
+            if operand_tail[0..7] != queue_base[0..1]:
+                continue
+            // Compute cost contribution from spill/reload width
+            width    = (operand_tail[8*N] & 7) + 1     // register group size
+            slot_idx = int24(operand_tail[-8]) / 4      // LMEM slot index
+            cost     = vtable_call(ctx.profile, insn.block_id)  // block frequency
+            cost_per_slot = (cost * width + 3) >> 2     // round-to-DWORD
+            // Fill cost_profile[slot_idx .. slot_idx+cost_per_slot-1]
+            for i in slot_idx .. min(slot_idx + cost_per_slot, 256):
+                cost_profile[i] = max(cost_profile[i], cost_per_slot)
+
+    // Phase 2: scan cost_profile to find compactable gaps
+    max_slots = min((total_cost + 3) >> 2, 256)
+    gap_start = -1
+    relocation_map[256] = {0}                       // SSE2-vectorized fill
+
+    for i in 0 .. max_slots:
+        cost = cost_profile[i]
+        if gap_start >= 0:
+            if cost <= 0: continue                  // extend gap
+            // Align gap_start to cost alignment boundary
+            if cost == 2:      gap_start = (gap_start+1) & ~1
+            elif cost in 2..4: gap_start = (gap_start+3) & ~3
+            if gap_start < i:
+                delta = 4 * (i - gap_start)
+                vectorized_fill(relocation_map, i, cost, delta)  // SSE2 broadcast
+                gap_start += cost
+            else:
+                gap_start = i + 1
+        else:
+            gap_start = i; i += 1
+
+    // Patch STL/LDL operand offsets if compaction found savings
+    savings = 4 * gap_start
+    if savings < total_cost AND mode_permits_patching:
+        for insn in instruction_list:
+            if insn.opcode_masked in {183, 288}:
+                operand = &insn.operands[tail_offset + 24]
+                old_slot = int24(*operand)
+                idx = old_slot >> 2
+                if idx <= 255: new_slot = old_slot - relocation_map[idx]
+                else:          new_slot = old_slot - 4*(256 - ((gap_start+3) & ~3))
+                if old_slot != new_slot:
+                    *operand = (new_slot & 0xFFFFFF) | (*operand & 0xFF000000)
+        total_cost = savings
+
+    queue_base[3] = total_cost                      // write back updated pressure
+```
+
+The outer retry loop in `sub_9714E0` reads the updated `queue_base[3]` pressure values. If pressure remains positive, it invokes `sub_96D940` recursively with `alloc+1560 = target - 1`, iterating until either (a) allocation succeeds within budget, (b) the retry count (knob 638/639) is exhausted, or (c) the fatal error fires:
+
+```
+// sub_9714E0 lines 99-264 -- recursive descent with guidance feedback
+function finalize_with_spill(alloc, max_attempts, class_id):
+    alloc.attempt_counter++                          // alloc+1524
+    if alloc.attempt_counter >= max_attempts: return FAIL
+
+    if NOT alloc.spill_done_flag:                    // alloc+865
+        setup_spill_allocator(alloc)                 // sub_939BD0
+        generate_spill_code(alloc, ctx, 1)           // sub_94F150
+    alloc.current_attempt = alloc.attempt_counter + 1   // alloc+1516
+
+    // Query profile for dynamic attempt limit override (vtable+848/856)
+    if profile.can_retry(class_id, 0):
+        alloc.spill_extra = profile.get_extra_attempts(alloc.current_attempt)
+
+    build_interference(alloc, ctx)                   // sub_940EF0
+
+    // Stall check: if extra attempts granted but acceptance gate fails,
+    // undo extra -- walk VR list, decrement queue sizes, then rebuild
+    if alloc.spill_extra > 0 AND NOT vtable[+280].accepts(alloc):
+        alloc.spill_extra = 0
+        for vr in vreg_list: queue_size[vr.class]--  // at profile+16*class+8
+        build_interference(alloc, ctx)
+
+    result = fatpoint_allocate(alloc, ctx, 99)       // sub_957160
+
+    // Spill feasibility gate (when no progress between attempts)
+    if result == alloc.last_result AND alloc.spill_extra > 0:
+        non_uniform_spill = count(vr: vr.flags & 0x40000 AND NOT vr.flags & 0x200)
+        threshold = profile.spill_threshold          // profile+47960
+        budget    = ctx.class_info[alloc.active_class].max - .min + 1
+        pressure  = (budget - spill_start) * interpolation_factor + spill_start_cost
+        if (non_uniform_spill + threshold + budget) > pressure:
+            force_extra_spill_marks(guidance)         // sub_948B80
+
+    // Recursive descent: lower target by 1 and rebuild guidance
+    if alloc.target != result OR alloc.spill_extra <= 0 OR gate_flags:
+        alloc.spill_target = result - 1              // alloc+1560
+        compute_spill_guidance(alloc, ctx, class_id) // sub_96D940 (recursive)
+        profile.committed[class_id] = alloc.peak     // at profile+384+4*class_id
+```
+
 See [Spilling](./spilling.md) for the full spill subsystem analysis.
 
 ## Pre-Allocation and Mem-to-Reg
@@ -287,21 +425,143 @@ Two important pre-passes run before the main allocator:
 
 Entry: `sub_910840` (327 lines). Promotes stack variables to registers or uniform registers. Gated by `sub_8F3EA0` (eligibility check) and `NumOptPhasesBudget` (knob 487, budget type).
 
+**Eligibility check** (`sub_8F3EA0`, 96 lines) -- determines whether mem-to-reg is profitable:
+
 ```
-sub_910840 (entry, string: "ConvertMemoryToRegisterOrUniform")
-  sub_905B50 (1046 lines)  build promotion candidates
-  sub_911030 (2408 lines)  detailed analysis engine (def-use chains, dominance)
-  sub_90FBA0 (653 lines)   execute promotion, insert phi nodes
-  sub_914B40 (1737 lines)  post-promotion rewrite / phi-resolution
+is_promotable(code_obj):
+  mode   = code_obj->ctx->options[33120]    // promotion mode byte
+  budget = code_obj->ctx->options[33128]    // promotion budget (mode 1 only)
+  if mode == 1:                             // conditional: check budget
+    if budget == 0: return false
+    if budget <= 2 AND code_obj[1412] < 0: return false
+    if code_obj->alloc_mode in {4, 5}: return budget > 1
+  else if mode != 0: return false
+
+  if code_obj->alloc_mode NOT in {4, 5}:   // fast path: flag-based
+    flags = code_obj[912]
+    if flags == 0: return false
+    if flags & 1: return code_obj[328] > 0  // has local variables
+    return true
+
+  // alloc_mode 4/5: walk BBs, sum operand sizes, cap at 64 KB
+  total = 0
+  for bb in code_obj->basic_blocks:
+    for instr in bb->instrs:
+      total += instr->operand_size_field
+      if total > 0x10000: return false
+  return total > 0
 ```
+
+**Orchestrator** (`sub_910840`):
+
+```
+ConvertMemoryToRegisterOrUniform(code_obj):
+  if NOT is_promotable(code_obj): return
+  if NOT consume_budget(ctx, knob=487): return   // NumOptPhasesBudget
+  candidates = build_promotion_candidates(code_obj)   // sub_905B50, 1046 lines
+  analyze_def_use_chains(candidates)                   // sub_911030, 2408 lines
+  execute_promotion(candidates)                        // sub_90FBA0, 653 lines
+  rewrite_phis(candidates)                             // sub_914B40, 1737 lines
+```
+
+**Def-use analysis engine** (`sub_911030`, 2408 lines) -- core of the promotion decision. Numbers basic blocks sequentially (`bb[52] = index`, `bb[48] = -1`), then for each stack variable in `code_obj->field_99` walks the def-use chain. Uses the same `PREALLOC_MASK` bitmask (`0x2080000010000001 >> (opcode - 22)`) as the pre-allocator plus opcodes 297/352. Classifies register operands via per-opcode handlers: `sub_7E40E0` (R2P/22), `sub_7E36C0` (EXIT/77), `sub_7E3790` (UFMUL/297), `sub_7E3800` (SEL/352), `sub_7E3640` (TEX/83); ATOM/50 uses a packed lookup table. Builds a BST of def-use nodes keyed by BB index, tracking earliest/latest definitions to bound promotion scope.
 
 ### Pre-Allocation Pass
 
-Entry: `sub_94A020` (331 lines). Assigns physical registers to high-priority operands before the main allocator runs. Gated by `RegAllocMacForce` (knob 628, bool), `RegAllocMacVregAllocOrder` (knob 629, int), and `RegAllocCoalescing` (knob 618, bool).
+Entry: `sub_94A020` (331 lines). Assigns physical registers to high-priority operands before the main allocator runs.
 
-For allocation modes 3, 5, or 6: iterates basic blocks calling `sub_9499E0` (per-block scanner) and `sub_93ECB0` (per-operand pre-assigner). Priority levels from `RegAllocPrefMacOperands` (knob 646): `1` = read operands, `2` = write operands, `3` = both.
+```
+pre_allocate(alloc):
+  code_obj = alloc->code_obj
+  ctx      = code_obj->ctx
+  alloc->mac_force    = get_knob(ctx, 628)   // RegAllocMacForce
+  alloc->coalescing   = get_knob(ctx, 618)   // RegAllocCoalescing
+  alloc->vreg_order   = get_knob(ctx, 629)   // RegAllocMacVregAllocOrder
+  alloc->uniform_mac  = (code_obj[1414] & 0x10) AND (code_obj[1381] & 0x40)
 
-Uses an opcode eligibility bitmask table (shift-based membership test on `opcode - 22`) to filter which instructions are candidates for pre-assignment.
+  // clear 3 candidate hash tables at alloc+240, +280, +320  (24 bytes each)
+  for tbl in {alloc+240, alloc+280, alloc+320}:
+    drain_freelist(tbl, alloc->arena)
+    clear(tbl)
+
+  if NOT (alloc->vreg_order OR alloc->uniform_mac): return
+  if alloc->mode NOT in {3, 5, 6}: return
+
+  // Phase 1: per-block scanning
+  build_liveness(code_obj, 0, 0, 0, 0)       // sub_7E6090
+  for bb in code_obj->basic_blocks: bb->field_80 = 0
+  for bb in code_obj->basic_blocks:
+    scan_block_for_prealloc(alloc, bb)        // sub_9499E0
+
+  // Phase 2: per-instruction pre-assignment
+  for insn in code_obj->instructions:
+    opcode = insn->opcode & 0xFFFFCFFF        // mask out modifier bits 12-13
+    if NOT is_prealloc_eligible_narrow(opcode):
+      if opcode NOT in {51, 110..114, 279, 289}: continue     // wide-only set
+      else: continue
+    if alloc->mac_force:
+      pre_assign_operands(alloc, insn, block_idx)   // sub_93ECB0
+    else if knob_match(ctx, 646, insn):             // RegAllocPrefMacOperands
+      priority = get_knob_value(ctx, 646, insn)
+      if priority > 0 AND knob_match(ctx, 443, insn):
+        pre_assign_operands(alloc, insn, block_idx)
+    else if alloc->uniform_mac AND code_obj->reg_desc[insn->bb_idx]->field_148:
+      if is_prealloc_eligible_narrow(opcode):       // bitmask-only recheck
+        pre_assign_operands(alloc, insn, block_idx)
+```
+
+**Opcode eligibility bitmask** (constant `0x2080000010000001`, from `sub_94A020` lines 284/315):
+
+```
+PREALLOC_MASK = 0x2080000010000001    // 64-bit; bits {0, 28, 55, 61} set
+
+// Narrow test: bitmask + two explicit opcodes (6 opcodes).
+// Used for forced-MAC and uniform-MAC paths (sub_94A020 line 315).
+is_prealloc_eligible_narrow(opcode):
+  shifted = (uint32)(opcode - 22)
+  if shifted < 62:
+    if (PREALLOC_MASK >> shifted) & 1: return true
+  return opcode == 297 OR opcode == 352
+
+// Wide test: narrow + switch-case fallthrough (14 opcodes total).
+// Used as the main eligibility gate (sub_94A020 line 284).
+is_prealloc_eligible_wide(opcode):
+  if is_prealloc_eligible_narrow(opcode): return true
+  if opcode == 51: return true                      // AL2P
+  if 110 <= opcode <= 114: return true              // CCTLT..SUATOM
+  if opcode == 279 OR opcode == 289: return true    // FENCE_T, UISETP
+  return false
+```
+
+Bitmask bit decode:
+
+| Bit | Opcode | SASS mnemonic | Category |
+|-----|--------|---------------|----------|
+|  0  |  22    | R2P           | Predicate register unpack |
+| 28  |  50    | ATOM          | Global/generic atomic |
+| 55  |  77    | EXIT          | Thread exit |
+| 61  |  83    | TEX           | Texture fetch |
+
+Complete eligible set (14 opcodes across both tiers):
+
+| Opcode | SASS | Tier | Per-operand handler |
+|--------|------|------|---------------------|
+| 22 | R2P | narrow (bitmask) | `sub_7E40E0` |
+| 50 | ATOM | narrow (bitmask) | packed lookup table |
+| 51 | AL2P | wide only | -- |
+| 77 | EXIT | narrow (bitmask) | `sub_7E36C0` |
+| 83 | TEX | narrow (bitmask) | `sub_7E3640` |
+| 110 | CCTLT | wide only | -- |
+| 111 | MEMBAR | wide only | -- |
+| 112 | SULD | wide only | -- |
+| 113 | SUST | wide only | -- |
+| 114 | SUATOM | wide only | -- |
+| 279 | FENCE_T | wide only | -- |
+| 289 | UISETP | wide only | -- |
+| 297 | UFMUL | narrow (explicit) | `sub_7E3790` |
+| 352 | SEL | narrow (explicit) | `sub_7E3800` |
+
+The "narrow" set (bitmask + explicit checks) gates the forced-MAC and uniform-MAC paths. The "wide" set additionally gates the knob-646 priority path. Priority levels from `RegAllocPrefMacOperands` (knob 646): `1` = read operands, `2` = write operands, `3` = both. See [algorithm.md](./algorithm.md) for the per-operand assigner `sub_93ECB0`.
 
 ## Live Range Infrastructure
 
@@ -316,6 +576,288 @@ An interval-based live range system at `0x994000`--`0x9A1000` (~80 functions) su
 | Live range splitting | `sub_9AEF60` | 1 | Interference graph update (900 lines, self-recursive) |
 | Range merge engine | `sub_9AD220` | 1 | Coalescing with cost heuristics (700 lines) |
 | Range construction | `sub_9A5170` | 1 | Build ranges from def-use chains (750 lines) |
+
+### Register Coalescing Engine (`sub_9B1200`, 800 lines)
+
+Eliminates register-to-register copies by merging live ranges. Lines 1-100 compute an FNV-1a-variant hash (multiplier 1025, XOR-shift-6) over the operand stream, stored at `range_ctx+80` for dedup. Dispatches on mode at `range_ctx+8`:
+
+```
+coalesce_pass(alloc, range_ctx):
+  hash = fnv1a_fold(alloc->code_obj)          // operand stream hash
+  range_ctx->hash = hash                       // +80: dedup key
+  mode = range_ctx->mode                       // +8: {1=single, 4=pair}
+  if mode != 4 AND mode != 1: return
+  if range_ctx->instr_count == 0: return
+
+  max_copies = range_ctx->field_4 = instr_count - 2
+  if max_copies <= 1: return cleanup(range_ctx)
+
+  capped = min(max_copies, range_ctx->field_16)
+  range_ctx->field_16 = capped                 // cap active window
+  range_ctx->field_0 = capped * stride + 1     // stride = 3 if mode==4, else 2
+  offset = range_ctx->field_12 % max_copies    // circular start
+
+  // allocate scratch vregs for copy bridge
+  src_vreg = alloc_vreg(code_obj, 5)           // sub_91BF30 class=5
+  dst_vreg = alloc_vreg(code_obj, 6)           // class=6
+  mark_constrained(src_vreg)                   // set bit 6 in flags qword
+
+  // query knob overrides (knobs 531, 529, 530)
+  if ctx_supports_knobs(code_obj):
+    range_ctx->field_28 = query_knob(ctx, 531) // RegAllocCoalesceMaxFanout
+    range_ctx->field_32 = query_knob(ctx, 529) // RegAllocCoalesceMaxDepth
+    range_ctx->field_36 = query_knob(ctx, 530) // RegAllocCoalesceMaxWidth
+
+  // walk circular instruction window, emit MOV/PRMT/SEL bridges
+  for pos in circular_range(offset, capped, max_copies):
+    instr = fetch_instr(code_obj, pos)
+    if is_abi_boundary(instr): continue        // skip call/ret edges
+    bb = lookup_bb(code_obj, instr)
+    emit_copy_bridge(code_obj, range_ctx, instr, bb,
+                     src_vreg, dst_vreg, mode)
+    update_interference(alloc, range_ctx)       // sub_9262A0
+  cleanup(range_ctx)                            // sub_99ABA0
+```
+
+#### Coalescing List Insert / Remove (`sub_948B80`)
+
+Inserts a vreg index into the appropriate worklist. List A (+1280) serves mode-6 (paired); list B (+1344) all others. Nodes are 24-byte `{prev, next, vreg_idx}` from the arena at +1336/+1400.
+
+```
+insert_coalesce_candidate(alloc, vreg_idx):
+  if alloc->alloc_mode == 6:                     // +1508
+    list = alloc+1280; arena = alloc+1336; count = alloc+1328  // list A
+  else:
+    list = alloc+1344; arena = alloc+1400; count = alloc+1392  // list B
+  node = arena_alloc_or_recycle(arena, 24)       // freelist at arena+8
+  node->prev = 0; node->next = 0; node->vreg_idx = vreg_idx; ++*count
+  if list->tail:                                 // prepend at head
+    node->next = list+16; node->prev = list->head
+    if list->head: list->head->next = node  else: list->tail = node
+    list->head = node
+  else: list->end = node; list->tail = node      // init empty list
+```
+
+Removal is implicit: the merge phase (`sub_9AD220`) drains list nodes, unlinks from hash buckets, returns sub-ranges to the arena freelist. The worklist at +1288 is a growable pointer array (`sub_8FD600`) consumed linearly.
+
+#### Coalescing Candidate Filter Bits (`sub_99ECC0`)
+
+Evaluates whether an instruction is a coalesceable copy. Rejection uses bits on `code_obj+1368`:
+
+| Bit | Mask | Meaning | Set by |
+|-----|------|---------|--------|
+| 0 | `0x01` | Vreg crosses a call boundary | `sub_749090` |
+| 1 | `0x02` | Vreg has a copy instruction | `sub_74A630` |
+| 2 | `0x04` | Copy target in callee-saved class | `sub_74A630` |
+| 3 | `0x08` | Copy source is predicated | `sub_74A630` |
+| 4 | `0x10` | ABI-mandated physical register | `sub_68F690` |
+| 5 | `0x20` | CSSA mode (phi-web coalescing) | `sub_67FC80` |
+| 7 | `0x80` | Encoding-pinned (Mercury constraint) | `sub_6D9690` |
+
+```
+eval_coalesce_candidate(ctx, instr):
+  flags = get_instr_flags(instr, code_obj)       // sub_7DF3A0
+  REJECT if: flags & 0x01                        // bit 0: pre-colored
+  REJECT if: (signed)flags < 0                   // bit 7: encoding-pinned
+  REJECT if: (flags+1) & 0x01                    // secondary flag byte
+  REJECT if: opc==195 AND subop==81              // SEL with callee-saved
+             AND (code_obj+1386 & 0x10 OR code_obj+1368 & 0x04)
+  REJECT if: flags & 0x08                        // bit 3: predicated
+  if instr->field_13 == 1: return false          // already evaluated
+  for slot in alloc->constraint_array[+1296..+1304]:
+    if interference_test(code_obj, instr, slot): // sub_995840 + sub_9966A0
+      alloc->coalesce_hit_count++; append_to_worklist(alloc+1288, &instr)
+      return true                                // +1312 incremented
+  instr->field_13 = 1; return true               // mark evaluated, no match
+```
+
+#### Interference Graph Query (`sub_95DC10` at +1416)
+
+FNV-1a hash table with open chaining at +1408..+1432. Buckets: 24-byte `{chain_ptr, tail_ptr, local_count:u32}`. Nodes: 24-byte `{next_ptr, vreg_idx:u32, hash:u32, degree:u32}`. Grows at `count > capacity/2`.
+
+```
+query_or_insert_interference(alloc, vreg_idx, weight):
+  if alloc->ig_base == NULL:                     // +1424
+    grow_table(alloc+1408, 8)                    // sub_950570, initial 8 slots
+  base = alloc->ig_base; cap = alloc->ig_capacity
+  h = fnv1a_24bit(vreg_idx)                      // FNV-1a over 3 low bytes
+  bucket = &base[24 * (h & (cap - 1))]
+  for node = bucket->chain; node; node = node->next:
+    if node->vreg_idx == vreg_idx:
+      node->degree = max(node->degree, weight); return node
+  new = arena_alloc_or_recycle(alloc+1408, 24)   // not found: insert
+  new->hash = h; new->vreg_idx = vreg_idx; new->degree = weight
+  new->next = bucket->chain                      // prepend
+  if NOT bucket->chain: bucket->tail = new
+  bucket->chain = new; bucket->local_count++
+  alloc->ig_chain_sum += bucket->local_count     // +1420
+  alloc->ig_count++                              // +1416
+  if ig_chain_sum > ig_count AND ig_count > cap/2:
+    grow_table(alloc+1408, 4*cap)                // 4x growth
+  return new
+```
+
+At allocation start the drain loop (`sub_95DC10` line 1327) walks every bucket, returns chain nodes to `arena+8`, zeroes each slot, and resets `ig_count` to 0.
+
+### Live Range Splitting Engine (`sub_9AEF60`, 900 lines)
+
+Iterative fixed-point splitter, bounded by `alloc+45` (max iterations) and `alloc+46` (max rounds). Each round clears interference flags, drains prior worklists, then scans the vreg-to-physical bitvector for split candidates. Uses `sub_9AEC60` for profitability analysis and materializes splits as new 192-byte range nodes stored in an 8-bucket hash table keyed on `(range_id & 7)`.
+
+```
+split_ranges(alloc):
+  flags = alloc->field_156
+  alloc->split_uniform = (flags & 8) != 0      // +161
+  alloc->split_pairs   = (flags & 4) != 0      // +160
+  rebuild_liveness(alloc->code_obj, 1)          // sub_781F80
+  rebuild_intervals(alloc->code_obj)            // sub_763070
+  if code_obj->flags & 0x20:                    // ABI mode
+    rebuild_abi_liveness(code_obj, 1)           // sub_763D80
+    prepare_abi_split(alloc)                    // sub_9AB370
+
+  round = 0; iter = 0; best_cost = 0.0
+  while alloc->field_34 != 2:                   // not converged
+    if iter >= alloc->max_iters OR round >= alloc->max_rounds:
+      break
+
+    // Phase 1: clear coalesce flags on all interference nodes
+    if alloc->field_180:                        // has interference graph
+      for node in interference_hash_iter(alloc+89):
+        node->flags &= 0xF0                    // clear low nibble
+
+    // Phase 2: invalidate best-program-point cache
+    if alloc->field_177 < 0:
+      alloc->field_87 = 0; alloc->field_177 = 0
+
+    // Phase 3: drain split worklist → freelist
+    if alloc->field_238:                        // worklist populated
+      for bucket in alloc->split_buckets[+120]:
+        for node in bucket:
+          if node->program_point >= 0:
+            node->program_point = -1            // invalidate
+            if node->ref: vtable_release(node)  // vtable+32
+          move_to_freelist(alloc->freelist, node)
+
+    // Phase 4: drain secondary worklist → freelist
+    drain_list(alloc+113, alloc->freelist_B)    // sub_69DD70
+
+    // Phase 5: scan vreg bitvectors for split candidates
+    for each vreg_desc in code_obj->reg_descs (reverse order):
+      if NOT alloc->has_interference: continue
+      lookup_interference(alloc+89, vreg_desc+24)
+      if result.flags & 1:                      // constrained
+        for coalesce_node in coalesce_hash_iter(alloc+165):
+          if interferes(code_obj, vreg_desc, node->vreg):
+            record_merge_candidate(alloc+170, vreg_desc)
+            break
+
+    // Phase 6: evaluate and apply best split
+    candidate = pop_best(alloc+12, alloc+13)    // BST min
+    while candidate != sentinel:
+      profitability = sub_9AEC60(alloc, candidate)
+      if NOT profitability.viable: break
+      if profitability.cost > alloc->threshold:  // +41 (float)
+        // record split into dynamic array (grow 1.5x)
+        splits[split_count++] = candidate
+        // materialize: allocate 192-byte range node, zero-init
+        new_range = arena_alloc(alloc->arena, 192)
+        // redistribute sub-ranges into 8-bucket hash
+        for sub in old_range->sub_ranges:
+          bucket_idx = sub->range_id & 7
+          insert_bucket(new_range + 24*bucket_idx, sub)
+        round += split_count
+      candidate = next_bst(candidate)
+
+    if best_cost > alloc->threshold:
+      round += split_count
+    else:
+      break                                     // no profitable split
+```
+
+### Live Range Merge Engine (`sub_9AD220`, 700 lines)
+
+Merges coalesced live ranges by walking the coalesce hash table, checking interference BST for conflicts, and relinking nodes. Returns a pointer to merge statistics.
+
+```
+merge_ranges(alloc, a2, a3, budget_lo, budget_hi, stats, ...):
+  ctx = alloc + 83                              // coalesce context at +664
+  ctx->field_936 = 0                            // reset merge counter
+  sub_758AF0(ctx)                               // initialize merge state
+
+  // Phase 1: scan coalesce hash table, remove safe merges
+  if alloc->field_332 == 0 OR alloc->bucket_count == 0:
+    goto phase2
+  for bucket_idx, node in hash_iter(alloc->coalesce_buckets):
+    vreg_src = code_obj->reg_desc[node->field_2]  // source vreg
+    constraint_list = vreg_src + 128               // linked constraint chain
+    if constraint_list == NULL: goto skip_merge
+
+    // walk constraints, check interference BST for conflicts
+    for constraint in constraint_list:
+      target_vreg = code_obj->reg_desc[constraint->field_2]
+      bst_node = node->interference_bst            // +16: BST root
+      if bst_node == NULL: goto no_conflict
+
+      // BST search by program point (field_6, 31-bit key)
+      pp = constraint->field_2 >> 8
+      while bst_node:
+        bst_key = (2 * bst_node->field_6) >> 1     // mask sign bit
+        if pp < bst_key:  bst_node = bst_node->left
+        elif pp > bst_key: bst_node = bst_node->right
+        else:                                       // exact match
+          // check bit in 256-bit interference vector
+          word_idx = (constraint->field_2 & 0xFF) >> 6
+          bit_idx  = constraint->field_2 & 0x3F
+          if bst_node->bitvec[word_idx + 4] & (1 << bit_idx):
+            goto has_conflict
+          break
+
+    no_conflict:
+      if NOT aliases_compatible(code_obj, vreg_src, target_vreg):
+        goto has_conflict
+      if target_vreg->spill_weight > vreg_src->spill_weight:  // +148
+        goto has_conflict                       // reject: would increase pressure
+
+      // safe to merge: unlink from hash bucket
+      prev_node = update_bucket_head(alloc, bucket_idx, node)
+      alloc->coalesce_count--                   // +332
+      // drain node's sub-ranges → freelist
+      drain_list(node + 2, node->freelist_ref)  // sub_69DD70
+      release_arena(node + 6)                   // sub_661750
+      // relink merged node to sentinel freelist
+      link_to_sentinel(alloc->sentinel, node)   // +165
+      continue
+
+    has_conflict:
+      skip_merge:
+      advance_to_next(node)                     // follow bucket chain
+
+  // Phase 2: process remaining merge worklist → freelist drain
+  phase2:
+  drain_list(alloc+170, alloc->freelist_C)      // secondary worklist
+
+  // Phase 3: scan reg_descs for mergeable pairs with cost check
+  for each vreg_idx in code_obj->reg_desc_order (reverse):
+    if NOT alloc->has_interference: continue
+    lookup_interference(alloc+89, vreg_desc+24)
+    if result.flags & 1:                        // constrained
+      for coalesce_node in coalesce_hash_iter(alloc+165):
+        if interferes(code_obj, vreg_desc, node->vreg):
+          record_merge(alloc+170, vreg_desc)
+          break
+
+  // Phase 4: compute merge statistics
+  for each vreg_desc in code_obj->reg_descs:
+    cost = compute_spill_cost(alloc, vreg_desc) * budget_lo
+    if cost exceeds threshold: stats->rejected++
+    // apply opcode-specific weight adjustments:
+    //   opcode 130 (MOV): check operand type bits (bits 28..31)
+    //   opcode 96  (COPY): always eligible
+    //   opcode 137 (SHFL): check predicate flag
+    stats->total_cost += cost
+  *budget_hi = stats->total_cost
+```
+
+The interference BST uses 31-bit program-point keys with 256-bit bitvectors at each node, enabling O(log N) conflict checks. Constraint records are indexed via `register_class_constraints.json` (72 records per SM generation, 64-byte stride); auxiliary class metadata from `register_class_aux.json` (97 records for sm_10x, 64-byte stride with flag distribution: 88 flag=1, 9 flag=2) provides the sub-variant pairs used during merge eligibility checks.
 
 ## Allocator State Object Layout
 
@@ -561,6 +1103,62 @@ Occupancy-aware register budget interpolation. Computes a dynamic register budge
 | +1728 | 8 | double | = coeff C | Linear model: y\_min |
 | +1736 | 8 | double | (computed) | Linear model: slope |
 | +1744 | 8 | ptr | 0 | Budget model: tail sentinel |
+
+#### Piecewise Budget Fraction Evaluation
+
+The interpolation table at +1664 through +1712 encodes a 4-segment piecewise linear function mapping physical register count to a budget fraction in [0.0, 1.0]. The table stores (x, y) pairs as interleaved doubles: odd indices are x-coordinates (thread-count breakpoints), even indices are y-coordinates (fraction values). During initialization (`sub_947150`), points [0], [2], [4] are set to coefficient A (default 0.2) and point [6] is set to coefficient B (default 1.0), while the x-breakpoints come from the max-threads knob, the pressure-threshold knob, and a vtable-derived limit.
+
+```
+// sub_937E90 -- piecewise interpolation lookup (lines 112-136 of decompiled)
+// Inputs: alloc = allocator context, reg_count = physical regs for this class
+// Returns: fraction in [coeffA, coeffB], typically [0.2, 1.0]
+
+double evaluate_budget_fraction(alloc, reg_count):
+    total_threads = alloc[+1656]               // (double) from vtable+720, clamped
+    x             = (double) reg_count          // register pressure as x-coordinate
+
+    // Table layout (interleaved y, x, y, x, y, x, y):
+    //   [0]=y0  [1]=x1  [2]=y1  [3]=x2  [4]=y2  [5]=x3  [6]=y3
+    y0 = alloc[+1664]                          // = coeff A  (default 0.2)
+    x1 = alloc[+1672]                          // = (double) max_threads_per_block
+    y1 = alloc[+1680]                          // = coeff A  (default 0.2)
+    x2 = alloc[+1688]                          // = (double) pressure_threshold
+    y2 = alloc[+1696]                          // = coeff A  (default 0.2)
+    x3 = alloc[+1704]                          // = 255.0 - vtable_adjustment
+    y3 = alloc[+1712]                          // = coeff B  (default 1.0)
+
+    if total_threads > x:                      // below minimum -- flat at y0
+        return y0
+    if x1 > x:                                 // segment 1: [total_threads .. max_threads]
+        return y0 + (y1 - y0) / (x1 - total_threads) * (x - total_threads)
+    if x2 > x:                                 // segment 2: [max_threads .. threshold]
+        return y1 + (y2 - y1) / (x2 - x1) * (x - x1)
+    if x3 > x:                                 // segment 3: [threshold .. vtable_limit]
+        return y2 + (y3 - y2) / (x3 - x2) * (x - x2)
+    return y3                                  // above vtable limit -- flat at coeffB
+```
+
+The caller in `sub_937E90` uses this fraction to decide whether to trigger a spill round. It computes `(available_regs + 1) * fraction` and compares against the sum of demanded registers plus a pair-widening penalty, returning true (needs-spill) when demand exceeds the fractional budget:
+
+```
+needs_spill = (pair_penalty + demanded + live_count)
+            > (phys_range_end - phys_range_start + 1) * fraction
+```
+
+**Occupancy formula** (`sub_A99FE0`, 7 instructions). Given a per-SM register file configuration from `occupancy_constants.json` (see `register_file_config.json` for the per-arch tables), the maximum warp occupancy for a given register count is:
+
+```
+// Profile fields (set by sub_AAFCF0 from the arch profile vtable):
+//   profile[+1440] = granularity_mask   (e.g. 63 for sm90)
+//   profile[+1460] = half_reg_file_size (e.g. 128 for sm90 = 32768/256)
+//   profile[+636]  = warp_offset        (e.g. regfile_params[3]=255 mapped)
+
+max_warps(regs) = (-granularity_mask & (2 * half_reg_file_size / regs)) - warp_offset
+```
+
+For sm90: `granularity_mask=63`, `half_reg_file=128`, so with 64 registers: `(-63 & (256/64)) - offset = (-63 & 4) - offset`. The negation creates a bitmask that rounds down to the granularity boundary, enforcing the hardware's allocation granularity constraint.
+
+The linear model at +1720/+1728/+1736 provides an equivalent fast path used in the main allocation loop (`sub_96D940`), where `fraction = (thread_count - x_min) * slope + y_min` with `slope = (coeffB - coeffC) / (maxOccupancy - minOccupancy)`.
 
 ## Virtual Register Object Layout
 

@@ -98,11 +98,11 @@ Parameters are passed in consecutive R registers starting from a configurable ba
 
 ### Parameter Register Allocator: sub\_19CA730
 
-The core parameter allocator (2277 bytes, 98% confidence). It uses a 2048-bit free-list bitmap (`v103[]`, 256 bytes) to track available register slots.
+The core parameter allocator (2277 bytes, 98% confidence). It uses a 256-byte free-list array (`v103[]`) where each byte represents one register slot: `0xFF` = free, `0x00` = occupied.
 
 ```
 function abi_alloc_params(func):
-    // Initialize 2048-bit free-list (256 bytes)
+    // Initialize 256-byte free-list (one byte per register slot)
     bitmap[256] = {0xFF...}                      // all slots free
 
     // Mark reserved registers as occupied
@@ -128,6 +128,57 @@ function abi_alloc_params(func):
         assign_register(slot, ret)
         mark_allocated(bitmap, slot, ret.reg_count)
 ```
+
+#### find\_contiguous\_free: Inlined Bitmap Scan
+
+The `find_contiguous_free` call in the pseudocode above is not a separate function -- it is inlined directly in `sub_19CA730`. The algorithm scans the 256-byte free-list for `count` contiguous free slots starting at an aligned offset. Each candidate start position is forced to the next alignment boundary using a negative-mask trick.
+
+```
+// Inlined in sub_19CA730 (lines ~395-421 of decompiled output).
+// bitmap: byte[256], 0xFF = free, 0x00 = occupied.
+// count:  registers needed = ceil(param_bytes / 4).
+// align:  register alignment = min(type_width, 16) / 4.
+//         1 for 4-byte, 2 for 8-byte, 4 for 16-byte params.
+// base:   first parameter register (e.g. R4).
+// avail:  total slots available for parameters.
+//
+// Returns offset from base (not absolute register number).
+// Returns -1 on failure (falls through to non-register path).
+
+function find_contiguous_free(bitmap, count, align, base, avail):
+    neg_mask = -align                            // e.g. -2 = 0xFFFFFFFE
+    offset   = (neg_mask & (align - 1 + base)) - base  // first aligned slot
+
+    while offset < avail:
+        // Phase 1: find an aligned slot whose byte is free (0xFF)
+        if bitmap[offset] == 0x00:               // slot occupied
+            next = offset + 1
+            offset = (neg_mask & (align - 1 + base + next)) - base
+            continue
+
+        // Bounds check: would count registers fit?
+        if offset + count > avail:
+            return -1                            // no room
+
+        // Phase 2: verify all count slots are contiguous-free
+        if count == 1:
+            return offset                        // single-reg, done
+
+        ok = true
+        for i in 1 .. count-1:
+            if bitmap[offset + i] == 0x00:       // gap found
+                // Jump past the gap to next aligned position
+                next = offset + i + 1
+                offset = (neg_mask & (align - 1 + base + next)) - base
+                ok = false
+                break
+        if ok:
+            return offset
+
+    return -1                                    // exhausted
+```
+
+After a successful find the caller writes `abs_reg = base + offset`, calls `assign_register` (`sub_7FA420`) to record the physical register, calls `mark_allocated` (`sub_BDBB80`) for each register in the range, and zeroes the corresponding bytes in `bitmap[]` via an inlined `memset`.
 
 The allocator processes parameters and return values as separate classes, each requiring contiguous register ranges with natural alignment. For 8-byte parameters, the base register must be even-aligned. For 16-byte parameters, the base must be 4-register-aligned.
 
@@ -174,7 +225,60 @@ The function also enforces the mutual exclusion rule (warning 7006): `"ABI allow
 
 Registers not reserved by the ABI and not used for parameters or return values may be classified as **scratch** (callee-clobbered). The ABI engine tracks scratch classification per register and validates it against coroutine semantics. At SUSPEND points in coroutine functions, a register marked as scratch must not also appear in the preserved set. Violation triggers warning 7011.
 
-The scratch/preserved classification feeds into the register allocator's spill decisions. Registers marked as scratch across a call boundary must be saved by the caller; preserved registers must be saved by the callee.
+The scratch/preserved classification feeds into the register allocator's spill decisions. Registers marked as scratch across a call boundary must be saved by the caller; preserved registers must be saved by the callee. The spill codegen (`sub_94F150`) adjusts per-vreg spill costs at every CALL instruction (opcode 97) based on this classification:
+
+```
+function adjust_spill_cost_for_abi(alloc, func, instr):
+    // Called within sub_94F150's instruction walk when opcode == 97.
+    // Epoch counter tracks call boundaries for liveness segmentation.
+    if regclass_count(alloc) - 1 <= 2 or is_epoch_boundary(func, instr):
+        epoch++                                        // sub_936CF0 check
+
+    // For each vreg operand of this CALL instruction (reverse order):
+    for each operand vreg of instr:
+        if operand_type(vreg) != REGISTER: continue
+        if is_pre_colored(alloc, instr, vreg.id): continue   // sub_9446D0
+
+        // --- secondary cost: always accumulated at vreg+76 ---
+        vreg.secondary_cost += block_freq
+        if prev_use_chain[vreg] == NULL:               // first ref in block
+            vreg.secondary_cost += block_freq          // double for kill point
+
+        // --- caller-save multiplier ---
+        // vtable+16 probes: live across call in both directions?
+        if live_across(alloc, instr) and live_across(alloc, instr.next)
+           and live_across(alloc, instr.prev):
+            cost_mult = 2.0                            // save + restore
+        else:
+            cost_mult = 1.0                            // save OR restore
+
+        // --- scratch-class gate (vreg+48 flags) ---
+        flags = vreg.flags
+        scratch_bitmask = spill_info[vreg.regclass]    // v84[3 * vreg.class]
+
+        if vreg.pair_width == 1:                       // single-width register
+            // nesting-depth cost only (no ABI penalty)
+            goto simple_path
+
+        if (flags & 0x200) != 0:                       // uniform register -> exempt
+            continue
+
+        if is_def(operand):
+            if (alloc.force_caller_save or (scratch_bitmask & 2) == 0) \
+               and (flags & 0x800) != 0                // scratch bit set
+               and (flags & 0x400) == 0:               // preserved bit clear
+                // Scratch across call: try short save chain first
+                save_len = estimate_save_chain(alloc, vreg, instr)  // sub_944740
+                if save_len <= alloc.save_limit:       // alloc+1544
+                    vreg.spill_cost += (float)save_len * block_freq
+                else:
+                    vreg.spill_cost += cost_mult * (2 * base_weight) * block_freq
+            else:
+                // Preserved or unconditional scratch -> full double-weight
+                vreg.spill_cost += cost_mult * (2 * base_weight) * block_freq
+```
+
+The `2 * base_weight` factor (30.0 default, 6.0 under pressure) reflects the paired save+restore cost: one store before the call, one load after. The `cost_mult` further doubles to `4 * base_weight` when the vreg is provably live in both directions across the call. Uniform registers (flag `0x200`) are exempt because they use a separate spill path through the UR file. The save chain estimate (`sub_944740`) provides a cheaper alternative when the caller-save sequence is short enough, bounded by `alloc+1544` (default 4.0, from knob 680).
 
 ## Per-Pass Instruction Lowering: sub\_19DC4B0
 
@@ -188,15 +292,74 @@ The instruction-level ABI transform driver (6459 bytes, 95% confidence). Called 
 
 ### Pass 2 -- Instruction Lowering
 
-Lowers high-level Ori opcodes into ABI-conforming SASS sequences:
+Lowers high-level Ori opcodes into ABI-conforming SASS sequences. Entry is gated on a disjunction of six ABI capability flags read from `abi_spec+1096..1107` crossed against function state flags at `ctx+1368..1382`. If none of the flags are set, Pass 2 returns immediately.
 
-| Ori opcode | Mnemonic | Transform |
-|------------|----------|-----------|
-| 109 | CALL | Parameter register setup, save/restore insertion |
-| 16 | ST | Shared memory store lowering |
-| 77 | LD | Shared memory load lowering |
-| 185 | ATOMG | Atomic operation lowering |
-| 183 | (special) | Mode 2/3 reclassification |
+| Ori opcode | Mnemonic | Gate flag (abi\_spec) | Handler |
+|------------|----------|----------------------|---------|
+| 109 | CALL | `+1105 & 0x01` | `sub_19D5680` (param fixup) then `sub_19D7160` (callee-save rewrite) |
+| 16 | ST | `+1096 & 0x10` | `sub_19D5520` |
+| 77 | LD | `+1105 & 0x08` | `sub_19D5850` (only if operand bit 7 set and mem-mode is shared/2 or indexed-shared) |
+| 185 | ATOMG | `+1105 & 0x20` | `sub_19D5DD0` |
+| 183 | (special) | `+1107 & 0x02` or `+1105 & 0x02` | `sub_7E2670` reclassification to mode 2/3 |
+
+The instruction stream is scanned linearly. For CALL instructions (opcode 109), two sub-phases execute in sequence:
+
+#### CALL lowering: parameter register fixup (`sub_19D5680`)
+
+Runs when the callee has no explicit ABI spec (`*(callee_desc+24) == 0`) and `abi_spec+1105 & 0x01`. Rewrites operands referencing the ABI parameter base R41 (`0x29`) to point at a freshly allocated frame-local copy.
+
+```
+lower_call_params(ctx, call_insn):
+    bitmap = alloc_bitmap(ctx, call_insn.operand_count)      // sub_BDBAD0
+    for i = call_insn.operand_count-1 downto 0:
+        op = call_insn.operand[i]                            // at +84 + 8*i
+        if op < 0:  break                                    // sentinel
+        if op.type != REG(1) or (op.byte7 & 1):  continue   // GPR, non-predicated
+        if (op & 0xFFFFFF) != 0x29:  continue                // not param base R41
+        callee = resolve_callee(ctx, call_insn)              // func_table[+392]
+        if !needs_param_frame(callee, ctx, call_insn, bitmap):  continue  // sub_19DF900
+        frame_reg = alloc_frame_reg(ctx, reg_file=6)         // sub_91BF30
+        copy_size = compute_copy_size(ctx, call_insn, i)     // sub_91E610
+        emit_before(ctx, call_insn, MOV/0x82, copy_size,
+                    dst=frame_reg, src=op)                    // sub_92E720
+        for j = i downto 0:                                  // rewrite bitmap-covered ops
+            if bitmap.test(j):
+                call_insn.operand[j] = frame_reg | (op[j] & 0xFF000000)
+        return 1
+    return 0
+```
+
+#### CALL lowering: callee-save operand rewrite (`sub_19D7160`)
+
+Runs after parameter fixup when the CALL has operands with type 5 (callee-save reference) or the `0x1000000` needs-save flag. Walks operands in reverse and rewrites non-stack-save operands into frame MOVs.
+
+```
+lower_call_saves(ctx, call_insn):
+    if (get_flags(call_insn) ^ 0x70000000) & 0x70000000 == 0:
+        return 0                                     // no ABI operands
+    count = 0;  i = call_insn.operand_count - 1
+    // Phase A: skip trailing operands whose spill class has bit 10 (stack-save)
+    while i >= 0:
+        op = call_insn.operand[i]
+        if op < 0:  break
+        if (op.type == 5 or op.needs_save) and is_valid_operand(call_insn, i):
+            if get_spill_class(lookup_reg(ctx, op)).bit10:  break
+        i--
+    // Phase B: rewrite remaining callee-save operands into frame MOVs
+    while i >= 0:
+        op = call_insn.operand[i]
+        if op < 0:  break
+        if op.type == 5:
+            frame_reg = alloc_frame_reg(ctx, reg_file=6)
+            emit_before(ctx, call_insn, MOV/0x82, 10,
+                        dst=frame_reg, src=op)               // sub_934630
+            count++
+            call_insn.operand[i] = (op & 0x8F000000) | (frame_reg & 0xFFFFFF) | 0x10000000
+        i--
+    return count
+```
+
+These two sub-phases connect to the separate opcode-72 (CAL) lowering in `sub_19CFC30` ([below](#opcode-level-abi-dispatch-sub_19cfc30)). Opcode 109 is the Ori-level abstract call; opcode 72 is the SASS-level concrete call. Pass 2 rewrites CALL operands; `sub_19CFC30` later emits the pre-call save (`sub_19CB590`: STL/STS bracket) and post-call restore (`sub_19CB7E0`: LDL/LDS bracket) around the CAL.
 
 ### Pass 3 -- Architecture-Specific Fixups
 
@@ -246,9 +409,78 @@ The function also generates opcode 0xB7 (special) for shared-memory-based transf
 
 Two functions enforce convergent allocation boundaries for function calls annotated with `allowConvAlloc`:
 
-**Convergent boundary checker** (`sub_19D13F0`, 4.3 KB): Walks the basic block list, builds a bitmask of convergent register definitions, and validates that every `allowConvAlloc`-annotated call has a proper convergent boundary. Emits `"Missing proper convergent boundary around func call annotated with allowConvAlloc"` when the boundary is absent.
+**Convergent boundary checker** (`sub_19D13F0`, 4.3 KB):
 
-**CONV.ALLOC insertion** (`sub_19D7A70`, 3313 bytes): Scans the instruction list for convergent boundary violations. When a register def flows to a convergent use through a non-convergent path, inserts a `CONV.ALLOC` placeholder instruction (opcode 0x11E = 286). Uses a 64-bit-word bitmask array to track which register slots are live across convergent boundaries.
+```
+check_convergent_boundaries(func, call_insn):
+    num_words = (func.reg_count + 64) >> 6       // 64-bit bitmask words
+    bitmask   = alloc(num_words * 8)              // one bit per register slot
+    callback  = sub_19C6400                       // single-call-per-region checker
+
+    start_bb = lookup_bb(func.bb_array, call_insn.dst_reg)   // +296 index
+    end_bb   = idom_or_fallthrough(start_bb)      // opcode-97 edge or idom
+
+    bb = start_bb
+    while bb != end_bb:
+        if not scan_convergent_boundary(bitmask, bb, func.bb_array)
+           and (not bitmask.any_set or not bitmask.any_low):
+            if call_insn.qword280 & 1 == 0:       // allowConvAlloc not self-guarded
+                target = func.callee(call_insn)    // +344 -> +64 -> byte 40
+                if not target or not target.has_conv_boundary:
+                    emit_warning(7020,
+                        "Missing proper convergent boundary around "
+                        "func call annotated with allowConvAlloc")
+        bb = bb.next                               // linked-list successor
+    free(bitmask)
+```
+
+**CONV.ALLOC insertion** (`sub_19D7A70`, 3313 bytes):
+
+```
+insert_conv_alloc(func, allow_reorder) -> int:
+    num_words  = (func.reg_count + 64) >> 6       // field +376
+    live_mask  = alloc(num_words * 8)              // convergent-live bitmask
+    inserted   = 0
+    high_water = -1                                // highest word touched
+
+    for block_id in 0 .. func.block_count-1:       // +792 count, +368 array
+        block = func.blocks[block_id]
+        if block.first_insn == null: continue
+        if block.flags[281] & 0x08: continue       // skip non-schedulable
+
+        bit_word = block_id >> 6
+        bit_mask = 1 << (block_id & 63)
+        start_bb = lookup_bb(func.bb_array, block.first_insn.dst_reg)
+
+        for each bb from start_bb via successor chain:
+            if allow_reorder and bb.byte245: break  // hit reorder barrier
+            // -- scan for CONV boundary markers (opcode 27 after mask) --
+            for insn in bb.insn_list:
+                if (insn.opcode & ~0x3000) == 27:
+                    if (high_water+1) << 6 > block_id:
+                        already = (live_mask[bit_word] >> (block_id&63)) & 1
+                        if block.qword280 & 1:     // guard bit -> clear
+                            live_mask[bit_word] &= ~bit_mask
+                        elif not already:           // first encounter -> set
+                            zero_extend(live_mask, high_water+1, num_words)
+                            live_mask[bit_word] |= bit_mask
+                            high_water = num_words - 1
+            // -- check reaching use across non-convergent path --
+            use_bb = resolve_reaching_use(func, bb)
+            if use_bb == null: continue
+            if use_bb.first_def.opcode == 286: continue  // already CONV.ALLOC
+            if needs_conv_alloc(use_bb.first_def, func):
+                if bb.order > use_bb.order or not allow_reorder:
+                    slot = alloc_virtual_reg(func, -1)
+                    ops  = [use_reg & 0xFFFFFF | 0x90000000, 0, slot, 0]
+                    new  = build_insn(func, 0x11E, size=12, nops=2, ops)
+                    insert_before(use_bb.insn_list, new)
+                    mark_convergent(use_bb.parent, flag=17)
+                    inserted += 1
+
+    free(live_mask)
+    return inserted
+```
 
 The single-call checker (`sub_19C6400`) warns when a convergent region contains more than one call: `"Multiple functions calls within the allowConvAlloc convergent boundary"`.
 
@@ -261,6 +493,91 @@ Functions with coroutine support (flag `0x01` at function byte `+1369`) receive 
 **Coroutine frame builder** (`sub_19D4B80`, 1925 bytes): Constructs the frame layout for coroutine-style functions, allocating slots for each register that must survive a SUSPEND.
 
 The ABI engine validates that the scratch/preserved classification is consistent with coroutine semantics. Warning 7011 fires when a register marked as scratch at a SUSPEND point is also required to be preserved for the coroutine function. Warning 7012 fires when the return address register itself is misclassified as scratch.
+
+### handle\_suspend\_point (sub\_19D5F10)
+
+```
+handle_suspend_point(func_ctx):
+    func = *func_ctx
+    if !(func[+1369] & 0x01): return              // not a coroutine
+    mode = get_coroutine_mode(func)                // sub_7DDB50
+
+    if mode == 1:                                  // simple: per-block scan
+        for bb_idx in 0 .. func[+304]:
+            first = *func.bb_array[bb_idx][+8]
+            if first[+72] & 0xFFFFCFFF == 0x7C and last_src_regclass(first) == 3:
+                insert_save_restore(func, bb)      // sub_19D31D0
+        return
+
+    // full path: build liveness then walk flat instruction list
+    build_liveness(func)                           // sub_781F80, sub_A0B310
+    save_set = {};  restore_set = {};  seen_suspend = seen_resume = false
+    for instr in func.instr_list(+272):
+        opc = instr[+72] & 0xFFFFCFFF
+        if opc in {SUSPEND(183), RESUME(288)}:
+            if get_mem_space(instr.last_src) & ~2 == 1:  // local/spill
+                seen_suspend |= (opc==183);  seen_resume |= (opc==288)
+        elif opc == CALL(97):
+            tgt = func.bb_array[instr.src0 & 0xFFFFFF]
+            save_set = &tgt[+96];  restore_set = &tgt[+48];  continue
+        for each vreg operand (tag bits[31:28]==1, file==6, index-41 > 3):
+            if operand >= 0:    add(save, vr.hw_reg); remove(restore, vr.hw_reg)
+            elif seen_suspend:  add(restore, vr.hw_reg)   // use after SUSPEND
+            else:               add(save, vr.hw_reg); remove(restore, vr.hw_reg)
+            if vr.is_64bit: same for hw_reg+1
+
+    if !(seen_suspend and seen_resume): return
+    recompute_liveness(func)                       // sub_A0BA40
+    for each suspend_block in func.suspend_list(+512):
+        bb = func.bb_array[suspend_block]
+        n_live = bitset_count(bb[+96])
+        if n_live > 9: insert_save_restore(func, bb)     // large path
+        elif n_live > 0:                                  // small: groups of 3
+            for reg in bitset_iter(bb[+96]):
+                vr = alloc_vreg(func, file=6); vr.hw_slot = reg
+                operands[slot++] = vr | 0x10000000
+                if slot == 3: emit_group(); break
+            if 0 < slot < 3: pad with SENTINEL(0x10000019)
+            if ctx[+1044] & 0x10: emit(opc 0x121, 7 ops) // extended SM
+            else:                 emit(opc 0x6E,  4 ops)  // base SM
+```
+
+### build\_coroutine\_frame (sub\_19D4B80)
+
+```
+build_coroutine_frame(func_ctx) -> int:
+    frame_count = 0;  anchor = NULL
+    warp_group = -1;  seen_local = false
+    for instr in func.instr_list(+272):
+        opc = instr[+72] & 0xFFFFCFFF
+        if opc == BB_BOUNDARY(52):
+            if !anchor or !validate_predecessor(anchor):
+                reset(); continue
+            // emit frame descriptor + retype surrounding blocks
+            func.cursor = anchor
+            emit(FRAME_MARK, opcode 0x94, 1 operand)
+            backend.register_frame(func.cursor)    // vtable[408]
+            anchor_bb = anchor[+40]
+            anchor_bb[175] = (anchor_bb[175] & 0xE1) | 0x0A
+            update_block_type(anchor_bb)           // 16/17->18; 1->2
+            tag_block_as_split(func, instr, warp_group)
+            frame_count++;  reset()
+        elif opc == BRANCH(16) and get_branch_kind(instr)==4:
+            anchor = instr
+            info = instr[+40]
+            warp_group = (info[175] & 0x02) ? ((info[175]>>2)&7) : -1
+        elif opc == SUSPEND(183):
+            if get_mem_space(instr.last_src)==4:    // local-frame
+                if seen_local: reset(); continue
+                seen_local = true
+        if warp_group != -1:                       // barrier-group guard
+            mask = (instr.bb[174] >> 1) & 0x3F
+            if bit_test(mask, warp_group): reset(); continue
+        if anchor and opc == RESUME(288):
+            // validate: space==4 or (space==1 + vreg is non-live scratch)
+            if valid: update anchor attrs, tag_block_as_split(...)
+    return frame_count
+```
 
 ## gb10b Hardware WAR
 
@@ -285,6 +602,37 @@ The reserved SMEM checker (`sub_19DDEF0`, 1687 bytes) iterates instructions look
 ## ABI Register Limit Propagation
 
 The limit propagator (`sub_19CE590`) handles inter-procedural ABI attribute forwarding. For SM generations 4 and 5 (sm\_50, sm\_60 families), it iterates the call graph and copies the max-register limit from caller to callee (field `+264` to `+268`) unless the callee has an explicit ABI specification. This ensures that callees do not exceed the register budget established by their callers.
+
+### propagate\_abi\_limits (sub\_19CE590)
+
+```
+propagate_abi_limits(compilation_ctx):
+    target = compilation_ctx[+8]
+    sm_gen = target[+896]
+    if sm_gen < 4 or sm_gen > 5: return            // sm_50 / sm_60 only
+
+    // Phase 1: seed effective limit per function
+    func_array = target[+368];  n_funcs = target[+376]
+    for i in 0 .. n_funcs:
+        func = func_array[i]
+        if func[+280] & 0x01:                      // explicit ABI spec
+            func[+268] = func[+264]                // copy declared limit
+        elif func[+216] >= 0                        // has a caller index
+              and call_graph[func[+216]][+57]:       // caller propagatable
+            func[+268] = func[+264]
+        else:
+            func[+268] = -1                        // unconstrained
+
+    // Phase 2: reverse-order call-graph edge walk
+    edge_list = target[+792]                       // {count, data[]}
+    for edge_idx in (edge_list.count - 1) downto 0:
+        caller = func_array[edge_list.data[edge_idx]]
+        for callee in caller.callee_list(+136):    // linked list
+            if callee[+216] >= 0 and call_graph[callee[+216]][+57]:
+                callee[+268] = callee[+264]        // keep own limit
+            else:
+                callee[+268] = caller[+268]        // inherit caller budget
+```
 
 ## Call Instruction ABI Lowering: sub\_19D41E0
 
