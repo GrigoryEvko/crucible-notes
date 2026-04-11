@@ -656,23 +656,25 @@ After each instruction, the callback `a2(ctx, instr, 0, emit_mode, dep_ctx)` is 
 | **Category** | Scheduling |
 | **Execute wrapper** | `sub_C607A0` (51 bytes) |
 | **Implementation** | Architecture-dispatch via `*(*(ctx+0x630))->vtable[0x110/8]` |
+| **Shared WAR infrastructure** | `sub_6FBC20` (7.4KB), `sub_6FA5B0` (2.5KB), `sub_6FA930`, `sub_6FA7B0`, `sub_6FAA90` |
 | **Nullsub guard** | Skips if vtable entry equals `nullsub_170` (`0x7D6C80`) |
 | **Gating** | Requires `opt_level > 1` |
 | **Pipeline position** | After `OriDoSyncronization` (99), before `AdvancedPhaseAllocReg` (101) |
 
 ### Purpose
 
-ApplyPostSyncronizationWars fixes write-after-read (WAR) hazards that are introduced or exposed by the synchronization insertion in phase 99. When OriDoSyncronization inserts new barrier or memory fence instructions, these insertions can create new register hazards (the barrier instruction may read a register that a subsequent instruction writes). This pass scans for and resolves those hazards.
+ApplyPostSyncronizationWars fixes write-after-read (WAR) hazards that are introduced or exposed by the synchronization insertion in phase 99. When OriDoSyncronization inserts `BAR`, `DEPBAR`, or `MEMBAR` instructions, those new instructions read registers that subsequent instructions may overwrite -- the GPU pipeline can execute the write before the sync instruction observes the old value. This pass scans for such hazards and resolves them by inserting explicit dependency barriers, scoreboard waits, and stall-cycle annotations.
+
+The same WAR resolution algorithm (`sub_6FBC20`) is reused in three pipeline positions: here (phase 100, post-sync), in the Mercury pipeline (phases 119/121, pre- and post-opex), and at phase 105 (`ApplyPostRegAllocWars`, post-register-allocation). The reason for the repetition is that each preceding pass introduces new instructions that can create fresh WAR hazards absent from the prior stream.
 
 ### Dispatch Mechanism
 
 ```asm
-; sub_C607A0
+; sub_C607A0 (51 bytes)
 mov    rbx, rsi                ; save ctx
 call   sub_7DDB50              ; get opt_level
 cmp    eax, 1
 jle    return                  ; skip if opt_level <= 1
-
 mov    rdi, [rbx+0x630]       ; rdi = ctx->arch_backend
 mov    rax, [rdi]              ; rax = arch_backend->vtable
 mov    rax, [rax+0x110]       ; vtable[34] = ApplyPostSyncWars impl
@@ -684,7 +686,36 @@ call_impl:
     jmp    rax                 ; tail-call architecture implementation
 ```
 
-The `nullsub_170` check (at `0x7D6C80`) is the no-op sentinel: if the architecture backend does not override this vtable entry, the phase is silently skipped. This allows architectures that do not have post-sync WAR hazards to avoid unnecessary work.
+The `nullsub_170` check (at `0x7D6C80`) is the no-op sentinel: if the architecture backend does not override vtable slot 34, the phase is silently skipped. This allows architectures whose sync instructions do not create WAR hazards to avoid the pass entirely.
+
+### WAR Detection Algorithm -- `sub_6FA5B0` (2.5KB)
+
+The architecture implementation tail-calls into the shared WAR generation pass `sub_6FBC20`, which walks every instruction in the function and invokes the three-stage hazard detector `sub_6FA5B0` per instruction.
+
+**Stage 1 -- bitmask `0x100000400001` (opcodes 34--78).** The range check `(opcode - 34) > 0x2C` admits opcodes 34--78. Within that 45-bit window, three set bits select opcodes for architecture-specific vetting via vtable +968/+1008: opcode 34 (IDE), 56 (BMOV), and 78 (RTT). All other opcodes in the range (42 instructions including I2I, MUFU, DEPBAR, BRA, CALL, RET, EXIT, etc.) fall through to stage 2.
+
+**Stage 2 -- bitmask `0x800200000100001` (opcodes 71--130) plus opcode 235.** An explicit equality test marks opcode 235 (UBLKRED) as never-hazardous. Within the 60-bit window, four bits flag non-hazardous opcodes: 71 (CALL), 91 (AST), 116 (PIXLD), 130 (HSET2). All remaining opcodes pass to stage 3.
+
+**Stage 3 -- per-opcode classification.** The remaining opcodes are classified into four severity tiers:
+
+| Category | Opcodes | Action |
+|----------|---------|--------|
+| Always hazardous | 49 (FRND), 92 (OUT), 248 (VIADDMNMX) | `++counter` (severity 1) |
+| Conditionally hazardous | 75 (BPT) | hazardous unless `sub_10AE600(ctx, operand, 179)` succeeds |
+| Severity 3 (medium) | 35 (I2I) | gated by vtable +528 arch check |
+| Severity 4 (high) | 35 (I2I), 246 (VHMNMX) | vtable +504 arch check; VHMNMX is unconditional |
+
+The detector maintains a per-instruction WAR counter at `*(DWORD*)(state+8)` and severity at `*(DWORD*)(state+12)`. For severity >= 3, `sub_6FA430` inserts `(severity - counter)` additional stall slots before the hazardous instruction. The WAR flag is recorded in the instruction's operand descriptor at bit 9 (`*(DWORD*)(operand+280) |= 0x200`), and a register liveness bitvector is updated at `state[13] + 8*(latency>>6)` with a single-bit set for the conflicting register.
+
+### Fixup Actions
+
+When the detector returns severity >= 3, three fixup handlers fire in sequence:
+
+1. **`sub_6FA930`** -- inserts a DEPBAR (opcode 54, scoreboard barrier) before the hazardous instruction when `*(BYTE*)(instr+48) & 0x10` is set. Barrier type is extracted from bits 7:5 of the flag byte. Encoding: `*(DWORD*)(new_instr+56) = 4`; control bits `*(DWORD*)(new_instr+48) &= 0xFFF83FFF | 0x50000`.
+2. **`sub_6FA7B0`** -- inserts a WAITDP (opcode 246) if one does not already exist at the insertion point. Operands are configured with codes 102/467 (barrier ID) and 301/1520 (wait mask). Uses FNV-1a hash lookup to detect existing WAITDPs.
+3. **`sub_6FAA90`** (7.9KB) -- computes required stall cycles via architecture vtable methods at +888/+896/+904 and writes them into the instruction's control word. Architecture config field `v8[14] == 9` triggers GPU-family-specific stall tables.
+
+After the per-instruction loop completes, `sub_6FB850` (post-WAR adjustment, 4.5KB) and `sub_6FB350` (WAR finalization, 6KB) run a cleanup pass that removes redundant barriers and reconciles stall counts across basic block boundaries.
 
 ---
 
@@ -699,44 +730,56 @@ The `nullsub_170` check (at `0x7D6C80`) is the no-op sentinel: if the architectu
 | **Nullsub guard** | Skips if vtable entry equals `nullsub_43` (`0x680170`) |
 | **Gating** | Requires `opt_level > 1` |
 | **Pipeline position** | After `PostFixForMercTargets` (113), before `AdvancedScoreboardsAndOpexes` (115) |
+| **Prerequisite** | Phase 91 (`OriCalcDependantTex`) computes texture dependency metadata |
 
 ### Purpose
 
-FixUpTexDepBarAndSync performs a post-scheduling fixup of texture dependency barriers and synchronization instructions. After the main scheduling passes (phases 97--110) have reordered instructions and the Mercury encoder (phases 117--122) has finalized SASS encoding, texture fetch instructions may have dependency barriers that are incorrect due to instruction movement. This phase corrects those barriers.
+FixUpTexDepBarAndSync performs a pre-scoreboard fixup of dependency barriers for texture fetch instructions. It runs *before* the main scoreboard pass (phase 115), not after it. The phase corrects barrier assignments that the instruction scheduler (phases 97--110) left in a state inconsistent with texture pipeline requirements. Texture fetches (Ori opcodes 60, 62, 78, 79 -- corresponding to PTX `tex`, `tld`/`txq`, `tmml` and related surface operations) have latencies of 200--400+ cycles and require dependency barriers rather than stall counts, since the 4-bit stall field can only encode 0--15 cycles.
+
+Phase 91 (`OriCalcDependantTex`) runs during late optimization to compute per-instruction texture dependency metadata and mark which instructions carry texture-dependent register values. The earlier `TexNodep` pre-scheduling pass (`sub_A10100`, 556 bytes) also uses the DAG construction infrastructure (`sub_A0F970`) with texture-specific callbacks (`sub_A07E70`) to build texture-only dependency edges (parameters `a4=0, a5=1, a6=0`).
 
 ### Dispatch Mechanism
 
-The dispatch is doubly-indirect, going through two vtable levels:
+The dispatch traverses two vtable levels to reach a scheduling subsystem object owned by the architecture backend:
 
-```asm
-; sub_C60600
-mov    rbx, rsi
-call   sub_7DDB50              ; get opt_level
-cmp    eax, 1
-jle    return
-
-mov    rax, [rbx+0x630]       ; arch_backend
-mov    rdi, [rax+0x10]        ; secondary object at arch_backend+16
-mov    rax, [rdi]              ; secondary vtable
-mov    rax, [rax+0x70]        ; vtable[14] = FixUpTexDepBar impl
-cmp    rax, 0x680170           ; compare with nullsub_43
-jne    call_impl
-return:
-    ret
-call_impl:
-    jmp    rax                 ; tail-call implementation
+```
+sub_C60600(ctx, func):
+    if get_opt_level(func) <= 1:        // sub_7DDB50
+        return
+    arch_backend  = *(func + 0x630)
+    sched_subsys  = *(arch_backend + 0x10)    // secondary object
+    impl          = *(*(sched_subsys) + 0x70) // vtable slot 14
+    if impl == 0x680170:                      // nullsub_43 sentinel
+        return
+    impl(sched_subsys, func)                  // tail-call
 ```
 
-The double indirection (`arch_backend -> arch_backend+16 -> vtable+0x70`) indicates that the texture dependency barrier fixup lives in a secondary object owned by the architecture backend -- likely the scheduling/scoreboard subsystem object.
+The secondary object at `arch_backend+16` is the scheduling/scoreboard subsystem. It owns the per-scheduling-class scoreboard configuration tables -- 88-byte records containing up to 6 `(scoreboard_id, threshold, mask)` triplets that define which hardware scoreboards apply to each instruction class and the stall-count threshold above which a barrier is required.
 
-### Texture Dependency Barriers
+### Architecture Activation
 
-Texture fetches are long-latency operations (hundreds of cycles). The hardware uses dependency barriers (scoreboards) to track their completion. When the scheduler moves a texture fetch away from its original position, the dependency barrier assignment from `AdvancedScoreboardsAndOpexes` (phase 115) may become suboptimal or incorrect. This fixup pass:
+The default vtable maps slot 14 to `nullsub_43` (`0x680170`) -- a no-op for architectures that handle texture dependencies entirely within the general scoreboard pass (phase 115). Architecture backends that need texture-specific barrier fixup override this entry. The per-SM scoreboard configuration tables from the binary show the scope of scoreboard IDs involved:
 
-1. Scans for texture fetch instructions (`opcode 0x17` / class 0x37/0x38 in the scheduling tables)
-2. Checks that the assigned write-barrier index correctly covers the instruction's result register
-3. Verifies that consumer instructions have the corresponding read-barrier bit set in their wait mask
-4. Adjusts stall counts and yield flags if the texture result is consumed sooner than the original schedule assumed
+| SM | Distinct scoreboard IDs | Max triplets per class |
+|---|---|---|
+| sm_80 | 16 (0, 2, 5, 6, 9, 11, 13, 15, 16, 18--21, 27, 31, 34) | 1 |
+| sm_86--90a | 16 (0, 2, 5, 6, 12, 13, 15, 16, 18--21, 27, 30, 31, 33) | 1 |
+| sm_100 | 17 (0--2, 5, 6, 12, 13, 15--17, 19, 21, 23, 27, 28, 31, 34) | **6** |
+| sm_103 | 20 (0--2, 5, 6, 12--19, 21, 23, 27, 28, 30, 31, 33) | 1 |
+
+The jump from 1 triplet per scheduling class (pre-Blackwell) to 6 triplets (sm_100) indicates Blackwell introduced multi-scoreboard dependency tracking. When a single texture fetch can map to multiple scoreboards simultaneously, the fixup must coordinate barrier assignments across all of them -- the primary motivation for this pass on sm_100.
+
+### Fixup Algorithm
+
+The implementation is architecture-specific (behind the vtable dispatch). Based on the scoreboard infrastructure and Phase 115's fast-path handling of texture opcodes (60, 62, 78, 79 via `sub_A22B40` in `sub_85C890`), the fixup performs:
+
+1. **Scan**: Walk all basic blocks, identifying texture fetch instructions by Ori opcode or scheduling class
+2. **Validate write-barrier**: For each texture fetch, verify the assigned write-barrier index (3-bit field in the control word, values 0--5, 7=none) covers the instruction's result registers. The hardware provides 6 barriers per warp; texture fetches typically consume one
+3. **Validate wait-mask**: For each consumer of a texture result, verify the corresponding bit is set in the consumer's 6-bit wait-barrier mask at the point where the result is first read
+4. **Patch stall/yield**: If the texture result is consumed closer than the scoreboard threshold (56 cycles in all extracted configs), adjust the stall count field and set the yield flag to hint warp descheduling during the texture pipeline stall
+5. **Insert/adjust DEPBAR**: Where barrier-only tracking is insufficient (e.g., all 6 barriers in use, or a texture dependency crosses a barrier recycle point), insert explicit `DEPBAR` instructions
+
+The `EIATTR_TEXMODE_INDEPENDENT` flag (code 77 / `0x4D`) in the output cubin signals that the kernel uses independent texture mode (from `.texmode_independent` or `--texmode-independent`, stored at compilation context byte +219). This affects texture descriptor resolution at runtime and may gate which fixup rules apply within the architecture implementation.
 
 ---
 
@@ -746,13 +789,70 @@ Before the eight sync phases operate on the Ori IR, the OCG intrinsic lowering p
 
 ### Dispatcher and Function Family
 
-The OCG body dispatcher at `sub_6D8B20` (432 lines) reads the intrinsic ID from `*(state+10688)` and dispatches to per-family lowering functions via a 28-case switch statement. The three memory-ordering handlers are:
+The OCG body dispatcher at `sub_6D8B20` (432 lines) reads the intrinsic ID from `*(state+10688)` -- set by `sub_6C9BC0` which maps OCG builtin names to slot indices -- and dispatches via a 43-case switch (cases 0--0x2A). Each case corresponds to one of the 44 OCG operation slots (slot 43, `sttm`, uses a different path). The default returns the sentinel `0x10000019`.
 
-| Case | Function | Size | Family | PTX instructions |
+Complete case table with OCG slot names, handler functions, sizes, and dispatch categories:
+
+| Case | OCG name | Function | Bytes | Category |
 |---|---|---|---|---|
-| 9 | `sub_6C0D90` | 19KB (812 lines) | Atomic/reduction | `atom.add`, `atom.cas`, `atom.exch`, `red.add` |
-| 0xA | `sub_6C1CF0` | 16KB (633 lines) | Mbarrier | `mbarrier.arrive`, `mbarrier.test_wait`, `mbarrier.try_wait`, counted/bytemask variants |
-| 0x16 | `sub_6C4DA0` | 15KB (647 lines) | Fence / load-store | `fence.sc`, `ld.acquire`, `st.release` with scope/domain |
+| 0 | `add` | `sub_6BDB60` | 693 | Arithmetic (IADD3/FADD) |
+| 1 | `cp_async_commit` | `sub_6BE400` | 787 | Async pipeline commit (LDGDEPBAR) |
+| 2 | `cp_async_wait` | `sub_6BE720` | 1,344 | Async pipeline wait (DEPBAR) |
+| 3 | `cache` | `sub_6BDE20` | 1,496 | Cache control (CCTL/PREFETCH) |
+| 4 | `ld_mc` | `sub_6C9230` | 1,419 | Multicast load (LDG.MC) |
+| 5 | `ldc` | `sub_6BEC60` | 1,153 | Constant load (LDC) |
+| 6 | `s2r` | `sub_6BF0F0` | 841 | Special register read (S2R) |
+| 7 | `acqblk` | *inline* | -- | Emits Ori opcode 298 directly |
+| 8 | `preexit` | *inline* | -- | Emits Ori opcode 313 directly |
+| 9 | `red_async` | `sub_6C0D90` | 3,922 | **Atomic/reduction** (scope+memorder) |
+| 0xA | `cp_async_bulk` | `sub_6C1CF0` | 3,559 | **Mbarrier** (arrive/wait/test/counted) |
+| 0xB | `cp_red_async_bulk` | `sub_6C2AE0` | 2,435 | Bulk async reduction (UBLKCP.RED) |
+| 0xC | `cp_async_tensor` | `sub_6C3470` | 4,670 | TMA copy (UTMAKCP, 1--5D) |
+| 0xD | `cp_async_prefetch_tensor` | `sub_6C46B0` | 1,768 | TMA prefetch (UTMAPF) |
+| 0xE | `fence_view_async` | `sub_6C0C10` | 371 | Async fence (FENCE.VIEW.ASYNC) |
+| 0xF | `viadd` | `sub_6BF440` | 1,219 | Vector integer add (VIADD) |
+| 0x10 | `viaddmax` | `sub_6BFE10` | 591 | Fused add+max (VIADDMNMX) |
+| 0x11 | `viaddmin` | `sub_6C0060` | 591 | Fused add+min (VIADDMNMX) |
+| 0x12 | `vimax` | `sub_6C02B0` | 591 | Vector integer max (VIMNMX) |
+| 0x13 | `vimin` | `sub_6C0500` | 591 | Vector integer min (VIMNMX) |
+| 0x14 | `vimax3` | `sub_6C0750` | 607 | 3-way vector max (VIMNMX3) |
+| 0x15 | `vimin3` | `sub_6C09B0` | 607 | 3-way vector min (VIMNMX3) |
+| 0x16 | `write_async` | `sub_6C4DA0` | 3,222 | **Fence/load-store** (scope+domain) |
+| 0x17 | `cctl_c` | `sub_6C5A40` | 1,646 | Cache control (CCTL shallow/deep) |
+| 0x18 | `getnextworkid` | `sub_6C60B0` | 1,549 | Work distribution (selfcast/broadcast) |
+| 0x19 | `fadd2` | *inline+sub_6D2AC0* | -- | Packed f16 add; Ori opcode 270 |
+| 0x1A | `ffma2` | *inline+sub_6D2AC0* | -- | Packed f16 FMA; Ori opcode 279 |
+| 0x1B | `fmul2` | *inline+sub_6D2AC0* | -- | Packed f16 mul; Ori opcode 282 |
+| 0x1C | `mnmx` | `sub_6C8FB0` | 626 | Integer min/max (IMNMX/FMNMX) |
+| 0x1D | `fmax3` | `sub_6C8BF0` | 479 | 3-way float max (FMNMX3) |
+| 0x1E | `fmin3` | `sub_6C8DD0` | 479 | 3-way float min (FMNMX3) |
+| 0x1F | `tcbar` | `sub_6C8100` | 1,931 | TC barrier (TCBAR) |
+| 0x20 | `mmareadshma` | `sub_6C66C0` | 1,227 | MMA shared-mem read (LDSM variant) |
+| 0x21 | `tccp` | `sub_6D4350` | 6,349 | TC copy (TCCP) |
+| 0x22 | `tcmma` | `sub_6C6B90` | 874 | TC MMA setup (TCMMA) |
+| 0x23 | `tcshift` | `sub_6C6F00` | 331 | TC shift (TCSHIFT) |
+| 0x24 | `virtcount` | `sub_6C7050` | 2,442 | Virtual warp counter |
+| 0x25 | `tcatomsws` | `sub_6C79E0` | 249 | TC atomic SWS (TCATOM.SWS) |
+| 0x26 | `tcldsws` | `sub_6C7AE0` | 613 | TC load SWS (TCLD.SWS) |
+| 0x27 | `tcstsws` | `sub_6C7D50` | 936 | TC store SWS (TCST.SWS) |
+| 0x28 | `memclear` | *inline* | -- | Emits Ori opcode 345 directly |
+| 0x29 | `acqshminit` | `sub_6D7AF0` | 4,133 | Shared-mem init barrier |
+| 0x2A | `ldtm` | `sub_6D69B0` | 2,597 | Tensor memory load (LDTM) |
+
+**Three memory-ordering families** (bolded above) are the sync-relevant handlers:
+
+| Case | Function | Family | PTX instructions |
+|---|---|---|---|
+| 9 | `sub_6C0D90` | Atomic/reduction | `atom.add`, `atom.cas`, `atom.exch`, `red.add` |
+| 0xA | `sub_6C1CF0` | Mbarrier | `mbarrier.arrive`, `mbarrier.test_wait`, `mbarrier.try_wait` |
+| 0x16 | `sub_6C4DA0` | Fence / load-store | `fence.sc`, `ld.acquire`, `st.release` with scope/domain |
+
+**Structural patterns** visible in the dispatch:
+
+- **Inline opcode emission** (cases 7, 8, 0x28): No handler function -- `sub_934630` emits a single Ori opcode (298, 313, or 345) with `flags=1` and no operands. These are parameterless control instructions.
+- **Packed-float triple** (cases 0x19--0x1B): Identical inline subop-parsing loop reads the subop array for rounding mode (subops 1--4 map to mode 0--3) and flush-to-zero flag (subop 0 sets `ftz=1`), then delegates to `sub_6D2AC0` with the operation's Ori opcode (270/279/282) and the parsed mode/ftz pair. `sub_6D2AC0` (1,633 bytes) is the shared packed-float emitter.
+- **VIMNMX sextet** (cases 0x10--0x15): Six handlers of nearly identical size (591--607 bytes) that share parameter validation logic for vector integer min/max/add variants.
+- **SWS trio** (cases 0x25--0x27): Software-scoreboard operations for Blackwell tensor core pipelines, three small handlers (249--936 bytes).
 
 ### Subop Array Protocol
 
@@ -880,7 +980,7 @@ Two diagnostic functions handle these errors: `sub_895530` emits directly when s
 | `sub_AA3BB0` | 2,726 | MBARRIER encoding | -- | HIGH |
 | `sub_AA33C0` | -- | MBARRIER mnemonic builder | -- | MEDIUM |
 | `sub_775010` | 18 | Barrier liveness computation entry | -- | MEDIUM |
-| `sub_6D8B20` | 432 lines | OCG intrinsic body dispatcher (28-case switch) | -- | HIGH |
+| `sub_6D8B20` | 432 lines | OCG intrinsic body dispatcher (43-case switch) | -- | HIGH |
 | `sub_6C0D90` | 812 lines | Atomic/reduction intrinsic lowering (scope+order) | -- | HIGH |
 | `sub_6C1CF0` | 633 lines | Mbarrier intrinsic lowering (arrive/wait/test) | -- | HIGH |
 | `sub_6C4DA0` | 647 lines | Fence/load-store intrinsic lowering (scope+domain) | -- | HIGH |
