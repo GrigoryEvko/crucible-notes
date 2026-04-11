@@ -439,13 +439,38 @@ sub_90A340(ctx):
     cleanup_lists()
 ```
 
-The pass iterates the flat instruction list (not per-block), checking every instruction with opcode 130 (`HSET2` in the ROT13 name table; used as the internal Ori IR opcode for barrier/synchronization instructions). For each barrier, it examines the operand to determine:
+### Barrier merge -- inner loop of `sub_90A340`
 
-1. Whether the barrier result register is consumed by any subsequent instruction
-2. Whether the barrier can be merged with an adjacent barrier of the same scope
-3. Whether the barrier guards a memory region that is provably thread-local
+The merge subroutine (inlined at offset +348 in `sub_90A340`) fires only on the `has_uniform_regs` path. For each opcode-130 instruction whose barrier register has `reg->file == 6`, `use_count > 1`, the linked-list at `reg+112` is not null, and `reg+48 bit 5` is clear, it walks every pair `(use_A, use_B)` from the use-chain:
 
-The `sub_1245740` call performs the actual redundancy proof by checking dominance relationships between barrier pairs.
+1. **Identity / same-block filter** -- skip if `use_A == use_B`, or if `use_A->block_id == use_B->block_id`.
+2. **Opcode gate** -- `use_A` must also be opcode 130 (barrier).
+3. **Dominance check** -- `use_B`'s block must dominate `use_A`'s block, verified via the dominator bitmap at `block+176`:  `(1 << block_A->field_144) & block_B->bitmap[block_A->field_144 >> 5]`.
+4. **Operand-exact match** -- both instructions must agree on opcode, modifier word, and every `(operand_hi, operand_lo)` pair from index `num_operands-1` down to 0.
+5. **Interference check** -- no third use in the same register's use-chain has a program-point between `use_A` and `use_B` (checked via `block->field_144` ordering).
+6. **Final dominance proof** -- `sub_1245740(ctx, use_B, use_A, 1)` confirms the domination is safe across convergence boundaries.
+
+On success the dominated instruction `use_B` is deleted via `sub_9253C0` (unlink from IR list, update successor chain). If `use_B`'s last source operand is a barrier-register reference (`(operand >> 28) & 7 == 1`), that register's use-count is decremented. The barrier register's own use-count (`reg+24`) is decremented; when it reaches 1, `reg+56` is updated to point to the sole remaining use.
+
+### Redundant sync elimination -- `sub_8F31F0`
+
+`sub_8F31F0(ctx, instr, mode)` (560 bytes, 8 callees) targets opcode-130 instructions whose barrier register has `use_count > 1` and bit 5 of `reg+48` clear. It operates only when `sub_91E030(instr) != 1` (instruction has more than one predecessor/successor in the linked list) and `ctx+1370 bit 2` is set.
+
+When `mode == 1`, a preliminary check `sub_7DEB90(instr+92, ctx)` verifies the source operand. Then the use-chain at `reg+112` is walked:
+
+1. **Operand comparison loop** -- for every use `U` in the chain, `U->num_operands` must equal the original instruction's, opcodes must match, modifier words must match, and every operand pair is compared backwards from index `num_operands-1` to 0. The first mismatch aborts.
+2. **Dominator walk** -- after the use-chain is exhausted, `sub_BDDCB0` iterates bits in the dominator bitmap (`block+176`), scanning from `block->field_144 + 1` downward. For each set bit, `sub_76ABE0` confirms the dominator block dominates the current use's block. On success, the walk advances to the next use in the chain, repeating the dominator check.
+3. **Deletion** -- uses that share the same block as the dominator's first successor (`**(block+0) + 24 == block_id`) are retained; all others are deleted via `sub_9253C0`. After filtering, `reg->use_count` is updated to the survivor count. If zero survivors remain, the pass calls `sub_7E5350` to insert a replacement instruction, then `sub_932720` to remove the original, and clears bit 25 of `reg+48`.
+
+### Sync-pair CSE -- `sub_902F30` / `sub_9034A0`
+
+The second optimization phase (guarded by `v57`, the combined `need_expand | has_uniform_regs` flag) performs hash-based common subexpression elimination on `DEPBAR`/`BAR.SYNC` instruction pairs.
+
+`sub_902F30` (530 bytes) walks each basic block. For opcodes 137 (DEPBAR variants) with modifier in `{7, 13, 14}`, it computes a signature via `sub_8FB680`: the signature hashes each use's `(block_id, operand_index)` with a multiplicative hash `h = (1025 * (val + h)) ^ ((1025 * (val + h)) >> 6)`, and validates that all uses are single-def opcode-130 instructions with no flags in `operand_word & 0x603FFFF`. The 8-byte signature is inserted into an FNV-1a-indexed hash table (init seed `0x811C9DC5`, multiplier `16777619`).
+
+When two DEPBAR instructions produce the same signature, `sub_8FB8D0` confirms structural equivalence by walking both use-chains in parallel: block IDs, source operand indices, and the polarity bit (`operand[24] & 0x4000000`) must all match. On confirmed match, `sub_8FBA60` replaces the pair: it allocates two fresh barrier registers (register file 6), emits a new opcode-130 for each original use in the chain, rewrites both the original and the duplicate DEPBAR to reference the new registers, and sets polarity bits (`0x4000000` / `0x2000000`) to distinguish the arrival direction.
+
+`sub_9034A0` (200 bytes) drives the block-walk: starting from the entry block's first successor, it follows the RPO chain via `block->successor[1] -> block_id`, calling `sub_902F30` per block. When `block->field_148 == block->field_144` (single-entry single-exit region), the per-block hash table is flushed before processing.
 
 ---
 
