@@ -833,13 +833,62 @@ secondary_slope = backward_penalty / range
 
 This normalization ensures the scheduling heuristic scales consistently regardless of the target architecture's register file size.
 
+#### Priority Score Formula
+
+Both the forward and backward passes evaluate candidate instructions using the same weighted quadratic score. Given a candidate whose scheduling would result in register pressure `P` (an integer from `popcount` of the live-register bitvector):
+
+```
+score(P) = P * (pressure_slope * (P - min_regs) + pressure_weight)
+```
+
+where:
+- `P` = live register count after tentatively scheduling the candidate (int, converted to double)
+- `min_regs` = `GetMinRegs()` from the target profile (vtable+720), stored as `(double)min_regs`
+- `pressure_weight` = Pair 1 first weight (default **1.8**)
+- `pressure_slope` = `ilp_weight / range` (default **-0.8** / range)
+- `range` = `(double)max_regs - (double)min_regs` where `max_regs` comes from vtable+768
+
+Expanding the inner expression:
+
+```
+score(P) = P * ( ilp_weight * (P - min_regs) / range + pressure_weight )
+```
+
+With defaults (1.8 / -0.8, range = max_regs - min_regs):
+
+```
+score(P) = P * ( -0.8 * (P - min_regs) / range + 1.8 )
+```
+
+The backward scheduler uses the secondary pair identically for a second acceptance gate:
+
+```
+score2(P) = floor( P * (secondary_slope * (P - min_regs) + forward_weight) )
+         = floor( P * (backward_penalty / range * (P - min_regs) + forward_weight) )
+```
+
+With defaults (3.2 / -2.2):
+
+```
+score2(P) = floor( P * ( -2.2 * (P - min_regs) / range + 3.2 ) )
+```
+
+Both scores serve as **acceptance thresholds** during list scheduling. After computing `score(P)`, the scheduler evaluates `depth_cost = popcount_sum(live_bv_tree)` via `sub_1229BD0` (BST walk accumulating `__popcnt` across bitvector nodes). A candidate is accepted if:
+
+```
+Pair 1:  P + depth_cost                 > score(P)      // forward pass (sub_122AD60)
+Pair 2:  P + depth_cost + accum_count   > score2(P)     // backward pass (sub_122F650)
+```
+
+The guard condition `P > min_regs` short-circuits evaluation: when pressure is at or below the minimum, the instruction is accepted unconditionally. This makes the score a pressure *penalty* that only activates when the register file is under contention. Binary evidence: the score computation appears at `0x123320f` (Pair 1) and `0x1233a4b` (Pair 2) in `sub_122F650`, as the sequence `cvtsi2sd / subsd [r13+off] / mulsd [r13+off] / addsd [r13+off] / mulsd`, followed by `call _floor` for Pair 2 only.
+
 #### Forward Pass (sub_122AD60)
 
-The forward scheduler implements list scheduling with a BST priority queue, iterating basic blocks front-to-back. It uses FNV-1a hash tables (seed 0x811C9DC5, multiplier 16777619) for tracking scheduled instruction mappings. Instruction properties are queried via `sub_7DF3A0`. The function manages a ref-counted working set with proper cleanup at function exit. At 4,118 decompiled lines, it is the largest function in the 0x1225000 scheduling range.
+The forward scheduler implements list scheduling with a BST priority queue, iterating basic blocks front-to-back. It uses FNV-1a hash tables (seed 0x811C9DC5, multiplier 16777619) for tracking scheduled instruction mappings. Instruction properties are queried via `sub_7DF3A0`. The function manages a ref-counted working set with proper cleanup at function exit. The Pair 1 score is evaluated inline via the stored `pressure_weight`, `min_regs`, and `pressure_slope` fields in the scheduling context at offsets +112, +104, and +120 respectively. At 4,118 decompiled lines, it is the largest function in the 0x1225000 scheduling range.
 
 #### Backward Pass (sub_122F650)
 
-The backward scheduler receives the floating-point weights as direct parameters and processes basic blocks in reverse order. It calls into the barrier/scoreboard system (`sub_BDC080`, `sub_BDBA60`, `sub_BDC0A0`) and performs register liveness analysis via `sub_A0EDE0`. The function uses BST operations with left/right/parent pointer traversal and explicit rebalancing, then performs iterative tree cleanup at exit.
+The backward scheduler receives `range` and `secondary_slope` as direct double parameters (a2, a3) and processes basic blocks in reverse order. It evaluates both Pair 1 and Pair 2 scores, using the scheduling context fields at offsets +136/+144/+152 for the secondary pair. It calls into the barrier/scoreboard system (`sub_BDC080`, `sub_BDBA60`, `sub_BDC0A0`) and performs register liveness analysis via `sub_A0EDE0`. The function uses BST operations with left/right/parent pointer traversal and explicit rebalancing, then performs iterative tree cleanup at exit.
 
 ### Backend C -- RBT List Scheduler (0x18CD000)
 
@@ -873,6 +922,56 @@ Each RBT node is 40 bytes allocated from a pool, with `node+24` pointing to the 
 3. **Instruction ID** at `*(scheduling_entry + 16) + 12` (ascending -- deterministic tiebreaker)
 
 This three-key comparison provides O(log N) insertion and extraction, a significant improvement for basic blocks with hundreds of instructions where Backend A's O(N) sorted insertion becomes a bottleneck.
+
+#### RBT Score Computation (sub_18FDAF0)
+
+`sub_18FDAF0` produces the double at `scheduling_entry+368` (key 2 in the RBT comparison). It accumulates three components: per-operand pressure cost, an excess live-range penalty, and dependency-depth weighting.
+
+```
+function ComputeRBTScore(this):                         // sub_18FDAF0
+    ctx        = *(this + 0)
+    latency_wt = *(double*)(ctx + 472)                  // per-context latency weight
+    // -- Phase 1: pressure cost (stored at this+376) --
+    pressure_cost = 0.0
+    for each node in linked_list(this + 32):            // operand entries
+        operand  = *(node + 16)
+        base     = PressureCost(ctx, operand, latency_wt)  // sub_18FD7A0
+        scale    = base
+        last_dep = FindLastRegDep(operand)              // walk operand+84, skip pred/imm
+        if last_dep is negative-encoded register ref:
+            scale = base * *(double*)(ctx + 448)        // damping weight
+        vtable = *(*(ctx + 8) + 1784)
+        if (**vtable)(vtable, operand + 84, last_dep):  // arch-specific eligibility
+            scale = LatencyScale(ctx, sched_class_entry) * scale  // sub_18F5460
+        pressure_cost += scale
+    // -- Phase 2: excess live-range penalty --
+    mode = *(int*)(this + 200)
+    if mode != 2:
+        live_count = 0
+        for each node in linked_list(this + 160):
+            e = *(node + 16)
+            if *(int*)(e + 20) > 1 and (*(byte*)(e + 48) & 0x40) == 0:
+                live_count++
+        excess = live_count - *(int*)(this + 264) + 2
+        if excess > 0 and excess / (mode - 2) > *(double*)(ctx + 464):
+            pressure_cost *= *(double*)(ctx + 456)      // penalty multiplier
+    // -- Phase 3: dependency-depth weighting --
+    dep_score = 0.0;  max_conflict_lat = 1.0
+    if *(int*)(this + 288) != 0:                        // has dependency hash map
+        for each dep_entry in HashMapIter(this + 280):  // sub_18F4D30
+            lat = LatencyScale(ctx, class_of(dep_entry))
+            // Binary search sorted 12-byte conflict array at *(this+8)+224
+            // (uses 0xAAAAAAAAAAAAAAAB multiply for div-by-3 index computation)
+            if BinarySearchConflict(array, *(int*)(dep_entry + 52)):
+                max_conflict_lat = fmax(max_conflict_lat, lat)
+            dep_score += lat * pressure_cost
+    if *(byte*)(this + 364):                            // long-latency flag
+        dep_score += max_conflict_lat * 10.0
+    *(double*)(this + 368) = dep_score                  // final RBT score (key 2)
+    return dep_score
+```
+
+`PressureCost` (`sub_18FD7A0`) counts live non-predicate register operands and returns `count * *(double*)(ctx+480)`, plus opcode-specific bonuses: 88/89 (TEX/TLD) +5.0, 44/45 (LD/ST) +0.5/+1.0, 86 +5.0, 195 (LDG) +6.0, 288 (ATOMS) +0.4*latency_weight, 130/137 +1.0 if no cross-dep. `LatencyScale` (`sub_18F5460`) queries the vtable at `ctx+8->+1784` for a normalized latency ratio of the scheduling class.
 
 #### Core Scheduling Loop (sub_1902B70)
 
