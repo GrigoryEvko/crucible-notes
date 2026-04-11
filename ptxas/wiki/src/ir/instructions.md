@@ -26,16 +26,11 @@ Every Ori instruction is a 296-byte C++ object allocated from the Code Object's 
 | +64 | 8 | `ptr` | `operand_constraints` | Per-operand constraint/liveness table pointer; dereferenced as `*(ptr + 8*operand_idx)` in `sub_7E9E80` to look up per-operand BB-scoped metadata |
 | +72 | 4 | `u32` | `opcode` | Full opcode word (lower 12 bits = base opcode, bits 12-13 = modifier) |
 | +76 | 4 | `u32` | `opcode_aux` | Auxiliary opcode data (sub-operation, comparison predicate) |
-| +80 | 4 | `u32` | `operand_count` | Total number of operands (destinations + sources) |
-| +84 | var | `u32[N*2]` | `operands[]` | Packed operand array (8 bytes per operand slot) |
-| +88 | 4 | `u32` | `operands[0].extra` | High word of first operand slot |
-| +100 | 1 | `u8` | `type_flags` | Data type / modifier flags (bits 0-2 = data type code) |
-| +104 | 4 | `u32` | `pred_guard` | Predicate guard operand (packed operand word: bits 28-30 = type, bits 0-23 = register index, bit 31 = negation flag); 0 = unconditional. Mask `& 0xFE000000` tests for `@!P` style guards |
-| +112 | 8 | `ptr` | `use_chain` | Use chain linked list head (for CSE) |
-| +120 | 8 | `ptr` | `cse_hash_next` | CSE hash-chain next pointer; threads this instruction into the Code Object's hash bucket list for common-subexpression elimination (`sub_7E5FA0`/`sub_7E6050` walk/clear this chain) |
-| +128 | 8 | `ptr` | `sched_list_prev` | Scheduling/liveness doubly-linked list prev pointer; used by `sub_7EB4B0` to unlink from per-register-class worklists |
-| +136 | 8 | `ptr` | `sched_list_next` | Scheduling/liveness doubly-linked list next pointer (paired with +128) |
-| +144 | 16 | `u128` | `sched_state` | Scheduling/liveness state; zeroed by allocator as part of OWORD write at +136 and +152 |
+| +80 | 4 | `u32` | `operand_count` | Total number of operands (destinations + sources); max inline N = 6 |
+| +84 | 48 | `u64[6]` | `operands[0..5]` | Inline operand array -- 6 slots of 8 bytes each (+84 through +131). Accessed uniformly as `*(uint32_t*)(instr + 8*i + 84)` for the low word and `*(uint32_t*)(instr + 8*i + 88)` for the high word. See [Operand Array Layout](#operand-array-layout) below |
+| +132 | 4 | `u32` | `reserved_132` | Padding between operand array end and +136 |
+| +136 | 16 | `u128` | `reserved_136` | Zeroed as OWORD by constructor; purpose TBD |
+| +152 | 8 | `u64` | `reserved_152` | Zeroed as part of second OWORD by constructor (covers +152..+167) |
 | +160 | 8 | `ptr` | `enc_buf` | Encoding buffer pointer (populated during code generation) |
 | +168 | 4 | `u32` | `ext_operand_count` | Extended operand count; `sub_7D62D0`/`sub_7D6320` set this to `2*N` when populating an extended operand array at +172..+184+. In scheduling context, repurposed as dependency list size |
 | +172 | 12 | `u32[]` | `ext_operands` | Extended operand slots (overflow from the inline +84 array); populated pair-wise by `sub_7D62D0` |
@@ -282,6 +277,38 @@ bool has_pred_guard(instr) {
     return ((last_op & 0xF) - 2) < 7;  // type bits in low nibble
 }
 ```
+
+### Operand Array Layout
+
+The inline operand array occupies 48 bytes at offsets +84 through +131, providing exactly **6 slots** of 8 bytes each. There is no heap-allocated overflow for the primary array: every access across 50+ functions uses the direct arithmetic formula `instr + 8 * i + 84` without indirection or bounds-checked spill.
+
+**Inline slot map** (constructor `sub_7DD010` zeroes all slots to 0):
+
+| Slot | Offset Range | Low Word (`+0`) | High Word (`+4`) |
+|------|-------------|-----------------|-------------------|
+| 0 | +84..+91 | `operands[0].lo` | `operands[0].hi` |
+| 1 | +92..+99 | `operands[1].lo` | `operands[1].hi` |
+| 2 | +100..+107 | `operands[2].lo` | `operands[2].hi` |
+| 3 | +108..+115 | `operands[3].lo` | `operands[3].hi` |
+| 4 | +116..+123 | `operands[4].lo` | `operands[4].hi` |
+| 5 | +124..+131 | `operands[5].lo` | `operands[5].hi` |
+
+Typical operand counts: most ALU instructions use 2-3 (one destination, one or two sources, optionally a predicate guard). Instructions with bit 11 set in the opcode word add 2 extra destinations. The maximum observed inline count is 5-6 (e.g., `STS` with `operand_count - adj == 5` plus a predicate guard; encoding functions setting `operand_count = 5` at `sub_EBF7D0`).
+
+**Extended operand array at +168/+172.** For instructions that require additional operands beyond the inline 6, a secondary overflow region exists at +168 (count) and +172 (data). The store functions `sub_7D62D0` / `sub_7D6320` split each 8-byte operand into two 4-byte halves and write them pair-wise starting at +172:
+
+```c
+// sub_7D62D0: store N extended operands
+void store_ext_operands(instr, int N, uint64_t operands[]) {
+    for (int i = 0; i < N; i++) {
+        *(uint32_t*)(instr + 172 + 4*(2*i))     = (uint32_t)operands[i];        // lo
+        *(uint32_t*)(instr + 172 + 4*(2*i) + 4) = (uint32_t)(operands[i] >> 32); // hi
+    }
+    *(uint32_t*)(instr + 168) = 2 * N;  // count in DWORDs, not pairs
+}
+```
+
+The extended array is used by PTX lowering paths (called via thunks `sub_A30DF0`/`sub_A30E50` from the encoding-class switch in `sub_620320`). The count parameter `N` is typically small (observed `<= 4` from the guard `if ((int)a3 <= 4)` in the caller). The extended slots overlap with the `enc_mode` field at +184, so this region is only valid before the encoding phase repurposes it.
 
 ## Instruction Flags and Modifiers
 
