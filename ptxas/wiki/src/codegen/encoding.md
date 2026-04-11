@@ -426,13 +426,59 @@ Six switch-dispatch megafunctions in the 0x10C0B20--0x10E32E0 range form the cen
 | `sub_10CAD70` | 68 KB | 1,864 | 74 | **getOperandFieldOffset** -- bit-offset of a per-operand field |
 | `sub_10C7690` | 65 KB | 2,313 | 288 | **setOperandField** -- write a per-operand field value |
 
-`sub_10C0B20` (setField) is one of the most-called functions in the entire ptxas binary at 3,109 call sites. It writes field values using `sub_AF80xx` writer stubs and contains jump-out targets (`0xAF43F0`, `0xAF44C0`, `0xAF4550`) for bit-manipulation operations that cross word boundaries.
+### Routing structure
 
-`sub_10D5E60` (getFieldOffset) returns `extractor(a1+48, bit_position) + base_offset` for each field, where `base_offset` is a field-specific constant (observed values: +125, +790, +1278, etc.). Returns `0xFFFFFFFF` when the queried field does not exist in the given instruction category.
+All four instruction-level dispatchers (setField, getFieldOffset, hasField, setFieldDefault) share identical structure: a primary `switch(*(WORD*)(a1+12))` on the opcode category (0x0--0x171, 370 slots), where each live case contains a sub-switch on field ID `a2`. Of these 370 slots, 248 are live and 122 are dead (returning `0xFFFFFFFF`, `false`, or silently returning).
 
-`sub_10CAD70` (getOperandFieldOffset) operates on per-operand packed records at `*(QWORD*)(a1+32) + 32*operand_index + 24`. The field IDs it handles include: 1 (register class), 2 (operand type), 7, 8, 12 (operand size), 13 (address mode), 14, 15, 19, 24, 25, 26, 27, 29.
+The two operand-level dispatchers (getOperandFieldOffset, setOperandField) use the same primary switch but extend to category 0x174 (373 slots, 278 with handlers). They add an `a2` (operand index) parameter and access per-operand records at `*(QWORD*)(a1+32) + 32*operand_index + 24`, sub-switching on field ID `a3` over the range 1--30.
 
-Dead cases (opcode categories without the queried field) share a common pattern: cases 3, 0x11, 0x24, 0x26, 0x2D, 0x75, 0x78, 0x84, 0x8C-0x9F, 0xA1-0xBA, 0xBE-0x16F return `0xFFFFFFFF` or false.
+### setField shared write paths
+
+`sub_10C0B20` (setField, 3,109 call sites) delegates individual field writes to `sub_AF80xx` writer stubs but routes 347 cases through four shared tail labels that perform boundary-crossing bit-manipulation directly on the 192-bit word at `a1+48`:
+
+| Label | Goto count | Field width | JUMPOUT target | Boundary logic |
+|---|---|---|---|---|
+| LABEL_3941 | 36 | 1-bit | (inline) | Single-QWORD OR with mask `1 << (bit & 0x3F)` |
+| LABEL_3923 | 36 | 4-bit | `0xAF44A0` | Spans at `(bit+3)>>6`; partial writes to adjacent QWORDs |
+| LABEL_3929 | 110 | 3-bit | `0xAF44A0` | Spans at `(bit+2)>>6`; same combiner as 4-bit |
+| LABEL_3935 | 165 | 2-bit | `0xAF4550` | Spans at `(bit+1)>>6`; partial write to next word |
+
+Each label receives three pre-loaded values: `v_offset` (value minus base_offset), `v_ptr` (`a1+48`), and `v_bit` (bit position). The JUMPOUT targets are hit when source and destination QWORD indices match (no boundary crossing), which is the fast path handled as a single-word mask-OR.
+
+### getFieldOffset and hasField
+
+`sub_10D5E60` (getFieldOffset, 961 callers) returns `extractor(a1+48, bit_position) + base_offset` for each field. Observed base_offset constants: +92, +125, +131, +788, +790, +1278, +1488, +1796, +1942, +2353, +2416, +2476. Returns `0xFFFFFFFF` when the queried field does not exist.
+
+`sub_10E32E0` (hasField, 72 callers) is structurally identical but returns `extractor(...) != 0` as a boolean. The dead-case list is exactly the same 122 categories in both functions.
+
+### setFieldDefault
+
+`sub_10CCD80` (setFieldDefault, 4 callers) mirrors setField but replaces the caller-supplied `a3` with hardcoded defaults. Example: category 0 / field 242 calls `sub_AF8010(a1, 1278)` where setField calls `sub_AF8010(a1, a3)`. The default values correspond to `base_offset` constants from getFieldOffset -- the default encoding is the base offset itself (the zero/neutral position).
+
+### Category richness
+
+Field count per category varies dramatically (median: 5, max: 47):
+
+| Category | Fields | Likely instruction class |
+|---|---|---|
+| 0x12 | 47 | Complex ALU (IMAD variants) |
+| 0x63 | 45 | Memory (LD/ST with addressing modes) |
+| 0x23 | 43 | Conversion (I2F/F2I with rounding) |
+| 0x5A | 39 | Texture (TEX with sampler modes) |
+| 0x68 | 35 | Surface (SULD/SUST) |
+| 0x59 | 34 | Texture (TLD4 variants) |
+
+Categories 0x0--0xA are minimal (1--4 fields), handling pseudo-ops or simple control flow.
+
+### Dead-case bitmask (122 categories)
+
+The 122 dead categories are identical across getFieldOffset, hasField, and setFieldDefault. setField uses `default: return` instead of an explicit dead-case block. The dead cases cluster in two dense zones:
+
+- **Mid-range 0x8C--0xBA:** 28 of 47 slots dead (60%) -- reserved or arch-specific categories not active in the analyzed binary.
+- **High range 0x12E--0x16F:** 44 of 66 slots dead (67%) -- Blackwell/sm_100+ categories not yet populated.
+- **Sparse isolates below 0x80:** only 7 dead (0x3, 0x11, 0x24, 0x26, 0x2D, 0x75, 0x78).
+
+The operand-level dispatchers have no explicit dead-case block; unknown categories fall through to `default: return 0xFFFFFFFF`.
 
 ## Bitfield Accessor Library
 
@@ -489,6 +535,44 @@ The most commonly used modifier-encoding functions:
 | `sub_10B2F00` | 151 | 3 | 3-bit modifier field |
 | `sub_10B2F20` | 101 | 4 | 4-bit modifier field |
 
+### Validate-and-Map Step
+
+Every modifier-encoding function follows one of two structural variants. Both take `(ctx, ir_enum_value)` and return a packed encoding integer, or -1 (0xFFFFFFFF) on invalid input.
+
+**Variant A -- inline boolean** (used by `sub_10B6180`, `sub_10B6160`, `sub_10B6140`, `sub_10B2D90`, `sub_10B44E0`; covers ~12,000 call sites). For 2-value modifiers where the lookup table would contain just `{0, 1}`:
+
+```c
+// Reconstructed from sub_10B6180 (base=52), sub_10B6160 (base=49),
+// sub_10B6140 (base=46), sub_10B2D90 (base=317), sub_10B44E0 (base=1852).
+int modifier_encode_bool(int64_t ctx, int ir_val) {
+    if (ir_val == BASE)       return 0;
+    if (ir_val == BASE + 1)   return 1;
+    return -1;  // invalid -- caller treats as encoding error
+}
+// Note: the decompiler emits "2 * (ir_val == BASE+1) - 1" which equals
+// 1 when true, -1 (0xFFFFFFFF unsigned) when false -- same semantics.
+```
+
+**Variant B -- table lookup** (used by `sub_10B4650`, `sub_10B47F0`, `sub_10B2F00`, `sub_10B2F20`, `sub_10B5580`, `sub_10B6220`; covers ~1,800 call sites). Indexes into one of 40 lookup arrays in the `modifier_value_tables` region (0x22FCD20--0x22FD580, 2144 bytes total):
+
+```c
+// Reconstructed from sub_10B4650 (base=1899, table=identity_5 @ 0x22FD480, N=5),
+// sub_10B47F0 (base=1957, table=split_block @ 0x22FCFF0, N=5),
+// sub_10B6220 (base=71, table=rounding_mode_023 @ 0x22FCD20, N=3).
+int modifier_encode_table(int64_t ctx, int ir_val,
+                          int BASE, const int32_t *TABLE, int N) {
+    unsigned idx = (unsigned)(ir_val - BASE);
+    if (idx >= N)
+        return -1;               // out of range
+    int encoded = TABLE[idx];
+    if (encoded == -1)
+        return -1;               // gap entry -- reserved/invalid enum slot
+    return encoded;
+}
+```
+
+The 40 tables divide into three categories: 11 identity maps (output equals index -- used for pass-through encodings like `identity_5`, `tristate`, `quaternary`), 4 byte-width tables (for wide enum spaces up to 256 entries, e.g. `identity_byte_256`), and 25 non-trivial remapping tables (e.g. `rounding_mode_023` maps indices 0,1,2 to encoding bits 0,2,3 -- skipping the unused encoding value 1). Tables with `has_invalid_gaps: true` (3 of 40) contain -1 sentinel entries at positions corresponding to IR enum values that were removed or reserved; the lookup returns -1 for those positions, which the caller propagates as an encoding error.
+
 Modifier fields per instruction range from 0 (simple control instructions) to 18 (the most complex encoder, `sub_D89C90` for opcode class 0x5A). The average is approximately 6 modifier fields per encoder. Bit positions in `a1+544` concentrate in bits 48-63; bit positions in `a1+552` concentrate in bits 0-11.
 
 ## Physical Register Encoding
@@ -542,7 +626,22 @@ Each class occupies a 32-number stride in the hardware register namespace. Withi
 
 Hardware numbers 28--31 (and the corresponding padding in each class) are unused, providing alignment to 32-register boundaries. The maximum hardware register number produced by the table is 187 (class 5, index 27). The 8-bit encoding field can represent 0--255, so values 188--255 are reserved.
 
-The index-16 gap in every class is consistent across all 6 classes. This likely corresponds to a hardware-reserved slot or a register numbering convention where physical register `class*32+16` has special semantics (potentially a sentinel or a register-file-boundary marker).
+#### Why Index 16 Is Excluded
+
+The index-16 gap is not speculation -- it is an explicit, deliberate skip in the decompiled lookup table. In `sub_1B6B250`, the if-chain tests `a2 == 15` (line 192, returning `class*32+15`) and then jumps directly to `a2 == 17` (line 204, returning `class*32+17`). No conditional for `a2 == 16` exists anywhere in the 495-line function body. The gap is identically present in the extended encoder `sub_1B6EA20` (7194 bytes), which adds modifier support but covers the same `(class, index)` domain. The same applies to all five additional encoding variants (`sub_1B6D590`, `sub_1B70640`, `sub_1B71AD0`, `sub_1B748F0`, `sub_1B76100`).
+
+The architectural reason is a half-bank boundary in the register file hardware. Each 32-entry class stride divides into two 16-entry halves:
+
+```
+Lower half:  indices  0 -- 15   (hw numbers  N*32+0  through  N*32+15)
+Upper half:  indices 16 -- 31   (hw numbers  N*32+16 through  N*32+31)
+```
+
+Index 0 is consumed by the no-register sentinel (the guard wrapper `sub_1B73060` returns 0 when `reg_class | sub_index == 0`). Index 16 = `0b10000` is the exact position where bit 4 of the hardware register number transitions from 0 to 1, which is the boundary between the two physical register file half-banks. In the split bitfield writer (`sub_1B72F60`), the low 5 bits of the hardware number go to instruction bits [109:105]. For index 16, those 5 bits are `10000` -- exactly the half-bank select bit with all intra-bank address bits zero. The hardware reserves this slot as the half-bank boundary marker.
+
+The parallel with architectural zero registers reinforces this interpretation. In the NVIDIA register file, hardware register 0 is RZ (read-zero, write-discard) for GPRs and PT (always-true) for predicates. Slot 16 is the analogous reserved position at the top of each half-bank -- it is not exposed as a named architectural register but the hardware treats it as a bank-select boundary that cannot hold allocatable state.
+
+Concrete evidence: the 6 excluded hardware numbers are 16, 48, 80, 112, 144, and 176. In binary these are `0b0_10000`, `0b01_10000`, `0b10_10000`, `0b11_10000`, `0b100_10000`, `0b101_10000` -- every one has bits [4:0] = `10000` and bits [7:5] identifying the class. The encoder never produces any of these values, and the guard wrapper ensures that `(0,0)` also returns 0 (the RZ sentinel) rather than entering the table. The combined effect: indices 0 and 16 in each class are reserved, indices 28--31 are unused padding, and the 26 allocatable slots per class are 1--15 and 17--27.
 
 ### Split Bitfield Writer
 
@@ -779,6 +878,37 @@ The Tier 2 modifier groups correspond to GPU architecture generations. The mappi
 
 The progression from `0x202A` to `0x22F1` to `0x23B2` in rodata address space mirrors the SM generation ordering. Group A (Maxwell--Turing) is the most populous, consistent with the longest-supported ISA family. Groups E and F have the fewest functions, consistent with the newest architectures that introduce fewer format changes.
 
+### Cross-SM Dispatch Table Comparison
+
+Five per-SM handler dispatch tables at `0x22E7AD0`--`0x23B99D0` (72,000 bytes each, 24 bytes per entry) map `(format_id << 8) | minor_opcode` dispatch keys to encoder stub handler addresses. The tables share a common core of 492 opcodes while differing in total population, handler multiplicity, and per-opcode encoder routing.
+
+| Property | SM50--7x | SM75 | SM80--8x | SM86--89 | SM100 |
+|---|---|---|---|---|---|
+| Dispatch table VA | `0x22E7AD0` | `0x2348FB0` | `0x238C9B0` | `0x23A8090` | `0x236E160` |
+| Total entries | 1,484 | 1,613 | 1,896 | 1,641 | 1,808 |
+| Unique dispatch opcodes | 512 | 535 | 535 | 535 | 634 |
+| Unique handler functions | 1,472 | 1,606 | 1,888 | 1,634 | 1,797 |
+| Avg entry multiplicity | 2.90 | 3.01 | 3.54 | 3.07 | 2.85 |
+| Max entry multiplicity | 37 | 41 | 55 | 42 | 40 |
+| Handler VA range | `0xC69`--`0xEB2` | `0xC69`--`0x1C0B` | `0xC69`--`0x180B` | `0xC69`--`0x18F0` | `0xC69`--`0x1C07` |
+
+**Opcode set evolution.** SM75, SM80--8x, and SM86--89 all share an identical 535-opcode set: the SM50 baseline plus 41 additions minus 18 removals. SM100 (Blackwell) diverges substantially with 100 new exclusive opcodes spanning 13 format IDs (heaviest in format_id 3 with 16 new opcodes, format_id 5 with 15, and format_id 7 with 13). The 17 SM50-only opcodes cluster in format IDs 17 (7 opcodes), 37 (7 opcodes), 31 (2), and 36 (1) -- all absent from every later generation.
+
+**Handler routing divergence.** Among the 492 common opcodes, only 236 (48%) route to identical handler sets across all five tables. The remaining 256 (52%) have at least one SM generation providing extra encoder stubs, typically architecture-specific variants for the same logical instruction. SM80--8x is the most divergent with 175 opcodes carrying extra handlers (consistent with its highest entry count of 1,896 and max multiplicity of 55). All tables share a common handler base address at `0xC693D0`, with SM-specific encoder stubs extending into disjoint address ranges: SM50 at `0xC69`--`0xEB2`, SM75/80/86 adding stubs in `0x174`--`0x18F`, and SM100 adding a block at `0x144`--`0x150`.
+
+**Format ID presence/absence across generations:**
+
+| Format ID | SM50--7x | SM75+ | SM100 | Notes |
+|---|---|---|---|---|
+| 17 | 23 entries | 0 | 0 | Removed after Maxwell--Volta |
+| 31 | 2 entries | 0 | 0 | Removed after Maxwell--Volta |
+| 36 | 1 entry | 0 | 0 | Removed after Maxwell--Volta |
+| 37 | 13 entries | 2--4 | 0 | Shrinking; gone in Blackwell |
+| 27 | 0 | 0 | 1 entry | Blackwell-only |
+| 32 | 0 | 0 | 1 entry | Blackwell-only |
+
+The largest cross-generation entry count swings occur in format IDs 3 (284 to 379, +33%), 5 (322 to 449 peak at SM80, +39%), and 25 (199 to 295 peak at SM80, +48%), reflecting expanding ALU and load/store encoding variant coverage. SM80--8x consistently peaks across nearly all format IDs, suggesting Ampere carries the broadest per-opcode variant coverage (more encoding paths per logical instruction) despite sharing the same 535-opcode ISA as SM75 and SM86.
+
 ### Format Code Distribution
 
 | Format Code | Instruction Width | Descriptor Count | sub_7B9B80 Header Calls | Notes |
@@ -877,6 +1007,73 @@ The 576 encoder functions in the p1.12 range use 52 distinct operand encoding pa
 Register operand bit offsets are format-dependent:
 - 64-bit format: 0x40, 0x50, 0x60, 0x70
 - 128-bit format: 0x60, 0x70, 0x88, 0x98, 0xA8
+
+### Operand Bit-Offset Selection Algorithm
+
+The encoder selects operand bit offsets based on the instruction format code
+(1=64-bit, 2=128-bit), not by computing them from the format descriptor's
+`slot_sizes` array at runtime. Each of the ~1,086 encoder stubs contains
+hardcoded offset constants passed as the fourth argument to `sub_7BC030`
+(register encoder), `sub_7BC5C0` (immediate encoder), or `sub_7BCF00`
+(predicate encoder).
+
+The bit layout that produces these offsets:
+
+```
+64-bit instruction (format code 1):
+
+  bits[0:31]   fixed header (format code, sched slot, major/minor/format ID)
+  bits[32:63]  modifier zone (flags, immediates -- accessed via a1+544 shifts)
+  -------------------------------------------------------
+  bit 0x40 (64)  = operand slot 0        --|
+  bit 0x50 (80)  = operand slot 1          |  4 slots, 16 bits each
+  bit 0x60 (96)  = operand slot 2          |  stride = 0x10
+  bit 0x70 (112) = operand slot 3        --|
+
+
+128-bit instruction (format code 2):
+
+  bits[0:31]   fixed header (same layout as 64-bit)
+  bits[32:95]  modifier/immediate zone (64 bits)
+  -------------------------------------------------------
+  bit 0x60 (96)  = operand slot 0        --|  2 slots, stride = 0x10
+  bit 0x70 (112) = operand slot 1        --|
+  bits[128:135]  extended modifier zone   -- 8-bit gap (includes bit 0x84)
+  bit 0x88 (136) = operand slot 2        --|
+  bit 0x98 (152) = operand slot 3          |  3 slots, stride = 0x10
+  bit 0xA8 (168) = operand slot 4        --|
+```
+
+Each operand slot is 16 bits wide: 1-bit presence flag, 4-bit register-file
+type (via the 12-entry regfile map in `sub_7BC030`), and 10-bit register
+number. The 128-bit gap between slots 1 and 2 (0x70 to 0x88 = 24 bits)
+reserves bits[128:135] for the extended opcode flag written by
+`sub_7B9B80(a1, 0x84, 3, 0)` in every 128-bit encoder header.
+
+Binary evidence -- representative encoder call sequences:
+
+```c
+// sub_C7B170: 64-bit, 4-register (xmmword_23F1D70, slot_sizes[0]=8)
+sub_7BC030(a1, a2, 0, 0x40u);   // operand 0 -> bit 64
+sub_7BC030(a1, a2, 1, 0x50u);   // operand 1 -> bit 80
+sub_7BC030(a1, a2, 2, 0x60u);   // operand 2 -> bit 96
+sub_7BC030(a1, a2, 3, 0x70u);   // operand 3 -> bit 112
+
+// sub_C86C00: 128-bit, 6-operand mixed (xmmword_23F1DF8, slot_sizes=[10,17])
+sub_7BC5C0(a1, a2, 0, 0x50u);   // immediate  -> bit 80 (modifier zone)
+sub_7BC030(a1, a2, 1, 0x60u);   // register 1 -> bit 96
+sub_7BC030(a1, a2, 2, 0x70u);   // register 2 -> bit 112
+sub_7BC030(a1, a2, 3, 0x88u);   // register 3 -> bit 136 (after gap)
+sub_7BCF00(a1, a2, 4, 0x98u);   // predicate  -> bit 152
+sub_7BC030(a1, a2, 5, 0xA8u);   // register 5 -> bit 168
+```
+
+The `slot_sizes` array in the format descriptor partitions the *modifier zone*
+between operand slots, not the operand positions themselves. The expression
+`8 * (slot_sizes[i] + base_index) + 8` seen in some encoders (e.g.,
+`sub_7B9B80(a1, 8*(*a1_28 + *a1_12)+8, 8, 0)` in `sub_C86C00`) computes
+modifier-field bit positions relative to a slot boundary, where `base_index`
+is `ctx.xmmword[1]` at `a1+12` and `slot_sizes[i]` is at `a1+24+4*i`.
 
 ## Major Opcode Summary (SM100)
 
@@ -981,14 +1178,62 @@ Populates full IR records before low-level packing. Uses `sub_9B3C20(a1, a2, slo
 **Layer 2: Binary encoders (0x10EE900--0x1134160, ~400 functions)**
 Reads operand fields from IR via `sub_10BDxxx` extractors, transforms through `sub_10Bxxx` lookup tables, and packs results into the 128-bit output word at `*(QWORD*)(a1+40)`:
 
-```c
-// Typical pattern (sub_10F91D0):
-int v6 = sub_10BF170(operand_addr);       // extract register class
-int v7 = sub_10B6180(lookup_table, v6);    // translate to encoding value
-*(uint64_t*)(a1 + 40) |= ((uint64_t)v7 << 15);  // pack at bit position 15
+```
+// Generalized Layer 2 encoder pipeline (sub_10F91D0 pattern):
+//
+// State:  a1+32 = lookup_tables_base,  a1+40 = ptr to 128-bit output word
+//         a1+12 = default_reg (sentinel replacement)
+//         a2+32 = operand_array_base,  a2+40 = operand_slot_index
+//
+// Step 1 -- OR the format descriptor mask into the output word:
+output_128[0..15] |= format_descriptor_xmmword   // e.g. xmmword_231C170
+
+// Step 2 -- For each field (register, modifier, flag), repeat:
+//   (a) extract:   raw = sub_10BFxxx(operand_addr)     // field-specific extractor
+//   (b) translate: enc = sub_10Bxxx(tables_base, raw)   // lookup table remapping
+//   (c) pack:      output_word[N] |= (enc << shift) & mask
+//
+// Concrete fields from sub_10F91D0 (4-operand instruction):
+//   word[0] |= (reg_class_enc    << 15)  & 0x8000              // bit  15
+//   word[0] |= (operand[0].type  << 12)  & 0x7000              // bits 12-14
+//   word[0] |= (reg_src0         << 16)  & 0xFF0000            // bits 16-23
+//   word[0] |= (reg_src1         << 24)                        // bits 24-31
+//   word[0] |= (reg_src2         << 32)  & 0xFF_00000000       // bits 32-39
+//   word[0] |= (abs_src2_flag    << 62)  & 0x4000000000000000  // bit  62
+//   word[0] |= (neg_src2_flag    << 63)                        // bit  63
+//   word[1] |= (reg_dst                )                       // bits 64-71
+//   word[1] |= (abs_src0         <<  8)  & 0x100               // bit  72
+//   word[1] |= (flag_src0        <<  9)  & 0x200               // bit  73
+//   word[1] |= (flag_dst         << 10)  & 0x400               // bit  74
+//   word[1] |= (abs_dst          << 11)  & 0x800               // bit  75
+//   word[1] |= (modifier_c       << 13)  & 0x2000              // bit  77
+//   word[1] |= (modifier_b       << 14)                        // bits 78-79
+//   word[1] |= (modifier_a       << 18)  & 0x40000             // bit  82
+//   word[1] |= (neg_src1         << 19)  & 0x80000             // bit  83
+//   word[1] |= (neg_src2_hi      << 20)  & 0x100000            // bit  84
+
+// Step 3 -- Sentinel substitution (applied per register field):
+//   if (reg_id == 1023) reg_id = default_reg;    // 0x3FF = "don't care"
 ```
 
-Includes a register pair encoder (`sub_112CDA0`, 8.9 KB) that maps 40 register pair combinations (R0/R1, R2/R3, ... R78/R79) to packed output values at 0x2000000 intervals.
+Register pair encoder (`sub_112CDA0`): maps even/odd register pairs to a 6-bit index packed at bits [25:30] of `word[0]`. The 40 valid combinations and their encoding:
+
+```
+// pair_index = reg_lo / 2,  where reg_lo in {0,2,4,...,78} and reg_hi = reg_lo+1
+// Validation: both regs present AND reg_hi == reg_lo + 1 (consecutive pair)
+// Encoding:   word[0] |= (pair_index << 25)
+//
+// pair_index  regs       packed value        pair_index  regs       packed value
+//     0       R0 /R1     0x00000000              20      R40/R41    0x28000000
+//     1       R2 /R3     0x02000000              21      R42/R43    0x2A000000
+//     2       R4 /R5     0x04000000              22      R44/R45    0x2C000000
+//     3       R6 /R7     0x06000000              23      R46/R47    0x2E000000
+//     ...     ...        (+0x2000000)             ...     ...        (+0x2000000)
+//    15       R30/R31    0x1E000000              35      R70/R71    0x46000000
+//    16       R32/R33    0x20000000              36      R72/R73    0x48000000
+//    19       R38/R39    0x26000000              39      R78/R79    0x4E000000
+// Fallback: if no pair matches, pair_index = 0 (R0/R1 encoding)
+```
 
 **Layer 3: Template encoder stubs (0xD27000--0xEB2AE0, ~1,086 functions)**
 The lowest-level stubs that directly write the encoding buffer via `sub_7B9B80`. These are the functions described by the encoder template above.
