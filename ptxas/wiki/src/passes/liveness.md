@@ -296,15 +296,50 @@ struct PerBlockSplitRecord {    // 64 bytes, indexed by block ID
 
 For each split: allocates a new VR via `sub_931920`, copies the three bitvector fields (`sub_BDBA60` allocates, `sub_BDC1B0` copies `dst |= src`), validates the register class via `sub_9314F0` (called 11 times total across different split patterns), and updates the interference hash via `sub_BEEC80`.
 
-The inline interference check in the hot path:
+The inline interference check in the hot path (line 2897 of `sub_BEF110`):
 
 ```c
-// Fast single-bit test: is vr_class_id live in the kill set?
+// Fast single-bit approximation: is vr_class_id possibly live in the kill set?
 if ((1 << vr_class_id) & kill_set[vr_class_id >> 5]) != 0)
-    // VRs interfere -- cannot share a physical register
+    // Bit is clear -- VRs definitely do not interfere; skip expensive test
 ```
 
+When this single-bit probe returns zero, the candidate is skipped immediately. When it returns non-zero, Phase 4 calls `sub_BEE7F0` for a full bitvector intersection.
+
 **Phase 4: Interference hash processing** -- Builds a global interference hash table using FNV-1a (`0x811C9DC5` offset basis, `16777619` prime). Walks per-block split records, for each entry scans the kill bitvector (`sub_BDDC00` clears from position, scanning forward) to find concurrently live VRs. Tests interference via `sub_BEE7F0` and emits split instructions via `sub_934630` (opcode 46). The hash table resizes when load factor exceeds 50%.
+
+**Interference hash table layout.** The hash table object (`a2` in `sub_BEEC80`) contains a pointer to a 192-byte bucket array, a bucket count (always a power of two, initially 8), an entry count, and a total-entries counter. The 192-byte array holds 8 buckets of 24 bytes each:
+
+```c
+struct HashBucket {           // 24 bytes, indexed by FNV_hash & (bucket_count - 1)
+    HashNode*  head;          // +0:  first node in collision chain
+    HashNode*  tail;          // +8:  last node (for O(1) append)
+    int32_t    count;         // +16: entries in this bucket
+    int32_t    pad;           // +20
+};
+
+struct HashNode {             // 32 bytes, allocated from pool
+    HashNode*  next;          // +0:  collision chain link
+    int32_t    key;           // +8:  packed VR-pair identifier
+    int32_t    pad;           // +12
+    void*      data;          // +16: pointer to interference data
+    uint32_t   hash;          // +24: cached FNV-1a hash value
+    int32_t    pad2;          // +28
+};
+```
+
+When the hash table grows (`sub_865E40` at load factor > 50%), a new 192-byte array is allocated and all nodes are rehashed by `node.hash & (new_count - 1)`, redistributing into the new bucket's `head`/`tail` chain. The old array is freed through the refcounted allocator.
+
+**Full bitvector intersection (sub\_BEE7F0, 1166 bytes).** Called as `sub_BEE7F0(result, hash_node, kill_bitvec)`. The function receives two bitvectors as sparse iterators and an RB-tree node from the hash table. It constructs two bitvector iterators via `sub_BDBEF0` (begin) and `sub_BDBF80` (end), then walks the RB-tree rooted at `hash_node+8` in order. Each tree node carries a 4-qword (32-byte) bitvector chunk at offset `+0x20` through `+0x3F`, and a bucket index at `+0x18`.
+
+The core intersection loop synchronizes two cursors -- one over the kill bitvector's qword array and one over the tree node's chunk array. For each tree node visited in order:
+
+1. Computes a composite position `(4 * node[+0x18]) | (chunk_offset)` and advances the kill-bitvector cursor (skipping zero qwords) to match.
+2. When positions align, performs a qword AND between the kill-bitvector word and the tree-node chunk word. A non-zero result means interference exists.
+3. On hit: executes `tzcnt` to find the lowest set bit within the intersecting qword, packs the result as `(qword_index << 6) | bit_position` into `result+0`, sets `result+4 = 1`, and returns immediately.
+4. On exhaustion of either iterator: sets `result[0] = 0, result[4] = 0` (no interference).
+
+The bitvector uses a mixed-width layout: when the declared size (`VR+8`) is odd, the last element is stored as a 32-bit dword at `base + 4*(size-1)` instead of a full qword, handled by a special-case branch at each comparison point. Tree traversal follows standard in-order successor logic (right-child-then-leftmost, or walk-up-to-first-right-parent), advancing through all interference entries for the given hash bucket.
 
 **Phase 5: Cleanup** -- Marks phi/copy chains with the `+245` rewrite flag (triggering opcode mutation from 188 to 93 or 95), frees hash tables and per-block records, clears `ctx+1370 bit 2` to signal liveness invalidation.
 
@@ -384,10 +419,54 @@ sub_781F80(ctx, 1);     // rebuild basic blocks
 sub_A10160(ctx, 1);     // recompute liveness
 ```
 
-The allocator uses liveness information for:
-- **Interference computation**: Two virtual registers interfere if their live ranges overlap. The interference graph builder (`sub_926A30`, 155KB decompiled) uses bitvector intersection to detect overlaps.
+The allocator uses liveness information for interference computation, spill cost estimation, and spill placement (see [Fat-Point Allocation Algorithm](../regalloc/algorithm.md) for full detail).
+
+#### Fat-Point Model vs Traditional Interference Graph
+
+A traditional graph-coloring allocator (Chaitin-Briggs) builds an explicit interference graph -- one node per VR, one edge per pair of simultaneously-live VRs -- then simplifies, selects, and spills. The ptxas allocator builds no such graph. Instead, the interference builder `sub_926A30` (4005 lines) converts liveness overlap into **constraint nodes** attached to each VR at `vreg+144`. During allocation, `sub_957160` iterates these constraints to fill two 512-DWORD pressure histograms (primary and secondary), then picks the physical slot with the lowest accumulated weight. The key structural differences:
+
+| | Traditional IG | ptxas Fat-Point |
+|---|---|---|
+| Representation | Adjacency matrix/list (N^2 edges) | Per-VR linked list of 24-byte constraint nodes |
+| Cost model | Binary (interfere / don't) | Weighted (integer cost per constraint) |
+| Pair/alignment | Separate pre-coloring pass | Inline constraint types 5--7, 11--14 |
+| Long-range preference | Coalescing heuristic | Type 15 (range) writes to secondary array as tie-breaker |
+| Relaxation | Spill-and-retry | Per-iteration soft-constraint skip threshold (OCG knob) |
+| Complexity | O(N^2) build + O(N) simplify | O(N * C) per VR, C = constraint count |
+
+The term "fat point" refers to the pressure histogram: each physical register slot is a point in the histogram, and the accumulated weight at that point is the "fat" -- the total interference cost from all constraints that map to that slot.
+
+#### The 15 Constraint Types
+
+Each constraint node stores a type (0--15), a target VR/physical register index, and an integer weight. The type determines which histogram slots receive that weight during the pressure walk:
+
+| Type | Name | Effect on histogram |
+|------|------|---------------------|
+| 0 | Point | `primary[phys_reg_of(target)] += weight` -- hard same-point interference |
+| 1 | Exclude-one | All slots except one get weight -- blocks a single physical register |
+| 2 | Exclude-all-but | All slots except target get weight -- forces VR into one register |
+| 3 | Below-point | Slots below target get weight -- downward-exposed liveness |
+| 4 | (reserved) | Dispatched through vtable\[240\] fallback |
+| 5 | Paired-low | Even-indexed slot only -- low half of 64-bit pair |
+| 6 | Paired-high | Odd-indexed slot only -- high half of pair |
+| 7 | Aligned-pair | Both even and odd slots -- full pair constraint |
+| 8 | Phi-related | Stride-2 accumulation across primary -- soft, from CSSA phis |
+| 9 | (reserved) | Dispatched through vtable\[240\] fallback |
+| 10 | (reserved) | Dispatched through vtable\[240\] fallback |
+| 11 | Paired-even-parity | All slots except offset -- bank-conflict avoidance (even parity) |
+| 12 | Paired-odd-parity | All slots except inverse offset -- bank-conflict avoidance (odd parity) |
+| 13 | Paired-parity-group | Even-only exclusion for bank groups |
+| 14 | Paired-parity-extended | Odd-only exclusion for wider register groups (quads) |
+| 15 | Range | **Secondary** array only -- interval-proportional weight for tie-breaking |
+
+Type 15 is architecturally distinct: it is the only type that writes to the secondary histogram. All others write to primary. This separation means primary captures hard interference while secondary captures long-range preference signals that break ties when multiple slots have equal primary cost.
+
+The builder uses SSE2-vectorized inner loops for types 0, 8, and 15 when the scan width exceeds 4 slots, and FNV-1a hashing (seed `0x811C9DC5`) for pre-allocation candidate lookups.
+
+#### Liveness-Derived Costs
+
 - **Spill cost estimation**: `sub_94E620` computes spill costs weighted by liveness range length and instruction properties.
-- **Spill placement**: `sub_9449B0` (liveness range calculator, 1800 bytes) iterates instructions in reverse block order using bitvector operations to determine optimal spill/reload insertion points.
+- **Spill placement**: `sub_9449B0` (1800 bytes) iterates instructions in reverse block order using bitvector operations to determine optimal spill/reload insertion points.
 
 ### Instruction Scheduler
 
