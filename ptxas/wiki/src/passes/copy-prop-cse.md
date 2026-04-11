@@ -802,21 +802,59 @@ The three infrastructure functions called at the beginning are shared with the G
 4. If domination holds, replaces the current instruction's destination with the matched instruction's destination
 5. Returns true if commoning succeeded, false otherwise
 
-A related commoning pattern was confirmed from `sub_90A340` (1670 bytes, 21 callees), which performs commoning on opcode 130 (`HSET2` in the ROT13 name table; used as an internal marker for MOV-like instructions -- actual SASS MOV is opcode 19) instructions. From the decompilation, the operand comparison loop:
+#### Structural Equivalence Predicate -- `sub_8F4510`
 
-```c
-// Operand-by-operand equivalence check within commoning body
-for (i = operand_count - 1; i >= 0; i--) {
-    if (candidate.operands[2*i + 21] != existing.operands[2*i + 21])
-        break;  // operand value mismatch
-    if (candidate.operands[2*i + 22] != existing.operands[2*i + 22])
-        break;  // operand modifier mismatch
-}
-// If all operands match AND opcodes match AND operand counts match:
-//   verify dominance, then replace
+The pairwise equivalence check invoked by `sub_8F46F0` on each candidate is `sub_8F4510(S, block_existing, I_cand, I_cur)`. Two instructions are structurally equivalent -- written **EQUIV(I1, I2)** where I1 is the existing candidate and I2 is the current instruction -- iff all seven conditions hold simultaneously:
+
+```
+EQUIV(I1, I2)  :=
+    C1  ∧  C2  ∧  C3  ∧  C4  ∧  C5  ∧  C6  ∧  C7
+
+C1  (different block):    I1.bb_index  !=  I2.bb_index
+
+C2  (dominance):          dominates(block(I1), block(I2))
+        -- sub_76ABE0: fast path  (1 << dom_ord) & dom_set[dom_ord >> 5]
+        -- if the fast-path flag S.byte[1370] bit 6 is clear, falls
+           through to sub_76AAE0 (iterative dominator walk)
+
+C3  (no scheduling dep):  !sched_barrier(S, I2, distance(S, I1, block(I1)))
+        -- sub_74F5E0 with args (S, I2, sub_8F44A0(S, existing_blk, cand_blk), 0, 0)
+        -- when block(I1) == block(I2), this check is skipped (distance = 0)
+
+C4  (predicate compat):   pred_compatible(I1, I2)
+        -- sub_7E7380:  if neither instruction is predicated (bit 12 of
+           opcode word clear on both), returns true.  If both are predicated,
+           requires: (a) the predicate register index (low 24 bits of the
+           last source operand) matches, and (b) the preceding operand
+           pair matches word-for-word (captures negate/condition modifiers)
+
+C5  (operand count):      I2.operand_count > 0
+        -- a zero-operand instruction cannot participate in CSE
+
+C6  (sign agreement):     for each operand slot k in 0..operand_count-1:
+                               sign(I1.op[k])  ==  sign(I2.op[k])
+        -- the sign bit (bit 31 of the operand word) distinguishes
+           definition operands (negative) from use operands (non-negative).
+           Iteration terminates early if signs diverge at any position.
+
+C7  (per-operand match):  for each operand slot k where op[k] < 0 (definitions):
+    C7a (tag type):           tag(I1.op[k]) == tag(I2.op[k])
+            -- bits [30:28] must agree (1 = register, 2/3 = immediate, 5 = const ref)
+    C7b (modifier word):      I1.op_mod[k] == I2.op_mod[k]
+            -- the companion dword (operands[2k+1] at I+88+8k) must match exactly
+    C7c (register class):     reg_file[I1.op[k]].class == reg_file[I2.op[k]].class
+            -- field +64 of the register descriptor must agree
+    C7d (CSE chain slot):     reg_file[I1.op[k]].cse_slot == reg_file[I2.op[k]].cse_slot
+            -- field +92 of both register descriptors must equal the same
+               dominator-order block number, and that number must equal
+               existing_block.field_144  (the current CSE scope)
+        -- for non-negative (use) operands where tag == 1 (register) and the
+           register is not a def-chain root (sub_7DEB90 returns false), the
+           register's defining instruction must dominate the existing block;
+           otherwise the operand is rejected
 ```
 
-The reverse iteration order (from last operand to first) is an optimization: destination operands at lower indices are more likely to differ, so checking source operands first (higher indices) allows early exit.
+Source: `sub_8F4510` at `0x8F4510` (101 lines); predicate compatibility from `sub_7E7380` at `0x7E7380` (30 lines).  The outer driver `sub_8F46F0` calls EQUIV, and on success rewrites I2's definition operands to point at I1's value numbers (field +88 of each destination register descriptor).
 
 ### Instruction Class Bitmask -- `sub_74ED70`
 
@@ -1044,21 +1082,93 @@ The SM version threshold 20479 corresponds to the boundary between Volta (sm_70)
 
 ### Algorithm
 
-Forward copy propagation replaces uses of a copy's destination with the copy's source:
+The execute body (`sub_908EB0`, 217 lines) walks the flat instruction list in a single linear pass, maintaining two pieces of rolling state:
+
+| Variable | Decompiler name | Type | Meaning |
+|---|---|---|---|
+| `copy_seen` | `v10` | `bool` | Previous instruction was a recognized copy -- gates the liveness fallback |
+| `def_ctx` | `v11` | `int64_t` | Current definition tracking entry (BB-array pointer set by the most recent opcode 97) |
+
+Initialization calls `sub_781F80(ctx, 1)` to rebuild per-instruction def-chain flags, then enters a single `do-while` over the linked list at `*(ctx+272)`.
 
 ```
-procedure OriCopyProp(function F):
-    for each basic block B in RPO:
-        for each instruction I in B:
-            if I is MOV Rd, Rs:
-                for each use U of Rd that I dominates:
-                    if Rs is still live at U:
-                        replace Rd with Rs in U
-                if Rd has no remaining uses:
-                    mark I as dead
+procedure OriCopyProp(ctx):
+    arch_pred = *(*(*(ctx+1584))+1312)(...)   // arch supports predicate marking?
+    sub_781F80(ctx, 1)                         // rebuild def chains
+    copy_seen = option_487_gate
+    def_ctx   = NULL
+
+    for each instruction I in linked_list(ctx+272):
+        op = I.opcode & ~0x3000                // strip modifier bits 12-13
+
+        case 97:   // definition anchor
+            copy_seen = option_487_gate
+            def_ctx = ctx.reg_table[ I.operand[0] & 0xFFFFFF ]
+            continue
+
+        case 18:   // predicated copy
+            if not isEligible(ctx, I): continue
+            copy_seen = false
+            if arch_pred:
+                I.dest_operand |= 0x400        // mark: under predicate guard
+            continue
+
+        case 124:  // conditional select (CSEL)
+            if not isEligible(ctx, I): continue
+            dst = &I.dest_operand
+
+            if (ctx[1379] & 7) == 0:           // simple mode
+                *dst |= 0x100; continue        // mark propagated directly
+
+            if (*dst & 0xF) != 1:              // non-integer-constant type
+                // try two-pass predicate simplifier
+                if !sub_8F29C0(ctx) or (ctx[1379] & 0x1B) != 0:
+                    sub_908A60(ctx, def_ctx, I, FWD, &hit, &partial)
+                    if hit: goto mark
+                    if !partial:
+                        sub_908A60(ctx, def_ctx, I, BWD, &hit, &partial)
+                        if hit: goto mark
+                        if !partial: continue
+                *dst = (*dst & 0xFFFFFDF0) | 0x201   // type=reg, deferred bit
+
+            if !copy_seen or arch_pred:
+        mark:   I.dest_operand |= 0x100       // mark propagated
+                continue
+
+            // --- transitive MOV chain resolution ---
+            link = *(def_ctx + 136)            // backward def-chain link
+            if link == NULL or *link != 0:     // absent or multi-def: bail
+                continue
+            def_instr = deref(ctx.reg_table[ *(link+8) ])
+            def_op = def_instr.opcode & ~0x3000
+
+            if def_op == 52: continue          // block boundary: stop
+            if def_op == 18 or def_op == 124:  // another copy/CSEL
+                if isEligible(ctx, def_instr): goto mark
+                continue
+
+            // walk forward through instruction list
+            loop:
+                status = sub_7DF3A0(def_instr, ctx)
+                if (*status & 0xC) != 0: break // live uses found: stop
+                def_instr = def_instr.next
+                def_op = def_instr.opcode & ~0x3000
+                if def_op == 52: break         // block boundary
+                if def_op == 124 or def_op == 18:
+                    if isEligible(ctx, def_instr): goto mark
+                    break
+            continue
+
+        default:
+            if not copy_seen:
+                status = sub_7DF3A0(I, ctx)
+                copy_seen = (*status & 0xC) != 0
+            continue
 ```
 
-Within the GeneralOptimize loop, copy propagation interacts with constant folding and algebraic simplification: a copy propagation may expose a constant operand, enabling constant folding in the next iteration, which may create a dead instruction for DCE. This is why GeneralOptimize runs as a fixed-point loop. In Variant A (phases 13, 29), the fixed-point iteration is capped by knob 464. In Variant B (phases 37, 58), convergence uses a cost-based threshold of 0.25 (knob 474). Two-pass predicate simplification via `sub_908A60` runs within the copy propagation loop to handle predicate-conditional copies.
+**Transitive chain resolution.** When the pass encounters a CSEL (opcode 124) that was not immediately preceded by a recognized copy (`copy_seen` is false) and the architecture does not support predicate marking, it follows the defining instruction backward through `def_ctx+136`. If the single defining instruction is itself a copy or CSEL (opcode 18 or 124), propagation resolves transitively: the current instruction inherits the `0x100` propagated flag without the intermediate copy needing to be live. For other defining opcodes, the pass walks forward through the linked list calling `sub_7DF3A0` (liveness query) at each step until it finds a live use (stopping) or another copy/CSEL (resolving transitively). Opcode 52 (block boundary marker) terminates the walk in both directions.
+
+**Convergence.** OriCopyProp itself is a single linear scan -- it does not iterate internally. The fixpoint behavior comes from the enclosing GeneralOptimize loop: Variant A (phases 13, 29) caps iterations via knob 464; Variant B (phases 37, 58) uses a cost-based threshold of 0.25 (knob 474). Each invocation may expose constant operands for folding or create dead instructions for DCE, motivating re-invocation.
 
 ### Controlling Knobs
 

@@ -341,20 +341,37 @@ The eligibility check spans multiple functions. An instruction is rematerializab
 
 ### Opcode Whitelist
 
-From `sub_911030` and `sub_A11060`, the eligible opcode set (after masking `opcode & 0xFFFFCFFF`) is:
+From `sub_911030`, all three eligibility-check sites use identical logic (decompiled from the first site at offset +0x447):
 
-| Opcode | Identity | Category |
-|--------|----------|----------|
-| 22 | IADD/IADD3 | Integer add (1 cycle) |
-| 50 | SHF | Funnel shift (1 cycle) |
-| 77 | IMAD | Integer multiply-add (1 cycle on modern SM) |
-| 83 | ISETP | Integer set-predicate (1 cycle) |
-| 93 | `OUT_FINAL` in ROT13; used as MOV-like marker | Register move (0--1 cycles, often eliminated). Actual SASS MOV is opcode 19. |
-| 95 | `STS` in ROT13; used as constant-load marker | Constant materialization |
-| 297 | LOP3 | 3-input logic (1 cycle) |
-| 352 | SEL | Conditional select (1 cycle) |
+```
+masked = raw_opcode & 0xFFFFCFFF      // clear bits 12-13 (variant/subop)
+result = 0
+if (masked - 22) <= 0x3D:             // unsigned: masked in [22, 83]
+    result = (0x2080000010000001 >> (LOBYTE(raw_opcode) - 22)) & 1
+eligible = result | (masked == 297) | (masked == 352)
+```
 
-The eligibility bitmask is encoded as `0x2080000010000001 >> (opcode - 22)` for opcodes in range `[22, 83]`, with explicit checks for opcodes 297 and 352. This is a compile-time-constant bitmask covering single-cycle ALU instructions.
+The `& 0xFFFFCFFF` mask strips bits 12--13, collapsing instruction variants (e.g. `.WIDE`, `.X`) to their base opcode before testing. The range guard `(masked - 22) <= 0x3D` is an unsigned comparison that rejects values below 22 (which wrap to large unsigned) and above 83 (83 - 22 = 61 = 0x3D). For the shift itself, `LOBYTE(raw_opcode)` is used -- safe because all in-range opcodes fit in a single byte and the variant bits sit above bit 11, outside the low byte.
+
+**Bitmask bit decomposition** (`0x2080000010000001` = `0b0010_0000_1000_0000_0000_0000_0000_0001_0000_0000_0000_0000_0000_0000_0000_0001`):
+
+| Bit | Opcode | Identity | Latency |
+|-----|--------|----------|---------|
+| 0   | 22     | IADD/IADD3 | 1 cycle |
+| 28  | 50     | SHF      | 1 cycle |
+| 55  | 77     | IMAD     | 1 cycle |
+| 61  | 83     | ISETP    | 1 cycle |
+
+**Explicit checks** (outside the 64-bit bitmask range):
+
+| Opcode | Identity | Latency |
+|--------|----------|---------|
+| 297    | LOP3     | 1 cycle |
+| 352    | SEL      | 1 cycle |
+
+All six are side-effect-free single-cycle ALU instructions. Opcodes 93 and 95 are **not** part of this whitelist -- they appear in the separate sinkability check (`sub_A105F0`) and MOV-chain analysis (`sub_A10DF0`) inside `sub_A11060`.
+
+After the eligibility check passes, IMAD (opcode 77) receives extra handling: the instruction's last source operand register class is inspected via `(operand >> 11) & 3 == 2`, and the result is stored at `state+192` as a flag for downstream cost computation.
 
 ### Operand Source Liveness
 
@@ -394,18 +411,123 @@ function check_sources_available(state, instr, operand_idx, cost_out):
 
 ### Cost Model: sub_90B790
 
-`sub_90B790` (large function, ~350 lines) implements the core cost/benefit analysis. It returns a non-negative integer cost where:
-- `0` = not profitable, do not rematerialize
-- `1+` = profitable, higher values indicate cheaper remat
+`sub_90B790` (`a1`=state, `a2`=def_instr, `a3`=cost_set_out, `a4`=force_deep) returns a non-negative integer cost where 0 = reject, 1+ = profitable (higher = cheaper remat). The function performs a BFS over the source operand tree of the defining instruction, accumulating the maximum per-node cost:
 
-The function considers:
+```
+function remat_cost(state, def_instr, cost_set, force_deep):
+    ctx       = *(state + 8)
+    bb_array  = *(ctx + 296)                    // basic block pointer array
+    vreg_map  = *(ctx + 88)                     // vreg descriptor array
+    use_instr = *(state + 200)                  // instruction at the use point
+    use_bb    = bb_array[*(use_instr + 24)]     // use-point basic block
+    use_depth = *(use_bb + 156)                 // loop nesting depth of use
 
-1. **Opcode-specific register consumption**: Different opcodes produce different register-type results. `sub_7E36C0`, `sub_7E40E0`, `sub_7E3790`, `sub_7E3800`, `sub_7E3640` extract per-operand register class (R/P/UR/UP) and width
-2. **Live range length**: Longer live ranges benefit more from remat
-3. **Use count**: Multiple uses may require multiple remat copies -- still profitable if the live range is long enough
-4. **Block depth**: Instructions in deeper loop nests get higher remat cost thresholds since the duplicated instruction executes more frequently
-5. **Predication state**: Predicated instructions have additional constraints on remat safety
-6. **Pre-existing flags**: If `vreg+80` already has `0x80000001` set, the register is already a remat candidate
+    // --- Phase 1: seed the BFS with def_instr ---
+    opcode_word = *(def_instr + 16)             // full opcode + modifier bits
+    reg_class   = (opcode_word >> 6) & 3        // 0=R, 1=P, 2=UR, 3=UP
+    rpo_index   = opcode_word >> 8              // block RPO as visited-set key
+    worklist.push(def_instr)
+    visited.insert(rpo_index, reg_class)        // hash set keyed by (rpo, class)
+
+    best_cost = -1                              // track max across all nodes
+
+    // --- Phase 2: BFS over source operands ---
+    while worklist is not empty:
+        node    = worklist.pop()
+        node_bb = bb_array[*(node + 24)]
+        depth   = *(node_bb + 156)              // loop depth of this def
+        opcode  = *(node + 72) & 0xFFFFCFFF     // base opcode, modifier-stripped
+
+        // 2a. Depth gate: def in shallower/same nest as use -> add to cost set
+        if depth >= use_depth and not force_deep:
+            cost_set.insert(node)               // record for caller's use
+
+        // 2b. Early rejection for non-rematerializable opcodes
+        if opcode == 185:                       // IMMA -- never remat
+            goto assign_cost_1
+        if opcode == 183:                       // LD variant -- reject shared mem
+            space = sub_91C840(last_src_operand(node))
+            if space == 4:                      // shared memory
+                goto assign_cost_1
+        if opcode == 164:                       // side-effecting opcode
+            goto assign_cost_1
+
+        // 2c. Find last GPR destination (scan operands backward)
+        dst_idx = find_last_gpr_dst(node)       // backward scan of operand array
+        if dst_idx < 0:
+            goto assign_cost_1                  // no GPR dest -> treat as cost 1
+
+        // 2d. Compute or retrieve cached per-node cost
+        cached = *(node + 48)                   // cached cost field
+        if cached == -1:                        // first visit -- compute now
+            if is_cheap_alu(opcode):            // bitmask + explicit checks
+                // Cheap ALU: cost depends on relative loop depth
+                if not force_deep:
+                    goto assign_cost_0          // reject in normal mode
+                if *(use_instr + 52) <= *(node + 52):   // use pos <= def pos
+                    if use_depth != depth:
+                        goto assign_cost_0
+                    *(node + 48) = 2;  best_cost = max(best_cost, 2)
+                else:
+                    if use_depth - 1 != depth:
+                        goto assign_cost_0
+                    goto assign_cost_1
+            else:
+                // Non-cheap: check side-effect flags
+                flags = sub_7DF3A0(node, ctx)
+                if (*flags & 0xC) != 0:         // has memory/side-effect
+                    if not sub_8F47E0(ctx):      // not a cutlass kernel
+                        goto assign_cost_0
+                // Walk source operands, enqueue single-def sources
+                for i in dst_idx downto 0:
+                    operand = node->operands[i]
+                    if operand < 0: break       // hit definition boundary
+                    if (operand >> 28) != 1: skip to prev GPR operand
+                    if (operand_high & 0x1000000): continue // skip remat marker
+                    if predicated and operand matches pred pair: continue
+                    vreg = *(vreg_map + 8 * (operand & 0xFFFFFF))
+                    single_def = *(vreg + 56)
+                    if single_def:
+                        if visited.insert(*(single_def+16)): // new?
+                            worklist.push(single_def)
+                    else:
+                        for def in def_chain(node, i):
+                            if visited.insert(*(def+16)):
+                                worklist.push(def)
+        else:
+            if cached == 0:
+                goto assign_cost_0              // previously rejected
+            // Use cached cost; add depth bonus for cheap ALU in force_deep
+            node_cost = cached
+            if force_deep and is_cheap_alu(opcode):
+                node_cost += (*(def_instr+52) >= *(node+52)) ? 1 : 0
+            best_cost = max(best_cost, node_cost)
+            continue
+
+    // --- Phase 3: final adjustment ---
+    if force_deep and best_cost == 1:
+        best_cost = 2                           // minimum useful cost in deep mode
+    return max(best_cost, 0)
+
+assign_cost_1:  *(node + 48) = 1;  best_cost = max(best_cost, 1); continue
+assign_cost_0:  best_cost = 0;  goto cleanup_and_return
+```
+
+The `is_cheap_alu` predicate encodes the compile-time bitmask `0x2080000010000001`:
+
+```
+is_cheap_alu(opcode) :=
+    opcode in {22, 50, 77, 83}           // IADD3, SHF, IMAD, ISETP via bitmask
+    or opcode == 297                     // LOP3, explicit check
+    or opcode == 352                     // SEL, explicit check
+```
+
+Key properties of the cost function:
+- **BFS with visited set**: avoids recomputing cost for shared source operands across a DAG (not just tree)
+- **Cached at `instr+48`**: once a node's cost is determined, subsequent queries reuse it in O(1)
+- **Depth-relative scoring**: cost 2 (same nesting) vs cost 1 (one level deeper) captures the execution frequency penalty of rematerializing inside a loop
+- **Cutlass exemption**: side-effecting instructions that would normally be rejected are permitted in cutlass kernels (`sub_8F47E0`), because cutlass scheduling relies heavily on remat for register pressure control
+- **Predication guard**: when `instr+73` bit 4 is set (predicated instruction), the penultimate operand pair is excluded from the source walk to avoid counting the predicate register as a rematerialization dependency
 
 ## Cross-Block Rematerialization: sub_A0C540
 
@@ -435,14 +557,14 @@ function cross_block_remat(state, instr, changed_out):
         if (flags80 & 2) and (flags80 & 4):  // already fully processed
             continue
 
-        // Compute instruction-level remat cost
-        cost = sub_91E860(ctx, instr, i)
+        // Compute pipe-mapped execution cost for this operand
+        cost = cross_block_remat_cost(ctx, instr, i)   // sub_91E860
 
         if operand < 0:                    // definition
-            if cost <= 3:
-                vreg->field_80 |= 0x80000008  // commit remat
+            if cost <= 3:                  // cheap ALU/FMA/DFMA -- mark only
+                vreg->field_80 |= 0x80000008  // commit remat, no cloning
                 continue
-            // Remat profitable: insert remat copy
+            // Expensive instruction: must clone at use site
             adjust_pressure(state, instr, -1)  // sub_A0C4A0
             duplicate_at_use(ctx, instr)       // vtable dispatch +1280
             adjust_pressure(state, instr, +1)
@@ -454,6 +576,61 @@ function cross_block_remat(state, instr, changed_out):
             adjust_pressure(state, instr, +1)
             *changed_out = 1
 ```
+
+### Cross-Block Remat Cost Function: sub_91E860
+
+`sub_91E860` (10 bytes of logic, 2-step composition) computes the pipe-mapped execution cost for one operand of an instruction. It calls `sub_91E610` to classify the operand into a latency class code, then maps that code through `vtable+904` (`PipeAssignment`) to obtain a pipe index that serves as the cost value returned to the caller.
+
+```
+function cross_block_remat_cost(ctx, instr, operand_idx):     // sub_91E860
+    latency_class = classify_operand_latency(ctx, instr, operand_idx)  // sub_91E610
+    return PipeAssignment(ctx->backend, latency_class)                 // vtable+904
+```
+
+**Operand latency classification (`sub_91E610`, 58 lines)** has four paths by priority:
+
+```
+function classify_operand_latency(ctx, instr, op_idx):        // sub_91E610
+    operand = instr->operands[op_idx]
+
+    // Path 1: Register-class shortcut for memory/texture destinations
+    if operand is GPR destination:
+        switch lookup_vreg(ctx, operand & 0xFFFFFF)->reg_class:  // vreg+64
+            case 4:  return 26     // global memory -> LSU latency
+            case 5:  return 20     // texture/uniform -> TEX latency
+            case 2:  return 20     // uniform register -> TEX latency
+
+    // Path 2: Predicated-instruction guard operand match
+    if opcode_flags(instr, ctx) & 0x40:                        // sub_7DF3A0
+        guard_pos = operand_count - 2*(has_0x1000) - 5
+        if operand[guard_pos] has predicate type:
+            match = vtable+1608(backend, instr, 8, 0)
+            if match.valid and match.index == op_idx: return 10
+
+    // Path 3: Comparison tail operands
+    if has_0x1000 and op_idx >= operand_count - 2:
+        if op_idx == operand_count - 2:
+            return (type 2/3) ? 20 : (type 4) ? 26 : 1
+        return 1                   // flag output -> cheapest
+
+    // Path 4: General opcode dispatch (sub_91A0F0, ~350 lines)
+    return classify_by_opcode(opcode & 0xFFFFCFFF, subop,
+                              operands, operand_count, op_idx)
+```
+
+**Threshold 3 rationale.** `PipeAssignment` maps latency classes to pipe indices 0--8. The `cost <= 3` threshold partitions instructions into two categories:
+
+| Pipe cost | Pipe | Latency classes | Decision |
+|---|---|---|---|
+| 0 | ALU | 1 (pred move), 9 (cvt), 10 (IMAD), 11 (LEA) | Mark only |
+| 1 | FMA | 7 (FP16, narrow FP) | Mark only |
+| 2 | DFMA | 4 (FP64 cvt), 16 (FP64 special) | Mark only |
+| 4 | LSU | 12 (mem/FP32/atomic), 14 (wide mem), 26 (global ld) | Clone at use |
+| 5 | TEX | 6 (texture fetch), 20 (uniform load) | Clone at use |
+| 6 | BRA | 31 (scoreboard/barrier) | Clone at use |
+| 8 | SFU | 8 (special function) | Clone at use |
+
+Instructions at `cost <= 3` are single-cycle ALU/FMA/DFMA operations: the compiler marks the vreg `0x80000008` (committed remat) without inserting any new instructions; the register allocator later re-executes them at each use. Instructions at `cost > 3` occupy long-latency or resource-constrained pipes (LSU, TEX, SFU), so rematerializing requires explicit instruction cloning into each use-site block, with pressure adjustment (`sub_A0C4A0`) and interference rebuild (`sub_92C0D0`) around the clone.
 
 ## Interaction with Register Allocator
 
@@ -478,13 +655,38 @@ function check_remat_opportunity(alloc, vreg_index, reg_class):
 
 The live-range infrastructure at `0x994000`--`0x9A1000` includes remat-aware cost functions. `sub_99AA50` (51 lines) inserts a rematerialization cost node into a range's cost linked list, enabling the allocator to compare spill cost against remat cost when choosing between spilling and rematerializing a value.
 
-### Spill-vs-Remat Decision
+### Three-Way Keep/Spill/Remat Decision: `sub_9AEF60`
 
-The allocator's main iteration driver (`sub_9AEF60`, 1415 lines) uses remat information to guide the spill-vs-remat tradeoff:
+The live range splitting engine (`sub_9AEF60`, 1415 lines) implements a three-way decision for each interference graph node: **keep** the current assignment, **spill** to local memory, or **rematerialize** the value. The algorithm iterates over split candidates extracted from a bitvector scan and classifies each via `sub_9AEC60` profitability analysis:
 
-1. During interference analysis, remat candidates get lower interference weights (they can be killed and recreated)
-2. When a spill is triggered, the allocator first checks if the value is rematerializable. If so, it inserts a remat copy instead of a spill/refill pair
-3. Remat linked lists are maintained at `alloc+161..+175` in the per-class allocator state
+```
+// Three-way decision per interference node (decompiled lines 1076-1127)
+for node in interference_hash_iter(alloc+89):       // alloc+89 = IG hash table
+    flags = node->field_3 & 0xF3                     // mask bits 2-3, preserve 0-1
+    node->field_3 = flags
+    if flags & 1:                                     // bit 0: remat candidate
+        // REMAT path: mark node for rematerialization
+        sub_9A1AD0(alloc, vreg_desc_ptr, 4)           // flag=4 → remat interference
+        if flags & 2:                                 // bit 1: also coalesce candidate
+            sub_9A1AD0(alloc, vreg_desc_ptr, 8)       // flag=8 → coalesce+remat
+    elif flags & 2:                                   // bit 1 only: coalesce candidate
+        sub_9A1AD0(alloc, vreg_desc_ptr, 8)           // flag=8 → spill/coalesce
+    else:
+        continue                                      // KEEP: no action needed
+```
+
+The profitability gate (`sub_9AEC60`) returns a `(viable, cost)` pair. If `cost <= alloc->threshold` (float at alloc+41), the range is kept in its current assignment. If `cost > threshold`, the range enters the split/remat pipeline where the interference flag bits determine the action: bit 0 set triggers rematerialization via `sub_9A1AD0(flag=4)`, bit 1 set triggers spill/coalesce via `sub_9A1AD0(flag=8)`, and both bits set applies both treatments. When a better split is found (`cost > best_cost`), the engine snapshots the current state into `alloc[83..87]` and restores it into the candidate worklist at `alloc[170..179]` before committing.
+
+#### Remat Linked Lists at `alloc+161..+175`
+
+The QWORD-indexed range `alloc[161]..alloc[175]` (byte offsets +1288 through +1400) holds two circular doubly-linked lists used as worklists for coalescing and rematerialization candidates:
+
+| QWORD index | Byte offset | Role |
+|-------------|-------------|------|
+| 161--168 | +1288--+1344 | **List A** (coalesce/remat): sentinel, prev, next, data, count, end, tag=2, arena |
+| 169--175 | +1352--+1400 | **List B** (secondary): sentinel, prev, next, data, tail, end, tag=2, arena |
+
+Each list entry is a 24-byte node `{next_ptr, tail_ptr, count_and_flags}` allocated from the arena at the list's last slot. During each splitting round, the engine drains List B (`alloc[175]`) into the freelist at `alloc[179]` via `sub_69DD70`, then copies the saved best-state from `alloc[85..86]` back into `alloc[175..179]` (a 128-bit `movdqu` restore), and zeroes `alloc[170..172]` plus the candidate counter at `DWORD[346]`. This drain-restore cycle ensures that only the best split's candidate set survives into the next iteration, while prior speculative nodes are returned to the arena.
 
 ### Verification: sub_A55D80
 
@@ -583,6 +785,9 @@ Phase 54 is a degenerate phase. Its execute body is a single store: `*(ctx + 155
 | `0xA105F0` | `sub_A105F0` | 77 | Sinkability check (opcode 0x5F) |
 | `0xA10DF0` | `sub_A10DF0` | 138 | MOV chain analysis (FNV-1a hash table) |
 | `0xA0C540` | `sub_A0C540` | 228 | Cross-block rematerialization |
+| `0x91E860` | `sub_91E860` | 10 | Cross-block remat cost (latency class -> pipe index) |
+| `0x91E610` | `sub_91E610` | 58 | Operand latency classification (4-path dispatch) |
+| `0x91A0F0` | `sub_91A0F0` | ~350 | General opcode-to-latency-class switch |
 | `0xA0C4A0` | `sub_A0C4A0` | -- | Pressure adjustment (+1 or -1) |
 | `0xA0C410` | `sub_A0C410` | -- | Remat profitability check for a vreg |
 

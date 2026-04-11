@@ -102,23 +102,46 @@ sub_1381CD0(state):
     bb_count = *(context+520)
     if bb_count <= 1: return 0       // nothing to if-convert
 
-    // Determine iteration count from knob at options+41760
-    iterations = 0
-    if *(options+41760) == 1:
-        iterations = *(options+41768)
+    // Read iteration knob: options+41760 is the enable byte,
+    // options+41768 is the max-extra-passes value
+    max_extra = 0;  gate = 0
+    opts = *(*(context+1664) + 72)
+    if *(opts+41760) == 1:
+        max_extra = *(opts+41768)          // e.g. 1, 2, or 3
+        gate = (max_extra != 0) ? 1 : 0
 
-    // First pass: always run
-    state[14].byte[8] = 0           // not second-pass mode
-    changed = sub_1381010(state)
+    // --- Pass 1 (always runs) ---
+    state[14].byte[8] = 0                  // last_iteration = false
+    changed = gate & sub_1381010(state)
 
-    // Optional second/third pass with relaxed thresholds
-    while changed and iterations > 0:
-        state[14].byte[8] = (iterations == 1)
-        changed = sub_1381010(state)
-        if iterations <= 2: break
+    // --- Extra passes (re-scan after prior CFG mutations) ---
+    // max_extra is read once and never decremented.
+    do:
+        if !changed: break
+        state[14].byte[8] = (max_extra == 1)
+        changed = gate & sub_1381010(state)
+    while max_extra > 2
 ```
 
-The iteration mechanism allows the pass to make a second (and potentially third) traversal with progressively relaxed profitability thresholds. The flag at `state[14].byte[8]` signals the final iteration, which changes some size-limit comparisons in the profitability heuristic.
+**Iteration schedule by knob value.** `max_extra` (read from `options+41768`) is a constant for the entire run. The loop exit depends on the knob value and on convergence (pass returning 0 when no further profitable if-conversions exist).
+
+| `max_extra` | Total passes | `last_iteration` flag | Exit condition |
+|:-----------:|:------------:|:---------------------:|:---------------|
+| 0           | 1            | always 0              | `gate` = 0 masks first-pass result to 0, loop never entered |
+| 1           | up to 2      | 0 on pass 1, **1** on pass 2 | `max_extra <= 2` exits after one extra pass |
+| 2           | up to 2      | 0 on both passes      | `max_extra <= 2` exits after one extra pass |
+| >= 3        | up to N      | 0 on all passes       | `max_extra > 2` keeps looping until convergence |
+
+**Effect of `last_iteration` (state offset +232).** This flag is true only when `max_extra == 1`. In `sub_1380BF0` (the profitability gate), the flag adds a narrowing filter before the normal cost check:
+
+```
+// sub_1380BF0, line 66
+if last_iteration:
+    if !(candidate_bb+282 bit 3) or !state.byte[76]:
+        return 0   // reject candidate
+```
+
+Bit 3 of `candidate_bb+282` is a "retry-eligible" marker set during earlier passes on blocks that were close to the profitability threshold but did not cross it. `state.byte[76]` is a secondary relaxation gate populated by the SM backend initializer. When both conditions hold, the candidate proceeds to normal evaluation; otherwise it is skipped. This narrows the second pass to only the most promising candidates that nearly qualified on pass 1, avoiding wasted compile time on clearly unprofitable blocks.
 
 ### Main Loop -- `sub_1381010`
 
@@ -287,7 +310,20 @@ For each instruction in the candidate block:
 
 4. **Primary memory load classification**: For load instructions (opcode 125 after masking), the memory space is queried via `sub_91C840`. The internal category number is tested against bitmask `0x90E` (`(1 << category) & 0x90E`), which selects the five primary data memory spaces: `.shared` (1), `.local` (2), `.const` (3), `.tex` (8), `.global` (11). When a load targets one of these spaces, the `has_primary_memory_load` flag is set at `candidate+12`, which affects profitability thresholds in the heuristic. See the [Memory Space Classification for Predication](#memory-space-classification-for-predication) section for the full bitmask decode.
 
-5. **Extra-latency check**: Instructions matching opcodes in the set `{22, 23, 41, 42, 55, 57, 352, 297}` (long-latency operations including texture, surface, and certain memory ops) have their latency contribution tallied at `state+16` via the SM backend's `getExtraLatency` method at `sm_backend+1392`.
+5. **Extra-latency check**: Long-latency opcodes contribute an additive penalty to `candidate+16`. Membership is tested with a two-tier check:
+
+    **Bitmask tier** -- the masked opcode `op` (after clearing bits 12-13) is tested via `(0x2080000010000001 >> (op - 22)) & 1` when `op - 22 < 62`. The four set bits select these Ori opcodes:
+
+    | Bit position | Ori opcode | SASS mnemonic | Operation class |
+    |---|---|---|---|
+    | 0 | 22 | `R2P` | Register-to-predicate (cross-file move) |
+    | 28 | 50 | `FRND_X` | FP rounding variant (extended-latency FP) |
+    | 55 | 77 | `EXIT` | Thread exit / program termination |
+    | 61 | 83 | `TEX` | Texture fetch |
+
+    **Explicit tier** -- two Mercury extended opcodes are checked by direct comparison: opcode 352 (`MERCURY_addmin_srcs_r_r_0`) and opcode 297 (`MERCURY_barrier_cta_red_popc_srcs_uimm_uimm_0`).
+
+    For every matching instruction, the SM backend's `getExtraLatency` virtual method at vtable offset +1392 is called. The base-class implementation (`sub_7D72B0`) returns 0, so targets that do not override this slot contribute nothing. When the backend does override the slot, the method receives `(sm_backend_obj, instruction)` and returns an `int` latency penalty in cycles. The return value is **summed** into the accumulator at `candidate+16` (`extra_latency += getExtraLatency(instr)`), so the total is the linear sum over all long-latency instructions in the region. The profitability heuristic at step 6 of `sub_1380BF0` uses this accumulated value: if knob 260 is active and **both** the true-side and false-side candidates have `extra_latency > 0`, if-conversion is rejected outright.
 
 6. **Predicate-register conflict**: If any destination operand writes to the same predicate register that the branch uses as its guard, the region cannot be if-converted (the predicate would be clobbered before all instructions are guarded).
 
@@ -332,9 +368,13 @@ bool analyzeRegion(state, candidate):
             if space is in {shared, local, const, tex, global}:
                 candidate->has_primary_memory_load = true
 
-        // Extra latency accounting
-        if isLongLatencyOp(instr):
-            candidate->extra_latency += getExtraLatency(instr)
+        // Extra latency accounting (bitmask + explicit comparison)
+        op = instr->opcode & ~0x3000
+        bitmask_hit = (op - 22) < 62 and ((0x2080000010000001 >> (op - 22)) & 1)
+        if bitmask_hit or op == 352 or op == 297:
+            fn = sm_backend->vtable[+1392]
+            latency = (fn != sub_7D72B0) ? fn(sm_backend, instr) : 0
+            candidate->extra_latency += latency
 
         // Count non-trivial instructions
         if not isMOVPHI(instr):         // opcode 263 = MOV.PHI
@@ -426,24 +466,63 @@ sub_1380BF0(state, true_side, false_side, is_reverse, result):
     return sub_1380810(...)            // fall-through block analysis
 ```
 
+### Formal Cost Model
+
+The profitability decision is a static estimate of whether eliminating a branch saves more cycles than the predicated instructions waste. The underlying comparison is:
+
+```
+Cost_branch  = C_bssy + C_branch + C_reconverge + C_serialize
+Cost_pred(N) = N * C_issue
+```
+
+where `N` is the non-MOV instruction count of the true side and the `C_*` terms are architecture-dependent constants. The heuristic never computes these costs explicitly -- instead it reduces the comparison to `N <= L` where `L` is a backend-provided limit that encodes the breakeven point for each instruction category.
+
+The decision tree selects `L` from a 2x2 matrix indexed by two boolean flags:
+
+| `flag_byte76` (uniform speculation) | `has_predicated` (texture ops) | Limit field | `int32` index |
+|---|---|---|---|
+| 0 | 0 | `base_limit` | `[8]` |
+| 0 | 1 | `tex_limit` | `[9]` |
+| 1 | 0 | `uniform_limit` | `[10]` |
+| 1 | 1 | `uniform_tex_limit` | `[11]` |
+
+Texture operations widen the profitability window because their high latency makes the branch serialization penalty proportionally larger. Uniform speculation (`flag_byte76`, set when the context supports speculative uniform loads) relaxes limits further because predicated uniform loads carry no divergence cost.
+
+For the base case (`base_limit`, neither flag set), an additional constraint applies: at least one side must have `extra_latency <= 2`. This prevents predication of regions where both sides contain long-latency operations, since the predicated version would serialize both latency chains without the scheduling freedom a branch provides.
+
+Entry to the 2x2 matrix requires `mov_count <= mov_threshold` (field `[17]`). When the true side has too many MOVs, the standard limits do not apply and the function falls through to the combined-size check and fall-through analysis.
+
+When the true side has memory loads (`has_primary_memory_load`), the 2x2 matrix is bypassed entirely. Instead, entry to the extended diamond analysis (`sub_137FE10`) is gated by field `[12]`: `instr_count <= state[12]`. The same field `[12]` also serves as the combined-size ceiling in the fallback path (`true_count + false_count > state[12]`), giving it dual purpose as the hard cap on total region size.
+
+### Threshold Initialization -- vtable offset 1296
+
+The SM backend populates the threshold fields via `vtable(sm_backend)[1296]`. The dispatch in `sub_1381CD0` (lines 15-29) has a fast-path check:
+
+```
+sm_backend = *(context + 1584)
+init_fn    = vtable(sm_backend)[1296]
+if init_fn == sub_7D82C0:          // default backend
+    memset(state+0, 0, 60)         // fields [0]..[14] = 0, disables predication
+else:
+    init_fn(sm_backend, state)     // backend populates fields [8]..[17]
+```
+
+The default backend (`sub_7D82C0`) zero-initializes all threshold fields. Since every size check is `N <= 0`, this effectively disables predication for architectures that do not register a custom initializer. Non-default backends write architecture-specific values based on the SM target and optimization level.
+
 ### Threshold Fields
 
-The state object contains multiple instruction-count thresholds, initialized by the scheduler backend during `sub_1381CD0`:
-
-| State offset (as `int32` index) | Field | Typical role |
-|---|---|---|
-| `[8]` | `base_limit` | Maximum instructions for simple (non-textured, non-uniform) regions |
-| `[9]` | `tex_limit` | Maximum instructions for textured regions (without uniform speculation) |
-| `[10]` | `uniform_limit` | Maximum instructions with uniform-speculation enabled |
-| `[11]` | `uniform_tex_limit` | Maximum for textured + uniform-speculation regions |
-| `[12]` | `threshold` | Hard ceiling on non-MOV instruction count |
-| `[13]` | `combined_limit` | Maximum for combined (both-sides) instruction count |
-| `[14]` | `fallthrough_limit` | Threshold for fall-through block extension |
-| `[15]` | `extended_limit` | Threshold for extended diamond regions |
-| `[16]` | `mov_threshold` | MOV count below which standard limits apply |
-| `[17]` | `mov_limit` | MOV-specific threshold |
-
-These values are architecture-specific -- the scheduler backend's vtable method at offset 1296 initializes them based on the SM target and optimization level.
+| `int32` index | Byte offset | Field | Role |
+|---|---|---|---|
+| `[8]` | 32 | `base_limit` | Max instructions: no texture, no uniform speculation |
+| `[9]` | 36 | `tex_limit` | Max instructions: texture present, no uniform speculation |
+| `[10]` | 40 | `uniform_limit` | Max instructions: uniform speculation enabled, no texture |
+| `[11]` | 44 | `uniform_tex_limit` | Max instructions: uniform speculation + texture |
+| `[12]` | 48 | `threshold` | Hard ceiling for extended-diamond gate AND combined-size fallback |
+| `[13]` | 52 | `combined_limit` | Per-side ceiling that triggers the combined-size rejection |
+| `[14]` | 56 | `fallthrough_limit` | Threshold for `sub_1380810` fall-through analysis |
+| `[15]` | 60 | `extended_limit` | Threshold within `sub_137FE10` extended diamond analysis |
+| `[16]` | 64 | `mov_threshold` | MOV count below which the 2x2 limit matrix applies |
+| `[17]` | 68 | `mov_limit` | MOV-specific threshold in extended analysis |
 
 ## Instruction Predication -- `sub_9324E0`
 
@@ -471,9 +550,46 @@ For a non-branch instruction with opcode `op`:
 //   Predicated operands:     [R0_def, R1, R2, RZ, guard_word, P2 | 0x60000000]
 ```
 
-### Already-Predicated Instructions
+### Already-Predicated Instructions -- `sub_9321B0`
 
-Instructions that already have a predicate guard (bit 12 set in original opcode) are handled by `sub_9321B0`, which must compose the existing predicate with the new guard using a predicate-AND or predicate-SEL operation rather than simply replacing the guard.
+When `sub_9324E0` encounters an instruction with bit 12 already set (predicated by an earlier pass), it delegates to `sub_9321B0` (812 bytes) rather than blindly appending a second guard. The function composes the existing predicate with the new guard by emitting a PLOP3 (Ori opcode 23, three-input predicate logic) that ANDs the two predicates into a freshly-allocated predicate register, then re-predicates the stripped instruction with the combined result.
+
+**Extracting the existing guard.** The function reads the operand count at `instr[20]` and indexes backward by 2 to locate the existing guard pair:
+
+```
+existing_guard_ctl  = instr[2*(operand_count - 2) + 21]   // guard control word
+existing_pred_word  = instr[2*(operand_count - 2) + 23]   // predicate register operand
+existing_pred_index = existing_pred_word & 0xFFFFFF        // register index
+```
+
+**Fast path -- accumulator reuse.** The caller passes an optional accumulator pointer (`a9`). When non-null and `*a9 != 0`, its low 5 bits cache the existing predicate index and bits 5-28 cache the previously-allocated combined register from a prior invocation. If the current instruction's existing predicate matches the cached index, the function skips PLOP3 emission: it extracts the combined register as `(*a9 >> 5) & 0xFFFFFF`, builds a type-1 guard operand (`combined_reg | 0x10000000`), strips the old guard (decrement operand count by 2, clear bit 12), and calls `sub_9324E0` to re-predicate with the cached result.
+
+**Slow path -- PLOP3 emission.** When no cached result is available:
+
+1. **Allocates a new predicate register** via `sub_91BF30(ctx, 5)` (register file class 5 = predicate). The new register index is `allocated & 0xFFFFFF`.
+
+2. **Updates the accumulator** with `*a9 = (existing_pred_index & 0x1F) | ((new_reg << 5) & 0x1FFFFFE0) | (*a9 & 0xE0000000)`, caching the mapping for subsequent instructions sharing the same existing predicate.
+
+3. **Handles PT / constant predicates.** If the existing predicate index is 13 (PT, always-true), calls `sub_91CDD0(ctx, 0)` to obtain a constant-pool slot for integer 0, encoded as a type-2 operand (`slot | 0x24000000`). If the index is 2, calls `sub_91CDD0(ctx, -1)` for constant -1. These constants serve as truth-table inputs to the PLOP3 LUT so the AND degenerates correctly when one input is a fixed value.
+
+4. **Emits a non-predicated PLOP3** via `sub_92C240(ctx, opcode=0x82, modifier=0x14, operand_count=2, ...)`. This defines the combined predicate register (type 9 def operand, `new_reg | 0x90000000`) using the existing guard values and, in the PT/constant cases, the constant operand.
+
+5. **Emits a predicated PLOP3** via `sub_92C240(ctx, opcode=0x1082, modifier=0x14, operand_count=4, ...)`. Opcode `0x1082` is PLOP3 with bit 12 set (self-predicated). Its four operand pairs are: the combined predicate def (`new_reg | 0x90000000`), the existing guard pair copied from the original instruction, the new guard pair from the caller, and the guard word (`new_reg | 0x60000000`).
+
+6. **Strips the old guard** from the original instruction (clears bit 12, decrements operand count by 2), then calls `sub_9324E0` to re-predicate with the combined predicate register.
+
+```
+// Example: @P3 FADD R0, R1, R2  (already predicated by P3)
+//          new if-conversion guard = P5
+//
+// sub_9321B0 emits:
+//        PLOP3.LUT  Pnew, P3, <const>          ; non-predicated setup
+//   @Pnew PLOP3.LUT  Pnew, P3, P5, <guard=Pnew> ; Pnew = P3 AND P5
+// then strips @P3 and re-predicates:
+//   @Pnew FADD R0, R1, R2                       ; combined guard
+```
+
+**Register pressure management.** The predicate file has 7 usable registers (P0-P6) plus hardwired PT. Allocation via `sub_91BF30(ctx, 5)` draws from the same pool used by comparison instructions; when exhausted, the overflow allocator at `*(*(ctx+32)+8)` is consumed (freelist pop) or a fresh 160-byte descriptor is requested from the context's memory manager. The accumulator cache ensures that consecutive instructions sharing the same existing predicate reuse a single combined register, which is the primary mechanism for bounding predicate register pressure during deep if-conversion.
 
 ## Post-Transformation -- `sub_137DE90`
 
@@ -655,7 +771,12 @@ Key opcodes referenced by the predication pass (after `BYTE1 &= 0xCF` masking to
 | 263 | MOV.PHI | SSA phi -- not counted in instruction totals |
 | 286 | CONV.ALLOC | Convergence allocation marker -- special handling in profitability check |
 | 288 | STG | Global store -- speculative-unsafe |
-| 352, 297 | (long-latency) | Texture/surface ops -- extra latency penalty |
+| 22 | `R2P` | Long-latency: register-to-predicate cross-file move |
+| 50 | `FRND_X` | Long-latency: extended FP rounding variant |
+| 77 | `EXIT` | Long-latency: thread exit / termination |
+| 83 | `TEX` | Long-latency: texture fetch |
+| 297 | `MERCURY_barrier_cta_red_popc...` | Long-latency: Mercury barrier reduction (explicit check) |
+| 352 | `MERCURY_addmin_srcs_r_r_0` | Long-latency: Mercury addmin (explicit check) |
 
 ## Cross-References
 
