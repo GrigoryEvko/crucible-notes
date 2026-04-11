@@ -17,35 +17,40 @@ Every Ori instruction is a 296-byte C++ object allocated from the Code Object's 
 | +16 | 4 | `i32` | `id` | Unique instruction ID (monotonically increasing within function) |
 | +20 | 4 | `i32` | `ref_count` | Reference/use count (incremented by `sub_7E6090`) |
 | +24 | 4 | `i32` | `bb_index` | Basic block index (`bix`) this instruction belongs to |
-| +28 | 4 | `u32` | `reserved_28` | Reserved / padding |
+| +28 | 4 | `i32` | `sched_pos` | Scheduling-order position within BB; set to -1 when unscheduled (by `sub_7EB4B0`) |
 | +32 | 4 | `u32` | `control_word` | Scheduling control word (stall cycles, yield, etc.) |
 | +36 | 4 | `u32` | `flags_36` | Instruction flags (bits 19-21 = subtype, see below) |
 | +40 | 8 | `ptr` | `sched_slot` | Scheduling state pointer |
 | +48 | 8 | `u64` | `flag_bits` | Extended flag bits (bit 5 = volatile, bit 27 = reuse) |
 | +56 | 8 | `ptr` | `def_instr` | Defining instruction (for SSA def-use chains) |
-| +64 | 8 | `ptr` | `reserved_64` | Reserved / register class info |
+| +64 | 8 | `ptr` | `operand_constraints` | Per-operand constraint/liveness table pointer; dereferenced as `*(ptr + 8*operand_idx)` in `sub_7E9E80` to look up per-operand BB-scoped metadata |
 | +72 | 4 | `u32` | `opcode` | Full opcode word (lower 12 bits = base opcode, bits 12-13 = modifier) |
 | +76 | 4 | `u32` | `opcode_aux` | Auxiliary opcode data (sub-operation, comparison predicate) |
 | +80 | 4 | `u32` | `operand_count` | Total number of operands (destinations + sources) |
 | +84 | var | `u32[N*2]` | `operands[]` | Packed operand array (8 bytes per operand slot) |
 | +88 | 4 | `u32` | `operands[0].extra` | High word of first operand slot |
 | +100 | 1 | `u8` | `type_flags` | Data type / modifier flags (bits 0-2 = data type code) |
-| +104 | 4 | `u32` | `reserved_104` | Reserved |
+| +104 | 4 | `u32` | `pred_guard` | Predicate guard operand (packed operand word: bits 28-30 = type, bits 0-23 = register index, bit 31 = negation flag); 0 = unconditional. Mask `& 0xFE000000` tests for `@!P` style guards |
 | +112 | 8 | `ptr` | `use_chain` | Use chain linked list head (for CSE) |
-| +120 | 8 | `ptr` | `reserved_120` | Reserved |
-| +136 | 4 | `i32` | `reserved_136` | Reserved |
+| +120 | 8 | `ptr` | `cse_hash_next` | CSE hash-chain next pointer; threads this instruction into the Code Object's hash bucket list for common-subexpression elimination (`sub_7E5FA0`/`sub_7E6050` walk/clear this chain) |
+| +128 | 8 | `ptr` | `sched_list_prev` | Scheduling/liveness doubly-linked list prev pointer; used by `sub_7EB4B0` to unlink from per-register-class worklists |
+| +136 | 8 | `ptr` | `sched_list_next` | Scheduling/liveness doubly-linked list next pointer (paired with +128) |
+| +144 | 16 | `u128` | `sched_state` | Scheduling/liveness state; zeroed by allocator as part of OWORD write at +136 and +152 |
 | +160 | 8 | `ptr` | `enc_buf` | Encoding buffer pointer (populated during code generation) |
-| +168 | 8 | `ptr` | `reserved_168` | Reserved |
+| +168 | 4 | `u32` | `ext_operand_count` | Extended operand count; `sub_7D62D0`/`sub_7D6320` set this to `2*N` when populating an extended operand array at +172..+184+. In scheduling context, repurposed as dependency list size |
+| +172 | 12 | `u32[]` | `ext_operands` | Extended operand slots (overflow from the inline +84 array); populated pair-wise by `sub_7D62D0` |
 | +184 | 4 | `u32` | `enc_mode` | Encoding mode selector |
 | +200 | 8 | `u64` | `imm_value` | Immediate value (for instructions with constant operands) |
 | +208 | 16 | `xmm` | `sched_params` | Scheduling parameters (loaded via `_mm_load_si128`) |
-| +240 | 4 | `u32` | `reserved_240` | Reserved |
-| +244 | 1 | `u8` | `reserved_244` | Reserved |
+| +224 | 16 | `u128` | `sched_params_ext` | Extended scheduling parameters; zeroed by allocator (OWORD at +224) |
+| +240 | 4 | `u32` | `src_loc` | PTX source location reference (bits 0-23 = source operand/line index, masked with `& 0xFFFFFF`); value `7` = no location. Set during PTX-to-Ori lowering |
+| +244 | 4 | `u32` | `debug_info` | Debug source info record (upper word of a location pair); written as QWORD together with +240 during lowering. Byte at +244 used as hash input (`1025 * byte`). Sub-object base for `sub_7DDDE0`/`sub_7DDF10` debug-list operations |
 | +248 | 8 | `i64` | `sentinel_248` | Initialized to `-1` (0xFFFFFFFFFFFFFFFF) |
-| +256 | 8 | `i64` | `sentinel_256` | Initialized to `0xFFFFFFFF` |
-| +264 | 8 | `i64` | `bb_ref` | Basic block reference / block index storage |
-| +272 | 8 | `i64` | `reserved_272` | Reserved |
-| +280 | 16 | `u128` | `reserved_280` | Zeroed on creation |
+| +256 | 8 | `i64` | `sentinel_256` | Initialized to `0xFFFFFFFF` (low dword); high dword = 0 |
+| +264 | 8 | `i64` | `global_index` | Low dword: instruction global index (assigned by allocator, `sub_7DD010` line 88). High dword: initialized to `0xFFFFFFFF`, used as sequence-number sentinel |
+| +272 | 8 | `ptr` | `annotation_list` | Annotation/metadata chain head; singly-linked list of attached metadata nodes (debug info, special attributes). Iterated as `for (p = instr->annotation_list; p; p = *(p+8))`. Init `0xFFFFFFFF00000000` = sentinel (high dword = -1, low dword = 0) |
+| +280 | 4 | `u32` | `lowering_flags` | Bitfield populated during PTX-to-Ori lowering: bit 0 = from-call, bit 2 = has-side-effect-annotation, bit 3 = lowered-from-PTX. Tested with `& 1`, `& 4`, `& 8` across 20+ callsites |
+| +284 | 12 | `u8[12]` | `_pad_284` | Zeroed on creation; tail padding to reach 296-byte boundary |
 
 ### Linked-List Pointers
 
@@ -348,7 +353,7 @@ InstructionInfo object:
 
 Total: 322 named opcodes (indices 0-321). The 0x508 bytes at +9336 are **not** additional name entries -- they are a 322-element `int32` array mapping each opcode index to an encoding category number (see [Encoding Category Map](#encoding-category-map) below).
 
-### Full Decoded Opcode Table (Base ISA, sm_70+)
+### Full Decoded Opcode Table (322 entries, sm_70 through sm_104)
 
 | Idx | ROT13 | SASS | Category |
 |-----|-------|------|----------|
@@ -382,7 +387,7 @@ Total: 322 named opcodes (indices 0-321). The 0x508 bytes at +9336 are **not** a
 | 27 | `PF2E_32` | `CS2R_32` | Control/status to register (32-bit) |
 | 28 | `PF2E_64` | `CS2R_64` | Control/status to register (64-bit) |
 | 29 | `CZGEVT` | `PMTRIG` | Performance monitor trigger |
-| 30 | `CFZGRFG` | `PSMTEST` | PSM test |
+| 30 | `PFZGRFG` | `CSMTEST` | CSM test |
 | 31 | `INOFQVSS` | `VABSDIFF` | Vector absolute difference |
 | 32 | `INOFQVSS4` | `VABSDIFF4` | Vector absolute difference (4-way) |
 | 33 | `VQC` | `IDP` | Integer dot product |
@@ -473,7 +478,7 @@ Total: 322 named opcodes (indices 0-321). The 0x508 bytes at +9336 are **not** a
 | 118 | `VFORJE` | `ISBEWR` | Indexed set binding for write |
 | 119 | `FUSY` | `SHFL` | Warp shuffle |
 | 120 | `JNECFLAP` | `WARPSYNC` | Warp synchronize |
-| 121 | `ZVRYQ` | `MYELD` | Yield (internal) |
+| 121 | `LVRYQ` | `YIELD` | Yield (internal) |
 | 122 | `QSZN` | `DFMA` | Double FP fused multiply-add |
 | 123 | `QNQQ` | `DADD` | Double FP add |
 | 124 | `QZHY` | `DMUL` | Double FP multiply |
@@ -488,6 +493,199 @@ Total: 322 named opcodes (indices 0-321). The 0x508 bytes at +9336 are **not** a
 | 133 | `UZZN_32` | `HMMA_32` | Half MMA (32-wide) |
 | 134 | `VZZN` | `IMMA` | Integer MMA |
 | 135 | `VAGEVAFVP` | `INTRINSIC` | Compiler intrinsic (pseudo) |
+| 136 | `FZ70_YNFG` | `SM70_LAST` | *sentinel (sm_70 end)* |
+| **sm_73 (Turing+): Uniform datapath, new MMA shapes** ||||
+| 137 | `FZ73_SVEFG` | `SM73_FIRST` | *sentinel (sm_73 start)* |
+| 138 | `HOERI` | `UBREV` | Uniform bit reverse |
+| 139 | `HOZFX` | `UBMSK` | Uniform bit mask |
+| 140 | `HPYRN` | `UCLEA` | Uniform clear LEA |
+| 141 | `HVFRGC` | `UISETP` | Uniform integer set-predicate |
+| 142 | `HYQP` | `ULDC` | Uniform load constant |
+| 143 | `HYRN` | `ULEA` | Uniform LEA |
+| 144 | `HC2HE` | `UP2UR` | Predicate to uniform register |
+| 145 | `HYBC3` | `ULOP3` | Uniform 3-input logic |
+| 146 | `HCYBC3` | `UPLOP3` | Uniform predicate 3-input logic |
+| 147 | `HFRY` | `USEL` | Uniform select |
+| 148 | `HFTKG` | `USGXT` | Uniform sign extend |
+| 149 | `HSYB` | `UFLO` | Uniform find leading one |
+| 150 | `HVNQQ3` | `UIADD3` | Uniform 3-input integer add |
+| 151 | `HVZNQ` | `UIMAD` | Uniform integer multiply-add |
+| 152 | `HZBI` | `UMOV` | Uniform move |
+| 153 | `HCEZG` | `UPRMT` | Uniform byte permute |
+| 154 | `IBGRH` | `VOTEU` | Warp vote (uniform) |
+| 155 | `HCBCP` | `UPOPC` | Uniform population count |
+| 156 | `HFUS` | `USHF` | Uniform funnel shift |
+| 157 | `FPNGGRE` | `SCATTER` | Scatter write |
+| 158 | `S2SC` | `F2FP` | Float to float (packed) |
+| 159 | `UZZN_1688` | `HMMA_1688` | Half MMA (16x8x8) |
+| 160 | `UZZN_16816` | `HMMA_16816` | Half MMA (16x8x16) |
+| 161 | `OZZN` | `BMMA` | Binary MMA |
+| 162 | `GGHPPGY` | `TTUCCTL` | TTU cache control |
+| 163 | `GGHZNPEB` | `TTUMACRO` | TTU macro |
+| 164 | `E2HE` | `R2UR` | Register to uniform register |
+| 165 | `ZBIZ` | `MOVM` | Move (masked) |
+| 166 | `YQFZ` | `LDSM` | Load shared (matrix) |
+| 167 | `YQGENZ` | `LDTRAM` | Load TRAM |
+| 168 | `SBBGCEVAG` | `FOOTPRINT` | Texture footprint |
+| 169 | `F2HE` | `S2UR` | Special register to uniform register |
+| 170 | `OEKH` | `BRXU` | Branch indirect (uniform) |
+| 171 | `FZ73_YNFG` | `SM73_LAST` | *sentinel (sm_73 end)* |
+| **sm_82 (Ampere): Sparse MMA, async copy** ||||
+| 172 | `FZ82_SVEFG` | `SM82_FIRST` | *sentinel (sm_82 start)* |
+| 173 | `TNGURE` | `GATHER` | Gather read |
+| 174 | `TRAZRGNQNGN` | `GENMETADATA` | Generate metadata |
+| 175 | `FCZRGNQNGN` | `SPMETADATA` | Sparsity metadata |
+| 176 | `OZZN_88128` | `BMMA_88128` | Binary MMA (8x8x128) |
+| 177 | `OZZN_168128` | `BMMA_168128` | Binary MMA (16x8x128) |
+| 178 | `OZZN_168256` | `BMMA_168256` | Binary MMA (16x8x256) |
+| 179 | `PYZNQ` | `CLMAD` | Carry-less multiply-add |
+| 180 | `QZZN` | `DMMA` | Double MMA |
+| 181 | `UZZN_FC_1688` | `HMMA_SP_1688` | Half MMA sparse (16x8x8) |
+| 182 | `USZN2_ZZN` | `HFMA2_MMA` | Half FMA2 (MMA variant) |
+| 183 | `UZAZK2` | `HMNMX2` | Half min/max (packed) |
+| 184 | `VZZN_88` | `IMMA_88` | Integer MMA (8x8) |
+| 185 | `VZZN_FC_88` | `IMMA_SP_88` | Integer MMA sparse (8x8) |
+| 186 | `VZZN_16816` | `IMMA_16816` | Integer MMA (16x8x16) |
+| 187 | `VZZN_16832` | `IMMA_16832` | Integer MMA (16x8x32) |
+| 188 | `VZZN_FC_16832` | `IMMA_SP_16832` | Integer MMA sparse (16x8x32) |
+| 189 | `NEEVIRF` | `ARRIVES` | Async arrive signal |
+| 190 | `YQTQRCONE` | `LDGDEPBAR` | Load global dependency barrier |
+| 191 | `YQTFGF` | `LDGSTS` | Load global, store shared (async copy) |
+| 192 | `ERQHK` | `REDUX` | Warp reduction (uniform) |
+| 193 | `FZ82_YNFG` | `SM82_LAST` | *sentinel (sm_82 end)* |
+| **sm_86 (GA10x): Packed conversions, surface query** ||||
+| 194 | `FZ86_SVEFG` | `SM86_FIRST` | *sentinel (sm_86 start)* |
+| 195 | `S2VC` | `F2IP` | Float to integer (packed) |
+| 196 | `HS2SC` | `UF2FP` | Uniform float to float (packed) |
+| 197 | `V2SC` | `I2FP` | Integer to float (packed) |
+| 198 | `FHDHREL` | `SUQUERY` | Surface query |
+| 199 | `FZ86_YNFG` | `SM86_LAST` | *sentinel (sm_86 end)* |
+| **sm_89 (Ada): FP8 MMA** ||||
+| 200 | `FZ89_SVEFG` | `SM89_FIRST` | *sentinel (sm_89 start)* |
+| 201 | `DZZN_16816` | `QMMA_16816` | Quarter-precision MMA (16x8x16) |
+| 202 | `DZZN_16832` | `QMMA_16832` | Quarter-precision MMA (16x8x32) |
+| 203 | `DZZN_FC_16832` | `QMMA_SP_16832` | Quarter-precision MMA sparse (16x8x32) |
+| 204 | `DZZN_FC_12864` | `QMMA_SP_12864` | Quarter-precision MMA sparse (128x64) |
+| 205 | `FZ89_YNFG` | `SM89_LAST` | *sentinel (sm_89 end)* |
+| **sm_90 (Hopper): WGMMA, TMA, distributed shared memory** ||||
+| 206 | `FZ90_SVEFG` | `SM90_FIRST` | *sentinel (sm_90 start)* |
+| 207 | `NPDOYX` | `ACQBLK` | Acquire block |
+| 208 | `PTNONE_NEI` | `CGABAR_ARV` | CGA barrier arrive |
+| 209 | `PTNONE_TRG` | `CGABAR_GET` | CGA barrier get |
+| 210 | `PTNONE_FRG` | `CGABAR_SET` | CGA barrier set |
+| 211 | `PTNONE_JNVG` | `CGABAR_WAIT` | CGA barrier wait |
+| 212 | `PTNREEONE` | `CGAERRBAR` | CGA error barrier |
+| 213 | `PERNGRCBYVPL` | `CREATEPOLICY` | Create cache policy |
+| 214 | `PIGN` | `CVTA` | Convert address (generic/shared/global) |
+| 215 | `QZZN` | `DMMA` | Double MMA (sm_90 variant) |
+| 216 | `RYRPG` | `ELECT` | Elect leader thread |
+| 217 | `RAQPBYYRPGVIR` | `ENDCOLLECTIVE` | End collective operation |
+| 218 | `SRAPR_T` | `FENCE_G` | Fence (global) |
+| 219 | `SRAPR_F` | `FENCE_S` | Fence (shared) |
+| 220 | `SZAZK` | `FMNMX` | FP min/max (sm_90 extended) |
+| 221 | `TZZN` | `GMMA` | Group/warpgroup MMA |
+| 222 | `YQPH` | `LDCU` | Load constant (uniform) |
+| 223 | `YRCP` | `LEPC` | Load effective PC (sm_90 variant) |
+| 224 | `ZNCN` | `MAPA` | Map address (shared to global) |
+| 225 | `CERRKVG` | `PREEXIT` | Pre-exit |
+| 226 | `E2HE_U` | `R2UR_H` | Register to uniform register (half) |
+| 227 | `ERQNF` | `REDAS` | Reduction (async) |
+| 228 | `FRGZNKERT` | `SETMAXREG` | Set max register count |
+| 229 | `FRGFZRZFVMR` | `SETSMEMSIZE` | Set shared memory size |
+| 230 | `FGNF` | `STAS` | Store async |
+| 231 | `FGFZ` | `STSM` | Store shared (matrix) |
+| 232 | `FLAPF_ONFVP` | `SYNCS_BASIC` | Sync (basic) |
+| 233 | `FLAPF_YQ_HAVSZ` | `SYNCS_LD_UNIFM` | Sync (load uniform) |
+| 234 | `HOYXPC` | `UBLKCP` | Uniform bulk copy |
+| 235 | `HOYXERQ` | `UBLKRED` | Uniform bulk reduction |
+| 236 | `HOYXCS` | `UBLKPF` | Uniform bulk prefetch |
+| 237 | `HPIGN` | `UCVTA` | Uniform convert address |
+| 238 | `HYRCP` | `ULEPC` | Uniform load effective PC |
+| 239 | `HZNCN` | `UMAPA` | Uniform map address |
+| 240 | `HGZNPPGY` | `UTMACCTL` | Uniform TMA cache control |
+| 241 | `HGZNPZQSYHFU` | `UTMACMDFLUSH` | Uniform TMA command flush |
+| 242 | `HGZNYQT` | `UTMALDG` | Uniform TMA load global |
+| 243 | `HGZNCS` | `UTMAPF` | Uniform TMA prefetch |
+| 244 | `HGZERQT` | `UTMREDG` | Uniform TMA reduce global |
+| 245 | `HGZNYFG` | `UTMALST` | Uniform TMA load/store |
+| 246 | `IUZAZK` | `VHMNMX` | Vector half min/max |
+| 247 | `IVNQQ` | `VIADD` | Vector integer add |
+| 248 | `IVNQQZAZK` | `VIADDMNMX` | Vector integer add+min/max |
+| 249 | `IVZAZK` | `VIMNMX` | Vector integer min/max |
+| 250 | `IVZAZK3` | `VIMNMX3` | Vector integer min/max (3-way) |
+| 251 | `JNECTEBHC` | `WARPGROUP` | Warp group operation |
+| 252 | `FZ90_YNFG` | `SM90_LAST` | *sentinel (sm_90 end)* |
+| **sm_100 (Blackwell): TCGen05, TMEM, FP32x2, FP4 MMA** ||||
+| 253 | `FZ100_SVEFG` | `SM100_FIRST` | *sentinel (sm_100 start)* |
+| 254 | `PERQHK` | `CREDUX` | Convergent reduction |
+| 255 | `SNQQ2` | `FADD2` | FP add (packed x2) |
+| 256 | `SSZN2` | `FFMA2` | FP fused multiply-add (packed x2) |
+| 257 | `SZAZK3` | `FMNMX3` | FP min/max (3-way) |
+| 258 | `SZHY2` | `FMUL2` | FP multiply (packed x2) |
+| 259 | `YQGZ` | `LDTM` | Load tensor memory |
+| 260 | `HTRGARKGJBEXVQ` | `UGETNEXTWORKID` | Uniform get next work ID |
+| 261 | `HGPONE_1PGN` | `UTCBAR_1CTA` | UTC barrier (1 CTA) |
+| 262 | `HGPONE_2PGN` | `UTCBAR_2CTA` | UTC barrier (2 CTA) |
+| 263 | `HGPPC_1PGN` | `UTCCP_1CTA` | UTC copy (1 CTA) |
+| 264 | `HGPPC_2PGN` | `UTCCP_2CTA` | UTC copy (2 CTA) |
+| 265 | `HGPZZN_1PGN` | `UTCMMA_1CTA` | UTC MMA (1 CTA) |
+| 266 | `HGPZZN_2PGN` | `UTCMMA_2CTA` | UTC MMA (2 CTA) |
+| 267 | `HGPFUVSG_1PGN` | `UTCSHIFT_1CTA` | UTC shift (1 CTA) |
+| 268 | `HGPFUVSG_2PGN` | `UTCSHIFT_2CTA` | UTC shift (2 CTA) |
+| 269 | `IVEGPBHAG` | `VIRTCOUNT` | Virtual count |
+| 270 | `GPNGBZFJF` | `TCATOMSWS` | TC atomic (SWS) |
+| 271 | `GPYQFJF` | `TCLDSWS` | TC load (SWS) |
+| 272 | `GPFGFJF` | `TCSTSWS` | TC store (SWS) |
+| 273 | `DSZN4` | `QFMA4` | Quarter-precision FMA (4-wide) |
+| 274 | `DNQQ4` | `QADD4` | Quarter-precision add (4-wide) |
+| 275 | `DZHY4` | `QMUL4` | Quarter-precision multiply (4-wide) |
+| 276 | `ZRZFRG` | `MEMSET` | Memory set |
+| 277 | `NPDFUZVAVG` | `ACQSHMINIT` | Acquire shared memory init |
+| 278 | `FGGZ` | `STTM` | Store tensor memory |
+| 279 | `SRAPR_G` | `FENCE_T` | Fence (tensor) |
+| 280 | `FZ100_YNFG` | `SM100_LAST` | *sentinel (sm_100 end)* |
+| **sm_104 (Blackwell Ultra): Uniform FP, MX-format MMA** ||||
+| 281 | `FZ104_SVEFG` | `SM104_FIRST` | *sentinel (sm_104 start)* |
+| 282 | `VNQQ` | `IADD` | Integer add (2-input) |
+| 283 | `HIVNQQ` | `UVIADD` | Uniform vector integer add |
+| 284 | `VZAZK` | `IMNMX` | Integer min/max (sm_104 re-encoding) |
+| 285 | `VZAZK` | `IMNMX` | Integer min/max (sm_104 variant 2) |
+| 286 | `HVZAZK` | `UIMNMX` | Uniform integer min/max |
+| 287 | `HIVZAZK` | `UVIMNMX` | Uniform vector integer min/max |
+| 288 | `VFRGC` | `ISETP` | Integer set-predicate (sm_104 re-encoding) |
+| 289 | `HVFRGC` | `UISETP` | Uniform integer set-predicate (sm_104) |
+| 290 | `ZBI` | `MOV` | Move (sm_104 re-encoding) |
+| 291 | `HZBI` | `UMOV` | Uniform move (sm_104) |
+| 292 | `FRY` | `SEL` | Select (sm_104 re-encoding) |
+| 293 | `HFRY` | `USEL` | Uniform select (sm_104) |
+| 294 | `HSNQQ` | `UFADD` | Uniform FP add |
+| 295 | `HSFRY` | `UFSEL` | Uniform FP select |
+| 296 | `HSSZN` | `UFFMA` | Uniform FP fused multiply-add |
+| 297 | `HSZHY` | `UFMUL` | Uniform FP multiply |
+| 298 | `HSFRG` | `UFSET` | Uniform FP set |
+| 299 | `HSFRGC` | `UFSETP` | Uniform FP set-predicate |
+| 300 | `HV2V` | `UI2I` | Uniform int-to-int conversion |
+| 301 | `HV2VC` | `UI2IP` | Uniform int-to-int (packed) |
+| 302 | `HS2S` | `UF2F` | Uniform float-to-float conversion |
+| 303 | `HSEAQ` | `UFRND` | Uniform FP round |
+| 304 | `HS2V` | `UF2I` | Uniform float-to-int conversion |
+| 305 | `HS2VC` | `UF2IP` | Uniform float-to-int (packed) |
+| 306 | `HV2S` | `UI2F` | Uniform int-to-float conversion |
+| 307 | `HV2SC` | `UI2FP` | Uniform int-to-float (packed) |
+| 308 | `HVNOF` | `UIABS` | Uniform integer absolute value |
+| 309 | `PF2HE` | `CS2UR` | Control/status to uniform register |
+| 310 | `HS2SC` | `UF2FP` | Uniform float-to-float (packed, sm_104) |
+| 311 | `ZKDZZN_FS_16832` | `MXQMMA_SF_16832` | MX-format quarter MMA (SF, 16x8x32) |
+| 312 | `BZZN_16864` | `OMMA_16864` | Octal MMA (16x8x64) |
+| 313 | `BZZN_FC_168128` | `OMMA_SP_168128` | Octal MMA sparse (16x8x128) |
+| 314 | `DZZN_16816` | `QMMA_16816` | Quarter MMA (16x8x16, sm_104) |
+| 315 | `DZZN_16832` | `QMMA_16832` | Quarter MMA (16x8x32, sm_104) |
+| 316 | `DZZN_FC_16832` | `QMMA_SP_16832` | Quarter MMA sparse (16x8x32, sm_104) |
+| 317 | `DZZN_FC_12864` | `QMMA_SP_12864` | Quarter MMA sparse (128x64, sm_104) |
+| 318 | `DZZN_FS_16832` | `QMMA_SF_16832` | Quarter MMA scale-format (16x8x32) |
+| 319 | `DZZN_FS_FC_16864` | `QMMA_SF_SP_16864` | Quarter MMA scale-format sparse (16x8x64) |
+| 320 | `FZ104_YNFG` | `SM104_LAST` | *sentinel (sm_104 end)* |
+| 321 | `YNFG` | `LAST` | *sentinel (global end)* |
 
 ### Opcode Categories
 
