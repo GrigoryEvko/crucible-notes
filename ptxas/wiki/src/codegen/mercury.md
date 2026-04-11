@@ -209,29 +209,96 @@ The orchestrator `sub_6F52F0` passes the entire pipeline state (18 parameters) t
 
 ### Master Encoder -- `sub_6D9690` (94KB)
 
-The central SASS instruction encoding function and the single largest function in the ptxas backend. It contains a massive `switch` statement on the instruction type field (read from `instruction+8`) with cases covering every SASS instruction format.
+The central SASS instruction encoding function and the single largest function in the ptxas backend. It reads the instruction type from `*(int*)(instruction+8)`, initializes the encoding base constant `0x2000000000LL`, calls `sub_C00BF0` for the opcode table index, then dispatches through a 119-case `switch` covering Ori instruction types 61--544. Unhandled types hit the `default` branch and return 0 (failure). The epilog at `LABEL_3` frees the dynamic word buffer if it grew beyond the 264-byte inline array.
 
-```c
-// Simplified encoding flow
-void EncodeInstruction(context, instruction) {
-    int type = *(int*)(instruction + 8);
-    uint64_t base = 0x2000000000LL;     // encoding base constant
+#### Operand Word Type Prefix -- bits `[31:28]`
 
-    switch (type) {
-    case 61:    // FFMA with literal operand
-        sub_6D9580(ctx, operand);       // encode literal
-        break;
-    case 455:   // complex multi-operand format
-        // ... bit-field extraction and assembly ...
-        break;
-    // ... hundreds of cases ...
-    }
+Every operand word appended via `sub_6D2750` carries a 4-bit type tag in its upper nibble. The encoder constructs these with literal OR masks:
 
-    // Common: append operand words, commit
-    sub_6D2750(ctx, word);              // append 8-byte operand word
-    sub_6D28C0(ctx);                    // commit instruction record
-}
-```
+| Prefix | Hex mask | Meaning | Typical source |
+|--------|----------|---------|----------------|
+| `0x1` | `0x10000000` | Register operand | `sub_91D160` return value, `sub_A99F50` for pred/special |
+| `0x5` | `0x50000000` | Immediate / constant bank ref | Constant buffer slot encoding (case 429) |
+| `0x6` | `0x60000000` | Control / modifier word | Inline flag assembly, appears in every case |
+| `0x7` | `0x70000000` | Literal value | `sub_6D9580` literal encoder (case 61) |
+| `0x9` | `0x90000000` | Special register / address | `sub_A99F50` for pred-reg, vtable calls for SR |
+| `0xF` | `0xF0000000` | Null / padding sentinel | `1879048192 == 0x70000000` unused-reg placeholder |
+
+#### Case Enumeration (119 cases, 103 distinct types)
+
+The switch groups by instruction category. Cases sharing a body are listed together. The format ID column gives the 3rd argument to `sub_931690` (primary encoder) or `sub_934630` (secondary/multi-record encoder).
+
+| Cases | Ori Opcode(s) | Category | Format ID | Operand pattern |
+|-------|---------------|----------|-----------|-----------------|
+| 61, 455 | BAR, WMMA.store_d_col_f32_shared | Barrier / WMMA store (literal path) | 18 (primary), 17 (datatype extension), 124 (literal-only) | dst, src0, src1 via `sub_C01520`; control word with SM100+ knob 4176 gate |
+| 64, 66 | SETLMEMBASE, DEPBAR | LMem base / dep-barrier | 26 | Sub-switch on `(modifier>>3)&7` for 6 operand modes |
+| 69, 70 | JMP, JMX | Jump / jump-indirect | -- | Delegated to `sub_6D9310` |
+| 207 | (extended) | Multi-record loop encoding | 239 | Predicate + 2 sources; emits `v452` records in a loop |
+| 221 | (extended) | Conditional branch variant | 107 (via `sub_934630`) | Two sub-paths: mode 1 = operand + 2 words, mode 2 = 1 word |
+| 416, 417 | WMMA.load_c (global/shared) | MMA load C | vtable(type) | dst + 1 source + optional `0x60000000` + modifier |
+| 418--420, 431, 434, 436, 445--448 | WMMA.mma variants (10 cases) | MMA compute | vtable(type) | dst + 2 sources + 4 control words; vtable dispatch for format ID |
+| 423 | WMMA.mma (col_col_f32_f16_sat) | MMA 2-source | 20 | dst + 2 operands + control; multi-record if `v452 > 0` |
+| 424 | WMMA.mma (col_col_f32_f32) | MMA 3-source | 21 | dst + 3 operands + control; multi-record |
+| 425 | WMMA.mma (col_col_f32_f32_sat) | MMA passthrough | variable | dst + 1 source; format from `v284` |
+| 429 | WMMA.mma (col_row, f16 accum) | MMA with const-bank | 86 + 130 (secondary) | Complex: `sub_934630` for const-bank slots with `0x50000000` prefix, then 2 sources + control |
+| 437 | WMMA.mma (row_col_f16_f32_sat) | MMA 2-source | 162 | dst + 2 operands + control; multi-record |
+| 438 | WMMA.mma (row_col_f32_f16) | MMA 1-source | 67 | dst + 1 operand + control |
+| 439 | WMMA.mma (row_col_f32_f16_sat) | MMA 4-operand | 166 | dst + 3 sources + control word |
+| 441 | WMMA.mma (row_col_f32_f32_sat) | MMA 4-op + modifiers | 274 | dst + 3 sources + extended modifier assembly |
+| 442 | WMMA.mma (row_row_f16) | MMA 4-op | 275 | dst + 3 sources + modifier word |
+| 443 | WMMA.mma (row_row_f16_sat) | MMA 4-op | 276 | dst + 3 sources + conditional modifier (nested if on `instr+12` bits) |
+| 444 | WMMA.mma (row_row_f16_f32) | MMA variable-length | -- | Loop over operands via `sub_C01A90`; delegated commit |
+| 449, 450, 453 | WMMA.store_d variants | WMMA store | -- | Delegated to `sub_6CC000`/`sub_6CC1F0`/`sub_6CBEC0` |
+| 456, 466 | WMMA.store_d (row) / MEMBAR | WMMA store / membar | -- | Delegated to `sub_6CC390` |
+| 460 | WMMA.store_d (row_f32_global) | WMMA store conditional | 31 (via `sub_934630`) | Conditional on `instr+17` sign bit; multi-record emit |
+| 461 | WMMA.store_d (row_f32_shared) | MMA 4-op + conditional | 211 | dst + 3 sources + up to 1 extra source; multi-record |
+| 462 | WMMA.load_a (col) | MMA load | 81 | Predicate + 1 source + control |
+| 463--465 | WMMA.load (global/col_global/a_row) | MMA load variants | 58, 69, 34 | dst + 1--2 sources + control word |
+| 467 | WMMA.load (a_row_global) | MMA load + modifier | 138 (or 145/146) | dst + 2 sources + data-type-dependent format |
+| 468 | WMMA.load (a_row_shared) | MMA load + loop | 119 | dst + 3 sources + loop emit for `v452` records |
+| 469 | (extended MMA) | MMA control-flow | 51 | dst + 3 sources + control with data-type comparison |
+| 470 | (vtable SR) | Special-register encode | 203 | vtable dispatch for SR index; `0x90000000` prefix |
+| 471 | (data-typed) | Typed ALU | 202 | Data-type via `sub_7D6860`; dst + 3 sources + modifier |
+| 472--474 | (extended) | Simple control word | 253, 252, 250 | dst + 1--2 sources + control |
+| 475 | (extended) | Complex multi-source | 242 / 156 | dst + 3 sources + extended modifier; architecture flag gate |
+| 476 | (extended) | Conditional 2-path | 287 / 210 | Branches on `instr+16` bit 0: 2-source or predicate-encode path |
+| 477--480 | (extended simple) | 1-word instructions | -- | Control word only; minimal encoding |
+| 482--490 | (extended range) | Mixed formats | variable | Cases 482--488: 1-source + control; 489--490: simple control |
+| 491 | (extended) | MMA multi-record | 174 | dst + 3 sources + complex multi-record with 14 goto-label state machine |
+| 492 | (extended) | 2-source + flag | 24 | dst + 2 sources + 1-bit flag control |
+| 493 | (extended) | 2-source + flag | 209 | Same pattern as 492, different format |
+| 494--499 | (delegated) | Specialized handlers | -- | Each delegates to a unique sub-function (`sub_6D1F30`, `sub_6CE200`, `sub_6CE040`, `sub_6CED80`, `sub_6CF270`, `sub_6CF180`) |
+| 500 | (extended) | Multi-mode ALU | 186 | 2 sources + sub-switch on `(modifier>>1)&7` (6 data-type modes) |
+| 501--504 | (extended simple) | Minimal | -- | 1 source or control-only |
+| 505 | (extended) | 2-source | 35 | dst + 2 sources + control |
+| 506 | (extended) | Delegated | -- | Calls `sub_6D1B90` |
+| 507, 508 | (extended) | Identical format | 226 | Simple 1-word encoding |
+| 509 | (extended) | Delegated | -- | Calls `sub_6D1B90` |
+| 510 | (extended) | TMEM/TCGen05 | 323 / 309 (secondary) | Mode switch on `modifier&3`: mode 2 = 8-word `sub_934630` record; else register + control |
+| 511 | (extended) | Delegated | -- | Calls `sub_6D1EB0` |
+| 512 | (extended) | TMEM load | 315 | Null sentinel + conditional encode + register + mode-word |
+| 513 | (extended) | TMEM store | 316 | 1 source + optional register + mode-word |
+| 514 | (extended) | TMEM fence | 303 (secondary) | Zero-operand `sub_934630` |
+| 515 | (extended) | TMEM alloc/dealloc | 302 (secondary) | 3-way mode switch; each emits 2-word `sub_934630` |
+| 516 | (extended) | TMEM prefetch | 307 | dst + 1 source + control |
+| 517, 518 | (extended simple) | Minimal | -- | Control-only |
+| 519 | (extended) | TCGen05 fence | 298 (secondary) | Zero-operand `sub_934630` |
+| 520 | (extended) | TCGen05 ctrl | 313 (secondary) | Zero-operand `sub_934630` |
+| 521 | (extended) | TCGen05 commit | 277 (secondary) | 1-word `sub_934630` |
+| 522--527 | (extended simple) | Minimal / paired | -- | Control-only; 526+527 share body |
+| 528 | (extended) | TCGen05 op | 305 | Simple 1-word |
+| 529 | (extended) | TCGen05 op | 306 | 2 sources |
+| 530 | (extended) | TCGen05 op | 304 | 2 sources |
+| 531, 532 | (extended simple) | Minimal | -- | Control-only |
+| 533 | (extended) | TCGen05 multi | 322 (secondary) | 3-way mode switch; each emits 2-word `sub_934630` |
+| 534 | (extended) | TCGen05 wide | 320 (secondary) | 4-word `sub_934630` |
+| 535--537 | (extended simple) | Minimal | -- | Control-only |
+| 538, 539 | (extended) | Barrier ops | 293, 294 | 1 source + control |
+| 540 | (extended) | Barrier/sync | 218 | Simple 1-word |
+| 541 | (extended) | Barrier variant | 296 | 2 sources |
+| 542 | (extended) | Barrier variant | 295 | 1 source; format arg from `instr+176` |
+| 543 | (extended) | Multi-record barrier | 286/23 (secondary) | 2 `sub_934630` calls: 286 (12 cols) then 23 |
+| 544 | (extended) | Multi-record wide | 23/272 (secondary) | 3 `sub_934630` calls: two format-23 then format-272 |
 
 Encoding details:
 - Instructions are encoded as sequences of 8-byte words
