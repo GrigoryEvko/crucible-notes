@@ -99,6 +99,155 @@ The descriptor is a 328-byte object containing:
 
 The KNOBS embedding allows the finalizer to reproduce exact compilation settings without the original command-line arguments. This is critical for off-target finalization where the finalizer runs in a different context (e.g., the CUDA driver at application load time).
 
+#### Construction Algorithm (`sub_1C9C300`)
+
+```
+function BuildCapsuleDescriptor(func_markers, context):
+    if func_markers == NULL or func_markers.active == 0:
+        return 0                                  // nothing to emit
+
+    // ── Phase 1: allocate and zero-fill 328-byte descriptor ────────
+    desc = allocate(328)                          // sub_424070(allocator, 328)
+    memset(desc, 0, 328)
+
+    // ── Phase 2: compute sampling_mode from section type ───────────
+    section_type = resolve_section(context, func_markers.section_id).type
+    if section_type != 1:
+        flag = 0
+        if section_type - 0x70000006 <= 14:       // SHT_LOPROC range check
+            flag = (0x5D05 >> (section_type - 6)) & 1
+        if (section_type - 0x70000064 <= 26) or flag:
+            desc.sampling_mode = (section.flags >> 2) & (section_type == 0x7000000E)
+    desc.section_index = func_markers.section_id
+
+    // ── Phase 3: initialize container fields ───────────────────────
+    desc.rela_list_a      = new_vector(elem_size=8)
+    desc.rela_list_b      = new_vector(elem_size=8)
+    desc.reloc_symbol_list= new_vector(elem_size=8)
+    desc.reloc_index_set  = new_sorted_set(cmp=sub_427750, elem=0x20)
+    desc.per_reloc_data   = new_sorted_set(cmp=sub_427750, elem=0x20)
+    desc.reloc_payload_map= new_sorted_set(cmp=sub_427750, elem=0x20)
+    desc.kv_pair_list     = new_vector(elem_size=8)
+    desc.knobs_pair_list  = new_vector(elem_size=8)
+    desc.min_sm_version   = 256                   // sentinel = no constraint
+    if profile != NULL:
+        desc.min_sm_version = profile.sm_version  // from *(profile + 6)
+
+    // ── Phase 4: resolve rela, constant bank, text sections ────────
+    if func_markers.rela_a_id:  copy_rela(func_markers, context, &desc.rela_list_a)
+    if func_markers.rela_b_id:  copy_rela(func_markers, context, &desc.rela_list_b)
+    if func_markers.const_id:
+        sec = resolve_section(context, func_markers.const_id)
+        desc.const_bank_section_index = func_markers.const_id
+        // walk constant bank data range → populate reloc containers
+    if func_markers.text_id:
+        desc.text_section_offset = get_offset(context, resolve(func_markers.text_id))
+        desc.text_rela_section_index = func_markers.text_id
+
+    desc.sass_data_offset = get_offset(context, section)
+    desc.sass_data_size   = section.size
+    desc.func_name_ptr    = get_name(context, section)
+    desc.section_name_ptr = ".nv.capmerc" + func_name
+    desc.section_alignment= 16
+
+    // ── Phase 5: scan symbol table for weak binding ────────────────
+    for i in 0 .. symbol_count(context):
+        sym = get_symbol(context, i)
+        if sym.type == STT_SECTION and sym.section == desc.section_index:
+            if (sym.value == 0 or (sym.value & 0x7F == 0 and sym.info & 4)):
+                if desc.weak_symbol_desc == 0:
+                    desc.weak_symbol_index = i
+                    desc.weak_symbol_desc  = sym
+
+    // ── Phase 6: parse marker stream ───────────────────────────────
+    cursor = stream_start;  end = stream_start + stream_length
+    while cursor < end:
+        type = cursor[0];  sub = cursor[1]
+        switch type:
+          case 2:   // 4-byte boolean flags
+            if sub == 21: desc.has_exit  = 1
+            if sub == 22: desc.has_crs   = 1
+            if sub == 74: desc.sampling_mode = cursor[2]
+            cursor += 4
+
+          case 3:   // 4-byte short-value markers
+            payload = *(WORD*)(cursor+2)
+            if sub == 27: desc.desc_version       = payload
+            if sub == 73: desc.stack_frame_size    = payload
+            if sub == 88: desc.{uses_atomics|shared|global}[payload] = 1
+            if sub == 95: desc.min_sm_version = payload; desc.has_crs_depth = 1
+            cursor += 4
+
+          case 4:   // variable-length data markers
+            size = *(WORD*)(cursor+2);  data = cursor + 4;  next = data + size
+            switch sub:
+              10: desc.has_global_refs = 1
+              25: desc.has_shared_refs = 1
+              47: desc.instr_format_version = *(DWORD*)data
+              50: desc.register_count       = *(DWORD*)data
+              54: desc.has_texture_refs     = 1
+              67: desc.barrier_info_size = size; desc.barrier_info_data = data
+              23,69: max_reg = *(WORD*)(data+6)     // register pressure
+                     desc.max_register_count = max(desc.max_register_count,
+                                                   max_reg + shift)
+              28,40,49,70,71,87:                    // reloc symbol indices
+                     for j in 0 .. size/4:
+                         reloc_index_set.insert(*(DWORD*)(data + 4*j))
+              46,68: for j in 0 .. size/8:          // 8-byte reloc entries
+                         reloc_index_set.insert(*(DWORD*)(data + 8*j))
+              52:    while data < next:              // per-symbol reloc records
+                         sym_id = *data; dep_count = data[2]
+                         reloc_index_set.insert(sym_id)
+                         if dep_count:
+                             buf = new_vector(dep_count)
+                             reloc_payload_map.insert(sym_id, buf)
+                             for k in 0 .. dep_count:
+                                 per_reloc_data.insert(data[3+k])
+                                 buf.append(data[3+k])
+                         data += 3 + dep_count
+              57:    for j in 0 .. size/16:         // 16-byte reloc records
+                         reloc_index_set.insert(*(DWORD*)(data + 16*j))
+              64:    for j in 0 .. size/12:         // 12-byte reloc records
+                         reloc_index_set.insert(*(DWORD*)(data + 12*j))
+              72:    target_type = *(DWORD*)data     // KNOBS section binding
+                     for s in context.knobs_sections:
+                         if s.type == target_type:
+                             desc.knobs_section_desc = alloc_64B_subobj()
+                             desc.knobs_section_desc.index  = s.id
+                             desc.knobs_section_desc.offset = get_offset(s)
+                             desc.knobs_section_desc.size   = s.size
+                             desc.knobs_section_desc.name   = get_name(s)
+                             break
+              85:    parse_reloc_subtypes(data, size, reloc_index_set)
+              90:    blob = alloc_copy(data, size)   // KNOBS KV block
+                     checksum = crc32_init(0x123456)
+                     crc32_update(checksum, blob, size)
+                     while offset < size - 3:
+                         name_off = *(WORD*)(rec-4); val_off = *(WORD*)(rec-2)
+                         entry = {key=strdup(name), value=strdup(val)}
+                         if key == "KNOBS": desc.knobs_pair_list.append(entry)
+                         else:              desc.kv_pair_list.append(entry)
+                         offset += name_off + 4 + val_off
+                     free(blob)
+            cursor = next
+
+          default:  cursor += 4                    // unknown type: skip
+
+    // ── Phase 7: allocate companion .merc descriptor ───────────────
+    if merc_mirror_active:
+        merc = allocate(328);  memset(merc, 0, 328)
+        merc.section_index    = desc.section_index
+        merc.sass_data_offset = memcpy_alloc(desc.sass_data_offset,
+                                             desc.sass_data_size)
+        merc.sass_data_size   = desc.sass_data_size
+        merc.section_flags    = section.elf_flags  // from original ELF header
+        merc.section_name_ptr = ".merc" + func_name
+        context.merc_strtab_size += strlen(merc.section_name_ptr) + 1
+        merc_section_list.append(merc)
+
+    return 0
+```
+
 ### Capsule Descriptor Layout (328 bytes)
 
 The descriptor is heap-allocated via `sub_424070(allocator, 328)` and zero-filled before field initialization. The constructor also creates a companion `.merc<funcname>` descriptor (same 328-byte layout) when merc section mirroring is active.
@@ -302,9 +451,77 @@ Capsule Mercury defines its own relocation type namespace for references within 
 
 The eight `R_MERCURY_8_*` types enable patching individual bytes within a 64-bit instruction word. Mercury instruction encodings pack multiple fields into single 8-byte QWORDs (the 1280-bit instruction buffer at `a1+544` is organized as 20 QWORDs). During finalization for a different SM, only certain bit-fields within an instruction word may need updating -- for example, the opcode variant bits or register class encoding -- while neighboring fields remain unchanged. The sub-byte types let the finalizer patch exactly one byte at a specific position within the word without a read-modify-write cycle on the entire QWORD.
 
-### Relocation Resolution
+### Relocation Resolution Algorithm -- `sub_1CD48C0`
 
-The master relocation resolver `sub_1CD48C0` (22KB) handles both standard and capmerc relocations. For R_MERCURY_UNIFIED, it converts internal relocation type 103 to type 1 (standard absolute). The resolver iterates relocation entries and handles: alias redirections, dead-function relocation skipping, `__UFT_OFFSET` / `__UDT_OFFSET` pseudo-relocations, PC-relative branch validation, NVRS (register spill) relocations, and YIELD-to-NOP conversion for forward progress guarantees.
+The master resolver (22KB, 17 callees) walks the relocation linked list at `elfw+376` and applies five major stages per entry. Reconstructed pseudocode from the decompiled binary:
+
+```
+resolve_relocations(elfw):
+    for each rela in linked_list(elfw+376):
+        sym    = lookup_symbol(elfw, rela.r_sym)
+        r_type = rela.r_info_lo            // low 32 bits of r_info
+
+        // ---- Stage 1: Mercury vs CUDA table selection ----
+        test_bit = (elfw.ei_class == 'A') ? 1 : 0x80000000
+        is_mercury = (test_bit & elfw.flags) != 0
+        if is_mercury:
+            if r_type != 0 and r_type <= 0x10000:
+                fatal("unexpected reloc")   // must be 0 or >0x10000
+            table = &off_2407B60            // R_MERCURY table (65 entries)
+            index = r_type - 0x10000        // strip Mercury namespace prefix
+        else:
+            table = &off_2408B60            // R_CUDA table (117 entries)
+            index = r_type
+
+        // ---- Stage 2: R_MERCURY_UNIFIED downgrade (compat path) ----
+        //   When elfw+656 == 0 (no Mercury backend) and link_mode != 1,
+        //   rewrite Mercury type codes to CUDA equivalents:
+        //     103 -> 1    (UNIFIED -> ABS32)
+        //     102 -> 2,  104..106 -> 76..78,  107..113 -> 79..83,56,57
+        //   Also rewrites __UFT_OFFSET/__UDT_OFFSET symbols: type -> 0,
+        //   sym replaced with symbol 0 (null section).
+
+        // ---- Stage 3: Alias redirection ----
+        sec = lookup_section(elfw, sym.st_shndx)
+        parent = lookup_section(elfw, sec.sh_link)
+        if sym.st_info_type == STT_SECTION and sym.st_value == 0:
+            alias_target = sec.sh_link_target  // low 24 bits of sh_link
+            if alias_target != rela.r_sym and parent.sh_type != 0x7000000E:
+                // Redirect: resolve alias chain to true section
+                debug("change alias reloc %s to %s\n", sym.name, new.name)
+                rela.r_sym = alias_target
+                sym = lookup_symbol(elfw, alias_target)
+
+        // ---- Stage 4: Dead-function skip ----
+        if sym.st_info_type == STT_FUNC:           // type 0xD
+            shndx = get_shndx(elfw, sym)
+            if shndx == 0 or shndx == 0xFFF2:      // SHN_UNDEF / SHN_ABS
+                if sym.st_other_visibility == STV_DEFAULT:
+                    unlink(rela); continue           // drop reloc silently
+            if sym.st_info_bind == STB_LOCAL:        // binding == 1
+                debug("ignore reloc on dead func %s\n", sym.name)
+                rela.r_info_lo = 0; index = 0        // zero out type
+
+        // ---- Stage 5: YIELD-to-NOP guard ----
+        //   For r_type 68..69 (YIELD relocs), if forward_progress flag
+        //   (elfw+94) is set, skip patching (preserve YIELD as-is):
+        desc = table[index]
+        if desc.patch_mode in {2, 3} and r_type in {68, 69}:
+            if elfw.forward_progress:
+                debug("Ignoring reloc to convert YIELD to NOP...")
+                rela.r_info_lo = 0; index = 0
+
+        // ---- Dispatch to bit-field patcher ----
+        target_buf = find_patch_address(section, rela.r_offset)
+        debug("resolve reloc %d sym=%d+%lld at <section=%d,offset=%llx>")
+        if desc.patch_mode == 16:   // PC-relative
+            assert rela.r_sec_idx == target_section  // same-section branch
+        sub_1CD34E0(table, index, is_rel, target_buf,
+                    sym.st_value, rela.r_offset, rela.r_addend,
+                    sym.st_size, section.sh_type - 0x70000064)
+```
+
+The sub-byte `R_MERCURY_8_N` types (ordinals 4--11) use patch mode 6 in `sub_1CD34E0`, which extracts byte `N/8` from the computed value and writes it to the target offset without touching adjacent bytes. This avoids a read-modify-write on the full QWORD -- the descriptor's `bit_start` field encodes the byte position (0, 8, 16, ... 56) and `bit_width` is always 8.
 
 ## Mercury Section Binary Layouts
 
@@ -486,7 +703,7 @@ During resolution (`sub_1CD48C0`), the 24-byte on-disk entries are loaded into a
 
 The extra 8 bytes enable cross-section targeting: `r_sec_idx` identifies which section `r_offset` is relative to, and `r_addend_sec` identifies the section contributing the addend base address. When `r_addend_sec != 0`, the resolver adds that section's load address to `r_offset` before patching.
 
-The resolver detects Mercury relocation types via `r_type > 0x10000`, subtracts `0x10000`, then dispatches through a Mercury-specific handler table (`off_2407B60`) rather than the standard CUDA relocation table (`off_2408B60`).
+The resolver's Mercury/CUDA table selection and five-stage dispatch algorithm are documented in [Relocation Resolution Algorithm](#relocation-resolution-algorithm----sub_1cd48c0) above.
 
 ### Complete sh_type Map
 
@@ -552,30 +769,86 @@ The key constraint is instruction encoding compatibility: the sub-byte R_MERCURY
 
 ## Off-Target Finalization
 
-Off-target finalization is the process of converting a capmerc binary compiled for SM X into native SASS for SM Y. The compatibility checker `sub_60F290` determines whether the source/target pair is compatible, examining:
+Off-target finalization converts a capmerc binary compiled for SM X into native SASS for SM Y. The compatibility checker `sub_60F290` gates this with a two-phase test: family normalization followed by capability bitmask validation.
 
-- SM version pair and generation compatibility
-- Feature flag differences between source and target
-- Instruction set compatibility (no target-only instructions used)
-- Constant bank layout compatibility
-- Register file layout match
-
-When the check passes, the kernel finalizer `sub_612DE0` (47KB) applies the "fastpath optimization" -- it directly patches the Mercury-encoded instruction stream using R_MERCURY_* relocations rather than running the full compilation pipeline. On success, ptxas emits the diagnostic:
+### Compatibility checker (`sub_60F290`)
 
 ```
-"applied for off-target %u -> %u finalization"
+fn can_finalize_offtarget(ctx, source_sm, target_sm, cross_family_ok) -> bool:
+    // Phase 1: normalize SM number to family code (ASCII-range integer)
+    family_of(sm) :=
+        104 -> 120    // sm_104 alias -> Blackwell-x family ('x')
+        130 -> 107    // sm_130       -> family 'k'
+        101 -> 110    // sm_101       -> family 'n'
+        _   -> sm     // sm_100=100('d'), sm_103=103('g'), sm_121=121('y'), etc.
+    src_fam = family_of(source_sm)
+    tgt_fam = family_of(target_sm)
+
+    // Phase 2: family match -- special routing for Blackwell cross-aliases
+    // sm_101/sm_130 targeting sm_104 (all normalize to Blackwell base) pass directly
+    if src_fam == tgt_fam:
+        result = cross_family_ok
+    else:
+        result = cross_family_ok AND (src_fam == tgt_fam)   // redundant, always false
+    if !result:
+        // fallback: check capability descriptor presence at ctx+24
+        result = cross_family_ok AND (ctx.cap_word_present != 0)
+        if !result: return false
+
+    // Phase 3: target capability bitmask (ctx+16 -> dereferenced DWORD*)
+    cap_flags = *ctx.cap_flags_ptr
+    if cap_flags == NULL: return false
+    required_bits = { 100 -> 0x01,    // sm_100 datacenter Blackwell
+                      103 -> 0x08,    // sm_103 Blackwell Ultra / GB300
+                      110 -> 0x02,    // sm_110 Jetson Thor
+                      121 -> 0x40 }   // sm_121 DGX Spark
+    if tgt_fam not in required_bits: return false
+    return (cap_flags & required_bits[tgt_fam]) == required_bits[tgt_fam]
 ```
 
-where the two `%u` values are the source and target SM numbers.
+The `CAN_FINALIZE_DEBUG` environment variable enables verbose tracing of the decision (read via `getenv`/`strtol` at entry; the parsed value gates logging in callers, not the decision itself).
 
-The fastpath avoids re-running phases 117--122 of the Mercury pipeline. Instead, it:
-1. Reads the capsule descriptor from `.nv.capmerc<func>`
-2. Validates compatibility via `sub_60F290`
-3. Applies R_MERCURY_* relocation patches for the target SM
-4. Regenerates the ELF `.text` section with patched instruction bytes
-5. Updates `.nv.info` EIATTR attributes for the target (register counts, barrier counts)
+### Kernel finalizer fastpath (`sub_612DE0`)
 
-This is substantially faster than full recompilation, which is why ptxas logs it as a "fastpath."
+When the check passes, the finalizer patches the capsule in-place rather than re-running phases 117--122. On success ptxas emits:
+
+```
+"[Finalizer] fastpath optimization applied for off-target %u -> %u finalization"
+```
+
+The 5-step fastpath sequence (lines 830--879 of the decompilation):
+
+```
+fn finalizer_fastpath(capsule_buf, source_sm, target_sm, out_ptr, out_size):
+    // 1. Parse capsule -- extract .text byte count from capsule descriptor
+    text_size = get_capsule_text_size(capsule_buf)          // sub_1CAFC60
+    output = allocate_zeroed(text_size)                     // sub_424070
+    memcpy(output, capsule_buf, text_size)
+
+    // 2. Validate -- source SM extracted from capsule header field at +48:
+    //    format 'A' (0x41): sm = dword_48 >> 8   (16-bit field)
+    //    other:              sm = dword_48 & 0xFF (8-bit field)
+    //    sub_60F290 already returned true before entering this path
+
+    // 3. Patch target SM into capsule header
+    hdr = parse_capsule_header(output)                      // sub_1CB9C30
+    if hdr.format == 'A':
+        hdr.dword_48 = (target_sm << 8) | (hdr.dword_48 & 0xFF0000FF)
+    else:
+        hdr.dword_48 = target_sm | (hdr.dword_48 & 0xFFFFFF00)
+
+    // 4. Emit patched .text -- output replaces the .text section content
+    *out_ptr  = output
+    *out_size = text_size
+    // R_MERCURY_* relocations resolved by relocation engine against
+    // target SM encoding tables (see Relocation Resolution Algorithm)
+
+    // 5. Falls through to standard EIATTR builder for target SM
+    //    (register counts, barrier counts, max stack size rewritten)
+    goto cleanup    // LABEL_20 -- skip full 122-phase compilation
+```
+
+If the fastpath fires, execution jumps directly to `LABEL_20` (cleanup epilogue), bypassing the full compilation setup: mutex acquisition, per-kernel state initialization, the 122-phase pipeline, and ELF section construction. The full path is only taken when `sub_60F290` returns false or when `--opportunistic-finalization-lvl` is 0.
 
 ## Pipeline Integration
 

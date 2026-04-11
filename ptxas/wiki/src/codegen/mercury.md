@@ -582,18 +582,119 @@ Two entry paths exist, both calling the same `sub_6FFDC0` body:
 
 ### Opex Body -- `sub_6FFDC0` (66KB)
 
-This 66KB function with 200+ local variables performs:
-1. **Instruction iteration** -- walks the instruction list per basic block
-2. **Latency computation** -- determines execution latency for each instruction based on opcode, functional unit, and architecture
-3. **Scoreboard allocation** -- assigns dependency scoreboard entries to track producer-consumer relationships
-4. **Wait insertion** -- inserts `DEPBAR.WAIT` instructions where a consumer must wait for a producer to complete
-5. **Stall count computation** -- sets per-instruction stall counts in the scheduling control word
-6. **Barrier generation** -- inserts memory barriers and synchronization points
+This 66KB function (200+ locals, ~0x7A0 bytes stack frame) is the core of Mercury scheduling. It walks every basic block, computes latencies, allocates scoreboards, inserts waits and barriers, and sets stall counts. The six algorithmic steps execute in sequence within a per-block loop.
 
-The function queries three knobs that control scheduling behavior:
-- **Knob #17**: expansion options, WAR penalty flag control
-- **Knob #743**: reduce-reg scheduling mode (minimize register pressure)
-- **Knob #747**: dynamic batch scheduling mode
+```
+OpexBody(ctx):                                         // sub_6FFDC0
+  // ── Initialization ────────────────────────────────
+  func_obj    = *ctx
+  is_mercury  = sub_10ADF10(func_obj)                  // Mercury mode?
+  sb_count    = 0;  flags = {0,0,0,0}
+  sub_6FC810(ctx, &sb_count, &flags[0..3], is_mercury) // query knobs #17/#743/#747
+  if !ctx->byte_29:  goto fast_path                    // skip scoreboard if disabled
+
+  // Allocate 4 tracking arrays sized by *(func+984) (max scoreboard index):
+  //   A[0..N]=1 (occupied), B[0..N]=1 (refcount), C[0..N]=0 (pending waits)
+  sub_BE21D0(tracking_state)                           // finalize array D from A+B+C
+
+fast_path:
+  if ctx->mode == 1:                                   // trivial single-block kernel
+    sub_6FC3A0(ctx, 1, 1)                              // single-pass expansion
+    goto done
+
+  // ── Build block iteration order ───────────────────
+  sub_8A4F20(block_order, func_obj)                    // RPO block list
+  sub_6FF070(dep_ctx, func_obj, block_order, ctx->i8, sb_count)
+  ref_A = alloc_refcount(3);  ref_B = alloc_refcount(3)
+  sub_6FD5D0(ref_B);  sub_6FD550(ref_A)               // producer/consumer set init
+  if is_mercury:
+    merc_state = alloc(272)
+    sub_8BE320(merc_state, func_obj, block_order, ctx->i8, ctx->end_ptr)
+
+  // ── Step 1: Per-instruction latency lookup ────────
+  //   sub_8A9D80: for each instruction in every block:
+  //     latency_idx = instruction_legality[opcode * 4 + variant]
+  //       (60416-entry table @ VA 0x22FEE00; 4 bytes/entry; 68% zero)
+  //     if latency_idx & 0x08000000:  special-case handling (259 opcodes)
+  //     raw_latency = latency_idx & 0xFFFF (cycle count)
+  //     pipe_class  = latency_idx >> 16    (functional unit ID)
+  //   Arch-specific overrides via vtable at func+39, offsets +72/+120
+  //   Knob #743: compresses latency to reduce register lifetime
+  //   Knob #747: applies DynBatch scaling factors (see SCHED-36)
+  sub_8A9D80(tracking_state, func_obj, dep_ctx, block_order,
+             ctx->end_ptr, &dep_root, flags[0..3],
+             is_mercury, merc_state, ref_context)
+
+  // ── Prepare per-block processing state ────────────
+  sb_limit  = dep_ctx->i22 + 1                         // max scoreboard entries
+  has_cap10 = vtable_query(func+39, 10);  has_cap87 = vtable_query(func+39, 87)
+  // Allocate 7 scoreboard tables (sub_6FDD30): sb_tables[0]=256x56B (active
+  // descriptors), [1..3]=8x56B (barrier groups), [4..5]=256x56B (wait state),
+  // [6]=8x56B (membar). Auxiliary: hash_A/B 8x56B (dedup), reg_map 36x8B,
+  // stall_vec 36x8B, dep_bitmap 773x8B (per_sm_scoreboard_configs: SM100 has
+  // 75 entries x 88B, triplet={scoreboard_id, threshold=56, mask=0xFFFFFFFF})
+  sub_BFAFC0(dep_bitmap, func_obj, ctx->end_ptr)      // init dependency bitmap
+  sub_719D00(block_iter)                               // begin block iteration
+
+  // ── Steps 2-6: Per-block loop ─────────────────────
+  for block_id = 0 .. func_obj->i246:
+    block_desc = func_obj->ptr_976[block_id]           // 40-byte block record
+    sub_718C10(ctx->end_ptr, &block_desc)              // load block
+
+    if is_mercury:
+      cap = *(func+39 + 72)                           // vtable-derived knob state
+      if !cap || (cap == 1 && *(func+39)->i4904):
+        sub_8B6860(merc_state, &block_desc)            // Mercury block init
+      else:
+        sub_8A5CA0(merc_state)                         // simplified init
+
+    // Step 2 ── Scoreboard entry allocation ──────────
+    //   sub_8BDC40: for each producer instruction in block:
+    //     key = encoding_bitfield_lookup[opcode_key]
+    //       (4096 entries @ VA 0x23F2E00, pair {field_a, field_b})
+    //     if key.field_b != 0xFFFFFFFF:
+    //       sb_entry = alloc from sb_tables[0] (LRU evict if full)
+    //       sb_entry.id chosen from per_sm_scoreboard_configs triplets
+    //       mark register outputs as tracked by sb_entry
+    sub_8BDC40(func_obj, dep_ctx, &opex_state, block_order,
+               ctx->end_ptr, &block_desc)
+
+    // Step 3 ── Wait insertion ───────────────────────
+    //   sub_BFC850: scan consumer operands vs active scoreboards:
+    //     if consumer reads reg owned by sb_entry with remaining_lat > 0:
+    //       insert DEPBAR.WAIT before consumer (opcode 54, format=4)
+    //       wait_mask |= (1 << sb_entry.scoreboard_id)
+    //   Called twice: flag=1 (pre-scan), flag=0 (commit)
+    if tracking_state[148]:
+      sub_BFC850(dep_bitmap, &opex_root, &block_desc, 1, 0)  // pre-scan
+    sub_8BB4D0(func_obj, tracking_state, &block_desc)  // update tracking
+    sub_BFC850(dep_bitmap, &opex_root, &block_desc, 0, 0)    // commit waits
+
+    // Step 4 ── Stall count computation ──────────────
+    //   sub_BFE320: for each instruction:
+    //     stall = max(0, producer_latency - distance)
+    //     stall = min(stall, 15)          // 4-bit field in control word
+    //     Knob #17: if WAR penalty disabled, skip penalty additions
+    //     Arch vtable +888/+896/+904: per-pipe stall overrides
+    //     Writes stall into control word bits [3:0]
+    sub_BFE320(dep_bitmap, &block_desc)
+
+    // Step 5 ── Memory barrier placement ─────────────
+    //   sub_717C50: inserts MEMBAR/FENCE at block boundaries and before
+    //   memory ops crossing consistency domains.  Only when mode > 2.
+    //   Uses sb_tables[6] to coalesce redundant barriers per block.
+    if ctx->mode > 2:
+      sub_717C50(block_iter, &block_desc)
+
+  // ── Cleanup (reverse-order destruction of all tables/ref-counted nodes) ──
+done:
+  func_obj->i385 = 2                                  // mark Mercury mode = done
+```
+
+**Step 6 -- Knob interaction**: knobs #17, #743, and #747 are not separate phases but modulate steps 1-5 throughout. `sub_6FC810` reads all three at initialization, storing derived flags in `flags[0..3]`:
+- **Knob #17** (expansion options): clears bit 4 of `ctx->flags+52`, disabling WAR penalty additions in step 4. When set, `sub_BFE320` skips the WAR stall penalty term.
+- **Knob #743** (reduce-reg): passed to `sub_8A9D80` in step 1. Compresses producer latencies so consumers schedule sooner, reducing live register count at the cost of more stalls.
+- **Knob #747** (dynamic batch): also passed to `sub_8A9D80`. Applies DynBatch priority scaling factors (see SCHED-36) to latency values, favouring throughput over latency.
 
 New instructions created by opex use `sub_10B1F90` (instruction allocator) and `sub_10AE590` (operand configuration).
 
@@ -628,7 +729,7 @@ The encoding pipeline uses FNV-1a hashing (seed `0x811C9DC5`, multiplier `167776
 
 ## Architecture-Specific Dispatch
 
-Architecture selection reads `*(int*)(config + 372) >> 12` to determine the SM generation. A vtable at `*(context+416)` with approximately 200 methods provides per-architecture behavior for encoding, latency tables, and hazard rules.
+Architecture selection reads `*(int*)(config + 372) >> 12` to determine the SM generation. A vtable at `*(context+416)` (equivalently `*(compilation_state+1584)`) with 400+ slots provides per-architecture behavior for encoding, latency tables, resource queries, and hazard rules. 41 slots have confirmed call sites; the highest observed is slot 402 (+3216).
 
 | SM generation | `config+372 >> 12` | SM versions |
 |---|---|---|
@@ -646,6 +747,82 @@ Vtable dispatch helpers at `0xC65530`--`0xC656E0`:
 - `sub_C65530` -- 3-key dispatch (opcode, subop1, subop2), binary search through 24-byte table entries
 - `sub_C65600` -- instruction-keyed dispatch, reads keys from `instr+12/14/15`
 - `sub_C656E0` -- instruction-keyed dispatch with fallback to default handler `sub_9B3020`
+
+### Architecture Vtable Method Catalog
+
+The vtable is accessed as `**ptr` where `ptr = *(compilation_state + 1584)` or `*(pipeline_context + 416)`. Each slot is 8 bytes (function pointer). Methods are grouped by functional area; "refs" is the number of distinct decompiled call sites.
+
+**Scheduling class / latency** (most heavily used):
+
+| Slot | Offset | Refs | Signature | Purpose |
+|---|---|---|---|---|
+| 113 | +904 | 48 | `(self, opcode) -> int` | Get scheduling class for opcode (returns pipe index 0--7). Called by every latency, stall, and scoreboard computation. Also called with no args for default class. |
+| 79 | +632 | 15 | `(self[, opcode, ...]) -> int` | Get register-file width for type. 0--5 args depending on context (spill cost, operand width, encoding bit-count). Bitmask `0x1008E0E` in `sub_A9BD00` gates translation to arch default. |
+| 86 | +688 | 4 | `(self, context) -> ptr` | Create architecture-specific scheduling annotation record |
+| 78 | +624 | 1 | `(self, type) -> int` | Get operand bit-width for negative type codes |
+| 5 | +40 | 1 | `(self, sched_class) -> int` | Get register bank count for scheduling class |
+
+**Resource query** (read-only architecture parameters):
+
+| Slot | Offset | Refs | Default stub | Purpose |
+|---|---|---|---|---|
+| 36 | +288 | 3 | `nullsub_135` | Post-scheduling fixup hook |
+| 62 | +496 | 1 | `nullsub_195` | Mid-expansion arch-specific hook |
+| 135 | +1080 | 1 | `sub_7D70F0` | Get basic block extension data (default returns bb+40) |
+| 161 | +1288 | 1 | -- | Has extended register encoding (gates alternate encode path) |
+| 163 | +1304 | 1 | `sub_744F70` | Has uniform register reuse |
+| 164 | +1312 | 1 | `sub_7D7230` | Has TMEM support |
+| 165 | +1320 | 1 | `sub_7D7240` | Has extended operand modes |
+| 209 | +1672 | 1 | -- | Has wide-register merge support |
+| 240 | +1920 | 1 | -- | Has predicate-register dual-issue support |
+| 247 | +1976 | 1 | `sub_7D7630` | Has extended memory type support |
+| 294 | +2352 | 1 | `sub_745030` | Has post-RA scheduling fixup |
+| 295 | +2360 | 1 | `sub_745040` | Has control-flow scheduling override |
+| 402 | +3216 | 1 | -- | Supports instruction-level predicate promotion |
+
+**Hazard detection** (accessed through `*(pipeline_context+416)` in WAR pass `sub_6FA5B0`):
+
+| Slot | Offset | Refs | Purpose |
+|---|---|---|---|
+| 63 | +504 | 3+ | Architecture-specific WAR fixup emitter |
+| 66 | +528 | 3+ | WAR hazard filter predicate / instruction legality check |
+| 121 | +968 | 4+ | Is operand subject to WAR penalty (per-arch rule) |
+| 126 | +1008 | 6+ | Is operand safe from WAR (cross-check negation of slot 121) |
+
+**Operand / encoding support**:
+
+| Slot | Offset | Refs | Signature | Purpose |
+|---|---|---|---|---|
+| 70 | +560 | 1 | `(self, instr, operand) -> bool` | Is operand a predicate-guarded source |
+| 81 | +648 | 1 | `(self, instr, src, dst_list, n, out) -> bool` | Try constant-buffer operand coalescing |
+| 82 | +656 | 1 | `(self, instr, modifier) -> void` | Patch modifier for operand reuse encoding |
+| 125 | +1000 | 4 | `(self, context, flag) -> void` | Post-legalization instruction fixup |
+| 128 | +1024 | 1 | `(self, instr) -> bool` | Does instruction require extended encoding space |
+| 190 | +1520 | 4 | `(self, instr, operand_idx) -> int` | Get operand encoding class for modifier dispatch |
+| 201 | +1608 | 1 | `(self, out, self2, instr, src_idx, flag) -> void` | Emit arch-specific operand fixup sequence |
+| 207 | +1656 | 1 | `(self, operand_record) -> int` | Get address computation stride for memory operand |
+| 218 | +1744 | 1 | `(self, instr, operand_idx) -> double` | Get spill cost weight for operand (FP return) |
+| 223 | +1784 | 1 | `(self, src_instr, cb_rec, buf1, buf2) -> void` | Emit constant-buffer materialization sequence |
+
+**Instruction legalization / rewrite**:
+
+| Slot | Offset | Refs | Signature | Purpose |
+|---|---|---|---|---|
+| 172 | +1376 | 1 | `(self) -> bool` | Supports PRMT.B32 rewrite (default `sub_744F80`) |
+| 173 | +1384 | 1 | `(self) -> bool` | Supports PRMT extended modes (default `sub_744F90`) |
+| 182 | +1456 | 6 | `(self, instr) -> bool` | Is instruction eligible for predication |
+| 187 | +1496 | 3 | `(self, opcode, type) -> bool` | Can opcode accept type as direct operand |
+| 188 | +1504 | 1 | `(self, instr, flag, out) -> bool` | Try modifier legalization |
+| 193 | +1544 | 1 | `(self, instr, type) -> bool` | Is type-specific encoding legal |
+| 194 | +1552 | 3 | `(self, instr, type, subtype) -> bool` | Can combine two operand types in one instruction |
+| 197 | +1576 | 3 | `(self[, instr]) -> int` | Get constant-buffer slot limit |
+| 198 | +1584 | 2 | `(self, instr, target) -> bool` | Is cross-block branch rewrite legal |
+| 224 | +1792 | 1 | `(self, instr, src_idx, out) -> bool` | Try immediate-to-constant-buffer promotion |
+| 225 | +1800 | 4 | `(self, instr) -> bool` | Is instruction a uniform-register consumer |
+| 226 | +1808 | 1 | `(self, instr, src, dst) -> int` | Get register bank conflict penalty |
+| 227 | +1816 | 1 | `(self, instr) -> bool` | Is instruction eligible for post-RA optimization |
+
+The separate scheduling vtable at `0x21DBC80` (77 entries, 32 unique functions) is a per-pipe-class dispatch table. It has three pipeline groups (A/B/C) of 23 entries each mapping pipe index to latency/throughput query functions, preceded by 8 core scheduling methods at `0x8DA680`--`0x8DC620` (stall computation, barrier allocation, yield threshold).
 
 ## Data Structures
 
@@ -675,7 +852,7 @@ Offset  Size    Field
 +236    1B      Uses shared memory flag
 +284    4B      Function flags (bits 0, 3, 7 checked by WAR pass)
 +385    4B      Mercury mode flag (2 = Mercury/Capsule mode)
-+416    8B      Architecture vtable pointer (~200 virtual methods)
++416    8B      Architecture vtable pointer (400+ slots, 41 confirmed -- see catalog above)
 ```
 
 ### Scheduling Control Word (per SASS instruction)

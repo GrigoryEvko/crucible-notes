@@ -117,6 +117,71 @@ The symmetry of call frequencies in `sub_143C440` confirms this: `setRewrittenOp
 and `setRewrittenModifier` are each called exactly 1,759 times -- every rewrite
 always sets both the opcode and modifier bytes.
 
+### Rewrite action value space
+
+The 1,759 rewrite actions in `sub_143C440` use 392 distinct `(new_opcode, new_modifier)`
+pairs.  `new_opcode` is a small ordinal (0--193, with a gap at 100--159);
+`new_modifier` selects the encoding variant.  Top pairs by frequency:
+
+| new_opcode | new_modifier | count | likely SASS semantics                 |
+|:----------:|:------------:|:-----:|:--------------------------------------|
+|   0x00     |   0x05       |  64   | identity / NOP-fold                   |
+|   0x01     |   0x03       |  58   | 2-src ALU, modifier 3                 |
+|   0x01     |   0x05       |  47   | 2-src ALU, modifier 5                 |
+|   0x02     |   0x05       |  42   | 3-src FMA-class, modifier 5           |
+|   0x03     |   0x03       |  38   | shift/logic, modifier 3               |
+|   0x01     |   0x0A       |  36   | 2-src ALU, modifier 10 (wider)        |
+|   0x01     |   0x13       |  32   | 2-src ALU, modifier 19 (packed/FP16)  |
+|   0x04     |   0x05       |  31   | convert/move, modifier 5              |
+|   0x00     |   0x02       |  29   | identity / NOP-fold, modifier 2       |
+|   0x02     |   0x13       |  22   | 3-src FMA-class, modifier 19 (FP16)   |
+
+The modifier namespace (22 distinct values observed) is dominated by six
+encodings: 0x05 (24% of rewrites), 0x03 (19%), 0x13 (15%), 0x0A (11%),
+0x0D (9%), and 0x02 (6%).
+
+### Concrete rewrite examples from the binary
+
+A typical rewrite block for `template_id == 3` at `0x143C5DA`:
+
+```c
+// Matched pattern: 4-operand instruction foldable to 2-src ALU
+setRewrittenOpcode(instr,  1);   // new_opcode = 0x01
+setRewrittenModifier(instr, 2);  // new_modifier = 0x02
+setOperandMapping(instr, 0, 1);  // dest slot 0 <- source operand 1
+setOperandMapping(instr, 1, 2);  // dest slot 1 <- source operand 2
+markRewrittenComplex(instr);     // priority-aware flag (existing rewrite may exist)
+```
+
+A simpler rewrite for `template_id == 1` at `0x143C63D`:
+
+```c
+// Matched pattern: single-operand trivial fold
+setRewrittenOpcode(instr,  0);   // new_opcode = 0x00
+setRewrittenModifier(instr, 2);  // new_modifier = 0x02
+markRewrittenComplex(instr);     // no operand remapping needed
+```
+
+The operand mapping count per rewrite varies:
+
+| operand mappings | count | share |
+|:----------------:|:-----:|:-----:|
+| 0                | 1,193 |  68%  |
+| 1                |   181 |  10%  |
+| 2                |   269 |  15%  |
+| 3                |    94 |   5%  |
+| 4--5             |    22 |   1%  |
+
+68% of rewrites use zero operand mappings -- the instruction's existing
+operands remain in place and only the opcode/modifier bytes change (e.g.,
+folding a redundant modifier or selecting a cheaper encoding).  The remaining
+32% physically remap operand slots, typically collapsing a multi-source
+pattern into fewer sources or swapping operand order.
+
+Of the 1,759 rewrites, 1,251 (71%) use `markRewrittenSimple` (unconditional
+flag set), and 363 (21%) use `markRewrittenComplex` (priority-aware); 145
+(8%) fall through to a shared exit without an explicit mark call.
+
 ## Pattern Matcher Signature
 
 Every one of the 3,185 pattern matchers shares the same prototype:
@@ -143,17 +208,69 @@ Call `queryModifier(ctx, instr, slot)` (`sub_10AE5C0`) repeatedly.  Each call
 returns an enumerated value for a specific instruction property:
 
 ```c
-if (queryModifier(ctx, instr, 0xDC) != 1206) return 0;  // data type != .f32
-if (queryModifier(ctx, instr, 0x163) != 1943) return 0;  // rounding != .rn
-if (queryModifier(ctx, instr, 0x7E) - 547 > 1) return 0; // saturation out of range
+if (queryModifier(ctx, instr, 0xDC) != 1206) return 0;  // field 220: encoding type != .f32
+if (queryModifier(ctx, instr, 0x163) != 1943) return 0;  // field 355: rounding != .rn
+if (queryModifier(ctx, instr, 0x7E) - 547 > 1) return 0; // field 126: data type not in {.f32, .f64}
 ```
 
-The slot indices (0x05, 0x7B, 0x7E, 0x88, 0x90, 0xA1, 0xBE, 0xD2, 0xD3, 0xDC,
-0xF2, 0x101, 0x119, 0x126, 0x127, 0x142, 0x152, 0x155, 0x159, 0x15C, 0x163,
-0x167, 0x178, 0x179, 0x18A, 0x18D, 0x196, 0x197, 0x199, 0x19D, 0x1A8, 0x1AD,
-0x1AE, 0x1AF, 0x1B2, 0x1D1, 0x1D2, 0x1E0, 0x1E4, 0x1EC, 0x216, 0x253, etc.)
-index into a per-instruction property table covering type, rounding mode,
-saturation, negate, comparison type, and architecture-specific modifiers.
+The slot indices are **field IDs** from the same flat property namespace used by
+the ISel matchers (see [isel.md field-ID table](isel.md#dag-node-property-accessor----sub_10ae5c0)).
+`queryModifier` is literally `DAGNode_ReadField` (`sub_10AE5C0`); peephole and
+ISel share the same property-bag abstraction.  The 42 slot IDs observed in the
+peephole matchers, with their decoded semantics, guard values, and value-to-PTX
+modifier mappings:
+
+| Slot | Dec | Semantic name | Observed guard values | Decoded meaning |
+|------|-----|---------------|----------------------|-----------------|
+| 0x05 |   5 | Ori opcode ID | 12 | Internal opcode number (e.g., 12 = tensor-class) |
+| 0x7B | 123 | operation class | 536 | Major instruction family tag |
+| 0x7E | 126 | data type qualifier | 547, 548 | 547 = `.f32`, 548 = `.f64`; range check `- 547 <= 1` |
+| 0x88 | 136 | sub-operation modifier | 406--408, 598, 599 | Instruction sub-variant (e.g., ADD vs FADD vs FMUL) |
+| 0x90 | 144 | FP precision class | 628, 629 | Range `- 628 <= 1`; selects FP16 vs FP32 operand path |
+| 0xA1 | 161 | addressing mode variant | 700 | Memory addressing mode (register-indirect vs offset) |
+| 0xBE | 190 | operation subtype | 815 | Zero-operand instruction subtype (NOP/barrier class) |
+| 0xD2 | 210 | memory scope | 1177, 1181 | 1177 = `.gpu` (device), 1181 = `.sys` (system) scope |
+| 0xD3 | 211 | memory ordering | 1181 | Acquire/release/relaxed semantics |
+| 0xDC | 220 | encoding property (type) | 1206 | 1206 = `.f32` encoding tag for SASS bitfield selection |
+| 0xF2 | 242 | width / size qualifier | 1281, 1282 | 1281 = 32-bit, 1282 = 64-bit operand width |
+| 0x101 | 257 | async copy routing | 1332 | Async memory operation routing value |
+| 0x119 | 281 | address space qualifier | 1435--1440 | `.global` / `.shared` / `.local` / `.const` (6 spaces) |
+| 0x126 | 294 | constraint field | 1493 | Encoding constraint check |
+| 0x127 | 295 | extended constraint | 1499 | Secondary encoding constraint |
+| 0x142 | 322 | instruction form | 1800 | Instruction encoding form class |
+| 0x152 | 338 | operand layout tag | 1871, 1873, 1874 | Source/dest operand slot arrangement variant |
+| 0x155 | 341 | source modifier | 1881, 1882 | Range `- 1881 <= 1`; source operand modifier (abs/neg) |
+| 0x159 | 345 | rounding mode selector | 1899--1903 | 1900 = `.rn`, 1901 = `.rz`, 1902 = `.rm`, 1903 = `.rp` |
+| 0x15C | 348 | precision qualifier | 1912, 1915 | FP precision tag (`.tf32`, `.bf16`, etc.) |
+| 0x163 | 355 | extended property (rnd) | 1943 | 1943 = `.rn` extended rounding mode confirmation |
+| 0x167 | 359 | operand negation mask | 1957, 1961 | Source-operand sign-flip for FP instructions |
+| 0x178 | 376 | extended property A | 2035 | Extended instruction property (tensor/MMA class) |
+| 0x179 | 377 | extended property B | 2037--2041 | 5-value range; tensor layout variant |
+| 0x18A | 394 | dual-issue / sched hint | -- | Scheduling hint for dual-issue eligibility |
+| 0x18D | 397 | encoding validity stamp | 2115 | Post-ISel seal: `0x843` = bits {0,1,6} set in SASS dword 0 |
+| 0x196 | 406 | MMA type A | 2146 | Matrix multiply source type A (FP16/BF16/TF32/INT8) |
+| 0x197 | 407 | MMA type B | -- | Matrix multiply source type B |
+| 0x199 | 409 | MMA accumulator type | -- | Accumulator precision for tensor ops |
+| 0x19D | 413 | extended qualifier | 2167, 2168 | 2-value discriminator for tensor instruction shape |
+| 0x1A8 | 424 | uniform register hint | 2214--2225 | Bitmask 739; uniform register allocation eligibility |
+| 0x1AD | 429 | extended qualifier B | 2253--2257 | 5-value range; tensor instruction extended modifier |
+| 0x1AE | 430 | warp shuffle mode A | -- | SHFL sub-operation variant |
+| 0x1AF | 431 | warp shuffle mode B | -- | SHFL companion modifier |
+| 0x1B2 | 434 | FP composition | 2274 | FP instruction composition (fused vs separate) |
+| 0x1D1 | 465 | codegen control A | -- | Code generation control property |
+| 0x1D2 | 466 | codegen control B | -- | Code generation control property |
+| 0x1E0 | 480 | encoding format class | 2478--2481 | Selects SASS encoding format (3-src vs imm vs reg-reg) |
+| 0x1E4 | 484 | extended modifier C | -- | Blackwell-era extended property |
+| 0x1EC | 492 | extended modifier D | -- | Blackwell-era extended property |
+| 0x216 | 534 | MMA layout descriptor | 2717 | HMMA/DMMA matrix layout and tiling descriptor |
+| 0x253 | 595 | extended field (max) | 2937, 2938 | Highest field ID observed; tensor instruction tag |
+
+Values are drawn from a global enumeration (~2,850 entries, max 2829) that is
+**disjoint** from the field-ID namespace.  The encoding bitfield LUT at VA
+`0x23F2E00` maps value IDs to bit positions and masks in the SASS instruction
+word.  The most frequently read slots in the peephole matchers are 0x159
+(rounding, ~400 reads), 0x7E (data type, ~300), 0x88 (sub-op, ~200), and
+0x18D (validity stamp, ~150).
 
 **Step 2 -- Operand count.**
 Check the number of explicit/fixed operands and the total operand slot count:
