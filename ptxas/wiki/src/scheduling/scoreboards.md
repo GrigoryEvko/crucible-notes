@@ -893,6 +893,51 @@ This function:
 
 The two control word generators (`sub_A36360` for final emission, `sub_8D7760` for scheduling) share the same barrier allocation algorithm but operate at different pipeline stages. `sub_8D7760` produces preliminary assignments that `sub_A36360` may refine during the final scoreboard pass.
 
+### Barrier Assignment Lifecycle Reconciliation
+
+Pre-scheduling (`sub_8D7760`) and post-scheduling (`sub_A36360` / `sub_A23CF0`) run on opposite sides of register allocation. Pre-scheduling operates on virtual registers with estimated latencies; post-scheduling sees physical registers with final instruction distances. Because register allocation may insert spill/reload instructions, reorder operands, or coalesce registers, the physical distances between a producer and its consumers can differ from the virtual-register estimates. The reconciliation protocol ensures the final control word reflects the true physical distances rather than the stale pre-scheduling guesses.
+
+**Handoff mechanism.** `sub_8D7760` writes preliminary barrier state into the instruction's operand slots. For each long-latency producer, it stores the assigned barrier index in the operand descriptor's high word (bits 25--29, via the `sub_8C25B0` helper) and sets a tracking flag at `*(instr+88) |= 0x800000` (bit 23). The per-instruction stall hint goes to `*(func+240..252)` (register space 7 = scheduling complete). These annotations travel through register allocation unchanged -- the allocator preserves the operand descriptor high bits and the tracking flag.
+
+**Post-scheduling re-evaluation.** When `sub_A36360` processes each instruction in final order, it does not blindly copy pre-scheduling barrier indices. Instead, it runs a full three-step reconciliation:
+
+```
+function reconcile_barriers(pre_sched_state, phys_reg_distances) -> final:
+    // Step 1: Release stale barriers using physical instruction distances.
+    //   sub_A32C70 resolves phys reg IDs via *(func+88) + 8*reg_id.
+    //   sub_A318F0 computes forward distance with opcodes 0x8B/0x8F.
+    for each active barrier i in scoreboard_object.barrier_records[0..5]:
+        phys_dist = InstrDistance(barrier[i].producer, current_ip)  // sub_A318F0
+        if phys_dist >= barrier_latency_threshold:                  // 56 cycles
+            release_barrier(scoreboard_object, i)                   // stale -- free it
+
+    // Step 2: Re-classify each source operand's dependency need.
+    //   Phys register type at *(reg_obj+64) may differ from virtual-reg estimate
+    //   (e.g., spill/reload changes distance). sub_91BF30 queries per-class config.
+    for each source operand with tracking flag (bit 23 of *(instr+88)):
+        reg_class = *(phys_reg_obj + 64)
+        new_dist  = ComputePhysDistance(func, instr, operand_idx)
+        if new_dist <= 15:
+            final.stall = max(final.stall, new_dist)      // downgrade to stall
+        else:
+            // Re-allocate from live pool (sub_A356A0); pre-sched index discarded.
+            idx = AllocateBarrier(scoreboard_object, ctx, producer)
+            final.write_barrier = idx
+            final.wait_mask |= pending_consumer_waits(idx)
+
+    // Step 3: Conflict correction (sub_A31390).
+    //   Re-run 4-register intersection test; spill code may have introduced
+    //   new conflicts invisible to pre-scheduling.
+    if ctx.conflict_avoidance_enabled:
+        for each pair (candidate, other) in active barriers:
+            if BarrierSetsConflict(ctx, candidate, other):
+                final.wait_mask |= (1 << other)
+
+    return final                                           // written by sub_9253C0
+```
+
+**Key design point.** The pre-scheduling barrier index is *not* preserved across the boundary. `sub_A36360` builds a fresh 952-byte scoreboard object per basic block and populates it in scheduled order. Only the tracking flag (bit 23) and operand classification bits survive from `sub_8D7760`; the barrier index itself is recomputed because final instruction ordering determines which slots are oldest, which have affinity, and which exceed the 56-cycle threshold.
+
 ## Architecture-Specific Control Word Configuration
 
 `sub_A2BD90` (23 KB) configures architecture-dependent scheduling parameters by querying feature flags through the architecture vtable at `*(ctx+72)`. Configuration includes:

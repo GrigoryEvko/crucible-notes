@@ -19,28 +19,7 @@ The SASS instruction encoder is the single largest subsystem in ptxas by functio
 
 ## Encoding Buffer Layout
 
-Every encoder operates on an instruction encoding context object passed as `a1`. The primary encoding target is a 1280-bit (160-byte, 20 QWORD) buffer at offset `a1+544`. The bitfield packer `sub_7B9B80` writes individual fields into this buffer by iterating in 64-bit chunks:
-
-```c
-// sub_7B9B80(a1, bit_offset, bit_width, value)
-// Insert `value` into bits [bit_offset .. bit_offset+bit_width) of the encoding buffer
-void bitfield_insert(int64_t a1, int bit_offset, int bit_width, uint64_t value) {
-    uint64_t mask = (1ULL << bit_width) - 1;
-    value &= mask;
-    int pos = bit_offset;
-    while (pos < 1280) {
-        int qword_idx = pos >> 6;           // which QWORD
-        int bit_in_qword = pos & 63;        // bit position within QWORD
-        *(uint64_t*)(a1 + 8 * qword_idx + 544) |= value << bit_in_qword;
-        // Handle fields that cross a QWORD boundary
-        if (bit_in_qword + bit_width > 64) {
-            int overflow = bit_in_qword + bit_width - 64;
-            *(uint64_t*)(a1 + 8 * (qword_idx + 1) + 544) |= value >> (64 - bit_in_qword);
-        }
-        break;  // single insertion (loop structure handles interleaved format)
-    }
-}
-```
+Every encoder operates on an instruction encoding context object passed as `a1`. The primary encoding target is a 1280-bit (160-byte, 20 QWORD) buffer at offset `a1+544` (hex `0x220`). The bitfield packer `sub_7B9B80` writes individual fields into this buffer by scanning all 20 QWORDs in a single pass, OR-ing the relevant slice of the value into each overlapping QWORD. See [Bitfield Packer Detail](#bitfield-packer-detail----sub_7b9b80) for the full reconstructed algorithm.
 
 The encoding context object has this layout:
 
@@ -267,47 +246,52 @@ The copy uses SSE aligned loads for 16-byte chunks and scalar DWORD stores for r
 
 ### Bitfield Packer Detail -- `sub_7B9B80`
 
-The core encoding primitive. 216 bytes compiled, 18,347 callers total. Inserts an arbitrary-width bitfield into the 1280-bit buffer at `a1+544`:
+The core encoding primitive. 216 bytes compiled, 18,347 callers total. Inserts an arbitrary-width bitfield into the 1280-bit buffer at `a1+0x220` (decimal 544). Reconstructed from decompiled `sub_7B9B80` and verified against disassembly:
 
 ```c
 // sub_7B9B80(a1, bit_offset, bit_width, value)
-// Reconstructed algorithm from decompiled code:
-__int64 bitfield_insert(__int64 a1, uint32_t bit_offset, int bit_width, uint64_t value) {
-    uint32_t end = bit_offset + bit_width;
-    uint32_t neg_base = -64 - bit_offset;  // pre-computed right-shift amount
-    uint32_t pos = 0;
+// Canonical algorithm -- single source of truth.
+//
+// Scans all 20 QWORDs (0..1280 in steps of 64).  For each QWORD that
+// overlaps [bit_offset, bit_offset+bit_width), extracts the relevant
+// slice of `value` and OR-s it in.  The `neg_base` trick lets the
+// compiler compute the right-shift amount with a single ADD + CMOVS.
+uint32_t bitfield_insert(int64_t a1, uint32_t bit_offset, int bit_width, uint64_t value) {
+    uint32_t end      = bit_offset + bit_width;   // asm: add edx, esi
+    uint32_t neg_base = -64 - bit_offset;          // asm: mov r9d,0xFFFFFFC0; sub r9d,esi
+    uint32_t pos      = 0;                         // asm: xor eax, eax
     do {
-        while (1) {
-            uint32_t chunk_end = pos + 64;
-            if (bit_offset > pos + 63 || end <= pos) goto next;  // no overlap
+        uint32_t chunk_end = pos + 64;                         // lea r8d,[rax+0x40]
+        if (bit_offset > pos + 63 || end <= pos) goto next;    // ja / jbe to skip
 
-            uint32_t start = (bit_offset >= pos) ? bit_offset : pos;
-            uint32_t stop  = (end <= chunk_end) ? end : chunk_end;
-            int width = stop - start;
-            int shift_right = (chunk_end + neg_base < 0) ? 0 : chunk_end + neg_base;
-            int bit_in_qword = start & 0x3F;
-            __int64 *qword = (__int64*)(a1 + 8 * (start >> 6) + 544);
-            uint64_t shifted = value >> shift_right;
+        uint32_t start = (bit_offset >= pos) ? bit_offset : pos;  // cmovnb eax, esi
+        uint32_t stop  = (end <= chunk_end)  ? end : chunk_end;   // cmovbe ebp, edx
+        int width       = stop - start;                            // sub ebp, eax
+        int shift_right = neg_base + chunk_end;    // = pos - bit_offset
+        if (shift_right < 0) shift_right = 0;      // cmovs ecx, r10d (r10d=0)
+        int bit_in_qw  = start & 0x3F;             // and r12d, 0x3F
+        int64_t *qword = (int64_t *)(a1 + 8 * (start >> 6) + 0x220);
+        uint64_t slice  = value >> shift_right;     // shr r13, cl
 
-            if (width == 64)
-                *qword |= shifted << bit_in_qword;
-            else
-                *qword |= (shifted & ~(-1ULL << width)) << bit_in_qword;
-        next:
-            pos = chunk_end;
-            if (chunk_end == 1280) return pos;
-        }
-    } while (pos != 1280);
+        if (width == 64)
+            *qword |= slice << bit_in_qw;                              // full-QWORD path
+        else
+            *qword |= (slice & ~(-1ULL << width)) << bit_in_qw;       // masked path
+    next:
+        pos = chunk_end;
+    } while (pos != 1280);                          // cmp r8d, 0x500
     return pos;
 }
 ```
 
 Key properties:
-- Handles cross-QWORD-boundary fields: a 9-bit opcode starting at bit 59 writes 5 bits to QWORD 0 and 4 bits to QWORD 1
-- Loop terminates at bit position 1280 (20 QWORDs), hard ceiling
-- For typical field widths (1--9 bits), executes 1--2 iterations
-- Called 8--12 times per encoder function (average ~10)
-- The 256-bit format encoders call it with wider fields (up to 32 bits for data values)
+- Handles cross-QWORD-boundary fields: a 9-bit opcode starting at bit 59 writes 5 bits to QWORD 0 and 4 bits to QWORD 1.
+- `neg_base + chunk_end` simplifies to `pos - bit_offset` -- the number of value bits already consumed by earlier chunks. Clamped to 0 for the first overlapping chunk (where `pos <= bit_offset`).
+- Loop terminates at bit position 1280 (20 QWORDs), hard ceiling.
+- For typical field widths (1--9 bits), only 1--2 iterations touch the OR path; the rest hit the skip.
+- Called 8--12 times per encoder function (average ~10).
+- The 256-bit format encoders call it with wider fields (up to 32 bits for data values).
+- Buffer offset 0x220 confirmed in disassembly: `mov r15, [r14+220h]` / `mov [r14+220h], rax`.
 
 ### 128-bit Format 0x03 -- General ALU/Memory (145 encoders)
 
