@@ -232,6 +232,25 @@ Each format group is defined by a 128-bit xmmword constant stored in rodata at a
 *(__m128i *)(a1 + 8) = _mm_loadu_si128(&xmmword_23F29A8);
 ```
 
+**Xmmword 4-DWORD decomposition.** The 128-bit descriptor is stored little-endian at `a1+8`. On x86-64, the four DWORDs map to context offsets as follows:
+
+| DWORD | Context Offset | Source Half | Observed Values | Semantic Role |
+|---|---|---|---|---|
+| **DW0** | `a1+8` | `xmmword_lo[31:0]` | 1--16 | **Format class ID** -- indexes the format dispatch table. Determines the opcode-header layout used by the architecture-specific mega-selector. Values 1--5 appear in 64-bit formats; 4--16 in 128-bit formats (DW0=4,5 are shared). |
+| **DW1** | `a1+12` | `xmmword_lo[63:32]` | 2 (constant) | **Slot array stride** -- the slot-array DWORD pitch in the rodata block. Always 2 across all 38 descriptors, meaning each rodata array follows at a fixed 10-DWORD offset. Not read by any observed encoder function; consumed only during the `memcpy`-like array copy. |
+| **DW2** | `a1+16` | `xmmword_hi[31:0]` | 4 (constant) | **Opcode header width** in units of 8 bits. `sub_7B9D60` computes `8 * *(DWORD*)(a1+16)` = 32 to locate the guard/predicate insertion point at bit 32. `sub_7BD260` derives operand-type extraction at bits `8*DW2+1` (33) and `8*DW2+3` (35). All 38 descriptors use DW2=4, fixing the opcode header at 32 bits. |
+| **DW3** | `a1+20` | `xmmword_hi[63:32]` | 6 (constant) | **Operand region offset** in units of 8 bits. `sub_7B9F00` uses `8 * a3` with `a3` derived from this field to position the first operand slot at bit 48 in multi-slot formats. All 38 descriptors use DW3=6, placing the operand region at bit 48. |
+
+The critical consumer is `sub_7B9D60(a1, a2, guard_value)`, which inserts the 2-bit scheduling yield/stall flag and the 5-bit opcode-extension field:
+
+```c
+bit_pos = 8 * *(DWORD*)(a1 + 16);     // = 32 for all current formats
+bitfield_insert(a1, bit_pos,     1, guard_value);     // bit 32: yield flag
+bitfield_insert(a1, bit_pos + 3, 5, opcode_variant);  // bits 35-39: 5-bit subopcode
+```
+
+The `sub_7BD260` operand-allocator reads back from the packed buffer at bit `8*DW2+1` (= 33) to extract the scheduling guard, and at bit `8*DW2+3` (= 35) to read the 5-bit subopcode for type-dispatch. Since DW1, DW2, and DW3 are invariant across all 38 descriptors, the only per-format discriminator in the xmmword itself is DW0 (the format class ID). The per-format variation in slot count, slot widths, and operand types is carried entirely by the three trailing DWORD[10] arrays, not by the xmmword header.
+
 Immediately following each xmmword in rodata are three arrays of 10 DWORDs that define the operand slot layout. The encoder copies these into the context object at `a1+24` through `a1+140`:
 
 | Rodata Array | Context Offset | Content |
@@ -740,7 +759,66 @@ Virtual Register (vreg+64 = reg_type, vreg+68 = physical_reg)
 
 ## Decoder Functions
 
-97 decoder functions in the 0xEB3040--0xED0FE0 range reverse the encoding: they extract operand information from packed SASS bitfields back into Ori IR representation. The decoder entry point is `sub_EB3040`, a dispatcher that performs binary search on the instruction type word (`*(a2+12)`, `*(a2+14)`, `*(a2+15)`) against a table at `off_22E6380`. For instruction types 120/121, it falls through to the generic decoder `sub_7BFAE0`.
+97 decoder functions in the 0xEB3040--0xED0FE0 range reverse the encoding: they extract operand information from packed SASS bitfields back into Ori IR representation. The codec dispatcher `sub_EB3040` performs binary search on the instruction type word (`*(a2+12)`, `*(a2+14)`, `*(a2+15)`) against a two-level table at `off_22E6380`, then tail-calls the matching encoder stub (encoder stubs handle both encode and decode directions). For instruction types 120/121 (0x78/0x79), it falls through to the generic codec `sub_7BFAE0`.
+
+### Dispatch Table `off_22E6380`
+
+The table spans 0x22E6380--0x22E67C0 (1,088 bytes). It is a flat array of 68 entries, one per instruction type word (0--67), each 16 bytes:
+
+```
+struct TopEntry {       // 16 bytes
+    SubEntry *subtable; // pointer to binary-search subtable
+    uint64_t  count;    // number of entries in subtable
+};
+```
+
+Each subtable entry is 24 bytes, sorted by `key0` for binary search:
+
+```
+struct SubEntry {       // 24 bytes
+    uint8_t  key0;      // *(a2+14) -- primary search key (opcode variant)
+    uint8_t  key1;      // *(a2+15) -- secondary match key (format class)
+    uint8_t  pad[6];
+    void    *func;      // direct pointer to encoder stub (0xC6xxxx--0xE2xxxx range)
+    uint64_t reserved;  // always 0 (vtable adjust slot, unused)
+};
+```
+
+Lookup algorithm in `sub_EB3040`:
+
+1. Read `instr_type = *(uint16_t*)(a2+12)`. If 120 or 121, jump to `sub_7BFAE0`.
+2. Index the top-level array: `top = off_22E6380[instr_type]`.
+3. Read `key0 = *(a2+14)`, `key1 = *(a2+15)`.
+4. Binary search `top.subtable[0..count)` on `key0`, then verify `key1` match.
+5. Tail-call `subtable[match].func(a1, a2)`.
+
+**Table statistics:** 68 instruction types, 893 unique encoder stubs referenced, subtable sizes range from 1 (types 2, 3, 5, 9, 17, 36, 45, 46, 58, 63, 64) to 152 (type 18). Total subtable entries across all types: 893.
+
+Top-level contents (instruction type to subtable size and encoder address range):
+
+| Type | Entries | Func range | Type | Entries | Func range |
+|-----:|--------:|:-----------|-----:|--------:|:-----------|
+| 0 | 9 | `D07240`--`D09A70` | 34 | 41 | `D23450`--`D32600` |
+| 1 | 5 | `CB1FC0`--`CB3410` | 35 | 33 | `CC3C70`--`CD0370` |
+| 4 | 8 | `CB3960`--`CB6050` | 37 | 34 | `D337F0`--`D3FBF0` |
+| 6 | 5 | `CB6620`--`CB78F0` | 39 | 23 | `C7DC80`--`C85AD0` |
+| 7 | 4 | `CB7DF0`--`CB8E10` | 40 | 23 | `DA95B0`--`DB1400` |
+| 10 | 8 | `CBE030`--`CC0480` | 41 | 23 | `E1AC50`--`E22AA0` |
+| 11 | 16 | `D8C110`--`D90AE0` | 42 | 34 | `D42B80`--`D4EAE0` |
+| 12 | 29 | `C6AB80`--`C74A90` | 43 | 13 | `DA4820`--`DA8660` |
+| 13 | 30 | `D14E30`--`D21500` | 47 | 5 | `DB1E30`--`DB31B0` |
+| 14 | 14 | `CB9390`--`CBD9B0` | 48 | 7 | `DB40A0`--`DB5FC0` |
+| 15 | 22 | `D91490`--`D98900` | 53 | 8 | `DE1490`--`DE3BD0` |
+| 16 | 43 | `DCFB70`--`DDF500` | 56 | 39 | `DF3B00`--`E01910` |
+| **18** | **152** | `CD1800`--`D06CC0` | 57 | 12 | `D5BF10`--`D5F7A0` |
+| 22 | 18 | `D61DF0`--`D68560` | 65 | 6 | `D83F40`--`D85FC0` |
+| 23 | 18 | `D7D290`--`D83A00` | 66 | 5 | `C7A6C0`--`C7BC60` |
+| 27 | 48 | `D6B030`--`D7CC30` | 67 | 5 | `C7C1A0`--`C7D740` |
+| 32 | 36 | `D4F0B0`--`D5B8D0` | | | |
+
+Single-entry types (2, 3, 5, 9, 17, 36, 45, 46, 58, 63, 64) each map one `(key0,key1)` pair to one encoder stub. Types 19, 20, 24, 28, 30, 33, 38, 49, 60--62 have 2--3 entries each.
+
+The `key1` byte encodes the operand format class. The 19 distinct `key1` values observed, with their frequencies across all 893 entries: 0x02(67), 0x03(207), 0x05(188), 0x06(21), 0x07(40), 0x09(2), 0x0a(138), 0x0b(16), 0x0d(10), 0x13(57), 0x17(1), 0x19(90), 0x1a(5), 0x21(2), 0x22(37), 0x23(9), 0x26(1), 0x27(1). Format classes 0x03 and 0x05 together cover 44% of all entries.
 
 The decoder template mirrors the encoder but in reverse:
 
@@ -1337,75 +1415,82 @@ The opcode bases cluster into three families by high nibble:
 
 ### Phase 2: Combinator -- 3-Axis Predicate Encoding into result[3]
 
-After the prologue, all 11 functions execute an identical ~1900-line decision tree. This combinator reads three integer values from the input struct and produces a single 32-bit mask that is ORed into `result[3]`.
+After the prologue, all 11 functions execute a ~1900-line decision tree that is structurally identical except for one parameter: the **high-slot prefix** used when axis2=1 for axis1 values 17--27. The combinator reads three integer values from the input struct and produces a single 32-bit mask that is ORed into `result[3]`.
 
 The three axes are:
 - **axis0** = `a1[0]`: instruction class selector, values 0..5 (6 values)
 - **axis1** = `a1[4]`: slot/form index, values 1..27 (26 populated, gap at 16)
-- **axis2** = `a1[N]`: sub-mode flag, values 0 or 1 (N varies per function -- a1[8], a1[9], a1[10], a1[11], or a1[15])
+- **axis2** = `a1[N]`: sub-mode flag, values 0, 1, or 2 (N varies per function)
 
-The combinator exits immediately if all three axes are zero (`!(axis0 | axis1 | axis2)`). Otherwise it walks a nested decision tree that tests axis0 values (0 through 5), axis1 values (1 through 27), and axis2 values (0 or 1), and ORs the appropriate mask into `result[3]`:
+The combinator exits immediately if all three axes are zero (`!(axis0 | axis1 | axis2)`). Otherwise it produces a mask via the closed-form formula below.
+
+### Combinator Closed-Form Formula
 
 ```c
-// Reconstructed combinator logic (pseudocode):
-if (axis0 == 0 && axis1 == 0 && axis2 == 0) return;
+// Exact equivalent of the 1900-line decision tree.
+// Verified: produces all 113 unique masks found in the binary.
 
-// For axis0 values 1-5 combined with axis1 values 1-15:
-// result[3] |= prefix_for_axis0 | 0xFC000 | (axis1 << 9)
-//
-// For axis1 values 17-27 combined with axis2:
-// result[3] |= base_mask_for_axis1  (if axis2 == 0)
-// result[3] |= extended_mask_for_axis1  (if axis2 == 1)
+static const uint32_t axis0_prefix[6] = {
+    0x00000000, 0x04000000, 0x08000000,   // axis0 = 0,1,2
+    0x0C000000, 0x10000000, 0x14000000    // axis0 = 3,4,5
+};
+#define BASE 0xFC000   // bits [19:14] = 0x3F, always set
+
+uint32_t combinator(int axis0, int axis1, int axis2, uint32_t hi_pfx) {
+    // Low slots: axis1 in [1..15], axis2 must be 0
+    if (axis1 >= 1 && axis1 <= 15 && axis2 == 0)
+        return axis0_prefix[axis0] | BASE | (axis1 << 9);
+
+    // High slots: axis1 in [17..27], axis0 must be 0
+    if (axis1 >= 17 && axis1 <= 27 && axis0 == 0) {
+        if (axis2 == 0) return BASE | (axis1 << 9);
+        if (axis2 == 1) return hi_pfx | BASE | (axis1 << 9);
+    }
+
+    return BASE;   // 392 of 504 entries (default -- no slot encoded)
+}
 ```
 
-### Combinator Mask Encoding
+The `hi_pfx` parameter is the only value that differs across the 11 functions:
 
-The 75 unique masks in the FC/FD series decompose as:
+| Address | Opcode | axis2 Source | `hi_pfx` | Prefix Index |
+|---------|--------|-------------|----------|-------------|
+| `sub_1B79940` | `0xA1B` | `a1[9]`  | `0x04000000` | 1 |
+| `sub_1B7B440` | `0x81B` | `a1[9]`  | `0x04000000` | 1 |
+| `sub_1B87740` | `0x238` | `a1[9]`  | `0x08000000` | 2 |
+| `sub_1B89350` | `0x213` | `a1[8]`  | `0x08000000` | 2 |
+| `sub_1B8FFE0` | `0x202` | `a1[9]`  | `0x08000000` | 2 |
+| `sub_1B92590` | `0x803` | `a1[9]`  | `0x04000000` | 1 |
+| `sub_1B94390` | `0x21D` | `a1[15]` | `0x08000000` | 2 |
+| `sub_1B95ED0` | `0xA1E` | `a1[11]` | `0x10000000` | 4 |
+| `sub_1B985B0` | `0x804` | `a1[8]`  | `0x04000000` | 1 |
+| `sub_1B9A430` | `0x807` | `a1[10]` | `0x04000000` | 1 |
+| `sub_1B9C220` | `0x81A` | `a1[9]`  | `0x04000000` | 1 |
+
+### Combinator Mask Bit-Field Decomposition
 
 ```
-result[3] bit layout for combinator-generated fields:
-  bits [17:14] = 0x3F  (always set by prologue base 0xFC000)
-  bits [13:9]  = slot_index  (5-bit, derived from axis1, values 1-27)
-  bits [28:26] = axis0 prefix encoding (3-bit, for axis0 values 1-5)
+result[3] bit layout for combinator-generated masks:
+  bits [28:26] = axis0 prefix     (3-bit: 0→000, 1→001, 2→010, 3→011, 4→100, 5→101)
+  bits [19:14] = 0x3F             (always set -- the BASE 0xFC000)
+  bits [13:9]  = slot index       (5-bit: axis1 value, 1..15 or 17..27)
+  gap:           axis1=0 and axis1=16 have no slot encoding (produce BASE only)
 ```
 
-The 5 prefix values correspond to axis0 encodings 1-5:
-
-| axis0 Value | Prefix OR'd | Prefix Bits [28:26] |
-|-------------|-------------|---------------------|
-| 0 | `0x00000` | 000 (no prefix) |
-| 1 | `0x40xxxxx` | 001 |
-| 2 | `0x80xxxxx` | 010 |
-| 3 | `0xC0xxxxx` | 011 |
-| 4 | `0x100xxxxx` | 100 |
-| 5 | `0x140xxxxx` | 101 |
-
-Combined with 15 slot values (axis1 = 1..15), this produces 5 x 15 = 75 masks in the `0xFC200`--`0x140FCE00` range.
-
-For axis1 values 17--27, the masks shift into the `0xFE200`--`0xFF600` range. These slots use only the "no prefix" and "prefix 0x100" variants (axis0 values 0 and 4), and the axis2 flag selects between the two. This gives an additional 12 unique masks for the high-slot range (11 base + 11 extended, minus shared ones, equals 12 unique).
+Of the 504 table entries per function, 112 are non-default:
+- **90 low-slot masks**: 6 axis0_prefix values x 15 axis1 values (1..15), axis2=0 only. Range `0x000FC200`--`0x140FDE00`.
+- **22 high-slot masks**: 11 axis1 values (17..27) x 2 axis2 values (0,1), axis0=0 only. axis2=0 produces prefix-0 masks (`0x000FE200`--`0x000FF600`); axis2=1 produces hi_pfx masks. High-slot encoding ignores axis0 entirely -- only axis0=0 reaches this path.
+- **392 default entries**: return `0xFC000` (BASE only, no slot field).
 
 ### Why the Combinator Exists
 
 The combinator encodes an architecture-independent mapping from a 3-dimensional instruction property coordinate to a hardware-specific bitfield pattern in the predicate/control section of the 128-bit instruction word. This section (bits [127:96]) controls:
 - Guard predicate assignment (bits [25:20] from prologue)
-- Scheduling mode (bits [17:14] base + combinator overlay)
+- Scheduling mode (bits [19:14] base + combinator overlay)
 - Instruction form variant (bits [13:9] from combinator)
 - Predicate class / condition code routing (bits [28:26] from combinator)
 
-The identical combinator across all 11 functions confirms that this is not an opcode-specific encoding but rather a cross-cutting encoding for predicate/scheduling state that applies uniformly to all instruction forms.
-
-### Equivalent Lookup Table
-
-The entire 2000-line decision tree can be replaced by a flat table of 6 x 28 x 3 = 504 entries:
-
-```c
-// Equivalent reconstruction:
-static const uint32_t combinator_table[6][28][3] = { ... };
-// Access: result[3] |= combinator_table[axis0][axis1][axis2];
-// Table size: 504 * 4 = 2,016 bytes (vs ~6,800 bytes of code per function)
-```
-
-The compiler chose a decision tree over a table lookup, likely because the C++ source used nested switch/case statements (or if/else chains with early return), and the optimizer did not convert this to a table at -O2.
+The decision tree structure is identical across all 11 functions; only the `hi_pfx` constant and axis2 source field vary. This confirms the combinator is a parameterized cross-cutting encoding for predicate/scheduling state, not opcode-specific logic. The compiler chose a decision tree over a table lookup because the C++ source used nested switch/case statements and the optimizer did not convert to a table at -O2.
 
 ### Zone B Function Map (Emission Cluster)
 
