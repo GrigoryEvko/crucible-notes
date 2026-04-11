@@ -38,34 +38,135 @@ Each phase is tagged with one of 10 categories. These are not present in the bin
 
 Phases 139--158 are late-pipeline phases covering Mercury encoding, scoreboards, register map computation, diagnostics, and a terminal NOP. They have the same vtable infrastructure as phases 0--138 and are fully named in the static table.
 
-## Numbering Discrepancy
+## Numbering Discrepancy -- Complete Wiki-to-Binary Mapping
 
-> **Warning:** The phase numbers 0--138 on this page use a compressed numbering scheme established before the full 159-entry name table was discovered (P2-14). The true static name table at `off_22BD0C0` contains 159 entries indexed 0--158, and 16 of the 20 newly-discovered names occupy indices within the 0--138 range. In the true table, these 16 entries sit at their listed indices, and all subsequent phases shift up. The wiki's compressed numbering diverges from the true binary indices starting around phase 8.
->
-> Phases 139--158 are correctly numbered (they match the true static table indices). A full renumbering of phases 0--138 to match the true binary indices is deferred as a separate task because it would affect cross-references across 40+ wiki pages.
+> **Warning:** The wiki phase numbers 0--138 use a compressed scheme that omits 23 binary indices from the contiguous range 0--139. Of these 23, seven are displaced to wiki positions 132--138, and 16 have no wiki number at all. The divergence begins at binary index 8 (`UpdateAfterConvertUnsupportedOps`, skipped in the wiki) and accumulates to a delta of +23 by wiki phase 116. Phases 140--158 match their binary indices. Every cross-reference on this page and 40+ linked pages uses wiki numbers, NOT binary indices. Use the table below to convert.
 
-The 16 omitted name table entries (with their true static table indices) are:
+### Complete Binary-to-Wiki Translation Table
 
-| True Index | Name | Category | Relationship to Wiki |
-|---|---|---|---|
-| 22 | `OriCopyProp` | Optimization | Sub-pass within all 6 GeneralOptimize bundles; also injected into Mercury pipeline |
-| 32 | `OptimizeNaNOrZero` | Optimization | Standalone NaN/zero folding pass; not documented under current wiki numbering |
-| 37 | `ConvertMemoryToRegisterOrUniform` | Optimization | Sub-pass of GeneralOptimizeMid; gated by knob 487; `sub_910840` |
-| 41 | `Vectorization` | Optimization | Load/store vectorization; gated by `DisableReadVectorization`/`DisableWriteVectorization` knobs |
-| 57 | `OriCommoning` | Optimization | Commoning sub-pass; related to `LateOriCommoning` (wiki phase 64) |
-| 69 | `OriSimpleLiveDead` | Optimization | Liveness/DCE sub-pass; related to `EarlyOriSimpleLiveDead` (wiki phase 10) |
-| 73 | `LateVectorization` | Optimization | Late vectorization (2nd instance, after optimization exposes new opportunities) |
-| 77 | `SinkCodeIntoBlock` | Optimization | Code sinking; `sub_78DB70`; `DisablePhases=SinkCodeIntoBlock` gate |
-| 103 | `LateEnforceArgumentRestrictions` | Lowering | Late counterpart to `EnforceArgumentRestrictions` (wiki phase 48) |
-| 114 | `ScheduleInstructions` | Scheduling | Worker for `AdvancedPhasePreSched`; `sub_8D0640` (22 KB) |
-| 115 | `UpdateAfterScheduleInstructions` | Cleanup | IR metadata refresh after scheduling completes |
-| 118 | `UpdateAfterOriDoSyncronization` | Cleanup | IR metadata refresh after sync insertion (wiki phase 99) |
-| 120 | `ReportBeforeRegisterAllocation` | Reporting | DUMPIR target; diagnostic dump before register allocation |
-| 122 | `AllocateRegisters` | RegAlloc | Worker for `AdvancedPhaseAllocReg`; canonical allocator entry |
-| 124 | `UpdateAfterOriAllocateRegisters` | Cleanup | IR metadata refresh after register allocation |
-| 127 | `PostExpansion` | Lowering | Worker for `AdvancedPhasePostExpansion`; post-RA expansion |
+**Reading guide:** `W#` = wiki phase number used on this page. Rows marked **SKIP** have no wiki number (16 phases). Rows marked **DISP** are displaced to wiki 132--138 (7 phases). Delta = binary index minus wiki number.
 
-All 16 are valid DUMPIR targets (resolvable through `sub_C641D0` binary search over the phase name table). Several are also valid `DisablePhases` targets.
+| Bin | Phase Name | W# | D | | Bin | Phase Name | W# | D |
+|--:|---|--:|--:|---|--:|---|--:|--:|
+| 0 | `OriCheckInitialProgram` | 0 | 0 | | 80 | `OriDoRemat` | 69 | +11 |
+| 1 | `ApplyNvOptRecipes` | 1 | 0 | | 81 | `OriPropagateVaryingSecond` | 70 | +11 |
+| 2 | `PromoteFP16` | 2 | 0 | | 82 | `OptimizeSyncInstructions` | 71 | +11 |
+| 3 | `AnalyzeControlFlow` | 3 | 0 | | **83** | **`AdvPhLateExpandSync`** | **135** | **DISP** |
+| 4 | `AdvPhBeforeConvUnSup` | 4 | 0 | | 84 | `LateExpandSyncInstructions` | 72 | +12 |
+| 5 | `ConvertUnsupportedOps` | 5 | 0 | | 85 | `ConvertAllMovPhiToMov` | 73 | +12 |
+| 6 | `SetControlFlowOpLastInBB` | 6 | 0 | | 86 | `ConvertToUniformReg` | 74 | +12 |
+| 7 | `AdvPhAfterConvUnSup` | 7 | 0 | | 87 | `LateArchOptimizeFirst` | 75 | +12 |
+| **8** | **`UpdateAfterConvUnSupOps`** | **132** | **DISP** | | 88 | `UpdateAfterOptimize` | 76 | +12 |
+| 9 | `OriCreateMacroInsts` | 8 | +1 | | 89 | `AdvPhLateConvUnSup` | 77 | +12 |
+| 10 | `ReportInitialRepresentation` | 9 | +1 | | 90 | `LateExpUnSupportedOps` | 78 | +12 |
+| 11 | `EarlyOriSimpleLiveDead` | 10 | +1 | | **91** | **`LateMergeEquivCondFlow`** | **136** | **DISP** |
+| 12 | `ReplaceUniformsWithImm` | 11 | +1 | | 92 | `OriHoistInvariantsLate2` | 79 | +13 |
+| 13 | `OriSanitize` | 12 | +1 | | **93** | **`LateExpUnSupOpsMid`** | **137** | **DISP** |
+| 14 | `GeneralOptimizeEarly` | 13 | +1 | | 94 | `ExpandJmxComputation` | 80 | +14 |
+| **15** | **`MergeEquivCondFlow`** | **133** | **DISP** | | 95 | `LateArchOptimizeSecond` | 81 | +14 |
+| 16 | `DoSwitchOptFirst` | 14 | +2 | | 96 | `AdvPhBackPropVReg` | 82 | +14 |
+| 17 | `OriBranchOpt` | 15 | +2 | | 97 | `OriBackCopyPropagate` | 83 | +14 |
+| 18 | `OriPerformLiveDeadFirst` | 16 | +2 | | **98** | **`OriSplitHiPressLR`** | **138** | **DISP** |
+| 19 | `OptimizeBindlessHeaderLoads` | 17 | +2 | | 99 | `OriPerformLiveDeadFourth` | 84 | +15 |
+| 20 | `OriLoopSimplification` | 18 | +2 | | 100 | `OriPropagateGmma` | 85 | +15 |
+| 21 | `OriSplitLiveRanges` | 19 | +2 | | 101 | `InsertPseudoUseDefConvUR` | 86 | +15 |
+| **22** | **`OriCopyProp`** | -- | **SKIP** | | 102 | `FixupGmmaSequence` | 87 | +15 |
+| 23 | `PerformPGO` | 20 | +3 | | **103** | **`LateEnforceArgRestr`** | -- | **SKIP** |
+| 24 | `OriStrengthReduce` | 21 | +3 | | 104 | `OriHoistInvariantsLate3` | 88 | +16 |
+| 25 | `OriLoopUnrolling` | 22 | +3 | | 105 | `AdvPhSetRegAttr` | 89 | +16 |
+| 26 | `GenerateMovPhi` | 23 | +3 | | 106 | `OriSetRegisterAttr` | 90 | +16 |
+| 27 | `OriPipelining` | 24 | +3 | | 107 | `OriCalcDependantTex` | 91 | +16 |
+| 28 | `StageAndFence` | 25 | +3 | | 108 | `AdvPhAfterSetRegAttr` | 92 | +16 |
+| 29 | `OriRemoveRedundantBarriers` | 26 | +3 | | 109 | `LateExpUnSupportedOps2` | 93 | +16 |
+| 30 | `AnalyzeUniformsForSpec` | 27 | +3 | | 110 | `FinalInspectionPass` | 94 | +16 |
+| 31 | `SinkRemat` | 28 | +3 | | 111 | `SetAfterLegalization` | 95 | +16 |
+| **32** | **`OptimizeNaNOrZero`** | -- | **SKIP** | | 112 | `ReportBeforeScheduling` | 96 | +16 |
+| 33 | `GeneralOptimize` | 29 | +4 | | 113 | `AdvPhPreSched` | 97 | +16 |
+| 34 | `DoSwitchOptSecond` | 30 | +4 | | **114** | **`ScheduleInstructions`** | -- | **SKIP** |
+| 35 | `OriLinearReplacement` | 31 | +4 | | **115** | **`UpdateAfterSchedInstr`** | -- | **SKIP** |
+| 36 | `CompactLocalMemory` | 32 | +4 | | 116 | `BackPropagateVEC2D` | 98 | +18 |
+| **37** | **`ConvMemToRegOrUniform`** | -- | **SKIP** | | 117 | `OriDoSyncronization` | 99 | +18 |
+| 38 | `OriPerformLiveDeadSecond` | 33 | +5 | | **118** | **`UpdateAfterOriDoSync`** | -- | **SKIP** |
+| 39 | `ExtractShaderConstsFirst` | 34 | +5 | | 119 | `ApplyPostSyncWars` | 100 | +19 |
+| 40 | `OriHoistInvariantsEarly` | 35 | +5 | | **120** | **`ReportBeforeRegAlloc`** | -- | **SKIP** |
+| **41** | **`Vectorization`** | -- | **SKIP** | | 121 | `AdvPhAllocReg` | 101 | +20 |
+| 42 | `EmitPSI` | 36 | +6 | | **122** | **`AllocateRegisters`** | -- | **SKIP** |
+| 43 | `GeneralOptimizeMid` | 37 | +6 | | 123 | `ReportAfterRegAlloc` | 102 | +21 |
+| 44 | `OptimizeNestedCondBranches` | 38 | +6 | | **124** | **`UpdateAfterOriAllocReg`** | -- | **SKIP** |
+| 45 | `ConvertVTGReadWrite` | 39 | +6 | | 125 | `Get64bRegComponents` | 103 | +22 |
+| 46 | `DoVirtualCTAExpansion` | 40 | +6 | | 126 | `AdvPhPostExpansion` | 104 | +22 |
+| 47 | `MarkAdditionalColdBlocks` | 41 | +6 | | **127** | **`PostExpansion`** | -- | **SKIP** |
+| 48 | `ExpandMbarrier` | 42 | +6 | | 128 | `ApplyPostRegAllocWars` | 105 | +23 |
+| 49 | `ForwardProgress` | 43 | +6 | | 129 | `AdvPhPostSched` | 106 | +23 |
+| 50 | `OptimizeUniformAtomic` | 44 | +6 | | 130 | `OriRemoveNopCode` | 107 | +23 |
+| 51 | `MidExpansion` | 45 | +6 | | 131 | `OptimizeHotColdInLoop` | 108 | +23 |
+| **52** | **`AdvPhAfterMidExpansion`** | **134** | **DISP** | | 132 | `OptimizeHotColdFlow` | 109 | +23 |
+| 53 | `GeneralOptimizeMid2` | 46 | +7 | | 133 | `PostSchedule` | 110 | +23 |
+| 54 | `AdvPhEarlyEnforceArgs` | 47 | +7 | | 134 | `AdvPhPostFixUp` | 111 | +23 |
+| 55 | `EnforceArgumentRestrictions` | 48 | +7 | | 135 | `PlaceBlocksInSourceOrder` | 112 | +23 |
+| 56 | `GvnCse` | 49 | +7 | | 136 | `PostFixForMercTargets` | 113 | +23 |
+| **57** | **`OriCommoning`** | -- | **SKIP** | | 137 | `FixUpTexDepBarAndSync` | 114 | +23 |
+| 58 | `OriReassociateAndCommon` | 50 | +8 | | 138 | `AdvScoreboardsAndOpexes` | 115 | +23 |
+| 59 | `ExtractShaderConstsFinal` | 51 | +8 | | 139 | `ProcessO0WaitsAndSBs` | 116 | +23 |
+| 60 | `OriReplaceEquivMultiDefMov` | 52 | +8 | | 140--158 | *(19 late-pipeline phases)* | 140--158 | 0 |
+| 61 | `OriPropagateVaryingFirst` | 53 | +8 | |
+| 62 | `OriDoRematEarly` | 54 | +8 | |
+| 63 | `LateExpansion` | 55 | +8 | |
+| 64 | `SpeculativeHoistComInsts` | 56 | +8 | |
+| 65 | `RemoveASTToDefaultValues` | 57 | +8 | |
+| 66 | `GeneralOptimizeLate` | 58 | +8 | |
+| 67 | `OriLoopFusion` | 59 | +8 | |
+| 68 | `DoVTGMultiViewExpansion` | 60 | +8 | |
+| **69** | **`OriSimpleLiveDead`** | -- | **SKIP** | |
+| 70 | `OriPerformLiveDeadThird` | 61 | +9 | |
+| 71 | `OriRemoveRedundantMultiDefMov` | 62 | +9 | |
+| 72 | `OriDoPredication` | 63 | +9 | |
+| **73** | **`LateVectorization`** | -- | **SKIP** | |
+| 74 | `LateOriCommoning` | 64 | +10 | |
+| 75 | `GeneralOptimizeLate2` | 65 | +10 | |
+| 76 | `OriHoistInvariantsLate` | 66 | +10 | |
+| **77** | **`SinkCodeIntoBlock`** | -- | **SKIP** | |
+| 78 | `DoKillMovement` | 67 | +11 | |
+| 79 | `DoTexMovement` | 68 | +11 | |
+
+Phases 140--158 are identity-mapped (wiki number = binary index). The full list appears in [Stage 10](#stage-10----late-cleanup--late-pipeline-phases-132--158) below. Note that binary 139 (`ProcessO0WaitsAndSBs`) appears at BOTH wiki 116 (in Stage 7) and wiki 139 (in Stage 10).
+
+### 16 Phases Missing from Wiki Numbering
+
+These binary phases have no wiki number. All are valid `DUMPIR` and `DisablePhases` targets.
+
+| Bin | Name | Cat | Pipeline Position |
+|--:|---|---|---|
+| 22 | `OriCopyProp` | Opt | Between `OriSplitLiveRanges` [21] and `PerformPGO` [23]; sub-pass of all 6 GeneralOptimize bundles |
+| 32 | `OptimizeNaNOrZero` | Opt | Between `SinkRemat` [31] and `GeneralOptimize` [33]; NaN/zero constant folding |
+| 37 | `ConvertMemoryToRegisterOrUniform` | Opt | Between `CompactLocalMemory` [36] and `OriPerformLiveDeadSecond` [38]; knob 487 gated |
+| 41 | `Vectorization` | Opt | Between `OriHoistInvariantsEarly` [40] and `EmitPSI` [42]; load/store vectorization |
+| 57 | `OriCommoning` | Opt | Between `GvnCse` [56] and `OriReassociateAndCommon` [58]; commoning sub-pass |
+| 69 | `OriSimpleLiveDead` | Opt | Between `DoVTGMultiViewExpansion` [68] and `OriPerformLiveDeadThird` [70]; quick DCE |
+| 73 | `LateVectorization` | Opt | Between `OriDoPredication` [72] and `LateOriCommoning` [74]; 2nd vectorization pass |
+| 77 | `SinkCodeIntoBlock` | Opt | Between `OriHoistInvariantsLate` [76] and `DoKillMovement` [78]; code sinking |
+| 103 | `LateEnforceArgumentRestrictions` | Lower | Between `FixupGmmaSequence` [102] and `OriHoistInvariantsLate3` [104]; late ABI enforcement |
+| 114 | `ScheduleInstructions` | Sched | Worker for `AdvancedPhasePreSched` [113]; `sub_8D0640` (22 KB) |
+| 115 | `UpdateAfterScheduleInstructions` | Clean | IR refresh after scheduling; between [113] and `BackPropagateVEC2D` [116] |
+| 118 | `UpdateAfterOriDoSyncronization` | Clean | IR refresh after sync insertion [117]; between [117] and `ApplyPostSyncWars` [119] |
+| 120 | `ReportBeforeRegisterAllocation` | Report | Diagnostic dump; between `ApplyPostSyncWars` [119] and `AdvPhAllocReg` [121] |
+| 122 | `AllocateRegisters` | RegAlloc | Worker for `AdvancedPhaseAllocReg` [121]; canonical allocator entry |
+| 124 | `UpdateAfterOriAllocateRegisters` | Clean | IR refresh after regalloc; between `ReportAfterRegAlloc` [123] and `Get64bRegComponents` [125] |
+| 127 | `PostExpansion` | Lower | Worker for `AdvancedPhasePostExpansion` [126]; post-RA expansion |
+
+### 7 Displaced Phases (Wiki 132--138)
+
+These phases exist in the binary at early/mid positions but were assigned wiki numbers 132--138 when discovered after the initial compressed numbering was established. Their true execution order follows their binary index, not their wiki number.
+
+| Wiki # | True Binary Index | Name | Executes Between |
+|--:|--:|---|---|
+| 132 | 8 | `UpdateAfterConvertUnsupportedOps` | `AdvPhAfterConvUnSup` [7] and `OriCreateMacroInsts` [9] |
+| 133 | 15 | `MergeEquivalentConditionalFlow` | `GeneralOptimizeEarly` [14] and `DoSwitchOptFirst` [16] |
+| 134 | 52 | `AdvancedPhaseAfterMidExpansion` | `MidExpansion` [51] and `GeneralOptimizeMid2` [53] |
+| 135 | 83 | `AdvancedPhaseLateExpandSyncInstructions` | `OptimizeSyncInstructions` [82] and `LateExpandSyncInstructions` [84] |
+| 136 | 91 | `LateMergeEquivalentConditionalFlow` | `LateExpansionUnsupportedOps` [90] and `OriHoistInvariantsLate2` [92] |
+| 137 | 93 | `LateExpansionUnsupportedOpsMid` | `OriHoistInvariantsLate2` [92] and `ExpandJmxComputation` [94] |
+| 138 | 98 | `OriSplitHighPressureLiveRanges` | `OriBackCopyPropagate` [97] and `OriPerformLiveDeadFourth` [99] |
 
 ## Gate Passes (AdvancedPhase)
 

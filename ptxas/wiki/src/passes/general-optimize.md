@@ -25,7 +25,7 @@ Six instances exist at strategic positions in the 159-phase pipeline. Despite sh
 | 29 | `GeneralOptimize` | `off_22BDA50` | `0xC5FC50` | `sub_908EB0` | Option 487 enabled; option 231 not set; option 461 pass |
 | 37 | `GeneralOptimizeMid` | `off_22BDB90` | `0xC5FD70` | `sub_910840` | `sub_8F3EA0` pre-check; option 487; "ConvertMemoryToRegisterOrUniform" name-gate |
 | 46 | `GeneralOptimizeMid2` | `off_22BDCF8` | `0xC60840` | indirect via `[*(ctx+1584)]->vtable[0x1C0]` | Vtable dispatch; skips if target == `sub_7D6DD0` (no-op sentinel) |
-| 58 | `GeneralOptimizeLate` | `off_22BDED8` | `0xC5FF20` | `sub_8F7080` | Function count > 2; bits 4-5 of `ctx+1396` != `0x20`; option 31 checked |
+| 58 | `GeneralOptimizeLate` | `off_22BDED8` | `0xC5FF20` | `sub_8F7080` | Function count > 2; bits 4-5 of `ctx+1396` != `0x20`; option 31 extended-value gate; dual-issue arch OR v7 |
 | 65 | `GeneralOptimizeLate2` | `off_22BDFF0` | `0xC60550` | indirect via `[*(ctx+1584)]->vtable[392]` | Function count > 1; indirect dispatch through compilation unit vtable |
 
 ## Architecture: Three Structural Variants
@@ -109,16 +109,231 @@ The Mid and Late variants operate at a higher level: they construct a multi-fiel
      ...
    ```
 5. Calls `sub_905B50` -- a 500+ line setup function that creates bitvector arrays for tracking register definitions, use-def chains, and per-block change flags. Allocates three pairs of {bitvector, metadata, capacity} structures for tracking definition reach, register liveness, and fold eligibility
-6. Calls `sub_90FBA0` -- the main optimization loop that iterates over all blocks, running sub-passes per instruction
+6. Calls `sub_90FBA0` -- the main optimization loop (pseudocode below)
+7. Calls `sub_90EF70` -- **ConvertMemoryToRegisterOrUniform**, the promotion decision engine described below
 
 After `sub_90FBA0` returns, the function destroys three RAII-style bitvector containers at offsets `+0x200`, `+0x228`, and `+0x1E0` by invoking their vtable destructors via `*(vtable + 32)`.
+
+##### `sub_90FBA0` -- Main Loop Algorithm
+
+The 653-line function walks the entire instruction linked list in a single forward pass, classifying each instruction for memory-to-register promotion eligibility. It accumulates per-candidate cost metrics into 40-byte descriptor records and builds an FNV-1a hash table of fold-pair observations. Two convergence flags (`can_continue`, `allow_promote`) gate the final call to `sub_90EF70`.
+
+```
+function sub_90FBA0(state):
+    ctx         = state[0]
+    budget      = 80                                   // instruction-count ceiling
+    high_opt    = *(ctx + 912) > 3                     // optimization level flag
+    sm_backend  = *(ctx + 1664)
+    if *(*(sm_backend + 72) + 9720):                   // knob 135 configured?
+        budget = query_knob(sm_backend, 135)           // OKT_DBL range [0.1..1.5]
+
+    sub_7FA820(ctx)                                    // rebuild use-def chains
+    drain_deferred_folds(state)                        // recycle prior fold entries
+
+    state.cost_weighted   = 0.0                        // state+26 (double)
+    state.cost_unweighted = 0.0                        // state+27 (double)
+    fold_discount         = 0.25                       // default cost multiplier
+    if *(*(sm_backend + 72) + 34128):                  // knob 474 configured?
+        fold_discount = query_knob(sm_backend, 474)    // overrides 0.25
+
+    sentinel   = ctx->block_list_sentinel              // *(ctx + 272)
+    instr      = *(sentinel + 8)                       // first real instruction
+    if instr == *(ctx + 280): goto POST
+
+    can_continue   = true                              // v113: global walk flag
+    allow_promote  = true                              // v23: promotion not vetoed
+
+    for each instr in linked list until sentinel:
+        opcode = instr+72 with bits 12..13 masked      // & 0xFFFFCFFF
+
+        if opcode == 72: goto NEXT                      // skip pseudo-instructions
+        if *(instr + 24) == -1: goto NEXT               // no destination register
+
+        // --- per-register cost weight from comp_unit vtable ---
+        if opcode == 97:                                // MOV
+            state.reg_weight = comp_unit->vtable[1](reg_entry, 1, 1)
+
+        // --- opcode cost classification (see Fold Eligibility Table) ---
+        is_full_cost = true
+        if opcode in {272, 273}: is_full_cost = false
+        if opcode in 130..137:  is_full_cost &= ~(0x99 >> (opcode - 130))
+
+        if is_full_cost or has_modifier_bits(instr) or has_high_flags(instr):
+            base = 1.0
+        else if opcode in {133, 134} and sub_91E860(ctx, instr, 1) > 4:
+            base = 1.0                                  // over-used: full cost
+        else:
+            base = fold_discount                        // cost-exempt: 0.25
+
+        dead = (*sub_7DF3A0(instr, ctx) & 1) == 0      // 1.0 if live, 0.0 if dead
+        state.cost_unweighted += base * dead
+        state.cost_weighted   += state.reg_weight * base * dead
+
+        // --- resolve destination symbol ---
+        if opcode == 98:                                // LDL: const-bank lookup
+            sym = ctx->const_bank[operand_fields]
+        else:
+            sym = sub_7E2FE0(instr, ctx)
+
+        if !sym: continue with flags check
+        kind = sym->kind
+        if kind == 4:                                   // constant-bank entry
+            state.descriptors[sym.reg].committed = true
+            goto FINALIZE
+        if kind != 9 and kind != 2: continue            // not register/predicate
+
+        // --- alias/conflict check vetoes promotion ---
+        reg_entry = ctx->reg_info[sym.reg]
+        if reg_entry.has_alias or reg_entry.has_conflict:
+            allow_promote = false; high_opt = false
+            state.descriptors[sym.reg].committed = true
+        if sym.reg == 0:                                // R0 = entry register
+            state.flag_entry_reg = true; can_continue = false
+
+        // --- memory-class analysis for STG (288) / LDG-ext (183) ---
+        if opcode == 98: goto NEXT                      // LDL: done
+        if opcode != 288 and opcode != 183: return      // unhandled: bail
+
+        mem_class = comp_unit->vtable[113](operand)     // vtable offset 904
+        // validate mem_class consistency per register:
+        //   first observation: store at descriptor+12
+        //   subsequent: if mismatch, mark committed
+        // opcode 288: call sub_903A10 (STG fold accumulator)
+        // if high_opt: call sub_8F3FE0 (register constraint check)
+
+        // --- register-width budget gate ---
+        //   width_shift = max(0, log2_width - tzcnt(mem_class))
+        //   scaled_budget = budget << width_shift (clamp: <=0 means budget)
+        //   if instr_count > scaled_budget and !high_opt: veto
+
+        // --- fold-pair hash table insertion (FNV-1a, 24-byte nodes) ---
+        //   key = FNV-1a(instr->block_id)     // 4 bytes at *(instr + 16)
+        //   value = {sub_91D150(src_a), sub_91D150(src_b)}
+        //   collision: chained buckets; rehash at load > 2*capacity
+
+        state.cost_total += state.cost_weighted
+    NEXT:
+
+POST:
+    if can_continue:
+        sub_90EF70(state)                               // promote candidates
+    else:
+        // verify all descriptors have consistent mem_class
+        // all classes must match or be in {2,5}; else skip
+        if consistent: sub_90EF70(state)
+
+    if state.flag_entry_reg != 1 and high_opt:
+        sub_903DC0(state, 0.25)                         // constraint tightening
+    if state.byte22:
+        sub_7B52B0(ctx, 0, 0)                           // final cleanup
+```
+
+##### `sub_90EF70` -- ConvertMemoryToRegisterOrUniform
+
+This function decides which memory-resident candidates (identified by the main loop) should be promoted to registers or uniform registers. It operates in three stages: threshold configuration, candidate filtering, and per-instruction rewriting.
+
+```
+function ConvertMemoryToRegisterOrUniform(state):
+    // --- Stage 1: early exit and threshold configuration ---
+    if vtable_query(ctx + 1784) and state.total_weight == 0.0:
+        return                              // no candidates collected
+
+    config       = *(ctx + 1664)
+    knob_block   = *(config + 72)
+    mode         = knob_block[9648]         // 0=default, 1/2=force, 3=custom
+    ratio_thresh = 2.0                      // use/def ratio ceiling
+    if mode != 0:
+        ratio_thresh = 0.0                  // modes 1,2: accept all ratios
+        if mode == 3:
+            ratio_thresh = *(double*)(knob_block + 9656)  // custom value
+
+    min_defs = 3;  if knob_block[9576]: min_defs = GetKnobInt(config, 133)
+    max_defs = 50; if knob_block[9504]: max_defs = GetKnobInt(config, 132)
+
+    // --- determine uniform eligibility ---
+    uniform_ok = false
+    if (knob_block[8856] and GetKnobInt(config, 123)) or (ctx_flags & 8):
+        if not knob_block[8784]:
+            uniform_ok = true
+        else:
+            uniform_ok = (bool) GetKnobInt(config, 122)
+
+    // --- Stage 2a: fast scan (non-uniform path) ---
+    // Candidates are 40-byte records at state.candidates[i]
+    //   +0x00: byte  promoted_flag
+    //   +0x03: int32 def_count
+    //   +0x07: int32 use_count
+    //   +0x20: double weight
+    for each candidate c (stride 40 bytes):
+        if c.def_count < min_defs:  skip    // too few defs, not worth it
+        if c.def_count <= max_defs:
+            use_ratio = c.use_count / c.def_count
+            if ratio_thresh <= use_ratio:   skip  // ratio too high
+        c.promoted_flag = 1                 // mark for promotion
+        eligible_count++; if def_count+use_count > 0: live_count++
+
+    // --- Stage 2b: uniform index construction ---
+    // For uniform-eligible range [first..last], build (id, reg_bank) pairs
+    // in a dynamically-grown array at state+456/+464 (capacity at +468)
+
+    // --- Stage 3: threshold-gated promotion ---
+    occupancy        = state.total_weight / state.capacity
+    state.occupancy  = occupancy
+    pressure_score   = ComputePressure(state.pressure_hist, occupancy)  // sub_757F60
+    promotion_thresh = 0.93                 // hardcoded fallback
+    if knob_block[9792]:
+        promotion_thresh = GetKnobDbl(config, 136)  // sub_7973B0
+
+    // Iterate the index array; for each (candidate_id, reg_bank):
+    //   cost_limit  = budget / capacity
+    //   Test 1: state.reg_cost * cost_limit < state.pressure_bound
+    //   Test 2: (accumulated_regs + new_regs) <= pressure_score * a5
+    //   Test 3: candidate.weight <= state.capacity * promotion_thresh
+    //   If all pass  -> mark promoted, emit register load/store rewrites
+    //   If Test 3 fails -> break (remaining candidates are heavier)
+
+    // --- Post-promotion rewriting ---
+    // Walk instruction list; for opcode 98 (LD/ST fold):
+    //   emit sub_903C10 (register bank materialization) + sub_9253C0 (delete)
+    // For other memory ops with register operand bit set:
+    //   compute target_bank = base_bank + offset/bank_size
+    //   emit opcode 130 (MOV) or opcode 79 (ULEA) depending on uniform flag
+    //   delete original instruction via sub_9253C0
+
+    // If uniform path active and all candidates promoted:
+    //   clear ctx+912, unset ctx+1377 bit 7, set state.all_promoted = true
+```
+
+**Knob 136 threshold discrepancy (resolved):** The binary hardcodes `0.93` as the fallback value when knob 136 is inactive (line 347 of decompilation: `a2 = 0.93`). The `okt_knob_descriptors.json` entry for knob 136 records `param2=0.4` -- this is the OKT_DBL **search-range upper bound** used by the auto-tuner, not the runtime default. When the knob *is* active (`knob_block[9792] != 0`), `sub_7973B0` queries the knob's current value which may differ from both 0.93 and 0.4. The wiki table at line 1233 correctly states "default 0.93" -- this refers to the hardcoded fallback, not param2.
 
 #### Phase 58 -- GeneralOptimizeLate (`sub_8F7080`)
 
 1. Checks function count > 2 via `sub_7DDB50` (stricter than other variants that check > 1)
-2. Checks optimization level bits at `ctx+1396`: the condition `(flags & 0x30) != 0x20` ensures the pass is skipped at certain reduced optimization levels
-3. Checks option 31 via the vtable fast-path; when option 31 reports as "extended" (value at `config+2232` is 1 with non-zero extra word at `config+2240`), an additional `sub_7DC0E0` check determines a secondary control flag `v7`
-4. Constructs a **0x168-byte context** on the stack with 7 sub-pass tracking groups. Each group occupies 56 bytes (three `__int128` values + a boolean changed-flag + a counter):
+2. Extracts bits 4-5 from `ctx+1396` via `flags & 0x30` and bails out if the result equals `0x20`. The two bits encode four optimization tiers relevant to this pass:
+
+   | Bit 5 | Bit 4 | `& 0x30` | Tier | Phase 58 |
+   |:---:|:---:|---|---|---|
+   | 0 | 0 | `0x00` | Aggressive (full opt) | runs |
+   | 0 | 1 | `0x10` | Standard | runs |
+   | 1 | 0 | `0x20` | Reduced | **skipped** |
+   | 1 | 1 | `0x30` | Minimal (debug-like) | runs |
+
+   The `0x30` case (both bits set) is _not_ skipped because minimal mode still requires late peephole cleanup to avoid correctness issues.
+
+3. Computes the secondary control flag `v7` through a two-branch decision tree gated on **option 31** (knob index 31, type `OKT_DBL`, default 0.0, param1 1.0, BSS offset `0x790`).
+
+   The knob array base is at `*(ctx+1664)->field_72` (the config object's knob table). Each entry is 72 bytes; knob 31 sits at byte offset `72 * 31 = 2232`. The first byte (`config+2232`) is the is-set flag and the dword at `config+2240` is the integer-cast value.
+
+   **Branch A -- option 31 is set** (`config+2232 != 0`, checked via vtable slot 72 / `sub_6614A0` fast-path): the code queries extended-value semantics via vtable slot 120 (`sub_661470` fast-path). The extended check tests two conditions conjunctively:
+   - `config+2232 == 1` (is-set flag is exactly 1, not a higher override state), AND
+   - `*(uint32_t*)(config+2240) != 0` (the value dword is non-zero)
+
+   When both hold, `v7 = true`; otherwise `v7 = false`. A bare `--option 31=0.0` (is-set=1, value=0) does _not_ trigger extended mode; `--option 31=1.0` (is-set=1, value=1) does.
+
+   **Branch B -- option 31 is not set** (default path): `v7 = (flags & 0x30) == 0x10`. This activates extended processing specifically at the standard optimization tier, providing a conservative default where the late pass runs extra sub-passes without an explicit knob override.
+
+4. Evaluates the final entry gate: `sub_7DC0E0(*(ctx+1584)) || v7`. `sub_7DC0E0` returns `true` when `profile[+12] == 4` (dual-issue architecture family, i.e. Maxwell sm_50). The pass body executes if the target is dual-issue OR `v7` was set by step 3.
+5. Constructs a **0x168-byte context** on the stack with 7 sub-pass tracking groups. Each group occupies 56 bytes (three `__int128` values + a boolean changed-flag + a counter):
    ```
    GeneralOptimizeLate Context (0x168 bytes)
      +0x000  ctx_ptr     = ctx (the compilation context)
@@ -133,7 +348,7 @@ After `sub_90FBA0` returns, the function destroys three RAII-style bitvector con
      +0x130  changed_6   = 0   |
      +0x138  ...              |
    ```
-5. Calls `sub_8F6FA0` -- the block iterator
+6. Calls `sub_8F6FA0` -- the block iterator
 
 The block iterator `sub_8F6FA0` initializes per-context flags from `ctx+1396`:
 - Bit 2 (`& 4`): stored at `context+9`, controls whether opcode-7 instructions are processed
@@ -170,7 +385,31 @@ int64_t GeneralOptimizeLate2(int64_t phase, int64_t ctx) {
 }
 ```
 
-This indirection means the actual optimization behavior for phases 46 and 65 is determined by the compilation unit's vtable, which varies by target architecture and optimization level. The no-op sentinel `sub_7D6DD0` (for phase 46) indicates that some architectures skip this pass entirely.
+#### Per-SM Vtable Resolution (Binary-Verified)
+
+The SM backend vtable is set during `sub_662920` construction, which switches on `codegen_factory >> 12` (ISA generation). Each generation's SM backend object stores a vtable pointer as its first field; the phase dispatchers index into this vtable at the slot offsets above. Slot contents extracted from the binary:
+
+| SM Target | Gen | SM Backend Vtable | Slot 56 (Phase 46) | Slot 49 (Phase 65) |
+|---|---|---|---|---|
+| sm_60--62 (Pascal) | 5 | `off_22B2A58` | `nullsub_191` (0x7D6DD0) -- **no-op** | `sub_8322E0` |
+| sm_70--73 (Volta) | 6 | `off_21D82B0` | `sub_8692E0` | `sub_8322E0` |
+| sm_75 (Turing) | 7 | `off_229D418` | `sub_8692E0` | `sub_8322E0` |
+| sm_80--88 (Ampere) | 8 | `off_21F9158` | `sub_8692E0` | `sub_8322E0` |
+| sm_89--90 (Ada/Hopper) | 9 | `off_21D6860` | `sub_8692E0` | `sub_8322E0` |
+
+Phase 65 resolves to the same handler (`sub_8322E0`) on every target -- the architecture variation is only in Phase 46. Pascal is the sole generation where Phase 46 hits the no-op sentinel; Volta and later all dispatch to `sub_8692E0`.
+
+**Phase 46 handler** -- `sub_8692E0` (8 lines, unconditional on all Volta+ targets):
+```c
+void sub_8692E0(int64_t backend) {
+    if ((*(uint8_t*)(backend + 1042) & 4) == 0)       // capability bit 2 not set
+        if (sub_7DC030(backend) || sub_7DC050(backend)) // has uniform or shared ops
+            sub_7446D0(*(int64_t*)(backend + 8));       // run optimization on ctx
+}
+```
+The gate at `backend+1042` bit 2 provides a per-compilation-unit disable. The two predicates (`sub_7DC030`, `sub_7DC050`) check whether the program contains operations that benefit from mid-pipeline re-optimization; when neither returns true the pass exits without work.
+
+**Phase 65 handler** -- `sub_8322E0` (~700 lines, gated by function count > 1 in the caller): runs the multi-function `ConvertMemoryToRegisterOrUniform` optimization. It queries knobs 122/123/132/133/136 from the options block, builds a per-function cost model using a 40-byte-stride array, applies a convergence threshold of 0.93 (overridable via knob 136), and replaces eligible memory operations with register or uniform-register references.
 
 ## Sub-Pass Decomposition
 
@@ -963,31 +1202,55 @@ Two additional helpers extend the Phase 13 algebraic simplifier beyond the main 
 
 ### Dead Code Elimination
 
-DCE within GeneralOptimize is lightweight compared to the standalone `OriPerformLiveDead` passes (phases 16, 33, 61, 84). It operates locally within basic blocks using the `sub_7DF3A0` function:
+DCE within GeneralOptimize is lightweight compared to the standalone `OriPerformLiveDead` passes (phases 16, 33, 61, 84). It operates locally within basic blocks and differs structurally between variants.
+
+#### Liveness Status Lookup: `sub_7DF3A0`
+
+`sub_7DF3A0` is a **status-byte locator** (22 lines), not a full liveness analyzer. It returns a pointer to a status word whose address depends on the instruction's opcode category:
 
 ```c
-// sub_7DF3A0 -- instruction liveness check
-//   Returns pointer to status word
-//   Bits 2-3 (mask 0xC): has live uses
-//   Bit 0 (mask 0x1): marked dead
-int8_t* check_liveness(int64_t instr, int64_t* ctx) {
-    // ... examines use-def chains ...
-    return status_ptr;   // caller checks (*result & 0xC) != 0
+// sub_7DF3A0(instr, ctx) -- three-way dispatch on masked opcode
+uint8_t* locate_liveness_status(int64_t instr, int64_t* ctx) {
+    uint32_t opcode = *(instr+72);
+    uint32_t masked = opcode & ~0x3000;           // clear bits 12-13
+    int dest_slot = *(instr+80) + ~((opcode >> 11) & 2);  // operand 0 or 1
+    if (masked == 109)       // predicate register file
+        return (uint8_t*)(ctx[49] + 8 * (operand[dest_slot] & 0xFFFFFF)) + 4;
+    else if (masked == 85)   // uniform predicate register file
+        return (uint8_t*)(ctx[52] + 8 * (operand[dest_slot] & 0xFFFFFF)) + 4;
+    else                     // general register -- indexed by opcode
+        return (uint8_t*)(ctx[97] + 4 * masked);
+}
+// Caller interprets bits 2-3 (mask 0xC): nonzero = has live consumers
+```
+
+#### Variant A: Deferred Removal via Convergence Loop (Phase 29)
+
+In `sub_908EB0`, the liveness check is the **fallback path** for instructions that are neither copy (opcode 97), predicated move (opcode 18), nor conditional select (opcode 124). The flag `v10` tracks whether the current chain position has live consumers:
+
+```c
+// sub_908EB0 at +0xC6 -- DCE fallback for unrecognized opcodes
+if (!v10) {                                    // no prior copy recognized
+    uint8_t* status = sub_7DF3A0(instr, ctx);
+    v10 = (*status & 0xC) != 0;               // true = live uses exist
 }
 ```
 
-In `sub_908EB0`, the DCE check appears as the fallback for unrecognized opcodes:
+When `v10` remains false (dead instruction), `sub_908EB0` does **not** delete it directly. Instead, `v10 == false` suppresses the extended copy-propagation chain walk (the loop at `+0x11E` through `+0x153`), preventing the optimizer from propagating values through dead code. The dead instruction itself stays in the instruction list.
 
-```c
-if (!v10) {   // v10 = "previous instruction was a recognized copy"
-    int8_t* status = sub_7DF3A0(instr, ctx);
-    v10 = (*status & 0xC) != 0;   // live uses exist?
-}
-```
+A secondary chain-walk also occurs in the extended path: when a copy-propagation target has a def-chain (`*(instr+136)` non-null), the code walks backward through predecessors calling `sub_7DF3A0` on each, stopping at the first live instruction (bits 2-3 set) or opcode 52 (block boundary). This skips dead intermediate copies during multi-hop propagation.
 
-When `(*status & 0xC) == 0`, the instruction has no live consumers and is effectively dead. In Variant A, dead instructions are not immediately deleted -- they are marked for removal by the convergence loop cleanup phase (`sub_753B50`), which rewires the instruction list to skip dead nodes and updates the block's def-use chains via `sub_931920`, `sub_932E80`, `sub_749090`, and `sub_9253C0`.
+Actual removal of dead instructions occurs when `sub_753B50` applies accumulated chain rewrites during the convergence loop. Its cleanup sequence -- `sub_9253C0` (unlink from block), `sub_749290` (update register numbering), `sub_91E310` (splice from linked list) -- removes instructions that were part of rewritten chains, including those rendered dead by prior copy propagation. Dead instructions **not** part of any rewritten chain survive until the next standalone `OriPerformLiveDead` pass.
 
-In Variant B (phase 58), `sub_8F6530` uses the same `sub_7DF3A0` liveness check but integrates the result into its 7-counter change tracking structure, incrementing the appropriate sub-pass counter when a dead instruction is found.
+#### Variant B: Implicit DCE via Pair Rewriting (Phase 58)
+
+`sub_8F6530` does **not** call `sub_7DF3A0` and performs no explicit liveness checks. Its DCE effect is a side effect of MOV-pair combining: when two MOV instructions (opcodes 139/110) are successfully matched and combined by `sub_8F5FC0`, the replaced instructions are immediately unlinked:
+
+1. `sub_9253C0(ctx, old_instr, 1)` unlinks each replaced instruction from its block
+2. Use-counts on source register descriptors are decremented (`--*(reginfo+20)` for operands at +92 and +100 of each removed instruction)
+3. Transitively dead producers are **not** re-scanned -- cleanup of newly-dead instructions is deferred to subsequent passes
+
+The 6 per-slot counters at 56-byte stride (`*(a1+5)`, `*(a1+19)`, ..., `*(a1+75)`) track instruction-pair occupancy in the circular buffer, not DCE events specifically. The caller (`sub_8F6FA0`) checks whether any slot's changed-flag is set to determine if the pass made progress.
 
 ### Predicate Simplification
 
@@ -1024,17 +1287,73 @@ sub_8F6530 Context (passed as a1)
   6 slots at offsets: +0x10, +0x48, +0x80, +0xB8, +0xF0, +0x128
 ```
 
-The slot index increments with `(*(a1+3) + 1) % 6` after each pair is processed. When a new instruction pair is encountered that doesn't match any existing slot, the oldest slot is evicted (slot index advances). Each slot can hold up to 2 instruction pointers.
+The slot index increments with `(slot_index + 1) % 6` after each insertion. When a new instruction does not match any existing slot, the oldest slot is evicted. Each slot holds up to 2 instruction pointers and a `changed` flag cleared on every insertion.
 
-The function walks the instruction list looking for specific opcode patterns:
+**Algorithm pseudocode** (derived from decompiled `sub_8F6530`, 550 lines):
 
-1. **Opcodes 139 and 110** (MOV variants with different addressing modes): these are the primary targets. The function checks operand field at `instr+76` for value 6 (register operand) or 7 (immediate operand), with the `flag_ctrl_flow_4` and `flag_ctrl_flow_8` gates controlling which variants are processed
-2. For register operands (type field bits 28-30 == 1), it verifies:
-   - Use count == 1 (`*(reginfo+24) == 1`)
-   - No aliasing flags (`*(reginfo+50) & 1 == 0`)
-   - Register class not in range 2-8 (`*(reginfo+20) - 2 > 6`)
-3. For instructions with opcode 139 and no modifier bits (`*(instr+88) & 0x603FFFF == 0`), the function attempts to find the instruction in the circular buffer and either promote it (if found) or insert it as a new entry
-4. **Option 605** (`getOption(ctx, 605)`) at `0x8F6530+0x1A0`: when enabled, restricts the matching to only instructions already present in the buffer, preventing new insertions. This is an architecture-gated optimization
+```
+sub_8F6530(state, block_id):
+  for i in 0..6:                              // zero all 6 slots
+    state.slots[i] = {count=0, changed=false}
+
+  for instr in block.instructions:            // linked list walk via +8
+    opc = instr.opcode                        // +72
+    if opc != 139 and opc != 110: continue
+
+    // --- operand qualification (op_kind at +76: 6=reg, 7=imm) ---
+    //   for each src in {src1(+92), src2(+100)} with reg_type_bits==1:
+    //     reject if use_count != 1, alias_flag & 1, or reg_class in [2,8]
+    //   op_kind==6 gated by flag_ctrl_flow_4, ==7 by flag_ctrl_flow_8
+    which_src = qualify_sources(instr, state)
+
+    // --- def-chain path: follow to defining MOV-139 ---
+    if which_src != NONE:
+      other_src = instr.operand[3 - which_src]  // the non-excluded src
+      def = reg_info[other_src & 0xFFFFFF].single_def   // +56
+      if def and def.opcode == 139 and def.block == block_id
+         and (def.modifier & 0x603FFFF) == 0
+         and def passes same src qualification:
+        if getOption(ctx, 605):               // option 605: hit-only mode
+          if not buffer_contains(state, def): goto direct_path
+        slot = buffer_lookup_or_insert(state, def)
+        state.slots[slot].ptrs[count++] = instr
+        state.slots[slot].changed = false
+        goto cross_match
+
+    direct_path:                              // plain MOV-139 insertion
+    if opc != 139 or (instr.modifier & 0x603FFFF): continue
+    slot = buffer_lookup_or_insert(state, instr)
+
+    cross_match:                              // scan other slots for pair match
+    for j in 0..6:
+      if j == slot: continue
+      other = state.slots[j]
+      if other.count == 0 or state.slots[slot].count == 0: continue
+      if no_pointer_overlap(state.slots[slot], other): continue
+      if not other.changed:  sub_8F2870(other)      // populate operand ptrs
+      if not state.slots[slot].changed: sub_8F2870(state.slots[slot])
+      // 2-entry permutation: match src operand words across slots
+      if permutation_match(other.op_ptrs, state.slots[slot].op_ptrs):
+        if not getOption(ctx, 603): return    // option 603 gates rewrite
+        sub_8F5FC0(state, j, slot)            // rewrite + invalidate
+        break
+
+buffer_lookup_or_insert(state, I):            // linear scan, pointer equality
+  for k in 0..6:
+    s = state.slots[k]
+    if s.count > 0 and (I == s.ptrs[0] or (s.count >= 2 and I == s.ptrs[1])):
+      return k
+  state.slot_index = (state.slot_index + 1) % 6    // evict oldest
+  s = state.slots[state.slot_index]
+  s = {count=1, changed=false, ptrs=[I]}
+  return state.slot_index
+```
+
+Key binary details:
+- The 6-slot scan (decompiled lines 133-188 / 340-424) repeats identically for `instr` and `def_instr` with stride `a1[7*k + 3]` for ptr[0], `a1[7*k + 4]` for ptr[1]
+- `sub_8F2870` extracts `instr+92` and `instr+100` from both stored instructions into 4 operand pointers at slot offsets +24/+32/+40/+48, using register-index comparison to set cross vs parallel pairing order
+- `sub_8F5FC0` calls `sub_8F5EB0` to patch operands, decrements reg_info use-counts, then walks all 6 slots invalidating any whose pointers overlap with the rewritten pair
+- Option 605 (architecture-gated) restricts the def-chain path to buffer-hit-only, preventing speculative insertions that evict useful entries on architectures where this pattern is rare
 
 ## Fixed-Point Convergence
 
@@ -1087,13 +1406,30 @@ In practice, most basic blocks converge in 1--3 iterations. A block that generat
 
 After `sub_753600` reports changes, `sub_753B50` applies the accumulated transformations. This is a compact 70-line function that performs instruction-list surgery:
 
-1. **Creates a replacement instruction** via `sub_931920(ctx, state->instr_pair, *(*(state->instr_pair+8)+8), -1)` -- the `-1` argument (`0xFFFFFFFF`) signals "allocate new"
-2. **Updates the block's instruction head** at `*(ctx+232)` with the new instruction's head pointer
+1. **Creates a replacement block** via `sub_931920(ctx, state->instr_pair, *(*(state->instr_pair+8)+8), -1)` -- the `-1` (`0xFFFFFFFF`) is stored into the block-to-function map as the allocation marker
+2. **Updates the block's instruction head** at `*(ctx+232)` with the new block's head pointer
 3. **Clears the block's instruction count** at `*(ctx+264) = 0`
-4. **Calls `sub_932E80`** to relink the instruction into the block's doubly-linked list
-5. **Propagates flags**: if the original instruction had flag bit 3 of `*(instr+280)` set (indicating a control-flow-sensitive instruction), the replacement inherits it via `new_instr[70] |= 8`
-6. **Walks the state's instruction chain** (from `state[1]` through `state[2]`), creating replacements for each and calling `sub_749090` to update register-to-instruction mappings
-7. **Final cleanup**: calls `sub_9253C0` to remove the dead instructions from their blocks, and `sub_749290` to update the register numbering, and `sub_91E310` to splice the old instruction range out of the linked list
+4. **Calls `sub_932E80`** to relink the new block into the doubly-linked block list at position `state[1]`
+5. **Propagates flags**: if the original instruction had flag bit 3 of `*(instr+280)` set (control-flow-sensitive), the replacement block inherits it via `new_block[70] |= 8`
+6. **Walks the state's instruction chain** (from `state[1]` through `state[2]`), dispatching on the next instruction's opcode:
+   - **Opcode 97** (definition anchor): looks up the target block via `ctx->block_array[instr->block_index]`, calls `sub_931920` to clone into a new block, relinks at the target via `sub_932E80`, remaps registers via `sub_749090`, and propagates flag bit 3
+   - **Other opcodes**: calls `sub_931920` with relink position 0, remaps via `sub_749090`, then hits `BUG()` -- this path is unreachable because the optimizer only chains definition anchors
+7. **Register remapping**: calls `sub_749090` twice to update the head and tail entries in the old-to-new register mapping
+8. **Dead instruction cleanup**: calls `sub_9253C0` three times to remove old instructions, `sub_749290` twice to renumber affected register ranges, and `sub_91E310` to splice the old instruction range out of the linked list
+
+### What `sub_931920` Produces
+
+`sub_931920(ctx, pair, source_instr, alloc_flag)` is a **block cloner** (414 lines). It allocates a fresh 288-byte basic block via `sub_923390` (which appends to `ctx->block_array` at offset +296 and returns the new block index), then populates it with a two-instruction sequence:
+
+1. **BB boundary delimiter** -- opcode 0x34 (52 decimal, `AL2P_INDEXED` in the ROT13 name table). Created via `sub_9314F0(buf, ctx, 0x34, 1, 1, *(pair[0]+84))`. Operand count = 1; the single operand is copied from the source pair's first instruction at offset +84 (the operand array). This instruction marks the start of the new basic block. After creation, the source pair's successor pointer is redirected: `*(pair+8) = *(ctx+232)`.
+
+2. **Definition anchor** -- opcode 0x61 (97 decimal, `STG` in the ROT13 name table but used exclusively as a **register definition anchor** in the optimizer, not as a store-global data instruction). Created via `sub_92C240(buf, ctx, 0x61, 1, 1, block_index_operand)`. Operand count = 1; operand value = `(new_block_index & 0xFFFFFF) | 0x40000000`. Bit 30 (`0x40000000`) tags this as a block-index reference. The anchor establishes the new block as the definition site for the register being optimized -- downstream copy propagation follows these anchors via the `instr->block_index` field at offset +24.
+
+The function then performs three categories of post-creation fixup:
+
+- **Option migration**: queries the source pair's option map (`ctx->option_map` at offset +1664) via `sub_7A16E0` for options 583 and 116. If present on the source, they are propagated to the new block via vtable call `[+88]`, then conditionally cleared from the source via `[+80]`. Option 583 clearing is suppressed when the source block's next instruction is a BB boundary whose `sub_7DF3A0` attribute has bit 1 set.
+- **Flag transfer**: copies individual flag bits from `*(pair+280)` to `*(new_block+280)` with clear-from-source semantics. In the normal path: bits 0x1, 0x2, 0x80000, 0x10000000, 0x8000000, and 0x80. Bit 0x800000 transfers only when the new block's head instruction has opcode 178 (masked) or the source's does not. Bit 0x1000 is set if the source had bit 4 of byte 281.
+- **Metadata copy**: copies five 4-byte fields at offsets 148, 152, 156, 160, 164 from the source pair to the new block (source location, line number, column for debug info). Also transfers byte 245 (yield marker) conditionally -- transfer occurs only when the instruction chain contains no tex/surface prefetch (opcodes 167/158) and no barrier (opcode 29).
 
 ## Differences Between Early/Mid/Late Variants
 
@@ -1105,7 +1441,7 @@ After `sub_753600` reports changes, `sub_753B50` applies the accumulated transfo
 | 29 | Requires option 487; skips if option 231 (dump mode) is set; requires `*(config+33192)` check or option 461 pass; skips if function count == 1 |
 | 37 (Mid) | Requires `sub_8F3EA0` pre-check; option 487; can be disabled via `--no-phase ConvertMemoryToRegisterOrUniform`; skips if function count == 1 |
 | 46 (Mid2) | Indirect dispatch; skips if vtable slot `[0x1C0]` points to no-op sentinel `sub_7D6DD0` |
-| 58 (Late) | Requires function count > 2 (not just > 1); checks optimization level bits `(ctx+1396 & 0x30) != 0x20`; checks option 31 with extended-value semantics |
+| 58 (Late) | Requires function count > 2 (not just > 1); skips at reduced tier (`ctx+1396 & 0x30 == 0x20`); option 31 extended-value gate (knob 31 `OKT_DBL`, is-set==1 AND value!=0); final entry requires dual-issue arch (`profile[+12]==4`) OR v7 from option 31 / standard-tier default |
 | 65 (Late2) | Requires function count > 1; indirect dispatch through compilation unit vtable slot at offset 392 |
 
 ### 2. Sub-Pass Selection (What Runs)
@@ -1190,13 +1526,25 @@ After phase 65, the pipeline transitions to register-attribute setting (phase 90
 | Option | Decoded Name | Type | Code Default | Used By | Description |
 |---|---|---|---|---|---|
 | 31 | `AllowReassociateCSE` | OKT_INT | unset | Phase 58 | Architecture-dependent fold eligibility gate; extended-value semantics via `config+2232`/`+2240` |
+| 122 | *(not yet decoded)* | OKT_DBL | 0 (search high: 0.7) | Phase 37 (`sub_90EF70`) | Uniform eligibility override; queried via `GetKnobInt(config, 122)` when `knob_block[8784]` is set -- truthy enables uniform promotion even when the architecture flag would disable it |
+| 123 | *(not yet decoded)* | OKT_DBL | 0 (search high: 1.0) | Phase 37 (`sub_90EF70`) | Uniform path activation; queried via `GetKnobInt(config, 123)` when `knob_block[8856]` is set -- combined with `ctx_flags & 8` to decide whether uniform-register promotion is attempted |
+| 132 | *(not yet decoded)* | OKT_DBL | 0 (search high: 1.8) | Phase 37 (`sub_90EF70`) | Maximum def-count ceiling for candidate filtering; hardcoded fallback **50**; queried when `knob_block[9504]` is set |
+| 133 | *(not yet decoded)* | OKT_DBL | 0 (search high: 3.5) | Phase 37 (`sub_90EF70`) | Minimum def-count floor for candidate filtering; hardcoded fallback **3**; queried when `knob_block[9576]` is set |
 | 135 | `ConvertMemoryToRegIndexedSizeLimit` | OKT_INT | unset (fallback: 0.25 from knob 474) | Phase 37 | Threshold override for cost-based convergence when `*(config+9720)` is set; controls indexed-access size limit for memory-to-register conversion |
-| 214 | `DisableMergeEquivalentConditionalFlow` | OKT_NONE | false | Phase 13 only | When present, skips `GeneralOptimizeEarly` entirely (`if (getOption(ctx, 214)) return;`) |
-| 231 | `DisableRedundantBarrierRemoval` | OKT_NONE | false | Phase 29 only | Dump mode -- when present, skips `GeneralOptimize` to preserve IR state for debugging |
+| 136 | *(not yet decoded)* | OKT_DBL | 0 (search high: 0.4) | Phase 37 (`sub_90EF70`) | **Promotion weight threshold**; hardcoded fallback **0.93**; queried via `sub_7973B0(config, 136)` when `knob_block[9792]` is set. Test: `candidate.weight <= capacity * threshold`. The param2=0.4 in the descriptor table is the auto-tuner search bound, not the runtime default |
+| 214 | `DisableMergeEquivalentConditionalFlow` | OKT_NONE | false | Phases 13, 15 | When set, skips `sub_7917F0` entirely (`if (getOption(ctx, 214)) return;`). Name references conditional-flow merging but actual scope is broader: gates the full early-optimization / branch-simplification worker shared by GeneralOptimizeEarly (phase 13) and OriBranchOpt (phase 15) |
+| 231 | `DisableRedundantBarrierRemoval` | OKT_INT | 0 | Phase 29 only | Debug gate -- when non-zero, skips `GeneralOptimize` to preserve IR state. Name references barrier removal but actual scope is the entire phase-29 forward copy-propagation pass. **Type correction**: descriptor is OKT_INT (range [0,1], flags=0x2), not OKT_NONE as raw report P3-03 stated |
+| 343 | `GeneralOptimizeMidMaxAdd3RefCnt` | OKT_INT | unset (param1=1) | Phase 37 | Reference-count ceiling for add3 folding in `GeneralOptimizeMid`; limits how many uses a source register may have before the fold is suppressed. ROT13 `TrarenyBcgvzvmrZvqZnkNqq3ErsPag` at `0x21BCE60` |
+| 344 | `GeneralOptimizeMidBudget` | OKT_BDGT | unset (= unbounded) | Phase 37 | **Per-instance iteration cap** for the `GeneralOptimizeMid` fixed-point loop; all three budget params default to INT_MAX. ROT13 `TrarenyBcgvzvmrZvqOhqtrg` at `0x21BCE90` |
+| 345 | `GeneralOptimizeMid2Budget` | OKT_BDGT | unset (= unbounded) | Phase 46 | **Per-instance iteration cap** for `GeneralOptimizeMid2`; p1/p2=INT_MAX, p3=1 (per-function granularity). ROT13 `TrarenyBcgvzvmrZvq2Ohqtrg` at `0x21BCEC0` |
+| 346 | `GeneralOptimizeLateBudget` | OKT_BDGT | unset (= unbounded) | Phase 58 | **Per-instance iteration cap** for `GeneralOptimizeLate`; p1/p2=INT_MAX, p3=1. ROT13 `TrarenyBcgvzvmrYngrOhqtrg` at `0x21BCEF0` |
+| 347 | `GeneralOptimizeLate2Budget` | OKT_BDGT | unset (= unbounded) | Phase 65 | **Per-instance iteration cap** for `GeneralOptimizeLate2`; p1/p2=INT_MAX, p3=1. ROT13 `TrarenyBcgvzvmrYngr2Ohqtrg` at `0x21BCF20` |
+| 348 | `GeneralOptimizeEarlyBudget` | OKT_BDGT | unset (= unbounded) | Phase 13 | **Per-instance iteration cap** for `GeneralOptimizeEarly`; p1/p2=INT_MAX, p3=1. Distinct from knob 464 which caps the *inner* structural-equivalence sub-loop. ROT13 `TrarenyBcgvzvmrRneylOhqtrg` at `0x21BCF50` |
+| 349 | `GeneralOptimizeBudget` | OKT_BDGT | unset (= unbounded) | Phase 29 | **Per-instance iteration cap** for the standard `GeneralOptimize`; p1/p2=INT_MAX, p3=1. ROT13 `TrarenyBcgvzvmrOhqtrg` at `0x21BCF80` |
 | 461 | `MembarFlowControl` | OKT_INT | unset | Phase 29 | Secondary gate; controls whether memory barrier flow analysis runs during standard GeneralOptimize; passed through `sub_661470` |
 | 464 | `MergeEquivalentConditionalFlowBudget` | OKT_BDGT | unset (= unbounded) | Phase 13 (Variant A) | **Iteration cap** -- budget knob that breaks the fixed-point loop when exhausted; prevents oscillating transformations |
 | 474 | `MovWeightForConvertMemToReg` | OKT_DBL | 0.25 | Phase 37 (`sub_90FBA0`) | Cost convergence threshold and per-fold cost weight for cost-exempt opcodes (`v104` in cost computation) |
-| 487 | *(not yet decoded)* | -- | enabled | Phases 13, 29, 37 | **General optimization enable** -- master switch for all GeneralOptimize passes |
+| 487 | `PiecemealDumpSpace` | OKT_INT | 0 (param1=2^31-1) | Phases 13, 29, 37, ... | **General optimization budget** -- ROT13 `CvrprzrnyQhzcFcnpr`. Consumed via `sub_7468B0(config, 487)` as an iteration counter; param1=INT_MAX makes it effectively unlimited by default. Referenced across 16+ passes; context-specific aliases in other wiki pages (`LoopMakeSingleEntry` in loop-passes, `NumOptPhasesBudget` in regalloc, `ForceLateCommoning` in CSE) all refer to this same descriptor-487 budget gate |
 | 499 | `OptBudget` | OKT_BDGT | enabled (pass-through) | `sub_7DDB50` (opt-level accessor) | Master guard for opt-level accessor; when disabled, caps all opt-level-gated behavior at O1 |
 | 605 | `ReassociateCSEWindow` | OKT_NONE | false | Phase 58 (`sub_8F6530`) | When present, restricts 6-slot circular buffer matching to existing entries only (no new entries added during walk) |
 | `limit-fold-fp` | -- | bool | `"false"` (config+340) | Phase 37 | When `true`, forces conservative fold path via `ctx+1379` tier flags; prevents FP folds that could alter precision semantics |
@@ -1218,7 +1566,7 @@ The `"ConvertMemoryToRegisterOrUniform"` named-phase gate at `0x21DD228` allows 
 | `0x910840` | `GeneralOptimizeMid` body | Full suite with mem-to-reg; delegates to `sub_905B50` + `sub_90FBA0` | HIGH |
 | `0x8F7080` | `GeneralOptimizeLate` body | Bitvector-tracked 7-counter pass; calls `sub_8F6FA0` | HIGH |
 | `0x753600` | Per-block sub-pass runner (Early) | Structural equivalence detection on def-use chains; returns boolean changed | HIGH |
-| `0x753B50` | Per-block apply changes (Early) | Instruction rewriting: `sub_931920`, `sub_932E80`, `sub_749090`, `sub_9253C0` | HIGH |
+| `0x753B50` | Per-block apply changes (Early) | Block cloning via `sub_931920` (BB boundary + def anchor pair), relinking via `sub_932E80`, register remapping via `sub_749090`, dead removal via `sub_9253C0` | HIGH |
 | `0x753480` | Chain walker (Early) | Walks single-def chain forward, checking `sub_7E5120` eligibility | HIGH |
 | `0x753520` | Pair detector (Early) | Finds opcode-93 instruction in chain via `sub_753480` | HIGH |
 | `0x753570` | Secondary pair detector (Early) | Finds second opcode-93 link referencing back to primary | HIGH |
@@ -1230,7 +1578,7 @@ The `"ConvertMemoryToRegisterOrUniform"` named-phase gate at `0x21DD228` allows 
 | `0x8F6FA0` | Block iterator (Late) | Walks block list calling `sub_8F6530` per block; single pass, no iteration | HIGH |
 | `0x905B50` | Setup/init (Mid) | ~500 lines; creates bitvector infrastructure; 3 tracked structures | HIGH |
 | `0x90FBA0` | Main loop (Mid) | Cost-based instruction-level iteration with register bank analysis | HIGH |
-| `0x90EF70` | Register promotion (Mid) | Memory-to-register conversion; threshold-based (default 0.93, knob 136) | HIGH |
+| `0x90EF70` | Register promotion (Mid) | ConvertMemoryToRegisterOrUniform: 3-stage candidate filter + threshold-gated promotion (fallback 0.93, knob 136); knobs 122/123/132/133 control uniform eligibility and def-count bounds | HIGH |
 | `0x903A10` | Register bank helper (Mid) | Per-instruction register bank assignment for LD/ST materialization | MEDIUM |
 | `0x8F3FE0` | Register constraint fold validator (Mid) | Validates all source operand types are 2/3 and `sub_91D150` constraints match cached values; queries `vtable[904]` for element size and `vtable[936]` for fold metadata | HIGH |
 | `0x8F2E50` | Fold eligibility check | Two-path dispatch: opcode 18 checks source types 2/3 + `sub_91D150` constraints; opcode 124 checks dest type 1/2 + SM <= 20479 threshold + constraint bits `& 0x1C00` | HIGH |
