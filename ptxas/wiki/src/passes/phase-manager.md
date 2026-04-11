@@ -480,6 +480,268 @@ The `shared_list` at `+432` enables recipe state persistence across compilation 
 | **5** | Maximum valid NvOpt level |
 | **35280** | Recipe config byte offset in target descriptor |
 
+## NvOptRecipe String Applier -- `sub_9F4040`
+
+The 440-byte sub-manager described above is the *runtime container*; the actual string-driven phase reordering lives in a separate 9,093-byte function called from the alternate compilation entry. Two top-level entry points exist:
+
+```c
+// sub_7FB6C0 (compilation driver) at line 38--47
+v3 = phase_manager_options(...);
+v4 = (v3 == sub_6614A0) ? (config[9][21456] != 0)   // fast path: type tag of option 298
+                        : v3(phase_mgr, 298);        // slow path: virtual call
+if ( v4 )
+    sub_9F63D0(cu);                                  // recipe path
+else
+    { sub_C62720(stack, cu); sub_C64F70(stack, sub_C60D20()); ... }   // default path
+```
+
+When option **298** is set (recipe-string option, type tag 5 = string pointer at config offset 21464), control diverges into `sub_9F63D0`, a 12-line trampoline:
+
+```c
+// sub_9F63D0 -- complete decompilation
+__int64 sub_9F63D0(__int64 cu) {
+    char pm[112];           // PhaseManager stack object
+    _QWORD order[129];      // 1024-byte phase order array (256 int32 slots + slack)
+    sub_C62720(pm, cu);                  // construct PhaseManager
+    memset(order, 0, 0x400);
+    LODWORD(order[0]) = 158;             // sentinel
+    sub_9F4040(cu, (__int64)pm, order);  // build per-CU phase order from recipe
+    sub_C64F70(pm, order);               // dispatch using the modified order
+    return sub_C61B20(pm);               // destruct
+}
+```
+
+`sub_9F4040` (the recipe applier) is responsible for parsing the option-298 string and writing the resulting phase index sequence into `order[]`. It supports **three operating modes** plus DCE/CopyProp injection slots:
+
+1. **NamedPhases mode** -- explicit ordered phase-name list
+2. **`pNNN` mode** -- explicit per-slot phase index override (243 slots)
+3. **shuffle mode** -- start from default order, then apply `reps` rounds of six parameterized swaps
+
+### Recipe String Grammar
+
+The recipe string is consumed by the generic key/value tokenizer `sub_798B60` ("NamedPhases::ParsePhaseList") at lines 442--477:
+
+```c
+// sub_798B60 token loop -- comma-only separator
+v42 = 1;                                  // 1 = expect key, 0 = expect value
+while ( (token = strtok_r(s, ",", &save_ptr)) ) {
+    if ( v42 ) keys[N]   = token;         // even tokens -> keys array
+    else       values[N] = token, N++;    // odd tokens  -> values array
+    v42 ^= 1;
+    raw[i++] = token;                     // every token also written sequentially
+    s = NULL;
+}
+```
+
+Three parallel buffers are populated:
+
+| Buffer | Indexing | Holds |
+|---|---|---|
+| `s2[256]` | by key position | Even-numbered tokens (the directive names) |
+| `nptr[256]` | by key position | Odd-numbered tokens (the directive values) |
+| `v343[520]` | by raw position | Every token in source order (used by NamedPhases mode to read phase-name lists of arbitrary length) |
+
+Concretely, the recipe is a flat **comma-delimited** sequence with no `=` sign. To set `swap1=3`, the actual string is:
+
+```
+swap1,3
+```
+
+Multiple directives chain with commas:
+
+```
+shuffle,1,reps,2,swap1,3,swap2,5,swap3,11,swap4,17,swap5,23,swap6,31
+```
+
+### Three Operating Modes
+
+After tokenizing, `sub_9F4040` searches the `s2[]` key array in priority order:
+
+```c
+// Pseudocode for sub_9F4040 control flow
+fill dest[0..255] with sentinel index 158;        // line 351-356
+parse_recipe(option_298_string, s2, nptr, v343);
+v340 = recipe_present;                            // line 363, 1770
+
+// PRIORITY 1 -- NamedPhases mode
+if ( find_key(s2, "NamedPhases") && nptr[k] ) {   // line 374-396
+    for ( i = 0; v343[i+1] != NULL && i < 256; ++i ) {
+        name = v343[i + 1];                       // skip "NamedPhases" itself
+        dest[i] = (*name == '-') ? 158            // dash-prefixed = sentinel/skip
+                                 : phase_lookup(name);   // sub_C641D0
+    }
+    goto dispatch;
+}
+
+// PRIORITY 2 -- pNNN mode (243 explicit per-slot indices)
+if ( find_key(s2, "p%d") ) {                      // line 463-509
+    dest[0..2] = first 12 bytes of default phase table;
+    for ( v18 = 0; v18 < 243; ++v18 ) {
+        sprintf(s, "p%d", v18);
+        if ( find_key(s2, s) && nptr[k] )
+            dest[v18] = clamp(strtol(nptr[k]), 0, 159);
+    }
+    goto dispatch;
+}
+
+// PRIORITY 3 -- shuffle mode (default order + DCE/CopyProp injection + swaps)
+if ( find_key(s2, "shuffle") && nptr[k] ) {       // line 841-876
+    parse_int(s2, "reps",  &reps);    // -> v250  (loop iteration count, clamped 0..256)
+    parse_int(s2, "swap1", &swap1);   // -> v248  (swap base offset 1)
+    parse_int(s2, "swap2", &swap2);   // -> v246
+    parse_int(s2, "swap3", &swap3);   // -> v232
+    parse_int(s2, "swap4", &swap4);   // -> v48
+    parse_int(s2, "swap5", &swap5);   // -> v9
+    parse_int(s2, "swap6", &swap6);   // -> v230
+    parse_int(s2, "dce1",  &dce1);    // -> v51   (DCE injection slot 1)
+    parse_int(s2, "dce2",  &dce2);    // -> v234
+    parse_int(s2, "dce3",  &dce3);    // -> v240
+    parse_int(s2, "cpy1",  &cpy1);    // -> v236  (CopyProp injection slot 1)
+    parse_int(s2, "cpy2",  &cpy2);    // -> v222
+    parse_int(s2, "cpy3",  &cpy3);    // -> v42
+
+    // Phase 1: copy default phase table, injecting DCE/CopyProp at marked slots
+    write = 0;
+    for ( read = 0; read < default_count; ++read ) {
+        if ( read == dce1 || read == dce2 || read == dce3 )
+            dest[write++] = phase_lookup("OriPerformLiveDead");   // line 1556-1564
+        if ( read == cpy1 || read == cpy2 || read == cpy3 )
+            dest[write++] = phase_lookup("OriCopyProp");          // line 1645-1650
+        dest[write++] = default_phase_table[read];                // line 1669-1671
+    }
+    N = write;                                    // post-injection length
+
+    // Phase 2: bubble-shuffle (lines 1689-1729)
+    for ( i = 0; i < reps; ++i ) {
+        swap_pair(dest, swap1, i, N);
+        swap_pair(dest, swap2, i, N);
+        swap_pair(dest, swap3, i, N);
+        swap_pair(dest, swap4, i, N);
+        swap_pair(dest, swap5, i, N);
+        swap_pair(dest, swap6, i, N);
+    }
+}
+
+void swap_pair(int dest[], int base, int i, int N) {
+    int a = (base + i)         % N;
+    int b = (a    + i + 1)     % N;       // == (base + 2i + 1) % N
+    swap(dest[a], dest[b]);
+}
+```
+
+### The Six Swap Slots
+
+The headline finding: **`swap1`--`swap6` do not target named phase pairs**. Each is a **user-supplied integer base offset** into the phase order array; the swap operation that uses it pairs `dest[base+i]` with `dest[base+2i+1]` (mod `N`) for every iteration `i` of the `reps` loop. All six slots default to **0** if absent from the recipe, and the entire shuffle block is skipped unless `reps > 0`. The slots are otherwise interchangeable -- the parser exists solely to give a recipe author six independent base offsets per `reps` round, so a single recipe can perturb up to six widely separated regions of the pipeline simultaneously.
+
+| Slot | Stored at | Value source | Default | Effect per iteration `i` |
+|---|---|---|---|---|
+| `swap1` | local `v248` | `strtol(nptr["swap1"], 0, 10)`, clamped `[0, 256]` | `0` | `swap(dest[(swap1+i)%N], dest[(swap1+2i+1)%N])` |
+| `swap2` | local `v246` | `strtol(nptr["swap2"], 0, 10)`, clamped `[0, 256]` | `0` | `swap(dest[(swap2+i)%N], dest[(swap2+2i+1)%N])` |
+| `swap3` | local `v232` | `strtol(nptr["swap3"], 0, 10)`, clamped `[0, 256]` | `0` | `swap(dest[(swap3+i)%N], dest[(swap3+2i+1)%N])` |
+| `swap4` | local `v48`  | `strtol(nptr["swap4"], 0, 10)`, clamped `[0, 256]` | `0` | `swap(dest[(swap4+i)%N], dest[(swap4+2i+1)%N])` |
+| `swap5` | local `v9`   | `strtol(nptr["swap5"], 0, 10)`, clamped `[0, 256]` | `0` | `swap(dest[(swap5+i)%N], dest[(swap5+2i+1)%N])` |
+| `swap6` | local `v230` | `strtol(nptr["swap6"], 0, 10)`, clamped `[0, 256]` | `0` | `swap(dest[(swap6+i)%N], dest[(swap6+2i+1)%N])` |
+
+`N` is the post-injection phase count (= default count if no `dceN`/`cpyN` slots fire, otherwise `default + (number of dce hits) + (number of cpy hits)`). The number of swap pairs executed by a recipe is therefore exactly `6 * reps`. With `reps == 0` (the default) the loop is fully skipped, even if all six `swapN` directives are set -- so `swap1..swap6` are inert without an accompanying `reps,N` (with `N >= 1`).
+
+### Vestigial Slots
+
+**No swap slot is vestigial.** All six are read independently in the parser (lines 950, 1007, 1061, 1119, 1162, 1202) and all six are dereferenced once per `reps` iteration in the swap loop (lines 1695, 1700, 1705, 1710, 1715, 1720). Removing any one of them would change the observable behavior of any recipe that sets a non-zero value for that key. No string reference to `swap0` or `swap7` exists anywhere in the binary.
+
+The six-slot count appears to be a hard-coded budget rather than a list of "named phase pairs", and the matching `dce1/2/3` + `cpy1/2/3` injection budget is similarly fixed. The naming convention (`swapN`, `dceN`, `cpyN`) suggests the intended use was to give a recipe author six independent perturbation points, three independent DCE injection points, and three independent CopyProp injection points -- a total of 12 + 6 = 18 independent integer parameters that together describe a deterministic transformation of the default 159-phase order.
+
+### How the Swap Modifies the Phase Sequence
+
+The swap installation **physically reorders the `dest[]` array** before it is handed to `sub_C64F70` for dispatch. There is no swap-attribute that the dispatcher honors at run time -- by the time `sub_C64F70` receives `order`, every swap has already happened in `sub_9F4040`. The dispatcher itself is unmodified by the recipe; it walks the array linearly, calling `execute()` on whatever phase indices are present.
+
+This has two consequences:
+
+1. **Re-ordering is bounded by `reps`**, not by recipe complexity. A recipe with `reps,10000` will run 60,000 swap operations on a ~159-element array regardless of how many `swapN` keys are set.
+2. **The same phase index can appear multiple times** if the swap pattern produces it -- the dispatch loop will then `execute()` that phase multiple times. There is no de-duplication step. Recipes that abuse high `reps` values can trivially produce sequences with phases run twice, run zero times, or run out of dependency order; the dispatcher's only validation is the per-phase index range check.
+
+### Worked Example
+
+Default phase order (first 12 entries from `0x22BEEA0`):
+
+```
+[0]  OriCheckInitialProgram
+[1]  ApplyNvOptRecipes
+[2]  PromoteFP16
+[3]  AnalyzeControlFlow
+[4]  AdvancedPhaseBeforeConvUnSup
+[5]  ConvertUnsupportedOps
+[6]  SetControlFlowOpLastInBB
+[7]  AdvancedPhaseAfterConvUnSup
+[8]  OriCreateMacroInsts
+[9]  ReportInitialRepresentation
+[10] EarlyOriSimpleLiveDead
+[11] ReplaceUniformsWithImm
+```
+
+Recipe string passed via option 298:
+
+```
+shuffle,1,reps,2,swap1,3,swap2,8,dce1,5
+```
+
+Step-by-step expansion:
+
+1. **Phase 1 (DCE injection)**: `dce1 = 5`. Walking the default table, when `read == 5` (`ConvertUnsupportedOps`), inject `OriPerformLiveDead` *before* it. The `dest[]` prefix becomes:
+    ```
+    [0]  OriCheckInitialProgram
+    [1]  ApplyNvOptRecipes
+    [2]  PromoteFP16
+    [3]  AnalyzeControlFlow
+    [4]  AdvancedPhaseBeforeConvUnSup
+    [5]  OriPerformLiveDead    <- injected
+    [6]  ConvertUnsupportedOps
+    [7]  SetControlFlowOpLastInBB
+    [8]  AdvancedPhaseAfterConvUnSup
+    [9]  OriCreateMacroInsts
+    ...
+    ```
+    `N` becomes `default_count + 1`.
+
+2. **Phase 2 (shuffle), iteration `i = 0`**:
+    - `swap1`: `swap(dest[(3+0)%N], dest[(3+0+1)%N]) = swap(dest[3], dest[4])`
+        → `AnalyzeControlFlow` ↔ `AdvancedPhaseBeforeConvUnSup`
+    - `swap2`: `swap(dest[(8+0)%N], dest[(8+0+1)%N]) = swap(dest[8], dest[9])`
+        → `AdvancedPhaseAfterConvUnSup` ↔ `OriCreateMacroInsts`
+    - `swap3..swap6` all default to `0`: `swap(dest[(0+0)%N], dest[(0+0+1)%N]) = swap(dest[0], dest[1])` -- executed **four times**, which is two pairs of net no-ops on `dest[0]` and `dest[1]`.
+
+3. **Phase 2 (shuffle), iteration `i = 1`**:
+    - `swap1`: `swap(dest[(3+1)%N], dest[(3+1+1+1)%N]) = swap(dest[4], dest[6])`
+    - `swap2`: `swap(dest[(8+1)%N], dest[(8+1+1+1)%N]) = swap(dest[9], dest[11])`
+    - `swap3..swap6` (base 0): `swap(dest[(0+1)%N], dest[(0+1+1+1)%N]) = swap(dest[1], dest[3])` ×4 -- two no-op pairs.
+
+After both iterations, the prefix of `dest[]` is a deterministic permutation of the default order with `OriPerformLiveDead` injected at slot 5 and four pair-swaps applied. The dispatcher then executes phases in the resulting order.
+
+### Recipe-Mode Selection Priority
+
+If the recipe contains keys for multiple modes simultaneously, the parser uses the first mode it finds in this fixed order:
+
+1. `NamedPhases` -- highest priority; consumes all subsequent tokens as phase names from `v343[1..]`
+2. `pNNN` -- if no `NamedPhases` and any `p<digits>` key is present
+3. `shuffle` -- only checked if neither of the above matched; entry condition is the literal string `shuffle` AND the string `reps` with a non-zero value
+
+DCE and CopyProp injection (`dce1..3`, `cpy1..3`) are **only honored in shuffle mode**; they are read inside the shuffle-mode branch (lines 1486--1666) and have no effect on `NamedPhases` or `pNNN` modes.
+
+### Recipe Applier Constants
+
+| Value | Meaning |
+|---|---|
+| **298** | Option ID enabling the recipe applier (string-typed, type tag 5) |
+| **21456** | Option 298 type tag offset in config storage (`config[9] + 21456`) |
+| **21464** | Option 298 string pointer offset (`config[9] + 21464`) |
+| **256** | Maximum number of key/value pairs in recipe string (parser buffer size) |
+| **243** | Maximum `pNNN` slot index (`p0`..`p242` -- the 159 phase slots plus headroom) |
+| **159** | Phase index clamp ceiling for `pNNN` values (`v121 > 159 ? 159 : v121`) |
+| **0..256** | `swapN` / `repsN` / `dceN` / `cpyN` clamp range (`strtol` then clamped) |
+| **6** | Number of `swap` slots (no `swap0` or `swap7` strings exist in the binary) |
+| **3** | Number of `dceN` and `cpyN` injection slots each |
+| **`OriPerformLiveDead`** | Phase name injected by `dceN` (resolved via `sub_C641D0` at line 1556) |
+| **`OriCopyProp`** | Phase name injected by `cpyN` (resolved via `sub_C641D0` at line 1648) |
+
 ## Multi-Function Dispatch -- `sub_C60BD0`
 
 When a compilation unit contains more than one function, `sub_C60BD0` redirects to a per-function dispatch path:
@@ -751,6 +1013,10 @@ PostFixForMercTargets (113)
 | `sub_C641D0` | 305 | Phase name-to-index lookup | VERY HIGH |
 | `sub_C64310` | 3,168 | Per-phase timing reporter | VERY HIGH |
 | `sub_C64F70` | 1,455 | Phase dispatch loop | VERY HIGH |
+| `sub_9F4040` | 9,093 | NvOptRecipe string applier (NamedPhases / `pNNN` / shuffle modes) | VERY HIGH |
+| `sub_9F63D0` | 51 | Recipe-path trampoline (constructs PM, calls applier, dispatches, destructs) | VERY HIGH |
+| `sub_798B60` | 1,776 | Generic comma-delimited key/value tokenizer (shared with knob env parser) | VERY HIGH |
+| `sub_7FB6C0` | -- | Compilation driver: option-298 fork to recipe path or default path | HIGH |
 
 ## Cross-References
 
