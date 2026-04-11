@@ -95,7 +95,7 @@ Known values and their associated phases:
 | 12 | `sub_C5E980` | Post-legalization |
 | 13 | `sub_13B5C80` | ISel/scheduling |
 | 14 | `sub_C5E830` | Post-scheduling |
-| 15 | `sub_C5E7C0` | Register allocation phase |
+| 15 | `sub_C5E7C0` | After OptimizeHotColdInLoop (phase 108) |
 | 16 | `sub_C5E6E0` | Post-regalloc |
 | 17 | `sub_C5E5A0` | Mercury/codegen |
 | 18 | `sub_C5E4D0` | Post-Mercury |

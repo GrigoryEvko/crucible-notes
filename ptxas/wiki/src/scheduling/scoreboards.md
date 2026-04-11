@@ -95,31 +95,11 @@ For operations with latency <= 15 cycles, the stall count alone suffices. For lo
 
 ## Phase 114: FixUpTexDepBarAndSync
 
-Phase 114 runs a texture-specific fixup pass on dependency barriers and synchronization instructions. It operates through a double-indirect vtable dispatch: the architecture backend object contains a secondary scheduling/scoreboard subsystem object (at offset +16), which provides the actual implementation through its vtable at offset +0x70.
+Phase 114 performs a pre-scoreboard fixup of dependency barriers for texture fetch instructions. It runs *before* the main scoreboard pass (phase 115), correcting barrier state that the instruction scheduler (phases 97--110) left inconsistent with texture pipeline requirements. The dispatch is doubly-indirect through a scheduling/scoreboard subsystem object owned by the architecture backend (`arch_backend+16 -> vtable slot 14`). See [sync-barriers.md](../passes/sync-barriers.md#phase-114----fixuptexdepbarandsync) for the full algorithm, per-SM scoreboard configuration table, and dispatch pseudocode.
 
-### Purpose
+### Summary
 
-Texture operations have complex dependency patterns that the general scoreboard pass may not handle optimally:
-- Texture fetches have variable latency depending on cache hit rates
-- Texture coordinates and sampler state create additional dependencies
-- The texture pipeline has its own internal buffering that interacts with scoreboard barriers
-
-Phase 114 patches up the dependency barrier assignments made by the scheduler to account for these texture-specific requirements. It may:
-- Reassign barrier indices for texture operations to avoid conflicts with non-texture barriers
-- Insert additional DEPBAR instructions where texture dependencies require explicit barrier management
-- Adjust synchronization instructions that interact with texture pipeline state
-
-### Implementation
-
-The phase is architecture-specific. In the default vtable, it maps to a nullsub (`nullsub_43` at `0x680170`), indicating a no-op for architectures that handle texture dependencies entirely in the general scoreboard pass. Architecture backends that need texture-specific fixup override this vtable entry with their implementation.
-
-```
-Dispatch path:
-  PhaseManager::execute(phase=114)
-    → arch_backend->vtable[phase_114]()
-      → secondary_object = *(arch_backend + 16)
-        → (*(secondary_object->vtable + 0x70))(secondary_object, func)
-```
+Texture fetches (Ori opcodes 60, 62, 78, 79) have latencies of 200--400+ cycles, exceeding the 4-bit stall-count range. Phase 91 (`OriCalcDependantTex`) pre-computes texture dependency metadata; phase 114 consumes it to validate write-barrier indices, wait-masks on consumers, and stall/yield settings. The per-SM scoreboard configs use a threshold of 56 cycles uniformly, with sm_100 (Blackwell) supporting up to 6 simultaneous scoreboard triplets per scheduling class -- the primary motivation for this pass. The default vtable entry is `nullsub_43` (`0x680170`), making the pass a no-op on architectures that fold texture barrier fixup into phase 115.
 
 ## Phase 115: AdvancedScoreboardsAndOpexes
 

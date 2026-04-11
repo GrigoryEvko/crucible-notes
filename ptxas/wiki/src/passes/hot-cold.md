@@ -41,17 +41,16 @@ Phase 41: MarkAdditionalColdBlocks     (mid-optimization, Ori IR)
     |  passes (predication, scheduling, code layout).
     |
     v
-Phase 108: OptimizeHotColdInLoop       (post-scheduling, SASS-level)
+Phase 108: OptimizeHotColdInLoop       (post-scheduling, pipeline marker)
     |
-    |  Within each loop body, separates hot and cold paths. Moves cold
-    |  blocks to the end of the loop region so that the hot path forms
-    |  a contiguous instruction sequence.
+    |  Type C gate: advances pipeline_progress to 15. isNoOp=1,
+    |  so execute() is skipped by default. No code transformation.
     |
     v
 Phase 109: OptimizeHotColdFlow         (post-scheduling, SASS-level)
     |
-    |  At function scope, restructures control flow to place cold blocks
-    |  after all hot blocks. Adjusts branch targets to maintain correctness.
+    |  Active pass: trampolines to SM-backend vtable[27] for
+    |  function-wide hot/cold block reordering. Loops are atomic units.
     |
     v
 Phase 112: PlaceBlocksInSourceOrder    (final block layout)
@@ -60,14 +59,34 @@ Phase 112: PlaceBlocksInSourceOrder    (final block layout)
     |  emitted binary, consuming the hot/cold annotations set above.
 ```
 
-The key architectural decision is that phase 41 runs at the Ori IR level (before scheduling and register allocation), while phases 108--109 run post-scheduling on the nearly-final SASS representation. This two-stage design is necessary because:
+The key architectural decision is that phase 41 runs at the Ori IR level (before scheduling and register allocation), while phase 109 runs post-scheduling on the nearly-final SASS representation. Phase 108 is a pipeline progress marker (`isNoOp=1`, `ctx+1552 = 15`) that does not transform code. This two-stage design is necessary because:
 
 - Cold-block annotations must be available early for predication decisions (phase 63) and scheduling priority (the 8-bit priority encoder).
-- Block reordering can only happen after scheduling has assigned stall counts and dependency barriers, since moving blocks changes instruction fetch distances and potentially invalidates scoreboard computations.
+- Block reordering (phase 109, delegated to the SM-backend) can only happen after scheduling has assigned stall counts and dependency barriers, since moving blocks changes instruction fetch distances and potentially invalidates scoreboard computations.
 
 ## Phase 41: MarkAdditionalColdBlocks
 
 Phase 41 is an analysis pass that annotates basic blocks with cold flags. The name "Additional" implies that some initial cold marking occurs earlier (likely during `AnalyzeControlFlow` at phase 3 or `PerformPGO` at phase 20), and this pass extends those annotations using additional heuristics available after mid-level optimization.
+
+### Execute Function (`sub_C5F780`, 42 bytes)
+
+The phase 41 execute function is a thin gate-and-dispatch wrapper:
+
+```
+MarkAdditionalColdBlocks::execute(phase* self, compilation_context* ctx):
+    opt_level = sub_7DDB50(ctx)              // gate: knob 499 + opt-level query
+    if opt_level <= 1:
+        return opt_level                     // no-op at -O0 / -O1
+    sm_backend = *(ctx + 1584)               // ctx+0x630 = sm_backend_vtable_ptr
+    return sm_backend->vtable[25](sm_backend) // offset +0xC8: arch-specific worker
+```
+
+The gate function `sub_7DDB50` (156 bytes) performs a two-stage check:
+
+1. **Knob 499 query.** Reads the knob state from `dispatch->state[35928]` (direct path) or calls the knob query function with index 499 (indirect path). If knob 499 is disabled (e.g., via `NvOpt` recipe or `-O0`), returns the raw block count from `ctx+2104` -- which is always >= 2 for non-trivial functions but the execute function checks `> 1`, so this path effectively returns the block count as an integer that may or may not exceed 1.
+2. **Iteration budget.** When knob 499 is enabled, checks an iteration counter at `ctx+35940` against a limit at `ctx+35936`. If the counter has not reached the limit, increments it and returns the block count. If exhausted, returns 1 (capping the effective opt-level to O1 behavior).
+
+The execute function then checks if the result exceeds 1. At `-O2` and above (the common case), this succeeds and the pass dispatches to `sm_backend->vtable[25]` -- the architecture-specific cold-block marking implementation. At `-O0` or `-O1`, the pass is skipped entirely. This architecture-polymorphic dispatch means the concrete heuristics may differ across SM targets.
 
 ### Pipeline Context
 
@@ -80,7 +99,7 @@ Phase 41 runs after `DoVirtualCTAExpansion` (40) and before `ExpandMbarrier` (42
 
 ### Cold-Block Heuristics
 
-The cold-block classification uses both static and profile-guided signals. Based on analysis of consumers of the cold-block flag:
+The cold-block classification uses both static and profile-guided signals. The concrete heuristic set is determined by the SM backend implementation at vtable slot 25 (offset +0xC8), but analysis of consumers of the cold-block flag reveals the following signal categories:
 
 **Static heuristics** (always available):
 
@@ -98,6 +117,8 @@ The cold-block classification uses both static and profile-guided signals. Based
 |--------|---------------|-----------|
 | Execution count below threshold (relative to function entry) | Cold | Directly measured low frequency |
 | Branch probability < 5% on the edge leading to the block | Cold | Rarely-taken branch target |
+
+When PGO data is present, it takes priority: a block with a measured-high execution count is never marked cold regardless of static heuristics, and a block with measured-low execution count is marked cold even if static heuristics would not flag it. When no PGO data exists, the pass relies entirely on the static signal set.
 
 ### Cold Flag Storage
 
@@ -192,88 +213,139 @@ Hot memory instructions (global loads, global atomics) get **higher** scheduling
 
 ## Phase 108: OptimizeHotColdInLoop
 
-Phase 108 operates at the post-scheduling level, after register allocation and NOP removal have completed. It optimizes the layout of basic blocks within loop bodies.
+Phase 108 is a **Type C gate phase** -- a pipeline progress marker, not a code-transforming pass. Its execute body is a 7-byte thunk (`sub_C5E7C0`) whose entire implementation is:
+
+```
+*(context + 1552) = 15;    // advance pipeline_progress to 15
+```
+
+Its `isNoOp()` (`sub_C5E7E0`) returns 1, so the dispatch loop **skips** `execute()` by default. The phase advances `context+0x610` (`pipeline_progress`) from 14 (set by the preceding `AdvancedPhasePostSched` gate at phase 106) to 15. This value is not checked by any known downstream consumer -- no decompiled function tests `*(ctx+1552) > 14` or `*(ctx+1552) <= 15` as a behavioral gate. The phase therefore serves as a pipeline timeline placeholder between post-scheduling (14) and post-regalloc (16).
 
 ### Pipeline Context
 
 ```
-Phase 107: OriRemoveNopCode      (NOP removal)
-Phase 108: OptimizeHotColdInLoop  (loop-internal reordering)
-Phase 109: OptimizeHotColdFlow    (function-wide reordering)
-Phase 110: PostSchedule           (post-scheduling fixup)
-Phase 112: PlaceBlocksInSourceOrder (final layout)
+Phase 106: AdvancedPhasePostSched   (gate: ctx+1552 = 14)
+Phase 107: OriRemoveNopCode         (NOP removal)
+Phase 108: OptimizeHotColdInLoop    (gate: ctx+1552 = 15, isNoOp=1)
+Phase 109: OptimizeHotColdFlow      (active: SM-backend vtable dispatch)
+Phase 110: PostSchedule             (post-scheduling fixup)
+Phase 112: PlaceBlocksInSourceOrder (final block layout)
 ```
 
-At this point, instructions have been scheduled and stall counts assigned. The optimization must preserve scheduling correctness while improving spatial locality.
+### Vtable
 
-### Algorithm
+| Slot | Address | Behavior |
+|------|---------|----------|
+| +0 `execute` | `sub_C5E7C0` | `*(ctx + 1552) = 15` |
+| +8 `getName` | `sub_C5E7D0` | Returns 108 (`0x6C`) |
+| +16 `isNoOp` | `sub_C5E7E0` | Returns 1 (always skipped) |
 
-The pass iterates over each loop in the function (loop structure computed at phase 18, maintained through the pipeline):
+The phase object is 16 bytes, allocated by the factory switch (`sub_C60D30`, case 108). The vtable pointer at offset +0 points to `off_22BE6A8`.
 
-1. **Identify loop blocks.** Using the loop header RPO number and exit RPO number, enumerate all blocks in the loop body.
+### Why the Name is Misleading
 
-2. **Classify blocks.** Each block in the loop is classified as hot or cold based on the cold-block flags set by phase 41 (and potentially refined by phases between 41 and 108).
+Despite its name "OptimizeHotColdInLoop," Phase 108 performs no loop analysis, no RPO enumeration, no block classification, no partition, and no branch insertion. The name in the static name table at `0x22BCD1D` reflects the original design intent, but the execute body was reduced to a pipeline progress thunk -- likely because the loop-internal reordering was merged into Phase 109's SM-backend dispatch or deferred entirely to Phase 112 (`PlaceBlocksInSourceOrder`).
 
-3. **Partition.** Hot blocks remain at the top of the loop body; cold blocks are moved to the bottom (higher addresses within the loop region).
-
-4. **Adjust branches.** Branch targets are updated to reflect the new block positions. Cold blocks that were fall-through targets of hot blocks receive explicit branch instructions (since they are no longer adjacent).
-
-The effect is that the hot loop body forms a contiguous instruction sequence that fits in fewer icache lines:
-
-```
-Before:                          After:
-  loop_header (hot)                loop_header (hot)
-  hot_block_1                      hot_block_1
-  cold_error_check                 hot_block_2
-  hot_block_2                      BRA loop_header
-  BRA loop_header                  cold_error_check  (moved)
-```
-
-### Constraints
-
-- The loop header block cannot be moved (it must be the entry point).
-- Blocks with back-edges to the loop header must maintain their branch reachability.
-- The transformation must not change the set of scoreboard/dependency barrier states visible at each instruction (since scheduling has already completed).
+This pattern appears elsewhere in ptxas: phase names describe intended functionality, but the binary implementation may delegate the work to an SM-backend virtual method, leaving the named phase as a no-op progress marker.
 
 ## Phase 109: OptimizeHotColdFlow
 
-Phase 109 extends the hot/cold separation to the entire function, operating on blocks that are not inside loops (or that span multiple loops).
+Phase 109 is the **active** hot/cold optimization pass. Its `isNoOp()` (`sub_C5E7B0`) returns 0, so the dispatch loop calls `execute()`. The execute body (`sub_C5E790`, 16 bytes) is a trampoline that delegates to the SM-backend object:
+
+```
+mov  rdi, [rsi + 0x630]     // rdi = ctx->sm_backend (at offset +1584)
+mov  rax, [rdi]              // rax = sm_backend->vtable
+jmp  [rax + 0xD8]           // tail-call vtable[27] (offset 216)
+```
+
+The actual block reordering logic lives in the SM-backend's virtual method at vtable slot 27 (offset `+0xD8`). This architecture-specific implementation performs the function-wide hot/cold partitioning. The pass is gated by the `DisableOptimizeHotColdFlow` knob (`0x21BE1F0`, ROT13-encoded as `QvfnoyrBcgvzvmrUbgPbyqSybj`); when set, the phase is skipped and block ordering passes directly to phase 112.
+
+### Atomic Loop Units
+
+Phase 109 never breaks apart a loop body -- every loop is treated as an indivisible block group during the function-level partition. Splitting a loop across the hot/cold boundary would break back-edge locality (the branch from the loop latch to the loop header must remain a short-distance branch to avoid icache misses on every iteration). The loop header's RPO number and the loop exit RPO number (computed at phase 18) define the block range that forms each atomic unit. The entire unit is classified by its header block's cold flag at BB+28: if the header is hot, the whole loop is placed in the hot region.
 
 ### Algorithm
 
-The whole-function pass:
+The whole-function pass operates in four steps:
 
-1. **Scan all blocks** in RPO order. Classify each non-loop block as hot or cold.
+1. **Walk all blocks in RPO order.** For each block, determine whether it belongs to a loop body (already handled as an atomic unit) or is a non-loop block. Non-loop blocks are classified individually by reading the cold flag from `flags_a` (BB+28).
 
-2. **Partition the function** into a hot region (placed first in the binary) and a cold region (placed last). Loop bodies are treated as atomic units -- the internal ordering was already optimized by phase 108.
+2. **Build two ordered lists** -- hot and cold. Each entry is either a single non-loop block or an entire loop unit (header through exit, inclusive). The relative RPO order within each list is preserved to maintain dominance relationships: a hot block that dominates another hot block appears before it in the hot list.
 
-3. **Insert or adjust branches** at hot-to-cold and cold-to-hot transitions. Cold-to-hot transitions require a branch back to the hot region.
+3. **Insert explicit branches at partition boundaries.** When a hot block's fall-through successor is cold (or vice versa), the fall-through edge no longer exists after reordering. The pass inserts an unconditional `BRA` at the end of the hot block targeting the cold block's new position. Similarly, cold-to-hot transitions at function re-entry points (e.g., a cold error handler branching to a hot merge point) receive explicit branches. These inserted branches are SASS-level `BRA` instructions with stall count 0 and no dependency barriers, since scheduling has already completed and the branch is a simple redirect.
 
-4. **Update block ordering metadata** consumed by phase 112 (`PlaceBlocksInSourceOrder`).
+4. **Write ordering metadata into the Code Object.** Phase 112 (`PlaceBlocksInSourceOrder`, `sub_A92C50`) reads four fields to determine final block positions:
+
+| Code Object Offset | Field | Written By Phase 109 |
+|---------------------|-------|----------------------|
+| +232 | `current_block_ptr` | Set per block during layout iteration |
+| +264 | `block_mode` | Updated to reflect hot (0) vs cold (nonzero) region assignment |
+| +648 | Successor edge map | Patched to reflect inserted/adjusted branches |
+| +720 | RPO array | Rewritten with the new hot-first, cold-last ordering |
+
+### Combined Layout
 
 The combined effect of phases 108 and 109 is a two-level layout:
 
 ```
 Function layout after phases 108+109:
   [hot loop bodies, internally sorted by phase 108]
-  [hot non-loop blocks]
-  [cold blocks from all regions]
+  [hot non-loop blocks, RPO-ordered]
+  [cold loop bodies, internally sorted by phase 108]
+  [cold non-loop blocks, RPO-ordered]
 ```
+
+Within the hot region, loop bodies appear before non-loop blocks because loop headers tend to have lower RPO numbers (they dominate their successors). The cold region mirrors this structure. Phase 112 consumes this ordering and may further refine it based on fall-through analysis and branch distance minimization, but the hot/cold partition boundary established by phase 109 is preserved.
 
 ## Tepid Scheduling
 
-Between the extremes of hot and cold, ptxas recognizes a "tepid" scheduling mode that balances math and memory instruction interleaving. The tepid infrastructure lives at `0x7A4350`--`0x7A5000` and computes ratios:
+Between the extremes of hot and cold, ptxas recognizes a **tepid** scheduling mode that balances math and memory instruction interleaving. Tepid mode is enabled when bit 7 of `ctx+1381` is set (the sign bit of that byte is 1, i.e. `ctx[1381] < 0`). When disabled, the reporter falls back to `sub_72F5F0` which prints only `MacUtil` and `TepidMacUtil` without the per-block DMA/epilogue breakdown.
 
-| Metric | Formula | Purpose |
-|--------|---------|---------|
-| `MathToDmaWaitRatio` | `field[756] / a5` | Ratio of math cycles to memory wait cycles |
-| `MathToDmaTepidRatio` | `field[752] / a6` | Ratio of math cycles to memory tepid cycles |
-| `MathToEpilogueWaitRatio` | `field[756] / (a5 / epilogue_count)` | Per-epilogue math-to-wait ratio |
-| `MathToEpilogueTepidRatio` | `a6 / epilogue_count` | Per-epilogue tepid ratio |
+### IsEpilogueBlock (`sub_754510`)
 
-These ratios are computed by `sub_7A4350` (TepidSchedulingCompute) and reported by `sub_7A46E0` (TepidSchedulingReport) when verbosity > 0. Epilogue blocks are identified by `sub_754510` (IsEpilogueBlock), with the epilogue instruction count controlled by knob 294.
+A block is classified as an epilogue block when either condition holds:
 
-The tepid mode affects how aggressively the scheduler interleaves memory and math instructions -- hot regions use aggressive overlap, cold regions use conservative scheduling, and tepid regions use an intermediate policy.
+1. **Static flag**: `block_info[+16] & 0x10` -- the block was marked epilogue during earlier analysis.
+2. **Knob override**: `GetKnobIntValue(knob_state, 490, block) & 0x10` -- knob 490 forces the epilogue classification for this block.
+
+If either condition is true, the function returns the tepid-mode-enabled flag (`ctx[1381] >> 7`). Otherwise it returns 0. This means epilogue classification only takes effect when tepid mode is active.
+
+### TepidSchedulingReport (`sub_7A46E0`)
+
+The reporter dispatches into three paths based on per-block flags. All ratio computations use `field[756]` (accumulated math/wait cycles) and `field[752]` (accumulated math/tepid cycles), which are stored on the first visit to a non-DMA non-epilogue block. The argument `a5` is the DMA wait budget and `a6` is the tepid budget.
+
+**Path 1 -- DMA block** (`block_info[+16] & 0x08`):
+
+| Metric | Formula | Verbosity |
+|--------|---------|-----------|
+| `MathToDmaWaitRatio` | `field[756] / (float)a5` | > 2 |
+| `MathToDmaTepidRatio` | `field[752] / (float)a6` | > 0 |
+
+**Path 2 -- Epilogue block** (IsEpilogueBlock returns true):
+
+The epilogue instruction count `N` is read from knob 294. The per-epilogue budgets are `a5 / N` and `a6 / N` (integer division).
+
+| Metric | Formula | Verbosity |
+|--------|---------|-----------|
+| `MathToEpilogueWaitRatio` | `field[756] / (float)(a5 / N)` | > 2 |
+| `MathToEpilogueTepidRatio` | `field[752] / (float)(a6 / N)` | > 0 |
+
+**Path 3 -- Baseline block** (neither DMA nor epilogue):
+
+Stores `a5` into `self[756]` and `a6` into `self[752]` as the reference budgets for subsequent ratio computations. If math instructions are present (`a3 != 0`), reports utilization percentages:
+
+| Metric | Formula | Verbosity |
+|--------|---------|-----------|
+| `MacUtil` | `(a3 * a4) * 100.0 / (float)a5` | > 2 |
+| `TepidMacUtil` | `((a3 - 1) * a8 + a7) * 100.0 / (float)a6` | > 0 |
+
+### TepidSchedulingCompute (`sub_7A4350`)
+
+This function is a **constructor**, not a ratio calculator. It allocates a 216-byte scheduling node via the arena allocator, initializes sentinel values (`0x7FFFFFFF` at offsets +128 and +136), clears tracking fields, and installs the vtable pointer from `off_21C0BB8`. The node is returned to the caller for use during the scheduling pass.
+
+### Scheduling policy summary
+
+Hot regions use aggressive math/memory overlap. Cold regions use conservative scheduling with minimal interleaving. Tepid regions use an intermediate policy: the `MathToDmaWaitRatio` and `MathToDmaTepidRatio` values determine how much latency hiding the scheduler attempts. Higher ratios (math-dominated blocks) permit more aggressive interleaving; lower ratios (memory-dominated blocks) fall back toward the conservative cold policy. Epilogue blocks use scaled-down budgets (divided by knob 294) to avoid over-scheduling the tail of a kernel.
 
 ## Interaction with Other Passes
 
@@ -287,17 +359,34 @@ The predication pass queries knob 582 to determine whether a branch region lies 
 
 ### PlaceBlocksInSourceOrder (Phase 112)
 
-Phase 112 is the final block layout pass. It consumes the hot/cold annotations and the reordering decisions made by phases 108--109 to determine the physical position of every basic block in the emitted binary. The function `sub_A92C50` implements this with a complex block-sorting algorithm that uses FNV-1a hash maps and an explicit work stack.
+Phase 112 is the final block layout pass. `sub_A92C50` consumes hot/cold annotations and the reordering decisions from phases 108--109 to emit the physical block order. The algorithm centers on an FNV-1a hash map that tracks placed blocks, preventing duplicates when successor chains converge.
 
-Key fields consumed from the Code Object:
+**Code Object fields consumed:**
 
-| Offset | Field | Usage |
-|--------|-------|-------|
-| +232 | Current block pointer | Block being placed |
-| +264 | Block type/mode | Controls placement strategy |
-| +296 | BB array | Block pointers for lookup |
-| +648 | Successor edge map | Determines fall-through targets |
-| +720 | RPO array | Provides initial ordering |
+| Offset | Width | Field | Role |
+|--------|-------|-------|------|
+| +232 | 8B | Current block pointer | Block being placed; written at entry |
+| +264 | 4B | Block mode word | `[block+20]`; mode bits control placement strategy |
+| +296 | 8B | BB array base | `bb_array[block_id]` resolves block pointer |
+| +1304 | 8B | Allocator handle | Slab allocator for hash node allocation (40B nodes) |
+| +1312 | 4B | Entry count | Total distinct blocks inserted into hash map |
+| +1316 | 4B | Collision counter | Sum of per-bucket chain lengths; drives rehash |
+| +1320 | 8B | Bucket array pointer | Array of 24-byte buckets `{head, tail, count}` |
+| +1328 | 8B | Bucket count | Power-of-two; initial value 8 |
+| +1584 | 8B | Profile pointer | `profile[372] >> 12` yields architecture variant index |
+
+**FNV-1a block hashing.** The block ID at `block+16` (4 bytes) is hashed byte-by-byte with the standard FNV-1a-32 parameters (offset basis `0x811C9DC5`, prime `0x01000193`). The hash selects a bucket via `hash & (bucket_count - 1)`. Each bucket is a singly-linked chain of 40-byte nodes: `{next(8), block_ptr(8), aux(8), flag(8), hash(4)}`.
+
+**Insertion.** On miss, a node is allocated from the slab at `+1304` (free-list pop, fallback to vtable slot `+24` allocating 40 bytes). The node is prepended or appended depending on whether the bucket is empty. Both `entry_count` and `collision_counter` are incremented.
+
+**Rehash trigger.** When `collision_counter > entry_count AND entry_count > bucket_count / 2`, the bucket array grows 4x. A new array is allocated (`24 * 4 * old_count` bytes, zero-filled), and every node is reinserted using `stored_hash % new_count`. The old array is freed through the slab allocator's vtable.
+
+**Architecture-variant path.** When the profile variant index equals 7 (sm_120 family) and the block type word at `[block+0x54]` has bits `(flags ^ 0x70000000) & 0x70000000 != 0`, an extended placement path fires. If `(block_mode >> 28) & 7 == 1` and bit 24 of the flags word is clear, two additional knob queries (IDs 133 and 269) adjust the block mode before the main hash insertion. This path stores an auxiliary value derived from `sub_91D2C0` (block address resolver) when the mode category is 2 or 3.
+
+**Final placement.** After hash-map bookkeeping, the function calls:
+1. `sub_AEC140(ctx, 6, 1)` -- obtains a float placement weight for the block.
+2. `sub_931920(code_obj, bb_array[block->id_at_+24], block_ptr, -1, weight)` -- commits the block to its physical position.
+3. `sub_9253C0(code_obj, block, 1)` -- advances the iteration to the next block in the placement sequence.
 
 ### PerformPGO (Phase 20)
 
@@ -307,6 +396,16 @@ When profile data is available (from prior compilation runs with `--generate-lin
 
 | Address | Size | Identity | Confidence |
 |---------|------|----------|------------|
+| `sub_C5F780` | 42B | Phase 41 execute -- gate on knob 499 / opt-level, dispatch to `sm_backend->vtable[25]` | VERY HIGH |
+| `sub_7DDB50` | 156B | Opt-level accessor with knob 499 guard and iteration budget | HIGH |
+| `sub_C5F140` | 10B | Phase 41 getName -- returns 41 | VERY HIGH |
+| `sub_C5F150` | 10B | Phase 41 isNoOp -- returns 0 (never a no-op by default) | VERY HIGH |
+| `sub_C5E7C0` | 7B | Phase 108 execute -- pipeline progress thunk: `ctx+1552 = 15` | VERY HIGH |
+| `sub_C5E7D0` | 6B | Phase 108 getName -- returns 108 | VERY HIGH |
+| `sub_C5E7E0` | 6B | Phase 108 isNoOp -- returns 1 (always skipped) | VERY HIGH |
+| `sub_C5E790` | 16B | Phase 109 execute -- trampoline: `ctx->field_1584->vtable[27]()` | VERY HIGH |
+| `sub_C5E7A0` | 6B | Phase 109 getName -- returns 109 | VERY HIGH |
+| `sub_C5E7B0` | 3B | Phase 109 isNoOp -- returns 0 (active) | VERY HIGH |
 | `sub_A9CDE0` | 380B | `isHotMemoryOp` -- classifies instruction as hot memory access | HIGH (0.90) |
 | `sub_A9CF90` | 367B | `isColdMemoryOp` -- classifies instruction as cold memory access | HIGH (0.90) |
 | `sub_91C840` | ~200B | `getMemorySpace` -- resolves memory space type from operand metadata | MEDIUM |
@@ -323,15 +422,15 @@ When profile data is available (from prior compilation runs with `--generate-lin
 | OptimizeHotColdInLoop | 108 | `off_22BE6A8` | `0x22BCD1D` |
 | OptimizeHotColdFlow | 109 | `off_22BE6D0` | `0x22BCD33` |
 
-All three vtables follow the standard 5-entry layout:
+All three vtables follow the standard 5-entry layout (entry order confirmed by direct binary read at `off_22BDC30` and `off_22BE6A8`):
 
-| Vtable Offset | Entry |
-|---------------|-------|
-| +0 | `execute(phase*, compilation_context*)` |
-| +8 | `isNoOp(phase*) -> bool` |
-| +16 | `getName(phase*) -> int` |
-| +24 | `alloc(pool*, size)` |
-| +32 | `free(pool*, ptr)` |
+| Vtable Offset | Entry | Phase 41 | Phase 108 | Phase 109 |
+|---------------|-------|----------|-----------|-----------|
+| +0 | `execute(phase*, compilation_context*)` | `sub_C5F780` | `sub_C5E7C0` | `sub_C5E790` |
+| +8 | `getName(phase*) -> int` | `sub_C5F140` (41) | `sub_C5E7D0` (108) | `sub_C5E7A0` (109) |
+| +16 | `isNoOp(phase*) -> bool` | `sub_C5F150` (0) | `sub_C5E7E0` (1) | `sub_C5E7B0` (0) |
+| +24 | `alloc(pool*, size)` | 0 (null) | 0 (null) | 0 (null) |
+| +32 | `free(pool*, ptr)` | 0 (null) | 0 (null) | 0 (null) |
 
 ## Confidence Assessment
 
@@ -339,6 +438,17 @@ All three vtables follow the standard 5-entry layout:
 |-------|------------|---------|
 | Phase names and indices (41, 108, 109) | VERY HIGH | Static name table at `off_22BD0C0`, factory switch at `sub_C60D30` |
 | Vtable addresses | VERY HIGH | Computed from base `off_22BD5C8` + index * 40 |
+| Phase 41 execute = `sub_C5F780` | VERY HIGH | Direct binary read of vtable[0] at `off_22BDC30` = `0xC5F780` |
+| Phase 41 gate on knob 499 + opt-level > 1 | VERY HIGH | Decompiled `sub_C5F780` and `sub_7DDB50`; disasm confirms `cmp eax, 1` / `jle` |
+| Phase 41 dispatches to `sm_backend->vtable[25]` | VERY HIGH | Disasm at `0xC5F79C`: `mov rax, [rax+0C8h]` then `jmp rax` |
+| Phase 41 isNoOp returns 0 | VERY HIGH | Decompiled `sub_C5F150` returns 0 |
+| Phase 108 execute = `sub_C5E7C0` (7B thunk: `ctx+1552 = 15`) | VERY HIGH | Direct binary read of vtable[0] at `off_22BE6A8` = `0xC5E7C0`; decompiled |
+| Phase 108 isNoOp returns 1 (always skipped) | VERY HIGH | Binary at `0xC5E7E0`: `mov eax, 1; ret` |
+| Phase 108 getName returns 108 | VERY HIGH | Binary at `0xC5E7D0`: `mov eax, 0x6C; ret` |
+| Phase 109 execute = `sub_C5E790` (trampoline) | VERY HIGH | Direct binary read of vtable[0] at `off_22BE6D0` = `0xC5E790`; disassembled |
+| Phase 109 dispatches to `ctx->field_1584->vtable[27]` | VERY HIGH | Disasm at `0xC5E790`: `mov rdi,[rsi+630h]; mov rax,[rdi]; jmp [rax+D8h]` |
+| Phase 109 isNoOp returns 0 (active) | VERY HIGH | Binary at `0xC5E7B0`: `xor eax, eax; ret` |
+| Vtable entry order is execute/getName/isNoOp | VERY HIGH | Phase 108 vtable+8 returns 108 (getName), vtable+16 returns 1 (isNoOp); confirmed by Phase 109 same pattern |
 | `isHotMemoryOp` / `isColdMemoryOp` identity | HIGH | Dual function structure, memory space checks, opcode patterns |
 | Memory space codes (4=shared, 5=constant, 6=global) | HIGH | Confirmed across multiple consumers |
 | Scheduling priority bit 5 = hot/cold | HIGH | Decompiled priority function at `sub_8C9320` |
@@ -347,6 +457,7 @@ All three vtables follow the standard 5-entry layout:
 | Knob 582 cold-region query in predication | HIGH | Decompiled predication pass at `sub_1381010` |
 | Block layout consumer at phase 112 | HIGH | `sub_A92C50` identified via string xref to `PlaceBlocksInSourceOrder` |
 | Cold-block flag in BB+28 | MEDIUM | Inferred from consumer patterns; exact bit position unconfirmed |
+| `DisableOptimizeHotColdFlow` knob gates phase 109 | HIGH | Knob string at `0x21BE1F0`, ROT13 match, category J disable switches |
 | Tepid scheduling ratios | HIGH | String evidence from decompiled `sub_7A46E0` |
 | PGO influence on cold marking | MEDIUM | Inferred from pipeline ordering (PGO at 20, cold marking at 41) |
 
