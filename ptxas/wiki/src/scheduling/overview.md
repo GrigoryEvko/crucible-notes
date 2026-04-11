@@ -71,14 +71,84 @@ function ScheduleInstructions(sched):
     ArenaFreeAll(sched.arena)                   // sub_8E3A80
 ```
 
+### Mode Byte Decoding and Weight Vector Assignment
+
+The three mode bytes 0x39, 0x49, 0x41 serve a dual purpose: they encode a C++ virtual member function pointer (Itanium ABI) that selects the `SelectBestInstruction` dispatch target, and they identify which scheduling objective governs the priority computation. The orchestrator also writes an integer mode identifier to `sched+240` which the engine's inner loop reads to gate mode-specific behavior.
+
+**Itanium ABI member function pointer decode.** The low bit of each byte is 1, marking them as virtual calls. The vtable slot index is `(byte - 1) / 8`:
+
+| Mode byte | Vtable offset | Vtable slot | Target VA | SelectBest backend |
+|---|---|---|---|---|
+| 0x39 (57) | 56 | [7] | `0x8DA6A0` | ReduceReg (core method) |
+| 0x41 (65) | 64 | [8] | `0x8E0F18` | DynBatch (pipeline\_A[0]) |
+| 0x49 (73) | 72 | [9] | `0x8E0F90` | ILP/Latency (pipeline\_A[1]) |
+
+The vtable at `off_21DBC80` (77 entries; see `scheduling_vtable.json`) has slots [0..7] as core methods shared by all modes, followed by three 23-method pipeline groups A/B/C that provide SM-family-specific priority scoring backends. The member function pointer resolves through the object's vtable pointer, so derived classes (constructed per-SM from `sm_scheduling_seeds.json` variant codes) can override individual pipeline methods without affecting the core dispatch.
+
+```
+// sub_8D0640 -- mode configuration before each ScheduleEngine call
+//
+// Phase 1: ReduceReg
+function ConfigureReduceReg(sched):
+    sched.mode        = 1                          // DWORD at sched+240
+    sched.forceReduce = true                       // BYTE  at sched+484
+    sched.regPressure = true                       // BYTE  at sched+176
+    sched.regTargetLo = KnobGet(776, default=250)  // DWORD at sched+296
+    sched.regTargetHi = KnobGet(778, default=300)  // DWORD at sched+300
+    // 0x12C000000FA packs {250, 300} as two DWORDs at sched+296
+    sched.regTargetLo = AdjustForArchRegs(sched.regTargetLo)  // sub_6818D0
+    sched.regTargetHi = AdjustForArchRegs(sched.regTargetHi)  // sub_6818D0
+    ScheduleEngine(sched, mfp=0x39, ...)           // sub_688DD0
+
+// Phase 2: ILP / Latency
+function ConfigureILP(sched):
+    sched.mode        = 0                          // DWORD at sched+240
+    sched.forceReduce = false                      // sched+484
+    sched.regPressure = false                      // sched+176
+    sched.regBudget   = min(archLimit,             // DWORD at sched+432
+                            int(0.95 * maxRegs))
+    sched.maxDepth    = maxInstrDepth + 4          // DWORD at sched+432
+    ScheduleEngine(sched, mfp=0x49, ...)           // sub_688DD0
+
+// Phase 3: DynBatch
+function ConfigureDynBatch(sched):
+    sched.mode        = 2                          // DWORD at sched+240
+    sched.forceReduce = false                      // sched+484
+    sched.regPressure = false                      // sched+176
+    sched.batchDepth  = KnobGet(805, default=8)    // DWORD at sched+404, [0..16]
+    sched.loadsPerTex = KnobGet(741, default=3)    // DWORD at sched+408
+    sched.rliveSlack  = KnobGet(761)               // DWORD at sched+412
+    if hasDynBatchOps:
+        AllocDynBatchContext(sched)                // sub_8BF890
+    ScheduleEngine(sched, mfp=0x41, ...)           // sub_688DD0
+
+// Inside ScheduleEngine (sub_688DD0), per-BB inner loop:
+function SelectBestInstruction(sched, readyList, ...):
+    // Resolve the member function pointer to a vtable call:
+    //   if (mfp & 1):  target = *((*this) + (mfp - 1))
+    //   else:           target = mfp  (non-virtual, unused here)
+    //
+    // The resolved target dispatches to one of:
+    //   vtable[7]  sub_8DA6A0 -- ReduceReg:  minimize live register delta
+    //   vtable[8]  sub_8E0F18 -- DynBatch:   batch-aware tensor grouping
+    //   vtable[9]  sub_8E0F90 -- ILP:        maximize critical-path coverage
+    //
+    // Additionally, sched.mode (sched+240) gates per-iteration behavior:
+    //   mode == 1: check "ScheduleInstructionsReduceReg" per-BB override
+    //   mode == 2: check "ScheduleInstructionsDynBatch"  per-BB override
+    //   mode == 0: no per-BB override check (always active)
+    target = ResolveVirtualMFP(sched, mfp)
+    return target(sched, readyList, ...)
+```
+
 ### Phase 1 -- ReduceReg (mode 1, callback 0x39)
 
 Goal: minimize register pressure so the register allocator has headroom. This phase reorders instructions to reduce the maximum number of simultaneously-live virtual registers.
 
 - Enabled by the named option `"ScheduleInstructionsReduceReg"` (default: on at `-O3`).
-- Register targets set from knobs 776 (`SchedReduceIncLimit`) and 778 (`SchedReduceIncLimitHigh`) (defaults approximately 250 and 300).
-- The mode byte 0x39 selects the register-pressure-minimizing priority weights inside the unified engine.
-- The engine's inner dispatch reads `*(DWORD*)(scheduler+60) == 1` to enter the ReduceReg path.
+- Register targets set from knobs 776 (`SchedReduceIncLimit`) and 778 (`SchedReduceIncLimitHigh`); defaults are exactly 250 and 300 (packed as `0x12C000000FA` in a single QWORD store to `sched+296`).
+- The mode byte 0x39 resolves through `vtable[7]` to `sub_8DA6A0`, a core vtable method shared across all SM variants, implementing the register-pressure-minimizing priority score.
+- The engine's inner dispatch reads `*(DWORD*)(sched+240) == 1` to enter the ReduceReg path, enabling per-BB knob overrides.
 
 ### Phase 2 -- ILP / Latency Hiding (mode 0, callback 0x49)
 
@@ -87,7 +157,7 @@ Goal: maximize instruction-level parallelism and hide memory latencies by interl
 - Always runs (no separate enable gate).
 - Uses reverse post-order BB iteration via `sub_8CD6E0`: iterates basic blocks from last to first after resetting liveness with `sub_781F80(func, 0)`.
 - Computes a register budget capped at `min(archLimit, 0.95 * maxRegs)` via `sub_8CEE80`.
-- The mode byte 0x49 selects latency-oriented priority weights.
+- The mode byte 0x49 resolves through `vtable[9]` to `sub_8E0F90` (pipeline\_A[1]), implementing the latency-oriented priority score. This method is overridable by SM-specific derived vtables.
 - After this phase, `sub_8CF5D0` evaluates dual-issue eligibility and produces a dual-issue benefit score stored at `scheduler+328`.
 
 ### Phase 3 -- DynBatch (mode 2, callback 0x41)
@@ -99,7 +169,7 @@ Goal: batch-aware scheduling for GMMA/WGMMA warpgroup tensor operations. Groups 
 - Reads stall/batch depth limits from knobs 805 (`SchedTexBatchTargetSelectRegisterTarget`), 741 (`SchedCountLoadsPerTex`), 761 (`SchedMaxRLiveOKslack`), 762 (`SchedMaxRLiveOKslackColdBlocks`).
 - Allocates a 184-byte DynBatch context (`sub_8BF890`) with an `8 * numBBs` sub-array for per-BB batch tracking.
 - Context initialization (`sub_8C1BA0`): sets batch window to 0xFFFFFFFF (sentinel), copies register liveness from `func+832`.
-- The mode byte 0x41 selects batch-aware priority weights.
+- The mode byte 0x41 resolves through `vtable[8]` to `sub_8E0F18` (pipeline\_A[0]), implementing the batch-aware priority score. This method is overridable per SM variant.
 
 ### DynBatch Context Object (184 bytes)
 
@@ -353,81 +423,46 @@ function ComputeRegisterBudget(sched):
 
 ### Pressure Curve (`sub_8CE520`)
 
-`sub_8CE520(sched, regLimit, &nopDensity)` computes instruction density over a sliding window to decide whether reducing register pressure would improve ILP. It returns weighted instruction density (double); `nopDensity` receives weighted NOP density. It also writes `sched.usePressure` (offset +522) and `sched.minPhysRegs` (offset +512).
+`sub_8CE520(sched, regLimit, &nopDensity)` measures instruction density in a sliding window to decide whether reducing register pressure improves ILP. Returns weighted real-instruction density; writes NOP density to `nopDensity`; sets `sched.usePressure` (+522) and `sched.minPhysRegs` (+512).
 
-**Seed initialization.** A seed object at `func[223]` (byte offset +1784) drives the curve. Two paths:
-
-- **Default** -- `seed.SetBreakpoints(4, 2, 6)` via vtable slot +16. The three arguments are `windowSize`, `minIssueWidth`, `maxIssueWidth`, defining a piecewise linear mapping from occupancy to effective issue width.
-- **Knob 750 override** -- when `KnobIsSet(750)` is true, fetches the string value of `SchedEstimatedLoopIterations` and calls `seed.ParseString(str)` via vtable slot +24. This encodes custom per-loop iteration hints that replace the (4,2,6) defaults.
-
-If the function has no loops (`sched[668] == 0`), both paths set `usePressure = 0` and return 0.0 immediately.
-
-**Sliding window algorithm:**
+**Seed initialization.** A seed object at `func[223]` (byte offset +1784) configures the curve. Default: `seed.SetBreakpoints(4, 2, 6)` via vtable+16 -- the three arguments are `windowSize`, `minIssueWidth`, `maxIssueWidth`, defining the piecewise linear occupancy-to-issue-width mapping. When `KnobIsSet(750)` is true, calls `seed.ParseString(KnobGetString(750))` via vtable+24 instead -- the `SchedEstimatedLoopIterations` string encodes custom per-loop iteration hints replacing the (4,2,6) defaults. If the function has no loops (`sched[668] == 0`), returns 0.0 with `usePressure = 0`.
 
 ```
-function ComputePressureCurve(sched, regLimit):
-    seed = sched.func[223]                          // pressure seed object
-    if KnobIsSet(750):
-        seed.ParseString(KnobGetString(750))        // vtable+24
-    else:
-        seed.SetBreakpoints(4, 2, 6)                // vtable+16
-    if !sched.hasLoops:                             // byte at offset +668
-        sched.usePressure = 0;  return 0.0
+function ComputePressureCurve(sched, regLimit):       // sub_8CE520
+    seed = sched.func[223]
+    if KnobIsSet(750): seed.ParseString(KnobGetString(750))   // vtable+24
+    else:              seed.SetBreakpoints(4, 2, 6)            // vtable+16
+    if !sched.hasLoops: sched.usePressure = 0; return 0.0
 
-    hwBudget = RegToHWUnits(sched, regLimit)        // sub_6818D0
-    W  = min(sched.maxStallCycles, 16)              // offset +404, capped
-    Wt = sched.stallThreshold                       // offset +408
-
-    // Two parallel tracks: A (real instructions), B (NOP-weighted)
-    weightA = 0.0;  totalA = 0.0;  fillA = 0
-    weightB = 0.0;  totalB = 0.0;  fillB = 0
+    W = min(sched.maxStallCycles, 16)                 // +404, capped
+    Wt = sched.stallThreshold                         // +408
+    // Two parallel tracks: A=real instrs, B=NOPs
+    // Per-track state: {weight, total, fill, peakSpan, minPeak=0x1869F}
     loopWt = 1.0
-    peakSpanA = 0;  minPeakA = 0x1869F (sentinel)
-    peakSpanB = 0;  minPeakB = 0x1869F
 
-    for each instruction in BB linked list:
-      if opcode == 52 (loop header) or masked opcode == 96 (BB boundary):
-          totalA += ceil(fillA / W) * loopWt        // flush partial window
-          totalB += ceil(fillB / W) * loopWt
-          fillA = fillB = 0
-          if opcode == 52:
-              loopWt = EstimateTrip(func, bb)       // vtable at func+1784
-          continue to first instruction of new region
+    for each instruction in first BB linked list:
+      on loop-header (opcode 52) or BB-boundary (masked opcode 96):
+          total += ceil(fill / W) * loopWt            // flush partial window
+          fill = 0;  if loop-header: loopWt = EstimateTrip(func, bb)
+      on real instruction (track A):
+          span = progPoint_delta
+          if fill > 0 and span > regLimit and span > peakSpan: peakSpan = span
+          if peakSpan > 0: minPeak = min(minPeak, peakSpan)
+          slot[fill] = latencyClass;  fill += min(Wt, W - fill)
+          if fill == W: weight += loopWt; minPeak tracks minimum; reset window
+      on NOP (track B): symmetric
 
-      span = instr.programPoint - window.startPoint
-      if isReal(instr):                             // not NOP, not dead
-          // Track A: fill slot, accumulate span
-          if fillA > 0 and accumulated_span > regLimit and > peakSpanA:
-              peakSpanA = accumulated_span
-          if peakSpanA > 0 and minPeakA > peakSpanA:
-              minPeakA = peakSpanA
-          // Reset window on overflow: peakSpanA = 0, weightA += loopWt
-          slot[fillA] = instr.latencyClass
-          fillA++; advance with Wt-wide multi-fill if stallThreshold > 1
-      else:                                         // NOP goes to track B
-          (symmetric logic for track B)
-
-      if window full (fillA == W) or both tracks exhausted:
-          weightA += loopWt;  reset window A
-
-    // Final flush
-    totalA += ceil(fillA / W) * loopWt
-    totalB += ceil(fillB / W) * loopWt
-    bestPeak = min(minPeakA, minPeakB)
-    physRegs = RegToHWUnits(sched, bestPeak)
-    archCap  = hw.vtable[93](hw, totalB, ...)       // hw[154] + hw[159]
-
-    if physRegs > archCap:
-        usePressure = 0                             // exceeds arch limit
-    elif weightA <= totalA:
-        usePressure = (weightB > totalB)            // B-track dominates
-    sched.usePressure  = usePressure                // offset +522
-    sched.minPhysRegs  = physRegs                   // offset +512
-    *nopDensity        = weightB                    // out parameter
-    return weightA
+    total += ceil(fill / W) * loopWt                  // final flush
+    physRegs = RegToHWUnits(sched, min(minPeakA, minPeakB))
+    archCap  = hw[154] + hw[159]                      // via vtable[93]
+    if physRegs > archCap:      usePressure = 0       // exceeds arch limit
+    elif weightA <= totalA:     usePressure = (weightB > totalB)
+    sched.usePressure = usePressure                   // +522
+    sched.minPhysRegs = physRegs                      // +512
+    return weightA  // *nopDensity = weightB
 ```
 
-The caller (`sub_8CEE80`) converts densities to an ILP ratio: `ratio = occupancy / density`. It iterates up to 5 candidate budgets (3 when `hw[360] > 2`), picking the one that maximizes the ratio. Knob 740 (default 0.045) scales a per-register penalty when the budget overshoots the live-register count.
+The caller (`sub_8CEE80`) converts densities to ILP ratios (`occupancy / density`), iterating up to 5 candidate budgets (3 when `hw[360] > 2`) and picking the maximum. Knob 740 (default 0.045) scales a per-register penalty when the budget overshoots the live-register count.
 
 ## Dependency Graph
 
@@ -451,6 +486,72 @@ For each pair of instructions in a BB, checks for:
 - **Barrier** dependencies: through barrier/sync instructions
 
 Uses operand analysis from `sub_894290` (27 KB) which processes 16-bit operand descriptors encoding register class, bank, and dependency type.
+
+#### Edge node layout (32 bytes, allocated via `sub_6805C0`/`sub_680B60`)
+
+```
+Offset  Size   Field
+ +0     QWORD  next            Singly-linked list pointer (head at producer+56)
+ +8     QWORD  target          Pointer to consumer instruction
++16     DWORD  dep_class       Register class/bank index (operand category 0..9)
++20     WORD   edge_type_mask  Bitmask [9:0] -- which dependency types this edge carries
++24     DWORD  reason_mask     Bitmask [24:0] -- which operand positions triggered the edge
+```
+
+Edge type encoding in `edge_type_mask`:
+
+| Bit | Type | Creator path | Meaning |
+|---|---|---|---|
+| 0 | RAW | `sub_6848D0` -> `sub_684470(..dep_type=0)` | True dependency: consumer reads a register the producer writes |
+| 1 | WAR | `sub_684970` -> `sub_684470(..dep_type=1)` | Anti dependency: consumer writes a register the producer reads |
+| 2 | WAW | `sub_684920` -> `sub_684470(..dep_type=2)` | Output dependency: both instructions write the same register |
+| 10 | Memory | `sub_680B60(..dep_class=3, bit=10, reason=25)` | Memory ordering through shared/global space |
+| 25 | Barrier | `sub_680B60(..dep_class=10, bit=25, reason=25)` | Barrier/sync ordering (`BAR`, `MEMBAR`, `BSSY`) |
+
+A single edge can carry multiple type bits (e.g., bits 0+2 when a register has both RAW and WAW hazards between the same pair). `sub_684470` swaps producer/consumer for WAW edges (dep\_type==2) before calling `sub_6805C0`, so WAW edges always point from the earlier writer to the later writer.
+
+#### Edge latency assignment pseudocode
+
+The stall/barrier pipeline (`sub_8D7760`, 41 KB) computes per-edge latency when walking the DAG backward from each consumer. The latency depends on the edge type and the producer's scheduling class, which indexes into `per_sm_dependency_rules` (40-byte records):
+
+```
+function GetEdgeLatency(sm_backend, producer, consumer, edge):
+    rule = LookupRule(sm_backend, producer.sched_class)
+    //  per_sm_dependency_rules fields (40-byte record):
+    //    .latency           uint8   pipeline cycles for RAW (0..255)
+    //    .write_latency     int8    WAW override (-1 = use default)
+    //    .read_latency      int8    read-after-read (-1 = unused)
+    //    .barrier_latency   uint8   cycles for barrier-protected edges
+    //    .stall_cycles      uint8   minimum HW-enforced stall
+    //    .throughput_inv    uint8   reciprocal throughput (issue spacing)
+
+    if edge.edge_type_mask & (1 << 0):           // --- RAW ---
+        lat = rule.latency                        // full pipeline latency
+        //  sm_100: FFMA=17, LDG=42, TEX=46, HMMA=72, WGMMA=255
+
+    else if edge.edge_type_mask & (1 << 2):       // --- WAW ---
+        if rule.write_latency != -1:
+            lat = rule.write_latency              // explicit WAW latency
+            //  sm_100: unit 11 -> 6, unit 35 -> 8 (write-port occupancy)
+        else:
+            lat = 1                               // default: 1 cycle (rename/commit)
+
+    else if edge.edge_type_mask & (1 << 1):       // --- WAR ---
+        lat = 0                                   // anti-deps: zero latency
+                                                  // (read completes at decode, before write)
+
+    else if edge.dep_class == 3:                  // --- Memory ---
+        lat = rule.stall_cycles                   // conservative stall distance
+        //  sm_100: LDG/STG=1..5, TEX=12, WGMMA=39
+
+    else if edge.dep_class == 10:                 // --- Barrier ---
+        lat = rule.barrier_latency                // barrier threshold from HW profile
+        //  sm_100: most ALU/FP=56, TEX/SFU=8..14, WGMMA=56
+
+    return lat
+```
+
+The final stall count for an instruction is `max(0, lat - scheduling_distance)` across all incoming edges, clamped to the architecture maximum (knobs 805/806, typically 15--16). When the required wait exceeds the stall ceiling, the scoreboard assigns a hardware dependency barrier instead (see [Scoreboards](scoreboards.md)).
 
 ### Supplementary dependency builders
 
@@ -838,28 +939,239 @@ The iterative solver runs until convergence, updating per-BB liveness sets. This
 After instruction ordering is determined, the scheduling output pipeline (0x8F1EB0--0x8FDD60, ~57 KB) converts the abstract schedule into SASS control words:
 
 ```
-function EmitScheduleForBB(sched, bb):
-    for each instruction in scheduled order:
-        stall   = ComputeStallCycles(sched, instr)   // distance to consumer
-        yield   = ComputeYieldHint(sched, instr)      // warp scheduling hint
-        barrier = AssignBarrier(sched, instr)          // 6 barriers available
-        sb_deps = ComputeScoreboardDeps(sched, instr)  // read/write dependencies
+// Stage 0 -- Per-function entry (sub_8F6530, ~10 KB)
+// Manages a circular buffer of 6 barrier slots, one per HW barrier register.
+// Each slot: 56-byte record {active:u8, count:u32, instr[2]:ptr, pad}.
+function EmitScheduleForFunction(func, bb_index):
+    slots[0..5] = {active=0, count=0}        // 6 HW barrier slots
+    round_robin = 0                           // next barrier to allocate
+    for each BB in func.bb_list[bb_index]:
+        instr = BB.first
+        while instr != BB.sentinel:
+            opcode = instr+72;  nops = instr+80
+            if opcode not in {SCHED_BARRIER, NOP_WITH_SCHED}:
+                instr = instr.next; continue
 
-        control_word = EncodeControlWord(stall, yield, barrier, sb_deps)
-        EmitControlWord(instr, control_word)
+            // Classify dest operand to pick barrier slot
+            dst = instr + 84 + 8*(nops - ((opcode>>11)&2) - 5)
+            dst_type = (dst[0] >> 28) & 7
+            if dst_type == 1:                 // register destination
+                reg = *(func+88 + 8*(dst[0] & 0xFFFFFF))
+                if reg.refcount == 1 && !reg.is_paired:
+                    goto fast_path            // single-def: skip full alloc
+
+            // Allocate or recycle a barrier slot (round-robin)
+            slot_idx = round_robin = (round_robin + 1) % 6
+            slots[slot_idx].active = 0
+            slots[slot_idx].count += 1
+            slots[slot_idx].instr[count-1] = instr
+
+            // Run the 5-stage pipeline
+            ComputeStallCycles    (func, instr, slots, slot_idx)
+            ComputeYieldHint      (func, instr)
+            AssignBarrier         (func, instr, slots)
+            ComputeScoreboardDeps (func, instr, slots, slot_idx)
+            EncodeControlWord     (func, instr)
+            instr = instr.next
+```
+
+```
+// Stage 1 -- ComputeStallCycles (sub_8F3130 + sub_A09530)
+// Walks source operands, accumulates stall per scoreboard entry.
+function ComputeStallCycles(func, instr, slots, slot_idx):
+    n_src = instr.operand_count;  n_dest = instr.dest_count
+    total = n_src * n_dest
+    rec   = func.sched_records + 40 * slot_idx     // 40-byte per-slot record
+    for i in 0 .. total-1:
+        op_slot = instr+84 + 8*(i / n_dest)
+        if ((op_slot[0] >> 28) & 7) != 1:         // not a register ref
+            if (instr+72) & 0xCFFF == 0xB7: continue   // NOP: skip
+        rec.pending_uses += 1
+        if i/n_dest == 0 && (op_slot[last_dest].flags & 1):   // paired reg
+            rec.pending_uses += 1                  // double-count for pair
+            rec.fp_weight += func.fp_latency_factor
+
+    // sub_A09530: finalize stall count into SchedNode
+    sched_node = *(instr+32)
+    if (sched_node+13) & 2 == 0: return            // no sched metadata
+    stall_bits = 0
+    for each source operand with register type:
+        reg = *(func+88 + 8*(operand & 0xFFFFFF))
+        pipe = QueryPipeClass(func, reg, operand)
+        if pipe > 0 && reg.regclass == 6:          // uniform register
+            stall_bits += pipe & 0x1FF
+    sched_node.stall_field = stall_bits | (sched_node.stall_field & 0xFE00)
+    sched_node.stall_field &= ~0x200               // clear dirty bit
+```
+
+```
+// Stage 2 -- ComputeYieldHint (sub_8F3650 + sub_8F3EA0)
+// Yield is set for long-latency ops that consume barrier registers.
+function ComputeYieldHint(func, instr):
+    opcode = instr+72;  nops = instr+80
+    dest_idx = 2*(nops - ((opcode>>11)&2) - 4)
+    dest = (instr+84) + dest_idx
+    if (dest[0] ^ 0x70000000) & 0x70000000 != 0:
+        return false                               // not a standard dest
+
+    // Clamp yield threshold from architecture profile (set by sub_8F3AB0)
+    yield_max = func.yield_threshold               // ctx+7
+    if dest.flags & 1:                             // paired register
+        cap = *(*(*(func+88) + 8*(dest[0] & 0xFFFFFF)) + 73)
+        yield_max = min(yield_max, cap)
+    else:
+        yield_max = min(yield_max, 4)
+    if yield_max <= 2: return false
+
+    masked = opcode & 0xFFFFCFFF
+    if masked == 288:                              // TEX/TLD/TXQ family
+        part_id = arch_backend.GetPipePartition(instr.modifier)  // vtable+904
+        sub_part = 0
+        if arch_backend.vtable[936] != sub_7D7040:
+            sub_part = arch_backend.GetSubPartition(instr) / part_id
+        // Mark barrier usage bitmap (4-slot mod ring)
+        func.barrier_usage[sub_part & 3] = 1
+        for k in 1 .. (dest.reg_count & 7):
+            func.barrier_usage[(sub_part + k) & 3] = 1
+        if dest.flags & 1:
+            func.barrier_lo = 0
+            func.barrier_hi = func.barrier_budget / 4
+        else:
+            func.barrier_lo = min(func.barrier_lo, sub_part)
+            func.barrier_hi = max(func.barrier_hi, sub_part + reg_count + 1)
+        return true
+    return (dest.last_word & 7) == 0               // yield only if no read deps
+```
+
+```
+// Stage 3 -- AssignBarrier (sub_8F31F0) + ScoreboardDeps (sub_8F3860)
+// Allocates HW barrier, then encodes scoreboard tag into operand descriptor.
+function AssignBarrier(func, instr, slots):
+    rdesc = *(func.reg_descriptors + 8*(instr+84 & 0xFFFFFF))
+    if rdesc.flags & 0x20: return                  // no-barrier flag
+    if rdesc.refcount <= 1: return                 // single use
+
+    alias = rdesc.alias_chain                      // linked list at +112
+    if alias == NULL:
+        rdesc.refcount = 1
+        new = SplitRegDescriptor(rdesc, func)      // sub_7E5350
+        func.split_ctx = new;  func.split_bb = instr.bb_id
+        CommitBarrierSplit(func, instr, 0)         // sub_932720
+        FlushSplitCtx(func)                        // sub_7E5FA0
+        rdesc.flags &= ~0x2000000                  // clear pending-split
+        rdesc.alias_chain = NULL;  return
+
+    // Walk alias chain -- verify all aliases share same BB
+    count = 0;  bb = *(*(rdesc.def_instr) + 24)
+    for node in alias:
+        if node.instr.bb_id != bb: break
+        count += 1
+    rdesc.refcount = count;  rdesc.alias_chain = NULL
+
+function ComputeScoreboardDeps(func, instr, slots, slot_idx):
+    opcode = instr+72;  nops = instr+80
+    src = instr+84 + 8*(nops - ((opcode>>11)&2) - 5)
+    src_type = (*src >> 28) & 7
+    rdesc = (src_type == 5)
+          ? *(func.reg_descriptors + 8*(*src & 0xFFFFF))
+          : *(func.reg_descriptors + 8*(src[1] & 0xFFFFF))
+
+    part_id = arch_backend.GetPipePartition(instr.modifier)
+    sub_part = arch_backend.HasSubPartition()
+             ? arch_backend.GetSubPartition(instr) : 0
+
+    base = sub_part - 4 * func.barrier_lo
+    sb = ((base & ~slot_idx) >> slot_idx)
+       + slots[(base & slot_idx) / part_id + 3]
+       + (base & slot_idx)
+
+    if !(src.flags & 1):                           // not paired
+        cfg = LookupScoreboardConfig(func, rdesc, sb)  // sub_926780
+        if !(src[1] & 0x1000000):
+            *src = (cfg | (*src & 0xFFF00000)) & 0xFFCFFFFF
+        else:
+            src[1] = cfg | (src[1] & 0xFFF00000)
+    else:                                          // paired register
+        func.current_instr = instr
+        adj = sb - rdesc.latency_offset
+        EncodePairedScoreboard(slots, src, func, adj)  // sub_7DF0D0
+
+    // Clear wait-mask field of last operand slot
+    dep = instr+84 + 8*(nops - ((opcode>>11)&2) - 2)
+    *dep &= 0xFF000000                             // zero bits [23:0]
+```
+
+```
+// Stage 4 -- EncodeControlWord (sub_8F4140)
+// Reuse-flag eligibility check + 23-bit SASS control word packing.
+function EncodeControlWord(func, instr):
+    if IsSchedulingFence(instr, func): return
+    if GetInstrFlags(instr, func) & 2:  return     // no-encode flag
+
+    opcode = instr+72;  nops = instr+80
+    // Skip writeback-dependency opcodes
+    if nops - ((opcode>>11)&2) > 1:
+        tt = (*(instr+84+8*(nops-((opcode>>11)&2)-1)) >> 28) & 7
+        if tt == 6:
+            m = opcode & 0xFFFFCFFF
+            if m in {190, 95, 96, 27, 29}: return
+
+    if GetInstrFlags(instr,func) & 0x10: return    // vector op
+    if IsVectorOp(instr, func):          return
+    m = opcode & 0xFFFFCFFF
+    if m in {288, 183}:
+        if LookupScbClass(rdesc) == 18: return     // class 18: no reuse
+    if IsNoReuse(instr,func) || (GetInstrFlags(instr,func) & 8): return
+
+    // 330-entry opcode dispatch (0x21D9EF8):
+    //   guard: cmp opcode, 0x149; ja default (0x8A2119)
+    //   206 specialized, 124 default (no-reuse)
+    reuse = OpcodeDispatchTable[m](func, instr)
+    if !reuse: return
+    if m in {304..322 & 0x401C5, 123, 118, 43}: return
+    if m in {236, 32, 159, 271, 109, 46} || nops <= 1: return
+
+    // Validate each source: reg type 1, valid descriptor, not uniform
+    for i in 0 .. nops-1:
+        op = *(instr+84+8*i);  hi = *(instr+88+8*i)
+        if ((op>>28)&7)==1 && !(hi&0x1000000):
+            reg = *(*(func+88)+8*(op&0xFFFFFF))
+            if reg.regclass==4: return 0           // uniform: no reuse
+            if reg.refcount>1 || !reg.def_instr: return 0
+            if reg.hw_size<=45 || (reg.regclass-5)>1: return 0
+
+    // Pack 23-bit control word into instr+196
+    //   [3:0]   stall  (4 bits, 0--15)
+    //   [4]     yield  (1 bit)
+    //   [7:5]   wr_bar (3 bits, 0--5; 7=none)
+    //   [13:8]  rd_mask (6 bits, one-hot per barrier)
+    //   [19:14] wt_mask (6 bits, one-hot per barrier)
+    //   [22:20] reuse  (3 bits)
+    instr.ctrl = (stall & 0xF)
+               | (yield << 4)
+               | ((wr_bar & 7) << 5)
+               | ((rd_mask & 0x3F) << 8)
+               | ((wt_mask & 0x3F) << 14)
+               | ((reuse & 7) << 20)
 ```
 
 Key encoding functions:
 
-| Address | Purpose |
-|---|---|
-| `sub_8F1EB0` | Main schedule encoding entry |
-| `sub_8F3130` | Encode stall count field |
-| `sub_8F31F0` | Encode barrier field |
-| `sub_8F3650` | Encode yield hint field |
-| `sub_8F3860` | Encode scoreboard dependency field |
-| `sub_8F4140` | Encode complete control word |
-| `sub_8F6530` | Output complete schedule for function |
+| Address | Size | Purpose |
+|---|---|---|
+| `sub_8F6530` | 10 KB | Stage 0: per-function entry, circular barrier buffer, BB iteration |
+| `sub_8F3130` | 0.2 KB | Stage 1: accumulate stall contribution per source operand |
+| `sub_A09530` | 0.4 KB | Stage 1 (cont.): finalize stall count into SchedNode+12 |
+| `sub_8F3650` | 0.4 KB | Stage 2: yield-hint decision from dest type and pipe partition |
+| `sub_8F3AB0` | 0.8 KB | Stage 2 setup: calibrate yield threshold and barrier budget (knob 487) |
+| `sub_8F3EA0` | 0.4 KB | Stage 2 gate: skip yield if function too small or -O0 |
+| `sub_8F31F0` | 1.3 KB | Stage 3: barrier allocation via alias-chain walk and descriptor split |
+| `sub_8F3860` | 0.7 KB | Stage 3 (cont.): encode scoreboard dependency tag into operand |
+| `sub_8F4140` | 1.0 KB | Stage 4: reuse-flag eligibility and 23-bit control word packing |
+| `sub_8F1EB0` | 2.0 KB | Constructor: allocate 99-slot knob array (7128 B) + barrier index array |
+| `sub_8F2FD0` | 0.4 KB | Reverse operand walk: clear stale refcounts before barrier assignment |
+
+The 330-entry opcode dispatch table at `0x21D9EF8` (extracted in `sched_encoder_dispatch.json`) routes the reuse-eligibility check in Stage 4. Of the 330 entries, 206 have specialized handlers and 124 fall through to the default (no-reuse) handler at `0x8A2119`. The guard instruction `cmp r15d, 0x149; ja default` bounds the table to opcodes 0--329.
 
 Seven verification functions at 0x8F7610--0x8F8CB0 validate the generated schedule: stall counts, barrier assignments, dependency chains, scoreboard correctness, control word format, yield hints, and overall schedule integrity.
 
@@ -996,12 +1308,84 @@ The opcodes that set bit 5 (`hasLongLatencyOp`): 18 (with knob 62 gate), 23, 26,
 
 ### Cross-Block Scheduling Setup
 
-After per-BB initialization, `sub_6833F0` walks the CFG to identify cross-block scheduling opportunities, gated by knob 744 (`SchedCrossBlockReorder`). For each predecessor-successor pair within the speculative distance threshold (knobs 743 `SchedCrossBlockInstsToSpeculate` and 747 `SchedCrossBlockTexToSpeculate`):
+After per-BB initialization, `sub_6833F0` walks the CFG to identify cross-block scheduling opportunities, with the master gate being knob 744 (`SchedCrossBlockLimit`): when its boolean form is true the integer value supplies the speculative distance threshold; when disabled the default threshold is 2. (The per-BB walk also stores `sched+177` from knob 742 (`SchedCrossBlock`): byte 0 = enabled, byte 1 = conditional on `options+53648 != 0`, byte >= 2 = disabled.)
 
-1. Sets `record[pred].crossBlockId = succ_bb_index` (marks predecessor active).
-2. Clears bit 6 of `record[pred].flags` (predecessor is not a cross-block target).
-3. Sets bit 6 of `record[succ].flags` (successor is a cross-block target).
-4. Calls `sub_682F10` to allocate the 136-byte region scheduling context and store pointers at `record[pred]+48` and `record[succ]+56`.
+```
+// Phase 1: compute speculative distance threshold (sub_6833F0, LABEL_49 block)
+crossblock_enabled = ReadKnobBool(744)              // options+53568
+if crossblock_enabled:
+    spec_dist = ReadKnobInt(744)                     // options+53576
+else:
+    spec_dist = 2                                    // hardcoded default
+
+// Phase 2: CFG walk — identify cross-block pairs (lines 296-394)
+for each bb in RPO_order(func):                      // bb_array[ctx+296]
+    pred_rpo = bb.rpo_index                          // *(bb+144)
+    existing_id = record[pred_rpo].crossBlockId
+    if existing_id == 0:
+        existing_id = bb.rpo_index                   // use own index as fallback
+
+    // Select best predecessor: walk bb.predecessor_list (bb+136),
+    // pick the predecessor with the highest RPO index
+    best_pred = first_predecessor(bb)
+    max_rpo   = best_pred.rpo_index
+    for each pred in bb.predecessors:
+        if pred.rpo_index > max_rpo:
+            max_rpo   = pred.rpo_index
+            best_pred = pred
+
+    // Gate 1: predecessor must not have a branch (BB +280 bit 3)
+    if best_pred.bb_flags & 0x8:
+        continue
+    // Gate 2: forward edge only
+    if pred_rpo >= best_pred.rpo_index:
+        continue
+
+    // Gate 3: eligibility — sub_682D40 (CrossBlockEligible)
+    if not CrossBlockEligible(sched, bb, best_pred):
+        continue
+
+    // Gate 4: speculative distance check
+    succ_rpo = best_pred.rpo_index
+    if spec_dist + pred_rpo + 1 < succ_rpo:
+        // Base distance exceeded; count texture blocks for extension
+        tex_count = 0
+        for idx in range(pred_rpo, succ_rpo):
+            if IsTextureBlock(bb_by_rpo[idx]):       // sub_7E5120
+                tex_count += 1
+        if tex_count == 0 or spec_dist < tex_count
+           or tex_count + spec_dist + pred_rpo + 1 < succ_rpo:
+            continue
+
+    // Commit the cross-block pair
+    record[pred_rpo].crossBlockId  = existing_id
+    record[pred_rpo].flags        &= ~0x40           // clear crossBlockTarget
+    record[succ_rpo].flags        |=  0x40           // set crossBlockTarget
+    record[succ_rpo].crossBlockId  = existing_id
+    AllocRegionContext(sched, bb, best_pred)          // sub_682F10
+```
+
+**`CrossBlockEligible`** (`sub_682D40`). Returns false if `vtable[23]` (arch override, default `sub_661250` = always-eligible) vetoes the pair. Otherwise walks forward from `bb` toward `best_pred`, checking at each intermediate BB: (a) no `hasLongLatencyOp` (bit 5 of `record[rpo].flags`), (b) all predecessor RPOs lie strictly between the pair's RPO bounds, (c) all successor RPOs lie strictly within bounds. Any violation returns false.
+
+**`IsTextureBlock`** (`sub_7E5120`). Returns true when a BB contains texture/surface instructions. Tests four conditions (short-circuit OR): (1) arch-specific classifier via double vtable deref at `ctx+1784`, (2) per-BB scheduling class table at `ctx+1776`, (3) `*(instr+283) & 1`, (4) fallback `sub_7A1A90(ctx+1664, 91, instr)`.
+
+**`AllocRegionContext`** (`sub_682F10`). Allocates 136 bytes from the scheduling arena:
+
+| Offset | Size | Init | Name | Purpose |
+|---|---|---|---|---|
+| +0 | 1 | composed | `mode` | Bit 0 = pred `hasFallthrough`; bit 1 = pred `hasCall OR hasBranch`; bit 4 = succ `hasBarrierInstr` |
+| +4 | 4 | 1 | `active` | Always 1 on allocation |
+| +8 | 4 | pred_rpo+1 | `startBB` | First BB RPO index in the cross-block region |
+| +12 | 4 | succ_rpo-1 | `endBB` | Last BB RPO index in the region |
+| +16 | 4 | 0 | `instrCount` | Accumulated during per-BB instruction walk |
+| +20..+52 | 36 | 0 | `counters[3][3]` | 3 classes x 3 counts: total, src-reads, dst-writes |
+| +56..+79 | 24 | 0 | `latencyBuckets` | Resource latency accumulators |
+| +80 | 4 | 0 | `maxLatency` | Max single-instruction latency in region |
+| +96..+127 | 32 | 0 | `resourceVec` | SSE-zeroed resource vector (two OWORDs) |
+| +120 | 4 | tail_lat | `succTailLatency` | Last-instruction latency of successor BB |
+| +128 | 8 | 0 | (reserved) | |
+
+Pointers stored at `record[pred_rpo].regionContext` (+48) and `record[succ_rpo].regionContext2` (+56). The instruction scan inside `sub_682F10` classifies each instruction into barrier-class (bit 6 of `sub_7DF3A0`), arch long-latency (`vtable[228]`), or default, accumulating the counter rows. For branch variants (`(opcode & 0xFFFFCFFD) == 0xBC`), it checks operand encoding to set bit 3 and record branch stall cost at `+4`.
 
 ```
 +0                  +4                                           +44  +48              +56              +64  +72
