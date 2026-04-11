@@ -61,33 +61,89 @@ The real implementation lives in the compilation context's SM backend object (at
 
 ### Algorithm (Reconstructed)
 
-The ptxas GVN-CSE operates on the Ori IR basic block list with dominator-tree-guided traversal:
+The ptxas GVN-CSE operates on the Ori IR basic block list with dominator-tree-guided traversal. The core is a hash-consed value table that maps expression keys to value numbers via FNV-1a hashing.
+
+#### Hash function: FNV-1a on block-index keys (`sub_BEEC80`)
+
+Every value table lookup hashes a 32-bit key (the block-relative instruction index stored at `instr+144`) through byte-at-a-time FNV-1a. From the disassembly at `0xBEECB6`--`0xBEECE1`:
 
 ```
-procedure GvnCse(function F):
-    build dominator tree DT for F
-    initialize value_table: hash_map<expression_key, value_number>
-    vn_counter = 0
-
-    for each block B in RPO(DT):
-        for each instruction I in B:
-            key = canonicalize(I.opcode, I.type, [lookup_vn(op) for op in I.operands])
-            if key in value_table:
-                existing_vn = value_table[key]
-                replace all uses of I.dest with representative(existing_vn)
-                mark I as dead
-            else:
-                value_table[key] = ++vn_counter
-                set_representative(vn_counter, I.dest)
-
-    run dead code elimination to remove marked instructions
+FNV1a_32(key: uint32) -> uint32:
+    h = 0x811C9DC5                          // FNV offset basis
+    h = (h ^ byte0(key)) * 0x01000193       // FNV prime = 16777619
+    h = (h ^ byte1(key)) * 0x01000193
+    h = (h ^ byte2(key)) * 0x01000193
+    h = (h ^ byte3(key)) * 0x01000193
+    return h
 ```
+
+#### Value table structure (`sub_BEEC80`, 1160 bytes)
+
+The table is a bucket-chained hash map. Buckets are 24-byte triples allocated as a power-of-two array (initial capacity 8):
+
+| Bucket field | Offset | Size | Purpose |
+|---|---|---|---|
+| `head` | +0 | 8 | Pointer to first chain node (or NULL) |
+| `tail` | +8 | 8 | Pointer to last chain node (for O(1) append) |
+| `count` | +16 | 4+4 | Number of entries in this bucket |
+
+Chain nodes are 32-byte records allocated from the context's memory arena (allocation size 32 at `sub_BEEC80` offset `0xBEEE90`):
+
+| Node field | Offset | Size | Purpose |
+|---|---|---|---|
+| `next` | +0 | 8 | Next pointer within bucket chain |
+| `key` | +8 | 4 | 32-bit block-index (from `instr+144`) |
+| (pad) | +12 | 4 | |
+| `value` | +16 | 8 | Pointer to value record / metadata |
+| `stored_hash` | +24 | 4 | Cached FNV-1a hash (avoids recompute on resize) |
+| (pad) | +28 | 4 | |
+
+Lookup: `bucket = hash & (capacity - 1)`, then linear chain walk comparing `node.key == query_key`. Insert returns a 33-byte result struct: `{table_ptr:8, bucket_idx:8, node_ptr:8, prev_ptr:8, is_new:1}`. Resize triggers when `total_entries > bucket_count` AND `bucket_count <= capacity / 2`; the new capacity is `4 * old_capacity` (`sub_865E40`). Redistribution uses `stored_hash % new_capacity` -- this is the sole reason the hash is stored in each node.
+
+#### VN transfer function (formal)
+
+For instruction `I` with masked opcode `op = I.opcode & 0xFFFFCFFF`, data type `ty = *(I+76)`, and operand count `n = *(I+80)`:
+
+```
+VN(I) =
+  | not ELIGIBLE(I)                        -> fresh vn, no table entry
+  | op = 145 (barrier) AND not SAFE(I)     -> scope break, no CSE
+  | TABLE_LOOKUP(key(I)) = hit(leader)     -> VN(leader)  [replace I with MOV]
+  | TABLE_LOOKUP(key(I)) = miss            -> fresh vn, TABLE_INSERT(key(I), I)
+```
+
+The expression key is `*(I+144)`, a 32-bit index assigned during def-chain construction (`sub_781F80`). Two instructions share the same key iff they define the same value record in the register table at `context+296`. Structural equivalence that determines key sharing is enforced upstream by the def-chain builder, not by the hash table.
+
+#### Eligibility predicate ELIGIBLE(I) -- `sub_BEA1E0`
+
+| Masked opcode | Condition on last dest operand | Meaning |
+|---|---|---|
+| 16 (MOV) | `*(I + 8*(n + ~(op>>11 & 2)) + 85) bit 1 == 0` | MOV with non-volatile destination |
+| 183 (TEX) | `operand bit 5` OR `(operand >> 21) & 7 > 1` OR `sub_91BC40` | Texture with CSE-safe sampling mode |
+| 119 (MUFU) | `sm_backend+1106 bit 6` AND `operand bit 1` | Transcendental (enhanced scope only) |
+| 186 (SHFL) | `sm_backend+1106 bit 6` AND `operand bit 0` | Shuffle (enhanced scope only) |
+| 211 (ATOM) | `sm_backend+1106 bit 6` AND `operand bit 2` | Atomic (enhanced scope only) |
+| 283 (REDUX) | `sm_backend+1106 bit 6` AND `operand bit 3` | Reduction (enhanced scope only) |
+| 122 (VOTE) | subtype in {2,3}, or subtype in {7,8} with bit 7 | Vote with compatible mode |
+| 310 (MATCH) | `(operand & 0xF) == 2` AND `(operand & 0x30) != 0x30` | Match with non-default mask |
 
 **Key design decisions visible from the binary:**
 
-1. **Hash-based value table.** The value numbering table uses FNV-1a hashing (seed `0x811C9DC5`, prime `16777619` / `0x01000193`), the same hash primitive used throughout ptxas for instruction fingerprinting, code caching, and scheduling table lookups. The hash function incorporates the opcode, type, and recursively resolved value numbers of all operands. Hash table entries are 24 bytes each: `[next_ptr (8B), key (8B), value/metadata (8B)]` with chained collision resolution.
+1. **Hash-based value table.** The value numbering table uses FNV-1a hashing (seed `0x811C9DC5`, prime `16777619` / `0x01000193`), the same hash primitive used throughout ptxas for instruction fingerprinting, code caching, and scheduling table lookups. The hash function operates on the 32-bit block-index key (not on opcode/operand tuples directly). Hash table entries are 32 bytes each with chained collision resolution; the stored hash field at `+24` enables O(n) resize without rehashing keys.
 
-2. **Dominator-tree scoping.** Values defined in block B are only visible to blocks dominated by B. When the walk exits a dominator subtree, value table entries scoped to that subtree are removed. This prevents CSE from moving computations to positions where they would not dominate all uses. Dominance is checked via `sub_1245740`, which performs a single-bit test against a per-block dominator bitvector: the dominator set at block descriptor offset `+176` is indexed by the dominator block's ID from offset `+144`. The check is O(1).
+2. **Dominator-tree scoping.** Values defined in block B are only visible to blocks dominated by B. The Full GVN (`sub_BED7E0`) maintains a **scope tree** -- a red-black BST of 64-byte bitset nodes -- that tracks which blocks have been processed within the current dominator subtree. The protocol has three phases:
+
+   **Scope push** (`sub_6B4520`, called at `0xBEDDF5` and `0xBEDFC9`). When the dominator-chain walk discovers that a value's dominator is in a previously-processed block, the current block's index is inserted into the scope tree. The block index is decomposed into a group key and an intra-node bit position:
+   ```
+   group_key    = block_index >> 8        // BST sort key, stored at node+0x18
+   word_index   = (block_index >> 6) & 3  // which of 4 qwords in the 256-bit bitset
+   bit_position = block_index & 0x3F      // bit within the selected qword
+   ```
+   Each BST node is a 64-byte record: `[left (8B), right (8B), parent (8B), key|color (4B+pad), bitset[4] (32B)]`. The key field at `+0x18` doubles as the RB-tree color flag in bit 31 (`0x80000000` = black, clear = red), managed by the rebalancer `sub_6887C0`. On insert, if a node with the matching group key already exists, `sub_6B4520` ORs the single bit into the existing node's bitset word at `node+0x20+word_index*8`. If the node is absent, a new 64-byte node is allocated from the scope tree's freelist (at `scope_tree+0x20`, field `+8` of the allocation context), zeroed, and inserted via `sub_6A01A0` which performs standard BST insertion followed by RB rebalancing.
+
+   **Scope drain** (post-RPO loop, starting at `0xBEDFEB`). After the RPO block walk completes, the scope tree is iterated to enumerate all recorded block indices. The iteration walks the RB-tree in-order, and for each node scans its 4-word bitset using `tzcnt` (trailing zero count) to extract set bits. The block index is reconstructed as `tzcnt_result | (word_index << 6) | (group_key << 8)`. For each recovered block index, the pass calls `sub_BEA5F0` to perform CSE on the dominated block's value records.
+
+   **Scope pop** (`sub_69DD70`, called at `0xBEE1A0`). After all scope-tree entries are drained, the cleanup loop removes nodes from the tree one at a time. `sub_69DD70` performs standard BST deletion: it splices the node at `scope_tree+8` (the tree cursor) out of the tree by relinking children and parent pointers, decrements the node count at `scope_tree+0x18`, and the caller pushes the freed node onto the freelist for reuse. The loop continues (`jnz 0xBEE1A0`) until `scope_tree+0` (the root pointer) is null. Finally, `sub_661750` releases any remaining freelist nodes back to the pool allocator, and `sub_8E3A20` frees the per-block visited array.
 
 3. **Commutativity normalization.** For commutative operations (ADD, MUL, AND, OR, XOR, MIN, MAX), operands are sorted by value number before hashing. This ensures `a + b` and `b + a` get the same value number without requiring a separate reassociation pass.
 
@@ -201,27 +257,50 @@ Mode 2 extends the simple GVN with cross-dominator CSE. After finding an eligibl
 procedure StandardGvn(gvn_state S, char cross_block_flag):
     // ... (same entry and block walk as SimpleGvn) ...
 
-    // After eligibility walk reaches sentinel:
-    idom = instr.field_148                             // immediate dominator index
-    if idom != 0:
-        dom_record = context.reg_table[context.idom_map[idom]]  // context+296[context+512[4*idom]]
-        if dom_record and (not cross_block_flag or dom_record.opcode != 1):
-            if not dominance_check(S, value_record):   // sub_BEA3B0
-                leader = dom_record.head
-                if leader.next.opcode != 292:          // not already a MOV
-                    context+232 = leader
-                    context+264 = leader.field_20
-                    sub_9314F0(context, 0x124, 1, 0, 0)   // insert MOV
+    // After the inner walk exhausts all instructions (cursor == sentinel),
+    // the idom chain lookup fires.  Six termination conditions:
+    //   T1. idom == 0            -- no cross-block dominator -> fallback
+    //   T2. dom_record == NULL   -- dominator slot empty -> fallback
+    //   T3. cross_block_flag &&  -- block-header sentinel; skip to avoid
+    //       dom_record[66]==1       unsafe cross-block hoisting
+    //   T4. dominance_check()!=0 -- extended-scope confirms dominance;
+    //                               replace via value_record.head (self)
+    //   T5. leader.next.opcode   -- dominator leader already has MOV;
+    //       == 292                   skip duplicate insertion
+    //   T6. MOV inserted         -- all guards passed; emit replacement
 
-    // Fallback: if idom chain is empty, try block-level CSE
-    block_desc = context.block_table[instr.field_164]  // context+368
+    idom = value_record.field_148                      // immediate dominator index
+    if idom == 0: goto FALLBACK                        // T1
+    dom_record = reg_table[idom_map[idom]]             // ctx+296[ctx+512[4*idom]]
+    if dom_record == NULL: goto FALLBACK               // T2
+    if cross_block_flag and dom_record[66] == 1:       // T3 (dword +264)
+        goto NEXT_BLOCK
+
+    if not dominance_check(S, value_record):           // sub_BEA3B0 == 0
+        leader = dom_record.head
+        if leader.next.opcode == 292: goto NEXT_BLOCK  // T5
+        context+232 = leader                           // T6 -- emit MOV
+        context+264 = leader.field_20
+        sub_9314F0(context, 0x124, 1, 0, 0)
+        goto NEXT_BLOCK
+    else:                                              // T4 -- dominance holds
+        src = *(value_record.head)                     // replace via self
+        context+232 = src;  context+264 = src.field_20
+        sub_9314F0(context, 0x124, 1, 0, 0)
+        goto NEXT_BLOCK
+
+FALLBACK:                                              // T1/T2
+    block_desc = context.block_table[value_record.field_164]
     if block_desc+280 bit 0 is clear:
         leader = reg_table[operand_24bit(block_desc.first_instr)]
         if leader.next.opcode != 292:
-            generate MOV replacement
+            context+232 = leader;  context+264 = leader.field_20
+            sub_9314F0(context, 0x124, 1, 0, 0)
 ```
 
-The `cross_block_flag` parameter (passed from the mode dispatcher) controls whether the standard GVN allows replacement when the dominator has `opcode == 1` (a block-header sentinel). When set, it skips such cases to avoid unsafe cross-block hoisting.
+The `cross_block_flag` (passed as `a2`) gates T3: when set, the standard GVN refuses replacement when the dominator value record has dword `+264 == 1` (block-header sentinel), preventing unsafe cross-block hoisting.
+
+The T4/T6 split is the critical subtlety. When `sub_BEA3B0` returns 0 (extended-scope flag clear, or the raw ordering result was positive), the replacement source is `dom_record.head` -- the dominator's definition serves as canonical representative. When it returns nonzero (extended-scope ordering confirms reachability), the source is `value_record.head` -- the value's own definition. The XOR inversion (`result ^ 1` inside `sub_BEA3B0`) means the cache stores the raw `sub_74D720` result while the caller sees the negated form.
 
 #### Dominance Check with Cache (`sub_BEA3B0`)
 
@@ -353,18 +432,58 @@ procedure FullGvnCse(gvn_state S):
                     if leader.opcode != 292:        // not already a MOV
                         replace_with_mov(context, leader, 0x124)
 
-        record_block_in_scope_tree(scope_tree, block_idx)
+        scope_tree_insert(scope_tree, block_idx)     // sub_6B4520
 
-    // Phase 3: Post-processing dominated blocks
-    for each (node, bit_pos) in scope_tree.bit_iterate():
-        block_idx = bit_pos | (node.data << 6)
-        block_record = reg_table[block_idx]
-        cse_dominated_block(S, block_record)        // sub_BEA5F0
+    // Phase 3: Post-processing dominated blocks (scope tree traversal)
+    (node, qword_ptr) = scope_tree_begin(scope_tree)
+    while node != NULL and qword_ptr != node.bitset_end:
+        bit = tzcnt(*qword_ptr)
+        qword_idx = (qword_ptr - node.bitset) / 8    // 0..3
+        block_idx = bit | (qword_idx << 6) | (node.key << 8)
+        cse_dominated_block(S, reg_table[block_idx])  // sub_BEA5F0
+        // Advance: mask off bits [0..bit], find next set bit
+        if bit < 63:
+            *qword_ptr &= ~((1 << (bit+1)) - 1)
+            if *qword_ptr != 0: continue
+        // Scan remaining qwords in this node
+        qword_ptr++
+        while qword_ptr < node.bitset + 4 and *qword_ptr == 0:
+            qword_ptr++
+        if qword_ptr < node.bitset + 4: continue
+        // BST in-order successor
+        (node, qword_ptr) = bst_next_inorder(node)
 
-    // Phase 4: Cleanup
-    flush_deferred_instructions(scope_tree)
-    destroy_scoped_tree(scope_tree)
+    // Phase 4: Flush deferred MOVs into instruction rings
+    while scope_tree.deferred_list != empty:
+        instr = pop(scope_tree.deferred_list)
+        splice instr into block's instruction ring
+    destroy_scoped_tree(scope_tree)                    // sub_661750
 ```
+
+**Scope tree node layout** (64 bytes, allocated by `sub_6B4520`):
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| +0 | 8 | `next` | Free-list chain / BST parent |
+| +8 | 8 | `left` | BST left child |
+| +16 | 8 | `right` | BST right child |
+| +24 | 4 | `key` | `block_idx >> 8` (group selector) |
+| +32 | 32 | `bitset[4]` | Four uint64 words = 256 bits |
+
+**Block index recovery formula.** A block index is split on insertion and reassembled during traversal:
+
+```
+Insertion (sub_6B4520):
+    key       = block_idx >> 8           stored at node+24
+    qword_idx = (block_idx >> 6) & 3    selects bitset[0..3]
+    bit       = block_idx & 63          set via sub_6B4440
+
+Traversal (sub_BED7E0+0x5a0):
+    block_idx = tzcnt(bitset[qi]) | (qi << 6) | (node.key << 8)
+    where qi  = (qword_ptr - &node.bitset[0]) / 8
+```
+
+Each node covers 256 contiguous block indices. The BST key orders nodes so in-order traversal visits blocks in ascending index order. Within a node, `tzcnt` extracts set bits lowest-first across the four qwords, giving O(B) total time where B is the number of recorded blocks.
 
 Key observations from the binary:
 
@@ -372,7 +491,7 @@ Key observations from the binary:
 
 2. **The value table is a register-indexed array, not a hash map.** Values are stored in `context+296` (an array of pointers indexed by the 24-bit register/value identifier from the operand encoding at `instruction+84`). This gives O(1) lookup by register ID. The dominator tree is used for scoping, not a stack-based hash table.
 
-3. **Dominator scoping uses a balanced binary tree with bitset nodes.** Each tree node stores a 64-bit bitset of block indices, traversed with `tzcnt` for efficient iteration. Block index is recovered as `bit_position | (node_data << 6)`, supporting up to 64 * depth blocks.
+3. **Dominator scoping uses a red-black tree with 256-bit bitset nodes** (see design decision 2 above for the full push/drain/pop protocol). Each 64-byte tree node stores a 4-qword (256-bit) bitset of block indices, traversed with `tzcnt` for efficient iteration. Block index is recovered as `tzcnt_result | (word_index << 6) | (group_key << 8)`, supporting up to 256 blocks per tree node.
 
 4. **Replacement is MOV insertion.** When a redundant instruction is found, the pass calls `sub_9314F0(context, 0x124, 1, 0, 0)` to generate a replacement MOV instruction (opcode `0x124` = 292 decimal). The original computation is recorded at `context+232` (source) and `context+264` (metadata) before the MOV is generated.
 
@@ -485,34 +604,73 @@ For multi-function compilation units, the pass dispatches through the compilatio
 
 ### Algorithm (Reconstructed)
 
-Reassociation works on associative and commutative operators:
+Reassociation operates in two phases: an expression-normalization walk that rewrites instruction trees into a canonical form, followed by a hash-based commoning pass over the normalized IR.
+
+**Phase 1 -- Expression normalization.**  The pass walks each basic block in RPO and inspects every instruction whose opcode is associative and commutative (ADD, MUL, AND, OR, XOR) or is SUB.
 
 ```
 procedure ReassociateAndCommon(function F):
-    for each basic block B in RPO:
-        for each instruction I in B:
-            if I.opcode is associative+commutative (ADD, MUL, AND, OR, XOR):
-                flatten expression tree rooted at I into a list of leaves
-                sort leaves by canonical order (constants last, then by register number)
-                rebuild balanced binary tree from sorted leaves
-            if I.opcode is SUB:
-                rewrite (a - b) as (a + (-b)) for uniformity
+    for each basic block B in RPO(F):
+        for each instruction I in B (budget-limited by ReassociateCSEBudget):
 
-    // Second pass: hash-based commoning over the reassociated IR
-    run local CSE over each basic block
+            // --- SUB rewriting (conditional) ---
+            // Convert SUB to ADD+NEG only when the result feeds
+            // exclusively into an associative ADD chain so the NEG
+            // is absorbed during flattening.  A standalone "a - b"
+            // with no further associative consumer keeps its SUB
+            // to avoid inserting a gratuitous negate instruction.
+            if I.opcode == SUB and all_uses_are_associative_add(I):
+                tmp = NEG(I.src1)
+                I   = ADD(I.src0, tmp)      // continue on rewritten ADD
+
+            if I.opcode not in {ADD, MUL, AND, OR, XOR}:
+                continue
+
+            // --- Step 1: tree flattening ---
+            // Walk the def-use chain upward, collecting every leaf.
+            // An operand is a leaf when it is:
+            //   (a) defined by a different opcode, or
+            //   (b) a constant / immediate, or
+            //   (c) defined outside the current basic block, or
+            //   (d) has multiple uses (pulling deeper would duplicate).
+            leaves[] = flatten(I)
+            if |leaves| <= 2:  continue     // nothing to reassociate
+
+            // --- Step 2: canonical sort ---
+            //   Primary key:   non-constants first, constants last
+            //   Secondary key: ascending value number (24-bit VN
+            //                  from operand encoding bits [0:23])
+            sort leaves[] by (is_constant(leaf), value_number(leaf))
+
+            // --- Step 3: rebuild left-leaning tree ---
+            result = OP(leaves[0], leaves[1])
+            for k = 2 to |leaves|-1:
+                result = OP(result, leaves[k])
+            replace I's def-use chain with result
+
+    // --- Phase 2: windowed local commoning ---
+    // Sliding-window hash-based CSE (window = ReassociateCSEWindow).
+    for each basic block B in RPO(F):
+        run windowed local CSE over B
 ```
+
+The rebuild produces a **left-leaning** (fully left-associated) chain, not a balanced tree.  `((a + b) + c) + d` guarantees that every intermediate node hashes identically when the leaf sequence matches, because `H(op, H_left, H_right)` yields a unique hash for each prefix.  A balanced tree would require matching the exact split point, defeating commoning across trees with different original nesting.
+
+The SUB rewriting criterion is conservative: converting `a - b` to `a + NEG(b)` is profitable only when the ADD chain is long enough to benefit from flattening.  For a two-operand chain the NEG is pure overhead, so standalone SUBs are preserved.
 
 ### Why Reassociation Matters
 
 The reassociation and commoning phases are tightly coupled because reassociation's primary goal is to enable commoning:
 
 ```
-BB0:  R5 = (R2 + R3) + R4 ; GvnCse sees: VN(ADD, VN(ADD,vn(R2),vn(R3)), vn(R4))
-BB1:  R6 = (R2 + R4) + R3 ; GvnCse sees: VN(ADD, VN(ADD,vn(R2),vn(R4)), vn(R3))
-      -- These are NOT the same VN because the inner ADDs differ.
+BB0:  R5 = (R2 + R3) + R4
+      GvnCse hash: H(ADD, H(ADD, vn(R2), vn(R3)), vn(R4))
+BB1:  R6 = (R2 + R4) + R3
+      GvnCse hash: H(ADD, H(ADD, vn(R2), vn(R4)), vn(R3))
+      -- Different inner-ADD operand order --> different hash.
 ```
 
-After reassociation, both flatten to `{R2, R3, R4}` sorted canonically, then rebuild as `(R2 + R3) + R4`. Now they share the same value number and the second is eliminated.
+After reassociation, both expressions flatten to `{R2, R3, R4}`.  Canonical sort orders by ascending VN, and the left-leaning rebuild produces `(R2 + R3) + R4` for both.  The second expression now shares the same value number and is eliminated.
 
 ### Controlling Knobs
 
@@ -556,45 +714,76 @@ char execute(phase* self, compilation_context* ctx) {
 
 ### Core Commoning Walker -- `sub_9055F0`
 
-`sub_9055F0` (203 lines decompiled) is the central commoning algorithm for late CSE. Its structure, reconstructed from the decompilation:
+`sub_9055F0` (203 lines decompiled) is the central commoning algorithm for late CSE. It operates on three cooperating data structures that together form the per-block hash-based equivalence table:
+
+**Working-set object** (passed as `a1`, allocated by `sub_9059B0`):
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `WS[0]` / `*WS` | `ptr` | Code Object pointer (function state `S`) |
+| `WS[2]` | `i32` | MOV equivalence chain counter (nonzero triggers `sub_8F2CD0` flush) |
+| `WS[7]` | `ptr` | **Per-block class table** -- `u64[block_count]` array indexed by dominator-order number (`bb_array[bix]+144`). Each slot is a Bloom-filter bitmask of instruction classes seen on the dominator path reaching that block. |
+| `WS[8]` | `i32` | Allocated capacity of the class table (grown via `sub_6E6650`) |
+| `WS[9]` | `u64` | **Running accumulator** -- OR of all class bitmasks returned by `sub_74ED70` for instructions processed so far on the current dominator path. Reset to 0 at SEL opcodes; snapshotted into the class table at PHI opcodes. |
+
+**Register descriptor fields repurposed for VN equivalence** (at `reg_file[reg_id]`, i.e. `*(*(S+88) + 8*reg_id)`):
+
+| Offset | Type | Meaning |
+|--------|------|---------|
+| +88 | `i32` | **VN representative register index.** When nonzero, the operand-remapping loop replaces the 24-bit register index with this value (upper tag byte preserved). This canonicalizes register references through MOV chains. |
+| +92 | `i32` | **CSE chain slot.** Dominator-order block number linking this register's defining instruction into the per-block equivalence chain. Read by `sub_901A90` to locate candidates; written on successful commoning. |
+
+**Instruction field `+88`** (accessed as `instr[11]`, an `i64`): initialized to `0xFFFFFFFF00000000` before the walk. Upper 32 bits = hash class (initially -1 = uncomputed); lower bits populated by `sub_74ED70` with the class bitmask.
+
+Algorithm, reconstructed from the decompilation:
 
 ```
-procedure LateCommoning(function_state S):
+procedure LateCommoning(working_set WS):
+    S = *WS                                    // Code Object
     if not knob_enabled(487):  return
-    if S.flags & 0x02:  return                 // already processed
-    if (S.flags | S.flags2) & 0x08:  return    // conflicting mode
+    if S.byte[1368] & 0x02:  return            // already processed
+    if (S.byte[1378] | S.byte[1368]) & 0x08:  return
 
     rebuild_def_chains(S, mode=1)              // sub_781F80
     rebuild_use_chains(S)                      // sub_763070
     compute_hash_values(S, 0, 0, 0, 0)        // sub_7E6090
 
-    block_count = S.field_520 + 1
-    allocate bit_array[block_count]
+    block_count = S.dword[520] + 1
+    ensure WS.class_table has block_count slots (zero-fill new)
+    WS.accumulator = 0                         // WS[9] = 0
 
-    // Reset hash/VN slots on all instructions
-    for each instruction I in S.instruction_list:
-        I.field_88 = 0xFFFFFFFF00000000        // upper 32 bits = -1, lower = 0
+    // Reset instruction hash slots
+    for I in S.instruction_list (linked from S+104):
+        I[11] = 0xFFFFFFFF00000000             // hash_class=-1, lower=0
 
-    // Main commoning loop over code list
+    // Main walk: program-order traversal of code_list (S+272)
     for each instruction I in S.code_list:
-        // Phase 1: Remap operands through equivalence table
-        for each operand (reverse order):
-            if operand is register ref (type 0x10000000):
-                resolve to canonical representative
+        // --- Operand remapping via VN representatives ---
+        for k = (I.operand_count - 1) downto 0:
+            op = I.operands[k]                 // at I + 8*k + 84
+            if op >> 28 == 1:                  // register ref
+                rep = reg_file[op & 0xFFFFFF].field_88
+                if rep != 0:
+                    I.operands[k] = (op & 0xFF000000) | (rep & 0xFFFFFF)
 
-        // Phase 2: Try commoning based on opcode class
+        if not knob_enabled(844):  continue    // per-instruction CSE gate
+
+        // --- Dispatch by opcode class ---
         if I.opcode == 72 (MOV):
-            propagate_equivalence(I)            // sub_8F2CD0
-        elif is_pure(I):                        // sub_7DF3A0
-            opcode_class = I.opcode & 0xCF00
-            if opcode_class == 0x0061 (SEL):    // conditional select
-                reset_tracking()
-            elif opcode_class == 0x0034 (PHI):
-                record_phi_equivalence(S, I)
-            else:
-                if not try_common(S, I):        // sub_901A90
-                    hash = compute_hash(S, I)   // sub_74ED70
-                    record_hash_for_future_matching(hash)
+            if WS[2] != 0:
+                flush_equiv_chains(WS + 1)     // sub_8F2CD0
+        elif is_pure(I):                       // sub_7DF3A0 bit 0
+            masked = I.opcode & ~0x3000        // clear modifier bits 12-13
+            if masked == 97 (SEL):
+                WS.accumulator = 0             // control-dependent: kill path
+            elif masked == 52 (PHI):
+                // Snapshot accumulator into PHI's target block slot
+                dom_ord = bb_array[I.bb_index].field_144
+                WS.class_table[dom_ord] = WS.accumulator
+        else:
+            if not try_common(WS, I):          // sub_901A90
+                class_mask = compute_class(S, I, 0)   // sub_74ED70
+                WS.accumulator |= class_mask   // OR into Bloom filter
 ```
 
 The three infrastructure functions called at the beginning are shared with the GeneralOptimize sub-passes:
@@ -629,17 +818,19 @@ for (i = operand_count - 1; i >= 0; i--) {
 
 The reverse iteration order (from last operand to first) is an optimization: destination operands at lower indices are more likely to differ, so checking source operands first (higher indices) allows early exit.
 
-### Instruction Hashing -- `sub_74ED70`
+### Instruction Class Bitmask -- `sub_74ED70`
 
-`sub_74ED70` (304 lines) computes a hash value for an instruction, incorporating:
+`sub_74ED70` (304 lines) computes a **class bitmask** (not a scalar hash) for an instruction. The return value is a `u64` where individual bits encode instruction properties:
 
-- Opcode and type qualifiers
-- Value numbers of all source operands (recursively resolved through MOV chains)
-- Address space for memory operations
-- Predicate register (if predicated)
-- Immediate values (folded into the hash)
+- Bit 0: base eligibility (1 for most pure instructions)
+- Bits 20-21: memory address space class (`sub_74E530`)
+- Bit 25: uniform register destination (register type 8)
+- Bit 27: non-volatile memory reference
+- Bit 28: non-invariant address
+- Bit 29: specific addressing mode
+- Bit 32+: extended class flags (predicated, volatile, etc.)
 
-The hash is stored at instruction field `+88` (the upper 32 bits that were reset to `0xFFFFFFFF` during initialization). The function calls `sub_7DF3A0` (purity check), `sub_7E0030` and `sub_7E2530` (operand accessors), and `sub_748440` (hash combining).
+Additional property bits are OR'd in based on opcode class (96=LD/ST gets `0x200001`), purity flags (`sub_7DF3A0`), predication state, and backend queries through `ctx+1584` vtable slots 182 and 227. The resulting bitmask is OR'd into the working set's running accumulator (`WS[9]`), building a Bloom-filter signature of all instruction classes seen on the current dominator path. The `sub_901A90` commoning check uses this to quickly reject blocks that cannot contain a matching instruction.
 
 ### Controlling Knobs
 

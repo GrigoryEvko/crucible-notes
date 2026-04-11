@@ -1530,16 +1530,33 @@ function IsProfitable(context, block_index, budget, is_hoist_safe):
             for each high-latency dst_operand:
                 latency_penalty += (latency > 4) ? 2 : 1
 
+    // Early return: empty blocks (no instructions to scan)
+    if instruction_count == 0:
+        if pass_id == 0: return false                    // reject outright
+        // pass_id > 0: fall through to body/header formula with score=0, penalty=0
+
     // Final decision: weighted score vs latency cost
+    //
+    // The denominator changes meaning between pass_id values:
+    //   pass_id == 0: instruction_count (the raw count of instructions scanned)
+    //   pass_id >  0: body_weight / 3 + header_weight (from sub_8F8BC0 counts)
+    //
+    // Both paths divide by (real_weight * denominator), so the formula is:
+    //   score * budget / (real_weight * denominator) >= latency_penalty
+
     if pass_id == 0:                                     // aggressive
-        denominator = real_weight * instruction_count
+        denominator = instruction_count
     else:
         denominator = body_weight / 3 + header_weight
 
     return denominator != 0 and (score * budget) / (real_weight * denominator) >= latency_penalty
 ```
 
-The profitability check encodes a fundamental GPU tradeoff: hoisting reduces dynamic instruction count (proportional to trip count) but extends live ranges (increasing register pressure and reducing occupancy). The `budget` parameter, which varies by 100x between pass_id 0 and 3, controls how aggressively this tradeoff is resolved. Pass_id 0 (Early) uses the smallest denominator, making it easiest to exceed the threshold.
+The profitability check encodes a fundamental GPU tradeoff: hoisting reduces dynamic instruction count (proportional to trip count) but extends live ranges (increasing register pressure and reducing occupancy). The `budget` parameter, which varies by 100x between pass_id 0 and 3, controls how aggressively this tradeoff is resolved.
+
+The denominator distinction is the core difference between the aggressive and conservative LICM passes. Pass_id 0 (Early) divides by the number of instructions actually scanned in the candidate block -- a local, small denominator that makes the score-to-penalty ratio easy to satisfy. Pass_id > 0 (Late, Late2, Late3) divides by a weighted combination of the loop's header and body instruction counts (`body_weight / 3 + header_weight`, precomputed by `sub_8F8BC0`). This global denominator is typically larger, requiring a proportionally higher score to justify hoisting. The `body_weight / 3` term discounts body instructions because they execute every iteration (their cost is amortized), while header instructions execute once per loop entry and thus weigh more heavily in the normalization.
+
+An additional behavioral difference: when the candidate block contains no invariant-eligible instructions, pass_id 0 returns false immediately (no vacuous hoisting), while pass_id > 0 falls through to the formula with score = 0 and latency_penalty = 0, yielding true if the denominator is nonzero (vacuous profitability -- no instructions means no penalty).
 
 #### Per-Instruction Invariance Test (sub_8F76E0)
 
@@ -1762,14 +1779,163 @@ Fuses adjacent loops with compatible bounds and no inter-loop data dependencies 
 | `PerformLoopFusion` | INT | **0** (disabled) | Master enable for loop fusion; must be explicitly set to a nonzero value |
 | `PerformLoopFusionBudget` | FLOAT | **unset** | Maximum instruction count in fused body |
 
+### Function Map
+
+| Function | Size (lines) | Role |
+|---|---|---|
+| `sub_1397CB0` | 37 | **Entry / gate.** Checks knob 519, DUMPIR "LoopFusion", knob 487, then delegates |
+| `sub_1389AF0` | 593 | **Initialize** fusion context: read all knobs, build analysis structures |
+| `sub_1397360` | 432 | **Core driver.** Iterates back-edges, identifies adjacent loop pairs, runs the 7-stage pipeline per pair |
+| `sub_13858C0` | 42 | **FindAdjacentPair.** Partitions a loop's predecessor list into inner/outer successor blocks |
+| `sub_1385D30` | 23 | **DominanceCheck.** Verifies both candidate loops are well-dominated within budget |
+| `sub_1389130` | 418 | **BuildDefUseSets.** Builds per-register bitmask BSTs for both loop bodies |
+| `sub_13888B0` | 97 | **BuildFusionIV.** Constructs merged induction variable; checks body-size budget |
+| `sub_13906A0` | -- | **NormalizeIVBounds.** Adjusts IV start/end/stride to canonical form |
+| `sub_1388AF0` | 181 | **VerifyStructure.** Walks both loops in parallel checking structural correspondence |
+| `sub_1396850` | 605 | **CheckDependencies.** Cross-body def-use conflict detection via bitmask BST |
+| `sub_138F650` | 233 | **PrepareTransform.** Drains work queues, reindexes operands into fused body |
+| `sub_1389940` | 72 | **ApplyFusion.** Rewires instructions: eliminates duplicates, clones unique ops |
+| `sub_138FC20` | 526 | **PostCleanup.** Patches CFG edges, updates block numbering and loop tree |
+| `sub_138A6E0` | -- | **Teardown.** Destroys fusion context and releases analysis memory |
+
+### Entry Gate (sub_1397CB0)
+
+```
+function LoopFusionEntry(code_object):
+    allocator = code_object.allocator
+    if allocator.knob_table[37368] != 1:          // knob 519 = PerformLoopFusion type check
+        return
+    if allocator.knob_table[37376] == 0:           // knob 519 value: 0 = disabled
+        return
+    if (code_object.flags[1368] & 1) == 0:         // function has loops
+        return
+    if DumpIRActive("LoopFusion"):                 // sub_799250
+        return
+    if not QueryKnob(487, 1):                      // secondary gate (shared with unroll)
+        return
+    ctx = InitFusionContext(code_object)            // sub_1389AF0
+    RunFusionPipeline(ctx)                         // sub_1397360
+    TeardownContext(ctx)                           // sub_138A6E0
+```
+
+### Core Driver Algorithm (sub_1397360)
+
+```
+function RunFusionPipeline(ctx):
+    co = ctx.code_object
+    RebuildInsnList(co)                            // sub_7B52B0, sub_785E20, sub_781F80
+    RunLoopVisitors(co)                            // execute registered loop analysis visitors
+    changed = false
+    num_backedges = co.backedge_count               // code_object+376
+    for i = 0 to num_backedges:
+        loop = co.backedge_array[i]                // code_object+368, 8-byte pointers
+        if (loop.flags[35] & 1) == 0: continue    // not a natural loop
+        if loop.parent_index >= 0:
+            if co.loop_table[loop.parent_index].is_irreducible: continue
+        header = loop.first_block                  // loop[0]: first block in body
+        latch  = loop.last_block                   // loop[1]: last block (back-edge source)
+        ctx.fused_count = 0
+
+        // Walk from header toward latch through the encompassing loop
+        start_bb = ResolveBlock(co, header)        // via block index table at co+296
+        end_bb   = ResolveBlock(co, latch)         // sub_748BF0 walks branch-through chains
+        if start_bb == end_bb: continue            // single-block loop, nothing to fuse
+
+        bb = start_bb
+        while bb != end_bb:
+            // Follow opcode-97 (unconditional branch) fall-through chains
+            next_insn = bb.successor.first_insn
+            if next_insn.opcode == 97:             // unconditional branch
+                bb = ResolveBlock(co, next_insn.operand[0])
+                if bb == end_bb: break
+            // Check: single back-edge (bb+144 == bb+148) and not cold
+            if bb.insn_count == 0: break
+            if bb.insn_count != bb.single_pred_count: break
+            if not ctx.allow_multi_exit and bb.is_cold: break
+
+            // Stage 1: Find inner/outer adjacent pair
+            inner_loop = FindAdjacentPair(ctx, bb, &outer_loop)  // sub_13858C0
+            if not inner_loop: break
+            // Stage 2: Dominance check
+            if not DominanceCheck(ctx, bb, inner_loop): break
+            // Verify latch instruction is conditional branch (opcode 95)
+            latch_insn = inner_loop.last_insn
+            if latch_insn.opcode != 95: break      // 0x5F = conditional branch
+            if latch_insn.branch_type == 5 and (latch_insn.flags[25] & 7) == 0:
+                break                              // unconditional exit, not a real loop
+            if inner_loop != bb: break             // must be self-contained
+            // Stage 3: Query PerformLoopFusionBudget (knob 520)
+            body_size = latch_insn.operand_slots[latch_insn.branch_type]  // fused body size
+            if not QueryKnob(520, 1): break
+            // Stage 4: Build def-use bitmask sets
+            candidate = {header: ..., latch: ..., inner: inner_loop, outer: outer_loop}
+            if not BuildDefUseSets(ctx, bb, bb, start_bb, outer_loop, &candidate):
+                break                              // sub_1389130
+            // Stage 5: Normalize IV bounds
+            NormalizeIVBounds(ctx, outer_loop, &candidate)  // sub_13906A0
+            // Stage 6: Build merged IV and check budget
+            if not BuildFusionIV(ctx, &outer_loop, latch_insn, body_size, candidate):
+                break                              // sub_13888B0
+            // Stage 7: Record candidate in growable array (72-byte records)
+            AppendCandidate(ctx, &candidate)
+            // Stage 8: Full legality pipeline
+            if ctx.has_second_pass:
+                if not VerifyStructure(ctx, &header_info, &candidate): continue
+                if not CheckDependencies(ctx, &header_info, &candidate, latch_insn):
+                    continue                       // sub_1396850
+                if PrepareTransform(ctx, &header_info, &candidate):   // sub_138F650
+                    fused = ApplyFusion(ctx, &candidate)              // sub_1389940
+                    changed |= fused
+                    PostCleanup(ctx, &header_info)                    // sub_138FC20
+                    ctx.fused_count--
+    if changed:
+        co.flags[1370] &= ~4                      // clear stale-analysis bit
+        RebuildInsnList(co)
+        co.flags[1392] |= 1                       // mark CFG dirty for downstream passes
+```
+
 ### Fusion Criteria
 
 Two adjacent loops `L1` followed by `L2` are candidates for fusion when:
 
-1. **Same trip count.** Both loops iterate the same number of times (same induction variable bounds and stride, or equivalent after normalization).
-2. **No violated inter-loop dependencies.** No flow dependence (write in L1, read in L2) that crosses iteration boundaries differently after fusion. Since both loops are sequential pre-fusion, this reduces to: L2 must not read a value written by L1 at a *different* iteration index.
-3. **Compatible loop structure.** Both must be single-basic-block bodies (or the fused body must remain within the `PerformLoopFusionBudget` instruction limit).
-4. **No intervening barriers.** No `BAR.SYNC`, `MEMBAR`, or fence instructions between the two loop bodies.
+1. **Same trip count.** Both loops iterate the same number of times (same induction variable bounds and stride, or equivalent after IV normalization by `sub_13906A0`).
+2. **No violated inter-loop dependencies.** No flow dependence (write in L1, read in L2) that crosses iteration boundaries differently after fusion. `BuildDefUseSets` constructs a per-register bitmask BST (key = `reg_id >> 8`, 4-qword bitfield indexed by `(reg_id >> 6) & 3`, bit position = `reg_id & 0x3F`) for each loop body; `CheckDependencies` queries these BSTs to detect conflicts.
+3. **Compatible loop structure.** Both must be single-basic-block bodies. `VerifyStructure` walks both loops in parallel, verifying: same predecessor edge count, matching back-edge layout, matching cold-block flags, and consistent branch-pattern offsets (delta between block indices must be equal: `L2.bb[i].index - L2.header.index == L1.bb[i].index - L1.header.index`).
+4. **Body size budget.** The fused body instruction count (extracted from the latch instruction's operand slot) must pass the `PerformLoopFusionBudget` (knob 520) check. The budget field in the context is at offset +608.
+5. **No intervening barriers.** No `BAR.SYNC`, `MEMBAR`, or fence instructions between the two loop bodies.
+6. **Well-dominated.** `DominanceCheck` (`sub_1385D30`) verifies that both candidate blocks have positive instruction counts (`bb+144 > 0`), neither exceeds the dominance budget at `ctx+584`/`ctx+568`, and calls `sub_74CCF0` to verify mutual dominance.
+
+### ApplyFusion Transform (sub_1389940)
+
+```
+function ApplyFusion(ctx, candidate):
+    body_start = candidate.header.first_insn
+    body_end   = candidate.latch.successor.first_insn
+    insn = body_start
+    while insn != body_end:
+        next = insn.next
+        if IsDuplicateDef(insn, ctx.code_object):  // sub_7DF3A0: bit 0 of result
+            insn = next
+            continue
+        reg_id = insn.operand[0].id
+        key    = reg_id >> 8
+        // Look up in def-use bitmask BST at ctx+102 (ctx.killed_set)
+        node = BSTLookup(ctx.killed_set, key)
+        if node and BitTest(node.bitfield[(reg_id >> 6) & 3], reg_id & 0x3F):
+            SplitEdge(ctx.code_object, insn, 1)    // sub_9253C0: move to preheader
+            insn = next
+            continue
+        // Check for MOV instruction (opcode 137) -- special case
+        dest_operands = insn.dest_list
+        if dest_operands:
+            if insn.opcode == 137:                 // MOV: rewire destination directly
+                RewireDestination(ctx.code_object, insn, *dest_operands)  // sub_925670
+            else:
+                clone = CloneOperands(dest_operands, ctx.code_object)     // sub_7E5350
+                RewireDestination(ctx.code_object, insn, clone)
+        insn = next
+    return 1
+```
 
 ### Pipeline Position Rationale
 

@@ -28,40 +28,53 @@ Strength reduction in ptxas is not a single monolithic pass. It is distributed a
 
 ## Phase 21: Induction Variable Strength Reduction
 
-### Architecture
+### Scope limitation -- opcode 137 only
 
-The execute wrapper (`sub_C5FB30`) gates on multi-function compilation (function count > 1 via `sub_7DDB50`) and delegates to `sub_752E40` with parameters `(context, 0, 0, 0)`.
+Despite the generic name, Phase 21 touches exactly one Ori IR opcode: **137** (`SM73_FIRST` in the ROT13 naming scheme). Every instruction in the function is visited, but the opcode check `(*(instr+72) & 0xFFFFCFFF) == 137` gates all transformations -- non-137 instructions are skipped entirely. The `& 0xFFFFCFFF` mask zeroes bits 12-13 (modifier field), so variants 137, 137|0x1000, 137|0x2000, and 137|0x3000 all match.
 
-`sub_752E40` is the core. It performs a single-pass walk over the instruction list, focusing on a specific intermediate opcode -- opcode 137 (`SM73_FIRST`), masked with `& 0xFFFFCFFF` to strip modifier bits in the opcode field at instruction offset +72. The ROT13 name `SM73_FIRST` is a generation boundary marker name, but the Ori IR reuses this opcode slot at runtime for IMAD-like multiply-accumulate instructions in their pre-lowered form. The actual SASS `IMAD` is opcode 1.
+Opcode 137 is the pre-lowered IMAD (integer multiply-accumulate). The `SM73_FIRST` ROT13 label is a generation boundary name; ptxas reuses this slot in the Ori IR for IMAD-like operations before instruction selection lowers them to SASS `IMAD` (opcode 1). The pass therefore performs strength reduction exclusively on integer multiply chains.
 
 ### Algorithm
 
-The pass executes in two phases within a single call:
+The pass executes in two loops within a single call to `sub_752E40`:
 
-**Phase 1 -- Trivial multiply elimination.** The first loop walks the instruction list (`*(context+272)` is the list head). For each instruction with masked opcode == 137 (`SM73_FIRST`; IMAD-like):
+**Loop 1 -- Dead multiply elimination and single-use register copy.** Walks the instruction list (`*(context+272)` head). For each opcode-137 instruction:
 
-1. Check if the destination register (operand at +84) has no uses (`*(def+56) == NULL`) AND the source chain is empty (`*src_chain == NULL`). If both hold, delete the instruction via `sub_9253C0` -- it is dead.
-2. Otherwise, for each source operand (iterating from operand count - 1 down to 0):
-   - Check operand type: must be register (`(operand >> 28) & 7 == 1`)
-   - Look up the register definition in the SSA value table (`*(context+88) + 8 * (operand & 0xFFFFFF)`)
-   - Check the definition has no special flags (`*(def+48) & 0x400000022 == 0`)
-   - Check the register type is not 9 (predicate register)
-   - Check the source operand's use chain is empty (single-use) and the def has no other users
-   - If all conditions hold, call `sub_91BF30` to allocate a replacement register with the same type, then patch the operand in place
+1. If the destination's use chain is empty (`*(def+56) == NULL`) and its source chain head is null, the instruction is dead -- delete via `sub_9253C0`.
+2. If the destination's use chain is empty but its source chain head is non-null, convert in place to opcode 130 (`0x82`; internal MOV-like marker) by preserving bits 12-13 and overwriting the base opcode.
+3. Otherwise, iterate source operands from index `(operand_count - 1)` down to 0. For each register operand (type tag 1) whose definition passes all guards -- no special flags (`def+48 & 0x400000022 == 0`), not predicate type (type != 9), single-use, no other def users -- allocate a fresh virtual register via `sub_91BF30` and patch the operand in place (preserve upper 8 bits of the operand DWORD, replace lower 24 bits with new register ID).
 
-**Phase 2 -- Use-def chain traversal.** The second loop walks the instruction list again. For each instruction with operands that have been marked (flag `0x100` at `instruction[6]`, set during initialization):
+**Loop 2 -- Worklist-driven transitive propagation.** Walks the instruction list a second time. For each source operand that has a non-null use chain pointer:
 
-1. For each source operand with a use chain:
-   - Compute the replacement register via `sub_745A80(context, def, a4)`, which:
-     - Allocates a new virtual register via `sub_91BF30` with the same type as the original
-     - Copies the data type field (`+16`) and relevant flags (`0x40`, `0x10`, `0x8` bits of the flags word at `+48`)
-     - Returns the new register ID
-   - If the operand was not yet marked (flag `0x100` bit not set), initialize it and mark as "needs strength reduction"
-   - Traverse the use chain as a worklist: for each user of the replaced register, check if *its* uses also need updating, growing the worklist dynamically (doubling allocation via pool allocator)
-2. Track how many source operands were rewritten (`v72` counter)
-3. After processing all operands of an instruction: if the instruction is still opcode 137 (`SM73_FIRST`; IMAD-like) and certain conditions hold (destination matches source pattern, specific operand bit patterns), either delete it or convert it to opcode 130 / `0x82` (`HSET2` in ROT13; used as an internal MOV-like marker -- actual SASS `MOV` is opcode 19)
+1. If the definition already carries flag `0x100` (byte 1 of `def+48`), call `sub_745A80` to create a replacement register and record the mapping at `def+28`.
+2. If not yet flagged, set `0x100`, then conditionally set additional flag bits based on register type: types 2-3 clear bits 3-4 (`& ~0x18`) while others set bits 3-4 plus 8 (`|= 0x118`).
+3. Push the `(instruction, operand_index)` pair onto the worklist and enter the propagation loop (see below).
+4. After all operands: if the instruction is still opcode 137, either delete it (when operand[1] is a register matching operand[0]'s register ID, operand[2] has no upper modifier bits, and operand[3]'s bits 25-31 are zero) or convert to opcode 130 (when the rewrite count != 1 and the destination has no remaining uses).
 
-The worklist traversal is the key algorithmic insight: when a multiply's result feeds into another multiply, the chain of strength reductions propagates transitively through the def-use graph.
+### Worklist data structure
+
+The propagation loop uses a pool-allocated explicit stack, not recursion:
+
+| Property | Value |
+|---|---|
+| Entry size | 16 bytes: `{instruction_ptr: u64, operand_index: i32, pad: i32}` |
+| Initial capacity | 20 entries (320 bytes allocated via `(*pool_vtable+24)(pool, 320)`) |
+| Growth policy | Double on overflow: `new_cap = 2 * old_cap`; allocate new buffer, `memcpy` old, free old via `(*pool_vtable+32)` |
+| Stack pointer | `v33` (signed int, -1 = empty) |
+| Push | `++v33`; if `v33 >= capacity`, grow; write `{use_instr, use_operand_index}` at `base[16 * v33]` |
+| Pop | Read entry at `base[16 * v33]`; `--v33`; `v41 -= 16` |
+
+The propagation loop body (lines 244-304 of the decompiled source):
+
+1. Pop `(instr, op_idx)` from the stack.
+2. Look up the use-chain list at `*(instr+64) + 8*op_idx`. If null, continue popping.
+3. Read the current operand at `instr + 84 + 8*op_idx`. Look up `def+28` (the replacement ID set by `sub_745A80`). If non-zero, patch the operand's lower 24 bits with the replacement ID.
+4. Increment the "positive operand" counter `v71` when the operand's sign bit (bit 31) is clear.
+5. Null out the use-chain pointer (`*use_chain_slot = 0`) to mark this edge as consumed.
+6. Walk the use-chain linked list: for each user `{next_ptr, user_instr, user_op_idx}`, if `user_instr`'s use-chain at `user_op_idx` is non-null, push `(user_instr, user_op_idx)` onto the stack.
+7. Goto step 1 until the stack is empty (`v33 == -1`).
+
+This design avoids recursion depth limits (multiply chains in unrolled loops can be hundreds deep) and reuses the pool allocator's bump-pointer fast path for the initial 320-byte allocation.
 
 ### Data Flow
 
@@ -74,10 +87,11 @@ sub_C5FB30 (execute wrapper)
         |
         +-- sub_7468B0 / vtable+152: check knob 487 (optimization enabled)
         |
-        +-- Phase 1: Walk instruction list (*(ctx+272))
-        |     +-- For opcode 137 (`SM73_FIRST`; IMAD-like) instructions:
+        +-- Loop 1: Walk instruction list (*(ctx+272))
+        |     +-- For opcode 137 (IMAD-like) instructions only:
         |     |     +-- sub_9253C0: delete dead instructions
         |     |     +-- sub_91BF30: allocate replacement registers
+        |     |     +-- Convert dead-dest IMAD to opcode 130 (MOV-like)
         |     |
         |     +-- Clear flag 0x100 on all basic blocks (*(ctx+104) chain)
         |     +-- Set flag 0x40 at ctx+1385
@@ -86,13 +100,13 @@ sub_C5FB30 (execute wrapper)
         |     +-- Creates context object with vtable off_21DBEF8
         |     +-- Sets up iterator with vtable off_21B4FD0
         |
-        +-- Phase 2: Walk instruction list again
+        +-- Loop 2: Walk instruction list again
         |     +-- For each source operand with use chain:
         |     |     +-- sub_745A80: create replacement register
-        |     |     +-- Worklist propagation through use chain
+        |     |     +-- Worklist stack (16B entries, pool-allocated, doubles on overflow)
+        |     |     +-- Transitive propagation through use chain
         |     |
-        |     +-- Convert trivial IMAD to MOV (opcode 130 / `0x82`, `HSET2`; MOV-like)
-        |     +-- sub_9253C0: delete fully reduced instructions
+        |     +-- Convert trivial IMAD to opcode 130 (MOV-like) or delete
         |
         +-- sub_7B52B0: optional post-reduction scheduling pass
         |     (called if any replacements were made, flag v76)
@@ -186,42 +200,51 @@ The emitter creates opcode 102 (a combined shift-and-add operation) with encoded
 
 ## Integer Division Lowering
 
-Integer division and modulo by non-constant values are lowered to multi-instruction sequences during instruction selection. This is not part of phase 21 but is the most visible strength reduction in ptxas output. The sequences use the classic Barrett reduction / Newton-Raphson reciprocal algorithm.
+Integer division and modulo by non-constant values are lowered to multi-instruction sequences during instruction selection. This is not part of phase 21 but is the most visible strength reduction in ptxas output. There is no hardware integer divider on any NVIDIA GPU architecture, so every integer division must be software-emulated.
 
 ### 32-bit Division -- `sub_1724A20`
 
-**Size:** 28,138 bytes decompiled (the largest function in the 0x1723000-0x17F8000 ISA description range)
-**Called from:** `sub_1727130` (template driver)
-**Instruction count:** ~35 SASS instructions emitted
+**Size:** 28,138 bytes decompiled (957 lines), the largest function in the `0x1723000`--`0x17F8000` ISA description range.
+**Called from:** `sub_1727130` (coordinator B, which allocates 59 virtual registers from `dword_23976E0`).
+**Instruction count:** 55 SASS instructions emitted (verified by counting all 51 `sub_9314F0` + 4 `sub_935130` emission calls in the decompilation).
 
-Algorithm (unsigned 32-bit `a / b`):
-1. Convert divisor to float: `I2F(b)` (opcode 0xD5)
-2. Compute approximate reciprocal via `MUFU.RCP` (opcode 0x3C)
-3. Convert back to integer: `F2I(1/b)` (opcode 0xD6)
-4. Refine via multiply-add: `IMAD(q, b, ...)` (opcode 0x6E)
-5. Correction step with conditional branch: `ISETP` + `BRA` (opcodes 0xC9, 0x5F)
-6. Final adjustment via `IADD` (opcode 0x02)
+The algorithm converts the divisor to FP32, uses `MUFU.RCP` for a ~23-bit reciprocal seed, converts back to integer, then refines via iterated `IMAD` multiply-add chains. Four conditional branches (`BRA`, opcode 0x5F) guard correction paths for overflow and edge cases. The sequence operates in two passes -- the first obtains a coarse quotient estimate, the second uses wide multiplies (`IMAD.WIDE`, opcode 0x6F) to compute a precise remainder and correct the quotient.
 
-Key constants allocated via `sub_91D160`:
-- 23 (float exponent bias for mantissa extraction)
-- 255 (exponent mask)
-- 127 (IEEE 754 single-precision bias)
-- 254 (double-bias for overflow guard)
-- 1, -1 (correction increments)
+Complete instruction mix (verified from decompilation, counting each `sub_9314F0`/`sub_935130` call):
 
-The temporary register pool uses indices 90-126 from a parameter array (`a7[]`), providing 37 dedicated scratch registers for the sequence.
+| SASS Opcode | Internal ID | Count | Role |
+|---|---|---|---|
+| MOV | 0x82 | 10 | Register copies and constant loads |
+| MOV (typed) | 0x0A | 6 | Typed moves with immediate masks |
+| IADD | 0x02 | 8 | Integer add (corrections, exponent unbias) |
+| ISETP | 0xC9 | 8 | Integer set-predicate (overflow/underflow guards) |
+| IMAD | 0x6E | 5 | Integer multiply-add (quotient estimation) |
+| BRA | 0x5F | 4 | Conditional branch (correction paths) |
+| F2I | 0xD6 | 3 | Float-to-integer conversion |
+| IMAD.WIDE | 0x6F | 3 | Wide multiply-add (64-bit intermediate) |
+| FSETP | 0x97 | 3 | Float set-predicate (NaN/overflow) |
+| I2F | 0xD5 | 2 | Integer-to-float conversion |
+| LEA | 0x24 | 2 | Shift-left / load effective address |
+| LOP | 0x93 | 1 | Logic op (carry merge) |
+| **Total** | | **55** | |
+
+Key constants allocated via `sub_91D160`: 23 (mantissa shift), 255 (exponent mask), 127 (IEEE 754 bias), 254 (double-bias overflow guard), 0, 1, -1 (correction), 32 (word-width shift), 0x80000000 (sign bit), 0x7FFFFF (mantissa mask), 0x800000 (implicit-one bit). The temporary register pool spans indices 90--150 of the parameter array (`a7[]`), providing 61 dedicated scratch registers. Branch targets reference label arrays at `a10[21]`--`a10[28]`.
 
 ### 64-bit Division
 
-Two variants handle 64-bit operands:
-- **`sub_1728930`** (16,545 bytes): unsigned 64-bit division. Emits longer sequences with double-width multiply and carry propagation.
-- **`sub_1727AC0`** (13,776 bytes): signed 64-bit division. Parallel structure with sign-handling logic.
+Two variants handle 64-bit operands, both dispatched from `sub_1729B50`:
+- **`sub_1728930`** (16,545 bytes, 634 lines): unsigned 64-bit. Emits 41 SASS instructions including `MUFU.RCP` seed, `PRMT` byte-permute for half-extraction, and `IMAD.WIDE` for double-width products.
+- **`sub_1727AC0`** (13,776 bytes, 538 lines): signed 64-bit. Emits 36 instructions: sign extraction via XOR, inlined unsigned core, conditional negate at output.
 
-Both are called from `sub_1729B50`.
+See [Templates -- Integer Division](../codegen/templates.md#integer-division-lowering) for the full per-phase pseudocode of all three variants.
 
-### Division by Constant
+### Division by Constant (Granlund-Montgomery)
 
-Division by compile-time constant is handled separately during constant folding (in the `GeneralOptimize` bundle passes). The classic magic-number multiplication technique (Granlund-Montgomery) converts `x / C` into `MULHI(x, magic) >> shift`, avoiding the Newton-Raphson sequence entirely. This produces 2-3 instructions instead of ~35.
+Division by compile-time constant is handled during the `GeneralOptimize` bundle passes (not by the Newton-Raphson templates). The Granlund-Montgomery algorithm computes a "magic number" `M` and shift amount `s` at compile time such that for all unsigned `x`: `x / C == MULHI(x, M) >> s`. The magic number satisfies `M = ceil(2^(32+s) / C)`, chosen so the high 32 bits of `x * M` yield the exact quotient after the right-shift. For signed division, an additional add-and-shift fixup handles the off-by-one from truncation toward zero. The output is 2--3 SASS instructions (`IMAD.HI` + `SHR`, sometimes with an intermediate `IADD`) instead of 55.
+
+### FP Division Strength Reduction
+
+Floating-point division undergoes a separate strength reduction during instruction selection (not in phase 21). With `-use_fast_math` or the `.approx` PTX modifier, `div.approx.f32 a, b` is lowered to `MUFU.RCP(b)` followed by `FMUL(a, rcp)` -- 2 instructions with ~23-bit precision. Without fast-math, `div.rn.f32` calls an IEEE-compliant libdevice routine (~15 instructions), and `div.rn.f64` expands to the full DDIV Newton-Raphson template (~100+ instructions). See [Math Intrinsics](../intrinsics/math.md#fast-math-vs-ieee-compliant-summary) for the complete precision table.
 
 ## SASS Cost Model
 
@@ -229,7 +252,7 @@ The profitability of strength reduction on NVIDIA GPUs differs from CPUs in seve
 
 **Integer multiply is cheap.** Modern NVIDIA GPUs (sm_70+) have dedicated integer multiply-add (IMAD) functional units. IMAD has the same throughput as IADD on most architectures -- both are single-cycle operations on the integer ALU. This means the classical "replace multiply with shift+add" transformation is often **not profitable** on GPU. ptxas does not aggressively replace multiplies with shift chains the way CPU compilers do.
 
-**Integer division is expensive.** There is no hardware integer divider. Division must be lowered to the ~35-instruction Newton-Raphson sequence described above. This is why division-by-constant is a high-priority optimization -- replacing 35 instructions with 2-3 is a massive win.
+**Integer division is expensive.** There is no hardware integer divider. Division must be lowered to the 55-instruction Newton-Raphson sequence described above. This is why division-by-constant is a high-priority optimization -- replacing 55 instructions with 2-3 is a massive win.
 
 **Shift operations.** SHL and SHR are single-cycle on the integer ALU, same throughput as IADD and IMAD. However, they use a different functional unit slot on some architectures, which can matter for scheduling.
 
