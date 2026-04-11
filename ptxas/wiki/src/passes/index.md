@@ -178,29 +178,29 @@ The naming convention is consistent: `AdvancedPhase` prefix followed by the pipe
 
 ### Gate Pass Worker Correspondence
 
-All 17 gate passes fall into three categories when activated by a backend override: (A) dispatch to a named worker phase from the static name table, (B) dispatch through an SM backend vtable slot at `ctx+0x630` or `ctx+0x640`, or (C) execute a pipeline progress counter thunk that writes `ctx+1552 = N`. Categories B and C have no separately named worker -- the gate IS the execute body.
+All 17 gate passes fall into three categories when activated by a backend override: (A) dispatch to a named worker phase from the static name table, (B) dispatch through an SM backend vtable slot at `ctx+0x630`, or (C) execute a pipeline progress counter thunk that writes `ctx+1552 = N`. Category A gates have a named worker visible to `DUMPIR`. Category B dispatches through architecture-specific code in the SM backend object. Category C gates' only effect is advancing the pipeline progress counter, which downstream passes read via `*(ctx+1552) > N` guards.
 
-| Gate (Wiki #) | Bin | Category | Worker / Dispatch Target | Evidence |
-|---|--:|---|---|---|
-| `AdvPhBeforeConvUnSup` (4) | 4 | C | `sub_C5F620`: `ctx+1552 = 1` | Pipeline progress thunk (7 bytes) |
-| `AdvPhAfterConvUnSup` (7) | 7 | C | `sub_C5F5A0`: `ctx+1552 = 2` | Pipeline progress thunk (7 bytes) |
-| `AdvPhAfterMidExpansion` (134) | 52 | C | `sub_C5EF80`: `ctx+1552 = 3` | Pipeline progress thunk; marks mid-expansion complete |
-| `AdvPhEarlyEnforceArgs` (54) | 54 | C | `sub_C5EF30`: `ctx+1552 = 4` | Remat mode flag; `sub_A11060` checks `> 4` |
-| `AdvPhLateExpandSync` (135) | 83 | B | `ctx+0x630` vtable dispatch | Brackets `LateExpandSyncInstructions` [84] |
-| `AdvPhLateConvUnSup` (77) | 89 | B | `ctx+0x630` vtable+0x178 | Drives `LateExpansionUnsupportedOps` [90]; see [Late Legalization](late-legalization.md) |
-| `AdvPhBackPropVReg` (82) | 96 | B | Arch-specific backward copy propagation | Next phase [97] writes `ctx+1552 = 9`; see [Copy Prop](copy-prop-cse.md) |
-| `AdvPhPreSched` (97) | 113 | A | `ScheduleInstructions` [114] | `sub_8D0640` (22 KB), string `"ScheduleInstructions"` |
-| `AdvPhAllocReg` (101) | 121 | A | `AllocateRegisters` [122] | String `"Please use -knob DUMPIR=AllocateRegisters"` at `sub_9714E0` |
-| `AdvPhPostExpansion` (104) | 126 | A | `PostExpansion` [127] | Post-RA expansion dispatch |
-| `AdvPhPostSched` (106) | 129 | B | Arch-specific post-scheduling cleanup | Adjacent to `PostSchedule` [133] (W110); `sub_C5E830` writes `ctx+1552 = 14` |
-| `AdvPhPostFixUp` (111) | 134 | A | `PostFixUp` [140] | Target vtable+0x148 dispatch |
-| `AdvScoreboardsAndOpexes` (115) | 138 | B | `sub_A36360` (52 KB) + `sub_A23CF0` (54 KB) | Control word gen + DAG scheduler; O1+ only |
-| `AdvPhSetRegAttr` (89) | 105 | B | Arch-specific register attribute config | Precedes `OriSetRegisterAttr` [106] |
-| `AdvPhAfterSetRegAttr` (92) | 108 | B | Arch-specific post-reg-attr processing | Follows `OriSetRegisterAttr` [106], `OriCalcDependantTex` [107] |
-| `AdvPhOriPhaseEncoding` (127) | 152 | C | `sub_C5E0B0`: `ctx+1552 = 21` | Pipeline progress thunk; marks encoding boundary |
-| *(total: 4 type A, 7 type B, 5 type C = 16 gates)* | | | | |
+| Gate (Wiki #) | Bin | Cat | Execute Fn | Worker / Dispatch Target | Evidence |
+|---|--:|---|---|---|---|
+| `AdvPhBeforeConvUnSup` (4) | 4 | C | `sub_C5F620` (7B) | `ctx+1552 = 1`; marks pre-legalization | P0_03 thunk table; early pipeline boundary |
+| `AdvPhAfterConvUnSup` (7) | 7 | C | `sub_C5F5A0` (7B) | `ctx+1552 = 2`; marks post-ConvUnSup | P0_03 thunk table; `sub_752CF0` checks `<= 3` |
+| `AdvPhEarlyEnforceArgs` (47) | 54 | A | vtable dispatch | `EnforceArgumentRestrictions` [48] | P5_02 correspondence table; W020 "Before EnforceArgumentRestrictions" |
+| `AdvPhAfterMidExpansion` (134) | 52 | C | `sub_C5EF80` (7B) | `ctx+1552 = 3`; marks mid-expansion done | P0_03 thunk table; `sub_752CF0` checks `<= 3` |
+| `AdvPhLateExpandSync` (135) | 83 | B | `0xC5F110` (6B) | `jmp *(*(ctx+0x630))+0x168`; SM backend vtable slot 360 | W029 disasm; brackets `LateExpandSyncInstructions` [84] |
+| `AdvPhLateConvUnSup` (77) | 89 | B | `0xC5EA50` (13B) | `jmp *(*(ctx+0x630))+0x178`; SM backend vtable slot 376 | W033 disasm lines 108--111; drives `LateExpUnSupportedOps` [90] |
+| `AdvPhBackPropVReg` (82) | 96 | B | off_22BE298 | Arch-override vtable dispatch; next phase [83] writes `ctx+1552 = 9` | P1_08 vtable layout; `isNoOp` returns 0 (runtime-overridden to 1) |
+| `AdvPhSetRegAttr` (89) | 105 | B | vtable dispatch | `ctx+0x630` SM backend vtable; precedes `OriSetRegisterAttr` [90] | W020 line 407 "Before OriSetRegisterAttr" |
+| `AdvPhAfterSetRegAttr` (92) | 108 | B | `0xC607A0` (51B) | `*(*(ctx+0x630))+0x110`; guarded by `nullsub_170@0x7D6C80` | W029 disasm line 53; returns NOP when default impl |
+| `AdvPhPreSched` (97) | 113 | A | vtable dispatch | `ScheduleInstructions` [114]; `sub_8D0640` (22 KB) | P5_02 table; string `"ScheduleInstructions"` |
+| `AdvPhAllocReg` (101) | 121 | A | vtable dispatch | `AllocateRegisters` [122] | String `"Please use -knob DUMPIR=AllocateRegisters"` at `sub_9714E0` |
+| `AdvPhPostExpansion` (104) | 126 | A | vtable dispatch | `PostExpansion` [127]; post-RA expansion dispatch | P5_02 table |
+| `AdvPhPostSched` (106) | 129 | C | `sub_C5E830` (7B) | `ctx+1552 = 14`; marks post-scheduling | P0_03 thunk table; adjacent to `PostSchedule` [110] |
+| `AdvPhPostFixUp` (111) | 134 | A | vtable dispatch | `PostFixUp` [140]; `ctx+0x630` vtable+0x148 | P2_14 line 85; target-specific post-fixup |
+| `AdvScoreboardsAndOpexes` (115) | 138 | B | vtable dispatch | `sub_A36360` (52 KB) + `sub_A23CF0` (54 KB); O1+ only | Control word gen + DAG scheduler; -O0 uses phase 139 instead |
+| `AdvPhOriPhaseEncoding` (127) | 152 | C | `sub_C5E0B0` (7B) | `ctx+1552 = 21`; marks encoding boundary | P2_15 disasm; `sub_8C0270` checks `== 19` |
+| *(total: 5 type A, 5 type B, 6 type C = 16 gates)* | | | | | |
 
-**Type A** gates have a named worker phase in the static name table (valid `DUMPIR`/`NamedPhases` target). **Type B** gates dispatch through an architecture vtable slot; the worker code lives in the SM backend object, not in a separate named phase. **Type C** gates are degenerate -- their only effect is advancing the pipeline progress counter at `ctx+1552`, which downstream passes read via `*(ctx+1552) > N` guards.
+**Type A** gates (5) dispatch to a named worker phase in the static name table -- valid `DUMPIR`/`NamedPhases`/`DisablePhases` targets. `AdvPhEarlyEnforceArgs` was reclassified from C to A based on P5_02 evidence: it dispatches to `EnforceArgumentRestrictions` [48], with `LateEnforceArgumentRestrictions` [103] as its late counterpart. **Type B** gates (5) dispatch through an SM backend vtable slot at `ctx+0x630`; the worker code lives in the per-SM backend object. Specific vtable offsets: +0x168 (late sync expansion), +0x178 (late unsupported ops), +0x110 (post-reg-attr, guarded by default-impl check against `nullsub_170@0x7D6C80`). **Type C** gates (6) write `ctx+1552` (pipeline_progress) to values 1--21, forming a monotonically increasing timeline that 20+ downstream guards check. `AdvPhPostSched` was reclassified from B to C based on P0_03 evidence: `sub_C5E830` is a 7-byte thunk writing `ctx+1552 = 14`, identical in structure to the other progress thunks.
 
 See [Optimization Levels](../config/opt-levels.md) for per-gate activation rules.
 
@@ -278,10 +278,10 @@ Program validation, recipe application, FP16 promotion, control flow analysis, u
 | 1 | 1 | `ApplyNvOptRecipes` | Optimization |  | Applies NvOptRecipe transformations (option 391, 440-byte sub-manager) |  |
 | 2 | 2 | `PromoteFP16` | Lowering |  | Promotes FP16 operations to FP32 where hardware lacks native support |  |
 | 3 | 3 | `AnalyzeControlFlow` | Analysis |  | Builds the CFG: identifies loops, dominators, back edges |  |
-| 4 | 4 | `AdvancedPhaseBeforeConvUnSup` | Gate |  | Hook before unsupported-op conversion; no-op by default |  |
+| 4 | 4 | `AdvancedPhaseBeforeConvUnSup` | Gate |  | Type C: `sub_C5F620` writes `ctx+1552 = 1`; pre-legalization boundary |  |
 | 5 | 5 | `ConvertUnsupportedOps` | Lowering |  | Replaces operations not natively supported on the target SM with equivalent sequences | [Late Legalization](late-legalization.md) |
 | 6 | 6 | `SetControlFlowOpLastInBB` | Cleanup |  | Ensures control flow instructions are the final instruction in each basic block |  |
-| 7 | 7 | `AdvancedPhaseAfterConvUnSup` | Gate |  | Hook after unsupported-op conversion; no-op by default |  |
+| 7 | 7 | `AdvancedPhaseAfterConvUnSup` | Gate |  | Type C: `sub_C5F5A0` writes `ctx+1552 = 2`; post-ConvUnSup boundary |  |
 | 8 | 9 | `OriCreateMacroInsts` | Lowering |  | Expands PTX-level macro instructions into Ori instruction sequences |  |
 | 9 | 10 | `ReportInitialRepresentation` | Reporting |  | Dumps the Ori IR for debugging (no-op unless DUMPIR enabled) |  |
 | 10 | 11 | `EarlyOriSimpleLiveDead` | Optimization |  | Quick early dead code elimination pass | [Liveness](liveness.md) |
@@ -335,7 +335,7 @@ GVN-CSE, reassociation, shader constant extraction, CTA/VTG expansion, argument 
 | 44 | 50 | `OptimizeUniformAtomic` | Optimization |  | Converts thread-uniform atomic operations into warp-level reductions |  |
 | 45 | 51 | `MidExpansion` | Lowering |  | Target-dependent mid-level expansion of operations before register allocation | [Late Legalization](late-legalization.md) |
 | 46 | 53 | `GeneralOptimizeMid2` | Optimization |  | Compound pass: copy prop + const fold + algebraic simplify + DCE (mid 2nd) | [GeneralOptimize](general-optimize.md) |
-| 47 | 54 | `AdvancedPhaseEarlyEnforceArgs` | Gate |  | Hook before argument enforcement; no-op by default |  |
+| 47 | 54 | `AdvancedPhaseEarlyEnforceArgs` | Gate |  | Type A: dispatches to `EnforceArgumentRestrictions` [48]; late counterpart `LateEnforceArgumentRestrictions` [103] |  |
 | 48 | 55 | `EnforceArgumentRestrictions` | Lowering |  | Enforces ABI restrictions on function arguments (register classes, alignment) |  |
 | 49 | 56 | `GvnCse` | Optimization | **> 1** | Global value numbering combined with common subexpression elimination | [Copy Prop & CSE](copy-prop-cse.md) |
 | 50 | 58 | `OriReassociateAndCommon` | Optimization |  | Reassociates expressions for better commoning opportunities, then eliminates commons | [Copy Prop & CSE](copy-prop-cse.md) |
@@ -372,7 +372,7 @@ Predication, rematerialization, loop fusion, varying propagation, sync optimizat
 | 74 | 86 | `ConvertToUniformReg` | Optimization |  | Converts qualifying values from general registers (R) to uniform registers (UR) | [Uniform Regs](uniform-regs.md) |
 | 75 | 87 | `LateArchOptimizeFirst` | Optimization |  | Architecture-specific late optimizations (1st pass) |  |
 | 76 | 88 | `UpdateAfterOptimize` | Cleanup |  | Rebuilds IR metadata invalidated by the late optimization group |  |
-| 77 | 89 | `AdvancedPhaseLateConvUnSup` | Gate |  | Hook at the late unsupported-op boundary; no-op by default |  |
+| 77 | 89 | `AdvancedPhaseLateConvUnSup` | Gate |  | Type B: `0xC5EA50` dispatches `ctx+0x630` vtable+0x178 (slot 376); drives `LateExpUnSupportedOps` [90] | [Late Legalization](late-legalization.md) |
 
 ### Stage 5 -- Legalization (Phases 78--96)
 
@@ -384,17 +384,17 @@ Late unsupported-op expansion, backward copy propagation, GMMA fixup, register a
 | 79 | 92 | `OriHoistInvariantsLate2` | Optimization |  | LICM (late 2nd pass) after unsupported-op expansion | [Loop Passes](loop-passes.md) |
 | 80 | 94 | `ExpandJmxComputation` | Lowering |  | Expands JMX (jump with index computation) pseudo-instructions |  |
 | 81 | 95 | `LateArchOptimizeSecond` | Optimization |  | Architecture-specific late optimizations (2nd pass) |  |
-| 82 | 96 | `AdvancedPhaseBackPropVReg` | Gate |  | Hook before backward copy propagation; no-op by default |  |
+| 82 | 96 | `AdvancedPhaseBackPropVReg` | Gate |  | Type B: arch-override vtable dispatch (off_22BE298); next phase [83] writes `ctx+1552 = 9` | [Copy Prop & CSE](copy-prop-cse.md) |
 | 83 | 97 | `OriBackCopyPropagate` | Optimization |  | Backward copy propagation: propagates values backward through move chains | [Copy Prop & CSE](copy-prop-cse.md) |
 | 84 | 99 | `OriPerformLiveDeadFourth` | Analysis |  | Full liveness analysis + DCE (4th instance, pre-legalization cleanup) | [Liveness](liveness.md) |
 | 85 | 100 | `OriPropagateGmma` | Optimization |  | Propagates WGMMA accumulator values through the IR | [GMMA Pipeline](gmma-pipeline.md) |
 | 86 | 101 | `InsertPseudoUseDefForConvUR` | Lowering |  | Inserts pseudo use/def instructions for uniform register conversion bookkeeping | [Uniform Regs](uniform-regs.md) |
 | 87 | 102 | `FixupGmmaSequence` | Lowering |  | Fixes WGMMA instruction sequences for hardware ordering constraints | [GMMA Pipeline](gmma-pipeline.md) |
 | 88 | 104 | `OriHoistInvariantsLate3` | Optimization |  | LICM (late 3rd pass) after GMMA fixup | [Loop Passes](loop-passes.md) |
-| 89 | 105 | `AdvancedPhaseSetRegAttr` | Gate |  | Hook before register attribute setting; no-op by default |  |
+| 89 | 105 | `AdvancedPhaseSetRegAttr` | Gate |  | Type B: `ctx+0x630` SM backend vtable dispatch; precedes `OriSetRegisterAttr` [90] |  |
 | 90 | 106 | `OriSetRegisterAttr` | Analysis |  | Annotates registers with scheduling attributes (latency class, bank assignment) | [Scheduling](../scheduling/overview.md) |
 | 91 | 107 | `OriCalcDependantTex` | Analysis |  | Computes texture instruction dependencies for scheduling |  |
-| 92 | 108 | `AdvancedPhaseAfterSetRegAttr` | Gate |  | Hook after register attribute setting; no-op by default |  |
+| 92 | 108 | `AdvancedPhaseAfterSetRegAttr` | Gate |  | Type B: `0xC607A0` dispatches `ctx+0x630` vtable+0x110; guarded by `nullsub_170@0x7D6C80` |  |
 | 93 | 109 | `LateExpansionUnsupportedOps2` | Lowering |  | Second late unsupported-op expansion (catches ops exposed by GMMA/attr passes) | [Late Legalization](late-legalization.md) |
 | 94 | 110 | `FinalInspectionPass` | Validation |  | Final IR validation gate: catches illegal patterns before irreversible scheduling/RA |  |
 | 95 | 111 | `SetAfterLegalization` | Cleanup | **> 1** | Sets post-legalization flag on the compilation context |  |
@@ -422,7 +422,7 @@ Post-expansion, NOP removal, hot/cold optimization, block placement, scoreboard 
 |---|---|---|---|---|---|---|
 | 104 | 126 | `AdvancedPhasePostExpansion` | Gate |  | Hook after post-RA expansion; when active, dispatches to `PostExpansion` (true table index 127) |  |
 | 105 | 128 | `ApplyPostRegAllocWars` | RegAlloc |  | Fixes write-after-read hazards exposed by register allocation |  |
-| 106 | 129 | `AdvancedPhasePostSched` | Gate |  | Hook after post-scheduling; no-op by default |  |
+| 106 | 129 | `AdvancedPhasePostSched` | Gate |  | Type C: `sub_C5E830` writes `ctx+1552 = 14`; post-scheduling boundary |  |
 | 107 | 130 | `OriRemoveNopCode` | Cleanup |  | Removes NOP instructions and dead code inserted as placeholders |  |
 | 108 | 131 | `OptimizeHotColdInLoop` | Optimization |  | Separates hot and cold paths within loops for cache locality | [Hot/Cold](hot-cold.md) |
 | 109 | 132 | `OptimizeHotColdFlow` | Optimization |  | Separates hot and cold paths at the function level | [Hot/Cold](hot-cold.md) |
@@ -461,7 +461,7 @@ Register map computation, diagnostics, debug output.
 | 124 | 149 | `CalcRegisterMap` | RegAlloc |  | Computes the final physical-to-logical register mapping emitted as EIATTR metadata | [RegAlloc Architecture](../regalloc/overview.md) |
 | 125 | 150 | `UpdateAfterPostRegAlloc` | Cleanup |  | Rebuilds IR metadata after post-RA processing |  |
 | 126 | 151 | `ReportFinalMemoryUsage` | Reporting |  | Prints memory pool consumption summary to stderr |  |
-| 127 | 152 | `AdvancedPhaseOriPhaseEncoding` | Gate |  | Phase encoding hook; no-op by default |  |
+| 127 | 152 | `AdvancedPhaseOriPhaseEncoding` | Gate |  | Type C: `sub_C5E0B0` writes `ctx+1552 = 21`; marks encoding boundary |  |
 | 128 | 154 | `UpdateAfterFormatCodeList` | Cleanup |  | Rebuilds the code list after Mercury encoding reformats instructions |  |
 | 129 | 155 | `DumpNVuCodeText` | Reporting |  | Dumps human-readable SASS text disassembly |  |
 | 130 | 156 | `DumpNVuCodeHex` | Reporting |  | Dumps raw SASS binary as hex |  |
@@ -475,8 +475,8 @@ Late merge operations, late unsupported-op expansion, high-pressure live range s
 |---|---|---|---|---|---|---|
 | 132 | 8 | `UpdateAfterConvertUnsupportedOps` | Cleanup |  | Rebuilds IR metadata after late unsupported-op conversion |  |
 | 133 | 15 | `MergeEquivalentConditionalFlow` | Optimization |  | Merges basic blocks with equivalent conditional flow (tail merging) |  |
-| 134 | 52 | `AdvancedPhaseAfterMidExpansion` | Gate |  | Hook after mid-level expansion; no-op by default |  |
-| 135 | 83 | `AdvancedPhaseLateExpandSyncInstructions` | Gate |  | Hook for late sync instruction expansion; no-op by default |  |
+| 134 | 52 | `AdvancedPhaseAfterMidExpansion` | Gate |  | Type C: `sub_C5EF80` writes `ctx+1552 = 3`; marks mid-expansion done |  |
+| 135 | 83 | `AdvancedPhaseLateExpandSyncInstructions` | Gate |  | Type B: `0xC5F110` dispatches `ctx+0x630` vtable+0x168 (slot 360) | [Sync & Barriers](sync-barriers.md) |
 | 136 | 91 | `LateMergeEquivalentConditionalFlow` | Optimization |  | Second conditional flow merge pass (catches cases exposed by late transforms) |  |
 | 137 | 93 | `LateExpansionUnsupportedOpsMid` | Lowering |  | Mid-late unsupported-op expansion (between the two merge passes) | [Late Legalization](late-legalization.md) |
 | 138 | 98 | `OriSplitHighPressureLiveRanges` | RegAlloc |  | Last-resort live range splitter when register pressure exceeds hardware limits | [RegAlloc Architecture](../regalloc/overview.md) |
