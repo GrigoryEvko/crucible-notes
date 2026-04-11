@@ -58,43 +58,62 @@ Every virtual register in a function is represented by a 160-byte descriptor all
 | +0 | 8 | `ptr` | `next` | Linked list pointer (allocation worklist) |
 | +8 | 4 | `i32` | `id` | Unique register ID within function |
 | +12 | 4 | `i32` | `class_index` | Allocator register class (0--6) |
-| +20 | 1 | `u8` | `flags_byte` | Bit 0x20 = live |
-| +24 | 4 | `i32` | `bb_index` | Basic block of definition |
+| +16 | 4 | -- | (padding) | Cleared by qword write at +12 |
+| +20 | 4 | `i32` | `state_flags` | Per-register state; bit 0x20 = live. Init -1 |
+| +24 | 4 | `i32` | `bb_index` | Basic block of definition. Init -1 |
 | +28 | 4 | `i32` | `epoch` | Epoch counter for liveness tracking |
-| +32 | 8 | `ptr` | `alias_next` | Next aliased register (coalescing chain) |
-| +36 | 8 | `ptr` | `alias_parent` | Coalesced parent pointer |
-| +40 | 4 | `f32` | `spill_cost` | Accumulated spill cost |
+| +32 | 8 | `ptr` | `coalesce_chain` | Next in coalescing chain (aliased register) |
+| +40 | 4 | `f32` | `spill_cost` | Accumulated spill cost. Init -1.0f |
+| +44 | 4 | -- | (padding) | Cleared by qword write at +36 |
 | +48 | 8 | `u64` | `flags` | Multi-purpose flag word (see below) |
 | +56 | 8 | `ptr` | `def_instr` | Defining instruction pointer |
 | +64 | 4 | `i32` | `reg_type` | Register file type enum |
 | +68 | 4 | `i32` | `physical_reg` | Physical register number (-1 = unassigned) |
 | +72 | 1 | `u8` | `size` | 0 = scalar, nonzero = encoded width |
+| +73 | 1 | `u8` | `alloc_status` | Allocator status byte (`*(_BYTE*)(vreg+73)` tested for `& 0x10`) |
+| +74 | 1 | `u8` | `width_class` | Constructor sets to 1 via qword 0x100 at +73 |
 | +76 | 4 | `f32` | `secondary_cost` | Secondary spill cost |
 | +80 | 4 | `i32` | `spill_flag` | 0 = not spilled, 1 = spilled |
-| +97 | 2 | `u16` | `reserved` | |
+| +89 | 1 | `u8` | `operand_mode` | Operand classification byte (switch target in `sub_7E6CA0`) |
+| +97 | 1 | `u8` | `alloc_initialized` | Set to 1 by `sub_19C99B0` after allocator setup |
+| +98 | 1 | `u8` | `alloc_aux` | Auxiliary allocator byte (cleared with +97 via word write) |
+| +99 | 1 | `u8` | `constraint_flags` | Bit 0 = constrained, bit 2 = special constraint |
 | +104 | 8 | `ptr` | `use_chain` | Use chain head (instruction pointer) |
 | +112 | 8 | `ptr` | `def_chain` | Definition chain |
 | +120 | 8 | `ptr` | `regfile_next` | Next in register file linked list |
-| +128 | 8 | `ptr` | `linked_next` | Next in linked-register chain |
-| +136 | 8 | `ptr` | `reserved2` | |
+| +128 | 8 | `ptr` | `intf_edges_out` | Interference edge list head (outgoing neighbors) |
+| +136 | 8 | `ptr` | `intf_edges_in` | Interference edge list head (incoming neighbors) |
 | +144 | 8 | `ptr` | `constraint_list` | Constraint list head for allocator |
-| +152 | 8 | `ptr` | `reserved3` | |
+| +152 | 8 | `ptr` | `split_list` | Live range split point list head |
+
+**Constructor qword write at +20 (overlap explained).** The constructor stores `*(_QWORD*)(v6+20) = -1`, a single 8-byte write that sets bytes +20 through +27 all to 0xFF. This simultaneously initializes two i32 fields: `state_flags` (+20) = -1 (0xFFFFFFFF) and `bb_index` (+24) = -1. The decompiler shows this as one operation; there is no separate "flags_byte = 0" followed by "alias_parent = -1". The earlier wiki entry conflated this write with the `alias_parent` field at +36, which does not exist as a separate pointer -- the coalescing chain is the single 8-byte pointer at +32. The constructor initializes +32..+39 to NULL via the overlapping qword writes at +28 and +36 (`*(_QWORD*)(v6+28) = 0` covers +28..+35; `*(_QWORD*)(v6+36) = 0xBF80000000000000` covers +36..+43, where the low 4 bytes at +36..+39 are 0 completing the NULL pointer, and the high 4 bytes at +40..+43 are 0xBF800000 = -1.0f for `spill_cost`).
+
+**Interference edge lists at +128/+136.** Both store singly-linked list heads of interference edge nodes. Each edge node is `{ptr next; i32 padding; i32 neighbor_id}` (12 bytes). `sub_749200` removes edges by neighbor ID from the +136 list; `sub_749290` removes from both +136 and +128 symmetrically. The two lists represent the two directions of an undirected interference edge.
 
 Initial values set by the constructor (`sub_91BF30`):
 
 ```c
-vreg->next           = NULL;            // +0
-vreg->id             = ctx->reg_count + 1;  // +8, auto-incrementing
-vreg->class_index    = 0;               // +12
-vreg->flags_byte     = 0;               // +20
-vreg->alias_parent   = (ptr)-1;         // +20..27 (qword write)
-vreg->physical_reg   = -1;              // +68 (unassigned)
-vreg->reg_type       = a3;              // +64 (passed as argument)
-vreg->size           = 0;               // +72
-vreg->spill_flag     = 0;               // +80
-vreg->use_chain      = NULL;            // +104
-vreg->def_chain      = NULL;            // +112
-vreg->constraint_list = NULL;           // +144
+vreg->next             = NULL;           // +0:  *(_QWORD*)(v6+0) = 0
+vreg->id               = reg_count + 1;  // +8:  *(_DWORD*)(v6+8) = v7+1
+vreg->class_index      = 0;             // +12: *(_QWORD*)(v6+12) = 0  (also clears +16..+19)
+vreg->state_flags      = -1;            // +20: *(_QWORD*)(v6+20) = -1 (also sets bb_index = -1)
+vreg->bb_index         = -1;            //       (high dword of the same qword write)
+vreg->epoch            = 0;             // +28: *(_QWORD*)(v6+28) = 0  (also clears +32..+35)
+vreg->coalesce_chain   = NULL;          //       (+32..+35 from +28 write; +36..+39 from +36 write)
+vreg->spill_cost       = -1.0f;         // +40: high dword of *(_QWORD*)(v6+36) = 0xBF80000000000000
+vreg->reg_type         = a3;            // +64: *(_DWORD*)(v6+64) = a3
+vreg->physical_reg     = -1;            // +68: *(_DWORD*)(v6+68) = -1
+vreg->size             = 0;             // +72: *(_BYTE*)(v6+72) = 0
+vreg->width_class      = 1;             // +74: *(_QWORD*)(v6+73) = 0x100  (byte at +74 = 1)
+vreg->alloc_initialized = 0;            // +97: *(_WORD*)(v6+97) = 0  (also clears +98)
+vreg->constraint_flags = 0;             // +99: *(_BYTE*)(v6+99) = 0
+vreg->use_chain        = NULL;          // +104
+vreg->def_chain        = NULL;          // +112
+vreg->regfile_next     = NULL;          // +120
+vreg->intf_edges_out   = NULL;          // +128
+vreg->intf_edges_in    = NULL;          // +136
+vreg->constraint_list  = NULL;          // +144
+vreg->split_list       = NULL;          // +152
 ```
 
 For predicate types (a3 == 2 or a3 == 3), the flags word at +48 is initialized to `0x1000` (4096). For all other types, it is initialized to `0x1018` (4120). If the type is 7 (alternate predicate classification), the physical register is initialized to 0 instead of -1.
