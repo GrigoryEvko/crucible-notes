@@ -387,7 +387,7 @@ int64_t GeneralOptimizeLate2(int64_t phase, int64_t ctx) {
 
 #### Per-SM Vtable Resolution (Binary-Verified)
 
-The SM backend vtable is set during `sub_662920` construction, which switches on `codegen_factory >> 12` (ISA generation). Each generation's SM backend object stores a vtable pointer as its first field; the phase dispatchers index into this vtable at the slot offsets above. Slot contents extracted from the binary:
+The SM backend vtable is set during `sub_662920` construction, which switches on `codegen_factory >> 12` (ISA generation). Each generation's SM backend object stores a vtable pointer as its first field; the phase dispatchers index into this vtable at the slot offsets above. The constructor switch has cases 3--9; cases 8 and 9 both call `sub_662220` (which sets vtable `off_21F9158`), but case 9 then overwrites the vtable to `off_21D6860`. There is no case 10+, so all Blackwell targets (sm_100/103/110/120/121) fall into gen 9. Slot contents extracted from the binary:
 
 | SM Target | Gen | SM Backend Vtable | Slot 56 (Phase 46) | Slot 49 (Phase 65) |
 |---|---|---|---|---|
@@ -396,8 +396,9 @@ The SM backend vtable is set during `sub_662920` construction, which switches on
 | sm_75 (Turing) | 7 | `off_229D418` | `sub_8692E0` | `sub_8322E0` |
 | sm_80--88 (Ampere) | 8 | `off_21F9158` | `sub_8692E0` | `sub_8322E0` |
 | sm_89--90 (Ada/Hopper) | 9 | `off_21D6860` | `sub_8692E0` | `sub_8322E0` |
+| sm_100--121 (Blackwell) | 9 | `off_21D6860` | `sub_8692E0` | `sub_8322E0` |
 
-Phase 65 resolves to the same handler (`sub_8322E0`) on every target -- the architecture variation is only in Phase 46. Pascal is the sole generation where Phase 46 hits the no-op sentinel; Volta and later all dispatch to `sub_8692E0`.
+Phase 65 resolves to the same handler (`sub_8322E0`) on every target -- the architecture variation is only in Phase 46. Pascal is the sole generation where Phase 46 hits the no-op sentinel; Volta and later (including all Blackwell variants) dispatch to `sub_8692E0`.
 
 **Phase 46 handler** -- `sub_8692E0` (8 lines, unconditional on all Volta+ targets):
 ```c
@@ -407,9 +408,14 @@ void sub_8692E0(int64_t backend) {
             sub_7446D0(*(int64_t*)(backend + 8));       // run optimization on ctx
 }
 ```
-The gate at `backend+1042` bit 2 provides a per-compilation-unit disable. The two predicates (`sub_7DC030`, `sub_7DC050`) check whether the program contains operations that benefit from mid-pipeline re-optimization; when neither returns true the pass exits without work.
+The gate at `backend+1042` bit 2 provides a per-compilation-unit disable. The two predicates (`sub_7DC030`, `sub_7DC050`) check whether the program contains operations that benefit from mid-pipeline re-optimization (uniform-register operations and shared-memory operations respectively); when neither returns true the pass exits without work. The worker `sub_7446D0` (~250 lines) constructs an iterator context with vtable `off_21DBEF8`, computes a density metric from the SM backend's thread/warp/CTA geometry fields (fields at `backend+1472`/`1508`/`1512`/`1516`), and walks each function's basic blocks applying the GeneralOptimize sub-pass suite.
 
-**Phase 65 handler** -- `sub_8322E0` (~700 lines, gated by function count > 1 in the caller): runs the multi-function `ConvertMemoryToRegisterOrUniform` optimization. It queries knobs 122/123/132/133/136 from the options block, builds a per-function cost model using a 40-byte-stride array, applies a convergence threshold of 0.93 (overridable via knob 136), and replaces eligible memory operations with register or uniform-register references.
+**Phase 65 handler** -- `sub_8322E0` (~320 lines, gated by function count > 1 in the caller): performs **redundant store elimination** on local/shared memory. The algorithm:
+
+1. **Gate cascade.** Checks option 729 (via vtable[72] fast-path), then `ctx+1417` bit 0, then `sub_7DC070` (has shared-memory stores), then option 487 (general optimization enabled), then `a1[203]` for a per-compilation-unit kill-switch.
+2. **Use-def rebuild.** Calls `sub_7E6090(ctx, 0, 0, 0, 0)` to reconstruct use-def chains.
+3. **Classification pass.** Walks the instruction list tracking per-register state in a 4096-entry array (`0x1000` bytes). For each STL (opcode 183) or STS (opcode 288) instruction whose destination references a state-space-5 (constant bank) symbol, classifies the target register into: state 0 = unseen, 1 = single-def pending verification, 2 = multi-def (ineligible), 3 = single-def value matches a prior load (redundant store). The register-class lookup at `*(*(ctx) + 520) + 12 * reg_class_index` determines store profitability using a 5-level cost model (class values 0--4, where class 4 forces skip).
+4. **Deletion pass.** A second walk over the instruction list calls `sub_9253C0(ctx, instr, 1)` to unlink and delete each store whose register state reached 3. `sub_9253C0` updates the block sentinel pointers, clears `ctx+1382` bit 6 (optimization-complete flag), and optionally invokes scheduling fixup at `sub_9251E0` if the scheduling DAG at `ctx+1136` is live.
 
 ## Sub-Pass Decomposition
 
