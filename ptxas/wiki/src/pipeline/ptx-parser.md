@@ -306,24 +306,255 @@ Called 1,141 times from `sub_46E000`. Each call takes an opcode name string and 
 
 At parse time, when the parser reduces an instruction production, it calls `sub_46C690` to look up the instruction name in the hash table built by `sub_46E000`. The lookup returns a descriptor list, and `sub_46C6E0` (6.4 KB, the descriptor matcher) walks the list to find the variant matching the actual operands present in the source.
 
+`sub_46C690` (lines 4--16 of `sub_46C690_0x46c690.c`) is a trivial wrapper: it probes the two opcode hash tables at lexer-state offsets `+2472` and `+2480` with `sub_426D60` and returns the first nonzero bucket's `*(_DWORD*)(entry+8+8)` (the descriptor head pointer). The real work happens in `sub_46C6E0`, which is called directly from the Bison reduction actions with the raw token list.
+
 ### Operand Classification -- 12 Categories
 
-The descriptor matcher (`sub_46C6E0`) classifies each operand into one of 12 categories based on its syntactic form, then matches the category sequence against the registered encoding strings. The 12 categories cover:
+The descriptor matcher classifies every operand into one of twelve category codes **before** walking the candidate descriptor list. The classifier is the leading loop in `sub_46C6E0` (lines 142--249 of `sub_46C6E0_0x46c6e0.c`): it iterates `a8` times (`a8` = parsed operand count), reads each 8-byte operand-token pointer `v14 = *(_DWORD **)(a6 + 8*i)` (note: the source uses `2 * v13` with `v13` stepped by 4, which is a byte stride of 8), and dispatches on `*v14` (the first DWORD, a **lexer token-kind enum**, distinct from the AST-node 6-bit tag of IR-08). The switch writes two parallel slots of the stack array `v133`:
 
-1. General-purpose register (R)
-2. Predicate register (P)
-3. Uniform register (UR)
-4. Uniform predicate (UP)
-5. Integer immediate
-6. Float immediate
-7. Address expression (register + offset)
-8. Label / symbol reference
-9. Special register
-10. Vector operand
-11. Texture / surface / sampler reference
-12. Bitfield / compound modifier
+- `v133[i]` -- the **category code** (0--11), occupying `[0..15]`
+- `v133[i + 16]` -- the operand's **bit width** obtained from `sub_44B390(v14)` (which walks the type token and folds `*= 2/4/8/16/32/64/128` or `*= arraylen` for aggregates)
 
-The classification examines token attributes set by the lexer -- register type bits at `(field >> 28) & 7`, immediate flag (`0x1000000`), uniform flag (`0x6000000`), and operand descriptor fields at instruction offset 84+.
+Category 0 is the implicit default (any token that hits the `default: break;` at line 244 leaves `v133[i]` **unwritten**, so it is effectively the sentinel "unclassified"). That produces twelve distinct states numbered 0--11. Every classification is a pure table lookup on `*v14`; no flag bits, no uniform-register `0x6000000` mask, no `(field>>28)&7` test -- those checks live in the *lexer* (where the token kind itself was assigned), not in the matcher. By the time `sub_46C6E0` sees the operand, the distinction between `R5` vs `UR5` vs `%r5` is already baked into the numeric value of `*v14`.
+
+#### The 12 Category Codes
+
+| Code | Name | Token-kind values (`*v14`) from the switch | Category meaning | Encoding-string role |
+|---|---|---|---|---|
+| **0** | *(unclassified)* | `0x3D..0x3F`, `0x41..0x44`, any kind hitting `default:` (line 244) | Token shapes with no direct classifier entry (aggregate/wildcard wrappers resolved elsewhere) | Matches the "missing slot" sentinel; descriptor slots marked `0` in `v50[9+i]` compare equal to an uninitialized `v133[i]` |
+| **1** | Label / branch target | `0x34`, `0x3A`, `0x3B` (line 219) | Identifier reference that will resolve to a code or data label (`bra L1`, `call foo`) | Paired with AST kind 14 (3) in the inner check at line 1416 (`case 0xE`) |
+| **2** | Integer-data register | `0x38`, `0x39` (line 232) | Signed/unsigned integer register class (`%r1`, `.s32`/`.u32` typed) | Width-compared in `case 0`/`case 2` (lines 1061--1073), integer-only guards via `sub_457AE0`, `sub_457B40`, `sub_457B80` |
+| **3** | Large-width float/packed vector register | `0x0C`, `0x0E`, `0x14`, `0x16` (line 180) | 32-bit+ float register or vector-packed form (`%f1`, `%fd1`, `%r1v4`) | Width 32 or pair used by `case 5: case 3`; triggers `v122 = v74` comparison path |
+| **4** | Small/medium integer or byte register | `0x09..0x0B`, `0x0D`, `0x0F..0x13`, `0x15`, `0x17`, `0x18` (line 173) | Byte/half/word register with signed/unsigned/bit flavor | General register slot; width pulled into `v122`, compared in the `case 0` giant switch |
+| **5** | Type-width / qualifier token | `0x01..0x08` (line 158) | Bare type qualifier (`.s8`..`.b128`, `.pred`) used as a free-standing operand (uncommon; appears in state-space prefixes) | Consumed by `case 0x11` (line 1436) which rejects unless the descriptor bit at `v61+17 & 0x40` permits it |
+| **6** | Predicate register | `0x3C` (line 237) | `%p0`..`%p7` and vote/select predicate operands | Handled by `case 0x14` (line 1453): rejects unless AST kind 15; also the only kind permitted in the `0x170` bit-check fast path of predicate-only instructions (line 411) |
+| **7** | Aggregate / structured constant | `0x40` (line 241) | Composite constant -- initializer list, sub-struct aggregate used by `.param` and texture-array instructions | Width read via `sub_44B390` which recurses through `case 0x42`/`case 0x44` (lines 99--109 of `sub_44B390`) to expand the aggregate |
+| **8** | Constant address-space reference | `0x35`, `0x36` (line 224) | `.const` or `.param` address-space name (`c[0x0]`, `param[0]`) | Appears in memory-op encoding variants; matcher uses descriptor bit `v12+617 & 0x20` (line 324) to pre-filter descriptors that require address-space operands |
+| **9** | Global address-space reference | `0x37` (line 228) | `.global` address operand | Distinct from 8 so that ld/st matchers can accept `.global` without also accepting `.const` |
+| **10** | Typed immediate (integer/bit literal) | `0x19..0x1F`, `0x22`, `0x25..0x30`, `0x33` (line 204) | Integer / hex / binary literal with explicit type suffix | Drives the "immediate allowed" check at `v12+600 & 2` (line 523): if the descriptor forbids immediates, any category-10 operand kills that descriptor via `v13 & 1` at offset 13 |
+| **11** | Typed immediate (float/double literal) | `0x20`, `0x21`, `0x23`, `0x24`, `0x31`, `0x32` (line 213) | Float / double literal (`0f3F800000`, `0d...`) | Same immediate-gate as cat 10, but also participates in the float-type check `v12+611 & 0x30` at line 857 |
+
+The distinction is that the classifier runs *once* per operand in a tight switch, while the matcher then walks a list of candidate descriptors and rejects each one using a series of **descriptor-bit-against-category-code** filters before finally doing a full per-operand check. The 11 explicit categories plus category 0 (default/unclassified) give 12 states, which fits in 4 bits -- but the binary stores them as full `_DWORD`s (`v133` is `_DWORD v133[32]`, line 135) because the compare at line 950 (`if ( v50[9] != v133[0] )`) is a direct int compare against the descriptor's pre-serialized category sequence.
+
+#### Classifier Pseudocode
+
+```c
+// Extracted from sub_46C6E0 lines 142-249. Pure function over token array.
+void classify_operands(
+    const OperandToken *tokens[],  // a6: array of 8-byte token pointers
+    size_t count,                  // a8: number of operands
+    uint32_t cat[32],              // v133[0..15]  -- output category codes
+    uint32_t width[32])            // v133[16..31] -- output bit widths
+{
+    // v133 is zero-initialized only implicitly; default: leaves cat[i] at
+    // its prior (unset) value, which effectively acts as "category 0".
+    for (size_t i = 0; i < count; i++) {
+        const uint32_t *tok = (const uint32_t *)tokens[i];
+        switch (tok[0]) {                       // first DWORD = token-kind enum
+            case 0x01: case 0x02: case 0x03: case 0x04:
+            case 0x05: case 0x06: case 0x07: case 0x08:
+                cat[i] = 5; break;              // type-width / qualifier
+            case 0x09: case 0x0A: case 0x0B: case 0x0D:
+            case 0x0F: case 0x10: case 0x11: case 0x12:
+            case 0x13: case 0x15: case 0x17: case 0x18:
+                cat[i] = 4; break;              // small/medium integer register
+            case 0x0C: case 0x0E: case 0x14: case 0x16:
+                cat[i] = 3; break;              // 32b+ float / packed vector reg
+            case 0x19: case 0x1A: case 0x1B: case 0x1C:
+            case 0x1D: case 0x1E: case 0x1F: case 0x22:
+            case 0x25: case 0x26: case 0x27: case 0x28:
+            case 0x29: case 0x2A: case 0x2B: case 0x2C:
+            case 0x2D: case 0x2E: case 0x2F: case 0x30:
+            case 0x33:
+                cat[i] = 10; break;             // typed integer immediate
+            case 0x20: case 0x21: case 0x23: case 0x24:
+            case 0x31: case 0x32:
+                cat[i] = 11; break;             // typed float immediate
+            case 0x34: case 0x3A: case 0x3B:
+                cat[i] = 1;  break;             // label
+            case 0x35: case 0x36:
+                cat[i] = 8;  break;             // .const / .param addr
+            case 0x37:
+                cat[i] = 9;  break;             // .global addr
+            case 0x38: case 0x39:
+                cat[i] = 2;  break;             // integer data reg
+            case 0x3C:
+                cat[i] = 6;  break;             // predicate reg
+            case 0x40:
+                cat[i] = 7;  break;             // aggregate constant
+            default:
+                /* cat[i] left unset -> effective category 0 */
+                break;
+        }
+        width[i] = bit_width_of(tok);           // sub_44B390
+    }
+}
+```
+
+#### Matcher Pseudocode
+
+Once the category array is built, the matcher (same function, lines 250--1473) walks the descriptor candidates returned by the dual hash lookup against `lexer_state+2472` and `lexer_state+2480`. The candidates are copied into a local `v135[326]` buffer with a running count `v20`, then filtered in **phases**: each phase tests a descriptor bit against a category predicate and *zeroes* non-matching entries in place, decrementing `v22` (the live-candidate count). Surviving descriptors are compared operand-by-operand in a final pass.
+
+```c
+Descriptor *match_instruction(
+    LexerState *lex,        // a1
+    const char *opcode,     // a2  -- opcode name for the hash probe
+    /* ... */,
+    OperandToken *ops[],    // a6
+    int op_count,           // a8
+    uint64_t *diag_lock)    // a10
+{
+    InsnTableCtx *ctx = lex->ctx;         // v12 = *(a1 + 1096)
+    uint32_t cat[32], width[32];
+    classify_operands(ops, op_count, cat, width);
+
+    // --- hash lookup: both tables, linked-list concat into v135 ---
+    Descriptor *list1 = hash_lookup(lex->tbl_2472, opcode);  // sub_426D60
+    Descriptor *list2 = hash_lookup(lex->tbl_2480, opcode);
+    if (!list1 && !list2) {
+        emit_diag(dword_29FB550, diag_lock, parser_state);   // "unknown opcode"
+        return NULL;
+    }
+    Descriptor *cand[326];
+    int n = 0;
+    for (Descriptor *p = list1; p; p = p->next) cand[n++] = p->payload;
+    for (Descriptor *p = list2; p; p = p->next) cand[n++] = p->payload;
+    int live = n;
+
+    // --- Phase 1: opcode-class gate (v12+617 & 0x20) ---
+    // Only descriptors whose byte at +22 has bit 1 set survive (line 348).
+    if (ctx->byte_617 & 0x20) {
+        for (int i = 0; i < n; i++)
+            if (cand[i] && !(cand[i]->flags_22 & 2)) { cand[i] = NULL; --live; }
+        if (!live) { emit_diag(sub_708200(ctx), diag_lock, ...); return NULL; }
+    }
+
+    // --- Phase 2: modifier-bit gates (v12+644, .ftz/.sat/.rnd set) ---
+    uint32_t m = ctx->dword_644;
+    if (m) {                                        // lines 390-505
+        // per-descriptor byte-flag filter selected by (m & 2) and (m & 4),
+        // reading either desc->byte_21 & 1, desc->byte_20 >> 7, or desc->byte_12 & 1
+        // depending on whether ctx->dword_640 == 27 (FMA family special-case).
+        filter_by_modifier_bits(cand, &live, m, ctx);
+        if (!live) { emit_diag(sub_707530(ctx), diag_lock, ...); return NULL; }
+    }
+
+    // --- Phase 3..N: one filter per feature bit in ctx+600..+630 ---
+    // Each phase maps 1:1 to a PTX modifier class. The complete list from
+    // sub_46C6E0 (lines 510-930):
+    //   ctx+628 & 0x40 -> desc->byte_25 & 1    (predicated)
+    //   ctx+600 & 0x02 -> desc->byte_13 & 1    (wide/no-wide)
+    //   ctx+600 & 0x80 -> desc->byte_13 & 0x10 or sub_4CE100()  (vector form)
+    //   ctx+621 & 0x70 -> desc->byte_23 & 0x08 (cache-op variant)
+    //   ctx+630 & 0x02 -> desc->byte_26 & 0x08 (async-copy group)
+    //   ctx+629 & 0x80 -> desc->byte_26 & 0x02 (TMA / tensor-mem)
+    //   ctx+612 & 0x08 -> desc->byte_18 & 0x80 (level qualifier)
+    //   ctx+612 & 0x70 -> desc->byte_19 & 0x01 (scope qualifier)
+    //   ctx+610 & 0x3C0 ->desc->byte_18 & 0x02 (ordering .relaxed/.acq/.rel)
+    //   ctx+612 & 0x04 -> desc->byte_18 & 0x40 (mmu / tex level)
+    //   ctx+620 & 0x38000->desc->byte_23 & 0x10(shared-memory variant)
+    //   ctx+629 & 0x40 -> desc->byte_26 & 0x01 (dst-predicate)
+    //   ctx+627 & 0x30 -> desc->byte_24 & 0x10 when AST kind 13 (reserved)
+    //   ctx+611 & 0x30 -> desc->byte_18 & 0x08 (wmma/mma layout)
+    //   ctx+612 & 0x80 -> desc->byte_19 & 0x02 (half-precision lane)
+    //   ctx+613 & 0x03 -> desc->byte_19 & 0x04 (tensor-core accumulator)
+    // Each phase that drops live to 0 emits a distinct diagnostic
+    // (sub_707610, sub_707CE0, sub_70A180, sub_708860, sub_707B60, sub_70AFA0,
+    //  sub_70B080, sub_70AAD0, sub_70AEF0, sub_70A0D0, sub_707AB0, sub_709860,
+    //  sub_70ACC0, sub_70AB30, sub_70ABA0) so the user sees exactly which
+    //  modifier family disqualified every candidate.
+
+    // --- Phase N+1: operand-category comparison (line 940-1560) ---
+    // v50 = cand[j].  v50[8] = descriptor's op_count.
+    // v50[9..9+op_count-1] = expected category sequence.
+    for (int j = 0; j < n; j++) {
+        Descriptor *d = cand[j];
+        if (!d) continue;
+        if (d->op_count != op_count)      goto fail;
+        if (!op_count)                    break;        // opcode-only match ok
+        if (d->cat[0] != cat[0])          goto fail;    // line 950
+
+        for (int k = 1; k < op_count; k++) {
+            if (ops[k]->kind == 64) continue;           // skip aggregate wrapper
+            // Per-slot detailed check: the descriptor slot at v50[2*k+24]
+            // stores an "operand-check selector" (0..16). sub_1CB0820 dispatches
+            // on it and on cat[k]/width[k], and also consults the type bits via
+            // a big switch at lines 1009-1469:
+            //   0: width compare (with optional %tid/%ntid/%ctaid special-case,
+            //      line 1232: recognizes "%gridid" -> 32->64 widening)
+            //   1: integer-only (via sub_457610 / sub_457490)
+            //   2..7: fp / bit / vector subclass checks
+            //   8,9,A,B: exact-width (8/16/32/64) constraints
+            //   C: %tid / %laneid / %warpid / %smid special-register whitelist
+            //   D,F: width == 2 (i.e. half-word) gate
+            //   E: AST kind == 3 (register-triplet)
+            //   10: integer-or-half via sub_457A00 guard
+            //   11: only accept non-"standard" widths if ptx_major > 1 or (2, m1)
+            //   12: AST kind == 4 required
+            //   13: AST kind == 61 (identifier) or sub_457B60/sub_457B80 pass
+            //   14: AST kind == 15 required (predicate)
+            //   16: AST kind == 4 and sub_44A220()[0] == 0 (symbol undef)
+            // Any failure "goto LABEL_153" zeros cand[j] and --live.
+            if (!check_op_slot(d->slot[k], cat[k], width[k], ops[k]))
+                goto fail;
+            // Also require d->cat[k] == cat[k] (category sequence identity,
+            // line 964).
+            if (d->cat[k+1] != cat[k]) goto fail;
+        }
+        // Bonus suffix-check (lines 1474-1553): d->cat[9] onward is a
+        // 16-slot ragged "trailing-modifier sequence". Ordered pair-scan --
+        // if any (expected, present) disagrees and expected is not zero, drop.
+        if (!trailing_modifier_match(d)) goto fail;
+        continue;
+    fail:
+        cand[j] = NULL;
+        --live;
+    }
+
+    // --- Ambiguity / failure reporting ---
+    if (!live) {
+        // None survived the operand-category pass.
+        emit_diag(dword_29FB630, diag_lock, parser_state); // "no matching variant"
+        return NULL;
+    }
+
+    // If a7 (the expected sm_target_code) is 0 and exactly one candidate
+    // survives, return it -- the first non-null one (line 994: `if (!a7) return *v107;`).
+    // Otherwise, iterate survivors and keep the one whose d->sm_target (at
+    // offset +232) equals a7.  The PTX version guard at (a1+160 > 1 || (a1+164 > 2
+    // && a1+160 == 1)) additionally excludes pre-ISA-1.x descriptors.
+    Descriptor *hit = NULL;
+    for (int j = 0; j < n; j++) {
+        if (!cand[j]) continue;
+        if (cand[j]->sm_target == a7) { hit = cand[j]; break; }
+    }
+    if (hit) return hit;
+
+    // Survivors exist but none match the active SM target.
+    emit_diag(dword_29FB640, diag_lock, parser_state); // "no variant for this sm_XX"
+    return NULL;
+}
+```
+
+#### Ambiguity Resolution
+
+The matcher is **not** a pure "first match wins" scheme. When multiple descriptors survive every filter, disambiguation is by the **SM target code** stored at descriptor byte `+232` (compared against `a7`, the compile target). If `a7 == 0` (target-independent lookup, as during macro expansion), the matcher returns the first surviving descriptor unconditionally (line 994). If more than one descriptor survives **and** more than one has matching `sm_target`, the matcher still returns the first one encountered in list order -- there is no tie-breaking heuristic, so instruction-table registration order (which is deterministic because `sub_46E000` registers in source order) is the silent arbiter. Truly-ambiguous encodings are prevented at table-build time rather than at parse time.
+
+#### Failure Diagnostics
+
+`sub_46C6E0` emits five distinct diagnostic message IDs via `sub_42FBA0(id, lock, parser_state)`:
+
+| ID | Raised at | Meaning |
+|---|---|---|
+| `dword_29FB550` | Line 269, 978 | Opcode hash lookup returned empty (unknown opcode) or final candidate list is empty |
+| `dword_29FAF70` | Line 290 | Modifier-filter dropped all candidates (via `sub_707530`/`sub_709510` which format "illegal modifier combination") |
+| `dword_29FB630` | Line 978 | All candidates died in the operand-category pass; no variant accepts this operand signature |
+| `dword_29FB640` | Line 1572 | Variants exist but none support the requested SM target |
+| (family of `sub_707610`/`sub_70A180`/...) | Per-phase | Modifier-class-specific diagnostics, one per descriptor-bit filter phase |
+
+Each per-phase emitter reports exactly which modifier family cost the match, which is why ptxas produces targeted messages like "`.wide` not valid for this instruction" rather than a generic "operand mismatch".
+
+The classification examines token attributes set by the lexer. The bit tests mentioned in older wiki drafts (`(field >> 28) & 7`, `0x1000000`, `0x6000000`) live in the **lexer** (`sub_44F2A0` and its callees) where the token-kind value is assigned -- the matcher itself only reads the already-encoded token kind at `*v14`.
 
 ## Parser State Object (1,128 bytes)
 
