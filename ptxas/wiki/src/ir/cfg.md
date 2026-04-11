@@ -364,7 +364,7 @@ Block index 0 (`bix0`) is always the function entry block. It is the first eleme
 
 The exit block is the block containing the `EXIT` instruction (opcode 77 = `EXIT` in the ROT13 name table). For functions with multiple exit points, each `EXIT`-containing block is a CFG sink. The RPO computation assigns these the highest RPO numbers. The `SetControlFlowOpLastInBB` phase (phase 6) ensures each `EXIT` is the final instruction in its block.
 
-The `CFG::buildAndAnalyze` function (`sub_BE0690`) checks the terminator opcode at instruction offset +28. Opcodes 4 and 7 (internal control-flow opcodes) receive special treatment during edge construction:
+The `CFG::buildAndAnalyze` function (`sub_BE0690`) checks the terminator opcode at instruction offset +72. Opcodes 4 and 7 (internal control-flow opcodes) receive special treatment during edge construction:
 
 | Opcode | Type | Edge behavior |
 |--------|------|---------------|

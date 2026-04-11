@@ -218,19 +218,22 @@ Showing backedge info:
 
 Instructions are C++ objects with a large vtable, linked into per-basic-block doubly-linked lists. Each instruction carries a unique integer ID, an opcode, and a packed operand array.
 
-### Instruction Layout
+### Instruction Layout (Key Fields)
+
+Each instruction is a 296-byte object (see [instructions.md](instructions.md) for the full 49-field map). The fields most commonly accessed in optimization passes:
 
 | Offset | Type | Field | Description |
 |--------|------|-------|-------------|
-| +8 | varies | `reg_class` | Register class / encoding fields |
+| +0 | `ptr` | `prev` | Previous instruction in BB linked list |
+| +8 | `ptr` | `next` | Next instruction in BB linked list |
 | +16 | `i32` | `id` | Unique instruction ID |
-| +28 | `u32` | `opcode` | SASS opcode (lower 12 bits = base, bits 11-12 = modifier) |
+| +24 | `i32` | `bb_index` | Basic block index this instruction belongs to |
 | +36 | `u32` | `flags` | Flags (bits 19-21 = subtype) |
-| +48 | `u8` | `special_flags` | Volatile/special (bit 5 = volatile) |
-| +72 | `u32` | `opcode_info` | Opcode info (duplicate/extended field, confirmed 50+ sites) |
-| +73 | `u8` | `instr_flags` | Per-instruction flag byte |
+| +48 | `u64` | `flag_bits` | Extended flag bits (bit 5 = volatile, bit 27 = reuse) |
+| +72 | `u32` | `opcode` | Full opcode word (lower 12 bits = base, bits 12-13 = modifier) |
+| +76 | `u32` | `opcode_aux` | Auxiliary opcode data (sub-operation, comparison predicate) |
 | +80 | `u32` | `operand_count` | Number of operands |
-| +84 | `u32[]` | `operands` | Packed operand array (8 bytes per operand) |
+| +84 | `u32[N*2]` | `operands` | Packed operand array (8 bytes per operand slot) |
 | +160 | `ptr` | `enc_buf` | Encoding buffer pointer (post-selection) |
 | +184 | `u32` | `enc_mode` | Encoding mode |
 | +200 | `u64` | `imm_value` | Immediate value |
@@ -302,21 +305,18 @@ bool has_ext_mods   = (word1 & 0xFE000000) != 0;
 
 ### Opcode Constants
 
-Selected confirmed opcodes (from multiple independent functions):
+The opcode value at instruction+72 is a direct index into the 322-entry ROT13 name table at `InstructionInfo+4184`. The authoritative table is extracted in `opcode_names.json`; see [instructions.md](instructions.md#canonical-opcode-reference) for the full reference. Key opcodes:
 
-| Value | Instruction | Notes |
-|-------|-------------|-------|
-| 47 | NOP / barrier | |
-| 72 | CALL / JMP | Function call or jump |
-| 91 | ATOM | Atomic memory operation |
-| 92 | RED | Reduction operation |
-| 95 | STS | Store to shared memory (ROT13: `FGF`). Note: EXIT = opcode 77 (`RKVG`), RET = opcode 72 (`ERG`) |
-| 155 | LD variant | Load instruction |
-| 173 | ST variant | Store instruction |
-| 183 | LD.E | Extended load (`& 0xFFFFCFFF` mask removes modifier bits) |
-| 267 | ST variant | Store (`& 0xFFFFCFFF`) |
-| 268 | LD variant | Load (`& 0xFFFFCFFF`) |
-| 288 | ST.E | Extended store |
+| Index | Mnemonic | Notes |
+|-------|----------|-------|
+| 25 | `NOP` | No-op; scheduling, peephole |
+| 67 | `BRA` | Branch |
+| 71 | `CALL` | Function call |
+| 72 | `RET` | Return |
+| 77 | `EXIT` | Exit thread |
+| 95 | `STS` | Store shared |
+| 102 | `ATOM` | Atomic memory operation |
+| 104 | `RED` | Reduction operation |
 
 The `0xFFFFCFFF` mask (clear bits 12-13) strips modifier/suboperation bits from the opcode, yielding the base instruction class. This pattern appears in `InstructionClassifier`, `MBarrierDetector`, and `OperandLowering` code.
 
