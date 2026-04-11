@@ -1187,7 +1187,7 @@ The scheduler uses two allocator strategies:
 
 ## Per-Instruction Scheduling Metadata (SchedNode)
 
-Each instruction has a pointer at `instr+40` (`sched_slot`) to a separate heap-allocated scheduling metadata block called a SchedNode. The metadata offsets documented throughout the scheduling pages (e.g., `metadata+24`, `metadata+32`, `metadata+108`) are relative to this SchedNode, **not** to the 296-byte Ori instruction object itself. The SchedNode block is at least 112 bytes; all nodes are linked into a singly-linked list at `func+104` (Code Object offset +104), separate from the instruction linked list at `func+272`.
+Each instruction has a pointer at `instr+40` (`sched_slot`) to a separate heap-allocated scheduling metadata block called a SchedNode. The metadata offsets documented throughout the scheduling pages (e.g., `metadata+24`, `metadata+32`, `metadata+108`) are relative to this SchedNode, **not** to the 296-byte Ori instruction object itself. The SchedNode block is at least 240 bytes (the cross-block scheduling loop accesses fields up to +236); all nodes are linked into a singly-linked list at `func+104` (Code Object offset +104), separate from the instruction linked list at `func+272`.
 
 ### SchedNode Layout
 
@@ -1212,11 +1212,15 @@ Each instruction has a pointer at `instr+40` (`sched_slot`) to a separate heap-a
 | +104 | 8 | `i64` | 0 | `extendedState` | Extended scheduling state; reset to 0 between scheduling passes |
 | +108 | 1 | `byte` | -- | `flags` | Primary flag byte: bit 0 = barrier-target, bit 1 = has-dependency-set, bit 2 = fence-early (knob 314), bit 3 = fence-late (knob 313), bit 4 = has-register-operand |
 | +111 | 1 | `byte` | -- | `extendedFlags` | Extended flags: bit 7 = uses expensive register file (triggers barrier tracking update in `sub_8C7120`) |
+| +128 | 8 | `ptr` | 0 | `regionChainNext` | Cross-block region chain next pointer; walked by `sub_68B9C0` to iterate BB-representative nodes; separate from the `func+104` chain at +0 |
+| +144 | 4 | `i32` | -- | `schedRegionIndex` | Index into the 72-byte per-block scheduling record array (`scheduler+184`); also used as FNV-1a hash key in the region dedup cache |
+| +164 | 4 | `i32` | -- | `resourceClassIndex` | Index into the 40-byte resource-class record array; `sub_688DD0` uses `src + 40 * index` to look up the 10-element register-delta vector |
+| +236 | 4 | `i32` | -- | `regionOrderWeight` | Region ordering weight for cross-block BB traversal; sentinels `INT_MIN`/`INT_MAX` mark region boundaries |
 
 ### Relationship to the Instruction Object
 
 ```
- Ori Instruction (296 bytes)              SchedNode (>= 112 bytes)
+ Ori Instruction (296 bytes)              SchedNode (>= 240 bytes)
  +--------------------------+             +---------------------------+
  | +0:  prev (BB list)      |   instr+40  | +0:  nextInList           |
  | +8:  next (BB list)      |---sched_slot-->                         |
@@ -1229,6 +1233,10 @@ Each instruction has a pointer at `instr+40` (`sched_slot`) to a separate heap-a
  |                          |             | +88: maxPredecessorCycle  |
  |                          |             | +92: maxDependencyCycle   |
  |                          |             | +108: flags               |
+ |                          |             | +128: regionChainNext     |
+ |                          |             | +144: schedRegionIndex    |
+ |                          |             | +164: resourceClassIndex  |
+ |                          |             | +236: regionOrderWeight   |
  +--------------------------+             +---------------------------+
 ```
 

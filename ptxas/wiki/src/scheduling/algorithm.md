@@ -954,9 +954,24 @@ Each instruction has a pointer at `instr+40` to a heap-allocated SchedNode block
 | +108 | byte | Flags: bit 0 = barrier target, bit 1 = has dependency, bit 2 = early schedulable, bit 3 = late schedulable, bit 4 = has register operand |
 | +111 | byte | Flags: bit 7 = uses expensive register file |
 
+#### Extended SchedNode Fields (+112 through +236)
+
+The alternative scheduling loop `sub_68B9C0` (46 KB) and the main scheduling driver `sub_688DD0` access fields well beyond +111. These fields are populated during cross-block scheduling setup and consumed by the region-ordering and resource-accounting phases. The total SchedNode allocation is at least 240 bytes, not the 112 documented above.
+
+| Offset | Size | Type | Name | Purpose |
+|---|---|---|---|---|
+| +112 | 16 | -- | (reserved) | Alignment padding / internal state between +111 and +128 |
+| +128 | 8 | `ptr` | `regionChainNext` | Singly-linked next pointer for the cross-block region chain. `sub_68B9C0` walks this chain to iterate over BB-representative nodes: `for (node = head; node; node = *(QWORD*)(node + 128))`. Also written during chain construction: `*(QWORD*)(node + 128) = prev_head`. Separate from the `func+104` metadata chain at +0. |
+| +136 | 8 | -- | (reserved) | Padding between chain pointer and scheduling region index |
+| +144 | 4 | `i32` | `schedRegionIndex` | Index into the 72-byte per-block scheduling record array at `scheduler+184`. Used as `72 * *(int*)(node + 144)` to reach the block's pressure snapshot and resource state. Also serves as the hash key for the FNV-1a region dedup cache in `sub_68B9C0` (hashed with constants `0x811C9DC5` / `16777619`). |
+| +148 | 16 | -- | (reserved) | Gap between region index and resource class |
+| +164 | 4 | `i32` | `resourceClassIndex` | Index into the resource-class record array (40 bytes per entry). `sub_688DD0` computes `src + 40 * *(int*)(node + 164)` to look up the 10-element register-delta vector for pressure subtraction during unscheduling. |
+| +168 | 68 | -- | (reserved) | Internal state for the cross-block scheduling engine. Offsets +168 through +232 are not directly accessed via named patterns in `sub_68B9C0` or `sub_688DD0`. |
+| +236 | 4 | `i32` | `regionOrderWeight` | Region ordering weight used by the cross-block BB traversal. `sub_68B9C0` reads this to decide whether to skip or schedule a region: values near `INT_MIN` (`0x80000001`) or `INT_MAX` (`0x7FFFFFFF`) are sentinels meaning "boundary" (the test `(weight + 0x7FFFFFFF) > 0x7FFFFFFE` catches both). The loop iterates through the region chain comparing consecutive weights to detect region transitions. |
+
 The scheduling loop also reads Ori instruction fields directly (not via the SchedNode): `instr+72` (opcode), `instr+80` (operand count), `instr+84` (operand descriptors).
 
-Sentinel values: bbSlot -1 (unscheduled), latency 0x1869F (99999 = infinity).
+Sentinel values: bbSlot -1 (unscheduled), latency 0x1869F (99999 = infinity), regionOrderWeight `INT_MIN`/`INT_MAX` (boundary marker).
 
 The `dep_count` field at +8 is the key scheduling control: it counts unsatisfied predecessors in the dependency DAG. When a predecessor is scheduled, the engine decrements every successor's `dep_count`. When `dep_count` reaches zero, the instruction becomes ready and is inserted into the ready list.
 
@@ -1427,9 +1442,109 @@ Backend A uses a greedy approach: each scheduling decision is final. Backend C i
 3. Run architecture-specific check via vtable at `*context + 16`
 4. Verify register pressure via `sub_19016E0`
 5. Compute score via `sub_18FDAF0` (returns double)
-6. If score exceeds threshold at `context + 360`, insert into solution hash table at `block + 304`
+6. Apply threshold gate: if score meets the threshold, cache in solution hash table at `block + 304`; otherwise reject into the block's rejection set at `instr + 112`
 
 This allows Backend C to explore multiple scheduling alternatives and commit only the best-scoring solution, a capability Backend A's greedy model lacks.
+
+##### Threshold Gate (`context+360`, `context+368`)
+
+The threshold mechanism controls which evaluated solutions proceed to hash table caching versus immediate rejection. Two fields on the scheduling context govern the gate:
+
+| Offset | Type | Initial | Meaning |
+|---|---|---|---|
+| `context+360` | double | 0.0 | `best_threshold` -- score ceiling for acceptance |
+| `context+368` | byte | 0 | `threshold_active` -- gate enable flag |
+
+`sub_18FEE60` (context constructor) initializes both to zero. The gate logic in `sub_1904B70` is:
+
+```
+function EvaluateAndCache(context, block, ...):           // sub_1904B70, line 820+
+    candidate = *(block + 168)                            // current evaluation node
+    sched_entry = candidate + 16                          // scheduling entry within node
+
+    // --- 4-step validation ---
+    if not ConstraintCheck(context, sched_entry, bound):  return   // sub_19043F0
+    if not VtableArchCheck(context, sched_entry):         return   // *context+16
+    if not PressureCheck(context, sched_entry):           return   // sub_19016E0
+
+    score = ComputeRBTScore(sched_entry)                  // sub_18FDAF0 -> double
+
+    // --- threshold gate ---
+    if !context.threshold_active OR score > context.best_threshold:
+        // REJECT: score too high (lower is better) or gate disabled
+        InsertRejection(candidate.instr + 112, instr_id)  // sub_122F1E0
+        return
+
+    // ACCEPT: score <= threshold, insert into solution hash table
+    SolutionHashInsert(block, candidate, sched_entry)
+```
+
+At initialization, `threshold_active = 0`, so `!0 = true` short-circuits the OR and all candidates are rejected. The threshold is activated externally (via vtable callback or iterative refinement pass) by setting `context+368 = 1` and writing a ceiling score into `context+360`. Once active, only solutions with `score <= best_threshold` pass through to the hash table. Lower scores are better -- the threshold acts as a ceiling that tightens as the scheduler discovers improving solutions.
+
+##### Solution Hash Table (`block+304`)
+
+Each per-block evaluation record (368 bytes, iterated at stride 368 by the driver `sub_1906090`) contains a chained hash table for caching accepted solutions. The hash table layout occupies offsets +304 through +336:
+
+| Offset | Type | Content |
+|---|---|---|
+| `block+304` | ptr | Free-list head for 32-byte hash chain nodes |
+| `block+312` | int32 | `total_entries` -- total distinct keys inserted |
+| `block+316` | int32 | `total_chain_length` -- sum of per-bucket chain lengths |
+| `block+320` | ptr | `buckets` -- pointer to array of 24-byte bucket headers |
+| `block+328` | int64 | `capacity` -- number of bucket slots (power of 2) |
+
+Each 24-byte bucket header contains: `{chain_head (ptr), chain_tail (ptr), chain_count (int32)}`. Chain nodes are 32 bytes: `{next (ptr), key (int32), value (ptr), hash (int32)}`.
+
+The hash function is FNV-1a on the 4-byte instruction scheduling class ID (at `sched_entry+8`):
+
+```
+function FNV1a_32(key):                                   // inline in sub_1904B70
+    h = 0x811C9DC5                                        // FNV offset basis
+    for byte in key[0..3]:
+        h = (h ^ byte) * 16777619                         // 0x01000193 = FNV prime
+    return h
+
+function SolutionHashInsert(block, candidate, sched_entry):
+    key = *(int32*)(sched_entry + 8)                      // scheduling class ID
+    hash = FNV1a_32(key)
+    buckets = *(block + 320)
+    capacity = *(block + 328)
+    if !buckets:
+        InitHashTable(block + 304, initial_size=8)        // sub_18FBD20
+        buckets = *(block + 320)
+        capacity = *(block + 328)
+
+    slot = hash & (capacity - 1)
+    bucket = buckets + 24 * slot
+    node = bucket.chain_head
+
+    // --- probe chain for existing key ---
+    while node:
+        if *(int32*)(node + 8) == key:
+            // HIT: update existing entry's scheduling pointer
+            *(node + 16) = sched_entry
+            return
+        node = *node
+
+    // --- MISS: allocate and insert new 32-byte node ---
+    node = FreeListPop(block + 304)                       // or arena alloc 32 bytes
+    node.next = 0
+    *(int32*)(node + 8) = key
+    *(ptr*)(node + 16) = sched_entry
+    *(int32*)(node + 24) = hash
+    PrependToBucket(bucket, node)
+
+    // --- update statistics ---
+    bucket.chain_count++
+    *(block + 316) += bucket.chain_count                  // total_chain_length
+    *(block + 312)++                                      // total_entries
+
+    // --- rehash if load exceeds threshold ---
+    if total_chain_length > total_entries AND total_entries > capacity / 2:
+        Resize(block + 304, 4 * capacity)                 // sub_18FBD20
+```
+
+The separate function `sub_1906510` (14 KB) provides the same hash-table-plus-BST lookup interface used by the cross-block scheduling path. It combines the FNV-1a hash chain with a red-black tree at `*(context_base + 312)` that orders solutions by a bitvector comparison (`sub_19061B0`), enabling efficient retrieval of the best cached solution across multiple evaluation blocks.
 
 #### Recursive Cost Propagation (sub_18FFD70)
 
