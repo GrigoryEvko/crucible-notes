@@ -81,11 +81,41 @@ Pipeline:       Bracketed by AdvancedPhaseBeforeConvUnSup (4) and AdvancedPhaseA
 
 This is the earliest legalization pass, running at phase 5 before any optimization. It converts operations that are clearly illegal on the target SM into equivalent sequences. The pass always runs (isNoOp = false) and is unconditional -- every compilation executes it.
 
-**Dispatch mechanism.** The execute function (`sub_C60A20`) reads the backend at `context+0x640`, checks whether vtable slot 0 is the default implementation (`sub_661280`), and either calls the overridden method directly or unwraps to the inner object at `backend+0x10` and calls vtable offset `+0x78` (120). This two-level indirection allows library-mode and OptiX-mode compilation to inject custom legalization logic.
+**Two-level dispatch mechanism.** The execute function (`sub_C60A20`, 40 bytes) implements a two-level dispatch through the outer backend at `context+0x640`:
 
-**Flag effect.** After execution, the pass sets bit 0 of `context+1378`, signaling to downstream passes that early legalization has completed. Passes like `OriCreateMacroInsts` (phase 8) check this flag to know whether certain patterns have already been lowered.
+```
+backend = *(ctx + 0x640)            // outer backend object
+vtable  = *backend                   // read vtable pointer
+fn      = vtable[0]                  // slot 0: ConvertUnsupportedOps handler
+if fn != sub_661280:                 // non-default? (library/OptiX override installed)
+    return fn(backend)               // call override directly
+inner   = *(backend + 0x10)          // unwrap to inner SM backend object
+return (*(inner))[0x78](inner)       // tail call inner vtable offset +0x78 (120)
+```
 
-**What gets legalized early:** Operations that cannot survive optimization in their original form. Examples include operations that reference address spaces not supported on the target, certain modifier combinations that have no encoding, and PTX instructions that are syntactically valid but architecturally illegal (e.g., `atom.add.f64` on targets without native FP64 atomics).
+The outer backend at `ctx+0x640` wraps the SM backend at `ctx+0x630`. In the default (standalone ptxas) path, vtable slot 0 points to `sub_661280` and the dispatch falls through to the inner object's vtable at offset `+0x78`. The inner object provides the SM-specific legalization implementation, which varies by SM generation:
+
+| SM Backend | Vtable | SM Targets | Object Size |
+|---|---|---|---|
+| `sub_A99A30` | `off_21B4A50` | sm_50 (Maxwell), sm_60 (Pascal) | 1712B |
+| `sub_A99A30` | `off_21D82B0` | sm_70 (Volta) | 1912B |
+| `sub_ACDE20` | `off_21B2D30` | sm_80 (Ampere) | 1928B |
+| `sub_662220` | `off_21C0C68` | sm_89 (Ada) | 1992B |
+| `sub_662220` | `off_21D6860` | sm_90+ (Hopper/Blackwell) | 1992B |
+
+**Library-mode and OptiX-mode overrides.** When ptxas operates as a library (invoked via the `nvptxcompiler` API) or compiles OptiX IR (controlled by the `"cpf_optx"` option), the compilation context constructor replaces the outer backend's vtable slot 0 with a custom handler. This intercepts ConvertUnsupportedOps before it reaches the SM backend, allowing the host tool to suppress certain legalizations (e.g., keeping operations in a form the host runtime can handle) or inject additional ones (e.g., OptiX-specific address space lowering). When the override is installed, the comparison against `sub_661280` fails and the override is called directly -- the inner SM backend vtable at `+0x78` is never reached unless the override explicitly delegates to it.
+
+**Flag effect.** After execution, the secondary vtable method at offset `[40]` (`sub_C5F5D0`) sets bit 0 of `context+1378`, signaling to downstream passes that early legalization has completed. Passes like `OriCreateMacroInsts` (phase 8) check this flag to know whether certain patterns have already been lowered.
+
+**What gets legalized early.** Operations that cannot survive optimization in their original form. The legality decision is driven by a 60,416-entry lookup table at VA `0x22FEE00` (241,664 bytes). Each entry pair encodes `(op_key, action)` where `op_key` packs the Ori opcode and type/modifier bits into a 16-bit value, and `action` is either a function pointer to the expansion handler (values in the `0x118xxxx` range) or the flag `0x08000000` meaning "unconditionally illegal, requires special validation." Of the 60,416 entries, 19,086 (31.6%) are nonzero -- the rest represent operations that are legal on all targets without conversion. Concrete categories:
+
+- **Integer division/remainder** (`div.s64`, `rem.u64`, `div.s16`, `rem.u16`): no single-instruction SASS encoding on any SM. Always expanded via `__cuda_sm20_div_*` / `__cuda_sm20_rem_*` library functions.
+- **FP64 atomics** (`atom.add.f64`): native hardware only on sm_60+; expanded on sm_50.
+- **DP2A/DP4A** (`dp2a`, `dp4a`): native on sm_61+; emulated via `__cuda_sm62_dp2a` / `__cuda_sm62_dp4a` on sm_62 (Xavier).
+- **Unsupported address spaces**: operations referencing state spaces not available on the target (e.g., `.shared::cluster` on pre-sm_90).
+- **Modifier combinations without encoding**: certain rounding-mode + type combinations that the SASS ISA cannot represent (e.g., some FP16 rounding modes on sm_50/sm_60).
+- **Pre-Volta barrier ops**: `barrier.arrive`, `barrier.red.*` with explicit barrier ID and thread count require emulation via the 397 `__cuda_sm70_barrier_*` library functions on sm_50/sm_60.
+- **TCGen05 guardrails** (sm_100+): bounds check, alignment, and allocation granularity traps inserted as `__cuda_sm10x_tcgen05_guardrail_trap_*` calls.
 
 ### Phase 45 -- MidExpansion
 
