@@ -56,13 +56,69 @@ The outer loop iterates basic blocks via an array of 72-byte records (`v112 = 72
 
 ### Mode Selection
 
-The mode byte stored at `*(DWORD*)(scheduler+60)` controls which priority weight set the engine uses:
+The mode byte stored at `*(DWORD*)(scheduler+60)` (byte offset 240 from the scheduler object base) controls which priority weight set the engine uses. The orchestrator `sub_8D0640` writes this field before each call to the unified engine:
 
 | Mode | Value | Callback | Objective |
 |---|---|---|---|
 | ReduceReg | 1 | 0x39 | Minimize register pressure. Prioritizes instructions that release registers (last-use operands). |
 | ILP/Latency | 0 | 0x49 | Maximize instruction-level parallelism. Prioritizes critical-path and long-latency instructions. |
 | DynBatch | 2 | 0x41 | Batch-aware tensor scheduling. Groups GMMA/WGMMA operations for warpgroup cooperation. |
+
+The engine reads the mode byte at the top of each basic block's scheduling loop to select the per-BB knob gate and the vtable pipeline group (`sub_688DD0` line 281):
+
+```
+function decode_mode(sched):                                    // sub_688DD0, line 281
+    mode = *(DWORD*)(sched + 240)                               // scheduler DWORD index 60
+
+    switch mode:
+      case 1:   // ReduceReg -------------------------------------------------
+        // Per-BB gate: skip this BB if knob "ScheduleInstructionsReduceReg" says so
+        skip = CheckKnob(ctx, "ScheduleInstructionsReduceReg", bb)
+        if skip: goto next_bb
+
+        // Weight configuration (set by orchestrator before engine entry):
+        //   sched+484 = 1        (ReduceReg flag -- enables budget reduction in sub_8C9320)
+        //   sched+176 = 1        (pressure-tracking active)
+        //   sched+296 = RegToHWUnits(knob 776, default 250)   // GPR budget target
+        //   sched+300 = RegToHWUnits(knob 778, default 300)   // GPR budget ceiling
+        //   sched+292 = 1        (budget validity flag)
+        //   sched+412 = knob 761 (default 3; or 6/12 for sm_90 with GMMA present)
+        //   sched+416 = knob 762 (default -1 = auto-compute)
+        // Priority effect: bit 4 (pressure overflow) dominates the comparison;
+        //   sub_8C9320 applies the budget reduction formula -(target/8 + 3) regs
+        // Vtable: pipeline_group_B (indices 31-53 at 0x8E14xx-0x8E15xx)
+
+      case 0:   // ILP/Latency -----------------------------------------------
+        // No per-BB knob gate (always executes every BB)
+
+        // Weight configuration:
+        //   sched+484 = 0        (ReduceReg flag off)
+        //   sched+176 = 0        (no pressure reduction in priority function)
+        //   sched+324 = budget from sub_8CEE80: min(archLimit, 0.95 * maxRegs)
+        //   sched+316 = context+616 (latency-depth scaling factor)
+        //   sched+404 = min(context+508, 16), or knob 805 (queue depth cap)
+        //   sched+408 = knob 741 (default 3)
+        // Priority effect: bits 1 (critical-path) and 2 (stall-free) dominate;
+        //   latency hiding is the primary scheduling objective
+        // Vtable: pipeline_group_A (indices 8-30 at 0x8E0Exx-0x8E10xx)
+
+      case 2:   // DynBatch ---------------------------------------------------
+        // Per-BB gate: skip this BB if knob "ScheduleInstructionsDynBatch" says so
+        //   Default: enabled unless knob 742 overrides, or ctx+1419 bit 5 is set
+        skip = CheckKnob(ctx, "ScheduleInstructionsDynBatch", bb)
+        if skip: goto next_bb
+
+        // Weight configuration (inherits ILP budget, adds batch context):
+        //   sched+176 = 1        (pressure-tracking re-enabled)
+        //   Batch context: 184-byte struct from sub_8BF890 with 8*numBBs array
+        //   sched+404 = knob 806 (capped at 16), or 6 if context+507 is set
+        //   sched+408 = knob 741 (default 3)
+        // Priority effect: bits 5 (hot-cold / batch grouping) and 3 (same-BB)
+        //   emphasize keeping GMMA instruction groups together
+        // Vtable: pipeline_group_C (indices 54-76 at 0x8E22xx-0x8E24xx)
+```
+
+The three vtable pipeline groups contain 23 method pointers each (one per scheduling callback slot). All groups share the same 8 core methods (indices 0-7) but substitute specialized implementations for the 23 pipeline-specific hooks that control ready-list insertion order, candidate comparison, and post-scheduling resource updates. The callback index passed to the engine (0x39=57, 0x41=65, 0x49=73 decimal) selects the entry point within the core methods, indexing into the vtable at `off_21DBEF8`.
 
 The engine uses vtable dispatch at `*(a1+40)` and `*(a1+48)` for polymorphic pre/post scheduling hooks. This allows each mode to inject custom behavior at scheduling boundaries without modifying the core loop.
 
@@ -165,7 +221,7 @@ The function scans the full ready list in a single pass (not limited by knob 770
 | `sub_8C7720` | 20 KB | Red-black tree operations for instruction reordering within BB. Maintains a balanced BST of scheduling candidates for O(log N) insertion, removal, and priority update. |
 | `sub_8C7120` | -- | Barrier tracking state update. |
 | `sub_693BC0` | -- | Memory space classification and latency query. |
-| `sub_6818D0` | -- | Register count to hardware-aligned unit conversion. |
+| `sub_6818D0` | 24 B | `RegToHWUnits`: conditionally doubles register count when `LivenessCountRegComp` (bit 3 of `scheduling_mode_flags`) is set (sm\_70+). |
 
 ### Priority Function Internals
 
@@ -194,6 +250,60 @@ Before priority evaluation begins, the function iterates the entire ready list (
 
 The pre-scan also maintains a depth-threshold table: an array of up to 32 barrier-target instruction pointers sorted by their latency counter (`metadata+28`). This table is scanned to compute `scheduler+464` (depth threshold) and `scheduler+380` (latency cutoff), which control when the critical-path bit activates.
 
+**Depth-threshold derivation algorithm.** On the first invocation per BB (`scheduler+464 == -1`), the state initializes to `scheduler+464 = 0, scheduler+480 = 0, scheduler+420 = 0`. If the BB has active barriers (`scheduler+396 > 0`) and barrier-target instructions exist in the ready list, the threshold computation runs:
+
+```
+// Phase 1a: collect barrier-target pointers (during pre-scan)
+barrier_table[32]     // local stack array, max 32 entries
+barrier_table_count = 0
+barrier_ready_count = 0   // subset with metadata+32 < INT_MAX (non-stalling)
+for each instr in ready_list:
+    if metadata+108 & 1:                          // barrier-target flag
+        if barrier_table_count <= 31:
+            barrier_table[barrier_table_count] = instr
+        barrier_table_count++
+        barrier_ready_count += (metadata+32 < 0x80000000)
+
+// Phase 1b: derive threshold from sorted latency scan
+scheduler[424] = barrier_table_count              // total barrier targets
+scheduler[428] = barrier_ready_count              // non-stalling subset
+old_threshold  = scheduler[464]
+
+if old_threshold < barrier_table_count:
+    cap       = min(barrier_table_count, 32)
+    lower     = -1                                // latency lower bound
+    accum     = 0                                 // accumulated instruction count
+
+    do:
+        // --- find next distinct latency above lower bound ---
+        next_lat  = 999999
+        tie_count = 0
+        for i in 0 .. cap-1:
+            lat = metadata+28 of barrier_table[i]
+            if lat > lower and lat <= next_lat:
+                tie_count++
+                if lat != next_lat:
+                    next_lat  = lat               // new minimum found
+                    tie_count = 1
+
+        accum += tie_count                        // add this tier
+        lower  = next_lat                         // advance lower bound
+        if barrier_table_count == 0:
+            lower = 999999                        // sentinel for empty list
+    while old_threshold > accum
+
+    scheduler[376] = 0                            // threshold is now valid
+    scheduler[464] = accum                        // depth threshold
+    scheduler[380] = lower                        // latency cutoff
+
+// Fallback (at LABEL_87): if scheduler[376]==1 and barrier_count >= scheduler[464],
+// set scheduler[464]=barrier_count, scheduler[380]=max_barrier_latency
+```
+
+The inner loop is equivalent to an iterative selection of the next-smallest distinct latency tier from an unsorted array. Each tier groups barrier targets that share the same latency counter value. The `do...while old_threshold > accum` condition ensures the threshold absorbs at least `old_threshold` instructions before stopping. On subsequent invocations within the same BB, `scheduler+464 >= 0` and the computation is skipped.
+
+During Phase 2 candidate evaluation, the critical-path bit activates when `scheduler+464 > 0 && scheduler+464 <= barrier_count` -- i.e., enough barrier targets are ready to meet the depth threshold.
+
 #### Phase 2: Register Budget Prologue
 
 Before the main loop, the function computes two register budgets from `scheduler+432` (target register count):
@@ -218,6 +328,24 @@ queue_depth  = 4                                  // default
 if knob_770_active:
     queue_depth = knob_770_value                  // override
 ```
+
+The `RegToHWUnits` conversion (`sub_6818D0`) maps a virtual register count to hardware allocation units:
+
+```
+fn RegToHWUnits(scheduler, count):
+    flags = *(*(scheduler + 8) + 1376)        // scheduling_mode_flags
+    if flags & 0x08:                           // bit 3: LivenessCountRegComp
+        return 2 * count                       // doubled for HW-aligned tracking
+    else:
+        return count                           // 1:1 passthrough
+```
+
+Bit 3 of `scheduling_mode_flags` (knob 419 `LivenessCountRegComp`) is set on sm\_70+ targets, where the hardware allocates registers in 8-register blocks (256 registers/warp). When set, the scheduler internally tracks pressure in 4-register half-units, so `RegToHWUnits` doubles to produce full 8-register hardware units. On sm\_30--sm\_60, registers allocate in 2-register blocks (64 registers/warp) and the scheduler tracks in native units, so the function is an identity.
+
+| SM Generation | HW Alloc Granularity | Bit 3 | Multiplier | Effect |
+|---|---|---|---|---|
+| sm\_30 -- sm\_60 | 2 regs/thread (64/warp) | 0 | 1x | count passes through unchanged |
+| sm\_70+ | 8 regs/thread (256/warp) | 1 | 2x | count doubled to match 8-reg blocks |
 
 `budget_hw` sets the threshold for bit 4 (pressure overflow). `reduced_hw` provides a tighter threshold used in the critical-path assessment. `queue_depth` (knob 770) limits how many candidates receive full priority evaluation; the rest use cached values from initial insertion.
 
@@ -292,6 +420,30 @@ else:
 
 When pressure_overflow = 1, the candidate wins the comparison regardless of other bits -- it is the scheduler's mechanism for emergency register pressure relief. In the packed byte's bit 4 position, the hot-cold flag occupies the slot. The pressure overflow signal operates at a higher level: it can force the candidate to win even when its packed priority byte is lower.
 
+**Per-register-class overflow limits.** The four register classes each have a fixed overflow threshold. Three are hardcoded constants; the fourth is dynamic:
+
+| Class | Scheduler field | Limit | Comparison | Source |
+|---|---|---|---|---|
+| 0 -- GPR | `scheduler[72]` | `budget_hw` | `current + delta > budget_hw` | `RegToHWUnits(scheduler, budget_base)`, dynamic per-kernel |
+| 1 -- Predicate | `scheduler[68]` | 7 | `current + delta > 7` | Hardcoded in `sub_8C9320` line 1044 |
+| 2 -- Address | `scheduler[56]` | 7 | `current + delta > 7` | Hardcoded in `sub_8C9320` line 1045 |
+| 3 -- UGP | `scheduler[60]` | `sm_backend[624]` | `current + delta >= limit` | Read from target descriptor at runtime |
+
+Note the asymmetry: classes 0--2 use strict greater-than (`>`), while class 3 uses greater-than-or-equal (`>=`). In the decompiled source, the class 3 check is `v81 = (target_desc[624] < delta + current)` at line 1086 -- strict less-than from the limit's perspective, which is `>=` from the sum's perspective. This means UGP overflow triggers one count sooner than the other classes relative to their limits.
+
+**`sm_backend[624]` values by architecture.** The UGP limit is a field on the SM backend object, accessed via `*(*(context+1584) + 624)`. Its value tracks the architectural uniform register file size:
+
+| Architecture | SM | `sm_backend[624]` | UR file | Notes |
+|---|---|---|---|---|
+| Volta | sm_70--sm_73 | 0 | absent | No UR hardware; UGP class check is vacuous |
+| Turing | sm_75 | 63 | UR0--UR62 | First architecture with dedicated UR file |
+| Ampere | sm_80--sm_87 | 63 | UR0--UR62 | Same UR geometry as Turing |
+| Ada | sm_89 | 63 | UR0--UR62 | Same UR geometry |
+| Hopper | sm_90 | 63 | UR0--UR62 | Same UR geometry |
+| Blackwell | sm_100+ | 63 | UR0--UR62 | Same UR geometry |
+
+All sm_75+ architectures share a 63-entry UR file (UR63 = URZ, the zero register). On pre-Turing targets, `sm_backend[624]` is 0, making the `>= 0` comparison always true for any nonzero UGP delta -- but this is moot because no UGP registers are allocated on those targets, so `ugp_delta` is always 0.
+
 **Bit 3 -- Same-BB preference.** Output parameter from `sub_8C7290`:
 
 ```
@@ -344,6 +496,60 @@ else:
 
 In spill mode (active when `scheduler+420 > 0`), the critical-path bit is set for nearly all instructions to maximize scheduling throughput. In normal mode, it activates when the number of barrier-target instructions in the ready list meets or exceeds the depth threshold computed during the pre-scan, indicating that the scheduler is processing a latency-critical dependency chain.
 
+**Spill mode state machine.** The scheduler tracks three fields that together form a NORMAL/SPILL/NORMAL state machine: `spillModeCountdown` (+420), `spillSequenceCounter` (+396), and `depthThreshold` (+464). The post-processing phase of each `SelectBestInstruction` call updates them:
+
+```
+// === ENTER SPILL MODE (computed_countdown) ===
+// Triggered when winner is a barrier-target AND countdown == 0.
+// Pre-scan populates: barrierTargetCount (+424), readyBarrierCount (+428).
+if winner_is_barrier_target AND spillModeCountdown == 0:
+    N = barrierTargetCount                     // from pre-scan of ready list
+    T = depthThreshold
+    if N <= 3 OR readyBarrierCount > 0:        // few targets or some ready
+        if barrierReadyCount <= T OR allPressureInThreshold:
+            countdown = barrierReadyCount       // use ready-list count
+        else:
+            if totalPressure + winnerGPR > budget:
+                countdown = depthThreshold      // fall back to threshold
+            else:
+                countdown = barrierReadyCount
+    else:                                       // many targets, none ready
+        if N > T AND partialPressure != totalPressure
+                  AND totalPressure + winnerGPR > budget:
+            countdown = depthThreshold          // pressure-driven threshold
+        // else: countdown stays at N (default from barrierTargetCount)
+
+// === TICK (every scheduling step while in spill mode) ===
+spillModeCountdown -= 1
+spillSequenceCounter -= 1
+if winner.earliestCycle >= 0:                   // valid producer cycle
+    stallFreeCounter -= 1                       // decrement stall-free tracker
+    if stallFreeCounter == 0
+       AND spillSequenceCounter > 0
+       AND spillSequenceCounter < maxStallCycles
+       AND spillModeCountdown > 1:
+        goto exit_spill                         // stall-free supply exhausted
+
+// === EXIT SPILL MODE (two paths) ===
+// Path A -- barrier-target winner while countdown active:
+//   normal tick above, countdown naturally reaches 0.
+if spillModeCountdown == 0:
+    depthThreshold = -1                         // sentinel: force re-scan
+
+// Path B -- non-barrier winner forces immediate exit:
+if !winner_is_barrier_target AND spillModeCountdown > 0:
+    pack winner's saved priority bits
+    if !(same_bb_bit | stall_free_bit)          // no scheduling pressure
+       AND slotContention + slotBase + winnerCycle <= slotLimit:
+        skip exit                               // low-pressure, keep going
+    else:
+exit_spill:
+        spillModeCountdown = 0
+        depthThreshold = -1                     // force full re-init next call
+```
+
+The sentinel value `depthThreshold = -1` causes the next `SelectBestInstruction` invocation to zero all three counters and re-run the barrier-target pre-scan, which recomputes the depth threshold from the updated ready list. This ensures the transition back to NORMAL mode uses fresh pressure data rather than stale values from the previous spill episode.
+
 **Bit 0 -- Tiebreaker (barrier-target).** Read directly from instruction metadata:
 
 ```
@@ -373,7 +579,38 @@ The `& 0xNN` masks ensure each bit occupies exactly one position. In the initial
 
 The comparison between the current candidate and the running best is NOT a simple integer comparison of the packed bytes. The function performs a multi-stage refinement:
 
-1. **Resource vector comparison**: If knob-gated architecture checks pass (SM index > 5 at `context+1704`), a 4-tuple lexicographic comparison of per-register-class resource vectors occurs first. The four classes are compared in order: GPR delta, predicate delta, address delta, UGP delta. The first class that differs determines the winner.
+1. **Resource vector comparison**: A 4-tuple lexicographic comparison of per-register-class pressure scores. The four classes are compared in fixed order; the first class whose scores differ determines the winner. Lower score wins (ascending), so the instruction that increases register pressure less is preferred:
+
+```
+// Per-class pressure scores (computed earlier for each candidate):
+//
+//   score_GPR  = max(0, gpr_delta + scheduler[64] - 1)
+//                  +1 when gpr_delta > 0 AND cumulative_gpr > 0
+//                       AND instr_latency < max_predecessor_cycle
+//                  +1 for control ops (opcode 97) when gpr_sum > 0
+//   score_pred = pred_delta + scheduler[68]        // live predicates
+//                  zeroed when total <= 6, or == 7 with pred_delta <= 0
+//   score_addr = addr_delta + scheduler[56]        // live address regs
+//                  zeroed when total <= 6, or == 7 with addr_delta <= 0
+//   score_UGP  = ugp_delta  + scheduler[60]        // live uniform GPRs
+//                  zeroed when total < UGP_limit (= context[1584]+624)
+//
+// Best-so-far scores stored as: best_GPR, best_pred, best_addr, best_UGP
+// (all initialized to -1 before the first candidate is evaluated)
+
+// 4-tuple lexicographic compare  (sub_8C9320 lines 1375-1386)
+classes = [GPR, pred, addr, UGP]              // fixed priority order
+for class in classes:
+    if current.score[class] != best.score[class]:
+        if current.score[class] < best.score[class]:
+            current_wins = true               // ascending: lower is better
+        else:
+            current_wins = false
+        goto apply_result                     // first difference decides
+// all four equal -> fall through to priority byte XOR scan
+```
+
+The direction is uniformly **ascending** across all four classes: the candidate with the smaller pressure score wins. A score of 0 means the instruction does not push the register class above its safe occupancy threshold; larger values indicate increasing pressure overflow. By checking GPR first, the scheduler prioritizes the widest register file -- the class with the greatest spill cost impact.
 
 2. **Priority byte XOR scan**: When resource vectors are equal, the function XORs the current and best packed bytes and checks differing bits in this order:
    - Bit 4 (0x10) -- pressure: winner has bit 4 set (higher pressure need)
@@ -386,8 +623,8 @@ The comparison between the current candidate and the running best is NOT a simpl
    - Barrier group index (`v213` vs `v253`)
    - Latency counter comparison (`v223` vs `v248`)
    - Bit 7 yield-related (only when shared-memory count > 0)
-   - Contention score (a derived value incorporating register overflow penalty: `contention + 2 * RegToHWUnits(pressure_delta) - pressure_sum_sign`)
-   - Slot manager cycles (scheduling cost estimate from `sub_682490`)
+   - Contention score (see formula below)
+   - Slot manager cycles (`max(ComputeCost(instr) - cycleCursor, 0)`; see Slot Manager Object Layout)
    - Earliest available cycle (`metadata+32`)
    - Dependency cycle (`metadata+92`)
    - Latest deadline (`metadata+40`)
@@ -396,6 +633,40 @@ The comparison between the current candidate and the running best is NOT a simpl
 4. **Positional fallback**: When all heuristic comparisons are tied, the instruction with the higher BB slot (`metadata+24`) wins, preserving original program order.
 
 The multi-stage comparison explains why the packed byte uses non-obvious bit ordering. Bits 4, 6, 1, 2, 5 are checked before bit 7 in the refinement path, even though bit 7 is the MSB. The packed byte enables fast ready-list insertion sort (integer comparison), while the full comparison function provides nuanced selection for the actual scheduling decision.
+
+##### Contention Score Formula
+
+The contention score (`v216` in decompiled source) quantifies how much scheduling a given instruction would increase register pressure beyond the budget. It has two cases:
+
+```
+live_after_gpr = scheduler[72] + gpr_delta       // projected GPR live count
+pressure_sum   = pos_pressure_sum + gpr_delta     // v289 + v283
+
+if reduced_hw >= live_after_gpr:
+    // instruction stays within budget -- no pressure penalty
+    contention_score = base_contention
+
+else:
+    // instruction would exceed the reduced budget
+    pressure_delta  = live_after_gpr - reduced_hw
+    pressure_sign   = (pressure_sum <= 0) ? 1 : 0
+
+    contention_score = base_contention
+                     + 2 * RegHalfUnits(scheduler, pressure_delta)
+                     - pressure_sign
+```
+
+| Term | Decompiled | Meaning |
+|---|---|---|
+| `base_contention` | `v72` | Slot-manager scheduling cost. For barrier-target instructions, clamped to `max(v72, slotLimit - slotBase)`. For non-barrier non-stalling instructions, 0 or 1 from vtable dispatch; +100 on the fallthrough path when no stall-free candidates exist. |
+| `gpr_delta` | `v283` | GPR register delta from `sub_8C7290` resource vector (element 5 of the 10-element vector). Positive means the instruction defines more registers than it consumes. |
+| `pos_pressure_sum` | `v289` | Accumulated positive GPR deltas from prior scheduling steps (element 9 of `v284` resource vector). Tracks cumulative register pressure increase within the BB. |
+| `reduced_hw` | `v222` | Tighter register budget in HW units: `RegToHWUnits(budget_base - budget_base/16)`, or `RegToHWUnits(budget_base - knob_760)` when knob 760 is active. Approximately 6% below the full budget. |
+| `live_after_gpr` | `v191` | Projected GPR live count after scheduling this instruction: `scheduler[72] + gpr_delta`. |
+| `pressure_sign` | `v212` | Boolean: 1 when `pressure_sum <= 0` (net pressure is non-positive across ready candidates including this one), 0 otherwise. Provides a one-unit discount when pressure is already declining. |
+| `RegHalfUnits` | `sub_6818B0` | Inverse of `RegToHWUnits` (`sub_6818D0`): when `LivenessCountRegComp` (bit 3 of scheduling mode flags) is set, returns `ceil(count / 2)`; otherwise identity. Converts register-count overshoot into HW-aligned penalty units. |
+
+The guard condition `reduced_hw < live_after_gpr` activates the penalty term only when scheduling this instruction would push projected GPR pressure above the reduced budget. The `2 *` multiplier doubles the penalty to make register overflow a strong differentiator in the tiebreaker cascade. The `- pressure_sign` term subtracts 1 when the overall pressure direction is downward, slightly favoring instructions that are part of a declining pressure trend even if they individually overshoot the budget.
 
 #### Scheduler State Updates
 
@@ -420,12 +691,12 @@ else:
         scheduler[464] = -1                   // reset depth threshold
 
 // Slot manager update (when winner has positive scheduling cost)
-if best_cost > 0 AND slotManager[76] > 0:
-    if slotManager[140]:
-        slotManager[28] += slotManager[44]    // advance base
-        slotManager[76] = 0                   // reset count
-        slotManager[80] = NULL                // reset anchor
-    best.metadata[28] = sub_682490(...)       // recompute latency
+if best_cost > 0 AND slotManager.pendingCount > 0:
+    if slotManager.advanceReady:
+        slotManager.cycleCursor += slotManager.cycleStride  // advance epoch
+        slotManager.pendingCount = 0                        // reset batch
+        slotManager.anchorInstr  = NULL                     // clear anchor
+    best.metadata[28] = slotManager.vtable.ComputeCost(slotManager, winner, 0)
 
 // Hot-cold counter update
 if hot_cold_active AND winner is cold (sub_A9CF90 returns true):
@@ -435,6 +706,32 @@ elif hot_flag was set for winner:
 ```
 
 The function returns the best instruction pointer and writes the second-best to `*a2` for lookahead scheduling.
+
+#### Slot Manager Object Layout
+
+The slot manager is a polymorphic C++ object at `scheduler+16`. It tracks scheduling-cycle budgets so the priority function can detect when issuing an instruction would exceed the per-BB throughput limit. Binary evidence: `sub_8C9320` lines 911--945, 1113, 1119, 1789, 1832--1848; `sub_688DD0` lines 631--638.
+
+| Offset | Size | Name | Purpose |
+|--------|------|------|---------|
+| +0 | 8 | `vtable*` | Per-architecture method table pointer |
+| +28 | 4 | `cycleCursor` | Cumulative issue-cycle position. Incremented by 1 per instruction via vtable[12] (`sub_680080`) and by `cycleStride` on epoch advance |
+| +44 | 4 | `cycleStride` | Epoch advance delta added to `cycleCursor` when `advanceReady` fires |
+| +52 | 4 | `cycleLimit` | Upper throughput bound; budget test is `cycleCursor + contention + cycleStride <= cycleLimit` |
+| +76 | 4 | `pendingCount` | Instructions scheduled since last epoch advance; guards the advance path |
+| +80 | 8 | `anchorInstr` | Instruction that anchored the current epoch; cleared on advance |
+| +140 | 1 | `advanceReady` | Boolean; when set the next winner-update advances `cycleCursor` by `cycleStride` |
+
+Three vtable slots drive the slot manager:
+
+| Vtable idx | Offset | Signature | Role |
+|---|---|---|---|
+| 12 | +96 | `IncrementCount(slotMgr, instr)` | Per-instruction: `++cycleCursor`. Fast path `sub_680080` inlines to a single `++DWORD[7]` |
+| 36 | +288 | `ComputeCost(slotMgr, instr, 0) -> int` | Returns the cycle cost for `instr`. Contention = `max(cost - cycleCursor, 0)` |
+| 43 | +344 | `CompareAnchors(slotMgr, anchor, cand, 0) -> bool` | When `cycleCursor >= cost` and `anchorInstr != NULL`, tests whether `cand` shares the anchor's slot. Result XOR'd to 0/1 contention |
+
+The contention value feeds into two budget checks: (1) spill-mode critical-path test `cycleStride + contention + cycleCursor <= cycleLimit` (line 1119), and (2) second-best spill-exit comparison at line 1789. A third guard at line 1113 checks `cycleCursor + 100 >= minReadyCycle` to suppress non-barrier candidates when the cursor is near the earliest ready cycle.
+
+During the scheduling loop (`sub_688DD0` line 637--638), each non-BB-boundary instruction triggers `sub_682490(scheduler, instr, prev, 1)`. That function walks register operands, matches source/destination conflicts against the live-register bitmask, and returns a register-port-conflict cost written to `metadata+28`. This becomes `best_cost` (`v233`) that gates the slot manager advance.
 
 ## Dependency DAG Construction
 
@@ -474,6 +771,58 @@ Operand analysis is performed by `sub_894290` (27 KB), which processes 16-bit op
 | 0--7 | Dependency type |
 
 Memory dependencies are conservative: all stores are ordered before subsequent loads to the same memory space. The scheduler does not perform alias analysis -- it relies on the memory space classification from `sub_693BC0` to determine whether two operations might conflict.
+
+#### Pair-check pruning via last-writer tracking
+
+Despite the "for each pair" description above, the implementation does **not** perform an all-pairs O(N^2) comparison. `sub_68A690` (BuildDependencies) maintains two RB-trees keyed by register ID -- one for the last **writer** of each register, one for the last **reader** set -- and uses bitvector-indexed iteration to touch only the registers an instruction actually references.
+
+```
+function BuildDependencies(reg_tree, bb, slot_index):
+    // reg_tree:     RB-tree  { reg_id -> last_writer_instr }
+    // reader_tree:  RB-tree  { reg_id -> last_reader_instr_list }
+    // Both are reset at BB entry, so they track only intra-BB state.
+
+    def_bv  = BitVector.alloc(slot_index)      // sub_BDBEF0: defs bitvector
+    use_bv  = BitVector.alloc(slot_index)       // sub_BDBF80: uses bitvector
+
+    for instr in bb.instructions (program order):
+        // --- extract operand bitvectors from instr+84 descriptors ---
+        ProcessOperands(instr, &def_bv, &use_bv)   // sub_6A78F0
+
+        // --- RAW edges: for each source register, find its last writer ---
+        for reg_id in use_bv.set_bits():            // O(K_use) iterations
+            writer = reg_tree.lookup(reg_id)        // O(log R) RB-tree search
+            if writer != NULL:
+                AddEdge(writer, instr, RAW, reg_id) // sub_6848D0
+
+        // --- WAR edges: for each dest register, find its last reader ---
+        for reg_id in def_bv.set_bits():            // O(K_def) iterations
+            reader = reader_tree.lookup(reg_id)     // O(log R)
+            if reader != NULL:
+                AddEdge(reader, instr, WAR, reg_id) // sub_684970
+
+            // --- WAW edges: dest-vs-previous-dest ---
+            prev_writer = reg_tree.lookup(reg_id)   // O(log R)
+            if prev_writer != NULL:
+                AddEdge(prev_writer, instr, WAW, reg_id) // sub_684920
+
+            reg_tree.insert_or_update(reg_id, instr)   // update last writer
+            reader_tree.remove(reg_id)                  // clear stale readers
+
+        // --- update reader set for sources ---
+        for reg_id in use_bv.set_bits():
+            reader_tree.insert(reg_id, instr)
+
+        def_bv.clear()
+        use_bv.clear()
+
+    // Complexity: O(N * K * log R) where:
+    //   N = instructions in BB, K = avg operands per instruction (~3),
+    //   R = distinct live registers (bounded by register file size, typ. <256).
+    // For a BB of 500 instructions this is ~4,500 tree ops instead of 125,000 pairs.
+```
+
+The `SBPruning` knob (DAG knobs region, ROT13-encoded) enables or disables this pruning strategy. When disabled, the fallback path in `sub_8D9930` reverts to the straightforward pair-wise scan. A separate `AdvancedSBPruningBudget` knob caps the total number of edges that can be created per BB, providing an additional compile-time safety valve for pathological cases.
 
 ### Supplementary Dependency Builders
 
@@ -624,7 +973,58 @@ For each instruction in the scheduled order:
 | Barrier assignment | Which of the 6 available barriers this instruction writes/waits on | 0--5, or none |
 | Scoreboard deps | Read/write dependency tracking for the hardware scoreboard | Bitmask |
 
-The function contains architecture-variant switches for different barrier models (sm_70 vs sm_80 vs sm_90+). It manages a 32-entry barrier table for tracking active barrier assignments.
+### Per-Architecture Barrier Model
+
+The barrier model parameters come from per-SM data tables indexed through the architecture backend. The scheduling context reaches the SM profile via `ctx+8 -> backend[198] -> profile`, carrying the scoreboard config table at profile+54216 and a secondary gate at +54224. Two polymorphic vtable variants (A/B, differing in 2 of 65 slots at `0x21DAA00`/`0x21DAC10`) are selected by the profile's scoreboard model byte.
+
+Per-SM parameters from [`per_sm_scoreboard_configs.json`](../../../extracted/per_sm_scoreboard_configs.json) and [`per_sm_dependency_rules.json`](../../../extracted/per_sm_dependency_rules.json):
+
+| SM | Gen | HW barriers | SB entries | Max triplets | Dep rules | Max stall | Max barrier lat |
+|---|---|---|---|---|---|---|---|
+| sm_60 | Pascal | 6 | -- | -- | 619 | 39 | 56 |
+| sm_70 | Volta | 6 | -- | -- | 619 | 39 | 56 |
+| sm_75 | Turing | 6 | -- | -- | 619 | 39 | 56 |
+| sm_80 | Ampere | 6 | 31 | 1 | 256 | 39 | 56 |
+| sm_86 | Ampere | 6 | 31 | 1 | 256 | 39 | 56 |
+| sm_89 | Ada | 6 | 32 | 1 | 256 | 39 | 56 |
+| sm_90 | Hopper | 6 | 31 | 1 | 256 | 39 | 56 |
+| sm_90a | Hopper | 6 | 32 | 1 | 256 | 39 | 56 |
+| sm_100 | Blackwell | 6 | 75 | 6 | 430 | 39 | 56 |
+| sm_103 | Blackwell | 6 | 46 | 1 | 430 | 39 | 56 |
+
+All architectures share 6 HW barriers and raw max stall of 39 (capped to 15 by the 4-bit field or knob 805). Yield threshold is arch-dependent (typically 4 on sm_80+). The key differentiator is the scoreboard config table: sm_80--90a use 31--32 single-triplet entries (`{scoreboard_id, threshold, mask}`), while sm_100 uses 75 entries with up to 6 triplets, reflecting Blackwell's richer scoreboard hierarchy.
+
+### Dispatch Pseudocode for `sub_8D7760`
+
+```
+function EmitScoreboardRecords(sched_ctx, instr, dep_table, out):
+    backend = *(sched_ctx + 8)
+    profile = *(backend[198] + 16)              // SM profile
+    sb_mode = *(u8*)(profile + 54216)           // scoreboard model selector
+    sb_gate = *(u32*)(profile + 54224)          // secondary gate
+
+    vtable  = **(backend + 1584)                // polymorphic vtable A or B
+    // vtable+1816: isScoredInstruction(obj, instr) -> bool
+    // vtable+1432: isBarrierExempt(obj, instr)     -> bool
+
+    opcode = instr[18] & 0xFFFFCFFF            // mask modifier bits 12-13
+    if opcode in {0x55/*TEX*/, 0x6D/*TLD4*/}:
+        group = lookup_texture_tables(instr, backend)
+    elif opcode == 0x5B: group = 6             // BSSY
+    elif opcode == 0x5C: group = 5             // BSYNC
+    elif opcode == 0xB7 && has_ld_flag: group = 13
+    else: group = sub_7DFFC0(instr, backend)   // resource class query
+
+    // 330-entry jump table at 0x21D9EF8 (guard: opcode <= 0x149)
+    // 206 specialized handlers, 124 default-path
+    emit_records_via_sub_8C25B0(group, instr, out)
+
+    if backend[1368] & 0x20:                   // extended scoreboard
+        if vtable[+1816](*(backend+1584), instr):
+            emit_extended_record(out, instr)
+```
+
+The function manages a 32-entry barrier table for tracking active assignments.
 
 See [Scoreboards & Barriers](scoreboards.md) for the control word encoding format.
 
