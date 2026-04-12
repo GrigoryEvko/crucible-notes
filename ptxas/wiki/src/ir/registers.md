@@ -617,7 +617,7 @@ The register class name table at `off_21D2400` is a pointer array indexed by the
 | Address | Size | Function | Description |
 |---------|------|----------|-------------|
 | `sub_91BF30` | 99 lines | `createVirtualRegister` | Allocates 160-byte VR descriptor, initializes fields, appends to register file array |
-| `sub_9446D0` | 29 lines | `shouldSkipRegister` | Returns true for indices 41--44, 39 (architectural specials); checks CSSA phi and exclusion set |
+| `sub_9446D0` | 28 lines | `shouldSkipSpecialVReg` | Unconditionally returns 1 (skip) for vreg-table slot indices 39 and 41--44; otherwise checks CSSA phi and exclusion set. **Parameter `a3` is a vreg SLOT index into `register_file+88`, NOT a register class enum.** See "Special VReg Sentinels" subsection below |
 | `sub_A4B8F0` | 248B | `emitInstrRegStats` | Emits `"instr/R-regs: %d instructions, %d R-regs"` |
 | `sub_A4B9F0` | 774B | `emitUndefinedRegWarning` | Walks operands backward, formats `"Referencing undefined register: %s%d"` |
 | `sub_A60B60` | 4560B | `collectRegisterStats` | Enumerates ~25 register sub-classes via vtable getters |
@@ -638,6 +638,48 @@ The register class name table at `off_21D2400` is a pointer array indexed by the
 | `sub_B28E10` | -- | `isRegOperand` | Predicate: is this a register operand? |
 | `sub_B28E20` | -- | `isPredOperand` | Predicate: is this a predicate operand? |
 | `sub_B28E90` | -- | `isUReg` | Predicate: is this a uniform register? |
+
+### Special VReg Sentinels (Slots 38--45)
+
+The register factory `sub_7D82E0` (called from `sub_BE3B90`, the `InstructionInfo` constructor) pre-creates 46 reserved vreg slots with IDs 1..46 at per-function init time, via a `for i=0; i!=46; ++i` loop that calls `sub_91BF30(v20, a2, reg_type)` with per-index reg_type arguments. These slots sit at the front of the per-function vreg pointer array at `register_file+88` and act as typed "zero/identity" sentinels — one per register class — that any operand can freely reference without participating in coalescing, spill-cost accounting, or liveness.
+
+`sub_9446D0` implements the exclusion check:
+
+```c
+// sub_9446D0: is vreg-slot a3 exempt from spill/coalesce/liveness bookkeeping?
+char shouldSkipSpecialVReg(alloc, instr, vreg_slot_id) {
+    if ((unsigned)(vreg_slot_id - 41) <= 3 || vreg_slot_id == 39)
+        return 1;  // slot 39 or 41..44: always skip
+    // otherwise run the real check (CSSA phi + exclusion-set probe)
+    vreg = register_file[vreg_slot_id];
+    opcode = instr->opcode;
+    masked = (opcode >> 8 & 0xCF) << 8 | (opcode & 0xFF);
+    if (masked == 195 && vreg->reg_type == 9)
+        return vreg->coalesce_chain == 0;
+    return exclusionSet_contains(alloc+360, vreg->id);
+}
+```
+
+Slot assignments from `sub_7D82E0` per-index `reg_type` argument to `sub_91BF30`:
+
+| Slot | `reg_type` | Class | Identity | Evidence (sub_7D82E0) |
+|------|------------|-------|----------|------------------------|
+| 39 | 6 | Tensor/Acc | Tensor-accumulator zero sentinel | line 41 default branch |
+| 41 | 6 | Tensor/Acc | Secondary tensor/acc zero sentinel | line 41 default branch |
+| 42 | 5 | P / UP | **PT** (always-true predicate) | line 48: `sub_91BF30(v20, a2, 5)` |
+| 43 | 3 | UR | **URZ** (uniform-register zero) | line 39: `sub_91BF30(v20, a2, 3)` |
+| 44 | 2 | R (GPR alt) | **RZ** (32-bit zero) | line 33: `sub_91BF30(v20, a2, 2)` |
+
+After the creation loop (`LABEL_9`, lines 68--106), `sub_7D82E0` post-processes slots 38, 39, 41, 42, 43, 44, and 45 — clearing `vreg+72` (physical_size byte) to mark them as "no physical slot consumed" and normalizing pair-mode bits 20--21 at `vreg+48`. Slots 38 and 45 get the same post-processing treatment but are **not** in `sub_9446D0`'s skip set, suggesting they are "architectural but spillable" sentinels (e.g., a barrier-class zero or condition-code register) while 39/41--44 are the five unspillable typed zero/true constants.
+
+Callers of `sub_9446D0` (all in spill/liveness/coalesce passes):
+- `sub_94F150` lines 200, 242, 323 — spill codegen
+- `sub_94E620` lines 238, 583 — spill cost accumulator
+- `sub_962840` line 309 — coalescing candidate filter
+
+Each caller passes `operand_word & 0xFFFFFF`, which decodes as the source VReg ID. The "skip" verdict means: do not build liveness for this operand, do not count spill cost against it, do not coalesce it. This is because spilling or coalescing a typed zero/true sentinel would destroy the compile-time constant that downstream SASS encoding depends on.
+
+**Prior wiki correction:** an earlier version of `regalloc/overview.md` and the `W034_regalloc_overview_report.txt` notes claimed "indices 41--44 = PT, P0--P3 (architectural predicates)". That is wrong in two ways: (1) the five slots span four different register classes (Tensor/P/UR/GPR), not four predicates; (2) P0--P3 are regular user predicates in class 5 that go through normal allocation — they are not pre-allocated sentinels.
 
 ## Opcode Register Class Table
 
@@ -749,9 +791,51 @@ The output descriptor `a3` is a 4-DWORD (16-byte) structure:
 | `a3[3]` | Auxiliary flags (bit 1 = texture scope, bit 29 = special) |
 | `a3[4]` | Operand count override (set to 12 for KILL/extended mem ops) |
 
+### Bitfield Packer Helpers — Dual Dispatch by Field ID
+
+`sub_6575D0` writes field-encoded bits into the descriptor via **two sibling packer helpers**, dispatched by a single contiguous field-ID namespace **0..341**. The choice of helper is determined solely by the field ID; each helper owns a disjoint ID range and (mostly) a disjoint target DWORD within the descriptor:
+
+| Helper | Field IDs | Target DWORD | Calls in `sub_6575D0` | Encoding style |
+|--------|-----------|--------------|----------------------|----------------|
+| `sub_A2FF00` (272 lines) | **0..90** | `a3[1]` (except case 82 → byte at `a3+5`, and cases 27/81/85..87 → low byte of `a3+4`) | 28 | **Raw packer** — caller passes the already-encoded bit pattern, helper masks/ORs it into the target bit range |
+| `sub_917A60` (1680 lines) | **91..341** | `a3[2]` mostly (fields 316, 325, 336, 340 → `a3[1]`; case 341 → byte at `a3+8`) | 112 | **LUT packer** — caller passes a logical token, helper maps it through per-field LUTs (e.g. `dword_21DEB80[]`) to produce the on-wire bit pattern |
+
+Unified signature:
+```c
+u16 sub_A2FF00(u32 *desc, int field_id, int value);   // 0  <= field_id <= 90
+u16 sub_917A60(u32 *desc, int field_id, unsigned value); // 91 <= field_id <= 341
+```
+
+The split is purely a field-ID partition, not a semantic one: both helpers obey the same `descriptor_word = (descriptor_word & ~mask) | ((value_maybe_remapped) << shift)` pattern. `sub_A2FF00`'s cases are mostly one-liner bit inserts (`w = (w & ~0x1u) | (value & 0x1)`), while `sub_917A60`'s cases are mostly equality tests against a canonical value (`(value == 646) << 16`) or indexed LUT reads (`lut[value - base]`) — explaining the 6× size difference.
+
+This reconciles and supersedes the older "`sub_7B9B80` bitfield packer" reference. `sub_A2FF00` and `sub_917A60` are the two authoritative bitfield-field setters called from `sub_6575D0`; any prior wiki references to `sub_B29220` / `sub_B292C0` as packers were wrong (those VAs do not host packer code).
+
+### Outer Switch Dispatch — Category Assignment Patterns
+
+The 168-case outer switch in `sub_6575D0` on `*(instr->info + 8)` (the Ori opcode at `+8` of the 16-byte opcode-info record) splits into four structural case shapes. Every case arm produces one category ID into `a3[0]` (the SASS encoding-template index) and optionally writes zero or more fields via the two packers above:
+
+1. **Bare category assignment** (~30 opcodes). Arm body is `*a3 = <K>; return;` with no packer calls. Examples: `0xA9` S2UR → 507; `0xAA` BRXU → 508; `0xC0` REDUX → 476; `0x77` SHFL → 528; `0x70` SULD → 458.
+
+2. **Category + single tail field** (~60 opcodes). Arm body is `*a3 = <K>; sub_917A60(a3, <field>, <value>); return;` via a shared `LABEL_26` tail. Examples: `0x54` TLD → 423 with field 109 = 50; `0x58` TXQ → 461 with conditional field 318; `0xE0` MAPA → 500 with field 199=1.
+
+3. **Category + inline multi-field packer** (~50 opcodes). The case writes 3-12 packer calls inline before returning. Largest examples: `0xAF..0xB2` BMMA cluster (~10 packer calls per arm) and `0xB8..0xBE` IMMA cluster (~7 packer calls). The packer sequence encodes the operand-class triple, MMA shape bits, and optional sparsity/modifier flags.
+
+4. **Delegation to specialized builders** (~28 opcodes). The arm does `*a3 = <K>; sub_65xxxx(a2, a3); return;` — the category ID is set locally but the bitfield packing is outsourced to a subclass builder. The 9 builders are already documented in the Sub-handler Functions table above.
+
+Opcode groupings observed in the switch (same arm handles multiple opcode values):
+- `0x05/0x06` (SGXT/LOP3) — share field-240/241 packer, category 490+1
+- `0x0E..0x10` (FMNMX/FSWZADD/FSET) — category 510, differ in field-230 value {425,427,426}
+- `0x11/0x12/0x18` (FSEL/FSETP/PRMT) — category 517, 11-field packer cascade
+- `0x22/0x23` (IDE/I2I) — category 55/56 depending on SM gate, I2I adds field 6=1
+- `0x28..0x2A` (FCHK/IPA/MUFU) — category 512, differ in field-232 value {429,429,430}
+- `0x66/0x67` (ATOM/ATOMG) — category 463, differ in field-178 value {322,323}
+- `0x74/0x7A/0x9/0x80/0x81` (LEA/DFMA/PIXLD/…) — category 460 via shared `sub_650920` delegation
+- `0xAF..0xB2` (BMMA/SpMetadata quartet) — shared cascade with 3 sub-paths on `*(info+32)+8`
+- `0xB8..0xBE` (HMMA/IMMA/ARRIVES/LDGDEPBAR septet) — sub-switch producing categories 449/450/453/456
+
 ### Register Class Field Groups
 
-The 112 calls to `packRegClassField` (`sub_917A60`) use field IDs organized into functional groups. Each field ID maps to a specific bit range in the output descriptor via a mask-and-OR encoding:
+The ~140 total packer calls across both helpers use field IDs organized into functional groups. Each field ID maps to a specific bit range in the output descriptor via a mask-and-OR encoding:
 
 ```c
 // Example: field 113 (data width) -- bits 7-9 of a3[2]
