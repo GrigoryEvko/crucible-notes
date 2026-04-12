@@ -175,8 +175,8 @@ The constructor (`sub_A3B080`) takes two arguments: `a1` (the Code Object to ini
 | +272 | `ptr` | `instr_head` | Instruction linked-list head |
 | +280 | `u32` | (zeroed) | |
 | +288 | `ptr` | (zeroed) | |
-| +296 | `ptr` | `bb_array` | Basic block array pointer (40 bytes per entry) |
-| +304 | `u32` | `bb_index` | Current basic block count |
+| +296 | `ptr` | `bb_array` | `BasicBlock**` -- dense array of pointers to heap BB objects (8-byte stride). Indexed `*(ctx+296) + 8*bix` in `sub_781F80:339`, `sub_78B430:107`, `sub_1908D90:21`. |
+| +304 | `u32` | `bb_index` | Current basic block count (iteration bound: `for (i=0; i<=ctx[+304]; i++)`) |
 | +312 | `ptr` | `options` | `OptionsManager*` for knob queries |
 | +320--359 | `u128[3]` | (zeroed) | |
 | +335 | `u32` | `instr_hi` | Instruction count upper bound |
@@ -210,8 +210,9 @@ The constructor (`sub_A3B080`) takes two arguments: `a1` (the Code Object to ini
 | +768 | `ptr` | `const_sections` | Constant memory section array |
 | +772 | `u8` | (zeroed) | |
 | +776 | `ptr` | `smem_sections` | Shared memory section array |
-| +976 | `ptr` | `block_info` | Block info array (40 bytes per entry, contiguous) |
-| +984 | `i32` | `num_blocks` | Number of basic blocks |
+| +976 | `ptr` | `block_info` | Inline array of 40-byte scheduling-side block descriptors. Parallel to `bb_array` but distinct storage. Allocated/grown by `sub_10AE800` (40 * capacity bytes via vtable slot +24). |
+| +984 | `i32` | `num_blocks` | High-water block index (iteration bound for the 40-byte array; stride = 40). |
+| +988 | `i32` | `block_info_capacity` | Capacity of the 40-byte array (grown with `3/2` policy in `sub_10AE800:37`). |
 | +996 | `u32` | `annotation_offset` | Current offset into annotation buffer (`sub_A4B8F0`) |
 | +1000 | `ptr` | `annotation_buffer` | Annotation data buffer (`sub_A4B8F0`) |
 | +1008 | `u64` | `encoding_params` | Default `0x300000050` or `0x400000080` |
@@ -293,21 +294,127 @@ The stats emitter (`sub_A3A7E0`) accesses a per-function stats record through th
 
 Note: The stats emitter accesses the Code Object through a float pointer (`v3`), so DWORD indices map to byte offsets via `index * 4` for integers and `index * 4` for floats. Float fields at indices 9, 26, 50, 54, 57, 58, 59, 61, 62, 65, 84, 85, 86 hold throughput and occupancy metrics. A linked list at qword index 55 (byte +440) holds additional string annotations.
 
-## Basic Block Entry (40 bytes)
+## Basic Block Representation (two parallel structures)
 
-Basic blocks are stored in a contiguous array at Code Object +976, with count at +984.
+ptxas uses **two separate basic-block containers** that coexist in the Code Object, and an **earlier draft of this wiki conflated them into a single "40-byte BasicBlock" struct**. The conflation is the source of apparent contradictions between this page and the per-pass documentation (which accesses offsets like `bb+128`, `bb+144`, `bb+152`, `bb+232`, `bb+280`, `bb+292` -- all far beyond 40 bytes). The reality is:
+
+1. **`bb_array` at Code Object +296** -- a dense `BasicBlock**` table (8-byte stride), i.e. *one pointer per block* to a **heap-allocated full BasicBlock object (≥293 bytes)**. Used by every optimization pass that needs CFG structure (predecessors, successors, RPO, flags, loop attributes).
+2. **`block_info` at Code Object +976** -- an *inline contiguous array* of **40-byte scheduling descriptors** (40-byte stride). Each 40-byte entry is the scheduling / DOT-dumper view of a block and is *not* a BasicBlock -- it carries an instruction-range bracket (head / tail-sentinel), the block index, and a flag byte.
+
+The two structures are parallel: index `i` in `bb_array` and index `i` in `block_info` describe the same logical block. Count-wise, `bb_array[0..ctx[+304]]` is the iteration range (inclusive upper bound), and `block_info[0..ctx[+984]]` is the iteration range for the 40-byte array (also inclusive). The two counts are set independently but remain in lock-step because the creation paths update both.
+
+### The 40-byte `block_info` entry (at +976)
+
+This is the only structure in ptxas that is *actually* 40 bytes wide. It is allocated by `sub_10AE800` (the block-info appender), which grows the array with `capacity_new = max(old*3/2, old+2)` and copies `40 * count` bytes on reallocation. From `sub_10AE800:61`:
+
+```c
+// sub_10AE800 -- block_info appender
+result = (__m128i *)&base[40 * new_count];   // new entry address
+*result               = xmm_a7;              // +0..+15  (16 bytes, __int128 arg a7)
+result[1]             = xmm_a8;              // +16..+31 (16 bytes, __int128 arg a8)
+result[2].m128i_i64[0]= scalar_a9;           // +32..+39 ( 8 bytes, __int64   arg a9)
+// Grow path (same function, lines 37-55):
+//   v13 = max(cap + (cap+1)/2, count + 2)
+//   memcpy(new_buf, old_buf, 40 * old_count);   // i.e. 8 * (5*count + 5)
+```
+
+Field interpretation, cross-checked against the three primary consumers:
+
+| Offset | Width | Field | Evidence |
+|--------|-------|-------|----------|
+| +0  | `ptr` | `insn_head` -- first instruction of the block (scheduling view) | `sub_1C348B0:129` reads `v80 = *v79` then iterates instructions until reaching `v79[1]`; `sub_BE21D0:41` reads `*(_QWORD*)v11` as a pointer and fetches a `_DWORD` at `*v11+152` for the DOT label. |
+| +8  | `ptr` | `insn_tail_sentinel` -- marks end of the scheduling instruction range | `sub_1C348B0:130` loads `v79[1]` as the walk terminator; `sub_6FC810:728` writes `v37[+8] = v12` immediately after `sub_10AE800` returns the new entry. |
+| +16 | `u64` | `reserved_a` -- written by `sub_10AE800` from `a8.lo` but no consumer has been identified; zero in the common path. | |
+| +20 | `i32` | `reserved_b` -- zeroed immediately after append (`sub_6FC810:727`: `*(_DWORD*)(v37+20) = 0`). | |
+| +24 | `i32` | scheduling scratch -- `sub_6FC810:726` writes `0`; the scheduling / regalloc pipeline later stashes per-block scratch state here. | |
+| +28 | `i32` | `bix` -- block index, the same unique ID used in all CFG hash tables | `sub_BE21D0:39`: `v12 = v11[7]` (DWORD index 7 = byte +28) then `printf("bix%u", v12)` in the DOT dumper. |
+| +32 | `u8`  | `flags` -- bit 1 (`0x02`) = "block ends in branch-with-side-effect 1506 opcode" | `sub_BE0690:1467`: `*(_BYTE*)(v126+32) |= 2u`. `sub_8A5240:62`: `if ((*(_BYTE*)(result+32) & 2) == 0)` gates backedge-map insertion. |
+| +33 | `u8`[7] | padding / future-use bytes up to the 40-byte stride | |
+
+Size proof: the appender writes exactly `40 * n` bytes, the DOT dumper advances its cursor by literally `v9 += 40` per iteration (`sub_BE21D0:38`), the last-element helper `sub_10AE8E0` computes `base + 40 * num_blocks`, and the grow-path `memcpy` copies `8 * (5*count + 5)` = `40 * (count+1)` bytes. Every independent site agrees on stride 40.
 
 ```
-BasicBlock (40 bytes)
-  +0    ptr      instr_head     // first instruction in this BB
-  +8    ptr      instr_tail     // last instruction (or list link)
-  +16   ptr      (reserved)
-  +24   u32      (reserved)
-  +28   i32      bix            // block index (unique ID for CFG ops)
-  +32   u64      flags          // scheduling/analysis flags
+40-byte block_info entry layout
+
+  +0   ptr  insn_head               // scheduling-range first instruction
+  +8   ptr  insn_tail_sentinel      // scheduling-range terminator
+  +16  u64  reserved_a
+  +24  i32  scheduling_scratch
+  +28  i32  bix                     // unique block index
+  +32  u8   flags                   // bit 0x02 set by sub_BE0690 on side-effect terminators
+  +33  u8[7] padding
 ```
 
-The scheduling pass (`sub_8D0640`) initializes per-block scheduling state by iterating the block list and zeroing qword offsets `[7]`, `[13]`, `[19]`, and setting `[21] = -1` on each block.
+Allocation pseudocode:
+
+```
+function appendBlockInfo(ctx, insn_head, insn_tail, bix, flags):
+    // Grow inline array if needed (sub_10AE800)
+    count = ctx[+984]
+    cap   = ctx[+988]
+    if count + 2 > cap:
+        new_cap = max(cap + (cap + 1) / 2, count + 2)
+        new_buf = arena_alloc(40 * new_cap)       // via code-object allocator vtable+24
+        memcpy(new_buf, ctx[+976], 40 * count)
+        arena_free(ctx[+976])
+        ctx[+976] = new_buf
+        ctx[+988] = new_cap
+
+    // Write the new entry
+    ctx[+984] = count + 1                         // new high-water index
+    entry     = ctx[+976] + 40 * (count + 1)
+    entry[+0] = insn_head
+    entry[+8] = insn_tail
+    entry[+24]= 0
+    entry[+28]= bix
+    entry[+32]= flags                             // usually 0 at creation
+    return entry
+```
+
+### The heap BasicBlock object (at `*(ctx+296)[bix]`)
+
+The entries of `bb_array` point to a much larger heap object. The size has not been pinned down to a single allocator call (it is not created by the 136-byte scratch routine `sub_62BB00`, whose buffer is `sub_4248B0`'d back to the arena on the normal exit at line 551), but the *minimum* size is bounded from below by the field accesses performed by the CFG / liveness / loop passes. The highest confirmed offsets all come from `sub_781F80` (`BasicBlockAnalysis`) through the verified `bb_array[]` indirection `*(_QWORD*)(*(_QWORD*)(a1+296) + 8*bix)`:
+
+| Offset | Width | Pass access | Field (from CFG / liveness docs) |
+|--------|-------|-------------|----------------------------------|
+| +8   | `ptr`   | `sub_78B430:110` (`**(_QWORD**)(v13+8)+72` -- first-instr opcode) | instruction list head |
+| +120 | `u32`   | `sub_781F80:342` (`= 0`) | scheduling-state scratch dword |
+| +128 | `u128`  | `sub_781F80:344` (`*(_OWORD*)(v16+128) = 0`) | successor list head + aux qword |
+| +136 | `ptr`   | `sub_78B430:112` (`*(__int64***)(v13+136)` -- walk preds) | predecessor list head |
+| +144 | `u128`  | `sub_781F80:343` (`*(_OWORD*)(v16+144) = 0`), `sub_78B430:107` (`rpo_number`) | RPO number + adjacent metadata (16 bytes) |
+| +152 | `i32`   | `sub_781F80:770` (`*(v20+152) = v163` where `v163 = pred->rpo_number`) | loop-exit RPO marker / label id (dual-purpose; BBAnalysis overwrites during the pass) |
+| +216 | `i32`   | `sub_781F80:731` (`v102 = *(int*)(v21+216)`) | operand-side scratch (only reached via `ctx+368` not `ctx+296`, so this may belong to a different struct; flagged here for completeness) |
+| +232 | `i32`   | `sub_781F80:341` (`= 0`) | per-BB zeroed dword |
+| +280 | `i32`   | `sub_781F80:340,536,540,553,560,603,906,925,1134`, `sub_781F80:1264`, `sub_78B430:*` | **primary BB flags dword** (bits: `0x10` loop header, `0x20` has predecessor, `0x800000` in-loop, `0x20000` / `0x40000` / `0x40000000` analysis bits) |
+| +282 | `u8`    | `sub_781F80:908` (`(*(_BYTE*)(v20+282) & 8) != 0`) | high byte of the `+280` flags dword (byte-level test) |
+| +292 | `u8`    | `sub_781F80:602,733,904` (bitwise OR / AND) | secondary flag byte (paired with `+280`) |
+
+The access at offset `+292` (a byte, written with `|= 8`) sets the lower bound on the BasicBlock size at **≥ 293 bytes**, and the natural alignment of the arena allocator rounds this up to a multiple of 8 (so the next valid allocator bucket is 296 bytes). **The earlier "BasicBlock = 40 bytes" claim is wrong** and was the result of describing the 40-byte `block_info` entry as if it were the full block object.
+
+The previous revision of this section also misattributed the scheduling-pass initializer `sub_8D0640` to the 40-byte array. That was wrong: `sub_8D0640` walks a *separate* linked list rooted at `scheduling_ctx[+104]` (`for (i = *(v21+104); i; i = (__int64*)*i)`), with the zeroing pattern `i[7] = 0`, `i[13] = 0`, `*((_DWORD*)i+19) = 0`, `*((_DWORD*)i+21) = -1`. This linked list stores *per-scheduling-group* records (qword fields at +56, +104; dword fields at +76, +84), not block_info entries. The 40-byte entries are never rewritten in a single pass like that -- they are populated incrementally during CFG construction via `sub_10AE800` and mutated in-place by `sub_BE0690` / `sub_8A5240` when backedge analysis needs to mark a terminator.
+
+### Access cheat sheet
+
+```c
+// Iterate every block (optimization / CFG passes)
+int bb_count = *(int*)(ctx + 304);                         // inclusive upper bound
+for (int i = 0; i <= bb_count; i++) {
+    BasicBlock* bb = *(BasicBlock**)(*(ctx + 296) + 8*i);  // 8-byte stride, pointer table
+    int rpo  = *(int*)(bb + 144);                          // rpo_number
+    int flag = *(int*)(bb + 280);                          // primary flags dword
+    ...
+}
+
+// Iterate every block (scheduling / DOT dumper)
+int n = *(int*)(ctx + 984);                                // inclusive upper bound
+char* base = *(char**)(ctx + 976);
+for (int i = 0; i <= n; i++) {
+    char* entry = base + 40*i;                             // 40-byte stride, inline
+    int bix = *(int*)(entry + 28);
+    void* insn_head = *(void**)(entry + 0);
+    ...
+}
+```
 
 ## Instruction Layout
 
