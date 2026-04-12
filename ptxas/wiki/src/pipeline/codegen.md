@@ -153,21 +153,52 @@ The CU builder (`v293`) constructs a linked list of 72-byte compile-unit descrip
 
 ```
 struct CompileUnitDescriptor {  // 72 bytes
-    int32   index;          // +0:  CU ordinal
-    void*   dep_list;       // +8:  dependency tracking set
-    void*   entry_ptr;      // +16: pointer to entry function symbol
-    bool    is_entry;       // +25: true if .entry, false if .func
-    int32   regalloc[2];    // +28: register allocation mode pair
-    bool    flags[4];       // +36: has_shared_mem, has_surfaces, has_textures, has_samplers
-    int16   cap_flags;      // +40: capability flags from func_attr+240
-    int32   min_regs;       // +44: minimum register count (from profile check)
-    // +48..55: additional attribute OR bits from func_attr+208..236
-    // +56..63: reserved
-    void*   smem_info;      // +48: 24-byte sub-struct for shared memory
+    int32   index;              // +0:  CU ordinal (monotonic counter)
+    // +4..7: alignment hole (OWORD zero-init covers it)
+    void*   dep_list;           // +8:  sub_42D150 set handle used as
+                                //       per-CU dependency/symbol tracking set
+    void*   entry_ptr;          // +16: pointer to entry-list node
+                                //       (entry symbol reachable via ->func_attr at +80)
+    bool    is_duplicate;       // +24: set by sub_42D6F0(a1+1176, entry) check;
+                                //       also ORs into global flag at orchestrator+1304
+    bool    is_entry;           // +25: **func_attr[0] -- true for .entry, false for .func
+    // +26..27: padding
+    int32   regalloc_a;         // +28: regalloc scratch slot A, zero-init, populated by
+                                //       register allocator
+    int32   regalloc_b;         // +32: regalloc scratch slot B, zero-init
+    bool    has_shared_mem;     // +36: func_attr[+4]
+    bool    has_surfaces;       // +37: func_attr[+5]
+    bool    has_textures;       // +38: func_attr[+6]
+    bool    has_samplers;       // +39: func_attr[+7]
+    int16   cap_flags;          // +40: WORD from func_attr[+240] -- capability flags
+    // +42..43: padding
+    int32   min_regs;           // +44: 0 or 32, forced to 32 when profiling is enabled
+                                //       (func_attr[+166] && opt>26 or debug_mode)
+    void*   smem_info;          // +48: pointer to 24-byte shared-memory sub-struct
+                                //       allocated by sub_424070(pool, 24); layout:
+                                //         +0  bool  has_smem_decl
+                                //         +8  qword smem_size (func_attr[+168])
+                                //         +16 qword entry_name_ptr
+    uint8   attr_flags[8];      // +56..63: 8 independent OR-accumulated byte flags,
+                                //       each fed from a DWORD at func_attr[+208..+236]
+                                //       (stride 4, truncated to low byte on store).
+                                //       In the multi-CU merge path (sub_438B50) these
+                                //       are OR-merged across every node in the group.
+    void*   cg_symtab;          // +64: per-CU codegen symbol/string bag, allocated
+                                //       by sub_693570 (1048-byte hashmap wrapped in
+                                //       a 40-byte vtable handle at sub_6933A0).
+                                //       Zero-init in CU builders; populated by
+                                //       sub_43A400 line 144 before OCG runs;
+                                //       released by sub_693630 at orchestrator
+                                //       sub_4428E0 line 1668 (or on longjmp in
+                                //       sub_43A400 line 578).
+    int32   _reserved_68;       // +68: zero-init (sub_4383B0 line 92), no other
+                                //       reads/writes found -- tail padding to round
+                                //       struct up to a multiple of 8 bytes.
 };
 ```
 
-The builder allocates this via `sub_424070(pool, 72)`, populates it from the function attribute struct at `entry_ptr+80`, and enqueues it into the output list via `sub_42CA60`.
+The builder allocates this via `sub_424070(pool, 72)`, populates it from the function attribute struct at `entry_ptr+80`, and enqueues it into the output list via `sub_42CA60`. Decompilation evidence for field layout: `sub_4383B0` lines 85-167 (normal path constructor, simplest form); `sub_4378E0` lines 142-225 (tools-patch variant, identical layout); `sub_438B50` lines 155-248 (extensible-whole-program merge path, uses same offsets but OR-merges attribute flags across every kernel in a CU group). The +64 `cg_symtab` slot is written in `sub_43A400` line 144 (`*((_QWORD *)a3 + 8) = sub_693570();`) and released at `sub_4428E0` line 1667-1668 (`v5 = *((_QWORD *)v229 + 8); sub_693630(v5);`).
 
 ### 5. Per-Kernel Dispatch
 
