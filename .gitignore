@@ -64,3 +64,5 @@ __pycache__/
 
 # Decompiled code (289 MB, 80k+ files - keep local, don't push)
 cicc/decompiled/
+
+workspace/

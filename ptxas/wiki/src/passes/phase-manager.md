@@ -933,14 +933,35 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 |---|---|---|
 | 132 | `UpdateAfterConvertUnsupportedOps` | Bookkeeping after late conversion |
 | 133 | `MergeEquivalentConditionalFlow` | Merge equivalent conditional branches |
-| 134 | `AdvancedPhaseAfterMidExpansion` | **Hook** -- after mid-expansion |
-| 135 | `AdvancedPhaseLateExpandSyncInstructions` | **Hook** -- after late sync expansion |
+| 134 | `AdvancedPhaseAfterMidExpansion` | **Hook** -- after mid-expansion (Type-C, writes `pipeline_progress = 3`) |
+| 135 | `AdvancedPhaseLateExpandSyncInstructions` | **Hook** -- after late sync expansion (Type-B, vtable-override) |
 | 136 | `LateMergeEquivalentConditionalFlow` | Late merge of equivalent conditionals |
 | 137 | `LateExpansionUnsupportedOpsMid` | Mid-point late unsupported op expansion |
 | 138 | `OriSplitHighPressureLiveRanges` | Split live ranges under high register pressure |
-| 139--158 | *(architecture-specific)* | 20 additional phases with names in vtable `getString()` methods |
+| 139 | `ProcessO0WaitsAndSBs` | sm50+ conservative scoreboard insertion (`sm_version > 0x3FFF` gate); execute `sub_C5E2A0` |
+| 140 | `PostFixUp` | Target vtable+0x148 post-fixup dispatch; execute `sub_C5E270` |
+| 141 | `MercConverter` | Second MercConverter pass re-lowering opt-introduced PTX opcodes; execute `sub_C60300` -> `sub_9F3760` |
+| 142 | `MercEncodeAndDecode` | Ori -> Mercury encode + round-trip decode verification; execute `sub_C60310` -> `sub_18F21F0` |
+| 143 | `MercExpandInstructions` | Mercury pseudo-instruction expansion (`ctx+0x570` bit 5); execute `sub_C60320` -> `sub_C3DFC0` |
+| 144 | `MercGenerateWARs1` | WAR-hazard annotation pass 1 (`ctx+0x570` bit 7); execute `sub_C60340` -> `sub_6FC240` |
+| 145 | `MercGenerateOpex` | Operand-exchange annotation (`ctx+0x570` bit 6); execute `sub_C60380` -> `sub_7032A0` |
+| 146 | `MercGenerateWARs2` | WAR-hazard annotation pass 2 (catches hazards from Opex); same entry as 144 |
+| 147 | `MercGenerateSassUCode` | Final SASS microcode emission (`ctx+0x571` bit 0); execute `sub_C603A0` -> `sub_6EEE90` -> `sub_6E4110` |
+| 148 | `ComputeVCallRegUse` | Target vtable+0x2B8 virtual-call register-usage computation; execute `sub_C5E160` |
+| 149 | `CalcRegisterMap` | Final physical-to-logical register mapping (`ctx+0x590` bit 1); execute `sub_C603C0` -> `sub_95A350` (6.3 KB) |
+| 150 | `UpdateAfterPostRegAlloc` | **`nullsub_630`** -- stripped from release, `isNoOp=1` suppresses diagnostics |
+| 151 | `ReportFinalMemoryUsage` | **`nullsub_629`** -- stripped from release, `isNoOp=1` suppresses diagnostics |
+| 152 | `AdvancedPhaseOriPhaseEncoding` | **Hook** -- Type-C gate writing `pipeline_progress = 21` (execute `sub_C5E0B0`, 11 bytes) |
+| 153 | `FormatCodeList` | Code-list emitter dispatch through `(*ctx+0x648)->vtbl[+0x10]`; execute `sub_C5E080` |
+| 154 | `UpdateAfterFormatCodeList` | **`nullsub_628`** -- stripped from release, `isNoOp=1` suppresses diagnostics |
+| 155 | `DumpNVuCodeText` | Debug SASS-text dumper gate (`ctx+0x598 > 0`); tail-call target is `nullsub_31` in release |
+| 156 | `DumpNVuCodeHex` | Debug SASS-hex dumper gate; tail-call target is `nullsub_30` in release |
+| 157 | `DebuggerBreak` | **`nullsub_627`** -- debug-only breakpoint marker |
+| 158 | `NOP` | **`nullsub_626`** -- terminal sentinel anchoring the 159-phase dispatch loop |
 
-Phases 139--158 are not in the static name table at `off_22BD0C0`. Their names are returned by each phase's `getName()` virtual method. These are conditionally-enabled phases for specific architecture targets (SM variants) or optimization levels.
+All 20 phases in the 139--158 range have names in the static table at `off_22BD0C0` (159 entries total, not 139). Name resolution goes through each phase's `getIndex()` virtual method (vtable+8) returning the phase index as a constant (`mov eax, 0x8b..0x9e; ret`), which the dispatch loop (`sub_C64F70`) uses as the lookup key into the name table. The earlier claim that these phases had names "returned by a `getName()` virtual method" was incorrect.
+
+Of the 20 phases, **five** have `nullsub` execute bodies in release ptxas (150, 151, 154, 157, 158), **two** (155, 156) have non-trivial gate cascades but resolve to nullsub tail-call targets, and **four** set `isNoOp() = 1` to suppress the diagnostic frame around their call (150, 151, 152, 154). `isNoOp = 1` does **not** skip the execute call -- it only suppresses the `"Before <phase>"` / `"After <phase>"` diagnostic prints, and `sub_C64F70:86` `goto LABEL_4` still falls through to the execute dispatch. See [Optimization Pipeline Stage 10](index.md#stage-10----late-cleanup--late-pipeline-phases-132--158) for the full per-phase algorithm breakdown with execute addresses, pseudocode, and gate conditions.
 
 ## AdvancedPhase Hook Points
 
