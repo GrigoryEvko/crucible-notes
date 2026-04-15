@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="google-site-verification" content="8Iyc1Kf9r8UlYNiDw5Qa3RRuOAXbvy_YknQJMUi5ckY">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>nvopen-tools</title>
+    <meta name="description" content="Reverse engineering reference for NVIDIA's CUDA compiler toolchain — cicc, ptxas, cudafe++, nvlink, nvptxcompiler. 545+ pages of reimplementation-grade documentation from static binary analysis.">
+    <link rel="canonical" href="https://grigoryevko.github.io/nvopen-tools/">
+    <meta property="og:title" content="nvopen-tools — NVIDIA CUDA Compiler Internals">
+    <meta property="og:description" content="545+ pages of reverse-engineered documentation for NVIDIA's CUDA compiler toolchain: cicc (LLVM-based C-to-PTX), ptxas (PTX-to-SASS assembler), cudafe++ (EDG frontend), nvlink (device linker).">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://grigoryevko.github.io/nvopen-tools/">
+    <meta name="keywords" content="NVIDIA, CUDA, ptxas, cicc, cudafe++, nvlink, nvptxcompiler, compiler internals, reverse engineering, PTX, SASS, GPU, LLVM, Mercury, Blackwell, register allocation, instruction scheduling">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="nvopen-tools — NVIDIA CUDA Compiler Internals">
+    <meta name="twitter:description" content="545+ pages of reverse-engineered documentation for NVIDIA's CUDA compiler toolchain.">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "nvopen-tools",
+      "url": "https://grigoryevko.github.io/nvopen-tools/",
+      "description": "Reverse engineering reference for NVIDIA's CUDA compiler toolchain — cicc, ptxas, cudafe++, nvlink. 545+ pages of reimplementation-grade documentation.",
+      "author": {
+        "@type": "Person",
+        "name": "Grigory Evko",
+        "url": "https://github.com/GrigoryEvko"
+      },
+      "license": "https://opensource.org/licenses/MIT",
+      "inLanguage": "en",
+      "about": [
+        {"@type": "Thing", "name": "NVIDIA CUDA"},
+        {"@type": "Thing", "name": "Compiler Design"},
+        {"@type": "Thing", "name": "Reverse Engineering"},
+        {"@type": "Thing", "name": "GPU Computing"}
+      ]
+    }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300..900;1,8..60,300..900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        /* ── Reset ──────────────────────────────────────────────────── */
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* ── Light palette (default) ────────────────────────────────── */
+        :root {
+            --bg: #FAFAFA;
+            --fg: #1a1a1a;
+            --links: #1a5276;
+            --heading-color: #1a1a1a;
+            --subheading-color: #333333;
+            --rule-color: #333333;
+            --code-bg: #f5f5f5;
+            --code-border: #e0e0e0;
+            --table-border-color: #d0d0d0;
+            --table-alternate-bg: #f8f8f8;
+            --muted: #666666;
+            --inline-code-color: #c7254e;
+        }
+
+        /* ── Dark palette ───────────────────────────────────────────── */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #161923;
+                --fg: #c8cdd3;
+                --links: #7eb8da;
+                --heading-color: #e2e8f0;
+                --subheading-color: #a0aec0;
+                --rule-color: #4a5568;
+                --code-bg: #1c2028;
+                --code-border: #2a3040;
+                --table-border-color: #2a3040;
+                --table-alternate-bg: #181c24;
+                --muted: #8a9199;
+                --inline-code-color: #e06c75;
+            }
+        }
+
+        /* ── Body ───────────────────────────────────────────────────── */
+        body {
+            font-family: 'Source Serif 4', 'STIX Two Text', Georgia, 'Times New Roman', serif;
+            font-size: 18px;
+            line-height: 1.72;
+            letter-spacing: -0.003em;
+            font-feature-settings: 'kern' 1, 'liga' 1, 'onum' 1;
+            color: var(--fg);
+            background: var(--bg);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 3em 1.5em 4em;
+        }
+
+        /* ── Headings ───────────────────────────────────────────────── */
+        h1 {
+            font-family: 'Inter', 'Helvetica Neue', sans-serif;
+            font-weight: 700;
+            font-size: 2.4em;
+            color: var(--heading-color);
+            margin-bottom: 0.15em;
+            padding-bottom: 0.35em;
+            border-bottom: 1.5px solid var(--rule-color);
+            letter-spacing: -0.02em;
+            line-height: 1.25;
+        }
+
+        h2 {
+            font-family: 'Inter', 'Helvetica Neue', sans-serif;
+            font-weight: 600;
+            font-size: 1.6em;
+            color: var(--heading-color);
+            margin-top: 1.8em;
+            margin-bottom: 0.25em;
+            padding-bottom: 0.25em;
+            border-bottom: 0.8px solid var(--rule-color);
+            opacity: 0.95;
+            letter-spacing: -0.01em;
+            line-height: 1.3;
+        }
+
+        h3 {
+            font-family: 'Inter', 'Helvetica Neue', sans-serif;
+            font-weight: 600;
+            font-size: 1.2em;
+            color: var(--subheading-color);
+            margin-top: 1.4em;
+            margin-bottom: 0.2em;
+            letter-spacing: -0.005em;
+        }
+
+        /* ── Paragraphs ─────────────────────────────────────────────── */
+        p {
+            margin-bottom: 0.6em;
+            hyphens: auto;
+        }
+
+        .subtitle {
+            font-size: 1.15em;
+            color: var(--muted);
+            margin-bottom: 0;
+        }
+
+        /* ── Links ──────────────────────────────────────────────────── */
+        a {
+            color: var(--links);
+            text-decoration: none;
+            border-bottom: 0.5px solid transparent;
+            transition: border-color 0.15s;
+        }
+        a:hover {
+            border-bottom-color: var(--links);
+        }
+
+        /* ── Code ───────────────────────────────────────────────────── */
+        code {
+            font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+            font-size: 0.82em;
+            font-feature-settings: 'liga' 0;
+            padding: 0.1em 0.35em;
+            border-radius: 3px;
+            background-color: var(--code-bg);
+            border: 0.5px solid var(--code-border);
+            color: var(--inline-code-color);
+        }
+
+        /* ── Tables (booktabs) ──────────────────────────────────────── */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1em 0;
+            font-size: 0.92em;
+            line-height: 1.5;
+        }
+
+        thead {
+            border-top: 2px solid var(--rule-color);
+            border-bottom: 1px solid var(--rule-color);
+        }
+
+        th {
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: 0.55em 0.7em;
+            text-align: left;
+            color: var(--subheading-color);
+            background: transparent;
+        }
+
+        td {
+            padding: 0.4em 0.7em;
+            border-bottom: 0.5px solid var(--table-border-color);
+            vertical-align: top;
+        }
+
+        tbody tr:last-child {
+            border-bottom: 1.5px solid var(--rule-color);
+        }
+
+        tbody tr:nth-child(even) {
+            background-color: var(--table-alternate-bg);
+        }
+
+        table code {
+            font-size: 0.85em;
+            padding: 0.05em 0.25em;
+        }
+
+        /* ── Strong ─────────────────────────────────────────────────── */
+        strong {
+            font-weight: 650;
+            color: var(--heading-color);
+        }
+
+        /* ── Lists ──────────────────────────────────────────────────── */
+        ul {
+            padding-left: 1.5em;
+            margin: 0.4em 0;
+        }
+        li { margin-bottom: 0.15em; }
+
+        /* ── Horizontal rule ────────────────────────────────────────── */
+        hr {
+            border: none;
+            border-top: 0.8px solid var(--rule-color);
+            margin: 2em 0;
+            opacity: 0.3;
+        }
+
+        /* ── Footer ─────────────────────────────────────────────────── */
+        footer {
+            margin-top: 3em;
+            padding-top: 1.2em;
+            border-top: 0.8px solid var(--rule-color);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.8em;
+            color: var(--muted);
+            opacity: 0.7;
+        }
+
+        /* ── Status badges ──────────────────────────────────────────── */
+        .badge {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.7em;
+            font-weight: 600;
+            padding: 0.15em 0.5em;
+            border-radius: 3px;
+            vertical-align: middle;
+            letter-spacing: 0.02em;
+        }
+        .badge-live {
+            background: var(--links);
+            color: var(--bg);
+        }
+        .badge-wip {
+            background: var(--code-bg);
+            border: 0.5px solid var(--code-border);
+            color: var(--muted);
+        }
+        a:has(.badge) {
+            border-bottom: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>nvopen-tools</h1>
+        <p class="subtitle">Reverse engineering reference for NVIDIA's CUDA compiler toolchain</p>
+
+        <h2>Compiler Internals</h2>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Component</th>
+                    <th>Binary</th>
+                    <th>Documentation</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a href="./cicc/"><strong>cicc</strong></a></td>
+                    <td>CUDA C&rarr;PTX compiler, 60 MB, LLVM 20.0.0 + EDG 6.6</td>
+                    <td><a href="./cicc/">wiki</a></td>
+                    <td><a href="./cicc/"><span class="badge badge-live">Live</span></a></td>
+                </tr>
+                <tr>
+                    <td><a href="./cudafe/"><strong>cudafe++</strong></a></td>
+                    <td>CUDA C++ frontend, 8.5 MB, EDG 6.6, 6,483 functions, 69 pages</td>
+                    <td><a href="./cudafe/">wiki</a></td>
+                    <td><a href="./cudafe/"><span class="badge badge-live">Live</span></a></td>
+                </tr>
+                <tr>
+                    <td><a href="./ptxas/"><strong>ptxas</strong></a></td>
+                    <td>PTX&rarr;SASS assembler, 37.7 MB, proprietary (no LLVM), 159-phase pipeline</td>
+                    <td><a href="./ptxas/">wiki</a></td>
+                    <td><a href="./ptxas/"><span class="badge badge-live">Live</span></a></td>
+                </tr>
+                <tr>
+                    <td><strong>nvcc</strong></td>
+                    <td>CUDA compilation driver</td>
+                    <td>&mdash;</td>
+                    <td><span class="badge badge-wip">Planned</span></td>
+                </tr>
+                <tr>
+                    <td><a href="./nvlink/"><strong>nvlink</strong></a></td>
+                    <td>CUDA device linker, 37 MB (95% embedded ptxas), 40,532 functions</td>
+                    <td><a href="./nvlink/">wiki</a></td>
+                    <td><a href="./nvlink/"><span class="badge badge-live">Live</span></a></td>
+                </tr>
+                <tr>
+                    <td><strong>nvptxcompiler</strong></td>
+                    <td>PTX JIT compilation library</td>
+                    <td>&mdash;</td>
+                    <td><span class="badge badge-wip">Planned</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>Tools</h2>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Tool</th>
+                    <th>Description</th>
+                    <th>Documentation</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><a href="https://github.com/GrigoryEvko/nvopen-tools/tree/main/fatbin"><strong>fatbin</strong></a></td>
+                    <td>Fat binary manipulation toolkit &mdash; dump, unpack, extract PTX, repack with ZSTD (1&ndash;22)</td>
+                    <td><a href="https://github.com/GrigoryEvko/nvopen-tools/tree/main/fatbin">readme</a></td>
+                    <td><a href="https://github.com/GrigoryEvko/nvopen-tools/tree/main/fatbin"><span class="badge badge-live">Released</span></a></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>Methodology</h2>
+
+        <p>All analysis is from static reverse engineering of stripped x86-64 ELF binaries using IDA Pro 9.x. No source code or any other restricted or copyrighted material was used &mdash; all findings derive solely from analysis of compiled binaries distributed as part of the publicly available <a href="https://developer.nvidia.com/cuda-downloads">CUDA Toolkit</a>.</p>
+
+        <footer>
+            <a href="https://github.com/GrigoryEvko/nvopen-tools">GitHub</a> &middot; MIT License
+        </footer>
+    </div>
+</body>
+</html>

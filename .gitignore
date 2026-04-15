@@ -57,8 +57,8 @@ vgcore.*
 *.idb
 *.pdb
 
-# Documentation build
-/docs/_build/
+# Documentation build (deployed via GitHub Actions, not committed)
+/docs/
 *.pyc
 __pycache__/
 
