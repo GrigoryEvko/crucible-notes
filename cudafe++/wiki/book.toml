@@ -6,7 +6,7 @@ language = "en"
 src = "src"
 
 [build]
-build-dir = "../../docs/cudafe"
+build-dir = "../../docs/cudafe++"
 create-missing = true
 
 [output.html]

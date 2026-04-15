@@ -27,10 +27,10 @@ jobs:
 
       - name: Build wikis
         run: |
-          cd ptxas/wiki && mdbook build && cd ../..
-          cd cicc/wiki && mdbook build && cd ../..
-          cd cudafe++/wiki && mdbook build && cd ../..
-          cd nvlink/wiki && mdbook build && cd ../..
+          (cd ptxas/wiki && mdbook build)
+          (cd cicc/wiki && mdbook build)
+          (cd "cudafe++/wiki" && mdbook build)
+          (cd nvlink/wiki && mdbook build)
 
       - name: Assemble site
         run: |
@@ -39,7 +39,7 @@ jobs:
           cp site/robots.txt _site/
           cp -r docs/ptxas _site/ptxas
           cp -r docs/cicc _site/cicc
-          cp -r docs/cudafe _site/cudafe
+          cp -r "docs/cudafe++" "_site/cudafe++"
           cp -r docs/nvlink _site/nvlink
 
       - name: Generate sitemap

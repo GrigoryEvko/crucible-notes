@@ -3,11 +3,11 @@ Allow: /
 
 Disallow: /nvopen-tools/ptxas/print.html
 Disallow: /nvopen-tools/cicc/print.html
-Disallow: /nvopen-tools/cudafe/print.html
+Disallow: /nvopen-tools/cudafe++/print.html
 Disallow: /nvopen-tools/nvlink/print.html
 Disallow: /nvopen-tools/ptxas/toc.html
 Disallow: /nvopen-tools/cicc/toc.html
-Disallow: /nvopen-tools/cudafe/toc.html
+Disallow: /nvopen-tools/cudafe++/toc.html
 Disallow: /nvopen-tools/nvlink/toc.html
 
 Sitemap: https://grigoryevko.github.io/nvopen-tools/sitemap.xml
