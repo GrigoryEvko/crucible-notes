@@ -38,16 +38,18 @@ Total record size = 4 + `size`, padded up to 4-byte alignment. The minimum recor
 
 ### Format Byte
 
-The format byte at offset 0 controls how the payload is interpreted:
+The format byte at offset 0 controls how the payload is interpreted. NVIDIA's canonical names for these formats are `EIFMT_NVAL`, `EIFMT_BVAL`, `EIFMT_HVAL`, `EIFMT_SVAL`; this wiki also uses the descriptive names in the "Descriptive" column to describe the payload layout actually observed in ptxas output:
 
-| Format | Name | Payload structure | Typical use |
-|---:|---|---|---|
-| `0x01` | Free | Raw bytes, attribute-specific layout | Offset tables, parameter info |
-| `0x02` | Value | Single 32-bit value (no symbol index) | Global flags |
-| `0x03` | Sized | 16-bit value + padding | Counts, sizes |
-| `0x04` | Indexed | `[sym_index:4][value:4]` -- per-symbol attribute | Per-kernel resources |
+| Format | Canonical | Descriptive | Payload structure | Typical use |
+|---:|---|---|---|---|
+| `0x01` | `EIFMT_NVAL` | Free | No value at this format level -- trailing bytes depend entirely on attribute code | Offset tables, parameter info |
+| `0x02` | `EIFMT_BVAL` | Value | Byte value (trailing byte extended to 32-bit in cubin TLV) | Global flags |
+| `0x03` | `EIFMT_HVAL` | Sized | Half value (16-bit, padded) | Counts, sizes |
+| `0x04` | `EIFMT_SVAL` | Indexed | Sized value: 16-bit size prefix followed by that many bytes -- for per-symbol attributes the payload is `[sym_index:4][value:4]` | Per-kernel resources |
 
-Format `0x04` (indexed) is the most common for per-function attributes. The 4-byte symbol index at payload offset 0 identifies which function the attribute applies to. The linker uses this index for symbol remapping during merge and for per-function property extraction during finalization.
+The names `NVAL`/`BVAL`/`HVAL`/`SVAL` stand for "no value", "byte value", "half value", "sized value" and describe only the format-level encoding. The actual payload convention (e.g. symbol index in the first 4 bytes of an `SVAL` payload) is a per-attribute convention, not a property of the format byte itself.
+
+Format `0x04` (`EIFMT_SVAL`) is the most common for per-function attributes. The 4-byte symbol index at payload offset 0 identifies which function the attribute applies to. The linker uses this index for symbol remapping during merge and for per-function property extraction during finalization.
 
 ### Binary Evidence -- `sub_1CC85F0`
 
