@@ -343,7 +343,7 @@ This 4,937-byte function validates variable declarations across all state spaces
    - `.managed` valid only with `.global` (space 5)
    - `.reserved` valid only with `.shared` (space 8)
    - `.reserved` shared alignment must be <= 64
-   - `.common` valid only with `.const`
+   - `.common` valid only with `.global`
    - `.param` at file scope requires `.const` space
    - `.local` const disallowed at file scope
 
@@ -419,7 +419,7 @@ These set `CU+81` (declaration linkage type) within function prototype productio
 
 | Case | Linkage | PTX Directive |
 |---|---|---|
-| 78 | 1 | `.visible` (default/internal) |
+| 78 | 1 | *(no qualifier)* -- default internal/static linkage |
 | 79 | 3 | `.extern` |
 | 80 | 2 | `.visible` |
 | 81 | 4 | `.weak` |
