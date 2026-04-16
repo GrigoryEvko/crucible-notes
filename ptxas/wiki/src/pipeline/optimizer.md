@@ -127,7 +127,7 @@ Branch optimization, loop canonicalization, strength reduction, software pipelin
 | 24 | `OriPipelining` | Software pipelining |
 | 25 | `StageAndFence` | Memory fence insertion |
 | 26 | `OriRemoveRedundantBarriers` | Barrier elimination |
-| 27 | `AnalyzeUniformsForSpeculation` | Uniform analysis |
+| 27 | `AnalyzeUniformsForSpeculation` | Constant bank speculation analysis |
 | 28 | `SinkRemat` | Sink + rematerialization |
 | 29 | `GeneralOptimize` | Bundled mid opts |
 | 30 | `DoSwitchOptSecond` | Switch optimization (2nd) |

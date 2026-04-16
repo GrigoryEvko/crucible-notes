@@ -108,41 +108,42 @@ The pass is gated by knob 487 (general optimization enablement).
 |---|---|
 | **Phase index** | 27 (binary index 30; vtable `off_22BDA00`) |
 | **Pipeline position** | Stage 2 (Early Optimization), after `OriRemoveRedundantBarriers` (26), before `SinkRemat` (28) |
-| **Category** | Analysis (read-only -- annotates registers, does not transform instructions) |
+| **Category** | Analysis (read-only -- annotates constant load speculation safety, does not transform instructions) |
 | **String reference** | `"AnalyzeUniformsForSpeculation"` at `0x22BC647` |
 
 ### Purpose
 
-Forward dataflow analysis that marks each virtual register as safe or unsafe for speculative execution under warp-uniform semantics. The results are stored in the per-register flags word (`vreg+48`/`vreg+49`, bit 2 = uniform), which downstream passes read to decide what may be hoisted, sunk, or rematerialized across control-flow boundaries.
+> **Correction (2026-04-16).** The previous version of this section described phase 27 as a per-register uniformity marker that sets `vreg+49` bit 2. Cross-reference analysis of the binary revealed that description was incorrect. The per-register varying flag at `vreg+49` bit 2 is set by `OriPropagateVarying` (phases 53 and 70), not by this pass. The previous description was admittedly reconstructed from consumer passes without decompiling the execute body; this revision corrects the misattribution.
+
+Analysis pass that examines constant bank (`c[]`) accesses and determines which constant memory loads can be safely speculated -- that is, hoisted or sunk across control-flow boundaries without changing program semantics. The pass name `AnalyzeUniformsForSpeculation` refers to the *speculation safety of uniform-address constant loads*, not to per-register divergence classification.
+
+Constant memory loads via `LDC c[bank][offset]` are pure (no side effects) when the address is uniform, but hoisting them above a branch may introduce a load on a path that the original program never executed. This is benign for constant memory (the load cannot fault and the value is fixed), but the compiler must still confirm that the address expression is safe to evaluate speculatively. Phase 27 performs this confirmation and records the result so that downstream passes know which `LDC` instructions (and their dependent computations) may be freely moved across control flow.
 
 ### Consumers
 
-Three later passes directly read the speculation-safety annotations:
+Three later passes read the speculation-safety annotations produced by this pass:
 
-1. **`SinkRemat` (phase 28)** -- the core sink+remat driver `sub_A0F020` calls `sub_A107B0` per definition. When the analysis has flagged a value as speculatively uniform, SinkRemat may sink the instruction past a divergent branch and insert a rematerialized copy near the use, because the value is guaranteed identical across all threads regardless of path.
+1. **`SinkRemat` (phase 28)** -- the core sink+remat driver `sub_A0F020` calls `sub_A107B0` per definition. When a constant load has been flagged as speculation-safe, SinkRemat may sink it past a divergent branch and insert a rematerialized copy near the use, because the load is guaranteed side-effect-free.
 
-2. **`SpeculativeHoistComInsts` (phase 56)** -- hoists common sub-expressions above divergent branches when operands are speculatively safe. Without the phase 27 annotation, hoisting across a divergent branch would risk executing the instruction on threads that should not reach it.
+2. **`SpeculativeHoistComInsts` (phase 56)** -- hoists common sub-expressions above divergent branches when operands are speculation-safe. For constant bank loads, the phase 27 annotation confirms that the `LDC` can be moved above the branch without introducing a fault or observably wrong value.
 
-3. **Predication (phase 63)** -- the profitability scanner at `sub_1380190` checks `state->has_uniform_speculation` before scoring candidates. If set, the predication pass verifies the SSA chain of uniform register operands to confirm they remain safe after if-conversion.
+3. **`Predication` (phase 63)** -- the profitability scanner at `sub_1380190` checks `state->has_uniform_speculation` before scoring candidates. When set, the predication pass verifies that constant-load operands in the if-conversion region remain safe to speculatively execute after branch elimination.
 
-Branch optimization also reads the annotation: uniform branch conditions allow `UBRA` encoding on sm_75+ and eliminate `BSSY`/`BSYNC` pairs.
+Branch optimization also benefits: when a branch condition depends only on speculation-safe constant loads, it qualifies for `UBRA` encoding on sm_75+ and can eliminate `BSSY`/`BSYNC` pairs.
 
-### Dataflow Semantics
+### What This Pass Does NOT Do
 
-The analysis is a forward (RPO-order) pass over the CFG. At each instruction it classifies the destination register:
+This pass does **not** set the per-register varying/uniform flag at bit 2 of `vreg+49`. That flag is the divergence marker set by `OriPropagateVarying` (phases 53 and 70), which performs a forward dataflow walk seeding divergence from thread-identity registers (`SR_TID_X/Y/Z`, `SR_LANEID`) and propagating it through the def-use chain. See the [Varying Propagation](#varying-propagation-supporting-analysis) section below for the algorithm.
 
-- **Safe** (bit 2 of `vreg+49` set) -- the value is warp-uniform *and* the defining instruction has no observable side effects that depend on which threads execute it. Pure ALU on uniform inputs, constant memory loads via `LDC` with a uniform address, and `S2R` of warp-uniform special registers all qualify.
-- **Unsafe** (bit 2 clear) -- any of: (a) a source operand is varying (divergent), (b) the instruction accesses memory through a thread-dependent address, (c) the instruction is an atomic or has barrier semantics, (d) the value merges across a divergent branch (phi/`MOV.PHI`).
-
-The analysis requires SSA form (phi insertion at phase 23 gives single-definition reaching information) and runs after barrier removal (phase 26) so that synchronization constraints are relaxed where possible.
+The distinction matters: a value can be uniform (not varying) yet still unsafe to speculate if it involves a memory access whose address, while uniform, might trigger unwanted side effects on the wrong path. Conversely, a constant bank load is always speculation-safe regardless of the control-flow path, because constant memory is read-only and cannot fault.
 
 ### Interaction with Post-Predication Safety
 
-Phase 27 operates before predication; a separate, narrower mechanism tracks speculation safety *after* predication. `sub_137EE50` (called from phase 63) scans predicated code for loads to `.surf`/tensor extended memory (category 18) and records them in a hash set at `state+240`, setting `context+1392` bit 0. This flag persists through later passes and is checked by `OriHoistInvariantsLate` (phase 66) to prevent hoisting those loads. The two mechanisms are complementary: phase 27 covers the pre-predication window, `context+1392` covers the post-predication residual.
+Phase 27 operates before predication; a separate, narrower mechanism tracks speculation safety *after* predication. `sub_137EE50` (called from phase 63) scans predicated code for loads to `.surf`/tensor extended memory (category 18) and records them in a hash set at `state+240`, setting `context+1392` bit 0. This flag persists through later passes and is checked by `OriHoistInvariantsLate` (phase 66) to prevent hoisting those loads. The two mechanisms are complementary: phase 27 covers the pre-predication window for constant bank accesses, `context+1392` covers the post-predication residual for surface/tensor loads.
 
 ### Evidence Note
 
-The execute body of this phase was not decompiled; the function at vtable `off_22BDA00` slot +0 has not been traced. All details above are reconstructed from (a) the phase name table, (b) `vreg+49` bit 2 usage in consumer passes, (c) the predication pass's `has_uniform_speculation` field, and (d) the branch optimization page's reference to phase 27 for uniform branch detection. The internal algorithm (worklist vs. single-pass, lattice width, convergence guarantee) remains unknown.
+The execute body of this phase was not decompiled; the function at vtable `off_22BDA00` slot +0 has not been traced. The original description was reconstructed from (a) the phase name table, (b) `vreg+49` bit 2 usage in consumer passes, and (c) the predication pass's `has_uniform_speculation` field. That reconstruction incorrectly attributed the `vreg+49` bit 2 divergence flag to this pass. Subsequent cross-reference analysis of the binary established that `vreg+49` bit 2 is set exclusively by `OriPropagateVarying` (phases 53/70), and that the phase name "AnalyzeUniformsForSpeculation" refers to constant bank access speculation safety rather than per-register uniformity classification. The internal algorithm (worklist vs. single-pass, lattice width, convergence guarantee) remains unknown pending decompilation of the execute body.
 
 ## Phase 74: ConvertToUniformReg
 

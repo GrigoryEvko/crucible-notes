@@ -439,7 +439,7 @@ Branch/switch optimization, loop canonicalization, strength reduction, software 
 | 24 | 27 | `OriPipelining` | Optimization | **> 1** | Software pipelining: overlaps loop iterations to hide latency | [Loop Passes](loop-passes.md) |
 | 25 | 28 | `StageAndFence` | Lowering |  | Inserts memory fence and staging instructions for coherence | [Sync & Barriers](sync-barriers.md) |
 | 26 | 29 | `OriRemoveRedundantBarriers` | Optimization | **> 1** | Eliminates barrier instructions proven redundant by data-flow analysis | [Sync & Barriers](sync-barriers.md) |
-| 27 | 30 | `AnalyzeUniformsForSpeculation` | Analysis |  | Identifies uniform values safe for speculative execution | [Uniform Regs](uniform-regs.md) |
+| 27 | 30 | `AnalyzeUniformsForSpeculation` | Analysis |  | Analyzes constant bank accesses for speculation safety across control flow | [Uniform Regs](uniform-regs.md) |
 | 28 | 31 | `SinkRemat` | Optimization | **> 1 / > 4** | Sinks instructions closer to uses and marks remat candidates; O2+: basic; O5: full cutlass | [Rematerialization](rematerialization.md) |
 | 29 | 33 | `GeneralOptimize` | Optimization |  | Compound pass: copy prop + const fold + algebraic simplify + DCE (mid-early) | [GeneralOptimize](general-optimize.md) |
 | 30 | 34 | `DoSwitchOptSecond` | Optimization | **> 1** | Second switch optimization pass after loop/branch transformations; wrapper `sub_C5FC80` | [Branch & Switch](branch-switch.md) |

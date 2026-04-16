@@ -572,7 +572,7 @@ Each block index recovered from the tree triggers a call to `sub_BEA5F0` for per
 
 GPU CSE must respect constraints that do not arise in CPU compilers:
 
-- **Divergence.** A uniform subexpression (same value across all threads in a warp) can be safely hoisted. A divergent subexpression may have different values per thread and must only be CSE'd within the same control-flow path. The GvnCse pass runs after `AnalyzeUniformsForSpeculation` (phase 27), which provides divergence annotations.
+- **Divergence.** A uniform subexpression (same value across all threads in a warp) can be safely hoisted. A divergent subexpression may have different values per thread and must only be CSE'd within the same control-flow path. The GvnCse pass runs after `AnalyzeUniformsForSpeculation` (phase 27), which provides constant bank speculation-safety annotations, and relies on `OriPropagateVarying` (phases 53, 70) for per-register divergence classification.
 
 - **Barrier sensitivity.** A computation that reads shared memory before a `BAR.SYNC` cannot be commoned with an identical computation after the barrier, because intervening threads may have written different values. Memory operations with barrier dependencies are assigned unique value numbers. The actual barrier check is performed by `sm_backend->vtable[371]` (offset `+2968`), an architecture-specific predicate.
 

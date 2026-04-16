@@ -801,7 +801,7 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 24 | `OriPipelining` | Software pipelining of loops |
 | 25 | `StageAndFence` | Memory staging and fence insertion |
 | 26 | `OriRemoveRedundantBarriers` | Remove unnecessary barrier instructions |
-| 27 | `AnalyzeUniformsForSpeculation` | Identify uniform values for speculative execution |
+| 27 | `AnalyzeUniformsForSpeculation` | Analyze constant bank accesses for speculation safety |
 | 28 | `SinkRemat` | Sink rematerializable instructions |
 | 29 | `GeneralOptimize` | Main GeneralOptimize pass |
 | 30 | `DoSwitchOptSecond` | Switch optimization, second pass |
