@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The ptxas register allocator uses a fat-point greedy algorithm. For each virtual register, it scans a per-physical-register pressure array, picks the slot with the lowest interference count, and commits the assignment. There is no graph coloring, no simplify-select-spill loop, and no worklist -- just two 512-DWORD pressure histograms and a linear scan. This page documents the algorithm in full detail: pressure array construction, constraint evaluation, register selection, assignment propagation, the retry loop, and the supporting knobs.
+The ptxas register allocator uses a fat-point algorithm with a Chaitin-Briggs-style simplify-select ordering. Before the fat-point scan runs, the ordering function (`sub_93FBE0`) classifies vregs into six membership lists by interference degree, then drains them in simplify order (unconstrained and low-interference first, high-interference last) onto an assignment stack. The core allocator (`sub_957160`) pops this stack, scanning a per-physical-register pressure array for each vreg and picking the slot with the lowest interference count. High-interference vregs deferred during simplify are colored optimistically -- if a slot exists below the discard threshold, assignment succeeds without spilling. This page documents the algorithm in full detail: the six-list ordering (see [overview.md](./overview.md#six-list-classification-sub_93fbe0) for the classification table), pressure array construction, constraint evaluation, register selection, assignment propagation, the retry loop, and the supporting knobs.
 
 | | |
 |---|---|

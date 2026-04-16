@@ -2,7 +2,28 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The ptxas register allocator is a fat-point greedy allocator, not a graph-coloring allocator. There is no interference graph, no Chaitin-Briggs simplify-select-spill loop, and no graph coloring in the main allocation path. Instead, the allocator maintains per-physical-register pressure histograms (512-DWORD arrays) and greedily assigns each virtual register to the physical slot with the lowest interference count. This design trades theoretical optimality for speed on the very large register files of NVIDIA GPUs (up to 255 GPRs per thread).
+The ptxas register allocator is a fat-point allocator with a Chaitin-Briggs-style simplify-select ordering. Before the core allocation loop runs, the ordering function (`sub_93FBE0`, 940 lines) classifies every virtual register into one of six membership lists based on interference degree, constraint count, and register width. Low-interference and unconstrained vregs are drained first (simplify phase), followed by high-interference vregs selected by lowest spill cost (potential-spill phase). The resulting ordering is pushed onto an assignment stack at `alloc+744`. The core fat-point allocator (`sub_957160`) then pops this stack in reverse, assigning each vreg to the physical register slot with the lowest interference count in a per-physical-register pressure histogram (512-DWORD array). High-interference vregs that were deferred during simplify are colored optimistically -- if the fat-point scan finds a slot below threshold, they succeed without spilling.
+
+This hybrid design combines the Chaitin-Briggs simplify-select priority ordering with a fat-point conflict resolution step that replaces the traditional interference-graph adjacency check. There is no explicit interference graph in the main allocation path; instead, per-physical-register pressure histograms serve as the conflict representation. The fat-point scan trades graph-coloring's theoretical optimality for speed on the very large register files of NVIDIA GPUs (up to 255 GPRs per thread).
+
+### Six-List Classification (`sub_93FBE0`)
+
+The ordering function walks the vreg linked list (`alloc+736`) and classifies each vreg into one of six doubly-linked lists. Classification is based on the vreg's interference cost (computed by `sub_938EA0`), constraint chain presence (`vreg+144`), width (`vreg+74`), and flag bits (`vreg+48`):
+
+| List | Offset | Classification criterion | Drain order |
+|------|--------|--------------------------|-------------|
+| LowConf | `alloc+72` | Low interference (`sub_939220` returns false), not in spill-retry mode | 4th (select phase) |
+| LowLate | `alloc+96` | Low interference in spill-retry mode (a3 == 99); assigned decreasing priority | 5th (select phase) |
+| High | `alloc+120` | Spill cost exceeds threshold (`alloc+768`), or flag bit `0x80000` set | 3rd |
+| VeryHigh | `alloc+144` | Paired-mode vregs with `(flags ^ 0x300000) & 0x300000 != 0` | 2nd |
+| Unconstrained | `alloc+168` | No constraint chain (`vreg+144 == NULL`) | 1st |
+| LargeVec | stack-local | Width > 4 registers; merged into VeryHigh after classification | (merged) |
+
+**Simplify phase:** Lists are drained in order Unconstrained, VeryHigh, High. Each vreg is popped, processed by `sub_93F130` (which computes final ordering metadata), and pushed onto the assignment stack at `alloc+744`.
+
+**Select phase:** The LowConf and LowLate lists are processed last. Within each, the vreg with the lowest spill-cost-to-interference ratio is selected first (scanning via `vreg+40` / `vreg+92`), with tie-breaking on register width (`vreg+72`) and pre-allocation priority (`vreg+84`). The selected vreg is removed from the list, processed, and pushed onto the assignment stack.
+
+The core fat-point allocator then iterates the assignment stack, coloring each vreg by scanning the 512-DWORD pressure histogram for the minimum-cost slot. High-interference vregs that land late in the stack are colored optimistically -- if a slot exists below the discard threshold (knob 684, default 50), the assignment succeeds without spilling.
 
 A secondary live-range-based infrastructure (~80 functions at `0x994000`--`0x9A1000`) supports coalescing, splitting, and pre-coloring but feeds results into the fat-point allocator rather than replacing it.
 
@@ -10,6 +31,7 @@ A secondary live-range-based infrastructure (~80 functions at `0x994000`--`0x9A1
 |---|---|
 | **Entry point** | `sub_9721C0` (1086 lines) |
 | **Per-class driver** | `sub_971A90` (355 lines) -- NOSPILL then SPILL retry |
+| **Allocation ordering** | `sub_93FBE0` (940 lines) -- 6-list simplify-select classification |
 | **Core allocator** | `sub_957160` (1658 lines) -- fat-point coloring engine |
 | **Assignment** | `sub_94FDD0` (155 lines) -- write physical reg, propagate aliases |
 | **Spill guidance** | `sub_96D940` (2983 lines) -- per-class priority queues |
@@ -32,6 +54,7 @@ The register allocator runs in the late pipeline, after all optimization passes 
   Instruction lowering               <-- sub_98F430 / sub_98B160
   Register allocation entry          <-- sub_9721C0
     Per-class allocation x 7         <-- sub_971A90 for classes 1..6
+      6-list simplify-select order   <-- sub_93FBE0
       Core fat-point allocator       <-- sub_957160
   Post-allocation fixup
   Instruction scheduling
@@ -1227,7 +1250,7 @@ The linear model at +1720/+1728/+1736 provides an equivalent fast path used in t
 | `sub_939CE0` | 23 | Register consumption counter |
 | `sub_93D070` | 155 | Best result recorder |
 | `sub_93ECB0` | 194 | Pre-assign registers |
-| `sub_93FBE0` | 940 | Spill slot assignment |
+| `sub_93FBE0` | 940 | 6-list allocation ordering (simplify-select classification) |
 | `sub_94A020` | 331 | Pre-allocation pass |
 | `sub_94E620` | 617 | Spill cost accumulator |
 | `sub_94F150` | 561 | Spill code generation |
