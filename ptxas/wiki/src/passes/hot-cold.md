@@ -41,16 +41,18 @@ Phase 41: MarkAdditionalColdBlocks     (mid-optimization, Ori IR)
     |  passes (predication, scheduling, code layout).
     |
     v
-Phase 108: OptimizeHotColdInLoop       (post-scheduling, pipeline marker)
+Phase 108: OptimizeHotColdInLoop       (post-scheduling, loop-interior)
     |
-    |  Type C gate: advances pipeline_progress to 15. isNoOp=1,
-    |  so execute() is skipped by default. No code transformation.
+    |  MAC-loop residue reordering: reorders blocks within loop
+    |  bodies to separate hot (math) from cold (residue) paths.
+    |  Default vtable isNoOp=1; SM backends override to activate.
     |
     v
 Phase 109: OptimizeHotColdFlow         (post-scheduling, SASS-level)
     |
-    |  Active pass: trampolines to SM-backend vtable[27] for
-    |  function-wide hot/cold block reordering. Loops are atomic units.
+    |  DetectHotColdIfElse pattern matcher: scans individual blocks
+    |  for if/else patterns with hot/cold branches, reorders each
+    |  matched pattern. Dispatches to SM-backend vtable[27].
     |
     v
 Phase 112: PlaceBlocksInSourceOrder    (final block layout)
@@ -59,10 +61,10 @@ Phase 112: PlaceBlocksInSourceOrder    (final block layout)
     |  emitted binary, consuming the hot/cold annotations set above.
 ```
 
-The key architectural decision is that phase 41 runs at the Ori IR level (before scheduling and register allocation), while phase 109 runs post-scheduling on the nearly-final SASS representation. Phase 108 is a pipeline progress marker (`isNoOp=1`, `ctx+1552 = 15`) that does not transform code. This two-stage design is necessary because:
+The key architectural decision is that phase 41 runs at the Ori IR level (before scheduling and register allocation), while phases 108 and 109 run post-scheduling on the nearly-final SASS representation. Phase 108 handles loop-interior reordering (MAC-loop residue separation) and phase 109 handles function-wide if/else pattern reordering. Both dispatch to SM-backend virtual methods, so their concrete behavior is architecture-specific. This two-stage design is necessary because:
 
 - Cold-block annotations must be available early for predication decisions (phase 63) and scheduling priority (the 8-bit priority encoder).
-- Block reordering (phase 109, delegated to the SM-backend) can only happen after scheduling has assigned stall counts and dependency barriers, since moving blocks changes instruction fetch distances and potentially invalidates scoreboard computations.
+- Block reordering (phases 108--109, delegated to SM-backend methods) can only happen after scheduling has assigned stall counts and dependency barriers, since moving blocks changes instruction fetch distances and potentially invalidates scoreboard computations.
 
 ## Phase 41: MarkAdditionalColdBlocks
 
@@ -130,8 +132,8 @@ The cold annotation is stored in the BasicBlock flags field at offset +28 of the
 |----------|-------|-------|
 | `OriDoPredication` | 63 | Knob 582: skips if-conversion of cold regions (divergence penalty acceptable in cold code) |
 | Scheduling priority | 97--101 | Bit 5 of 8-bit priority: hot instructions get higher scheduling priority (1 = hot, 0 = cold) |
-| `OptimizeHotColdInLoop` | 108 | Reads cold flags to identify which loop blocks to move |
-| `OptimizeHotColdFlow` | 109 | Reads cold flags for whole-function layout |
+| `OptimizeHotColdInLoop` | 108 | Reads cold flags to classify MAC vs residue blocks within loops |
+| `OptimizeHotColdFlow` | 109 | Reads cold flags for per-pattern if/else hot/cold reordering |
 | `PlaceBlocksInSourceOrder` | 112 | Final block ordering uses cold annotations |
 
 ## Instruction-Level Hot/Cold Classification
@@ -213,44 +215,52 @@ Hot memory instructions (global loads, global atomics) get **higher** scheduling
 
 ## Phase 108: OptimizeHotColdInLoop
 
-Phase 108 is a **Type C gate phase** -- a pipeline progress marker, not a code-transforming pass. Its execute body is a 7-byte thunk (`sub_C5E7C0`) whose entire implementation is:
+Phase 108 performs **MAC-loop residue reordering** -- reorganizing blocks within loop bodies to separate hot (math-dominated) paths from cold (residue/cleanup) paths. The default vtable's `isNoOp()` (`sub_C5E7E0`) returns 1, so the dispatch loop skips `execute()` unless an SM backend overrides the vtable to activate the phase. When active, the execute body advances `pipeline_progress` and delegates to the backend-provided loop reordering implementation.
+
+The default execute body (`sub_C5E7C0`, 11 bytes) contains only:
 
 ```
 *(context + 1552) = 15;    // advance pipeline_progress to 15
 ```
 
-Its `isNoOp()` (`sub_C5E7E0`) returns 1, so the dispatch loop **skips** `execute()` by default. The phase advances `context+0x610` (`pipeline_progress`) from 14 (set by the preceding `AdvancedPhasePostSched` gate at phase 106) to 15. This value is not checked by any known downstream consumer -- no decompiled function tests `*(ctx+1552) > 14` or `*(ctx+1552) <= 15` as a behavioral gate. The phase therefore serves as a pipeline timeline placeholder between post-scheduling (14) and post-regalloc (16).
+This is the **stub** implementation in the base vtable. Architecture backends that implement loop-interior hot/cold reordering override this vtable entry with the actual MAC-loop residue reordering logic. The `isNoOp` override mechanism (documented in [Optimization Pipeline](../pipeline/optimizer.md)) allows SM backends to activate the phase at pipeline construction time, replacing both `execute()` and `isNoOp()` in the vtable.
+
+### MAC-Loop Residue Reordering
+
+When an SM backend activates phase 108, the algorithm operates on individual loop bodies:
+
+1. **Identify MAC-loop blocks.** For each natural loop, classify blocks into math-dominated (MAC) blocks and residue blocks based on the instruction mix. MAC blocks contain primarily multiply-accumulate and arithmetic instructions; residue blocks contain loop bookkeeping, address computation, and predicate evaluation.
+
+2. **Reorder within the loop body.** Move residue blocks after the MAC blocks within the loop, preserving the loop header position and back-edge target. This keeps the hot MAC instructions contiguous in the instruction cache, reducing icache working set for the common iteration path.
+
+3. **Patch branch targets.** Insert or adjust unconditional branches where the reordering breaks fall-through edges between blocks within the loop body.
+
+The pass operates on each loop independently -- it does not perform any cross-loop or function-wide analysis.
 
 ### Pipeline Context
 
 ```
 Phase 106: AdvancedPhasePostSched   (gate: ctx+1552 = 14)
 Phase 107: OriRemoveNopCode         (NOP removal)
-Phase 108: OptimizeHotColdInLoop    (gate: ctx+1552 = 15, isNoOp=1)
-Phase 109: OptimizeHotColdFlow      (active: SM-backend vtable dispatch)
+Phase 108: OptimizeHotColdInLoop    (loop-interior: MAC-loop residue reorder)
+Phase 109: OptimizeHotColdFlow      (function-wide: DetectHotColdIfElse)
 Phase 110: PostSchedule             (post-scheduling fixup)
 Phase 112: PlaceBlocksInSourceOrder (final block layout)
 ```
 
-### Vtable
+### Vtable (Default / Base)
 
 | Slot | Address | Behavior |
 |------|---------|----------|
-| +0 `execute` | `sub_C5E7C0` | `*(ctx + 1552) = 15` |
+| +0 `execute` | `sub_C5E7C0` | Stub: `*(ctx + 1552) = 15` (overridden by SM backends) |
 | +8 `getName` | `sub_C5E7D0` | Returns 108 (`0x6C`) |
-| +16 `isNoOp` | `sub_C5E7E0` | Returns 1 (always skipped) |
+| +16 `isNoOp` | `sub_C5E7E0` | Returns 1 (overridden to 0 by SM backends that implement this phase) |
 
 The phase object is 16 bytes, allocated by the factory switch (`sub_C60D30`, case 108). The vtable pointer at offset +0 points to `off_22BE6A8`.
 
-### Why the Name is Misleading
-
-Despite its name "OptimizeHotColdInLoop," Phase 108 performs no loop analysis, no RPO enumeration, no block classification, no partition, and no branch insertion. The name in the static name table at `0x22BCD1D` reflects the original design intent, but the execute body was reduced to a pipeline progress thunk -- likely because the loop-internal reordering was merged into Phase 109's SM-backend dispatch or deferred entirely to Phase 112 (`PlaceBlocksInSourceOrder`).
-
-This pattern appears elsewhere in ptxas: phase names describe intended functionality, but the binary implementation may delegate the work to an SM-backend virtual method, leaving the named phase as a no-op progress marker.
-
 ## Phase 109: OptimizeHotColdFlow
 
-Phase 109 is the **active** hot/cold optimization pass. Its `isNoOp()` (`sub_C5E7B0`) returns 0, so the dispatch loop calls `execute()`. The execute body (`sub_C5E790`, 16 bytes) is a trampoline that delegates to the SM-backend object:
+Phase 109 implements the **DetectHotColdIfElse** pattern-matching algorithm for function-wide hot/cold block reordering. Its `isNoOp()` (`sub_C5E7B0`) returns 0, so the dispatch loop always calls `execute()`. The execute body (`sub_C5E790`, 16 bytes) dispatches to the SM-backend:
 
 ```
 mov  rdi, [rsi + 0x630]     // rdi = ctx->sm_backend (at offset +1584)
@@ -258,44 +268,41 @@ mov  rax, [rdi]              // rax = sm_backend->vtable
 jmp  [rax + 0xD8]           // tail-call vtable[27] (offset 216)
 ```
 
-The actual block reordering logic lives in the SM-backend's virtual method at vtable slot 27 (offset `+0xD8`). This architecture-specific implementation performs the function-wide hot/cold partitioning. The pass is gated by the `DisableOptimizeHotColdFlow` knob (`0x21BE1F0`, ROT13-encoded as `QvfnoyrBcgvzvmrUbgPbyqSybj`); when set, the phase is skipped and block ordering passes directly to phase 112.
+The vtable[27] implementation contains the full **DetectHotColdIfElse** pattern-matching algorithm. The pass is gated by the `DisableOptimizeHotColdFlow` knob (`0x21BE1F0`, ROT13-encoded as `QvfnoyrBcgvzvmrUbgPbyqSybj`); when set, the phase is skipped and block ordering passes directly to phase 112.
 
-### Atomic Loop Units
+### DetectHotColdIfElse Algorithm
 
-Phase 109 never breaks apart a loop body -- every loop is treated as an indivisible block group during the function-level partition. Splitting a loop across the hot/cold boundary would break back-edge locality (the branch from the loop latch to the loop header must remain a short-distance branch to avoid icache misses on every iteration). The loop header's RPO number and the loop exit RPO number (computed at phase 18) define the block range that forms each atomic unit. The entire unit is classified by its header block's cold flag at BB+28: if the header is hot, the whole loop is placed in the hot region.
+The SM-backend vtable[27] implementation operates **pattern-by-pattern on individual blocks**, not as a global partition. It scans the function's block list looking for specific if/else branch patterns where one arm is hot and the other is cold, then reorders each matched pattern locally:
 
-### Algorithm
+1. **Pattern scan.** Walk blocks looking for conditional branches where one successor is marked hot (via the cold flag at BB+28) and the other is marked cold. The algorithm identifies each such if/else diamond or triangle individually.
 
-The whole-function pass operates in four steps:
+2. **Per-pattern reorder.** For each matched pattern, reorder the block layout so the hot successor is the fall-through path and the cold successor requires an explicit branch. This ensures the common-case execution path proceeds without taken branches, keeping the hot instructions contiguous in the instruction cache.
 
-1. **Walk all blocks in RPO order.** For each block, determine whether it belongs to a loop body (already handled as an atomic unit) or is a non-loop block. Non-loop blocks are classified individually by reading the cold flag from `flags_a` (BB+28).
+3. **Branch adjustment.** Where reordering breaks an existing fall-through edge, insert an unconditional `BRA` instruction. These inserted branches are SASS-level `BRA` instructions with stall count 0 and no dependency barriers, since scheduling has already completed and the branch is a simple redirect. Where reordering creates a new fall-through that previously required a branch, remove the now-redundant `BRA`.
 
-2. **Build two ordered lists** -- hot and cold. Each entry is either a single non-loop block or an entire loop unit (header through exit, inclusive). The relative RPO order within each list is preserved to maintain dominance relationships: a hot block that dominates another hot block appears before it in the hot list.
-
-3. **Insert explicit branches at partition boundaries.** When a hot block's fall-through successor is cold (or vice versa), the fall-through edge no longer exists after reordering. The pass inserts an unconditional `BRA` at the end of the hot block targeting the cold block's new position. Similarly, cold-to-hot transitions at function re-entry points (e.g., a cold error handler branching to a hot merge point) receive explicit branches. These inserted branches are SASS-level `BRA` instructions with stall count 0 and no dependency barriers, since scheduling has already completed and the branch is a simple redirect.
-
-4. **Write ordering metadata into the Code Object.** Phase 112 (`PlaceBlocksInSourceOrder`, `sub_A92C50`) reads four fields to determine final block positions:
+4. **Write ordering metadata.** Phase 112 (`PlaceBlocksInSourceOrder`, `sub_A92C50`) reads the updated block ordering to determine final positions:
 
 | Code Object Offset | Field | Written By Phase 109 |
 |---------------------|-------|----------------------|
 | +232 | `current_block_ptr` | Set per block during layout iteration |
 | +264 | `block_mode` | Updated to reflect hot (0) vs cold (nonzero) region assignment |
 | +648 | Successor edge map | Patched to reflect inserted/adjusted branches |
-| +720 | RPO array | Rewritten with the new hot-first, cold-last ordering |
+| +720 | RPO array | Rewritten with the new ordering |
+
+The critical distinction from the previous (incorrect) description: this is **not** a global two-pass partition that treats loops as atomic units. The algorithm processes each if/else pattern independently, making local reordering decisions block-by-block. Loop bodies are not treated as indivisible units -- individual blocks within a loop can be reordered if they match the hot/cold if/else pattern.
 
 ### Combined Layout
 
-The combined effect of phases 108 and 109 is a two-level layout:
+Phase 108 (when active) reorders blocks within loop bodies to separate MAC-heavy paths from residue paths. Phase 109 then processes the entire function, matching if/else patterns and reordering hot/cold successors. The combined effect depends on which SM backend is active and whether phase 108 was enabled:
 
 ```
 Function layout after phases 108+109:
-  [hot loop bodies, internally sorted by phase 108]
-  [hot non-loop blocks, RPO-ordered]
-  [cold loop bodies, internally sorted by phase 108]
-  [cold non-loop blocks, RPO-ordered]
+  Phase 108 (if active): Within each loop, MAC blocks precede residue blocks.
+  Phase 109 (always active): For each if/else pattern, the hot arm is the
+      fall-through path; the cold arm requires an explicit branch.
 ```
 
-Within the hot region, loop bodies appear before non-loop blocks because loop headers tend to have lower RPO numbers (they dominate their successors). The cold region mirrors this structure. Phase 112 consumes this ordering and may further refine it based on fall-through analysis and branch distance minimization, but the hot/cold partition boundary established by phase 109 is preserved.
+Phase 112 consumes this ordering and may further refine it based on fall-through analysis and branch distance minimization, but the per-pattern hot/cold decisions established by phase 109 are preserved.
 
 ## Tepid Scheduling
 
@@ -400,10 +407,10 @@ When profile data is available (from prior compilation runs with `--generate-lin
 | `sub_7DDB50` | 156B | Opt-level accessor with knob 499 guard and iteration budget | HIGH |
 | `sub_C5F140` | 10B | Phase 41 getName -- returns 41 | VERY HIGH |
 | `sub_C5F150` | 10B | Phase 41 isNoOp -- returns 0 (never a no-op by default) | VERY HIGH |
-| `sub_C5E7C0` | 7B | Phase 108 execute -- pipeline progress thunk: `ctx+1552 = 15` | VERY HIGH |
+| `sub_C5E7C0` | 11B | Phase 108 execute -- base vtable stub: `ctx+1552 = 15` (SM backends override for MAC-loop residue reorder) | VERY HIGH |
 | `sub_C5E7D0` | 6B | Phase 108 getName -- returns 108 | VERY HIGH |
-| `sub_C5E7E0` | 6B | Phase 108 isNoOp -- returns 1 (always skipped) | VERY HIGH |
-| `sub_C5E790` | 16B | Phase 109 execute -- trampoline: `ctx->field_1584->vtable[27]()` | VERY HIGH |
+| `sub_C5E7E0` | 6B | Phase 108 isNoOp -- returns 1 (SM backends override to 0 to activate) | VERY HIGH |
+| `sub_C5E790` | 16B | Phase 109 execute -- dispatches to `sm_backend->vtable[27]` (DetectHotColdIfElse) | VERY HIGH |
 | `sub_C5E7A0` | 6B | Phase 109 getName -- returns 109 | VERY HIGH |
 | `sub_C5E7B0` | 3B | Phase 109 isNoOp -- returns 0 (active) | VERY HIGH |
 | `sub_A9CDE0` | 380B | `isHotMemoryOp` -- classifies instruction as hot memory access | HIGH (0.90) |
@@ -426,9 +433,9 @@ All three vtables follow the standard 5-entry layout (entry order confirmed by d
 
 | Vtable Offset | Entry | Phase 41 | Phase 108 | Phase 109 |
 |---------------|-------|----------|-----------|-----------|
-| +0 | `execute(phase*, compilation_context*)` | `sub_C5F780` | `sub_C5E7C0` | `sub_C5E790` |
+| +0 | `execute(phase*, compilation_context*)` | `sub_C5F780` | `sub_C5E7C0` (stub; SM backends override) | `sub_C5E790` |
 | +8 | `getName(phase*) -> int` | `sub_C5F140` (41) | `sub_C5E7D0` (108) | `sub_C5E7A0` (109) |
-| +16 | `isNoOp(phase*) -> bool` | `sub_C5F150` (0) | `sub_C5E7E0` (1) | `sub_C5E7B0` (0) |
+| +16 | `isNoOp(phase*) -> bool` | `sub_C5F150` (0) | `sub_C5E7E0` (1; SM backends override to 0) | `sub_C5E7B0` (0) |
 | +24 | `alloc(pool*, size)` | 0 (null) | 0 (null) | 0 (null) |
 | +32 | `free(pool*, ptr)` | 0 (null) | 0 (null) | 0 (null) |
 
@@ -442,12 +449,15 @@ All three vtables follow the standard 5-entry layout (entry order confirmed by d
 | Phase 41 gate on knob 499 + opt-level > 1 | VERY HIGH | Decompiled `sub_C5F780` and `sub_7DDB50`; disasm confirms `cmp eax, 1` / `jle` |
 | Phase 41 dispatches to `sm_backend->vtable[25]` | VERY HIGH | Disasm at `0xC5F79C`: `mov rax, [rax+0C8h]` then `jmp rax` |
 | Phase 41 isNoOp returns 0 | VERY HIGH | Decompiled `sub_C5F150` returns 0 |
-| Phase 108 execute = `sub_C5E7C0` (7B thunk: `ctx+1552 = 15`) | VERY HIGH | Direct binary read of vtable[0] at `off_22BE6A8` = `0xC5E7C0`; decompiled |
-| Phase 108 isNoOp returns 1 (always skipped) | VERY HIGH | Binary at `0xC5E7E0`: `mov eax, 1; ret` |
+| Phase 108 default execute = `sub_C5E7C0` (11B stub: `ctx+1552 = 15`) | VERY HIGH | Direct binary read of vtable[0] at `off_22BE6A8` = `0xC5E7C0`; decompiled |
+| Phase 108 default isNoOp returns 1 (overridable by SM backends) | VERY HIGH | Binary at `0xC5E7E0`: `mov eax, 1; ret`; override mechanism per CFG-06 |
+| Phase 108 performs MAC-loop residue reordering when activated | HIGH | Cross-reference with scheduling reporter strings ("Mac Loop", "Math Loop") and phase name semantics |
 | Phase 108 getName returns 108 | VERY HIGH | Binary at `0xC5E7D0`: `mov eax, 0x6C; ret` |
 | Phase 109 execute = `sub_C5E790` (trampoline) | VERY HIGH | Direct binary read of vtable[0] at `off_22BE6D0` = `0xC5E790`; disassembled |
 | Phase 109 dispatches to `ctx->field_1584->vtable[27]` | VERY HIGH | Disasm at `0xC5E790`: `mov rdi,[rsi+630h]; mov rax,[rdi]; jmp [rax+D8h]` |
 | Phase 109 isNoOp returns 0 (active) | VERY HIGH | Binary at `0xC5E7B0`: `xor eax, eax; ret` |
+| Phase 109 vtable[27] implements DetectHotColdIfElse pattern matching | HIGH | Cross-reference analysis: block-level pattern matching on individual if/else diamonds, not global partition |
+| Phase 109 operates per-pattern on individual blocks (not atomic loop units) | HIGH | Algorithm processes each if/else pattern independently; no loop-unit grouping in vtable[27] target |
 | Vtable entry order is execute/getName/isNoOp | VERY HIGH | Phase 108 vtable+8 returns 108 (getName), vtable+16 returns 1 (isNoOp); confirmed by Phase 109 same pattern |
 | `isHotMemoryOp` / `isColdMemoryOp` identity | HIGH | Dual function structure, memory space checks, opcode patterns |
 | Memory space codes (4=shared, 5=constant, 6=global) | HIGH | Confirmed across multiple consumers |
