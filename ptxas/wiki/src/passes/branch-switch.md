@@ -679,8 +679,8 @@ Pass                           Algorithm                    Complexity    CFG Ch
 DoSwitchOpt (14, 30)           Pattern match + decision     O(N log N)    Rewrites blocks, adds
                                tree for strategy selection   per switch    jump table pseudo-ops
 
-OriBranchOpt (15)              Worklist-driven CFG          O(B + E)      Deletes blocks, removes
-                               simplification (fixed-point)  per iter      edges, threads branches
+OriBranchOpt (15)              Single RPO pass with per-    O(B + E)      Deletes blocks, removes
+                               block inner convergence loop  per iter      edges, threads branches
 
 OptimizeNestedCondBranches     Pattern match on nested      O(B)          Merges blocks, replaces
 (38)                           branch diamonds                             branches with LOP3+BRA
@@ -714,7 +714,7 @@ All addresses from ptxas v13.0.88. Vtable entries resolved by reading the ELF `.
 | Address | Size | Callers | Description |
 |---------|------|---------|-------------|
 | `sub_77CF40` | 4698B | 1 | DoSwitchOpt core -- pattern match, strategy select, code emit |
-| `sub_7917F0` | 529B | 2 | OriBranchOpt core -- worklist CFG simplification |
+| `sub_7917F0` | 529B | 2 | OriBranchOpt core -- single RPO pass with per-block inner convergence loop |
 | `sub_A0F020` | 2375B | 11 | OptimizeNestedCondBranches core -- predicate combining |
 | `sub_791F00` | 587B | 3 | DoSwitchOpt setup -- SwitchOptContext init, calls `sub_77CF40` |
 | `sub_661210` | 2B | -- | SM backend slot 17 NO-OP (`rep ret`) -- SM30, SM50 |
