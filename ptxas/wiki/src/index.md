@@ -24,7 +24,7 @@ PTX (Parallel Thread Execution) is NVIDIA's virtual ISA for GPU compute. SASS (S
 | Term | Meaning |
 |---|---|
 | **Ori IR** | PTXAS's internal intermediate representation — basic blocks containing an instruction DAG with typed virtual registers. Named after recovered debug strings; not an acronym. |
-| **Mercury** | The SASS binary encoder subsystem. Converts abstract instruction objects into 128-bit packed machine words. Named in NVIDIA source paths and error strings. |
+| **Mercury** | The SASS binary encoder subsystem. Converts abstract instruction objects into 128-bit packed machine words. Named in recovered binary strings (`"mercury"`, `"Generate Capsule Mercury"`, `"Self check for capsule mercury"`, phase names `MercEncodeAndDecode` / `MercExpandInstructions` / `MercGenerateOpex` / `MercGenerateSassUCode`). |
 | **OCG** | Optimizing Code Generator — NVIDIA's internal name for the ptxas optimization+codegen pipeline (the 159-phase core). Appears in knob prefixes and timing strings. |
 | **Fatpoint** | The register allocation algorithm used by ptxas. A fatpoint is a program point annotated with the set of simultaneously live virtual registers. The allocator works by computing these sets and mapping them to physical registers. |
 | **Opex** | Operand expansion — a late pipeline stage that expands abstract operands into concrete SASS encoding fields. Converts virtual register references, immediates, and address modes into the bit patterns Mercury expects. |
