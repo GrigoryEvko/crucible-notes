@@ -270,7 +270,9 @@ The `OriPropagateVarying` passes (phases 53 and 70) propagate divergence informa
 
 ### Algorithm
 
-Both passes execute the same forward dataflow procedure. The analysis is a single-pass forward walk -- not an iterative fixed-point -- because the Ori IR is in partial-SSA form (phases 23--73) where every register has a unique definition point, so forward program order already respects def-use ordering.
+Both passes execute the same forward dataflow procedure. The analysis is an **iterative fixed-point loop**, not a single forward pass. Although the Ori IR is in partial-SSA form (phases 23--73) where intra-procedural def-use ordering is trivially satisfied by forward program order, inter-procedural divergence propagation requires re-iteration: when a function called on a divergent path is newly marked varying, the varying status must propagate through that callee's register definitions, which may in turn affect other call sites. The loop terminates when no register's varying status changes during a complete iteration.
+
+Binary analysis of `sub_90E620` (1,919 bytes, called from `sub_90EDA0`) confirms this structure. The function contains an outer `do { ... } while (worklist)` loop driven by a bitvector of pending registers. Within the loop body, `sub_90C180` (2,093 bytes) propagates varying status to each register and returns a non-zero changed flag when the status was updated. When changes are detected and the affected register belongs to a callee function (checked via the call-graph edge list at `codeobj+128`), `sub_90E3F0` resolves the callee's divergence through FNV-1a hash lookups on the function-local state at offsets `+288`/`+328`. If the callee function itself was newly marked varying (comparing the callee's function record against the changed record), the loop restarts from the beginning via `goto LABEL_24`, re-processing all pending registers with the updated information.
 
 ```
 PropagateVarying(code_object):
@@ -280,21 +282,34 @@ PropagateVarying(code_object):
     set bit 2 of vreg+49                             // SR_LANEID, SHFL,
     // also: LDG/LDS/LDL with varying base, VOTE, per-thread atomics
 
-  // Step 2 -- forward walk in RPO
-  for each basic_block in RPO order:
-    for each instruction in block (forward):
-      if instruction is MovPhi:
-        // Divergent if any source is varying OR the merge follows
-        // a divergent branch (even with all-uniform incoming values)
-        if any source vreg has bit 2 set, or merge crosses divergent edge:
-          set bit 2 of dest_vreg+49
-      else:
-        for each source register operand:
-          if bit 2 of src_vreg+49 is set:
-            set bit 2 of dest_vreg+49; break   // one varying source suffices
+  // Step 2 -- iterative fixed-point over call graph + RPO walk
+  do {
+    Changed = false
+    for each function in reverse-postorder call-graph traversal:
+      for each basic_block in RPO order:
+        for each instruction in block (forward):
+          if instruction is MovPhi:
+            // Divergent if any source is varying OR the merge follows
+            // a divergent branch (even with all-uniform incoming values)
+            if any source vreg has bit 2 set, or merge crosses divergent edge:
+              if bit 2 of dest_vreg+49 not already set:
+                set bit 2 of dest_vreg+49
+                Changed = true
+          else:
+            for each source register operand:
+              if bit 2 of src_vreg+49 is set:
+                if bit 2 of dest_vreg+49 not already set:
+                  set bit 2 of dest_vreg+49
+                  Changed = true
+                break   // one varying source suffices
+      // inter-procedural: propagate varying through callee edges
+      for each callee reachable from varying call sites:
+        if callee's registers updated:
+          Changed = true   // forces re-iteration
+  } while (Changed)
 ```
 
-Registers that remain with bit 2 clear after the walk are proven uniform and eligible for UR promotion.
+Registers that remain with bit 2 clear after convergence are proven uniform and eligible for UR promotion.
 
 ### Pipeline Position
 
