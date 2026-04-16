@@ -2,12 +2,12 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-ptxas v13.0.88 handles five Blackwell-era base targets -- sm_100, sm_103, sm_110, sm_120, sm_121 -- spanning datacenter, automotive, consumer, and DGX product lines. All share the codegen factory value 36864 (generation 9, `9 << 12`) and the `"Blackwell"` family string internally, despite being distinct microarchitectures. The defining Blackwell feature is **Capsule Mercury** (capmerc) as the default binary output format, automatically enabled for SM numbers exceeding 99. The datacenter variants (sm_100, sm_103, sm_110) support **tcgen05** (5th-generation tensor cores with dedicated tensor memory); the consumer variants (sm_120, sm_121) do not.
+ptxas v13.0.88 handles five Blackwell-era base targets -- sm_100, sm_103, sm_110, sm_120, sm_121 -- spanning datacenter, automotive, consumer, and DGX product lines. All share generation 9 (upper nibble `0x9000` of the codegen factory) and the `"Blackwell"` family string internally, but each uses a distinct sub-variant: sm_100=36864 (`0x9000`), sm_103=36867 (`0x9003`), sm_110=36868 (`0x9004`), sm_120=sm_121=36869 (`0x9005`). The defining Blackwell feature is **Capsule Mercury** (capmerc) as the default binary output format, automatically enabled for SM numbers exceeding 99. The datacenter variants (sm_100, sm_103, sm_110) support **tcgen05** (5th-generation tensor cores with dedicated tensor memory); the consumer variants (sm_120, sm_121) do not.
 
 | | |
 |---|---|
 | **SM targets** | sm_100, sm_103, sm_110, sm_120, sm_121 (+ `a` and `f` sub-variants each) |
-| **Codegen factory** | 36864 (`0x9000`, generation 9) |
+| **Codegen factory range** | 36864--36869 (`0x9000`--`0x9005`, generation 9) |
 | **Family string** | `"Blackwell"` (all five targets) |
 | **Default binary format** | Capsule Mercury (capmerc) -- auto-enabled for SM > 99 |
 | **SASS encoding** | 128-bit per instruction (Mercury-encoded) |

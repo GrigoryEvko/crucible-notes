@@ -29,16 +29,16 @@ ptxas validates the `--gpu-name` target against three sorted lookup tables, cons
 |---|---|---|---|---|---|---|
 | `sm_75` | 750 | Turing | TU10x (RTX 20xx) | 24577 | Production | [turing-ampere](turing-ampere.md) |
 | `sm_80` | 800 | Ampere | A100 | 28673 | Production | [turing-ampere](turing-ampere.md) |
-| `sm_86` | 860 | Ampere | A40/A10/RTX 30xx | 28673 | Production | [turing-ampere](turing-ampere.md) |
-| `sm_87` | 870 | Ampere | Orin (Jetson) | 28673 | Production | [turing-ampere](turing-ampere.md) |
-| `sm_88` | 880 | Ampere | -- | 28673 | Production | [turing-ampere](turing-ampere.md) |
-| `sm_89` | 890 | Ada Lovelace | AD10x (RTX 40xx) / L40S | 28673 | Production | [ada-hopper](ada-hopper.md) |
+| `sm_86` | 860 | Ampere | A40/A10/RTX 30xx | 28674 | Production | [turing-ampere](turing-ampere.md) |
+| `sm_87` | 870 | Ampere | Orin (Jetson) | 28675 | Production | [turing-ampere](turing-ampere.md) |
+| `sm_88` | 880 | Ampere | -- | 28676 | Production | [turing-ampere](turing-ampere.md) |
+| `sm_89` | 890 | Ada Lovelace | AD10x (RTX 40xx) / L40S | 28677 | Production | [ada-hopper](ada-hopper.md) |
 | `sm_90` / `sm_90a` | 900 | Hopper | H100 / H200 | 32768 | Production | [ada-hopper](ada-hopper.md) |
 | `sm_100` / `sm_100a` / `sm_100f` | 1000 | Blackwell | B200 (datacenter) | 36864 | Production | [blackwell](blackwell.md) |
-| `sm_103` / `sm_103a` / `sm_103f` | 1030 | Blackwell Ultra | GB300 (datacenter) | 36864 | Production | [blackwell](blackwell.md) |
-| `sm_110` / `sm_110a` / `sm_110f` | 1100 | Jetson Thor | Thor SoC (auto/robotics) | 36864 | Production | [blackwell](blackwell.md) |
-| `sm_120` / `sm_120a` / `sm_120f` | 1200 | Blackwell (sm120) | RTX 50xx / RTX Pro | 36864 | Production | [blackwell](blackwell.md) |
-| `sm_121` / `sm_121a` / `sm_121f` | 1210 | Blackwell (sm120) | DGX Spark | 36864 | Production | [blackwell](blackwell.md) |
+| `sm_103` / `sm_103a` / `sm_103f` | 1030 | Blackwell Ultra | GB300 (datacenter) | 36867 | Production | [blackwell](blackwell.md) |
+| `sm_110` / `sm_110a` / `sm_110f` | 1100 | Jetson Thor | Thor SoC (auto/robotics) | 36868 | Production | [blackwell](blackwell.md) |
+| `sm_120` / `sm_120a` / `sm_120f` | 1200 | Blackwell (sm120) | RTX 50xx / RTX Pro | 36869 | Production | [blackwell](blackwell.md) |
+| `sm_121` / `sm_121a` / `sm_121f` | 1210 | Blackwell (sm120) | DGX Spark | 36869 | Production | [blackwell](blackwell.md) |
 
 The family name stored in the profile object (from `sub_6765E0`) uses NVIDIA's internal naming: `"Turing"`, `"Ampere"`, `"Hopper"`, `"Blackwell"`. Ada Lovelace (sm_89) is stored as Ampere-derived internally despite being a distinct microarchitecture. sm_120/121 use `"Blackwell"` internally despite being a different consumer microarchitecture from sm_100 datacenter Blackwell.
 
