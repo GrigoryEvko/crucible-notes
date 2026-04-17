@@ -142,7 +142,7 @@ def main(argv: list[str]) -> int:
         return 2
 
     indexable: list[tuple[str, float]] = []
-    for root, _dirs, files in os.walk(site_root):
+    for root, _, files in os.walk(site_root):
         for fname in files:
             if not fname.endswith(".html"):
                 continue
