@@ -36,6 +36,7 @@ jobs:
         run: |
           mkdir -p _site
           cp site/index.html _site/
+          cp -r site/images _site/images
           cp -r docs/ptxas _site/ptxas
           cp -r docs/cicc _site/cicc
           cp -r "docs/cudafe++" "_site/cudafe++"
