@@ -36,22 +36,13 @@ jobs:
         run: |
           mkdir -p _site
           cp site/index.html _site/
-          cp site/robots.txt _site/
           cp -r docs/ptxas _site/ptxas
           cp -r docs/cicc _site/cicc
           cp -r "docs/cudafe++" "_site/cudafe++"
           cp -r docs/nvlink _site/nvlink
 
-      - name: Generate sitemap
-        run: |
-          cd _site
-          echo '<?xml version="1.0" encoding="UTF-8"?>' > sitemap.xml
-          echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' >> sitemap.xml
-          find . -name '*.html' -not -name '404.html' -not -name 'print.html' -not -name 'toc.html' | \
-            sed 's|^\./||' | sort | while read f; do
-              echo "  <url><loc>https://grigoryevko.github.io/nvopen-tools/${f}</loc></url>" >> sitemap.xml
-            done
-          echo '</urlset>' >> sitemap.xml
+      - name: Inject canonical links and generate sitemap
+        run: python3 .github/workflows/seo_postprocess.py _site
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
