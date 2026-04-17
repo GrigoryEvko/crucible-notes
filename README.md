@@ -2,18 +2,18 @@
 
 Reverse engineering reference for NVIDIA's CUDA compiler toolchain.
 
-**[Documentation](https://grigoryevko.github.io/nvopen-tools/)**
+**[Documentation](https://gh.evko.io/nvopen-tools/)**
 
 ## Components
 
 | Component | Description | Docs | Status |
 |---|---|---|---|
-| **cicc** | CUDA C→PTX compiler (60 MB, LLVM 20.0.0 + EDG 6.6) | **[wiki](https://grigoryevko.github.io/nvopen-tools/cicc/)** | 267 pages |
-| **ptxas** | PTX→SASS assembler (37.7 MB, proprietary, 159-phase pipeline) | **[wiki](https://grigoryevko.github.io/nvopen-tools/ptxas/)** | 73 pages |
-| **nvlink** | GPU device linker (37 MB, 95% embedded ptxas) | **[wiki](https://grigoryevko.github.io/nvopen-tools/nvlink/)** | 92 pages |
+| **cicc** | CUDA C→PTX compiler (60 MB, LLVM 20.0.0 + EDG 6.6) | **[wiki](https://gh.evko.io/nvopen-tools/cicc/)** | 267 pages |
+| **ptxas** | PTX→SASS assembler (37.7 MB, proprietary, 159-phase pipeline) | **[wiki](https://gh.evko.io/nvopen-tools/ptxas/)** | 73 pages |
+| **nvlink** | GPU device linker (37 MB, 95% embedded ptxas) | **[wiki](https://gh.evko.io/nvopen-tools/nvlink/)** | 92 pages |
 | **nvcc** | CUDA compilation driver | — | Decompiled |
 | **nvptxcompiler** | PTX JIT compilation library (86 MB static lib, 392 objects) | — | Decompiled |
-| **cudafe++** | CUDA C++ frontend (8.5 MB, EDG 6.6, 6,483 functions) | **[wiki](https://grigoryevko.github.io/nvopen-tools/cudafe++/)** | 69 pages |
+| **cudafe++** | CUDA C++ frontend (8.5 MB, EDG 6.6, 6,483 functions) | **[wiki](https://gh.evko.io/nvopen-tools/cudafe++/)** | 69 pages |
 | **fatbin** | Fat binary manipulation tools | [readme](fatbin/README.md) | Released |
 
 All analysis is from static reverse engineering of stripped x86-64 ELF binaries using IDA Pro 9.x. No source code or any other restricted or copyrighted material was used — all findings derive solely from analysis of compiled binaries.

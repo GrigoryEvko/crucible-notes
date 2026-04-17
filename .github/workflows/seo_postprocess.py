@@ -29,7 +29,7 @@ import sys
 import urllib.parse
 from pathlib import Path
 
-BASE_URL = "https://grigoryevko.github.io/nvopen-tools"
+BASE_URL = "https://gh.evko.io/nvopen-tools"
 
 # Files inside each wiki that must NOT appear in the sitemap and must be
 # marked noindex.
