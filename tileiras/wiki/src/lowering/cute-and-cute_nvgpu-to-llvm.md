@@ -118,7 +118,7 @@ Accumulator location is the structural distinction. Hopper WGMMA accumulates in 
 
 ## Hopper WGMMA Contract
 
-The SM90 WGMMA atom rewriter builds operand descriptors for shared-memory matrices, creates a register accumulator, emits the WGMMA fence, and packages the atom for later NVGPU/NVVM lowering. Descriptor packing is deterministic integer arithmetic over the shared-memory base pointer, leading-byte offset, matrix stride, swizzle mode, and base offset — see the canonical bit layout in [MMA Atoms sm70-120](../dialects/cute_nvgpu/mma-atoms-sm70-120.md). The packer is side-effect-free so common-subexpression elimination can hoist redundant descriptor construction across loop iterations.
+The SM90 WGMMA atom rewriter builds operand descriptors for shared-memory matrices, creates a register accumulator, emits the WGMMA fence, and packages the atom for later NVGPU/NVVM lowering. Descriptor packing is deterministic integer arithmetic over the shared-memory base pointer, leading-byte offset, matrix stride, swizzle mode, and base offset — see the canonical bit layout in [MMA Atoms sm70-120 — SM90 WGMMA](../dialects/cute_nvgpu/mma-atoms-sm70-120.md#sm90-wgmma). The packer is side-effect-free so common-subexpression elimination can hoist redundant descriptor construction across loop iterations.
 
 ```mlir
 %atom = cute_nvgpu.atom.sm90.wgmma %a_smem, %b_smem, %shape, %elt
@@ -177,7 +177,7 @@ Value lowerRetrieveTmemPtr(RetrieveTmemPtrOp op, Value handle,
 }
 ```
 
-The SM100 populator installs fifteen patterns in one call. The roster covers `retrieve_tmem_ptr`, `tmem_load`, `tmem_store`, `tmem_alloc`, `tmem_dealloc`, and ten further tcgen05 operations including `load_b8x256` and `store_b8x256`. The populator gates on the `tmem` subtarget feature (see [NVPTX Subtarget and Feature Matrix](../codegen/nvptx-subtarget-and-feature-matrix.md)); on non-Blackwell or consumer-Blackwell builds the populator is invoked with a no-op flag and registers nothing, so the conversion target never accepts `cute_nvgpu.arch.sm100.*` operations and any surviving op fails legalisation with a clean diagnostic.
+The SM100 populator installs fifteen patterns in one call. The roster covers `retrieve_tmem_ptr`, `tmem_load`, `tmem_store`, `tmem_alloc`, `tmem_dealloc`, and ten further tcgen05 operations including `load_b8x256` and `store_b8x256`. The populator gates on the `tmem` subtarget feature (see [NVPTX Subtarget and Feature Matrix — Cached Tensor-Memory Predicate](../codegen/nvptx-subtarget-and-feature-matrix.md#cached-tensor-memory-predicate)); on non-Blackwell or consumer-Blackwell builds the populator is invoked with a no-op flag and registers nothing, so the conversion target never accepts `cute_nvgpu.arch.sm100.*` operations and any surviving op fails legalisation with a clean diagnostic.
 
 ## Conversion Invariants
 
@@ -191,5 +191,5 @@ The SM100 populator installs fifteen patterns in one call. The roster covers `re
 
 ## Cross-References
 
-[Overview](overview.md) places CuTe lowering in the companion-dialect stage that runs after TileAS bodies have lowered to LLVM. [nvgpu / gpu to NVVM](nvgpu-and-gpu-to-nvvm.md) is the sister pass that consumes the architectural atoms this pass emits — WGMMA atoms go to `nvvm.wgmma.*`, IMMA and S2T copy atoms go to `nvvm.tcgen05.*`. [TileAS to LLVM](tileas-to-llvm.md) emits the residual `cute_nvgpu.arch.sm100.retrieve_tmem_ptr` operations this pass resolves through the per-function TMEM cache. [MMA Atoms sm70-120](../dialects/cute_nvgpu/mma-atoms-sm70-120.md) carries the canonical bit layout for GMMA descriptors.
+[Conversion / Lowering Overview](overview.md#lowering-stages) places CuTe lowering in the companion-dialect stage that runs after TileAS bodies have lowered to LLVM. [nvgpu / gpu to NVVM — NVGPU Dialect Lowering](nvgpu-and-gpu-to-nvvm.md#nvgpu-dialect-lowering) is the sister pass that consumes the architectural atoms this pass emits — WGMMA atoms go to `nvvm.wgmma.*`, IMMA and S2T copy atoms go to `nvvm.tcgen05.*`. [TileAS to LLVM — Body Conversion Phases](tileas-to-llvm.md#body-conversion-phases) emits the residual `cute_nvgpu.arch.sm100.retrieve_tmem_ptr` operations this pass resolves through the per-function TMEM cache. [MMA Atoms sm70-120 — SM90 WGMMA](../dialects/cute_nvgpu/mma-atoms-sm70-120.md#sm90-wgmma) carries the canonical bit layout for GMMA descriptors.
 

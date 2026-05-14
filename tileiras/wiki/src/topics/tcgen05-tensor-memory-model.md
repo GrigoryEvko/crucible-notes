@@ -4,7 +4,7 @@
 
 Blackwell introduces tensor memory — TMEM — as a third on-chip memory class alongside registers and shared memory. TMEM is per-SM, addressed in a 128-row dense grid, and reachable only from a small family of asynchronous instructions. The `tcgen05` instruction family is that small family: matrix multiply, sparse multiply, weight-stationary multiply, and the block-scaled microscale variants all consume TMEM operands and write TMEM accumulators. This page documents the tensor memory model and the `tcgen05.mma` instruction family that consumes it. SM100 and SM103 only.
 
-This page is the canonical reference for the model and the variant taxonomy. It supersedes the scattered tcgen05 paragraphs in `codegen/tcgen05-wgmma-mbarrier-cluster.md` (the validation snippet plus control-word table) and `dialects/cute_nvgpu/mode-pattern-verifiers.md` (the 13-diagnostic kind-word verifier). Those pages keep their backend-validation and verifier-diagnostic content; the structural model lives here.
+This page is the canonical reference for the model and the variant taxonomy. It supersedes the scattered tcgen05 paragraphs in [tcgen05 / WGMMA / mbarrier / Cluster Emission](../codegen/tcgen05-wgmma-mbarrier-cluster.md) (the validation snippet plus control-word table) and [Mode Pattern Verifiers](../dialects/cute_nvgpu/mode-pattern-verifiers.md) (the 13-diagnostic kind-word verifier). Those pages keep their backend-validation and verifier-diagnostic content; the structural model lives here.
 
 ## Tensor Memory
 
@@ -64,7 +64,7 @@ The `mma_kind` field picks the element-type family and the variant of block scal
 | 5 | f8f6f4 | non-block-scaled FP8/FP6/FP4 (alias of mxf8f6f4 for backward compat) |
 | 7 | mxf4 | OCP MX-FP4 inputs with E4M3FN scales |
 
-The cross-field consistency rules — for example, "scale-input-accumulator only applies to f16 and tf32", "block-scale rejects f16/tf32/i8" — are enforced by the verifier and listed in detail on the mode-pattern-verifiers page.
+The cross-field consistency rules — for example, "scale-input-accumulator only applies to f16 and tf32", "block-scale rejects f16/tf32/i8" — are enforced by the verifier and listed in detail on the [Mode Pattern Verifiers](../dialects/cute_nvgpu/mode-pattern-verifiers.md) page.
 
 Beside the kind word, a separate collector word controls how operand A is staged into the MMA:
 

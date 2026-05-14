@@ -211,7 +211,7 @@ Everything tileiras inherits unchanged from the LLVM 21 fork is documented in th
 - **NVVMIRVerifier** — same verifier role before backend lowering.
 - **IPMSP / SelectKernels / KernelInfo / NVPTXSetFunctionLinkages / NVVMAA / nvvm-reflect-pp** — same backend registration family.
 
-For everything *above* the NVVM-IR boundary, the cicc wiki has nothing to offer; refer to the tileiras-internal pages: `dialects/cuda-tile.md`, `dialects/cute.md`, `dialects/cute-nvgpu.md`, `dialects/cutlass.md`, `dialects/nv-tileaa.md`, `dialects/nv-tileas.md`, the `passes/tileas-*.md` series, `pipeline/53-pass-pipeline.md`, `scheduler/mods-builder.md`, `driver/option-registrar.md`, and `bytecode/reader.md`.
+For everything *above* the NVVM-IR boundary, the cicc wiki has nothing to offer; refer to the tileiras-internal pages: [cuda_tile Overview](../dialects/cuda_tile/overview.md), [cute Overview](../dialects/cute/overview.md), [cute_nvgpu Overview](../dialects/cute_nvgpu/overview.md), [cutlass Overview](../dialects/cutlass/overview.md), [nv_tileaa Overview](../dialects/nv_tileaa/overview.md), [nv_tileas Overview](../dialects/nv_tileas/overview.md), the [TileAS Pass Families](../passes/tileas/scheduling-glue.md) series, [Full Pass List by Opt Level](../pipeline/full-pass-list-by-opt-level.md), [Modulo Scheduler and Rau](../scheduler/modulo-scheduler-and-rau.md), [CLI Options](../driver/cli-options.md), and [MLIR Bytecode Format](../bytecode/mlir-bc-format.md).
 
 ## Reimplementation Notes
 

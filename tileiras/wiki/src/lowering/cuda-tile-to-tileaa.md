@@ -246,4 +246,4 @@ The pass fails with a user-facing diagnostic when:
 
 ## Cross-References
 
-[Overview](overview.md) describes this pass's position in the four-stage cascade. [Pattern Set and Type Converter](pattern-set-and-typeconverter.md) documents the shared LLVM type converter that the materialiser triple here registers into. [TileAA to TileAS](tileaa-to-tileas.md) is the next lowering stage; the CopyAtom and ReduceAtom witnesses attached there preserve information this pass made explicit.
+[Conversion / Lowering Overview](overview.md#lowering-stages) describes this pass's position in the four-stage cascade. [Shared LLVM Type Converter](pattern-set-and-typeconverter.md#shared-llvm-type-converter) documents the shared LLVM type converter that the materialiser triple here registers into. [TileAA to TileAS](tileaa-to-tileas.md) is the next lowering stage; the CopyAtom and ReduceAtom witnesses attached there preserve information this pass made explicit.

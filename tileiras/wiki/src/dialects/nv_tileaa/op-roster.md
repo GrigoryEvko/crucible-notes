@@ -427,5 +427,5 @@ void lower_queue_region(QueueRegion region, PipelineBuilder builder) {
 
 ## Cross-References
 
-[types-attrs-verifiers.md](types-attrs-verifiers.md) catalogues the type and attribute surface these operations use and the verbatim verifier diagnostics they emit. [folds-canonicalizers-tokens.md](folds-canonicalizers-tokens.md) describes the rewrites applied after verification succeeds. The TileAS-side counterpart in [../nv_tileas/op-roster-and-builders.md](../nv_tileas/op-roster-and-builders.md) extends this surface with async pipeline and TMA operations.
+[Types, Attributes, Verifiers](types-attrs-verifiers.md#type-surface) catalogues the type and attribute surface these operations use and the verbatim verifier diagnostics they emit. [Folds, Canonicalizers, Tokens](folds-canonicalizers-tokens.md#canonicalization-surface) describes the rewrites applied after verification succeeds. The TileAS-side counterpart in [nv_tileas Operation Roster and Builders](../nv_tileas/op-roster-and-builders.md#operation-families) extends this surface with async pipeline and TMA operations.
 

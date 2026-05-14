@@ -207,3 +207,7 @@ bool run_nvvm_reflect(Module *module, const ReflectOptions *options) {
     return changed;
 }
 ```
+
+## Cross-references
+
+The end-to-end libdevice integration that drives `NVVMReflectPass` is documented in [libdevice Overview — Pipeline](overview.md#pipeline) and [libdevice Overview — Link, inline, simplify](overview.md#link-inline-simplify). The constant-folding consumer that sees reflect-stripped libdevice bodies is [Intrinsic ID Switch and Name Table](intrinsic-id-switch-and-name-table.md). The downstream math lowering whose `__CUDA_PREC_*` / `__CUDA_FTZ` arms collapse after reflection is documented in [Math Pass Pipeline and Crosswalk — Cases that skip libdevice entirely](math-pass-pipeline-and-crosswalk.md#cases-that-skip-libdevice-entirely).

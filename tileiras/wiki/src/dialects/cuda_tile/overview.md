@@ -54,7 +54,7 @@ order:
 | Conversion | `exti`, `trunci`, `itof`, `ftoi`, `ftof`, `bitcast`, `int_to_ptr`, `ptr_to_int`, `ptr_to_ptr` | Make type changes explicit so the first lowering pass can preserve legality. |
 | Diagnostics and assumptions | `assert`, `assume`, `print`, `constant`, `global`, `get_global` | Preserve compile-time constants, diagnostics, globals, and optimization assumptions. |
 
-The exact roster is maintained in [op-roster.md](op-roster.md). Two practical
+The exact roster is maintained in [Operation Roster](op-roster.md#operation-families). Two practical
 version deltas matter for producers targeting this binary: the emitted mnemonic
 is `cuda_tile.print`, not the open-source `cuda_tile.print_tko`, and the build
 rejects `cuda_tile.atan2` outright.
@@ -304,22 +304,22 @@ heap-interned copy — the ASM printer and the verifier read it back verbatim.
 
 The descriptors sit consecutively in a statically-allocated array. The dialect
 indexes the array by mnemonic hash through the registration helper documented
-in [mlir-infra/typeid-sentinels-and-anchors.md](../../mlir-infra/typeid-sentinels-and-anchors.md);
+in [TypeID Sentinels and Anchors](../../mlir-infra/typeid-sentinels-and-anchors.md#idiom-1--static-pointer-identity-sentinel);
 live `Operation*` instances reach the descriptor through their `OperationName`
 slot — the resolution path documented in
-[mlir-infra/operation-layout.md](../../mlir-infra/operation-layout.md). The
+[Operation Layout — Pointer-Identity Dispatch](../../mlir-infra/operation-layout.md#pointer-identity-dispatch). The
 per-op fold-callback assignments for the rest of the roster are catalogued in
-[op-roster.md](op-roster.md).
+[Operation Roster — Op Method Surface](op-roster.md#op-method-surface).
 
 ## Cross-links
 
-- [op-roster.md](op-roster.md) — operation families, producer contract, and
+- [Operation Roster](op-roster.md#operation-families) — operation families, producer contract, and
   version-specific mnemonic notes.
-- [types-and-attrs.md](types-and-attrs.md) — public types, element predicates,
+- [Types and Attributes](types-and-attrs.md#concrete-types) — public types, element predicates,
   semantic attributes, assumption predicates, and optimization hints.
-- [verifiers.md](verifiers.md) — numeric, memory, region, aggregate, and MMA
+- [Verifiers](verifiers.md#verification-pipeline) — numeric, memory, region, aggregate, and MMA
   verification contracts.
-- [canonicalizers-and-folds.md](canonicalizers-and-folds.md) — public folds,
+- [Canonicalizers and Folds](canonicalizers-and-folds.md#fold-surface) — public folds,
   select and if rewrites, and the recursive simplifier contract.
-- [asm-printer.md](asm-printer.md) — textual assembly, token-memory syntax,
+- [Assembly Printer](asm-printer.md#token-ordered-memory-syntax) — textual assembly, token-memory syntax,
   attribute elision, enum spellings, and SSA result-name hints.

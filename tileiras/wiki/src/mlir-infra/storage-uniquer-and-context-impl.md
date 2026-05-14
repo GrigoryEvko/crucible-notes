@@ -406,9 +406,9 @@ key on the offset rather than on the lock value.
 Every uniqued value in TileIR is produced by a caller of this gateway. The 700+ shims sit one per
 registered class — each `cuda_tile`, `nv_tileas`, `nv_tileaa`, `cute`, `cute_nvgpu`, `cutlass`,
 `nvvm`, `llvm`, `builtin`, `func`, `arith`, `scf`, `vector`, `memref` Type and Attribute class owns
-one. The walker in [Operation Layout](operation-layout.md) reads the resulting `OperationName`
+one. The walker in [Operation Layout — Pointer-Identity Dispatch](operation-layout.md#pointer-identity-dispatch) reads the resulting `OperationName`
 sentinels at `+0x40` for kind dispatch; the pattern application drivers in
-[Pattern Vtables and Shapes](pattern-vtables-and-shapes.md) read them through the frozen
+[Pattern Vtables and Shapes — Pattern Application Drivers](pattern-vtables-and-shapes.md#pattern-application-drivers) read them through the frozen
 fingerprint map. The TypeID sentinel bands documented in
 [TypeID Sentinels and Anchors](typeid-sentinels-and-anchors.md) are the Level-1 keys this gateway
 hashes on.

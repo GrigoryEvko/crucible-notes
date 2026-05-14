@@ -16,10 +16,10 @@ transactions depend on subtarget details that are fully known only after
 target selection.
 
 For the structural model behind each family see
-[tcgen05 Tensor Memory Model](../topics/tcgen05-tensor-memory-model.md),
-[WGMMA Emission Protocol](../topics/wgmma-emission-protocol.md),
-[mbarrier State Machine](../topics/mbarrier-state-machine.md), and
-[Cluster Sync and DSMEM Handshake](../topics/cluster-sync-and-dsmem-handshake.md).
+[tcgen05 Tensor Memory — Tensor Memory](../topics/tcgen05-tensor-memory-model.md#tensor-memory) and the [tcgen05 Variant Taxonomy](../topics/tcgen05-tensor-memory-model.md#the-tcgen05-variant-taxonomy),
+[WGMMA Emission Protocol — The Four-Op Sequence](../topics/wgmma-emission-protocol.md#the-four-op-sequence),
+[mbarrier State Machine](../topics/mbarrier-state-machine.md#state-machine), and
+[Cluster Sync and DSMEM Handshake](../topics/cluster-sync-and-dsmem-handshake.md#plain-cluster-barrier).
 This page covers the backend-side validation and PTX-emission detail those
 topic pages defer here.
 
@@ -84,7 +84,7 @@ A reimplementation that mirrors the binary layout must mask the reserved fields 
 
 The verifier validates against the subtarget feature bitmap, not against an opaque target descriptor. Each tcgen05 capability the verifier needs corresponds to a single bit in the bitmap: `has_tmem` (datacenter Blackwell has the tensor-memory storage), `has_wgmma` (Hopper warp-group MMA is reachable), `has_arch_conditional` (sm_*a-suffixed variants are allowed), `has_family_conditional` (sm_*f-suffixed variants are allowed), and `has_scale_input_accumulator` (the SIA variant is implemented in hardware). The selector reads `subtarget.features` once per intrinsic; the verifier reads the same bitmap immediately after the packed control word lands in the machine operand list.
 
-The bitmap is the same one consulted by the MatcherTable predicate row (see [iseldag-and-matchertable.md](iseldag-and-matchertable.md) for the 507-byte stride matrix probe). The contract is: every feature gate the verifier rejects is also reachable as a MatcherTable predicate, so a fall-through from custom selection to the MatcherTable cannot accidentally produce an opcode that fails the verifier later.
+The bitmap is the same one consulted by the MatcherTable predicate row (see [MatcherTable and Cost Scoring](iseldag-and-matchertable.md#matchertable-and-cost-scoring) for the 507-byte stride matrix probe). The contract is: every feature gate the verifier rejects is also reachable as a MatcherTable predicate, so a fall-through from custom selection to the MatcherTable cannot accidentally produce an opcode that fails the verifier later.
 
 ### Verifier Rules
 
@@ -292,4 +292,4 @@ Selector and verifier intentionally report different classes of errors. The sele
 
 ## Cross-References
 
-[per-sm-emission-templates.md](per-sm-emission-templates.md) documents the actual PTX text the printer emits for `tcgen05.mma` and WGMMA, including the four-part WGMMA protocol and the worked WGMMA descriptor hex round-trip. [iseldag-and-matchertable.md](iseldag-and-matchertable.md) documents the selector dispatcher that lands on these emitters and the MatcherTable predicate-row probe that shares the subtarget feature bitmap with the verifier. [tma-tensormap-and-cp-async-bulk.md](tma-tensormap-and-cp-async-bulk.md) covers the descriptor encoder for `cp.async.bulk.tensor` that the TMA verifier sits in front of.
+[Per-SM Emission Templates — SM100 / SM103](per-sm-emission-templates.md#sm100--sm103) and [WGMMA Descriptor Round-Trip](per-sm-emission-templates.md#wgmma-descriptor-round-trip) document the actual PTX text the printer emits for `tcgen05.mma` and WGMMA, including the four-part WGMMA protocol and the worked WGMMA descriptor hex round-trip. [ISelDAG and MatcherTable — Selector Layers](iseldag-and-matchertable.md#selector-layers) documents the selector dispatcher that lands on these emitters and [MatcherTable and Cost Scoring](iseldag-and-matchertable.md#matchertable-and-cost-scoring) covers the predicate-row probe that shares the subtarget feature bitmap with the verifier. [TMA Descriptor Shape](tma-tensormap-and-cp-async-bulk.md#tma-descriptor-shape) and the [cp.async.bulk Template Catalog](tma-tensormap-and-cp-async-bulk.md#cpasyncbulk-template-catalog) cover the descriptor encoder for `cp.async.bulk.tensor` that the TMA verifier sits in front of.

@@ -2,7 +2,7 @@
 
 ## Abstract
 
-`nvvm.cp.async.bulk.*` covers the Hopper Tensor Memory Accelerator (TMA) surface: tile loads from global to shared, tile stores from shared to global, prefetches, reductions, group commit / wait, and the descriptor-mutation helpers that backfill an in-SMEM `CUtensorMap`. The 38 ops in this family enumerate every legal combination of mode (`tile` vs `im2col` vs `im2col_w` vs `im2col_w_128`), direction, cache-hint presence, multicast presence, and tensor rank.
+`nvvm.cp.async.bulk.*` covers the Hopper Tensor Memory Accelerator (TMA) surface: tile loads from global to shared, tile stores from shared to global, prefetches, reductions, group commit / wait, and the descriptor-mutation helpers that backfill an in-SMEM `CUtensorMap`. The 38 ops in this family enumerate every legal combination of mode (`tile` vs `im2col` vs `im2col_w` vs `im2col_w_128`), direction, cache-hint presence, multicast presence, and tensor rank. See [TMA Tensormap and cp.async.bulk Codegen](../../codegen/tma-tensormap-and-cp-async-bulk.md) for the per-template emission catalog and [Lowering: nvgpu / gpu to NVVM — TMA Async Load](../../lowering/nvgpu-and-gpu-to-nvvm.md#tma-async-load) for the operand-slot mapping.
 
 TMA descriptors live in global memory as 128-byte `CUtensorMap` structs encoded by the CUDA driver. The device-side ops in this family consume the descriptor as an opaque global pointer, with cache-hint and multicast attributes wiring into optional intrinsic operand slots.
 
@@ -37,7 +37,7 @@ Variants are spelled out explicitly rather than parameterised over `rank` and `m
 | attribute | `multicastEnable` | `UnitAttr` | gates the `.multicast` modifier |
 | attribute | `mode` | enum `tma_load_mode` | `tile` / `im2col` / `im2col_w` / `im2col_w_128` |
 
-The two `UnitAttr`s gate the corresponding optional operand. When `cacheHintEnable` is absent the `cacheHint` operand position is left empty in the LLVM intrinsic call; when present the operand must be supplied. The same pattern applies to `multicastEnable` and `multicastMask`. See [Lowering: nvgpu / gpu to NVVM](../../lowering/nvgpu-and-gpu-to-nvvm.md#tma-async-load-operand-mapping) for the operand-slot mapping the nvgpu-to-nvvm rewriter performs.
+The two `UnitAttr`s gate the corresponding optional operand. When `cacheHintEnable` is absent the `cacheHint` operand position is left empty in the LLVM intrinsic call; when present the operand must be supplied. The same pattern applies to `multicastEnable` and `multicastMask`. See [Lowering: TMA Async Load — Operand Mapping (rank N)](../../lowering/nvgpu-and-gpu-to-nvvm.md#operand-mapping-rank-n) for the operand-slot mapping the nvgpu-to-nvvm rewriter performs.
 
 ### `nvvm.cp.async.bulk.tensor.{N}d.global.shared.cta.tile`
 
@@ -173,7 +173,7 @@ constraints : "l,l,r,r,r,...,l"
 | `tensormap.cp.async.shared` | sm_90 | 8.3 |
 | `tensormap.replace.*` | sm_90 | 8.3 |
 
-Blackwell extends the cache-hint and OOB-fill modes but keeps the same op surface and the same intrinsic shape; verification accepts `sm_100+` for every op in the family.
+Blackwell extends the cache-hint and OOB-fill modes but keeps the same op surface and the same intrinsic shape; verification accepts `sm_100+` for every op in the family. See [TMA Descriptor Shape](../../codegen/tma-tensormap-and-cp-async-bulk.md#tma-descriptor-shape) for the `CUtensorMap` layout and [cp.async.bulk Template Catalog](../../codegen/tma-tensormap-and-cp-async-bulk.md#cpasyncbulk-template-catalog) for the per-rank PTX templates.
 
 ## Verifier Invariants
 

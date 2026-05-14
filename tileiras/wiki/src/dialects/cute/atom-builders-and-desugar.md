@@ -234,5 +234,5 @@ Together the two rewrites make a kernel function self-describing to the NVVM bac
 
 ## Cross-References
 
-[Verifiers](verifiers.md) lists every verbatim diagnostic the verifier surface emits, including the atom-call diagnostics that fire on the desugared forms above. [Layout Algebra and Descriptor Grammar](layout-algebra-and-descriptor-grammar.md) covers the layout primitives the shape-eval and stride-eval phases produce. [SM Tier Roster and Copy Atom Registry](../cute_nvgpu/sm-tier-roster-and-copy-atom-registry.md) documents the atom interfaces the result-type-driven atom rebuild dispatches against.
+[Verifiers — Verbatim Diagnostics](verifiers.md#verbatim-diagnostics) lists every verbatim diagnostic the verifier surface emits, including the atom-call diagnostics that fire on the desugared forms above. [Layout Algebra and Descriptor Grammar — Layout Primitives](layout-algebra-and-descriptor-grammar.md#layout-primitives) covers the layout primitives the shape-eval and stride-eval phases produce. [SM Tier Roster and Copy Atom Registry — Atom TypeID Registry](../cute_nvgpu/sm-tier-roster-and-copy-atom-registry.md#atom-typeid-registry) documents the atom interfaces the result-type-driven atom rebuild dispatches against.
 

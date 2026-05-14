@@ -135,7 +135,7 @@ Hand-off: every `cuda_tile.*` op has been rewritten. `nv_tileaa.*` carries the a
 
 Lowers TileAA's "what the program means" view into TileAS's "how the program will execute" view. CopyAtom and ReduceAtom witnesses attach to memory operations during this stage and ride verbatim onto their TileAS replacements; the downstream LLVM stage reads them to pick the concrete hardware primitive. The kernel-spec attribute mirrors onto the function so SM-gated rewrites (notably the SM100 block-scaled MMA path) have a target spec to consult.
 
-Hand-off: TileAS operations carry async-pipeline, layout, and TMA-descriptor structure. The TileAS scheduling and layout-assignment passes (D07 through D22) now own the module.
+Hand-off: TileAS operations carry async-pipeline, layout, and TMA-descriptor structure. The [TileAS scheduling and layout-assignment passes](../scheduler/overview.md) (D07 through D22) now own the module.
 
 ### Stage 3 — `ConvertTileFuncToLLVM` then `ConvertTileASToLLVM`
 
@@ -175,7 +175,7 @@ ModuleOp lower_to_nvvm(ModuleBytecode input, CompileOptions options) {
 
 Each pass owns one boundary. The driver does not interleave them — Tile-function conversion must complete before TileAS bodies lower, body lowering must complete before companion CuTe/NVGPU passes run, and target attachment is last because it depends on a fully-lowered `gpu.module`.
 
-Pattern population, type conversion, and pattern-bank structure are described in [pattern-set-and-typeconverter.md](pattern-set-and-typeconverter.md). This overview leans on the invariant that each stage has a complete legality target and a type converter that agrees with the next stage.
+Pattern population, type conversion, and pattern-bank structure are described in [Pattern Sets and Type Conversion](pattern-set-and-typeconverter.md). This overview leans on the invariant that each stage has a complete legality target and a type converter that agrees with the next stage.
 
 ## Options and Placement
 
@@ -202,9 +202,9 @@ The conversion cascade runs at every optimization level because later backend st
 
 ## Cross-Links
 
-- [cuda-tile-to-tileaa.md](cuda-tile-to-tileaa.md) covers the public input-dialect conversion.
-- [tileaa-to-tileas.md](tileaa-to-tileas.md) covers the analysis-to-scheduled-tile transition.
-- [tileas-to-llvm.md](tileas-to-llvm.md) covers async, memory, layout, and TileAS lowering.
-- [cute-and-cute_nvgpu-to-llvm.md](cute-and-cute_nvgpu-to-llvm.md) covers companion dialect lowering.
-- [nvgpu-and-gpu-to-nvvm.md](nvgpu-and-gpu-to-nvvm.md) covers standard GPU/NVGPU lowering.
-- [target-and-debuginfo.md](target-and-debuginfo.md) covers `#nvvm.target` and debug metadata.
+- [cuda_tile to nv_tileaa](cuda-tile-to-tileaa.md) covers the public input-dialect conversion.
+- [nv_tileaa to nv_tileas](tileaa-to-tileas.md) covers the analysis-to-scheduled-tile transition.
+- [nv_tileas to LLVM](tileas-to-llvm.md) covers async, memory, layout, and TileAS lowering.
+- [cute / cute_nvgpu to LLVM](cute-and-cute_nvgpu-to-llvm.md) covers companion dialect lowering.
+- [nvgpu / gpu to NVVM](nvgpu-and-gpu-to-nvvm.md) covers standard GPU/NVGPU lowering.
+- [Target and Debug Info](target-and-debuginfo.md) covers `#nvvm.target` and debug metadata.

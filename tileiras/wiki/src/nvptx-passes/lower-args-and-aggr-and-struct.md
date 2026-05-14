@@ -199,4 +199,4 @@ A mismatched configuration — this pass disabled but `MemorySpaceOpt` still see
 
 ## Cross-References
 
-[Memory-Space Optimization and Restrict](memory-space-opt-and-process-restrict.md) consumes the parameter-space pointers and `CVT_PARAM_TO_*` casts this pass emits. [NVVM IR Verifier](nvvm-ir-verifier.md) accumulates parameter-space byte counts against the per-SM ceiling using the byval-aware parameter list this pass leaves behind. [Modulo Scheduler and Rau-Style Placement](../scheduler/modulo-scheduler-and-rau.md) is the eventual consumer of the `LDPARAM` MIs in TileAS loops.
+[MemorySpaceOpt](memory-space-opt-and-process-restrict.md#memoryspaceopt) consumes the parameter-space pointers and `CVT_PARAM_TO_*` casts this pass emits. [Parameter-Space Sizer](nvvm-ir-verifier.md#parameter-space-sizer) accumulates parameter-space byte counts against the per-SM ceiling using the byval-aware parameter list this pass leaves behind. [Modulo Scheduler and Rau-Style Placement](../scheduler/modulo-scheduler-and-rau.md) is the eventual consumer of the `LDPARAM` MIs in TileAS loops.

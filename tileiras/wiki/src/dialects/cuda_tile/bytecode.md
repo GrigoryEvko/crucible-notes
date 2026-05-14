@@ -92,7 +92,7 @@ The corresponding writer emits the same fields in the same order. The shape pars
 
 ## Missing Op 0x6E (atan2)
 
-The op-opcode dispatcher covers 110 cases numbered 0..109. The underlying `cuda_tile` dialect advertises 111 ops to the MLIR registry, so exactly one op has no dispatcher case. The missing op is `cuda_tile.atan2`, removed from this binary as documented in [cuda_tile Overview](overview.md).
+The op-opcode dispatcher covers 110 cases numbered 0..109. The underlying `cuda_tile` dialect advertises 111 ops to the MLIR registry, so exactly one op has no dispatcher case. The missing op is `cuda_tile.atan2`, removed from this binary as documented in [cuda_tile Overview — Operation Families](overview.md#operation-families).
 
 The wire-level consequence: opcode 110 lands on the default arm of the dispatcher and surfaces the `"unknown or unimplemented opcode: "` diagnostic. A producer that hand-encodes opcode 110 against the next-version opcode space sees its module load fail at that exact opcode. A future-version reader accepts the opcode by adding the 111th case at the end of the dispatch table; this reader has no path to do so.
 
@@ -104,4 +104,4 @@ A 13.2.0 file emitted by a future tileiras would carry additional `TypeTag`, `At
 
 ## Cross-References
 
-[MLIR Bytecode Format](../../bytecode/mlir-bc-format.md) documents the cross-dialect dispatchers and the bytecode header parser that decides whether this reader is invoked at all. [Types and Attrs](types-and-attrs.md) documents the underlying `cuda_tile` Type and Attribute subclasses that the TypeTag and AttributeTag dispatchers construct. [Op Roster](op-roster.md) lists the 92 user-visible ops that the opcode dispatcher covers, alongside the small set of private-region ops.
+[MLIR Bytecode Format](../../bytecode/mlir-bc-format.md) documents the cross-dialect dispatchers and the bytecode header parser that decides whether this reader is invoked at all. [Types and Attributes — Concrete Types](types-and-attrs.md#concrete-types) documents the underlying `cuda_tile` Type and Attribute subclasses that the TypeTag and AttributeTag dispatchers construct. [Operation Roster](op-roster.md#operation-families) lists the 92 user-visible ops that the opcode dispatcher covers, alongside the small set of private-region ops.

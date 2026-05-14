@@ -4,7 +4,7 @@
 
 WGMMA is Hopper's asynchronous warp-group matrix multiply. Four warps cooperate on one accumulator tile; the multiply itself is asynchronous against the issuing warp group and only becomes visible to subsequent reads through a wait-group barrier. The legal usage contract is a four-op emission protocol — fence, one or more async MMA instructions, commit-group, wait-group — and an accumulator-lifetime contract that says: an accumulator written by a still-in-flight WGMMA cannot be read until its group has been drained. Violations are silent data races, not verifier errors.
 
-This page is the canonical reference for the protocol. It supersedes the duplicated lower-WGMMA snippets in `codegen/tcgen05-wgmma-mbarrier-cluster.md`, `lowering/nvgpu-and-gpu-to-nvvm.md`, `dialects/nvgpu/overview.md`, and `dialects/cute_nvgpu/mma-atoms-sm70-120.md`. Those pages now defer here for the emission sequence and the lifetime contract; they keep their own descriptor-construction, dialect-pattern, and verifier content.
+This page is the canonical reference for the protocol. It supersedes the duplicated lower-WGMMA snippets in [tcgen05 / WGMMA / mbarrier / Cluster Emission](../codegen/tcgen05-wgmma-mbarrier-cluster.md), [Lowering: nvgpu / gpu to NVVM](../lowering/nvgpu-and-gpu-to-nvvm.md), [nvgpu Dialect Overview](../dialects/nvgpu/overview.md), and [MMA Atoms SM70-SM120](../dialects/cute_nvgpu/mma-atoms-sm70-120.md). Those pages now defer here for the emission sequence and the lifetime contract; they keep their own descriptor-construction, dialect-pattern, and verifier content.
 
 WGMMA exists only on `sm_90a`. Blackwell removes it: SM100 onwards uses `tcgen05.mma` over tensor memory instead.
 
@@ -117,7 +117,7 @@ The accumulator stays in registers in every WGMMA variant. The destination is th
 
 WGMMA is `sm_90a` only. The architecture-conditional suffix matters: plain `sm_90` rejects WGMMA at NVVM verification. The dialect exposes WGMMA atoms through `cute_nvgpu.sm90.mma` and lowering rejects them on every other target.
 
-Blackwell removes WGMMA. SM100 and SM103 use `tcgen05.mma` over tensor memory; SM120 and SM121 (consumer Blackwell) use a synchronous `mma.sync.aligned` with explicit per-operand scale factors. Both replacements have different operand-residency models — see the matmul-progression page for the cross-architecture story.
+Blackwell removes WGMMA. SM100 and SM103 use `tcgen05.mma` over tensor memory; SM120 and SM121 (consumer Blackwell) use a synchronous `mma.sync.aligned` with explicit per-operand scale factors. Both replacements have different operand-residency models — see [Matmul Progression by SM](matmul-progression-by-sm.md) for the cross-architecture story.
 
 ## Cross-References
 

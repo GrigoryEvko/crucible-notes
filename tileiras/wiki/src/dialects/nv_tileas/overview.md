@@ -249,19 +249,19 @@ registered-ops boundary is marked by the same null sentinel as `cuda_tile` and `
 lookup helpers stop walking the bank when they hit it.
 
 This is the static-sentinel idiom described in
-[mlir-infra/typeid-sentinels-and-anchors.md](../../mlir-infra/typeid-sentinels-and-anchors.md): the bank is
+[TypeID Sentinels and Anchors](../../mlir-infra/typeid-sentinels-and-anchors.md#idiom-1--static-pointer-identity-sentinel): the bank is
 allocated once, lives for the entire process, and is indexed by mnemonic hash from the dialect base. Live
 `Operation*` instances reach this record through their `OperationName` slot, which is the resolution path
-documented in [mlir-infra/operation-layout.md](../../mlir-infra/operation-layout.md). The per-op `vtable`
+documented in [Operation Layout — Pointer-Identity Dispatch](../../mlir-infra/operation-layout.md#pointer-identity-dispatch). The per-op `vtable`
 and fold-callback pairs for the rest of the roster are catalogued in
-[op-roster-and-builders.md](op-roster-and-builders.md).
+[Operation Roster and Builders](op-roster-and-builders.md#operation-families).
 
 ## Cross-links
 
-- [Op roster and builders](op-roster-and-builders.md) — complete operation list and low-level builder notes.
-- [Types](types.md) — pipeline tokens, iterator types, agent-like interfaces, and yield interface behavior.
-- [Verifiers](verifiers.md) — detailed verifier behavior for pipeline regions, TMA operations, tiled memory operations, and layout constraints.
-- [Folds and memory consistency](folds-and-mem-consistency.md) — canonical rewrites, memory consistency interface behavior, and ordering-sensitive rewrite rules.
+- [Op Roster and Builders](op-roster-and-builders.md#operation-families) — complete operation list and low-level builder notes.
+- [Types](types.md#pipeline-types) — pipeline tokens, iterator types, agent-like interfaces, and yield interface behavior.
+- [Verifiers](verifiers.md#async-pipeline-verification) — detailed verifier behavior for pipeline regions, TMA operations, tiled memory operations, and layout constraints.
+- [Folds and Memory Consistency](folds-and-mem-consistency.md#canonicalization-patterns) — canonical rewrites, memory consistency interface behavior, and ordering-sensitive rewrite rules.
 
 ## Appendix: Pass-Object PIMPL Layout
 

@@ -63,7 +63,7 @@ Atomic compare-and-swap doubles the operand count but keeps the same token order
 atom.acquire.gpu.cas.b64.global %rd0, [%rd1], %rd2, %rd3;
 ```
 
-Lowering rejects illegal order/scope pairs before the printer fires, so the token-emission step never has to recover from an invalid modifier word. The invariant a reimplementation must preserve: every order/scope/space combination that lowering accepts is also accepted by `ptxas` on the current target. The verifier in [iseldag-and-matchertable.md](iseldag-and-matchertable.md) shares this contract through the same subtarget feature bitmap.
+Lowering rejects illegal order/scope pairs before the printer fires, so the token-emission step never has to recover from an invalid modifier word. The invariant a reimplementation must preserve: every order/scope/space combination that lowering accepts is also accepted by `ptxas` on the current target. The verifier in [ISelDAG and MatcherTable — Subtarget Feature Model](iseldag-and-matchertable.md#subtarget-feature-model) shares this contract through the same subtarget feature bitmap.
 
 ## Warp-Level Collectives
 
@@ -281,4 +281,4 @@ The reimplementation rule is simple: preserve the high-level LLVM ordering first
 
 ## Cross-References
 
-[asm-printer-monster-and-windows.md](asm-printer-monster-and-windows.md) documents the dispatcher that selects the print shape for these atomic, warp-collective, sreg, and fence opcodes. [iseldag-and-matchertable.md](iseldag-and-matchertable.md) covers the selector that consumes the same subtarget feature bitmap before any of these instructions reach the printer. [tcgen05-wgmma-mbarrier-cluster.md](tcgen05-wgmma-mbarrier-cluster.md) covers the mbarrier and proxy-fence families that share scope and ordering vocabulary with this page.
+[AsmPrinter — MC Switch Shape Population Table](asm-printer-monster-and-windows.md#mc-switch-shape-population-table) documents the dispatcher that selects the print shape for these atomic, warp-collective, sreg, and fence opcodes. [ISelDAG and MatcherTable](iseldag-and-matchertable.md) covers the selector that consumes the same subtarget feature bitmap before any of these instructions reach the printer. [tcgen05 mbarrier Emission](tcgen05-wgmma-mbarrier-cluster.md#mbarrier-emission) and the [mbarrier State Machine](../topics/mbarrier-state-machine.md) cover the mbarrier and proxy-fence families that share scope and ordering vocabulary with this page.

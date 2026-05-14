@@ -1,6 +1,6 @@
 # cl::opt Full Catalog
 
-Every command-line option the `tileiras` binary registers — through LLVM `cl::opt` / `cl::list` / `cl::alias`, the NVIDIA-private dialect-bag, and MLIR PassOption registrars that share its textual surface. An option counts if a static-storage symbol calls `llvm::cl::Option::setArgStr(name, len)` (`sub_4534CC0`, 1174 B) at static-construction time, if a tileiras dialect-bag helper (`sub_5FE350` / `sub_5FE910` / `sub_5FED40`) runs from a per-invocation builder, or if `mlir::detail::PassOptions::Option<T>` is constructed from `sub_6D3460`. The binary contains 689 distinct caller addresses for `sub_4534CC0`; this catalog covers the 77 user-visible options across registrars 1–7. The 478-row PassBuilder name registry is summarized in `pipeline/passbuilder-mega-registry.md`.
+Every command-line option the `tileiras` binary registers — through LLVM `cl::opt` / `cl::list` / `cl::alias`, the NVIDIA-private dialect-bag, and MLIR PassOption registrars that share its textual surface. An option counts if a static-storage symbol calls `llvm::cl::Option::setArgStr(name, len)` (`sub_4534CC0`, 1174 B) at static-construction time, if a tileiras dialect-bag helper (`sub_5FE350` / `sub_5FE910` / `sub_5FED40`) runs from a per-invocation builder, or if `mlir::detail::PassOptions::Option<T>` is constructed from `sub_6D3460`. The binary contains 689 distinct caller addresses for `sub_4534CC0`; this catalog covers the 77 user-visible options across registrars 1–7. The 478-row PassBuilder name registry is summarized in [PassBuilder Mega-Registry](../pipeline/passbuilder-mega-registry.md).
 
 ## Reading guide
 
@@ -15,7 +15,7 @@ Option families surface to the user through different CLI prefixes. The first st
 | bare `-Om`, `-Osize`, `-w`, `-Werror` | Layer 4b (NVPTX-CL Options) | host-driver-mode compatibility flags |
 | `-mllvm -nvvm-reflect-*` | Layer 5 (NVVM Reflect) | `nvvm-reflect-add KEY=VAL`, `-R KEY=VAL` |
 | `--mlir-...` | Layer 6 (MLIR Framework) | `--mlir-print-ir-after-all`, `--mlir-timing` |
-| `--passes="..."` pass-name strings | PassBuilder mega-registry | not user-visible cl::opts; see [`pipeline/passbuilder-mega-registry`](../pipeline/passbuilder-mega-registry.md) |
+| `--passes="..."` pass-name strings | PassBuilder mega-registry | not user-visible cl::opts; see [PassBuilder Mega-Registry](../pipeline/passbuilder-mega-registry.md) |
 
 When the same name appears in two layers (the documented `--compute-capability` collision between Layer 2 and Layer 3 is the canonical example), the driver propagates the Layer-2 value down into Layer 3; the Layer-3 default fires only when the MLIR pass library is loaded outside the tileiras driver.
 
@@ -99,7 +99,7 @@ Note: `--compute-capability` collides with the Layer-3 PassOption of the same na
 
 ### Layer 3 — TileIR MLIR PassOptions (registrar `sub_6D3460`)
 
-20 `mlir::Pass::Option<T>` registrations on a single `TileIRPipelineOptions` (≥5616 B). Not in the global LLVM cl::opt registry; parsed from `--pass-pipeline="tileir{key=value ...}"`. `reg+N` is the registration slot (208 B stride); `val+N` is the resolved-value offset in the `a2` value-struct read by `sub_6D6A00`. For per-option consumer mapping see `pipeline/pass-options-mapping.md`.
+20 `mlir::Pass::Option<T>` registrations on a single `TileIRPipelineOptions` (≥5616 B). Not in the global LLVM cl::opt registry; parsed from `--pass-pipeline="tileir{key=value ...}"`. `reg+N` is the registration slot (208 B stride); `val+N` is the resolved-value offset in the `a2` value-struct read by `sub_6D6A00`. For per-option consumer mapping see [Options Mapping](../pipeline/options-mapping.md).
 
 | option | type | default | help text (verbatim) | storage / agg+slot | consuming pass(es) | wiki |
 |--------|------|---------|----------------------|--------------------|--------------------|------|

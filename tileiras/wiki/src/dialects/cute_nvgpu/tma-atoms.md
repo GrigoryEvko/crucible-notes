@@ -264,7 +264,7 @@ void update_tma_descriptor(TmaDescriptor *desc, TmaUpdate update) {
 }
 ```
 
-The three update kinds map directly to the `tensormap.replace.tile.{global_address, global_dim, global_stride}` PTX mutator family. The rebind sequence on the device side — acquire fence, address write, `rank` dim writes, `rank-1` stride writes, release fence — and the proxy-fence ordering that pairs each rebind with its `cp.async.bulk.tensor.*` consumer is documented in [TMA + Tensormap + cp.async.bulk Emission](../../codegen/tma-tensormap-and-cp-async-bulk.md). The descriptor builder above is the partition-time view; the atom-lowering page covers how the runtime side issues those three mutators in the contractually mandated order.
+The three update kinds map directly to the `tensormap.replace.tile.{global_address, global_dim, global_stride}` PTX mutator family. The rebind sequence on the device side — acquire fence, address write, `rank` dim writes, `rank-1` stride writes, release fence — and the proxy-fence ordering that pairs each rebind with its `cp.async.bulk.tensor.*` consumer is documented in [TMA Tensormap and cp.async.bulk — TMA Descriptor Mutators](../../codegen/tma-tensormap-and-cp-async-bulk.md#tma-descriptor-mutators). The descriptor builder above is the partition-time view; the atom-lowering page covers how the runtime side issues those three mutators in the contractually mandated order.
 
 ## If You Know CUTLASS (open source) — cross-walk
 
@@ -317,5 +317,5 @@ After lowering the executable load becomes a `cp.async.bulk.tensor`-style op wit
 
 ## Cross-References
 
-[Mode Pattern Verifiers](mode-pattern-verifiers.md) documents the swizzle-legality, UMMA, and tcgen05 verifiers that the TMA partition core composes with. [SM Tier Roster and Copy Atom Registry](sm-tier-roster-and-copy-atom-registry.md) covers the SM90/SM100/SM120 atom interfaces TMA atoms implement. [Atom Builders and Desugar](../cute/atom-builders-and-desugar.md) covers the kernel-entry ABI that hoists TMA descriptors as `.param` constant-space arguments.
+[Mode Pattern Verifiers — Swizzle Legality](mode-pattern-verifiers.md#swizzle-legality) documents the swizzle-legality, [UMMA Canonical Layout Verifier](mode-pattern-verifiers.md#umma-canonical-layout-verifier), and [tcgen05.mma Kind-Word Verifier](mode-pattern-verifiers.md#tcgen05mma-kind-word-verifier) verifiers that the TMA partition core composes with. [SM Tier Roster and Copy Atom Registry — Atom TypeID Registry](sm-tier-roster-and-copy-atom-registry.md#atom-typeid-registry) covers the SM90/SM100/SM120 atom interfaces TMA atoms implement. [cute Atom Builders and Desugar — Kernel-entry ABI](../cute/atom-builders-and-desugar.md#kernel-entry-abi) covers the kernel-entry ABI that hoists TMA descriptors as `.param` constant-space arguments.
 

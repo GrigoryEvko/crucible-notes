@@ -172,3 +172,7 @@ StreamK and split-K reach for block-striped ops in their epilogues. Partial CTAs
 - Load/add/store variants choose integer or floating addition from element type.
 - `cutlass.bar` arrive-count is a multiple of warp size and the op is in warp-cooperative scope.
 
+## Cross-References
+
+[cutlass Pipeline and Tile Scheduler — Pipeline Model](pipeline-and-tile-scheduler.md#pipeline-model) covers the richer producer/consumer protocol the simpler seq-bar ring sits next to, and [Producer Acquire 4-Phase Lowering](pipeline-and-tile-scheduler.md#producer-acquire-4-phase-lowering) covers the NamedBarrier-pool consumer that seq-bar init shares slots with. [mbarrier State Machine](../../topics/mbarrier-state-machine.md#state-machine) covers the per-stage mbarrier protocol the seq-bar slots reuse. [cutlass Dialect Overview — Block-Striped Operand Checkers](overview.md#block-striped-operand-checkers) lists the four block-striped operand-layout checkers this page's verifier walks.
+

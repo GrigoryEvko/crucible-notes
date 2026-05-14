@@ -2,7 +2,7 @@
 
 ## Abstract
 
-`nvvm.mbarrier.*` covers the sm_80+ mbarrier (memory barrier) state machine — a 64-bit shared-memory slot that counts arrivals, tracks an expected-transaction byte count, advances a phase parity, and lets warps wait for the slot to flip. The 21 ops in this family each implement one transition of that state machine and emit the matching `mbarrier.*` PTX instruction.
+`nvvm.mbarrier.*` covers the sm_80+ mbarrier (memory barrier) state machine — a 64-bit shared-memory slot that counts arrivals, tracks an expected-transaction byte count, advances a phase parity, and lets warps wait for the slot to flip. The 21 ops in this family each implement one transition of that state machine and emit the matching `mbarrier.*` PTX instruction. See [mbarrier State Machine](../../topics/mbarrier-state-machine.md) for the cross-op semantics and [mbarrier Emission](../../codegen/tcgen05-wgmma-mbarrier-cluster.md#mbarrier-emission) for the codegen side.
 
 Two slot variants exist for almost every op: a generic-pointer form for completeness and a `.shared` form for the common case where the slot lives in shared memory. Lowering picks the `.shared` form whenever the operand address space is 3; the generic form remains so kernels that explicitly cast through `__cvta_to_shared` round-trip.
 
@@ -29,7 +29,7 @@ The state transitions are:
 | `test.wait` | blocking: spin until `phase` matches the token |
 | `inval` | mark the slot uninitialised |
 
-The `expect_tx` op is the producer-side handshake for TMA tile loads: the consumer initialises the slot with the participant count, the TMA load issues `arrive.expect_tx` once the bytes are committed, and the consumer waits on the phase flip.
+The `expect_tx` op is the producer-side handshake for TMA tile loads: the consumer initialises the slot with the participant count, the TMA load issues `arrive.expect_tx` once the bytes are committed, and the consumer waits on the phase flip. See [mbarrier State Machine — Phase Parity](../../topics/mbarrier-state-machine.md#phase-parity) for the parity bit semantics and [Kinds: Ordinary, Transaction, Cluster](../../topics/mbarrier-state-machine.md#kinds-ordinary-transaction-cluster) for the per-kind transitions.
 
 ## Op Roster
 
@@ -146,7 +146,7 @@ The non-`.shared` forms drop the address-space token: `mbarrier.init.b64 [%mbar]
 | `fence.mbarrier.init` | sm_90 | 8.0 |
 | Cluster-aware variants (`.cluster`, `.release.cluster`) | sm_90 | 8.0 |
 
-The `expect_tx` form is the TMA producer-side handshake; it is the only op in this family that requires sm_90.
+The `expect_tx` form is the TMA producer-side handshake; it is the only op in this family that requires sm_90. See [TMA Ops](tma-ops.md) for the producer side and [Cluster Sync and DSMEM Handshake — DSMEM Transaction Handshake](../../topics/cluster-sync-and-dsmem-handshake.md#dsmem-transaction-handshake) for the cluster-aware transaction protocol.
 
 ## Verifier Invariants
 

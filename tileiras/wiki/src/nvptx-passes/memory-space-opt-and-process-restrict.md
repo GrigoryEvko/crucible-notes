@@ -188,7 +188,7 @@ The conservative-inference flag gets flipped most often during regression triage
 
 ## Restrict Processing
 
-Restrict processing turns frontend `__restrict__` intent into LLVM `noalias` attributes on pointer arguments and into `nvvm.restrict_*` metadata on every load and store reached from a restricted root. It runs after MemorySpaceOpt because the propagation worker consults the inferred address-space tag when deciding whether a derived pointer is global; the reverse order would over-restrict shared and local pointers and degrade downstream alias analysis. The output feeds the NVPTX alias-analysis pipeline and ultimately reaches the backend scheduler as a noalias guarantee.
+Restrict processing turns frontend `__restrict__` intent into LLVM `noalias` attributes on pointer arguments and into `nvvm.restrict_*` metadata on every load and store reached from a restricted root. It runs after [MemorySpaceOpt](#memoryspaceopt) because the propagation worker consults the inferred address-space tag when deciding whether a derived pointer is global; the reverse order would over-restrict shared and local pointers and degrade downstream alias analysis. The output feeds the NVPTX alias-analysis pipeline and ultimately reaches the backend scheduler as a noalias guarantee.
 
 The per-function worker `sub_2867840` runs once per function in the module. It checks an idempotency attribute, walks each restrict-tagged pointer argument, propagates the restrict qualifier through the def-use graph, and stamps every derived pointer with a scope identifier. Loads and stores reached through a restricted pointer pick up matching metadata so the alias-analysis layer can correlate the memory operation back to its restricted root.
 
@@ -254,7 +254,7 @@ void propagateRestrict(Value *root, uint32_t scopeId) {
 
 The worker's entry path leads with the per-function idempotency check. The `nvvm.restrict_processed` attribute prevents accidental re-entry when a later pass clones or specializes a function and runs the cluster again, and it gives the rest of the pipeline a cheap way to ask whether restrict metadata is already canonicalized. The worklist is a flat traversal of the def-use graph: pointer-arithmetic users stay in the frontier and load/store users terminate it with a metadata stamp. `apply-multi-level-restrict` gates the only place where the walker is allowed to recurse through a pointer-of-pointer load.
 
-Restrict metadata is not a proof of address space. It is a noalias relation among pointer families. MemorySpaceOpt and ProcessRestrict cooperate but do not replace each other — the former tells the backend which state space to use, the latter tells alias analysis which pointer pairs cannot overlap.
+Restrict metadata is not a proof of address space. It is a noalias relation among pointer families. [MemorySpaceOpt](#memoryspaceopt) and [Restrict Processing](#restrict-processing) cooperate but do not replace each other — the former tells the backend which state space to use, the latter tells alias analysis which pointer pairs cannot overlap.
 
 ## Operational Knobs
 
@@ -268,3 +268,6 @@ These passes expose useful controls in debugging and testing builds:
 | Propagate-only restrict mode | Reapplies already-stamped scopes after another pass creates new derived values. |
 | Multi-level restrict mode | Follows `T**` and deeper pointer chains when frontend metadata requested it. |
 
+## Cross-References
+
+[LowerStructArgs Rewrite Shape](lower-args-and-aggr-and-struct.md#rewrite-shape) produces the parameter-space pointers and `CVT_PARAM_TO_*` casts this pass consumes. [Address-space vote lattice](../topics/addrspace-vote-lattice.md) covers the inter-procedural worker that drives callee specialization. [NVPTX Backend Passes Overview — Shared parameter-space enable flag](overview.md#shared-parameter-space-enable-flag) documents the byval-AS flag both this pass and LowerStructArgs read. [Parameter-Space Sizer](nvvm-ir-verifier.md#parameter-space-sizer) is the downstream consumer that turns inferred address-space tags into the launch-argument check.

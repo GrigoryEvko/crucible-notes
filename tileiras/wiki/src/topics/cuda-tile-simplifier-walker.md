@@ -6,7 +6,7 @@ The `cuda_tile` simplifier walker is a recursive expression-tree rewriter sittin
 
 Separation is the key design. The simplifier never mutates arbitrary MLIR operations while reasoning — it works on compact expression records, memoizes simplified results in two caches, and re-emits public operations only after the recursive fold has selected a canonical shape.
 
-Tileiras runs the simplifier *underneath* the canonicaliser layer rather than next to it. The public canonicaliser (covered by `dialects/cuda_tile/canonicalizers-and-folds.md`) sees only the result of this private walk. Reimplementers who try to merge the simplifier and the canonicaliser into one pass produce quadratic IR churn: the private expression IR is what lets the simplifier dedupe a shared subgraph in one place instead of repeatedly rewriting the public op graph. The page is organised as the boundary contract first (private expression kinds, the binary-arith dispatch table that maps internal kinds to public `arith.*` opcodes), then the materialiser last.
+Tileiras runs the simplifier *underneath* the canonicaliser layer rather than next to it. The public canonicaliser (covered by [Canonicalizers and Folds](../dialects/cuda_tile/canonicalizers-and-folds.md)) sees only the result of this private walk. Reimplementers who try to merge the simplifier and the canonicaliser into one pass produce quadratic IR churn: the private expression IR is what lets the simplifier dedupe a shared subgraph in one place instead of repeatedly rewriting the public op graph. The page is organised as the boundary contract first (private expression kinds, the binary-arith dispatch table that maps internal kinds to public `arith.*` opcodes), then the materialiser last.
 
 ## Private Expression IR
 
@@ -169,7 +169,7 @@ guarantees one canonical instance per tuple, which keeps later CSE and pattern m
 the MLIR OpBuilder API. The builder runs only when the uniquer has no entry yet.
 
 The pair is split because some rewrites produce new constants. Those constants must go through the
-StorageUniquer first (see [`mlir-infra/storage-uniquer-and-context-impl.md`](../mlir-infra/storage-uniquer-and-context-impl.md))
+StorageUniquer first (see [StorageUniquer and Context Impl](../mlir-infra/storage-uniquer-and-context-impl.md))
 before they can appear as operands. The uniquer side is the lookup; the builder side is the
 allocator that runs on a uniquer miss.
 

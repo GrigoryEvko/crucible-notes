@@ -182,7 +182,7 @@ The BLAKE3 intern tables are consumed by five families of IR-object dedup paths 
 
 ## Cross-References
 
-[Storage Uniquer and Context Implementation](storage-uniquer-and-context-impl.md) describes the
+[Storage Uniquer and Context Impl — Two-Level Intern Table](storage-uniquer-and-context-impl.md#two-level-intern-table) describes the
 canonical two-level uniquing model that the BLAKE3 intern tables fit into.
 [Pipe and Mutex Value Layout](../scheduler/pipe-mutex-value-layout.md) is the IR-level view of the
 SSA values that `AsyncValueImpl` backs.

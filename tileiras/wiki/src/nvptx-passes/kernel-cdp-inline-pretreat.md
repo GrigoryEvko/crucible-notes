@@ -134,4 +134,4 @@ void pretreat_module(Module module) {
 
 ## Cross-References
 
-[NVPTX Pass Pipeline Overview](pass-pipeline-overview.md) shows where this cluster sits in the full NVPTX schedule. [Kernel Argument Elimination](kernel-arg-eliminator.md) covers the downstream consumer of `nvvm.kernel` attributes. [CDP Runtime ABI](../runtime/cdp-runtime-abi.md) documents the stub signatures the expander targets.
+[NVPTX Backend Passes Overview](overview.md#pipeline-position) shows where this cluster sits in the full NVPTX schedule. [NVVM IR Verifier](nvvm-ir-verifier.md#launch-argument-address-space-check) is the downstream consumer that re-checks `nvvm.kernel` on every CDP launch target. [cicc comparison](../boundaries/cicc-comparison.md) documents the shared NVPTX backend lineage these passes inherited.

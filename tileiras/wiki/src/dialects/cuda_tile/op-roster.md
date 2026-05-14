@@ -50,7 +50,7 @@ cuda_tile.module {
 }
 ```
 
-The exact textual syntax is described in [asm-printer.md](asm-printer.md), but
+The exact textual syntax is described in [Assembly Printer](asm-printer.md#token-ordered-memory-syntax), but
 the contract is independent of formatting:
 
 - memory effects are threaded through `cuda_tile.token`;
@@ -285,7 +285,8 @@ private control-flow dialects, but the verifier enforces these rules first:
 `mmaf` and `mmai` are deliberately narrow public abstractions: they describe
 matrix multiply-accumulate intent, not final tensor-core instruction selection.
 The verifier checks shape compatibility and element-type legality. Choosing
-WGMMA, smaller MMA atoms, tensor-memory paths, or emulation is left to the
+[WGMMA](../../topics/wgmma-emission-protocol.md), smaller MMA atoms,
+[tensor-memory paths](../../topics/tcgen05-tensor-memory-model.md), or emulation is left to the
 lowering pipeline.
 
 ```c
@@ -330,7 +331,7 @@ predictable shapes by op family.
 | Family | Builder shape | Verifier shape | Lowering arm |
 |---|---|---|---|
 | Trivial unary (`absf`, `absi`, `ceil`, `floor`, `negf`, `negi`, `sqrt`, `cos`, `sin`, transcendentals) | Default trampoline; constructs result from one operand and forwards rounding/flush-to-zero attributes. | Generic trait-only verification with element-type and rank checks. | Arithmetic-group conversion pattern. |
-| Floating binary (`addf`, `subf`, `mulf`, `divf`, `maxf`, `minf`, `remf`) | Forwards rounding mode and flush-to-zero. | Type-equality, shape-equality, and rounding-mode legality (see [verifiers.md](verifiers.md)). | Arithmetic-group conversion pattern. |
+| Floating binary (`addf`, `subf`, `mulf`, `divf`, `maxf`, `minf`, `remf`) | Forwards rounding mode and flush-to-zero. | Type-equality, shape-equality, and rounding-mode legality (see [Verifiers — Type-Compatibility Diagnostics](verifiers.md#type-compatibility-diagnostics)). | Arithmetic-group conversion pattern. |
 | Integer binary (`addi`, `subi`, `muli`, `divi`, `maxi`, `mini`, `mulhii`, `remi`, `andi`, `ori`, `xori`, `shli`, `shri`) | Forwards signedness and overflow attributes. | Type-equality, shape-equality, signedness-presence. | Arithmetic-group conversion pattern (integer max routes through a dedicated arm). |
 | Conversion (`exti`, `trunci`, `ftof`, `ftoi`, `itof`, `bitcast`, `int_to_ptr`, `ptr_to_int`, `ptr_to_ptr`) | Builds result from operand element type and target element type. | Width-direction and rounding-mode checks; identity conversions are rejected. | Pointer-cast specialty arm for the four pointer-family ops; arithmetic-group arm for the rest. |
 | Shape (`broadcast`, `cat`, `extract`, `permute`, `reshape`, `iota`) | Builds result from result shape, source shape, and axis attributes. | Rank, element-count, and axis legality. | Arithmetic-group conversion pattern. |
@@ -345,8 +346,8 @@ The default builder for trivial unary ops shares one trampoline that constructs 
 
 One count discrepancy is worth flagging. The roster in this build is 92 mnemonics. The two names missing from open-source documentation are `cuda_tile.atan2` (excluded entirely from this binary) and the rename `cuda_tile.print_tko` → `cuda_tile.print`. Producers should follow the version notes above and emit only the 92 mnemonics this dialect accepts.
 
-The dialect constructor walks the registration thunks in roster order; each thunk interns the mnemonic into the dialect's `OperationName` table and installs the op's vtable, fold callback, and verifier hook through the slots described in [overview.md](overview.md) and [../../mlir-infra/operation-layout.md](../../mlir-infra/operation-layout.md). Lowering patterns are matched as conversion patterns by the arithmetic-group and pointer-cast dispatchers during the first lowering stage.
+The dialect constructor walks the registration thunks in roster order; each thunk interns the mnemonic into the dialect's `OperationName` table and installs the op's vtable, fold callback, and verifier hook through the slots described in [overview — AbstractOperation Record](overview.md#abstractoperation-record) and [Operation Layout — Pointer-Identity Dispatch](../../mlir-infra/operation-layout.md#pointer-identity-dispatch). Lowering patterns are matched as conversion patterns by the arithmetic-group and pointer-cast dispatchers during the first lowering stage; the conversion is documented in [Cuda Tile to TileAA](../../lowering/cuda-tile-to-tileaa.md#three-populator-structure).
 
 ## Cross-References
 
-[overview.md](overview.md) describes the dialect's role as the public producer-facing API and the AbstractOperation record structure. [verifiers.md](verifiers.md) details the verbatim verifier diagnostics each family emits. [canonicalizers-and-folds.md](canonicalizers-and-folds.md) describes the rewrites applied after verification. [bytecode.md](bytecode.md) documents the on-wire encoding the opcode dispatcher consumes.
+[Overview](overview.md#programming-model) describes the dialect's role as the public producer-facing API and the AbstractOperation record structure. [Verifiers](verifiers.md#verification-pipeline) details the verbatim verifier diagnostics each family emits. [Canonicalizers and Folds](canonicalizers-and-folds.md#fold-surface) describes the rewrites applied after verification. [Bytecode Reader and Writer](bytecode.md#op-opcode-dispatcher) documents the on-wire encoding the opcode dispatcher consumes.

@@ -121,4 +121,4 @@ The buffer name `%vprintfBuffer.local` is preserved verbatim across CUDA version
 
 ## Cross-References
 
-[Memory-Space Optimization and Restrict](memory-space-opt-and-process-restrict.md) classifies the `%vprintfBuffer.local` alloca as local space and propagates that tag onto every slot pointer. [NVVM IR Verifier](nvvm-ir-verifier.md) does not size this buffer against the parameter-space ceiling — `vprintf` does not take its arguments through `.param`.
+[MemorySpaceOpt](memory-space-opt-and-process-restrict.md#memoryspaceopt) classifies the `%vprintfBuffer.local` alloca as local space and propagates that tag onto every slot pointer. The [Parameter-Space Sizer](nvvm-ir-verifier.md#parameter-space-sizer) does not size this buffer against the per-SM ceiling — `vprintf` does not take its arguments through `.param`.

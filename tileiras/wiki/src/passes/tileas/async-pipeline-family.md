@@ -87,7 +87,7 @@ produce_one_async -> producer_commit -> token_to_async -> async.wait
 
 Exactly one `produce_one`-like op may write data into a given pipeline. On conflict the reconciler emits the verbatim diagnostic ``there are two `produce-one-like` operations using different instructions to generate data into the same pipeline. It's a bug of MaterializeAsync Pass.`` (full sentence, trailing period included) through `sub_446CE00` at severity `259` (`0x103`).
 
-Errors never call `signalPassFailure()` directly. They set `*(self + 40) |= 4`, the cross-pass failure handshake documented in [TileAS Pass-Failure Handshake](../../mlir-infra/pass-failure-handshake.md). The driver inspects it once the walk completes and lifts it to a top-level failure.
+Errors never call `signalPassFailure()` directly. They set `*(self + 40) |= 4`, the cross-pass failure handshake documented in [Pass-Failure Handshake — Convention](../../mlir-infra/pass-failure-handshake.md#convention). The driver inspects it once the walk completes and lifts it to a top-level failure.
 
 ### Per-Loop Rewrite Body
 
@@ -126,7 +126,7 @@ Each async-defining value is wrapped twice through `to_async` — once for the s
 
 ### Anonymous Rewrite Patterns
 
-Two anonymous `RewritePattern` instances are allocated through `sub_44A8C20` + `sub_4481530` and registered into the local pattern set. Both are 0x60 B and use the 5-slot vtable shape A documented in [pattern-vtables-and-shapes](../../mlir-infra/pattern-vtables-and-shapes.md): `{matchAndRewrite, anchor/match, getDebugName, nullsub_11937 (slot 3), dtor/clone}`. The debug-name string pair sits at offsets `+0x40` and `+0x48` of each pattern object.
+Two anonymous `RewritePattern` instances are allocated through `sub_44A8C20` + `sub_4481530` and registered into the local pattern set. Both are 0x60 B and use the 5-slot vtable shape A documented in [Pattern Vtables and Shapes — Five-Slot RewritePattern Vtable](../../mlir-infra/pattern-vtables-and-shapes.md#five-slot-rewritepattern-vtable): `{matchAndRewrite, anchor/match, getDebugName, nullsub_11937 (slot 3), dtor/clone}`. The debug-name string pair sits at offsets `+0x40` and `+0x48` of each pattern object.
 
 | Pattern | Anchor op | Vtable | Debug-name string |
 |---|---|---|---|
@@ -238,7 +238,7 @@ Byte reinterpretation kicks in for NVFP4, FP6, and FP8 source or destination ten
 
 Both option-misuse cases and target-spec lookup failures share the verbatim diagnostic above. Pass-level failure sets `*(self + 40) |= 4`. Successful expansion replaces the original `nv_tileas.convert_layout` with the plan's final result value and erases the op.
 
-The SM-specific atom catalogues that `sub_91A9B0` reads to build plans are documented in [mma-atoms-sm70-120](../../dialects/cute_nvgpu/mma-atoms-sm70-120.md). The 8-slot pattern vtable convention that `off_59B4688` uses is documented in [pattern-vtables-and-shapes](../../mlir-infra/pattern-vtables-and-shapes.md). The `nv_tileas.convert_layout` op definition itself, including its layout-attribute schema and verifier, is documented in [op-roster-and-builders](../../dialects/nv_tileas/op-roster-and-builders.md).
+The SM-specific atom catalogues that `sub_91A9B0` reads to build plans are documented in [MMA Atoms SM70..SM120 — Per-Arch MMA Shape Lattice](../../dialects/cute_nvgpu/mma-atoms-sm70-120.md#per-arch-mma-shape-lattice). The 8-slot pattern vtable convention that `off_59B4688` uses is documented in [Pattern Vtables and Shapes — Eight-Slot Vtable](../../mlir-infra/pattern-vtables-and-shapes.md#eight-slot-vtable). The `nv_tileas.convert_layout` op definition itself, including its layout-attribute schema and verifier, is documented in [nv_tileas Op Roster and Builders](../../dialects/nv_tileas/op-roster-and-builders.md).
 
 ## Materialize Schedule
 
@@ -623,6 +623,8 @@ Pipeline lowerings consume the logical pipeline surface and emit fixed NVVM/LLVM
 | create none | LLVM poison value |
 | token/async casts | temporary unrealized conversion casts |
 | named barrier | `nvvm.barrier.cta.sync` or warp/cluster barrier sequence |
+
+The TMA bulk-copy templates are documented in [TMA, Tensormap, and cp.async.bulk Emission — cp.async.bulk Template Catalog](../../codegen/tma-tensormap-and-cp-async-bulk.md#cpasyncbulk-template-catalog); the WGMMA emission protocol that produces the commit-group / wait-group sequence is in [WGMMA Emission Protocol — The Four-Op Sequence](../../topics/wgmma-emission-protocol.md#the-four-op-sequence); the mbarrier state machine that anchors the arrive/try-wait loop is in [mbarrier State Machine](../../topics/mbarrier-state-machine.md); cluster-arrive / cluster-wait pairs and DSMEM transactions are documented in [Cluster Sync and DSMEM Handshake](../../topics/cluster-sync-and-dsmem-handshake.md). The shared codegen surface for the tcgen05 / WGMMA / mbarrier / cluster families lives in [tcgen05, WGMMA, mbarrier, and Cluster Sync](../../codegen/tcgen05-wgmma-mbarrier-cluster.md).
 
 ## Ordering Invariants
 

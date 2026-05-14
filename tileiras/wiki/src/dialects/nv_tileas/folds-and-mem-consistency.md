@@ -214,4 +214,4 @@ Keeping this in a pass rather than a fold lets the compiler consult target atom 
 
 ## Cross-References
 
-[op-roster-and-builders.md](op-roster-and-builders.md) catalogues the operations these rewrites target. [verifiers.md](verifiers.md) describes the legality contracts that survive the rewrites. [types.md](types.md) describes the iterator and async-token types that anchor the memory-consistency interface.
+[Operation Roster and Builders](op-roster-and-builders.md#operation-families) catalogues the operations these rewrites target. [Verifiers](verifiers.md#async-pipeline-verification) describes the legality contracts that survive the rewrites. [Types](types.md#pipeline-types) describes the iterator and async-token types that anchor the memory-consistency interface.

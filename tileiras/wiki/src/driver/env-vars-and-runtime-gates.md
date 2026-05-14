@@ -157,3 +157,14 @@ const char *resolveCudaRoot_nvvm(void) {                // sub_1A41D30
     return "";                                          // hazard: no fallback
 }
 ```
+
+## Related pages
+
+[Host Launch ABI and ptxas Knobs](host-launch-and-ptxas-knobs.md#ptxas-knobs-file-format)
+covers how the `PTX_KNOBS_PATH` value lands in the ptxas argv;
+[Subprocess Harness](subprocess-harness.md#ptxas-launcher) shows the
+ptxas-launcher argv shape that consumes the forwarded knob path;
+[Driver CLI Options](cli-options.md#pipeline-options) documents the
+companion option flags whose semantics overlap with these gates;
+[Resource Constraint Builder and RRT](../scheduler/resource-constraint-builder-and-rrt.md#abstract)
+is the RCB consumer of `TILE_AS_DEBUG_UNLIMITED_SMEM`.

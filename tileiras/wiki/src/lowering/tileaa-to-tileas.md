@@ -2,7 +2,7 @@
 
 ## Abstract
 
-`ConvertTileAAToTileAS` lowers the alias-aware typed-pointer dialect `nv_tileaa` into the assembler-near dialect `nv_tileas`. It runs after `ConvertCudaTileToTileAA` and before the TileAS family of passes (D07 through D22). Above this boundary tile algebra is target-independent and described in terms of typed pointers and abstract memory; below it, operations carry CopyAtom and ReduceAtom witnesses, the function's kernel-spec is mirrored as an attribute on the module, and SM100-only forms such as block-scaled MMA become legal.
+`ConvertTileAAToTileAS` lowers the alias-aware typed-pointer dialect `nv_tileaa` into the assembler-near dialect `nv_tileas`. It runs after [ConvertCudaTileToTileAA](cuda-tile-to-tileaa.md) and before the [TileAS family of passes](../scheduler/overview.md) (D07 through D22). Above this boundary tile algebra is target-independent and described in terms of typed pointers and abstract memory; below it, operations carry CopyAtom and ReduceAtom witnesses, the function's kernel-spec is mirrored as an attribute on the module, and SM100-only forms such as block-scaled MMA become legal.
 
 Structurally this is a textbook MLIR partial conversion. A single driver assembles a `RewritePatternSet` from three fixed-order populators, attaches kernel-spec metadata onto the function, builds the conversion target, and runs `applyPartialConversion`. There is no second pipeline stage — canonicalization of slice scaffolding is left to the following passes.
 
@@ -64,13 +64,13 @@ input  : %t = nv_tileaa.tiled_load %src, layout = #layout {copy_atom = #cute_nvg
 output : %t = nv_tileas.tiled_load %src, layout = #layout {copy_atom = #cute_nvgpu.copy_atom<...>}
 ```
 
-The witness attribute carries verbatim across the rewrite; the next stage ([tileas-to-llvm.md](tileas-to-llvm.md)) picks the concrete hardware primitive (`cp.async`, `cp.async.bulk`, `tcgen05.cp`, `ldmatrix`, `stmatrix`) from it.
+The witness attribute carries verbatim across the rewrite; the next stage ([TileAS to LLVM](tileas-to-llvm.md#tile-memory-and-descriptor-lowering)) picks the concrete hardware primitive (`cp.async`, `cp.async.bulk`, `tcgen05.cp`, `ldmatrix`, `stmatrix`) from it.
 
 ## Three Populators
 
 | Populator | Size | Dialect family | Patterns |
 |---|---:|---|---:|
-| `sub_733EF0` | 12.6 KB | arith                  | ~30 (the `GenericOpPattern` bank documented in `pattern-set-and-typeconverter.md`) |
+| `sub_733EF0` | 12.6 KB | arith                  | ~30 (the `GenericOpPattern` bank documented in [the 43-instantiation arith bank](pattern-set-and-typeconverter.md#the-43-instantiation-arith-bank)) |
 | `sub_730C50` | 13.1 KB | math                   | ~25 (`math.*` to `nv_tileas` equivalents) |
 | `sub_72D810` | 13.0 KB | nv_tileaa core         | ~35 (queue, execute, alias_token, memory ops) |
 
@@ -78,7 +78,7 @@ Each populator is a flat sequence: allocate a 0x68-byte pattern object, fill its
 
 ## Named Pattern Bank
 
-Sixteen-plus `TileAAToTileAS*OpPattern` classes spanning `sub_72A1C0` through `sub_73C710` make up the dedicated patterns. Each is a 0x68-byte `OpConversionPattern` of the shape labelled B in `pattern-set-and-typeconverter.md`: vtable pointer, interned `OperationName`, `PatternBenefit`, captured `TypeConverter*`, typeinfo-name string, and a small per-pattern tail. The vtables sit at consecutive offsets in `0x59B9000..0x59B9700`, one slot per pattern, with the standard eight-entry RewritePattern dispatch order (destructor, deleting destructor, `getRootKind`, root-kind init, `match`, `rewrite`, clone, move helper).
+Sixteen-plus `TileAAToTileAS*OpPattern` classes spanning `sub_72A1C0` through `sub_73C710` make up the dedicated patterns. Each is a 0x68-byte `OpConversionPattern` of the shape described in [Pattern Categories](pattern-set-and-typeconverter.md#pattern-categories): vtable pointer, interned `OperationName`, `PatternBenefit`, captured `TypeConverter*`, typeinfo-name string, and a small per-pattern tail. The vtables sit at consecutive offsets in `0x59B9000..0x59B9700`, one slot per pattern, with the standard eight-entry RewritePattern dispatch order (destructor, deleting destructor, `getRootKind`, root-kind init, `match`, `rewrite`, clone, move helper).
 
 Pattern bodies known by their op names are the global / memref family (`nv_tileaa.global`, `get_global`, `make_memref`,
 `block_tile`, `tiled_load`) at `sub_72A1C0`, the copy-atom load/store/atomic family (`load`, `store`, `tiled_load`,
@@ -109,7 +109,7 @@ if (is_block_scale_variant(v82) && cc_int(v84) <= 99)
     return emit("mma block scale is not supported by compute capability < sm100");
 ```
 
-The integer encoding is `major * 10 + minor`, so the inclusive `<= 99` gate rejects every capability up to and including sm_89 and admits sm_90, sm_100, sm_103, sm_110, sm_120, and sm_121. The default compute capability baked into the pass constructor (`sub_738810`) is `"sm_80"`, which means the gate is closed on the default invocation — the pipeline driver must bump the capability through the `--compute-capability` option before the block-scale path becomes reachable. The same function then validates the MMA partition (`"failed to find available mma partition"`) and infers the 2D layout (`"failed to infer 2d layout"`) before building `nv_tileas.dot`. The atom-K and vector-size triple table the validator consults is documented in `dialects/cute_nvgpu/mma-atoms-sm70-120.md`.
+The integer encoding is `major * 10 + minor`, so the inclusive `<= 99` gate rejects every capability up to and including sm_89 and admits sm_90, sm_100, sm_103, sm_110, sm_120, and sm_121. The default compute capability baked into the pass constructor (`sub_738810`) is `"sm_80"`, which means the gate is closed on the default invocation — the pipeline driver must bump the capability through the `--compute-capability` option before the block-scale path becomes reachable. The same function then validates the MMA partition (`"failed to find available mma partition"`) and infers the 2D layout (`"failed to infer 2d layout"`) before building `nv_tileas.dot`. The atom-K and vector-size triple table the validator consults is documented in [MMA Atoms sm70-120 — Operand Contract by Tier](../dialects/cute_nvgpu/mma-atoms-sm70-120.md#operand-contract-by-tier).
 
 ## Kernel-Spec Attachment
 
@@ -121,9 +121,9 @@ Executable `nv_tileaa` operations must not survive the pass — `applyPartialCon
 
 ## Cross-References
 
-[Pattern Set and Type Converter](pattern-set-and-typeconverter.md) documents the shape-B `OpConversionPattern` layout and
-the GenericOpPattern bank shared with the arith populator. [Convert cuda_tile to TileAA](cuda-tile-to-tileaa.md) covers
-the previous boundary that produces the `nv_tileaa` input this pass consumes. [TileAS to LLVM](tileas-to-llvm.md) is the
+[Pattern Categories](pattern-set-and-typeconverter.md#pattern-categories) documents the dedicated `OpConversionPattern` layout and
+[the 43-instantiation arith bank](pattern-set-and-typeconverter.md#the-43-instantiation-arith-bank) is shared with the arith populator. [Convert cuda_tile to TileAA](cuda-tile-to-tileaa.md) covers
+the previous boundary that produces the `nv_tileaa` input this pass consumes. [TileAS to LLVM — Tile Memory and Descriptor Lowering](tileas-to-llvm.md#tile-memory-and-descriptor-lowering) is the
 downstream materialization that resolves the CopyAtom and ReduceAtom witnesses attached here into concrete instructions.
-[MMA Atoms sm70-120](../dialects/cute_nvgpu/mma-atoms-sm70-120.md) lists the atom-K and vector-size triples consulted by
+[MMA Atoms sm70-120 — Operand Contract by Tier](../dialects/cute_nvgpu/mma-atoms-sm70-120.md#operand-contract-by-tier) lists the atom-K and vector-size triples consulted by
 the SM100 block-scale validator.

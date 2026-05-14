@@ -32,7 +32,7 @@ and TileAS preparation substages.
 | `runCanonicalizer` | Run canonicalization inside a scheduler preparation stage. |
 | `compactMemLayout` | Compact memory layout metadata. |
 | `refreshBoxDim` | Refresh box dimensions after layout changes. |
-| `ResourceConstraintBuilder::tryAddConstraintToAvoidRegSpilling` | Add scheduling constraints to avoid spills. |
+| `ResourceConstraintBuilder::tryAddConstraintToAvoidRegSpilling` | Add scheduling constraints to avoid spills (see [Resource Constraint Builder and RRT](../scheduler/resource-constraint-builder-and-rrt.md)). |
 
 These names should remain stable because external timing reports and callback integrations may depend
 on them.
@@ -82,4 +82,8 @@ unhandled, or vice versa.
 The same compile instrumentation surface feeds the TileIR callback emission path. Callback emission
 materializes well-known module symbols and launch-site hooks so a runtime can patch instrumentation at
 module load time. The driver-level ABI is documented in [TILEIR_CALLBACKS ABI](../driver/tileir-callbacks-abi.md).
+
+## Cross-References
+
+[Driver Entry and Optimization Levels — Serialization Scopes](driver-and-opt-levels.md#serialization-scopes) names the two outer scopes (`CompileNVVM`, `SerializeGPUModule`) that this page enumerates. [Modulo Scheduler and Rau-Style Placement](../scheduler/modulo-scheduler-and-rau.md) is the scheduler whose stages drive most of the inner scopes. [Resource Constraint Builder and RRT](../scheduler/resource-constraint-builder-and-rrt.md) is what `ResourceConstraintBuilder::tryAddConstraintToAvoidRegSpilling` is part of.
 

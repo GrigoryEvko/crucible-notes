@@ -6,7 +6,7 @@ NVIDIA ships a small open-source preview of the `cuda-tile` dialect: one MLIR di
 
 The four OSS pages compare that preview against tileiras. The comparison is not symmetric. The OSS tree is a strict subset of one front-end dialect; tileiras carries the same surface plus six private dialects (`nv_tileaa`, `nv_tileas`, `cute`, `cute_nvgpu`, `cutlass`, NVVM) and the lowering pipelines between them. The useful question is: for each artifact in the public tree, what shape does the corresponding behavior take in tileiras?
 
-The comparison methodology, the divergence taxonomy, and the per-page table conventions appear below. The other three OSS pages apply the methodology to TableGen declarations (`td-files-delta.md`), interface and optimizer driver source (`cuda-tile-tree-mapping.md`), and transform passes (`transforms-fusefma-synthdbg.md`).
+The comparison methodology, the divergence taxonomy, and the per-page table conventions appear below. The other three OSS pages apply the methodology to TableGen declarations ([.td Files Delta](td-files-delta.md)), interface and optimizer driver source ([cuda_tile Tree Mapping](cuda-tile-tree-mapping.md)), and transform passes ([Transforms / FuseFMA / SynthDbg](transforms-fusefma-synthdbg.md)).
 
 ## What the OSS Preview Contains
 
@@ -78,7 +78,7 @@ Each of the three detail pages targets one slice of the public tree:
 
 A tileiras-compatible reimplementation should treat the OSS tree as authoritative for what it covers and the rest of this wiki as authoritative for everything outside the public surface. Specifically:
 
-- Use OSS `Types.td`, `AttrDefs.td`, and `Ops.td` for the `cuda_tile` declaration surface, with the deltas listed in `td-files-delta.md` applied.
+- Use OSS `Types.td`, `AttrDefs.td`, and `Ops.td` for the `cuda_tile` declaration surface, with the deltas listed in [.td Files Delta](td-files-delta.md) applied.
 - Use OSS `Interfaces.cpp` and `Interfaces.td` for the ODS interface shape, but expect that consumers spread across the verifier/parser/printer rather than concentrating in one stub.
 - Do not copy the OSS `Transforms/` directory into the lowering pipeline. The three passes have different replacement strategies in tileiras and copying them produces double-firing or anchor-op mismatches.
 - Do not expose `CudaTileOptimizer` as a standalone tool unless deliberately adding functionality. Tileiras has no equivalent standalone entry point — the full compile pipeline subsumes the optimizer role.

@@ -372,15 +372,15 @@ installed when the target machine was built.
 
 ## Cross-References
 
-- [Codegen Overview](overview.md) — the seven-stage backend contract these
+- [Codegen Overview — End-To-End Algorithm](overview.md#end-to-end-algorithm) — the seven-stage backend contract these
   primitives feed into.
-- [AsmPrinter Monster and Windows](asm-printer-monster-and-windows.md) — the
+- [AsmPrinter — MC Switch Shape Population Table](asm-printer-monster-and-windows.md#mc-switch-shape-population-table) — the
   6,388-case dispatcher that the LTO-folded printer described here implements,
-  and the per-SM print-shape windows it dispatches into.
-- [NVPTX Subtarget and Feature Matrix](nvptx-subtarget-and-feature-matrix.md) —
+  and the [per-SM print-shape windows](asm-printer-monster-and-windows.md#per-sm-reachability) it dispatches into.
+- [NVPTX Subtarget — The 81 Feature Indices](nvptx-subtarget-and-feature-matrix.md#the-81-feature-indices) —
   the chip/feature predicates the peephole-pass selection consults.
 - [libdevice Overview](../libdevice/overview.md) — the bitcode library most
   often delivered through the `blobLinkedLib` attribute.
-- [Lowering: Target and Debuginfo](../lowering/target-and-debuginfo.md) — the
+- [Lowering — Target Attribute Conversion](../lowering/target-and-debuginfo.md#target-attribute-conversion) — the
   point at which `gpu.module` acquires the `#nvvm.target` and `blobLinkedLib`
   attributes the bring-up reads.

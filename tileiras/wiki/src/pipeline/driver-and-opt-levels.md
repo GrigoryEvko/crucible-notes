@@ -56,7 +56,7 @@ Two snapshot printers are conditional on `emit-line-info`. The first runs after 
 
 ## Pipeline Strategy
 
-`pipeline-strategy` selects how aggressively the compiler specializes producer/consumer execution.
+`pipeline-strategy` selects how aggressively the compiler specializes producer/consumer execution. The TileAS-side rewrites these strategies select between are documented in the [Async Pipeline Family](../passes/tileas/async-pipeline-family.md).
 
 | Strategy | Meaning |
 | --- | --- |
@@ -123,4 +123,4 @@ These scope names are part of the public ABI for embedders. Fine-grained pass sc
 
 ## Cross-References
 
-[Pipeline Options Mapping](options-mapping.md) is the lookup table that resolves each option to its consuming pass. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) names the exact pass sequence per tier. [Pass Manager Internals](pass-manager-internals.md) explains the nesting model the driver populates. [Modulo Scheduler and Rau-Style Placement](../scheduler/modulo-scheduler-and-rau.md) is the scheduler that consumes the preserved `ScheduleAnalysis`.
+[Pipeline Options Mapping — Option-to-Pass Map](options-mapping.md#option-to-pass-map) is the lookup table that resolves each option to its consuming pass. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) names the exact pass sequence per tier. [Pass Manager Internals — Anchor Hierarchy](pass-manager-internals.md#anchor-hierarchy) explains the nesting model the driver populates. [Modulo Scheduler and Rau-Style Placement — Placement Arms](../scheduler/modulo-scheduler-and-rau.md#placement-arms) is the scheduler that consumes the preserved `ScheduleAnalysis`.

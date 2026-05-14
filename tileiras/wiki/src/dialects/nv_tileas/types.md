@@ -37,7 +37,7 @@ typedef struct PipelineIterator {
 
 ### Type Storage and Uniquing
 
-Pipeline types are routed through the context `StorageUniquer` documented in [Storage Uniquer and Context Impl](../../mlir-infra/storage-uniquer-and-context-impl.md). Producer/consumer tokens and the generic async token are parameterless and resolve to a single canonical storage per context; the iterator type carries a wrapped element type and is keyed on that pointer.
+Pipeline types are routed through the context `StorageUniquer` documented in [Storage Uniquer and Context Impl — getOrCreate Gateway](../../mlir-infra/storage-uniquer-and-context-impl.md#the-getorcreate-gateway). Producer/consumer tokens and the generic async token are parameterless and resolve to a single canonical storage per context; the iterator type carries a wrapped element type and is keyed on that pointer.
 
 | Type | Uniquer key |
 |---|---|
@@ -66,7 +66,7 @@ Propagation through structured control flow obeys explicit rules:
 1. **Async producer/consumer ops** preserve `count` and `stride` but may transform `address_space`. A producer region that materializes its payload into shared memory exposes a shared-space iterator to the consumer region; a consumer region that copies the payload into registers exposes a register-space iterator to whatever consumes the consumer's yield.
 2. **Reduction and scan ops** divide `count` by the reduction factor when the reduction collapses an entire stage dimension. The verifier rejects a reduction whose factor does not evenly divide `count`.
 3. **Structured branches** must yield iterators that agree on all four fields. `scf.if` with a `PipelineIteratorType` result requires both arms' yields to match.
-4. **Loops** carry the iterator unchanged as an iter-arg. The loop-coalescing pattern in [folds-and-mem-consistency.md](folds-and-mem-consistency.md) rejects coalescing a loop that carries an iterator iter-arg because the merged loop's iteration count would no longer match the iterator's `count`.
+4. **Loops** carry the iterator unchanged as an iter-arg. The loop-coalescing pattern in [Folds and Memory Consistency — Coalesce Perfectly Nested Loops](folds-and-mem-consistency.md#coalesce-perfectly-nested-loops) rejects coalescing a loop that carries an iterator iter-arg because the merged loop's iteration count would no longer match the iterator's `count`.
 
 ```c
 LogicalResult verify_iterator_merge(Value lhs, Value rhs) {
@@ -185,5 +185,5 @@ SuccessorInfo get_successors(YieldOp yield) {
 
 ## Cross-References
 
-[op-roster-and-builders.md](op-roster-and-builders.md) shows the operations that consume and produce each type. [verifiers.md](verifiers.md) details the region-op verifier template that validates iterator unwrap and producer-type agreement. [folds-and-mem-consistency.md](folds-and-mem-consistency.md) describes the rewrites that respect the iterator-propagation rules above.
+[Operation Roster and Builders](op-roster-and-builders.md#operation-families) shows the operations that consume and produce each type. [Verifiers — Region-Op Verifier Template](verifiers.md#region-op-verifier-template) details the region-op verifier template that validates iterator unwrap and producer-type agreement. [Folds and Memory Consistency](folds-and-mem-consistency.md#canonicalization-patterns) describes the rewrites that respect the iterator-propagation rules above.
 

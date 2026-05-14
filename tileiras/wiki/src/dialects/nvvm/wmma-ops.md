@@ -98,7 +98,7 @@ The `.popc` and `.and.popc` modifiers on the `b1` form are encoded into the op m
 | `s4` / `u4` | sm_75 | 6.3 | `m8n8k32` shape only |
 | `b1` (popc / and.popc) | sm_75 | 6.3 | `m8n8k128` shape only |
 
-Hopper (sm_90+) backends accept `nvvm.wmma.*` for backward compatibility but Tileiras prefers `nvvm.wgmma.mma_async.*` once the target hits sm_90a. Blackwell (sm_100+) keeps WMMA legal for short-K tiles only — long-K paths go through `nvvm.tcgen05.mma.sync`.
+Hopper (sm_90+) backends accept `nvvm.wmma.*` for backward compatibility but Tileiras prefers [`nvvm.wgmma.mma_async.*`](wgmma-ops.md#nvvmwgmmamma_asyncsyncaligned) once the target hits sm_90a. Blackwell (sm_100+) keeps WMMA legal for short-K tiles only — long-K paths go through [`nvvm.tcgen05.mma.sync`](tcgen05-ops.md#nvvmtcgen05mma-dense). See [Per-SM Emission Templates — SM70 / SM75](../../codegen/per-sm-emission-templates.md#sm70--sm75) for the Volta/Turing PTX templates.
 
 ## Verification Invariants
 

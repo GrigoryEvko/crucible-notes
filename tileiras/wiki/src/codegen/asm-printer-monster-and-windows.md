@@ -521,7 +521,7 @@ per-operand encoding rules the modifier helpers consume.
 Ship these four artefacts as static data plus the `297` body scripts as a
 small interpreter loop and the entire MC printer surface comes back
 without per-opcode code generation. The
-[ISelDAG and MatcherTable](iseldag-and-matchertable.md) page documents the
-upstream stage feeding these MC opcodes into the printer, and the
+[ISelDAG and MatcherTable — Selector Layers](iseldag-and-matchertable.md#selector-layers)
+page documents the upstream stage feeding these MC opcodes into the printer, and the
 [XOR-3 walking cipher](#asmwriter-string-pools-and-the-xor-3-walking-cipher)
 section above covers the mnemonic-pool side of the budget.

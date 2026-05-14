@@ -4,7 +4,7 @@
 
 NVIDIA's matrix-multiply abstraction has evolved across seven SM generations. Each generation adds capacity along one of three axes — concurrency model (warp-cooperative → warp-group → cluster-cooperative), operand storage class (register fragments → SMEM descriptors → tensor memory), or numerical range (FP16 → FP8 → MXFP4 with block scales). Some generations also remove resource classes that earlier ones introduced: Blackwell datacenter parts drop the register-resident accumulator that WGMMA used, and Blackwell consumer parts drop tensor memory entirely while keeping the block-scale operand encoding.
 
-This page is the canonical cross-architecture overview. It supersedes the scattered per-tier discussions in `dialects/cute_nvgpu/mma-atoms-sm70-120.md` (the per-arch shape lattice), the WGMMA and tcgen05 topic pages (which focus on one generation each), and `codegen/tcgen05-wgmma-mbarrier-cluster.md`. Those pages keep their per-tier content; this page covers the cross-architecture story.
+This page is the canonical cross-architecture overview. It supersedes the scattered per-tier discussions in [MMA Atoms SM70-SM120](../dialects/cute_nvgpu/mma-atoms-sm70-120.md) (the per-arch shape lattice), the WGMMA and tcgen05 topic pages (which focus on one generation each), and [tcgen05 / WGMMA / mbarrier / Cluster Emission](../codegen/tcgen05-wgmma-mbarrier-cluster.md). Those pages keep their per-tier content; this page covers the cross-architecture story.
 
 ## SM70 / SM75: Warp-Cooperative `mma.sync`
 

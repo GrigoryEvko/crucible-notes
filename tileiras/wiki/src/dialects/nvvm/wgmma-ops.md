@@ -2,11 +2,13 @@
 
 ## Abstract
 
-`nvvm.wgmma.*` is the warp-group asynchronous MMA family used on Hopper (sm_90a). A warp group is four contiguous warps cooperating on one `m64nNkK` accumulator tile, with B always resident in shared memory through a 64-bit SMEM descriptor and A either in registers or in SMEM through a second descriptor. The 9 ops in this family pair into a four-stage pipeline: fence, `mma_async`, commit, wait.
+`nvvm.wgmma.*` is the warp-group asynchronous MMA family used on Hopper (sm_90a). A warp group is four contiguous warps cooperating on one `m64nNkK` accumulator tile, with B always resident in shared memory through a 64-bit SMEM descriptor and A either in registers or in SMEM through a second descriptor. The 9 ops in this family pair into a four-stage pipeline: fence, `mma_async`, commit, wait. See [WGMMA Emission Protocol — The Four-Op Sequence](../../topics/wgmma-emission-protocol.md#the-four-op-sequence) for the pipeline timing and [WGMMA Emission](../../codegen/tcgen05-wgmma-mbarrier-cluster.md#wgmma-emission) for the codegen side.
 
 Blackwell (sm_100+) does not extend this family. The Hopper WGMMA path is the only `wgmma.*` PTX surface; Blackwell MMA lives in [`nvvm.tcgen05.*`](tcgen05-ops.md).
 
 ## Op Roster
+
+The "Properties slots used" column tracks where each op stores its attribute payload in the inline Properties record; see [Properties Blob — Per-op-family slot maps](properties-blob-and-attr-parsers.md#per-op-family-properties-slot-maps) for the exact byte offsets.
 
 | Op | Role | Properties slots used |
 |---|---|---|
@@ -132,7 +134,7 @@ wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16
 | `wgmma.commit.group.sync.aligned` | sm_90a | 8.0 |
 | `wgmma.wait.group.sync.aligned` | sm_90a | 8.0 |
 
-Plain `sm_90` is rejected; the WGMMA family requires the architecture-qualified `sm_90a` variant. Blackwell (`sm_100+`) does not extend WGMMA — the Blackwell tensor-memory MMA path is `nvvm.tcgen05.mma.sync`.
+Plain `sm_90` is rejected; the WGMMA family requires the architecture-qualified `sm_90a` variant. Blackwell (`sm_100+`) does not extend WGMMA — the Blackwell tensor-memory MMA path is [`nvvm.tcgen05.mma.sync`](tcgen05-ops.md#nvvmtcgen05mma-dense). See [Per-SM Emission Templates — SM90](../../codegen/per-sm-emission-templates.md#sm90) for the Hopper PTX templates and [WGMMA Descriptor Round-Trip](../../codegen/per-sm-emission-templates.md#wgmma-descriptor-round-trip) for the descriptor hex walk-through.
 
 ## Verifier Invariants
 

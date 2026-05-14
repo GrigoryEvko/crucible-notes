@@ -82,7 +82,7 @@ Each dialect occupies one layer of the lowering pipeline. The early dialects pre
 | SM | Streaming multiprocessor generation or target family, such as `sm_90` or `sm_100`. Tileiras targets the Blackwell family: `sm_100`, `sm_103`, `sm_110`, `sm_120`, `sm_121`. |
 | CTA | Cooperative thread array, often called a thread block. |
 | Cluster | Group of CTAs that can use cluster-level synchronization and memory features. Hopper introduced 2-CTA clusters; Blackwell extends to 4-CTA. |
-| DSMEM | Distributed shared memory. The cross-CTA shared-memory mechanism in clusters: each cluster member can address shared memory of every peer through `nvvm.mapa` plus `llvm.addrspacecast`. The DSMEM handshake protocol pairs `nvvm.cluster.arrive` and `nvvm.cluster.wait` with optional fences. See [DSMEM Handshake and Cluster Barrier](topics/dsmem-handshake-and-cluster-barrier.md). |
+| DSMEM | Distributed shared memory. The cross-CTA shared-memory mechanism in clusters: each cluster member can address shared memory of every peer through `nvvm.mapa` plus `llvm.addrspacecast`. The DSMEM handshake protocol pairs `nvvm.cluster.arrive` and `nvvm.cluster.wait` with optional fences. See [Cluster Sync and DSMEM Handshake](topics/cluster-sync-and-dsmem-handshake.md). |
 | TMA | Tensor Memory Accelerator, used for bulk tensor-memory transfers. Hopper and Blackwell support TMA via the `cp.async.bulk.tensor` family driven by 128-byte descriptors. |
 | TMEM | Tensor memory used by Blackwell-era tensor-core operations. A separate memory space (`addrspace 4`) with its own access primitives. |
 | S2T copy | Shared-to-tensor-memory copy. Blackwell-specific transfer from SMEM to TMEM, used to stage `tcgen05.mma` operands. The `cute_nvgpu.atom.copy_make_s2t_copy_op` family models it. |

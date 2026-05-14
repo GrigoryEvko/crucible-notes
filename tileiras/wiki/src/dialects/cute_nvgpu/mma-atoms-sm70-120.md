@@ -60,7 +60,7 @@ Coming from the open-source `cutlass/cute` C++ headers, the differences are repr
 | CUTLASS C++ concept | tileiras IR form |
 |---|---|
 | `cute::MMA_Atom<MMA_Traits<sm90_64x128x16_F16F16F32_SS>>` | `cute_nvgpu.sm90.mma` op with `shape_MNK`, `a_type`, `b_type`, `c_type` attributes plus operand-residency-typed values |
-| `cute::Layout<Shape, Stride>` template | `!cute.layout` type with hierarchical `(shape, stride)` trees and a 7-kind discriminator (see `verifiers.md`) |
+| `cute::Layout<Shape, Stride>` template | `!cute.layout` type with hierarchical `(shape, stride)` trees and a 7-kind discriminator (see [cute Verifiers — LayoutTypeInterface Kind Discriminator](../cute/verifiers.md#layouttypeinterface-kind-discriminator)) |
 | `cute::TiledCopy` / `cute::TiledMMA` | `cute.make_tiled_copy` / `cute.make_tiled_mma` builders consuming atom values |
 | `cutlass::PipelineTmaAsync<Stages>` class template | `cutlass.pipeline.create_pipeline` + `cutlass.pipeline.init` ops with explicit producer/consumer participant attributes |
 | `cutlass::PersistentTileScheduler` class template | `cutlass.tile_scheduler.static_persistent` op returning a typed scheduler handle |
@@ -123,7 +123,7 @@ Reading the table:
 - **mbarrier** for SM90/SM100 means the atom's completion is observed by a separate `mbarrier.wait` or
   `wgmma.wait_group` op; no register-side operand carries the completion token.
 
-The missing predicate column is deliberate. MMA atoms here do not carry per-lane predicates; masking is the job of the producer/consumer pipeline of the enclosing region — see the `cutlass.pipeline` family in [pipeline-and-tile-scheduler.md](../cutlass/pipeline-and-tile-scheduler.md).
+The missing predicate column is deliberate. MMA atoms here do not carry per-lane predicates; masking is the job of the producer/consumer pipeline of the enclosing region — see [cutlass Pipeline and Tile Scheduler — Pipeline Operations](../cutlass/pipeline-and-tile-scheduler.md#pipeline-operations).
 
 ## SM70 and SM75
 
@@ -381,8 +381,8 @@ The verifier's accept set is the conjunction of four predicates:
 - `sf_a.elementType == sf_b.elementType`.
 
 Every other combination emits `"Invalid (atom_K, vecSize) combination for block-scaled MMA"` and returns 0. See
-[D22 verifier `sub_14B71C0`](../nv_tileas/verifiers.md) for the broader verifier context this table summarises, and
-[the NVPTX subtarget feature matrix](../../codegen/nvptx-subtarget-and-feature-matrix.md) for the `tmem` feature
+[nv_tileas Verifiers — Block-Scaled MMA Verification](../nv_tileas/verifiers.md#block-scaled-mma-verification) for the broader verifier context this table summarises, and
+[NVPTX Subtarget Feature Matrix — Cached Tensor-Memory Predicate](../../codegen/nvptx-subtarget-and-feature-matrix.md#cached-tensor-memory-predicate) for the `tmem` feature
 that gates SM100 atoms.
 
 ## SM120 and SM121 Block-Scaled MMA

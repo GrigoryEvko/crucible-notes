@@ -2,11 +2,13 @@
 
 ## Abstract
 
-`nvvm.tcgen05.*` covers the Blackwell (sm_100+) tensor-memory family. Tensor memory (TMEM) is a per-SM scratchpad allocated and freed through the dialect's alloc / dealloc ops, accessed through `ld` / `st` and the long-K MMA path, and torn down before the kernel exits. The 14 ops enumerated here are the only path to TMEM from MLIR; Hopper's WGMMA family ([`nvvm.wgmma.*`](wgmma-ops.md)) does not reach Blackwell tensor cores.
+`nvvm.tcgen05.*` covers the Blackwell (sm_100+) tensor-memory family. Tensor memory (TMEM) is a per-SM scratchpad allocated and freed through the dialect's alloc / dealloc ops, accessed through `ld` / `st` and the long-K MMA path, and torn down before the kernel exits. The 14 ops enumerated here are the only path to TMEM from MLIR; Hopper's WGMMA family ([`nvvm.wgmma.*`](wgmma-ops.md)) does not reach Blackwell tensor cores. See [tcgen05 Tensor Memory Model](../../topics/tcgen05-tensor-memory-model.md) for the TMEM allocation discipline and the variant taxonomy, and [tcgen05 Machine Validation](../../codegen/tcgen05-wgmma-mbarrier-cluster.md#tcgen05-machine-validation) for the codegen-side verifier rules.
 
 `tcgen05.mma` carries a control-word modifier table that selects element-type interpretation, sparsity, block-scaling, and collector behaviour. Block-scaled UMMA exposes scale-vector size and scale-format enums; the cross-product produces several thousand legal PTX forms from a single dialect op.
 
 ## Op Roster
+
+The "Properties slots used" column tracks where each op stores its attribute payload in the inline Properties record; see [Properties Blob — Per-op-family slot maps](properties-blob-and-attr-parsers.md#per-op-family-properties-slot-maps) for the exact byte offsets.
 
 | Op | Role | Properties slots used |
 |---|---|---|
@@ -121,7 +123,7 @@ The `(atom_K, vecSize)` triples accepted by the verifier are documented on the [
 
 ## Control-Word Modifier Table
 
-The PTX form `tcgen05.mma.sync.aligned.{kind}.cta_group::{1,2}.{layout}.{collector}` packs several modifiers into the mnemonic. The table below pairs each modifier with its NVVM attribute and the legal value range.
+The PTX form `tcgen05.mma.sync.aligned.{kind}.cta_group::{1,2}.{layout}.{collector}` packs several modifiers into the mnemonic. See [tcgen05 Tensor Memory Model — Control Word Layout](../../topics/tcgen05-tensor-memory-model.md#control-word-layout) for the bit-level encoding and [tcgen05 Machine Validation — Control-Word Bit Layout](../../codegen/tcgen05-wgmma-mbarrier-cluster.md#control-word-bit-layout) for the codegen-side checks. The table below pairs each modifier with its NVVM attribute and the legal value range.
 
 | PTX modifier | NVVM attribute | Values |
 |---|---|---|
@@ -204,7 +206,7 @@ The two `r` slots are the destination and source TMEM column indices. The shape,
 | `mma.block_scale` / `mma.sp.block_scale` | sm_100a | 8.6 |
 | `commit` / `commit.arrive` / `wait` / `fence` | sm_100a | 8.6 |
 
-`sm_100a` is the architecture-qualified Blackwell target; the family is also legal on `sm_100f` for the few `f`-suffixed copy variants. Datacenter Blackwell (sm_100) is the only sub-arch the dialect exposes; Blackwell Ultra (sm_103) and Jetson Thor (sm_110) reuse the same op surface.
+`sm_100a` is the architecture-qualified Blackwell target; the family is also legal on `sm_100f` for the few `f`-suffixed copy variants. Datacenter Blackwell (sm_100) is the only sub-arch the dialect exposes; Blackwell Ultra (sm_103) and Jetson Thor (sm_110) reuse the same op surface. See [Per-SM Emission Templates — SM100 / SM103](../../codegen/per-sm-emission-templates.md#sm100--sm103) for the codegen-side templates and [NVPTX Subtarget Feature Matrix](../../codegen/nvptx-subtarget-and-feature-matrix.md) for the feature gating.
 
 ## Verifier Invariants
 

@@ -24,7 +24,7 @@ llvm
 PTX
 ```
 
-`nvgpu` is the last MLIR layer that still looks like a GPU dialect. `nvvm` looks more like LLVM IR: pointer types, vector types, memory-order attributes, target attributes, and intrinsic operand shapes have to be explicit by the time IR arrives. Most verifier failures here are best read as "the previous lowering didn't finish specifying the target operation."
+[`nvgpu`](../nvgpu/overview.md) is the last MLIR layer that still looks like a GPU dialect. `nvvm` looks more like LLVM IR: pointer types, vector types, memory-order attributes, target attributes, and intrinsic operand shapes have to be explicit by the time IR arrives. Most verifier failures here are best read as "the previous lowering didn't finish specifying the target operation." See [Lowering: nvgpu / gpu to NVVM](../../lowering/nvgpu-and-gpu-to-nvvm.md) for the per-op rewrite contract.
 
 ## Per-Family Pages
 

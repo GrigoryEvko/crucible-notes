@@ -48,14 +48,14 @@ The dialect subsystem registers operations, types, attributes, interfaces, verif
 
 | Dialect | Conceptual role | Page |
 | --- | --- | --- |
-| `cuda_tile` | Public tile input dialect; what the bytecode actually contains. | [cuda_tile](dialects/cuda_tile/) |
-| `nv_tileaa` | Alias-aware memory, token, queue, and pointer layer. | [nv_tileaa](dialects/nv_tileaa/) |
-| `nv_tileas` | Operationally-scheduled async memory and TMA layer. | [nv_tileas](dialects/nv_tileas/) |
-| `cute` | Target-neutral layout algebra. | [cute](dialects/cute/) |
-| `cute_nvgpu` | NVIDIA-architecture atom registry. | [cute_nvgpu](dialects/cute_nvgpu/) |
-| `cutlass` | CUTLASS pipeline and tile-scheduler abstractions. | [cutlass](dialects/cutlass/) |
-| `nvgpu` | Stock MLIR GPU bridge layer. | [nvgpu](dialects/nvgpu/) |
-| `nvvm` | PTX-facing intrinsic dialect. | [nvvm](dialects/nvvm/) |
+| `cuda_tile` | Public tile input dialect; what the bytecode actually contains. | [cuda_tile Overview](dialects/cuda_tile/overview.md) |
+| `nv_tileaa` | Alias-aware memory, token, queue, and pointer layer. | [nv_tileaa Overview](dialects/nv_tileaa/overview.md) |
+| `nv_tileas` | Operationally-scheduled async memory and TMA layer. | [nv_tileas Overview](dialects/nv_tileas/overview.md) |
+| `cute` | Target-neutral layout algebra. | [cute Overview](dialects/cute/overview.md) |
+| `cute_nvgpu` | NVIDIA-architecture atom registry. | [cute_nvgpu Overview](dialects/cute_nvgpu/overview.md) |
+| `cutlass` | CUTLASS pipeline and tile-scheduler abstractions. | [cutlass Overview](dialects/cutlass/overview.md) |
+| `nvgpu` | Stock MLIR GPU bridge layer. | [nvgpu Overview](dialects/nvgpu/overview.md) |
+| `nvvm` | PTX-facing intrinsic dialect. | [NVVM Overview](dialects/nvvm/overview.md) |
 
 Each dialect exposes the same role-level entry points: `register_operations`, `register_types`, `register_attributes`, `register_interfaces`, and per-operation `verify` / `fold` / `print` / `parse` hooks. Callers: bytecode reader (to resolve mnemonics on load), lowering (to identify source-dialect operations), MLIR infrastructure (to build operations and unique types).
 
@@ -71,7 +71,7 @@ The lowering subsystem owns dialect-to-dialect conversion. It is a set of patter
 | `apply_full_conversion` | Run the pattern set to fixpoint or fail with a diagnostic. |
 | `apply_partial_conversion` | Run a target-bounded conversion where some operations remain. |
 
-Conversion edges, in order along the main path: `cuda_tile` -> `nv_tileaa` -> `nv_tileas` -> LLVM/NVGPU -> NVVM. See [Lowering Overview](lowering/overview.md) and the per-edge pages under `lowering/`.
+Conversion edges, in order along the main path: `cuda_tile` -> `nv_tileaa` -> `nv_tileas` -> LLVM/NVGPU -> NVVM. See [Lowering Overview](lowering/overview.md) for the conversion cascade.
 
 ## Scheduler
 

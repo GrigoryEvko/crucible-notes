@@ -2,7 +2,7 @@
 
 ## Abstract
 
-Every `nvvm.*` op that carries inline-data attributes gets a uniform **Properties** record bump-allocated next to its `Operation*`. The NVVM-to-LLVM lowering dispatcher shares one blob layout across the whole dialect, and five access patterns (A..E) cover every family: `tcgen05.mma`, `ldmatrix` / `stmatrix`, `wgmma` / `mma.sync`, `cp.async.bulk` / TMA, `atomicrmw` / `red`, the `prefetch` / `fence` / `elect.sync` triad, and block-scaled MMA.
+Every `nvvm.*` op that carries inline-data attributes gets a uniform **Properties** record bump-allocated next to its `Operation*`. The NVVM-to-LLVM lowering dispatcher shares one blob layout across the whole dialect, and five access patterns (A..E) cover every family: [`tcgen05.mma`](tcgen05-ops.md), [`ldmatrix` / `stmatrix`](overview.md#ldmatrix-stmatrix-and-miscellaneous), [`wgmma`](wgmma-ops.md) / `mma.sync`, [`cp.async.bulk` / TMA](tma-ops.md), `atomicrmw` / `red`, the `prefetch` / `fence` / `elect.sync` triad, and block-scaled MMA.
 
 `NVVMDialect::initialize` installs a 67-element enum-attr registrar chain that registers the enum namespaces those patterns consume. The slot tables below are normative — they pin each op mnemonic to its enum / unit / int / array slot positions, so a reimplementer can wire `getAttrOfType<EnumAttr>` (or `OpAdaptor`) to the offsets the upstream dispatcher already reads.
 
@@ -167,7 +167,7 @@ block-scaled and tcgen05 (`scale_vec_size`, `block_scale_format`,
 `tma_redux_kind`, `red_op`, `red_type`, `mul_mode`, `atomic_op`,
 `dot_accumulate_type`).
 
-These namespaces are exactly the enums whose `i32` payloads Pattern A pulls from the slot trailers above. The chain only registers parse-side machinery; constant materialization is a later lowering concern. During the NVVM-to-LLVM rewrite, any enum payload that needs to become an SSA constant materializes as `llvm.mlir.constant %c : i32`.
+These namespaces are exactly the enums whose `i32` payloads Pattern A pulls from the slot trailers above. The chain only registers parse-side machinery; constant materialization is a later lowering concern. During the NVVM-to-LLVM rewrite, any enum payload that needs to become an SSA constant materializes as `llvm.mlir.constant %c : i32`. For inline-asm slots that bypass the intrinsic table, see [NVVM Overview — Inline-PTX Templates and Constraint Strings](overview.md#inline-ptx-templates-and-constraint-strings).
 
 ## Reimplementation Notes
 

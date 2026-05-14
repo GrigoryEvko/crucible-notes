@@ -285,8 +285,8 @@ Four rules — composition, complement, divide, product — generate the rest of
 
 A useful sanity invariant: `coalesce ∘ filter_zeros` is idempotent and preserves layout meaning. Two layouts that differ only after this canonicalisation compare equal in any verifier-level equivalence check.
 
-Cross-references: [verifiers and kind-tag dispatch](verifiers.md) for the seven LayoutTypeInterface sentinels read from
-`*(type + 0x88)` and the per-primitive verifier table, and [TMA atoms](../cute_nvgpu/tma-atoms.md) for the descriptor
+Cross-references: [Verifiers — LayoutTypeInterface Kind Discriminator](verifiers.md#layouttypeinterface-kind-discriminator) for the seven LayoutTypeInterface sentinels read from
+`*(type + 0x88)` and the per-primitive verifier table, and [cute_nvgpu TMA Atoms — Descriptor Builder](../cute_nvgpu/tma-atoms.md#descriptor-builder) for the descriptor
 builders that consume these primitives.
 
 ## Candidate Records

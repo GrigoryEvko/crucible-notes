@@ -14,7 +14,7 @@ The family is internal to the TileAS pipeline, but its public contract is concre
 | `TileASRemoveLayoutConversions` | commutes and deletes redundant `convert_layout` operations |
 | `TileASRemoveBufferAliasPass` | rewrites aliased SMEM/TMEM allocs through selects and loops into canonical buffers |
 | `TileASRemoveDeadArgs` | removes unused block arguments from region-branch operations |
-| `TileASResolveAgentBoundary` | legalises values crossing `agent_switch` boundaries (documented under [CTA Cluster Family](cta-cluster-family.md)) |
+| `TileASResolveAgentBoundary` | legalises values crossing `agent_switch` boundaries (documented under [CTA Cluster Family — D20 aux passes](cta-cluster-family.md#d20-aux-passes)) |
 | `TileASSlicingPass` | splits loops carrying a `sliceCount` attribute into per-slice loop regions |
 
 ## Assign Load/Store Layouts
@@ -67,7 +67,7 @@ LogicalResult assignLayouts(FunctionOpInterface fn) {
 
 The per-operation rewrite dispatcher covers ordinary loads and stores, tiled loads and stores, tiled atomics, gather/scatter ops, register-layout index math, and TMA-preferred paths. An environment switch biases eligible load/store ops toward TMA form, but verifier checks remain authoritative.
 
-See [pipe-mutex-value-layout.md](pipe-mutex-value-layout.md) for the downstream consumer of the assigned `nv_tileas.layout` attribute, [buffer-assignment-and-mbarriers.md](buffer-assignment-and-mbarriers.md) for how the chosen memKind feeds buffer materialisation, and [mlir-infra/typeid-sentinels-and-anchors.md](../../mlir-infra/typeid-sentinels-and-anchors.md) for the pointer-identity dispatch convention used by both the classID and TypeID tables above.
+See [Pipe / Mutex Value Layout](../../scheduler/pipe-mutex-value-layout.md) for the downstream consumer of the assigned `nv_tileas.layout` attribute, [Buffer Assignment and mbarriers](../../scheduler/buffer-assignment-and-mbarriers.md) for how the chosen memKind feeds buffer materialisation, and [TypeID Sentinels and Anchors — Idiom 1 — Static Pointer-Identity Sentinel](../../mlir-infra/typeid-sentinels-and-anchors.md#idiom-1--static-pointer-identity-sentinel) for the pointer-identity dispatch convention used by both the classID and TypeID tables above.
 
 ## Candidate Records
 
@@ -172,7 +172,7 @@ void remove_dead_region_args(RegionBranchOpInterface op) {
 
 ## Resolve Agent Boundaries
 
-`TileASResolveAgentBoundary` runs in this family's ordering window — after layout assignment and buffer canonicalization, before slicing — but its contract and rewriter belong to the CTA/cluster family and are documented under [CTA Cluster Family — D20 aux passes](cta-cluster-family.md#d20-aux-passes). The only invariant the rest of the layout-and-buffer family relies on is the handoff shape: every value crossing an `nv_tileas.async.pipeline.agent_switch` either remains a direct SSA value (when the destination agent can consume it in place) or has been materialised through a shared-memory `alloc_tensor` / `copy` / `convert_layout` chain that delivers it in the destination agent's expected layout. Named-barrier emission stays deferred to a later pass.
+`TileASResolveAgentBoundary` runs in this family's ordering window — after layout assignment and buffer canonicalization, before slicing — but its contract and rewriter belong to the CTA/cluster family and are documented under [CTA Cluster Family — D20 aux passes](cta-cluster-family.md#d20-aux-passes). The only invariant the rest of the layout-and-buffer family relies on is the handoff shape: every value crossing an `nv_tileas.async.pipeline.agent_switch` either remains a direct SSA value (when the destination agent can consume it in place) or has been materialised through a shared-memory `alloc_tensor` / `copy` / `convert_layout` chain that delivers it in the destination agent's expected layout. Named-barrier emission stays deferred to [Buffer Assignment and mbarriers — Phase 2 — Assign Named Barriers](../../scheduler/buffer-assignment-and-mbarriers.md#phase-2--assign-named-barriers).
 
 ## Slicing
 

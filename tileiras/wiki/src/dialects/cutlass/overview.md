@@ -151,6 +151,6 @@ Two structural points. First, most of CUTLASS's class-template instantiations tu
 
 ## Cross-links
 
-- [Pipeline and Tile Scheduler](pipeline-and-tile-scheduler.md) covers pipeline roles and persistent tile scheduling.
-- [Seq Bar and Block Striped](seq-bar-and-block-striped.md) covers sequence barriers and block-striped movement.
-- [MODS Async Dispatch](mods-async-dispatch.md) covers telemetry and async-dispatch operations.
+- [Pipeline and Tile Scheduler — Pipeline Model](pipeline-and-tile-scheduler.md#pipeline-model) covers pipeline roles and [Tile Scheduler Kinds](pipeline-and-tile-scheduler.md#tile-scheduler-kinds) persistent tile scheduling.
+- [Seq Bar and Block Striped — Sequential Barrier Model](seq-bar-and-block-striped.md#sequential-barrier-model) covers sequence barriers and [Block-Striped Model](seq-bar-and-block-striped.md#block-striped-model) movement.
+- [MODS Async Dispatch — Dispatch Model and Producer/Consumer Integration](mods-async-dispatch.md#dispatch-model-and-producerconsumer-integration) covers telemetry and async-dispatch operations.

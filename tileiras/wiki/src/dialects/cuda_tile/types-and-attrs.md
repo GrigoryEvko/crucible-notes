@@ -30,7 +30,7 @@ it.
 Each of the six concrete types is a normal MLIR `Type` subclass backed by its
 own `TypeStorage` derivative. Construction flows through the MLIRContext's
 `StorageUniquer` gateway documented in
-[Storage Uniquer and Context Impl](../../mlir-infra/storage-uniquer-and-context-impl.md):
+[Storage Uniquer and Context Impl — getOrCreate Gateway](../../mlir-infra/storage-uniquer-and-context-impl.md#the-getorcreate-gateway):
 the dialect's self-registration ctor hands a `TypeID` singleton and a build
 hook to the uniquer, which hashes the storage payload, looks up an existing
 instance, and either returns the cached pointer or allocates a fresh storage

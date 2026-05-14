@@ -211,5 +211,5 @@ The non-UMMA path enforces the simpler rule that A, B, and D all share one eleme
 
 ## Cross-References
 
-[Mode Pattern Verifiers](mode-pattern-verifiers.md) documents the LDSM/STSM, UMMA, tcgen05, and SM120-block-scale verifiers each atom registers. [TMA Atoms](tma-atoms.md) covers the descriptor-driven TMA family in depth. [MMA Atoms SM70-120](mma-atoms-sm70-120.md) covers the per-tier MMA shape lattice.
+[Mode Pattern Verifiers — LDSM and STSM Matrix](mode-pattern-verifiers.md#ldsm-and-stsm-matrix) documents the LDSM/STSM, [UMMA Canonical Layout Verifier](mode-pattern-verifiers.md#umma-canonical-layout-verifier), [tcgen05.mma Kind-Word Verifier](mode-pattern-verifiers.md#tcgen05mma-kind-word-verifier), and [SM120 Block-Scaled Lattice](mode-pattern-verifiers.md#sm120-block-scaled-lattice) verifiers each atom registers. [TMA Atoms — Atom Family](tma-atoms.md#atom-family) covers the descriptor-driven TMA family in depth. [MMA Atoms SM70-120 — Per-Arch MMA Shape Lattice](mma-atoms-sm70-120.md#per-arch-mma-shape-lattice) covers the per-tier MMA shape lattice.
 

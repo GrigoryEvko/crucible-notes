@@ -51,7 +51,7 @@ format.
 The dialect has a small named type surface, a target and memory attribute
 surface, and a compact operation set arranged around alias-aware tile
 computation. The operation roster is catalogued in
-[op-roster.md](op-roster.md); the useful overview is by semantic family:
+[Operation Roster](op-roster.md#semantic-families); the useful overview is by semantic family:
 
 | Family | Examples | Purpose |
 |---|---|---|
@@ -178,22 +178,22 @@ fold-interface pointer. The end-of-registered-ops boundary is marked by the same
 `cuda_tile`, `0x5BE6138`; lookup helpers stop walking the bank when they hit it.
 
 This is the static-sentinel idiom described in
-[mlir-infra/typeid-sentinels-and-anchors.md](../../mlir-infra/typeid-sentinels-and-anchors.md): the bank is
+[TypeID Sentinels and Anchors](../../mlir-infra/typeid-sentinels-and-anchors.md#idiom-1--static-pointer-identity-sentinel): the bank is
 allocated once, lives for the entire process, and is indexed by mnemonic hash from the dialect base. Live
 `Operation*` instances reach this record through their `OperationName` slot — the resolution path documented
-in [mlir-infra/operation-layout.md](../../mlir-infra/operation-layout.md). The per-op `vtable` and
-fold-callback pairs for the rest of the roster are catalogued in [op-roster.md](op-roster.md).
+in [Operation Layout — Pointer-Identity Dispatch](../../mlir-infra/operation-layout.md#pointer-identity-dispatch). The per-op `vtable` and
+fold-callback pairs for the rest of the roster are catalogued in [Operation Roster](op-roster.md#semantic-families).
 
 ## Cross-references
 
-- [`op-roster.md`](op-roster.md) — operation families and behavioral
+- [Operation Roster](op-roster.md#semantic-families) — operation families and behavioral
   contracts.
-- [`types-attrs-verifiers.md`](types-attrs-verifiers.md) — the type surface,
+- [Types, Attributes, Verifiers](types-attrs-verifiers.md#type-surface) — the type surface,
   the target and memory attribute surface, the `compute-capability` /
   `compute_capability` spelling pair, the parametric
   `div_by` / `same_elements` / `bounded` trio, and the dialect's verifier
   contracts.
-- [`folds-canonicalizers-tokens.md`](folds-canonicalizers-tokens.md) —
+- [Folds, Canonicalizers, Tokens](folds-canonicalizers-tokens.md#canonicalization-surface) —
   per-op fold and canonicalization records, plus the
   `create_mem_token` / `join_mem_token` / `mark_for_reuse` linear-token
   protocol that gives the dialect its alias-awareness.

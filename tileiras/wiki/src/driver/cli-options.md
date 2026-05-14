@@ -240,9 +240,9 @@ reports failure through the normal compile error path.
 
 ## Related pages
 
-[Driver main() Entry](main-entry.md) shows how `main` consumes the parsed
-options; [Driver Overview](overview.md) frames the overall compile contract;
-[Driver Program Handle](program-handle.md) defines the public error-code
-numbering returned through the exit status; [Host Launch ABI and ptxas
-Knobs](host-launch-and-ptxas-knobs.md) covers `--knobs-file=`, the only
-ptxas-side option the driver forwards.
+[Driver main() Entry](main-entry.md#main) shows how `main` consumes the parsed
+options; [Driver Overview](overview.md#what-the-driver-does) frames the overall
+compile contract; [Driver Program Handle](program-handle.md#public-error-codes)
+defines the public error-code numbering returned through the exit status;
+[Host Launch ABI and ptxas Knobs](host-launch-and-ptxas-knobs.md#ptxas-knobs-file-format)
+covers `--knobs-file=`, the only ptxas-side option the driver forwards.

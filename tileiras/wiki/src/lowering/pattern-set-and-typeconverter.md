@@ -100,7 +100,7 @@ Address-space casts must be explicit. The converter rejects implicit transitions
 
 ## Materialization Hooks
 
-Partial conversion sometimes needs a bridge value while only part of the IR has been lowered. The converter installs source and target materialization hooks that both produce `builtin.unrealized_conversion_cast`. The cast-reconciliation phase (phase 8 of `ConvertTileASToLLVM`) erases them once every participating operation has converted. Bridges that survive the final cleanup pass must fail the module rather than reach LLVM translation.
+Partial conversion sometimes needs a bridge value while only part of the IR has been lowered. The converter installs source and target materialization hooks that both produce `builtin.unrealized_conversion_cast`. The cast-reconciliation phase (phase 8 of [ConvertTileASToLLVM body conversion](tileas-to-llvm.md#body-conversion-phases)) erases them once every participating operation has converted. Bridges that survive the final cleanup pass must fail the module rather than reach LLVM translation.
 
 ## Pattern Discipline
 
@@ -233,4 +233,4 @@ A `Convert*ToLLVM` pass must construct exactly one `LLVMTypeConverter` and threa
 
 ## Cross-References
 
-[Overview](overview.md) shows where each pass that uses this infrastructure sits in the cascade. [cuda_tile to TileAA](cuda-tile-to-tileaa.md), [TileAA to TileAS](tileaa-to-tileas.md), [TileAS to LLVM](tileas-to-llvm.md), [CuTe and CuTe-NVGPU to LLVM](cute-and-cute_nvgpu-to-llvm.md), and [nvgpu / gpu to NVVM](nvgpu-and-gpu-to-nvvm.md) are the five passes that install patterns through the bank and thread the shared type converter described here.
+[Conversion / Lowering Overview](overview.md#lowering-stages) shows where each pass that uses this infrastructure sits in the cascade. [cuda_tile to TileAA](cuda-tile-to-tileaa.md), [TileAA to TileAS](tileaa-to-tileas.md), [TileAS to LLVM](tileas-to-llvm.md), [CuTe and CuTe-NVGPU to LLVM](cute-and-cute_nvgpu-to-llvm.md), and [nvgpu / gpu to NVVM](nvgpu-and-gpu-to-nvvm.md) are the five passes that install patterns through the bank and thread the shared type converter described here.

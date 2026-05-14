@@ -391,5 +391,5 @@ LogicalResult verify_tma_rank_and_mode(TmaMode mode, int rank, Target target) {
 
 ## Cross-References
 
-[TMA Atoms](tma-atoms.md) documents the partition verifier whose eleven-step ladder these mode verifiers compose with. [SM Tier Roster and Copy Atom Registry](sm-tier-roster-and-copy-atom-registry.md) lists the MMA atom verifier diagnostics that the layout walker emits before the canonical-layout check runs.
+[TMA Atoms — Eleven-Step Partition Verifier](tma-atoms.md#eleven-step-partition-verifier) documents the partition verifier whose eleven-step ladder these mode verifiers compose with. [SM Tier Roster and Copy Atom Registry — MMA Atom Verifier Diagnostics](sm-tier-roster-and-copy-atom-registry.md#mma-atom-verifier-diagnostics) lists the MMA atom verifier diagnostics that the layout walker emits before the canonical-layout check runs.
 

@@ -59,7 +59,7 @@ The `nv_tileas.async.pipeline.*` op family is a closed 16-entry enumeration. Eac
 
 Two builders deserve individual notes. `create_pipeline` is the largest builder because each of its six named operands runs through the named-operand helper before the state populates; the names ride along with the operation so they reappear in IR-printed form rather than as positional `%0..%5` references. `agent_switch` is variadic in agent-body count: the emitted operation state carries an arbitrary number of regions, one per agent, plus the `num_agents_per_group` count, a `DenseI32ArrayAttr` of per-agent `max_regs` budgets, and an `isolated` boolean that controls whether an agent's region sees the surrounding SSA scope.
 
-The region-op verifiers attached to the produce/consume variants and the yield are documented in [verifiers.md](verifiers.md). The operation-state trailing-objects layout each builder fills in is documented in [mlir-infra/operation-layout.md](../../mlir-infra/operation-layout.md).
+The region-op verifiers attached to the produce/consume variants and the yield are documented in [Verifiers — Region-Op Verifier Template](verifiers.md#region-op-verifier-template). The operation-state trailing-objects layout each builder fills in is documented in [Operation Layout — TrailingObjects Decoder](../../mlir-infra/operation-layout.md#trailingobjects-decoder).
 
 ### Worked Example: Producer/Consumer Pipeline Region
 
@@ -478,5 +478,5 @@ void expand_single_tiled_op(TiledOp op, StageMap stages, Rewriter *rw) {
 
 ## Cross-References
 
-[verifiers.md](verifiers.md) describes the verbatim diagnostics the operations defined here must satisfy. [types.md](types.md) describes the pipeline-token, iterator, and agent types that ride on these ops. [folds-and-mem-consistency.md](folds-and-mem-consistency.md) describes the rewrite shapes applied to the slice and structured-control scaffolding. The TileAA-side counterpart in [../nv_tileaa/op-roster.md](../nv_tileaa/op-roster.md) feeds these scheduling operations through the alias-aware lowering boundary.
+[Verifiers](verifiers.md#async-pipeline-verification) describes the verbatim diagnostics the operations defined here must satisfy. [Types](types.md#pipeline-types) describes the pipeline-token, iterator, and agent types that ride on these ops. [Folds and Memory Consistency](folds-and-mem-consistency.md#canonicalization-patterns) describes the rewrite shapes applied to the slice and structured-control scaffolding. The TileAA-side counterpart in [nv_tileaa Operation Roster](../nv_tileaa/op-roster.md#semantic-families) feeds these scheduling operations through the alias-aware lowering boundary.
 

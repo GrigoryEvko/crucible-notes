@@ -24,8 +24,9 @@ tileiras [driver options] <tileir-bytecode>
 The public contract stays deliberately small. Users select the GPU
 architecture, host architecture, host OS, optimization/debug mode, optional
 memcheck instrumentation, CUDA toolkit root, and output file. The large pass
-inventory hiding behind that surface lives in the pipeline section of the
-wiki.
+inventory hiding behind that surface is catalogued in the
+[Pipeline Overview](../pipeline/overview.md#full-cascade) and the
+[Full Pass List by Opt Level](../pipeline/full-pass-list-by-opt-level.md#o3---full-pipeline).
 
 ## What the driver does
 
@@ -118,9 +119,9 @@ how much of a half-finished artifact is trustworthy.
 
 ## Related pages
 
-[Driver main() Entry](main-entry.md) walks the entry-point code path in
-detail; [Driver CLI Options](cli-options.md) catalogues every option and
-its validator; [Driver Program Handle](program-handle.md) defines the
-public error-code numbering; [Host Launch ABI and ptxas Knobs](host-launch-and-ptxas-knobs.md)
-covers the kernel-launch metadata the driver emits into the produced
-object.
+[Driver main() Entry](main-entry.md#main) walks the entry-point code path in
+detail; [Driver CLI Options](cli-options.md#driver-options) catalogues every
+option and its validator; [Driver Program Handle](program-handle.md#public-error-codes)
+defines the public error-code numbering;
+[Host Launch ABI and ptxas Knobs](host-launch-and-ptxas-knobs.md#host-side-launch-abi)
+covers the kernel-launch metadata the driver emits into the produced object.

@@ -239,7 +239,7 @@ drives canonicalisation and `applyPatternsAndFoldGreedily`-style fixed-point pas
 and full-conversion drivers built on `sub_1308320` drive dialect-to-dialect lowering — gpu-to-nvvm,
 TileAS-to-LLVM, and similar template instantiations. The instruction-selection DAG in
 [ISel DAG and Matcher Table](../codegen/iseldag-and-matchertable.md) reuses the same `0x7FFFFFFF`
-operand-count mask documented in [Operation Layout](operation-layout.md) when matching backend
+operand-count mask documented in [Operation Layout — Fixed Header](operation-layout.md#fixed-header) when matching backend
 `SDNode` operations, but does not consume MLIR pattern objects directly — it has its own table-driven
 matcher.
 

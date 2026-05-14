@@ -2,7 +2,7 @@
 
 ## Abstract
 
-`nvgpu` is the bridge dialect between MLIR's generic `gpu` dialect and NVPTX-specific `nvvm`. It names the NVIDIA kernel patterns that `gpu` cannot express — warp shuffle, MMA and WGMMA, `cp.async`, `mbarrier`, TMA — without committing yet to a concrete NVVM intrinsic. Tileiras links the upstream dialect unchanged. `cute_nvgpu` feeds it from above; `convert-nvgpu-to-nvvm` drains it from below.
+`nvgpu` is the bridge dialect between MLIR's generic `gpu` dialect and NVPTX-specific [`nvvm`](../nvvm/overview.md). It names the NVIDIA kernel patterns that `gpu` cannot express — warp shuffle, MMA and WGMMA, `cp.async`, `mbarrier`, TMA — without committing yet to a concrete NVVM intrinsic. Tileiras links the upstream dialect unchanged. `cute_nvgpu` feeds it from above; [`convert-nvgpu-to-nvvm`](../../lowering/nvgpu-and-gpu-to-nvvm.md) drains it from below.
 
 About thirty ops live here. The conversion pass installs one `OpConversionPattern` per op and rewrites the module in a single sweep, each pattern emitting a small fixed body of `nvvm.*` ops — or, for a few exception cases, expanded `memref` / `llvm` / `llvm.inline_asm`. The pass mnemonic is `convert-nvgpu-to-nvvm`; it runs after `convert-vector-to-llvm` and before `convert-func-to-llvm`, so by the time it fires every operand is already in LLVM-dialect or memref form.
 
@@ -24,7 +24,7 @@ nvvm
 PTX
 ```
 
-`cute_nvgpu` ops still speak SM-tier vocabulary — TMA atoms, WGMMA atoms, Blackwell tensor-memory operations. `nvgpu` strips the source-level atom naming and re-presents the same behaviour over MLIR memrefs, vectors, descriptors, barrier groups, and async tokens. That makes the NVVM conversion mechanical: every `nvgpu` op below has a fixed `nvvm` (or `llvm.inline_asm`) lowering.
+[`cute_nvgpu`](../cute_nvgpu/overview.md) ops still speak SM-tier vocabulary — TMA atoms, WGMMA atoms, Blackwell tensor-memory operations. `nvgpu` strips the source-level atom naming and re-presents the same behaviour over MLIR memrefs, vectors, descriptors, barrier groups, and async tokens. That makes the NVVM conversion mechanical: every `nvgpu` op below has a fixed `nvvm` (or `llvm.inline_asm`) lowering.
 
 ## Op Roster
 
@@ -178,7 +178,7 @@ Rewriter emits `nvvm.mbarrier.inval[.shared]`.
 | operand 9 | `l2CacheHint` | optional `i64` | maps to `.L2::cache_hint` |
 | attribute | `predicate` | optional `i1` | gated TMA issue |
 
-Rewriter emits a single `nvvm.cp.async.bulk.tensor.shared.global`. See [Lowering: nvgpu / gpu to NVVM](../../lowering/nvgpu-and-gpu-to-nvvm.md#tma-async-load-operand-mapping) for the operand-slot mapping.
+Rewriter emits a single `nvvm.cp.async.bulk.tensor.shared.global`. See [Lowering: TMA Async Load — Operand Mapping](../../lowering/nvgpu-and-gpu-to-nvvm.md#operand-mapping-rank-n) for the operand-slot mapping.
 
 ### `nvgpu.tma.async.store`
 
@@ -276,7 +276,7 @@ Rewriter packs the descriptor bits inline. The result is a `i64` LLVM value buil
 | attribute | `waitGroup` | optional `i32` | controls the wait-group depth |
 | result 0 | `matrixD` | `!nvgpu.warpgroup.accumulator` | output accumulator tile |
 
-Rewriter expands to the canonical four-op WGMMA sequence: `nvvm.wgmma.fence.aligned`, one `nvvm.wgmma.mma_async.sync.aligned` per accumulator tile, `nvvm.wgmma.commit.group.sync.aligned`, then `nvvm.wgmma.wait.group.sync.aligned waitGroup`. It validates GMMA layout up front with the canonical "Not a canonical GMMA_MN Layout" wording lifted from CUTLASS's `gmma.hpp`.
+Rewriter expands to the canonical four-op WGMMA sequence: `nvvm.wgmma.fence.aligned`, one `nvvm.wgmma.mma_async.sync.aligned` per accumulator tile, `nvvm.wgmma.commit.group.sync.aligned`, then `nvvm.wgmma.wait.group.sync.aligned waitGroup`. See [WGMMA Emission Protocol — The Four-Op Sequence](../../topics/wgmma-emission-protocol.md#the-four-op-sequence) for the timing rules and accumulator lifetime. It validates GMMA layout up front with the canonical "Not a canonical GMMA_MN Layout" wording lifted from CUTLASS's `gmma.hpp`.
 
 ### `nvgpu.warpgroup.mma.store`
 
@@ -432,19 +432,19 @@ The sparse-MMA path reaches PTX through `llvm.inline_asm` because the snapshot's
 | `nvgpu.fma.packed.f32x2` / `nvgpu.mul.packed.f32x2` | sm_100a | `fma.rn.f32x2` / `mul.rn.f32x2` | 8.6 |
 | `nvgpu.rcp` | sm_70 | `rcp.approx.ftz.f32` | 6.0 |
 
-`sm_90a` is the architecture-qualified variant `wgmma` and TMA require; plain `sm_90` rejects them at NVVM verification. The dialect has no `sm_100` op of its own — the Blackwell tcgen05 surface lives entirely in `nvvm`, accessed through `cute_nvgpu` atoms that lower past `nvgpu`.
+`sm_90a` is the architecture-qualified variant `wgmma` and TMA require; plain `sm_90` rejects them at NVVM verification. The dialect has no `sm_100` op of its own — the Blackwell tcgen05 surface lives entirely in [`nvvm`](../nvvm/tcgen05-ops.md), accessed through [`cute_nvgpu`](../cute_nvgpu/overview.md) atoms that lower past `nvgpu`. See [Per-SM Emission Templates](../../codegen/per-sm-emission-templates.md#capability-matrix) for the per-tier capability matrix.
 
 ## Pattern-Set Construction
 
 `populateNVGPUToNVVMConversionPatterns` is a flat populator: one `OpConversionPattern` per `nvgpu.*` op, each registered with `benefit = 1`. The patterns are stateless — they read operands and attributes through their `OpAdaptor`, emit a fixed sequence of `nvvm.*` (or `llvm.*` / `memref.*`) ops, and replace the root.
 
-Tileiras consumes this populator unchanged from upstream MLIR. Reimplementations should match the same one-pattern-per-op shape; the rewriter's branch on source memory space is the only piece of policy the patterns carry.
+Tileiras consumes this populator unchanged from upstream MLIR. Reimplementations should match the same one-pattern-per-op shape; the rewriter's branch on source memory space is the only piece of policy the patterns carry. See [Lowering: nvgpu / gpu to NVVM — Pattern Shapes](../../lowering/nvgpu-and-gpu-to-nvvm.md#pattern-shapes) for the rewrite primitives the patterns share.
 
 ## Lowering Contract
 
 The conversion never reinfers layout intent. By the time IR reaches `nvgpu`, descriptor shape, memory space, vector shape, MMA tile shape, sparse metadata, and barrier identity already live in operands and attributes. Pattern bodies stay small as a result.
 
-The mbarrier family branches on memory space and emits one `nvvm.mbarrier.*[.shared]` intrinsic per op. TMA load and store each emit a single `nvvm.cp.async.bulk.tensor.*` intrinsic, threading the variadic coordinates, multicast mask, and L2 cache hint through unchanged. The largest pattern is `nvgpu.warpgroup.mma`: it emits the four-stage Hopper WGMMA sequence — fence, async MMA, commit, wait — and validates GMMA layout up front with the canonical "Not a canonical GMMA_MN Layout" wording lifted from CUTLASS's `gmma.hpp`.
+The mbarrier family branches on memory space and emits one `nvvm.mbarrier.*[.shared]` intrinsic per op. See [mbarrier State Machine](../../topics/mbarrier-state-machine.md#state-machine) for the slot transitions and [NVVM mbarrier Ops](../nvvm/mbarrier-ops.md) for the per-op intrinsic mapping. TMA load and store each emit a single `nvvm.cp.async.bulk.tensor.*` intrinsic, threading the variadic coordinates, multicast mask, and L2 cache hint through unchanged. The largest pattern is `nvgpu.warpgroup.mma`: it emits the [four-stage Hopper WGMMA sequence](../../topics/wgmma-emission-protocol.md#the-four-op-sequence) — fence, async MMA, commit, wait — and validates GMMA layout up front with the canonical "Not a canonical GMMA_MN Layout" wording lifted from CUTLASS's `gmma.hpp`.
 
 A handful of patterns emit no `nvvm.*` op at all. `nvgpu.mbarrier.create` emits a `memref.global` with `"private"` visibility plus a `memref.get_global`, allocating the `__mbarrier` slot in shared memory. `nvgpu.tma.create.descriptor` emits an `llvm.alloca` for a 128-byte `CUtensorMap`, fills it via `llvm.getelementptr`+`llvm.store` sequences, then calls the CUDA driver's `cuTensorMapEncodeTiled`. `nvgpu.warpgroup.descriptor` is a pure `shl`/`or` chain over the [WGMMA descriptor bitfield](../cute_nvgpu/mma-atoms-sm70-120.md#smem-descriptor-construction). `nvgpu.mma.sp.sync` emits an `llvm.inline_asm` with the verbatim `"mma.sp.sync.aligned.m..."` PTX template; at the snapshot revision tileiras tracks, upstream NVVM has no sparse-MMA op yet, and inline-asm is the upstream design.
 

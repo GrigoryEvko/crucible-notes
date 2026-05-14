@@ -49,14 +49,14 @@ Invariant: after `O1`, no `cuda_tile` operation remains in the module. Cost: a s
 | Order | Pass | Purpose |
 | --- | --- | --- |
 | 1 | O1 passes | Establish TileAA and clean the frontend IR. |
-| 2 | `convert-tileaa-to-tileas` | Lower architecture-aware TileAA operations to scheduled TileAS forms. |
+| 2 | `convert-tileaa-to-tileas` | Lower architecture-aware TileAA operations to scheduled TileAS forms (see [Modulo Scheduler and Rau-Style Placement](../scheduler/modulo-scheduler-and-rau.md)). |
 | 3 | `tileir-emit-host-wrapper` | Build host-side wrapper metadata and launch glue. |
 | 4 | `convert-tileas-to-llvm` | Lower TileAS memory, control, and async constructs toward LLVM. |
 | 5 | `cse` | Remove redundant values produced by lowering. |
 | 6 | Optional snapshot printer | Capture the TileAS/LLVM boundary when the later line-info mode requests it. |
 | 7 | `convert-tileas-to-nvgpu` | Lower remaining target GPU operations to NVGPU-compatible forms. |
 
-What `O1` -> `O2` adds: three lowering hops (TileAA -> TileAS, TileAS -> LLVM, TileAS -> NVGPU), host-wrapper emission, and one CSE pass. The TileAA-to-TileAS hop is where the modulo scheduler runs: it builds resource constraints, computes the placement, and stores the result as a `ScheduleAnalysis`. The TileAS-to-LLVM hop materialises pipes and mutexes against that schedule, lowers memory operations to LLVM-dialect ones, and converts async constructs to their LLVM-dialect equivalents. The TileAS-to-NVGPU hop catches the architecture-specific operations (asynchronous copies, TMA descriptors, named barriers) that need NVGPU-dialect shapes before NVVM lowering. Host-wrapper emission produces the launch-side glue the host runtime expects. CSE runs once after the heaviest lowering because lowering patterns frequently produce duplicate index or offset computations.
+What `O1` -> `O2` adds: three lowering hops (TileAA -> TileAS, TileAS -> LLVM, TileAS -> NVGPU), host-wrapper emission, and one CSE pass. The TileAA-to-TileAS hop is where the modulo scheduler runs: it builds [resource constraints](../scheduler/resource-constraint-builder-and-rrt.md), computes the [placement](../scheduler/modulo-scheduler-and-rau.md#placement-arms), and stores the result as a `ScheduleAnalysis`. The TileAS-to-LLVM hop materialises pipes and mutexes against that schedule, lowers memory operations to LLVM-dialect ones, and converts async constructs to their LLVM-dialect equivalents. The TileAS-to-NVGPU hop catches the architecture-specific operations (asynchronous copies, TMA descriptors, named barriers) that need NVGPU-dialect shapes before NVVM lowering. Host-wrapper emission produces the launch-side glue the host runtime expects. CSE runs once after the heaviest lowering because lowering patterns frequently produce duplicate index or offset computations.
 
 The order is meaningful: TileAA-to-TileAS must precede every other hop in the stage because everything downstream assumes the schedule already exists. Host-wrapper emission has to land before the TileAS-to-LLVM conversion erases TileAS launch operations. The optional snapshot lands between TileAS-to-LLVM and TileAS-to-NVGPU so users can inspect the intermediate state with both LLVM-style and NVGPU-style operations visible.
 
@@ -110,4 +110,8 @@ The light variant is used when the resource reservation table would dominate com
 ## Handoff to LLVM/NVPTX
 
 The pass list above ends at the MLIR-to-LLVM/NVVM boundary. After that, the backend runs LLVM IR and MachineIR passes such as NVVM reflection, address-space optimisation, argument lowering, aggregate-copy lowering, image-handle replacement, and NVPTX instruction cleanup. The LLVM-tier pipeline is documented under [NVPTX Backend Passes](../nvptx-passes/overview.md), which describes each pass at the same level of detail as the entries above.
+
+## Cross-References
+
+[Driver Entry and Optimization Levels](driver-and-opt-levels.md) describes how the requested tier turns into the segments listed above. [Pipeline Options Mapping](options-mapping.md) maps each option a user can set to the consuming pass in this list. [Pipeline Invariants and Verifiers](invariants-and-verifiers.md) covers the verifier passes interleaved between the lowerings.
 

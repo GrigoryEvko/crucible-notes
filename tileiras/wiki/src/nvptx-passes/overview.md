@@ -42,7 +42,7 @@ The pages in this cluster share three pieces of state that have to agree across 
 
 ### Kernel identity
 
-`KernelAttrPass`, `KernelAttrTransplanter`, `InlineMustPass`, `CDPLaunchExpander`, `KernelArgEliminator`, `NVVMIRVerifier`, and the parameter-space ceiling check all consult a single `isKernelFunction` predicate. The predicate is a four-way disjunction over `CallingConv::PTX_Kernel` (`0x47`), the `nvvm.kernel` attribute, the `nvvm.annotations_transplanted` attribute, and the legacy `"kernel"` string attribute. Forking this check across passes is how older NVPTX backends produced inconsistent answers between argument elimination and the inliner. See [Kernel, CDP, Force-Inline, and Pretreat Passes](kernel-cdp-inline-pretreat.md) for the canonical definition.
+`KernelAttrPass`, `KernelAttrTransplanter`, `InlineMustPass`, `CDPLaunchExpander`, `KernelArgEliminator`, `NVVMIRVerifier`, and the parameter-space ceiling check all consult a single `isKernelFunction` predicate. The predicate is a four-way disjunction over `CallingConv::PTX_Kernel` (`0x47`), the `nvvm.kernel` attribute, the `nvvm.annotations_transplanted` attribute, and the legacy `"kernel"` string attribute. Forking this check across passes is how older NVPTX backends produced inconsistent answers between argument elimination and the inliner. See [Kernel Identity](kernel-cdp-inline-pretreat.md#kernel-identity) for the canonical definition.
 
 ### Shared parameter-space enable flag
 

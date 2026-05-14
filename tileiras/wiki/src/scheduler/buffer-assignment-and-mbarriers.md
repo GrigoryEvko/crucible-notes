@@ -60,7 +60,7 @@ LogicalResult resolveLifetime(FunctionOpInterface fn) {
 }
 ```
 
-The alias-table probe uses the same DenseMap shape every scheduler intern table uses: hash `(root>>9) ^ (root>>4)` against a power-of-two capacity, stride-1 linear probe, and the canonical `-4096` / `-8192` sentinels in slot byte 0 (see [Container Fingerprints](../mlir-infra/container-fingerprints.md)). Phase 4 reads the resulting chains to decide which pipeline values are eligible for buffer sharing — two values that share an alias chain trivially share storage.
+The alias-table probe uses the same DenseMap shape every scheduler intern table uses: hash `(root>>9) ^ (root>>4)` against a power-of-two capacity, stride-1 linear probe, and the canonical `-4096` / `-8192` sentinels in slot byte 0 (see [Container Fingerprints — LLVM DenseMap and DenseSet](../mlir-infra/container-fingerprints.md#llvm-densemap-and-denseset)). Phase 4 reads the resulting chains to decide which pipeline values are eligible for buffer sharing — two values that share an alias chain trivially share storage.
 
 A lifetime that resists normalisation — a cyclic producer chain, a missing iteration anchor, or a producer with no consumer — is fatal. The pass emits `"fails to resolve lifetime"` and aborts before any barrier or buffer is committed.
 

@@ -35,8 +35,8 @@ pointer whose *address* identifies the op kind — not its mnemonic, not a hash.
 canonicalizer, and verifier in the binary compares `op->name` to entries in the `&unk_5B44...` /
 `&unk_5B45...` / `&unk_5BE6...` slot banks with a plain `MOV`+`CMP`. No string compare, no hash
 lookup, no indirect call on the hot path. Slot interning is documented in
-[storage-uniquer-and-context-impl.md](storage-uniquer-and-context-impl.md); the sentinel records
-themselves are catalogued in [typeid-sentinels-and-anchors.md](typeid-sentinels-and-anchors.md).
+[Storage Uniquer and Context Impl](storage-uniquer-and-context-impl.md); the sentinel records
+themselves are catalogued in [TypeID Sentinels and Anchors](typeid-sentinels-and-anchors.md).
 
 Every load of `num_operands` at `+0x28` is followed by a mask against `0x7FFFFFF`. The upper five
 bits carry per-op flags — bit `0x4000000` is `HasDebugValue`, bit `0x40` is `NoFPExcept`, the rest
@@ -222,8 +222,8 @@ matching patterns; and the diagnostic constructor at `sub_446EC50`
 ([Diagnostic ABI and Helpers](diagnostic-abi-and-helpers.md)) reads `+0x40` to spell the op
 mnemonic in error prefixes.
 
-Cross-references: [storage-uniquer-and-context-impl.md](storage-uniquer-and-context-impl.md) for
-how `OperationName` slots are interned; [iseldag-and-matchertable.md](../codegen/iseldag-and-matchertable.md)
+Cross-references: [Storage Uniquer and Context Impl](storage-uniquer-and-context-impl.md) for
+how `OperationName` slots are interned; [ISel DAG and Matcher Table](../codegen/iseldag-and-matchertable.md)
 for the same `0x7FFFFFF` mask reused on backend `SDNode`; and
-[typeid-sentinels-and-anchors.md](typeid-sentinels-and-anchors.md) for the slot bank that backs
+[TypeID Sentinels and Anchors](typeid-sentinels-and-anchors.md) for the slot bank that backs
 `+0x40`.

@@ -23,24 +23,24 @@ The registry is a menu, not a schedule. An entry being present means a user coul
 | Pass name | Stage | Purpose |
 | --- | --- | --- |
 | `check-gep-index` | Module | Validate constant GEP indices after frontend cleanup. |
-| `check-kernel-functions` | Module | Normalize kernel and non-kernel function linkage. |
-| `cnp-launch-check` | Module | Validate CUDA dynamic-parallelism launch calls. |
+| `check-kernel-functions` | Module | Normalize kernel and non-kernel function linkage (see [Kernel/CDP/Inline/Pretreat — Kernel Identity](../nvptx-passes/kernel-cdp-inline-pretreat.md#kernel-identity)). |
+| `cnp-launch-check` | Module | Validate CUDA dynamic-parallelism launch calls (see [Kernel/CDP/Inline/Pretreat — CDP Launch Expansion](../nvptx-passes/kernel-cdp-inline-pretreat.md#cdp-launch-expansion)). |
 | `ipmsp` | Module | Specialize generic-pointer callees by memory space. |
-| `nv-early-inliner` | Module | Run an NVIDIA-tuned early inliner. |
-| `nv-inline-must` | Module | Force-inline functions whose ABI cannot survive as calls. |
-| `nvvm-pretreat` | Module | Canonicalize raw NVVM IR before verification and optimization. |
-| `nvvm-verify` | Module | Check NVVM kernel launches and parameter-space usage. |
-| `printf-lowering` | Module | Lower device `printf` to the `vprintf` ABI. |
+| `nv-early-inliner` | Module | Run an NVIDIA-tuned early inliner (see [Kernel/CDP/Inline/Pretreat](../nvptx-passes/kernel-cdp-inline-pretreat.md)). |
+| `nv-inline-must` | Module | Force-inline functions whose ABI cannot survive as calls (see [Kernel/CDP/Inline/Pretreat](../nvptx-passes/kernel-cdp-inline-pretreat.md)). |
+| `nvvm-pretreat` | Module | Canonicalize raw NVVM IR before verification and optimization (see [Kernel/CDP/Inline/Pretreat](../nvptx-passes/kernel-cdp-inline-pretreat.md)). |
+| `nvvm-verify` | Module | Check NVVM kernel launches and parameter-space usage (see [NVVM IR Verifier](../nvptx-passes/nvvm-ir-verifier.md)). |
+| `printf-lowering` | Module | Lower device `printf` to the `vprintf` ABI (see [printf Lowering and vprintf](../nvptx-passes/printf-lowering-and-vprintf.md)). |
 | `select-kernels` | Module | Restrict processing to selected kernels for diagnostics/testing. |
 | `nvvm-aa` | Function analysis | Provide address-space-aware alias information. |
 | `kernel-info` | Function | Emit per-kernel diagnostic metrics. |
-| `nvvm-peephole-optimizer` | Function | Simplify NVVM IR and address arithmetic before selection. |
+| `nvvm-peephole-optimizer` | Function | Simplify NVVM IR and address arithmetic before selection (see [Peephole MIR and Image Handles](../nvptx-passes/peephole-mir-and-image-handles.md)). |
 | `propagate-alignment` | Function | Propagate alignment facts through memory operations. |
 | `reuse-local-memory` | Function | Reuse non-overlapping local-memory slots. |
-| `memory-space-opt` | Function | Infer and rewrite concrete address spaces. |
-| `lower-aggr-copies` | Function | Expand unsupported aggregate memory intrinsics. |
-| `lower-struct-args` | Function | Lower by-value struct kernel parameters. |
-| `process-restrict` | Function | Materialize `__restrict__` alias metadata. |
+| `memory-space-opt` | Function | Infer and rewrite concrete address spaces (see [Memory-Space-Opt and Process-Restrict](../nvptx-passes/memory-space-opt-and-process-restrict.md)). |
+| `lower-aggr-copies` | Function | Expand unsupported aggregate memory intrinsics (see [lower-args, lower-aggr-copies, lower-struct-args](../nvptx-passes/lower-args-and-aggr-and-struct.md)). |
+| `lower-struct-args` | Function | Lower by-value struct kernel parameters (see [lower-args, lower-aggr-copies, lower-struct-args](../nvptx-passes/lower-args-and-aggr-and-struct.md)). |
+| `process-restrict` | Function | Materialize `__restrict__` alias metadata (see [Memory-Space-Opt and Process-Restrict](../nvptx-passes/memory-space-opt-and-process-restrict.md)). |
 
 The same registry also exposes stock LLVM names such as `default`, `thinlto`, `lto`, `verify`,
 `inline`, `function-simplification`, and machine-pipeline passes like `greedy`, `regallocfast`,
@@ -114,4 +114,4 @@ TileIR MLIR passes are scheduled by the Tileiras pipeline builder against MLIR's
 
 ## Cross-References
 
-[Compilation Pipeline Overview](overview.md) describes where in the outer/inner split this registry is consulted. [Pipeline Options Mapping](options-mapping.md) names the options that the inner LLVM pipeline reads through the registry's factories. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) is the MLIR-tier pass list that runs before this registry comes into play.
+[Compilation Pipeline Overview — Serialization Boundary](overview.md#serialization-boundary) describes where in the outer/inner split this registry is consulted. [Pipeline Options Mapping](options-mapping.md) names the options that the inner LLVM pipeline reads through the registry's factories. [Pass List by Optimization Level — Handoff to LLVM/NVPTX](full-pass-list-by-opt-level.md#handoff-to-llvmnvptx) is the MLIR-tier pass list that runs before this registry comes into play. [NVPTX Backend Passes overview](../nvptx-passes/overview.md) is where the NVIDIA-specific entries above are described pass by pass.

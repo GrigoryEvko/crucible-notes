@@ -172,3 +172,6 @@ bool load_can_be_invariant(MachineInstr load) {
 }
 ```
 
+## Cross-References
+
+[ISel DAG and MatcherTable](../codegen/iseldag-and-matchertable.md) is what feeds BASR with the post-selection `MachineInstr` opcodes it folds. [Common Base Elimination](dead-sync-elim-and-common-base.md#common-base-elimination) is the IR-level sibling that performs the analogous GEP-CSE before SelectionDAG runs. [AsmPrinter](../codegen/asm-printer-monster-and-windows.md) is the PTX-printing consumer that requires the slot-form image opcodes this pass produces. [NVPTX Backend Passes Overview](overview.md#pipeline-position) places these MIR cleanup passes after instruction selection.

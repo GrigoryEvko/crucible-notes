@@ -40,7 +40,7 @@ typedef struct {
 
 ## Type Storage and Uniquing
 
-Every `nv_tileaa` type is a normal MLIR `Type` subclass backed by its own `TypeStorage` derivative routed through the context `StorageUniquer` documented in [Storage Uniquer and Context Impl](../../mlir-infra/storage-uniquer-and-context-impl.md). The uniquer key for each type names the fields the hasher consumes and the equality check compares.
+Every `nv_tileaa` type is a normal MLIR `Type` subclass backed by its own `TypeStorage` derivative routed through the context `StorageUniquer` documented in [Storage Uniquer and Context Impl — getOrCreate Gateway](../../mlir-infra/storage-uniquer-and-context-impl.md#the-getorcreate-gateway). The uniquer key for each type names the fields the hasher consumes and the equality check compares.
 
 | Type | Uniquer key |
 |---|---|
@@ -393,4 +393,4 @@ LogicalResult verify_float_conversion(FpToFpOp op, Target target) {
 
 ## Cross-References
 
-[op-roster.md](op-roster.md) catalogues the operations these verifiers run against and shows complete IR examples. [folds-canonicalizers-tokens.md](folds-canonicalizers-tokens.md) describes the rewrites that run after verification succeeds. The `nv_tileas` block-scaled MMA verifier in [../nv_tileas/verifiers.md](../nv_tileas/verifiers.md) extends the dot contract documented here with Blackwell-specific atom catalog checks.
+[Operation Roster](op-roster.md#semantic-families) catalogues the operations these verifiers run against and shows complete IR examples. [Folds, Canonicalizers, Tokens](folds-canonicalizers-tokens.md#canonicalization-surface) describes the rewrites that run after verification succeeds. The `nv_tileas` block-scaled MMA verifier in [nv_tileas Verifiers — Block-Scaled MMA](../nv_tileas/verifiers.md#block-scaled-mma-verification) extends the dot contract documented here with Blackwell-specific atom catalog checks.

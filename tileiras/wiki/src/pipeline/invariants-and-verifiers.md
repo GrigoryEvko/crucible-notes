@@ -44,11 +44,11 @@ The single ordering rule that ties the layers together: layer 1 fires before `pa
 | --- | --- | --- |
 | TileIR operation analysis | Before LLVM conversion in the full pipeline. | Check TileIR region, atom, schedule, and metadata invariants. |
 | TileAA agent verifier | Warp-specialized TileAA path. | Check producer/consumer agent graph shape. |
-| NVVM IR verifier | After target conversion and before NVPTX backend lowering. | Check kernel launches and formal parameter-space usage. |
+| [NVVM IR verifier](../nvptx-passes/nvvm-ir-verifier.md) | After target conversion and before NVPTX backend lowering. | Check kernel launches and formal parameter-space usage. |
 
 The TileIR verifier runs before high-level operations are erased — once `convert-tileas-to-llvm` removes the Tile schedule attributes, the verifier has nothing to inspect. The NVVM verifier runs after kernel metadata and address-space attributes have been attached because the parameter-space check depends on the resolved data layout.
 
-The NVVM verifier enforces two behaviors that matter to users. A device launch target must be a kernel (a non-kernel call through a launch op is rejected at this layer rather than at the backend). A kernel's formal parameter buffer must fit the selected target's parameter-space limit; the verifier walks the argument list, applies the target's data layout, and compares the cumulative size against the limit. It also emits a warning when a child launch receives a pointer to parent-local or CTA-shared memory: the warning is non-fatal because the IR is well-formed, but the child dereference is undefined behavior and the warning is the only place users see it.
+The NVVM verifier enforces two behaviors that matter to users. A device launch target must be a kernel (a non-kernel call through a launch op is rejected at this layer rather than at the backend; see [Launch-Argument Address-Space Check](../nvptx-passes/nvvm-ir-verifier.md#launch-argument-address-space-check)). A kernel's formal parameter buffer must fit the selected target's parameter-space limit; the verifier walks the argument list, applies the target's data layout, and compares the cumulative size against the limit (the per-SM limits are listed in [ParamSpaceLimit by SM Family](../nvptx-passes/nvvm-ir-verifier.md#paramspacelimit-by-sm-family)). It also emits a warning when a child launch receives a pointer to parent-local or CTA-shared memory: the warning is non-fatal because the IR is well-formed, but the child dereference is undefined behavior and the warning is the only place users see it.
 
 ## Ordering Invariants
 
@@ -95,4 +95,4 @@ The limit is target-dependent. Pre-Hopper SM versions allow 4096 bytes; Hopper a
 
 ## Cross-References
 
-[Pass Manager Internals](pass-manager-internals.md) documents the anchor and dispatch model the verifier layers run inside. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) is where each explicit verifier pass appears in the pipeline. [Pipeline Options Mapping](options-mapping.md) covers the options that enable or disable verify-each behavior.
+[Pass Manager Internals — Anchor Hierarchy](pass-manager-internals.md#anchor-hierarchy) documents the anchor and dispatch model the verifier layers run inside. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) is where each explicit verifier pass appears in the pipeline. [Pipeline Options Mapping](options-mapping.md) covers the options that enable or disable verify-each behavior. [NVVM IR Verifier](../nvptx-passes/nvvm-ir-verifier.md) is the LLVM-tier sibling that re-checks parameter-space and address-space constraints after the MLIR-to-LLVM translation.

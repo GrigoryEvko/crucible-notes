@@ -128,7 +128,7 @@ The lift is the line at which target selection stops being implicit. Above it, a
 
 ## Serialization Boundary
 
-When the inner pipeline finishes, the `gpu.module` contains only `llvm` and `nvvm` dialect operations plus the resolved target attribute. The driver then runs serialization, which is not a pass — it is a context-level translation that walks the `gpu.module`, builds an `llvm::Module` through MLIR's `translateModuleToLLVMIR`, links the embedded libdevice surrogate, runs an LLVM `PassBuilder` pipeline at the driver's chosen `OptimizationLevel`, emits PTX through the NVPTX backend, and invokes `ptxas` to produce cubin.
+When the inner pipeline finishes, the `gpu.module` contains only `llvm` and `nvvm` dialect operations plus the resolved target attribute. The driver then runs serialization, which is not a pass — it is a context-level translation that walks the `gpu.module`, builds an `llvm::Module` through MLIR's `translateModuleToLLVMIR`, [links the embedded libdevice surrogate](../libdevice/overview.md#link-inline-simplify), runs an [LLVM `PassBuilder` pipeline](passbuilder-mega-registry.md) at the driver's chosen `OptimizationLevel`, emits PTX through the [NVPTX backend](../codegen/overview.md), and invokes `ptxas` to produce cubin.
 
 ```c
 ByteBuffer serialize_gpu_module(GpuModuleOp gpu, PipelineOptions opts) {
@@ -143,7 +143,7 @@ ByteBuffer serialize_gpu_module(GpuModuleOp gpu, PipelineOptions opts) {
 }
 ```
 
-Two consequences of this boundary matter when debugging. The MLIR pass timing report and the action handler trace cover only the work above the boundary. Below it, all timing comes from LLVM's `--time-passes` and from `ptxas` profiling output. The verifier layers reset across the boundary: between-pass verification stops, and what replaces it is the LLVM module verifier plus the NVVM kernel-launch verifier that runs at module-finalize time.
+Two consequences of this boundary matter when debugging. The MLIR pass timing report and the [action handler trace](instrumentation-and-action-handler.md#mlir-actions) cover only the work above the boundary. Below it, all timing comes from LLVM's `--time-passes` and from `ptxas` profiling output. The verifier layers reset across the boundary: between-pass verification stops, and what replaces it is the LLVM module verifier plus the [NVVM kernel-launch verifier](../nvptx-passes/nvvm-ir-verifier.md) that runs at module-finalize time.
 
 ## Δ vs cicc
 
@@ -160,4 +160,4 @@ Two consequences of this boundary matter when debugging. The MLIR pass timing re
 
 ## Cross-References
 
-[Driver Entry and Optimization Levels](driver-and-opt-levels.md) covers how `--opt-level` resolves to a concrete pipeline. [Pass Manager Internals](pass-manager-internals.md) documents the nesting and dispatch rules these two pipelines rely on. [Pipeline Invariants and Verifiers](invariants-and-verifiers.md) names the three verifier layers that guard the cascade. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) is the right place to look for exact pass ordering. Backend-side documentation lives under `nvptx-passes/`, `codegen/`, and `libdevice/`.
+[Driver Entry and Optimization Levels](driver-and-opt-levels.md) covers how `--opt-level` resolves to a concrete pipeline. [Pass Manager Internals](pass-manager-internals.md) documents the nesting and dispatch rules these two pipelines rely on. [Pipeline Invariants and Verifiers](invariants-and-verifiers.md) names the three verifier layers that guard the cascade. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) is the right place to look for exact pass ordering. Backend-side documentation lives under the [NVPTX Backend Passes overview](../nvptx-passes/overview.md), the [Codegen overview](../codegen/overview.md), and the [libdevice overview](../libdevice/overview.md).

@@ -176,8 +176,9 @@ from ptxas and surfaces through the normal subprocess diagnostic buffer.
 
 ## Related pages
 
-[Driver Overview](overview.md) covers how the produced kernel directives
-travel into the relocatable object; [Driver CLI Options](cli-options.md)
-catalogues the user-visible flags that map into pipeline options; the
-PTX emission pages under the lowering section explain how each `.entry`
-header is serialised once attribute walking finishes.
+[Driver Overview](overview.md#driver-flow) covers how the produced kernel
+directives travel into the relocatable object;
+[Driver CLI Options](cli-options.md#pipeline-options) catalogues the
+user-visible flags that map into pipeline options;
+[ptxas Handoff Protocol](../boundaries/ptxas-handoff-protocol.md#knob-file-format)
+documents the ptxas-side knob-file grammar in detail.

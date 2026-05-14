@@ -197,10 +197,10 @@ against `&unk_5BE6138` is auditing for the mid-rewrite state documented above.
 
 The kindPtr at `*(qword*)(op + 48) + 16` is read by every walker, verifier, canonicaliser, and
 pattern matcher in the binary. The walker driver `sub_447FBB0` from
-[Operation Layout](operation-layout.md) dispatches against these sentinels; the pattern fingerprint
+[Operation Layout — Walker Contract](operation-layout.md#walker-contract) dispatches against these sentinels; the pattern fingerprint
 map built by `FrozenRewritePatternSet` in
 [Pattern Vtables and Shapes](pattern-vtables-and-shapes.md) keys on `OperationName.opInfo`
-addresses; the `InterfaceMap` in [Interface Vtables](interface-vtables.md) keys on the same TypeID
+addresses; the `InterfaceMap` in [Interface Vtables — InterfaceMap Layout](interface-vtables.md#interfacemap-layout) keys on the same TypeID
 addresses (the Meyers Idiom-2 ones for interfaces, the Idiom-1 ones for concrete classes).
 
 ## Cross-References

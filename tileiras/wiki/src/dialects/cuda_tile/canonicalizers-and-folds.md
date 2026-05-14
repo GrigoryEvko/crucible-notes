@@ -350,5 +350,5 @@ operation printer.
 
 ## Cross-References
 
-[verifiers.md](verifiers.md) describes the legality contracts these rewrites must preserve. [op-roster.md](op-roster.md) catalogues the operations the patterns target. The TileAS-side counterpart in [../nv_tileas/folds-and-mem-consistency.md](../nv_tileas/folds-and-mem-consistency.md) describes the rewrite shapes that operate on the next dialect down.
+[Verifiers](verifiers.md#verification-pipeline) describes the legality contracts these rewrites must preserve. [Operation Roster](op-roster.md#operation-families) catalogues the operations the patterns target. The TileAS-side counterpart in [nv_tileas Folds and Memory Consistency](../nv_tileas/folds-and-mem-consistency.md#canonicalization-patterns) describes the rewrite shapes that operate on the next dialect down.
 

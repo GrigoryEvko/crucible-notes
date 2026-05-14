@@ -304,9 +304,9 @@ void parse_nvptx_subtarget(NvptxFeatureState *state, string cpu, FeatureList att
 
 ## Cross-References
 
-[Per-SM Emission Templates](per-sm-emission-templates.md) walks the PTX templates
+[Per-SM Emission Templates — Capability Matrix](per-sm-emission-templates.md#capability-matrix) walks the PTX templates
 each CPU's implied feature set unlocks, including the consumer-Blackwell
-`mma.sync.aligned.*.block_scale` substitute used when `sm_120` and `sm_121` lack
-`tmem`. [NVPTX Bring-up and Target Init](nvptx-bring-up-and-target-init.md) covers
-the surrounding target setup. [tcgen05, WGMMA, mbarrier, Cluster](tcgen05-wgmma-mbarrier-cluster.md)
+[`mma.sync.aligned.*.block_scale`](per-sm-emission-templates.md#sm120--sm121) substitute used when `sm_120` and `sm_121` lack
+`tmem`. [NVPTX Bring-up — Target Registration Chain](nvptx-bring-up-and-target-init.md#target-registration-chain) covers
+the surrounding target setup. [tcgen05 / WGMMA / mbarrier / Cluster Emission](tcgen05-wgmma-mbarrier-cluster.md)
 covers the codegen paths guarded by the tensor-memory predicate.

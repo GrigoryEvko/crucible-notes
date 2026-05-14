@@ -169,7 +169,8 @@ suitable for embedding inside the final ELF relocatable.
 
 The sibling ptxas invocation assembles its argv differently. The prefix is `"ptxas"`, followed by `--input-as-string`
 and the PTX text as a sized string, then `--knobs-file=` with the optional knobs path from the env-var registry, and
-finally `--nv-host=` with the host triple. The boundary-spec page [ptxas-handoff-protocol](../boundaries/ptxas-handoff-protocol.md)
+finally `--nv-host=` with the host triple. The boundary-spec page
+[ptxas Handoff Protocol](../boundaries/ptxas-handoff-protocol.md#subprocess-argv)
 covers the ptxas side in detail; this section sticks to how the parent assembles the nvdisasm argv.
 
 ```c
@@ -187,3 +188,16 @@ With the argv vector built, `sub_44A3430` forks via `posix_spawn` and wires stdo
 the parent. The parent drains the disassembly text from the stdout pipe via `sub_6CF9C0` (the raw_ostream sink) and
 concatenates the captured bytes into the final ELF relocatable as a `.nvdisasm` section. The temporary cubin path
 written by the SASS dump adapter is passed as the final argv element, exactly as the previous section described.
+
+## Related pages
+
+[ptxas Handoff Protocol](../boundaries/ptxas-handoff-protocol.md#subprocess-argv)
+documents the ptxas side of the boundary including the PTX text protocol and
+cubin return path; [Host Launch ABI and ptxas Knobs](host-launch-and-ptxas-knobs.md#ptxas-knobs-file-format)
+covers the `--knobs-file=` grammar consumed by ptxas;
+[Driver Env Vars and Runtime Gates](env-vars-and-runtime-gates.md#per-feature-runtime-gates)
+catalogues the env-var registry that produces the optional `PTX_KNOBS_PATH`
+forwarded into the ptxas argv;
+[Driver CLI Options](cli-options.md#enum-valued-options-as-int32-codes)
+documents the `--sanitize=memcheck` option that adds the nvdisasm sanitize
+tail.

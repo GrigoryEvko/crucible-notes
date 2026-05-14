@@ -172,18 +172,18 @@ The two hash-table families are distinguishable by sentinel domain — DenseMap 
 ## Consumers
 
 The DenseMap family backs every uniquing table in the binary — the Level-1 / Level-2 buckets in
-[Storage Uniquer and Context Impl](storage-uniquer-and-context-impl.md), the dual-width DenseMaps
-embedded in `AsyncValueImpl` (see [AsyncValue and BLAKE3 Interning](asyncvalue-and-blake3-interning.md)),
+[Storage Uniquer and Context Impl — Two-Level Intern Table](storage-uniquer-and-context-impl.md#two-level-intern-table), the dual-width DenseMaps
+embedded in `AsyncValueImpl` (see [AsyncValue and BLAKE3 Interning — AsyncValueImpl Header](asyncvalue-and-blake3-interning.md#asyncvalueimpl-header)),
 the `OperationName *` fingerprint hashmap built by `FrozenRewritePatternSet`
-([Pattern Vtables and Shapes](pattern-vtables-and-shapes.md)), and the interface entry arrays in
-[Interface Vtables](interface-vtables.md). The SwissTable family is exclusive to the scheduler and
+([Pattern Vtables and Shapes — Pattern Application Drivers](pattern-vtables-and-shapes.md#pattern-application-drivers)), and the interface entry arrays in
+[Interface Vtables — InterfaceMap Layout](interface-vtables.md#interfacemap-layout). The SwissTable family is exclusive to the scheduler and
 the IR intern tables consumed by the BLAKE3 driver.
 
 ## Cross-References
 
 [Storage Uniquer and Context Impl](storage-uniquer-and-context-impl.md) describes the type and
-attribute interning tables that sit on top of these container families. [Modulo Driver and
-Chain](../scheduler/modulo-driver-or-chain.md) documents the scheduler control flow that consumes
+attribute interning tables that sit on top of these container families. [Modulo Driver — Per-Attempt SwissTable
+Scratches](../scheduler/modulo-driver-or-chain.md#per-attempt-swisstable-scratches) documents the scheduler control flow that consumes
 the SwissTable intern tables described above. [AsyncValue and BLAKE3
 Interning](asyncvalue-and-blake3-interning.md) describes the BLAKE3 digest path that feeds the
 SwissTable family.

@@ -60,7 +60,7 @@ struct ConstraintSlot {
 };
 ```
 
-The placement driver reads `max_depth` via `*((u32*)slot + 2) <= 1` — that direct word load is the G2 admission gate documented in [Serial and Cost-Based Schedule Generators](serial-vs-cost-based-generators.md). All three UnitAttr flags share the same i32 so the driver can probe them with a single masked compare.
+The placement driver reads `max_depth` via `*((u32*)slot + 2) <= 1` — that direct word load is the G2 admission gate documented in [Serial and Cost-Based Schedule Generators — G2: Max-Depth Viability](serial-vs-cost-based-generators.md#g2-max-depth-viability). All three UnitAttr flags share the same i32 so the driver can probe them with a single masked compare.
 
 ## DSU Seeding at state+112
 
@@ -109,7 +109,7 @@ The parser does not seed one scheduler-state structure but two, and the pair is 
 | Disjoint-set forest | `state + 112` | Parent-pointer DSU, `find` with path compression, `union` by rank | Placement arms — fuse and retry consult it to keep group leaders consistent |
 | Pending-set | `state + 392` | SwissTable, control-byte sentinels `0x80` / `0xFE` / `0xFF`, fmix64 group hash | Cost-based generator's gate G1 |
 
-The DSU records the must-fuse equivalence classes implied by `leader_gid`. Every op whose `leader_gid` differs from its `gid` is unioned with its leader, so the resulting forest's roots are the actual scheduling groups. Placement arms walk the DSU through `find` whenever they need to know whether two candidate ops belong to the same group; the gate-G4 leader-consistency check in [Serial vs Cost-Based Generators](serial-vs-cost-based-generators.md) is the highest-traffic consumer.
+The DSU records the must-fuse equivalence classes implied by `leader_gid`. Every op whose `leader_gid` differs from its `gid` is unioned with its leader, so the resulting forest's roots are the actual scheduling groups. Placement arms walk the DSU through `find` whenever they need to know whether two candidate ops belong to the same group; the gate-G4 leader-consistency check in [Serial vs Cost-Based Generators — G4: Leader-Group DSU Consistency](serial-vs-cost-based-generators.md#g4-leader-group-dsu-consistency) is the highest-traffic consumer.
 
 The pending-set records ops that have been temporarily removed from consideration — the carry state the cost-based generator uses to hold a candidate over to the next placement attempt without permanently failing it. The gate-G1 membership probe is a single SwissTable `find` against this table; rejection means "skip this op for this iteration, try again next round." The parser populates the table once at scheduler-init time so the very first gate-G1 probe has a fully-built table to consult.
 
@@ -121,4 +121,4 @@ The parser runs once per op at scheduler-init time, before any placement arm fir
 
 ## Cross-References
 
-[Modulo Driver and 4-Arm OR-Chain](modulo-driver-or-chain.md) documents the placement driver that reads the `max_depth` G2 admission gate and consults the DSU built here. [Schedule::solve and Cost Evaluators](schedule-solve-and-cost-evaluators.md) documents the cost-based arm that honours `force_serial_execution`. [Serial and Cost-Based Schedule Generators](serial-vs-cost-based-generators.md) explains the G2 viability check that gates retry.
+[Modulo Driver and 4-Arm OR-Chain](modulo-driver-or-chain.md) documents the placement driver that reads the `max_depth` G2 admission gate and consults the DSU built here. [Schedule::solve and Cost Evaluators](schedule-solve-and-cost-evaluators.md) documents the cost-based arm that honours `force_serial_execution`. [Serial and Cost-Based Schedule Generators — G2: Max-Depth Viability](serial-vs-cost-based-generators.md#g2-max-depth-viability) explains the G2 viability check that gates retry.

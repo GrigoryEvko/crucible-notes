@@ -197,8 +197,9 @@ the same process.
 
 ## Related pages
 
-[Driver Overview](overview.md) frames the surrounding pipeline from the
-user's perspective; [Driver CLI Options](cli-options.md) catalogues every
-option `main` consumes, including the validator error codes referenced
-here; [Driver Program Handle](program-handle.md) documents the public
-error-code numbering returned through `main`'s exit status.
+[Driver Overview](overview.md#driver-flow) frames the surrounding pipeline
+from the user's perspective; [Driver CLI Options](cli-options.md#driver-options)
+catalogues every option `main` consumes, including the validator error codes
+referenced here; [Driver Program Handle](program-handle.md#public-error-codes)
+documents the public error-code numbering returned through `main`'s exit
+status.

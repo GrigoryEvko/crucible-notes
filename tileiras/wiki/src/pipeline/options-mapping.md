@@ -50,23 +50,23 @@ Each option resolves to one or more consuming passes and a specific access patte
 
 | Option | Consuming pass | Access pattern |
 |---|---|---|
-| `num-warps` | `convert-cudatile-to-tileaa`, `tileas-generate-schedule-constraints` | Both |
+| `num-warps` | `convert-cudatile-to-tileaa`, [`tileas-generate-schedule-constraints`](../scheduler/schedule-constraint-attributes.md) | Both |
 | `num-ctas` | `convert-cudatile-to-tileaa`, `tileir-gpu-module-prepare` | Module attribute |
 | `compute-capability` | `convert-target-to-nvvm`, `tileir-post-nvvm-finalize` | Module attribute (via resolved `#nvvm.target`) |
 | `opt-level` | Pipeline builder | Decides which passes are added |
-| `v2-opt-level` | `tileas-generate-schedule-constraints`, `tileas-materialize-schedule` | Constructor |
+| `v2-opt-level` | [`tileas-generate-schedule-constraints`](../scheduler/schedule-constraint-attributes.md), [`tileas-materialize-schedule`](../passes/tileas/async-pipeline-family.md#materialize-schedule) | Constructor |
 | `pipeline-strategy` | Pipeline builder (gates warp-specialization adders) | Decides which passes are added |
 | `index-bitwidth` | `convert-tileas-to-llvm`, `convert-to-llvm`, `convert-memref-to-llvm` | Constructor |
-| `unspecialized-pipeline-num-stages` | `unspecialized-pipeline` | Constructor |
+| `unspecialized-pipeline-num-stages` | [`unspecialized-pipeline`](../passes/tileas/async-pipeline-family.md) | Constructor |
 | `approx` | `convert-target-to-nvvm` (NVVM reflect map) | Module attribute |
 | `ftz` | `convert-target-to-nvvm` (NVVM reflect map) | Module attribute |
 | `use-nvgpucomp-libnvvm` | Serialization driver | Read at serialize time |
 | `emit-line-info` | Snapshot printers in O1 and O2 | Constructor (printer enable + tag) |
 | `dynamic-persistent` | `tileir-gpu-module-prepare` | Module attribute |
-| `schedule-trace-file` | `DumpTraceImpl` instrumentation | Read at instrumentation install |
-| `enable-random-delay` | `tileas-generate-schedule-constraints` | Constructor |
-| `rrt-size-threshold` | Pipeline builder + `ResourceConstraintBuilder` | Both |
-| `max-constraint-iterations` | `tileas-generate-schedule-constraints` | Constructor |
+| `schedule-trace-file` | [`DumpTraceImpl`](instrumentation-and-action-handler.md#pass-instrumentation-scopes) instrumentation | Read at instrumentation install |
+| `enable-random-delay` | [`tileas-generate-schedule-constraints`](../scheduler/schedule-constraint-attributes.md) | Constructor |
+| `rrt-size-threshold` | Pipeline builder + [`ResourceConstraintBuilder`](../scheduler/resource-constraint-builder-and-rrt.md) | Both |
+| `max-constraint-iterations` | [`tileas-generate-schedule-constraints`](../scheduler/schedule-constraint-attributes.md) | Constructor |
 | `enable-debug-logging` | `tileir-emit-host-wrapper` | Constructor |
 | `host-triple` | `tileir-emit-host-wrapper` | Constructor |
 | `dump-host` | `tileir-emit-host-wrapper` | Constructor |
@@ -121,4 +121,4 @@ When an option is set but its consuming pass is not in the active pipeline (for 
 
 ## Cross-References
 
-[Driver Entry and Optimization Levels](driver-and-opt-levels.md) explains how `opt-level` and `pipeline-strategy` decompose into the pass-list segments above. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) names the passes each segment contains. [LLVM PassBuilder Registry](passbuilder-mega-registry.md) covers options consumed past the MLIR-to-LLVM boundary.
+[Driver Entry and Optimization Levels — Optimization Tiers](driver-and-opt-levels.md#optimization-tiers) explains how `opt-level` and `pipeline-strategy` decompose into the pass-list segments above. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) names the passes each segment contains. [LLVM PassBuilder Registry](passbuilder-mega-registry.md) covers options consumed past the MLIR-to-LLVM boundary. [Driver Entry and Optimization Levels — Schedule Analysis Ordering](driver-and-opt-levels.md#schedule-analysis-ordering) covers the `ScheduleAnalysis` preservation contract that `rrt-size-threshold` and the scheduler options feed.

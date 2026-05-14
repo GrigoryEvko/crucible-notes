@@ -109,3 +109,7 @@ can_constant_fold(call):
 ```
 
 Keep the side-effecting NVPTX intrinsics out of the always-foldable bucket. Metadata-only and prefetch-like intrinsics may be attribute-gated, but barriers, async copies, tensor-memory operations, and cluster synchronization must remain non-foldable.
+
+## Cross-references
+
+The libdevice linking and reflect-folding sequence that produces the call sites this table classifies is documented in [libdevice Overview — Pipeline](overview.md#pipeline). The reflection mechanism behind `__CUDA_PREC_*` / `__CUDA_FTZ` is documented in [NVVMReflect Mechanism](nvvm-reflect-mechanism.md). The lowering side — which MLIR `math.*` / `arith.*` ops feed this table through `__nv_*` calls — is documented in [Math Pass Pipeline and Crosswalk — Full math-op crosswalk](math-pass-pipeline-and-crosswalk.md#full-math-op-crosswalk). The NVPTX intrinsic IDs in the 8851..9011 range correspond to the cluster/TMA/tcgen05/WGMMA families documented in [tcgen05, WGMMA, mbarrier, and Cluster Sync](../codegen/tcgen05-wgmma-mbarrier-cluster.md), [TMA, Tensormap, and cp.async.bulk Emission](../codegen/tma-tensormap-and-cp-async-bulk.md), and the NVVM dialect overviews ([nvvm cluster ops](../dialects/nvvm/cluster-ops.md), [nvvm mbarrier ops](../dialects/nvvm/mbarrier-ops.md), [nvvm tma ops](../dialects/nvvm/tma-ops.md), [nvvm tcgen05 ops](../dialects/nvvm/tcgen05-ops.md), [nvvm wgmma ops](../dialects/nvvm/wgmma-ops.md)).

@@ -111,18 +111,18 @@ For readers fluent in `cutlass/arch/*.hpp` and the per-SM atom traits in open-so
 | Hopper `GMMA::ss/rs/sr` descriptor builders | `cute_nvgpu.smem_desc_view` + the descriptor packer at `sub_17DD6A0` |
 | Hopper WGMMA atom + `make_smem_desc` | `cute_nvgpu.sm90.mma` op consuming a `!smem_desc_view` typed operand |
 | Hopper TMA `cp.async.bulk.tensor` family | `atom.tma_load`, `atom.tma_store`, `atom.tma_reduce` plus the non-exec variants |
-| Hopper `cuTensorMapEncodeTiled` | `tma_descriptor_tiled` type + the descriptor builder in [tma-atoms.md](tma-atoms.md) |
+| Hopper `cuTensorMapEncodeTiled` | `tma_descriptor_tiled` type + the [TMA descriptor builder](tma-atoms.md#descriptor-builder) |
 | Blackwell TCGEN / UMMA atoms | `sm100.mma`, `sm100.mma_sp`, `sm100.mma_bs`, `sm100.mma_bs_sp` |
 | Blackwell TMEM allocation / lifecycle | `atom.tmem_load`, `atom.tmem_store`, `atom.s2t_copy`, the TMEM lifecycle ops |
 | `cutlass::arch::Sm120BlockScaledMma<...>` | `SM120.mma_bs` (uppercase `SM` is required) |
-| Shared-memory matrix loads (`ldmatrix`) | `atom.ldsm`, `atom.stsm` with the mode/size pattern matrix in [mode-pattern-verifiers.md](mode-pattern-verifiers.md) |
+| Shared-memory matrix loads (`ldmatrix`) | `atom.ldsm`, `atom.stsm` with the mode/size pattern matrix in [Mode Pattern Verifiers — LDSM and STSM Matrix](mode-pattern-verifiers.md#ldsm-and-stsm-matrix) |
 
 Two departures from the open-source surface matter. First, `SM120.mma_bs` is the only SM120 entry — no `SM120.mma`, no sparse variant — matching the consumer-Blackwell FP4 surface where sparse MMA is not exposed. Second, the SMEM descriptor is a first-class IR type (`!smem_desc_view`) rather than an i64 immediate, so the verifier can re-check the descriptor's swizzle and tile-stride encoding against the same layout that produced it.
 
 ## Cross-links
 
-- [SM Tier Roster and Copy Atom Registry](sm-tier-roster-and-copy-atom-registry.md) lists the atom families by target tier.
-- [MMA Atoms SM70-120](mma-atoms-sm70-120.md) covers matrix-multiply atom semantics.
-- [TMA Atoms](tma-atoms.md) covers tensor-memory descriptor and transfer atoms.
-- [Mode Pattern Verifiers](mode-pattern-verifiers.md) covers shape, element-type, and mode checks.
-- [Asm Printer and Mnemonic Hash](asm-printer-and-mnemonic-hash.md) covers textual spelling and parser dispatch.
+- [SM Tier Roster and Copy Atom Registry — Atom Surface by Tier](sm-tier-roster-and-copy-atom-registry.md#atom-surface-by-tier) lists the atom families by target tier.
+- [MMA Atoms SM70-120 — Per-Arch MMA Shape Lattice](mma-atoms-sm70-120.md#per-arch-mma-shape-lattice) covers matrix-multiply atom semantics.
+- [TMA Atoms — Atom Family](tma-atoms.md#atom-family) covers tensor-memory descriptor and transfer atoms.
+- [Mode Pattern Verifiers — UMMA Canonical Layout Verifier](mode-pattern-verifiers.md#umma-canonical-layout-verifier) covers shape, element-type, and mode checks.
+- [Asm Printer and Mnemonic Hash — Mnemonic Perfect-Hash Dispatch](asm-printer-and-mnemonic-hash.md#mnemonic-perfect-hash-dispatch) covers textual spelling and parser dispatch.

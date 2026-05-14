@@ -4,7 +4,7 @@
 
 The `tileiras` binary leans on three intertwined allocator layers — a generic `malloc`-retry shim, a bump-pointer arena following LLVM's `BumpPtrAllocator::Allocate` contract, and a per-`MLIRContextImpl` lattice of fixed-size slab requests that fan out into the `StorageUniquer` hash-cons machinery. Together they explain why the dominant fixed-size allocations land on a small number of well-known C++ class sizes: each is the byte image of a published LLVM 18 / MLIR storage record, and every one reconciles against an upstream `sizeof()` in LLVM 18 (which the producer string `a2100git` independently dates the binary to, modulo the LLVM 21 development tag the bitcode loader reports).
 
-The layers are documented in the order a `getOrCreate` call visits them: the `SDNode`-shaped `BumpPtrAllocator::Allocate` wrapper, the four pattern-object slab sizes, the 24/96-byte `Region` / `Block` strides, the custom MLIR allocation wrappers, and the per-`MLIRContextImpl` arena that owns all of the above. Cross-links: `infra/data-section-decryption.md` and the `StorageUniquer` page for the 88-byte `StorageAllocator` slot allocated atop this stack.
+The layers are documented in the order a `getOrCreate` call visits them: the `SDNode`-shaped `BumpPtrAllocator::Allocate` wrapper, the four pattern-object slab sizes, the 24/96-byte `Region` / `Block` strides, the custom MLIR allocation wrappers, and the per-`MLIRContextImpl` arena that owns all of the above. Cross-links: [Data Section Decryption](data-section-decryption.md) and the [StorageUniquer and Context Impl](../mlir-infra/storage-uniquer-and-context-impl.md) page for the 88-byte `StorageAllocator` slot allocated atop this stack.
 
 ## BumpPtrAllocator vs Allocator
 

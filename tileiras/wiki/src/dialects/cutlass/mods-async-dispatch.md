@@ -135,7 +135,7 @@ The same simplification the cutlass dialect applies to other CUTLASS templates a
 
 ## Cross-References
 
-- [cutlass Dialect Overview](overview.md) — the family roster and verifier inventory.
-- [cutlass Pipeline and Tile Scheduler](pipeline-and-tile-scheduler.md) — the producer/consumer protocol MODS runs alongside.
-- [Cluster Sync and DSMEM Handshake](../../topics/cluster-sync-and-dsmem-handshake.md) — the cluster-barrier mechanism the mainloop probes use.
-- [mbarrier State Machine](../../topics/mbarrier-state-machine.md) — the per-stage barrier protocol MODS does not touch.
+- [cutlass Dialect Overview — Operation Roster](overview.md#operation-roster) — the family roster and verifier inventory.
+- [cutlass Pipeline and Tile Scheduler — Pipeline Model](pipeline-and-tile-scheduler.md#pipeline-model) — the producer/consumer protocol MODS runs alongside.
+- [Cluster Sync and DSMEM Handshake — Plain Cluster Barrier](../../topics/cluster-sync-and-dsmem-handshake.md#plain-cluster-barrier) — the cluster-barrier mechanism the mainloop probes use.
+- [mbarrier State Machine — State Machine](../../topics/mbarrier-state-machine.md#state-machine) — the per-stage barrier protocol MODS does not touch.

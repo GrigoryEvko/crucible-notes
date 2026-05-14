@@ -45,7 +45,7 @@ The NVPTX backend ships declared-pool `TargetRegisterClass` descriptors for PTX 
 
 ## NVPTXTargetLowering
 
-`tileiras` carries the normal LLVM `SelectionDAG` target-lowering surface for NVPTX. Key hooks: `LowerFormalArguments`, `LowerCall`, `LowerOperation`, and the load/vector helper path. Slot-by-slot behavior is covered in `codegen/nvptx-target-lowering-call-and-args.md`; this page only records that the target-lowering surface is a conventional LLVM virtual interface.
+`tileiras` carries the normal LLVM `SelectionDAG` target-lowering surface for NVPTX. Key hooks: `LowerFormalArguments`, `LowerCall`, `LowerOperation`, and the load/vector helper path. Slot-by-slot behavior is covered in [NVPTX Target Lowering, Call and Args](../codegen/nvptx-target-lowering-call-and-args.md); this page only records that the target-lowering surface is a conventional LLVM virtual interface.
 
 ## Static Constructors
 
@@ -76,7 +76,7 @@ The `cuda_tile` dialect registers separately — it is the public input dialect 
 
 ## `__cxa_atexit` and the XOR-3 Pool Exception
 
-Most of the 653 ctors register a corresponding `__cxa_atexit` dtor for ordered teardown — but the XOR-3-encrypted `.data` pools (mnemonic and register-name pools — see [Data Section Decryption](data-section-decryption.md) for the cipher and decoders, and `codegen/asm-printer-monster-and-windows.md` for the AsmWriter consumer) do not register dtors. The pools are zeroed at static-init, decoded at first use via `pthread_once`, and never re-encoded. The omission is deliberate: pools sit memory-mapped read-only after the first use, so re-encrypting them on shutdown is pointless and a no-op dtor would only add wasted entries to the exit chain.
+Most of the 653 ctors register a corresponding `__cxa_atexit` dtor for ordered teardown — but the XOR-3-encrypted `.data` pools (mnemonic and register-name pools — see [Data Section Decryption](data-section-decryption.md) for the cipher and decoders, and [AsmPrinter Monster and Windows](../codegen/asm-printer-monster-and-windows.md) for the AsmWriter consumer) do not register dtors. The pools are zeroed at static-init, decoded at first use via `pthread_once`, and never re-encoded. The omission is deliberate: pools sit memory-mapped read-only after the first use, so re-encrypting them on shutdown is pointless and a no-op dtor would only add wasted entries to the exit chain.
 
 The init-order over the six dialects also lines up with which dialects use `pthread_once` guards versus eager static-init. Only the shared-interfaces step at order 3 is gated by a one-shot guard — the interfaces it publishes are queried lazily on first use, so the ctor stages a `pthread_once_t` slot rather than running registration immediately. The other five dialects run their entire registration at static-init and need no one-shot guard.
 

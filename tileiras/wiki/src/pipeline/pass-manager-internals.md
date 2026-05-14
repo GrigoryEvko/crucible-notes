@@ -64,9 +64,9 @@ LogicalResult OpToOpPassAdaptor::run(Operation *root) {
 
 ## Analysis Preservation Discipline
 
-Each anchor level owns its own `AnalysisManager`. Analyses computed at the `gpu.module` level (target queries, kernel symbol tables, NVVM target attribute caches) outlive the function-scoped passes that consume them; analyses computed at the `nv_tileas.func` level (`ScheduleAnalysis`, register-pressure estimates) live only as long as their function passes do not invalidate them.
+Each anchor level owns its own `AnalysisManager`. Analyses computed at the `gpu.module` level (target queries, kernel symbol tables, NVVM target attribute caches) outlive the function-scoped passes that consume them; analyses computed at the `nv_tileas.func` level ([`ScheduleAnalysis`](../scheduler/modulo-scheduler-and-rau.md), register-pressure estimates) live only as long as their function passes do not invalidate them.
 
-The pass manager invalidates everything not explicitly listed in the `PreservedAnalyses` set the pass returns. Tileiras follows a strict rule for the scheduling pipeline: any pass placed between `tileas-generate-schedule-constraints` and `tileas-materialize-schedule` must declare `ScheduleAnalysis` as preserved or the build is rejected. The check is enforced at pipeline construction:
+The pass manager invalidates everything not explicitly listed in the `PreservedAnalyses` set the pass returns. Tileiras follows a strict rule for the scheduling pipeline: any pass placed between `tileas-generate-schedule-constraints` and `tileas-materialize-schedule` must declare `ScheduleAnalysis` as preserved or the build is rejected (see [Driver Entry — Schedule Analysis Ordering](driver-and-opt-levels.md#schedule-analysis-ordering)). The check is enforced at pipeline construction:
 
 ```c
 void verify_schedule_preservation(OpPassManager &pm) {
@@ -123,4 +123,4 @@ The isolation guarantee that holds across both modes: a pass run on one anchor o
 
 ## Cross-References
 
-[Pipeline Invariants and Verifiers](invariants-and-verifiers.md) describes the verifier layers that run between the pass manager's pass invocations. [Driver Entry and Optimization Levels](driver-and-opt-levels.md) is where the pass manager is populated. [LLVM PassBuilder Registry](passbuilder-mega-registry.md) covers the textual resolution that produces the same pass graph at the LLVM tier.
+[Pipeline Invariants and Verifiers — Verifier Layers](invariants-and-verifiers.md#verifier-layers) describes the verifier layers that run between the pass manager's pass invocations. [Driver Entry and Optimization Levels — Entry Chain](driver-and-opt-levels.md#entry-chain) is where the pass manager is populated. [LLVM PassBuilder Registry — Textual Resolution](passbuilder-mega-registry.md#textual-resolution) covers the textual resolution that produces the same pass graph at the LLVM tier. [Compilation Pipeline Overview — Outer and Inner Pipelines](overview.md#outer-and-inner-pipelines) describes how the two nesting levels are constructed and chained.

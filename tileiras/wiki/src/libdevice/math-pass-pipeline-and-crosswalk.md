@@ -106,3 +106,7 @@ lower_math_op(op):
 ```
 
 Constant folding is a separate LLVM-tier concern. Do not execute libdevice IR to fold constants; classify the call, evaluate the recognized math operation directly, and replace the call with a constant.
+
+## Cross-references
+
+The four-pass integration sequence that materializes the `__nv_*` bodies this page lowers into is documented in [libdevice Overview — Pipeline](overview.md#pipeline) and [libdevice Overview — Link, inline, simplify](overview.md#link-inline-simplify). The `__nvvm_reflect("__CUDA_FTZ")` / `__CUDA_PREC_*` mechanism whose folding collapses the per-arch arms is documented in [NVVMReflect Mechanism — Three var-map sources](nvvm-reflect-mechanism.md#three-var-map-sources). The constant-folder classifier that recognizes the post-libdevice call sites by `Intrinsic::ID` or by name is documented in [Intrinsic ID Switch and Name Table — libdevice suffix name table](intrinsic-id-switch-and-name-table.md#libdevice-suffix-name-table). The NVPTX bring-up path that pulls libdevice into the LLVM module is documented in [NVPTX Bring-up and Target Init](../codegen/nvptx-bring-up-and-target-init.md).

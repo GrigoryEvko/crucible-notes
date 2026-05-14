@@ -61,16 +61,16 @@ The dialect is split across four pages by concern. Use this map to find the exac
 
 | Topic | Page |
 |---|---|
-| Layout algebra rules (composition, complement, divide, product, coalesce, filter) | [Layout Algebra and Descriptor Grammar](layout-algebra-and-descriptor-grammar.md) |
-| Tuple-shape grammar, swizzle composition, descriptor round-trip | [Layout Algebra and Descriptor Grammar](layout-algebra-and-descriptor-grammar.md) |
-| Tile partitioning ops (`local_tile`, `local_partition`, `group_modes`, `dice`, `slice`) | [Tile and Divide Ops](tile-and-divide-ops.md) |
-| Atom builders (`make_atom`, `make_tiled_copy`, `make_tiled_mma`) and desugar rewrites | [Atom Builders and Desugar](atom-builders-and-desugar.md) |
-| `cute.make_int_tuple` hub, `make_layout` desugaring shape | [Atom Builders and Desugar](atom-builders-and-desugar.md) |
-| Kernel-entry ABI (`cute.kernel` → `nvvm.kernel`, grid-constant arg-attrs) | [Atom Builders and Desugar](atom-builders-and-desugar.md) |
-| Verbatim verifier diagnostics (every error string the dialect emits) | [Verifiers](verifiers.md) |
-| Mode-range, divide, product, tuple-arithmetic verifier algorithms | [Verifiers](verifiers.md) |
-| `crd2idx` weak-congruence walk, worked diagnostic example | [Verifiers](verifiers.md) |
-| `LayoutTypeInterface` kind discriminator and per-kind dispatch tables | [Verifiers](verifiers.md) |
+| Layout algebra rules (composition, complement, divide, product, coalesce, filter) | [Layout Algebra and Descriptor Grammar — Algebra Rules on Shape and Stride Tuples](layout-algebra-and-descriptor-grammar.md#algebra-rules-on-shape-and-stride-tuples) |
+| Tuple-shape grammar, swizzle composition, descriptor round-trip | [Layout Algebra and Descriptor Grammar — Descriptor Grammar](layout-algebra-and-descriptor-grammar.md#descriptor-grammar) |
+| Tile partitioning ops (`local_tile`, `local_partition`, `group_modes`, `dice`, `slice`) | [Tile and Divide Ops — Builder Operations](tile-and-divide-ops.md#builder-operations) |
+| Atom builders (`make_atom`, `make_tiled_copy`, `make_tiled_mma`) and desugar rewrites | [Atom Builders and Desugar — Atom Builder Contract](atom-builders-and-desugar.md#atom-builder-contract) |
+| `cute.make_int_tuple` hub, `make_layout` desugaring shape | [Atom Builders and Desugar — `make_int_tuple` Hub](atom-builders-and-desugar.md#make_int_tuple-hub) |
+| Kernel-entry ABI (`cute.kernel` → `nvvm.kernel`, grid-constant arg-attrs) | [Atom Builders and Desugar — Kernel-entry ABI](atom-builders-and-desugar.md#kernel-entry-abi) |
+| Verbatim verifier diagnostics (every error string the dialect emits) | [Verifiers — Verbatim Diagnostics](verifiers.md#verbatim-diagnostics) |
+| Mode-range, divide, product, tuple-arithmetic verifier algorithms | [Verifiers — Mode and Rank Checks](verifiers.md#mode-and-rank-checks) |
+| `crd2idx` weak-congruence walk, worked diagnostic example | [Verifiers — Worked Example: `crd2idx` Weak Congruence Violation](verifiers.md#worked-example-crd2idx-weak-congruence-violation) |
+| `LayoutTypeInterface` kind discriminator and per-kind dispatch tables | [Verifiers — LayoutTypeInterface Kind Discriminator](verifiers.md#layouttypeinterface-kind-discriminator) |
 
 ## In-Memory IR Tier
 
@@ -97,7 +97,7 @@ The main difference is where the target boundary sits. The open-source `cute/` l
 
 ## Cross-links
 
-- [Layout Algebra and Descriptor Grammar](layout-algebra-and-descriptor-grammar.md) covers the concrete grammar and round-trip rules.
-- [Tile and Divide Ops](tile-and-divide-ops.md) covers tile partitioning operations.
-- [Atom Builders and Desugar](atom-builders-and-desugar.md) covers construction of copy and MMA atoms.
-- [Verifiers](verifiers.md) covers layout and atom verifier behavior.
+- [Layout Algebra and Descriptor Grammar — Descriptor Grammar](layout-algebra-and-descriptor-grammar.md#descriptor-grammar) covers the concrete grammar and [Round Trip](layout-algebra-and-descriptor-grammar.md#round-trip) rules.
+- [Tile and Divide Ops — Divide Variants](tile-and-divide-ops.md#divide-variants) covers tile partitioning operations.
+- [Atom Builders and Desugar — Per-Atom Desugar Rewrites](atom-builders-and-desugar.md#per-atom-desugar-rewrites) covers construction of copy and MMA atoms.
+- [Verifiers — Verbatim Diagnostics](verifiers.md#verbatim-diagnostics) covers layout and atom verifier behavior.

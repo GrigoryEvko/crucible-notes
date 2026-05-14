@@ -44,7 +44,7 @@ The handoff object is `ScheduleAnalysis`. Conceptually, it contains the schedule
 
 Scheduling policy enters the algorithm through the constraint builder. The builder reads register pressure, resource-footprint density, pipeline depth, and structural grouping, then emits constraints that restrict the search space. Recurring constraint families include `SameDepthConstraint` for operations that must remain at the same pipeline depth, `MaxDepthConstraint` for operations that must not drift beyond a depth limit, `ForceSerialExecutionConstraint` for regions that must execute single-lane, and structural grouping constraints that tie operations into one scheduling unit. Each constraint family carries the rationale that justifies the restriction so a later refinement round can lift it when the schedule becomes infeasible.
 
-The modulo scheduler then tries candidate placements. The dependence graph enforces legal order; the RRT enforces resource feasibility. The two checks stay separate: dependences answer when an operation may run relative to other operations, the RRT answers whether the machine has capacity at a candidate cycle. The probe-and-commit mechanics are covered in [Modulo Scheduler and Rau](modulo-scheduler-and-rau.md); this page does not duplicate them.
+The modulo scheduler then tries candidate placements. The dependence graph enforces legal order; the RRT enforces resource feasibility. The two checks stay separate: dependences answer when an operation may run relative to other operations, the RRT answers whether the machine has capacity at a candidate cycle. The probe-and-commit mechanics are covered in [Modulo Scheduler and Rau — Resource Reservation Table](modulo-scheduler-and-rau.md#resource-reservation-table); this page does not duplicate them.
 
 Each refinement round records a 2-bit status: bit 0 marks `converged`, bit 1 marks `budget_exceeded`. When the iteration budget runs out without convergence, the scheduler raises the budget-truncated flag on `Schedule.flags` so the materializer can distinguish a clean schedule from a truncated one and emit the matching diagnostic.
 
@@ -68,10 +68,10 @@ Several data structures cross the analysis-vs-materialization boundary. Each one
 |---|---|---|
 | `ScheduleAnalysis` | this page | Cached handoff record; AnalysisManager key |
 | `Schedule` view | [Modulo Scheduler and Rau](modulo-scheduler-and-rau.md) | Internal view materializer reconstructs from the analysis |
-| `RRT` and `NodeRRT` | [Modulo Scheduler and Rau](modulo-scheduler-and-rau.md) | Resource feasibility check; consumed only by Pass 1 |
+| `RRT` and `NodeRRT` | [Modulo Scheduler and Rau — Resource Reservation Table](modulo-scheduler-and-rau.md#resource-reservation-table) | Resource feasibility check; consumed only by Pass 1 |
 | Per-op footprint rows | [Resource Constraint Builder](resource-constraint-builder-and-rrt.md) | Built in Pass 1, frozen by the time materialization starts |
-| `ConstraintMap` + DSU | [Schedule Constraint Attributes](schedule-constraint-attributes.md) | Parsed attribute state consulted by placement and by `Schedule::solve` |
-| Pending-set SwissTable | [Serial vs Cost-Based Generators](serial-vs-cost-based-generators.md) | Gate-G1 retry filter, seeded by the attribute parser |
+| `ConstraintMap` + DSU | [Schedule Constraint Attributes — ConstraintMap Layout](schedule-constraint-attributes.md#constraintmap-layout) | Parsed attribute state consulted by placement and by `Schedule::solve` |
+| Pending-set SwissTable | [Serial vs Cost-Based Generators — G1: Pending-Set Membership](serial-vs-cost-based-generators.md#g1-pending-set-membership) | Gate-G1 retry filter, seeded by the attribute parser |
 | `origMap` + second-table | [Schedule::solve and Cost Evaluators](schedule-solve-and-cost-evaluators.md) | Producer/consumer resolution during materialization |
 | Buffer-assignment record | [Buffer Assignment and Named Barriers](buffer-assignment-and-mbarriers.md) | Bridge between schedule and physical SMEM/TMEM allocation |
 | `Pipe_` / `Mutex_` headers | [Pipe and Mutex Value Layout](pipe-mutex-value-layout.md) | Final SSA shape emitted by materialization |

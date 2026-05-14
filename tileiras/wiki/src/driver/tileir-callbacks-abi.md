@@ -89,7 +89,9 @@ Three sub-emitters cooperate to produce the callback objects:
   including the addresses of `__CUDA_TILEIR_FUNC_CALLBACKS` and `__CUDA_TILEIR_ON_PRE_LOAD`.
 - `sub_86DAD0` (~22 KB) emits the full callback dispatch trampoline including the type converter and the
   `nvvm.kernel` attribute lift. The related `cute.kernel` -> `nvvm.kernel` rename is performed by the downstream
-  D08 pattern `CuteKernelToNvvmRewrite` at `sub_1698C20`; it is not part of the callback ABI itself.
+  D08 pattern `CuteKernelToNvvmRewrite` at `sub_1698C20`, documented in
+  [TileAS to LLVM Lowering](../lowering/tileas-to-llvm.md#function-boundary-conversion);
+  it is not part of the callback ABI itself.
 - `sub_870430` is the body emitter that wires the MUL multipliers from slots 6 and 7 into the dispatch path via
   `sub_868170` (the `llvm.mul` helper).
 
@@ -155,3 +157,13 @@ Older runtimes can leave the slot unresolved or null, and the compiled launch si
 per-function callback table is `(1, 0)` const+External and fixed at 64 bytes; absent specialized hooks, the
 argument-change hook is the default callback target.
 
+## Related pages
+
+[Host Launch ABI and ptxas Knobs](host-launch-and-ptxas-knobs.md#nvvm-annotations-and-ptx-directives)
+covers the kernel-attribute side of launch metadata that the per-function
+callback table sits alongside;
+[TileAS to LLVM Lowering](../lowering/tileas-to-llvm.md#function-boundary-conversion)
+documents the downstream `CuteKernelToNvvmRewrite` pass that finalises the
+`nvvm.kernel` attribute the callback ABI references;
+[Driver Overview](overview.md#driver-flow) frames where callback emission sits
+in the larger compile sequence.

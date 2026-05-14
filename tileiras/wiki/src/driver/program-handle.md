@@ -8,7 +8,7 @@ The handle stores the validated driver configuration, a small ownership bit, and
 
 ## Public Error Codes
 
-Every entry point in the driver's public C API returns a small integer status. Five non-zero codes are emitted across the four functions, and every diagnostic routes through `sub_578D40` with a packed severity byte. The severity values 259, 260, and 2563 are the `(class | (op_prefix << 8) | (trace << 9))` form documented in [Diagnostic ABI and Helpers](../mlir-infra/diagnostic-abi-and-helpers.md): 259 and 260 are fatal driver errors, 2563 is a user-input rejection.
+Every entry point in the driver's public C API returns a small integer status. Five non-zero codes are emitted across the four functions, and every diagnostic routes through `sub_578D40` with a packed severity byte. The severity values 259, 260, and 2563 are the `(class | (op_prefix << 8) | (trace << 9))` form documented in [Diagnostic ABI and Helpers](../mlir-infra/diagnostic-abi-and-helpers.md#severity-word): 259 and 260 are fatal driver errors, 2563 is a user-input rejection.
 
 | Code | Trigger | Verbatim diagnostic | Severity |
 |---|---|---|---|
@@ -167,4 +167,4 @@ The handle is 104 bytes. The option fields at `+0x10..+0x28` are eight contiguou
 
 ## Cross-References
 
-[Driver main() Entry](main-entry.md) documents how the handle is threaded through the four-phase driver and how the configuration is built from `cl::opt` storage. The compile dispatcher that mutates the handle is described in the TileIR compile pipeline pages.
+[Driver main() Entry](main-entry.md#main) documents how the handle is threaded through the four-phase driver and how the configuration is built from `cl::opt` storage. The compile dispatcher that mutates the handle is described in the [TileIR Pipeline Overview](../pipeline/overview.md#full-cascade).

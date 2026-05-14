@@ -74,13 +74,13 @@ NVVM-specific properties must survive ordinary LLVM optimization. Kernel functio
 
 NVPTX has a stricter ABI than ordinary LLVM IR suggests. Kernel parameters live in address-space 101 (`param`), device-function parameters use the by-value or by-pointer convention NVPTX defines, return values flow through the param space too, and `byval` aggregates need explicit unpacking into scalar or vector register-passing lowerings. Grid constants live in their own constant address space. None of this is the generic `pointer` lowering LLVM's IR-level legalizer would produce.
 
-The NVPTX target lowering hook runs before SelectionDAG building and rewrites each formal argument, call, return, and address-space cast into the form the selector and the AsmPrinter both expect. Param-space values become `NVPTXISD::LoadParam` / `StoreParam` chains; kernel arguments become explicit `param`-space loads keyed by formal-arg index; by-value aggregates become a sequence of scalar param loads spelled out per field. Once this pass completes, no `inttoptr` or `addrspacecast` between mismatched NVPTX address spaces remains in the function. See [nvptx-target-lowering-call-and-args.md](nvptx-target-lowering-call-and-args.md) for the formal-arg shape lattice and the call-prototype layout.
+The NVPTX target lowering hook runs before SelectionDAG building and rewrites each formal argument, call, return, and address-space cast into the form the selector and the AsmPrinter both expect. Param-space values become `NVPTXISD::LoadParam` / `StoreParam` chains; kernel arguments become explicit `param`-space loads keyed by formal-arg index; by-value aggregates become a sequence of scalar param loads spelled out per field. Once this pass completes, no `inttoptr` or `addrspacecast` between mismatched NVPTX address spaces remains in the function. See [Lowering Formal Arguments](nvptx-target-lowering-call-and-args.md#lowering-formal-arguments) and [Lowering Calls](nvptx-target-lowering-call-and-args.md#lowering-calls) for the formal-arg shape lattice and the call-prototype layout.
 
 ## Instruction Selection
 
 Selection runs in three layers. The intrinsic-with-chain selector handles NVVM intrinsics that carry memory or control-flow chains and routes most cases to per-family emitters or to a secondary intrinsic-ID dispatcher. The vector load/store selector handles the NVPTX-private vector memory opcodes (the v2/v4/v8 forms over global/shared/param/tmem) plus tensor-memory routing for Blackwell. Both fast selectors fall through to the generated MatcherTable on unrecognized cases, and the MatcherTable runs a saturating-int64 cost scorer over candidate TableGen patterns. The scorer reads a per-opcode predicate-matrix row to decide whether the pattern is legal on the active subtarget before any cost accumulates.
 
-Feature-gated intrinsics — TMA, tensor-memory, WGMMA, tcgen05, `mma.block_scale`, cluster operations, special registers, async barriers — pass through validators that consult the subtarget feature bitmap and emit a diagnostic on failure rather than letting an illegal PTX instruction reach the printer. See [iseldag-and-matchertable.md](iseldag-and-matchertable.md) for the dispatcher shape, the 119-case MatcherTable scorer, and the operand-class vocabulary the predicate helpers consume.
+Feature-gated intrinsics — TMA, tensor-memory, WGMMA, tcgen05, `mma.block_scale`, cluster operations, special registers, async barriers — pass through validators that consult the subtarget feature bitmap and emit a diagnostic on failure rather than letting an illegal PTX instruction reach the printer. See [ISelDAG and MatcherTable — Selector Layers](iseldag-and-matchertable.md#selector-layers) for the dispatcher shape, [MatcherTable and Cost Scoring](iseldag-and-matchertable.md#matchertable-and-cost-scoring) for the 119-case scorer, and the operand-class vocabulary the predicate helpers consume.
 
 ## PTX Emission
 
@@ -88,7 +88,7 @@ The AsmPrinter is a single LTO-folded function with a 6,388-case dispatcher over
 
 Module-level emission produces the `.version` / `.target` / `.address_size` header, kernel directives (`.entry`, `.reqntid`, `.maxntid`, `.minnctapersm`, `.maxnreg`, cluster directives), global and managed-variable declarations, then per-function bodies. Each function emits its frame setup, the virtual-register declarations grouped by class, and the basic-block sequence of MC instructions. The printer performs no subtarget legality checks: by the time an opcode reaches this layer, the selector and the machine verifier have already proved it is legal for the chosen target.
 
-See [asm-printer-monster-and-windows.md](asm-printer-monster-and-windows.md) for the dispatcher partition and the mnemonic-pool layout, and [per-sm-emission-templates.md](per-sm-emission-templates.md) for the actual PTX template strings emitted per SM tier.
+See [AsmPrinter — MC Switch Shape Population Table](asm-printer-monster-and-windows.md#mc-switch-shape-population-table) for the dispatcher partition and [AsmWriter String Pools and the XOR-3 Walking Cipher](asm-printer-monster-and-windows.md#asmwriter-string-pools-and-the-xor-3-walking-cipher) for the mnemonic-pool layout, and [Per-SM Emission Templates](per-sm-emission-templates.md) for the actual PTX template strings emitted per SM tier.
 
 ## End-To-End Algorithm
 
@@ -125,10 +125,10 @@ A reimplementation that keeps these seven stages and their published contracts c
 
 ## Cross-Links
 
-- [nvptx-bring-up-and-target-init.md](nvptx-bring-up-and-target-init.md) covers target registration and target-machine construction.
-- [nvptx-target-lowering-call-and-args.md](nvptx-target-lowering-call-and-args.md) covers parameter, call, and custom-node lowering.
-- [iseldag-and-matchertable.md](iseldag-and-matchertable.md) covers instruction selection.
-- [per-sm-emission-templates.md](per-sm-emission-templates.md) covers SM-specific opcode families.
-- [tma-tensormap-and-cp-async-bulk.md](tma-tensormap-and-cp-async-bulk.md) covers TMA and tensor-map emission.
-- [tcgen05-wgmma-mbarrier-cluster.md](tcgen05-wgmma-mbarrier-cluster.md) covers tensor memory, WGMMA, barriers, and cluster features.
-- [../libdevice/overview.md](../libdevice/overview.md) covers device-library linkage and libdevice behavior.
+- [NVPTX Bring-up and Target Init](nvptx-bring-up-and-target-init.md) covers target registration and target-machine construction.
+- [NVPTX Target Lowering — Calls and Arguments](nvptx-target-lowering-call-and-args.md) covers parameter, call, and custom-node lowering.
+- [ISelDAG and MatcherTable](iseldag-and-matchertable.md) covers instruction selection.
+- [Per-SM Emission Templates](per-sm-emission-templates.md) covers SM-specific opcode families.
+- [TMA + Tensormap + cp.async.bulk Emission](tma-tensormap-and-cp-async-bulk.md) covers TMA and tensor-map emission.
+- [tcgen05 / WGMMA / mbarrier / Cluster Emission](tcgen05-wgmma-mbarrier-cluster.md) covers tensor memory, WGMMA, barriers, and cluster features.
+- [libdevice Overview](../libdevice/overview.md) covers device-library linkage and libdevice behavior.

@@ -377,7 +377,7 @@ The bank-pressure evaluator probes a dual-RRT pair: `rrt0` holds in-iteration oc
 placed at the current iteration of the kernel), `rrt1` holds cross-iteration carry (resources still occupied
 from the previous iteration's tail at the same modulo cycle). The evaluator reads pool caps `4` (in-iteration)
 and `3` (cross-iteration) from the 9-element pool-capacity vector at indices 1 and 6 — TMEM and named-barrier
-pools respectively (see [Blackwell Pipeline 15-Slot Model](blackwell-pipeline-15-slot-model.md)). The trampoline
+pools respectively (see [Blackwell Pipeline 15-Slot Model — Pool Capacity Vector](blackwell-pipeline-15-slot-model.md#pool-capacity-vector)). The trampoline
 `sub_98E6A0` wires the evaluator into the driver, and the thunk `sub_987E70` adapts the call site to the
 `std::function<bool(int)>` shape `sub_988080` expects.
 
@@ -507,6 +507,6 @@ The dual-RRT cost evaluators live inside the cost-based fallback. They consume t
 scheduler and the placement-arm sequence that invokes these evaluators.
 [Resource Constraint Builder and RRT](resource-constraint-builder-and-rrt.md) documents the RRT bit-counting
 primitives consumed by the bank-pressure evaluator.
-[Blackwell Pipeline 15-Slot Model](blackwell-pipeline-15-slot-model.md) documents the 9-element pool-capacity
+[Blackwell Pipeline 15-Slot Model — Pool Capacity Vector](blackwell-pipeline-15-slot-model.md#pool-capacity-vector) documents the 9-element pool-capacity
 vector and the TMEM / named-barrier slots referenced by the per-pool caps `4` and `3`.
 [Pipe_ and Mutex_ Value-Header Layout](pipe-mutex-value-layout.md) documents the 808-byte header that the alias materialiser writes into the IR.

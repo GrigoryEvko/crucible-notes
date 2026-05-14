@@ -143,7 +143,7 @@ Formal parameter space overflowed (40016 bytes required, max 1024 bytes allowed)
 
 ## Driver
 
-The driver is a thin loop over the module. It selects kernels using the canonical `isKernelFunction` predicate (see [Kernel, CDP, Force-Inline, and Pretreat Passes](kernel-cdp-inline-pretreat.md)) and dispatches to the two checkers:
+The driver is a thin loop over the module. It selects kernels using the canonical `isKernelFunction` predicate (see [Kernel Identity](kernel-cdp-inline-pretreat.md#kernel-identity)) and dispatches to the two checkers:
 
 ```c
 void run_nvvm_ir_verifier(Module *module, TargetInfo *target) {
@@ -160,4 +160,4 @@ Any failed check calls `signalPassFailure()` directly.
 
 ## Cross-References
 
-[LowerStructArgs](lower-args-and-aggr-and-struct.md) is what leaves the parameter list this pass sizes. [Kernel, CDP, Force-Inline, and Pretreat Passes](kernel-cdp-inline-pretreat.md) defines the `isKernelFunction` predicate the driver consults.
+[LowerStructArgs Rewrite Shape](lower-args-and-aggr-and-struct.md#rewrite-shape) is what leaves the parameter list this pass sizes. [Kernel Identity](kernel-cdp-inline-pretreat.md#kernel-identity) defines the `isKernelFunction` predicate the driver consults. The [NVPTX Backend Passes Overview](overview.md) shows where the verifier sits in the cluster pipeline.
