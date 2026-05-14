@@ -1,0 +1,547 @@
+# AsmPrinter and Per-SM Windows
+
+## Abstract
+
+The final PTX emission layer turns selected operations, operands, attributes,
+and module metadata into PTX text that `ptxas` accepts. By the time execution
+arrives here, Tileiras has already lowered MLIR operations to NVVM/LLVM IR,
+selected NVPTX machine instructions, and verified subtarget legality. The
+printer's job is precise and narrow.
+
+The implementation combines two generated printer roles. The MLIR-facing role
+prints `nvvm.*` operation assembly from TableGen assembly-format descriptions.
+The LLVM-MC role prints selected `MCInst` opcodes from the NVPTX asm-writer
+table. They share operand printers, modifier printers, register-name
+printing, and module-level PTX emission helpers.
+
+## Printer Roles
+
+| Role | Input | Output | Primary responsibility |
+|---|---|---|---|
+| MLIR operation printer | `nvvm.*` op, operands, attributes | NVVM dialect assembly | Print op syntax and attributes. |
+| MC instruction printer | `MCInst` opcode and operands | PTX instruction text | Print opcode mnemonic, operands, and suffixes. |
+| NVPTX asm printer | LLVM module and machine functions | PTX module text | Print headers, directives, globals, and function bodies. |
+
+The two instruction printers differ in when they run. The MLIR printer
+describes operations before final machine selection; the MC printer
+describes the exact PTX instruction after selection. Keep those phases
+separate in a reimplementation, even when the same helper functions print
+common modifiers.
+
+```c
+void print_nvptx_instruction(PrintInput input, raw_ostream *os) {
+    if (input.kind == PRINT_MLIR_NVVM_OP) {
+        print_nvvm_operation_format(input.op, input.operands, input.attrs, os);
+        return;
+    }
+
+    if (input.kind == PRINT_MC_INST) {
+        const McPrintShape *shape = lookup_mc_print_shape(input.inst.opcode);
+        require(shape != NULL, "cannot print unknown NVPTX opcode");
+        print_mc_shape(shape, input.inst, os);
+        return;
+    }
+
+    fail("unknown NVPTX print input");
+}
+```
+
+## MC Print Shapes
+
+The MC printer is generated in the style of LLVM `AsmWriterEmitter`: each
+opcode maps to a print shape interleaving literal text, operand slots, and
+modifier helpers. Most ordinary ALU, conversion, load/store, branch, and
+call instructions share a small set of repeated shapes.
+
+| Shape family | Example PTX family | Printed structure |
+|---|---|---|
+| One-source move | `mov`, `cvt`, simple special ops | mnemonic, destination, source |
+| Two-source arithmetic | `add`, `mul`, `and`, `or`, `xor` | mnemonic, dst, lhs, rhs |
+| Ternary arithmetic | `mad`, `fma`, `selp` | mnemonic, dst, a, b, c |
+| Predicate compare | `setp`, predicate logic | predicate dst, operands, compare suffix |
+| Load/store | `ld`, `st`, `atom`, vector memory | address-space suffix plus memory operand |
+| Control flow | `bra`, `call`, `ret`, `exit` | target or call prototype operands |
+| Matrix / tensor | `mma`, `wgmma`, `tcgen05`, TMA | shape/type/scope modifiers plus operand groups |
+
+```c
+void print_mc_shape(const McPrintShape *shape, MCInst inst, raw_ostream *os) {
+    for (int i = 0; i < shape->item_count; ++i) {
+        PrintItem item = shape->items[i];
+
+        if (item.kind == PRINT_LITERAL) {
+            os_write(os, item.literal);
+        } else if (item.kind == PRINT_OPERAND) {
+            print_operand(inst, item.operand_index, os);
+        } else if (item.kind == PRINT_MODIFIER) {
+            print_modifier(inst, item.modifier_kind, item.operand_index, os);
+        }
+    }
+}
+```
+
+The printer performs no subtarget legality checks. By the time an opcode
+reaches this layer, the selector and machine verifier have already decided
+it is legal for the chosen target. The printer only renders the selected
+opcode.
+
+## MCOperand Wire Format
+
+The 6,388-case AsmPrinter dispatcher consumes `MCInst` records that are themselves arrays of 16-byte `MCOperand` slots. Every operand seen by `printOperand`, `printMemOperand`, and the modifier helpers shares one layout, which keeps the shared-body dispatcher's `mov rax, [rdi + 16*rcx]` idiom uniform across operand classes.
+
+```c
+typedef struct MCOperand {
+    /*+0x00*/ uint8_t  kind_flags;   // bit 0 = immediate-vs-register
+    /*+0x01*/ uint8_t  type_tag;     // see type-tag table below
+    /*+0x02*/ uint8_t  pad[6];
+    /*+0x08*/ uint64_t value;        // imm value or register number
+} MCOperand;
+```
+
+The `kind_flags` byte carries the discriminator the printer's `switch (MO.getKind())` ladder reads first: bit 0 selects the immediate-versus-register branch, and the high bits carry the smaller `Expr` / `FPImm` cases the selector promotes when an operand needs a symbolic relocation. The `type_tag` byte is the operand's element type. Modifier helpers consult it independently of `kind_flags` because PTX type suffixes are orthogonal to the register-vs-immediate question.
+
+The eight-byte `value` field holds either an immediate (zero-extended to 64 bits) or a register number drawn from the virtual or physical register banks. The six-byte pad between the discriminator pair and the value keeps the value field naturally 8-byte aligned without growing the struct to 24 bytes — a size that would slow the dispatcher's stride arithmetic.
+
+### Type Tag Enum
+
+The `type_tag` byte indexes a small enum the Blackwell block-scale dispatch leans on. The values below are what the SM120 `mma.block_scale` family and the NVFP4 variants read when picking a `.kind::*` suffix; type tags below `12` cover the integer and predicate families and inherit from the LLVM `MVT` numbering.
+
+| Tag | Type | Notes |
+|---:|---|---|
+| 12 | `f16` | Half-precision; selected by `.kind::f16` and packed `.f16x2` paths. |
+| 15 | `E4M3` (`Float8E4M3FN`) | OCP FP8 with 4-bit exponent, finite-only mantissa. |
+| 16 | `E5M2` (`Float8E5M2`) | OCP FP8 with 5-bit exponent, finite-and-Inf mantissa. |
+| 17 | `E2M1` (`Float4E2M1FN`) | OCP MXFP4 / NVFP4 leaf; the `BYTE1 == 17 && BYTE2 == 17` predicate inside the block-scale expander gates `.scale_vec::2X` and `.scale_vec::4X`. |
+| 19 | `tf32` | Selected by `.kind::tf32`; consumed by the legacy `mma.sync` family on SM80 and later. |
+| 20 | `mxf8f6f4` | Block-scaled mixed FP8/FP6/FP4 kind tag; selected by `.kind::mxf8f6f4`. |
+| 21 | `mxf4` | Block-scaled FP4 kind tag; selected by `.kind::mxf4` and `.kind::mxf4nvf4`. |
+
+### SM120 Block-Scale Control Word
+
+The SM120 block-scale MMA expander reads a packed control word from `MCInst + 280`. That offset is the seventh `MCOperand` slot for the dense form (`MI 5468`) and the eighth slot for the sparse form (`MI 5469`). Slot layout: A-fragment, B-fragment, C-accumulator, D-output, SFA handle, SFB handle, control word, optional sparse metadata. The control word's low bytes carry the type tags for A and B, the kind tag, the scale-vec format, and a sync-aligned bit the expander explicitly rejects: only the non-sync-aligned form survives into PTX, and a mismatch produces the `nvvm.mma.blockscale currently supports non-sync aligned variants only!` diagnostic.
+
+```c
+struct NvvmMmaBlockScaleCtrl {  // 32-bit packed, MCInst + 280
+    uint32_t a_type_tag        : 5;  // BYTE1: 15 = E4M3, 16 = E5M2, 17 = E2M1
+    uint32_t b_type_tag        : 5;  // BYTE2: same coding as a_type_tag
+    uint32_t kind_tag          : 3;  // BYTE4: 20 = mxf8f6f4, 21 = mxf4
+    uint32_t block_scale_fmt   : 2;  // BYTE6 bits [4:5]: scale_vec::{1X, 2X, 4X}
+    uint32_t sync_aligned      : 1;  // BYTE6 bit 3: must be 0 for block-scale
+    uint32_t reserved          :16;
+};
+```
+
+The AsmPrinter consults this enum when emitting `mma.block_scale.sync.aligned` and the NVFP4 variants. The pre-flight filters before the shared body fires read `BYTE6 & 0x38` to pick the scale-vec lane, then check `BYTE1` / `BYTE2` against the legal type pairs for that lane. Scale-vec `1X` accepts the mixed-FP4/FP6/FP8 leaf set; scale-vec `2X` requires both type tags to equal `17` (E2M1) and the block-scale format byte to equal `20`; scale-vec `4X` keeps the same E2M1 pair but binds the kind tag to `21` (mxf4nvf4) and emits NVFP4-only. Each filter carries a verbatim diagnostic string in the binary, which the printer never sees because the MC expander rejects the malformed `MCInst` before it reaches a shared body.
+
+### Operand Slot Stride
+
+The dispatcher walks operand slots at the 16-byte stride the wire format dictates, but the SM120 block-scale expander reaches its later slots at a `40-byte` MachineInstr-class stride. `MCInst + 280` therefore corresponds to operand index 7 measured at the inflated MI stride, not at the `MCOperand` stride. A reimplementation that mirrors the AsmPrinter must keep the two strides separate: modifier helpers read `MCOperand` records at offsets `16 * opIdx`; the MC expander reads MI-class operand metadata at offsets `40 * opIdx`. Confusing the two produces operand-aliasing bugs the verifier does not catch, because both layouts agree on slot zero.
+
+## Per-SM Reachability
+
+Per-SM availability is enforced before printing. One opcode always prints
+one PTX spelling; an "SM window" describes which target tiers can reach that
+opcode from instruction selection.
+
+| Target window | Families that become reachable |
+|---|---|
+| SM70 / SM75 | Baseline ALU, memory, control flow, and NVVM-intrinsic MMA paths. |
+| SM80 / SM86 / SM87 | `mma.sync`, `mma.sp.sync`, `ldmatrix`, `cp.async`, async barriers. |
+| SM89 | SM80 surface plus FP8 `mma.sync` type combinations. |
+| SM90 / SM90a | WGMMA, mbarrier, cluster operations, and TMA tensor-copy forms. |
+| SM100 / SM103 | `tcgen05`, tensor-memory forms, Blackwell cluster/TMA extensions. |
+| SM120 / SM121 | Block-scaled warp MMA without tensor-memory `tcgen05`. |
+
+The separation keeps code generation robust: feature predicates decide which
+instruction is selected, and the printer stays deterministic.
+
+## Modifier Helpers
+
+Most complexity in PTX printing comes from suffix construction. Modifier
+helpers map small encoded operands or attributes into PTX tokens.
+
+| Modifier family | Examples |
+|---|---|
+| Rounding and saturation | `.rn`, `.rz`, `.sat`, `.satfinite` |
+| Memory space | `.global`, `.shared`, `.shared::cta`, `.shared::cluster`, `.local` |
+| Memory ordering | `.relaxed`, `.acquire`, `.release`, `.acq_rel`, `.sc` |
+| Scope | `.cta`, `.cluster`, `.gpu`, `.sys`, `.cta::cluster` |
+| Cache policy | `.ca`, `.cg`, `.L2::cache_hint` |
+| CTA grouping | `.cta_group::1`, `.cta_group::2` |
+| Matrix shape | `.m16n8k32`, `.m64nNkK`, `.128x256b` |
+| Matrix type | `.f16`, `.bf16`, `.tf32`, `.e4m3`, `.e5m2`, `.s8`, `.u8` |
+| Tensor-copy suffixes | `.im2col`, `.multicast::cluster`, `.mbarrier::complete_tx::bytes` |
+
+```c
+void print_ldst_code(LdStCode code, raw_ostream *os) {
+    print_memory_space(code.space, os);
+    print_cache_policy(code.cache_policy, os);
+    print_memory_order(code.order, os);
+    print_scope(code.scope, os);
+    print_type_suffix(code.type, os);
+}
+```
+
+Load/store printing is modifier-driven by design. Address-space tokens are not
+ordinary free-text operands; they decode from the selected load/store code so
+invalid order/scope/address-space combinations get rejected before reaching
+this point.
+
+## Module Emission
+
+The outer `NVPTXAsmPrinter` emits PTX module structure around individual
+instructions.
+
+| Module element | Printed PTX |
+|---|---|
+| Header | `.version`, `.target`, `.address_size` |
+| Kernel directives | `.entry`, `.reqntid`, `.maxntid`, `.minnctapersm`, `.maxnreg` |
+| Cluster directives | `.explicitcluster`, `.maxclusterrank`, `.blocksareclusters` |
+| Visibility | `.visible`, `.extern`, `.weak` |
+| Globals | `.global`, `.const`, `.texref`, `.surfref`, `.samplerref` |
+| Managed/unified metadata | `.attribute(.managed)`, `.attribute(.unified(...))` |
+| Function frame | local depot, `%SP`, `%SPL`, virtual register declarations |
+| Function body | brace-delimited PTX instructions |
+
+```c
+void emit_ptx_module(Module module, NvptxTarget target, raw_ostream *os) {
+    emit_ptx_header(target, os);
+    emit_module_globals(module, os);
+
+    for (Function fn : module.functions()) {
+        emit_function_directives(fn, target, os);
+        emit_function_body_start(fn, os);
+        emit_machine_instructions(fn, os);
+        emit_function_body_end(fn, os);
+    }
+}
+```
+
+The `.blocksareclusters` directive requires both thread-block dimensions and
+a cluster dimension. Emitters must diagnose that combination early: a
+header-only correction later cannot repair a malformed kernel launch
+contract.
+
+## Mnemonics and Register Names
+
+Mnemonic lookup is table-driven: the MC opcode indexes a generated table and
+returns the PTX mnemonic stem. Register printing decodes the logical NVPTX
+register class, then prints a PTX register prefix and the register number.
+
+| Register class | PTX prefix | Width | Use |
+|---|---|---:|---|
+| Predicate | `%p` | 1 bit | Predicates and condition flags |
+| 16-bit GPR | `%rs` | 16 bits | Half-width integer storage |
+| 32-bit GPR | `%r` | 32 bits | Integer and bit-pattern values |
+| 64-bit GPR | `%rd` | 64 bits | Pointers and 64-bit integers |
+| 32-bit float view | `%f` | 32 bits | Float spelling of the 32-bit bank |
+| 64-bit float view | `%fd` | 64 bits | Float spelling of the 64-bit bank |
+| 128-bit GPR | `%rq` | 128 bits | Wide descriptors and grouped operands |
+| Special registers | named PTX registers | varies | `%tid.x`, `%laneid`, `%clock64`, etc. |
+
+```c
+void print_register_name(NvptxRegister reg, raw_ostream *os) {
+    switch (reg.class_id) {
+    case REG_PRED:
+        os_printf(os, "%%p%u", reg.number);
+        return;
+    case REG_I16:
+        os_printf(os, "%%rs%u", reg.number);
+        return;
+    case REG_I32:
+        os_printf(os, "%%r%u", reg.number);
+        return;
+    case REG_I64:
+        os_printf(os, "%%rd%u", reg.number);
+        return;
+    case REG_F32:
+        os_printf(os, "%%f%u", reg.number);
+        return;
+    case REG_F64:
+        os_printf(os, "%%fd%u", reg.number);
+        return;
+    case REG_I128:
+        os_printf(os, "%%rq%u", reg.number);
+        return;
+    case REG_SPECIAL:
+        os_write(os, special_register_name(reg));
+        return;
+    }
+
+    fail("bad NVPTX register class");
+}
+```
+
+The 32-bit integer and f32 views share one physical register bank. The
+instruction's type suffix decides whether the value is interpreted as bits,
+integer, or floating point.
+
+## Register Classes
+
+Tileiras exposes the practical NVPTX register classes a reimplementation
+needs for instruction selection and printing.
+
+| Class | PTX type string | Prefix | Notes |
+|---|---|---|---|
+| Predicate | `.pred` | `%p` | Boolean predicates. |
+| 16-bit | `.b16` | `%rs` | Half-width integer or packed data. |
+| 32-bit | `.b32` | `%r` | Main scalar bank. |
+| 32-bit float view | printed as type suffix | `%f` | Alias view of the 32-bit bank. |
+| Special | special names | named | PTX special-register reads. |
+| 64-bit | `.b64` | `%rd` | Pointers, descriptors, and 64-bit scalars. |
+| 128-bit | `.b128` | `%rq` | Wide grouped operands and descriptors. |
+
+Read the f32 class as a typed view over the 32-bit register bank. COPY
+lowering can use ordinary 32-bit moves; instruction printing selects `%f`
+spelling only when the operand is used as a floating-point register.
+
+## AsmWriter String Pools and the XOR-3 Walking Cipher
+
+The MC printer's two string pools live not in `.rodata` like a stock LLVM
+build, but XOR-encrypted in `.data`, decrypted in place during pre-main
+initialization. The mnemonic pool occupies `0x5A4C080..0x5A656F0` —
+exactly `103,536` bytes (~105 KB) — and stores every PTX opcode stem plus
+three AsmWriter tail fragments. The physical-register-name pool occupies
+`0x5A4BE20..0x5A4C06A` — exactly `586` bytes — and stores the 90 named
+registers `printRegName` returns for class 0. Both pools share one cipher
+and one initialization shape; the two init routines `sub_1BD1810` and
+`sub_1BD1830` are 20-line bodies differing only in begin and end pointers.
+
+The cipher is a walking byte XOR with a fully deterministic key schedule
+`k[i] = (3 * i) mod 256`. Because `gcd(3, 256) = 1`, the orbit
+`0, 3, 6, ..., 255, 2, 5, ...` enumerates every residue `0..255` exactly once
+per 256-byte window before repeating. The cipher is linear, byte-granular,
+and trivially invertible by replaying the same pass over the ciphertext. A
+`strings tileiras` scan surfaces zero PTX mnemonics; the design target is
+defeating naive static analysis, not real security.
+
+```c
+void xor3_decode(uint8_t *p, uint8_t *end) {
+    uint8_t k = 0;
+    while (p != end) { *p++ ^= k; k += 3; }
+}
+```
+
+After decryption the mnemonic pool decodes to `3,067` NUL-delimited chunks.
+The first three are AsmWriter tail fragments emitted after the final
+operand of an instruction template: `"},\n\t\t"`, `"},\n\t"`, `";\n\t"`. The
+remaining ~5,500 entries are PTX mnemonic stems plus the per-template
+prefix tokens AsmWriterEmitter packs in front of long-form opcodes. The
+register pool decodes to 90 names covering seven virtual-register-class
+prefixes (`%p`, `%rs`, `%r`, `%rd`, `%f`, `%fd`, `%rq`), the
+parameter-passing prefixes (`%da`, `%fa`, `%ia`, `%la`, `%h`, `%hh`, plus
+32 `%envreg{0..31}` slots), and the three frame registers `%Depot`, `%SP`,
+`%SPL`.
+
+Each decrypter is gated by a `pthread_once` flag in `.bss`. The mnemonic
+pool uses `dword_5B4F4D8`; the register pool uses `dword_5B4F4C0`. Once the
+walking-XOR pass returns, `getMnemonic` runs the Itanium-ABI "safely
+initialize local static" dance to publish the decoded pool's base address
+into a shared cache: `__cxa_guard_acquire` (`sub_44A8A10`) on the
+`byte_5B4F4C8` lock byte, the cache write to `qword_5B4F4D0`, then
+`__cxa_guard_release` (`sub_44A8AC0`). Subsequent calls observe the
+already-acquired guard and skip directly to the table lookup.
+
+## getMnemonic and the Offset Tables
+
+MC opcode lookup is a pair of parallel `.rodata` tables indexed by the
+32-bit MC opcode. `dword_4D4D360` carries the packed mnemonic descriptor:
+low 17 bits hold the byte offset into the decoded mnemonic pool, high 15
+bits hold the per-opcode tail-state bits the print shape consults to pick
+a trailing separator. The companion table `dword_4D468C0` carries the
+operand-width flags, modifier class index, and fragment indices that drive
+the modifier helpers. Both tables hold `6,824` entries of `uint32` each.
+The first `293` slots are zero, matching LLVM's generic `TargetOpcode`
+prelude (`G_ADD`, `G_PHI`, `G_IMPLICIT_DEF`, and the rest); real NVPTX
+opcodes begin at index 293.
+
+```c
+const char *getMnemonic(const MCInst *MI) {
+    pthread_once(&once_mnemonic, init_mnemonic_pool);
+
+    if (!guard_once && __cxa_guard_acquire(&guard_once)) {
+        base_ptr_cache = (uintptr_t)&mnemonic_pool[0];
+        __cxa_guard_release(&guard_once);
+    }
+
+    uint32_t opc       = MI->Opcode;
+    uint32_t offset_tb = mnemonic_offsets[opc];      // dword_4D4D360
+    uint32_t companion = mnemonic_companion[opc];    // dword_4D468C0
+
+    if (offset_tb | ((uint64_t)companion << 32)) {
+        uint32_t off = offset_tb & 0x1FFFF;
+        return (const char *)(base_ptr_cache + off - 1);
+    }
+    return NULL;
+}
+```
+
+The `- 1` bias is LLVM's standard AsmWriterEmitter convention. Offset `0`
+encodes the "no mnemonic" sentinel; the first real mnemonic sits at pool
+byte `0` and is reached through stored offset `1`. The combined zero check
+`offset_tb | (companion << 32)` lets one 64-bit test reject opcodes that
+have neither a mnemonic nor a companion descriptor — no two separate
+branches. The 17-bit offset field saturates at `131,072` bytes; the
+`103,536`-byte payload leaves `26.6 %` headroom, consistent with the
+SM110/SM121 forward-projection allowance baked into this build's MC opcode
+table. The empirical maximum `lo17` observed is `103,806`, which sits
+inside the trailing NUL slack the post-link encoder reserves at the end of
+the pool.
+
+The companion-word `dword_4D468C0` decomposition is inferred from the
+`415`-value cardinality plus the canonical `OpIdx << 8 | ModCls` shape that
+AsmWriterEmitter emits: the low byte carries operand-width flags, the next byte
+indexes the tail-fragment list, the third byte indexes the prefix-fragment
+list, and the top byte selects an AsmWriter modifier class. Mark this MED
+confidence; the byte boundaries are stable but the per-byte semantic naming
+has not been cross-checked against a TableGen build.
+
+| Table | Address | Stride | Count | Purpose |
+|---|---|---|---|---|
+| `word_4D46800` | `0x4D46800` | `u16` | `96` | Register-name offsets into the 586-byte pool. |
+| `dword_4D4D360` | `0x4D4D360` | `u32` | `6,824` | Mnemonic offset (low 17 bits) plus tail state (high 15 bits). |
+| `dword_4D468C0` | `0x4D468C0` | `u32` | `6,824` | AsmWriter companion: operand-width flags, modifier class, fragment indices. |
+
+The `.bss` state cluster lives at four contiguous addresses with an 8-byte
+alignment pad between the guard byte and the cache pointer:
+
+| Slot | Address | Width | Role |
+|---|---|---|---|
+| `dword_5B4F4C0` | `0x5B4F4C0` | `pthread_once_t` | Register-name pool once-flag. |
+| `byte_5B4F4C8` | `0x5B4F4C8` | `uint8_t` | Itanium-ABI `__cxa_guard_*` lock byte for the cache write. |
+| `qword_5B4F4D0` | `0x5B4F4D0` | `uintptr_t` | Cached base pointer of the decoded mnemonic pool. |
+| `dword_5B4F4D8` | `0x5B4F4D8` | `pthread_once_t` | Mnemonic pool once-flag. |
+
+## printRegName and the Register Pool
+
+`printRegName` (`sub_1BD1EB0`) is the printer's 8-way class switch. The
+top four bits of the `MCRegister` value select the class; the low 28 bits
+carry the sequence number for virtual registers or the MCReg enum value
+for physical registers. Class 0 is the physical path: it triggers
+`pthread_once(&dword_5B4F4C0, init_reg_name_pool)`, indexes the
+register-name pool through `word_4D46800[r - 1]`, then writes the resulting
+NUL-terminated string to the output stream. The `- 1` bias mirrors the
+mnemonic-pool convention; `MCRegister 0` is the "no register" sentinel.
+Classes 1 through 7 print the seven virtual-register prefixes catalogued
+in the [Mnemonics and Register Names](#mnemonics-and-register-names)
+section above, concatenated with the low 28 bits as a decimal sequence
+number. The decoded 586-byte pool therefore carries the strings the
+class-0 path returns directly — physical envregs, parameter-passing
+prefixes, frame registers — plus the per-class "first virtual register of
+class N" exemplars the MC layer emits for register-allocation dumps.
+
+## MC Switch Shape Population Table
+
+The MC printer's dispatcher is a single `switch` over `6,388` MC opcodes
+covering every selectable NVPTX instruction in this build. `case` arms do
+not each carry a distinct printer body; most fall through to one of `297`
+shared body labels that emit textually-identical PTX. Compression is
+steep: the fifteen most-populated shared bodies absorb roughly `80 %` of
+all dispatch traffic, and the top-eight bodies alone shape the bulk of the
+printer's output behaviour.
+
+| Shared body | Opcode count | Skeleton |
+|---|---:|---|
+| `LABEL_18639` | `120` | slot 3 plus 1-byte terminator (e.g. `cvt.{type}.{type}.{rnd} {reg}, {reg};`) |
+| `0x1C40201` | `577` | mnemonic, operands, terminator (the dominant ALU shape) |
+| `0x1C4097D` | `267` | 4-operand form (e.g. `mma.sync.aligned {rd, rs1, rs2, rs3};`) |
+| `0x1C40B59` | `108` | `[addr], reg` form (e.g. `st {addr}, {reg};`) |
+| `0x1C409DF` | `96` | 2-operand reg-reg (e.g. `mov.{type} {rd}, {rs};`) |
+| `0x1C40AAF` | `84` | 3-operand plus modifier (e.g. `set.{cmp}.{type} {rd}, {rs1}, {rs2};`) |
+| `LABEL_18984` | (slot 8) | predicated form |
+| `LABEL_18729` | (slot 5) | conditional form |
+
+Shared body `0x1C40201` is the centre of mass of the table. It prints the
+canonical "mnemonic, comma-separated operands, semicolon" shape every
+ordinary ALU instruction takes, so a reimplementation that gets exactly
+this one body right covers more than `9 %` of MC opcodes on its own. The
+four `0x1C40...` bodies together (the `201`, `97D`, `B59`, `9DF`, `AAF`
+cluster) form the ALU and memory backbone; the two `LABEL_*` entries cover
+the predicated and conditional forms the selector synthesises around
+guarded instructions.
+
+### 18-Family Non-MMA Partition
+
+Beyond the top-eight shared bodies, the AsmPrinter groups the non-MMA
+opcodes into eighteen families `F1` through `F18` keyed by operand shape.
+The partition is operand-driven rather than mnemonic-driven: opcodes whose
+PTX text differs in mnemonic but agrees in operand layout share a family,
+and the per-opcode flag word in the jump table picks the right mnemonic
+stem out of the XOR-3 mnemonic pool. The largest family is `F1`, the
+load/store mega-group, which carries its own inner sub-dispatcher because
+LD and ST must discriminate address space, predication, sparsity, and
+tensor-memory variants before the shared body can pick the correct PTX
+spelling.
+
+### Inner LD/ST 13-Label Table
+
+`F1` dispatches through a `13`-label sub-table that splits the load/store
+opcodes by address space, predication, and tensor-memory variant:
+
+| Sub-label | Opcode family |
+|---:|---|
+| 1 | Generic load. |
+| 2 | Generic store. |
+| 3 | Constant-AS load. |
+| 4 | Param-AS load. |
+| 5 | Shared-AS load/store. |
+| 6 | Global-AS load/store. |
+| 7 | Local-AS load. |
+| 8 | TMEM load/store. |
+| 9 | Bulk-tensor load. |
+| 10 | Bulk-tensor store. |
+| 11 | Sparse load. |
+| 12 | Predicated load. |
+| 13 | Predicated store. |
+
+Sub-labels 8 through 11 are the tensor-memory and bulk-tensor variants
+reachable only from the SM100 window onward; sub-labels 12 and 13 carry
+the predicated forms the selector emits when a guard predicate survives
+into the MC layer.
+
+### MC Opcode to Label Cascade
+
+Each MC opcode in the dispatcher's jump table holds a `u32` index packed
+as `{shared_label_id << 16 | per-op flag bits}`. The high 16 bits select
+the shared body; the low 16 bits encode the operand-flavour tweaks (FTZ,
+satfinite, modifier kind, address-space hint, and so on) the shared body
+consults via `currentOp & 0xFFFF`. This is the canonical AsmWriterEmitter
+compression pattern, fingerprinted in the binary by the
+`mov rax, [rdi + 4*rcx]` plus `mov ecx, eax; shr rax, 16` idiom at the
+entry of every shared body.
+
+```c
+void emit_mc_opcode(MCInst inst, raw_ostream *os) {
+    uint32_t entry  = jump_table[inst.opcode];
+    uint32_t label  = entry >> 16;
+    uint32_t flags  = entry & 0xFFFF;
+
+    print_shared_body(label, inst, flags, os);
+}
+```
+
+The split is strict: a shared body never reads opcode identity directly.
+It reads only the flag word handed to it by the dispatcher, plus the
+operand indices its skeleton dictates. That is what lets `297` bodies
+absorb `6,388` opcodes without per-opcode branching inside the bodies
+themselves.
+
+### Reimplementation Budget
+
+Recreating the dispatcher in a clean reimplementation takes four
+artefacts. The first three are bulk data; the fourth carries the
+per-operand encoding rules the modifier helpers consume.
+
+| Artefact | Shape | Source |
+|---|---|---|
+| Shared-body table | `297` labels with operand-skeleton scripts. | Disassembled from the asm-printer body cluster. |
+| MC opcode jump table | `6,388` entries of `{label, flags}` packed as `u32`. | Reconstructed from the per-case jump targets. |
+| Mnemonic pool | XOR-3-encrypted, `3,067` NUL-delimited chunks. | See the [XOR-3 walking cipher](#asmwriter-string-pools-and-the-xor-3-walking-cipher) section. |
+| Offset tables | `dword_4D4D360`, `dword_4D468C0`, `word_4D46800`. | See [getMnemonic and the Offset Tables](#getmnemonic-and-the-offset-tables). |
+
+Ship these four artefacts as static data plus the `297` body scripts as a
+small interpreter loop and the entire MC printer surface comes back
+without per-opcode code generation. The
+[ISelDAG and MatcherTable](iseldag-and-matchertable.md) page documents the
+upstream stage feeding these MC opcodes into the printer, and the
+[XOR-3 walking cipher](#asmwriter-string-pools-and-the-xor-3-walking-cipher)
+section above covers the mnemonic-pool side of the budget.

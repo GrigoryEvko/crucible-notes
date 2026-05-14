@@ -5,27 +5,27 @@
     <meta name="google-site-verification" content="8Iyc1Kf9r8UlYNiDw5Qa3RRuOAXbvy_YknQJMUi5ckY">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>nvopen-tools</title>
-    <meta name="description" content="Reverse engineering reference for NVIDIA's CUDA compiler toolchain — cicc, ptxas, cudafe++, nvlink, nvptxcompiler. 545+ pages of reimplementation-grade documentation from static binary analysis.">
+    <meta name="description" content="Reverse engineering reference for NVIDIA's CUDA compiler toolchain — cicc, tileiras, ptxas, cudafe++, nvlink, nvptxcompiler. 680+ pages of reimplementation-grade documentation from static binary analysis.">
     <link rel="canonical" href="https://gh.evko.io/nvopen-tools/index.html">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="images/favicon.png">
     <link rel="icon" type="image/png" sizes="192x192" href="images/favicon-192.png">
     <link rel="apple-touch-icon" sizes="256x256" href="images/apple-touch-icon.png">
     <meta property="og:title" content="nvopen-tools — NVIDIA CUDA Compiler Internals">
-    <meta property="og:description" content="545+ pages of reverse-engineered documentation for NVIDIA's CUDA compiler toolchain: cicc (LLVM-based C-to-PTX), ptxas (PTX-to-SASS assembler), cudafe++ (EDG frontend), nvlink (device linker).">
+    <meta property="og:description" content="680+ pages of reverse-engineered documentation for NVIDIA's CUDA compiler toolchain: cicc, tileiras, ptxas, cudafe++, and nvlink.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://gh.evko.io/nvopen-tools/">
-    <meta name="keywords" content="NVIDIA, CUDA, ptxas, cicc, cudafe++, nvlink, nvptxcompiler, compiler internals, reverse engineering, PTX, SASS, GPU, LLVM, Mercury, Blackwell, register allocation, instruction scheduling">
+    <meta name="keywords" content="NVIDIA, CUDA, ptxas, cicc, tileiras, Cuda Tile IR, MLIR, cudafe++, nvlink, nvptxcompiler, compiler internals, reverse engineering, PTX, SASS, GPU, LLVM, Mercury, Blackwell, register allocation, instruction scheduling">
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="nvopen-tools — NVIDIA CUDA Compiler Internals">
-    <meta name="twitter:description" content="545+ pages of reverse-engineered documentation for NVIDIA's CUDA compiler toolchain.">
+    <meta name="twitter:description" content="680+ pages of reverse-engineered documentation for NVIDIA's CUDA compiler toolchain.">
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "WebSite",
       "name": "nvopen-tools",
       "url": "https://gh.evko.io/nvopen-tools/",
-      "description": "Reverse engineering reference for NVIDIA's CUDA compiler toolchain — cicc, ptxas, cudafe++, nvlink. 545+ pages of reimplementation-grade documentation.",
+      "description": "Reverse engineering reference for NVIDIA's CUDA compiler toolchain — cicc, tileiras, ptxas, cudafe++, nvlink. 680+ pages of reimplementation-grade documentation.",
       "author": {
         "@type": "Person",
         "name": "Grigory Evko",
@@ -295,6 +295,12 @@
                     <td>CUDA C&rarr;PTX compiler, 60 MB, LLVM 20.0.0 + EDG 6.6</td>
                     <td><a href="./cicc/">wiki</a></td>
                     <td><a href="./cicc/"><span class="badge badge-live">Live</span></a></td>
+                </tr>
+                <tr>
+                    <td><a href="./tileiras/"><strong>tileiras</strong></a></td>
+                    <td>Cuda Tile IR optimizing assembler, 88 MB, MLIR bytecode &rarr; TileAS &rarr; PTX/SASS, 143 pages</td>
+                    <td><a href="./tileiras/">wiki</a></td>
+                    <td><a href="./tileiras/"><span class="badge badge-live">Live</span></a></td>
                 </tr>
                 <tr>
                     <td><a href="./cudafe++/"><strong>cudafe++</strong></a></td>

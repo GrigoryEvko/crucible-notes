@@ -9,6 +9,7 @@ Reverse engineering reference for NVIDIA's CUDA compiler toolchain.
 | Component | Description | Docs | Status |
 |---|---|---|---|
 | **cicc** | CUDA C→PTX compiler (60 MB, LLVM 20.0.0 + EDG 6.6) | **[wiki](https://gh.evko.io/nvopen-tools/cicc/)** | 267 pages |
+| **tileiras** | Cuda Tile IR optimizing assembler (88 MB, MLIR bytecode → TileAS → PTX/SASS) | **[wiki](https://gh.evko.io/nvopen-tools/tileiras/)** | 143 pages |
 | **ptxas** | PTX→SASS assembler (37.7 MB, proprietary, 159-phase pipeline) | **[wiki](https://gh.evko.io/nvopen-tools/ptxas/)** | 73 pages |
 | **nvlink** | GPU device linker (37 MB, 95% embedded ptxas) | **[wiki](https://gh.evko.io/nvopen-tools/nvlink/)** | 92 pages |
 | **nvcc** | CUDA compilation driver | — | Decompiled |
