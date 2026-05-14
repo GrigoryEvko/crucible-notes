@@ -4,7 +4,7 @@
 
 The CTA/cluster family is the cluster-aware tier of the `nv_tileas` lowering pipeline. Where schedule and layout passes shape work inside a single CTA, this family shapes how multiple CTAs in a Hopper or Blackwell cluster cooperate and how a single CTA cycles through program-IDs across the grid. It bundles `OptimizeExecutionUnitMapping` (D12), `DynamicPersistent` (D16), `InsertOCGKnobs` (D17), `PlanCTA` (D19), and the D20 aux cluster (`RemoveBufferAlias`, `RemoveLayoutConversions`, `Slicing`, `PrepareForScheduling`, `ResolveAgentBoundary`). The `SinkNegF` sibling rides with `InsertOCGKnobs` — the binary places them adjacent and they share the same `Pass` SSO layout. All of these run after agent materialization and before final schedule and TMA-descriptor generation.
 
-Cluster geometry comes from upstream: the `nv_tileaa.kernel_spec` attribute (read via `sub_152FDF0` / `sub_152FE00` in D19) carries `num_ctas` and an auxiliary scalar. This family propagates the consequences through layouts (`PlanCTA`), register/warp groups (`OptimizeExecutionUnitMapping`), per-CTA work distribution (`DynamicPersistent`), and scheduler-knob pragmas baked into late IR (`InsertOCGKnobs`). The Blackwell 4-CTA MMA path, the DSMEM cluster handshake, and the 2-CTA TMEM copy all consume the IR shape established here — they live in the `ConvertTileASToLLVM` boundary and the `cute_nvgpu` rewriter strand, but the conditions driving them are set right here.
+Cluster geometry comes from upstream: the `nv_tileaa.kernel_spec` attribute (read via `sub_152FDF0` / `sub_152FE00` in D19) carries `num_ctas` and an auxiliary scalar. This family propagates the consequences through layouts (`PlanCTA`), register/warp groups (`OptimizeExecutionUnitMapping`), per-CTA work distribution (`DynamicPersistent`), and scheduler-knob pragmas baked into late IR (`InsertOCGKnobs`). The Blackwell 4-CTA MMA path, the DSMEM cluster handshake, and the 2-CTA TMEM copy all consume the IR shape established here — they live in the `ConvertTileASToLLVM` boundary and the `cute_nvgpu` rewriter family, but the conditions driving them are set right here.
 
 ## Ordering Context
 
@@ -209,7 +209,7 @@ Eleven of these arms carry no static caller edge in `tileiras_callgraph.json` �
 
 ## D20 aux passes
 
-The D20 strand bundles the rest of the per-FunctionOp cluster-aware transforms.
+The D20 group bundles the rest of the per-FunctionOp cluster-aware transforms.
 
 `TileASRemoveBufferAliasPass` (`sub_7DACE0`, 11 402 bytes) iterates a worklist of `nv_tileas.alloc_tensor` ops to a fixed point, collapsing aliases introduced by `arith.select` / `scf.while`. Convergence failure emits `"TileASRemoveBufferAliasPass failed to converge"`; unsupported ops yield `"RemoveBufferAlias: not supported operation type"`; `scf.while`-yielded aliases yield `"Yielded alias not implemented yet"`.
 
@@ -219,7 +219,9 @@ The D20 strand bundles the rest of the per-FunctionOp cluster-aware transforms.
 
 `TileASPrepareForScheduling` (`sub_8C4F80`) fetches compute capability via `sub_13FB490`, threads it through an `argv` bundle, and invokes walker `sub_8C4590` with leaf `sub_8C4710`. When the leaf finds `FunctionOpInterface` on both op and parent, it fires the 9 943-byte per-function kernel at `sub_8C1EB0`, which runs six serial sub-passes (names baked at `0x4606C6D` onward): `decomposeTiledLoadStoreView`, `refineVecSizeOfAtoms`, `sliceAndFuse`, `runCanonicalizer`, `compactMemLayout`, `refreshBoxDim`. Step 2 picks between `ld.global.v2/v4/v8` based on compute capability; step 6 is Blackwell-mandatory and recomputes TMA box dimensions for every `tiled_load` / `tiled_store` whose view step 1 modified — `cp.async.bulk.tensor.Nd` traps on SM100+ when the descriptor's boxDim vector mismatches the final view.
 
-`TileASResolveAgentBoundaryPass` shows up in the pass-registry table but no body has a strong string anchor in the surveyed range; the likely shape is a short renumbering pass on `nv_tileas.agent_switch` edges after agent materialisation.
+`TileASResolveAgentBoundaryPass` (CLI `tileas-resolve-agent-boundary`) is the cluster-family pass that legalises values crossing an `nv_tileas.async.pipeline.agent_switch` boundary. Warp-specialized programs partition work across producer, consumer, and compute agents; values that flow from one agent's region into another's cannot always stay as direct SSA values because the consuming agent runs on a different warp set and reads operands from a different physical register file or shared-memory bank. This pass inserts the IR shape that delivers those values across the boundary — typically a shared-memory handoff combined with a layout conversion sized to the destination agent's expected shape.
+
+The pass body has no strong string anchor in the surveyed range, so the exact rewriter shape is not pinned. The contract, however, is fixed by what the downstream lowering passes assume on input: after this pass runs, every value that crosses an `agent_switch` boundary either stays as a direct SSA value (when the destination agent can consume it in place) or has been materialised through a `nv_tileas.alloc_tensor` / `nv_tileas.copy` / `nv_tileas.convert_layout` chain that delivers it in the destination layout. Named-barrier emission stays deferred — that is a separate pass's responsibility. The pass scope is `FunctionOpInterface`, the gate is post-agent-materialisation (i.e. after `MaterializeSchedule` has emitted the `agent_switch` ops), and the only invariant downstream consumers rely on is the handoff shape itself, not the precise op sequence used to materialise it.
 
 ## Blackwell 4-CTA MMA path (BG06)
 

@@ -147,7 +147,7 @@ The `cutlass` dialect is the IR shape of the orchestration classes living in `cu
 | `BlockStriped<T>::load/store/reduce` | `cutlass.block_striped.{load,store,reduce}` (eight-op family) |
 | `MODS` telemetry hooks (`cutlass::mods::*`) | `cutlass.tile_scheduler.mods_*` ops (side-effecting) |
 
-Two structural points. First, most of CUTLASS's class-template instantiations turn into op attributes on a small set of ops, so a kernel using three pipelines and two schedulers is described by a few dozen ops rather than by template specialisations in a thousand-line header. Second, the participant model — producers, consumers, warp-specialised executors — lives in explicit lists on the init op, cross-checked by `PipelineInitOp::verify` at `sub_1771F40` before the lowering pass ever runs.
+Two structural points. First, most of CUTLASS's class-template instantiations turn into op attributes on a small set of ops, so a kernel using three pipelines and two schedulers is described by a few dozen ops rather than by template specialisations in a thousand-line header. Second, the participant model — producers, consumers, warp-specialized executors — lives in explicit lists on the init op, cross-checked by `PipelineInitOp::verify` at `sub_1771F40` before the lowering pass ever runs.
 
 ## Cross-links
 

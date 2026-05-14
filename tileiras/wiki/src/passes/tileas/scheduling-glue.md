@@ -92,7 +92,7 @@ With trace output enabled, the pass emits a Chrome tracing JSON stream. The usef
 
 ## Register-Loop Unroll Tagging
 
-`TileASUnrollRegisterLoops` (D10) is the smallest pass in this strand. It attaches a single `#llvm.loop_annotation<unroll = <enable>>` attribute to ops D08 already marked as the root of a reg-to-reg copy sequence. The pass unrolls nothing itself — it writes metadata so LLVM's `LoopUnrollPass` fires on the resulting loop later in the NVPTX backend, after `convert-scf-to-cf` and `LowerLoopAnnotation` turn the `scf.for` body into an `llvm.br`/`llvm.phi` cycle carrying the `!llvm.loop` MD node.
+`TileASUnrollRegisterLoops` (D10) is the smallest pass in this family. It attaches a single `#llvm.loop_annotation<unroll = <enable>>` attribute to ops D08 already marked as the root of a reg-to-reg copy sequence. The pass unrolls nothing itself — it writes metadata so LLVM's `LoopUnrollPass` fires on the resulting loop later in the NVPTX backend, after `convert-scf-to-cf` and `LowerLoopAnnotation` turn the `scf.for` body into an `llvm.br`/`llvm.phi` cycle carrying the `!llvm.loop` MD node.
 
 The pass triple lives at `0x825590` (`getName` returning `"TileASUnrollRegisterLoops"`), `0x8255A0` (`getArgument` returning `"tileas-unroll-register-loops"`), and `0x8255B0` (`getDescription` returning `"Unroll loops that access slices of register tensors"`). `getDependentDialects` at `0x8256B0` loads `nv_tileaa` and `nv_tileas`. The pass exposes no options: no `Option<...>` registrations appear in the range, and no command-line wrappers reference it beyond the argument string.
 

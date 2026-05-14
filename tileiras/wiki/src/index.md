@@ -1,6 +1,6 @@
 # Tileiras - MLIR-Based Optimizing Assembler
 
-Tileiras is NVIDIA's CUDA Tile IR optimizing assembler, shipped with CUDA 13.1 as a separate compiler binary. It consumes serialized MLIR bytecode for a tile program, lowers that program through NVIDIA tile dialects and NVPTX code generation, invokes the assembler toolchain, and writes a host relocatable object containing the compiled GPU payload.
+Tileiras is NVIDIA's CUDA TileIR optimizing assembler, shipped with CUDA 13.1 as a separate compiler binary. It consumes serialized MLIR bytecode for a tile program, lowers that program through NVIDIA tile dialects and NVPTX code generation, invokes the assembler toolchain, and writes a host relocatable object containing the compiled GPU payload.
 
 The useful way to think about tileiras is not as a C++ compiler and not as a replacement for `cudafe++`. Tileiras starts after a frontend has already described the GPU work in MLIR. Its job is to make that tile-level program executable on Blackwell-family GPUs.
 
@@ -117,39 +117,38 @@ In CUDA 13.1, tileiras is best understood as a sibling device compiler to `cicc`
 CUDA C++ source path:
     CUDA C++ -> cudafe++ / cicc -> LLVM/NVVM -> PTX -> ptxas
 
-Tile IR path:
+TileIR path:
     MLIR bytecode -> tileiras -> LLVM/NVVM -> PTX -> ptxas
 ```
 
 That distinction matters for debugging. If tileiras rejects a program, the failure is normally in bytecode schema, dialect verification, tile lowering, scheduling, NVVM conversion, or PTX assembly. It is not a C++ frontend failure.
 
-## Practical Reading Paths
+## How to Read This Wiki
 
-For tool users and integrators, start with:
+The wiki is dense. Pick a path based on what you need.
 
-- [Driver Overview](driver/overview.md)
-- [CLI Options](driver/cli-options.md)
-- [Host Launch and ptxas Knobs](driver/host-launch-and-ptxas-knobs.md)
-- [Subprocess Harness](driver/subprocess-harness.md)
-- [Position in nvcc 13.1](boundaries/nvcc-13-1-position.md)
+**For reimplementers** — building a compatible CUDA TileIR compiler:
 
-For bytecode producers, read:
+1. Start with [Boundaries](boundaries/nvcc-13-1-position.md) to fix tileiras's position in the CUDA toolchain.
+2. Read [Program Layout](binary-layout.md) for the executable shape and subsystem map.
+3. Read [Pipeline Overview](pipeline/overview.md) for the top-to-bottom cascade.
+4. Drill into whichever subsystem you are implementing: dialects, scheduler, lowering, codegen, or NVPTX passes. Each subsystem page is a reimplementation-grade contract.
 
-- [MLIR Bytecode Format](bytecode/mlir-bc-format.md)
-- [Dialect Reader/Writer Status](bytecode/dialect-readers-status.md)
-- [cuda_tile Overview](dialects/cuda_tile/overview.md)
-- [cuda_tile Op Roster](dialects/cuda_tile/op-roster.md)
-- [TypeID Sentinel Table](reference/typeid-sentinel-table.md)
+**For users** — running tileiras or diagnosing failures:
 
-For reimplementation work, read in pipeline order:
+1. Start with [Driver Overview](driver/overview.md) for the public C-API and CLI surface.
+2. Read [CLI Options](driver/cli-options.md) for the full driver option list.
+3. Read [Full Pass List by Opt Level](pipeline/full-pass-list-by-opt-level.md) to see which passes run at each `-O` level.
+4. Jump to the specific pass page for whatever behavior you are investigating. The [Reading Map](bibliography.md) curates ordered sequences for common subsystems.
 
-- [Pipeline Overview](pipeline/overview.md)
-- [cuda_tile](dialects/cuda_tile/overview.md), [nv_tileaa](dialects/nv_tileaa/overview.md), and [nv_tileas](dialects/nv_tileas/overview.md)
-- [TileAS Pass Families](passes/tileas/scheduling-glue.md)
-- [Scheduler Overview](scheduler/overview.md)
-- [Lowering Overview](lowering/overview.md)
-- [Codegen Overview](codegen/overview.md)
-- [NVPTX Passes](nvptx-passes/overview.md)
+**For a guided tour** — sample the writing quality and depth:
+
+1. [Modulo Scheduler and Rau](scheduler/modulo-scheduler-and-rau.md) — the scheduler exemplar, reimplementation depth.
+2. [MLIR Bytecode Format](bytecode/mlir-bc-format.md) — the wire-format contract.
+3. [cuda_tile Overview](dialects/cuda_tile/overview.md) — the public input IR.
+4. [Lowering Overview](lowering/overview.md) — the conversion cascade in one page.
+
+**For specific topics** — see the [Specialized Topics](topics/addrspace-vote-lattice.md) cluster and the [Reading Map](bibliography.md) for curated reader paths through scheduler, codegen, dialect lowering, and OSS comparison.
 
 Reference catalogs such as the function map, opcode rosters, and sentinel tables are intentionally denser. They are for lookup and audit work; the subsystem pages are the narrative documentation.
 

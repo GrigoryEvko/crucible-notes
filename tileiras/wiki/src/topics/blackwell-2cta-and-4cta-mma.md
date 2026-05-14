@@ -6,7 +6,7 @@ Blackwell tensor-core lowering separates the cooperative copy from the matrix in
 
 Tileiras lowers the `cute_nvgpu.atom.make_s2t_copy` atom through one shared MLIR rewrite path. That path builds a `cute.tiled.copy`, optionally guards it with an `scf.if`, and later lowers the copy to the `tcgen05.cp` family. The sibling IMMA and WGMMA atom paths do not read the cluster CTA-rank special register; rank-aware partitioning is specific to S2T copy lowering.
 
-The cluster fan-out lives on the copy side, not the MMA side. PTX gives `tcgen05.mma` only `cta_group::1` and `cta_group::2`; there is no `cta_group::4` MMA encoding. The 4-CTA shape must therefore be a copy-time partition that produces four already-sliced TMEM destinations, and the MMA that follows is a plain single-CTA matrix instruction over the per-CTA slice. A reimplementation that puts the fan-out on the MMA side will fail to encode anything in PTX. The DSMEM handshake described in [DSMEM Handshake and Cluster Barrier](dsmem-handshake-and-cluster-barrier.md) is the synchronisation companion of this copy lowering: the multicast S2T copy advertises its transaction bytes to peer CTAs through exactly that handshake.
+The cluster fan-out lives on the copy side, not the MMA side. PTX gives `tcgen05.mma` only `cta_group::1` and `cta_group::2`; there is no `cta_group::4` MMA encoding. The 4-CTA shape must therefore be a copy-time partition that produces four already-sliced TMEM destinations, and the MMA that follows is a plain single-CTA matrix instruction over the per-CTA slice. A reimplementation that puts the fan-out on the MMA side will fail to encode anything in PTX. The DSMEM handshake described in [Cluster Sync and DSMEM Handshake](cluster-sync-and-dsmem-handshake.md) is the synchronisation companion of this copy lowering: the multicast S2T copy advertises its transaction bytes to peer CTAs through exactly that handshake.
 
 ## Copy-Side Ownership
 
@@ -37,6 +37,32 @@ static Value *build_s2t_copy_predicate(Rewriter *rewriter, CtaGroup group) {
     return make_warp_uniform_i1(rewriter, low_bit != 0);
 }
 ```
+
+The `make_warp_uniform` wrap is structural, not cosmetic. The `cluster.ctarank` SReg is per-CTA — every thread in a CTA reads the same value — but the rewrite emits the predicate at warp scope. Without the warp-uniform wrapper the verifier rejects the predicate as a control-flow operand that could diverge between lanes; with it, every lane in the producing warp agrees on the predicate value, and the downstream `tcgen05.cp` instruction (which requires warp-uniform predicates by ISA contract) accepts the operand. The wrapper is a no-op at runtime — it tells the verifier and downstream codegen that the SSA value is provably warp-uniform.
+
+## Cluster Sibling Pairing
+
+The 2-CTA cluster MMA pairs each CTA with its sibling through the `cluster.ctarank XOR 1` peer-selection idiom. The XOR maps rank 0 to peer 1, rank 1 to peer 0, rank 2 to peer 3, rank 3 to peer 2 — every even-ranked CTA pairs with the odd-ranked CTA one slot above it.
+
+```c
+int32_t peer_rank = nvvm_read_cluster_ctarank(rewriter) ^ 1;
+```
+
+The peer rank then feeds into the multicast destination address for the cooperative `tcgen05.cp` copy. The DSMEM handshake covered in [Cluster Sync and DSMEM Handshake](cluster-sync-and-dsmem-handshake.md) is what makes the cross-CTA address dereference legal — the multicast copy advertises its transaction bytes to the peer CTA's mbarrier through the cluster transaction protocol before the destination address becomes readable on the peer side.
+
+The 4-CTA group-mapping partitions the cluster into 2-CTA groups by rank parity:
+
+```c
+int32_t group_id = nvvm_read_cluster_ctarank(rewriter) % 2;
+```
+
+Group 0 holds CTAs at even ranks (0, 2, ...), group 1 holds the odd-ranked CTAs. Inside each group the same `XOR 1` sibling rule applies. The two groups never share TMEM destinations — the `partition_D` step splits the destination into four quarter slices and gives each group two adjacent quarters to fill cooperatively.
+
+## CTA Group Control Word
+
+The `cta_group` field is a 2-bit bitfield inside the `tcgen05.mma` instruction's control word: encoding `01` selects single-CTA MMA, `10` selects the 2-CTA cooperative MMA. The encoding has no 4-CTA value — the hardware would have to interpret the remaining slot `11` as either reserved or as something it does not implement, and the PTX ISA assigns it neither. The structural consequence is what makes the 4-CTA shape a copy-side partition rather than an MMA-side encoding: the producer's `cta_group` bits select 1 or 2, the matrix instruction runs over its already-partitioned per-CTA slice, and the cluster fan-out lives entirely on the `tcgen05.cp` side that fed the slices.
+
+The `cta_group` bits sit alongside the rest of the `Tcgen05MmaKind` enum in the instruction's kind-and-modifier control word; the corrected bitfield layout (after the 2-bit `cta_group` field was disambiguated from the surrounding kind bits) is the same control word the modifier-cascade canonicaliser threads through every `tcgen05.mma` emission.
 
 ## CTA-Group Mapping
 

@@ -2,7 +2,7 @@
 
 ## Abstract
 
-A single 104-byte program handle represents one Tile IR translation unit in the tileiras driver. The public C-API surface exposes only an opaque pointer, but the recovered allocation is a fixed 0x68-byte block built by `sub_57A480` (`tileirasProgramCreate`) and consumed by `sub_57A8E0` (`tileirasProgramCompile`), `sub_57A850` (`tileirasProgramGetOutput`), and `sub_57A7C0` (`tileirasProgramRelease`). Every offset is reachable from the four public entry points, and the layout stays stable across the three create/compile/release call sites in the driver binary.
+A single 104-byte program handle represents one TileIR translation unit in the tileiras driver. The public C-API surface exposes only an opaque pointer, but the recovered allocation is a fixed 0x68-byte block built by `sub_57A480` (`tileirasProgramCreate`) and consumed by `sub_57A8E0` (`tileirasProgramCompile`), `sub_57A850` (`tileirasProgramGetOutput`), and `sub_57A7C0` (`tileirasProgramRelease`). Every offset is reachable from the four public entry points, and the layout stays stable across the three create/compile/release call sites in the driver binary.
 
 The handle stores the validated driver configuration, a small ownership bit, and an inline byte view that doubles as a CUDA-root pointer during early lifetime and as the compiled-output byte span after compile. Storage at `+0x48` lives a two-phase life: the slot holds the resolved CUDA install root while the front end runs, then the same 16 bytes are repurposed to track the compiled output buffer once `sub_57A8E0` finishes.
 
@@ -21,7 +21,7 @@ Every entry point in the driver's public C API returns a small integer status. F
 | 2 | `opt_level > 3` | `invalid optimization level` | 2563 |
 | 2 | unsupported host arch (not in `{0, 1, 2}`) | `unsupported host architecture` | 2563 |
 | 2 | unsupported host OS (not in `{0, 1}`) | `unsupported host operating system` | 2563 |
-| 3 | parse failure on Tile IR bytecode magic | `input does not correspond to Tile IR bytecode` | 260 |
+| 3 | parse failure on TileIR bytecode magic | `input does not correspond to Tile IR bytecode` | 260 |
 | 3 | parse failure with MLIR fall-through | `failed to parse IR bytecode (it looks like MLIR bytecode instead)` | 260 |
 | 4 | null `program` (`Compile`, `GetOutput`, `Release`) | `program is null` | 2563 |
 | 4 | null output pointer (`GetOutput`) | `output pointer is null` | 2563 |
@@ -167,4 +167,4 @@ The handle is 104 bytes. The option fields at `+0x10..+0x28` are eight contiguou
 
 ## Cross-References
 
-[Driver main() Entry](main-entry.md) documents how the handle is threaded through the four-phase driver and how the configuration is built from `cl::opt` storage. The compile dispatcher that mutates the handle is described in the Tile IR compile pipeline pages.
+[Driver main() Entry](main-entry.md) documents how the handle is threaded through the four-phase driver and how the configuration is built from `cl::opt` storage. The compile dispatcher that mutates the handle is described in the TileIR compile pipeline pages.

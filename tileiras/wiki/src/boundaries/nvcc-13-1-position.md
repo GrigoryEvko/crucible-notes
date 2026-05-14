@@ -59,11 +59,11 @@ Inside `tileiras`, the MLIR bytecode reader parses the input into a `builtin.mod
 
 ## Driver invocation: how nvcc chooses which compiler
 
-Selection visible in the `tileiras` driver is input-format-driven. The command line accepts one positional argument named `"<tile bytecode file>"`, and the public creation path expects one byte buffer containing valid Tile IR bytecode. A null buffer returns error code 2 with the diagnostic `"null inputBuffer provided, expected valid bytecode buffer"`. A malformed buffer returns error code 3 with `"failed to parse IR bytecode"` or `"input does not correspond to Tile IR bytecode"`. If the byte stream appears to be ordinary upstream MLIR bytecode rather than Tile IR bytecode, the diagnostic appends `" (it looks like MLIR bytecode instead)"`.
+Selection visible in the `tileiras` driver is input-format-driven. The command line accepts one positional argument named `"<tile bytecode file>"`, and the public creation path expects one byte buffer containing valid TileIR bytecode. A null buffer returns error code 2 with the diagnostic `"null inputBuffer provided, expected valid bytecode buffer"`. A malformed buffer returns error code 3 with `"failed to parse IR bytecode"` or `"input does not correspond to Tile IR bytecode"`. If the byte stream appears to be ordinary upstream MLIR bytecode rather than TileIR bytecode, the diagnostic appends `" (it looks like MLIR bytecode instead)"`.
 
 There is no C++ parsing path in `tileiras`: no EDG frontend, no `.int.c` emission, no CUDA C frontend, and no source-level kernel-launch lowering. The driver contract starts after source-language analysis has already happened.
 
-The `nvcc` driver therefore routes work between the two compilers based on the input artifact rather than a runtime flag inside either tool. `.cu` translation units flow through `cudafe++` and into `cicc`; serialized Tile IR bytecode flows directly into `tileiras`. No flag inside `tileiras` toggles between the two paths. A reimplementation of the nvcc driver layer should classify the input artifact before dispatch and should reject ambiguous bytecode early with the same diagnostics users see from `tileiras`.
+The `nvcc` driver therefore routes work between the two compilers based on the input artifact rather than a runtime flag inside either tool. `.cu` translation units flow through `cudafe++` and into `cicc`; serialized TileIR bytecode flows directly into `tileiras`. No flag inside `tileiras` toggles between the two paths. A reimplementation of the nvcc driver layer should classify the input artifact before dispatch and should reject ambiguous bytecode early with the same diagnostics users see from `tileiras`.
 
 ## Shared downstream: ptxas
 
@@ -167,4 +167,4 @@ else:
     reject the input before invoking either compiler
 ```
 
-The important invariant is that the choice happens before either compiler starts. Once PTX has been produced, the downstream assembly path no longer needs to know whether the source was CUDA C++ or Tile IR bytecode.
+The important invariant is that the choice happens before either compiler starts. Once PTX has been produced, the downstream assembly path no longer needs to know whether the source was CUDA C++ or TileIR bytecode.

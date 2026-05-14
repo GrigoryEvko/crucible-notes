@@ -23,7 +23,7 @@ The non-exec atoms pay off because layout and partitioning can be verified befor
 
 ## Partition Op and Mode Enums
 
-The TMA atom family rooted at `cute_nvgpu.tma_partition` routes every executable and non-exec TMA atom through one partition op — the canonical place where descriptor shape, transfer mode, multicast cardinality, and reduce kind are validated together. The partition verifier `sub_17A08D0` (4 598 B) enforces eleven invariants on every TMA partition op and, on success, returns a packed result record per partitioned tile.
+The TMA atom family rooted at `cute_nvgpu.tma_partition` routes every executable and non-exec TMA atom through one partition op — the canonical place where descriptor shape, transfer mode, multicast cardinality, and reduce kind are validated together. The partition verifier enforces eleven invariants on every TMA partition op and, on success, returns a packed result record per partitioned tile.
 
 Three mode enums select the transfer variant. Load-mode covers single-CTA, two-CTA cooperative, and warp-multicast loads at two granularities; store-mode covers tiled stores and im2col-flavour stores; reduce-kind covers the asynchronous reduces the hardware supports.
 
@@ -53,40 +53,93 @@ The enums are part of the verifier's input contract. Consistency between load mo
 
 ## Partition Result ABI
 
-`sub_17A08D0` returns one 24-byte `TmaPartitionResult` per partitioned tile, packed into a `SmallVector` owned by the verifier and forwarded to the executable-atom builder.
+The partition verifier returns one packed `TmaPartitionResult` per partitioned tile into a `SmallVector` owned by the verifier and forwarded to the executable-atom builder. The 24-byte record carries the interned TMA tensor type, the tile element count, a flags word, and the non-exec atom body that downstream lowering consumes.
 
 ```c
 typedef struct TmaPartitionResult {
-    /*+0x00*/ uint64_t   descriptor_handle;     // i32-handle into the per-CTA descriptor table
-    /*+0x08*/ uint32_t   smem_offset;           // SMEM byte offset for the tile
-    /*+0x0C*/ uint32_t   element_count;         // number of elements in the tile
-    /*+0x10*/ uint8_t    swizzle_mode;          // 0=none, 1=128B, 2=64B, 3=32B
-    /*+0x11*/ uint8_t    rank;                  // descriptor rank (1..5)
-    /*+0x12*/ uint16_t   flags;                 // bit 0 = multicast, bit 1 = im2col, ...
+    /*+0x00*/ uint64_t   tma_tensor_type;       // interned MLIR Type * (TmaLoad/Store/ReduceAtomType)
+    /*+0x08*/ uint32_t   tile_element_count;    // size(canonical_smem) * num_multicast
+    /*+0x0C*/ uint16_t   flags;                 // see "Flags Word" below
+    /*+0x0E*/ uint8_t    swizzle_mode;          // 0=none, 2=128B, 3=32B/64B blend
+    /*+0x0F*/ uint8_t    rank;                  // descriptor rank (1..5)
+    /*+0x10*/ uint64_t   non_exec_atom_body;    // interned non-exec atom Attribute *
 } TmaPartitionResult;
 ```
 
-Total record size is 24 bytes. Only the descriptor handle, SMEM offset, and element count get consumed during lowering. Rank, swizzle, and flags are echoed back so downstream passes do not have to re-derive them from the descriptor type.
+Only the tensor type and atom body get consumed during executable-atom binding. The flags word, swizzle mode, and rank are echoed back so the executable-atom builder and downstream prefetch logic do not have to re-derive them from the descriptor type.
+
+### Flags Word
+
+The 16-bit `flags` word records every property the partition verifier learned about the tile while it was walking the layout — the multicast mode, the im2col shape, the sparsity tier, the two-CTA cooperative bit, and a handful of operand-source bits used to short-circuit later checks. Downstream passes read this word bit-by-bit rather than re-running the partition algorithm.
+
+| Bit | Field | Meaning |
+|---:|---|---|
+| 0 | `multicast` | tile lowers to a multicast TMA load (W or W128) |
+| 1 | `im2col` | tile is im2col-flavoured (rank reduced before transfer) |
+| 2 | `im2col_w` | im2col with warp-cooperative offset table |
+| 3 | `im2col_w128` | im2col with wide warp-cooperative offset table (128-thread) |
+| 4 | `two_cta` | 2-CTA cooperative load; CTA V-map has been folded into the SMEM layout |
+| 5 | `sparse` | metadata operand present; sparsity-aware stride walk |
+| 6 | `static_smem` | SMEM layout passed the static-shape predicate |
+| 7 | `static_vmap` | CTA V-map passed the static-shape predicate |
+| 8 | `gmem_int_stride` | GMEM layout passed the integer-stride walk |
+| 9 | `smem_int_stride` | SMEM layout passed the integer-stride walk |
+| 10 | `shape_equiv` | top-level shape equivalence between SMEM and V-map held |
+| 11 | `g_basis_ok` | G-basis computation returned a valid layout |
+| 12 | `s2t_descriptor` | result wraps a `get_copy_s2t_smem_desc` view (Blackwell SMEM-to-tmem descriptor) |
+| 13 | `prefetch_eligible` | descriptor handle survives prefetch (no per-axis dynamism that would invalidate it) |
+| 14 | `reserved` | — |
+| 15 | `reserved` | — |
+
+Bits 6 through 13 mirror the predicate checks the eleven-step verifier ran in steps 4 through 7 and 11. Folding the outcomes back into the flags word lets the executable-atom builder skip the equivalent predicates entirely — the partition verifier is the only place where these layout invariants get checked.
 
 ## Eleven-Step Partition Verifier
 
-`sub_17A08D0` walks eleven invariants in fixed order. Each invariant emits a verbatim diagnostic on failure; the strings are part of the user-visible contract and a reimplementation must preserve them byte-for-byte.
+The partition verifier walks eleven invariants in fixed order. Each gate emits a verbatim diagnostic on failure; the strings are part of the user-visible contract and a reimplementation must preserve them byte-for-byte.
 
-| # | Invariant | Diagnostic |
+| # | Step | Verbatim diagnostic |
 |---|---|---|
-| 1 | Descriptor rank gate | `"TMA descriptor rank must be 1..5"` |
-| 2 | Element type whitelist | `"TMA descriptor element type must be one of {f16, bf16, f32, s8, e4m3}"` |
-| 3 | Shape compatibility | `"TMA descriptor box-shape mismatch with tile-shape"` |
-| 4 | Swizzle-size check | `"TMA descriptor swizzle mode incompatible with tile element size"` |
-| 5 | GMEM stride alignment | `"TMA descriptor stride must be 16-byte aligned"` |
-| 6 | Multicast cardinality | `"TMA descriptor multicast count must be in {1, 2, 16, 128}"` |
-| 7 | Im2col preconditions | `"TMA descriptor im2col mode requires box-shape >= filter-shape"` |
-| 8 | SMEM-side alignment | `"TMA descriptor smem offset must be 16-byte aligned"` |
-| 9 | Reduce-mode AS check | `"TMA descriptor reduce kind requires destination to be global memory"` |
-| 10 | Mode exclusivity | `"TMA descriptor cannot mix multicast and im2col"` |
-| 11 | Element-count cap | `"TMA descriptor element count exceeds 65536"` |
+| 1 | Type gate on the SMEM and GMEM operands | `"invalid operand types, got "` |
+| 2 | SMEM layout-kind gate (`LayoutType` or `ComposedLayoutType`) | `"invalid smem layout type, expected LayoutType or ComposedLayoutType, got "` |
+| 3 | GMEM layout-kind gate | `"unsupported layout for the GMEM tensor, got "` |
+| 4 | Integer-stride walk on both layouts | `"expected the GMEM and SMEM layouts to have integer stride elements, but got "` |
+| 5 | SMEM layout must be a swizzle layout | `"expected the SMEM layout to be a swizzle layout, but got "` |
+| 6 | SMEM layout and CTA V-map must be static | `"expected the SMEM layout and the CTA V-map to be static, but got "` |
+| 7 | Top-level shape equivalence between SMEM and V-map | `"expected top-level shape equivalence between the SMEM layout and the CTA V-map, but got "` |
+| 8 | TMA G-basis computation | `"failed to compute the TMA G-basis, got "` |
+| 9 | Final TMA layout validity check | `"Computed TMA layout is invalid, got "` |
+| 10 | TMA tensor-type construction | `"Failed to construct the TMA tensor type"` |
+| 11 | Multicast-count consistency (load variant only) | `"missing or invalid num_multicast for a multicast TMA load"` |
 
-Order matters. The cheap structural gates — rank, element type, shapes — run before the more expensive cross-field checks like mode exclusivity and element-count cap. Treat only the descriptor base pointer, per-axis dimension sizes, and non-leading strides as device-mutable. Rank, element type, swizzle, multicast count, and mode are descriptor-construction facts and cannot change once the partition op has verified.
+Order matters. The cheap type and structural gates — steps 1 through 6 — run before the more expensive G-basis and layout-product computations in steps 8 and 9. Step 11 is specific to the load variant; the store and reduce variants skip it because TMA store and reduce never take a multicast operand.
+
+A twelfth string `"got num_multicast of "` is emitted as a companion to step 11 when the multicast mode is non-multicast (mode 0 or mode 2) but the supplied `num_multicast` value is not 1. The two error paths share the same `FAIL` label and treat the pair as one diagnostic: a missing or zero multicast count for a multicast mode, or a non-unit count for a non-multicast mode.
+
+Treat only the descriptor base pointer, per-axis dimension sizes, and non-leading strides as device-mutable. Rank, element type, swizzle, multicast count, and mode are descriptor-construction facts and cannot change once the partition op has verified.
+
+## Worked Example: Rank-6 Rejection
+
+A TMA descriptor builder consuming a rank-6 input lands on step 1 of the partition verifier. The SMEM and GMEM types print as a rank-6 layout, which is outside the accepted `LayoutType` / `ComposedLayoutType` union the partition core requires, and the diagnostic chain emits the verbatim ladder shown below before the verifier returns failure.
+
+```mlir
+// Input op — rank 6 is one above the TMA hardware cap.
+%bad = cute_nvgpu.atom.non_exec_tiled_tma_load
+       %desc_r6, %tile_r6, %cta_map_r6 : !cute_nvgpu.tma_descriptor_tiled
+```
+
+```text
+error: invalid operand types, got !cute.layout<(a,b,c,d,e,f),...>, !cute.layout<(a,b,c,d,e,f),...>, and !cute.layout<...>
+```
+
+The rank-6 tile prints into the first `<smem_ty>` slot, the rank-6 GMEM type into the second `<gmem_ty>` slot, and the CTA V-map into the trailing `<v_map_ty>` slot. The verifier prints all three because the failing condition is a *combination* — the type gate runs on the trio as a unit, so the diagnostic must show every operand that participated.
+
+A stride-4-byte (not 16-byte-aligned) input fails one step later. Steps 1 through 3 pass because the layout kinds are accepted; step 4 walks the GMEM stride tuple, finds a non-integer or below-16-byte entry, and emits:
+
+```text
+error: expected the GMEM and SMEM layouts to have integer stride elements, but got !cute.layout<...>, and !cute.layout<...>
+```
+
+The two printed layouts are the GMEM and SMEM layouts in the same order step 1 printed them. The trailing `" and "` between the two arguments is the same shared format helper the type-gate diagnostic uses.
 
 ## Descriptor Builder
 
@@ -190,7 +243,7 @@ TMA load completes through an mbarrier — a consumer must wait on the barrier b
 
 ## Descriptor Mutation
 
-Device-side descriptor mutation is limited. Expose dedicated operations for allowed changes rather than a general byte write:
+Device-side descriptor mutation is limited to three fields: the global base pointer, per-axis dimension extents, and non-leading strides (the leading stride is implicit element-size and never written). The atom dialect exposes those three changes as dedicated update kinds rather than as a general byte write, so verification can reject any other mutation at IR construction time:
 
 ```c
 void update_tma_descriptor(TmaDescriptor *desc, TmaUpdate update) {
@@ -211,6 +264,8 @@ void update_tma_descriptor(TmaDescriptor *desc, TmaUpdate update) {
 }
 ```
 
+The three update kinds map directly to the `tensormap.replace.tile.{global_address, global_dim, global_stride}` PTX mutator family. The rebind sequence on the device side — acquire fence, address write, `rank` dim writes, `rank-1` stride writes, release fence — and the proxy-fence ordering that pairs each rebind with its `cp.async.bulk.tensor.*` consumer is documented in [TMA + Tensormap + cp.async.bulk Emission](../../codegen/tma-tensormap-and-cp-async-bulk.md). The descriptor builder above is the partition-time view; the atom-lowering page covers how the runtime side issues those three mutators in the contractually mandated order.
+
 ## If You Know CUTLASS (open source) — cross-walk
 
 Coming from CUTLASS Hopper/Blackwell TMA usage:
@@ -226,7 +281,7 @@ Coming from CUTLASS Hopper/Blackwell TMA usage:
 | `cute::prefetch_tma_descriptor(tmap)` | `cute_nvgpu.prefetch_tma_desc` op |
 | `mbarrier::arrive_and_expect_tx(mbar, bytes)` paired with TMA | barrier operand + `expect_tx` attribute on the executable TMA op |
 
-The structural difference: in CUTLASS the descriptor is an opaque `CUtensorMap` blob bound at runtime. Tileiras carries rank, element width, swizzle mode, box shape, and stride layout as typed IR attributes the partition verifier (`sub_17A08D0`) re-checks before each TMA op lowers. Device-side mutation is restricted to base pointer, per-axis dimension, and non-leading stride (see Descriptor Mutation above) — the same surface the hardware allows, exposed through dedicated ops rather than raw byte writes.
+The structural difference: in CUTLASS the descriptor is an opaque `CUtensorMap` blob bound at runtime. Tileiras carries rank, element width, swizzle mode, box shape, and stride layout as typed IR attributes the partition verifier re-checks before each TMA op lowers. Device-side mutation is restricted to base pointer, per-axis dimension, and non-leading stride (see Descriptor Mutation above) — the same surface the hardware allows, exposed through dedicated ops rather than raw byte writes.
 
 ## Worked Example
 
@@ -259,4 +314,8 @@ After lowering the executable load becomes a `cp.async.bulk.tensor`-style op wit
 - Descriptor base, dimensions, and strides are the only mutable device fields.
 - TMA load completion is ordered through an mbarrier.
 - Im2col and multicast modes are architecture-gated.
+
+## Cross-References
+
+[Mode Pattern Verifiers](mode-pattern-verifiers.md) documents the swizzle-legality, UMMA, and tcgen05 verifiers that the TMA partition core composes with. [SM Tier Roster and Copy Atom Registry](sm-tier-roster-and-copy-atom-registry.md) covers the SM90/SM100/SM120 atom interfaces TMA atoms implement. [Atom Builders and Desugar](../cute/atom-builders-and-desugar.md) covers the kernel-entry ABI that hoists TMA descriptors as `.param` constant-space arguments.
 

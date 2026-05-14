@@ -28,25 +28,12 @@ nv_tileas.dot              -> nvvm.wgmma.* (SM90) or nvvm.tcgen05.mma (SM100)
 
 ## Pass Ordering
 
-```c
-LogicalResult lower_tileas_to_llvm(ModuleOp module, LoweringOptions options) {
-    if (failed(convert_tile_functions_to_llvm(module, options))) {
-        return failure();
-    }
+The LLVM lowering stage is two passes that the driver runs in sequence:
 
-    if (failed(convert_tileas_bodies_to_llvm(module, options))) {
-        return failure();
-    }
+1. `ConvertTileFuncToLLVM` rewrites `nv_tileaa.func` and `nv_tileaa.return` into `func.func` and `func.return`, applies the bare-pointer kernel ABI, and translates the kernel-spec attribute set into `nvvm.*` discardable attributes.
+2. `ConvertTileASToLLVM` rewrites bodies in nine phases (described below), starting with shared-memory global synthesis and ending with cast reconciliation.
 
-    if (failed(reconcile_unrealized_casts(module))) {
-        return failure();
-    }
-
-    return success();
-}
-```
-
-`ConvertTileFuncToLLVM` handles `nv_tileaa.func` and returns. `ConvertTileASToLLVM` handles executable bodies, shared-memory globals, async pipelines, descriptor materialization, TileAS memory operations, CuTe helpers, and cleanup.
+Function-boundary conversion runs first because body conversion needs LLVM-typed function arguments: every body pattern that reads or writes a kernel argument depends on the bare-pointer ABI having been applied. Reversing the order would produce body lowerings against argument types that are still `nv_tileaa`-typed, and the cast-reconciliation phase would have nothing to reconcile against.
 
 ## Function Boundary Conversion
 
@@ -381,4 +368,8 @@ LogicalResult lower_arith_constant(ConstantOp op, Rewriter *rw, TypeConverter *t
 - TileAA and TileAS executable operations must not survive terminal conversion.
 - Temporary unrealized casts must be reconciled before serialization.
 - Inline assembly must remain narrowly scoped to missing NVVM dialect coverage.
+
+## Cross-References
+
+[Overview](overview.md) places this pass at the LLVM-lowering stage between TileAS scheduling and companion-dialect lowering. [TileAA to TileAS](tileaa-to-tileas.md) is the upstream producer whose CopyAtom and ReduceAtom witnesses this pass resolves into concrete hardware primitives. [CuTe and CuTe-NVGPU to LLVM](cute-and-cute_nvgpu-to-llvm.md) and [nvgpu / gpu to NVVM](nvgpu-and-gpu-to-nvvm.md) are the companion passes that lower the surviving `cute.*`, `cute_nvgpu.*`, `gpu.*`, and `nvgpu.*` operations after this pass. [Pattern Set and Type Converter](pattern-set-and-typeconverter.md) describes the shared LLVM type converter every pattern in this pass threads through.
 

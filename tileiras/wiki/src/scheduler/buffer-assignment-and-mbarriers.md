@@ -19,10 +19,10 @@ The four phases run unconditionally in order. Phase 1 and Phase 2 are gating —
 
 ```c
 LogicalResult bufferAssign(FunctionOpInterface fn) {
-    if (failed(resolveLifetime(fn)))            return emit("fails to resolve lifetime");      // Phase 1
-    if (failed(assignNamedBarriers(fn)))        return emit("fails to assign named barrier"); // Phase 2
+    if (failed(resolveLifetime(fn)))           return emit("fails to resolve lifetime");      // Phase 1
+    if (failed(assignNamedBarriers(fn)))       return emit("fails to assign named barrier"); // Phase 2
     for (PipelineValue *pv : pipelineValues(fn)) {                                            // Phase 3
-        BufferClass cls = pickBufferClass(pv);
+        BufferClass cls = classify_buffer(pv);
         if (cls == SMEM && failed(assignSmem(pv))) return emit("fails to assign smem buffer");
         if (cls == TMEM && failed(assignTmem(pv))) return emit("fails to assign tmem buffer");
     }
@@ -33,66 +33,137 @@ LogicalResult bufferAssign(FunctionOpInterface fn) {
 
 ## Phase 1 — Resolve Lifetime
 
-`sub_1367080` walks every `nv_tileas.async.pipeline.create_pipeline` op and computes the live range of its produced values across the loop body. The walk starts at the producer op and follows the SSA use-def chain through every consumer in the same region, terminating at the last use before the end of the loop body. For pipelined producers the live range crosses the iteration boundary in modulo space; the walker normalizes endpoints into `(stage, cycle)` pairs so Phase 4 can compare them.
+Phase 1 walks every `nv_tileas.async.pipeline.create_pipeline` op and computes the live range of its produced values across the loop body. The walk starts at the producer op and follows the SSA use-def chain through every consumer in the same region, terminating at the last use before the end of the loop body. For pipelined producers the live range crosses the iteration boundary in modulo space, so the walker normalises endpoints into `(stage, cycle)` pairs that Phase 4 can later compare.
 
-Allocation-predecessor collection rides in Phase 1. `sub_135CD10` walks each pipeline value's producer chain — the back-cone of `AllocationOpInterface`-tagged ops — and records them in the lifetime computation, so the assigner sees the full set of buffers that must coexist at every point in the iteration. AllocationOpInterface dispatch routes through `sub_1365310`.
+Alongside the live-range walk, Phase 1 builds an alias table that records which pipeline values must share storage because they refer to the same underlying buffer. The table is keyed on a memory-flow root — the upstream `AllocationOpInterface` op that produced the buffer — and seeded by walking every pipeline value's back-cone of allocation ops, then probing the table with find-or-insert semantics.
 
-A lifetime that resists normalization (cyclic producer chain, missing iteration anchor, or producer-without-consumer) is fatal. The pass emits `"fails to resolve lifetime"` and aborts before any barrier or buffer is committed.
+```c
+LogicalResult resolveLifetime(FunctionOpInterface fn) {
+    AliasTable alias = alias_table_create();
+
+    for (PipelineValue *pv : pipelineValues(fn)) {
+        Operation *root = walk_memory_flow_to_alloc(pv->producer);
+        if (root == NULL) return failure();                  // unanchored back-cone
+
+        // Find-or-insert. probe() returns the existing slot or installs a new one.
+        AliasSlot *slot = alias_table_probe(&alias, root);
+        if (slot->head == NULL) {
+            slot->head = pv;
+        } else {
+            link_into_alias_chain(slot->head, pv);
+        }
+
+        if (failed(compute_modulo_lifetime(pv))) return failure();
+    }
+
+    return success();
+}
+```
+
+The alias-table probe uses the same DenseMap shape every scheduler intern table uses: hash `(root>>9) ^ (root>>4)` against a power-of-two capacity, stride-1 linear probe, and the canonical `-4096` / `-8192` sentinels in slot byte 0 (see [Container Fingerprints](../mlir-infra/container-fingerprints.md)). Phase 4 reads the resulting chains to decide which pipeline values are eligible for buffer sharing — two values that share an alias chain trivially share storage.
+
+A lifetime that resists normalisation — a cyclic producer chain, a missing iteration anchor, or a producer with no consumer — is fatal. The pass emits `"fails to resolve lifetime"` and aborts before any barrier or buffer is committed.
 
 ## Phase 2 — Assign Named Barriers
 
-`sub_13692A0` delegates to `sub_1368BF0`, which walks the pipeline-value list and hands each producer/consumer pair one named mbarrier slot. Blackwell exposes 32 named mbarriers per CTA; the slot index is encoded as a small integer that the later materializer turns into a `bar.sync` operand.
+Phase 2 walks the pipeline-value list and hands each producer/consumer pair one NamedBarrier slot. NamedBarriers are the 32-slot `bar.sync` mechanism per CTA — distinct from the transactional mbarrier object that other pipeline pages discuss. See [mbarrier State Machine](../topics/mbarrier-state-machine.md) for the structural disambiguation. The slot index is encoded as a small integer that the later materializer turns into a `bar.sync` operand.
 
-The 32-slot pool is the binding constraint. The binder first tries to allocate a fresh slot for each pair. When the pool is exhausted, it falls back to reuse: two pairs whose lifetimes do not overlap in the steady-state schedule can share one slot. The overlap test reuses the `(stage, cycle)` endpoints computed in Phase 1. If neither fresh allocation nor reuse succeeds for some pair, the pass emits `"fails to assign named barrier"` and aborts.
+The 32-slot pool is the binding constraint. The binder maintains a 32-entry table of currently-bound `(stage, cycle)` lifetime ranges, one per slot. For each pipeline value, it scans slots in index order looking first for an unbound slot (the fresh-allocate path), then for a slot whose recorded lifetime does not overlap the candidate's lifetime in steady-state `(stage, cycle)` space (the reuse path). The overlap test is the standard interval check on the modulo-normalised endpoints Phase 1 produced.
 
 ```c
 LogicalResult assignNamedBarriers(FunctionOpInterface fn) {
-    NamedBarrierPool pool(32);
+    SlotState slots[32] = {0};                             // all slots start unbound
+
     for (PipelineValue *pv : pipelineValues(fn)) {
-        if (int slot = pool.allocateFresh(); slot >= 0) {
-            pv->namedBarrier = slot;
-            continue;
+        // Fresh-allocate pass: pick the lowest-indexed unbound slot.
+        int chosen = -1;
+        for (int s = 0; s < 32; ++s) {
+            if (!slots[s].bound) { chosen = s; break; }
         }
-        if (int slot = pool.reuseDisjoint(pv->lifetime); slot >= 0) {
-            pv->namedBarrier = slot;
-            continue;
+        // Reuse pass: pick the lowest-indexed slot whose lifetime is disjoint.
+        if (chosen < 0) {
+            for (int s = 0; s < 32; ++s) {
+                if (lifetimes_disjoint(slots[s].lifetime, pv->lifetime)) {
+                    chosen = s;
+                    break;
+                }
+            }
         }
-        return failure();
+        if (chosen < 0) return failure();                  // pool exhausted
+
+        slots[chosen].bound = true;
+        slots[chosen].lifetime = merge_lifetimes(slots[chosen].lifetime, pv->lifetime);
+        pv->namedBarrier = chosen;
     }
     return success();
 }
 ```
 
-The named-barrier index later lands in the `Mutex_` header documented in [Pipe_ and Mutex_ Value-Header Layout](pipe-mutex-value-layout.md).
+Index-order scanning keeps the allocation stable across builds — two compilations of the same function produce the same slot assignments. Reuse stays correct because `lifetimes_disjoint` works on the modulo-normalised endpoints: two pairs whose live ranges never coexist in the steady state can share one hardware slot without producing a barrier collision.
+
+When neither fresh allocation nor reuse succeeds for some pair, the pass emits `"fails to assign named barrier"` and aborts. The named-barrier index later lands in the `Mutex_` header documented in [Pipe_ and Mutex_ Value-Header Layout](pipe-mutex-value-layout.md).
 
 ## Phase 3 — Pick Buffer Class and Bind
 
-`sub_13606F0` decides whether each pipeline value lives in SMEM or TMEM, then dispatches to the matching binder. The SMEM path runs `sub_1356650` (region selection) followed by `sub_13513A0` (offset assignment within the chosen region). The TMEM path runs `sub_1360730`, the tmem-binder, which allocates from the TMEM region and writes the handle into the pipeline-value record.
+Phase 3 decides whether each pipeline value lives in SMEM or TMEM, then dispatches to the matching binder. The SMEM path first selects a region inside the SMEM allocation pool, then assigns an offset within that region. The TMEM path allocates a handle from the TMEM region and writes it into the pipeline-value record.
 
-A heuristic table decides buffer class. Tile-shaped values with element types of at least 8 bits and total size above 16 KB land in TMEM; everything else stays in SMEM. The threshold reflects Blackwell's TMEM geometry — TMEM is the high-capacity tile store and is too coarse for sub-tile or small-element traffic. The Blackwell `tmem` subtarget feature gates TMEM allocation; on subtargets that do not advertise it, `sub_13606F0` collapses to SMEM. The feature flag is the same one documented in [NVPTX Subtarget and Feature Matrix](../codegen/nvptx-subtarget-and-feature-matrix.md).
+Buffer-class selection is a deterministic function of the value's shape, element type, and producer/consumer pattern. The class names the storage domain; the producer/consumer pattern picks the correct binder mode within that domain.
 
-Each pipeline value gets a 0x348-byte record allocated via `sub_44A8C20(0x348)`. The record carries the producer-op pointer, the variadic list of consumer-op pointers, the buffer-class enum (SMEM/TMEM/named-barrier-only), the SMEM byte offset or TMEM handle, the named-barrier index from Phase 2, the steady-state stage count, and the `(stage, cycle)` lifetime endpoints. TMA descriptor traffic also lands in this record; the TMA path is documented in [TMA, Tensormap and cp.async.bulk](../codegen/tma-tensormap-and-cp-async-bulk.md).
+```c
+BufferClass classify_buffer(const PipelineValue *pv) {
+    Shape s = pv->tile_shape;
+    Type  e = pv->element_type;
 
-A binder failure is fatal: the pass emits `"fails to assign smem buffer"` or `"fails to assign tmem buffer"` and aborts. Common causes are SMEM exhaustion at the chosen stage count, an oversize tile that exceeds the TMEM region, or an alignment requirement that cannot be satisfied at the candidate offset.
+    // Subtarget gate: without the Blackwell tmem feature there is no TMEM domain.
+    if (!subtarget_has(TMEM_FEATURE)) {
+        return SMEM;
+    }
+
+    // Tile-shaped values with byte-element types and a footprint above the
+    // TMEM threshold land in TMEM; everything else stays in SMEM.
+    bool tile_shaped   = s.rank >= 2 && shape_is_2d_tile(s);
+    bool byte_elements = element_bits(e) >= 8;
+    size_t footprint   = shape_bytes(s, e);
+
+    if (tile_shaped && byte_elements && footprint > TMEM_FOOTPRINT_THRESHOLD) {
+        return TMEM;
+    }
+    return SMEM;
+}
+```
+
+The threshold reflects Blackwell's TMEM geometry. TMEM is the high-capacity tile store and is too coarse for sub-tile or small-element traffic, so anything that is not a full byte-element tile drops back to SMEM. The Blackwell `tmem` subtarget feature is the gate documented in [NVPTX Subtarget and Feature Matrix](../codegen/nvptx-subtarget-and-feature-matrix.md); subtargets without it collapse the classifier to SMEM-only.
+
+Once the class is fixed, the binder allocates a per-value record. The record carries the producer-op pointer, the variadic list of consumer-op pointers, the buffer-class enum (SMEM, TMEM, or named-barrier-only), the SMEM byte offset or TMEM handle, the named-barrier index from Phase 2, the steady-state stage count, and the `(stage, cycle)` lifetime endpoints. TMA descriptor traffic also lands in this record; the TMA path is documented in [TMA, Tensormap and cp.async.bulk](../codegen/tma-tensormap-and-cp-async-bulk.md).
+
+A binder failure is fatal. The pass emits `"fails to assign smem buffer"` or `"fails to assign tmem buffer"` and aborts. Common causes are SMEM exhaustion at the chosen stage count, an oversize tile that exceeds the TMEM region, or an alignment requirement that cannot be satisfied at the candidate offset.
 
 ## Phase 4 — Share Buffers
 
-Phase 4 walks the union-find pipeline-id helper `sub_1361790` and merges pipelines whose lifetimes are disjoint. Two pipeline values qualify as merge candidates when their lifetimes do not overlap in steady-state `(stage, cycle)` space and they agree on buffer class, element type, and footprint. The merge collapses two records into one, keeping a single SMEM offset or TMEM handle.
+Phase 4 pools pipeline values into shared physical buffers. The pool is a union-find keyed on pipeline-value identity; each equivalence class names one physical buffer. Two pipeline values qualify to merge when their buffer class, element type, and footprint agree exactly and their `(stage, cycle)` lifetimes are disjoint in the steady-state schedule. Buffer-class agreement is the legality gate; lifetime disjointness is the correctness gate.
 
-Each successful merge emits the diagnostic `"share pipeline buffer"`. Failures here are not fatal — an unmerged pipeline simply keeps its own buffer. Phase 4 exists to recover SMEM and TMEM capacity in deep pipelines, where the modulo scheduler can produce many pipeline values whose lifetimes never actually coexist at any one cycle.
+The lifetime overlap test mirrors Phase 2's: a merged class records the union of its members' live ranges, and a new member joins only when its live range stays disjoint from that union. That keeps the merge associative — merging `(a, b)` and then `(ab, c)` produces the same outcome as merging `(b, c)` first.
 
 ```c
 void sharePipelineBuffers(FunctionOpInterface fn) {
-    UnionFind uf = buildPipelineIdHelper(fn);                  // sub_1361790
+    UnionFind uf = uf_init(pipelineValueCount(fn));
+
     for (auto [a, b] : candidatePairs(fn)) {
-        if (!disjointLifetimes(a, b))            continue;
-        if (a->bufferClass != b->bufferClass)    continue;
-        if (a->footprint  != b->footprint)       continue;
-        uf.merge(a, b);
+        if (a->bufferClass   != b->bufferClass)   continue;     // legality gate
+        if (a->element_type  != b->element_type)  continue;
+        if (a->footprint     != b->footprint)     continue;
+
+        Lifetime la = uf_class_lifetime(&uf, a);
+        Lifetime lb = uf_class_lifetime(&uf, b);
+        if (!lifetimes_disjoint(la, lb))          continue;     // correctness gate
+
+        uf_union(&uf, a, b);
         emit("share pipeline buffer");
     }
 }
 ```
+
+Each successful merge emits the diagnostic `"share pipeline buffer"`. Failures here are not fatal — an unmerged pipeline simply keeps its own buffer. Phase 4 exists to recover SMEM and TMEM capacity in deep pipelines, where the modulo scheduler can produce many pipeline values whose lifetimes never actually coexist at any one cycle.
 
 ## Per-Record Allocation
 

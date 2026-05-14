@@ -252,7 +252,7 @@ dominates the surface area.
 | `nv_tileas.async.gather_tma_load` | 31 | anchor `&unk_5B44F08` | TMA gather load | `dialects/nv_tileas.md` |
 | `nv_tileas.async.insert_slice` | 29 | anchor `&unk_5B44F08` | async slice insert | `dialects/nv_tileas.md` |
 | `nv_tileas.async.load` | 21 | anchor `&unk_5B44F08` | async load | `dialects/nv_tileas.md` |
-| `nv_tileas.async.pipeline.agent_switch` | 37 | anchor `&unk_5B44F08` | warp-specialise agent boundary | `dialects/nv_tileas.md` |
+| `nv_tileas.async.pipeline.agent_switch` | 37 | anchor `&unk_5B44F08` | warp-specialized agent boundary | `dialects/nv_tileas.md` |
 | `nv_tileas.async.pipeline.consume_one` | 36 | anchor `&unk_5B44F08` | one-stage consume | `dialects/nv_tileas.md` |
 | `nv_tileas.async.pipeline.consume_one_async` | 42 | anchor `&unk_5B44F08` | one-stage async consume | `dialects/nv_tileas.md` |
 | `nv_tileas.async.pipeline.consumer_read` | 38 | anchor `&unk_5B44F08` | consumer protocol read | `dialects/nv_tileas.md` |
@@ -882,31 +882,3 @@ mnemonics emitted by tileiras-driven lowerings. Dialect TypeID anchor is
 | `llvm.return` | 11 | upstream | return | `dialects/upstream-llvm.md` |
 | `llvm.select` | 11 | upstream | select | `dialects/upstream-llvm.md` |
 | `llvm.shufflevector` | 18 | upstream | vector shuffle | `dialects/upstream-llvm.md` |
-
-## Tier
-
-T3 — deep reference, complete op mnemonic enumeration.
-
-## Confidence
-
-HIGH for all NVVM entries (213 ops): both the mnemonic and TypeID
-singleton come from per-op records in `p5-HH01`, walked from the
-registrar driver `sub_2EFC390`. HIGH for cuda_tile, nv_tileaa,
-nv_tileas, cute, cute_nvgpu, cutlass mnemonic strings: each name is
-verbatim from the consolidated catalog `p4-BJ04` and the per-dialect
-phase-2 strands. MED for per-op TypeID singletons within the tile-IR
-dialects — the dialect TypeID slabs (`0x5785D0..0x57A8E0` for cuda_tile,
-`0x5B46D28..0x5B46F68` for nv_tileaa, range cited via anchor for
-nv_tileas, `0x5B47FF8..0x5B481A8` for cute_nvgpu) are verified ranges
-but the surface decompilation does not always expose isolated `&unk_*`
-addresses for individual ops; the table cites the range and the dialect
-anchor when the per-op slot is not pinned. MED for mnemonic-length
-columns inside the tile-IR dialects: lengths are computed from the
-mnemonic string and confirmed against the registrar `sub_4461CA0`
-length argument for NVVM (verbatim from p5-HH01); for tile-IR dialects
-they are computed from the verbatim mnemonic. LOW for the `mlir::nvgpu`
-and `llvm-extras` sections — these are upstream MLIR dialects where
-tileiras does not own the registrar and the rosters are observational
-(from lowerings driven by tileiras passes); they are not exhaustive of
-the upstream dialects' total op surface but cover every `nvgpu.*` /
-`llvm.*` mnemonic actually emitted on the tileiras lowering paths.

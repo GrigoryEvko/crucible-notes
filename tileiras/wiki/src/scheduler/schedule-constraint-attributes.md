@@ -100,6 +100,21 @@ void parseConstraints(Op *op, void *state, ConstraintMap *map) {
 
 DSU seeding is the parser's only side effect outside the map. It runs once per op during parsing, so the driver sees a fully-built DSU before its first arm fires.
 
+## Twin Seeding: DSU and Pending-Set
+
+The parser does not seed one scheduler-state structure but two, and the pair is the full picture of how the attribute pass primes downstream scheduling. The DSU at `state + 112` is one half; an Abseil-layout SwissTable pending-set at `state + 392` (`49 * 8` bytes past the state base) is the other. The parser fills both in the same walk, and both stay frozen for the rest of the schedule.
+
+| Structure | Offset | Shape | Consumer |
+|---|---|---|---|
+| Disjoint-set forest | `state + 112` | Parent-pointer DSU, `find` with path compression, `union` by rank | Placement arms — fuse and retry consult it to keep group leaders consistent |
+| Pending-set | `state + 392` | SwissTable, control-byte sentinels `0x80` / `0xFE` / `0xFF`, fmix64 group hash | Cost-based generator's gate G1 |
+
+The DSU records the must-fuse equivalence classes implied by `leader_gid`. Every op whose `leader_gid` differs from its `gid` is unioned with its leader, so the resulting forest's roots are the actual scheduling groups. Placement arms walk the DSU through `find` whenever they need to know whether two candidate ops belong to the same group; the gate-G4 leader-consistency check in [Serial vs Cost-Based Generators](serial-vs-cost-based-generators.md) is the highest-traffic consumer.
+
+The pending-set records ops that have been temporarily removed from consideration — the carry state the cost-based generator uses to hold a candidate over to the next placement attempt without permanently failing it. The gate-G1 membership probe is a single SwissTable `find` against this table; rejection means "skip this op for this iteration, try again next round." The parser populates the table once at scheduler-init time so the very first gate-G1 probe has a fully-built table to consult.
+
+A reimplementation must seed both structures from the same walk. Splitting the seeding into two passes risks the gate-G1 probe seeing a partially-built pending-set or the gate-G4 check seeing a partial DSU, and either bug surfaces only intermittently when the order of pipeline values happens to expose the seam.
+
 ## Usage and Contract
 
 The parser runs once per op at scheduler-init time, before any placement arm fires. It consults the op's inherent properties dictionary first and falls back to the discardable attributes dictionary, reading only the nine string keys listed above — every other attribute on the op is ignored. Two outputs reach the rest of the scheduler. The first is the per-op `ConstraintSlot` keyed by op handle inside the `ConstraintMap`, retrieved by every later consumer through `sub_94A550(state, op)`. The second is the seeded disjoint-set forest at `state + 112`, written only when an op's `leader_gid` differs from its `gid`. Frontends emitting the constraint attributes must keep `leader_gid` consistent across every op in a fusion group — the parser does no symmetry check, and a divergent group will produce two DSU roots that the placement driver treats as independent.

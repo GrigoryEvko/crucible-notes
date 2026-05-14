@@ -35,33 +35,38 @@ typedef struct PipelineIterator {
 
 `PipelineIteratorType` is the only pipeline type with meaningful structural payload. Producer-side and consumer-side iterators stay distinct because they participate in different handshakes, but both unwrap to the element type yielded through the pipeline region.
 
-### TypeStorage and Uniquer Keying
+### Type Storage and Uniquing
 
 Pipeline types are routed through the context `StorageUniquer` documented in [Storage Uniquer and Context Impl](../../mlir-infra/storage-uniquer-and-context-impl.md). Producer/consumer tokens and the generic async token are parameterless and resolve to a single canonical storage per context; the iterator type carries a wrapped element type and is keyed on that pointer.
 
-| Type | TypeID singleton | Storage size | Uniquer key |
-|---|---|---:|---|
-| `PipelineProducerTokenType` | dialect TypeID slot | 0x18 | parameterless |
-| `PipelineConsumerTokenType` | dialect TypeID slot | 0x18 | parameterless |
-| `AsyncTokenType` | dialect TypeID slot | 0x18 | parameterless |
-| `PipelineIteratorType` | `&unk_5B45A60` | 0x20 | `(element_type)` pointer |
+| Type | Uniquer key |
+|---|---|
+| `PipelineProducerTokenType` | parameterless (single canonical storage per context) |
+| `PipelineConsumerTokenType` | parameterless |
+| `AsyncTokenType` | parameterless |
+| `PipelineIteratorType` | `(element_type)` pointer |
 
-```c
-typedef struct PipelineTokenStorage {
-    /*+0x00*/ BaseStorage    base;             // vtable, ctx, hash bucket
-} PipelineTokenStorage;
-
-typedef struct PipelineIteratorStorage {
-    /*+0x00*/ BaseStorage    base;
-    /*+0x18*/ Type           element_type;     // payload carried through SCF
-} PipelineIteratorStorage;
-```
-
-Producer-side and consumer-side token classes share storage shape but carry distinct TypeIDs, so pointer-identity dispatch in the verifier and lowering tells them apart without parsing names. The iterator TypeID `&unk_5B45A60` is consulted by the verifier-template at `sub_1496C90` (see [Verifiers](verifiers.md#region-op-verifier-quintuplet)) before producer-type comparison; the unwrap always runs on the block-argument side, never on the producer-type list.
+Producer-side and consumer-side token classes share storage shape but carry distinct TypeIDs, so pointer-identity dispatch in the verifier and lowering tells them apart without parsing names. The iterator TypeID is consulted by the region-op verifier template (see [Verifiers](verifiers.md#region-op-verifier-template)) before producer-type comparison; the unwrap always runs on the block-argument side, never on the producer-type list.
 
 ## Iterator Propagation
 
 Pipeline iterators must survive structured control flow. Loops carry them as iter-args; branches must yield the same iterator type from both arms.
+
+The iterator type encodes four logical fields:
+
+| Field | Meaning |
+|---|---|
+| `element_type` | The payload type the iterator carries (typically the tile type yielded by the producer region). |
+| `count` | The number of distinct stages the iterator rotates through, fixed by `numStages` on the enclosing pipeline. |
+| `stride` | The advance step taken by `inc_iter` (always one in current TileAS). |
+| `address_space` | The memory space the iterator's payload references (shared, tensor, or register). |
+
+Propagation through structured control flow obeys explicit rules:
+
+1. **Async producer/consumer ops** preserve `count` and `stride` but may transform `address_space`. A producer region that materializes its payload into shared memory exposes a shared-space iterator to the consumer region; a consumer region that copies the payload into registers exposes a register-space iterator to whatever consumes the consumer's yield.
+2. **Reduction and scan ops** divide `count` by the reduction factor when the reduction collapses an entire stage dimension. The verifier rejects a reduction whose factor does not evenly divide `count`.
+3. **Structured branches** must yield iterators that agree on all four fields. `scf.if` with a `PipelineIteratorType` result requires both arms' yields to match.
+4. **Loops** carry the iterator unchanged as an iter-arg. The loop-coalescing pattern in [folds-and-mem-consistency.md](folds-and-mem-consistency.md) rejects coalescing a loop that carries an iterator iter-arg because the merged loop's iteration count would no longer match the iterator's `count`.
 
 ```c
 LogicalResult verify_iterator_merge(Value lhs, Value rhs) {
@@ -73,9 +78,23 @@ LogicalResult verify_iterator_merge(Value lhs, Value rhs) {
     }
     return success();
 }
+
+PipelineIteratorType propagate_through_async(PipelineIteratorType in,
+                                             AddressSpace producer_space) {
+    return PipelineIteratorType(in.element_type, in.count, in.stride, producer_space);
+}
+
+PipelineIteratorType propagate_through_reduction(PipelineIteratorType in,
+                                                 uint32_t reduction_factor) {
+    require(in.count % reduction_factor == 0);
+    return PipelineIteratorType(in.element_type,
+                                in.count / reduction_factor,
+                                in.stride,
+                                in.address_space);
+}
 ```
 
-Treat iterator propagation as part of queue-to-pipeline lowering. Delaying it until final lowering means the scheduler cannot reliably assign stage meaning to merged SSA values.
+Treat iterator propagation as part of queue-to-pipeline lowering. Delaying it until final lowering means the scheduler cannot reliably assign stage meaning to merged SSA values, and the verifier loses the ability to reject a malformed reduction-over-stages pattern at the right phase.
 
 ## Agent Types
 
@@ -83,10 +102,11 @@ Agent metadata describes warp-specialized execution regions. It rides on `agent_
 
 | Agent field | Meaning |
 |---|---|
-| agent body regions | regions executed by each logical agent |
-| `num_agents_per_group` | number of agents in the group |
-| `max_regs` | per-agent register budget hint |
-| warp count | derived from register budget or inherited from enclosing launch metadata |
+| agent body regions | One region per logical agent; each region runs on a disjoint subset of the warp budget. |
+| `num_agents_per_group` | Number of agents in the group; controls how the launch's warp budget partitions. |
+| `max_regs` | Per-agent register budget hint; quantizes to a warp-count-like unit. |
+| `isolated` | Whether an agent's region sees the surrounding SSA scope or runs in an isolated value-space. |
+| warp count | Derived from register budget or inherited from enclosing launch metadata. |
 
 The register budget quantizes to a warp-count-like unit. A sentinel value means "inherit the enclosing budget"; the scheduler and execution-unit propagation passes resolve that placeholder against the actual kernel configuration later.
 
@@ -98,6 +118,8 @@ uint32_t quantize_agent_warps(uint32_t max_regs) {
     return 8 * ceil_div(max_regs + 7, 8);
 }
 ```
+
+The agent verifier (see [Verifiers](verifiers.md#agent-switch-verification)) checks two structural facts: all agent regions in one group agree on their warp count (or inherit it), and the sum of resolved warp counts does not exceed the enclosing launch budget. Once resolved, the warp count drives both the launch geometry recorded in the GPU module attributes and the per-agent register-allocation decisions taken by NVGPU lowering.
 
 ## Layout-Carrying Values
 
@@ -160,4 +182,8 @@ SuccessorInfo get_successors(YieldOp yield) {
     return parent->region_branch_successors(yield.operands());
 }
 ```
+
+## Cross-References
+
+[op-roster-and-builders.md](op-roster-and-builders.md) shows the operations that consume and produce each type. [verifiers.md](verifiers.md) details the region-op verifier template that validates iterator unwrap and producer-type agreement. [folds-and-mem-consistency.md](folds-and-mem-consistency.md) describes the rewrites that respect the iterator-propagation rules above.
 

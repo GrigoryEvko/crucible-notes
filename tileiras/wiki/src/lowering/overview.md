@@ -121,55 +121,65 @@ One LLVM type converter spans the TileAS, Tile function, and companion NVGPU/CuT
 
 These conversions are ABI commitments. A reimplementation may rearrange the internal pass structure, but it must not silently change descriptor field order, token width, address-space classification, or kernel argument lowering.
 
-## Conversion Driver
+## Lowering Stages
 
-The high-level lowering algorithm is:
+Lowering runs as four named conversion passes plus a small cluster of companion passes that prepare the module for NVPTX serialization. Each stage hands a specific kind of state to the next: TileAA hands aliasing-aware tile algebra to TileAS, TileAS hands scheduled-and-laid-out tile execution to the LLVM stage, the LLVM stage hands ABI-ready LLVM IR plus a populated `gpu.module` to the target-attribute and debug-info passes, and those leave a module the GPU-to-binary serializer can consume directly.
+
+### Stage 1 — `ConvertCudaTileToTileAA`
+
+Rewrites the public input dialect. Three populators run in fixed order: Part A covers arithmetic and structured control flow, Part B covers memory, pointer, token, and view operations, Part C lowers the four specialists (`mmaf`, `mmai`, `reduce`, `scan`) whose shapes depend on decisions made by A and B. The pass installs three type-converter functor pairs that bridge the public `TileType`, `PointerType`, and `TokenType` to their `nv_tileaa` equivalents.
+
+Hand-off: every `cuda_tile.*` op has been rewritten. `nv_tileaa.*` carries the alias-aware tile algebra. Tokens are still SSA values with explicit memory dependences.
+
+### Stage 2 — `ConvertTileAAToTileAS`
+
+Lowers TileAA's "what the program means" view into TileAS's "how the program will execute" view. CopyAtom and ReduceAtom witnesses attach to memory operations during this stage and ride verbatim onto their TileAS replacements; the downstream LLVM stage reads them to pick the concrete hardware primitive. The kernel-spec attribute mirrors onto the function so SM-gated rewrites (notably the SM100 block-scaled MMA path) have a target spec to consult.
+
+Hand-off: TileAS operations carry async-pipeline, layout, and TMA-descriptor structure. The TileAS scheduling and layout-assignment passes (D07 through D22) now own the module.
+
+### Stage 3 — `ConvertTileFuncToLLVM` then `ConvertTileASToLLVM`
+
+Function-boundary conversion runs first. `ConvertTileFuncToLLVM` rewrites `nv_tileaa.func` and `nv_tileaa.return` into `func.func` and `func.return`, applies the bare-pointer ABI, and translates kernel-spec fields into `nvvm.*` attributes (`nvvm.reqntid`, `nvvm.cluster_dim`, `nvvm.minctasm`, `nvvm.maxnreg`). Kernel-returning operands fail the pass with an explicit diagnostic; non-kernel functions may return arbitrary value lists.
+
+`ConvertTileASToLLVM` then rewrites bodies in nine phases (decompose-print, bufferization analysis, main TileAA/TileAS rewrites, bulk supplementary, cute/cute_nvgpu, async.pipeline, arith/llvm cleanup, reconcile-unrealized-casts, late materializer). The shared-memory scratch global `@global_smem` is emitted before any pattern runs when the kernel requested extended shared memory. The PDL-to-PDLInterp fallback compiles embedded PDL bytecode immediately before the conversion engine runs.
+
+Hand-off: `nv_tileaa` and `nv_tileas` no longer appear in executable positions. `llvm.*` and `nvvm.*` carry the kernel; `cute.*`, `cute_nvgpu.*`, and `cutlass.*` survive only where a companion pass is responsible for them.
+
+### Stage 4 — Companion lowering and target attachment
+
+`ConvertCuteAndCuteNvgpuToLLVM` desugars layout sugar, lowers primitive CuTe descriptor and tuple operations, then dispatches architectural atoms (SM90 WGMMA, SM100 IMMA, SM100 shared-to-tensor copy) to their dedicated rewriters. `ConvertNVGPUAndGPUToNVVM` rewrites the standard `gpu` dialect and the `nvgpu` architectural surface into `nvvm.*` intrinsics. `AttachNVVMTarget` reads the module's compute-capability and target-spec attributes and writes a populated `#nvvm.target` attribute onto the `gpu.module`. `TranslateDebugInfo` rewrites `debuginfo.value` chains into LLVM debug intrinsics with the NVIDIA-specific `llvm.nvvm.move` value pin.
+
+Hand-off: every executable op is `llvm.*` or `nvvm.*`, the `gpu.module` carries exactly one resolved target, and debug metadata is in LLVM form. The module is ready for GPU-to-binary serialization.
+
+## Stage Sequence
 
 ```c
 ModuleOp lower_to_nvvm(ModuleBytecode input, CompileOptions options) {
     ModuleOp module = parse_tileir(input);
 
-    run_conversion(module, "cuda_tile", "nv_tileaa", options);
-    verify_no_ops_from_dialect(module, "cuda_tile");
+    run_pass<ConvertCudaTileToTileAA>(module, options);
+    run_pass<ConvertTileAAToTileAS>(module, options);
 
-    run_conversion(module, "nv_tileaa", "nv_tileas", options);
-    verify_tileaa_bridge_legality(module);
+    run_pass<ConvertTileFuncToLLVM>(module, options);
+    run_pass<ConvertTileASToLLVM>(module, options);
 
-    convert_tile_functions_to_llvm(module, options);
-    convert_tileas_to_llvm_and_nvvm(module, options);
+    run_pass<ConvertCuteAndCuteNvgpuToLLVM>(module, options);
+    run_pass<ConvertNVGPUAndGPUToNVVM>(module, options);
 
-    convert_cute_and_cute_nvgpu_to_nvvm(module, options);
-    convert_gpu_to_nvvm(module, options);
-    attach_nvvm_target(module, options);
+    run_pass<AttachNVVMTarget>(module, options);
+    run_pass<TranslateDebugInfo>(module, options);
 
-    verify_serializable_gpu_module(module);
     return module;
 }
 ```
 
-Each `run_conversion` expands to the usual MLIR conversion pattern:
+Each pass owns one boundary. The driver does not interleave them — Tile-function conversion must complete before TileAS bodies lower, body lowering must complete before companion CuTe/NVGPU passes run, and target attachment is last because it depends on a fully-lowered `gpu.module`.
 
-```c
-void run_conversion(ModuleOp module, Dialect from, Dialect to,
-                    CompileOptions options) {
-    ConversionTarget target(module.context());
-    TypeConverter types = make_type_converter(from, to, options);
-    RewritePatternSet patterns(module.context());
-
-    declare_legal_dialects(target, to, options);
-    declare_illegal_dialect(target, from);
-    declare_dynamic_legality(target, types, options);
-    populate_patterns(patterns, types, options);
-
-    apply_conversion(module, target, patterns);
-}
-```
-
-Pattern population details belong in [pattern-set-and-typeconverter.md](pattern-set-and-typeconverter.md). This overview leans only on the invariant that each stage has a complete legality target and a type converter that agrees with the next stage.
+Pattern population, type conversion, and pattern-bank structure are described in [pattern-set-and-typeconverter.md](pattern-set-and-typeconverter.md). This overview leans on the invariant that each stage has a complete legality target and a type converter that agrees with the next stage.
 
 ## Options and Placement
 
-The conversion cascade runs at every optimization level because later backend stages cannot consume high-level Tile IR. Optimization level and pipeline strategy mainly choose auxiliary cleanup, scheduling, async pipeline, debug-info, and snapshot behavior around the mandatory conversions.
+The conversion cascade runs at every optimization level because later backend stages cannot consume high-level TileIR. Optimization level and pipeline strategy mainly choose auxiliary cleanup, scheduling, async pipeline, debug-info, and snapshot behavior around the mandatory conversions.
 
 | Option family | Effect on lowering |
 |---|---|

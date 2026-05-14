@@ -87,7 +87,7 @@ produce_one_async -> producer_commit -> token_to_async -> async.wait
 
 Exactly one `produce_one`-like op may write data into a given pipeline. On conflict the reconciler emits the verbatim diagnostic ``there are two `produce-one-like` operations using different instructions to generate data into the same pipeline. It's a bug of MaterializeAsync Pass.`` (full sentence, trailing period included) through `sub_446CE00` at severity `259` (`0x103`).
 
-Errors never call `signalPassFailure()` directly. They set `*(self + 40) |= 4`, the same failure-handshake bit used across `ConvertTileASToLLVM`. The driver inspects it once the walk completes and lifts it to a top-level failure.
+Errors never call `signalPassFailure()` directly. They set `*(self + 40) |= 4`, the cross-pass failure handshake documented in [TileAS Pass-Failure Handshake](../../mlir-infra/pass-failure-handshake.md). The driver inspects it once the walk completes and lifts it to a top-level failure.
 
 ### Per-Loop Rewrite Body
 
@@ -242,7 +242,7 @@ The SM-specific atom catalogues that `sub_91A9B0` reads to build plans are docum
 
 ## Materialize Schedule
 
-`TileASMaterializeSchedule` (CLI: `tileas-materialize-schedule`) consumes a `ScheduleAnalysis` and dispatches to one of two driver flavours: AUS (Agent-Unspecialised — one SIMT agent owns producer and compute work) or AWS (Agent-Warp-Specialised — distinct producer and consumer agents partitioned by `nv_tileas.async.pipeline.agent_switch`). CLI options and a heuristic over the schedule's work-vs-stage shape gate the choice; the pass invents no schedule, it materialises an existing one onto the function.
+`TileASMaterializeSchedule` (CLI: `tileas-materialize-schedule`) consumes a `ScheduleAnalysis` and dispatches to one of two driver flavours: AUS (Agent-Unspecialized — one SIMT agent owns producer and compute work) or AWS (Agent-Warp-Specialized — distinct producer and consumer agents partitioned by `nv_tileas.async.pipeline.agent_switch`). CLI options and a heuristic over the schedule's work-vs-stage shape gate the choice; the pass invents no schedule, it materialises an existing one onto the function.
 
 | Mode | Meaning |
 |---|---|

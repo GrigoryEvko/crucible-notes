@@ -14,7 +14,7 @@ The family is internal to the TileAS pipeline, but its public contract is concre
 | `TileASRemoveLayoutConversions` | commutes and deletes redundant `convert_layout` operations |
 | `TileASRemoveBufferAliasPass` | rewrites aliased SMEM/TMEM allocs through selects and loops into canonical buffers |
 | `TileASRemoveDeadArgs` | removes unused block arguments from region-branch operations |
-| `TileASResolveAgentBoundary` | inserts shared-memory handoffs across `agent_switch` boundaries |
+| `TileASResolveAgentBoundary` | legalises values crossing `agent_switch` boundaries (documented under [CTA Cluster Family](cta-cluster-family.md)) |
 | `TileASSlicingPass` | splits loops carrying a `sliceCount` attribute into per-slice loop regions |
 
 ## Assign Load/Store Layouts
@@ -84,66 +84,56 @@ The assignment pass picks one compatible memory kind across the alias group. Wit
 
 ## Remove Layout Conversions
 
-`TileASRemoveLayoutConversions` cuts the `nv_tileas.convert_layout` count through alternating propagation and greedy cleanup. A single greedy pass is not enough — conversions move in opposite directions depending on whether values live in buffer space or register space.
+`TileASRemoveLayoutConversions` shrinks the `nv_tileas.convert_layout` population by alternating two directional propagators with a greedy cleanup driver. The two propagators read in opposite directions because layout demand flows one way through buffer-backed values and the other way through register-backed values, and neither single direction reaches a fixed point on its own.
+
+The pass body walks the function once. The first pass — buffer propagation — pushes layout requests from `convert_layout` ops sitting in front of SMEM/TMEM-backed producers backwards to the producer's result type, then deletes the conversion when the producer can be rebuilt at the requested layout. The second pass — register propagation — pushes layout requests forwards through register-backed elementwise chains until they meet either a consumer that fixes the layout (a `wgmma`, `tcgen05`, or a tiled load/store with an assigned memKind) or an unfusable boundary. Each propagator can fail without aborting the pass; the recorded failure flag only blocks the final `success()` return.
+
+The greedy cleanup is the same `applyPatternsAndFoldGreedily` driver that other tile passes use, parameterized with a small pattern set that handles `convert_layout`, the paired `produce_one`/`consume_one` pipeline ops, the pragma-paired forms emitted by warp specialization, `scf.if` arms whose two branches converge to different layouts, and elementwise / same-encoding ops that can transparently inherit their operand's layout. Each pattern either folds an identity, swaps two adjacent conversions across a commutable op (so the next greedy pass can fold the resulting pair), or unifies layouts across `scf.if` arms by sinking a single conversion past the merge.
+
+The pass runs cleanup three times around a single rewrite-layout-sensitive-ops sweep — propagate-rewrite-cleanup-cleanup-cleanup. The third cleanup catches the conversions left over after `scf.if` unification has introduced new commute opportunities. Semantic layout changes survive every pass: a `convert_layout` whose source and destination disagree on memKind or encoding never folds, only conversions that commute to an identity disappear.
 
 ```c
 LogicalResult remove_layout_conversions(FuncOp func) {
-    if (failed(propagate_buffer_layouts(func))) {
-        mark_pass_failure_but_continue();
-    }
-    if (failed(propagate_register_layouts(func))) {
-        mark_pass_failure_but_continue();
-    }
+    bool propagation_failed = false;
+    propagation_failed |= failed(propagate_buffer_layouts(func));
+    propagation_failed |= failed(propagate_register_layouts(func));
 
     apply_greedy_cleanup(func);
     rewrite_layout_sensitive_ops(func);
     apply_greedy_cleanup(func);
     apply_greedy_cleanup(func);
-
-    return success_if_no_required_failure();
+    return propagation_failed ? failure() : success();
 }
-```
 
-The rewrite dispatcher handles `convert_layout`, pipeline consumer regions, pragma-like paired forms, `scf.if`, and elementwise or same-encoding ops. Semantic layout changes survive; identity and commute-cancellable conversions disappear.
-
-```c
 LogicalResult rewrite_layout_sensitive_op(Operation *op, Rewriter *rw) {
-    switch (op_name_tag(op)) {
-        case OP_CONVERT_LAYOUT:
-            return fold_identity_or_commute(op, rw);
-        case OP_PIPELINE_CONSUME_ONE:
-            return propagate_through_consumer_region(op, rw);
-        case OP_PRAGMA:
-            return rewrite_paired_pragma(op, rw);
-        case OP_SCF_IF:
-            return unify_layouts_across_arms(op, rw);
+    switch (op_kind(op)) {
+        case OP_CONVERT_LAYOUT:      return fold_identity_or_commute(op, rw);
+        case OP_PIPELINE_CONSUME_ONE:return propagate_through_consumer_region(op, rw);
+        case OP_PRAGMA:              return rewrite_paired_pragma(op, rw);
+        case OP_SCF_IF:              return unify_layouts_across_arms(op, rw);
         default:
             if (is_elementwise(op) || preserves_encoding(op)) {
                 return propagate_operand_layout_to_result(op, rw);
             }
-            return failure();        /* leave unfamiliar op untouched */
+            return failure();
     }
 }
 ```
 
 ## Remove Buffer Aliases
 
-SMEM and TMEM allocations alias through `arith.select` or loop-carried values. `TileASRemoveBufferAliasPass` rewrites those aliases into a canonical allocation plus explicit copy or view ops.
+`TileASRemoveBufferAliasPass` collapses alias chains over SMEM and TMEM allocations into a canonical allocation plus, when the alias was renaming the layout, an explicit `nv_tileas.copy` or `nv_tileas.view`. Two alias shapes occur in practice. The first is `arith.select` on a 1-bit condition with two SMEM- or TMEM-typed operands — both branches refer to the same logical buffer through different SSA values, often from double-buffered pipelines. The second is loop-carried buffers: an `scf.for` whose iter-arg and yield-operand both alias the same underlying allocation, threaded through the loop body for legibility but adding no temporal storage.
+
+The driver walks the function looking for these shapes. For each, it traces back through `view`, `select`, and the loop-carried path to the last `nv_tileas.alloc_tensor` that produced storage; this is the canonical allocation. If the alias preserved the layout, the pass replaces the alias with a `view` of the canonical allocation; if the alias also changed layout (the rare case where a `select` chose between buffers laid out differently), the pass inserts a `copy` first so the consumer's view sees the expected layout.
 
 ```c
 LogicalResult rewrite_buffer_select(SelectOp select, Rewriter *rw) {
-    if (!is_smem_or_tmem(select.result().get_type())) {
-        return failure();
-    }
-    if (!select.condition().get_type().is_i1()) {
-        return failure();
-    }
+    if (!is_smem_or_tmem(select.result().get_type())) return failure();
+    if (!select.condition().get_type().is_i1())       return failure();
 
-    AllocTensorOp true_alloc = find_last_written_alloc(select.true_value());
+    AllocTensorOp true_alloc  = find_last_written_alloc(select.true_value());
     AllocTensorOp false_alloc = find_last_written_alloc(select.false_value());
-    if (!true_alloc || !false_alloc) {
-        return failure();
-    }
+    if (!true_alloc || !false_alloc) return failure();
 
     AllocTensorOp canonical = choose_canonical_alloc(true_alloc, false_alloc);
     if (layouts_differ(canonical, select.result())) {
@@ -151,31 +141,30 @@ LogicalResult rewrite_buffer_select(SelectOp select, Rewriter *rw) {
     } else {
         rw->create("nv_tileas.view", canonical, select.result().get_type());
     }
-
     rw->replace_op(select, canonical);
     return success();
 }
 ```
 
-The pass is iterative but bounded. Failure to converge aborts compilation with a clear diagnostic — leaving unstable aliases for scheduling is not an option.
+The pass iterates the rewrite until the function reaches a fixed point. Convergence is bounded by the depth of the longest alias chain — each pass strictly reduces that depth. Failure to converge — for instance, two aliases mutually referring to each other across a loop boundary the canonical-allocation lookup cannot resolve — aborts the pass via the diagnostic emitted by `find_last_written_alloc` when its walk leaves the function without finding an allocation: `"Cannot find last written SSA."`. Leaving unstable aliases visible to scheduling is not an option because the buffer-assignment pass downstream identifies each tensor allocation by SSA value.
 
 ## Remove Dead Region Arguments
 
-`TileASRemoveDeadArgs` is a hygiene pass for any op implementing region-branch behavior, including structured control flow and async pipeline regions. It drops region init operands and block arguments that go unused inside the target region.
+`TileASRemoveDeadArgs` is the hygiene pass that follows layout assignment. Once the layout passes have rebuilt op signatures around the chosen memKinds, some block arguments and the matching region init operands fall out of use — most often because a `convert_layout` that was producing one of the loop-carried values has been folded into an equivalent in-place use. The pass walks every op that implements `RegionBranchOpInterface` — `scf.for`, `scf.while`, `scf.if`, and the `nv_tileas.async.pipeline.*` region ops — and drops each block-argument-plus-incoming-operand pair where the block argument has no use inside the region.
 
-Both sides must move together: deleting a block argument without deleting the corresponding incoming operand breaks region-branch invariants.
+The two sides must move together: deleting a block argument without deleting the corresponding incoming operand leaves the region-branch interface in an inconsistent state and trips the next verifier the IR meets. The pass therefore reads the incoming operand index from the interface before the erase, then erases both in one transactional step. Block arguments that still have uses, even uses that only feed the region terminator, are preserved — this pass eliminates only the strictly dead ones.
 
 ```c
-void remove_dead_region_args(RegionBranchOp op) {
+void remove_dead_region_args(RegionBranchOpInterface op) {
     for (Region &region : op.regions()) {
+        SmallVector<unsigned> dead_indices;
         for (BlockArgument arg : region.entry_block().arguments()) {
-            if (!arg.use_empty()) {
-                continue;
-            }
-
-            Operand incoming = op.incoming_operand_for(arg);
-            region.entry_block().erase_argument(arg.index());
-            op.erase_incoming_operand(incoming.index());
+            if (arg.use_empty()) dead_indices.push_back(arg.index());
+        }
+        for (unsigned idx : llvm::reverse(dead_indices)) {
+            unsigned incoming = op.incoming_operand_index(region, idx);
+            region.entry_block().erase_argument(idx);
+            op.erase_incoming_operand(incoming);
         }
     }
 }
@@ -183,71 +172,51 @@ void remove_dead_region_args(RegionBranchOp op) {
 
 ## Resolve Agent Boundaries
 
-Warp-specialized programs partition work across producer, consumer, and compute agents. Values crossing an `agent_switch` boundary can't always stay as direct SSA values — they often need a shared-memory handoff.
-
-The canonical handoff is:
-
-```text
-nv_tileaa.splat
-nv_tileaa.extract
-nv_tileas.alloc_tensor
-nv_tileas.copy
-nv_tileas.convert_layout
-```
-
-The splat/extract pair encodes per-agent tile coordinates. The allocation and copy materialize the shared-memory transfer. The final layout conversion delivers the value in the destination agent's expected layout.
-
-```c
-Value materialize_agent_boundary(Value value, AgentBoundary boundary, Rewriter *rw) {
-    Value tiled = rw->create("nv_tileaa.splat", value, boundary.tile_shape()).result(0);
-    Value slice = rw->create("nv_tileaa.extract", tiled, boundary.agent_coord()).result(0);
-    Value smem = rw->create("nv_tileas.alloc_tensor", boundary.shared_type()).result(0);
-
-    rw->create("nv_tileas.copy", slice, smem, boundary.copy_atom());
-    return rw->create("nv_tileas.convert_layout", smem, boundary.dest_layout()).result(0);
-}
-```
-
-Named-barrier emission stays deferred. This pass establishes the data handoff; synchronization is a later pass's job.
+`TileASResolveAgentBoundary` runs in this family's ordering window — after layout assignment and buffer canonicalization, before slicing — but its contract and rewriter belong to the CTA/cluster family and are documented under [CTA Cluster Family — D20 aux passes](cta-cluster-family.md#d20-aux-passes). The only invariant the rest of the layout-and-buffer family relies on is the handoff shape: every value crossing an `nv_tileas.async.pipeline.agent_switch` either remains a direct SSA value (when the destination agent can consume it in place) or has been materialised through a shared-memory `alloc_tensor` / `copy` / `convert_layout` chain that delivers it in the destination agent's expected layout. Named-barrier emission stays deferred to a later pass.
 
 ## Slicing
 
-`TileASSlicingPass` splits loops carrying a `sliceCount` attribute into parallel slice regions. The parser checks that the layout is blocked, the requested slice count is an integer, and the divided tile fits under the warp budget. When the count is too high, the pass falls back to the largest supported power-of-two slice factor.
+`TileASSlicingPass` splits loops carrying a `sliceCount` attribute into independent per-slice loop regions, exposing parallelism the scheduler can later interleave across warps or async pipeline stages. The pass walks the function looking for `scf.for` (and, on warp-specialized programs, the matching pipeline region ops) that carry a positive `sliceCount` IntegerAttr. For each match, it builds a slice plan: divide the iteration space by the slice count, propagate the divided extent through every tiled operand inside the body, and materialize one cloned region per slice with a fresh induction range and rewritten `insert_slice` ops.
+
+The plan-building stage refuses several shapes. The `sliceCount` attribute must be an `IntegerAttr`; a different kind of attribute, or a value that does not fit the underlying loop's iteration space, fails the pass with ``"The `sliceCount` need to be a `IntegerAttr`"``. Inside the candidate region every op must either be a known op the rewriter can clone (loads, stores, copies, math, control flow, the pipeline produce/consume pair) or contribute zero IR after slicing. An op outside that set fires `"unsupported op in Slicing pass"`. The slicing transform also examines the lower bound of the loop being sliced — `affine.apply` patterns over the induction variable are supported, arbitrary SSA-defined lower bounds are not. An unsupported lower-bound shape fires `"unsupported op to be a lower bound in slicing pass "`. Pulling the initial `iter_arg` value out of the cloned loop's prologue can fail when the original value escapes the function or is loop-carried from an outer region the pass cannot reach; that failure emits `" fail to get an initial forOperand in slicing pass "`.
+
+Two additional verifications run during the rewrite itself. Each cloned slice must contain only ops the rewriter expected to see — if a child op shows up that was not in the original region (typically a side effect of an earlier failed match-and-rewrite), the pass refuses with `"is not expected inside sliced part in SlicingPass"`. Copies whose `CopyAtomAttrInterface` cannot be resolved to a concrete CopyAtom — usually because layout assignment did not finish for that op — fire `"unsupported atom of copyOp in slicing pass"`.
 
 ```c
-LogicalResult slice_loop(ScfForOp loop, uint32_t slice_count, Rewriter *rw) {
-    if (!has_supported_blocked_layout(loop)) {
-        return failure();
-    }
+LogicalResult slice_loop(ScfForOp loop, IntegerAttr count_attr, Rewriter *rw) {
+    if (!count_attr) return loop.emitOpError() << "The `sliceCount` need to be a `IntegerAttr`";
+    if (!has_supported_blocked_layout(loop))  return failure();
 
-    SlicePlan plan = build_slice_plan(loop, slice_count);
-    if (!plan.valid()) {
-        return failure();
-    }
+    SlicePlan plan = build_slice_plan(loop, count_attr.getInt());
+    if (!plan.valid()) return failure();          // diagnostics already attached
 
-    for (uint32_t slice = 0; slice < plan.count; ++slice) {
-        ScfForOp slice_loop = clone_loop_for_slice(loop, slice, plan, rw);
-        rewrite_slice_operands(slice_loop, slice, plan, rw);
+    for (uint32_t s = 0; s < plan.count; ++s) {
+        ScfForOp slice = clone_loop_for_slice(loop, s, plan, rw);
+        rewrite_slice_operands(slice, s, plan, rw);
     }
-
     rw->erase_op(loop);
     return success();
 }
 ```
 
-The pass rejects unsupported ops inside the sliced region and copy ops whose atom cannot be interpreted as a valid CopyAtom.
-
 ## Layout Descriptor Grammar
 
-Candidate records use CuTe-style layout descriptors. A descriptor token like `(1@0,1@1)` describes basis vectors: each `<count>@<dim>` term maps `count` lanes onto output dimension `dim`. The grammar supports nested groups, comma-separated lists, dimensions, and fractional bases.
+`nv_tileas.layout` is serialised as a literal whose parser accepts a shape tuple, a parallel stride tuple, an optional swizzle clause, and an optional named-element-type clause. The shape and stride tuples can nest — nested groups give the parser everything it needs to reconstruct a CuTe-style hierarchical layout — and the swizzle clause is the bit-mask triple `<B, M, S>` that the descriptor packer later threads into shared-memory descriptors. The named-element-type clause overrides the element type inferred from the operand for paths where the descriptor's internal element type differs from the tensor's element type (the NVFP4 and microscaled paths are the visible callers).
 
 ```text
-layout      := group
-group       := "(" item ("," item)* ")"
-item        := basis | group
-basis       := integer fraction? "@" integer ("@" integer)*
-fraction    := "/" integer
+layout-desc   := "<" shape "," stride swizzle-opt elem-opt ">"
+
+shape         := tuple
+stride        := tuple
+tuple         := integer | "(" tuple-item ("," tuple-item)* ")"
+tuple-item    := tuple | integer
+
+swizzle-opt   := ("," "swizzle" "<" integer "," integer "," integer ">")?
+elem-opt      := ("," "elem" "=" elem-name)?
+
+elem-name     := ident                            -- e.g. "nvfp4", "mxf4", "bf16"
+integer       := decimal-uint
 ```
 
-The identity descriptor `(1@0,1@1)` is the trivial two-dimensional projection. Gather and scatter paths build their memory-layout candidates against this grammar.
+The identity layout `<(1,1),(0,0)>` describes a degenerate 1x1 tile with both strides zero. A typical 16x16 column-major tile carrying a 128-byte swizzle reads as `<(16,16),(1,16),swizzle<2,5,2>>`. Hierarchical layouts read with one extra group level per nesting: a tile that splits 16 along its inner dimension into 8 sub-tiles of 2 reads as `<(16,(8,2)),(1,(16,8))>`. The swizzle triple's three integers are the descriptor packer's `(B, M, S)` parameters — base-2 log of the swizzle period, the mode width, and the swizzle shift respectively — and the closed accepted set of triples matches the swizzle predicate documented under [Mode Pattern Verifiers — UMMA Canonical Layout Verifier](../../dialects/cute_nvgpu/mode-pattern-verifiers.md#umma-canonical-layout-verifier). When the `elem` clause is absent the layout inherits its element type from the value carrying it; when present the named-element-type is looked up against the dialect's element-type registry, with unknown names rejected by the parser before any other validation runs.
 

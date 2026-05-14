@@ -2,7 +2,7 @@
 
 ## Abstract
 
-`cutlass.seq_bar.*` models CUTLASS ordered sequence barriers — a ring of mbarrier slots plus a phase/index state cursor. `cutlass.block_striped.*` models per-thread striped memory movement and partial reduction across a CTA. Together they form the synchronisation and cooperative-movement substrate for warp-specialised GEMM mainloops and StreamK/split-K epilogues. The seq-bar family contributes six of the thirty-eight ops the dialect ctor registers at `sub_1761D90`; the block-striped family contributes eight.
+`cutlass.seq_bar.*` models CUTLASS ordered sequence barriers — a ring of mbarrier slots plus a phase/index state cursor. `cutlass.block_striped.*` models per-thread striped memory movement and partial reduction across a CTA. Together they form the synchronisation and cooperative-movement substrate for warp-specialized GEMM mainloops and StreamK/split-K epilogues. The seq-bar family contributes six of the thirty-eight ops the dialect ctor registers at `sub_1761D90`; the block-striped family contributes eight.
 
 ## Sequential Barrier Model
 

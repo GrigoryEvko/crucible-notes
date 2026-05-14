@@ -6,9 +6,9 @@
 the lower `nv_tileas` scheduling dialect. Its operations keep the mathematical
 shape of the original program while making pointer provenance, memory
 ordering, queue flow, and plugin boundaries explicit enough for later passes
-to schedule and materialize. This page documents the operation surface as a
-reimplementation contract — what each family represents, which operands and
-attributes matter, and which invariants a verifier or lowering must preserve.
+to schedule and materialize. The operation surface is a reimplementation
+contract — what each family represents, which operands and attributes matter,
+and which invariants a verifier or lowering must preserve.
 
 The roster groups operations by behavior, not by binary registration order. A
 reimplementation should track the family contracts and textual mnemonics, not
@@ -172,10 +172,33 @@ PointerValue addptr(PointerValue base, IndexValue offset, Layout layout) {
 }
 ```
 
+A representative scalar `addptr`:
+
+```mlir
+%p1 = nv_tileaa.addptr %p0, %off
+    : !nv_tileaa.ptr<f32, 1>, index -> !nv_tileaa.ptr<f32, 1>
+```
+
+A tile-shaped `addptr` produces per-lane addresses for a gather:
+
+```mlir
+%pp = nv_tileaa.addptr %pbase, %lanes
+    : !nv_tileaa.ptr<f16, 1>, tile<128xindex>
+    -> tile<128x!nv_tileaa.ptr<f16, 1>>
+```
+
 `make_memref` packages a base pointer with offset, sizes, strides, element
 type, memory space, and alias provenance. Later TMA descriptor generation
 depends on this object being structurally complete — never hide strides or
 bounds behind opaque pointer arithmetic.
+
+```mlir
+%mr = nv_tileaa.make_memref %pbase, %off, %sz0, %sz1, %st0, %st1
+    { alias_scope = 7,
+      operandSegmentSizes = array<i32: 1, 1, 2, 2> }
+    : (!nv_tileaa.ptr<f32, 1>, index, index, index, index, index)
+    -> !nv_tileaa.memref<?x?xf32, 1>
+```
 
 ### Memory Effects
 
@@ -271,6 +294,71 @@ known in bounds. The TileAA verifier validates the structural facts; the
 TileAS lowering decides whether a concrete TMA instruction is profitable and
 legal for the selected layout.
 
+### Worked Example: addptr → tiled_load → dot → tiled_store
+
+A representative GEMM-style fragment threads four operations through a single
+memory token chain. Each operation consumes the incoming token and produces a
+new one; later passes may reorder operations only when the token graph stays
+intact.
+
+```mlir
+// Initial token at the function entry
+%t0 = nv_tileaa.create_mem_token : !nv_tileaa.mem_token
+
+// Compute the per-stage base pointers
+%pa = nv_tileaa.addptr %a_base, %off_a
+    : !nv_tileaa.ptr<f16, 1>, index -> !nv_tileaa.ptr<f16, 1>
+%pb = nv_tileaa.addptr %b_base, %off_b
+    : !nv_tileaa.ptr<f16, 1>, index -> !nv_tileaa.ptr<f16, 1>
+
+// Wrap each pointer in a memref describing shape and stride
+%mr_a = nv_tileaa.make_memref %pa, %off_a, %M, %K, %s_a_row, %s_a_col
+    : (!nv_tileaa.ptr<f16, 1>, index, index, index, index, index)
+    -> !nv_tileaa.memref<?x?xf16, 1>
+%mr_b = nv_tileaa.make_memref %pb, %off_b, %K, %N, %s_b_row, %s_b_col
+    : (!nv_tileaa.ptr<f16, 1>, index, index, index, index, index)
+    -> !nv_tileaa.memref<?x?xf16, 1>
+
+// Token-ordered tile loads
+%av, %t1 = nv_tileaa.tiled_load %mr_a[%i, %k], %t0
+    { in_bounds = array<i1: true, true>,
+      operandSegmentSizes = array<i32: 1, 2, 0, 0> }
+    : !nv_tileaa.memref<?x?xf16, 1>, index, index, !nv_tileaa.mem_token
+    -> tile<128x32xf16>, !nv_tileaa.mem_token
+
+%bv, %t2 = nv_tileaa.tiled_load %mr_b[%k, %j], %t1
+    { in_bounds = array<i1: true, true>,
+      operandSegmentSizes = array<i32: 1, 2, 0, 0> }
+    : !nv_tileaa.memref<?x?xf16, 1>, index, index, !nv_tileaa.mem_token
+    -> tile<32x128xf16>, !nv_tileaa.mem_token
+
+// Block-scaled dot accumulating into an f32 accumulator
+%d = nv_tileaa.dot %av, %bv, %c_in
+    { operandSegmentSizes = array<i32: 1, 1, 1, 0, 0> }
+    : tile<128x32xf16>, tile<32x128xf16>, tile<128x128xf32>
+    -> tile<128x128xf32>
+
+// Token-ordered tile store; %t3 succeeds the store in the token chain
+%mr_c = nv_tileaa.make_memref %c_base, %off_c, %M, %N, %s_c_row, %s_c_col
+    : (!nv_tileaa.ptr<f32, 1>, index, index, index, index, index)
+    -> !nv_tileaa.memref<?x?xf32, 1>
+%t3 = nv_tileaa.tiled_store %mr_c[%i, %j], %d, %t2
+    { in_bounds = array<i1: true, true>,
+      operandSegmentSizes = array<i32: 1, 1, 2, 0> }
+    : !nv_tileaa.memref<?x?xf32, 1>, tile<128x128xf32>, index, index,
+      !nv_tileaa.mem_token
+    -> !nv_tileaa.mem_token
+```
+
+The four operations carry one continuous token chain `%t0 → %t1 → %t2 → %t3`.
+The `dot` consumes no token because it is a pure tile-on-tile computation; the
+operations on either side of it commit their memory effects through the chain.
+A reordering pass may swap the two `tiled_load`s only if it also rewires their
+token edges, because the verifier rejects any pair where the second load's
+token input is not produced by an operation it dominates. The discipline lets
+later TileAS scheduling reorder TMA loads aggressively without ever losing
+the producer/consumer ordering between memory and compute.
+
 ### Tokens and Lifetime
 
 `create_mem_token` creates an initial memory-order value. `join_mem_token`
@@ -336,4 +424,8 @@ void lower_queue_region(QueueRegion region, PipelineBuilder builder) {
   the needed Blackwell instruction family.
 - TMA eligibility attributes are promises to later lowering, not proof that TMA
   must be emitted.
+
+## Cross-References
+
+[types-attrs-verifiers.md](types-attrs-verifiers.md) catalogues the type and attribute surface these operations use and the verbatim verifier diagnostics they emit. [folds-canonicalizers-tokens.md](folds-canonicalizers-tokens.md) describes the rewrites applied after verification succeeds. The TileAS-side counterpart in [../nv_tileas/op-roster-and-builders.md](../nv_tileas/op-roster-and-builders.md) extends this surface with async pipeline and TMA operations.
 

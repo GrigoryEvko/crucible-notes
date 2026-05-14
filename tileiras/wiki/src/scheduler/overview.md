@@ -40,199 +40,57 @@ The handoff object is `ScheduleAnalysis`. Conceptually, it contains the schedule
 
 ## Pass 1: GenerateSchedule
 
-`TileASGenerateSchedule` starts from a scheduled candidate block, picks out the operations that participate in the pipeline, and refines constraints until the schedule is feasible or the configured iteration limit is reached. The option that matters is `max-constraint-iterations`, which bounds the outer refinement loop and prevents pathological compile-time blowups.
+`TileASGenerateSchedule` starts from a scheduled candidate block, picks out the operations that participate in the pipeline, and refines constraints until the schedule is feasible or the configured iteration limit is reached. The pass option `max-constraint-iterations` bounds the outer refinement loop so pathological inputs cannot drive compile time without bound; it defaults to 16.
 
-```c
-ScheduleAnalysis generate_schedule(TileASBlock block, ScheduleOptions opts) {
-    ScheduleAnalysis analysis = seed_schedule_analysis(block);
+Scheduling policy enters the algorithm through the constraint builder. The builder reads register pressure, resource-footprint density, pipeline depth, and structural grouping, then emits constraints that restrict the search space. Recurring constraint families include `SameDepthConstraint` for operations that must remain at the same pipeline depth, `MaxDepthConstraint` for operations that must not drift beyond a depth limit, `ForceSerialExecutionConstraint` for regions that must execute single-lane, and structural grouping constraints that tie operations into one scheduling unit. Each constraint family carries the rationale that justifies the restriction so a later refinement round can lift it when the schedule becomes infeasible.
 
-    for (int round = 0; round < opts.max_constraint_iterations; ++round) {
-        ConstraintSet constraints = build_resource_constraints(block, analysis, opts);
-        ApplyResult applied = check_and_apply_constraints(block, constraints, &analysis);
+The modulo scheduler then tries candidate placements. The dependence graph enforces legal order; the RRT enforces resource feasibility. The two checks stay separate: dependences answer when an operation may run relative to other operations, the RRT answers whether the machine has capacity at a candidate cycle. The probe-and-commit mechanics are covered in [Modulo Scheduler and Rau](modulo-scheduler-and-rau.md); this page does not duplicate them.
 
-        if (applied.converged) {
-            break;
-        }
-
-        analysis = refine_with_modulo_scheduler(block, constraints, analysis, opts);
-
-        if (analysis.valid && analysis.within_resource_budget) {
-            break;
-        }
-    }
-
-    require(analysis.valid);
-    return analysis;
-}
-```
-
-Scheduling policy enters the algorithm through the constraint builder. It reads register pressure, resource footprint density, pipeline depth, and structural grouping, then emits constraints that restrict the search space. Common constraints include `SameDepthConstraint` for operations that must remain at the same pipeline depth, `MaxDepthConstraint` for operations that must not drift beyond a depth limit, `ForceSerialExecutionConstraint` for blocks that must be kept single-lane, and structural grouping constraints for operations that should be considered as one scheduling unit.
-
-The modulo scheduler then tries candidate placements. The dependence graph enforces legal order; the RRT enforces resource feasibility. A good implementation keeps the two checks separate: dependencies say when an operation may run relative to other operations, while the RRT says whether the machine has capacity at a candidate cycle.
-
-## RRT Probe and Commit
-
-The RRT is deliberately simple. A placement is legal when every occupied resource bit in the operation footprint is zero in the global table at the corresponding modulo cycle. Commit ORs the footprint into the global table.
-
-```c
-typedef struct {
-    uint64_t *rows;
-    int initiation_interval;
-    int resource_classes;
-} RRT;
-
-typedef struct {
-    const uint64_t *rows;
-    int duration;
-} NodeRRT;
-
-bool rrt_probe(const RRT *rrt, const NodeRRT *node, int start_cycle) {
-    for (int i = 0; i < node->duration; ++i) {
-        int row = (start_cycle + i) % rrt->initiation_interval;
-
-        if ((rrt->rows[row] & node->rows[i]) != 0) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-void rrt_commit(RRT *rrt, const NodeRRT *node, int start_cycle) {
-    for (int i = 0; i < node->duration; ++i) {
-        int row = (start_cycle + i) % rrt->initiation_interval;
-        rrt->rows[row] |= node->rows[i];
-    }
-}
-```
-
-The bitset model is what makes retry cheap. Backtracking is not a general symbolic solve — it amounts to trying candidate cycles, probing resource rows, committing successful footprints, and refining constraints when the current `II` cannot satisfy both dependence and resource requirements.
+Each refinement round records a 2-bit status: bit 0 marks `converged`, bit 1 marks `budget_exceeded`. When the iteration budget runs out without convergence, the scheduler raises the budget-truncated flag on `Schedule.flags` so the materializer can distinguish a clean schedule from a truncated one and emit the matching diagnostic.
 
 ## Pass 2: MaterializeSchedule
 
-`MaterializeSchedule` consumes the fixed schedule and turns it into IR. It first rebuilds two maps — original async handles to producer operations, and operations to scheduled depths — then walks the scheduled region and seeds preliminary `Pipe_` and `Mutex_` skeletons. `Schedule::solve` then runs once for each producer/consumer candidate pair that needs a concrete coordination value.
+`MaterializeSchedule` consumes the fixed schedule and turns it into IR. It rebuilds two maps from the analysis — async handle to producer operation, and operation to scheduled depth — then walks the scheduled region and seeds preliminary `Pipe_` and `Mutex_` skeletons. Once the skeletons are in place, the materializer iterates over the producer/consumer candidate pairs the walker discovered and runs `Schedule::solve` on each. After the per-pair solves complete, the materializer collapses duplicate pipe skeletons, splices the surviving SSA values back into the region in stage/order, and verifies the rewritten region against the postcondition that producer and consumer placement still agrees with the analysis.
 
-```c
-void materialize_schedule(TileASBlock block, const ScheduleAnalysis *analysis) {
-    Schedule schedule = create_schedule(block, analysis);
+Pass separation is the keystone invariant. Before materialization, scheduling edges live behind opaque async handles because no final `Pipe_` SSA value exists yet. After materialization, those handles resolve to concrete `Pipe_` and `Mutex_` values whose identity is stable for the rest of the pipeline. A reimplementation that fuses the two passes ties the resource search to handle identities the materializer is free to rewrite, which breaks the cache invalidation contract documented below.
 
-    schedule.orig_map = build_original_async_handle_map(block, analysis);
-    schedule.depth_map = build_scheduled_depth_map(block, analysis);
+## Analysis Handoff
 
-    seed_mutex_and_pipe_skeletons(&schedule);
+A single cached analysis couples the two passes. `ScheduleGenerator` allocates and populates `ScheduleAnalysis`; `MaterializeSchedule` retrieves the same slot through the AnalysisManager. Neither pass touches the other's internals — every cross-pass datum flows through the cached analysis.
 
-    for (CandidatePair pair : schedule.consumer_worklist) {
-        solve_pipe_group(&schedule, pair.outer_region, pair.consumer);
-    }
+The analysis is keyed by the RTTI string `"mlir::nv_tile_ir::as::schedule_utils::ScheduleAnalysis]"` and registered through the Meyers-cached TypeID idiom documented in [TypeID Sentinels and Anchors](../mlir-infra/typeid-sentinels-and-anchors.md). The AnalysisManager keys on the resulting `TypeID*` so the second pass picks up the exact slot the first pass wrote.
 
-    collapse_skeleton_pipes(&schedule);
-    rebuild_scheduled_region(&schedule);
-    verify_scheduled_region(&schedule);
-}
-```
+## Schedule-Data Map
 
-Pass separation matters here. Before materialization, the schedule refers to raw async handles because no final `Pipe_` SSA value exists yet. After it, the raw handles have served their purpose and the IR carries concrete coordination values.
+Several data structures cross the analysis-vs-materialization boundary. Each one has a single canonical home page that documents its layout and probing rules; this overview only names them and points outward.
 
-## Analysis Handoff Plumbing
-
-A single cached analysis couples the two passes. `ScheduleGenerator` allocates and populates the analysis; `MaterializeSchedule` retrieves it from the AnalysisManager and walks it. Neither pass touches the other's internals — everything flows through the cached `ScheduleAnalysis` slot.
-
-`ScheduleAnalysis` is keyed by the RTTI string `"mlir::nv_tile_ir::as::schedule_utils::ScheduleAnalysis]"`. That string is interned by `sub_44A6CA0` on first use and the resulting TypeID handle is cached at the global `qword_5B38E78` (the same Meyers-cached TypeID idiom documented in [TypeID Sentinels and Anchors](../mlir-infra/typeid-sentinels-and-anchors.md)). The PassManager's analysis-DenseMap is probed with the hash `(ptr >> 9) ^ (ptr >> 4) & (cap - 1)` applied to the cached TypeID pointer, so the second pass picks up exactly the same slot the first pass wrote.
-
-Two pass entry points anchor the handoff. `sub_982510` is `ScheduleGenerator::run` (493 source lines in the recovered control flow): it drives the modulo scheduler at increasing `II` until `Schedule::solve` succeeds, then stores the result as the cached analysis. `sub_824000` is `MaterializeSchedule::runOnOperation` (4 175 bytes of code): it loads the cached analysis, calls `sub_8FDE40` → `sub_8F1AA0` to drive the materialization walk, and emits the matching `Pipe_`/`Mutex_` IR plus `cute_nvgpu.arch.agent_switch` partitioning.
-
-The materializer's internal call chain is fixed. `sub_8FDE40` is the top-level entry that fetches the cached analysis and unpacks the `Schedule` view; `sub_8F1AA0` is the driver dispatch that picks the walker. `sub_8E2790` probes `origMap` at `Schedule+80..96` to recover the producer side of each async handle, and `sub_8E2F00` probes the second-table with an `fmix64` hash over `Schedule+104..120` to recover the consumer side. `sub_8EE9D0` and `sub_8EE700` are preludes that materialize the per-region context the walker needs. `sub_8EAD70` is the actual `Mutex_`/`Pipe_`-B walker that emits SSA values, and `sub_8F19D0` is the per-pair solve that runs once for every producer/consumer pair the walker finds.
-
-| Helper | Role |
-| --- | --- |
-| `sub_982510` | `ScheduleGenerator::run`; drives modulo scheduling and writes `ScheduleAnalysis`. |
-| `sub_824000` | `MaterializeSchedule::runOnOperation`; consumes the cached analysis and emits coordination IR. |
-| `sub_44A6CA0` | Interns the `ScheduleAnalysis` RTTI string and returns its TypeID handle. |
-| `sub_8FDE40` | Top-level materialization entry; fetches the cached analysis from the AnalysisManager. |
-| `sub_8F1AA0` | Driver dispatch; selects the materialization walker for the current schedule. |
-| `sub_8E2790` | `origMap` probe at `Schedule+80..96`; recovers the producer side of each async handle. |
-| `sub_8E2F00` | Second-table `fmix64` probe at `Schedule+104..120`; recovers the consumer side. |
-| `sub_8EE9D0` / `sub_8EE700` | Preludes that materialize per-region context for the walker. |
-| `sub_8EAD70` | `Mutex_`/`Pipe_`-B walker; emits coordination SSA values in stage/order. |
-| `sub_8F19D0` | Per-pair solve; runs once for every producer/consumer pair the walker identifies. |
-| `sub_97B770` | Seeds the `group_dsu` disjoint-set at `Schedule+112`. |
-
-`max-constraint-iterations` bounds the outer refinement loop in `ScheduleGenerator::run`, defaulting to 16. The bound sits at the caller's `a2 + 16` and feeds the iteration cap. Each refinement round returns a 2-bit status: bit 0 records `converged`, bit 1 records `budget_exceeded`. When the budget runs out without convergence, the scheduler sets `Schedule.flags & 4` so the materializer can distinguish a clean schedule from a budget-truncated one and emit the matching diagnostics.
-
-The `Schedule` fields involved in the handoff sit at predictable offsets:
-
-```c
-typedef struct Schedule {
-    /* ... fields documented in modulo-scheduler-and-rau.md ... */
-    /*+0x50*/ DenseMap<Op*, OrigInfo>   origMap;     // probed by sub_8E2790
-    /*+0x68*/ DenseMap<Op*, SecondInfo> secondMap;   // probed by sub_8E2F00
-    /*+0x70*/ DSU                       group_dsu;   // seeded by sub_97B770
-    /*+0x80*/ /* ... see also pipe-mutex-value-layout.md ... */
-} Schedule;
-```
-
-Keep this plumbing visible in the type system. `ScheduleAnalysis` is the public handoff object; `Schedule` is the internal view the materializer reconstructs from it. Mixing the two, or letting the materializer reach into `ScheduleGenerator` state directly, breaks the cache invalidation contract that the PassManager relies on.
+| Structure | Owner page | Role across the seam |
+|---|---|---|
+| `ScheduleAnalysis` | this page | Cached handoff record; AnalysisManager key |
+| `Schedule` view | [Modulo Scheduler and Rau](modulo-scheduler-and-rau.md) | Internal view materializer reconstructs from the analysis |
+| `RRT` and `NodeRRT` | [Modulo Scheduler and Rau](modulo-scheduler-and-rau.md) | Resource feasibility check; consumed only by Pass 1 |
+| Per-op footprint rows | [Resource Constraint Builder](resource-constraint-builder-and-rrt.md) | Built in Pass 1, frozen by the time materialization starts |
+| `ConstraintMap` + DSU | [Schedule Constraint Attributes](schedule-constraint-attributes.md) | Parsed attribute state consulted by placement and by `Schedule::solve` |
+| Pending-set SwissTable | [Serial vs Cost-Based Generators](serial-vs-cost-based-generators.md) | Gate-G1 retry filter, seeded by the attribute parser |
+| `origMap` + second-table | [Schedule::solve and Cost Evaluators](schedule-solve-and-cost-evaluators.md) | Producer/consumer resolution during materialization |
+| Buffer-assignment record | [Buffer Assignment and Named Barriers](buffer-assignment-and-mbarriers.md) | Bridge between schedule and physical SMEM/TMEM allocation |
+| `Pipe_` / `Mutex_` headers | [Pipe and Mutex Value Layout](pipe-mutex-value-layout.md) | Final SSA shape emitted by materialization |
 
 ## Schedule::solve
 
-`Schedule::solve` is the inner producer/consumer grouping algorithm. The name misleads: it is not an integer-programming solver and not a second modulo scheduler. It is a deterministic greedy pass driven by the existing `(stage, order)` comparator.
+`Schedule::solve` is not a solver in the integer-programming sense and not a second modulo scheduler. It is the inner producer/consumer grouping pass that runs during materialization. For each candidate pair the walker discovers, it sorts the relevant ops by `(stage, order)`, classifies producers and consumers, closes the producer set over the live-at-consumer relation, unions producers that share the same raw value through a disjoint-set forest, sweeps each root to pick the earliest scheduled owner, and emits a `Pipe_` value per group. It never changes a chosen stage, never picks a new `II`, and never asks whether a placement fits the RRT.
 
-```c
-void solve_pipe_group(Schedule *schedule, Operation *outer, Operation *candidate_consumer) {
-    Worklist work = collect_relevant_operations(schedule, outer, candidate_consumer);
-    sort_by_stage_then_order(&work);
+The deep treatment lives in [Schedule::solve and Cost Evaluators](schedule-solve-and-cost-evaluators.md). The point for this overview is the invariant: any reimplementation that ends up doing resource search inside `Schedule::solve` has blurred the pass boundary and broken the handoff contract.
 
-    ProducerSet producers = classify_producers(work);
-    ConsumerSet consumers = classify_consumers(work, candidate_consumer);
+## Stage/Order Invariant
 
-    close_producer_set_over_operands(&producers, work);
-
-    DisjointSet dsu = create_disjoint_set(work);
-
-    for (Operation *op : work) {
-        for (Value operand : op->operands) {
-            Operation *def = defining_operation_inside(operand, outer);
-
-            if (def != NULL && must_share_pipe(def, op, schedule)) {
-                dsu_union(&dsu, def, op);
-            }
-        }
-    }
-
-    for (DsuRoot root : dsu_roots_in_stage_order(&dsu)) {
-        ProducerSet root_producers = producers_in_root(root, producers);
-        ConsumerSet root_consumers = consumers_in_root(root, consumers);
-
-        if (!empty(root_producers) || !empty(root_consumers)) {
-            emit_pipe(schedule, root_producers, root_consumers);
-        }
-    }
-}
-```
-
-Monotonicity is the key property. The algorithm classifies, closes, unions, sweeps, and emits — nothing more. It never changes the chosen stage, never picks a new `II`, and never asks whether a placement fits the RRT. A reimplementation that ends up doing resource search inside `Schedule::solve` has blurred the pass boundary.
-
-## Data Contracts
-
-The data carried between passes is small but precisely shaped. `ScheduleAnalysis` is the handoff record the AnalysisManager caches between `TileASGenerateSchedule` and `MaterializeSchedule`. Inside it, `ScheduleSlot` carries one operation's stage/order placement plus the scheduling metadata that placement, sorting, and materialization read. The `RRT` and `NodeRRT` pair model resource feasibility — one global bitset per cycle modulo `II`, one per-op footprint over its occupied cycles. Constraint sets carry depth, serial, grouping, and resource-pressure constraints consumed by the refinement loop. `Pipe_` and `Mutex_` are the concrete coordination values that survive into the scheduled IR after materialization.
-
-| Object | Conceptual contents | Used by |
-| --- | --- | --- |
-| `ScheduleAnalysis` | Scheduled blocks, validity flag, op-to-depth data, resource footprints, opaque async handles | Handoff from `TileASGenerateSchedule` to `MaterializeSchedule` |
-| `ScheduleSlot` | One operation's stage/order placement plus scheduling metadata | Placement, sorting, materialization |
-| `RRT` | One bitset row per cycle modulo `II`; each bit is a resource class | Modulo-scheduler feasibility checks |
-| `NodeRRT` | Per-operation resource footprint over its occupied cycles | RRT probe and commit |
-| Constraint set | Depth, serial, grouping, and resource-pressure constraints | Schedule refinement |
-| `Pipe_` | Concrete producer/consumer coordination value | Scheduled IR after materialization |
-| `Mutex_` | Concrete mutual-exclusion coordination value | Scheduled IR after materialization |
-
-Stage/order order is total inside a scheduled block — that is the scheduler's keystone invariant. Two operations may share a stage, but their `order` value makes tie-breaking deterministic. The materializer relies on that determinism when sorting producers and consumers before emitting pipe groups.
+Stage and order together form a total order inside every scheduled block. Two operations may share a stage, but their `order` value tie-breaks deterministically. The materializer leans on that determinism when sorting producers and consumers before emitting pipe groups — reordering even a single pair changes the producer/consumer identity each `Pipe_` value sees and breaks the cache contract every later pass relies on.
 
 ## Usage and Contract
 
 The TileAS pipeline invokes the two passes in fixed order. `TileASGenerateSchedule` consumes the `nv_tileas` block, its operand axis-analysis facts, the buffer-lifetime records published by the layout passes, and the nine `tileas.schedule.constraint.*` and `tileas.*` attributes parsed by [Schedule Constraint Attributes](schedule-constraint-attributes.md). It writes a populated `ScheduleAnalysis` into the AnalysisManager slot keyed by its RTTI TypeID, sets validity bits on the analysis, and stores the chosen `II` and stage count on the per-block records.
 
-`MaterializeSchedule` consumes only that cached analysis; it never inspects upstream constraint state directly. Its output is the rewritten `nv_tileas` block with `Pipe_` and `Mutex_` SSA values inserted between producer and consumer regions and `cute_nvgpu.arch.agent_switch` partitioning emitted along the warp-specialised boundaries. Downstream passes must not invalidate the analysis between the two passes — the PassManager preservation contract is what lets the second pass pick up exactly the slot the first pass wrote.
+`MaterializeSchedule` consumes only that cached analysis; it never inspects upstream constraint state directly. Its output is the rewritten `nv_tileas` block with `Pipe_` and `Mutex_` SSA values inserted between producer and consumer regions and `cute_nvgpu.arch.agent_switch` partitioning emitted along the warp-specialized boundaries. Downstream passes must not invalidate the analysis between the two passes — the PassManager preservation contract is what lets the second pass pick up exactly the slot the first pass wrote.
 
 ## Cross-links
 

@@ -33,84 +33,84 @@ The conversion target is strict:
 
 ## GPU Dialect Lowering
 
-The standard GPU pass builds a conversion target that legalizes LLVM and NVVM, keeps only the GPU container operations needed while kernel bodies are rewritten, and marks the executable GPU dialect illegal. That makes failed conversions easy to diagnose — a surviving `gpu.*` op means either no pattern was registered or the pattern rejected the operation.
+The standard GPU pass builds a conversion target that legalises LLVM and NVVM, keeps `gpu.module` and `gpu.yield` legal so kernel bodies can be rewritten in place, marks the rest of the GPU dialect illegal, and adds libdevice-backed math operations and `cf.assert` to the illegal set. A surviving `gpu.*` op after this pass means either no pattern was registered or the pattern rejected the operation; the strict target makes the failure mode visible.
 
-Two pattern families do the work. Index and control patterns rewrite GPU structural operations directly to NVVM or LLVM operations. Math patterns first scalarize vector-typed arithmetic, then emit calls to libdevice symbols appropriate for the scalar element type.
+### Index Queries
 
-```c
-void configure_gpu_to_nvvm_target(ConversionTarget *target) {
-    target->add_legal_dialect("llvm");
-    target->add_legal_dialect("nvvm");
-    target->add_illegal_dialect("gpu");
+Thread, block, cluster, and grid index queries each rewrite to one NVVM special-register read plus an `i32`-to-`index` cast. The shape is uniform across the family — only the special-register name varies.
 
-    target->add_legal_op("gpu.module");
-    target->add_legal_op("gpu.yield");
-
-    target->add_illegal_op("func.func");
-    target->add_illegal_op("cf.assert");
-    target->add_illegal_op("llvm.frem");
-
-    for (Name op : libdevice_backed_math_intrinsics()) {
-        target->add_illegal_op(op);
-    }
-}
+```mlir
+%i = gpu.thread_id x : index
+   ↓
+%r = nvvm.read.ptx.sreg.tid.x : i32
+%i = arith.index_cast %r : i32 to index
 ```
 
-Index queries become one NVVM special-register read plus an `i32`-to-`index` extension. The shape is uniform across `thread_id`, `block_id`, `block_dim`, `grid_dim`, and the cluster-equivalent queries.
+The full mapping covers nine source operations:
 
-```text
-input  : %i = gpu.thread_id x : index
-output : %r = nvvm.read.ptx.sreg.tid.x : i32
-         %i = arith.index_cast %r : i32 to index
+| Source | Special register |
+|---|---|
+| `gpu.thread_id {x,y,z}` | `nvvm.read.ptx.sreg.tid.{x,y,z}` |
+| `gpu.block_id {x,y,z}` | `nvvm.read.ptx.sreg.ctaid.{x,y,z}` |
+| `gpu.block_dim {x,y,z}` | `nvvm.read.ptx.sreg.ntid.{x,y,z}` |
+| `gpu.grid_dim {x,y,z}` | `nvvm.read.ptx.sreg.nctaid.{x,y,z}` |
+| `gpu.cluster_id {x,y,z}` | `nvvm.read.ptx.sreg.clusterid.{x,y,z}` |
+| `gpu.cluster_dim {x,y,z}` | `nvvm.read.ptx.sreg.nclusterid.{x,y,z}` |
+| `gpu.cluster_block_id {x,y,z}` | `nvvm.read.ptx.sreg.cluster.ctaid.{x,y,z}` |
+| `gpu.subgroup_size` | `nvvm.read.ptx.sreg.warpsize` |
+| `gpu.lane_id` | `nvvm.read.ptx.sreg.laneid` |
+
+### Barrier
+
+The CTA-wide barrier rewrite is one-to-one and must not introduce control flow — schedulers downstream rely on a barrier appearing exactly where the source op did.
+
+```mlir
+gpu.barrier
+   ↓
+nvvm.bar.sync.aligned %c0 : i32
 ```
 
-The barrier rewrite is direct and must not introduce control flow.
+The `aligned` variant is mandatory: tileiras kernels always launch with warp-aligned thread counts, and the non-aligned barrier would force a fallback path the scheduler has not budgeted for.
 
-```c
-LogicalResult lower_gpu_barrier(GpuBarrierOp op, Rewriter *rewriter) {
-    rewriter->replace_op_with_new_op(op, "nvvm.barrier0");
-    return success();
-}
+### Assert
+
+`cf.assert` preserves CUDA's runtime contract. Message, source file, and function name become module-level global strings; the original predicate controls a conditional branch where the failing edge calls `__assertfail` and the passing edge falls through.
+
+```mlir
+cf.assert %cond, "message" : i1
+   ↓
+llvm.cond_br %cond, ^cont, ^fail
+^fail:
+  %msg  = llvm.mlir.addressof @.assert_msg  : !llvm.ptr
+  %file = llvm.mlir.addressof @.assert_file : !llvm.ptr
+  %func = llvm.mlir.addressof @.assert_func : !llvm.ptr
+  llvm.call @__assertfail(%msg, %file, %line, %func, %c0_i64) : ...
+  llvm.br ^cont
+^cont:
+  ...
 ```
 
-The assertion rewrite preserves CUDA's runtime contract. Message, source file, and function name become global strings. The original predicate controls a branch — the failing edge calls `__assertfail`, the passing edge falls through.
+`__assertfail` is the CUDA runtime symbol the linker resolves; the signature `(char*, char*, i32 line, char*, i64 charSize)` is fixed by the runtime ABI and any reimplementation must call it with exactly those argument types in that order.
 
-```c
-LogicalResult lower_assert(AssertOp op, Rewriter *rewriter) {
-    Value ok = op.condition();
+### Libdevice Math
 
-    Block *fail = rewriter->split_block_before(op);
-    Block *cont = rewriter->create_block_after(fail);
+Vector lanes are scalarised before libdevice dispatch because libdevice functions are scalar and downstream cleanup folds scalar LLVM operations far more reliably than dialect-vector calls. The rewriter walks vector results, emits a per-lane libdevice call selected by element type, and reconstructs the vector via `insertelement`.
 
-    rewriter->set_insertion_point_before(op);
-    rewriter->create_cond_br(ok, cont, fail);
-
-    rewriter->set_insertion_point_to_start(fail);
-    Value msg = materialize_global_string(op.message());
-    Value file = materialize_global_string(op.file_name());
-    Value func = materialize_global_string(op.function_name());
-    Value line = rewriter->constant_i32(op.line());
-    rewriter->call("__assertfail", {msg, file, line, func, rewriter->constant_i64(0)});
-    rewriter->create_br(cont);
-
-    rewriter->erase_op(op);
-    return success();
-}
+```mlir
+%r = math.sqrt %v : vector<4xf32>
+   ↓
+%v0 = vector.extract %v[0] : f32 from vector<4xf32>
+%v1 = vector.extract %v[1] : f32 from vector<4xf32>
+%v2 = vector.extract %v[2] : f32 from vector<4xf32>
+%v3 = vector.extract %v[3] : f32 from vector<4xf32>
+%r0 = llvm.call @__nv_sqrtf(%v0) : (f32) -> f32
+%r1 = llvm.call @__nv_sqrtf(%v1) : (f32) -> f32
+%r2 = llvm.call @__nv_sqrtf(%v2) : (f32) -> f32
+%r3 = llvm.call @__nv_sqrtf(%v3) : (f32) -> f32
+%r  = vector.from_elements %r0, %r1, %r2, %r3 : vector<4xf32>
 ```
 
-For math, vector lanes get normalized before libdevice dispatch. Keep that ordering in a reimplementation: libdevice functions are scalar, and later cleanup folds scalar LLVM values far more reliably than dialect-vector calls.
-
-```c
-Value lower_libdevice_math(MathOp op, Type element_type, Rewriter *rewriter) {
-    if (op.result_type().is_vector()) {
-        return scalarize_lanes(op, rewriter, lower_libdevice_math);
-    }
-
-    StringRef callee = libdevice_symbol_for(op.kind(), element_type);
-    SmallVector<Value> args = convert_operands(op.operands(), rewriter);
-    return rewriter->call(callee, args).result(0);
-}
-```
+The callee name comes from a `(MathOpKind, ElementType)` table: `math.sqrt` of `f32` selects `__nv_sqrtf`, of `f64` selects `__nv_sqrt`, of `f16` selects `__nv_sqrtf` with operand promotion. Reflection-resolved variants for fast-math and unsafe-math intrinsics (`__nv_fast_sinf`, `__nv_unsafe_divf`) attach via the `fastmath` attribute on the source op.
 
 ## NVGPU Dialect Lowering
 
@@ -142,28 +142,7 @@ The NVGPU conversion is a table-driven pattern set. Each pattern has one root op
 | `nvgpu.cvt_fptrunc`, `nvgpu.cvt_fpext` | emits packed float conversion |
 | `nvgpu.fma.packed.f32x2`, `nvgpu.mul.packed.f32x2` | emits packed `f32x2` arithmetic |
 
-A plain root-op switch is enough, as long as each rewrite preserves operand order and result-type conversion.
-
-```c
-LogicalResult lower_nvgpu_op(Operation *op, Rewriter *rewriter, TypeConverter *types) {
-    switch (op->kind()) {
-    case NVGPU_MBarrierCreate:
-        return lower_mbarrier_create(op, rewriter, types);
-    case NVGPU_TmaAsyncLoad:
-        return lower_tma_async_load(op, rewriter, types);
-    case NVGPU_WarpgroupMma:
-        return lower_wgmma_pipeline(op, rewriter, types);
-    case NVGPU_MmaSpSync:
-        return lower_sparse_mma_inline_asm(op, rewriter, types);
-    case NVGPU_DeviceAsyncCopy:
-        return lower_cp_async_copy(op, rewriter, types);
-    case NVGPU_PackedFma:
-        return lower_packed_fma(op, rewriter, types);
-    default:
-        return failure();
-    }
-}
-```
+Each entry above is a distinct `OpConversionPattern` subclass registered against its root op. The conversion engine selects among them by op kind; there is no shared dispatcher inside a single rewriter.
 
 ## Pattern Shapes
 
@@ -171,122 +150,201 @@ Every NVGPU pattern in this stage shares one outer shape: match on a root NVGPU 
 
 ### Mbarrier
 
-The mbarrier family rewrites `nvgpu.mbarrier.*` into `nvvm.mbarrier.*`. Shared-memory variants take a `!llvm.ptr<3>` barrier address; non-shared variants take a generic pointer the pattern must address-space-cast or reject.
+The mbarrier family rewrites the five `nvgpu.mbarrier.*` operations into matching `nvvm.mbarrier.*` intrinsics. Shared-memory variants take a `!llvm.ptr<3>` barrier address; non-shared variants take a generic pointer the rewriter must address-space-cast to shared or reject.
+
+```mlir
+%bar = nvgpu.mbarrier.create : !nvgpu.mbarrier
+   ↓
+%bar = llvm.mlir.addressof @mbar_storage : !llvm.ptr<3>
+
+nvgpu.mbarrier.init %bar, %count : !nvgpu.mbarrier, i32
+   ↓
+nvvm.mbarrier.init.shared %bar, %count : !llvm.ptr<3>, i32
+
+nvgpu.mbarrier.arrive %bar : !nvgpu.mbarrier -> !nvgpu.token
+   ↓
+%tok = nvvm.mbarrier.arrive.shared %bar : !llvm.ptr<3> -> i64
+
+nvgpu.mbarrier.arrive.expect_tx %bar, %tx_count : !nvgpu.mbarrier, i32
+   ↓
+nvvm.mbarrier.arrive.expect_tx.shared %bar, %tx_count : !llvm.ptr<3>, i32
+
+%t = nvgpu.mbarrier.try_wait.parity %bar, %phase, %ticks
+   ↓
+%t = nvvm.mbarrier.try_wait.parity.shared %bar, %phase, %ticks : !llvm.ptr<3>, i1, i32 -> i1
+
+nvgpu.mbarrier.inval %bar : !nvgpu.mbarrier
+   ↓
+nvvm.mbarrier.inval.shared %bar : !llvm.ptr<3>
+```
+
+If the source operand does not resolve to a shared-memory pointer, the rewriter emits `"mbarrier requires shared-memory operand"` and fails. The pattern rejects rather than inserts an implicit cast because the cast would change the semantic memory space and downstream tcgen05 lowering depends on shared-memory residence.
+
+### TMA Async Load
+
+`nvgpu.tma.async.load` rewrites to `nvvm.cp.async.bulk.tensor.shared.cluster.global` with the descriptor pointer, coordinate operands, and barrier. Optional attributes — `multicastMask` and `l2CacheHint` — wire into the intrinsic's optional argument slots when present.
+
+```mlir
+nvgpu.tma.async.load %desc, %smem, %coords[%c0, %c1], %barrier
+   { multicastMask = 0x000F : i16, l2CacheHint = 0xCAFE : i64 }
+   ↓
+nvvm.cp.async.bulk.tensor.shared.cluster.global.5d
+   %smem, %desc, %barrier, %c0, %c1, %c2, %c3, %c4,
+   multicast_mask = %mask, l2_cache_hint = %hint
+   : !llvm.ptr<3>, !llvm.ptr<1>, !llvm.ptr<3>, i32 x 5, i16, i64
+```
+
+<a id="tma-async-load-operand-mapping"></a>
+
+#### Operand mapping (rank N)
+
+The intrinsic signature for `nvvm.cp.async.bulk.tensor.{N}d.shared.cluster.global.tile` is rank-parameterised; the `multicastMask` and `l2CacheHint` operands are optional. The rewriter maps the flat `nvgpu` operand list onto positional intrinsic slots and sets two `Unit`-typed enable attributes that gate the optional slots.
+
+| `nvgpu.tma.async.load` operand | NVVM intrinsic slot |
+|---|---|
+| `dst` (SMEM memref, addr-space 3) | slot 0 — `dstAddr : ptr addrspace(3)` |
+| `tensorMapDescriptor` | slot 1 — `tensorMap : ptr` to the 128-byte `CUtensorMap` |
+| `coordinates[0..N-1]` | slots 2..N+1 — `coords : i32`, one per rank |
+| `barrier` | slot N+2 — `barrier : ptr addrspace(3)` |
+| `multicastMask` (optional) | slot N+3 — `multicastMask : i16` |
+| `l2CacheHint` (optional) | slot N+4 — `cacheHint : i64` |
+
+The two `Unit` attributes (`multicastEnable`, `cacheHintEnable`) are not nvgpu attributes — they are produced by the rewriter from operand presence. When `multicastMask` is supplied, the rewriter sets `multicastEnable = unit` on the new `nvvm.*` op; otherwise it leaves both operand and enable absent. The same rule applies to `l2CacheHint` / `cacheHintEnable`.
+
+Worked example, 3-D TMA load with both optional operands:
 
 ```text
-input  : %t = nvgpu.mbarrier.try_wait.parity %bar, %phase, %ticks
-output : %t = nvvm.mbarrier.try_wait.parity.shared %bar, %phase, %ticks
+%smem        : memref<128x128xf16, 3>
+%bar         : !nvgpu.mbarrier.group
+%tmap        : !nvgpu.tensormap.descriptor
+%c0,%c1,%c2  : i32
+%mask        : i16
+%hint        : i64
+
+input :
+  nvgpu.tma.async.load %smem[%c0,%c1,%c2], %bar, %tmap,
+                       multicastMask = %mask,
+                       l2CacheHint   = %hint
+
+output :
+  %smem_ptr = unrealized_conversion_cast %smem : memref<128x128xf16, 3> to !llvm.ptr<3>
+  %bar_ptr  = ...                              : !llvm.ptr<3>
+  %tmap_ptr = ...                              : !llvm.ptr
+  nvvm.cp.async.bulk.tensor.3d.shared.cluster.global.tile
+      %smem_ptr,                  // slot 0
+      %tmap_ptr,                  // slot 1
+      %c0, %c1, %c2,              // slots 2..4
+      %bar_ptr,                   // slot 5
+      %mask,                      // slot 6 (multicast)
+      %hint                       // slot 7 (cache hint)
+      { multicastEnable, cacheHintEnable, mode = #nvvm.load_mode<tile> }
 ```
 
-```c
-LogicalResult lower_mbarrier_try_wait_parity(MbarrierTryWaitParityOp op,
-                                              Rewriter *rw,
-                                              TypeConverter *types) {
-    Value bar = convert_to_shared_ptr(op.barrier(), op.loc(), rw);
-    if (!bar) return op.emit_error("mbarrier requires shared-memory operand");
+If `%mask` is absent, slot 6 is dropped and `multicastEnable` is not set; slot 7 (if `%hint` is present) shifts left into slot 6 of the actually-emitted call. The intrinsic ID stays the same; only the operand bag changes width. Absent operands leave slots unset rather than emitting zero constants — a zero `cacheHint` would force a non-default code path in the backend.
 
-    Value out = rw->create("nvvm.mbarrier.try_wait.parity.shared",
-                            {bar, op.phase(), op.ticks()},
-                            rw->i1_type()).result(0);
-    rw->replace_op(op, out);
-    return success();
-}
+### TMA Async Store
+
+`nvgpu.tma.async.store` is the symmetric reverse direction. The descriptor and coordinates appear in the same operand positions; the source becomes shared memory and the destination becomes global memory. There is no barrier — the producer issues the store and continues.
+
+```mlir
+nvgpu.tma.async.store %smem, %desc, %coords[%c0, %c1]
+   ↓
+nvvm.cp.async.bulk.tensor.global.shared.cta.5d
+   %desc, %smem, %c0, %c1, %c2, %c3, %c4
+   : !llvm.ptr<1>, !llvm.ptr<3>, i32 x 5
 ```
 
-### TMA Async Load and Store
+Operand mapping (rank N):
 
-`nvgpu.tma.async.load` and `nvgpu.tma.async.store` rewrite to `nvvm.cp.async.bulk.tensor.{shared.cluster.global,global.shared.cta}`, with the descriptor materialized by `nvgpu.tma.create.descriptor`. Coordinates pass as separate operands; the pattern emits one NVVM op plus the proxy fence the descriptor consumer needs.
+| `nvgpu.tma.async.store` operand | NVVM intrinsic slot |
+|---|---|
+| `tensorMapDescriptor` | slot 0 — `tensorMap : ptr` |
+| `coordinates[0..N-1]` | slots 1..N — `coords : i32` |
+| `src` (SMEM memref, addr-space 3) | slot N+1 — `srcAddr : ptr addrspace(3)` |
+| `l2CacheHint` (optional) | slot N+2 — `cacheHint : i64`, gated by `cacheHintEnable` |
 
-```text
-input  : nvgpu.tma.async.load %desc, %smem, %coords, %barrier
-output : nvvm.cp.async.bulk.tensor.shared.cluster.global %smem, %desc, %coords, %barrier
-```
+For the reduce variant (`nvgpu.tma.async.reduce`), the `redop` attribute selects the intrinsic ID at registration time — eight distinct intrinsics exist per rank, one per reduction kind. The operand mapping mirrors the store form; the rewriter copies `redop` into the `red_op` slot of the new `nvvm.cp.async.bulk.tensor.reduce` op so verifier and PTX emission see the same enum.
 
-```c
-LogicalResult lower_tma_async_load(TmaAsyncLoadOp op, Rewriter *rw,
-                                    TypeConverter *types) {
-    Value smem = convert_to_shared_ptr(op.dst(), op.loc(), rw);
-    Value desc = convert_to_descriptor(op.descriptor(), op.loc(), rw);
-    Value bar  = convert_to_shared_ptr(op.barrier(), op.loc(), rw);
-    if (!smem || !desc || !bar) return failure();
-
-    rw->create("nvvm.cp.async.bulk.tensor.shared.cluster.global",
-                concat({smem, desc, bar}, op.coords()));
-    rw->erase_op(op);
-    return success();
-}
-```
+The fence pattern `nvgpu.tma.fence.descriptor` rewrites to `nvvm.fence.proxy.acquire.sync` so descriptor updates from the CUDA host become visible to the device proxy before the next async load.
 
 ### WGMMA Pipeline
 
-`nvgpu.warpgroup.mma` expands into a four-op sequence: pre-fence, async MMA, commit, wait. The accumulator is an aggregate the pattern emits as register-file values; the matching `nvgpu.warpgroup.generate.descriptor` pattern pre-packs the GMMA descriptors.
+`nvgpu.warpgroup.mma` expands into the four-op WGMMA protocol the hardware expects: fence, async issue, commit, wait. The accumulator is an aggregate the pattern emits as register-file values; the matching `nvgpu.warpgroup.generate.descriptor` pattern pre-packs the GMMA descriptors.
 
-```text
-input  : %acc' = nvgpu.warpgroup.mma %desc_a, %desc_b, %acc
-output : nvvm.wgmma.fence.aligned
-         %acc' = nvvm.wgmma.mma_async %desc_a, %desc_b, %acc
-         nvvm.wgmma.commit.group.sync.aligned
-         nvvm.wgmma.wait.group.sync.aligned 0
+```mlir
+%acc' = nvgpu.warpgroup.mma %desc_a, %desc_b, %acc
+   ↓
+nvvm.wgmma.fence.aligned
+%acc' = nvvm.wgmma.mma_async %desc_a, %desc_b, %acc : i64, i64, !llvm.struct<(f32, f32, ...)>
+nvvm.wgmma.commit.group.sync.aligned
+nvvm.wgmma.wait.group.sync.aligned 0
 ```
 
-```c
-LogicalResult lower_wgmma_pipeline(WarpgroupMmaOp op, Rewriter *rw,
-                                    TypeConverter *types) {
-    rw->create("nvvm.wgmma.fence.aligned");
-    Value next = rw->create("nvvm.wgmma.mma_async",
-                              {op.descA(), op.descB(), op.accumulator()},
-                              op.accumulator().getType()).result(0);
-    rw->create("nvvm.wgmma.commit.group.sync.aligned");
-    rw->create("nvvm.wgmma.wait.group.sync.aligned",
-                {rw->constant_i32(0)});
-    rw->replace_op(op, next);
-    return success();
-}
-```
+The four ops must appear in order: the fence ensures prior shared-memory stores are visible to the WGMMA pipeline; `mma_async` issues the operation; `commit.group` packages it into a group the warpgroup tracks; `wait.group 0` blocks until the in-flight group count reaches zero. Reordering any pair changes the semantics — a missing fence loses input-dependence guarantees, and a missing wait races the accumulator into downstream reads.
 
 ### Ldmatrix and Repack
 
-`nvgpu.ldmatrix` lowers to `nvvm.ldmatrix` and repacks the returned register
-fragments into the LLVM-typed vector that the consumer expects.
+`nvgpu.ldmatrix` rewrites to `nvvm.ldmatrix.sync` and repacks the returned register fragments into the LLVM-typed vector the consumer expects. The shape and transpose attributes pass through verbatim onto the intrinsic.
 
-```text
-input  : %v = nvgpu.ldmatrix %smem, num=4, transpose=false : vector<4xi32>
-output : %p = nvvm.ldmatrix %smem, num=4, transpose=false : !llvm.struct<(i32,i32,i32,i32)>
-         %v = repack(%p)
+```mlir
+%v = nvgpu.ldmatrix %smem, num=4, transpose=false : memref<*xi32, 3>, vector<4xi32>
+   ↓
+%p = nvvm.ldmatrix.sync %smem, num=4, trans=false
+   : !llvm.ptr<3> -> !llvm.struct<(i32, i32, i32, i32)>
+%v0 = llvm.extractvalue %p[0] : !llvm.struct<(i32, i32, i32, i32)>
+%v1 = llvm.extractvalue %p[1] : !llvm.struct<(i32, i32, i32, i32)>
+%v2 = llvm.extractvalue %p[2] : !llvm.struct<(i32, i32, i32, i32)>
+%v3 = llvm.extractvalue %p[3] : !llvm.struct<(i32, i32, i32, i32)>
+%v  = vector.from_elements %v0, %v1, %v2, %v3 : vector<4xi32>
 ```
 
-```c
-LogicalResult lower_ldmatrix(LdmatrixOp op, Rewriter *rw,
-                              TypeConverter *types) {
-    Value smem = convert_to_shared_ptr(op.src(), op.loc(), rw);
-    Value tuple = rw->create("nvvm.ldmatrix",
-                              {smem},
-                              ldmatrix_result_struct(op.num(), op.element())).result(0);
-    Value packed = pack_struct_into_vector(tuple, op.result().getType(), rw);
-    rw->replace_op(op, packed);
-    return success();
-}
+The fragment count (1, 2, or 4) selects the struct shape: `num=1` returns a single `i32`, `num=2` returns `!llvm.struct<(i32, i32)>`, `num=4` returns `!llvm.struct<(i32, i32, i32, i32)>`. The repack always uses `extractvalue` + `vector.from_elements` so the consumer sees a uniform vector regardless of fragment count.
+
+### Device Async Copy (SM80)
+
+`nvgpu.device_async_copy` rewrites to SM80-era `cp.async`. The associated group and wait operations rewrite one-to-one.
+
+```mlir
+%tok = nvgpu.device_async_copy %gmem, %smem, %size : memref<*xf32, 1>, memref<*xf32, 3>
+   ↓
+nvvm.cp.async.shared.global %smem, %gmem, %size : !llvm.ptr<3>, !llvm.ptr<1>, i32
+
+nvgpu.device_async_create_group [%tok0, %tok1, ...] : !nvgpu.token
+   ↓
+nvvm.cp.async.commit.group
+
+nvgpu.device_async_wait %group { numGroups = 0 : i32 }
+   ↓
+nvvm.cp.async.wait.group 0
 ```
+
+Async tokens lower to `i32` integer values; the create-group operation discards its token operands because `cp.async.commit.group` operates on the implicit in-flight group rather than on explicit token list.
+
+### Sparse MMA Inline Assembly
+
+`nvgpu.mma.sp.sync` has no first-class NVVM op in the current dialect snapshot, so the rewriter emits the PTX sparse-MMA instruction through `llvm.inline_asm`. This is the only operation in the bank that uses inline assembly; prefer NVVM intrinsics for everything else.
 
 ## Descriptor and Barrier Rules
 
-Mbarrier lowering is address-space-sensitive. Shared-memory barriers use the shared NVVM variants; non-shared barrier values must be rejected or explicitly cast into a representation the target operation accepts. Token parity stays as a small integer value so wait operations can consume it directly.
+Mbarrier lowering is address-space-sensitive. Shared-memory barriers use the `.shared` NVVM variants; non-shared barrier values are rejected with a diagnostic rather than silently cast, because the cast would change the semantic memory space and downstream tcgen05 lowering depends on shared-memory residence. Token parity stays as a small integer value so wait operations can consume it directly without unpacking.
 
-TMA lowering separates descriptor construction from descriptor use. The descriptor builder materializes a tensor-map object with enough static shape, stride, element type, swizzle, rank, and interleave metadata for the CUDA-side encoder. Load, store, prefetch, and fence operations consume that descriptor later.
+TMA lowering separates descriptor construction from descriptor use. `nvgpu.tma.create.descriptor` materialises a 128-byte tensor-map object on the function's stack and populates it with the static shape, stride, element-type, swizzle, rank, and interleave fields the CUDA-side encoder reads. Load, store, prefetch, and fence operations consume that descriptor pointer — they never reconstruct the descriptor from its fields, so descriptor canonicalisation can hoist construction freely.
 
-WGMMA descriptor packing is a pure integer operation over shared-memory base, leading-byte offset, matrix stride, swizzle mode, and base offset. Keep the packer deterministic and side-effect-free — schedulers and common-subexpression cleanup may move it across ordinary arithmetic.
+For device-side descriptor rebind, this pass emits the inline-asm `tensormap.replace.tile.*` calls — `global_address` once, `global_dim` once per rank, `global_stride` once per non-leading rank — wrapped in the `fence.proxy.tensormap::generic` acquire/release pair so the generic-proxy write becomes visible to the tensormap proxy that `cp.async.bulk.tensor.*` reads from. The mutator templates, descriptor field layout, and fence-scope selection (`.cta` vs `.gpu` vs `.sys`) are documented in [TMA + Tensormap + cp.async.bulk Emission](../codegen/tma-tensormap-and-cp-async-bulk.md). The rewrite contract here is that the rewriter emits exactly that fixed sequence — any deviation (writing strides before dims, omitting the acquire fence, scoping to `.cta` across a cluster) leaves the descriptor partially coherent and the consumer reads stale lanes.
 
-```c
-uint64_t pack_gmma_descriptor(GmmaDescriptorInput in) {
-    uint64_t desc = 0;
-    desc |= place_bits(in.matrix_base, MATRIX_BASE_FIELD);
-    desc |= place_bits(in.leading_byte_offset, LBO_FIELD);
-    desc |= place_bits(in.matrix_stride, MATRIX_STRIDE_FIELD);
-    desc |= place_bits(in.swizzle_base, SWIZZLE_BASE_FIELD);
-    desc |= place_bits(in.swizzle_mode, SWIZZLE_MODE_FIELD);
-    return desc;
-}
+WGMMA descriptor packing is a pure integer operation over five inputs: the shared-memory base pointer, leading-byte offset, matrix stride, swizzle base, and swizzle mode. The 64-bit layout is fixed by the Hopper GMMA ISA — bit positions and field widths are documented in [MMA Atoms sm70-120](../dialects/cute_nvgpu/mma-atoms-sm70-120.md). The packer is deterministic and side-effect-free, so schedulers and common-subexpression elimination can hoist redundant descriptor construction across loop iterations.
+
+```mlir
+%desc = nvgpu.warpgroup.generate.descriptor %smem_base
+   { leading_byte_offset = 16 : i64, matrix_stride = 64 : i64,
+     swizzle_base = 128 : i64, swizzle_mode = #nvgpu<swizzle 128B> }
+   ↓
+%bits   = arith.constant 0x... : i64           // pre-folded bit pattern from attribute fields
+%base_i = llvm.ptrtoint %smem_base : !llvm.ptr<3> to i64
+%desc   = llvm.or %bits, %base_i : i64
 ```
+
+The runtime base pointer is the only operand that varies per instance; everything else folds at compile time from the GMMA-descriptor attribute, so the generated LLVM is typically two instructions (`ptrtoint` plus `or`) per descriptor.
 
 ## Conversion Invariants
 
@@ -298,4 +356,8 @@ uint64_t pack_gmma_descriptor(GmmaDescriptorInput in) {
 - TMA descriptor construction must be kept separate from TMA copy and prefetch operations.
 - Sparse MMA uses inline assembly only for the missing dialect intrinsic; other operations should prefer first-class NVVM ops.
 - WGMMA lowering must emit the fence, MMA, commit, and wait sequence in the order expected by the hardware pipeline.
+
+## Cross-References
+
+[Overview](overview.md) places this pass at the companion-lowering stage that runs alongside CuTe lowering. [CuTe and CuTe-NVGPU to LLVM](cute-and-cute_nvgpu-to-llvm.md) covers the CuTe atom rewrites whose outputs this pass consumes through `cute_nvgpu.atom`. [Pattern Set and Type Converter](pattern-set-and-typeconverter.md) describes the shared LLVM type converter every pattern in this bank threads through. [MMA Atoms sm70-120](../dialects/cute_nvgpu/mma-atoms-sm70-120.md) is the canonical reference for the WGMMA descriptor bit layout the packer above emits.
 

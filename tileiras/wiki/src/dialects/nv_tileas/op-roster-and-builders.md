@@ -38,40 +38,90 @@ Attributes belong to the operation contract. Pattern rewrites may remove stale c
 
 The `nv_tileas.async.pipeline.*` op family is a closed 16-entry enumeration. Each entry pairs with a single builder helper and a fixed `OperationState` shape, so a reimplementation can drive the entire family from one indexed dispatch instead of per-op registration code. Entries 0..14 are active; entry 15 is reserved.
 
-| # | Mnemonic | Builder | OperationState |
-|---|---|---|---|
-| 0 | `nv_tileas.async.pipeline.create_pipeline` | `sub_909290` (3.4 KB) | 6 named operands: `numStages` (i32), `bufferView`, `producerGroupId` (u8), `consumerGroupId` (u8), `sharedMem` (bool), `dynamic` (bool) |
-| 1 | `nv_tileas.async.pipeline.produce_one` | `sub_904100` | 1 region op |
-| 2 | `nv_tileas.async.pipeline.produce_one_async` | `sub_904260` | 1 region op |
-| 3 | `nv_tileas.async.pipeline.consume_one` | `sub_9043B0` | 1 region op + `consumer_idx` i32 attr (via `sub_440A060` + `sub_446DC70`) |
-| 4 | `nv_tileas.async.pipeline.consume_one_async` | `sub_9044F0` | 1 region op |
-| 5 | `nv_tileas.async.pipeline.consumer_read` | `sub_9073A0` | scalar op + `consumer_idx` i32 attr |
-| 6 | `nv_tileas.async.pipeline.producer_write` | `sub_907710` | scalar op |
-| 7 | `nv_tileas.async.pipeline.producer_acquire` | `sub_904630` | scalar op |
-| 8 | `nv_tileas.async.pipeline.producer_commit` | `sub_904770` | scalar op |
-| 9 | `nv_tileas.async.pipeline.consumer_wait` | `sub_9043F0` | scalar op |
-| 10 | `nv_tileas.async.pipeline.consumer_release` | `sub_9044B0` | scalar op |
-| 11 | `nv_tileas.async.pipeline.yield` | `sub_904910` | variadic terminator |
-| 12 | `nv_tileas.async.pipeline.inc_iter` | `sub_904A10` | scalar op |
-| 13 | `nv_tileas.async.pipeline.create_iterator` | `sub_904770` | scalar op |
-| 14 | `nv_tileas.async.pipeline.agent_switch` | `sub_9130B0` (4.0 KB) | variadic body builder: `num_agents_per_group` i32, `max_regs` per-agent list, `isolated` bool |
-| 15 | (reserved / future) | — | — |
+| # | Mnemonic | OperationState |
+|---|---|---|
+| 0 | `nv_tileas.async.pipeline.create_pipeline` | 6 named operands: `numStages` (i32), `bufferView`, `producerGroupId` (u8), `consumerGroupId` (u8), `sharedMem` (bool), `dynamic` (bool) |
+| 1 | `nv_tileas.async.pipeline.produce_one` | 1 region op |
+| 2 | `nv_tileas.async.pipeline.produce_one_async` | 1 region op |
+| 3 | `nv_tileas.async.pipeline.consume_one` | 1 region op + `consumer_idx` i32 attr |
+| 4 | `nv_tileas.async.pipeline.consume_one_async` | 1 region op |
+| 5 | `nv_tileas.async.pipeline.consumer_read` | scalar op + `consumer_idx` i32 attr |
+| 6 | `nv_tileas.async.pipeline.producer_write` | scalar op |
+| 7 | `nv_tileas.async.pipeline.producer_acquire` | scalar op |
+| 8 | `nv_tileas.async.pipeline.producer_commit` | scalar op |
+| 9 | `nv_tileas.async.pipeline.consumer_wait` | scalar op |
+| 10 | `nv_tileas.async.pipeline.consumer_release` | scalar op |
+| 11 | `nv_tileas.async.pipeline.yield` | variadic terminator |
+| 12 | `nv_tileas.async.pipeline.inc_iter` | scalar op |
+| 13 | `nv_tileas.async.pipeline.create_iterator` | scalar op |
+| 14 | `nv_tileas.async.pipeline.agent_switch` | variadic body builder: `num_agents_per_group` i32, `max_regs` per-agent list, `isolated` bool |
+| 15 | (reserved) | — |
 
-Two builders deserve individual notes. `sub_909290` materializes `create_pipeline` — the largest builder at 3.4 KB, because each of its six named operands runs through `sub_149BFF0` (the named-operand helper) before `OperationState::addOperands` populates. The names ride along with the operation, so they reappear in IR-printed form rather than as positional `%0..%5` references. `sub_9130B0` materializes `agent_switch` at 4.0 KB and is variadic in agent-body count: the emitted `OperationState` carries an arbitrary number of regions, one per agent, plus the `num_agents_per_group` count, a `DenseI32ArrayAttr` of per-agent `max_regs` budgets, and an `isolated` boolean that controls whether an agent's region sees the surrounding SSA scope.
+Two builders deserve individual notes. `create_pipeline` is the largest builder because each of its six named operands runs through the named-operand helper before the state populates; the names ride along with the operation so they reappear in IR-printed form rather than as positional `%0..%5` references. `agent_switch` is variadic in agent-body count: the emitted operation state carries an arbitrary number of regions, one per agent, plus the `num_agents_per_group` count, a `DenseI32ArrayAttr` of per-agent `max_regs` budgets, and an `isolated` boolean that controls whether an agent's region sees the surrounding SSA scope.
 
-Five of the sixteen entries have stable global slot pointers for their `OperationName` lookup; the remaining eleven resolve by mnemonic string each time the builder runs. The five fast-path slots:
+The region-op verifiers attached to the produce/consume variants and the yield are documented in [verifiers.md](verifiers.md). The operation-state trailing-objects layout each builder fills in is documented in [mlir-infra/operation-layout.md](../../mlir-infra/operation-layout.md).
 
-| Op | Slot pointer |
-|---|---|
-| producer_acquire | `&unk_5B44F30` |
-| consumer_wait | `&unk_5B44F58` |
-| consumer_read | `&unk_5B44F68` |
-| agent_switch | `&unk_5B44F80` |
-| create_pipeline | `&unk_5B45060` |
+### Worked Example: Producer/Consumer Pipeline Region
 
-A reimplementation needn't mirror this split. Caching the `OperationName` for every entry costs five pointers per dialect instance and erases the per-call string lookup uniformly. The slot table is reported here because it is the only place where the relative hotness of these ops is visible in the binary — the cached ops are what the producer/consumer handshake emits inside steady-state pipeline regions, while the uncached ops fire once per pipeline construction.
+A representative two-stage pipeline that loads a tile through TMA in the producer region, waits for it in the consumer region, and feeds a dot in the consumer region:
 
-The region-op verifiers attached to entries 1, 2, 3, 4, and 11 (the four produce/consume variants and the yield) are documented in [verifiers.md](verifiers.md). The `OperationState` trailing-objects layout that each builder fills in is documented in [mlir-infra/operation-layout.md](../../mlir-infra/operation-layout.md).
+```mlir
+// Build the pipeline. numStages=2, one producer, one consumer.
+%prod_tok, %cons_tok = nv_tileas.async.pipeline.create_pipeline %buf_view
+    { numStages       = 2 : i32,
+      producerGroupId = 0 : i8,
+      consumerGroupId = 1 : i8,
+      sharedMem       = true,
+      dynamic         = false }
+    : !nv_tileas.tiled_view<2x128x128xf16>
+    -> !nv_tileas.PipelineProducerToken, !nv_tileas.PipelineConsumerToken
+
+// Stage iterator
+%iter = nv_tileas.async.pipeline.create_iterator %prod_tok
+    : !nv_tileas.PipelineProducerToken -> !nv_tileas.PipelineIterator<tile<128x128xf16>>
+
+// Producer region — TMA loads, one per stage
+%prod_tok2 = nv_tileas.async.pipeline.produce_one %prod_tok, %iter
+    { producer_types = [tile<128x128xf16>] } : (
+    !nv_tileas.PipelineProducerToken,
+    !nv_tileas.PipelineIterator<tile<128x128xf16>>
+) -> !nv_tileas.PipelineProducerToken {
+^bb0(%stage_buf : tile<128x128xf16>):
+    %async_tok = nv_tileas.async.tiled_tma_load
+        %tma_desc, %stage_buf[%k_outer]
+        { atom = #nv_tileas<atom tma_load_2d>,
+          operandSegmentSizes = array<i32: 1, 1, 1, 1> }
+        : !nv_tileas.tma_desc, !nv_tileas.tiled_view<128x128xf16>,
+          index, !nv_tileas.mem_token
+        -> !nv_tileas.AsyncToken
+    nv_tileas.async.pipeline.yield %stage_buf : tile<128x128xf16>
+}
+
+// Consumer region — wait for stage, dot, release
+%cons_tok2 = nv_tileas.async.pipeline.consume_one %cons_tok, %iter
+    { consumer_idx   = 0 : i32,
+      consumer_types = [tile<128x128xf16>] } : (
+    !nv_tileas.PipelineConsumerToken,
+    !nv_tileas.PipelineIterator<tile<128x128xf16>>
+) -> !nv_tileas.PipelineConsumerToken {
+^bb0(%a_tile : tile<128x128xf16>):
+    %waited = nv_tileas.async.pipeline.consumer_wait %cons_tok, %iter
+        { consumer_idx = 0 : i32 }
+        : !nv_tileas.PipelineConsumerToken,
+          !nv_tileas.PipelineIterator<tile<128x128xf16>>
+        -> !nv_tileas.PipelineConsumerToken
+    %d = nv_tileas.dot %a_tile, %b_tile, %acc
+        { atom = #nv_tileas<atom mma_f16_f16_f32> }
+        : tile<128x128xf16>, tile<128x128xf16>, tile<128x128xf32>
+        -> tile<128x128xf32>
+    %released = nv_tileas.async.pipeline.consumer_release %waited
+        : !nv_tileas.PipelineConsumerToken
+        -> !nv_tileas.PipelineConsumerToken
+    nv_tileas.async.pipeline.yield %a_tile : tile<128x128xf16>
+}
+```
+
+The pipeline state attribute on `create_pipeline` records the stage count, the producer/consumer agent group ids, the buffer view, and the `sharedMem` flag that pins per-stage storage to shared memory. The `producer_types` and `consumer_types` attributes on the region ops match the producer token's payload type list, which is what the region-op verifier checks before lowering. The mbarrier slot the TMA load deposits into is the consumer's stage barrier; `consumer_wait` observes the same barrier and `consumer_release` returns the stage to the producer pool. The iterator rotates through `numStages` stages and is incremented per outer loop iteration through `nv_tileas.async.pipeline.inc_iter`.
 
 ## TMA Op Operand/Result Tables
 
@@ -425,4 +475,8 @@ void expand_single_tiled_op(TiledOp op, StageMap stages, Rewriter *rw) {
     }
 }
 ```
+
+## Cross-References
+
+[verifiers.md](verifiers.md) describes the verbatim diagnostics the operations defined here must satisfy. [types.md](types.md) describes the pipeline-token, iterator, and agent types that ride on these ops. [folds-and-mem-consistency.md](folds-and-mem-consistency.md) describes the rewrite shapes applied to the slice and structured-control scaffolding. The TileAA-side counterpart in [../nv_tileaa/op-roster.md](../nv_tileaa/op-roster.md) feeds these scheduling operations through the alias-aware lowering boundary.
 

@@ -12,14 +12,12 @@ recursive cleanup before conversion; the rules below capture the public
 semantics.
 
 Beneath the fold surface sits a larger pattern set. `cuda_tile.if` registers
-eight `RewritePattern`s through a vtable bank at `unk_59A9F08..unk_59AA1A8`
-(stride `0x60`). These are Shape A `RewritePattern` entries rather than Shape
-B `OpConversionPattern` entries because they run during the dialect's own
-canonicalize step, not during dialect-to-dialect conversion.
-`cuda_tile.select` adds three more at `unk_59AA208..unk_59AA2C8`. Together
-the eleven patterns drive structural canonicalization for control-flow tile
-ops. The two non-trivial entries — `CombineIfs` and `CombineNestedIfs` — are
-documented below.
+eight rewrite patterns, and `cuda_tile.select` adds three more. The eleven
+patterns drive structural canonicalization for control-flow tile ops; they run
+during the dialect's own canonicalize step, not as part of dialect-to-dialect
+conversion. The two non-trivial entries — `CombineIfs` and `CombineNestedIfs`
+— rewrite across more than one operation and are documented below as
+input/output IR pairs.
 
 ## Fold Surface
 
@@ -98,93 +96,121 @@ match the verifier contract.
 ## IfOp Canonicalization Pattern Set
 
 Eight patterns registered for `cuda_tile.if` cover the structural rewrites the
-dialect performs on its own ops before any conversion driver runs. Vtable
-slots appear here at their approximate offsets; exact addresses are
-recoverable from the dialect's pattern-registration constructor in `cicc`.
+dialect performs on its own ops before any conversion driver runs:
 
-| # | Vtable | Name | Action |
-|---|---|---|---|
-| 1 | `unk_59A9F08` | RemoveUnusedResults | Drops `if` results that have no uses. |
-| 2 | `unk_59A9F68` | ReplaceYieldWithValue | When both then- and else-branches yield the same SSA value, replaces the `if` with that value. |
-| 3 | `unk_59A9FC8` | RemoveStaticCondition | When the condition is a compile-time constant, replaces the `if` with the contents of the chosen branch. |
-| 4 | `unk_59AA028` | ConvertToSelect | When both branches are single-op (yield-only), rewrites into `cuda_tile.select`. |
-| 5 | `unk_59AA088` | RemoveEmptyElseBranch | Drops empty else-branches that yield no values. |
-| 6 | `unk_59AA0E8` | CombineIfs | Two adjacent `if`s with the same condition merged into one. |
-| 7 | `unk_59AA148` | CombineNestedIfs | Nested `if (a) { if (b) { ... } }` rewritten as `if (a && b) { ... }`. |
-| 8 | `unk_59AA1A8` | MoveTerminatorToParent | When a branch ends with a `cuda_tile.return`, hoists it past the `if`. |
+| Pattern | Action |
+|---|---|
+| RemoveUnusedResults | Drops `if` results that have no uses. |
+| ReplaceYieldWithValue | When both then- and else-branches yield the same SSA value, replaces the `if` with that value. |
+| RemoveStaticCondition | When the condition is a compile-time constant, replaces the `if` with the chosen branch's contents. |
+| ConvertToSelect | When both branches are single-op yield-only, rewrites into `cuda_tile.select`. |
+| RemoveEmptyElseBranch | Drops empty else-branches that yield no values. |
+| CombineIfs | Two adjacent `if`s with the same condition merged into one. |
+| CombineNestedIfs | Nested `if (a) { if (b) { ... } }` rewritten as `if (a && b) { ... }`. |
+| MoveTerminatorToParent | When a branch ends with a `cuda_tile.return`, hoists it past the `if`. |
 
-The two structural combiners (`CombineIfs` and `CombineNestedIfs`) are the
-only entries that rewrite across more than one operation. Their algorithms
-follow next.
+The two structural combiners (`CombineIfs` and `CombineNestedIfs`) rewrite
+across more than one operation. Each is documented below as an input/output
+pair plus a precise match predicate.
 
 ## CombineIfs
 
-`CombineIfs` runs from `sub_6950B0`. The pattern triggers on two adjacent
-`if` ops with the same condition and merges them into one combined `if`. The
-match uses pointer identity on the SSA value, not equal-by-compare — the
-check stays cheap and side-steps canonicalization order dependencies inside
-the surrounding block.
+The pattern fires on two adjacent `cuda_tile.if` ops in the same block whose
+conditions are pointer-identical SSA values. Identity (not value equality) is
+the match criterion: identity comparison is constant-time, and any earlier
+canonicalization that normalized one of the conditions has already replaced
+the SSA value at every use site.
 
-```c
-RewriteResult combine_adjacent_ifs(IfOp first, IfOp second) {
-    if (first.condition.ssa_value != second.condition.ssa_value) {
-        return no_change();
-    }
+Input IR:
 
-    if (!is_adjacent_in_block(first, second)) {
-        return no_change();
-    }
-
-    IfOp combined = create_if(first.condition,
-                              merge_then_regions(first.then_region, second.then_region),
-                              merge_else_regions(first.else_region, second.else_region));
-
-    replace_uses_with_combined_results(first, second, combined);
-    erase(first);
-    erase(second);
-    return changed();
+```mlir
+%a, %b = cuda_tile.if %cond -> (tile<128xf32>, tile<128xi1>) {
+    %x = cuda_tile.mulf %lhs, %rhs : tile<128xf32>
+    %m = cuda_tile.cmpf olt, %x, %thr : tile<128xf32>
+    cuda_tile.yield %x, %m : tile<128xf32>, tile<128xi1>
+} else {
+    cuda_tile.yield %zero, %fmask : tile<128xf32>, tile<128xi1>
+}
+%c = cuda_tile.if %cond -> (tile<128xf32>) {
+    %y = cuda_tile.addf %a, %a : tile<128xf32>
+    cuda_tile.yield %y : tile<128xf32>
+} else {
+    cuda_tile.yield %a : tile<128xf32>
 }
 ```
 
-Both then-regions are concatenated in source order, as are both else-regions.
-Each original `if`'s result list maps to a contiguous slice of the combined
-yield-list, and uses of the originals are redirected before the originals are
-erased.
+Output IR:
+
+```mlir
+%a, %b, %c = cuda_tile.if %cond -> (tile<128xf32>, tile<128xi1>, tile<128xf32>) {
+    %x = cuda_tile.mulf %lhs, %rhs : tile<128xf32>
+    %m = cuda_tile.cmpf olt, %x, %thr : tile<128xf32>
+    %y = cuda_tile.addf %x, %x : tile<128xf32>
+    cuda_tile.yield %x, %m, %y : tile<128xf32>, tile<128xi1>, tile<128xf32>
+} else {
+    cuda_tile.yield %zero, %fmask, %zero : tile<128xf32>, tile<128xi1>, tile<128xf32>
+}
+```
+
+Match predicate (all must hold):
+
+1. `first` and `second` are both `cuda_tile.if`.
+2. `first.condition` and `second.condition` are the same SSA value (pointer-identical).
+3. `second` immediately follows `first` in the same block; no other op separates them.
+4. Each use of a result of `first` that lives inside `second`'s regions has already been rewritten — otherwise the merge would create a dominance violation.
+
+The two then-regions are concatenated in source order; the two else-regions are concatenated in source order; each yield-list is the concatenation of the original yield-lists. Uses of the original results redirect to the corresponding slice of the combined result list before either original is erased.
 
 ## CombineNestedIfs
 
-`CombineNestedIfs` runs from `sub_6963F0`. The pattern fires on an outer
-`if` whose then-branch contains exactly one op (an inner `if`) plus a yield,
-and whose else-branch yields a poison or undef value. Under those
-preconditions the two condition tests fold into a single `arith.andi`
-without changing semantics: the original outer-else result was already
-undefined, so the combined op's empty else-branch is observationally
-identical.
+The pattern fires on an outer `cuda_tile.if` whose then-region is exactly one
+inner `cuda_tile.if` followed by a yield that forwards the inner op's results,
+and whose else-region yields poison or undef for every outer result. Under
+those preconditions, the two condition tests fold into one `cuda_tile.andi`
+without changing observable semantics: the outer else-branch was already
+producing an undefined value.
 
-```c
-RewriteResult combine_nested_ifs(IfOp outer) {
-    IfOp inner = match_single_inner_if(outer.then_region);
-    if (!inner.valid) {
-        return no_change();
+Input IR:
+
+```mlir
+%r = cuda_tile.if %a -> (tile<64xi32>) {
+    %inner = cuda_tile.if %b -> (tile<64xi32>) {
+        %v = cuda_tile.muli %x, %y : tile<64xi32>
+        cuda_tile.yield %v : tile<64xi32>
+    } else {
+        cuda_tile.yield %x : tile<64xi32>
     }
-
-    if (!else_yields_poison(outer.else_region)) {
-        return no_change();
-    }
-
-    Value combined_condition = emit_andi(outer.condition, inner.condition);
-    IfOp rewritten = create_if(combined_condition,
-                               steal_then_region(inner),
-                               empty_region());
-
-    replace_uses(outer, rewritten);
-    erase(outer);
-    return changed();
+    cuda_tile.yield %inner : tile<64xi32>
+} else {
+    cuda_tile.yield %poison : tile<64xi32>
 }
 ```
 
-The poison-yielding outer else-branch already licenses the combined op to
-leave its own else-branch empty, so no semantically visible value is lost.
+Output IR:
+
+```mlir
+%conj = cuda_tile.andi %a, %b : i1
+%r = cuda_tile.if %conj -> (tile<64xi32>) {
+    %v = cuda_tile.muli %x, %y : tile<64xi32>
+    cuda_tile.yield %v : tile<64xi32>
+} else {
+    cuda_tile.yield %poison : tile<64xi32>
+}
+```
+
+Match predicate:
+
+1. `outer.then_region` has exactly two ops: an inner `cuda_tile.if` and a yield that forwards the inner op's results unchanged.
+2. The inner op's result-type list matches `outer`'s result-type list.
+3. `outer.else_region`'s yield supplies poison/undef for every result, so the outer-else value is already unobservable.
+4. Both `outer.condition` and `inner.condition` are `i1` scalars.
+
+The rewrite emits `cuda_tile.andi %outer.cond, %inner.cond : i1` to build the
+combined predicate, hoists the inner then-region's body into a new outer-shaped
+`if`, and forwards the original else-region (still yielding poison). Because the
+outer else-branch was already undefined, the rewrite preserves every legitimate
+observation. The combined predicate may itself fold later if either input is a
+constant.
 
 ## Select Rules
 
@@ -231,16 +257,16 @@ duplicate condition test.
 ## SelectOp Canonicalization Pattern Set
 
 Alongside the fold logic above, `cuda_tile.select` registers three standalone
-`RewritePattern`s through a small vtable bank at `unk_59AA208..unk_59AA2C8`.
+rewrite patterns:
 
-| # | Vtable | Name | Action |
-|---|---|---|---|
-| 1 | `unk_59AA208` | ReplaceConstantSelect | `select(true, a, b)` becomes `a`; `select(false, a, b)` becomes `b`. |
-| 2 | `unk_59AA268` | ReplaceIdenticalSelect | `select(c, a, a)` becomes `a`. |
-| 3 | `unk_59AA2C8` | InverseConditionSelect | `select(not c, a, b)` becomes `select(c, b, a)`. |
+| Pattern | Action |
+|---|---|
+| ReplaceConstantSelect | `select(true, a, b)` becomes `a`; `select(false, a, b)` becomes `b`. |
+| ReplaceIdenticalSelect | `select(c, a, a)` becomes `a`. |
+| InverseConditionSelect | `select(not c, a, b)` becomes `select(c, b, a)`. |
 
 The constant and identical patterns overlap with the corresponding fold rules
-but stay registered because the canonicalize driver applies them on operations
+but stay registered because the canonicalize driver applies them to operations
 the fold path skips — for example, after a peer rewrite materializes a
 constant where there was previously a variable condition.
 
@@ -280,31 +306,30 @@ every recursive path needs a depth limit and a memoization cache.
 
 ## Canonicalization Driver
 
-Keep the public canonicalization set small and predictable.
+The public canonicalization set is small and predictable. The driver applies
+fold rules and rewrite patterns in a greedy fixed-point loop, then runs the
+recursive expression simplifier once over the residual IR.
 
-```c
-void populate_cuda_tile_canonicalizers(PatternSet *patterns) {
-    add(patterns, fold_if_negated_condition);
-    add(patterns, combine_adjacent_ifs);
-    add(patterns, fold_select_same_operands);
-    add(patterns, fold_select_constant_condition);
-    add(patterns, fold_select_bool_identity);
-    add(patterns, fold_select_with_compare);
-    add(patterns, fold_select_with_inverted_condition);
-    add(patterns, fold_select_with_nested_select);
-}
+The rewrite pipeline carries three contracts:
 
-void canonicalize_cuda_tile(Module module) {
-    PatternSet patterns;
-    populate_cuda_tile_canonicalizers(&patterns);
-    run_greedy_rewrite(module, patterns);
-    run_expression_simplifier(module);
-}
-```
+- Pure tile rewrites never reorder, duplicate, or erase a token-ordered memory
+  operation. `combine_adjacent_ifs` may merge two `if`s only when no
+  side-effecting op sits between them in the parent block, because the merge
+  reshuffles the operation's position relative to the surrounding token chain.
+- Floating folds preserve declared rounding mode and flush-to-zero policy.
+  `fold_addf` is the only constant-folding rule that touches floats and runs
+  only when both operands are finite constants, so the rule does not silently
+  rewrite an `inf - inf` form whose semantics the producer chose.
+- Region rewrites preserve verifier-approved branch and yield types. The
+  `CombineIfs` and `CombineNestedIfs` rewrites grow the combined op's result
+  list rather than reordering it, so dominance and result-list slices stay
+  consistent across the pattern boundary.
 
-`combine_adjacent_ifs` is safe only when region order, yielded values, and
-side-effecting operations survive intact. The pattern must not merge across
-token-ordered memory effects unless the token graph stays equivalent.
+The greedy driver iterates until no pattern fires, then hands control to the
+recursive expression simplifier, which performs deeper boolean, integer, and
+mask cleanup with memoization and a depth cap. The expression simplifier never
+rewrites region-bearing ops; that responsibility belongs to the rewrite
+pattern set above.
 
 ## Dense Constant Printing
 
@@ -322,4 +347,8 @@ operation printer.
 - `select` folds preserve result type and condition dominance.
 - Recursive simplification is memoized and depth-bounded.
 - Debug dense-element printing is not a serialization format.
+
+## Cross-References
+
+[verifiers.md](verifiers.md) describes the legality contracts these rewrites must preserve. [op-roster.md](op-roster.md) catalogues the operations the patterns target. The TileAS-side counterpart in [../nv_tileas/folds-and-mem-consistency.md](../nv_tileas/folds-and-mem-consistency.md) describes the rewrite shapes that operate on the next dialect down.
 

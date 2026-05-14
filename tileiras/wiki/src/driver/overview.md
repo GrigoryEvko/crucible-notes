@@ -27,50 +27,29 @@ memcheck instrumentation, CUDA toolkit root, and output file. The large pass
 inventory hiding behind that surface lives in the pipeline section of the
 wiki.
 
-## Compilation Contract
+## What the driver does
 
-One translation unit per process invocation. The input is a TileIR bytecode
-buffer (magic `7f 54 69 6c 65 49 52 00`, version `13.1.x`); the output is a
-host relocatable object byte buffer that the private program handle owns
-until the driver writes it to disk. Exit status is `0` on success or one of
-the five error codes documented in
+One translation unit per process invocation. The input is a TileIR
+bytecode buffer (magic `7f 54 69 6c 65 49 52 00`, version `13.1.x`); the
+output is a host relocatable object the driver writes to `--output-file`
+or, by default, `elf.o`. Exit status is `0` on success or one of the five
+error codes documented in
 [Driver Program Handle](program-handle.md#public-error-codes); no partial
 output is ever written.
 
-A stream that looks like upstream MLIR bytecode — magic `06 03 80 0a 4d 4c 49 52`,
-the same MLIR-bytecode framing prefix followed by `"\nMLIR"` instead of
-`"Tile\0"` — is rejected with a distinct diagnostic so the user can route the
-input to the right tool.
+The driver distinguishes TileIR bytecode from generic upstream MLIR
+bytecode at the magic-number level. A stream that opens with the MLIR
+framing prefix `06 03 80 0a 4d 4c 49 52` and the `"\nMLIR"` payload tag —
+rather than the TileIR `"Tile\0"` tag in the same slot — is rejected with
+a separate diagnostic that names MLIR bytecode explicitly, so the user
+can route the input to the right tool instead of guessing whether a
+parser failure means a corrupt file.
 
-```c
-int compile_tileir_file(const char *input_path,
-                        const char *output_path,
-                        const DriverOptions *options) {
-    ByteBuffer input = read_file(input_path);
-    if (!input.data)
-        return report_read_error(input_path);
-
-    const char *cuda_root = resolve_cuda_root(options->argv0);
-
-    Program *program = NULL;
-    int err = program_create(&program, input, options, cuda_root);
-    if (err != 0)
-        return err;
-
-    err = program_compile(program);
-    if (err == 0)
-        err = write_file(output_path ? output_path : "elf.o", program_output(program));
-
-    program_release(program);
-    return err;
-}
-```
-
-Validation rejects null buffers, non-TileIR bytecode, unsupported GPUs,
-optimization levels above `3`, and `--device-debug` with any nonzero
-optimization level. The bytecode-mismatch diagnostic also detects a stream
-that looks like generic MLIR bytecode and explains that TileIR bytecode is
-required.
+Validation runs before any pipeline construction. It rejects null buffers,
+non-TileIR bytecode, unsupported GPU names, optimization levels above `3`,
+and `--device-debug` paired with any nonzero optimization level. The
+verbatim diagnostic strings and their error codes live in
+[Driver CLI Options](cli-options.md#validation-algorithm).
 
 ## Supported Targets
 
@@ -95,34 +74,31 @@ The compile path is linear and has no user-visible subcommands:
 
 ```text
 main
-  register LLVM command-line options
-  parse argv
+  parse argv against the cl::opt registry
   read positional TileIR bytecode file
   resolve CUDA toolkit root
-  validate options and allocate program handle
-  create an MLIR context
-  register TileIR, Cute, CUTLASS, GPU, LLVM, and NVVM dialects
+  validate buffer, target, optimization level
+  create an MLIRContext and register dialects
   parse bytecode into builtin.module
+  attach host/GPU target tuple
   build the TileIR pass pipeline for the requested optimization level
   lower to NVVM and LLVM
   serialize PTX text
-  invoke ptxas with PTX passed as an argv string
+  invoke ptxas with PTX passed as --input-as-string
   optionally write cubin to a temporary file and run nvdisasm -c
-  store object bytes on the program handle
-  write output bytes to disk
-  release the handle and command-line storage
+  write the relocatable object bytes to disk
 ```
 
 The only external tools on the default path are CUDA toolkit binaries.
-`ptxas` receives PTX through `--input-as-string` and returns assembled cubin
-bytes on stdout. The SASS dump path writes that cubin to a temporary file,
-runs the configured disassembler command, then removes the temporary file if
-the driver created it.
+`ptxas` receives PTX through `--input-as-string` and returns assembled
+cubin bytes on stdout. The SASS dump path writes that cubin to a temporary
+file, runs the configured disassembler command, and removes the temporary
+file when the driver created it.
 
 ## Failure Model
 
-Every failure is reported before the driver tears down its private session
-state. The user-visible categories that matter:
+Every failure prints a diagnostic and returns a nonzero exit status; the
+driver never writes a partial output file. The user-visible categories are:
 
 | Category | Typical trigger |
 | --- | --- |
@@ -135,5 +111,16 @@ state. The user-visible categories that matter:
 | Compile failure | MLIR parsing, pass execution, PTX emission, or ptxas failed. |
 | Dump failure | The configured SASS dump command failed or could not be executed. |
 
-Errors are terminal for the current invocation by design. The driver never
-attempts partial output recovery after a pipeline or assembler failure.
+Errors are terminal for the current invocation by design. The driver makes
+no attempt at partial output recovery after a pipeline or assembler failure
+— a fresh invocation with corrected input is always cheaper than guessing
+how much of a half-finished artifact is trustworthy.
+
+## Related pages
+
+[Driver main() Entry](main-entry.md) walks the entry-point code path in
+detail; [Driver CLI Options](cli-options.md) catalogues every option and
+its validator; [Driver Program Handle](program-handle.md) defines the
+public error-code numbering; [Host Launch ABI and ptxas Knobs](host-launch-and-ptxas-knobs.md)
+covers the kernel-launch metadata the driver emits into the produced
+object.

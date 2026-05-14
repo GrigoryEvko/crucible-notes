@@ -32,15 +32,18 @@ The driver parses these with LLVM command-line semantics — aliases are exact
 aliases, boolean flags follow LLVM's normal spelling rules, and unknown
 options are rejected before any compilation work starts.
 
-## ValuesClass Int32 Codes
+## Enum-valued Options as int32 Codes
 
-The four enum-valued driver options (`--gpu-name`, `--host-arch`, `--host-os`, `--sanitize`) are wired through
-byte-equivalent template instantiations of `cl::opt<cl::ValuesClass>::opt`. Each builder differs only in the
-string-pair table it consumes and the int32 target slot it initialises; the parser vtable layout, default handling,
-and `cl::values(...)` walk are identical across all four. The resolved value is always a single int32 — string
-parsing happens once at command-line time, and downstream code reads only the integer.
+The four enum-valued driver options — `--gpu-name`, `--host-arch`,
+`--host-os`, `--sanitize` — are wired through `cl::opt<cl::ValuesClass>`
+template instantiations that share one parser shape. Each option carries
+its own `cl::values(...)` mapping table that pairs an accepted spelling
+with an `int32` code, plus a default integer to use when the option is
+absent. The parser walks the table once at command-line time, stores the
+resulting integer, and downstream code never sees the original string.
 
-`--gpu-name` is built by `sub_577620` against the 5-pair table, parser vtable `&unk_59A7378`, default value `100`:
+`--gpu-name` maps spellings to the corresponding SM number and defaults
+to `100`:
 
 | String | int32 code | Notes |
 | --- | ---: | --- |
@@ -50,38 +53,43 @@ parsing happens once at command-line time, and downstream code reads only the in
 | `"sm_120"` | 120 | Consumer RTX 50** / Pro |
 | `"sm_121"` | 121 | DGX Spark |
 
-`--host-arch` is built by `sub_577950` against the 3-pair table, parser vtable `&unk_59A7468`, default `0`:
+`--host-arch` defaults to `0`:
 
 | String | int32 code | Notes |
 | --- | ---: | --- |
 | `"x86_64"` | 0 | Linux/Windows x86-64 |
 | `"aarch64"` | 1 | ARM 64-bit |
-| `"arm64ec"` | 2 | ARM64EC (Windows on ARM); uses stride-36 sub-entry of the aarch64 record |
+| `"arm64ec"` | 2 | ARM64EC (Windows on ARM); reuses the aarch64 record at a sub-entry |
 
-`--host-os` is built by `sub_577C80` against the 2-pair table, parser vtable `&unk_59A7558`, default `0`:
+`--host-os` defaults to `0`:
 
 | String | int32 code |
 | --- | ---: |
 | `"linux"` | 0 |
 | `"windows"` | 1 |
 
-`--sanitize` is built by `sub_577FB0` against the 1-pair table, parser vtable `&unk_59A7648`, default `0`:
+`--sanitize` defaults to `0` and is the only option whose unset state
+carries semantic weight downstream:
 
 | String | int32 code | Notes |
 | --- | ---: | --- |
 | (unset) | 0 | No sanitizer |
 | `"memcheck"` | 1 | Activates the `-sanitize=memcheck -g-tmem-access-check` nvdisasm tail |
 
-`sub_40FD330` reads the resolved `host-arch` int and applies stride 39 for `x86_64` (code 0), stride 36 for
-`aarch64` (code 1), and stride 36 for `arm64ec` (code 2 — which uses a sub-entry of the aarch64 record). This is
-the only place `arm64ec` differs from `aarch64`. `sub_40FD7E0` reads the resolved `host-os` int and applies
-OS-index 7 for `linux` (code 0) and OS-index 15 for `windows` (code 1).
+The host-architecture lookup table is keyed by code and walked with two
+strides — `39` for the x86_64 record and `36` for both aarch64 entries.
+`arm64ec` reuses the aarch64 record at a distinct sub-entry; that
+sub-entry is the only place the two ARM modes diverge in the host-side
+code path. The host-OS index resolves to `7` for `linux` and `15` for
+`windows`, both of which select a target-triple OS fragment and the
+matching object-file format.
 
-The four parser vtables `&unk_59A7378` / `&unk_59A7468` / `&unk_59A7558` / `&unk_59A7648` share an 8-slot layout:
-vtable+0 typeinfo helper, +8 destructor, +16 `parse` (string → int32 map probe), +24 `print` (int32 → string
-lookup), +32 `valuesDefault` (initialise from a `cl::values(...)` builder), +40 reserved, +48 reserved, +56
-reserved. The `parse` slot is the only operation invoked at command-line-parse time; the `print` slot fires only
-when `--help` is requested.
+Each parser exposes an 8-slot vtable shared by all four options. The
+slots are: typeinfo helper, destructor, `parse` (string → int32 map
+probe), `print` (int32 → string lookup for `--help`), `valuesDefault`
+initialiser, and three reserved slots. `parse` is the only operation
+invoked at command-line time; `print` fires only when the user requests
+help text.
 
 ## Validation Algorithm
 
@@ -114,7 +122,13 @@ int validate_driver_options(const ByteSpan *input, const DriverOptions *opts) {
 }
 ```
 
-The diagnostic strings above are the verbatim messages emitted by `sub_57A480`; the full error-code table with severity bytes lives in [Driver Program Handle](program-handle.md#public-error-codes). The debug rule is not cosmetic — full device debug mode injects NVVM debug options that disable several code-motion and block-merge transforms, so the driver demands `-O0` rather than silently degrading an optimized build.
+The diagnostic strings above are the verbatim messages emitted by the
+validator entry point; the full error-code table with severity bytes
+lives in [Driver Program Handle](program-handle.md#public-error-codes).
+The debug rule is not cosmetic — full device debug mode injects NVVM
+debug options that disable several code-motion and block-merge
+transforms, so the driver demands `-O0` rather than silently degrading
+an optimized build.
 
 ## Pipeline Options
 
@@ -152,32 +166,66 @@ constraints remain unresolved.
 
 ## Effective Option Merge
 
-A reimplementation should model the driver layer and the pipeline layer
-separately, then copy only the values the driver is known to own.
+A `TileIRPipelineOptions` value is the resolved configuration that reaches
+the pass manager. The driver builds it in three layers, applied in order;
+each layer can only overwrite fields the next layer explicitly touches, so
+the precedence is unambiguous.
+
+The first layer is the TableGen-declared per-field default. Every option
+in the pipeline has a default literal written into the pass definition —
+`opt-level = 2`, `num-warps = 4`, `rrt-size-threshold = 4096`, and so on.
+Constructing a fresh `TileIRPipelineOptions` populates every field with
+this baseline.
+
+The second layer is the per-pass override that arrives through MLIR's
+`--pass-pipeline="tileir{key=value, ...}"` syntax. When the user (or an
+integrator) invokes the pipeline through that surface, MLIR's option
+parser walks the brace-enclosed key=value list and writes each value into
+the matching pipeline field, leaving every other field at its TableGen
+default.
+
+The third layer is driver-level legacy propagation. The command-line
+driver predates the per-pass options syntax, and several user-facing
+flags — `--opt-level`, `--gpu-name`, `--lineinfo`, `--device-debug`,
+`--sanitize`, `--host-arch`, `--host-os` — must continue to work for
+users who never type a `--pass-pipeline` argument. The driver therefore
+copies each of those into the corresponding pipeline field after the
+first two layers have settled.
 
 ```c
-TileIRPipelineOptions build_pipeline_options(const DriverOptions *driver) {
-    TileIRPipelineOptions opts = tileir_pipeline_default_options();
+TileIRPipelineOptions make_pipeline_options(const DriverFlags &flags) {
+    TileIRPipelineOptions opts;                           // TableGen defaults
 
-    opts.opt_level = driver->opt_level;
-    opts.compute_capability = parse_sm_number(driver->gpu_name);
-    opts.emit_line_info = driver->lineinfo ? LINEINFO_FROM_INPUT : LINEINFO_NONE;
-    opts.device_debug = driver->device_debug;
-    opts.sanitize_memcheck = driver->sanitize_memcheck;
-    opts.host_arch = driver->host_arch;
-    opts.host_os = driver->host_os;
+    if (flags.pass_pipeline_set)
+        parsePassPipelineOptions(opts, flags.pass_pipeline_text);  // brace-list overrides
 
+    opts.opt_level          = flags.opt_level;            // legacy propagation
+    opts.compute_capability = sm_number_of(flags.gpu_name);
+    opts.emit_line_info     = flags.lineinfo ? LineInfo::FromInput : LineInfo::None;
+    opts.device_debug       = flags.device_debug;
+    opts.sanitize_memcheck  = flags.sanitize == Sanitizer::Memcheck;
+    opts.host_arch          = flags.host_arch;
+    opts.host_os            = flags.host_os;
     return opts;
 }
 ```
 
-Do not collapse `v2-opt-level` into driver `--opt-level`. It is an
-independent pipeline field that defaults to `0` unless the embedding tool
-sets it.
+The propagation exists because a single `--opt-level=2` should still
+configure the pipeline correctly without forcing the user to spell out
+`--pass-pipeline="tileir{opt-level=2}"`. A reimplementer who skips the
+propagation step ends up with a tool whose `-O2` silently runs at the
+pipeline default of `2` for most fields but at the driver default of `3`
+in any field the driver does not propagate — a subtle divergence that
+turns up only when an integrator's regression suite compares produced
+SASS across versions.
+
+Do not collapse `v2-opt-level` into driver `--opt-level`. The two are
+independent axes: `v2-opt-level` defaults to `0` and is only meaningful
+inside the V2 pipeline, which the driver does not select on its own.
 
 ## Diagnostics Surface
 
-Three options create artifacts useful for debugging:
+Four options produce artifacts useful for debugging:
 
 | Option | Artifact |
 | --- | --- |
@@ -186,6 +234,15 @@ Three options create artifacts useful for debugging:
 | `schedule-trace-file=<path>` | Chrome-timeline-style scheduler trace JSON. |
 | `dump-host=<path>` | Generated host callback code. |
 
-The driver does not check whether those paths are semantically useful beyond
-ordinary file I/O. When a path is set, the corresponding pipeline stage owns
-the write and reports failure through the normal compile error path.
+The driver does no semantic check on these paths beyond ordinary file I/O.
+When a path is set, the corresponding pipeline stage owns the write and
+reports failure through the normal compile error path.
+
+## Related pages
+
+[Driver main() Entry](main-entry.md) shows how `main` consumes the parsed
+options; [Driver Overview](overview.md) frames the overall compile contract;
+[Driver Program Handle](program-handle.md) defines the public error-code
+numbering returned through the exit status; [Host Launch ABI and ptxas
+Knobs](host-launch-and-ptxas-knobs.md) covers `--knobs-file=`, the only
+ptxas-side option the driver forwards.

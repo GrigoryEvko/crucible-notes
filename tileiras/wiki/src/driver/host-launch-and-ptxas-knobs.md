@@ -19,7 +19,7 @@ The ptxas `--knobs-file=<path>` path is separate. `tileiras` forwards the
 argument only when the environment gate is enabled; ptxas owns the file
 grammar and every diagnostic.
 
-## Host-side launch ABI (X04)
+## Host-side launch ABI
 
 Since the driver never synthesizes CUDA-driver launch calls, the compiled
 cubin carries static launch metadata and leaves dynamic launch assembly to
@@ -49,7 +49,7 @@ metadata is present upstream.
 By the `nv_tileaa.launch_func` stage the kernel reference flattens into a
 single `kernel` property alongside the same operand segment sizing.
 
-## nvvm.* annotations + PTX directives (V04)
+## nvvm.* Annotations and PTX Directives
 
 The `nvvm.*` attribute family is the canonical in-IR carrier of launch
 metadata. Legacy `!nvvm.annotations` tuples still parse and can be
@@ -79,38 +79,61 @@ The verifier enforces the shape rules that matter:
 
 Several invariants are core for reimplementers. `nvvm.maxclusterrank` is
 stored as an integer-valued function attribute, unlike the string-shaped
-legacy forms used by some older launch metadata. `local_maxnreg` has no new
-`nvvm.*` mirror — it stays legacy-only and is never printed as a PTX
-directive by this stage. When updating dimensional attributes, write every
-axis back together so the new attribute form stays coherent even when the
-legacy source used split per-axis tuples.
+legacy forms used by some older launch metadata. `local_maxnreg` has no
+new `nvvm.*` mirror — it stays legacy-only and is never printed as a PTX
+directive by this stage. When updating dimensional attributes, write
+every axis back together so the new attribute form stays coherent even
+when the legacy source used split per-axis tuples.
+
+PTX emission walks the verified attribute set in a fixed order so that
+related directives stay adjacent in the kernel header. The thread-shape
+group (`.maxntid`, `.reqntid`) emits first, followed by the residency
+hints (`.minnctapersm`, `.maxnreg`), and finally the cluster group
+(`.blocksareclusters`, `.explicitcluster`, `.reqnctapercluster`,
+`.maxclusterrank`) when the target supports clusters. Both `.maxntid`
+and `.reqntid` may appear on the same kernel — the PTX semantics make
+them complementary: `.reqntid` declares an exact block shape the kernel
+relies on, `.maxntid` declares an upper bound for register-pressure
+budgeting. The verifier checks shape consistency but does not collapse
+or override either directive, and the emitter prints both as written
+when both are set.
 
 ```c
-void emit_kernel_directives(Function fn, Target target, PtxWriter *out) {
-    if (has_attr(fn, "nvvm.maxntid"))
-        emit_dim_directive(out, ".maxntid", get_dim_attr(fn, "nvvm.maxntid"));
-    if (has_attr(fn, "nvvm.reqntid"))
-        emit_dim_directive(out, ".reqntid", get_dim_attr(fn, "nvvm.reqntid"));
-    if (has_attr(fn, "nvvm.minctasm"))
-        emit_int_directive(out, ".minnctapersm", get_int_attr(fn, "nvvm.minctasm"));
-    if (has_attr(fn, "nvvm.maxnreg"))
-        emit_int_directive(out, ".maxnreg", get_int_attr(fn, "nvvm.maxnreg"));
+void emit_launch_directives(LLVMFuncOp fn, Target target, PTXWriter &out) {
+    if (auto dims = get_dim_attr(fn, "nvvm.maxntid"))
+        out.directive(".maxntid", *dims);
+    if (auto dims = get_dim_attr(fn, "nvvm.reqntid"))
+        out.directive(".reqntid", *dims);
+
+    if (auto n = get_int_attr(fn, "nvvm.minctasm"))
+        out.directive(".minnctapersm", *n);
+    if (auto n = get_int_attr(fn, "nvvm.maxnreg"))
+        out.directive(".maxnreg", *n);
 
     if (!target_supports_clusters(target))
-        return;
+        return;                              // suppress all cluster directives pre-SM90
 
-    if (has_attr(fn, "nvvm.blocksareclusters"))
-        emit_directive(out, ".blocksareclusters");
-    if (has_attr(fn, "nvvm.cluster_dim")) {
-        emit_directive(out, ".explicitcluster");
-        emit_dim_directive(out, ".reqnctapercluster", get_dim_attr(fn, "nvvm.cluster_dim"));
+    if (fn->hasAttr("nvvm.blocksareclusters"))
+        out.directive(".blocksareclusters");
+    if (auto dims = get_dim_attr(fn, "nvvm.cluster_dim")) {
+        out.directive(".explicitcluster");
+        out.directive(".reqnctapercluster", *dims);
     }
-    if (has_attr(fn, "nvvm.maxclusterrank"))
-        emit_int_directive(out, ".maxclusterrank", get_int_attr(fn, "nvvm.maxclusterrank"));
+    if (auto n = get_int_attr(fn, "nvvm.maxclusterrank"))
+        out.directive(".maxclusterrank", *n);
 }
 ```
 
-## ptxas knobs file format (X02)
+Two structural invariants keep this loop from being more complex.
+`nvvm.blocksareclusters` is verified to require both `nvvm.reqntid` and
+`nvvm.cluster_dim` on the same function, so by the time emission runs
+the three directives are guaranteed to form a coherent triple. Cluster
+directives are suppressed wholesale on pre-SM90 targets; the verifier
+permits the attributes upstream so a single IR module can lower for
+multiple targets, but the per-target emitter refuses to print them when
+ptxas would reject the result.
+
+## ptxas Knobs File Format
 
 When both `MLIR_ENABLE_EVO` and `PTX_KNOBS_PATH` are set, `tileiras`
 forwards `--knobs-file=<path>` to ptxas. It does not parse or validate the
@@ -147,6 +170,14 @@ assignments follow a last-wins policy: the later command overwrites the
 earlier runtime value. Identifier matching is case-insensitive from the
 user's point of view.
 
-`tileiras` runs no preflight check that the path exists, contains `[knobs]`,
-or uses valid identifiers. Every knob-file diagnostic comes from ptxas and
-surfaces through the normal subprocess diagnostic buffer.
+`tileiras` runs no preflight check that the path exists, contains
+`[knobs]`, or uses valid identifiers. Every knob-file diagnostic comes
+from ptxas and surfaces through the normal subprocess diagnostic buffer.
+
+## Related pages
+
+[Driver Overview](overview.md) covers how the produced kernel directives
+travel into the relocatable object; [Driver CLI Options](cli-options.md)
+catalogues the user-visible flags that map into pipeline options; the
+PTX emission pages under the lowering section explain how each `.entry`
+header is serialised once attribute walking finishes.

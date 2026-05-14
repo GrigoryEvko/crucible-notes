@@ -58,171 +58,51 @@ The target feature set is the guardrail for newer instructions. Tensor memory,
 TMA, WGMMA, tcgen05, block-scaled MMA, cluster operations, and related PTX
 modifiers reach selection only when the subtarget says they are legal.
 
+## MLIR-To-LLVM Handoff
+
+`gpu.module` operations carrying the NVVM target attribute leave MLIR through a translator that maps each `nvvm.*` op to the matching `llvm.nvvm.*` intrinsic, then walks `llvm` dialect operations into the corresponding LLVM IR opcodes. The translator is a one-to-one mapping table: `nvvm.barrier0` becomes `@llvm.nvvm.barrier0`, `nvvm.mma.sync` becomes `@llvm.nvvm.mma.*`, `nvvm.wgmma.mma_async` becomes `@llvm.nvvm.wgmma.*`, and so on. There is no novel rewriting in this step. What matters is that NVPTX-specific information already encoded in the MLIR dialect — kernel attributes, address spaces, target metadata — must survive the translation unchanged.
+
+The output is an `llvm::Module` with the `nvptx64-nvidia-cuda` triple set, the target chip and feature string attached to every kernel function, and the NVPTX data layout active. From here on the module is an ordinary LLVM IR module and the backend reads it the same way `clang` does.
+
 ## LLVM Optimization
 
-After translation and device-library linkage, the module goes through the LLVM
-optimization pipeline selected by `O0`, `O1`, `O2`, `O3`, `Os`, or `Oz`. The
-pipeline is the standard `PassBuilder` shape, but the analysis manager bank and
-the per-level pipeline construction must be reused across functions so analysis
-caches survive between passes:
+After translation and device-library linkage, the module goes through the LLVM optimization pipeline selected by `O0`, `O1`, `O2`, `O3`, `Os`, or `Oz`. The pipeline is the standard `PassBuilder` shape — function simplification, CGSCC inlining, loop optimization, vectorization — followed by NVIDIA-private peephole and lowering passes the binary's PassRegistry table lists by name. The NVIDIA-private set covers NVPTX-specific patterns LLVM upstream does not optimize: lowering of `llvm.nvvm.barrier*` intrinsics, address-space inference and propagation, kernel-attribute preservation, libdevice math-helper specialization, and a final NVVM-aware GVN/DCE sweep.
 
-```c
-void optimize_llvm_module(LLVMModule module, TargetMachine tm,
-                          OptLevel opt_level) {
-    PassBuilder pb(tm);
-
-    LoopAnalysisManager     lam;
-    FunctionAnalysisManager fam;
-    CGSCCAnalysisManager    cgam;
-    ModuleAnalysisManager   mam;
-
-    pb.register_module_analyses(mam);
-    pb.register_cgscc_analyses(cgam);
-    pb.register_function_analyses(fam);
-    pb.register_loop_analyses(lam);
-    pb.cross_register_proxies(lam, fam, cgam, mam);
-
-    ModulePassManager mpm =
-        (opt_level == OPT_NONE)
-            ? pb.build_o0_default_pipeline(opt_level)
-            : pb.build_per_module_default_pipeline(opt_level);
-
-    mpm.run(module, mam);
-}
-```
-
-NVVM-specific properties must survive ordinary LLVM optimization. Kernel
-functions stay identifiable, NVVM intrinsics do not get rewritten into
-target-illegal forms, address spaces stay distinct, and libdevice calls
-retain the ABI the NVPTX backend expects.
+NVVM-specific properties must survive ordinary LLVM optimization. Kernel functions retain `nvvm.kernel` metadata, NVVM intrinsics never get rewritten into target-illegal forms, NVPTX address spaces stay distinct, and libdevice calls keep the ABI the NVPTX backend expects. Any optimization pass that strips this metadata makes downstream selection fall back to a generic path that does not understand NVPTX `param`, `shared`, or `tmem` semantics.
 
 ## NVPTX ABI Lowering
 
-NVPTX has a stricter ABI than ordinary LLVM IR suggests. Kernel parameters,
-device function parameters, return values, `byval` aggregates, grid constants,
-and parameter-space pointers each need explicit handling.
+NVPTX has a stricter ABI than ordinary LLVM IR suggests. Kernel parameters live in address-space 101 (`param`), device-function parameters use the by-value or by-pointer convention NVPTX defines, return values flow through the param space too, and `byval` aggregates need explicit unpacking into scalar or vector register-passing lowerings. Grid constants live in their own constant address space. None of this is the generic `pointer` lowering LLVM's IR-level legalizer would produce.
 
-```c
-void lower_nvptx_function(Function fn, TargetInfo target) {
-    for (Argument arg : fn.arguments()) {
-        if (fn.is_kernel()) {
-            lower_kernel_argument_to_param_space(fn, arg, target);
-        } else {
-            lower_device_function_argument(fn, arg, target);
-        }
-    }
-
-    for (CallInst call : fn.calls()) {
-        lower_call_arguments(call, target);
-        lower_call_return(call, target);
-    }
-
-    rewrite_address_space_casts(fn, target);
-    lower_nvvm_intrinsics(fn, target);
-}
-```
-
-The reimplementation rule is direct: do not treat param-space values as generic
-pointers. Formal arguments, calls, returns, by-value aggregates, and grid
-constants must pass through the NVPTX calling convention logic.
+The NVPTX target lowering hook runs before SelectionDAG building and rewrites each formal argument, call, return, and address-space cast into the form the selector and the AsmPrinter both expect. Param-space values become `NVPTXISD::LoadParam` / `StoreParam` chains; kernel arguments become explicit `param`-space loads keyed by formal-arg index; by-value aggregates become a sequence of scalar param loads spelled out per field. Once this pass completes, no `inttoptr` or `addrspacecast` between mismatched NVPTX address spaces remains in the function. See [nvptx-target-lowering-call-and-args.md](nvptx-target-lowering-call-and-args.md) for the formal-arg shape lattice and the call-prototype layout.
 
 ## Instruction Selection
 
-Instruction selection is a two-layer process. Custom selectors handle NVPTX
-intrinsics and target-specific operations that require validation or expansion.
-The generated matcher table handles ordinary SelectionDAG nodes.
+Selection runs in three layers. The intrinsic-with-chain selector handles NVVM intrinsics that carry memory or control-flow chains and routes most cases to per-family emitters or to a secondary intrinsic-ID dispatcher. The vector load/store selector handles the NVPTX-private vector memory opcodes (the v2/v4/v8 forms over global/shared/param/tmem) plus tensor-memory routing for Blackwell. Both fast selectors fall through to the generated MatcherTable on unrecognized cases, and the MatcherTable runs a saturating-int64 cost scorer over candidate TableGen patterns. The scorer reads a per-opcode predicate-matrix row to decide whether the pattern is legal on the active subtarget before any cost accumulates.
 
-```c
-void select_nvptx_dag(SelectionDAG dag, SubtargetFeatures features) {
-    for (Node node : dag.nodes_in_selection_order()) {
-        if (is_nvptx_custom_node(node)) {
-            require(features.supports(node.required_feature()),
-                    "target does not support requested NVPTX operation");
-            select_custom_nvptx_node(node, features);
-            continue;
-        }
-
-        select_with_generated_matcher_table(node, features);
-    }
-}
-```
-
-This division matters for correctness. TMA, tensor-memory, WGMMA, tcgen05,
-special registers, vector memory operations, fences, barriers, and address-space
-conversions need custom legality checks before the generated matcher can
-safely produce an opcode.
+Feature-gated intrinsics — TMA, tensor-memory, WGMMA, tcgen05, `mma.block_scale`, cluster operations, special registers, async barriers — pass through validators that consult the subtarget feature bitmap and emit a diagnostic on failure rather than letting an illegal PTX instruction reach the printer. See [iseldag-and-matchertable.md](iseldag-and-matchertable.md) for the dispatcher shape, the 119-case MatcherTable scorer, and the operand-class vocabulary the predicate helpers consume.
 
 ## PTX Emission
 
-PTX emission is TableGen-style instruction printing plus NVIDIA-specific
-modifier helpers. The printer receives machine instructions and emits:
+The AsmPrinter is a single LTO-folded function with a 6,388-case dispatcher over MC opcodes. Each case selects one of 297 shared print-shape bodies; each body interleaves literal text, operand slots, and modifier-helper calls in the order `ptxas` requires. Mnemonic lookup goes through a parallel pair of `.rodata` offset tables keyed by MC opcode, returning a byte offset into an obfuscated mnemonic pool that is decrypted in place on first use via an `xor (3 * i) mod 256` walking cipher. Physical-register names use the same scheme on a smaller 586-byte pool.
 
-- opcode mnemonics and PTX type suffixes;
-- rounding, saturation, cache, scope, fence, and memory-order modifiers;
-- MMA/WGMMA/tcgen05 shape and layout modifiers;
-- TMA coordinates, descriptor suffixes, multicast controls, and cache policy;
-- section and scope comments used by the NVPTX asm printer;
-- kernel directives such as register limits, cluster dimensions, and required
-  thread dimensions.
+Module-level emission produces the `.version` / `.target` / `.address_size` header, kernel directives (`.entry`, `.reqntid`, `.maxntid`, `.minnctapersm`, `.maxnreg`, cluster directives), global and managed-variable declarations, then per-function bodies. Each function emits its frame setup, the virtual-register declarations grouped by class, and the basic-block sequence of MC instructions. The printer performs no subtarget legality checks: by the time an opcode reaches this layer, the selector and the machine verifier have already proved it is legal for the chosen target.
 
-The dense opcode printer and its modifier helpers are documented in
-[asm-printer-monster-and-windows.md](asm-printer-monster-and-windows.md) and
-[per-sm-emission-templates.md](per-sm-emission-templates.md). The overview only
-needs the contract: PTX printing must be driven by the resolved target feature
-set and by the opcode selected for that feature set.
-
-```c
-void print_ptx(Module *llvm, TargetInfo target, OutputStream *out) {
-    emit_target_header(out, target.triple, target.chip, target.ptx_version);
-    emit_address_size_directive(out, target.address_bits);
-
-    for (GlobalVariable *gv : llvm->globals()) {
-        emit_global_decl(out, gv, target);
-    }
-
-    for (Function *fn : llvm->functions()) {
-        emit_function_directives(out, fn, target);   /* .entry / .func, regs, cluster, reqntid */
-        for (BasicBlock *bb : fn->blocks()) {
-            emit_label(out, bb);
-            for (MachineInst *mi : bb->machine_insts()) {
-                print_inst(out, mi, target.features);
-            }
-        }
-        emit_function_end(out, fn);
-    }
-}
-```
-
-`print_inst` looks up the opcode in the per-SM opcode/mnemonic table, prints
-the type suffix and modifier tokens in the order required by `ptxas`, and then
-prints operands in the register-class vocabulary selected by the machine-IR
-operand kinds.
+See [asm-printer-monster-and-windows.md](asm-printer-monster-and-windows.md) for the dispatcher partition and the mnemonic-pool layout, and [per-sm-emission-templates.md](per-sm-emission-templates.md) for the actual PTX template strings emitted per SM tier.
 
 ## End-To-End Algorithm
 
-```c
-string emit_ptx_from_nvvm(ModuleOp mlir_module, CompileOptions options) {
-    LLVMModule llvm = translate_mlir_llvm_to_llvm_ir(mlir_module);
-    link_device_libraries(llvm, options);
+The whole codegen path can be read as a sequence of structurally distinct stages, each with a published contract from the table above. From `gpu.module` to PTX text:
 
-    TargetInfo target = resolve_nvptx_target(options);
-    TargetMachine tm = get_or_create_target_machine(target);
+1. Translate the MLIR module to LLVM IR, mapping `nvvm.*` ops to `llvm.nvvm.*` intrinsics and preserving NVPTX address spaces and kernel attributes.
+2. Link device libraries so libdevice math helpers and NVVM intrinsic implementations are resolved.
+3. Resolve the NVPTX target — triple, chip, feature set — and reuse or construct the target machine keyed by that tuple.
+4. Run the requested LLVM optimization pipeline (`PassBuilder` shape plus NVIDIA-private peepholes).
+5. Per function: run NVPTX target lowering for arguments, calls, returns, address-space casts, and intrinsic legalization.
+6. Per function: build the SelectionDAG, run the three-layer selector, build the MachineFunction, and run NVPTX-specific machine passes for argument lowering, scheduling, register allocation, and MIR cleanup.
+7. Run the AsmPrinter to produce the final PTX text.
 
-    optimize_llvm_module(llvm, tm, options.opt_level);
-
-    for (Function fn : llvm.functions()) {
-        lower_nvptx_function(fn, target);
-
-        SelectionDAG dag = build_selection_dag(fn);
-        select_nvptx_dag(dag, target.features);
-
-        MachineFunction mf = build_machine_function(dag, fn);
-        run_nvptx_machine_passes(mf, target);
-    }
-
-    return print_ptx(llvm, target);
-}
-```
+A reimplementation that keeps these seven stages and their published contracts can vary internal data structures freely without breaking any consumer downstream of the printer.
 
 ## Codegen Invariants
 

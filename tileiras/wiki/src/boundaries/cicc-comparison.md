@@ -99,7 +99,7 @@ Above the NVVM-IR boundary, tileiras introduces an MLIR-shaped front-end with no
 | Pipeline option registrar | Compact typed table for integer, unsigned, boolean, enum, and string options. |
 | `nvdisasm -c` shell-out | Optional SASS disassembly pass that appends a disassembly section to the emitted host object. |
 
-Three pieces deserve a closer look. First, dialect registration has no analogue in cicc, which builds its IR directly in LLVM-IR shape. Second, the MLIR `PassManager` uses nested operation pass managers, function adapters, and the canonicalizer/CSE/SymbolDCE cleanup trio; cicc's pass manager is a conventional LLVM function/module pipeline. Third, the optimization tier comes from an attribute embedded in the Tile IR bytecode, while cicc uses the conventional `-O0`/`-O1`/`-O2`/`-O3` driver flag family.
+Three pieces deserve a closer look. First, dialect registration has no analogue in cicc, which builds its IR directly in LLVM-IR shape. Second, the MLIR `PassManager` uses nested operation pass managers, function adapters, and the canonicalizer/CSE/SymbolDCE cleanup trio; cicc's pass manager is a conventional LLVM function/module pipeline. Third, the optimization tier comes from an attribute embedded in the TileIR bytecode, while cicc uses the conventional `-O0`/`-O1`/`-O2`/`-O3` driver flag family.
 
 ## cicc-only baggage tileiras dropped
 
@@ -226,7 +226,7 @@ cicc:
     output: PTX for ptxas
 
 tileiras:
-    input: Tile IR MLIR bytecode
+    input: TileIR MLIR bytecode
     frontend: MLIR dialect cascade and TileAS passes
     handoff: LLVM/NVVM module
     backend: shared NVPTX backend

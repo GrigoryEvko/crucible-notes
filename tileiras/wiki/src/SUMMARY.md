@@ -66,6 +66,12 @@
 - [nvgpu — Overview](dialects/nvgpu/overview.md)
 - [NVVM — Overview](dialects/nvvm/overview.md)
   - [Properties Blob and Attr Parsers](dialects/nvvm/properties-blob-and-attr-parsers.md)
+  - [WMMA Ops](dialects/nvvm/wmma-ops.md)
+  - [WGMMA Ops](dialects/nvvm/wgmma-ops.md)
+  - [TMA Ops](dialects/nvvm/tma-ops.md)
+  - [tcgen05 Ops](dialects/nvvm/tcgen05-ops.md)
+  - [mbarrier Ops](dialects/nvvm/mbarrier-ops.md)
+  - [Cluster Ops](dialects/nvvm/cluster-ops.md)
 
 # Pipeline
 
@@ -153,6 +159,7 @@
 - [Container Fingerprints](mlir-infra/container-fingerprints.md)
 - [Diagnostic ABI and Helpers](mlir-infra/diagnostic-abi-and-helpers.md)
 - [AsyncValue and BLAKE3 Interning](mlir-infra/asyncvalue-and-blake3-interning.md)
+- [Pass-Failure Handshake](mlir-infra/pass-failure-handshake.md)
 
 # Cross-cutting Infra
 
@@ -168,7 +175,11 @@
 
 - [AddrSpace Vote Lattice](topics/addrspace-vote-lattice.md)
 - [Blackwell 2-CTA/4-CTA MMA](topics/blackwell-2cta-and-4cta-mma.md)
-- [DSMEM Handshake and Cluster Barrier](topics/dsmem-handshake-and-cluster-barrier.md)
+- [Cluster Sync and DSMEM Handshake](topics/cluster-sync-and-dsmem-handshake.md)
+- [mbarrier State Machine](topics/mbarrier-state-machine.md)
+- [WGMMA Emission Protocol](topics/wgmma-emission-protocol.md)
+- [tcgen05 Tensor Memory Model](topics/tcgen05-tensor-memory-model.md)
+- [Matmul Progression by SM](topics/matmul-progression-by-sm.md)
 - [Force-Inline and Specialize Callees](topics/force-inline-and-specialize-callees.md)
 - [cuda_tile Simplifier Walker](topics/cuda-tile-simplifier-walker.md)
 - [LoopIdiom, Vectorize, Divergent](topics/loop-idiom-vectorize-divergent.md)
@@ -176,7 +187,7 @@
 
 # OSS Cross-Reference
 
-- [Overview and Y-Strand](oss/overview-and-y-strand.md)
+- [OSS Comparison Overview](oss/overview.md)
 - [cuda_tile Tree Mapping](oss/cuda-tile-tree-mapping.md)
 - [.td Files Delta](oss/td-files-delta.md)
 - [Transforms, FuseFMA, SynthDbg](oss/transforms-fusefma-synthdbg.md)

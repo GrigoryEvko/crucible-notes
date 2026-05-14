@@ -23,75 +23,9 @@ The selector has three major layers:
 | Vector load/store selector | Handles vectorized memory operations, tensor-memory loads/stores, and packed lane patterns. |
 | TableGen MatcherTable | Handles ordinary generated patterns, complex predicates, and recursive pattern scoring. |
 
-The fast selectors try highly structured NVIDIA-specific cases first. When a case returns "not selected", the ordinary MatcherTable path gets a shot at the node. The asymmetry is important: unsupported or unrecognized cases fall back rather than hard-fail, unless the target explicitly diagnoses the operation.
+The fast selectors try highly structured NVIDIA-specific cases first. When a case returns "not selected", the ordinary MatcherTable path gets a shot at the node. The asymmetry matters: unsupported or unrecognized cases fall back rather than hard-fail, unless the target explicitly diagnoses the operation. Order is fixed — intrinsic-with-chain, then vector load/store, then the generic MatcherTable scorer — and a reimplementation that reorders these layers gets different per-target opcodes for the same DAG node.
 
-```c
-bool select_node(SDNode *node, SelectorState *st) {
-    if (node->is_intrinsic_with_chain) {
-        if (select_intrinsic_with_chain(node, st))
-            return true;
-    }
-
-    if (node->is_vector_load_store) {
-        if (select_vector_load_store(node, st))
-            return true;
-    }
-
-    return match_tablegen_pattern(node, st);
-}
-```
-
-## Intrinsic Dispatch
-
-The intrinsic-with-chain selector is a dense switch over NVIDIA and upstream NVVM intrinsic IDs. Most case slots fall through to the MatcherTable on purpose; only cases with custom legality or custom machine-node construction carry bodies.
-
-Important custom families include:
-
-| Family | Behavior |
-|---|---|
-| `cvt_packfloat` | Validates FP8/FP6/FP4/UE8M0 format combinations and target support before emitting pack nodes. |
-| `tcgen05.mma` | Emits Blackwell tensor-memory MMA nodes, gated by datacenter Blackwell target variants. |
-| `nvvm.red` | Validates address space, type, noftz mode, and cache-hint legality. |
-| `cp.async` and TMA bulk tensor ops | Constructs chain-aware async-copy and descriptor nodes. |
-| WGMMA and MMA sync | Emits Hopper/Blackwell matrix instructions with architecture-specific feature checks. |
-| Block-scaled MMA | Provides the consumer-Blackwell substitute path where tensor memory is not available. |
-| FMA with FTZ override | Selects an FTZ or non-FTZ node based on a per-call `unsafe-fp-math` attribute. |
-
-The selector should be modeled as a validator plus emitter:
-
-```c
-bool select_intrinsic_with_chain(SDNode *node, SelectorState *st) {
-    IntrinsicID id = node->intrinsic_id;
-
-    switch (classify_intrinsic(id)) {
-    case INTR_CVT_PACKFLOAT:
-        validate_packfloat(node, st->subtarget);
-        emit_packfloat(node, st);
-        return true;
-
-    case INTR_TCGEN05_MMA:
-        validate_tcgen05_target(node, st->subtarget);
-        emit_tcgen05_mma(node, st);
-        return true;
-
-    case INTR_NVVM_RED:
-        validate_nvvm_red(node, st->subtarget);
-        emit_nvvm_red(node, st);
-        return true;
-
-    case INTR_TMA_OR_CP_ASYNC:
-        emit_async_copy_or_tma(node, st);
-        return true;
-
-    case INTR_FMA:
-        emit_fma_with_ftz_policy(node, st);
-        return true;
-
-    default:
-        return false;
-    }
-}
-```
+The intrinsic-with-chain selector keys off the `NVPTXISD` opcode, not the LLVM intrinsic ID. Each non-default arm either calls a per-family emitter, delegates to a secondary intrinsic-ID dispatcher, or assembles a `MachineSDNode` inline. Custom families with their own behaviour are `cvt_packfloat` (FP8/FP6/FP4/UE8M0 format validation), `tcgen05.mma` (datacenter-Blackwell tensor-memory MMA), `nvvm.red` (address-space, type, FTZ, and cache-hint legality), `cp.async` and TMA bulk-tensor descriptor construction, WGMMA and `mma.sync`, the consumer-Blackwell `mma.block_scale` path, and the per-call `unsafe-fp-math` FTZ override on FMA. The remaining `NVPTXISD` opcodes fall through and let the MatcherTable produce the machine opcode.
 
 ## INTRINSIC_W_CHAIN Top-Level Dispatcher
 
@@ -447,7 +381,7 @@ LABEL_25:                                          /* shared CheckPatternPredica
 
 ### The shared `LABEL_25` predicate tail and the 507-byte feature stride
 
-`LABEL_25` is the single entry point that every range-1 and range-3 case folds into. It reads a byte from the subtarget-feature predicate matrix at the address `*(BYTE *)(v29 + v30 + 507 * v31 + 6544)`. Here `v30` is `self->subtarget` (read from `a1[3]`), `v29` is the per-opcode row constant from the dispatch, `v31` is the active SM-feature slot (`v376`, derived from the current PTX version and architecture bits), and `6544` is the base offset of the predicate matrix inside the `NVPTXSubtarget` object. An earlier reading interpreted the 507-byte stride as a flattened LLVM `FeatureBitset` (4 056 bits per slot); strand BD04 retracted that in favour of the TileAS modulo-scheduling pipeline-lattice transition matrix, which uses a 507-byte row to encode legal pipe-stage transitions per feature row. The matrix entry is consumed as a small enum: values `0` and `1` accept the pattern at base cost; value `4` doubles the cost (the multiplied path at `LABEL_257` that returns `sat_mul_i64(2, v32)`); other values reject by falling through to the fast-path emit attempt at `LABEL_33`. The 4-doubling path is what makes patterns that need a partial pipe-stage retraction cost twice as much as their plain form, biasing the scorer toward shapes the pipeline already supports.
+`LABEL_25` is the single entry point that every range-1 and range-3 case folds into. It reads a byte from the subtarget-feature predicate matrix at the address `*(BYTE *)(v29 + v30 + 507 * v31 + 6544)`. Here `v30` is `self->subtarget` (read from `a1[3]`), `v29` is the per-opcode row constant from the dispatch, `v31` is the active SM-feature slot (`v376`, derived from the current PTX version and architecture bits), and `6544` is the base offset of the predicate matrix inside the `NVPTXSubtarget` object. An earlier reading interpreted the 507-byte stride as a flattened LLVM `FeatureBitset` (4 056 bits per slot); a later analysis retracted that in favour of the TileAS modulo-scheduling pipeline-lattice transition matrix, which uses a 507-byte row to encode legal pipe-stage transitions per feature row. The matrix entry is consumed as a small enum: values `0` and `1` accept the pattern at base cost; value `4` doubles the cost (the multiplied path at `LABEL_257` that returns `sat_mul_i64(2, v32)`); other values reject by falling through to the fast-path emit attempt at `LABEL_33`. The 4-doubling path is what makes patterns that need a partial pipe-stage retraction cost twice as much as their plain form, biasing the scorer toward shapes the pipeline already supports.
 
 ```c
 int64_t check_predicate_and_emit(NVPTXISelDAGToDAG *self, SDNode *N, unsigned Depth,

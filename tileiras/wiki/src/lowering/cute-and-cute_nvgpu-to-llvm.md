@@ -8,32 +8,36 @@ The public contract: layout algebra stays inspectable until enough target inform
 
 ## Lowering Stages
 
+The CuTe lowering pipeline is three passes that run in order. Each pass owns a different layer of abstraction, and the next pass relies on the prior pass having normalised its input.
+
 | Stage | Responsibility |
 |---|---|
-| `CuteDesugar` | expands syntactic sugar into primitive `cute`, `scf`, `arith`, and `memref` operations |
-| `cute -> LLVM` pattern set | lowers layout tuples, descriptor iterators, pointer casts, and primitive helpers |
-| `cute_nvgpu` atom lowering | rewrites SM90 and SM100 atom builders into target-specific IR |
-| NVGPU/NVVM companion lowering | consumes the emitted atom, descriptor, and architectural operations |
+| `CuteDesugar` | Expands sugar into primitive `cute`, `scf`, `arith`, and `memref` operations. Target-neutral. |
+| `cute -> LLVM` pattern set | Lowers layout tuples, descriptor iterators, pointer casts, and primitive helpers into LLVM-dialect values. |
+| `cute_nvgpu` atom lowering | Rewrites SM90 and SM100 atom builders into target-specific NVVM and tcgen05 IR. |
 
-Stage order simplifies high-level CuTe layout manipulation before architectural operations are selected.
+Stage order simplifies high-level CuTe layout manipulation before architectural operations are selected. Desugaring must run first because the primitive CuTe lowering bank can only see what the desugarer has reduced; atom lowering runs last because its target gates depend on having LLVM-typed operands available.
 
-```c
-LogicalResult lower_cute_stack(ModuleOp module, LoweringOptions options) {
-    if (failed(run_cute_desugar(module))) {
-        return failure();
-    }
+## Layout Descriptors to LLVM
 
-    if (failed(apply_cute_to_llvm_patterns(module, options))) {
-        return failure();
-    }
+The translation from CuTe layout algebra to LLVM follows a single rule: each `cute` tuple becomes an `llvm.struct`, and each `Layout` becomes a sequence of `llvm.insertvalue` operations on a fresh undef of that struct type. Modes within a tuple — shape, stride, swizzle — translate independently and compose by struct nesting. A rank-2 layout, for example, packs as `!llvm.struct<(struct<(i32, i32)>, struct<(i32, i32)>)>` where the outer struct holds shape and stride and each inner struct holds the per-mode entries.
 
-    if (failed(lower_cute_nvgpu_atoms(module, options))) {
-        return failure();
-    }
+The descriptor-iterator primitive sits at the heart of this lowering. CuTe represents iteration over a layout via `cute.make_descriptor_iterator`, which the bank rewrites into a four-op LLVM sequence: a `ceildivsi` for the total iteration count, an `alloca` for the iterator state slot, an `undef` to initialise it, and three `insertvalue` operations that populate the base pointer, current index, and stride fields.
 
-    return success();
-}
+```mlir
+%iter = cute.make_descriptor_iterator %base, %extent, %tile_shape, %stride
+   ↓
+%count   = arith.ceildivsi %extent, %tile_shape : i32
+%storage = llvm.alloca %c1 x !llvm.struct<(ptr, i32, i32)> : (i32) -> !llvm.ptr
+%init    = llvm.mlir.undef : !llvm.struct<(ptr, i32, i32)>
+%s0      = llvm.insertvalue %base,   %init[0] : !llvm.struct<(ptr, i32, i32)>
+%s1      = llvm.insertvalue %c0,     %s0[1]   : !llvm.struct<(ptr, i32, i32)>
+%iter    = llvm.insertvalue %stride, %s1[2]   : !llvm.struct<(ptr, i32, i32)>
 ```
+
+`descriptor.advance` and `descriptor.rewind` work directly on the resulting three-field struct — `extractvalue` to read the index, `add` or `sub` to update it, `insertvalue` to write it back. The iterator is small (24 bytes) and the LLVM optimiser usually eliminates the stack slot through SROA after inlining; emitting the alloca up front gives the optimiser a stable target to fold.
+
+Per-shape escape hatches sit at the edges of the bank. `cute.print` desugars to an element-wise loop with coordinate materialisation and a scalar print call. `cute.make_atom` dispatches to atom-interface-specific construction. `cute.filter_zeros`, `cute.group_modes`, `cute.coalesce`, and `cute.complement` carry layout-algebra semantics: they rewrite to layout reconstruction sequences that compute new shape and stride tuples from the input layout.
 
 ## Desugaring Contract
 
@@ -61,43 +65,32 @@ The pass is target-neutral. It must not branch on compute capability — target 
 | output ops | `llvm.*` (alloca, insertvalue, extractvalue, load, store, struct construction), `nvvm.*` (tcgen05, wgmma, cp.async.bulk), `arith` and `scf` for residual control structure, `cutlass.*` for atoms forwarded into companion lowering |
 | output types | layout and shape tuples become integers or `!llvm.struct`; descriptor iterators become a 3-field struct (`ptr, i32, i32`); atoms become opaque struct payloads consumed by the next stage |
 
-## Bulk `cute -> LLVM` Conversion
+## Bulk `cute -> LLVM` Pattern Bank
 
-A contiguous vtable bank of forty-four `{anonymous}::*OpLowering` instantiations covers the primitive CuTe surface. The bank lives at `0x59E7590..0x59E8700`, populated by `sub_16CF350` (13 393 B). Each pattern is a 0x68-B `OpConversionPattern` matching Shape B from the pattern-vtables-and-shapes document: the trailing slot at `+0x60` carries the LLVM `TypeConverter*` pointer, since almost every cute lowering needs type conversion when descending into LLVM struct, integer, and pointer representations.
+Forty-four `OpConversionPattern` classes cover the primitive CuTe surface. The first sixteen anchor the bank by lowering layout construction, tuple manipulation, and the descriptor-iterator primitives every later pattern reaches into; the remaining twenty-eight extend it with copy and partition helpers, fast-division specialisations, pointer-cast bridges, and `cute_nvgpu` helper operations. Registration is a flat linear sweep with no conditional branches on target — a faithful reimplementation mirrors the bank as a single pattern list.
 
-The first sixteen entries cover layout construction, tuple manipulation, and the descriptor-iterator primitives that anchor the rest of the bank. The remaining twenty-eight entries continue with copy and partition helpers, fast division specializations, pointer cast bridges, and `cute_nvgpu` helper ops, ending at `0x59E8700`. A single linear sweep registers the whole bank with no conditional branches on target, so a faithful reimplementation can mirror it as a flat pattern list.
+The sixteen anchor classes:
 
-| Vtable offset | Class name |
-|---|---|
-| `0x59E7590` | `MakeDescriptorIteratorOpLowering` |
-| `0x59E75E0` | `DescriptorAdvanceOpLowering` |
-| `0x59E7630` | `DescriptorRewindOpLowering` |
-| `0x59E7680` | `MakeLayoutOpLowering` |
-| `0x59E76D0` | `MakeCoordOpLowering` |
-| `0x59E7720` | `CrdToIdxOpLowering` |
-| `0x59E7770` | `TiledDivOpLowering` |
-| `0x59E77C0` | `TiledModOpLowering` |
-| `0x59E7810` | `ShapeDivOpLowering` |
-| `0x59E7860` | `CeilDivOpLowering` |
-| `0x59E78B0` | `FilterZerosOpLowering` |
-| `0x59E7900` | `GroupModesOpLowering` |
-| `0x59E7950` | `CoalesceOpLowering` |
-| `0x59E79A0` | `ComplementOpLowering` |
-| `0x59E79F0` | `PartitionOpLowering` |
-| `0x59E7A40` | `TilePartitionOpLowering` |
+| Class | Source op | Rewrite target |
+|---|---|---|
+| `MakeDescriptorIteratorOpLowering` | `cute.make_descriptor_iterator` | `alloca` + `undef` + three `insertvalue` (the four-op sequence above) |
+| `DescriptorAdvanceOpLowering` | `cute.descriptor.advance` | `extractvalue` + `add` + `insertvalue` |
+| `DescriptorRewindOpLowering` | `cute.descriptor.rewind` | `extractvalue` + `sub` + `insertvalue` |
+| `MakeLayoutOpLowering` | `cute.make_layout` | `undef` + recursive `insertvalue` over shape and stride |
+| `MakeCoordOpLowering` | `cute.make_coord` | Flat coordinate-tuple construction |
+| `CrdToIdxOpLowering` | `cute.crd_to_idx` | Dot product of coordinate and stride tuples |
+| `TiledDivOpLowering` | `cute.tiled_div` | Per-mode `divsi` |
+| `TiledModOpLowering` | `cute.tiled_mod` | Per-mode `remsi` |
+| `ShapeDivOpLowering` | `cute.shape_div` | Layout reconstruction after shape divide |
+| `CeilDivOpLowering` | `cute.ceildiv` | `ceildivsi` lifted to LLVM scalars |
+| `FilterZerosOpLowering` | `cute.filter_zeros` | Layout reconstruction skipping zero-extent modes |
+| `GroupModesOpLowering` | `cute.group_modes` | Layout reconstruction with grouped modes |
+| `CoalesceOpLowering` | `cute.coalesce` | Layout reconstruction with adjacent compatible modes merged |
+| `ComplementOpLowering` | `cute.complement` | Layout-complement construction |
+| `PartitionOpLowering` | `cute.partition` | Pointer-offset GEP plus layout adjustment |
+| `TilePartitionOpLowering` | `cute.tile_partition` | Tiled-partition iteration emission |
 
-Descriptor iterator creation is the canonical complex pattern in the bank. The body at `sub_16F47D0` (6 296 B) emits a four-step LLVM sequence: an `arith.ceildivsi` for the total iteration count from the descriptor's shape, an `llvm.alloca` reserving a 24-B descriptor-iterator state slot on the stack, an `llvm.mlir.undef` to initialise the slot, and three `llvm.insertvalue` operations that populate the descriptor pointer, current-index, and stride fields. The resulting iterator is a three-field LLVM struct that downstream `descriptor.advance` and `descriptor.rewind` operations read and write through `llvm.extractvalue` and `llvm.insertvalue`.
-
-```mlir
-%count   = arith.ceildivsi %extent, %tile_shape : i32
-%storage = llvm.alloca %c1 x !llvm.struct<(ptr, i32, i32)> : (i32) -> !llvm.ptr
-%init    = llvm.mlir.undef : !llvm.struct<(ptr, i32, i32)>
-%s0      = llvm.insertvalue %base,    %init[0] : !llvm.struct<(ptr, i32, i32)>
-%s1      = llvm.insertvalue %c0,      %s0[1]   : !llvm.struct<(ptr, i32, i32)>
-%s2      = llvm.insertvalue %stride,  %s1[2]   : !llvm.struct<(ptr, i32, i32)>
-```
-
-A secondary entry point at `sub_16D27B0` extends the bank with two `DerefineOpLowering` patterns — one for layout-projection-to-coord, one for layout-flatten — and registers the `ConvertGPUFuncSignature` rewrite that downgrades MLIR `gpu.func` signatures to LLVM `func.func`. This second registrar runs after the main bank so `cute_nvgpu` helper rewrites can rely on the primitive CuTe operations already being convertible.
+A secondary registrar runs after the main bank and adds two `DerefineOpLowering` patterns (layout-projection-to-coord and layout-flatten) plus the `ConvertGPUFuncSignature` rewrite that downgrades `gpu.func` signatures to LLVM-compatible `func.func`. Running this registrar second matters: it lets the `cute_nvgpu` helper rewrites assume the primitive CuTe operations are already convertible, so they can compose with the bank's outputs rather than racing them.
 
 ## Dialect Registration Semantics
 
@@ -113,101 +106,78 @@ Model these classes explicitly in any reimplementation. The verifier is not opti
 
 ## Architecture-Specialized Atoms
 
-Three large atom rewriters carry the architectural split.
+Three atom rewriters carry the architectural split. They register as independent `OpConversionPattern` subclasses rather than one switch, so the dialect-conversion engine selects among them by op kind rather than by runtime dispatch inside a shared rewriter.
 
-| Atom | Architecture | Core behavior |
-|---|---|---|
-| IMMA atom | SM100 Blackwell | lowers integer MMA into tensor-memory-backed atom structure |
-| WGMMA atom | SM90 Hopper | lowers warpgroup MMA into register-file accumulator and GMMA descriptors |
-| S2T copy atom | SM100 Blackwell | lowers shared-memory-to-tensor-memory copy with cluster-rank handling |
+| Atom | Architecture | Accumulator location | Critical state |
+|---|---|---|---|
+| `Sm90WgmmaAtom` | SM90 Hopper | warpgroup register file | GMMA shared-memory descriptors, WGMMA fence |
+| `Sm100ImmaAtom` | SM100 Blackwell | tensor memory | TMEM pointer plus mbarrier ownership |
+| `Sm100S2tCopyAtom` | SM100 Blackwell | tensor memory | Cluster CTA rank for multi-CTA copy partition |
 
-Accumulator location is the critical distinction. Hopper WGMMA accumulates in the warpgroup register file; Blackwell IMMA and S2T copy use tensor memory, so their lowerings must materialize tensor-memory references and any required mbarrier ownership.
-
-```c
-LogicalResult lower_arch_atom(CuteNvgpuAtomOp op, Rewriter *rw, TargetInfo target) {
-    switch (op.atom_kind()) {
-    case AtomKind::Sm100Imma:
-        require(target.supports_tensor_memory());
-        return lower_sm100_imma_atom(op, rw);
-    case AtomKind::Sm90Wgmma:
-        require(target.supports_wgmma());
-        return lower_sm90_wgmma_atom(op, rw);
-    case AtomKind::Sm100SharedToTensorCopy:
-        require(target.supports_tensor_memory());
-        return lower_sm100_s2t_copy_atom(op, rw);
-    default:
-        return failure();
-    }
-}
-```
+Accumulator location is the structural distinction. Hopper WGMMA accumulates in the warpgroup register file, so the rewriter materialises a register-allocated accumulator and packages it as the atom's result. Blackwell IMMA and S2T copy accumulate in tensor memory, so their rewriters materialise tensor-memory references and any required mbarrier ownership before emitting the atom.
 
 ## Hopper WGMMA Contract
 
-WGMMA atom lowering builds operand descriptors for shared-memory matrices, creates a register accumulator, emits the required WGMMA fence, and packages the atom for later NVGPU/NVVM lowering. Descriptor packing is deterministic integer arithmetic and must not depend on mutable pass state.
+The SM90 WGMMA atom rewriter builds operand descriptors for shared-memory matrices, creates a register accumulator, emits the WGMMA fence, and packages the atom for later NVGPU/NVVM lowering. Descriptor packing is deterministic integer arithmetic over the shared-memory base pointer, leading-byte offset, matrix stride, swizzle mode, and base offset — see the canonical bit layout in [MMA Atoms sm70-120](../dialects/cute_nvgpu/mma-atoms-sm70-120.md). The packer is side-effect-free so common-subexpression elimination can hoist redundant descriptor construction across loop iterations.
 
-```c
-LogicalResult lower_sm90_wgmma_atom(CuteNvgpuAtomOp op, Rewriter *rw) {
-    Value acc = make_register_accumulator(op.shape(), op.element_type(), rw);
-    Value desc_a = make_gmma_shared_descriptor(op.operand_a(), rw);
-    Value desc_b = make_gmma_shared_descriptor(op.operand_b(), rw);
-
-    rw->create("nvvm.wgmma.fence.aligned");
-    Value atom = make_cute_atom(op, {desc_a, desc_b, acc}, rw);
-    rw->replace_op(op, atom);
-    return success();
-}
+```mlir
+%atom = cute_nvgpu.atom.sm90.wgmma %a_smem, %b_smem, %shape, %elt
+   ↓
+%desc_a = cute_nvgpu.gmma.descriptor %a_smem : i64       // packed bitfield
+%desc_b = cute_nvgpu.gmma.descriptor %b_smem : i64
+%acc    = cute_nvgpu.register.accumulator %shape, %elt   // warpgroup registers
+nvvm.wgmma.fence.aligned
+%atom   = cute_nvgpu.atom %desc_a, %desc_b, %acc
 ```
+
+The atom is a CuTe payload, not an executable WGMMA. The fence sits between descriptor materialisation and the atom packaging because schedulers can move descriptor construction freely but cannot reorder it past the fence; emitting the fence here pins the boundary the consumer pass relies on.
 
 ## Blackwell IMMA and S2T Contract
 
-Blackwell IMMA lowers through tensor memory. The rewrite validates operand element types, builds tensor-memory destinations, initializes required mbarriers, and emits a CuTe atom payload that later tcgen05 lowering can consume.
+Blackwell IMMA lowers through tensor memory rather than the register file. The rewrite validates operand element types, retrieves a tensor-memory destination via the `retrieve_tmem_ptr` lowering above, initialises any required mbarriers, and emits a CuTe atom payload that the tcgen05 path later consumes.
 
-S2T copy follows the same shape but owns cluster-rank arithmetic. For multi-CTA shapes, it reads the cluster CTA rank, computes the rank modulo the participating CTA group, and emits conditional copy structure for the selected partition.
-
-```c
-Value compute_cluster_partition(Value cta_rank, uint32_t cta_group, Rewriter *rw) {
-    Value group = rw->constant_i32(cta_group);
-    Value local = rw->rem_signed(cta_rank, group);
-    return rw->and_i(local, rw->constant_i32(cta_group - 1));
-}
+```mlir
+%atom = cute_nvgpu.atom.sm100.imma %a_smem, %b_smem, %shape, %elt
+   ↓
+%tmem    = cute_nvgpu.arch.sm100.retrieve_tmem_ptr %handle, %cols
+%mbar    = cute_nvgpu.mbarrier.init %ticks
+%atom    = cute_nvgpu.atom %a_smem, %b_smem, %tmem, %mbar
 ```
+
+S2T copy follows the same shape and additionally owns cluster-rank arithmetic. For multi-CTA shapes, the rewriter reads the cluster CTA rank, computes the rank modulo the participating CTA group, and emits the conditional copy structure for the selected partition. The partition computation reduces to two integer operations: `rank % cta_group` for the local index and a bitwise mask `(rank % cta_group) & (cta_group - 1)` that the rewriter folds into the destination address arithmetic when `cta_group` is a power of two.
 
 ## SM100 `retrieve_tmem_ptr` Lowering
 
-`cute_nvgpu.arch.sm100.retrieve_tmem_ptr` converts a TMEM handle — a 32-bit token returned by `tcgen05.alloc.shared` — into a typed `i32*` pointing into the per-CTA tensor-memory file. The lowering at `sub_1146AA0` (2 341 B) emits a four-op LLVM sequence guarded by a per-function TMEM-cache hash table. Every consumer of the TMEM region calls `retrieve_tmem_ptr` independently against the same handle, and emitting `tcgen05.alloc` more than once per handle is illegal — the cache is the primary correctness mechanism. The alloc must happen exactly once per handle, and the cache turns subsequent retrieval ops into no-op rewrites that reuse the cached pointer.
+`cute_nvgpu.arch.sm100.retrieve_tmem_ptr` converts a TMEM handle — a 32-bit token returned by `tcgen05.alloc.shared` — into a typed `i32*` pointing into the per-CTA tensor-memory file. Multiple consumers in the same kernel call `retrieve_tmem_ptr` against the same handle, and emitting `tcgen05.alloc` more than once for one handle is illegal hardware behaviour. A per-function cache keyed by the handle SSA value is therefore the primary correctness mechanism: the first retrieval emits the alloc, subsequent retrievals reuse the cached pointer.
 
-The TMEM cache is a per-function open-addressing DenseMap keyed by the TMEM handle SSA value. Each slot is a 16-byte `{handle: u64, cached_ptr: void*}` pair. Sentinel handles `-4096` mark empty slots and `-8192` mark tombstones, the standard LLVM DenseMap convention. On a hit, the cached pointer is returned directly; on a miss, the lowering emits the four-op sequence below, then inserts the resulting pointer into the cache under the handle key.
-
-When the cache misses, the rewriter emits this sequence into the LLVM IR:
+On a cache hit the rewrite is a no-op replacement with the cached pointer. On a miss the rewriter emits a four-op LLVM sequence and inserts the resulting pointer into the cache under the handle key:
 
 ```mlir
+%handle  = cute_nvgpu.arch.sm100.retrieve_tmem_ptr %tmem_handle, %num_columns
+   ↓
 %handle    = nvvm.tcgen05.alloc.shared {num_columns = N : i32} : i32
-                                                              // store handle into the function's
-                                                              // tmem-alloc-handle slot for later relinquish
-llvm.store %handle, %tmem_alloc_handle_slot : !llvm.ptr
-%relinquish = nvvm.tcgen05.relinquish_alloc_permit            // permit other CTAs to alloc
+llvm.store %handle, %tmem_alloc_handle_slot : !llvm.ptr     // for later relinquish
+nvvm.tcgen05.relinquish_alloc_permit                         // permit other CTAs to alloc
 %tmem_ptr  = llvm.load %tmem_handle_addr : !llvm.ptr -> !llvm.ptr<3>
-                                                              // load the per-CTA tmem ptr from the
-                                                              // shared-memory mirror at addr_space(3)
 ```
 
 The kernel-entry prologue emits `tmem_alloc_handle_slot` and `tmem_handle_addr` earlier, both living in the function's stack frame, so the retrieval lowering reads them as already-allocated stack slots rather than constructing them on demand.
 
 ```c
-Value lowerRetrieveTmemPtr(Op op, Value handle, ConversionPatternRewriter &rw) {
-    if (auto cached = cache.lookup(handle))                             return cached;       // hit
-    Value h = rw.create<nvvm::Tcgen05AllocSharedOp>(loc, /*numColumns=*/op.getN());
+Value lowerRetrieveTmemPtr(RetrieveTmemPtrOp op, Value handle,
+                           ConversionPatternRewriter &rw,
+                           DenseMap<Value, Value> &cache) {
+    if (auto cached = cache.lookup(handle))                       return cached;
+    Value h    = rw.create<nvvm::Tcgen05AllocSharedOp>(loc, op.getNumColumns());
     rw.create<llvm::StoreOp>(loc, h, getTmemHandleSlot(op));
     rw.create<nvvm::Tcgen05RelinquishAllocPermitOp>(loc);
-    Value ptr = rw.create<llvm::LoadOp>(loc, llvmPtr(/*as=*/3), getTmemHandleAddr(op));
-    cache.insert(handle, ptr);
+    Value ptr  = rw.create<llvm::LoadOp>(loc, llvmPtr(/*as=*/3), getTmemHandleAddr(op));
+    cache.insert({handle, ptr});
     return ptr;
 }
 ```
 
-The 15-pattern SM100 populator at `sub_16730B0` (6.8 KB) registers the retrieve pattern and installs every `cute_nvgpu.arch.sm100.*` pattern in one call. Its roster: `retrieve_tmem_ptr`, `tmem_load`, `tmem_store`, `tmem_alloc`, `tmem_dealloc`, and ten further tcgen05 ops including `load_b8x256` and `store_b8x256`. Each pattern is a 0x68-byte `OpConversionPattern` of the shared Shape B layout; their vtables sit consecutively in the bank `0x59EE??0..0x59EF??0`, which makes the roster easy to enumerate from the binary.
-
-The populator gates on the `tmem` subtarget feature (index 80 in the `SubtargetFeatureKV` table; see [NVPTX Subtarget and Feature Matrix](../codegen/nvptx-subtarget-and-feature-matrix.md)). On non-Blackwell or consumer-Blackwell builds, `sub_16730B0` is invoked with a no-op flag and registers nothing, so the conversion target never accepts `cute_nvgpu.arch.sm100.*` operations and any surviving op fails legalization with a clean diagnostic.
+The SM100 populator installs fifteen patterns in one call. The roster covers `retrieve_tmem_ptr`, `tmem_load`, `tmem_store`, `tmem_alloc`, `tmem_dealloc`, and ten further tcgen05 operations including `load_b8x256` and `store_b8x256`. The populator gates on the `tmem` subtarget feature (see [NVPTX Subtarget and Feature Matrix](../codegen/nvptx-subtarget-and-feature-matrix.md)); on non-Blackwell or consumer-Blackwell builds the populator is invoked with a no-op flag and registers nothing, so the conversion target never accepts `cute_nvgpu.arch.sm100.*` operations and any surviving op fails legalisation with a clean diagnostic.
 
 ## Conversion Invariants
 
@@ -218,4 +188,8 @@ The populator gates on the `tmem` subtarget feature (index 80 in the `SubtargetF
 - SM90 WGMMA uses register accumulators; SM100 IMMA and S2T copy use tensor-memory-backed structures.
 - Atom lowerings should emit explicit diagnostics for unsupported architecture or operand type combinations.
 - No CuTe-only executable operation may reach final NVPTX serialization.
+
+## Cross-References
+
+[Overview](overview.md) places CuTe lowering in the companion-dialect stage that runs after TileAS bodies have lowered to LLVM. [nvgpu / gpu to NVVM](nvgpu-and-gpu-to-nvvm.md) is the sister pass that consumes the architectural atoms this pass emits — WGMMA atoms go to `nvvm.wgmma.*`, IMMA and S2T copy atoms go to `nvvm.tcgen05.*`. [TileAS to LLVM](tileas-to-llvm.md) emits the residual `cute_nvgpu.arch.sm100.retrieve_tmem_ptr` operations this pass resolves through the per-function TMEM cache. [MMA Atoms sm70-120](../dialects/cute_nvgpu/mma-atoms-sm70-120.md) carries the canonical bit layout for GMMA descriptors.
 

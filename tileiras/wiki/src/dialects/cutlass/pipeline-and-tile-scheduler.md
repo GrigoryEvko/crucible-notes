@@ -42,15 +42,35 @@ The main handshake is:
 
 ```c
 void lower_pipeline_handshake(Pipeline pipeline, Stage stage) {
-    Barrier slot = pipeline.barrier(stage.index);
+    Value slot_addr = pipeline.barrier_addr(stage.index);
 
-    emit_try_wait(slot, stage.phase);
+    // Producer acquire — wait until the slot is empty.
+    emit("nvvm.mbarrier.try_wait.parity.shared",
+         /*addr=*/slot_addr,
+         /*phase=*/stage.phase ^ 1,
+         /*timeout=*/k_default_timeout);
+
     emit_producer_body(stage);
-    emit_arrive_expect_tx(slot, stage.transaction_bytes);
 
-    emit_try_wait(slot, stage.phase);
+    // Producer commit — arrive with expect_tx for TMA-backed producers,
+    // or plain arrive for non-TMA work.
+    if (stage.transaction_bytes > 0)
+        emit("nvvm.mbarrier.arrive.expect_tx.shared",
+             slot_addr, /*tx_bytes=*/stage.transaction_bytes);
+    else
+        emit("nvvm.mbarrier.arrive.shared",
+             slot_addr, /*count=*/pipeline.num_producers);
+
+    // Consumer wait — wait until the slot is full.
+    emit("nvvm.mbarrier.try_wait.parity.shared",
+         slot_addr, /*phase=*/stage.phase,
+         /*timeout=*/k_default_timeout);
+
     emit_consumer_body(stage);
-    emit_arrive_release(slot);
+
+    // Consumer release.
+    emit("nvvm.mbarrier.arrive.shared",
+         slot_addr, /*count=*/pipeline.num_consumers);
 }
 ```
 
@@ -63,28 +83,30 @@ typedef enum { ROLE_PRODUCER, ROLE_CONSUMER } AgentRole;
 
 PipelineState pipeline_step(Pipeline p, AgentRole role,
                             PipelineState state, StageBody body) {
-    Barrier slot = p.barrier(state.index);
+    Value slot = p.barrier_addr(state.index);
 
     switch (role) {
     case ROLE_PRODUCER:
-        // 1. acquire: wait until the slot is empty (parity matches state.phase).
-        emit_mbarrier_try_wait_parity(slot, state.phase ^ 1);
+        // 1. acquire — empty-side parity is the inverse of full-side parity.
+        emit("nvvm.mbarrier.try_wait.parity.shared", slot, state.phase ^ 1);
         // 2. issue async work (TMA / async copy / WGMMA / ...).
         run_producer_body(body);
-        // 3. commit: arrive with optional expect_tx for TMA-backed producers.
+        // 3. commit — arrive with expect_tx for TMA-backed producers.
         if (body.transaction_bytes > 0)
-            emit_mbarrier_arrive_expect_tx(slot, body.transaction_bytes);
+            emit("nvvm.mbarrier.arrive.expect_tx.shared",
+                 slot, /*tx_bytes=*/body.transaction_bytes);
         else
-            emit_mbarrier_arrive(slot, p.num_producers);
+            emit("nvvm.mbarrier.arrive.shared",
+                 slot, /*count=*/p.num_producers);
         break;
 
     case ROLE_CONSUMER:
-        // 1. wait: spin until the slot is full (parity matches state.phase).
-        emit_mbarrier_try_wait_parity(slot, state.phase);
+        // 1. wait — spin until the slot is full (parity matches state.phase).
+        emit("nvvm.mbarrier.try_wait.parity.shared", slot, state.phase);
         // 2. read the stage's SMEM / TMEM / register fragments.
         run_consumer_body(body);
-        // 3. release: arrive on the empty-side counter.
-        emit_mbarrier_arrive(slot, p.num_consumers);
+        // 3. release — arrive on the empty-side counter.
+        emit("nvvm.mbarrier.arrive.shared", slot, /*count=*/p.num_consumers);
         break;
     }
 
@@ -258,7 +280,7 @@ void phase_c_emit_arrives(Builder *b, Value pipe, MaskMatrix *m, uint32_t P) {
 
 ### Phase D — NamedBarriers Tail
 
-Phase D emits one trailing `arith.addi` per NamedBarrier barrier-id base. The op type is `&unk_5BE5898` and the builder is `sub_42D92B0`. The barrier-id offset comes from `sub_17346A0(op, 3)`, where the literal 3 is the offset constant identifying NamedBarrier slots in the operand bundle. NamedBarriers piggyback on the acquire so warp-specialised named regions stay synchronised with the staged pipeline without a separate lowering pass.
+Phase D emits one trailing `arith.addi` per NamedBarrier barrier-id base. The op type is `&unk_5BE5898` and the builder is `sub_42D92B0`. The barrier-id offset comes from `sub_17346A0(op, 3)`, where the literal 3 is the offset constant identifying NamedBarrier slots in the operand bundle. NamedBarriers piggyback on the acquire so warp-specialized named regions stay synchronised with the staged pipeline without a separate lowering pass.
 
 Once all four phases complete, the lowering finalises with `sub_36C67C0(rewriter, op, results, 1u)` — the single-result commit. The `1u` is the result count, not a flag: producer acquire returns the updated pipeline state record and nothing else.
 
@@ -327,18 +349,18 @@ Scheduler handles carry the selected kind. Work-tile-info values carry the field
 
 ## Scheduler Bodies
 
-The runtime work-distribution layer in Tileiras is not one routine. Six R-strand subs cooperate to decide which CTA handles which tile: four scheduler bodies — one per `cutlass.tile_scheduler.*` op variant, with two specialisations of StreamK for SM100 vs generic — plus two helpers (workspace sizing and a `Params` struct factory). Every kernel using CUTLASS-style work distribution picks one of the four body subs based on the dialect op in its module and the target SM, and links in both helpers unconditionally for setup.
+The runtime work-distribution layer in Tileiras is not one routine. Six cooperating subs decide which CTA handles which tile: four scheduler bodies — one per `cutlass.tile_scheduler.*` op variant, with two specialisations of StreamK for SM100 vs generic — plus two helpers (workspace sizing and a `Params` struct factory). Every kernel using CUTLASS-style work distribution picks one of the four body subs based on the dialect op in its module and the target SM, and links in both helpers unconditionally for setup.
 
-| Sub | Strand | Scheduler variant | Workspace | Notes |
-|---|---|---|---|---|
-| `sub_R01` | R01 | SM100 StreamK | needs `workspace` global | Blackwell-specific StreamK with cluster-level coordination |
-| `sub_R02` | R02 | StaticPersistent | small workspace | 1-CTA-per-SM persistent kernel; works on all SMs |
-| `sub_R03` | R03 | StreamK (generic) | needs `workspace` | Hopper-style StreamK; the SM100 variant supersedes when targetSM >= 100 |
-| `sub_R04` | R04 | DataParallel | no workspace | Pure data-parallel — no work-stealing, simplest case |
-| `sub_R05` | R05 | (helper) `getWorkspaceSize` | — | Computes the per-scheduler workspace requirement |
-| `sub_R06` | R06 | (helper) `Params` struct factory | — | Builds the `Params` struct each scheduler reads |
+| Sub | Scheduler variant | Workspace | Notes |
+|---|---|---|---|
+| `sub_R01` | SM100 StreamK | needs `workspace` global | Blackwell-specific StreamK with cluster-level coordination |
+| `sub_R02` | StaticPersistent | small workspace | 1-CTA-per-SM persistent kernel; works on all SMs |
+| `sub_R03` | StreamK (generic) | needs `workspace` | Hopper-style StreamK; the SM100 variant supersedes when targetSM >= 100 |
+| `sub_R04` | DataParallel | no workspace | Pure data-parallel — no work-stealing, simplest case |
+| `sub_R05` | (helper) `getWorkspaceSize` | — | Computes the per-scheduler workspace requirement |
+| `sub_R06` | (helper) `Params` struct factory | — | Builds the `Params` struct each scheduler reads |
 
-The exact `sub_ADDR` values are tracked under the per-strand anchors `sub_R01..R06` in the binary-analysis notes. The symbols above (`sub_R01`, etc.) are the canonical names used throughout this wiki. Each body exposes the same external entry shape — `(Params *params, int linear_id) -> WorkTileInfo` — so the dialect lowering can fix on one indirect call site and dispatch by kind at op-selection time.
+The symbols `sub_R01` .. `sub_R06` are the canonical names used throughout this wiki for the six bodies. Each body exposes the same external entry shape — `(Params *params, int linear_id) -> WorkTileInfo` — so the dialect lowering can fix on one indirect call site and dispatch by kind at op-selection time.
 
 Any scheduler that needs cross-CTA coordination state allocates a global buffer in the kernel's parameter space. `sub_R05` computes the workspace size from `(num_ctas, num_stages, tile_count)` and the result lives in the kernel's `nv_tileas.workspace_global_offset` attribute; DataParallel returns zero and the kernel skips the allocation. StaticPersistent needs only a small counter region for the persistent-advance bookkeeping. Both StreamK variants need partial-accumulator plus barrier regions, whose layout is described under StreamK Workspace below.
 

@@ -41,62 +41,42 @@ Think of `cute` as a compact typed form of the same algebra that CUTLASS C++ exp
 
 The key invariant is that `cute` values remain algebraic. A layout should be composable and queryable without knowing whether it will eventually become a TMA descriptor, an ldmatrix load, a WGMMA operand, or a Blackwell tensor-memory operation.
 
-## Layout Semantics
+## Layout Semantics in One Line
 
-A layout maps a coordinate to an offset. The simplest model is a shape/stride pair; the real dialect supports nested tuples, composition, constraints, and swizzles, but the core rule is still coordinate-to-offset evaluation.
+A layout maps a coordinate to an offset. The simplest model is `(shape, stride)`; the real dialect adds nested tuples, composition, complement, divide, product, and swizzles on top of that single primitive. The algebraic rules and the concrete `compose`/`complement`/`divide`/`product` definitions live on the algebra page below; this overview only states the kernel.
 
 ```c
-int64_t layout_offset(Layout layout, Coord coord) {
-    require(rank(layout.shape) == rank(layout.stride));
-    require(rank(coord) == rank(layout.shape));
-
+int64_t layout_offset(Layout L, Coord c) {
     int64_t offset = 0;
-
-    for (int dim = 0; dim < rank(coord); ++dim) {
-        require(0 <= coord[dim] && coord[dim] < layout.shape[dim]);
-        offset += coord[dim] * layout.stride[dim];
-    }
-
-    return apply_swizzle(layout.swizzle, offset);
-}
-```
-
-Composition substitutes one coordinate mapping into another. This is what lets a high-level tile layout be refined into per-warp, per-lane, or per-atom layouts without flattening the whole model into ad hoc integer arithmetic.
-
-```c
-Layout compose(Layout outer, Layout inner) {
-    require(result_shape(inner) == domain_shape(outer));
-
-    Layout result;
-    result.shape = domain_shape(inner);
-    result.stride = transform_stride(inner.stride, outer.stride);
-    result.swizzle = compose_swizzles(inner.swizzle, outer.swizzle);
-    return canonicalize_layout(result);
+    for (int d = 0; d < rank(c); ++d) offset += c[d] * L.stride[d];
+    return apply_swizzle(L.swizzle, offset);
 }
 ```
 
 For a reimplementation, the storage class the original compiler picks does not matter. What does matter: equivalent layouts canonicalize consistently, nested tuple layouts preserve rank and dimension identity, and swizzle composition stays explicit until a target-specific lowering consumes it.
+
+## Where to Find What
+
+The dialect is split across four pages by concern. Use this map to find the exact place a topic is documented; the overview does not duplicate any of these.
+
+| Topic | Page |
+|---|---|
+| Layout algebra rules (composition, complement, divide, product, coalesce, filter) | [Layout Algebra and Descriptor Grammar](layout-algebra-and-descriptor-grammar.md) |
+| Tuple-shape grammar, swizzle composition, descriptor round-trip | [Layout Algebra and Descriptor Grammar](layout-algebra-and-descriptor-grammar.md) |
+| Tile partitioning ops (`local_tile`, `local_partition`, `group_modes`, `dice`, `slice`) | [Tile and Divide Ops](tile-and-divide-ops.md) |
+| Atom builders (`make_atom`, `make_tiled_copy`, `make_tiled_mma`) and desugar rewrites | [Atom Builders and Desugar](atom-builders-and-desugar.md) |
+| `cute.make_int_tuple` hub, `make_layout` desugaring shape | [Atom Builders and Desugar](atom-builders-and-desugar.md) |
+| Kernel-entry ABI (`cute.kernel` → `nvvm.kernel`, grid-constant arg-attrs) | [Atom Builders and Desugar](atom-builders-and-desugar.md) |
+| Verbatim verifier diagnostics (every error string the dialect emits) | [Verifiers](verifiers.md) |
+| Mode-range, divide, product, tuple-arithmetic verifier algorithms | [Verifiers](verifiers.md) |
+| `crd2idx` weak-congruence walk, worked diagnostic example | [Verifiers](verifiers.md) |
+| `LayoutTypeInterface` kind discriminator and per-kind dispatch tables | [Verifiers](verifiers.md) |
 
 ## In-Memory IR Tier
 
 Treat `cute` as an in-memory compiler tier. It exists so passes can exchange rich layout objects without serializing every intermediate shape into the public input format. Textual rendering helps with debugging and documentation; production input normally enters through `cuda_tile`, `nv_tileaa`, `cutlass`, or another higher-level dialect, and the pipeline constructs `cute` objects internally.
 
 Practical consequence: do not build tooling that depends on `cute` bytecode as a stable interchange format unless the serializer is explicitly provided. Textual dumps are for inspecting the compiler, not as a user-facing artifact.
-
-## Verifier Invariants
-
-A `cute` verifier should enforce algebraic consistency before target-specific lowering starts:
-
-- shape and stride ranks agree,
-- coordinates are in bounds for the shape they index,
-- layout composition connects compatible domains and ranges,
-- constrained integers satisfy their divisibility or range constraints,
-- swizzle masks only touch valid low address bits,
-- pointer and memref views preserve element type, address space, and bit layout,
-- tiled copy and tiled MMA atoms agree with the value layouts they consume,
-- tuple-valued shapes preserve dimension order during canonicalization.
-
-These checks make later GPU lowering deterministic. If a malformed layout reaches `cute_nvgpu`, the target-specific verifier may only see an invalid atom shape, not the original algebra mistake that caused it.
 
 ## If You Know CUTLASS (open source) — cross-walk
 
@@ -105,7 +85,7 @@ The open-source `cute/` C++ headers map almost directly onto this dialect:
 | CUTLASS C++ (cute namespace) | tileiras `cute` IR |
 |---|---|
 | `cute::Shape<...>` and `cute::Stride<...>` | hierarchical `(shape, stride)` tuples in a `!cute.layout` |
-| `cute::Layout<Shape, Stride>` | `!cute.layout` type (kind discriminator at offset `+0x88`) |
+| `cute::Layout<Shape, Stride>` | `!cute.layout` type, kind-discriminated through the seven-entry sentinel table |
 | `cute::Swizzle<B, M, S>` | `!cute.swizzle` value composed into a layout via `make_composed_layout` |
 | `cute::make_tile`, `cute::make_layout` | `cute.make_tile`, `cute.make_layout` ops |
 | `cute::Tensor<Engine, Layout>` | `cute.make_view` ties a pointer/memref to a layout |

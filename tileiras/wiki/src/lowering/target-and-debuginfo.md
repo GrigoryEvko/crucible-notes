@@ -2,26 +2,40 @@
 
 ## Abstract
 
-Two module-level adapters prepare the lowered MLIR module for NVVM serialization. The target adapter turns Tileiras target metadata into the standard `#nvvm.target` attribute carried by `gpu.module`. The debug-info adapter turns Tileiras debug-value operations into LLVM debug intrinsics, inserting an NVIDIA-specific `llvm.nvvm.move` value pin so the PTX debug path can keep the value visible after optimization.
+Two module-level adapters prepare the lowered MLIR module for NVVM serialization. `AttachNVVMTarget` turns Tileiras target metadata into the standard `#nvvm.target` attribute that the GPU-to-binary serializer reads off `gpu.module`. `TranslateDebugInfo` rewrites Tileiras debug-value operations into LLVM debug intrinsics, inserting an NVIDIA-specific `llvm.nvvm.move` value pin so the PTX backend can keep the debugged value visible across optimisation passes that would otherwise fold it away.
 
-Both passes translate between internal TileIR metadata and the public LLVM/NVVM surface. A reimplementation doesn't need their original pass layout, but it must preserve the target-attribute fields, the libNVVM option dictionary, the debug intrinsic arguments, and the value-pinning step.
+Both passes translate between internal TileIR metadata and the public LLVM/NVVM surface. A reimplementation does not need their original pass layout, but it must preserve the target-attribute fields, the libNVVM option dictionary, the debug intrinsic arguments, and the value-pin step.
 
 ## Target Attribute Conversion
 
-The target pass walks the module hunting for `gpu.module` operations. For each one, it reads the TileAA compute-capability attribute (falling back to the target-spec attribute when needed) and writes an NVVM target array attribute onto the GPU module.
+The target pass walks `gpu.module` operations. For each one it reads the compute capability from the module's attribute dictionary, normalises it to an `sm_XX` chip name, builds the libNVVM flag dictionary, and writes the resulting `#nvvm.target` attribute as a single-element array onto the module.
 
-The generated target uses:
+### Attribute Sources
 
-| Field | Value |
-|---|---|
-| target triple | `nvptx64-nvidia-cuda` |
-| chip | normalized `sm_XX` name derived from compute capability |
-| optimization level | pass option, defaulting to the normal optimized path |
-| feature string | empty unless a later target hook supplies features |
-| link mode | non-linking module target |
-| flag dictionary | libNVVM options and optional NVGpuComp selector |
+Three module-level attributes feed the target adapter, read in the order below.
 
-The flag dictionary is small but consequential.
+| Attribute name | Type | Role |
+|---|---|---|
+| `nv_tileaa.compute_capability` | `IntegerAttr` (`major*10+minor`) | Primary source; emitted by `ConvertCudaTileToTileAA` from the `--compute-capability` option. |
+| `nv_tileaa.target_spec` | `StringAttr` (`"sm_XX"` form) | Fallback when compute_capability is absent. |
+| `nv_tileaa.libnvvm_use_nvgpucomp` | `BoolAttr` | Optional; selects the NVGpuComp/libNVVM serialisation path. |
+
+When neither compute_capability nor target_spec resolves, the pass emits `"missing compute capability for NVVM target"` and fails the module.
+
+### Generated Target Fields
+
+The `#nvvm.target` attribute is a small record consumed by the upstream GPU-to-binary serializer. Field semantics:
+
+| Field | Value | Source |
+|---|---|---|
+| target triple | `nvptx64-nvidia-cuda` | fixed |
+| chip | normalised `sm_XX` chip name | `nv_tileaa.compute_capability` or `nv_tileaa.target_spec` |
+| optimization level | `0..3` | pass option, defaulting to the optimised path |
+| feature string | empty | reserved for later target hooks |
+| link mode | `false` | non-linking module target |
+| flag dictionary | libNVVM options below | composed per-module |
+
+The flag dictionary is small but consequential. Each entry communicates one decision to the libNVVM backend.
 
 | Flag | When emitted | Purpose |
 |---|---|---|
@@ -31,7 +45,19 @@ The flag dictionary is small but consequential.
 | `-fma=0` | always | prevents backend FMA contraction from changing explicit numeric choices |
 | `libNVVMUseNVGpuComp=true` | only when the option is enabled | selects the NVGpuComp/libNVVM path downstream |
 
-The target conversion algorithm is straightforward:
+### Consumer Passes
+
+Once the target attribute attaches, three downstream consumers read it:
+
+- The GPU-to-binary serializer reads triple, chip, optimisation level, and feature string to build the libNVVM/NVPTX command line.
+- The PTX assembler stage reads chip to pick the SASS target.
+- The `cluster_dim`/`reqntid` validators read chip to gate cluster-launch metadata on SM90 and above.
+
+A module with `#nvvm.target` missing reaches the serializer with no target chip and fails serialisation with a "no target attribute" diagnostic before any binary is emitted.
+
+### Conversion Algorithm
+
+The pass body is small: walk gpu.modules, resolve compute capability, build flags, attach the attribute.
 
 ```c
 LogicalResult attach_nvvm_target(ModuleOp module, TargetOptions options) {
@@ -50,28 +76,72 @@ LogicalResult attach_nvvm_target(ModuleOp module, TargetOptions options) {
             options.opt_level,
             "nvptx64-nvidia-cuda",
             cc.to_sm_name(),
-            "",
+            /*features=*/"",
             flags,
             /*link=*/false);
 
         gpu_module.set_attr("nvvm.target", ArrayAttr::get({target}));
     }
-
     return success();
 }
 ```
 
+Idempotency matters: re-running the pass on a module that already carries `#nvvm.target` overwrites the attribute rather than appending a second target. Two targets on the same gpu.module produce undefined behaviour in the serializer.
+
 ## Debug-Info Conversion
 
-Tileiras debug-info values carry source-variable metadata in an internal dialect. Before LLVM translation, each internal value must become LLVM dialect debug infrastructure. Each `debuginfo.value` becomes a short chain:
+Tileiras carries source-variable metadata in an internal `debuginfo.*` dialect. Before LLVM translation, those operations must become LLVM-dialect debug intrinsic calls (`llvm.intr.dbg.value`, `llvm.intr.dbg.declare`, `llvm.intr.dbg.addr`) whose operands the NVPTX backend can serialise into DWARF.
 
-1. Materialize the element or lane selector as an LLVM constant.
-2. Extract the debugged scalar from the original value when the source is aggregate-like.
-3. Pass the scalar through `llvm.nvvm.move`.
-4. Emit an LLVM debug intrinsic call with the local-variable and expression metadata.
-5. Erase the original debug operation.
+### MLIR Loc to LLVM !dbg
 
-`llvm.nvvm.move` is the NVIDIA-specific part of the contract. It creates an ordinary SSA value that optimization is less likely to fold away before the backend emits DWARF location information.
+Every operation in Tileiras carries an MLIR `Location`. When debug info is enabled, the LLVM translation phase reads those locations and emits LLVM `!dbg` metadata that attaches to each lowered LLVM instruction. The mapping is direct:
+
+| MLIR location | LLVM `!dbg` form |
+|---|---|
+| `FileLineColLoc(file, line, col)` | `DILocation(line, col, scope)` referencing the file's `DIFile` |
+| `FusedLoc(child_locs, metadata)` | The metadata's `DILocation`, with `child_locs` becoming an inlined-at chain |
+| `CallSiteLoc(callee_loc, caller_loc)` | `DILocation` for callee with `inlinedAt` pointing at caller's `DILocation` |
+| `NameLoc(name, child)` | Passes through to `child`'s location; `name` becomes a `DILocalVariable` only at debug-value sites |
+| `UnknownLoc` | No `!dbg` emitted; the LLVM instruction is untracked |
+
+### Debug Scope Nesting for gpu.func
+
+Each `gpu.func` participates in a `DISubprogram` scope. The translation builds the scope hierarchy bottom-up:
+
+```
+DICompileUnit (per module, attached to llvm.module)
+  └── DIFile (per source file referenced)
+       └── DISubprogram (per gpu.func, attached to the llvm.func)
+            └── DILexicalBlock (per scf.if / scf.for / nested region)
+                 └── DILocalVariable (per debuginfo.value)
+```
+
+Nested SCF regions get a fresh `DILexicalBlock` so debuggers can step into them without losing local-variable visibility from the parent. The lexical-block scope is parented to the surrounding subprogram, not to other lexical blocks — debuggers walk the inlining chain via `inlinedAt` rather than nested scopes.
+
+### Lineinfo vs Device-Debug
+
+The level of debug information depends on which compile option is active.
+
+| Option | `!dbg` on instructions | `DILocalVariable` | `DISubprogram` | `dbg.value` intrinsics |
+|---|---|---|---|---|
+| `--lineinfo` off, `--device-debug` off | dropped | dropped | dropped | dropped |
+| `--lineinfo` on | emitted | dropped | minimal (name + line only) | dropped |
+| `--device-debug` on | emitted | emitted | full (with variables) | emitted with `llvm.nvvm.move` pins |
+
+`--lineinfo` produces enough metadata for profilers to map SASS instructions back to source lines without paying the optimisation cost of tracking local variables. `--device-debug` adds local-variable tracking and is the only mode that keeps `dbg.value` intrinsics alive through the optimisation pipeline.
+
+### debuginfo.value Rewrite Shape
+
+The per-op rewrite turns each `debuginfo.value` into a debug intrinsic call. The NVIDIA-specific step is `llvm.nvvm.move`: an SSA pass-through value that constant-folding and dead-code elimination treat as opaque, so the debugged value stays visible to the backend even when the surrounding code is folded away.
+
+```mlir
+debuginfo.value %v, #var, #expr : !debuginfo.value<f32>
+   ↓
+%pinned = llvm.nvvm.move %v : f32
+llvm.intr.dbg.value %pinned, !DILocalVariable(#var), !DIExpression(#expr)
+```
+
+For aggregate values, the rewriter walks vector and struct fields, extracts each leaf, pins it through `llvm.nvvm.move`, and emits a separate debug intrinsic per leaf. Aggregate fragments are described via `DIExpression(DW_OP_LLVM_fragment, offset, size)` so the debugger can reconstruct the original aggregate at display time.
 
 ```c
 LogicalResult lower_debug_value(DebugValueOp op, Rewriter *rewriter) {
@@ -79,24 +149,21 @@ LogicalResult lower_debug_value(DebugValueOp op, Rewriter *rewriter) {
     Value pinned = rewriter->create("llvm.nvvm.move", source).result(0);
 
     DebugIntrinsic intrinsic = select_debug_intrinsic(op.kind());
-    rewriter->create("llvm.call_intrinsic", {
-        intrinsic.symbol_ref(),
+    rewriter->create("llvm.intr." + intrinsic.name(), {
         pinned,
         op.local_variable_attr(),
-        op.expression_attr(),
-        op.metadata_operands()
+        op.expression_attr()
     });
-
     rewriter->erase_op(op);
     return success();
 }
 ```
 
-Aggregate values need recursive materialization. The converter walks vector and struct fields, converts each sub-value to an LLVM-compatible type, and emits extraction operations before the pin. If a referenced symbol or metadata node cannot be resolved yet, the lowering leaves a placeholder downstream LLVM translation can diagnose with the surrounding operation context.
+If a referenced symbol or metadata node cannot be resolved yet, the rewriter emits a placeholder operand that the LLVM-translation phase diagnoses with the surrounding operation context. Failing here rather than at translation time gives a useful Tile-level location for the diagnostic.
 
-## Type Conversion for Debug Values
+### Type Conversion for Debug Operands
 
-The debug pass uses its own small type converter rather than the full TileAS lowering converter. Its job is to make debug operands legal without touching the executable ABI.
+The debug pass uses its own small type converter rather than the full TileAS LLVM converter. Its job is to make debug operands legal without touching the executable ABI.
 
 | Source debug type | LLVM debug operand form |
 |---|---|
@@ -106,11 +173,11 @@ The debug pass uses its own small type converter rather than the full TileAS low
 | struct or tuple | recursive field extraction and debug emission |
 | unresolved aggregate member | placeholder plus diagnostic context |
 
-Keep the debug converter conservative. Debug lowering must never invent executable computation that changes program behavior — it only exposes already-computed values to metadata.
+The debug converter never invents executable computation. The only SSA values it introduces are `llvm.nvvm.move` pins and the `extractvalue`/`extractelement` operations needed to reach a debug leaf; everything else is metadata.
 
 ## Error Handling
 
-Both passes fail the module when required metadata is missing or when a target operation cannot be built because a dependent dialect was not loaded. The useful diagnostic names the missing semantic input:
+Both passes fail the module with diagnostics that name the missing semantic input rather than the internal mechanism:
 
 - missing compute capability or target specification for `#nvvm.target`;
 - unknown or unloaded LLVM/NVVM operation while building debug IR;
@@ -119,10 +186,14 @@ Both passes fail the module when required metadata is missing or when a target o
 
 ## Conversion Invariants
 
-- Every serializable `gpu.module` must have a resolved NVVM target attribute.
+- Every serializable `gpu.module` must have a resolved `#nvvm.target` attribute before serialisation.
 - The target triple is the 64-bit CUDA NVPTX triple.
-- The compute capability is normalized to the chip name consumed by NVVM.
-- Debug emission must be gated by the same module-level debug option used to add `-g`.
+- The compute capability is normalised to the chip name consumed by NVVM.
+- Debug emission is gated by the same module-level debug option used to add `-g`.
 - `llvm.nvvm.move` must sit between the debugged SSA value and the LLVM debug intrinsic.
 - Debug conversion must not alter executable dataflow except for the value pin used by debug metadata.
+
+## Cross-References
+
+[Overview](overview.md) places the target-attachment and debug-translation passes in their position at the tail of the pipeline. [TileAS to LLVM](tileas-to-llvm.md) emits the `gpu.module` and `nvvm.kernel` attributes those passes consume. [NVPTX Subtarget and Feature Matrix](../codegen/nvptx-subtarget-and-feature-matrix.md) lists the chip names the compute-capability normaliser produces.
 

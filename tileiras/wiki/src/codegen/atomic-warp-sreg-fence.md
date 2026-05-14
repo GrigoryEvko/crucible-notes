@@ -41,29 +41,29 @@ diagnostics: `unsupported ordering for nvvm.atomic.rmw`,
 `Invalid memory model ordering for nvvm.red`,
 `Invalid reduction op for nvvm.red`, `Invalid reduction type for nvvm.red`.
 
-The printer's fixed order lets a reimplementation read tokens off a
-modifier word without re-sorting:
+The printer concatenates tokens in a fixed order so a reimplementation can read tokens off a modifier word without re-sorting. The order, from left to right, is: opcode stem, memory ordering, scope, operation suffix, address-space suffix, optional cache hint, type suffix, then the operand list. Each token comes from a small enum table; an absent enum value (default order or implicit scope) emits nothing rather than a placeholder dash.
 
-```c
-void print_atom_inst(Printer *p, AtomInst *inst) {
-    write(p, "atom");
-    if (inst->cluster_tail) write(p, ".cta::cluster");      /* cluster-tail */
-    write_scope_token(p, inst->scope);                       /* .cta / .cluster / .sys */
-    write_order_token(p, inst->order);                       /* .acquire / .release / ... */
-    write(p, ".");
-    write_addrspace_token(p, inst->addrspace);               /* .global / .shared / ... */
-    write(p, ".");
-    write_op_mnemonic(p, inst->op);                          /* add / and / or / cas / ... */
-    if (inst->cache_hint) write(p, ".L2::cache_hint");       /* cache hint */
-    write(p, ".");
-    write_type_token(p, inst->type);                         /* .b32 / .u64 / .f16x2 / ... */
-    write(p, " ");
-    print_operands(p, inst);
-}
+For an atomic add on shared memory with relaxed memory order and CTA scope, the printer reads `op = ADD`, `order = RELAXED`, `scope = CTA`, `addrspace = SHARED`, `type = U32` from the operand record and emits:
+
+```
+atom.relaxed.cta.add.u32.shared %r0, [%r1], %r2;
 ```
 
-Lowering rejects illegal order/scope pairs before the printer fires, so
-this function never has to recover from an invalid modifier word.
+The token order is `atom` (stem) → `.relaxed` (order) → `.cta` (scope) → `.add` (operation) → `.u32` (type) → `.shared` (address space) → operands. A few token slots accept compound forms: scope can be `.cta::cluster` when the cluster-tail bit is set, the cache-hint slot expands to `.L2::cache_hint` and adds a cache-policy operand, and the type slot can take packed widths like `.f16x2` or `.bf16x2`.
+
+Reductions reuse the same order without a return register:
+
+```
+red.gpu.add.f32.global [%rd0], %f1;
+```
+
+Atomic compare-and-swap doubles the operand count but keeps the same token order:
+
+```
+atom.acquire.gpu.cas.b64.global %rd0, [%rd1], %rd2, %rd3;
+```
+
+Lowering rejects illegal order/scope pairs before the printer fires, so the token-emission step never has to recover from an invalid modifier word. The invariant a reimplementation must preserve: every order/scope/space combination that lowering accepts is also accepted by `ptxas` on the current target. The verifier in [iseldag-and-matchertable.md](iseldag-and-matchertable.md) shares this contract through the same subtarget feature bitmap.
 
 ## Warp-Level Collectives
 
@@ -82,43 +82,18 @@ compact kind enum that selects the PTX template.
 path; floating redux appears only on newer targets. `bar.warp.sync` belongs
 to the same warp-level family and emits `bar.warp.sync mask`.
 
-The selector dispatches each warp collective through a kind-keyed switch,
-then materializes one PTX template. Shape is uniform across `redux`,
-`shfl`, `vote`, and `match`:
+The selector dispatches each warp collective by intrinsic-ID plus operand types. The intrinsic ID picks the family (`redux`, `shfl`, `vote`, `match`); the kind enum on the SDNode picks the operation within the family; and the operand element type picks the PTX type suffix. Four representative emissions:
 
-```c
-void select_warp_collective(SDNode *node, SelectorState *st) {
-    WarpKind kind = node->kind;
-    require(st->features.supports_warp_sync(),
-            "warp-level collective requires sm_70 or newer");
-
-    switch (node->family) {
-    case WARP_REDUX:
-        require(st->features.supports_redux(kind),
-                "redux.sync kind not supported on this subtarget");
-        emit_template(st, "redux.sync.<kind>.<type>", node);
-        return;
-
-    case WARP_SHFL:
-        emit_template(st, "shfl.sync.<kind>.b32", node);     /* bfly / up / down / idx */
-        return;
-
-    case WARP_VOTE:
-        emit_template(st,
-                      (kind == VOTE_BALLOT) ? "vote.sync.ballot.b32"
-                                            : "vote.sync.<kind>.pred",
-                      node);
-        return;
-
-    case WARP_MATCH:
-        emit_template(st, "match.sync.<kind>.<type>", node); /* any / all */
-        return;
-    }
-}
+```
+redux.sync.add.s32     %r0, %r1, 0xFFFFFFFF;     // signed-int reduction over the full warp
+shfl.sync.bfly.b32     %r0|%p0, %r1, 0x10, 0x1F, 0xFFFFFFFF;
+vote.sync.ballot.b32   %r0, %p1, 0xFFFFFFFF;     // ballot returns i32
+match.sync.any.b32     %r0, %r1, 0xFFFFFFFF;     // match.any returns i32
 ```
 
-The verifier rejects non-uniform `redux.sync` callers before this point,
-so the selector can treat the subgroup as uniform.
+The `vote.sync.{any, all, uni}` variants return a `pred` rather than `b32`; `match.sync.all.b32` returns the pair `{i32, i1}` and the printer emits the i1 destination as the second operand slot. The last 32-bit operand on each form is the membership mask the issuing thread passes in. `redux.sync` is feature-gated and requires the subtarget bitmap's `has_redux` bit; floating `redux` adds `has_redux_float`. The verifier rejects non-uniform `redux.sync` callers before the selector fires, so the emitter can treat the subgroup as uniform without re-checking.
+
+The `bar.warp.sync mask;` instruction belongs to the same family and emits a warp-level barrier. Selection routes it through the same dispatcher arm as `vote.sync`, with `bar.warp.sync` as the stem and the mask as the single operand.
 
 ## Special-Register Readers
 
@@ -302,7 +277,8 @@ unsigned pack_atomic_modifier(AtomicOrder order, NvptxScope scope, bool cta_clus
 }
 ```
 
-The reimplementation rule is simple: preserve the high-level LLVM ordering
-first, map the scope name to the closest PTX scope second, then pick the
-printed suffix. Diagnose unsupported order/scope pairs at lowering time so
-the printer never recovers from an invalid modifier word.
+The reimplementation rule is simple: preserve the high-level LLVM ordering first, map the scope name to the closest PTX scope second, then pick the printed suffix. Diagnose unsupported order/scope pairs at lowering time so the printer never recovers from an invalid modifier word.
+
+## Cross-References
+
+[asm-printer-monster-and-windows.md](asm-printer-monster-and-windows.md) documents the dispatcher that selects the print shape for these atomic, warp-collective, sreg, and fence opcodes. [iseldag-and-matchertable.md](iseldag-and-matchertable.md) covers the selector that consumes the same subtarget feature bitmap before any of these instructions reach the printer. [tcgen05-wgmma-mbarrier-cluster.md](tcgen05-wgmma-mbarrier-cluster.md) covers the mbarrier and proxy-fence families that share scope and ordering vocabulary with this page.

@@ -41,64 +41,143 @@ The TMA operation family covers async tiled load/store, async tiled reduction an
 | make tiled TMA descriptor | captures tensor shape, strides, layout, and descriptor storage |
 | tiled TMA metadata | links descriptor uses to host/device descriptor accounting |
 
-`LowerTMALoadStoreToAsync` rewrites earlier tiled memory ops whenever the copy atom and per-op attributes permit TMA. A preference environment switch can bias eligible ops toward TMA, but verifier checks remain authoritative.
+## LowerTMALoadStoreToAsync
+
+`LowerTMALoadStoreToAsync` converts synchronous tiled load/store ops carrying a TMA copy-atom into the four-op async sequence the downstream NVVM lowering expects: descriptor bind, async bulk-tensor op, mbarrier wait, fence. The CLI mnemonic is `lower-tma-load-store-to-async` and the description string registered with the pass infrastructure reads "lowering TiledLoad or TiledStore which with tma atom to async tiled load or tiled store". The pass runs once over each function, walking eight phases in fixed order.
+
+The eight phases are:
+
+1. **KernelSpec gate.** Read the function-scoped `KernelSpecAttr` (the same attribute that anchors kernel identity through the rest of TileAS). Without it the function cannot host TMA descriptors at all; the pass exits with `"LowerTMALoadStoreToAsync: missing or invalid KernelSpecAttr on function"`.
+2. **TMA-eligibility scan.** Iterate every `nv_tileas.tiled_load`, `nv_tileas.tiled_store`, and `nv_tileas.tiled_atomic_rmw` op in the function. Each must carry either `allow_tma = true` (the per-op hint inherited from the public dialect's `cuda_tile.allow_tma`) or the environment switch `TILEIR_PREFER_TMA_FOR_LOAD_STORE` must be set. The atom referenced by the op must implement `TmaAtomTypeInterface` — atoms that don't (plain `ldg`, `stg`, `ldgsts`) are skipped without rewrite.
+3. **tmaIdx assignment.** Assign a monotonically-increasing `tmaIdx` IntegerAttr to each surviving op. The counter is per-function, starting at zero, and the assignment walk is a single pre-order recursion so descriptor uses receive indices in the order the function would emit them.
+4. **Descriptor bind.** For each op, emit (or look up) an `nv_tileas.make_tiled_tma_desc` whose result feeds the async op. The bind captures tensor shape, stride, padding mode, descriptor mode (tiled / im2col / im2col_at / tiled_at / gather4 for loads, store / reduce / scatter4 for stores), the element type, and the `tma_internal_type` attribute when the descriptor's internal element type differs from the tensor's element type.
+5. **Async op materialization.** Replace the synchronous tiled op with its `nv_tileas.async.tiled_tma_load` / `tiled_tma_store` / `tiled_atomic_rmw` (TMAREDG atom) / `gather_tma_load` / `scatter_tma_store` counterpart. The new op carries the same coordinates and tile, plus the descriptor handle, plus a fresh `mbarrier` SSA value the load variants will wait on, plus a `tx_count` IntegerAttr giving the per-atom byte transfer count. Load variants additionally enforce zero padding — non-zero padding fires `"TmaLoad only support zero padding now"`, and the gather equivalent fires `"GatherTmaLoad only support zero padding now"`.
+6. **mbarrier emission.** Each async load reserves an `mbarrier` in the function's SMEM arena and emits the arrive/wait skeleton. The arrival side is `cutlass.pipeline.get_producer_mask` plus the bind from phase 4; the wait side is `cutlass.pipeline.create` and an `async.wait` token. Store variants don't reserve their own mbarrier — the PipelineWaitGroupEmitter aggregates TMA stores with co-located GMMA stages, with the gate documented under the [Async/Pipeline Family](async-pipeline-family.md).
+7. **Wait sinking.** When `TILEIR_DELAY_TMA_STORE_WAIT` is set, the matching `async.wait` for store variants may sink past the next barrier, letting the next stage's compute overlap the store's final commit. The pass records the option on the produced op so the wait-group emitter respects it.
+8. **Diagnostic finalization.** Any op left unresolved by phases 4-6 — typically because its atom couldn't be located in the function's atom table — fires `"failed to find smem buffer address for mbarrier"`, `"failed to get expected tx-count"`, `"failed to init mbarrier"`, or `"failed to get MBarrier object"` depending on which sub-step lost track of its operand.
 
 ```c
 LogicalResult lower_tma_load_store(FuncOp func, TmaOptions options) {
     KernelSpec spec = read_kernel_spec(func);
     if (!spec.valid()) {
-        return func.emit_error("missing kernel spec for TMA lowering");
+        return func.emitOpError() << "LowerTMALoadStoreToAsync: missing or invalid KernelSpecAttr on function";
     }
-
     uint32_t next_tma_index = 0;
-    for (MemoryOp op : func.memory_ops()) {
-        if (!op.allow_tma() && !options.prefer_tma) {
-            continue;
-        }
-        if (!op.copy_atom().supports_tma()) {
-            continue;
-        }
+    for (MemoryOp op : func.tiled_memops()) {
+        if (!op.allow_tma() && !options.prefer_tma) continue;
+        if (!op.copy_atom().implements<TmaAtomTypeInterface>()) continue;
 
-        AsyncTmaOp async = rewrite_memory_op_to_async_tma(op, next_tma_index++);
+        TmaDescriptor desc = bind_descriptor(op, next_tma_index++);
+        MbarrierOp mb = (op.kind() == LOAD) ? reserve_mbarrier(func, op) : nullptr;
+        AsyncTmaOp async = rewrite_to_async_tma(op, desc, mb);
+        emit_wait_skeleton(async, options.delay_store_wait);
         replace_op(op, async);
     }
-
     return success();
 }
 ```
+
+The input IR shape is a `nv_tileas.tiled_load` / `tiled_store` carrying a TMA copy-atom; the output is the four-op sequence — `make_tiled_tma_desc` (or a reuse of an existing one), the async `tiled_tma_*`, an mbarrier wait for load variants, and the matching fence inserted by the wait-group emitter. The `tmaIdx` attribute stamped on each async op is read later by `SeparateHostTMA` and `AttachTMADescriptorArgs` to wire host descriptor preparation back to device descriptor consumption.
 
 ## Token-Ordered Memops
 
-`tiled_load`, `tiled_store`, and `tiled_atomic_rmw` are token-ordered memory ops. They preserve ordering and memory semantics until the async/TMA path or terminal NVVM lowering consumes them.
+`tiled_load`, `tiled_store`, and `tiled_atomic_rmw` are the three token-ordered memory ops the TileAS layer exposes. They consume and produce `nv_tileaa.mem_token` SSA values so that ordering between overlapping asynchronous transfers is expressed at the IR level rather than through fences or barriers, and they carry a memory-consistency enum (`weak`, `relaxed`, `acquire`, `release`, `acq_rel`) plus an optional `mem_scope` (`cta`, `cluster`, `gpu`, `sys`) for the full ordering contract. The three op verifiers share an almost line-for-line skeleton with three small specialisations: load produces a tile plus an out-token, store produces an out-token only, and atomic_rmw produces both a pre-image tile and an out-token. The diagnostics each emits are grouped below by op family; every string is part of the verifier's user-visible contract and reproduced verbatim.
 
-Verifier responsibilities:
+### Structural diagnostics — all three ops
 
-- the operation has no unexpected regions or successors;
-- `operandSegmentSizes` matches `{view, coords, offsets, token}`;
-- the token segment has zero or one value;
-- coordinate count and coordinate type match the view and index type;
-- tile sizes are positive constants, powers of two, and within implementation limits;
-- load/store/atomic memory semantics are allowed for the operation kind;
-- atomic mode is compatible with the element type;
-- padding values and in-bounds flags agree for stores.
+These fire before any semantic check. They guard the op's structural shape — regions, successors, the `operandSegmentSizes` attribute that partitions the variadic operand list, and the per-segment type constraints.
+
+- `"requires zero regions"` — any token-ordered memop has zero regions; the dispatcher rejects regions before reading any operand.
+- `"requires 0 successors but found "` — same shape, no successors permitted.
+- `"operand group starting at #"` and `" requires 0 or 1 element, but found "` — paired diagnostic when the optional token operand segment carries more than one value.
+- `"result group starting at #"` — counterpart on the result side when the optional token result holds more than one value.
+
+The `operandSegmentSizes` attribute is parsed against the dialect-interned key string `"operandSegmentSizes"` (19 characters). The four operand segments are `view`, `coords`, `offsets`, and `token` in that order; the token segment accepts zero or one element, and segment shape mismatches fall back to the standard MLIR `operand group` diagnostic above.
+
+### Coordinate and shape diagnostics — all three ops
+
+Coordinate-count, coordinate-type, and tile-vs-tensor consistency are checked by an identical 1176-byte verifier instantiated once per op. The numeric segment index differs (load reaches into segment 2 for the memref operand, store into segment 1, atomic_rmw into segment 2) but the message set is the same.
+
+- `"expects <N> coordinates, but got <M>"` — the literal partial string in the binary is `" coordinates, but got "`; the count before it is the expected coordinate count, derived from the view's rank plus an optional `+1` when the view carries a TMA descriptor that requires a leading offset.
+- `"expects CoordType is same as memref index type, but got "` — every coordinate must match the memref's index type after masking off the low-3-bit type-uniquer tag.
+- `"requires the same size for tileSize and tensor"` — emitted by the coord-type check when the product of the tile-size dims disagrees with the view's tensor shape.
+- `"requires the same shape for tileSize and tensor value"` — the parallel diagnostic from the dedicated shape-equality helper.
+- `"view elementType not equal with tensor element type: "` — the tile's element type must match the view's element type; the diagnostic is followed by two `printType` outputs separated by `" != "`.
+
+### Tile-dimension invariants — all three ops
+
+A dialect-shared helper enforces three invariants on every tile dim. These do not belong to the TMA family per se — they apply across the dialect — but they fire on this op family more than any other.
+
+- `"all dimensions must be positive constants, got "` — every tile-size dim must be a positive integer constant.
+- `"all dimensions must be powers of two, got "` — every dim must additionally be a power of two.
+- `"tile would exceed the maximum of "` — the product of tile dims must stay below `0x1000000` (16 M elements), the dialect-wide cap.
+
+### Memory semantics — all three ops, op-specific tables
+
+Each op runs its own `mem_semantic` / `mem_scope` / `in_bounds` validator. The shared rules are the scope-vs-semantic compatibility:
+
+- `"mem_scope not supported when mem_semantic is weak"` (snake_case, emitted by load and store)
+- `"mem_scope required when mem_semantic is not weak"` (load and store)
+- `"memScope not supported when memSemantic is weak"` (camelCase, emitted by atomic_rmw)
+- `"memScope required when memSemantic is not weak"` (atomic_rmw)
+
+Each op rejects the consistency modes that don't make sense for its access pattern. Load forbids `acquire` and `acq_rel`:
+
+- `"unsupported mem_semantic: acquire"` (load)
+- `"unsupported mem_semantic: acq_rel"` (load)
+
+Store forbids `release` and `acq_rel`:
+
+- `"unsupported mem_semantic: release"` (store)
+- `"unsupported mem_semantic: acq_rel"` (store)
+
+Across all three ops, the `in_bounds` `DenseI1ArrayAttr` length must equal the tile rank:
+
+- `"incorrect number of in_bounds elements: expected "` followed by `", but found "`.
+
+### Store-only diagnostics
+
+Store cross-validates the optional `padding_value` operand against `in_bounds`:
+
+- `"inbounds must be true when paddingValue is not set"`
+- `"inbounds must be false when paddingValue is set"`
+
+A separate float-typing helper guards the special padding values:
+
+- `"special padding values (nan, pos_inf, neg_inf, neg_zero) only for float-like element types"`
+
+### atomic_rmw-only diagnostics
+
+The atomic op is checked first for the presence of its `rmw_mode` attribute, then for its bit-width ban list:
+
+- `"requires attribute 'rmw_mode'"` — fires before any other attribute check when the `rmw_mode` IntegerAttr is missing entirely.
+- `"tiled_atomic_rmw not supported for 8-bit types"` — no SM target supports tile-granular 8-bit atomics.
+- `"tiled_atomic_rmw not supported for 16-bit integer"` — same hardware reality for 16-bit integer atomics.
+- `"tiled_atomic_rmw for 16-bit float only supports add, max, min operations"` — when the element is bf16 or f16 and the `rmw_mode` is outside the three-element set the hardware natively supports.
+- `"tiled_atomic_rmw op cannot use fadd operation, please use add instead for both int and float types"` — the dialect normalises floating-point adds to the same `add` opcode the integer path uses; the dispatcher decides int-vs-fp at lowering time.
+- `"tiled_atomic_rmw op cannot use xchg operation"` — `xchg` has no meaningful tile-granular implementation because the pre-image would only be valid for one lane.
+
+### Skeleton
 
 ```c
 LogicalResult verify_tiled_memop(TiledMemOp op) {
-    verify_operand_segments(op, {"view", "coords", "offsets", "token"});
-    verify_optional_token_segment(op);
-    verify_coordinate_types(op.view(), op.coords());
-    verify_tile_dimensions(op);
-    verify_memory_semantics(op);
+    verify_zero_regions(op);
+    verify_zero_successors(op);
+    verify_result_count(op);                  // 2 for load and atomic_rmw, 1 for store
+    verify_operand_segments(op, "operandSegmentSizes", /*width=*/19);
+    verify_segment_types_and_attributes(op);  // also enforces rmw_mode presence for atomic_rmw
 
-    if (isa<TiledAtomicRmwOp>(op)) {
-        verify_atomic_mode_and_element_type(op);
-    }
+    verify_tile_size_matches_tensor_shape(op);
+    verify_coord_count_and_type(op);
+    verify_tile_element_type_matches_view(op);
+    verify_tile_dimensions_positive_pow2_bounded(op);
+    verify_mem_semantics_in_bounds_and_extras(op);  // padding for store, bitwidth ban for atomic_rmw
 
     return success();
 }
 ```
 
-TMA-backed views may need one extra coordinate for descriptor-dependent offsets — im2col leading offsets on newer targets, for example.
+TMA-backed views add one extra expected coordinate to the count check above — typically the im2col leading offset on SM100 — by reading the descriptor's leading-dim count from the view type and adding it to the rank-derived baseline.
 
 ## Descriptor ABI
 
@@ -210,16 +289,16 @@ The walk-once-then-stamp shape matters for reimplementation. Counting and ABI re
 
 ## Callback ABI
 
-The host-code path uses a small callback ABI. The module carries a callback table, per-kernel function callback slots, and an OnPreLoad hook the runtime can fill before launch.
+The host-code path uses a small callback ABI that lets the runtime prepare TMA descriptors before each launch without changing the device-facing kernel signature. The host module emitted by `SeparateHostTMA` registers two callbacks with the `__CUDA_TILEIR_CALLBACKS` instrumentation hook: a one-shot SM-count / scratch-size query and a per-descriptor 64-byte payload emitter. Both are `printf`-style emitters that the runtime parses; their format strings are part of the binary-compatible contract and reproduced verbatim below.
 
-| Symbol concept | Purpose |
-|---|---|
-| callback table | identifies the ABI revision and callback function pointers |
-| per-kernel callback table | stores per-kernel argument-change and descriptor hooks |
-| OnPreLoad hook | lets runtime patch or prepare descriptors before launch |
-| host-code attribute | carries compiled host object bytes for descriptor preparation |
+| Callback | Format string | Calls per launch | Purpose |
+|---|---|---:|---|
+| SM count / scratch size | `"[TileIR Callback] SmNum: %ld deviceTMAMemorySize: 0x%lx"` | 1 | tells the runtime how many SMs the kernel targets and how many bytes of per-SM descriptor scratch to allocate |
+| Descriptor payload | `"[TileIR Callback] DESC_TMA512: 0x%016lx %016lx %016lx %016lx"` | N (= `num-device-tmas`) | dumps each descriptor's 64-byte payload as four i64 words, in the order matching the kernel's `tmaIdx` numbering |
 
-The ABI is deliberately table-driven so the device-facing kernel signature stays stable while host descriptor logic evolves.
+The 64-byte payload (`DESC_TMA512` — 512 bits) matches NVIDIA's published `cp.async.bulk.tensor.Nd` descriptor layout: global address, dim sizes, dim strides, format, swizzle, fill mode, element type, and rank, packed into four i64 words. The descriptors are emitted in tmaIdx order so the runtime can index them directly when patching descriptor pointers into the launch frame.
+
+The host module attaches three pieces of metadata to the parent `builtin.module`. The compiled host object is stored under the `nv_tileas.host-code` attribute (an `UnitAttr` on the function plus the raw object bytes on the module). The descriptor counts are stored under the inherent attributes `nv_tileas.num-device-tmas` and `nv_tileas.num-host-tmas` on the kernel function. Each descriptor pointer argument the kernel ABI grew through `AttachTMADescriptorArgs` carries a `cute_nvgpu.grid_constant` argument attribute that the later cute-to-llvm lowering lifts to `nvvm.grid_constant`, so `ptxas` places the descriptor in `.param` memory rather than `.global`. The combination keeps the device-facing kernel signature stable across host-code revisions: the host module's compiled object lives entirely in the `nv_tileas.host-code` blob, and any change to descriptor preparation logic is contained in that blob without disturbing the device side.
 
 ## Tensor-Memory Copy Legalization
 
@@ -260,31 +339,107 @@ The pass gates on the Blackwell `tmem` subtarget feature — feature index 80 in
 
 ## Descriptor Builders and Verifiers
 
-`make_tiled_tma_desc` construction records element bit width, tensor rank, shape, strides, padding, descriptor mode, and operand segments. Verifiers enforce:
+`make_tiled_tma_desc` records element bit-width, tensor rank, shape, strides, padding, descriptor mode (tiled / im2col / im2col_at / tiled_at), and operand segments. Its pre-lowering verifier and the closely related `AttachTMADescriptorArgs` and `MakeTiledTMADescOpCaptureVerifier` diagnostics share a common error surface; the rules below are organised by which structural property they guard.
 
-- the descriptor points at global memory;
-- composed layouts are rejected when unsupported;
-- tensor rank stays within descriptor limits;
-- descriptor pointer alignment is sufficient for the record;
-- TMA load atom stride structure matches the input layout;
-- cache-mode attributes are present and well-typed;
-- descriptor-dependent values do not capture multiple incompatible sources.
+### tmaIdx and descriptor-count rules
+
+`AttachTMADescriptorArgs` validates the descriptor-index attribute against the host and device descriptor counts it records on the function.
+
+- `"tmaIdx exceed tmaHostNum."` — the op's `tmaIdx` is at or beyond the count recorded in `nv_tileas.num-host-tmas`.
+- `"tmaIdx exceed tmaDeviceNum."` — same against `nv_tileas.num-device-tmas`.
+- `"not find tmaIdx."` — the op has no `tmaIdx` attribute at all.
+- `"funcOp lack tmaDeviceNum and tmaHostNum attr"` — the function is missing both descriptor-count attributes the pass needs to validate any `tmaIdx`.
+
+### Pointer-alignment and structural rules
+
+- `"expected tma descriptor pointer to have alignment at least "` — TMA descriptor pointers must be at least 128-byte aligned; the diagnostic ends with the alignment value expected.
+- `"tma boxDims[0] * elemTypeBitWidth is not a multiple of 16 bytes"` — the leading box-dim's bit-width must be a 16-byte multiple.
+- `"tma leading box-dim bit-width is not 16 bytes aligned"` — the equivalent invariant from the descriptor-pointer side.
+- `"tmaBoxDim and atomBoxDim length mismatch"` — descriptor box-dim count must match atom box-dim count.
+- `"tmaBoxDim and atomBoxDim mismatch"` — same but for any per-dim disagreement.
+- `"tma box-dim and copy atom box-dim mismatch"` — equivalent diagnostic from the copy-atom-side check.
+- `"smem layout is not TMA compatible"` — the shared-memory layout's swizzle and rank must fall in the TMA-accepted set documented under [Mode Pattern Verifiers — TMA Rank and Mode Gates](../../dialects/cute_nvgpu/mode-pattern-verifiers.md#tma-rank-and-mode-gates).
+- `"only support element_stride = 1 tma desc"` — element stride above 1 is not implemented for any TMA mode.
+
+### Mode and multicast rules
+
+- `"unsupported tma load mode '"` — the descriptor's mode value, when serialised, falls outside the accepted enum range (`tiled`, `im2col`, `im2col_at`, `tiled_at`, `gather4`).
+- `"mcast is not supported for TMA load with less than 128bytes per atom"` — multicast requires at least 128-byte atoms.
+- `" but the return TMA load type does not support multicast"` — the atom's return type cannot carry multicast metadata.
+- `"missing or invalid num_multicast for a multicast TMA load"` — the `num_multicast` attribute must be present and well-typed when multicast is requested.
+
+### Padding rules
+
+- `"TmaLoad only support zero padding now"` — non-zero padding is not implemented for any TMA load path.
+- `"GatherTmaLoad only support zero padding now"` — same for gather variants.
+- `"padding value is not supported for TMA load with non-zero padding value"` — the explicit-padding-value form is rejected end-to-end.
+
+### Atom-type rules
+
+The verifier checks that every TMA-bearing op's atom operand has the right family (load vs store vs reduce) and falls inside the per-mode allow-list.
+
+- `"expect a tma_store atom type"`
+- `"expect a tma_load atom type"`
+- `"expect a tma_redg atom type"`
+- `"expect a stg, tma_store or unknown_copy atom type"` — the broader allow-list for store-side ops that may also be plain `stg`.
+- `"expect a ldgsts, tma_load, ldg or unknown_copy atom type"` — load-side equivalent.
+- `"TmaReduceOp do not support SCATTER4 mode"` — the reduce path cannot run in scatter4 because the scatter mode has no reduction operator.
+- `"invalid TMA atom type"` — fallthrough when none of the allow-lists matches.
+
+### Capture-walker rules
+
+`MakeTiledTMADescOpCaptureVerifier` walks back from each operand through `RegionBranchOpInterface` to check that the dependency closure only uses ops the host-side lowering can replay.
+
+- `"values depended by MakeTiledTMADescOp are not supportedbecause "` followed by `" matches more than 1 captured values."` — the operand SSA graph reaches a value with multiple capture sources, which the host module cannot reproduce.
+- `"expected MakeTiledTMADescOp not depends on scf"` — the descriptor builder depends on an `scf` op that the host pass cannot lower. `SeparateHostTMA` refuses to run when this dependency exists.
+- `"expect lower MakeTiledTMADescOp"` — the residual device-side `make_tiled_tma_desc` op that the host-conversion pass expected to be gone is still present after host lowering.
+- `"math dialect not suppourt in separateHostTMA pass in the moment."` (verbatim typo preserved) — the descriptor's capture closure reaches a `math` dialect op the host module cannot emit.
+
+### Composed-layout, descriptor-construction, and partitioning rules
+
+These diagnostics fire from the TMA descriptor's lowering patterns and the partition verifier.
+
+- `"unable to partition input tensors for TMA"` — the TMA partition step couldn't find a partition that satisfies the atom's box-dim constraints.
+- `"failed to compute the TMA G-basis, got "` — the descriptor's G-basis (the global-tensor stride pattern) could not be computed from the supplied shape/stride pair.
+- `"Computed TMA layout is invalid, got "` — the synthesised layout failed the layout verifier downstream.
+- `"Failed to construct the TMA tensor type"` — the descriptor's `!cute.tensor` result type couldn't be built from the supplied operand types.
+- `"doesn't support composed layout for "` — the composed-layout path is restricted to the set of swizzle modes the descriptor packer can express.
+
+### Skeleton
 
 ```c
 LogicalResult verify_tma_descriptor(MakeTiledTmaDescOp op) {
     require_global_memref(op.tensor());
     reject_unsupported_composed_layout(op.layout());
     require_rank_at_most(op.tensor(), MAX_TMA_RANK);
-    require_descriptor_alignment(op.descriptor_pointer());
+    require_descriptor_alignment(op.descriptor_pointer(), /*bytes=*/128);
     verify_tma_stride_contract(op);
     verify_cache_mode(op);
+    verify_atom_type_in_allow_list(op);
     return verify_descriptor_capture(op);
 }
 ```
 
 ## Tensormap Mutators
 
-The CUDA driver encodes host-born descriptors. Device-born descriptors use tensor-map mutator instructions to update a small set of fields — global base address, global dimensions, global strides. The remaining descriptor fields stay fixed by the host encoder or descriptor builder.
+The CUDA driver encodes host-born descriptors once. Device-born descriptors use a fixed three-mutator subset — `tensormap.replace.global_address`, `tensormap.replace.dim_size`, and `tensormap.replace.stride_size` — driven in the order `address → dim[0..rank-1] → stride[1..rank-1]`. The mutable fields are precisely the three the runtime needs to vary across launches without re-encoding a descriptor: the tensor's base pointer, its per-dim sizes, and its per-dim strides. Everything else is immutable construction state:
 
-Allocation alignment is stricter than the live record size because bulk tensor-map writes operate on a larger transaction width. A reimplementation must distinguish record alignment from allocation alignment.
+| Field | Mutable on device | Notes |
+|---|---|---|
+| global base address | yes | `tensormap.replace.global_address` |
+| global dim sizes (per dim) | yes | `tensormap.replace.dim_size`, one per dim |
+| global strides (per dim) | yes | `tensormap.replace.stride_size`, one per dim |
+| element type | no | fixed at construction |
+| rank | no | fixed at construction |
+| format (tiled / im2col / im2col_at / tiled_at) | no | fixed at construction |
+| box shape | no | fixed at construction |
+| swizzle mode | no | fixed at construction; the descriptor packer chooses from a closed set |
+| fill mode (zero / constant) | no | fixed at construction |
+| oob fill value | no | fixed at construction |
+| interleave layout | no | fixed at construction |
+| im2col offsets | no | fixed at construction |
+
+The proxy fence rule pairs every device rebind with its consumer's read. Mutators write through generic memory; `cp.async.bulk.tensor.*` reads through the TMA proxy. A device-side rebind sequence therefore terminates in `fence.proxy.tensormap::generic.release.{cta,gpu}` before any TMA op consumes the mutated descriptor; the consumer's side emits the paired `fence.proxy.tensormap::generic.acquire.*` before its first read. The 64-byte descriptor payload, the `.b1024` mutator write width that forces 128-byte allocation alignment, and the exact inline-asm templates the three mutators emit are documented end-to-end in [TMA + Tensormap + cp.async.bulk Emission](../../codegen/tma-tensormap-and-cp-async-bulk.md).
+
+This pass's specific contract is narrower: it materialises a `make_tiled_tma_desc` op carrying the rank, box, stride, padding, and cache attributes the partition verifier later re-checks, and tags every TMA-descriptor-typed kernel argument with `cute_nvgpu.grid_constant` so the kernel ABI carries the descriptor as a `.param` constant. Downstream NVVM lowering reads those attributes and emits the rebind sequence the codegen page documents.
 

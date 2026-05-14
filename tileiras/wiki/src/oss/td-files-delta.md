@@ -1,173 +1,202 @@
-# .td Files Delta (OSS to binary)
+# .td Files Delta
 
 ## Abstract
 
-The public `cuda_tile` dialect surface is declared by `Types.td`, `AttrDefs.td`, and `Ops.td`.
-Tileiras matches almost all of that surface. The meaningful deltas are small and important:
+The public `cuda_tile` TableGen surface is declared by three files: `Types.td`, `AttrDefs.td`, and `Ops.td`. Tileiras matches almost all of that surface. Three concrete deltas distinguish the tileiras dialect from the upstream declarations:
 
-- `Ops.td`: 92 operations are present unchanged, `print_tko` is renamed to `print`, and `atan2`
-  is absent because it belongs to the later 13.2 dialect surface.
-- `AttrDefs.td`: the attribute surface is present, including debug-info attributes and assumption
-  predicate attributes.
-- `Types.td`: all concrete public types, aliases, and predicate helpers are present, with one
-  extra runtime mnemonic, `cuda_tile.string`, used by printing.
-- `Float8E8M0FNU` survives as an alias dependency but is not part of the observed accepted element
-  universe.
+1. The mnemonic `print_tko` in upstream `Ops.td` is renamed to `print` in tileiras (semantic change at the parser/printer level).
+2. The operation `cuda_tile.atan2` declared in upstream `Ops.td` is absent from tileiras — it ships in the 13.2 dialect surface but not in the 13.1 release this wiki covers.
+3. The type mnemonic `cuda_tile.string` is added in tileiras with no upstream counterpart, used by the renamed `cuda_tile.print` op as the format-string operand type.
 
-For reimplementation, treat tileiras as a `cuda_tile` 13.1 dialect with one mnemonic rename and one
-binary-only string type used by printing.
+The rest of the surface — all 92 operations beyond the two ops above, the entire type system, all attributes, all interfaces, all predicate helpers — is declaration-for-declaration identical between the public TableGen sources and the recovered tileiras declarations. For a reimplementer, the dialect is a `cuda_tile` 13.1 dialect with one mnemonic rename, one operation suppression, and one added type.
 
 ## Types.td
 
-`Types.td` declares five concrete types, thirteen aliases, and predicate/class-template helpers.
-The public concrete types are:
+Upstream `Types.td` declares five concrete types and thirteen scalar aliases. Tileiras carries all five concrete types unchanged and all thirteen aliases unchanged. The one delta is the addition of `cuda_tile.string`.
 
-| Definition | Mnemonic | Status |
-| --- | --- | --- |
-| `CudaTile_PointerType` | `cuda_tile.ptr` | present |
-| `CudaTile_TileType` | `cuda_tile.tile` | present |
-| `CudaTile_TensorViewType` | `cuda_tile.tensor_view` | present |
-| `CudaTile_PartitionViewType` | `cuda_tile.partition_view` | present |
-| `CudaTile_TokenType` | `cuda_tile.token` | present |
-| tileiras-only | `cuda_tile.string` | added for `cuda_tile.print` formatting |
+### Concrete Types
 
-The public scalar aliases are present: `i1`, `i8`, `i16`, `i32`, `i64`, `f16`, `bf16`, `f32`,
-`tf32`, `f64`, `f8E4M3FN`, `f8E5M2`, and `f8E8M0FNU`. The last alias is carried through ODS
-predicate expansion but has no observed consumer in tileiras. Practical element-type validation
-ends at `f8E5M2`.
+| Definition | Mnemonic | Upstream | Tileiras |
+| --- | --- | --- | --- |
+| `CudaTile_PointerType` | `cuda_tile.ptr` | declared | declared (identical) |
+| `CudaTile_TileType` | `cuda_tile.tile` | declared | declared (identical) |
+| `CudaTile_TensorViewType` | `cuda_tile.tensor_view` | declared | declared (identical) |
+| `CudaTile_PartitionViewType` | `cuda_tile.partition_view` | declared | declared (identical) |
+| `CudaTile_TokenType` | `cuda_tile.token` | declared | declared (identical) |
+| (tileiras-only) | `cuda_tile.string` | absent | added |
 
-The predicate helpers are also present: integer, float, number, tile-element, tile-of,
-ranked-tile-of, scalar-tile-of, integer-tile, base-float-tile, float-tile, number-tile, and
-pointer-tile predicates. These are generated into consuming verifier bodies rather than exposed as
-standalone runtime APIs.
+### Added Type: cuda_tile.string
+
+Tileiras adds one type with no upstream equivalent. The declaration shape:
+
+```tablegen
+// Tileiras-only (no upstream counterpart in Types.td)
+def CudaTile_StringType : CudaTile_Type<"String", "string"> {
+  let summary = "A static-length string value used by cuda_tile.print";
+  let description = [{
+    Carries a UTF-8 byte sequence with a static length. The compiler does not
+    expect arbitrary string-valued computations at the cuda_tile layer; this
+    type exists so the renamed print op can take a typed format string as an
+    operand rather than as an attribute.
+  }];
+  let parameters = (ins "int64_t":$length);
+  let assemblyFormat = "`<` $length `>`";
+}
+```
+
+The type is parsed and printed as `!cuda_tile.string<N>` where `N` is the static byte length. The op that consumes it is `cuda_tile.print` (described below in the `Ops.td` section). No other tileiras op accepts `cuda_tile.string` operands.
+
+### Scalar Aliases
+
+Both upstream and tileiras declare the same thirteen scalar aliases:
+
+```text
+i1, i8, i16, i32, i64
+f16, bf16, f32, tf32, f64
+f8E4M3FN, f8E5M2, f8E8M0FNU
+```
+
+These are predicate-helper aliases used by op verifiers; they are not standalone types. `f8E8M0FNU` is carried through ODS predicate expansion in tileiras but no observed op consumer accepts it as an element type at runtime. Practical element-type validation in both trees ends at `f8E5M2`.
+
+### Predicate Helpers
+
+The predicate helpers (`CudaTile_IntegerType`, `CudaTile_FloatType`, `CudaTile_NumberType`, `CudaTile_TileElementType`, `CudaTile_TileOf<...>`, `CudaTile_RankedTileOf<...>`, `CudaTile_ScalarTileOf<...>`, `CudaTile_IntegerTile`, `CudaTile_BaseFloatTile`, `CudaTile_FloatTile`, `CudaTile_NumberTile`, `CudaTile_PointerTile`) are declared identically in both trees. They are TableGen predicate templates expanded inline at each consuming op's verifier. No runtime helpers exist for them in either tree.
 
 ## AttrDefs.td
 
-All public attributes are present. The important groups are:
+The attribute surface is identical between upstream and tileiras. All six attribute groups are present declaration-for-declaration. No deltas exist in this file.
 
-| Group | Attributes |
-| --- | --- |
-| Arithmetic enums | `signedness`, `overflow`, `rounding`, `comparison_ordering`, `comparison_predicate` |
-| Atomics and memory | `AtomicRMWModeAttr`, `MemoryScopeAttr`, `MemoryOrderingSemanticsAttr` |
-| Assumption predicates | `div_by`, `same_elements`, `bounded` |
-| Layout and padding | `optimization_hints`, `padding_value` |
-| Debug info | `di_loc`, `di_compile_unit`, `di_file`, `di_lexical_block`, `di_subprogram` |
-| Debug-info bases | `DIAttr`, `DINodeAttr`, `DIScopeAttr`, `DILocalScopeAttr` |
+### Attribute Groups (Both Trees, Identical)
 
-`DivByAttr`, `SameElementsAttr`, and `BoundedAttr` implement
-`AssumePredicateAttrInterface`, so `cuda_tile.assume` verifies them through the same predicate
-interface. `DivByAttr` requires a custom assembly format for its `div_by<...>` grammar.
+| Group | Attributes | Upstream / Tileiras |
+| --- | --- | --- |
+| Arithmetic enums | `signedness`, `overflow`, `rounding`, `comparison_ordering`, `comparison_predicate` | identical declarations |
+| Atomics and memory | `AtomicRMWModeAttr`, `MemoryScopeAttr`, `MemoryOrderingSemanticsAttr` | identical declarations |
+| Assumption predicates | `DivByAttr`, `SameElementsAttr`, `BoundedAttr` | identical declarations |
+| Layout and padding | `OptimizationHintsAttr`, `PaddingValueAttr` | identical declarations |
+| Debug-info nodes | `DILocAttr`, `DICompileUnitAttr`, `DIFileAttr`, `DILexicalBlockAttr`, `DISubprogramAttr` | identical declarations |
+| Debug-info bases | `DIAttr`, `DINodeAttr`, `DIScopeAttr`, `DILocalScopeAttr` | identical declarations |
 
-`AtomicRMWModeAttr` has ten cases: `AND`, `OR`, `XOR`, `ADD`, `ADDF`, `MAX`, `MIN`, `UMAX`, `UMIN`,
-and `XCHG`.
+`AtomicRMWModeAttr` has ten cases in both trees: `AND`, `OR`, `XOR`, `ADD`, `ADDF`, `MAX`, `MIN`, `UMAX`, `UMIN`, `XCHG`. The three assumption-predicate attributes (`DivByAttr`, `SameElementsAttr`, `BoundedAttr`) all implement `AssumePredicateAttrInterface`, so `cuda_tile.assume` verifies them through the same interface dispatch in both trees. `DivByAttr` uses the same custom assembly format (`div_by<...>`) in both trees.
 
-`OptimizationHintsAttr` accepts SM keys for `sm_80`, `sm_86`, `sm_87`, `sm_88`, `sm_89`, `sm_90`,
-`sm_100`, `sm_103`, `sm_110`, `sm_120`, and `sm_121`. The useful keys are `kNumCTAInCGA`,
-`kAllowTMA`, `kLatency`, and `kOccupancy`.
+`OptimizationHintsAttr` accepts the same SM-key vocabulary in both trees: `sm_80`, `sm_86`, `sm_87`, `sm_88`, `sm_89`, `sm_90`, `sm_100`, `sm_103`, `sm_110`, `sm_120`, `sm_121`. The useful keys (`kNumCTAInCGA`, `kAllowTMA`, `kLatency`, `kOccupancy`) are declared identically.
 
 ## Ops.td
 
-`Ops.td` declares 94 operation records plus `CudaTile_FmaTile` and the load/store base templates.
-Tileiras exposes the 13.1 operation surface:
+Upstream `Ops.td` declares 94 operation records — 93 ops plus the `CudaTile_FmaTile` type-constraint pseudo-record. Tileiras carries 92 of those records unchanged, renames one mnemonic, and omits one.
 
-| Definition | Mnemonic | Status |
+### Operation Census
+
+| Source | Op count | Notes |
 | --- | --- | --- |
-| `CudaTile_AbsFOp` | `absf` | present |
-| `CudaTile_AbsIOp` | `absi` | present |
-| `CudaTile_AddIOp` | `addi` | present |
-| `CudaTile_AddFOp` | `addf` | present |
-| `CudaTile_AndIOp` | `andi` | present |
-| `CudaTile_AssertOp` | `assert` | present |
-| `CudaTile_AssumeOp` | `assume` | present |
-| `CudaTile_Atan2Op` | `atan2` | absent, 13.2-only |
-| `CudaTile_AtomicCASTkoOp` | `atomic_cas_tko` | present |
-| `CudaTile_AtomicRMWTkoOp` | `atomic_rmw_tko` | present |
-| `CudaTile_BitcastOp` | `bitcast` | present |
-| `CudaTile_BroadcastOp` | `broadcast` | present |
-| `CudaTile_CatOp` | `cat` | present |
-| `CudaTile_CosOp` | `cos` | present |
-| `CudaTile_CosHOp` | `cosh` | present |
-| `CudaTile_BreakOp` | `break` | present |
-| `CudaTile_CeilOp` | `ceil` | present |
-| `CudaTile_CmpFOp` | `cmpf` | present |
-| `CudaTile_CmpIOp` | `cmpi` | present |
-| `CudaTile_ConstantOp` | `constant` | present |
-| `CudaTile_ContinueOp` | `continue` | present |
-| `CudaTile_GetIndexSpaceShapeOp` | `get_index_space_shape` | present |
-| `CudaTile_GetTensorShapeOp` | `get_tensor_shape` | present |
-| `CudaTile_DivFOp` | `divf` | present |
-| `CudaTile_DivIOp` | `divi` | present |
-| `CudaTile_MmaFOp` | `mmaf` | present |
-| `CudaTile_MmaIOp` | `mmai` | present |
-| `CudaTile_ExtractOp` | `extract` | present |
-| `CudaTile_ExpOp` | `exp` | present |
-| `CudaTile_Exp2Op` | `exp2` | present |
-| `CudaTile_ExtIOp` | `exti` | present |
-| `CudaTile_ForOp` | `for` | present |
-| `CudaTile_FloorOp` | `floor` | present |
-| `CudaTile_FmaOp` | `fma` | present |
-| `CudaTile_FToFOp` | `ftof` | present |
-| `CudaTile_FToIOp` | `ftoi` | present |
-| `CudaTile_EntryOp` | `entry` | present |
-| `CudaTile_GetTileBlockIdOp` | `get_tile_block_id` | present |
-| `CudaTile_GetNumTileBlocksOp` | `get_num_tile_blocks` | present |
-| `CudaTile_GetGlobalOp` | `get_global` | present |
-| `CudaTile_GlobalOp` | `global` | present |
-| `CudaTile_IfOp` | `if` | present |
-| `CudaTile_IntToPtrOp` | `int_to_ptr` | present |
-| `CudaTile_IotaOp` | `iota` | present |
-| `CudaTile_JoinTokensOp` | `join_tokens` | present |
-| `CudaTile_TruncIOp` | `trunci` | present |
-| `CudaTile_IToFOp` | `itof` | present |
-| `CudaTile_LoadViewTkoOp` | `load_view_tko` | present |
-| `CudaTile_LoadPtrTkoOp` | `load_ptr_tko` | present |
-| `CudaTile_LogOp` | `log` | present |
-| `CudaTile_Log2Op` | `log2` | present |
-| `CudaTile_LoopOp` | `loop` | present |
-| `CudaTile_MakeTensorViewOp` | `make_tensor_view` | present |
-| `CudaTile_MaxFOp` | `maxf` | present |
-| `CudaTile_MaxIOp` | `maxi` | present |
-| `CudaTile_MinFOp` | `minf` | present |
-| `CudaTile_MinIOp` | `mini` | present |
-| `CudaTile_ModuleOp` | `module` | present |
-| `CudaTile_MulFOp` | `mulf` | present |
-| `CudaTile_MulIOp` | `muli` | present |
-| `CudaTile_MulhiIOp` | `mulhii` | present |
-| `CudaTile_NegIOp` | `negi` | present |
-| `CudaTile_NegFOp` | `negf` | present |
-| `CudaTile_MakeTokenOp` | `make_token` | present |
-| `CudaTile_OffsetOp` | `offset` | present |
-| `CudaTile_PermuteOp` | `permute` | present |
-| `CudaTile_PowOp` | `pow` | present |
-| `CudaTile_PrintTkoOp` | `print` | renamed from OSS `print_tko` |
-| `CudaTile_PtrToIntOp` | `ptr_to_int` | present |
-| `CudaTile_PtrToPtrOp` | `ptr_to_ptr` | present |
-| `CudaTile_ReduceOp` | `reduce` | present |
-| `CudaTile_RemIOp` | `remi` | present |
-| `CudaTile_ReshapeOp` | `reshape` | present |
-| `CudaTile_ReturnOp` | `return` | present |
-| `CudaTile_ScanOp` | `scan` | present |
-| `CudaTile_SelectOp` | `select` | present |
-| `CudaTile_ShLIOp` | `shli` | present |
-| `CudaTile_ShRIOp` | `shri` | present |
-| `CudaTile_SinOp` | `sin` | present |
-| `CudaTile_SinHOp` | `sinh` | present |
-| `CudaTile_StorePtrTkoOp` | `store_ptr_tko` | present |
-| `CudaTile_StoreViewTkoOp` | `store_view_tko` | present |
-| `CudaTile_SubFOp` | `subf` | present |
-| `CudaTile_SubIOp` | `subi` | present |
-| `CudaTile_TanOp` | `tan` | present |
-| `CudaTile_TanHOp` | `tanh` | present |
-| `CudaTile_MakePartitionViewOp` | `make_partition_view` | present |
-| `CudaTile_XOrIOp` | `xori` | present |
-| `CudaTile_YieldOp` | `yield` | present |
-| `CudaTile_OrIOp` | `ori` | present |
-| `CudaTile_RemFOp` | `remf` | present |
-| `CudaTile_RsqrtOp` | `rsqrt` | present |
-| `CudaTile_SqrtOp` | `sqrt` | present |
-| `CudaTile_FmaTile` | type constraint | present, verifier-only |
+| Upstream `Ops.td` | 93 ops + 1 type constraint | full 13.2-preview surface |
+| Tileiras | 92 ops + 1 type constraint | 13.1 surface |
+| Renamed | 1 | `print_tko` → `print` |
+| Removed | 1 | `atan2` (13.2-only) |
+| Added | 0 | no tileiras-only ops in `Ops.td` |
 
-The renamed print op preserves the public operation role but uses `cuda_tile.print` throughout
-tileiras parsing, bytecode, and diagnostics. The absent `atan2` operation is the only listed op
-from the 13.2 surface; it should not be accepted by a strict tileiras-compatible 13.1 parser.
+The 92 carried ops are identical declarations. Listing them would duplicate the OSS source verbatim; instead, the table below shows the two deltas with their exact declaration shapes.
 
+### Delta 1: print_tko → print Rename
+
+Upstream declaration:
+
+```tablegen
+// Ops.td (OSS)
+def CudaTile_PrintTkoOp : CudaTile_Op<"print_tko", [
+    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>
+]> {
+  let summary = "Token-ordered runtime print operation";
+  let arguments = (ins
+    CudaTile_TokenType:$inToken,
+    StrAttr:$format,
+    Variadic<AnyType>:$args
+  );
+  let results = (outs CudaTile_TokenType:$outToken);
+  let assemblyFormat = [{
+    $inToken `,` $format ( `,` $args^ )? attr-dict `:` type($args)
+  }];
+}
+```
+
+Tileiras-recovered declaration:
+
+```tablegen
+// Tileiras Ops.td (recovered)
+def CudaTile_PrintTkoOp : CudaTile_Op<"print", [
+    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>
+]> {
+  let summary = "Token-ordered runtime print operation";
+  let arguments = (ins
+    CudaTile_TokenType:$inToken,
+    CudaTile_StringType:$format,
+    Variadic<AnyType>:$args
+  );
+  let results = (outs CudaTile_TokenType:$outToken);
+  let assemblyFormat = [{
+    $inToken `,` $format ( `,` $args^ )? attr-dict `:` type($format) ( `,` type($args)^ )?
+  }];
+}
+```
+
+Two changes. First, the mnemonic in the op definition is `print` rather than `print_tko`, so the textual and bytecode forms use `cuda_tile.print` everywhere. The `_tko` suffix that the upstream dialect uses to flag token-ordered ops is dropped from this specific op's mnemonic, though the C++ class name (`PrintTkoOp`) and the token-ordered semantics are preserved.
+
+Second, the `format` operand is typed as `CudaTile_StringType` rather than as a `StrAttr`. This converts the format string from an attribute (compile-time constant) to an operand (SSA value). The motivation is downstream lowering: a typed string operand can be lowered through `cuda_tile.string` materialization to a global symbol holding the format bytes, which is what the NVPTX `vprintf` ABI expects. A `StrAttr`-typed format would force every print site to emit the string bytes inline at the use site.
+
+The renamed op is the only consumer of `cuda_tile.string`. Its absence in the upstream dialect — combined with the upstream `StrAttr` format — explains why upstream `Types.td` does not need a string type at all.
+
+### Delta 2: atan2 Absent
+
+Upstream declaration:
+
+```tablegen
+// Ops.td (OSS, 13.2-preview)
+def CudaTile_Atan2Op : CudaTile_Op<"atan2", [
+    Pure, ElementwiseMappable, SameOperandsAndResultElementType
+]> {
+  let summary = "Elementwise two-argument arctangent";
+  let arguments = (ins
+    CudaTile_FloatTile:$y,
+    CudaTile_FloatTile:$x
+  );
+  let results = (outs CudaTile_FloatTile:$result);
+  let assemblyFormat = "$y `,` $x attr-dict `:` type($result)";
+}
+```
+
+Tileiras-recovered declaration:
+
+```tablegen
+// Tileiras Ops.td (recovered): no CudaTile_Atan2Op record declared.
+```
+
+The operation is absent. A strict tileiras-compatible 13.1 parser rejects `cuda_tile.atan2` because no op record matches the mnemonic. Frontends emitting `cuda_tile` IR that target both the 13.1 and 13.2 dialect surfaces should gate `atan2` emission behind explicit version logic and fall back to a `mul`/`div`/`atan`/`select` sequence for 13.1 targets.
+
+The absence is not an accident of the recovery: it reflects that `atan2` was added to the dialect after the tileiras 13.1 release. The carried-through `f8E8M0FNU` alias mentioned in the `Types.td` section is the inverse case — a declaration that survives in tileiras as a TableGen artifact but has no observed runtime consumer.
+
+### Delta 3: cuda_tile.string Added (Cross-Reference)
+
+The added `cuda_tile.string` type belongs structurally to `Types.td` (see above), but its only consumer is the renamed `cuda_tile.print` op. The two deltas — the string type and the print rename — are coupled: removing one without the other would leave either a typeless format operand or an unused type declaration.
+
+### Renamed-Or-Removed Op Summary
+
+| Upstream definition | Upstream mnemonic | Tileiras mnemonic | Status |
+| --- | --- | --- | --- |
+| `CudaTile_PrintTkoOp` | `print_tko` | `print` | RENAMED (also: format operand retyped) |
+| `CudaTile_Atan2Op` | `atan2` | (absent) | ABSENT (13.2-only) |
+
+The other 92 ops — every arithmetic op, every memory op, every control-flow op, every shape op, every conversion op, every MMA op, every reduction/scan op, every constant/select/diagnostic op — are declaration-for-declaration identical between upstream `Ops.td` and the tileiras-recovered declarations. The producer-side surface for those 92 ops can be lifted directly from upstream without modification.
+
+## Reimplementation Guidance
+
+- Use upstream `Types.td` as the authoritative declaration for all five concrete types and all thirteen aliases. Add one extra `CudaTile_StringType` declaration with the shape shown above.
+- Use upstream `AttrDefs.td` verbatim. No deltas.
+- Use upstream `Ops.td` for 92 of the 93 ops verbatim. Rename `CudaTile_PrintTkoOp`'s mnemonic from `print_tko` to `print`, and retype its `format` operand from `StrAttr` to `CudaTile_StringType`. Delete the `CudaTile_Atan2Op` record entirely.
+- A strict tileiras-compatible 13.1 parser must reject `cuda_tile.atan2` and must accept `cuda_tile.print` while rejecting `cuda_tile.print_tko`. Older bytecode files emitted against the 13.0 dialect surface would have used `print_tko`; the tileiras bytecode reader does not accept that mnemonic — a re-emission against the 13.1 dialect is required.
+
+## Cross-References
+
+- [OSS Comparison Overview](overview.md) — the divergence taxonomy classifying the three deltas.
+- [cuda_tile Tree Mapping](cuda-tile-tree-mapping.md) — how the interface declarations in `Interfaces.td` (a fourth public TableGen file outside the three covered here) map between trees.
+- [cuda_tile Op Roster](../dialects/cuda_tile/op-roster.md) — the operation surface as exposed inside tileiras, with the deltas applied.
+- [cuda_tile Types and Attrs](../dialects/cuda_tile/types-and-attrs.md) — the type and attribute surface inside tileiras, including the added `cuda_tile.string`.

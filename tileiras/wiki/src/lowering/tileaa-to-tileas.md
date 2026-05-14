@@ -8,23 +8,46 @@ Structurally this is a textbook MLIR partial conversion. A single driver assembl
 
 ## Pass Driver
 
-The driver at `sub_7372E0` (1.75 KB) implements `runOnOperation` for the pass. It dispatches the three populators in the order listed below, then constructs the conversion target and applies it.
+`runOnOperation` populates three pattern groups in fixed order, attaches the kernel-spec attribute onto the function, constructs the conversion target, and applies it.
 
 ```c
 LogicalResult convertTileAAToTileAS(ModuleOp mod) {
     RewritePatternSet patterns;
-    sub_733EF0(patterns);                                 // arith
-    sub_730C50(patterns);                                 // math
-    sub_72D810(patterns);                                 // nv_tileaa core
-    ConversionTarget target = buildTarget();
-    sub_72B8E0(mod);                                      // attach kernel-spec attrs
-    if (failed(applyPartialConversion(mod, target, patterns)))
-                                                          return emit("failed to convert nv_tileaa to nv_tileas");
+    populateArithPatterns(patterns);                    // 43-instantiation GenericOpPattern bank
+    populateMathPatterns(patterns);                     // math.* → nv_tileas.* with arith fallback
+    populateTileAACorePatterns(patterns);               // queue, execute, alias_token, memory ops
+
+    attachKernelSpecAttributes(mod);                    // mirrors cute.kernel onto nv_tileaa.kernel_spec
+    ConversionTarget target = buildConversionTarget(mod);
+
+    if (failed(applyPartialConversion(mod, target, std::move(patterns)))) {
+        return emit("failed to convert nv_tileaa to nv_tileas");
+    }
     return success();
+}
+
+ConversionTarget buildConversionTarget(ModuleOp mod) {
+    ConversionTarget target(*mod.getContext());
+
+    target.addLegalDialect<nv_tileas::TileASDialect,
+                           arith::ArithDialect,
+                           math::MathDialect,
+                           func::FuncDialect,
+                           gpu::GPUDialect,
+                           scf::SCFDialect>();
+    target.addIllegalDialect<nv_tileaa::TileAADialect>();
+
+    // nv_tileaa.func, nv_tileaa.return, and nv_tileaa.mark_for_reuse stay legal —
+    // they are owned by ConvertTileFuncToLLVM, which has not yet run.
+    target.addLegalOp<nv_tileaa::FuncOp,
+                      nv_tileaa::ReturnOp,
+                      nv_tileaa::MarkForReuseOp>();
+
+    return target;
 }
 ```
 
-The arith populator runs first because the math populator falls back to arith for any non-NVPTX-specific operation. Both run before the nv_tileaa core populator, so the core sees already-lowered subexpressions when it walks operand types during rewrite.
+The arith populator runs first because the math populator falls back to arith for any non-NVPTX-specific operation. Both run before the nv_tileaa core populator so the core sees already-lowered subexpressions when it walks operand types during rewrite. The kernel-spec attachment runs before the partial-conversion driver because the SM100 block-scale guard reads compute capability through the attached attribute.
 
 ## Input and Output Dialects
 
@@ -67,7 +90,7 @@ patterns each look up the `mlir::nv_tile_ir::as::CopyAtomAttrInterface` TypeID o
 `byte_5B38C18` and binary-search the op's attribute dictionary for the resolved CopyAtom witness; the reduce and scan
 patterns do the same against `ReduceAtomAttrInterface` cached in `qword_5B38C00`. Selection of a concrete hardware
 primitive (`cp.async`, `cp.async.bulk`, LDGSTS, TMA tile or im2col, `tcgen05.cp`, `ldmatrix`, `stmatrix`) happens later in
-the TileAS materialization strand; the attachment point is here.
+the TileAS materialization pipeline; the attachment point is here.
 
 A handful of diagnostics from this layer outline the bank: `"TODO: only reg and smem layouts are supported at the moment"` from `sub_7297B0`, `"missing source layout"` and `"failed to infer source layout"` from `sub_729D30`, `"plugin has unsupported feature"` and `"fails to assign layout"` from `sub_7254B0`, `"failed to convert block signature"` from `sub_738E70`, and `"expect operands with queue types"` from `sub_73C190`.
 

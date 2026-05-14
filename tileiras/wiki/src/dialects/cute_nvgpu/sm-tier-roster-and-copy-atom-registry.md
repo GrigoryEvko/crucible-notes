@@ -2,7 +2,7 @@
 
 ## Abstract
 
-`cute_nvgpu` registers MMA, copy, prefetch, TMA, tensor-memory, and descriptor atom types per SM tier, then exposes them through common atom interfaces. The rest of the compiler asks uniform questions through those interfaces: what shape does this atom operate on, what element types are legal, where do operands live, what resources does the target need? This page describes the registry as a product contract rather than the binary registration table.
+`cute_nvgpu` registers MMA, copy, prefetch, TMA, tensor-memory, and descriptor atom types per SM tier, then exposes them through common atom interfaces. The rest of the compiler asks uniform questions through those interfaces: what shape does this atom operate on, what element types are legal, where do operands live, what resources does the target need? The registry below is the product contract — every atom mnemonic, the interfaces it implements, the SM tier that registers it, and the residencies its operands accept.
 
 ## Registry Model
 
@@ -48,6 +48,36 @@ LogicalResult verify_atom_instance(Atom atom, Target target, Shape use_shape) {
 | SM120/SM121 | `SM120.mma_bs` | Register-based copy and scale-factor paths | Consumer Blackwell block-scaled MMA with uppercase `SM120` spelling. |
 
 The uppercase spelling in `SM120.mma_bs` is part of the textual contract. A parser that lowercases it cannot round-trip IR for this dialect.
+
+## Atom TypeID Registry
+
+The dialect registers one MLIR `TypeID` per atom kind. Generic `cute` code never sees the per-atom C++ class; it sees a typed value whose `TypeID` resolves to an interface vtable, and that vtable carries the verifier, the asm printer, the bytecode round-trip, and the per-atom legality predicates. The registry below lists the contract per atom: which interfaces it implements, which residencies its operands accept, and which SM tier first registers it.
+
+| Atom mnemonic | Min tier | Interfaces implemented | Residency contract |
+|---|---|---|---|
+| `atom.universal_fma` | all | `MmaAtom` | A, B, D in `rmem` |
+| `atom.universal_copy` | all | `CopyAtom` | any source-destination pair the target supports |
+| `atom.ldsm` | SM75 | `CopyAtom` | `src=smem`, `dst=rmem`, shape ∈ LDSM matrix |
+| `atom.stsm` | SM90 | `CopyAtom` | `src=rmem`, `dst=smem`, shape ∈ STSM matrix |
+| `atom.simt_async_copy` | SM80 | `CopyAtom`, `AsyncCopyAtom` | `cp.async` `gmem → smem` |
+| `sm80.mma` | SM80 | `MmaAtom` | A, B, D in `rmem`; one element type per operand |
+| `sm80.sparse_mma` | SM80 | `MmaAtom`, `SparseMetadataAtom` | A, B, D in `rmem`; metadata operand alongside A |
+| `sm89.mma` | SM89 | `MmaAtom` | A, B, D in `rmem`; FP8 element types added |
+| `sm90.mma` (WGMMA) | SM90 | `MmaAtom`, `SmemDescriptorAtom` | A in `rmem` or `smem_desc_view`; B in `smem_desc_view`; D in `rmem` |
+| `smem_desc_view` | SM90 | `DescriptorType` | typed view over an SMEM descriptor |
+| `atom.tma_load` | SM90 | `CopyAtom`, `TmaAtom`, `PrefetchAtom`, `AsyncCopyAtom` | descriptor-driven `gmem → smem` |
+| `atom.tma_store` | SM90 | `CopyAtom`, `TmaAtom`, `AsyncCopyAtom` | descriptor-driven `smem → gmem` |
+| `atom.tma_reduce` | SM90 | `CopyAtom`, `TmaAtom`, `AsyncCopyAtom` | descriptor-driven reduce into `gmem` |
+| `atom.non_exec_tiled_tma_*` | SM90 | `TmaAtom` (non-exec) | partition-verified TMA atom waiting on mbarrier and cache binding |
+| `sm100.mma` (UMMA) | SM100 | `MmaAtom`, `TmemAtom` | A in `memref`/`smem_desc_view`; B in `smem_desc_view`; D in `memref` (tmem) |
+| `sm100.mma_bs` | SM100 | `MmaAtom`, `TmemAtom`, `BlockScaleAtom` | UMMA contract + scale-factor operand |
+| `sm100.mma_bs_sp` | SM100 | `MmaAtom`, `TmemAtom`, `BlockScaleAtom`, `SparseMetadataAtom` | UMMA block-scale + sparsity |
+| `atom.tmem_load` | SM100 | `CopyAtom` | `src=tmem`, `dst=rmem` |
+| `atom.tmem_store` | SM100 | `CopyAtom` | `src=rmem`, `dst=tmem` |
+| `atom.s2t_copy` | SM100 | `CopyAtom`, `AsyncCopyAtom` | `src=smem`, `dst=tmem` |
+| `SM120.mma_bs` | SM120 | `MmaAtom`, `BlockScaleAtom` | A, B, D in `rmem`; two scale-factor operands (one per A, B) |
+
+The `Interfaces implemented` column is the dispatch contract. A pass that walks every atom and asks "do you support prefetch?" calls `dyn_cast<PrefetchAtomInterface>` on each atom value; the SM90+ TMA load atom is the only positive hit, and the call collapses to a `TypeID` compare. The `Residency contract` column lists the legality bounds the per-atom verifier enforces; it is the same checklist a CUTLASS C++ user reads from `Copy_Traits<>` and `MMA_Traits<>` headers.
 
 ## MMA Records
 
@@ -119,6 +149,54 @@ Datacenter Blackwell introduces UMMA and tensor memory. `sm100.mma` is the plain
 
 Consumer Blackwell block-scaled MMA has no TMEM dependency. It carries two scale-factor operands — one for A, one for B — and keeps the accumulator in register memory. SM121 shares the same surface.
 
+## MMA Atom Verifier Diagnostics
+
+Every MMA atom registers one verifier through the dialect. The verifier emits verbatim diagnostics so test suites can match by string. The strings below are the user-visible contract.
+
+### Layout-shape verifier (all UMMA / SM90 / SM100 variants)
+
+- `"expects Mma atom layout of {0}"` — strict equality between the op's declared per-operand layout and the canonical layout the atom's traits table reconstructs. The `{0}` slot prints the canonical reference layout.
+- `"expects static and no scaled basis layout for {0}"` — the stride basis must be static integer; scaled-basis layouts are rejected because the descriptor packer cannot encode them.
+
+### Element-type ladder (UMMA family)
+
+- `"expects operand a with element type {0}, but get {1}."`
+- `"expects operand b with element type {0}, but get {1}."`
+- `"expects operand c with element type {0}, but get {1}."` (the verifier uses `c` for both C and D operand slots)
+
+The element-type check happens before the residency check. The `{0}` slot prints the expected element type from the atom's traits; `{1}` prints the actual operand element type.
+
+### Residency ladder (UMMA family)
+
+- `"expects memref/smem_desc_view for operand A, but gets A:{0}."`
+- `"expects smem_desc_view for operand B, but gets B: {0}."`
+- `"expects memref for operand D, but gets D: {0}."`
+
+UMMA B is always SMEM-descriptor; A is either register-resident (RMEM `memref`) or SMEM-descriptor; D is register-resident. The verifier emits the first mismatched operand and stops.
+
+### Layout composability (UMMA family)
+
+- `"invalid layout of A/B/D. A: {0}, B: {1}, D:{2}"` — emitted when one of the three per-operand canonical-layout checks fails before the composability step runs.
+- `"layoutA, layoutB and layoutD fail to form a gemm. A: {0}, B: {1}, D: {2}"` — emitted when the three layouts pass individually but their composition does not encode a valid `(M, N, K)` triple.
+
+### Non-UMMA shared verifier (SM70 / 75 / 80 / 89)
+
+- `"expects all mma operands to have element type"`
+- `"expects rmem for input operands, but got A: {0}, B: {1}, D: {2}"`
+- `"expects operand a with element type "` (followed by expected and actual types)
+
+The non-UMMA path enforces the simpler rule that A, B, and D all share one element type and all live in register memory. This is the only path SM70-89 use.
+
+### Composed-layout rejection (tiled-copy / tiled-mma builders)
+
+- `"doesn't support composed layout for "`
+- `"A/B/D, but got: A: {0}, B: {1}, D:{2}"`
+- `"expects A, B to have the same rank, but got A: "`
+- `"expects C, D to have the same rank, but got C: "`
+- `"expects C to have rank 1 or 2, but got C: "`
+- `"expects C to have rank 2 or 3, but got C: "`
+- `"expects C to have rank 3, but got C: "`
+
 ## Registry Invariants
 
 - Atom names encode the minimum architecture tier or intentionally remain
@@ -130,4 +208,8 @@ Consumer Blackwell block-scaled MMA has no TMEM dependency. It carries two scale
 - Descriptor view types remain explicit until the backend has emitted the
   corresponding WGMMA, TMA, or TCGEN instruction sequence.
 - Target verification rejects atoms whose tier exceeds the selected target.
+
+## Cross-References
+
+[Mode Pattern Verifiers](mode-pattern-verifiers.md) documents the LDSM/STSM, UMMA, tcgen05, and SM120-block-scale verifiers each atom registers. [TMA Atoms](tma-atoms.md) covers the descriptor-driven TMA family in depth. [MMA Atoms SM70-120](mma-atoms-sm70-120.md) covers the per-tier MMA shape lattice.
 

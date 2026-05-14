@@ -8,7 +8,7 @@ A common misconception about CUDA Toolkit 13.1 is that the new `tileiras` binary
 
 The cleanest way to state the boundary is to enumerate, point by point, each cudafe++ subsystem that is absent from tileiras. The absence is architectural, not just cosmetic: `tileiras` starts from serialized MLIR bytecode, so every source-language responsibility that belongs to `cudafe++` has already happened upstream or does not apply.
 
-- **No EDG frontend.** cudafe++ is built around the Edison Design Group C++ Front End v6.6: lexer, parser, type system, template instantiation engine, overload resolver, and constexpr interpreter. tileiras has none of that machinery. Its bulk comes from the MLIR runtime, Tile IR dialect libraries, and the LLVM 21 NVPTX backend.
+- **No EDG frontend.** cudafe++ is built around the Edison Design Group C++ Front End v6.6: lexer, parser, type system, template instantiation engine, overload resolver, and constexpr interpreter. tileiras has none of that machinery. Its bulk comes from the MLIR runtime, TileIR dialect libraries, and the LLVM 21 NVPTX backend.
 - **No C++ parser.** tileiras has no recursive-descent C++ parser, token kind table, operator-precedence engine, or Itanium ABI name mangler. Its inbound surface is the MLIR bytecode reader, which decodes a serialized `builtin.module` whose ops, types, and attributes have already been resolved upstream. tileiras enters at bytecode, not source text.
 - **No `.int.c` emission.** cudafe++ is a C++ source-to-source translator; one of its jobs is writing the transformed host-side `.int.c` output. tileiras emits no C source. Its terminal output is a host ELF object, with PTX as the intermediate textual artifact handed to `ptxas`.
 - **No host stubs.** cudafe++ generates `__wrapper__device_stub_<kernel>()` host-side forwarding functions, the `.nvHRKI`/`.nvHRDE`/`.nvHRCE` ELF host-reference arrays, the `__cudaRegisterFatBinary` / `__cudaRegisterFunction` registration table, and the CRC32-derived module ID. tileiras is device-only. No kernel-launch lowering, no host-side stub synthesis, no fat-binary registration boilerplate.
@@ -51,7 +51,7 @@ cudafe++:
     output: host-side source plus device-side compiler input
 
 tileiras:
-    input: Tile IR MLIR bytecode
+    input: TileIR MLIR bytecode
     work: verify bytecode schema, run MLIR/NVVM/NVPTX lowering, invoke ptxas
     output: host ELF object carrying the generated device code
 ```

@@ -73,83 +73,100 @@ be treated as verifier-backed contracts, not as backend storage layouts.
 | `cuda_tile.token` | Zero-runtime ordering marker. | Used as an SSA dependency for side-effecting operations. |
 | `cuda_tile.string` | Observed binary type for string-like handles. | Treat as implementation-specific unless the producer is targeting this exact binary contract. |
 
-The tile-shape verifier is intentionally simple and strong:
+The tile-shape verifier walks the shape, rejecting non-positive or non-power-of-two
+dimensions and enforcing a 16-million-element ceiling. The element count is
+tracked using a divide-and-compare to detect overflow before it can happen.
 
 ```c
-bool verify_tile_shape(ArrayRef<int64_t> shape) {
+LogicalResult verify_tile_shape(ArrayRef<int64_t> shape) {
     const int64_t max_elements = 16 * 1024 * 1024;
     int64_t elements = 1;
 
     for (int64_t dim : shape) {
-        require(dim > 0, "tile dimensions must be positive");
-        require((dim & (dim - 1)) == 0,
-                "tile dimensions must be powers of two");
-        require(elements <= max_elements / dim,
-                "tile would exceed the maximum element count");
+        if (dim <= 0) {
+            return emit_error("tile dimensions must be positive");
+        }
+        if ((dim & (dim - 1)) != 0) {
+            return emit_error("tile dimensions must be powers of two");
+        }
+        if (elements > max_elements / dim) {
+            return emit_error("tile would exceed the maximum element count");
+        }
         elements *= dim;
     }
-
-    return true;
+    return success();
 }
 ```
 
-`tensor_view` uses dynamic shape and stride positions, but each dynamic slot is
-still part of a fixed-rank type. Static dimensions must remain positive:
+`tensor_view` uses dynamic shape and stride slots, but each dynamic slot is
+still part of a fixed-rank type. The verifier rejects rank mismatches between
+shape and stride and rejects any non-positive static dimension or static stride.
 
 ```c
-bool verify_tensor_view(Type element_type,
-                        ArrayRef<int64_t> shape,
-                        ArrayRef<int64_t> stride) {
-    require(shape.size() == stride.size(),
-            "shape and stride must have the same rank");
-
+LogicalResult verify_tensor_view(Type element_type,
+                                 ArrayRef<int64_t> shape,
+                                 ArrayRef<int64_t> stride) {
+    if (shape.size() != stride.size()) {
+        return emit_error("tensor_view shape and stride must have the same rank");
+    }
     for (int64_t dim : shape) {
-        require(dim == kDynamic || dim > 0,
-                "static tensor dimensions must be positive");
+        if (dim != kDynamic && dim <= 0) {
+            return emit_error("static tensor_view dimensions must be positive");
+        }
     }
-
     for (int64_t step : stride) {
-        require(step == kDynamic || step > 0,
-                "static tensor strides must be positive");
+        if (step != kDynamic && step <= 0) {
+            return emit_error("static tensor_view strides must be positive");
+        }
     }
-
-    return true;
+    return success();
 }
 ```
 
-`partition_view` is the bridge between logical tensors and tile-shaped access:
+`partition_view` is the bridge between logical tensors and tile-shaped access.
+The verifier checks rank agreement, validates `dim_map` as an injective function
+into tensor axes, enforces the power-of-two tile shape rule, and gates special
+padding values on floating-point element types.
 
 ```c
-bool verify_partition_view(ArrayRef<int32_t> tile_shape,
-                           TensorViewType tensor,
-                           ArrayRef<int32_t> dim_map,
-                           optional<PaddingValue> padding) {
-    require(!tile_shape.empty(), "partition tiles must have rank");
-    require(tile_shape.size() == tensor.rank(),
-            "tile rank must match tensor rank");
-    require(dim_map.size() == tile_shape.size(),
-            "dim_map must cover every tile dimension");
+LogicalResult verify_partition_view(ArrayRef<int32_t> tile_shape,
+                                    TensorViewType tensor,
+                                    ArrayRef<int32_t> dim_map,
+                                    Optional<PaddingValue> padding) {
+    if (tile_shape.empty()) {
+        return emit_error("partition tiles must have rank");
+    }
+    if (tile_shape.size() != tensor.rank()) {
+        return emit_error("partition tile rank must match tensor rank");
+    }
+    if (dim_map.size() != tile_shape.size()) {
+        return emit_error("dim_map must cover every tile dimension");
+    }
 
     BitSet used_tensor_dims(tensor.rank());
-    for (int32_t tile_dim = 0; tile_dim < dim_map.size(); ++tile_dim) {
-        require(tile_shape[tile_dim] > 0, "tile dimensions must be positive");
-        require(is_power_of_two(tile_shape[tile_dim]),
-                "tile dimensions must be powers of two");
-
+    for (size_t tile_dim = 0; tile_dim < dim_map.size(); ++tile_dim) {
+        if (tile_shape[tile_dim] <= 0) {
+            return emit_error("partition tile dimensions must be positive");
+        }
+        if (!is_power_of_two(tile_shape[tile_dim])) {
+            return emit_error("partition tile dimensions must be powers of two");
+        }
         int32_t tensor_dim = dim_map[tile_dim];
-        require(0 <= tensor_dim && tensor_dim < tensor.rank(),
-                "dim_map target must be inside the tensor rank");
-        require(!used_tensor_dims.test(tensor_dim),
-                "dim_map must not map two tile dimensions to one tensor dimension");
+        if (tensor_dim < 0 || tensor_dim >= (int32_t)tensor.rank()) {
+            return emit_error("dim_map target must be inside the tensor rank");
+        }
+        if (used_tensor_dims.test(tensor_dim)) {
+            return emit_error("dim_map must not map two tile dimensions to one tensor dimension");
+        }
         used_tensor_dims.set(tensor_dim);
     }
 
-    if (padding && padding->is_nan_or_infinity_or_negative_zero()) {
-        require(tensor.element_type().is_float(),
-                "special padding values require floating-point element type");
+    if (padding.has_value() && padding->is_nan_or_infinity_or_negative_zero()) {
+        if (!tensor.element_type().is_float()) {
+            return emit_error("special padding values require a floating-point element type");
+        }
     }
-
-    return true;
+    return success();
 }
 ```
 
@@ -208,36 +225,34 @@ below it is an implementation detail. A frontend should construct valid
 `cuda_tile`, serialize it as TileIR bytecode, and hand it to `tileiras` —
 never touching internal TileAA or TileAS operations.
 
-The lowering direction is one-way:
+The lowering direction is one-way. The driver runs in three phases.
 
-```c
-Module lower_cuda_tile_module(Module module, CompileOptions options) {
-    require(module.only_contains_public_input_dialect());
-    require(parse_compute_capability(options.compute_capability).ok());
+Phase 1: the verifier rejects modules that contain operations from any
+non-public dialect. A producer that emits IR through this entry point must
+restrict itself to `cuda_tile`, `builtin`, and a small set of supporting
+upstream dialects (`arith` constants, `func` symbol references, debug-info
+attributes). Any other dialect at this point is a producer bug.
 
-    ConversionTarget target;
-    target.add_legal_dialects({"arith", "math", "func", "gpu", "scf", "nv_tileaa"});
-    target.add_illegal_dialect("cuda_tile");
-    target.add_dynamically_legal_op("ub.poison",
-        [&](Operation op) { return type_converter.is_legal(op.result_types()); });
+Phase 2: a partial dialect conversion drives the rewrite. The conversion
+target marks `cuda_tile` illegal, marks the destination dialects (`arith`,
+`math`, `func`, `gpu`, `scf`, `nv_tileaa`) legal, and registers a dynamic
+legality check on `ub.poison` so untyped poison values pick up legal
+TileAA types as they flow through. Each `cuda_tile` op carries a conversion
+pattern that emits the corresponding TileAA shape; the type converter
+rewrites scalar, tile, pointer, view, and token types in parallel.
 
-    TypeConverter types;
-    types.add(cuda_tile_scalar_to_tileaa_scalar);
-    types.add(cuda_tile_tile_to_tileaa_tile);
-    types.add(cuda_tile_view_to_tileaa_view);
+Phase 3: a post-conversion verifier confirms that no `cuda_tile` operation
+survived the conversion. After this point, ordinary producers will never see
+`cuda_tile` again; the rest of the pipeline works in progressively more
+hardware-facing internal dialects (TileAA → TileAS → CuTe → NVGPU → NVVM →
+LLVM).
 
-    RewritePatternSet patterns;
-    populate_cuda_tile_to_tileaa_patterns(patterns, types);
-
-    apply_partial_conversion(module, target, patterns);
-    require(!module.contains_dialect("cuda_tile"));
-    return module;
-}
-```
-
-After this conversion, ordinary producers will never see `cuda_tile` again.
-The rest of the pipeline works in progressively more hardware-facing internal
-dialects.
+The driver is structured as a single greedy pass rather than a per-family
+sweep because the rewrite patterns produce IR that immediately matches further
+patterns: a `cuda_tile.load_view_tko` lowers into a TileAA `tiled_load` that
+exposes new shape and layout structure to the next op's lowering. A
+per-family sweep would force a fixed phase order; the greedy pass lets pattern
+match order respond to the IR as the conversion produces it.
 
 ## Open-source cross-reference
 
@@ -259,50 +274,42 @@ The useful public source anchors are:
 
 ## AbstractOperation Record
 
-Every registered op in `cuda_tile` carries a single 0x68-byte `AbstractOperation` record. The dialect ctor walks
-its 92-op roster, allocating one record per op via `sub_44A8C20(0x68)`, filling it from that op's reg thunk, and
-appending it to the dialect's registered-op vector. An `Operation*` resolves through its `OperationName` slot
-into this descriptor to reach the dialect's interface tables and fold callback.
+Every registered op in `cuda_tile` carries one `AbstractOperation` descriptor.
+The dialect constructor walks its 92-op roster, allocates one descriptor per
+op, fills it from that op's registration thunk, and appends it to the
+dialect's registered-op vector. An `Operation*` resolves through its
+`OperationName` slot into this descriptor to reach the dialect's interface
+tables and fold callback.
 
-```c
-typedef struct AbstractOperation {
-    /*+0x00*/ void           **vtable;                       // dispatch for the op
-    /*+0x08*/ StringRef        mnemonic;                     // e.g. "cuda_tile.addf"
-    /*+0x18*/ ConceptModel    *interface_inliner;            // CudaTileinlinerInterface
-    /*+0x20*/ ConceptModel    *interface_opasm;              // CudaTileOpAsmInterface
-    /*+0x28*/ ConceptModel    *interface_fold;
-    /*+0x30*/ ConceptModel    *interface_typeinfer;
-    /*+0x38*/ ConceptModel    *interface_bytecode;
-    /*+0x40*/ ConceptModel    *interface_memeffects;
-    /*+0x48*/ ConceptModel    *interface_destinationstyle;
-    /*+0x50*/ ConceptModel    *interface_extra0;
-    /*+0x58*/ ConceptModel    *interface_extra1;
-    /*+0x60*/ FoldCallback     fold_canon;                   // op-fold and canonicalize hook
-} AbstractOperation;
-```
+The descriptor's logical layout:
 
-The allocator zero-initializes the slab, so unused interface slots stay null and the dispatcher probes them
-without a presence flag. The `mnemonic` field is an embedded `StringRef` pointing at a `.rodata` literal owned
-by the binary, not a heap-interned copy: the 9-byte dialect namespace `"cuda_tile"` sits at `0x45e74d0`, and
-each op mnemonic literal lives in the same neighbourhood, read back verbatim by the ASM printer and the
-verifier. The interface-concept pointers at `+0x18..+0x58` are the MLIR concept-model singletons that wire
-inlining, asm printing, folding, type inference, bytecode round-trip, memory effects, and destination-style
-behaviour. The fold callback at `+0x60` is the op's per-op rewriter — `cuda_tile.addf`'s reg thunk wires it
-to `sub_671150`, and the op's class vtable at `+0x00` is `&unk_59AA120`.
+| Slot | Purpose |
+|---|---|
+| op vtable | Per-op dispatch (operand/result accessors, asm-printer hooks). |
+| mnemonic | An embedded `StringRef` pointing at a read-only literal in the binary's `.rodata`. |
+| inliner interface | Inlining policy for this op. |
+| asm interface | Custom asm-printer/parser behavior. |
+| fold interface | Operation-fold concept model. |
+| type-inference interface | Result-type inference. |
+| bytecode interface | Bytecode round-trip. |
+| memory-effects interface | Whether the op reads, writes, or allocates memory. |
+| destination-style interface | Tensor-style operand/result mapping. |
+| extra interface slots | Reserved for future concept models. |
+| fold callback | Per-op rewriter that runs during the canonicalize step. |
 
-The records sit consecutively in a statically-allocated array in `.data.rel.ro` at `0x5B37F20..0x5B38170`,
-which is `92 × 0x68 = 9952` bytes. Three notable anchors inside the bank are `0x5B37F20` for `cuda_tile.return`
-(primary), `0x5B37FA8` for its secondary interface slot, `0x5B380C0` for `cuda_tile.if`, and `0x5B38170` for
-`cuda_tile.continue`. The end-of-registered-ops boundary is marked by the null sentinel at `0x5BE6138`; lookup
-helpers stop walking the bank when they hit it.
+The descriptor slab is zero-initialized, so unused interface slots stay null and
+the dispatcher probes them without a presence flag. The mnemonic field is an
+embedded `StringRef` that points at the binary's read-only literal, not a
+heap-interned copy — the ASM printer and the verifier read it back verbatim.
 
-This is the static-sentinel idiom described in
-[mlir-infra/typeid-sentinels-and-anchors.md](../../mlir-infra/typeid-sentinels-and-anchors.md): the bank is
-allocated once, lives for the entire process, and is indexed by mnemonic hash through the small dispatch
-table in `sub_5F8DC0`. Live `Operation*` instances reach this record through their `OperationName` slot —
-the resolution path documented in
-[mlir-infra/operation-layout.md](../../mlir-infra/operation-layout.md). The per-op `vtable` and
-fold-callback pairs for the rest of the roster are catalogued in [op-roster.md](op-roster.md).
+The descriptors sit consecutively in a statically-allocated array. The dialect
+indexes the array by mnemonic hash through the registration helper documented
+in [mlir-infra/typeid-sentinels-and-anchors.md](../../mlir-infra/typeid-sentinels-and-anchors.md);
+live `Operation*` instances reach the descriptor through their `OperationName`
+slot — the resolution path documented in
+[mlir-infra/operation-layout.md](../../mlir-infra/operation-layout.md). The
+per-op fold-callback assignments for the rest of the roster are catalogued in
+[op-roster.md](op-roster.md).
 
 ## Cross-links
 

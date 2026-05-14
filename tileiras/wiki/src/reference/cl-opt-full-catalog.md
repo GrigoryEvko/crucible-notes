@@ -51,11 +51,11 @@ Aggregate: heap-allocated 864 B `TileirasDriverCLOpts`, owner pointer returned t
 
 | option | type | default | help text (verbatim) | storage | defining pass | wiki |
 |--------|------|---------|----------------------|---------|---------------|------|
-| `--device-debug` | `cl::opt<bool>` | `false` | `Generate debug information (if present in the input bytecode)` | `name@(len 12)`, agg+`0x218..0x2D7` | `sub_579270` | [driver/cli](../driver/cli.md) |
-| `-g` | `cl::alias` → `device-debug` | — | `Alias for --device-debug` | `name@0x45E74F9 (len 1)`, agg+`0x2D8..0x35F` | `sub_579270` | [driver/cli](../driver/cli.md) |
-| `--lineinfo` | `cl::opt<bool>` | `false` | `Generate line-number information (if present in the input bytecode)` | `name@0x45E74F0 (len 8)`, agg+`0x158..0x217` | `sub_579270` | [driver/cli](../driver/cli.md) |
-| `-O` | `cl::alias` → `opt-level` | — | `Alias for --opt-level` | `name (len 1)`, agg+`0x0D0..0x157` | `sub_579270` | [driver/cli](../driver/cli.md) |
-| `--opt-level` | `cl::opt<int>` | `3` | `Specify optimization level. Default Value: 3.` | `name@0x45E74xx (len 9)`, agg+`0x000..0x0C7` | `sub_579270` | [driver/cli](../driver/cli.md) |
+| `--device-debug` | `cl::opt<bool>` | `false` | `Generate debug information (if present in the input bytecode)` | `name@(len 12)`, agg+`0x218..0x2D7` | `sub_579270` | [driver/cli-options](../driver/cli-options.md) |
+| `-g` | `cl::alias` → `device-debug` | — | `Alias for --device-debug` | `name@0x45E74F9 (len 1)`, agg+`0x2D8..0x35F` | `sub_579270` | [driver/cli-options](../driver/cli-options.md) |
+| `--lineinfo` | `cl::opt<bool>` | `false` | `Generate line-number information (if present in the input bytecode)` | `name@0x45E74F0 (len 8)`, agg+`0x158..0x217` | `sub_579270` | [driver/cli-options](../driver/cli-options.md) |
+| `-O` | `cl::alias` → `opt-level` | — | `Alias for --opt-level` | `name (len 1)`, agg+`0x0D0..0x157` | `sub_579270` | [driver/cli-options](../driver/cli-options.md) |
+| `--opt-level` | `cl::opt<int>` | `3` | `Specify optimization level. Default Value: 3.` | `name@0x45E74xx (len 9)`, agg+`0x000..0x0C7` | `sub_579270` | [driver/cli-options](../driver/cli-options.md) |
 
 `--opt-level` `ValueStr` metavar = `"N"` (renders as `--opt-level=<N>`). Aggregate heap-allocated by `sub_44A8C20(0x360)`.
 
@@ -82,9 +82,9 @@ Aggregate: ~1488 B heap-allocated dialect bag attached to a per-invocation `mlir
 
 | option | type | default | help text (verbatim) | storage | defining pass | wiki |
 |--------|------|---------|----------------------|---------|---------------|------|
-| `--compute-capability` | `cl::opt<string>` | `sm_100` | (metavar `compute capability`, no description body) | `name@0x4Exxxxx (len 18)`, bag+`0x4D8..0x5C7`; default literal `"sm_100"`@`0x45E7185` | `sub_602440` | [driver/sm-targeting](../driver/sm-targeting.md) |
-| `--debuginfo-level` | `cl::opt<enum>` (4-value) | `none` (=0) | `The level of debug info to emit.` | `name@0x45EF0xx (len 15)`, bag+`0x070..0x1EF` | `sub_602440` | [driver/debug-info](../driver/debug-info.md) |
-| `--is-optimized` | `cl::opt<bool>` | `false` | `Encode in the debug info whether the program is optimized or not.` | `name@0x45EF0xx (len 12)`, bag+`0x400..0x4D7` | `sub_602440` | [driver/debug-info](../driver/debug-info.md) |
+| `--compute-capability` | `cl::opt<string>` | `sm_100` | (metavar `compute capability`, no description body) | `name@0x4Exxxxx (len 18)`, bag+`0x4D8..0x5C7`; default literal `"sm_100"`@`0x45E7185` | `sub_602440` | [driver/cli-options](../driver/cli-options.md) |
+| `--debuginfo-level` | `cl::opt<enum>` (4-value) | `none` (=0) | `The level of debug info to emit.` | `name@0x45EF0xx (len 15)`, bag+`0x070..0x1EF` | `sub_602440` | [lowering/target-and-debuginfo](../lowering/target-and-debuginfo.md) |
+| `--is-optimized` | `cl::opt<bool>` | `false` | `Encode in the debug info whether the program is optimized or not.` | `name@0x45EF0xx (len 12)`, bag+`0x400..0x4D7` | `sub_602440` | [lowering/target-and-debuginfo](../lowering/target-and-debuginfo.md) |
 
 Enum table for `--debuginfo-level` (constructed inline by `sub_602440`):
 
@@ -103,26 +103,26 @@ Note: `--compute-capability` collides with the Layer-3 PassOption of the same na
 
 | option | type | default | help text (verbatim) | storage / agg+slot | consuming pass(es) | wiki |
 |--------|------|---------|----------------------|--------------------|--------------------|------|
-| `approx` | `bool` | `0` | `Approximate calculation.` | reg+`2104`, val~+`?` | NVVMReflect path (sub_14FE980) | [passes/nvvm-reflect](../passes/nvvm-reflect.md) |
-| `compute-capability` | `string` | `sm_80` | `compute capability` | reg+`600`, val+`728/736` | sub_738810 (Frontend→TileAA), sub_6D0E90 | [driver/sm-targeting](../driver/sm-targeting.md) |
-| `dump-host` | `string` | `""` | `Print the generated host code to the provided path.` | reg+`4912`, val+`5040/5048`, presence+`5072` | sub_879B50 (EmitHostWrapper) | [passes/emit-host-wrapper](../passes/emit-host-wrapper.md) |
-| `dynamic-persistent` | `bool` | `0` | `Enable dynamic persistent transformation` | reg+`2936`, val+`3064` | TileASDynamicPersistent (driver gate) | [passes/tileas-dynamic-persistent](../passes/tileas-dynamic-persistent.md) |
-| `emit-line-info` | `enum` (5-value) | `none` | `Emit debug line info from existing or snapshot IR (snapshot saved to ./snapshot.mlir).` | reg+`3408`, val+`3536` | driver (snapshot insertion); SynthesizeDebugInfoScopes | [passes/synthesize-debug-info](../passes/synthesize-debug-info.md) |
-| `enable-debug-logging` | `bool` | `0` | `Enable debug logging in TileIR host callbacks.` | reg+`4024`, val+`4152` | sub_879B50 EmitHostWrapper | [passes/emit-host-wrapper](../passes/emit-host-wrapper.md) |
-| `enable-random-delay` | `bool` | `0` | `enable random delay` | reg+`2520` | TileAS scheduler family (LOW conf) | [scheduler/index](../scheduler/index.md) |
-| `ftz` | `bool` | `0` | `Flush denormal to zero.` | reg+`2312`, val+`2232` | NVVMReflect path (`nvvm-reflect-ftz` ModuleFlag) | [passes/nvvm-reflect](../passes/nvvm-reflect.md) |
-| `host-triple` | `string` | `native` | `Specify the target triple for TileIR host callbacks.` | reg+`4232`, val+`4360` | sub_879B50 EmitHostWrapper | [passes/emit-host-wrapper](../passes/emit-host-wrapper.md) |
-| `index-bitwidth` | `int` | `32` | `Bitwidth of the index type, 0 to use size of machine word.` | reg+`1688` | ConvertTileASToLLVM, TileAS→NVGPU, ConvertToLLVM, ConvertMemRefToLLVM, ConvertControlFlowToLLVM, UnspecializedPipeline | [lowering/llvm-conversion](../lowering/llvm-conversion.md) |
-| `max-constraint-iterations` | `uint` | `10` | `Maximum number of iterations for resource constraint generation. Higher values allow more optimization attempts but increase compilation time. Lower values may result in fallback to serial execution when resource constraints are tight.` | reg+`4704`, val+`4832` | sub_8A25E0 TileASPrepareForScheduling | [scheduler/prepare-for-scheduling](../scheduler/prepare-for-scheduling.md) |
-| `num-ctas` | `int` | `1` | `number of ctas in a cga` | reg+`392`, val+`520` | sub_738810 (Frontend→TileAA) | [passes/frontend-conv](../passes/frontend-conv.md) |
-| `num-warps` | `int` | `4` | `number of warps` | reg+`184`, val+`312` | sub_738810 (Frontend→TileAA) | [passes/frontend-conv](../passes/frontend-conv.md) |
-| `opt-level` | `int` | `2` | `Optimization level for NVVM compilation. Please notice that the default value is 2 and can be set from 0 to 3.` | reg+`864`, val+`992` | driver `sub_6D6A00` shape switch; ConvertTargetToNVVM (sub_14FE980) | [pipeline/opt-levels](../pipeline/opt-levels.md) |
-| `pipeline-strategy` | `enum` (3-value) | `none` | `Select the strategy of pipelining optimization.` | reg+`1072`, val+`1200` | driver `sub_6D6A00` / `sub_6D0E90` / `sub_6D18D0` (warp-spec selector); SpecializeAgents | [pipeline/warp-spec](../pipeline/warp-spec.md) |
-| `rrt-size-threshold` | `uint` | `4096` | `RRT size threshold for quantization (in time slots). Applies quantization when RRT exceeds this size to reduce compilation time at the cost of schedule accuracy. Smaller thresholds enable more compression for faster compilation but with reduced scheduling precision. If threshold is 0, then no quantization will be applied.` | reg+`4496`, val+`4624` | sub_8A25E0 TileASPrepareForScheduling | [scheduler/prepare-for-scheduling](../scheduler/prepare-for-scheduling.md) |
-| `schedule-trace-file` | `string` | `""` | `Generate a chrome timeline trace if not empty for the visualizationof the scheduling result for TileASv2` | reg+`3144`, val+`3272` | sub_825050 TileASScheduleRewriteEnable | [scheduler/trace](../scheduler/trace.md) |
-| `unspecialized-pipeline-num-stages` | `int` | `4` | `numStages for unspecialized pipeline pass.` | reg+`1896`, val+`1816` | UnspecializedPipeline (sub_1A24770), ConvertTileASToLLVM, TileAS→NVGPU | [pipeline/unspecialized](../pipeline/unspecialized.md) |
-| `use-nvgpucomp-libnvvm` | `bool` | `0` | `Use NVGpuComp to compile NVVM IR. If false, use default libnvvm path.` | reg+`5488`, val+`5616` | ConvertTargetToNVVM (sub_14FE980) | [lowering/nvvm-emission](../lowering/nvvm-emission.md) |
-| `v2-opt-level` | `int` | `0` | `Optimization level for tile_ir V2 pass pipeline.` | reg+`2728`, val+`2856` | driver `sub_6D6A00` second-axis shape gate | [pipeline/opt-levels](../pipeline/opt-levels.md) |
+| `approx` | `bool` | `0` | `Approximate calculation.` | reg+`2104`, val~+`?` | NVVMReflect path (sub_14FE980) | [libdevice/nvvm-reflect-mechanism](../libdevice/nvvm-reflect-mechanism.md) |
+| `compute-capability` | `string` | `sm_80` | `compute capability` | reg+`600`, val+`728/736` | sub_738810 (Frontend→TileAA), sub_6D0E90 | [driver/cli-options](../driver/cli-options.md) |
+| `dump-host` | `string` | `""` | `Print the generated host code to the provided path.` | reg+`4912`, val+`5040/5048`, presence+`5072` | sub_879B50 (EmitHostWrapper) | [driver/tileir-callbacks-abi](../driver/tileir-callbacks-abi.md) |
+| `dynamic-persistent` | `bool` | `0` | `Enable dynamic persistent transformation` | reg+`2936`, val+`3064` | TileASDynamicPersistent (driver gate) | [passes/tileas/cta-cluster-family](../passes/tileas/cta-cluster-family.md) |
+| `emit-line-info` | `enum` (5-value) | `none` | `Emit debug line info from existing or snapshot IR (snapshot saved to ./snapshot.mlir).` | reg+`3408`, val+`3536` | driver (snapshot insertion); SynthesizeDebugInfoScopes | [lowering/target-and-debuginfo](../lowering/target-and-debuginfo.md) |
+| `enable-debug-logging` | `bool` | `0` | `Enable debug logging in TileIR host callbacks.` | reg+`4024`, val+`4152` | sub_879B50 EmitHostWrapper | [driver/tileir-callbacks-abi](../driver/tileir-callbacks-abi.md) |
+| `enable-random-delay` | `bool` | `0` | `enable random delay` | reg+`2520` | TileAS scheduler family (LOW conf) | [scheduler/overview](../scheduler/overview.md) |
+| `ftz` | `bool` | `0` | `Flush denormal to zero.` | reg+`2312`, val+`2232` | NVVMReflect path (`nvvm-reflect-ftz` ModuleFlag) | [libdevice/nvvm-reflect-mechanism](../libdevice/nvvm-reflect-mechanism.md) |
+| `host-triple` | `string` | `native` | `Specify the target triple for TileIR host callbacks.` | reg+`4232`, val+`4360` | sub_879B50 EmitHostWrapper | [driver/tileir-callbacks-abi](../driver/tileir-callbacks-abi.md) |
+| `index-bitwidth` | `int` | `32` | `Bitwidth of the index type, 0 to use size of machine word.` | reg+`1688` | ConvertTileASToLLVM, TileAS→NVGPU, ConvertToLLVM, ConvertMemRefToLLVM, ConvertControlFlowToLLVM, UnspecializedPipeline | [lowering/tileas-to-llvm](../lowering/tileas-to-llvm.md) |
+| `max-constraint-iterations` | `uint` | `10` | `Maximum number of iterations for resource constraint generation. Higher values allow more optimization attempts but increase compilation time. Lower values may result in fallback to serial execution when resource constraints are tight.` | reg+`4704`, val+`4832` | sub_8A25E0 TileASPrepareForScheduling | [passes/tileas/cta-cluster-family](../passes/tileas/cta-cluster-family.md) |
+| `num-ctas` | `int` | `1` | `number of ctas in a cga` | reg+`392`, val+`520` | sub_738810 (Frontend→TileAA) | [lowering/cuda-tile-to-tileaa](../lowering/cuda-tile-to-tileaa.md) |
+| `num-warps` | `int` | `4` | `number of warps` | reg+`184`, val+`312` | sub_738810 (Frontend→TileAA) | [lowering/cuda-tile-to-tileaa](../lowering/cuda-tile-to-tileaa.md) |
+| `opt-level` | `int` | `2` | `Optimization level for NVVM compilation. Please notice that the default value is 2 and can be set from 0 to 3.` | reg+`864`, val+`992` | driver `sub_6D6A00` shape switch; ConvertTargetToNVVM (sub_14FE980) | [pipeline/driver-and-opt-levels](../pipeline/driver-and-opt-levels.md) |
+| `pipeline-strategy` | `enum` (3-value) | `none` | `Select the strategy of pipelining optimization.` | reg+`1072`, val+`1200` | driver `sub_6D6A00` / `sub_6D0E90` / `sub_6D18D0` (warp-specialize selector); SpecializeAgents | [passes/tileas/async-pipeline-family](../passes/tileas/async-pipeline-family.md) |
+| `rrt-size-threshold` | `uint` | `4096` | `RRT size threshold for quantization (in time slots). Applies quantization when RRT exceeds this size to reduce compilation time at the cost of schedule accuracy. Smaller thresholds enable more compression for faster compilation but with reduced scheduling precision. If threshold is 0, then no quantization will be applied.` | reg+`4496`, val+`4624` | sub_8A25E0 TileASPrepareForScheduling | [passes/tileas/cta-cluster-family](../passes/tileas/cta-cluster-family.md) |
+| `schedule-trace-file` | `string` | `""` | `Generate a chrome timeline trace if not empty for the visualizationof the scheduling result for TileASv2` | reg+`3144`, val+`3272` | sub_825050 TileASScheduleRewriteEnable | [scheduler/overview](../scheduler/overview.md) |
+| `unspecialized-pipeline-num-stages` | `int` | `4` | `numStages for unspecialized pipeline pass.` | reg+`1896`, val+`1816` | UnspecializedPipeline (sub_1A24770), ConvertTileASToLLVM, TileAS→NVGPU | [passes/tileas/async-pipeline-family](../passes/tileas/async-pipeline-family.md) |
+| `use-nvgpucomp-libnvvm` | `bool` | `0` | `Use NVGpuComp to compile NVVM IR. If false, use default libnvvm path.` | reg+`5488`, val+`5616` | ConvertTargetToNVVM (sub_14FE980) | [lowering/nvgpu-and-gpu-to-nvvm](../lowering/nvgpu-and-gpu-to-nvvm.md) |
+| `v2-opt-level` | `int` | `0` | `Optimization level for tile_ir V2 pass pipeline.` | reg+`2728`, val+`2856` | driver `sub_6D6A00` second-axis shape gate | [pipeline/driver-and-opt-levels](../pipeline/driver-and-opt-levels.md) |
 
 Enum tables for Layer-3 enums:
 
@@ -143,32 +143,32 @@ Per-TU global ctors invoking `sub_4534CC0(&optObj, name, len)` at static-init. E
 
 | option | type | default | help text (verbatim) | storage (string addr) | defining pass | wiki |
 |--------|------|---------|----------------------|-----------------------|---------------|------|
-| `alloca-hoisting` | INITIALIZE_PASS | — | `NVPTX specific alloca hoisting` | `name@0x4D12164` | NVPTXAllocaHoisting | [nvptx-passes/alloca-hoisting](../nvptx-passes/alloca-hoisting.md) |
-| `disable-nvptx-load-store-vectorizer` | `cl::opt<bool>` | `false` | `Disable load/store vectorizer` | `name@0x4D0EF60` | LSV gate | [nvptx-passes/lsv](../nvptx-passes/lsv.md) |
-| `disable-nvptx-require-structured-cfg` | `cl::opt<bool>` | `false` | `Transitional flag to turn off NVPTX's requirement on preserving structured CFG. The requirement should be disabled only when unexpected regressions happen.` | `name@0x4D0EF88` | NVPTXTargetMachine | [nvptx-passes/structured-cfg](../nvptx-passes/structured-cfg.md) |
-| `nvptx-aa-wrapper` | INITIALIZE_PASS | — | `NVPTX Address space based Alias Analysis Wrapper` | `name@0x4D11FB1` | NVPTXAliasAnalysisWrapper | [nvptx-passes/aa](../nvptx-passes/aa.md) |
-| `nvptx-approx-log2f32` | `cl::opt<bool>` | `false` | `NVPTX Specific: whether to use lg2.approx for log2` | `name@0x4D0DA2D` | NVPTXISelLowering | [nvptx-passes/math-precision](../nvptx-passes/math-precision.md) |
-| `nvptx-asm-printer` | INITIALIZE_PASS | — | `NVPTX Assembly Printer` | `name@0x4D07A97` | NVPTXAsmPrinter | [nvptx-passes/asm-printer](../nvptx-passes/asm-printer.md) |
-| `nvptx-assign-valid-global-names` | INITIALIZE_PASS | — | `Assign valid PTX names to globals` | `name@0x4D121A0` | NVPTXAssignValidGlobalNames | [nvptx-passes/global-names](../nvptx-passes/global-names.md) |
-| `nvptx-atomic-lower` | INITIALIZE_PASS | — | `NVPTX lower atomics of local memory` | `name@0x4D1221C` | NVPTXAtomicLower | [nvptx-passes/atomic-lower](../nvptx-passes/atomic-lower.md) |
-| `nvptx-early-byval-copy` | `cl::opt<bool>` | `false` | `Create a copy of byval function arguments early.` | `name@0x4D0F141` | NVPTXLowerArgs | [nvptx-passes/lower-args](../nvptx-passes/lower-args.md) |
-| `nvptx-emit-init-fini-kernel` | `cl::opt<bool>` | `false` | `Emit kernels to call ctor/dtor globals.` | `name@0x4D1262C` | NVPTXCtorDtorLowering | [nvptx-passes/ctor-dtor](../nvptx-passes/ctor-dtor.md) |
-| `nvptx-exit-on-unreachable` | `cl::opt<bool>` | `false` | `Lower 'unreachable' as 'exit' instruction.` | `name@0x4D0F127` | NVPTXISelLowering | [nvptx-passes/unreachable](../nvptx-passes/unreachable.md) |
-| `nvptx-fma-level` | `cl::opt<uint>` | (default per LLVM) | `NVPTX Specific: FMA contraction (0: don't do it 1: do it  2: do it aggressively` | `name@0x4D0D9DC` | NVPTXTargetMachine | [nvptx-passes/fma](../nvptx-passes/fma.md) |
-| `nvptx-force-min-byval-param-align` | `cl::opt<bool>` | `false` (NVIDIA-patched; upstream default = `true`) | `NVPTX Specific: force 4-byte minimal alignment for byval params of device functions.` | `name@0x4D0DBF0` | NVPTXLowerArgs | [nvptx-passes/lower-args](../nvptx-passes/lower-args.md) |
-| `nvptx-forward-params` | INITIALIZE_PASS | — | `NVPTX Forward Params` | `name@0x4D12715` | NVPTXForwardParams | [nvptx-passes/forward-params](../nvptx-passes/forward-params.md) |
-| `nvptx-isel` | INITIALIZE_PASS | — | `NVPTX DAG->DAG Pattern Instruction Selection` | `name@0x4D1293D` | NVPTXISelDAGToDAG | [nvptx-passes/isel](../nvptx-passes/isel.md) |
-| `nvptx-libcall-callee` | `cl::opt<bool>` | (default per LLVM) | (controls direct libcall lowering; help colocated near `0x4D08070`) | `name@0x4D0805A` | NVPTXTargetLowering | [nvptx-passes/libcall](../nvptx-passes/libcall.md) |
-| `nvptx-lower-global-ctor-dtor` | `cl::opt<bool>` | `false` | `Lower GPU ctor / dtors to globals on the device.` | `name@0x4D083A1` | NVPTXCtorDtorLowering | [nvptx-passes/ctor-dtor](../nvptx-passes/ctor-dtor.md) |
-| `nvptx-lower-global-ctor-dtor-id` | `cl::opt<string>` | `""` | `Override unique ID of ctor/dtor globals.` | `name@0x4D12678` | NVPTXCtorDtorLowering | [nvptx-passes/ctor-dtor](../nvptx-passes/ctor-dtor.md) |
-| `nvptx-no-f16-math` | `cl::opt<bool>` | `false` | `NVPTX Specific: Disable generation of f16 math ops.` | `name@0x4D0E6C4` | NVPTXISelLowering | [nvptx-passes/f16-math](../nvptx-passes/f16-math.md) |
-| `nvptx-prec-divf32` | `cl::opt<uint>` | (default per LLVM) | `NVPTX Specific: Override the precision of the lowering for f32 fdiv` | `name@0x4D0DA08` | NVPTXISelLowering (also reads `__CUDA_PREC_DIV` reflect key) | [nvptx-passes/math-precision](../nvptx-passes/math-precision.md) |
-| `nvptx-prec-sqrtf32` | `cl::opt<bool>` | `false` | `NVPTX Specific: 0 use sqrt.approx, 1 use sqrt.rn.` | `name@0x4D0DA1A` | NVPTXISelLowering (also reads `__CUDA_PREC_SQRT` reflect key) | [nvptx-passes/math-precision](../nvptx-passes/math-precision.md) |
-| `nvptx-rsqrt-approx-opt` | `cl::opt<bool>` | `false` | `Enable reciprocal sqrt optimization` | `name@0x4D15BF5` | NVPTXTargetLowering | [nvptx-passes/rsqrt](../nvptx-passes/rsqrt.md) |
-| `nvptx-sched4reg` | `cl::opt<bool>` | `false` | `NVPTX Specific: schedule for register pressue` | `name@0x4D0D9CC` | NVPTXSubtarget scheduler choice | [nvptx-passes/sched4reg](../nvptx-passes/sched4reg.md) |
-| `nvptx-short-ptr` | `cl::opt<bool>` | `false` | `Use 32-bit pointers for accessing const/local/shared address spaces.` | `name@0x4D0F117` | NVPTXTargetMachine | [nvptx-passes/short-ptr](../nvptx-passes/short-ptr.md) |
-| `nvptx-traverse-address-aliasing-limit` | `cl::opt<uint>` | (default per LLVM) | `Depth limit for finding address space through traversal` | `name@0x4D12070` | NVPTXAA | [nvptx-passes/aa](../nvptx-passes/aa.md) |
-| `nvptx-use-max-local-array-alignment` | `cl::opt<bool>` | `false` | `Use maximum alignment for local memory` | `name@0x4D11F00` | NVPTXLowerArgs | [nvptx-passes/lower-args](../nvptx-passes/lower-args.md) |
+| `alloca-hoisting` | INITIALIZE_PASS | — | `NVPTX specific alloca hoisting` | `name@0x4D12164` | NVPTXAllocaHoisting | [nvptx-passes/overview](../nvptx-passes/overview.md) |
+| `disable-nvptx-load-store-vectorizer` | `cl::opt<bool>` | `false` | `Disable load/store vectorizer` | `name@0x4D0EF60` | LSV gate | [nvptx-passes/overview](../nvptx-passes/overview.md) |
+| `disable-nvptx-require-structured-cfg` | `cl::opt<bool>` | `false` | `Transitional flag to turn off NVPTX's requirement on preserving structured CFG. The requirement should be disabled only when unexpected regressions happen.` | `name@0x4D0EF88` | NVPTXTargetMachine | [codegen/nvptx-bring-up-and-target-init](../codegen/nvptx-bring-up-and-target-init.md) |
+| `nvptx-aa-wrapper` | INITIALIZE_PASS | — | `NVPTX Address space based Alias Analysis Wrapper` | `name@0x4D11FB1` | NVPTXAliasAnalysisWrapper | [nvptx-passes/memory-space-opt-and-process-restrict](../nvptx-passes/memory-space-opt-and-process-restrict.md) |
+| `nvptx-approx-log2f32` | `cl::opt<bool>` | `false` | `NVPTX Specific: whether to use lg2.approx for log2` | `name@0x4D0DA2D` | NVPTXISelLowering | [libdevice/math-pass-pipeline-and-crosswalk](../libdevice/math-pass-pipeline-and-crosswalk.md) |
+| `nvptx-asm-printer` | INITIALIZE_PASS | — | `NVPTX Assembly Printer` | `name@0x4D07A97` | NVPTXAsmPrinter | [codegen/asm-printer-monster-and-windows](../codegen/asm-printer-monster-and-windows.md) |
+| `nvptx-assign-valid-global-names` | INITIALIZE_PASS | — | `Assign valid PTX names to globals` | `name@0x4D121A0` | NVPTXAssignValidGlobalNames | [nvptx-passes/overview](../nvptx-passes/overview.md) |
+| `nvptx-atomic-lower` | INITIALIZE_PASS | — | `NVPTX lower atomics of local memory` | `name@0x4D1221C` | NVPTXAtomicLower | [codegen/atomic-warp-sreg-fence](../codegen/atomic-warp-sreg-fence.md) |
+| `nvptx-early-byval-copy` | `cl::opt<bool>` | `false` | `Create a copy of byval function arguments early.` | `name@0x4D0F141` | NVPTXLowerArgs | [nvptx-passes/lower-args-and-aggr-and-struct](../nvptx-passes/lower-args-and-aggr-and-struct.md) |
+| `nvptx-emit-init-fini-kernel` | `cl::opt<bool>` | `false` | `Emit kernels to call ctor/dtor globals.` | `name@0x4D1262C` | NVPTXCtorDtorLowering | [nvptx-passes/kernel-cdp-inline-pretreat](../nvptx-passes/kernel-cdp-inline-pretreat.md) |
+| `nvptx-exit-on-unreachable` | `cl::opt<bool>` | `false` | `Lower 'unreachable' as 'exit' instruction.` | `name@0x4D0F127` | NVPTXISelLowering | [codegen/nvptx-target-lowering-call-and-args](../codegen/nvptx-target-lowering-call-and-args.md) |
+| `nvptx-fma-level` | `cl::opt<uint>` | (default per LLVM) | `NVPTX Specific: FMA contraction (0: don't do it 1: do it  2: do it aggressively` | `name@0x4D0D9DC` | NVPTXTargetMachine | [libdevice/math-pass-pipeline-and-crosswalk](../libdevice/math-pass-pipeline-and-crosswalk.md) |
+| `nvptx-force-min-byval-param-align` | `cl::opt<bool>` | `false` (NVIDIA-patched; upstream default = `true`) | `NVPTX Specific: force 4-byte minimal alignment for byval params of device functions.` | `name@0x4D0DBF0` | NVPTXLowerArgs | [nvptx-passes/lower-args-and-aggr-and-struct](../nvptx-passes/lower-args-and-aggr-and-struct.md) |
+| `nvptx-forward-params` | INITIALIZE_PASS | — | `NVPTX Forward Params` | `name@0x4D12715` | NVPTXForwardParams | [nvptx-passes/overview](../nvptx-passes/overview.md) |
+| `nvptx-isel` | INITIALIZE_PASS | — | `NVPTX DAG->DAG Pattern Instruction Selection` | `name@0x4D1293D` | NVPTXISelDAGToDAG | [codegen/iseldag-and-matchertable](../codegen/iseldag-and-matchertable.md) |
+| `nvptx-libcall-callee` | `cl::opt<bool>` | (default per LLVM) | (controls direct libcall lowering; help colocated near `0x4D08070`) | `name@0x4D0805A` | NVPTXTargetLowering | [codegen/nvptx-target-lowering-call-and-args](../codegen/nvptx-target-lowering-call-and-args.md) |
+| `nvptx-lower-global-ctor-dtor` | `cl::opt<bool>` | `false` | `Lower GPU ctor / dtors to globals on the device.` | `name@0x4D083A1` | NVPTXCtorDtorLowering | [nvptx-passes/kernel-cdp-inline-pretreat](../nvptx-passes/kernel-cdp-inline-pretreat.md) |
+| `nvptx-lower-global-ctor-dtor-id` | `cl::opt<string>` | `""` | `Override unique ID of ctor/dtor globals.` | `name@0x4D12678` | NVPTXCtorDtorLowering | [nvptx-passes/kernel-cdp-inline-pretreat](../nvptx-passes/kernel-cdp-inline-pretreat.md) |
+| `nvptx-no-f16-math` | `cl::opt<bool>` | `false` | `NVPTX Specific: Disable generation of f16 math ops.` | `name@0x4D0E6C4` | NVPTXISelLowering | [libdevice/math-pass-pipeline-and-crosswalk](../libdevice/math-pass-pipeline-and-crosswalk.md) |
+| `nvptx-prec-divf32` | `cl::opt<uint>` | (default per LLVM) | `NVPTX Specific: Override the precision of the lowering for f32 fdiv` | `name@0x4D0DA08` | NVPTXISelLowering (also reads `__CUDA_PREC_DIV` reflect key) | [libdevice/math-pass-pipeline-and-crosswalk](../libdevice/math-pass-pipeline-and-crosswalk.md) |
+| `nvptx-prec-sqrtf32` | `cl::opt<bool>` | `false` | `NVPTX Specific: 0 use sqrt.approx, 1 use sqrt.rn.` | `name@0x4D0DA1A` | NVPTXISelLowering (also reads `__CUDA_PREC_SQRT` reflect key) | [libdevice/math-pass-pipeline-and-crosswalk](../libdevice/math-pass-pipeline-and-crosswalk.md) |
+| `nvptx-rsqrt-approx-opt` | `cl::opt<bool>` | `false` | `Enable reciprocal sqrt optimization` | `name@0x4D15BF5` | NVPTXTargetLowering | [libdevice/math-pass-pipeline-and-crosswalk](../libdevice/math-pass-pipeline-and-crosswalk.md) |
+| `nvptx-sched4reg` | `cl::opt<bool>` | `false` | `NVPTX Specific: schedule for register pressue` | `name@0x4D0D9CC` | NVPTXSubtarget scheduler choice | [codegen/nvptx-subtarget-and-feature-matrix](../codegen/nvptx-subtarget-and-feature-matrix.md) |
+| `nvptx-short-ptr` | `cl::opt<bool>` | `false` | `Use 32-bit pointers for accessing const/local/shared address spaces.` | `name@0x4D0F117` | NVPTXTargetMachine | [codegen/nvptx-subtarget-and-feature-matrix](../codegen/nvptx-subtarget-and-feature-matrix.md) |
+| `nvptx-traverse-address-aliasing-limit` | `cl::opt<uint>` | (default per LLVM) | `Depth limit for finding address space through traversal` | `name@0x4D12070` | NVPTXAA | [nvptx-passes/memory-space-opt-and-process-restrict](../nvptx-passes/memory-space-opt-and-process-restrict.md) |
+| `nvptx-use-max-local-array-alignment` | `cl::opt<bool>` | `false` | `Use maximum alignment for local memory` | `name@0x4D11F00` | NVPTXLowerArgs | [nvptx-passes/lower-args-and-aggr-and-struct](../nvptx-passes/lower-args-and-aggr-and-struct.md) |
 
 Layer 4 also carries `nvptx-prec-divf32` enum value-strings: `Use div.approx`, `Use div.full`, `Use IEEE Compliant F32 div.rnd if available (default)`, `Use IEEE Compliant F32 div.rnd if available, no FTZ`.
 
@@ -178,19 +178,19 @@ A ManagedStatic-guarded static initializer at `sub_45BA4C0` (8524 B) registers e
 
 | option | type | default | help text (verbatim) | storage / line | defining pass | wiki |
 |--------|------|---------|----------------------|----------------|---------------|------|
-| `debug-compile` | flag | `false` | `Compile for debugging` | `sub_45BA4C0:708` | tileiras CLI | [driver/cli](../driver/cli.md) |
-| `generate-line-info` | flag | `false` | `Emit line info even without -G` | `sub_45BA4C0:774` | tileiras CLI | [driver/cli](../driver/cli.md) |
-| `ignore-bad-fp` | flag | `false` | `Workaround Gdb problem in dumping floating-point constants` | `sub_45BA4C0:390` | tileiras CLI | [driver/cli](../driver/cli.md) |
-| `line-info-inlined-at` | flag | `false` | `Emit line with inlined-at enhancement` | `sub_45BA4C0:840` | tileiras CLI | [driver/cli](../driver/cli.md) |
-| `maxreg` | int (with `cl::value_desc`) | (none) | `max regcount` | `sub_45BA4C0:583` | tileiras CLI | [driver/cli](../driver/cli.md) |
-| `nvptx-f32ftz` | flag | `false` | (no description) | `sub_45BA4C0:198` | tileiras CLI | [driver/cli](../driver/cli.md) |
-| `nvptx-nan` | flag | `false` | (no description) | `sub_45BA4C0:134` | tileiras CLI | [driver/cli](../driver/cli.md) |
-| `Om` | flag | `false` | `Perform maximum optimization` | `sub_45BA4C0:518` | tileiras CLI | [driver/cli](../driver/cli.md) |
-| `Osize` | flag | `false` | `Optimize for code size` | `sub_45BA4C0:454` | tileiras CLI | [driver/cli](../driver/cli.md) |
-| `register-usage-level` | int | (none) | (no description) | `sub_45BA4C0:902` | tileiras CLI | [driver/cli](../driver/cli.md) |
-| `value-tracking-max-depth` | int | (none) | (no description) | `sub_45BA4C0:646` | tileiras CLI | [driver/cli](../driver/cli.md) |
-| `w` | `cl::alias` | — | `disable warnings` | `sub_45BA4C0:262` | tileiras CLI | [driver/cli](../driver/cli.md) |
-| `Werror` | flag | `false` | `Treat all warnings as errors` | `sub_45BA4C0:326` | tileiras CLI | [driver/cli](../driver/cli.md) |
+| `debug-compile` | flag | `false` | `Compile for debugging` | `sub_45BA4C0:708` | tileiras CLI | [driver/cli-options](../driver/cli-options.md) |
+| `generate-line-info` | flag | `false` | `Emit line info even without -G` | `sub_45BA4C0:774` | tileiras CLI | [driver/cli-options](../driver/cli-options.md) |
+| `ignore-bad-fp` | flag | `false` | `Workaround Gdb problem in dumping floating-point constants` | `sub_45BA4C0:390` | tileiras CLI | [driver/cli-options](../driver/cli-options.md) |
+| `line-info-inlined-at` | flag | `false` | `Emit line with inlined-at enhancement` | `sub_45BA4C0:840` | tileiras CLI | [driver/cli-options](../driver/cli-options.md) |
+| `maxreg` | int (with `cl::value_desc`) | (none) | `max regcount` | `sub_45BA4C0:583` | tileiras CLI | [driver/cli-options](../driver/cli-options.md) |
+| `nvptx-f32ftz` | flag | `false` | (no description) | `sub_45BA4C0:198` | tileiras CLI | [driver/cli-options](../driver/cli-options.md) |
+| `nvptx-nan` | flag | `false` | (no description) | `sub_45BA4C0:134` | tileiras CLI | [driver/cli-options](../driver/cli-options.md) |
+| `Om` | flag | `false` | `Perform maximum optimization` | `sub_45BA4C0:518` | tileiras CLI | [driver/cli-options](../driver/cli-options.md) |
+| `Osize` | flag | `false` | `Optimize for code size` | `sub_45BA4C0:454` | tileiras CLI | [driver/cli-options](../driver/cli-options.md) |
+| `register-usage-level` | int | (none) | (no description) | `sub_45BA4C0:902` | tileiras CLI | [driver/cli-options](../driver/cli-options.md) |
+| `value-tracking-max-depth` | int | (none) | (no description) | `sub_45BA4C0:646` | tileiras CLI | [driver/cli-options](../driver/cli-options.md) |
+| `w` | `cl::alias` | — | `disable warnings` | `sub_45BA4C0:262` | tileiras CLI | [driver/cli-options](../driver/cli-options.md) |
+| `Werror` | flag | `false` | `Treat all warnings as errors` | `sub_45BA4C0:326` | tileiras CLI | [driver/cli-options](../driver/cli-options.md) |
 
 ### Layer 5 — NVVM Reflect cl::opt (`ctor_238` at `0x463A70`)
 
@@ -198,9 +198,9 @@ Three registrations bundled into one TU ctor: a `cl::opt<bool>`, a `cl::list<std
 
 | option | type | default | help text (verbatim) | storage | defining pass | wiki |
 |--------|------|---------|----------------------|---------|---------------|------|
-| `nvvm-reflect-add` | `cl::list<string>` | (empty) | `A key=value pair. Replace __nvvm_reflect(name) with value.` | obj@`0x5B4F300`, name@`0x4D3C77A`; metavar `name=<int>`@`0x4D3C78B`; list backing@`0x5B4F380`/`0x5B4F390` | NVVMReflectPass (`sub_1BD0910` / `sub_1BD0C50` / `sub_1BD1280`) | [passes/nvvm-reflect](../passes/nvvm-reflect.md) |
-| `nvvm-reflect-enable` | `cl::opt<bool>` | `true` | `NVVM reflection, enabled by default` | obj@`0x5B4F400`, name@`0x4D3C766`, help@`0x5B4F428` (len 35) | NVVMReflectPass | [passes/nvvm-reflect](../passes/nvvm-reflect.md) |
-| `R` | `cl::alias` → `nvvm-reflect-add` | — | (alias) | obj@`0x5B4F260`, name@(len 1); standard 4-check cl::alias validation | NVVMReflectPass | [passes/nvvm-reflect](../passes/nvvm-reflect.md) |
+| `nvvm-reflect-add` | `cl::list<string>` | (empty) | `A key=value pair. Replace __nvvm_reflect(name) with value.` | obj@`0x5B4F300`, name@`0x4D3C77A`; metavar `name=<int>`@`0x4D3C78B`; list backing@`0x5B4F380`/`0x5B4F390` | NVVMReflectPass (`sub_1BD0910` / `sub_1BD0C50` / `sub_1BD1280`) | [libdevice/nvvm-reflect-mechanism](../libdevice/nvvm-reflect-mechanism.md) |
+| `nvvm-reflect-enable` | `cl::opt<bool>` | `true` | `NVVM reflection, enabled by default` | obj@`0x5B4F400`, name@`0x4D3C766`, help@`0x5B4F428` (len 35) | NVVMReflectPass | [libdevice/nvvm-reflect-mechanism](../libdevice/nvvm-reflect-mechanism.md) |
+| `R` | `cl::alias` → `nvvm-reflect-add` | — | (alias) | obj@`0x5B4F260`, name@(len 1); standard 4-check cl::alias validation | NVVMReflectPass | [libdevice/nvvm-reflect-mechanism](../libdevice/nvvm-reflect-mechanism.md) |
 
 Two pass-name strings co-locate in Layer 5 but register via `INITIALIZE_PASS`, not cl::opt:
 
@@ -219,24 +219,24 @@ The 13 B string `nvvm-reflect-` at `0x4D3C6A0` has `ftz\0` at offset +13 (`0x4D3
 
 | option | type | default | help text (verbatim) | storage | defining pass | wiki |
 |--------|------|---------|----------------------|---------|---------------|------|
-| `mlir-disable-threading` | `cl::opt<bool>` | `false` | `Disable multi-threading within MLIR, overrides any further call to MLIRContext::enableMultiThreading()` | `name@0x502E5E2`, help@`0x502E618` | MLIRContext | [mlir-infra/threading](../mlir-infra/threading.md) |
-| `mlir-elide-elementsattrs-if-larger` | `cl::opt<uint>` | (per MLIR) | `Elide ElementsAttrs with "..." that have more elements than the given upper limit` | `name@0x502CB20` | AsmPrinter | [mlir-infra/asm-printer](../mlir-infra/asm-printer.md) |
-| `mlir-elide-resource-strings-if-larger` | `cl::opt<uint>` | (per MLIR) | `Elide printing value of resources if string is too long in chars.` | `name@0x502CBA0` | AsmPrinter | [mlir-infra/asm-printer](../mlir-infra/asm-printer.md) |
-| `mlir-output-format` | `cl::opt<enum>` | `text` | `Display method for timing data` | `name@0x502F5BB`, help@`0x502F5D0` | PassTiming | [mlir-infra/timing](../mlir-infra/timing.md) |
-| `mlir-pretty-debuginfo` | `cl::opt<bool>` | `false` | `Prints out debug info using the pretty forms ignoring raw loc forms` | `name@0x502CDAE` | AsmPrinter | [mlir-infra/asm-printer](../mlir-infra/asm-printer.md) |
-| `mlir-print-assume-verified` | `cl::opt<bool>` | `false` | `Skip op verification when using custom printers` | `name@0x502CDDA`, help@`0x502CC10` | AsmPrinter | [mlir-infra/asm-printer](../mlir-infra/asm-printer.md) |
-| `mlir-print-debuginfo` | `cl::opt<bool>` | `false` | `Print debug info in pretty form` | `name@0x502CD99` | AsmPrinter | [mlir-infra/asm-printer](../mlir-infra/asm-printer.md) |
-| `mlir-print-elementsattrs-with-hex-if-larger` | `cl::opt<int>` | `-1` (disabled) | `Print DenseElementsAttrs with a hex string that have more elements than the given upper limit (use -1 to disable)` | `name@0x502CA78` | AsmPrinter | [mlir-infra/asm-printer](../mlir-infra/asm-printer.md) |
-| `mlir-print-local-scope` | `cl::opt<bool>` | `false` | `Print with local scope and inline information (eliding aliases for attributes, types, and locations)` | `name@0x502CDF5`, help@`0x502CC40` | AsmPrinter | [mlir-infra/asm-printer](../mlir-infra/asm-printer.md) |
-| `mlir-print-op-generic` | `cl::opt<bool>` | `false` | `Print all operations using the generic assembly form` | `name@0x502CDC4` | AsmPrinter | [mlir-infra/asm-printer](../mlir-infra/asm-printer.md) |
-| `mlir-print-op-on-diagnostic` | `cl::opt<bool>` | `true` | `When a diagnostic is emitted on an operation, also print the operation as an attached note` | `name@0x502E5F9`, help@`0x502E680` | Diagnostics | [mlir-infra/diagnostics](../mlir-infra/diagnostics.md) |
-| `mlir-print-skip-regions` | `cl::opt<bool>` | `false` | `Skip regions when printing ops.` | `name@0x502CE0C`, help@`0x502CCA8` | AsmPrinter | [mlir-infra/asm-printer](../mlir-infra/asm-printer.md) |
-| `mlir-print-stacktrace-on-diagnostic` | `cl::opt<bool>` | `false` | `When a diagnostic is emitted, also print the stack trace as an attached note` | `name@0x502E6E0`, help@`0x502E708` | Diagnostics | [mlir-infra/diagnostics](../mlir-infra/diagnostics.md) |
-| `mlir-print-unique-ssa-ids` | `cl::opt<bool>` | `false` | `Print unique SSA ID numbers for values, block arguments and naming conflicts across all regions` | `name@0x502CE3B`, help@`0x502CD10` | AsmPrinter | [mlir-infra/asm-printer](../mlir-infra/asm-printer.md) |
-| `mlir-print-value-users` | `cl::opt<bool>` | `false` | `Print users of operation results and block arguments as a comment` | `name@0x502CE24`, help@`0x502CCC8` | AsmPrinter | [mlir-infra/asm-printer](../mlir-infra/asm-printer.md) |
-| `mlir-timing` | `cl::opt<bool>` | `false` | `Display execution times` | `name@0x502F565`, help@`0x502F571` | PassTiming | [mlir-infra/timing](../mlir-infra/timing.md) |
-| `mlir-timing-display` | `cl::opt<enum>` | `list` | `Output format for timing data` | `name@0x502F589`, help@`0x502F59D` | PassTiming | [mlir-infra/timing](../mlir-infra/timing.md) |
-| `mlir-use-nameloc-as-prefix` | `cl::opt<bool>` | `false` | `Print SSA IDs using NameLocs as prefixes` | `name@0x502CE55`, help@`0x502CD70` | AsmPrinter | [mlir-infra/asm-printer](../mlir-infra/asm-printer.md) |
+| `mlir-disable-threading` | `cl::opt<bool>` | `false` | `Disable multi-threading within MLIR, overrides any further call to MLIRContext::enableMultiThreading()` | `name@0x502E5E2`, help@`0x502E618` | MLIRContext | [infra/threading-and-synchronization](../infra/threading-and-synchronization.md) |
+| `mlir-elide-elementsattrs-if-larger` | `cl::opt<uint>` | (per MLIR) | `Elide ElementsAttrs with "..." that have more elements than the given upper limit` | `name@0x502CB20` | AsmPrinter | [bytecode/asm-printer-status](../bytecode/asm-printer-status.md) |
+| `mlir-elide-resource-strings-if-larger` | `cl::opt<uint>` | (per MLIR) | `Elide printing value of resources if string is too long in chars.` | `name@0x502CBA0` | AsmPrinter | [bytecode/asm-printer-status](../bytecode/asm-printer-status.md) |
+| `mlir-output-format` | `cl::opt<enum>` | `text` | `Display method for timing data` | `name@0x502F5BB`, help@`0x502F5D0` | PassTiming | [mlir-infra/overview](../mlir-infra/overview.md) |
+| `mlir-pretty-debuginfo` | `cl::opt<bool>` | `false` | `Prints out debug info using the pretty forms ignoring raw loc forms` | `name@0x502CDAE` | AsmPrinter | [bytecode/asm-printer-status](../bytecode/asm-printer-status.md) |
+| `mlir-print-assume-verified` | `cl::opt<bool>` | `false` | `Skip op verification when using custom printers` | `name@0x502CDDA`, help@`0x502CC10` | AsmPrinter | [bytecode/asm-printer-status](../bytecode/asm-printer-status.md) |
+| `mlir-print-debuginfo` | `cl::opt<bool>` | `false` | `Print debug info in pretty form` | `name@0x502CD99` | AsmPrinter | [bytecode/asm-printer-status](../bytecode/asm-printer-status.md) |
+| `mlir-print-elementsattrs-with-hex-if-larger` | `cl::opt<int>` | `-1` (disabled) | `Print DenseElementsAttrs with a hex string that have more elements than the given upper limit (use -1 to disable)` | `name@0x502CA78` | AsmPrinter | [bytecode/asm-printer-status](../bytecode/asm-printer-status.md) |
+| `mlir-print-local-scope` | `cl::opt<bool>` | `false` | `Print with local scope and inline information (eliding aliases for attributes, types, and locations)` | `name@0x502CDF5`, help@`0x502CC40` | AsmPrinter | [bytecode/asm-printer-status](../bytecode/asm-printer-status.md) |
+| `mlir-print-op-generic` | `cl::opt<bool>` | `false` | `Print all operations using the generic assembly form` | `name@0x502CDC4` | AsmPrinter | [bytecode/asm-printer-status](../bytecode/asm-printer-status.md) |
+| `mlir-print-op-on-diagnostic` | `cl::opt<bool>` | `true` | `When a diagnostic is emitted on an operation, also print the operation as an attached note` | `name@0x502E5F9`, help@`0x502E680` | Diagnostics | [mlir-infra/diagnostic-abi-and-helpers](../mlir-infra/diagnostic-abi-and-helpers.md) |
+| `mlir-print-skip-regions` | `cl::opt<bool>` | `false` | `Skip regions when printing ops.` | `name@0x502CE0C`, help@`0x502CCA8` | AsmPrinter | [bytecode/asm-printer-status](../bytecode/asm-printer-status.md) |
+| `mlir-print-stacktrace-on-diagnostic` | `cl::opt<bool>` | `false` | `When a diagnostic is emitted, also print the stack trace as an attached note` | `name@0x502E6E0`, help@`0x502E708` | Diagnostics | [mlir-infra/diagnostic-abi-and-helpers](../mlir-infra/diagnostic-abi-and-helpers.md) |
+| `mlir-print-unique-ssa-ids` | `cl::opt<bool>` | `false` | `Print unique SSA ID numbers for values, block arguments and naming conflicts across all regions` | `name@0x502CE3B`, help@`0x502CD10` | AsmPrinter | [bytecode/asm-printer-status](../bytecode/asm-printer-status.md) |
+| `mlir-print-value-users` | `cl::opt<bool>` | `false` | `Print users of operation results and block arguments as a comment` | `name@0x502CE24`, help@`0x502CCC8` | AsmPrinter | [bytecode/asm-printer-status](../bytecode/asm-printer-status.md) |
+| `mlir-timing` | `cl::opt<bool>` | `false` | `Display execution times` | `name@0x502F565`, help@`0x502F571` | PassTiming | [mlir-infra/overview](../mlir-infra/overview.md) |
+| `mlir-timing-display` | `cl::opt<enum>` | `list` | `Output format for timing data` | `name@0x502F589`, help@`0x502F59D` | PassTiming | [mlir-infra/overview](../mlir-infra/overview.md) |
+| `mlir-use-nameloc-as-prefix` | `cl::opt<bool>` | `false` | `Print SSA IDs using NameLocs as prefixes` | `name@0x502CE55`, help@`0x502CD70` | AsmPrinter | [bytecode/asm-printer-status](../bytecode/asm-printer-status.md) |
 
 Enum values — `mlir-timing-display`: `list` = `display the results in a list sorted by total time` (`0x502F5F0`); `tree` = `display the results ina with a nested tree view` (`0x502F628`, verbatim typo `ina` preserved from upstream). `mlir-output-format`: `text` = `display the results in text format` (`0x502F658`); `json` = `display the results in JSON format` (`0x502F680`).
 
@@ -244,20 +244,9 @@ Enum values — `mlir-timing-display`: `list` = `display the results in a list s
 
 | option | type | default | help text (verbatim) | storage | defining pass | wiki |
 |--------|------|---------|----------------------|---------|---------------|------|
-| `disable-i2p-p2i-opt` | `cl::opt<bool>` | `false` | `Disables inttoptr/ptrtoint roundtrip optimization` | `name@0x4FF26BA`, help@`0x4FF2688` | `llvm/Analysis/ValueTracking.cpp` | [topics/value-tracking](../topics/value-tracking.md) |
+| `disable-i2p-p2i-opt` | `cl::opt<bool>` | `false` | `Disables inttoptr/ptrtoint roundtrip optimization` | `name@0x4FF26BA`, help@`0x4FF2688` | `llvm/Analysis/ValueTracking.cpp` | upstream LLVM ValueTracking |
 
 ## PassBuilder Mega-Registry Note
 
 - The 478 pretty-name-keyed (`"llvm::TPass]"`) entries + 66 naked-class entries + 7 special-form entries (551 total) inserted into the PassBuilder `StringMap<PassInfo>` by `sub_1CCB7D0` (35948 B) are downstream LLVM. Twenty NVIDIA-private interleavings (`check-gep-index`, `check-kernel-functions`, `cnp-launch-check`, `ipmsp`, `nv-early-inliner`, `nv-inline-must`, `nvvm-pretreat`, `nvvm-verify`, `printf-lowering`, `select-kernels`, `nvvm-aa`, `kernel-info`, `nvvm-reflect-pp`, `nvvm-peephole-optimizer`, `propagate-alignment`, `reuse-local-memory`, `memory-space-opt`, `lower-aggr-copies`, `lower-struct-args`, `process-restrict`) are pipeline-text-parser keys for `--passes=...`, not freestanding cl::opts; factory functors live in `parseModulePass` / `parseCGSCCPass` / `parseFunctionPass` / `parseLoopPass` / `parseMachinePass`. Full table: [pipeline/passbuilder-mega-registry](../pipeline/passbuilder-mega-registry.md).
 
-## Tier
-
-T3 — deep reference, complete cl::opt enumeration.
-
-## Confidence
-
-- **HIGH** for verbatim option strings, help text, enum value strings, and registrar addresses (Layers 1–7) — direct rodata + `setArgStr` xref.
-- **HIGH** for Layer-3 `val+N` offsets read at adder sites (`sub_6CF780` / `sub_6CF2A0` / `sub_6D0E90` / `sub_6D18D0` / `sub_6D2290`).
-- **MED** for per-option BSS storage where multiple cl::opts share a section (Layers 4 / 6 / 7); name-string rodata is verified, individual BSS slots not enumerated. Recoverable via `jq -r '.[] | select(.to_addr=="0x4534cc0") | .from_addr' tileiras_callgraph.json` (689 entries).
-- **MED** for Layer-3 `val+N` offsets for `approx`, `ftz`, `index-bitwidth` (not adder-read; consumer identity HIGH but slot position inferred by stride).
-- **LOW** for `enable-random-delay` consumer (literal appears only in `sub_6D3460`; scheduler-family fit inferred semantically).

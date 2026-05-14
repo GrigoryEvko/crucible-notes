@@ -67,101 +67,108 @@ LogicalResult verify_register_fragment(Layout layout, int register_count) {
 
 ## UMMA Canonical Layout Verifier
 
-UMMA atoms require canonical `UMMA_MN` (matrix-major) or `UMMA_K` (k-major) layouts for their A and B operands. `sub_167C690` (5046 B) enforces those invariants on every `mma_atom` op before it can lower to PTX. Each gate emits a specific diagnostic, so a layout that survives this pass is structurally valid for the descriptor packer that runs immediately after.
+UMMA atoms require canonical `UMMA_MN` (matrix-major) or `UMMA_K` (k-major) layouts for their A and B operands. The UMMA layout verifier enforces those invariants on every `mma_atom` op before it can lower to PTX. Each gate emits a specific diagnostic, so a layout that survives this pass is structurally valid for the descriptor packer that runs immediately after.
 
-The verifier takes four inputs: a `direction` that is either `UMMA_MN` or `UMMA_K`; an `elem_bits` width of 4, 8, 16, or 32; a `swz_triple` `(B, M, S)` encoding the swizzle bit-mask pattern; and the `cute.Layout` being verified. Direction selects the canonical operand orientation, element width sets the expected K-extent, and the swizzle triple picks one of a small accepted set of bit-mask shapes. The layout may be a plain `Layout` or a `ComposedLayout` whose inner component is a swizzle — both forms walk uniformly once they pass the first gate.
+The verifier takes four inputs: a `direction` that is either `UMMA_MN` or `UMMA_K`; an `elem_bits` width of 4, 8, 16, or 32; a `swz_triple` `(swz_mode, B, M)` read from the swizzled descriptor; and the `cute.Layout` being verified. Direction selects the canonical operand orientation, element width sets the expected K-extent, and the swizzle triple picks one of a small accepted set of bit-mask shapes. The layout may be a plain `Layout` or a `ComposedLayout` whose inner component is a swizzle — both forms walk uniformly once they pass the first gate.
 
-The diagnostic ladder has seven failure messages, interleaved with the algorithm. Each fires at most once per verification, and a failure stops further checking:
+Seven verbatim diagnostics fire from this verifier. Each is emitted at most once per verification; a failure stops further checking. The strings are part of the user-visible contract — reproducing them byte-for-byte is required for test suites that match diagnostics by string:
 
-- `"Not a canonical UMMA_MN/K Layout: layout must be a Layout or ComposedLayout"`
-- `"Not a canonical UMMA_MN/K Layout: K-mode must be contiguous"`
-- `"Not a canonical UMMA_MN/K Layout: too many modes (max 128)"`
-- `"unsupported swizzle, got (B={B}, M={M}, S={S})"`
-- `"Not a canonical UMMA_MN/K Layout: K-mode size mismatch (expected {k_size}, got {actual})"`
-- `"Not a canonical UMMA_MN Layout: M-mode must follow K-mode contiguously"`
-- `"Not a canonical UMMA_K Layout: K-mode must be the innermost mode"`
+- `"unsupported swizzle, got "`
+- `"Not a canonical UMMA_MN Layout: Expected K-size 256/sizeof_bits<T> or 512/sizeof_bits(T) in sparse gemm kernels."`
+- `"Not a canonical UMMA_MN Layout: No flat offset mode"`
+- `"Not a canonical UMMA_MN Layout: Expected stride failure."`
+- `"Not a canonical UMMA_K Layout: Expected MN-size multiple of "`
+- `"Not a canonical UMMA_K Layout: No flat offset mode"`
+- `"Not a canonical UMMA_K Layout: Expected stride failure."`
 
-The eleven-step algorithm:
+The verifier walks the same shape extraction first, then forks on `direction` into a UMMA_MN branch and a UMMA_K branch. Each branch reads a per-element-size encoding table that maps `elem_bits` to two integers `(per_lane_count, stride_multiplier)` consumed by the rebuilt expected layout; the table also encodes the SM100 TMEM rule that element widths above 32 bits are rejected outright.
 
-1. Check `layout.kind == ComposedLayout || layout.kind == Layout`. Else emit `"Not a canonical UMMA_MN/K Layout: layout must be a Layout or ComposedLayout"`.
-2. Compute `k_size = direction == UMMA_K ? 512 / elem_bits : 256 / elem_bits`. This is the expected K-extent for the operand.
-3. Check that the layout's innermost mode-K is contiguous (stride 1). Else emit `"Not a canonical UMMA_MN/K Layout: K-mode must be contiguous"`.
-4. Check that the layout has at most 128 modes total. Else emit `"Not a canonical UMMA_MN/K Layout: too many modes (max 128)"`.
-5. Verify the swizzle triple is in the accepted set: `(0, 2, 5)`, `(2, 5, 2)`, or `(n <= 3, 4, 3)` for `n` in `{1, 2, 3}`. Else emit `"unsupported swizzle, got (B={B}, M={M}, S={S})"`.
-6. For sparse layouts, double `k_size` to account for the metadata stride.
-7. Verify the K-mode size matches `k_size`. Else emit `"Not a canonical UMMA_MN/K Layout: K-mode size mismatch (expected {k_size}, got {actual})"`.
-8. For `UMMA_MN`, verify M-mode is contiguous after the K-mode. Else emit `"Not a canonical UMMA_MN Layout: M-mode must follow K-mode contiguously"`.
-9. For `UMMA_K`, verify K-mode comes first. Else emit `"Not a canonical UMMA_K Layout: K-mode must be the innermost mode"`.
-10. Walk a 152-byte or 304-byte work-vector (stride depends on whether the layout has metadata) and verify each entry is well-formed.
-11. If all gates pass, return success.
+1. Entry: classify the swizzle triple. Accepted triples are `(0, 2, 5)` (no swizzle), `(2, 5, 2)` (128-byte swizzle), `(n, 4, 3)` for `n in {0..3}` (compact/canonical path), and `(2, 5, 2)` with `direction == UMMA_K`. Any other triple emits `"unsupported swizzle, got "` followed by the serialised swizzle.
+2. Shape extraction: build a small vector of shape/stride pairs limited to 128 entries (the hard cap on tile dimensions UMMA_MN and UMMA_K accept).
+3. Element-size decode: encode `elem_bits` through a 4-byte classification table into `per_lane_count` and `stride_multiplier`. The fp4 path produces `(4, 8)`; the default path produces `(8, computed)`; element widths outside the table land on an `undefined` stride and stop later steps from succeeding.
+4. Direction split: `direction == 1` enters UMMA_MN; `direction == 0` enters UMMA_K; any other value is a bug.
+5. UMMA_MN branch:
+   a. Read the K-mode size; require `K_elements == 256/elem_bits` or `K_elements == 512/elem_bits` (the latter is the sparse-gemm path with doubled K). Failure emits `"Not a canonical UMMA_MN Layout: Expected K-size 256/sizeof_bits<T> or 512/sizeof_bits(T) in sparse gemm kernels."`.
+   b. Synthesize the expected `(1-shape, stride_multiplier-stride) / (1-shape, per_lane_count-stride)` pair, build the flattened expected layout, and walk a 152-byte-per-slot work vector comparing it to the op's actual modes.
+   c. Require every mode to have exactly 80 bytes of flat-mode storage. Failure emits `"Not a canonical UMMA_MN Layout: No flat offset mode"`.
+   d. Verify each rebuilt mode's stride matches the `(stride_multiplier, per_lane_count)` pair from step 3. Failure emits `"Not a canonical UMMA_MN Layout: Expected stride failure."`.
+6. UMMA_K branch:
+   a. Read the MN-mode size; require `MN_size % per_lane_count == 0`. Failure emits `"Not a canonical UMMA_K Layout: Expected MN-size multiple of "` followed by the decimal value of `per_lane_count` and a terminating `"."`.
+   b. Synthesize the expected `(1, per_lane_count) / (2, 1)` pair, walk the same 152-byte work vector, and require the 80-byte flat-mode condition. Failure emits `"Not a canonical UMMA_K Layout: No flat offset mode"`.
+   c. Stride check on the rebuilt modes. Failure emits `"Not a canonical UMMA_K Layout: Expected stride failure."`.
+7. On success, pack `(elem_class, k_size, mn_size)` as the verifier's result.
 
 ```c
 LogicalResult verify_umma_canonical_layout(UmmaDirection direction,
                                            uint32_t elem_bits,
                                            SwizzleTriple swz,
                                            LayoutLike layout) {
-    if (layout.kind != LAYOUT && layout.kind != COMPOSED_LAYOUT) {
-        return emit("Not a canonical UMMA_MN/K Layout: "
-                    "layout must be a Layout or ComposedLayout");
+    if (!is_accepted_swizzle(swz, direction)) {
+        return emit("unsupported swizzle, got ") << serialize(swz);
     }
 
-    uint32_t k_size = (direction == UMMA_K) ? 512 / elem_bits : 256 / elem_bits;
-
-    if (!innermost_k_is_contiguous(layout)) {
-        return emit("Not a canonical UMMA_MN/K Layout: K-mode must be contiguous");
-    }
-    if (mode_count(layout) > 128) {
-        return emit("Not a canonical UMMA_MN/K Layout: too many modes (max 128)");
-    }
-    if (!is_accepted_swizzle(swz)) {
-        return emit("unsupported swizzle, got (B=%u, M=%u, S=%u)", swz.B, swz.M, swz.S);
+    ElementClass ec = decode_element_class(elem_bits);
+    if (!ec.valid) {
+        return failure();  // element width above 32 bits — caller diagnoses
     }
 
-    if (layout_is_sparse(layout)) {
-        k_size *= 2;
+    if (direction == UMMA_MN) {
+        uint64_t k_elements = product_of(shape_of_k_mode(layout));
+        uint64_t expected_dense  = 256u / elem_bits;
+        uint64_t expected_sparse = 512u / elem_bits;
+        if (k_elements != expected_dense && k_elements != expected_sparse) {
+            return emit("Not a canonical UMMA_MN Layout: Expected K-size "
+                        "256/sizeof_bits<T> or 512/sizeof_bits(T) in sparse "
+                        "gemm kernels.");
+        }
+        if (!has_flat_offset_mode(layout)) {
+            return emit("Not a canonical UMMA_MN Layout: No flat offset mode");
+        }
+        if (!strides_match_expected(layout, ec)) {
+            return emit("Not a canonical UMMA_MN Layout: Expected stride failure.");
+        }
+    } else /* UMMA_K */ {
+        uint64_t mn_size = product_of(shape_of_mn_mode(layout));
+        if (mn_size % ec.per_lane_count != 0) {
+            return emit("Not a canonical UMMA_K Layout: Expected MN-size multiple of ")
+                       << ec.per_lane_count << ".";
+        }
+        if (!has_flat_offset_mode(layout)) {
+            return emit("Not a canonical UMMA_K Layout: No flat offset mode");
+        }
+        if (!strides_match_expected(layout, ec)) {
+            return emit("Not a canonical UMMA_K Layout: Expected stride failure.");
+        }
     }
 
-    if (k_mode_size(layout) != k_size) {
-        return emit("Not a canonical UMMA_MN/K Layout: K-mode size mismatch "
-                    "(expected %u, got %u)", k_size, k_mode_size(layout));
-    }
-
-    if (direction == UMMA_MN && !m_mode_follows_k_contiguously(layout)) {
-        return emit("Not a canonical UMMA_MN Layout: "
-                    "M-mode must follow K-mode contiguously");
-    }
-    if (direction == UMMA_K && !k_mode_is_innermost(layout)) {
-        return emit("Not a canonical UMMA_K Layout: K-mode must be the innermost mode");
-    }
-
-    uint32_t stride = layout_is_sparse(layout) ? 304 : 152;
-    return walk_work_vector(layout, stride);
+    return success();
 }
 ```
 
-Step 5's accepted swizzle set is the small closed enumeration the descriptor packer can express in shared-memory descriptors. `(0, 2, 5)` is the no-swizzle case; `(2, 5, 2)` is the 128-byte swizzle; the `(n, 4, 3)` family with `n` in `{1, 2, 3}` covers the 32-, 64-, and 128-byte interleaved variants whose choice depends on operand element width. Any other triple is rejected before any size check runs, keeping the diagnostic specific to the swizzle field rather than blaming a downstream size mismatch.
+The accepted swizzle set is the small closed enumeration the descriptor packer can express in shared-memory descriptors. `(0, 2, 5)` is the no-swizzle case; `(2, 5, 2)` is the 128-byte swizzle; the `(n, 4, 3)` family with `n` in `{0, 1, 2, 3}` covers the 32-, 64-, and 128-byte interleaved variants whose choice depends on operand element width. Any other triple is rejected before any size check runs, keeping the diagnostic specific to the swizzle field rather than blaming a downstream size mismatch.
 
-Step 10's work-vector walk picks one of two strides based on sparsity. A dense layout carries three slots per element — shape, stride, and a decoration word recording the per-mode flags consumed by later passes — giving a 152-byte stride. A sparse layout carries six slots: the dense triple plus a metadata-shape, metadata-stride, and metadata-decoration triple describing the sparsity-metadata operand parallel to the value operand, giving a 304-byte stride. The walk checks each entry against that schema; any malformed entry counts as a generic structural failure and gets reported through the K-mode size or contiguity gates rather than as a new diagnostic.
+The 152-byte work-vector stride matches the dense per-mode record size used throughout this dialect: shape, stride, and a per-mode decoration word giving three slots per element. The sparse path doubles the K-extent budget (the 512-bit case in step 5a) but the verifier still walks the same 152-byte stride; the metadata operand is verified by a sibling pass once this layout walk succeeds.
 
-A sister verifier `sub_13F24D0` (11515 B) runs the same algorithm for arbitrary layout shapes and is invoked by ops taking non-MMA layouts. The two share most of their bodies, but `sub_167C690` is specialised for the MMA path with hard-coded `k_size` formulas keyed off `direction` and `elem_bits`. The split exists because callers that already know they have an MMA operand pay no dispatch cost, and the larger sibling only runs for layouts whose K-extent must be derived rather than computed.
+A sister verifier runs the same algorithm for arbitrary layout shapes and is invoked by ops taking non-MMA layouts. The two verifiers share most of their bodies, but the MMA-side verifier is specialised for the MMA path with hard-coded `k_size` formulas keyed off `direction` and `elem_bits`. The split exists because callers that already know they have an MMA operand pay no dispatch cost, and the larger sibling only runs for layouts whose K-extent must be derived rather than computed.
 
 ## tcgen05.mma Kind-Word Verifier
 
-The Blackwell `tcgen05.mma` op family packs several orthogonal attributes into a 7-bit kind word, and `sub_1AD26A0` (5154 B) checks that the bits are mutually consistent before any lowering pass sees the op. The kind word carries the warp-specialized flag, the CTA-group selector, the scale-vector size, the input-accumulator scale bit, the block-scale bit, and a one-bit selector that picks one of seven concrete `mma_kind` enum values. The verifier walks 13 mutual-exclusion rules over those fields and returns one of ten NVPTX opcode indices on success, so the lowering pass can branch directly on the result.
+The Blackwell `tcgen05.mma` op family packs several orthogonal attributes into a 9-bit kind word, and the verifier checks that the bits are mutually consistent before any lowering pass sees the op. The kind word carries the CTA-group selector, the scale-vector size, the scale-input-accumulator bit, the block-scale bit, and a 3-bit selector that picks one of seven concrete `mma_kind` enum values. A separate weight-stationary flag overlays bit 0 of the same word and is read as a 1-bit predicate (its `cta_group::1` requirement is enforced as a cross-field rule). The verifier walks the mutual-exclusion rules below and returns an NVPTX opcode index from the closed range 10521..10530 on success, so the lowering pass can branch directly on the result.
 
 ```c
 typedef union Tcgen05MmaKind {
-    uint8_t raw : 7;
+    uint32_t raw : 9;
     struct {
-        uint8_t ws                : 1;   // bit 0: warp-specialized variant
-        uint8_t cta_group         : 1;   // bit 1: 1 = single-CTA, 0 = cooperative pair
-        uint8_t scale_vector_size : 2;   // bits 2-3: 0=16, 1=32, 2=64, 3=reserved
-        uint8_t scale_input_acc   : 1;   // bit 4: 1 = scale applied to accumulator
-        uint8_t block_scale       : 1;   // bit 5: 1 = block-scaled (FP4/FP8 microscale)
-        uint8_t mma_kind          : 1;   // bit 6: 1 = one of the seven mma_kind enum values below
+        uint32_t cta_group         : 2;   // bits 0-1: 0=reserved, 1=1-CTA, 2=2-CTA, 3=4-CTA
+        uint32_t scale_vector_size : 2;   // bits 2-3: 0=1X (16), 1=2X (32), 2=4X (64), 3=reserved
+        uint32_t scale_input_acc   : 1;   // bit 4: 1 = scale applied to accumulator
+        uint32_t block_scale       : 1;   // bit 5: 1 = block-scaled (FP4/FP8 microscale)
+        uint32_t mma_kind          : 3;   // bits 6-8: one of the seven enum values below
     };
 } Tcgen05MmaKind;
 ```
+
+The warp-specialized variant reuses bit 0 of the same word and is materialized by the lowering pass as a boolean predicate `ws = (raw & 1) != 0`. The two views are mutually exclusive at the encoding layer: a kind word with `ws == 1` always has `cta_group == 1` (single-CTA), so rule 4 below rejects every other `cta_group` value the moment the WS bit is set.
 
 The `mma_kind` field picks one of seven enum values. Each implies a different element type and a different valid range for the rest of the kind word; the verifier uses it as the primary dispatch key for type-specific rules.
 
@@ -173,79 +180,128 @@ The `mma_kind` field picks one of seven enum values. Each implies a different el
 | 3 | `f16` | Half-precision float |
 | 4 | `tf32` | TensorFloat-32 (8-exp, 10-mantissa) |
 | 5 | `f8f6f4` | (alias of mxf8f6f4 for backward compat) |
-| 6 | `mxf4` | OCP MX-FP4 (no NVFP4 distinction) |
+| 7 | `mxf4` | OCP MX-FP4 (no NVFP4 distinction) |
 
-The 13 verbatim diagnostics below fire in the order shown. Each rule is independent; the verifier walks them in fixed sequence and reports the first failure rather than collecting all violations, so a kind word that clears one rule is not yet globally valid until the whole ladder completes. The `"colletor"` typo in rule 7 is preserved verbatim from the binary — reproducing it byte-for-byte is required for test suites that match diagnostics by string.
+The 13 verbatim diagnostics below fire in the order shown. Each rule is independent; the verifier walks them in fixed sequence and reports the first failure rather than collecting all violations, so a kind word that clears one rule is not yet globally valid until the whole ladder completes. The `"colletor"` typo in rule 10 is preserved verbatim — reproducing it byte-for-byte is required for test suites that match diagnostics by string.
 
 | # | Diagnostic | Trigger condition |
 |---:|---|---|
-| 1 | `"INT8 mma cannot use block-scale"` | `mma_kind == i8 && block_scale != 0` |
-| 2 | `"MXF4 mma scale_vector_size must be 16"` | `mma_kind == mxf4 && scale_vector_size != 0` |
-| 3 | `"NVFP4 mma scale_vector_size must be 32"` | `mma_kind == mxf4nvf4 && scale_vector_size != 1` |
-| 4 | `"WS variant requires cta_group::1"` | `ws == 1 && cta_group != 1` |
-| 5 | `"WS variant cannot use mxf8f6f4"` | `ws == 1 && mma_kind == mxf8f6f4` |
-| 6 | `"cta_group::2 + WS conflict"` | `cta_group == 0 && ws == 1` |
-| 7 | `"colletor::a::use requires scale_input_acc=0"` | accumulator-collector use with scale-input-acc set |
-| 8 | `"FP16 mma cannot have block_scale=1"` | `mma_kind == f16 && block_scale != 0` |
-| 9 | `"TF32 mma cannot have block_scale=1"` | `mma_kind == tf32 && block_scale != 0` |
-| 10 | `"scale_vector_size==3 is reserved"` | `scale_vector_size == 3` |
-| 11 | `"i8 mma cannot have scale_input_acc=1"` | `mma_kind == i8 && scale_input_acc != 0` |
-| 12 | `"WS variant requires accumulator type Float32"` | `ws == 1 && c.type != Float32` |
-| 13 | `"tcgen05.mma supported only on arch-conditional or family-conditional variants from SM100 onwards."` | SM gate; `cc < 0xA0` |
+| 1 | `"INT8 type is supported only on arch-conditional variants."` | `mma_kind == i8` outside an arch-conditional / family-conditional variant |
+| 2 | `"MXF4 and MXF4NVF4 types with Sparsity are supported only on arch-conditional variants."` | `mma_kind in {mxf4nvf4, mxf4}` with sparsity bit set, non-arch-conditional |
+| 3 | `"Explicit scale vector size is supported only on arch-conditional variants."` | `scale_vector_size != 0` outside an arch-conditional variant |
+| 4 | `"Scale input accumulator is not supported on this architecture."` | `scale_input_acc == 1` on an ISA strictly below SM100a |
+| 5 | `"Scale input accumulator can only be used with f16 and tf32 types"` | `scale_input_acc == 1 && mma_kind not in {f16, tf32}` |
+| 6 | `"Block scale is not supported for f16, tf32, f8f6f4, and i8 types"` | `block_scale == 1 && mma_kind in {i8, f16, tf32, f8f6f4}` |
+| 7 | `"ashift is not supported with tcgen05.mma.block_scale variants"` | ashift bit set on a block-scale opcode (10521 / 10526) |
+| 8 | `"cta_group::2 is not supported with weight stationary"` | `(raw & 3) == 3` — i.e. `cta_group == 2` selector with WS set |
+| 9 | `"Cannot use weight stationary with mxf8f6f4 and fp4 types"` | `ws == 1 && mma_kind in {mxf8f6f4, f8f6f4, mxf4}` |
+| 10 | `"Cannot use collector::a::use or colletor::a::fill with ashift"` | collector-a use/fill combined with ashift |
+| 11 | `"Cannot use 2X or 4X as scale vector size for mxf8f6f4 type"` | `mma_kind == mxf8f6f4 && scale_vector_size > 1` |
+| 12 | `"Cannot use 1X as scale vector size for mxf4nvf4 type"` | `mma_kind == mxf4nvf4 && scale_vector_size == 0` (1X) |
+| 13 | `"Cannot use 1X or 4X as scale vector size for mxf4 type"` | `mma_kind == mxf4 && scale_vector_size in {0, 2}` |
 
-Rules 4, 5, and 6 form an interlocked set the warp-specialized variant must clear together: WS demands `cta_group::1` (single-CTA mode), refuses `mxf8f6f4` because the OCP microscale path is not wired into the WS dispatch tables, and rejects the cooperative `cta_group::2` selector outright. Rules 1, 2, 3, 8, and 9 enforce per-type constraints on the scale fields: INT8 has no microscale path; `mxf4` and `mxf4nvf4` each pin `scale_vector_size` to a specific encoded value because the underlying NVPTX instruction has only one legal scale-vector layout per variant; FP16 and TF32 do not participate in block-scale at all. Rule 10 reserves `scale_vector_size == 3` for future encodings. Rules 7, 11, and 12 are operand-level: accumulator-collector use is incompatible with scaling the input accumulator, INT8 cannot scale into the accumulator, and the WS variant requires an FP32 accumulator. Rule 13 is the architecture gate — pre-SM100 compute capabilities reject the entire op before any field check runs.
+Rules 1, 2, 3, and 4 are architecture gates: the corresponding type/scale combinations only exist as arch-conditional or family-conditional variants of `tcgen05.mma`. Rule 5 narrows the scale-input-accumulator option to the two floating types that actually support it. Rule 6 expresses the inverse: the block-scale microscale path is defined for the FP4 / FP6 / FP8 narrow types, not for FP16, TF32, the legacy `f8f6f4`, or INT8. Rules 8 and 9 fence the warp-specialized variant: `cta_group::2` and the wider `mxf8f6f4`/`f8f6f4`/`mxf4` selectors are not part of the WS dispatch table. Rules 11, 12, and 13 each pin a single type's `scale_vector_size` to the one encoding the corresponding NVPTX instruction supports.
 
 ```c
 LogicalResult verify_tcgen05_mma_kind(Tcgen05MmaKind k,
-                                      Type accumulator_type,
-                                      uint32_t cc) {
-    if (cc < 0xA0) {
-        return emit("tcgen05.mma supported only on arch-conditional or "
-                    "family-conditional variants from SM100 onwards.");
-    }
+                                      uint32_t collector,
+                                      uint32_t opcode,
+                                      bool is_arch_cond,
+                                      uint32_t isa_version) {
+    bool ws = (k.raw & 1) != 0;
 
-    if (k.mma_kind == I8 && k.block_scale != 0) {
-        return emit("INT8 mma cannot use block-scale");
+    if (k.mma_kind == I8 && !is_arch_cond) {
+        return emit("INT8 type is supported only on arch-conditional variants.");
     }
-    if (k.mma_kind == MXF4 && k.scale_vector_size != 0) {
-        return emit("MXF4 mma scale_vector_size must be 16");
+    if ((k.mma_kind == MXF4NVF4 || k.mma_kind == MXF4)
+        && sparsity_bit(k) && !is_arch_cond) {
+        return emit("MXF4 and MXF4NVF4 types with Sparsity are "
+                    "supported only on arch-conditional variants.");
     }
-    if (k.mma_kind == MXF4NVF4 && k.scale_vector_size != 1) {
-        return emit("NVFP4 mma scale_vector_size must be 32");
+    if (k.scale_vector_size != 0 && !is_arch_cond) {
+        return emit("Explicit scale vector size is supported only on "
+                    "arch-conditional variants.");
     }
-    if (k.ws == 1 && k.cta_group != 1) {
-        return emit("WS variant requires cta_group::1");
+    if (k.scale_input_acc != 0 && isa_version < SM100A) {
+        return emit("Scale input accumulator is not supported on this architecture.");
     }
-    if (k.ws == 1 && k.mma_kind == MXF8F6F4) {
-        return emit("WS variant cannot use mxf8f6f4");
+    if (k.scale_input_acc != 0
+        && k.mma_kind != F16 && k.mma_kind != TF32) {
+        return emit("Scale input accumulator can only be used with f16 and tf32 types");
     }
-    if (k.cta_group == 0 && k.ws == 1) {
-        return emit("cta_group::2 + WS conflict");
+    if (k.block_scale != 0
+        && (k.mma_kind == I8 || k.mma_kind == F16
+         || k.mma_kind == TF32 || k.mma_kind == F8F6F4)) {
+        return emit("Block scale is not supported for f16, tf32, f8f6f4, and i8 types");
     }
-    if (uses_accumulator_collector(k) && k.scale_input_acc != 0) {
-        return emit("colletor::a::use requires scale_input_acc=0");
+    if (is_block_scale_opcode(opcode) && (collector & ASHIFT) != 0) {
+        return emit("ashift is not supported with tcgen05.mma.block_scale variants");
     }
-    if (k.mma_kind == F16 && k.block_scale != 0) {
-        return emit("FP16 mma cannot have block_scale=1");
+    if ((k.raw & 3) == 3) {
+        return emit("cta_group::2 is not supported with weight stationary");
     }
-    if (k.mma_kind == TF32 && k.block_scale != 0) {
-        return emit("TF32 mma cannot have block_scale=1");
+    if (ws && (k.mma_kind == MXF8F6F4 || k.mma_kind == F8F6F4 || k.mma_kind == MXF4)) {
+        return emit("Cannot use weight stationary with mxf8f6f4 and fp4 types");
     }
-    if (k.scale_vector_size == 3) {
-        return emit("scale_vector_size==3 is reserved");
+    if ((collector & COLLECTOR_A_USE_OR_FILL) != 0 && (collector & ASHIFT) != 0) {
+        return emit("Cannot use collector::a::use or colletor::a::fill with ashift");
     }
-    if (k.mma_kind == I8 && k.scale_input_acc != 0) {
-        return emit("i8 mma cannot have scale_input_acc=1");
+    if (k.mma_kind == MXF8F6F4 && k.scale_vector_size > 1) {
+        return emit("Cannot use 2X or 4X as scale vector size for mxf8f6f4 type");
     }
-    if (k.ws == 1 && accumulator_type != Float32) {
-        return emit("WS variant requires accumulator type Float32");
+    if (k.mma_kind == MXF4NVF4 && k.scale_vector_size == 0) {
+        return emit("Cannot use 1X as scale vector size for mxf4nvf4 type");
+    }
+    if (k.mma_kind == MXF4 && (k.scale_vector_size == 0 || k.scale_vector_size == 2)) {
+        return emit("Cannot use 1X or 4X as scale vector size for mxf4 type");
     }
 
     return select_tcgen05_opcode(k);   // returns one of 10521..10530
 }
 ```
 
-On success the verifier hands back an opcode index in the closed range 10521..10530. Each of the ten NVPTX MI opcodes — `MMA_TCGEN05_SHARED_DENSE`, `MMA_TCGEN05_SHARED_SPARSE`, and the eight sibling variants switching on the dense/sparse and operand-source axes — corresponds to exactly one combination of `cta_group`, `ws`, and operand-source bits the lowering pass needs to pick a final instruction encoding. Returning the index from the verifier keeps the kind-word decode in one place and prevents the lowering pass from rederiving the dispatch table from raw bits.
+On success the verifier hands back an opcode index in the closed range 10521..10530. Each of the ten NVPTX MI opcodes — `tcgen05.mma`, `tcgen05.mma.sp`, `tcgen05.mma.block_scale`, `tcgen05.mma.sp.block_scale`, and their warp-specialized siblings — corresponds to exactly one combination of `cta_group`, weight-stationary, sparsity, and block-scale bits the lowering pass needs to pick a final instruction encoding. Returning the index from the verifier keeps the kind-word decode in one place and prevents the lowering pass from rederiving the dispatch table from raw bits.
+
+### Worked Example: Kind Word `0x42`
+
+A concrete kind word makes the bit packing and the ladder order easier to follow. Take `Tcgen05MmaKind.raw = 0x42`. In 9-bit binary, with bit 0 on the right, this is
+
+```text
+bit:   8 7 6   5 4   3 2   1 0
+raw:   0 0 1   0 0   0 0   1 0   = 0x42
+```
+
+Reading the fields out of the bitfield declared above:
+
+| Field | Bits | Value | Decoded |
+|---|---|---|---|
+| `cta_group` | 0-1 | `10` | 2 — `cta_group::2` (two-CTA dispatch) |
+| `scale_vector_size` | 2-3 | `00` | 0 — 1X (16-element scale vector) |
+| `scale_input_acc` | 4 | `0` | not set |
+| `block_scale` | 5 | `0` | not set |
+| `mma_kind` | 6-8 | `001` | 1 — `i8` |
+
+The overlaid weight-stationary predicate is `ws = (raw & 1) != 0` — for `0x42` bit 0 is `0`, so `ws = false`. Sparsity bit `(raw & 0x20)` is also `0` — the sparsity bit overlays bit 5 of the encoding the way the bitfield's `block_scale` does, and reads zero here.
+
+Walking the verifier ladder against this kind word, with `is_arch_cond = false` and `isa_version = SM100` (not the arch-conditional variant):
+
+1. **Rule 1** — `k.mma_kind == I8 && !is_arch_cond`. Both predicates hold. The verifier fires `"INT8 type is supported only on arch-conditional variants."` and stops. No later rule runs.
+
+Lifting the gate by setting `is_arch_cond = true` lets the kind word continue down the ladder. Rules 2 and 3 short-circuit (`mma_kind != mxf4nvf4/mxf4`, `scale_vector_size == 0`). Rule 4 short-circuits (`scale_input_acc == 0`). Rule 5 short-circuits for the same reason. Rule 6 short-circuits (`block_scale == 0`). Rule 7 short-circuits (no block-scale opcode in play). Rule 8 checks `(raw & 3) == 3` — for `0x42`, `raw & 3 = 2`, so the rule does not fire. Rule 9 reads the weight-stationary view, finds `ws = 0`, and short-circuits. Rules 10-13 all short-circuit on the same field-clear conditions. The ladder reaches `select_tcgen05_opcode`, which picks `tcgen05.mma` (opcode 10522, the dense, non-block-scale, non-WS path) on `cta_group::2`.
+
+A symmetric example flips the gate the other direction. Take `raw = 0xE2` (`0b011100010`):
+
+| Field | Bits | Value | Decoded |
+|---|---|---|---|
+| `cta_group` | 0-1 | `10` | 2 |
+| `scale_vector_size` | 2-3 | `00` | 0 |
+| `scale_input_acc` | 4 | `0` | not set |
+| `block_scale` | 5 | `1` | set |
+| `mma_kind` | 6-8 | `011` | 3 — `f16` |
+
+The ladder walks rules 1-5 without firing (`mma_kind` is neither `i8` nor `mxf4*`, `scale_vector_size == 0`, `scale_input_acc == 0`). Rule 6 sees `block_scale == 1 && mma_kind in {i8, f16, tf32, f8f6f4}` — `mma_kind == f16` matches the set and the verifier fires `"Block scale is not supported for f16, tf32, f8f6f4, and i8 types"`.
+
+Two takeaways follow from the worked examples. First, the bit packing is order-sensitive: `cta_group` sits in the low two bits, `mma_kind` in the high three, with single-bit predicates between them — a writer that confuses bit order silently changes the dispatched opcode. Second, the ladder is fail-first: once any rule fires the verifier stops, so a kind word that passes rule 6 has *not* been proven globally valid until every later rule clears too. The 13-rule sequence is the complete witness.
 
 ## SM120 Block-Scaled Lattice
 
@@ -327,9 +383,13 @@ LogicalResult verify_tma_rank_and_mode(TmaMode mode, int rank, Target target) {
   tuple.
 - Shared-memory matrix movement checks memory-space direction and alignment.
 - Register fragment size is derived from layout cosize.
-- UMMA canonical layouts are gated by `sub_167C690` with seven diagnostics over an eleven-step algorithm.
-- `tcgen05.mma` kind words are gated by `sub_1AD26A0` with 13 mutual-exclusion diagnostics over a 7-bit packed encoding.
+- UMMA canonical layouts emit one of seven verbatim diagnostics on failure, keyed on direction and on flat-mode / stride structure.
+- `tcgen05.mma` kind words are gated by 13 mutual-exclusion diagnostics over a 9-bit packed encoding plus a separate weight-stationary predicate.
 - SM120 block-scaled validation distinguishes `K = 32` from `K = 64`.
 - Swizzle and offset rewrites must prove commutation.
 - TMA ranks and special modes are target-gated before PTX emission.
+
+## Cross-References
+
+[TMA Atoms](tma-atoms.md) documents the partition verifier whose eleven-step ladder these mode verifiers compose with. [SM Tier Roster and Copy Atom Registry](sm-tier-roster-and-copy-atom-registry.md) lists the MMA atom verifier diagnostics that the layout walker emits before the canonical-layout check runs.
 

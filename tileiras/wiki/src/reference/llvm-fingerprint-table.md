@@ -112,12 +112,4 @@ The producer-string anchor (fingerprint 2) makes this scan trivial; the structur
 | 9. AsyncValueImpl size | smaller | smaller | similar | matches 808 B |
 | 10. cl::opt machinery | matches | matches | matches | matches |
 
-Two unique LLVM 21 anchors carry the weight: fingerprints 2 (producer string) and 3 (AsmPrinter header). Fingerprints 7 and 8 disambiguate LLVM 21 from LLVM 20. Fingerprints 1, 4, 6, 9, 10 are stable-layout corroborators that exclude earlier/later trees only when read together with the unique anchors.
-
-## Tier
-
-T3 — deep reference, fingerprint evidence for LLVM/MLIR version.
-
-## Confidence
-
-HIGH overall. The convergence of two unique LLVM-21-only anchors (fingerprints 2 and 3, both verbatim rodata strings) with two LLVM-20-vs-21 disambiguators (fingerprints 7 and 8, both structural) and six stable-layout corroborators (1, 4, 5, 6, 9, 10) leaves no plausible alternative. A snapshot from any other LLVM major version would necessarily disagree on at least one of fingerprints 2, 3, 7, 8. No counter-evidence appears anywhere in the binary.
+Two unique LLVM 21 anchors carry the weight: fingerprints 2 (producer string) and 3 (AsmPrinter header). Fingerprints 7 and 8 disambiguate LLVM 21 from LLVM 20. Fingerprints 1, 4, 6, 9, 10 are stable-layout corroborators that exclude earlier/later trees only when read together with the unique anchors. The convergence of these ten independent fingerprints leaves no plausible alternative version; a snapshot from any other LLVM major would disagree on at least one.

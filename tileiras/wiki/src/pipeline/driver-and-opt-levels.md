@@ -2,36 +2,35 @@
 
 ## Abstract
 
-The Tileiras driver builds one MLIR pass pipeline for each compilation. That pipeline is selected from
-the user configuration, target, optimization level, and pipeline strategy. The key idea is staged
-lowering: the driver first loads TileIR bytecode into MLIR, then lowers `cuda_tile` through TileAA and
-TileAS, then lowers to LLVM/NVVM, and finally hands the module to the NVPTX backend.
+The Tileiras driver chooses a single MLIR pass pipeline for each compilation. The choice is a pure function of four inputs: the resolved compute target, the requested `opt-level`, the `v2-opt-level` axis that gates the newer TileAS lowering, and the `pipeline-strategy` flag that selects the warp-specialization variant. The output is a fully-constructed `PassManager` whose pass list and analysis-preservation contract are fixed before any IR mutates. Decoupling pipeline construction from pipeline execution is what lets the driver report the exact pipeline it is about to run, lets the textual `--pass-pipeline` parser produce the same pass graph, and lets diagnostics name each pass that contributed to a failure.
 
 ## Entry Chain
 
+The driver entry point is a small, linear state machine. It registers dialects, parses bytecode, builds the pipeline, runs it, and serializes. Each phase has a defined failure mode that cannot leak state into a later phase.
+
 ```c
-int compile_tileir(ByteSpan input, TileirasConfig config, ByteBuffer *output) {
-    Context ctx = create_mlir_context();
+int compile_tileir(ByteSpan input, TileirasConfig config, ByteBuffer *out) {
+    MLIRContext ctx;
     register_tileiras_dialects(&ctx);
 
-    Module module = parse_tileir_bytecode(&ctx, input);
-    if (!module.valid) {
+    OwningOpRef<ModuleOp> module = parse_tileir_bytecode(&ctx, input);
+    if (!module) {
         return TILEIR_ERROR_BAD_BYTECODE;
     }
 
-    PipelineOptions opts = make_pipeline_options(config);
-    PassManager pm = build_tileir_pipeline(&ctx, opts);
+    PipelineOptions opts = resolve_pipeline_options(config);
+    PassManager pm(&ctx, ModuleOp::getOperationName());
+    populate_pipeline(&pm, opts);
 
-    if (failed(run_pass_manager(pm, module))) {
+    if (failed(pm.run(*module))) {
         return TILEIR_ERROR_COMPILE_FAILED;
     }
 
-    return serialize_gpu_module(module, config, output);
+    return serialize_gpu_module(*module, config, out);
 }
 ```
 
-Pipeline construction finishes before the pass manager runs. This keeps option decoding, pass
-selection, and compile execution separate.
+`populate_pipeline` is the only place that consults `opts.opt_level`, `opts.v2_opt_level`, and `opts.pipeline_strategy`. Once it returns, the pass manager is immutable; no later phase decides which passes run.
 
 ## Optimization Tiers
 
@@ -42,9 +41,7 @@ selection, and compile execution separate.
 | `O2` | Default TileIR lowering through TileAS and first LLVM/NVGPU conversions. | Normal compilation. |
 | `O3` | Full conversion stack, extra canonicalization, target finalization, and debug-scope synthesis. | Highest quality output and late-stage validation. |
 
-`v2-opt-level` is a second axis. The primary `opt-level` selects the intended tier, while
-`v2-opt-level` can suppress or enable the newer TileAS scheduling and specialization stages. A driver
-implementation should make this explicit instead of treating it as a hidden copy of `opt-level`.
+`v2-opt-level` is a second axis. The primary `opt-level` selects the tier; `v2-opt-level` enables or suppresses the newer TileAS scheduling and specialization stages independently of that tier. The driver propagates both values into the pass manager as separate attributes so that the textual `--pass-pipeline` parser sees the same configuration the driver sees.
 
 The recovered dispatcher uses the following effective structure:
 
@@ -55,8 +52,7 @@ The recovered dispatcher uses the following effective structure:
 | `O2` | frontend + TileAS adder | Add TileAA-to-TileAS, host wrapper, TileAS-to-LLVM, CSE, TileAS-to-NVGPU. |
 | `O3` | `O2` + full conversion adder | Add TileIR verification, LLVM conversion, NVGPU/NVVM conversion, finalization. |
 
-Two snapshot printers are conditional. The first is tied to the early frontend stage; the second is
-tied to the TileAS/LLVM boundary. They are diagnostics, not semantic lowering passes.
+Two snapshot printers are conditional on `emit-line-info`. The first runs after frontend conversion; the second runs at the TileAS/LLVM boundary. Both are pure diagnostics — they print textual IR for line-info correlation and never mutate the module.
 
 ## Pipeline Strategy
 
@@ -78,39 +74,53 @@ the full resource-reservation machinery.
 
 ## Schedule Analysis Ordering
 
-TileAS scheduling is split into two phases:
+TileAS scheduling does not happen in one pass. The work splits across a constraint-generation pass that builds a `ScheduleAnalysis` and stores it in the analysis manager, a configurable run of cleanup passes that promise to preserve `ScheduleAnalysis`, and a materialization pass that retrieves the analysis, runs the modulo scheduler, and rewrites IR to express the solved schedule. The separation matters because cleanup passes that do not declare `ScheduleAnalysis` as preserved cause the analysis to be invalidated and recomputed, which both breaks compile times and produces a different schedule than the one any earlier diagnostic referred to.
 
-1. Generate schedule constraints.
-2. Materialize a solved schedule into IR.
+The contract reduces to a dependency map. Each pass declares what it requires, what it produces, and what it preserves; the pass manager enforces ordering and invalidation from those declarations.
 
-The phases must remain separate because intermediate passes may preserve and refine the analysis. A
-pass that mutates schedule constraints must run before materialization.
+| Pass | Requires | Produces / Modifies | Preserves |
+|---|---|---|---|
+| `tileas-generate-schedule-constraints` | TileAS IR with stable function shape | `ScheduleAnalysis` | TileAA, DominanceInfo |
+| `canonicalize` (between generate and materialize) | — | — | `ScheduleAnalysis`, TileAA |
+| `cse` (between generate and materialize) | — | — | `ScheduleAnalysis`, TileAA |
+| `tileas-materialize-schedule` | `ScheduleAnalysis` | TileAS schedule attributes, pipe IR | — |
 
 ```c
-void run_schedule_pipeline(Function fn) {
-    ScheduleAnalysis analysis = generate_schedule_constraints(fn);
-    preserve_analysis(fn, analysis);
+LogicalResult run_schedule_pipeline(FuncOp fn, AnalysisManager am) {
+    ScheduleAnalysis &constraints =
+        am.getAnalysis<ScheduleAnalysis>(fn);
 
-    run_allowed_cleanup_passes(fn);
+    for (Pass *cleanup : cleanup_between_schedule_and_materialize) {
+        PreservedAnalyses preserved = cleanup->run(fn);
+        if (!preserved.isPreserved<ScheduleAnalysis>()) {
+            return fn.emitError(
+                "cleanup pass invalidated ScheduleAnalysis; "
+                "rerun constraint generation or remove the pass");
+        }
+    }
 
-    ScheduleAnalysis recovered = require_preserved_schedule(fn);
-    Schedule solved = solve_schedule(recovered);
-    materialize_schedule(fn, solved);
+    Schedule solved = solve_modulo_schedule(constraints);
+    if (!solved.feasible) {
+        return fn.emitError("modulo scheduler returned no feasible II");
+    }
+
+    return materialize_schedule(fn, solved);
 }
 ```
 
-If the analysis is invalidated, materialization should fail clearly or skip with an explicit
-diagnostic. Silent no-op materialization makes schedule bugs hard to trace.
+The hard-failure rule on invalidation is deliberate. A silent recompute would hide the underlying mistake that some cleanup pass was added to the pipeline without declaring `ScheduleAnalysis` as preserved, and the symptom would surface much later as a mismatched schedule.
 
 ## Serialization Scopes
 
-Two outer instrumentation scopes are useful for profilers and callback integrations:
+Two outer instrumentation scopes give profilers and callback integrations stable handles.
 
 | Scope | Covers |
 | --- | --- |
 | `CompileNVVM` | Running the MLIR-to-NVVM/NVPTX compilation pipeline. |
 | `SerializeGPUModule` | Translating the GPU module to PTX/cubin and invoking downstream tools. |
 
-Keep these scopes coarse and stable. Fine-grained pass scopes can change, but external profilers need
-durable outer names.
+These scope names are part of the public ABI for embedders. Fine-grained pass scopes underneath them can change between releases, but external profilers rely on the outer names being durable.
 
+## Cross-References
+
+[Pipeline Options Mapping](options-mapping.md) is the lookup table that resolves each option to its consuming pass. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) names the exact pass sequence per tier. [Pass Manager Internals](pass-manager-internals.md) explains the nesting model the driver populates. [Modulo Scheduler and Rau-Style Placement](../scheduler/modulo-scheduler-and-rau.md) is the scheduler that consumes the preserved `ScheduleAnalysis`.

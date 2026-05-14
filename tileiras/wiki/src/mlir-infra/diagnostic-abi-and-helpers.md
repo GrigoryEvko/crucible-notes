@@ -6,7 +6,7 @@ Every user-visible error, warning, note, and remark produced by Tileiras flows t
 `Diagnostic` body. Verifiers, parsers, conversion patterns, pass drivers, and dialect-init routines all
 seed that body through one of three constructors, stream fragments into a 4-slot inline argument
 buffer, and rely on an `InFlightDiagnostic` RAII wrapper to flush through a context-registered handler.
-This page documents the exact body layout, the 24-byte `DiagnosticArg` 3-tuple, the bit-packed severity
+The sections below cover the exact body layout, the 24-byte `DiagnosticArg` 3-tuple, the bit-packed severity
 word at `+0x10`, and the constructor / streamer / destructor triad that builds and tears it down.
 
 ## Diagnostic Body

@@ -2,120 +2,76 @@
 
 ## Abstract
 
-Once TileIR has been lowered to LLVM IR, the NVPTX backend takes over the CUDA device ABI. This layer no longer schedules MLIR dialect conversions; it normalizes LLVM IR and MachineIR so PTX emission sees legal kernel parameters, concrete address spaces, lowered aggregate copies, valid launch calls, resolved image handles, and subtarget-compatible machine instructions.
+Once TileIR has been lowered to LLVM IR, the NVPTX backend normalizes that IR and the post-selection MachineIR so PTX emission sees legal kernel parameters, concrete address spaces, expanded aggregate copies, valid device launches, resolved image handles, and subtarget-compatible machine instructions. This page covers what is shared across the cluster: where each pass sits in the pipeline, what state it hands the next pass, and which globals it has to agree on. Per-pass mechanics live in the dedicated pages.
 
-Several pass names here collide with MLIR-level ones, and the distinction is not cosmetic. The NVVM IR verifier is an LLVM `FunctionPass`, not an MLIR `OperationPass`; its failure path is `Pass::run` returning `failure()`, not the `pass+40 |= 4` flag word the TileAS-side passes use. The NVPTX-MIR peephole and image-handle passes match on `MachineInstr` opcodes rather than MLIR ops; their pattern shapes are MachineIR matchers, not `OpConversionPattern` subclasses. The [lowering](../lowering/overview.md) layer owns the MLIR side; this layer owns everything from LLVM IR through MachineIR to PTX.
+The cluster spans two IR levels. The LLVM-IR passes consume `Function`, `Argument`, `Instruction`, `Metadata`, address spaces, and intrinsics. The MachineIR passes consume `MachineFunction`, `MachineInstr`, machine operands, frame indices, and subtarget feature bits. SelectionDAG sits between the two. Passes that need semantic SSA-level information run on the IR side; passes that need concrete target opcodes run on the MachineIR side.
 
-Most of these passes carry correctness, not optimization. Even a small kernel needs parameter-space lowering, launch validation, `__restrict__` metadata, device-side `printf` packing, aggregate-copy expansion, and final MachineIR cleanup.
-
-## Pipeline Shape
+## Pipeline Position
 
 ```text
 LLVM IR with NVVM intrinsics
     |
-    | NVVM middle-end passes
-    v
-ABI-normalized LLVM IR
+    |   Pretreat          (canonicalize frontend forms)
+    |   KernelAttrPass    (stamp nvvm.kernel)
+    |   InlineMustPass    (force AlwaysInline)
+    |   CDPLaunchExpander (rewrite cudaLaunchDevice -> __cudaCDP*V2)
+    |   LowerStructArgs   (byval -> parameter-space pointer + scalar LDPARAM)
+    |   MemorySpaceOpt    (concrete AS inference, cvta folding)
+    |   ProcessRestrict   (noalias / alias-scope materialization)
+    |   PrintfLowering    (vprintf packing buffer)
+    |   DeadSyncElim      (barrier removal)
+    |   CommonBaseElim    (SCEV-keyed GEP CSE)
+    |   NVVMIRVerifier    (kernel-ABI invariants, parameter-space ceiling)
     |
-    | SelectionDAG instruction selection
     v
-NVPTX MachineIR
+SelectionDAG instruction selection
     |
-    | target MachineFunction passes
+    |   BASR                  (post-ISel address-arithmetic peephole)
+    |   Image-handle rewrite  (parametric -> slot opcode)
+    |   Prolog/Epilog, proxy-reg erase, invariant-load tagging
+    |
     v
 PTX assembly
 ```
 
-The IR stage sees LLVM functions, arguments, metadata, intrinsics, address spaces, and calls. The MachineIR stage sees selected NVPTX opcodes, machine operands, frame indices, memory operands, and subtarget feature bits. Passes that need semantic LLVM values belong before instruction selection; passes that need concrete target opcodes belong after it.
+The order above is the ordering the rest of this cluster's pages assume. Two pages call out specific ordering constraints explicitly: ProcessRestrict must follow MemorySpaceOpt so it sees concrete address-space tags on derived pointers, and BASR must follow instruction selection so it sees the final `MachineInstr` opcodes rather than IR-level GEPs.
 
-## Pass Families
+## Cross-Pass Invariants
 
-| Family | Stage | Contract |
+The pages in this cluster share three pieces of state that have to agree across pass boundaries. Getting any of them wrong produces either silent miscompiles or a downstream verifier abort.
+
+### Kernel identity
+
+`KernelAttrPass`, `KernelAttrTransplanter`, `InlineMustPass`, `CDPLaunchExpander`, `KernelArgEliminator`, `NVVMIRVerifier`, and the parameter-space ceiling check all consult a single `isKernelFunction` predicate. The predicate is a four-way disjunction over `CallingConv::PTX_Kernel` (`0x47`), the `nvvm.kernel` attribute, the `nvvm.annotations_transplanted` attribute, and the legacy `"kernel"` string attribute. Forking this check across passes is how older NVPTX backends produced inconsistent answers between argument elimination and the inliner. See [Kernel, CDP, Force-Inline, and Pretreat Passes](kernel-cdp-inline-pretreat.md) for the canonical definition.
+
+### Shared parameter-space enable flag
+
+`LowerStructArgs` and `MemorySpaceOpt` both read the same boolean enable flag at startup. When the flag is set, `LowerStructArgs` rewrites each by-value struct argument to a parameter-space pointer plus per-field `LDPARAM` (MI opcode `101`) loads, and `MemorySpaceOpt` then seeds its lattice on those parameter-space pointers and folds the resulting `CVT_PARAM_TO_GENERIC` / `CVT_PARAM_TO_GLOBAL` casts (MI opcodes `49` / `50`). A mismatch — one pass enabled, the other disabled — produces by-value pointers `MemorySpaceOpt` cannot classify, and `NVVMIRVerifier` then rejects the function with a "pointer-to-local-or-generic launch argument" diagnostic. Reimplementations have to gate both passes on the same flag.
+
+### Pass-to-pass attribute hand-off
+
+| Producer | Attribute or metadata | Consumer |
 | --- | --- | --- |
-| Kernel and launch checks | LLVM IR | Select kernel entry points, validate device launches, and normalize linkage. |
-| Argument lowering | LLVM IR and MachineIR | Convert by-value and pointer arguments to PTX parameter-space conventions. |
-| Address-space inference | LLVM IR | Promote generic pointers only when provenance proves a concrete state space. |
-| Restrict processing | LLVM IR | Translate `__restrict__` into alias scopes that downstream AA can consume. |
-| Libdevice and math cleanup | LLVM IR | Remove reflection-dead branches and canonicalize math calls before selection. |
-| Printf lowering | LLVM IR | Pack varargs into a per-thread local buffer and call `vprintf`. |
-| Synchronization cleanup | LLVM IR | Remove provably redundant barriers without crossing visible memory traffic. |
-| Aggregate copies | LLVM IR | Expand unsupported `llvm.mem*` operations into explicit loops. |
-| Image handles | MachineIR | Rewrite texture and surface parameters to slot-indexed operands. |
-| MIR cleanup | MachineIR | Remove target pseudos, fold frame-address casts, and tag invariant loads. |
+| `KernelAttrPass`, `KernelAttrTransplanter` | `nvvm.kernel`, `nvvm.annotations_transplanted` | Every later kernel-aware pass |
+| `LowerStructArgs` | parameter-space `LDPARAM` SSA chain on byval args | `MemorySpaceOpt` |
+| `MemorySpaceOpt` | concrete address-space tag on every pointer SSA value | `ProcessRestrict`, NVPTX alias analysis |
+| `ProcessRestrict` | `nvvm.restrict_scope` per pointer, `nvvm.restrict_processed` per function | NVPTX alias analysis |
+| `PrintfLowering` | `%vprintfBuffer.local` alloca, `call @vprintf(...)` | None (terminal) |
+| `CDPLaunchExpander` | `call @__cudaCDP{1,2}LaunchDeviceV2` | `NVVMIRVerifier` (re-checks the callee is a kernel) |
+| `KernelAttrPass` + `LowerStructArgs` | byval-aware parameter list | `NVVMIRVerifier` (parameter-space ceiling) |
 
-## Address-Space Contract
+The verifier reads everything in the right column: parameter-space sizes for the byval-aware list, address spaces for launch arguments, and the kernel attribute for the launch-target sanity check. Running the verifier before any producer in the table has fired leads to a false-positive abort.
 
-NVPTX exposes several disjoint state spaces, and the backend treats them as a semantic partition rather than decorative pointer tags. Generic pointers are legal but expensive; specializing one to the wrong state space is a miscompile.
+## Routing
 
-| Space | Meaning |
+| Page | Covers |
 | --- | --- |
-| Generic | Unknown or mixed provenance. |
-| Global | Device memory visible to all CTAs. |
-| Shared | CTA-local shared memory. |
-| Constant | Read-only constant or grid-constant memory. |
-| Local | Per-thread stack and spills. |
-| Tensor memory | Blackwell tensor-memory accumulator space. |
-| Distributed shared | Cluster-wide distributed shared memory. |
-
-The inference lattice is intentionally flat: a pointer is unknown, one concrete state space, or conflicted. Two concrete spaces meet to generic rather than to either input. This rule is conservative, easy to reimplement, and matters for calls reached from several memory paths.
-
-```c
-AddressSpace meet_address_space(AddressSpace lhs, AddressSpace rhs) {
-    if (lhs == AS_UNKNOWN) {
-        return rhs;
-    }
-    if (rhs == AS_UNKNOWN) {
-        return lhs;
-    }
-    if (lhs == rhs) {
-        return lhs;
-    }
-    return AS_GENERIC;
-}
-```
-
-## Argument ABI Contract
-
-Kernel arguments are not ordinary local SSA values in PTX. The formal argument buffer lives in parameter space, and the body usually needs a generic or concrete pointer derived from it. The backend inserts parameter-space storage, casts, copies, or rematerialized loads at the point where each argument form becomes visible.
-
-```c
-void lower_kernel_arguments(Function kernel, TargetInfo target) {
-    for (Argument arg : kernel.arguments) {
-        if (is_grid_constant_byval(arg, target)) {
-            Value param_ptr = create_param_slot(arg);
-            replace_uses_with_param_pointer(arg, param_ptr);
-            continue;
-        }
-
-        if (is_byval_aggregate(arg)) {
-            Value param_ptr = create_param_slot(arg);
-            Value local_copy = copy_param_to_local(arg, param_ptr);
-            replace_argument_uses(arg, local_copy);
-            continue;
-        }
-
-        if (is_pointer_argument(arg)) {
-            Value param_ptr = load_param_pointer(arg);
-            Value usable = cast_from_param_space(param_ptr, expected_space(arg));
-            replace_argument_uses(arg, usable);
-        }
-    }
-}
-```
-
-## Verification Contract
-
-Malformed IR should never reach PTX printing. Good diagnostics matter here because the original TileIR is gone by this stage and the user is reading a CUDA-device ABI failure.
-
-A practical verifier rejects:
-
-- launching a function that is not a kernel,
-- formal parameter buffers that exceed the target parameter-space limit,
-- pointer arguments to child kernels that reference local or shared memory,
-- unresolved libdevice calls that should have been linked or folded,
-- unsupported memory scopes or synchronization scopes,
-- aggregate-copy forms that should have been expanded,
-- MachineIR opcodes requiring unavailable SM features,
-- image, surface, tensor-memory, or async-copy pseudos that escaped their cleanup pass.
+| [Kernel, CDP, Force-Inline, and Pretreat](kernel-cdp-inline-pretreat.md) | Pretreat, kernel attribute stamping, `InlineMustPass`, CDP launch and parameter-buffer expansion, `isKernelFunction`. |
+| [LowerStructArgs](lower-args-and-aggr-and-struct.md) | Bare-pointer ABI translation for by-value struct parameters, including the cast-only fast path and nested-aggregate recursion. |
+| [Memory-Space Optimization and Restrict](memory-space-opt-and-process-restrict.md) | Inter-procedural callee specialization, the function-local AS lattice, the cast folder, and `__restrict__` propagation. |
+| [Printf Lowering and the vprintf ABI](printf-lowering-and-vprintf.md) | Tag-driven rewrite of `printf` into `vprintf`, the per-thread packing buffer, and the constant-AS format-string check. |
+| [Dead Sync Elimination and Common Base](dead-sync-elim-and-common-base.md) | Cross-product test for redundant barriers, and SCEV-keyed GEP merging with alloca cloning. |
+| [NVVM IR Verifier](nvvm-ir-verifier.md) | Launch-argument address-space check and the parameter-space ceiling per SM family. |
+| [Peephole, MIR Cleanup, and Image Handles](peephole-mir-and-image-handles.md) | BASR post-ISel address-arithmetic peephole, the parametric-to-slot rewrite for `tex` / `sust` / `suld` / `suq`, and final MachineIR cleanup. |
 
 For the shared backend relationship with `cicc`, see [cicc comparison](../boundaries/cicc-comparison.md).

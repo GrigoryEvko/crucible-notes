@@ -8,24 +8,61 @@ The conversion is partial. The pass loads six legal dialects, marks `cuda_tile` 
 
 ## Pass Driver
 
-The driver at `sub_5FC1C0` (1314 B, 39 basic blocks) has a `runOnOperation` body that reads the stored `--compute-capability` option, builds the conversion target, populates the three pattern groups, and invokes `applyPartialConversion` through the `sub_36F9730` / `sub_36CB0C0` pair. Two diagnostics escape, both at severity 259 (`Error`): `"invalid or missing --compute-capability option"` when the option parses as malformed, and `"failed to convert cuda_tile to nv_tileaa"` when partial conversion fails to legalize every `cuda_tile.*` op.
+`runOnOperation` reads the stored `--compute-capability` option, builds the conversion target, populates three pattern groups in order, runs the PDL fallback, and invokes `applyPartialConversion`. Two user-facing diagnostics escape: `"invalid or missing --compute-capability option"` when the option parses as malformed, and `"failed to convert cuda_tile to nv_tileaa"` when partial conversion fails to legalise every `cuda_tile.*` op.
 
 ```c
-LogicalResult convertCudaTileToTileAA(ModuleOp mod) {
+LogicalResult convertCudaTileToTileAA(ModuleOp mod, ComputeCapability cc) {
+    if (!cc.valid()) {
+        return emit("invalid or missing --compute-capability option");
+    }
+
     RewritePatternSet patterns;
-    sub_5EBED0(patterns);                      // Part A
-    sub_5F8DC0(patterns);                      // Part B
-    sub_5F8970(patterns);                      // Part C
-    ConversionTarget target = buildTarget();
-    sub_36F9730(patterns, /*frozen=*/&frozen);
-    if (failed(sub_36CB0C0(mod, target, frozen))) {
+    populatePartA(patterns);                 // arithmetic, comparison, conversion, indexing, control flow
+    populatePartB(patterns);                 // memory, pointer, token, view, partition
+    populatePartC(patterns);                 // mma, reduce, scan, transcendental specialists
+
+    ConversionTarget target = buildConversionTarget(mod);
+    FrozenRewritePatternSet frozen;
+    compilePDLPatterns(patterns, &frozen);
+
+    if (failed(applyPartialConversion(mod, target, frozen))) {
         return emit("failed to convert cuda_tile to nv_tileaa");
     }
     return success();
 }
 ```
 
-Module enumeration runs through `sub_5C6420`, a recursive op-tree walker, with a predicate (`sub_5C6610`) that collects only ops whose TypeID matches the `cuda_tile.module` descriptor. Collected modules land in a `SmallVector<Operation *, 6>` whose 48-byte inline buffer fits the common case of one nested module per bytecode input.
+The pass walks all `cuda_tile.module` operations nested in the input module before conversion. The walker is a recursive op-tree walk filtered by TypeID; collected modules land in a small inline-allocated vector sized for the common case of one nested module per bytecode input.
+
+## Conversion Target
+
+The conversion target builder marks six dialects legal, declares `cuda_tile` fully illegal, and attaches dynamic legality to `ub.poison`. The same target object is reused across all three populators.
+
+```c
+ConversionTarget buildConversionTarget(ModuleOp mod) {
+    ConversionTarget target(*mod.getContext());
+
+    // Fully legal — accept any op of these dialects without further checks
+    target.addLegalDialect<arith::ArithDialect,
+                           nv_tileaa::TileAADialect,
+                           func::FuncDialect,
+                           gpu::GPUDialect,
+                           scf::SCFDialect,
+                           math::MathDialect>();
+
+    // Fully illegal — every cuda_tile op must be rewritten away
+    target.addIllegalDialect<cuda_tile::CudaTileDialect>();
+
+    // Dynamic legality — ub.poison is legal once its result type is an nv_tileaa primitive
+    target.addDynamicallyLegalOp<ub::PoisonOp>([](ub::PoisonOp op) {
+        return isLegalTileAAType(op.getResult().getType());
+    });
+
+    return target;
+}
+```
+
+The type-converter materialisers handle the residual cases where partial conversion needs a bridge value while the IR is mid-rewrite. Source materialisers run when an `nv_tileaa`-typed value is needed but only the original `cuda_tile`-typed value exists; target materialisers run for the reverse direction. Both produce `builtin.unrealized_conversion_cast` operations that the next pass's reconciliation phase erases.
 
 ## Input and Output Dialects
 
@@ -47,110 +84,156 @@ Region-bearing ops (`cuda_tile.reduce`, `cuda_tile.scan`) keep their region inta
 
 ## Three-Populator Structure
 
-Three populators build the pattern set in a deterministic order. Parts A and B are mutually independent — they could run in parallel at the source level, but the binary calls them sequentially to keep behaviour reproducible. Part C runs after both because its patterns depend on the type-conversion and layout decisions A and B have already published.
+Three populators build the pattern set in fixed order. Parts A and B are mutually independent at the source level; they run sequentially so the resulting pattern-set composition stays reproducible. Part C runs after both because its patterns depend on the type-conversion and layout decisions A and B have already published.
 
-| Part | Populator   | Size    | Pattern count | Role |
-|------|-------------|--------:|--------------:|------|
-| A    | `sub_5EBED0`| 13.4 KB |       ~45     | Arithmetic, comparison, conversion, indexing, structured control flow |
-| B    | `sub_5F8DC0`| 13.3 KB |       ~34     | Memory, pointer, token, view, partition |
-| C    | `sub_5F8970`|  1.1 KB |         4     | mma, reduce, scan, transcendental specialists |
+| Part | Patterns | Role |
+|------|---------:|------|
+| A | ~45 | Arithmetic, comparison, conversion, indexing, structured control flow |
+| B | ~34 | Memory, pointer, token, view, partition |
+| C |   4 | `mmaf`, `mmai`, `reduce`, `scan` — specialists whose lowering depends on layout choices A and B locked in |
 
-Part A registers hand-written `OpConversion` patterns whose pretty-names live in anonymous namespaces (`{anonymous}::AddIOpConversion`, `{anonymous}::ReduceOpConversion`, and so on). Part B mixes two-thirds template-generated `mlir::GenericConversion<cuda_tile::XOp, target::YOp>` patterns with one-third custom view/token/entry patterns. Part C is four inlined specialists for operations whose lowering depends on layout choices A and B have already locked in: `mmaf`, `mmai`, `reduce`, and `scan`.
+Part A registers hand-written `OpConversion` patterns (`AddIOpConversion`, `ReduceOpConversion`, and so on). Part B mixes template-generated `GenericConversion<cuda_tile::XOp, nv_tileaa::YOp>` patterns with custom view/token/entry patterns. Part C is four specialists for operations whose rewrite shape varies with the parent op's element type, accumulator location, or combiner-region structure.
 
 ## Singleton Pattern Adders
 
-Eight 480-B trampolines at `sub_5EAFD0..sub_5EBCF0` expose individual patterns to downstream callers (CudaTileOptimizer tests and rsqrt/fma fusion passes). Each is a byte-identical wrapper that allocates a 0x68-B `OpConversionPattern`, stamps the vtable, and pushes it onto the RewritePatternSet through the per-class `_M_realloc_insert` trampoline — the same pattern documented for the GenericOpPattern arith bank in [pattern-set-and-typeconverter.md](pattern-set-and-typeconverter.md). The eight adders:
+Eight pattern classes register through dedicated singleton adders rather than through the main populator bodies, because downstream callers (the CudaTileOptimizer test driver and the rsqrt/fma fusion pass) need to install them into private pattern sets without pulling in the full Part-A/B/C registration. Each adder is a single-purpose helper that allocates one `OpConversionPattern` and pushes it onto the supplied `RewritePatternSet`.
 
-| Trampoline   | cuda_tile op    | Pattern class             | Vtable     |
-|--------------|-----------------|---------------------------|------------|
-| `sub_5EAFD0` | `trunci`        | `TruncIOpConversion`      | `0x59A8200`|
-| `sub_5EB1B0` | `rsqrt`         | `RsqrtOpConversion`       | `0x59A8A20`|
-| `sub_5EB390` | `maxi`          | `MaxIOpConversion`        | `0x59A8340`|
-| `sub_5EB570` | `itof`          | `IToFOpConversion`        | `0x59A81B0`|
-| `sub_5EB750` | `global`        | `GlobalOpConversion`      | `0x59A8110`|
-| `sub_5EB930` | `fma`           | `FmaOpConversion`         | `0x59A7EE0`|
-| `sub_5EBB10` | `constant`      | `ConstantOpConversion`    | `0x59A7BC0`|
-| `sub_5EBCF0` | `assume`        | `AssumeOpConversion`      | `0x59A7990`|
+| `cuda_tile` op | Pattern class | Role |
+|---|---|---|
+| `cuda_tile.trunci` | `TruncIOpConversion` | Integer truncation, rewrites to `nv_tileaa.trunci` |
+| `cuda_tile.rsqrt` | `RsqrtOpConversion` | Reciprocal square root, rewrites to `nv_tileaa.rsqrt` |
+| `cuda_tile.maxi` | `MaxIOpConversion` | Signed integer max, rewrites to `nv_tileaa.maxi` |
+| `cuda_tile.itof` | `IToFOpConversion` | Integer-to-float conversion, rewrites to `nv_tileaa.itof` |
+| `cuda_tile.global` | `GlobalOpConversion` | Global symbol declaration, rewrites to `nv_tileaa.global` |
+| `cuda_tile.fma` | `FmaOpConversion` | Fused multiply-add, rewrites to `nv_tileaa.fma` |
+| `cuda_tile.constant` | `ConstantOpConversion` | Tile constant, rewrites to `nv_tileaa.constant_tensor` or `nv_tileaa.splat` |
+| `cuda_tile.assume` | `AssumeOpConversion` | Assumption hint, rewrites to `nv_tileaa.assume` |
 
-None of these eight ops appears in the inline rosters of populators A or B; the trampolines are the only registration path that brings them into a pattern set.
+Each rewrite has the same one-to-one shape:
 
-## Type-Converter Functor Triple
-
-Three `(addConversion, addMaterialization)` functor pairs register through `sub_5F5AC0` before the populators run. Materializations bridge values during partial conversion only; they should not survive later canonicalization.
-
-| Functor pair                  | Source type                       | Target type           | Materializer role |
-|-------------------------------|-----------------------------------|-----------------------|-------------------|
-| `(sub_5C5A60, sub_5DD280)`    | `cuda_tile` `TileType`            | `llvm.struct<...>`    | Source materialiser |
-| `(sub_5C5A90, sub_5C6220)`    | `cuda_tile` `PointerType`         | `llvm.ptr`            | Target materialiser |
-| `(sub_5C5AC0, sub_5D8DB0)`    | `cuda_tile` `TokenType`           | `llvm.token`          | Source materialiser |
-
-Splitting source from target materialisers preserves token ordering and view identity for the scheduler, which still needs to reason about memory dependences before NVVM lowering flattens tokens into integers.
-
-## Legal-Dialect Vector
-
-Part B materialises the legal-dialect set inline as a `SmallVector<StringRef, 6>` and hands it to `sub_36B4F90(target, vec, 6, kind=0)`. These six dialects stay legal for the whole pass:
-
-```text
-{ "arith", "nv_tileaa", "func", "gpu", "scf", "math" }
+```mlir
+%r = cuda_tile.rsqrt %x : tensor<8x64xf32>
+   ↓
+%r = nv_tileaa.rsqrt %x : tensor<8x64xf32>
 ```
 
-The same routine adds `cuda_tile` as a fully-illegal dialect with `kind=2`. `ub.poison` is registered separately through `sub_36C1890` as a dynamically-legal op whose predicate pair is `{sub_5C5800, sub_5C5860}` — the predicate returns true when the poison's result type is already a legal `nv_tileaa` primitive, false when it still needs to flow through the standard cast-elimination path.
+The eight ops never appear in the main populator rosters; the singleton adders are the only registration path that brings them into a pattern set.
 
-## Pattern-Bank Layout
+## Type-Converter Materialisers
 
-The 42-row pattern-class vtable bank runs from `0x59A91A0` to `0x59A9AA8`. The row count splits:
+Three type-converter functor pairs register before the populators run. Each pair combines an `addConversion` callback (called when the converter sees the source type) with an `addMaterialization` callback (called when partial conversion needs a bridge value while the IR is mid-rewrite). Materialisations should not survive later canonicalisation — the reconciliation phase in the next pass erases them.
 
-- 28 vtables for the hand-written Part-A OpConversions whose pretty-names live in anonymous namespaces.
-- 14 vtables for the memory/token/view custom patterns in Part B (the remaining Part-B patterns are GenericConversion instantiations that share a single template-vtable family).
-- 4 inlined specialist vtables for the Part-C `mma`, `reduce`, `scan`, and transcendental patterns.
+| Source type | Target type | Materialiser direction |
+|---|---|---|
+| `cuda_tile::TileType` | `llvm.struct<...>` (descriptor shape) | source — produces an `nv_tileaa` value when only a `cuda_tile` value exists |
+| `cuda_tile::PointerType` | `llvm.ptr` | target — produces a `cuda_tile` value when only an `nv_tileaa` value exists |
+| `cuda_tile::TokenType` | `llvm.token` | source — produces an `nv_tileaa` value when only a `cuda_tile` value exists |
 
-Part A registers more patterns than vtables because several of its rewrites get inlined directly into the populator body rather than earning their own pattern class. The 42 distinct `_M_realloc_insert` instantiations at `0x5D94A0..0x5DD120` exist for the same reason every `OpConversion` class has its own type — distinct C++ types yield distinct `unique_ptr` deleter vtables, which forces a unique `_M_realloc_insert<unique_ptr<T>>` instantiation even though the bodies are functionally identical.
+Splitting source from target materialisers preserves token ordering and view identity for the scheduler, which still needs to reason about memory dependences before later NVVM lowering flattens tokens into integers. A purely-symmetric materialiser pair would lose the directional information the dialect-conversion engine uses to pick the right cast.
 
-## Region Rewrites
+## Block-Argument Type Flow
 
-Region-bearing operations must preserve block-argument order, terminator meaning, and yielded value types. The pattern body cannot use the standard inline-region helper because block-argument types must flow through the same `TypeConverter` the pass already owns.
+Region-bearing operations (`cuda_tile.reduce`, `cuda_tile.scan`, structured control flow that carries `cuda_tile`-typed iteration arguments) need block-argument types converted in the same step as their parent op. The standard inline-region helper does not see the pass's type converter, so the region-rewriting patterns construct their replacement operations explicitly:
 
 ```c
-LogicalResult lower_region_op(Operation *src, OperationName dst,
-                              ConversionPatternRewriter &rw,
-                              const TypeConverter &types) {
-    OperationState state(src->loc(), dst);
-    state.add_operands(convert_operands(src->operands(), rw, types));
-    state.add_types(convert_types(src->result_types(), types));
-    state.add_attributes(copy_semantic_attrs(src));
+LogicalResult lowerRegionOp(Operation *src, OperationName dst,
+                            ConversionPatternRewriter &rw,
+                            const TypeConverter &types) {
+    SmallVector<Value> operands;
+    if (failed(types.convertOperands(src->getOperands(), operands)))
+        return failure();
 
-    for (Region &region : src->regions()) {
-        Region *new_region = state.add_region();
-        clone_region_with_converted_block_args(region, new_region, types, rw);
+    SmallVector<Type> resultTypes;
+    if (failed(types.convertTypes(src->getResultTypes(), resultTypes)))
+        return failure();
+
+    OperationState state(src->getLoc(), dst);
+    state.addOperands(operands);
+    state.addTypes(resultTypes);
+    state.addAttributes(src->getAttrs());
+
+    for (Region &region : src->getRegions()) {
+        Region *newRegion = state.addRegion();
+        rw.inlineRegionBefore(region, *newRegion, newRegion->begin());
+        if (failed(rw.convertRegionTypes(newRegion, types)))
+            return failure();
     }
 
     Operation *replacement = rw.create(state);
-    rw.replace_op(src, replacement->results());
+    rw.replaceOp(src, replacement->getResults());
     return success();
 }
 ```
 
-`cuda_tile.reduce` and `cuda_tile.scan` are the important examples. Their combiner regions stay structured, but yielded values and block-argument types must convert in the same step, or later `nv_tileaa` verification will see a region signature that no longer matches its parent op.
+`convertRegionTypes` walks the block-argument list of every block in the region and rewrites types through the same converter the parent op uses. Without this step, the parent op verifies against post-conversion operand types but its region terminator yields pre-conversion types — a signature mismatch the next-stage verifier reports without enough context to diagnose properly.
+
+## Part C Specialists
+
+Part C registers four specialists that depend on layout decisions made by Parts A and B. Each takes a `cuda_tile` op whose lowering shape is parameterised by element type, layout intent, or combiner-region structure, and emits the matching `nv_tileaa` form.
+
+### `cuda_tile.mmaf` and `cuda_tile.mmai`
+
+The float and integer matrix-multiply-accumulate ops rewrite to `nv_tileaa.dot` with the element-type-specific attribute set. The rewriter selects FP rounding mode and accumulator precision from the source op's attributes.
+
+```mlir
+%c' = cuda_tile.mmaf %a, %b, %c { fastmath = "contract" }
+   : tensor<128x64xf16>, tensor<64x128xf16>, tensor<128x128xf32>
+   ↓
+%c' = nv_tileaa.dot %a, %b, %c { input_precision = "tf32", fastmath = "contract" }
+   : tensor<128x64xf16>, tensor<64x128xf16>, tensor<128x128xf32>
+```
+
+### `cuda_tile.reduce` Worked Example
+
+`cuda_tile.reduce` carries a combiner region whose block arguments are accumulator-typed and whose terminator yields the next accumulator value. The rewriter walks the region, converts block-argument types through the shared `TypeConverter`, and rebuilds the op as `nv_tileaa.reduce` with the converted region body.
+
+Input:
+
+```mlir
+%sum = cuda_tile.reduce %values { axis = 1 : i32 } : tensor<8x64xf32> -> tensor<8xf32> {
+  ^bb0(%acc: !cuda_tile.tile<f32>, %val: !cuda_tile.tile<f32>):
+    %s = cuda_tile.addf %acc, %val : !cuda_tile.tile<f32>
+    cuda_tile.yield %s : !cuda_tile.tile<f32>
+}
+```
+
+The pattern converts the parent op's operand and result types, inlines the region, then walks the new region's blocks to convert each block-argument type:
+
+```mlir
+%sum = nv_tileaa.reduce %values { axis = 1 : i32 } : tensor<8x64xf32> -> tensor<8xf32> {
+  ^bb0(%acc: f32, %val: f32):
+    %s = nv_tileaa.addf %acc, %val : f32
+    nv_tileaa.yield %s : f32
+}
+```
+
+Block-argument types `!cuda_tile.tile<f32>` become `f32` because the `TileType` conversion strips the dialect wrapper; the terminator and combiner body rewrite recursively under the same partial-conversion driver, since `cuda_tile.addf` and `cuda_tile.yield` are in the illegal dialect and match Part A patterns.
+
+If the rewriter forgot to convert block-argument types, the parent `nv_tileaa.reduce` would have `f32` operands at the outer signature but the inner region's `^bb0` would still bind `!cuda_tile.tile<f32>` — the verifier would reject the operation with a signature mismatch the next-stage diagnostics cannot localise back to this pass.
+
+### `cuda_tile.scan`
+
+`cuda_tile.scan` follows the same shape as reduce but produces a tensor of the same rank as the input. The rewriter applies identical region-conversion logic, only changing the parent op's mnemonic and result-type rank.
+
+### Transcendental Specialists
+
+The transcendental specialists (`cuda_tile.exp2`, `cuda_tile.log2`, `cuda_tile.sin`, `cuda_tile.cos`, `cuda_tile.tanh`) rewrite to `nv_tileaa` counterparts but additionally attach the `fastmath` flag derived from the source op's attribute dictionary. The flag controls whether downstream lowering selects the `__nv_*` precise libdevice variant or the `__nv_fast_*` approximate variant.
 
 ## Tokens and Atomics
 
 Token-aware operations stay explicit in the IR rather than collapsing immediately to NVVM. Loads, stores, atomic compare-and-swap, atomic read-modify-write, token creation, and token join all become `nv_tileaa` operations that still expose memory dependences. The downstream scheduler and async-pipeline passes reason about those dependences before LLVM/NVVM lowering flattens tokens into integers.
 
-```c
-TileAAToken lower_join_tokens(ValueRange tokens, OpBuilder &b) {
-    if (tokens.empty()) {
-        return b.create<nv_tileaa::CreateNullTokenOp>().getResult();
-    }
-    if (tokens.size() == 1) {
-        return cast<TileAAToken>(tokens.front());
-    }
-    return b.create<nv_tileaa::JoinMemTokenOp>(tokens).getResult();
-}
+```mlir
+%t = cuda_tile.token.join [%t0, %t1, %t2] : !cuda_tile.token
+   ↓
+%t = nv_tileaa.join_mem_token [%t0, %t1, %t2] : !nv_tileaa.token
 ```
+
+Singleton joins skip the `join_mem_token` op and pass the single token through unchanged; empty joins lower to `nv_tileaa.create_null_token` so downstream ops always have a token operand to consume.
 
 ## Pipeline Handoff
 
-The pass establishes the alias and view shapes that warp-specialised producer/consumer rewriting relies on later, but assigns no final layouts. It keeps enough structure around load/store views, atomic-token operations, and tensor partitions for TileAS layout assignment to insert `nv_tileas.view` and `nv_tileas.convert_layout` at producer and consumer boundaries. The invariant: a view produced here must still identify the same memory object, shape, layout intent, and token ordering when it reaches TileAS layout assignment.
+The pass establishes the alias and view shapes that warp-specialized producer/consumer rewriting relies on later, but assigns no final layouts. It keeps enough structure around load/store views, atomic-token operations, and tensor partitions for TileAS layout assignment to insert `nv_tileas.view` and `nv_tileas.convert_layout` at producer and consumer boundaries. The invariant: a view produced here must still identify the same memory object, shape, layout intent, and token ordering when it reaches TileAS layout assignment.
 
 ## Failure Modes
 
@@ -163,4 +246,4 @@ The pass fails with a user-facing diagnostic when:
 
 ## Cross-References
 
-[Pattern Set and Type Converter](pattern-set-and-typeconverter.md) documents the shared `OpConversion` 0x68-B object layout and the `_M_realloc_insert` trampoline family. [TileAA to TileAS](tileaa-to-tileas.md) is the next lowering stage and is where SM-specific copy, MMA, and TMA decisions begin.
+[Overview](overview.md) describes this pass's position in the four-stage cascade. [Pattern Set and Type Converter](pattern-set-and-typeconverter.md) documents the shared LLVM type converter that the materialiser triple here registers into. [TileAA to TileAS](tileaa-to-tileas.md) is the next lowering stage; the CopyAtom and ReduceAtom witnesses attached there preserve information this pass made explicit.

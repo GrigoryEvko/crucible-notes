@@ -26,7 +26,7 @@ the qword fills in on first use by interning a C++-mangled
 (`sub_44A6CA0` in this binary; upstream MLIR ships the same
 RTTI-string-to-pointer interner under `llvm::ManagedStatic`). After init,
 the qword holds the TypeID. These dominate the cute interface anchors
-and a few out-of-strand singletons. Both forms reach the per-op
+and a few standalone singletons. Both forms reach the per-op
 dispatcher exactly the same way: through a load of `*(qword*)(op + 48) +
 16` (the `OperationName::TypeID` slot) and a pointer-equality test
 against a sentinel address baked into the dispatcher arm.
@@ -479,7 +479,7 @@ The Cross-references column in the master table points to the canonical wiki pag
 - `dialects/<dialect>/interfaces.md` for type-interface anchors (Meyers
   pairs)
 - `dialects/<dialect>/index.md` for dialect-level TypeIDs and ranges
-  whose per-op decomposition belongs to a separate strand
+  whose per-op decomposition is documented separately
 - `dialects/index.md` for upstream MLIR / cross-dialect anchors
 
 Two cross-dialect sharing patterns are worth highlighting:
@@ -501,31 +501,3 @@ encoding. Its OperationName `opInfo` slot (the descriptor passed to
 `*(qword*)(op+48)+16` after uniquing) is `0x5BE4008`. Resolvers compare
 against the kindPtr; op-builders against the opInfo. Treat them as the
 same op identity at two different indirection levels.
-
-## Tier
-
-T3 — deep reference for TypeID sentinel resolution.
-
-## Confidence
-
-HIGH for every sentinel address listed in the master table — these are
-verbatim `.rodata` / `.bss` byte addresses extracted from `tileiras_full.c`
-xrefs and cross-validated against multiple decompiled dispatchers
-(`sub_2D67A80`, `sub_7ACC40`, `sub_7ABCD0`, `sub_7A19B0`, `sub_7A2090`).
-HIGH for the slab-contiguity claim on `0x5B8D610 .. 0x5B8DCB8`: the 213
-slots × 8-byte stride invariant is structurally enforced by both the
-linker (single-translation-unit `registerNVVMDialect()` emission) and by
-the dispatcher's folded `dyn_cast` cascade (the optimizer would not
-fold-up unless every arm tests an immediate operand at fixed offset).
-HIGH for the dialect attribution of every sentinel that participates in
-a leaf-predicate or registrar-grep witness (the eight nv_tileas op-info
-singletons in the `0x5B44E* / 0x5B44F*` cluster, every `cute` /
-`cute_nvgpu` / `cuda_tile` concrete-type sentinel, every NVVM slab arm
-named in the dispatcher decompile). MED for the op-name attribution of
-inferred slab arms (the band assignments above mark groups; per-slot
-exact-address attribution within a multi-arm band is reconstructed from
-neighbouring code rather than a literal `cmp` instruction). MED for the
-five unresolved FloatType slots in `0x5BE5FC0 / 6000 / 6028 / 6030 /
-6040` and for the 49-slot `cute_nvgpu` Op TypeID range
-`0x5B47FF8 .. 0x5B481A8` whose individual op-mnemonic mapping is a
-strand-F follow-up.

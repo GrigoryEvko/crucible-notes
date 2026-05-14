@@ -144,8 +144,8 @@ Concrete examples observed in the binary, all matching this exact template:
 | `qword_5B47088`  | `mlir::cutlass_ir::cute::DescriptorIteratorTypeInterface]`          | TMA / shared-memory descriptor iteration                           |
 
 The pairs cluster tightly in `.bss` by design: seven cute-interface slots in the band
-`0x5B47000..0x5B470D0`, three more in `0x5B44600..0x5B44890`. Each band is the interface-id strand
-for a single owning dialect, registered in one initialiser.
+`0x5B47000..0x5B470D0`, three more in `0x5B44600..0x5B44890`. Each band holds the interface-id
+table for a single owning dialect, registered in one initialiser.
 
 ## Choosing Between the Two
 

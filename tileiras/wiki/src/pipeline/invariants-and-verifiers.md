@@ -2,41 +2,43 @@
 
 ## Abstract
 
-Tileiras keeps the pipeline correct through three verifier layers: pass-manager anchor checks, verifier
-runs between passes, and explicit target-aware verifier passes. These layers catch different classes of
-bugs. Anchor checks prevent a pass from being scheduled on the wrong operation type. Between-pass
-verification catches malformed IR immediately after the pass that created it. Explicit verifier passes
-check semantic rules that require whole-module or target context.
+Tileiras wraps three concentric verifier layers around its pass pipeline. The innermost layer is the `OperationName` verifier, which fires every time an op is built or modified and checks operand counts, result types, region structure, and trait predicates such as `IsolatedFromAbove`. The middle layer is the pass-manager between-pass verifier, which runs the full `verify()` on the anchor operation after each pass when verify-each is enabled and catches the broader class of failures that involve interactions between newly mutated ops. The outermost layer is the explicit module-level verifier suite that runs at fixed pipeline points and checks semantic rules requiring whole-module or target context, including the NVVM kernel-parameter overflow check. Each layer catches a class of bug the others cannot: per-op invariants surface immediately; cross-op invariants surface after the pass that introduced them; cross-pass invariants surface at named checkpoints.
 
 ## Verifier Layers
 
-| Layer | When it runs | What it catches |
-| --- | --- | --- |
-| Anchor checks | While building or scheduling the pass manager. | A pass nested under the wrong operation type. |
-| Verify-each | Between transformation passes. | Broken operation, type, region, and trait invariants. |
-| Explicit verifiers | At selected pipeline points. | Schedule, launch, ABI, and target-specific rules. |
+The three layers run in strict order around each pass invocation. The innermost layer is always active and cannot be disabled because it is part of op construction itself. The middle layer is on by default for non-Release builds and is gated on `verify-each` otherwise. The outermost layer is scheduled as named passes in the pipeline and runs only at the points the pipeline builder places them.
 
 ```c
-LogicalResult run_pipeline_with_verification(PassManager *pm, Operation *root) {
-    for (Pass *pass : pm->passes) {
-        if (!pass_can_run_on(pass, root)) {
-            return failure("pass anchor does not match operation");
-        }
+LogicalResult run_pass_with_three_verifier_layers(
+        OpPassManager &pm, Pass &pass, Operation *anchor) {
 
-        if (failed(pass->run(root))) {
-            return failure("pass failed");
-        }
+    // Layer 1: OperationName verifiers fired implicitly during op
+    // construction inside the pass body. There is no scheduling step
+    // for this layer; mutation through OpBuilder triggers the per-op
+    // verifier and may fail before pass->run returns.
+    if (failed(pass.run(anchor))) {
+        return anchor->emitError("pass failed; per-op verifier may have fired");
+    }
 
-        if (pm->verify_each && failed(verify(root))) {
-            return failure("IR failed verification after pass");
+    // Layer 2: pass-manager between-pass verifier.
+    if (pm.getVerifyEach()) {
+        if (failed(verify(anchor, /*verifyRecursively=*/true))) {
+            return anchor->emitError(
+                "between-pass verifier rejected IR after '")
+                << pass.getName() << "'";
         }
     }
 
-    return verify(root);
+    // Layer 3 runs only at explicit verifier passes (TileIR ops
+    // analysis, agent verifier, NVVM verifier); those passes appear
+    // in the pipeline's pass list like any other pass.
+    return success();
 }
 ```
 
-## Explicit Verifiers
+The single ordering rule that ties the layers together: layer 1 fires before `pass->run` returns; layer 2 fires immediately after; layer 3 only fires when its named pass is reached. A break at any layer halts the pipeline with the originating pass and operation attached to the diagnostic.
+
+## Explicit Verifier Passes
 
 | Verifier | Stage | Contract |
 | --- | --- | --- |
@@ -44,16 +46,9 @@ LogicalResult run_pipeline_with_verification(PassManager *pm, Operation *root) {
 | TileAA agent verifier | Warp-specialized TileAA path. | Check producer/consumer agent graph shape. |
 | NVVM IR verifier | After target conversion and before NVPTX backend lowering. | Check kernel launches and formal parameter-space usage. |
 
-The TileIR verifier must run before high-level operations are erased. The NVVM verifier must run after
-kernel metadata and address-space attributes have been attached.
+The TileIR verifier runs before high-level operations are erased — once `convert-tileas-to-llvm` removes the Tile schedule attributes, the verifier has nothing to inspect. The NVVM verifier runs after kernel metadata and address-space attributes have been attached because the parameter-space check depends on the resolved data layout.
 
-The NVVM verifier enforces two recovered behaviors that matter to users:
-
-- a device launch target must be a kernel,
-- a kernel's formal parameter buffer must fit the selected target's parameter-space limit.
-
-It also warns when a child launch receives a pointer to parent-local or CTA-shared memory. That warning
-is accepted IR, but the child dereference is undefined.
+The NVVM verifier enforces two behaviors that matter to users. A device launch target must be a kernel (a non-kernel call through a launch op is rejected at this layer rather than at the backend). A kernel's formal parameter buffer must fit the selected target's parameter-space limit; the verifier walks the argument list, applies the target's data layout, and compares the cumulative size against the limit. It also emits a warning when a child launch receives a pointer to parent-local or CTA-shared memory: the warning is non-fatal because the IR is well-formed, but the child dereference is undefined behavior and the warning is the only place users see it.
 
 ## Ordering Invariants
 
@@ -69,27 +64,35 @@ is accepted IR, but the child dereference is undefined.
 
 ## NVVM Parameter Verification
 
-The NVVM verifier accounts for each kernel parameter using the target data layout and rejects
-signatures that cannot fit the target's parameter-space buffer.
+The kernel-parameter overflow check is the most user-visible piece of layer-3 verification because it is the first place where a target-specific limit can reject otherwise valid TileIR. The verifier walks each kernel argument, asks the target data layout for size and ABI alignment, accumulates an aligned offset, and compares the total against the target's parameter-space limit.
 
 ```c
-void verify_kernel_parameters(Function kernel, TargetInfo target, DataLayout layout) {
+LogicalResult verify_kernel_parameters(LLVMFuncOp kernel,
+                                       NvvmTargetAttr target,
+                                       const DataLayout &dl) {
     uint64_t total = 0;
-
-    for (Argument arg : kernel.arguments) {
-        SizeAlign sa = size_and_abi_alignment(arg.type, layout);
-
-        if (sa.scalable) {
-            error(arg, "scalable parameter type is not supported");
+    for (auto [idx, argType] : llvm::enumerate(kernel.getArgumentTypes())) {
+        TypeSize size = dl.getTypeSize(argType);
+        Align    align = dl.getABITypeAlign(argType);
+        if (size.isScalable()) {
+            return kernel.emitOpError("argument ") << idx
+                << " has scalable type; not supported in NVVM kernels";
         }
-
-        total = align_up(total, sa.alignment);
-        total += sa.size;
+        total = llvm::alignTo(total, align.value());
+        total += size.getFixedValue();
     }
 
-    if (total > target.parameter_space_limit) {
-        error(kernel, "formal parameter space overflowed");
+    if (total > target.getParameterSpaceLimit()) {
+        return kernel.emitOpError("formal parameter space overflowed: ")
+            << total << " > " << target.getParameterSpaceLimit()
+            << " bytes for " << target.getChip();
     }
+    return success();
 }
 ```
 
+The limit is target-dependent. Pre-Hopper SM versions allow 4096 bytes; Hopper and later allow 32760 bytes. The verifier reads the limit from the resolved `#nvvm.target` attribute so that a kernel rejected on one architecture can succeed on another without touching the verifier code.
+
+## Cross-References
+
+[Pass Manager Internals](pass-manager-internals.md) documents the anchor and dispatch model the verifier layers run inside. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) is where each explicit verifier pass appears in the pipeline. [Pipeline Options Mapping](options-mapping.md) covers the options that enable or disable verify-each behavior.

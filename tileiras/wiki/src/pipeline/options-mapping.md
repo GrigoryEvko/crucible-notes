@@ -2,9 +2,7 @@
 
 ## Abstract
 
-`TileIRPipelineOptions` is the configuration object that parameterizes the MLIR-tier pipeline. It is
-filled from the driver and from `--pass-pipeline="tileir{...}"` syntax, then read while building the
-pass manager. This page maps each public option to the behavior it controls.
+`TileIRPipelineOptions` is the configuration object that parameterizes the MLIR-tier pipeline. It is filled from the driver and from `--pass-pipeline="tileir{...}"` syntax, then read while building the pass manager. Every public option has a single consuming pass plus a well-defined access pattern: the pipeline builder either passes the option into the pass's constructor (compile-time binding) or attaches it as a module attribute the pass reads from inside its `runOnOperation` body (run-time binding). This page maps each option to its consumer and its access pattern, then describes the layered defaulting strategy that decides what each option holds when the user does not set it explicitly.
 
 ## Core Options
 
@@ -46,38 +44,81 @@ pass manager. This page maps each public option to the behavior it controls.
 | `host-triple` | string | `native` | Target triple for generated host callback code. |
 | `dump-host` | string | empty | Write generated host code to a file. |
 
-## Propagation Model
+## Option-to-Pass Map
 
-Options are read in two ways. Driver-level options decide which passes are added. Pass-local options
-are forwarded into pass constructors or registered again by the pass itself.
+Each option resolves to one or more consuming passes and a specific access pattern. "Constructor" means the pipeline builder reads the option and passes the value as a `PassOption` to the pass's factory; the pass then reads it through its own option field. "Module attribute" means the pipeline builder attaches the value to the `gpu.module` and the pass reads it through `op->getAttrOfType<...>` inside `runOnOperation`. "Both" means the pipeline builder writes the attribute and also wires the option through the pass constructor; this is used for options consumed both inside MLIR passes and across the MLIR-to-LLVM serialization boundary.
+
+| Option | Consuming pass | Access pattern |
+|---|---|---|
+| `num-warps` | `convert-cudatile-to-tileaa`, `tileas-generate-schedule-constraints` | Both |
+| `num-ctas` | `convert-cudatile-to-tileaa`, `tileir-gpu-module-prepare` | Module attribute |
+| `compute-capability` | `convert-target-to-nvvm`, `tileir-post-nvvm-finalize` | Module attribute (via resolved `#nvvm.target`) |
+| `opt-level` | Pipeline builder | Decides which passes are added |
+| `v2-opt-level` | `tileas-generate-schedule-constraints`, `tileas-materialize-schedule` | Constructor |
+| `pipeline-strategy` | Pipeline builder (gates warp-specialization adders) | Decides which passes are added |
+| `index-bitwidth` | `convert-tileas-to-llvm`, `convert-to-llvm`, `convert-memref-to-llvm` | Constructor |
+| `unspecialized-pipeline-num-stages` | `unspecialized-pipeline` | Constructor |
+| `approx` | `convert-target-to-nvvm` (NVVM reflect map) | Module attribute |
+| `ftz` | `convert-target-to-nvvm` (NVVM reflect map) | Module attribute |
+| `use-nvgpucomp-libnvvm` | Serialization driver | Read at serialize time |
+| `emit-line-info` | Snapshot printers in O1 and O2 | Constructor (printer enable + tag) |
+| `dynamic-persistent` | `tileir-gpu-module-prepare` | Module attribute |
+| `schedule-trace-file` | `DumpTraceImpl` instrumentation | Read at instrumentation install |
+| `enable-random-delay` | `tileas-generate-schedule-constraints` | Constructor |
+| `rrt-size-threshold` | Pipeline builder + `ResourceConstraintBuilder` | Both |
+| `max-constraint-iterations` | `tileas-generate-schedule-constraints` | Constructor |
+| `enable-debug-logging` | `tileir-emit-host-wrapper` | Constructor |
+| `host-triple` | `tileir-emit-host-wrapper` | Constructor |
+| `dump-host` | `tileir-emit-host-wrapper` | Constructor |
+
+## Pipeline Builder
+
+The pipeline builder reads `opt-level`, `pipeline-strategy`, and `v2-opt-level` to decide which pass-list segments to append, then forwards the remaining options into the passes themselves. Two segments are conditional on `opt-level` (TileAS lowering for `>= 2`, full LLVM/NVVM conversion for `>= 3`); one is conditional on `pipeline-strategy` (warp-specialization adders); two are conditional on `emit-line-info` (snapshot printers).
 
 ```c
-void build_pipeline(PassManager *pm, PipelineOptions opts) {
-    add_frontend_passes(pm, opts.num_warps, opts.num_ctas, opts.compute_capability);
+void populate_pipeline(PassManager &pm, const PipelineOptions &opts) {
+    OpPassManager &gpu_pm = pm.nest<GpuModuleOp>();
+
+    attach_target_attributes(pm, opts);
+
+    add_frontend_segment(gpu_pm, opts);
+    if (opts.emit_line_info == EmitLineInfo::Frontend) {
+        add_snapshot_printer(gpu_pm, "after-frontend");
+    }
 
     if (opts.opt_level >= 2) {
-        add_tileas_lowering(pm, opts);
+        add_tileas_lowering_segment(gpu_pm, opts);
     }
-
-    if (opts.pipeline_strategy == PIPELINE_WARP_SPECIALIZE) {
-        add_warp_specialization(pm, opts.rrt_size_threshold, opts.max_constraint_iterations);
+    if (opts.pipeline_strategy != PipelineStrategy::None) {
+        add_warp_specialization_segment(gpu_pm, opts);
     }
-
+    if (opts.emit_line_info == EmitLineInfo::TileasBoundary) {
+        add_snapshot_printer(gpu_pm, "tileas-llvm-boundary");
+    }
     if (opts.opt_level >= 3) {
-        add_full_llvm_nvvm_conversion(pm, opts);
+        add_full_conversion_segment(gpu_pm, opts);
     }
 }
 ```
 
-## Cross-Tier Notes
+The `attach_target_attributes` step is what turns the module-attribute access pattern into a real binding: it writes `compute-capability`, `num-ctas`, `approx`, `ftz`, and `dynamic-persistent` onto every `gpu.module` so that downstream passes pick them up uniformly.
 
-The command-line driver and the MLIR pass-pipeline parser both expose names such as `opt-level` and
-`compute-capability`. A normal `tileiras` invocation should resolve these through the driver first and
-then populate pipeline options consistently. Direct `--pass-pipeline` use can bypass driver defaults,
-so tests should set target and opt-level explicitly when they construct pipelines by text.
+## Defaulting Strategy
 
-The recovered defaults differ by layer: the driver-level optimization default is `3`, while the
-pipeline-options default is `2`; the driver-level compute capability defaults to a Blackwell target,
-while the pipeline parser's standalone default is older. Public tests should avoid relying on either
-fallback and should pass both values explicitly.
+Defaults are layered. The driver applies command-line defaults first (its `opt-level` default is `3`, its `compute-capability` default points at the newest supported Blackwell SM). The pipeline-options parser applies its own defaults if the driver did not (its `opt-level` default is `2`, its `compute-capability` default is older). The TileGen front end applies a final tier of defaults for options the user never touches.
 
+| Layer | Sets | Wins when |
+|---|---|---|
+| Driver CLI | `opt-level=3`, `compute-capability=<latest Blackwell>` | User invokes the `tileiras` binary directly. |
+| `--pass-pipeline` parser | `opt-level=2`, `compute-capability=<older default>` | Pipeline is built from a textual `--pass-pipeline=tileir{...}` string with no driver wrapping. |
+| TileGen front end | Scheduler-trace path, debug-logging flag | Driver did not set them and parser does not see them. |
+
+Tests should set every option they care about explicitly because the two driver-vs-parser defaults disagree on `opt-level` and on target.
+
+## Unconsumed Options
+
+When an option is set but its consuming pass is not in the active pipeline (for example `unspecialized-pipeline-num-stages=8` is set but `pipeline-strategy=none` so the unspecialized pass is never added), the option is silently ignored. The pipeline builder does not emit a warning because the textual parser cannot distinguish a redundant option from a user-supplied override that will become relevant on a later pipeline rebuild. Driver invocations that combine incompatible flags should be rejected at the driver layer, not at the pipeline builder.
+
+## Cross-References
+
+[Driver Entry and Optimization Levels](driver-and-opt-levels.md) explains how `opt-level` and `pipeline-strategy` decompose into the pass-list segments above. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) names the passes each segment contains. [LLVM PassBuilder Registry](passbuilder-mega-registry.md) covers options consumed past the MLIR-to-LLVM boundary.

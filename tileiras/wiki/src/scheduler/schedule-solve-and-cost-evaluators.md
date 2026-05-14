@@ -320,13 +320,7 @@ asymmetric cases where a `Pipe_` consumer sits at a different stage than its pro
 
 ### Zero-Producers Fallback Semantics
 
-The phase 5 fallback at `LABEL_480` fires only when both the placement driver and the cost-based generator
-report failure. The body emits a single `Pipe_` flavour-A value via `sub_8E9450` with zero producers and exactly
-one consumer (the `consumer` argument), then sets `Schedule.flags & 4` to mark the schedule as trivially scheduled.
-Neither the `Mutex_` constructor (`sub_8E0070`) nor the `Pipe_` flavour-B constructor (`sub_8EA0B0`) runs from
-this branch — those primitives are materialised earlier by the walker `sub_8EAD70`, which runs before the per-pair
-solve trampoline. The trivial schedule means "ship the consumer with no producers and let later passes
-diagnose the missing dataflow", not a recovery attempt.
+The phase 5 fallback fires only when both the placement driver and the cost-based generator report failure. The body emits a single `Pipe_` flavour-A value (the scalar-shaped pipe constructor — see [Pipe and Mutex Value Layout](pipe-mutex-value-layout.md#three-constructors) for the flavour-A/flavour-B split) with zero producers and exactly one consumer — the consumer argument — then sets the trivial-schedule flag on `Schedule.flags`. Neither the `Mutex_` constructor nor the `Pipe_` flavour-B constructor runs from this branch; those primitives are materialised earlier by the walker that precedes the per-pair solve trampoline. The trivial schedule means "ship the consumer with no producers and let later passes diagnose the missing dataflow", not a recovery attempt.
 
 ## Dual-RRT Cost Evaluators
 

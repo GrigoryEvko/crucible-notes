@@ -1,16 +1,8 @@
 # Compilation Pipeline Overview
 
-`tileiras` is, end-to-end, an MLIR-on-MLIR optimizing assembler whose job is
-to take a CUDA Tile IR bytecode module and ride it down a deep dialect
-cascade until what remains is a single `gpu.module` carrying the `nvvm`
-dialect plus a fully-populated `#nvvm.target` attribute. That artefact is
-then translated to LLVM IR, linked against bitcode blobs (libdevice
-surrogate), pushed through an LLVM `PassBuilder` pipeline, and emitted as
-PTX assembly by an embedded fork of the LLVM 21 NVPTX backend. PTX is
-finally handed off to `ptxas` for SASS/cubin generation. This page is the
-cascade anchor for the `pipeline/` section: each pass family, each dialect
-boundary, and each handoff has a dedicated page underneath; this page
-describes the shape of the whole.
+## Abstract
+
+Tileiras consumes a `builtin.module` carrying one or more `gpu.module` payloads expressed in the `cuda_tile` dialect and produces a relocatable object containing assembled cubin. The work splits cleanly across a host-side outer pipeline that operates on the enclosing module and a device-side inner pipeline that runs once per `gpu.module`. The outer pipeline registers dialects, resolves a single `#nvvm.target` per device module, and walks each `gpu.module` through dialect lowering. The inner pipeline pushes TileIR through TileAA, TileAS, CuTe/CUTLASS, NVGPU, and finally the MLIR `llvm`+`nvvm` dialect pair, then hands the result to an embedded LLVM 21 NVPTX backend that emits PTX. The driver invokes `ptxas` on that PTX and stitches the cubin into the output object. Each cascade page underneath this one documents one stage of that chain; this page is the contract between them.
 
 ## Full cascade
 
@@ -54,7 +46,7 @@ column names what must hold at the moment the pass is added.
 
 | From | To | Boundary operation | Key invariant on entry |
 |---|---|---|---|
-| `cuda_tile` | `nv_tileaa` | Convert public Tile IR to alias-aware TileAA. | Module is fresh from bytecode loading; one `gpu.module` is present. |
+| `cuda_tile` | `nv_tileaa` | Convert public TileIR to alias-aware TileAA. | Module is fresh from bytecode loading; one `gpu.module` is present. |
 | `nv_tileaa` | `nv_tileas` | Lower typed, alias-aware operations into assembler-near TileAS operations. | Per-function TileAA cleanup has settled canonical forms. |
 | `nv_tileas` plus `cute*`/`cutlass` | `nvgpu` | Materialize schedules, layouts, TMA descriptors, and hardware-facing operations. | TileAS scheduling and layout passes have made execution structure explicit. |
 | `nvgpu` | `llvm` plus `nvvm` | Convert NVIDIA GPU dialect operations to NVVM intrinsics and LLVM dialect operations. | Memref, vector, and math lowering have removed higher-level abstractions. |
@@ -90,132 +82,82 @@ At maximum optimization the visible MLIR cascade is a long nested pass manager, 
 
 The detailed pass-count page remains the right place for exact pass ordering and opt-level deltas. This overview is the semantic contract: each phase must leave the module in the form expected by the next phase.
 
-## Kernel-attribute lift
+## Outer and Inner Pipelines
 
-A `cute.kernel` attribute marks a function as a GPU entry point while the
-module is still in the Tile/CuTe half of the pipeline. Lowering must carry that
-entry-point fact all the way to LLVM. The public contract is:
-
-1. A Tile/CuTe kernel function is converted to a function marked with the NVVM
-   kernel attribute.
-2. The parent `gpu.module` receives exactly one `#nvvm.target` attribute.
-3. That target attribute carries the resolved SM architecture, PTX feature set,
-   and launch-shape metadata needed by the backend.
-4. LLVM translation turns each NVVM kernel into an LLVM function with the
-   backend-visible `ptx_kernel` calling convention/attribute set.
-
-The lift is the point where target selection stops being implicit. Above it,
-architecture information can be represented as Tile-level attributes and
-pipeline options. Below it, the backend sees only the LLVM triple, CPU string,
-feature string, and function attributes derived from `#nvvm.target`.
+The driver runs two pass managers in sequence on a single MLIR context. The outer pass manager is anchored on `builtin.module`. It registers every dialect that any later stage might need, parses the bytecode, and runs only a small amount of work directly on the top-level module: dialect normalization, host-wrapper attribute resolution, and the `gpu.module` walk that distributes per-device work. The inner pass manager is anchored on `gpu.module`. It is constructed once and reused for each device module the walk discovers. The two managers share an `OperationName` cache and an analysis manager, but they keep separate verifier-each settings because the outer pipeline runs cheap structural checks and the inner pipeline runs expensive type-and-region checks that fire on every TileIR mutation.
 
 ```c
-struct NvvmTarget {
-    string triple;       // "nvptx64-nvidia-cuda" for normal 64-bit CUDA device code
-    string chip;         // for example "sm_90", "sm_100", or "sm_120"
-    string features;     // comma-separated PTX/subtarget feature list
-    int num_warps;
-    int num_ctas;
-};
+LogicalResult run_tileiras_pipeline(ModuleOp top, PipelineOptions opts) {
+    PassManager outer  = make_pass_manager(top->getName(), &top->getContext());
+    populate_outer_pipeline(&outer, opts);
 
-NvvmTarget lift_gpu_target(GpuModule module, CompileOptions options) {
-    TargetInfo target = resolve_target(options.gpu_name, options.ptx_version);
+    OpPassManager *inner = &outer.nest<GpuModuleOp>();
+    populate_inner_pipeline(inner, opts);
 
-    require(module.targets.empty(),
-            "GPU module must not already carry a conflicting target");
-    require(module.kernel_functions.size() > 0,
-            "GPU module must contain at least one kernel entry point");
+    return outer.run(top);
+}
+```
 
-    for (Function fn : module.kernel_functions) {
-        if (fn.has_attr("cute.kernel")) {
-            fn.remove_attr("cute.kernel");
-            fn.set_attr("nvvm.kernel", true);
+The outer pipeline guarantees three invariants before the inner pipeline starts. First, every `gpu.module` carries exactly one resolved `#nvvm.target` attribute giving SM name, PTX feature string, and launch-shape constants. Second, each kernel symbol has a normalized linkage attribute and a populated parent symbol table. Third, target-machine options that the inner passes read by name (`num-warps`, `num-ctas`, `index-bitwidth`) have been attached to the device module so that nested passes pick them up through MLIR's standard attribute lookup rather than through driver globals.
+
+State hand-off between the two pipelines is therefore purely attribute-based: there are no thread-local or driver-side dictionaries that the inner pipeline reads at run time. This rule is what makes the inner pipeline reentrant when the outer walk crosses multiple `gpu.module` ops with different targets in the same compile.
+
+## Kernel-Attribute Lift
+
+A `cute.kernel` attribute marks a function as a GPU entry point while the module is still in the Tile/CuTe half of the inner pipeline. The lift converts that marker into a chain of three downstream attributes: the function gains `nvvm.kernel`, the parent `gpu.module` gains `#nvvm.target`, and after MLIR-to-LLVM translation the corresponding `llvm.func` gains the `ptx_kernel` calling convention plus the launch-shape function attributes that the NVPTX backend reads.
+
+```c
+void lift_kernel_attributes(GpuModuleOp gpu, NvvmTargetAttr target) {
+    require(!gpu->hasAttr("nvvm.target"),
+            "gpu.module already carries a conflicting target");
+
+    for (FuncOp fn : gpu.getOps<FuncOp>()) {
+        if (!fn->hasAttr("cute.kernel")) {
+            continue;
         }
+        fn->removeAttr("cute.kernel");
+        fn->setAttr("nvvm.kernel", UnitAttr::get(gpu.getContext()));
+        propagate_launch_shape(fn, target);
     }
 
-    NvvmTarget nvvm = {
-        .triple = target.pointer_bits == 32
-            ? "nvptx-nvidia-cuda"
-            : "nvptx64-nvidia-cuda",
-        .chip = target.sm_name,
-        .features = target.feature_string,
-        .num_warps = options.num_warps,
-        .num_ctas = options.num_ctas,
-    };
-
-    module.set_attr("nvvm.target", nvvm);
-    return nvvm;
+    gpu->setAttr("nvvm.target", target);
 }
 ```
 
-## Two-tier compiler shape
+The lift is the line at which target selection stops being implicit. Above it, architecture information lives in Tile-level attributes and pipeline options. Below it, only the triple, CPU string, feature string, and per-function attributes derived from `#nvvm.target` remain.
 
-`tileiras` is easiest to reimplement as two compilers stacked behind one
-driver contract.
+## Serialization Boundary
 
-The outer tier is the MLIR compiler. It owns bytecode loading, dialect
-registration, pass-manager construction, Tile/CuTe/CUTLASS lowering, scheduling,
-layout decisions, and conversion to the MLIR `llvm`/`nvvm` dialects. User-facing
-pipeline controls such as optimization level and pipeline strategy primarily
-select this tier's pass composition.
-
-The inner tier begins when the module is ready to serialize as a GPU target. It
-translates the MLIR LLVM dialect to an `llvm::Module`, links embedded bitcode
-libraries, runs the LLVM optimization pipeline selected for the requested
-optimization level, registers/selects the NVPTX target, emits PTX, and returns
-that PTX to the driver for `ptxas` assembly.
+When the inner pipeline finishes, the `gpu.module` contains only `llvm` and `nvvm` dialect operations plus the resolved target attribute. The driver then runs serialization, which is not a pass — it is a context-level translation that walks the `gpu.module`, builds an `llvm::Module` through MLIR's `translateModuleToLLVMIR`, links the embedded libdevice surrogate, runs an LLVM `PassBuilder` pipeline at the driver's chosen `OptimizationLevel`, emits PTX through the NVPTX backend, and invokes `ptxas` to produce cubin.
 
 ```c
-ByteBuffer compile_tileir(ModuleBytecode input, CompileOptions options) {
-    MlirContext ctx = make_tileiras_context();
-    ModuleOp module = parse_tileir_bytecode(ctx, input);
+ByteBuffer serialize_gpu_module(GpuModuleOp gpu, PipelineOptions opts) {
+    NvvmTargetAttr target = cast<NvvmTargetAttr>(gpu->getAttr("nvvm.target"));
+    LLVMModulePtr llvm   = translate_to_llvm_ir(gpu);
 
-    PassManager pm = build_tileiras_pipeline(options);
-    run(pm, module);
+    link_libdevice_surrogate(llvm, target);
+    run_llvm_passbuilder_pipeline(llvm, target, opts.opt_level);
 
-    GpuModule gpu = require_single_gpu_module(module);
-    NvvmTarget target = require_single_nvvm_target(gpu);
-    string ptx = serialize_gpu_module(gpu, target, options);
-
-    return assemble_with_ptxas(ptx, target, options);
-}
-
-string serialize_gpu_module(GpuModule gpu, NvvmTarget target,
-                            CompileOptions options) {
-    LLVMModule llvm = translate_mlir_llvm_to_llvm_ir(gpu);
-    link_external_bitcode_libraries(llvm, options);
-    run_llvm_optimization_pipeline(llvm, target, options.opt_level);
-    return emit_ptx_with_nvptx_backend(llvm, target);
+    StringRef ptx = emit_ptx_with_nvptx_backend(llvm, target);
+    return invoke_ptxas(ptx, target, opts);
 }
 ```
 
-This split is more than an implementation detail. It tells reimplementers where
-the format boundary is: everything before serialization is MLIR dialect
-semantics; everything after serialization is ordinary LLVM/NVVM module
-semantics plus NVPTX code generation. It also explains why pass debugging and
-backend debugging need different tools and different invariants.
+Two consequences of this boundary matter when debugging. The MLIR pass timing report and the action handler trace cover only the work above the boundary. Below it, all timing comes from LLVM's `--time-passes` and from `ptxas` profiling output. The verifier layers reset across the boundary: between-pass verification stops, and what replaces it is the LLVM module verifier plus the NVVM kernel-launch verifier that runs at module-finalize time.
 
 ## Δ vs cicc
 
-`cicc` (the legacy CUDA front-end compiler binary) and `tileiras`
-meet at the LLVM/NVVM layer, not at the source-language layer.
-
-`cicc` enters from CUDA C++ front-end output: textual LLVM IR or LLVM bitcode
-already expressed with NVVM intrinsics and CUDA device ABI conventions.
-`tileiras` enters from CUDA Tile IR bytecode and therefore owns a much larger
-upper half: Tile dialect parsing, TileAA analysis, TileAS scheduling,
-CuTe/CUTLASS materialization, GPU layout decisions, and MLIR-to-LLVM lowering.
-
-Once both compilers hold an LLVM module with NVVM intrinsics, their remaining
-responsibilities converge:
+`cicc` and Tileiras meet at the LLVM/NVVM layer, not at the source-language layer. `cicc` enters from CUDA C++ front-end output: textual LLVM IR or bitcode already expressed with NVVM intrinsics and CUDA device ABI conventions. Tileiras enters from CUDA TileIR bytecode and owns a much larger upper half — Tile dialect parsing, TileAA analysis, TileAS scheduling, CuTe/CUTLASS materialization, GPU layout decisions, and MLIR-to-LLVM lowering. Once both compilers hold an LLVM module with NVVM intrinsics, their remaining responsibilities converge.
 
 | Area | `tileiras` | `cicc` | Shared after convergence |
 |---|---|---|---|
-| Input language | CUDA Tile IR bytecode | CUDA front-end LLVM IR/bitcode | no |
+| Input language | CUDA TileIR bytecode | CUDA front-end LLVM IR/bitcode | no |
 | Tile/CuTe/CUTLASS dialect cascade | yes | no | no |
 | Tile scheduling and layout materialization | yes | no | no |
 | LLVM/NVVM module optimization | yes | yes | yes |
 | NVPTX target and asm printer | yes | yes | yes |
 | PTX-to-cubin handoff through `ptxas` | yes | yes | yes |
 
-The practical rule is simple: documentation under `dialects/`, `passes/`, `scheduler/`, `lowering/`, and most of `mlir-infra/` describes `tileiras` behavior. Documentation under `nvptx-passes/`, `codegen/`, and `libdevice/` describes the shared LLVM/NVPTX backend path unless a page explicitly says otherwise. Exact pass counts are intentionally not repeated here because they vary with optimization level, warp-specialization mode, and pipeline strategy; use `pipeline/full-pass-list-by-opt-level.md` when exact pass ordering matters.
+## Cross-References
+
+[Driver Entry and Optimization Levels](driver-and-opt-levels.md) covers how `--opt-level` resolves to a concrete pipeline. [Pass Manager Internals](pass-manager-internals.md) documents the nesting and dispatch rules these two pipelines rely on. [Pipeline Invariants and Verifiers](invariants-and-verifiers.md) names the three verifier layers that guard the cascade. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) is the right place to look for exact pass ordering. Backend-side documentation lives under `nvptx-passes/`, `codegen/`, and `libdevice/`.

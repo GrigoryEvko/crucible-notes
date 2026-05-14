@@ -17,76 +17,62 @@ The serial generator earns its place by giving the compiler a simple, predictabl
 
 ## Serial Generator
 
-The serial generator runs in four steps that together implement a deterministic dataflow walk. If the caller already produced a refined schedule, the generator reuses it; otherwise it allocates a fresh `Schedule` and root node, walks the region in program order to emit a node per operation, walks it a second time to wire operand edges, then checks the resulting graph for a valid topological order. No resource search, no II selection, no cost ranking on this path.
+The serial generator is a single greedy walk over the dependence DAG. It builds the dependence graph from the region, computes in-degree for every operation, seeds a ready queue with the zero-in-degree roots, and then repeatedly pops a ready operation, emits it at the next free `(stage, order)` position, and decrements its successors' in-degree counters — pushing each newly-ready successor onto the queue. Tie-breaking inside the ready queue is by program order so the output is bitwise deterministic across builds.
 
 ```c
-bool generate_serial_schedule(ScheduleOut *out,
-                              Operation *root,
-                              Schedule *refine_from) {
-    if (refine_from != NULL) {
-        out->schedule = refine_from;
-        out->refined = true;
-        return true;
+bool generate_serial_schedule(Schedule *out, Operation *region) {
+    DependenceGraph g = build_dependence_graph(region);
+    InDegreeMap  in   = compute_in_degree(g);
+    ReadyQueue   ready = collect_zero_in_degree(g);          // initial roots
+    uint32_t     order = 0;
+
+    while (!ready.empty()) {
+        Operation *op = ready.pop_in_program_order();
+        out->stage[op] = 0;                                  // single steady-state stage
+        out->order[op] = order++;
+
+        for (Operation *succ : g.successors(op)) {
+            if (--in[succ] == 0) {
+                ready.push(succ);
+            }
+        }
     }
 
-    Schedule *schedule = allocate_schedule();
-    Node *root_node = schedule->create_root(root);
-
-    walk_region(root, [&](Operation *op) {
-        schedule->create_node(op, root_node);
-    });
-
-    walk_region(root, [&](Operation *op) {
-        for (Value operand : op->operands()) {
-            schedule->add_edge(operand.defining_op(), op);
-        }
-    });
-
-    out->schedule = schedule;
-    out->refined = schedule->is_valid_topological_order();
-    return out->refined;
+    return order == g.node_count();                          // false ⇒ dependence cycle
 }
 ```
 
-The serial generator never builds an RRT, never searches for `II`, and never ranks multiple candidate seats. If validation fails, the caller must pick a stronger strategy or report failure.
+The serial generator never builds an RRT, never searches for `II`, and never ranks candidate seats. It produces a schedule in which every operation lives at stage `0` and runs strictly after its dependences, which is the correct shape for forced-serial regions and for the low-optimisation paths that do not need software pipelining. When the walk does not visit every operation, the input has a dependence cycle and the caller falls back to a stronger strategy or reports failure.
 
 ## Cost-Based Generator
 
-The cost-based generator is an iterative placement algorithm. It extracts candidates, applies dependency and resource constraints, ranks admissible candidates lexicographically, and seats operations while updating the RRT and schedule maps.
+The cost-based generator runs a multi-arm strategy over candidate placement orderings. At each iteration it collects the ready set, dispatches it through the four placement arms documented in [Modulo Scheduler and Rau](modulo-scheduler-and-rau.md) — permute, fuse, retry, cost-based — and seats the candidate whose arm produces the lowest cost. Each arm independently proposes a candidate schedule; the lowest-cost legal one wins. When every arm rejects, the generator returns failure.
 
 ```c
-bool generate_cost_based_schedule(ScheduleGenState *state,
-                                  CandidateSet candidates,
-                                  ConstraintSet constraints,
-                                  ResourceBuilder *resources) {
-    initialize_candidate_state(state, candidates, constraints);
-
+bool generate_cost_based_schedule(ScheduleGenState *state) {
     while (!all_candidates_scheduled(state)) {
         CandidateList ready = collect_ready_candidates(state);
-        if (ready.empty()) {
-            return false;
-        }
+        if (ready.empty()) return false;                           // dependence cycle
 
-        CostVectorList costs = {};
-        for (Candidate c : ready) {
-            if (!passes_hard_constraints(c, constraints, resources)) {
-                continue;
-            }
-            costs.push_back(score_candidate(c, state, resources));
-        }
+        // Each arm proposes a candidate seat. Costs share a common origin so
+        // the arm comparison is meaningful.
+        ArmResult arms[4] = {
+            try_permute     (state, ready),
+            try_fuse        (state, ready),
+            try_retry       (state, ready, state->snapshot),
+            try_cost_based  (state, ready, state->snapshot),
+        };
 
-        stable_sort(costs, compare_cost_vectors);
+        const ArmResult *best = best_cost_arm(arms);               // skips arms that rejected
+        if (best == NULL) return false;
 
-        if (!seat_best_candidate(state, costs, resources)) {
-            return false;
-        }
+        commit_seat(state, best->candidate, best->cycle);
     }
-
     return true;
 }
 ```
 
-The cost vector is lexicographic:
+The cost vector itself is lexicographic:
 
 | Component | Role |
 |---|---|
@@ -104,14 +90,13 @@ The four gates draw on the cost tables documented in the [Blackwell Pipeline 15-
 
 ### G1: Pending-Set Membership
 
-The first gate is the membership probe `!sub_7E30D0(state+392, op)`. It rejects any candidate already on the pending set — an Abseil-layout SwissTable rooted at offset `49 * 8 = 392` of the scheduler state. The probe runs first because it costs a single hash plus a 16-byte slot stride; rejection on this gate holds the op over to the next placement attempt rather than killing it.
+The first gate is a membership probe against an Abseil-layout SwissTable rooted at offset `49 * 8 = 392` of the scheduler state. The table is seeded by the attribute parser alongside the DSU at `state + 112`; the full seeding picture lives in [Schedule Constraint Attributes — Twin Seeding](schedule-constraint-attributes.md#twin-seeding-dsu-and-pending-set). The probe runs first because it costs a single hash plus a 16-byte slot stride, and rejection on this gate holds the op over to the next placement attempt rather than killing it.
 
 ```c
 bool gate_g1_pending_set_clean(SchedulerState *state, Op *op) {
-    /* Membership probe on the "already-scheduled" SwissTable.
-     * H1 mixer 0x9DDFEA08EB382D69, empty sentinel -4096,
-     * tombstone -8192. Returns true when op is NOT yet scheduled. */
-    return sub_7E30D0(state->pending_set /* state+392 */, op) == 0;
+    // Membership probe on the carry-state SwissTable seeded by the attribute
+    // parser. Empty sentinel -4096, tombstone -8192; see container-fingerprints.md.
+    return !pending_set_contains(state->pending_set, op);
 }
 ```
 
@@ -185,35 +170,37 @@ Each gate has a distinct failure response. Treating them uniformly would either 
 
 The G3 RRT veto ties the gate ladder to the cost tables in the slot model — the same global RRT the per-cycle pressure summariser `sub_12CEBF0` reads through the 9-element pool capacity vector is what G3 probes for resource conflicts. The latency view that `sub_12C8DF0` writes into the per-op pool is what the cost reducer reads to produce the ranking the gate ladder iterates over.
 
+## Generator Selection
+
+The driver chooses between the serial and cost-based generators on two thresholds. Small regions and forced-serial regions take the serial path because pipelining cannot help — the compile-time savings outweigh any throughput improvement the cost-based generator could buy. Regions with more than the threshold operation count and at least one resource-bearing op enter the cost-based path because their pipelined throughput dominates compile time.
+
+| Trigger | Selected generator |
+|---|---|
+| `force_serial_execution` attribute on the region | serial |
+| op count below `serial_threshold` (default 8) | serial |
+| no async pipeline, TMA, or WGMMA op present | serial |
+| otherwise | cost-based |
+
+The thresholds are conservative. Falling back from cost-based to serial is correct but slow; the inverse — taking the cost-based path on a region that the serial generator would have handled — is also correct but burns compile time on a search whose result is identical to the serial walk's.
+
 ## Strategy Orchestration
 
-The optimized path is a fixed strategy ladder rather than a single attempt. The driver tries cheap strategies first — a Rau-style refinement, then a deepest-depth retry, then the initial placement — and escalates to heavier cost-based placement only when the cheaper passes refuse the candidate. When even the cost-based pass fails, the driver clears intermediate scheduling state and reruns the initial and cost-based passes from a known-empty starting point. Each rung returns success immediately on a match, so the ladder short-circuits at the first strategy that produces a feasible schedule.
+Inside the cost-based path the driver runs a fixed strategy ladder rather than a single attempt. Cheap strategies run first: a Rau-style refinement, then a deepest-depth retry, then the initial placement. The driver escalates to heavier cost-based placement only when those refuse the candidate. When even the cost-based pass fails, the driver clears intermediate scheduling state and reruns initial and cost-based placement from a known-empty starting point. Each rung returns success immediately on a match, so the ladder short-circuits at the first strategy that produces a feasible schedule.
 
 ```c
 bool run_schedule_strategies(ScheduleGenState *state) {
-    if (try_rau_refinement(state)) {
-        return true;
-    }
-    if (try_deepest_retry(state)) {
-        return true;
-    }
-    if (try_initial_placement(state)) {
-        return true;
-    }
-    if (try_cost_based_placement(state)) {
-        return true;
-    }
+    if (try_rau_refinement       (state)) return true;
+    if (try_deepest_retry        (state)) return true;
+    if (try_initial_placement    (state)) return true;
+    if (try_cost_based_placement (state)) return true;
 
     clear_intermediate_schedule_state(state);
-
-    if (try_initial_placement(state)) {
-        return true;
-    }
+    if (try_initial_placement    (state)) return true;
     return try_cost_based_placement(state);
 }
 ```
 
-The order is pragmatic — cheaper strategies run first, cost-based placement is the most expensive fallback.
+The order is pragmatic. Cheap strategies run first, cost-based placement is the most expensive fallback, and the clear-and-retry tail handles the case where intermediate state accumulated during earlier strategies blocks a feasible schedule that the initial placement would have found from scratch.
 
 ## Constraints Consumed
 

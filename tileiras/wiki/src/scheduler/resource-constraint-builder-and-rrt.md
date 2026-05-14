@@ -2,153 +2,13 @@
 
 ## Abstract
 
-The resource constraint builder turns a candidate TileAS schedule into a resource-feasibility problem. It builds reservation rows for each operation, computes a lower bound on the initiation interval, probes candidate intervals with a Resource Reservation Table, and optionally commits the accepted placement back into the schedule state.
+The resource constraint builder is the pipeline that produces per-op `NodeRRT` footprints and commits chosen placement rows back into the global RRT during `TileASGenerateSchedule`. The reservation-table model itself — bitset rows per cycle, probe-and-commit semantics, the lower-bound formula, and the galloping-plus-binary `II` search — lives in [Modulo Scheduler and Rau](modulo-scheduler-and-rau.md). This page picks up where that one leaves off: how the builder constructs the footprints, how the MII split is computed, and how the apply-mode driver writes accepted rows back into the bitset.
 
-The builder lives in schedule generation, not pipe materialization. It runs while `TileASGenerateSchedule` searches for a resource-feasible modulo schedule. `MaterializeSchedule` later consumes the completed schedule analysis and never repeats the initiation-interval search.
-
-## Reservation Table Model
-
-An RRT carries one row per cycle modulo the candidate initiation interval, each row a bitset of resource classes. An operation owns a footprint table whose rows describe which resources it occupies at each cycle of its duration.
-
-```c
-typedef struct ResourceTable {
-    uint64_t *rows;
-    uint32_t ii;
-} ResourceTable;
-
-typedef struct OperationFootprint {
-    uint64_t *rows;
-    uint32_t duration;
-} OperationFootprint;
-```
-
-Placement runs as a pure probe followed by an explicit commit. The probe checks for conflicts; commit ORs the footprint into the global table.
-
-```c
-bool rrt_can_place(const ResourceTable *global,
-                   const OperationFootprint *op,
-                   uint32_t start) {
-    for (uint32_t k = 0; k < op->duration; ++k) {
-        uint32_t row = (start + k) % global->ii;
-        if ((global->rows[row] & op->rows[k]) != 0) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-void rrt_commit(ResourceTable *global,
-                const OperationFootprint *op,
-                uint32_t start) {
-    for (uint32_t k = 0; k < op->duration; ++k) {
-        uint32_t row = (start + k) % global->ii;
-        global->rows[row] |= op->rows[k];
-    }
-}
-```
-
-The modulo formulation handles footprints longer than `II` because every occupied cycle folds back through `(start + k) % II`. A long instruction therefore conflicts with itself and with other operations across repeated steady-state iterations.
-
-## Apply and Commit Modes
-
-The builder has two modes.
-
-| Mode | Purpose |
-|---|---|
-| apply/check | compute lower bounds, search for a feasible `II`, and record placement data |
-| commit | take an accepted schedule and write the chosen rows/depths into the global maps |
-
-Apply mode is the expensive path. It builds per-block summaries, computes the minimum feasible interval, and searches for the smallest `II` that passes the evaluator. Commit mode is deterministic — it walks accepted block records, finds the first available modulo row for each footprint, commits the row, and records the selected depth.
-
-```c
-bool resource_builder_run(ResourceBuilder *builder,
-                          ScheduleState *schedule,
-                          bool apply_mode) {
-    if (apply_mode) {
-        return compute_and_apply_candidate_schedule(builder, schedule);
-    }
-
-    commit_candidate_schedule(builder, schedule);
-    return true;
-}
-```
-
-## Lower-Bound Calculation
-
-The candidate search starts at the maximum of three bounds.
-
-| Bound | Meaning |
-|---|---|
-| resource bound | maximum resource demand over the scheduler's slot classes |
-| density bound | fine-grained pressure bound for slot groups with fractional capacity |
-| dependency bound | longest per-node dependence-chain depth already known to the scheduler |
-
-```c
-uint32_t compute_minimum_ii(const ScheduleState *schedule) {
-    uint32_t resource = compute_resource_mii(schedule);
-    uint32_t density = compute_fine_density_mii(schedule);
-    uint32_t dependency = compute_dependency_mii(schedule);
-
-    return max3(resource, density, dependency);
-}
-```
-
-The resource component counts demand across the resource-slot vocabulary. The density component captures capacity pressure that no single bit can represent. The dependency component blocks the search from trying intervals that violate recurrence or depth constraints regardless of resource availability.
-
-## Feasible-II Search
-
-The builder searches for the smallest feasible interval with a galloping phase followed by binary refinement. The common case stays fast when the lower bound is already feasible, and a linear scan is avoided when the feasible interval sits far above it.
-
-```c
-bool find_smallest_feasible_ii(SearchResult *out,
-                               FeasibilityFn probe,
-                               uint32_t lower,
-                               uint32_t upper) {
-    uint32_t lo = lower;
-    uint32_t hi = lower;
-
-    while (hi < upper && !probe(hi, out)) {
-        uint32_t next = hi * 2;
-        hi = next < upper ? next : upper;
-    }
-
-    if (!probe(hi, out)) {
-        out->found = false;
-        return false;
-    }
-
-    while (lo < hi) {
-        uint32_t mid = lo + (hi - lo) / 2;
-        SearchResult candidate = {};
-
-        if (probe(mid, &candidate)) {
-            hi = mid;
-            *out = candidate;
-        } else {
-            lo = mid + 1;
-        }
-    }
-
-    out->ii = hi;
-    out->found = true;
-    return true;
-}
-```
-
-The probe callback owns the actual resource placement attempt. It may consult several resource views, but from the search driver's perspective it must behave like a pure predicate — the accepted placement is copied into the output only when the probe succeeds.
+The builder lives in schedule generation, not pipe materialization. `MaterializeSchedule` consumes the completed schedule analysis and never reruns the `II` search.
 
 ## Slot Encoding
 
-The scheduling model uses one-based pipeline slot identifiers. The RRT row bit for a slot is `slot_id - 1`.
-
-```c
-uint64_t slot_mask(uint32_t slot_id) {
-    return 1ull << (slot_id - 1);
-}
-```
-
-The current Blackwell model uses up to 24 slot identifiers, so one 64-bit row covers it. Coarse slots group broad resource families; fine slots model concrete issue and transport pressure. [Blackwell Pipeline 15-Slot Model](blackwell-pipeline-15-slot-model.md) documents the fine-slot taxonomy.
+The scheduling model uses one-based pipeline slot identifiers. The RRT row bit for slot `slot_id` is `1 << (slot_id - 1)`. Blackwell currently uses up to 24 slot identifiers, which fits in one 64-bit row; coarse slots group broad resource families while fine slots model concrete issue and transport pressure. [Blackwell Pipeline 15-Slot Model](blackwell-pipeline-15-slot-model.md) documents the fine-slot taxonomy.
 
 ## Per-Block Summaries
 
@@ -168,7 +28,7 @@ BlockSummary summarize_block(Block *block) {
 }
 ```
 
-Once every block is summarized, the builder reduces them into per-resource pressure counts and feeds those counts into the lower-bound calculation and feasibility probe.
+Once every block is summarised, the builder reduces them into per-resource pressure counts and feeds those counts into the lower-bound calculation and the feasibility probe.
 
 ## Constraint-Builder Pipeline
 
@@ -208,9 +68,29 @@ static inline bool slot_occupied(uint64_t row, uint32_t slot_id) {
 
 ## Soft Constraints and Bit-Row Geometry
 
-When the builder detects that an op would spill if scheduled at its earliest start, it calls `tryAddConstraintToAvoidRegSpilling` at `sub_9762E0` to add a soft constraint that biases the placement driver away from that start cycle. The constraint is a hint, not a hard reject — the placement driver may still seat the op at the original cycle if no cheaper alternative is feasible, and the soft constraint feeds the cost-based arm rather than the legality probe.
+When the builder detects that an op would force a register spill if seated at its earliest legal cycle, it adds a soft constraint that biases the placement driver away from that cycle without making it illegal. The constraint is a cost term, not a legality predicate — the placement driver may still seat the op at the original cycle if no cheaper alternative is feasible, and the bias only ranks candidates that already cleared the hard resource and dependence gates.
 
-The same bit-row geometry resurfaces in the schedule analyzer when it computes stage counts and emits diagnostics. The 24-bit width and the per-cycle qword layout therefore belong to the schedule's serialization contract, not an apply-mode-only detail.
+The cost term encodes as a small integer surcharge attached to the candidate cycle for that specific op. The cost-based arm reads the surcharge as a separate component of its lexicographic cost vector, ranked below the hard resource gate but above structural distance. Multiple spill-bias surcharges for the same op accumulate by addition — the builder caps the accumulated bias so a single op cannot push every cycle out of the feasible region.
+
+```c
+void tryAddConstraintToAvoidRegSpilling(ScheduleState *state, Op *op,
+                                        uint32_t earliest_cycle) {
+    PressureEstimate p = estimate_register_pressure_at(state, op, earliest_cycle);
+    if (p.peak <= p.budget) {
+        return;                          // no spill predicted; no constraint needed
+    }
+
+    // Encode bias as a cost surcharge on the (op, cycle) pair. Range and cap
+    // keep accumulated surcharges from saturating the cost vector.
+    uint32_t surcharge = clamp((p.peak - p.budget) * SPILL_SURCHARGE_WEIGHT,
+                               0, SPILL_SURCHARGE_CAP);
+    cost_surcharge_add(state->cost, op, earliest_cycle, surcharge);
+}
+```
+
+The surcharge is a hint that ranks otherwise-equivalent candidates; it never rejects a seat by itself. A placement that satisfies every hard constraint but carries spill surcharges at every cycle still commits — the schedule is correct, only the register-pressure heuristic is unhappy.
+
+The same bit-row geometry that drives the per-op footprints resurfaces in the schedule analyser when it computes stage counts and emits diagnostics. The 24-bit width and the per-cycle qword layout therefore belong to the schedule's serialisation contract, not an apply-mode-only detail.
 
 ## Helper Table
 
