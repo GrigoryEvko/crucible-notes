@@ -141,16 +141,6 @@ An `AsyncValueImpl` cycles through four observable states across the five constr
 
 The six fields that encode this state machine — `hasValue` at byte 64, `kind` at byte 208, `regionStageKind` at byte 72, `okFlag` at byte 76, `payloadFlag` at byte 78, and the two OR-accumulated `statusBits` dwords at bytes 440 and 444 — are read by absolute offset throughout the scheduler. Reordering any of them breaks `ListSchedule::verify` (`sub_8F5410`), `LoopSchedule::verify` (`sub_8F80E0`), and the dispatch hub `Schedule::verifyStageOrder` (`sub_8F87A0`).
 
-## Reimplementation Invariants
-
-- Allocate every `AsyncValueImpl` from a bump-pointer arena. The embedded DenseMaps hash with `(op>>9) ^ (op>>4)` on the header address; moving instances after construction breaks every probe.
-- Run the 14-line self-pointer initialiser before any subsequent write. Both the inline SSO check in `std::string` and the inline-vs-heap discriminator in `SmallVector` rely on `data == &inline[0]` to identify the inline case.
-- Preserve the dual DenseMap widths (16-byte buckets for `<Op*, i32>`, 48-byte buckets for `<Op*, SmallVector<u64,0>>`). Both share the same hash and sentinels but have different bucket strides; readers index by absolute byte offset.
-- Use BLAKE3 only as an internal 64-bit content key. The driver is unkeyed; the 8-byte digest prefix is not an authentication tag and should never be exposed in persistent artifact metadata.
-- After a digest collision in the intern table, always re-verify by comparing the original key tuple. The 64-bit truncation is short enough that collisions are inevitable on long-running compilations.
-- Preserve the non-standard sentinels of the `sub_3CC1560` family — `qword_5BDD9D8` for tombstone, `unk_5BDD9E0` for empty, `4096` as the "no inline value" return — across any reimplementation of the open-addressing tables. Downstream IR-object code reads the sentinels by name.
-- Never store a process-local pointer as part of a persistent cache key. The BLAKE3 input includes a raw `parent_op` pointer; the resulting digest is meaningful only inside one tileiras process.
-
 ## How to Recognize in a Binary
 
 Three independent fingerprints identify the AsyncValueImpl path with no ambiguity:

@@ -175,20 +175,6 @@ is the `AbstractOperation` kindPtr that ends up at `*(qword*)(op+48)+16` after t
 Same op identity, two sentinels at different indirection levels — a verifier that wants to recognise
 the op needs to pick the right level.
 
-## Reimplementation Invariants
-
-- Every concrete op, type, attribute, dialect, trait, and interface must have a stable TypeID for the
-  lifetime of the context.
-- Static sentinels and Meyers-cached qwords are dispatch-equivalent: hot code compares pointers.
-- Reserve a null-opinfo sentinel for in-flight rewrites; reject fully constructed ops carrying it.
-- Pack sentinels into bands per owning dialect so the linker keeps them dense.
-- Use the Itanium guard byte + qword layout for runtime-cached interface TypeIDs; never roll a custom
-  double-checked-lock variant.
-- Keep the OperationName.opInfo / AbstractOperation.kindPtr split — verifiers test kindPtr, builders
-  pass opInfo.
-- Do not let public documentation depend on private sentinel addresses; the addresses move across
-  builds, the identities do not.
-
 ## How to Recognize in a Binary
 
 Idiom 1 is identified by the address band rather than the content. Sentinels cluster densely in

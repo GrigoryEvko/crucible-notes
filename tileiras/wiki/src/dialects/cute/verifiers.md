@@ -266,19 +266,6 @@ Most layout algebra is pure. Copy atoms, local partitions, fragments, and view c
 - Pure layout algebra remains movable; effectful atom and view operations do
   not.
 
-## Reimplementation Checklist
-
-1. Build a central kind/interface classifier for layout, shape, coord, tile,
-   view, int tuple, memref, and atom types.
-2. Reuse one weak-congruence checker for shape/stride, coord/layout, and
-   local-tile profiles.
-3. Verify divide/product by actually constructing the candidate result.
-4. Keep tuple arithmetic structural and reject unsupported leaves early.
-5. Route target-specific atom legality through atom type interfaces.
-6. Attach MLIR side effects to non-pure view, copy, and fragment operations.
-7. Keep the kind-discriminator slot at `Type+0x88` and dispatch the four
-   verify/print/parse/fold tables by ordinal against the seven-sentinel list.
-
 ## Cross-References
 
 [TypeID Sentinels and Anchors](../../mlir-infra/typeid-sentinels-and-anchors.md) documents the upstream-MLIR sentinel idiom that the `Type+0x88` kind discriminator mirrors at the cute level. [cuTe Layout Algebra and Descriptor Grammar](layout-algebra-and-descriptor-grammar.md) covers the layout primitives whose Types carry these sentinels.

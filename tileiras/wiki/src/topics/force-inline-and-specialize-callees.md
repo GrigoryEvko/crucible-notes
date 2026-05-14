@@ -275,18 +275,6 @@ bool rewrite_matching_calls(Function *old_fn,
 
 Return values are resolved through the same lattice. If every return instruction produces a pointer in the same concrete address space, the result type can be treated as address-space-resolved by later passes.
 
-## Reimplementation Notes
-
-The important compatibility requirements are:
-
-- Preserve user `noinline` for cost-model cases, but allow tileiras-required overrides for kernels and image/sampler handles.
-- Use ABI allocation size and alignment when computing parameter payload, not source-level type size.
-- Treat `384` bytes for parameters and `144` bytes for returns as behavioral thresholds.
-- Use a monotone meet lattice for address-space inference; any conflict becomes poison.
-- Make specialized clones internal and inline-friendly so they do not escape as ABI-visible alternatives.
-- Retarget calls by constructing new IR, not by mutating the callee pointer in place when operand address spaces change.
-- Bound clone attempts so recursive call graphs cannot keep cloning forever.
-
 ## Diagnostics and Knobs
 
 The implementation has debug output for the force-inline reason and for interprocedural memory-space specialization. The useful user-facing controls are the IPMSP dump switch and clone-budget switch. A reimplementation should provide equivalent observability: initial worklist size, clone suppression, affected caller count, and successful return-address-space resolution are the events needed to debug this pass family.

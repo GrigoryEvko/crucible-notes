@@ -171,13 +171,3 @@ The renamed print op preserves the public operation role but uses `cuda_tile.pri
 tileiras parsing, bytecode, and diagnostics. The absent `atan2` operation is the only listed op
 from the 13.2 surface; it should not be accepted by a strict tileiras-compatible 13.1 parser.
 
-## Reimplementation Notes
-
-A compatible implementation should:
-
-- expose the 13.1 operation set and reject `atan2`
-- accept `cuda_tile.print` as the tileiras mnemonic for the public `print_tko` role
-- implement `cuda_tile.string` for print operands if reproducing tileiras bytecode behavior
-- keep assumption predicate attributes wired into `cuda_tile.assume`
-- keep `TileView` checks on view-consuming operations
-- treat `f8E8M0FNU` as an alias dependency, not as a practically accepted element type

@@ -426,19 +426,3 @@ void expand_single_tiled_op(TiledOp op, StageMap stages, Rewriter *rw) {
 }
 ```
 
-## Reimplementation Invariants
-
-- Keep pipeline operation builders region-aware and always terminate regions with pipeline yield.
-- Preserve `atom`, memory semantic, memory scope, in-bounds, padding, and operand segment attributes.
-- Build TMA descriptors as separate SSA operations.
-- Keep arithmetic helper builders thin and predictable.
-- Materialize schedules from preserved analysis, not by rerunning schedule generation.
-- Use stage-local operand rewiring when cloning tiled operations.
-
-## Reimplementation Checklist
-
-1. Register all operation families listed above.
-2. Implement composite builders for pipeline regions, tiled memory, dot, and schedule expansion.
-3. Implement thin arithmetic helpers for materialization code.
-4. Preserve semantic attributes through every builder.
-5. Verify built operations immediately when a composite builder emits multiple dependent ops.

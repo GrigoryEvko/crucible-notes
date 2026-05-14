@@ -93,18 +93,6 @@ GEPs are the only opcode that re-seeds the work-list: a GEP of the by-value stru
 
 When the rewrite path involves the struct's address rather than its contents, the materializer skips the load and goes straight to an address-space cast. Opcode 49 covers the generic-pointer case; opcode 50 is delegated to `sub_28402E0`, which constructs the global-space cast inline and inserts it at the rewrite site. Both casts produce a new SSA value that feeds back into the work-list as the replacement for the next use down the chain.
 
-## Reimplementation Invariants
-
-- Seed the work-list from every by-value struct argument of the function, one entry per use edge.
-- Carry the use edge in each work-item; never key the rewrite on the user instruction alone.
-- Re-seed the work-list from GEP results; terminate on Load, Store, and Call without re-seeding.
-- Emit `LDPARAM` (opcode 101) before `CVT_GENERIC_TO_AS` (opcode 80) on every scalar materialization.
-- Route generic-pointer address casts through opcode 49 and global-pointer address casts through `sub_28402E0`
-  (opcode 50).
-- Bail with a diagnostic on unrecognized user opcodes rather than leaving the use-graph partially rewritten.
-- Respect `byte_5B6CAC0`: when zero, the pass is a no-op and by-value struct passing is preserved.
-- Honor the `"opt-byval"` cl::opt as the master enable flag.
-
 ## Cross-References
 
 [Modulo Scheduler and Rau-Style Placement](../scheduler/modulo-scheduler-and-rau.md) documents the scheduler that

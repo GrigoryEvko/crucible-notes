@@ -307,14 +307,3 @@ bool lower_atomic(SDNode *node, DAG *dag, SmallVector<SDValue> *results) {
 
 Signedness does not change the overall DAG shape. It threads into final instruction selection so the backend picks signed or unsigned PTX mnemonics — `atom.global.min.s32` versus `atom.global.min.u32`.
 
-## Reimplementation Notes
-
-The high-risk compatibility points are:
-
-- Use deterministic param symbol names for both formal and call lowering.
-- Preserve kernel grid-constant byval values in param address space.
-- Mark synthetic indirect-call wrappers with `nvptx-libcall-callee = "true"`.
-- Break aggregates and vectors into ABI-legal value parts before storing into param space.
-- Keep call sequences explicitly chained: start, stores, callee target, result extraction, end.
-- Return "not handled" from custom lowering for opcode gaps so generic legalization still runs.
-- Gate vector atomics on the target architecture and produce a hard diagnostic when unsupported.

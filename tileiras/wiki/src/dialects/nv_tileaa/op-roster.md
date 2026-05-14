@@ -337,17 +337,3 @@ void lower_queue_region(QueueRegion region, PipelineBuilder builder) {
 - TMA eligibility attributes are promises to later lowering, not proof that TMA
   must be emitted.
 
-## Reimplementation Checklist
-
-1. Register the operation names by semantic family and keep their textual
-   spelling stable.
-2. Implement generic trait verification for simple elementwise and shape ops.
-3. Add custom verifiers for `dot`, convolution tile ops, function-like ops,
-   `execute`, `yield`, assumption predicates, and floating conversion.
-4. Preserve memory tokens through every memory-effecting operation.
-5. Canonicalize shape-only wrappers before scheduling so TileAS sees simple
-   producer and consumer shapes.
-6. Lower queues and plugins only after resource requirements and layout facts
-   are available.
-7. Treat debug textual IR as diagnostic output, not as a stable serialization
-   format.

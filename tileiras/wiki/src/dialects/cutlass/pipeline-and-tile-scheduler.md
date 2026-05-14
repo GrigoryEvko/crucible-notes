@@ -529,12 +529,3 @@ Fixup ops are epilogue ops. They do not need to live inside the pipeline async r
 - StreamK workspace sizes and scheduler kind agree.
 - StreamK fixup uses release/acquire-style ordering around partials.
 
-## Reimplementation Checklist
-
-1. Implement pipeline state and mbarrier lowering before scheduler lowering.
-2. Keep `switch_by_executor` as a semantic executor partition.
-3. Model scheduler handles and work-tile-info as typed values.
-4. Implement data-parallel, static-persistent, and StreamK as separate policies.
-5. Keep StreamK workspace allocation and fixup target-aware.
-6. Verify scheduler kind compatibility wherever params, handles, and work info
-   meet.

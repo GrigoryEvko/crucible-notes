@@ -329,11 +329,3 @@ For diagnostic output, printers should prefer the basis notation users can read:
 - Rich layout candidates carry swizzle and assignment metadata; simple parser
   candidates do not.
 
-## Reimplementation Checklist
-
-1. Implement a recursive shape/stride tree, not a flat-only layout.
-2. Parse descriptors with explicit invalid states and diagnostics.
-3. Normalize layouts before interning or comparing them.
-4. Preserve hierarchy through composition, divide, and product.
-5. Keep parser-local candidates separate from layout-assignment candidates.
-6. Round-trip descriptors through parse and print tests.

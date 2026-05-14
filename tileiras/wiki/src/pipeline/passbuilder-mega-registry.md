@@ -79,13 +79,3 @@ TileIR MLIR passes are scheduled by the Tileiras pipeline builder. LLVM PassBuil
 after lowering reaches LLVM/NVVM IR or when a textual LLVM pipeline is parsed. Do not expect a pass
 listed here to run merely because it is registered.
 
-## Reimplementation Checklist
-
-1. Register passes by IR unit, not in one flat namespace.
-2. Keep textual names stable for user-supplied pipelines.
-3. Distinguish registry availability from default scheduling.
-4. Document NVIDIA-specific LLVM passes separately from MLIR TileIR passes.
-5. Reuse upstream LLVM pass names where behavior is unchanged.
-6. Give target-specific passes explicit NVVM/NVPTX names.
-7. Report unknown textual pass names with the pipeline level.
-8. Keep registry setup independent of per-invocation pipeline construction.

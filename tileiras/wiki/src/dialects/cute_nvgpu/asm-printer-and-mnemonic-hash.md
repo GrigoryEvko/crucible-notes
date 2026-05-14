@@ -281,16 +281,3 @@ The length gate collapses the 27-way decision into a constant-time per-bucket lo
 - The unknown-type diagnostic uses two literal spaces between `unknown` and `type` and
   wraps both the bad token and the dialect name in backticks.
 
-## Reimplementation Checklist
-
-1. Implement all 27 zero/parameterized type mnemonics in the documented walk order.
-2. Generate the length-keyed packed-XOR compare sequence per entry; loads may be unaligned.
-3. Add parameter printers and parsers for `smem_desc_view`,
-   `atom.universal_copy`, and atom integer types.
-4. Implement the `atom.i<N>[_divby_<M>]` sub-walk after every literal arm.
-5. Key the SM120 arm case-sensitively against the uppercase `"SM120.mm"` qword.
-6. Keep memory order and memory scope fields optional.
-7. Reject `#cute_nvgpu.*` dialect attributes unless a future dialect version
-   explicitly adds them.
-8. Add deterministic alias hints for memrefs, copy atoms, and MMA atoms.
-9. Preserve the verbatim two-space `unknown  type` diagnostic and the backtick wrapping.

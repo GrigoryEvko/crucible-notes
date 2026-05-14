@@ -268,14 +268,3 @@ NvptxTarget build_target_from_nvvm_attrs(Module module) {
 
 Missing or contradictory attributes here are silent disasters: the backend still receives syntactically valid LLVM IR, but generates code for the wrong target contract.
 
-## Reimplementation Checklist
-
-Treat `nvvm` as a strict boundary dialect in any reimplementation:
-
-- define operations for the PTX/NVVM intrinsic families needed by the upper pipeline,
-- attach verifiers for shape, address-space, memory-ordering, and target-gating constraints,
-- implement a complete NVVM-to-LLVM conversion table,
-- preserve target attributes from `gpu.module` through LLVM module creation,
-- lower kernel markers into LLVM/NVPTX-visible kernel entry metadata,
-- reject unsupported target operations before instruction selection,
-- ensure no `nvvm.*` operations survive after LLVM materialization.

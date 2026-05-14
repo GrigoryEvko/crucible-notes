@@ -852,18 +852,6 @@ SDNode *handle128bAtomic(SDNode *n) {                                     /* pat
 
 The three patches share a structural property worth calling out. Each sits at a single, well-defined dispatcher arm rather than scattering across the selector, and each returns a poison SDNode marked `IsErr` on failure rather than falling through to the MatcherTable. A reimplementation can drop these arms in or out independently without disturbing the rest of the selector, and a test suite can assert the exact diagnostic strings without worrying about ordering against unrelated cases. The `cvt_packfloat` validator reuses the same nibble-decode shape the case-`0x66` FMA selector uses for its flag-bit test, suggesting both patches were introduced through the same internal mechanism even though they live in different dispatcher layers. See [NVPTX Subtarget and Feature Matrix](nvptx-subtarget-and-feature-matrix.md) for the subtarget byte layout backing `cc.major`, `cc.minor`, and the `tmem` feature byte at `unk_5BEBD51`.
 
-## Reimplementation Notes
-
-The highest-risk compatibility points are:
-
-- Preserve the fast-selector then MatcherTable fallback order.
-- Treat unsupported architecture cases differently from ordinary non-matches: unsupported cases diagnose, ordinary non-matches fall back.
-- Use saturating cost arithmetic in recursive matcher scoring.
-- Keep tensor-memory selection behind explicit subtarget feature checks.
-- Preserve `unsafe-fp-math` handling for FMA FTZ selection.
-- Preserve diagnostic strings for target-gated intrinsics where tests depend on exact text.
-- Decode or supply the AsmWriter mnemonic/register tables before emitting PTX.
-
 ## Appendix: NVPTXISD Opcode Map
 
 Every `SDNode` carries a 16-bit `SDNode::NodeType` field whose numeric value selects between upstream LLVM `ISD::` opcodes and the NVPTX-private `NVPTXISD::` extensions. The three selectors in Tileiras — the `INTRINSIC_W_CHAIN` dispatcher, the load/store vector dispatcher, and the MatcherTable cost scorer — each consume a disjoint slice of this numeric space. Together they cover every opcode value the NVPTX backend can emit. The full upstream LLVM `ISD::*` enum names live in `llvm/include/llvm/CodeGen/ISDOpcodes.h`; the NVPTX-private additions live in `llvm/lib/Target/NVPTX/NVPTXISD.h`. Tileiras carries a fork of both headers, fingerprinted by the `LLVM21.0.0git` producer string.
@@ -927,9 +915,3 @@ The MatcherTable cost scorer at `sub_1AAFA40` mixes upstream LLVM opcodes with N
 | `0x150` | `NVPTXISD::CallArg` | call-arg pattern family |
 | `0x170` | `NVPTXISD::CallPrototype` | call-prototype pattern family |
 
-### Reimplementation Invariants
-
-- Keep the three dispatchers numerically disjoint; collisions between them produce silent miscompiles because the wrong handler will emit instructions for the wrong opcode shape.
-- Preserve the scalar-branch list inside `SelectLoadStoreVector`; folding those opcodes back into the primary jump table changes their fallback behaviour when `hasVecLDST` is off.
-- Treat the three negative opcode values as opaque reservation slots; do not renumber them without coordinating with the binary's `LoadV2_Tmem` / `StoreV2_Tmem` pattern entries.
-- When extending the MatcherTable scorer, inline NVPTX-private opcodes rather than dispatching out, so cost arithmetic stays inside the saturating scorer.

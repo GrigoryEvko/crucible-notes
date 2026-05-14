@@ -260,11 +260,3 @@ After lowering the executable load becomes a `cp.async.bulk.tensor`-style op wit
 - TMA load completion is ordered through an mbarrier.
 - Im2col and multicast modes are architecture-gated.
 
-## Reimplementation Checklist
-
-1. Model descriptors as typed records with explicit fields.
-2. Verify descriptor rank, element width, box sizes, strides, and swizzle.
-3. Represent non-exec TMA atoms separately from executable atoms.
-4. Bind mbarrier, cache, and multicast state only after partitioning verifies.
-5. Lower descriptor mutation through field-specific operations.
-6. Keep TMA rank and im2col/multicast feature gates target-aware.

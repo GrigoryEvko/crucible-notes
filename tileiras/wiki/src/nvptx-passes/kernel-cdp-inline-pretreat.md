@@ -132,17 +132,6 @@ void pretreat_module(Module module) {
 }
 ```
 
-## Reimplementation Invariants
-
-- Register all ten short names through a single registration sub so external pass-name lookups stay consistent.
-- Centralize `isKernelFunction` in one header and route every kernel check through it.
-- Treat the four-criteria predicate as a disjunction; never short-circuit on calling convention alone.
-- Keep the CDP stub names in a data table indexed by CDP variant, not hardcoded in the expander.
-- Re-resolve every `cudaLaunchDevice` target through `isKernelFunction` before emitting a stub call.
-- Emit the `"not AlwaysInline into "` Remark whenever forced inlining fails; never silently downgrade.
-- Keep the nineteen kernel-info metrics in their fixed order.
-- Run pretreat before verification, address-space inference, and argument lowering.
-
 ## Cross-References
 
 [NVPTX Pass Pipeline Overview](pass-pipeline-overview.md) shows where this cluster sits in the full NVPTX schedule. [Kernel Argument Elimination](kernel-arg-eliminator.md) covers the downstream consumer of `nvvm.kernel` attributes. [CDP Runtime ABI](../runtime/cdp-runtime-abi.md) documents the stub signatures the expander targets.

@@ -180,24 +180,6 @@ bool search_with_probe(SearchOutput *out,
 
 Several helpers run alongside `Schedule::solve` on the scheduling-adjacent lowering path. Persistent-loop construction emits the canonical widened-index `scf.for` used by persistent kernels; shape verification checks that problem shape, tile shape, and cluster-group agree; result-type verification keeps work-tile info results in one consistent representation; generic work-tile info construction adapts async values and CUTLASS work-tile descriptors. None of them participate in the solve itself, but each enforces a contract that scheduling and materialization assume — failing any of these checks marks the schedule invalid before the solver runs.
 
-## Reimplementation Invariants
-
-- Keep II/resource search in schedule generation, not materialization.
-- Keep `Schedule::solve` deterministic: sort by `(stage, order)` and use stable tie behavior.
-- Use disjoint sets only for producer equivalence classes tied to the same original value.
-- Emit `Pipe_` and `Mutex_` values from preserved schedule analysis.
-- Treat resource feasibility as a hard gate before cost ranking.
-- Build structural distance closure per generation candidate and discard it after placement.
-
-## Reimplementation Checklist
-
-1. Implement schedule generation and materialization as separate passes.
-2. Publish schedule analysis from generation and read it from materialization.
-3. Implement `Schedule::solve` as classify, close, union, sweep, emit.
-4. Implement cost evaluators only in the generation path.
-5. Preserve lexicographic cost ordering: hard resource gate, pipe pressure, structural distance.
-6. Test that materialization produces the same `Pipe_` graph when analysis is unchanged.
-
 ## `Schedule::solve` Body (`sub_8EEE70`)
 
 The previous section described `Schedule::solve` as five abstract steps. The actual implementation in `sub_8EEE70`
@@ -345,18 +327,6 @@ Neither the `Mutex_` constructor (`sub_8E0070`) nor the `Pipe_` flavour-B constr
 this branch — those primitives are materialised earlier by the walker `sub_8EAD70`, which runs before the per-pair
 solve trampoline. The trivial schedule means "ship the consumer with no producers and let later passes
 diagnose the missing dataflow", not a recovery attempt.
-
-### Reimplementation Invariants for the Body
-
-- Construct all five tables and the UF bucket array on the stack frame; do not heap-allocate the table headers.
-- Seed the UF forest from the constraint-attribute DSU at `Schedule+0x70` — do not rebuild it from scratch.
-- Stamp `parentMap[op] = leader` in topological order during phase 2; later phases assume this invariant holds.
-- Run the cheap placement driver before the cost-based generator; do not invert the order.
-- Use the lexicographic `(stage, order)` comparator with no resource-row tie-breaker.
-- Set `Schedule.flags & 4` exactly when the zero-producers fallback fires; downstream passes use this bit to
-  decide whether to diagnose a missing schedule or accept the trivial one.
-- Free every table and every UF overflow tail in the finalize phase; the eight distinct free sites are not
-  redundant.
 
 ## Dual-RRT Cost Evaluators
 
@@ -530,21 +500,6 @@ never appears as a real cost in either context. Inside the distance matrix it me
 ops" and survives the Floyd-Warshall relaxation; elsewhere in the scheduler the same value marks snapshot-dead
 retry-arm entries. Reimplementations must keep the two roles separate — some downstream cost combiners would
 otherwise treat the snapshot-dead value as a finite cost and mis-rank candidates.
-
-### Reimplementation Invariants for the Cost Evaluators
-
-- Use the same exponential-then-binary driver `sub_988080` for both evaluators; do not specialise the search per
-  evaluator. The lambdas `sub_987E70` and `sub_987EE0` are the only points of variation.
-- Read the per-pool caps `4` and `3` from indices `1` (TMEM) and `6` (named-barrier) of the 9-element
-  pool-capacity vector; do not inline the caps anywhere else.
-- Build the all-pairs distance matrix exactly once per generation candidate via `sub_98BEE0`; discard it before
-  control returns to `Schedule::solve`.
-- Initialise every distance-matrix cell with `0x7FFFFFFF` before relaxation; the unreachable-pair signal must
-  survive Floyd-Warshall untouched.
-- Treat pipe-slot as the hard legality gate and bank-pressure as the preference term. Inverting the order
-  changes which candidates the scheduler picks under tied legality.
-- Keep the snapshot-dead `0x7FFFFFFF` and the distance-matrix `0x7FFFFFFF` in separate code paths; do not let a
-  snapshot-dead value flow into a distance comparison or vice versa.
 
 ## Usage and Contract
 

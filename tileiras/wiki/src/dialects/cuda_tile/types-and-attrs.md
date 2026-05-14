@@ -476,11 +476,3 @@ free to choose.
 - Assumption predicates are verifier-checked before they can justify a rewrite.
 - Optimization hints must be explicit and known to the verifier.
 
-## Reimplementation Checklist
-
-1. Implement concrete type parsers and verifiers before operation parsing.
-2. Keep element-type predicates centralized so ops cannot diverge.
-3. Treat assumption predicates as typed attributes with verifier hooks.
-4. Reject unknown optimization-hint architecture keys and operation keys.
-5. Keep debug attributes optional and semantically inert for non-debug builds.
-6. Keep implementation-specific helper types out of portable producer output.

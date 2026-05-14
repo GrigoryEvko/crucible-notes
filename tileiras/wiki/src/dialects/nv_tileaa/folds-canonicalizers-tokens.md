@@ -424,14 +424,3 @@ correctness property the queue was carrying.
 - Token lowering may choose any compact representation that preserves join and
   successor ordering.
 
-## Reimplementation Checklist
-
-1. Run generic canonicalization before TileAS layout assignment.
-2. Keep dot folding centralized so integer signedness and floating accumulation
-   rules cannot diverge from verification.
-3. Normalize pointer offsets before fusing `addptr`.
-4. Treat constant-false memory masks as token rewrites, not as plain erasure.
-5. Preserve relative order when pruning queue or pragma results.
-6. Lower tokens only after async barrier resources are known.
-7. Reject plugin or queue lowering when resource requirements cannot be
-   represented by the selected target model.

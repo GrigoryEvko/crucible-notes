@@ -268,13 +268,3 @@ These passes expose useful controls in debugging and testing builds:
 | Propagate-only restrict mode | Reapplies already-stamped scopes after another pass creates new derived values. |
 | Multi-level restrict mode | Follows `T**` and deeper pointer chains when frontend metadata requested it. |
 
-## Reimplementation Checklist
-
-1. Model global, shared, constant, local, tensor-memory, and distributed-shared as distinct spaces.
-2. Use monotonic voting for inter-procedural specialization.
-3. Clone helpers only when at least one generic pointer argument has a concrete vote.
-4. Mark specialized clones internal and inlineable.
-5. Rewrite function-local generic pointers only on unambiguous provenance.
-6. Preserve explicit frontend address-space attributes when present.
-7. Emit diagnostics for illegal atomic and WMMA state-space combinations.
-8. Generate alias scopes for `__restrict__` and propagate them to derived pointers.

@@ -257,21 +257,6 @@ boundaries. The diagnostic engine documented in
 directly, but verifiers that emit diagnostics universally key their messages on the missing
 interface name rather than on a concrete class.
 
-## Reimplementation Invariants
-
-1. Represent interfaces as 16-byte sorted entries keyed on the TypeID address from the sentinel
-   bands. Use the same pointer ordering at insert and lookup time.
-2. Concept slot 0 is the destructor; the remaining slots are the methods in declaration order. No
-   runtime name resolution.
-3. Treat a `NULL` lookup result as "capability not supported". Verifiers should test for `NULL`
-   before chaining a method call.
-4. Allow replace-in-place on registration so a downstream dialect can override an upstream binding.
-5. Register interface implementations during dialect initialisation, before any pass observes the
-   object. The map is write-once thereafter.
-6. Use Idiom-1 sentinels for ABI-stable interfaces (those defined by a fixed dialect) and Idiom-2
-   Meyers slots for interfaces whose existence depends on a runtime registration. See
-   [TypeID Sentinels and Anchors](typeid-sentinels-and-anchors.md).
-
 ## Cross-References
 
 [TypeID Sentinels and Anchors](typeid-sentinels-and-anchors.md) catalogues the sentinel addresses

@@ -288,24 +288,3 @@ The CUDA driver encodes host-born descriptors. Device-born descriptors use tenso
 
 Allocation alignment is stricter than the live record size because bulk tensor-map writes operate on a larger transaction width. A reimplementation must distinguish record alignment from allocation alignment.
 
-## Reimplementation Invariants
-
-- Run TMA lowering after load/store layout assignment.
-- Keep token-ordered memops valid until async/TMA lowering consumes them.
-- Count host and device descriptors before rewriting the kernel ABI.
-- Mark appended descriptor arguments as grid constants.
-- Keep descriptor indices within the recorded host/device counts.
-- Reject host-separated descriptors that depend on structured control flow.
-- Legalize TMEM-crossing copies only after layouts and aliases are stable.
-- Distinguish host-born descriptors from device-born descriptors.
-
-## Reimplementation Checklist
-
-1. Verify all tiled memops before rewriting them.
-2. Rewrite eligible tiled operations to async TMA operations and assign descriptor indices.
-3. Hoist host descriptors into a paired host module when required.
-4. Extend the kernel ABI with descriptor pointer arguments.
-5. Emit descriptor-count attributes on both device and host sides.
-6. Compile and attach host-code object bytes for descriptor callbacks.
-7. Legalize tensor-memory boundary copies for Blackwell.
-8. Keep tensormap mutators scoped to device-born descriptors.

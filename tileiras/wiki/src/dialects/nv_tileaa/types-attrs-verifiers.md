@@ -317,13 +317,3 @@ LogicalResult verify_float_conversion(FpToFpOp op, Target target) {
 - Function, plugin, and queue attributes must remain structured until their
   symbols and resource requirements have been resolved.
 
-## Reimplementation Checklist
-
-1. Implement stable parsers and printers for every attribute spelling.
-2. Collapse legacy and canonical compute-capability spellings internally.
-3. Keep assumption predicates as typed attributes with explicit verifier hooks.
-4. Validate element-type tuples through a central legality table.
-5. Keep memory-policy attributes separate from memory-token ordering.
-6. Verify function-like, plugin, and queue symbols before TileAS lowering.
-7. Reject block-scaled or tensor-memory forms on targets that cannot execute
-   them.

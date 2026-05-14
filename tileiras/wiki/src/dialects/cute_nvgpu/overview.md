@@ -100,21 +100,6 @@ A correct verifier should reject invalid target combinations early:
 
 These invariants are easiest to enforce while the atom name is still present. Once the op has become an NVVM intrinsic the diagnostic context shrinks, and the original layout intent may already be gone.
 
-## Reimplementation Checklist
-
-Start with `cute` layout consumption and target-tier verification. Add MMA atoms next — they exercise the core shape and element-type tables. Then add TMA and descriptor lowering. Save TMEM lifecycle for last, because tensor-memory allocation interacts with pipeline stages and agent roles, and gets messy without solid pipeline scheduling and memory ordering already in place.
-
-Required pieces:
-
-- SM-tier-aware operation names and verifier tables,
-- MMA shape and element-type validation,
-- sparse and block-scaled MMA metadata validation,
-- TMA descriptor view construction,
-- async tensor-memory load/store/gather/scatter lowering,
-- TMEM allocation and permit-lifecycle operations for Blackwell targets,
-- kernel-marker rewrite to the NVVM entry-point marker,
-- lowering from `cute_nvgpu` atoms into `nvgpu` and `nvvm`.
-
 ## If You Know CUTLASS (open source) — cross-walk
 
 For readers fluent in `cutlass/arch/*.hpp` and the per-SM atom traits in open-source CUTLASS:

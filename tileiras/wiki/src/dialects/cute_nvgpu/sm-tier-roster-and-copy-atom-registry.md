@@ -131,11 +131,3 @@ Consumer Blackwell block-scaled MMA has no TMEM dependency. It carries two scale
   corresponding WGMMA, TMA, or TCGEN instruction sequence.
 - Target verification rejects atoms whose tier exceeds the selected target.
 
-## Reimplementation Checklist
-
-1. Define MMA, copy, and prefetch atom interfaces before registering concrete
-   atom types.
-2. Keep the textual tier spelling stable, including `SM120.mma_bs`.
-3. Implement target-tier gating in verifiers, not only in lowering.
-4. Route WGMMA, UMMA, TMA, TMEM, and LDSM/STSM through distinct atom contracts.
-5. Keep descriptor-carrying types explicit until final NVGPU/NVVM lowering.

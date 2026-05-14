@@ -226,12 +226,3 @@ debugging, not persistent IR. Round-tripable IR always uses the normal
 - cuTe layout values are parsed and printed as attributes.
 - Debug dense-element output is not treated as stable assembly.
 
-## Reimplementation Checklist
-
-1. Use declarative assembly formats for ordinary arithmetic, shape, conversion, and control-flow operations.
-2. Implement the five custom `*_tko` printers — `load_view_tko`, `store_view_tko`, `atomic_cas_tko`, `atomic_rmw_tko`, `make_token` — with the per-op elided-attribute lists.
-3. Implement the 5-path constant result-name algorithm with a `SmallString<32>` scratch buffer for the integer fallback.
-4. Centralize enum keyword parsing and printing.
-5. Keep custom attribute elision symmetric between printer and parser.
-6. Route every concept-model `getDialectNamespace` call to the single cached `"cuda_tile"` `StringRef`.
-7. Keep log-only dense payload printers separate from textual IR round-trip printers.

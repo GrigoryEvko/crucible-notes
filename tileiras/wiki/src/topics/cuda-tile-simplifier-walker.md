@@ -246,18 +246,3 @@ void append_dense_elements_debug_string(StringBuilder *out,
 }
 ```
 
-## Reimplementation Notes
-
-A compatible simplifier should preserve the following contracts:
-
-- Keep the expression IR private; do not use MLIR `Operation *` as the fold record.
-- Memoize by expression node and cache mode so shared SSA subgraphs are folded once.
-- Treat sentinel expression kinds and reserved dense-element type codes as bugs.
-- Bound recursion and fall back to conservative materialization when the bound is exceeded.
-- Re-emit public `cuda_tile.*` operations only through canonical builders and uniquers.
-- Map the local binary-arith kind through `dword_4F99CE0` before any public-op lookup; never expose
-  the simplifier's internal kind to the materialiser.
-- Pair uniquer and builder so the uniquer fronts every materialise call and the builder runs only
-  on a uniquer miss.
-- In the materialiser, call `replaceAllUsesWith` before `erase`; never erase a def with live uses.
-- Keep the DenseElements printer debug-only; it should not run during normal folding.

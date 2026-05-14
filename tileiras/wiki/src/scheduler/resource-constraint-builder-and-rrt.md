@@ -227,27 +227,6 @@ The same bit-row geometry resurfaces in the schedule analyzer when it computes s
 | `sub_989BE0` | — | 24-slot per-op apply driver |
 | `sub_9762E0` | — | `tryAddConstraintToAvoidRegSpilling` soft-constraint hook |
 
-## Reimplementation Invariants
-
-- Always probe before committing a resource footprint.
-- Fold operation footprints modulo `II`; do not special-case long operations by truncating them.
-- Start the search at the maximum of resource, density, and dependency bounds.
-- Use deterministic iteration order when reducing per-block summaries.
-- Encode row bits as `slot_id - 1` and test them with the `shl`/`bt` idiom.
-- Store per-cycle rows as contiguous qwords at `+80, +88, +96, ...` on the block record.
-- Keep apply/check mode separate from commit mode and gate them on the build-mode flag.
-- Treat an infeasible upper bound as schedule-generation failure, not as a request to emit partial IR.
-
-## Reimplementation Checklist
-
-1. Build per-operation footprints from the Blackwell slot model.
-2. Summarize per-block resource tags deterministically.
-3. Compute resource, density, and dependency lower bounds via the three-way MII split.
-4. Search for the smallest feasible `II` with galloping plus binary refinement.
-5. Commit accepted rows with OR semantics into the qword stack at `+80, +88, +96, ...`.
-6. Record chosen depth and slot information for later schedule analysis.
-7. Add soft spill-avoidance constraints through the `tryAddConstraintToAvoidRegSpilling` hook.
-
 ## Usage and Contract
 
 The builder runs inside `TileASGenerateSchedule`, invoked twice per schedule attempt — once in build mode (`a3 == 0`) to materialise per-op footprints and once in apply mode (`a3 == 1`) to commit accepted rows. Build mode consumes the per-op slot identifier, duration, and capacity-pool counts produced by the Blackwell slot classifier, plus the dependence graph for the MII split. Apply mode consumes the accepted `(stage, order)` placement and writes the chosen footprint rows into the global RRT at qword offsets `+80, +88, +96, ...` on each block record. The builder publishes the smallest feasible `II`, the per-op start cycles, and the populated RRT into the surrounding `ScheduleState`; downstream consumers — the placement driver, the cost evaluators, and the materializer — read those fields without rerunning the search.

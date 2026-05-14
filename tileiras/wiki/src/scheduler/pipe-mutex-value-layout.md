@@ -46,15 +46,6 @@ Verifier failure takes a different path. Each verifier emits a diagnostic throug
 
 The materialization pass `MaterializeSchedule` is the only caller, and it invokes the constructors after `Schedule::solve` has emitted its producer-consumer groupings. Each constructor takes the parent operation pointer (the source of the AWS attribute dictionary), the producer-side scheduling info already written by the modulo scheduler, and — for the two `Pipe_` flavours — the ring-buffer depth requested by upstream buffer assignment. The IR-visible name string, the `(stage, order)` pair at offsets `+440` / `+444`, and the consumer payload at `+328` are the public outputs that downstream verification, printing, and lowering passes read. Allocation must come from a bump-pointer arena because the embedded `DenseMap<Operation*, T>` instances hash on the header address — relocating the header after construction silently breaks every later probe.
 
-## Reimplementation Invariants
-
-- Allocate every header from a bump-pointer arena via `sub_44A8C20(0x328)`. The embedded DenseMaps hash on the header address; relocation after construction breaks every later probe.
-- Run the 14-line self-pointer prologue before any specialisation writes. The inline-vs-heap discriminators on the `SmallString` and `SmallVector` heads rely on `data == &inline[0]`.
-- Preserve the IR-visible name strings exactly: `"Mutex_"` for `sub_8E0070`, `"Pipe_"` for both `sub_8E9450` and `sub_8EA0B0`. The trailing counter is appended at print time and is not stored in the header.
-- Write `nv_tile.aws.stage` into byte offset `+440` and `nv_tile.aws.order` into `+444`. The schedule comparator `sub_8F7900` reads them by absolute byte offset.
-- Run the three verifiers `sub_8F5410`, `sub_8F80E0`, `sub_8F87A0` after construction and before the emit phase. Failure must OR `4` into `pass[5]`, not abort the pass.
-- Treat allocation failure as fatal. Adding a NULL check in the constructor changes the surface from process abort to silent corruption and is worse, not better.
-
 ## Cross-References
 
 [AsyncValue and BLAKE3 Interning](../mlir-infra/asyncvalue-and-blake3-interning.md) is the full field-by-field layout of the 808-byte header these constructors allocate, with the prologue body, the `Pipe::emitPayload` tail at `sub_8E7A70`, and the dual DenseMap widths. [Modulo Scheduler and Rau-Style Placement](modulo-scheduler-and-rau.md) documents the schedule that supplies the `(stage, order)` pairs the AWS-attribute parser threads into the header. [Schedule Solve and Cost Evaluators](schedule-solve-and-cost-evaluators.md) describes the materialisation boundary where the headers documented here are emitted into IR.

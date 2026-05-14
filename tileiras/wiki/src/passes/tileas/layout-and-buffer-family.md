@@ -251,22 +251,3 @@ fraction    := "/" integer
 
 The identity descriptor `(1@0,1@1)` is the trivial two-dimensional projection. Gather and scatter paths build their memory-layout candidates against this grammar.
 
-## Reimplementation Invariants
-
-- Layout assignment must choose one compatible memory kind across a pipeline alias group.
-- TMA preference switches may bias choices but must not bypass legality.
-- Layout conversion removal must preserve real layout changes.
-- Buffer alias removal must either converge or fail explicitly.
-- Dead region arguments and their incoming operands must be removed together.
-- Agent boundary handoff materializes data movement first; synchronization is separate.
-- Slicing must preserve tile shape, lower bounds, copy atoms, and loop-carried values.
-
-## Reimplementation Checklist
-
-1. Build alias groups before assigning layouts.
-2. Enumerate layout candidates per load/store-like operation.
-3. Remove layout conversions with separate buffer and register propagation phases.
-4. Canonicalize SMEM/TMEM aliases introduced by selects and loop values.
-5. Remove dead region arguments for all region-branch operations.
-6. Insert shared-memory handoffs across agent boundaries.
-7. Split sliced loops only after validating layout and copy-atom support.

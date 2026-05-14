@@ -263,25 +263,6 @@ bool resource_admit(ResourceTable *table,
 
 Commit is the same loop with OR assignment after all probes pass.
 
-## Reimplementation Invariants
-
-- Keep slot identifiers one-based and row bits zero-based.
-- Treat coarse slots as classification helpers, not as a replacement for fine-slot pressure.
-- Model tensor-memory read and write separately.
-- Keep latency weights separate from RRT footprint duration.
-- Preserve capacity pools for resources that are not modeled by one row bit.
-- Feed axis and buffer-lifetime analysis into resource classification.
-- Provide a diagnostic mode that can distinguish shared-memory pressure from other failures.
-
-## Reimplementation Checklist
-
-1. Define the 24 slot identifiers and the fifteen primary fine slots.
-2. Map each schedulable operation to a slot family, duration, and row footprint.
-3. Add capacity pools for ALU/FMA, dual ALU, shared memory, tensor memory, transports, and register banks.
-4. Use axis information for alignment and coordinate-width decisions.
-5. Use buffer lifetime for shared-memory and tensor-memory pressure.
-6. Probe row bits and capacity pools before committing placement.
-
 ## Cross-References
 
 [Resource Constraint Builder and RRT](resource-constraint-builder-and-rrt.md) consumes the slot identifiers documented here as row bits in its qword footprint stack. [Modulo Scheduler and Rau](modulo-scheduler-and-rau.md) drives the RRT probe and commit against these slots. [Modulo Driver and 4-Arm OR-Chain](modulo-driver-or-chain.md) consults the per-op latency table and the 9-element pool-capacity vector during cost ranking. [Schedule Solve and Cost Evaluators](schedule-solve-and-cost-evaluators.md) reads the per-pool caps `4` (TMEM) and `3` (named-barrier) from indices 1 and 6 of the pool-capacity vector.

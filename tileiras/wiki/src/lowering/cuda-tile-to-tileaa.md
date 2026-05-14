@@ -161,15 +161,6 @@ The pass fails with a user-facing diagnostic when:
 - a type materialisation cannot bridge a value across the boundary;
 - a region rewrite would produce mismatched block arguments or terminators.
 
-## Reimplementation Invariants
-
-- Run Part A, Part B, Part C in that order. A and B are independent; C depends on both.
-- Register the three type-converter functor pairs before any populator runs.
-- Keep the legal-dialect vector at exactly six entries and `cuda_tile` strictly illegal.
-- Mark `ub.poison` dynamically legal with a predicate keyed on result-type legality.
-- Preserve token ordering and view identity for later scheduling and layout passes.
-- Verify that no `cuda_tile` operation remains after conversion before signalling success.
-
 ## Cross-References
 
 [Pattern Set and Type Converter](pattern-set-and-typeconverter.md) documents the shared `OpConversion` 0x68-B object layout and the `_M_realloc_insert` trampoline family. [TileAA to TileAS](tileaa-to-tileas.md) is the next lowering stage and is where SM-specific copy, MMA, and TMA decisions begin.

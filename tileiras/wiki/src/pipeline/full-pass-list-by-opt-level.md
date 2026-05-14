@@ -89,13 +89,3 @@ The pass list above ends at the MLIR-to-LLVM/NVVM boundary. After that, the back
 MachineIR passes such as NVVM reflection, address-space optimization, argument lowering, aggregate-copy
 lowering, image-handle replacement, and NVPTX instruction cleanup.
 
-## Reimplementation Checklist
-
-1. Keep pass order stable within each tier.
-2. Treat O2 as the normal default.
-3. Keep verifier coverage in every tier, including O0.
-4. Run TileIR-specific verifiers before LLVM conversion erases high-level structure.
-5. Bracket major conversions with canonicalization and CSE.
-6. Add warp-specialized passes only when the strategy requests them.
-7. Document whether a pass runs at module, `gpu.module`, or function scope.
-8. Keep LLVM/NVPTX backend passes out of the MLIR-tier pass list.

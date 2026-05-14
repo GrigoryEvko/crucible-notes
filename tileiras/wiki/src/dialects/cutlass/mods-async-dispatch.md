@@ -184,12 +184,3 @@ Typical materialization:
 - Two-CTA state changes participant selection and opcode classification.
 - Materialization consumes the same schedule that produced the descriptor.
 
-## Reimplementation Checklist
-
-1. Model MODS as structured schedule metadata.
-2. Keep telemetry ops side-effecting in the IR.
-3. Define a stable async-dispatch opcode enum.
-4. Build descriptors after schedule solve, not before.
-5. Verify start/end probe consistency.
-6. Include a digest or version marker for descriptor replay.
-7. Make two-CTA behavior explicit in participant and opcode handling.

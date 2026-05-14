@@ -323,11 +323,3 @@ operation printer.
 - Recursive simplification is memoized and depth-bounded.
 - Debug dense-element printing is not a serialization format.
 
-## Reimplementation Checklist
-
-1. Implement `constant`, guarded `addf`, `if`, and `select` folds first.
-2. Keep floating identity folds conservative until numeric flags are modeled.
-3. Run region verifiers before branch-swapping canonicalizations.
-4. Memoize recursive simplifier results by node and simplification mode.
-5. Bound simplifier recursion and provide a non-folding rebuild fallback.
-6. Keep debug printers separate from round-trip textual assembly.

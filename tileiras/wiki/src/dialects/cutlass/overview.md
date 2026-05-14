@@ -128,21 +128,6 @@ WorkTileInfo next_tile(TileScheduler *scheduler, CtaId cta) {
 
 The work-tile-info value is not a convenience wrapper. Downstream code derives problem coordinates, mainloop bounds, reduction participation, and epilogue fixup behaviour from it.
 
-## Reimplementation Checklist
-
-A usable `cutlass` implementation models the public CUTLASS abstractions directly and lowers them deliberately into TileAS and CuTe forms. Do not flatten everything into generic control flow too early. The point of the dialect is to keep high-level pipeline and scheduler semantics visible until the passes that know how to use them run.
-
-Required pieces:
-
-- thirty-eight ops across pipeline, tile_scheduler, seq_bar, block_striped, and MODS async_dispatch families;
-- `PipelineInitOp::verify` checking numStages, participants length, consumer length, barrier-id pool range, and producer/consumer group disjointness;
-- `PipelineSwitchByExecutorOp::verify` checking per-arm participant counts and disjoint participant lists;
-- post-verify arrive-count builder stamping a derived attribute for `ConvertPipelineToNVVM`;
-- four block-striped operand-layout checkers, one per variant;
-- `cutlass.bar` warp-cooperative diagnostic on arrive-count not a multiple of warp size;
-- barrier-id allocator over the thirty-two-slot per-CTA NamedBarrier pool;
-- lowering to `nv_tileas` pipeline regions and `cute`/`cute_nvgpu` atoms.
-
 ## If You Know CUTLASS (open source) — cross-walk
 
 The `cutlass` dialect is the IR shape of the orchestration classes living in `cutlass/pipeline/*.hpp`, `cutlass/gemm/kernel/tile_scheduler/*.hpp`, `cutlass/arch/barrier.h`, and the related epilogue plumbing.

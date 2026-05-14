@@ -98,21 +98,6 @@ A `cute` verifier should enforce algebraic consistency before target-specific lo
 
 These checks make later GPU lowering deterministic. If a malformed layout reaches `cute_nvgpu`, the target-specific verifier may only see an invalid atom shape, not the original algebra mistake that caused it.
 
-## Reimplementation Checklist
-
-A useful `cute` implementation should begin with a small, exact layout algebra: shape, stride, coord, layout, swizzle, tuple, composition, and canonicalization. Add pointer/memref views once offset calculation is stable. Add tiled-copy and tiled-MMA descriptors last, because those descriptors depend on the layout algebra being correct.
-
-Required pieces:
-
-- immutable or hash-consed layout values,
-- rank and shape checking for every layout operation,
-- coordinate-to-offset evaluation,
-- layout composition and canonicalization,
-- swizzle composition with explicit legality checks,
-- view types that carry element type, memory space, and bit layout,
-- tiled-copy and tiled-MMA descriptors that can be consumed by `cute_nvgpu`,
-- textual printer support for inspecting layouts in dumps.
-
 ## If You Know CUTLASS (open source) — cross-walk
 
 The open-source `cute/` C++ headers map almost directly onto this dialect:

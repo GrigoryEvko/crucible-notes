@@ -155,17 +155,3 @@ Older runtimes can leave the slot unresolved or null, and the compiled launch si
 per-function callback table is `(1, 0)` const+External and fixed at 64 bytes; absent specialized hooks, the
 argument-change hook is the default callback target.
 
-## Reimplementation Checklist
-
-1. Emit `__CUDA_TILEIR_CALLBACKS` as a 72-byte global with `(isConstant, linkage) = (1, 0)`.
-2. Emit `__CUDA_TILEIR_FUNC_CALLBACKS` as a fixed 64-byte global with `(1, 0)`, one per kernel function.
-3. Emit `__CUDA_TILEIR_CALLBACKS_ON_PRE_LOAD` as a 56-byte global with `(0, 7)`.
-4. Set slot 4 of `__CUDA_TILEIR_CALLBACKS` to `0x40`.
-5. Populate slots 0..3 with the four `__cuda_tileir_*` lifecycle function pointers.
-6. Populate slots 6 and 7 with MUL multipliers and wire them through an `llvm.mul` of a runtime counter; do not
-   OR them.
-7. Set slot 8 to zero as the table-end sentinel.
-8. Null-check the patched pre-load function pointer before calling it.
-9. Emit `__CUDA_TILEIR_FUNC_ON_ARGUMENTS_CHANGE` as an `i32` function.
-10. Use `(ptr, ptr, ptr, <kernel args...>)` as the argument-change prefix.
-11. Represent each TMA descriptor as eight 64-bit words and require 64-byte-aligned descriptor storage.

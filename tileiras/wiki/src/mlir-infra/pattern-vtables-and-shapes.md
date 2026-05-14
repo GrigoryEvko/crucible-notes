@@ -214,22 +214,6 @@ the greedy driver picks one deterministically (the first in vector order) but em
 benefit value lives at `+0x18` of every pattern object, so the sort key is read directly from the
 prefix without needing a virtual dispatch.
 
-## Reimplementation Invariants
-
-- Every pattern object starts with the same `0x60`-byte prefix.
-- The vtable pointer at `+0x00` selects between the eight-slot `OpConversionPattern` table and the
-  five-slot `RewritePattern` table.
-- Slot 2 (`sub_36C8EC0`) and slot 3 (`nullsub_11937` at `0x447F250`) are invariant in the eight-slot
-  vtable; their presence is the fingerprint.
-- Pattern size encodes the trailing slot: `0x60` carries nothing, `0x68` re-stores the context,
-  `0x70` stores a `TypeConverter *`, `0x78` stores a closure pointer.
-- The typeinfo string at `+0x28` always ends in `]` because it is sliced from `__PRETTY_FUNCTION__`.
-- The inline `SmallVector` at `+0x38` uses `0x400000000` as the empty marker.
-- Application drives through four stages: populate (`sub_873F30` and peers), freeze (`sub_36F9730`),
-  greedy match-and-rewrite (`sub_36D01B0`), conversion driver (`sub_1308320`); destruction runs
-  `sub_36F8A00`.
-- Stage 3 dispatches vtable slot 6; benefit tie-break is `(benefit desc, registration order asc)`.
-
 ## How to Recognize in a Binary
 
 The eight-slot vtable is the strongest fingerprint: any vtable whose slot 2 is `sub_36C8EC0`

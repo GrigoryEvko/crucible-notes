@@ -382,12 +382,3 @@ LogicalResult lower_arith_constant(ConstantOp op, Rewriter *rw, TypeConverter *t
 - Temporary unrealized casts must be reconciled before serialization.
 - Inline assembly must remain narrowly scoped to missing NVVM dialect coverage.
 
-## Reimplementation Checklist
-
-1. Run function-boundary conversion before body conversion.
-2. Translate kernel launch metadata into NVVM-compatible function attributes.
-3. Emit dynamic shared-memory backing storage only when needed.
-4. Apply print decomposition, bufferization, main TileAS lowering, CuTe lowering, pipeline lowering, and cleanup in order.
-5. Build a strict conversion target and keep dynamic legality tied to the type converter.
-6. Reconcile unrealized casts at the end.
-7. Verify the final GPU module contains only LLVM/NVVM-compatible executable operations.

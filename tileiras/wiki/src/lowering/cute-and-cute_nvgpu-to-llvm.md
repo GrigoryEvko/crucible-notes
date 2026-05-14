@@ -219,12 +219,3 @@ The populator gates on the `tmem` subtarget feature (index 80 in the `SubtargetF
 - Atom lowerings should emit explicit diagnostics for unsupported architecture or operand type combinations.
 - No CuTe-only executable operation may reach final NVPTX serialization.
 
-## Reimplementation Checklist
-
-1. Implement `CuteDesugar` as a target-neutral expansion pass.
-2. Register primitive CuTe-to-LLVM patterns for tuple, layout, descriptor, pointer, and helper operations.
-3. Model descriptor iterator layout as an explicit LLVM aggregate.
-4. Keep CuTe verifiers active throughout lowering.
-5. Implement separate atom rewriters for SM90 WGMMA, SM100 IMMA, and SM100 S2T copy.
-6. Defer final architectural intrinsic emission to NVGPU/NVVM lowering when possible.
-7. Verify that no illegal `cute` or `cute_nvgpu` operation remains before serialization.

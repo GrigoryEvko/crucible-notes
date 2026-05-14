@@ -299,12 +299,3 @@ uint64_t pack_gmma_descriptor(GmmaDescriptorInput in) {
 - Sparse MMA uses inline assembly only for the missing dialect intrinsic; other operations should prefer first-class NVVM ops.
 - WGMMA lowering must emit the fence, MMA, commit, and wait sequence in the order expected by the hardware pipeline.
 
-## Reimplementation Checklist
-
-1. Build a conversion target that makes GPU and NVGPU executable operations illegal.
-2. Register GPU index, barrier, function, return, dynamic shared-memory, shuffle, reduce, and `printf` patterns.
-3. Register scalarize-then-libdevice patterns for floating math.
-4. Register the NVGPU architectural pattern table with one root operation per pattern.
-5. Implement descriptor packers and TMA tensor-map construction as pure helpers.
-6. Emit inline assembly only for sparse MMA, and keep its constraints local to that rewrite.
-7. Run a final legality check before NVPTX serialization.

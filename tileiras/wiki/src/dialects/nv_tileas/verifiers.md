@@ -361,21 +361,3 @@ Several checks are reused across the dialect:
 | operand segments | segment-size attribute must match the op schema |
 | pipeline terminators | pipeline regions must end in `async.pipeline.yield` |
 
-## Reimplementation Invariants
-
-- Verify pipeline region types before scheduling.
-- Verify agent warp counts before materializing `agent_switch`.
-- Reject malformed TMA descriptors before host/device descriptor splitting.
-- Keep memop memory semantics and memory scope consistent.
-- Require copy and dot atom attributes where lowering depends on atom selection.
-- Reject unsupported block-scaled MMA combinations early.
-- Treat verifier failures as compiler errors, not optimization misses.
-
-## Reimplementation Checklist
-
-1. Implement structural ODS-style checks for every op.
-2. Add explicit region checks for producer, consumer, and pipeline-yield operations.
-3. Add TMA atom, descriptor, stride, layout, and capture checks.
-4. Add tiled load/store/atomic operand-segment and memory semantic checks.
-5. Add copy, dot, convert-layout, and block-scaled MMA checks.
-6. Run these verifiers before scheduling and after any pass that rewrites TileAS operation shape.

@@ -193,15 +193,6 @@ void expand_single_tiled_op(TiledOp op, ScheduleAnalysis &an, Rewriter *rw) {
 - Kernel selection and linkage demotion must not run before kernel attributes are finalized.
 - Address-space propagation should run before alias-sensitive optimization and final NVPTX lowering.
 
-## Reimplementation Checklist
-
-1. Implement the six-stage scheduling preparation pass in order.
-2. Build the machine model from compute capability before schedule generation.
-3. Support serial and cost-based scheduler strategies behind one analysis output.
-4. Preserve schedule analysis for `MaterializeSchedule`.
-5. Tag register-tensor loops for full unroll instead of relying on runtime indexing.
-6. Keep LLVM/NVVM cleanup passes after TileAS-to-LLVM lowering and before PTX serialization.
-
 ## Cross-References
 
 [Layout and Buffer Family](layout-and-buffer-family.md) documents D08 (`MaterializeConvertLayout`), which emits the `"nv_tileas.root_reg_to_reg_copy_op"` marker that D10 consumes. [nv_tileas Op Roster and Builders](../../dialects/nv_tileas/op-roster-and-builders.md) lists the attribute as part of the dialect's UnitAttr inventory. The upstream LLVM dialect `loop_annotation` attribute documents the metadata shape that D10 attaches and that the NVPTX backend's `LoopUnrollPass` later reads.

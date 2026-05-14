@@ -104,15 +104,6 @@ DSU seeding is the parser's only side effect outside the map. It runs once per o
 
 The parser runs once per op at scheduler-init time, before any placement arm fires. It consults the op's inherent properties dictionary first and falls back to the discardable attributes dictionary, reading only the nine string keys listed above — every other attribute on the op is ignored. Two outputs reach the rest of the scheduler. The first is the per-op `ConstraintSlot` keyed by op handle inside the `ConstraintMap`, retrieved by every later consumer through `sub_94A550(state, op)`. The second is the seeded disjoint-set forest at `state + 112`, written only when an op's `leader_gid` differs from its `gid`. Frontends emitting the constraint attributes must keep `leader_gid` consistent across every op in a fusion group — the parser does no symmetry check, and a divergent group will produce two DSU roots that the placement driver treats as independent.
 
-## Reimplementation Invariants
-
-- Parse all nine attribute strings off each op; do not skip strings just because the op type does not normally carry them.
-- Try inherent attributes first via `sub_446DC50`, then discardable via `sub_440E370`; never reverse that order.
-- Pack the three UnitAttr flags into a single i32 at slot offset `+12`; keep bit 0 for `force_serial_execution`, bit 1 for `recomputable`, bit 2 for `enable_defusion_if_fusion_extending_liveness`.
-- Store `max_depth` at slot offset `+8` so the driver's G2 gate can read it as `*((u32*)slot + 2)`.
-- Seed the DSU at `state + 112` with every op whose `leader_gid` differs from its `gid`; this is what makes ops with a shared `leader_gid` co-fuse later.
-- Run parsing once before the modulo scheduler, not lazily during placement.
-
 ## Cross-References
 
 [Modulo Driver and 4-Arm OR-Chain](modulo-driver-or-chain.md) documents the placement driver that reads the `max_depth` G2 admission gate and consults the DSU built here. [Schedule::solve and Cost Evaluators](schedule-solve-and-cost-evaluators.md) documents the cost-based arm that honours `force_serial_execution`. [Serial and Cost-Based Schedule Generators](serial-vs-cost-based-generators.md) explains the G2 viability check that gates retry.

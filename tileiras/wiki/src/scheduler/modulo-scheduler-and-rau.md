@@ -226,16 +226,6 @@ When resource placement fails, useful diagnostics should include:
 
 These diagnostics let users distinguish an impossible loop body from a heuristic failure.
 
-## Reimplementation Invariants
-
-- Start candidate search at the maximum of all lower bounds.
-- Use modulo RRT rows for every resource-placement probe.
-- Probe all footprint rows before committing any row.
-- Preserve placement arm order: permute, fuse, retry, cost-based.
-- Keep group fusion deterministic.
-- Keep retry state in an overlay.
-- Publish schedule analysis, not materialized pipe IR.
-
 ## Cross-References
 
 [Resource Constraint Builder and RRT](resource-constraint-builder-and-rrt.md) documents footprint construction and feasible-II probing. [Blackwell Pipeline 15-Slot Model](blackwell-pipeline-15-slot-model.md) documents the resource slots. [Schedule Solve and Cost Evaluators](schedule-solve-and-cost-evaluators.md) explains the materialization boundary.

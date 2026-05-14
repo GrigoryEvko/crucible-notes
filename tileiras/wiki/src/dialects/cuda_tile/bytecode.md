@@ -60,15 +60,6 @@ The bytecode header version check (see the [Header Parser section of MLIR Byteco
 
 A 13.2.0 file emitted by a future tileiras would carry additional `TypeTag`, `AttributeTag`, and `DebugTag` values — at minimum, the 14th AttributeTag for any new attribute kind, a 19th TypeTag for any new Type subclass, and an 8th DebugTag for any new debug attribute. The 13.1 reader never sees those tag values: it rejects the version block before any section body decoding begins. The forward-incompatibility guarantee is therefore stronger than tag-by-tag rejection — a single header-block check shields the entire downstream pipeline from unknown payloads.
 
-## Reimplementation Invariants
-
-- Treat TypeTag `0` as the null sentinel; never emit it, return `nullptr` if it appears.
-- Route `f8E4M3FN` and `f8E5M2` through the upstream FloatType tags, not through cuda_tile tag 18.
-- Route `f8E8M0FNU` through cuda_tile tag 18 only as a leaf inside a tile-family shape.
-- Keep the six enum-attr readers byte-identical except for their enum tables.
-- Reserve dispatcher slot for opcode `0x6E`; treat it as `"unknown or unimplemented opcode: "` until `cuda_tile.atan2` is reintroduced.
-- Gate every new tag value on a corresponding bump in the bytecode header version field.
-
 ## Cross-References
 
 [MLIR Bytecode Format](../../bytecode/mlir-bc-format.md) documents the cross-dialect dispatchers and the bytecode header parser that decides whether this reader is invoked at all. [Types and Attrs](types-and-attrs.md) documents the underlying `cuda_tile` Type and Attribute subclasses that the TypeTag and AttributeTag dispatchers construct. [Op Roster](op-roster.md) lists the 92 user-visible ops that the opcode dispatcher covers, alongside the small set of private-region ops.

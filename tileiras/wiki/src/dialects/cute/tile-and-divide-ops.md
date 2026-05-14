@@ -227,13 +227,3 @@ Phase three handles `restAtomVRank` retiling. When the op replicates an atom mul
 
 The ordering is deliberate: phase one rejects rank-shape mismatches before phase two looks at predicate type, and both run before phase three touches the atom-v-rank walk. A reimplementation should keep that ordering. It lets the diagnostics name the first thing that went wrong rather than the deepest layer, and it lets the residual-rank walk assume rank and predicate have already been normalised.
 
-## Reimplementation Checklist
-
-1. Implement divide as partition plus regrouping.
-2. Share inner/outer divide through a mode reversal transform.
-3. Keep product regrouping symmetric with divide regrouping.
-4. Normalize layouts before equality checks and after canonicalizers.
-5. Reject divide/product inputs that are not layout-like.
-6. Test composition, divide, and product on nested layouts, not only flat ones.
-7. Share one partition verifier across `cute.copy`, `cute.tiled_partition`, and `cute.tiled_divide`,
-   ordered rank check, predicate check, then residual atom-v-rank.

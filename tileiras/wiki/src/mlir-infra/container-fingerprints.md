@@ -104,16 +104,6 @@ A short procedure classifies any constant or call site:
 
 The shared resize predicates and the `next_size` cascade can be reproduced verbatim across both hash-table families. The SwissTable's fmix64 multiplier is the only constant that distinguishes its growth path from DenseMap's at the call-site level.
 
-## Reimplementation Invariants
-
-- Reserve two pointer values per pointer-keyed map for empty and tombstone, matching the -4096 / -8192 encoding if binary compatibility is desired.
-- Open-code `(p >> 9) ^ (p >> 4)` for pointer-key hashing inside DenseMap-style maps.
-- Use H1 = `fmix64(k)` for SwissTable group selection and H2 = `(h >> 9) ^ (h >> 4)` for in-group matching.
-- Fire growth at `4 * (live + 1) >= 3 * cap`; fire in-place rehash at `cap - tomb - (live + 1) <= cap / 8`.
-- Round growth to `next_pow2(2 * cap - 1)` with a 64-slot floor.
-- Reserve `0x7FFFFFFF` in the SwissTable depth slot for the retry-dead marker and `4096` for key-only intern entries.
-- Initialize empty inline `SmallVector` value blocks with a single 64-bit store of `cap << 32`.
-
 ## Consumers
 
 The DenseMap family backs every uniquing table in the binary — the Level-1 / Level-2 buckets in

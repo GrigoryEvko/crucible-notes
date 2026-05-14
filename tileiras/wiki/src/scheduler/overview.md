@@ -234,23 +234,6 @@ The TileAS pipeline invokes the two passes in fixed order. `TileASGenerateSchedu
 
 `MaterializeSchedule` consumes only that cached analysis; it never inspects upstream constraint state directly. Its output is the rewritten `nv_tileas` block with `Pipe_` and `Mutex_` SSA values inserted between producer and consumer regions and `cute_nvgpu.arch.agent_switch` partitioning emitted along the warp-specialised boundaries. Downstream passes must not invalidate the analysis between the two passes — the PassManager preservation contract is what lets the second pass pick up exactly the slot the first pass wrote.
 
-## Reimplementation Checklist
-
-Start with correctness, not cost modeling. Build the dependence graph and the `(stage, order)` representation first. Then implement the RRT feasibility check exactly — most scheduling bugs show up as false accepts or false rejects in the bitset probe. After that, add the resource constraint builder and the bounded refinement loop. Only once pass 1 produces stable schedules should `MaterializeSchedule` and `Schedule::solve` arrive.
-
-Required pieces:
-
-- A deterministic dependence graph over operations inside the scheduled block.
-- A stage/order assignment with total ordering inside each block.
-- Resource footprints for every operation that participates in modulo scheduling.
-- An RRT implementation with separate probe and commit operations.
-- A constraint builder for depth, serial, structural, and resource-pressure constraints.
-- A bounded pass-1 refinement loop controlled by `max-constraint-iterations`.
-- A preserved analysis object that carries schedule state across the pass boundary.
-- A materializer that emits `Pipe_` and `Mutex_` only after the schedule is fixed.
-- A greedy `Schedule::solve` implementation based on classification, closure, DSU union, sweep, and pipe emission.
-- Verification that no scheduled region contains a consumer without a valid producer/consumer coordination path.
-
 ## Cross-links
 
 - [Modulo Scheduler and Rau](modulo-scheduler-and-rau.md) covers the initiation-interval search and RRT mechanics.

@@ -56,15 +56,3 @@ splitting all have tileiras counterparts. The difference is packaging. The publi
 developer-facing optimizer utility; tileiras integrates the same class of transformations into a
 larger compiler driver.
 
-## Reimplementation Notes
-
-For an open reimplementation, keep the two layers separate:
-
-- Implement the public `cuda_tile` interfaces with ordinary MLIR TableGen and TypeID mechanics.
-- Let `AllElementTypeMatch` remain generated verifier code unless there is a strong reason to
-  centralize it.
-- Provide a standalone optimizer only if you want OSS-tool compatibility.
-- For tileiras compatibility, model the production path as bytecode input followed by the full
-  GPU/NVIDIA dialect lowering pipeline.
-- Do not require textual-pipeline injection or Tile IR bytecode re-emission in the production path
-  unless you are deliberately rebuilding the OSS utility surface.

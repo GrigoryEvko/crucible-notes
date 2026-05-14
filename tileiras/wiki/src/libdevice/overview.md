@@ -70,19 +70,6 @@ After linking and reflection, many libdevice call paths become compile-time cons
 
 The point is not to prove every math call at compile time. The point is to specialize the library to the selected target and remove impossible branches before the backend sees them.
 
-## Reimplementation Checklist
-
-A correct libdevice integration needs:
-
-- a way to locate or embed the libdevice bitcode matching the CUDA/NVVM version,
-- module linking before backend code generation,
-- reflection folding with a well-defined key/value source order,
-- always-inlining for libdevice functions used by kernels,
-- simplification of reflection-selected branches,
-- constant folding for libdevice calls with constant operands,
-- global cleanup for unused libdevice definitions,
-- a final check that no unresolved `__nv_*` declarations remain.
-
 ## Cross-links
 
 - [NVVM Reflect Mechanism](nvvm-reflect-mechanism.md) covers reflection keys and replacement behavior.

@@ -172,13 +172,3 @@ bool load_can_be_invariant(MachineInstr load) {
 }
 ```
 
-## Reimplementation Checklist
-
-1. Run loop-aware IR peepholes before instruction selection.
-2. Preserve ScalarEvolution when the peephole pass only rewrites equivalent address expressions.
-3. Trace image handles through copies and handle-move pseudos.
-4. Validate texture, surface-load, surface-store, and surface-query families separately.
-5. Convert image parameter opcodes to slot opcodes before PTX printing.
-6. Fold frame-address local conversions after instruction selection.
-7. Erase proxy registers by replacing every reaching use with the underlying real register.
-8. Tag invariant loads only when the address space and bounded use graph are both safe.

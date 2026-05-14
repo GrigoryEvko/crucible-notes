@@ -90,13 +90,3 @@ void invalidate_after_pass(AnalysisCache *cache, PreservedAnalyses preserved) {
 Instrumentation hooks should surround each pass run and each nested pipeline run so timing reports
 match the nested structure users see in textual pipelines.
 
-## Reimplementation Checklist
-
-1. Represent every nested pass manager with an explicit operation anchor.
-2. Reject anchor mismatches during pipeline construction.
-3. Verify that nested anchors are registered and isolated from above.
-4. Walk the IR deterministically when applying nested managers.
-5. Maintain per-anchor analysis caches.
-6. Invalidate analyses unless the pass preserves them.
-7. Emit instrumentation around nested pipeline entry and each pass.
-8. Keep `gpu.module` and `nv_tileaa.func` nesting visible in textual pipeline dumps.

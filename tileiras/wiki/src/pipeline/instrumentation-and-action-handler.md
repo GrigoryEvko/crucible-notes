@@ -83,13 +83,3 @@ The same compile instrumentation surface feeds the TileIR callback emission path
 materializes well-known module symbols and launch-site hooks so a runtime can patch instrumentation at
 module load time. The driver-level ABI is documented in [TILEIR_CALLBACKS ABI](../driver/tileir-callbacks-abi.md).
 
-## Reimplementation Checklist
-
-1. Provide stable outer scopes for compile and serialization.
-2. Scope scheduler substages finely enough to diagnose scheduling cost.
-3. Make instrumentation no-op when no handler is installed.
-4. Ensure scope exit runs on early return and failure.
-5. Keep MLIR actions separate from pass timing.
-6. Let action handlers wrap the work instead of replacing it silently.
-7. Document public scope names as compatibility surface.
-8. Route callback-emission timing through the same pass instrumentation tree.

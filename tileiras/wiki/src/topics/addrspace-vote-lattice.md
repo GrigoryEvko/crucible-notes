@@ -194,17 +194,3 @@ AliasResult nvvm_alias(AddressSpace a, AddressSpace b) {
 
 That mirrors the lattice. A poisoned vote means specialization cannot prove one concrete space, so alias analysis falls back to `MayAlias`. Distinct concrete address spaces are disjoint.
 
-## Reimplementation Notes
-
-A compatible implementation should:
-
-- initialize vote slots to `UNDET`
-- use the exact concrete address-space set `{1, 3, 4, 5, 6, 7}`
-- treat any classifier failure as `POISON`
-- make `POISON` absorbing
-- keep the `UNSET` scratch value out of persistent vote slots
-- charge clone budget by attempt, not by successful clone
-- propagate resolved argument and return spaces into the specialized signature
-- keep the four lattice tables (argmask, clone-count, vote, return-space) separate
-- bound per-block visits with a hard cap and fail closed when the cap is exceeded
-- install the converged result as a single `"nvvm.as"` `DenseI32ArrayAttr` on the function

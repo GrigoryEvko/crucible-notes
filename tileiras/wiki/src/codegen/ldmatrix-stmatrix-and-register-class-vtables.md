@@ -217,13 +217,3 @@ Inside an instruction operand, the printer chooses `%f` over `%r` for
 32-bit float MVTs and `%fd` over `%rd` for 64-bit float MVTs, printing the
 same numeric register ID either way.
 
-## Reimplementation Notes
-
-- Validate matrix-copy shape, count, layout, transpose, and element-width fields before selecting
-  an intrinsic ID.
-- Preserve the `m8n16` transpose rejection and the `m16n16` `num=1` rejection.
-- Treat `movmatrix` as foldable unless reproducing a backend that still consumes a dedicated
-  intrinsic.
-- Keep `%f` as a real register class for legalization even though declarations are printed through
-  `%r` storage.
-- Store f64 values in `%rd` and print `%fd` only at the instruction-printer layer.

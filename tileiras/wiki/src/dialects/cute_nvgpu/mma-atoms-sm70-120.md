@@ -434,11 +434,3 @@ For WGMMA and UMMA the layout often lives in a descriptor rather than a lane-by-
 - UMMA lowering preserves TMEM allocation and CTA-group semantics.
 - SM120 uses two scale-factor operands and preserves uppercase `SM120` spelling.
 
-## Reimplementation Checklist
-
-1. Model each tier as a data table plus verifier hooks.
-2. Keep operand residency explicit in the atom type or use site.
-3. Reconstruct expected operand layouts during verification.
-4. Lower WGMMA through an async group sequence, not a synchronous MMA shortcut.
-5. Lower SM100/SM103 through tensor-memory-aware UMMA paths.
-6. Keep SM120 block-scaled register MMA separate from SM100 block-scaled UMMA.

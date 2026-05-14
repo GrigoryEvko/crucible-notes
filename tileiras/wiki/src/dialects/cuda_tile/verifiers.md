@@ -335,13 +335,3 @@ where possible.
 - Aggregate bodies are pure and yield the expected result types.
 - MMA verifiers check both shape and element-type legality before lowering.
 
-## Reimplementation Checklist
-
-1. Centralize element-type predicates and shape checks.
-2. Keep memory-ordering validation separate from pointer/view validation.
-3. Reuse one region-yield checker for `if`, `reduce`, `scan`, `for`, and
-   `loop`.
-4. Reject early exits that are not enclosed by a compatible loop construct.
-5. Keep aggregate bodies memory-effect free.
-6. Verify MMA shapes before checking element-type allow-lists.
-7. Make diagnostics concrete enough for frontend authors to fix their IR.

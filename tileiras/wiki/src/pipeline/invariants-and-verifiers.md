@@ -93,13 +93,3 @@ void verify_kernel_parameters(Function kernel, TargetInfo target, DataLayout lay
 }
 ```
 
-## Reimplementation Checklist
-
-1. Reject passes scheduled under the wrong operation anchor.
-2. Enable between-pass verification in normal driver builds.
-3. Run semantic TileIR verifiers before LLVM conversion.
-4. Run NVVM IR verification after target metadata has been attached.
-5. Treat cleanup bracketing as a quality invariant and keep it stable.
-6. Make pass ordering explicit in the pipeline builder.
-7. Report the pass after which verification failed.
-8. Keep final module verification before serialization.

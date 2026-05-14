@@ -50,34 +50,3 @@ Combining the enum selector and the numeric group gives the runtime mapping:
 
 Destination partitioning is part of the copy layout. In the 4-CTA case, `partition_D` splits the TMEM destination into per-CTA quarter slices before the copy is emitted. The downstream MMA therefore needs no `cta_group::4` control word: by the time it runs, each participating CTA already sees the slice it owns.
 
-## Reimplementation Notes
-
-A reimplementation should model the fan-out as a copy property, not an MMA property:
-
-- Parse the S2T copy shape into a numeric CTA group and a shape enum.
-- Use the numeric group for mbarrier and predicate decisions.
-- Use the enum to choose the layout composition and multicast width.
-- Emit rank-based gating only for the 4-CTA copy path.
-- Partition the TMEM destination before issuing the copy.
-- Do not invent a `tcgen05.mma.cta_group::4` encoding.
-
-```c
-void lower_s2t_copy(Rewriter *rewriter, S2TCopyOp op) {
-    AtomS2tCopyShape shape = parse_s2t_shape(op);
-    CtaGroup group = shape.cta_group;
-
-    Layout source_layout = build_source_copy_layout(op, shape);
-    Layout dest_layout = partition_tmem_destination(op.tmem_layout, group);
-    MBarrier barrier = get_or_create_s2t_mbarrier(op, group);
-    Value *predicate = build_s2t_copy_predicate(rewriter, group);
-
-    CopyAtom atom = make_s2t_copy_atom(source_layout, dest_layout, group, barrier);
-    Coord coord = make_s2t_copy_coord(op, shape);
-
-    scf_if(predicate) {
-        emit_cute_tiled_copy(atom, coord, barrier);
-    }
-
-    replace_op_with_async_token(op, barrier);
-}
-```

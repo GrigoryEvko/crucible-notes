@@ -61,36 +61,3 @@ static bool can_version_loop_on_target(const Loop *loop,
 
 This is why the two pieces coexist without conflict. `LoopVectorize` refuses only the specific runtime-versioning strategy that is unsafe for a divergent target. LIV remains free to transform recognized idioms because its output uses masks and predicates, not a branch whose condition must be uniform.
 
-## Reimplementation Notes
-
-A compatible implementation should keep the LIV pass and the divergent-target gate separate:
-
-- Keep LIV as a normal loop pass driven by idiom recognition and target costs.
-- Do not add a SIMT-divergence veto to masked or VP-predicated LIV expansions.
-- Add the divergence veto to `LoopVectorize` only when runtime pointer checks are required.
-- Emit a remark when the veto fires, because users otherwise see a silent missed-vectorization case.
-- Preserve the standard LIV CLI knobs so upstream tuning and debugging workflows still apply.
-
-```c
-bool run_loop_idiom_vectorize(Function *function, const TargetTransformInfo *tti) {
-    bool changed = false;
-
-    for (Loop *loop : loops_in_rpo(function)) {
-        if (matches_byte_compare(loop)) {
-            changed |= expand_byte_compare_as_masked_vector_loop(loop, tti);
-            continue;
-        }
-
-        if (matches_find_first_byte(loop)) {
-            changed |= expand_find_first_as_predicated_vector_loop(loop, tti);
-            continue;
-        }
-
-        if (matches_mismatch_loop(loop)) {
-            changed |= expand_mismatch_as_predicated_vector_loop(loop, tti);
-        }
-    }
-
-    return changed;
-}
-```

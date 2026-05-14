@@ -133,13 +133,3 @@ The driver wraps this body in the outer per-function loop and owns the diagnosti
 
 The final materialisation rule: single-predecessor regions reuse the incoming base directly without a PHI; multi-predecessor regions need one incoming value per predecessor and a final `bitCastEnd` when the original pointer type differs from the canonical representative.
 
-## Reimplementation Checklist
-
-1. Restrict Dead Sync Elimination to memory spaces whose traffic is visible across the barrier.
-2. Use a monotone CFG fixed point and treat the barrier as a transfer boundary.
-3. Delete a barrier only when all four read/write facts match the local facts.
-4. Keep tensor-memory and WGMMA synchronization separate unless the model includes them explicitly.
-5. Group GEPs by base, region, and dominance before rewriting them.
-6. Insert PHIs only where a canonical base crosses multiple predecessors.
-7. Bound Common Base Elimination by a profitability and rewrite-count policy.
-8. For alloca cloning, either commit the whole clone plan or roll back every created object.

@@ -285,18 +285,6 @@ LogicalResult verify_mma_shape(Tile lhs, Tile rhs, Tile acc, Tile result) {
 - Treat `cuda_tile.string` as implementation-specific unless the target
   contract explicitly documents it.
 
-## Reimplementation Checklist
-
-1. Register the operation names by semantic family.
-2. Implement type and region verifiers before conversion patterns.
-3. Preserve tokens through every `_tko` memory effect.
-4. Keep view construction structured until alias and layout information is
-   available.
-5. Carry rounding, signedness, memory ordering, memory scope, and optimization
-   hints as typed attributes.
-6. Lower `mmaf` and `mmai` through a target-aware MMA selection layer.
-7. Keep version-dependent mnemonics behind explicit producer feature gates.
-
 ## Per-Op Method Quads
 
 Every `cuda_tile.*` op carries four registered functions identified by string xrefs in the assembler binary. `build`

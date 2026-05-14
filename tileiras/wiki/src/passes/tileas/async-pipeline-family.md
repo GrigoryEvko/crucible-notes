@@ -633,13 +633,3 @@ Pipeline lowerings consume the logical pipeline surface and emit fixed NVVM/LLVM
 - Pipeline-region optimization must run after producer/consumer regions are in their final form.
 - Block-scaled MMA verification runs whenever the op is built or transformed.
 
-## Reimplementation Checklist
-
-1. Implement the pipeline operation surface with strict region type verification.
-2. Rewrite queues into `produce_one`, `consume_one`, and `agent_switch`.
-3. Materialize producer and consumer handshakes before schedule materialization.
-4. Decompose cross-boundary layout conversions using target atom plans.
-5. Consume schedule analysis to choose AUS or AWS.
-6. Pipeline unspecialized loops with prologue/body/epilogue.
-7. Shrink pipeline regions by backward slicing.
-8. Lower waits and barriers to first-class NVVM operations whenever available.

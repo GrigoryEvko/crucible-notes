@@ -378,19 +378,6 @@ The TypeID sentinel address is hard-coded per shim because the address is the id
 
 A reimplementation can choose a different table representation, but the contract is fixed: identity for uniqued objects is pointer equality, storage objects are immutable after publication, and the allocator that owns Level-2 outlives every storage object it allocates. Anything that breaks one of those invariants breaks every map, set, and pattern matcher that keys on Type or Attribute identity.
 
-## Reimplementation Invariants
-
-- Make uniqued storage immutable after publication, including any cached hash.
-- Key Level-1 on the TypeID sentinel address, not on its contents.
-- Use one hash family for both levels; the `(p>>9)^(p>>4)` seed has the right spread for `.data.rel.ro` pointers.
-- Preserve the EMPTY/TOMBSTONE sentinel pair so that probes do not need an auxiliary bitmap.
-- Keep the load-factor trigger at 3/4 and the tombstone-density trigger at 1/8.
-- CAS-publish Level-2 allocators into Level-1; never mutate a published Level-1 entry.
-- Re-probe Level-2 after rwlock upgrade; the upgrade is not atomic.
-- Gate every atomic and every lock on a single threading switch so that single-threaded builds pay no synchronisation cost.
-- Use a thread-local cache keyed on `(KeyTy, StorageAllocator*)`, not on `(KeyTy, TypeID)`.
-- Initialise `BaseStorage` strong and weak counts to 1, and set the "owned by uniquer" flag only after the Level-2 bucket is written.
-
 ## How to Recognize in a Binary
 
 The gateway `sub_4497E40` is identifiable from any of the following independent fingerprints:

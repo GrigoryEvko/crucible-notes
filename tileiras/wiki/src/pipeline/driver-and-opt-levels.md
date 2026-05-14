@@ -114,13 +114,3 @@ Two outer instrumentation scopes are useful for profilers and callback integrati
 Keep these scopes coarse and stable. Fine-grained pass scopes can change, but external profilers need
 durable outer names.
 
-## Reimplementation Checklist
-
-1. Build the entire pass manager before running it.
-2. Register all Tileiras and required upstream MLIR dialects before bytecode parse.
-3. Treat `opt-level` and `v2-opt-level` as separate selection axes.
-4. Keep `O2` as the normal default pipeline.
-5. Gate warp specialization through `pipeline-strategy`.
-6. Preserve schedule analysis between generation and materialization.
-7. Emit stable outer instrumentation scopes for compile and serialization.
-8. Verify the module after major dialect boundaries.

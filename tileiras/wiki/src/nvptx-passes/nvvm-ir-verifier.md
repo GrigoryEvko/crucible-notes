@@ -94,15 +94,6 @@ void run_nvvm_ir_verifier(Module module, TargetInfo target) {
 
 Any failed check calls `signalPassFailure()` directly. Because NVVMIRVerifier is a `FunctionPass` rather than an MLIR `OperationPass`, it never touches the `*(self+40) |= 4` flag word TileAS-side passes use to surface failure to the pass manager. The LLVM pass manager picks the failure up through the standard `Pass::run` return path and aborts before the next NVPTX pass starts.
 
-## Reimplementation Invariants
-
-- Share the kernel detector with linkage normalization and launch checking; an inconsistency between detectors causes either spurious "non-kernel launched" diagnostics or silent skips.
-- Size parameters with the NVVM data layout, never with host `sizeof`. `bool` is one parameter byte regardless of host ABI; `f4e2m1` is half a byte.
-- Track `ParamSpaceLimit` as a step function over the SM major version. Hard-coding only the modern 32 768 ceiling silently accepts kernels that the older SMs cannot launch.
-- Reject tag 20 (`opaque`) at the parameter boundary; valid NVVM-IR never carries it.
-- Emit the three diagnostic strings verbatim — downstream test suites match on them character-for-character.
-- Call `signalPassFailure()` on every hard error; do not propagate through a flag word.
-
 ## Cross-References
 
 [Modulo Scheduler and Rau-Style Placement](../scheduler/modulo-scheduler-and-rau.md) documents the TileAS-side failure-flag convention this pass deliberately avoids.

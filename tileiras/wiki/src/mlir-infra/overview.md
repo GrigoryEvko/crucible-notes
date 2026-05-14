@@ -121,20 +121,6 @@ typedef struct AsyncValue {
 
 The non-negotiable invariant is identity stability across materialisation. Pre-`MaterializeSchedule`, async edges live behind opaque handles. Post-materialisation, those handles resolve to concrete `Pipe_` or `Mutex_` values with deterministic producer and consumer sets — never a different identity, never a different membership.
 
-## Reimplementation Checklist
-
-A reimplementation of the infrastructure layer should provide:
-
-- operations with operands, results, attributes, regions, successors, and parent links,
-- immutable uniqued types and attributes scoped to a context,
-- TypeID-like identity for concrete dialect objects and interfaces,
-- interface dispatch for memory effects, type inference, region branching, dialect conversion, and target attributes,
-- pattern rewriting with safe replacement and erasure,
-- conversion rewriting with type conversion and legality checks,
-- diagnostics that preserve operation context,
-- walkers over modules, regions, blocks, and operations,
-- async coordination values used by the TileAS scheduler.
-
 ## Cross-links
 
 - [Operation Layout](operation-layout.md) covers operation storage and traversal.

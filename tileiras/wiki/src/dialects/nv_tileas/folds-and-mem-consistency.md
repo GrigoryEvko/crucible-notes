@@ -130,10 +130,3 @@ Keeping this in a pass rather than a fold lets the compiler consult target atom 
 - Branch decomposition must duplicate allocations per branch rather than share a mutable tile across arms.
 - Layout-chain removal belongs to the layout conversion pass, where target layout plans are available.
 
-## Reimplementation Checklist
-
-1. Attach memory-consistency behavior to all async memory, TMA, descriptor, copy, reduce, and scan operations.
-2. Keep pure tile-shape ops outside the memory-consistency set.
-3. Implement the seven canonicalization patterns with explicit memory-consistency rejection.
-4. Keep layout conversion removal in a dedicated pass.
-5. Test canonicalization around async operations to ensure no ordering attributes are moved or dropped.

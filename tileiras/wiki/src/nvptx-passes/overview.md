@@ -118,15 +118,4 @@ A practical verifier rejects:
 - MachineIR opcodes requiring unavailable SM features,
 - image, surface, tensor-memory, or async-copy pseudos that escaped their cleanup pass.
 
-## Reimplementation Checklist
-
-1. Run kernel and launch validation before destructive IR rewrites.
-2. Normalize by-value and pointer arguments before address-space-sensitive optimization.
-3. Use a conservative address-space lattice; never guess a concrete space on conflict.
-4. Preserve or synthesize alias scopes for `__restrict__` arguments and derived pointers.
-5. Lower `printf` before instruction selection so `vprintf` has an ordinary call shape.
-6. Expand unsupported aggregate memory intrinsics into explicit loops before MachineIR.
-7. Keep MachineIR passes focused on selected opcodes and target pseudo cleanup.
-8. Verify that PTX printing sees no unresolved ABI, image-handle, or target pseudo operation.
-
 For the shared backend relationship with `cicc`, see [cicc comparison](../boundaries/cicc-comparison.md).

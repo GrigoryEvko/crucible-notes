@@ -215,17 +215,6 @@ If even the fresh-state retry returns false, the driver writes `v15 = 0` and fal
 [CLEANUP] free outer + inner SwissTable arrays, return 1
 ```
 
-## Reimplementation Invariants
-
-- The driver owns two SwissTable scratches per attempt; both must be rebuilt from scratch on every call.
-- The outer "op-seen" table is consulted by every arm; the inner DSU snapshot is consumed only by Arms 3 and 4.
-- Arm dispatch order is fixed: PERMUTE, FUSE, RETRY, CBS.
-- The fourth argument every arm receives is the group id, not a pass mode. Combiner mode in Arm 2 is selected by the magic `gid == 4` value, not by an enum field.
-- On four-arm refusal, clear the inner snapshot to an empty header and re-run only Arms 3 and 4.
-- The scheduler-level DSU is never reset between attempts at the same `II`. Only the per-attempt snapshot resets.
-- Bucket stride is 16 bytes for both tables; sentinels are `-4096` for empty and `-8192` for tombstone; `0x7FFFFFFF` is the "skip in retry" marker an arm writes into the depth slot.
-- Free both scratches via `sub_4560420(slots, 16 * capacity, 8)` on every exit path, including the give-up path.
-
 ## Usage and Contract
 
 The modulo scheduler `sub_982210` invokes the driver once per candidate `II`. It consumes the scheduler state (carrying the active `II`, stage count, global RRT, and the DSU at `state + 112` seeded by the constraint-attribute parser), the worklist of ready operations, the group header describing per-group readiness, and an opaque cookie threaded to every arm. Its boolean return value tells the outer scheduler whether to keep the current `II` or bump it; on success, Arms 1, 3, or 4's commit paths have mutated the schedule state in place, and the materializer reads the final `(stage, order)` placement off the per-op slot. The driver itself owns no persistent state — every SwissTable scratch it allocates is freed before return on every exit path.

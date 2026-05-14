@@ -333,12 +333,3 @@ LogicalResult verify_tma_rank_and_mode(TmaMode mode, int rank, Target target) {
 - Swizzle and offset rewrites must prove commutation.
 - TMA ranks and special modes are target-gated before PTX emission.
 
-## Reimplementation Checklist
-
-1. Encode the LDSM/STSM acceptance matrix as data and test every row.
-2. Share load/store matrix-copy memory-space checks with reversed direction.
-3. Reuse the UMMA canonical-layout verifier across `UMMA_MN` and `UMMA_K` with a single `direction`-keyed `k_size` formula.
-4. Decode the `tcgen05.mma` kind word as a packed 7-bit union and walk the 13-rule ladder in fixed order, returning the NVPTX opcode index from the verifier rather than rederiving it downstream.
-5. Keep SM120 scale validation table-driven and shape-aware.
-6. Reject unknown swizzle modes at parse or verify time.
-7. Verify TMA rank and mode before cp.async bulk lowering.

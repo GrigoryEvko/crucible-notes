@@ -161,20 +161,3 @@ SuccessorInfo get_successors(YieldOp yield) {
 }
 ```
 
-## Reimplementation Invariants
-
-- Producer and consumer tokens model ownership and ordering, not payload data.
-- `PipelineIteratorType` must be preserved through loops and branches.
-- Branches that merge pipeline iterators must yield identical iterator types.
-- Agent metadata must preserve body regions, group count, and register budget.
-- Layout information is the combination of value type, atom attribute, descriptor, and operand segments.
-- Yield terminators delegate successor semantics to their parent region operation.
-
-## Reimplementation Checklist
-
-1. Implement producer, consumer, async token, and iterator types.
-2. Implement iterator unwrap and merge checks.
-3. Model agent metadata on `agent_switch` and execute-like operations.
-4. Expose producer regions through a producer interface.
-5. Expose agent bodies and warp counts through an agent-like interface.
-6. Treat layout as value type plus attributes, not as a single universal layout type.

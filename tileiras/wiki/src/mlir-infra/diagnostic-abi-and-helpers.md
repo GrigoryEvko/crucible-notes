@@ -200,20 +200,6 @@ The engine mutex is released whichever handler accepted the diagnostic, so a han
 a hard contract violation. The codebase relies on every handler being noexcept and on the engine
 never being re-entered from inside a handler callback.
 
-## Reimplementation Checklist
-
-1. Allocate the body as exactly 208 bytes; respect the offsets at `+0x10`, `+0x18`, `+0x28`, `+0x88`,
-   `+0xA0`, `+0xB8`, and `+0xC8`.
-2. Initialise `args_begin` to point at the inline buffer; pack `args_size=0` and `args_cap=4` into
-   the 64-bit word at `+0x20`.
-3. Set `alive=1` in the constructor and clear it only in the destructor.
-4. Use the packed 16-bit severity word with class in the low byte and op-prefix / trace flags in
-   bits 8 and 9.
-5. Spill arguments to heap once the inline four slots are full; rewrite `args_begin`.
-6. Use 192-byte child bodies for notes; share the parent's sink at flush time.
-7. Treat `loc == 0` as the move-from / already-flushed sentinel.
-8. Emit the `error:` prefix only for severity class `2`; rely on the op-prefix bit for the rest.
-
 ## How to Recognize in a Binary
 
 The 208-byte (`0xD0`) allocation immediately followed by a zero-fill, a write of one of the five

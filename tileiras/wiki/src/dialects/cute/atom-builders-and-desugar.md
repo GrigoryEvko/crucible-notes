@@ -159,14 +159,3 @@ Ordering matters. The pass must run after the type converter has produced LLVM-l
 
 Together the two rewrites make a kernel function self-describing to the NVVM backend. The function-level attribute tells the backend "this is a kernel entry, emit `.entry`"; the per-argument triple tells the backend "place this descriptor in `.param` constant space, 16-byte aligned, by value". After this pass the kernel is ready for plain NVVM-to-PTX translation, and no later pass touches the kernel-entry ABI.
 
-## Reimplementation Checklist
-
-1. Implement result-type interfaces for MMA, copy, prefetch, and generic atoms.
-2. Verify atom instances through the selected atom type.
-3. Run `CuteDesugar` before target-neutral `cute` to LLVM conversion.
-4. Keep dynamic print lowering isolated from performance-sensitive paths.
-5. Lower descriptor iterators into one structured descriptor representation.
-6. Route SM-specific copy and MMA lowering through `cute_nvgpu`, not the generic
-   LLVM conversion.
-7. Run the kernel-entry ABI rewrite after the LLVM type converter, so `llvm.byval` lands on an LLVM-dialect
-   aggregate and `nvvm.kernel` replaces `cute.kernel` before NVVM lowering.

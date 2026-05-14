@@ -206,19 +206,6 @@ A correct `nv_tileas` implementation enforces these invariants before the schedu
 
 None of these checks is cosmetic. The scheduler assumes region types, iterator types, consumer indices, and memory ordering are already valid. Invalid `nv_tileas` that reaches scheduling can produce a `(stage, order)` assignment that looks well-formed while representing an impossible pipeline.
 
-## Reimplementation Checklist
-
-A minimal but usable reimplementation needs:
-
-- Type constructors for producer tokens, consumer tokens, async tokens, and pipeline iterators.
-- Region operations for producer and consumer bodies, with explicit yield terminators.
-- Token operations for producer acquire/write/commit and consumer wait/read/release.
-- An `agent_switch` operation that preserves agent body regions, group ids, and register budgets.
-- Tiled memory operations with `atom`, memory-ordering, in-bounds, and padding attributes.
-- A TMA descriptor operation whose result is consumed by async TMA loads and stores.
-- Canonicalization that is allowed to rewrite pure tile structure but not to cross async memory-ordering edges.
-- A one-way `nv_tileaa` queue lowering that produces pipeline regions and then removes the abstract queue scaffolding.
-
 ## AbstractOperation Record
 
 Every registered op in `nv_tileas` carries a single 0x70-byte `AbstractOperation` record — same layout as

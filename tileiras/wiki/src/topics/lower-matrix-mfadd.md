@@ -44,31 +44,3 @@ Read the implementation as five semantic phases, not as a collection of binary e
 
 No matrix-shaped intrinsic remains by the time control returns to the pass manager. NVPTX instruction selection sees ordinary IR: loads, address arithmetic, `fmul`/`fadd` or integer arithmetic, vector shuffles, and stores.
 
-## Reimplementation Notes
-
-A compatible reimplementation can follow the upstream algorithm directly:
-
-- Treat `mfadd` and `mfadd_t` only as optional IR names.
-- Run shape verification only when the verification option is enabled.
-- Preserve the transpose-add peephole before final lowering.
-- Lower all remaining matrix intrinsics into target-independent scalar/vector IR.
-- Keep CUDA tensor-core lowering on the NVVM intrinsic path, not on `@llvm.matrix.*`.
-
-```c
-bool run_lower_matrix_intrinsics(Function *function, MatrixOptions options) {
-    ShapeMap shapes = collect_matrix_shapes(function);
-
-    if (options.verify_shapes) {
-        verify_matrix_shapes_or_die(function, &shapes);
-    }
-
-    bool changed = optimize_transposed_adds(function, &shapes);
-
-    if (options.print_after_transpose_opt) {
-        dump_function(function);
-    }
-
-    changed |= lower_matrix_intrinsics_to_vectors(function, &shapes, options);
-    return changed;
-}
-```

@@ -172,14 +172,3 @@ StreamK and split-K reach for block-striped ops in their epilogues. Partial CTAs
 - Load/add/store variants choose integer or floating addition from element type.
 - `cutlass.bar` arrive-count is a multiple of warp size and the op is in warp-cooperative scope.
 
-## Reimplementation Checklist
-
-1. Implement sequence-barrier state as phase, index, and count.
-2. Lower wait and arrive through mbarrier parity wait and arrive operations.
-3. Verify state/barrier depth compatibility.
-4. Allocate seq-bar slot IDs from the same thirty-two-slot per-CTA NamedBarrier pool that pipeline-init uses, through the shared allocator at `sub_1771850`.
-5. Implement block-striped index mapping once and reuse it for all variants.
-6. Implement four operand-layout checkers, one per block-striped variant.
-7. Keep reduce side-effecting and GPU-scope.
-8. Route load/store/load_add through `cute` copy/vector helpers where possible.
-9. Emit the warp-cooperative diagnostic from `cutlass.bar` lowering on arrive-count or scope mismatch.

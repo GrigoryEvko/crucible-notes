@@ -238,20 +238,3 @@ Both generators publish the same logical analysis so the downstream materializer
 
 Callers select a generator by setting the schedule strategy field on the `ScheduleOptions` record before invoking `TileASGenerateSchedule`. The serial generator consumes only the operation tree of the scheduled block plus the `tileas.schedule.constraint.force_serial_execution` attribute; it ignores the per-op slot, latency, and capacity inputs. The cost-based generator additionally reads the `tileas.schedule.constraint.gid`, `leader_gid`, and `max_depth` attributes parsed by [Schedule Constraint Attributes](schedule-constraint-attributes.md), the per-op footprint vectors from the [Resource Constraint Builder](resource-constraint-builder-and-rrt.md), and the 9-element pool-capacity vector from the [Blackwell Pipeline 15-Slot Model](blackwell-pipeline-15-slot-model.md). Both paths produce `ScheduleAnalysis` with the same field set — the optimized path simply fills the optional slot/depth/resource cells that the serial path leaves zeroed. Consumers must treat the `(stage, order)` pair as the public ordering key and ignore the optional cells unless they are explicitly probing the optimized path's annotations.
 
-## Reimplementation Invariants
-
-- Serial scheduling must remain a real baseline with no hidden RRT dependency.
-- Cost-based scheduling must probe resource legality before committing a candidate.
-- Strategy order must be deterministic.
-- Stable sorting should preserve tie behavior across runs.
-- Both generators must publish the same schedule-analysis shape.
-- Failure in one strategy must not corrupt canonical candidate state used by later strategies.
-
-## Reimplementation Checklist
-
-1. Implement serial generation as seed, walk, edge emission, validate.
-2. Implement cost-based generation as collect, hard-gate, score, sort, seat.
-3. Keep the cost vector lexicographic.
-4. Keep strategy orchestration outside individual generators.
-5. Emit the same schedule analysis regardless of generator choice.
-6. Test serial and optimized outputs against the same materialization pass.

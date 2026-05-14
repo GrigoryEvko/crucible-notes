@@ -128,15 +128,6 @@ A buffer-assignment failure should include enough state to distinguish the four 
 
 Together they let users separate an impossible loop body from a heuristic failure that can be retuned by changing the stage count, the tile size, or the buffer-class threshold.
 
-## Reimplementation Invariants
-
-- Run the four phases in order. Phase 1 and Phase 2 must succeed before any physical buffer is committed.
-- Compute lifetimes in `(stage, cycle)` modulo space; both Phase 2 reuse and Phase 4 sharing depend on this normal form.
-- Treat the 32-slot named-barrier pool as a hard constraint; fall back to disjoint-lifetime reuse before failing.
-- Keep the SMEM/TMEM decision in a single helper (`sub_13606F0`) so the subtarget gate for the `tmem` feature is observed in exactly one place.
-- Allocate one 0x348-byte record per pipeline value, populated incrementally by Phases 1–3 and merged by Phase 4.
-- Emit `"share pipeline buffer"` on every successful Phase 4 merge.
-
 ## Cross-References
 
 [Modulo Scheduler and Rau](modulo-scheduler-and-rau.md) publishes the `II` and stage count consumed here. [Pipe_ and Mutex_ Value-Header Layout](pipe-mutex-value-layout.md) documents the 808-byte header that carries the buffer-class enum and named-barrier index downstream. [NVPTX Subtarget and Feature Matrix](../codegen/nvptx-subtarget-and-feature-matrix.md) defines the Blackwell `tmem` gate consulted by Phase 3. [TMA, Tensormap and cp.async.bulk](../codegen/tma-tensormap-and-cp-async-bulk.md) covers the TMA descriptors that share this allocation record.

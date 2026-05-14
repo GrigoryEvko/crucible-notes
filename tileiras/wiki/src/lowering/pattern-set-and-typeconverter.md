@@ -174,15 +174,6 @@ Keep bridges temporary. If unrealized casts survive the final cleanup pass, the 
 - One-to-N async pipeline patterns should run only after the scheduler and layout passes have made pipeline structure explicit.
 - Cleanup patterns should never erase memory-ordering operations unless the operation is outside the memory-consistency interface.
 
-## Reimplementation Checklist
-
-1. Define one shared LLVM type converter for all Tileiras lowering stages.
-2. Register conversions in deterministic order and make identity conversions explicit.
-3. Use memref, tiled-view, token, and address-space layouts exactly as documented here.
-4. Keep source and target materializations temporary and remove unrealized casts at the end.
-5. Split pattern population into generic remaps, dedicated rewrites, and cleanup patterns.
-6. Fail conversion if an illegal dialect survives a stage boundary.
-
 ## The 43-Instantiation `GenericOpPattern<arith::*Op>` Bank
 
 Arith lowers into TileAS through 43 byte-identical instantiations of a CRTP template `GenericOpPattern<SourceOp>`, registered by `sub_873F30` (13 127 B, called `populate_arith_GenericOpPatterns` internally). Each instantiation derives from `mlir::OpConversionPattern<SourceOp>`, occupies a 0x68 (104 B) object, and lives in the doubly-anonymous namespace `mlir::nv_tile_ir::as::{anonymous}::{anonymous}::GenericOpPattern<...>`.

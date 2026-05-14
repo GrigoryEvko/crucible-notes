@@ -81,13 +81,3 @@ pipeline-options default is `2`; the driver-level compute capability defaults to
 while the pipeline parser's standalone default is older. Public tests should avoid relying on either
 fallback and should pass both values explicitly.
 
-## Reimplementation Checklist
-
-1. Keep one typed options object for pipeline construction.
-2. Validate enum values before building the pass manager.
-3. Make `compute-capability` explicit in tests that bypass the driver.
-4. Treat `opt-level` and `v2-opt-level` independently.
-5. Forward `index-bitwidth` to all LLVM conversion passes that need it.
-6. Gate scheduler tracing on a non-empty output path.
-7. Keep host-wrapper options separate from device lowering options.
-8. Document every option's default and owner pass.

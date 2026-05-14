@@ -126,11 +126,3 @@ Both passes fail the module when required metadata is missing or when a target o
 - `llvm.nvvm.move` must sit between the debugged SSA value and the LLVM debug intrinsic.
 - Debug conversion must not alter executable dataflow except for the value pin used by debug metadata.
 
-## Reimplementation Checklist
-
-1. Read TileAA compute capability and target-spec metadata from each GPU module.
-2. Build the NVVM target attribute with triple, chip, optimization level, flags, and link mode.
-3. Emit libNVVM flags deterministically, including the debug flag only when requested.
-4. Convert internal debug-value operations into LLVM constants, extracts, `llvm.nvvm.move`, and debug intrinsics.
-5. Preserve local-variable and expression metadata exactly.
-6. Treat missing target metadata or unsupported debug operand types as pass failures.
