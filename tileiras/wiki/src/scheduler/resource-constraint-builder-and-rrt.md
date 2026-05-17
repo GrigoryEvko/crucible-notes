@@ -49,6 +49,92 @@ uint32_t compute_min_ii(const ScheduleState *schedule) {
 }
 ```
 
+## Per-Op Resource-Vector Encoding
+
+Each op enters the builder as an MLIR operation with operand types and dialect attributes; it leaves as a resource vector — a small array of `(slot_id, duration, occupancy)` triples plus an optional capacity-pool count. The builder reads the op's opcode to pick the primary slot, reads the operand and result types to pick the transport slot, and reads the latency family to pick the duration. Occupancy stays at `1` for every singleton transport and rises only for the capacity pools whose caps are above `1`.
+
+The triples are what the cost reducer ranks and what the apply driver writes into the qword row stack. They are the single canonical input/output of the builder body.
+
+### Concrete Encodings
+
+The four ops most worth pinning down are the TMA tiled load, the WGMMA matmul, the SMEM write, and the SMEM read. Every other op in the Blackwell dialect either reduces to one of these four or composes them.
+
+```c
+// nv_tileas.async.tiled_tma_load — TMA descriptor parked on slot 12 (tma),
+// tensor payload flowing through slot 16 (tp_smem_wr). Both stay live for the
+// full TMA round-trip duration of 8 cycles. Occupancy is 1 on each row —
+// singleton transports cannot share.
+ResourceVector encode_tiled_tma_load(Operation *op) {
+    return (ResourceVector){
+        .triples = { { .slot = 12, .duration = 8, .occupancy = 1 },
+                     { .slot = 16, .duration = 8, .occupancy = 1 } },
+        .n_triples = 2,
+        .pool_counts = { /* no pool pressure beyond singleton rows */ },
+    };
+}
+
+// nv_tileas.async.wgmma — issue stage on slot 11 (tc_and_mma), transport on
+// slot 19 (tp_mma). The MMA accumulator latency is 16 cycles, but the
+// scheduler models only the 8-cycle issue window in which the warpgroup
+// holds the slots; the rest is dependence latency, not slot occupancy.
+ResourceVector encode_wgmma(Operation *op) {
+    return (ResourceVector){
+        .triples = { { .slot = 11, .duration = 8, .occupancy = 1 },
+                     { .slot = 19, .duration = 8, .occupancy = 1 } },
+        .n_triples = 2,
+        .pool_counts = { /* TMEM-bank pressure pushed through pool index 1 */ },
+    };
+}
+
+// nv_tileas.async.smem_write — single-row footprint on slot 16 (tp_smem_wr)
+// for 7 cycles. The only op that participates directly in the SMEM byte
+// budget pool (pool index 5) so the SMEM byte-budget cap of 232 448 sees the
+// store size accumulated across all live writes.
+ResourceVector encode_smem_write(Operation *op, uint32_t store_bytes) {
+    return (ResourceVector){
+        .triples = { { .slot = 16, .duration = 7, .occupancy = 1 } },
+        .n_triples = 1,
+        .pool_counts = { [5] = store_bytes },     // SMEM byte budget
+    };
+}
+
+// nv_tileas.async.smem_read — symmetric mirror of smem_write on slot 15
+// (tp_smem_rd). 7-cycle hold, no pool pressure.
+ResourceVector encode_smem_read(Operation *op) {
+    return (ResourceVector){
+        .triples = { { .slot = 15, .duration = 7, .occupancy = 1 } },
+        .n_triples = 1,
+        .pool_counts = { /* read transport is row-only */ },
+    };
+}
+```
+
+The builder's classifier is a flat switch on the dialect opcode; every case sets up a triple list of length one or two and copies the duration from the latency-family table. Multi-triple encodings exist exclusively for ops that issue on one slot while transporting on another — TMA and WGMMA. A `tiled_tma_load` cannot be reduced to a single-row footprint because the descriptor must stay parked on the `tma` row even when the tensor payload is in flight on the SMEM transport; if either row is occupied, the candidate is rejected.
+
+### Apply-Side Lowering
+
+The per-op triples lower to qword rows by accumulating bits across slots before the apply driver writes them into the cycle stack.
+
+```c
+NodeRRT lower_resource_vector(const ResourceVector *vec) {
+    NodeRRT rrt = { .duration = 0 };
+    for (uint32_t i = 0; i < vec->n_triples; ++i) {
+        uint32_t bit = vec->triples[i].slot - 1;
+        if (vec->triples[i].duration > rrt.duration) {
+            rrt.duration = vec->triples[i].duration;
+        }
+        for (uint32_t k = 0; k < vec->triples[i].duration; ++k) {
+            rrt.rows[k] |= (1ull << bit);
+        }
+    }
+    return rrt;
+}
+```
+
+The duration is the maximum over all triples — two triples with different durations co-occupy the same set of cycles for as long as the longer one runs. Slots that drop out earlier leave their bits clear on the trailing cycles; the OR-fold makes that automatic.
+
+The triple list is also the unit of diagnostics: when the placement driver reports an admission failure, it prints the triple that caused the conflict together with the global RRT row at the failing modulo cycle. Two triples merged into one qword would hide which slot rejected the candidate.
+
 ## 24-Slot Apply Driver
 
 Apply mode walks a 24-bit resource row stored as a qword at field offset `+80` on each block record. Bit `i` set in that qword means resource class `i` is occupied by the current op on cycle 0 of its footprint. Multi-cycle footprints occupy companion qwords at `+88`, `+96`, and so on — one qword per footprint cycle, contiguous and in cycle order. `sub_989410` is the per-block apply driver, iterating over the staged op list for one block and updating the qword row stack. `sub_989BE0` is the per-op variant that runs the same update for a single op record without the block-level iteration.
@@ -89,6 +175,26 @@ void tryAddConstraintToAvoidRegSpilling(ScheduleState *state, Op *op,
 ```
 
 The surcharge is a hint that ranks otherwise-equivalent candidates; it never rejects a seat by itself. A placement that satisfies every hard constraint but carries spill surcharges at every cycle still commits — the schedule is correct, only the register-pressure heuristic is unhappy.
+
+### Cost-Term Formula
+
+The surcharge attached to an `(op, cycle)` pair is a linear function of predicted register-pressure excess, clamped to a fixed cap so a single op cannot saturate the cost vector.
+
+```c
+// pressure: per-op register-pressure estimate at the candidate seat cycle.
+// budget:   register-file budget for the current SM partition.
+// W:        SPILL_SURCHARGE_WEIGHT (= 17, sourced from the cost-table seeder).
+// CAP:      SPILL_SURCHARGE_CAP    (= 4096, the cost-vector saturation cap).
+uint32_t spill_surcharge(uint32_t pressure, uint32_t budget) {
+    if (pressure <= budget) return 0;
+    uint64_t raw = (uint64_t)(pressure - budget) * W;
+    return raw > CAP ? CAP : (uint32_t)raw;
+}
+```
+
+A schedule's accumulated spill surcharge is the sum of these per-`(op, cycle)` terms across every op that received a surcharge. The cost-based arm reads the sum as the third component of its lexicographic cost vector, immediately after the hard resource gate and the pipeline-slot pressure. Two schedules with identical resource and slot-pressure components tie-break on this sum; the schedule with the smaller surcharge wins.
+
+The cap matters for the proof obligation: without it, a sufficiently large pressure overshoot could push the surcharge above the budget the structural-distance term reserves at the bottom of the lexicographic vector, and the ranking would no longer respect the intended priority. The 4 096 cap leaves three orders of magnitude of headroom for the structural-distance term to express its preferences inside.
 
 The same bit-row geometry that drives the per-op footprints resurfaces in the schedule analyser when it computes stage counts and emits diagnostics. The 24-bit width and the per-cycle qword layout therefore belong to the schedule's serialisation contract, not an apply-mode-only detail.
 

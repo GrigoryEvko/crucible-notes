@@ -56,11 +56,91 @@ The second rule is the source of the most common subtle bug. `wait_group N` is "
 
 A useful mental model: `commit_group` closes the current group and increments an in-flight counter. `wait_group N` blocks until the in-flight counter is at most `N`, then returns. Counter monotonicity means the wait drains every group older than the current cohort of `N`.
 
-## SMEM Descriptor Advancement
+## SMEM Descriptor Bit Layout
 
-Operand B is always an SMEM descriptor — a packed 64-bit word whose `start_addr` field carries the low 14 bits of the SMEM byte offset right-shifted by 4. WGMMA requires 16-byte-aligned SMEM addresses; the constructor stores `(smem_offset >> 4)` rather than the unshifted byte offset.
+Operand B is always an SMEM descriptor — a packed 64-bit immediate-style word built once per operand before the tile loop, then threaded through the inline-asm fragment as an `l`-constraint i64 input. The same bit layout serves every Hopper WGMMA shape; the constructor is one routine fed by per-atom shape and swizzle metadata, not a family of per-shape variants. The canonical 64-bit packing layout is:
 
-When the WGMMA region iterates over output tiles, descriptors must advance by the per-tile byte stride converted to 16-byte units:
+| Bits | Field | Width | Meaning |
+|---:|---|---:|---|
+| 0-13 | `start_addr` | 14 | Low 14 bits of SMEM byte offset right-shifted by 4 (16-byte alignment) |
+| 14-29 | `lbo` | 16 | Leading byte offset between rows of a warp tile |
+| 30-45 | `sbo` | 16 | Stride byte offset between consecutive warp tiles along K |
+| 46-48 | `base_offset` | 3 | Per-CTA SMEM offset, scaled by 8 |
+| 49-51 | reserved | 3 | Must be zero; constructor masks explicitly |
+| 52-53 | `swizzle_mode` | 2 | 0 = none, 1 = 128B, 2 = 64B, 3 = 32B |
+| 54-63 | pad | 10 | Unused |
+
+The bit ranges come from the constructor in `cute_nvgpu` and are mirrored by the operand-layout verifier — see [SMEM-Descriptor Construction](../dialects/cute_nvgpu/mma-atoms-sm70-120.md#smem-descriptor-construction) for the same table from the dialect side.
+
+```c
+typedef union WgmmaDescriptor {
+    uint64_t raw;
+    struct {
+        uint64_t start_addr   : 14;   /* bits 0-13  */
+        uint64_t lbo          : 16;   /* bits 14-29 */
+        uint64_t sbo          : 16;   /* bits 30-45 */
+        uint64_t base_offset  : 3;    /* bits 46-48 */
+        uint64_t reserved     : 3;    /* bits 49-51 */
+        uint64_t swizzle_mode : 2;    /* bits 52-53 */
+        uint64_t pad          : 10;   /* bits 54-63 */
+    };
+} WgmmaDescriptor;
+
+uint64_t make_smem_desc(uint32_t smem_byte_off,
+                       uint16_t lbo, uint16_t sbo,
+                       uint8_t base_offset, uint8_t swizzle_mode) {
+    WgmmaDescriptor d = {0};
+    d.start_addr   = (smem_byte_off >> 4) & 0x3FFF;   /* keep low 14 bits */
+    d.lbo          = lbo;
+    d.sbo          = sbo;
+    d.base_offset  = base_offset & 0x7;
+    d.swizzle_mode = swizzle_mode & 0x3;              /* 0/1/2/3 = none/128B/64B/32B */
+    return d.raw;
+}
+```
+
+The constructor must mask the reserved field. Selection sometimes leaves uninitialised scratch bits in the upper half of the SDNode operand, and the WGMMA hardware does not ignore them: a non-zero reserved field is silently UB.
+
+### Worked Decode
+
+Take the canonical Hopper choice: `m64n128k16.f32.f16.f16` with `swizzle = 128B`, `lbo = 2048`, `sbo = 0`, `base_offset = 0`, and an SMEM byte offset whose `(>> 4)` value lands at `0x1000`. The packed bit fields are:
+
+| Field | Logical | Hex | Encoded position |
+|---|---|---|---|
+| `start_addr` | `smem_off >> 4 = 0x1000` | `0x1000` | bits 0-13 |
+| `lbo` | `2048 = 0x800` | `0x800` | bits 14-29 |
+| `sbo` | `0` | `0x0` | bits 30-45 |
+| `base_offset` | `0` | `0x0` | bits 46-48 |
+| `swizzle_mode` | `128B` | `1` | bits 52-53 |
+
+Composing them:
+
+```c
+uint64_t raw = 0;
+raw |= ((uint64_t)0x1000) <<  0;   /* start_addr   */
+raw |= ((uint64_t)0x0800) << 14;   /* lbo          */
+raw |= ((uint64_t)0x0000) << 30;   /* sbo          */
+raw |= ((uint64_t)0x0000) << 46;   /* base_offset  */
+raw |= ((uint64_t)0x0001) << 52;   /* swizzle 128B */
+/* raw == 0x0010_0000_0200_1000 */
+```
+
+The decode is the inverse: bits 0-13 hold `0x1000`, bits 14-29 hold `0x800` (which spills into nibble `0x02000` of the raw word because the field starts at bit 14), bits 52-53 hold `1`, and every reserved bit is clear. A reimplementation that round-trips through `decode_descriptor(0x00100000_02001000)` produces the exact original logical-field set.
+
+The swizzle table the constructor consults:
+
+| `swizzle_mode` | Row width | Typical use |
+|---:|---:|---|
+| 0 | none | Plain row-major SMEM tile |
+| 1 | 128 B | Canonical Hopper choice for full-width A and B tiles |
+| 2 | 64 B  | Smaller tensor-core operand (sub-canonical tile) |
+| 3 | 32 B  | Sub-tile WGMMA |
+
+The 128 B mode is the canonical choice for `m64n{128, 192, 256}k{8, 16, 32}` tiles. The 64 B and 32 B modes kick in when the operand element width or warp-tile footprint is smaller than a canonical 128 B row.
+
+## Descriptor Advancement
+
+When the WGMMA region iterates over output tiles, descriptors advance by the per-tile byte stride converted to 16-byte units:
 
 ```c
 uint64_t advance_descriptor(uint64_t desc, int m_tile, int k_tile, Layout layout) {
@@ -69,7 +149,7 @@ uint64_t advance_descriptor(uint64_t desc, int m_tile, int k_tile, Layout layout
 }
 ```
 
-A reimplementation that forgets the `>> 4` advances the descriptor 16x too far in the first tile and silently aliases distant SMEM regions on subsequent tiles. The verifier does not catch it because the descriptor field is opaque from the dialect's point of view.
+The advancement adds to `start_addr` and may carry through into the `lbo` field if the M or K extent crosses a 14-bit boundary — the field aliasing is intentional, since `start_addr` and `lbo` together carry the SMEM offset for the next warp tile. A reimplementation that forgets the `>> 4` advances the descriptor 16x too far on the first tile and silently aliases distant SMEM regions on subsequent tiles. The verifier does not catch it because the descriptor field is opaque from the dialect's point of view.
 
 Operand A may be either a register fragment or an SMEM descriptor, controlled by a per-atom `a_in_rf` predicate. When A rides registers, the descriptor advancement applies only to B; when A rides SMEM, both operands advance using their own layouts.
 
@@ -112,6 +192,30 @@ Operand A is one of two residencies:
 - An SMEM descriptor, with the same construction rules as operand B (used when A is large enough to want SMEM staging or when the producer is a TMA load).
 
 The accumulator stays in registers in every WGMMA variant. The destination is the warp group's register file; that is also why each `mma_async` returns a typed accumulator SSA value the rest of the IR can thread through subsequent MMAs in the same group.
+
+## Per-Shape Lattice
+
+WGMMA fixes M at 64 — that is the warp-group dimension (4 warps × 16-thread tile = 64 rows of output per instruction). N steps in multiples of 8 up to 256, and K is fixed per input element type at `256 / elem_bits`. The per-input-family availability is:
+
+| Input family | Accumulator | Legal (M, N, K) shapes | K |
+|---|---|---|---:|
+| `f16 × f16` | `f16` or `f32` | `{64} × {8, 16, 24, ..., 256} × {16}` | 16 |
+| `bf16 × bf16` | `f32` | `{64} × {8, 16, 24, ..., 256} × {16}` | 16 |
+| `tf32 × tf32` | `f32` | `{64} × {8, 16, 24, ..., 256} × {8}` | 8 |
+| `e4m3 × e4m3` (FP8) | `f32` | `{64} × {8, 16, 24, ..., 256} × {32}` | 32 |
+| `e5m2 × e5m2` (FP8) | `f32` | `{64} × {8, 16, 24, ..., 256} × {32}` | 32 |
+| Mixed `e4m3 × e5m2` | `f32` | `{64} × {8, 16, 24, ..., 256} × {32}` | 32 |
+| `s8 × s8` / `u8 × u8` | `s32` | `{64} × {8, 16, 24, ..., 256} × {32}` | 32 |
+| `s4 × s4` / `u4 × u4` | `s32` | `{64} × {8, 16, 24, ..., 256} × {64}` | 64 |
+| `b1 × b1` (popcount) | `s32` | `{64} × {8, 16, 24, ..., 256} × {256}` | 256 |
+
+The K column reflects the canonical `256 / elem_bits` rule, with one exception: `b1` rides a `.xor.popc` or `.and.popc` reduction over 256 bits of K, well past the canonical 256-bit-element budget. The b1 path is the only WGMMA variant that does not multiply-accumulate in the conventional sense.
+
+The N step of 8 is the WGMMA hardware constraint on the output tile size — there is no N=12 or N=20 variant. Lowering rejects any N that is not a multiple of 8 with "WGMMA N must be a multiple of 8". The K column entry is a hard match — the lowering does not synthesise a K=24 `f16` WGMMA by issuing one K=16 and one K=8 instruction; the K=8 form is `tf32`-only, and the K extent for `f16` must be exactly 16 per instruction.
+
+The largest single-instruction tile is `m64n256k16.f16` for FP16 inputs (8192 output elements per warp-group instruction) and `m64n256k32.e4m3` for FP8 (8192 outputs over twice the K extent). Lowering tiles a logical matmul into per-instruction tiles by stepping along N in chunks bounded by the largest legal N and along K in chunks of the per-family K column; the M axis stays at 64 for the entire warp group's lifetime and the loop nest threads tiles into the four-op sequence one at a time.
+
+For comparison against earlier and later tiers, see [Matmul Progression by SM](matmul-progression-by-sm.md) for the cross-architecture shape lattice that places WGMMA between Ampere's `m16n8k*` register MMA and Blackwell's `tcgen05.mma`.
 
 ## SM Gating
 

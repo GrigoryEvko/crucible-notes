@@ -487,6 +487,51 @@ edge to span more than the available pipeline depth. The cost-based scheduler ru
 lexicographically: pipe-slot is the hard legality gate, bank-pressure is the preference between the candidates
 that survive the gate.
 
+### Worked Scoring Example
+
+The clearest way to see how the lexicographic cost vector ranks candidate schedules is to walk two concrete placements of the four-op loop body from [Blackwell Pipeline 15-Slot Model — Worked Example](blackwell-pipeline-15-slot-model.md#worked-example-four-op-loop-body). Both candidates seat the same four ops; both target `II = 8`; they differ only in whether the SMEM write seats at the same cycle as the TMA load or one cycle later. The cost vector has four lexicographic components, ordered from hardest to softest:
+
+| Position | Component | Source |
+|---:|---|---|
+| 1 | resource feasibility | RRT row-OR test, capacity-pool caps |
+| 2 | pipe-slot legality | structural distance matrix, pre-deps inside the slot |
+| 3 | bank-pressure pressure | SMEM bank-conflict count |
+| 4 | structural distance | dependence-shape preference vs original order |
+
+**Candidate A** seats every op at `II = 8` with a single-stage pipeline:
+
+```text
+op             stage  order  cycle  slots claimed at cycle 0..7
+tiled_tma_load  0      0      0     tma + tp_smem_wr
+smem_write      0      1      0     tp_smem_wr             ← collision
+wgmma           0      2      0     tc_and_mma + tp_mma
+smem_read       0      3      0     tp_smem_rd
+```
+
+The RRT probe at cycle `0` finds `tp_smem_wr` already claimed by `tiled_tma_load`. Component 1 fails: cost vector is `(∞, *, *, *)`. The candidate is rejected before any later component matters.
+
+**Candidate B** spreads the SMEM write into stage 1 by seating it at order 1, cycle 0 of the next iteration's modulo window:
+
+```text
+op             stage  order  cycle  slots claimed
+tiled_tma_load  0      0      0     tma + tp_smem_wr   [cycles 0..7]
+smem_write      1      0      8     tp_smem_wr         [cycles 0..6 of next iter, modulo 8]
+wgmma           0      1      0     tc_and_mma + tp_mma [cycles 0..7]
+smem_read       0      2      0     tp_smem_rd          [cycles 0..6]
+```
+
+Component 1 passes — every slot has at most one claimant per modulo cycle. The cost reducer moves to component 2.
+
+Component 2 walks the all-pairs distance matrix produced by `sub_98BEE0`. The `tiled_tma_load → smem_read` edge has latency `8` and iteration distance `0`; the distance matrix reads `D[load, read] = 8`. The pipe-slot threshold for `tp_smem_rd` at `II = 8` is also `8`, so the gate passes with zero slack. Cost contribution from this component is `0` — equal to the threshold means no preference penalty.
+
+Component 3 counts SMEM bank pressure. The bank-pressure evaluator `sub_98C440` reads `rrt0` and `rrt1` at the modulo cycle, sums them, and compares against pool caps `4` (TMEM) and `3` (named-barrier). For Candidate B the in-iteration occupancy is `2` (load + read on different rows of the SMEM bank) and the cross-iteration carry is `1` (the SMEM write spilling from iteration `n−1`). The sum `2 + 1 = 3` is below the TMEM cap and equal to the named-barrier cap; the gate passes with zero slack. Contribution to the cost vector is the raw sum `3`.
+
+Component 4 computes structural distance from the original program order. The original order is `(load, write, mma, read)` and Candidate B emits `(load, mma, read, write)` after the modulo wrap — the SMEM write moved past two later ops. The distance penalty is the Kendall-tau metric `2`, the number of inversions.
+
+Candidate B's full cost vector is therefore `(0, 0, 3, 2)`. Compare against any alternative that pulls the SMEM write back into stage 0 by raising `II` to `9`: that alternative would have cost vector `(0, 0, 2, 0)` on its own resources but pays a `+1` in the outer `II` search; the outer driver penalises larger `II` directly and rejects it before this inner cost reducer ever runs. Among candidates that share the same outer `II`, Candidate B wins because every alternative either fails component 1 (like Candidate A) or accumulates a larger component-3 or component-4 cost.
+
+The lexicographic comparison is strict: a candidate that improves component 4 at the price of component 3 always loses. This is what keeps the cost-based generator deterministic — the order in which the components rank is fixed at the binary level, and the cost reducer never sums or normalises across components.
+
 ### Sentinel `0x7FFFFFFF`
 
 The constant `0x7FFFFFFF` plays two distinct roles inside the scheduler, and both stay correct because the value

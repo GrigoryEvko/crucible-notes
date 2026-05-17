@@ -94,6 +94,120 @@ the TileAS materialization pipeline; the attachment point is here.
 
 A handful of diagnostics from this layer outline the bank: `"TODO: only reg and smem layouts are supported at the moment"` from `sub_7297B0`, `"missing source layout"` and `"failed to infer source layout"` from `sub_729D30`, `"plugin has unsupported feature"` and `"fails to assign layout"` from `sub_7254B0`, `"failed to convert block signature"` from `sub_738E70`, and `"expect operands with queue types"` from `sub_73C190`.
 
+## Per-Pattern Walks
+
+### `tiled_load` Witness Hand-Off
+
+The TileAA `tiled_load` already carries a `CopyAtomAttrInterface` witness chosen by the layout-assignment pre-pass; the TileAS rewrite preserves both the witness and the surrounding operand vector verbatim. The mnemonic changes, the operand layout stays one-for-one, and the result-type stays `tile<S × element>`. The witness slot is still an `AtomAttr`, but the TileAS verifier reads it through `CopyAtomAttrInterface` rather than through the TileAA accessor:
+
+```mlir
+// Before
+%v, %t1 = nv_tileaa.tiled_load %mr_a[%i, %k], %t0
+    { atom = #cute_nvgpu.copy_atom<sm90_tma_load_2d>,
+      in_bounds = array<i1: true, true>,
+      mem_semantic = #nv_tileaa<mem_semantic relaxed>,
+      mem_scope = #nv_tileaa<mem_scope cluster>,
+      operandSegmentSizes = array<i32: 1, 2, 0, 1> }
+    : !nv_tileaa.memref<?x?xf16, 1>, index, index, !nv_tileaa.mem_token
+    -> tile<128x32xf16>, !nv_tileaa.mem_token
+
+// After
+%v, %t1 = nv_tileas.tiled_load %mr_a[%i, %k], %t0
+    { atom = #cute_nvgpu.copy_atom<sm90_tma_load_2d>,
+      in_bounds = array<i1: true, true>,
+      mem_semantic = #nv_tileas<mem_semantic relaxed>,
+      mem_scope = #nv_tileas<mem_scope cluster>,
+      operandSegmentSizes = array<i32: 1, 2, 0, 1> }
+    : !nv_tileas.tiled_view<128x32xf16>, index, index, !nv_tileas.mem_token
+    -> tile<128x32xf16>, !nv_tileas.mem_token
+```
+
+The view-typed operand changes shape: `nv_tileaa.memref<?x?xf16, 1>` becomes `nv_tileas.tiled_view<128x32xf16>` because TileAS represents the access through the static tile box rather than the parent dynamic memref. The TypeConverter materialises a `nv_tileas.view` operation upstream so the rewritten `tiled_load` consumes an already-typed view; the materialiser is not visible at the call site of the rewrite, but its output feeds the operand slot during partial conversion.
+
+The `mem_semantic` and `mem_scope` enum attributes change their dialect prefix but retain identical discriminant values. The `CopyAtomAttrInterface` witness is the only attribute that is dialect-neutral — `#cute_nvgpu.copy_atom<sm90_tma_load_2d>` carries through unchanged because the cute_nvgpu dialect publishes the witness for both consumers.
+
+### `dot` Dispatch by Compute Capability
+
+`nv_tileaa.dot` lowers to a single `nv_tileas.dot` op in the general case, but the SM100 block-scale guard at `sub_72C180` redirects the variant that consumes per-block scale factors to `nv_tileas.block_scaled_mma`. The dispatcher reads the `compute_capability` integer encoded as `major * 10 + minor` from the attached target spec and the `is_block_scale_variant` flag the validator sets after MMA-shape inspection:
+
+```mlir
+// Before (plain dot, every compute capability ≥ sm70)
+%d = nv_tileaa.dot %av, %bv, %c_in
+    { operandSegmentSizes = array<i32: 1, 1, 1, 0, 0> }
+    : tile<128x32xf16>, tile<32x128xf16>, tile<128x128xf32>
+    -> tile<128x128xf32>
+
+// After (SM90 path — Hopper warpgroup MMA)
+%d = nv_tileas.dot %av, %bv, %c_in
+    { atom = #nv_tileas<atom mma_f16_f16_f32>,
+      operandSegmentSizes = array<i32: 1, 1, 1, 0, 0> }
+    : tile<128x32xf16>, tile<32x128xf16>, tile<128x128xf32>
+    -> tile<128x128xf32>
+```
+
+For the block-scaled variant on SM100 the rewrite uses a different op:
+
+```mlir
+// Before (block-scaled MMA — requires sm_100+)
+%d = nv_tileaa.mma_block_scale %av, %bv, %c_in, %scale_a, %scale_b
+    : tile<128x32xe4m3>, tile<32x128xe4m3>, tile<128x128xf32>,
+      tile<128x1xui8>, tile<1x128xui8>
+    -> tile<128x128xf32>
+
+// After (sm_100)
+%d = nv_tileas.block_scaled_mma %av, %bv, %c_in, %scale_a, %scale_b
+    { atom = #nv_tileas<atom umma_bs_e4m3_e4m3_f32>,
+      cta_group = 1 : i32 }
+    : tile<128x32xe4m3>, tile<32x128xe4m3>, tile<128x128xf32>,
+      tile<128x1xui8>, tile<1x128xui8>
+    -> tile<128x128xf32>
+```
+
+The `atom` attribute attached on the way out names the concrete MMA instruction family the materialiser will eventually pick. Capability ≤ 89 fails with `"mma block scale is not supported by compute capability < sm100"` before any rewrite is attempted; capabilities 90 and 99 fall through to the plain `nv_tileas.dot` path, which lowers to `nvvm.wgmma.*` downstream.
+
+### `reduce` and `scan` Region Hand-Off
+
+Region-bearing operations preserve their combiner body across the rewrite. The TileAS forms accept the same block-argument types because TileAA already published them as bare element types — no region-types conversion runs here:
+
+```mlir
+// Before
+%sum = nv_tileaa.reduce %values { axis = 1 : i32 }
+    : tensor<8x64xf32> -> tensor<8xf32> {
+  ^bb0(%acc: f32, %val: f32):
+    %s = nv_tileaa.addf %acc, %val : f32
+    nv_tileaa.yield %s : f32
+}
+
+// After
+%sum = nv_tileas.reduce %values
+    { atom = #nv_tileas<reduce_atom warp_shfl_xor_f32>,
+      axis = 1 : i32 }
+    : tensor<8x64xf32> -> tensor<8xf32> {
+  ^bb0(%acc: f32, %val: f32):
+    %s = arith.addf %acc, %val : f32
+    nv_tileas.yield %s : f32
+}
+```
+
+Two changes come in alongside the mnemonic swap. First, a `ReduceAtomAttrInterface` witness is attached on the way out — selected by the layout-assignment pre-pass and looked up through the cached TypeID at `qword_5B38C00`. Second, the combiner body's `nv_tileaa.addf` rewrites to upstream `arith.addf` rather than a `nv_tileas.addf`: the arith populator that runs first in the populator order has already lowered all body-internal arithmetic, and the core populator picks up the parent `reduce` only after the body is in arith form. `scan` follows exactly the same shape, only differing in mnemonic and in producing a same-rank cumulative result.
+
+### `func` Boundary Stays Legal
+
+`nv_tileaa.func`, `nv_tileaa.return`, and `nv_tileaa.mark_for_reuse` are explicitly listed as legal in the conversion target. The pass leaves them untouched — `ConvertTileFuncToLLVM` owns the boundary rewrite. As a result an entry function survives this pass with `nv_tileaa` types on its signature even though the body has been fully lowered to TileAS:
+
+```mlir
+nv_tileaa.func @kernel(%a: !nv_tileaa.ptr<f16, 1>, %b: !nv_tileaa.ptr<f16, 1>,
+                      %c: !nv_tileaa.ptr<f32, 1>)
+    attributes { cute.kernel,
+                 nv_tileaa.kernel_spec = #nv_tileaa.kernel_spec<numWarps=4, clusterDim=[2,1,1]> } {
+  // body — every executable op now TileAS-typed
+  ...
+  nv_tileaa.return
+}
+```
+
+The kernel-spec attribute attached by `attachKernelSpecAttributes` is a mirror of the `cute.kernel` attribute set; the function signature still carries TileAA-typed pointers until the next stage lifts them through the bare-pointer ABI.
+
 ## 137 realloc_insert Trampolines
 
 137 byte-identical 343-byte trampolines fill `0x7000E0..0x70FC80`, one per push into the pattern vector. Each is a distinct instantiation of `std::vector<std::unique_ptr<RewritePattern>>::_M_realloc_insert`, byte-identical apart from the move-constructor vtable offset the inlined relocation loop calls for the unique_ptr's `Pattern::T` destructor. The count is 137 because the three populators add inserts at multiple `PatternBenefit` levels: only about 90 distinct pattern classes exist, but several get registered through more than one trampoline. The trampolines defer capacity growth to `sub_6E6530`, whose sole string is `"vector::_M_realloc_insert"`.
@@ -126,4 +240,4 @@ Executable `nv_tileaa` operations must not survive the pass — `applyPartialCon
 the previous boundary that produces the `nv_tileaa` input this pass consumes. [TileAS to LLVM — Tile Memory and Descriptor Lowering](tileas-to-llvm.md#tile-memory-and-descriptor-lowering) is the
 downstream materialization that resolves the CopyAtom and ReduceAtom witnesses attached here into concrete instructions.
 [MMA Atoms sm70-120 — Operand Contract by Tier](../dialects/cute_nvgpu/mma-atoms-sm70-120.md#operand-contract-by-tier) lists the atom-K and vector-size triples consulted by
-the SM100 block-scale validator.
+the SM100 block-scale validator. [nv_tileas Op Roster — Tiled Memop Operand/Result Tables](../dialects/nv_tileas/op-roster-and-builders.md#tiled-memop-operandresult-tables) gives the operand-and-attribute tables the per-pattern walks here build against.

@@ -2,124 +2,180 @@
 
 ## Abstract
 
-This is the cleanup window around instruction selection. An IR-level NVVM peephole pass simplifies address arithmetic before SelectionDAG sees it. A MachineIR image-handle pass rewrites texture and surface operands from parameter handles into slot operands. The final MachineIR cleanup passes strip target pseudos, fix frame-index address forms, and tag invariant loads. Together they hand PTX printing concrete, target-legal instructions.
+This is the cleanup window around instruction selection. A post-ISel MachineIR peephole pass walks an 801-row pattern table and fuses address-arithmetic chains into their consumers; the same dispatcher hosts BASR (the central base-address-slice-replace fold) and the image-handle replacement that rewrites texture and surface operands from parameter handles into slot operands. The final MachineIR cleanup passes strip target pseudos, fix frame-index address forms, and tag invariant loads. Together they hand PTX printing concrete, target-legal instructions.
 
-## BASR: Base-Address-Slice-Replace
+## Peephole MIR
 
-`BASR` is the central NVPTX-MIR peephole rewriter. It runs after instruction selection on the MachineFunction form (the MIR equivalent of MLIR's `func.func`) and hunts redundant GEP base computations that survived selection. When a GEP feeds a load or store and both halves match a fixed pattern, BASR fuses them into a single `BASE_SLICE_OFFSET` MI, collapsing the redundant address arithmetic into the consumer.
+The MachineIR peephole pass is the central post-ISel rewriter for NVPTX. It runs after instruction selection on the MachineFunction form and applies an 801-row pattern table that matches MIR sequences and rewrites them in place. The two canonical rewrites are BASR (Base-Address-Slice-Replace), which fuses a GEP-style base computation into its consuming load or store, and the image-handle table which is documented in its own section below.
 
-Two procedures split the work. The core at `sub_2800C10` (13.3 KB, 642 basic blocks) walks each `MachineFunction`, inspects each `MachineInstr`, matches the GEP+LOAD or GEP+STORE pattern, and emits the fused opcode when both halves agree. The outer driver at `sub_2804670` (12 KB, 632 BB) wraps the core in the MachineFunctionPass iteration loop and emits a `"phi maxLoopInd = "` debug print before each iteration, logging the loop-nest depth BASR is about to traverse.
+### Input and Output MIR Shape
 
-A standard LLVM `PassInfo` quad at `0x2807AE0` (56 bytes: id, short name, long name, ctor pointer) advertises the pass. The short name — used by `-print-after-all` and the debug pass registry — is `"BASR"`; the long name is `"Base-Address-Slice-Replace"`.
+```text
+input  (MIR, before peephole):
+  %1:i64 = MUL64ri %iv, 4
+  %2:p1  = ADD64rr %base, %1
+  %3:i32 = LD32 %2, 0
 
-### Per-Function State
+output (MIR, after BASR):
+  %3:i32 = LD32_BASE_SLICE_OFFSET %base, %iv, 4
+```
 
-Each `MachineFunction` visit allocates a 344-byte `BasrState` scratch struct: the working pointer to the current MF, the work-list of pending MIs, an open-addressed intern table for canonicalized GEP bases, a DenseMap from `MachineInstr*` to the cached GEP-info for that instruction, the active opcode-class mask, and the debug flag.
+The fused `LD32_BASE_SLICE_OFFSET` carries the base pointer, the slice (index) register, and the constant stride directly; the intermediate `MUL64` and `ADD64` MIs are dead and removed in the same pass. The same shape applies to stores and to a handful of address-arithmetic chains that ISel leaves around tensor-memory addresses.
+
+### Pattern Table Structure
+
+The pattern table is 801 rows, one per recognized rewrite. Each row carries:
+
+- an `opcode_mask` field giving the set of MI opcodes that can trigger this row;
+- a forward or backward direction marker selecting which chain walker to use;
+- a per-row matcher that inspects the candidate MI's operands and predecessors (or successors);
+- an emit function that constructs the replacement MI and erases the matched sequence.
+
+Dispatch over `opcode_mask` is constant-time: the pass maintains an `opcode → row[]` index built once at module entry, so each MI scan does a single hash lookup rather than walking all 801 rows. The mask is a bitset over the 14 active opcode classes — GEP, LOAD, STORE, ADD, SUB, MUL, AND, OR, SHL, SHR, BITCAST, EXTRACT, INSERT, PHI. PHI is included so GEP bases threaded through loop headers can still be canonicalized; the BITCAST / EXTRACT / INSERT classes handle the pointer-typing pseudos NVPTX selection leaves around tensor-memory addresses.
+
+### BasrState
+
+Each MachineFunction visit allocates a `BasrState` scratch record that tracks per-basic-block state across pattern attempts:
 
 ```c
 typedef struct BasrState {
-    /*+0x000*/ MachineFunction       *mf;
-    /*+0x008*/ uint64_t              *intern_buckets;   // open-addressed: -8192 tomb, -4096 empty
-    /*+0x010*/ uint32_t               n_buckets;
-    /*+0x014*/ uint32_t               n_live;
-    /*+0x020*/ MachineInstr         **work_list;        // 24-strided SmallVector
-    /*+0x028*/ uint32_t               n_work;
-    /*+0x040*/ uint64_t               opcode_mask;      // 14 bits, see below
-    /*+0x080*/ DenseMap<MI*, GepInfo> gep_cache;        // 72-B slot stride
-    /*+0x150*/ uint8_t                debug_enabled;    // from qword_5B6BC40
+    MachineFunction       *mf;
+    DenseMap<unsigned, MachineInstr*> intern;     // canonical-base interning
+    SmallVector<MachineInstr*, 16>    work_list;  // pending MIs to retry
+    DenseMap<MachineInstr*, GepInfo>  gep_cache;  // memoized base decomposition
+    uint64_t                          opcode_mask;
+    bool                              debug_enabled;
 } BasrState;
 ```
 
-The intern table uses the LLVM convention of sentinel keys `-8192` (tombstone) and `-4096` (empty), keeping erase cheap without rehashing. The work-list is a 24-byte-strided SmallVector seeded from the function's instruction stream and drained in dominator order, so uses of a folded base are always rewritten before the base itself is erased.
+The intern map collapses syntactically distinct but semantically equal base computations to the same canonical MI, so a second occurrence of `base + i*4` reuses the first occurrence's BASR output instead of allocating new operands. The work list is drained in dominator order, which guarantees that uses of a folded base are rewritten before the base itself is erased.
 
-### Opcode-Tag Dispatch
+### Forward and Backward Chain Walkers
 
-The 14-bit `opcode_mask` selects which MI opcode classes participate in folding. Dispatch flows through `sub_3B6DCD0`, the SubclassID table reader that maps each MI opcode to a 4-bit class index; the inline `case 1..F` switch in `sub_2800C10` then routes the MI to its class-specific handler. The 14 active classes are GEP, LOAD, STORE, ADD, SUB, MUL, AND, OR, SHL, SHR, BITCAST, EXTRACT, INSERT, and PHI. PHI is included so GEP bases threaded through loop headers can still be canonicalized; the BITCAST/EXTRACT/INSERT classes handle the pointer-typing pseudos NVPTX selection leaves around tensor-memory addresses.
+The 801 rows split into forward and backward families:
 
-### Debug Knob
+- **Forward chain walker.** Matches sequences of N MIs starting at a given root, walking forward through users. A BASR row that fuses `MUL + ADD + LOAD` into `LD_BASE_SLICE_OFFSET` is forward-rooted at the `MUL`, then descends to the `ADD`, then to the `LOAD`. The walker stops at the first non-matching user or at a use that escapes the basic block under the row's locality requirement.
+- **Backward chain walker.** Matches sequences ending at a given sink, walking backward through defs. Dead-code-style rewrites — where the consumer is the trigger and the producers are folded into it — use the backward walker. An `LD32` row that absorbs a preceding `ADD64` into its addressing mode is backward-rooted at the load and traces defs back through the `ADD` to the `MUL`.
 
-A `cl::opt<bool>` at `qword_5B6BC40` is populated by the `-print-basr` flag. When set, BASR emits `"phi maxLoopInd = "` followed by the current loop induction-variable count for every MachineFunction it visits, so a `-print-basr` run shows the loop-nest depth the rewriter sees at each entry. The same flag gates the `BasrState::debug_enabled` byte that per-class handlers consult before emitting their finer-grained `dbgs()` prints.
+The split exists because some patterns are cheaper to match top-down (a single root with many possible tails) and others bottom-up (a single sink with many possible heads). The dispatcher picks the right walker per row from the direction marker; the row itself does not see the choice.
+
+### Invariant-Load Whitelist
+
+Certain loads are never rewritten away even when the pattern table's matcher claims a fold. The whitelist is the set of loads whose result is observably stable across all reachable program points, so any rewrite that erases or reorders them changes the program:
+
+- loads of program-counter-relative globals (CUDA kernel constants emitted into `.text`);
+- loads from the constant address space (`addrspace(4)`);
+- loads with `!invariant.load` metadata;
+- loads from grid-constant parameters;
+- loads from the special-register file (thread/block/grid IDs, `clock64`, `globaltimer`).
+
+The whitelist is enforced as the first check in every row's emit function: if the candidate matches the load shape but is on the whitelist, the row's emit short-circuits and the pass continues. Removing a row's whitelist check produces a kernel that loses its broadcasted constants, which manifests as nondeterministic kernel outputs depending on warp scheduling.
+
+### BASR-Specific Algorithm
+
+```c
+void run_basr(MachineFunction *mf, BasrState *s) {
+    seed_work_list(s, mf);
+    while (!s->work_list.empty()) {
+        MachineInstr *mi = s->work_list.pop_back();
+        for (Pattern *row : pattern_table_for_opcode(mi->opcode)) {
+            if (row->direction == FORWARD) {
+                if (match_forward_chain(s, mi, row)) {
+                    emit_replacement(s, mi, row);   // erases matched chain
+                    requeue_users(s, mi);
+                    break;
+                }
+            } else {
+                if (match_backward_chain(s, mi, row)) {
+                    emit_replacement(s, mi, row);
+                    requeue_defs(s, mi);
+                    break;
+                }
+            }
+        }
+    }
+}
+```
+
+A `cl::opt<bool>` named `-print-basr` turns on the BASR debug print. When set, BASR emits `"phi maxLoopInd = "` followed by the current loop induction-variable count for every MachineFunction it visits, so a `-print-basr` run shows the loop-nest depth the rewriter sees at each entry.
+
+### Failure Modes
+
+- **Pattern miss leaves redundant arithmetic.** A row that fails to match because its operand shape diverges from the canonical form (a different operand order, a non-constant stride) leaves the original `MUL + ADD + LOAD` chain. Correct but suboptimal.
+- **Whitelist erosion changes program semantics.** A reimplementation that loses the invariant-load whitelist will fold an `LD32` of a kernel constant into an addressing-mode field and erase the original constant load; downstream consumers see uninitialized data.
+- **Dominator-order violation requeues forever.** The work list is drained in dominator order on purpose. A naive FIFO can requeue an instruction whose dependency has not been rewritten yet, leading to oscillation. The intern map breaks the cycle, but losing it causes the pass to fail to terminate on adversarial inputs.
 
 ## Image Handle Replacement
 
-The image-handle pass is a MachineFunction pass operating on selected NVPTX
-MachineIR (not MLIR ops). It rewrites parametric-form texture and surface MIs
-into slot-form MIs immediately before PTX printing.
+### Input and Output MIR Shape
+
+The image-handle pass is a MachineFunction pass operating on selected NVPTX MachineIR. It rewrites parametric-form texture and surface MIs into slot-form MIs immediately before PTX printing.
 
 ```text
-input  (MI, parametric form):
-  %v = TEX_2D_F32_F32_param %tex_handle_arg, %x, %y
+input  (MIR, parametric form):
+  %h:p4 = LD_PARAM_p4 %image_arg_offset             ; load handle from .param space
+  %v:v4f32 = TEX_2D_F32_F32_param %h, %x, %y
 
-output (MI, slot form):
-  %v = TEX_2D_F32_F32_slot   slot=3, %x, %y
+output (MIR, slot form):
+  %v:v4f32 = TEX_2D_F32_F32_slot 3, %x, %y          ; slot 3 of the texture-unit register file
 ```
 
-The slot is the runtime register-file index that the CUDA driver binds to the
-texture or surface object at launch. The parametric opcode is one of 801 cases
-across four families (`.tex`, `.sust`, `.suld`, `.suq`); each one has a sibling
-slot opcode at the stride-2 offset that the rewrite tables encode.
+The slot is the runtime register-file index that the CUDA driver binds to the texture or surface object at launch. The parametric opcode is one of 801 cases across four families (`tex`, `sust`, `suld`, `suq`); each one has a sibling slot opcode in a parallel table that the rewriter looks up directly.
 
-Texture, surface-load, surface-store, and surface-query instructions arrive carrying kernel ABI parameter handles, but MachineIR needs slot-indexed operands. The image-handle pass walks copies and handle-move pseudos back to the kernel image-argument table, computes the slot, and rewrites the opcode from its parameter form to its slot form.
+### Matching Predicate
 
-```c
-void replace_image_handles(MachineFunction mf) {
-    ImageArgTable images = collect_kernel_image_arguments(mf);
+A MachineInstr matches iff its opcode is a `*_param` form in one of the four families and every operand resolves to a kernel image-argument handle. The handle resolution is the analytical core: the actual `TEX_*_param` MI may not see the handle as a direct operand because MIR has rerouted it through `COPY` and `PHI` instructions, so the pass uses two chain walkers to trace the virtual-register definition back to a kernel image-argument table entry.
 
-    for (MachineInstr mi : mf.instructions) {
-        if (!is_texture_or_surface_instruction(mi)) {
-            continue;
-        }
+| Helper | Direction |
+|---|---|
+| Forward chain walker | follows uses through `COPY` / `PHI` toward the consumer |
+| Backward chain walker | follows defs through `COPY` / `PHI` back to the handle argument |
 
-        ImageHandle handle = trace_image_handle(mi);
-        ImageSlot slot = images.lookup(handle);
+The forward walker is what the consumer uses to discover that a particular handle definition reaches it; the backward walker is what the consumer uses to find the slot.
 
-        if (!slot.valid) {
-            error(mi, "invalid image handle");
-        }
+### Rewrite Tables
 
-        mi.opcode = slot_opcode_for(mi.opcode);
-        replace_handle_operand_with_slot(mi, slot);
-    }
-}
-```
+Each family carries its own opcode rewrite table. The transformation is a single integer indexed lookup: each `_param` opcode value has a sibling `_slot` opcode value at a fixed offset, so the lookup is a direct index from the parametric opcode value to the slot opcode value.
 
-The pass is family-aware. Texture, surface-load, surface-store, and surface-query instructions have different operand layouts, so each family carries its own slot computation and validation.
+| Family | Cases | PTX op family |
+|---:|---:|---|
+| `tex` | 165 | `tex.*` |
+| `sust` | 210 | `sust.*` |
+| `suld` | 258 | `suld.*` |
+| `suq` | 168 | `suq.*` |
 
-## Image-Handle Rewrite Tables
+The four tables together cover all 801 image-handle opcodes.
 
-Every CUDA image-handle operation (`.tex`, `.sust`, `.suld`, `.suq`) gets rewritten from parametric form (`*_param_*` MI opcodes) into slot form (`*_slot_*` opcodes) at MIR pre-emission. Four dedicated opcode tables totalling 801 cases drive the rewrite. The transformation is mechanical: each `_param` MI opcode has a sibling `_slot` MI opcode at a fixed stride-2 offset, so the table lookup is a direct index from the parametric opcode value to the slot opcode value.
-
-The four opcode rewrite tables live in `.rodata` at the following addresses:
-
-| Family | Address | Cases | Opcode range | PTX op family |
-|---|---|---:|---|---|
-| `.tex` | `0x1AE5B30` | 165 | 3392–3819 | `tex.*` |
-| `.sust` | `0x1AE5F30` | 210 | 3833–4293 | `sust.*` |
-| `.suld` | `0x1AE6440` | 258 | 4644–5157 | `suld.*` |
-| `.suq` | `0x1AE6A70` | 168 | 4643–5133 | `suq.*` |
-
-Each row is a 4-byte `u32` mapping `param_opcode → slot_opcode` at a stride-2 increment. The driver at `0x1AEA3B0` walks the function, looks up each MI's opcode in the appropriate family table, and rewrites in place. The four tables together cover all 801 image-handle cases; nothing else in the backend reads them.
-
-Image-handle MIs often flow through `COPY` and `PHI` instructions in MIR before reaching the consuming `.tex` / `.sust` / `.suld` / `.suq` op. A pair of chain walkers traces a virtual-register definition back to its original `nvvm.tex_handle_arg` source.
-
-| Helper | Address | Direction |
-|---|---|---|
-| Forward chain walker | `sub_1AE7BB0` | follows uses through `COPY` / `PHI` toward the consumer |
-| Backward chain walker | `sub_1AE94B0` | follows defs through `COPY` / `PHI` back to the handle arg |
-
-The two-step lowering (`_param` first, `_slot` second) exists because upstream LLVM emits `*_param` MIs at MIR-build time, when parameter-AS is the only addressing mode visible. Final PTX `tex` / `sust` instructions take a slot index — the image-handle's runtime slot in the texture-unit register file — not a `*_param` pointer. The rewriter at `0x1AEA3B0` is the only consumer of the four tables; no other pass reads them.
+### Algorithm
 
 ```c
 void rewriteImageHandles(MachineFunction *mf) {
-    for (MachineBasicBlock &mbb : *mf) for (MachineInstr &mi : mbb) {
-        uint32_t op = mi.getOpcode();
-        if (op >= 3392 && op <= 3819) { mi.setOpcode(tex_tab[op - 3392]);   continue; }
-        if (op >= 3833 && op <= 4293) { mi.setOpcode(sust_tab[op - 3833]);  continue; }
-        if (op >= 4644 && op <= 5157) { mi.setOpcode(suld_tab[op - 4644]);  continue; }
-        if (op >= 4643 && op <= 5133) { mi.setOpcode(suq_tab[op - 4643]);   continue; }
+    ImageArgTable images = collect_kernel_image_arguments(mf);
+
+    for (MachineBasicBlock &mbb : *mf) {
+        for (MachineInstr &mi : mbb) {
+            if (!is_image_param_opcode(mi.getOpcode())) continue;
+
+            ImageHandle handle = trace_image_handle_backward(&mi);
+            ImageSlot slot = images.lookup(handle);
+            if (!slot.valid) {
+                emit_error(mi, "invalid image handle");
+                continue;
+            }
+
+            unsigned slot_op = slot_opcode_for(mi.getOpcode());  // table lookup
+            mi.setOpcode(slot_op);
+            replace_handle_operand_with_slot(&mi, slot);
+        }
     }
 }
 ```
+
+### Failure Modes
+
+- **Handle does not resolve to a kernel argument.** A handle threaded through an opaque pointer or a non-image global makes the backward walker terminate at a non-image-arg definition; the pass emits a diagnostic and leaves the MI as a `*_param` form, which the PTX printer cannot handle. This is a hard error.
+- **Slot table lookup miss.** A `*_param` opcode without a sibling `*_slot` entry in the family table indicates a pattern the rewriter does not cover; the pass leaves the MI in place and the printer fails downstream.
+- **Family confusion.** A reimplementation that picks the wrong family table for an opcode produces a slot MI of the wrong family — e.g. a `tex` opcode mapped through the `sust` table — and the GPU traps at runtime when the texture unit decodes the wrong descriptor format.
 
 ## MachineIR Peepholes
 

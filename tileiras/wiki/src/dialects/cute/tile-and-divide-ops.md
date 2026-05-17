@@ -177,6 +177,87 @@ The divide and product family maps almost one-to-one onto the open-source `cute/
 
 Each op's algebraic semantics match the open-source library: ranks, modes, tile shapes, and result mode-tree structure are preserved. The differences are representational — hierarchy lives in nested `(shape, stride)` trees rather than C++ template parameter packs, and verification happens through an MLIR verifier rather than a `static_assert` chain.
 
+## Builder Op IR Signatures
+
+The four most common builders carry one operand kind and one result kind each. The MLIR signatures and a worked before/after let a reader trace the IR shape end-to-end.
+
+### `cute.make_shape`
+
+```mlir
+%shape = cute.make_shape [%m, %n, %k]
+       : (index, index, index) -> !cute.shape<3>
+```
+
+Operands are integer leaves (or nested tuples produced by an inner `cute.make_shape`); the result is a rank-3 shape value. Verifier rule: each operand must be `index`-typed or a `!cute.shape` of compatible rank, and the result rank must equal the operand count for the top-level builder.
+
+### `cute.make_layout`
+
+```mlir
+%layout = cute.make_layout(%shape, %stride)
+        : (!cute.shape<3>, !cute.stride<3>) -> !cute.layout<3>
+```
+
+The stride operand is optional; when absent, the builder synthesises a column-major identity stride from the shape. Verifier rule: `weakly_congruent(shape, stride)` — the two trees must match in mode count at every level, though leaf values may be dynamic.
+
+### `cute.make_identity_layout`
+
+```mlir
+%layout = cute.make_identity_layout(%shape) : (!cute.shape<2>) -> !cute.layout<2>
+```
+
+Synthesises a layout whose offset map is the identity over `[0, size(shape))`. For `shape = (4, 2)` the synthesised stride is `(1, 4)` — column-major identity. The result is congruent with the shape, has size equal to the product of shape leaves, and is verified by the same `weakly_congruent` predicate as `make_layout`.
+
+### `cute.tiled_divide`
+
+```mlir
+%divided = cute.tiled_divide(%layout, %tiler)
+         : (!cute.layout<R>, !cute.tiler<T>) -> !cute.layout<...>
+```
+
+The result rank depends on the regrouping (see [Divide Variants](#divide-variants)). The verifier enforces `rank(tiler) <= rank(layout)` and, per partitioned mode, the divisibility predicate `shape(layout, axis) % shape(tiler, axis) == 0` when both are static.
+
+### Worked Example: tiled divide of a 128x128 column-major tensor
+
+Input IR:
+
+```mlir
+%shape  = cute.make_shape [%c128, %c128] : (index, index) -> !cute.shape<2>
+%layout = cute.make_identity_layout(%shape) : (!cute.shape<2>) -> !cute.layout<2>
+// %layout has shape (128, 128) and stride (1, 128).
+
+%tile_shape = cute.make_shape [%c64, %c64] : (index, index) -> !cute.shape<2>
+%tile       = cute.make_layout(%tile_shape) : (!cute.shape<2>) -> !cute.layout<2>
+// %tile has shape (64, 64) and stride (1, 64).
+
+%divided = cute.tiled_divide(%layout, %tile)
+         : (!cute.layout<2>, !cute.layout<2>) -> !cute.layout<3>
+```
+
+After divide the result layout has the form `((tile_M, tile_N), rest_M, rest_N)` — the tile modes group into a leading tuple per the `tiled_divide` regrouping. With `M = N = 128` and tile `64 x 64`:
+
+- `tile_M = (64 : 1)`, `tile_N = (64 : 128)` — the tile carries its own M and N strides.
+- `rest_M = (2 : 64)`, `rest_N = (2 : 8192)` — two tile-columns along M (stride = `tile_M_size`), two tile-rows along N (stride = `tile_M_size * tile_N_size = 64 * 128`).
+
+Result layout: `((64, 64), 2, 2) : ((1, 128), 64, 8192)`. Size: `64 * 64 * 2 * 2 = 16384 = 128 * 128`. The verifier checks the divisibility predicate: `128 % 64 == 0` on both axes; the rank table `(rank(layout)=2, rank(tile)=2 -> rank(result) in {2, 3})` from the [Tiled partition verifier](#tiled-partition-verifier) is satisfied with `rank(result) = 3`.
+
+A failure case, `tile = (40, 64)`: the divisibility predicate fails on the M axis (`128 % 40 != 0`); the verifier emits `"expects same size in rank 0 but got srcShape:{128, 128}, dstShape:{40, 64}"` and the op never lowers.
+
+### Worked Example: logical divide preserving hierarchy
+
+Same `%layout = (128, 128) : (1, 128)`, but with `%tile_logical = (32, 16) : (1, 32)` and the `logical_divide` regrouping:
+
+```mlir
+%divided_logical = cute.logical_divide(%layout, %tile_logical)
+                 : (!cute.layout<2>, !cute.layout<2>) -> !cute.layout<2>
+```
+
+`logical_divide` keeps the original mode count. Each mode splits into `(tile_i, rest_i)`:
+
+- Mode 0: `tile_0 = (32 : 1)`, `rest_0 = (4 : 32)` — 4 tiles of 32 along M.
+- Mode 1: `tile_1 = (16 : 128)`, `rest_1 = (8 : 2048)` — 8 tiles of 16 along N.
+
+Result: `((32, 4), (16, 8)) : ((1, 32), (128, 2048))`. The mode tree retains its rank-2 outer shape; the tile and rest live inside each mode as a nested pair. `tiled_divide` of the same inputs would produce a flatter `((32, 16), 4, 8)` regrouping — same image, different mode tree.
+
 ## Composition
 
 `cute.composition` is the binary layout-function composition primitive.
@@ -226,4 +307,8 @@ Phase two runs only when the op carries the optional `pred` operand. The predica
 Phase three handles `restAtomVRank` retiling. When the op replicates an atom multiple times across the tile, the residual atom-v-rank is the set of dimensions the atom's natural shape does not consume. The verifier walks each residual dimension and checks that it tiles cleanly into the corresponding operand layout extent — that is, the operand extent is a multiple of the atom extent along that axis. This is the same divisibility check `cute.tiled_divide` enforces on its tiler argument, lifted into the partition verifier so copy and partition ops share one feasibility predicate.
 
 The ordering is deliberate: phase one rejects rank-shape mismatches before phase two looks at predicate type, and both run before phase three touches the atom-v-rank walk. A reimplementation should keep that ordering. It lets the diagnostics name the first thing that went wrong rather than the deepest layer, and it lets the residual-rank walk assume rank and predicate have already been normalised.
+
+## Cross-References
+
+[Layout Algebra and Descriptor Grammar — Worked Algebra Examples](layout-algebra-and-descriptor-grammar.md#worked-algebra-examples) derives the same `logical_divide` and `tiled_divide` results at the shape/stride tuple level without the MLIR op wrapper, complementing the IR-level walkthroughs in this page. [Algebra Rules on Shape and Stride Tuples](layout-algebra-and-descriptor-grammar.md#algebra-rules-on-shape-and-stride-tuples) gives the canonical specification of composition, complement, divide, and product that every `cute.*` op in this page implements. [Verifiers — LayoutTypeInterface Kind Discriminator](verifiers.md#layouttypeinterface-kind-discriminator) covers the per-kind dispatch that the divide and product verifiers route through. [SM Tier Roster and Copy Atom Registry — Atom TypeID Registry](../cute_nvgpu/sm-tier-roster-and-copy-atom-registry.md#atom-typeid-registry) shows the copy and MMA atoms whose tile-shape contracts these divide and product ops feed.
 

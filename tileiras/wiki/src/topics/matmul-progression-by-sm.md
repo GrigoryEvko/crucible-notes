@@ -89,6 +89,142 @@ emit:  mma.sync.aligned.m16n8k32.row.col.f4.f4.f32.block_scale
         block-scale operands in dedicated register fragments)
 ```
 
+## Worked Example: m64n128k16 bf16 × bf16 → f32
+
+The clearest way to see the per-generation lowering differences is to pick a single logical matmul shape and trace what each tier emits. The shape below is large enough to require warp-cooperation on every tier but small enough to fit in one warp-group instruction on SM90 and SM100:
+
+```text
+Computation: D = A × B + C
+A: 64 × 16 tile, bf16
+B: 16 × 128 tile, bf16
+C, D: 64 × 128 tile, f32
+```
+
+### SM70 / SM75: warp-cooperative `mma.sync`, register-resident
+
+Volta and Turing have no instruction that produces a 64 × 128 tile in one issue. The compiler tiles the 64 × 128 output into a 4 × 16 grid of `m16n8k8` sub-tiles and dispatches them across four warps (one per M = 16 sub-tile-row) with each warp running 16 K-sub-tiles inside. Operand fragments load from SMEM via `ldmatrix` into the warp's register file before each `mma.sync`:
+
+```text
+for warp_m in 0..4:           # 64 / 16 = 4 warps cover the M extent
+  for n_tile in 0..16:        # 128 / 8 = 16 N sub-tiles per warp
+    for k_tile in 0..2:       # 16 / 8 = 2 K sub-tiles per N sub-tile
+      ldmatrix A[warp_m, k_tile]                     # 4 i32 registers
+      ldmatrix B[k_tile, n_tile]                     # 2 i32 registers
+      mma.sync.aligned.m16n8k8.row.col.f32.bf16.bf16.f32
+          { D[warp_m, n_tile] regs },                # 4 f32 registers
+          { A regs }, { B regs },
+          { C[warp_m, n_tile] regs }                 # 4 f32 registers
+```
+
+Total: 4 warps × 16 N-tiles × 2 K-tiles = 128 individual MMAs. Every operand and accumulator lives in the register file; SMEM is staging only. The MMAs are synchronous — the result is in registers when the instruction returns.
+
+### SM80 / SM86 / SM89: warp-cooperative `mma.sync` with wider K
+
+Ampere expands the legal shapes to `m16n8k16` for bf16, doubling the K extent per instruction. The same 64 × 128 output now tiles into a 4 × 16 grid of `m16n8k16` sub-tiles — one K sub-tile per N sub-tile per warp:
+
+```text
+for warp_m in 0..4:           # 64 / 16 = 4 warps
+  for n_tile in 0..16:        # 128 / 8 = 16 N sub-tiles per warp
+    ldmatrix A[warp_m, 0]                            # K = 16 in one load
+    ldmatrix B[0, n_tile]                            # K = 16 in one load
+    mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32
+        { D regs }, { A regs }, { B regs }, { C regs };
+```
+
+Total: 4 warps × 16 N-tiles × 1 K-tile = 64 MMAs — half the SM70/SM75 count. Operand and accumulator residency is identical to Volta; the change is the K extent per instruction. SM80 also gains the `mma.sp.sync.aligned` sparse variant for 2:4-structured operands; SM89 adds FP8 inputs (`mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32`) with the K extent doubled again to 32.
+
+### SM90a: warp-group async WGMMA, B in SMEM descriptor
+
+Hopper collapses the entire 64 × 128 output into a single warp-group instruction. Four warps cooperate on the same accumulator tile (M = 64 is the warp-group dimension); operand B rides an SMEM descriptor; operand A may be a register fragment or an SMEM descriptor. The accumulator stays in the warp group's register file but is invisible until the wait drains the group:
+
+```text
+# Build the SMEM descriptor for B once before the loop
+%b_desc = make_smem_desc(smem_off=&B, lbo=16*2, sbo=0, base_offset=0, swizzle=128B)
+
+wgmma.fence.sync.aligned;
+
+wgmma.mma_async.sync.aligned.m64n128k16.f32.bf16.bf16
+    { %fd0, %fd1, ..., %fd31 },   # 32 f32 accumulator registers per thread
+    { %ra0, %ra1, ..., %ra3 },    # 4 bf16 A-fragment registers (or %b_desc_a if SMEM-resident)
+    %b_desc,                      # 64-bit SMEM descriptor for B
+    %scale_d,                     # 1 if accumulating, 0 if zeroing
+    1, 1,                         # scale-A, scale-B (FP families)
+    0, 0;                         # transpose-A, transpose-B
+
+wgmma.commit_group.sync.aligned;
+wgmma.wait_group.sync.aligned 0;
+```
+
+One MMA replaces 64 from SM80. The four-op protocol — fence, async MMA, commit, wait — is mandatory (see [WGMMA Emission Protocol](wgmma-emission-protocol.md)). The accumulator is async-visible only: reads of `%fd*` before `wait_group` are silent UB.
+
+### SM100 / SM103: warp-group `tcgen05.mma`, accumulator in TMEM
+
+Blackwell moves the accumulator out of the register file entirely. The 64 × 128 f32 output now lives in TMEM, occupying 16 columns of the SM's 128-row × 256-column TMEM grid. Operand A lands in TMEM (staged from SMEM via `tcgen05.cp`); operand B stays as an SMEM descriptor with the same 64-bit format as Hopper. Single-CTA variant:
+
+```text
+# Allocate TMEM for the accumulator (16 columns × 128 rows × 16 B = 32 KiB)
+%d_tmem = tcgen05.alloc.shared 16
+
+# Stage A from SMEM into TMEM (one column × 128 rows for bf16 A tile)
+tcgen05.cp.smem.tmem %a_tmem, smem_off=&A, layout=...
+
+# Build the SMEM descriptor for B
+%b_desc = make_smem_desc(smem_off=&B, lbo=..., sbo=..., swizzle=128B)
+
+# Pack the control word: kind::f16 (covers bf16), cta_group::1, no block-scale
+%ctrl = ((MMA_KIND_F16 << 6) | (CTA_GROUP_1 << 0))
+
+tcgen05.mma.cta_group::1.kind::f16.f32.bf16.bf16
+    [%d_tmem],                  # TMEM destination (C and D in-place)
+    [%a_tmem],                  # TMEM source for A
+    %b_desc,                    # SMEM descriptor for B
+    %ctrl;                      # packed control word
+
+# Drain via mbarrier or tcgen05.commit + tcgen05.wait
+mbarrier.arrive.expect_tx [%mbar], 1
+mbarrier.wait %mbar
+
+# Copy D out of TMEM back to registers if a consumer needs it
+tcgen05.ld.shared %dst_regs, [%d_tmem]
+```
+
+The MMA is async like WGMMA, but the completion signal is an mbarrier transaction rather than a wait-group counter. Reading the accumulator requires an explicit `tcgen05.ld` to copy TMEM into registers — there is no SSA visibility shortcut like Hopper's. See [tcgen05 Tensor Memory Model](tcgen05-tensor-memory-model.md).
+
+The 2-CTA cooperative variant halves the M extent per CTA: CTA 0 owns the top 32 rows of D (M = 0..32), CTA 1 owns the bottom 32 rows (M = 32..64). The MMA opcode becomes `tcgen05.mma.cta_group::2.kind::f16.f32.bf16.bf16` and pairs the two CTAs at execute time.
+
+### SM120 / SM121: warp-cooperative block-scale `mma.sync`, register-resident
+
+Consumer Blackwell drops TMEM but keeps the block-scale operand encoding. Without TMEM, the warp-group cooperation model collapses back to per-warp synchronous MMA, so the 64 × 128 output once again tiles across four warps as on Ampere — but with a per-operand scale factor:
+
+```text
+for warp_m in 0..4:           # 64 / 16 = 4 warps
+  for n_tile in 0..16:        # 128 / 8 = 16 N-tiles per warp
+    for k_tile in 0..(K/32):  # K = 32 per block-scale instruction
+      ldmatrix A[warp_m, k_tile]
+      ldmatrix B[k_tile, n_tile]
+      mma.sync.aligned.m16n8k32.row.col.kind::mxf8f6f4.scale_vec::1X.block_scale.f32.e4m3.e4m3.f32
+          { D regs },
+          { A regs },             # FP8 operand A (e4m3 here)
+          { B regs },             # FP8 operand B
+          { C regs },
+          %sfa,                   # E8M0 scale factor for A (register)
+          %sfb;                   # E8M0 scale factor for B (register)
+```
+
+No async, no TMEM, no warp-group cooperation. The scale factors `%sfa` and `%sfb` are per-warp register fragments — one E8M0 byte per `vecSize = 32` elements along K. Compared to SM100, the block-scale operand encoding is identical (same E8M0 / E4M3FN formats, same `(K, vecSize)` triples) but the residency is registers, not TMEM.
+
+### Side-By-Side Summary
+
+| Tier | Instructions per 64×128×16 | Operand A | Operand B | Accumulator | Sync model | Operand-A bandwidth |
+|---|---:|---|---|---|---|---|
+| SM70/75 | 128 (`m16n8k8`) | RF | RF | RF | sync | re-loaded per inner tile |
+| SM80/89 | 64 (`m16n8k16`) | RF | RF | RF | sync | re-loaded per N-tile |
+| SM90a | 1 (`m64n128k16`) | RF or SMEM desc | SMEM desc | RF (async) | async (4-op) | one load per instruction |
+| SM100/103 | 1 (`m64n128k16`) | SMEM desc or TMEM | SMEM desc | TMEM | async (mbarrier) | amortised by collector |
+| SM120/121 | 64 (`m16n8k32` block-scale) | RF | RF | RF | sync | re-loaded per N-tile |
+
+Reading the table: the instruction-count progression collapses the per-warp tile loop into the hardware between SM89 and SM90, then keeps it collapsed through SM100. SM120 reverts to per-warp tiling because consumer Blackwell removes the warp-group cooperation model, but the block-scale operand encoding stays — so SM120 is "SM89-shaped MMA with SM100's numerical range". The accumulator-residency progression is the most consequential: it moves out of the register file at SM90 (still in RF but async-visible only), out the rest of the way at SM100 (into TMEM), and back into RF at SM120. A kernel author who reuses an SM100 codepath on SM120 has to re-introduce explicit ldmatrix staging because TMEM is no longer there.
+
 ## What Each Generation Adds and Removes
 
 | Tier | Concurrency | Operand A | Operand B | Accumulator | Sync | New |

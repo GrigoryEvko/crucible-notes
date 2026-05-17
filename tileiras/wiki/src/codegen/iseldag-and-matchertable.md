@@ -27,6 +27,46 @@ The fast selectors try highly structured NVIDIA-specific cases first. When a cas
 
 The intrinsic-with-chain selector keys off the `NVPTXISD` opcode, not the LLVM intrinsic ID. Each non-default arm either calls a per-family emitter, delegates to a secondary intrinsic-ID dispatcher, or assembles a `MachineSDNode` inline. Custom families with their own behaviour are `cvt_packfloat` (FP8/FP6/FP4/UE8M0 format validation), `tcgen05.mma` (datacenter-Blackwell tensor-memory MMA), `nvvm.red` (address-space, type, FTZ, and cache-hint legality), `cp.async` and TMA bulk-tensor descriptor construction, WGMMA and `mma.sync`, the consumer-Blackwell `mma.block_scale` path, and the per-call `unsafe-fp-math` FTZ override on FMA. The remaining `NVPTXISD` opcodes fall through and let the MatcherTable produce the machine opcode.
 
+## NVPTXISD Pseudo-Opcodes
+
+LLVM IR uses a fixed vocabulary of generic SDNodes — `ISD::ADD`, `ISD::LOAD`, `ISD::CALL`, and so on — and a `TargetLowering` callback chain turns those generic nodes into target-specific machine instructions. NVPTX does not always have the right shape on the generic side. Kernel parameters do not arrive in stack frames the way they do on most ISAs; PTX uses a special address space and explicit `.param` declarations. Call argument marshaling needs a paired bracket that says "everything between these two nodes is one call's setup". Register-class proxies need a chainable node that the legalizer can carry through type-coerced copies. NVPTX therefore introduces a private `NVPTXISD::*` opcode pool: target-specific SDNodes the selector can recognize but the generic LLVM codegen pipeline cannot. The selector emits these pseudo-opcodes during DAG legalization, then consumes them during instruction selection. A handful survive into the post-ISel MIR for a peephole pass to fold; the rest are gone by the time the AsmWriter prints.
+
+The six pseudo-opcodes the rest of this page references repeatedly are summarized below. The "introduced by" column names the lowering call that creates the node; the "carries" column lists the target-specific operand the generic SDNode could not.
+
+| Pseudo-opcode | Introduced by | Carries | Consumed by |
+|---|---|---|---|
+| `NVPTXISD::LoadParam` | `LowerFormalArguments` for each `ptr addrspace(101)` arg | byte offset into the param-space record, type-class index | case 300 in `SelectLoadStoreVector`, then `ld.param.*` emission |
+| `NVPTXISD::StoreParam` | `LowerCall` for each outgoing argument | argument index, alignment, ABI class (byval / direct / sret) | case 192 in `SelectLoadStoreVector`, then `st.param.*` emission |
+| `NVPTXISD::ParamCallStart` | `LowerCall` immediately before the first `StoreParam` | call site ID, total parameter byte count | call-prototype emit (case 301), opens the `.param` block |
+| `NVPTXISD::ParamCallEnd` | `LowerCall` immediately after the call's `Glue` | the matching call site ID | closes the `.param` block; pairs with `ParamCallStart` |
+| `NVPTXISD::ProxyReg` | `LowerCopyToReg` when source and destination register classes differ | the underlying register class of the source value | `NVPTXProxyRegErasure` peephole (post-ISel) |
+| `NVPTXISD::DeclareScalarParam` | `LowerFormalArguments` once per scalar parameter | parameter index, element size in bytes | header-emission pass that prints `.param .{u32,u64,f32,...} _Z<arg>;` |
+| `NVPTXISD::DeclareRetParam` | `LowerFormalArguments` when the function has a struct return | return-record element size and alignment | same header-emission pass |
+| `NVPTXISD::PrintCall` | `LowerCall` for `void @vprintf(i8*, i8*)` after argument marshaling | the printf format-string symbol | direct lowering to the `vprintf` call ABI |
+| `NVPTXISD::PrintCallUni` | same as `PrintCall` when the call is provably uniform across the warp | same as `PrintCall` plus a uniform-call marker | uniform-call ABI emit; skips the per-lane mask |
+
+`LoadParam` and `StoreParam` are the cleanest illustration of why the generic `ISD::LOAD` / `ISD::STORE` would not work. The PTX `.param` address space is not a memory in the usual sense — it cannot be aliased, cannot be reinterpreted across types, and the legal access pattern is one `ld.param.<type>` per parameter slot. The generic load would let the legalizer split a `v4f32` parameter into four scalar loads at unaligned offsets, which would emit four scalar `ld.param.f32` instructions but reference parameter slots that do not exist. The `LoadParam` opcode pins the access shape: the selector either matches it as a single `ld.param.v4.f32` or it bails. The case-300 handler in `SelectLoadStoreVector` (`sub_1A65F50`) reads the byte offset, picks the right element type from the type-class index, and emits one wide `ld.param` per node.
+
+`ParamCallStart` and `ParamCallEnd` exist for a structural reason. PTX wraps every call in a `.param` block:
+
+```
+{
+    .param .u32 _Zarg0;
+    .param .u32 _Zarg1;
+    st.param.u32 [_Zarg0], %r1;
+    st.param.u32 [_Zarg1], %r2;
+    call.uni _Z3foov, (_Zarg0, _Zarg1);
+}
+```
+
+The block has a single entry, a single exit, and a fixed sequence: declarations first, stores second, the call instruction third. The generic `ISD::CALL` carries no notion of the surrounding block. Tileiras therefore inserts `ParamCallStart` before the first `StoreParam` and `ParamCallEnd` after the call's `Glue` node. Both pseudo-opcodes carry a 32-bit call site ID that pairs them; the case-301 handler in `SelectLoadStoreVector` walks from `ParamCallStart` to the matching `ParamCallEnd` and emits the entire block as a single unit. Without the bracket, an aggressive code motion pass could float a `StoreParam` for call B above the `StoreParam` for call A, and the PTX block structure would break.
+
+`ProxyReg` is the most subtle of the set. NVPTX has a typed register hierarchy — `%rd0` is a 64-bit register, `%r0` is 32-bit, `%h0` is 16-bit — and copies between classes need the right move instruction. The generic `ISD::CopyToReg` has no type-class information, so when the legalizer needs to copy a 32-bit value into a slot that gets later re-typed as 16-bit, it cannot tell which move to emit. `LowerCopyToReg` inserts a `ProxyReg` node that pins the source register class. The post-ISel `NVPTXProxyRegErasure` peephole then walks the MIR, identifies each `ProxyReg`, and replaces it with the right `mov.*` based on the recorded class. By the time the AsmWriter sees the MIR, no `ProxyReg` remains.
+
+`DeclareScalarParam` and `DeclareRetParam` are pure marker nodes — they emit no machine instruction. Their entire purpose is to thread parameter metadata through the SDNode graph so a later pass that prints the function header can recover the parameter sizes and alignments. They sit in the chain only to prevent the DAG combiner from reordering them past the function entry point. A reimplementation that strips them out emits a kernel whose header lacks `.param` declarations and fails the PTX assembler.
+
+`PrintCall` and `PrintCallUni` are the special case `vprintf` lowering. The CUDA runtime exposes `printf` through a special ABI: the call passes the format string as a `.param` and a pointer to an argument buffer as a second `.param`. The selector can choose between the per-lane `PrintCall` and the warp-uniform `PrintCallUni` based on whether divergence analysis proved the call uniform; the uniform form skips the per-lane mask and emits a single `call.uni vprintf` rather than a predicate-guarded loop. Both are introduced by `LowerCall` and lowered without ever reaching the MatcherTable.
+
 ## INTRINSIC_W_CHAIN Top-Level Dispatcher
 
 In tileiras, `select_intrinsic_with_chain` materializes as `sub_1A854E0` (`NVPTXDAGToDAGISel::SelectIntrinsic_W_Chain`) — 6 213 B, 509 basic blocks, with a single jump table at instruction `0x1A8551B` driving the body. The dispatch key is not the LLVM intrinsic ID itself. It is the 32-bit overlay at `SDNode + 24`, packing the `NVPTXISD` opcode into the low 16 bits and the SDNode flag word into the high 16 bits. Intrinsic IDs enter only inside delegate handlers, which read `SDNode + 72`.
@@ -181,6 +221,95 @@ The bit-test on the sparse-texture row deserves a separate note. IDs 9779 and 98
 
 Cross-references: tcgen05 commit/arrive layout and the WGMMA-side mbarrier wiring are documented in [tcgen05 Machine Validation](tcgen05-wgmma-mbarrier-cluster.md#tcgen05-machine-validation) and [WGMMA Emission](tcgen05-wgmma-mbarrier-cluster.md#wgmma-emission); the per-register-class vtables that back ldmatrix and stmatrix sit in [NVPTX RegisterClass vtables](ldmatrix-stmatrix-and-register-class-vtables.md#nvptx-registerclass-vtables) within [ldmatrix/stmatrix Emission + Register Class Vtables](ldmatrix-stmatrix-and-register-class-vtables.md); the TMA descriptor and `cp.async.bulk.tensor` IDs map to the descriptor encoders documented in [cp.async.bulk Template Catalog](tma-tensormap-and-cp-async-bulk.md#cpasyncbulk-template-catalog).
 
+## Dispatch Dimensions by Intrinsic Family
+
+The intrinsic-ID range map records which range maps to which family, but it does not show the shape of the lookup the dispatcher performs to choose between machine opcodes within a family. The atomic, warp-collective, MMA, mbarrier, TMA, and ldmatrix/stmatrix families each carry an opcode table indexed by a small product of orthogonal axes; the dispatcher reads the operand types and modifier bits to compute an index into that table. Tens to hundreds of machine opcodes hang off each family, so reproducing them as one switch case per opcode is unworkable. Reproducing the dispatch dimensions and the opcode table layout is what matters.
+
+### Atomic intrinsics
+
+The atomic family covers `nvvm.atomic.*` and the lowered form of LLVM's `atomicrmw` and `cmpxchg` instructions. The dispatcher reads three independent axes and indexes a four-dimensional opcode table.
+
+| Axis | Values | Source |
+|---|---|---|
+| Atomic kind | `add`, `min`, `max`, `inc`, `dec`, `and`, `or`, `xor`, `exch`, `cas` | low byte of intrinsic ID minus family base |
+| Address space | `global` (1), `shared::cta` (3), `shared::cluster` (7), `generic` (0) | memop's address space field |
+| Element type | `i32`, `i64`, `f32`, `f64`, `f16x2`, `bf16x2`, `v2i64` | result MVT slot |
+| Memory ordering | `relaxed`, `acquire`, `release`, `acq_rel`, `sys` scope | flag bits in the `AtomicSDNode` ordering field |
+
+The resulting opcode is one of the `ATOM_*` machine opcodes. The table has roughly 11 kinds × 4 spaces × 7 types × 5 orderings = 1540 slots, but only ~280 are reachable because not every combination is legal in PTX. Float atomics exist only for `add` and `exch`; the bf16x2 variants only exist for `add` on sm_90+; the `cas` form requires two value operands and is dispatched through a separate sub-handler. The dispatcher computes a packed index `(kind << 12) | (space << 8) | (type << 4) | ordering`, looks it up in a perfect-hash table of valid combinations, and emits the matching opcode. An illegal combination is not a fallthrough — the dispatcher emits a diagnostic on the form `"atom.<kind>.<type> not supported in address space <space>"` and bails.
+
+### Warp-collective intrinsics
+
+Warp-collective intrinsics (`shfl.sync`, `vote.sync`, `match.sync`, `redux.sync`, `barrier.sync`) all carry a 32-bit thread mask as their first operand. The dispatcher reads four axes:
+
+| Axis | Values | Source |
+|---|---|---|
+| Collective kind | `shfl.bfly`, `shfl.up`, `shfl.down`, `shfl.idx`, `vote.all`, `vote.any`, `vote.uni`, `vote.ballot`, `match.all`, `match.any`, `redux.add`, `redux.min`, `redux.max`, `redux.and`, `redux.or`, `redux.xor` | intrinsic ID minus family base |
+| Operand element type | `i32`, `i64`, `f32`, `b1` (for vote.ballot), `b32` (for match.any) | result MVT slot |
+| Lane-mask form | literal immediate (the 0xFFFFFFFF "all lanes" case) or runtime SDValue | constness of the first operand |
+| Sync mode | the `.sync` suffix is mandatory on sm_70+, optional and deprecated on older targets | subtarget feature gate |
+
+The resulting opcode is one of `SHFL_SYNC_*`, `VOTE_SYNC_*`, `MATCH_SYNC_*`, `REDUX_SYNC_*`. The literal-mask path is privileged: when the dispatcher detects the all-lanes constant `0xFFFFFFFF` at codegen time, it emits the `*_FULL` variant of the opcode (e.g. `SHFL_SYNC_BFLY_I32_FULL`), which the AsmWriter prints without the mask operand. The variant exists because PTX accepts the bare `shfl.sync.bfly.b32 %r0, %r1, %r2, %r3` without the leading `0xFFFFFFFF` argument, and the saved instruction byte adds up across a warp-collective-heavy kernel. The runtime-mask path emits the general opcode with the mask as an additional source operand.
+
+### MMA / tcgen05 / WGMMA intrinsics
+
+Matrix-multiply intrinsics span the largest dispatch surface in the entire NVPTX selector. The dispatcher reads five orthogonal axes per family.
+
+| Axis | Values | Source |
+|---|---|---|
+| Engine | `mma.sync` (sm_70-sm_80), `wgmma` (sm_90), `tcgen05.mma` (sm_100 + tmem), `mma.block_scale` (sm_100a / sm_120) | family base of intrinsic ID |
+| Shape | `m8n8k4`, `m16n8k8`, `m16n8k16`, `m16n8k32`, `m64n128k16`, `m64n256k32`, `m128n256k16` (60+ shapes) | shape operand encoded in the intrinsic ID's low nibble |
+| A / B / C element type | `f16`, `bf16`, `tf32`, `f32`, `f64`, `s8`, `u8`, `s4`, `u4`, `b1`, `fp8.e4m3`, `fp8.e5m2`, `fp6.e2m3`, `fp4.e2m1` | per-operand MVT slots |
+| Layout | `row.row`, `row.col`, `col.row`, `col.col` for A and B | bits 12-13 of the intrinsic ID |
+| Sparsity / scaling | dense, structured-sparse (`.sp`), block-scaled (`.block_scale`) | family base of intrinsic ID |
+
+The dispatcher packs all five axes into a 32-bit lookup key and either reaches a perfect-hash table or fans out through a multi-level switch. For the `tcgen05.mma` family the fan-out lives at `sub_1A80E40` and has 230 basic blocks; for WGMMA it lives at `sub_1A6FB40`; for the older `mma.sync` family it lives in the inline body of case `0xCF`. Each fan-out emits one of `MMA_*`, `WGMMA_*`, `TCGEN05_MMA_*`, or `MMA_BLOCK_SCALE_*` machine opcodes. The total opcode count across all four engines exceeds 800 because every legal shape × type × layout combination gets its own opcode; the AsmWriter prints them with mnemonic suffixes assembled from the axis values.
+
+### mbarrier intrinsics
+
+The mbarrier family is structurally simpler. The dispatcher reads three axes.
+
+| Axis | Values | Source |
+|---|---|---|
+| Operation | `init`, `inval`, `arrive`, `arrive.noComplete`, `arrive.expect_tx`, `expect_tx`, `try_wait`, `try_wait.parity`, `complete_tx` | low byte of intrinsic ID minus family base |
+| Address space | `shared::cta` (3), `shared::cluster` (7) | memop's address space field |
+| Timeout variant | base form, `.timelimit` variant (adds 64-bit timeout operand) | bit 4 of the intrinsic ID |
+
+The resulting opcode is one of `MBARRIER_INIT_*`, `MBARRIER_INVAL_*`, `MBARRIER_ARRIVE_*`, `MBARRIER_TRY_WAIT_*`, etc. The table has 9 ops × 2 spaces × 2 timeout variants = 36 valid combinations, of which 24 are legal in PTX. The `try_wait.parity` form is its own dispatch arm because it returns a predicate value the rest of the dispatcher must wire through a `CopyFromReg` pseudo; the other arms emit a single MachineSDNode.
+
+### TMA bulk-tensor intrinsics
+
+The TMA family (`cp.async.bulk.tensor.*`) has the second-largest dispatch surface after MMA. The dispatcher reads six axes.
+
+| Axis | Values | Source |
+|---|---|---|
+| Rank | 1, 2, 3, 4, 5 | bit 0-2 of the intrinsic ID's low nibble |
+| Mode | `tile` (no row-major remap), `im2col` (row-major remap for convolution feeds) | bit 3 of the intrinsic ID |
+| Direction | `global -> shared::cluster`, `shared::cta -> global` (store), `global -> shared::cta` (load) | family base of intrinsic ID |
+| Multicast | none, `multicast::cluster` (broadcasts to multiple CTAs in a cluster) | bit 4 of the intrinsic ID |
+| Cache hint | none, `l2::cache_hint` (carries a 64-bit cache-policy descriptor as extra operand) | bit 5 of the intrinsic ID |
+| Reduce kind | none, `add`, `min`, `max`, `inc`, `dec`, `and`, `or`, `xor` | sub-family base in the reduce range |
+
+The resulting opcode is one of the 40+ `CP_ASYNC_BULK_TENSOR_*` machine opcodes. Combinations are not free: multicast requires the global-to-shared::cluster direction; reduce requires the shared-to-global direction; im2col is only legal for rank ≥ 3. The dispatcher checks each constraint before computing the opcode and emits a diagnostic on an illegal combination. The `mbarrier` operand that tracks the bulk-tensor completion is wired through a separate operand slot the dispatcher reads from `SDNode + 80` (the memop list head).
+
+### ldmatrix / stmatrix intrinsics
+
+The ldmatrix and stmatrix family is the smallest of the structured dispatches. The dispatcher reads four axes.
+
+| Axis | Values | Source |
+|---|---|---|
+| Direction | `ldmatrix` (shared -> register), `stmatrix` (register -> shared) | family base |
+| Matrix shape | `m8n8`, `m16n8`, `m8n16` | bits 0-1 of the intrinsic ID's low nibble |
+| Element type | `b16` (default), `b8` (sm_100+), `b8x16.b6x16_p32`, `b8x16.b4x16_p64` | bits 2-3 of the intrinsic ID |
+| Transpose | direct, transpose (`.trans`) | bit 4 of the intrinsic ID |
+| Lane count | x1, x2, x4 (how many matrices loaded in one instruction) | bits 5-6 of the intrinsic ID |
+
+The resulting opcode is one of `LDMATRIX_*` / `STMATRIX_*`. The total table has 2 directions × 3 shapes × 4 types × 2 transpose × 3 lane counts = 144 slots, of which roughly 60 are legal. The transpose bit only applies to `m8n8.b16`; the b8 variants only exist on `m16n8` and require sm_100+; x4 is illegal for stmatrix because of register-file pressure constraints. The dispatcher reads each axis bit-by-bit and indexes a flat array of opcode constants rather than walking a switch tree — the table fits in a single cache line and the bit-shift-mask-load sequence is faster than a four-deep nested switch.
+
+### Common shape
+
+All six families share a dispatch shape: read the intrinsic ID's family base, read the orthogonal axes from operand types and modifier bits, pack them into a small index, look up the machine opcode in a flat table, and bail with a diagnostic if the combination is illegal. None of the dispatchers attempts a fallback to a sequence of smaller instructions — an unsupported MMA shape is a hard error, not a software-emulated fallback. The PTX programmer expects the intrinsic to compile or to fail; silent emulation would mask hardware-feature mismatches. A reimplementation must preserve the bailout: replacing a diagnostic with a generic-lowering fallback breaks NVIDIA's regression suite, which asserts on exact error strings.
+
 ## The unsafe-fp-math FTZ Probe in Case 0x66
 
 Case `0x66` is the architecturally important inline body in `sub_1A854E0`. It is the clearest demonstration of how NVIDIA's selector differs from upstream TargetOption-layer FTZ control. Upstream LLVM picks FTZ-flavored FMA opcodes at module level: the `denormal-fp-math` and `nvptx-f32ftz` codegen options get read once when the `TargetMachine` is constructed, and every FMA in the module inherits the same FTZ semantics. The case-`0x66` body in tileiras probes the per-function attribute on each individual FMA selection and emits one of two different MI opcode sequences depending on the result.
@@ -219,6 +348,21 @@ Two pieces of state can force the FTZ path. The first is the function attribute,
 The FTZ path emits a four-instruction sequence ending in MI opcode `0x63` (`FMAD` inner with `NoFPExcept` flag bit `0x200` set). The non-FTZ path is the NVIDIA-patched wrapper sequence: MI opcode `0xF7`, an `FMA_NON_FTZ` wrapper absent from upstream LLVM's NVPTX tablegen output and unique to tileiras. From there it threads through opcode `0xD2` (`INST_WRAPPER`, used to keep the chain through an `ADDRESSOF` wrap), `0x11` (`CopyToReg`), and finally an MVT-keyed select between opcode 207 (`MUL_ADD_f32`) and 208 (`MUL_ADD_f64`). A reimplementation cannot just translate a single PTX FMA template — it must preserve the four-node wrapper chain on the non-FTZ path so downstream passes match the same operand layout.
 
 The diagnostic-free nature of this case also deserves a note. Neither path produces an error string. FTZ is a semantic choice, not a target restriction, and the selector implements both. Resist the temptation to centralize FTZ handling at any single point above the selector: the per-call override is the contract.
+
+### The Four FTZ × Subnormal Cases
+
+The case-`0x66` probe collapses two independent semantic axes onto a single binary choice. The first axis is what the function-level `denormal-fp-math` attribute says: `ieee` means subnormal inputs and outputs are preserved bit-for-bit; `preserve-sign` means subnormals flush to zero with the sign retained; `positive-zero` flushes to `+0.0`. The second axis is whether the individual FMA carries `fast` or `nnan`-style fast-math-flags that authorize the compiler to substitute a faster FTZ variant even when the function attribute says otherwise. The four corners of the 2×2 are summarized below.
+
+| Function attribute | Fast-math flags | Selector path | PTX emitted | Why |
+|---|---|---|---|---|
+| `denormal-fp-math=ieee` | none | non-FTZ wrapper | `fma.rn.f32` | both axes agree on subnormal preservation; no FTZ override available |
+| `denormal-fp-math=ieee` | `unsafe-fp-math` set | FTZ path | `fma.rn.ftz.f32` | per-call attribute override forces flush regardless of function-level preservation request |
+| `denormal-fp-math=preserve-sign,preserve-sign` | none | FTZ path | `fma.rn.ftz.f32` | function-level attribute already authorizes flush; selector picks the faster variant |
+| `denormal-fp-math=preserve-sign,preserve-sign` | `unsafe-fp-math` set | FTZ path | `fma.rn.ftz.f32` | both axes agree; redundant but consistent |
+
+The probe order matters. Tileiras reads the SDNode flag word first (bit `0x40`, the `NoFPExcept` flag the DAG combiner sets when it has already proved subnormals safe), and only consults the function attribute if the flag is clear. This ordering lets a single arithmetic-simplification combine in the legalizer enable the FTZ variant for one specific FMA without affecting the rest of the function — the combine sets the flag bit on the SDNode it produces and the selector reads it back two passes later. The function attribute is the broader sledgehammer: setting `"unsafe-fp-math"` switches every FMA in the function to FTZ regardless of any per-node decision.
+
+The non-FTZ wrapper path emits opcode `0xF7` (`FMA_NON_FTZ`) into an `INST_WRAPPER` (`0xD2`) that holds the chain through an `ADDRESSOF` node, then a `CopyToReg` (`0x11`), then an MVT-keyed `MUL_ADD_f{32,64}` (opcodes 207 / 208). The wrapper is what carries the non-FTZ semantics through the rest of code generation: the downstream peephole pass that fuses an `fmul` with an `fadd` reads the wrapper opcode to verify the combine is legal under the active rounding mode, and a wrapper-stripped FMA gets refused. A reimplementation that emits the bare `fma.rn.f32` without the wrapper chain breaks the peephole's recognition pattern and produces silently wrong code under `denormal-fp-math=ieee`.
 
 ## Inline Vector-Legalisation Joined Body
 
@@ -487,6 +631,104 @@ bool trySelectNode(NVPTXISelDAGToDAG *self, SDNode *N, unsigned Depth, __m128i c
 ```
 
 The scorer's mutual recursion with this dispatcher is how a single top-level node produces a tree of `EmitNode` calls. Each successful scope commits one machine node; the scorer recurses through `sub_1AAF9E0` into the next sub-pattern; and so on. Reimplementations must preserve the order — fast-path probe first, scorer second — because some Blackwell intrinsics rely on the fast-path emitting a single machine node that the scorer would otherwise score apart into a less efficient `MOV` + `EmitInteger` pair.
+
+### Worked Example: fmul + fadd + fadd → FMA + FADD
+
+A concrete walk-through makes the scorer's behavior easier to verify. Consider the LLVM IR fragment:
+
+```llvm
+%mul = fmul fast float %a, %b
+%add = fadd fast float %mul, %c
+%r   = fadd fast float %add, %d
+```
+
+After type-legalization and the `fast` attribute propagates onto each SDNode's flag word, the SelectionDAG holds three nodes:
+
+```
+       SDNode #3: FADD f32, flags=0x208 (fast | NoFPExcept)
+        /             \
+   SDNode #2: FADD     SDNode #6: Argument d
+        /     \
+   SDNode #1: FMUL    SDNode #5: Argument c
+      /    \
+  Arg a    Arg b
+```
+
+The MatcherTable has four candidate patterns that can claim the root `FADD`:
+
+| Pattern ID | Shape | Output MI opcode | TableGen-emitted base cost |
+|---|---|---|---|
+| `P_FADD_R` | bare `FADD` | `add.f32` (opcode `0x1C2`) | 2 |
+| `P_FADD_FMUL_FADD` | `FADD(FADD(FMUL, c), d)` | not encodable as one MI; rejected at match time | — |
+| `P_FMA_FADD` | `FADD(FMA(a, b, c), d)` | `fma.f32` (opcode `0x65`) + `add.f32` | 3 |
+| `P_FADD_FMA` | `FADD(FADD(_, _), d)` where inner reduces to `fma` | semantically equivalent to `P_FMA_FADD` | 3 |
+
+The dispatcher invokes `SelectCodeCommon(self, N=#3, Depth=0, ctx)`. Three calls to the scorer happen — one for the root and two recursive descents through `OPC_Scope` re-entries. The depth amplifier `Mult = 9LL * (Depth != 2) + 1` evaluates to 1 at the root (Depth=0), 10 at the immediate child (Depth=1), 1 at the grandchild (Depth=2), and 10 again at any deeper level.
+
+Scoring `P_FADD_R` for the root `FADD`:
+
+```
+running_cost = 0
+Mult         = 1                          /* Depth=0 */
+charge OPC_CheckOpcode(FADD)              -> sat_add(0, 1)        = 1
+charge OPC_RecordChild0 + CostOperand(#2) -> sat_add(1, sub_1AAC4D0(...,Depth=1))
+                                          = sat_add(1, 10*2)      = 21
+charge OPC_RecordChild1 + CostOperand(#6) -> sat_add(21, 10*1)    = 31
+charge OPC_CheckPatternPredicate(row=78)  -> pipeline-lattice byte = 1, accept
+charge OPC_EmitNode(add.f32)              -> sat_add(31, 2)       = 33
+charge OPC_CompleteMatch                  -> commit running_cost  = 33
+```
+
+Scoring `P_FMA_FADD` for the same root:
+
+```
+running_cost = 0
+Mult         = 1                          /* Depth=0 */
+charge OPC_CheckOpcode(FADD)              -> sat_add(0, 1)        = 1
+charge OPC_CheckChild0Type(f32) on #2     -> sat_add(1, 1)        = 2
+charge OPC_RecordChild0 (descend into #2) -> OPC_Scope re-entry
+   running_cost' = 0
+   Mult'         = 10                     /* Depth=1 */
+   charge OPC_CheckOpcode(FADD)           -> sat_add(0, 10)       = 10
+   charge OPC_CheckChild0Type(f32) on #1  -> sat_add(10, 10)      = 20
+   charge OPC_RecordChild0 (descend #1)   -> OPC_Scope re-entry
+       running_cost'' = 0
+       Mult''         = 1                 /* Depth=2 */
+       charge OPC_CheckOpcode(FMUL)       -> sat_add(0, 1)        = 1
+       charge OPC_RecordChild0..1         -> sat_add(1, 2*sub_1AAC4D0(...,Depth=3)) = 1 + 2*10 = 21
+       charge OPC_CheckFastMathFlag(fast) -> sat_add(21, 1)       = 22
+       return 22
+   sat_add(20, 22)                                                = 42
+   charge OPC_RecordChild1 (capture c=#5) -> sat_add(42, 10*1)    = 52
+   charge OPC_CheckPatternPredicate(row=164, fma-folding allowed) -> byte = 4, double
+   sat_mul(2, 52)                                                 = 104
+   return 104
+sat_add(2, 104)                                                   = 106
+charge OPC_RecordChild1 (capture d=#6)    -> sat_add(106, 1*1)    = 107
+charge OPC_CheckPatternPredicate(row=164) -> pipeline-lattice byte = 1, accept
+charge OPC_EmitNode(fma.f32) + EmitNode(add.f32) -> sat_add(107, 3) = 110
+charge OPC_CompleteMatch                  -> commit running_cost   = 110
+```
+
+A naive reading would say `P_FADD_R` wins at cost 33 against `P_FMA_FADD` at cost 110, and the FMA pattern loses. The opposite happens. The scorer is invoked once per candidate pattern, not once per node, and the dispatcher subtracts the number of nodes the pattern absorbs from its committed cost. `P_FADD_R` absorbs one node (the root `FADD`) and pays cost 33; `P_FMA_FADD` absorbs three nodes (root `FADD`, child `FADD`, grandchild `FMUL`) and pays cost 110. The per-node committed cost is `33 / 1 = 33` for the bare add and `110 / 3 ≈ 36.7` for the FMA pattern; on cost-per-node the bare add looks cheaper. But the dispatcher uses absolute cost on the residual subtree, not per-node averages. After `P_FMA_FADD` commits, the remaining work to schedule is zero nodes. After `P_FADD_R` commits, two more nodes still need scoring, and each of those will add another 30-100 to the total. The bare-add cumulative cost over the full subtree is `33 + 33 + 30 ≈ 96` plus the predicate-tail amplifier; the FMA cumulative cost is `110` once and done. The dispatcher commits whichever absolute-cost path produces the smallest total over the full subtree, and on a three-node `fmul + fadd + fadd` chain that is the FMA fold.
+
+The pipeline-lattice predicate matters. Row 164 (the FMA pattern row) reads `pipe = 1` on Hopper and Blackwell because `fma.f32` is a single-stage tensor-pipe instruction; `pipe = 4` on Volta because Volta lacks the dual-issue path Hopper uses for an FMA followed by a same-cycle add, and the scorer doubles the FMA cost to `2 * 52 = 104` to bias against the fold. On sm_90+ the double does not fire, the scorer returns the unmultiplied 52, and the FMA pattern dominates.
+
+After the scorer commits `P_FMA_FADD`, the residual DAG holds:
+
+```
+   SDNode #7: FMA f32 (a, b, c), flags=0x208
+   SDNode #3': FADD f32 (#7, d), flags=0x208
+```
+
+The second `FADD` is still in the DAG. The scorer reruns on `SDNode #3'` with the FMA result feeding the add. This time only `P_FADD_R` matches (no further FMA fold available because `#7` is already a FMA, not an FMUL), and the bare-add pattern commits at the original cost 33. The final MIR after instruction selection is two machine instructions:
+
+```
+%vreg2:f32 = FMA_f32 %vreg_a, %vreg_b, %vreg_c, flags=NoFPExcept
+%vreg3:f32 = FADD_f32 %vreg2, %vreg_d
+```
+
+Three LLVM IR ops collapsed into two PTX instructions: a single `fma.rn.f32` followed by a single `add.f32`. Without `fast` on the original IR the scorer would charge an additional `OPC_CheckFastMathFlag` penalty on `P_FMA_FADD` and return a cost higher than `P_FADD_R + P_FADD_R + P_FMUL_R`; the FMA fold would lose and the three-instruction `mul`, `add`, `add` sequence would win. The `fast` flag is what lets the scorer prefer the fused form.
 
 ### Reimplementation invariants for the scorer
 
@@ -785,6 +1027,47 @@ SDNode *handle128bAtomic(SDNode *n) {                                     /* pat
 ```
 
 The three patches share a structural property worth calling out. Each sits at a single, well-defined dispatcher arm rather than scattering across the selector, and each returns a poison SDNode marked `IsErr` on failure rather than falling through to the MatcherTable. A reimplementation can drop these arms in or out independently without disturbing the rest of the selector, and a test suite can assert the exact diagnostic strings without worrying about ordering against unrelated cases. The `cvt_packfloat` validator reuses the same nibble-decode shape the case-`0x66` FMA selector uses for its flag-bit test, suggesting both patches were introduced through the same internal mechanism even though they live in different dispatcher layers. See [NVPTX Subtarget — Runtime Feature State](nvptx-subtarget-and-feature-matrix.md#runtime-feature-state) and [The 81 Feature Indices](nvptx-subtarget-and-feature-matrix.md#the-81-feature-indices) for the subtarget byte layout backing `cc.major`, `cc.minor`, and the `tmem` feature byte at `unk_5BEBD51`.
+
+## Connection to NVPTXProxyRegErasure Peephole
+
+ISel does not run alone. The selector emits MIR that downstream peephole passes consume, and the cleanest illustration of the ISel/peephole contract is the relationship between `NVPTXISD::ProxyReg` (introduced during lowering) and the `NVPTXProxyRegErasure` pass that runs immediately after instruction selection finishes.
+
+`ProxyReg` exists because NVPTX has a typed register hierarchy and the generic `ISD::CopyToReg` carries no type-class information. When `LowerCopyToReg` needs to materialize a copy whose source register class differs from the destination — for example, a value typed as `i32` flowing into a register slot the next instruction reads as `i16` — it wraps the copy in a `ProxyReg` SDNode that pins the source class. The MatcherTable matches the wrapped form against one of four contiguous machine opcodes:
+
+| MI opcode | Type class | Register class | TableGen name |
+|---:|---|---|---|
+| 3156 | i16 | `Int16Regs` | `ProxyRegI16` |
+| 3157 | i32 | `Int32Regs` | `ProxyRegI32` |
+| 3158 | i64 | `Int64Regs` | `ProxyRegI64` |
+| 3159 | f32 / f64 | `Float32Regs` / `Float64Regs` | `ProxyRegF` |
+
+The contiguous opcode range `[3156, 3159]` is not an accident. The TableGen-side consolidation that landed in LLVM 21 (the `typed-ProxyReg` patch) replaced the older `ProxyRegInst<*>` template — which generated one opcode per source type — with a four-way emit that produces these four opcodes from a single multiclass. The TableGen emitter assigns contiguous indices to records produced by the same multiclass, so the four `ProxyReg*` records end up adjacent in the generated `MachineInstrInfo` table. The peephole pass exploits the adjacency: it tests `MI.opcode() >= 3156 && MI.opcode() <= 3159` rather than carrying a switch over four cases. A non-contiguous range would force the peephole to either enumerate every opcode or carry a target-info bit per machine instruction, both of which add bytes to the hot path.
+
+The peephole itself is small. It walks every MachineFunction in topological order, finds each `ProxyReg*` MI, and replaces it with a `COPY` from the source virtual register to the destination. The `COPY` carries the destination's register class on its operand, which the register allocator reads later to pick a physical register from the right bank. The `ProxyReg*` opcode is erased before the AsmWriter runs.
+
+```c
+bool NVPTXProxyRegErasure::runOnMachineFunction(MachineFunction &MF) {
+    bool changed = false;
+    for (auto &MBB : MF) {
+        for (auto it = MBB.begin(); it != MBB.end(); ) {
+            MachineInstr &MI = *it++;
+            unsigned op = MI.getOpcode();
+            if (op < 3156 || op > 3159) continue;       /* contiguous range test */
+            Register dst = MI.getOperand(0).getReg();
+            Register src = MI.getOperand(1).getReg();
+            BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(TargetOpcode::COPY), dst)
+                .addReg(src);
+            MI.eraseFromParent();
+            changed = true;
+        }
+    }
+    return changed;
+}
+```
+
+The pass is the cleanest example of how ISel and post-ISel peepholes split responsibilities. ISel decides what pseudo-opcode the chain needs; the peephole decides what physical sequence prints. A reimplementation that emits the underlying `COPY` directly in the selector — skipping the `ProxyReg` indirection — saves one pass but loses two pieces of information. The first is the source register class, which a bare `COPY` does not carry on its source operand. The second is the chainability: the `ProxyReg` SDNode is a chain node, so the DAG combiner respects its ordering during legalization. A bare `COPY` introduced at lowering time is not chainable and can be reordered past instructions that depend on the copy's effect.
+
+Three other peephole passes consume ISel-introduced pseudo-opcodes through the same shape. `NVPTXImageOptimizer` rewrites texture and surface intrinsics whose immediates the selector left as placeholders; `NVPTXLowerArgs` collapses `LoadParam` byte-offset chains into single `ld.param.<wide>` instructions when the access pattern allows; `NVPTXLowerAggrCopies` expands memcpy/memmove pseudo-opcodes into explicit load-store loops. Each pass keys on a contiguous opcode range emitted by the selector, and each pass assumes the selector left the chain intact. Reordering or splitting the selector's emission breaks the peephole's recognition pattern and the optimization silently drops on the floor — no diagnostic, just slower PTX.
 
 ## Appendix: NVPTXISD Opcode Map
 

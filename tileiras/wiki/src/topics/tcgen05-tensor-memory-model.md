@@ -16,6 +16,23 @@ Only `tcgen05` instructions can read or write TMEM. There is no `ldg` to TMEM, n
 
 The instruction family also gates the 2-CTA cooperative MMA path. When two CTAs in a cluster cooperate on one MMA tile, they share TMEM rows: CTA 0 holds rows `[0..M/2)` and CTA 1 holds rows `[M/2..M)`. The cooperating MMA emits a `cta_group::2` opcode that pairs the two halves at execute time. The 4-CTA copy variant exists only on the copy side — the MMA encoding has no `cta_group::4` form, and Blackwell's 4-CTA semantics is a copy-time partition into already-sliced TMEM destinations that ordinary single-CTA MMAs then consume.
 
+## Allocation Grain and Lifetime
+
+The TMEM allocator works in 128-row columns. The minimum allocation unit is one column of 128 rows × 16 bytes = 2 KiB; columns extend along the N axis of the accumulator (or along K for an operand region). A single SM has 256 columns of TMEM, organised as 128 rows × 512 KiB total. The allocator hands back a `(base_column, num_columns)` pair as a 32-bit handle:
+
+```c
+typedef struct TmemHandle {
+    uint16_t base_column;   /* 0 .. 255, granularity 1 column = 128 rows × 16 B */
+    uint16_t num_columns;   /* 1 .. 256 - base_column */
+} TmemHandle;
+```
+
+For a typical `m64n128k16.f32.f16.f16` MMA, the accumulator region needs 64 rows × 128 columns of f32 = 64 × 128 × 4 = 32 KiB of TMEM, which lands at 16 columns of the 128-row grid (each column is 2 KiB, so 32 KiB / 2 KiB = 16 columns). A weight-stationary A region for the same tile needs another 16 columns of A residency (also 64 × 16 × 2 = 2 KiB per K-step × 16 K-steps), and a per-block scale region for the block-scaled variants needs another 1-4 columns depending on `vecSize`.
+
+Allocation is statically scoped to the enclosing dialect operation. The `nvvm.tcgen05.alloc.shared` op returns the handle as an SSA value; every `tcgen05.mma` op that consumes the handle pins the allocator's region for its issue lifetime; the matching `nvvm.tcgen05.dealloc` op (emitted at the end of the enclosing tile-scheduler scope) returns the columns to the free pool. The dialect does not allow TMEM regions to outlive their enclosing scope — there is no global TMEM heap, and the kernel cannot pass a TMEM handle out of the function it was allocated in. This is by construction: TMEM does not survive the SM reset that occurs between CTAs scheduled on the same SM, so any global handle would dangle on every CTA boundary.
+
+The lifetime contract has one practical consequence: a kernel that wants to chain MMAs across iterations of an outer loop must keep the TMEM allocation alive across the loop body, which means the allocator op must dominate every MMA op in the loop. Lowering does this by hoisting `tcgen05.alloc.shared` out of the outer loop to the function entry and matching `tcgen05.dealloc` to the function exit — see the consumer-side lifetime annotations in the [tcgen05 / WGMMA / mbarrier / Cluster Emission](../codegen/tcgen05-wgmma-mbarrier-cluster.md#end-to-end-lowering) end-to-end lowering.
+
 ## The tcgen05 Variant Taxonomy
 
 The `tcgen05.mma` family covers ten machine variants. Each combines an MMA kind (dense, sparse, block-scaled, sparse block-scaled) with optional weight-stationary mode and CTA-group selector. The lowering packs the choice into a 9-bit kind word; the backend verifier rejects illegal combinations before machine selection.
@@ -34,6 +51,41 @@ The `tcgen05.mma` family covers ten machine variants. Each combines an MMA kind 
 | warp-specialized sparse block-scaled | 1 | yes | yes | yes (alias) |
 
 Weight-stationary mode reuses bit 0 of the kind word as a 1-bit predicate; the warp-specialized variants are weight-stationary at `cta_group::1`. The verifier rejects `cta_group::2` whenever the weight-stationary bit is set, and rejects weight-stationary mode for the wider `mxf8f6f4` and FP4 input families.
+
+## Per-Variant Operand Contracts
+
+Every `tcgen05.mma` variant lowers to a five-operand machine form: D destination, A operand, B operand, control word, and optional metadata or scale-factor operands. The residency of each operand is fixed per variant and the verifier rejects any mismatch. The contract is:
+
+| Variant | A operand | B operand | C / D operand | Metadata | Scale-factor operand |
+|---|---|---|---|---|---|
+| dense MMA (`kind::f16`, `kind::tf32`, `kind::i8`) | SMEM desc or TMEM | SMEM desc | TMEM | — | — |
+| sparse MMA (`.sp`) | TMEM (halved value region) | SMEM desc | TMEM | TMEM (u32 selector stream) | — |
+| weight-stationary dense (`.ws`) | TMEM (pinned across K) | SMEM desc | TMEM | — | — |
+| weight-stationary sparse (`.ws.sp`) | TMEM (pinned, halved) | SMEM desc | TMEM | TMEM | — |
+| block-scaled dense (`kind::f8f6f4`, `kind::mxf8f6f4`, `kind::mxf4`, `kind::mxf4nvf4`) | SMEM desc or TMEM | SMEM desc | TMEM | — | SFA, SFB in TMEM (E8M0 or E4M3FN) |
+| block-scaled sparse (`.sp` + block-scale) | TMEM (halved) | SMEM desc | TMEM | TMEM | SFA, SFB in TMEM |
+| warp-specialized dense (`.ws`, alias) | TMEM (pinned) | SMEM desc | TMEM | — | — |
+| warp-specialized sparse (`.ws.sp`, alias) | TMEM (pinned, halved) | SMEM desc | TMEM | TMEM | — |
+| warp-specialized block-scaled (`.ws` + block-scale) | TMEM (pinned) | SMEM desc | TMEM | — | SFA, SFB in TMEM |
+| warp-specialized sparse block-scaled (`.ws.sp` + block-scale) | TMEM (pinned, halved) | SMEM desc | TMEM | TMEM | SFA, SFB in TMEM |
+
+Two patterns repeat across the variant table:
+
+- **B is always an SMEM descriptor.** There is no TMEM-resident B variant. The descriptor format is identical to the WGMMA Hopper descriptor — same 64-bit packing, same swizzle codes, same alignment rules. See [WGMMA SMEM Descriptor Bit Layout](wgmma-emission-protocol.md#smem-descriptor-bit-layout).
+- **C and D are the same TMEM region.** The MMA reads C and writes D into the same TMEM region in-place; the dialect-level distinction is bookkeeping. The accumulator-zero predicate (the analogue of WGMMA `scale_d`) lives in the control word's `scale_input_acc` bit.
+
+The variant choice is driven by the source-language idiom:
+
+| Source-language pattern | Selected variant |
+|---|---|
+| Plain matmul mainloop (no operand reuse) | dense MMA |
+| Structurally-sparse weight matrix (50%/2:4 sparsity) | sparse MMA |
+| Inner loop reuses the same A operand across many invocations | weight-stationary dense |
+| FP8 / FP6 / FP4 microscale matmul | block-scaled dense |
+| MoE / multi-LoRA where the A operand is shared across experts | warp-specialized dense |
+| Microscale matmul with structurally-sparse activations | block-scaled sparse |
+
+The `.ws` and warp-specialized aliases differ in scheduling intent but compile to the same machine opcode at `cta_group::1`. Tileiras picks `.ws` when the inner loop is a plain K-loop reusing A, and picks the warp-specialized form when the producer warp pipeline that fills A runs in a separate warp specialisation from the consumer.
 
 ## Control Word Layout
 
@@ -66,15 +118,51 @@ The `mma_kind` field picks the element-type family and the variant of block scal
 
 The cross-field consistency rules — for example, "scale-input-accumulator only applies to f16 and tf32", "block-scale rejects f16/tf32/i8" — are enforced by the verifier and listed in detail on the [Mode Pattern Verifiers](../dialects/cute_nvgpu/mode-pattern-verifiers.md) page.
 
-Beside the kind word, a separate collector word controls how operand A is staged into the MMA:
+Beside the kind word, a separate collector word controls how operand A is staged into the MMA. The collector is a per-warp-group register cache that buffers the most recently staged A operand; subsequent MMA instructions can either consume that cached A directly, refill it from TMEM, or discard it. The three modes are:
 
-| Collector::a mode | Meaning |
-|---|---|
-| use | reuse the existing collector state from a previous MMA in the chain |
-| fill | refill the collector with the new A operand before MMA |
-| discard | drop collector state after MMA (no reuse downstream) |
+| `collector::a` mode | Reads A from | Updates collector | Pairs with |
+|---|---|---|---|
+| `discard` | TMEM (fresh load) | cleared (no reuse downstream) | standalone MMA, no chaining |
+| `fill` | TMEM (fresh load) | new A retained for next MMA | the `use` mode in the next MMA of the chain |
+| `use` | collector cache (no TMEM load) | unchanged (carries forward) | an earlier `fill` that staged the A operand |
 
-Collector mode interacts with the `ashift` modifier — collector use or fill cannot combine with ashift, because both want exclusive control of the A operand's staging slot. The verifier emits "Cannot use collector::a::use or colletor::a::fill with ashift" (preserving the verbatim typo in `colletor`) for that combination.
+The motivation is bandwidth. A TMEM-resident A operand costs 1 TMEM read per MMA when re-read on every iteration; the collector lets a chain of `fill → use → use → ...` MMAs amortise that read across multiple invocations. The collector capacity is one A operand per warp-group — there is no multi-slot cache — so the chain is linear, not branching.
+
+### Worked Sequence
+
+A streamed inner-product mainloop computes `D += A_k × B_k` for `k = 0, 1, 2`, reusing the same A operand for all three iterations (a weight-stationary inner loop where A is the weight matrix and B steps through activation slices). The optimal collector schedule is `discard → fill → use → use`, but for a 3-iteration chain that fits in the collector cache from the start, the schedule is `fill → use → use` plus a final discard if no further chain follows:
+
+```text
+                      collector state
+                      ---------------
+iter 0:  tcgen05.mma.collector::a::fill    A_0, B_0, D     // load A_0 from TMEM, cache it
+                      A_0 in collector
+
+iter 1:  tcgen05.mma.collector::a::use     -- , B_1, D     // A_0 reused from collector; no TMEM load
+                      A_0 still in collector
+
+iter 2:  tcgen05.mma.collector::a::use     -- , B_2, D     // A_0 reused from collector; no TMEM load
+                      A_0 still in collector
+
+(end of chain)
+         tcgen05.mma.collector::a::discard ...            // optional: clears collector if next region wants
+                                                          //           a fresh A slot
+```
+
+The first MMA fills the collector and pays one TMEM read. The next two MMAs reuse the cached A and pay zero TMEM reads for the A operand. The net A-side bandwidth is `1 / 3` of the naive cost. The B operand reads from SMEM every iteration; collector caching applies only to A.
+
+When the A operand changes (a different weight tile in iteration 3), the next MMA must re-fill:
+
+```text
+iter 3:  tcgen05.mma.collector::a::fill    A_1, B_3, D    // load A_1 from TMEM, replaces A_0 in cache
+                      A_1 in collector
+```
+
+The verifier rejects `use` against a stale collector — if the previous MMA in the warp group's program order discarded the collector or never filled it, the verifier emits "collector::a::use without preceding fill". This is a control-flow check: the verifier walks the warp group's program order from each `use` backward to the most recent `fill` or `discard` and rejects any path where the collector is not filled.
+
+Collector mode interacts with the `ashift` modifier — `collector::a::use` or `collector::a::fill` cannot combine with `ashift`, because both want exclusive control of the A operand's staging slot. The verifier emits "Cannot use collector::a::use or colletor::a::fill with ashift" (preserving the verbatim typo in `colletor`) for that combination.
+
+Block-scaled variants also reject the collector use/fill modes: the SFA scale operand changes per iteration and the cached A would mismatch the scales after the first chained call. Lowering forces `collector::a::discard` for every block-scaled MMA.
 
 ## Sparsity Metadata
 

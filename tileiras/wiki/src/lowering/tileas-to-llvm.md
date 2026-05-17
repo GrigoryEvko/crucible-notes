@@ -342,6 +342,98 @@ The main TileAA/TileAS body patterns lower:
 
 Prefer first-class NVVM operations over inline assembly. Inline assembly is appropriate only for target instructions absent from the NVVM dialect snapshot.
 
+## Per-Pattern Walks
+
+### `async.tiled_tma_load` → `nvvm.cp.async.bulk.tensor.shared.global`
+
+The TileAS TMA-load lowering is a five-step rewrite. The TMA descriptor (an `nv_tileas.tma_desc` value) becomes an `llvm.ptr<1>` to the descriptor's global-memory home, the destination view becomes the shared-memory base address, the per-axis coordinates flow through unchanged as `i32` indices, and the mbarrier slot is the shared-memory address of the completion barrier. The async-token result is the i32 phase carrier the consumer-side `mbarrier.try_wait` will observe:
+
+```mlir
+// Before
+%tok = nv_tileas.async.tiled_tma_load
+    %desc, %dst_view[%coord_y, %coord_x], %mbar
+    { atom = #nv_tileas<atom tma_load_2d>,
+      operandSegmentSizes = array<i32: 1, 1, 2, 1> }
+    : !nv_tileas.tma_desc, !nv_tileas.tiled_view<128x64xf16>,
+      index, index, !nv_tileas.mem_token
+    -> !nv_tileas.AsyncToken
+
+// After
+%dst_addr = llvm.extractvalue %dst_view_struct[0]
+    : !llvm.struct<(ptr<3>, ptr<3>, i64, array<2 x i64>, array<2 x i64>)>
+%desc_addr = llvm.bitcast %desc : !llvm.ptr -> !llvm.ptr<1>
+%mbar_addr = llvm.extractvalue %mbar_struct[0]
+    : !llvm.struct<(ptr<3>, i32)>
+nvvm.cp.async.bulk.tensor.shared.cluster.global %dst_addr, %desc_addr,
+    %mbar_addr, box[%coord_x, %coord_y]
+    { mode = #nvvm.tma_load_mode<tile> }
+    : !llvm.ptr<3>, !llvm.ptr<1>, !llvm.ptr<3>
+%tok = llvm.mlir.constant(0 : i32) : i32
+```
+
+The intrinsic name selection is driven by the `atom` attribute. A 2D tile load with no multicast and no L2 cache hint emits the basic form above; multicast variants append a `multicast_mask` operand and switch to `nvvm.cp.async.bulk.tensor.shared.cluster.global.multicast`. The im2col atom variants pick `nvvm.cp.async.bulk.tensor.shared.cluster.global.im2col` and prepend a per-axis offset vector before the coordinate list.
+
+Coordinate order also flips. The TileAS surface lists coordinates in row-major (outer-axis-first) order to match the way layout-assignment writes them, but `cp.async.bulk.tensor` consumes them in column-major (inner-axis-first) order to match the PTX instruction. The rewrite reverses the coordinate operand list as part of the emission.
+
+The `nv_tileas.AsyncToken` result becomes an i32 zero constant. Async-token values do not carry hardware state — only data-dependence edges in the IR — so the lowering replaces them with a placeholder whose only purpose is keeping the SSA dataflow connected for the consumer pattern. The consumer side (an `nv_tileas.async.pipeline.consumer_wait`) lowers to an `nvvm.mbarrier.try_wait.parity.shared` that reads its phase from the loop iterator's stage index, not from the async-token operand.
+
+### `async.wgmma` → Four-Op NVVM Protocol
+
+Hopper warpgroup MMA lowers to a strict four-op NVVM sequence: fence, `mma_async`, commit_group, wait_group. The fence pins the boundary the consumer cannot reorder past, the `mma_async` issues the warpgroup compute, and the commit/wait pair drains the accumulator before the next consumer reads it. The 64-bit SMEM descriptors for A and B are built upstream in the cute_nvgpu lowering and arrive as already-packed `i64` SSA values:
+
+```mlir
+// Before
+%c_out = nv_tileas.async.wgmma %desc_a, %desc_b, %c_in
+    { atom = #nv_tileas<atom mma_f16_f16_f32>,
+      group_id = 0 : i32 }
+    : i64, i64, tile<128x128xf32>
+    -> tile<128x128xf32>
+
+// After
+nvvm.wgmma.fence.aligned
+%c0 = llvm.extractvalue %c_in_struct[0] : !llvm.struct<(f32, f32, ..., f32)>
+...
+%cN = llvm.extractvalue %c_in_struct[63] : !llvm.struct<(f32, f32, ..., f32)>
+%r0, ..., %rN = nvvm.wgmma.mma_async.sync.aligned
+    %desc_a, %desc_b, %c0, ..., %cN
+    { shape = #nvvm.shape<m = 64, n = 128, k = 16>,
+      typeA = #nvvm.wgmma_type<f16>,
+      typeB = #nvvm.wgmma_type<f16>,
+      typeD = #nvvm.wgmma_type<f32>,
+      scaleA = 1 : i32, scaleB = 1 : i32,
+      scaleD = #nvvm.wgmma_scale_out<one> }
+    : i64, i64, f32, ..., f32 -> f32, ..., f32
+nvvm.wgmma.commit.group.sync.aligned
+nvvm.wgmma.wait.group.sync.aligned 0
+%c_out_struct = llvm.insertvalue %r0, %undef[0]
+    : !llvm.struct<(f32, f32, ..., f32)>
+...
+```
+
+The accumulator tile becomes an LLVM struct with one element per register lane — for `m64n128.f32` the lane count is 64 per thread, so the struct has 64 `f32` fields, each held in a separate register at runtime. The rewrite splits the tile into per-lane SSA values with `extractvalue`, feeds them into the `mma_async` op as positional operands, and reassembles the result tile with `insertvalue`. NVVM canonicalisation later folds the `extractvalue`/`insertvalue` chain when the accumulator lives in a register for the full WGMMA loop.
+
+The `wait.group 0` waits for every outstanding WGMMA group — the simplest correct lowering. A pipelined variant emits `commit.group` after every `mma_async` and `wait.group N` with `N` equal to the depth of in-flight groups the scheduler tracks; that path is taken when `nv_tileas.async.wgmma` carries a `pipeline_depth` attribute. The four-op protocol is fixed; only the wait-group depth varies.
+
+### `async.mbarrier_init` → `nvvm.mbarrier.init.shared`
+
+mbarrier initialisation is a one-to-one rewrite. The barrier value lives in shared memory, gets allocated upstream by an `alloc_tensor` lowering that carves it out of `global_smem`, and arrives as an `llvm.ptr<3>` to a 64-bit barrier slot. The tick count — the number of arrivals the barrier expects before phase advance — is an i32:
+
+```mlir
+// Before
+%mbar_init = nv_tileas.async.mbarrier_init %mbar, %ticks
+    : !nv_tileas.mem_token, i32 -> !nv_tileas.mem_token
+
+// After
+%mbar_addr = llvm.extractvalue %mbar_struct[0]
+    : !llvm.struct<(ptr<3>, i32)>
+nvvm.mbarrier.init.shared %mbar_addr, %ticks : !llvm.ptr<3>, i32
+%mbar_init = llvm.mlir.constant(0 : i32) : i32
+```
+
+The TileAS mem-token result is again a placeholder i32 — the actual ordering edge to the matching `nvvm.mbarrier.arrive` / `nvvm.mbarrier.try_wait.parity.shared` pair is carried by the producer/consumer-side pattern that issues those intrinsics, not by an explicit operand chain.
+
+The `nvvm.mbarrier.init.shared` intrinsic is the unconditional emission. There is no `nvvm.mbarrier.init.global` variant — mbarrier storage must be in shared memory on every supported architecture, and the rewrite asserts the source view's address space before emitting. Initialising a global-memory barrier address would produce a PTX error at SASS translation, well after the conversion target has accepted the IR; the assertion catches it at this pass instead.
+
 ## Arith Template Cleanup
 
 The cleanup path includes generic arithmetic patterns plus a higher-priority constant conversion. Generic arithmetic conversion maps compare, add, multiply, division, shifts, select, casts, and min/max into the target dialect under the shared type converter. Constants get special handling so tensor constants become TileAA or LLVM aggregate materializations rather than scalar-only constants.
@@ -371,5 +463,5 @@ LogicalResult lower_arith_constant(ConstantOp op, Rewriter *rw, TypeConverter *t
 
 ## Cross-References
 
-[Conversion / Lowering Overview](overview.md#lowering-stages) places this pass at the LLVM-lowering stage between TileAS scheduling and companion-dialect lowering. [TileAA to TileAS — Named Pattern Bank](tileaa-to-tileas.md#named-pattern-bank) is the upstream producer whose CopyAtom and ReduceAtom witnesses this pass resolves into concrete hardware primitives. [CuTe and CuTe-NVGPU to LLVM](cute-and-cute_nvgpu-to-llvm.md) and [nvgpu / gpu to NVVM](nvgpu-and-gpu-to-nvvm.md) are the companion passes that lower the surviving `cute.*`, `cute_nvgpu.*`, `gpu.*`, and `nvgpu.*` operations after this pass. [Shared LLVM Type Converter](pattern-set-and-typeconverter.md#shared-llvm-type-converter) describes the shared LLVM type converter every pattern in this pass threads through.
+[Conversion / Lowering Overview](overview.md#lowering-stages) places this pass at the LLVM-lowering stage between TileAS scheduling and companion-dialect lowering. [TileAA to TileAS — Named Pattern Bank](tileaa-to-tileas.md#named-pattern-bank) is the upstream producer whose CopyAtom and ReduceAtom witnesses this pass resolves into concrete hardware primitives. [CuTe and CuTe-NVGPU to LLVM](cute-and-cute_nvgpu-to-llvm.md) and [nvgpu / gpu to NVVM](nvgpu-and-gpu-to-nvvm.md) are the companion passes that lower the surviving `cute.*`, `cute_nvgpu.*`, `gpu.*`, and `nvgpu.*` operations after this pass. [Shared LLVM Type Converter](pattern-set-and-typeconverter.md#shared-llvm-type-converter) describes the shared LLVM type converter every pattern in this pass threads through. [MMA Atoms sm70-120 — SM90 WGMMA](../dialects/cute_nvgpu/mma-atoms-sm70-120.md#sm90-wgmma) carries the bit-level SMEM descriptor layout the four-op `wgmma` walk above consumes verbatim. [nv_tileas Op Roster — TMA Op Operand/Result Tables](../dialects/nv_tileas/op-roster-and-builders.md#tma-op-operandresult-tables) gives the operand and attribute tables for the TileAS surface the per-pattern walks here lower into NVVM.
 

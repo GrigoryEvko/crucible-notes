@@ -242,6 +242,55 @@ Names alone do not classify operations. The scheduler consumes analysis facts:
 
 Axis analysis decides whether a vector load, TMA coordinate, or pointer expression is aligned and compact enough for a particular resource class. Buffer lifetime decides whether two memory operations share a live resource and must be coupled or separated.
 
+## Worked Example: Four-Op Loop Body
+
+The clearest way to read the slot model is to walk a loop body small enough to fit in one RRT and rich enough to touch the transport, MMA, and SMEM rows simultaneously. The body below is the steady-state shape of a software-pipelined matmul inner loop:
+
+```text
+%0 = nv_tileas.async.tiled_tma_load %desc, %coord : !smem_ref
+%1 = nv_tileas.async.smem_write     %src        : !smem_ref
+%2 = nv_tileas.async.wgmma          %a, %b, %c  : !tmem_ref
+%3 = nv_tileas.async.smem_read      %0          : !reg
+```
+
+Each op's resource vector is the triple `(slot_id, duration, occupancy)` produced by the constraint builder. The classifier reads the op's MLIR opcode plus its operand types, picks the slot from the table at the top of this page, and reads the duration from the latency family.
+
+| Op | Slot | Duration | Occupancy | Family |
+|---|---|---:|---:|---|
+| `tiled_tma_load %0` | 12 (`tma`) + 16 (`tp_smem_wr`) | 8 cycles | 1 each | TMA + SMEM write transport |
+| `smem_write %1` | 16 (`tp_smem_wr`) | 7 cycles | 1 | SMEM write transport |
+| `wgmma %2` | 11 (`tc_and_mma`) + 19 (`tp_mma`) | 8 cycles | 1 each | MMA issue + transport |
+| `smem_read %3` | 15 (`tp_smem_rd`) | 7 cycles | 1 | SMEM read transport |
+
+The TMA load is the only op that claims two slots simultaneously: the descriptor stays parked on the `tma` row while the tensor payload flows through the SMEM write transport. The cost reducer sees two row contributions for one op, which is why the per-op latency table at offset `+288` of the resource pool charges both `0x1C` (SMEM transport) and `0x1D` (SMEM write transport) variants for the same source-level operation.
+
+Suppose the candidate `II` is `8`. The scheduler probes the four ops in dataflow order and seats each at the earliest legal cycle. The resulting RRT — one 24-bit row per modulo cycle, drawn here only over the slots the example touches — is:
+
+```text
+cycle  tc_and_mma  tma  tp_smem_rd  tp_smem_wr  tp_mma
+  0       .         X       .           X         .      ← tiled_tma_load occupies tma + smem_wr
+  1       .         X       .           X         .
+  2       .         X       .           X         .
+  3       .         X       .           X         .
+  4       .         X       .           X         .
+  5       .         X       .           X         .
+  6       .         X       .           X         .
+  7       .         X       .           X         .
+
+  // smem_write seats at cycle 0 of next iteration; in the modulo
+  // view it overlays the same RRT, claiming tp_smem_wr at cycles
+  // [0..6] mod 8. The probe fails — tp_smem_wr is already busy.
+  //
+  // The placement driver bumps smem_write forward; the only legal
+  // start is cycle 8 mod 8 = 0 of the iteration *after* the TMA
+  // tail drains, which the modulo scheduler models as a stage-1
+  // seat with order 0.
+```
+
+The example shows two things at once: (i) singleton transports (`tp_smem_wr` pool cap = 1) force the modulo scheduler to spread overlapping iterations across stages rather than packing them onto the same cycle, and (ii) the per-op latency table's split between `0x1C` and `0x1D` exists precisely so the TMA load and the loose SMEM write can be charged at different per-cycle weights — the TMA load's 8-cycle hold is what makes it the structural bottleneck, while the SMEM write's 7-cycle hold lets it slip into the gap one cycle later.
+
+The cost reducer ranks this schedule against any alternative by reading the per-slot cycle weights from rodata `0x4CC9D40` for slots 13..16: `200` for gnic-rd, `400` for gnic-wr, `800` for smem-rd, `900` for smem-wr. A schedule that doubled-up on `tp_smem_wr` would multiply that `900` by the second user's surcharge; a schedule that kept the SMEM transports balanced pays the base weight once and clears the gate.
+
 ## Admission Rule
 
 An operation is legal at cycle `t` when every occupied row is conflict-free.

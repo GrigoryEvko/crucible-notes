@@ -119,6 +119,36 @@ Each rewrite has the same one-to-one shape:
 
 The eight ops never appear in the main populator rosters; the singleton adders are the only registration path that brings them into a pattern set.
 
+### `cuda_tile.trunci` Walk
+
+`TruncIOpConversion` is the canonical type-narrowing rewrite. The operand is an integer tile and the result is a narrower integer tile of the same shape. The rewrite keeps the operand SSA value verbatim, swaps the op mnemonic, and asks the TypeConverter for the result type:
+
+```mlir
+// Before
+%narrow = cuda_tile.trunci %wide : !cuda_tile.tile<128xi32> to !cuda_tile.tile<128xi8>
+
+// After
+%narrow = nv_tileaa.trunci %wide : tensor<128xi32> to tensor<128xi8>
+```
+
+The operand `%wide` flows through the source materialiser when its definition has not yet rewritten — `applyPartialConversion` inserts a `builtin.unrealized_conversion_cast %wide : !cuda_tile.tile<128xi32> to tensor<128xi32>` that the downstream cast-reconciliation phase erases once both ends are TileAA-typed. No attribute hand-off is needed: `trunci` carries only its result type.
+
+### `cuda_tile.fma` Walk
+
+`FmaOpConversion` is a three-operand floating-multiply-add. All three operands share the source tile type and the result has the same shape:
+
+```mlir
+// Before
+%r = cuda_tile.fma %a, %b, %c { fastmath = #cuda_tile.fastmath<contract> }
+    : !cuda_tile.tile<8x64xf32>
+
+// After
+%r = nv_tileaa.fma %a, %b, %c { fastmath = #nv_tileaa.fastmath<contract> }
+    : tensor<8x64xf32>
+```
+
+The `fastmath` attribute carries verbatim through the rewrite, but its dialect-qualified attribute kind changes from `#cuda_tile.fastmath<...>` to `#nv_tileaa.fastmath<...>` because each dialect publishes its own attribute. The rewriter looks the source attribute up in the TileAA dialect's attribute registry by short-name match and reconstructs the typed attribute; identical short names with identical underlying values are required to round-trip, otherwise the verifier on the new op rejects the result.
+
 ## Type-Converter Materialisers
 
 Three type-converter functor pairs register before the populators run. Each pair combines an `addConversion` callback (called when the converter sees the source type) with an `addMaterialization` callback (called when partial conversion needs a bridge value while the IR is mid-rewrite). Materialisations should not survive later canonicalisation — the reconciliation phase in the next pass erases them.
@@ -211,9 +241,33 @@ Block-argument types `!cuda_tile.tile<f32>` become `f32` because the `TileType` 
 
 If the rewriter forgot to convert block-argument types, the parent `nv_tileaa.reduce` would have `f32` operands at the outer signature but the inner region's `^bb0` would still bind `!cuda_tile.tile<f32>` — the verifier would reject the operation with a signature mismatch the next-stage diagnostics cannot localise back to this pass.
 
-### `cuda_tile.scan`
+### `cuda_tile.scan` Worked Example
 
-`cuda_tile.scan` follows the same shape as reduce but produces a tensor of the same rank as the input. The rewriter applies identical region-conversion logic, only changing the parent op's mnemonic and result-type rank.
+`cuda_tile.scan` follows the same shape as reduce but produces a tensor of the same rank as the input — every output element is the cumulative reduction of the prefix of input elements along the scan axis. The rewriter applies identical region-conversion logic, only changing the parent op's mnemonic and keeping the result rank equal to the input rank.
+
+Input:
+
+```mlir
+%prefix = cuda_tile.scan %values { axis = 1 : i32, inclusive = true }
+    : !cuda_tile.tile<8x64xf32> -> !cuda_tile.tile<8x64xf32> {
+  ^bb0(%acc: !cuda_tile.tile<f32>, %elem: !cuda_tile.tile<f32>):
+    %sum = cuda_tile.addf %acc, %elem : !cuda_tile.tile<f32>
+    cuda_tile.yield %sum : !cuda_tile.tile<f32>
+}
+```
+
+Output:
+
+```mlir
+%prefix = nv_tileaa.scan %values { axis = 1 : i32, inclusive = true }
+    : tensor<8x64xf32> -> tensor<8x64xf32> {
+  ^bb0(%acc: f32, %elem: f32):
+    %sum = nv_tileaa.addf %acc, %elem : f32
+    nv_tileaa.yield %sum : f32
+}
+```
+
+The `axis` and `inclusive` attributes carry verbatim; block-argument types unwrap from `!cuda_tile.tile<f32>` to `f32` via the TileType converter, and the inner `cuda_tile.addf` / `cuda_tile.yield` rewrite recursively under Part A patterns matched by the same partial-conversion driver.
 
 ### Transcendental Specialists
 
@@ -246,4 +300,4 @@ The pass fails with a user-facing diagnostic when:
 
 ## Cross-References
 
-[Conversion / Lowering Overview](overview.md#lowering-stages) describes this pass's position in the four-stage cascade. [Shared LLVM Type Converter](pattern-set-and-typeconverter.md#shared-llvm-type-converter) documents the shared LLVM type converter that the materialiser triple here registers into. [TileAA to TileAS](tileaa-to-tileas.md) is the next lowering stage; the CopyAtom and ReduceAtom witnesses attached there preserve information this pass made explicit.
+[Conversion / Lowering Overview](overview.md#lowering-stages) describes this pass's position in the four-stage cascade. [Shared LLVM Type Converter](pattern-set-and-typeconverter.md#shared-llvm-type-converter) documents the shared LLVM type converter that the materialiser triple here registers into. [TileAA to TileAS](tileaa-to-tileas.md) is the next lowering stage; the CopyAtom and ReduceAtom witnesses attached there preserve information this pass made explicit. [cuda_tile Op Roster](../dialects/cuda_tile/op-roster.md#op-method-surface) lists the lowering-arm classification per family that the populator order in this pass reflects; [nv_tileaa Op Roster — Memory Effects](../dialects/nv_tileaa/op-roster.md#memory-effects) gives the operand and attribute tables for the token-aware operations the singleton adders produce.

@@ -407,6 +407,96 @@ LogicalResult verify_sm120_block_scaled(MmaUse use) {
 
 For `K = 32`, FP4, FP6-like, and FP8-like input families are allowed with a fixed scale-vector shape. For `K = 64`, the accepted input family narrows to FP4-style operands, and the scale-fragment width must match the selected vector size.
 
+## Per-Atom Operand-Layout Contracts
+
+The tables below document the per-thread fragment counts and per-operand layout pieces every MMA atom records. Each row corresponds to one PTX instruction shape; the verifier emits the exact same numbers when reconstructing the canonical reference layout. All entries assume a 32-thread warp unless otherwise noted; SM90 WGMMA and SM100 UMMA also reference a 128-thread warp-group footprint.
+
+### SM70 / SM75 m16n8k8 f16
+
+| Operand | Memory class | Per-thread elements | Per-thread layout footprint |
+|---|---|---:|---|
+| A | register | 4 (`f16`, packed as 2 x i32) | `(2, 2, 2) : (8, 1, 16)` — 4 rows x 2 mode-K lanes |
+| B | register | 2 (`f16`, packed as 1 x i32) | `(2, 2) : (1, 16)` — 2 cols x 2 mode-K lanes |
+| C / D | register | 4 (`f32` or `f16`) | `(2, 2, 2) : (4, 1, 8)` |
+
+The legacy SM70 m8n8k4 form keeps the same memory class but uses smaller fragments — 4 elements per thread total across A and B combined.
+
+### SM80 dense m16n8k16 f16
+
+| Operand | Memory class | Per-thread elements | Per-thread layout footprint |
+|---|---|---:|---|
+| A | register | 8 (`f16`, packed as 4 x i32) | `(2, 2, 2, 2) : (1, 16, 8, 128)` |
+| B | register | 4 (`f16`, packed as 2 x i32) | `(2, 2, 2) : (1, 8, 16)` |
+| C / D | register | 4 (`f32`) | `(2, 2, 2) : (4, 1, 8)` |
+
+These per-thread counts match the seven-arm dispatch table — dense `f16` rests at 8 elements per thread, dense `s8` and FP8 paths jump to 16 by widening K from 16 to 32 against the same lane footprint.
+
+### SM80 INT8 sparse m16n8k32 s8/s32
+
+| Operand | Memory class | Per-thread elements | Per-thread layout footprint |
+|---|---|---:|---|
+| A (structurally sparse) | register | 8 (`s8`, packed as 2 x i32) — half the dense count | `(2, 2, 2) : (1, 32, 128)` |
+| B | register | 8 (`s8`, packed as 2 x i32) | `(2, 2, 2) : (1, 16, 32)` |
+| C / D | register | 4 (`s32`) | `(2, 2, 2) : (4, 1, 8)` |
+| Sparse metadata | register | 1 (`u32`) — 16 metadata pairs per warp | `(1) : (1)` with metadata-stride encoded via the `(0x200000, 0x4000000, 0x8000000)` triple |
+| Sparsity selector | immediate | implicit — selector `0` means alternating-pair pattern | not represented as an operand |
+
+The sparse A fragment carries 8 packed `s8` values rather than the dense 16; the metadata operand encodes which two of every four positions are non-zero. The selector is not a separate operand at the IR level — it lives in the atom's textual mnemonic and is folded into the PTX form at lowering time. Slot 3 of the synthesised `MmaLayoutResult` (152 bytes per slot) holds the metadata layout; verification compares it against the declared layout under the same equivalence predicate it uses for A, B, and D.
+
+### SM89 FP8 m16n8k32 e4m3/e5m2
+
+| Operand | Memory class | Per-thread elements | Per-thread layout footprint |
+|---|---|---:|---|
+| A | register | 16 (`e4m3` or `e5m2`, packed as 4 x i32) | `(2, 2, 2, 2) : (1, 32, 16, 256)` |
+| B | register | 8 (FP8, packed as 2 x i32) | `(2, 2, 2) : (1, 16, 32)` |
+| C / D | register | 4 (`f32`) | `(2, 2, 2) : (4, 1, 8)` |
+
+Both operands may pick `e4m3` or `e5m2` independently. The verifier checks each operand's type against the FP8 union; mixed FP8 input pairs (one `e4m3`, one `e5m2`) are legal as long as the accumulator is `f32`.
+
+### SM90 WGMMA m64nNk16 f16 (canonical Hopper)
+
+| Operand | Memory class | Per-warp elements | Per-thread layout / descriptor source |
+|---|---|---:|---|
+| A | SMEM descriptor or register fragment | `64 * 16 = 1024` (across the 128-thread warp-group) | descriptor encodes `(64, 16) : (16, 1)` row-major tile with 128-B swizzle |
+| B | SMEM descriptor | `16 * N` per WGMMA instance | descriptor encodes `(16, N) : (N, 1)` with matching swizzle |
+| C / D | register fragment (warp-group) | `64 * N / 128` per thread (e.g., N=128 -> 64 elements per thread) | `(2, 2, ..., 2) : (...)` derived from the warp-group canonical fragment |
+
+Per-thread fragment count for C/D is the tile area divided by the 128-thread warp-group footprint: `64 * N / 128 = N / 2`. For N = 128 each thread holds 64 accumulator elements; for N = 256, 128 elements; for N = 8, 4 elements. The SMEM descriptors carry the swizzle field (128-B / 64-B / 32-B per the canonical table) so two warps in the group can stream operands without bank conflicts.
+
+### SM100 UMMA m64nNk16 f16 (single-CTA)
+
+| Operand | Memory class | Per-warp-group elements | Per-thread layout / descriptor source |
+|---|---|---:|---|
+| A | SMEM descriptor or TMEM | `64 * 16` per instance | descriptor or TMEM column range; layout `(64, 16) : (16, 1)` |
+| B | SMEM descriptor | `16 * N` per instance | descriptor; layout `(16, N) : (N, 1)` |
+| D | TMEM | `64 * N` per instance | TMEM column-range; persists across `wait` |
+
+For the 2-CTA cooperative variant the M extent doubles to 128 and the TMEM accumulator is striped across two CTAs in the cluster; the verifier checks the cluster-shape attribute against the atom's cluster requirement.
+
+### SM100 UMMA block-scaled `(atom_K=64, vecSize=32)` FP4 / NVFP4
+
+| Operand | Memory class | Per-warp-group elements | Notes |
+|---|---|---:|---|
+| A | SMEM descriptor or TMEM | `M * 64` per instance, 4-bit packed | `Float4E2M1FN` (OCP MX-FP4) or `FloatNV4E0M3F` (NVFP4) depending on `sf_a` type |
+| B | SMEM descriptor | `64 * N` per instance, 4-bit packed | same FP4 encoding as A |
+| C / D | TMEM | `M * N` per instance, `f32` | accumulator hard-locked to `Float32` |
+| Scale factor A | TMEM column | `M * (64 / vecSize) = M * 2` per instance | `E8M0` for NVFP4; `E4M3FN` rejected at this `vecSize` |
+| Scale factor B | TMEM column | `(64 / vecSize) * N = 2 * N` per instance | matches A's scale-factor element type |
+
+Scale factor vectors live in TMEM columns next to the accumulator; the layout walk for each scale-factor operand mirrors the consumer's vec-size walk through the K axis. The verifier rejects any combination outside the three legal `(atom_K, vecSize)` triples documented earlier in this page with `"Invalid (atom_K, vecSize) combination for block-scaled MMA"`.
+
+### SM120 block-scaled `m16n8k32` FP4 / FP8 (register-resident)
+
+| Operand | Memory class | Per-thread elements | Notes |
+|---|---|---:|---|
+| A | register | 8 (`fp4`) or 16 (`fp8`, packed as 4 x i32) | per-thread layout from the SM80 dispatch table, narrowed for FP4 |
+| B | register | 4 (`fp4`) or 8 (`fp8`) | same pack convention |
+| C / D | register | 4 (`f32`) | accumulator hard-locked to `f32` |
+| Scale factor A | register | 1 (`E8M0`, packed as 1 x i32 per warp tile) | per-A-block scale vector |
+| Scale factor B | register | 1 (`E8M0`, packed as 1 x i32 per warp tile) | per-B-block scale vector |
+
+The consumer Blackwell path keeps every operand in registers — no TMEM dependency. The two scale-factor operands enter the inline-asm fragment as two extra `r`-constraint inputs alongside the A, B, and D register vectors.
+
 ## Operand Layout Grammar
 
 MMA atoms use `cute` layout algebra to record which thread owns which fragment element. A verifier reconstructs the expected layout for the atom and compares it against the declared one:
@@ -433,4 +523,8 @@ For WGMMA and UMMA the layout often lives in a descriptor rather than a lane-by-
 - WGMMA lowering emits fence, async MMA, commit, and wait in order.
 - UMMA lowering preserves TMEM allocation and CTA-group semantics.
 - SM120 uses two scale-factor operands and preserves uppercase `SM120` spelling.
+
+## Cross-References
+
+[SM Tier Roster and Copy Atom Registry — Atom TypeID Registry](sm-tier-roster-and-copy-atom-registry.md#atom-typeid-registry) lists every MMA atom alongside the copy atoms that feed it, and [Copy Atom Operand-Layout Contracts](sm-tier-roster-and-copy-atom-registry.md#copy-atom-operand-layout-contracts) documents the LDSM/STSM/TMA/TMEM-copy atoms that move operands into the residencies these MMA atoms require. [Mode Pattern Verifiers — UMMA Canonical Layout Verifier](mode-pattern-verifiers.md#umma-canonical-layout-verifier) and [SM120 Block-Scaled Lattice](mode-pattern-verifiers.md#sm120-block-scaled-lattice) cover the verifier ladders that consume the operand-layout contracts in this page. [Layout Algebra and Descriptor Grammar — Swizzle Operator](../cute/layout-algebra-and-descriptor-grammar.md#swizzle-operator) covers the bit-manipulation formula that feeds the WGMMA descriptor's `swizzle_mode` field. [TMA Atoms — Atom Family](tma-atoms.md#atom-family) covers the descriptor-driven TMA family that produces the SMEM tiles every WGMMA and UMMA atom in this page reads through descriptors.
 

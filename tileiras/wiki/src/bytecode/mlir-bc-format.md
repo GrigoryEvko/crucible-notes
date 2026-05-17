@@ -62,6 +62,84 @@ typedef struct SectionHeader {
 
 The reader scans section headers first and records the byte span for each section, then decodes bodies in a second pass. Physical section order is therefore flexible — required sections must exist and all offsets must land inside captured spans, but the order on disk is the producer's choice.
 
+## VarInt Encoding
+
+Every multi-byte integer in the container — section length, offset, type reference, operand index, opcode — uses the same unsigned LEB128 variant as upstream MLIR bytecode. The encoding rule is a leading-byte trick: the number of low-order 1-bits in the first byte indicates how many additional bytes follow, the bits above the run-of-ones in that byte form the low bits of the integer, and the subsequent bytes contribute eight bits each in little-endian order.
+
+| First byte | Total bytes | Payload bits | Value range |
+|---|---:|---:|---|
+| `0xxxxxxx` | 1 | 7 | `0..127` |
+| `xxxxxx01` | 2 | 14 | `0..16383` |
+| `xxxxx011` | 3 | 21 | `0..2097151` |
+| `xxxx0111` | 4 | 28 | up to `2^28 - 1` |
+| `xxx01111` | 5 | 35 | up to `2^35 - 1` |
+| `xx011111` | 6 | 42 | up to `2^42 - 1` |
+| `x0111111` | 7 | 49 | up to `2^49 - 1` |
+| `01111111` | 8 | 56 | up to `2^56 - 1` |
+| `00000000` | 9 | 64 | up to `2^64 - 1` (all 8 trailing bytes form the integer) |
+
+The leading byte counts its low-order 1-bits, masks them off, and shifts the surviving high bits up to occupy the bottom of the decoded integer; the remaining bytes are appended above those bits. A 10-byte encoding is rejected as overlong — the canonical 9-byte form covers the entire 64-bit range. Signed payloads (the `location_index` slot in particular) wrap the unsigned VarInt in zig-zag: `(n << 1) ^ (n >> 63)` going out, `(u >> 1) ^ -(u & 1)` coming back.
+
+Three concrete decoded examples make the bit pattern unambiguous:
+
+```text
+0x0a            → first byte 0000_1010, low bit clear → 1-byte form,
+                  payload = 0a >> 1 = 5
+
+0x01 0x02       → first byte 0000_0001, trailing "01" → 2-byte form,
+                  payload bits = (byte0 >> 2) | (byte1 << 6)
+                              = (0x01 >> 2) | (0x02 << 6)
+                              = 0 | 0x80 = 128
+
+0xfb 0xff 0x0f  → first byte 1111_1011, trailing "011" → 3-byte form,
+                  payload bits = (byte0 >> 3) | (byte1 << 5) | (byte2 << 13)
+                              = (0xfb >> 3) | (0xff << 5) | (0x0f << 13)
+                              = 0x1f | 0x1fe0 | 0x1e000 = 0x1ffff = 131071
+```
+
+Producers must always emit the canonical (shortest) encoding for a given integer: an overlong but otherwise-valid encoding decodes to the same integer but flags as `"non-canonical VarInt"` and rejects the section.
+
+## Section Walker Algorithm
+
+Once `sub_5838A0` has accepted the envelope and built the blob-section descriptor array, the top-level driver invokes the section walker. The walker is not a recursive parser — it is a fixed, dependency-ordered dispatch over the descriptor array. Earlier sections build the lookup tables that later sections cross-reference, so the order is required even though the on-disk order is the producer's choice.
+
+```c
+ParseResult walk_sections(BytecodeReader *r, const BlobSectionDesc *desc, size_t n_desc,
+                          MLIRContext *ctx, ModuleOp *out_module) {
+    SectionSpans spans = {0};
+    for (size_t i = 0; i < n_desc; ++i)
+        spans.by_kind[desc[i].section_kind] = (Span){desc[i].offset, desc[i].length};
+
+    /* Sections must be present in dependency order:
+     * 1. STRING section (referenced by every later section)
+     * 2. DIALECT section (declares the dialects this bytecode uses; implicit here:
+     *    the dialect list lives in the envelope, not in its own section)
+     * 3. TYPE section (references STRING)
+     * 4. ATTRIBUTE / CONSTANT section (references TYPE)
+     * 5. IR section: FUNC + GLOBAL records (references all of the above)
+     * 6. RESOURCE section (optional)
+     * 7. DEBUG section (optional, references the IR section via location slots)
+     */
+    StringTable    strings   = read_string_section   (r, spans.by_kind[SEC_STRING]);
+    TypeTable      types     = read_type_section     (r, spans.by_kind[SEC_TYPE],     ctx, strings);
+    ConstantTable  constants = read_constant_section (r, spans.by_kind[SEC_CONSTANT], ctx, strings, types);
+    DebugTable     debug     = spans.by_kind[SEC_DEBUG].length
+                               ? read_debug_section  (r, spans.by_kind[SEC_DEBUG],    ctx, strings, types)
+                               : empty_debug_table();
+
+    ModuleOp module = create_builtin_module(ctx);
+    read_globals  (r, spans.by_kind[SEC_GLOBAL], module, strings, types, constants);
+    read_functions(r, spans.by_kind[SEC_FUNC],   module, strings, types, constants, debug);
+
+    *out_module = module;
+    return success();
+}
+```
+
+The walker traverses each section by seeking the reader cursor to `span.begin`, decoding records until the cursor reaches `span.begin + span.length`, then asserting that no bytes were left over. A short read inside a section emits a per-section truncation diagnostic; a long read — cursor past `span.length` after the final record — emits a section-overflow diagnostic. Both fire before any cross-section index from that section is exposed to the next reader, so a corrupt section never poisons downstream lookups with a half-populated table.
+
+The reader trusts the descriptor's offset and length pair to disjoint sections — overlapping spans are not checked. The validation that prevents two sections from claiming the same bytes happens earlier, inside `sub_5838A0`'s preamble loop, where each new descriptor's `[offset, offset+length)` range is checked against the union of previously accepted ranges.
+
 ## Header Parser (`sub_5838A0`)
 
 `sub_5838A0` parses the bytecode header. It is invoked from `sub_57FF40` once the top-level reader confirms the input buffer starts with the tileiras magic, and it validates the magic prefix, the `Tile version` field, and the dialect-list / blob-section preamble before handing control to the per-section sub-readers. Everything downstream — section dispatch, attribute decoding, opcode decoding, debug decoding — assumes the header parser has already consumed and accepted this envelope.
@@ -395,6 +473,34 @@ The full 110-row dispatch table follows. Each row gives the decimal opcode, the 
 
 Opcode `0x6E` — `atan2` in the public 13.2 opcode space — is absent from this binary. The dispatcher has no case for it and embeds no `cuda_tile.atan2` mnemonic; encoding the op would land on the default arm and surface the `"unknown or unimplemented opcode: "` diagnostic. Consistent with a 13.1-vintage reader that predates the atan2 addition.
 
+**Worked encode example.** Take the operation
+
+```mlir
+%c = cuda_tile.addi %a, %b : tile<8 × i32>
+```
+
+and assume the surrounding context has already populated the per-section tables so that `%a` is value-table entry `4`, `%b` is value-table entry `5`, and `tile<8xi32>` is type-table entry `3`. The function body's operation-record encoder writes seven fields in fixed order, each as a single VarInt:
+
+| Field | VarInt | Byte | Decoded |
+|---|---|---|---|
+| opcode | `0x03` | `03` | `3` → `cuda_tile.addi` (dispatch row 3 above) |
+| location index (signed LEB128) | `0x7f` | `7f` | `-1` → `UnknownLoc` (no `--lineinfo`) |
+| result type-ref | `0x03` | `03` | `3` → `tile<8xi32>` from the type table |
+| operand count | `0x02` | `02` | `2` operands |
+| operand 0 value-ref | `0x04` | `04` | `4` → `%a` from the value table |
+| operand 1 value-ref | `0x05` | `05` | `5` → `%b` from the value table |
+| attribute-dict ref | `0x00` | `00` | `0` → empty dict (no inline attrs) |
+
+The final on-wire byte stream for this operation record is therefore exactly seven bytes:
+
+```text
+03 7f 03 02 04 05 00
+```
+
+A run with `--lineinfo` replaces the `0x7f` sentinel with a non-negative `LocAttr` index encoded as a positive zig-zagged VarInt — typically one byte (`0x00` for index `0`, `0x02` for index `1`, `0x04` for index `2`, and so on) — and stretches the record to eight bytes. A run with a non-empty inline attribute dictionary stretches the trailing `0x00` into a VarInt index into the attribute table, again typically one byte for small modules.
+
+The operation cost in the IR section is therefore constant in the number of operands plus a tiny constant for the bookkeeping fields, and is independent of the mnemonic string. The mnemonic `cuda_tile.addi` lives once — in the dispatcher's per-opcode string literal at dispatch case `0x03` — and never appears in the per-operation byte stream.
+
 The three functions around this dispatcher fit together cleanly. `sub_5847D0` is the opcode-reader producing the integer the master switch keys on, and every case of `sub_5B13D0` either inlines the ODS skeleton that ends in a `sub_5847D0` call or tail-calls a per-op parser that itself ends in `sub_5847D0`. The Location decoder runs once per operation — between the opcode read and the switch — and writes the resolved `Location` into the per-op slot every case path reads when populating its `OperationState`. One layer up, `sub_57FF40` is the bytecode-parse-into-scratch path the driver invokes per function body; it calls `sub_5B13D0` in a loop for each operation record while maintaining the operand, location, and attribute vectors the dispatcher consumes through its argument context.
 
 ## Self-Contained Attribute Dispatch
@@ -403,7 +509,28 @@ Every attribute payload is self-contained. Constants, function optimization hint
 
 Anywhere the reader encounters an attribute payload that does not come pre-resolved through the Constant offset table — operation attribute dictionaries, type-attribute slots, location-attribute slots, the Constant payloads themselves — the bytes route through `sub_59F100`. This dispatcher is the attribute-side sibling of the 110-case opcode switch. Roughly 8 KB, it dispatches on a `uint32_t` AttrTag through a jump table at the entry switch and returns either a heap-allocated `Attribute` on success or `nullptr` on failure. The caller pushes the result into the bytecode reader's attribute table; failures propagate up to the section-level error path that aborts the load.
 
-The shipped tileiras tag numbering is **wire-format-breaking versus upstream MLIR**. Upstream `mlir/Bytecode/BytecodeEnums.h::AttributeTag` numbers `IntegerAttr=1`, `FloatAttr=2`, `BoolAttr=3`, `TypeAttr=4`, `StringAttr=5`, `ArrayAttr=6`, `DenseElements=7`, `DivByAttr=8`, `SameElementsAttr=9`, `Dictionary=10`, `OptimizationHints=11`, `BoundedAttr=12`. The 13-case switch inside `sub_59F100` does not line up at all: tag 1 is `StringAttr`, tag 4 is `DenseElementsAttr` (int/float variant), tag 5 is `DenseElementsAttr` (string variant), tag 6 is `DivByAttr`, tag 13 is `AssumePredicateAttr` (no upstream slot at all). Bytecode emitted by stock MLIR with stock numbering decodes wrong here — tag 4 lands on `DenseElementsAttr` instead of `IntegerAttr`, tag 5 lands on `DenseElementsAttr<string>` instead of `StringAttr`. Any external tool that wants to round-trip MLIR bytecode through both tileiras and upstream MLIR must freeze the tag assignments used by this binary rather than the ones in the upstream header. The upstream numbering is reserved for future stock cuda_tile builds; the shipped binary stays compatible with an earlier frozen scheme.
+The shipped tileiras tag numbering is **wire-format-breaking versus upstream MLIR**. The two numberings are reproduced side by side so the divergence is unambiguous:
+
+| AttrTag | Upstream MLIR `BytecodeEnums.h::AttributeTag` | Tileiras `sub_59F100` |
+|---:|---|---|
+| 0 | (reserved / sentinel) | (default-arm; emits "unsupported AttributeTag") |
+| 1 | `IntegerAttr` | `StringAttr` |
+| 2 | `FloatAttr` | `FloatAttr` |
+| 3 | `BoolAttr` | `TypeAttr` |
+| 4 | `TypeAttr` | `DenseElementsAttr` (int/float) |
+| 5 | `StringAttr` | `DenseElementsAttr` (string) |
+| 6 | `ArrayAttr` | `DivByAttr` |
+| 7 | `DenseElements` | `DenseI64ArrayAttr` (variant A) |
+| 8 | `DivByAttr` | `DenseI64ArrayAttr` (variant B) |
+| 9 | `SameElementsAttr` | `SameElementsAttr` |
+| 10 | `Dictionary` | `BoundedAttr` (variant 0) |
+| 11 | `OptimizationHints` | `BoundedAttr` (variant 1) |
+| 12 | `BoundedAttr` | `BoundedAttr` (variant 2) |
+| 13 | (no upstream slot) | `AssumePredicateAttr` |
+
+The mismatch is total above tag `2`: bytecode emitted by stock MLIR with stock numbering decodes wrong here — tag 4 lands on `DenseElementsAttr` instead of `IntegerAttr`, tag 5 lands on `DenseElementsAttr<string>` instead of `StringAttr`, tag 6 lands on `DivByAttr` instead of `ArrayAttr`. Going the other direction, an `AssumePredicateAttr` emitted by tileiras at tag 13 has no destination in upstream's table at all — upstream's reader rejects the tag with its own default-arm diagnostic.
+
+The structural consequence is sharper than tag-by-tag remapping: **tileiras's bytecode reader cannot consume upstream MLIR's bytecode files when those files carry attributes**, and tileiras-emitted bytecode (when a future build links a writer) cannot be loaded by stock MLIR. The textual MLIR asm is still interoperable through the printer / parser, but the bytecode wire format is a hard fork. Any external tool that wants to round-trip MLIR bytecode through both tileiras and upstream MLIR must freeze the tag assignments used by this binary rather than the ones in the upstream header. The upstream numbering is reserved for future stock cuda_tile builds; the shipped binary stays compatible with an earlier frozen scheme.
 
 The thirteen recognized tag values, the attribute kinds they construct, and the per-tag builder functions are:
 
@@ -508,6 +635,47 @@ Tag 5 is the only case that tail-calls a dedicated sub-parser. `DISubprogramAttr
 
 Tags 3, 4, and 6 decode scope-like cross-references and call `sub_589B90` recursively. A `DILexicalBlock` references its enclosing scope, itself another `DI*` attribute. A `DILoc` references both its containing scope and, if inlined, an inlined-at location, both of which route back through the same dispatcher. A `CallSite` references its caller subprogram and its callee subprogram, again as full debug attributes. The recursion has no cycle detection: the bytecode writer never emits cycles and the reader trusts the input, so a malformed stream with a transitive scope cycle recurses until the stack is exhausted. Producers that hand-craft debug bytecode must topologically order the debug table so every reference points at an attribute emitted earlier in the stream.
 
+**Worked example — recursive scope cycle.** A small input that exercises the recursion (and shows the cycle failure mode) starts from a `DILexicalBlock` whose scope reference points back at itself. Upstream MLIR forbids self-cycles, but a hand-crafted bytecode stream can emit them; the reader's behavior on such input is observable and worth documenting.
+
+```text
+debug attribute table, index 0:
+    tag  = 3                          // DILexicalBlock
+    scope_ref  = attr_index(0)        // self-reference (the cycle)
+    file_ref   = attr_index(1)        // forward ref to the DIFile below
+    line       = 42
+    column     = 0
+debug attribute table, index 1:
+    tag  = 2                          // DIFile
+    name_string_index      = 7
+    directory_string_index = 8
+```
+
+Loading this table walks `sub_589B90` like so:
+
+1. Top-level call: tag VarInt `0x03` → `DILexicalBlock` arm.
+2. Read scope-ref VarInt `0x00` → recurse into `sub_589B90` at attribute index `0`.
+3. Top-level frame is still in flight; the recursive call reads tag VarInt `0x03` again and recurses again.
+4. The cycle has no fixed point: step (3) repeats until the C stack overflows. Empirically this fires after a few thousand frames on a default 8 MiB stack; the process dies with `SIGSEGV`, not with a tileiras diagnostic.
+
+A well-formed equivalent of the same intent emits the inner attribute first and indexes into it from the outer one:
+
+```text
+debug attribute table, index 0:
+    tag  = 2                          // DIFile, emitted first
+    name_string_index      = 7
+    directory_string_index = 8
+debug attribute table, index 1:
+    tag  = 3                          // DILexicalBlock, now references a *prior* attr
+    scope_ref  = attr_index(0)        // resolves cleanly
+    file_ref   = attr_index(0)
+    line       = 42
+    column     = 0
+```
+
+The constructed `mlir::LocationAttr` is a `DILexicalBlockAttr` whose `scope` and `file` both point at the `DIFileAttr` at index `0`. The recursion bottoms out on the first call because tag `2` (DIFile) has no scope-shaped fields and decodes inline.
+
+The takeaway is asymmetric: well-formed input always terminates in a single bounded recursion sweep because attributes are emitted in topological order; ill-formed input that introduces a cycle is detected only by stack exhaustion. A future reader that wants to harden this path would maintain a visited-set keyed by attribute index during the recursive walk and emit a `"cyclic debug attribute reference at index "` diagnostic on revisit. The shipped CUDA 13.1 reader does not.
+
 The canonical dispatcher body is the entry-prologue VarInt read plus the 7-arm switch:
 
 ```c
@@ -602,3 +770,7 @@ NvvmResult compile_with_libnvvm(BitcodeBuffer bc) {
 ```
 
 The default command-line path still goes through PTX and `ptxas`. The bitcode path only matters when the pipeline is wired to use libNVVM directly. The NVPTX target initialization and the data-layout stamping documented above are covered end-to-end in [NVPTX Bring-up and Target Init](../codegen/nvptx-bring-up-and-target-init.md); the libdevice bitcode that gets linked into the same module is documented in [libdevice Overview — Link, inline, simplify](../libdevice/overview.md#link-inline-simplify).
+
+## Cross-References
+
+This page documents the wire-format the bytecode reader consumes; three companion pages cover the reader from complementary angles. [Dialect Bytecode Reader/Writer Status](dialect-readers-status.md) restricts the wire format to the dialects that actually ship a reader — `cuda_tile` is the only TileIR dialect with one, and no TileIR dialect ships a writer — and frames the asymmetry as a deliberate input-only driver contract. [Dialect Asm-Printer Status](asm-printer-status.md) documents the textual side of the same contract, because round-trip workflows on intermediate dialects rely on the asm-printer rather than the bytecode writer this binary does not link. [cuda_tile Bytecode Reader and Writer](../dialects/cuda_tile/bytecode.md) zooms back in on the `cuda_tile`-private dispatchers — the 18-case TypeTag dispatcher, the cuda_tile-specific AttrTag payload shapes that route through the 13-case dispatcher documented above, and the 110-case Op opcode dispatcher whose dispatch table is reproduced in [Operation Opcode Dispatch](#operation-opcode-dispatch). The wire-format-breaking AttrTag divergence is the most consequential single fact across all four pages: a bytecode file containing attributes is not portable between tileiras and stock MLIR, and any reimplementation must freeze the tileiras numbering reproduced in [Self-Contained Attribute Dispatch](#self-contained-attribute-dispatch).

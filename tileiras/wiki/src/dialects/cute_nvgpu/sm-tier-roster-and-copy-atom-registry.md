@@ -79,6 +79,66 @@ The dialect registers one MLIR `TypeID` per atom kind. Generic `cute` code never
 
 The `Interfaces implemented` column is the dispatch contract. A pass that walks every atom and asks "do you support prefetch?" calls `dyn_cast<PrefetchAtomInterface>` on each atom value; the SM90+ TMA load atom is the only positive hit, and the call collapses to a `TypeID` compare. The `Residency contract` column lists the legality bounds the per-atom verifier enforces; it is the same checklist a CUTLASS C++ user reads from `Copy_Traits<>` and `MMA_Traits<>` headers.
 
+## Copy Atom Operand-Layout Contracts
+
+Every copy atom carries an operand-layout contract that the verifier checks before lowering. The contract pins source and destination residency, the per-thread fragment shape, the natural shape one atom invocation transfers, and the PTX (or NVVM intrinsic) instruction the lowering emits. The table below is the per-tier catalog; each row is one atom mnemonic.
+
+### SM70 and SM75 register copy atoms
+
+| Atom | Source | Destination | Natural shape | Element width | Per-thread fragment | Lowering target |
+|---|---|---|---|---:|---|---|
+| `atom.universal_copy` | any | any (target-supported) | one element | any | one value | scalar `ld`/`st` of matching width |
+| `atom.ldsm<m8n8>` (SM75) | `smem` | `rmem` | 8 x 8 matrix tile | 16 bits | 2 elements per lane | `ldmatrix.sync.aligned.m8n8.x1.shared.b16` |
+| `atom.ldsm<m8n8.x2>` (SM75) | `smem` | `rmem` | 8 x 16 matrix tile | 16 bits | 4 elements per lane | `ldmatrix.sync.aligned.m8n8.x2.shared.b16` |
+| `atom.ldsm<m8n8.x4>` (SM75) | `smem` | `rmem` | 8 x 32 matrix tile | 16 bits | 8 elements per lane | `ldmatrix.sync.aligned.m8n8.x4.shared.b16` |
+| `atom.ldsm<m8n8.x4.trans>` (SM75) | `smem` | `rmem` | 8 x 32 transposed tile | 16 bits | 8 elements per lane | `ldmatrix.sync.aligned.m8n8.x4.trans.shared.b16` |
+
+The `x1`/`x2`/`x4` suffix is the number of 8x8 sub-tiles the atom fetches in one instruction. The transposed variants swap the per-lane fragment layout so that two register-resident MMA operands meet at the same memory cell after the matrix multiply; the verifier checks the transpose flag against the consuming MMA atom's expected operand layout.
+
+### SM80 and SM86 async-copy and matrix-load atoms
+
+| Atom | Source | Destination | Natural shape | Element width | Per-thread fragment | Lowering target |
+|---|---|---|---|---:|---|---|
+| `atom.simt_async_copy<4>` | `gmem` | `smem` | 4-byte element | 32 bits | 1 i32 per lane | `cp.async.ca.shared.global` (4 bytes) |
+| `atom.simt_async_copy<8>` | `gmem` | `smem` | 8-byte element | 64 bits | 1 i64 per lane | `cp.async.ca.shared.global` (8 bytes) |
+| `atom.simt_async_copy<16>` | `gmem` | `smem` | 16-byte element | 128 bits | 1 i128-equivalent per lane | `cp.async.cg.shared.global` (16 bytes; bypass L1) |
+| `atom.ldsm<m8n8.*>` | `smem` | `rmem` | inherited from SM75 | 16 bits | inherited | `ldmatrix.sync.aligned.*` |
+
+The 4/8/16 vector widths are the only legal `cp.async` granularities; the verifier rejects any other width with `"unsupported cp.async vector width"`. The 16-byte variant uses the `cg` cache-policy (bypass L1) because the L1 cache cannot satisfy a 128-bit single-instruction store; the 4- and 8-byte variants use `ca` (cache-all). Lowering chooses the cache policy from the atom's width alone — there is no per-op cache hint.
+
+### SM90 TMA atom family
+
+TMA atoms are descriptor-driven; the per-lane fragment layout is implicit in the descriptor word rather than in the atom's MLIR operand types.
+
+| Atom | Source | Destination | Descriptor kind | Natural shape | Lowering target |
+|---|---|---|---|---|---|
+| `atom.tma_load` | `gmem` (descriptor) | `smem` | TMA tile descriptor | rank-1..rank-5 box | `cp.async.bulk.tensor.NDIM.shared::cluster.global` |
+| `atom.tma_load_multicast` | `gmem` (descriptor) | `smem` (multi-CTA) | TMA tile descriptor + CTA mask | rank-1..rank-5 box | `cp.async.bulk.tensor.NDIM.shared::cluster.global.multicast::cluster` |
+| `atom.tma_load_im2col` | `gmem` (descriptor) | `smem` | TMA im2col descriptor | rank-3..rank-5 spatial | `cp.async.bulk.tensor.NDIM.shared::cluster.global.im2col` |
+| `atom.tma_store` | `smem` | `gmem` (descriptor) | TMA tile descriptor | rank-1..rank-5 box | `cp.async.bulk.tensor.NDIM.global.shared` |
+| `atom.tma_reduce<op>` | `smem` | `gmem` (descriptor) | TMA tile + reduce kind | rank-1..rank-5 box | `cp.reduce.async.bulk.tensor.NDIM.global.shared.OP` |
+| `atom.stsm<m8n8.*>` | `rmem` | `smem` | none (register copy) | 8 x 8 matrix tile per sub-tile | `stmatrix.sync.aligned.m8n8.x[1,2,4].shared.b16` |
+
+The TMA atoms accept rank-1 through rank-5 boxes; the descriptor word encodes the per-dimension extents, strides, and box edges (see the dedicated TMA atom page). The multicast variant adds a 16-bit CTA mask that names which CTAs in the cluster receive the loaded data, enabling one-to-many fanout from a single GMEM read. The im2col variant rewrites the descriptor's box coordinates through a convolution-style spatial reshape so a single load presents the data already in NCHW-to-window form for convolution kernels.
+
+`atom.stsm` mirrors `atom.ldsm` from SM75 in reverse — `rmem -> smem` rather than `smem -> rmem` — and shares the same sub-tile multiplicity convention.
+
+### SM100 and SM103 TMEM copy atoms
+
+Datacenter Blackwell adds tensor memory as a fourth memory class alongside register, shared, and global. The copy atom family covers every legal direction between TMEM and the other three classes.
+
+| Atom | Source | Destination | Natural shape | Element width | Lowering target |
+|---|---|---|---|---:|---|
+| `atom.tmem_load` | `tmem` | `rmem` | one TMEM column tile per atom | 32/16/8 bits | `tcgen05.ld.sync.aligned.shape.b32` |
+| `atom.tmem_store` | `rmem` | `tmem` | one TMEM column tile per atom | 32/16/8 bits | `tcgen05.st.sync.aligned.shape.b32` |
+| `atom.s2t_copy` | `smem` | `tmem` | TMA-box-shaped SMEM slice | 8/16/32/64 bits | `tcgen05.cp.shared::cta.async` |
+| `atom.tmem_to_smem_copy` | `tmem` | `smem` | TMEM column tile | 32/16/8 bits | `tcgen05.cp.async.shared::cta` (reverse direction) |
+| `atom.tcgen05.cp` | `tmem` | `tmem` (cross-CTA) | column tile inside one cluster | 32 bits | `tcgen05.cp.async` (cluster-scope) |
+
+TMEM is column-organised: an atom transfers one or more TMEM columns at a time. The verifier checks that the operand layout addresses TMEM columns in a contiguous range matching the natural shape, and that the column count matches the destination tile. SM100 splits the `tcgen05` family into `tcgen05.ld` / `tcgen05.st` (register-mediated, synchronous-looking) and `tcgen05.cp` (cluster-scope async); the atom mnemonics make that distinction explicit.
+
+A TMEM-resident MMA accumulator does not move out of TMEM until a `atom.tmem_load` retires its column range into registers. Lowering must keep that retire op alive across any consumer that reads the accumulator from registers — eliding it produces undefined values.
+
 ## MMA Records
 
 MMA records carry:
@@ -211,5 +271,5 @@ The non-UMMA path enforces the simpler rule that A, B, and D all share one eleme
 
 ## Cross-References
 
-[Mode Pattern Verifiers — LDSM and STSM Matrix](mode-pattern-verifiers.md#ldsm-and-stsm-matrix) documents the LDSM/STSM, [UMMA Canonical Layout Verifier](mode-pattern-verifiers.md#umma-canonical-layout-verifier), [tcgen05.mma Kind-Word Verifier](mode-pattern-verifiers.md#tcgen05mma-kind-word-verifier), and [SM120 Block-Scaled Lattice](mode-pattern-verifiers.md#sm120-block-scaled-lattice) verifiers each atom registers. [TMA Atoms — Atom Family](tma-atoms.md#atom-family) covers the descriptor-driven TMA family in depth. [MMA Atoms SM70-120 — Per-Arch MMA Shape Lattice](mma-atoms-sm70-120.md#per-arch-mma-shape-lattice) covers the per-tier MMA shape lattice.
+[Mode Pattern Verifiers — LDSM and STSM Matrix](mode-pattern-verifiers.md#ldsm-and-stsm-matrix) documents the LDSM/STSM, [UMMA Canonical Layout Verifier](mode-pattern-verifiers.md#umma-canonical-layout-verifier), [tcgen05.mma Kind-Word Verifier](mode-pattern-verifiers.md#tcgen05mma-kind-word-verifier), and [SM120 Block-Scaled Lattice](mode-pattern-verifiers.md#sm120-block-scaled-lattice) verifiers each atom registers. [TMA Atoms — Atom Family](tma-atoms.md#atom-family) covers the descriptor-driven TMA family in depth. [MMA Atoms SM70-120 — Per-Arch MMA Shape Lattice](mma-atoms-sm70-120.md#per-arch-mma-shape-lattice) covers the per-tier MMA shape lattice. [MMA Atoms SM70-SM120 — Operand Contract by Tier](mma-atoms-sm70-120.md#operand-contract-by-tier) cross-references the consumer side of every copy atom in the table above. [Layout Algebra and Descriptor Grammar — Swizzle Operator](../cute/layout-algebra-and-descriptor-grammar.md#swizzle-operator) covers the bit-manipulation formula the SMEM-resident atoms (`atom.ldsm`, `atom.stsm`, TMA descriptors, `atom.s2t_copy`) rely on for bank-conflict-free placement.
 

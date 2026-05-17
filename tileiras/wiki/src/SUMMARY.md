@@ -176,6 +176,7 @@
 - [AddrSpace Vote Lattice](topics/addrspace-vote-lattice.md)
 - [Blackwell 2-CTA/4-CTA MMA](topics/blackwell-2cta-and-4cta-mma.md)
 - [Cluster Sync and DSMEM Handshake](topics/cluster-sync-and-dsmem-handshake.md)
+- [DSL to PTX End-to-End](topics/dsl-to-ptx-end-to-end.md)
 - [mbarrier State Machine](topics/mbarrier-state-machine.md)
 - [WGMMA Emission Protocol](topics/wgmma-emission-protocol.md)
 - [tcgen05 Tensor Memory Model](topics/tcgen05-tensor-memory-model.md)

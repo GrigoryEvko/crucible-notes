@@ -166,6 +166,146 @@ ordinary free-text operands; they decode from the selected load/store code so
 invalid order/scope/address-space combinations get rejected before reaching
 this point.
 
+## Modifier Emission Order
+
+PTX is whitespace-tolerant but suffix-order-strict. `ptxas` parses each
+instruction by stripping a dotted suffix sequence off the mnemonic in a
+fixed order; reordering the suffixes — even when each individual token is
+legal — yields a parse error. The print shapes are built around this
+grammar, so a reimplementation must emit modifiers in the same canonical
+order the parser expects rather than in the order the operand list happens
+to enumerate them.
+
+### Atomic Operations
+
+```text
+atom[.scope][.semantics].<op>.<type>[.addrspace]
+```
+
+| Slot | Token set |
+|---|---|
+| scope | `.cta`, `.cluster`, `.gpu`, `.sys` (default: device) |
+| semantics | `.relaxed`, `.acquire`, `.release`, `.acq_rel` (default: `.relaxed`) |
+| op | `.add`, `.min`, `.max`, `.and`, `.or`, `.xor`, `.exch`, `.cas`, `.inc`, `.dec` |
+| type | `.b32`, `.b64`, `.u32`, `.u64`, `.s32`, `.f16`, `.f32`, `.f64`, `.f16x2`, `.bf16`, `.bf16x2` |
+| addrspace | `.global`, `.shared`, `.shared::cta`, `.shared::cluster` |
+
+Examples:
+
+```ptx
+atom.relaxed.cta.add.u32.shared    [%rd0], %r1;
+atom.acq_rel.gpu.cas.b64.global    %rd0, [%rd1], %rd2, %rd3;
+atom.release.cluster.add.f32       [%rd0], %f1;
+```
+
+### Warp-Synchronous MMA
+
+```text
+mma.sync.aligned.<shape>.<alayout>.<blayout>.<atype>.<btype>.<ctype>.<dtype>[.satfinite]
+```
+
+The fixed prefix `mma.sync.aligned` is invariant for the dense form. `<shape>`
+encodes the M/N/K tile size (`m8n8k4`, `m16n8k16`, `m16n8k32`, `m16n16k16`,
+and so on). `<alayout>` and `<blayout>` are `.row` or `.col` and are required
+for the integer and FP8 variants; they are omitted for the FP16/BF16/TF32
+half-precision forms where the layout is fixed by the shape. The four
+type tokens always appear in the order A, B, C, D — never in the order the
+operand list enumerates the fragments.
+
+Examples:
+
+```ptx
+mma.sync.aligned.m16n8k16.f32.f16.f16.f32    {%fd0,%fd1,%fd2,%fd3}, {%r0,%r1,%r2,%r3}, {%r4,%r5}, {%fd4,%fd5,%fd6,%fd7};
+mma.sync.aligned.m16n8k32.row.col.s32.s8.s8.s32   {%r0,%r1,%r2,%r3}, {%r4,%r5,%r6,%r7}, {%r8,%r9}, {%r10,%r11,%r12,%r13};
+```
+
+### Sparse MMA
+
+```text
+mma.sp::ordered_metadata.sync.aligned.<shape>.<atype>.<btype>.<ctype>.<dtype>[.satfinite]
+```
+
+The sparsity selector `.sp::ordered_metadata` sits in a fixed slot between
+the mnemonic stem and the `.sync.aligned` infix. The metadata operand and
+the selector byte are extra operands at the end of the print shape; their
+suffix tokens do not move.
+
+### Warpgroup MMA
+
+```text
+wgmma.mma_async.sync.aligned.<shape>.<dtype>.<atype>.<btype>[.scaleD][.scaleAB][.transA][.transB]
+```
+
+`<shape>` for WGMMA is the `m64nNkK` family. The destination type slot
+precedes the A and B type slots — the inverse of the `mma.sync` ordering —
+because the warpgroup form treats D as the architectural state and A/B as
+streamed inputs. The optional scale-and-transpose suffixes follow in the
+order `scaleD`, `scaleAB`, `transA`, `transB`; the printer omits each
+suffix when its operand carries the default value.
+
+Example:
+
+```ptx
+wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16    {%fd0,...,%fd63}, %rd_descA, %rd_descB, 1, 1, 0, 0;
+```
+
+### Tensor-Memory MMA (tcgen05)
+
+```text
+tcgen05.mma[.cta_group::N][.scale_input_acc][.block_scale][.sp::ordered_metadata].<kind>.<shape>.<dtype>.<atype>.<btype>.<ctype>[.satfinite]
+```
+
+`<kind>` is one of `.kind::f16`, `.kind::tf32`, `.kind::f8f6f4`,
+`.kind::mxf8f6f4`, `.kind::mxf4`, `.kind::mxf4nvf4`. The block-scale and
+scale-input-acc flags are positional booleans whose presence depends on
+operand bits documented in the SM120 control-word section above. The
+suffix grammar is the strictest in the ISA: every optional token has a
+fixed slot, and the parser rejects any reordering.
+
+### TMA Bulk-Tensor Copies
+
+```text
+cp.async.bulk.tensor.<rank>d.<dst_space>.<src_space>[.<mode>].mbarrier::complete_tx::bytes[.multicast::cluster][.L2::cache_hint]
+```
+
+| Slot | Token set |
+|---|---|
+| rank | `1d`, `2d`, `3d`, `4d`, `5d` |
+| dst/src space | `shared::cluster.global`, `global.shared::cta`, `shared::cta.shared::cluster` |
+| mode | `.tile`, `.im2col`, `.im2col::w`, `.im2col::w::128` |
+| barrier | `.mbarrier::complete_tx::bytes` (required for the load form) |
+| multicast | `.multicast::cluster` (optional, only on load) |
+| L2 hint | `.L2::cache_hint` (optional) |
+
+Example:
+
+```ptx
+cp.async.bulk.tensor.2d.shared::cluster.global.tile.mbarrier::complete_tx::bytes.multicast::cluster.L2::cache_hint
+    [%rd_dst], [%rd_desc, {%r_x, %r_y}], [%rd_bar], %h_mask, %rd_hint;
+```
+
+### Async Copies
+
+```text
+cp.async.<dst_space>.<src_space>.<size>[.<cache_hint>][.L2::cache_hint][.commit_group]
+```
+
+`<size>` is the bytes-per-thread token (`.4`, `.8`, `.16`). The
+`.commit_group` suffix is emitted by a separate print shape on the
+companion `cp.async.commit_group` instruction; it does not stack onto the
+copy itself. The printer enforces the grammar by laying out the modifier
+helpers in the exact order above and never letting one helper print into
+another's slot.
+
+### Suffix Slot Invariant
+
+The print shapes share a slot invariant: every modifier helper consumes a
+specific operand of the `MCInst` and renders into its assigned grammar
+slot regardless of operand-vector order. A reimplementation that prints
+suffixes by walking operands in order will produce strings that look
+plausible but get rejected by `ptxas`. Always drive the suffix emission
+from the print shape's slot table, not from the operand vector's index.
+
 ## Module Emission
 
 The outer `NVPTXAsmPrinter` emits PTX module structure around individual
@@ -200,6 +340,103 @@ The `.blocksareclusters` directive requires both thread-block dimensions and
 a cluster dimension. Emitters must diagnose that combination early: a
 header-only correction later cannot repair a malformed kernel launch
 contract.
+
+### Module Header Directives
+
+Every PTX module begins with three mandatory directives followed by an
+optional `.debug` toggle. The header emission runs once per `Module` and
+draws every value from the active `NvptxSubtarget` plus the
+`TargetMachine` debug flag.
+
+```ptx
+//
+// Generated by NVIDIA NVPTX Compiler
+//
+// Compiler Build ID: <build id>
+// Cuda compilation tools, release 13.1
+// Based on NVVM 7.0.1
+//
+
+.version 8.4
+.target sm_90a, debug
+.address_size 64
+```
+
+| Directive | Source | Notes |
+|---|---|---|
+| `.version` | PTX ISA version selected by the subtarget. | `8.4` for the CUDA 13.1 baseline; bumped per ISA-feature requirement. |
+| `.target` | Lowered SM name plus optional `,debug`. | `sm_90a` adds the architecture-specific `a` suffix when SM90 architecture-specific intrinsics are used. |
+| `.address_size` | Pointer width of the host-device interface. | Always `64` in this build; the 32-bit path is removed. |
+
+The `.target` line carries up to four comma-separated tokens: the SM name,
+the optional `a`-suffix marker, the debug flag, and the optional
+`map_f64_to_f32` legacy flag. The printer picks the SM name from
+`Subtarget.getSmVersion()`, appends `a` when the function or any global
+references an architecture-specific feature (SM90a tensor memory, SM100
+distributed shared memory, SM120 block-scale MMA), appends `debug` when
+the `TargetMachine` debug level is non-zero, and appends `map_f64_to_f32`
+only for the legacy fp64 emulation path that the modern compiler never
+selects.
+
+The header banner above the directives is a fixed-format comment block
+the AsmPrinter emits before the first directive. The build-ID line lets
+post-link tools correlate a `.ptx` artefact with the exact `tileiras`
+binary that produced it; the NVVM-version line documents the bytecode
+schema feeding the printer.
+
+### Kernel Directive Emission
+
+When the AsmPrinter encounters a kernel function (`ptx_kernel` calling
+convention on the LLVM function, equivalent to a `nvvm.kernel` attribute
+on the MLIR side), it emits a fixed-order directive cluster before the
+function body.
+
+```ptx
+.visible .entry KernelName(
+    .param .b64 KernelName_param_0,
+    .param .b32 KernelName_param_1,
+    .param .align 8 .b8 KernelName_param_2[16]
+)
+.reqntid 128, 1, 1
+.maxntid 256, 1, 1
+.minnctapersm 2
+.maxnreg 64
+.maxclusterrank 8
+.explicitcluster
+{
+    // function body
+}
+```
+
+| Slot | Directive | MIR/LLVM source attribute |
+|---|---|---|
+| 1 | `.visible` / `.weak` / `.extern` linkage marker | LLVM linkage (`external`, `weak_odr`, `internal`). |
+| 2 | `.entry` plus name and parameter list | `ptx_kernel` calling convention. |
+| 3 | `.reqntid X, Y, Z` | `nvvm.reqntid` attribute / `!reqntid{x,y,z}` metadata. |
+| 4 | `.maxntid X, Y, Z` | `nvvm.maxntid` attribute. |
+| 5 | `.minnctapersm N` | `nvvm.minctasm` / `minnctapersm` metadata. |
+| 6 | `.maxnreg N` | `nvvm.maxnreg` metadata. |
+| 7 | `.maxclusterrank N` | `nvvm.cluster_max_blocks` attribute. |
+| 8 | `.reqnctapercluster X, Y, Z` | `nvvm.cluster_dim` attribute. |
+| 9 | `.explicitcluster` | `nvvm.explicit_cluster` attribute. |
+| 10 | `.blocksareclusters` | `nvvm.blocks_are_clusters` (SM90+). |
+| 11 | `{` | opens the function body. |
+
+The order is fixed: the printer never reorders these directives based on
+attribute traversal order, and a reimplementation must emit slots that
+exist in the same canonical order. Slots whose attribute is absent are
+simply skipped — there is no placeholder. The parameter list inside
+`.entry(...)` is a separate sub-emission that walks the function's formal
+parameters in declaration order, picks `.param` storage modifiers from
+each parameter's `byval`/`align`/`type` attributes, and emits the
+`.b8 paramN[size]` form for aggregate parameters that arrived through
+ABI-mandated indirection.
+
+For non-kernel device functions the `.entry` token is replaced by
+`.func`, the visibility marker may be `.visible`/`.weak`/`.extern`, the
+parameter list takes a different syntactic shape, and slots 3 through 10
+are omitted entirely. The shared sub-emitter is the same; only the
+slot-table varies.
 
 ## Mnemonics and Register Names
 
@@ -273,6 +510,65 @@ needs for instruction selection and printing.
 Read the f32 class as a typed view over the 32-bit register bank. COPY
 lowering can use ordinary 32-bit moves; instruction printing selects `%f`
 spelling only when the operand is used as a floating-point register.
+
+## Operand Constraint Class Glossary
+
+The PTX inline-asm constraint letters that user code passes to `asm("..."
+:: "r"(x), "l"(p), "f"(v))` correspond one-to-one with NVPTX register
+classes. The printer reads the constraint class off each `MachineOperand`,
+selects the matching register prefix, and renders the operand's number
+through `print_register_name`. The constraint letters are also the
+canonical naming convention for register banks in PTX documentation, so a
+reimplementation needs both directions: constraint-class to printed
+prefix on output, and printed prefix back to constraint-class for inline
+assembly parsing.
+
+| Class | Width | Constraint letter | Register prefix | Type strings | Typical uses |
+|---|---:|---|---|---|---|
+| `b` | 1 bit | `b` | `%p` | `.pred` | branch guards, predicate logic, `setp` destinations |
+| `h` | 16 bits | `h` | `%rs` | `.b16`, `.u16`, `.s16` | multicast masks, im2col offsets, FP16 raw bits |
+| `r` | 32 bits | `r` | `%r` | `.b32`, `.u32`, `.s32` | most arithmetic operands, 32-bit pointers in shared address space |
+| `l` | 64 bits | `l` | `%rd` | `.b64`, `.u64`, `.s64` | generic pointers, TMA descriptors, L2 cache hints |
+| `f` | 32 bits | `f` | `%f` | `.f32` | FP32 arithmetic |
+| `d` | 64 bits | `d` | `%fd` | `.f64` | FP64 arithmetic |
+| `q` | 128 bits | `q` | `%rq` | `.b128` | wide descriptors, 128-bit vector loads, FP128 storage |
+
+The class-to-prefix mapping is deterministic. The printer never picks `%r`
+or `%f` based on the surrounding instruction's type suffix; it picks the
+prefix from the operand's register class, and the type suffix is a
+separate modifier the print shape emits independently. The 32-bit integer
+and f32 banks share physical registers but carry distinct logical
+classes, which is how the printer knows whether to spell a 32-bit live
+range as `%r3` or `%f3`.
+
+```c
+const char *constraint_class_to_prefix(ConstraintClass cls) {
+    switch (cls) {
+    case CLASS_PRED:   return "%p";
+    case CLASS_I16:    return "%rs";
+    case CLASS_I32:    return "%r";
+    case CLASS_I64:    return "%rd";
+    case CLASS_F32:    return "%f";
+    case CLASS_F64:    return "%fd";
+    case CLASS_I128:   return "%rq";
+    }
+
+    fail("bad constraint class");
+}
+```
+
+Three printing rules cover the corner cases. First, when an operand is a
+vector that the load/store needs to spell as a brace-grouped tuple, the
+printer emits `{%r0, %r1, %r2, %r3}` and increments the sequence number
+once per element; the constraint class still selects the prefix. Second,
+parameter-passing operands use the `%pa`, `%fa`, `%ia`, `%la`, `%h`, `%hh`
+prefix family rather than the generic prefixes; the printer routes these
+through a parallel switch that consults the operand's parameter-class
+flag. Third, special registers (`%tid.x`, `%ntid.y`, `%laneid`, `%warpid`,
+`%clock`, `%clock64`, `%globaltimer`, `%pm0`, `%envreg{0..31}`) bypass the
+prefix table entirely and print their canonical PTX name from the
+physical-register pool documented in the
+[printRegName section](#printregname-and-the-register-pool) below.
 
 ## AsmWriter String Pools and the XOR-3 Walking Cipher
 
@@ -505,7 +801,115 @@ operand indices its skeleton dictates. That is what lets `297` bodies
 absorb `6,388` opcodes without per-opcode branching inside the bodies
 themselves.
 
-### Reimplementation Budget
+## Worked Example: MMA M16N8K16
+
+The cleanest way to see every layer of the printer cooperate is to trace
+a single MachineInst from selection output through to the emitted PTX
+line. The example below uses `MMA_F32_F16_F16_F32_M16N8K16` — the
+canonical FP16-input, FP32-accumulate warp MMA the FP32 GEMM kernels lean
+on heaviest.
+
+### MachineInst Shape
+
+After instruction selection, the MI carries four operand groups: an
+A-fragment, a B-fragment, a C-accumulator that doubles as the D
+destination, and an optional `satfinite` flag. The shape is fixed by the
+TableGen instruction definition:
+
+```text
+%fd0:f32, %fd1:f32, %fd2:f32, %fd3:f32 =
+    MMA_F32_F16_F16_F32_M16N8K16
+        %r0:i32, %r1:i32, %r2:i32, %r3:i32,   // A fragment (4 x packed.f16x2)
+        %r4:i32, %r5:i32,                      // B fragment (2 x packed.f16x2)
+        %fd4:f32, %fd5:f32, %fd6:f32, %fd7:f32 // C accumulator
+```
+
+The destination is the first four operands; the A, B, C fragments follow
+in source order. The register classes are mixed: A and B use the 32-bit
+integer bank (`%r`) because PTX packs two FP16 lanes into one 32-bit
+register, while C and D use the 32-bit float bank (`%fd`) because the
+accumulator is held in FP32 doubles.
+
+### Print Shape Lookup
+
+The MC opcode index for `MMA_F32_F16_F16_F32_M16N8K16` resolves to a
+companion-table entry whose high 16 bits select shared body `0x1C4097D`
+(the 4-operand-group form documented in the [shape population
+table](#mc-switch-shape-population-table)) and whose low 16 bits encode
+the type-suffix tuple `(D=f32, A=f16, B=f16, C=f32)` plus the
+`satfinite=0` bit.
+
+The mnemonic offset retrieved from `dword_4D4D360` resolves through the
+XOR-3-decoded pool to the stem `mma.sync.aligned.m16n8k16`. The trailing
+type tokens `.f32.f16.f16.f32` are appended by the modifier helper
+`print_mma_type_tuple`, which reads the four type-tag bytes off the flag
+word and looks each one up in the type-string table.
+
+### Modifier Emission
+
+The suffix slot table for the dense MMA family is:
+
+| Slot | Token | Source |
+|---|---|---|
+| 1 | `.sync` | fixed for `mma.sync` |
+| 2 | `.aligned` | fixed for the warp-synchronous form |
+| 3 | `.m16n8k16` | shape from print-shape entry |
+| 4 | `.f32` | D type tag from flag word |
+| 5 | `.f16` | A type tag from flag word |
+| 6 | `.f16` | B type tag from flag word |
+| 7 | `.f32` | C type tag from flag word |
+| 8 | `.satfinite` | optional, gated by flag bit |
+
+The printer walks this slot table in order. No operand-vector traversal
+participates — the slot table is the ground truth for suffix order.
+
+### Operand Group Printing
+
+The shared body `0x1C4097D` reads four operand-group descriptors out of
+its skeleton:
+
+| Group | Operand range | Register class | Width | Printed form |
+|---|---|---|---:|---|
+| D | dest[0..3] | `f32` (`%fd`) | 4 | `{%fd0, %fd1, %fd2, %fd3}` |
+| A | src[0..3] | `i32` (`%r`) | 4 | `{%r0, %r1, %r2, %r3}` |
+| B | src[4..5] | `i32` (`%r`) | 2 | `{%r4, %r5}` |
+| C | src[6..9] | `f32` (`%fd`) | 4 | `{%fd4, %fd5, %fd6, %fd7}` |
+
+Each group emits an open brace, comma-separated operand prints, a closing
+brace, and a separator. The group sizes (4, 4, 2, 4) come from the MMA
+shape's fragment dimensions, not from the operand vector — a 16x8 D
+output produces 4 FP32 lanes per thread, a 16x16 A input produces 4
+packed FP16x2 lanes per thread, and an 8x16 B input produces 2 packed
+FP16x2 lanes per thread.
+
+### Final Emitted Line
+
+After all four groups have printed, the skeleton emits the closing
+semicolon and a newline:
+
+```ptx
+mma.sync.aligned.m16n8k16.f32.f16.f16.f32    {%fd0, %fd1, %fd2, %fd3}, {%r0, %r1, %r2, %r3}, {%r4, %r5}, {%fd4, %fd5, %fd6, %fd7};
+```
+
+Three observations carry across to other MMA variants. First, the suffix
+order and operand-group order are independent: the suffix list runs D,
+A, B, C in type-token form while the operand list runs D, A, B, C in
+brace-group form, and they happen to agree only because the print shape
+arranged it that way. Second, the register-class mismatch between A/B
+(integer bank) and C/D (float bank) is deliberate — PTX treats FP16
+inputs as bit patterns and FP32 accumulators as floats, and the printer
+faithfully picks the bank from each operand's class. Third, the
+`.satfinite` slot is gone from the printed line because its flag bit was
+zero; the printer never emits empty-slot placeholders.
+
+The same skeleton drives every entry in the `mma.sync.aligned.*` family.
+Switching to `mma.sync.aligned.m16n8k32.f32.bf16.bf16.f32` changes only
+the shape token in slot 3 and the type tokens in slots 4 through 7; the
+operand-group sizes adjust to match the new fragment dimensions; and the
+final line keeps the exact same syntactic shape. That regularity is what
+lets one shared body cover several hundred MMA opcodes.
+
+## Reimplementation Budget
 
 Recreating the dispatcher in a clean reimplementation takes four
 artefacts. The first three are bulk data; the fourth carries the

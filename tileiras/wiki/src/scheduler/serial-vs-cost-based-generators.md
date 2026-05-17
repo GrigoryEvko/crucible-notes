@@ -82,6 +82,136 @@ The cost vector itself is lexicographic:
 
 Do not collapse this into one scalar without proving equivalence. The hard gate decides whether a candidate is legal; the later components only rank legal candidates.
 
+## Placement Arms in Detail
+
+The cost-based generator's four arms each implement a different placement heuristic. They share the same input — a ready set of candidate ops — and the same output shape — an `ArmResult` that either holds a chosen `(op, cycle)` seat or marks the arm as having rejected. Cost is compared across arms by the same lexicographic vector documented in [Schedule Solve and Cost Evaluators](schedule-solve-and-cost-evaluators.md#cost-evaluators), so the cheapest legal seat wins regardless of which arm proposed it.
+
+### Permute Arm
+
+The permute arm enumerates every permutation of the ready set that respects the partial order from the dependence graph, scores each permutation by seating its ops greedily, and picks the permutation whose total cost is lowest. The arm bails out as soon as the permutation count rises past a threshold; for small ready sets it explores exhaustively, for larger ones it samples a fixed number of random permutations.
+
+```c
+ArmResult try_permute(ScheduleGenState *state, CandidateList ready) {
+    ArmResult best = { .cost = COST_INFINITY, .accepted = false };
+    PermutationEnumerator perm = enumerate_topo_permutations(ready, state->dep_graph);
+
+    for (uint32_t i = 0; i < perm.count && i < PERMUTE_BUDGET; ++i) {
+        Permutation order = perm.next();
+        ScheduleSnapshot snap = snapshot_state(state);
+
+        bool legal = true;
+        for (Operation *op : order) {
+            uint32_t t = find_earliest_legal_cycle(&snap, op);
+            if (t == NO_LEGAL_CYCLE) { legal = false; break; }
+            commit_seat_in_snapshot(&snap, op, t);
+        }
+        if (!legal) { restore_state(state, snap); continue; }
+
+        CostVector cost = score_snapshot(&snap);
+        if (cost_lexless(cost, best.cost)) {
+            best = (ArmResult){ .cost = cost, .order = order, .accepted = true };
+        }
+        restore_state(state, snap);
+    }
+    return best;
+}
+```
+
+A worked example: the ready set `{tiled_tma_load, smem_write, smem_read}` has six topo-permutations, two of which respect the load-before-read edge. The permute arm seats each of those two permutations greedily and picks the one whose total resource pressure is lowest — typically `(load, write, read)` over `(load, read, write)` because the latter delays the SMEM write into a stage where the next iteration's TMA load already claims `tp_smem_wr`.
+
+### Fuse Arm
+
+The fuse arm merges adjacent compatible ops that can share a resource slot in the same cycle. Two SMEM reads from the same buffer can fuse if their pool counts sum below the pool cap; a TMA load and an unrelated SMEM write cannot fuse because they claim different rows and the fusion would not reduce pressure. The arm is the only one that emits a single `(op-pair, cycle)` seat for two source ops.
+
+```c
+ArmResult try_fuse(ScheduleGenState *state, CandidateList ready) {
+    ArmResult best = { .cost = COST_INFINITY, .accepted = false };
+    for (uint32_t i = 0; i < ready.size; ++i) {
+        for (uint32_t j = i + 1; j < ready.size; ++j) {
+            Operation *a = ready.ops[i];
+            Operation *b = ready.ops[j];
+            if (!can_fuse(a, b, state)) continue;
+
+            FusedOp fused = compose_resource_vectors(a, b);
+            uint32_t t = find_earliest_legal_cycle_for(state, fused.vec);
+            if (t == NO_LEGAL_CYCLE) continue;
+
+            CostVector cost = score_with_fusion(state, fused, t);
+            if (cost_lexless(cost, best.cost)) {
+                best = (ArmResult){ .cost = cost, .fused = fused,
+                                    .cycle = t, .accepted = true };
+            }
+        }
+    }
+    return best;
+}
+
+bool can_fuse(Operation *a, Operation *b, ScheduleGenState *state) {
+    if (has_dependence(state, a, b))           return false;
+    if (different_slot_groups(a, b))           return false;
+    if (combined_pool_pressure(a, b) > caps()) return false;
+    return true;
+}
+```
+
+Worked example: two `smem_read` ops `r1, r2` reading disjoint buffers from the same SMEM bank. The fuse arm composes their resource vectors into a single triple `(slot=15, duration=7, occupancy=2)`; pool index `4` for the `tp_smem_rd` cap allows up to `5` simultaneous reads, so the fused op is legal at cycle `0` where either op alone would have been legal. The arm wins over permute when the buffer pair shares an SMEM bank but differs only in offset — the cost reducer scores the fused seat as one row contribution instead of two.
+
+### Retry Arm
+
+The retry arm consumes the snapshot overlay maintained by the driver and re-attempts ops that earlier arms marked dead. It does not re-score; it simply re-probes the same `(op, cycle)` candidate against a fresh RRT in case an earlier rejection was caused by transient pressure that has since cleared. The arm is the cheapest of the four — no permutation, no fusion, no cost reduction.
+
+```c
+ArmResult try_retry(ScheduleGenState *state, CandidateList ready,
+                    RetrySnapshot *snap) {
+    for (uint32_t i = 0; i < ready.size; ++i) {
+        Operation *op = ready.ops[i];
+        if (!snapshot_is_dead(snap, op)) continue;     // skip live ops
+        uint32_t t = find_earliest_legal_cycle(state, op);
+        if (t == NO_LEGAL_CYCLE) {
+            continue;                                  // still dead
+        }
+        snapshot_mark_live(snap, op);
+        CostVector cost = score_seat(state, op, t);
+        return (ArmResult){ .cost = cost, .op = op, .cycle = t, .accepted = true };
+    }
+    return (ArmResult){ .cost = COST_INFINITY, .accepted = false };
+}
+```
+
+The arm returns on the first revived op rather than scanning the full snapshot. This is intentional — the snapshot is small and the cost-based generator runs the arm again on the next iteration if more revived ops are available. Walking the full snapshot in one pass would burn time on ops that are guaranteed to remain dead until later state changes.
+
+Worked example: an `smem_write` was marked dead by the permute arm because the TMA load occupied `tp_smem_wr` at cycle `0`. After the TMA load committed at cycle `0` of stage `0` and the modulo wrap exposed cycle `8` as a fresh seat, the retry arm finds `tp_smem_wr` clear at the new candidate cycle and revives the write.
+
+### Cost-Based Arm
+
+The cost-based arm is the most expensive of the four. It enumerates every legal `(op, cycle)` pair across the entire ready set, scores each with the full lexicographic cost vector, and picks the global minimum. The arm runs only when permute, fuse, and retry have all rejected — they cover the common cases, and the cost-based arm exists to find seats that the cheaper heuristics miss.
+
+```c
+ArmResult try_cost_based(ScheduleGenState *state, CandidateList ready,
+                         RetrySnapshot *snap) {
+    ArmResult best = { .cost = COST_INFINITY, .accepted = false };
+    for (Operation *op : ready) {
+        if (snapshot_is_dead(snap, op)) continue;
+        for (uint32_t t = 0; t < state->ii; ++t) {
+            if (!gate_g3_rrt_clean (state, op, t)) continue;
+            if (!gate_g4_leader_gid_consistent(state, op,
+                                               leader_gid_of(state, op))) continue;
+            CostVector cost = sub_988080_search(state, op, t);
+            if (cost_lexless(cost, best.cost)) {
+                best = (ArmResult){ .cost = cost, .op = op, .cycle = t,
+                                    .accepted = true };
+            }
+        }
+        if (!best.accepted) snapshot_mark_dead(snap, op);
+    }
+    return best;
+}
+```
+
+The two inner calls — `sub_988080_search` and the gate ladder — pull from the same cost tables that the slot model documents at rodata `0x4CC9D10..0x4CC9D70`. The arm's per-iteration cost is `O(|ready| × II)` probes, against `O(|ready|)` for the cheaper arms. Worked example: a ready set of `8` ops at `II = 16` produces `128` candidate `(op, cycle)` pairs; the cost-based arm probes each and returns the global minimum, while the permute arm would have explored only `8! / 6 ≈ 6720` permutations of a fixed seating order without varying the cycle.
+
+The arm's worst case is exactly the case the cost reducer was designed for: small ready sets where every op claims a different slot and the right packing depends on aligning the SMEM transports across stages. The cheaper arms reject because their heuristics cannot see the cross-stage interaction; the cost-based arm sees it because it evaluates the full lexicographic vector for every candidate.
+
 ## Admission Gates
 
 Before the placement driver `sub_981D50` commits a seat for a candidate op, four ordered gates run against every candidate the cost-sort surfaces. All four must pass for the seat to commit; failure at any one gate triggers a specific recovery path rather than rejecting the entire candidate set. Gate order stays fixed across all four placement arms (permute, fuse, retry, cost-based), so the same predicates execute in the same sequence no matter which arm is in play. The Rau termination proof depends on it: G3 (the RRT veto) must run strictly after G1/G2 but strictly before G4 so the resource snapshot it sees is the one the cost-sort produced.
@@ -182,6 +312,31 @@ The driver chooses between the serial and cost-based generators on two threshold
 | otherwise | cost-based |
 
 The thresholds are conservative. Falling back from cost-based to serial is correct but slow; the inverse — taking the cost-based path on a region that the serial generator would have handled — is also correct but burns compile time on a search whose result is identical to the serial walk's.
+
+### Selector Predicate
+
+The driver reads the region's MLIR attributes and op-count summary and applies a single ordered predicate. The first matching rule wins.
+
+```c
+ScheduleStrategy select_strategy(Region *region, ScheduleOptions *opts) {
+    if (region->attrs.force_serial_execution) {
+        return STRATEGY_SERIAL;                          // attribute trumps everything
+    }
+    if (region->op_count < opts->serial_threshold /* 8 */) {
+        return STRATEGY_SERIAL;                          // not worth the cost-based price
+    }
+    if (!region->summary.has_async_pipeline &&
+        !region->summary.has_tma            &&
+        !region->summary.has_wgmma) {
+        return STRATEGY_SERIAL;                          // no resource-bearing op
+    }
+    return STRATEGY_COST_BASED;
+}
+```
+
+The `has_async_pipeline`, `has_tma`, and `has_wgmma` flags are byproducts of the per-block summary that the constraint builder produces — the same pass that computes the per-op resource vectors documented in [Resource Constraint Builder and RRT](resource-constraint-builder-and-rrt.md#per-op-resource-vector-encoding). Reusing that data is the only practical way to keep the selector's cost below the serial generator's own cost; running the selector on every region for free is what allows the conservative thresholds.
+
+A region with an async pipeline but `force_serial_execution = true` still picks serial — the attribute is the override of last resort. A region with no resource-bearing ops but the attribute unset still picks serial because the cost-based path's benefit comes entirely from packing tensor-memory and SMEM transports; with neither present, the cost-based path's cost vector reduces to the structural-distance term alone, which the serial generator's program-order traversal already satisfies.
 
 ## Strategy Orchestration
 
