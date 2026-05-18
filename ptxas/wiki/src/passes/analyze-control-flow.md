@@ -27,12 +27,12 @@ The phase 3 wrapper runs once at O1+. The impl runs **131 times** across the pip
 | `+144` | `rpo_number` (u32) | Per-block RPO rank; canonical input to loop detection and live-range ordering |
 | `+152` | `latch_pred_rpo` | Smallest predecessor RPO observed for this header — same field is overloaded as "loop-exit RPO marker" once a back-edge has been detected (line 769 of the decompilation: `*(_DWORD *)(v23 + 152) = v167` where `v167 = pred->rpo_number`) |
 | `+232` | per-BB scratch (u32) | Reset to 0 on entry |
-| `+280` | **primary flags dword** | Mask `&= 0xFF78F98F` on entry (clears bits 4, 6, 8-9, 18-19, 22-23, 26 — every analysis bit set by a previous run) then re-set per the inspected terminator |
+| `+280` | **primary flags dword** | Mask `&= 0xFF78F98F` on entry (clears bits 4, 5, 6, 9, 10, 16, 17, 18, 23 — every analysis bit set by a previous run) then re-set per the inspected terminator |
 | `+280` bit `0x10` | **LOOP_HEADER** | Set when the inspected block sits at a back-edge target |
 | `+280` bit `0x20` | **HAS_PRED** | Set when a predecessor with smaller RPO exists |
 | `+280` bit `0x800000` | **IN_LOOP** | Set when the block's RPO is in `[header_rpo, exit_rpo]` |
 | `+280` bit `0x40000` | **ANALYSIS_OK** | Set if `sub_7486F0` succeeded on the terminator (back-edge candidate test passed) |
-| `+280` bit `0x40000000` | (cleared by `&= 0xFF78F98F`) | Reserved for downstream passes |
+| `+280` bits `0x30640` | (cleared by `&= 0xFF78F98F`) | Bits 6, 9, 10, 16, 17 — reserved for downstream passes (cleared but never set inside `sub_781F80`) |
 | `+282` | high byte of `+280` | Tested by `sub_781F80:908` as a byte (`(*(_BYTE*)(v20+282) & 8) != 0`) — equivalent to `+280 & 0x0800` |
 | `+292` | secondary flag byte | OR-merged with `0x08` on opcode-26 successors (`sub_781F80:605`); AND-merged with `0xF3` on RET (line 735) |
 
@@ -373,24 +373,29 @@ The fields written by `sub_781F80` cluster around two contiguous regions of the 
  +216      …  operand-side scratch (only via ctx+368 not ctx+296 — different struct?)
  +232      …  per-BB analysis scratch dword (zeroed by sub_781F80:342)
  +280      ┌─────────────────────────────────────────────────────────────────
-           │  bit 31..27 = reserved (cleared by &= 0xFF78F98F)
-           │  bit 26    = (cleared)
-           │  bit 23    = ★ IN_LOOP (set in Phase 3 of the algorithm)
-           │  bit 22    = (cleared)
-           │  bit 19    = (cleared by `&= 0xFF78F98F`)
-           │  bit 18    = ★ ANALYSIS_OK (set when sub_7486F0 returns true)
-           │  bit 11    = (cleared)
-           │  bit 8     = (cleared)
-           │  bit 7..5  = (cleared)
-           │  bit 5     = ★ HAS_PRED (set when a smaller-RPO predecessor exists)
-           │  bit 4     = ★ LOOP_HEADER (set when back-edge target detected)
-           │  bit 3..1  = pipeline-internal
+           │  Mask `&= 0xFF78F98F` (binary `11111111 01111000 11111001 10001111`)
+           │  clears bits {23, 18, 17, 16, 10, 9, 6, 5, 4}; preserves all others.
+           │  bit 31..24 = pipeline-internal (preserved by the mask)
+           │  bit 23    = ★ IN_LOOP (cleared by mask; set in Phase 3 of the algorithm)
+           │  bit 22..19 = pipeline-internal (preserved by the mask)
+           │  bit 18    = ★ ANALYSIS_OK (cleared by mask; set when sub_7486F0 returns true)
+           │  bit 17..16 = (cleared by mask, never re-set in sub_781F80; reserved)
+           │  bit 15..11 = pipeline-internal (preserved by the mask)
+           │  bit 10..9  = (cleared by mask, never re-set in sub_781F80; reserved)
+           │  bit 8     = pipeline-internal (preserved by the mask)
+           │  bit 7     = pipeline-internal (preserved by the mask)
+           │  bit 6     = (cleared by mask, never re-set in sub_781F80; reserved)
+           │  bit 5     = ★ HAS_PRED (cleared by mask; set when a smaller-RPO predecessor exists)
+           │  bit 4     = ★ LOOP_HEADER (cleared by mask; set when back-edge target detected)
+           │  bit 3..1  = pipeline-internal (preserved by the mask)
            │  bit 0     = "first-instr-is-early-exit" (read into ctx+1369 bit 7)
            └─────────────────────────────────────────────────────────────────
  +282      …  high byte of +280 dword (byte-level test at sub_781F80:908)
  +292      …  secondary flag byte
-                  bit 3 = "back-edge candidate" (OR'd with 0x08 at line 605)
-                  bit 2 = (cleared by RET handler, &=0xF3 at line 735)
+                  Mask `&= 0xF3` (binary `11110011`) clears bits 3 AND 2; bits 7..4 and 1..0 preserved.
+                  bit 7..4 = pipeline-internal (preserved)
+                  bit 3 = "back-edge candidate" (OR'd with 0x08 at line 605; cleared by RET handler at line 735)
+                  bit 2 = (cleared by RET handler `&= 0xF3` at line 735)
                   bit 1..0 = (preserved)
 ```
 

@@ -99,12 +99,13 @@ of upstream MLIR's `BytecodeTypeOpcodes.td`:
 | `15` | PartitionView (element + shape + dim-map + mode byte) | 4 + dim_count + map_count |
 | `16` | Function (input list + result list) | 2 + input_count + result_count |
 | `17` | Token | 0 |
-| `18` | `f8E8M0FNU` (extension) | varies |
+| `18` | `f8E8M0FNU` (extension) | 0 |
 
-The trailing `f8E8M0FNU` extension routes through the registered-type path rather
-than the inline switch — a producer that emits a tag above `0x12` must additionally
-declare the extension dialect in the envelope's dialect list, otherwise the reader
-emits `"unknown type tag: "` and aborts the section.
+The trailing `f8E8M0FNU` extension is an element type — like tags `5..11` it carries
+no payload of its own. Tag 18 is reachable only as a leaf inside a tile-family
+aggregate (`TileType`, `TensorViewType`, `PartitionViewType`), so the operand-zero
+contract holds whether the tag is decoded standalone or through one of the
+aggregate-type arms.
 
 ## Layer 3 — AttrTag Numbering (`sub_59F100`)
 
@@ -130,14 +131,15 @@ side so the divergence is unambiguous:
 | 12 | `BoundedAttr` | `BoundedAttr` (variant 2) |
 | 13 | (no upstream slot) | `AssumePredicateAttr` |
 
-The mismatch is total at and above tag `3`. Bytecode emitted by stock MLIR with stock
-numbering decodes wrong here — tag 4 lands on `DenseElementsAttr` instead of
-`IntegerAttr`, tag 5 lands on `DenseElementsAttr<string>` instead of `StringAttr`, tag
-6 lands on `DivByAttr` instead of `ArrayAttr`. Going the other direction, an
-`AssumePredicateAttr` emitted by tileiras at tag 13 has no destination in upstream's
-table at all. Any external tool that needs to round-trip MLIR bytecode through both
-implementations must freeze the tileiras numbering above; the upstream header is
-reserved for future stock cuda_tile builds.
+Only tag `2` (`FloatAttr`) matches upstream by coincidence. Every other tag in the
+`1..13` range disagrees: tag `1` is `StringAttr` here versus upstream `IntegerAttr`;
+tag 4 lands on `DenseElementsAttr` instead of `TypeAttr`; tag 5 lands on
+`DenseElementsAttr<string>` instead of `StringAttr`; tag 6 lands on `DivByAttr`
+instead of `ArrayAttr`. Going the other direction, an `AssumePredicateAttr` emitted
+by tileiras at tag 13 has no destination in upstream's table at all. Any external
+tool that needs to round-trip MLIR bytecode through both implementations must
+freeze the tileiras numbering above; the upstream header is reserved for future
+stock cuda_tile builds.
 
 The parallel DebugTag namespace at `sub_589B90` is private to the Debug section and
 uses a dense `[0..6]` range. Tag `0` is the failure sentinel; tags `1-6` cover

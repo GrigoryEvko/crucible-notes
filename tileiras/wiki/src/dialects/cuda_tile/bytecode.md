@@ -1,8 +1,8 @@
-# cuda_tile Bytecode Reader and Writer
+# cuda_tile Bytecode Reader
 
 ## Abstract
 
-The `cuda_tile` dialect ships its own bytecode reader and writer. Neither parses a standalone container — the top-level TileIR envelope is handled by the generic MLIR bytecode header parser documented in [MLIR Bytecode Format](../../bytecode/mlir-bc-format.md). What `cuda_tile` contributes is the dialect-private Op-opcode dispatcher plus the `cuda_tile`-introduced arms of three otherwise-shared dispatchers (TypeTag, AttributeTag, DebugTag). Only the Op-opcode dispatcher is exclusively `cuda_tile`; the other three carry both builtin and `cuda_tile` cases.
+The `cuda_tile` dialect ships its own bytecode reader; no bytecode writer is linked into this binary (see [Dialect Bytecode Reader/Writer Status — Status Matrix](../../bytecode/dialect-readers-status.md#status-matrix)). The reader does not parse a standalone container — the top-level TileIR envelope is handled by the generic MLIR bytecode header parser documented in [MLIR Bytecode Format](../../bytecode/mlir-bc-format.md). What `cuda_tile` contributes is the dialect-private Op-opcode dispatcher plus the `cuda_tile`-introduced arms of three otherwise-shared dispatchers (TypeTag, AttributeTag, DebugTag). Only the Op-opcode dispatcher is exclusively `cuda_tile`; the other three carry both builtin and `cuda_tile` cases.
 
 The split:
 
@@ -31,7 +31,7 @@ The TypeTag dispatcher (`sub_59C710`) reads a single VarInt tag and switches on 
 | `17` | TokenType | no payload |
 | `18` | `f8E8M0FNU` | parameterless; reachable only as a leaf via the extension path |
 
-TileType is the workhorse of the `cuda_tile`-introduced cluster. Its payload is a TypeRef for the element type, a VarInt rank, and a VarInt-encoded shape. The reader shares its shape parser with TensorViewType and PartitionViewType, keeping the three Tile-family decoders byte-compatible across the shape prefix and letting the writer emit any of them through a single shape-writer helper. PointerType carries a TypeRef for the pointee and a VarInt address space; TokenType is payload-free.
+TileType is the workhorse of the `cuda_tile`-introduced cluster. Its payload is a TypeRef for the element type, a VarInt rank, and a VarInt-encoded shape. The reader shares its shape parser with TensorViewType and PartitionViewType, keeping the three Tile-family decoders byte-compatible across the shape prefix. (No writer ships in this binary; the shape format is documented as a wire-format contract rather than a writer-side helper.) PointerType carries a TypeRef for the pointee and a VarInt address space; TokenType is payload-free.
 
 The dispatcher's contract with its caller is uniform: every case path returns a heap-allocated MLIR `Type` on success or `nullptr` on failure. The single-byte return convention lets the bytecode reader push results straight into the Type-section table without rechecking each case.
 
@@ -65,7 +65,7 @@ The cross-dialect attribute dispatcher accepts cuda_tile-owned attributes alongs
 | Operand-segment array | Dense i32 array encoded as VarInt rank + N signed VarInts; reused by every op with operand segments. |
 | Tile-shape attribute | VarInt rank + N VarInt extents; reused by ops that carry a shape attribute independent of result type. |
 
-The writer mirrors each shape exactly: a reader-writer pair is byte-symmetric, and any new attribute family added to the dialect must come with its own pair.
+These payload shapes are reader-side contracts; no bytecode writer is linked into this binary, so the producer side must be supplied by an external encoder that targets the same shapes exactly.
 
 ## Per-Tag Builder Cluster
 
@@ -163,7 +163,7 @@ With `--lineinfo` enabled the `0x7f` sentinel becomes a non-negative `LocAttr` i
 
 All references are positional into per-section tables; the bytecode never embeds operand SSA names or string mnemonics in the operation stream. The mnemonic resides exactly once per operation kind in the dialect's mnemonic table; per-op cost stays constant in the section size, not linear in the mnemonic length.
 
-The corresponding writer emits the same fields in the same order. The shape parser/writer for TileType resolves the result-type reference before the op-opcode dispatcher fires, so the type-table index already exists by the time `cuda_tile.addi`'s opcode arm runs. The result type's element width — `i32` — is recovered through the type-table lookup, not through the op opcode.
+An external encoder targeting this reader must emit the same fields in the same order. The shape parser for TileType resolves the result-type reference before the op-opcode dispatcher fires, so the type-table index already exists by the time `cuda_tile.addi`'s opcode arm runs. The result type's element width — `i32` — is recovered through the type-table lookup, not through the op opcode.
 
 ## Missing Op 0x6E (atan2)
 

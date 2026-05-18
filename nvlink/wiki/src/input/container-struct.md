@@ -337,7 +337,7 @@ Critically, the magic is **not** zeroed before the final free. This is safe only
 
 ## QUIRK 1: The Magic Is Not a Tag
 
-`0x1464243BC` looks deliberately non-ASCII. The low 32 bits `0x4243BC` are not printable; the upper byte `0x01` makes the whole word fall outside any common type tag. The choice is consistent with a *random* sentinel rather than a four-character cookie. Compare with NVIDIA's other sentinels: fatbin uses `0xBA55ED50` ("BASSED50"), NVVM IR uses `0xDEC0170B` ("DECOI70B"), ELF uses `0x7F454C46` (".ELF"). The container magic is the only one in nvlink's input pipeline that is *not* a backronym, suggesting it was generated rather than chosen -- which is good practice for an internal sentinel that should not collide with any user-controlled bytes.
+`0x1464243BC` looks deliberately non-ASCII. The low 32 bits `0x4243BC` are not printable; the upper byte `0x01` makes the whole word fall outside any common type tag. The choice is consistent with a *random* sentinel rather than a four-character cookie. Compare with NVIDIA's other sentinels: fatbin uses the 36-bit value `0x1BA55ED50` ("1BASSED50", checked against `*hdr & 0xFFFFFFFFFFFF`), NVVM IR uses `0xDEC0170B` ("DECOI70B"), ELF uses `0x7F454C46` (".ELF"). The container magic is the only one in nvlink's input pipeline that is *not* a backronym, suggesting it was generated rather than chosen -- which is good practice for an internal sentinel that should not collide with any user-controlled bytes.
 
 ## QUIRK 2: Two Accelerated-Arch Flag Bytes at +160/+161
 

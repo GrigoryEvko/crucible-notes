@@ -33,7 +33,7 @@ sub_6837D0(diag_record)
   +-- severity < byte_4F07481[0]?  --> suppress (return)
   +-- duplicate? (byte_4CFFE80[4*errnum+2] bit flags) --> count only
   +-- pragma disabled? (sub_67D520) --> suppress
-  +-- error limit reached? (unk_4F074B0 + unk_4F074B8 >= unk_4F07478) --> error 1508, abort
+  +-- error limit reached? (qword_4F074B0 + qword_4F074B8 >= unk_4F07478) --> fprintf "error limit reached" (string index 1508), abort via sub_7235F0(9)
   |
   +-- unk_4D04198 == 0  -->  sub_681D20(diag)   [terminal text renderer]
   +-- unk_4D04198 == 1  -->  inline SARIF JSON   [JSON renderer within sub_6837D0]
@@ -173,7 +173,7 @@ Filtering happens in `sub_6837D0` before either renderer is invoked:
 1. **Severity threshold**: `byte_4F07481[0]` stores the minimum severity. Diagnostics below this level are silently suppressed.
 2. **Duplicate detection**: `byte_4CFFE80[4*errnum + 2]` bit flags track "already seen" diagnostics. Bit 0 marks first occurrence, bit 1 marks already emitted. On second hit, the diagnostic is counted but not emitted.
 3. **Pragma suppression**: `sub_67D520` checks whether the diagnostic is disabled via `#pragma nv_diag_suppress` (the spelling that survives in the string table -- the legacy `diag_suppress` form is accepted as an alias by the EDG pragma parser but is not the literal stored alongside the dispatcher). `sub_67D470` records the suppression.
-4. **Error limit**: When `unk_4F074B0 + unk_4F074B8 >= unk_4F07478`, error 1508 ("error limit reached") is emitted and `sub_7235F0(9)` aborts compilation.
+4. **Error limit**: When `qword_4F074B0 + qword_4F074B8 >= unk_4F07478`, the dispatcher fprintfs `sub_67C860(1508)` ("error limit reached") directly to the stderr stream and calls `sub_7235F0(9)` to abort. The 1508 is a localized message-string index used by `sub_67C860`, not a diagnostic record number — no `sub_67D610` call is made in this path.
 
 ## Diagnostic Severity Enum
 

@@ -15,7 +15,8 @@ A faithful reimplementation has to satisfy three constraints that the numeric ID
 | | |
 |---|---|
 | **Identifier source segment** | `.rodata` string table within CICC's read-only data |
-| **Lookup function** | `sub_67C860(string_id) -> const char*` |
+| **Localized message-string lookup** | `sub_67C860(string_id) -> off_496F920[string_id]` (returns the rendered English/locale text, e.g. `sub_67C860(1508)` → `"error limit reached"`) |
+| **Diagnostic-record allocator** | `sub_67D610(diag_num, …)` — assigns a record, stores the numeric ID at `+176`, queues it for emission |
 | **Identifier-to-number resolution** | Built once at EDG init; cached in a flat array |
 | **Suppression dispatch** | `sub_67D520(diag_record)` returns nonzero if suppressed |
 | **`#pragma diag_*` parser** | Recognises `nv_diag_suppress`, `nv_diag_warning`, `nv_diag_error`, `nv_diag_remark`, `nv_diag_default`, `nv_diag_once`, `nv_diagnostic` |
@@ -74,10 +75,10 @@ The `cl_cppcli_only_in_microsoft_cplusplus` and `cl_cppcx_and_cppcli` identifier
 | `nv_` | 36 | NVIDIA frontend extensions, atomic builtins, pragma handling | Per-diagnostic `nv_diag_suppress` | `nv_exec_check_disable`, `nv_atomic_load_order_error` |
 | `nv_abi_pragma_*` | 9 | `#pragma nv_abi_*` parse and validation | `nv_diag_suppress` | `nv_abi_pragma_bad_format`, `nv_abi_pragma_overflow_value` |
 | `nv_atomic_*` | 11 | Atomic operation legality in device code | `nv_diag_suppress` | `nv_atomic_operations_scope_fallback_to_membar` |
-| `nv_diag_*` | 7 | The pragma directive identifiers themselves (recognised as keywords, not emitted) | n/a | `nv_diag_suppress`, `nv_diag_warning`, `nv_diag_default`, `nv_diag_once`, `nv_diagnostic` |
+| `nv_diag_*` | 6 (+1 sibling) | The pragma directive identifiers themselves (recognised as keywords, not emitted) | n/a | `nv_diag_suppress`, `nv_diag_warning`, `nv_diag_error`, `nv_diag_remark`, `nv_diag_default`, `nv_diag_once`; the sibling `nv_diagnostic` (no trailing underscore) is the namespace selector keyword |
 | `cuda_` | 5 | CUDA-specific frontend errors | `nv_diag_suppress` | `cuda_device_code_unsupported_operator`, `cuda_demote_unsupported_floating_point` |
 
-The seven `nv_diag_*` strings are themselves *not* diagnostic identifiers — they are the pragma directive keywords recognised by the lexer. The parser reads `#pragma nv_diag_suppress <id>` and uses `<id>` (which may be a numeric value or a symbolic name from this catalogue) as the suppression key.
+The six `nv_diag_*` strings (`nv_diag_default`, `nv_diag_error`, `nv_diag_once`, `nv_diag_remark`, `nv_diag_suppress`, `nv_diag_warning`) plus the sibling `nv_diagnostic` are *not* diagnostic identifiers — they are the pragma directive keywords recognised by the lexer. The parser reads `#pragma nv_diag_suppress <id>` and uses `<id>` (which may be a numeric value or a symbolic name from this catalogue) as the suppression key.
 
 ### Pragma Handling
 
@@ -146,18 +147,21 @@ The `no_*` family is the inverse of a normal diagnostic family: rather than repo
 
 ## Severity Mapping
 
-EDG severity is stored at offset `+180` of the diagnostic record as a single byte. The identifier name does not directly encode severity — the same identifier can be emitted at different severities depending on context and `-W*` flags. The byte values observed:
+EDG severity is stored at offset `+180` of the diagnostic record as a single byte. The identifier name does not directly encode severity — the same identifier can be emitted at different severities depending on context and `-W*` flags. The byte values observed in `sub_6837D0` (the dispatcher caps the value at 7 with `if ((unsigned __int8)a1 <= 7u)` and treats 9..11 as fatal via `(unsigned int)(severity) - 9 <= 2`):
 
 | Severity Code | Meaning | Default Suppression | Promotable to Error |
 |---|---|---|---|
-| 0 | Internal info | Suppressed unless `--verbose` | No |
-| 1 | Remark (informational note) | Suppressed by default | `nv_diag_warning` → 4 |
-| 2 | Note (attached to parent) | Always emitted with parent | No |
-| 3 | Warning (deprecation, anachronism) | Emitted by default | `-Werror=<id>` → 4 |
-| 4 | Error | Always emitted | Already error |
-| 5 | Catastrophic / parse-stop | Always emitted | Already error |
+| 2 | Remark / note (attached to parent) | Always emitted with parent | No |
+| 4 | Warning | Emitted by default | `-Werror=<id>` → 7 |
+| 5 | Caution (anachronism, deprecation) | Emitted by default | `-Werror=<id>` → 7 |
+| 6 | Severe warning | Always emitted | `-Werror=<id>` → 7 |
+| 7 | Error | Always emitted | Already error |
+| 8 | Error (promoted) | Always emitted | Already error |
+| 9 | Catastrophe (fatal, calls `sub_7235F0(9)`) | Always emitted | Already fatal |
+| 10 | Catastrophe (fatal) | Always emitted | Already fatal |
+| 11 | Internal error (fatal, prefixes `"(internal error) "`) | Always emitted | Already fatal |
 
-Severity 5 diagnostics force the compiler to abort the current translation unit immediately after rendering. The dispatch logic in `sub_6837D0` increments `unk_4F074B0` (error count) for severity 4 and `unk_4F074B8` for catastrophic, and when either threshold reaches `unk_4F07478` (error limit, set by `--error_limit`), diagnostic number 1508 is emitted and the compiler exits.
+See [Diagnostics](./diagnostics.md#diagnostic-severity-enum) for the SARIF / terminal mapping per value. Severity 9, 10, and 11 force the compiler to abort the current translation unit immediately after rendering. The dispatch logic in `sub_6837D0` increments `qword_4F074B0` (error count) and `qword_4F074B8` (catastrophic count), and when their sum reaches `unk_4F07478` (error limit, set by `--error_limit`), the localized message string at index 1508 (`"error limit reached"`) is printed via `fprintf("%s\n", sub_67C860(1508))` and `sub_7235F0(9)` aborts. The 1508 here is a *string-table index* used by `sub_67C860`, not a diagnostic record number — the error-limit branch fprintfs the rendered message directly and exits without going through `sub_67D610` to allocate a numbered diagnostic.
 
 ## Suppression Mechanics
 
@@ -167,7 +171,7 @@ Five suppression channels stack in priority order — once any channel suppresse
 2. **Duplicate dedup.** `byte_4CFFE80[4*errnum+2]` carries per-numeric-ID bit flags; identical diagnostic numbers within the same source range are counted once and emitted once.
 3. **`#pragma diag_suppress`.** `sub_67D520` walks a per-source-position list of active suppressions installed by `#pragma nv_diag_suppress`. The pragma accepts both numeric IDs and the symbolic names from this catalogue.
 4. **Command-line `-W` flags.** The flag table built at CLI parse time maps numeric IDs and prefix patterns (like `-Wno-template-*`) to severity overrides.
-5. **Error-limit cutoff.** When the running error count exceeds `--error_limit`, diagnostic 1508 fires and further diagnostics are dropped.
+5. **Error-limit cutoff.** When the running error count reaches `--error_limit`, the dispatcher fprintfs the `"error limit reached"` message (localized string index 1508 via `sub_67C860`) and calls `sub_7235F0(9)` to abort. Further diagnostics are never queued because the process exits in this path.
 
 The `nv_diag_default` pragma resets a previously-modified diagnostic to its compile-time default severity. The `nv_diag_once` pragma installs a once-per-translation-unit suppression after the first emission.
 
@@ -175,9 +179,9 @@ The `nv_diag_default` pragma resets a previously-modified diagnostic to its comp
 
 Identifiers ending in `_deprecated`, `_ignored`, or starting with `c23_*_deprecated` participate in a uniform deprecation chain. When the parent diagnostic fires:
 
-1. The parent is emitted at severity 3 (warning) with the deprecation message text.
-2. A child note is enqueued in `note_list` with severity 2 carrying a "use X instead" hint. The child's identifier is derived from the parent by suffix replacement.
-3. If `--Werror=deprecated` is in effect, the parent is promoted to severity 4 *and* the child note is promoted to severity 3 to remain visible.
+1. The parent is emitted at severity 4 or 5 (warning / caution) with the deprecation message text.
+2. A child note is enqueued in `note_list` with severity 2 (remark/note) carrying a "use X instead" hint. The child's identifier is derived from the parent by suffix replacement.
+3. If `--Werror=deprecated` is in effect, the parent is promoted to severity 7 (error) *and* the child note remains at severity 2 (notes are not promoted alongside their parent in the current dispatcher).
 
 The `attribute_deprecated_with_message` identifier is special: it accepts a custom message string supplied via `[[deprecated("...")]]` and embeds it into the rendered output via format placeholder `%s`. The identifier itself is fixed; only the message text varies.
 
@@ -199,7 +203,7 @@ A reimplementation that aims for byte-identical SARIF output must, in order:
 4. **Wire the `ambig_*` ↔ `ambiguous_*` parent-child linkages.** The five abbreviated identifiers must be attached to their long-form parents in `child_list`, not emitted as top-level diagnostics.
 5. **Wire the `_pos` continuation records.** Every `constexpr_*_pos` identifier must be attached as a severity-2 note to the corresponding primary `constexpr_*` diagnostic, carrying only a source location.
 6. **Implement the suppression stack.** All five priority levels (severity floor, dedup, `#pragma diag_suppress`, `-W` flags, error-limit cutoff) must be present and ordered correctly. Missing any level produces visible behavioural differences.
-7. **Honour the deprecation child-emission rule.** Identifiers that emit a deprecation warning must enqueue a severity-2 child note with the matching "use X instead" identifier. The `--Werror=deprecated` promotion must lift both parent and child by one severity step.
+7. **Honour the deprecation child-emission rule.** Identifiers that emit a deprecation warning must enqueue a severity-2 child note with the matching "use X instead" identifier. The `--Werror=deprecated` promotion lifts the parent from severity 4/5 to severity 7 (error); the child note stays at severity 2 because the dispatcher promotes only the parent record.
 
 ## Cross-References
 

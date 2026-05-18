@@ -651,7 +651,7 @@ SM architecture gates influence constexpr relaxations. The global `qword_4F077A8
 - `dword_4D04880`: C++14 relaxed constexpr (loops, local variable mutation, multiple return statements)
 - C++23/26 extensions: constexpr `try`-`catch` (statement executor case 14), constexpr placement `new` (expression evaluator case 103), constexpr `dynamic_cast` (error `0xBB7`)
 
-The evaluator enforces a step limit (`qword_4D042E0`, default ~1M iterations) to prevent infinite loops in constexpr evaluation. This limit applies uniformly to both host and device constexpr functions. When exceeded, diagnostic `0x97F` ("constexpr evaluation step limit exceeded") is emitted.
+The evaluator enforces a step limit (`qword_4D042E0`, default 2,000,000 iterations — set in EDG init when `word_4D04898 && !qword_4D042E0`) to prevent infinite loops in constexpr evaluation. This limit applies uniformly to both host and device constexpr functions. When exceeded, diagnostic `0x97F` (2431, "constexpr evaluation step limit exceeded") is emitted via `sub_6855B0(2431, …)`.
 
 One important consequence: `__global__` (kernel) functions cannot be `constexpr` because they have no return value in the conventional sense -- they are launched asynchronously. The parser enforces this at the declaration specifier level, not in the constexpr evaluator.
 

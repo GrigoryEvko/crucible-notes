@@ -66,20 +66,27 @@ ParseResult read_attribute_section(BytecodeReader *r, SectionSpan span, ...) {
     for (uint64_t i = 0; i < count; ++i) {
         uint8_t tag = read_byte(r);
         switch (tag) {
-            case ATTR_STRING:           parse_string_attr(r, /*has_dialect=*/false); break;
-            case ATTR_INTEGER:          parse_integer_attr(r); break;
-            case ATTR_FLOAT:            parse_float_attr(r); break;
-            case ATTR_DICT:             parse_dictionary_attr(r); break;
-            case ATTR_DENSE_ELT:        parse_dense_elements_attr(r); break;
-            case ATTR_DENSE_ELT_STRING: parse_dense_elements_string_attr(r); break;
-            /* …7 more cases, each named after its attribute family… */
-            case ATTR_ASSUME_PREDICATE: parse_assume_predicate_attr(r); break;
-            default:                    parse_external_attr(r, tag);    break;
+            case ATTR_STRING:            parse_string_attr(r, /*has_dialect=*/false); break;  // tag 1
+            case ATTR_FLOAT:             parse_float_attr(r); break;                          // tag 2
+            case ATTR_TYPE:              parse_type_attr(r); break;                           // tag 3
+            case ATTR_DENSE_ELT:         parse_dense_elements_attr(r); break;                 // tag 4
+            case ATTR_DENSE_ELT_STRING:  parse_dense_elements_string_attr(r); break;          // tag 5
+            case ATTR_DIV_BY:            parse_div_by_attr(r); break;                         // tag 6
+            case ATTR_DENSE_I64_ARRAY_A: parse_dense_i64_array_attr_a(r); break;              // tag 7
+            case ATTR_DENSE_I64_ARRAY_B: parse_dense_i64_array_attr_b(r); break;              // tag 8
+            case ATTR_SAME_ELEMENTS:     parse_same_elements_attr(r); break;                  // tag 9
+            case ATTR_BOUNDED_LO:        parse_bounded_attr(r, /*variant=*/0); break;         // tag 10
+            case ATTR_BOUNDED_HI:        parse_bounded_attr(r, /*variant=*/1); break;         // tag 11
+            case ATTR_BOUNDED_LO_HI:     parse_bounded_attr(r, /*variant=*/2); break;         // tag 12
+            case ATTR_ASSUME_PREDICATE:  parse_assume_predicate_attr(r); break;               // tag 13
+            default:                     diag_unsupported_attr_tag(r, tag); break;
         }
     }
     return success();
 }
 ```
+
+The tag-to-attribute-kind mapping in the case names above is the wire-format-breaking tileiras numbering documented in [MLIR Bytecode Format — Self-Contained Attribute Dispatch](mlir-bc-format.md#self-contained-attribute-dispatch); tags `IntegerAttr`/`BoolAttr`/`ArrayAttr`/`DictionaryAttr`/`OptimizationHintsAttr` from upstream MLIR are *not* present in this dispatcher and arrive instead through the upstream MLIR builtin reader path (`builtin` dialect's own bytecode arms).
 
 Operation records inside the IR section follow the same dispatch shape with the 110-case opcode switch in place of the 13-case attribute switch. Type records use the 18-case type switch; debug records use the 7-case debug switch. The four switches are independent — they share no fallthrough — and each one terminates a section: when the section's byte count is exhausted, the reader returns to the driver loop.
 
