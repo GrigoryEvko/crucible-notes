@@ -1085,6 +1085,157 @@ Phase 117 (MercEncodeAndDecode) reads Ori IR nodes via the master encoder `sub_6
 | `sub_7B9D30` | 38B | Clear constant buffer slot table | HIGH |
 | `sub_7B9D60` | 408B | Encode reuse flags + predicate | HIGH |
 
+## Mercury Knob Cluster -- DAG Table Reference
+
+The Mercury encoder is gated by a 21-knob cluster registered as a contiguous block inside `ctor_005` (0x420A50--0x4210E0) into the DAG knob table indexed by `sub_6F0820` (`GetKnobIndex`, 99 total entries). Names are stored ROT13-obfuscated in `.rodata` at `0x21B6900`--`0x21B6CA0`; the runtime decodes them on demand for `-knob NAME=VALUE` CLI parsing and `DUMP_KNOBS_TO_FILE` diagnostic output. Indices are determined by registration order within the DAG table -- the 21 Mercury knobs do not occupy a fixed numeric range across ptxas builds, but they are always registered as one alphabetical run, so their relative ordering is stable.
+
+| | |
+|---|---|
+| **Table** | DAG knob array (99 entries x 64-byte descriptor) |
+| **Registrar** | `ctor_005` (0x40D860, 80KB) -- Mercury cluster at 0x420A50--0x4210E0 |
+| **GetKnobIndex** | `sub_6F0820` (name -> index lookup, init-time only) |
+| **GetKnobIntValue** | `sub_7A1B80` (returns `*(int32*)(state + 72*idx + 8)`) |
+| **GetKnobBoolValue** | `sub_7A1CC0` (returns `IsKnobSet && type == 4`) |
+| **ParseKnobValue** | `sub_6F7360` (parses `name=value`, `name=value[when=...]`) |
+| **Storage region** | `0x21B6900`--`0x21B6CA0` (672 bytes of ROT13'd name strings) |
+| **Consumer roots** | `sub_6F52F0` (RunStages), `sub_6FBC20` (WAR), `sub_6FFDC0` (Opex) |
+| **CLI override** | `-knob MercuryX=N` (parsed by entry point at `sub_703AB0`) |
+| **Env override** | `KNOBS` environment variable, processed by `sub_79C9D0` |
+
+### Knob Inventory (21 entries, alphabetical)
+
+Confidence column reflects only the **name** (string-anchored, decoded from ROT13) and **registration site** (xref to `ctor_005`). Role and consumer assignments are inferred from the name plus context in the orchestrator / WAR / opex bodies; treat them as MED unless the body has been independently traced.
+
+| # | Name | Inferred Role | Consumer site (most likely) | Confidence |
+|---|------|---------------|------------------------------|------------|
+| 1 | `MercuryAssumePTXPortability` | Tag emitted instructions as PTX-portable; affects which target-specific encodings are skipped. | Decode (`sub_6F2BF0`) / Encode (`sub_6D9690`) | name HIGH / role MED |
+| 2 | `MercuryCompactedAssumes` | Coalesce adjacent assume-stream entries into a single compacted record. | Assume-stream builder inside opex (`sub_6FFDC0`) | name HIGH / role MED |
+| 3 | `MercuryConsumeAssumes` | Drain the assume stream during opex, attaching residual assumes to the emitted SASS. | Opex (`sub_6FFDC0` -> `sub_703480`/`sub_7032A0`) | name HIGH / role MED |
+| 4 | `MercuryConverterStats` | Emit per-pass instruction-count statistics from the MercConverter (phase 5 + phase 141). | MercConverter (`sub_9F3340`, `sub_9F1A90`) | name HIGH / role HIGH |
+| 5 | `MercuryDepStagePreferNonLiveinPSB` | Prefer PSBs (Predicated SchedBarriers) on non-live-in defs when constructing the dep-stage graph. | Opex dep-stage builder (`sub_6FFDC0`) | name HIGH / role MED |
+| 6 | `MercuryDisableLegalizationOfTexToURBound` | Disable the late legalization pass that rebinds tex operands to uniform-register bounds. | PostFixForMercTargets phase 113 (`sub_6F52F0` step 0) | name HIGH / role MED |
+| 7 | `MercuryDumpInstsAsBinary` | Dump per-instruction Mercury binary blob (raw encoded bytes) to a side channel. | Encode (`sub_6F2BF0`) after `sub_6D9690` returns | name HIGH / role HIGH |
+| 8 | `MercuryEncodeDecode` | Master switch / verbosity for the encode-then-decode roundtrip (phase 117 `MercEncodeAndDecode`). | `sub_6F2BF0` (59KB encode/decode driver) | name HIGH / role HIGH |
+| 9 | `MercuryEncodeNewWorkerFiles` | Route the encoder output into the new per-worker file format (post-CUDA-13 split-file scheme). | `sub_6F2BF0` output sink | name HIGH / role MED |
+| 10 | `MercuryForceISAClass` | Override the auto-selected SASS ISA class (Turing/Ampere/Hopper/Blackwell) used by the master encoder switch. | `sub_6D9690` (94KB encoder) | name HIGH / role HIGH |
+| 11 | `MercuryForceUnknownTcgen05Attr` | Force a "tcgen05 attribute unknown" marker on tcgen05 instructions; used to exercise the fallback emit path on sm100+. | `sub_6D9690` tcgen05 branch | name HIGH / role MED |
+| 12 | `MercuryGenSassUCode` | Master switch for the final SASS microcode emit stage (phase 122 `MercGenerateSassUCode`). | `sub_6E4110` (24KB SASS emitter) | name HIGH / role HIGH |
+| 13 | `MercuryInsertAssumes` | Allow the opex pipeline to insert new assume-stream entries (cross-block latency hints). | Opex (`sub_6FFDC0`) | name HIGH / role HIGH |
+| 14 | `MercuryInsertBackedgeDepbar` | Inject DEPBAR (dependency-bar) instructions on loop backedges to flush pre-edge writes. | WAR pass (`sub_6FBC20` / `sub_6FA930`) | name HIGH / role HIGH |
+| 15 | `MercuryInsertXblockWait` | Insert cross-block wait barriers when the live-in scoreboard set crosses a basic-block boundary. | Opex (`sub_6FFDC0`) + WAR (`sub_6FBC20`) | name HIGH / role HIGH |
+| 16 | `MercuryIssueDelayWBStallSelfLoop` | Allow issue-delay/writeback stalls on instructions that self-loop (their own predecessor in the dep graph). | Opex stall inserter (`sub_6FAA90`) | name HIGH / role MED |
+| 17 | `MercuryMergePrologueBlocks` | Merge function-prologue blocks before WAR pass 1 to reduce barrier insertion at function entry. | Phase 113 / 117 boundary | name HIGH / role MED |
+| 18 | `MercuryPresumeXblockWaitBeneficial` | Assume cross-block waits are beneficial without running the cost analyzer; biases the heuristic toward inserting more waits. | Opex (`sub_6FFDC0`) cost gate | name HIGH / role HIGH |
+| 19 | `MercuryTepidAwareSb` | Make scoreboard placement aware of "tepid" (cold-but-not-frozen) blocks identified by hot/cold partitioning. | Opex (`sub_6FFDC0`) tepid heuristic | name HIGH / role MED |
+| 20 | `MercuryTrackMultiReadsWarLatency` | Track latency contributions from multi-read operands when scoring WAR hazards. | WAR (`sub_6FBC20` / `sub_6FA5B0`) | name HIGH / role HIGH |
+| 21 | `MercuryUseActiveThreadCollectiveInsts` | Lower collective ops (e.g. bar.warp, redux) into active-thread variants where legal. | `sub_6D9690` collective branch | name HIGH / role MED |
+
+### Defaults and Visibility
+
+The DAG knob descriptor (64 bytes) stores a default value, a type tag (INT/BOOL/STR/etc.), and a presence byte. None of the 21 Mercury knobs has its default encoded as a separate `.rodata` string, which means defaults are immediate constants baked into `ctor_005`. Without symbol-grade recovery of the descriptor inits, defaults are LOW confidence; circumstantial evidence (the knobs ride alongside conservative-by-default pass enablement) suggests:
+
+- `MercuryEncodeDecode`, `MercuryGenSassUCode` -- default ON (these are core stages; turning them off would break the pipeline). Confidence: HIGH.
+- `MercuryInsertBackedgeDepbar`, `MercuryInsertXblockWait`, `MercuryInsertAssumes` -- default ON for SM 100+, default OFF or downgraded for SM 75--99 (the cross-block / backedge dep-bar machinery is a Blackwell-era addition). Confidence: MED.
+- `MercuryConverterStats`, `MercuryDumpInstsAsBinary`, `MercuryEncodeNewWorkerFiles` -- default OFF (diagnostic / dev knobs). Confidence: MED.
+- `MercuryForceISAClass`, `MercuryForceUnknownTcgen05Attr` -- default OFF (Force* knobs override the auto-selected class only when set). Confidence: HIGH (Force* convention).
+- `MercuryPresumeXblockWaitBeneficial`, `MercuryTrackMultiReadsWarLatency`, `MercuryTepidAwareSb` -- default OFF (heuristic-bias knobs; the production pipeline ships with the safer cost-analyzed path). Confidence: LOW.
+- `MercuryDisableLegalizationOfTexToURBound`, `MercuryIssueDelayWBStallSelfLoop` -- Disable* / permissive switches default OFF. Confidence: MED.
+- `MercuryAssumePTXPortability`, `MercuryUseActiveThreadCollectiveInsts`, `MercuryMergePrologueBlocks`, `MercuryCompactedAssumes`, `MercuryConsumeAssumes`, `MercuryDepStagePreferNonLiveinPSB` -- assignment unclear without descriptor trace. Confidence: LOW.
+
+Visibility-wise, knob names never reach `strings(1)` output of the unmodified binary because the descriptor table holds them ROT13-obfuscated; only the dumper at `sub_79CB10` (DAG variant `sub_6F8000`-ish) decodes them at dump time. The plaintext form `Mercury*` therefore leaks only when `DUMP_KNOBS_TO_FILE` is exercised, not on a normal compile.
+
+### Pipeline-Stage Interaction Map
+
+```
+Phase 113 PostFixForMercTargets ──── MercuryDisableLegalizationOfTexToURBound
+Phase 114 FixUpTexDepBarAndSync
+Phase 117 MercEncodeAndDecode ─────── MercuryEncodeDecode, MercuryDumpInstsAsBinary,
+                                      MercuryEncodeNewWorkerFiles, MercuryForceISAClass,
+                                      MercuryForceUnknownTcgen05Attr,
+                                      MercuryAssumePTXPortability,
+                                      MercuryUseActiveThreadCollectiveInsts
+Phase 118 MercExpandInstructions ──── (DAG knobs #743, #747 -- see knobs.md)
+Phase 119 MercGenerateWARs1 ────────── MercuryInsertBackedgeDepbar,
+                                      MercuryTrackMultiReadsWarLatency,
+                                      MercuryMergePrologueBlocks
+Phase 120 MercGenerateOpex ──────────── MercuryInsertAssumes, MercuryConsumeAssumes,
+                                      MercuryCompactedAssumes,
+                                      MercuryInsertXblockWait,
+                                      MercuryPresumeXblockWaitBeneficial,
+                                      MercuryDepStagePreferNonLiveinPSB,
+                                      MercuryTepidAwareSb,
+                                      MercuryIssueDelayWBStallSelfLoop
+Phase 121 MercGenerateWARs2 ────────── (same WAR knobs as 119, re-run post-opex)
+Phase 122 MercGenerateSassUCode ────── MercuryGenSassUCode
+```
+
+The MercConverter sweeps (phase 5 and phase 141) consume `MercuryConverterStats` -- not registered in the Mercury cluster's runtime dispatch path but emitted via the same dumper code path.
+
+### Quirks
+
+> ⚡ **QUIRK -- ROT13 obfuscation defeats `strings(1)`**
+> All 21 Mercury knob names are stored ROT13-encoded in `.rodata` (e.g. `ZrephelVafregOnpxrqtrQrcone` decodes to `MercuryInsertBackedgeDepbar`). A naive `strings ptxas | grep Mercury` recovers only six identifiers -- the six pipeline-phase names (`MercEncodeAndDecode`, `MercExpandInstructions`, `MercGenerate*`, `PostFixForMercTargets`) plus the four CLI tokens (`mercury`, `capmerc`, `cap-merc`, `mercury,capmerc,sass`). The 21-knob cluster is invisible to that pattern, which is why surface-level audits routinely under-report the Mercury control surface by ~3x.
+
+> ⚡ **QUIRK -- defaults are not in `.rodata`**
+> Unlike most ptxas knobs whose defaults appear as ASCII strings (`"true"`, `"false"`, `"3"`, etc.) and can be recovered by name -> nearby-string proximity, the Mercury cluster's defaults are immediate constants embedded directly in `ctor_005` registration calls. Recovering them requires decompiling `ctor_005` register-passing or stepping the descriptor table at init time -- not pattern-matching on `.rodata`. Confidence on documented defaults is therefore necessarily LOW unless the value is determined by the knob's name (e.g. `Disable*` defaults to OFF by convention).
+
+> ⚡ **QUIRK -- the cluster lives in DAG, not OCG**
+> ptxas hosts two independent knob tables: OCG (1,195 entries, indexed by `sub_79B240`) and DAG (99 entries, indexed by `sub_6F0820`). The Mercury knobs are entirely in DAG. This matters because the two tables have separate `-knob` parsers and separate `KNOBS` env var processors -- a `-knob MercuryInsertXblockWait=1` is parsed by the DAG path (`sub_6F7360`), never reaches OCG, and a typo silently misses the OCG table without any "unknown knob" warning. Cross-table contamination is also impossible: the DAG and OCG tables share no indices.
+
+> ⚡ **QUIRK -- sm_75--sm_99 ignores most of the cluster**
+> The cross-block / backedge / Xblock-wait family (`MercuryInsertBackedgeDepbar`, `MercuryInsertXblockWait`, `MercuryPresumeXblockWaitBeneficial`, `MercuryDepStagePreferNonLiveinPSB`) only takes effect when `*(BYTE*)(profile+1398) & 0x20` is set, i.e. on SM targets whose capability word (`profile+1413`) advertises Mercury or Capsule-Mercury capability. Setting these knobs on Turing/Ampere/Hopper compiles silently no-ops; the WAR / Opex bodies guard on the same capability bit before consulting the knob value. The cluster is effectively a Blackwell-onwards control surface despite being available on all targets at the CLI level.
+
+### Inferred Value Types
+
+The DAG knob descriptor (64 bytes) stores a type tag at descriptor offset +24. The five generic ptxas knob types appear in the table below; assignment per Mercury knob is inferred from naming conventions consistently observed across the rest of the binary (1,294-knob universe documented in `config/knobs.md`).
+
+| Type tag | Type | Naming convention | Storage |
+|---|---|---|---|
+| 0 | STRING | (none in Mercury cluster) | char* in arena |
+| 1 | INT | numeric verbs / nouns ending in `Limit`, `Threshold`, `Factor`, `Count`, `ISAClass`, `Stats` | int32 at state+72*idx+8 |
+| 2 | FLOAT | (none) | float at state+72*idx+8 |
+| 3 | DOUBLE | (none) | double at state+72*idx+8 |
+| 4 | BOOL | `Disable*`, `Insert*`, `Force*`, `Presume*`, `Track*`, `Use*`, `Merge*`, `Consume*`, `Compacted*`, `Assume*`, `Issue*`, `TepidAware*`, `EncodeDecode`, `GenSassUCode`, `DumpInstsAsBinary`, `EncodeNewWorkerFiles`, `DepStagePrefer*` | presence byte + int32 marker |
+
+Applying that taxonomy:
+
+| Knob | Inferred type | Rationale |
+|---|---|---|
+| `MercuryAssumePTXPortability` | BOOL | `Assume*` toggle |
+| `MercuryCompactedAssumes` | BOOL | adjective gate |
+| `MercuryConsumeAssumes` | BOOL | `Consume*` toggle |
+| `MercuryConverterStats` | BOOL | `Stats` flag (emit/don't) |
+| `MercuryDepStagePreferNonLiveinPSB` | BOOL | `Prefer*` toggle |
+| `MercuryDisableLegalizationOfTexToURBound` | BOOL | `Disable*` switch |
+| `MercuryDumpInstsAsBinary` | BOOL | `Dump*` toggle |
+| `MercuryEncodeDecode` | BOOL | master phase switch |
+| `MercuryEncodeNewWorkerFiles` | BOOL | format selector |
+| `MercuryForceISAClass` | INT | enum-valued (Turing=0/Ampere=1/Hopper=2/Blackwell=3) -- `Class` noun, not a verb |
+| `MercuryForceUnknownTcgen05Attr` | BOOL | `Force* + Unknown*` toggle |
+| `MercuryGenSassUCode` | BOOL | master phase switch |
+| `MercuryInsertAssumes` | BOOL | `Insert*` toggle |
+| `MercuryInsertBackedgeDepbar` | BOOL | `Insert*` toggle |
+| `MercuryInsertXblockWait` | BOOL | `Insert*` toggle |
+| `MercuryIssueDelayWBStallSelfLoop` | BOOL | conditional-stall toggle |
+| `MercuryMergePrologueBlocks` | BOOL | `Merge*` toggle |
+| `MercuryPresumeXblockWaitBeneficial` | BOOL | `Presume*` heuristic-bias toggle |
+| `MercuryTepidAwareSb` | BOOL | `*Aware*` toggle |
+| `MercuryTrackMultiReadsWarLatency` | BOOL | `Track*` toggle |
+| `MercuryUseActiveThreadCollectiveInsts` | BOOL | `Use*` toggle |
+
+Net: 20 boolean knobs + 1 enum-valued integer (`MercuryForceISAClass`). Confidence: type tag assignments are MED (naming-convention inference); the binary descriptor table at descriptor offset +24 would resolve them definitively.
+
+### Registration-Site Anatomy
+
+Each Mercury knob is registered by a single call from `ctor_005` to the DAG knob registration helper. The repeating 0x50-byte stride between calls (0x420A50 -> 0x420AA0 -> 0x420AF0 -> ...) implies a uniform calling shape: load name pointer, load default value, load type tag, load presence-test predicate, call helper. The helper writes a 64-byte descriptor into the DAG knob table at the next free slot, then increments the index counter.
+
+Because the knobs are registered in alphabetical order and the registration loop is monolithic, the cluster occupies a contiguous index range. If `K0` is the index of `MercuryAssumePTXPortability` (the first to register), then `MercuryUseActiveThreadCollectiveInsts` lives at `K0 + 20`. The base `K0` is determined at link time by the registration order across all DAG knob ctors -- it is not stable across ptxas builds, but the relative offsets within the cluster are.
+
+Cross-referenced DAG knob indices already documented elsewhere in the wiki (`config/knobs.md` table at line 590): `#8`, `#16`, `#17`, `#743`, `#747`. None of these five fall within the contiguous Mercury* range, which implies the Mercury cluster sits in a different region of the 99-entry table -- consistent with the cluster being a recent (post-r13.0) addition appended at the tail.
+
+> ⚡ **QUIRK -- the cluster only has 21 entries despite 99 DAG slots**
+> The DAG knob table reserves 99 slots, but only ~25 are documented across the wiki (knob #8/#16/#17/#743/#747 plus the 21 Mercury* knobs). The remaining ~73 slots are either unused (placeholders for forward compatibility), legacy DAG-scheduler controls deprecated when Mercury subsumed the old scheduler, or anonymous-test knobs invisible to documentation tooling because their names live in dead code paths. A handful are likely registered by other ctors and we have not yet traced them.
+
 ## Cross-References
 
 - [ISel & Opcode Selection](./isel.md) -- MercConverter opcode dispatch table (`sub_9ED2D0`), handler details

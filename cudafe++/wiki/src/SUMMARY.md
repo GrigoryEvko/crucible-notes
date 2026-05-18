@@ -110,3 +110,4 @@
 - [Token Kind Table](./reference/token-kinds.md)
 - [Error Message Catalog](./reference/error-catalog.md)
 - [Virtual Override Matrix](./reference/virtual-override-matrix.md)
+- [Glossary](./glossary.md)

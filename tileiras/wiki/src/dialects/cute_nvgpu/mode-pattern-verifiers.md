@@ -170,6 +170,9 @@ typedef union Tcgen05MmaKind {
 
 The warp-specialized variant reuses bit 0 of the same word and is materialized by the lowering pass as a boolean predicate `ws = (raw & 1) != 0`. The two views are mutually exclusive at the encoding layer: a kind word with `ws == 1` always has `cta_group == 1` (single-CTA), so rule 4 below rejects every other `cta_group` value the moment the WS bit is set.
 
+> ⚡ **QUIRK — `cta_group` is in the low bits, `mma_kind` in the high bits — swapping order silently dispatches a different opcode**
+> The bitfield order is `cta_group` at bits `0..1`, then `scale_vector_size`, `scale_input_acc`, `block_scale`, and finally `mma_kind` at bits `6..8`. A frontend that constructs the kind word with the field order reversed (`mma_kind` in the low bits, `cta_group` in the high bits — the natural reading order for a humans-and-docs format) builds a word that the verifier *still accepts*: the resulting `cta_group` bits land inside the `mma_kind` enum range (0..7), and the resulting `mma_kind` bits land inside the `cta_group` range (0..3). The verifier walks its 13 rules over the wrong field interpretations, may pass them all, and `select_tcgen05_opcode` returns an opcode index in `10521..10530` for an entirely different instruction. No diagnostic fires. A reimplementation must reproduce the exact bit layout shown in the `Tcgen05MmaKind` union — `cta_group` low, `mma_kind` high — or every emitted `tcgen05.mma` is the wrong opcode.
+
 The `mma_kind` field picks one of seven enum values. Each implies a different element type and a different valid range for the rest of the kind word; the verifier uses it as the primary dispatch key for type-specific rules.
 
 | Value | mma_kind | Notes |

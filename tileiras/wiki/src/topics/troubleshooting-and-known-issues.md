@@ -361,12 +361,18 @@ no compile-time rejection; the read silently returns stale data. The
 read-after-wait discipline is documented in
 [WGMMA Emission Protocol](wgmma-emission-protocol.md).
 
+> ⚡ **QUIRK — accumulator-before-`fence_async` is silent UB, not a verifier error**
+> The natural assumption is that any verifier that knows about WGMMA also knows that the accumulator is asynchronously written and would diagnose a too-early read. It doesn't. The mbarrier/fence_async ordering is enforced only at runtime by the hardware's async-proxy ordering rules; the MLIR verifier accepts a use of the accumulator SSA value at any point after the WGMMA op, including between `wgmma.commit_group` and `wgmma.wait_group N`. The read compiles, runs, and returns whatever bits the accumulator register held before the WGMMA retired — usually the previous iteration's result, occasionally garbage from a sibling warp-group's register reuse. There is no `--Werror` flag that catches it; the discipline is a frontend obligation.
+
 **`--use-fast-math` enables FTZ even when no op carries fast-math
 flags.** The driver's fast-math flag is a global on/off; it does not
 key off per-op MLIR fast-math metadata. A program that writes
 fast-math-free MLIR but compiles with `--use-fast-math` (or the
 pipeline option `ftz=true`) still emits FTZ-mode arithmetic. To get
 non-FTZ arithmetic, leave the global flag off.
+
+> ⚡ **QUIRK — `--use-fast-math` is a module-wide FTZ master switch with no per-function escape hatch**
+> Upstream LLVM exposes FTZ as a function attribute (`denormal-fp-math`) plus per-op `FastMathFlags`, so a single hot kernel can opt in while the rest of the module stays IEEE. Tileiras's driver flag short-circuits that: enabling `--use-fast-math` writes the `unsafe-fp-math` Function attribute onto *every* function it lowers, and the case-`0x66` FMA selector reads that attribute and picks the FTZ opcode unconditionally. There is no `__attribute__((noflush))` or per-function override that reverses the global flag — a function that needs IEEE-denormal arithmetic must be compiled in a *separate* invocation with the flag off, then linked in. The same applies to the pipeline option `ftz=true`.
 
 **Libdevice link order matters.** `NVVMReflect` must run before
 always-inline. If a pipeline rearrangement moves always-inline above
@@ -381,6 +387,9 @@ selection (`sm_90a`, `sm_100a`, etc.) is decided by the frontend's
 module attribute and combined with `--gpu-name` to pick the final
 `.target` line. A user trying to "force" `sm_100a` from the CLI cannot
 do so; the frontend must write the attribute.
+
+> ⚡ **QUIRK — `--gpu-name=sm_90a` is silently rejected, not diagnosed**
+> The driver's `--gpu-name` accept table contains only the bare numeric forms (`sm_100`, `sm_103`, `sm_110`, `sm_120`, `sm_121`); the family- and arch-conditional suffixes (`a`, `f`) that downstream tools like `ptxas` accept are *not* in this table. A user who writes `--gpu-name=sm_90a` does not get an "unknown target" diagnostic — the parser either ignores the unrecognised string and falls back to the default or rejects it with a generic "unrecognised --gpu-name" message that does not mention the suffix. The architecture-conditional `.target sm_90a` line is written by the frontend's module attribute, not the CLI, so the only way to compile for `sm_90a` is to set that attribute and pass `--gpu-name=sm_90` — but `sm_90` is *also* missing from the accept table on the current driver (Blackwell-first), so Hopper builds bypass `--gpu-name` entirely.
 
 **The driver `--opt-level` default differs from the pipeline
 `opt-level` default.** Driver default is `3`; pipeline default is `2`.

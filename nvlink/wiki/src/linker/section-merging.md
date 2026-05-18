@@ -225,61 +225,11 @@ The linked-list approach means that during the merge phase, the section accumula
 
 ## Section Layout Engine (`sub_4325A0`)
 
-After all input objects have been merged, the layout phase calls the section layout engine to assign final offsets to every data contribution in a section. This function sorts the contributions by alignment and computes a packed layout.
+After all input objects have been merged, the layout phase calls the section layout engine to assign final offsets to every data contribution in a section. The engine is invoked from eleven distinct call sites across the three layout-phase callers (`sub_438C60`, `sub_438DD0`, `sub_439830`) and handles every region kind — `.text.*`, `.nv.global`, `.nv.global.init`, `.nv.shared.*`, `.nv.local.<kernel>`, and `.nv.constant<N>` — through a single sorted-linear-allocator algorithm.
 
-```c
-// sub_4325A0 -- lay out all symbols within a section
-// a1: elfw context
-// a2: pointer to section header record
-// a3: initial offset (usually 0, but can be nonzero for shared memory)
-// Returns: total section size
-uint32_t section_layout_engine(elfw *ctx, section_record *section,
-                               uint32_t initial_offset);
-```
+The engine sorts the section's data-node linked list by alignment (descending, tie-broken by size ascending) via `sub_4647D0` with comparator `sub_432440`, then walks the sorted list assigning aligned offsets. When a contribution records `alignment = 0`, the engine falls back to natural alignment derived from `min(size, 8)`. The architecture-conditional sort is gated on `ctx->extended_smem_mode` (`ctx+100`) AND the vtable predicate at `arch_vtable+200`: when both hold, the sort is skipped and input order is preserved (required for extended-shared-memory instructions on Hopper and later).
 
-### Layout Algorithm
-
-```
-assert(section != NULL, "section not found")
-
-// Sort symbol list by alignment (descending) unless in extended-smem mode
-if not ctx->extended_smem_mode or not arch_supports(section.sh_type):
-    list_sort(section.symbol_list, alignment_comparator)
-
-current = initial_offset
-
-for each symbol_node in section.symbol_list:
-    sym_record = get_sym_record(ctx, symbol_node.sym_index)
-    alignment = symbol_node.alignment
-
-    if alignment > 0:
-        // Explicit alignment: round up to alignment boundary
-        if current % alignment != 0:
-            current = current + alignment - (current % alignment)
-    elif symbol_node.size > 0:
-        // No explicit alignment: use natural alignment, capped at 8
-        natural_align = min(symbol_node.size, 8)
-        if current % natural_align != 0:
-            current = current + natural_align - (current % natural_align)
-    else:
-        // Zero alignment AND zero size: only valid in no-opt mode
-        assert(ctx->no_opt_mode,
-               "should only reach here with no opt")
-
-    // Assign offset to both the symbol record and the section-local record
-    sym_record.value = current
-    symbol_node.value = current
-    // verbose: "variable %s at offset %d"
-
-    current += symbol_node.size
-
-section.total_size = current
-return current
-```
-
-The sorting step is important: by placing the highest-alignment items first, the function minimizes internal fragmentation from alignment padding. The sort is performed by `sub_4647D0` with comparator `sub_432440`.
-
-The `extended_smem_mode` flag (`ctx+100`) disables sorting for shared memory sections when the architecture supports extended shared memory. In that mode, the order from the input objects is preserved.
+For the complete reimplementation-grade documentation — algorithm pseudocode, per-region placement logic, the alignment/size constraint table, function map, and quirks (extended-smem sort suppression, natural-alignment cap at 8, `sh_size` vs return-value semantics, bindless re-entry behavior, 32-bit cursor truncation) — see [Section Layout Engine](section-layout-engine.md).
 
 ## Overlapping Data Merge
 
@@ -822,6 +772,7 @@ The partition type is stored at `ctx+664`. If different input objects disagree o
 
 ## Cross-References
 
+- [Section Layout Engine](section-layout-engine.md) -- the `sub_4325A0` placement routine that finalizes offsets for every region
 - [Merge Phase](../pipeline/merge.md) -- the per-object merge loop that drives section merging
 - [Layout Phase](../pipeline/layout.md) -- post-merge address assignment using the section layout engine
 - [Symbol Resolution](symbol-resolution.md) -- how global/weak/local symbols are resolved during merge

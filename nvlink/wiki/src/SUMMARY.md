@@ -39,6 +39,7 @@
   - [Extended Symbol Resolution](linker/extended-symbol-resolution.md)
 - [Symbol Tables & Hash Maps](linker/hash-tables.md)
 - [Section Merging](linker/section-merging.md)
+  - [Section Layout Engine](linker/section-layout-engine.md)
 - [R_CUDA Relocations](linker/r-cuda-relocations.md)
 - [Relocation Application Engine](linker/relocation-engine.md)
 - [Weak Symbol Handling](linker/weak-symbols.md)
