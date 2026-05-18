@@ -183,6 +183,7 @@
 - [Correctness Layers](topics/correctness-layers.md)
 - [Debugging and Introspection](topics/debugging-and-introspection.md)
 - [DSL to PTX End-to-End](topics/dsl-to-ptx-end-to-end.md)
+- [TMA Load Walkthrough](topics/tma-load-walkthrough.md)
 - [Frontend Contract and Tile IR Emission](topics/frontend-contract-and-tile-ir-emission.md)
 - [Error Handling and Diagnostics](topics/error-handling-and-diagnostics.md)
 - [GPU Execution Model](topics/gpu-execution-model.md)

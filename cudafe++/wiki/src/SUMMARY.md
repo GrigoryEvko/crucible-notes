@@ -77,6 +77,7 @@
 - [Template Engine](./edg/template-engine.md)
 - [CUDA Template Restrictions](./edg/template-cuda.md)
 - [Constexpr Interpreter](./edg/constexpr-interpreter.md)
+- [Constexpr Diagnostic Tags](./edg/constexpr-diagnostics.md)
 - [Name Mangling](./edg/name-mangling.md)
 - [Type System](./edg/type-system.md)
 - [Pragma Engine](./edg/pragma-engine.md)

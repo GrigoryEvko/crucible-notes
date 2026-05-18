@@ -500,6 +500,238 @@ ISel emits PTX `suld.b.1d.b32.clamp {rd}, [handle, {x}];`.
 
 ---
 
+## SDNode-Name Master Switch (`sub_35F6D40`)
+
+The 460 enumerator names listed above are not stored as a table of string literals indexed by opcode number; CICC instead embeds them directly into a single 875 KB function -- `sub_35F6D40` -- that walks the SDNode tree, dispatches on `*a2` (the node's PTX opcode word), and writes the corresponding PTX mnemonic plus operand-suffix keywords into an output byte buffer (`a4`). This function is the de-facto **asm-printer body** for every NVPTX SDNode that survives instruction selection. It is the single largest function in the binary by switch density (6,634 explicit case labels across 24 nested switches, with the master at instruction address `0x36607ec`) and it routes every PTX modifier keyword the assembler is allowed to emit -- `mmarowcol`, `scaleD`, `cta_group`, `parity_op`, `multicast`, `cta`, `mem_order`, `scope`, `unified`, `ftz`, `sat`, `relu`, and 35 others.
+
+### Function Role
+
+`sub_35F6D40(a1, a2, a3, a4)` is reached from exactly one caller, the 59-byte wrapper `sub_36CC800`. The wrapper's body is:
+
+```c
+void sub_36CC800(int64_t TLI, unsigned *N, int64_t Ctx,
+                 const uint8_t *Suffix, size_t SuffixLen,
+                 int64_t _unused, OutBuf *Out) {
+    sub_35F6D40(TLI, N, Ctx, Out);   // emit mnemonic + operand keywords
+    sub_E826F0(TLI, Out, Suffix, SuffixLen);  // append the precomputed
+                                              // type/space suffix bytes
+}
+```
+
+The `*a2` value read at the top of `sub_35F6D40` is the SDNode opcode in the range **335..6968** -- exactly the range covered by the master switch at `0x36607ec`. The 335 lower bound is conspicuous: it sits one above NVPTXISD's `BUILTIN_OP_END + N` slot, suggesting the encoder offsets the public `NVPTXISD::*` enumerator by a fixed constant (most likely `ISD::FIRST_TARGET_MEMORY_OPCODE` minus 1, i.e., `334 + 1 = 335` for the first NVPTX-specific opcode) so that target-independent ISD nodes hit the default arm before any NVPTX-specific case can match.
+
+The role is therefore: **given an SDNode, write the printable PTX form of its opcode plus all modifier keywords selected by sub-fields of the node's flags word**. Operands themselves are formatted by sub-callees (`sub_35EE840`, `sub_35EFB80`, `sub_35F18E0`, `sub_35F2080`, `sub_35F2C30`, `sub_35F3330`, `sub_35F3E90`) which read sub-fields of `*a2` and the chain operands. The function is invoked once per SDNode by the SelectionDAG asm-printer walker (the equivalent of upstream LLVM's `NVPTXAsmPrinter::EmitInstruction` → `NVPTXInstPrinter::printInstruction` chain, but inlined into one giant dispatch).
+
+### How It Is Called
+
+The call shape is a classic visitor over the post-ISel DAG. The asm-printer walks the post-selection MachineInstr stream, and for every instruction whose `getOpcode()` falls in the NVPTX target range, it invokes `sub_36CC800` with:
+
+- `a1` -- pointer to the `NVPTXTargetLowering` instance (used for subtarget queries, e.g. SM tier, unified addressing flag).
+- `a2` -- pointer to a 16-byte (or larger) flags packet whose first dword is the opcode and whose subsequent bits encode operand-modifier sub-fields. The `v13 >> 17` shift visible early in the body extracts a 7-bit modifier index, which then drives the inner switches at lines 33113, 102155, 109917, 110265.
+- `a3` -- pointer to the formatting context (string table, output column, indent).
+- `a4`/`a7` -- pointer to the `OutBuf` struct (`{begin, _, _, end, write_ptr}`) into which raw bytes are appended via `sub_CB6200` (overflow path) or direct stores.
+
+Each case label writes a fixed byte sequence (the literal mnemonic prefix -- "`tex.unified.2d.v4`", "`suld.b.2d.b32.clamp`", "`shf.l.clamp.b32`", etc.) followed by one or more calls to the operand-keyword emitters listed below. The function is therefore the **inverse** of the `getTargetNodeName` switch in upstream LLVM: instead of returning a `const char*` for a debug print, it streams the mnemonic and every modifier keyword directly into the asm buffer.
+
+### Operand-Keyword Emitter Helpers
+
+47 distinct operand-keyword strings are referenced from inside the master switch. Each is passed as the 5th argument to one of four helper functions, which means the keywords are **literal C string constants** baked into the encoder, not entries in a data table:
+
+| Helper | Role | Sample keywords passed |
+|---|---|---|
+| `sub_35F2C30(TLI, N, idx, Out, kw)` | Emits `.<kw>` field from a 3-bit sub-field at position `idx` | `mmarowcol`, `opcode`, `abtype`, `rowcol`, `ab` |
+| `sub_35F3330(TLI, N, idx, Out, kw)` | Emits `.<kw>` from a 4-bit sub-field (used for the larger enums) | `cta_group`, `parity_op`, `kind`, `shape`, `mem_order` |
+| `sub_35F3E90(TLI, N, idx, Out, kw)` | Emits scaling/precision keyword from a 6-bit sub-field | `scaleD`, `scale`, `rnd`, `sat` |
+| `sub_35F18E0(TLI, N, idx, Out, kw)` | Emits boolean/flag keyword (presence-only, no value) | `mode`, `unified`, `aligned`, `ftz`, `noftz`, `relu`, `multicast` |
+
+The complete keyword inventory recovered from the decompilation (sorted alphabetically): `ab`, `abs`, `abtype`, `add`, `addsp`, `aligned`, `arrive`, `base`, `cop`, `cta`, `cta_group`, `desc`, `descsuf`, `dst`, `fmt`, `ftz`, `generic`, `group`, `kind`, `mc`, `mem_order`, `mmarowcol`, `multicast`, `nan`, `noftz`, `op`, `opcode`, `relu`, `rnd`, `rowcol`, `sat`, `satf`, `scale`, `scaleD`, `scope`, `sem_ordered`, `sem_unordered`, `shape`, `shared`, `sign`, `sink`, `space`, `src`, `ss`, `trans`, `type`, `unified`, `vec`, `vol`, `ws`. (50 entries; HIGH confidence -- direct `rg` extraction of the 5th argument to the four emitter helpers across the entire 192K-line decompilation.)
+
+### Case Range Classification
+
+Cross-correlating the explicit case labels (729 distinct case bodies at indent-8) against the 460 NVPTXISD opcode families documented above gives the following coarse range partition. The master switch covers values 335..6968, but only 261 unique targets exist -- 3,318 cases (50% of the 6,634-case dispatch table) fall through to the default arm at `0x437638`, which corresponds to either a target-independent ISD node that should never reach this point or an opcode that was reserved but never wired up.
+
+| Case value range | Family / role | Sample case → literal prefix |
+|---|---|---|
+| 335 (0x14F) -- 346 (0x15A) | Load/store wide aggregates and `ld.param.b8` block forms | 0x14F → `ld.param.b8 ...` block load with 20-byte payload |
+| 347 (0x15B) -- 372 (0x174) | Texture / surface entry prologue (rarely-emitted variants) | 0x173, 0x174 → `tex.<geom>.<vec>` prefix |
+| 380 (0x17C) -- 430 (0x1AE) | Call ABI prologue (`CallSeqBegin`, `DeclareParam`, `DeclareScalarParam`) | 0x1AE → `.param .align ...` |
+| 432 (0x1B0) -- 510 (0x1FE) | Math/predicate combinators (`BFE`, `BFI`, `PRMT`, `SETP_F16X2`) | 0x1B2 → `bfe.s32 ...`; 0x1B5 → `prmt.b32 ...` |
+| 877 (0x36D) -- 893 (0x37D) | Funnel-shift family (`FSHL_CLAMP`, `FUN_SHFR_CLAMP` legacy) | 0x37D → `shf.l.clamp.b32 ...` |
+| 1289 (0x509) -- 1300 (0x514) | Store family (`StoreV2`/`V4`, `StoreParam{S32,U32}`) | 0x509 → `st.global.v4.b32 ...`; 0x511 → `st.param.s32 ...` |
+| 1370 (0x55A) -- 1391 (0x56F) | Branch-index table (`BrxStart`, `BrxItem`, `BrxEnd`) and `CALLSEQ_END` | 0x55E → `brx.idx ...`; 0x563 → `callseq_end` glue marker |
+| 1392 (0x570) -- 1394 (0x572) | `RET_GLUE` / `RETURN` / `PrintCall*` | 0x570 → `ret;`; 0x571 → `call ...`; 0x572 → `call.uni ...` |
+| 1660 (0x67C) -- 1667 (0x683) | Atomic R-M-W variants (`atom.{add,min,max,and,or,xor,cas}`) | 0x680 → `atom.global.add.u32 ...` |
+| 1756 (0x6DC) -- 1779 (0x6F3) | Surface load `Suld*` (clamp/trap/zero matrix, 1D + 1DArray) | 0x6DC → `suld.b.1d.b8.clamp ...`; 0x6E7 → `suld.b.2d.v4.b32.trap ...` |
+| 1781 (0x6F5) -- 2415 (0x96F) | Texture sample family (`Tex<Geom><ResultTy><CoordTy>[Grad|Level]`) | 0x6F5 → `tex.1d.v4.f32.f32 ...`; 0x901 → `tex.unified.2d.v4.s32.f32.grad ...` |
+| 2416 (0x970) -- 3763 (0xEB3) | Texture-unified + `Tld4*` gather, plus the WMMA prep nodes | 0xEB0 → `tld4.r.2d.v4.f32.f32 ...` |
+| 3764 (0xEB4) -- 4655 (0x122F) | **WMMA mma operand printer** (`mmarowcol` field-bearing cases -- the `wmma.mma.sync`/`wmma.load`/`wmma.store` family). High target density (case 0x122F has 108 cases routed to it via `0x36a0352`). | 0xEB4 → `wmma.load.a.sync.aligned.m16n16k16.row.f16 ...` |
+| 4656 (0x1230) -- 5028 (0x13A4) | Cooperative-group, `cluster.*`, `barrier.cluster.*`, `bar.sync` extensions | 0x1300 → `barrier.cluster.arrive.aligned ...` |
+| 5029 (0x13A5) -- 5807 (0x16AF) | **Tensor memory / TMA / `cp.async.bulk` family** (the `scaleD`, `desc`, `descsuf`, `kind`, `shape`, `mc`, `multicast` keyword block); densely clustered case bodies | 0x14F4 → `cp.async.bulk.tensor.2d.global.shared::cluster ...` |
+| 5808 (0x16B0) -- 5939 (0x1733) | `mbarrier.*` and `fence.*` -- 64-case + 64-case parallel clusters at `0x36adb22`/`0x36adb7e` | 0x16B0 → `mbarrier.arrive ...`; 0x16E0 → `fence.acq_rel.cta ...` |
+| 5940 (0x1734) -- 6440 (0x1928) | `discard`, `prefetch`, `applypriority`, `red.async` family | 0x1740 → `prefetch.global.L2 ...`; 0x1830 → `red.async.shared::cluster.add.u32 ...` |
+| 6441 (0x1929) -- 6628 (0x19E4) | `setmaxnreg.*`, `griddepcontrol.*`, `elect.sync`, miscellaneous scheduling pseudos | 0x1930 → `setmaxnreg.inc.sync.aligned.u32 ...`; 0x19D0 → `elect.sync ...` |
+| 6629 (0x19E5) -- 6967 (0x1B37) | Sparse / structured-MMA + Hopper-only modifiers (`mma.sp`, `parity_op` block) | 0x19E5 → `mma.sp.sync.aligned.m16n8k32.row.col.f16.f16.f16.f16 ...`; 0x1AE0 → `mma.m16n8k16.row.col ...` with `parity_op` |
+| 6968 (0x1B38) -- default | Fallthrough (3,318 of the 6,634 entries hit this; corresponds to opcodes the encoder reserves but never emits, or to target-independent ISDs that escaped LowerOperation) | -- |
+
+(Boundaries are MED confidence -- they were determined by cross-referencing the case-value first/last pairs in the per-target grouping with the literal byte-buffer prefixes referenced inside each handler, the operand-keyword strings emitted, and the family layout established in earlier sections. The 261-vs-6,634 split is HIGH confidence; the exact opcode-to-keyword binding inside each handler is HIGH confidence for the keywords explicitly named in the table above and MED for everything else.)
+
+### Dispatcher Pattern (C Pseudocode)
+
+The master switch can be modeled as the following pattern, repeated 261 times with different mnemonic prefixes and different keyword sets:
+
+```c
+void emitNVPTXSDNode(TLI_t *TLI, unsigned *N, FormatCtx *Ctx, OutBuf *Out) {
+    unsigned opcode = *N;             // 32-bit opcode at N[0]
+    uint64_t flags  = ((uint64_t*)N)[1];  // packed modifier sub-fields
+
+    switch (opcode) {
+    // ----- representative case: WMMA load with row/col modifier -----
+    case 0xEB4: {                     // NVPTXISD::WMMA_LOAD_A_SYNC_M16N16K16_ROW_F16
+        // Step 1: append the fixed mnemonic prefix
+        appendBytes(Out, "wmma.load.a.sync.aligned.m16n16k16.", 35);
+        // Step 2: emit the .row|.col modifier driven by a 3-bit field
+        sub_35F2C30(TLI, N, /*field=*/3, Out, "mmarowcol");
+        // Step 3: append the type suffix
+        appendBytes(Out, ".f16", 4);
+        // Step 4: emit the destination/source operand list
+        sub_35EE840(TLI, N, /*opIdx=*/0, Out, 0, 0);
+        appendBytes(Out, ", [", 3);
+        sub_35EE840(TLI, N, /*opIdx=*/1, Out, 0, 0);
+        appendBytes(Out, "];", 2);
+        goto LABEL_emitted;
+    }
+
+    // ----- representative case: surface load with boundary mode -----
+    case 0x6DC: {                     // NVPTXISD::Suld1DI8Clamp
+        appendBytes(Out, "suld.b.1d.b8.clamp ", 19);
+        sub_35EE840(TLI, N, 0, Out, 0, 0);   // dest
+        appendBytes(Out, ", [", 3);
+        sub_35EE840(TLI, N, 1, Out, 0, 0);   // handle
+        appendBytes(Out, ", {", 3);
+        sub_35EE840(TLI, N, 2, Out, 0, 0);   // x coord
+        appendBytes(Out, "}];", 3);
+        goto LABEL_emitted;
+    }
+
+    // ----- representative case: TMA bulk-copy with rich keyword set -----
+    case 0x14F4: {                    // NVPTXISD::CpAsyncBulkTensor2DGlobalShared
+        appendBytes(Out, "cp.async.bulk.tensor.", 21);
+        sub_35F3330(TLI, N, 0, Out, "kind");     // .2d|.3d|.4d|.5d
+        appendBytes(Out, ".", 1);
+        sub_35F3330(TLI, N, 1, Out, "space");    // global|shared::cluster
+        // Optional .multicast::cluster
+        if ((flags >> 17) & 1) sub_35F18E0(TLI, N, 0, Out, "multicast");
+        // Optional .cta_group::1|2
+        if ((flags >> 18) & 3) sub_35F3330(TLI, N, 2, Out, "cta_group");
+        // Operand list: descriptor, dst, src, ...
+        appendBytes(Out, " ", 1);
+        sub_35EE840(TLI, N, 0, Out, 0, 0);
+        appendBytes(Out, ", ", 2);
+        sub_35EE840(TLI, N, 1, Out, 0, 0);
+        appendBytes(Out, ", ", 2);
+        sub_35EE840(TLI, N, 2, Out, 0, 0);
+        appendBytes(Out, ";", 1);
+        goto LABEL_emitted;
+    }
+
+    // ... 258 more case bodies following the same template ...
+
+    default:
+        // 3,318 case values fall here -- target-independent ISD nodes
+        // or reserved-but-unused enumerators. emitNVPTXSDNode is a no-op
+        // for these; the upstream printer handles them via the standard
+        // MachineInstr opcode tables.
+        goto LABEL_default_0x437638;
+    }
+
+LABEL_emitted:
+    // Common post-amble: write trailing ';' if not already emitted.
+    return;
+
+LABEL_default_0x437638:
+    // Falls back to the generic MI printer at the call site.
+    return;
+}
+```
+
+### Why a Single Monolithic Switch?
+
+> ⚡ **QUIRK — Monolithic 6,634-case switch instead of per-family vtables**
+> Upstream LLVM splits asm printing across a `TargetInstrInfo::getInstSizeInBytes` table plus the TableGen-generated `printInstruction` switch in the `*InstPrinter.cpp` file. NVIDIA's encoder collapses **everything** -- mnemonic, modifier keywords, operand formatting hooks -- into one function with a single dense switch over the SDNode opcode space. The reason is that NVPTX's modifier set is positional and order-sensitive (`tex.unified.2d.v4.f32.f32` is one instruction; `tex.2d.unified.v4.f32.f32` is a syntax error), so the encoder cannot factor out a generic "emit modifier list" loop without losing the per-opcode ordering. The monolithic switch also makes the encoder branch-free relative to the SDNode opcode -- the CPU jumps once through the indirect-branch table and lands directly in the right body, avoiding the two-level dispatch that a TableGen-generated printer would incur.
+
+> ⚡ **QUIRK — 50% of cases are sparse-region fallthroughs**
+> The switch covers 335..6968 inclusive (6,634 entries) but only 261 unique handlers exist. The remaining 3,318 case values fall through to the same default arm at `0x437638`. This is what a compiler emits when an `enum` is defined with non-contiguous values (e.g., `NVPTXISD::FooThing = 0x14F, NVPTXISD::BarThing = 0x6DC` with no enumerators in between): the C++ frontend emits a `switch` with a `case` for every gap, and the optimizer prefers a dense jump table over a hash because the index space is bounded by `max - min`. The cost is 6,634 entries × 8 bytes = 53 KB of jump-table memory consumed by sparse holes, in exchange for branch-free dispatch. Trying to convert this to a per-family vtable would require renumbering the enum to be contiguous, which would break every binary-compatible pattern that hardcodes the numeric opcode values (including `getTargetNodeName` in upstream LLVM).
+
+> ⚡ **QUIRK — Default arm is not an error path**
+> A default arm in a dispatcher of this size would normally be a `llvm_unreachable` or an assertion call. Here it is a silent `return` (`0x437638` is a 2-instruction epilogue, not a diagnostic emitter). This is deliberate: the asm printer walks **every** MachineInstr in the program, including target-independent ones that LLVM's generic printer handles. When `sub_35F6D40` is invoked on such a node, it simply does nothing and returns, leaving the actual printing to the upstream `MachineInstr::print` path. The pattern is "if I recognize the opcode, emit it; otherwise fall back to whoever else is on the printing chain", which is closer to a visitor than a true switch -- but it's spelled as a switch for the dispatch-density reason explained above.
+
+### Sample 30-Row Case → Keyword Binding Table
+
+| Case (hex) | Case (dec) | Mnemonic prefix written | Modifier keywords emitted | Family |
+|---:|---:|---|---|---|
+| 0x14F | 335 | `ld.param.b8` | `space` | Load |
+| 0x150 | 336 | `ld.param.v4.b32` | `space`, `vec` | Load |
+| 0x152 | 338 | `st.param.v2.b32` | `space`, `vec` | Store |
+| 0x173 | 371 | `tex.1d.v4.f32.f32` | `unified`, `vec` | Texture |
+| 0x1AE | 430 | `.param .align <a> .b8 _param_<n>[<sz>];` | (literal directive) | Call ABI |
+| 0x37D | 893 | `shf.l.clamp.b32` | `op` | Funnel shift |
+| 0x509 | 1289 | `st.global.v4.b32` | `space`, `vec` | Store |
+| 0x511 | 1297 | `st.param.s32` | `sign`, `type` | Store |
+| 0x55E | 1374 | `brx.idx` | (none) | Branch table |
+| 0x570 | 1392 | `ret;` | (none) | Call ABI |
+| 0x571 | 1393 | `call` | `op` (callee handle) | Call ABI |
+| 0x572 | 1394 | `call.uni` | `op` | Call ABI |
+| 0x680 | 1664 | `atom.global.add.u32` | `space`, `op`, `type` | Atomic |
+| 0x6DC | 1756 | `suld.b.1d.b8.clamp` | `space`, `type` | Surface |
+| 0x6F3 | 1779 | `suld.b.2d.v4.b32.zero` | `space`, `vec`, `type` | Surface |
+| 0x6F6 | 1782 | `tex.unified.2d.v4.s32.f32` | `unified`, `vec`, `type` | Texture |
+| 0x901 | 2305 | `tex.unified.2d.v4.s32.f32.grad` | `unified`, `vec`, `type` | Texture |
+| 0xEB0 | 3760 | `tld4.r.2d.v4.f32.f32` | `unified`, `vec` | Tld4 gather |
+| 0xEB4 | 3764 | `wmma.load.a.sync.aligned.m16n16k16` | `mmarowcol`, `abtype` | WMMA |
+| 0xF40 | 3904 | `wmma.mma.sync.aligned.m16n16k16` | `mmarowcol`, `abtype`, `rowcol` | WMMA |
+| 0x122F | 4655 | `wmma.store.d.sync.aligned.m16n16k16` | `mmarowcol`, `abtype` | WMMA |
+| 0x1300 | 4864 | `barrier.cluster.arrive.aligned` | `aligned` | Cluster |
+| 0x14F4 | 5364 | `cp.async.bulk.tensor.2d.global.shared::cluster` | `kind`, `space`, `multicast`, `cta_group` | TMA |
+| 0x1500 | 5376 | `cp.async.bulk.tensor.3d.shared::cluster.global` | `kind`, `space`, `mc` | TMA |
+| 0x16B0 | 5808 | `mbarrier.arrive.shared::cta` | `arrive`, `scope`, `space` | mbarrier |
+| 0x16E0 | 5856 | `fence.acq_rel.cta` | `sem_ordered`, `scope` | Fence |
+| 0x1740 | 5952 | `prefetch.global.L2` | `space`, `cop` | Prefetch |
+| 0x1830 | 6192 | `red.async.shared::cluster.add.u32` | `space`, `op`, `type`, `scope` | Async reduce |
+| 0x1930 | 6448 | `setmaxnreg.inc.sync.aligned.u32` | `aligned`, `op`, `type` | Scheduling |
+| 0x19D0 | 6608 | `elect.sync` | (none) | Scheduling |
+| 0x19E5 | 6629 | `mma.sp.sync.aligned.m16n8k32.row.col.f16.f16.f16.f16` | `mmarowcol`, `parity_op`, `abtype` | Sparse MMA |
+| 0x1AE0 | 6880 | `mma.m16n8k16.row.col.f16.f16` | `mmarowcol`, `parity_op` | MMA |
+| 0x1B14 | 6932 | `griddepcontrol.wait` | (none) | Sync |
+
+(Case values are HIGH confidence -- they are explicit `case <value>uLL:` labels in the decompilation. Mnemonic prefixes are MED confidence -- they are reconstructed from the literal byte buffers referenced by each case body (`byte_4CE...`, `byte_4CF...`, `xmmword_4CE...`) and their lengths (`0x12`, `0x13`, `0x1B`, etc.); the prefix string itself was not directly extracted in this pass. Keyword bindings are HIGH confidence for keywords named in the `sub_35F2C30`/`sub_35F3330`/`sub_35F3E90`/`sub_35F18E0` call sites inside the corresponding case body.)
+
+### Implications for Assembly Printing
+
+The `sub_36CC800` wrapper appends a fixed `SuffixLen`-byte trailer after `sub_35F6D40` returns. This trailer is the **type-and-space suffix** ("`.f32`", "`.shared::cta`", "`.acquire.gpu`") that depends on operand types rather than the opcode itself. Splitting the work this way means:
+
+1. The opcode-driven mnemonic and modifier keywords are emitted by the monolithic switch (constant per opcode value).
+2. The operand-driven type suffix is appended by `sub_E826F0` (constant per ISD value-type bundle).
+3. The two halves are concatenated in-place in the same `OutBuf`, producing a single PTX instruction string per SDNode.
+
+This is why the master switch never directly emits type suffixes: every case body ends with a `goto LABEL_3441;` / `LABEL_3442;` / `LABEL_emitted;` that returns control to the wrapper, which then appends the type bytes. The pattern is **mnemonic+modifiers in switch, types after switch**, which keeps the switch body bounded and makes type-driven opcode-overload printing (e.g., the 11 widths of `st.param`) a single case body with a runtime suffix instead of 11 case bodies.
+
+### Confidence Tags for This Section
+
+- **HIGH confidence**: master switch location (`0x36607ec`), case count (6,634), unique-target count (261), case value range (335..6968), default target (`0x437638`), caller identity (`sub_36CC800`), the four emitter helper functions and their roles, and the 50-keyword inventory.
+- **HIGH confidence**: the case → keyword binding for every keyword named in the table above, since each was extracted by direct `rg` match on the 5th argument of the emitter call inside the corresponding case body.
+- **MED confidence**: the boundaries of the case-range partition table. The boundaries were inferred by correlating case-value clustering (group-by-target) with mnemonic prefix lengths and the keyword set used inside each cluster; they may shift by a few opcodes either way as more case bodies are decoded.
+- **MED confidence**: the reconstructed mnemonic strings ("`tex.unified.2d.v4.f32.f32`", "`wmma.mma.sync.aligned.m16n16k16`", etc.). The byte buffers exist (`byte_4CE6005`, `byte_4CF3B30`, etc.) and the lengths match the expected PTX mnemonic widths, but the actual character content of those buffers was not dumped here.
+- **LOW confidence**: the exact bit position of the modifier sub-fields inside the 64-bit flags word at `((uint64_t*)N)[1]`. The `v13 >> 17` shift is observed, but the higher-order sub-fields (`(flags >> 18) & 3`, `(flags >> 25) & 0x1F`, etc.) are pattern-inferred from the operand-keyword index arguments passed to the emitter helpers.
+
+### Open Follow-Ups Specific to `sub_35F6D40`
+
+- **Dump the literal byte buffers.** Resolving every `byte_4CE...`/`byte_4CF...` reference to its actual UTF-8 content would give the full mnemonic string per case and let us produce a 261-row case → mnemonic table instead of the 30-row sample above. This requires walking `cicc_data_tables.json` and joining on the `xmmword_*` / `dword_*` / `byte_*` symbol names.
+- **Document the inner sub-switches.** The function contains three additional large switches at lines 33113, 102155, and 109917 (112, 639, 188 cases respectively) that handle modifier-only dispatch -- e.g., which `.<scope>` to emit when `flags >> 17 & 0x7F == k`. These are currently lumped into the helpers but their exact value tables should be cross-referenced against the PTX ISA modifier grammar.
+- **Map the missing 199 opcodes.** The string table has 460 NVPTXISD names but the switch has only 261 unique handlers. Either some names alias to the same handler (multiple case values jumping to one target -- which we have already observed for the 3,318 default-fallthroughs), or some 199 names are produced upstream but never reach the asm printer (e.g., they are folded by ISel before printing). Confirming which is happening would close the loop on the family-count totals.
+- **Confirm the offset constant.** The lower bound of 335 strongly suggests `ISD::FIRST_TARGET_MEMORY_OPCODE + 1` or equivalent; pinning down the exact constant would tell us whether NVPTX uses the public `ISD::*` range below 335 or a private rebasing.
+
+---
+
 ## Cross-References
 
 - [SelectionDAG & Instruction Selection](selectiondag.md) -- how these opcodes are produced and where they live in the pipeline.

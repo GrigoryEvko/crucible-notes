@@ -936,6 +936,6 @@ Note: The catalog contains 119 unique name strings as extracted from the binary.
 | Application engine `sub_468760` at 0x468760 with 10-parameter signature | HIGH | Decompiled file exists with matching signature |
 | 119 unique R_CUDA type name strings extracted from binary | HIGH | All names extracted from `nvlink_strings.json`; complete catalog verified |
 | `"STO_CUDA_OBSCURE"` emitted by `sub_42F850` | HIGH | String confirmed in `nvlink_strings.json` |
-| Action types and aliases (0x01/0x12/0x2E, 0x06/0x37, 0x07/0x38) | MEDIUM | Reconstructed from decompiled `sub_468760` switch; full per-action verification not performed |
+| Action types and aliases (0x01/0x12/0x2E, 0x06/0x37, 0x07/0x38) | HIGH | The 64-byte descriptor table at `off_1D3DBE0` was byte-decoded for all 117 entries; the resulting `slot0.action` distribution matches the `sub_468760` switch arms one-for-one. The full per-entry decode and action-to-name mapping appears in [R_CUDA Relocation Catalog § Descriptor Byte Layout](../reference/r-cuda-catalog.md#descriptor-byte-layout). |
 | Per-architecture vtable with 79 slots from `sub_459640` | MEDIUM | Function exists; slot count inferred from 632-byte allocation (79 * 8) |
 | YIELD relocation forward-progress check at ctx+94 | MEDIUM | Reconstructed from decompiled relocation phase analysis |

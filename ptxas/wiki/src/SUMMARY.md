@@ -47,6 +47,7 @@
 - [Hot/Cold Partitioning](./passes/hot-cold.md)
 - [GMMA/WGMMA Pipeline](./passes/gmma-pipeline.md)
 - [Varying Propagation (Divergence Analysis)](./passes/varying-propagation.md)
+- [Shader Constant Extraction](./passes/shader-const-extraction.md)
 - [Uniform Register Optimization](./passes/uniform-regs.md)
 - [Late Expansion & Legalization](./passes/late-legalization.md)
 

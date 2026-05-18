@@ -472,7 +472,7 @@ GVN-CSE, reassociation, shader constant extraction, CTA/VTG expansion, argument 
 | # | Bin# | Phase Name | Category | O-Level | Description | Detail Page |
 |---|---|---|---|---|---|---|
 | 33 | 38 | `OriPerformLiveDeadSecond` | Analysis |  | Full liveness analysis + DCE (2nd instance, post-early-optimization cleanup) | [Liveness](liveness.md) |
-| 34 | 39 | `ExtractShaderConstsFirst` | Optimization |  | Identifies uniform values loadable from constant memory instead of per-thread computation (1st pass); impl `sub_1C72640` (4,582 B, 37 callees — **shared with phase 51** `ExtractShaderConstsFinal`; one engine, two pipeline positions; stub) |  |
+| 34 | 39 | `ExtractShaderConstsFirst` | Optimization |  | Identifies uniform values loadable from constant memory instead of per-thread computation (1st pass); impl `sub_1C72640` (4,582 B, 37 callees — **shared with phase 51** `ExtractShaderConstsFinal`; one engine, two pipeline positions; called via `sub_C5FDA0` with `is_final_pos = 0`, the finalize sub-step is skipped) | [Shader Const Extraction](shader-const-extraction.md) |
 | 35 | 40 | `OriHoistInvariantsEarly` | Optimization |  | Loop-invariant code motion: hoists invariant computations out of loops (early) | [Loop Passes](loop-passes.md) |
 | 36 | 42 | `EmitPSI` | Lowering |  | Emits PSI (Pixel Shader Input) interpolation setup for graphics shaders |  |
 | 37 | 43 | `GeneralOptimizeMid` | Optimization |  | Compound pass: copy prop + const fold + algebraic simplify + DCE (mid) | [GeneralOptimize](general-optimize.md) |
@@ -489,7 +489,7 @@ GVN-CSE, reassociation, shader constant extraction, CTA/VTG expansion, argument 
 | 48 | 55 | `EnforceArgumentRestrictions` | Lowering |  | Enforces ABI restrictions on function arguments (register classes, alignment) |  |
 | 49 | 56 | `GvnCse` | Optimization | **> 1** | Global value numbering combined with common subexpression elimination | [Copy Prop & CSE](copy-prop-cse.md) |
 | 50 | 58 | `OriReassociateAndCommon` | Optimization |  | Reassociates expressions for better commoning opportunities, then eliminates commons | [Copy Prop & CSE](copy-prop-cse.md) |
-| 51 | 59 | `ExtractShaderConstsFinal` | Optimization |  | Final shader constant extraction pass (after GVN may expose new constants); impl **shared** with phase 34 = `sub_1C72640` (4,582 B); stub |  |
+| 51 | 59 | `ExtractShaderConstsFinal` | Optimization |  | Final shader constant extraction pass (after GVN may expose new constants); impl **shared** with phase 34 = `sub_1C72640` (4,582 B); called via `sub_C5FDD0` with `is_final_pos = 1`, the finalize sub-step `sub_1C68760` runs and commits bank allocations | [Shader Const Extraction](shader-const-extraction.md) |
 | 52 | 60 | `OriReplaceEquivMultiDefMov` | Optimization |  | Eliminates redundant multi-definition move instructions with equivalent sources |  |
 
 ### Stage 4 -- Late Optimization (Phases 53--77)
