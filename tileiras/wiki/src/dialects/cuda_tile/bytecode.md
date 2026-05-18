@@ -2,35 +2,36 @@
 
 ## Abstract
 
-The `cuda_tile` dialect ships its own bytecode reader and writer. Neither parses a standalone container — the top-level TileIR envelope is handled by the generic MLIR bytecode header parser documented in [MLIR Bytecode Format](../../bytecode/mlir-bc-format.md). What `cuda_tile` contributes is four dialect-private dispatchers that the top-level reader hands control to whenever a Type, Attribute, Debug attribute, or Op originates from `cuda_tile`. Two of those dispatchers are shared with the cross-dialect bytecode machinery; the remaining two — TypeTag and Op opcode — are `cuda_tile`-private and are the subject of this page.
+The `cuda_tile` dialect ships its own bytecode reader and writer. Neither parses a standalone container — the top-level TileIR envelope is handled by the generic MLIR bytecode header parser documented in [MLIR Bytecode Format](../../bytecode/mlir-bc-format.md). What `cuda_tile` contributes is the dialect-private Op-opcode dispatcher plus the `cuda_tile`-introduced arms of three otherwise-shared dispatchers (TypeTag, AttributeTag, DebugTag). Only the Op-opcode dispatcher is exclusively `cuda_tile`; the other three carry both builtin and `cuda_tile` cases.
 
 The split:
 
 | Dispatcher | Cases | Owner |
 |---|---:|---|
-| TypeTag | 18 | cuda_tile-private Type tags |
-| AttributeTag | 13 | shared (cuda_tile attrs route here) |
-| DebugTag | 7 | shared |
-| Op opcode | 110 | cuda_tile-private op opcodes |
+| TypeTag | 19 (`0..18`) | shared `sub_59C710`; tags `12..18` are `cuda_tile`-introduced types |
+| AttributeTag | 13 (`1..13`) | shared `sub_59F100`; cuda_tile attrs route through tags `4..13` |
+| DebugTag | 7 (`0..6`) | shared `sub_589B90` |
+| Op opcode | 110 (`0..109`) | `cuda_tile`-private `sub_5B13D0` |
 
-Both private dispatchers are reached from the top-level bytecode-parse-into-scratch path. The two shared dispatchers come in through that same path and through other dialects' readers; they hold no per-dialect state, so the same `Attribute` and `Location` results round-trip through either entry point.
+The private Op-opcode dispatcher is reached from the top-level bytecode-parse-into-scratch path. The three shared dispatchers come in through that same path and through other dialects' readers; they hold no per-dialect state, so the same `Type`, `Attribute`, and `Location` results round-trip through either entry point.
 
 ## TypeTag Dispatcher
 
-The cuda_tile TypeTag dispatcher reads a single `uint64_t` tag VarInt and switches on it. Tag `0` is the null sentinel: the reader returns `nullptr` on tag `0` and the writer never emits it. Tags 1..17 cover the Type subclasses introduced by `cuda_tile`; tag 18 is reserved for the microscale element type that only appears as a leaf inside a tile shape.
+The TypeTag dispatcher (`sub_59C710`) reads a single VarInt tag and switches on it across a dense `[0..18]` namespace shared between builtin element types and the `cuda_tile`-introduced aggregate types. Tags `0..11` are builtin integer/float element types resolved without any further reads; tags `12..17` are the `cuda_tile` aggregate types (Pointer, Tile, TensorView, PartitionView, Function, Token); tag `18` is the microscale `f8E8M0FNU` element type reachable only as a leaf inside a tile shape. The full byte-for-byte table lives in [Wire-Format Constants — Layer 2: TypeTag Namespace](../../reference/wire-format-constants.md#layer-2--typetag-namespace-sub_59c710) and the dispatcher walk in [MLIR Bytecode Format — Type Tag Dispatch](../../bytecode/mlir-bc-format.md#type-tag-dispatch). The summary the `cuda_tile`-side reader cares about:
 
 | Tag | Type | Payload |
-|---|---|---|
-| 1 | TileType | element type ref + VarInt rank + VarInt-encoded shape |
-| 2 | TensorViewType | element type ref + shape + stride |
-| 3 | PartitionViewType | tile view interface payload |
-| 4 | PointerType | pointee type ref + VarInt address space |
-| 5 | TokenType | no payload |
-| 6 | StringType | string-table index |
-| 7..17 | cuda_tile-private extensions | varies |
-| 18 | f8E8M0FNU | parameterless; reachable only as a leaf via fallback |
+|---:|---|---|
+| `0..4` | `i1`, `i8`, `i16`, `i32`, `i64` | none (width fully determined by tag) |
+| `5..11` | `f16`, `bf16`, `f32`, `tf32`, `f64`, `f8E4M3FN`, `f8E5M2` | none |
+| `12` | PointerType | pointee type-ref + VarInt address space |
+| `13` | TileType | element type-ref + VarInt rank + VarInt-encoded shape |
+| `14` | TensorViewType | element type-ref + shape + strides |
+| `15` | PartitionViewType | element type-ref + shape + dim-map + partition-mode byte |
+| `16` | FunctionType | input type-ref list + result type-ref list |
+| `17` | TokenType | no payload |
+| `18` | `f8E8M0FNU` | parameterless; reachable only as a leaf via the extension path |
 
-TileType is the workhorse. Its payload is a TypeRef for the element type, a VarInt rank, and a VarInt-encoded shape. The reader shares its shape parser with TensorViewType and PartitionViewType, keeping the three Tile-family decoders byte-compatible across the shape prefix and letting the writer emit any of them through a single shape-writer helper. PointerType carries a TypeRef for the pointee and a VarInt address space; TokenType is payload-free. StringType wraps the string table and resolves through the same string-index helper that backs `StringAttr`.
+TileType is the workhorse of the `cuda_tile`-introduced cluster. Its payload is a TypeRef for the element type, a VarInt rank, and a VarInt-encoded shape. The reader shares its shape parser with TensorViewType and PartitionViewType, keeping the three Tile-family decoders byte-compatible across the shape prefix and letting the writer emit any of them through a single shape-writer helper. PointerType carries a TypeRef for the pointee and a VarInt address space; TokenType is payload-free.
 
 The dispatcher's contract with its caller is uniform: every case path returns a heap-allocated MLIR `Type` on success or `nullptr` on failure. The single-byte return convention lets the bytecode reader push results straight into the Type-section table without rechecking each case.
 

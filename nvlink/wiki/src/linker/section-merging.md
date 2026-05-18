@@ -12,7 +12,7 @@ A conventional linker merges `.text` from N objects into one `.text`. A GPU devi
 4. Validate that overlapping data regions are identical (multiple TUs may define the same global).
 5. Handle per-kernel sections that must be split by entry point (constant banks, local data, shared memory).
 
-The section merging infrastructure is built on four core primitives -- `find_section_by_name`, `section_create`, `section_data_copy`, and `section_layout_engine` -- plus five specialized overlap-merge functions for each memory space.
+The section merging infrastructure is built on four core primitives -- `find_section_by_name`, `section_create`, `section_data_copy`, and `section_layout_engine` -- plus six specialized overlap-merge functions for each memory space, a string-table deduplicator (`sub_442400`/`sub_442520`), and a separate content-equality dedup engine for mercury (`.nv.merc.*`) debug sections (`sub_4748F0`).
 
 ## Section Classification
 
@@ -235,7 +235,7 @@ For the complete reimplementation-grade documentation — algorithm pseudocode, 
 
 A GPU linker must handle a case that rarely appears in CPU linking: multiple translation units can define the same global variable with the same initializer data. This is common in CUDA because `__device__` variables at file scope have external linkage by default.
 
-nvlink handles this through five specialized overlap-merge functions, one per memory space:
+nvlink handles this through six specialized overlap-merge functions, one per memory space (the family is sometimes described as "five" in older comments; the host-reference variant at `0x435B60` is structurally identical and the count is six):
 
 | Address | Function | Memory space | Size |
 |---|---|---|---|
@@ -244,8 +244,9 @@ nvlink handles this through five specialized overlap-merge functions, one per me
 | `0x4343C0` | `merge_overlapping_constant` | `.nv.constant*` | 11,838 B |
 | `0x434BC0` | `merge_overlapping_variant1` | (per-entry constant) | 11,147 B |
 | `0x435390` | `merge_overlapping_variant2` | (per-entry data) | 11,156 B |
+| `0x435B60` | `merge_overlapping_host` | `.nv.host` host-side reference data | 11,014 B |
 
-All five follow the same algorithm, differing only in the section record fields they read and the error messages they emit:
+All six follow the same algorithm, differing only in the section record fields they read and the error messages they emit:
 
 ### Overlap Merge Algorithm (`sub_432B10`)
 
@@ -399,6 +400,83 @@ The merge phase tracks duplicate definitions through two mechanisms:
 2. **Data-level duplicates**: The overlap merge functions (`sub_432B10` family) detect when two input objects contribute data to the same byte range within a section. Identical data is silently merged (no diagnostic); non-identical data is a fatal error.
 
 The constant deduplication engine (`sub_4339A0`, called during layout Phase 9) goes further: it finds identical 32-bit and 64-bit constant values across different symbols and aliases them to save space. Verbose output: `"found duplicate value 0x%x, alias %s to %s"` and `"found duplicate 64bit value 0x%llx, alias %s to %s"`.
+
+## Mercury Sections: Content-Equality Dedup (`sub_4748F0`)
+
+The closest analog in nvlink to traditional ELF COMDAT group semantics is the **mercury** section family. Mercury sections are debug, symtab-shndx, and relocation sections whose canonical name is prefixed with `.nv.merc.` -- for example `.nv.merc.debug_info`, `.nv.merc.debug_line`, `.nv.merc.nv_debug_line_sass`, `.nv.merc.symtab_shndx`, `.nv.merc.rela`. Front-end tooling tags duplicate copies with this prefix so the linker can recognise the candidate set without scanning every section.
+
+The dedup is implemented inline in `sub_4748F0` (a large 1,771-line orchestrator that also handles debug-info merge). The algorithm at lines 1564-1662 compares two candidate section vectors element-by-element and accepts the duplicate only if **every** byte of the content matches:
+
+```c
+// Strip the ".nv.merc." prefix (9 bytes) so the canonical and tagged
+// variants compare under the same logical name.
+if (starts_with(name, ".nv.merc."))
+    name += 8;     // 8 because ".nv.merc" without trailing dot is the strip length
+                   // used in sub_4748F0 (intentional -- ".nv.merc.foo" -> ".foo")
+
+for each parallel entry (a, b) in (candidate_vector, reference_vector):
+    if memcmp(a.data, b.data, a.size) != 0:
+        REJECT   // not a duplicate, keep both copies
+    if strcmp(strip(a.name), strip(b.name)) != 0:
+        REJECT
+    if a.field_0 != b.field_0 || a.field_8 != b.field_8 || a.field_24 != b.field_24:
+        REJECT   // the (offset, link, info, addralign) quad-tuple must match
+accept: drop the candidate, keep the reference
+```
+
+Three vectors at `elfw+16`, `elfw+24`, and the 60th/61st slots of the per-object array (`v402[60]`, `v402[61]`) participate in the comparison. Each vector entry is a 16-byte `(data_ptr, size)` pair plus auxiliary header fields. The walk requires **identical vector cardinality** -- if the candidate has a different number of entries than the reference, the dedup is rejected outright (`v30 = 19` branch at LABEL_347).
+
+This is functionally COMDAT-group elimination at the content level, not at the linkonce-name level: two `.nv.merc.debug_info` sections from independent translation units are merged only if they describe the exact same debug information byte-for-byte. The check is conservative enough that a single differing relocation in `.nv.merc.rela.debug_info` will keep both copies, avoiding silent debug-data corruption.
+
+The four namespace prefixes used by the mercury family:
+
+| Prefix family | Sample sections | Role |
+|---|---|---|
+| `.nv.merc.debug_*` | `.nv.merc.debug_info`, `.nv.merc.debug_line`, `.nv.merc.debug_str` | DWARF debug sections deduplicated by content |
+| `.nv.merc.nv_debug_*` | `.nv.merc.nv_debug_line_sass`, `.nv.merc.nv_debug_info_reg_sass`, `.nv.merc.nv_debug_info_reg_type` | NVIDIA-specific SASS-level debug data |
+| `.nv.merc.symtab_shndx` | (singleton) | Extended-section-index table for the merged symbol table |
+| `.nv.merc.rela` | (singleton) | Relocation entries that apply to mercury sections |
+| `.nv.merc.nv.shared.reserved.` | (sm_100+) | Reserved shared-memory placeholders that participate in mercury dedup |
+
+Strings referenced: every `.nv.merc.*` literal in the binary is consumed by `sub_4748F0` (and helpers `sub_1CED0E0`, `sub_1CF1690`, `sub_1CEF5B0`, `sub_1CF3720`, `sub_1CF72E0`) for prefix matching during dedup. Verbose tracing is gated by the same `elfw+64 & 1` debug flag used elsewhere.
+
+## String-Table Dedup (`sub_442400`, `sub_442520`)
+
+When the merge phase needs to insert a section or symbol name into the output ELF string table at `elfw+336`, it first checks whether the same string is already present. If so, it reuses the prior offset rather than appending a duplicate. The two entry points are:
+
+| Function | Domain | Hash table |
+|---|---|---|
+| `sub_442400` | Section names (input `.shstrtab`) | `elfw+296` |
+| `sub_442520` | Symbol names (input `.strtab`) | `elfw+288` |
+
+Both follow the same pattern. A name string is looked up in the appropriate hash table. If the string was registered by a prior input object, the cached offset (`*(uint32_t *)(hash_entry + 8)`) is reused and the verbose path emits `"set duplicate name for %s(%d) to %d\n"`, indicating that the new occurrence is being aliased to the existing string-table slot. Only if the lookup returns 0 does the code allocate a fresh slot:
+
+```c
+old_offset = hash_entry[8];
+if (old_offset != 0 && current_strtab_cursor != 0) {
+    *strtab_cursor_out = old_offset;                // reuse
+    if (verbose) fprintf(stderr, "set duplicate name for %s(%d) to %d\n", name, sym_index, old_offset);
+} else {
+    new_offset = elfw->strtab_cursor;               // elfw+320
+    *strtab_cursor_out = new_offset;
+    hash_entry[8] = new_offset;
+    elfw->strtab_cursor += strlen(name) + 1;
+    elfw->strtab_count++;                           // elfw+312
+    elfw->strtab_vector[strtab_count] = name;       // elfw+336
+}
+```
+
+The string-table dedup is silent (no fatal errors) -- duplicate strings are harmless and the only observable consequence is the reduced size of the output `.shstrtab` / `.strtab`. The verbose trace exists for debugging string-table layout regressions.
+
+## Duplicate Weak Parameter Bank Detection
+
+When two translation units define the same weak entry function, the merge phase enforces that the parameter-bank size declarations match. The check is performed inline in `merge_elf` against the diagnostic string `"Duplicate weak parameter bank for '%s' is not the same size"`. If the sizes disagree, the linker emits a fatal error and aborts. If the sizes match, the second occurrence is dropped silently (the standard "weak %s already processed" path takes over).
+
+The matching diagnostic for the non-fatal sibling case is `"duplicate param bank on weak entry %s"`, emitted at verbose level when the parameter bank attribute reappears on an already-resolved weak entry. This is informational; the data has been validated as a match by the size check above.
+
+## EIATTR Duplicate Detection in `.nv.info`
+
+When per-entry `.nv.info` sections are merged (the inline handler in `merge_elf` for `SHT_CUDA_INFO`), the linker walks each EIATTR record and registers it in a per-function info list at `ctx+480`. If a record with the same attribute code re-appears for the same entry function (and the records are not byte-identical), the inline handler emits the fatal diagnostic `"duplicate Meta-Info entry found"`. This catches the case where two cubins declare conflicting `EIATTR_PARAM_CBANK`, `EIATTR_FRAME_SIZE`, or `EIATTR_MAX_THREADS` records for the same kernel -- a programming error that would otherwise produce non-deterministic launch metadata.
 
 ## Section Types Reference
 
@@ -729,6 +807,12 @@ The partition type is stored at `ctx+664`. If different input objects disagree o
 | `"skip mercury section %i"` | `sub_45E7D0` | Mercury section skipped during merge (verbose only) |
 | `"remove weak reloc for %s"` | `sub_45E7D0` | Weak relocation to constant section removed (verbose only) |
 | `"unknown .nv.compat attribute (%x) encoutered."` | `sub_45E7D0` | Unrecognized compat attribute type (verbose warning) |
+| `"Duplicate weak parameter bank for '%s' is not the same size"` | `sub_45E7D0` | Weak entry redefined with mismatched param-bank size (fatal) |
+| `"duplicate Meta-Info entry found"` | `sub_45E7D0` (inline `.nv.info` handler) | EIATTR record conflict for the same entry function (fatal) |
+| `"set duplicate name for %s(%d) to %d"` | `sub_442400`, `sub_442520` | String-table entry already present, alias to existing offset (verbose only) |
+| `"found duplicate value 0x%x, alias %s to %s"` | `sub_4339A0` | 32-bit constant value dedup, second symbol aliased (verbose only) |
+| `"found duplicate 64bit value 0x%llx, alias %s to %s"` | `sub_4339A0` | 64-bit constant value dedup, second symbol aliased (verbose only) |
+| `"found duplicate %d byte value, alias %s to %s"` | `sub_433870` | 12/16/20/24/32/48/64-byte memcmp-based constant dedup (verbose only) |
 
 ## Confidence Assessment
 
@@ -768,7 +852,11 @@ The partition type is stored at `ctx+664`. If different input objects disagree o
 | Section record 104 bytes with fields at documented offsets | MEDIUM | Offset reads at +32 (size), +48 (addralign), +72 (symbol\_list) confirmed across `sub_4325A0` and `sub_433760`; complete layout reconstructed from multiple functions |
 | Data node 40 bytes with data\_ptr at +0, alignment at +16, size at +24, sym\_index at +32 | MEDIUM | Offsets confirmed in `sub_433870` and `sub_4325A0` decompiled code; +16 (alignment), +24 (data\_size), +32 (sym\_index) verified |
 | Per-entry section lists at elfw+256/+264/+272/+280 | MEDIUM | Inferred from `sub_438640` and `sub_439830` parameter passing patterns; not all offsets individually verified |
-| Five overlap-merge functions follow identical algorithm with different error messages | MEDIUM | Two confirmed (`sub_432B10`, `sub_4343C0`) share same structure; remaining three (`sub_437E20`, `sub_434BC0`, `sub_435390`) inferred from file size similarity and address range |
+| Six overlap-merge functions follow identical algorithm with different error messages | MEDIUM | Two confirmed (`sub_432B10`, `sub_4343C0`) share same structure; remaining four (`sub_437E20`, `sub_434BC0`, `sub_435390`, `sub_435B60`) inferred from file size similarity and address range |
+| Mercury (`.nv.merc.*`) dedup uses content-equality memcmp in `sub_4748F0` | HIGH | Decompiled lines 1564-1662 show parallel-vector walk with `memcmp(v273, v271, v360)` and `strcmp` on prefix-stripped names; 9-byte (`.nv.merc.`) prefix strip implemented as `+8` after `sub_44E3A0` prefix check |
+| String-table dedup in `sub_442400`/`sub_442520` emits `"set duplicate name for %s(%d) to %d"` | HIGH | String at addr 0x1d39f28 with `referenced_by_functions = ["sub_442400", "sub_442520"]`, xrefs from `0x4424b0` and `0x4425d0` |
+| `"Duplicate weak parameter bank for '%s' is not the same size"` fatal | HIGH | String present in `nvlink_strings.json`; emitted from the weak-entry merge path inside `sub_45E7D0` |
+| `"duplicate Meta-Info entry found"` fatal in `.nv.info` inline handler | MEDIUM | String present; referenced from non-function data table at `0x2459028` -- likely an error-descriptor table consumed by `sub_467460` from inside `sub_45E7D0`'s `.nv.info` branch |
 
 ## Cross-References
 

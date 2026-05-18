@@ -18,11 +18,24 @@ disassembly, call graphs, and the 3,185 pattern-matcher functions that they invo
 
 ## Scale Summary
 
-| Dispatch function | Binary size | Instructions | Pattern matchers | Total call sites | Entry trampoline | Context |
-|-------------------|-------------|-------------|-----------------|-----------------|-----------------|---------|
-| `sub_169B190` | 280 KB | 65,999 | 762 | 15,870 | `sub_B12930` | Generic (all SM) |
-| `sub_143C440` | 233 KB | ~56,241 | 1,087 | 1,971 | `sub_B12940` | SM120-specific |
-| `sub_198BCD0` | 233 KB | 54,043 | 1,336 | 13,391 | `sub_B12960` | Post-scheduling |
+| Dispatch function | Binary size | Instructions | Pattern matchers | Primary opcodes hit | Secondary switches | Total switch cases | Largest template table | Entry trampoline | Context |
+|-------------------|-------------|-------------|-----------------|--------------------:|-------------------:|-------------------:|----------------------:|-----------------|---------|
+| `sub_169B190` | 280 KB | 65,999 | 762 | 249 / 373 | 110 | 2,347 | 245 (cases 0..244) | `sub_B12930` | Generic (all SM) |
+| `sub_143C440` | 233 KB | ~56,241 | 1,087 | 203 / 373 | 85 | 1,971 | 190 (cases 0..189) | `sub_B12940` | SM120-specific |
+| `sub_198BCD0` | 233 KB | 54,043 | 1,336 | 203 / 373 | 85 | 1,966 | 190 (cases 0..189) | `sub_B12960` | Post-scheduling |
+
+All three primary switches dispatch over the same 0..372 opcode space, but the
+**generic dispatcher recognizes 249 distinct opcodes**, while the SM120 and
+post-schedule dispatchers each handle only 203 -- the remaining opcodes fall
+through to the shared default in each pass.  The generic pass also reaches
+**pattern/template ID 244** (its largest secondary table is the 245-case rewrite
+selector at `0x169DC25`), whereas SM120 and post-schedule top out at template
+ID 189 (190-case tables at `0x144503C` and `0x199488C` respectively).  This is
+the deepest structural asymmetry between the three passes: the generic peephole
+both observes more opcode classes and rewrites them into a wider template
+namespace.  All three share an identical 72-case rewrite-action table (at
+`0x143FB8B`, `0x16A166C`, `0x198F41B`) plus 50--52-case secondary tables that
+gate medium-frequency rewrites.
 
 All three entry trampolines (`sub_B12930`, `sub_B12940`, `sub_B12960`) are 11-byte
 thunks that strip or forward one argument and tail-call the corresponding giant.
@@ -88,9 +101,15 @@ Within each primary case, the dispatcher:
    `best_template_id`.  If it is no longer -1, a secondary switch on the
    template ID selects the rewrite action.
 
-The secondary switches are embedded inside the giant function.
-`sub_143C440` alone contains 85 secondary jump tables (sizes 7--190 cases),
-totaling 1,971 switch cases.
+The secondary switches are embedded inside the giant function.  `sub_143C440`
+contains 85 secondary jump tables (sizes 6--190 cases) totaling 1,598 secondary
+cases (1,971 including the primary 373-case opcode switch); `sub_169B190`
+contains **110** secondaries totaling 1,974 secondary cases (2,347 with the
+primary), and `sub_198BCD0` mirrors SM120 with 85 secondaries and 1,593
+secondary cases (1,966 with the primary).  In every dispatcher the largest two
+secondary tables are the template-rewrite selector (190 or 245 cases) and the
+72-case action subtable; the remaining tables are 6--52-case per-opcode
+priority gates.
 
 ### Rewrite action
 
@@ -377,8 +396,10 @@ and/or more profitable transformation.
 | 22--31 | Highly specific multi-operand patterns | Wide register + predicated ops |
 | 33--36 | Maximum specificity (8--9 operands + all modifiers) | Full tensor instruction forms |
 
-Pattern IDs range from 1 to approximately 244 in the generic and SM120
-dispatchers.  Multiple matchers can target the same pattern ID with different
+Pattern IDs occupy disjoint ranges per dispatcher: the generic pass reaches
+template ID **244** (245-case rewrite table at `0x169DC25`), while SM120 and
+post-schedule cap at template ID **189** (190-case tables at `0x144503C` and
+`0x199488C`).  Multiple matchers can target the same pattern ID with different
 priorities, creating a priority cascade.
 
 ## Instruction Node Layout
@@ -790,3 +811,5 @@ Default threshold: 7.
 | Rewrite helper call frequencies | `p1.20` lines 216--227, `p1.23` lines 228--237 |
 | Priority 36 as highest observed | `p1.22` lines 316--327 |
 | Instruction node layout | `p1.20` lines 406--420, `p1.22` lines 367--409 |
+| Secondary switch inventory per dispatcher (85 / 110 / 85; template caps 244 vs 189) | `ptxas_switches.json` filtered by `func_addr` |
+| Primary 373-case opcode coverage (249 vs 203 distinct targets) | `ptxas_switches.json`, switches at `0x143C478`, `0x169B1C8`, `0x198BD08` |

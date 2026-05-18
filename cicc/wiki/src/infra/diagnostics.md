@@ -72,7 +72,7 @@ EDG diagnostic records are approximately 192-byte structures organized as a tree
 
 The 37KB terminal renderer is the larger and more complex of the two backends. It handles ANSI color output, word-wrapping to terminal width, source context display with caret underlining, and recursive child diagnostic emission.
 
-**Location prefix.** The source location is formatted before the severity label. For file-based diagnostics, `sub_722FC0` or `sub_723640` produces the filename, followed by `(line_number)` in parentheses, wrapped in ANSI color code 5 (file path color). Command-line diagnostics use string ID 1490 ("command line"). Diagnostics with no file have no location prefix.
+**Location prefix.** The source location is formatted before the severity label. For file-based diagnostics, `sub_722FC0` or `sub_723640` produces the filename, followed by `(line_number)` in parentheses, wrapped in ANSI color code 5 (file path color). Command-line diagnostics use the localized string at ID 1490 (rendered as `"command line argument"` in the English locale; the bare `"command line"` literal is not present in the string table). Diagnostics with no file have no location prefix.
 
 **Severity label.** The label string is looked up via `sub_67C860(string_id)` from a localized string table. The string table base `v57` is offset by 0 for normal diagnostics, 1 for command-line diagnostics. When diagnostic numbering is enabled (`unk_4D04728` set) and severity is 5 or below with a nonzero diagnostic number at +176, the renderer appends ` #<number>` after the severity label, converted by `sub_67D2D0`.
 
@@ -158,11 +158,11 @@ Each diagnostic object has this structure:
 }
 ```
 
-The `ruleId` is constructed by `sprintf("%lu", *(uint32*)(diag+176))` -- the decimal diagnostic number prefixed with "EC". The `level` string is mapped from the severity byte at +180 via a switch statement. The `message.text` is produced by `sub_683690`, which renders the diagnostic text into `qword_4D039E8` via `sub_681B50` and then copies it character-by-character into `qword_4D039D8` with JSON escaping of `"` and `\` characters. The `locations` array is present only when `*(diag+136) != 0` (valid file ID). The `physicalLocation` is built by `sub_67C120`, which calls `sub_729E00` to decompose the packed source position and `sub_722DF0` to resolve the file ID to a path string. The `relatedLocations` array carries note sub-diagnostics from the linked list at `diag+72`.
+The `ruleId` is formed by emitting the literal `"EC"` prefix followed by the decimal diagnostic number (the unsigned word at `diag+176`) formatted into the output buffer; no standalone `"EC%lu"` printf format string survives in the rodata section, so the prefix and the integer are appended through two separate buffer writes. The `level` string is mapped from the severity byte at +180 via a switch statement that yields exactly five SARIF tokens present in the binary: `"remark"`, `"warning"`, `"error"`, `"catastrophe"`, `"internal_error"`. The `message.text` is produced by `sub_683690`, which renders the diagnostic text into `qword_4D039E8` via `sub_681B50` and then copies it character-by-character into `qword_4D039D8` with JSON escaping of `"` and `\` characters. The `locations` array is present only when `*(diag+136) != 0` (valid file ID). The `physicalLocation` is built by `sub_67C120`, which calls `sub_729E00` to decompose the packed source position and `sub_722DF0` to resolve the file ID to a path string. The `relatedLocations` array carries note sub-diagnostics from the linked list at `diag+72`.
 
 Multiple diagnostics are comma-separated: a comma is prepended before `{` when `unk_4F074B0 + unk_4F074B8 > 1` (more than one diagnostic emitted so far).
 
-**Include-stack annotations.** When include depth (`dword_4F04C64`) is greater than zero, `sub_6837D0` walks the include stack (776-byte records at `qword_4F04C68`) calling `sub_67B7E0` to build `#include` context annotations. These are linked as children at `diag+40/+48`. Error 453 gives "in file included from ..." context, error 1150 gives ellipsis "..." when too many include levels exist, and errors 1063/1064 give file-reference footers.
+**Include-stack annotations.** When include depth (`dword_4F04C64`) is greater than zero, `sub_6837D0` walks the include stack (776-byte records at `qword_4F04C68`) calling `sub_67B7E0` to build context annotations. These are linked as children at `diag+40/+48`. The English-locale templates that survive in the string table are `"detected during:"` and the family of `"detected during instantiation of %nt %p"` / `"detected during implicit generation of %nt %p"` / `"detected during processing of template argument list for %na %p"` strings -- EDG uses the C++ instantiation-context vocabulary, not C-preprocessor `"in file included from"` phrasing. Diagnostic numbers 453, 1063, 1064, and 1150 select which of these templates renders for the current include-stack frame.
 
 **Warning-as-error promotion.** When a warning (severity 5) has been emitted and `unk_4D04728` is set, the function creates a synthetic "warnings treated as errors" diagnostic via `sub_67D610(0xE7D, ..., 4)` with severity 4 (remark), then recursively calls `sub_6837D0` on it.
 
@@ -172,7 +172,7 @@ Filtering happens in `sub_6837D0` before either renderer is invoked:
 
 1. **Severity threshold**: `byte_4F07481[0]` stores the minimum severity. Diagnostics below this level are silently suppressed.
 2. **Duplicate detection**: `byte_4CFFE80[4*errnum + 2]` bit flags track "already seen" diagnostics. Bit 0 marks first occurrence, bit 1 marks already emitted. On second hit, the diagnostic is counted but not emitted.
-3. **Pragma suppression**: `sub_67D520` checks whether the diagnostic is disabled via `#pragma diag_suppress` or similar EDG pragmas. `sub_67D470` records the suppression.
+3. **Pragma suppression**: `sub_67D520` checks whether the diagnostic is disabled via `#pragma nv_diag_suppress` (the spelling that survives in the string table -- the legacy `diag_suppress` form is accepted as an alias by the EDG pragma parser but is not the literal stored alongside the dispatcher). `sub_67D470` records the suppression.
 4. **Error limit**: When `unk_4F074B0 + unk_4F074B8 >= unk_4F07478`, error 1508 ("error limit reached") is emitted and `sub_7235F0(9)` aborts compilation.
 
 ## Diagnostic Severity Enum
@@ -299,7 +299,7 @@ These NVIDIA-specific categories are registered in the YAML serializer at `sub_1
 
 **Bitstream serializer** (`sub_F01350`, 23KB at `0xF01350`): Emits remarks in LLVM's binary bitstream format (used for `-fsave-optimization-record`). Record types include "Remark", "Remark header", "Remark debug location", "Remark hotness", "Argument with debug location", and "Argument". Uses `sub_EFD2C0` for VBR-encoded record emission and `sub_EFCCF0` for abbreviation definitions.
 
-**Remark serializer factory** (`sub_C2E790`, 6KB at `0xC2E790`): `llvm::remarks::createRemarkSerializer` dispatches to YAML or bitstream format based on configuration. Returns an error for unknown formats: `"Unknown remark serializer format."`.
+**Remark serializer factory** (`sub_C2E790`, 6KB at `0xC2E790`): `llvm::remarks::createRemarkSerializer` dispatches to YAML or bitstream format based on configuration. Two distinct unknown-format messages are emitted at different layers: `"Unknown remark format: '%s'"` from the format-string parser (when the user-supplied `-pass-remarks-format` value does not match a known token) and `"Unknown remark serializer format."` from the factory itself (when the parsed enum reaches the dispatcher with no matching case). Both literals are present in rodata.
 
 ### OptimizationRemarkEmitter Analysis
 

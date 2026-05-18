@@ -28,23 +28,13 @@ The rest of the page walks the container at reimplementation depth: file envelop
 
 ## Overall File Format
 
-The container starts with an 8-byte magic:
+The container starts with an 8-byte magic. The first three bytes are the upstream MLIR-bytecode framing prefix (`0x06 0x03 0x80`); bytes 3–6 spell `"Tile"`; byte 7 is `0x00` — the tileiras / upstream MLIR split (upstream writes `"\nMLIR"` starting at byte 7):
 
 ```text
-7f 54 69 6c 65 49 52 00    // "\x7fTileIR\0"
+06 03 80 54 69 6c 65 00    // MLIR-bc framing + "Tile" + 0x00 terminator
 ```
 
-The trailing zero is a sentinel byte inside the magic, not a C-string terminator. A fixed-width version block follows:
-
-```c
-typedef struct TileVersion {
-    uint8_t major;
-    uint8_t minor;
-    uint16_t patch_le;
-} TileVersion;
-```
-
-The CUDA 13.1 reader accepts Tile version `13.1.0`. A mismatched version produces an `unsupported Tile version ...` diagnostic rather than falling back to upstream MLIR bytecode parsing.
+The trailing zero is a sentinel byte inside the magic, not a C-string terminator. Three unsigned-LEB128 VarInts follow — `major`, `minor`, optional `patch` — encoding the `Tile version` triple. The CUDA 13.1 reader accepts Tile version `13.1.x` for any patch value. A mismatched major or minor produces an `unsupported Tile version ...` diagnostic rather than falling back to upstream MLIR bytecode parsing. See [Header Parser (`sub_5838A0`)](#header-parser-sub_5838a0) for the full magic and version table.
 
 After the version block comes a sequence of sections. Each section starts with one ID byte: the low seven bits are the section ID, the high bit signals an alignment field in the header. A zero ID marks end-of-bytecode.
 
