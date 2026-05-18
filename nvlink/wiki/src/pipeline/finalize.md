@@ -1,6 +1,6 @@
 # Finalization Phase
 
-The finalization phase is the last major transformation before ELF serialization. After the relocation engine has patched all instruction and data bytes, `sub_445000` (55,681 bytes / 2,047 lines) performs a complete reindexing of the ELF wrapper's internal data structures -- renumbering symbols, renumbering sections, computing final sizes and offsets, sorting sections into canonical ELF order, and writing the ELF header fields. The result is a fully self-consistent device ELF ready to be serialized to bytes by the output phase.
+The finalization phase is the last major transformation before ELF serialization. After the relocation engine has patched all instruction and data bytes, `sub_445000` (55,681 bytes / 2,047 lines) performs a complete reindexing of the ELF wrapper's internal data structures -- renumbering symbols, renumbering sections, computing final sizes and offsets, sorting sections into canonical ELF order, and writing the ELF header geometry/flag fields. The output `e_type` (`ET_EXEC=2` for the default executable link, `ET_REL=1` under `-r`, `0xFF00` for Mercury) is **not** decided here -- it was set by `elfw_create` (`sub_4438F0`) from `byte_2A5F1E8` at line 391 of `main`, and `sub_445000` only branches on it. The geometry fields actually written by Phase 9 are `e_ehsize`, `e_shentsize`, `e_phentsize`, `e_shoff`, `e_shnum`, `e_shstrndx`, and `e_flags`; `e_type`, `e_machine`, `e_version`, `e_entry`, and `e_phoff` are left untouched. The result is a fully self-consistent device ELF ready to be serialized to bytes by the output phase.
 
 The timing infrastructure brackets this work with `sub_4279C0("finalize")`. For Mercury targets (sm >= 100), a separate FNLZR post-link pass (`sub_4275C0`) runs after serialization rather than inside this function -- the two are architecturally distinct despite the shared "finalize" naming.
 
@@ -60,7 +60,7 @@ The following is the exact call order within `sub_445000`, with function address
 
 | Step | Address | Function | Description |
 |---|---|---|---|
-| 1 | `0x439640` | `sub_439640` | Shared memory fixup (relocatable `ET_REL` only) |
+| 1 | `0x439640` | `sub_439640` | Shared memory fixup (executable `ET_EXEC` only, when `(e_flags & mask) == 0` and `byte elfw+99` is set) |
 | 1b | `0x438BD0` | `sub_438BD0` | Virtual section index remap (Mercury `0xFF00` only) |
 | 2 | `0x44DB00` | `sub_44DB00` | Pre-finalize: root kernel detect, call sub_44C030 |
 | 2a | `0x44C030` | `sub_44C030` | Callgraph closure: alt-call resolution (`-3` name -> address-taken `+4`) + DFS reachability + `$`-prefix validation |
@@ -79,13 +79,15 @@ The following is the exact call order within `sub_445000`, with function address
 | 6 | -- | (inline) | Section classification into 8 priority buckets |
 | 7 | -- | (inline) | Two-pass counting sort + address assignment |
 | 8 | -- | (inline) | Symbol `st_shndx` patching via section remap array |
-| 9 | -- | (inline) | ELF header geometry (ehsize, shentsize, shoff, flags) |
+| 9 | -- | (inline) | ELF header geometry (`e_ehsize`, `e_shentsize`, `e_phentsize`, `e_shoff`, `e_shnum`, `e_shstrndx`, `e_flags`); `e_type` is **not** rewritten here -- it was set at `elfw_create` time |
 
 ## Phase 1: Pre-finalization Fixups
 
 ### Shared Memory Fixup (Relocatable Mode)
 
-For relocatable links (`elfw+16 == 1`, i.e. `ET_REL`), if certain conditions on the arch flags (`elfw+48`) are not met and `byte elfw+99` is set, `sub_439640` is called to apply a final shared-memory adjustment pass. This handles the case where shared memory layout was deferred because the output is a relocatable object rather than a final executable. (`elfw+16 == 2` is `ET_EXEC`, the standard final-output type.)
+For **executable** links (`elfw+16 == 2`, i.e. `ET_EXEC` -- the default device-link output), `sub_439640` is called to apply a final shared-memory adjustment pass when **both** conditions hold: (a) `(e_flags & mask) == 0` where `mask = 1` if the OSABI byte at `e_ident[7]` is `0x41 ('A', CUDA ABI)` else `mask = 0x80000000` (line 347 of `sub_445000_0x445000.c`), and (b) `byte elfw+99` is set. The `ET_REL` branch is **not** taken here -- relocatable output skips this fixup entirely. Earlier wiki revisions had this gate inverted; the decompiled control flow at lines 342--349 makes it unambiguous (`if ( v3 == 2 ) { ... sub_439640(a1); }`).
+
+The `e_type` value at `elfw+16` is an **input** to `sub_445000` -- it is read at line 340 of the decompiled function, immediately after entry, and gates the first three branches; it was already written into the wrapper by `elfw_create` via the `a1 = (byte_2A5F1E8 == 0) + 1` argument at `main` line 391.
 
 For Mercury ELF type (`elfw+16 == 0xFF00`), the function handles virtual section index remapping. If the elfw has a non-zero section count at `elfw+248`, it validates the virtual-to-physical section index mapping (`elfw+472` and `elfw+368`) and calls `sub_438BD0` on the target section. The "secidx not virtual" assertion fires if the mapping is inconsistent.
 
@@ -407,7 +409,7 @@ The `e_flags` field in the ELF header (`elfw+48`) is patched with the program he
 
 ## Phase 9: ELF Header Finalization
 
-The final step writes the ELF header geometry fields:
+The final step writes the ELF header geometry fields. Note that `e_type` (`elfw+16`), `e_machine` (`elfw+18`), `e_version` (`elfw+20`), and `e_entry` (`elfw+24`) are **not** rewritten in this phase -- they were initialised by `elfw_create` (`sub_4438F0`) at module construction. The `e_phoff` and `e_phnum` fields are deferred to `sub_45BF00` (output phase) when an `ET_EXEC` program-header table is being emitted; see [ELF Serialization](../elf/serialization.md#preamble-e_phoff-and-e_phnum-computation). Phase 9 writes only:
 
 ### 64-bit ELF (class 2)
 
@@ -667,7 +669,7 @@ Textures, surfaces, and samplers are only printed if non-zero. The function list
 | `sub_44CE00` | 3,758 B | propagate_regcount_callgraph | Propagates REGCOUNT through callgraph edges |
 | `sub_450C50` | 3,100 B | propagate_stack_per_entry | Per-entry stack/CRS size propagation |
 | `sub_44CA40` | 2,416 B | callgraph_compat_remap | `.nv.callgraph` symbol index remapping |
-| `sub_439640` | ~2 KB | shared_memory_fixup_reloc | Shared memory fixup for relocatable output |
+| `sub_439640` | ~2 KB | shared_memory_fixup_exec | Shared memory fixup for executable (`ET_EXEC`) output -- gated on `(e_flags & abi_mask) == 0` and `byte elfw+99`; **not** taken for `ET_REL` |
 | `sub_44D9D0` | 1,577 B | create_prototype_section | Creates `.nv.prototype` section (type `0x70000002`) |
 | `sub_44DB00` | 1,473 B | pre_finalize_cleanup | Root kernel detection, metadata section creation |
 | `sub_44CBC0` | 1,124 B | prototype_symbol_remap | `.nv.prototype` symbol index remapping |

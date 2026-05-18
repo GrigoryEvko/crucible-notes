@@ -439,7 +439,7 @@ The `merge_flags` parameter (`a9`) is a 32-bit bitmask that controls the elfw's 
 | 17-18 | `0x60000` | `segment_flags` | +68 | Bits `a9 & 0x70000` stored at offset +68 |
 | 19 | `0x80000` | `mercury_reloc` | -- | Set when mercury_flag or `a9 & 0x180000`; forces relocatable ELF type |
 
-When `mercury_flag` is true or bits 19-20 are set, the constructor forces `e_type` to a relocatable variant and sets `mercury_reloc` in the flags.
+When `mercury_flag` is true or bits 19-20 are set, the constructor sets the `mercury_reloc` bit (`a9 |= 0x80000`) in the internal flag word at `+76` and routes through the Mercury initialisation path (`sub_45AC50` arch state). `e_type` itself at `+16` is **not** rewritten by these gates -- it remains the value of the `elf_type` parameter passed in by the caller (set in `main` at line 391 from `(byte_2A5F1E8 == 0) + 1`). The Mercury `0xFF00` `e_type` only appears when the caller passes that value explicitly (e.g. intermediate Mercury serialisations); standard nvlink output is `ET_EXEC=2` or `ET_REL=1` regardless of Mercury flags.
 
 ## Function Reference
 

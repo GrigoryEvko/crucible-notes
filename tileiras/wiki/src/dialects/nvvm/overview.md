@@ -32,7 +32,7 @@ PTX
 
 ## Per-Family Pages
 
-The dialect ships about 157 ops. They split cleanly into eight large families plus a long tail of small ones. The bulk of each family is documented on its own page; this overview lists the families, their roster sizes, the SM floor, and one example op so the cross-link table doubles as an index. (WMMA is three ops in MLIR; the PTX shape × layout × element-type cross-product is reached through attributes on `nvvm.wmma.{load,store,mma}` rather than per-combination ops.)
+The dialect ships about 124 ops. They split cleanly into eight large families plus a long tail of small ones. The bulk of each family is documented on its own page; this overview lists the families, their roster sizes, the SM floor, and one example op so the cross-link table doubles as an index. (WMMA is three ops in MLIR; the PTX shape × layout × element-type cross-product is reached through attributes on `nvvm.wmma.{load,store,mma}` rather than per-combination ops.)
 
 | Family | Count | SM floor | Example op | Page |
 |---|---:|---|---|---|

@@ -11,10 +11,10 @@ One of the most distinctive features of cicc's IR generation is that **two compl
 | Component | Path A (LibNVVM) | Path B (Standalone) |
 |---|---|---|
 | **Expression codegen** | `0x91xxxx`--`0x94xxxx` | `0x127xxxx`--`0x12Bxxxx` |
-| **EmitExpr (master dispatch)** | `sub_91DF90` | `sub_128D0F0` |
-| **EmitStmt (statement dispatch)** | `sub_9363D0` | (parallel at similar offset) |
-| **EmitFunction (entry block setup)** | `sub_946060` | (parallel) |
-| **GenerateFunctionProlog** | `sub_938240` | (parallel) |
+| **Expression master dispatch** | `sub_91DF90` | `sub_128D0F0` |
+| **Statement dispatch** | `sub_9363D0` | (parallel at similar offset) |
+| **Function entry block setup** | `sub_946060` | (parallel) |
+| **Function prolog / parameter lowering** | `sub_938240` | (parallel) |
 | **Builtin lowering mega-switch** | `sub_90AEE0` (33 KB native) | `sub_12B3FD0` (22 KB native) |
 | **Bitfield load/store** | `sub_923780` / `sub_925930` | `sub_1282050` / `sub_1284570` |
 | **Special variable codegen** | `sub_920430` / `sub_922290` | `sub_127F7A0` / `sub_1285550` |
@@ -31,15 +31,15 @@ The remainder of this page uses Path B addresses (the `0x12xxxxx` range) as the 
 
 | Address Range | Subsystem | Key Functions |
 |---|---|---|
-| `0x126A000`--`0x126BFFF` | Volatile detection, alignment queries | `sub_126A420` (IsVolatileAddress) |
-| `0x1273000`--`0x1275FFF` | Function attribute emission | `sub_12735D0` (EmitFunctionAttrs), `sub_1273F90` (AttributeReader) |
-| `0x127A000`--`0x127CFFF` | Type translation helpers | `sub_127A030` (GetLLVMType), `sub_127B390` (GetSMVersion), `sub_127B420` (IsAddressOfExpr), `sub_127B550` (FatalDiag) |
-| `0x127D000`--`0x127FFFF` | Constants, alloca creation, bool emission | `sub_127D8B0` (EmitConstExpr), `sub_127FC40` (CreateAlloca), `sub_127FEC0` (bool-conversion helper) |
-| `0x1280000`--`0x1285FFF` | Bitfield access, member loads, inline asm | `sub_1282050` (EmitBitfieldStore), `sub_1284570` (EmitBitfieldLoad), `sub_1285290` (EmitAsmCall) |
-| `0x1286000`--`0x128FFFF` | L-value codegen, binary ops, expression dispatch | `sub_1286D80` (EmitAddressOf), `sub_128A450` (EmitCast), `sub_128D0F0` (EmitExpr), `sub_128F9F0` (EmitBinaryArithCmp) |
-| `0x1290000`--`0x129AFFF` | Control flow helpers, inline asm, printf lowering | `sub_1290AF0` (SetInsertPoint), `sub_1292420` (EmitInlineAsm), `sub_12992B0` (LowerPrintfToVprintf) |
-| `0x129B000`--`0x12AFFFF` | Builtin helpers, atomic ops, surface/texture ops | `sub_12A4D50` (CreateBasicBlock), `sub_12A7DA0` (AtomicOps), `sub_12ADE80` (SurfaceTexture) |
-| `0x12B0000`--`0x12BFFFF` | Builtin mega-switch | `sub_12B3FD0` (BuiltinLowering, 103KB, 770 IDs) |
+| `0x126A000`--`0x126BFFF` | Volatile detection, alignment queries | `sub_126A420` (volatile-address predicate) |
+| `0x1273000`--`0x1275FFF` | Function attribute emission | `sub_12735D0` (attribute-bundle emitter), `sub_1273F90` (attribute-bundle reader) |
+| `0x127A000`--`0x127CFFF` | Type translation helpers | `sub_127A030` (EDG-to-LLVM type lookup), `sub_127B390` (SM-version query), `sub_127B420` (address-of predicate), `sub_127B550` (fatal diagnostic) |
+| `0x127D000`--`0x127FFFF` | Constants, alloca creation, bool emission | `sub_127D8B0` (constant-expression emitter), `sub_127FC40` (alloca creator), `sub_127FEC0` (bool-conversion helper) |
+| `0x1280000`--`0x1285FFF` | Bitfield access, member loads, inline asm | `sub_1282050` (bitfield store), `sub_1284570` (bitfield load), `sub_1285290` (asm-call emitter) |
+| `0x1286000`--`0x128FFFF` | L-value codegen, binary ops, expression dispatch | `sub_1286D80` (address-of L-value), `sub_128A450` (cast/conversion), `sub_128D0F0` (expression master dispatch), `sub_128F9F0` (binary arithmetic/compare) |
+| `0x1290000`--`0x129AFFF` | Control flow helpers, inline asm, printf lowering | `sub_1290AF0` (insertion-point setter), `sub_1292420` (inline-asm emitter), `sub_12992B0` (printf-to-vprintf lowering) |
+| `0x129B000`--`0x12AFFFF` | Builtin helpers, atomic ops, surface/texture ops | `sub_12A4D50` (basic-block creator), `sub_12A7DA0` (atomic ops), `sub_12ADE80` (surface/texture) |
+| `0x12B0000`--`0x12BFFFF` | Builtin mega-switch | `sub_12B3FD0` (builtin lowering, 103KB, 770 IDs) |
 
 ## The IRGenState Object
 
@@ -82,13 +82,13 @@ In Path B, the primary codegen context `a1` is a `CodeGenState**` -- a pointer t
 | +424 | Cleanup stack | Stack of pending destructor frames (24 bytes each) |
 | +456 | Allocapt marker | The `"allocapt"` sentinel instruction |
 
-The `"allocapt"` marker deserves special attention. When `EmitFunction` (`sub_946060`) creates the entry block, it inserts a dummy `bitcast void to void` instruction named `"allocapt"` as a sentinel. All subsequent alloca instructions created by `CreateTmpAlloca` (`sub_921D70` / `sub_127FC40`) are inserted **before** this sentinel, ensuring that every alloca ends up clustered at the top of the entry block. This is a hard requirement for LLVM's `mem2reg` pass to promote stack slots to SSA registers. The allocapt marker is removed by a later cleanup pass.
+The `"allocapt"` marker deserves special attention. When the function entry-block setup routine (`sub_946060`) creates the entry block, it inserts a dummy `bitcast void to void` instruction named `"allocapt"` as a sentinel. All subsequent alloca instructions created by `CreateTmpAlloca` (`sub_921D70` / `sub_127FC40`) are inserted **before** this sentinel, ensuring that every alloca ends up clustered at the top of the entry block. This is a hard requirement for LLVM's `mem2reg` pass to promote stack slots to SSA registers. The allocapt marker is removed by a later cleanup pass.
 
 ## EDG IL Node Layout
 
 Every codegen function traverses EDG IL nodes -- linked structures that represent declarations, statements, and expressions from the parsed CUDA source. The node layout is consistent across all codegen paths:
 
-**Expression node** (passed as `a2` to `EmitExpr`):
+**Expression node** (passed as `a2` to the expression master dispatch):
 
 | Offset | Field | Description |
 |---|---|---|
@@ -112,7 +112,7 @@ Every codegen function traverses EDG IL nodes -- linked structures that represen
 | +160 | Inner type / next | Followed when tag==12 (typedef stripping) |
 | +176 | Element count | For array types |
 
-The typedef-stripping idiom appears throughout every codegen function (15+ occurrences in `EmitExpr` alone):
+The typedef-stripping idiom appears throughout every codegen function (15+ occurrences in the expression master dispatch alone):
 
 ```c
 for (t = *expr_type; *(BYTE*)(t + 140) == 12; t = *(QWORD*)(t + 160));
@@ -122,7 +122,7 @@ This walks through chains of typedef aliases (kind 12) until it reaches the cano
 
 ## Function Emission Pipeline
 
-When cicc processes a device-side function, IR generation proceeds through a fixed sequence of stages. The entry point is `EmitFunction` (`sub_946060`), which sets up the function skeleton and then calls `GenerateFunctionProlog` (`sub_938240`) to emit parameter handling, followed by recursive statement emission.
+When cicc processes a device-side function, IR generation proceeds through a fixed sequence of stages. The entry point is the function entry-block setup routine (`sub_946060`), which sets up the function skeleton and then calls the parameter-prolog emitter (`sub_938240`) to emit parameter handling, followed by recursive statement emission.
 
 **Stage 1: Function skeleton** (`sub_946060`).
 Creates the LLVM `Function*` object, resolves the function type through the EDG typedef chain, and optionally sets a section name. Then creates two basic blocks: `"entry"` (the function entry point) and `"return"` (the single return block -- all return paths branch here). Inserts the `"allocapt"` sentinel into the entry block. For non-void functions, creates a `"retval"` alloca to hold the return value; for sret functions (returning aggregates), uses the first argument directly.
@@ -136,7 +136,7 @@ Iterates the EDG parameter linked list (next pointer at offset +112, stride 40 b
 - Registers the EDG declaration -> LLVM Value mapping in a hash table (open addressing, quadratic probing) for later lookup during expression codegen.
 - Optionally emits `"__val_param"` temporaries for byval aggregate parameters.
 
-**Stage 3: Body emission** (recursive `emitStmt` / `EmitExpr`).
+**Stage 3: Body emission** (recursive statement and expression dispatch).
 Walks the IL tree for the function body, dispatching through the statement codegen switch and the expression codegen switch (detailed below).
 
 **Stage 4: Kernel metadata** (`sub_93AE30`).
@@ -151,11 +151,11 @@ The central task of this layer is mapping CUDA-specific semantics to LLVM IR con
 
 | CUDA Concept | LLVM IR Representation | Codegen Function |
 |---|---|---|
-| `threadIdx.x` | `call i32 @llvm.nvvm.read.ptx.sreg.tid.x()` | `sub_1286E40` (EmitSpecialVarMemberAccess) |
+| `threadIdx.x` | `call i32 @llvm.nvvm.read.ptx.sreg.tid.x()` | `sub_1286E40` (special-var member access) |
 | `blockIdx.y` | `call i32 @llvm.nvvm.read.ptx.sreg.ctaid.y()` | same, category 2, component 1 |
 | `blockDim.z` | `call i32 @llvm.nvvm.read.ptx.sreg.ntid.z()` | same, category 1, component 2 |
 | `gridDim.x` | `call i32 @llvm.nvvm.read.ptx.sreg.nctaid.x()` | same, category 3, component 0 |
-| `warpSize` | `call i32 @llvm.nvvm.read.ptx.sreg.warpsize()` | `sub_1285550` (EmitSpecialVarAccess) |
+| `warpSize` | `call i32 @llvm.nvvm.read.ptx.sreg.warpsize()` | `sub_1285550` (special-var direct access) |
 | `__shared__` variable | `@var = addrspace(3) global ...` | `sub_916430` (address space = 3) |
 | `__constant__` variable | `@var = addrspace(4) global ...` | same (address space = 4) |
 | `__device__` variable | `@var = addrspace(1) global ...` | same (address space = 1) |
@@ -164,10 +164,10 @@ The central task of this layer is mapping CUDA-specific semantics to LLVM IR con
 | `__cluster_dims__(x,y,z)` | `!{!"nvvm.cluster_dim", !"x,y,z"}` + `!{!"nvvm.blocksareclusters"}` | same |
 | `__syncthreads()` | Builtin ID dispatch -> `llvm.nvvm.barrier0` | `sub_12B3FD0` (cases 0xB5--0xCC) |
 | `atomicAdd(ptr, val)` | Builtin dispatch -> `atomicrmw add` or `llvm.nvvm.atomic.*` | same (cases 0xBA--0xCC) |
-| `printf(fmt, ...)` | Rewritten to `vprintf(fmt, packed_buf)` | `sub_12992B0` (LowerPrintfToVprintf) |
-| `__asm__("ptx" : ...)` | `call void asm sideeffect "ptx", "=r,..."(...)` | `sub_1292420` (EmitInlineAsm) |
+| `printf(fmt, ...)` | Rewritten to `vprintf(fmt, packed_buf)` | `sub_12992B0` (printf-to-vprintf lowering) |
+| `__asm__("ptx" : ...)` | `call void asm sideeffect "ptx", "=r,..."(...)` | `sub_1292420` (inline-asm emitter) |
 | Texture/surface ops | `call @llvm.nvvm.tex.*` / `@llvm.nvvm.suld.*` | `sub_12ADE80`, `sub_12AA9B0` |
-| `__nv_float2int_rz` | `call i32 @__nv_float2int_rz(float %v)` | `sub_128A450` (EmitCast, NVIDIA intrinsic path) |
+| `__nv_float2int_rz` | `call i32 @__nv_float2int_rz(float %v)` | `sub_128A450` (cast/conversion, NVIDIA intrinsic path) |
 
 The special variable recognition pipeline (`sub_127F7A0`) checks five preconditions before treating a variable as a hardware register read: (1) the in-kernel flag at IRGenState+376 must be set, (2) the symbol must not be `extern`, (3) it must not be template-dependent, (4) its element count must be 1, and (5) its name must be non-null. The intrinsic IDs are stored in a static 5x3 table (`unk_427F760`): 5 categories (threadIdx, blockDim, blockIdx, gridDim, warpSize) times 3 components (x, y, z), with warpSize using only the first slot.
 
@@ -299,7 +299,7 @@ The IR generation layer produces named IR values that match Clang's naming conve
 | `"land.rhs"` / `"land.end"` / `"land.ext"` | Logical AND blocks + result | `sub_128D0F0` (opcode 0x57) |
 | `"lor.rhs"` / `"lor.end"` / `"lor.ext"` | Logical OR blocks + result | `sub_128D0F0` (opcode 0x58) |
 | `"cond.true"` / `"cond.false"` / `"cond.end"` | Ternary operator blocks | `sub_128D0F0` (opcode 0x67) |
-| `"tobool"` / `"conv"` | Cast results | `sub_128A450` |
+| `"tobool"` / `"conv"` | Cast results | `sub_128A450` (cast/conversion) |
 | `"sub.ptr.lhs.cast"` / `"sub.ptr.rhs.cast"` / `"sub.ptr.sub"` / `"sub.ptr.div"` | Pointer subtraction | `sub_128D0F0` (opcode 0x34) |
 | `"if.then"` / `"if.else"` / `"if.end"` | If statement blocks | `sub_937020` |
 | `"while.cond"` / `"while.body"` / `"while.end"` | While loop blocks | `sub_937180` |
@@ -314,9 +314,9 @@ The IR generation layer produces named IR values that match Clang's naming conve
 
 The IR generation subsystem is documented in detail across four sub-pages, each covering a major functional area:
 
-- **[Expression & Constant Codegen](./irgen-expressions.md)** -- The `EmitExpr` master dispatch (`sub_128D0F0`), its 40-operator inner switch, compile-time constant emission (`sub_127D8B0`), and the cast/conversion codegen (`sub_128A450`). Covers every C/C++ expression type from array decay to pointer subtraction to logical short-circuit.
+- **[Expression & Constant Codegen](./irgen-expressions.md)** -- The expression master dispatch (`sub_128D0F0`), its 40-operator inner switch, compile-time constant emission (`sub_127D8B0`), and the cast/conversion codegen (`sub_128A450`). Covers every C/C++ expression type from array decay to pointer subtraction to logical short-circuit.
 
-- **[Statement & Control Flow Codegen](./irgen-statements.md)** -- The `emitStmt` dispatcher (`sub_9363D0`), basic block creation for if/while/do-while/for/switch, cleanup scope management for C++ destructors, label and goto handling, and `#pragma unroll` metadata attachment.
+- **[Statement & Control Flow Codegen](./irgen-statements.md)** -- The statement dispatcher (`sub_9363D0`), basic block creation for if/while/do-while/for/switch, cleanup scope management for C++ destructors, label and goto handling, and `#pragma unroll` metadata attachment.
 
 - **[Function, Call & Inline Asm Codegen](./irgen-functions.md)** -- Function skeleton creation (`sub_946060`), the parameter prolog (`sub_938240`), call instruction emission with ABI classification (`sub_93CB50`), inline asm template parsing and constraint construction (`sub_1292420`), printf-to-vprintf lowering (`sub_12992B0`), and the 770-entry builtin dispatch table (`sub_12B3FD0`).
 

@@ -4,25 +4,25 @@ This page covers the four subsystems that together translate CUDA/C++ function d
 
 | | |
 |---|---|
-| **EmitFunction** | `sub_946060` (Path A) -- creates entry BB, allocapt sentinel, dispatches to prolog |
-| **GenerateFunctionProlog** | `sub_938240` (16 KB) -- parameter iteration, ABI dispatch, alloca emission |
-| **EmitCallExpr** | `sub_93CB50` (1,293 lines) -- type resolution, ABI classification, call emission |
-| **EmitInlineAsm** | `sub_1292420` (53 KB, 2,087 lines) -- 7-phase asm template-to-IR pipeline |
-| **BuiltinLowering** | `sub_12B3FD0` (103 KB, 3,409 lines) -- mega-switch over ~250 builtin IDs |
-| **EmitFunctionAttrs** | `sub_12735D0` / `sub_1273F90` -- grid_constant, preserve_n, custom ABI metadata |
+| **Function entry-block setup** | `sub_946060` (Path A) -- creates entry BB, allocapt sentinel, dispatches to prolog |
+| **Parameter prolog emitter** | `sub_938240` (16 KB) -- parameter iteration, ABI dispatch, alloca emission |
+| **Call-expression emitter** | `sub_93CB50` (1,293 lines) -- type resolution, ABI classification, call emission |
+| **Inline-asm emitter** | `sub_1292420` (53 KB, 2,087 lines) -- 7-phase asm template-to-IR pipeline |
+| **Builtin lowering** | `sub_12B3FD0` (103 KB, 3,409 lines) -- mega-switch over ~250 builtin IDs |
+| **Function attribute emitter** | `sub_12735D0` / `sub_1273F90` -- grid_constant, preserve_n, custom ABI metadata |
 
 
 ## Function Prolog: Entry Block Setup
 
-Every LLVM function produced by cicc starts with the same structural skeleton: an `entry` basic block containing a sentinel instruction, a cluster of `alloca` instructions for parameters and locals, and a `return` basic block for the unified exit path. The outer driver `EmitFunction` (`sub_946060`) builds this skeleton; the inner workhorse `GenerateFunctionProlog` (`sub_938240`) populates it with parameter handling code.
+Every LLVM function produced by cicc starts with the same structural skeleton: an `entry` basic block containing a sentinel instruction, a cluster of `alloca` instructions for parameters and locals, and a `return` basic block for the unified exit path. The outer driver at `sub_946060` builds this skeleton; the inner workhorse at `sub_938240` populates it with parameter handling code.
 
-### EmitFunction -- The Outer Driver
+### The Outer Driver (`sub_946060`)
 
-`EmitFunction` executes a fixed 10-step initialization sequence before tail-calling into the prolog generator:
+The entry-block setup routine executes a fixed 10-step initialization sequence before tail-calling into the prolog generator:
 
 ```
-EmitFunction(IRGenState *S, FunctionDecl *Decl, Function *F,
-             ParamList *Params, TypeInfoArray *TI, SourceLoc Loc, bool ByvalDemotion):
+function_entry_setup(IRGenState *S, FunctionDecl *Decl, Function *F,
+                     ParamList *Params, TypeInfoArray *TI, SourceLoc Loc, bool ByvalDemotion):
 
   1.  Resolve function type through typedef chain (kind==12 -> follow offset+160)
   2.  Call SetupFunctionMetadata(S, Decl)
@@ -48,14 +48,14 @@ EmitFunction(IRGenState *S, FunctionDecl *Decl, Function *F,
             S->RetVal = CreateTmpAlloca(S, returnType, "retval")
   8.  Store alignment of return type at S+216
   9.  Initialize insertion state: S->CurrentBB = entryBB
- 10.  Tail-call GenerateFunctionProlog(S, Decl, F, Params, TI, Loc, ByvalDemotion)
+ 10.  Tail-call parameter_prolog(S, Decl, F, Params, TI, Loc, ByvalDemotion)
 ```
 
 The `allocapt` sentinel is the critical mechanism. It is a dead `bitcast void undef to void` instruction that serves as an insertion anchor. When `CreateTmpAlloca` (at `sub_921D70`) is called with no explicit array size -- the common case -- it inserts the new `AllocaInst` **before** the `allocapt` marker rather than at the current builder insertion point. This ensures that all `alloca` instructions cluster at the top of the entry block regardless of where in the function body they were requested, which is a hard requirement for LLVM's `mem2reg` pass to promote them to SSA registers.
 
 The sentinel is eventually dead-code-eliminated in a later pass since it produces no usable value.
 
-### GenerateFunctionProlog -- Parameter Lowering
+### Parameter Lowering (`sub_938240`)
 
 The prolog iterates four parallel data structures in lockstep:
 
@@ -76,19 +76,19 @@ Before entering the parameter loop, a helper (`sub_938130`) checks whether the f
 
 For each parameter, the ABI variant field at `TypeInfo+12` selects one of four lowering paths:
 
-**Variant 0/1 -- Indirect/Aggregate Pass.** The parameter arrives as a pointer to caller-allocated memory. If the type is an aggregate (struct/union/class/array -- type kinds 8--11 checked by `IsAggregateType` at `sub_91B770`), the prolog creates a local alloca named `<param>.addr`, stores the incoming argument into it, and registers the alloca in the declaration map via `EmitParamDecl`. If the type is a scalar, it goes directly to `EmitParamDecl` without an intermediate alloca.
+**Variant 0/1 -- Indirect/Aggregate Pass.** The parameter arrives as a pointer to caller-allocated memory. If the type is an aggregate (struct/union/class/array -- type kinds 8--11 checked by the aggregate-type predicate at `sub_91B770`), the prolog creates a local alloca named `<param>.addr`, stores the incoming argument into it, and registers the alloca in the declaration map via the parameter-decl registrar (`sub_9446C0`). If the type is a scalar, it goes directly to the registrar without an intermediate alloca.
 
 **Variant 2 -- Direct Pass (most common).** The parameter is passed by value in a register or register pair. Two sub-paths exist:
 
-- **Byval demotion path.** When the `ByvalDemotion` flag (parameter `a7`) is set and the parameter carries a `byval` attribute (TypeInfo+16 nonzero), the prolog consults a global name-set (`dword_4D04688`) to decide whether to create a `__val_param` temporary. If selected, it allocates a `"tmp"` alloca via `CreateTmpAlloca`, stores the argument into it, names the alloca `"__val_param" + param_name`, and falls through to `EmitParamDecl`. The `__val_param` prefix is NVIDIA-specific and marks parameters that have been demoted from byval to local copy for downstream optimization passes.
+- **Byval demotion path.** When the `ByvalDemotion` flag (parameter `a7`) is set and the parameter carries a `byval` attribute (TypeInfo+16 nonzero), the prolog consults a global name-set (`dword_4D04688`) to decide whether to create a `__val_param` temporary. If selected, it allocates a `"tmp"` alloca via the temp-alloca creator (`sub_921D70`), stores the argument into it, names the alloca `"__val_param" + param_name`, and falls through to the parameter-decl registrar. The `__val_param` prefix is NVIDIA-specific and marks parameters that have been demoted from byval to local copy for downstream optimization passes.
 
-- **Normal path.** For non-byval scalars, calls `EmitParamDecl` directly. A guard validates that non-aggregate arguments are not marked indirect: `"Non-aggregate arguments passed indirectly are not supported!"`.
+- **Normal path.** For non-byval scalars, calls the registrar directly. A guard validates that non-aggregate arguments are not marked indirect: `"Non-aggregate arguments passed indirectly are not supported!"`.
 
-**Variant 3 -- Coercion.** The parameter's LLVM type does not match the source type and requires a coercion cast. For aggregates, a `"tmp"` alloca is created. For scalars, the declaration is looked up and wrapped with a bitcast. The result is forwarded to `EmitParamDecl`.
+**Variant 3 -- Coercion.** The parameter's LLVM type does not match the source type and requires a coercion cast. For aggregates, a `"tmp"` alloca is created. For scalars, the declaration is looked up and wrapped with a bitcast. The result is forwarded to the parameter-decl registrar.
 
-#### EmitParamDecl -- Registration
+#### Parameter Registration (`sub_9446C0`)
 
-`EmitParamDecl` (`sub_9446C0`) performs the final steps for each parameter:
+The registrar performs the final steps for each parameter:
 
 1. For scalar (non-aggregate, non-indirect) parameters: creates an alloca named `<param>.addr`, stores the incoming argument into it, and names the argument with the original parameter name.
 2. Inserts the mapping `(EDG decl pointer -> LLVM Value*)` into a hash map with open-addressing/quadratic-probing collision resolution. A duplicate check guards against re-declaration: `"unexpected: declaration for variable already exists!"`.
@@ -108,9 +108,9 @@ For each parameter, the ABI variant field at `TypeInfo+12` selects one of four l
 | Return basic block | `"return"` |
 | Alloca sentinel | `"allocapt"` |
 
-### CreateTmpAlloca Internals
+### Temp-Alloca Creator Internals (`sub_921D70`)
 
-`CreateTmpAlloca` (`sub_921D70`) computes alignment from the type size using `_BitScanReverse64` (effectively `log2(size)`), looks up or creates the pointer-to-type in the module's type system, then delegates to `CreateAllocaInst` (`sub_921B80`). The key detail: when no explicit array size is provided, the alloca is inserted at the `allocapt` marker position (`IRGenState+456+24`), not at the current builder insertion point.
+The temp-alloca creator computes alignment from the type size using `_BitScanReverse64` (effectively `log2(size)`), looks up or creates the pointer-to-type in the module's type system, then delegates to the low-level alloca emitter at `sub_921B80`. The key detail: when no explicit array size is provided, the alloca is inserted at the `allocapt` marker position (`IRGenState+456+24`), not at the current builder insertion point.
 
 
 ## Call Codegen
@@ -162,7 +162,7 @@ If the callee operand is a bitcast (byte[0] == 5), the optimizer walks back to t
 
 ### Phase 7: Pre-Call Hooks and printf Interception
 
-Debug location metadata is emitted via `sub_92FD10`. Then a special case: if the call is direct (opcode 20) and the callee name is literally `"printf"`, control transfers to `sub_939F40` which performs GPU printf lowering -- converting the `printf` call into a `vprintf`-style call that writes formatted output through the GPU's printf buffer mechanism.
+Debug location metadata is emitted via `sub_92FD10`. Then a special case: if the call is direct (opcode 20) and the callee name is literally `"printf"`, control transfers to the printf-expansion routine at `sub_939F40` which performs GPU printf lowering -- converting the `printf` call into a `vprintf`-style call that writes formatted output through the GPU's printf buffer mechanism.
 
 ### Phase 8: preserve_n Operand Bundles
 
@@ -194,17 +194,17 @@ For indirect calls, `callalign` metadata is constructed by querying the alignmen
 ### Call Emission Pseudocode
 
 ```
-EmitCallExpr(Result *Out, CodegenCtx *Ctx, CallNode *Call, u64 DestFlags, u32 Align):
+call_emitter(Result *Out, CodegenCtx *Ctx, CallNode *Call, u64 DestFlags, u32 Align):
 
-  callee_decl = ResolveCallee(Call->operand[0])
-  func_type   = PeelTypedefs(callee_decl->type)  // kind 6 -> kind 7
+  callee_decl = resolve_callee(Call->operand[0])
+  func_type   = peel_typedefs(callee_decl->type)  // kind 6 -> kind 7
 
   // ---- Builtin fast path ----
   if Call->opcode == CALL_DIRECT  AND  callee_decl->flags[199] & 2:
-      result = BuiltinLowering(Ctx, Call)
-      if isAggregate(func_type->returnType):
-          dest = DestFlags.ptr  OR  CreateTmpAlloca("agg.tmp")
-          Store(result, dest, ComputeAlign(returnType))
+      result = builtin_lowering(Ctx, Call)
+      if is_aggregate(func_type->returnType):
+          dest = DestFlags.ptr  OR  create_tmp_alloca("agg.tmp")
+          store(result, dest, compute_align(returnType))
           Out = {dest, INDIRECT, sizeof(returnType)}
       else:
           Out = result
@@ -212,40 +212,40 @@ EmitCallExpr(Result *Out, CodegenCtx *Ctx, CallNode *Call, u64 DestFlags, u32 Al
 
   // ---- Special intrinsics ----
   if callee_decl->intrinsicID in {10214, 10219, 10227, 15752}:
-      return SpecialIntrinsicHandler(Out, Ctx, callee_decl->intrinsicID, Call)
+      return special_intrinsic_handler(Out, Ctx, callee_decl->intrinsicID, Call)
 
   // ---- Normal call path ----
-  callee_val = CodegenCallee(Ctx, Call->operand[0])
-  args[]     = CodegenArguments(Ctx, Call->argList)
+  callee_val = codegen_callee(Ctx, Call->operand[0])
+  args[]     = codegen_arguments(Ctx, Call->argList)
   if Call->flags & REVERSED_EVAL:
-      Reverse(args)
+      reverse(args)
 
-  abi_desc   = ClassifyABI(func_type->returnType, paramTypes, byvalFlags)
+  abi_desc   = classify_abi(func_type->returnType, paramTypes, byvalFlags)
 
   if abi_desc.returnIsSRet:
-      sret_ptr = DestFlags.ptr  OR  CreateTmpAlloca("tmp")
-      PrependArg(args, sret_ptr)
+      sret_ptr = DestFlags.ptr  OR  create_tmp_alloca("tmp")
+      prepend_arg(args, sret_ptr)
 
   for each (arg, abi_entry) in zip(args, abi_desc.params):
       if abi_entry.kind == DIRECT  AND  abi_entry.isByval:
-          tmp = CreateAllocaForAggregate(arg)
-          Store(arg, tmp)
+          tmp = create_alloca_for_aggregate(arg)
+          store(arg, tmp)
           arg = tmp
       elif abi_entry.kind == INDIRECT:
-          assert isAggregate(arg.type)
+          assert is_aggregate(arg.type)
 
-  callee_val = FoldCalleebitcast(callee_val, func_type)
+  callee_val = fold_callee_bitcast(callee_val, func_type)
 
-  EmitDebugLoc(Ctx, Call->srcLoc)
+  emit_debug_loc(Ctx, Call->srcLoc)
 
   if Call->opcode == CALL_DIRECT  AND  callee_name == "printf":
-      return PrintfExpansion(Ctx, abi_desc, args, Call->srcLoc)
+      return printf_expansion(Ctx, abi_desc, args, Call->srcLoc)
 
-  bundle = BuildPreserveNBundle(Call->preserveData)
-  call_inst = EmitCall(func_type, callee_val, args, bundle)
-  AttachCCAttrs(call_inst, abi_desc)
+  bundle = build_preserve_n_bundle(Call->preserveData)
+  call_inst = emit_call(func_type, callee_val, args, bundle)
+  attach_cc_attrs(call_inst, abi_desc)
 
-  Out = HandleReturnValue(call_inst, abi_desc, func_type->returnType)
+  Out = handle_return_value(call_inst, abi_desc, func_type->returnType)
 ```
 
 
@@ -464,19 +464,19 @@ For a `__global__` kernel with grid_constant parameters and register preservatio
 
 | Address | Function | Role |
 |---|---|---|
-| `sub_946060` | EmitFunction | Creates entry BB, allocapt, return BB, dispatches to prolog |
-| `sub_938240` | GenerateFunctionProlog | Iterates parameters, ABI dispatch, alloca emission |
-| `sub_9446C0` | EmitParamDecl | Creates alloca+store, registers decl->Value mapping |
-| `sub_921D70` | CreateTmpAlloca | Alloca creation with alignment, inserted at allocapt |
-| `sub_921B80` | CreateAllocaInst | Low-level alloca IR emission |
-| `sub_938130` | IsSRetReturn | Checks ABI kind == 2 |
-| `sub_91B770` | IsAggregateType | Type kinds 8--11 (struct/union/class/array) |
-| `sub_93CB50` | EmitCallExpr | Full call instruction emission (1,293 lines) |
-| `sub_9378E0` | ClassifyABI | Return + parameter ABI classification |
-| `sub_939F40` | PrintfExpansion | GPU vprintf lowering for printf calls |
-| `sub_93AE30` | CollectCCAttrs | Builds sret/byval/align attribute list |
-| `sub_955A70` / `sub_12B3FD0` | BuiltinLowering | Mega-switch over ~250 builtin IDs |
-| `sub_1292420` / `sub_932270` | EmitInlineAsm | 7-phase asm template-to-IR pipeline |
-| `sub_12735D0` | EmitFunctionAttrs | Writes attribute bundles during IR gen |
-| `sub_1273F90` | ReadFunctionAttrs | Attaches LLVM named metadata from bundles |
-| `sub_64F1A0` | ParsePreserveAttrs | EDG parser for preserve_n_* tokens |
+| `sub_946060` | Function entry-block setup | Creates entry BB, allocapt, return BB, dispatches to prolog |
+| `sub_938240` | Parameter prolog emitter | Iterates parameters, ABI dispatch, alloca emission |
+| `sub_9446C0` | Parameter-decl registrar | Creates alloca+store, registers decl->Value mapping |
+| `sub_921D70` | Temp-alloca creator | Alloca creation with alignment, inserted at allocapt |
+| `sub_921B80` | Low-level alloca emitter | Builds the AllocaInst IR node |
+| `sub_938130` | sret-return predicate | Checks ABI kind == 2 |
+| `sub_91B770` | Aggregate-type predicate | Type kinds 8--11 (struct/union/class/array) |
+| `sub_93CB50` | Call-expression emitter | Full call instruction emission (1,293 lines) |
+| `sub_9378E0` | ABI classifier | Return + parameter ABI classification |
+| `sub_939F40` | Printf-to-vprintf expansion | GPU vprintf lowering for printf calls |
+| `sub_93AE30` | CC-attribute collector | Builds sret/byval/align attribute list |
+| `sub_955A70` / `sub_12B3FD0` | Builtin lowering | Mega-switch over ~250 builtin IDs |
+| `sub_1292420` / `sub_932270` | Inline-asm emitter | 7-phase asm template-to-IR pipeline |
+| `sub_12735D0` | Function-attribute emitter | Writes attribute bundles during IR gen |
+| `sub_1273F90` | Function-attribute reader | Attaches LLVM named metadata from bundles |
+| `sub_64F1A0` | preserve_n_* token parser | EDG parser for preserve_n_* tokens |

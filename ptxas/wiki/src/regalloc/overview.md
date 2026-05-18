@@ -605,7 +605,7 @@ An interval-based live range system at `0x994000`--`0x9A1000` (~80 functions) su
 |-----------|-------|-------|---------------|
 | Live range primitives | `0x994000`--`0x996000` | ~25 | Constructor, interval queries, weight, color get/set |
 | Interference graph | `0x996000`--`0x99A000` | ~18 | Node/edge construction, adjacency, degree, coloring |
-| Range operations | `0x99C000`--`0x9A1000` | ~35 | Merge, split, interference add/remove, copy detection |
+| Range operations | `0x99A000`--`0x9A1000` | ~55 | Merge, split, interference add/remove, copy detection |
 | Register coalescing | `sub_9B1200` | 1 | Copy elimination pass (800 lines) |
 | Live range splitting | `sub_9AEF60` | 1 | Interference graph update (900 lines, self-recursive) |
 | Range merge engine | `sub_9AD220` | 1 | Coalescing with cost heuristics (700 lines) |

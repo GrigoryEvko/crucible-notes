@@ -167,7 +167,7 @@ Triggered by `-r` or `--relocatable-link`. The output is a relocatable ELF that 
 | Output format | Relocatable device object with unresolved symbols and relocation tables |
 | Exit code path | `exit(0)` or `exit(-1)` |
 
-**Note on ELF type computation at line 486**: The expression is `(unsigned int)(byte_2A5F1E8 == 0) + 1`. When `byte_2A5F1E8 == 0` (not relocatable), this yields `1 + 1 = 2`. When `byte_2A5F1E8 == 1` (relocatable), it yields `0 + 1 = 1`. In the custom nvlink ELF writer, the first parameter of `sub_4438F0` is an opaque type tag (not the ELF e_type field directly). See [Entry Point & Main](entry.md#phase-1-elf-writer-creation-lines-426-593).
+**Note on ELF type computation at line 486**: The expression is `(unsigned int)(byte_2A5F1E8 == 0) + 1`. When `byte_2A5F1E8 == 0` (not relocatable), this yields `1 + 1 = 2`. When `byte_2A5F1E8 == 1` (relocatable), it yields `0 + 1 = 1`. The first parameter of `sub_4438F0` is then stored verbatim into `e_type` at `elfw+16` (`*((_WORD *)v17 + 8) = v101` inside `elfw_create`), so the two values map directly to the standard ELF `ET_EXEC=2` / `ET_REL=1` constants. From that point on, `sub_445000` and the output phase only **read** `elfw+16`; they never rewrite it. See [Entry Point & Main](entry.md#phase-1-elf-writer-creation-lines-426-593).
 
 **Phases executed**: Init -> CLI parse -> Library resolve -> ELF create -> Input loop -> Merge -> (DCE) -> Layout -> Relocate -> Finalize -> Write. DCE still runs because `byte_2A5F214` is forced on by `-r`.
 

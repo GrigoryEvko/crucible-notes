@@ -71,7 +71,7 @@ Reached via `LABEL_24`. Creates the output ELF wrapper (`elfw`) via `sub_4438F0`
 
 ```
 elfw_create(
-    type           = (byte_2A5F1E8 == 0) + 1,   // 1=exec, 2=relocatable
+    type           = (byte_2A5F1E8 == 0) + 1,   // 2=ET_EXEC (default), 1=ET_REL (when -r is set)
     is_64bit       = (dword_2A5F30C == 64),
     elf_class      = (byte_2A5F224 != 0) + 7,    // 7 for legacy, 8 for sm>72
     sm_version     = dword_2A5F314,
