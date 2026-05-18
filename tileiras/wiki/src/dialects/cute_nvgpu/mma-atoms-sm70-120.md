@@ -299,18 +299,21 @@ The 128-B mode is the canonical Hopper choice for full-width A and B tiles. The 
 
 ### GMMA_K and MN Constraints
 
-Per element type, the canonical K-size one WGMMA instruction consumes is `256 / elem_bits`. The MN extent must be a multiple of 8 in every case — a WGMMA hardware constraint on the output-tile size, independent of input element type.
+Per element type, the canonical K-size one WGMMA instruction consumes is `256 / elem_bits`, with one exception (`b1` rides a `.xor.popc` / `.and.popc` reduction over 256 bits of K). The MN extent must be a multiple of 8 in every case — a WGMMA hardware constraint on the output-tile size, independent of input element type. The dialect-side atom verifier rejects each unsupported input pair with a dedicated diagnostic: `"expects A/B of type s8/u8 and D of type i32"`, `"expects A/B of type s4/u4 and D of type i32"`, `"expects A/B of type u1 and D of type i32"`, and `"expects A/B of the e5m2/e4m3 type"` for the asymmetric FP8 mix.
 
 | Element type | K-size (canonical) | MN multiple |
 |---|---:|---:|
-| f32 (TF32) | 8 | 8 |
-| f16 | 16 | 8 |
-| bf16 | 16 | 8 |
-| s8 | 32 | 8 |
-| s4 | 64 | 8 |
-| e4m3/e5m2 | 32 | 8 |
+| f16 × f16 (acc `f16`/`f32`) | 16 | 8 |
+| bf16 × bf16 (acc `f32`) | 16 | 8 |
+| tf32 × tf32 (acc `f32`) | 8 | 8 |
+| e4m3 × e4m3 (FP8, acc `f32`) | 32 | 8 |
+| e5m2 × e5m2 (FP8, acc `f32`) | 32 | 8 |
+| Mixed `e4m3 × e5m2` (acc `f32`) | 32 | 8 |
+| `s8 × s8` / `u8 × u8` (acc `s32`) | 32 | 8 |
+| `s4 × s4` / `u4 × u4` (acc `s32`) | 64 | 8 |
+| `b1 × b1` popcount (acc `s32`) | 256 | 8 |
 
-The constructor derives `lbo` and `sbo` byte counts from the abstract tile shape via this table. An `m64n128k16.f16` tile uses `K = 16` because `256 / 16 = 16`, and the leading byte offset is `K * sizeof(f16)` scaled by the swizzle mode.
+The constructor derives `lbo` and `sbo` byte counts from the abstract tile shape via this table. An `m64n128k16.f16` tile uses `K = 16` because `256 / 16 = 16`, and the leading byte offset is `K * sizeof(f16)` scaled by the swizzle mode. See [Topics → WGMMA Emission Protocol — Per-Shape Lattice](../../topics/wgmma-emission-protocol.md#per-shape-lattice) for the full (M, N, K) legal-shape product and the cross-tier comparison; the table above is the same lattice surfaced from the dialect side so the descriptor packer and the lowering see one source of truth.
 
 ### Inline-Asm Template
 

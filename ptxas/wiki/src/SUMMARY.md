@@ -38,6 +38,7 @@
 - [Branch & Switch Optimization](./passes/branch-switch.md)
 - [Loop Passes](./passes/loop-passes.md)
 - [Strength Reduction](./passes/strength-reduction.md)
+- [Linear Replacement](./passes/linear-replacement.md)
 - [Copy Propagation & CSE](./passes/copy-prop-cse.md)
 - [Predication](./passes/predication.md)
 - [Rematerialization](./passes/rematerialization.md)

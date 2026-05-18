@@ -27,6 +27,7 @@
 - [Cross-Space Call Validation](./cuda/cross-space-validation.md)
 - [Device/Host Separation](./cuda/device-host-separation.md)
 - [Kernel Stub Generation](./cuda/kernel-stubs.md)
+- [Kernel Launch Syntax (`<<<...>>>`)](./cuda/kernel-launch-syntax.md)
 - [RDC Mode](./cuda/rdc-mode.md)
 - [JIT Mode](./cuda/jit-mode.md)
 - [Architecture Feature Gating](./cuda/arch-gating.md)

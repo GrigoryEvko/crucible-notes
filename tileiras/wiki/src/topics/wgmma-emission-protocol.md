@@ -230,7 +230,7 @@ For comparison against earlier and later tiers, see [Matmul Progression by SM](m
 
 WGMMA is `sm_90a` only. The architecture-conditional suffix matters: plain `sm_90` rejects WGMMA at NVVM verification. The dialect exposes WGMMA atoms through `cute_nvgpu.sm90.mma` and lowering rejects them on every other target.
 
-Blackwell removes WGMMA. SM100 and SM103 use `tcgen05.mma` over tensor memory; SM120 and SM121 (consumer Blackwell) use a synchronous `mma.sync.aligned` with explicit per-operand scale factors. Both replacements have different operand-residency models — see [Matmul Progression by SM](matmul-progression-by-sm.md) for the cross-architecture story.
+Blackwell removes WGMMA. SM100 and SM103 use `tcgen05.mma` over tensor memory; SM120 and SM121 (consumer Blackwell) use a synchronous `mma.sync.aligned` with explicit per-operand scale factors. SM110 (Jetson Thor) is enumerated as a target tier but the dialect registers no SM110-specific MMA atom — kernels targeting `sm_110` fall through to the universal-FMA atom rather than to any WGMMA or tcgen05 path. All three post-Hopper replacements have different operand-residency models — see [Matmul Progression by SM](matmul-progression-by-sm.md) for the cross-architecture story.
 
 ## Cross-References
 

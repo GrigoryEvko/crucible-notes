@@ -45,9 +45,13 @@ LogicalResult verify_atom_instance(Atom atom, Target target, Shape use_shape) {
 | SM89 | `sm89.mma` | SM80 copy atoms | Ada extends the dense register-MMA surface with FP8 inputs. |
 | SM90 | `sm90.mma`, `smem_desc_view` | `atom.tma_load`, `atom.tma_store`, `atom.tma_reduce`, `atom.stsm`, non-exec TMA atoms | Hopper WGMMA, SMEM descriptors, and TMA descriptor traffic. |
 | SM100/SM103 | `sm100.mma`, `sm100.mma_bs`, `sm100.mma_bs_sp` | `atom.tmem_load`, `atom.tmem_store`, `atom.s2t_copy`, TMA atoms | Datacenter Blackwell UMMA, block-scaled MMA, sparse block-scaled MMA, and tensor memory. |
+| SM110 (Jetson Thor) | — | inherited universal atoms | SM110 is registered as a target tier (`sm_110` / `sm_110a` / `sm_110f`) but has no dedicated MMA mnemonic; see note below. |
 | SM120/SM121 | `SM120.mma_bs` | Register-based copy and scale-factor paths | Consumer Blackwell block-scaled MMA with uppercase `SM120` spelling. |
 
 The uppercase spelling in `SM120.mma_bs` is part of the textual contract. A parser that lowercases it cannot round-trip IR for this dialect.
+
+> ⚡ **QUIRK — SM110 (Jetson Thor) registers a target tier but exposes no dedicated MMA surface (HIGH)**
+> The compiler's SM-target roster enumerates `sm_110`, `sm_110a`, and `sm_110f` alongside the other Blackwell tiers, and lowering will accept those targets as legal architecture flags. The dialect does NOT register a `sm110.mma` atom mnemonic — every MMA mnemonic in the registry is `sm80.mma`, `sm89.mma`, `sm90.mma`, `sm100.mma{,_sp,_bs,_bs_sp}`, or `SM120.mma_bs`. Kernels targeting SM110 fall through to the universal-FMA atom or to whichever earlier-tier MMA atom the architecture-conditional gate accepts. No WGMMA, no `tcgen05.mma`, no block-scaled register MMA is dialect-side dispatched for SM110 in this compiler. A reimplementation that expects SM110 to carry its own MMA / TMEM / WGMMA atom family will find none here, and a kernel that wants tensor-core throughput on Thor must either route through a non-MMA path or accept that the dispatcher will not synthesise a Thor-specific machine form.
 
 ## Atom TypeID Registry
 

@@ -237,18 +237,7 @@ Five functions exceed 160 KB each. They are the top-level instruction selector d
 | `sub_119BF40` | 231 KB | SM89/90 (Ada/Hopper) | Calls ~160 pattern matchers |
 | `sub_5B1D80` | 204 KB | SM50-7x (MercExpand) | MercExpand instruction expansion dispatch |
 
-The ISel protocol is uniform across all backends:
-
-```
-for each pattern_matcher in pattern_table:
-    matched = pattern_matcher(ctx, ir_node, &pattern_id, &priority)
-    if matched && priority > best_priority:
-        best_priority = priority
-        best_id = pattern_id
-emitter_table[best_id](ctx, ir_node)  // emit selected instruction
-```
-
-Each pattern matcher queries IR node attributes via `sub_A49150`, checks operand counts via `sub_530FD0`/`sub_530FC0`, retrieves operands via `sub_530FB0`, validates operand types and register classes, and writes `(pattern_id, priority)` if all constraints are satisfied.
+The ISel protocol is the standard ptxas linear-scan pattern matcher: every matcher is invoked with `(ctx, ir_node, &pattern_id, &priority)`, the highest-priority match wins, the emitter table dispatches by `pattern_id`. Matchers query IR through `sub_A49150` (attribute), `sub_530FD0`/`sub_530FC0` (operand count), and `sub_530FB0` (operand by index). For the algorithm in full detail see [ptxas: Instruction Selection](../../ptxas/codegen/isel.html); the table above lists the nvlink-binary addresses of the five mega-hub dispatch functions that implement it.
 
 ## ROT13 Obfuscation of SASS Mnemonics
 
@@ -303,699 +292,57 @@ The "MERCURY" prefix (`ZREPHEL` in ROT13) corresponds to sm_100+ (Blackwell) and
 | `sub_15B86A0` | 345 KB | `cuda_builtin_prototype_generator` | 608-case builtin switch (second-largest function) |
 | `sub_147EF50` | 288 KB | `ptx_instruction_semantic_analyzer` | Master instruction validator |
 
-## Compilation Pipeline: `sub_1112F30` Reconstructed
-
-`sub_1112F30` (65,018 bytes at `0x1112F30`) is the top-level per-module compilation driver. It receives a module context `a1` and a PTX module descriptor `a2`, then orchestrates the full PTX-to-SASS compilation in a sequence of clearly delineated phases. The following ASCII pipeline diagram and reconstructed pseudocode are derived from the decompiled output of this function.
-
-### Pipeline Diagram
-
-```
- nvlink main / LTO pipeline
-         |
-         v
- +--------------------------+
- | sub_1112F30              |    per-module compilation driver (65 KB)
- | "ptxas_compile_module"   |
- +--------------------------+
-         |
-    Phase 1: Option Query & Cache Config
-         |  query "def-load-cache", "force-load-cache",
-         |  "def-store-cache", "force-store-cache"
-         |  from option map at a1+904
-         v
-    Phase 2: Cancellation Check
-         |  if a1+288 (cancel flag): call cancel_callback(a1+296)
-         |  if returns 1 -> longjmp to error handler
-         v
-    Phase 3: Timing Gate
-         |  check profiling flags a1+104..107, a1+402
-         |  start wall-clock timer (sub_45CCD0)
-         |  start high-res timer (sub_44EF30) if enabled
-         v
-    Phase 4: Callback Registration
-         |  register per-instruction callback: sub_1108860 -> a1+408
-         |  register per-function callback:    sub_1101EB0 -> a1+416
-         |  initialize PTX version tables:     sub_12B30E0, sub_12B31D0
-         v
-    Phase 5: SM Version Validation
-         |  sscanf .target string -> extract SM version number
-         |  sscanf a1+576 (max supported SM) -> compare
-         |  if module SM > max supported -> fatal error
-         |  validate PTX version compatibility (sub_12A8360)
-         v
-    Phase 6: Mode Flag Dispatch (codegen callback selection)
-         |  select (init_callback, begin_callback) pair:
-         |
-         |  if --compile-only OR --assyscall OR --compile-as-tools-patch:
-         |      init = sub_110CD20   ("compile_only_init")
-         |      begin = sub_11089E0  ("compile_only_begin")
-         |
-         |  elif --extensible-whole-program AND NOT --device-debug:
-         |      init = sub_110D110   ("ewp_init")
-         |      begin = sub_1107F10  ("ewp_begin")
-         |
-         |  elif --extensible-whole-program AND --device-debug:
-         |      init = sub_110CD20
-         |      begin = sub_11089E0
-         |
-         |  else (normal LTO / standard compilation):
-         |      if --extensible-whole-program flag:
-         |          init = sub_110CBA0  ("standard_init_ewp")
-         |      else:
-         |          init = sub_110D0B0  ("standard_init")
-         |      begin = sub_1109180    ("standard_begin")
-         v
-    Phase 7: PTX Header Emission (dummy entry generation)
-         |  if no explicit entry functions AND not tools-patch mode:
-         |    if output-to-memory (sub_464740 returns true):
-         |      sub_12AF550("__cuda_dummy_entry__", ptx_header, ...)
-         |    else (output to file):
-         |      fopen(output_path, "w")
-         |      fprintf:  .version <ptx_version>
-         |      fprintf:  .target  <sm_name>
-         |      fprintf:  .entry __cuda_dummy_entry__ { ret; }
-         |      fclose
-         |      sub_12AF200(output_path, ...)
-         v
-    Phase 8: Tools-Patch Resource Allocation Warnings
-         |  if --compile-as-tools-patch:
-         |    warn if allocating: textures, surfaces, samplers, constants
-         |  if --assyscall:
-         |    warn if allocating: textures, surfaces, samplers
-         v
-    Phase 9: Compilation Flags Setup
-         |  disable --fast-compile for ABI-less calls
-         |  disable --extensible-whole-program for ABI-less compilation
-         |  process --position-independent-code
-         |  check texmode_independent vs texmode_unified
-         |  check --preserve-relocs compatibility
-         |  check --legacy-bar-warp-wide-behavior (SM70 only)
-         |  check --g-tensor-memory-access-check (SM100+ only)
-         v
-    Phase 10: Hash Map + Codegen Context Allocation
-         |  allocate 8 hash maps via sub_4489C0/sub_465020:
-         |    [0] instruction map (cap 0x100)
-         |    [1] function list (cap 0x400)
-         |    [2] basic-block map (cap 0x100), conflict map (cap 0x40)
-         |    [3] symbol map (cap 0x100), label map (cap 0x100)
-         |    [4] directive map (cap 0x40), auxiliary map (cap 0x40)
-         |    [5] register table (cap 0x20), operand table (arch-size)
-         |  allocate per-function resource array:
-         |    sub_12AE300(a2) entries x 48 bytes each -> a1+336
-         |  allocate per-function compilation result array:
-         |    count entries x 112 bytes each -> a1+256
-         v
-    Phase 11: Register Callbacks on Module IR
-         |  sub_1102AC0 -> per-function callback on module functions list
-         |  sub_1101E90 -> per-symbol callback on symbol table
-         |  sub_1111DB0 -> per-function dispatch on func IR list
-         |  sub_1101DE0 -> per-global callback (unless --compile-only)
-         |  sub_110F5E0 -> per-section callback on section list
-         |  sub_1101F60 -> per-symbol post-process callback
-         v
-    Phase 12: Address Width + Register Budget
-         |  determine address width: 32-bit or 64-bit
-         |    SM <= 13 -> 32-bit (maxnreg=32)
-         |    SM > 13  -> read from module metadata
-         |  PIC validation: if PIC address > threshold -> disable PIC
-         |  maxrregcount validation: warn on mismatch
-         |  32-bit register check: SM > 90 -> fatal
-         v
-    Phase 13: Entry Point Collection
-         |  if explicit -e entries:
-         |    resolve each name through module's symbol table
-         |    build ordered entry list -> v322
-         |  elif explicit -E entries:
-         |    resolve through module, build list
-         |  else:
-         |    use module's own entry list (a2+88)
-         v
-    Phase 14: Transfer Compilation State to Context
-         |  copy hash maps, flags, and tables into a1+1072..1296
-         |  create alias tracking map (sub_4489C0, cap 0x100)
-         |  create callee usage map (sub_4489C0, cap 0x418)
-         v
-    Phase 15: init_callback(a1, entry_list) -- Codegen Initialization
-         |  calls the selected init callback (from Phase 6)
-         |  sub_110CD20: builds per-function codegen descriptors
-         |    for each function: sub_110BC90 -> allocate codegen record
-         |    stores in a1+1192 (register usage map)
-         |    returns ordered list of functions needing compilation
-         v
-    Phase 16: Load/Store Cache Mode Assignment
-         |  for each function in compilation list:
-         |    if force-load-cache -> set cache_mode = 2
-         |    elif def-load-cache -> set cache_mode = 1
-         |    else -> set cache_mode based on call graph analysis
-         v
-    Phase 17: Indirect Call + MMA Validation
-         |  for each function:
-         |    check for indirect calls with .f64 MMA -> warn
-         |    check for mutual recursion markers -> flag
-         v
-    Phase 18: Scheduling Class Assignment
-         |  for each function: assign scheduling class (0, 1, or 2)
-         |    class 0 = no scheduling needed
-         |    class 1 = standard scheduling
-         |    class 2 = aggressive scheduling (callee analysis)
-         |  propagate class upward through call graph if needed
-         v
-    Phase 19: Debug Info Setup
-         |  if --device-debug: init DWARF context (sub_1672520)
-         |  check .debug_abbrev / .debug_info availability
-         v
-    Phase 20: Reserved Register Configuration
-         |  if --first-reserved-rreg: validate (min=4)
-         |  compute total reserved = first_reserved + count
-         v
-    Phase 21: Build Per-Function Codegen Configuration
-         |  pack ~50 compilation flags into struct at v334..v358:
-         |    device_debug, lineinfo, fast_compile, maxrregcount,
-         |    opt_level, compile_only, tools_patch, ewp, preserve_relocs,
-         |    sm_version, address_width, default caches, PIC, ...
-         |  call sub_16257C0 to create codegen pipeline config object
-         v
-    Phase 22: Output File Setup
-         |  if --output specified: create/truncate output file
-         v
-  +------+------+
-  |             |
-  | thread_count == 0            thread_count > 0
-  | (sequential)                 (parallel via thread pool)
-  |             |
-  v             v
-    Phase 23a: Sequential          Phase 23b: Parallel
-    Per-Function Loop              Per-Function Loop
-         |                              |
-    for each func:                 sub_43FDB0(thread_count)
-      |                              = create thread pool
-      |                              |
-      +---> sub_110AA30            for each func:
-      |     "codegen_init"           build work item (48 bytes):
-      |     - create OCG context       [0..15] = timing state
-      |     - set "NVIDIA"             [24] = per-func codegen ctx
-      |     - set "ptxocg.0.0"         [32] = compilation driver ref
-      |     - configure 30+ fields     [40] = optional sync state
-      |     - set opt level            |
-      |     - set SM-specific flags    sub_43FF50(pool, sub_1107420, item)
-      |     - invoke vtable->init      = enqueue work item
-      |       to map symbol names      |
-      |                              sub_43FFE0(pool) = barrier wait
-      +---> sub_1655A60             sub_43FE70(pool) = destroy pool
-      |     "codegen_per_func"       |
-      |     - initialize 48 pass     sub_1107420 (thread worker):
-      |       enable/disable flags     sub_1102B30 -> setjmp + compile
-      |       (passes 0..47)           record timing per function
-      |     - register lowering        record peak memory
-      |       callbacks on IR
-      |     - set up UDT/UFT
-      |       relocations
-      |     - process entry
-      |       function list
-      |     - ISel dispatch
-      |     - register allocation
-      |
-      +---> sub_1102B30
-      |     "codegen_compile"
-      |     - setjmp for error
-      |       recovery
-      |     - invoke compilation
-      |       via vtable callback
-      |       at a1+96
-      |     - on error: longjmp,
-      |       record failure
-      |
-      +---> timing measurement
-      |     record compile time
-      |     per-function stats
-      |
-      +---> sub_110D2A0
-            "codegen_finalize"
-            - emit ELF metadata
-            - write nv.info records
-            - output SASS binary
-            - write register usage
-            - cleanup per-func state
-         |
-         v
-    Phase 24: Post-Compilation Cleanup
-         |  clean up hash maps, free temp allocations
-         |  validate register usage across functions
-         |  if --compile-only: cross-check register budgets
-         v
-    Phase 25: Pipeline Config Teardown (sub_1626480)
-         |
-         v
-    Phase 26: Final Cleanup
-         |  destroy hash maps (sub_4650A0)
-         |  free per-function resource array
-         |  free codegen config
-         |  return
-```
-
-### Reconstructed Pseudocode for `sub_1112F30`
-
-```c
-// sub_1112F30 -- per-module compilation driver
-// Address: 0x1112F30, Size: 65,018 bytes
-// Parameters:
-//   a1 = compilation driver context (opaque struct, ~1300 bytes)
-//   a2 = PTX module descriptor (parsed PTX representation)
-// Returns: 0 on success
-
-int ptxas_compile_module(CompilerCtx *ctx, PtxModule *mod) {
-
-    // ---- Phase 1: Query cache configuration options ----
-    bool def_load_cache   = option_get_bool(ctx->option_map, "def-load-cache");
-    bool force_load_cache = option_get_bool(ctx->option_map, "force-load-cache");
-    bool def_store_cache  = option_get_bool(ctx->option_map, "def-store-cache");
-    bool force_store_cache= option_get_bool(ctx->option_map, "force-store-cache");
-
-    // ---- Phase 2: Cancellation check ----
-    if (ctx->cancel_flag) {
-        if (ctx->cancel_callback(ctx->cancel_handle, ctx->cancel_arg) == 1)
-            longjmp_to_error_handler();
-    }
-
-    // ---- Phase 3: Timing infrastructure ----
-    timing_gate_start(ctx);   // sub_45CCD0 on a1+128/a1+144
-    if (ctx->high_res_timing)
-        ctx->wall_start = get_hires_time();  // sub_44EF30
-
-    // ---- Phase 4: Register per-instruction and per-function callbacks ----
-    list_foreach(ctx->instr_callbacks, per_instr_callback, ctx);   // sub_1108860
-    list_foreach(ctx->func_callbacks, per_func_callback, ctx);     // sub_1101EB0
-    ptx_version_table_init(mod);       // sub_12B30E0
-    ptx_version_table_validate(mod);   // sub_12B31D0
-
-    // ---- Phase 5: SM version validation ----
-    unsigned sm_module, sm_max;
-    sscanf(mod->target_string, "%*[^0-9]%d", &sm_module);
-    sscanf(ctx->max_sm_string, "%*[^0-9]%d", &sm_max);
-    if (sm_max < sm_module)
-        fatal_error(ERR_SM_MISMATCH);
-
-    if (mod->ptx_version_flag) {
-        if (!ptx_version_compatible(sm_max, sm_module))  // sub_12A8360
-            fatal_error(ERR_PTX_VERSION);
-        if (!ctx->allow_unsupported_sm)
-            fatal_error(ERR_UNSUPPORTED_SM, mod->target_string, ctx->max_sm_string);
-    }
-
-    // ---- Phase 6: Select codegen callback pair based on mode flags ----
-    CodegenInitFn   init_fn;
-    CodegenBeginFn  begin_fn;
-
-    if (ctx->compile_only || ctx->assyscall || ctx->tools_patch) {
-        init_fn  = compile_only_init;     // sub_110CD20
-        begin_fn = compile_only_begin;    // sub_11089E0
-    } else if (ctx->ewp_mode) {
-        if (ctx->device_debug) {
-            init_fn  = compile_only_init;     // sub_110CD20
-            begin_fn = compile_only_begin;    // sub_11089E0
-        } else {
-            init_fn  = ewp_init;              // sub_110D110
-            begin_fn = ewp_begin;             // sub_1107F10
-        }
-    } else {
-        begin_fn = standard_begin;            // sub_1109180
-        if (ctx->ewp_flag)
-            init_fn = standard_init_ewp;      // sub_110CBA0
-        else
-            init_fn = standard_init;          // sub_110D0B0
-    }
-
-    // ---- Phase 7: Emit PTX dummy entry if no explicit entries ----
-    if (!mod->entry_list && !ctx->assyscall && !ctx->tools_patch) {
-        saved_flag = mod->flag_236;
-        if (output_is_memory(ctx->func_callbacks)) {
-            ptx_emit_entry_inline("__cuda_dummy_entry__", ptx_header_text, mod);
-        } else {
-            char *path = get_output_path(ctx->func_callbacks);
-            FILE *fp = fopen(path, "w");
-            if (mod->ptx_version_str)
-                fprintf(fp, "\t.version %s\n", mod->ptx_version_str);
-            if (mod->target_str)
-                fprintf(fp, "\t.target  %s\n", mod->target_str);
-            fprintf(fp, "\t.entry __cuda_dummy_entry__ { ret; }\n");
-            fclose(fp);
-            ptx_parse_file(path, mod);
-        }
-        mod->flag_236 = saved_flag;  // restore flag modified by parse
-    }
-
-    // ---- Phase 8-9: Compilation flags, warnings, compatibility ----
-    if (ctx->tools_patch) {
-        if (mod->alloc_textures)  warn("Allocating additional textures");
-        if (mod->alloc_surfaces)  warn("Allocating additional surfaces");
-        if (mod->alloc_samplers)  warn("Allocating additional samplers");
-        if (mod->alloc_constants) warn("Allocating additional constants");
-        ctx->fast_compile = 0;
-    }
-
-    ctx->abi_mode = 0;
-    if (ctx->ewp_mode)  ctx->ewp_mode = 0;   // one-shot
-    if (mod->has_entry_funcs || mod->has_extern_funcs) {
-        if (ctx->fast_compile)
-            warn("'--fast-compile' incompatible with calls without ABI");
-        ctx->fast_compile = 0;
-        if (ctx->ewp_flag)
-            warn("'--extensible-whole-program' incompatible with compilation without ABI");
-        ctx->ewp_flag = 0;
-    }
-
-    // PIC handling
-    bool pic = option_get_bool(ctx->option_map, "position-independent-code");
-    if (!ctx->compile_only && !ctx->device_debug && !ctx->tools_patch
-        && !ctx->ewp_mode && !ctx->ewp_flag) {
-        if (!mod->has_relo && !pic)
-            ctx->enable_pic = 1;   // auto-enable PIC for normal compilation
-    }
-    if (ctx->ewp_flag && pic) {
-        ctx->enable_pic = 0;
-        warn("'--position-independent-code' incompatible with '--extensible-whole-program'");
-    }
-
-    if (ctx->early_exit)
-        return 0;  // --dry-run equivalent
-
-    // ---- Phase 10: Allocate codegen data structures ----
-    HashMaps maps;
-    maps.instr_map   = hashmap_create(cmp_fn, free_fn, 0x100);
-    maps.func_list   = hashmap_create(cmp_fn, free_fn, 0x400);
-    maps.bb_map      = hashmap_create(cmp_fn, free_fn, 0x100);
-    maps.conflict    = hashmap_create(cmp_fn, free_fn, 0x40);
-    maps.sym_map     = hashmap_create(cmp_fn, free_fn, 0x100);
-    maps.label_map   = hashmap_create(cmp_fn, free_fn, 0x100);
-    maps.dir_map     = hashmap_create(cmp_fn, free_fn, 0x40);
-    maps.aux_map     = hashmap_create(cmp_fn, free_fn, 0x40);
-    maps.reg_table   = sorted_map_create(int_cmp, free_fn, 0x20);
-    maps.operand_tbl = sorted_map_create(int_cmp, free_fn, arch_operand_count(mod));
-
-    unsigned func_count = get_function_count(mod);   // sub_12AE300
-    ctx->per_func_resources = arena_alloc(func_count * 48);
-    memset(ctx->per_func_resources, 0, func_count * 48);
-
-    // ---- Phase 11: Traverse module IR, register callbacks ----
-    list_foreach(mod->functions.list, register_function_cb, ctx);    // sub_1102AC0
-    foreach_symbol(mod->symbol_table, register_symbol_cb, ctx);      // sub_1101E90
-    list_foreach(mod->functions.list, dispatch_function_ir, &maps);  // sub_1111DB0
-    if (!ctx->compile_only)
-        list_foreach(mod->functions.globals, register_global_cb, &maps);
-    list_foreach(mod->functions.sections, register_section_cb, &maps);
-    foreach_symbol(mod->symbol_table, postprocess_symbol_cb, &maps);
-
-    // ---- Phase 12: Address width + register budget ----
-    int addr_width = determine_address_width(ctx, mod);
-    ctx->addr_width = addr_width;  // 32 or 64
-    validate_maxrregcount(ctx, mod);
-
-    // ---- Phase 13: Collect entry points ----
-    FuncList *entries;
-    if (ctx->explicit_entries) {
-        entries = resolve_entries(ctx->explicit_entries, ctx->module_reader);
-    } else if (ctx->explicit_globals) {
-        entries = resolve_entries(ctx->explicit_globals, ctx->module_reader);
-    } else {
-        entries = mod->entry_list;  // default: module's own entry list
-    }
-
-    // ---- Phase 14: Transfer state into codegen context ----
-    ctx->maps         = maps;
-    ctx->func_count   = list_count(entries);
-    ctx->alias_map    = sorted_map_create(cmp, free, 0x100);
-    ctx->callee_map   = sorted_map_create(cmp, free, 0x418);
-    // ... copy ~30 more fields ...
-
-    // ---- Phase 15: Call init_callback to prepare codegen descriptors ----
-    FuncList *compile_list = begin_fn(ctx, entries, ctx->per_func_resources);
-
-    // ---- Phase 16: Load/store cache mode per function ----
-    for (FuncNode *f = compile_list; f; f = f->next) {
-        FuncDesc *desc = f->data;
-        int func_idx = desc->func_ir->header->index;
-        bool needs_caching = per_func_resources[func_idx].has_cached_callees;
-
-        if (sm_dispatch->supports_caching(sm_class)) {
-            if (force_load_cache)
-                desc->cache_mode = 2;  // force all loads cached
-            else if (def_load_cache)
-                desc->cache_mode = 1;  // default cached
-            else if (needs_caching || force_store_cache)
-                desc->cache_mode = 2;
-            else
-                desc->cache_mode = (def_store_cache != 0);
-        } else {
-            desc->cache_mode = 2 * (force_load_cache || def_load_cache);
-        }
-    }
-
-    // ---- Phase 17: Validate indirect calls + MMA .f64 ----
-    for (FuncNode *f = compile_list; f; f = f->next) {
-        FuncDesc *desc = f->data;
-        if (desc->mma_info && desc->mma_info->has_f64) {
-            warn_once(ERR_MMA_F64, desc->name, "mma with .f64 type");
-        }
-        if (desc->has_mutual_recursion)
-            fatal_error(ERR_MUTUAL_RECURSION, desc->entry_name);
-    }
-
-    // ---- Phase 18: Assign scheduling class ----
-    for (FuncNode *f = compile_list; f; f = f->next) {
-        FuncDesc *desc = f->data;
-        if (!desc->needs_scheduling) {
-            desc->sched_class = 0;
-        } else {
-            // analyze call graph for callee scheduling requirements
-            int callee_sched_count = count_callees_with_sched_class_2(desc);
-            if (ctx->force_aggressive_sched && callee_sched_count > 0) {
-                desc->sched_class = 2;
-            } else {
-                desc->sched_class = sm_dispatch->determine_sched_class(desc);
-            }
-        }
-    }
-
-    // ---- Phase 19: Debug info + Phase 20: Reserved regs ----
-    if (ctx->device_debug)
-        dwarf_init(ctx->dwarf_ctx, mod);
-    int reserved_rreg = -1;
-    if (ctx->has_reserved_rreg) {
-        if (!ctx->first_reserved_rreg)
-            ctx->first_reserved_rreg = 4;  // minimum
-        reserved_rreg = ctx->first_reserved_rreg + ctx->reserved_count;
-    }
-
-    // ---- Phase 21: Build codegen config struct ----
-    CodegenConfig cfg;
-    cfg.module         = mod;
-    cfg.module_reader  = ctx->module_reader;
-    cfg.device_debug   = ctx->device_debug;
-    cfg.lineinfo       = ctx->lineinfo;
-    cfg.opt_level      = ctx->opt_level;
-    // ... pack ~50 flags from ctx into cfg ...
-    CodegenPipeline *pipeline = create_codegen_pipeline(cfg);  // sub_16257C0
-
-    // ---- Phase 22: Create output file if needed ----
-    if (ctx->output_path && (ctx->dump_sass || ctx->dump_ptx))
-        fopen_and_truncate(ctx->output_path, "wt");
-
-    // ---- Phase 23: Per-function compilation ----
-    unsigned total_funcs = list_count(compile_list);
-    ctx->result_array = arena_alloc(total_funcs * 112);
-    memset(ctx->result_array, 0, total_funcs * 112);
-
-    if (ctx->thread_count == 0) {
-        // ---- Phase 23a: SEQUENTIAL per-function compilation ----
-        for (FuncNode *f = compile_list; f; f = f->next) {
-            FuncDesc *desc = f->data;
-            unsigned idx = desc->func_index;
-            char *name = desc->func_ir->name;
-
-            ctx->result_array[idx].name = name;
-            ctx->result_array[idx].start_time = timer_read(ctx->timer);
-
-            // Allocate 360-byte per-function codegen state
-            PerFuncState *pfs = arena_alloc_zeroed(360);
-
-            // Phase 23a-i: Initialize codegen context for this function
-            codegen_init(ctx, mod, desc, pipeline, pfs);  // sub_110AA30:
-            //   - create OCG (Optimizing Code Generator) context
-            //   - set producer = "NVIDIA", tool = "ptxocg.0.0"
-            //   - configure SM-specific codegen flags
-            //   - set optimization level, maxrregcount, address width
-            //   - initialize instruction vtable from SM dispatch table
-            //   - set up DWARF state if debug enabled
-            //   - call vtable->init to resolve symbol names
-
-            // Phase 23a-ii: Invoke the compilation pipeline
-            // sub_1655A60 (called from within codegen_init flow):
-            //   - initialize 48 pass-enable flags (passes 0..47)
-            //   - register IR lowering callbacks
-            //   - set up UDT/UFT relocations for Blackwell+
-            //   - for each pass in sequence:
-            //       pass 1:  IR canonicalization
-            //       pass 2:  instruction count estimation
-            //       pass 3-22: SM-gated optimization passes
-            //           (each enabled/disabled by SM dispatch vtable)
-            //       pass 21: address width query
-            //       pass 22: register class initialization
-            //       pass 23-38: ISel, regalloc, scheduling (SM-gated)
-            //       pass 39: ABI frame setup
-            //       pass 40-42: final lowering
-            //       pass 43: peephole cleanup
-            //       pass 46: binary encoding query
-            //       pass 47: final verification
-            //   - emit SASS instructions via ISel mega-hub
-            //   - perform register allocation (graph coloring)
-            //   - schedule instructions (ScheduleInstructions, 85 KB)
-            //   - run peephole optimizations
-            //   - encode final SASS binary (128-bit words)
-
-            // Phase 23a-iii: Error-wrapped compile invocation
-            codegen_compile(ctx, desc, pfs);  // sub_1102B30:
-            //   - setjmp for error recovery
-            //   - call vtable->compile(ctx, func_ir, ctx->codegen_config)
-            //   - on error: longjmp, free resources, report failure
-
-            // Phase 23a-iv: Record timing
-            timing_record(ctx, desc, pfs);
-
-            // Phase 23a-v: Finalize and emit
-            codegen_finalize(ctx, mod, desc, pfs);  // sub_110D2A0:
-            //   - emit ELF section content (.text, .nv.info, .nv.constant)
-            //   - write register usage records (EIATTR)
-            //   - write SASS binary to output
-            //   - handle PTX re-emission if --output-ptx
-            //   - cleanup per-function OCG state
-
-            arena_free(pfs);
-
-            // cancellation check between functions
-            if (ctx->cancel_flag && cancel_callback() == 1)
-                longjmp_to_error_handler();
-        }
-    } else {
-        // ---- Phase 23b: PARALLEL per-function compilation ----
-        ThreadPool *pool = create_thread_pool(ctx->thread_count);  // sub_43FDB0
-        IndexArray *sync = index_array_create(total_funcs);
-
-        for (FuncNode *f = compile_list; f; f = f->next) {
-            FuncDesc *desc = f->data;
-
-            // Allocate extended per-function state (360 bytes + 3 maps)
-            PerFuncState *pfs = arena_alloc_zeroed(360);
-            pfs->local_map_a = sorted_map_create(cmp, free, 8);
-            pfs->local_map_b = sorted_map_create(cmp, free, 8);
-            pfs->local_map_c = sorted_map_create(cmp, free, 8);
-            pfs->pipeline = pipeline;
-            pfs->driver_ctx = ctx;
-            pfs->module = mod;
-            pfs->func_desc = desc;
-
-            // Initialize codegen (same as sequential)
-            codegen_init(ctx, mod, desc, pipeline, pfs);
-
-            // Copy 15 x 16-byte blocks of driver state into pfs
-            // (compiler flags, maps, timing state)
-            memcpy(&pfs->snapshot, &ctx->compilation_state, 15 * 16);
-
-            // Allocate per-function DWARF state (216 bytes)
-            pfs->dwarf_state = arena_alloc_zeroed(216);
-            dwarf_register(ctx->dwarf_ctx, pfs->dwarf_state);
-
-            // Snapshot pipeline state
-            pipeline_snapshot(pipeline, &pfs->pipeline_state);
-
-            // Copy function-local maps from shared -> per-thread
-            copy_maps(pfs->local_map_a, ctx->shared_maps);
-
-            // Enqueue work item
-            index_array_push(pfs, sync);
-        }
-
-        // Wait for all per-function compilations to complete
-        // Each thread runs sub_1107420:
-        //   1. sub_1102B30 -- setjmp + vtable->compile()
-        //   2. record timing (wall-clock + per-function)
-        //   3. record peak memory usage
-        //   4. free per-function OCG state
-        for_each(compile_list, sync, dispatch_work_item, pool);
-        thread_pool_barrier(pool);   // sub_43FFE0
-        thread_pool_destroy(pool);   // sub_43FE70
-
-        // Single-threaded finalization pass
-        report_function_index(ctx, -1);  // sub_1107720
-        if (ctx->cancel_flag && cancel_callback() == 1)
-            cleanup_and_longjmp();
-
-        // ---- Sequential post-compilation merge ----
-        bool first = true;
-        for (FuncNode *f = compile_list; f; f = f->next) {
-            PerFuncState *pfs = sync_get(sync, index);
-
-            // Restore driver state from per-function snapshot
-            memcpy(&ctx->compilation_state, &pfs->snapshot, 15 * 16);
-
-            // Replay pipeline state
-            pipeline_restore(pipeline, pfs->pipeline_state);
-
-            // Merge per-thread maps back into shared maps
-            merge_maps(ctx->shared_maps, pfs->local_map_a);
-            merge_maps(ctx->shared_maps, pfs->local_map_b);
-            merge_maps(ctx->shared_maps, pfs->local_map_c);
-
-            // Restore DWARF state
-            dwarf_merge(ctx->dwarf_ctx, pfs->dwarf_state);
-
-            // Finalize this function
-            codegen_finalize(ctx, mod, desc, pfs);
-
-            // Track first-function state for register budget
-            if (first) {
-                shared_register_budget = ctx->register_budget;
-                first = false;
-            }
-            ctx->register_budget = shared_register_budget;
-
-            // Cleanup
-            cleanup_per_func_maps(pfs);
-            arena_free(pfs);
-        }
-        index_array_destroy(sync);
-    }
-
-    // ---- Phase 24: Post-compilation validation ----
-    pipeline_finalize(pipeline);  // sub_1626480
-    if (ctx->compile_only && ctx->register_budget_map) {
-        // Cross-validate register usage: each callee must not exceed
-        // the register budget of its caller
-        for (int i = 0; i < func_count; i++) {
-            ResourceEntry *re = &ctx->per_func_resources[i];
-            if (re->entry_name && re->callee_list) {
-                unsigned caller_budget = map_lookup(ctx->register_budget_map,
-                                                    re->entry_name);
-                for (FuncNode *c = re->callee_list; c; c = c->next) {
-                    unsigned callee_regs = map_lookup(ctx->alias_map, c->name);
-                    if (caller_budget > callee_regs)
-                        warn("register budget exceeded: %s uses %d, caller %s allows %d",
-                             c->name, callee_regs, re->entry_name, caller_budget);
-                }
-            }
-        }
-        map_destroy(ctx->register_budget_map);
-    }
-
-    // ---- Phase 25-26: Cleanup ----
-    hashmap_destroy(maps.bb_map);
-    hashmap_destroy(maps.sym_map);
-    arena_free(ctx->per_func_resources);
-    if (ctx->tensor_check_map)
-        set_destroy(ctx->tensor_check_map);
-
-    return 0;
-}
-```
+## Compilation Pipeline: `sub_1112F30`
+
+`sub_1112F30` (65,018 bytes at `0x1112F30`, ~2,164 decompiled lines) is the top-level per-module compilation driver inside nvlink's embedded ptxas. It receives a module context `a1` and a PTX module descriptor `a2`, then orchestrates the full PTX-to-SASS compilation across 26 phases before returning. Confidence: **HIGH** — derived directly from Hex-Rays output of this function.
+
+This driver corresponds structurally to the entry/dispatch path in standalone ptxas — see [ptxas: Pipeline Overview](../../ptxas/pipeline/overview.html) for the generic 159-phase pipeline narrative and [ptxas: Entry Point](../../ptxas/pipeline/entry.html) for option-parser behavior. The table and notes below preserve the binary-specific phase order, callback choices, and helper addresses that are unique to the nvlink-embedded copy.
+
+### Phase Table
+
+| # | Phase | Key calls / addresses | Effect |
+|---|---|---|---|
+| 1 | Option query & cache config | `option_get_bool` on `def-load-cache`, `force-load-cache`, `def-store-cache`, `force-store-cache` | Captures cache-mode booleans into stack locals |
+| 2 | Cancellation check | reads `a1+288`; invokes `cancel_callback(a1+296)` | Longjmps to error handler if returns 1 |
+| 3 | Timing gate | `sub_45CCD0` wall-clock, `sub_44EF30` high-res; flags at `a1+104..107`, `a1+402` | Starts timers if profiling enabled |
+| 4 | Callback registration | `sub_1108860` instr CB, `sub_1101EB0` func CB, `sub_12B30E0`/`sub_12B31D0` PTX version tables | Installs per-IR-node callbacks |
+| 5 | SM version validation | `sscanf` on `.target`; `sub_12A8360` PTX/SM compat | Fatal if module SM > max supported |
+| 6 | Mode flag dispatch | selects `(init_fn, begin_fn)` -- see [Compilation Mode Matrix](#compilation-mode-matrix) | Picks one of four codegen pathways |
+| 7 | PTX header emission | `sub_12AF550` inline / `fopen` + `fprintf(.version/.target/.entry __cuda_dummy_entry__ { ret; })` + `sub_12AF200` | Emits dummy entry when none exist |
+| 8 | Tools-patch warnings | conditional on `--compile-as-tools-patch`, `--assyscall` | Warns about allocating textures/surfaces/samplers/constants |
+| 9 | Compilation flags setup | PIC processing; `--fast-compile`/`--extensible-whole-program` disables for ABI-less; `--legacy-bar-warp-wide-behavior` (SM70 only); `--g-tensor-memory-access-check` (SM100+ only) | Resolves flag conflicts |
+| 10 | Hash maps + codegen context | 8x `sub_4489C0`/`sub_465020` (caps 0x100/0x400/0x40/0x20); per-func resource array via `sub_12AE300` (48 B/entry at `a1+336`); result array (112 B/entry at `a1+256`) | Allocates module-wide tables |
+| 11 | Register callbacks on module IR | `sub_1102AC0` per-function, `sub_1101E90` per-symbol, `sub_1111DB0` per-func-IR, `sub_1101DE0` per-global (unless `--compile-only`), `sub_110F5E0` per-section, `sub_1101F60` per-symbol post-process | Installs IR walkers |
+| 12 | Address width + register budget | SM≤13 → 32-bit (maxnreg=32); SM>13 → from module metadata; SM>90 + 32-bit → fatal | Sets address mode |
+| 13 | Entry point collection | resolves `-e` / `-E` names through module reader; else uses `a2+88` | Builds ordered entry list |
+| 14 | Transfer state into codegen context | copies maps/flags into `a1+1072..1296`; alias map (cap 0x100); callee usage map (cap 0x418) | Snapshots compilation state |
+| 15 | `init_callback(ctx, entries)` | from Phase 6: `sub_110CD20` / `sub_110CBA0` / `sub_110D0B0` / `sub_110D110` | Builds per-function codegen descriptors via `sub_110BC90`, stores at `a1+1192` |
+| 16 | Load/store cache mode | per-function: respects `force-load-cache` (mode=2), `def-load-cache` (mode=1), `force-store-cache`, callee analysis | Assigns memory-op cache mode |
+| 17 | Indirect call + MMA validation | per-function: warns on indirect `mma.f64`; fatal on mutual recursion markers | Frontend correctness check |
+| 18 | Scheduling class assignment | class 0 / 1 / 2 propagated through call graph; class 2 = aggressive (callee analysis) | Picks scheduling aggressiveness |
+| 19 | Debug info setup | `sub_1672520` `dwarf_init` if `--device-debug` | Initializes DWARF context |
+| 20 | Reserved register configuration | `--first-reserved-rreg` (min=4); total = first + count | Reserves R-regs from regalloc |
+| 21 | Build per-function codegen config | packs ~50 flags (device_debug, lineinfo, fast_compile, maxrregcount, opt_level, compile_only, tools_patch, ewp, preserve_relocs, sm_version, address_width, default caches, PIC, ...) into struct; `sub_16257C0` creates `CodegenPipeline` | Builds pipeline-config object |
+| 22 | Output file setup | `fopen_and_truncate` on `--output` path | Prepares dump file |
+| 23a | **Sequential** per-function loop | `sub_110AA30` `codegen_init` → `sub_1655A60` 48-pass pipeline → `sub_1102B30` `codegen_compile` (setjmp-wrapped) → `sub_110D2A0` `codegen_finalize` | Compiles each function in main thread |
+| 23b | **Parallel** per-function loop | `sub_43FDB0` thread-pool create → for each func build 48-B work item → `sub_43FF50` enqueue → `sub_43FFE0` barrier → `sub_43FE70` destroy. Worker = `sub_1107420` → `sub_1102B30` (setjmp + compile) + timing | Same as `--split-compile-extended` in standalone ptxas |
+| 24 | Post-compilation cleanup | register-budget cross-check if `--compile-only` (caller-callee budget validation through `register_budget_map`) | Validates inter-function constraints |
+| 25 | Pipeline config teardown | `sub_1626480` `pipeline_finalize` | Destroys `CodegenPipeline` |
+| 26 | Final cleanup | `sub_4650A0` destroys hash maps; frees per-function arrays | Returns 0 |
+
+### Per-Function Inner Pipeline (Phase 23)
+
+For each function in the compile list, Phase 23 (either sequential or thread-pool worker) runs the following sub-stages:
+
+| Sub-stage | Address | Role |
+|---|---|---|
+| `codegen_init` | `sub_110AA30` | Allocate 360-B per-function state; create OCG context; set producer="NVIDIA", tool="ptxocg.0.0"; configure ~30 SM-specific fields; invoke vtable->init to map symbol names |
+| `codegen_per_func` | `sub_1655A60` | Drive the 48-pass codegen pipeline -- see [The 48-Pass Codegen Pipeline](#the-48-pass-codegen-pipeline) |
+| `codegen_compile` | `sub_1102B30` | `setjmp`-wrapped vtable->compile call; longjmp + record failure on error |
+| Timing record | -- | `timing_record` writes per-function start/end time |
+| `codegen_finalize` | `sub_110D2A0` | Emit ELF section content (.text, .nv.info, .nv.constant); write EIATTR register usage records; write SASS binary; cleanup per-function OCG state |
+
+In parallel mode each worker additionally allocates three local sorted maps (cap 8), copies a 15×16-byte snapshot of driver state into the per-function state, and allocates a 216-B per-function DWARF state via `dwarf_register`. After the barrier, the main thread merges per-thread maps, restores DWARF and pipeline snapshots, and runs `codegen_finalize` sequentially for each function so that register-budget propagation observes a deterministic order.
 
 ### Key Subroutine Reference
 
@@ -1043,45 +390,29 @@ The mode flag dispatch at Phase 6 selects one of four codegen pathways. The choi
 
 ### The 48-Pass Codegen Pipeline (`sub_1655A60`)
 
-The per-function codegen entry point `sub_1655A60` runs a 48-pass pipeline (passes numbered 0--47). Each pass is enabled or disabled by querying the SM dispatch vtable at `a1[3757]` (the architecture-specific callback table registered by `sub_15C0CE0`). The pipeline initializes 48 boolean flags in `a1[160..207]` and then iterates:
+The per-function codegen entry point `sub_1655A60` runs a 48-pass pipeline (passes 0--47). Each pass is enable-gated by the SM dispatch vtable at `a1[3757]` (registered by `sub_15C0CE0`); enable flags occupy `a1[160..207]`. The pass numbering, vtable offsets, and binary slot allocation are the nvlink-embedded copy's own and do not match the standalone ptxas pass numbering (~159 phases) — for the corresponding standalone passes see [ptxas: Passes Index](../../ptxas/passes/index.html), [ptxas: Instruction Selection](../../ptxas/codegen/isel.html), and [ptxas: Scheduling Algorithm](../../ptxas/scheduling/algorithm.html).
 
-```
-Pass  0:   Zero (placeholder)
-Pass  1:   Initial IR canonicalization
-Pass  2:   Instruction count estimation (query vtable+120)
-Pass  3-20: SM-gated optimization passes
-             Each pass queries vtable+72 for SM capability.
-             If SM supports the pass, the pass enable flag is set to 1.
-             If not supported, the flag remains 0.
-             Pass 21: address-width-dependent setup
-             Pass 22: register class initialization
-Pass 23-38: Core backend passes (ISel, register allocation, scheduling)
-             These are universally enabled for all SM >= sm_50.
-             Passes 23-38 include:
-               - Instruction selection (ISel mega-hub dispatch)
-               - Register allocation (graph coloring + spilling)
-               - Instruction scheduling (ScheduleInstructions)
-               - Peephole optimization
-               - SASS encoding
-Pass 39:   Initial ABI frame setup
-Pass 40-42: Final lowering passes
-Pass 43:   Peephole cleanup
-Pass 44-45: Reserved
-Pass 46:   Binary encoding query (vtable+488)
-Pass 47:   Final verification + pass-count teardown
-```
+| Pass(es) | Role | Gating |
+|---|---|---|
+| 0 | Zero placeholder | always off |
+| 1 | Initial IR canonicalization | unconditional |
+| 2 | Instruction count estimation | vtable+120 |
+| 3--20 | SM-gated optimization passes (architecture-specific opt) | vtable+72 capability query per pass |
+| 21 | Address-width-dependent setup | gated on `addr_width` |
+| 22 | Register class initialization | unconditional for SM >= sm_50 |
+| 23--38 | Core backend: ISel mega-hub dispatch, regalloc (graph coloring + spilling), `ScheduleInstructions`, peephole, SASS encoding | universally enabled for SM >= sm_50 |
+| 39 | Initial ABI frame setup | unconditional |
+| 40--42 | Final lowering passes | unconditional |
+| 43 | Peephole cleanup | unconditional |
+| 44--45 | Reserved | always off |
+| 46 | Binary encoding query | vtable+488 |
+| 47 | Final verification + pass-count teardown | unconditional |
 
-After the pass loop, `sub_1655A60` registers additional IR lowering callbacks (`sub_161F1C0`, `sub_161F800`, `sub_1620460`) on the function's basic block list, sets up UDT/UFT relocations for Blackwell+ (SM > 26 in ordinal = sm_100+), and processes the function's call graph for register pressure analysis.
+After the pass loop, `sub_1655A60` registers additional IR lowering callbacks (`sub_161F1C0`, `sub_161F800`, `sub_1620460`) on the function's basic block list, sets up UDT/UFT relocations for Blackwell+ (SM ordinal > 26 = sm_100+), and processes the function's call graph for register pressure analysis.
 
 ### Sequential vs. Parallel Compilation
 
-The compilation driver supports two execution models, selected by `ctx->thread_count` (offset `a1+668`):
-
-**Sequential mode** (`thread_count == 0`): Each function is compiled in the main thread with a simple loop: `codegen_init` -> `codegen_compile` (error-wrapped) -> `codegen_finalize`. Timing is recorded between stages. The cancel callback is checked between functions.
-
-**Parallel mode** (`thread_count > 0`): A thread pool is created via `sub_43FDB0`. For each function, a work item containing the full per-function state snapshot (360 bytes + 3 local hash maps + pipeline snapshot) is allocated and enqueued. Each thread executes `sub_1107420`, which calls `sub_1102B30` (the error-wrapped compile) and records timing. After the barrier wait (`sub_43FFE0`), the main thread performs a sequential merge pass: it restores each function's snapshot, merges local maps back into shared maps, and calls `codegen_finalize`. This is the same `--split-compile-extended` mechanism available in standalone ptxas.
-
-The thread pool implementation uses a producer-consumer work queue. `sub_43FF50` enqueues items, and worker threads dequeue and execute them. The barrier at `sub_43FFE0` blocks until all items complete. The pool is destroyed by `sub_43FE70`. If an optional synchronization state (`qword_2A64430`) is non-null, each worker checks for compilation errors after completing its work item via `sub_1D1E060` / `sub_1D1E300`.
+Selected by `ctx->thread_count` at `a1+668`. Sequential (count = 0) runs `codegen_init -> codegen_compile -> codegen_finalize` on the main thread with timing recorded between stages. Parallel (count > 0) creates a thread pool via `sub_43FDB0`, builds 48-byte work items containing the per-function state snapshot (360 B + 3 local sorted maps + 216-B DWARF state + pipeline snapshot), enqueues each via `sub_43FF50`, barriers on `sub_43FFE0`, then destroys via `sub_43FE70`. Workers run `sub_1107420`, which delegates to `sub_1102B30` (`setjmp`-wrapped compile) and records timing + peak memory. After the barrier the main thread merges per-thread maps back, restores DWARF and pipeline snapshots, and runs `codegen_finalize` sequentially so register-budget propagation is deterministic. If `qword_2A64430` is non-null, each worker error-checks via `sub_1D1E060`/`sub_1D1E300` after its work item. This is the same `--split-compile-extended` mechanism available in standalone ptxas.
 
 ## Cross-References
 

@@ -90,6 +90,7 @@
 
 - [Machine-Level Passes](./llvm/machine-passes.md)
 - [SelectionDAG](./llvm/selectiondag.md)
+- [NVPTXISD Opcodes](./llvm/nvptxisd-opcodes.md)
 - [Type Legalization](./llvm/type-legalization.md)
 - [ISel Pattern Matching](./llvm/isel-patterns.md)
 - [InstrEmitter](./llvm/instr-emitter.md)

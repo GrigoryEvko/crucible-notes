@@ -69,6 +69,10 @@ emit:  tcgen05.alloc.shared %h, 256;           // allocate TMEM region
        (warp-group cooperative, asynchronous, A in SMEM/TMEM, B in SMEM, D in TMEM)
 ```
 
+## SM110: Jetson Thor — No Dedicated MMA Surface
+
+SM110 (Jetson Thor) sits between datacenter Blackwell (SM100/SM103) and consumer Blackwell (SM120/SM121) in the architecture roster, and the compiler enumerates `sm_110`, `sm_110a`, and `sm_110f` as legal target strings. The `cute_nvgpu` dialect does not register any `sm110.*` MMA atom mnemonic — no WGMMA-style warp-group MMA, no `tcgen05.mma` over tensor memory, and no consumer-style block-scaled register MMA is dialect-side dispatched for SM110. Kernels compiled against `sm_110` use the universal-FMA fallback or an earlier-tier MMA atom that the architecture-conditional gate accepts. See [SM Tier Roster and Copy Atom Registry — SM110 (Jetson Thor)](../dialects/cute_nvgpu/sm-tier-roster-and-copy-atom-registry.md#atom-surface-by-tier) for the dialect-side evidence. Confidence: HIGH.
+
 ## SM120 / SM121: Consumer Blackwell Block-Scaled MMA
 
 SM120 (consumer RTX 50-series and enterprise Pro) and SM121 (DGX Spark) are a different lineage from datacenter Blackwell. They keep the block-scaled operand encoding but remove tensor memory. The MMA is once again warp-cooperative (32 threads, like SM70-SM89), synchronous (no wait-group), and entirely register-resident.
@@ -221,6 +225,7 @@ No async, no TMEM, no warp-group cooperation. The scale factors `%sfa` and `%sfb
 | SM80/89 | 64 (`m16n8k16`) | RF | RF | RF | sync | re-loaded per N-tile |
 | SM90a | 1 (`m64n128k16`) | RF or SMEM desc | SMEM desc | RF (async) | async (4-op) | one load per instruction |
 | SM100/103 | 1 (`m64n128k16`) | SMEM desc or TMEM | SMEM desc | TMEM | async (mbarrier) | amortised by collector |
+| SM110 (Jetson Thor) | falls through to universal-FMA / earlier-tier atoms | — | — | — | — | no SM110-specific MMA dispatch |
 | SM120/121 | 64 (`m16n8k32` block-scale) | RF | RF | RF | sync | re-loaded per N-tile |
 
 Reading the table: the instruction-count progression collapses the per-warp tile loop into the hardware between SM89 and SM90, then keeps it collapsed through SM100. SM120 reverts to per-warp tiling because consumer Blackwell removes the warp-group cooperation model, but the block-scale operand encoding stays — so SM120 is "SM89-shaped MMA with SM100's numerical range". The accumulator-residency progression is the most consequential: it moves out of the register file at SM90 (still in RF but async-visible only), out the rest of the way at SM100 (into TMEM), and back into RF at SM120. A kernel author who reuses an SM100 codepath on SM120 has to re-introduce explicit ldmatrix staging because TMEM is no longer there.
@@ -234,6 +239,7 @@ Reading the table: the instruction-count progression collapses the per-warp tile
 | SM89 | warp (32 lanes) | RF | RF | RF | sync | FP8 E4M3 / E5M2 inputs |
 | SM90a | warp-group (4 warps) | RF or SMEM desc | SMEM desc | RF (async-visible) | async | warp-group MMA, SMEM operand descriptors |
 | SM100/103 | warp-group, optional 2-CTA cluster | SMEM desc or TMEM | SMEM desc | TMEM | async | tensor memory, block-scale, weight-stationary, sparse block-scale |
+| SM110 (Jetson Thor) | — | — | — | — | — | target tier registered, no dedicated MMA atom; lowering falls through to universal-FMA |
 | SM120/121 | warp (32 lanes) | RF | RF | RF | sync | block-scale on consumer parts, no TMEM, no async |
 
 The progression is not monotonic. SM90a moves the accumulator out of registers (sort of: still in the RF, but async-visible only). SM100 moves it the rest of the way out, into TMEM. SM120 moves it back into registers, but keeps the block-scale operand encoding that SM100 added. The right way to read the table is one column at a time: concurrency grows up to SM100 and then resets for consumer Blackwell; operand storage class climbs steadily through SM100 and then resets; numerical range grows monotonically.
