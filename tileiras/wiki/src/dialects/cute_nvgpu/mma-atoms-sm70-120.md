@@ -335,6 +335,9 @@ The accumulator register list expands to the per-thread fragment count for the c
 
 A correct lowering threads the same `WgmmaDescriptor.raw` value into the `l` slot for the operand-B descriptor and, when A is SMEM-resident rather than register-resident, into a second `l` slot for operand A. The constructor and the verifier must read the descriptor layout from the same table — if the verifier expects 128-B swizzle but the constructor emits 64-B, the inline-asm fragment runs against the wrong SMEM region and produces silently wrong results.
 
+> ⚡ **QUIRK — descriptor swizzle mismatch fails *silently* at runtime, not at compile time**
+> The WGMMA descriptor is shipped as an opaque i64 into the inline-asm fragment. The verifier and the constructor each compute the swizzle bits from their own table; if those tables drift apart (verifier expects 128-B, constructor emits 64-B), the IR verifies, ptxas accepts, and the kernel launches — but the inline-asm fragment reads from a different SMEM region than the producer wrote to, so the accumulator absorbs unrelated bytes. There is no fence, no compile-time check, and no runtime trap. The only symptom is silently wrong numerics across an MMA tile.
+
 ## SM100 and SM103 UMMA
 
 SM100 introduces tensor memory and TCGEN-style MMA. The output accumulator lives in TMEM; A comes from an SMEM descriptor or from TMEM; B always comes from an SMEM descriptor. Sparse and block-scaled variants add metadata and scale-factor operands.

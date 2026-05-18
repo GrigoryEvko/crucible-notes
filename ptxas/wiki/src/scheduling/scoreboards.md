@@ -38,7 +38,7 @@ Total: 26 bits of scheduling metadata per instruction in the internal representa
 
 ### SASS Control Word (Binary Encoding)
 
-In the final SASS binary, the control word is packed into 23 bits per instruction slot within a 128-bit scheduling control instruction. Three instruction slots share one control instruction, yielding a 4:3 instruction-to-encoding ratio.
+In the final SASS binary, the control word is packed into 23 bits per instruction slot within a 128-bit scheduling control instruction. Three instruction slots share one control instruction, yielding a 4:3 instruction-to-encoding ratio. (MED -- per-field widths confirmed against `sub_A36360` encoder shifts; the 3-slot packing layout is inferred from cuobjdump output and the encoder loop structure rather than a single literal in the binary.)
 
 ```
 128-bit scheduling control instruction:

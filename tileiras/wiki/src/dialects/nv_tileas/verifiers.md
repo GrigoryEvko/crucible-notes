@@ -98,6 +98,9 @@ LogicalResult verify_pipeline_region_op(Operation *op) {
 
 Two diagnostic invariants are worth preserving. The typo `"arguement"` and the phrasing `"result types to be match"` are stable across all five verifiers — error-scraping infrastructure downstream has been matching them exactly, and silently fixing them breaks log capture. The iterator-unwrap step always runs on the block-arg side, never on the producer-type side.
 
+> ⚡ **QUIRK — two preserved English errors are part of the public diagnostic contract**
+> The verifier emits `"region arguement types to match"` (noun typo) and `"region result types to be match with"` (verb-form mistake) verbatim across all five pipeline ops. These look like obvious bugs but are wire-format-stable strings: log scrapers, frontends, and golden tests downstream key on the exact text. Silently correcting either string is a contract break with the same blast radius as renaming an op — reimplementations must keep both errors byte-identical, and any fix has to roll out at the consumer side first.
+
 ## Agent Switch Verification
 
 `agent_switch` has two region groups — one leaving an agent context, one entering another. The verifier checks that the regions agree on warp count and that the sum of requested warps doesn't exceed the enclosing launch budget.

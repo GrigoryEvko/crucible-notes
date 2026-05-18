@@ -122,6 +122,50 @@ The classic GVN recognizes four NVIDIA-specific LLVM intrinsic IDs and extracts 
 
 These intrinsics bypass the standard volatility checks and use custom operand extraction, allowing CSE of texture and surface loads that upstream LLVM GVN would not touch.
 
+```c
+/* NVIDIA intrinsic-aware load value numbering.
+ * Called from the case-79 (load) arm of GVN::runOnFunction's main loop
+ * (sub_1900BB0). For four NVIDIA intrinsic IDs the pointer operand
+ * is at a non-standard index, and the standard volatile check is
+ * skipped because these intrinsics are documented side-effect-free. */
+Value *valueNumberLoadOrIntrinsic(Instruction *I, GVNState *S) {
+    unsigned id = (I->getOpcode() == OPC_CALL)
+                ? getIntrinsicId(I)                   /* call->callee->id */
+                : 0;
+    Value *ptr;
+    bool   skip_volatile_check;
+
+    switch (id) {
+    case 4057:  /* llvm.nvvm.ldu                   */
+    case 4085:  /* llvm.nvvm.ldg                   */
+        ptr = getOperand(I, 1 - getNumOperands(I)); /* tail-relative idx */
+        skip_volatile_check = true;
+        break;
+    case 4492:                                       /* NVIDIA variants  */
+    case 4503:
+        ptr = getOperand(I, 2 - getNumOperands(I));
+        skip_volatile_check = true;
+        break;
+    default:                                         /* standard load    */
+        ptr = getPtrOperand(I);
+        skip_volatile_check = false;
+        break;
+    }
+
+    if (!skip_volatile_check && isVolatile(I))       /* sub_1560260 b36  */
+        return NULL;                                 /* don't number     */
+
+    /* Build 5-element key: (opcode, type, ptr, alignment, AS-class) and
+     * look up in LoadExprTable (offset +544 in the pass object). */
+    ExprKey k = { I->getOpcode(), getType(I), ptr,
+                  getAlign(I), getAddrSpace(ptr) };
+    if (Value *leader = scopedLookup(S->loadExprTable, &k))   /* sub_18FB980 */
+        return leader;
+    scopedInsert(S->loadExprTable, &k, I);                    /* sub_18FEF10 */
+    return I;
+}
+```
+
 ## Scoped Hash Tables
 
 GVN maintains four `ScopedHashTable` instances, pushed on dominator tree entry and popped on exit. The scope teardown at lines 1858-2101 restores the LoadExprTable via the undo list at offset +120, restores the StoreExprTable via the undo list at offset +72, frees the MemDepTable scope through `sub_18FE3A0`, and deallocates the 136-byte dom node.

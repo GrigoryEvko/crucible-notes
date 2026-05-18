@@ -143,7 +143,7 @@ This wiki is organized into 10 sections covering the binary from top-level pipel
 
 - [Function Map](./function-map.md) -- address-to-identity table for all 2,208 mapped functions
 - [Binary Layout](./binary-layout.md) -- segment map, memory regions, address space organization
-- [Methodology](./methodology.md) -- RE tools, approach, confidence scoring
+- [Methodology](./methodology.md) -- RE tools, approach, confidence scoring, and the [Terminology](./methodology.md#terminology) glossary (IDA anchors, EDG vocabulary, CUDA additions)
 
 ### [Compilation Pipeline](./pipeline/overview.md)
 

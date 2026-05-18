@@ -25,6 +25,9 @@ The four sub-layout axes (A, B, C, D) of a dot-product pipeline have specialised
 
 When the candidate collector returns an empty set for a group, the assigner emits the verbatim diagnostic `" can not find common memKind among pipeline alias group\n"` (the leading space and trailing newline are part of the constant). The terseness is intentional — the upstream candidate collector has already attached per-op diagnostics for every other failure shape, and by the time control reaches the group-level emitter only the cross-op memKind disagreement remains to report.
 
+> ⚡ **QUIRK — diagnostic constant carries a leading space and a trailing newline**
+> The string `" can not find common memKind among pipeline alias group\n"` includes both a leading space and an embedded `\n` — both bytes are part of the string-pool constant, not formatter side-effects. A grep that anchors with `^can` misses the message; a frontend that wraps diagnostics with its own newline produces a double blank line. The composition is intentional (the upstream emitter assumes a trailing punctuation slot was already consumed), but reproducing it byte-for-byte matters for log scrapers.
+
 The driver dispatches each op in a group on its op kind:
 
 | Op kind | Candidate-collector behaviour |

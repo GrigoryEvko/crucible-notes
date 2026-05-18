@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-PTXAS v13.0.88 is a 37,741,528-byte stripped x86-64 ELF executable. Its `.text` section spans 26.2 MB (`0x403520`--`0x1CE2DE2`) containing 40,185 functions. This page maps every byte of the binary to the subsystem that owns it, derived from all 40 sweep reports covering the complete address range.
+PTXAS v13.0.88 is a 37,741,528-byte stripped x86-64 ELF executable. Its `.text` section spans 26.2 MB (`0x403520`--`0x1CE2DE2`) containing 40,185 functions (HIGH -- direct ELF header read; function count from IDA auto-analysis). This page maps every byte of the binary to the subsystem that owns it, derived from all 40 sweep reports covering the complete address range.
 
 ## ELF Section Map
 

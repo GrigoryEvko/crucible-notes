@@ -361,6 +361,9 @@ The order is pragmatic. Cheap strategies run first, cost-based placement is the 
 
 Several constraint families shape which candidates the cost-based path even considers. Hard constraints — force-serial execution, max depth, resource footprint — gate legality. Soft constraints — same-depth, group unions, structural shape — rank only candidates that already cleared the hard gates. The serial path consumes only the force-serial-execution constraint; every other family is silently ignored.
 
+> ⚡ **QUIRK — serial generator silently drops every constraint except force-serial-execution**
+> The serial scheduler accepts the same `Constraint` set as the cost-based path but consults only `force-serial-execution`; same-depth, group-union, structural-shape, max-depth, and resource-footprint constraints are all dropped without warning when the serial generator runs. A frontend that pins a critical resource bound expecting both paths to honour it sees the cost-based schedule respect it and the serial schedule violate it — and the user-facing diagnostic stream is identical in both cases. Bug reports of "my constraint stopped working after `--force-serial-schedule`" land here.
+
 | Constraint | Effect |
 |---|---|
 | force-serial execution | selects or emulates serial ordering |

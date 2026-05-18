@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The SASS instruction encoder is the single largest subsystem in ptxas by function count. It translates the internal Ori IR instruction representation into packed binary SASS machine code for a specific SM target. The encoder comprises approximately 4,000 template-generated handler functions dispatched through function-pointer tables indexed by opcode, plus six massive switch-dispatch megafunctions that route field-level queries by instruction category. The core encoding primitive is a single 216-byte bitfield-insert function (`sub_7B9B80`) called from 18,347 sites throughout the binary. NVIDIA internally names this pipeline phase "Ori Phase Encoding" within the Mercury assembler backend.
+The SASS instruction encoder is the single largest subsystem in ptxas by function count. It translates the internal Ori IR instruction representation into packed binary SASS machine code for a specific SM target. The encoder comprises approximately 4,000 template-generated handler functions dispatched through function-pointer tables indexed by opcode, plus six massive switch-dispatch megafunctions that route field-level queries by instruction category. The core encoding primitive is a single 216-byte bitfield-insert function (`sub_7B9B80`) called from 18,347 sites throughout the binary (HIGH -- caller count from xref export; "AdvancedPhaseOriPhaseEncoding" string anchors the phase name). NVIDIA internally names this pipeline phase "Ori Phase Encoding" within the Mercury assembler backend.
 
 | | |
 |---|---|

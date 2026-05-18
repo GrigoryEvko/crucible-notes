@@ -80,7 +80,7 @@ Bucket chains are stored as arrays of `uint32_t` indices terminated by sentinel 
 
 **Mode 0 (Custom / String) -- MurmurHash3:**
 
-String-keyed maps use `sub_427630` (273 bytes, 73 callers), which implements MurmurHash3_x86_32 with the standard mixing constants:
+String-keyed maps use `sub_427630` (273 bytes, 73 callers), which implements MurmurHash3_x86_32 with the standard mixing constants (HIGH -- constants `0xCC9E2D51`/`0x1B873593` and rotate-by-15/13 schedule directly readable in disassembly; algorithm matches public MurmurHash3 reference byte-for-byte):
 
 ```c
 uint32_t MurmurHash3_x86_32(const char* key, int len) {

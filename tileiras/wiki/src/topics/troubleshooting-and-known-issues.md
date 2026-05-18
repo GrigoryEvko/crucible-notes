@@ -389,6 +389,9 @@ without specifying `opt-level` gets `2`; a user invoking the driver
 without `--opt-level` gets `3`. The mismatch is documented but a
 common source of "I changed nothing and the output changed" reports.
 
+> ⚡ **QUIRK — driver and pipeline disagree on the default `opt-level`**
+> Two entry points to the same compiler read different defaults from different option tables: `--opt-level` on the driver defaults to `3`, while `opt-level=` inside `--pass-pipeline` defaults to `2`. Identical IR therefore produces different PTX depending on whether the user invoked the driver or hand-rolled the pipeline, with no warning either way. This is the canonical "I changed nothing and the output changed" failure mode — pin `opt-level=` explicitly in both invocations to make builds reproducible across entry points.
+
 **`sm_90` is not in the driver's accept table.** The driver targets
 Blackwell as its primary deployment surface. Hopper builds go through
 a frontend that writes `compute_capability` directly and bypass the

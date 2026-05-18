@@ -96,6 +96,50 @@ When store sizes do not match, NVIDIA's DSE creates truncation or extension cast
 
 Standard LLVM DSE bails on size mismatches. NVIDIA's version handles the common CUDA pattern of a `float4` store followed by a scalar `float` load by extracting the relevant component via GEP + load.
 
+```c
+/* Partial store forwarding inside sub_19DDCB0 (overwrite engine, 28 KB).
+ * src_store = earlier store whose value we want to forward
+ * dst_load  = later load whose location overlaps with src_store
+ * Returns the value to feed into RAUW, or NULL on bail. */
+Value *forwardPartialStore(StoreInst *src_store, LoadInst *dst_load,
+                           const DataLayout *DL, AAResults *AA) {
+    /* Address-space disjointness already filtered by NVVM AA via
+     * sub_14C2730 -- shared/global/local pairs never reach this point. */
+    Value *src_val = src_store->getValueOperand();
+    Type  *src_ty  = src_val->getType();
+    Type  *dst_ty  = dst_load->getType();
+
+    uint64_t src_bits = computeTypeBits(src_ty, DL);    /* type-tag walk      */
+    uint64_t dst_bits = computeTypeBits(dst_ty, DL);    /* opcodes 1..0x10    */
+
+    if (src_bits == dst_bits)                           /* full overwrite     */
+        return src_val;                                 /* trivial forward    */
+
+    /* Ratio check (decompile labels LABEL_25 / LABEL_29). */
+    if (src_bits == 0 || dst_bits == 0)        return NULL;
+    if (src_bits % dst_bits != 0)              return NULL; /* misaligned    */
+
+    /* Compute byte offset of dst inside src. Bails if dst is not naturally
+     * contained -- e.g., partially-overlapping scalar inside float4. */
+    uint64_t off_bits = pointerDeltaBits(src_store->getPointerOperand(),
+                                         dst_load ->getPointerOperand(), DL);
+    if (off_bits == UINT64_MAX || off_bits + dst_bits > src_bits) return NULL;
+
+    /* Build trunc/zext or GEP+extractelement to slice src_val.
+     * Simple scalar slice: trunc (opcode 38) or zext (opcode 36). */
+    if (isScalarType(src_ty) && isScalarType(dst_ty)) {
+        Value *shifted = (off_bits != 0)
+            ? createLShr(src_val, off_bits)             /* sub_15A46C0       */
+            : src_val;
+        return (src_bits > dst_bits)
+            ? createTrunc(shifted, dst_ty)              /* opcode 38         */
+            : createZExt (shifted, dst_ty);             /* opcode 36         */
+    }
+    /* Vector/struct slice goes through sub_15FDBD0. */
+    return createGepExtract(src_val, off_bits / dst_bits, dst_ty);
+}
+```
+
 ### Store Size Ratio Check
 
 At labels `LABEL_25` / `LABEL_29` in the core function, DSE performs a ratio check:

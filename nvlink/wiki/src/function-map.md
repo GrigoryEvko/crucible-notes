@@ -200,8 +200,9 @@ Functions with the highest cross-reference count in the binary. These form the b
 | `0x442CA0` | `sub_442CA0` | elfw_add_symbol | 7.2KB | HIGH | Adds global symbol to ELF wrapper's symbol table. STB_GLOBAL/WEAK/LOCAL binding. |
 | `0x442820` | `sub_442820` | elfw_merge_symbols | 5.4KB | HIGH | Merges unified symbols; handles `__cuda_uf_stub_` and `.nv.uft` stubs. |
 | `0x4489C0` | `sub_4489C0` | hash_table_create | small | HIGH | Creates open-addressing hash table for symbol/option lookup. |
+| `0x449A80` | `sub_449A80` | LinkerHash_lookup | 592 B | HIGH | Lookup by key in the linker's open-addressing hash table; 4-mode dispatch via `(flags>>4)&0xF` (string / context-string / pointer / uint64). Returns value pointer or 0. Hot path of symbol-resolution merge -- probes the global name->index map for every incoming ELF symbol. |
 
-> **Details**: [Symbol Resolution](linker/symbol-resolution.md), [Hash Tables](linker/hash-tables.md)
+> **Details**: [Symbol Resolution](linker/symbol-resolution.md), [Hash Tables](linker/hash-tables.md), [Symbol Resolution Walkthrough](linker/symbol-resolution-walkthrough.md)
 
 ### Callgraph & Dead Code Elimination
 
@@ -231,6 +232,9 @@ Functions with the highest cross-reference count in the binary. These form the b
 | Address | Decompiled | Proposed Name | Size | Confidence | Description |
 |---------|------------|---------------|------|------------|-------------|
 | `0x469D60` | `sub_469D60` | **apply_relocations** | 26.6KB | VERY HIGH | Complete relocation resolution. Handles `__UFT_OFFSET`, `__UDT_OFFSET`, `__UFT_CANONICAL`, `__UDT`, `__UFT`. Processes `.nv.resolvedrela`. |
+| `0x468760` | `sub_468760` | reloc_action_dispatcher | 14.3KB | HIGH | Descriptor-driven per-relocation action engine called from `sub_469D60`. Indexes a 64-byte-per-entry descriptor table by `type<<6`; encodes a resolved symbol value into the instruction word via the bit-field writer, handling SHT_RELA (absolute) vs SHT_REL (addend-based) paths. 582 lines decompiled. |
+| `0x468670` | `sub_468670` | reloc_bitfield_extract | ~240 B | HIGH | Bit-field extractor used by `sub_468760` to read the existing addend bits out of an instruction word before adding the resolved symbol value. |
+| `0x4685B0` | `sub_4685B0` | reloc_bitfield_write | ~240 B | HIGH | Bit-field writer used by `sub_468760` to splice resolved values back into instruction words and data at non-byte-aligned positions. |
 | `0x46ADC0` | `sub_46ADC0` | emit_resolved_relocations | 11.5KB | HIGH | Creates `.nv.resolvedrela` section when `--preserve-relocs`. |
 | `0x459640` | `sub_459640` | reloc_vtable_create | 16.1KB | HIGH | Creates 632-byte vtable with ~70 handler slots, dispatched per arch generation (sm30..sm100+). |
 | `0x4AF3C0` | `sub_4AF3C0` | hrk_section_process | 8.8KB | HIGH | Processes `.nvHRKE` / `.nvHRKI` (Hash Relocation Key External/Internal). |
@@ -246,13 +250,18 @@ Functions with the highest cross-reference count in the binary. These form the b
 |---------|------------|---------------|------|------------|-------------|
 | `0x4BC6F0` | `sub_4BC6F0` | **nvvm_compile_and_extract** | 13.6KB | VERY HIGH | Calls libNVVM API: `nvvmCompileProgram`, `nvvmGetCompiledResult`, `nvvmGetProgramLog`, `nvvmDestroyProgram`. References `--force-device-c`. |
 | `0x4BC4A0` | `sub_4BC4A0` | nvvm_api_wrapper_init | 2.5KB | HIGH | Loads `libnvvm.so` via dlopen, resolves `nvvmCreateProgram` and other API symbols via dlsym. |
-| `0x426CD0` | `sub_426CD0` | lto_collect_ir_modules | 7.0KB | MEDIUM | Collects IR modules from input list for LTO compilation. |
+| `0x4BD760` | `sub_4BD760` | ptxas_compile_split | ~12KB | HIGH | Split-aware embedded-ptxas entry. Sets arch/options, adds the PTX input, drives the embedded compiler, retrieves output. Target of the split-compile worker `sub_4264B0`; return value is written into work-item offset +36 as an elfLink error code (0..13). |
+| `0x4BD4E0` | `sub_4BD4E0` | ptx_compile_whole_program | small | HIGH | Top-level whole-program PTX compile path -- produces final cubin without splitting. Alternative to the split-compile worker path. |
+| `0x4BD240` | `sub_4BD240` | cubin_post_process | small | HIGH | Cubin post-processing after embedded-ptxas compilation. Validates ABI (`-m32` vs `-m64`), invokes the cubin bytecode extractor `sub_4BE350`; surfaces elfLink errors on mismatch. |
+| `0x4BD0A0` | `sub_4BD0A0` | nvvm_compile_driver | small | HIGH | NVVM IR compilation driver. Sequences target arch setup (`sub_4CE2F0`), debug mode (`sub_4CE380`), 64-bit mode (`sub_4CE640`), module addition (`sub_4CE070`), final compile (`sub_4CE8C0`). |
+| `0x426CD0` | `sub_426CD0` | lto_collect_ir_modules | 7.0KB | MEDIUM | Collects IR modules from input list for LTO compilation. Builds the cicc/NVVM option list (array of string pointers). |
+| `0x429BA0` | `sub_429BA0` | lto_ptxas_options_build | 6.7KB | HIGH | Builds the single space-separated `-Xptxas` option string for the embedded ptxas assembler used by the LTO path. Reads from the same set of globals as `sub_426CD0` but emits a flat string rather than an argv vector. Multi-branch early-exit when several optional features are simultaneously off. |
 | `0x426AE0` | `sub_426AE0` | lto_mark_used_symbols | 2.2KB | MEDIUM | Marks symbols as used for dead-code elimination with LTO. Calls `sub_44AD40`. |
 | `0x43FDB0` | `sub_43FDB0` | thread_pool_create | small | HIGH | Creates pthread thread pool for split-compile. |
 | `0x43FC80` | `start_routine` | thread_worker_entry | small | VERY HIGH | Named symbol: `start_routine`. Thread pool worker entry point for parallel compilation tasks. |
-| `0x4264B0` | `sub_4264B0` | split_compile_dispatch | small | HIGH | Dispatches compilation units to thread pool workers. |
+| `0x4264B0` | `sub_4264B0` | split_compile_dispatch | small | HIGH | Dispatches compilation units to thread pool workers; unpacks 40-byte work-item structs and forwards their fields to `sub_4BD760`. |
 
-> **Details**: [LTO Overview](lto/overview.md), [LibNVVM Integration](lto/libnvvm-integration.md), [Split Compilation](lto/split-compilation.md)
+> **Details**: [LTO Overview](lto/overview.md), [LibNVVM Integration](lto/libnvvm-integration.md), [Split Compilation](lto/split-compilation.md), [Option Forwarding](lto/option-forwarding.md)
 
 ---
 
@@ -552,7 +561,18 @@ Large PTX processing subsystem in the `0x1430000`--`0x15C0000` range.
 | `0x1487650` | `sub_1487650` | ptx_statement_processor | 240KB | MEDIUM | Top-level PTX statement handler. Processes `.maxnctapersm`, `.reqntid`, kernel parameter limits (4352 bytes), function prototypes. |
 | `0x146BEC0` | `sub_146BEC0` | ptx_load_store_validator | 206KB | HIGH | Memory operation validator. Validates ld/st, atomics, reductions, fence, membar, cp.async, cache eviction, scope. |
 
-> **Details**: [PTX Parsing](ptxas/ptx-parsing.md), [Embedded ptxas Overview](ptxas/overview.md)
+### Embedded ptxas Option / Driver Interface
+
+The embedded ptxas backend exposes its own argv-style option surface, separate from nvlink's CLI. These functions form the boundary between the linker driver and the embedded compiler.
+
+| Address | Decompiled | Proposed Name | Size | Confidence | Description |
+|---------|------------|---------------|------|------------|-------------|
+| `0x1103030` | `sub_1103030` | ptxas_option_table_build | 29.8KB / 1,249 lines | HIGH | Builds the embedded-ptxas option definition table. Creates a fresh parser via `sub_42DFE0(0)`, registers every option via `sub_42F130` (long name, short name, type, default, help), then invokes `sub_42E5A0` to parse argc/argv. Handles `--trap-into-debugger`, `--tool-name`, `--help`, `--version`. |
+| `0x1104950` | `sub_1104950` | ptxas_option_extract | 37.6KB / 1,208 lines | HIGH | Parses argv against the table from `sub_1103030` and extracts each option via `sub_42E390` into a compiler-state structure at base pointer `a3`. Each option writes to a fixed byte offset; extraction order is strict and includes validation. |
+| `0x1112F30` | `sub_1112F30` | ptxas_compile_driver | 65.0KB / 2,164 lines | HIGH | Embedded-ptxas compilation driver -- the consumer of the option state populated by `sub_1104950`. Top-level orchestrator for PTX-to-SASS within the linker. |
+| `0x1100E50` | `sub_1100E50` | ptxas_feature_configurator | 13.8KB / 451 lines | HIGH | Feature flag configurator. Translates the parsed option state into the embedded compiler's internal feature switches before the driver runs. |
+
+> **Details**: [PTX Parsing](ptxas/ptx-parsing.md), [Embedded ptxas Overview](ptxas/overview.md), [ptxas Options](config/ptxas-options.md)
 
 ---
 
@@ -605,6 +625,7 @@ Quick reference sorted by address for binary navigation. All addresses verified 
 0x426570  sub_426570  validate_arch_and_merge
 0x426AE0  sub_426AE0  lto_mark_used_symbols
 0x426CD0  sub_426CD0  lto_collect_ir_modules
+0x429BA0  sub_429BA0  lto_ptxas_options_build
 0x4275C0  sub_4275C0  post_link_transform (FNLZR)
 0x4279C0  sub_4279C0  trace_phase
 0x427AE0  sub_427AE0  nvlink_parse_options
@@ -644,6 +665,7 @@ Quick reference sorted by address for binary navigation. All addresses verified 
 0x448360  sub_448360  elfw_get_section_header
 0x4489C0  sub_4489C0  hash_table_create
 0x448E70  sub_448E70  elfw_section_table_build
+0x449A80  sub_449A80  LinkerHash_lookup
 0x44A5D0  sub_44A5D0  callgraph_detect_recursion
 0x44AD40  sub_44AD40  dead_code_elimination
 0x44C030  sub_44C030  callgraph_traverse
@@ -670,6 +692,9 @@ Quick reference sorted by address for binary navigation. All addresses verified 
 0x464460  sub_464460  linked_list_append
 0x467460  sub_467460  error_emit
 0x467A70  sub_467A70  diagnostic_report
+0x4685B0  sub_4685B0  reloc_bitfield_write
+0x468670  sub_468670  reloc_bitfield_extract
+0x468760  sub_468760  reloc_action_dispatcher
 0x469D60  sub_469D60  apply_relocations
 0x46ADC0  sub_46ADC0  emit_resolved_relocations
 0x46C690  sub_46C690  LZ4_decompress_safe
@@ -706,6 +731,10 @@ Quick reference sorted by address for binary navigation. All addresses verified 
 0x4BC290  sub_4BC290  elflink_error_handler
 0x4BC4A0  sub_4BC4A0  nvvm_api_wrapper_init
 0x4BC6F0  sub_4BC6F0  nvvm_compile_and_extract
+0x4BD0A0  sub_4BD0A0  nvvm_compile_driver
+0x4BD240  sub_4BD240  cubin_post_process
+0x4BD4E0  sub_4BD4E0  ptx_compile_whole_program
+0x4BD760  sub_4BD760  ptxas_compile_split
 0x4C28B0  sub_4C28B0  setBitfield
 0x4C2A60  sub_4C2A60  encoding_init
 0x4C2A90  sub_4C2A90  encode_predicate
@@ -770,4 +799,8 @@ Quick reference sorted by address for binary navigation. All addresses verified 
 0x147EF50 sub_147EF50 ptx_instr_semantic_analyzer
 0x1487650 sub_1487650 ptx_statement_processor
 0x15B86A0 sub_15B86A0 cuda_builtin_prototype_gen
+0x1100E50 sub_1100E50 ptxas_feature_configurator
+0x1103030 sub_1103030 ptxas_option_table_build
+0x1104950 sub_1104950 ptxas_option_extract
+0x1112F30 sub_1112F30 ptxas_compile_driver
 ```

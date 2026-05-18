@@ -157,6 +157,42 @@ A barrier is **redundant** (dead) if any of the following holds:
 
 The first two conditions capture the case where one side of the barrier has no memory traffic at all. The latter two capture the case where both sides access memory, but the access patterns cannot conflict.
 
+```c
+/* Phase 4 elimination decision driven by the four bridge maps
+ * (state->maps[63..86]). One pass over every barrier; restart from
+ * Phase 3 on the first removal because cascading is possible. */
+bool decideEliminations(DSEState *state, Function *F) {
+    for (Instruction *I = firstInst(F); I; I = nextInst(I)) {
+        if (!isSyncBarrier(I)) continue;                  /* sub_2C83D20 */
+
+        bool RA = rbtreeLookup(state->maps[63], I);       /* ReadAbove   */
+        bool WA = rbtreeLookup(state->maps[69], I);       /* WriteAbove  */
+        bool RB = rbtreeLookup(state->maps[75], I);       /* ReadBelow   */
+        bool WB = rbtreeLookup(state->maps[81], I);       /* WriteBelow  */
+
+        bool dead = (!RA && !WA)           /* no traffic above       */
+                 || (!RB && !WB)           /* no traffic below       */
+                 || (!RA && !WB)           /* no RAW/WAW across      */
+                 || (!WA && !RB);          /* no WAR/WAW across      */
+
+        /* Special case for syncthreads_{count,and,or}: IDs 8260..8262.
+         * The barrier's return value carries data; if it has at most
+         * one use, the data flow is trivially handled and the fence
+         * itself may still be redundant. */
+        unsigned id = getIntrinsicId(I);
+        if (id - 8260u <= 2u && hasOneUse(I))             /* sub_BD3660 */
+            dead = true;
+
+        if (dead) {
+            emitDiagnostic(I, RA, WA, RB, WB);            /* "Removed dead synch:" */
+            eraseFromParent(I);                           /* sub_B43D60 */
+            return true;                                  /* triggers Phase 3 restart */
+        }
+    }
+    return false;
+}
+```
+
 #### Special Case: Intrinsic IDs 8260--8262
 
 For call instructions (opcode 85) where the callee's intrinsic ID satisfies `(ID - 8260) <= 2` (i.e., IDs 8260, 8261, or 8262), the pass applies an additional test via `sub_BD3660` (`hasOneUse`). If the barrier-like intrinsic has only a single use, it is considered removable even if the standard dataflow check would keep it. These IDs likely correspond to specialized barrier variants (`__syncthreads_count`, `__syncthreads_and`, `__syncthreads_or`) where the return value is used as data. When the return value has only one use, the compiler can reason that the data-carrying aspect is trivially handled and the barrier itself may still be dead from a memory ordering perspective.

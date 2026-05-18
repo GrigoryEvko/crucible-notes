@@ -362,6 +362,9 @@ The SM-specific atom catalogues that `sub_91A9B0` reads to build plans are docum
 
 The pass identity triple is `sub_8235B0` / `sub_8235C0` / `sub_8235D0`. The name slot returns the literal `"MaterializeSchedule"`; the description slot returns ``"Meterialize the pipeline schedule to generate warp-specialized or unspecialized IR"`` verbatim — the leading typo `Meterialize` lives in the binary and must survive bit-for-bit in tool output. The factory `sub_825050` takes a 3-byte packed option mask whose bits feed the offsets listed below. Dependent dialect registration runs through `sub_8235E0`, which inserts `nv_tileaa`, `nv_tileas`, and `scf` into the dependency set.
 
+> ⚡ **QUIRK — pass *name* spells `Materialize`, but pass *description* spells `Meterialize`**
+> Slot `sub_8235B0` returns the correctly-spelled `"MaterializeSchedule"` while the neighbouring description slot `sub_8235C0` returns `"Meterialize the pipeline schedule..."` with a leading `Mete-` typo. The two slots disagree on a single byte, and `--help` output (which reads the description) therefore looks misspelled while the CLI option name (which reads the identifier) does not. The typo is binary-stable, and a reimplementation has to reproduce the asymmetry to keep snapshot-based golden tests passing.
+
 ### Pass Object and CLI Options
 
 The pass body is a 960-B (`0x3C0`) PIMPL allocated through `sub_44A8C20(0x3C0)`. Three boolean CLI-visible options sit at fixed offsets inside the body, mirroring the option layout in `TileASMaterializeConvertLayout`.

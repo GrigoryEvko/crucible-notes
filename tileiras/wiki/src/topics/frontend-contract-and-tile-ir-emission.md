@@ -128,6 +128,9 @@ scheduler, the agent-switch builder, and the function-boundary lowering, which
 projects it onto `nvvm.*` function attributes the AsmPrinter emits as PTX
 directives.
 
+> ⚡ **QUIRK — Triton's `tt.*` prefix is the project-neutral compiler's de-facto schema**
+> Tileiras is a project-neutral CUDA tile compiler, but its kernel-launch contract reads attributes under the `tt.*` namespace — the prefix Triton uses for its own frontend. `tt.num_warps`, `tt.num_ctas`, `tt.cluster_dim`, and `tt.num_stages` flow through `ConvertCudaTileToTileAA` with no rename and land in `nv_tileaa.kernel_spec` unchanged. A frontend that uses a clean per-project namespace (say `myfrontend.num_warps`) gets the silent defaults instead — 4 warps, 1 CTA, cluster `[1,1,1]` — and the scheduler emits a kernel sized for a single warp group with no warning that the producer's intent was ignored.
+
 | Attribute | Default if absent | Projected PTX directive |
 |---|---|---|
 | `tt.num_warps = N : i32` | 4 | `.reqntid (32*N), 1, 1` |

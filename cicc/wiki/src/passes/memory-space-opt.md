@@ -131,6 +131,48 @@ The core resolver walks backward through use-def chains to find the original all
 
 The walker uses a worklist with a visited bitset to handle cycles through phi nodes. It collects three separate vectors: loads (indirect pointers), GEPs, and calls returning pointers.
 
+```c
+/* Backward use-def chain walk: sub_1CA5350, 8776 bytes (~1641 lines).
+ * Returns a 5-bit address-space bitmask:
+ *   0x01=global, 0x02=shared, 0x04=constant, 0x08=local, 0x10=param.
+ * popcount(mask)==1 means fully resolved; >1 means ambiguous (caller
+ * decides based on `param-always-point-to-global`). */
+uint8_t resolveAddressSpace(Value *root, AnalysisCtx *ctx) {
+    SmallVector<Value*, 32> worklist = { root };
+    DenseSet<Value*> visited;
+    uint8_t mask = 0;
+
+    while (!worklist.empty()) {
+        Value *v = worklist.pop_back_val();
+        if (!visited.insert(v).second) continue;  // PHI cycle guard
+
+        switch (getOpcodeChar(v)) {              /* MSP node tag */
+        case 'H': worklist.push_back(getPtrOperand(v));    break; /* GEP */
+        case 'G': worklist.push_back(getCastSource(v));    break; /* bitcast */
+        case 'O':                                                 /* PHI */
+            for (unsigned i = 0; i < getNumIncoming(v); ++i)
+                worklist.push_back(getIncomingValue(v, i));
+            break;
+        case '8': mask |= 0x08; break;           /* alloca -> local (AS 5)   */
+        case 'M': mask |= classifyCallReturn(v); break; /* call ret-AS table */
+        case 32:  /* Load */
+            if (ctx->knobs.track_indir_load)
+                worklist.push_back(getPtrOperand(v));
+            else mask |= 0x0F;                   /* unknown -> all-non-param */
+            break;
+        case 47:  /* inttoptr */
+            if (ctx->knobs.track_int2ptr)
+                worklist.push_back(getCastSource(v));
+            else mask |= 0x0F;
+            break;
+        case 48:  worklist.push_back(getCastSource(v)); break; /* ptrtoint */
+        default:  mask |= classifyByAttribute(v, ctx); break;  /* arg/global */
+        }
+    }
+    return mask ? mask : 0x01;   /* default to global on empty (unreachable) */
+}
+```
+
 ### Resolution Decision
 
 Once the bitmask is computed:

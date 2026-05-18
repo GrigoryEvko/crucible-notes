@@ -189,6 +189,9 @@ byte offset into the pool, which lets the printer address mnemonics up to a
 The two-table split survives the LTO fold; the printer's MC-opcode dispatcher
 emits the same `(lo | (hi << 16))` reconstruction inline in every case.
 
+> ⚡ **QUIRK — 32-bit offset reconstruction for a sub-megabyte mnemonic pool**
+> The printer addresses each mnemonic with a 32-bit offset reconstructed from two 16-bit tables, even though the entire decoded pool fits in tens of kilobytes — the high 16 bits are always zero in practice. The split is a TableGen artifact: the offset type is sized for the worst-case LLVM target's combined mnemonic pool. NVPTX inherits the layout because LTO refuses to fold the second table away (the dispatcher reads it inline in every case), so the `(lo | (hi << 16))` idiom is the fingerprint to grep for when locating the printer in a stripped binary.
+
 A smaller separate pool with the same XOR-3 decode scheme holds physical
 register names. Both pools are decoded by the same once-init body, so the
 mnemonic table and the register-name table become available simultaneously

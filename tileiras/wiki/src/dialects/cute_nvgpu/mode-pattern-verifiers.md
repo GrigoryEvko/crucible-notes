@@ -184,6 +184,9 @@ The `mma_kind` field picks one of seven enum values. Each implies a different el
 
 The 13 verbatim diagnostics below fire in the order shown. Each rule is independent; the verifier walks them in fixed sequence and reports the first failure rather than collecting all violations, so a kind word that clears one rule is not yet globally valid until the whole ladder completes. The `"colletor"` typo in rule 10 is preserved verbatim — reproducing it byte-for-byte is required for test suites that match diagnostics by string.
 
+> ⚡ **QUIRK — `colletor` typo + fail-first walk masks later violations**
+> Rule 10's diagnostic spells the noun `colletor` (missing `c`) instead of `collector`, and the ladder bails on the first failure rather than collecting every violation. Two surprises compose: a kind word that fails rule 3 may *also* trip rules 7 and 10, but the user sees only the rule-3 message; iteratively patching one symptom at a time is the only debugging path. Combined with the typo, log scrapers that search for the corrected spelling silently miss every rule-10 hit even when the verifier fires.
+
 | # | Diagnostic | Trigger condition |
 |---:|---|---|
 | 1 | `"INT8 type is supported only on arch-conditional variants."` | `mma_kind == i8` outside an arch-conditional / family-conditional variant |

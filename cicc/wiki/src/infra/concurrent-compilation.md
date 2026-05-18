@@ -140,6 +140,51 @@ The threshold between insertion sort and introsort is 256 bytes of element data 
 
 Priority values come from function attributes extracted by `sub_12D3D20` (585 bytes). The sorted output is a vector of `(name_ptr, name_len, priority)` tuples with 32-byte stride, used directly by the per-function dispatch loop to determine compilation order. Functions with higher priority (likely larger or more critical kernels) are submitted to the thread pool first.
 
+```c
+/* Function priority enumeration + sort, sub_12E0CA0 (4678 bytes).
+ * Output is a contiguous array of 32-byte records; the dispatch loop
+ * walks this array in priority-descending order. */
+typedef struct {
+    const char *name_ptr;     /* +0  -- function name string         */
+    size_t      name_len;     /* +8  -- length (excludes NUL)        */
+    int64_t     priority;     /* +16 -- larger == compile first      */
+    void       *fn;           /* +24 -- internal Function pointer    */
+} SortRec;                    /* 32-byte stride                      */
+
+void sortFunctionsByPriority(Module *M, SortRec **out, size_t *out_n) {
+    /* Phase A: enumerate via iterator callback table */
+    Vec(SortRec) v = vec_new(/*stride=*/32);
+    for (Node *n = M->first; !iter_end(n); n = iter_next(n)) {
+        if (*(uint8_t *)((char *)n + 16) != 0) continue;       /* type 0 = Function */
+        if (sub_15E4F60(n)) continue;                          /* isDeclaration()   */
+        SortRec r = {
+            .name_ptr = sub_1649960(n),
+            .name_len = strlen(r.name_ptr),
+            .priority = sub_12D3D20(n),                        /* attr query        */
+            .fn       = n,
+        };
+        vec_push(&v, &r);
+        hashmap_insert(M->name2fn, r.name_ptr, n);             /* v359 in caller    */
+    }
+
+    /* Phase B: libstdc++-style hybrid sort (descending priority).
+     * Threshold 256 bytes ~= 8 records of stride 32. */
+    if (v.bytes <= 256)
+        sub_12D48A0(v.data, v.bytes, /*stride=*/32, cmp_priority_desc);
+    else
+        sub_12D57D0(v.data, v.bytes, /*stride=*/32, cmp_priority_desc);
+
+    *out   = v.data;
+    *out_n = v.bytes / 32;
+}
+
+static int cmp_priority_desc(const void *a, const void *b) {
+    int64_t pa = ((const SortRec *)a)->priority;
+    int64_t pb = ((const SortRec *)b)->priority;
+    return (pa < pb) - (pa > pb);   /* larger priority first */
+}
+```
+
 ### Enumeration Phase
 
 Before sorting, `sub_12E0CA0` enumerates all functions and globals via an iterator callback table:

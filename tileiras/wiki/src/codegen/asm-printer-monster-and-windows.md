@@ -99,6 +99,9 @@ The `type_tag` byte indexes a small enum the Blackwell block-scale dispatch lean
 
 The SM120 block-scale MMA expander reads a packed control word from `MCInst + 280`. That offset is the seventh `MCOperand` slot for the dense form (`MI 5468`) and the eighth slot for the sparse form (`MI 5469`). Slot layout: A-fragment, B-fragment, C-accumulator, D-output, SFA handle, SFB handle, control word, optional sparse metadata. The control word's low bytes carry the type tags for A and B, the kind tag, the scale-vec format, and a sync-aligned bit the expander explicitly rejects: only the non-sync-aligned form survives into PTX, and a mismatch produces the `nvvm.mma.blockscale currently supports non-sync aligned variants only!` diagnostic.
 
+> ⚡ **QUIRK — `mma.block_scale.sync.aligned` actually emits non-sync-aligned PTX**
+> The mnemonic family name is `mma.block_scale.sync.aligned`, but the SM120 expander reads the sync-aligned bit and rejects it: only the non-sync-aligned variant ever survives into PTX. A frontend that sets the sync-aligned bit hoping to match the mnemonic gets the diagnostic `nvvm.mma.blockscale currently supports non-sync aligned variants only!` rather than a working kernel — the bit and the family name disagree by design.
+
 ```c
 struct NvvmMmaBlockScaleCtrl {  // 32-bit packed, MCInst + 280
     uint32_t a_type_tag        : 5;  // BYTE1: 15 = E4M3, 16 = E5M2, 17 = E2M1

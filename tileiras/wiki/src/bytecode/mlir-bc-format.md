@@ -103,6 +103,9 @@ Producers must always emit the canonical (shortest) encoding for a given integer
 
 Once `sub_5838A0` has accepted the envelope and built the blob-section descriptor array, the top-level driver invokes the section walker. The walker is not a recursive parser — it is a fixed, dependency-ordered dispatch over the descriptor array. Earlier sections build the lookup tables that later sections cross-reference, so the order is required even though the on-disk order is the producer's choice.
 
+> ⚡ **QUIRK — on-disk section order is free, walker order is fixed**
+> The bytecode envelope lets the producer write sections in any order, but the reader's `walk_sections` always dispatches them in the fixed dependency-ordered sequence (STRING → TYPE → ATTRIBUTE → IR → optional RESOURCE/DEBUG). Two byte-different files can therefore decode to identical IR, and the reader uses descriptor-array lookup rather than position to find each section. A reimplementation that follows on-disk order to drive parsing will read references against half-built tables and emit `unknown <kind>` errors for files the official reader accepts.
+
 ```c
 ParseResult walk_sections(BytecodeReader *r, const BlobSectionDesc *desc, size_t n_desc,
                           MLIRContext *ctx, ModuleOp *out_module) {
