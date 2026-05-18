@@ -2,7 +2,7 @@
 
 cudafe++ reserves error indices 3457--3794 for CUDA-specific diagnostics. These 338 slots are displayed to the user as error numbers 20000--20337 with a `-D` suffix (for suppressible severities), produced by the renumbering logic in `construct_text_message` (`sub_4EF9D0`): when the internal error code exceeds 3456, the display code is `error_code + 16543`. Of the 338 slots, approximately 210 carry unique error message templates; the remainder are reserved or share templates with parametric fill-ins (`%s`, `%sq`, `%t`, `%n`, `%no`). Every CUDA error can be suppressed, promoted, or demoted by its **diagnostic tag name** via `--diag_suppress`, `--diag_warning`, `--diag_error`, or the `#pragma nv_diagnostic` system.
 
-This page is a searchable reference catalog organized by error category. For the diagnostic pipeline mechanics (severity levels, pragma stack, output formatting), see [Diagnostic Overview](./overview.md).
+This page is a searchable reference catalog organized by error category for the **CUDA extension namespace only**. The remaining ~573 diagnostic tags inherited from EDG 6.6 (constexpr interpreter, template engine, modules, attributes, overload resolution, type system) follow the same suppression machinery but use the original error-code range; for a category-prefix summary of that EDG-base namespace see [Error Message Catalog § EDG Diagnostic Namespace](../reference/error-catalog.md#edg-diagnostic-namespace-outside-this-catalog). For the diagnostic pipeline mechanics (severity levels, pragma stack, output formatting), see [Diagnostic Overview](./overview.md).
 
 ## Error Numbering Scheme
 

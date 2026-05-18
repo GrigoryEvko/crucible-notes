@@ -1,6 +1,6 @@
 # R_CUDA Relocation Catalog
 
-Complete reference table of all 119 R_CUDA relocation type names extracted from nvlink v13.0.88. Types are organized into two descriptor tables: the standard table at `off_1D37600` (117 entries, indices 0--116) and the attribute table at `off_1D371E0` (65 entries, indices 0x10000--0x10040). See [R_CUDA Relocations](../linker/r-cuda-relocations.md) for the relocation engine, descriptor format, action types, and architecture class system.
+Complete reference table of all **117 canonical** R_CUDA relocation type names extracted from nvlink v13.0.88, indexed across **182 total descriptor rows** (117 standard + 65 attribute). The raw `nvlink_strings.json` pool contains 119 R_CUDA string entries -- 117 unique names plus two trailing-whitespace duplicates of `R_CUDA_UNIFIED_8_0` and `R_CUDA_UNIFIED_8_8` (see Confidence Assessment). Types are organized into two descriptor tables: the standard table at `off_1D37600` (117 entries, indices 0--116) and the attribute table at `off_1D371E0` (65 entries, indices 0x10000--0x10040). See [R_CUDA Relocations](../linker/r-cuda-relocations.md) for the relocation engine, descriptor format, action types, and architecture class system.
 
 ## Standard Table (off_1D37600)
 

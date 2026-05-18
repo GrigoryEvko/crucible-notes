@@ -4,6 +4,8 @@ cudafe++ reserves internal error indices 3457--3794 (338 slots) for CUDA-specifi
 
 This page is a flat lookup table. For the diagnostic pipeline architecture (severity stack, pragma scoping, SARIF output), see [Diagnostic Overview](../diagnostics/overview.md). For narrative discussion of each category with implementation details, see [CUDA Errors](../diagnostics/cuda-errors.md).
 
+**Scope note.** This catalog enumerates the **CUDA-extension namespace** (~248 documented tags spanning internal codes 3457--3794, plus 6 pragma-action tags listed for completeness). The full cudafe++ binary defines roughly **859 snake_case diagnostic tags** across all of EDG 6.6's C++ frontend; the remaining ~605 tags govern standard C++ diagnostics (templates, constexpr evaluation, modules, attributes, type mismatches, overload ambiguity, etc.) inherited from EDG and shared with the wider EDG ecosystem. Those tags use the original error-code range 0--3456 and are accepted by `--diag_suppress` / `#pragma nv_diag_suppress` identically to CUDA tags but are not enumerated here. See [EDG Diagnostic Namespace](#edg-diagnostic-namespace-outside-this-catalog) at the bottom of this page for a category-prefix breakdown. Confidence: **HIGH** for the 859 total (counted directly from `cudafe_strings.json`), **MED** for the 248 / 605 split (prefix-based bucketing).
+
 ## Numbering and Display Format
 
 ```
@@ -1107,3 +1109,41 @@ Quick reference for minimum architecture required by various CUDA features.
 | Cluster scope for atomics | sm\_90 |
 | 128-bit atomic exchange/CAS | sm\_90 |
 | `__wgmma_mma_async` builtins | sm\_90a |
+
+---
+
+## EDG Diagnostic Namespace (outside this catalog)
+
+Beyond the 286 CUDA-extension tags above, the cudafe++ binary embeds approximately **573 additional snake_case diagnostic tags** belonging to EDG 6.6's standard C++ frontend. They share the same suppression machinery -- `--diag_suppress=<tag>`, `#pragma nv_diag_suppress <tag>`, numeric `#pragma nv_diag_suppress <N>` for codes 0--3456 -- but live in the original error-code range and are emitted without the `20000-D` renumbering.
+
+The table below summarizes the top category prefixes harvested from the binary's string table. Counts are tag totals per prefix; the *role* column describes what the prefix governs.
+
+| Category prefix | Tags | Role |
+|---|---:|---|
+| `invalid_` | 150 | Structural validity (invalid declarator, invalid attribute location, invalid asm qualifier, ...) |
+| `constexpr_` | 112 | Constexpr interpreter errors (access past object, allocation mismatch, call not interpretable, undefined behaviour, ...) |
+| `type_` | 56 | Type-system inconsistencies (conflicts-with-tag, after-integral-promotion, constraint-failed, ...) |
+| `template_` | 48 | Template engine diagnostics (instance linkage conflict, arg involves error entity, depth mismatch, ...) |
+| `function_` | 34 | Function declaration/definition issues (body processing, defaulted in friend decl, does-not-match-arguments, ...) |
+| `ambiguous_` | 28 | Overload and lookup ambiguity (constructor, conversion function, partial spec, virtual override, ...) |
+| `class_` | 26 | Class-layout and inheritance constraints |
+| `module_` | 24 | C++20 modules support (import conflict, file-not-found, declaration-position, primary-name, ...) |
+| `attribute_` | 24 | GCC/MSVC/standard attribute application rules (cleanup-storage, condition-satisfied, ignored-on-incomplete-class, ...) |
+| `static_` | 21 | Static specifier and linkage |
+| `virtual_` | 19 | Virtual function rules |
+| `symbol_` / `return_` | 19 / 19 | Symbol resolution; return-type mismatches |
+| `member_` / `implicit_` | 18 / 18 | Member access; implicit conversion / construction |
+| `struct_` / `pragma_` / `lambda_` / `enum_` | 15 each | Struct layout; `#pragma` parsing; lambda restrictions; enum constraints |
+
+> ⚡ **QUIRK — diagnostic tags survive renumbering**
+> A CUDA error displayed as `#20042-D` and an EDG error displayed as `#147` are both suppressible by *tag name* through the same global lookup. Internally cudafe++ resolves the tag string against all 859 entries before the per-error-code severity arrays (`byte_1067920` / `byte_1067921` / `byte_1067922`) are consulted, so users never need to know whether a tag belongs to the CUDA extension range or the EDG base range. The numeric `#pragma nv_diag_suppress 20042` form silently subtracts 16543 before indexing the severity arrays.
+
+The EDG-base namespace is intentionally not enumerated tag-by-tag in this wiki: the upstream catalog is maintained by EDG and tags are largely stable across EDG 6.x point releases. For a deep dive into specific subsystems consult:
+
+* [Constexpr Interpreter](../edg/constexpr-interpreter.md) -- for the 112 `constexpr_*` tags.
+* [Template Engine](../edg/template-engine.md) and [CUDA Template Restrictions](../edg/template-cuda.md) -- for `template_*`.
+* [Declaration Parser](../edg/declaration-parser.md) -- for `invalid_*` declarator and attribute diagnostics.
+* [Overload Resolution](../edg/overload-resolution.md) -- for `ambiguous_*`.
+* [Pragma Engine](../edg/pragma-engine.md) -- for `pragma_*` and the suppression machinery.
+
+Confidence: **MED** -- prefix bucketing is mechanical, but a handful of tags straddle categories (e.g. `module_id_for_source_corresp` could be either modules or RDC).

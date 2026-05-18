@@ -399,7 +399,7 @@ See [Optimization Levels](../config/opt-levels.md) for the confirmed per-phase t
 
 ## Complete 159-Phase Table
 
-> **Coverage status.** 62 of the 159 phases (39 %) currently lack a dedicated detail page — the **Detail Page** column for those rows is blank. Phases without detail pages are documented at the row granularity of the table below plus, for the late-pipeline range 139--158, the [phase-by-phase deep dive](#phase-by-phase-deep-dive-139158). Pages should follow the structure of [Strength Reduction](strength-reduction.md) or [Varying Propagation](varying-propagation.md) (front-matter table, algorithm pseudocode, data flow, function map, cross-refs).
+> **Coverage status (audit 2026-05-18).** Of the 159 phases: **92 GREEN** rows carry a cross-reference to a dedicated detail page (column **Detail Page** populated, link verified to resolve to an existing file); **27 YELLOW** rows carry no dedicated page but ARE covered by an in-page anchor section — the 10 RED gate hooks documented in [§Gate Passes](#gate-passes-advancedphase), the 4 RED update phases in [§Update Passes](#update-passes), the 7 RED report/debugger phases in [§Report Passes](#report-passes), and the 6 nullsub-bodied late-pipeline phases (150, 151, 152, 154, 157, 158) in [§Phase-by-phase deep dive (139--158)](#phase-by-phase-deep-dive-139158); **40 RED** rows have neither a detail page nor an in-page anchor section beyond their single-row description. Of those 40 RED, the highest-leverage targets are the lowering/expansion phases (`ConvertVTGReadWrite` 39, `DoVirtualCTAExpansion` 40, `ForwardProgress` 43, `ExpandJmxComputation` 80, `EnforceArgumentRestrictions` 48, `ExtractShaderConsts` 34/51, `BackPropagateVEC2D` 98) and the validation/setup phases (`OriCheckInitialProgram` 0, `PromoteFP16` 2, `AnalyzeControlFlow` 3, `OriCreateMacroInsts` 8, `OriSanitize` 12, `FinalInspectionPass` 94). New detail pages should follow the structure of [Strength Reduction](strength-reduction.md) or [Varying Propagation](varying-propagation.md) (front-matter table, algorithm pseudocode, data flow, function map, cross-refs).
 >
 > **Ranked-by-impact targets for the next hunter-resolver wave** (composite score = implementation size in bytes + 100 × outgoing callees, derived by walking the factory `sub_C60D30` jump table at `0x22BBEB8`, reading vtable slot 0 from `0x22BCC78 .. 0x22BEE50`, and cross-referencing `ptxas_functions.json`):
 >
@@ -411,6 +411,13 @@ See [Optimization Levels](../config/opt-levels.md) for the confirmed per-phase t
 >
 > See SURGICAL FIXES below for additional impl-address breadcrumbs added to the table rows themselves. The translation table in [Numbering Discrepancy](#numbering-discrepancy----complete-wiki-to-binary-mapping) had stale `Bin#` columns for several rows; the main 159-phase table below is authoritative (verified against the static name table at `off_22BD0C0`).
 
+> **YELLOW-row anchor map.** Some rows in the table below have an empty **Detail Page** cell but are nonetheless covered by an in-page anchor section elsewhere on this page. The mapping is:
+>
+> - **Gate phases** (Type A/B/C `AdvancedPhase*` hooks) → [§Gate Passes](#gate-passes-advancedphase): phases **4, 7, 47, 77, 82, 89, 92, 97, 101, 104, 106, 111, 127, 134, 135**. The §Gate Passes section gives the full Type A/B/C classification, execute thunk address, worker / vtable-slot dispatch target, and `ctx+1552` progress-counter value for each gate. Wiki phases 77, 82, 97, 101, 135 also have a Detail Page link (GREEN); the rest are covered only by the §Gate Passes anchor.
+> - **Update phases** → [§Update Passes](#update-passes): phases **76, 125, 128, 132, 150, 154**. The §Update Passes section explains that these refresh auxiliary IR data structures (liveness bitmaps, instruction lists, block layout caches) without transforming the IR.
+> - **Report phases** → [§Report Passes](#report-passes): phases **9, 96, 102, 126, 129, 130, 131, 151, 155, 156**. The §Report Passes section explains that these are no-ops unless specific debug knobs (`DUMPIR`, `--stat=phase-wise`, `--keep`) are enabled, and that 151/155/156 are nullsubs in release.
+> - **Late-pipeline nullsubs / state-trackers** → [§Phase-by-phase deep dive (139--158)](#phase-by-phase-deep-dive-139158): phases **150, 151, 152, 154, 157, 158**. The deep-dive gives the execute thunk address, body byte count, `isNoOp()` return value, and the reason each slot is preserved (ABI compatibility with debug builds, or terminal dispatch sentinel).
+
 ### Stage 1 -- Initial Setup (Phases 0--13)
 
 Program validation, recipe application, FP16 promotion, control flow analysis, unsupported-op conversion, macro creation, initial diagnostics.
@@ -421,10 +428,10 @@ Program validation, recipe application, FP16 promotion, control flow analysis, u
 | 1 | 1 | `ApplyNvOptRecipes` | Optimization |  | Applies NvOptRecipe transformations (option 391, 440-byte sub-manager); impl `sub_796D60` (1,484 B, 22 callees). ⚡ **Dual-caller quirk:** the implementation has **two** callers — the phase-1 wrapper at `0xC5F6E0` AND `sub_8F4D80` (mid-pipeline re-entry), so recipes apply both as a phase and as a callable sub-pass. Stub. |  |
 | 2 | 2 | `PromoteFP16` | Lowering |  | Promotes FP16 operations to FP32 where hardware lacks native support |  |
 | 3 | 3 | `AnalyzeControlFlow` | Analysis |  | Builds the CFG: identifies loops, dominators, back edges |  |
-| 4 | 4 | `AdvancedPhaseBeforeConvUnSup` | Gate |  | Type C: `sub_C5F620` writes `ctx+1552 = 1`; pre-legalization boundary |  |
+| 4 | 4 | `AdvancedPhaseBeforeConvUnSup` | Gate |  | Type C: `sub_C5F620` writes `ctx+1552 = 1`; pre-legalization boundary | [§Gate Passes](#gate-passes-advancedphase) |
 | 5 | 5 | `ConvertUnsupportedOps` | Lowering |  | Replaces operations not natively supported on the target SM with equivalent sequences | [Late Legalization](late-legalization.md) |
 | 6 | 6 | `SetControlFlowOpLastInBB` | Cleanup |  | Ensures control flow instructions are the final instruction in each basic block |  |
-| 7 | 7 | `AdvancedPhaseAfterConvUnSup` | Gate |  | Type C: `sub_C5F5A0` writes `ctx+1552 = 2`; post-ConvUnSup boundary |  |
+| 7 | 7 | `AdvancedPhaseAfterConvUnSup` | Gate |  | Type C: `sub_C5F5A0` writes `ctx+1552 = 2`; post-ConvUnSup boundary | [§Gate Passes](#gate-passes-advancedphase) |
 | 8 | 9 | `OriCreateMacroInsts` | Lowering |  | Expands PTX-level macro instructions into Ori instruction sequences |  |
 | 9 | 10 | `ReportInitialRepresentation` | Reporting |  | Dumps the Ori IR for debugging (no-op unless DUMPIR enabled) |  |
 | 10 | 11 | `EarlyOriSimpleLiveDead` | Optimization |  | Quick early dead code elimination pass | [Liveness](liveness.md) |
@@ -478,7 +485,7 @@ GVN-CSE, reassociation, shader constant extraction, CTA/VTG expansion, argument 
 | 44 | 50 | `OptimizeUniformAtomic` | Optimization |  | Converts thread-uniform atomic operations into warp-level reductions |  |
 | 45 | 51 | `MidExpansion` | Lowering |  | Target-dependent mid-level expansion of operations before register allocation | [Late Legalization](late-legalization.md) |
 | 46 | 53 | `GeneralOptimizeMid2` | Optimization |  | Compound pass: copy prop + const fold + algebraic simplify + DCE (mid 2nd) | [GeneralOptimize](general-optimize.md) |
-| 47 | 54 | `AdvancedPhaseEarlyEnforceArgs` | Gate |  | Type A: dispatches to `EnforceArgumentRestrictions` [48]; late counterpart `LateEnforceArgumentRestrictions` [103] |  |
+| 47 | 54 | `AdvancedPhaseEarlyEnforceArgs` | Gate |  | Type A: dispatches to `EnforceArgumentRestrictions` [48]; late counterpart `LateEnforceArgumentRestrictions` [103] | [§Gate Passes](#gate-passes-advancedphase) |
 | 48 | 55 | `EnforceArgumentRestrictions` | Lowering |  | Enforces ABI restrictions on function arguments (register classes, alignment) |  |
 | 49 | 56 | `GvnCse` | Optimization | **> 1** | Global value numbering combined with common subexpression elimination | [Copy Prop & CSE](copy-prop-cse.md) |
 | 50 | 58 | `OriReassociateAndCommon` | Optimization |  | Reassociates expressions for better commoning opportunities, then eliminates commons | [Copy Prop & CSE](copy-prop-cse.md) |

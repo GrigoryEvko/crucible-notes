@@ -559,4 +559,27 @@ Common LLVM IR manipulation functions referenced across many passes.
 |---|---|---|---|
 | InstrEmitter DenseMap grow / rehash (hash: key\*37) | `0x2E29BA0` | — | HIGH |
 | TwoAddressInstruction DenseMap (SrcEqClassMap) | `0x1F4E3A0` | — | HIGH |
+| GlobalISel MachineVerifier::visitMachineInstrBefore (G_PHI/G_VSCALE/G_ASSERT_ZEXT type/operand checks, 60+ generic-MIR error strings) | `0x2EF30A0` | 18KB | HIGH |
+| NVPTX getTargetNodeName / SDNode opname dispatch (6,634-case switch over SDNode::getOpcode, emits every PTX operand keyword: `mmarowcol`, `scaleD`, `cta_group`, `parity_op`) | `0x35F6D40` | 875KB | VERY HIGH |
+
+## Dark-Continent Backend Functions
+
+Large NVPTX/SelectionDAG functions with no obvious string anchors — identified by callgraph position and address neighborhood. Add to dedicated pages as evidence accrues.
+
+| Function | Address | Size | Best-guess role | Confidence |
+|---|---|---|---|---|
+| Module-level New-PM pipeline parser (`PassBuilder::parseModulePass`, 335 pass-name string xrefs incl. `loop-simplify`, `wasm-eh-prepare`, `print<memoryssa>`, `cannot have a no-rerun module-to-function adaptor`) | `0x2382460` | 74KB | NewPM module-level counterpart of `sub_2368220`/`sub_2377300` | HIGH |
+| LLVM Verifier::visitCallInst-style validator (cleanup-funclet, convergencectrl, GC personality checks; "external or indirect", "unsupported operand bundle") | `0x29ED7A0` | 20KB | IR call-site verifier, sibling of `sub_BFC6A0` for call instructions | HIGH |
+| SelectionDAG LegalizeOp recursive visitor (22 self-calls, calls SCEV/DAG ops cluster `sub_1D332F0`) | `0x20A2AF0` | 25KB | DAGCombiner / LegalizeVectorOps inner visitor | MED |
+| NVPTX SDNode helper #1 ("getVectorNumElements scalable-vector" warning, callees in `0x2D43050`/`0x33CB110` ISel-cost cluster) | `0x333BF30` | 55KB | NVPTX ISel cost/legalization scoring helper | MED |
+| NVPTX SDNode helper #2 (same scalable-vector warnings, sibling of `sub_333BF30`, smaller fan-out) | `0x3333CD0` | 25KB | NVPTX ISel legalization helper, sibling of `sub_333BF30` | MED |
+| Machine-pass recursive structural walker (14 self-calls, in `0x2B00000` codegen region near `sub_2B71BE0`) | `0x2BA65A0` | 18KB | LiveInterval / RegAlloc graph walker | LOW |
+| Machine-codegen self-recursive analyzer (`sub_2B9A8C0` and tail `sub_2B9A850`) | `0x2B9A8C0` | 21KB | MachineFunction/MIR analysis pass, paired with `sub_2BA65A0` | LOW |
+| LLVM IR attribute-keyword scanner (`noinline`, `nonnull`, `zeroext`, `extern_weak`, `fastcc`, `anyregcc` etc., parent `sub_1205200`) | `0x11FF4E0` | 24KB | AsmParser attribute-keyword lookup table, paired with bitcode reader | HIGH |
+| LLVM AutoUpgrade intrinsic-name table (`avx512.mask.cmp.`, `clz.ll`, `popc.ll`, `sse2.add.sd`) | `0x156E800` | 64KB | NVPTX/LLVM IR intrinsic name-rewrite table (sibling of x86 `sub_A939D0`) | HIGH |
+| LLVM AutoUpgrade x86 SSE/AVX intrinsic renamer (`sse41.ptest`, `sse4a.movnt`, `avx.dp.ps.256`) | `0x15644B0` | 19KB | x86 intrinsic upgrade helper, leftover from generic LLVM AutoUpgrade | HIGH |
+| ThinLTO summary `.dot` dumper ("digraph Summary {", "// Cross-module edges:", "// Module:") | `0xBB0D30` | 17KB | Module summary index DOT-graph printer | HIGH |
+| New-PM CGSCC/loop-pass inliner cluster member (in `0x1A00000` PassBuilder zone) | `0x1ADC640` | 19KB | PassBuilder helper near `sub_186CA00`/`sub_189A480` | LOW |
+| InstCombine comprehensive folder helper #1 (parent `sub_1205200`-class, FuncAttr-aware) | `0x1136650` | 23KB | InstCombine internal folder (sibling of main `sub_10EE7A0`) | MED |
+| Function-attribute string→bitset parser (`denormal-fp-math`, `frame-pointer`, `cpu-name`, `mattr`, `a1,+a2,-a3,...`) | `0x2D97F20` | 30KB | TargetMachine option/feature decoder | HIGH |
 

@@ -241,3 +241,4 @@ Blackwell removes WGMMA. SM100 and SM103 use `tcgen05.mma` over tensor memory; S
 [nvgpu Dialect Overview](../dialects/nvgpu/overview.md) shows how `nvgpu.warpgroup.mma` lowers into this protocol.
 [Lowering: nvgpu / gpu to NVVM](../lowering/nvgpu-and-gpu-to-nvvm.md) is the dialect-conversion path that materialises the four-op sequence.
 [tcgen05 / WGMMA / mbarrier / Cluster Emission](../codegen/tcgen05-wgmma-mbarrier-cluster.md) covers the backend-side validation of the selected WGMMA machine form.
+[DSL to PTX End-to-End](dsl-to-ptx-end-to-end.md) walks the four-op WGMMA sequence in context — Stage 3 shows the `nv_tileas.dot` carrying the `sm90_wgmma_m64n128k16_f32_f16_f16` atom, Stage 4 expands it to the `fence` / `mma_async` / `commit_group` / `wait_group` NVVM quartet, Stage 5 renders the MIR `WGMMA_*` opcodes, and Stage 6 emits the matching `wgmma.*` PTX directives for one steady-state K-iteration.

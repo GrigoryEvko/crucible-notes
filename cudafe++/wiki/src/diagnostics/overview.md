@@ -2,6 +2,8 @@
 
 The cudafe++ diagnostic system is a 7-stage pipeline rooted in EDG 6.6's `error.c`. It manages 3,795 error message templates, 9 severity levels, per-error suppression tracking, `#pragma` diagnostic overrides, and two output formats (text and SARIF JSON). The most-connected function in the entire binary -- `sub_4F2930` (assertion handler) with 5,185 call sites -- feeds into this system, making error handling the single largest cross-cutting concern in cudafe++.
 
+Each of the 3,795 numeric codes also carries a **snake_case diagnostic tag** accepted by `--diag_suppress` and `#pragma nv_diag_*`. The binary's string table holds approximately **859 such tags**: ~254 in the CUDA extension range (codes 3457--3794, displayed as 20000--20337) and ~605 in the EDG base range (codes 0--3456, displayed unchanged). The CUDA-extension tags are enumerated in [CUDA Errors](./cuda-errors.md) and the [Error Message Catalog](../reference/error-catalog.md); the EDG base namespace is summarized by category prefix at the bottom of the [reference catalog](../reference/error-catalog.md#edg-diagnostic-namespace-outside-this-catalog).
+
 ## Error Table
 
 The error message template table lives at `off_88FAA0`: an array of 3,795 `const char*` pointers indexed by error code (0--3794).
