@@ -8,7 +8,7 @@ ptxas implements hot/cold partitioning across three dedicated phases that mark c
 |---|---|
 | **Phases** | 41 (`MarkAdditionalColdBlocks`), 108 (`OptimizeHotColdInLoop`), 109 (`OptimizeHotColdFlow`) |
 | **Category** | Analysis (41), Optimization (108, 109) |
-| **Pipeline positions** | Phase 41: mid-optimization (after `DoVirtualCTAExpansion`); Phases 108--109: post-scheduling (after `OriRemoveNopCode`) |
+| **Pipeline positions** | Phase 41: mid-optimization (after `DoVirtualCTAExpansion`); Phases 108--109: post-regalloc, after `OriRemoveNopCode` (107) and before `PostSchedule` (110) |
 | **Vtable addresses** | `off_22BDC30` (41), `off_22BE6A8` (108), `off_22BE6D0` (109) |
 | **Instruction classifiers** | `sub_A9CDE0` (isHotMemoryOp, 380B), `sub_A9CF90` (isColdMemoryOp, 367B) |
 | **Block layout consumer** | Phase 112: `PlaceBlocksInSourceOrder` (`sub_A92C50`) |
@@ -463,7 +463,7 @@ All three vtables follow the standard 5-entry layout (entry order confirmed by d
 | Memory space codes (4=shared, 5=constant, 6=global) | HIGH | Confirmed across multiple consumers |
 | Scheduling priority bit 5 = hot/cold | HIGH | Decompiled priority function at `sub_8C9320` |
 | Phase 41 runs before scheduling | VERY HIGH | Factory index and pipeline ordering table |
-| Phases 108--109 run post-scheduling | VERY HIGH | Pipeline ordering table, position after `OriRemoveNopCode` |
+| Phases 108--109 run post-regalloc, between `OriRemoveNopCode` (107) and `PostSchedule` (110) | VERY HIGH | Pipeline ordering table, position after `OriRemoveNopCode` and before `PostSchedule` |
 | Knob 582 cold-region query in predication | HIGH | Decompiled predication pass at `sub_1381010` |
 | Block layout consumer at phase 112 | HIGH | `sub_A92C50` identified via string xref to `PlaceBlocksInSourceOrder` |
 | Cold-block flag in BB+28 | MEDIUM | Inferred from consumer patterns; exact bit position unconfirmed |

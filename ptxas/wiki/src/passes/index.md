@@ -137,8 +137,8 @@ Phases 140--158 are identity-mapped (wiki number = binary index). The full list 
 
 These binary phases have no wiki number. All are valid `DUMPIR` and `DisablePhases` targets.
 
-| Bin | Name | Cat | Pipeline Position |
-|--:|---|---|---|
+| Bin | Default Order | Name | Cat | Pipeline Position |
+|--:|--:|---|---|---|
 | 22 | 25 | `OriCopyProp` | Opt | Between `OriSplitLiveRanges` [21] and `PerformPGO` [23]; sub-pass of all 6 GeneralOptimize bundles |
 | 32 | 36 | `OptimizeNaNOrZero` | Opt | Between `SinkRemat` [31] and `GeneralOptimize` [33]; NaN/zero constant folding |
 | 37 | 43 | `ConvertMemoryToRegisterOrUniform` | Opt | Between `CompactLocalMemory` [36] and `OriPerformLiveDeadSecond` [38]; knob 487 gated |

@@ -29,7 +29,7 @@ The six passes form a progressive legalization strategy:
 | 55 | `LateExpansion` | After high-level optimizations (stage 4) | Expansion of ops that optimization passes should see in unexpanded form |
 | 78 | `LateExpansionUnsupportedOps` | After all optimization (stage 5) | Catches remaining unsupported ops after predication, rematerialization, and uniform conversion |
 | 93 | `LateExpansionUnsupportedOps2` | After GMMA/attr passes (stage 5) | Second catch -- handles ops exposed by GMMA propagation, GMMA fixup, and register attribute setting |
-| 137 | `LateExpansionUnsupportedOpsMid` | After late merge (stage 10) | Final catch between the two conditional flow merge passes |
+| 137 | `LateExpansionUnsupportedOpsMid` | After late merge (binary index 93) | Final catch after `LateMergeEquivalentConditionalFlow` (binary 91) and before `ExpandJmxComputation` (binary 94); executes after both conditional flow merge passes, not between them |
 
 ## Architecture Backend Dispatch
 
