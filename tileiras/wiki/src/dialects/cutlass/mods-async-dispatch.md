@@ -8,7 +8,7 @@ The family is small but the placement is exact. MODS ops appear inside `cutlass.
 
 ## Position in the cutlass Dialect
 
-The cutlass dialect groups its thirty-eight ops into five families. Pipeline (twelve ops), tile_scheduler (eight ops), seq_bar (six ops), and block_striped (eight ops) cover the four large-scale orchestration concerns. The MODS family is the fifth, smaller cluster: four ops that target the same persistent-kernel structure the other tile_scheduler ops build, but for runtime reporting rather than work assignment.
+The cutlass dialect groups its thirty-eight ops into five families. Pipeline (twelve ops), tile_scheduler (eight ops), seq_bar (five ops), and block_striped (eight ops) cover the four large-scale orchestration concerns. The MODS family is the fifth, smaller cluster: four ops that target the same persistent-kernel structure the other tile_scheduler ops build, but for runtime reporting rather than work assignment.
 
 | Op | Role | Side effect |
 | --- | --- | --- |

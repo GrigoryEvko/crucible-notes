@@ -527,20 +527,20 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | `merge_flags` at offset 76 | HIGH | `*((_DWORD *)v17 + 19) = a9` on lines 158, 164, 207, 215 |
 | `debug_flag` at offset 80 | HIGH | `*((_BYTE *)v17 + 80) = a6` on line 235 |
 | `has_section_names` at offset 83 | HIGH | `*((_BYTE *)v17 + 83) = !v31` on line 241 where `v31 = *((_WORD *)v17 + 42) == 0` |
-| `preserve_relocs` at offset 84 (bit 0) | HIGH | `*((_BYTE *)v17 + 84) = v20 & 1` on line 237 |
-| `force_rela` at offset 85 (bit 1) | HIGH | `*((_BYTE *)v17 + 85) = (v20 & 2) != 0` on line 238 |
-| `allow_undef_globals` at offset 86 (bit 9, `0x200`) | HIGH | `*((_BYTE *)v17 + 86) = (v20 & 0x200) != 0` on line 240 |
-| `no_opt` at offset 87 (bit 2) | HIGH | `*((_BYTE *)v17 + 87) = (v20 & 4) != 0` on line 242 |
-| `optimize_data` at offset 88 (bit 3) | HIGH | `*((_BYTE *)v17 + 88) = (v20 & 8) != 0` on line 243 |
-| Byte 89 = `((v20 >> 4) & 1) \|\| mercury_flag` | HIGH | `v32 = (v20 >> 4) & 1; if (v13) LOBYTE(v32) = 1; *((_BYTE *)v17 + 89) = v32` on lines 246-249 |
-| `emit_ptx` at offset 90 (bit 5) | HIGH | `*((_BYTE *)v17 + 90) = (v20 & 0x20) != 0` on line 244 |
-| `flag_0x4000` at offset 91 | HIGH | `*((_BYTE *)v17 + 91) = (v20 & 0x4000) != 0` on line 245 |
-| `flag_0x40` at offset 92 | HIGH | `*((_BYTE *)v17 + 92) = (v20 & 0x40) != 0` on line 250 |
-| `flag_0x100` at offset 93 | HIGH | `*((_BYTE *)v17 + 93) = BYTE1(v20) & 1` on line 253 |
-| `extended_smem` at offset 94 (`sm_minor > 0x45 & bit 7`) | HIGH | `*((_BYTE *)v17 + 94) = (a5 > 0x45u) & ((unsigned __int8)v20 >> 7)` on line 260 |
-| `flag_0x800` at offset 96 | HIGH | `*((_BYTE *)v17 + 96) = (v20 & 0x800) != 0` on line 259 |
+| `callgraph_enabled` at offset 84 (bit 0) | HIGH | `*((_BYTE *)v17 + 84) = v20 & 1` on line 237 (bit 0 is the always-set base `0x40401`) |
+| `preserve_relocs` at offset 85 (bit 1) | HIGH | `*((_BYTE *)v17 + 85) = (v20 & 2) != 0` on line 238 |
+| `stack_protector` at offset 86 (bit 9, `0x200`) | HIGH | `*((_BYTE *)v17 + 86) = (v20 & 0x200) != 0` on line 240 |
+| `reserve_null` at offset 87 (bit 2) | HIGH | `*((_BYTE *)v17 + 87) = (v20 & 4) != 0` on line 242 |
+| `allow_undef_globals` at offset 88 (bit 3) | HIGH | `*((_BYTE *)v17 + 88) = (v20 & 8) != 0` on line 243 |
+| `is_rela_mode` at offset 89 = `((v20 >> 4) & 1) \|\| mercury_flag` | HIGH | `v32 = (v20 >> 4) & 1; if (v13) LOBYTE(v32) = 1; *((_BYTE *)v17 + 89) = v32` on lines 246-249 (bit 4 = `--force-rela`) |
+| `no_opt` at offset 90 (bit 5) | HIGH | `*((_BYTE *)v17 + 90) = (v20 & 0x20) != 0` on line 244 |
+| `optimize_data_layout` at offset 91 (bit 14, `0x4000`) | HIGH | `*((_BYTE *)v17 + 91) = (v20 & 0x4000) != 0` on line 245 |
+| `suppress_stack_warn` at offset 92 (bit 6, `0x40`) | HIGH | `*((_BYTE *)v17 + 92) = (v20 & 0x40) != 0` on line 250 |
+| `extra_warnings` at offset 93 (bit 8) | HIGH | `*((_BYTE *)v17 + 93) = BYTE1(v20) & 1` on line 253 |
+| `extended_smem_sm_gate` at offset 94 (bit 7 AND `sm_minor > 0x45`) | HIGH | `*((_BYTE *)v17 + 94) = (a5 > 0x45u) & ((unsigned __int8)v20 >> 7)` on line 260 |
+| `host_info_mode` at offset 96 (bit 11, `0x800`) | HIGH | `*((_BYTE *)v17 + 96) = (v20 & 0x800) != 0` on line 259 |
 | `std_smem_mode` at offset 99 = inverse of `merge_flags` bit 12 (`--enable-extended-smem`) | HIGH | `*((_BYTE *)v17 + 99) = ((v21 >> 12) ^ 1) & 1` at `sub_4438F0_0x4438f0.c:229`; `a9` bit 12 source documented in `entry.md` merge_flags table (line 101: `byte_2A5F210` -> `enable-extended-smem`); consumed by `sub_445000_0x445000.c:347` as the second clause of the `sub_439640` gate |
-| Byte 100 = `(v20 & 0x2000) != 0` | HIGH | `*((_BYTE *)v17 + 100) = (v20 & 0x2000) != 0` on line 252 (overwrites earlier word-wide write at line 177/221) |
+| `flag_bit13` at offset 100 = `(v20 & 0x2000) != 0` (bit 13) | HIGH | `*((_BYTE *)v17 + 100) = (v20 & 0x2000) != 0` on line 252 (overwrites earlier word-wide write at line 177/221) |
 | `is_device_elf` at offset 101 | HIGH | `*((_BYTE *)v17 + 101) = (a9 & 0x8000) != 0` on line 144 |
 
 ### Note Headers and Section Index Cache (offsets 108--210)

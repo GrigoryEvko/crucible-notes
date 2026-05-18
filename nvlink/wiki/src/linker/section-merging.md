@@ -825,7 +825,7 @@ The partition type is stored at `ctx+664`. If different input objects disagree o
 | `sub_4325A0` uses natural alignment capped at 8 when explicit alignment is 0 | HIGH | Decompiled lines 63-68: `v24 = 8; if (v23 <= 8) v24 = *(_QWORD *)(v10 + 24);` |
 | `sub_4325A0` asserts `"should only reach here with no opt"` via elfw+90 check | HIGH | Decompiled line 76-77: `if (!*(_BYTE *)(a1 + 90))` then `"should only reach here with no opt"` string; string at addr 0x1d38758 in `nvlink_strings.json` |
 | `sub_4325A0` emits `"variable %s at offset %d"` when verbose | HIGH | Decompiled line 55: `fprintf(stderr, "variable %s at offset %d\n", ...)` with `(*(_BYTE *)(a1 + 64) & 2)` gate; string at addr 0x1d38739 in `nvlink_strings.json` |
-| `sub_4325A0` extended\_smem\_mode flag at elfw+100 | HIGH | Decompiled line 27: `if (!*(_BYTE *)(a1 + 100) \|\| ...)` controls sort bypass |
+| `sub_4325A0` `flag_bit13` (`merge_flags` bit 13) at elfw+100 | HIGH | Decompiled line 27: `if (!*(_BYTE *)(a1 + 100) \|\| ...)` controls sort bypass. Byte 100 holds the merge_flags bit-13 boolean (no confirmed CLI source observed in `main`'s bit assembly); the byte at +94 is the sm-gated extended-smem flag, not this one |
 | `sub_433760` at 0x433760 allocates 40-byte data node | HIGH | Decompiled: `sub_4307C0(v10, 40)` confirmed |
 | `sub_433760` updates section size at section+32 | HIGH | Decompiled line 43: `v9[4] = v16 + a5;` (QWORD index 4 = offset 32) |
 | `sub_433760` asserts `"tail data node not found"` | HIGH | Decompiled line 53: string literal confirmed in code and at addr 0x1d38839 |

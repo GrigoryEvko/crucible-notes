@@ -544,20 +544,20 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | `debug_flag` at offset 80 | HIGH | `*((_BYTE *)v17 + 80) = a6` on line 235 |
 | `has_shstrtab` at offset 83 | HIGH | `*((_BYTE *)v17 + 83) = !v31` on line 241 (tests word 42 for 0) |
 | `section_virtualization` flag byte at offset 82 | HIGH | `sub_443260` line 80: `*(_BYTE *)(a1 + 82)` gates virtualization check; same in `sub_443500` line 86 |
-| `preserve_relocs` at offset 84 (bit 0) | HIGH | `*((_BYTE *)v17 + 84) = v20 & 1` on line 237 |
-| `force_rela` at offset 85 (bit 1) | HIGH | `*((_BYTE *)v17 + 85) = (v20 & 2) != 0` on line 238 |
-| `allow_undef_globals` at offset 86 (bit 9) | HIGH | `*((_BYTE *)v17 + 86) = (v20 & 0x200) != 0` on line 240 |
-| `no_opt` at offset 87 (bit 2) | HIGH | `*((_BYTE *)v17 + 87) = (v20 & 4) != 0` on line 242 |
-| `optimize_data` at offset 88 (bit 3) | HIGH | `*((_BYTE *)v17 + 88) = (v20 & 8) != 0` on line 243 |
-| Byte at offset 89 = `(bit 4) \|\| mercury_flag` | HIGH | `v32 = (v20 >> 4) & 1; if (v13) LOBYTE(v32) = 1; *((_BYTE *)v17 + 89) = v32` on lines 246-249 |
-| `emit_ptx` at offset 90 (bit 5) | HIGH | `*((_BYTE *)v17 + 90) = (v20 & 0x20) != 0` on line 244 |
-| Flag `bit 0x4000` at offset 91 | HIGH | `*((_BYTE *)v17 + 91) = (v20 & 0x4000) != 0` on line 245 |
-| Flag `bit 6` at offset 92 | HIGH | `*((_BYTE *)v17 + 92) = (v20 & 0x40) != 0` on line 250 |
-| Flag `bit 8` at offset 93 | HIGH | `*((_BYTE *)v17 + 93) = BYTE1(v20) & 1` on line 253 |
-| `extended_smem` at offset 94 | HIGH | `*((_BYTE *)v17 + 94) = (a5 > 0x45u) & ((unsigned __int8)v20 >> 7)` on line 260 |
-| Flag `bit 0x800` at offset 96 | HIGH | `*((_BYTE *)v17 + 96) = (v20 & 0x800) != 0` on line 259 |
-| `no_warn_dead_code` at offset 99 (!bit 12) | HIGH | `*((_BYTE *)v17 + 99) = ((v20 >> 12) ^ 1) & 1` on line 251 |
-| Byte at offset 100 = `(merge_flags & 0x2000) != 0` | HIGH | `*((_BYTE *)v17 + 100) = (v20 & 0x2000) != 0` on line 252 (overwrites earlier word-wide write) |
+| `callgraph_enabled` at offset 84 (bit 0) | HIGH | `*((_BYTE *)v17 + 84) = v20 & 1` on line 237 (bit 0 is the always-set base `0x40401`) |
+| `preserve_relocs` at offset 85 (bit 1) | HIGH | `*((_BYTE *)v17 + 85) = (v20 & 2) != 0` on line 238 |
+| `stack_protector` at offset 86 (bit 9) | HIGH | `*((_BYTE *)v17 + 86) = (v20 & 0x200) != 0` on line 240 |
+| `reserve_null` at offset 87 (bit 2) | HIGH | `*((_BYTE *)v17 + 87) = (v20 & 4) != 0` on line 242 |
+| `allow_undef_globals` at offset 88 (bit 3) | HIGH | `*((_BYTE *)v17 + 88) = (v20 & 8) != 0` on line 243 |
+| Byte at offset 89 = `is_rela_mode` = `(bit 4) \|\| mercury_flag` | HIGH | `v32 = (v20 >> 4) & 1; if (v13) LOBYTE(v32) = 1; *((_BYTE *)v17 + 89) = v32` on lines 246-249 (bit 4 = `--force-rela`) |
+| `no_opt` at offset 90 (bit 5) | HIGH | `*((_BYTE *)v17 + 90) = (v20 & 0x20) != 0` on line 244 |
+| `optimize_data_layout` at offset 91 (bit 14, `0x4000`) | HIGH | `*((_BYTE *)v17 + 91) = (v20 & 0x4000) != 0` on line 245 |
+| `suppress_stack_warn` at offset 92 (bit 6) | HIGH | `*((_BYTE *)v17 + 92) = (v20 & 0x40) != 0` on line 250 |
+| `extra_warnings` at offset 93 (bit 8) | HIGH | `*((_BYTE *)v17 + 93) = BYTE1(v20) & 1` on line 253 |
+| `extended_smem_sm_gate` at offset 94 (bit 7, sm-gated) | HIGH | `*((_BYTE *)v17 + 94) = (a5 > 0x45u) & ((unsigned __int8)v20 >> 7)` on line 260 |
+| `host_info_mode` at offset 96 (bit 11, `0x800`) | HIGH | `*((_BYTE *)v17 + 96) = (v20 & 0x800) != 0` on line 259 |
+| `std_smem_mode` at offset 99 (inverse of bit 12 `--enable-extended-smem`) | HIGH | `*((_BYTE *)v17 + 99) = ((v20 >> 12) ^ 1) & 1` on line 251 |
+| `flag_bit13` at offset 100 = `(merge_flags & 0x2000) != 0` | HIGH | `*((_BYTE *)v17 + 100) = (v20 & 0x2000) != 0` on line 252 (overwrites earlier word-wide write) |
 | `is_device_elf` at offset 101 | HIGH | `*((_BYTE *)v17 + 101) = (a9 & 0x8000) != 0` on line 144 |
 | ~~`tkinfo_buffer` at offset 108~~ (labeling error) | LOW | `sub_43E490(v17 + 108, 1000)` initializes a 24-byte ELF note header (namesz, descsz, type=1000, "NVIDIA Corp"), not a 1000-byte buffer. Per line 539 `sub_433760(v17, cuinfo_idx, v17+108, 4, 32)`, offset 108 is tied to the cuinfo note, not tkinfo |
 | ~~`cuinfo_buffer` at offset 140~~ (labeling error) | LOW | `sub_43E490(v17 + 140, 2000)` initializes a second ELF note header (type=2000). The 1000/2000 values are NVIDIA note TYPE identifiers, not capacities. Which of 108/140 is tkinfo vs cuinfo is ambiguous from the constructor alone |
