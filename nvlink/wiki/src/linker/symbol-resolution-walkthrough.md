@@ -12,10 +12,12 @@ Three inputs drive the linker:
 | `input2.o` | `main_kernel` | `STB_GLOBAL` | `STT_NOTYPE` | `SHN_UNDEF` (0) | Undefined reference |
 | `input2.o` | `helper_fn` | `STB_WEAK` | `STT_FUNC` | `.text` (idx 1) | Weak definition |
 | `input2.o` | `__nv_sqrt` | `STB_GLOBAL` | `STT_NOTYPE` | `SHN_UNDEF` (0) | Undefined reference |
-| `libdevice.a(sqrt.o)` | `__nv_sqrt` | `STB_GLOBAL` | `STT_FUNC` | `.text` | Strong (lazy-loaded) |
-| `libdevice.a(helper.o)` | `helper_fn` | `STB_GLOBAL` | `STT_FUNC` | `.text` | Strong (lazy-loaded) |
+| `libdevice.a(sqrt.o)` | `__nv_sqrt` | `STB_GLOBAL` | `STT_FUNC` | `.text` | Strong (whole-archive loaded) |
+| `libdevice.a(helper.o)` | `helper_fn` | `STB_GLOBAL` | `STT_FUNC` | `.text` | Strong (whole-archive loaded) |
 
-The linker processes `input1.o`, then `input2.o`, then pulls needed members from `libdevice.a`. Throughout the walkthrough the elfw context has a hash map at `ctx+288` initially sized to 64 buckets (mask `0x3F` at `map+40`), empty positive and negative symbol arrays at `ctx+344` and `ctx+352`, and `ctx+304` (name counter) initialized to zero.
+The linker processes `input1.o`, then `input2.o`, then iterates **every** member of `libdevice.a` unconditionally and merges each one's symbols into the same elfw. nvlink does not perform symbol-directed (on-demand) archive extraction; see [Archives -- Whole-Archive vs On-Demand Loading](../input/archives.md#whole-archive-vs-on-demand-loading) for the verified behavior in `main_0x409800.c` lines 756-777. Throughout the walkthrough the elfw context has a hash map at `ctx+288` initially sized to 64 buckets (mask `0x3F` at `map+40`), empty positive and negative symbol arrays at `ctx+344` and `ctx+352`, and `ctx+304` (name counter) initialized to zero.
+
+> **QUIRK vs GNU ld**: A traditional Unix linker would scan `libdevice.a`'s armap, identify only members that satisfy currently-undefined symbols, and load just those (single-pass; `ld` does not iterate to a fixed point unless `--start-group`/`--end-group` is used). nvlink does the opposite: it ignores the armap (the `/` member is structurally detected and skipped without parsing), loads every member, and lets the [dead code elimination](dead-code-elimination.md) pass at `sub_44AD40` sweep unreachable functions. There is no fixed-point convergence loop because there is no symbol-directed extraction to converge.
 
 ## Step 1: Compute MurmurHash3 Values
 
@@ -169,13 +171,13 @@ entries:
 name_counter: 3
 ```
 
-## Step 6: Archive Lazy Loading - Pull `libdevice.a(sqrt.o)`
+## Step 6: Whole-Archive Member Merge -- `libdevice.a(sqrt.o)`
 
-After all command-line inputs are merged, the merge loop walks the list of archives (from `-l` options) and asks each: "do you provide any symbol that is currently undefined in the output?" This is the archive scan phase, performed by `sub_42A2D0` (`archive_validate_callback`, documented in [Library Search](../infra/library-search.md)).
+When the input-loop dispatch reaches `libdevice.a` (see [Input Loop](../pipeline/input-loop.md#archive-handling) and [Archives](../input/archives.md)), `main()` opens the archive via `sub_4BDAC0` and runs an unconditional `while(1) { archive_next; if (!s1) break; sub_42AF40(..., from_archive=1, ...); }` loop over every member. The archive's `/` armap is never consulted. Each extracted member is classified by `sub_4BDB70` and merged through the same `sub_42AF40 -> sub_442CA0 / sub_440BE0` path that ordinary command-line objects use.
 
-For `libdevice.a`, the archive index is consulted for each undefined symbol in the output. The undefined set is computed by scanning `neg_symbols` for entries whose `st_shndx == 0`. In this scenario that set is `{__nv_sqrt}` (because `main_kernel` was resolved by `input1.o` and `helper_fn` was weakly defined by `input2.o`).
+`sub_42A2D0` is sometimes named "archive_validate_callback" in the function map -- note that this name refers to **CPU architecture** validation (matching `e_machine` against `qword_2A5F2A0` for `X86_64`/`AARCH64`/`ARMv7`/`PPC64LE`), not symbol-table validation. It runs during library *search* (pass 2 of `-l` resolution) and does not feed back into the symbol resolver.
 
-The archive index lookup finds that `libdevice.a(sqrt.o)` provides `__nv_sqrt`. The member is extracted and its symbols are added to the elfw via the normal merge path. Focus on the `__nv_sqrt` addition:
+For this scenario, `libdevice.a(sqrt.o)` is loaded regardless of whether `__nv_sqrt` was previously undefined. The interesting case is what happens when its `__nv_sqrt` definition meets the pre-existing `SHN_UNDEF` placeholder at negative slot `-2`. Focus on the `__nv_sqrt` addition:
 
 **Entry to `sub_442CA0`** (because `STT_FUNC`): `a3 = 1` (STB_GLOBAL), `a4 = visibility`.
 
@@ -197,15 +199,15 @@ name_map buckets:
 name_counter: 3 (unchanged)
 ```
 
-## Step 7: Archive Lazy Loading - Strong Replaces Weak (`helper_fn`)
+## Step 7: Whole-Archive Member Merge -- Strong Replaces Weak (`helper_fn`)
 
-The archive scan pass is not limited to UND symbols. If a later `-l` archive provides a strong definition of a symbol that is currently **weak** in the output, standard ELF semantics dictate that the strong definition replaces the weak. nvlink implements this in the weak-resolution helper `sub_442820` (`elfw_merge_symbols`) rather than in `sub_440BE0`.
+Whole-archive iteration means `libdevice.a(helper.o)` is merged into the elfw regardless of whether the output currently has any reference to `helper_fn`. When its strong `helper_fn` definition meets the pre-existing weak definition at positive slot `17`, standard ELF semantics dictate that the strong definition replaces the weak. nvlink implements this in the weak-resolution helper `sub_442820` (`elfw_merge_symbols`) rather than in `sub_440BE0`.
 
 For `libdevice.a(helper.o)` providing a strong `helper_fn`, the sequence is:
 
-1. Archive member extraction pulls in `helper.o` because its symbol table includes a name that matches an existing entry in the output's hash map (`helper_fn`, slot 42). **Note**: nvlink's lazy-loading criterion is "UND symbol in output matches exported symbol in archive member", not "weak symbol in output matches strong in archive member". So `helper.o` is normally **not** pulled in just because of the weak `helper_fn`. It is only pulled in if it either (a) provides some other UND symbol that the output needs, or (b) the linker is invoked with `--whole-archive` on `libdevice.a`.
+1. Archive member extraction pulls in `helper.o` because the `while(1)` loop in `main()` iterates every member; the input-loop archive dispatch does not consult the symbol table to decide which members to load. **There is no `--whole-archive` / `--no-whole-archive` flag in nvlink**; whole-archive is the only loading mode. The traditional ld criterion of "UND symbol in output matches exported symbol in archive member" is **not** implemented -- nvlink never reads the GNU armap (the `/` member is skipped structurally without parsing its contents).
 
-2. Assume `--whole-archive` is in effect, so `helper.o` is fully merged. During merge, `sub_442CA0` is called for `helper_fn` with `a3 = 1` (STB_GLOBAL).
+2. `helper.o` is fully merged. During merge, `sub_442CA0` is called for `helper_fn` with `a3 = 1` (STB_GLOBAL).
 
 3. **Line 66**: `sub_449A80` hits the existing weak entry at slot 42, returns pointer, `v8 = 17`.
 

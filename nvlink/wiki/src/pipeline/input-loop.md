@@ -590,9 +590,9 @@ Errors during input processing are handled by the diagnostic infrastructure (`su
 
 4. **Validation failures**: `sub_426570` (validate\_arch\_and\_merge) returns a boolean. On failure (`return 0`), the cubin is freed via `sub_43D990` at LABEL\_185 and processing continues to the next input. This is a soft failure -- an arch mismatch on one input does not block other inputs from being processed.
 
-## How `--whole-archive` Changes Behavior
+## QUIRK: `--whole-archive` Is Not a Flag (It Is the Only Mode)
 
-nvlink does not implement `--whole-archive` as a separate mode because whole-archive is the **only** archive loading mode. Every archive member is unconditionally loaded and processed. Specifically:
+nvlink does not implement `--whole-archive` as a command-line option because whole-archive is the **only** archive loading mode. The token `--whole-archive` does not appear in nvlink's option table at all, and neither does `--no-whole-archive` or `--start-group`/`--end-group`. Every archive member is unconditionally loaded and processed in a single pass. Specifically:
 
 - There is no `--no-whole-archive` flag.
 - The symbol table (`/` member) is structurally detected and skipped, but its contents are never read. nvlink has no code to do symbol-directed member selection.

@@ -931,12 +931,12 @@ Every descriptor function initializes an Encoding Context object through a fixed
 
 ```c
 // Phase 1: Opcode header (5 calls for 64-bit, 6 for 128-bit)
-sub_7B9B80(a1, 0,    4, FORMAT_CODE);   // bits[3:0]     format: 1=64b, 2=128b
-sub_7B9B80(a1, 4,    3, 0);             // bits[6:4]     sched group slot
-sub_7B9B80(a1, 0x84, 3, 0);             // bits[134:132] ext flag (128-bit ONLY)
-sub_7B9B80(a1, 8,    9, MAJOR_OP);      // bits[16:8]    9-bit major opcode
-sub_7B9B80(a1, 0x11, 8, MINOR_OP);      // bits[24:17]   8-bit minor opcode
-sub_7B9B80(a1, 0x19, 7, FORMAT_ID);     // bits[31:25]   7-bit format ID
+sub_7B9B80(a1, 0,    4, FORMAT_CODE);   // bits[0:3]     format: 1=64b, 2=128b
+sub_7B9B80(a1, 4,    3, 0);             // bits[4:6]     sched group slot
+sub_7B9B80(a1, 0x84, 3, 0);             // bits[132:134] ext flag (128-bit ONLY)
+sub_7B9B80(a1, 8,    9, MAJOR_OP);      // bits[8:16]    9-bit major opcode
+sub_7B9B80(a1, 0x11, 8, MINOR_OP);      // bits[17:24]   8-bit minor opcode
+sub_7B9B80(a1, 0x19, 7, FORMAT_ID);     // bits[25:31]   7-bit format ID
 
 // Phase 2: Format layout descriptor (Tier 1) -- selects operand geometry
 *(__m128i*)(a1 + 8) = xmmword_23FXXXX;  // 128-bit format template from rodata
@@ -1154,9 +1154,11 @@ The bit layout that produces these offsets:
 
 Each operand slot is 16 bits wide: 1-bit presence flag, 4-bit register-file
 type (via the 12-entry regfile map in `sub_7BC030`), and 10-bit register
-number. The 128-bit gap between slots 1 and 2 (0x70 to 0x88 = 24 bits)
-reserves bits[128:135] for the extended opcode flag written by
-`sub_7B9B80(a1, 0x84, 3, 0)` in every 128-bit encoder header.
+number. The 8-bit gap between slots 1 and 2 (slot 1 ends at bit 127,
+slot 2 starts at bit 0x88 = 136; spacing = 0x88 - 0x70 = 24 bits, minus
+the 16-bit slot 1 = 8 bits free) reserves bits[128:135] for the extended
+opcode flag written by `sub_7B9B80(a1, 0x84, 3, 0)` in every 128-bit
+encoder header.
 
 Binary evidence -- representative encoder call sequences:
 

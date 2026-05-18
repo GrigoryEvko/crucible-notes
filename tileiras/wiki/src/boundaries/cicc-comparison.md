@@ -88,9 +88,9 @@ Above the NVVM-IR boundary, tileiras introduces an MLIR-shaped front-end with no
 | MLIR bytecode reader | Project-private MLIR bytecode I/O with Tile versioning, frozen op/type/attribute tags, and `cuda_tile` schema support. |
 | TileIR top-level driver | Compile-and-serialize path that registers dialects, registers pipeline options, and runs lowering. |
 | 9-dialect cascade | `cuda_tile` → `nv_tileaa` → `nv_tileas` (+ `cute`, `cute_nvgpu`, `cutlass`) → `nvgpu` → `nvvm` → `llvm`. |
-| MLIR-pipeline driver | Builds the `mlir::PassManager` for O0/O1/O2; the tier is decoded from bytecode attributes such as `"nvopt<O2>"`. |
+| MLIR-pipeline driver | Builds the `mlir::PassManager` for O0/O1/O2/O3; the tier is decoded from bytecode attributes such as `"nvopt<O2>"`. |
 | TileAS family | Removes dead args, resolves agent boundaries, schedules async work, materializes layouts, plans CTA mapping, and inserts OCG knobs. |
-| MODSBuilder | Cost-based modulo scheduler used in O2 after schedule generation and after GPU-op conversion. |
+| MODSBuilder | Cost-based modulo scheduler used at O2 and O3 (inherited from O2) after schedule generation and after GPU-op conversion. |
 | `cute` dialect | CuTe layout algebra: local tiling, partitioning, shape arithmetic, size/cosize, and divide helpers. |
 | `cute_nvgpu` dialect | SM70-SM120 atoms for TMA, tensor memory, GMMA/UMMA descriptors, warp-uniform values, and WGMMA. |
 | `cutlass` dialect | Pipeline acquire/commit/wait, tile-scheduler records, block-striped operations, and sequence barriers. |

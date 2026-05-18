@@ -408,27 +408,30 @@ Two xrefs to the `"__.LIBDEP"` string exist in the binary (at `0x487f1d` and `0x
 
 ## Whole-Archive vs On-Demand Loading
 
-A traditional Unix linker (GNU ld, lld, BSD ld) processes archives **on-demand**: at each archive encounter, it scans the archive's symbol table (armap, the `/` member), identifies members that define any currently-unresolved symbol, and loads only those members. Members whose symbols are not currently needed are skipped. The `-Wl,--whole-archive` flag overrides this behavior and unconditionally loads every member.
+A traditional Unix linker (GNU ld, lld, BSD ld) processes archives **on-demand**: at each archive encounter, it scans the archive's symbol table (armap, the `/` member), identifies members that define any currently-unresolved symbol, and loads only those members. Members whose symbols are not currently needed are skipped. The `-Wl,--whole-archive` flag overrides this behavior and unconditionally loads every member. ld also re-scans an archive when later inputs introduce new undefined references to it; `--start-group`/`--end-group` makes this re-scan iterate to a fixed point across a group of archives.
 
-**nvlink does not implement on-demand loading.** The archive dispatch in `main()` (decompiled source lines 850-886 of `main_0x409800.c`) unconditionally iterates every member of every archive and processes each one through `sub_42AF40` (the member handler), without ever consulting the symbol resolver to check if the member is needed:
+> **QUIRK vs GNU ld -- archive traversal**: nvlink performs a **single pass** over each archive that loads **every** member. There is no symbol-index consultation, no on-demand extraction, no second pass when later inputs introduce new undefined symbols, no `--start-group`/`--end-group`, no `--whole-archive`/`--no-whole-archive`, and consequently no fixed-point convergence loop. The `qword_2A5F2F0` seen-archive set positively prevents an archive from being processed more than once even if it appears multiple times on the command line. The only state machine here is "have we seen this path? if not, iterate all members exactly once".
+
+**nvlink does not implement on-demand loading.** The archive dispatch in `main()` (`main_0x409800.c` lines 746-790) unconditionally iterates every member of every archive and processes each one through `sub_42AF40` (the member handler), without ever consulting the symbol resolver to check if the member is needed:
 
 ```c
-// main_0x409800.c lines 856-886 (condensed)
-v367 = (void *)sub_476BF0(v74, 0);                    // load entire archive file
-v314 = sub_4BDAC0(&v363, v367, v313, v74);            // open archive iterator
+// main_0x409800.c lines 752-778 (condensed)
+v273 = sub_476BF0(v68, 0);                            // load entire archive file
+v223 = sub_4BDAC0(&v269, (pthread_mutexattr_t *)v273, v222, v68);  // open archive iterator
 while ( 1 )
 {
-    v315 = sub_4BDAF0(&s1, v363);                     // next member
-    if ( !s1 )   break;                               // end of archive
-    v316 = sub_4BDB60(v363);                          // get composite path
-    v317 = sub_4BDB70(ptr, s1, v316);                 // file-type dispatch on member
-    if ( ptr[0] )
-        sub_42AF40(ptr[0], s1, v316, v55, 1, ...);    // process unconditionally
+    v224 = sub_4BDAF0((const char **)&s1, (__int64)v269);  // next member
+    if ( !s1 )   break;                                    // end of archive
+    v225 = (char *)sub_4BDB60((__int64)v269);              // get composite path
+    v226 = sub_4BDB70();                                   // file-type dispatch on member
+    if ( ptr[0].tv_sec )
+        sub_42AF40(ptr[0].tv_sec, (__int64)s1, v225, v52, 1, ...);  // process unconditionally
     else
         // untyped member -- tracked via qword_2A5F2E0
-        ...
+        byte_2A5F212 = 1;
 }
-v318 = sub_4BDB30(v363);                              // close archive
+v228 = sub_4BDB30(v269, (unsigned __int64)v68);            // close archive
+sub_4644C0((__int64)v68, (pthread_mutexattr_t *)&qword_2A5F2F0);  // record seen path
 ```
 
 There is **no** check against the symbol table, no "is this member needed?" query, and no symbol-directed pruning. Every member is loaded into the linker's intermediate representation and added to the merged symbol/section set. The symbol resolver (see [Symbol Resolution](../linker/symbol-resolution.md)) then deduplicates symbols, resolves weak-vs-strong conflicts, and handles multiple-definition diagnostics on the fully loaded set.
@@ -736,14 +739,14 @@ Note: the old-BSD `__.SYMDEF` symbol-table name and the GNU `/SYMDEF` variant do
 | 2-byte alignment for odd-sized members | **HIGH** | Formula `v6 - v6 % 2 + 2` visible at source line 87 of `sub_487E10_0x487e10.c` |
 | `//` long-name table detection via `v34 == 2` branch | **HIGH** | Visible in decompiled source; assignment `ctx+48 = v10` only reached when `v30+1 == 2` |
 | `__.LIBDEP` 9-byte prefix skip | **HIGH** | Two xrefs to the string at `0x1D40FC7` from `sub_487E10`; the 9-byte byte-compare loop is visible in decompiled output |
-| Whole-archive loading semantics (no on-demand extraction) | **HIGH** | `main_0x409800.c` lines 860-879: unconditional `while(1)` over all members with mandatory `sub_42AF40` call per member; no symbol-table consultation |
+| Whole-archive loading semantics (no on-demand extraction) | **HIGH** | `main_0x409800.c` lines 756-777: unconditional `while(1)` over all members with mandatory `sub_42AF40(..., 1, ...)` call per member (line 768); no symbol-table consultation |
 | `dword_1D48A50` return-code translation table used by all four wrappers | **HIGH** | All four wrappers (`sub_4BDAC0`, `sub_4BDAF0`, `sub_4BDB30`) use identical `(uint)v <= 2 ? dword_1D48A50[v] : 1` pattern; `sub_4BDB60` is a pure thunk |
 | `dword_1D48A50` table maps 0->0 (success), 1->1 (error), 2->2 (thin-resolve) | **MEDIUM** | Inferred from the identity `result = 1` fallback and the expectation that success maps to 0; the actual dword_1D48A50 contents not independently verified |
 | `setjmp`/`longjmp` error-handling in `sub_487C20` and `sub_487E10` | **HIGH** | `_setjmp(env)` calls visible at source line 49 of `sub_487C20_0x487c20.c` and line 62 of `sub_487E10_0x487e10.c`; OOM handler `sub_45CAC0` is present and called on `sub_4307C0` NULL returns |
 | `sub_488200` context destruction walking member_list and path_list | **HIGH** | Full decompiled source read (40 lines); two `do-while` loops visible over `a1[7]` and `a1[8]` |
 | The `nullsub_4` no-op destructor on member_list nodes | **HIGH** | Visible at source line 18 of `sub_488200_0x488200.c`; `nullsub_*` functions are stubs inserted by the decompiler for empty function bodies |
 | `libdevice.a` worked example | **MEDIUM** | The iteration trace is mechanically derived from the decompiled algorithm; the specific member names and sizes are illustrative examples, not extracted from any actual archive |
-| Archive members enter `sub_42AF40` with `from_archive=1` | **HIGH** | Visible at `main_0x409800.c` line 871: `sub_42AF40(ptr[0], s1, v316, v55, 1, &v365, &v355, &v353, &v354)` with fifth argument literal `1` |
-| Seen-archive set at `qword_2A5F2F0` | **HIGH** | Referenced at `main_0x409800.c` lines 850 and 885 (walk and append); `sub_4644C0(v74, &qword_2A5F2F0)` at line 885 records the path |
+| Archive members enter `sub_42AF40` with `from_archive=1` | **HIGH** | Visible at `main_0x409800.c` line 768: `sub_42AF40(ptr[0].tv_sec, (__int64)s1, v225, v52, 1, &v271, &v261, ...)` with fifth argument literal `1` |
+| Seen-archive set at `qword_2A5F2F0` | **HIGH** | Walk at `main_0x409800.c` line 746 (`for ( j = sub_464A80(qword_2A5F2F0); ...`); append at line 782 (`sub_4644C0((__int64)v68, (pthread_mutexattr_t *)&qword_2A5F2F0)`) |
 | No `__.SYMDEF` or `/SYMDEF` handling | **HIGH** | Exhaustive grep over `nvlink_strings.json` for `SYMDEF` returns zero matches |
 | Thin archive support via `sub_476BF0` external file read | **HIGH** | Visible at source lines 235-247 of `sub_487E10_0x487e10.c`: `strchr(v23, 58) + 1` isolates path after `:`, `sub_476BF0(v24, 0)` loads it |

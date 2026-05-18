@@ -4,7 +4,7 @@
 
 `nvgpu` is the bridge dialect between MLIR's generic `gpu` dialect and NVPTX-specific [`nvvm`](../nvvm/overview.md). It names the NVIDIA kernel patterns that `gpu` cannot express — warp shuffle, MMA and WGMMA, `cp.async`, `mbarrier`, TMA — without committing yet to a concrete NVVM intrinsic. Tileiras links the upstream dialect unchanged. `cute_nvgpu` feeds it from above; [`convert-nvgpu-to-nvvm`](../../lowering/nvgpu-and-gpu-to-nvvm.md) drains it from below.
 
-About thirty ops live here. The conversion pass installs one `OpConversionPattern` per op and rewrites the module in a single sweep, each pattern emitting a small fixed body of `nvvm.*` ops — or, for a few exception cases, expanded `memref` / `llvm` / `llvm.inline_asm`. The pass mnemonic is `convert-nvgpu-to-nvvm`; it runs after `convert-vector-to-llvm` and before `convert-func-to-llvm`, so by the time it fires every operand is already in LLVM-dialect or memref form.
+About thirty ops live here. The conversion pass installs one `OpConversionPattern` per op and rewrites the module in a single sweep, each pattern emitting a small fixed body of `nvvm.*` ops — or, for a few exception cases, expanded `memref` / `llvm` / `llvm.inline_asm`. The pass mnemonic is `convert-nvgpu-to-nvvm`; in the O3 pipeline it runs immediately after the broad `convert-to-llvm` step and before `convert-vector-to-llvm`, `arith-expand`, and `convert-memref-to-llvm` (see [Pass List by Optimization Level — O3](../../pipeline/full-pass-list-by-opt-level.md#o3-full-pipeline)), so by the time it fires every operand is already in LLVM-dialect or memref form.
 
 ## Position in the Cascade
 
