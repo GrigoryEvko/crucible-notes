@@ -802,7 +802,7 @@ where the registrar permits it; otherwise registrar walk order).
 | `nvvm.fence.proxy.acquire` | 0x18 | `&unk_5B8D938` | proxy acquire | `dialects/nvvm.md` |
 | `nvvm.fence.proxy.release` | 0x18 | `&unk_5B8D928` | proxy release | `dialects/nvvm.md` |
 | `nvvm.fence.release` | 0x12 | `&unk_5B8D920` | release fence | `dialects/nvvm.md` |
-| `nvvm.fence.sc` | 0x11 | `&unk_5B8D680` | sc fence | `dialects/nvvm.md` |
+| `nvvm.fence.sc` | 0xD | `&unk_5B8D680` | sc fence | `dialects/nvvm.md` |
 | `nvvm.fence.sc.cluster` | 0x15 | `&unk_5B8D698` | sc cluster | `dialects/nvvm.md` |
 | `nvvm.fence.sc.cta` | 0x11 | `&unk_5B8D690` | sc CTA | `dialects/nvvm.md` |
 | `nvvm.fence.sc.gpu` | 0x11 | `&unk_5B8D688` | sc GPU | `dialects/nvvm.md` |

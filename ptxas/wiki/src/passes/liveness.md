@@ -10,7 +10,7 @@ Liveness analysis is the most frequently repeated computation in the ptxas pipel
 | **Core bitvector library** | `0xBDBA60`--`0xBDE150` (15+ functions, SSE2) |
 | **BitVector object size** | 20 bytes header + dynamic word array |
 | **Word size** | 32-bit (`uint32_t`) -- indexed by `>> 5` and `& 0x1F` |
-| **Transfer function** | `out = gen | (in - kill)` via `orWithAndNot` |
+| **Transfer function** | `out = gen \| (in - kill)` via `orWithAndNot` |
 | **Fixed-point detection** | `orIfChanged` / `andIfChanged` return `bool` |
 | **Liveness storage** | Code Object `+832` (main), `+856` (uniform) |
 | **NamedPhases override** | `"OriPerformLiveDead"` controls all 4 instances |
@@ -136,7 +136,7 @@ Word count is computed from bit count: `word_count = (bit_count + 31) >> 5`. Mem
 | Address | Operation | Signature | Notes |
 |---------|-----------|-----------|-------|
 | `sub_BDBA60` | `allocate` | `(bv*, alloc*, num_bits)` | Grow-only; no shrink |
-| `sub_BDBFB0` | `setBit` | `(bv*, bit_index)` | `data[i>>5] |= (1 << (i&31))` |
+| `sub_BDBFB0` | `setBit` | `(bv*, bit_index)` | `data[i>>5] \|= (1 << (i&31))` |
 | `sub_BDC0E0` | `clearBit` | `(bv*, bit_index)` | `data[i>>5] &= ~(1 << (i&31))` |
 | `sub_BDC200` | `testBit` | `(bv*, bit_index) -> bool` | `(data[i>>5] >> (i&31)) & 1` |
 | `sub_BDCDE0` | `operator\|=` | `(dst*, src*)` | SSE2 `_mm_or_si128` loop |

@@ -408,7 +408,7 @@ This handler processes general pseudo-instructions. It reads the operand record 
 | 1 | +16 (`emitArg`) | Emit 2-operand word: mode=10, val=`[5]`, aux=`[7]` | `instr[5,7]` |
 | 2--6, 8--9, 0xB--0x11, 0x1B--0x21, 0x2C--0x33 | +128 (`setValue`) | Set slot value to `instr[7]`; internal state machine (11 sub-cases on record byte 0: states 0--5,7--8 = direct store; 6,9 = linked-list flush; 0xA = conditional release) | `instr[7]` |
 | 7, 0xA, 0x12, 0x22--0x24, 0x27--0x2A | +112 (`getValue`) | Read current slot value; same 11-state machine, then set record byte to state 4 | (read-only) |
-| 0x17 | +128 (`setValue`) | Set slot value to `instr[7]`, then propagate side flag: if `a4[0]==-1` set it to `instr[11]`, else if mismatch set `instr+132 |= 0x1000` | `instr[7,11]` |
+| 0x17 | +128 (`setValue`) | Set slot value to `instr[7]`, then propagate side flag: if `a4[0]==-1` set it to `instr[11]`, else if mismatch set `instr+132 \|= 0x1000` | `instr[7,11]` |
 | 0x18--0x1A | +72/+120/+128 | Conditional max: if `isAllocated(slot)` and `getValue(slot) < instr[7]`, update to `instr[7]`; same 11-state machine on setValue | `instr[7]` |
 | 0x25--0x26 | +24 (`pushWord`) | Triple push: `pushWord(slot, 5, instr[10])`, `pushWord(slot, 5, instr[9])`, `pushWord(slot, 5, instr[7])` | `instr[7,9,10]` |
 | 0x2B | +24 (`pushWord`) | Single push: `pushWord(slot, 12, instr[5])` | `instr[5]` |

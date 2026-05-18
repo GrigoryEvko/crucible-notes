@@ -130,7 +130,7 @@ Of the 165 external slots, 2 are dead (`321`, `398`), giving the 163 codes actua
 | 530 | **316** | `T_FLOAT_DEC` | `[0-9]+\.[0-9]*([eE][-+]?[0-9]+)?` -- `strtod`, on `errno==ERANGE` calls error -- lines 2052--2061 |
 | 531 | **316** | `T_FLOAT_F32` | Same, with `f`/`F` suffix -- lines 2062--2071 |
 | 532 | **316** | `T_FLOAT_F64` | Same, with `d`/`D`/`lf` suffix -- lines 2072--2085 |
-| 548 | *chr* | `T_CHAR_LITERAL` | The Flex catch-all `.` rule -- returns the character value directly: `return (unsigned int)**(char **)(v4 + 128);` at line 2411. This is the exit point for all 25 ASCII-literal tokens `+ - * / % ! ~ & ^ | ? : , ; ( ) [ ] { } @ = < >` (subset of printable ASCII actually used as terminals by the grammar). |
+| 548 | *chr* | `T_CHAR_LITERAL` | The Flex catch-all `.` rule -- returns the character value directly: `return (unsigned int)**(char **)(v4 + 128);` at line 2411. This is the exit point for all 25 ASCII-literal tokens `+ - * / % ! ~ & ^ \| ? : , ; ( ) [ ] { } @ = < >` (subset of printable ASCII actually used as terminals by the grammar). |
 
 #### 3. Structural multi-character punctuators
 

@@ -446,7 +446,7 @@ The 131 callers spread across 18 of the 159 phases. The densest cluster is phase
 | `+144` holds RPO number, `+152` holds latch-RPO | `sub_781F80:537`, `:769`, `:772` (`*(_DWORD *)(v23 + 152) = v167`); cross-referenced from `passes/loop-passes.md` |
 | Opcode dispatch is `BYTE1(op) &= 0xCFu` | `sub_781F80:521` — same mask as `sub_9ED2D0` (`pipeline/ptx-to-ori.md`) |
 | Opcodes 93/95 = Ori-internal exit markers | `sub_78B430` reads `op & 0xFFFFFFFD == 0x5D`; `passes/loop-passes.md` and `ir/cfg.md` confirm |
-| `+1370 bit 0x10` is the re-entrancy guard | `sub_781F80:332` (`*(_BYTE *)(a1 + 1370) |= 0x10u`) and `:363` (`v21 & 0xDF` clears it) |
+| `+1370 bit 0x10` is the re-entrancy guard | `sub_781F80:332` (`*(_BYTE *)(a1 + 1370) \|= 0x10u`) and `:363` (`v21 & 0xDF` clears it) |
 | `force_full_rebuild` second argument | `sub_781F80` prototype `__int64 __fastcall sub_781F80(__int64 a1, char a2, ...)`; `a2` is tested at lines 328, 552, 615 |
 | 18 force=1 calls from the register allocator | grep of caller list against the regalloc family in `regalloc/overview.md` (`sub_A88A80`, `sub_A9AEF0`, `sub_A9D140`, `sub_A9DDD0`, `sub_AA2A60`, `sub_AB0500`, `sub_AB93B0`) |
 | Idom build lives in `sub_BDFB10`, not here | `ir/cfg.md` "Dominance" section (Cooper-Harvey-Kennedy correction note) |

@@ -189,7 +189,7 @@ A bank of growable arrays each managed by the same `{allocator, buffer, count, c
 | +1304 | `refcount*` | `aux_refcount` | Ctor lines 491-495 |
 | +1312 / +1320 / +1328 | `ptr` | aux slots | Ctor lines 497-499 |
 | +1344 / +1352 | `ptr` | aux slots | Ctor lines 501-502 |
-| +1360 | `subobj*` | `optional_56B_subobj` | Ctor lines 881-892: only allocated if `*(a2+920) > 0`, and bit `+1378 |= 8` is set. A 56-byte sub-object initialized via `sub_7DC3C0(v135, a1, a2)` |
+| +1360 | `subobj*` | `optional_56B_subobj` | Ctor lines 881-892: only allocated if `*(a2+920) > 0`, and bit `+1378 \|= 8` is set. A 56-byte sub-object initialized via `sub_7DC3C0(v135, a1, a2)` |
 | +1372 | `i32` | `legalization_iter_phase` | Ctor line 709: `*(a1+1372) = 0`. Read in `sub_7846F0:240` (`if (!*(_DWORD *)(a1+1372) && *(char*)(a1+1415) < 0)`) -- gates a legalization sub-mode |
 
 #### Phase Bitfield Bank (+1368..+1421)
@@ -200,12 +200,12 @@ A 54-byte region of densely packed boolean / multi-bit gate flags. The construct
 |--------|------|-------|---------------------------|---------------|
 | +1368 | `u8` | `pipeline_iter_flags` | line 693: 0 | bit 0x01 = "ConvertUnsupportedOps invoked", bit 0x02 = "diagnostic dump active" (gates `sub_793220:54` lazy init at `+792`), bit 0x10 = "deep mode", bit 0x40 = ?, bit 0x80 = sign-bit checked at `sub_908EB0:60` |
 | +1369 | `u8` | `pipeline_iter_flags_b` | line 694: 0 | bit 0x80 cleared at `sub_781F80:359`; sign-bit checked in `sub_752CF0:?` and `sub_793220:52` |
-| +1370 | `u8` | `pipeline_iter_flags_c` | line 686: `&= 0xA0`; line 691: `& 0x5F` | bit 0x02 (constructor enables it via `(8 * (a2&1)) | v35 & 0xB3 | 4`), bits 0x04, 0x08, 0x10, 0x20, 0x40 each gate distinct legalization sub-passes (see `sub_781F80:325-1383` for full bit-by-bit flow) |
-| +1371 | `u8` | `legalize_call_flags` | line 695: 0; line 1375: `|= 0x80` | bit 0x20 = "scan for opcode 0x89 instructions" (set/checked in `sub_752CF0:14, 29`); bit 0x40 = "found 0x89 instructions to legalize"; bit 0x80 = "all 0x89 instructions handled" |
+| +1370 | `u8` | `pipeline_iter_flags_c` | line 686: `&= 0xA0`; line 691: `& 0x5F` | bit 0x02 (constructor enables it via `(8 * (a2&1)) \| v35 & 0xB3 \| 4`), bits 0x04, 0x08, 0x10, 0x20, 0x40 each gate distinct legalization sub-passes (see `sub_781F80:325-1383` for full bit-by-bit flow) |
+| +1371 | `u8` | `legalize_call_flags` | line 695: 0; line 1375: `\|= 0x80` | bit 0x20 = "scan for opcode 0x89 instructions" (set/checked in `sub_752CF0:14, 29`); bit 0x40 = "found 0x89 instructions to legalize"; bit 0x80 = "all 0x89 instructions handled" |
 | +1372 | `i32` | `legalization_iter_phase` | line 709: 0 | See above |
 | +1376 | `u8` | `scheduling_mode_flags` | **Documented**: bit 0x08 forward, 0x10 bidirectional, 0x20 disable scheduling | line 696: 0 |
 | +1377 | `u8` | `regalloc_flags_a` | line 697: 0 | bit 0x20 cleared at `sub_781F80:358` |
-| +1378 | `u8` | `subobj_present_flags` | line 699: 0; line 887: `|= 8` if `*(a2+920) > 0` | bit 0x04 = "subobj at +1360 was constructed", bit 0x08 = "subobj initialized" |
+| +1378 | `u8` | `subobj_present_flags` | line 699: 0; line 887: `\|= 8` if `*(a2+920) > 0` | bit 0x04 = "subobj at +1360 was constructed", bit 0x08 = "subobj initialized" |
 | +1379 | `u8` | `aux_flags` | line 700: 0 | |
 | +1380..+1382 | `u8 x3` | flag bytes | lines 702-704: 0 | +1381 bit 0x40 (already known: cutlass flag, cleared bit 6 in some passes; tested in `sub_913A30:41`); +1382 bit 0x20 ("instruction class scan needed", read in `sub_796D60:63`) |
 | +1383 | `u8` | `init_marker` | line 707: `0x80` | Set unconditionally to 0x80 by ctor; never observed cleared (is the "context fully constructed" marker) |
@@ -222,18 +222,18 @@ A 54-byte region of densely packed boolean / multi-bit gate flags. The construct
 | +1404 | `u8` | `error_count_set_marker` | line 751 | Set to 1 once `+1400` has been initialized from options |
 | +1408 | `u8` | flag byte | line 755: `&= 0xE0` | low 5 bits used as a sub-mode tag |
 | +1412 | `u8` | `compilation_flags_byte` | **Documented** | line 756: `& 0xC0` -- ctor packs `*(a2+136), +137, +138, +139` into low bits, then more from `*(a2+1060), +1064` |
-| +1413 | `u8` | `optimizer_gate_bits` | lines 759-782 | Most bit-rich byte: ctor sets bit 1 from `*(a2+137)`, bit 0 from `*(a2+138)`, bit 2 from `(a1+1412 & 0x380)==0`, bit 3 from `*(a2+1060)`, bits 4-5 from `*(a2+1064)`, bit 6 from `*(a2+1068)`, bit 7 from `*(a2+424)==1`. Special override line 774-778: `if (*(a2+348) > 36863 && (v91&8)==0 && (v91&0x30)!=0x10) v91 |= 0x20` -- forces bit 5 on for SM_90+ with certain non-CUTLASS settings |
-| +1414 | `u8` | `late_expansion_flags` | **Documented** bit 0x02 = LateExpansion prerequisite; ctor packs more bits at lines 786-794 from `*(a2+140), +1080, +1084, +1088, +144` |
+| +1413 | `u8` | `optimizer_gate_bits` | lines 759-782 | Most bit-rich byte: ctor sets bit 1 from `*(a2+137)`, bit 0 from `*(a2+138)`, bit 2 from `(a1+1412 & 0x380)==0`, bit 3 from `*(a2+1060)`, bits 4-5 from `*(a2+1064)`, bit 6 from `*(a2+1068)`, bit 7 from `*(a2+424)==1`. Special override line 774-778: `if (*(a2+348) > 36863 && (v91&8)==0 && (v91&0x30)!=0x10) v91 \|= 0x20` -- forces bit 5 on for SM_90+ with certain non-CUTLASS settings |
+| +1414 | `u8` | `late_expansion_flags` | lines 786-794 | **Documented** bit 0x02 = LateExpansion prerequisite; ctor packs more bits from `*(a2+140), +1080, +1084, +1088, +144` |
 | +1415 | `u8` | `optimization_path_flags` | lines 796-801 | bit 2 from `*(a2+172)`, bit 3 from `*(a2+176)`, bit 4 from `*(a2+180)`. Sign-bit (bit 7) tested at `sub_7846F0:240` to gate the legalization sub-mode |
 | +1416 | `u8` | `output_detail_flags` | **Documented**: bits 4-5 control latency reporting | lines 803-807: bit 6 from `*(a2+148)`, bit 2 from `*(a2+156)` |
 | +1417 | `u8` | `late_expansion_aux_bits` | lines 808-833 | Most-touched flag byte (modified in 12+ separate ctor lines from many a2 fields including +152, +772, +1516, +324, +1096, +1048, +764) |
-| +1418 | `u8` | `codegen_mode_flags` | **Documented** | lines 814-834: packs bits from `*(a2+1112), +1528, +1524, +1100, +1104, +1532` and forces bit 6 ON unconditionally (line 831: `v117 |= 0x40u`) |
+| +1418 | `u8` | `codegen_mode_flags` | **Documented** | lines 814-834: packs bits from `*(a2+1112), +1528, +1524, +1100, +1104, +1532` and forces bit 6 ON unconditionally (line 831: `v117 \|= 0x40u`) |
 | +1419 | `u8` | `cluster_and_misc_bits` | lines 835-845 | bit 0 from `*(a2+1760)==1`, bit 3 from `*(a2+1116)`, bit 4 from `*(a2+1120)`, bit 5 from `*(a2+1124)`, bit 6 from `*(a2+1128)`, bit 7 from `*(a2+1768)` |
 | +1420 | `u8` | `cluster_geometry_bits` | lines 847-866 | bit 0 from `*(a2+1794)`, bit 1 from `*(a2+1792)`, bit 2 from `*(a2+1800)`, bit 3 from `*(a2+1132)`, bits 4-5 from `*(a2+1076) << 4`, bits 6-7 from `*(a2+1076)` -- entirely cluster-launch related |
 | +1421 | `u8` | `aggregator_flags` | lines 738/742/867-871 | bit 1 set unconditionally; bits 2-3 from `*(a2+1808) & 3`; bit 6 from `*(a2+1136)`; bit 7 from `*(a2+1140)` |
-| +1424 | `i32` | `pipeline_option_word` | line 506: `*(a2+704)` |
+| +1424 | `i32` | `pipeline_option_word` | line 506 | `*(a2+704)` |
 | +1428 | `i32` | `function_index` | **Documented** | line 507: `*(a2+352)` |
-| +1432 | `i32` | `loop_unroll_threshold` | line 508: `*(a2+360)` |
+| +1432 | `i32` | `loop_unroll_threshold` | line 508 | `*(a2+360)` |
 
 #### Output Stream and Timing Records (+1440..+1656)
 
@@ -681,7 +681,7 @@ Field interpretation, cross-checked against the three primary consumers:
 | +20 | `i32` | `reserved_b` -- zeroed immediately after append (`sub_6FC810:727`: `*(_DWORD*)(v37+20) = 0`). | |
 | +24 | `i32` | scheduling scratch -- `sub_6FC810:726` writes `0`; the scheduling / regalloc pipeline later stashes per-block scratch state here. | |
 | +28 | `i32` | `bix` -- block index, the same unique ID used in all CFG hash tables | `sub_BE21D0:39`: `v12 = v11[7]` (DWORD index 7 = byte +28) then `printf("bix%u", v12)` in the DOT dumper. |
-| +32 | `u8`  | `flags` -- bit 1 (`0x02`) = "block ends in branch-with-side-effect 1506 opcode" | `sub_BE0690:1467`: `*(_BYTE*)(v126+32) |= 2u`. `sub_8A5240:62`: `if ((*(_BYTE*)(result+32) & 2) == 0)` gates backedge-map insertion. |
+| +32 | `u8`  | `flags` -- bit 1 (`0x02`) = "block ends in branch-with-side-effect 1506 opcode" | `sub_BE0690:1467`: `*(_BYTE*)(v126+32) \|= 2u`. `sub_8A5240:62`: `if ((*(_BYTE*)(result+32) & 2) == 0)` gates backedge-map insertion. |
 | +33 | `u8`[7] | padding / future-use bytes up to the 40-byte stride | |
 
 Size proof: the appender writes exactly `40 * n` bytes, the DOT dumper advances its cursor by literally `v9 += 40` per iteration (`sub_BE21D0:38`), the last-element helper `sub_10AE8E0` computes `base + 40 * num_blocks`, and the grow-path `memcpy` copies `8 * (5*count + 5)` = `40 * (count+1)` bytes. Every independent site agrees on stride 40.
@@ -935,8 +935,8 @@ Block Footer (32 bytes at end):
 
 Each slab is tracked by a 56-byte descriptor:
 
-| Offset | Type | Field |
-|--------|------|-------|
+| Offset | Type | Field | Description |
+|--------|------|-------|-------------|
 | +0 | `ptr` | `chain_link` | Link to next slab descriptor |
 | +8 | `u64` | `total_size` | Total bytes in this slab |
 | +16 | `u64` | `available_size` | Bytes remaining (decremented on alloc) |
