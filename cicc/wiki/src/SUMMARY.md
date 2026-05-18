@@ -143,6 +143,7 @@
 - [Bitcode Reader/Writer](./infra/bitcode-io.md)
 - [Concurrent Compilation](./infra/concurrent-compilation.md)
 - [Diagnostics & Optimization Remarks](./infra/diagnostics.md)
+- [EDG Diagnostic Identifier Catalogue](./infra/edg-diagnostic-catalog.md)
 - [Hash Table Infrastructure](./infra/hash-infrastructure.md)
 - [jemalloc Allocator](./infra/jemalloc.md)
 

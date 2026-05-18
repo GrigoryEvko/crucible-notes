@@ -129,15 +129,186 @@ The convention is used across the entire TileAS pipeline. The list below covers 
 
 Most TileAS passes both read predecessors' bits and set their own. The convention is recursive: a pass's status word is part of its public contract with every subsequent pass.
 
+## Stickiness: the OR-only word
+
+The status word at +40 is monotonic for the lifetime of one pass run. Every
+write is an OR — `*(self+40) |= 4` — and there is no corresponding clear
+inside the pass body. A pass that detects ten unpipelinable loops sets the
+bit ten times; the second through tenth writes are no-ops at the
+bit-pattern level but cost nothing and keep the call sites uniform. The
+driver, not the pass, owns the lifecycle: it zeroes the word before the
+pass walk begins and reads it once after the walk completes.
+
+```c
+/* Driver-side wrapper around one pass invocation. */
+LogicalResult driver_run_pass(PassObject *pass, FuncOp func) {
+    pass->status_word = 0;               /* clear sticky bits before walk */
+    LogicalResult walk_result = pass->run(pass, func);
+    if (pass->status_word & 4) {
+        /* The pass set the soft-failure bit at least once during the walk.
+         * Record it in the per-function pass-result map so downstream
+         * passes can inspect it via pass_soft_failed(predecessor). */
+        record_soft_failure(func, pass);
+    }
+    return walk_result;
+}
+```
+
+Stickiness matters because TileAS passes walk the IR with op-level
+granularity. A single function may contain a dozen loops; pipelining might
+fail on three and succeed on the rest. The pass returns `success()` at the
+function level (the IR is still valid), but the bit records that at least
+one loop missed. The downstream reader does not need to know which loop
+failed — only that the function is not fully pipelined and therefore that
+the regional shrinker in D13 has reduced work to do. A multi-bit failure
+count would carry no extra information given the binary nature of the
+downstream skip decision.
+
+The same pattern appears at wider granularity in the
+[`ConvertTileASToLLVM` rewriter](../passes/tileas/convert-tileas-to-llvm.md):
+when a single op fails to lower, the rewriter ORs `4` into its own status
+word and continues with the next op rather than abandoning the function.
+The driver lifts the bit to a hard failure only if the post-walk
+verifier rejects the IR — typical for a partial lowering — but the
+diagnostic stream still preserves every per-op error message.
+
+## Worked Examples
+
+### D11 unpipelinable loop
+
+The most-walked failure path. `TileASUnspecializedPipeline` (D11) tries
+each loop in a function and records a per-loop result.
+
+```c
+LogicalResult d11_run(PassObject *self, FuncOp func) {
+    self->status_word = 0;
+    func.walk([&](scf::ForOp loop) {
+        if (failed(check_pipelinable_shape(loop))) {
+            loop->emitRemark()
+                << "Failed to pipeline loop";          /* severity 3, remark */
+            self->status_word |= 4;                    /* sticky soft fail */
+            return WalkResult::skip();                 /* leave loop intact */
+        }
+        rewrite_to_pipelined_form(loop);
+        return WalkResult::advance();
+    });
+    return success();                                  /* IR still valid */
+}
+```
+
+D11 returns `success()` even when every loop in the function fails — the
+function compiles, the loops simply stay synchronous. D13 reads the bit
+afterwards and skips its region shrinker on this function.
+
+### D08 conflicting producer ops
+
+The hard-but-recoverable case. `TileASMaterializeAsync` (D08) emits
+severity-259 (error) diagnostics rather than remarks but still uses the
+handshake bit instead of `signalPassFailure()`, so that the rest of the
+compilation can produce a best-effort artifact for inspection.
+
+```c
+LogicalResult d08_check_pipeline(PassObject *self, PipelineOp pipe) {
+    Operation *first = nullptr;
+    for (Operation *producer : pipe.producers()) {
+        if (!first) { first = producer; continue; }
+        if (!same_instruction_kind(first, producer)) {
+            producer->emitError()
+                << "there are two `produce-one-like` operations using "
+                << "different instructions to generate data into the "
+                << "same pipeline. It's a bug of MaterializeAsync Pass.";
+            self->status_word |= 4;
+            return failure();                          /* skip this pipe */
+        }
+    }
+    return success();
+}
+```
+
+The diagnostic text is verbatim from the binary, including the
+self-attributing `"It's a bug of MaterializeAsync Pass"` — TileAS treats
+this as an internal inconsistency the user is unlikely to be able to fix,
+but still recoverable enough to keep the pass-manager running.
+
+### D13 downstream skip
+
+The reader side. `TileASOptimizePipelineRegion` (D13) consults D11's bit
+before walking — there is nothing to shrink on a function whose loops
+stayed synchronous.
+
+```c
+LogicalResult d13_run(PassObject *self, FuncOp func) {
+    PassObject *d11 = pass_manager_lookup(self->pm, "TileASUnspecializedPipeline");
+    if (d11 && (d11->status_word & 4)) {
+        /* D11 left at least one loop synchronous in this function. The
+         * shrinker would walk produce_one/consume_one regions that were
+         * never materialised; nothing to do. */
+        return success();
+    }
+    func.walk([&](PipelineRegionOp region) {
+        shrink_region(region);
+    });
+    return success();
+}
+```
+
+Note that D13 does not set its own bit in the skip path: the skip is not a
+failure, it is the absence of work. A downstream pass reading D13's bit
+gets a clean signal that D13 had nothing to escalate.
+
 ## Implementation Constraints
 
-A reimplementation must preserve three invariants.
+A reimplementation must preserve four invariants.
 
 First, the bit must be at the same offset and meaning across every pass. A pass whose PassObject lays out its status word at a different offset cannot participate in the handshake — the downstream-read pattern hard-codes `+40`.
 
 Second, the diagnostic must precede the bit-set. If the bit is set before the diagnostic, a pass-manager that early-exits on bit-set may never publish the diagnostic to the user, and the failure becomes invisible.
 
 Third, the bit is cumulative within one pass run. Multiple op-level failures inside one pass keep ORing `4` into the same word; the word never gets cleared mid-run. The driver clears the word before the pass starts and inspects it once the pass returns.
+
+Fourth, the bit is per-pass-instance, not per-function. The driver owns the
+clear-before-run; a pass that re-runs on a second function under the same
+pass-manager instance gets a fresh zero. A reimplementation that caches
+PassObjects across runs must clear the word at run entry, not at
+constructor time.
+
+## QUIRKs
+
+### QUIRK: the bit lives at `+40` even when the PassObject is shorter
+
+Several TileAS passes have PassObjects whose pass-specific tail ends well
+before offset 40 — the field is padded out specifically to host the
+handshake word at the conventional offset. A reimplementation that
+size-optimises the PassObject layout and moves the status word inward
+breaks the cross-pass read pattern: D13 and the rest of the family
+hard-code `*((uint32_t *)((char *)pred + 40)) & 4` and will read garbage
+from the displaced field. The offset is part of the binary contract.
+
+### QUIRK: `pass[5] |= 4` reads as a u32 store at +20, not +40
+
+A handful of disassembled call sites express the bit-set as
+`pass[5] |= 4` where `pass` is a `uint32_t *` — that is, a 32-bit store at
+offset 20, not 40. Both forms appear in the binary. They refer to the
+**same** status word: the PassObject base pointer used in the `[5]` form
+is offset 20 bytes into the structure compared with the base used in the
+`+40` form (the inner pointer skips the pass-manager prelude and lands at
+the body). A reimplementer reading the disassembly must check which base
+pointer each call site is working from before deciding whether the bit
+write targets the handshake word or some unrelated u32 — they look
+identical at the instruction level. The handshake word is always the same
+physical location regardless of which base the call site indexes.
+
+### QUIRK: severity 259 still sets the same bit as severity 3
+
+The handshake bit does not distinguish between an error-class diagnostic
+(severity 259 / `0x103`) and a remark (severity 3). D08's "It's a bug of
+MaterializeAsync Pass" and D11's "Failed to pipeline loop" both set the
+same bit through the same `|= 4` write. The downstream reader cannot
+recover the severity from the bit alone — it must consult the diagnostic
+engine's recorded messages, or simply accept that "the predecessor had a
+non-success outcome" is the only information the handshake carries. This
+deliberate flattening keeps the inter-pass protocol one-bit-wide; severity
+is a user-facing concept, not an inter-pass concept.
 
 ## Cross-References
 

@@ -78,6 +78,7 @@
 - [R_MERCURY Relocations](mercury/r-mercury-relocations.md)
 - [Mercury ELF Sections](mercury/elf-sections.md)
 - [Mercury Compiler Passes](mercury/compiler-passes.md)
+- [Section Content-Equality Dedup](mercury/section-comdat-dedup.md)
 - [FNLZR (Finalizer)](mercury/fnlzr.md)
 
 # GPU Targets

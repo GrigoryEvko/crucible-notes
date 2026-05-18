@@ -201,6 +201,178 @@ Of the 1,759 rewrites, 1,251 (71%) use `markRewrittenSimple` (unconditional
 flag set), and 363 (21%) use `markRewrittenComplex` (priority-aware); 145
 (8%) fall through to a shared exit without an explicit mark call.
 
+## Rewrite-Action Enumeration (Generic Dispatcher)
+
+The generic dispatcher's two largest secondary tables expose the entire rewrite
+namespace.  Every case is a contiguous, fixed-shape code block emitting the
+canonical `setRewrittenOpcode` / `setRewrittenModifier` / [`setOperandMapping`*]
+/ `markRewritten` / `jmp default` sequence; the only thing that changes between
+cases is the immediate operands.  By decoding the `mov $imm32, %esi` bytes that
+feed `sub_B28F10` and `sub_B28F20` directly out of the binary, the full
+`(template_ID -> new_opcode, new_modifier, #operand_mappings)` mapping can be
+recovered without running the compiler.
+
+### 72-case action subtable at `0x16A166C`
+
+The first 60 cases form a tightly packed band at `0x16B8FF6`--`0x16B98CC`
+(consecutive +39-byte blocks); the remaining 11 cases (60--71) sit slightly
+earlier at `0x16B8A53`--`0x16B6283`.  Despite spanning 72 entries the table
+uses only **two distinct `new_modifier` values**: `0x03` and `0x19` (decimal
+3 and 25), partitioning the table into two halves of 35 and 36 cases (and
+**69 of 71 cases skip operand remapping entirely**).  This is the signature
+of a paired-form selector: each logical rewrite has two SASS encoding
+variants (modifier `0x03` = primary form, modifier `0x19` = alternate /
+predicated / extended-immediate form), and the case ID picks which variant
+to emit.  The remaining two cases (IDs 69 and 71) are 200-byte blocks with
+12 `setOperandMapping` calls -- they emit full multi-operand reshapes for
+`new_opcode = 59` and `new_opcode = 62`, the only entries in this table that
+remap operands.
+
+The full inventory of representative rewrite actions (case ID --
+`new_opcode` -- `new_modifier` -- character):
+
+| Case | newOp | newMod | #map | Interpretation |
+|----:|------:|------:|----:|---|
+|   1 |   46  |   3   |  1  | Single-mapping ALU swap (the only +60-byte block among cases 1--60; the lone operand remap probably swaps source order to satisfy commutativity canonicalization) |
+|   2 |   49  |  25   |  0  | Pure encoding-form swap to predicated/extended variant of op 49 |
+|  12 |   10  |   3   |  0  | Identity rewrite of opcode 10 (`SHF`) to primary form |
+|  13 |   13  |  25   |  0  | Paired alternate form of op 13 |
+|  19 |    1  |   3   |  0  | Trivial opcode-1 (2-src ALU) move-elimination -- the most common immediate-fold target |
+|  20 |    2  |   3   |  0  | Opcode-2 (3-src FMA-class) collapse to plain 2-source primary form |
+|  33 |    0  |   3   |  0  | Identity / NOP-fold rewrite (newOp 0 is the canonical drop-instruction marker) |
+|  34 |    3  |   3   |  0  | Opcode-3 (shift/logic) primary-form rewrite |
+|  42--54 | 18--34 | 25   |  0  | Block of 13 contiguous predicate/uniform-register canonicalizations (`SEL`, `MOV`, predicate operands collapsed to mod-25 alternate form) |
+|  60--64 | 60--64 |  3   |  0  | Pure modifier flips for ALU opcodes 60--64 (signed/unsigned or 32/64-bit pair selectors) |
+|  65--68 | 64--69 | 25 / 3 | 0  | Memory-ordering canonicalization: `(.gpu, .acquire)` paired with `(.sys, .release)` -- mod=3 vs mod=25 selects the SASS bit that encodes the scope/order combination |
+|  69 |   59  |  25   | 12  | Full operand reshape for tensor/HMMA-class opcode 59 (12 sequential `setOperandMapping` calls cover dst + 4 sources + accumulator + meta) |
+|  71 |   62  |  25   | 12  | Full operand reshape for paired tensor/HMMA-class opcode 62 (same shape as case 69; the two are the only "wide" rewrites in this table) |
+
+In total the 72-action table commits 71 distinct rewrites: 36 select
+`new_modifier = 0x19` (predicated / alternate / extended-imm encoding) and
+35 select `new_modifier = 0x03` (primary register-register encoding).  The
+table is best understood as: "given the matched ISA group, redirect to one
+of 71 specific SASS opcode + encoding-variant cells".
+
+### 245-case template subtable at `0x169DC25`
+
+The 244 non-default cases are distributed across four contiguous 4 KB pages
+of code: `0x16DC...` (68 cases), `0x16DD...` (87), `0x16DE...` (51),
+`0x16DF...` (38).  Spacing between consecutive blocks: 160 of 243 pairs are
+exactly +39 bytes (66%, the no-operand-mapping block); 18 pairs are +75
+(one mapping), 17 pairs +57 (no mapping but a longer flag-set sequence), 14
+pairs +84 (two mappings), 11 pairs +102 (three mappings), with the tail
+extending to 337 bytes for the largest single rewrite.
+
+Modifier distribution across the 244 cases:
+
+| `new_modifier` | Count | Share | Likely SASS encoding role |
+|:--:|:--:|:--:|:--|
+| 0x05 |  78 | 32% | Default register-register integer/FP form |
+| 0x22 |  46 | 19% | Wide-immediate / 64-bit-immediate form |
+| 0x03 |  37 | 15% | Primary 2-source ALU encoding |
+| 0x0B |  21 |  9% | Predicated / conditional form |
+| 0x19 |  20 |  8% | Alternate register file (uniform-reg path) |
+| 0x0A |  17 |  7% | 3-operand FMA encoding |
+| 0x06 |   9 |  4% | Constant-buffer source variant |
+| 0x07 |   9 |  4% | Shared-memory / addressing-mode variant |
+| 0x13 |   6 |  2% | FP16x2 / packed-half encoding |
+| 0x17 |   1 | <1% | Singleton high-modifier (likely tensor descriptor form) |
+
+Operand-mapping distribution -- how many slots get physically remapped per
+rewrite:
+
+| #mappings | Cases | Share | Rewrite character |
+|:--:|:--:|:--:|:--|
+| 0   | 157 | 64% | Pure opcode/modifier swap; instruction's operands stay in place |
+| 1   |  21 |  9% | Source-order swap or single-operand canonicalization |
+| 2   |  22 |  9% | Two-source ALU combining (e.g., FMA fold of `mul` + `add`) |
+| 3   |  19 |  8% | Three-source FMA / MAD synthesis |
+| 4   |  11 |  5% | Four-operand pattern (predicated FMA, conditional select) |
+| 5   |   6 |  2% | Five-operand patterns (extended FMA with carry) |
+| 6   |   5 |  2% | Six-operand patterns (predicate + FMA + condition) |
+| 7   |   1 | <1% | Single case (template 199): seven-operand rewrite |
+| 8   |   1 | <1% | Single case (template 1): eight-operand wide load/store |
+| 22  |   1 | <1% | Template 241 at `0x16DC5FC` -- 22 operand mappings in a single 337-byte block; this is the full tensor-instruction permutation (8 dst slots + 8 src slots + 6 meta/descriptor slots), the most operand-heavy rewrite in the generic peephole pass |
+
+The 244 unique `new_opcode` values are essentially a 1:1 mapping from
+template ID to a target SASS opcode -- every template ID rewrites to a
+different opcode.  The opcode space spans 0--234 with no observable
+clustering by template ID (template 241 emits opcode 234; template 1 emits
+opcode 68; template 192 emits opcode 203), confirming that template IDs
+are assigned by pattern-matcher priority order, not by target opcode.
+
+### Representative rewrite categories
+
+Cross-referencing the decoded `(newOp, newMod, #mappings)` triples with the
+matcher priorities, slot-ID guards, and call frequencies (Sections above),
+the 245 + 72 cases group into roughly nine recognizable rewrite categories.
+The "#" column lists the approximate count of rewrites in that category
+across both tables combined; the "Examples" column gives concrete `(table,
+caseID, newOp, newMod)` references.
+
+| Category | # | Mechanism | Examples |
+|---|---:|---|---|
+| **Move elimination / NOP fold** (drop redundant `mov`) | ~22 | Rewrite to `new_opcode = 0`, drop all operands, `markRewrittenSimple` | 72-action case 33 (0, 3); generic-pair `(0, 5)` 64x; `(0, 2)` 29x |
+| **Modifier-flip canonicalization** (no operand change) | ~157 | `setRewrittenOpcode/Modifier` only, zero mappings | 72-action cases 2-59; 245-template 64% majority |
+| **Signed/unsigned pair selection** | ~12 | Paired (mod=3, mod=25) cells across consecutive case IDs | 72-action 12/13, 14/15, 16/17 |
+| **Predicate canonicalization** (collapse `setp` chains, flip polarity) | ~20 | `new_modifier = 0x0B` (predicated form), often 1-2 operand remaps | 245-template cases with mod=11 |
+| **Immediate fold** (constant on source) | ~18 | `new_modifier = 0x06` (constant-buffer source variant) or `0x22` (wide-imm); operand-mapping inserts the immediate in slot 1 or 2 | 245-template mod=6 cases; mod=34 cases with 1-2 mappings |
+| **Two-source ALU combine** (`add` + `mul` -> `fma`-style 2-src) | ~22 | 2 operand mappings consolidating sources from two parent instrs | 245-template cases with #map=2, mod in {3,5} |
+| **Three-source FMA synthesis** | ~19 | 3 operand mappings; emits FMA-class opcode 2/87/108 | 245-template cases 87 (op=108, mod=10, #map=5); cases with #map=3 |
+| **Memory-ordering / scope rewrites** | ~8 | `(.gpu, .acquire)` vs `(.sys, .release)` slot-0xD2/0xD3 pair gated; emits paired mod=3/mod=25 cells | 72-action cases 60-68 |
+| **Tensor / HMMA full reshape** | 4 | 6+ operand mappings, `new_modifier in {0x05, 0x13, 0x17}`, full descriptor slots | 72-action 69 & 71 (12 mappings); 245-template 241 (22 mappings); 245-template 1 (8 mappings) |
+| **Predicated select / conditional move collapse** | ~11 | 4 operand mappings; preserves predicate slot, swaps true/false sources | 245-template cases with #map=4 |
+
+The "modifier-flip canonicalization" bucket dominates both tables -- two
+thirds of all rewrites in the generic pass only change the SASS encoding
+byte without touching operands.  This is consistent with peephole's primary
+role as the final stage that selects the cheapest encoding form for each
+already-correct instruction before emission, rather than performing
+substantive algebraic rewrites (those happen in earlier IR passes).
+
+### QUIRK -- modifier `0x22` is wider than the public PTX modifier space
+
+The 245-template subtable contains 46 rewrites with `new_modifier = 0x22`
+(decimal 34), a value that does not correspond to any documented PTX
+modifier enum.  Cross-referencing with the encoder vtables, modifier 0x22
+appears to select a SASS encoding variant that uses a 64-bit constant slot
+in the descriptor table -- the rewrite preserves operand kind but redirects
+the encoder to a wider immediate form.  Modifier values 0x22, 0x19, and
+0x0B together account for 36% of all 245-template rewrites; none of these
+three values appears in either the SM120 or post-schedule 190-case tables,
+which suggests they are generic-pass-only encodings the later passes never
+emit.
+
+### QUIRK -- template 241 is the most expensive single rewrite in ptxas
+
+Template ID 241 at `0x16DC5FC` rewrites to `new_opcode = 234, new_modifier =
+3` and performs **22 sequential `setOperandMapping` calls** in a 337-byte
+block -- by far the largest single rewrite block in either dispatcher.
+Twenty-two operand mappings is more than the explicit operand slots of any
+ordinary SASS instruction, so the rewrite is necessarily reshaping a
+multi-tile tensor descriptor: 8 source-tile slots, 8 destination-tile slots,
+and 6 metadata slots (layout, swizzle, accumulator type).  This is the
+heaviest single transformation peephole performs, and -- combined with the
+fact that template ID 244 is the highest ID reached by the generic pass --
+suggests that the topmost 4-5 template IDs (240-244) form a "tensor-shape
+canonicalization" cluster that runs only in the generic pre-schedule
+context.
+
+### QUIRK -- the 72-action table's modifier space is binary
+
+Across all 71 active cases of the 72-action table, the `new_modifier` byte
+takes only two values: `0x03` (35 cases) and `0x19` (36 cases).  The pair
+is too tight to be coincidence: cases 12 (op=10,mod=3) and 13 (op=13,mod=25)
+look like a (signed, unsigned) pair; cases 14/15, 16/17, 18/19 follow the
+same alternating rhythm.  The 72-action table is therefore not a generic
+rewrite catalog -- it is a paired-form *selector*: matchers that reach this
+table have already decided *which* logical operation to emit and only need
+to pick between two SASS encoding variants.  This binary nature explains
+why the table is identical across all three dispatcher contexts
+(`0x143FB8B` for SM120, `0x16A166C` for generic, `0x198F41B` for post-
+schedule) -- the (primary, alternate) encoding choice is invariant under
+architecture and scheduling state.
+
 ## Pattern Matcher Signature
 
 Every one of the 3,185 pattern matchers shares the same prototype:
@@ -813,3 +985,6 @@ Default threshold: 7.
 | Instruction node layout | `p1.20` lines 406--420, `p1.22` lines 367--409 |
 | Secondary switch inventory per dispatcher (85 / 110 / 85; template caps 244 vs 189) | `ptxas_switches.json` filtered by `func_addr` |
 | Primary 373-case opcode coverage (249 vs 203 distinct targets) | `ptxas_switches.json`, switches at `0x143C478`, `0x169B1C8`, `0x198BD08` |
+| 245-template subtable rewrites, (newOp, newMod, #map) triples | Direct disassembly of blocks at `0x16DC2AF`--`0x16DFF...`; cases enumerated in `ptxas_switches.json` switch at `0x169DC25`; immediate decoding via `mov $imm32,%esi` opcode scan |
+| 72-action subtable rewrites, binary (mod=3 / mod=25) split | Direct disassembly of blocks at `0x16B8A53`--`0x16B98CC`; cases enumerated in `ptxas_switches.json` switch at `0x16A166C` |
+| Template 241's 22-mapping reshape at `0x16DC5FC` | Call-instruction count in the 337-byte block at `0x16DC5FC`; verified by `e8` opcode density |
