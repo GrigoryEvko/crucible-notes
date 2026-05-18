@@ -32,11 +32,11 @@ PTX
 
 ## Per-Family Pages
 
-The dialect ships about 218 ops. They split cleanly into eight large families plus a long tail of small ones. The bulk of each family is documented on its own page; this overview lists the families, their roster sizes, the SM floor, and one example op so the cross-link table doubles as an index.
+The dialect ships about 157 ops. They split cleanly into eight large families plus a long tail of small ones. The bulk of each family is documented on its own page; this overview lists the families, their roster sizes, the SM floor, and one example op so the cross-link table doubles as an index. (WMMA is three ops in MLIR; the PTX shape × layout × element-type cross-product is reached through attributes on `nvvm.wmma.{load,store,mma}` rather than per-combination ops.)
 
 | Family | Count | SM floor | Example op | Page |
 |---|---:|---|---|---|
-| WMMA — warp-synchronous register MMA | 64 | sm_70 | `nvvm.wmma.mma` | [WMMA Ops](wmma-ops.md) |
+| WMMA — warp-synchronous register MMA | 3 | sm_70 | `nvvm.wmma.mma` | [WMMA Ops](wmma-ops.md) |
 | WGMMA — warp-group async MMA (Hopper) | 4 | sm_90a | `nvvm.wgmma.mma_async` | [WGMMA Ops](wgmma-ops.md) |
 | TMA — bulk tensor copy, prefetch, reduce | 38 | sm_90 | `nvvm.cp.async.bulk.tensor.shared.cluster.global` | [TMA Ops](tma-ops.md) |
 | tcgen05 — Blackwell tensor memory + MMA | 17 | sm_100a | `nvvm.tcgen05.mma.block_scale` | [tcgen05 Ops](tcgen05-ops.md) |

@@ -2,23 +2,21 @@
 
 ## Abstract
 
-The `nvvm.wmma.*` family is the warp-synchronous matrix-multiply-accumulate path used on every NVIDIA target from sm_70 through sm_89. Each op exists to print one `wmma.{load,store,mma}.sync.aligned` PTX instruction at one fixed `(M, N, K)` tile shape. The dialect carries 64 ops because the cross-product of operation, fragment role, tile shape, layout, and element type is enumerated as separate ops rather than parameterised over attributes.
+The `nvvm.wmma.*` family is the warp-synchronous matrix-multiply-accumulate path used on every NVIDIA target from sm_70 through sm_89. The dialect carries three MLIR ops — `nvvm.wmma.load`, `nvvm.wmma.store`, and `nvvm.wmma.mma` — each parameterised by attributes (shape, fragment role, layout, element types). The full PTX shape × layout × element-type cross-product is reached by attribute combinations on these three ops, not by enumerating dozens of ops.
 
 Hopper (sm_90+) does not extend this family. Warp-group MMA on Hopper lives in [`nvvm.wgmma.*`](wgmma-ops.md); Blackwell MMA lives in [`nvvm.tcgen05.*`](tcgen05-ops.md).
 
 ## Op Layout
 
-The 64 ops break down as:
+The dialect registers three op classes; the attribute cross-product gives roughly 64 distinct LLVM-intrinsic / PTX-instruction targets at lowering time:
 
-| Sub-family | Count | Mnemonic stem |
-|---|---:|---|
-| Load A | 12 | `nvvm.wmma.load.a.sync.aligned.m{16,32,8}n{16,8,32}k{16,8}.{row,col}.{f16,bf16,tf32,s8,u8,s4,u4,b1}` |
-| Load B | 12 | `nvvm.wmma.load.b.sync.aligned.m..n..k..{row,col}.{...}` |
-| Load C | 12 | `nvvm.wmma.load.c.sync.aligned.m..n..k..{row,col}.{f16,f32,s32}` |
-| Store D | 12 | `nvvm.wmma.store.d.sync.aligned.m..n..k..{row,col}.{f16,f32,s32}` |
-| MMA  | 16 | `nvvm.wmma.mma.sync.aligned.m..n..k..{row,col}.{row,col}.{atype}.{btype}.{ctype}.{dtype}` |
+| Op | Role | Attribute axes | Approx. distinct intrinsic targets |
+|---|---|---|---:|
+| `nvvm.wmma.load` | A / B / C fragment load | fragment ∈ {a,b,c} × shape × layout ∈ {row,col} × element type | ~36 |
+| `nvvm.wmma.store` | D fragment store | shape × layout × element type ∈ {f16,f32,s32} | ~12 |
+| `nvvm.wmma.mma` | tile MMA | shape × A-layout × B-layout × (aT,bT,cT,dT) × `.popc`/`.and.popc` for `b1` | ~16 |
 
-Tile shapes enumerated: `m16n16k16`, `m8n32k16`, `m32n8k16` for `f16`/`bf16`; `m16n16k8` and `m8n32k8` and `m32n8k8` for `tf32`; `m16n16k16` and `m8n32k16` and `m32n8k16` for `s8`/`u8`; `m8n8k128` for `b1`; `m8n8k32` for `s4`/`u4`.
+Tile shapes legal in PTX: `m16n16k16`, `m8n32k16`, `m32n8k16` for `f16`/`bf16`; `m16n16k8`, `m8n32k8`, `m32n8k8` for `tf32`; `m16n16k16`, `m8n32k16`, `m32n8k16` for `s8`/`u8`; `m8n8k128` for `b1`; `m8n8k32` for `s4`/`u4`. The verifier rejects any attribute tuple not in this table.
 
 ## Operand Tables
 

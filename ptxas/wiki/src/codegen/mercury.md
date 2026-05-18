@@ -398,7 +398,7 @@ Mercury uses abstract instruction forms that may map to multiple real SASS instr
 
 `sub_C3CC60` iterates over every instruction in the function, dispatching to the appropriate handler. Handlers create new instruction nodes, link them into the list, and delete the original pseudo-instruction. After all expansions, `sub_C3E030` (18KB) performs finalization and cleanup.
 
-#### sub_C37A10 -- expandInstruction jump table
+### sub_C37A10 -- expandInstruction jump table
 
 This handler processes general pseudo-instructions. It reads the operand record at `instr+16`, extracts the Ori opcode from field `[2]` (offset +8), and maps it through `byte_22B7B60[opc]` (52-entry LUT, range 0..0x33) to a slot index (default 27 for out-of-range). It then applies predication from field `[4]`: mode 2 = conditional-true (`sub_8F0DC0(slot, 1)`), mode 3 = conditional-false (`sub_8F0DC0(slot, 0)`), mode 4 = uniform (`sub_8F0DF0(slot)`). The main switch dispatches by opcode:
 

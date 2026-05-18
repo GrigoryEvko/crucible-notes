@@ -954,7 +954,7 @@ Each instruction has a pointer at `instr+40` to a heap-allocated SchedNode block
 | +108 | byte | Flags: bit 0 = barrier target, bit 1 = has dependency, bit 2 = early schedulable, bit 3 = late schedulable, bit 4 = has register operand |
 | +111 | byte | Flags: bit 7 = uses expensive register file |
 
-#### Extended SchedNode Fields (+112 through +236)
+### Extended SchedNode Fields (+112 through +236)
 
 The alternative scheduling loop `sub_68B9C0` (46 KB) and the main scheduling driver `sub_688DD0` access fields well beyond +111. These fields are populated during cross-block scheduling setup and consumed by the region-ordering and resource-accounting phases. The total SchedNode allocation is at least 240 bytes, not the 112 documented above.
 

@@ -6,7 +6,7 @@ The ptxas register allocator is a fat-point allocator with a Chaitin-Briggs-styl
 
 This hybrid design combines the Chaitin-Briggs simplify-select priority ordering with a fat-point conflict resolution step that replaces the traditional interference-graph adjacency check. There is no explicit interference graph in the main allocation path; instead, per-physical-register pressure histograms serve as the conflict representation. The fat-point scan trades graph-coloring's theoretical optimality for speed on the very large register files of NVIDIA GPUs (up to 255 GPRs per thread).
 
-### Six-List Classification (`sub_93FBE0`)
+## Six-List Classification (`sub_93FBE0`)
 
 The ordering function walks the vreg linked list (`alloc+736`) and classifies each vreg into one of six doubly-linked lists. Classification is based on the vreg's interference cost (computed by `sub_938EA0`), constraint chain presence (`vreg+144`), width (`vreg+74`), and flag bits (`vreg+48`):
 

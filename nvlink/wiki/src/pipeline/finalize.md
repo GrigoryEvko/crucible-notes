@@ -30,7 +30,7 @@ Relocation Phase (sub_469D60 -- R_CUDA patching)
   |  1. Shared memory fixup (relocatable)
   |  2. Pre-finalize metadata creation
   |     a. Root kernel detection
-  |     b. EIATTR serialization (sub_44C030)
+  |     b. Callgraph closure + $-name validation (sub_44C030); NOT EIATTR TLV emission
   |     c. .nv.callgraph section (sub_44D200)
   |     d. .nv.prototype section (sub_44D9D0)
   |     e. Debug section finalization (sub_4478F0)
@@ -560,7 +560,7 @@ The interaction path is:
 main()
   |
   +-- sub_445000 (per-module finalize)
-  |     |-- sub_44DB00 (pre-finalize: root kernel, EIATTR serialize)
+  |     |-- sub_44DB00 (pre-finalize: root kernel detection + callgraph closure via sub_44C030; new EIATTR record nodes are appended to elfw+392 here, but on-disk TLV bytes are not written until sub_45BF00)
   |     |-- sub_451D80 (entry property computation + callgraph propagation)
   |     |-- section ordering + address assignment
   |     |-- ELF header write

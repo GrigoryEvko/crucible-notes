@@ -549,7 +549,7 @@ Once the section type has been normalized, `sub_45E7D0` dispatches based on the 
 
 | Classified type | Dispatch action |
 |---|---|
-| `0x70000000` (`SHT_CUDA_INFO`, `.nv.info*`) | Parsed as TLV records; `.nv.info` handled by `sub_44E8B0`, target section allocated via `sub_4504B0` |
+| `0x70000000` (`SHT_CUDA_INFO`, `.nv.info*`) | Parsed inline as TLV records by `sub_45E7D0` itself (record loop at decompiled line ~1854); target section allocated via `sub_4504B0`. *Earlier wiki revisions incorrectly cited `sub_44E8B0` here -- that function is a generic string tokenizer used for option/library parsing, not a TLV parser.* |
 | `0x70000001` (`SHT_CUDA_CALLGRAPH`, `.nv.callgraph`) | Indexed as a call-graph input for dead-code elimination |
 | `0x70000002` (`SHT_CUDA_CALLGRAPH_INFO`, `.nv.callgraph.info`) | Per-function callgraph metadata |
 | `0x70000006`-`0x70000075` (constant banks) | Routed through `sub_438640` for bank-specific merging |
@@ -861,7 +861,7 @@ All error messages are emitted through the unified diagnostic function `sub_4674
 - [168-Byte Input Container](container-struct.md) -- the shared opaque struct that fatbin-extracted cubins traverse before re-entering this validation path (content_type 3)
 - [ELF Parsing](elf-parsing.md) -- the `sub_448360` / `sub_46B590` ELF header accessor functions; `sub_43DD30` validator documented in both pages
 - [Constant Banks](../elf/constant-banks.md) -- the name-to-index mapping and merge pipeline for sections classified here as `SHT_CUDA_CONSTANTn`
-- [.nv.info Metadata](../elf/nv-info.md) -- the TLV attribute catalog parsed by `sub_4504B0` and `sub_44E8B0` after section classification
+- [.nv.info Metadata](../elf/nv-info.md) -- the TLV attribute catalog; sections allocated by `sub_4504B0` and parsed inline by `sub_45E7D0` (merge) / `sub_451D80` (finalize) after section classification
 - [NVIDIA Sections](../elf/nvidia-sections.md) -- full catalog of `SHT_CUDA_*` section types referenced by the dispatch table
 - [Section Merging](../linker/section-merging.md) -- the downstream merge stage that consumes classified sections
 - [R_CUDA Relocations](../linker/r-cuda-relocations.md) -- relocations that reference constant banks and other NV sections after merge

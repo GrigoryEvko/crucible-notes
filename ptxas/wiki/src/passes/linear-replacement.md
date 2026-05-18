@@ -446,11 +446,11 @@ Three instructions become one. The intermediate vregs (R10, R12, R13) are queued
 - [Branch & Switch Optimization](branch-switch.md) — phase 30 (`DoSwitchOptSecond`); produces the LDC-base + scaled-index chains that case 2 collapses
 - [GeneralOptimize Bundles](general-optimize.md) — phase 29; constant-folding pre-pass whose output the linearizer further reduces
 - [Predication](predication.md) — phase 63; case 10 (SEL fold) prepares the operand encoding that predication later absorbs
-- [Peephole Optimization](codegen/peephole.md) — `MainPeepholeOptimizer` (`sub_83EF00`, invoked from inside the GeneralOptimize bundles; not a standalone phase); picks up the BFE-eligible chains that the linearizer leaves intact (shift sums > 31)
-- [Instruction Selection](codegen/isel.md) — IADD3 / IMAD.WIDE / LEA-mode encoding that the linearizer's emitters produce
+- [Peephole Optimization](../codegen/peephole.md) — `MainPeepholeOptimizer` (`sub_83EF00`, invoked from inside the GeneralOptimize bundles; not a standalone phase); picks up the BFE-eligible chains that the linearizer leaves intact (shift sums > 31)
+- [Instruction Selection](../codegen/isel.md) — IADD3 / IMAD.WIDE / LEA-mode encoding that the linearizer's emitters produce
 - [Late Expansion & Legalization](late-legalization.md) — handles the `0x90000000` vs `0x10000000` operand type tags introduced by the biased-displacement path
 - [Liveness Analysis](liveness.md) — `OriPerformLiveDeadSecond` (phase 33) immediately downstream; cleans up the intermediate vregs that the linearizer has orphaned
 - [Rematerialization](rematerialization.md) — operates on the reduced expression trees the linearizer has produced
-- [Ori IR Overview](ir/overview.md) — instruction format, opcode encoding, operand type-tag conventions (bits 28..30)
-- [Register Model](ir/registers.md) — vreg descriptor layout, the `replacement_id` field at `vreg+28` that this pass writes
-- [Knobs System](config/knobs.md) — knob 487 (master) and knob 416 (per-iteration) gating
+- [Ori IR Overview](../ir/overview.md) — instruction format, opcode encoding, operand type-tag conventions (bits 28..30)
+- [Register Model](../ir/registers.md) — vreg descriptor layout, the `replacement_id` field at `vreg+28` that this pass writes
+- [Knobs System](../config/knobs.md) — knob 487 (master) and knob 416 (per-iteration) gating

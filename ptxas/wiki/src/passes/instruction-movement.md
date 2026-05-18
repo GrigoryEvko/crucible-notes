@@ -335,5 +335,5 @@ Net: one TEX instruction relocated three basic blocks downward, hiding ~80 cycle
 - [Rematerialization](rematerialization.md) — `OriDoRemat` (binary 80) consumes the moved kill positions when selecting remat candidates; movement runs immediately before remat
 - [Liveness Analysis](liveness.md) — `OriPerformLiveDead*` passes use the same `KILL` pseudo-instructions that `DoKillMovement` repositions
 - [Late Expansion & Legalization](late-legalization.md) — runs at binary phase 90, immediately after the movement family; consumes a stabilized IR
-- [Knobs System](config/knobs.md) — knobs 381 (per-function movement eligibility) and 499 (throttled opt-level lookup)
-- [DUMPIR & NamedPhases](config/dumpir.md) — the `DisablePhases` and `--dump-named-phases` mechanisms that interact with the unified `"HoistInvariants"` token
+- [Knobs System](../config/knobs.md) — knobs 381 (per-function movement eligibility) and 499 (throttled opt-level lookup)
+- [DUMPIR & NamedPhases](../config/dumpir.md) — the `DisablePhases` and `--dump-named-phases` mechanisms that interact with the unified `"HoistInvariants"` token

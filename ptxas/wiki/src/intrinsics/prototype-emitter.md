@@ -244,7 +244,7 @@ The PTX ISA documentation does **not** list `.FORCE_INLINE` as a linkage attribu
 
 ## QUIRK -- Helper IDs are not stable across ptxas versions
 
-The dense ID space (0 -- 1,079) is populated by the order in which `sub_5D7430` walks its prefix-suffix tables, and that order has changed three times in the public CUDA 12.x -> 13.x window. A cubin embedded from CUDA 12.0 referencing helper ID 942 will not resolve to the same `__cuda_*` symbol when re-encoded by CUDA 13.0 ptxas. This is harmless because the IDs are an in-memory artefact -- they never appear in the cubin -- but it does break any third-party tool that scrapes the body-template table and tries to memoise by integer. Always rekey by symbol name, never by ID. The MEMORY-pickle method in [`cicc/wiki/methodology.md`](../../../cicc/wiki/methodology.md) (sister-tool extraction recipe) implicitly assumes name keying for exactly this reason.
+The dense ID space (0 -- 1,079) is populated by the order in which `sub_5D7430` walks its prefix-suffix tables, and that order has changed three times in the public CUDA 12.x -> 13.x window. A cubin embedded from CUDA 12.0 referencing helper ID 942 will not resolve to the same `__cuda_*` symbol when re-encoded by CUDA 13.0 ptxas. This is harmless because the IDs are an in-memory artefact -- they never appear in the cubin -- but it does break any third-party tool that scrapes the body-template table and tries to memoise by integer. Always rekey by symbol name, never by ID. The MEMORY-pickle method in [`cicc/wiki/methodology.md`](../../../../cicc/wiki/src/methodology.md) (sister-tool extraction recipe) implicitly assumes name keying for exactly this reason.
 
 ## QUIRK -- The `0` case is at the highest address in the binary
 

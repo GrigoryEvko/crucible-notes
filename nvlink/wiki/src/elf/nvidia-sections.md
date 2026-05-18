@@ -62,9 +62,9 @@ The `.nv.info` section is the most important NVIDIA ELF metadata section. It enc
 | Section name (global) | `.nv.info` |
 | Section name (per-function) | `.nv.info.<function_name>` |
 | Creator function | `sub_4504B0` (72 decompiled lines) |
-| Parser function | `sub_44E8B0` (223 decompiled lines, 4,780 bytes) |
-| Single-attribute parser | `sub_44E590` (4,555 bytes) |
-| Encoder function | `sub_468760` (14,322 bytes) |
+| Inline TLV parser (merge) | `sub_45E7D0` (case `sh_type == 0x70000000`, decompiled line ~1854 onward) |
+| Inline TLV parser (finalize) | `sub_451D80` (`compute_entry_properties`, walks `elfw+392` list) |
+| Debug dumper | `sub_4478F0` (prints `"nvinfo <fmt=%d,attr=%d,size=%d>, secidx=%d"`) |
 | Property computer | `sub_451D80` (`compute_entry_properties`, 3,029 decompiled lines) |
 | `sh_entsize` | 4 |
 | `sh_addralign` | 0 |
@@ -93,7 +93,7 @@ Format `0x04` (indexed) is the most common: it carries `[sym_index:4][value:4]` 
 
 **When created.** Global `.nv.info` is created during the merge phase when the first input `.nv.info` section is encountered. Per-function sections are created on demand as functions are merged. The output `.nv.info` sections are populated during the finalization phase by `compute_entry_properties` (`sub_451D80`), which walks every entry point and encodes its computed properties (propagated register counts, barrier counts, stack sizes, etc.) as EIATTR records.
 
-**Processing path.** During merge, the nvinfo parser (`sub_44E590`) reads incoming TLV records and dispatches on the attribute code. The linker extracts critical values:
+**Processing path.** During merge, the inline TLV parser in `sub_45E7D0` (entered when `sh_type == 0x70000000`) reads incoming TLV records and dispatches on the attribute code. The linker extracts critical values:
 - `EIATTR_REGCOUNT` (0x2F): Register count for weak-symbol resolution
 - `EIATTR_MAX_STACK_SIZE` (0x23): Stack size for propagation through the call graph
 - `EIATTR_MIN_STACK_SIZE` (0x12): Minimum stack for call-graph accumulation
@@ -295,8 +295,8 @@ These sections carry structured metadata about kernels and the compilation unit.
 
 | Section name | sh_type | Creator | Reader | Description |
 |---|---|---|---|---|
-| `.nv.info` | `0x70000000` | `sub_4504B0:46` | `sub_44E590`, `sub_44E8B0` | Global EIATTR metadata. Attributes apply to the entire module -- CUDA API version, compatibility flags. |
-| `.nv.info.<funcname>` | `0x70000000` | `sub_4504B0:63` | `sub_44E590`, `sub_451D80` | Per-kernel EIATTR metadata: register count, stack sizes, barriers, parameter info. `sh_link` references the owning function symbol. |
+| `.nv.info` | `0x70000000` | `sub_4504B0:46` | `sub_45E7D0` (merge, inline TLV parse), `sub_451D80` (finalize) | Global EIATTR metadata. Attributes apply to the entire module -- CUDA API version, compatibility flags. |
+| `.nv.info.<funcname>` | `0x70000000` | `sub_4504B0:63` | `sub_45E7D0`, `sub_451D80` | Per-kernel EIATTR metadata: register count, stack sizes, barriers, parameter info. `sh_link` references the owning function symbol. |
 | `.nv.metadata` | `0x70000004` | `sub_43D6B0:31` | `sub_42A680`, `sub_46F0C0` | Module metadata: `__nv_module_id` string for CUDA registration. |
 | `.nv.callgraph` | `0x70000001` | `sub_44D200:102` | `sub_44CA40`, `sub_44AD40` | Call edge table: caller-callee pairs for DCE and stack propagation. |
 | `.nv.prototype` | `0x70000002` | `sub_44D9D0:25` | `sub_44CBC0` | Kernel launch prototype descriptors: parameter layout for driver validation. |
@@ -566,7 +566,7 @@ The `merge_elf` function (`sub_45E7D0`, 89,156 bytes) is the central section cla
 | `.nv.local.` | `merge_overlapping_local_data` (`sub_437E20`) | Per-thread local |
 | `.nv.shared.` | overlap analysis + layout (`sub_436BD0`) | Per-CTA shared |
 | `.nv.constant` | `merge_constant_bank_data` (`sub_438640`) | Constant banks |
-| `.nv.info` | nvinfo parser (`sub_44E590`) | Metadata |
+| `.nv.info` | inline TLV parse in `sub_45E7D0` | Metadata |
 | `.nv.compat` | compatibility check (`sub_451920`/`sub_451BA0`) | Compatibility |
 | `.nv.host` | `merge_overlapping_host_data` (`sub_435B60`) | Host-visible |
 | `.nv.merc.` | skip (deferred to FNLZR) | Mercury code/debug |
@@ -678,10 +678,10 @@ All functions that create, read, or process NVIDIA-specific sections, with addre
 | `build_prototype_section` | `sub_44D9D0` | 63 | Creates and populates `.nv.prototype` |
 | `create_reloc_section` | `sub_469230` | 154 | Creates `.rela.*`, `.rel.*`, and `.nv.resolvedrela*` sections |
 | `create_metadata_section` | `sub_43D6B0` | 85 | Creates `.nv.metadata` section (lazy, cached at ctx+232) |
-| `parse_nvinfo_attribute` | `sub_44E590` | -- | Parses single EIATTR TLV record (4,555 bytes) |
-| `parse_nvinfo_section` | `sub_44E8B0` | 223 | Walks `.nv.info` TLV stream (4,780 bytes) |
-| `compute_entry_properties` | `sub_451D80` | 3,029 | Encodes computed properties into output `.nv.info` |
-| `nvinfo_encode` | `sub_468760` | -- | Encodes EIATTR records (14,322 bytes) |
+| `tokenize_quoted_arg` | `sub_44E590` | -- | Recursive string tokenizer (handles `\`, `[`, `]`, `"` escapes). *Earlier misattribution as `parse_nvinfo_attribute` corrected: this function never touches `.nv.info` -- the actual TLV parser is inline in `sub_45E7D0` (merge) and `sub_451D80` (finalize).* |
+| `tokenize_string_list` | `sub_44E8B0` | 223 | String list tokenizer used by command-line / config parsing. *Earlier misattribution as `parse_nvinfo_section` corrected; see [.nv.info Metadata](nv-info.md).* |
+| `compute_entry_properties` | `sub_451D80` | 3,029 | Walks the EIATTR linked list at `elfw+392`, computes per-entry-kernel properties (regcount, barriers, frame size, stack size, externs), and *appends* new EIATTR record nodes via `sub_450B70`/`sub_4644C0`. Does not write TLV bytes itself; the chunk-list payload pointers it sets up are later flushed by `sub_45BF00`. |
+| `reloc_action_dispatcher` | `sub_468760` | -- | Relocation-action engine / instruction-field bitpacker (14,322 bytes). *Earlier wiki revisions misattributed this as "nvinfo_encode"; it is unrelated to EIATTR TLV emission. See [.nv.info Metadata](nv-info.md#tlv-byte-emission) and [Relocation Engine](../linker/relocation-engine.md).* |
 | `fixup_callgraph` | `sub_44CA40` | 110 | Remaps symbol indices in `.nv.callgraph` |
 | `fixup_prototype` | `sub_44CBC0` | 54 | Remaps symbol indices in `.nv.prototype` |
 | `emit_resolved_relocations` | `sub_46ADC0` | 406 | Writes resolved relocation entries |

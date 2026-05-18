@@ -17,8 +17,8 @@ nvlink both reads and writes `.nv.info` sections. During the merge phase it pars
 | Section creation | `sub_4504B0` (global: line 46, per-function: line 63) |
 | Record node creation (indexed) | `sub_450B70` (`create_eiattr_indexed_record`) |
 | Record node creation (any format) | `sub_4508F0` (`create_eiattr_node`) |
-| Encoder function | `sub_468760` (`nvinfo_encode`, 14,322 bytes) |
-| Master emission function | `sub_15C58F0` (78,811 bytes -- largest nv.info emitter) |
+| TLV byte emission | In-memory chunks attached to each `.nv.info` section by `sub_4504B0`/`sub_450B70`; flushed by the section data writer `sub_45BF00` (called from `sub_45C920` during ELF output) |
+| Master emission function | `sub_15C58F0` (78,811 bytes -- largest nv.info emitter, embedded ptxas) |
 | Emission function count | ~190 functions at `0x15CF070`--`0x160FFFF` |
 | Name table | 97 x 16-byte entries at VA `0x1D37D60` (8-byte string ptr + 8-byte metadata) |
 | Diagnostic format string | `"nvinfo <fmt=%d,attr=%d,size=%d>, secidx=%d"` |
@@ -769,7 +769,7 @@ If a callee's barrier count exceeds the entry kernel's:
 
 **4d. EXTERNS and AT_ENTRY_FRAGMENTS creation**: For entry functions, the finalization phase creates EIATTR_EXTERNS (0x0F) and EIATTR_AT_ENTRY_FRAGMENTS (0x4F) records for the transitive closure of external references and fragment descriptors.
 
-**4e. Encoding**: `nvinfo_encode` (`sub_468760`, 14,322 bytes) serializes the in-memory linked-list nodes into on-disk TLV records using SSE2/AVX intrinsics for efficient bitfield packing. The encoder processes a descriptor array of 4 x uint32 entries per field, with the third uint32 serving as a type code that dispatches to one of ~15 encoding strategies (cases 0 through 0x12 in the encoder's switch).
+**4e. TLV byte emission**: There is no dedicated standalone "nvinfo_encode" entry point. The 16-byte in-memory node `[fmt:1][attr:1][size:2][secidx:4][payload_ptr:8]` already mirrors the on-disk header, and the payload bytes are stored exactly as they will appear in the section. During finalization (`sub_445000`) the EIATTR linked list at `elfw+392` is reversed (line 540) into emit order, and per-section data chunks (each `[data_ptr, file_offset, size]`) are accumulated on the section's chunk list at offset `+72`. The actual on-disk bytes are written by the generic ELF section data writer `sub_45BF00` (called from `sub_45C920`, the top-level output driver invoked from `main`), which walks each section's chunk list and `fwrite`s the bytes through `sub_45B6D0`. Note: `sub_468760` is *not* the EIATTR encoder -- it is the relocation-action dispatcher / instruction-field bitpacker called from `sub_469D60` (`apply_relocations`); see [Relocation Engine](../linker/relocation-engine.md) and the `function-map.md` entry `reloc_action_dispatcher`. The SSE2 `__m128i` loads in `sub_468760` reference the per-relocation-type 64-byte descriptor table (`off_1D3CBE0`), not EIATTR records.
 
 ## Emission Subsystem (Embedded ptxas)
 
@@ -902,7 +902,7 @@ A corrected variant `EIATTR_AT_ENTRY_FRAGMENTS` also exists at `0x245E8D9`, sugg
 | Register count propagation via callgraph | HIGH | `"regcount %d for %s propagated to entry %s"` at sub_450ED0:417 |
 | sub_42F760 validates attr_code <= 0x60 | HIGH | Decompiled: `if (a1 > 0x60u) { error("unknown attribute"); return 0; }` |
 | Parser sub_44E8B0 is nv.info parser | LOW | sub_44E8B0 is actually a string tokenizer (handles quotes/brackets/escapes); the page's original claim was incorrect. The actual TLV parser is inline in sub_45E7D0 (merge) and sub_451D80 (finalize). |
-| Encoder sub_468760 (14,322 bytes) | HIGH | Decompiled file exists; SSE2 constants and bitfield packing confirmed |
+| sub_468760 is NOT an EIATTR encoder | HIGH | Earlier wiki misattribution corrected: sub_468760 is the relocation-action dispatcher (`reloc_action_dispatcher` in `function-map.md`); its SSE2 loads target `off_1D3CBE0` (relocation descriptor table), and it is invoked from `sub_469D60` (`apply_relocations`) at line 314 with a relocation context (`v74 == 4` UFT path, `*(_DWORD *)(v26 + 4) - 0x70000064` constant-bank section delta). No standalone EIATTR encoder exists; payload bytes are stored at `create_eiattr_*` time and flushed by the generic section writer `sub_45BF00`. |
 | Master emission sub_15C58F0 (78,811 bytes) | HIGH | Decompiled file exists |
 | Four master emitter functions | HIGH | All four decompiled files exist |
 | ~190 per-attribute handlers at 0x15CF070 | MEDIUM | Range confirmed by decompiled file enumeration; exact count is approximate |
