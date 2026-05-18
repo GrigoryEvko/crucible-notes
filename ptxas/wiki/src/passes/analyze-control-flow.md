@@ -403,10 +403,10 @@ Phase 0   OriCheckInitialProgram        ┐
 Phase 1   ApplyNvOptRecipes             │  PTX-to-Ori bridge
 Phase 2   PromoteFP16                   │
 Phase 3   ★ AnalyzeControlFlow          ┤── single canonical run, knob-235 gated
-Phase 4   AdvPhBeforeConvUnSup          │
+Phase 4   AdvancedPhaseBeforeConvUnSup  │
 Phase 5   ConvertUnsupportedOps         │   ↓ impl called incrementally from here on ↓
 Phase 6   SetControlFlowOpLastInBB      │
-Phase 7   AdvPhAfterConvUnSup           │
+Phase 7   AdvancedPhaseAfterConvUnSup   │
 Phase 8   OriCreateMacroInsts           │
 …
 Phase 18  OriLoopMakeSingleEntry       ─┤── force=1 call: spill-aware loop simplification
@@ -423,7 +423,7 @@ Phase 74  ConvertToUniformReg           ┤── force=0 call: HAS_PRED bit dec
 Phase 96  ReportBeforeScheduling        ┤── force=0 call to print loop-aware metrics
 Phase 100 Scheduling (sub_A0D800)       ┤── 6 force=0 calls, one per dependency-builder phase
 Phase 110 Fatpoint register allocator   ┤── 18 force=1 calls (one per spill batch)
-Phase 119 OriPlaceBlocks                ┤── force=0 call before final block reorder
+Phase 119 PlaceBlocksInSourceOrder      ┤── force=0 call before final block reorder
 ```
 
 The 131 callers spread across 18 of the 159 phases. The densest cluster is phases 63 (predication) and 110 (register allocation), accounting for 40+ of the 131 calls between them.

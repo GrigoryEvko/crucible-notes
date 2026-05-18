@@ -677,7 +677,7 @@ cmp    eax, 1
 jle    return                  ; skip if opt_level <= 1
 mov    rdi, [rbx+0x630]       ; rdi = ctx->arch_backend
 mov    rax, [rdi]              ; rax = arch_backend->vtable
-mov    rax, [rax+0x110]       ; vtable[34] = ApplyPostSyncWars impl
+mov    rax, [rax+0x110]       ; vtable[34] = ApplyPostSyncronizationWars impl
 cmp    rax, 0x7D6C80          ; compare with nullsub_170
 jne    call_impl               ; if not nullsub, call it
 return:

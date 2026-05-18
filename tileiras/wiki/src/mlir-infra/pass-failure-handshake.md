@@ -165,7 +165,7 @@ count would carry no extra information given the binary nature of the
 downstream skip decision.
 
 The same pattern appears at wider granularity in the
-[`ConvertTileASToLLVM` rewriter](../passes/tileas/convert-tileas-to-llvm.md):
+[`ConvertTileASToLLVM` rewriter](../lowering/tileas-to-llvm.md):
 when a single op fails to lower, the rewriter ORs `4` into its own status
 word and continues with the next op rather than abandoning the function.
 The driver lifts the bit to a hard failure only if the post-walk

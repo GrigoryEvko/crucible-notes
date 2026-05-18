@@ -46,6 +46,8 @@ Phases 139--158 are late-pipeline phases covering Mercury encoding, scoreboards,
 
 **Reading guide:** `W#` = wiki phase number used on this page. Rows marked **SKIP** have no wiki number (16 phases). Rows marked **DISP** are displaced to wiki 132--138 (7 phases). Delta = binary index minus wiki number.
 
+> **Name shortening.** The Phase Name column below uses compact aliases to fit the two-column layout; the actual strings in the static name table at `off_22BD0C0` are the unabbreviated forms used everywhere else on this page. Aliases used here: `AdvPh*` = `AdvancedPhase*` (15 phases), `AdvScoreboardsAndOpexes` = `AdvancedScoreboardsAndOpexes`, `MergeEquivCondFlow` = `MergeEquivalentConditionalFlow`, `LateMergeEquivCondFlow` = `LateMergeEquivalentConditionalFlow`, `LateExpUnSupportedOps[2]` = `LateExpansionUnsupportedOps[2]`, `LateExpUnSupOpsMid` = `LateExpansionUnsupportedOpsMid`, `LateEnforceArgRestr` = `LateEnforceArgumentRestrictions`, `UpdateAfterConvUnSupOps` = `UpdateAfterConvertUnsupportedOps`, `UpdateAfterSchedInstr` = `UpdateAfterScheduleInstructions`, `UpdateAfterOriDoSync` = `UpdateAfterOriDoSyncronization`, `UpdateAfterOriAllocReg` = `UpdateAfterOriAllocateRegisters`, `ReportBeforeRegAlloc` = `ReportBeforeRegisterAllocation`, `ReportAfterRegAlloc` = `ReportAfterRegisterAllocation`, `OriSplitHiPressLR` = `OriSplitHighPressureLiveRanges`, `AnalyzeUniformsForSpec` = `AnalyzeUniformsForSpeculation`, `InsertPseudoUseDefConvUR` = `InsertPseudoUseDefForConvUR`, `ConvMemToRegOrUniform` = `ConvertMemoryToRegisterOrUniform`, `ApplyPostSyncWars` = `ApplyPostSyncronizationWars`.
+
 | Bin | Phase Name | W# | D | | Bin | Phase Name | W# | D |
 |--:|---|--:|--:|---|--:|---|--:|--:|
 | 0 | 0 | `OriCheckInitialProgram` | 0 | 0 | | 80 | `OriDoRemat` | 69 | +11 |
@@ -148,10 +150,10 @@ These binary phases have no wiki number. All are valid `DUMPIR` and `DisablePhas
 | 103 | 125 | `LateEnforceArgumentRestrictions` | Lower | Between `FixupGmmaSequence` [102] and `OriHoistInvariantsLate3` [104]; late ABI enforcement |
 | 114 | 137 | `ScheduleInstructions` | Sched | Worker for `AdvancedPhasePreSched` [113]; `sub_8D0640` (22 KB) |
 | 115 | 138 | `UpdateAfterScheduleInstructions` | Clean | IR refresh after scheduling; between [113] and `BackPropagateVEC2D` [116] |
-| 118 | 143 | `UpdateAfterOriDoSyncronization` | Clean | IR refresh after sync insertion [117]; between [117] and `ApplyPostSyncWars` [119] |
-| 120 | 145 | `ReportBeforeRegisterAllocation` | Report | Diagnostic dump; between `ApplyPostSyncWars` [119] and `AdvPhAllocReg` [121] |
+| 118 | 143 | `UpdateAfterOriDoSyncronization` | Clean | IR refresh after sync insertion [117]; between [117] and `ApplyPostSyncronizationWars` [119] |
+| 120 | 145 | `ReportBeforeRegisterAllocation` | Report | Diagnostic dump; between `ApplyPostSyncronizationWars` [119] and `AdvancedPhaseAllocReg` [121] |
 | 122 | 147 | `AllocateRegisters` | RegAlloc | Worker for `AdvancedPhaseAllocReg` [121]; canonical allocator entry |
-| 124 | 149 | `UpdateAfterOriAllocateRegisters` | Clean | IR refresh after regalloc; between `ReportAfterRegAlloc` [123] and `Get64bRegComponents` [125] |
+| 124 | 149 | `UpdateAfterOriAllocateRegisters` | Clean | IR refresh after regalloc; between `ReportAfterRegisterAllocation` [123] and `Get64bRegComponents` [125] |
 | 127 | 152 | `PostExpansion` | Lower | Worker for `AdvancedPhasePostExpansion` [126]; post-RA expansion |
 
 ### 7 Displaced Phases (Wiki 132--138)
@@ -160,7 +162,7 @@ These phases exist in the binary at early/mid positions but were assigned wiki n
 
 | Wiki # | True Binary Index | Name | Executes Between |
 |--:|--:|---|---|
-| 132 | 8 | `UpdateAfterConvertUnsupportedOps` | `AdvPhAfterConvUnSup` [7] and `OriCreateMacroInsts` [9] |
+| 132 | 8 | `UpdateAfterConvertUnsupportedOps` | `AdvancedPhaseAfterConvUnSup` [7] and `OriCreateMacroInsts` [9] |
 | 133 | 15 | `MergeEquivalentConditionalFlow` | `GeneralOptimizeEarly` [14] and `DoSwitchOptFirst` [16] |
 | 134 | 52 | `AdvancedPhaseAfterMidExpansion` | `MidExpansion` [51] and `GeneralOptimizeMid2` [53] |
 | 135 | 83 | `AdvancedPhaseLateExpandSyncInstructions` | `OptimizeSyncInstructions` [82] and `LateExpandSyncInstructions` [84] |
@@ -180,6 +182,8 @@ The naming convention is consistent: `AdvancedPhase` prefix followed by the pipe
 
 All 17 gate passes fall into three categories when activated by a backend override: (A) dispatch to a named worker phase from the static name table, (B) dispatch through an SM backend vtable slot at `ctx+0x630`, or (C) execute a pipeline progress counter thunk that writes `ctx+1552 = N`. Category A gates have a named worker visible to `DUMPIR`. Category B dispatches through architecture-specific code in the SM backend object. Category C gates' only effect is advancing the pipeline progress counter, which downstream passes read via `*(ctx+1552) > N` guards.
 
+> **Name aliases used in this table.** Phase names are abbreviated to fit the Gate column (`AdvPh*` = `AdvancedPhase*`, `AdvScoreboardsAndOpexes` = `AdvancedScoreboardsAndOpexes`) per the [§Numbering Discrepancy reading guide](#complete-binary-to-wiki-translation-table). Worker names in the Worker / Dispatch Target column appear unabbreviated.
+
 | Gate (Wiki #) | Bin | Cat | Execute Fn | Worker / Dispatch Target | Evidence |
 |---|--:|---|---|---|---|
 | `AdvPhBeforeConvUnSup` (4) | 4 | C | `sub_C5F620` (7B) | `ctx+1552 = 1`; marks pre-legalization | P0_03 thunk table; early pipeline boundary |
@@ -187,7 +191,7 @@ All 17 gate passes fall into three categories when activated by a backend overri
 | `AdvPhEarlyEnforceArgs` (47) | 54 | A | vtable dispatch | `EnforceArgumentRestrictions` [48] | P5_02 correspondence table; W020 "Before EnforceArgumentRestrictions" |
 | `AdvPhAfterMidExpansion` (134) | 52 | C | `sub_C5EF80` (7B) | `ctx+1552 = 3`; marks mid-expansion done | P0_03 thunk table; `sub_752CF0` checks `<= 3` |
 | `AdvPhLateExpandSync` (135) | 83 | B | `0xC5F110` (6B) | `jmp *(*(ctx+0x630))+0x168`; SM backend vtable slot 360 | W029 disasm; brackets `LateExpandSyncInstructions` [84] |
-| `AdvPhLateConvUnSup` (77) | 89 | B | `0xC5EA50` (13B) | `jmp *(*(ctx+0x630))+0x178`; SM backend vtable slot 376 | W033 disasm lines 108--111; drives `LateExpUnSupportedOps` [90] |
+| `AdvPhLateConvUnSup` (77) | 89 | B | `0xC5EA50` (13B) | `jmp *(*(ctx+0x630))+0x178`; SM backend vtable slot 376 | W033 disasm lines 108--111; drives `LateExpansionUnsupportedOps` [78] |
 | `AdvPhBackPropVReg` (82) | 96 | B | off_22BE298 | Arch-override vtable dispatch; next phase [83] writes `ctx+1552 = 9` | P1_08 vtable layout; `isNoOp` returns 0 (runtime-overridden to 1) |
 | `AdvPhSetRegAttr` (89) | 105 | B | vtable dispatch | `ctx+0x630` SM backend vtable; precedes `OriSetRegisterAttr` [90] | W020 line 407 "Before OriSetRegisterAttr" |
 | `AdvPhAfterSetRegAttr` (92) | 108 | B | `0xC607A0` (51B) | `*(*(ctx+0x630))+0x110`; guarded by `nullsub_170@0x7D6C80` | W029 disasm line 53; returns NOP when default impl |
@@ -531,7 +535,7 @@ Predication, rematerialization, loop fusion, varying propagation, sync optimizat
 | 74 | 86 | `ConvertToUniformReg` | Optimization |  | Converts qualifying values from general registers (R) to uniform registers (UR) | [Uniform Regs](uniform-regs.md) |
 | 75 | 87 | `LateArchOptimizeFirst` | Optimization |  | Architecture-specific late optimizations (1st pass) |  |
 | 76 | 88 | `UpdateAfterOptimize` | Cleanup |  | Rebuilds IR metadata invalidated by the late optimization group |  |
-| 77 | 89 | `AdvancedPhaseLateConvUnSup` | Gate |  | Type B: `0xC5EA50` dispatches `ctx+0x630` vtable+0x178 (slot 376); drives `LateExpUnSupportedOps` [90] | [Late Legalization](late-legalization.md) |
+| 77 | 89 | `AdvancedPhaseLateConvUnSup` | Gate |  | Type B: `0xC5EA50` dispatches `ctx+0x630` vtable+0x178 (slot 376); drives `LateExpansionUnsupportedOps` [78] | [Late Legalization](late-legalization.md) |
 
 ### Stage 5 -- Legalization (Phases 78--96)
 

@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-Phase 110 (`PostSchedule`) is the post-register-allocation re-scheduling pass. Where `ScheduleInstructions` (`sub_8D0640`, bin 114 — a SKIP-numbered worker invoked by the wiki-97 gate `AdvPhPreSched`) runs **pre-RA** on virtual registers and is responsible for ILP/pressure trade-offs, phase 110 runs **after** register allocation, after the post-RA WAR fixup (phase 105 `ApplyPostRegAllocWars`), and after the hot/cold layout passes (108--109), to re-order the now-physical instruction stream against the actual hardware latency/throughput model that requires concrete register numbers, banks, and reuse cache slots to be known.
+Phase 110 (`PostSchedule`) is the post-register-allocation re-scheduling pass. Where `ScheduleInstructions` (`sub_8D0640`, bin 114 — a SKIP-numbered worker invoked by the wiki-97 gate `AdvancedPhasePreSched`) runs **pre-RA** on virtual registers and is responsible for ILP/pressure trade-offs, phase 110 runs **after** register allocation, after the post-RA WAR fixup (phase 105 `ApplyPostRegAllocWars`), and after the hot/cold layout passes (108--109), to re-order the now-physical instruction stream against the actual hardware latency/throughput model that requires concrete register numbers, banks, and reuse cache slots to be known.
 
 The phase is implemented as a thin Type-A-shaped dispatcher whose body is 51 bytes (16 x86-64 instructions, 4 basic blocks) and which performs no scheduling work directly. Instead it routes through the **sub-target's** vtable at slot `+0x90` to the SM-family-specific post-scheduling backend -- either Backend A's `PostSchedulePass::runOnFunction` (`sub_A97600`, 42 KB) on the legacy path or, for Ampere and later (sm_80+), one of the modern backends that have a native post-scheduling entry point. PostSchedule is the **only** caller in the binary of the sentinel `nullsub_45` at `0x680190`; that sentinel is the marker the dispatcher uses to recognise a sub-target that does not install a post-scheduling override and therefore wants the phase to be a no-op.
 
@@ -19,7 +19,7 @@ The phase is implemented as a thin Type-A-shaped dispatcher whose body is 51 byt
 | **Sub-target dispatch slot** | sub-target `vtable[+0x90]` (slot 18) |
 | **Sentinel** | `nullsub_45` at `0x680190` -- 2-byte `repz ret`, used only here |
 | **Static name table entry** | `off_22BD0C0[133]` -- string `"PostSchedule"` at `.rodata:0x22BCD47` |
-| **AdvPhPostSched predecessor** | wiki phase 106 (binary case 129) -- Type-C thunk `sub_C5E830` writes `ctx+1552 = 14` before phase 110 enters |
+| **`AdvancedPhasePostSched` predecessor** | wiki phase 106 (binary case 129) -- Type-C thunk `sub_C5E830` writes `ctx+1552 = 14` before phase 110 enters |
 
 ## Position in the Pipeline
 
@@ -27,13 +27,13 @@ Phase 110 sits in the **post-RA cleanup band** between physical-register livenes
 
 | # | Bin# | Phase | Role w.r.t. PostSchedule |
 |---|---|---|---|
-| 97 | 113 | `AdvPhPreSched` | Type-A gate, dispatches to `ScheduleInstructions` (bin 114, SKIP-numbered worker); marks pre-RA scheduling boundary |
+| 97 | 113 | `AdvancedPhasePreSched` | Type-A gate, dispatches to `ScheduleInstructions` (bin 114, SKIP-numbered worker); marks pre-RA scheduling boundary |
 | -- | 114 | `ScheduleInstructions` (`sub_8D0640`) | Pre-RA scheduling -- 3-phase ReduceReg/ILP/DynBatch on virtual registers; SKIP-numbered in wiki |
-| 101 | 121 | `AdvPhAllocReg` | Dispatches to `AllocateRegisters` (bin 122, SKIP-numbered worker; fatpoint allocator, `sub_957160`) |
+| 101 | 121 | `AdvancedPhaseAllocReg` | Dispatches to `AllocateRegisters` (bin 122, SKIP-numbered worker; fatpoint allocator, `sub_957160`) |
 | -- | 122 | `AllocateRegisters` | Physical register assignment; SKIP-numbered in wiki |
-| 104 | 126 | `AdvPhPostExpansion` | Type-A gate -> `PostExpansion` (bin 127, SKIP-numbered worker) |
+| 104 | 126 | `AdvancedPhasePostExpansion` | Type-A gate -> `PostExpansion` (bin 127, SKIP-numbered worker) |
 | 105 | 128 | `ApplyPostRegAllocWars` | Fixes WAR hazards exposed by RA |
-| 106 | 129 | `AdvPhPostSched` | **Type-C** thunk `sub_C5E830`: writes `ctx+1552 = 14`. This is the timeline marker that downstream guards read to confirm "PostSchedule reached" |
+| 106 | 129 | `AdvancedPhasePostSched` | **Type-C** thunk `sub_C5E830`: writes `ctx+1552 = 14`. This is the timeline marker that downstream guards read to confirm "PostSchedule reached" |
 | 107 | 130 | `OriRemoveNopCode` | Removes placeholder NOPs |
 | 108 | 131 | `OptimizeHotColdInLoop` | Intra-loop hot/cold separation |
 | 109 | 132 | `OptimizeHotColdFlow` | Function-level hot/cold separation |
@@ -102,7 +102,7 @@ The relationship between phase 110 and the side-channel `DispatchPostSchedule` (
 
 ## Why PostSchedule Re-Runs Scheduling
 
-Pre-RA scheduling (`ScheduleInstructions`, bin 114; dispatched by the wiki-97 gate `AdvPhPreSched`) cannot model:
+Pre-RA scheduling (`ScheduleInstructions`, bin 114; dispatched by the wiki-97 gate `AdvancedPhasePreSched`) cannot model:
 
 1. **Register-file bank conflicts.** Until RA has assigned physical registers, the scheduler does not know which operands sit in the same bank and therefore which instructions will stall on read-port contention. Backend C uses `RBTPressureCostModel` (`sub_18F3CB0`, 16 KB) which can score post-RA schedules accurately but only sees the right inputs after RA.
 2. **Reuse cache slot assignment.** The 6-bit per-source reuse hint encoded in the control word requires knowing the exact source register numbers; pre-RA scheduling reasons about live ranges, not registers, so it cannot decide reuse cache occupancy.
@@ -125,7 +125,7 @@ A few clarifying negatives, because the post-RA window is densely packed and sev
 
 `nullsub_45` at `0x680190` is a 2-byte `repz ret` referenced from **exactly one** location in the entire ptxas binary: the comparison at `0xc60666` inside `sub_C60640`. Other phases that use the same "is this slot overridden?" pattern compare against different sentinels:
 
-* `AdvPhAfterSetRegAttr` (phase 92, `sub_C607A0`) compares slot `+0x110` against `nullsub_170` at `0x7D6C80`.
+* `AdvancedPhaseAfterSetRegAttr` (phase 92, `sub_C607A0`) compares slot `+0x110` against `nullsub_170` at `0x7D6C80`.
 * `PostFixUp` (phase 140, `sub_C5E270`) tail-calls slot `+0x148` unconditionally without a sentinel check, relying on every Mercury target installing a target-specific method.
 
 The choice of a unique sentinel per dispatcher gives ptxas a way to distinguish "target opts out of this phase" (slot still points to `nullsub_45`) from "target installs a no-op because it has nothing to do but the slot is logically populated" (slot points to a target-specific function that happens to return immediately). For PostSchedule the distinction matters because the SM-version gate at the top of the body (`SmVersion > 1`) and the sentinel gate are **both** needed: a target object can be constructed for a sub-target whose `GetSmVersionIndex` returns 2 (Ampere+) but whose vtable slot at `+0x90` is still the default `nullsub_45` -- this happens for early-prototype SM variants whose backend is not yet finished. In that case the SM-version gate passes (because the architecture index is 2+) but the sentinel gate aborts before the bogus call.
@@ -213,7 +213,7 @@ Pre-RA scheduling cannot enforce any of these because they all reference physica
 | `sub_A97600` | 7,780 B | **NOT** a post-RA scheduler. Per-operand source-slot-count query installed at the primary-target vtable slot **+0x5F0** (slot 190, byte 1520) on six legacy SM-target classes. See [Legacy Backend A](./legacy-backend-a.md) for the corrected classification. | CERTAIN |
 | `sub_1908D90` | -- | Backend C `RBTScheduleOrchestrator` -- modern sm_80+ post-schedule, also installed at sub-target vtable +0x90 | HIGH |
 | `sub_C5FFF0` | -- | `DispatchPostSchedule` -- parallel side-channel dispatcher (NOT phase 110's call path) | CERTAIN |
-| `sub_C5E830` | 7 B | `AdvPhPostSched` Type-C thunk -- writes `ctx+1552 = 14` immediately before phase 110 runs | CERTAIN |
+| `sub_C5E830` | 7 B | `AdvancedPhasePostSched` Type-C thunk -- writes `ctx+1552 = 14` immediately before phase 110 runs | CERTAIN |
 | `sub_C5E390` | 11 B | `AdvancedPhasePostFixUp` Type-C thunk -- writes `ctx+1552 = 20` immediately after phase 110 returns | CERTAIN |
 | `off_22BEA90` | 24 B | Phase-110 vtable: `{ sub_C60640, sub_C5E3C0, sub_C5E3D0 }` | CERTAIN |
 | `off_22BD0C0[133]` | -- | Static name table entry: `"PostSchedule"` at `0x22BCD47` | CERTAIN |

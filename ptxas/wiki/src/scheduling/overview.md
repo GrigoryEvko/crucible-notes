@@ -654,7 +654,7 @@ The scheduler runs at two distinct points in the ptxas pipeline, separated by re
 | Aspect | Pre-RA scheduling (bin 114) | Post-RA scheduling (wiki phase 110) |
 |---|---|---|
 | **Pipeline phase** | bin 114 `ScheduleInstructions` (SKIP-numbered worker; dispatched by wiki 97 gate) | wiki 110 / bin 133 `PostSchedule` |
-| **Triggers via** | `AdvPhPreSched` [wiki 97] Type-A gate -> `sub_8D0640` | `AdvPhPostSched` [wiki 106] Type-C thunk -> `sub_C60640` (51 B body) |
+| **Triggers via** | `AdvancedPhasePreSched` [wiki 97] Type-A gate -> `sub_8D0640` | `AdvancedPhasePostSched` [wiki 106] Type-C thunk -> `sub_C60640` (51 B body) |
 | **Timing** | Before `AllocateRegisters` (bin 122, SKIP-numbered) | After `ApplyPostRegAllocWars` [wiki 105] and `OptimizeHotCold` [wiki 108--109] |
 | **Register model** | Virtual register IDs, live-range tracker (`sub_69A1A0`, 952 B) | Physical R-regs / UR-regs / P-regs with exact occupancy map |
 | **Primary goal** | Trade ILP against register pressure so RA has headroom | Re-order against real bank conflicts, reuse-cache slots, and spill/reload latency |

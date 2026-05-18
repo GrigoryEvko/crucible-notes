@@ -124,7 +124,7 @@ Factory index:  51
 Vtable:         off_22BDDC0
 execute():      sub_C5EFB0  (thunk -> context+0x630 vtable+0xB0)
 isNoOp():       sub_C5EFD0  (returns 0 -- always runs)
-Field side-effect: context+1552 = 3 (via AdvPhAfterMidExpansion gate, binary index 52)
+Field side-effect: context+1552 = 3 (via AdvancedPhaseAfterMidExpansion gate, binary index 52)
 Pipeline:       After ExpandMbarrier (42), ForwardProgress (43), OptimizeUniformAtomic (44)
                 Before GeneralOptimizeMid2 (46)
 ```

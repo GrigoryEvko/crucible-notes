@@ -290,7 +290,7 @@ int bucket = v4 % 0x1D;     // 29-bucket open hash
 The mixer is **structurally XOR-shift-2** (left-shift by 1, XOR with the next operand), not a published hash family — its only design constraint is that the lower 5 bits decorrelate well after one round, which the bucket count of 29 (the largest prime ≤ 32) is chosen for. Lookup walks the chain from `bucket * 8` until either an entry matches on all of `(opcode, arity, operand[0..5], v62 flag, displacement, RegClass)` or the chain ends; on hit, the cached emission's destination vreg is reused directly via `sub_7EB2F0`. Confidence: **HIGH** (the mixer is explicit in the decompilation).
 
 > ⚡ **QUIRK — cache is invalidated per-function but not per-BB**
-> `sub_7EB830` resets the cache between functions but not between basic blocks within a function. This means a linearized expression in BB#5 can reuse the cached destination vreg from BB#3 even though they may live in different loop nests. The pass relies on the dominance-and-loop-depth guard in step 3b to suppress reuse that would extend a live range across a loop back-edge — but the guard is checked **per instruction**, not at cache insertion, so the cache can transiently hold entries that would be rejected as reuse targets. The net effect is a small upper bound on register-pressure inflation that the later allocator (`AdvPhAllocReg`, phase 101) cleans up via spill+reload.
+> `sub_7EB830` resets the cache between functions but not between basic blocks within a function. This means a linearized expression in BB#5 can reuse the cached destination vreg from BB#3 even though they may live in different loop nests. The pass relies on the dominance-and-loop-depth guard in step 3b to suppress reuse that would extend a live range across a loop back-edge — but the guard is checked **per instruction**, not at cache insertion, so the cache can transiently hold entries that would be rejected as reuse targets. The net effect is a small upper bound on register-pressure inflation that the later allocator (`AdvancedPhaseAllocReg`, phase 101) cleans up via spill+reload.
 
 ## Function Map
 
@@ -354,7 +354,7 @@ Phase 31 runs before:
 
 - **Phase 32 (`CompactLocalMemory`)** — relies on the linearizer having absorbed all `stack_base + scale*idx + per-call-offset` chains so that surviving local-memory references are direct immediates.
 - **Phase 33 (`OriPerformLiveDeadSecond`)** — cleans up the intermediate vregs the linearizer has just orphaned. The pass deliberately does not run DCE itself; that is liveness's job.
-- **Phase 101 (`AdvPhAllocReg`)** — operates on the reduced register pressure produced by linearization.
+- **Phase 101 (`AdvancedPhaseAllocReg`)** — operates on the reduced register pressure produced by linearization.
 
 > ⚡ **QUIRK — interaction with strength-reduction is bidirectional**
 > Phase 21 (`OriStrengthReduce`) reduces `x * (2^n)` to `x << n` but does **not** then collapse `(x << n1) << n2` to `x << (n1+n2)`. It leaves that case for the linearizer (case 11 here). Conversely, the linearizer's case 2 (`IADD(SHL, c)`) and case 11 (`SHL+SHL`) **only fire when the resulting shift count is `≤ 31`**; for larger counts, the chain is left intact and the peephole BFE-folder in `sub_81DB30` picks it up later. The two passes are thus complementary: strength-reduction does the unary-to-binary reduction, the linearizer does the binary-to-binary collapse, and the peephole does the wide-bit-field cleanup. None of the three alone is sufficient.
