@@ -31,7 +31,17 @@ Every archive begins with an 8-byte magic string. nvlink recognizes two variants
 | `!<arch>\n` | `21 3C 61 72 63 68 3E 0A` | Regular archive -- member data is embedded inline |
 | `!<thin>\n` | `21 3C 74 68 69 6E 3E 0A` | Thin archive -- member data lives in external files |
 
-The first member header begins immediately after this 8-byte global magic, at file offset 8. The old BSD `__.SYMDEF` symbol-table format is **not** recognized; nvlink only handles GNU `ar` archives. No reference to the `__.SYMDEF` string appears anywhere in the binary's string table (confirmed by scanning `nvlink_strings.json` for `SYMDEF`, which returns zero matches).
+The first member header begins immediately after this 8-byte global magic, at file offset 8. The old BSD `__.SYMDEF` symbol-table format is **not** recognized; nvlink only handles the GNU / System V `ar` variant. No reference to the `__.SYMDEF` string appears anywhere in the binary's string table (confirmed by scanning `nvlink_strings.json` for `SYMDEF`, which returns zero matches).
+
+**Other formats nvlink does not recognize:**
+
+| Format | Magic / Convention | nvlink behavior |
+|---|---|---|
+| BSD 4.4 / Mach-O `ar` | `!<arch>\n` global magic shared with GNU, but long names are encoded as `#1/NN` in the 16-byte `ar_name` field with the actual name occupying the first `NN` bytes of the member data | Detected as a regular member (the `#` byte is not `/`, so the slash-prefix branch is skipped); `sub_487AD0` falls into the "no `/` found in name" arm and aborts with `"unexpected archive format"`. BSD archives are effectively unsupported. |
+| GNU 64-bit symbol table | `/SYM64/` member name (used when total archive size exceeds 4 GB, with 8-byte big-endian offsets in place of 4-byte) | The name starts with `/` followed by the non-digit `S`, so it lands in the same "symbol table" branch as the regular `/` armap and is skipped without inspection. The 64-bit-ness is irrelevant because nvlink never consults symbol-table contents. |
+| GNU thin armap (`/SYM64/` inside thin archive) | Same name, same skip logic | Same behavior; thin archives with 64-bit armaps work transparently for nvlink because the armap is ignored either way. |
+| AIX big-format `ar` (`<bigaf>\n`, `<aiaff>\n`) | Distinct global magics | Rejected at `sub_487A90`; the file is not an archive from nvlink's perspective and falls through to the next type predicate. |
+| COFF import library (Microsoft `.lib`) | Uses `!<arch>\n` magic with special `/` and `//` linker members containing COFF-flavored symbol tables and import descriptors | Magic match succeeds; iteration treats the linker members as the symbol-table / long-name pair and skips them. The COFF object members that follow are then handed to `sub_4BDB70` for classification, which checks for ELF magic and fails, so they are quietly dropped. No diagnostic is emitted -- the archive appears to contribute no inputs. |
 
 ### Member Header (60 bytes)
 
@@ -86,6 +96,8 @@ The expression `v6 - v6 % 2 + 2` is an overly-verbose way of writing `v6 + 1` wh
 
 Bounds checking: after computing the next header position, the function verifies `v10 < buffer + buffer_size`. If the new position is at or past the end of the archive, the iterator returns with `content_out = NULL`, signalling end-of-archive:
 
+The check guards only the *start* of the next header, not its full 60-byte extent. If the archive is truncated such that `buffer + size` falls inside a member header (i.e. `v10 + 60 > buffer + size` but `v10 < buffer + size`), the subsequent `strncpy(dest, v10 + 48, 10)` reads up to 10 bytes past the buffer end into a stack-local. The read is bounded (`strncpy` with `n=10`), so it cannot overflow nvlink's stack, but it does touch unmapped memory if the archive is loaded via `mmap` rather than `sub_476BF0`'s `fread`-into-arena -- in practice `sub_476BF0` always allocates the arena buffer with the file size plus arena alignment slop, so the read lands in arena padding and the parsed size becomes whatever those bytes happen to encode. The result is a non-fatal misparse rather than a crash, but a malformed truncated archive can therefore produce arbitrary `member_size` values that subsequent iterations then reject via the same bounds check.
+
 ```c
 if ( v10 >= (unsigned __int64)&v8->__size[v9] )  // buffer + size
 {
@@ -101,8 +113,8 @@ Several member names have special meaning in GNU `ar` archives. nvlink handles t
 
 | Name pattern | Identity | nvlink behavior |
 |---|---|---|
-| `/` followed by non-digit | GNU symbol table (armap) | Detected: `name[0]=='/'` and `isdigit(name[1])==false`. Cursor advances past it; member content is **ignored**. |
-| `//` (slash + slash) | GNU long-name string table | Detected: `v34 == 2` (the `v30 + 1` branch where `v30` equals `(name[1]==47)` returns 2). Pointer stored at `ctx+48` for subsequent long-name lookups. Cursor advances past it. |
+| `/` followed by non-digit | GNU symbol table (armap), including `/SYM64/` 64-bit variant and any other `/<non-digit>` name | Detected: `name[0]=='/'` and `isdigit(name[1])==false`. Cursor advances past it; member content is **ignored**. The check is purely structural -- it does not distinguish `/` from `/SYM64/`, and any future variant whose name happens to start with `/<non-digit>` would be silently absorbed here. |
+| `//` (slash + slash) | GNU long-name string table | Detected: `v34 == 2` (the `v30 + 1` branch where `v30` equals `(name[1]==47)` returns 2). Pointer stored at `ctx+48` for subsequent long-name lookups. Cursor advances past it. Only the *first* `//` member is honored -- if a malformed archive contains two, the second overwrites `ctx->longnames_ptr` and any earlier `/NNN` references that have already been resolved retain their (already-allocated) strings, but subsequent references resolve against the new table. |
 | `__.LIBDEP` | Library dependency metadata | 9-byte prefix comparison (see `__.LIBDEP` Skipping below). Always skipped. |
 
 Note that nvlink's detection of the symbol table is **structural, not semantic**: it simply skips any member whose name starts with `/` and is not a long-name reference. It never reads the armap contents, meaning it has no way to use the symbol index for on-demand loading even if it wanted to -- which it doesn't (see [Whole-Archive vs On-Demand Loading](#whole-archive-vs-on-demand-loading)).
@@ -175,6 +187,8 @@ if ( !v27 )                              // size > 7
 ```
 
 Note that the flag is set **once** during open and never changes. An archive's thin-ness is a file-format property, not a runtime setting.
+
+This re-test is redundant with the magic detection that already occurred in `sub_487A90` (called from `main()` before the archive dispatch branch was taken), but `sub_487C20` cannot trust that prior result because its calling contract takes only `(buffer, size, path)` without a "kind" tag. The retest is cheap (8-byte `memcmp`) and makes the open function self-contained. The asymmetry also means the regular-vs-thin distinction is encoded only in offset +72; nothing else in the iterator context records the global magic, so a buffer whose first 8 bytes are corrupted to `!<arch>\n` would still be processed as regular even if it originally was thin.
 
 ### Error Handling via setjmp/longjmp
 
@@ -317,6 +331,8 @@ if ( *a2 == 47 && ((*__ctype_b_loc())[a2[1]] & 0x800) != 0 )  // '/' + digit
 The pointer arithmetic `a3 + v20 + 60` is crucial: `a3` is the start of the `//` member's 60-byte header, so `a3 + 60` is the start of the long-name string table data, and adding `v20` (the decimal offset from the name field) gets to the specific filename. The name is terminated by a `/` character within the table (each entry in the GNU format ends with `/\n`), so `strchr(v9, '/')` locates the end.
 
 If a long-name reference appears before the `//` member has been seen (i.e., the `//` member was placed *after* long-name members in the archive), `a3` is NULL and `sub_467460` is called with the diagnostic string `"longnames header not found"` -- a fatal error. A well-formed archive always places the `//` table before any members that reference it.
+
+The decimal offset parser is `strtol(a2 + 1, 0, 10)` with no upper bound and no validation against `//`-table size. A malicious archive whose `ar_name` reads `/4000000000` produces `v9 = longnames_ptr + 60 + 4_000_000_000`, which on a 64-bit host overflows past the arena buffer end. The subsequent `strchr(v9, '/')` then scans linearly through whatever memory follows -- typically other arena allocations or unmapped pages, the latter producing a SIGSEGV. nvlink does not bound-check the offset against the `//` member's declared size. In practice, GNU `ar` produces offsets bounded by the long-name table size, so this is a robustness concern for hostile inputs rather than a correctness issue for honest toolchains.
 
 ## Name Resolution and Path Construction (sub\_487AD0)
 
