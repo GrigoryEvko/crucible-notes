@@ -272,8 +272,24 @@ Word 1 (at instr + 84 + 8*i + 4):
 Bits 25-31 (mask 0xFE000000): extended modifier flags
   When any bit is set, the operand has special semantics.
   Peephole matchers bail out early if (word1 & 0xFE000000) != 0.
-  Bit 25 (0x2000000): operand reuse / negation extension
-  Bit 26 (0x4000000): absolute-value modifier (|x|)
+  Bit 25 (0x2000000): constant-fold / range-extension hint (paired with bit 26
+                      to gate the symbolic-operand constant-fold path; see
+                      `sub_922210` and regalloc/algorithm.md).
+  Bit 26 (0x4000000): constant-fold parity flag (selects high vs low 32 bits
+                      of a 64-bit immediate when the fold targets a half-width
+                      constraint; checked as `(word1 & 0x4000000)` to pick the
+                      32-bit shift).
+  Bit 30 (0x40000000): `.ABS` source modifier (absolute value of source).
+                       Confirmed in `sub_9D12F0` as the literal test
+                       `(word1 & 0x40000000)` and mirrored into the SASS
+                       printer's per-slot ABS flag (see codegen/sass-printing.md).
+  Bit 31 (0x80000000): `.NEG` source modifier (arithmetic negation of source).
+                       Confirmed in `sub_9D12F0` as the signed-comparison
+                       `word1 < 0` (high bit set) and mirrored into the SASS
+                       printer's per-slot NEG flag. Distinct from the
+                       predicate-guard `@!P` negation, which is encoded as a
+                       textual `'!'` prefix in the guard name string at
+                       descriptor offset +2120 (decoded by `sub_70B780`).
 
 Bit 24 (mask 0x1000000): const-bank flag
   When set, indicates the source references a constant bank (c[N][offset]).
@@ -567,7 +583,7 @@ Offset  Value              Field
 +16     <id>               Unique instruction ID
 +72     0x0000000C         opcode = 12 (FADD)
 +80     0x00000003         operand_count = 3
-+84     0x10000003         operand[0] word0: dst R3
++84     0x90000003         operand[0] word0: dst R3 (DEF bit 31 set)
 +88     0x00000000         operand[0] word1: no ext flags
 +92     0x10000001         operand[1] word0: src R1
 +96     0x00000000         operand[1] word1: no ext flags
@@ -577,15 +593,23 @@ Offset  Value              Field
 
 ### Operand Decoding
 
-Take operand[0] word0 = `0x10000003`:
+Take operand[0] word0 = `0x90000003` (destination):
 
 ```
-  0x10000003 in binary:
-    bit 31     = 0       (no sign/negate)
+  0x90000003 in binary:
+    bit 31     = 1       (DEF marker -- this operand is written)
     bits 28-30 = 001     (type = 1 = register operand)
     bits 20-27 = 00000000 (no modifiers)
     bits 0-19  = 00003   (register index = 3)
 ```
+
+Source operands clear bit 31. For example operand[1] word0 = `0x10000001`
+decodes as type=1, reg=1, with the high bit zero indicating a use (read).
+The "sign-bit-set means definition" convention is exploited by passes that
+scan operand lists for the producing slot (e.g. `DetectConstantIV`
+in `sub_1385CC0`, which advances past nodes whose first operand has
+`word0 >= 0`). Source modifiers `.ABS`/`.NEG` live in **word 1** bits 30/31,
+not in word 0.
 
 The register index resolves through the register descriptor array:
 

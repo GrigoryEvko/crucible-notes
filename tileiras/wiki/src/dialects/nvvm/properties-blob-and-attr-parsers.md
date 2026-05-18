@@ -118,7 +118,7 @@ The alternate stmatrix selector disambiguates intrinsic variants from the `trans
 | `nvvm.red` variant 1 | +64 / +72 | A / A | red_op, red_type |
 | `nvvm.red` variant 2 | +64 / +72 | A / A | red_op, red_type |
 | `nvvm.red` variant 3 | +64 / +72 | A / A | red_op, red_type |
-| `nvvm.atomic.cas` / `nvvm.red.b128` | +64 / +72 / +80 / +88 | A / A / A / A | four enum slots |
+| `nvvm.atomic.cas` / `nvvm.red.b128` (parser-arm shorthand; neither string appears in the binary — both arms are reached by TypeID dispatch from the `nvvm.cmpxchg` / 128-bit reduction lowerings) | +64 / +72 / +80 / +88 | A / A / A / A | four enum slots |
 
 ### prefetch / fence / elect.sync (5 arms)
 

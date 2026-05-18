@@ -842,7 +842,7 @@ where the registrar permits it; otherwise registrar walk order).
 | `nvvm.mul` | 8 | `&unk_5B8D7C0` | multiply | `dialects/nvvm.md` |
 | `nvvm.mul.packed.f32x2` | 0x15 | `&unk_5B8D7B8` | packed f32x2 multiply | `dialects/nvvm.md` |
 | `nvvm.rcp.approx.ftz.f` | 0x15 | `&unk_5B8D7A0` | reciprocal approx ftz | `dialects/nvvm.md` |
-| `nvvm.red` | 8 | `&unk_5B8D798` | red (atomic reduction) | `dialects/nvvm.md` |
+| `nvvm.red` (family — TypeID-only; no literal mnemonic string) | 8 | `&unk_5B8D798` | atomic reduction family; concrete forms surfaced in the string table are `nvvm.redux.sync` and `nvvm.barrier.cta.red`; the variant-3 `red_op`/`red_type` parser slots are described in `dialects/nvvm/properties-blob-and-attr-parsers.md` | `dialects/nvvm.md` |
 | `nvvm.setmaxregister` | 0x13 | `&unk_5B8D788` | set-max-register | `dialects/nvvm.md` |
 | `nvvm.st.bulk` | 0xC | `&unk_5B8DC28` | bulk store | `dialects/nvvm.md` |
 | `nvvm.store.ext` | 0xE | `&unk_5B8D960` | extended store | `dialects/nvvm.md` |
@@ -859,19 +859,29 @@ mnemonics emitted by tileiras-driven lowerings. Dialect TypeID anchor is
 | mnemonic | length | TypeID singleton | brief semantic | primary wiki page |
 | --- | ---: | --- | --- | --- |
 | `llvm.alloca` | 11 | upstream | stack alloca | `dialects/upstream-llvm.md` |
-| `llvm.atomicrmw` | 14 | upstream | atomic RMW | `dialects/upstream-llvm.md` |
-| `llvm.atomic_cmpxchg` | 19 | upstream | atomic compare-and-swap | `dialects/upstream-llvm.md` |
+| `llvm.atomicrmw` | 14 | upstream | atomic RMW (the binary has no `llvm.atomic_cmpxchg` string; compare-and-swap is the separate `llvm.cmpxchg` op below) | `dialects/upstream-llvm.md` |
 | `llvm.bitcast` | 12 | upstream | bit-pattern type pun | `dialects/upstream-llvm.md` |
 | `llvm.call` | 9 | upstream | LLVM call | `dialects/upstream-llvm.md` |
-| `llvm.cmpxchg` | 12 | upstream | compare-and-swap | `dialects/upstream-llvm.md` |
+| `llvm.cmpxchg` | 12 | upstream | atomic compare-and-swap | `dialects/upstream-llvm.md` |
 | `llvm.dbg.cu` | 11 | upstream | DI compile-unit | `dialects/upstream-llvm.md` |
 | `llvm.extractelement` | 19 | upstream | vector element extract | `dialects/upstream-llvm.md` |
 | `llvm.fence` | 10 | upstream | LLVM fence | `dialects/upstream-llvm.md` |
 | `llvm.func` | 9 | upstream | LLVM function | `dialects/upstream-llvm.md` |
-| `llvm.gep` | 8 | upstream | get-element-ptr | `dialects/upstream-llvm.md` |
-| `llvm.global` | 11 | upstream | LLVM global | `dialects/upstream-llvm.md` |
+| `llvm.getelementptr` | 18 | upstream | get-element-ptr (the binary has no abbreviated `llvm.gep` string; only the spelled-out form is present) | `dialects/upstream-llvm.md` |
+| `llvm.global_ctors` | 17 | upstream | LLVM global constructors array | `dialects/upstream-llvm.md` |
+| `llvm.global_dtors` | 17 | upstream | LLVM global destructors array | `dialects/upstream-llvm.md` |
+| `llvm.global.annotations` | 23 | upstream | LLVM global annotations array | `dialects/upstream-llvm.md` |
 | `llvm.insertelement` | 18 | upstream | vector element insert | `dialects/upstream-llvm.md` |
-| `llvm.intr.coro.*` | - | upstream | coroutine intrinsics | `dialects/upstream-llvm.md` |
+| `llvm.intr.coro.align` | 20 | upstream | coroutine intrinsic — frame alignment query | `dialects/upstream-llvm.md` |
+| `llvm.intr.coro.begin` | 20 | upstream | coroutine intrinsic — frame begin | `dialects/upstream-llvm.md` |
+| `llvm.intr.coro.end` | 18 | upstream | coroutine intrinsic — frame end | `dialects/upstream-llvm.md` |
+| `llvm.intr.coro.free` | 19 | upstream | coroutine intrinsic — free frame storage | `dialects/upstream-llvm.md` |
+| `llvm.intr.coro.id` | 17 | upstream | coroutine intrinsic — identity token | `dialects/upstream-llvm.md` |
+| `llvm.intr.coro.promise` | 22 | upstream | coroutine intrinsic — promise/frame conversion | `dialects/upstream-llvm.md` |
+| `llvm.intr.coro.resume` | 21 | upstream | coroutine intrinsic — resume suspended frame | `dialects/upstream-llvm.md` |
+| `llvm.intr.coro.save` | 19 | upstream | coroutine intrinsic — save suspend index | `dialects/upstream-llvm.md` |
+| `llvm.intr.coro.size` | 19 | upstream | coroutine intrinsic — frame size query | `dialects/upstream-llvm.md` |
+| `llvm.intr.coro.suspend` | 22 | upstream | coroutine intrinsic — suspend point | `dialects/upstream-llvm.md` |
 | `llvm.intr.dbg.declare` | 21 | upstream | debug-info declare | `dialects/upstream-llvm.md` |
 | `llvm.intr.dbg.label` | 19 | upstream | debug-info label | `dialects/upstream-llvm.md` |
 | `llvm.intr.dbg.value` | 19 | upstream | debug-info value | `dialects/upstream-llvm.md` |

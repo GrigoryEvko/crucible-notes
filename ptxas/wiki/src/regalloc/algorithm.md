@@ -1102,7 +1102,7 @@ The interference builder (4005 lines) is the largest single function in the allo
 ```
   31  30 29 28  27 26 25 24  23 ............ 0
  +---+--------+--+--+--+---+------------------+
- |sgn| op_type|  modifiers |      reg_id      |
+ |DEF| op_type|  modifiers |      reg_id      |
  +---+--------+--+--+--+---+------------------+
    1    3 bits    4 bits        24 bits
 
@@ -1110,7 +1110,7 @@ Extraction idiom (appears 100+ times in the decompiled source):
   op_type  = (dword0 >> 28) & 7        // bits 30:28
   reg_id   = dword0 & 0xFFFFFF         // bits 23:0
   pair_ext = (dword0 >> 24) & 1        // bit 24
-  sign     = dword0 >> 31              // bit 31
+  is_def   = dword0 >> 31              // bit 31 (DEF marker: 1 = written, 0 = read)
 
 Register operand test:  (op_type - 2) <= 1   // types 2 (def), 3 (use)
 Special operand test:   op_type == 5
