@@ -400,6 +400,50 @@ The function `reset_attribute_processing_state` (`sub_4190B0`) zeroes all of the
 | `sub_6B5E50` | `process_nv_register_params` / attribute registration | `nv_transforms.c` | HIGH |
 | `sub_6BC890` | `nv_validate_cuda_attributes` | `nv_transforms.c` | VERY HIGH |
 
+## Per-Attribute IL Emission Matrix
+
+Every CUDA attribute is parsed into a 72-byte attribute IL node (entry kind `0x48`). What happens *after* application is what determines downstream visibility. The matrix below classifies each attribute by its emission path: whether the attribute survives as a discrete IL node, collapses into entity bitfield mutations, allocates the side-band launch-config struct, or is preserved on the entity's attribute chain for the `.int.c` writer to re-emit.
+
+| Attribute | Parse-time IL node | Post-apply form | `.int.c` re-emission | Pipeline consumer |
+|---|---|---|---|---|
+| `__host__` | kind `0x48`, byte `+8 = 'V'` | `entity+182 \|= 0x15` | -- (entity bits only) | Device/host splitter (`mark_to_keep_in_il`) |
+| `__device__` | kind `0x48`, byte `+8 = 'W'` | functions: `entity+182 \|= 0x23`; variables: `entity+148 \|= 0x01` | -- (entity bits only) | Device/host splitter, cross-space checker |
+| `__global__` | kind `0x48`, byte `+8 = 'X'` | `entity+182 \|= 0x61`, then `\|= 0x80` | host stub generator emits launch wrapper | Kernel stub emitter (`sub_489000`) |
+| `__tile_global__` | kind `0x48`, byte `+8 = 'Y'` | (no handler) attribute node kept on attr chain | preserved through chain walk | cicc (downstream) |
+| `__shared__` | kind `0x48`, byte `+8 = 'Z'` | `entity+148 \|= 0x02` | -- (entity bits only) | Memory-space declarator |
+| `__constant__` | kind `0x48`, byte `+8 = '['` | `entity+148 \|= 0x04` | -- (entity bits only) | Memory-space declarator |
+| `__launch_bounds__` | kind `0x48`, byte `+8 = '\\'` | `entity+256 -> launch_config_t` (+0, +8, +16) | re-emitted as IL kind `25` via `sub_540560` | cicc (NVVM IR generator) |
+| `__maxnreg__` | kind `0x48`, byte `+8 = ']'` | `launch_config+32` | -- (struct field) | cicc, ptxas |
+| `__local_maxnreg__` | kind `0x48`, byte `+8 = '^'` | `launch_config+36` | -- (struct field) | cicc, ptxas |
+| `__tile_builtin__` | kind `0x48`, byte `+8 = '_'` | (no handler) attribute node kept on attr chain | preserved through chain walk | cicc (downstream) |
+| `__managed__` | kind `0x48`, byte `+8 = 'f'` | `entity+148 \|= 0x01` + `entity+149 \|= 0x01` | comma-op host wrapper + RT boilerplate via `sub_489000` | CUDA runtime (`__nv_init_managed_rt`) |
+| `__cluster_dims__` | kind `0x48`, byte `+8 = 'k'` | `launch_config+20/+24/+28` + flag bit 0; zero-arg sets `entity+183 \|= 0x40` | -- (struct fields) | cicc |
+| `__block_size__` | kind `0x48`, byte `+8 = 'l'` | `launch_config+40/+44/+48` + flag bit 1; optional `+20/+24/+28` | -- (struct fields) | cicc |
+| `__nv_pure__` | kind `0x48`, byte `+8 = 'n'` | (no entity mutation) attribute node kept on attr chain | re-emitted as IL kind `25` via `sub_540560` (shared path with `\\`) | cicc (applies LLVM `readonly`/`willreturn`) |
+| `__nv_register_params__` | kind `0x48` via GNU path (no CUDA kind byte) | `entity+183 \|= 0x08` | -- (entity bits only) | cicc (ABI selector) |
+| `__forceinline__` | (no CUDA kind byte; processed via inline-control path) | `entity+177 \|= 0x10` | emitted as `__attribute__((always_inline))` | Host compiler + cicc |
+| `__noinline__` (EDG form) | (no CUDA kind byte) | `entity+179 \|= 0x20` (+ ABI node on prototype in C mode) | emitted as `__attribute__((noinline))` | Host compiler + cicc |
+| `__noinline__` (GNU form) | kind `0x48` via GNU `__attribute__` | `entity+180 \|= 0x80` | emitted as `__attribute__((noinline))` | Host compiler + cicc |
+| `__inline_hint__` | (no CUDA kind byte) | `entity+179 \|= 0x10` | emitted as suggestion (non-binding) | cicc inlining heuristics |
+| `__grid_constant__` | parameter-level attribute | `entity+164 \|= 0x04`, `type+133 \|= 0x20`, `param+32 \|= 0x02` | emitted into kernel parameter declaration | Kernel parameter ABI (cicc + driver) |
+| `__restrict__` | C99/GNU restrict path (not a CUDA kind) | Type-qualifier on parameter type chain | preserved as `__restrict__` on parameter | Host compiler + cicc |
+
+### Three Emission Categories
+
+Reading the matrix vertically, every CUDA attribute lands in exactly one of three categories:
+
+1. **Collapse to entity bits** -- `__host__`, `__device__`, `__shared__`, `__constant__`, `__managed__`, `__nv_register_params__`, `__forceinline__`, `__noinline__`, `__inline_hint__`. After application, no attribute IL node survives. The downstream consumer reads entity bytes (`+148`, `+149`, `+177`, `+179`, `+180`, `+182`, `+183`) instead. The original kind-`0x48` IL node is freed back to the arena when the attribute chain is torn down.
+
+2. **Side-band launch-config struct** -- `__launch_bounds__`, `__maxnreg__`, `__local_maxnreg__`, `__cluster_dims__`, `__block_size__`. The attribute IL node is consumed; the values are extracted into the 56-byte `launch_config_t` pointed to by `entity+256`. `__launch_bounds__` additionally walks back through the writer with `kind_field = 25` so cicc sees it in `.int.c`. The other four are consumed entirely by cudafe++ and the launch-config struct is read by later passes (kernel stub generator, ptxas argument formatter).
+
+3. **Preserved on attribute chain** -- `__nv_pure__`, `__tile_global__`, `__tile_builtin__`, `__grid_constant__`. These have no entity-bit collapse (or only a flag bit alongside the chain). The attribute IL node remains attached to the entity through code generation. The `.int.c` writer (`sub_5565E0` family, `sub_540560`) walks the chain and re-emits the attribute textually so cicc can apply the corresponding LLVM-level semantics. For the `__tile_*` pair, no cudafe++ consumer exists -- the attribute is pure pass-through.
+
+### Why There Is No Per-Attribute IL Node Type
+
+A CUDA attribute is *never* lowered into a discrete IL node of its own kind. Every attribute reuses the generic `attribute` kind (`0x48`), with its arguments stored as `attribute_argument` nodes (kind `0x49`) and the whole bundle wrapped in an `attribute_group` node (kind `0x4A`). The discriminator is the byte at `+8` of the `0x48` node (`'V'`..`'n'` for CUDA attributes; standard descriptors for GNU/C++11/MSVC attributes). This is a deliberate EDG design choice: the IL graph stays small and the dispatch logic centralizes in `apply_one_attribute` (`sub_413240`) rather than fanning out into dozens of node kinds.
+
+The practical consequence is that "which IL node is emitted for attribute X" is the wrong question. The correct question is "which entity-byte mutation does attribute X cause, and which downstream pass reads that byte." The matrix above answers both.
+
 ## Cross-References
 
 - [__global__ Function Constraints](global-function.md) -- detailed validation rules for `__global__`

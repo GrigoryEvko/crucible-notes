@@ -1,6 +1,8 @@
 # Environment Variables
 
-cicc v13.0 checks **22 distinct environment variables** across 36 files containing `getenv()` calls. Six are NVIDIA-specific (two obfuscated), six come from the LLVM infrastructure, six from the EDG frontend, and the remainder from the build system, memory allocator, and shared ptxas/nvptxcompiler infrastructure. Two of the NVIDIA variables have their names encrypted in the `.rodata` section using an XOR+ROT13 cipher to prevent discovery through string scanning.
+cicc v13.0 checks **24 distinct environment variables** across 36 call sites containing literal-name `getenv()` calls. Seven are NVIDIA-specific (two obfuscated), eight come from the LLVM infrastructure (including the four temp-directory aliases `TMPDIR`/`TMP`/`TEMP`/`TEMPDIR`), six from the EDG frontend, and the remainder from the build system, memory allocator, and shared ptxas/nvptxcompiler infrastructure. Two of the NVIDIA variables have their names encrypted in the `.rodata` section using an XOR+ROT13 cipher to prevent discovery through string scanning.
+
+Build-time configuration is parallel to the environment surface: the EDG frontend ships a **643-entry preprocessor `#define` table** (the `--gen_config` dump rooted at `0xE1` in the EDG dispatcher) that gates every C/C++ language feature, ABI compatibility flag, and target attribute. These are static build-time switches baked into the cicc binary, not runtime knobs. A representative subset is catalogued in [pipeline/edg.md](../pipeline/edg.md#cli-options); the full 643-define surface is currently undocumented (see [Build-Time Gates Stub](#build-time-gates-stub) below).
 
 ## String Deobfuscation Engine
 
@@ -324,6 +326,11 @@ Several `getenv("bar")` calls appear in `ctor_106`, `ctor_107`, `ctor_376`, `cto
 | JobserverParser | `sub_1682BF0` | ~2KB | MAKEFLAGS --jobserver-auth parser |
 | GenericGetEnv | `sub_C86120` | ~100B | LLVM sys::Process::GetEnv wrapper |
 | EDGColorInit | `sub_67C750` | ~2KB | NOCOLOR / EDG_COLORS / GCC_COLORS handler |
+
+## Build-Time Gates Stub
+
+> ⚡ **QUIRK — 643 EDG `#define` build-config keys absent from the wiki**
+> The EDG frontend's `--gen_config` handler emits a configuration header containing 643 `#define` keys (e.g. `ABI_COMPATIBILITY_VERSION`, `BACK_END_IS_CP_GEN_BE`, `COROUTINE_ENABLING_POSSIBLE`, all `DEFAULT_*` defaults, every `*_ENABLING_POSSIBLE` feature gate, the `EDG_*`/`GCC_*`/`CLANG_*` compatibility blocks). All values are baked at cicc build time and printed by a single dispatcher branch (`case 0xE1u:`) into the file at `qword_4F07510`. They are **not** environment variables and **not** CLI flags — they are static compile-time switches that determine which language features, ABI quirks, and host emulations the EDG frontend exposes. Confidence: HIGH (string + `fprintf` format extraction). Coverage gap: only ~12 of the 643 are touched in [pipeline/edg.md](../pipeline/edg.md). The full table is a candidate for a dedicated `config/build-defines.md` page.
 
 ## Cross-References
 

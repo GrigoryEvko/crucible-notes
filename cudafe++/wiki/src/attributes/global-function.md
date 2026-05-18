@@ -492,6 +492,22 @@ Functions marked `__global__` (or `__device__`) are subject to additional restri
 - Function-scope static variables require a memory space specifier
 - Dynamic initialization of function-scope static variables is not supported
 
+## IL Emission Path
+
+`__global__` collapses entirely into entity bits at application time. The parse-time attribute IL node (kind `0x48`, byte `+8 = 'X'`) is consumed by `apply_nv_global_attr` and never reaches the IL output dispatcher. The post-application footprint is:
+
+- `entity+182` bits 0, 5, 6 (mask `0x61`) -- the canonical "is kernel" predicate read by every downstream pass.
+- `entity+182` bit 7 (mask `0x80`) -- the combined HD flag, set automatically after `0x61` is applied.
+- `entity+256` -- optional launch-config struct pointer if `__launch_bounds__`/`__cluster_dims__`/`__block_size__` were also applied; written by those handlers, not by `apply_nv_global_attr` itself.
+
+Three downstream emitters react to `byte_182 & 0x40`:
+
+1. **Kernel stub generator** -- emits the host-side launch wrapper (`<<<...>>>` lowering, `cudaPushCallConfiguration`/`cudaLaunchKernel` sequence) into `.int.c`. The stub references the kernel's mangled name and the launch-config struct fields.
+2. **Device-IL marker** (`mark_to_keep_in_il`) -- sets the prefix byte bit 7 (`0x80`, "keep in IL") on the routine entry so the device-side IL output retains the kernel definition.
+3. **Device-host splitter** -- ensures the function body is preserved in the device IL while the host IL retains only the stub.
+
+There is no `kind 25` re-emission for `__global__` and no preserved chain entry. The kernel-ness of the function is conveyed downstream entirely through entity bytes; cicc reads them via the host stub's serialization and the device IL's keep-in-il marking.
+
 ## Function Map
 
 | Address | Identity | Lines | Source File |

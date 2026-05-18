@@ -1,6 +1,6 @@
 # CLI Flag Inventory
 
-cicc v13.0 accepts approximately **111 unique flag keys** across five parsing sites, expanding to ~142 flag+value combinations when counting value variants, and ~169 when including all architecture triplets. Flags are parsed in `sub_8F9C90` (real main), `sub_900130` (LibNVVM path A), `sub_12CC750`/`sub_9624D0` (LibNVVM option processors), and `sub_12C8DD0` (flag catalog builder with 65 registered configurations).
+cicc v13.0 accepts approximately **117 unique flag keys** across five parsing sites (111 documented in the catalog tables + 6 stubbed at the end of this page: `-extra-device-vectorization`, `-covinfo`, `-profinfo`, `-profile-instr-use`, `-global-mem`, `-qualified`), expanding to ~148 flag+value combinations when counting value variants, and ~175 when including all architecture triplets. Flags are parsed in `sub_8F9C90` (real main), `sub_900130` (LibNVVM path A), `sub_12CC750`/`sub_9624D0` (LibNVVM option processors), and `sub_12C8DD0` (flag catalog builder with 65 registered configurations).
 
 The flag system is architecturally split into two layers: a **hardcoded dispatch** layer in the top-level parsers (`sub_8F9C90`, `sub_900130`, `sub_12CC750`/`sub_9624D0`) that handles mode selection, pass-through, LTO, and structural flags via `strcmp`/prefix-match chains; and a **BST-backed catalog** layer (`sub_12C8DD0` + `sub_95EB40`/`sub_12C8B40`) that handles all flags whose effect is purely "store a value and forward strings to output vectors."
 
@@ -579,6 +579,16 @@ All error strings follow the pattern `"libnvvm : error: <message>"`:
 
 > ⚡ **QUIRK — 47 internal `nvptx-*` cl::opt flags absent from the catalog**
 > The binary strings expose 47 distinct hidden NVPTX-backend `cl::opt` flags consumed by the NVPTX LLVM target. Roughly half are referenced by current pages ([scheduling](../llvm/scheduling.md), [alias-analysis](../infra/alias-analysis.md), [nvvm-peephole](../passes/nvvm-peephole.md), [memory-space-opt](../passes/memory-space-opt.md), [knobs](./knobs.md), [nvptx-target](../infra/nvptx-target.md)); the other half remain undocumented. Uncovered: `nvptx-aa-wrapper`, `nvptx-add-scalar-move-for-vector-load`, `nvptx-forward-params`, `nvptx-isel`, `nvptx-emit-init-fini-kernel`, `nvptx-disable-set-shared-array-alignment`, `nvptx-disable-combiner-for-*`, `nvptx-approx-log2f32`, `nvptx-libcall-callee`, `nvptx-mem2reg` (referenced but no dedicated text), `nvptx-normalize-select`, `nvptx-remat-block` (link target exists, no flag entry), `nvptx-trunc-opts`, `nvptx-rsqrt-approx-opt`, `nvptx-traverse-address-aliasing-limit`, `nvptx-proxyreg-erasure`, `nvptx-generate-pack-unpack`, `nvptx-no-f16-math`, `nvptx-nan`. Confidence: HIGH (string extraction).
+
+> ⚡ **QUIRK — 6 undocumented top-level flags handled outside the BST catalog**
+> The following six flags are parsed by hardcoded `strcmp`/prefix-match chains in `sub_8FD0D0` (Path A) and `sub_125D010` (LibNVVM path) but absent from every flag-routing table above. They take an optional `=value` argument (or stand alone):
+> - `-extra-device-vectorization` — gates an additional vectorizer pass; tested via `sub_2241AC0` string compare, increments the argv cursor on match.
+> - `-covinfo` — code-coverage instrumentation emission marker.
+> - `-profinfo` — profiling info emission marker.
+> - `-profile-instr-use` — consumes a profile-data path for PGO use.
+> - `-global-mem` — 11-byte literal forwarded into a string-builder used by the lto/lnk argv composition (`sub_CB6200`).
+> - `-qualified` — fully-qualified-name emission mode.
+> Confidence: HIGH (decompiled call sites confirmed in `cicc_full.c`). All six are candidates for the next-wave catalog expansion.
 
 ## Cross-References
 

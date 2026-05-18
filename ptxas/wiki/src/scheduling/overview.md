@@ -1,10 +1,12 @@
 # Instruction Scheduler Overview
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
+>
+> *Size figures expressed in KB (e.g. "22 KB", "47 KB") refer to the decompiled C source produced by the analysis pipeline, not the native code footprint. The compiled binary sizes are roughly 4--6x smaller; for example `sub_8D0640` is 3953 bytes of x86-64 (839 instructions), `sub_688DD0` is 3643 bytes (785 instructions), and `sub_8C9320` is 10,154 bytes (2,116 instructions). The KB figures are still useful as a relative-importance indicator across functions within this subsystem.*
 
 The ptxas instruction scheduler is a priority list scheduler with a 3-phase architecture. A single top-level orchestrator (`sub_8D0640`, ScheduleInstructions) drives three passes through one unified scheduling engine (`sub_688DD0`), each configured by a mode parameter that selects a different optimization objective: register pressure reduction, ILP/latency hiding, or dynamic batch optimization for tensor warpgroup operations. The scheduler runs twice in the ptxas pipeline -- once before register allocation on virtual registers (pre-scheduling) and once after physical register assignment (post-scheduling).
 
-The scheduler consumes a dependency DAG built over the instruction list and produces a final instruction ordering together with SASS control words encoding stall counts, yield hints, barrier assignments, and scoreboard dependencies. The entire subsystem spans roughly 436 KB of code (0x893000--0x8FE000) with an additional 250 KB of supporting infrastructure in the 0x67F000--0x6A0000 range.
+The scheduler consumes a dependency DAG built over the instruction list and produces a final instruction ordering together with SASS control words encoding stall counts, yield hints, barrier assignments, and scoreboard dependencies. The entire subsystem occupies two principal address ranges: the main scheduler core at `0x893000--0x8FE000` (428 KB of native code, ~115 functions including the orchestrator, engine, priority evaluator, dependency builder, DynBatch context, and per-SM HW profile builders) and a supporting infrastructure block at `0x67F000--0x6A0000` (132 KB; ready-list construction, instruction relink, region-init, and the unified-engine entry-point thunks). The scoreboard/control-word pipeline at `0xA22000--0xA3B000` (post-scheduling phases 114--116) accounts for an additional ~100 KB.
 
 | | |
 |---|---|
@@ -334,11 +336,13 @@ best = selectFn(sched, &prev_instr, last_scheduled)
 
 The scheduling context stores its vtable pointer at offset +0 (`sched[0] = off_21DBC80`, the 77-entry scheduling function table). The mode byte indexes into this table after stripping the tag bit:
 
-| Mode byte | Phase | `mode - 1` | Vtable offset | Index | Target function |
+| Mode byte | Phase | `mode - 1` | Vtable offset | Index | Slot target (off_21DBC80) |
 |---|---|---|---|---|---|
-| `0x39` (57) | ReduceReg | +56 | `[7]` | core slot 7 | `sub_8DA6A0` -- ReduceRegPriority |
-| `0x41` (65) | DynBatch | +64 | `[8]` | pipeline_A slot 0 | `sub_8E0F18` -- DynBatchPriority |
-| `0x49` (73) | ILP/Latency | +72 | `[9]` | pipeline_A slot 1 | `sub_8E0F90` -- ILPPriority |
+| `0x39` (57) | ReduceReg | +56 | `[7]` | core slot 7 | `0x8DA6A0` (`nullsub_261`, 2 B) -- base-class no-op; ReduceReg behaviour is selected by `sched+240==1` inside the priority evaluator |
+| `0x41` (65) | DynBatch | +64 | `[8]` | pipeline_A slot 0 | `0x8E0F18` -- thunk entry inside `sub_8E0DB0` (DynBatch pipeline backend) |
+| `0x49` (73) | ILP/Latency | +72 | `[9]` | pipeline_A slot 1 | `0x8E0F90` -- thunk entry inside `sub_8E0DB0` (ILP pipeline backend) |
+
+Slots 8 and 9 are interior labels of the shared dispatcher `sub_8E0DB0` (~700 B), not standalone functions; multiple adjacent vtable entries in this table resolve to the same routine, which then branches on the originating slot offset. Slot 7 is a hard nullsub: when ReduceReg fires, the mode-1 path in `sub_8C9320` (via the `sched+240` selector and the `sched+484` ReduceReg flag) carries the entire register-pressure-minimizing heuristic.
 
 The orchestrator `sub_8D0640` invokes the engine three times with these modes:
 

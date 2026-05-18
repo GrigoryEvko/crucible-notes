@@ -362,7 +362,40 @@ Several checks are reused across the dialect:
 | operand segments | segment-size attribute must match the op schema |
 | pipeline terminators | pipeline regions must end in `async.pipeline.yield` |
 
+## OpTrait::nv_tile Inventory
+
+Verifier behavior in this dialect is partly templated by op traits — small mixin classes the
+`OpTrait::nv_tile` namespace declares once and that every op in the families above stamps onto its
+declaration. The trait family is closed: twenty-three traits, each with a single semantic job, and
+verification dispatches on the trait set attached to a concrete op rather than on a per-op
+switch. Recovering this table from the binary is straightforward because every trait emits a
+typeinfo string of the form `OpTrait::nv_tile::<TraitName>` that the verifier framework reads at
+registration time.
+
+| Trait | Role in Verification |
+|---|---|
+| `FirstOperandIsNonAliasingQueue` | the queue operand must not alias any other op input or output |
+| `MemoryModelReadTrait`, `MemoryModelWriteTrait`, `MemoryModelReadWriteTrait` | tags the op for the memory-effect collector; orthogonal to the side-effect interface |
+| `MustHaveMemLayoutAmongOperandsAndResult` | at least one operand or the result must carry an explicit memory layout |
+| `PipelineAcquireOpTrait`, `PipelineReleaseOpTrait` | marks the op as a producer-acquire or producer-release boundary in the async pipeline region |
+| `ResultsAreSharedEncoding` | every result inherits the shared-memory encoding of the producing tile |
+| `SameLoadStoreOperandsAndResultEncoding`, `SameLoadStoreOperandsAndResultShape` | tiled load/store must agree on both encoding and shape between operands and result |
+| `SameLoadStoreOperandsEncoding`, `SameLoadStoreOperandsShape` | weaker form, used by ops with no result (stores) |
+| `SameOperandsAndResultEncoding`, `SameOperandsEncoding` | encoding-only invariants for ops that touch tile values without changing shape |
+| `SameOperandsAndResultsAtom`, `SameOperationAndResultsAtom` | every operand or result that carries a copy/MMA atom must report the same atom identity |
+| `SameTiledViewAndTensorShapeTrait` | shape on a tiled view must match the producing tensor's shape on the same axes |
+| `TensorSizeTrait` | total tile size must be representable as a positive power of two within the per-dialect cap |
+| `TensorTypeHavingLayout` | every tensor operand must already carry a layout attribute when the verifier runs |
+| `TiledLoadStoreOpTrait`, `TiledLoadStoreOpSameElementTypeTrait` | grouping trait that pulls in the tiled memop helper bundle; the element-type variant adds the elementType-match check |
+| `TiledPaddingValueTrait` | padding value is allowed only when the in-bounds attribute is false (also enforced by the Shared Helper Rules table) |
+| `ValidTileASLoadOperandsAndResultEncoding` | combined operand/result encoding check specific to `tiled_load` and its async variant |
+
+A correct reimplementation declares each trait as a mixin whose `verifyTrait` returns
+`LogicalResult` and chains into the op's bespoke verifier. The trait order is irrelevant — every
+trait either succeeds standalone or emits its own diagnostic — and the framework runs them all
+before the op's own `verify` method gets a chance.
+
 ## Cross-References
 
-[Operation Roster and Builders](op-roster-and-builders.md#operation-families) catalogues the operations these verifiers run against, with full operand/result tables and a worked producer/consumer pipeline example. [Types](types.md#pipeline-types) describes the pipeline-token and iterator types the region-op verifier template inspects. [Folds and Memory Consistency](folds-and-mem-consistency.md#canonicalization-patterns) describes the rewrites that run after verification succeeds. The `nv_tileaa` block-scaled MMA contract documented here is grounded by the `dot` verifier in [nv_tileaa Types, Attributes, Verifiers — Dot Diagnostics](../nv_tileaa/types-attrs-verifiers.md#dot-and-block-scaled-mma-diagnostics).
+[Operation Roster and Builders](op-roster-and-builders.md#operation-families) catalogues the operations these verifiers run against, with full operand/result tables and a worked producer/consumer pipeline example. [Types](types.md#pipeline-types) describes the pipeline-token and iterator types the region-op verifier template inspects. [Folds and Memory Consistency](folds-and-mem-consistency.md#canonicalization-patterns) describes the rewrites that run after verification succeeds. The `nv_tileaa` block-scaled MMA contract documented here is grounded by the `dot` verifier in [nv_tileaa Types, Attributes, Verifiers — Dot Diagnostics](../nv_tileaa/types-attrs-verifiers.md#dot-and-block-scaled-mma-diagnostics). The OpInterface side of the dispatch story — including the `BasicPtxBuilderInterface` and `PtxBuilderOpInterface` families consumed by NVVM lowering — is inventoried in [Interface Vtables and Dispatch — Interface Inventory](../../mlir-infra/interface-vtables.md#opinterface-inventory).
 

@@ -418,6 +418,18 @@ A flag on the parameter node itself, checked during post-declaration validation 
 
 The three flags serve different purposes: the entity flag records the declaration intent and is used for cross-declaration consistency checks, the type flag enables efficient type-level queries during attribute application, and the parameter flag enables the post-validation pass to scan parameter lists without resolving entity or type chains.
 
+## IL Emission Path
+
+Unlike the execution- and memory-space attributes, `__grid_constant__` is **not** a pure entity-bit collapse. The parse-time attribute IL node (kind `0x48`, byte `+8 = '_'` for `__grid_constant__` is *not* assigned -- the attribute lacks a dedicated CUDA kind byte and arrives through the generic GNU/scoped path) deposits state into three locations simultaneously:
+
+1. `entity+164` bit 2 -- declaration-side flag, read by redeclaration consistency checks (5--8).
+2. `type+133` bit 5 -- type-level flag, read by `sub_7A6B60` from the `__global__` apply handler to suppress error 3669.
+3. `param+32` bit 1 -- parameter-side flag, read by `nv_validate_cuda_attributes` (`sub_6BC890`) to detect non-`__global__` use (error 3702).
+
+After application, the attribute node is **kept on the entity's attribute chain** so the `.int.c` writer can re-emit the `__grid_constant__` token into the kernel parameter declaration. cicc reads the textual annotation and lowers the parameter to a constant-memory (`ld.const`) load instead of the default parameter-buffer (`ld.param`) load. There is no kind-25 IL re-emission like `__launch_bounds__`/`__nv_pure__`; the attribute survives in its original `0x48` form on the chain because parameter-level attributes are emitted inline with their parameter, not as a separate function attribute.
+
+The three-flag layout is deliberate: the declaration flag enables cross-translation-unit ABI consistency, the type flag enables fast queries during expression-time validation without dereferencing the entity, and the parameter flag enables the post-validation pass to walk parameter lists without dereferencing the type chain.
+
 ## Parameter Iteration in the __global__ Apply Handler
 
 The `apply_nv_global_attr` handlers (`sub_40E1F0` and `sub_40E7F0`) contain a parameter iteration loop that interacts with `__grid_constant__`. This loop checks each kernel parameter for types that should be `__grid_constant__` but are not annotated as such. When found in device compilation mode (`dword_126C5C4 == -1`), error 3669 is emitted as an advisory.

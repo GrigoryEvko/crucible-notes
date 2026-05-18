@@ -207,6 +207,18 @@ Two diagnostic tags cover managed architecture gating:
 
 The architecture check uses the global `dword_126E4A8` which stores the SM version number from the `--gpu-architecture` flag. The value 30 corresponds to sm_30 (Kepler), the first architecture with Unified Virtual Addressing (UVA) support. The configuration check covers edge cases like 32-bit compilation mode or unsupported operating systems where the CUDA runtime's managed memory subsystem is unavailable.
 
+## IL Emission Path
+
+`__managed__` follows the **collapse-to-entity-bits + runtime-rewrite** pattern, distinct from any other CUDA attribute. There is no `kind 25` IL re-emission, no preserved attribute chain entry, and no launch-config struct field. Instead, after `apply_nv_managed_attr` returns, three independent downstream emitters react to the `(byte+148 | (byte+149 << 8)) & 0x101 == 0x101` detection mask:
+
+1. **File-scope boilerplate emitter** (`sub_489000`, line 218) unconditionally writes the `__nv_init_managed_rt` lazy-init wrapper and `__nv_inited_managed_rt` guard into every `.int.c`, regardless of whether the TU declares any managed variables. The guard prevents zero-cost runs from registering anything.
+
+2. **Variable-name emitter** (`sub_484940`) wraps every direct host-side reference in a comma-operator that calls `__nv_init_managed_rt()` before yielding the variable.
+
+3. **Qualified-name emitter** (`sub_4768F0`) applies the same wrapping for qualified, templated, or member references when the entity kind is `7` (variable) and the call context is not nested.
+
+The original `0x48` attribute IL node is consumed at application time and never reaches the IL output dispatcher. The entire post-application footprint is bytes `+148` bit 0 and `+149` bit 0; from the IL display walker's perspective, `__managed__` is invisible. The runtime/textual rewrite is the IL emission for this attribute.
+
 ## Managed Runtime Boilerplate
 
 Every `.int.c` file emitted by cudafe++ contains a block of managed runtime initialization code, emitted unconditionally by `sub_489000` (`process_file_scope_entities`) at line 218. This block is emitted regardless of whether the translation unit contains any `__managed__` variables -- the static guard flag ensures zero overhead when no managed variables exist.

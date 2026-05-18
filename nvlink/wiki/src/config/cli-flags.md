@@ -131,7 +131,7 @@ Public flags use flag bits `0x00` or `0x10` (the `0x10` bit enables `--no-<name>
 
 ### Per-Flag Verification (Exhaustive)
 
-Each row below was verified two ways: (1) the long-name appears as a direct string literal in the `sub_42F130(v2, "<name>", ...)` call at a known line of `decompiled/sub_427AE0_0x427ae0.c`, and (2) the name is visible at a specific address in `nvlink_strings.json` or embedded inside an adjacent help/format string. Five flags (`lto`, `time`, `split-compile`, `split-compile-extended`, `maxrregcount`) are registered via integer constants that are mid-string addresses pointing into longer strings -- these are tagged `HIGH*`.
+Each row below was verified two ways: (1) the long-name appears as a direct string literal in the `sub_42F130(v2, "<name>", ...)` call at a known line of `decompiled/sub_427AE0_0x427ae0.c`, and (2) the name is visible at a specific address in `nvlink_strings.json` or embedded inside an adjacent help/format string. All 68 registrations use direct string literals at the registration call. The `HIGH*` tag on five flags (`link-time-opt`, `time`, `split-compile`, `split-compile-extended`, `maxrregcount`) marks rows where the matching `sub_42E390` *extraction* call later in `nvlink_parse_options` uses a mid-string integer constant (pointing into a longer format/diagnostic string that happens to contain the option name as a suffix) instead of re-quoting the literal; the registration itself is still a plain string literal.
 
 | Flag | Confidence | Evidence |
 |---|---|---|
@@ -177,11 +177,11 @@ Each row below was verified two ways: (1) the long-name appears as a direct stri
 | `--optimize-data-layout` | HIGH | string at `0x1d329e0` (`-optimize-data-layout`); registered in `sub_427AE0` |
 | `--options-file` | HIGH | string at `0x1d3293b`; registered in `sub_427AE0` |
 | `--output-file` | HIGH | string at `0x1d32482`; registered in `sub_427AE0` |
-| `--preserve-relocs` | HIGH | string at `0x1d32aa4` (`--preserve-relocs`); registered in `sub_427AE0` |
+| `--preserve-relocs` | HIGH | string at `0x1d32a92` (`--preserve-relocs`); registered in `sub_427AE0` |
 | `--register-link-binaries` | HIGH | string at `0x1d32557`; registered in `sub_427AE0` |
 | `--relocatable-link` | HIGH | string at `0x1d32863`; registered in `sub_427AE0` |
 | `--report-arch` | HIGH | string at `0x1d326ee`; registered in `sub_427AE0` |
-| `--reserve-null-pointer` | HIGH | direct literal (paired with `--dont-reserve-null-pointer` help text); registered in `sub_427AE0` |
+| `--reserve-null-pointer` | HIGH | direct literal in `sub_42F130` call; the value is a suffix-pointer into `dont-reserve-null-pointer` at `0x1d32583 + 5 = 0x1d32588`, so it has no independent entry in `nvlink_strings.json`; registered in `sub_427AE0` |
 | `--shared` | HIGH | help text at `0x1d33ad0` (`Percolate the nvcc -shared option for nvlink's consumption`); registered in `sub_427AE0` |
 | `--split-compile` | HIGH* | registered via integer literal `32424538 = 0x1eec25a`, which is `0x1eec258 + 2` = inside `--split-compile` string at `0x1eec258`; also in `-split-compile=%d` (`0x1d3229b`); registered in `sub_427AE0` |
 | `--split-compile-extended` | HIGH* | registered via integer literal `30614148 = 0x1d32284`, which is `0x1d32283 + 1` = inside `-split-compile-extended` string at `0x1d32283`; also in `-split-compile-extended=%d` (`0x1d32268`); registered in `sub_427AE0` |

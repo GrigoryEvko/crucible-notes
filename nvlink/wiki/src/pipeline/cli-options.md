@@ -84,7 +84,7 @@ The `nvlink_parse_options` function (`0x427AE0`, 30272 bytes, 1299 lines) follow
 
 ```
 1. parser = option_parser_create(0)                    // 0x42DFE0
-2. For each of ~65 options:
+2. For each of 68 options:
      option_register(parser, long, short, type,        // 0x42F130
                      mult, flags, keywords, reserved,
                      default, default_kw, placeholder, help)
@@ -492,6 +492,17 @@ Complete mapping from option name to BSS global variable address, sorted by addr
 | `byte_2A5B52C` | 1 | *(derived)* | Arch-is-supported flag |
 | `filename` | 8 | `output-file` | Output file path |
 | `::src` | 8 | `host-ccbin` | Host compiler binary path |
+
+## Internally-Synthesized Sub-Tool Flags (Not nvlink CLI Surface)
+
+`nvlink_strings.json` contains a number of flag-shaped string literals that are **not** registered with `option_register` and are therefore not part of nvlink's CLI surface. They fall into two groups:
+
+1. **Flags nvlink emits when invoking the embedded ptxas backend.** Constructed in `sub_426CD0` (LTO compile-driver) and consumed inside the embedded ptxas core at `sub_110*`/`sub_111*`. Representative strings:
+   - `-link-lto`, `-inline-info`, `-has-global-host-info`, `--device-c`, `--force-device-c` (emitted by `sub_426CD0` based on parsed nvlink globals such as `byte_2A5F244`, `byte_2A5F286`, `byte_2A5F285`)
+   - `-generate-line-info`, `--compile-only`, `--extensible-whole-program`, `--fast-compile`, `--device-debug`, `--blocks-are-clusters`, `--assume-extern-functions-do-not-sync`, `--compile-as-tools-patch`, `--legacy-bar-warp-wide-behavior`, `--first-reserved-rreg`, `--no-membermask-overlap`, `--print-potentially-overlapping-membermasks`, `--opportunistic-finalization-lvl`, `--binary-kind`, `--okey`, `--assyscall`, `-forcetext`, `-dump-perf-stats`, `-dump-perf-metrics-file`, `--ptx-length`, `-ptxlen` (all referenced only from ptxas-internal functions in the `0x1104000`-`0x1113000` range)
+2. **Format/diagnostic fragments that look like flags** -- e.g. `-arch=compute_%d`, `-cuda-api-version=%s`, `-split-compile=%d`, `-Ofast-compile=`, `-fma=`, `-ftz=`, `-prec-div=`, `-prec-sqrt=`. These are `sprintf` templates the linker uses to construct ptxas/cicc command lines from parsed option values.
+
+Users wanting to control any of the group-1 flags must pass them through `--Xptxas` (forwarded to the embedded ptxas) or `--Xnvvm` (forwarded to cicc), not directly to nvlink. The ptxas wiki documents the full ptxas option surface; see [LTO Option Forwarding](../lto/option-forwarding.md) for how forwarding is wired.
 
 ## Response File Expansion
 

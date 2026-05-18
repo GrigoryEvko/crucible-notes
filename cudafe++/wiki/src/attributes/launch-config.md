@@ -765,6 +765,27 @@ check_global_advisory:
 | `__maxnreg__` | 3717 | 3718 | `<= 0` | No |
 | `__local_maxnreg__` | 3786 | 3787 | `<= 0` | No |
 
+## IL Emission Path
+
+Launch-config attributes have a hybrid emission story. Two paths exist:
+
+**Struct-only path** -- `__maxnreg__`, `__local_maxnreg__`, `__cluster_dims__`, `__block_size__` write into specific offsets of the 56-byte `launch_config_t` at `entity+256`. The original attribute IL node (kind `0x48`) is consumed at application time and no further IL output is produced by cudafe++. cicc reads the struct fields through the merged entity (via the host stub generator's serialization of `entity+256`) and emits the corresponding PTX directives (`.maxntid`, `.maxnreg`, `.maxclusterrank`, `.reqntid`) directly.
+
+**Struct + re-emit path** -- `__launch_bounds__` writes into `launch_config+0/+8/+16` *and* is re-emitted as an IL kind `25` ("function attribute") node into the `.int.c` output via `sub_540560`. The IL output dispatcher in `cp_gen_be.c` shares this branch with `__nv_pure__` (kind `0x6E`):
+
+```c
+// IL output dispatcher (cp_gen_be.c, shared with __nv_pure__)
+case 0x5C:                 // __launch_bounds__
+case 0x6E:                 // __nv_pure__
+    node->kind_field = 25; // IL output kind: "function attribute"
+    sub_540560(0, 0, node, ctx, ...);  // serialize into .int.c
+    break;
+```
+
+This dual-path treatment exists because `__launch_bounds__` is the only launch attribute that affects code generation through *both* a PTX directive (consumed via the struct) and an LLVM function attribute on the kernel symbol (consumed via the textual re-emission). The other four launch attributes only need the PTX directive, so the textual re-emission is skipped.
+
+The launch-config struct itself is never an IL node. It is a flat 56-byte arena allocation owned by the entity and freed when the entity is destroyed. There is no `il_entry_kind` value for "launch config" -- the struct is invisible to the IL display dispatcher (`sub_5F4930`) and the IL walker (`sub_60E4F0` / `sub_610200`).
+
 ## Attribute Interaction Matrix
 
 | | `__launch_bounds__` | `__cluster_dims__` | `__block_size__` | `__maxnreg__` | `__local_maxnreg__` |

@@ -175,7 +175,7 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 | `0x8E4400` | `hw_profile_table_init` | 6 | 3 | Encoding/latency property tables |
 | `0xA9CDE0` | `scheduling_metadata_builder` | 6 | 1 | Per-instruction sched metadata |
 | `0xA9CF90` | `scheduling_metadata_accessor` | 5 | many | Sched metadata field queries |
-| `0xAED3C0` | `scheduling_optimization_mega_pass` | 4 | 0 | 137 KB, ~560 locals, largest vtable pass |
+| `0xAED3C0` | `master_lowering_dispatcher` | 4 | 0 | 28,401 B native (~140 KB decomp); ISel/template lowering, not part of the scheduler -- see [templates.md](codegen/templates.md) |
 
 > **Details**: [Scheduling Overview](scheduling/overview.md), [Scheduling Algorithm](scheduling/algorithm.md), [Latency Model](scheduling/latency-model.md), [Scoreboards](scheduling/scoreboards.md)
 

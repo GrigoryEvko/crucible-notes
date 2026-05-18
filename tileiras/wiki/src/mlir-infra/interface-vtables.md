@@ -257,10 +257,52 @@ boundaries. The diagnostic engine documented in
 directly, but verifiers that emit diagnostics universally key their messages on the missing
 interface name rather than on a concrete class.
 
+## OpInterface Inventory
+
+The binary exposes sixty-five distinct `OpInterface` typeinfo strings — every one of them paired
+with at least one `::Trait` shim that registers a concrete implementer into the per-op
+`InterfaceMap`. The inventory below groups them by what the dispatcher uses them for; the right
+column points to the consumer that issues the lookup. None of these counts include the closely
+related `TypeInterface` and `AttrInterface` families, which use the same dispatch primitive but
+key on type and attribute headers respectively.
+
+| Family | Interfaces | Primary Consumer |
+|---|---|---|
+| Control flow | `BranchOpInterface`, `RegionBranchOpInterface`, `RegionBranchTerminatorOpInterface`, `WeightedBranchOpInterface`, `LoopLikeOpInterface`, `SelectLikeOpInterface` | scheduler region traversal and the dominance/CFG analyses |
+| Symbol and call | `CallOpInterface`, `CallableOpInterface`, `SymbolOpInterface`, `SymbolUserOpInterface`, `FunctionOpInterface`, `AnyFunctionOpInterface` | symbol-table cache and the call-graph builder |
+| Async pipeline | `AsyncOpInterface`, `AgentLikeOpInterface`, `ConsumerOpInterface`, `ProducerOpInterface` | producer/consumer pipeline analyses in `passes/tileas/async-pipeline-family.md` |
+| Memory effects | `MemoryEffectOpInterface`, `MemoryConsistencyOpInterface`, `AllocationOpInterface`, `BufferizableOpInterface`, `BufferDeallocationOpInterface`, `CopyOpInterface`, `AliasAnalysisOpInterface`, `AccessGroupOpInterface`, `DereferenceableOpInterface` | alias analysis, bufferization, and the verifier's effect collector |
+| Tile and view shaping | `XformLayoutOpInterface`, `RelayoutOpInterface`, `ViewLikeOpInterface`, `ShapedDimOpInterface`, `OffsetSizeAndStrideOpInterface`, `IndexingMapOpInterface`, `ReifyRankedShapedTypeOpInterface`, `BlockStripedOpInterface`, `TilerOpInterface` | layout materialization and the tile-conversion driver |
+| Subset and destination style | `SubsetOpInterface`, `SubsetExtractionOpInterface`, `SubsetInsertionOpInterface`, `DestinationStyleOpInterface`, `DestructurableAccessorOpInterface`, `DestructurableAllocationOpInterface` | the bufferization pipeline and SROA-style promotion passes |
+| Cast and type inference | `CastOpInterface`, `InferTypeOpInterface`, `RefineTypeOpInterface`, `FindPayloadReplacementOpInterface` | type refinement during conversion |
+| Promotion (mem2reg style) | `PromotableOpInterface`, `PromotableAllocationOpInterface`, `PromotableMemOpInterface`, `SafeMemorySlotAccessOpInterface` | the mem2reg-equivalent promotion pass |
+| Vectorization | `VectorTransferOpInterface`, `VectorUnrollOpInterface`, `MaskableOpInterface`, `MaskingOpInterface`, `ParallelCombiningOpInterface` | vector dialect lowering |
+| Affine memory | `AffineReadOpInterface`, `AffineWriteOpInterface` | affine analyses retained from upstream MLIR |
+| Floating-point modes | `RoundingModeOpInterface`, `FPExceptionBehaviorOpInterface` | the FP-mode threader during lowering |
+| TMA descriptor | `MakeTmaDescOpInterface` | the TMA descriptor materialization pass; the only nv_tile-specific OpInterface in this row |
+| Conversion and printing | `ConvertToLLVMOpInterface`, `BytecodeOpInterface`, `OpAsmOpInterface`, `OneToOneIntrinsicOpInterface` | LLVM lowering driver and the bytecode/textual printers |
+| Bounds and verification | `ValueBoundsOpInterface`, `RuntimeVerifiableOpInterface` | integer-bounds analysis and the runtime-check insertion pass |
+
+Two NVVM-side families deserve a separate mention because they straddle the boundary between op
+and dialect interfaces: `BasicPtxBuilderInterface` and `PtxBuilderOpInterface` together govern how
+NVVM ops emit inline PTX during lowering. Their `::Trait` shims live in the NVVM dialect's
+interface map and are looked up by the lowering driver per op; the dispatcher table at the head of
+this page applies unchanged.
+
+A reimplementation can ignore the upstream-MLIR breakdown of public versus internal interfaces:
+the binary collapses both into a single dispatch primitive, and the only invariant that matters is
+that every interface that appears in a registration call has exactly one concept-block layout
+known to every implementer. Adding an interface is a four-step change — declare the concept,
+register a TypeID sentinel, stamp the `::Trait` shim onto every implementer, and document a
+consumer that runs the lookup — and the consumer must be added because an interface with no
+consumer wastes 16 bytes of `InterfaceMap` per op.
+
 ## Cross-References
 
 [TypeID Sentinels and Anchors](typeid-sentinels-and-anchors.md) catalogues the sentinel addresses
 this map keys on. [Operation Layout](operation-layout.md) describes the operation header that owns
 the per-op `InterfaceMap`. [Storage Uniquer and Context Impl](storage-uniquer-and-context-impl.md)
 documents the dialect-registration machinery that installs interface implementations on context
-load.
+load. The trait side of nv_tileas verification — closed family of twenty-three `OpTrait::nv_tile`
+mixins that run alongside these interfaces — is catalogued in
+[nv_tileas Verifiers — OpTrait::nv_tile Inventory](../dialects/nv_tileas/verifiers.md#optraitnv_tile-inventory).
