@@ -141,7 +141,7 @@ tensormap.replace.tile.elemtype        [%tmap], %elt_id;
 tensormap.replace.tile.swizzle         [%tmap], %mode;
 ```
 
-The `multicast` and `L2::cache_hint` suffix variants are picked per template by the presence flags. The reductions enumerate `redop ∈ {add, min, max, inc, dec, and, or, xor}` as separate ops, one per PTX modifier.
+The `multicast` and `L2::cache_hint` suffix variants are picked per template by the presence flags. The reductions all flow through a single dialect op (`nvvm.cp.async.bulk.tensor.reduce` — only this mnemonic is interned) whose `redop` enum attribute selects between `{add, min, max, inc, dec, and, or, xor}`; the LLVM-intrinsic name baked at lowering time enumerates eight distinct intrinsics, one per PTX modifier.
 
 ## Inline-PTX Variants
 

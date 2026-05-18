@@ -65,13 +65,15 @@ Most of these ops carry a `.shared` variant (the address-space split adds matchi
 |---|---|---|---|
 | operand 0 | `addr` | `ptr addrspace(3)` or generic | mbarrier slot |
 
-### `nvvm.mbarrier.arrive[.shared]` / `.arrive.drop[.shared]`
+### `nvvm.mbarrier.arrive[.shared]`
 
 | Position | Name | Type | Notes |
 |---|---|---|---|
 | operand 0 | `addr` | `ptr addrspace(3)` or generic | mbarrier slot |
 | operand 1 | `count` | optional `i32` | arrival weight (default 1) |
 | result 0 | `token` | `i64` | phase token consumed by `test.wait` |
+
+The "drop participant" variant of arrive (`mbarrier.arrive.drop` in PTX) is not surfaced as a separate dialect op in this binary's string table; the upstream way to reach it is through `nvvm.mbarrier.arrive` with a count attribute encoding the drop semantics, or through inline asm.
 
 ### `nvvm.mbarrier.arrive.expect_tx[.shared]`
 
@@ -142,8 +144,10 @@ The non-`.shared` forms drop the address-space token: `mbarrier.init.b64 [%mbar]
 |---|---|---|
 | `init`, `arrive`, `arrive.nocomplete`, `inval`, `test.wait`, `try_wait` | sm_80 | 7.0 |
 | `try_wait.parity` | sm_80 | 7.8 |
+| `try_wait.parity.timelimit` / `try_wait.timelimit` | sm_90 | 8.0 |
+| `wait` / `wait.parity` | sm_90 | 8.0 |
+| `txn` / `txn.cta` (tx-count transaction handles) | sm_90 | 8.0 |
 | `arrive.expect_tx` | sm_90 | 7.8 |
-| `arrive.drop` | sm_80 | 7.0 |
 | `fence.mbarrier.init` | sm_90 | 8.0 |
 | Cluster-aware variants (`.cluster`, `.release.cluster`) | sm_90 | 8.0 |
 

@@ -8,9 +8,9 @@ Hopper (sm_90+) does not extend this family. Warp-group MMA on Hopper lives in [
 
 ## Op Layout
 
-The dialect registers three op classes; the attribute cross-product gives roughly 64 distinct LLVM-intrinsic / PTX-instruction targets at lowering time:
+The dialect registers exactly three op classes — `nvvm.wmma.load`, `nvvm.wmma.store`, `nvvm.wmma.mma` — and that is the count visible in the binary's interned mnemonic strings. The attribute cross-product on those three ops expands to roughly 64 distinct LLVM-intrinsic / PTX-instruction targets at lowering time; the right-hand column counts intrinsic targets reachable through the op, not separate dialect ops.
 
-| Op | Role | Attribute axes | Approx. distinct intrinsic targets |
+| Op (dialect op) | Role | Attribute axes | Reachable LLVM intrinsics |
 |---|---|---|---:|
 | `nvvm.wmma.load` | A / B / C fragment load | fragment ∈ {a,b,c} × shape × layout ∈ {row,col} × element type | ~36 |
 | `nvvm.wmma.store` | D fragment store | shape × layout × element type ∈ {f16,f32,s32} | ~12 |
