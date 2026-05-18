@@ -68,7 +68,6 @@
 - [GVN](./llvm/gvn.md)
 - [JumpThreading Deep Dive](./llvm/jump-threading.md)
 - [LICM](./llvm/licm-real.md)
-  - [LICM Redirect (old page)](./llvm/licm.md)
 - [DSE](./llvm/dse.md)
 - [Constant Folding: Math & Intrinsics](./llvm/constant-folding.md)
 - [KnownBits & DemandedBits](./llvm/known-bits.md)

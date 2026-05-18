@@ -25,7 +25,7 @@ NVPTX backend: SelectionDAG lowering, instruction selection, register allocation
 
 ## Architecture
 
-The code generation pipeline runs after the [LLVM optimizer](optimizer.md) and produces MachineIR that the [PTX emission](emission.md) stage serializes to text. The pipeline follows upstream LLVM's SelectionDAG architecture with NVIDIA-specific passes inserted at key points.
+The code generation pipeline runs after the [LLVM optimizer](optimizer.md) and produces MachineIR that the [PTX emission](emission.md) stage serializes to text. The dispatch is driven by `sub_12DFE00` (20.7 KB) which selects ten codegen sub-pipelines based on a4+3648 ("ptx"/"mid"/default). The pipeline follows upstream LLVM's SelectionDAG architecture with NVIDIA-specific insertions at four points: SelectionDAGBuilder argument lowering (`sub_2072590`, 38 KB), Operation legalization for atomics (`sub_1FF6F70`, 43 KB), the 142 KB target-specific DAGCombiner (`sub_3425710`), and StructurizeCFG as the mandatory final pass for PTX-compatible control flow.
 
 ```
 LLVM IR

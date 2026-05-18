@@ -74,7 +74,7 @@ Several data structures cross the analysis-vs-materialization boundary. Each one
 | Pending-set SwissTable | [Serial vs Cost-Based Generators — G1: Pending-Set Membership](serial-vs-cost-based-generators.md#g1-pending-set-membership) | Gate-G1 retry filter, seeded by the attribute parser |
 | `origMap` + second-table | [Schedule::solve and Cost Evaluators](schedule-solve-and-cost-evaluators.md) | Producer/consumer resolution during materialization |
 | Buffer-assignment record | [Buffer Assignment and Named Barriers](buffer-assignment-and-mbarriers.md) | Bridge between schedule and physical SMEM/TMEM allocation |
-| `Pipe_` / `Mutex_` headers | [Pipe and Mutex Value Layout](pipe-mutex-value-layout.md) | Final SSA shape emitted by materialization |
+| `Pipe_` / `Mutex_` headers | [Pipe_ and Mutex_ Value-Header Layout](pipe-mutex-value-layout.md) | Final SSA shape emitted by materialization |
 
 ## Schedule::solve
 

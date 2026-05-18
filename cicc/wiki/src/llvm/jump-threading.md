@@ -263,7 +263,7 @@ When threading occurs, the pass creates new basic blocks with diagnostic names:
 | `"endblock"` | `0x42E9094` | Terminal block of the threaded path; created via `sub_F36990` (`SplitBlockAndInsertIfThen`) |
 | `"phi.res"` | `0x42E90C0` | PHI resolution node for merged values; created via `sub_D5C860` (`PHINode::Create`) |
 | `"res_block"` | `0x42E909D` | Result block for the threaded path; allocated as 0x50-byte BasicBlock via `sub_22077B0` |
-| `"loadbb"` | `0x42E90B9` | Load basic block for load-bearing threading; created in a loop at `0x2DC4F05`--`0x2DC4FFB` |
+| `"loadbb"` | `0x42E90B9` | Load basic block for load-threading variant; created in a loop at `0x2DC4F05`--`0x2DC4FFB` |
 | `"phi.src1"` | `0x42E90A7` | First PHI source block |
 | `"phi.src2"` | `0x42E90B0` | Second PHI source block |
 

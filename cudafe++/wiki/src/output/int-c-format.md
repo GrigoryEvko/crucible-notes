@@ -557,5 +557,5 @@ The `dword_1065818` flag (`needs_line_directive`) is set whenever the current so
 - [CUDA Runtime Boilerplate](./cuda-runtime.md) -- managed memory initialization functions
 - [Host Reference Arrays](./host-reference-arrays.md) -- `.nvHRKI`/`.nvHRDE` section format
 - [Module ID & Registration](./module-id.md) -- CRC32 hash computation details
-- [Pipeline Overview](../pipeline/overview.md) -- where backend generation fits in the 7-stage pipeline
+- [Pipeline Overview](../pipeline/overview.md) -- where backend generation fits in the 8-stage pipeline
 - [Extended Lambda Overview](../lambda/overview.md) -- lambda macro definitions and preamble injection

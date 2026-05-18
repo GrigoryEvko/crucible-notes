@@ -312,7 +312,7 @@ Queue A (committed side only, pending side lives before +1984):
 
 | Offset | Type | Field | Evidence |
 |--------|------|-------|----------|
-| +1984 | `hook*` | `post_insn_hooks_A_committed_head` | `sub_7D92F0:487,505,512` — spliced as `list.head` during pending-flush. **Not** `nvoptrecipe_state` — prior label was load-bearingly wrong |
+| +1984 | `hook*` | `post_insn_hooks_A_committed_head` | `sub_7D92F0:487,505,512` — spliced as `list.head` during pending-flush. **Not** `nvoptrecipe_state` — prior label was demonstrably wrong (the field is the list head of the committed-side post-instruction hooks, not opt-recipe state) |
 | +1992 | `hook*` | `post_insn_hooks_A_committed_tail` | `sub_7D92F0:513` — written as `list.tail` during splice |
 | +2000 | `i32` | `post_insn_hooks_A_committed_count` | `sub_7D92F0:515` — `*(a1+2000) += v54` where v54 is the old pending count |
 | +2008 | `ptr` | _pad / unused_ | Ctor-only zero store; no Compilation-Context reader in the decompiled tree |

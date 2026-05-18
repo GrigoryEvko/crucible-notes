@@ -4,7 +4,7 @@ Quick-reference table of every command-line flag recognized by nvlink v13.0.88. 
 
 | | |
 |---|---|
-| **Total flags** | 65 (including 4 hidden/internal) |
+| **Total flags** | 68 (43 public, 20 hidden, 5 internal) |
 | **Parser entry** | `nvlink_parse_options` at `0x427AE0` (30,272 bytes) |
 | **Registration call** | `option_register` at `0x42F130`, called once per flag |
 | **Binary** | nvlink v13.0.88, CUDA 13.0 |

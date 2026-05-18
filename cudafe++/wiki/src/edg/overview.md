@@ -99,18 +99,20 @@ The binary contains approximately 6,300 identifiable functions in the EDG portio
 
 ### Top 10 Source Files by Function Count
 
-| Rank | File | Functions | Primary responsibility |
+Counts below give main-body function totals derived from `__FILE__` cross-references in `.rodata`. For the full per-file breakdown (stubs vs main body, address ranges, code sizes) see the [Function Map](../function-map.md). Confidence: HIGH.
+
+| Rank | File | Main Funcs | Primary responsibility |
 |---|---|---|---|
-| 1 | `expr.c` | ~195 | Expression parsing, operator semantics, implicit conversions |
-| 2 | `il.c` | ~185 | IL node creation, entry kind dispatch, node linking |
-| 3 | `templates.c` | ~172 | Template instantiation worklist, SFINAE, deduction |
-| 4 | `exprutil.c` | ~154 | Expression coercion, arithmetic conversions, lvalue analysis |
-| 5 | `symbol_tbl.c` | ~102 | Symbol table hash operations, scope chain walking |
-| 6 | `overload.c` | ~100 | Candidate set construction, ICS ranking, best viable function |
-| 7 | `class_decl.c` | ~90 | Class body parsing, member declarations, lambda scanning |
-| 8 | `attribute.c` | ~83 | Attribute parsing, CUDA attribute validation dispatch |
-| 9 | `cp_gen_be.c` | ~81 | Backend emission, `.int.c` generation, device stub writing |
-| 10 | `scope_stk.c` | ~72 | Scope push/pop, scope kind management, lookup context |
+| 1 | `expr.c` | 528 | Expression parsing, operator semantics, implicit conversions |
+| 2 | `templates.c` | 443 | Template instantiation worklist, SFINAE, deduction |
+| 3 | `il.c` | 342 | IL node creation, entry kind dispatch, node linking |
+| 4 | `exprutil.c` | 286 | Expression coercion, arithmetic conversions, lvalue analysis |
+| 5 | `overload.c` | 281 | Candidate set construction, ICS ranking, best viable function |
+| 6 | `class_decl.c` | 264 | Class body parsing, member declarations, lambda scanning |
+| 7 | `interpret.c` | 211 | Constexpr interpreter (compile-time evaluation engine) |
+| 8 | `decls.c` | 202 | General declaration processing |
+| 9 | `cp_gen_be.c` | 201 | Backend emission, `.int.c` generation, device stub writing |
+| 10 | `decl_inits.c` | 192 | Declaration initializer processing |
 
 ## Architecture: Classic Frontend Pipeline
 
@@ -332,7 +334,7 @@ The `trans_unit.c` file manages TU lifecycle with a stack-based model:
 
 ## Cross-References
 
-- [Pipeline Overview](../pipeline/overview.md) -- How EDG stages map to the 7-stage pipeline
+- [Pipeline Overview](../pipeline/overview.md) -- How EDG stages map to the 8-stage pipeline
 - [IL Overview](../il/overview.md) -- The 85 entry kinds that EDG produces
 - [Extended Lambda Overview](../lambda/overview.md) -- The `nv_transforms.c` lambda pipeline in detail
 - [Type System](type-system.md) -- Deep dive on 22 type kinds and class layout

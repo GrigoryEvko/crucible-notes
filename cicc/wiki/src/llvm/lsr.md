@@ -400,7 +400,7 @@ For reimplementation reference, the critical helpers and their roles:
 
 4. **The median-cost heuristic is the secret sauce.** Upstream LLVM always picks the cheapest formula. NVIDIA picks near the median. This single difference is responsible for most of the occupancy improvements. If you must simplify, keep this heuristic.
 
-5. **The overflow checks in Phase 3 are load-bearing.** The `S * stride / S == stride` check and the `INT64_MIN` guard prevent generating formulae with wrapped arithmetic. Removing these checks will produce silently wrong code on kernels with large strides.
+5. **The overflow checks in Phase 3 are mandatory for correctness.** The `S * stride / S == stride` check and the `INT64_MIN` guard prevent generating formulae with wrapped arithmetic. Removing these checks will produce silently wrong code on kernels with large strides.
 
 6. **Address space tagging (`sub_19932F0`) must happen before commit.** Every formula committed via `sub_19A1660` must carry the correct address space tag. Forgetting this will produce PTX that uses generic loads/stores where shared-memory instructions are required, breaking both performance and correctness.
 

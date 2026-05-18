@@ -84,7 +84,9 @@ The NVIDIA-specific source files are:
 
 ## Key Discoveries
 
-### Execution Space Bitfield
+All entries in this section carry an evidence rating using the scheme defined in [Methodology](./methodology.md): **HIGH** = decompiled handler logic + string evidence, **MED** = consistent cross-references but indirect, **LOW** = inferred from patterns.
+
+### Execution Space Bitfield (HIGH)
 
 Every entity node in the EDG IL carries CUDA execution-space information at byte offset +182 (relative to the entity node base). The bitfield encoding:
 
@@ -96,7 +98,7 @@ Every entity node in the EDG IL carries CUDA execution-space information at byte
 
 This bitfield is checked throughout the pipeline -- in cross-space call validation, device/host code separation, the keep-in-IL predicate, and backend stub generation.
 
-### Lambda Wrapper Template Injection
+### Lambda Wrapper Template Injection (HIGH)
 
 CUDA extended lambdas (`__device__` and `__host__ __device__` lambdas) cannot be passed directly across the host/device boundary. `cudafe++` solves this by injecting a library of template wrapper structs into the compilation at backend time. The master emitter `sub_6BCC20` (`nv_emit_lambda_preamble`) generates all `__nv_*` templates in a single function call, driven by two 1024-bit bitmasks that record which capture counts were actually needed during parsing:
 
@@ -105,7 +107,7 @@ CUDA extended lambdas (`__device__` and `__host__ __device__` lambdas) cannot be
 
 Only the required specializations are emitted, keeping the generated code minimal.
 
-### CUDA Error Catalog
+### CUDA Error Catalog (HIGH)
 
 The binary contains 3,795 diagnostic messages in the EDG error table. Of these, 338 are CUDA-specific (error numbers in the 20000+ range and the 3500-3800 range). These cover:
 
@@ -116,11 +118,11 @@ The binary contains 3,795 diagnostic messages in the EDG error table. Of these, 
 - RDC mode restrictions (user-defined copy constructors in kernel arguments)
 - Architecture feature gates (feature X requires SM_YY or higher)
 
-### IL Entry Kind System
+### IL Entry Kind System (HIGH)
 
 The EDG IL uses 85 defined entry kinds (0-84), each representing a distinct node type in the typed, scope-linked IL graph. Key node types include: `routine` (288 bytes, functions/methods), `variable` (232 bytes), `type` (176 bytes, 22 sub-kinds), `expr_node` (72 bytes, 36 sub-kinds), `statement` (80 bytes, 26 sub-kinds), and `scope` (288 bytes, 9 sub-kinds). All nodes live in a region-based arena allocator with 64 KB blocks. See [IL Overview](./il/overview.md) for the complete entry kind table.
 
-### CLI Flag Inventory
+### CLI Flag Inventory (HIGH)
 
 `cudafe++` accepts 276 command-line flags parsed in `sub_459630` (`cmd_line.c`). These control:
 

@@ -35,7 +35,7 @@ Three invariants tie the deep pages together. They are the assumptions every dia
 
 Three substrate threads thread through several deep pages and earn their own pointers here.
 
-The 808-byte `AsyncValueImpl` body is what the scheduler's `Pipe_` and `Mutex_` constructors allocate; the scheduler-side companion is [Pipe and Mutex Value Layout](../scheduler/pipe-mutex-value-layout.md). The body itself lives in [AsyncValue and BLAKE3 Interning](asyncvalue-and-blake3-interning.md).
+The 808-byte `AsyncValueImpl` body is what the scheduler's `Pipe_` and `Mutex_` constructors allocate; the scheduler-side companion is [Pipe_ and Mutex_ Value-Header Layout](../scheduler/pipe-mutex-value-layout.md). The body itself lives in [AsyncValue and BLAKE3 Interning](asyncvalue-and-blake3-interning.md).
 
 The SwissTable family — distinct from DenseMap by its fmix64 mixer and 16-byte control-byte groups — is exclusive to the scheduler in this binary. [Container Fingerprints](container-fingerprints.md) covers the layout; [Modulo Driver and OR-Chain](../scheduler/modulo-driver-or-chain.md) is the highest-traffic consumer.
 
