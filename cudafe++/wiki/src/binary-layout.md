@@ -43,7 +43,7 @@ Total virtual address space consumed: `0x12D73A8 - 0x400000` = 18.9 MB.
 
 ## .text -- Executable Code (4.15 MB)
 
-The `.text` section contains all 6,483 functions in the binary. It divides into four distinct regions, laid out contiguously by the linker:
+The `.text` section contains all 6,501 functions in the binary. It divides into four distinct regions, laid out contiguously by the linker:
 
 ```
 0x403300                                                          0x829722

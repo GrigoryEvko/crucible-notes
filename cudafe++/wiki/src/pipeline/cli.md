@@ -1,6 +1,6 @@
 # CLI Processing
 
-`proc_command_line` (`sub_459630`) at `0x459630` is a 21,773-byte function (4,105 decompiled lines, 296 callees) in `cmd_line.c` that parses the entire cudafe++ command line. It registers 276 flags into a flat lookup table, iterates `argv` with prefix-matching against that table, dispatches each matched flag through a 275-case switch statement, then resolves language dialect settings and opens output files. This function is the second stage of the [pipeline](./overview.md), called directly from `main()` at `0x408950` before any heavy initialization.
+`proc_command_line` (`sub_459630`) at `0x459630` is a 21,773-byte function (4,105 decompiled lines, 296 callees) in `cmd_line.c` that parses the entire cudafe++ command line. It registers 276 flags into a flat lookup table, iterates `argv` with prefix-matching against that table, dispatches each matched flag through a 276-case switch statement (IDs 0..275, where case 0 is the default sink for unknown flags), then resolves language dialect settings and opens output files. This function is the second stage of the [pipeline](./overview.md), called directly from `main()` at `0x408950` before any heavy initialization.
 
 Nobody invokes cudafe++ directly. NVIDIA's driver compiler `nvcc` decomposes its own options and passes the appropriate low-level flags via `-Xcudafe <flag>`. The full flag inventory is in [CLI Flag Inventory](../config/cli-flags.md); this page documents the **implementation mechanics** of the parsing system itself.
 
@@ -18,7 +18,7 @@ Nobody invokes cudafe++ directly. NVIDIA's driver compiler `nvcc` decomposes its
 | Flag table entry size | 40 bytes |
 | Flag table capacity | 552 entries (overflow panics via `sub_40351D`) |
 | Registered flags | 276 |
-| Switch cases | 275 (case IDs 1--275) |
+| Switch cases | 276 (IDs 0..275; case 0 is the default sink for unknown flags) |
 | Default-suppressed diagnostics | 9 (1257, 1373, 1374, 1375, 1633, 2330, 111, 185, 175) |
 
 ## Flag Table Layout
@@ -120,7 +120,7 @@ The name portion is then matched against the flag table using `strncmp` with eac
 
 Before the main loop, `check_conflicting_flags` (`sub_451E80`, 15 lines) validates that mutually exclusive flags were not specified together. It checks `byte_E7FFF2 || byte_E80031 || byte_E80032 || byte_E80033`, corresponding to flags 3, 193, 194, and 195. If any conflict is detected, it emits error 1027 via `sub_4F8480`.
 
-## The Dispatch Switch (275 Cases)
+## The Dispatch Switch (276 Cases)
 
 After a flag is matched, its `case_id` indexes into a giant switch statement occupying the bulk of `proc_command_line`. The following sections document the most important cases grouped by function.
 

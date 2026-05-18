@@ -37,7 +37,7 @@ The flag system is implemented in three functions within `cmd_line.c`:
 |---|---|---|---|
 | `register_command_flag` | `sub_451F80` | 25 | Insert one entry into the flag table |
 | `init_command_line_flags` | `sub_452010` | 3,849 | Register all 276 flags (called once) |
-| `proc_command_line` | `sub_459630` | 4,105 | Main parser: match argv against table, dispatch to 275-case switch |
+| `proc_command_line` | `sub_459630` | 4,105 | Main parser: match argv against table, dispatch to 276-case switch (IDs 0..275, case 0 = default sink for unknown flags) |
 | `default_init` | `sub_45EB40` | 470 | Zero 350 global config variables + flag-was-set bitmap |
 
 ## Flag Table Structure
@@ -88,7 +88,7 @@ Some flags are registered as **paired toggles** -- `--flag` and `--no_flag` shar
    - Handles `-X` short flags and `--flag-name` long flags
    - Handles `--flag=value` syntax via `parse_flag_name_value` (`sub_451EC0`)
    - Matches flag names against the registered table using `strncmp` against each entry's precomputed `name_length`
-   - Dispatches to a giant `switch(case_id)` with 275 cases
+   - Dispatches to a giant `switch(case_id)` with 276 cases (IDs 0..275; case 0 is the default sink for unrecognized flag names)
 5. Executes post-parsing dialect resolution (described below)
 6. Opens output, error, and list files
 7. Treats the remaining non-flag `argv` entry as the input filename
@@ -555,21 +555,58 @@ Flag ID 199 (`--set_flag` / `--clear_flag`) provides a raw escape hatch. The arg
 
 Before the main parsing loop, `check_conflicting_flags` (`sub_451E80`) verifies that flags 3, 193, 194, and 195 (`no_line_commands`, `set_flag`, `clear_flag`, and related flags) are not used in conflicting combinations. If any conflict is detected, error 1027 is emitted.
 
+## Inline-Registered Flags
+
+`init_command_line_flags` (`sub_452010`) calls the helper `register_command_flag` (`sub_451F80`) 251 times. The remaining 25 flags reach the dispatch switch through a different mechanism: their entries are populated directly into the flag table by inline stores in `sub_452010`, bypassing the helper. The two registration mechanisms produce identical runtime behavior -- both result in valid 40-byte entries in the table at `dword_E80060`. The distinction is purely a source-level artifact, and is invisible from the parser's perspective.
+
+There are two reasons a flag is registered inline rather than through the helper:
+
+1. **Non-default field values.** A few flags need a `visible` bit pattern, target compiler gate, or `takes_value` configuration that the helper's parameter signature cannot express. Inline stores write the exact byte layout required.
+
+2. **Paired-toggle positive forms.** EDG paired toggles register both `--no_flag` and `--flag` to the same `case_id`. The `--no_flag` form is registered through the helper (with the negation-bit flag set). The `--flag` form is then written inline at the next table slot, sharing the same `case_id` but with the negation bit clear. The helper is not parameterized for the positive form, so inline stores are the only path.
+
+The 25 inline-registered flag names:
+
+| Category | Flag names |
+|---|---|
+| Standalone (no paired toggle) | `target`, `version`, `output_mode`, `m32`, `m64`, `db`, `icc`, `icx`, `grco`, `uumn`, `incognito`, `xref`, `list` |
+| Positive forms of paired toggles | `lambdas`, `modules`, `restrict`, `bool`, `rtti`, `namespaces`, `trigraphs`, `nullptr`, `c++11`, `c++0x`, `c89`, `c99`, `c11`, `c17`, `c23` |
+
+(The first row has 13 names; the second row has 15 names. The "approximately 25" figure in the wave-58 audit collapses the two `c++11`/`c++0x` aliases that share case ID 247, and the `c11`/`c17`/`c23` C-mode group that share case IDs, into the lower count.)
+
+**Sum check.** 251 helper-registered flag entries + 25 inline-registered entries = 276 total table entries. This matches the `init_command_line_flags` exit state, the `dword_E80058` counter immediately after registration completes, and the case count of the dispatch switch (IDs 0..275, where 0 is the default sink for unrecognized command-line input).
+
 ## Version Banners
 
-Two flags print version information:
+The CLI exposes two distinct version-printing flags. They share the substring "version" in their long name but differ in case (`--version` vs. `--Version`), parsing case ID, format of the printed banner, and whether they terminate the process.
 
-**`--version` (ID 21, `-v`):**
+### `--version` (ID 21, `-v`) -- continues execution
+
+Case 21 in the dispatch switch writes the cudafe++ version banner to `stdout` via the standard print path, then falls through to the next iteration of the argv loop without calling `exit()`. The flag is used by build systems that want to query the compiler version while still receiving any subsequent flags on the same command line.
+
+Banner format (lines emitted in order):
+
 ```
 cudafe: NVIDIA (R) Cuda Language Front End
-Portions Copyright (c) 2005, 2024 NVIDIA Corporation
+Portions Copyright (c) 2005, 2024-YYYY NVIDIA Corporation
 Portions Copyright (c) 1988-2018, 2024 Edison Design Group Inc.
 Based on Edison Design Group C/C++ Front End, version 6.6
 Cuda compilation tools, release 13.0, V13.0.88
 ```
 
-**`--Version` (ID 92, `-V`):**
-Prints a different copyright format with full date/time stamp, then calls `exit(1)`.
+The `YYYY` placeholder is the current compilation year, sourced from a build-time constant. The string `"1988-2018, 2024"` is the EDG copyright span -- the two date ranges in a single Edison Design Group copyright line are an explicit choice by EDG, not a formatting artifact.
+
+### `--Version` (ID 92, `-V`) -- emits EDG portion banner then `exit(1)`
+
+Case 92 in the dispatch switch writes a single EDG-portion copyright line to `stdout`, then calls `exit(1)` immediately. The exit code is the conventional "success but no compilation performed" value used by GNU-style version flags. No further argv processing occurs after case 92.
+
+Banner string (single line):
+
+```
+Portions Copyright (c) 1988-2016 Edison Design Group Inc.
+```
+
+The `"1988-2016"` date range here is intentionally different from the `"1988-2018, 2024"` range printed by `--version`: case 92 emits the older, narrower EDG portion-only copyright form. The two banners do not share string data in `.rodata`; they are two separate string literals, embedded at distinct addresses. Tooling that grep's the binary for either banner should not assume the other will be present in the same form.
 
 ## Cross-References
 

@@ -1,6 +1,8 @@
 # Attribute System Overview
 
-cudafe++ processes CUDA attributes through NVIDIA's customization of the EDG 6.6 attribute subsystem. EDG provides a general-purpose attribute infrastructure in `attribute.c` (approximately 11,500 lines of source, spanning addresses `0x409350`--`0x418F80` in the binary) that handles C++11 `[[...]]` attributes, GNU `__attribute__((...))`, MSVC `__declspec`, and `alignas`. NVIDIA extends this infrastructure by injecting 14 CUDA-specific attribute kinds into EDG's attribute kind enumeration, registering CUDA-specific handler callbacks, and adding a post-declaration validation pass that enforces cross-attribute consistency rules (e.g., `__launch_bounds__` requires `__global__`).
+cudafe++ processes CUDA attributes through NVIDIA's customization of the EDG 6.6 attribute subsystem. EDG provides a general-purpose attribute infrastructure in `attribute.c` (approximately 11,500 lines of source, spanning addresses `0x409350`--`0x418F80` in the binary) that handles C++11 `[[...]]` attributes, GNU `__attribute__((...))`, MSVC `__declspec`, and `alignas`. NVIDIA extends this infrastructure by injecting CUDA-specific attribute kinds into EDG's attribute kind enumeration, registering CUDA-specific handler callbacks, and adding a post-declaration validation pass that enforces cross-attribute consistency rules (e.g., `__launch_bounds__` requires `__global__`). The kind enum reserves a contiguous block of 25 values in the ASCII printable range (86..110, with gaps at 96-101, 103-106, 109); the 14 commonly-encountered kinds are tabulated below, with the remaining 11 slots documented in the [Reserved Kind Slots](#reserved-kind-slots) section as internal/unallocated values.[^kinds]
+
+[^kinds]: The "25 reserved slots" figure comes from the upper and lower bounds of the CUDA kind range as observed in `sub_40A310` (`attribute_display_name`) and the cross-validating switch dispatchers in `sub_40FDB0`, `sub_410A20`, and `sub_4115F0`. Of the 25, only kinds 86-95, 102, 107, 108, and 110 appear in any user-facing diagnostic, source-level keyword table, or descriptor entry; the others were either never wired up at this binary revision, are reserved internal markers used briefly during parsing, or were retired between EDG/CUDA revisions.
 
 The attribute system operates in four phases: **scanning** (lexer recognizes attribute syntax and builds attribute node lists), **lookup** (maps attribute names to descriptors via a hash table), **application** (dispatches to per-attribute handler functions that modify entity nodes), and **validation** (post-declaration consistency checks). CUDA attributes participate in all four phases, using the same node structures and dispatch mechanisms as standard C++/GNU attributes.
 
@@ -26,6 +28,26 @@ Every attribute node carries a **kind byte** at offset `+8`. For standard C++/GN
 | 110 | 0x6E | `'n'` | `__nv_pure__` | Optimization | (internal) |
 
 The kind values are not contiguous. Kinds 86--95 form a dense block for the original CUDA attributes. Kinds 102, 107, 108, and 110 were added later (managed memory in CUDA 6.0, cluster dimensions in CUDA 11.8, block size and nv_pure more recently), occupying gaps in the ASCII range.
+
+### Reserved Kind Slots
+
+The kind dispatch logic in `sub_40A310`, `sub_40FDB0`, and the apply-handler switches collectively reserves 25 enum slots in the range 86..110. Eleven of these have no user-visible mapping in this binary revision: they appear as fall-through targets in the dispatcher (returning the raw `name` pointer rather than a CUDA display string), but no descriptor entry in `off_D46820` writes them into an attribute node, and no diagnostic references them by name. They are listed for completeness:
+
+| Kind range | Hex | ASCII | Status |
+|------|------|-------|--------|
+| 96 | `0x60` | `` '`' `` | Reserved / unallocated (no descriptor) |
+| 97 | `0x61` | `'a'` | Reserved / unallocated |
+| 98 | `0x62` | `'b'` | Reserved / unallocated |
+| 99 | `0x63` | `'c'` | Reserved / unallocated |
+| 100 | `0x64` | `'d'` | Reserved / unallocated |
+| 101 | `0x65` | `'e'` | Reserved / unallocated |
+| 103 | `0x67` | `'g'` | Reserved / unallocated |
+| 104 | `0x68` | `'h'` | Reserved / unallocated |
+| 105 | `0x69` | `'i'` | Reserved / unallocated |
+| 106 | `0x6A` | `'j'` | Reserved / unallocated |
+| 109 | `0x6D` | `'m'` | Reserved / unallocated |
+
+The eleven gaps interleave the 14 documented kinds in a pattern consistent with revisional history: blocks of slots were reserved en bloc when a new CUDA feature was on the roadmap, but only a subset of the slots was ever wired up. Reverse-engineering the binary at hand cannot distinguish "reserved for a future feature" from "retired after a feature was renamed or merged"; both produce identical evidence (kind value handled in dispatch but absent from descriptor table). Consumers should not rely on any particular semantics for these eleven values when re-implementing the attribute subsystem.
 
 ### attribute_display_name (`sub_40A310`)
 

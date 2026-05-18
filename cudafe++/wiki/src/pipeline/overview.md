@@ -126,19 +126,24 @@ The `while(1)` loop with `sub_5AF1D0` (which calls `exit()` / `abort()`) never a
 
 Performs absolute minimum initialization before anything else can run. Called with the raw `argc`, `argv`, `envp` from the OS.
 
-| Call | Address | Identity | Purpose |
-|------|---------|----------|---------|
-| 1 | `sub_48B3C0` | error_handling_init | Zero error counters |
-| 2 | `sub_6BB290` | source_file_mgr_init | File descriptor table setup |
-| 3 | `sub_5B1E70` | scope_symbol_pre_init | Scope stack index = -1 |
-| 4 | `sub_752C90` | type_system_pre_init | Type table allocation |
-| 5 | `sub_45EB40` | cmd_line_pre_init | Register CLI flag table |
-| 6 | `sub_4ED530` | declaration_pre_init | Declaration state zeroing |
-| 7 | `sub_6F6020` | il_pre_init | IL node allocator setup |
-| 8 | `sub_7A48B0` | tu_tracking_pre_init | Zero all TU globals |
-| 9 | `sub_7C00F0` | template_pre_init | Template engine state |
+| Call | Address | Identity | Source file | Initialization summary |
+|------|---------|----------|-------------|---------------------|
+| 1 | `sub_48B3C0` | `error_pre_init` | `error.c` | Zero 4 error-tracking globals (`qword_1065870`, `qword_1065868`, `qword_1065858` = 0; `dword_1065860` = -1) |
+| 2 | `sub_6BB290` | `source_file_mgr_pre_init` | `srcfile.c` | Zero 10 file-descriptor-table globals: file chain head, file count, file hash, include stack |
+| 3 | `sub_5B1E70` | `host_envir_early_init` | `host_envir.c` | Install SIGINT/SIGTERM/SIGXCPU/SIGXFSZ handlers; set LC_NUMERIC=C; capture CWD into `qword_126EEA0`; read `EDG_BASE`/`EDG_SUPPRESS_ASSERTION_LINE_NUMBER`; disable RLIMIT_CPU; set `dword_126EFB4`=2 (default C++ mode); zero ~50 host-env globals |
+| -- | *(inline)* | `scope_index_init` | `fe_init.c` | `dword_126C5E4 = -1` (current scope stack index = "none"); `dword_126C5C8 = -1` (secondary scope index = "none") |
+| 4 | `sub_752C90` | `type_system_pre_init` | `type.c` | Set `dword_126E4A8` = -1 (dialect version unset); allocate type table via `sub_7515D0`; set host compiler default `qword_126E1F0` = 70300 (GCC 7.3.0); init 3 type comparison descriptor pools |
+| 5 | `sub_45EB40` | `cmd_line_pre_init` | `cmd_line.c` | Zero 272-flag was-set bitmap (`byte_E7FF40`, 0x110 bytes); set `dword_E7FF20` = 1 (skip argv[0]); initialize ~350 global config variables to defaults; set `dword_106C064` = 1 (stack-limit-adjustment ON) |
+| 6 | `sub_4ED530` | `declaration_pre_init` | `decls.c` | Set `stderr` into two global stream pointers; zero error/warning counters (`qword_126ED80..qword_126EDE0`); set diagnostic defaults (`byte_126ED69`=5, `byte_126ED68`=8); set `qword_126ED60` = 100 (max-errors default); clear the 15.2 KB diagnostic severity table (`byte_1067920`, 0x3B50 bytes) |
+| 7 | `sub_6F6020` | `il_pre_init` | `il.c` | Zero 3 globals: `dword_12C6C8C` = 0 (PCH event counter), `qword_12C6EC0` = 0, `qword_12C6EB8` = 0 |
+| 8 | `sub_7A48B0` | `tu_tracking_pre_init` | `trans_unit.c` | Zero 13 TU tracking globals: source filename, compilation mode flags, TU stack pointers, PCH state |
+| 9 | `sub_7C00F0` | `template_pre_init` | `template.c` | Single assignment: `dword_106BA20` = 0 (template nesting depth = 0) |
 
-Sets `dword_126C5E4 = -1` (current scope index = "none") and `dword_126C5C8 = -1` (secondary scope index = "none").
+Calls 1, 2, 6, 7, 8 are pure global-zeroing routines and execute in under a microsecond each. Call 3 (`host_envir_early_init`) dominates the wall-clock cost of pre-init -- the `getcwd()` retry loop, four `sigaction()` syscalls, `newlocale()`, and `getrlimit`/`setrlimit` together account for essentially all stage-1 latency. Call 5 (`cmd_line_pre_init`) is the second-heaviest because it touches ~350 config globals, though all writes are register-resident.
+
+The inline `scope_index_init` assignments to `dword_126C5E4` and `dword_126C5C8` are emitted directly between calls 3 and 4 in `sub_585D60`'s body, rather than wrapped in a helper. They are listed here as a separate row because they constitute distinct initialization work, even though `idautils.Functions()` does not see them as a callee.
+
+For per-callee detail (signal-handler addresses, `host_envir.c` sentinel validation against the `"last"` predef macro name, `errno` handling in `getcwd`, etc.), see [Entry Point — Phase 1: fe_pre_init](./entry.md#phase-1-fe_pre_init----sub_585d60-0x585d60).
 
 **Data flow:** No input beyond process args. Output: global state zeroed and ready for CLI parsing.
 

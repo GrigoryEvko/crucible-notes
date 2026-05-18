@@ -7,12 +7,12 @@ This page documents the reverse engineering methodology used to produce every pa
 | Component | Version | Role |
 |---|---|---|
 | IDA Pro | 9.0 (64-bit) | Interactive disassembler and database host |
-| Hex-Rays | x86-64 decompiler (IDA 9.0 bundled) | Pseudocode generation for all 6,483 functions |
+| Hex-Rays | x86-64 decompiler (IDA 9.0 bundled) | Pseudocode generation for all 6,501 functions |
 | IDAPython | 3.x (IDA-embedded) | Scripted extraction via `analyze_cudafe++.py` (531 lines) |
 | Target binary | `cudafe++` from CUDA Toolkit 13.0 | ELF 64-bit, statically linked, stripped, 8,910,936 bytes |
 | IDA database | `cudafe++.i64` | 247 MB analysis state (all function boundaries, xrefs, type info, decompilation caches) |
 
-The binary was loaded into IDA Pro 9.0 with default x86-64 analysis settings. IDA's auto-analysis resolved all code/data boundaries, generated function boundaries for 6,483 functions, and identified 52,489 string literals. The Hex-Rays decompiler was invoked on all 6,483 functions; the IDAPython extraction log reports 6,343 successful decompilations (the remaining 140 failures are exception personality routines, SoftFloat leaf functions, and tiny thunks where Hex-Rays cannot reconstruct a valid C AST). However, due to function-name collisions in the output filenames (multiple `sub_XXXXXX` entries mapping to the same sanitized name after `/` replacement), the actual decompiled output directory contains **6,202 unique `.c` files** -- the number used throughout this wiki.
+The binary was loaded into IDA Pro 9.0 with default x86-64 analysis settings. IDA's auto-analysis resolved all code/data boundaries, generated function boundaries for 6,501 functions, and identified 52,489 string literals. The Hex-Rays decompiler was invoked on all 6,501 functions; the IDAPython extraction log reports 6,343 successful decompilations (the remaining 158 failures are exception personality routines, SoftFloat leaf functions, and tiny thunks where Hex-Rays cannot reconstruct a valid C AST). However, due to function-name collisions in the output filenames (multiple `sub_XXXXXX` entries mapping to the same sanitized name after `/` replacement), the actual decompiled output directory contains **6,202 unique `.c` files** -- the number used throughout this wiki.
 
 ## Extraction Script
 
@@ -21,7 +21,7 @@ All raw data was exported from the IDA database in a single automated pass using
 | Artifact | File | Records | Size | Description |
 |---|---|---|---|---|
 | String table | `cudafe++_strings.json` | 52,489 strings | 9.2 MB | Every string literal with address, type, and all cross-references |
-| Function table | `cudafe++_functions.json` | 6,483 functions | 12 MB | Address, size, instruction count, callers, callees per function |
+| Function table | `cudafe++_functions.json` | 6,501 functions | 12 MB | Address, size, instruction count, callers, callees per function |
 | Import table | `cudafe++_imports.json` | 142 imports | 16 KB | Imported PLT symbols (glibc wrappers in static binary) |
 | Segment table | `cudafe++_segments.json` | 26 segments | 3.3 KB | ELF section addresses, sizes, types, permissions |
 | Cross-reference table | `cudafe++_xrefs.json` | 1,243,258 xrefs | 154 MB | Every code and data xref with source function attribution |
@@ -72,7 +72,7 @@ The 12 passes, in execution order:
 
 12. **`export_decompilation()`** -- Calls `idaapi.init_hexrays_plugin()` to initialize the Hex-Rays decompiler, then iterates all functions and calls `idaapi.decompile(func_ea)`. On success, the pseudocode string (`str(cfunc)`) is written to a `.c` file with a header comment containing the function name and address. Failures are silently caught via a bare `except Exception` and skipped.
 
-The script is invoked via IDA's headless batch mode or interactive scripting console. It does not call `qexit()` at the end, allowing the IDA database to remain open for further interactive analysis after extraction. Total extraction time is approximately 30-45 minutes on a workstation-class machine, dominated by the 6,483 decompilation calls in pass 12.
+The script is invoked via IDA's headless batch mode or interactive scripting console. It does not call `qexit()` at the end, allowing the IDA database to remain open for further interactive analysis after extraction. Total extraction time is approximately 30-45 minutes on a workstation-class machine, dominated by the 6,501 decompilation calls in pass 12.
 
 ## Source Attribution Technique
 
@@ -106,7 +106,7 @@ The attribution chain works in three steps:
 
 3. **Range extension.** Assert stubs are sparse -- not every function contains an assertion. Once a set of functions in a contiguous address range are attributed to the same source file, the entire range is assigned to that file. This works because the linker places all object code from a single `.c` file contiguously, and the files are arranged roughly alphabetically by filename.
 
-This technique attributed 2,209 functions (34.1% of the binary) to specific source files. The remaining 4,274 functions fall into three categories: C++ runtime code (1,085 functions from libstdc++/glibc, identifiable by address range), PLT/init stubs (283 functions), and unmapped EDG functions (2,906 functions that contain no assertions and cannot be confidently attributed).
+This technique attributed 2,209 functions (34.0% of the binary) to specific source files. The remaining 4,292 functions fall into three categories: C++ runtime code (1,085 functions from libstdc++/glibc, identifiable by address range), PLT/init stubs (283 functions), and unmapped EDG functions (2,924 functions that contain no assertions and cannot be confidently attributed).
 
 ### Build Path
 
@@ -137,7 +137,7 @@ The wiki uses a fixed vocabulary drawn from three sources: EDG's internal source
 
 ## Call Graph Analysis
 
-The complete call graph contains **67,756 edges** connecting the 6,483 functions. This graph is the primary tool for understanding system architecture -- which subsystems call which, where the hot paths are, and how NVIDIA's additions integrate with the EDG base.
+The complete call graph contains **67,756 edges** connecting the 6,501 functions. This graph is the primary tool for understanding system architecture -- which subsystems call which, where the hot paths are, and how NVIDIA's additions integrate with the EDG base.
 
 ### Hub Identification
 
@@ -339,12 +339,12 @@ As of this writing, 28 W-series reports have been produced, each backing one or 
 | Metric | Value |
 |---|---|
 | Binary file size | 8,910,936 bytes (8.5 MB) |
-| Total functions in binary | 6,483 |
+| Total functions in binary | 6,501 |
 | Decompiled functions (log-reported) | 6,343 |
 | Decompiled files (actual on disk) | 6,202 |
 | Disassembly files | 6,342 |
 | CFG files (JSON + DOT) | 12,684 |
-| Functions attributed to source files | 2,209 (34.1%) |
+| Functions attributed to source files | 2,209 (34.0%) |
 | Functions calling `sub_4F2930` (assert handler) | 2,139 |
 | Total call sites to `sub_4F2930` | 5,178 |
 | Assert stubs (`0x403300`--`0x408B40`) | 235 |
@@ -373,7 +373,7 @@ As of this writing, 28 W-series reports have been produced, each backing one or 
 
 1. **Preprocessor-disabled code.** Any EDG code behind `#if 0`, `#ifndef CUDA_SUPPORT`, or similar guards was compiled out. The binary reflects only the CUDA-enabled, Linux x86-64, EDG 6.6 configuration. Other EDG frontend features (e.g., Fortran support, Windows target, older C++ standards) are not present.
 
-2. **Inlined function boundaries.** When the compiler inlines a function, its code merges with the caller. The binary may contain hundreds of inlined instances of small EDG utility functions (type queries, IL accessors) that are invisible as separate entities. The 6,483 function count represents only the non-inlined functions.
+2. **Inlined function boundaries.** When the compiler inlines a function, its code merges with the caller. The binary may contain hundreds of inlined instances of small EDG utility functions (type queries, IL accessors) that are invisible as separate entities. The 6,501 function count represents only the non-inlined functions.
 
 3. **Original variable names.** All local and most global variable names are lost. The wiki uses reconstructed names based on semantics (e.g., `execution_space_byte` for `*((_BYTE *)entity + 182)`), but these are analyst-assigned, not original.
 

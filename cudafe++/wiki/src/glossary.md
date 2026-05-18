@@ -12,7 +12,7 @@ These terms refer to artifacts of IDA Pro's auto-analysis and the conventions th
 | --- | --- |
 | `byte_<hex>` | IDA's auto-generated name for a 1-byte global at address `<hex>`. Used in the wiki for single-byte flag globals such as `byte_F3E140` (the warning-emission gate). |
 | `dword_<hex>` | IDA's auto-generated name for a 4-byte global at address `<hex>`. Used for integer flag globals and counters such as `dword_E26AC8` (an option-stack depth field). |
-| Hex-Rays | The x86-64 decompiler bundled with IDA Pro 9.0 that produced the pseudocode for all 6,483 functions analyzed in this wiki. See [Methodology — Decompilation Quality](./methodology.md#decompilation-quality) for systematic limitations of the output. |
+| Hex-Rays | The x86-64 decompiler bundled with IDA Pro 9.0 that produced the pseudocode for all 6,501 functions analyzed in this wiki. See [Methodology — Decompilation Quality](./methodology.md#decompilation-quality) for systematic limitations of the output. |
 | IDA Pro | The commercial disassembler used to recover cudafe++ behavior from its stripped ELF binary. The IDA database (`cudafe++.i64`, 247 MB) holds all analysis state and is the source of every artifact referenced in this wiki. |
 | `off_<hex>` | IDA's auto-generated name for a pointer-typed global at address `<hex>`. The IL kind name table `off_E6DD80` and the error table `off_88FAA0` are the two most-cited examples. |
 | `qword_<hex>` | IDA's auto-generated name for an 8-byte global at address `<hex>`. Used for pointer globals (heap roots, dispatch hooks) and 64-bit counters. |

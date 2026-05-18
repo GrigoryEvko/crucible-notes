@@ -22,11 +22,11 @@ All source files share the build prefix:
 | Functions mapped via `.c` paths | 2,129 |
 | Functions mapped via `.h` paths only | 80 |
 | **Total mapped functions** | **2,209** |
-| Unmapped functions in EDG region (`0x403300`--`0x7E0000`) | ~2,896 |
+| Unmapped functions in EDG region (`0x403300`--`0x7E0000`) | ~2,914 |
 | C++ runtime / demangler (`0x7E0000`--`0x829722`) | ~1,085 |
 | PLT stubs + init (`0x402A18`--`0x403300`) | ~283 |
-| **Total functions in binary** | **~6,483** |
-| **Mapping coverage** | **34.1%** |
+| **Total functions in binary** | **~6,501** |
+| **Mapping coverage** | **34.0%** |
 
 The 34% mapping rate reflects the fact that only functions containing EDG `internal_error` assertions reference `__FILE__` strings. Functions below the assertion threshold, display-only code compiled without assertions, inlined leaf functions, and the statically-linked C++ runtime are all invisible to this technique.
 

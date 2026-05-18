@@ -2,7 +2,7 @@
 
 `cudafe++` is NVIDIA's CUDA frontend compiler -- the first stage of the CUDA compilation pipeline. It is built on the Edison Design Group (EDG) C++ Front End v6.6, a commercial compiler frontend licensed by compiler vendors worldwide. NVIDIA ships `cudafe++` as a statically-linked, stripped ELF binary inside every CUDA Toolkit installation. This binary accepts `.cu` source files, parses them as C++ with CUDA extensions, separates device code from host code, and produces two outputs: an EDG Intermediate Language (IL) stream consumed by `cicc` (the NVIDIA PTX code generator), and a transformed `.int.c` host file consumed by the system C++ compiler (gcc, clang, or cl.exe).
 
-This wiki documents the complete internals of the `cudafe++` binary from CUDA Toolkit 13.0, reverse-engineered through static analysis (IDA Pro + Hex-Rays decompilation) of all 6,483 functions. The goal is reimplementation-grade documentation: every page should give a senior compiler engineer enough information to build equivalent functionality from scratch.
+This wiki documents the complete internals of the `cudafe++` binary from CUDA Toolkit 13.0, reverse-engineered through static analysis (IDA Pro + Hex-Rays decompilation) of all 6,501 functions. The goal is reimplementation-grade documentation: every page should give a senior compiler engineer enough information to build equivalent functionality from scratch.
 
 ## Binary Identity
 
@@ -13,7 +13,7 @@ This wiki documents the complete internals of the `cudafe++` binary from CUDA To
 | File size | 8,910,936 bytes (8.5 MB) |
 | EDG base | Edison Design Group C++ Front End v6.6 |
 | Build path | `/dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/` |
-| Total functions | 6,483 |
+| Total functions | 6,501 |
 | Functions mapped to source | 2,208 (34%) |
 
 ## Segment Layout
@@ -210,7 +210,7 @@ This wiki is derived from:
 - **9.5 MB strings database** with cross-references to every function that uses each string
 - **161 MB cross-reference database** -- complete caller/callee and data-reference mappings
 - **7.7 MB call graph** in JSON and DOT format
-- **6,483 control flow graphs** with basic block boundaries
+- **6,501 control flow graphs** with basic block boundaries
 - **247 MB IDA Pro database** (.i64)
 
 All analysis was performed on the binary shipped with CUDA Toolkit 13.0, obtained from NVIDIA's public distribution channels.

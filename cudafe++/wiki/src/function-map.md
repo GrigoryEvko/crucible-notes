@@ -8,15 +8,15 @@ The mapping was produced by extracting all string literals matching `/dvs/p4/bui
 
 | Category | Functions | Percentage |
 |---|---|---|
-| Mapped via `.c` file paths | 2,129 | 32.8% |
+| Mapped via `.c` file paths | 2,129 | 32.7% |
 | Mapped via `.h` file paths only | 80 | 1.2% |
-| **Total mapped** | **2,209** | **34.1%** |
-| Unmapped in EDG region (`0x403300`--`0x7E0000`) | 2,906 | 44.8% |
+| **Total mapped** | **2,209** | **34.0%** |
+| Unmapped in EDG region (`0x403300`--`0x7E0000`) | 2,924 | 45.0% |
 | C++ runtime / demangler (`0x7E0000`--`0x829722`) | 1,085 | 16.7% |
 | PLT stubs + init (`0x402A18`--`0x403300`) | 283 | 4.4% |
-| **Total functions in binary** | **6,483** | 100% |
+| **Total functions in binary** | **6,501** | 100% |
 
-The 2,906 unmapped functions in the EDG region include inlined header expansions (e.g., `util.h` vector/hash helpers, `types.h` type queries), small leaf functions below the assertion threshold, switch-table dispatch fragments, and functions from translation units compiled without assertions enabled (notably `il_to_str.c` display routines and parts of `floating.c`).
+The 2,924 unmapped functions in the EDG region include inlined header expansions (e.g., `util.h` vector/hash helpers, `types.h` type queries), small leaf functions below the assertion threshold, switch-table dispatch fragments, and functions from translation units compiled without assertions enabled (notably `il_to_str.c` display routines and parts of `floating.c`).
 
 ## Binary Layout
 
