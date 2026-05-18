@@ -33,7 +33,95 @@ For most ordinary NVPTX arithmetic instructions, `collectTiedOperands` finds not
 
 ## Algorithm
 
-The pass iterates over every `MachineBasicBlock` and every `MachineInstr` within it, maintaining per-block data structures that are cleared at block boundaries.
+The pass iterates over every `MachineBasicBlock` and every `MachineInstr` within it, maintaining per-block data structures that are cleared at block boundaries. The C-level skeleton below consolidates the four core paths -- `run()` worklist, `tieOperands()` heuristic, commutativity check, and the post-conversion verifier call -- as reconstructed from `sub_1F53550`, `sub_1F4EF20`, and `sub_1F50270`.
+
+```c
+/* sub_1F53550: TwoAddressInstructionPass::runOnMachineFunction */
+bool TAI_run(MachineFunction *MF) {
+    Pass *P = MF->pass;                                  /* +232..+296 */
+    P->OptLevel = isOptNoneOrFastCompile(MF) ? 0 : MF->OptLevel;   /* sub_1636880 */
+    bool changed = false;
+
+    for (MachineBasicBlock *MBB = MF->front; MBB; MBB = MBB->next) {
+        DenseMap_clear(&P->DistanceMap);                 /* offsets +312..+336 */
+        DenseMap_clear(&P->SrcEqClassMap);               /* +552..+576 */
+        DenseMap_clear(&P->DstEqClassMap);               /* +584..+608 */
+        SmallPtrSet_clear(&P->Processed);                /* +344..+376 */
+        unsigned dist = 0;
+
+        for (MachineInstr *MI = MBB->front; MI; MI = MI->next) {
+            if (MI->isBundleInternal()) continue;
+            unsigned opc = MI->getOpcode();
+            if (opc == TargetOpcode_COPY || opc == TargetOpcode_SUBREG_TO_REG) continue;
+            if (SmallPtrSet_contains(&P->Processed, MI)) continue;   /* sub_1F4DD40 */
+
+            if (opc == TargetOpcode_EXTRACT_SUBREG) {    /* NVIDIA multi-result path */
+                decomposeExtractSubreg(P, MBB, MI);      /* sub_1F53550 lines 821-994 */
+                continue;
+            }
+            if (opc == TargetOpcode_REG_SEQUENCE) {
+                eliminateRegSequence(P, MI);
+                continue;
+            }
+
+            DenseMap_insert(&P->DistanceMap, MI, ++dist);     /* sub_1F4EC70 */
+            processCopy(P, MI);                                /* builds eq-class maps */
+
+            /* === STEP: collectTiedOperands === (lines 1183-1413) */
+            TiedOperandMap tom;  TiedOperandMap_init(&tom);
+            if (!collectTiedOperands(MI, &tom)) continue;
+
+            /* === Fast path: try to eliminate the tie without inserting a COPY === */
+            if (TiedOperandMap_singleRegSinglePair(&tom)) {
+                unsigned srcIdx, dstIdx;
+                TiedOperandMap_first(&tom, &srcIdx, &dstIdx);
+                if (tryInstructionTransform(P, MI, srcIdx, dstIdx, dist))
+                    { TiedOperandMap_clear(&tom); continue; }      /* sub_1F4EF20 */
+            }
+
+            /* === Slow path: insert COPY for every remaining tied pair === */
+            for (auto &e : tom) processTiedPairs(P, MI, &e.pairs, dist);   /* sub_1F50270 */
+
+            if (opc == TargetOpcode_INSERT_SUBREG) {     /* lines 2386-2396 */
+                MI->getOp(0).setSubReg(MI->getOp(3).getSubRegIdx());
+                MI->getOp(0).setTied(MI->getOp(1).isTied());
+                MI->RemoveOperand(3); MI->RemoveOperand(1);
+                MI->setDesc(TII_get(TargetOpcode_COPY));
+            }
+            TiedOperandMap_clear(&tom);
+            changed = true;
+        }
+    }
+
+    /* === Post-conversion verifier (NVIDIA always-on) === */
+    MachineFunction_verify(MF, "After two-address instruction pass");   /* sub_1E926D0 */
+    return changed;
+}
+
+/* sub_1F4EF20: tryInstructionTransform -- commutativity-first heuristic */
+bool tryInstructionTransform(Pass *P, MachineInstr *MI,
+                             unsigned srcIdx, unsigned dstIdx, unsigned dist) {
+    if (P->OptLevel == 0) return false;                  /* fast-compile bypass */
+
+    /* 1. Commutation: swap (src,other) so that other matches dst */
+    if (MI->isCommutable()) {
+        unsigned other = TII->findCommutedOpIndices(MI, srcIdx);
+        if (isProfitableToCommute(MI, srcIdx, dstIdx, dist, /*MaxEdges=*/3)) {
+            if (TII->commuteInstruction(MI, srcIdx, other)) {
+                if (MI->getOp(srcIdx).getReg() == MI->getOp(dstIdx).getReg())
+                    return true;                          /* tie satisfied */
+            }
+        }
+    }
+    /* 2. 3-address conversion (NVPTX: dead -- PTX is already 3-address) */
+    if (MachineInstr *MI2 = TII->convertToThreeAddress(MI, P->LIS)) return true;
+    /* 3. Rescheduling (twoaddr-reschedule=true) */
+    if (rescheduleMIBelowKill(P, MI, srcIdx, dstIdx, dist)) return true;   /* sub_1F4CC10 */
+    if (rescheduleKillAboveMI(P, MI, srcIdx, dstIdx, dist)) return true;   /* sub_1F4D060 */
+    /* 4. Load unfolding (NVPTX: no folded loads) */
+    return false;                                        /* fall through -> processTiedPairs */
+}
+```
 
 ```
 for each MBB in MF:
@@ -79,6 +167,12 @@ for each MBB in MF:
             remove operands 3 and 1
             rewrite descriptor to COPY
 ```
+
+> **QUIRK -- Dead 3-address conversion still runs.** `tryInstructionTransform` step 2 calls `TII->convertToThreeAddress()` on every tied instruction, but the NVPTX `TargetInstrInfo` does not override this hook so it always returns `nullptr`. PTX is already a 3-address ISA; nevertheless the call survives because the pass is shared LLVM source. Each tied instruction therefore pays the cost of a virtual dispatch and a null check on a path that cannot succeed.
+
+> **QUIRK -- Verifier always runs.** Upstream LLVM gates `MachineFunction::verify("After two-address instruction pass")` on the `-verify-machineinstrs` flag. The CICC binary issues the verifier call unconditionally (`sub_1E926D0` is reached on every `runOnMachineFunction` exit). This catches stale `LiveVariables` state from the deep EXTRACT_SUBREG decomposition early but adds a full machine-function walk to every compilation, including `optnone` builds.
+
+> **QUIRK -- Recursive self-call on unfolded chains.** `sub_1F4EF20` appears in its own xref list (22 cross-references including the self-edge). When load unfolding (step 4) creates a new MachineInstr that itself carries tied operands, the function recurses into the same body to resolve the new tie. On NVPTX this branch is unreachable because no folded loads exist, but the recursion frame and tail call are still emitted, contributing to the 28 KB function size.
 
 ### tryInstructionTransform (sub\_1F4EF20)
 

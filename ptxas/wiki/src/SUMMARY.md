@@ -34,6 +34,7 @@
 
 - [Pass Inventory & Ordering](./passes/index.md)
 - [Phase Manager Infrastructure](./passes/phase-manager.md)
+- [AnalyzeControlFlow (CFG Rebuild)](./passes/analyze-control-flow.md)
 - [GeneralOptimize Bundles](./passes/general-optimize.md)
 - [Branch & Switch Optimization](./passes/branch-switch.md)
 - [Loop Passes](./passes/loop-passes.md)

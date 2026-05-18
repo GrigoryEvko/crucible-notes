@@ -2274,6 +2274,129 @@ With verbose mode enabled (`elfw+64 bit 1` set, corresponding to `-v` on the com
 | `"too many %s in %s"` | `sub_438DD0` | Fatal: resource count exceeds hardware limit |
 | `"callgraph not complete"` | `sub_44C740` | Fatal: callgraph propagation attempted before build |
 
+## sm_100+ FNLZR-Deferred Path
+
+On Mercury targets (`e_ident[7] == 0x41`, sm >= 100), the bindless pipeline does not change shape -- `sub_438DD0` runs identically, `$NVLINKBINDLESSOFF_<name>` synthetics are created the same way, and the per-entry constant bank is laid out by `sub_4324B0` and `sub_433310` regardless of architecture. What changes is *who applies the final patch*. On pre-Blackwell targets, `sub_469D60` (the relocation engine) consumes the rewritten relocation records during the standard relocate phase and is done. On Blackwell, the same records can be deferred through capmerc emission so that **FNLZR** (`sub_4748F0`) re-applies them post-link, after the OCG backend has re-emitted SASS into the capmerc envelope.
+
+This section traces how the same relocation table -- the standard 64-byte descriptors at `off_1D3DBE0` produced by `sub_438DD0` -- is consumed twice on Blackwell: once by nvlink during the relocate phase (eagerly, for any bindless relocs that target sections the OCG backend will *not* re-emit) and once by FNLZR during finalization (lazily, for any bindless relocs that survived into the capmerc payload because their target section was re-emitted).
+
+### Why deferral exists on Blackwell
+
+On pre-Mercury targets, `nvlink` writes the final SASS bit-stream directly. There is one chance to patch each instruction: during the relocate phase, before the writer phase serializes the ELF. Bindless relocations are eagerly applied at that point because no downstream consumer rewrites the SASS.
+
+On Mercury, the writer phase emits the bit-stream as a **capmerc capsule** -- a re-emittable form that the FNLZR finalizer (`sub_4748F0`) consumes during post-link to produce real SASS. The instructions inside the capmerc capsule are *not* the final encoding; they are an intermediate form that the embedded OCG backend transforms into the SM-specific final encoding. Patching the capmerc form during the relocate phase is therefore meaningless for any bit-field that the OCG will reschedule, recode, or relocate.
+
+The deferral path solves this by keeping the bindless relocation records alive *through* capmerc emission. They reach FNLZR as part of the `.nv.resolvedrela` or `.rel.*` sections inside the capsule, FNLZR drives the OCG backend to emit the real SASS, and then FNLZR re-applies the same descriptors from the same `off_1D3DBE0` table to patch the final bit-stream.
+
+### Path A: Eager Resolution (sm_30..sm_99, and sm_100+ for non-tcgen05 sections)
+
+```
+sub_438DD0 (this page)
+    |
+    | rewrites .rela.text bindless entries to target $NVLINKBINDLESSOFF_<name>
+    | emits new .rela.text entries to the relocation list (elfw+376)
+    |
+    v
+sub_469D60 (relocate phase)
+    |
+    | reads each .rela.text entry, indexes off_1D3DBE0 by r_type
+    | calls sub_468760 to apply the 64-byte descriptor's action slots
+    | writes final bit-stream directly into .text
+    |
+    v
+Writer phase emits final ELF
+```
+
+This is the path described in detail in [§ Position in the Pipeline](#position-in-the-pipeline) and [§ Worked Example: Texture Handle Resolution](#worked-example-texture-handle-resolution). The relocation engine is the only consumer of the descriptor table.
+
+### Path B: FNLZR-Deferred Resolution (sm_100+, capmerc sections only)
+
+```
+sub_438DD0 (this page)
+    |
+    | identical processing: rewrite symbol targets to $NVLINKBINDLESSOFF_<name>,
+    | emit new bindless relocations to elfw+376
+    |
+    v
+sub_469D60 (relocate phase, --preserve-relocs OR capmerc-target section)
+    |
+    | for bindless relocations whose target section is in the capmerc capsule:
+    |   sub_46ADC0 emits a .nv.resolvedrela record that preserves the original
+    |   r_type, r_offset, and addend, EXTRACTING the pre-patched field via the
+    |   12-byte descriptor header at off_1D3DBE0[type].field_0/+4/+8
+    | for bindless relocations whose target section is NOT in capmerc:
+    |   sub_468760 applies eagerly (same as Path A)
+    |
+    v
+Writer phase emits capmerc capsule containing .nv.resolvedrela
+    |
+    v
+sub_4748F0 (FNLZR, post-link, sub_4275C0 dispatcher)
+    |
+    | OCG backend re-emits SASS into the capmerc envelope
+    | walks the surviving .nv.resolvedrela / .rel.* sections
+    | for each record: indexes off_1D3DBE0[r_type & ~0x10000]
+    |   (still the CUDA table, not the Mercury table -- see QUIRK below)
+    | calls the same sub_468760 action dispatcher to patch the freshly-emitted SASS
+    |
+    v
+Final Blackwell ELF emitted
+```
+
+The handoff happens through the same descriptor table. `sub_4748F0` does not have its own bindless logic; it reuses `sub_468760` for the actual bit-field patching, identical to nvlink's relocate phase. The only Mercury-specific code path is the *transport* (how the relocation record gets from `sub_438DD0` to `sub_4748F0`): nvlink hands it off via `.nv.resolvedrela`, FNLZR picks it up there.
+
+### Which Sections Use Path B
+
+The deferral path is selected per-section, not per-architecture. A Blackwell ELF can contain a mixture: some sections (`.text` with classic SASS) take Path A, others (`.text` with tcgen05 ops, `.nv.constant0.tcgen05_matmul`) take Path B. The selector is the section's classification at writer time -- whether the section is destined for the capmerc capsule or for raw SASS emission.
+
+The bindless pass does not need to know which path will be taken. It always emits the same relocation records pointing at `$NVLINKBINDLESSOFF_<name>` symbols. The relocate phase later branches based on the target section's classification:
+
+| Section classification | Path | Resolver | Notes |
+|---|---|---|---|
+| `.text` (classic SASS) | A | `sub_469D60` (eager) | Standard nvlink relocate; FNLZR not invoked |
+| `.text` (tcgen05-bearing, capmerc) | B | `sub_4748F0` (deferred) | Relocate phase only extracts old value; final patch deferred |
+| `.nv.constant*` (parameter banks) | A | `sub_469D60` (eager) | Constant banks are not re-emitted; final values fixed at link |
+| `.nv.constant*.tcgen05_matmul` | B | `sub_4748F0` (deferred) | Mercury matmul descriptors live inside capsule |
+| `.nv.bindless_index` (synthetic) | A | `sub_469D60` (eager) | Index table values are absolute, OCG does not touch them |
+| `.nv.tex.header` / `.nv.samp.header` / `.nv.surf.header` | A | `sub_469D60` (eager) | Header tables are not in capmerc |
+
+This split means that the bindless constant bank itself (`.nv.bindless_index`) is always populated eagerly, even on Blackwell. What gets deferred is the patching of *SASS instructions* that reference offsets within that bank.
+
+### How `.nv.resolvedrela` Carries the Bindless Relocation
+
+When `sub_469D60` decides to defer a relocation (Path B), it calls `sub_46ADC0` (the resolved-rela emitter, see [§ Resolved-Rela Emitter](relocation-engine.md#resolved-rela-emitter-sub_46adc0) on the relocation engine page). For a bindless relocation, the emitter writes a record into `.nv.resolvedrela` with three pieces of information:
+
+1. **The original `r_type`** -- preserved verbatim, e.g. `R_CUDA_TEX_BINDLESSOFF13_47` (index 23). FNLZR uses this to re-index `off_1D3DBE0`.
+2. **The new `r_sym`** -- the `$NVLINKBINDLESSOFF_<name>` synthetic symbol's index, *not* the original `$BINDLESS$...` symbol. The bindless pass already rewrote this; the resolved-rela emitter preserves the rewrite.
+3. **The original instruction-field contents** -- extracted via the 12-byte descriptor header at `off_1D3DBE0[23].field_0/+4/+8`. These three uint32 values specify (`present_flag`, `bit_offset`, `bit_width`) triples that tell the emitter which bits of the current instruction encoding to capture. For bindless types (where slot1 and slot2 are typically zero), only the first triple is populated; the captured bits become the resolved-rela record's addend.
+
+When FNLZR re-applies, it reverses the process: it reads the addend back, OR's it into the freshly-emitted instruction at the same `bit_offset`/`bit_width` from the descriptor, and is done. The descriptor at `off_1D3DBE0[23]` is byte-identical between the two consumers; the only thing that changes is which SASS bit-stream is being patched.
+
+### Why Mercury Reuses the CUDA Table, Not Its Own
+
+The Mercury descriptor table at `off_1D3CBE0` exists and is consumed by `sub_469D60` for `R_MERCURY_*` relocations (the parallel namespace at `0x10000 +` offsets). However, the bindless pass `sub_438DD0` emits `R_CUDA_*` relocations even on Mercury targets -- it does **not** translate to `R_MERCURY_*`. This is by design: the bindless constant bank holds the same descriptor layout on every architecture, and the bit positions for `R_CUDA_TEX_BINDLESSOFF13_47` (bit 47 of the SASS word) are identical between Hopper and Blackwell encodings.
+
+FNLZR therefore indexes the CUDA table `off_1D3DBE0`, *not* `off_1D3CBE0`, when re-applying bindless relocations from the deferred path. The condition in `sub_469D60` line 128 (`if (reloc_type <= 0x10000) ...`) only fires for relocations that nvlink itself emits with the Mercury offset; bindless relocations carry their `R_CUDA_*` type unchanged through capmerc into FNLZR.
+
+### Capability Mask Interaction
+
+The FNLZR engine validates the source ELF's capability mask before applying any descriptors. The check at `sub_4748F0` (described in [FNLZR § Capability Bitmask](../mercury/fnlzr.md)) uses `sub_470DA0` to verify that the source SM tier is a subset of the declared target capabilities. For deferred bindless relocations, this means:
+
+- A source ELF declaring sm_100 capability that is finalized for sm_100: bindless deferral works.
+- A source ELF declaring sm_100 capability that is finalized for sm_103: the capability mask must include sm_103. If yes, the OCG backend re-emits and FNLZR re-applies the same bindless descriptors.
+- A source ELF declaring sm_100 only that is finalized for sm_120: capability mask rejects, FNLZR returns an internal error, and the deferred bindless relocations never get applied. The output ELF is incomplete (still contains the unpatched capmerc capsule).
+
+This is why the bindless pass on Blackwell does not need to know the final target SM tier -- only the source-declared capability mask matters for the descriptor's correctness, and that is validated by FNLZR, not by `sub_438DD0`.
+
+> ⚡ **QUIRK -- the bindless pass emits `R_CUDA_*` even on Mercury targets, never `R_MERCURY_*`**
+> The synthetic relocations produced by `sub_438DD0` carry their original `R_CUDA_*` type unchanged, regardless of whether the output ELF is Mercury (`e_ident[7] == 0x41`) or not. There is no `r_type += 0x10000` adjustment in the bindless pass. FNLZR therefore reads these records as ordinary CUDA-table relocations and indexes `off_1D3DBE0` directly -- the Mercury table `off_1D3CBE0` is never touched for bindless. The only place `R_MERCURY_*` types appear for bindless-adjacent data is in the capmerc capsule's own metadata sections, which are FNLZR's internal bookkeeping rather than bindless-pass output.
+
+> ⚡ **QUIRK -- deferring a bindless reloc requires `.nv.resolvedrela`, even without `--preserve-relocs`**
+> The `--preserve-relocs` flag at `ctx+85` is normally the gate that enables `.nv.resolvedrela` emission. On Mercury, however, the writer phase implicitly enables resolved-rela for any section destined for the capmerc capsule, even when `--preserve-relocs` is off. The user has no command-line control over this -- it is an internal handshake between the writer and FNLZR. The visible consequence is that Mercury cubins always contain `.nv.resolvedrela` sections for their capmerc-bearing `.text` sections, while non-Mercury cubins contain them only when `--preserve-relocs` is explicit. The bindless relocations ride this implicit channel without modification.
+
+> ⚡ **QUIRK -- if FNLZR rejects the capability mask, bindless relocations are silently lost**
+> When `sub_4748F0` rejects a capability mismatch and returns early via `sub_467460` ("Internal FNLZR error"), the deferred bindless relocations in `.nv.resolvedrela` are not applied to any SASS, and the partially-finalized ELF still carries the capmerc capsule with stale instruction encoding. The output is not corrupt -- the capsule is still readable -- but it is unusable on the target, because the SASS inside the capsule has placeholder bindless offsets. There is no diagnostic specifically for "bindless deferral failed"; the operator sees only the generic FNLZR internal-error message and must infer from context that bindless was the casualty.
+
 ## Implementation Functions
 
 | Address | Name | Size | Role |

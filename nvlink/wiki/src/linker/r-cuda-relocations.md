@@ -908,6 +908,164 @@ The complete list of 119 R_CUDA relocation types extracted from nvlink v13.0.88,
 
 Note: The catalog contains 119 unique name strings as extracted from the binary. Some types appear in both the standard and attribute tables with the same name but different table indices and different descriptor actions. The total across both tables is 117 + 65 = 182 table slots, but many attribute slots share names with their standard counterparts.
 
+## Tier Matrix
+
+The 117 standard-table entries do not all light up on every architecture. Some types are baseline (present from Kepler), some appear with a specific ISA extension (Volta's `YIELD`, Turing's 21-bit constant fields, Hopper's 128-bit `INSTRUCTION128`, Blackwell's `ABS56`), and some are synthetic types translated away before the application engine ever indexes the descriptor table. The matrix below maps every `r_type` index to a pair:
+
+- **`introduced_at`** -- the lowest SM tier at which the type was observed in the binary or its ISA usage is plausible. Tiers are SM ranges (`sm_30+` = Kepler-and-later baseline, `sm_50+` = Maxwell+, `sm_70+` = Volta+, `sm_75+` = Turing+, `sm_80+` = Ampere+, `sm_90+` = Hopper+, `sm_100+` = Blackwell/Mercury+).
+- **`resolved_by`** -- the component that performs the patch:
+  - **`nvlink`** -- standard relocation engine `sub_469D60` reads the descriptor and patches via `sub_468760`.
+  - **`nvlink+bindless`** -- the bindless pass `sub_438DD0` rewrites the symbol target to `$NVLINKBINDLESSOFF_<name>` before `nvlink` applies the patch (see [Bindless Relocations](bindless-relocations.md)).
+  - **`ptxas-runtime`** -- a synthetic type emitted by ptxas (`UNIFIED_*` family targeting `__UFT_*` / `__UDT_*` synthetic symbols); the unified-table manager translates these to `R_CUDA_NONE` (type 0) before relocation application, so the descriptor at this index is reached only by the resolved-rela emitter.
+  - **`FNLZR`** -- on Mercury targets, the post-link finalizer `sub_4748F0` re-applies the same descriptor table (`off_1D3DBE0`, indexed by the CUDA type *without* the `0x10000` offset) when `--preserve-relocs` produced a `.nv.resolvedrela` section that survives capmerc emission. See [§ sm_100+ FNLZR-Deferred Path](bindless-relocations.md#sm_100-fnlzr-deferred-path).
+
+Tier inferences are derived from three sources: (a) the architecture-class field in the standard table (`sub_42F6C0`/`sub_42F8C0`), which gives a coarse 5-bucket grouping; (b) name suffixes encoding bit positions that match known ISA encodings (`*_20` = Maxwell+, `*_34` = Turing+ wide immediate, `*_38` = Ampere+); (c) the per-architecture vtable (`sub_459640`) which populates handler slots conditionally. Confidence is marked **HIGH** where the architecture-class field directly classifies the entry, **MED** where the suffix gives a strong hint but no decompiled gate confirms it, and **LOW** where the inference rests solely on naming convention.
+
+| Idx | Name | introduced_at | resolved_by | Confidence |
+|----:|------|--------------:|-------------|:----------:|
+| 0 | `R_CUDA_NONE` | sm_30+ | nvlink (no-op) | HIGH |
+| 1 | `R_CUDA_32` | sm_30+ | nvlink | HIGH |
+| 2 | `R_CUDA_64` | sm_30+ | nvlink | HIGH |
+| 3 | `R_CUDA_G32` | sm_30+ | nvlink | HIGH |
+| 4 | `R_CUDA_G64` | sm_30+ | nvlink | HIGH |
+| 5 | `R_CUDA_ABS32_26` | sm_50+ | nvlink | HIGH |
+| 6 | `R_CUDA_TEX_HEADER_INDEX` | sm_30+ | nvlink+bindless | HIGH |
+| 7 | `R_CUDA_SAMP_HEADER_INDEX` | sm_30+ | nvlink+bindless | HIGH |
+| 8 | `R_CUDA_SURF_HW_DESC` | sm_30+ | nvlink+bindless | HIGH |
+| 9 | `R_CUDA_SURF_HW_SW_DESC` | sm_30+ | nvlink+bindless | HIGH |
+| 10 | `R_CUDA_ABS32_LO_26` | sm_50+ | nvlink | HIGH |
+| 11 | `R_CUDA_ABS32_HI_26` | sm_50+ | nvlink | HIGH |
+| 12 | `R_CUDA_ABS32_23` | sm_50+ | nvlink | HIGH |
+| 13 | `R_CUDA_ABS32_LO_23` | sm_50+ | nvlink | HIGH |
+| 14 | `R_CUDA_ABS32_HI_23` | sm_50+ | nvlink | HIGH |
+| 15 | `R_CUDA_ABS24_26` | sm_50+ | nvlink | HIGH |
+| 16 | `R_CUDA_ABS24_23` | sm_50+ | nvlink | HIGH |
+| 17 | `R_CUDA_ABS16_26` | sm_50+ | nvlink | HIGH |
+| 18 | `R_CUDA_ABS16_23` | sm_50+ | nvlink | HIGH |
+| 19 | `R_CUDA_TEX_SLOT` | sm_30+ | nvlink+bindless | HIGH |
+| 20 | `R_CUDA_SAMP_SLOT` | sm_30+ | nvlink+bindless | HIGH |
+| 21 | `R_CUDA_SURF_SLOT` | sm_30+ | nvlink+bindless | HIGH |
+| 22 | `R_CUDA_TEX_BINDLESSOFF13_32` | sm_50+ | nvlink+bindless | HIGH |
+| 23 | `R_CUDA_TEX_BINDLESSOFF13_47` | sm_75+ | nvlink+bindless | MED |
+| 24 | `R_CUDA_CONST_FIELD19_28` | sm_50+ | nvlink | HIGH |
+| 25 | `R_CUDA_CONST_FIELD19_23` | sm_50+ | nvlink | HIGH |
+| 26 | `R_CUDA_TEX_SLOT9_49` | sm_75+ | nvlink+bindless | MED |
+| 27 | `R_CUDA_6_31` | sm_75+ | nvlink | LOW |
+| 28 | `R_CUDA_2_47` | sm_100+ | nvlink / FNLZR | LOW |
+| 29 | `R_CUDA_TEX_BINDLESSOFF13_41` | sm_50+ | nvlink+bindless | MED |
+| 30 | `R_CUDA_TEX_BINDLESSOFF13_45` | sm_75+ | nvlink+bindless | MED |
+| 31 | `R_CUDA_FUNC_DESC32_23` | sm_35+ | nvlink | HIGH |
+| 32 | `R_CUDA_FUNC_DESC32_LO_23` | sm_35+ | nvlink | HIGH |
+| 33 | `R_CUDA_FUNC_DESC32_HI_23` | sm_35+ | nvlink | HIGH |
+| 34 | `R_CUDA_FUNC_DESC_32` | sm_35+ | nvlink | HIGH |
+| 35 | `R_CUDA_FUNC_DESC_64` | sm_35+ | nvlink | HIGH |
+| 36 | `R_CUDA_CONST_FIELD21_26` | sm_75+ | nvlink | HIGH |
+| 37 | `R_CUDA_QUERY_DESC21_37` | sm_75+ | nvlink | MED |
+| 38 | `R_CUDA_CONST_FIELD19_26` | sm_50+ | nvlink | HIGH |
+| 39 | `R_CUDA_CONST_FIELD21_23` | sm_75+ | nvlink | HIGH |
+| 40 | `R_CUDA_PCREL_IMM24_26` | sm_50+ | nvlink | HIGH |
+| 41 | `R_CUDA_PCREL_IMM24_23` | sm_50+ | nvlink | HIGH |
+| 42 | `R_CUDA_ABS32_20` | sm_70+ | nvlink | HIGH |
+| 43 | `R_CUDA_ABS32_LO_20` | sm_70+ | nvlink | HIGH |
+| 44 | `R_CUDA_ABS32_HI_20` | sm_70+ | nvlink | HIGH |
+| 45 | `R_CUDA_ABS24_20` | sm_70+ | nvlink | HIGH |
+| 46 | `R_CUDA_ABS16_20` | sm_70+ | nvlink | HIGH |
+| 47 | `R_CUDA_FUNC_DESC32_20` | sm_70+ | nvlink | HIGH |
+| 48 | `R_CUDA_FUNC_DESC32_LO_20` | sm_70+ | nvlink | HIGH |
+| 49 | `R_CUDA_FUNC_DESC32_HI_20` | sm_70+ | nvlink | HIGH |
+| 50 | `R_CUDA_CONST_FIELD19_20` | sm_70+ | nvlink | HIGH |
+| 51 | `R_CUDA_BINDLESSOFF13_36` | sm_75+ | nvlink+bindless | MED |
+| 52 | `R_CUDA_SURF_HEADER_INDEX` | sm_30+ | nvlink+bindless | HIGH |
+| 53 | `R_CUDA_INSTRUCTION64` | sm_75+ | nvlink | HIGH |
+| 54 | `R_CUDA_CONST_FIELD21_20` | sm_75+ | nvlink | HIGH |
+| 55 | `R_CUDA_ABS32_32` | sm_75+ | nvlink | HIGH |
+| 56 | `R_CUDA_ABS32_LO_32` | sm_75+ | nvlink | HIGH |
+| 57 | `R_CUDA_ABS32_HI_32` | sm_75+ | nvlink | HIGH |
+| 58 | `R_CUDA_ABS47_34` | sm_75+ | nvlink | HIGH |
+| 59 | `R_CUDA_ABS16_32` | sm_75+ | nvlink | HIGH |
+| 60 | `R_CUDA_ABS24_32` | sm_75+ | nvlink | HIGH |
+| 61 | `R_CUDA_FUNC_DESC32_32` | sm_75+ | nvlink | HIGH |
+| 62 | `R_CUDA_FUNC_DESC32_LO_32` | sm_75+ | nvlink | HIGH |
+| 63 | `R_CUDA_FUNC_DESC32_HI_32` | sm_75+ | nvlink | HIGH |
+| 64 | `R_CUDA_CONST_FIELD19_40` | sm_80+ | nvlink | MED |
+| 65 | `R_CUDA_BINDLESSOFF14_40` | sm_80+ | nvlink+bindless | MED |
+| 66 | `R_CUDA_CONST_FIELD21_38` | sm_80+ | nvlink | MED |
+| 67 | `R_CUDA_INSTRUCTION128` | sm_90+ | nvlink / FNLZR | HIGH |
+| 68 | `R_CUDA_YIELD_OPCODE9_0` | sm_70+ | nvlink | HIGH |
+| 69 | `R_CUDA_YIELD_CLEAR_PRED4_87` | sm_70+ | nvlink | HIGH |
+| 70 | `R_CUDA_32_LO` | sm_30+ | nvlink | HIGH |
+| 71 | `R_CUDA_32_HI` | sm_30+ | nvlink | HIGH |
+| 72 | `R_CUDA_UNUSED_CLEAR32` | sm_75+ | nvlink (zero-fill) | MED |
+| 73 | `R_CUDA_UNUSED_CLEAR64` | sm_75+ | nvlink (zero-fill) | MED |
+| 74 | `R_CUDA_ABS24_40` | sm_80+ | nvlink | MED |
+| 75 | `R_CUDA_ABS55_16_34` | sm_90+ | nvlink | HIGH |
+| 76 | `R_CUDA_8_0` | sm_30+ | nvlink | HIGH |
+| 77 | `R_CUDA_8_8` | sm_30+ | nvlink | HIGH |
+| 78 | `R_CUDA_8_16` | sm_30+ | nvlink | HIGH |
+| 79 | `R_CUDA_8_24` | sm_30+ | nvlink | HIGH |
+| 80 | `R_CUDA_8_32` | sm_30+ | nvlink | HIGH |
+| 81 | `R_CUDA_8_40` | sm_30+ | nvlink | HIGH |
+| 82 | `R_CUDA_8_48` | sm_30+ | nvlink | HIGH |
+| 83 | `R_CUDA_8_56` | sm_30+ | nvlink | HIGH |
+| 84 | `R_CUDA_G8_0` | sm_30+ | nvlink | HIGH |
+| 85 | `R_CUDA_G8_8` | sm_30+ | nvlink | HIGH |
+| 86 | `R_CUDA_G8_16` | sm_30+ | nvlink | HIGH |
+| 87 | `R_CUDA_G8_24` | sm_30+ | nvlink | HIGH |
+| 88 | `R_CUDA_G8_32` | sm_30+ | nvlink | HIGH |
+| 89 | `R_CUDA_G8_40` | sm_30+ | nvlink | HIGH |
+| 90 | `R_CUDA_G8_48` | sm_30+ | nvlink | HIGH |
+| 91 | `R_CUDA_G8_56` | sm_30+ | nvlink | HIGH |
+| 92 | `R_CUDA_FUNC_DESC_8_0` | sm_35+ | nvlink | HIGH |
+| 93 | `R_CUDA_FUNC_DESC_8_8` | sm_35+ | nvlink | HIGH |
+| 94 | `R_CUDA_FUNC_DESC_8_16` | sm_35+ | nvlink | HIGH |
+| 95 | `R_CUDA_FUNC_DESC_8_24` | sm_35+ | nvlink | HIGH |
+| 96 | `R_CUDA_FUNC_DESC_8_32` | sm_35+ | nvlink | HIGH |
+| 97 | `R_CUDA_FUNC_DESC_8_40` | sm_35+ | nvlink | HIGH |
+| 98 | `R_CUDA_FUNC_DESC_8_48` | sm_35+ | nvlink | HIGH |
+| 99 | `R_CUDA_FUNC_DESC_8_56` | sm_35+ | nvlink | HIGH |
+| 100 | `R_CUDA_ABS20_44` | sm_80+ | nvlink | MED |
+| 101 | `R_CUDA_SAMP_HEADER_INDEX_0` | sm_75+ | nvlink+bindless | MED |
+| 102 | `R_CUDA_UNIFIED` | sm_75+ | ptxas-runtime | HIGH |
+| 103 | `R_CUDA_UNIFIED_32` | sm_75+ | ptxas-runtime | HIGH |
+| 104 | `R_CUDA_UNIFIED_8_0` | sm_75+ | ptxas-runtime | HIGH |
+| 105 | `R_CUDA_UNIFIED_8_8` | sm_75+ | ptxas-runtime | HIGH |
+| 106 | `R_CUDA_UNIFIED_8_16` | sm_75+ | ptxas-runtime | HIGH |
+| 107 | `R_CUDA_UNIFIED_8_24` | sm_75+ | ptxas-runtime | HIGH |
+| 108 | `R_CUDA_UNIFIED_8_32` | sm_75+ | ptxas-runtime | HIGH |
+| 109 | `R_CUDA_UNIFIED_8_40` | sm_75+ | ptxas-runtime | HIGH |
+| 110 | `R_CUDA_UNIFIED_8_48` | sm_75+ | ptxas-runtime | HIGH |
+| 111 | `R_CUDA_UNIFIED_8_56` | sm_75+ | ptxas-runtime | HIGH |
+| 112 | `R_CUDA_UNIFIED32_LO_32` | sm_75+ | ptxas-runtime | HIGH |
+| 113 | `R_CUDA_UNIFIED32_HI_32` | sm_75+ | ptxas-runtime | HIGH |
+| 114 | `R_CUDA_ABS56_16_34` | sm_100+ | nvlink / FNLZR | HIGH |
+| 115 | `R_CUDA_CONST_FIELD22_37` | sm_100+ | nvlink / FNLZR | MED |
+| 116 | `R_CUDA_NONE_LAST` | -- (sentinel) | nvlink (rejected) | HIGH |
+
+### Tier-Grouping Summary
+
+| Tier | Count | Defining feature | Example types |
+|------|------:|------------------|---------------|
+| sm_30+ (baseline) | 26 | Data, byte, global, texture/sampler/surface header & slot | `R_CUDA_32`, `R_CUDA_G64`, `R_CUDA_8_*`, `R_CUDA_TEX_HEADER_INDEX` |
+| sm_35+ | 13 | Function-descriptor relocations (CUDA Dynamic Parallelism) | `R_CUDA_FUNC_DESC_*`, `R_CUDA_FUNC_DESC_8_*` |
+| sm_50+ | 18 | 64-bit SASS bit-positions 23/26, 19-bit `CONST_FIELD`, PCREL, base bindless | `R_CUDA_ABS32_26`, `R_CUDA_CONST_FIELD19_23`, `R_CUDA_PCREL_IMM24_23` |
+| sm_70+ (Volta) | 11 | Bit-position 20 family, `YIELD` opcode rewrite | `R_CUDA_ABS32_20`, `R_CUDA_YIELD_OPCODE9_0` |
+| sm_75+ (Turing) | 33 | 21-bit `CONST_FIELD`, bit-position 32, `ABS47`, `UNIFIED_*`, `INSTRUCTION64` | `R_CUDA_ABS47_34`, `R_CUDA_UNIFIED_32`, `R_CUDA_CONST_FIELD21_*` |
+| sm_80+ (Ampere) | 5 | Bit-position 38/40/44, 14-bit bindless | `R_CUDA_CONST_FIELD21_38`, `R_CUDA_BINDLESSOFF14_40`, `R_CUDA_ABS20_44` |
+| sm_90+ (Hopper) | 2 | 55-bit immediate, 128-bit instruction word | `R_CUDA_ABS55_16_34`, `R_CUDA_INSTRUCTION128` |
+| sm_100+ (Blackwell/Mercury) | 3 | 56-bit immediate, 22-bit `CONST_FIELD`, 2-bit narrow field | `R_CUDA_ABS56_16_34`, `R_CUDA_CONST_FIELD22_37`, `R_CUDA_2_47` |
+| sentinel | 6 | `R_CUDA_NONE`, `R_CUDA_NONE_LAST`, four legacy entries with no live use observed | `R_CUDA_NONE`, `R_CUDA_NONE_LAST` |
+
+The `sm_30+` and `sm_35+` baseline rows are anchored by the `arch_class == 1` bucket in `sub_42F8C0` (Kepler-through-Volta). The `sm_75+` group is corroborated by the `arch_class == 3` bucket (Turing-specific) plus the `arch_class == 5` boundary at `sm >= 76`, which separates Turing from Ampere. The four Blackwell-tier entries (`ABS56_16_34`, `CONST_FIELD22_37`, `2_47`, and the implied 22-bit/2-bit narrow-field family) appear at descriptor-table indices 114-115 -- the highest non-sentinel slots -- consistent with their being the last additions before the table was frozen at 117 entries.
+
+> ⚡ **QUIRK -- `sm_30+` baseline contains 26 entries, but only 17 are reachable via class-1 vtable slots**
+> The `sm_30+` rows in the matrix are inferred from name shape (data widths and texture/sampler/surface bindings predate the bit-position-encoded instruction relocs). However, the per-architecture vtable (`sub_459640`) leaves several slots NULL for Kepler-only targets, including the bindless-related entries (indices 22, 29, 30, 51). On a true Kepler target, attempting to apply `R_CUDA_TEX_BINDLESSOFF13_32` triggers the `"Relocation %s not supported on %s"` warning even though the descriptor itself decodes cleanly. The `introduced_at` column reflects *when the descriptor became legal*, not *when the type was first emitted by ptxas*. The downstream gate is the vtable, not the table.
+
+> ⚡ **QUIRK -- `UNIFIED_*` types are dead by the time the application engine sees them**
+> The 12 `R_CUDA_UNIFIED*` rows (indices 102-113) are marked `resolved_by = ptxas-runtime` because the unified-table manager rewrites every `UNIFIED_*` relocation targeting a synthetic symbol (`__UFT_OFFSET`, `__UDT_OFFSET`, `__UFT_CANONICAL`, `__UDT_CANONICAL`, `__UDT`, `__UFT`, `__UFT_END`, `__UDT_END`) to type 0 (`R_CUDA_NONE`) before the relocation phase runs. The descriptors at indices 102-113 are still byte-decoded for the resolved-rela emitter (`sub_46ADC0`), but `sub_469D60` never indexes them through the live patch path. They are effectively "synthetic" types: real entries in the type space, real descriptors in the table, but no instruction stream is ever patched through them at link time.
+
+> ⚡ **QUIRK -- Blackwell-tier entries share descriptor encoding with Hopper-tier entries**
+> The three sm_100+ entries (`ABS56_16_34`, `CONST_FIELD22_37`, `2_47`) are not encoded with new action codes -- they reuse actions `0x09` (`SHIFTED_2`) and `0x21` (`MASKED_SHIFT 11`) that already exist for Hopper-era 55-bit and 21-bit types. The only difference is the descriptor's `bit_width` field: 56 instead of 55, 22 instead of 21, 2 instead of 6. This means the application engine has no Mercury-specific code path -- it patches Mercury fields with the same dispatch as Hopper, and the FNLZR path inherits the same dispatch when re-applying preserved relocations after capmerc emission. See [§ sm_100+ FNLZR-Deferred Path](bindless-relocations.md#sm_100-fnlzr-deferred-path) for the consumer side.
+
 ## Cross-References
 
 - [Relocation Phase](../pipeline/relocate.md) -- the pipeline stage that consumes these types

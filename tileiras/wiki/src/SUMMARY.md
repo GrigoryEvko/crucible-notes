@@ -182,6 +182,7 @@
 - [Tensor Core Emission](topics/wgmma-emission-protocol.md)
   - [Blackwell 2-CTA/4-CTA MMA](topics/blackwell-2cta-and-4cta-mma.md)
   - [tcgen05 Tensor Memory Model](topics/tcgen05-tensor-memory-model.md)
+  - [tcgen05.mma Walkthrough](topics/tcgen05-mma-walkthrough.md)
   - [Matmul Progression by SM](topics/matmul-progression-by-sm.md)
   - [TMA Load Walkthrough](topics/tma-load-walkthrough.md)
 - [DSL to PTX End-to-End](topics/dsl-to-ptx-end-to-end.md)
