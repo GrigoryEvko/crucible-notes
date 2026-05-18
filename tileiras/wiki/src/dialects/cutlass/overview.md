@@ -6,7 +6,7 @@
 
 ## Abstract
 
-The `cutlass` dialect packs seventy ops across eight operation families. Four cover the large-scale orchestration concerns (pipeline, tile_scheduler, seq_bar, block_striped); the MODS sidecar lives under the `cutlass.tile_scheduler.mods_*` prefix but registers and verifies as its own family; three smaller families (named_barrier, generic_barrier, and a single async-exec op) round out the dialect. It models the structure CUTLASS C++ templates normally generate: asynchronous producer/consumer pipelines, persistent tile schedulers, ordered sequence barriers, named/generic barriers, and block-striped shared-memory movement. The dialect constructor at `sub_1761D90` registers all seventy ops in a single thunk-chain (thirty-nine ops inline plus thirty-one delegated to per-op helper thunks `sub_175E920..sub_1761C20`), then installs two op-level verifiers and the post-verify arrive-count builder.
+The `cutlass` dialect packs seventy ops across eight operation families — pinned: 31 out-of-line thunks plus 39 inline registrations in the trampoline `sub_1761D90`, cross-validated against exactly 70 multi-segment `"cutlass.X.Y[.Z]"` strings in the binary's string pool with zero overlap between the two sets. Four cover the large-scale orchestration concerns (pipeline, tile_scheduler, seq_bar, block_striped); the MODS sidecar lives under the `cutlass.tile_scheduler.mods_*` prefix but registers and verifies as its own family; three smaller families (named_barrier, generic_barrier, and a single async-exec op) round out the dialect. It models the structure CUTLASS C++ templates normally generate: asynchronous producer/consumer pipelines, persistent tile schedulers, ordered sequence barriers, named/generic barriers, and block-striped shared-memory movement. The dialect constructor at `sub_1761D90` registers all seventy ops in a single thunk-chain (thirty-nine ops inline plus thirty-one delegated to per-op helper thunks `sub_175E920..sub_1761C20`), then installs two op-level verifiers and the post-verify arrive-count builder. All seventy registrations go through the same `RegisteredOperationName::insert` entry point (`sub_4461CA0`); none of the slots register an attribute or a type — the dialect's attribute and type tables are wired separately and contribute no ops to this count.
 
 `cutlass` sits above `cute_nvgpu` and `nv_tileas`. `cute_nvgpu` provides hardware atoms — MMA, TMA. `nv_tileas` provides operational async scheduling. `cutlass` connects the two at a larger granularity: it names which agents participate in the pipeline, how tiles are assigned to CTAs, how producers and consumers synchronise, and how persistent kernels advance through their work.
 
@@ -155,6 +155,96 @@ The `cutlass` dialect is the IR shape of the orchestration classes living in `cu
 | `MODS` telemetry hooks (`cutlass::mods::*`) | `cutlass.tile_scheduler.mods_*` ops (side-effecting) |
 
 Two structural points. First, most of CUTLASS's class-template instantiations turn into op attributes on a small set of ops, so a kernel using three pipelines and two schedulers is described by a few dozen ops rather than by template specialisations in a thousand-line header. Second, the participant model — producers, consumers, warp-specialized executors — lives in explicit lists on the init op, cross-checked by `PipelineInitOp::verify` at `sub_1771F40` before the lowering pass ever runs.
+
+## Per-Thunk Op-Name Map
+
+The trampoline `sub_1761D90` (file offset around L5680050 in `tileiras_full.c`) calls each of the 31 out-of-line thunks once, in registration order. Each thunk wraps exactly one `sub_4461CA0(..., "cutlass.<NAME>", <len>, ..., &<TypeID-singleton>, ...)` call. The 39 inline registrations sit directly between thunk calls in the same function body, each also a single `sub_4461CA0(...)` invocation against a distinct TypeID singleton. The table below is the verbatim mapping from thunk address to registered op name; the inline table that follows lists the 39 names in trampoline-walk order.
+
+### Thirty-One Out-of-Line Thunks
+
+| Thunk address | Registered op |
+|---|---|
+| `sub_175E920` | `cutlass.async.exec` |
+| `sub_175EAB0` | `cutlass.block_striped.load_add` |
+| `sub_175ECE0` | `cutlass.block_striped.load` |
+| `sub_175EF10` | `cutlass.block_striped.reduce` |
+| `sub_175F140` | `cutlass.block_striped.store` |
+| `sub_175F370` | `cutlass.named_barrier.arrive_and_wait` |
+| `sub_175F500` | `cutlass.pipeline.consume` |
+| `sub_175F690` | `cutlass.pipeline.produce` |
+| `sub_175F820` | `cutlass.pipeline.consumer_try_wait` |
+| `sub_175F9E0` | `cutlass.pipeline.producer_try_acquire` |
+| `sub_175FBA0` | `cutlass.tile_scheduler.work_tile_info_set_value` |
+| `sub_175FD60` | `cutlass.pipeline.create` |
+| `sub_175FF20` | `cutlass.pipeline.get_producer_barrier` |
+| `sub_1760090` | `cutlass.pipeline.get_producer_mask` |
+| `sub_1760290` | `cutlass.pipeline.make_participants` |
+| `sub_1760450` | `cutlass.pipeline.state.create` |
+| `sub_1760610` | `cutlass.pipeline.state.get_count` |
+| `sub_1760780` | `cutlass.pipeline.state.get_index` |
+| `sub_17608F0` | `cutlass.pipeline.state.get_phase` |
+| `sub_1760A60` | `cutlass.pipeline.state.increment` |
+| `sub_1760BD0` | `cutlass.tile_scheduler.create_dp_params` |
+| `sub_1760D90` | `cutlass.tile_scheduler.create_static_persistent_params` |
+| `sub_1760F50` | `cutlass.tile_scheduler.fetch_next_work` |
+| `sub_1761110` | `cutlass.tile_scheduler.get_grid_shape` |
+| `sub_1761310` | `cutlass.tile_scheduler.get_work_k_tile_count` |
+| `sub_1761480` | `cutlass.tile_scheduler.get_work_k_tile_start` |
+| `sub_17615F0` | `cutlass.tile_scheduler.get_workspace_sizes` |
+| `sub_17617D0` | `cutlass.tile_scheduler.initial_work_tile_info` |
+| `sub_1761940` | `cutlass.tile_scheduler.static_fetch_next_work` |
+| `sub_1761AB0` | `cutlass.tile_scheduler.work_tile_info_to_coord_mnkl` |
+| `sub_1761C20` | `cutlass.tile_scheduler.work_tile_info_to_cta_coord` |
+
+Each thunk is a 60..90 byte function whose body is dominated by `malloc(0x70)` for the per-op record (constant 0x70 = 112 bytes — the registered-op stride), a small constructor sequence (`sub_44A8C20`, then a TypeID setup), the `sub_4461CA0` call with the op-name string and its length passed as `char**`, and `sub_63F370` cleanup. Pulling the registrations out of line keeps the trampoline below the per-function code-cache budget and lets the compiler emit them as cold; the 39 inline cases are the ones whose construction sequence inlined small enough to stay in the parent.
+
+### Thirty-Nine Inline Registrations
+
+The 39 inline registrations, listed in walk order from `sub_1761D90`:
+
+`cutlass.generic_barrier.arrive_increment`,
+`cutlass.generic_barrier.wait_eq`,
+`cutlass.generic_barrier.wait_less_than`,
+`cutlass.named_barrier.arrive`,
+`cutlass.pipeline.consumer_release`,
+`cutlass.pipeline.consumer_wait`,
+`cutlass.pipeline.init`,
+`cutlass.pipeline.producer_acquire`,
+`cutlass.pipeline.producer_commit`,
+`cutlass.pipeline.producer_tail`,
+`cutlass.pipeline.switch_by_executor`,
+`cutlass.seq_bar.arrive`,
+`cutlass.seq_bar.create`,
+`cutlass.seq_bar.init`,
+`cutlass.seq_bar.state.create`,
+`cutlass.seq_bar.wait`,
+`cutlass.tile_scheduler.advance_to_next_work`,
+`cutlass.tile_scheduler.compute_epilogue`,
+`cutlass.tile_scheduler.create_dp_work_tile_info`,
+`cutlass.tile_scheduler.create_SM100_scheduler`,
+`cutlass.tile_scheduler.create_static_persistent_work_tile_info`,
+`cutlass.tile_scheduler.create_streamk_params`,
+`cutlass.tile_scheduler.create_streamk_work_tile_info`,
+`cutlass.tile_scheduler.fixup`,
+`cutlass.tile_scheduler.fixup_increment`,
+`cutlass.tile_scheduler.fixup_wait`,
+`cutlass.tile_scheduler.get_current_work`,
+`cutlass.tile_scheduler.get_workid_response_ptr`,
+`cutlass.tile_scheduler.initialize_workspace`,
+`cutlass.tile_scheduler.make_dp_params`,
+`cutlass.tile_scheduler.make_static_persistent_params`,
+`cutlass.tile_scheduler.make_streamk_params`,
+`cutlass.tile_scheduler.mods_report_mainloop_end`,
+`cutlass.tile_scheduler.mods_report_mainloop_start`,
+`cutlass.tile_scheduler.mods_report_smid`,
+`cutlass.tile_scheduler.mods_throttle`,
+`cutlass.tile_scheduler.params_get_value`,
+`cutlass.tile_scheduler.query_next_work`,
+`cutlass.tile_scheduler.work_tile_info_get_value`.
+
+Every entry is a real op registration. `cutlass.tile_scheduler.create_SM100_scheduler` is the sm_100 dispatch constructor — same call shape as the other 38 inline cases (`sub_4461CA0` against a dedicated TypeID singleton, `unk_5B47568`); the earlier audit doubt about whether it was a thunk-local helper is settled, it is the registered op for the Blackwell tile-scheduler factory.
+
+Union: thirty-one thunk-registered ops + thirty-nine inline-registered ops = seventy distinct op names, no duplicates. Subtracting one of either set from the seventy total breaks the match against the seventy-string string-pool partition; that's the structural check that pins the count.
 
 ## Cross-links
 
