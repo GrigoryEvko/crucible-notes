@@ -7,9 +7,9 @@ Mercury targets (sm100 and above) carry debug information in a parallel set of `
 | Property | Value |
 |---|---|
 | Total Mercury debug sections | 15 (11 standard DWARF + 4 NVIDIA-specific) |
-| Mercury debug section classifier | `sub_1CED0E0` (`ELF_EmitDebugSections`) at `0x1CED0E0`, 9,262 bytes |
+| Mercury debug section classifier | `sub_1CED0E0` (`ELF_EmitDebugSections`) at `0x1CED0E0`, 1,755 bytes |
 | SASS debug section classifier | `sub_1CED7C0` (`ELF_EmitSASSDebugSections`) at `0x1CED7C0`, 6,757 bytes |
-| Relocation processor | `sub_1CF1690` (`ELF_EmitRelocationTable`) at `0x1CF1690`, 16,049 bytes |
+| Relocation processor | `sub_1CF1690` (`ELF_EmitRelocationTable`) at `0x1CF1690`, 2,667 bytes |
 | Mercury section flag | `0x10000000` (bit 28 of `sh_flags`, within `SHF_MASKPROC` range) |
 | Merge behavior | Skipped when `is_mercury_compatible` is true |
 | Self-check error | `"Self check for capsule mercury debug section failed"` at `0x2458F70` |
@@ -176,7 +176,7 @@ The two classifiers do **not** check the `0x10000000` flag identically. `sub_1CE
 
 ## DWARF Emitter Debug Detection: `sub_1672F50`
 
-The ptxas embedded backend contains a separate DWARF emitter at `sub_1672F50` (22,076 bytes, 600 decompiled lines) that uses two prefix strings for debug section detection during code generation:
+The ptxas embedded backend contains a separate DWARF emitter at `sub_1672F50` (4,321 bytes) that uses two prefix strings for debug section detection during code generation:
 
 | Prefix | Address | Length | Purpose |
 |---|---|---|---|
@@ -187,7 +187,7 @@ This function performs a prefix match against the section name to determine whet
 
 ## Relocation Processing for Mercury Debug Sections
 
-`ELF_EmitRelocationTable` (`sub_1CF1690`, 16,049 bytes, 545 decompiled lines) processes relocations for 7 of the 15 Mercury debug sections. The function implements a dual-lookup pattern: it first tests the unprefixed section name, and if that does not match and the `0x10000000` flag is set in `sh_flags`, it falls through to test the Mercury-prefixed name.
+`ELF_EmitRelocationTable` (`sub_1CF1690`, 2,667 bytes) processes relocations for 7 of the 15 Mercury debug sections. The function implements a dual-lookup pattern: it first tests the unprefixed section name, and if that does not match and the `0x10000000` flag is set in `sh_flags`, it falls through to test the Mercury-prefixed name.
 
 ### Dual-Lookup Pattern
 
@@ -469,7 +469,7 @@ The self-check produces three distinct error codes:
 
 ## FNLZR Prefix Matching
 
-During finalization, `sub_4748F0` (`nvlink_link_and_finalize_entry`, 48,730 bytes) iterates over section names using the prefix string `".nv.merc."` (9 bytes, at `0x1D40605`) as a discriminator. The matching function `sub_44E3A0` performs a starts-with check. When a section name matches:
+During finalization, `sub_4748F0` (`nvlink_link_and_finalize_entry`, 8,950 bytes) iterates over section names using the prefix string `".nv.merc."` (9 bytes, at `0x1D40605`) as a discriminator. The matching function `sub_44E3A0` performs a starts-with check. When a section name matches:
 
 ```c
 char* section_name = get_section_name(section);
@@ -497,7 +497,7 @@ The FNLZR uses this stripped name in 4 code paths within `sub_4748F0`:
 The complete emission path from the ptxas backend to the final cubin:
 
 ```
-ELF_WriteCompleteObject (sub_1CF3720, 99 KB)
+ELF_WriteCompleteObject (sub_1CF3720, 15.3 KB)
   |
   +-- ELF_BuildSectionTable (sub_1CEE030, 26 KB)
   |     |
@@ -607,6 +607,6 @@ The Mercury debug section names (`.nv.merc.debug_*`) are straightforward namespa
 | No ROT13 encoding of section names | HIGH | Exhaustive search of `nvlink_strings.json` for `rot13`, `caesar`, `obfusc`, `encode`, `mangle` found zero matches related to section names; only `"obfuscated ptx"` and `"Error reading obfuscated PTX file"` found, both relating to PTX source, not section names |
 | 7 of 15 sections carry relocations | HIGH | Individually verified in decompiled `sub_1CF1690`: `.debug_frame` (+72), `.debug_line` (+80), `.nv_debug_line_sass` (+88), `.nv_debug_info_reg_sass` (+96), `.nv_debug_info_reg_type` (+104), `.debug_info` (+112), `.debug_loc` (+120). Each has both unprefixed and `.nv.merc.`-prefixed code paths |
 | Emission call chain | HIGH | All function addresses confirmed in decompiled/; call hierarchy verified through xref analysis; `sub_1CEDD50` xrefs to `.nv_debug_info_reg_sass` and `.nv_debug_info_reg_type` confirmed |
-| `ELF_WriteCompleteObject` at `sub_1CF3720` (99 KB) | HIGH | Decompiled file present; 99,074 bytes consistent with file size |
+| `ELF_WriteCompleteObject` at `sub_1CF3720` (15.3 KB) | HIGH | Decompiled file present; 15,263 bytes consistent with file size |
 | `-g` flag effect on Mercury debug sections | HIGH | `byte_2A5F310` confirmed in `sub_427AE0`; FNLZR config `v28[3]` bits 32..39 confirmed in `sub_4275C0`; `byte_2A5F222` (Mercury mode) condition sm > 99 confirmed |
 | Debug timing / memory diagnostics | HIGH | Strings `"DebugInfo-time"` at `0x1EED040` and `"PeakDebugInfoMemoryUsage"` at `0x1EED160` confirmed in strings JSON |

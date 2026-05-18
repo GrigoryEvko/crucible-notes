@@ -8,11 +8,11 @@ Every loop optimization in cicc ultimately depends on two questions: "what value
 
 | Property | Value |
 |---|---|
-| Range evaluator | `sub_DBB9F0` (0xDBB9F0), 31 KB |
+| Range evaluator | `sub_DBB9F0` (0xDBB9F0), 9.5 KB |
 | BTC dispatcher | `sub_DCF3A0` (0xDCF3A0), mode 0=exact, 1=constant-max, 2=symbolic-max |
 | BTC cache builder | `sub_DB9E00` (0xDB9E00), 2,265 bytes |
-| Exit count engine | `sub_DB9040` (0xDB9040), 18 KB |
-| howFarToZero | `sub_DBA850` (0xDBA850), 8 KB |
+| Exit count engine | `sub_DB9040` (0xDB9040), 3.4 KB |
+| howFarToZero | `sub_DBA850` (0xDBA850), 1.7 KB |
 | howManyLessThans | `sub_DCE310` (0xDCE310), 317 lines |
 | Range cache (unsigned) | `scev_ctx+976`, 40-byte entries, open-addressing |
 | Range cache (signed) | `scev_ctx+1008`, 40-byte entries, open-addressing |
@@ -177,7 +177,7 @@ A secondary per-exit table at `scev_ctx+1168` stores 56-byte entries indexing in
 
 The two primary solvers are:
 
-**howFarToZero** (`sub_DBA850`, 8 KB) -- handles `x != 0` exit conditions. The exit condition is normalized to `V = LHS - RHS`, so the loop exits when `V == 0`. For affine AddRec `{Start, +, Step}`:
+**howFarToZero** (`sub_DBA850`, 1.7 KB) -- handles `x != 0` exit conditions. The exit condition is normalized to `V = LHS - RHS`, so the loop exits when `V == 0`. For affine AddRec `{Start, +, Step}`:
 
 ```
 // The loop exits when: Start + Step * N = 0 (mod 2^BW)

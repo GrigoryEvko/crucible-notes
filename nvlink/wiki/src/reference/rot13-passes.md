@@ -26,7 +26,7 @@ The total ROT13-encoded count is approximately 30,000+ entries, dominated by the
 
 ## ROT13 Decoder Function
 
-**Address**: `sub_1A40AC0` (15,629 bytes, 449 decompiled lines)
+**Address**: `sub_1A40AC0` (1,859 bytes)
 
 The decoder implements a classic ROT13 substitution cipher with SIMD acceleration:
 
@@ -42,10 +42,10 @@ Three per-architecture opcode table constructors populate ROT13-encoded instruct
 
 | Constructor | Address | Architecture | Entries | Size |
 |-------------|---------|-------------|--------:|-----:|
-| `sm70_opcode_table_constructor` | `sub_1769B50` | SM70/SM75 (Volta/Turing) | ~130 | 24,230 bytes |
-| `sm100_opcode_table_constructor` | `sub_1782540` | SM100 (Blackwell) | ~400 | 111,076 bytes |
-| `sm120_opcode_table_constructor` | `sub_1848F70` | SM120 (RTX 50xx) | ~400+ | 89,621 bytes |
-| `sass_opcode_table_initializer` | `sub_1A85E40` | Emission pass table | ~320 | 23,753 bytes |
+| `sm70_opcode_table_constructor` | `sub_1769B50` | SM70/SM75 (Volta/Turing) | ~130 | 7,639 bytes |
+| `sm100_opcode_table_constructor` | `sub_1782540` | SM100 (Blackwell) | ~400 | 24,243 bytes |
+| `sm120_opcode_table_constructor` | `sub_1848F70` | SM120 (RTX 50xx) | ~400+ | 21,368 bytes |
+| `sass_opcode_table_initializer` | `sub_1A85E40` | Emission pass table | ~320 | 7,548 bytes |
 
 ### Core Arithmetic
 

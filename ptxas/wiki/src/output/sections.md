@@ -7,16 +7,16 @@ A CUDA cubin is a standard ELF container with NVIDIA-proprietary extensions. ptx
 | | |
 |---|---|
 | **Section attribute builder** | `sub_60FBF0` (76 KB decompiled -- per-kernel section config + codegen launch) |
-| **Section creator** | `sub_1CB3570` (1,963 bytes, 44 call sites) |
+| **Section creator** | `sub_1CB3570` (1,963 B native, 44 call sites) |
 | **Text section creator** | `sub_1CB42D0` (SHF_ALLOC \| SHF_EXECINSTR) |
 | **nvinfo section creator** | `sub_1CC7FB0` (creates `.nv.info` / `.nv.info.<func>`) |
 | **EIATTR record emitter** | `sub_1CC85F0` (emits one TLV record) |
-| **EIATTR builder** | `sub_1CC9800` (14,764 bytes, 90 KB decompiled, 2,786 lines) |
-| **EIATTR propagator** | `sub_1CC8950` (2,634 bytes -- barrier/register propagation) |
+| **EIATTR builder** | `sub_1CC9800` (14,764 B native / 86 KB decomp, 2,620 lines) |
+| **EIATTR propagator** | `sub_1CC8950` (2,634 B native -- barrier/register propagation) |
 | **.nv.compat handler** | `sub_1CC93A0` (`.nv.compat` attribute processor) |
 | **Call graph builder** | `sub_1CBE1B0` (`.nv.callgraph` section) |
-| **Layout calculator** | `sub_1C9DC60` (5,663 bytes -- offset assignment) |
-| **Master section allocator** | `sub_1CABD60` (11,856 bytes -- shared/constant/local addresses) |
+| **Layout calculator** | `sub_1C9DC60` (5,663 B native -- offset assignment) |
+| **Master section allocator** | `sub_1CABD60` (11,856 B native / 66 KB decomp -- shared/constant/local addresses) |
 | **SHT_CUDA_INFO** | `0x70000000` (1,879,048,192) |
 | **SHT_CUDA_CALLGRAPH** | `0x70000064` (1,879,048,292) |
 | **.nv.compat section type** | `0x70000086` (1,879,048,326) |
@@ -276,7 +276,7 @@ Three section types are skipped during offset assignment:
 
 ## EIATTR Encoding
 
-Each `.nv.info` section contains a flat sequence of EIATTR (Entry Information Attribute) records. There is no section header or record count -- the parser walks from byte 0 to `sh_size`, consuming records sequentially. The EIATTR builder is `sub_1CC9800` (14,764 binary bytes, 90 KB decompiled) -- one of the three largest functions in the output pipeline.
+Each `.nv.info` section contains a flat sequence of EIATTR (Entry Information Attribute) records. There is no section header or record count -- the parser walks from byte 0 to `sh_size`, consuming records sequentially. The EIATTR builder is `sub_1CC9800` (14,764 B native / 86 KB decomp) -- one of the three largest functions in the output pipeline.
 
 ### TLV Record Format
 
@@ -699,7 +699,7 @@ The `sub_1C97840` function takes an EIATTR code and the SM version from the ELFW
 
 ## Constant Bank Optimization
 
-The master section allocator `sub_1CABD60` (11,856 bytes) performs two major space optimizations during address assignment: **constant value deduplication** within `.nv.constant0` banks, and **shared memory interference-graph coloring** for extern shared variables. Both run before final offset assignment.
+The master section allocator `sub_1CABD60` (11,856 B native / 66 KB decomp) performs two major space optimizations during address assignment: **constant value deduplication** within `.nv.constant0` banks, and **shared memory interference-graph coloring** for extern shared variables. Both run before final offset assignment.
 
 ### Constant Value Deduplication -- `sub_1CA6890`
 
@@ -964,18 +964,18 @@ All shared state modifications are protected by the mutex at `a2+240`:
 
 | Address | Size | Purpose |
 |---|---|---|
-| `sub_60FBF0` | ~76 KB decompiled | Per-kernel section attribute builder (section above) |
-| `sub_1CC9800` | 14,764 B (90 KB decompiled) | EIATTR builder -- master nvinfo section constructor |
-| `sub_1CC8950` | 2,634 B | EIATTR propagator -- barrier/register cross-function propagation |
-| `sub_1CC85F0` | ~200 B | EIATTR record emitter -- writes one TLV record |
-| `sub_1CC86D0` | ~500 B | Per-entry EIATTR emission (MIN_STACK_SIZE, CRS_STACK_SIZE, SAM_REGION_STACK_SIZE) |
-| `sub_1CC7FB0` | ~200 B | .nv.info section creator/finder |
-| `sub_1CC93A0` | ~500 B | .nv.compat attribute processor |
-| `sub_1CB3570` | 1,963 B | Generic section creator (44 call sites) |
+| `sub_60FBF0` | ~76 KB (decomp) | Per-kernel section attribute builder (section above) |
+| `sub_1CC9800` | 14,764 B native / 86 KB decomp | EIATTR builder -- master nvinfo section constructor |
+| `sub_1CC8950` | 2,634 B (native) | EIATTR propagator -- barrier/register cross-function propagation |
+| `sub_1CC85F0` | ~200 B (native) | EIATTR record emitter -- writes one TLV record |
+| `sub_1CC86D0` | ~500 B (native) | Per-entry EIATTR emission (MIN_STACK_SIZE, CRS_STACK_SIZE, SAM_REGION_STACK_SIZE) |
+| `sub_1CC7FB0` | ~200 B (native) | .nv.info section creator/finder |
+| `sub_1CC93A0` | ~500 B (native) | .nv.compat attribute processor |
+| `sub_1CB3570` | 1,963 B (native) | Generic section creator (44 call sites) |
 | `sub_1CB42D0` | -- | .text.\<func\> section creator |
-| `sub_1C9DC60` | 5,663 B | Section layout calculator (offset assignment) |
-| `sub_1CABD60` | 11,856 B | Master section allocator (shared/constant/local addresses) |
-| `sub_1CBE1B0` | ~10 KB | .nv.callgraph section builder |
+| `sub_1C9DC60` | 5,663 B (native) | Section layout calculator (offset assignment) |
+| `sub_1CABD60` | 11,856 B native / 66 KB decomp | Master section allocator (shared/constant/local addresses) |
+| `sub_1CBE1B0` | ~10 KB (decomp) | .nv.callgraph section builder |
 | `sub_1C97840` | -- | Architecture-gated EIATTR check |
 | `sub_1CA6890` | 454 lines | Constant bank value deduplication |
 | `sub_1CA92F0` | 585 lines | Shared memory interference graph + coloring |

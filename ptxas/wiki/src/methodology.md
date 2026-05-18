@@ -62,7 +62,7 @@ PTXAS is a dynamically-linked ELF with 146 PLT imports but no symbol table beyon
 1. **Processor**: Meta PC (x86-64)
 2. **Analysis options**: default. IDA correctly identifies the Flex DFA scanner tables, Bison parser tables, and the `.ctors`/`.dtors` sections.
 3. **Auto-analysis time**: approximately 8-10 minutes on a modern machine for the 37.7 MB binary.
-4. **Compiler detection**: IDA identifies GCC as the compiler. The binary uses the Itanium C++ ABI (confirmed by the embedded C++ name demangler at `sub_1CDC780`, 93 KB).
+4. **Compiler detection**: IDA identifies GCC as the compiler. The binary uses the Itanium C++ ABI (confirmed by the embedded C++ name demangler at `sub_1CDC780`, 15,988 B native / 90 KB decomp).
 
 ### Post-Auto-Analysis Steps
 
@@ -648,7 +648,7 @@ This is NVIDIA's internal compiler testing infrastructure for stochastic fault i
 
 ## Embedded C++ Name Demangler
 
-PTXAS statically embeds an Itanium ABI C++ name demangler rather than linking `libc++abi` or `libstdc++`. The demangler is a self-contained 41-function cluster spanning `0x1CD8B00`--`0x1CE1E60` in `.text`, with a single external entry point. The core recursive-descent parser at `sub_1CDC780` (93 KB decompiled, 3,442 lines) handles the full Itanium mangling grammar: nested names, template arguments, substitutions, function types, and special names.
+PTXAS statically embeds an Itanium ABI C++ name demangler rather than linking `libc++abi` or `libstdc++`. The demangler is a self-contained 41-function cluster spanning `0x1CD8B00`--`0x1CE1E60` in `.text`, with a single external entry point. The core recursive-descent parser at `sub_1CDC780` (15,988 B native / 90 KB decomp, 3,432 lines) handles the full Itanium mangling grammar: nested names, template arguments, substitutions, function types, and special names.
 
 ### API and Integration
 
@@ -662,7 +662,7 @@ PTXAS imports only `libc`, `libpthread`, `libm`, and `libgcc_s` (146 PLT stubs t
 
 | Address | Function | Size | Role | Confidence |
 |---|---|---|---|---|
-| `sub_1CDC780` | Demangler core (recursive-descent parser) | 93 KB | Parses Itanium-mangled names via large switch dispatch | **HIGH** (size, structure, callgraph isolation) |
+| `sub_1CDC780` | Demangler core (recursive-descent parser) | 15,988 B (native) / 90 KB (decomp) | Parses Itanium-mangled names via large switch dispatch | **HIGH** (size, structure, callgraph isolation) |
 | `sub_1CE0600` | Recursive dispatch wrapper | 580 B | Re-enters the parser for nested name components (76 call sites from core) | **HIGH** (mutual recursion with `sub_1CDC780`) |
 | `sub_1CE23F0` | `__cxa_demangle`-compatible API | 340 B | Public entry: mangled string in, demangled string out, `malloc`-allocated | **CERTAIN** (API shape, status codes, `free`/`memcpy`/`strlen` callees) |
 | `sub_1CE1E60` | Parse entry point | ~200 B | Initializes parse state and invokes the core | **HIGH** (bridge between API and parser) |

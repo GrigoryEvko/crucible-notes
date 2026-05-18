@@ -4,7 +4,7 @@
 >
 > **Upstream source:** `llvm/lib/Transforms/Scalar/DeadStoreElimination.cpp` (LLVM 20.0.0)
 
-CICC v13.0 contains a heavily modified Dead Store Elimination pass totaling approximately 91 KB of decompiled code across three major functions: the core `DSE::runOnFunction` at `sub_19DA750` (33 KB), the overwrite detection engine at `sub_19DDCB0` (28 KB), and the partial overwrite tracking system at `sub_19DF5F0` (30 KB). This substantially exceeds the size of upstream LLVM DSE, primarily due to NVIDIA's additions for partial store forwarding with type conversion, cross-store dependency tracking, store-chain decomposition for aggregates, and native CUDA vector type awareness.
+CICC v13.0 contains a heavily modified Dead Store Elimination pass totaling roughly 14 KB of binary text (~91 KB of decompiled source) across three major functions: the core `DSE::runOnFunction` at `sub_19DA750` (5.2 KB binary), the overwrite detection engine at `sub_19DDCB0` (4.4 KB binary), and the partial overwrite tracking system at `sub_19DF5F0` (4.8 KB binary). This substantially exceeds the size of upstream LLVM DSE, primarily due to NVIDIA's additions for partial store forwarding with type conversion, cross-store dependency tracking, store-chain decomposition for aggregates, and native CUDA vector type awareness.
 
 ## IR Before/After Example
 
@@ -79,7 +79,7 @@ The vector type formula (case 0xE) accounts for element alignment: `8 * num_elem
 
 ## Overwrite Detection
 
-The overwrite analysis engine at `sub_19DDCB0` (28 KB) determines whether one store completely or partially covers another. It receives the instruction, an operand index, alias analysis results, and address-space information.
+The overwrite analysis engine at `sub_19DDCB0` (4.4 KB binary) determines whether one store completely or partially covers another. It receives the instruction, an operand index, alias analysis results, and address-space information.
 
 ### Alias Queries
 
@@ -97,7 +97,7 @@ When store sizes do not match, NVIDIA's DSE creates truncation or extension cast
 Standard LLVM DSE bails on size mismatches. NVIDIA's version handles the common CUDA pattern of a `float4` store followed by a scalar `float` load by extracting the relevant component via GEP + load.
 
 ```c
-/* Partial store forwarding inside sub_19DDCB0 (overwrite engine, 28 KB).
+/* Partial store forwarding inside sub_19DDCB0 (overwrite engine, 4.4 KB binary).
  * src_store = earlier store whose value we want to forward
  * dst_load  = later load whose location overlaps with src_store
  * Returns the value to feed into RAUW, or NULL on bail. */
@@ -163,7 +163,7 @@ After creating a replacement instruction, the pass preserves metadata:
 
 ## Partial Overwrite Tracking
 
-The function-level partial overwrite pass at `sub_19DF5F0` (30 KB) maintains a hash table of all stores in a function and tracks which stores partially overwrite each other.
+The function-level partial overwrite pass at `sub_19DF5F0` (4.8 KB binary) maintains a hash table of all stores in a function and tracks which stores partially overwrite each other.
 
 ### Hash Table Structure
 
@@ -193,7 +193,7 @@ DSE does not contain explicit CUDA address-space comparisons. Address-space sepa
 
 ## Store Forwarding to Loads
 
-The function `sub_19DBD20` (20 KB) attempts store-to-load forwarding. When `sub_19DD7C0` finds a store feeding into a load, it constructs a replacement using `sub_12815B0`. Sign/zero extension matching uses type byte 15 (float types) and type byte 11 (integer types), with opcodes 45 (float-to-int truncation), 46 (int-to-float), and 47 (generic cast).
+The function `sub_19DBD20` (3.6 KB binary) attempts store-to-load forwarding. When `sub_19DD7C0` finds a store feeding into a load, it constructs a replacement using `sub_12815B0`. Sign/zero extension matching uses type byte 15 (float types) and type byte 11 (integer types), with opcodes 45 (float-to-int truncation), 46 (int-to-float), and 47 (generic cast).
 
 ## Related Passes
 
@@ -206,10 +206,10 @@ Two related passes are registered alongside DSE in the same code region:
 
 | Function | Address | Size | Role |
 |----------|---------|------|------|
-| `DSE::runOnFunction` | `0x19DA750` | 33 KB | Main dead store elimination |
-| `DSE::analyzeOverwrite` | `0x19DDCB0` | 28 KB | Complete/partial overwrite detection |
-| `DSE::runPartialOverwritePass` | `0x19DF5F0` | 30 KB | Function-level partial tracking |
-| `DSE::tryForwardStoresToLoad` | `0x19DBD20` | 20 KB | Store-to-load forwarding |
+| `DSE::runOnFunction` | `0x19DA750` | 5.2 KB | Main dead store elimination |
+| `DSE::analyzeOverwrite` | `0x19DDCB0` | 4.4 KB | Complete/partial overwrite detection |
+| `DSE::runPartialOverwritePass` | `0x19DF5F0` | 4.8 KB | Function-level partial tracking |
+| `DSE::tryForwardStoresToLoad` | `0x19DBD20` | 3.6 KB | Store-to-load forwarding |
 | `DSE::buildOverwriteRecord` | `0x19D8AF0` | -- | Overlap record construction |
 | `DSE::buildComparisonSet` | `0x19D91E0` | -- | Set of stores to compare |
 | `DSE::eliminateStoreChain` | `0x19D94E0` | -- | Chain-level elimination |
@@ -229,4 +229,4 @@ Two related passes are registered alongside DSE in the same code region:
 2. **72-byte hash table entries with cross-store tracking.** Upstream uses simpler data structures. NVIDIA tracks which stores partially overwrite each other through 6-element dependency records.
 3. **Store-chain decomposition.** Aggregate stores are decomposed through struct/array GEPs into element-level checks, enabling elimination of stores that are collectively dead.
 4. **Vector type awareness.** The type walker includes a dedicated case for CUDA vector types with proper alignment computation.
-5. **Total code size.** At ~91 KB across three functions, NVIDIA's DSE is roughly 3x the size of upstream LLVM's equivalent.
+5. **Total code size.** At ~14 KB of binary text across three functions (or ~91 KB of decompiled source), NVIDIA's DSE is roughly 3x the size of upstream LLVM's equivalent.

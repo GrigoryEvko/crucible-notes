@@ -6,7 +6,7 @@
 >
 > **LLVM version note:** CICC v13.0 is based on LLVM 20.0.0 trunk. Evidence includes histogram-pattern support (merged in LLVM 19), early-exit vectorization (LLVM 20 experimental feature, gated by `byte_500CDA8`), and the VPlan-native path. The VPlan object size (656 bytes) is consistent with LLVM 17/18+ layout. Scalable vectors are always disabled for NVPTX.
 
-NVIDIA's cicc ships a heavily modified copy of LLVM's `LoopVectorizePass`, the single largest pass in the vectorization pipeline at 88 KB of decompiled output (2,612 lines in `sub_2AF1970`). The modifications do not change the pass's fundamental architecture -- it still builds VPlans, selects a vectorization factor (VF) through cost modeling, and transforms IR through VPlan execution -- but the cost model, VF selection heuristics, interleave count logic, and legality checker are all tuned for a target where "vectorization" means something fundamentally different than on a CPU. On a CPU, loop vectorization fills SIMD lanes: a VF of 4 on SSE processes four `float` elements per vector instruction. On an NVIDIA GPU, there are no SIMD lanes in the CPU sense -- each thread already executes scalar code, and the warp executes 32 threads in lockstep. The reasons to vectorize on GPU are: (1) **memory coalescing** -- adjacent threads issuing adjacent loads produce 128-byte cache line transactions, and vectorizing a per-thread loop body with VF=2 or VF=4 produces `ld.v2`/`ld.v4` wide loads that maximize bytes-per-transaction; (2) **reducing instruction count** -- a single `ld.global.v4.f32` replaces four `ld.global.f32` instructions, saving fetch/decode/issue bandwidth; (3) **register-to-memory width matching** -- PTX supports 32-, 64-, and 128-bit load/store widths, and vectorization widens narrow scalar accesses to fill these naturally.
+NVIDIA's cicc ships a heavily modified copy of LLVM's `LoopVectorizePass`, the single largest pass in the vectorization pipeline at 16.4 KB binary text (2,612 decomp lines in `sub_2AF1970`). The modifications do not change the pass's fundamental architecture -- it still builds VPlans, selects a vectorization factor (VF) through cost modeling, and transforms IR through VPlan execution -- but the cost model, VF selection heuristics, interleave count logic, and legality checker are all tuned for a target where "vectorization" means something fundamentally different than on a CPU. On a CPU, loop vectorization fills SIMD lanes: a VF of 4 on SSE processes four `float` elements per vector instruction. On an NVIDIA GPU, there are no SIMD lanes in the CPU sense -- each thread already executes scalar code, and the warp executes 32 threads in lockstep. The reasons to vectorize on GPU are: (1) **memory coalescing** -- adjacent threads issuing adjacent loads produce 128-byte cache line transactions, and vectorizing a per-thread loop body with VF=2 or VF=4 produces `ld.v2`/`ld.v4` wide loads that maximize bytes-per-transaction; (2) **reducing instruction count** -- a single `ld.global.v4.f32` replaces four `ld.global.f32` instructions, saving fetch/decode/issue bandwidth; (3) **register-to-memory width matching** -- PTX supports 32-, 64-, and 128-bit load/store widths, and vectorization widens narrow scalar accesses to fill these naturally.
 
 ## Key Facts
 
@@ -15,8 +15,8 @@ NVIDIA's cicc ships a heavily modified copy of LLVM's `LoopVectorizePass`, the s
 | Registration | New PM #400, parameterized: `no-interleave-forced-only;...` |
 | Runtime positions | Not in Tier 0/1/2/3 tables; invoked via LLVM standard sub-pipeline `sub_1A62BF0` when vectorization is enabled (see [Pipeline](pipeline.md)) |
 | Main entry point | `sub_2AF1970` (0x2AF1970) -- `LoopVectorizePass::processLoop()` |
-| Binary size | 88 KB decompiled, 2,612 lines |
-| VPlan builder | `sub_2AEE460` (0x2AEE460) -- `tryToBuildVPlanWithVPRecipes()`, 56 KB |
+| Binary size | 16.4 KB binary text, 2,612 decomp lines |
+| VPlan builder | `sub_2AEE460` (0x2AEE460) -- `tryToBuildVPlanWithVPRecipes()`, 11.3 KB binary |
 | VPlan object size | 656 bytes (0x290), consistent with LLVM 17/18 layout |
 | LLVM base | LLVM 20 trunk (evidence: histogram-pattern support, early-exit vectorization, VPlan-native path) |
 | Scalable vectors | Always disabled -- `sub_DFE610` returns `false` for NVPTX |
@@ -307,8 +307,8 @@ All diagnostic strings are embedded in the binary with `OptimizationRemarkAnalys
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `LoopVectorizePass::processLoop()` | `sub_2AF1970` | 88 KB | -- |
-| `tryToBuildVPlanWithVPRecipes()` | `sub_2AEE460` | 56 KB | -- |
+| `LoopVectorizePass::processLoop()` | `sub_2AF1970` | 16.4 KB | -- |
+| `tryToBuildVPlanWithVPRecipes()` | `sub_2AEE460` | 11.3 KB | -- |
 | `Planner::plan()` -- generate VPlans for candidate VFs | `sub_2AF13F0` | -- | -- |
 | `selectBestVF()` -- iterate VPlans, pick lowest cost | `sub_2AE08E0` | -- | -- |
 | `computeCostForVF()` -- per-VF cost query | `sub_2AE0750` | -- | -- |

@@ -12,12 +12,12 @@ The output phase handles three binary kinds: **SASS** (raw resolved SASS, legacy
 | **ELFW constructor** | `sub_1CB53A0` (3,480 bytes, 672-byte central object) |
 | **Section creator** | `sub_1CB3570` (1,963 bytes, 44 call sites) |
 | **Symbol table builder** | `sub_1CB68D0` (9,578 bytes, ~1,700 decompiled lines) |
-| **Master ELF emitter** | `sub_1C9F280` (15,263 bytes, 97 KB decompiled -- largest function in output range) |
-| **Section layout calculator** | `sub_1C9DC60` (5,663 bytes) |
-| **Master section allocator** | `sub_1CABD60` (11,856 bytes, 67 KB decompiled -- shared/constant/local addresses) |
-| **nvinfo/EIATTR builder** | `sub_1CC9800` (14,764 bytes, 90 KB decompiled) |
-| **Master relocation resolver** | `sub_1CD48C0` (4,184 bytes, 22 KB decompiled) |
-| **File serializer** | `sub_1CD13A0` (2,541 bytes, writes final bytes to disk) |
+| **Master ELF emitter** | `sub_1C9F280` (15,263 B native / 97 KB decomp -- largest function in output range) |
+| **Section layout calculator** | `sub_1C9DC60` (5,663 B native) |
+| **Master section allocator** | `sub_1CABD60` (11,856 B native / 66 KB decomp -- shared/constant/local addresses) |
+| **nvinfo/EIATTR builder** | `sub_1CC9800` (14,764 B native / 86 KB decomp) |
+| **Master relocation resolver** | `sub_1CD48C0` (4,184 B native / 20 KB decomp) |
+| **File serializer** | `sub_1CD13A0` (2,541 B native / 11 KB decomp, writes final bytes to disk) |
 | **ELF machine type** | `EM_CUDA` = `0xBE` (190) |
 | **CUDA section type** | `SHT_CUDA_INFO` = `0x70000064` |
 | **ELF timing** | `"ELF-time : %.3f ms (%.2f%%)"` in `--compiler-stats` output |
@@ -213,7 +213,7 @@ Two section types receive special treatment during layout: `.nv.constant0` (addr
 
 ## EIATTR Metadata
 
-Each kernel's `.nv.info.<funcname>` section contains a sequence of EIATTR (Entry Information Attribute) records. These encode per-kernel metadata that the CUDA driver reads at launch time to configure the hardware correctly. The EIATTR builder is `sub_1CC9800` (14,764 binary bytes, 90 KB decompiled, 51 callees) -- one of the largest functions in the output pipeline.
+Each kernel's `.nv.info.<funcname>` section contains a sequence of EIATTR (Entry Information Attribute) records. These encode per-kernel metadata that the CUDA driver reads at launch time to configure the hardware correctly. The EIATTR builder is `sub_1CC9800` (14,764 B native / 86 KB decomp, 51 callees) -- one of the largest functions in the output pipeline.
 
 ### EIATTR Encoding
 
@@ -302,7 +302,7 @@ This ensures that the CUDA driver allocates sufficient barriers and registers fo
 
 ## Relocation Processing
 
-The relocation system handles symbol resolution for branch targets, constant bank references, function descriptors, texture/surface bindings, and address computations. The master relocation resolver is `sub_1CD48C0` (4,184 binary bytes, 22 KB decompiled). ptxas defines 117 CUDA-specific relocation types (`R_CUDA_NONE` through `R_CUDA_NONE_LAST`).
+The relocation system handles symbol resolution for branch targets, constant bank references, function descriptors, texture/surface bindings, and address computations. The master relocation resolver is `sub_1CD48C0` (4,184 B native / 20 KB decomp). ptxas defines 117 CUDA-specific relocation types (`R_CUDA_NONE` through `R_CUDA_NONE_LAST`).
 
 ### Relocation Categories
 
@@ -450,7 +450,7 @@ Dead functions are eliminated by `sub_1CBC090`:
 
 ### Memory Allocation Across Kernels
 
-The master section allocator `sub_1CABD60` (11,856 binary bytes, 67 KB decompiled, 69 callees) assigns addresses to all memory-space sections across all kernels. It runs a multi-pass algorithm:
+The master section allocator `sub_1CABD60` (11,856 B native / 66 KB decomp, 69 callees) assigns addresses to all memory-space sections across all kernels. It runs a multi-pass algorithm:
 
 1. **Global shared allocation** -- shared variables visible to multiple kernels
 2. **Per-entry shared memory** -- shared variables private to each kernel
@@ -476,19 +476,19 @@ This is standard ELF overflow handling, and it is production-critical -- `sub_1C
 
 ## Key Functions
 
-| Address | Size | Decompiled | Purpose |
+| Address | Size (native) | Size (decomp) | Purpose |
 |---|---|---|---|
 | `sub_612DE0` | ~12 KB | 47 KB | Cubin generation entry point |
 | `sub_1C9F280` | 15,263 B | 97 KB | Master ELF emitter |
-| `sub_1CC9800` | 14,764 B | 90 KB | nvinfo/EIATTR section builder |
-| `sub_1CABD60` | 11,856 B | 67 KB | Master section allocator (shared/const/local) |
+| `sub_1CC9800` | 14,764 B | 86 KB | nvinfo/EIATTR section builder |
+| `sub_1CABD60` | 11,856 B | 66 KB | Master section allocator (shared/const/local) |
 | `sub_1CB68D0` | 9,578 B | 49 KB | Symbol table builder (.symtab) |
 | `sub_1CA3A90` | 6,289 B | 45 KB | Section merger (merc + non-merc) |
 | `sub_1C9DC60` | 5,663 B | 29 KB | Section layout calculator |
 | `sub_1C99BB0` | 4,900 B | 25 KB | Section index remap (.symtab_shndx) |
 | `sub_1C9C300` | 3,816 B | 24 KB | Capsule Mercury section processor |
 | `sub_1C9B110` | 4,585 B | 23 KB | Mercury capsule builder |
-| `sub_1CD48C0` | 4,184 B | 22 KB | Master relocation resolver |
+| `sub_1CD48C0` | 4,184 B | 20 KB | Master relocation resolver |
 | `sub_1CBC090` | 2,870 B | 20 KB | Dead function eliminator |
 | `sub_1CA2E40` | 3,152 B | 18 KB | Mercury section cloner |
 | `sub_1CA92F0` | 2,804 B | 16 KB | Shared memory interference graph |

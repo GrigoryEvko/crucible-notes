@@ -8,12 +8,12 @@
 
 CICC v13.0 extends LLVM's `ConstantFolding` analysis with two large custom functions that together enable compile-time evaluation of over 110 distinct math function name variants and 60+ NVVM intrinsic IDs. Upstream LLVM's `ConstantFoldCall` handles standard `llvm.sin`, `llvm.cos`, `llvm.sqrt`, and a handful of NVPTX-specific intrinsics (ceil, floor, fabs, sqrt in their `nvvm.*` forms, plus FP-to-integer conversion intrinsics). CICC goes far beyond this: it recognizes every C math library name (`sin`, `sinf`), every glibc `__*_finite` internal variant, every C++ mangled form (`_Z3cosf`, `_Z4acosd`), and the full set of NVVM approximate/FTZ math intrinsics -- then evaluates them using the host C math library with an exception-safe wrapper that refuses to produce results when the host FPU signals domain errors, overflow, or underflow.
 
-The system is split into two cooperating functions. The eligibility checker `sub_14D90D0` (27 KB, called `nvvmIntrinsicConstantFold` in the sweep analysis) is a fast predicate that answers "can this call be constant-folded?" without touching operand values. The evaluator `sub_14D1BC0` (54 KB, called `nvvmConstantFoldLibCall`) performs the actual computation when all operands are constant. A third function, the NVVM InstCombine intrinsic folder `sub_1169C30` (87 KB), handles algebraic simplification of NVVM intrinsics and is documented separately on the [InstCombine](instcombine.md) page.
+The system is split into two cooperating functions. The eligibility checker `sub_14D90D0` (4.6 KB, called `nvvmIntrinsicConstantFold` in the sweep analysis) is a fast predicate that answers "can this call be constant-folded?" without touching operand values. The evaluator `sub_14D1BC0` (10.2 KB, called `nvvmConstantFoldLibCall`) performs the actual computation when all operands are constant. A third function, the NVVM InstCombine intrinsic folder `sub_1169C30` (11.2 KB), handles algebraic simplification of NVVM intrinsics and is documented separately on the [InstCombine](instcombine.md) page.
 
 | | |
 |---|---|
-| **Eligibility checker** | `sub_14D90D0` (`0x14D90D0`, 27 KB, 282 basic blocks, 489 edges) |
-| **Math evaluator** | `sub_14D1BC0` (`0x14D1BC0`, 54 KB) |
+| **Eligibility checker** | `sub_14D90D0` (`0x14D90D0`, 4.6 KB, 282 basic blocks, 489 edges) |
+| **Math evaluator** | `sub_14D1BC0` (`0x14D1BC0`, 10.2 KB) |
 | **Constant extractor** | `sub_14D1620` (`0x14D1620`) |
 | **Safe unary eval wrapper** | `sub_14D19F0` (`0x14D19F0`) |
 | **Safe binary eval wrapper** | `sub_14D1A80` (`0x14D1A80`) |
@@ -22,7 +22,7 @@ The system is split into two cooperating functions. The eligibility checker `sub
 | **Custom floor** | `sub_14D13B0` (`0x14D13B0`) -- truncation + sign correction |
 | **Custom ceil** | `sub_14D1410` (`0x14D1410`) -- truncation + sign correction |
 | **Custom sqrt** | `sub_14D1470` (`0x14D1470`) -- thin wrapper around libc `sqrt` |
-| **Vector math mapping** | `sub_149E420` (`0x149E420`, 26 KB) |
+| **Vector math mapping** | `sub_149E420` (`0x149E420`, 5.6 KB) |
 | **LLVM knob** | `disable-fp-call-folding` (upstream, `cl::Hidden`, default `false`) |
 | **NVIDIA knob** | `FPFoldDisable` (NVIDIA CiccOption, disables FP constant folding) |
 
@@ -361,8 +361,8 @@ Both paths finish with `sub_159CCF0(*type, &storage)` which constructs the `Cons
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `nvvmIntrinsicConstantFold` | `0x14D90D0` | 27 KB | Eligibility predicate: can this intrinsic be constant-folded? |
-| `nvvmConstantFoldLibCall` | `0x14D1BC0` | 54 KB | Math evaluator: compute constant result from constant args |
+| `nvvmIntrinsicConstantFold` | `0x14D90D0` | 4.6 KB | Eligibility predicate: can this intrinsic be constant-folded? |
+| `nvvmConstantFoldLibCall` | `0x14D1BC0` | 10.2 KB | Math evaluator: compute constant result from constant args |
 | `extractDoubleFromConstantFP` | `0x14D1620` | -- | Extract `double` from `ConstantFP` IR node |
 | `safeMathEvalUnary` | `0x14D19F0` | -- | Exception-safe unary evaluation wrapper |
 | `safeMathEvalBinary` | `0x14D1A80` | -- | Exception-safe binary evaluation wrapper |
@@ -373,15 +373,15 @@ Both paths finish with `sub_159CCF0(*type, &storage)` which constructs the `Cons
 | `customSqrt` | `0x14D1470` | -- | Thin wrapper around libc `sqrt` |
 | `fptoui_fptosi_fold` | `0x14D1500` | -- | FP-to-integer conversion fold |
 | `apintMoveTransfer` | `0x14D15E0` | -- | APInt move/transfer helper |
-| `vectorMathLibMapping` | `0x149E420` | 26 KB | Scalar-to-vectorized math mapping table |
-| `platformFuncCanonicalize` | `0x149FA60` | 15 KB | Platform-specific name canonicalization |
-| `constantExprFoldSCEV` | `0x14D44C0` | 20 KB | ConstantExpr fold / SCEV integration |
-| `constantFoldAggregate` | `0x14D5510` | 16 KB | ConstantFold for aggregate types |
-| `constantFoldGEPExtract` | `0x14D66F0` | 17 KB | ConstantFold for GEP and extract |
-| `constantExprSCEVBuild` | `0x14DBA90` | 22 KB | ConstantExpr + SCEV builder |
+| `vectorMathLibMapping` | `0x149E420` | 5.6 KB | Scalar-to-vectorized math mapping table |
+| `platformFuncCanonicalize` | `0x149FA60` | 2.6 KB | Platform-specific name canonicalization |
+| `constantExprFoldSCEV` | `0x14D44C0` | 4.1 KB | ConstantExpr fold / SCEV integration |
+| `constantFoldAggregate` | `0x14D5510` | 2.0 KB | ConstantFold for aggregate types |
+| `constantFoldGEPExtract` | `0x14D66F0` | 0.07 KB | ConstantFold for GEP and extract |
+| `constantExprSCEVBuild` | `0x14DBA90` | 1.7 KB | ConstantExpr + SCEV builder |
 | `AttributeList::hasAttribute` | `0x1560260` | -- | Attribute query (used 8 times in eligibility checker) |
 | `Value::getName` | `0x1649960` | -- | Name string extraction (case 0 path) |
-| NVVM InstCombine intrinsic fold | `0x1169C30` | 87 KB | Algebraic simplification of NVVM intrinsics (see [InstCombine](instcombine.md)) |
+| NVVM InstCombine intrinsic fold | `0x1169C30` | 11.2 KB | Algebraic simplification of NVVM intrinsics (see [InstCombine](instcombine.md)) |
 
 ## Cross-References
 

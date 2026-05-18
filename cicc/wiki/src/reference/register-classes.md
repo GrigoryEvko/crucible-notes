@@ -4,13 +4,13 @@ This page is the single authoritative reference for the nine NVPTX register clas
 
 | | |
 |---|---|
-| **Register encoding** | `sub_21583D0` (4.6KB) |
-| **PTX type suffix map** | `sub_2163730` (1.7KB) |
-| **PTX prefix map** | `sub_21638D0` (1.6KB) |
-| **Copy opcode dispatch** | `sub_2162350` (3.0KB) |
+| **Register encoding** | `sub_21583D0` (1.1 KB) |
+| **PTX type suffix map** | `sub_2163730` (0.4 KB) |
+| **PTX prefix map** | `sub_21638D0` (0.5 KB) |
+| **Copy opcode dispatch** | `sub_2162350` (0.7 KB) |
 | **Register info init (legacy)** | `sub_2163AB0` / `sub_2149CD0` |
 | **Register info init (new PM)** | `sub_30590F0` / `sub_301F0C0` |
-| **Register decl emission** | `sub_2158E80` (17KB) |
+| **Register decl emission** | `sub_2158E80` (3.2 KB) |
 | **Internal-only class vtable** | `off_4A026E0` |
 
 ## The Nine Register Classes
@@ -45,7 +45,7 @@ Throughout this wiki, the **emission-derived names** (Int16HalfRegs, Int32HalfRe
 
 ## Register Encoding Scheme -- sub_21583D0
 
-Every virtual register in the NVPTX backend is encoded as a 32-bit value that packs the register class and a per-class index into a single integer. The encoding function at `sub_21583D0` (4.6KB) implements this:
+Every virtual register in the NVPTX backend is encoded as a 32-bit value that packs the register class and a per-class index into a single integer. The encoding function at `sub_21583D0` (1.1 KB) implements this:
 
 ```
 encoded_register = class_tag | (register_index & 0x0FFFFFFF)
@@ -94,7 +94,7 @@ This is unlike CPU targets (x86, AArch64) where integer and floating-point regis
 
 ## Copy Opcodes -- sub_2162350
 
-The function `sub_2162350` (3.0KB, `"Copy one register into another with a different width"`) dispatches copy instruction emission based on the source and destination register classes. Each class has two opcodes: one for same-class copies (e.g., `mov.b32 %r1, %r0`) and one for cross-class copies (e.g., bitcasting between `Int32Regs` and `Float32Regs`):
+The function `sub_2162350` (0.7 KB, `"Copy one register into another with a different width"`) dispatches copy instruction emission based on the source and destination register classes. Each class has two opcodes: one for same-class copies (e.g., `mov.b32 %r1, %r0`) and one for cross-class copies (e.g., bitcasting between `Int32Regs` and `Float32Regs`):
 
 | Class | Same-Class Opcode | Cross-Class Opcode | Notes |
 |---|---|---|---|
@@ -114,7 +114,7 @@ The five classes with distinct cross-class opcodes (`Int32Regs`, `Int64Regs`, `F
 
 ## Register Declaration Emission -- sub_2158E80
 
-During function body emission, `sub_2158E80` (17KB) emits `.reg` declarations for every register class used by the function. The process:
+During function body emission, `sub_2158E80` (3.2 KB) emits `.reg` declarations for every register class used by the function. The process:
 
 1. **Iterate the register map** at `this+800` in the AsmPrinter state.
 2. **Deduplicate classes** using a hash table at `this+808..832`.
@@ -351,12 +351,12 @@ The encoding scheme (4-bit tag in `[31:28]`, 28-bit index in `[27:0]`) and the f
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| Register class encoding (class tag OR index) | `sub_21583D0` | 4.6KB | -- |
-| Register class -> PTX type suffix (`.pred`, `.b32`, `.f32`, ...) | `sub_2163730` | 1.7KB | -- |
-| Register class -> PTX prefix (`%p`, `%r`, `%f`, ...) | `sub_21638D0` | 1.6KB | -- |
-| Copy opcode dispatch by register class | `sub_2162350` | 3.0KB | -- |
-| Stack frame + register declaration emission | `sub_2158E80` | 17KB | -- |
-| NVPTXRegisterInfo init (legacy PM) | `sub_2163AB0` | 1.1KB | -- |
+| Register class encoding (class tag OR index) | `sub_21583D0` | 1.1 KB | -- |
+| Register class -> PTX type suffix (`.pred`, `.b32`, `.f32`, ...) | `sub_2163730` | 0.4 KB | -- |
+| Register class -> PTX prefix (`%p`, `%r`, `%f`, ...) | `sub_21638D0` | 0.5 KB | -- |
+| Copy opcode dispatch by register class | `sub_2162350` | 0.7 KB | -- |
+| Stack frame + register declaration emission | `sub_2158E80` | 3.2 KB | -- |
+| NVPTXRegisterInfo init (legacy PM) | `sub_2163AB0` | 0.3 KB | -- |
 | NVPTXRegisterInfo factory (legacy PM) | `sub_2149CD0` | -- | -- |
 | NVPTXRegisterInfo init (new PM) | `sub_30590F0` | -- | -- |
 | NVPTXRegisterInfo factory (new PM) | `sub_301F0C0` | -- | -- |

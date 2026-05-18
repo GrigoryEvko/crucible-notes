@@ -5,12 +5,12 @@ This page is the master reference for NVPTX `MachineInstr` opcodes as they exist
 | | |
 |---|---|
 | **Constraint table** | `word_3F3E6C0` (static `.data` array of 16-bit entries) |
-| **Constraint emitter** | `sub_B612D0` (104KB, 179-case switch) |
-| **Copy-type mapper** | `sub_3494EA0` (12.7KB, maps opcodes 1--0x12 to families 440--503) |
-| **Register class builder** | `sub_B5BA00` (21KB, 111 cases) |
-| **Operand type classifier** | `sub_34961A0` (26.6KB, reads `byte_444C4A0`) |
-| **ISel entry** | `sub_3090F90` (91KB, `NVPTXDAGToDAGISel::Select`) |
-| **Intrinsic lowering switch** | `sub_33B0210` (343KB, hundreds of NVVM intrinsics) |
+| **Constraint emitter** | `sub_B612D0` (38.4 KB binary, 179-case switch) |
+| **Copy-type mapper** | `sub_3494EA0` (3.1 KB binary, maps opcodes 1--0x12 to families 440--503) |
+| **Register class builder** | `sub_B5BA00` (10.1 KB binary, 111 cases) |
+| **Operand type classifier** | `sub_34961A0` (6.4 KB binary, reads `byte_444C4A0`) |
+| **ISel entry** | `sub_3090F90` (12.5 KB binary, `NVPTXDAGToDAGISel::Select`) |
+| **Intrinsic lowering switch** | `sub_33B0210` (60.2 KB binary, the single largest function in the binary; hundreds of NVVM intrinsics) |
 
 ## Opcode Numbering Scheme
 
@@ -113,7 +113,7 @@ The constraint flag at offset `+3` (mask `0x10`) gates whether an operand partic
 
 ### Call ABI Family (505--573)
 
-These opcodes implement the PTX `.param`-space calling convention. They are emitted by `NVPTXTargetLowering::LowerCall` (`sub_3040BF0`, 88KB) and form the backbone of every device-function call sequence.
+These opcodes implement the PTX `.param`-space calling convention. They are emitted by `NVPTXTargetLowering::LowerCall` (`sub_3040BF0`, 19.8 KB binary) and form the backbone of every device-function call sequence.
 
 | Opcode | Name | PTX Equivalent | Operands |
 |--------|------|---------------|----------|
@@ -478,26 +478,26 @@ The following opcode ranges are known to contain NVPTX instructions but have not
 | 3000--~4000 | WGMMA, TMA, bulk operations | Hopper-era instruction families |
 | 4000--4904 | Additional tensor/cluster instructions | Bridging pre-Blackwell and tcgen05 |
 
-Recovering these ranges requires systematic analysis of the `sub_33B0210` intrinsic lowering switch (343KB, the single largest function in the binary) and correlation with the AsmPrinter's `printInstruction` dispatch table.
+Recovering these ranges requires systematic analysis of the `sub_33B0210` intrinsic lowering switch (60.2 KB binary, the single largest function in the binary) and correlation with the AsmPrinter's `printInstruction` dispatch table.
 
 ## Function Map
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| Constraint emission (179-case switch on `word_3F3E6C0`) | `sub_B612D0` | 104KB | -- |
-| Register class set builder (111 cases) | `sub_B5BA00` | 21KB | -- |
-| Operand type decoder (101 cases) | `sub_B6B200` | 44KB | -- |
+| Constraint emission (179-case switch on `word_3F3E6C0`) | `sub_B612D0` | 38.4 KB | -- |
+| Register class set builder (111 cases) | `sub_B5BA00` | 10.1 KB | -- |
+| Operand type decoder (101 cases) | `sub_B6B200` | 10.2 KB | -- |
 | `createRegClassConstraint(state, regclass, flags)` | `sub_A778C0` | -- | -- |
 | `createAnyRegConstraint(state, flags)` | `sub_A77AD0` | -- | -- |
 | `composeConstraints(state, desc, N)` | `sub_A79C90` | -- | -- |
 | `emitConstraint(state, desc_array, N)` | `sub_A78010` | -- | -- |
-| Opcode-to-copy-type mapping (switch, families 440--503) | `sub_3494EA0` | 12.7KB | -- |
-| Operand-type classification (reads `byte_444C4A0`) | `sub_34961A0` | 26.6KB | -- |
-| Register-pair decomposition (wide/paired registers) | `sub_3497B40` | 16.5KB | -- |
-| `NVPTXTargetLowering::LowerCall` (call ABI opcodes) | `sub_3040BF0` | 88KB | -- |
-| Intrinsic lowering switch (NVVM intrinsic to opcode) | `sub_33B0210` | 343KB | -- |
-| `NVPTXDAGToDAGISel::Select` (ISel entry) | `sub_3090F90` | 91KB | -- |
-| MMA instruction builder (packed descriptor) | `sub_21E74C0` | 17KB | -- |
+| Opcode-to-copy-type mapping (switch, families 440--503) | `sub_3494EA0` | 3.1 KB | -- |
+| Operand-type classification (reads `byte_444C4A0`) | `sub_34961A0` | 6.4 KB | -- |
+| Register-pair decomposition (wide/paired registers) | `sub_3497B40` | 4.1 KB | -- |
+| `NVPTXTargetLowering::LowerCall` (call ABI opcodes) | `sub_3040BF0` | 19.8 KB | -- |
+| Intrinsic lowering switch (NVVM intrinsic to opcode) | `sub_33B0210` | 60.2 KB | -- |
+| `NVPTXDAGToDAGISel::Select` (ISel entry) | `sub_3090F90` | 12.5 KB | -- |
+| MMA instruction builder (packed descriptor) | `sub_21E74C0` | 2.3 KB | -- |
 | Atomic operation PTX emission (base) | `sub_21E5E70` | -- | -- |
 | L2 cache-hinted atomic PTX emission (SM 80+) | `sub_21E6420` | -- | -- |
 | Memory barrier PTX emission | `sub_21E94F0` | -- | -- |

@@ -145,6 +145,7 @@
 
 - [Overview](libdevice/overview.md)
 - [NVVMReflect Mechanism](libdevice/nvvm-reflect-mechanism.md)
+- [`__nv_*` Symbol Catalog](libdevice/nv-symbol-catalog.md)
 - [Intrinsic ID Switch and Name Table](libdevice/intrinsic-id-switch-and-name-table.md)
 - [Math Pass Pipeline and Crosswalk](libdevice/math-pass-pipeline-and-crosswalk.md)
 

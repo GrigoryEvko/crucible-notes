@@ -99,7 +99,7 @@ The magic value `38110068` stored at offset `+224` acts as a state sentinel: it 
 
 ## Abbreviation Table Parser: sub_1D17C90
 
-The abbreviation table parser (`sub_1D17C90` at `0x1D17C90`, 18,519 bytes, 675 decompiled lines) reads `.debug_abbrev` section data and builds an in-memory lookup table. Each abbreviation entry maps an abbreviation number to a DW_TAG code, a has-children flag, and a list of (attribute, form) pairs.
+The abbreviation table parser (`sub_1D17C90` at `0x1D17C90`, 3,704 bytes) reads `.debug_abbrev` section data and builds an in-memory lookup table. Each abbreviation entry maps an abbreviation number to a DW_TAG code, a has-children flag, and a list of (attribute, form) pairs.
 
 ### Signature
 
@@ -348,7 +348,7 @@ This means the PGI array descriptor attributes are treated as first-class locati
 
 ## DW_OP Expression Decoder: sub_1D1A920
 
-The DW_OP expression decoder (`sub_1D1A920` at `0x1D1A920`, 15,580 bytes, 616 lines) parses DWARF location expressions and prints them into a string buffer. It handles the full set of DWARF-2/3 expression opcodes needed for GPU debug information.
+The DW_OP expression decoder (`sub_1D1A920` at `0x1D1A920`, 3,094 bytes) parses DWARF location expressions and prints them into a string buffer. It handles the full set of DWARF-2/3 expression opcodes needed for GPU debug information.
 
 ### Signature
 
@@ -528,7 +528,7 @@ After processing one CU, the parser advances `data` by `unit_length - 7` bytes a
 
 ## DIE Tree Walker: sub_1D1BE80
 
-The DIE tree walker (`sub_1D1BE80` at `0x1D1BE80`, 27,583 bytes, 1,059 lines) recursively processes all Debug Information Entries within a compilation unit. For each DIE it:
+The DIE tree walker (`sub_1D1BE80` at `0x1D1BE80`, 5,218 bytes) recursively processes all Debug Information Entries within a compilation unit. For each DIE it:
 
 1. Reads the abbreviation number (ULEB128).
 2. Looks up the abbreviation entry to determine the DW_TAG, has-children flag, and attribute list.
@@ -560,7 +560,7 @@ The LEB128 codec at `0x1D00000`--`0x1D0FFF0` provides variable-length integer en
 | `sub_1D07900` | `0x1D07900` | 28,383 B | ULEB128 decoder |
 | `sub_1D08D90` | `0x1D08D90` | 53,282 B | SSE-accelerated LEB128 encoder |
 | `sub_1D0DFD0` | `0x1D0DFD0` | 69,653 B | SSE-accelerated LEB128 decoder |
-| `sub_1D10120` | `0x1D10120` | 69,928 B | SSE-accelerated signed LEB128 decoder |
+| `sub_1D10120` | `0x1D10120` | 9,605 B | SSE-accelerated signed LEB128 decoder |
 | `sub_1D13C80` | `0x1D13C80` | 48,315 B | SSE bulk LEB128 encoder |
 | `sub_1D238D0` | `0x1D238D0` | 31,937 B | Multi-pass LEB128 encoder |
 | `sub_1D0AF40` | `0x1D0AF40` | 17,016 B | LEB128 lookup table initializer |
@@ -578,7 +578,7 @@ The DWARF parser calls two specific ULEB128/SLEB128 decoders for individual valu
 
 The SSE-accelerated encoders and decoders process 16 bytes at a time using SSE2 SIMD instructions (`_mm_load_si128`, `_mm_shuffle_epi8`, `_mm_and_si128`, `_mm_or_si128`, `_mm_srli_epi64`). They extract continuation bits in parallel across 16 LEB128 bytes, determine group boundaries, and decode/encode all values in a single pass. These are used for bulk operations on large DWARF sections, not for individual value decoding.
 
-The signed SSE decoder (`sub_1D10120`, 69,928 bytes -- the largest function in the LEB128 subsystem) additionally handles sign extension for negative values, which requires detecting the sign bit position within each variable-length group.
+The signed SSE decoder (`sub_1D10120`, 9,605 bytes -- the largest function in the LEB128 subsystem) additionally handles sign extension for negative values, which requires detecting the sign bit position within each variable-length group.
 
 ## Helper Functions
 
@@ -651,7 +651,7 @@ nvlink's DWARF processing subsystem consumes the output of both upstream stages:
 | Abbreviation table 2048 bytes initial, 32 bytes per entry | HIGH | Decompiled `sub_1D17C90` exists at exact address; string `"unexpectedly too many dwarf attributes for any DW_TAG entry!"` confirmed in strings at `0x245DD70` |
 | DW_FORM name lookup `sub_1D16C60` -- 22 forms | HIGH | Decompiled file present; string `"Unknown FORM value %d"` at `0x245D5B4` |
 | DW_AT vendor extensions (MIPS, GNU, NV, PGI) | HIGH | All four vendor attribute name strings confirmed: `DW_AT_MIPS_linkage_name` at `0x245DB8A`, `DW_AT_GNU_pubnames` at `0x245DBA2`, `DW_AT_NV_general_flags` at `0x245DBF7`, `DW_AT_PGI_lbase/soffset/lstride` at `0x245DBB5`--`0x245DBD7` |
-| `DW_AT_MIPS_linkage_name` priority over `DW_AT_name` | MEDIUM | String evidence confirms attribute exists; priority logic inferred from decompiled `sub_1D1BE80` (1,059-line function too complex for full verification but attribute dispatch structure is consistent) |
+| `DW_AT_MIPS_linkage_name` priority over `DW_AT_name` | MEDIUM | String evidence confirms attribute exists; priority logic inferred from decompiled `sub_1D1BE80` (5,218-byte function with attribute dispatch structure consistent with the documented behavior) |
 | DW_OP expression decoder `sub_1D1A920` opcodes | HIGH | All DW_OP format strings confirmed in strings: `DW_OP_addr`, `DW_OP_constu`, `DW_OP_const4u`, `DW_OP_xderef`, `DW_OP_breg%d`, `DW_OP_fbreg`, `DW_OP_deref_size`, `DW_OP_lit%u`, `DW_OP_reg%d`, `DW_OP_stack_value`, `DW_OP_plus_uconst` at addresses `0x245DEE0`--`0x245DFAC` |
 | `.nv_debug_info_ptx` processed by CU parser | HIGH | String `.nv_debug_info_ptx` at `0x245E6D4` with xref into `sub_1D1D2F0` |
 | Section type classifier `sub_12D4370` assigns IDs 1--6 | HIGH | Decompiled file present at exact address |

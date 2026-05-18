@@ -625,7 +625,7 @@ The magic constant `1879048292` (`0x70000064`) appears in the emitter decompilat
 
 ## Function Map
 
-| Address | Size (binary) | Decompiled | Callers | Callees | Purpose |
+| Address | Size (native) | Size (decomp) | Callers | Callees | Purpose |
 |---|---|---|---|---|---|
 | `sub_1CB53A0` | 3,480 B | 13 KB | 1 | 25 | ELFW constructor (672-byte object) |
 | `sub_1CB3570` | 1,963 B | 10 KB | 44 | 13 | Section creator (.rela/.rel auto-create) |

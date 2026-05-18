@@ -749,7 +749,7 @@ These attributes are not relocation types but are processed alongside relocation
 | `sub_4685B0` | `0x4685B0` | 961 bytes | Bitfield write helper (multi-word splice) |
 | `sub_4683D0` | `0x4683D0` | 536 bytes | Descriptor table swap (save/restore table pointers) |
 | `sub_4275C0` | `0x4275C0` | 3,989 bytes | FNLZR front-end dispatcher (pre/post-link mode) |
-| `sub_4748F0` | `0x4748F0` | 48,730 bytes | FNLZR core engine (10-phase pipeline) |
+| `sub_4748F0` | `0x4748F0` | 8,950 bytes | FNLZR core engine (10-phase pipeline) |
 | `sub_4AC380` | `0x4AC380` | ~2,000 bytes | Capmerc CLI option registration and self-check setup |
 | `sub_45E7D0` | `0x45E7D0` | 89,156 bytes | Merge function (Mercury section skip logic) |
 

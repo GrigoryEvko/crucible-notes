@@ -897,22 +897,22 @@ void EmitELF(context) {
 
 | Address | Size | Identity |
 |---|---|---|
-| `sub_1C9F280` | 97KB | Master ELF emitter (orchestrates full CUBIN output) |
-| `sub_1CA3A90` | 45KB | Section merger / combined section emitter |
-| `sub_1CB68D0` | 49KB | Symbol table builder (handles merc section references) |
-| `sub_1C99BB0` | 25KB | Section index remap (`.symtab_shndx` / `.nv.merc.symtab_shndx`) |
-| `sub_1C9C300` | 24KB | Capsule descriptor processor (328-byte object, KNOBS embed) |
-| `sub_1C9B110` | 23KB | Mercury capsule builder (creates `.nv.merc` namespace) |
-| `sub_1CD48C0` | 22KB | Master relocation resolver (R_MERCURY_* + standard) |
-| `sub_1CA2E40` | 18KB | Mercury section cloner |
-| `sub_1C9D1F0` | 16KB | Debug section classifier (SASS + merc variants) |
-| `sub_1C98C60` | 9KB | Mercury debug section classifier (15 section names) |
-| `sub_720F00` | 64KB | Flex SASS text lexer (self-check reconstitution) |
-| `sub_729540` | 35KB | SASS assembly verification (self-check comparator) |
-| `sub_703AB0` | 10KB | Binary-kind CLI parser |
-| `sub_612DE0` | 47KB | Kernel finalizer / ELF builder (fastpath optimization) |
+| `sub_1C9F280` | 97 KB (decomp) | Master ELF emitter (orchestrates full CUBIN output) |
+| `sub_1CA3A90` | 45 KB (decomp) | Section merger / combined section emitter |
+| `sub_1CB68D0` | 49 KB (decomp) | Symbol table builder (handles merc section references) |
+| `sub_1C99BB0` | 25 KB (decomp) | Section index remap (`.symtab_shndx` / `.nv.merc.symtab_shndx`) |
+| `sub_1C9C300` | 24 KB (decomp) | Capsule descriptor processor (328-byte object, KNOBS embed) |
+| `sub_1C9B110` | 23 KB (decomp) | Mercury capsule builder (creates `.nv.merc` namespace) |
+| `sub_1CD48C0` | 20 KB (decomp) | Master relocation resolver (R_MERCURY_* + standard) |
+| `sub_1CA2E40` | 18 KB (decomp) | Mercury section cloner |
+| `sub_1C9D1F0` | 16 KB (decomp) | Debug section classifier (SASS + merc variants) |
+| `sub_1C98C60` | 9 KB (decomp) | Mercury debug section classifier (15 section names) |
+| `sub_720F00` | 64 KB (decomp) | Flex SASS text lexer (self-check reconstitution) |
+| `sub_729540` | 35 KB (decomp) | SASS assembly verification (self-check comparator) |
+| `sub_703AB0` | 10 KB (decomp) | Binary-kind CLI parser |
+| `sub_612DE0` | 47 KB (decomp) | Kernel finalizer / ELF builder (fastpath optimization) |
 | `sub_60F290` | -- | Off-target compatibility checker |
-| `sub_1CD13A0` | 11KB | ELF serialization (final file writer) |
+| `sub_1CD13A0` | 11 KB (decomp) | ELF serialization (final file writer) |
 
 ## Cross-References
 

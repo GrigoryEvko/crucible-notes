@@ -4,7 +4,7 @@
 >
 > **Upstream source:** `llvm/lib/Transforms/Scalar/GVN.cpp`, `llvm/lib/Transforms/Scalar/NewGVN.cpp` (LLVM 20.0.0)
 
-CICC v13.0 ships two GVN implementations: the classic GVN pass at `0x1900BB0` (83 KB, ~2314 decompiled lines) and a NewGVN pass at `0x19F99A0` (68 KB, ~2460 decompiled lines). Both are derived from upstream LLVM but carry substantial NVIDIA modifications for GPU-specific value numbering, store splitting, and intrinsic-aware CSE. The knob constructor at `ctor_201` (`0x4E0990`) registers eleven tunables that control PRE, store splitting, PHI removal, dominator caching, and recursion depth.
+CICC v13.0 ships two GVN implementations: the classic GVN pass at `0x1900BB0` (11.5 KB binary, ~2,314 decomp lines) and a NewGVN pass at `0x19F99A0` (12.3 KB binary, ~2,460 decomp lines). Both are derived from upstream LLVM but carry substantial NVIDIA modifications for GPU-specific value numbering, store splitting, and intrinsic-aware CSE. The knob constructor at `ctor_201` (`0x4E0990`) registers eleven tunables that control PRE, store splitting, PHI removal, dominator caching, and recursion depth.
 
 ## Key Facts
 
@@ -13,8 +13,8 @@ CICC v13.0 ships two GVN implementations: the classic GVN pass at `0x1900BB0` (8
 | Pass name (pipeline) | `gvn` (parameterized) |
 | Registration | New PM #397, parameterized: `no-pre;pre;no-load-pre;load-pre;...` |
 | Runtime positions | Tier 0 #5 (via `sub_1C6E800`); also appears at NewGVN/GVNHoist position #6; see [Pipeline](pipeline.md) |
-| Classic GVN entry | `sub_1900BB0` (83 KB, 2,314 lines) |
-| NewGVN entry | `sub_19F99A0` (68 KB, 2,460 lines) |
+| Classic GVN entry | `sub_1900BB0` (11.5 KB binary / 2,314 decomp lines) |
+| NewGVN entry | `sub_19F99A0` (12.3 KB binary / 2,460 decomp lines) |
 | Knob constructor | `ctor_201` at `0x4E0990` |
 | Upstream source | `llvm/lib/Transforms/Scalar/GVN.cpp`, `NewGVN.cpp` (LLVM 20.0.0) |
 
@@ -192,11 +192,11 @@ The `gvn-dom-cache` knob (default true, cache size 32) addresses a known perform
 
 After GVN identifies equivalent values, some PHI nodes become trivial. The `enable-phi-remove` knob controls aggressiveness: level 0 disables removal, level 1 removes only trivially redundant PHIs, and level 2 (default) removes PHIs that become trivial after leader substitution.
 
-The core `replaceAndErase` routine (`sub_19003A0`, 11 KB) iterates all uses of a replaced value, checks each PHI-node use for trivial foldability using a `SmallDenseSet` (opcode 23), and employs a 4-way unrolled loop (lines 301-317) for use scanning. This micro-optimization targets the common case of PHIs with many incoming edges after switch lowering or loop unrolling.
+The core `replaceAndErase` routine (`sub_19003A0`, 2.0 KB binary) iterates all uses of a replaced value, checks each PHI-node use for trivial foldability using a `SmallDenseSet` (opcode 23), and employs a 4-way unrolled loop (lines 301-317) for use scanning. This micro-optimization targets the common case of PHIs with many incoming edges after switch lowering or loop unrolling.
 
 ## NewGVN
 
-The NewGVN implementation at `sub_19F99A0` (68 KB) uses congruence classes instead of simple leader tables, following the partition-based algorithm from Karthik Gargi (2002). The pass object stores a congruence class hash table at offset +1400 with count, bucket array, entry count, tombstone count, and bucket count fields.
+The NewGVN implementation at `sub_19F99A0` (12.3 KB binary, ~2,460 decomp lines) uses congruence classes instead of simple leader tables, following the partition-based algorithm from Karthik Gargi (2002). The pass object stores a congruence class hash table at offset +1400 with count, bucket array, entry count, tombstone count, and bucket count fields.
 
 The algorithm:
 
@@ -227,25 +227,25 @@ The `profusegvn` knob (default true) enables verbose output through NVIDIA's cus
 
 | Function | Address | Size | Role |
 |----------|---------|------|------|
-| `GVN::runOnFunction` | `0x1900BB0` | 83 KB | Main classic GVN pass |
-| `replaceAndErase` | `0x19003A0` | 11 KB | Replace uses + erase instruction |
-| `NewGVN::run` | `0x19F99A0` | 68 KB | NewGVN algorithm |
-| `ctor_201` | `0x4E0990` | 9 KB | GVN knob registration |
-| `hashExpression` | `0x18FDEE0` | ~5 KB | Expression hash function |
-| `compareExpression` | `0x18FB980` | ~2 KB | Expression equality test |
-| `lookupExpr5` | `0x18FEB70` | ~3 KB | 5-key store expression lookup |
-| `insertExpr5` | `0x18FFC60` | ~3 KB | 5-key insert with scoped undo |
-| `insertLeader` | `0x18FEF10` | ~5 KB | Leader table insert |
-| `checkStoreSplit` | `0x18FECC0` | ~3 KB | Store expression for splitting |
-| `canReplace` | `0x18FBB40` | <1 KB | Dominance-based replacement check |
-| `preAvailCheck` | `0x18FC460` | ~3 KB | PRE availability analysis |
-| `performPRE` | `0x18FF290` | 10 KB | PRE insertion |
-| `largeGVNHelper` | `0x18F6D00` | 60 KB | PRE / load forwarding helper |
-| `phiGVNHelper` | `0x18FAA90` | 20 KB | PHI-related GVN helper |
-| `storeSplitHelper` | `0x1906720` | 26 KB | Store splitting implementation |
-| `storeSplitVisit` | `0x1905CD0` | 16 KB | Store-split worklist visitor |
-| `postGVNCleanup` | `0x1908A00` | 10 KB | Post-GVN cleanup |
-| `gvnFinalCleanup` | `0x190C3B0` | 8 KB | Final cleanup after GVN |
+| `GVN::runOnFunction` | `0x1900BB0` | 11.5 KB | Main classic GVN pass |
+| `replaceAndErase` | `0x19003A0` | 2.0 KB | Replace uses + erase instruction |
+| `NewGVN::run` | `0x19F99A0` | 12.3 KB | NewGVN algorithm |
+| `ctor_201` | `0x4E0990` | -- | GVN knob registration |
+| `hashExpression` | `0x18FDEE0` | 0.7 KB | Expression hash function |
+| `compareExpression` | `0x18FB980` | 0.4 KB | Expression equality test |
+| `lookupExpr5` | `0x18FEB70` | 0.3 KB | 5-key store expression lookup |
+| `insertExpr5` | `0x18FFC60` | 0.4 KB | 5-key insert with scoped undo |
+| `insertLeader` | `0x18FEF10` | 0.9 KB | Leader table insert |
+| `checkStoreSplit` | `0x18FECC0` | 0.5 KB | Store expression for splitting |
+| `canReplace` | `0x18FBB40` | 0.2 KB | Dominance-based replacement check |
+| `preAvailCheck` | `0x18FC460` | 0.4 KB | PRE availability analysis |
+| `performPRE` | `0x18FF290` | 1.9 KB | PRE insertion |
+| `largeGVNHelper` | `0x18F6D00` | 11.3 KB | PRE / load forwarding helper |
+| `phiGVNHelper` | `0x18FAA90` | 3.3 KB | PHI-related GVN helper |
+| `storeSplitHelper` | `0x1906720` | 4.2 KB | Store splitting implementation |
+| `storeSplitVisit` | `0x1905CD0` | 2.5 KB | Store-split worklist visitor |
+| `postGVNCleanup` | `0x1908A00` | 1.8 KB | Post-GVN cleanup |
+| `gvnFinalCleanup` | `0x190C3B0` | 1.6 KB | Final cleanup after GVN |
 
 ## Expression Classification Bitmask
 
@@ -299,8 +299,8 @@ These four passes form the core scalar optimization chain in CICC's mid-pipeline
  |   - Algebraic identities: x+0, x*1, x&-1 (sub_F0F270)      |
  |   - Strength reduction: x*2^n -> x<<n (sub_10BA120)         |
  |   - Cast chain collapse: trunc(zext(x)) -> x or smaller     |
- |   - NVIDIA intrinsic folding (sub_1169C30, 87KB)             |
- |   - computeKnownBits propagation (sub_11A7600, 127KB)        |
+ |   - NVIDIA intrinsic folding (sub_1169C30, 11.2 KB)          |
+ |   - computeKnownBits propagation (sub_11A7600, 27.5 KB)      |
  |                                                              |
  | Produces:                                                    |
  |   - Canonical instruction forms (const on RHS, etc.)         |
@@ -435,7 +435,7 @@ All diagnostic strings recovered from the binary. GVN uses NVIDIA's custom profu
 | `"profuse for GVN"` | `0x4FAE7E0` (`profusegvn` knob description) | Knob | Knob registration |
 | `"enable caching of dom tree nodes"` | `0x4FAE700` (`gvn-dom-cache` knob description) | Knob | Knob registration |
 | `"Max recurse depth (default = 1000)"` | `0x4FAE620` (`max-recurse-depth` knob description) | Knob | Knob registration |
-| (profuse GVN diagnostic output) | `sub_1909530` (~5 KB) | Debug | `profusegvn` knob enabled (default true); emits at value replacement, store/load match, and PRE insertion decisions |
+| (profuse GVN diagnostic output) | `sub_1909530` (1.1 KB) | Debug | `profusegvn` knob enabled (default true); emits at value replacement, store/load match, and PRE insertion decisions |
 | (PHI removal diagnostic output) | `sub_19003A0` region | Debug | `dump-phi-remove` > 0; dumps which PHI nodes are being removed and why |
 
 The `profusegvn` framework follows the same pattern as `profuseinline` -- it is a custom NVIDIA diagnostic channel likely controlled by environment variables such as `CICC_PROFUSE_DIAGNOSTICS`, not the standard LLVM `OptimizationRemark` / `ORE` system. The `dump-phi-remove` knob (default 0) separately enables diagnostic output during PHI removal.

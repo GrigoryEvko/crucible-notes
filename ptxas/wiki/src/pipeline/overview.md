@@ -85,7 +85,7 @@ A concrete trace of a single-kernel PTX module compiled for sm_100 at `-O2`:
 
 **8. SASS encoding** (phases 113--122). Each Ori instruction is lowered to a 128-bit SASS binary instruction via the 530-handler vtable dispatch. The 1,280-bit (160-byte) encoding workspace at `instruction+544` is filled by `sub_7B9B80` (bitfield insert, 18,347 callers). A 2,000-instruction kernel produces ~32 KB of raw SASS binary. On sm_100+, Capsule Mercury (capmerc) is the default format, embedding PTX source alongside the SASS.
 
-**9. ELF/cubin emission** (`sub_612DE0`, 47 KB). The finalizer assembles the cubin: `.text.FUNCNAME` (SASS binary), `.nv.info.FUNCNAME` (EIATTR attributes), `.nv.shared.FUNCNAME` (shared memory layout), `.nv.constant0.FUNCNAME` (constant bank), plus global sections (`.shstrtab`, `.strtab`, `.symtab`). Section layout (`sub_1CABD60`, 67 KB) assigns addresses; the master ELF emitter (`sub_1C9F280`, 97 KB) writes headers, section tables, and program headers. A single-kernel cubin for a medium-complexity kernel is typically 40--120 KB.
+**9. ELF/cubin emission** (`sub_612DE0`, 47 KB decomp). The finalizer assembles the cubin: `.text.FUNCNAME` (SASS binary), `.nv.info.FUNCNAME` (EIATTR attributes), `.nv.shared.FUNCNAME` (shared memory layout), `.nv.constant0.FUNCNAME` (constant bank), plus global sections (`.shstrtab`, `.strtab`, `.symtab`). Section layout (`sub_1CABD60`, 11,856 B native / 66 KB decomp) assigns addresses; the master ELF emitter (`sub_1C9F280`, 15,263 B native / 97 KB decomp) writes headers, section tables, and program headers. A single-kernel cubin for a medium-complexity kernel is typically 40--120 KB.
 
 **Approximate data sizes at each stage (medium kernel, sm_100, -O2):**
 
@@ -219,16 +219,16 @@ sub_446240 (0x446240, 11KB) ---- "Top-level compilation driver"
   |     |  version: "Cuda compilation tools, release 13.0, V13.0.88"
   |     |  build:   "Build cuda_13.0.r13.0/compiler.36424714_0"
   |     |
-  |     sub_1CB53A0 (13KB) ------- ELF world initializer (672-byte object)
+  |     sub_1CB53A0 (13KB decomp) - ELF world initializer (672-byte object)
   |     |  "elfw memory space", .shstrtab, .strtab, .symtab
   |     |
-  |     sub_1CB3570 (10KB) ------- Add .text.FUNCNAME sections (44 callers)
-  |     sub_1CB68D0 (49KB) ------- Symbol table builder
-  |     sub_1CABD60 (67KB) ------- Section layout & memory allocation
-  |     sub_1CD48C0 (22KB) ------- Relocation resolver
-  |     sub_1C9B110 (23KB) ------- Mercury capsule builder (capmerc)
-  |     sub_1C9F280 (97KB) ------- Master ELF emitter (largest in range)
-  |     sub_1CD13A0 (11KB) ------- Final file writer
+  |     sub_1CB3570 (10KB decomp) - Add .text.FUNCNAME sections (44 callers)
+  |     sub_1CB68D0 (49KB decomp) - Symbol table builder
+  |     sub_1CABD60 (66KB decomp) - Section layout & memory allocation
+  |     sub_1CD48C0 (20KB decomp) - Relocation resolver
+  |     sub_1C9B110 (23KB decomp) - Mercury capsule builder (capmerc)
+  |     sub_1C9F280 (97KB decomp) - Master ELF emitter (largest in range)
+  |     sub_1CD13A0 (11KB decomp) - Final file writer
   |
   v
 [report CompileTime, PeakMemoryUsage, per-phase breakdown]
@@ -289,7 +289,7 @@ The PhaseManager (`sub_C62720`) instantiates phases via a 159-case factory switc
 
 ### Stage 5: ELF (ELF-time)
 
-The finalizer `sub_612DE0` (47KB) assembles the NVIDIA ELF/cubin from the compiled SASS. Section layout (`sub_1CABD60`, 67KB) assigns addresses to shared memory, constant banks (with OCG deduplication), local memory, and reserved shared memory (`.nv.reservedSmem.begin/cap/offset0`). The master ELF emitter `sub_1C9F280` (97KB) constructs headers, section tables, and program headers. Three binary output modes exist:
+The finalizer `sub_612DE0` (47 KB decomp) assembles the NVIDIA ELF/cubin from the compiled SASS. Section layout (`sub_1CABD60`, 11,856 B native / 66 KB decomp) assigns addresses to shared memory, constant banks (with OCG deduplication), local memory, and reserved shared memory (`.nv.reservedSmem.begin/cap/offset0`). The master ELF emitter `sub_1C9F280` (15,263 B native / 97 KB decomp) constructs headers, section tables, and program headers. Three binary output modes exist:
 
 1. **mercury** -- traditional SASS binary format
 2. **capmerc** -- Capsule Mercury (default on sm_100+), embeds PTX source in `.nv.merc.*` sections

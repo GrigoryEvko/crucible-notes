@@ -286,7 +286,7 @@ The "MERCURY" prefix (`ZREPHEL` in ROT13) corresponds to sm_100+ (Blackwell) and
 | `sub_1103030` | 30 KB | `ptxas_option_definition_table_builder` | Full option parser (~60 options) |
 | `sub_1104950` | 38 KB | `ptxas_command_option_parser` | Option processing and validation |
 | `sub_15C0CE0` | 15 KB | `init_sm_dispatch_tables` | SM architecture callback registration |
-| `sub_1A40AC0` | <1 KB | `rot13_string_decoder` | SIMD-vectorized ROT13 decoder |
+| `sub_1A40AC0` | 1.9 KB | `rot13_string_decoder` | SIMD-vectorized ROT13 decoder |
 | `sub_4BD760` | varies | `ptxas_jit_compile` | Entry point for PTX JIT compilation |
 | `sub_4BC6F0` | varies | `compile_linked_lto_ir` | Entry point for LTO compilation |
 | `sub_15B86A0` | 345 KB | `cuda_builtin_prototype_generator` | 608-case builtin switch (second-largest function) |

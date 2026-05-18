@@ -321,8 +321,8 @@ else
 | Use-def chain walker | `sub_1CA5350` | -- | Backward pointer origin tracking |
 | First-time resolver | `sub_1CA2920` | -- | Conservative address space resolution |
 | Second-time resolver | `sub_1CA9E90` | -- | Hash-table-based resolution, isspacep folding |
-| MemorySpaceCloning engine | `sub_2CBBE90` | -- | Inter-procedural function cloning (71KB) |
-| IPMSP module pass variant | `sub_1C6A6C0` | -- | LIBNVVM path (54KB) |
+| MemorySpaceCloning engine | `sub_2CBBE90` | -- | Inter-procedural function cloning (11.0 KB binary) |
+| IPMSP module pass variant | `sub_1C6A6C0` | -- | LIBNVVM path (10.5 KB binary) |
 | EDG cvta lowering | `sub_94A030` | -- | Address space cast intrinsic generation |
 | EDG decl-side memspace processing | `sub_6582F0` | -- | CUDA attribute to memory space code resolution |
 | EDG def-side memspace processing | `sub_65F400` | -- | Definition validation and initializer handling |

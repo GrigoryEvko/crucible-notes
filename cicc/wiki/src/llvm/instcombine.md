@@ -4,18 +4,18 @@
 >
 > **Upstream source:** `llvm/lib/Transforms/InstCombine/InstructionCombining.cpp`, `llvm/lib/Transforms/InstCombine/InstCombine*.cpp` (LLVM 20.0.0). The upstream is split across ~15 files by instruction category; cicc inlines them into a single monolithic visitor.
 
-NVIDIA's InstCombine in CICC v13.0 is approximately twice the size of upstream LLVM's, weighing in at roughly 405 KB for the main visitor alone. The monolithic visitor function at `sub_10EE7A0` dispatches across 80 unique opcode cases through a three-level switch structure, handling standard LLVM instructions, NVIDIA-extended vector and FMA operations, and three high-opcode NVVM intrinsic dead-code elimination patterns. A separate 87 KB intrinsic folding function (`sub_1169C30`) handles NVVM-specific canonicalization, and a 127 KB `computeKnownBits` implementation (`sub_11A7600`) provides the dataflow backbone. This page covers the visitor architecture, the per-instruction-type visitors recovered from the binary, and the NVIDIA-specific extensions that distinguish this implementation from upstream.
+NVIDIA's InstCombine in CICC v13.0 is substantially larger than upstream LLVM's. The monolithic visitor function at `sub_10EE7A0` (58.6 KB binary, ~9,258 decomp lines) dispatches across 80 unique opcode cases through a three-level switch structure, handling standard LLVM instructions, NVIDIA-extended vector and FMA operations, and three high-opcode NVVM intrinsic dead-code elimination patterns. A separate intrinsic folding function (`sub_1169C30`, 11.2 KB / ~2,268 decomp lines) handles NVVM-specific canonicalization, and a `computeKnownBits` implementation (`sub_11A7600`, 27.5 KB / ~4,156 decomp lines) provides the dataflow backbone. This page covers the visitor architecture, the per-instruction-type visitors recovered from the binary, and the NVIDIA-specific extensions that distinguish this implementation from upstream.
 
 | | |
 |---|---|
 | **Registration** | New PM #398, parameterized: `no-aggressive-aggregate-splitting;...;max-iterations=N` |
 | **Runtime positions** | Tier 0 #28 (via `sub_19401A0`); Tier 1/2/3 #42 (gated by `!opts[1000]`); see [Pipeline](pipeline.md) |
-| **Main visitor** | `sub_10EE7A0` (`0x10EE7A0`, ~405 KB, 9,258 lines) |
-| **Intrinsic folding** | `sub_1169C30` (`0x1169C30`, ~87 KB, 2,268 lines) |
-| **computeKnownBits** | `sub_11A7600` (`0x11A7600`, ~127 KB, 4,156 lines) |
+| **Main visitor** | `sub_10EE7A0` (`0x10EE7A0`, 58.6 KB binary / 9,258 decomp lines) |
+| **Intrinsic folding** | `sub_1169C30` (`0x1169C30`, 11.2 KB binary / 2,268 decomp lines) |
+| **computeKnownBits** | `sub_11A7600` (`0x11A7600`, 27.5 KB binary / 4,156 decomp lines) |
 | **SimplifyDemandedBits** | `sub_11AE870` / `sub_11AE3E0` (wrapper + hash table) |
 | **Opcode cases** | 80 unique case labels across 3 switch blocks |
-| **NVIDIA extra size** | ~200 KB beyond upstream (~87 KB intrinsic fold + ~113 KB expanded cases) |
+| **NVIDIA extra size** | InstCombine binary footprint is ~2x upstream LLVM (visitor + intrinsic fold + expanded cases) |
 
 ## Visitor Architecture
 
@@ -43,7 +43,7 @@ Each major instruction type is handled by a dedicated visitor function called fr
 
 | | |
 |---|---|
-| **Address** | `0x10D8BB0` (102 KB, 2,078 lines) |
+| **Address** | `0x10D8BB0` (14.1 KB binary / 2,078 decomp lines) |
 | **Dispatch case** | `0x3A` in the master dispatcher |
 | **Sibling cases** | `0x39` (NSW/NUW-focused), `0x3B` (associative/commutative) |
 
@@ -61,7 +61,7 @@ Four template-instantiated helpers at `sub_10D2680`--`sub_10D2D70` (2,767 bytes 
 
 | | |
 |---|---|
-| **Comprehensive folder** | `sub_1136650` (`0x1136650`, 149 KB, 3,697 lines) |
+| **Comprehensive folder** | `sub_1136650` (`0x1136650`, 22.4 KB binary / 3,697 decomp lines) |
 | **Per-opcode dispatch** | `sub_113CA70` (`0x113CA70`) -- 12 case labels |
 
 The ICmp folder is the single largest function in InstCombine. It runs before the per-opcode dispatch table and handles 15 major fold categories: all-ones/sign-bit constant folds, Mul-with-constant strength reduction (NUW-gated), nested Mul decomposition, common sub-operand cancellation, NUW/NSW flag-gated predicate conversion, known-nonnegativity folds, ConstantRange intersection, shared sub-operand elimination, Sub sign-bit analysis, min/max pattern recognition, computeKnownBits sign-bit analysis, power-of-2 optimizations, remainder pattern matching, XOR/shift decomposition, and Or/And decomposition with type width folding.
@@ -97,8 +97,8 @@ The per-opcode dispatch at `sub_113CA70` routes based on the non-constant operan
 
 | | |
 |---|---|
-| **Address** | `0x110CA10` (93 KB, 2,411 lines) |
-| **Cast chain helper** | `sub_110B960` (22 KB, 833 lines) |
+| **Address** | `0x110CA10` (12.2 KB binary / 2,411 decomp lines) |
+| **Cast chain helper** | `sub_110B960` (4.2 KB binary / 833 decomp lines) |
 
 Handles all cast simplification: same-type identity elimination, bool-to-float chains, integer-to-integer narrowing/widening, FP-to-int special cases, FP narrowing, cast-through-select/PHI, and the major cast-of-cast chain folding. The helper `sub_110B960` implements deep cast chain folding for aggregate types using a worklist with a `DenseMap` for O(1) deduplication, preventing exponential blowup on diamond-shaped use-def graphs. The function is conservative about side effects: `sub_B46500` (isVolatile) is called before every fold.
 
@@ -106,16 +106,16 @@ Handles all cast simplification: same-type identity elimination, bool-to-float c
 
 | | |
 |---|---|
-| **Address** | `0x1012FB0` (74 KB, 1,801 lines) |
+| **Address** | `0x1012FB0` (9.9 KB binary / 1,801 decomp lines) |
 | **Local variables** | 190 total |
 
-Implements 18 prioritized select simplifications: constant fold, undef arm elimination, both-same identity, PHI-through-select, KnownBits sign analysis, ConstantRange analysis, full-range analysis, KnownBits cross-validation, ICmpInst arm synthesis, ExtractValue decomposition, implied condition, canonicalization (delegated to `sub_1015760`, 27 KB), min/max pattern detection (smin/smax/umin/umax/abs/nabs via four helpers), select-in-comparison chains, PHI-select worklist scan (DenseMap with hash `(ptr >> 9) ^ (ptr >> 4)`), ValueTracking classification, pointer-null folding, and load/trunc delegation.
+Implements 18 prioritized select simplifications: constant fold, undef arm elimination, both-same identity, PHI-through-select, KnownBits sign analysis, ConstantRange analysis, full-range analysis, KnownBits cross-validation, ICmpInst arm synthesis, ExtractValue decomposition, implied condition, canonicalization (delegated to `sub_1015760`, 5.3 KB), min/max pattern detection (smin/smax/umin/umax/abs/nabs via four helpers), select-in-comparison chains, PHI-select worklist scan (DenseMap with hash `(ptr >> 9) ^ (ptr >> 4)`), ValueTracking classification, pointer-null folding, and load/trunc delegation.
 
 ### visitPHINode -- `sub_1175E90`
 
 | | |
 |---|---|
-| **Address** | `0x1175E90` (~57 KB, ~2,130 lines) |
+| **Address** | `0x1175E90` (9.3 KB binary / ~2,130 decomp lines) |
 
 Implements 16 PHI optimization strategies tried in sequence: SimplifyInstruction constant fold, foldPHIArgOpIntoPHI (binary/cast with one varying operand), foldPHIArgConstantOp, typed opcode dispatch (GEP via `sub_1172510`, InsertValue, ExtractValue, CmpInst, BinOp/Cast), GEP incoming deduplication with loop back-edge analysis, single-use PHI user check, GEP-of-PHI transform (`sub_1174BB0`, 1,033 lines), phi-cycle escape detection, trivial PHI elimination (all-same non-PHI value), recursive PHI cycle resolution (`sub_116D410`), operand reordering canonicalization, identical-PHI-in-block deduplication, pointer-type struct GEP optimization, all-undef incoming check, and dominator-tree GEP index hoisting using two DenseMaps.
 
@@ -123,15 +123,15 @@ Implements 16 PHI optimization strategies tried in sequence: SimplifyInstruction
 
 | | |
 |---|---|
-| **Address** | `0x1162F40` (50 KB, 1,647 lines) |
+| **Address** | `0x1162F40` (9.5 KB binary / 1,647 decomp lines) |
 
-Processes calls through a 15-step cascade: LibCall simplification (`sub_100A740`), standard intrinsic folding (`sub_F0F270`), return attribute analysis (`sub_F11DB0`), overflow/saturating arithmetic (`sub_115C220`), inline mul-by-constant folding, generic call combining (`sub_115A080`), FMA/fneg/fsub canonicalization (the largest block, requiring all of nnan+ninf+nsz+arcp+reassoc on both call and function), constant-argument intrinsic folding, unary intrinsic constant folding, exp/log pair detection (IDs 325 and 63), sqrt/rsqrt folding (IDs 284, 285), min/max folding (IDs 88, 90), nested intrinsic composition, division-to-reciprocal-multiply, and finally the NVIDIA-specific `sub_115A4C0` which dispatches to the 87 KB intrinsic folding table.
+Processes calls through a 15-step cascade: LibCall simplification (`sub_100A740`), standard intrinsic folding (`sub_F0F270`), return attribute analysis (`sub_F11DB0`), overflow/saturating arithmetic (`sub_115C220`), inline mul-by-constant folding, generic call combining (`sub_115A080`), FMA/fneg/fsub canonicalization (the largest block, requiring all of nnan+ninf+nsz+arcp+reassoc on both call and function), constant-argument intrinsic folding, unary intrinsic constant folding, exp/log pair detection (IDs 325 and 63), sqrt/rsqrt folding (IDs 284, 285), min/max folding (IDs 88, 90), nested intrinsic composition, division-to-reciprocal-multiply, and finally the NVIDIA-specific `sub_115A4C0` which dispatches to the 11.2 KB intrinsic folding table.
 
 ### visitLoadInst -- `sub_1152CF0`
 
 | | |
 |---|---|
-| **Address** | `0x1152CF0` (~68 KB, ~1,680 lines) |
+| **Address** | `0x1152CF0` (9.0 KB binary / ~1,680 decomp lines) |
 | **Stack frame** | `0x4F0` bytes (1,264 bytes) |
 
 Four major paths: constant-address fold (loads from known constant pointers with types <= 64 bits are replaced via symbol table lookup using `sub_BCD420`), address-space-based elimination (loads from non-AS(32) pointers are replaced with constants, exploiting CUDA's read-only address spaces), the main store-to-load forwarding worklist (BFS over the def-use graph following GEPs, PHIs, and bitcasts, depth-limited by global `qword_4F90528`), and dominator-based forwarding for non-pointer loads. Alignment is propagated as the maximum of source and destination, with the volatile bit carefully preserved through the `*(node+2)` 16-bit field (bits [5:0] = log2(alignment), bit [6] = volatile flag).
@@ -140,7 +140,7 @@ Four major paths: constant-address fold (loads from known constant pointers with
 
 ### NVVM Intrinsic Folding -- `sub_1169C30`
 
-This 87 KB function is the core of NVIDIA's additions to InstCombine. Called from the main visitor when the instruction is an NVIDIA intrinsic, it uses a two-layer dispatch:
+This 11.2 KB function (2,268 decomp lines) is the core of NVIDIA's additions to InstCombine. Called from the main visitor when the instruction is an NVIDIA intrinsic, it uses a two-layer dispatch:
 
 **Layer 1** (primary switch, entered when the uses-list is empty or the "fast" flag at `a1+336` is set) dispatches on the node's byte-tag:
 
@@ -213,7 +213,7 @@ The preamble handles 3-operand instructions (opcodes 238--245) representing fuse
 
 ## computeKnownBits -- `sub_11A7600`
 
-The 127 KB `computeKnownBits` implementation dispatches on the first byte of the NVVM IR node (the type tag):
+The 27.5 KB `computeKnownBits` implementation (4,156 decomp lines) dispatches on the first byte of the NVVM IR node (the type tag):
 
 | Tag | Char | Node Type |
 |---|---|---|
@@ -298,15 +298,18 @@ InstCombine does not emit `OptimizationRemark` diagnostics. The only runtime-vis
 
 ## Size Contribution Estimate
 
-| Component | Size | Description |
+All sizes below are binary-text bytes (size/1024). Source-equivalent lines run roughly 6-8x larger after decompilation.
+
+| Component | Binary size | Description |
 |---|---|---|
-| Upstream visitor baseline | ~200 KB | Standard LLVM visiting ~50 instruction types |
-| `sub_1169C30` intrinsic folding | ~87 KB | NVVM-specific intrinsic canonicalization |
-| NVVM GEP/FMA/vector cases | ~40 KB | Expanded GEP chains, ternary FMA, vector width-changing |
-| `separate_storage` + assume | ~10 KB | Operand bundle handling for alias hints |
-| High-opcode NVIDIA intrinsics | ~15 KB | DCE for opcodes 0x254D/0x2551/0x255F |
-| Expanded comparator/cast | ~50 KB | Extended ICmp, cast chain, select handling |
-| **NVIDIA total addition** | **~200 KB** | Roughly doubles upstream InstCombine |
+| `sub_10EE7A0` main visitor | 58.6 KB | Standard LLVM + NVIDIA opcodes |
+| `sub_1169C30` intrinsic folding | 11.2 KB | NVVM-specific intrinsic canonicalization |
+| `sub_1136650` ICmp folder | 22.4 KB | Comprehensive ICmp simplification |
+| `sub_11A7600` computeKnownBits | 27.5 KB | Fused KnownBits + DemandedBits |
+| `sub_10D8BB0` visitBinaryOperator | 14.1 KB | All binary arithmetic |
+| `sub_110CA10` visitCastInst | 12.2 KB | Cast simplification + chain folding |
+| `sub_1012FB0` visitSelectInst | 9.9 KB | 18 select simplifications |
+| **InstCombine cluster (binary)** | **~150 KB** | Roughly 2x upstream InstCombine binary footprint |
 
 ## Optimization Level Behavior
 
@@ -319,17 +322,17 @@ InstCombine does not emit `OptimizationRemark` diagnostics. The only runtime-vis
 | **O2** | Runs | 4-5 | Same as O1 + additional Tier 2 instance after loop passes |
 | **O3** | Runs | 5-6 | Same as O2 + Tier 3 instance; benefits from more aggressive inlining/unrolling |
 
-InstCombine is the most frequently scheduled pass in the CICC pipeline. Each instance runs the full 405KB visitor but benefits from different preceding transformations: the post-SROA instance cleans up cast chains from aggregate decomposition, the post-GVN instance simplifies expressions exposed by redundancy elimination, and the late instance performs final canonicalization before codegen. The `instcombine-negator-max-depth` and `instcombine-negator-enabled` knobs apply uniformly across all instances. Even at Ofcmax, at least one InstCombine run is considered essential for basic IR canonicalization. See [Optimization Levels](../config/optimization-levels.md) for pipeline tier details.
+InstCombine is the most frequently scheduled pass in the CICC pipeline. Each instance runs the full 58.6 KB main visitor (9,258 decomp lines) but benefits from different preceding transformations: the post-SROA instance cleans up cast chains from aggregate decomposition, the post-GVN instance simplifies expressions exposed by redundancy elimination, and the late instance performs final canonicalization before codegen. The `instcombine-negator-max-depth` and `instcombine-negator-enabled` knobs apply uniformly across all instances. Even at Ofcmax, at least one InstCombine run is considered essential for basic IR canonicalization. See [Optimization Levels](../config/optimization-levels.md) for pipeline tier details.
 
 ## Differences from Upstream LLVM
 
 | Aspect | Upstream LLVM | CICC v13.0 |
 |--------|---------------|------------|
-| **Binary size** | ~200 KB main visitor | ~405 KB main visitor + 87 KB intrinsic folding (~2x upstream) |
-| **NVVM intrinsic folding** | No NVVM-specific intrinsic canonicalization | Dedicated 87 KB function (`sub_1169C30`) with two-layer dispatch for negation, vector extract/insert, FMA, tensor, dot product, and 15+ fold types |
+| **Binary size** | ~30 KB main visitor | 58.6 KB main visitor + 11.2 KB intrinsic folding (~2x upstream binary text) |
+| **NVVM intrinsic folding** | No NVVM-specific intrinsic canonicalization | Dedicated 11.2 KB function (`sub_1169C30`, 2,268 decomp lines) with two-layer dispatch for negation, vector extract/insert, FMA, tensor, dot product, and 15+ fold types |
 | **High-opcode DCE** | Not present | Three NVIDIA proprietary intrinsic IDs (9549, 9553, 9567) with constant-argument dead-code elimination |
 | **`separate_storage` bundles** | No `separate_storage` operand bundle handling | Iterates `llvm.assume` bundles, extracting `"separate_storage"` hints for alias-based optimization |
 | **Ternary FMA opcodes** | Standard `llvm.fma` / `llvm.fmuladd` folding | Extended preamble handles opcodes 238--245 for CUDA FMA variants with address-space mismatch handling |
 | **GEP chain look-through** | Single-level GEP simplification | Depth-limited chain walk (`dword_4F901A8` steps) backward through constant-index GEP chains to find CallInst base pointers |
 | **Horizontal reduction** | Standard intrinsic-based reduction fold | Four template-instantiated `matchBinOpReduction` helpers for NVVM horizontal reduction intrinsics (IDs 329, 330, 365, 366) |
-| **KnownBits integration** | Separate `computeKnownBits` in ValueTracking | Fused 127 KB `computeKnownBits` + `SimplifyDemandedBits` with GPU special-register range oracle |
+| **KnownBits integration** | Separate `computeKnownBits` in ValueTracking | Fused 27.5 KB `computeKnownBits` + `SimplifyDemandedBits` (4,156 decomp lines) with GPU special-register range oracle |

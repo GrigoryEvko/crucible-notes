@@ -14,7 +14,7 @@ ptxas v13.0.88 defines 97 EIATTR codes, numbered 0 through 96 (`0x00`--`0x60`). 
 | **Record format** | Type-Length-Value (TLV), 4-byte aligned |
 | **Known attribute count** | 97 codes: 0--96 (v13.0.88) |
 | **Name table VA** | `0x23FDC20` (97 entries x 16 bytes = 1,552 bytes) |
-| **EIATTR builder function** | `sub_1CC9800` (14,764 bytes, 90 KB decompiled -- third largest in output range) |
+| **EIATTR builder function** | `sub_1CC9800` (14,764 B native / 86 KB decomp -- third largest in output range) |
 | **Barrier/register propagator** | `sub_1CC8950` (2,634 bytes, propagates counts across call graph) |
 | **TLV record emitter** | `sub_1CC85F0` (44 lines, writes individual EIATTR records) |
 | **SM-version gating** | `sub_1C97840` (checks whether an EIATTR code is valid for a given SM version) |
@@ -1505,9 +1505,9 @@ A corrected variant `EIATTR_AT_ENTRY_FRAGMENTS` exists at `0x2405DA1`, and `EIAT
 
 ### Key Functions
 
-| Address | Size | Identity | Role |
+| Address | Size (native) | Identity | Role |
 |---|---|---|---|
-| `sub_1CC9800` | 14,764 B | Master EIATTR builder | Constructs all `.nv.info.<func>` sections (90 KB decompiled, 51 callees) |
+| `sub_1CC9800` | 14,764 B | Master EIATTR builder | Constructs all `.nv.info.<func>` sections (86 KB decomp, 51 callees) |
 | `sub_1CC8950` | 2,634 B | Barrier/register propagator | Propagates resource counts across call graph |
 | `sub_1CC85F0` | ~180 B | TLV record emitter | Writes individual EIATTR records to the nvinfo linked list |
 | `sub_1C97840` | ~100 B | SM-version gate | Checks if an EIATTR code is valid for a given SM target |

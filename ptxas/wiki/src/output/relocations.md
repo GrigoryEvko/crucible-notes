@@ -6,11 +6,11 @@ ptxas defines two parallel relocation type systems for CUBIN ELF files: **R_CUDA
 
 | | |
 |---|---|
-| **Relocation resolver** | `sub_1CD48C0` (4,184 bytes binary, 22 KB decompiled, 17 callees) |
-| **Relocation writer** | `sub_1CD5920` (1,985 bytes binary, 11 KB decompiled) |
-| **Relocation creator (SASS)** | `sub_1CD4510` (860 bytes binary) |
-| **Relocation creator (Mercury)** | `sub_1CD46B0` (540 bytes binary) |
-| **Relocation pre-scan** | `sub_1CD43A0` (560 bytes binary) |
+| **Relocation resolver** | `sub_1CD48C0` (4,184 B native / 20 KB decomp, 17 callees) |
+| **Relocation writer** | `sub_1CD5920` (1,985 B native / 11 KB decomp) |
+| **Relocation creator (SASS)** | `sub_1CD4510` (860 B native) |
+| **Relocation creator (Mercury)** | `sub_1CD46B0` (540 B native) |
+| **Relocation pre-scan** | `sub_1CD43A0` (560 B native) |
 | **Bit-field patcher** | `sub_1CD34E0` (3,700 bytes binary, sub_1CD33F0/sub_1CD3330 helpers) |
 | **Symbol table builder** | `sub_1CB68D0` (9,578 bytes binary, 49 KB decompiled, 36 callees) |
 | **Symbol fixup** | `sub_1CB2CA0` (2,038 bytes binary, 4 call sites) |
@@ -784,9 +784,9 @@ QUIRK: entries 29--33 (`cudaGraph*`) point into a *different* string pool (`0x24
 
 ## Function Map
 
-| Address | Size (binary) | Decompiled | Callers | Callees | Purpose |
+| Address | Size (native) | Size (decomp) | Callers | Callees | Purpose |
 |---|---|---|---|---|---|
-| `sub_1CD48C0` | 4,184 B | 22 KB | 1 | 17 | Master relocation resolver (7-step algorithm) |
+| `sub_1CD48C0` | 4,184 B | 20 KB | 1 | 17 | Master relocation resolver (7-step algorithm) |
 | `sub_1CD5920` | 1,985 B | 11 KB | 1 | 9 | Relocation writer (.nv.resolvedrela) |
 | `sub_1CD4510` | ~860 B | 4 KB | -- | -- | Relocation creator (SASS) |
 | `sub_1CD46B0` | ~540 B | 4 KB | -- | -- | Relocation creator (Mercury) |
