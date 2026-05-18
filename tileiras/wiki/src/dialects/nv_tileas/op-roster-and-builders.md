@@ -129,7 +129,7 @@ The pipeline state attribute on `create_pipeline` records the stage count, the p
 
 | Slot | Kind | Type | Required | Notes |
 |---|---|---|---|---|
-| operand 0 | global view | `tiled_view` (global memory) | yes | element stride must equal 1 |
+| operand 0 | global view | `tiled_view` with GMEM residency tag | yes | residency is read from the view's address-space attribute, not the SSA type; element stride must equal 1 |
 | operand 1..R | box dims | `index` | yes (R = atom box rank) | per-axis box size |
 | result 0 | descriptor | `nv_tileas.tma_desc` | yes | consumed by `async.tiled_tma_load`/`_store` |
 | attr `atom` | atom | TMA load or store atom | yes | drives kind selection |
@@ -141,7 +141,7 @@ The pipeline state attribute on `create_pipeline` records the stage count, the p
 | Slot | Kind | Type | Required | Notes |
 |---|---|---|---|---|
 | operand 0 | descriptor | `tma_desc` | yes | from `make_tiled_tma_desc` |
-| operand 1 | shared destination | `tiled_view` (shared) | yes | TMA-compatible swizzled layout |
+| operand 1 | shared destination | `tiled_view` with SMEM residency tag | yes | residency read from the view's address-space attribute; TMA-compatible swizzled layout |
 | operand 2..R+1 | coords | `index` | yes | per-axis source coordinate |
 | operand R+2 | barrier | `mem_token` | yes | mbarrier for completion |
 | result 0 | async token | `AsyncTokenType` | yes | observed by `async.wait` |
@@ -288,6 +288,8 @@ ConsumeOneOp build_consume_one(Rewriter *rw,
 ## Tiled Memop Operand/Result Tables
 
 The tiled memory family shares one segmented operand layout. `operandSegmentSizes` separates view, coordinate, offset, token, and optional padding/mask operands so the verifier walks each slice without re-parsing the op.
+
+Throughout the tables below, the SSA operand type is `tiled_view<…>` (a TileAS dialect type, not the MLIR built-in `memref`). Residency — RMEM, SMEM, TMEM, or GMEM — is an attribute on the `tiled_view` type, not encoded in the SSA type name. Verifier rules that say "shared" or "global" inspect that address-space tag, not the SSA type; two operands that both type-print as `tiled_view<128x128xf16>` can disagree on residency and be rejected by the memory-space-pair check.
 
 ### `nv_tileas.tiled_load`
 

@@ -168,9 +168,9 @@ Descriptor capture is deliberately conservative. A descriptor moved to the host 
 - operand segments are `{view, coords, offsets, token}`;
 - token segment has zero or one value;
 - coordinate count matches the view rank, plus any descriptor-specific coordinate;
-- coordinate type matches the memref index type;
-- tile shape matches tensor shape;
-- tile element type matches view element type;
+- coordinate operands are MLIR `index`-typed (the dialect uses `tiled_view`, not the upstream `memref` type — the rank and element type come from the `tiled_view`, the address-space tag on it pins residency to RMEM/SMEM/TMEM/GMEM);
+- the SSA result `tile<…>` shape matches the `tiled_view` shape, regardless of whether the view's address space is RMEM, SMEM, TMEM, or GMEM;
+- the SSA result `tile<…>` element type matches the `tiled_view` element type;
 - tile dimensions are positive powers of two and do not exceed the implementation limit.
 
 Load and store differ in allowed memory semantics.
@@ -239,7 +239,7 @@ Atomic RMW carries stricter element-type rules. Sixteen-bit floating-point atomi
 
 `convert_layout` checks that source and destination tiles have the same element type, the same total element count, and layouts that the materialization pass knows how to decompose.
 
-`copy` and `async.copy` require an `atom` attribute and a legal source/destination memory-space pair. Legal pairs include global/register, global/shared, register/global, register/shared, register/tensor, shared/global, shared/register, shared/tensor, and tensor/register.
+`copy` and `async.copy` require an `atom` attribute and a legal source/destination memory-space pair. The pair is read from the address-space tag carried on each `tiled_view` operand — the SSA type alone (`tiled_view<…>`) does not pin residency, so the verifier inspects the view's residency attribute (RMEM/SMEM/TMEM/GMEM) rather than the SSA type to compute the pair. Legal pairs include GMEM/RMEM, GMEM/SMEM, RMEM/GMEM, RMEM/SMEM, RMEM/TMEM, SMEM/GMEM, SMEM/RMEM, SMEM/TMEM, and TMEM/RMEM (named here by residency, not by SSA type).
 
 `dot` and `async.dot` require an atom, compatible A/B element types, the right signedness attributes for integer MMA, and a Float32 accumulator for floating-point paths.
 

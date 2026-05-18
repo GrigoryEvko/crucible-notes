@@ -944,7 +944,7 @@ Within the scheduling context, the control word is maintained at instruction off
 | Encoding format | `*(instr+56)` | DWORD | 4 = barrier format in Mercury |
 | Stall bits | `*(instr+168)` | BYTE | Final stall value for encoding |
 
-The `sub_A2D340` (32 KB) function writes these fields through a large opcode switch, handling opcodes 50 (atomics), 73 (BAR), 74 (ST), 77 (LDS/STS), 78 (HMMA), and others with instruction-specific field layouts.
+The `sub_A2D340` (32 KB) function writes these fields through a large if/else cascade on the Ori IR opcode at `*(uint32_t*)(instr+72)` (masked via `BYTE1 & 0xCF`). The dispatched opcodes are control-flow and branch-stack instructions whose names come from the [Ori IR table](../ir/instructions.md) / [ROT13 mnemonic table](../reference/sass-opcodes.md): 50 (`FRND_X`, FP round extended), 61 (`BAR`, barrier synchronization), 73 (`BSSY`, branch-sync-stack push), 74 (`BREAK`, break out of convergence region), 77 (`EXIT`, thread exit), 78 (`RTT`, return-to-trap-handler), plus 35, 39, 40, 63, 83, 105, 125, 186, 220, 223, 270, 279, 297. Each arm writes a different Mercury control-byte template into `*(WORD*)(instr+196)` (e.g. `0xC5` for RTT, `0xAD` for BSSY, `0xAE` for BREAK) and an opcode-specific stall/barrier/reuse layout. The Enc-ID table column in [SASS opcode encoders](../reference/sass-opcodes.md#memory) reuses these same small integers for unrelated memory/tensor variants (50=ATOM, 73=BAR, 74=ST, 77=LDS/STS, 78=HMMA); that is the *encoder* dispatch space and is not what this switch reads.
 
 ## Function Map
 

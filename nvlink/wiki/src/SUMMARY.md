@@ -43,6 +43,7 @@
   - [Section Layout Engine](linker/section-layout-engine.md)
 - [R_CUDA Relocations](linker/r-cuda-relocations.md)
 - [Relocation Application Engine](linker/relocation-engine.md)
+- [Relocation Action Glossary](linker/relocation-action-glossary.md)
 - [Weak Symbol Handling](linker/weak-symbols.md)
 - [Dead Code Elimination](linker/dead-code-elimination.md)
 - [Bindless Relocations](linker/bindless-relocations.md)

@@ -22,20 +22,20 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | Bitcode Reader parseFunctionBody, 174 error strings | `0x9F2A40` | 182KB | VERY HIGH |
 | EDG constexpr top-level dispatch (80 expression types + 62 intrinsics) | `0x77FCB0` | 150KB | HIGH |
 | EDG IL tree copier/transformer (callback params a3/a4, template instantiation) | `0x766570` | 148KB | HIGH |
-| SelectionDAG LegalizeTypes dispatch (967 case labels) | `0x1FFB890` | 137KB | HIGH |
-| EDG declaration specifier state machine (80 token cases, 4,371 lines) | `0x672A20` | 132KB | VERY HIGH |
-| je\_malloc\_conf\_init (199 config strings) | `0x12FCDB0` | 15.4KB | VERY HIGH |
-| computeKnownBits / SimplifyDemandedBits | `0x11A7600` | 125KB | VERY HIGH |
-| EDG lgenfe\_main (282-case CLI switch, 737 config macros, EDG 6.6) | `0x617BD0` | 123KB | VERY HIGH |
-| NVVM Builtin Resolution table (post-opt, 770 entries) | `0x126A910` | 34KB | VERY HIGH |
-| NVVMPassOptions init (4,786 lines, 221 slots in 4,512-byte struct) | `0x12D6300` | 125KB | VERY HIGH |
+| SelectionDAG LegalizeTypes dispatch (967 case labels) | `0x1FFB890` | 17.4KB (native) | HIGH |
+| EDG declaration specifier state machine (80 token cases, 4,371 lines) | `0x672A20` | 25.2KB (native) / 132KB (decomp) | VERY HIGH |
+| je\_malloc\_conf\_init (199 config strings) | `0x12FCDB0` | 15.4KB (native) | VERY HIGH |
+| computeKnownBits / SimplifyDemandedBits | `0x11A7600` | 27.5KB (native) / 125KB (decomp) | VERY HIGH |
+| EDG lgenfe\_main (282-case CLI switch, 737 config macros, EDG 6.6) | `0x617BD0` | 36.4KB (native) / 123KB (decomp) | VERY HIGH |
+| NVVM Builtin Resolution table (post-opt, 770 entries) | `0x126A910` | 34.2KB (native) | VERY HIGH |
+| NVVMPassOptions init (4,786 lines, 221 slots in 4,512-byte struct) | `0x12D6300` | 26.8KB (native) / 125KB (decomp) | VERY HIGH |
 | PassOptionRegistry::lookupOption (hash table at registry+120) | `0x12D6170` | — | HIGH |
 | PassOptionRegistry::getBoolOption (triple: '1'/true, 't'/true) | `0x12D6240` | — | HIGH |
 | writeStringOption (24-byte entry to output struct) | `0x12D6090` | — | HIGH |
 | writeBoolOption (16-byte entry to output struct) | `0x12D6100` | — | HIGH |
-| 4-stage pipeline orchestrator (LNK/OPT/OPTIXIR/LLC), nvopt+nvllc objects | `0x12C35D0` | 41KB | VERY HIGH |
-| Bitcode linker: triple validation, IR version check, symbol size matching | `0x12C06E0` | 63KB | VERY HIGH |
-| NVVM IR version checker (nvvmir.version metadata, NVVM_IR_VER_CHK env) | `0x12BFF60` | 9KB | VERY HIGH |
+| 4-stage pipeline orchestrator (LNK/OPT/OPTIXIR/LLC), nvopt+nvllc objects | `0x12C35D0` | 8.4KB (native) / 41KB (decomp) | VERY HIGH |
+| Bitcode linker: triple validation, IR version check, symbol size matching | `0x12C06E0` | 11.7KB (native) / 63KB (decomp) | VERY HIGH |
+| NVVM IR version checker (nvvmir.version metadata, NVVM_IR_VER_CHK env) | `0x12BFF60` | 1.9KB (native) / 9KB (decomp) | VERY HIGH |
 | NVVM container format parser (arch, FTZ, IEEE, opt level extraction) | `0x12642A0` | — | HIGH |
 | Concurrent worker entry (dispatches Phase I/II) | `0x12E7B90` | 3KB | HIGH |
 | Concurrent compilation entry (jobserver, thread pool, split-module; strings "GNU Jobserver support requested", "<split-module>") | `0x12E1EF0` | 10.5KB (383 bb) | VERY HIGH |
@@ -202,15 +202,15 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 
 | Function | Address | Size | Confidence |
 |---|---|---|---|
-| Deep semantic analysis (29 SM-arch refs, 27 sub\_8D\* calls) | `0x6040F0` | 64KB | HIGH |
-| Overload resolution main (43 SM-arch refs — highest) | `0x607B60` | 32KB | HIGH |
-| Expression parsing/semantic ("Parsing Lambda", \_\_nv\_parent) | `0x609F00` | 58KB | HIGH |
+| Deep semantic analysis (29 SM-arch refs, 27 sub\_8D\* calls) | `0x6040F0` | 14.6KB (native) / 64KB (decomp) | HIGH |
+| Overload resolution main (43 SM-arch refs — highest) | `0x607B60` | 8KB (native) / 32KB (decomp) | HIGH |
+| Expression parsing/semantic ("Parsing Lambda", \_\_nv\_parent) | `0x609F00` | 13.2KB (native) / 58KB (decomp) | HIGH |
 | Declaration processing (9 SM version refs) | `0x5FE9C0` | 28KB | HIGH |
 | Class hierarchy analysis (vtable layout, diamond inheritance) | `0x5F94C0` | 4KB | HIGH |
 | Conversion function lookup (33 sub\_8D\* calls) | `0x5F4F20` | 21KB | HIGH |
 | Operator overload resolution | `0x5F2920` | 23KB | HIGH |
 | Declaration elaboration (type-spec strings "A;P", "O;F", "I", "B") | `0x84EC30` | 71KB | HIGH |
-| Declaration semantic analysis (148 global refs, highest density) | `0x8708D0` | 63KB | HIGH |
+| Declaration semantic analysis (148 global refs, highest density) | `0x8708D0` | 15.2KB (native) / 63KB (decomp) | HIGH |
 
 ### CUDA-Specific Frontend
 
