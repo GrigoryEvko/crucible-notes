@@ -50,7 +50,13 @@ Avoid presenting the same fact as a list of private function names or address ra
 
 ## Confidence and Corrections
 
-Do not put confidence footers on public pages. If a claim is not stable enough to be useful, either omit it or phrase it as an implementation note with the uncertainty built into the sentence. If a later investigation changes a page, update the page inline and remove the stale claim rather than preserving a historical dispute in the main prose.
+Claims in this wiki carry confidence tags drawn from the three-tier HIGH/MED/LOW scheme defined in [String-Evidence and Confidence Policy](reference/string-evidence-and-confidence-policy.md). The wiki's working convention is:
+
+- inline tags (HIGH, MED, LOW) are allowed and encouraged next to individual claims when the evidence basis is worth signalling to a reader,
+- a deliberately authored "Confidence" or "Evidence" section is acceptable on pages whose subject is genuinely uncertain or contested, but it is not required on every page,
+- core prose should still be written from the behavior outward; if a claim is only LOW, prefer to omit it or rephrase it with hedging built into the sentence rather than parking a weak claim behind a tag.
+
+If a later investigation changes a page, update the page inline and remove the stale claim rather than preserving a historical dispute in the main prose. When a contradiction surfaces between two analyses of the same construct, prefer the one with the stronger structural anchor regardless of recency, and restamp dependent pages.
 
 For compatibility-sensitive behavior, prefer executable-looking algorithms and explicit invariant lists. Those are easier to review and easier to port than paragraphs describing how the fact was found.
 

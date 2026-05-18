@@ -56,6 +56,9 @@ The second rule is the source of the most common subtle bug. `wait_group N` is "
 
 A useful mental model: `commit_group` closes the current group and increments an in-flight counter. `wait_group N` blocks until the in-flight counter is at most `N`, then returns. Counter monotonicity means the wait drains every group older than the current cohort of `N`.
 
+> ⚡ **QUIRK — `wait_group N` is a "leave at most N in flight" gate**
+> The natural reading of `wait_group N` is "wait for N groups to finish," and that reading is wrong. The operand is the maximum number of groups still allowed to be in flight after the wait returns. `wait_group 0` drains every committed group; `wait_group 1` leaves the most recent one running. Reimplementations that translate the parameter as a count-to-drain underflow the in-flight counter on the first call and either spin forever or release the accumulator while its MMA is still resident in the math pipe.
+
 ## SMEM Descriptor Bit Layout
 
 Operand B is always an SMEM descriptor — a packed 64-bit immediate-style word built once per operand before the tile loop, then threaded through the inline-asm fragment as an `l`-constraint i64 input. The same bit layout serves every Hopper WGMMA shape; the constructor is one routine fed by per-atom shape and swizzle metadata, not a family of per-shape variants. The canonical 64-bit packing layout is:
@@ -100,6 +103,9 @@ uint64_t make_smem_desc(uint32_t smem_byte_off,
 ```
 
 The constructor must mask the reserved field. Selection sometimes leaves uninitialised scratch bits in the upper half of the SDNode operand, and the WGMMA hardware does not ignore them: a non-zero reserved field is silently UB.
+
+> ⚡ **QUIRK — reserved bits in the SMEM descriptor must be zeroed**
+> Bits 49–51 of the WGMMA SMEM descriptor are reserved, and Hopper does not treat them as don't-care. A non-zero value silently corrupts the operand fetch with no fault, no verifier message, and no PTX warning. The constructor masks the field explicitly because selection routinely leaves scratch bits live in the upper word of the SDNode. A descriptor that round-trips through naive `union` packing without an explicit mask boots and runs but produces garbage tiles intermittently.
 
 ### Worked Decode
 
@@ -150,6 +156,9 @@ uint64_t advance_descriptor(uint64_t desc, int m_tile, int k_tile, Layout layout
 ```
 
 The advancement adds to `start_addr` and may carry through into the `lbo` field if the M or K extent crosses a 14-bit boundary — the field aliasing is intentional, since `start_addr` and `lbo` together carry the SMEM offset for the next warp tile. A reimplementation that forgets the `>> 4` advances the descriptor 16x too far on the first tile and silently aliases distant SMEM regions on subsequent tiles. The verifier does not catch it because the descriptor field is opaque from the dialect's point of view.
+
+> ⚡ **QUIRK — descriptor advancement is in 16-byte units, not bytes**
+> The SMEM address inside the descriptor is pre-shifted right by 4, so `start_addr` counts 16-byte chunks rather than bytes. Per-tile advancement must apply the same `>> 4` to the byte stride before adding it to the descriptor word. The MLIR layer treats the descriptor as opaque i64, so dropping the shift compiles cleanly, passes the verifier, and silently walks 16x past the intended tile boundary on the very first iteration.
 
 Operand A may be either a register fragment or an SMEM descriptor, controlled by a per-atom `a_in_rf` predicate. When A rides registers, the descriptor advancement applies only to B; when A rides SMEM, both operands advance using their own layouts.
 

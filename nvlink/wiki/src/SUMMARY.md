@@ -34,6 +34,9 @@
 # Linker Core
 
 - [Symbol Resolution](linker/symbol-resolution.md)
+  - [Symbol Addition](linker/symbol-addition.md)
+  - [Symbol Resolution Walkthrough](linker/symbol-resolution-walkthrough.md)
+  - [Extended Symbol Resolution](linker/extended-symbol-resolution.md)
 - [Symbol Tables & Hash Maps](linker/hash-tables.md)
 - [Section Merging](linker/section-merging.md)
 - [R_CUDA Relocations](linker/r-cuda-relocations.md)

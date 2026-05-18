@@ -16,6 +16,9 @@ An mbarrier is a shared-memory object — a 64-bit word at an aligned SMEM addre
 
 The two primitives often appear in the same kernel: a `cutlass.pipeline` producer typically arrives on an mbarrier (to publish a TMA-completed tile) and on a NamedBarrier (to synchronise its warp group), and the buffer-assignment pass binds both kinds of slot for the same pipeline value. They remain distinct mechanisms.
 
+> ⚡ **QUIRK — NamedBarrier and mbarrier share vocabulary but no mechanism**
+> "Barrier" appears on both sides — both objects live in SMEM-adjacent storage, both gate producer/consumer regions, and both end up bound by the same pass for the same pipeline value. They are otherwise unrelated: NamedBarrier is one of 16 statically allocated CTA-wide `bar.sync` slots with a warp-cooperative count gate, mbarrier is a 64-bit transactional object with arrive/expect-tx/parity polling. Reusing one's idioms on the other (a polling wait on a NamedBarrier, a `bar.sync` arrival on an mbarrier) does not type-check and produces nothing resembling synchronisation if it slips past the front end.
+
 ## State Machine
 
 An mbarrier carries four fields packed into one shared-memory 64-bit word:

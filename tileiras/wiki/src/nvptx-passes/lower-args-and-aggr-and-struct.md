@@ -197,6 +197,9 @@ The pass is gated by a single boolean (`opt-byval` in `cl::opt` terms) that `Mem
 
 A mismatched configuration — this pass disabled but `MemorySpaceOpt` still seeding `AS_PARAM` — produces parameter-space pointers `MemorySpaceOpt` cannot classify because the rewrite never ran. The `NVVMIRVerifier` rejects the function later with a "pointer-to-local-or-generic launch argument" diagnostic, and the failure surface is far from the actual misconfiguration. Both passes therefore read the same byte and a reimplementation must keep them in lockstep.
 
+> ⚡ **QUIRK — `opt-byval` is a shared flag, and the failure surface is remote**
+> `LowerStructArgs` and `MemorySpaceOpt` read the same `.bss` byte. Toggling the flag in one pass without the other still type-checks, still passes the early verifier, and even runs successfully on small kernels. The mismatch surfaces only at `NVVMIRVerifier` time as a "pointer-to-local-or-generic launch argument" diagnostic that points at the kernel signature, not at the configuration that produced the inconsistent IR. Reimplementations must wire the flag through both passes from the same source or accept a debugging trail with no obvious connection to the root cause.
+
 ## Cross-References
 
 [MemorySpaceOpt](memory-space-opt-and-process-restrict.md#memoryspaceopt) consumes the parameter-space pointers and `CVT_PARAM_TO_*` casts this pass emits. [Parameter-Space Sizer](nvvm-ir-verifier.md#parameter-space-sizer) accumulates parameter-space byte counts against the per-SM ceiling using the byval-aware parameter list this pass leaves behind. [Modulo Scheduler and Rau-Style Placement](../scheduler/modulo-scheduler-and-rau.md) is the eventual consumer of the `LDPARAM` MIs in TileAS loops.

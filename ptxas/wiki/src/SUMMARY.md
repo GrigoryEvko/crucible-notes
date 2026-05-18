@@ -68,6 +68,7 @@
 - [Code Generation Overview](./codegen/overview.md)
 - [Instruction Selection](./codegen/isel.md)
 - [SASS Instruction Encoding](./codegen/encoding.md)
+- [SASS Encoding Dispatch Tables](./codegen/encoding-tables.md)
 - [Peephole Optimization](./codegen/peephole.md)
 - [Mercury Encoder](./codegen/mercury.md)
 - [Capsule Mercury & Finalization](./codegen/capmerc.md)

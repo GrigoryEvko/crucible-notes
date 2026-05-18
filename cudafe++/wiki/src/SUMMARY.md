@@ -39,6 +39,7 @@
 - [\_\_grid\_constant\_\_](./attributes/grid-constant.md)
 - [\_\_managed\_\_ Variables](./attributes/managed-variables.md)
 - [Minor Attributes](./attributes/minor-attributes.md)
+- [\_\_nv\_\* Builtin Intrinsic Names](./attributes/nv-builtin-intrinsics.md)
 
 # Lambda Transformations
 

@@ -10,6 +10,9 @@ Tileiras lowers the `cute_nvgpu.atom.make_s2t_copy` atom through one shared MLIR
 
 The cluster fan-out lives on the copy side, not the MMA side. PTX gives `tcgen05.mma` only `cta_group::1` and `cta_group::2`; there is no `cta_group::4` MMA encoding. The 4-CTA shape must therefore be a copy-time partition that produces four already-sliced TMEM destinations, and the MMA that follows is a plain single-CTA matrix instruction over the per-CTA slice. A reimplementation that puts the fan-out on the MMA side will fail to encode anything in PTX. The DSMEM handshake described in [Cluster Sync and DSMEM Handshake](cluster-sync-and-dsmem-handshake.md) is the synchronisation companion of this copy lowering: the multicast S2T copy advertises its transaction bytes to peer CTAs through exactly that handshake.
 
+> ⚡ **QUIRK — no `cta_group::4` MMA encoding**
+> PTX exposes `cta_group::1` and `cta_group::2` on `tcgen05.mma` and nothing else: the 2-bit `cta_group` field has no `4` slot. The 4-CTA shape is purely a copy-side partition that produces four pre-sliced TMEM destinations, and the matrix instruction over each slice is single-CTA. Lowerings that try to encode the cluster fan-out into the MMA op fail to emit any legal PTX. The 4-CTA story is the copy lowering plus the rank-parity gate, not an MMA flag.
+
 ## Copy-Side Ownership
 
 The S2T copy rewrite performs four jobs:
@@ -41,6 +44,9 @@ static Value *build_s2t_copy_predicate(Rewriter *rewriter, CtaGroup group) {
 ```
 
 The `make_warp_uniform` wrap is structural, not cosmetic. The `cluster.ctarank` SReg is per-CTA — every thread in a CTA reads the same value — but the rewrite emits the predicate at warp scope. Without the warp-uniform wrapper the verifier rejects the predicate as a control-flow operand that could diverge between lanes; with it, every lane in the producing warp agrees on the predicate value, and the downstream `tcgen05.cp` instruction (which requires warp-uniform predicates by ISA contract) accepts the operand. The wrapper is a no-op at runtime — it tells the verifier and downstream codegen that the SSA value is provably warp-uniform.
+
+> ⚡ **QUIRK — `make_warp_uniform` is a verifier-only no-op**
+> The wrapper emits no machine code at runtime; it exists purely to label the SSA value as warp-uniform so the verifier and downstream `tcgen05.cp` lowering accept the predicate. Removing it produces no behavioural difference at execution time but breaks the IR contract: the verifier rejects the copy and codegen never reaches PTX. Treat it as a structural type tag, not as an optimisation hint that can be dropped.
 
 ## Cluster Sibling Pairing
 
