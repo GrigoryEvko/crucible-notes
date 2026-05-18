@@ -228,7 +228,7 @@ This is a GPU-specific requirement. Warp size is 32 (a power of two), and many G
 
 ## Pragma Handling
 
-The frontend (`sub_9305A0` / `emitUnrollPragma`) translates CUDA pragmas to LLVM metadata during codegen:
+The frontend pragma handler at `sub_9305A0` translates CUDA pragmas to LLVM metadata during codegen:
 
 | CUDA Source | LLVM Metadata |
 |---|---|
@@ -345,14 +345,14 @@ Knobs are registered in two constructors: standard LLVM knobs in `ctor_216_0` at
 
 ## Function Map
 
-| Function | Address | Size | Role |
-|---|---|---|---|
-| `emitUnrollPragma` | `0x09305A0` | -- | Frontend: `#pragma unroll` to metadata |
-| `parseUnrollMetadata` | `0x19B4C50` | -- | Reads `llvm.loop.unroll.*` metadata |
-| `computeLocalArraySize` | `0x19B5DD0` | -- | NVIDIA: local array threshold heuristic |
-| `handleSmallFunction` | `0x19B6500` | -- | Special aggressive unroll for tiny kernels |
-| `selectUnrollFactor` | `0x19B6690` | -- | Trip count analysis helper |
-| `emitRemainderNotAllowedRemark` | `0x19B78B0` | -- | Diagnostic emission |
+| Address | Role |
+|---|---|
+| `sub_9305A0` | Frontend: `#pragma unroll` to metadata |
+| `sub_19B4C50` | Reads `llvm.loop.unroll.*` metadata |
+| `sub_19B5DD0` | NVIDIA: local array threshold heuristic |
+| `sub_19B6500` | Special aggressive unroll for tiny kernels |
+| `sub_19B6690` | Trip count analysis helper |
+| `sub_19B78B0` | Diagnostic emission |
 | `simulateLoopBody` | `0x19B9A90` | -- | Dynamic cost simulation with constant folding |
 | `computeUnrollCount` | `0x19BB5C0` | -- | Main decision engine |
 | `tryToUnrollLoop` | `0x19BE360` | -- | Top-level driver |

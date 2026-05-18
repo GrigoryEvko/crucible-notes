@@ -688,11 +688,11 @@ The complete synchronization processing pipeline spans 8 optimizer phases:
 | 42 | `ExpandMbarrier` | Lowering | Expand mbarrier pseudo-ops via arch vtable |
 | 71 | `OptimizeSyncInstructions` | Optimization | Sync instruction redundancy elimination |
 | 72 | `LateExpandSyncInstructions` | Lowering | Final sync pseudo-op expansion to SASS |
-| 99 | (Architecture-specific) | Lowering | Post-RA sync expansion |
-| 100 | (Architecture-specific) | Lowering | Architecture vtable dispatch for sync |
-| 114 | (Post-scheduling) | Fixup | Post-scheduling dependency barrier fixup |
+| 99 | `OriDoSyncronization` | Lowering | Pre-RA sync insertion (BAR/DEPBAR/MEMBAR per memory model) |
+| 100 | `ApplyPostSyncronizationWars` | Lowering | Pre-RA WAR fixup for hazards exposed by phase 99 (still before AllocateRegisters at 101) |
+| 114 | `FixUpTexDepBarAndSync` | Fixup | Post-PostSchedule (phase 110) texture-dependency barrier fixup |
 
-The progression is: early fence insertion (25) -> cross-function barrier elimination (26) -> mbarrier expansion (42) -> optimization within partial-SSA (71) -> final expansion (72) -> post-RA architecture hooks (99, 100) -> post-scheduling fixup (114).
+The progression is: early fence insertion (25) -> cross-function barrier elimination (26) -> mbarrier expansion (42) -> optimization within partial-SSA (71) -> final expansion (72) -> pre-RA sync insertion and WAR fixup (99, 100) -> post-PostSchedule barrier fixup (114). Note: phases 99 and 100 both run **before** register allocation at phase 101; only phase 114 is genuinely post-RA in this sequence.
 
 ### Ori IR Opcode 130 -- Sync Analysis Target
 

@@ -18,9 +18,9 @@ The dispatcher is the only entry point for statement lowering. All control flow 
 
 2. Read `stmt->stmtKind` (byte at StmtNode offset +40).
 
-3. Special fast path: if kind == 8 (return), call `setDebugLoc` + `pushScope` + `emitReturnStmt` and return immediately. Returns get priority handling because they terminate the current BB and may trigger cleanup scope unwinding.
+3. Special fast path: if kind == 8 (return), set the IRBuilder debug location and push a scope record, then call `emitReturn` (`sub_9313C0`) and return immediately. Returns get priority handling because they terminate the current BB and may trigger cleanup scope unwinding.
 
-4. General path: `setDebugLoc` + `pushScope`, then dispatch on kind through a switch table.
+4. General path: set the IRBuilder debug location and push a scope record, then dispatch on kind through a switch table.
 
 ### Kind Dispatch Table
 
@@ -627,7 +627,7 @@ Reconstructed from usage patterns across all statement handlers:
 | Global | Purpose |
 |--------|---------|
 | `dword_4D04658` | **Fast codegen mode.** Skips debug location emission, scope tracking, and some pragma processing. Corresponds to `-G0` or equivalent "no debug" mode. |
-| `dword_4D046B4` | **Skip pragma mode.** `emitUnrollPragma` returns immediately. Also gates some compound-statement declaration processing. |
+| `dword_4D046B4` | **Skip pragma mode.** `sub_9305A0` (pragma unroll handler) returns immediately. Also gates some compound-statement declaration processing. |
 | `dword_4F077C4` | **CUDA compilation mode.** Value 2 triggers alternate volatile-qualification logic in for-loop increment and variable declaration codegen. |
 
 ## Complete BB Naming Reference
