@@ -214,3 +214,21 @@ This wiki is derived from:
 - **247 MB IDA Pro database** (.i64)
 
 All analysis was performed on the binary shipped with CUDA Toolkit 13.0, obtained from NVIDIA's public distribution channels.
+
+## Top-Level Pre-Wiki Docs Status
+
+The `cudafe++/` directory contains nine `*.md` files that predate this wiki. They were the initial bulk-extraction reports and design notes; the wiki is the canonical successor. Status of each (confidence HIGH unless noted):
+
+| File | Status | Canonical wiki location |
+|---|---|---|
+| `README.md` | **Keep** -- repository landing page, links into wiki | -- |
+| `wiki_design.md` | **Keep (historical)** -- original MkDocs design sketch, superseded by the mdBook `SUMMARY.md` | [`SUMMARY.md`](./SUMMARY.md) |
+| `ARCHITECTURE_MATRIX.md` | **Migrate or delete** -- SM_30/60/70/90 feature table | [`cuda/arch-gating.md`](./cuda/arch-gating.md), [`config/arch-detection.md`](./config/arch-detection.md) |
+| `COMPILER_FLAGS.md` | **Migrate raw data** -- 515-flag catalog (auto-generated dump) | [`config/cli-flags.md`](./config/cli-flags.md), [`config/edg-build-config.md`](./config/edg-build-config.md) |
+| `CUDA_ATTRIBUTES.md` | **Migrate raw data** -- 29 attributes + 114 `__nv_*` intrinsics | [`attributes/overview.md`](./attributes/overview.md), [`attributes/nv-builtin-intrinsics.md`](./attributes/nv-builtin-intrinsics.md), [`attributes/minor-attributes.md`](./attributes/minor-attributes.md) |
+| `OPTIMIZATION_GUIDE.md` | **Delete (out of scope)** -- developer-facing CUDA tuning guide, not binary analysis | -- |
+| `INTEGRATION_SUMMARY.md` | **Delete** -- changelog for the deleted `wiki/docs/` MkDocs tree (commit 444e4b9a9bc) | -- |
+| `FORMATTING_REPORT.md` | **Delete** -- one-shot script report for the deleted `wiki/docs/` tree | -- |
+| `REVERSE_COMPILATION_ANALYSIS.md` | **Migrate residual content** -- pipeline, lambda, IL, output sections largely covered; "Reverse Compilation Feasibility" and "Alternative Compiler Roadmap" sections are unique | [`pipeline/overview.md`](./pipeline/overview.md), [`il/overview.md`](./il/overview.md), [`lambda/overview.md`](./lambda/overview.md), [`output/int-c-format.md`](./output/int-c-format.md) |
+
+The README link list above is the migration roadmap. Each non-Keep file carries a banner pointing to its canonical wiki page; full migration and removal is tracked separately.

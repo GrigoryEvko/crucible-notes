@@ -34,7 +34,7 @@ Use this surface when the question is interactive: setting breakpoints in cuda-g
 
 ## Surface 3: MLIR IR snapshots
 
-MLIR's standard print-IR flags expose the pipeline's intermediate state. The flags reach Tileiras through the MLIR pass-manager surface; they apply to any MLIR-based compiler, but the scopes named in the output are the Tileiras-specific scopes enumerated in [Instrumentation and Action Handler — Pass Instrumentation Scopes](../pipeline/instrumentation-and-action-handler.md#pass-instrumentation-scopes).
+MLIR's standard print-IR flags expose the pipeline's intermediate state. The flags reach Tileiras through the MLIR pass-manager surface; they apply to any MLIR-based compiler, but the scopes named in the output are the Tileiras-specific scopes enumerated in [Instrumentation and Action Handler — Scope tree the binary emits](../pipeline/instrumentation-and-action-handler.md#scope-tree-the-binary-emits).
 
 | Flag | What it prints |
 |---|---|
@@ -60,7 +60,7 @@ Use this surface when the question is "which pass emitted this diagnostic". The 
 
 ## Surface 5: Scheduler decision trace
 
-The pipeline option `schedule-trace-file=PATH` writes a Chrome-timeline-style JSON file recording every decision the cost-based scheduler made. The writer is the `DumpTraceImpl` instrumentation enumerated in [Instrumentation and Action Handler — Pass Instrumentation Scopes](../pipeline/instrumentation-and-action-handler.md#pass-instrumentation-scopes). The option is read once when the pass manager installs instrumentation; setting it after the pipeline starts has no effect.
+The pipeline option `schedule-trace-file=PATH` writes a Chrome-timeline-style JSON file recording every decision the cost-based scheduler made. The writer is the `DumpTraceImpl` instrumentation enumerated in [Instrumentation and Action Handler — Scope tree the binary emits](../pipeline/instrumentation-and-action-handler.md#scope-tree-the-binary-emits). The option is read once when the pass manager installs instrumentation; setting it after the pipeline starts has no effect.
 
 The trace records the four placement arms — permute, fuse, retry, cost-based — and the per-candidate decisions inside each one: which `(op, cycle)` pair was tried, which cost vector it produced, which gate rejected it (G1, G2, G3, or G4), and which seat finally committed. The arms are described in [Serial vs Cost-Based Generators](../scheduler/serial-vs-cost-based-generators.md); the gate ladder is described in the same page's "Pre-commit Gates" section.
 

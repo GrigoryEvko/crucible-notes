@@ -323,6 +323,28 @@ The `.nv.compat` section contains compatibility attribute records processed duri
 
 Both functions share the same error diagnostic: `"unknown .nv.compat attribute (%x) encoutered with value %x."` -- the typo `"encoutered"` is present in the binary at string address `0x1D3B1B8`. The merge function `sub_45E7D0` also validates `.nv.compat` attributes (line 1832) with the slightly different message `"unknown .nv.compat attribute (%x) encoutered."`.
 
+#### EICOMPAT_ATTR Kinds
+
+`.nv.compat` records use a parallel TLV namespace (`EICOMPAT_ATTR_*`) distinct from the EIATTR codes carried in `.nv.info`. The complete set of names extracted from the nvlink v13.0.88 binary:
+
+| Kind | Category | Description (inferred from name) |
+|---|---|---|
+| `EICOMPAT_ATTR_ERROR` | Sentinel | First-slot sentinel (parallel to `EIATTR_ERROR` at 0x00). |
+| `EICOMPAT_ATTR_PAD` | Sentinel | Padding record, skipped during parse. |
+| `EICOMPAT_ATTR_CUDA_ACCELERATOR_TARGET` | Target | CUDA accelerator target identifier (compute capability / virtual arch). |
+| `EICOMPAT_ATTR_ISA_CLASS` | Target | SASS ISA class for the input object; consumed when classifying inputs for Mercury vs pre-Mercury paths. |
+| `EICOMPAT_ATTR_MERCURY_ISA_MAJOR_MINOR_VERSION` | Mercury | Mercury ISA major/minor revision; complements `EIATTR_MERCURY_ISA_VERSION` (code `0x5F` in `.nv.info`). |
+| `EICOMPAT_ATTR_MERCURY_ISA_PATCH_VERSION` | Mercury | Mercury ISA patch revision. |
+| `EICOMPAT_ATTR_INST_TCGEN05_MMA` | ISA feature | Object emits `tcgen05` MMA instructions (Blackwell tensor-core gen 5). |
+| `EICOMPAT_ATTR_INST_TCGEN05_MMA_DEPRECATED` | ISA feature | Object emits deprecated `tcgen05` MMA encodings; driver may need to reject. |
+| `EICOMPAT_ATTR_INST_TENSORMAP_V1` | ISA feature | Object uses v1 tensor-map descriptors. |
+| `EICOMPAT_ATTR_CAN_FASTPATH_FINALIZE` | Pipeline | Object is eligible for the fast-path FNLZR (skips full finalization). |
+| `EICOMPAT_ATTR_ENABLE_OPPORTUNISTIC_FINALIZATION` | Pipeline | Toggle for opportunistic Mercury finalization. |
+| `EICOMPAT_ATTR_ERROR_LAST` | Sentinel | Last-slot sentinel marking end of catalog (parallels `EIATTR_ERROR_LAST` at 0x60). |
+
+> ⚡ **QUIRK — EICOMPAT vs EIATTR namespaces**
+> `.nv.compat` and `.nv.info` both carry TLV records but draw kind codes from disjoint namespaces (`EICOMPAT_ATTR_*` vs `EIATTR_*`). A parser keyed only on the EIATTR table will treat valid `.nv.compat` records as `"unknown attribute"` and silently misclassify Mercury target metadata. The two namespaces overlap conceptually for ISA versioning -- `EIATTR_MERCURY_ISA_VERSION` lives in `.nv.info`, while `EICOMPAT_ATTR_MERCURY_ISA_MAJOR_MINOR_VERSION` / `..._PATCH_VERSION` live in `.nv.compat`. Confidence: MED (names are HIGH-confidence from the binary; semantic groupings are inferred from naming).
+
 ## Memory Space Sections
 
 These sections represent the four GPU memory address spaces: global, local, shared, and constant.

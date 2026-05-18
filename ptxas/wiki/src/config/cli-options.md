@@ -492,6 +492,20 @@ Several options interact in non-obvious ways, as revealed by the validation logi
 
 8. **`--split-compile` and `--allow-expensive-optimizations`** -- Both activate the thread pool (`sub_1CB18B0`). The jobserver client (`sub_1CC7300`) integrates with GNU Make's `--jobserver-auth=` to respect parallel build limits.
 
+## Recovered Options Not Yet Documented
+
+Confidence: HIGH for names (extracted from the `cli_flag` string class in `ptxas_strings.json`); MED for semantics (inferred from name + adjacent registrations, not yet traced to consumers).
+
+| Long Name | Type (guess) | Likely Purpose |
+|---|---|---|
+| `--nv-host` **(internal)** | bool | NVIDIA host-side tooling integration flag; gates host-only diagnostics |
+| `--okey` **(internal)** | string | Omega-knob signing/encoding key; pairs with `--omega-knob` |
+| `-dump-perf-metrics-file` **(internal)** | file | Write perf-metric snapshots to a named file |
+| `-dump-perf-metrics-file-default` **(internal)** | bool | Use the default per-arch filename for the metrics dump |
+
+> ⚡ **QUIRK — single-letter+digit option fragments**
+> Strings like `-b9q9`, `-fof6`, `-sqli8` show up in the `cli_flag` partition with no help text and no decompiled consumer. They are not options -- they are address-table fragments mis-classified by the string-category heuristic (the prefix `-` followed by alnum is otherwise a strong CLI signal). Confirmed: none of these tokens have a corresponding entry in `sub_432A00`'s registration list.
+
 ## Function Map
 
 | Address | Size | Identity |

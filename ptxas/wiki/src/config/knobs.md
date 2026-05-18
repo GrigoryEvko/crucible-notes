@@ -1190,6 +1190,63 @@ Phase 28's SinkRemat pass (entry: `sub_913A30`, core: `sub_A0F020`) sinks instru
 
 This knob sits in the general MOV-weight family (indices 474--476) rather than the Remat block. It tunes how MOV instructions contribute to the scheduling cost model's remat profitability calculation. When the remat candidate is a MOV chain, this weight determines the per-MOV cost used to decide whether rematerialization beats keeping the value live.
 
+## Recovered Knobs Not Yet Documented
+
+Confidence: HIGH (names recovered via ROT13 decode of the descriptor table); MED for purpose attributions (inferred from name semantics, not yet cross-referenced to consumer sites). The categories below cover roughly 240 knobs absent from the curated sections above. Indices are not assigned here -- they require a fresh `DUMP_KNOBS_TO_FILE` dump.
+
+> ⚡ **QUIRK — double-ROT13 strings**
+> A handful of knob names appear as plaintext in `strings(1)` output (e.g. `ScheduleInstructions`, `ForwardProgress`, `BarFlowControl`). These are not duplicate registrations -- they are diagnostic format strings emitted by the dumper after ROT13 decode. The authoritative descriptor table stores the obfuscated form (`FpurqhyrVafgehpgvbaf`, `SbejneqCebterff`, `OneSybjPbageby`); the cleartext form leaks only at dump time. Treat the cleartext copies as observation artifacts, not separate knobs.
+
+### Mercury Backend (~20 knobs)
+
+The Mercury encoder cluster is undocumented beyond the small set referenced in the [Mercury Encoder page](../codegen/mercury.md). Recovered names include `MercuryAssumePTXPortability`, `MercuryCompactedAssumes`, `MercuryConsumeAssumes`, `MercuryConverterStats`, `MercuryDepStagePreferNonLiveinPSB`, `MercuryDumpInstsAsBinary`, `MercuryEncodeDecode`, `MercuryEncodeNewWorkerFiles`, `MercuryForceISAClass`, `MercuryForceUnknownTcgen05Attr`, `MercuryGenSassUCode`, `MercuryInsertAssumes`, `MercuryInsertBackedgeDepbar`, `MercuryInsertXblockWait`, `MercuryIssueDelayWBStallSelfLoop`, `MercuryMergePrologueBlocks`, `MercuryPresumeXblockWaitBeneficial`, `MercuryTepidAwareSb`, `MercuryTrackMultiReadsWarLatency`, `MercuryUseActiveThreadCollectiveInsts`. These control assume-stream construction, dependency-bar / cross-block-wait insertion, and the ucode-emit fallback path.
+
+### Loop Optimization (~15 knobs)
+
+`LoopInversion`, `LoopInversionBudget`, `LoopMakeSingleEntry`, `LoopPeelInversion`, `LoopUnroll`, `LoopUnrollFactor`, `LoopUnrollNonInnermost`, `LoopUnrollUnknownMultiBlock`, `LoopUnrollExtraFoldableLdcWeight`, `LoopUnrollFoldableAddrWeight`, `LoopUnrollLargePartOfShaderPct`, `LoopUnrollNumExtraInstBase`, `LoopUnrollNumInstSmallLoop`, `LoopUnrollNumInstTex`, `LoopUnrollSingleLoopSavedPctFactor`. Master enable + unrolling cost model weights and code-size guards.
+
+### Predication / If-Conversion (~16 knobs)
+
+`PredBudget`, `PredBlockSizeLimit`, `PredCompoundBlockSizeLimit`, `PredCompoundBudget`, `PredExperimental`, `PredForceOn`, `PredIfNonLexicalSucc`, `PredIterative`, `PredLongLatencyBlockSizeLimit`, `PredLongLatencyBlockSizeMinLimit`, `PredLongLatencyInstScanLimit`, `PredLongLatencyNonDepInstMinLimit`, `PredMaxBlockSizeLimit`, `PredMovZeroLimit`, `PredVaryingBlockSizeLimit`, `PredVaryingCompoundBlockSizeLimit`. The if-conversion / predication pipeline is significantly more parametric than the single `DisablePredication` master switch suggests.
+
+### Hoisting / LICM (~11 knobs)
+
+`HoistBudget`, `HoistCBOFromLoopWithColdNest`, `HoistCBOHighCostSBInstRatioThreshold`, `HoistCBOLoad`, `HoistCBOMode`, `HoistConservativeScale`, `HoistInvariants`, `HoistLate`, plus `UseNewLoopInvariantRoutineForHoisting`, `EnableHoistLowLatencyInstMidBlock`, `MaxMidHeaderSizeRateForAggressiveHoist`. Controls the constant-bank-operand (CBO) hoist pass and the loop-invariant motion driver.
+
+### Memory-to-Register Promotion (~40 knobs, `Convert*`)
+
+`ConvertAllMovPhiToMov`, `ConvertMembarScopeFromVCtoGPU`, and the `ConvertMemoryToReg*` family (`ExpInstResRatio{High,Low,Up,Unbound}`, `EstRegPresCodeSizeHeur`, `ExpInstScaleBound`, and others). This is a dedicated phase converting local-memory traffic into register liveness, distinct from the regalloc-driven coalescing already documented.
+
+### Sb / Scoreboard (~13 knobs)
+
+Beyond the four scoreboard knobs already listed (`SbXBlock`, `SbXBlockLLSB`, `SchedReadSBBaseLatency`, `SchedReadSBBaseUseLSULat`): `SbReadBaseLatency`, `SbReadDmmaLatency`, `SbReadLdgstsLatency`, `SbReqBeforeUsingLiveInPsb`, `SbXBlockForPseudoRegs`, `SbXBlockReqBackedge`, `SbXBlockReqCommit`, `SbXblockAllocateVsbsForLiveInPsbs`, `SbXblockCheckNegativeStall`, `SbXblockDeprioritizeAvailPsbLiveInToSucc`, `SbXblockUseLoopHeaderHeuristic`. Cross-block live-in PSB modeling and dependency-bar latency overrides per instruction class.
+
+### Force* Override Switches (~12 knobs)
+
+`ForceCacheOpNaForSTG`, `ForceCanPromoteHalf`, `ForceDag`, `ForceFP32toFP16ConvRoundToZero`, `ForceHighLatencyConstExpr`, `ForceHighLatencyConstExprThreshold`, `ForceLateCommoning`, `ForceLDSU`, `ForceMemDescDropIfNotUniform`, `ForcePDomCheck`, `ForceTMAMovesContiguousReg`, `ForceUrIdxOverMemDesc`. Codegen overrides for cache modifiers, conversion rounding, post-dom-tree validation, and TMA register packing.
+
+### Tex Throttling (~5 knobs)
+
+`TexBatchMaxCycles`, `TexHeavyMaxWarpRegRatio`, `TexHeavyRatioHigh`, `TexNodep`, `TexToInstRatio`. Texture-instruction throttling parameters separate from the Sched* tex batching set already catalogued.
+
+### Bar / Barrier (~9 knobs)
+
+The stored-as-`One*` family decodes to `Bar*`: `BarDeferBlocking`, `BarDeferBlockingSuppLat`, `BarDelay`, `BarDelayDecay`, `BarFlowControl`. The stored-as-`Oneevre*` family decodes to `Barrier*`: `BarrierExempt`, `BarrierExemptUdp`, `BarrierExemptDepbar`. Plus `WarpOpexBar` for the warp-level opex barrier modeling.
+
+### Scratch / ScratchAlloc
+
+`ScratchBudget`, `ScratchInt`. Cost-model budget for scratch-register allocation, distinct from the `RegAlloc*` family that operates on R-regs and URs.
+
+### Scav (Scavenger) Pass
+
+`ScavDisableSpilling`, `ScavDisableContext`, `ScavGuidedExpansion`, `ScavInlineExpansion`. A separate macro-expansion / register-scavenging pass not covered by the disable-switches catalog.
+
+### Other Recovered Singletons
+
+`DumpInstPhase`, `IntrinsicDescrFile`, `PhaseIRFile`, `PhaseIRPre`, `PhaseIRPost` (dump/intrumentation surface area beyond `DUMPIR`); `EnableConstExprCFG`, `EnableConvergedFastSyncPath`, `EnableConvergentURInABIFunc`, `EnableGvnCse`, `EnableMembarWar`, `EnableMeshMVWar`, `EnableRegAllocValidation`, `EnableSingleThreadPeelingLoops`, `EnableStackSecurity`, `EnableStaticColdBlockAnalysis`, `EnableSynchronizedCohesiveRegion`, `EnableUnbalancedSync`, `EnableUR16Bit`, `EnableValidatorTesting`; `ForwardProgress` (separate from the `DisableForwardProgressWar1842954` workaround toggle); `MaxActiveWarpsPerSM`, `MaxCBRegCount`, `MaxRegsForMaxWarp`, `MaxRRegCount`, `MaxRRegInflation`, `MaxShaderConstBytes`, `MaxSmemPerSM`, `MaxSmemSpillSlots`, `MaxSyncDepth`, `MaxUregCount` (architecture-targeting ceilings); `OptimizeBindlessHeaderLoads`, `OptimizeCmpToPredBudget`, `OptimizeCommonRegisters`, `OptimizeCommonRegistersBudget`, `OptimizeF2FP`, `OptimizeFloatIntFloatConv`, `OptimizeHotColdFlow`, `OptimizeHotColdFlowBudget`, `OptimizeHotColdInvert`, `OptimizeMatchWithVaryingAnalysis`, `OptimizeMulRcp`, `OptimizeMulSqrt`, `OptimizeShflWithVaryingAnalysis`, `OptimizeUniformAtomicMode` (per-optimization budgets and selectors); `CtaReconfigMaxRegAlloc`, `CtaReconfigMaxRegDealloc` (sm_90+ CTA reconfiguration limits); `WarDeploySyncsFlush`, `WarDeploySyncsFlush_SW4397903`, `DisableWar_HW4403675` (workarounds added after the disable-switches sweep); `SinkCodeIntoBlock`, `SinkCodeIntoSplitBlock`, `SinkTexCacheUses`, `SinkTexInstAcrossKill`, `SinkTexInstsToICacheRatio`, `SinkTexLowRegTargetScale`, `SinkTexMaxRegTargetScale`, `SinkTexReadInstRatio` (sinking pass beyond `SinkRemat*`); `VectorizeAndRemapTLD`, `VectorizeBudget`, `VectorizeConstantsBudget`, `VectorizeFp32` (load/store/constant vectorization parameters distinct from the disable switches).
+
+To convert any of these into a fully-documented entry: run `DUMP_KNOBS_TO_FILE=… ptxas -arch sm_100 -o /dev/null trivial.ptx` to obtain index + default + type, then trace consumer sites via the cross-reference graph rooted at `sub_6F0FF0` (DAG `GetKnobValue`) and `sub_7A1B80`/`sub_7A1CC0`/`sub_7A1E10` (OCG per-type getters).
+
 ## DUMP_KNOBS_TO_FILE
 
 The `DUMP_KNOBS_TO_FILE` environment variable triggers a full dump of all knob values to a file. Checked during `KnobInit` (`sub_7A0C10`) via `getenv("DUMP_KNOBS_TO_FILE")`:

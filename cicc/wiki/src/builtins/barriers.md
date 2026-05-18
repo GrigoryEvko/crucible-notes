@@ -128,3 +128,49 @@ Barrier builtins use three distinct lowering strategies:
 2. **Inline IR generation** -- Memory barriers (`__nvvm_membar_*`). The handler directly constructs barrier store IR nodes without going through an intrinsic lookup.
 
 3. **Inline PTX assembly** -- Memory fences (`membar.*`, `fence.*`). These have no LLVM IR equivalent and are emitted as inline asm strings with `~{memory}` clobber constraints.
+
+## Convergence Contract and Deadlock Conditions
+
+`__syncthreads` (`bar.sync 0`) is a block-wide rendezvous: every thread in the CTA must execute the same `bar.sync` instance, or hardware deadlocks. Cicc enforces this only structurally — the `convergent` attribute (bit `0x20` at the intrinsic's byte+33, checked by `sub_2C83D20` in the dead-barrier-elimination predicate) prevents transforms like loop-unswitching, jump-threading, and divergent-branch sinking from duplicating a barrier into a divergent region. It does **not** prove that all threads will arrive: a `__syncthreads()` inside an `if (threadIdx.x < N)` branch where `N < blockDim.x` is undetected by cicc and hangs the kernel at runtime.
+
+```text
+barrier-safety classifier (binary-recovered, sub_2C83D20):
+  is_sync(I) :=
+        opcode(I) == 85                       # intrinsic call
+     ∧  callee_attr(I).convergent             # bit 0x20 at byte+33
+     ∧  intrinsic_id(I) ∈ barrier_id_range    # sub_CEA1A0 range check
+     ∧  I.scope ∈ {CTA, cluster}              # not warp.sync
+
+  reachable_from_all(I) :=
+        ∀ entry_thread t: t will reach I along every path through the CFG
+        # NOT computed by cicc — this is the responsibility of the kernel author
+```
+
+The named-barrier intrinsics (`barrier.sync.cnt`, IDs 19 / 205) accept an explicit thread count and a barrier index `[0, 15]`. With a count smaller than `blockDim.x` they serve as a sub-CTA rendezvous — useful for cooperative groups — but the count must match exactly across the named participants or the surplus threads sit at the barrier indefinitely.
+
+> ⚡ **QUIRK — `__syncthreads` is not a memory fence on SM 70+**
+> Pre-Volta, `bar.sync` doubled as an implicit `membar.cta` because all threads in the warp executed lockstep. With Independent Thread Scheduling on Volta+, `bar.sync` only guarantees control-flow convergence; loads issued after the barrier can still observe stale stores from before it unless an explicit `membar.cta` (ID 3) is also emitted. Cicc preserves user-written `membar.cta` calls but does **not** synthesize one beside a `__syncthreads` — the responsibility falls to the libdevice macros and to ptxas's post-lowering. A hand-rolled inline-PTX `bar.sync 0` without a paired `membar` is a real, silent reorder hazard on SM 70+.
+
+> ⚡ **QUIRK — Cluster barrier ID range overlap**
+> IDs 11–13 (`cluster_barrier_arrive`, `_wait`, `_arrive_relaxed`) all dispatch through intrinsic ID 3767 — the same ID used by the barrier-reduction builtins 15–17. The disambiguation is entirely positional: the `flag` operand passed to `sub_94C360` encodes both the reduction op (popc=0 / and=1 / or=16) and the cluster-barrier variant (arrive / wait / arrive_relaxed) in disjoint subranges. A wrong-flag construction inside the handler would route a cluster-arrive call to the popc-reduction codepath without any IR-verifier failure, because the LLVM intrinsic signature `(i32, i32) -> i32` is identical for both.
+
+## Async Barrier (`mbarrier`) Objects (SM 80+)
+
+Beyond the named-barrier wire (`bar.sync N`), Ampere introduced `mbarrier` — a 64-bit object in `.shared` that tracks an arrival count plus a parity bit. The lifecycle is exposed as a family of builtins that cicc lowers to `mbarrier.{init,arrive,arrive_drop,test_wait,try_wait,inval}` PTX instructions. The intrinsic family lives at IDs 367–369 (the `cp.async` copy builtins implicitly carry an mbarrier completion) and at the cluster-barrier IDs 11–13 (which are mbarrier-backed on SM 90+).
+
+| PTX op | Semantics | Phase parity? |
+|---|---|---|
+| `mbarrier.init` | Set arrival count, clear parity | resets to 0 |
+| `mbarrier.arrive` | Decrement count, return phase token | flips on count→0 |
+| `mbarrier.test_wait` | Non-blocking parity comparison | reads current parity |
+| `mbarrier.try_wait` | Bounded-wait parity comparison | reads current parity |
+| `mbarrier.arrive_drop` | Permanently lower expected count | resets to 0 |
+
+The parity-bit design means waiters do not race with the next phase's arrivals — a producer can call `arrive` for phase N+1 before all consumers have finished `test_wait` on phase N. Cicc does not validate that an mbarrier is initialized before use; the PTX instruction itself faults on uninitialized state at runtime.
+
+## Cross-References
+
+- [Warp-Level Builtins](./warp.md) — `_sync` membermask discipline is the warp-level analogue of CTA-level barrier convergence
+- [Dead Synchronization Elimination](../passes/dead-sync-elimination.md) — uses the same barrier-classifier predicate (`sub_2C83D20`) to identify removable syncs
+- [Dead Barrier Elimination (basic-dbe)](../passes/dead-barrier-elim.md) — single-pass dead-barrier remover that depends on the `convergent` attribute remaining intact
+- [Branch Distribution](../passes/branch-distribution.md) — NVVM-IR-level pass that fixes barrier placement after loop-distribution rewrites

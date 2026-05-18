@@ -126,3 +126,78 @@ These builtins combine data movement with implicit synchronization and are lower
 | Redux (`redux.sync.*`) | SM 80+ (Ampere) | Hardware-accelerated warp reduction |
 | Elect sync | SM 90+ (Hopper) | Single-lane election from active mask |
 | `cp.async` | SM 80+ | Asynchronous shared memory copy |
+
+## Convergence Semantics and Independent Thread Scheduling
+
+All `_sync` warp builtins take an explicit 32-bit `unsigned int membermask` parameter naming the lanes that must converge before the operation can proceed. Hardware spins each named lane at the instruction's program counter until all members arrive; non-members are not blocked. The mask is encoded as a single i32 operand on the LLVM intrinsic and emerges in PTX as the first operand of `shfl.sync`, `vote.sync`, `match.sync`, etc.
+
+```text
+membermask validation contract (binary-recovered):
+  popc(membermask) >= 1                # at least one participant
+  membermask >> lane_id & 1 == 1       # caller's lane must be in mask
+  ∀ lane ∈ membermask:
+       PC[lane] points at same _sync   # textual program-counter equality
+  participation set := membermask ∩ active_mask_at_PC
+```
+
+If any named lane is not active at the instruction, hardware behavior is undefined (Volta+) — older `__shfl` (no `_sync`) implicitly used the full active mask, masking this class of bug behind warp-lockstep execution. Volta's Independent Thread Scheduling (ITS) broke that assumption: lanes can sit at arbitrary PCs after divergent branches, so the compiler can no longer prove "all lanes are here" without the explicit mask.
+
+> ⚡ **QUIRK — Legacy `__shfl` is still emitted by libdevice**
+> The non-sync legacy IDs 302–309 are not just back-compat documentation: cicc still routes them through `sub_954F10` and emits `shfl.{up,down,bfly,idx}.b32` without a mask operand. On SM 70+ hardware these execute as `shfl.sync.b32` with an implicit full-mask, but the ptxas-side gate is the only thing rejecting them on SM 90+ when ITS scheduling makes implicit convergence undefined. Mixing legacy and `_sync` shuffles in the same warp can silently produce wrong results on Volta-and-later because the legacy lowering loses the membership contract.
+
+> ⚡ **QUIRK — Ballot return type is silently re-typed**
+> Vote operations IDs 351–353/355–357 return `i1` (a one-bit predicate), but ID 354 / 358 (`vote.ballot{,.sync}`) returns `i32`. The dispatch table at `sub_94D570` does not differentiate: it sets `is_ballot=1` based on `vote_op==3` and re-types the SDNode result *after* IR generation. A user-facing wrapper that calls the ballot intrinsic with the wrong return type clamps to one bit silently — no IR-verifier error — because the type rewrite happens past verification.
+
+## Shuffle Dispatch Pseudocode
+
+The handler at `sub_954F10` (NVVM) walks a three-step table lookup before emitting the call. The table groups (302–309, 338–345, 395–402) all share the same 8-entry layout (`up`/`down`/`xor`/`idx` × `i32`/`f32`), and the handler relies on that uniformity:
+
+```text
+lower_shfl(builtin_id, args):
+    # Step 1: classify mask discipline
+    if builtin_id in 302..309:
+        group_base   = 302
+        needs_mask   = false              # legacy: implicit full mask
+        sync_variant = false
+    elif builtin_id in 338..345:
+        group_base   = 338
+        needs_mask   = true
+        sync_variant = true
+    elif builtin_id in 395..402:
+        group_base   = 395
+        needs_mask   = true
+        sync_variant = true
+
+    # Step 2: decode mode and element type from offset
+    offset = builtin_id - group_base       # 0..7
+    mode   = offset >> 1                   # 0=up,1=down,2=xor,3=idx
+    is_f32 = offset & 1                    # 0=i32, 1=f32
+
+    # Step 3: build the LLVM intrinsic call
+    intrinsic_id = SHFL_TABLE[mode][is_f32 | (sync_variant<<1)]
+    call_args    = []
+    if needs_mask:
+        call_args.append(args.mask)        # i32 membermask
+    call_args += [args.value, args.delta_or_lane, args.width_mask]
+
+    emit_call(intrinsic_id, call_args)     # sub_1285290 / sub_921880
+```
+
+`SHFL_TABLE` is the red-black tree (`std::map<int, int>`) lazily initialized on first use; the keys are encoded `(mode, is_f32, sync)` triples and the values are LLVM intrinsic IDs from the NVVM intrinsic enum.
+
+## Width Operand Encoding
+
+Both the C builtin and the PTX `shfl` instruction accept a `width` parameter that segments the warp into smaller logical groups. The intrinsic encodes this as a single i32 packing two fields:
+
+| Bits | Field | Meaning |
+|---|---|---|
+| 4:0 | `clamp` | Computed lane wrap value: `(32 - width) << 8 \| 0x1F` |
+| 7:5 | `segmask` | `(32 - width) >> 3` — segment boundary bitmask |
+
+Cicc does **not** compute this packing; it forwards the user's `width` argument verbatim and relies on ptxas to lower the packing. The validation that `width` is a power of two in `[1, 32]` is enforced only at NVVM IR verification (intrinsic argument constraint), not at the C/C++ frontend.
+
+## Cross-References
+
+- [Barriers and Synchronization](./barriers.md) — the mask discipline established by warp builtins is paired with named-barrier semantics
+- [Tensor / MMA Builtins](./tensor-mma.md) — WMMA fragment load/store reduces to shuffle on the lowering path
+- [Convergence and Structurization](../llvm/structurizecfg.md) — the structured CFG pass that constrains where divergent warps may sit when a `_sync` op is reached
