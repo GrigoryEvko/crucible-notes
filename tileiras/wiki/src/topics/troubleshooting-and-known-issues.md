@@ -2,13 +2,13 @@
 
 ## Abstract
 
-A practical map from symptom to root cause. Each entry pairs the user-visible
+A symptom-to-root-cause catalog. Each entry pairs the user-visible
 text — the literal stderr line, the exit code, or the silent behavior — with
 the layer that produced it and the change that resolves it. The catalog also
 covers diagnostic typos that are part of the public contract (and therefore
 preserved), wire-format incompatibilities between tileiras's bytecode and
-upstream MLIR tooling, and a set of gotchas that are not bugs but routinely
-surprise first-time users.
+upstream MLIR tooling, and a set of behaviors that are not bugs but
+frequently confuse first-time users.
 
 The page is organized by where in the pipeline the error originates rather
 than by what the user typed. Driver-level rejections fire before any pass
@@ -49,8 +49,8 @@ Three failure modes surface here, all returned as driver exit code 3.
 The driver checked `looks_like_mlir_bytecode` first and that probe also
 failed; the file is neither Tile IR bytecode nor upstream MLIR bytecode.
 **Fix.** Verify the producer. Tile IR bytecode comes from the frontend's
-serializer; a randomly named file with a `.bc` extension is almost
-certainly LLVM bitcode and belongs on ptxas's plate, not tileiras's.
+serializer; a file with a `.bc` extension is almost certainly LLVM bitcode,
+which belongs to a different stage of the toolchain (ptxas), not tileiras.
 
 **Symptom.** `failed to parse IR bytecode (it looks like MLIR bytecode instead)`.
 Exit code 3.

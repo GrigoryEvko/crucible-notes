@@ -219,9 +219,9 @@ For constant bank sections, `0x70000064` is `SHT_CUDA_CONSTANT0`, so the delta e
 
 ### Worked Example: R_CUDA_CONST_FIELD19_28
 
-This example traces a constant bank relocation end-to-end, from the source CUDA code through the ELF relocation entry to the patched SASS instruction. `R_CUDA_CONST_FIELD19_28` (standard table index 24) is the most common constant field relocation on pre-Turing architectures. It writes a 19-bit DWORD offset into bits [28:47) of a 64-bit SASS instruction word.
+This example traces a constant bank relocation end-to-end, from the source CUDA code through the ELF relocation entry to the patched SASS instruction. `R_CUDA_CONST_FIELD19_28` (standard table index 24) is the most common constant field relocation on pre-Turing and Turing architectures. It writes a 19-bit DWORD offset into bits [28:47) of a 64-bit SASS instruction word.
 
-**Scenario**: Two translation units each define variables in `__constant__` memory. After merging, the linker assigns a constant `myConst` to byte offset `0x100` within the merged `.nv.constant0` section. A kernel `vectorAdd` references `myConst` via a load instruction. The target architecture is sm_70 (Volta).
+**Scenario**: Two translation units each define variables in `__constant__` memory. After merging, the linker assigns a constant `myConst` to byte offset `0x100` within the merged `.nv.constant0` section. A kernel `vectorAdd` references `myConst` via a load instruction. The target architecture is sm_75 (Turing) -- the relocation layout traced here is identical on the inherited sm_70 Volta encoding, on sm_80 / sm_86 / sm_89 Ampere--Ada, and on sm_90 Hopper (all share the 64-bit instruction word and the 19-bit DWORD-offset field at bit 28); the 21- and 22-bit wide-immediate variants introduced at sm_75 use sibling relocation types (`R_CUDA_CONST_FIELD21_*`, `R_CUDA_CONST_FIELD22_37`) but the same descriptor-table machinery.
 
 #### Step 0: Source Code and Compilation
 
@@ -242,7 +242,7 @@ The compiler (ptxas) generates a SASS instruction that loads from constant bank 
 ; Before relocation (from b.o):
 ; Instruction loads from c[0][0x0] -- offset not yet resolved
 ;
-; SASS mnemonic (sm_70):
+; SASS mnemonic (sm_75, identical encoding on sm_70/sm_80/sm_89/sm_90):
 ;   MOV R0, c[0x0][0x0]
 ;
 ; The 64-bit instruction word encodes:

@@ -674,7 +674,7 @@ Sections reclassified to `SHT_CUDA_SHARED` with `STB_LOCAL` binding and specific
 | `__nv_reservedSMEM_tmem_allocation_pipeline_mbarrier` | 1 (general) |
 | `__nv_reservedSMEM_tmem_allocation_pipeline_mbarrier_parity` | 1 (general) |
 
-The partition type is stored at `ctx+664`. If different input objects disagree on the partition type, `merge_elf` emits a fatal error (diagnostic descriptor at `unk_2A5B8C0`). These symbols are Blackwell-era (sm_100+) reserved shared memory regions for tensor core generation 05 operations.
+The partition type is stored at `ctx+664`. If different input objects disagree on the partition type, `merge_elf` emits a fatal error (diagnostic descriptor at `unk_2A5B8C0`). These symbols are Blackwell-era (sm_100, sm_103, sm_110, sm_120, sm_121) reserved shared memory regions for tensor core generation 05 operations; on sm_75 / sm_80 / sm_86--89 / sm_90 these `__nv_reservedSMEM_*` names are never emitted by the frontend, so the partition-type merge path is never exercised for those tiers.
 
 ## Function Map
 

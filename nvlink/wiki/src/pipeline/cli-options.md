@@ -174,6 +174,8 @@ elif sm > 89:                             // sm_90+ needs SASS mode
         fatal_error("SASS mode requires sm >= 90")
 ```
 
+The validation cascade partitions the active SM tiers into three regimes: PTX-only output for sm_75 / sm_80 / sm_86 / sm_87 / sm_88 / sm_89 (the `sm > 72` branch enables the new-style ELF flag without forcing SASS mode); SASS-required for sm_90 (`elif sm > 89`); and Mercury+SASS for sm_100 / sm_103 / sm_110 / sm_120 / sm_121 (the `sm > 99` branch). sm_70 and sm_72 reach the validator but are rejected downstream by the profile lookup because they have been removed from the active database (see [Architecture Profiles](../targets/arch-profiles.md), "Deprecated Architecture Numbers").
+
 ### Library Options
 
 **Global variable mappings:**

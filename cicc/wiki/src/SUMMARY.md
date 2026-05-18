@@ -121,7 +121,7 @@
 - [SM 70-89 (Volta -> Ada)](./targets/sm70-89.md)
 - [SM 90 — Hopper](./targets/sm90-hopper.md)
 - [SM 100 — Blackwell](./targets/sm100-blackwell.md)
-- [SM 120 — Blackwell (sm120)](./targets/sm120.md)
+- [SM 120 — Consumer Blackwell / RTX 50](./targets/sm120.md)
 
 # Data Structures
 

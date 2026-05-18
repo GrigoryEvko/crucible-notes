@@ -217,23 +217,23 @@ A compact catalog for navigation. The "Pattern" column captures what the table l
 | `0x2358c38` | 1,971 | 1 | 0 | gotomap | `sub_143C440` thread |
 | `0x23d2a30` | 1,966 | 1 | 0 | gotomap | `sub_198BCD0` thread |
 | `0x21e7118` | 1,836 | 60 | 2 | mixed | Per-opcode multi-stage |
-| `0x21f0590` | 1,677 | — | — | — | (lower-density mid-tier) |
+| `0x21f0590` | 1,677 | 10 | 0 | gotomap | Mid-density goto thread — 291/283/240/240/240 distribution |
 | `0x22a1d80` | 1,649 | 57 | — | mixed | Per-opcode mid-density |
-| `0x2355b80` | 1,548 | — | — | — | — |
+| `0x2355b80` | 1,548 | 5 | 0 | gotomap | 5-target thread in `sub_13ACxxx`/`sub_ACBxxx` |
 | `0x21debc0` | 1,262 | 15 | 0 | gotomap | `sub_917A60`+ family thread |
 | `0x21d3ac8` | 1,148 | 7 | 0 | gotomap | 7-target thread |
 | `0x1d4b778` | 1,080 | 1 | 0 | gotomap | `sub_5FF700` thread |
-| `0x202e108` | 948 | — | — | — | — |
+| `0x202e108` | 948 | 4 | 0 | gotomap | `sub_704D30` thread (764/948 slots) + 3 minor branches |
 | `0x21e35b8` | 827 | 25 | 0 | mixed | — |
-| `0x229e9f8` | 734 | — | — | — | — |
+| `0x229e9f8` | 734 | 8 | 0 | gotomap | `sub_AED3C0`/`sub_AEA420` dual thread (342+329 of 734) |
 | `0x1d10a68` | 703 | 1 | 0 | gotomap | `sub_4CE6B0` thread |
-| `0x20254b0` | 701 | — | — | — | — |
+| `0x20254b0` | 701 | 5 | 0 | gotomap | `sub_657xxx`/`sub_65Dxxx`/`sub_65Axxx` triple thread |
 | `0x21f3a20` | 667 | 2 | 0 | gotomap | — |
 | `0x23f4430` | 633 | 633 | 0 | percase | One unique func per slot |
 | `0x202b840` | 604 | 3 | 0 | gotomap | Mercury master-encoder thread |
 | `0x21cc6e0` | 591 | 17 | 0 | mixed | — |
 | `0x203a5a8` | 552 | 1 | 0 | gotomap | `sub_720F00` thread |
-| `0x2021820` | 550 | — | — | — | — |
+| `0x2021820` | 550 | 8 | 0 | gotomap | `sub_61F700` lead (156) + 4 secondary @ 69 each — symmetric 4-way split |
 | `0x21ec3d0` | 537 | 15 | 0 | mixed | — |
 | `0x21b3418` | 535 | 3 | 0 | gotomap | Mercury triple-thread |
 | `0x22b3960` | 504 | — | — | — | — |
@@ -272,6 +272,42 @@ A compact catalog for navigation. The "Pattern" column captures what the table l
 | `0x21edbc8` | 204 | 203 | 184 | sparse | — |
 
 Tables below 100 slots — 349 of the 409 — are mostly per-instruction-family encoders (5–80 slots each) sitting adjacent to the corresponding rodata format constants. They are catalogued in `ptxas_data_tables.json` for completeness but rarely warrant individual analysis.
+
+### Catalog Addendum — Tables Audited After Initial Wave
+
+A targeted re-audit of `ptxas_data_tables.json` surfaced several tables in the 158–244-slot range that the initial catalog skipped over. They sort into two structural groups.
+
+**Group A — fourth four-tier SM-tier family (240/243/244 slots, ~73–74 nullsubs each).** Same shape as the `0x22a5aa0` family (page §Per-SM-Tier Encoder Index Tables) but a different per-opcode aspect — distinct slot-0 fingerprints and a target range that overlaps the opcode-printer corpus rather than the opcode-encoder corpus. Strong evidence this is a *second* parallel 4-tier vtable, likely the per-opcode *validate-or-cost* probe parallel to the encoder vtable.
+
+| Address | Slots | Uniq | Nullsubs | Tier reading | Notes |
+|---|---|---|---|---|---|
+| `0x21f6a90` | 244 | 244 | 74 | latest tier (most populated) | Target range `0x19F6890..0xC5DAB0`; slot 0 = `nullsub_469`, slot 2 = `sub_A393D0` (bracketing fingerprint shared with siblings) |
+| `0x23d8178` | 243 | 243 | 73 | mid tier | Slot 0 = `nullsub_469`, slot 1 = `sub_19FF740` (only sibling with this bridge), slot 2 = `sub_A393D0` |
+| `0x22b5150` | 243 | 243 | 73 | mid tier (alt) | Identical slot-0/slot-2 fingerprint to `0x23d8178` — likely tier 2 vs tier 3 of the same SM cohort |
+| `0x21fa5e0` | 240 | 240 | 73 | earliest tier | Smallest population, distinct slot-1 (`sub_C5DBB0`) — predates four opcodes added in later tiers |
+
+The 240→243→243→244 progression matches the "opcodes added per SM generation, never removed" rule documented for the `0x22a5aa0` family. Diffing slot lists across the four would yield the exact opcode set added per SM generation for whichever aspect this vtable controls. **Confidence: HIGH for structural classification, MED for "validate/cost" role attribution — the constant `sub_A393D0` at slot 2 of every entry suggests a fixed prologue handler, which is more consistent with a probe/cost role than with a printer or encoder role.**
+
+**Group B — uncited single-tier per-opcode dispatch tables.** No 4-tier family detected; each likely a one-off per-subsystem dispatch.
+
+| Address | Slots | Uniq | Nullsubs | Best-guess role |
+|---|---|---|---|---|
+| `0x21f7df8` | 234 | 234 | 208 | Per-opcode handler for an *early* SM tier — 208/234 holes is the highest sparsity in the catalog, consistent with "feature-flag dispatch that only a handful of opcodes participate in" (e.g. tensor-core fragment ops circa SM80) |
+| `0x23549c0` | 204 | 204 | 120 | Per-opcode dispatch in the `0x1398000` code range (distinct from the main encoder corpus at `0xA39xxx..0xC5Dxxx`) — likely a secondary lowering pipeline, possibly the cuLINK/relocation path |
+| `0x21d2598` | 164 | 154 | 31 | Per-opcode dispatch in `0x6E0000..0x7FD000` (early code section, pre-mercury) — 10 slots share handlers (uniq 154/164), the only mid-size table with non-trivial slot reuse outside the SM-tier families. Likely Mercury *preprocess* dispatch |
+
+**Group C — uniform-target tables (uniq ≤ 2).** Catalog skipped these because they don't carry per-opcode handler information, but listing them is useful for completeness — they signal "computed-goto threads that the catalog already cataloged elsewhere but never named":
+
+| Address | Slots | Uniq | Pattern reading |
+|---|---|---|---|
+| `0x1d0e128` | 244 | 2 | Two-target goto thread — early-section pair |
+| `0x1d0b880` | 238 | 1 | Single-function thread, `0x1d0xxxx` early code |
+| `0x22b74a0` | 211 | 1 | Single-function thread in encoder region |
+| `0x2020a90` | 211 | 2 | Two-target thread |
+| `0x21f73f0` | 209 | 154 | Mid-density per-opcode dispatch — *not* a goto thread despite low uniqueness; the 154 unique funcs across 209 slots imply ~55 slots collapse to a shared fallback |
+| `0x1d07848` | 203 | 2 | Two-target thread, early section |
+
+`0x21f73f0` is the only Group C entry worth a deep-dive — its 209/154 ratio matches the `0x21d2598` pattern (per-opcode dispatch with a small shared fallback bucket) and it sits one bucket below the SM-tier-family size. Possible fifth sibling of the `0x22a5aa0` cohort with a smaller opcode universe; worth diffing against the four siblings to test.
 
 ## What the Tables Don't Cover
 

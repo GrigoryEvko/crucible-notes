@@ -13,7 +13,7 @@ CICC is NVIDIA's CUDA C-to-PTX compiler — the binary that transforms CUDA C++ 
 | **CLI options** | ~1,689 registered via `cl::opt` + 222 NVVMPassOptions slots |
 | **NVVM builtins** | 770 (IDs 1–770, wyhash open-addressing table) |
 | **Default target** | `sm_75` (Turing) |
-| **Supported SMs** | sm\_75 through sm\_121f (Turing through Blackwell (sm120)) |
+| **Supported SMs** | sm\_75 through sm\_121f (Turing through Blackwell — sm\_100 datacenter, sm\_103 Blackwell Ultra, sm\_110 Jetson Thor, sm\_120 consumer/RTX 50, sm\_121 DGX Spark) |
 
 ## Three Subsystems
 
@@ -26,6 +26,31 @@ CICC is not a monolithic compiler. It is composed of three largely independent s
 **3. LLVM 20.0.0 Backend** (~45 MB, `0x12D0000`–`0x3BFFFFF`) — A heavily modified LLVM fork that performs IR optimization and PTX code generation. NVIDIA has added 35 custom passes (MemorySpaceOpt, Rematerialization, BranchDist, LoopIndexSplit, Sinking2, etc.), a proprietary two-phase compilation model with per-function thread parallelism, and extensive modifications to the NVPTX backend for tensor core code generation across 5 GPU architecture generations. See [Code Generation](./pipeline/codegen.md) and [PTX Emission](./pipeline/emission.md).
 
 Additionally, **jemalloc 5.3.x** (~400 functions at `0x12FC000`) is statically linked, replacing the system allocator for improved memory allocation performance during compilation.
+
+## Key Discoveries
+
+If you only read one paragraph, read this. The findings that most differentiate cicc from a plain LLVM build:
+
+- **Dual binary copies.** Path A (LibNVVM API) at `0x90xxxx` and Path B (standalone) at `0x126xxxx` contain two complete, independently-compiled copies of the EDG-to-PTX pipeline. Same logic, different translation units, selected by `v253` in `sub_8F9C90`. See [Dual-Path Architecture](#dual-path-architecture) below and [Entry Point & CLI](./pipeline/entry.md).
+- **Two-phase compilation.** Phase I optimizes the whole module (inlining, IPMSP, global decisions); Phase II re-optimizes each function independently with a thread pool gated by GNU Jobserver tokens. The split is non-obvious and changes which knobs affect what. See [LLVM Optimizer](./pipeline/optimizer.md) and [Concurrent Compilation](./infra/concurrent-compilation.md).
+- **35 proprietary passes** interleaved with stock LLVM 20.0.0: MemorySpaceOpt, Rematerialization, BranchDist, IPMSP, Sinking2, LoopIndexSplit, IV Demotion, Dead Barrier/Sync Elimination, CSSA, etc. Several have no upstream equivalent. See [NVIDIA Custom Passes](./passes/index.md).
+- **770-entry builtin table.** Wyhash open-addressed lookup at `sub_90AEE0` / `sub_126A910` maps every CUDA builtin to its LLVM intrinsic or lowering routine. See [NVVM Builtins](./builtins/index.md).
+- **Three independent knob systems.** ~1,689 `cl::opt` flags, 222 `NVVMPassOptions` slots, ~70 codegen knobs. Effects overlap and sometimes contradict. See [Configuration](./config/knobs.md).
+- **455 KB embedded libdevice bitcode** (twice — once per path) provides the `__nv_*` math library. See [Libdevice Linking](./infra/libdevice-linking.md).
+
+## Reading This Wiki
+
+Pages are organized around the compilation pipeline and written at reimplementation-grade depth for senior C++ developers with LLVM backend experience. The left sidebar (`SUMMARY.md`) is the full table of contents — use it as the spine. The reading paths below are curated sequences for common goals.
+
+### Quick Start (15 minutes)
+
+If you have never opened this wiki before, read these three pages in order before anything else:
+
+1. **[Pipeline Overview](./pipeline/overview.md)** — Establishes the 10-stage flow and address ranges every other page assumes.
+2. **[Entry Point & CLI](./pipeline/entry.md)** — How invocation reaches the real main, the dual-path switch, and the 1,689-flag CLI.
+3. **[NVIDIA Custom Passes — Overview](./passes/index.md)** — The inventory table that makes everything proprietary visible at a glance.
+
+Then pick one of the four deep paths below based on your goal.
 
 ## Dual-Path Architecture
 
@@ -105,9 +130,9 @@ CUDA C++ Source (.cu / .ci / .i)
 | NVPTX ISel + lowering | `0x3000000`–`0x36FFFFF` | 7 MB | `sub_33B0210` (intrinsic switch, 343KB) |
 | Embedded libdevice | `0x3EA0080` / `0x420FD80` | 456 KB × 2 | LLVM bitcode (~400 math functions) |
 
-## Reading This Wiki
+## Section Index and Deep Reading Paths
 
-The wiki is organized around the compilation pipeline. Every page is written at reimplementation-grade depth for an audience of senior C++ developers with LLVM backend experience.
+The Quick Start above (Pipeline Overview → Entry & CLI → Custom Passes Overview) is the on-ramp. The four paths below are deeper sequences, each tuned to a specific goal. The Section Index lists every top-level page; the sidebar holds the full TOC.
 
 ### Section Index
 

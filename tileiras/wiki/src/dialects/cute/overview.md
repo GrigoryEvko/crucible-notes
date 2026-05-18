@@ -24,7 +24,7 @@ cute_nvgpu
 PTX
 ```
 
-Think of `cute` as a compact typed form of the same algebra that CUTLASS C++ expresses with templates. The templates become values and attributes that passes inspect, compose, verify, and lower.
+`cute` is a compact typed form of the same algebra that CUTLASS C++ expresses with templates. The templates become values and attributes that passes inspect, compose, verify, and lower.
 
 ## Core Concepts
 

@@ -339,11 +339,11 @@ This section walks three representative relocations through `sub_469D60` and `su
 2. **`R_CUDA_FUNC_DESC_32`** -- a 32-bit data patch into a function descriptor slot.
 3. **`R_CUDA_CONST_FIELD19_20`** -- a 19-bit instruction bit-field write with an implicit `>> 2` (byte offset to DWORD offset).
 
-All three examples assume a pre-Mercury target (sm_70 Volta), so the descriptor table selected by `sub_469D60` is `off_1D3DBE0` (the CUDA table), and the relocation types are used as direct indices (no `0x10000` normalization). Each entry in the 64-byte CUDA descriptor table is laid out as `[12 bytes header | action[0] 16 bytes | action[1] 16 bytes | action[2] 16 bytes | 4 bytes sentinel]`, with the action iteration bounded by `v100 = (unsigned int *)(v12 + 60)` at line 132 of `sub_468760`.
+All three examples assume a pre-Mercury target (any of sm_75 / sm_80 / sm_86--89 / sm_90; the descriptor table is identical across these tiers and the original sm_70 Volta layout it inherits from), so the descriptor table selected by `sub_469D60` is `off_1D3DBE0` (the CUDA table), and the relocation types are used as direct indices (no `0x10000` normalization). Each entry in the 64-byte CUDA descriptor table is laid out as `[12 bytes header | action[0] 16 bytes | action[1] 16 bytes | action[2] 16 bytes | 4 bytes sentinel]`, with the action iteration bounded by `v100 = (unsigned int *)(v12 + 60)` at line 132 of `sub_468760`.
 
 ### Example 1: R_CUDA_ABS32_LO_20 (index 33)
 
-**Scenario.** A kernel needs to load the address of a global `__device__` variable `g_table` into a register. The compiler emits a `MOV32I` (or equivalent sm_70 `IMAD`/`MOV32I`-style wide-immediate) instruction split into two halves -- an `R_CUDA_ABS32_HI_20` high-half relocation and an `R_CUDA_ABS32_LO_20` low-half relocation. After layout, `g_table` has been assigned the absolute address `0x00C0_FFEE` in the merged `.nv.global` section. This example patches the **low** half of that address into the 16-bit immediate field at bit 20 of the second instruction of the pair.
+**Scenario.** A kernel needs to load the address of a global `__device__` variable `g_table` into a register. The compiler emits a `MOV32I` (or equivalent sm_75 / sm_80 / sm_89 `IMAD`/`MOV32I`-style wide-immediate) instruction split into two halves -- an `R_CUDA_ABS32_HI_20` high-half relocation and an `R_CUDA_ABS32_LO_20` low-half relocation. After layout, `g_table` has been assigned the absolute address `0x00C0_FFEE` in the merged `.nv.global` section. This example patches the **low** half of that address into the 16-bit immediate field at bit 20 of the second instruction of the pair.
 
 **a. Symbol being referenced.**
 

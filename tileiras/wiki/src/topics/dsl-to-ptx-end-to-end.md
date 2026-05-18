@@ -2,9 +2,9 @@
 
 ## Abstract
 
-The tileiras wiki documents each stage of the MLIR-to-PTX cascade on its own page. A reader following the path of a single kernel from a Triton-style frontend down to emitted PTX has to walk ten or more of those pages and reconstruct the IR shape at every step. This page is the walkthrough: a representative GEMM kernel rendered at every level of the pipeline, with each transition annotated by the pass that produced it. The per-stage canonical pages remain authoritative for pass internals, fold rules, and verifier contracts; this page focuses on the IR shape continuity that ties them together.
+The tileiras wiki documents each stage of the MLIR-to-PTX cascade on its own page. A reader following one kernel from a Triton-style frontend down to emitted PTX would otherwise have to traverse the per-stage pages and reconstruct the IR shape at every transition. This page is the walkthrough: a representative GEMM kernel rendered at every level of the pipeline, with each transition annotated by the pass that produced it. The per-stage canonical pages remain authoritative for pass internals, fold rules, and verifier contracts; this page focuses on the IR shape continuity that ties them together.
 
-The kernel is a fused `D = A * B^T + C` operation targeting `sm_90a`. Inputs `A` and `B` are `tile<128x64xf16>` blocks staged through TMA into shared memory; `C` and `D` are `tile<128x128xf32>` blocks of the same row tile. The walkthrough follows one steady-state iteration of the K loop, so the descriptor construction, prologue, and epilogue are elided in favour of the producer/consumer body the scheduler operates on.
+The kernel is a fused `D = A * B^T + C` operation targeting `sm_90a`. Inputs `A` and `B` are `tile<128x64xf16>` blocks staged through TMA into shared memory; `C` and `D` are `tile<128x128xf32>` blocks of the same row tile. The walkthrough follows one steady-state iteration of the K loop; descriptor construction, prologue, and epilogue are elided in favor of the producer/consumer body the scheduler operates on.
 
 ## The Kernel
 
