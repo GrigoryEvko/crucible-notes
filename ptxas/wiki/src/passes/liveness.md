@@ -7,7 +7,7 @@ Liveness analysis is the most frequently repeated computation in the ptxas pipel
 | | |
 |---|---|
 | **Dedicated liveness phases** | 6 (phases 10, 16, 19, 33, 61, 84) |
-| **Core bitvector library** | `0xBDBA60`--`0xBDE150` (15+ functions, SSE2) |
+| **Core bitvector library** | `0xBDBA60`--`0xBDDD40` (15+ functions; bulk Boolean ops are SSE2) |
 | **BitVector object size** | 20 bytes header + dynamic word array |
 | **Word size** | 32-bit (`uint32_t`) -- indexed by `>> 5` and `& 0x1F` |
 | **Transfer function** | `out = gen \| (in - kill)` via `orWithAndNot` |
@@ -116,7 +116,7 @@ The analysis is a forward Kleene iteration on a complete lattice and is guarante
 
 ## BitVector Implementation
 
-The bitvector library at `0xBDBA60`--`0xBDE150` is the most performance-critical infrastructure in ptxas dataflow analysis. All operations are SSE2-accelerated with manual alignment handling.
+The bitvector library at `0xBDBA60`--`0xBDDD40` is the most performance-critical infrastructure in ptxas dataflow analysis. The bulk Boolean operations (`|=`, `&=`, `^=`, the `IfChanged` and `orWithAndNot` variants) are SSE2-accelerated with manual alignment handling; small-scalar ops (setBit/clearBit/testBit) use plain integer arithmetic. The next address range (`0xBDDDF0`--`0xBDFB10`) contains CFG hash maps and RPO code, not bitvector primitives.
 
 ### Layout
 
@@ -221,7 +221,7 @@ The earliest liveness pass, running immediately after initial IR construction (a
 
 **Pipeline context:** At this point, the IR has just been lowered from PTX. Many PTX instructions expand to multiple Ori instructions, some of which produce values that are immediately dead (e.g., condition codes that are never tested, intermediate values from multi-instruction expansions). EarlyOriSimpleLiveDead removes this low-hanging dead code before the main optimization pipeline begins, reducing the working set for all subsequent passes.
 
-**Implementation evidence:** The sweep at `p1.10` (`W010`) confirms this pass uses the bitvector infrastructure at `sub_BDBA60`--`sub_BDE150` for liveness computation. The "simple" in the name may indicate a local-only (per-BB) analysis that avoids the cost of full global iterative dataflow -- sufficient for removing obviously dead definitions that have no uses within the same block.
+**Implementation evidence:** The sweep at `p1.10` (`W010`) confirms this pass uses the bitvector infrastructure at `sub_BDBA60`--`sub_BDDD40` (the RPO helper `sub_BDE150` sits past the bitvector range) for liveness computation. The "simple" in the name may indicate a local-only (per-BB) analysis that avoids the cost of full global iterative dataflow -- sufficient for removing obviously dead definitions that have no uses within the same block.
 
 ## Phases 16, 33, 61, 84: OriPerformLiveDead
 
@@ -422,7 +422,7 @@ function OriSplitLiveRanges(func):
 
 ### Three Bitvector Fields per Virtual Register
 
-The splitting pass maintains three independent bitvectors per VR, all using the standard 32-bit-word `BitVector` from `0xBDBA60`--`0xBDE150`:
+The splitting pass maintains three independent bitvectors per VR, all using the standard 32-bit-word `BitVector` from `0xBDBA60`--`0xBDDD40`:
 
 | VR Offset | Name | Content | Allocated by |
 |-----------|------|---------|-------------|

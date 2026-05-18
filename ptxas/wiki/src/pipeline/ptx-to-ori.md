@@ -232,7 +232,7 @@ This snapshot provides the pre-optimization baseline. Comparing it against `Repo
 
 | Phase | Name | Purpose |
 |---|---|---|
-| 10 | `EarlyOriSimpleLiveDead` | First dead code elimination pass. Removes instructions whose results are unused. Uses the SIMD-accelerated bitvector library (`sub_BDBA60`..`sub_BDE150`) for liveness computation. |
+| 10 | `EarlyOriSimpleLiveDead` | First dead code elimination pass. Removes instructions whose results are unused. Uses the SSE2-accelerated bitvector library (`sub_BDBA60`..`sub_BDDD40`) for liveness computation. |
 | 11 | `ReplaceUniformsWithImm` | Folds known-constant uniform register loads into immediate operands. Important for kernel launch parameters passed through constant memory. |
 | 12 | `OriSanitize` | Second structural validation after all bridge transformations. Catches errors introduced by phases 1--11 before the main optimizer begins. |
 | 13 | `GeneralOptimizeEarly` | First compound optimization pass: copy propagation + constant folding + algebraic simplification in a single fixed-point iteration. Cleans up redundancies introduced by the bridge phases. |

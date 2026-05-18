@@ -39,8 +39,8 @@ PTX source text
 │  FLEX DFA SCANNER  sub_720F00 (15.8KB, 552 rules)       │
 │  off_203C020       DFA transition table                  │
 │  Token codes:      258-422 (163 named emitted)           │
-│  Helper:           sub_720410 (yy_get_next_buffer)       │
-│                    sub_720630 (yy_get_previous_state)     │
+│  Helper:           sub_720410 (yy_input)                  │
+│                    sub_720630 (yy_get_next_buffer, SSE2)  │
 │                    sub_720BA0 (yy_scan_string)            │
 └────────────────────┬────────────────────────────────────┘
                      │ token stream (code + attribute)
@@ -101,7 +101,7 @@ Of the 165 external slots, 2 are dead (`321`, `398`), giving the 163 codes actua
 | Action | Returns | Meaning |
 |---|---|---|
 | default | (fatal) | `"fatal flex scanner internal error--no action found"` -- line 2527 |
-| 550 | (loop) | `YY_END_OF_BUFFER` -- refills buffer via `sub_720630` / `sub_40439C` -- lines 2416--2484 |
+| 550 | (loop) | `YY_END_OF_BUFFER` -- refills buffer via `sub_720630` (`yy_get_next_buffer`) / `sub_40439C` -- lines 2416--2484 |
 | 551 | (loop) | `YY_STATE_EOF(<cond>)` -- pops include stack via pointers at lexer+2160 / lexer+2432 -- lines 2485--2525 |
 | 543 | (restart) | Whitespace skip -- rewinds and re-enters DFA -- line 2382 |
 | 544 | (skip) | `/* ... */` comment -- `ptx_scan_string("*/")` -- line 2387 |
@@ -416,13 +416,13 @@ The scanner uses the standard Flex buffer stack for nested input sources (includ
 |---|---|---|---|
 | `sub_720190` | 2.0 KB | `ptxensure_buffer_stack` | Grows buffer stack via realloc |
 | `sub_7202E0` | 1.3 KB | `ptx_create_buffer` | Creates `YY_BUFFER_STATE` from FILE* |
-| `sub_720410` | 3.3 KB | `yy_get_next_buffer` | Refills character buffer, handles EOF |
-| `sub_720630` | 9.7 KB | `yy_get_previous_state` | Restores DFA state, SIMD-optimized memmove |
+| `sub_720410` | 3.3 KB | `yy_input` (helper for `yy_get_next_buffer`) | Reads raw bytes into the scanner's input buffer |
+| `sub_720630` | 9.7 KB | `yy_get_next_buffer` | Compacts the buffer (SSE2 16-byte aligned copies), refills it, handles EOF |
 | `sub_720BA0` | 4.3 KB | `ptx_scan_string` | Scans inline string into buffer |
 | `sub_724CC0` | 4.9 KB | `ptx_scan_bytes` | Macro expansion buffer allocation |
 | `sub_725070` | 2.7 KB | `ptx_scan_buffer` | Buffer creation with error recovery |
 
-Notable: `sub_720630` contains SSE2-optimized `memmove` using `__m128i` aligned 16-byte copies for buffer compaction -- a Flex optimization for large input buffers. The `ptx_scan_bytes` function (`sub_724CC0`) is called from the Bison parser actions (3 call sites in `sub_4CCF30`) to handle inline macro expansion during parsing.
+Notable: `sub_720630` (`yy_get_next_buffer`) contains an SSE2-optimized buffer-compaction loop. A scalar prologue advances the source until its low four bits are clear, then the main loop copies 16 bytes per iteration with `_mm_load_si128` from the aligned source into the destination (compiled to `movdqa`); a scalar epilogue handles the remainder. This is a Flex optimization for large input buffers. The `ptx_scan_bytes` function (`sub_724CC0`) is called from the Bison parser actions (3 call sites in `sub_4CCF30`) to handle inline macro expansion during parsing.
 
 Error strings in the buffer system:
 
@@ -1806,8 +1806,8 @@ A monolithic format string table (~1.8 MB) at the `a2` parameter contains pre-as
 | `sub_71C140` | 2.5 KB | Macro format error | 88% |
 | `sub_720190` | 2.0 KB | `ptxensure_buffer_stack` | 95% |
 | `sub_7202E0` | 1.3 KB | `ptx_create_buffer` | 96% |
-| `sub_720410` | 3.3 KB | `yy_get_next_buffer` | 95% |
-| `sub_720630` | 9.7 KB | `yy_get_previous_state` (SSE2 optimized) | 94% |
+| `sub_720410` | 3.3 KB | `yy_input` (helper for `yy_get_next_buffer`) | 90% |
+| `sub_720630` | 9.7 KB | `yy_get_next_buffer` (SSE2-aligned buffer compaction) | 94% |
 | `sub_720BA0` | 4.3 KB | `ptx_scan_string` | 93% |
 | `sub_724CC0` | 4.9 KB | `ptx_scan_bytes` / macro nesting check | 91% |
 | `sub_725070` | 2.7 KB | `ptx_scan_buffer` | 93% |

@@ -85,7 +85,7 @@ The following is the exact call order within `sub_445000`, with function address
 
 ### Shared Memory Fixup (Relocatable Mode)
 
-For relocatable links (`elfw+16 == 2`, i.e. `ET_REL`), if certain conditions on the arch flags (`elfw+48`) are not met and `byte elfw+99` is set, `sub_439640` is called to apply a final shared-memory adjustment pass. This handles the case where shared memory layout was deferred because the output is a relocatable object rather than a final executable.
+For relocatable links (`elfw+16 == 1`, i.e. `ET_REL`), if certain conditions on the arch flags (`elfw+48`) are not met and `byte elfw+99` is set, `sub_439640` is called to apply a final shared-memory adjustment pass. This handles the case where shared memory layout was deferred because the output is a relocatable object rather than a final executable. (`elfw+16 == 2` is `ET_EXEC`, the standard final-output type.)
 
 For Mercury ELF type (`elfw+16 == 0xFF00`), the function handles virtual section index remapping. If the elfw has a non-zero section count at `elfw+248`, it validates the virtual-to-physical section index mapping (`elfw+472` and `elfw+368`) and calls `sub_438BD0` on the target section. The "secidx not virtual" assertion fires if the mapping is inconsistent.
 

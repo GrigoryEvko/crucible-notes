@@ -142,7 +142,7 @@ The default mode when no `-ghls` is specified and `byte_2A5F1E8 == 0`.
 | `dword_2A77DC0` | 0 |
 | `byte_2A5F1E8` | 0 |
 | Implementing function | `main` at `0x409800` (lines 426-1688 = `LABEL_24` through cleanup) |
-| Output ELF type | 1 (ET_EXEC), via `(byte_2A5F1E8 == 0) + 1` at line 486 |
+| Output ELF type | 2 (ET_EXEC), via `(byte_2A5F1E8 == 0) + 1 = 1 + 1 = 2` at line 486 |
 | Output format | Executable device cubin (linked, fully resolved) |
 | Exit code path | `exit(0)` or `exit(-1)` at lines 1687-1688 |
 
@@ -163,7 +163,7 @@ Triggered by `-r` or `--relocatable-link`. The output is a relocatable ELF that 
 | `byte_2A5F1E8` | 1 |
 | `byte_2A5F212` (ignore-host-info) | forced to 1 at `sub_427AE0` line 1116 |
 | Implementing function | `main` at `0x409800`, same path as Mode A |
-| Output ELF type | 2 (ET_REL), via `(byte_2A5F1E8 == 0) + 1 = 0 + 1 = ... ` (incorrect: when `byte_2A5F1E8 != 0`, the expression yields `(0) + 1 = 1` -- **see note below**) |
+| Output ELF type | 1 (ET_REL), via `(byte_2A5F1E8 == 0) + 1 = 0 + 1 = 1` at line 486 -- **see note below** |
 | Output format | Relocatable device object with unresolved symbols and relocation tables |
 | Exit code path | `exit(0)` or `exit(-1)` |
 

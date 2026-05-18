@@ -1001,7 +1001,7 @@ bool is_rel_elf(void *elf_base)
 }
 ```
 
-`e_type` lives at offset 16 in both Elf32 and Elf64 headers (because the preceding 16 bytes of `e_ident` are identical). The value `1` is `ET_REL` -- relocatable. Device cubins from `ptxas` are `ET_EXEC` (value `2`), while intermediate LTO objects are `ET_REL`. This predicate is used in the LTO path to distinguish the two.
+`e_type` lives at offset 16 in both Elf32 and Elf64 headers (because the preceding 16 bytes of `e_ident` are identical). The value `1` is `ET_REL` -- relocatable. Device cubins from `ptxas` are `ET_REL` (value `1`) on legacy targets or the Mercury custom type `0xFF00` on sm >= 100; `ET_EXEC` (value `2`) is the final output type produced by `nvlink` itself and only re-appears as input when a previously linked cubin is fed back in (where `sub_426570` rejects it). This predicate is also used outside the LTO path -- for host vs device disambiguation during the input dispatch -- since both host `.o` files and ptxas-produced cubins are `ET_REL`.
 
 ### `sub_43DA00` -- `is_lto_elf`
 

@@ -234,7 +234,7 @@ Both `sub_4709E0` and `sub_470DA0` check for the environment variable `CAN_FINAL
 
 1. **Word size check**: The cubin's ELF class (32-bit vs 64-bit) must match the `--machine` setting (`dword_2A5F30C`, either 32 or 64).
 
-2. **ELF type rejection**: `ET_DYN` (shared library, `e_type == 2`) cubins are rejected unconditionally.
+2. **ELF type rejection**: `ET_EXEC` (`e_type == 2`) cubins are rejected unconditionally. These can appear only when a fully-linked nvlink output is fed back in -- they cannot be re-linked. ptxas emits `ET_REL` (1) or the Mercury custom type `0xFF00`; only nvlink itself produces `ET_EXEC` as the final link output.
 
 3. **ELF class byte check**: For 32-bit links, the ELF class byte at `ehdr+8` must be 7 (legacy CUDA format) or 8 (sm > 72). Other values trigger an error.
 

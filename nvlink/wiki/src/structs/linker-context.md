@@ -271,7 +271,7 @@ Allocates 672 bytes from the arena via `sub_4307C0`. Zeroes the entire buffer wi
 
 **Step 3 -- ELF header template**:
 
-Writes `\x7fELF` magic, class byte, data encoding (LSB), version, OSABI (0x41 for device, 0x33 for 32-bit), machine type (190 = EM_CUDA). For device ELF (`merge_flags & 0x8000`), sets `e_type = ET_EXEC` (2) for non-relocatable or `ET_REL` (1) for relocatable. If not device ELF, sets `e_type = 0x80000000` for relocatable.
+Writes `\x7fELF` magic, class byte, data encoding (LSB), version, OSABI (0x41 for device, 0x33 for 32-bit), machine type (190 = EM_CUDA). For device ELF (`merge_flags & 0x8000`), sets `e_type = ET_EXEC` (2) for non-relocatable or `e_type = ET_REL` (1) for relocatable. The relocatable bit is also stamped into `e_flags` separately (bit 31 = `0x80000000` for non-Mercury, bit 10 = `0x400` for OSABI 0x41); `e_type` itself stays within the 16-bit ELF spec.
 
 **Step 4 -- Merge-flags decomposition**:
 

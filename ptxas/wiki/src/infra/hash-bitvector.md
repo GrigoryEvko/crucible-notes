@@ -10,7 +10,7 @@ ptxas contains two independent hash map implementations and a dedicated bitvecto
 |-----------|-------------|----------------|---------------|---------|
 | General hash map | 112 bytes | MurmurHash3 (strings), pointer-shift, or identity | `0x425B20`--`0x42D850` | 2800+ (`sub_426150`) |
 | CFG hash map | 40 bytes (header) | FNV-1a (32-bit) | `0xBDED20`--`0xBDFB10` | ~80 |
-| Bitvector | 20 bytes (header) | N/A | `0xBDBA60`--`0xBDE150` | 500+ |
+| Bitvector | 20 bytes (header) | N/A | `0xBDBA60`--`0xBDDD40` | 500+ |
 
 The general hash map is a self-contained 112-byte object used for string-keyed lookups (intrinsic tables, PTX directive dispatch, ELF section names), pointer-keyed caches (instruction deduplication), and integer-keyed registries (opcode tables). The CFG hash map is a separate, purpose-built implementation for graph edge storage with embedded sub-hash tables for multi-edge blocks. The bitvector library provides 17+ SSE2-accelerated operations optimized for the iterative dataflow workloads that dominate ptxas compile time.
 
@@ -320,7 +320,7 @@ For blocks with many successors (switch statements, computed branches), the full
 
 ## Bitvector Library
 
-The bitvector library at `0xBDBA60`--`0xBDE150` is the most performance-critical infrastructure in ptxas. It supports 17+ operations, all SSE2-accelerated with manual alignment handling. The library is the backbone of liveness analysis (6 dedicated phases), dominance computation, register interference detection, and dead code elimination.
+The bitvector library at `0xBDBA60`--`0xBDDD40` is the most performance-critical infrastructure in ptxas. It supports 17+ operations, the bulk-Boolean variants of which are SSE2-accelerated with manual alignment handling. The library is the backbone of liveness analysis (6 dedicated phases), dominance computation, register interference detection, and dead code elimination. The next address range (`0xBDDDF0`--`0xBDFB10`) contains CFG-edge hash map and RPO code rather than bitvector primitives.
 
 ### Object Layout (20 bytes)
 

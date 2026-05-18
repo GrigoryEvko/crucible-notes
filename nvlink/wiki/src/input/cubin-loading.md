@@ -80,7 +80,8 @@ This determines whether the cubin uses Elf32 or Elf64 structures. All modern CUD
 ```c
 // sub_43D9B0 -- is_host_elf
 // Returns true if the ELF has e_type == ET_REL (1)
-// For cubins, e_type is typically ET_EXEC (2) or the Mercury type 0xFF00
+// For cubins emitted by ptxas, e_type is ET_REL (1) or the Mercury type 0xFF00;
+// ET_EXEC (2) appears only on cubins produced by a previous nvlink pass.
 bool is_host_elf(void *elf_buf) {
     if (!elf_buf) return false;
     if (((uint8_t *)elf_buf)[4] == 2)  // ELFCLASS64
@@ -90,7 +91,7 @@ bool is_host_elf(void *elf_buf) {
 }
 ```
 
-Device cubins produced by ptxas have `e_type == ET_EXEC` (2). Relocatable device objects (produced with `-r`) have `e_type == ET_REL` (1) but still carry `e_machine == 190`. Mercury objects use the custom type `0xFF00`. The combination of `e_machine == 190` with any `e_type` value routes through the cubin handler; `sub_43D9B0` is used later during architecture validation to handle relocatable cubins specially.
+Device cubins produced by ptxas have `e_type == ET_REL` (1) on legacy targets or the Mercury custom type `0xFF00` on sm >= 100; ptxas never emits `ET_EXEC`. `ET_EXEC` (2) appears only on cubins produced as the final output of a previous nvlink invocation -- these are rejected by `sub_426570` because fully-linked executables cannot be re-linked. All variants still carry `e_machine == 190`. The combination of `e_machine == 190` with any `e_type` value routes through the cubin handler; `sub_43D9B0` is used later (e.g., in the LTO path) to distinguish host `.o` files from device cubins by testing `e_type == ET_REL`.
 
 ## SASS Flag Detection
 
@@ -755,7 +756,7 @@ This value must not exceed the buffer length. `sub_43DD30` uses it as the final 
 
 ### Layer 3: Architecture (`sub_426570`)
 
-- `e_type != ET_DYN (3)` -- shared objects rejected outright
+- `e_type != ET_EXEC (2)` -- fully-linked executables (a previous nvlink output) rejected outright; the test reads `*(WORD *)(ehdr + 16) == 2`
 - ELF class matches `--machine` (`dword_2A5F30C`, 32 or 64)
 - `e_ident[EI_OSABI]` matches the expected value (`0x41` for Mercury, `0` for legacy)
 - `e_ident[EI_CLASS]` sub-field (NVIDIA uses byte 7 as a sub-class indicator; expected 7 for Elf32/legacy, 8 for Mercury)
@@ -812,7 +813,7 @@ sub_43DD30: validate_elf_structure() -- bounds-check all headers
   |
   v
 sub_426570: validate_arch_and_add()
-  |  1. Reject e_type == ET_DYN (shared libraries)
+  |  1. Reject e_type == ET_EXEC (already-linked executables; previous nvlink output)
   |  2. Check word size (32/64) matches --machine
   |  3. Check ELF OSABI byte for class expectations
   |  4. Extract SM version from e_flags

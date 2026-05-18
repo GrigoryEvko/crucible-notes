@@ -151,10 +151,10 @@ Combining the four tests, the dispatch routes as follows:
 
 | ELF magic | `e_type` | `e_machine` | Extension | Handler |
 |---|---|---|---|---|
-| yes | `ET_REL` (1) | `190` (EM_CUDA) | `.o` | **cubin handler** (`sub_476BF0` path) |
+| yes | any (`ET_REL`, `ET_EXEC`, `0xFF00`) | `190` (EM_CUDA) | `.o` | **cubin handler** (`sub_476BF0` path) -- `e_type == ET_EXEC` inputs are accepted here and then rejected by `sub_426570` |
 | yes | `ET_REL` (1) | not 190 | `.o` | **host ELF embedding** (this page) |
-| yes | `ET_REL` (1) | any | `.so` | skipped (shared library) |
-| yes | `ET_EXEC` / `ET_DYN` | any | any | falls through to PTX/NVVM probes |
+| yes | any | any | `.so` | skipped (shared library) |
+| yes | `ET_EXEC` / `ET_DYN` | not 190 | any non-`.o` | falls through to PTX/NVVM probes (all fail) |
 | yes | `ET_REL` (1) | any | no extension | **host ELF embedding** (this page) |
 | no | -- | -- | -- | PTX / NVVM / archive / fatbin |
 

@@ -301,7 +301,7 @@ Immediately following each xmmword in rodata are three arrays of 10 DWORDs that 
 
 Observed slot-size values: `10` = register (10-bit number + overhead), `12` = register with type, `17` = immediate/cbuf, `-1` = unused. Slot-type values: `28` = register-type, `0` = basic, `-1` = unused. Slot-flag values: `0` = default, `2` = secondary (uniform/extended), `-1` = unused.
 
-The copy uses SSE aligned loads for 16-byte chunks and scalar DWORD stores for remainders. The alignment check visible in every decompiled encoder (`if (a1 + 120 <= dword_XXXXX8 || a1 + 24 >= &dword_XXXXX8)`) is a compiler-generated overlap guard for the `memcpy`-like bulk copy.
+The copy uses SSE 128-bit loads for 16-byte chunks and scalar DWORD writes for the remainder. The first array (16-byte aligned in `.rodata`) is read with `_mm_load_si128`; the second and third arrays sit at +40 and +80 from the descriptor and are read with `_mm_loadu_si128`. Stores into the encoder context happen through `*(__m128i *)` lvalues, since the context is laid out to be 16-byte aligned at those offsets. The alignment check visible in every decompiled encoder (`if (a1 + 120 <= dword_XXXXX8 || a1 + 24 >= &dword_XXXXX8)`) is a compiler-generated overlap guard for the `memcpy`-like bulk copy.
 
 ### Bitfield Packer Detail -- `sub_7B9B80`
 
