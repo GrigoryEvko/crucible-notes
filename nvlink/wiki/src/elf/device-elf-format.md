@@ -299,24 +299,30 @@ Device ELF sections use both standard ELF section types and NVIDIA vendor types 
 | `0x00000007` | `SHT_NOTE` | Note sections (`.note.nv.tkinfo`, `.note.nv.cuinfo`) |
 | `0x00000008` | `SHT_NOBITS` | Uninitialized data (`.nv.shared.*`, `.bss`) |
 | `0x00000012` | `SHT_SYMTAB_SHNDX` | Extended section indices (`.symtab_shndx`) |
-| `0x70000007` | `CUDA_INFO` | `.nv.info.*` -- per-kernel metadata |
-| `0x70000009` | `CUDA_RELOCINFO` | `.nv.resolvedrela` -- resolved relocations |
-| `0x7000000A` | `CUDA_GLOBAL_INIT` | `.nv.global.init` -- global initialized data |
-| `0x70000011` | `CUDA_UFT_ENTRY` | `.nv.uft.entry` -- unified function table entries |
-| `0x70000015` | `CUDA_COMPAT` | `.nv.compat` -- compatibility metadata |
+| `0x70000000` | `SHT_CUDA_INFO` | `.nv.info`, `.nv.info.<func>` -- EIATTR metadata records |
+| `0x70000007` | `SHT_CUDA_GLOBAL` | `.nv.global` -- uninitialized `__device__` BSS |
+| `0x70000009` | `SHT_CUDA_LOCAL` | `.nv.local.<func>` -- per-kernel register spill / local arrays |
+| `0x7000000A` | `SHT_CUDA_SHARED` | `.nv.shared.<func>` -- per-kernel `__shared__` memory |
+| `0x70000011` | `SHT_CUDA_UFT_ENTRY` | `.nv.uft.entry` -- unified function table entries |
+| `0x70000015` | `SHT_CUDA_SHARED_RESERVED` | `.nv.reservedSmem*` -- reserved shared-memory region markers |
+| `0x70000086` | `SHT_CUDA_COMPAT` | `.nv.compat` -- forward/backward compatibility attribute table |
 
-These NVIDIA vendor types are recognized by the validation function (`sub_43DD30`) through a bitmask check `0x400D` applied to `(type - 0x70000007)`:
+(See [NVIDIA Section Types](nvidia-sections.md) and [Section Catalog](../reference/section-catalog.md) for the full type assignment.)
+
+The data-range validator (`sub_43DD30`) recognizes a *subset* of these -- specifically the four "virtual" types that occupy device memory at runtime but have no file content -- through a bitmask check on `(type - 0x70000007)`:
 
 ```c
-// Vendor section type recognition in elf_validate
-uint32_t offset = sh_type - 0x70000007;   // SHT_LOPROC base
+// Data-less vendor section recognition in elf_validate
+uint32_t offset = sh_type - 0x70000007;
 if (offset <= 14) {
     if ((0x400D >> offset) & 1)
-        // Skip size validation for this section (may be NOBITS-like)
+        // Skip size validation for this section (treated as NOBITS-like)
 }
 ```
 
-The bitmask `0x400D` = `0b0100_0000_0000_1101` selects offsets 0 (`0x70000007`), 2 (`0x70000009`), 3 (`0x7000000A`), and 14 (`0x70000015`).
+The bitmask `0x400D` = `0b0100_0000_0000_1101` selects offsets 0 (`0x70000007 = SHT_CUDA_GLOBAL`), 2 (`0x70000009 = SHT_CUDA_LOCAL`), 3 (`0x7000000A = SHT_CUDA_SHARED`), and 14 (`0x70000015 = SHT_CUDA_SHARED_RESERVED`).
+
+> **QUIRK -- bitmask is based at `SHT_CUDA_GLOBAL` rather than `SHT_LOPROC`.** Standard ELF places the processor-specific range at `SHT_LOPROC = 0x70000000`, but the validator subtracts `0x70000007` (`SHT_CUDA_GLOBAL`) instead. The first seven CUDA types (`SHT_CUDA_INFO`..`SHT_CUDA_METADATA`) all carry real file content and are never exempt; clustering the data-less types into a contiguous run starting at `0x70000007` lets the validator fold the membership test into a single 16-bit immediate `0x400D` and one bit shift. `SHT_CUDA_COMPAT` (`0x70000086`) and `SHT_CUDA_HOST` (`0x70000087`) sit far outside this window and are dispatched separately.
 
 ## ELF Serialization
 

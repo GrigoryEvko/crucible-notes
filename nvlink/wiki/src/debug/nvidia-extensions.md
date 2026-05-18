@@ -257,7 +257,7 @@ The first seven checks use `memcmp` with an explicit length. This means a sectio
 
 ### Section Type Preprocessing
 
-Before each name comparison, the function inspects the section header's `sh_type` field (`a2[1]`). The magic constants `1879048198` through `1879048292` correspond to NVIDIA-specific ELF section types (`SHT_LOOS`-based ranges). A bitmask `0x5D05` is used to quickly classify section types into "possibly debug" or "definitely not debug" categories, avoiding expensive string comparisons for clearly non-debug sections.
+Before each name comparison, the function inspects the section header's `sh_type` field (`a2[1]`). The magic constants `1879048198` (`0x70000006`, `SHT_CUDA_CONSTANT` -- the generic constant-bank base) through `1879048292` (`0x70000064`, `SHT_CUDA_CONSTANT0`) correspond to NVIDIA-specific ELF section types in the `SHT_LOPROC` range (`0x70000000`..`0x7FFFFFFF`). A bitmask `0x5D05` is used to quickly classify section types into "possibly debug" or "definitely not debug" categories, avoiding expensive string comparisons for clearly non-debug sections.
 
 ## Section-to-Offset Mapper: sub_1CEDD50
 
@@ -374,7 +374,7 @@ The section filter at `sub_1CECBB0` determines whether a section should be inclu
 
 - `.nv_debug.shared` is **always excluded** (returns 0). The function checks this name via exact `strcmp` when the section type is `SHT_PROGBITS` (type 8) and the name did not match `.nv.shared.` or `.nv.local.` or `.nv.global` prefixes.
 - Standard string table sections (`.strtab`, `.shstrtab`) are excluded.
-- Sections with NVIDIA-specific types in the `SHT_LOOS` range (`1879048193`--`1879048326`) are selectively included based on a bitmask filter (`0x34B`).
+- Sections with NVIDIA-specific types in the `SHT_LOPROC` range (`1879048193` = `0x70000001` `SHT_CUDA_CALLGRAPH` through `1879048326` = `0x70000086` `SHT_CUDA_COMPAT`) are selectively included based on a bitmask filter (`0x34B`).
 - Debug sections (type 1 or types in the `1879048198`--`1879048292` range) are included only if the section header's flag byte at `+8` has bit 2 set.
 
 ## Prefix Detection: sub_1672F50
@@ -404,7 +404,7 @@ The NVIDIA debug extensions integrate with the standard DWARF processing pipelin
 
 **Internal (nvlink wiki) — ELF and section management:**
 
-- [NVIDIA Section Types](../elf/nvidia-sections.md) -- Section type constants for `.nv_debug_*` sections in the CUDA section catalog (the `1879048198`--`1879048292` `SHT_LOOS`-based ranges that the classifier and filter use as a fast pre-check)
+- [NVIDIA Section Types](../elf/nvidia-sections.md) -- Section type constants for `.nv_debug_*` sections in the CUDA section catalog (the `1879048198`--`1879048292` = `0x70000006`..`0x70000064` `SHT_LOPROC`-range constants that the classifier and filter use as a fast pre-check)
 - [Section Catalog](../reference/section-catalog.md) -- Alphabetical index entries #62--#66 covering all NVIDIA debug sections, including their full sh_type hex values and creation phase
 - [Mercury ELF Sections](../mercury/elf-sections.md) -- The Mercury container and DWARF mirror sections that carry debug data for sm100+ targets. Documents the parallel `.nv.merc.*` namespace
 - [Section Merging](../linker/section-merging.md) -- How debug sections are classified by `merge_elf` name-prefix dispatch and routed to the writers documented above
@@ -421,7 +421,7 @@ The NVIDIA debug extensions integrate with the standard DWARF processing pipelin
 | Claim | Confidence | Evidence |
 |---|---|---|
 | Section classifier `sub_1CED7C0` recognizes 15 section names in documented order | HIGH | Decompiled file confirms sequential `memcmp`/`strcmp` chain: `.debug_abbrev` (memcmp 14 bytes) at line 50, `.debug_aranges` (memcmp 15 bytes) at line 76, with `0x5D05` bitmask at line 45 |
-| Bitmask `0x5D05` for section type pre-filtering | HIGH | Decompiled: `(0x5D05uLL >> ((unsigned __int8)v4 - 6)) & 1` at line 45; magic constants `1879048198` and `1879048292` confirm `SHT_LOOS`-based ranges |
+| Bitmask `0x5D05` for section type pre-filtering | HIGH | Decompiled: `(0x5D05uLL >> ((unsigned __int8)v4 - 6)) & 1` at line 45; magic constants `1879048198` (`0x70000006`) and `1879048292` (`0x70000064`) confirm the `SHT_LOPROC` range that the bitmask covers |
 | Section-to-offset mapper `sub_1CEDD50` -- all 7 offset values | HIGH | Decompiled: `.debug_line` -> `*(a1+80)`, `.debug_frame` -> `*(a1+72)`, `.nv_debug_line_sass` -> `*(a1+88)`, `.debug_info` -> `*(a1+112)`, `.debug_loc` -> `*(a1+120)`, `.nv_debug_info_reg_sass` -> `*(a1+96)`, `.nv_debug_info_reg_type` -> `*(a1+104)` -- all exact |
 | Three writers structurally identical, differing only in offsets and names | HIGH | Decompiled `sub_181B050`/`sub_181B160`/`sub_181B270` are byte-for-byte identical in call sequence; offsets +384/+408/+432, +400/+424/+448, +392/+416/+440 confirmed; section name strings `.debug_frame`, `.nv_debug_info_reg_sass`, `.nv_debug_info_reg_type` at `sub_434BC0` call |
 | 6 NVIDIA-specific section names | HIGH | All confirmed in `nvlink_strings.json`: `.nv_debug_line_sass`, `.nv_debug_info_reg_sass` (`0x241282C`), `.nv_debug_info_reg_type` (`0x2412844`), `.nv_debug_ptx_txt`, `.nv_debug_info_ptx` (`0x245E6D4`), `.nv_debug.shared` (`0x1D38995`) |

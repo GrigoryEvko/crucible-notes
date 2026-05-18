@@ -142,7 +142,7 @@ int reloc_apply_engine(
     int        section_offset,   // section base / PC address
     uint64_t   symbol_value,     // resolved symbol address (S)
     uint32_t   symbol_size,      // symbol st_size
-    uint32_t   section_type,     // section_type - 0x6FFFFF84
+    uint32_t   section_type,     // sh_type - 0x70000064 (SHT_CUDA_CONSTANT0 base)
     int64_t*   output_value      // receives extracted original value
 ) {
     // Compute initial relocation value

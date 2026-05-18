@@ -60,7 +60,9 @@ Three of the seven entries here are aliases -- 0x12, 0x2E, 0x37, 0x38 all share 
 | 0x0A | SEC_TYPE_LO | `section_type_delta & (255 >> (8 - bit_width))` |
 | 0x0B | SEC_TYPE_HI | `(section_type_delta >> 4) & (255 >> (8 - bit_width))` |
 
-These encode the low and high nibbles of `section_type - 0x6FFFFF84` into instruction immediate fields. The constant `0x6FFFFF84` is the base of the OS-specific section type range and corresponds to `SHT_LOOS`; the engine subtracts it to map NVIDIA's `.nv.*` section types (0x6FFFFF84..0x6FFFFFFF) into a small unsigned offset that fits into 4 bits per nibble. The pair is used in tandem -- a single descriptor entry typically has `action[0] = SEC_TYPE_LO` and `action[1] = SEC_TYPE_HI` writing to different bit positions of the same instruction word.
+These encode the low and high nibbles of `section_type - 0x70000064` into instruction immediate fields. The constant `0x70000064` (= `1879048292` decimal) is the value of `SHT_CUDA_CONSTANT0`; the engine subtracts it to map NVIDIA's constant-bank section types (`0x70000064`..`0x7000007E`, i.e. `SHT_CUDA_CONSTANT0`..`SHT_CUDA_CONSTANT26`) into a small unsigned offset that fits into 4 bits per nibble. The exact subtraction `*(_DWORD *)(v25 + 4) - 1879048292` appears in the caller `sub_469D60` at the point that invokes `sub_468760`. The pair is used in tandem -- a single descriptor entry typically has `action[0] = SEC_TYPE_LO` and `action[1] = SEC_TYPE_HI` writing to different bit positions of the same instruction word.
+
+> **QUIRK -- SEC_TYPE encoders use the constant-bank base, not `SHT_LOPROC` or `SHT_LOOS`.** Standard ELF defines `SHT_LOPROC = 0x70000000` and `SHT_LOOS = 0x60000000`. NVIDIA could have re-based the encoded value at either standard boundary, but instead chose the `SHT_CUDA_CONSTANT0` value `0x70000064` -- because the only section types that ever reach these dispatch arms are constant banks. The choice keeps the encoded nibble small (0..0x1A for the 27 banks 0..26) and the high nibble at zero for bank ids 0..15, matching the instruction-field widths the assembler reserves for bank selectors.
 
 ### 1.5 Field Clearers
 

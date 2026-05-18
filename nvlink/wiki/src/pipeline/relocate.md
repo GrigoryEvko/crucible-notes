@@ -115,10 +115,10 @@ parent_sec    = sub_442270(ctx, section_rec->parent);   // section's parent sect
 
 ### Step 4: Special Section Handling
 
-If the link type (`ctx + 16`) is not `1` (non-relocatable link) and the parent section has a magic identifier `0x6FFFFF0E` (1879048206) at offset `+4`, the relocation targets a "computed goto" or descriptor section. In this case, the addend is replaced with a value from `sub_463660` (the unified table offset resolver):
+If the link type (`ctx + 16`) is not `1` (non-relocatable link) and the parent section has `sh_type == 0x7000000E` (`SHT_CUDA_UFT`, decimal `1879048206`) at offset `+4`, the relocation targets a Unified Function Table entry (indirect-call jump slot). In this case, the addend is replaced with a value from `sub_463660` (the unified table offset resolver):
 
 ```c
-if (link_type != 1 && parent_section->magic == 0x6FFFFF0E) {
+if (link_type != 1 && parent_section->sh_type == 0x7000000E) {  // SHT_CUDA_UFT
     uft_entry = sub_463660(ctx, target_symbol);
     reloc->addend = *(int64_t*)(uft_entry + 8);
     if (ctx->compilation_mode == 2) {   // ctx+104
@@ -176,7 +176,7 @@ if (sym_section_idx != 0 && (symbol->st_info & 0xF) == STT_FUNC) {
         new_sym_idx = sub_440350(ctx, symbol);
         canonical = sub_442270(ctx, new_sym_idx);
         canonical_section_idx = canonical->parent & 0x00FFFFFF;
-        if (canonical_section_idx != reloc->sym_hi && canonical->magic != 0x6FFFFF0E) {
+        if (canonical_section_idx != reloc->sym_hi && canonical->sh_type != 0x7000000E) {  // not SHT_CUDA_UFT
             old_name = symbol->name;
             symbol = sub_440590(ctx, canonical_section_idx);
             if (ctx->verbose_flags & 4)
@@ -209,7 +209,7 @@ Dead functions are those eliminated by the dead code elimination pass. Their rel
 
 Several special cases are handled before the general application:
 
-**Common undefined symbols** (section index `SHN_COMMON` = 0xFFF2 or related): If the section type at offset `+4` matches `0x6FFFFF07` (1879048199), `0x6FFFFF08` (1879048200), or `0x6FFFFF12` (1879048210), the relocation is deferred to the finalization phase. The node is simply advanced past without removal.
+**Common undefined symbols** (section index `SHN_COMMON` = 0xFFF2 or related): If the section type at offset `+4` matches `0x70000007` (`SHT_CUDA_GLOBAL`, decimal `1879048199`), `0x70000008` (`SHT_CUDA_GLOBAL_INIT`, decimal `1879048200`), or `0x70000012` (`SHT_CUDA_UDT`, decimal `1879048210`), the relocation is deferred to the finalization phase. The node is simply advanced past without removal.
 
 **YIELD-to-NOP suppression** (relocation types 68-69): When the forward-progress-required flag (`ctx+94`) is set, YIELD instructions are not converted to NOP, and the relocation is handled specially:
 ```
@@ -267,7 +267,7 @@ success = sub_468760(
     addend_value,           // computed addend
     symbol_value,           // resolved symbol address (from sym+8)
     symbol_size,            // symbol size (from sym+28)
-    section_type_delta,     // section type - 0x6FFFFF84
+    section_type_delta,     // sh_type - 0x70000064 (constant-bank base)
     &output_value           // receives the computed final value
 );
 ```

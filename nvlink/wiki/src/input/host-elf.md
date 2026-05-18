@@ -236,10 +236,10 @@ fail_close:
     | `sh_type` | Meaning |
     |---|---|
     | `8` (`SHT_NOBITS`) | `.bss`, uninitialized data |
-    | `0x70000007` | NVIDIA-specific, bitmask `0x400D` bit 0 |
-    | `0x7000000A` | NVIDIA-specific, bitmask bit 3 |
-    | `0x7000000B` | NVIDIA-specific, bitmask bit 2 |
-    | `0x7000000F` | NVIDIA-specific, bitmask bit 14 |
+    | `0x70000007` (`SHT_CUDA_GLOBAL`) | NVIDIA-specific, bitmask `0x400D` bit 0 |
+    | `0x70000009` (`SHT_CUDA_LOCAL`) | NVIDIA-specific, bitmask bit 2 |
+    | `0x7000000A` (`SHT_CUDA_SHARED`) | NVIDIA-specific, bitmask bit 3 |
+    | `0x70000015` (`SHT_CUDA_SHARED_RESERVED`) | NVIDIA-specific, bitmask bit 14 |
 
     The validator packs the exemption set as `0x400DuLL >> (sh_type - 0x70000007)`, skipping the bounds check when the resulting low bit is 1.
 

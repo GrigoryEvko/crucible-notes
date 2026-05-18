@@ -146,7 +146,7 @@ void apply_relocations(linker_ctx* ctx, pthread_mutexattr_t* mutex_attr) {
         section_rec* parent = sub_442270(ctx, sec->parent_idx);  // +44
 
         // ---- Step 5: Special handling ----
-        // (UFT/UDT magic section 0x6FFFFF0E, alias chains, dead func filtering,
+        // (UFT/UDT magic section 0x7000000E = SHT_CUDA_UFT, alias chains, dead func filtering,
         //  unified relocation remapping -- see pipeline/relocate.md for full detail)
 
         // ---- Step 6: Descriptor compatibility check ----
@@ -192,7 +192,7 @@ void apply_relocations(linker_ctx* ctx, pthread_mutexattr_t* mutex_attr) {
             rec->addend,                // a6: addend / section offset
             *(uint64_t*)(target_sym + 8),  // a7: resolved symbol value
             *(uint32_t*)(target_sym + 28), // a8: symbol st_size
-            parent->sh_type - 0x6FFFFF84,  // a9: section type delta
+            parent->sh_type - 0x70000064,  // a9: sh_type - SHT_CUDA_CONSTANT0 (constant-bank delta)
             &output_value               // a10: receives extracted old value
         );
 
@@ -340,7 +340,7 @@ int reloc_apply_engine(
     int         section_offset,      // a6: addend / section base offset
     uint64_t    symbol_value,        // a7: resolved symbol address
     uint32_t    symbol_size,         // a8: symbol st_size
-    uint32_t    section_type_delta,  // a9: section_type - 0x6FFFFF84
+    uint32_t    section_type_delta,  // a9: sh_type - 0x70000064 (SHT_CUDA_CONSTANT0)
     int64_t*    output_value         // a10: receives extracted old value
 );
 // Returns 1 on success, 0 on unrecognized action type.

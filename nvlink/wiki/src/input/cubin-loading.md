@@ -197,12 +197,12 @@ Key details:
 
 The NVIDIA-specific section types that are exempted from the data-range check (they may be virtual/metadata-only):
 
-| Type value | Constant name | Hex |
-|---|---|---|
-| `0x70000007` | `SHT_CUDA_INFO` | `0x70000007` |
-| `0x70000008` | `SHT_CUDA_CALLGRAPH` (approx) | `0x70000008` |
-| `0x7000000A` | `SHT_CUDA_RELOCINFO` (approx) | `0x7000000A` |
-| `0x70000015` | `SHT_CUDA_UDT`/`SHT_CUDA_UFT` | `0x70000015` |
+| Type value | Constant name | Hex | Reason for exemption |
+|---|---|---|---|
+| `0x70000007` | `SHT_CUDA_GLOBAL` | `0x70000007` | Uninitialized device globals (`__device__` BSS); reclassified from `SHT_NOBITS` |
+| `0x70000009` | `SHT_CUDA_LOCAL` | `0x70000009` | Per-kernel thread-private storage; no file content |
+| `0x7000000A` | `SHT_CUDA_SHARED` | `0x7000000A` | Per-kernel `__shared__` memory; no file content |
+| `0x70000015` | `SHT_CUDA_SHARED_RESERVED` | `0x70000015` | Reserved-shmem markers (`.nv.reservedSmem*`); offset-only metadata |
 
 The validation function computes these exemptions with a bitmask check on `(section_type - 0x70000007)`:
 
@@ -210,10 +210,12 @@ The validation function computes these exemptions with a bitmask check on `(sect
 uint32_t relative = section_type - 0x70000007;
 bool exempt = (section_type == SHT_NOBITS);
 if (relative <= 14)
-    exempt |= (0x400D >> relative) & 1;  // bits 0,2,3,14 set
+    exempt |= (0x400D >> relative) & 1;  // bits 0, 2, 3, 14 set
 ```
 
-The bitmask `0x400D` in binary is `0100 0000 0000 1101`, exempting offsets 0, 2, 3, and 14 relative to `0x70000007`.
+The bitmask `0x400D` in binary is `0100 0000 0000 1101`, exempting offsets 0, 2, 3, and 14 relative to `0x70000007` -- i.e. types `0x70000007` (`SHT_CUDA_GLOBAL`), `0x70000009` (`SHT_CUDA_LOCAL`), `0x7000000A` (`SHT_CUDA_SHARED`), and `0x70000015` (`SHT_CUDA_SHARED_RESERVED`). All four are "virtual" sections that occupy device memory at runtime but have no backing bytes in the cubin file.
+
+> **QUIRK -- the exemption base `0x70000007` is not `SHT_LOPROC`.** Standard ELF defines `SHT_LOPROC = 0x70000000`, but the validator uses `0x70000007` (`SHT_CUDA_GLOBAL`) as the bit-shift origin. This is purely a code-size optimization: the only NVIDIA section types that can be data-less are clustered in the `0x70000007`..`0x70000015` range, so re-basing at `0x70000007` keeps the shift amount and the bitmask both in the 0..14 range, which fits in a 16-bit immediate. Section types `0x70000000`..`0x70000006` (info, callgraph, prototype, resolvedrela, metadata, ...) all carry real file content and are not exemption candidates.
 
 ## Architecture Extraction from e\_flags
 
@@ -322,7 +324,7 @@ The `a` suffix (e.g., `sm_90a`) indicates architecture-specific features that br
 
 ### Early Rejection
 
-The function immediately rejects `ET_DYN` objects (`e_type == 2`): shared libraries cannot be device-linked.
+The function immediately rejects `ET_EXEC` objects (`e_type == 2`): fully-linked executables cannot be re-linked. Cubins arrive as `ET_REL` (1) for relocatable device objects or with the Mercury custom type `0xFF00`. Device executables (`ET_EXEC`) that flow back into nvlink are produced by an earlier link pass, and the merger refuses to re-process them; the test is at `e_type == 2`, gating an immediate return of error code 0.
 
 ### Word Size Validation
 
