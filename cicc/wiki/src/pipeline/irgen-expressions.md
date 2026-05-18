@@ -74,10 +74,10 @@ When the outer kind is `0x01` (operation), the byte at `expr+0x38` selects which
 | Opcode | C operator | Handler / delegate | LLVM pattern |
 |---|---|---|---|
 | `0x00` | Constant subexpr | `sub_72B0F0` (evaluate) + `sub_1286D80` (load) | Constant materialization |
-| `0x03` | Compound special A | `EmitCompoundAssign` (`sub_1287ED0`) | Read-modify-write |
+| `0x03` | Lvalue-load variant (EDG node-kind alias) | `EmitLvalueLoad` (`sub_1287ED0`) — thin two-call wrapper: `EmitAddressOf` (`sub_1286D80`) + `EmitLoadFromAddress` (`sub_1287CD0`); identical shape to row `0x5C`/`0x5E`/`0x5F` | `%addr = ...` + `%val = load T, ptr %addr` |
 | `0x05` | Dereference (`*p`) | Elide if child is `&`: `IsAddressOfExpr` (`sub_127B420`). Otherwise: recursive `EmitExpr` + `EmitLoad` (`sub_128B370`) | `%val = load T, ptr %p` |
-| `0x06` | Compound special B | `EmitCompoundAssign` (`sub_1287ED0`) | Read-modify-write |
-| `0x08` | Compound special C | `EmitCompoundAssign` (`sub_1287ED0`) | Read-modify-write |
+| `0x06` | Lvalue-load variant (EDG node-kind alias) | `EmitLvalueLoad` (`sub_1287ED0`) — thin two-call wrapper: `EmitAddressOf` (`sub_1286D80`) + `EmitLoadFromAddress` (`sub_1287CD0`); identical shape to row `0x5C`/`0x5E`/`0x5F` | `%addr = ...` + `%val = load T, ptr %addr` |
+| `0x08` | Lvalue-load variant (EDG node-kind alias) | `EmitLvalueLoad` (`sub_1287ED0`) — thin two-call wrapper: `EmitAddressOf` (`sub_1286D80`) + `EmitLoadFromAddress` (`sub_1287CD0`); identical shape to row `0x5C`/`0x5E`/`0x5F` | `%addr = ...` + `%val = load T, ptr %addr` |
 | `0x15` | Array decay | See [Array decay](#array-decay) | `%arraydecay = getelementptr inbounds ...` |
 | `0x19` | Parenthesized `(x)` | Tail-call optimization: `a2 = child`, restart loop | (no IR emitted) |
 | `0x1A` | `sizeof` / `alignof` | `EmitSizeofAlignof` (`sub_128FDE0`) | Constant integer |
@@ -178,6 +178,27 @@ Opcode `0x49` handles struct field access (`.` and `->`) through a multi-path di
 3. **Nested/union access** (field count > 1): Calls `ComputeCompositeMemberAddr` (`sub_1289860`) for multi-level GEP computation, then `EmitComplexMemberLoad` (`sub_12843D0`).
 
 4. **Write-only context**: If the assignment bit (`a2+25`, bit 2) is set, returns null -- the caller only needs the address, not the loaded value.
+
+#### Caller graph: how `sub_1287ED0` (EmitLvalueLoad) is reached
+
+The lvalue-load wrapper is never dispatched directly from the outer expression-kind switch; it sits one level below, inside the inner operation switch of the expression visitor `sub_128D0F0` (the general expression dispatcher, see `cicc/cicc_full.c:3676121`). The outer kind that reaches it is exclusively `1` (operation), and the inner byte `*(_BYTE *)(a2 + 56)` then selects one of seven sibling cases. All seven cases produce the same shape — pointer compute followed by typed load — but the encoder reaches them via distinct EDG node-kind aliases preserved verbatim from the C/C++ front-end.
+
+| Inner case | Reached how | Inline body |
+|---|---|---|
+| `0` | Constant-subexpr lvalue load | Inline: `sub_72B0F0` evaluates the constant child, `sub_127C5E0` writes the descriptor, then `sub_1286D80` (`EmitAddressOf`) materializes the address; returns the load slot (`v506.m128i_i64[1]`). |
+| `3` | EDG lvalue-to-rvalue (non-decl-ref) | Tail-call to `sub_1287ED0(a1, a2, ...)`. |
+| `6` | EDG lvalue alias B | Tail-call to `sub_1287ED0`. |
+| `8` | EDG lvalue alias C | Tail-call to `sub_1287ED0`. |
+| `0x5C` | EDG lvalue alias D | Tail-call to `sub_1287ED0`. |
+| `0x5E` | EDG lvalue alias E | Tail-call to `sub_1287ED0`. |
+| `0x5F` | EDG lvalue alias F | Tail-call to `sub_1287ED0`. |
+
+The merged switch arm at `cicc/cicc_full.c:3676132-3676138` collapses cases `3, 6, 8, 0x5C, 0x5E, 0x5F` into a single C-level fallthrough block — six distinct front-end node kinds, one IR sequence. `sub_1287ED0` itself (`cicc/cicc_full.c:3671654-3671671`) is a sixteen-line wrapper: it forwards its arguments to `sub_1286D80` (`EmitAddressOf`), then to `sub_1287CD0` (`EmitLoadFromAddress`), returning the loaded value. There is no compound-assign machinery inside it; that lives in `sub_12901D0` and is reached only by inner opcodes `0x4A`-`0x56` (see [the compound-assignment wrapper section](#compound-assignment-wrapper-mechanics)). Confidence: HIGH for the six aliasing cases and the wrapper body; MED for the EDG semantic distinctions A/B/C/D/E/F, which the binary preserves as separate node-kind bytes but lowers identically — the original EDG IL likely encoded type-specific lvalue conversion variants (cv-qualifier strip, array-to-pointer, reference binding) that NVIDIA's lowering deliberately unifies.
+
+Outer kind `0x03` (Lvalue-to-rvalue, non-decl-ref) and `0x14` (Declaration reference), documented in the [outer dispatch table](#outer-switch--expression-categories), produce the same `EmitAddressOf` + `EmitLoadFromAddress` pair but bypass `sub_1287ED0` and inline the two calls directly — proof that the wrapper is purely a code-size optimization for the six-case fallthrough, not a semantic primitive. Cross-reference: the [Helper Function Reference](#helper-function-reference) row for `sub_1287ED0` and the [Member access multi-path handler](#member-access-multi-path-handler), whose simple-scalar-field path performs the same two-call sequence with an additional volatile-bit check.
+
+> ⚡ **QUIRK — six EDG lvalue node kinds collapse to one IR sequence**
+> The CICC front-end carries six distinct EDG expression node kinds (`0x03`, `0x06`, `0x08`, `0x5C`, `0x5E`, `0x5F`) through parsing, semantic analysis, and template instantiation, then unifies them at IR-gen time into a single `EmitAddressOf` + `EmitLoadFromAddress` pair. The original EDG specification distinguishes these kinds for diagnostic and source-locator purposes — they survive as separate switch arms in the binary but are functionally identical in lowered LLVM IR. Confidence: HIGH (direct fallthrough at `cicc/cicc_full.c:3676132-3676138`).
 
 #### Statement expression, label address, and va_arg
 

@@ -372,11 +372,11 @@ TMA bulk operations (`sub_33AD3D0`, IDs 0x179--0x17C) and async copy operations 
 
 CUDA inline assembly with `"+r"` read-write constraints is the third category that exercises the TwoAddress pass on NVPTX. The tied operand pipeline spans three compilation stages:
 
-### Stage 1: EDG Constraint Construction (sub\_1286D80 path)
+### Stage 1: EDG L-value Address Emission (sub\_1286D80 path)
 
 The EDG frontend's inline asm codegen (analyzed in `p2-B07-inline-asm-codegen.txt`) detects tied operands when the operand descriptor byte at offset +24 equals 3. It constructs the constraint string by:
 
-1. Emitting the input value via `sub_1286D80`
+1. Computing the l-value descriptor via `EmitAddressOf` (`sub_1286D80`) so the tied operand can be re-loaded and stored back
 2. Appending `*` for indirect operands
 3. Appending the tied operand index as a decimal number to the constraint string
 

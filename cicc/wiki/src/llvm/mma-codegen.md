@@ -97,7 +97,7 @@ Any other value triggers the fatal error `"Wrong MMA element type"`.
 | 0x03 | m8n8k32 | `"m8n8k32"` | Sub-byte (s4/u4) |
 | 0x04 | m8n8k64 | `"m8n8k64"` | Extended sub-byte |
 | 0x05 | m8n8k128 | `"m8n8k128"` | Binary MMA (b1) |
-| 0x06 | m8n32k16 | `"m8n32k16"` | Appears unused in standard paths |
+| 0x06 | m8n32k16 | `"m8n32k16"` | Volta/Turing WMMA f16/bf16; 30+ matching builtins in strings table, encoded verbatim by emitter |
 | 0x10 | m16n8k4 | `"m16n8k4"` | Turing HMMA, Ampere f64 |
 | 0x11 | m16n8k8 | `"m16n8k8"` | Turing/Ampere HMMA |
 | 0x12 | m16n8k16 | `"m16n8k16"` | Ampere (bf16, tf32) |

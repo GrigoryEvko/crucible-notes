@@ -479,7 +479,7 @@ v22 = *(QWORD *)(*(QWORD *)(a1 + 16) + 16 * a2 + 8)
 | 0x03 | m8n8k32 | `"m8n8k32"` | SM 75 | Sub-byte (s4/u4) |
 | 0x04 | m8n8k64 | `"m8n8k64"` | SM 75 | Extended sub-byte |
 | 0x05 | m8n8k128 | `"m8n8k128"` | SM 75 | Binary MMA (b1) |
-| 0x06 | m8n32k16 | `"m8n32k16"` | -- | Appears unused in standard paths |
+| 0x06 | m8n32k16 | `"m8n32k16"` | SM 70 | Volta/Turing WMMA f16/bf16; 30+ matching builtins in `cicc_strings.json` |
 | 0x10 | m16n8k4 | `"m16n8k4"` | SM 75 | Turing HMMA, f64 on Ampere |
 | 0x11 | m16n8k8 | `"m16n8k8"` | SM 75 | Turing/Ampere HMMA |
 | 0x12 | m16n8k16 | `"m16n8k16"` | SM 80 | Ampere HMMA (bf16, tf32) |
