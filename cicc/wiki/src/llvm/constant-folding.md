@@ -361,27 +361,27 @@ Both paths finish with `sub_159CCF0(*type, &storage)` which constructs the `Cons
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `nvvmIntrinsicConstantFold` | `0x14D90D0` | 4.6 KB | Eligibility predicate: can this intrinsic be constant-folded? |
-| `nvvmConstantFoldLibCall` | `0x14D1BC0` | 10.2 KB | Math evaluator: compute constant result from constant args |
-| `extractDoubleFromConstantFP` | `0x14D1620` | -- | Extract `double` from `ConstantFP` IR node |
-| `safeMathEvalUnary` | `0x14D19F0` | -- | Exception-safe unary evaluation wrapper |
-| `safeMathEvalBinary` | `0x14D1A80` | -- | Exception-safe binary evaluation wrapper |
-| `createConstantFPResult` | `0x14D17B0` | -- | Build `ConstantFP` from evaluated double |
-| `customFabs` | `0x14D1280` | -- | SSE2 sign-bit clear |
-| `customFloor` | `0x14D13B0` | -- | Truncation + sign correction |
-| `customCeil` | `0x14D1410` | -- | Truncation + sign correction |
-| `customSqrt` | `0x14D1470` | -- | Thin wrapper around libc `sqrt` |
-| `fptoui_fptosi_fold` | `0x14D1500` | -- | FP-to-integer conversion fold |
-| `apintMoveTransfer` | `0x14D15E0` | -- | APInt move/transfer helper |
-| `vectorMathLibMapping` | `0x149E420` | 5.6 KB | Scalar-to-vectorized math mapping table |
-| `platformFuncCanonicalize` | `0x149FA60` | 2.6 KB | Platform-specific name canonicalization |
-| `constantExprFoldSCEV` | `0x14D44C0` | 4.1 KB | ConstantExpr fold / SCEV integration |
-| `constantFoldAggregate` | `0x14D5510` | 2.0 KB | ConstantFold for aggregate types |
-| `constantFoldGEPExtract` | `0x14D66F0` | 0.07 KB | ConstantFold for GEP and extract |
-| `constantExprSCEVBuild` | `0x14DBA90` | 1.7 KB | ConstantExpr + SCEV builder |
-| `AttributeList::hasAttribute` | `0x1560260` | -- | Attribute query (used 8 times in eligibility checker) |
-| `Value::getName` | `0x1649960` | -- | Name string extraction (case 0 path) |
-| NVVM InstCombine intrinsic fold | `0x1169C30` | 11.2 KB | Algebraic simplification of NVVM intrinsics (see [InstCombine](instcombine.md)) |
+| NVVM intrinsic constant-fold eligibility | `sub_14D90D0` | 4.6 KB | Eligibility predicate: can this intrinsic be constant-folded? |
+| NVVM constant-fold libcall evaluator | `sub_14D1BC0` | 10.2 KB | Math evaluator: compute constant result from constant args |
+| Extract `double` from `ConstantFP` | `sub_14D1620` | -- | Decodes a `ConstantFP` IR node into a host `double` |
+| Unary math eval wrapper | `sub_14D19F0` | -- | Exception-safe unary evaluation wrapper |
+| Binary math eval wrapper | `sub_14D1A80` | -- | Exception-safe binary evaluation wrapper |
+| `ConstantFP` result builder | `sub_14D17B0` | -- | Builds a `ConstantFP` IR node from an evaluated double |
+| `fabs` evaluator | `sub_14D1280` | -- | SSE2 sign-bit clear |
+| `floor` evaluator | `sub_14D13B0` | -- | Truncation + sign correction |
+| `ceil` evaluator | `sub_14D1410` | -- | Truncation + sign correction |
+| `sqrt` evaluator | `sub_14D1470` | -- | Thin wrapper around libc `sqrt` |
+| `fptoui` / `fptosi` fold | `sub_14D1500` | -- | FP-to-integer conversion fold |
+| APInt move/transfer helper | `sub_14D15E0` | -- | Copies APInt payload between buffers |
+| Scalar-to-vector math mapping | `sub_149E420` | 5.6 KB | Table mapping scalar math names to vector variants |
+| Platform function-name canonicalization | `sub_149FA60` | 2.6 KB | Platform-specific name canonicalization |
+| `ConstantExpr` fold / SCEV integration | `sub_14D44C0` | 4.1 KB | ConstantExpr fold path that feeds back into SCEV |
+| Aggregate constant fold | `sub_14D5510` | 2.0 KB | ConstantFold for aggregate types |
+| GEP / `extractvalue` constant fold | `sub_14D66F0` | 0.07 KB | ConstantFold for GEP and extract |
+| `ConstantExpr` + SCEV builder | `sub_14DBA90` | 1.7 KB | Builds ConstantExprs that round-trip through SCEV |
+| `AttributeList::hasAttribute` analog | `sub_1560260` | -- | Attribute query (used 8 times in the eligibility checker) |
+| `Value::getName` analog | `sub_1649960` | -- | Name-string extraction (case 0 path) |
+| NVVM InstCombine intrinsic fold | `sub_1169C30` | 11.2 KB | Algebraic simplification of NVVM intrinsics (see [InstCombine](instcombine.md)) |
 
 ## Cross-References
 

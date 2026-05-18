@@ -732,14 +732,20 @@ The diagnostic formatter does not use fixed-size `char[]` buffers. Instead, it a
 ```
 strbuf (40 bytes)
 =======================================================
-Offset  Size  Field        Description
+Offset  Size  Field         Description
 -------------------------------------------------------
-  0      8    arena_ptr    Arena for allocations (copied from TLS state)
-  8      8    total_len    Total bytes appended so far
- 16      8    chain_head   Pointer to first chunk in linked list
- 24      8    chain_tail   Pointer to last chunk's next-pointer slot
- 32      8    last_chunk   Pointer to current (last) chunk for fast append
+  0      8    arena_ptr     Arena for allocations (copied from TLS state)
+  8      8    total_len     Total bytes appended so far
+ 16      8    chain_head    Head of the 16-byte wrapper list {next, chunk_ptr};
+                            NULL until the first append
+ 24      8    tail_cursor   Pointer-to-pointer; init = &chain_head (the standard
+                            `result[3] = result + 2` self-referencing-tail trick
+                            in `sub_44FB20`), then advances to each new wrapper's
+                            next-slot so the next push writes through it
+ 32      8    last_chunk    Pointer to current (last) chunk for fast append
 ```
+
+The chunk wrappers themselves (16 bytes each, allocated by `sub_464460`) carry the next-pointer at offset 0 and a pointer to the chunk header at offset 8. Crucially, **`tail_cursor` is not a tail node pointer**: on an empty buffer it aliases `&chain_head`, so the first `*tail_cursor = new_wrapper` write lands directly in the head slot at strbuf+16. Subsequent appends advance the cursor to the new wrapper's next-slot, mirroring the layout in the ELF writer's mode-2 vector header (see [Mode 2: Vector-Backed Writer](../structs/elf-writer.md#mode-2-vector-backed-writer)).
 
 Each chunk is a 24-byte header followed by a data buffer:
 

@@ -206,22 +206,22 @@ Two related passes are registered alongside DSE in the same code region:
 
 | Function | Address | Size | Role |
 |----------|---------|------|------|
-| `DSE::runOnFunction` | `0x19DA750` | 5.2 KB | Main dead store elimination |
-| `DSE::analyzeOverwrite` | `0x19DDCB0` | 4.4 KB | Complete/partial overwrite detection |
-| `DSE::runPartialOverwritePass` | `0x19DF5F0` | 4.8 KB | Function-level partial tracking |
-| `DSE::tryForwardStoresToLoad` | `0x19DBD20` | 3.6 KB | Store-to-load forwarding |
-| `DSE::buildOverwriteRecord` | `0x19D8AF0` | -- | Overlap record construction |
-| `DSE::buildComparisonSet` | `0x19D91E0` | -- | Set of stores to compare |
-| `DSE::eliminateStoreChain` | `0x19D94E0` | -- | Chain-level elimination |
-| `DSE::scanLoopForDeadStores` | `0x19DCB70` | -- | Loop-level DSE |
-| `DSE::runOnBasicBlock` | `0x19DCC90` | -- | Block-level entry point |
-| `DSE::extractStoreOperands` | `0x19DD690` | -- | Get base pointer and stored value |
-| `DSE::lookupDeadStoreCandidate` | `0x19DD7C0` | -- | Hash table lookup |
-| `DSE::decomposeGEPStore` | `0x19DD950` | -- | GEP-based store decomposition |
-| `DSE::collectPartialOperands` | `0x19DEFC0` | -- | Partial overwrite operand collection |
-| `DSE::checkPartialOverwrite` | `0x19DEE70` | -- | Individual partial overwrite check |
-| `DSE::tryEliminateStore` | `0x19DF200` | -- | Attempt store elimination |
-| `DSE::rehashStoreTable` | `0x19DF220` | -- | Hash table resize |
+| DSE main entry | `sub_19DA750` | 5.2 KB | Main dead store elimination driver |
+| Overwrite detection engine | `sub_19DDCB0` | 4.4 KB | Complete/partial overwrite classification |
+| Function-level partial-overwrite pass | `sub_19DF5F0` | 4.8 KB | Tracks partial overwrites across the function |
+| Store-to-load forwarding | `sub_19DBD20` | 3.6 KB | Forwards stored values into dominated loads |
+| Overlap record construction | `sub_19D8AF0` | -- | Builds 72-byte overlap record entries |
+| Compare-set assembly | `sub_19D91E0` | -- | Gathers store-set to compare against current store |
+| Chain-level elimination | `sub_19D94E0` | -- | Drops a chain of dead stores in one pass |
+| Loop-level DSE worker | `sub_19DCB70` | -- | Handles dead stores inside individual loops |
+| Block-level entry | `sub_19DCC90` | -- | Per-basic-block DSE driver |
+| Store-operand extraction | `sub_19DD690` | -- | Reads base pointer + stored value from a store inst |
+| Dead-store candidate lookup | `sub_19DD7C0` | -- | Hash-table probe for known overlapping stores |
+| GEP-based store decomposition | `sub_19DD950` | -- | Breaks aggregate stores into per-element pieces |
+| Partial-overwrite operand collection | `sub_19DEFC0` | -- | Gathers operands feeding partial overwrites |
+| Per-pair partial-overwrite check | `sub_19DEE70` | -- | Checks one partial overlap relationship |
+| Single-store elimination attempt | `sub_19DF200` | -- | Tries to delete one identified dead store |
+| Store-table rehash | `sub_19DF220` | -- | Grows the partial-overwrite tracking table |
 
 ## Differences from Upstream LLVM
 

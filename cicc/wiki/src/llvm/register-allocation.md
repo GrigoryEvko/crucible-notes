@@ -538,41 +538,41 @@ Diagnostic strings recovered from the register allocation binary region (`p2c.5-
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `RAGreedy::runOnMachineFunction` | `sub_2F5A640` | -- | Top-level driver (466 lines) |
-| `RAGreedy::selectOrSplit` | `sub_2F49070` | -- | Core allocator (82KB, 2,314 lines) |
-| selectOrSplit thunk | `sub_2F4BAF0` | -- | Redirects to `sub_2F49070(this+200)` |
-| selectOrSplit + SplitEditor | `sub_2F4BB00` | -- | Spill-or-split path |
-| `SplitEditor::splitAroundRegion` | `sub_2F2D9F0` | -- | Live range splitting (93KB) |
-| tryLocalSplit | `sub_2F2A2A0` | -- | Local split within single BB |
-| materializeSplitSegment | `sub_2FDF330` | -- | Insert split segments |
-| scanInterference | `sub_2F43DC0` | -- | Populate interference cache |
-| tryAssign | `sub_2F47B00` | -- | Simple assignment path |
-| tryEviction | `sub_2F48CE0` | -- | Evict conflicting VReg |
-| tryLastChanceRecoloring | `sub_2F46530` | -- | Recursive recoloring fallback |
-| processConstrainedCopies | `sub_2F47200` | -- | Handle tied-operand COPYs |
-| rehashInterferenceTable | `sub_2F46EE0` | -- | Interference cache rehash |
-| rehashCoalescingTable | `sub_2F46A90` | -- | Coalescing hint table rehash |
-| markRegReserved | `sub_2F42840` | -- | Mark unit as reserved |
-| recordAssignment | `sub_2F42240` | -- | Record successful assignment |
-| updateInterferenceCache | `sub_2F424E0` | -- | Insert conflict entry |
-| recordCoalescingHint | `sub_2F41240` | -- | Record parent-chain hint |
-| collectHintInfo | `sub_2F434D0` | -- | Gather all hints for priority |
-| assignRegFromClass | `sub_2F418E0` | -- | Allocation failure handler |
-| hasVRegsToAllocate | `sub_2F55040` | -- | Pre-flight check |
-| computeLiveIntervals | `sub_2F54D60` | -- | Build live interval data |
-| resetPriorityQueue | `sub_2F55730` | -- | Clear and re-init queue |
-| mainAllocationLoop | `sub_2F58C00` | -- | Per-VReg dispatch loop |
-| finalize | `sub_2F50510` | -- | Post-allocation cleanup |
-| setupSpillCosts | `sub_2FAD5E0` | -- | Compute VirtRegAuxInfo weights |
-| `InterferenceCache::init` | `sub_2FB0E40` | -- | Allocate 0x2C0-byte cache |
-| `SplitAnalysis::init` | `sub_2FB1ED0` | -- | Allocate 0x738-byte analysis |
-| setupRegAllocMatrix | `sub_3501A90` | -- | Build the global interference matrix |
-| calculateRegClassInfo | `sub_35B4B20` | -- | Pre-compute class sizes/orders |
-| seedQueueFromVRegs | `sub_35B5380` | -- | Initial queue population |
-| `RegisterCoalescer::runOnMachineFunction` | `sub_2F71140` | -- | Register coalescing (80KB) |
-| printMachineProperties | `sub_2E78A80` | -- | Includes `FailedRegAlloc` flag |
-| encodeVirtualReg | `sub_21583D0` | -- | `CLASS_BITS \ |
-| emitCopyInstruction | `sub_2162350` | -- | Class-specific copy opcodes |
+| `RAGreedy::runOnMachineFunction` analog | `sub_2F5A640` | -- | Top-level driver (466 lines) |
+| `RAGreedy::selectOrSplit` analog | `sub_2F49070` | -- | Core allocator (82KB, 2,314 lines) |
+| `selectOrSplit` thunk | `sub_2F4BAF0` | -- | Redirects to `sub_2F49070(this+200)` |
+| `selectOrSplit` + SplitEditor path | `sub_2F4BB00` | -- | Spill-or-split path |
+| `SplitEditor::splitAroundRegion` analog | `sub_2F2D9F0` | -- | Live range splitting (93KB) |
+| `tryLocalSplit` analog | `sub_2F2A2A0` | -- | Local split within a single basic block |
+| Split-segment materialization | `sub_2FDF330` | -- | Inserts new split segments after region split |
+| Interference-cache populate | `sub_2F43DC0` | -- | Populates the per-PhysReg interference cache |
+| `tryAssign` analog | `sub_2F47B00` | -- | Simple assignment path |
+| `tryEvict` analog | `sub_2F48CE0` | -- | Evict conflicting VReg |
+| `tryLastChanceRecoloring` analog | `sub_2F46530` | -- | Recursive recoloring fallback |
+| Constrained-copy processor | `sub_2F47200` | -- | Handles tied-operand COPYs |
+| Interference table rehash | `sub_2F46EE0` | -- | Grows the interference cache hash |
+| Coalescing-hint table rehash | `sub_2F46A90` | -- | Grows the coalescing-hint table |
+| Reserved-unit marker | `sub_2F42840` | -- | Marks a register unit as reserved |
+| Assignment recorder | `sub_2F42240` | -- | Records a successful PhysReg assignment |
+| Interference-cache insert | `sub_2F424E0` | -- | Inserts a new conflict entry |
+| Coalescing-hint recorder | `sub_2F41240` | -- | Records a parent-chain coalescing hint |
+| `collectHintInfo` analog | `sub_2F434D0` | -- | Gathers all coalescing hints for priority |
+| Allocation-failure handler | `sub_2F418E0` | -- | Fallback when no PhysReg is available |
+| VReg pre-flight check | `sub_2F55040` | -- | Has-VRegs-to-allocate test |
+| `computeLiveIntervals` analog | `sub_2F54D60` | -- | Build live interval data |
+| Priority queue reset | `sub_2F55730` | -- | Clears and re-initializes the priority queue |
+| Main allocation loop | `sub_2F58C00` | -- | Per-VReg dispatch loop |
+| Post-allocation finalize | `sub_2F50510` | -- | Cleanup after allocation completes |
+| Spill-cost setup | `sub_2FAD5E0` | -- | Computes VirtRegAuxInfo spill weights |
+| `InterferenceCache::init` analog | `sub_2FB0E40` | -- | Allocates the 0x2C0-byte interference cache |
+| `SplitAnalysis::init` analog | `sub_2FB1ED0` | -- | Allocates the 0x738-byte split-analysis structure |
+| Reg-alloc matrix setup | `sub_3501A90` | -- | Builds the global interference matrix |
+| Reg-class info precompute | `sub_35B4B20` | -- | Pre-computes class sizes/orders |
+| Initial queue seeding | `sub_35B5380` | -- | Populates the priority queue from VRegs |
+| `RegisterCoalescer::runOnMachineFunction` analog | `sub_2F71140` | -- | Register coalescing (80KB) |
+| MachineFunction property printer | `sub_2E78A80` | -- | Includes the `FailedRegAlloc` flag |
+| Virtual-register encoder | `sub_21583D0` | -- | `CLASS_BITS`-based virtual register encoding |
+| Copy-instruction emitter | `sub_2162350` | -- | Emits class-specific copy opcodes |
 
 ## Reimplementation Checklist
 

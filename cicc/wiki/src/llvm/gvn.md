@@ -227,25 +227,25 @@ The `profusegvn` knob (default true) enables verbose output through NVIDIA's cus
 
 | Function | Address | Size | Role |
 |----------|---------|------|------|
-| `GVN::runOnFunction` | `0x1900BB0` | 11.5 KB | Main classic GVN pass |
-| `replaceAndErase` | `0x19003A0` | 2.0 KB | Replace uses + erase instruction |
-| `NewGVN::run` | `0x19F99A0` | 12.3 KB | NewGVN algorithm |
-| `ctor_201` | `0x4E0990` | -- | GVN knob registration |
-| `hashExpression` | `0x18FDEE0` | 0.7 KB | Expression hash function |
-| `compareExpression` | `0x18FB980` | 0.4 KB | Expression equality test |
-| `lookupExpr5` | `0x18FEB70` | 0.3 KB | 5-key store expression lookup |
-| `insertExpr5` | `0x18FFC60` | 0.4 KB | 5-key insert with scoped undo |
-| `insertLeader` | `0x18FEF10` | 0.9 KB | Leader table insert |
-| `checkStoreSplit` | `0x18FECC0` | 0.5 KB | Store expression for splitting |
-| `canReplace` | `0x18FBB40` | 0.2 KB | Dominance-based replacement check |
-| `preAvailCheck` | `0x18FC460` | 0.4 KB | PRE availability analysis |
-| `performPRE` | `0x18FF290` | 1.9 KB | PRE insertion |
-| `largeGVNHelper` | `0x18F6D00` | 11.3 KB | PRE / load forwarding helper |
-| `phiGVNHelper` | `0x18FAA90` | 3.3 KB | PHI-related GVN helper |
-| `storeSplitHelper` | `0x1906720` | 4.2 KB | Store splitting implementation |
-| `storeSplitVisit` | `0x1905CD0` | 2.5 KB | Store-split worklist visitor |
-| `postGVNCleanup` | `0x1908A00` | 1.8 KB | Post-GVN cleanup |
-| `gvnFinalCleanup` | `0x190C3B0` | 1.6 KB | Final cleanup after GVN |
+| Classic GVN entry (`GVN::runOnFunction` analog) | `sub_1900BB0` | 11.5 KB | Main classic GVN pass |
+| Replace-uses + erase helper | `sub_19003A0` | 2.0 KB | RAUW + eraseFromParent for replaced values |
+| NewGVN entry | `sub_19F99A0` | 12.3 KB | Partition-based congruence-class GVN |
+| GVN knob constructor | `ctor_201` (`0x4E0990`) | -- | Registers 11 GVN `cl::opt` knobs |
+| Expression hash | `sub_18FDEE0` | 0.7 KB | Hashes opcode + operand pointers (commutative-canonicalized) |
+| Expression equality | `sub_18FB980` | 0.4 KB | Structural compare for hash-table key |
+| 5-key store-expression hash | `sub_18FEB70` | 0.3 KB | 5-element store key (opcode, type, ptr, val, align) |
+| 5-key store-expression insert | `sub_18FFC60` | 0.4 KB | Scoped insert paired with undo list |
+| Leader-table insert | `sub_18FEF10` | 0.9 KB | LeaderTable insertion at offset +240 |
+| Store-expression classifier | `sub_18FECC0` | 0.5 KB | Tags store/atomic/shufflevector/extract/insert |
+| Dominance replacement check | `sub_18FBB40` | 0.2 KB | RPO fast-path + `getDependency`/`dominates()` chain |
+| PRE availability analysis | `sub_18FC460` | 0.4 KB | Partial-availability scan over predecessors |
+| PRE insertion | `sub_18FF290` | 1.9 KB | Materialize PRE copies and rewire PHIs |
+| Large GVN sub-routine | `sub_18F6D00` | 11.3 KB | PRE / load-forwarding worker (largest GVN helper) |
+| PHI-related GVN helper | `sub_18FAA90` | 3.3 KB | Trivial-PHI removal and use-rescan |
+| Store-splitting implementation | `sub_1906720` | 4.2 KB | Decomposes vector stores against partially-aliased loads |
+| Store-split worklist visitor | `sub_1905CD0` | 2.5 KB | Per-store traversal driving the splitter |
+| Post-GVN cleanup | `sub_1908A00` | 1.8 KB | Scope teardown and undo-list replay |
+| Final GVN cleanup | `sub_190C3B0` | 1.6 KB | Function-exit cleanup (dom-node frees, hash drops) |
 
 ## Expression Classification Bitmask
 

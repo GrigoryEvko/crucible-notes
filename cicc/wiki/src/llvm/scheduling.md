@@ -356,34 +356,34 @@ All registered in `ctor_676_0_0x5a3430.c`.
 
 | Function | Identity |
 |---|---|
-| `sub_3563190` | Top-level SMS orchestrator (`SwingSchedulerDAG::schedule`) |
-| `sub_2F97F60` | `initializeDAG` -- build DDG |
-| `sub_3559990` | `computeNodeLatencies` |
-| `sub_3542B20` | `addDependencies` -- register/memory/order edges |
-| `sub_2F90200` | `updateRegPressure` |
-| `sub_354CBB0` | `computeRecMII` |
-| `sub_35449F0` | `computeResMII` |
-| `sub_3542AB0` | `setMII` = max(ResMII, RecMII) |
-| `sub_3542AE0` | `validateMII` / store at +3472 |
-| `sub_3556270` | `collectNodeInfo` -- gather 88-byte per-node records |
-| `sub_35476E0` | `initNodeOrder` -- compute scheduling order |
-| `sub_35523F0` | `computeSchedule` -- build SUnit ordering |
-| `sub_35546F0` | `orderDependences` -- topological sort |
-| `sub_3543340` | `computeStart` -- ASAP/ALAP times |
-| `sub_35630A0` | `normalizeSchedule` -- adjust cycle numbering |
-| `sub_35568E0` | `scheduleNodes` -- core SMS placement |
-| `sub_35433F0` | `adjustSchedule` -- post-adjustment |
-| `sub_3557A10` | `computeFinalSchedule` -- finalize stage/cycle |
-| `sub_354A760` | `buildStageMap` -- iteration-to-stage mapping |
-| `sub_355F610` | `schedule()` -- II search loop (2351 lines) |
-| `sub_354BE50` | `getScheduleForStage` |
-| `sub_35498F0` | `sortNodeInfo` (for >8 nodes) |
-| `sub_359AD80` | `annotateForTesting` |
-| `sub_35A5710` | `generateTrivialKernel` |
-| `sub_35A93B0` | `experimentalPeelingCG` |
-| `sub_3598EB0` | `finalizeExperimentalKernel` |
-| `sub_35A76E0` | `mveCG` -- MVE code generator |
-| `sub_35A7730` | `mveCompatCheck` |
+| `sub_3563190` | Top-level SMS orchestrator (`SwingSchedulerDAG::schedule` analog) |
+| `sub_2F97F60` | DDG builder (`initializeDAG` analog) |
+| `sub_3559990` | Node-latency computation |
+| `sub_3542B20` | Register/memory/order dependence-edge addition |
+| `sub_2F90200` | Register-pressure update |
+| `sub_354CBB0` | `computeRecMII` (recurrence-bounded MII) |
+| `sub_35449F0` | `computeResMII` (resource-bounded MII) |
+| `sub_3542AB0` | `setMII` = max(ResMII, RecMII) (sets +3472) |
+| `sub_3542AE0` | MII validation / store at +3472 |
+| `sub_3556270` | Per-node info gather (88-byte per-node records) |
+| `sub_35476E0` | Initial scheduling-order computation |
+| `sub_35523F0` | SUnit ordering builder |
+| `sub_35546F0` | Dependence-order topological sort |
+| `sub_3543340` | ASAP/ALAP time computation |
+| `sub_35630A0` | Schedule cycle-number normalization |
+| `sub_35568E0` | Core SMS node placement |
+| `sub_35433F0` | Post-placement schedule adjustment |
+| `sub_3557A10` | Stage/cycle finalization |
+| `sub_354A760` | Iteration-to-stage map builder |
+| `sub_355F610` | II search loop (2351 lines) |
+| `sub_354BE50` | Per-stage schedule accessor |
+| `sub_35498F0` | Node-info sort (taken when >8 nodes) |
+| `sub_359AD80` | Annotate-for-testing instrumentation |
+| `sub_35A5710` | Trivial kernel generator |
+| `sub_35A93B0` | Experimental peeling code-gen path |
+| `sub_3598EB0` | Experimental-kernel finalization |
+| `sub_35A76E0` | MVE code generator |
+| `sub_35A7730` | MVE compatibility check |
 
 ## ScheduleDAGMILive: Post-RA Instruction Ordering
 

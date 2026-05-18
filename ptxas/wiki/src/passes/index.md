@@ -583,14 +583,14 @@ Post-expansion, NOP removal, hot/cold optimization, block placement, scoreboard 
 
 | # | Bin# | Phase Name | Category | O-Level | Description | Detail Page |
 |---|---|---|---|---|---|---|
-| 104 | 126 | `AdvancedPhasePostExpansion` | Gate |  | Hook after post-RA expansion; when active, dispatches to `PostExpansion` (true table index 127) |  |
+| 104 | 126 | `AdvancedPhasePostExpansion` | Gate |  | Hook before post-RA expansion worker; when active, dispatches to `PostExpansion` (true table index 127) |  |
 | 105 | 128 | `ApplyPostRegAllocWars` | RegAlloc |  | Fixes write-after-read hazards exposed by register allocation |  |
-| 106 | 129 | `AdvancedPhasePostSched` | Gate |  | Type C: `sub_C5E830` writes `ctx+1552 = 14`; post-scheduling boundary |  |
+| 106 | 129 | `AdvancedPhasePostSched` | Gate |  | Type C: `sub_C5E830` writes `ctx+1552 = 14`; runs before post-scheduling worker (phase 110 `PostSchedule`) |  |
 | 107 | 130 | `OriRemoveNopCode` | Cleanup |  | Removes NOP instructions and dead code inserted as placeholders |  |
 | 108 | 131 | `OptimizeHotColdInLoop` | Optimization |  | Separates hot and cold paths within loops for cache locality | [Hot/Cold](hot-cold.md) |
 | 109 | 132 | `OptimizeHotColdFlow` | Optimization |  | Separates hot and cold paths at the function level | [Hot/Cold](hot-cold.md) |
 | 110 | 133 | `PostSchedule` | Scheduling | **> 0** | Post-RA re-scheduling: `sub_C60640` (51 B) gates `sub_7DDB50(ctx) > 1` (sm_80+), then tail-calls `ctx[+0x630]->[+0x10]->vtable[+0x90]` (sub-target post-schedule hook); guards against `nullsub_45@0x680190` no-override sentinel. Modern path lands in Backend C `sub_1908D90`; legacy fallback in `sub_A97600` (42 KB) | [PostSchedule](../scheduling/post-schedule.md) |
-| 111 | 134 | `AdvancedPhasePostFixUp` | Gate |  | Hook after post-fixup; when active, dispatches to `PostFixUp` (phase 140, target vtable+0x148) |  |
+| 111 | 134 | `AdvancedPhasePostFixUp` | Gate |  | Hook before post-fixup worker; when active, dispatches to `PostFixUp` (phase 140, target vtable+0x148) |  |
 | 112 | 135 | `PlaceBlocksInSourceOrder` | Cleanup |  | Determines final basic block layout in the emitted binary |  |
 | 113 | 136 | `PostFixForMercTargets` | Encoding |  | Fixes up instructions for Mercury encoding requirements | [Mercury](../codegen/mercury.md) |
 | 114 | 137 | `FixUpTexDepBarAndSync` | Scheduling |  | Fixes texture dependency barriers and sync instructions post-scheduling | [Scoreboards](../scheduling/scoreboards.md) |

@@ -344,45 +344,45 @@ The pass is independently disableable via `NVVMPassOptions` at offset `+1440`. T
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `EarlyCSEPass::run` (standard variant entry) | `sub_2778270` | -- | -- |
-| `EarlyCSEPass::run` (MemorySSA variant entry) | `sub_27783D0` | -- | -- |
+| EarlyCSE entry (standard variant) | `sub_2778270` | -- | Pass-manager entry for the non-MemorySSA flavour |
+| EarlyCSE entry (MemorySSA variant) | `sub_27783D0` | -- | Pass-manager entry for `early-cse-memssa` |
 | Core pass body (domtree walk + instruction processing) | `sub_2780B00` | 12,350 | -- |
-| `handleNVVMCallCSE` (NVVM intrinsic call CSE) | `sub_2780450` | 1,142 | -- |
+| NVVM intrinsic call-CSE handler | `sub_2780450` | 1,142 | Special-cases NVVM intrinsic IDs in call CSE |
 | Expression hash function | `sub_277F590` | -- | -- |
 | Expression equality check | `sub_277AC50` | -- | -- |
 | Load/call key hash | `sub_277CF80` | -- | -- |
 | Load/call key equality | `sub_27792F0` | -- | -- |
 | Store key hash | `sub_277C800` | -- | -- |
 | Store key equality | `sub_27781D0` | -- | -- |
-| `isSimpleExpression` | `sub_D222C0` | -- | -- |
-| `canCSE` / `doesNotAccessMemory` | `sub_F50EE0` | -- | -- |
-| `isSharedMemoryStore` (AS 7 check) | `sub_B49E20` | -- | -- |
-| `isSharedMemoryAccess` | `sub_B49E00` | -- | -- |
-| `getCallCSEValue` (readonly/readnone check) | `sub_1020E10` | -- | -- |
-| `isLoadCSECandidate` | `sub_B46420` | -- | -- |
-| `hasMemoryWriteSideEffects` | `sub_B46490` | -- | -- |
-| `computeCSEHash` / `isVolatile` | `sub_B46500` | -- | -- |
-| `getIntrinsicID` (NVVM intrinsic ID from call) | `sub_987FE0` | -- | -- |
-| `isTriviallyDead` | `sub_AA54C0` | -- | -- |
-| `replaceAllUsesWith` (RAUW) | `sub_11C4E30` | -- | -- |
-| `salvageDebugInfo` | `sub_BD84D0` | -- | -- |
-| `eraseInstruction` | `sub_B43D60` | -- | -- |
-| `removeFromParent` | `sub_27793B0` | -- | -- |
-| `computeLoadCSEKey` | `sub_2779A20` | -- | -- |
-| `insertStoreForwarding` | `sub_27808D0` | -- | -- |
-| `insertExprIntoScopedHT` | `sub_27801B0` | -- | -- |
-| `lookupScope` (find value by generation) | `sub_277D510` | -- | -- |
-| `lookupCallTable` | `sub_277D3C0` | -- | -- |
-| `lookupInScopedHT` | `sub_2778110` | -- | -- |
-| `shouldInsertIntoTable` | `sub_27785B0` | -- | -- |
-| `growTable` (double hash table size) | `sub_277C980` | -- | -- |
-| `insertIntoTable` (post-grow insert) | `sub_277C8A0` | -- | -- |
-| `cleanupLoadTable` (compact after scope exit) | `sub_277FFC0` | -- | -- |
-| `cleanupCallTable` (compact after scope exit) | `sub_277A110` | -- | -- |
-| `compareLoadTypes` (type compatibility) | `sub_277A9A0` | -- | -- |
-| `TargetData::getTypeSizeInBits` | `sub_AE43F0` | -- | -- |
-| `getCalledFunction` | `sub_B43CB0` | -- | -- |
-| `hasIntrinsicID` | `sub_B2D610` | -- | -- |
+| Simple-expression predicate | `sub_D222C0` | -- | Decides whether an instruction is CSE-eligible |
+| Can-CSE / no-memory-access check | `sub_F50EE0` | -- | Readonly/readnone classification |
+| Shared-memory store check (AS 7) | `sub_B49E20` | -- | Detects stores to address space 7 (shared) |
+| Shared-memory access check | `sub_B49E00` | -- | Detects loads/stores against shared memory |
+| Call CSE eligibility (readonly/readnone) | `sub_1020E10` | -- | Decides whether a call result is CSE-able |
+| Load-CSE candidate predicate | `sub_B46420` | -- | Filters loads that are safe to value-number |
+| Memory-write side-effect check | `sub_B46490` | -- | Used to bump the generation counter |
+| Volatility check | `sub_B46500` | -- | `isVolatile`-style query used during hashing |
+| NVVM intrinsic-ID extractor | `sub_987FE0` | -- | Pulls the intrinsic ID from a call |
+| Trivially-dead predicate | `sub_AA54C0` | -- | LLVM `isInstructionTriviallyDead`-style |
+| Replace-all-uses-with helper | `sub_11C4E30` | -- | RAUW used after a CSE replacement |
+| Debug-info salvage | `sub_BD84D0` | -- | Migrates debug uses off the deleted instruction |
+| Erase-instruction helper | `sub_B43D60` | -- | Unlinks and frees the instruction |
+| Remove-from-parent helper | `sub_27793B0` | -- | Unlinks an instruction from its block |
+| Load-CSE key builder | `sub_2779A20` | -- | Builds the hash key for a load |
+| Store-forwarding insert | `sub_27808D0` | -- | Records a store value for later forwarding |
+| Scoped hash-table insert | `sub_27801B0` | -- | Inserts an expression into the scoped HT |
+| Generation-scoped lookup | `sub_277D510` | -- | Finds a value valid in the current scope |
+| Call-table lookup | `sub_277D3C0` | -- | Probes the call-CSE hash table |
+| Scoped HT lookup | `sub_2778110` | -- | Generic scoped-hash-table probe |
+| Insert-eligibility predicate | `sub_27785B0` | -- | Decides whether to commit a value to the table |
+| Hash-table grow | `sub_277C980` | -- | Doubles a CSE hash table |
+| Hash-table insert (post-grow) | `sub_277C8A0` | -- | Reinserts after a grow |
+| Load-table cleanup | `sub_277FFC0` | -- | Compacts the load table after scope exit |
+| Call-table cleanup | `sub_277A110` | -- | Compacts the call table after scope exit |
+| Load-type compatibility check | `sub_277A9A0` | -- | Compares two load types for CSE |
+| Type-size-in-bits query | `sub_AE43F0` | -- | LLVM `getTypeSizeInBits` analog |
+| Get-called-function helper | `sub_B43CB0` | -- | Reads the callee from a `CallInst` |
+| Has-intrinsic-ID check | `sub_B2D610` | -- | Tests whether a call carries an intrinsic ID |
 
 ## Common Pitfalls
 

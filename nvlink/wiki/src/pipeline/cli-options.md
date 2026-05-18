@@ -23,17 +23,20 @@ Option parsing is a self-contained subsystem at addresses `0x42C510`--`0x42F640`
 
 ### Parser Object Layout (56 bytes)
 
-The parser object (`sub_42DFE0` return value) is allocated from the `"nvlink option parser"` memory arena:
+The parser object (`sub_42DFE0` return value) is allocated from the `"nvlink option parser"` memory arena. Order matches the constructor's writes in `sub_42DFE0`:
 
 | Offset | Size | Field |
 |---|---|---|
-| 0 | 8 | Pointer to first option entry (linked list head) |
-| 8 | 8 | Pointer to last option entry (linked list tail) |
-| 16 | 8 | Hash table pointer: long-name lookup |
-| 24 | 8 | Hash table pointer: short-name lookup |
-| 32 | 8 | Pointer to default file-list option entry (name = `" "`) |
-| 40 | 8 | Arena pointer (for allocations) |
-| 48 | 8 | Pointer to `"__internal_unknown_opt"` entry |
+| 0 | 8 | Hash table pointer: long-name lookup (`sub_4489C0` of `sub_44E000`/`sub_44E180`) |
+| 8 | 8 | Hash table pointer: short-name lookup (`sub_4489C0` of `sub_44E000`/`sub_44E180`) |
+| 16 | 8 | Pointer to default file-list option entry (`"Options"`, name = `" "`); set after registration |
+| 24 | 1 | `numbered` flag (constructor `a1` argument; written as byte) |
+| 25 | 7 | (padding) |
+| 32 | 8 | Chain head -- pointer to first 16-byte wrapper `{next, option_entry*}` in the registered-option linked list; NULL before any registration |
+| 40 | 8 | Tail cursor -- pointer-to-pointer; initialised to `v6 + 4` (i.e. self+32 = `&chain_head`) via the standard `*(parser+40) = parser+32` self-referencing-tail trick, then advanced to each new wrapper's next-slot as options are appended |
+| 48 | 8 | Pointer to the unknown-option fallback entry (`"__internal_unknown_opt"`); set after the second registration call |
+
+The linked list at `+32`/`+40` is the iteration order used by `option_print_help` (`sub_42F560` reads `*(parser+32)` and feeds it to `sub_464700`, which walks a singly-linked list of 16-byte wrappers). The two hash tables at `+0`/`+8` are populated by `sub_42F130` (`option_register`) for O(1) lookup by long or short name during argv parsing.
 
 ### Option Entry Layout (120 bytes)
 
