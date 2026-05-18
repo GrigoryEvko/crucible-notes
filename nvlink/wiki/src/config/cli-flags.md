@@ -72,7 +72,7 @@ Quick-reference table of every command-line flag recognized by nvlink v13.0.88. 
 | 49 | `--split-compile` | `-split-compile` | int | 1 | public | Maximum threads NVVM may use for split compilation. Only effective with LTO. |
 | 50 | `--split-compile-extended` | `-split-compile-extended` | int | 1 | public | Maximum threads the linker may use for extended split compilation. Only effective with LTO. |
 | 51 | `--suppress-arch-warning` | `-suppress-arch-warning` | bool | false | public | Suppress warnings about objects not containing code for the target architecture. |
-| 52 | `--suppress-debug-info` | `-suppress-debug-info` | bool | false | public | Do not preserve debug symbols in output. Requires `--debug`; fatal error otherwise. |
+| 52 | `--suppress-debug-info` | `-suppress-debug-info` | bool | false | public | Do not preserve debug symbols in output. Requires `--debug`; fatal error otherwise. **QUIRK:** The binary's embedded help text reads "This option is ignored if used without --debug option", but the post-extraction validator actually calls `sub_467460(dword_2A5B650, ...)` -- the fatal-severity slot -- so the option aborts the link instead of being silently ignored. |
 | 53 | `--suppress-stack-size-warning` | `-suppress-stack-size-warning` | bool | false | public | Suppress warnings when stack size cannot be determined. |
 | 54 | `--syscall-const-offset` | `-syscall-const-offset` | int | 0 | hidden | Byte offset where syscall constants begin in the constant bank. |
 | 55 | `--time` | `-time` | string | *(none)* | public | Append CSV timing data to the specified file. Use `-` for stdout. |

@@ -39,7 +39,7 @@ This compact reference summarizes every debug-related flag accepted on the nvlin
 |---|---|---|---|---|
 | `--debug` / `-g` | bool | `byte_2A5F310` | 0 | Forward `-g` to cicc (`sub_426CD0` line 179), forward `--device-debug` to ptxas (`sub_429BA0`), set cubin config word `+24` to `5`, auto-enable `verbose-tkinfo`, emit full DWARF + NVIDIA extensions in FNLZR output. Cleared to 0 if `--suppress-debug-info` is also present. |
 | `--generate-line-info` (also `-lineinfo`) | consensus | `byte_2A5F24C` / `dword_2A5F248` | 0 | Forward `-generate-line-info` to cicc (`sub_426CD0` line 150-153 via SSE load of `xmmword_1D34730`), forward `--lineinfo` to ptxas. Emits `.debug_line` only (plus `.nv_debug_line_sass` on sm > 89). Participates in per-module consensus during fatbin extraction (`sub_42AF40`); does not take a value directly on the nvlink command line. |
-| `--suppress-debug-info` | bool | `byte_2A5F226` | 0 | When combined with `-g`: clears `byte_2A5F310` pre-generation, producing a non-debug build. When alone: emits warning `"-suppress-debug-info" / "no -g"` and has no effect on output. Does not touch `byte_2A5F24C` at nvlink level. |
+| `--suppress-debug-info` | bool | `byte_2A5F226` | 0 | When combined with `-g`: clears `byte_2A5F310` pre-generation, producing a non-debug build. When alone: emits **fatal** diagnostic `"-suppress-debug-info" / "no -g"` via `sub_467460(dword_2A5B650, ...)` (same severity slot as `--no-opt`/`--optimize-data-layout` and other mutual-exclusion fatals); the binary's own help text claims the option is "ignored" without `--debug`, which is misleading. Does not touch `byte_2A5F24C` at nvlink level. |
 | `--verbose-tkinfo` | bool | `byte_2A5F223` | false | Emit full command line and object names in tkinfo section. Auto-enabled to 1 when `-g` is set and the user did not pass `--verbose-tkinfo` explicitly (`sub_427AE0` lines 947-948). Read by FNLZR during tkinfo emission. |
 
 ### Architecture-derived Debug Flags (not user-settable)
@@ -77,7 +77,7 @@ This compact reference summarizes every debug-related flag accepted on the nvlin
 - **`--device-debug` + `--generate-line-info`**: The embedded ptxas parser reports the conflict pair as `"device-debug or lineinfo"` (`sub_1104950` line 692). Full debug subsumes line info.
 - **`-g` + `--maxrregcount`**: Full debug overrides the register count limit, emitting `"Potential Performance Loss: 'setmaxnreg' ignored to allow debugging."` (register allocator).
 - **`-g` + `--suppress-debug-info`** (nvlink): Clears `byte_2A5F310` to 0. Equivalent to not passing `-g`.
-- **`--suppress-debug-info` alone**: Warning `"-suppress-debug-info" / "no -g"`. No effect on output.
+- **`--suppress-debug-info` alone**: Fatal diagnostic `"-suppress-debug-info" / "no -g"` -- aborts the link. The binary's help text describes the option as "ignored" without `--debug`, but the validation block in `sub_427AE0` calls `sub_467460(dword_2A5B650, ...)` (the same severity slot that produces a fatal error for `--no-opt` / `--optimize-data-layout` and `--force-partial-lto` / `--force-whole-lto`).
 - **`-g` without `--verbose-tkinfo`**: `byte_2A5F223` is auto-set to 1.
 - **`byte_2A5F224` + 32-bit**: Cleared back to 0 with a diagnostic. Extended debug requires 64-bit addressing.
 

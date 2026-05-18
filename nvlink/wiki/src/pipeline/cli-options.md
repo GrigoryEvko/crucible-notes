@@ -268,8 +268,8 @@ The `Ofast-compile` option accepts: `"0"`, `"min"`, `"mid"`, `"max"` (default: `
 
 - `"max"`: Focus only on the fastest compilation speed, disabling many optimizations
 - `"mid"`: Balance compile time and runtime, disabling expensive optimizations
-- `"min"`: More minimal impact on both compile time and runtime
-- `"0"`: Disables fast-compile (full optimization)
+- `"min"`: More minimal impact on both compile time and runtime, minimizing some expensive optimizations
+- `"0"`: Disables fast-compile (the option is disabled by default)
 
 ### Warning and Diagnostic Options
 
