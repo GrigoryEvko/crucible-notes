@@ -25,7 +25,7 @@ The ordering function walks the vreg linked list (`alloc+736`) and classifies ea
 
 The core fat-point allocator then iterates the assignment stack, coloring each vreg by scanning the 512-DWORD pressure histogram for the minimum-cost slot. High-interference vregs that land late in the stack are colored optimistically -- if a slot exists below the discard threshold (knob 684, default 50), the assignment succeeds without spilling.
 
-A secondary live-range-based infrastructure (~80 functions at `0x994000`--`0x9A1000`) supports coalescing, splitting, and pre-coloring but feeds results into the fat-point allocator rather than replacing it.
+A secondary live-range-based infrastructure (98 functions at `0x994000`--`0x9A1000`: 26 primitives + 24 interference-graph + 48 range-operation helpers) supports coalescing, splitting, and pre-coloring but feeds results into the fat-point allocator rather than replacing it.
 
 | | |
 |---|---|
@@ -599,17 +599,32 @@ The "narrow" set (bitmask + explicit checks) gates the forced-MAC and uniform-MA
 
 ## Live Range Infrastructure
 
-An interval-based live range system at `0x994000`--`0x9A1000` (~80 functions) supports auxiliary operations. This is not the main allocator but feeds results into it:
+An interval-based live range system at `0x994000`--`0x9A1000` (98 functions) supports auxiliary operations. This is not the main allocator but feeds results into it:
 
 | Subsystem | Range | Count | Key Functions |
 |-----------|-------|-------|---------------|
-| Live range primitives | `0x994000`--`0x996000` | ~25 | Constructor, interval queries, weight, color get/set |
-| Interference graph | `0x996000`--`0x99A000` | ~18 | Node/edge construction, adjacency, degree, coloring |
-| Range operations | `0x99A000`--`0x9A1000` | ~55 | Merge, split, interference add/remove, copy detection |
+| Live range primitives | `0x994000`--`0x996000` | 26 | Constructor, interval queries, weight, color get/set |
+| Interference graph | `0x996000`--`0x99A000` | 24 | Node/edge construction, adjacency, degree, coloring |
+| Range operations | `0x99A000`--`0x9A1000` | 48 | See breakdown below (state recompute, slab refcount, scorer, split) |
+| &nbsp;&nbsp;State recompute / per-range init | `sub_99A0B0` | 1 | Recompute interval state from def-use snapshot (224 lines) |
+| &nbsp;&nbsp;Refcount-cascade release helpers | `0x99A420`--`0x99B2A0` | 12 | Twelve 38-line specialised intrusive-tree destructors, one per node arity, dispatched from `sub_99B320`/`sub_99D190` |
+| &nbsp;&nbsp;Tree-walk free orchestrator | `sub_99A4A0` | 1 | Recursive teardown driver over the refcount helpers (301 lines) |
+| &nbsp;&nbsp;Slab/pool acquire helpers | `sub_99AA50`, `sub_99ABA0`, `sub_99AE40` | 3 | Freelist pop from arena at `ctx+56`, fallback to vtable allocator |
+| &nbsp;&nbsp;Multi-arity refcount adjuster | `sub_99B320` | 1 | 530-line dispatcher fanning into all twelve release helpers |
+| &nbsp;&nbsp;Hash/bucket primitives | `0x99C120`--`0x99C690` | 9 | Set insert/lookup, bitmap probe, key compare for the scorer |
+| &nbsp;&nbsp;Spill-weight / interference scorer | `sub_99C860` | 1 | 183-line `float`-returning scorer (XMM-blended weights, self-recursive) |
+| &nbsp;&nbsp;Cost-pair update / set ops | `0x99CBF0`--`0x99CF80` | 5 | Feeds scorer; `sub_99CE80` mirrors `sub_99C550`; `sub_99CEE0`/`CF80` are set membership |
+| &nbsp;&nbsp;Live-range coalesce driver | `sub_99D190` | 1 | **1153-line orchestrator** (largest in subsystem); invokes 12 distinct release helpers |
+| &nbsp;&nbsp;Interval predicate / lookup | `0x99E480`--`0x99EAA0` | 4 | `char`/`bool`-returning interval-by-id probes |
+| &nbsp;&nbsp;Coalesce-legality checker | `sub_99ECC0` | 1 | 305-line "can-coalesce / interference-add" predicate |
+| &nbsp;&nbsp;Split / rematerialization engine | `sub_99F3E0`, `sub_99F590` | 2 | `sub_99F590` is 644 lines, four-arg with two `char` selectors, self-recursive |
+| &nbsp;&nbsp;Split candidate enumeration | `0x9A02C0`--`0x9A0DA0` | 5 | `sub_9A07B0` / `sub_9A0DA0` are near-identical mirror twins (def-side vs use-side split) |
 | Register coalescing | `sub_9B1200` | 1 | Copy elimination pass (800 lines) |
 | Live range splitting | `sub_9AEF60` | 1 | Interference graph update (900 lines, self-recursive) |
 | Range merge engine | `sub_9AD220` | 1 | Coalescing with cost heuristics (700 lines) |
 | Range construction | `sub_9A5170` | 1 | Build ranges from def-use chains (750 lines) |
+
+Cross-calls into the subsystem from the four large engines below confirm the cluster boundaries: `sub_9AD220`, `sub_9B0B00`, and `sub_9B1200` collectively reach `sub_99A0B0`, `sub_99A4A0`, `sub_99B320`, `sub_99C860`, `sub_99CE80`, `sub_99D190`, `sub_99ECC0`, `sub_99F590`, `sub_9A02C0`, and `sub_9A0DA0` — every named anchor row is a documented public entry point of the live-range layer.
 
 ### Register Coalescing Engine (`sub_9B1200`, 800 lines)
 
