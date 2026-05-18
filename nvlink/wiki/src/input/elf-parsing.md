@@ -566,6 +566,23 @@ if (!is_elf64(elf_base)) {
 
 This reflects the reality that 32-bit CUDA ELFs are an extreme edge case. CUDA has been 64-bit by default since CUDA 7 (2015), and host-32-bit CUDA was fully removed in CUDA 9. The Elf32 path in nvlink exists only for historical compatibility and is not actively exercised. The lack of symbol accessors means the Elf32 path pays an O(n) section scan per symbol lookup, but since no modern workload hits this code it does not matter.
 
+### Elf32_Sym Layout (16 bytes) -- Field Order Differs From Elf64_Sym
+
+`merge_elf`'s open-coded Elf32 symbol walk indexes records at 16-byte stride. The critical trap is that `Elf32_Sym` and `Elf64_Sym` share *field names* but not *field order*: in Elf32, `st_value` and `st_size` sit before `st_info`/`st_other`/`st_shndx`, whereas Elf64 places `st_info`/`st_other`/`st_shndx` immediately after `st_name`.
+
+| Offset | Size | Field | Elf64 equivalent offset | Note |
+|---|---|---|---|---|
+| 0 | 4 | `st_name` | 0 | Same position |
+| 4 | 4 | `st_value` | 8 (8 bytes) | Moved forward, narrower |
+| 8 | 4 | `st_size` | 16 (8 bytes) | Moved forward, narrower |
+| 12 | 1 | `st_info` | 4 | Pushed to the tail in Elf32 |
+| 13 | 1 | `st_other` | 5 | Pushed to the tail in Elf32 |
+| 14 | 2 | `st_shndx` | 6 | Pushed to the tail in Elf32 |
+
+A reader that hard-codes Elf64 offsets while walking an Elf32 symtab will read the low half of `st_value` as `st_info`/`st_other`/`st_shndx`, silently corrupting symbol type and binding bits. nvlink avoids this only because the Elf32 symbol path is open-coded with explicit 4/8/12-byte loads rather than sharing helpers with the Elf64 family. There is no `Elf32_Sym` accessor cluster to keep the two layouts honest.
+
+> **QUIRK -- 16-byte stride is also hardcoded in the Elf32 path.** Same correctness gap as the Elf64 family: `sh_entsize` from the symtab section header is not consulted when computing the byte offset of the N-th symbol entry; the stride is the literal 16. A non-standard Elf32 with `sh_entsize > 16` would be walked at the wrong cadence.
+
 ## Elf32 Accessor Functions
 
 The Elf32 functions mirror the Elf64 family exactly, with adjusted offsets and field widths. They live at `0x46B590`--`0x46B810`.
