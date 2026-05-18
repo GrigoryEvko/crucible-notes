@@ -1219,7 +1219,7 @@ All 24 knobs controlling copy propagation and CSE:
 | `CopyPropNonRegMultiDef` | `PbclCebcAbaErtZhygvQrs` | `0x21BEC30` | Multi-def |
 | `CopyPropNoMmaCb` | `PbclCebcAbZznPo` | `0x21BEC50` | MMA disable |
 | `LateCopyPropComplPred` | `YngrPbclCebcPbzcyCerq` | `0x21BC680` | Compl pred |
-| `SpeculativeHoistCommonInsts` | `FcrphyngivruBvfgPbzzbaVafgf` | `0x21B81B0` | Spec hoist (phase 56) |
+| `SpeculativeHoistCommonInsts` | `FcrphyngvirUbvfgPbzzbaVafgf` | `0x21B81B0` | Spec hoist (phase 56) |
 
 ---
 

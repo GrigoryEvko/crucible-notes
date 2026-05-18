@@ -1735,10 +1735,12 @@ PTX opcode names stored in the binary are ROT13-encoded as an obfuscation measur
 | `NPDOHYX` | `ACQBULK` | `acqbulk` |
 | `OFLAP` | `BSYNC` | `bsync` |
 | `PPGY.P` | `CCTL.C` | `cctl.c` |
-| `SZN` | `FMA` | `fma` |
-| `FRGC` | `SETP` | `setp` |
-| `ERGHEA` | `RETURN` | `return` |
-| `RKVG` | `EXIT` | `exit` |
+| `VFRGC` | `ISETP` | `isetp` |
+| `QFRGC` | `DSETP` | `dsetp` |
+| `SFRGC` | `FSETP` | `fsetp` |
+| `OERNX` | `BREAK` | `break` |
+| `QRCONE` | `DEPBAR` | `depbar` |
+| `YQGENZ` | `LDTRAM` | `ldtram` |
 
 The table covers the entire PTX ISA vocabulary -- hundreds of opcodes. A separate ROT13 table in `ctor_005` (`0x40D860`, 80 KB) encodes 2,000+ internal Mercury/OCG tuning knob names (see [Knobs System](../config/knobs.md)).
 

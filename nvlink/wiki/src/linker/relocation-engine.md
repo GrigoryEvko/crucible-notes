@@ -42,7 +42,7 @@ sub_469D60 (apply_relocations)                       MAIN LOOP
         |      case 1/0x12/0x2E: ABS_FULL
         |      case 6/0x37:      ABS_LO
         |      case 7/0x38:      ABS_HI
-        |      case 8:           PC_REL_SIZE
+        |      case 8:           ABS_SIZE
         |      case 9:           SHIFTED_2
         |      case 0xA:         SEC_TYPE_LO
         |      case 0xB:         SEC_TYPE_HI
@@ -443,10 +443,13 @@ while (true) {
         continue;
     }
 
-    case 8: {                                // PC_REL_SIZE
+    case 8: {                                // ABS_SIZE
         uint32_t bit_off = action_ptr[0];
         uint32_t bit_wid = action_ptr[1];
 
+        // Note: case 8 OVERWRITES the running value (symbol_value [+ extra]).
+        // No symbol_value is propagated into the result -- the patched field
+        // receives either extra_offset+size or extracted_old+size only.
         if (is_absolute) {
             value = extra_offset + symbol_size;
         } else {
@@ -573,7 +576,7 @@ The following table enumerates every action code handled by the switch statement
 | 1 | 0x01 | ABS\_FULL | `value` (unchanged) | Standard absolute write. Fast path when `bit_offset==0 && bit_width==64`: direct 64-bit word write bypassing all bit-field logic |
 | 6 | 0x06 | ABS\_LO | `(uint32_t)value` | Low 32 bits of the relocation value |
 | 7 | 0x07 | ABS\_HI | `(uint32_t)(value >> 32)` | High 32 bits of the relocation value |
-| 8 | 0x08 | PC\_REL\_SIZE | `extracted_old + symbol_size` | When `is_absolute`: `extra_offset + symbol_size`. Encodes PC-relative offset plus symbol size |
+| 8 | 0x08 | ABS\_SIZE | `extracted_old + symbol_size` | When `is_absolute`: `extra_offset + symbol_size`. Overwrites the running value; no symbol address is mixed in. Used for relocations against array/sized symbols where the patched field must carry the symbol's byte size combined with an existing addend |
 | 9 | 0x09 | SHIFTED\_2 | `value >> 2` | Right-shift by 2 for 4-byte-aligned (DWORD) addresses. Converts byte offsets to DWORD indices |
 | 10 | 0x0A | SEC\_TYPE\_LO | `section_type_delta & (255 >> (8 - bit_width))` | Low bits of the section type offset, masked to fit bit\_width |
 | 11 | 0x0B | SEC\_TYPE\_HI | `(section_type_delta >> 4) & (255 >> (8 - bit_width))` | High bits of the section type offset, shifted right by 4 then masked |
@@ -990,7 +993,7 @@ All traces are gated by `(ctx->verbose_flags & 4) != 0` (bit 2 of the debug flag
 | Address | Size | Identity | Role |
 |---|---|---|---|
 | `0x469D60` | 26,578 B | `apply_relocations` | Main relocation phase; iterates linked list, calls engine |
-| `0x468760` | 14,322 B | `reloc_apply_engine` | Descriptor-driven action dispatcher; 30 action codes |
+| `0x468760` | 14,322 B | `reloc_apply_engine` | Descriptor-driven action dispatcher; 31 action opcodes across 11 case-body branches |
 | `0x468670` | ~240 B | `bitfield_extract` | Extracts arbitrary bit field from instruction word(s) |
 | `0x4685B0` | ~240 B | `bitfield_write` | Writes value into arbitrary bit field in instruction word(s) |
 | `0x46ADC0` | 11,515 B | `emit_resolved_rela` | Writes `.nv.resolvedrela` sections for preserve-relocs |
@@ -1036,7 +1039,7 @@ All traces are gated by `(ctx->verbose_flags & 4) != 0` (bit 2 of the debug flag
 | Fast path: `bit_offset==0 && bit_width==64` for direct word write | **HIGH** | Decompiled line 145: `if ( *v15 || v19 != 64 )` guards the fast path |
 | CUDA table at `off_1D3DBE0`, Mercury table at `off_1D3CBE0` | **HIGH** | Decompiled `sub_469D60` lines 202, 214: both addresses confirmed |
 | Mercury type normalization: `type -= 0x10000` | **HIGH** | Decompiled `sub_469D60` line 203: `v148 = v9 - 0x10000` |
-| 30 distinct action codes in switch statement | **HIGH** | Exhaustive enumeration from decompiled `sub_468760` switch cases |
+| 31 action codes in switch statement (11 distinct case bodies, 5 alias values) | **HIGH** | Exhaustive enumeration from decompiled `sub_468760` switch cases: {0,1,6,7,8,9,A,B,10,12,13,14,16-1D,2E,2F-36,37,38} |
 | Masked-shift tables at `xmmword_1D3F8E0`--`xmmword_1D3F930` | **HIGH** | Decompiled `sub_468760` lines 123-131, 518-526: all six SSE vector addresses confirmed |
 | `.nv.rel.action` section with sh\_type `0x7000000B` | **HIGH** | Decompiled `sub_469D60` line 913: `sub_441AC0(v2, ".nv.rel.action", 1879048203, ...)` where 1879048203 = 0x7000000B |
 | Chunk-list walk for section data at section record offset +72 | **HIGH** | Decompiled `sub_469D60` line 522: `v107 = *(_QWORD **)(v53 + 72)` |

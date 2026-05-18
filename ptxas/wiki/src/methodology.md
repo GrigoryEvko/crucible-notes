@@ -114,10 +114,12 @@ A third static constructor, `ctor_003` at `0x4095D0` (17 KB), populates a table 
 |---|---|
 | `NPDOHYX` | `ACQBULK` |
 | `OFLAP` | `BSYNC` |
-| `SZN` | `FMA` |
-| `FRGC` | `SETP` |
-| `ERGHEA` | `RETURN` |
-| `RKVG` | `EXIT` |
+| `VFRGC` | `ISETP` |
+| `QFRGC` | `DSETP` |
+| `SFRGC` | `FSETP` |
+| `OERNX` | `BREAK` |
+| `QRCONE` | `DEPBAR` |
+| `YQGENZ` | `LDTRAM` |
 
 These strings are used by the PTX parser to match instruction mnemonics. Each xref from one of these strings leads to a parser action or instruction validator function.
 

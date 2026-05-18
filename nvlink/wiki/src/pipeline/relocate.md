@@ -308,7 +308,7 @@ The `action_type` field in each descriptor action determines how the value is co
 | 1 | ABS\_FULL | Absolute: write `value` to bit field (also used by 0x12, 0x2E) |
 | 6, 0x37 | ABS\_LO | Absolute low 32 bits: extract low word of value |
 | 7, 0x38 | ABS\_HI | Absolute high 32 bits: extract high word of value |
-| 8 | ABS\_PLUS\_SIZE | Absolute + symbol size addend |
+| 8 | ABS\_SIZE | `extra + symbol_size` (absolute) or `extracted + symbol_size` -- value is overwritten; symbol address is NOT mixed in |
 | 9 | ABS\_SHIFTED | Absolute with right-shift by 2 (4-byte aligned addresses) |
 | 0xA | SEC\_TYPE\_LO | Section type low bits, masked by `(255 >> (8 - width))` |
 | 0xB | SEC\_TYPE\_HI | Section type high bits, shifted right by 4 then masked |

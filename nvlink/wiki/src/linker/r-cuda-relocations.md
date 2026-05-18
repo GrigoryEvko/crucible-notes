@@ -214,7 +214,7 @@ int reloc_apply_engine(
             action += 4;
             break;
 
-        case 0x08:  // ABS_SIZE -- S + A + symbol_size
+        case 0x08:  // ABS_SIZE -- overwrites running value with extra+size or extracted+size (no S)
             if (!is_absolute) {
                 int64_t old = bitfield_extract(patch_ptr, bit_off, bit_wid);
                 value = old + symbol_size;
@@ -306,7 +306,7 @@ int reloc_apply_engine(
 | `0x01` | **abs_full** | `S + A` -- full absolute, store all bits |
 | `0x06` | **abs_lo** | `(S + A) & mask` -- low bits of absolute |
 | `0x07` | **abs_hi** | `((S + A) >> 32) & mask` -- high 32 bits of absolute |
-| `0x08` | **abs_size** | `S + A + symbol_size` -- absolute plus symbol size addend |
+| `0x08` | **abs_size** | `extra + symbol_size` when `is_absolute`, else `extracted + symbol_size` -- overwrites the running value; no symbol address is mixed in |
 | `0x09` | **abs_shifted** | `(S + A) >> 2` -- absolute right-shifted by 2 (4-byte aligned) |
 | `0x0A` | **sec_type_lo** | `section_type & (0xFF >> (8 - width))` -- low nybble of section type |
 | `0x0B` | **sec_type_hi** | `(section_type >> 4) & (0xFF >> (8 - width))` -- high nybble of section type |

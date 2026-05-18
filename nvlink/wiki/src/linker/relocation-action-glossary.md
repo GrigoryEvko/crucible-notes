@@ -8,7 +8,7 @@ The decompiled source for the dispatcher is `sub_468760` (renamed `reloc_apply_e
 
 | Property | Value |
 |---|---|
-| Total dispatcher case values | 30 distinct + 4 aliases = 34 acknowledged opcodes |
+| Total dispatcher case values | 31 acknowledged opcodes across 11 case-body branches (5 are alias values that fall through to other branches) |
 | Total descriptor action values used | 23 (per R_CUDA catalog enum 0..56) |
 | Dispatcher slots per descriptor | 3 (offsets +12, +28, +44; sentinel at +60) |
 | Action stride | 16 bytes per slot (4 x uint32) |
@@ -40,7 +40,7 @@ This is the only opcode that always succeeds without touching the target word. S
 | 0x37 | ABS_LO alias | identical | Same case body as 0x06. |
 | 0x07 | ABS_HI | `(uint32_t)((S + A) >> 32)` | High 32 bits of relocation value. |
 | 0x38 | ABS_HI alias | identical | Same case body as 0x07. |
-| 0x08 | ABS_SIZE | `extra_offset + symbol_size` (when `is_absolute`) or `extracted_old + symbol_size` (otherwise) | Encodes "S + A + sizeof(symbol)" -- used for relocations against array-typed symbols where the patched value must include the array byte count. |
+| 0x08 | ABS_SIZE | `extra_offset + symbol_size` (when `is_absolute`) or `extracted_old + symbol_size` (otherwise) | Overwrites the running value: the case body discards the `symbol_value` (and the optional `+ extra_offset` from prologue) and emits `record.extra + size` or `extracted_old + size`. Used for relocations against array-typed symbols where the patched field must carry the symbol's byte size combined with an addend stored in `record.extra` (when absolute) or pre-encoded in the instruction field (otherwise). |
 
 Three of the seven entries here are aliases -- 0x12, 0x2E, 0x37, 0x38 all share case bodies with their lower-numbered siblings. The aliases exist because the descriptor table at `off_1D3DBE0` packs three semantically-distinct relocation families into the action-byte space: standard, attribute, and unified. Each family has its own numerical "ABS_FULL" code (`1` for standard, `0x12` = 18 for attribute, `0x2E` = 46 for unified). The dispatcher fuses them into one branch to keep the binary compact -- a single bit-field write subroutine serves all three callers.
 
@@ -104,7 +104,7 @@ This is the value space stored in byte 20 of each 64-byte descriptor and consume
 | 5 | surface descriptor HW+SW | Apply-class router; bypasses dispatcher. |
 | 6 | low 16 bits of 32-bit absolute | Dispatcher 0x06. |
 | 7 | high 16 bits of 32-bit absolute (aux carries shift constant 0x20) | Dispatcher 0x07. |
-| 8 | texture/sampler/surface slot | Apply-class router. |
+| 8 | absolute write with symbol-size addend (`R_CUDA_ABS_SIZE`-family) | Dispatcher 0x08. The case body emits `record.extra + size` (absolute) or `extracted_old + size` (otherwise) and does not consume the symbol value. |
 | 9 | `SHIFTED_2`; also leading slot of split-field types | Dispatcher 0x09. |
 | 10, 11 | continuation pieces of split-field relocations | Read only by `sub_46ADC0` (preserve-relocs emitter); the dispatcher never sees them in slot[0] -- they appear only in slot[1] or slot[2] of `R_CUDA_CONST_FIELD*`. |
 | 12 | function-descriptor 32-bit full | Apply-class router (gated by `sub_4698A0` range check `action - 12 <= 3`). |
@@ -139,7 +139,7 @@ catalog action  dispatcher opcode   notes
        2        0x01                same dispatcher path; class-aware caller
        6        0x06                exact match
        7        0x07                exact match
-       8        --                  bypassed (texture slot path)
+       8        0x08                exact match (ABS_SIZE; uses record.extra + size)
        9        0x09                exact match
       16        0x10                exact match
       17        0x01                falls through to fast path (bit_width == 64/128)
@@ -206,8 +206,8 @@ For the 8 two-slot entries that use action 9 + action 21 (the `*_16_34` split-fi
 
 ## QUIRKs
 
-> **QUIRK -- the dispatcher's 30 opcodes cannot represent every descriptor action**
-> The descriptor `action` enum spans 0..56, but `sub_468760`'s switch covers only 30 distinct numeric values (counting aliases). The arithmetic does not balance: 23 distinct catalog actions are in use, of which 8 (catalog 3, 4, 5, 8, 10, 11, 12..15, 21, 38..45) never reach the dispatcher at all. They are intercepted by the apply-class router `sub_4698A0` or the preserve-relocs emitter `sub_46ADC0`. The cleanest mental model is: the dispatcher is one of three terminal consumers of the action byte, and only the dispatcher's *own* switch arms behave like opcodes in the conventional sense. Pre-decoding the descriptor table by mapping `action` to "operation" without accounting for which consumer the action belongs to will misclassify the texture/surface/funcdesc families.
+> **QUIRK -- the dispatcher's 31 opcodes cannot represent every descriptor action**
+> The descriptor `action` enum spans 0..56, but `sub_468760`'s switch covers only 31 distinct numeric values (collapsing into 11 case-body branches once aliases are folded in). The arithmetic does not balance: 23 distinct catalog actions are in use, of which 7 (catalog 3, 4, 5, 10, 11, 12..15, 21, 38..45) never reach the dispatcher at all. They are intercepted by the apply-class router `sub_4698A0` or the preserve-relocs emitter `sub_46ADC0`. The cleanest mental model is: the dispatcher is one of three terminal consumers of the action byte, and only the dispatcher's *own* switch arms behave like opcodes in the conventional sense. Pre-decoding the descriptor table by mapping `action` to "operation" without accounting for which consumer the action belongs to will misclassify the texture/surface/funcdesc families.
 
 > **QUIRK -- catalog action 21 (0x15) is a dispatcher non-event**
 > Catalog action 21 lives in the gap between the two masked-shift ranges (0x16..0x1D and 0x2F..0x36). It is the only "real" action value in that gap -- the others (0x1E..0x2D) are class-routed away. But 21 itself has no switch arm. `sub_468760` falls through to `default: return 0` if it ever encounters action 21 in slot[0], because slot-1/slot-2 dispatch is controlled by the outer loop in `sub_469D60`, which only enters the dispatcher for action-9-leading split fields and *skips* the continuation slot. This is the cleanest example of a value that is both "in the catalog" and "not in the dispatcher" -- you cannot infer one from the other.

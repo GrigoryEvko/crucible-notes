@@ -149,7 +149,7 @@ the range.
 | `cuda_tile.xori` | 14 | range `0x5785D0..0x57A8E0` | bitwise XOR | `dialects/cuda_tile.md` |
 | `cuda_tile.yield` | 15 | range `0x5785D0..0x57A8E0` | terminator for region-bearing ops | `dialects/cuda_tile.md` |
 
-## §2 nv_tileaa.* (61 ops)
+## §2 nv_tileaa.* (73 ops)
 
 Per-op TypeID slots in dense range `0x5B46D28..0x5B46F68` (8-byte stride).
 The slab anchors below the `nv_tileas` slab.
@@ -236,7 +236,7 @@ Note: enumeration follows the registrar walk in p2-C01:441-513 and yields
 `make_memref` / `make_range` / `view` to their corresponding
 `make_*` family count. All entries above are first-class.
 
-## §3 nv_tileas.* (57 ops)
+## §3 nv_tileas.* (58 ops)
 
 Anchor `&unk_5B44F08`. RTTI `nv_tile_ir::as`. `async.pipeline.*` cluster
 dominates the surface area.
@@ -302,7 +302,7 @@ dominates the surface area.
 | `nv_tileas.view` | 15 | anchor `&unk_5B44F08` | view op | `dialects/nv_tileas.md` |
 | `nv_tileas.yield` | 16 | anchor `&unk_5B44F08` | region terminator | `dialects/nv_tileas.md` |
 
-## §4 cute.* (~57 ops)
+## §4 cute.* (60 ops)
 
 Anchor `&unk_5B496B8`. Hardware-independent CuTe layout algebra.
 
@@ -369,9 +369,9 @@ Anchor `&unk_5B496B8`. Hardware-independent CuTe layout algebra.
 | `cute.tiled.mma.partition_shape` | 30 | anchor `&unk_5B496B8` | tiled-MMA partition shape | `dialects/cute.md` |
 | `cute.unpack_tuple` | 16 | anchor `&unk_5B496B8` | tuple unpacker | `dialects/cute.md` |
 
-## §5 cute_nvgpu.* (74 ops)
+## §5 cute_nvgpu.* (73 ops)
 
-TypeID slab range `0x5B47FF8..0x5B481A8` (49 slots, 8-byte stride);
+TypeID slab range `0x5B47FF8..0x5B481A8` (54 slots, 8-byte stride);
 remaining ops fall into per-op accessor singletons in same arena.
 Anchor `&unk_5B482C8`.
 
@@ -451,7 +451,7 @@ Anchor `&unk_5B482C8`.
 | `cute_nvgpu.smem_desc_view` | 24 | range `0x5B47FF8..0x5B481A8` | smem descriptor view | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.update_tma_desc` | 26 | range `0x5B47FF8..0x5B481A8` | TMA desc mutate | `dialects/cute_nvgpu.md` |
 
-## §6 cutlass.* (70 ops)
+## §6 cutlass.* (84 ops, 38 unique families)
 
 Fold-record range `0x5B47490..0x5B476A0` covers the op-info blocks.
 Includes block_striped collectives, generic and named barriers, the
@@ -559,7 +559,7 @@ dialects).
 
 ## §8 NVVM.* (213 ops)
 
-TypeID slab `0x5B8D618..0x5B8DCB8` (1704 bytes / 8 = 213 entries, 8-byte
+TypeID slab `0x5B8D610..0x5B8DCB8` (1704 bytes / 8 = 213 entries, 8-byte
 stride, dense). Dialect TypeID `&unk_5B8DCC0` sits 8 bytes above the
 highest op slot. Walked via `RegisteredOperationName::insert` at
 `sub_4461CA0` from the registrar driver `sub_2EFC390`. Order below is

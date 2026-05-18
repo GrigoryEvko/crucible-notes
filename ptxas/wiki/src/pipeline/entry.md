@@ -83,10 +83,12 @@ Populates a table at `0x29FE300+` with approximately 900 ROT13-encoded PTX opcod
 | `NPDFUZVAVG` | `ACQSHMINIT` | Shared memory acquire init |
 | `OFLAP` | `BSYNC` | Barrier sync |
 | `PPGY.P` | `CCTL.C` | Cache control |
-| `SZN` | `FMA` | Fused multiply-add |
-| `FRGC` | `SETP` | Set predicate |
-| `ERGHEA` | `RETURN` | Return |
-| `RKVG` | `EXIT` | Thread exit |
+| `VFRGC` | `ISETP` | Integer set predicate |
+| `QFRGC` | `DSETP` | Double-precision set predicate |
+| `SFRGC` | `FSETP` | Single-precision set predicate |
+| `OERNX` | `BREAK` | Break out of barrier |
+| `QRCONE` | `DEPBAR` | Dependent barrier |
+| `YQGENZ` | `LDTRAM` | Load from TRAM |
 
 These decoded names are the canonical PTX opcode mnemonics used during parsing and validation. The table is consumed by the PTX lexer initialization at `sub_451730` and the opcode-to-handler dispatch table at `sub_46E000` (93 KB, the largest function in the front-end range).
 
@@ -99,7 +101,7 @@ The single largest function in the front-end address range. Registers 2,000+ ROT
 | `ZrephelHfrNpgvirGuernqPbyyrpgvirVafgf` | `MercuryUseActiveThreadCollectiveInsts` | `0x3e40` |
 | `ZrephelGenpxZhygvErnqfJneYngrapl` | `MercuryTrackMultiReadsWarLatency` | — |
 | `ZrephelCerfhzrKoybpxJnvgOrarsvpvny` | `MercuryPresumeXblockWaitBeneficial` | — |
-| `ZrephelZreteCebybthrOybpxf` | `MercuryMergePrologueBlocks` | — |
+| `ZrephelZretrCebybthrOybpxf` | `MercuryMergePrologueBlocks` | — |
 | `ZrephelTraFnffHPbqr` | `MercuryGenSassUCode` | — |
 
 The knob system is documented in detail in the [Knobs System](../config/knobs.md) page. The ROT13 encoding applies identically to all knob name strings in all four constructors.
