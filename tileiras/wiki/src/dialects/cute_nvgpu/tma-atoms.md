@@ -23,7 +23,7 @@ The non-exec atoms pay off because layout and partitioning can be verified befor
 
 ## Partition Op and Mode Enums
 
-The TMA atom family rooted at `cute_nvgpu.tma_partition` routes every executable and non-exec TMA atom through one partition op — the canonical place where descriptor shape, transfer mode, multicast cardinality, and reduce kind are validated together. The partition verifier enforces eleven invariants on every TMA partition op and, on success, returns a packed result record per partitioned tile.
+The TMA atom family rooted at `cute_nvgpu.atom.tma_partition` routes every executable and non-exec TMA atom through one partition op — the canonical place where descriptor shape, transfer mode, multicast cardinality, and reduce kind are validated together. The partition verifier enforces eleven invariants on every TMA partition op and, on success, returns a packed result record per partitioned tile.
 
 Three mode enums select the transfer variant. Load-mode covers single-CTA, two-CTA cooperative, and warp-multicast loads at two granularities; store-mode covers tiled stores and im2col-flavour stores; reduce-kind covers the asynchronous reduces the hardware supports.
 
@@ -295,7 +295,7 @@ The structural difference: in CUTLASS the descriptor is an opaque `CUtensorMap` 
     {num_multicast = 1}
 
 %exec = cute_nvgpu.atom.make_exec_tma %atom, %mbar
-    {cache_mode = #cute_nvgpu.cache_mode<cg>}
+    {cache_mode = #cute_nvgpu.load_cache_mode<cg>}
 
 cute_nvgpu.atom.tma_load %exec, %smem_tile, %coord
     {allow_tma = true, inBounds = true}

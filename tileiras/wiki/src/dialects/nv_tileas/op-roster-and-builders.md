@@ -73,27 +73,27 @@ A representative two-stage pipeline that loads a tile through TMA in the produce
       consumerGroupId = 1 : i8,
       sharedMem       = true,
       dynamic         = false }
-    : !nv_tileas.tiled_view<2x128x128xf16>
-    -> !nv_tileas.PipelineProducerToken, !nv_tileas.PipelineConsumerToken
+    : !nv_tileaa.tiled_view<2x128x128xf16>
+    -> !nv_tileas.async.pipeline.producer_token, !nv_tileas.async.pipeline.consumer_token
 
 // Stage iterator
 %iter = nv_tileas.async.pipeline.create_iterator %prod_tok
-    : !nv_tileas.PipelineProducerToken -> !nv_tileas.PipelineIterator<tile<128x128xf16>>
+    : !nv_tileas.async.pipeline.producer_token -> !nv_tileas.async.pipeline.iterator<tile<128x128xf16>>
 
 // Producer region — TMA loads, one per stage
 %prod_tok2 = nv_tileas.async.pipeline.produce_one %prod_tok, %iter
     { producer_types = [tile<128x128xf16>] } : (
-    !nv_tileas.PipelineProducerToken,
-    !nv_tileas.PipelineIterator<tile<128x128xf16>>
-) -> !nv_tileas.PipelineProducerToken {
+    !nv_tileas.async.pipeline.producer_token,
+    !nv_tileas.async.pipeline.iterator<tile<128x128xf16>>
+) -> !nv_tileas.async.pipeline.producer_token {
 ^bb0(%stage_buf : tile<128x128xf16>):
     %async_tok = nv_tileas.async.tiled_tma_load
         %tma_desc, %stage_buf[%k_outer]
         { atom = #nv_tileas<atom tma_load_2d>,
           operandSegmentSizes = array<i32: 1, 1, 1, 1> }
-        : !nv_tileas.tma_desc, !nv_tileas.tiled_view<128x128xf16>,
-          index, !nv_tileas.mem_token
-        -> !nv_tileas.AsyncToken
+        : !cute_nvgpu.tma_descriptor_tiled, !nv_tileaa.tiled_view<128x128xf16>,
+          index, !nv_tileaa.mem_token
+        -> !async.value<tile<128x128xf16>>
     nv_tileas.async.pipeline.yield %stage_buf : tile<128x128xf16>
 }
 
@@ -101,22 +101,22 @@ A representative two-stage pipeline that loads a tile through TMA in the produce
 %cons_tok2 = nv_tileas.async.pipeline.consume_one %cons_tok, %iter
     { consumer_idx   = 0 : i32,
       consumer_types = [tile<128x128xf16>] } : (
-    !nv_tileas.PipelineConsumerToken,
-    !nv_tileas.PipelineIterator<tile<128x128xf16>>
-) -> !nv_tileas.PipelineConsumerToken {
+    !nv_tileas.async.pipeline.consumer_token,
+    !nv_tileas.async.pipeline.iterator<tile<128x128xf16>>
+) -> !nv_tileas.async.pipeline.consumer_token {
 ^bb0(%a_tile : tile<128x128xf16>):
     %waited = nv_tileas.async.pipeline.consumer_wait %cons_tok, %iter
         { consumer_idx = 0 : i32 }
-        : !nv_tileas.PipelineConsumerToken,
-          !nv_tileas.PipelineIterator<tile<128x128xf16>>
-        -> !nv_tileas.PipelineConsumerToken
+        : !nv_tileas.async.pipeline.consumer_token,
+          !nv_tileas.async.pipeline.iterator<tile<128x128xf16>>
+        -> !nv_tileas.async.pipeline.consumer_token
     %d = nv_tileas.dot %a_tile, %b_tile, %acc
         { atom = #nv_tileas<atom mma_f16_f16_f32> }
         : tile<128x128xf16>, tile<128x128xf16>, tile<128x128xf32>
         -> tile<128x128xf32>
     %released = nv_tileas.async.pipeline.consumer_release %waited
-        : !nv_tileas.PipelineConsumerToken
-        -> !nv_tileas.PipelineConsumerToken
+        : !nv_tileas.async.pipeline.consumer_token
+        -> !nv_tileas.async.pipeline.consumer_token
     nv_tileas.async.pipeline.yield %a_tile : tile<128x128xf16>
 }
 ```
