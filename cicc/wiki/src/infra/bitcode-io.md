@@ -169,33 +169,35 @@ Writes one `FUNCTION_BLOCK` containing all instructions, each encoded via `write
 
 Before writing, the `ValueEnumerator` assigns a dense numeric ID to every value in the module. This is the reverse of what the reader does (mapping IDs back to Values).
 
-| Function | Address | Size | Role |
-|----------|---------|------|------|
-| `enumerateModule` | `0x15467B0` | 23 KB | Top-level module enumeration |
-| `enumerateValues` | `0x1542B00` | 26 KB | Assigns numeric IDs to all values |
-| `optimizeConstants` | `0x1548410` | 8 KB | Reorders constants for better compression |
-| `TypeFinder helper` | `0x153E1D0` | 7 KB | Recursive type discovery |
+Role labels below are descriptive (LLVM-equivalent terminology); addresses are the binary-confirmed identifiers. No name strings for these helpers survive in the cicc binary.
+
+| Address | Size | Role |
+|---------|------|------|
+| `sub_15467B0` | 23 KB | Top-level module enumeration |
+| `sub_1542B00` | 26 KB | Assigns numeric IDs to all values |
+| `sub_1548410` | 8 KB | Reorders constants for better compression |
+| `sub_153E1D0` | 7 KB | TypeFinder helper: recursive type discovery |
 
 ### Writer Function Map
 
-| Function | Address | Size | Role |
-|----------|---------|------|------|
-| `writeModule` | `0x1538EC0` | 58 KB | Top-level module serializer |
-| `writeFunction` | `0x1536CD0` | 40 KB | Per-function FUNCTION_BLOCK writer |
-| `writeMetadata` | `0x1531F90` | 27 KB | METADATA_BLOCK writer |
-| `writeInstruction` | `0x1528720` | 27 KB | Single instruction encoder |
-| `writeModuleSummary` | `0x1535340` | 26 KB | ThinLTO summary serializer |
-| `writeValueSymbolTable` | `0x1533CF0` | 16 KB | VALUE_SYMTAB_BLOCK writer |
-| `writeNamedMetadata` | `0x15311A0` | 14 KB | Named metadata / comdat writer |
-| `writeType / globalVar` | `0x1530240` | 12 KB | Type descriptors or global variable records |
-| `emitAbbreviation` | `0x152AB40` | 11 KB | Abbreviation definition writer |
-| `emitRecord` | `0x152A250` | 9 KB | Low-level record emission |
-| `writeConstants helper` | `0x1527BB0` | 9 KB | Constant value encoder |
-| `writeMetadataRecords` | `0x15334D0` | 8 KB | Dispatcher for 37 metadata node types |
-| `writeAttributeGroup` | `0x152F610` | 8 KB | ATTRIBUTE_GROUP_BLOCK writer |
-| `emitVBR` | `0x15271D0` | 7 KB | Variable bit-rate integer encoding |
-| `emitCode` | `0x15263C0` | 7 KB | Core abbreviated/unabbreviated record emission |
-| `emitBlob` | `0x1528330` | -- | Blob data emission |
+| Address | Size | Role |
+|---------|------|------|
+| `sub_1538EC0` | 58 KB | Top-level module serializer (writes IDENTIFICATION_BLOCK, MODULE_BLOCK) |
+| `sub_1536CD0` | 40 KB | Per-function FUNCTION_BLOCK writer |
+| `sub_1531F90` | 27 KB | METADATA_BLOCK writer |
+| `sub_1528720` | 27 KB | Single instruction encoder |
+| `sub_1535340` | 26 KB | ThinLTO summary serializer |
+| `sub_1533CF0` | 16 KB | VALUE_SYMTAB_BLOCK writer |
+| `sub_15311A0` | 14 KB | Named metadata / comdat writer |
+| `sub_1530240` | 12 KB | Type descriptors or global variable records |
+| `sub_152AB40` | 11 KB | Abbreviation definition writer |
+| `sub_152A250` | 9 KB | Low-level record emission |
+| `sub_1527BB0` | 9 KB | Constant value encoder |
+| `sub_15334D0` | 8 KB | Dispatcher for 37 metadata node types |
+| `sub_152F610` | 8 KB | ATTRIBUTE_GROUP_BLOCK writer |
+| `sub_15271D0` | 7 KB | Variable bit-rate (VBR) integer encoding |
+| `sub_15263C0` | 7 KB | Core abbreviated/unabbreviated record emission |
+| `sub_1528330` | -- | Blob data emission |
 
 ## Producer String Hack
 
@@ -244,17 +246,17 @@ void writeIdentificationBlock(BitstreamWriter &Stream) {
 
 The intrinsic upgrader is the single largest code mass in the entire cicc binary. Two functions dominate:
 
-| Function | Address | Size | Role |
-|----------|---------|------|------|
-| `UpgradeIntrinsicFunction` | `sub_156E800` | 593 KB | Name-based intrinsic rename lookup (271 string patterns) |
-| `UpgradeIntrinsicCall` | `sub_A939D0` | 457 KB | Call instruction rewriter |
-| `X86 intrinsic upgrade helper` | `sub_A8A170` | 195 KB | SSE/AVX/AVX-512 family tables |
-| `UpgradeIntrinsicCall (2nd copy)` | `sub_15644B0` | 89 KB | Companion call upgrader |
-| `NVVM upgrade dispatcher` | `sub_A8E250` | 52 KB | nvvm.atomic, nvvm.shfl, nvvm.cp.async, nvvm.tcgen05, nvvm.cluster, nvvm.ldg |
-| `NVVM call rewriting` | `sub_A91130` | 28 KB | NVVM-specific call rewriter |
-| `NVVM annotation metadata upgrade` | `sub_A84F90` | 14 KB | maxclusterrank, maxntid, etc. |
-| `UpgradeModuleFlags` | `0x156C720` | 10 KB | Module flag upgrader |
-| `UpgradeLoopMetadata` | `0x156A1F0` | 7 KB | llvm.loop.interleave.count, llvm.loop.vectorize.* |
+| Address | Size | Role |
+|---------|------|------|
+| `sub_156E800` | 593 KB | Intrinsic upgrade name lookup (271 string patterns; LLVM `UpgradeIntrinsicFunction` analog) |
+| `sub_A939D0` | 457 KB | Intrinsic call rewriter (LLVM `UpgradeIntrinsicCall` analog) |
+| `sub_A8A170` | 195 KB | X86 intrinsic upgrade helper: SSE/AVX/AVX-512 family tables |
+| `sub_15644B0` | 89 KB | Companion call upgrader (second copy) |
+| `sub_A8E250` | 52 KB | NVVM upgrade dispatcher: nvvm.atomic, nvvm.shfl, nvvm.cp.async, nvvm.tcgen05, nvvm.cluster, nvvm.ldg |
+| `sub_A91130` | 28 KB | NVVM-specific call rewriter |
+| `sub_A84F90` | 14 KB | NVVM annotation metadata upgrade: maxclusterrank, maxntid, etc. |
+| `sub_156C720` | 10 KB | Module flag upgrader |
+| `sub_156A1F0` | 7 KB | Loop metadata upgrader: `llvm.loop.interleave.count`, `llvm.loop.vectorize.*` |
 
 **Total intrinsic upgrader code**: approximately 1.4 MB across all copies and helpers.
 
@@ -381,8 +383,8 @@ Two verifier instances exist:
 
 ### Reader (primary, `0x1500000`--`0x1522000`)
 
-| Address | Size | Function |
-|---------|------|----------|
+| Address | Size | Role |
+|---------|------|------|
 | `0x1503DC0` | 13 KB | `materializeFunctions` |
 | `0x1504A60` | 8 KB | `parseGlobalInits` |
 | `0x1505110` | 60 KB | `parseModule` |
@@ -407,8 +409,8 @@ Two verifier instances exist:
 
 ### Reader (standalone copy, `0x9F0000`--`0xA20000`)
 
-| Address | Size | Function |
-|---------|------|----------|
+| Address | Size | Role |
+|---------|------|------|
 | `0x9F2A40` | 185 KB | `parseFunctionBody` |
 | `0xA09F80` | 121 KB | `MetadataLoader::parseOneMetadata` |
 | `0xA10370` | 33 KB | `value materialization` |
@@ -417,8 +419,8 @@ Two verifier instances exist:
 
 ### Writer (`0x1525000`--`0x1549000`)
 
-| Address | Size | Function |
-|---------|------|----------|
+| Address | Size | Role |
+|---------|------|------|
 | `0x15263C0` | 7 KB | `emitCode` |
 | `0x15271D0` | 7 KB | `emitVBR` |
 | `0x1527BB0` | 9 KB | `writeConstants helper` |
@@ -437,8 +439,8 @@ Two verifier instances exist:
 
 ### Intrinsic Upgrader (`0xA80000`--`0xABFFFF` + `0x1560000`--`0x1580000`)
 
-| Address | Size | Function |
-|---------|------|----------|
+| Address | Size | Role |
+|---------|------|------|
 | `0x156E800` | 593 KB | `UpgradeIntrinsicFunction` |
 | `0xA939D0` | 457 KB | `UpgradeIntrinsicCall` |
 | `0xA8A170` | 195 KB | `X86 intrinsic upgrade helper` |
@@ -452,8 +454,8 @@ Two verifier instances exist:
 
 ### NVVM Version / Producer
 
-| Address | Size | Function |
-|---------|------|----------|
+| Address | Size | Role |
+|---------|------|------|
 | `0x157E370` | 7 KB | `NVVM version checker` (primary) |
 | `0x12BFF60` | 9 KB | `NVVM version checker` (standalone) |
 | `0x2259720` | -- | `NVVM version checker` (duplicate instance) |
@@ -462,8 +464,8 @@ Two verifier instances exist:
 
 ### Value Enumeration (`0x1540000`--`0x1549000`)
 
-| Address | Size | Function |
-|---------|------|----------|
+| Address | Size | Role |
+|---------|------|------|
 | `0x1542B00` | 26 KB | `enumerateValues` |
 | `0x15467B0` | 23 KB | `enumerateModule` |
 | `0x1548410` | 8 KB | `optimizeConstants` |

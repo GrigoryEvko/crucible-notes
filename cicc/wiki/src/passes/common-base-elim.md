@@ -181,19 +181,19 @@ The pass registers a single diagnostic string (its name). No additional debug/du
 
 ## Function Map
 
-| Function | Address | Size | Role |
-|---|---|---|---|
-| `CommonBaseElimination::run` | `sub_1C5DFC0` | 38 KB | Main entry point -- orchestrates all four phases |
-| `decomposeAddress` | `sub_1C53170` | -- | Decomposes a memory address into `(base, offset_list, count)` tuple. Shared with BASR. |
-| `hashMapGrowOrRehash` | `sub_1C54050` | -- | Hash map resize/rehash with load-factor policy |
-| `hashMapInsertOrLookup` | `sub_1C50900` | -- | Insert into or look up in the base-pointer hash map |
-| `extractGlobalFromPointerChain` | `sub_1CCDC20` | -- | Walks bitcast/GEP chains to find the underlying `GlobalVariable` |
-| `createCommonBaseForNegativeOffsets` | `sub_1C55CE0` | -- | Creates a separate common base when the max offset is negative. Used by BASR, available to CBE. |
-| `isBaseLoopInvariant` | `sub_1C51340` | -- | Checks whether a base address is loop-invariant |
-| `classifyAddressExpression` | `sub_1C57390` | -- | Classifies an instruction's address expression type |
-| `createNewBaseInstruction` | `sub_13A5B00` | -- | Creates a new base address computation at the insertion point |
-| `rewriteAddressAsBaseOffset` | `sub_14806B0` | -- | Rewrites an address as `(new_base + relative_offset)` |
-| `extractBasePointer` (SCEV helper) | `sub_1456040` | -- | Extracts the base pointer from an address expression (SCEV `getStart`/`getOperand(0)`) |
+| Address | Size | Role |
+|---|---|---|
+| `sub_1C5DFC0` | 38 KB | Main entry point -- orchestrates all four phases |
+| `sub_1C53170` | -- | Decomposes a memory address into `(base, offset_list, count)` tuple. Shared with BASR. |
+| `sub_1C54050` | -- | Hash map resize/rehash with load-factor policy |
+| `sub_1C50900` | -- | Insert into or look up in the base-pointer hash map |
+| `sub_1CCDC20` | -- | Walks bitcast/GEP chains to find the underlying `GlobalVariable` |
+| `sub_1C55CE0` | -- | Creates a separate common base when the max offset is negative. Used by BASR, available to CBE. |
+| `sub_1C51340` | -- | Checks whether a base address is loop-invariant |
+| `sub_1C57390` | -- | Classifies an instruction's address expression type |
+| `sub_13A5B00` | -- | Creates a new base address computation at the insertion point |
+| `sub_14806B0` | -- | Rewrites an address as `(new_base + relative_offset)` |
+| `sub_1456040` | -- | Extracts the base pointer from an address expression (SCEV `getStart`/`getOperand(0)`) |
 
 ## Cross-References
 

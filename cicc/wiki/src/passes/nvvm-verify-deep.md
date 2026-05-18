@@ -621,26 +621,28 @@ The error model is accumulate-and-continue: the verifier sets the error flag at 
 
 ## Function Map
 
-| Function | Address | Size | Role |
-|---|---|---|---|
-| NVVMModuleVerifier | `sub_2C80C90` | 51KB | Module entry: triples, data layout, per-instruction dispatch |
-| NVVMFunctionVerifier | `sub_2C771D0` | 36KB | Function-level: attributes, params, cluster dims, entry funcs |
-| NVVMIntrinsicVerifier | `sub_2C7B6A0` | 143KB | Intrinsic-level: SM gates, types, MMA, atomics, tex/surf |
-| NVVMVerifier pass wrapper | `sub_12D4560` | small | Pipeline entry point, creates context, invokes module verifier |
-| Verify global variable | `sub_2C797D0` | -- | Per-global validation |
-| Verify function declaration | `sub_2C7A130` | -- | Checks function declarations (not definitions) |
-| Verify named metadata | `sub_2C7AA20` | -- | Named metadata validation |
-| Verify address space cast | `sub_2C7AF00` | -- | addrspacecast / GEP rule checker |
-| Verify generic call | `sub_2C795F0` | -- | Non-intrinsic call validation, pragma check |
-| Report unsupported instruction | `sub_2C76F10` | -- | Produces `"<name> is not supported"` diagnostics |
-| Is kernel function? | `sub_CE9220` | -- | Checks kernel calling convention |
-| Extract cluster dimensions | `sub_CE8EA0` | -- | Reads cluster dims from function metadata |
-| Extract cluster max blocks | `sub_CE9030` | -- | Reads max cluster blocks from metadata |
-| Check function attribute | `sub_A73ED0` | -- | Tests presence of attribute by ID |
-| Is .offset.bindless? | `sub_CEA320` | -- | Blackwell gate predicate |
-| Get intrinsic name string | `sub_BD5D20` | -- | Returns intrinsic name for error messages |
-| Get integer bit width | `sub_BCAE30` | -- | Type query helper |
-| Compute total bit width | `sub_CA1930` | -- | Aggregate/vector width computation |
+Role labels below are descriptive; only `sub_<HEX>` addresses are binary-confirmed.
+
+| Address | Size | Role |
+|---|---|---|
+| `sub_2C80C90` | 51KB | Module-level verifier entry: triples, data layout, per-instruction dispatch |
+| `sub_2C771D0` | 36KB | Function-level verifier: attributes, params, cluster dims, entry funcs |
+| `sub_2C7B6A0` | 143KB | Intrinsic-level verifier: SM gates, types, MMA, atomics, tex/surf |
+| `sub_12D4560` | small | NVVMVerifier pass wrapper: pipeline entry, creates context, invokes module verifier |
+| `sub_2C797D0` | -- | Per-global validation |
+| `sub_2C7A130` | -- | Function declaration checker (declarations, not definitions) |
+| `sub_2C7AA20` | -- | Named metadata validation |
+| `sub_2C7AF00` | -- | addrspacecast / GEP rule checker |
+| `sub_2C795F0` | -- | Non-intrinsic call validation, pragma check |
+| `sub_2C76F10` | -- | Produces `"<name> is not supported"` diagnostics |
+| `sub_CE9220` | -- | Kernel calling convention predicate |
+| `sub_CE8EA0` | -- | Reads cluster dims from function metadata |
+| `sub_CE9030` | -- | Reads max cluster blocks from metadata |
+| `sub_A73ED0` | -- | Tests presence of attribute by ID |
+| `sub_CEA320` | -- | `.offset.bindless` predicate (Blackwell gate) |
+| `sub_BD5D20` | -- | Returns intrinsic name string for error messages |
+| `sub_BCAE30` | -- | Integer bit-width query helper |
+| `sub_CA1930` | -- | Aggregate/vector total bit-width computation |
 
 ## Cross-References
 
