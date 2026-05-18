@@ -721,13 +721,13 @@ The rationale: when a weak function is replaced, the replacement's resource desc
 
 ### Phase 3: Pre-Finalization (Callgraph Processing)
 
-`sub_44C030` (the EIATTR serialization builder, called from `sub_44DB00` in the pre-finalization fixup) processes the callgraph to prepare nv.info data:
+`sub_44C030` (the callgraph closure pass, called from `sub_44DB00` in the pre-finalization fixup) walks the callgraph at `elfw+408` and augments it before `.nv.info` is serialized later in finalize. It is not itself a TLV emitter -- the wiki previously misattributed serialization to this function; binary EIATTR output happens during `sub_445000`'s EIATTR list traversal.
 
-1. **Callgraph traversal**: Iterates all callgraph entries starting at `elfw+408`. For each function pair (caller, callee), resolves the callee's callgraph node and links it to the caller's callee list.
+1. **Alt-call resolution**: For every callgraph node `src`, walks the `-3` alt_call list at `src+8` (built by `sub_44BAA0`) and matches each entry's interned name-token (`entry+8`) against the name field (`+4`) of every node flagged `address_taken=1` at `+50`. Each match records the resolved edge via `sub_4644C0`. This is what gives by-name address-taken references a concrete target node. See [Dead Code Elimination](../linker/dead-code-elimination.md#alt-call-resolution-pass-sub_44c030-phase-1).
 
-2. **Recursion detection**: Uses a two-flag approach (bytes at offsets +48 and +49 in callgraph nodes). If recursion is detected, the function is marked as recursive (`"recursion at function %d"`). Recursive functions cannot have statically-determined stack sizes.
+2. **DFS reachability with recursion detection**: Uses bytes `+48` (visited) and `+49` (on-stack) per node. Back edges trigger `"recursion at function %d"` (verbose only) and mark the function recursive so the stack-size analysis later refuses to assign a static depth. Each reached node's name index is appended to the entry's reachable-set via `sub_4644C0`.
 
-3. **Callee list propagation**: For each entry function, the transitive closure of callees is computed. Each callee's entry is added to the entry function's "reachable" list via `sub_4644C0`.
+3. **`$`-prefixed name validation**: Walks `elfw+392` looking for entries whose interned name begins with `$` (compiler-emitted markers such as `$str` literals, weak aliases, anchors). These are filtered through a temporary hashset (`sub_465020`/`sub_465720`/`sub_4655C0`/`sub_4650A0`). When a single root kernel is established at `elfw+568`, any `$`-referent unreachable from that root raises diagnostic 0x24 via `sub_450970`.
 
 ### Phase 4: Finalization (Output Generation)
 

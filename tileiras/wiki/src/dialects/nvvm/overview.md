@@ -32,19 +32,19 @@ PTX
 
 ## Per-Family Pages
 
-The dialect ships about 213 ops. They split cleanly into eight large families plus a long tail of small ones. The bulk of each family is documented on its own page; this overview lists the families, their roster sizes, the SM floor, and one example op so the cross-link table doubles as an index.
+The dialect ships about 218 ops. They split cleanly into eight large families plus a long tail of small ones. The bulk of each family is documented on its own page; this overview lists the families, their roster sizes, the SM floor, and one example op so the cross-link table doubles as an index.
 
 | Family | Count | SM floor | Example op | Page |
 |---|---:|---|---|---|
 | WMMA — warp-synchronous register MMA | 64 | sm_70 | `nvvm.wmma.mma` | [WMMA Ops](wmma-ops.md) |
-| WGMMA — warp-group async MMA (Hopper) | 9 | sm_90a | `nvvm.wgmma.mma_async` | [WGMMA Ops](wgmma-ops.md) |
+| WGMMA — warp-group async MMA (Hopper) | 4 | sm_90a | `nvvm.wgmma.mma_async` | [WGMMA Ops](wgmma-ops.md) |
 | TMA — bulk tensor copy, prefetch, reduce | 38 | sm_90 | `nvvm.cp.async.bulk.tensor.shared.cluster.global` | [TMA Ops](tma-ops.md) |
-| tcgen05 — Blackwell tensor memory + MMA | 14 | sm_100a | `nvvm.tcgen05.mma.block_scale` | [tcgen05 Ops](tcgen05-ops.md) |
+| tcgen05 — Blackwell tensor memory + MMA | 17 | sm_100a | `nvvm.tcgen05.mma.block_scale` | [tcgen05 Ops](tcgen05-ops.md) |
 | mbarrier — shared-memory barrier state machine | 21 | sm_80 | `nvvm.mbarrier.arrive.expect_tx.shared` | [mbarrier Ops](mbarrier-ops.md) |
-| Cluster — thread-block cluster sync | 8 | sm_90 | `nvvm.cluster.wait`, `nvvm.mapa` | [Cluster Ops](cluster-ops.md) |
+| Cluster — thread-block cluster sync | 12 | sm_90 | `nvvm.cluster.wait`, `nvvm.mapa` | [Cluster Ops](cluster-ops.md) |
 | Synchronisation — `barrier0`, `barrier.cta.sync`, `bar.warp.sync` | 18 | sm_70 | `nvvm.barrier.cta.sync` | (this page) |
 | `cp.async` (Ampere SM80 async-copy queue) | 12 | sm_80 | `nvvm.cp.async.shared.global` | (this page) |
-| Special registers — `tid`, `ctaid`, `ntid`, etc. | 12 | sm_70 | `nvvm.read.ptx.sreg.tid.x` | (this page) |
+| Special registers — `tid`, `ctaid`, `ntid`, etc. | 15 | sm_70 | `nvvm.read.ptx.sreg.tid.x` | (this page) |
 | shfl / vote / elect.sync | 8 | sm_70 | `nvvm.shfl.sync` | (this page) |
 | `barrier.{arrive,sync}` helpers | 4 | sm_70 | `nvvm.barrier.arrive` | (this page) |
 | Other (`mapa`, fences, ldmatrix/stmatrix, redux, prefetch) | 5 | varies | `nvvm.ldmatrix` | (this page) |

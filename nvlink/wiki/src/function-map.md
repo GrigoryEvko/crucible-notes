@@ -210,7 +210,7 @@ Functions with the highest cross-reference count in the binary. These form the b
 |---------|------------|---------------|------|------------|-------------|
 | `0x44AD40` | `sub_44AD40` | dead_code_elimination | 22.5KB | HIGH | DFS reachability on callgraph, removes unreachable functions and associated `.nv.local`/`.nv.shared` sections. Keeps address-taken functions. |
 | `0x44A5D0` | `sub_44A5D0` | callgraph_detect_recursion | 14.4KB | HIGH | DFS-based recursion detection for stack size requirements. |
-| `0x44C030` | `sub_44C030` | callgraph_traverse | 10.2KB | HIGH | Propagates stack sizes and register counts through call chains. |
+| `0x44C030` | `sub_44C030` | callgraph_closure | 10.2KB | HIGH | Pre-finalize callgraph closure: resolves `-3` alt_call entries against address-taken (`+50`) nodes by name-token match against `+4`, DFS reachability with `+48`/`+49` cycle flags ("recursion at function %d"), and `$`-prefix root-reach validation against `elfw+392`. |
 | `0x44CCF0` | `sub_44CCF0` | callgraph_dump_dot | small | HIGH | Writes Graphviz DOT format via `digraph callgraph { %s -> %s; }`. |
 | `0x44D200` | `sub_44D200` | build_callgraph_section | 8.5KB | HIGH | Generates `.nv.callgraph` section in output ELF. |
 
@@ -668,7 +668,7 @@ Quick reference sorted by address for binary navigation. All addresses verified 
 0x449A80  sub_449A80  LinkerHash_lookup
 0x44A5D0  sub_44A5D0  callgraph_detect_recursion
 0x44AD40  sub_44AD40  dead_code_elimination
-0x44C030  sub_44C030  callgraph_traverse
+0x44C030  sub_44C030  callgraph_closure
 0x44CCF0  sub_44CCF0  callgraph_dump_dot
 0x44D200  sub_44D200  build_callgraph_section
 0x44EF80  func        atexit_cleanup

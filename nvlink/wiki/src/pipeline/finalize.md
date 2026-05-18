@@ -63,7 +63,7 @@ The following is the exact call order within `sub_445000`, with function address
 | 1 | `0x439640` | `sub_439640` | Shared memory fixup (relocatable `ET_REL` only) |
 | 1b | `0x438BD0` | `sub_438BD0` | Virtual section index remap (Mercury `0xFF00` only) |
 | 2 | `0x44DB00` | `sub_44DB00` | Pre-finalize: root kernel detect, call sub_44C030 |
-| 2a | `0x44C030` | `sub_44C030` | EIATTR serialization -- write `.nv.info` section content |
+| 2a | `0x44C030` | `sub_44C030` | Callgraph closure: alt-call resolution (`-3` name -> address-taken `+4`) + DFS reachability + `$`-prefix validation |
 | 2b | `0x44D200` | `sub_44D200` | Create `.nv.callgraph` section (type `0x70000001`) |
 | 2c | `0x44D9D0` | `sub_44D9D0` | Create `.nv.prototype` section (type `0x70000002`) |
 | 2d | `0x4478F0` | `sub_4478F0` | Debug section finalization |
@@ -97,7 +97,7 @@ If `byte elfw+81` is not set, `sub_44DB00` (67 lines, 1,473 bytes) is called. Th
 
 2. **Root kernel detection** (for `ET_EXEC` with callgraph enabled at `byte elfw+84`): Iterates all callgraph entries at `elfw+408`, testing each symbol for the entry-point predicate (`bit 0x10` in `byte sym+5` AND `sub_43FB20` returning true). If exactly one root kernel is found, stores its symbol index at `elfw+568`. If multiple root kernels exist, sets `elfw+568 = 0`. With verbose output: `"root_kernel = %d"`.
 
-3. **Calls `sub_44C030`** (10,170 bytes): The EIATTR serialization builder that prepares `.nv.info` section content from the collected EIATTR attribute records. This function walks the internal EIATTR record list (`elfw+392`) and serializes each record into the TLV binary format documented in [.nv.info Metadata](../elf/nv-info.md). It handles both global `.nv.info` (for module-scoped attributes) and per-function `.nv.info.<name>` sections (for per-kernel attributes keyed by symbol index via the format-0x04 indexed payload).
+3. **Calls `sub_44C030`** (10,170 bytes): The callgraph closure pass. This function walks `elfw+408` (the callgraph node array), not the EIATTR record list. It runs three operations: (a) an alt-call resolution loop that matches each `-3` alt_call entry's name-token against every address-taken (`+50 == 1`) node's interned name at `+4` and records the resolved edge via `sub_4644C0` -- see [Dead Code Elimination](../linker/dead-code-elimination.md#alt-call-resolution-pass-sub_44c030-phase-1); (b) a DFS over the augmented graph that uses bytes `+48`/`+49` for visited/on-stack tracking, emits `"recursion at function %d"` on back edges, and seeds the entry kernel's transitive-callee set; (c) a sweep of `elfw+392` for `$`-prefixed compiler-emitted name records that must be reachable from the root kernel, validated through a temporary hashset built by `sub_465020`. Diagnostic 0x24 (`sub_450970`) fires for unreachable `$`-references when a single root kernel is known.
 
 4. **For callgraph-enabled ELFs** (`byte elfw+84`):
    - Calls `sub_44D200` (8,545 bytes) to create the `.nv.callgraph` section (type `0x70000001`, alignment 4, entry size 8) via `sub_441AC0`.
@@ -290,7 +290,7 @@ The stack size computation follows the callgraph: `sub_450C50` walks each entry'
 
 The `.nv.info` section is populated in two phases:
 
-1. **Pre-finalization** (`sub_44C030`): Serializes the EIATTR record list (`elfw+392`) into binary TLV format. Each record is written as a 4-byte header (format + attr_code + size) followed by the payload. Global attributes go into the module-level `.nv.info` section; per-function attributes go into `.nv.info.<funcname>` sections with `sh_link` pointing to the function's symbol table entry.
+1. **Pre-finalization callgraph closure** (`sub_44C030`): Resolves `-3` alt_call entries against address-taken nodes by matching name-tokens, runs DFS reachability from each candidate root, and validates that compiler-emitted `$`-prefixed symbols (read off `elfw+392`) are reachable from the chosen root kernel. This pass augments the callgraph in place; the actual binary TLV emission for `.nv.info` happens later when [`sub_445000` walks the EIATTR record list during finalization](../elf/nv-info.md). The earlier wiki revisions attributed TLV serialization to `sub_44C030` -- that was a misreading of the decompilation. See [Dead Code Elimination](../linker/dead-code-elimination.md#alt-call-resolution-pass-sub_44c030-phase-1).
 
 2. **During compute_entry_properties** (`sub_451D80`): New EIATTR records are created via `sub_450B70` for computed properties that did not exist in the input. This includes barrier-count migration from section flags, callgraph-propagated register counts, and inherited MAXNTID/CTAIDZ attributes. These records are appended to the existing `.nv.info` attribute list.
 
@@ -659,7 +659,7 @@ Textures, surfaces, and samplers are only printed if non-zero. The function list
 | `sub_450ED0` | 15,956 B | propagate_register_counts | Register count + barrier count propagation through callgraph |
 | `sub_46ADC0` | 11,515 B | emit_resolved_relocations | `.nv.resolvedrela` section generation |
 | `sub_4478F0` | 15,098 B | debug_section_finalize | Debug information section finalization |
-| `sub_44C030` | 10,170 B | eiattr_serialization | Serializes EIATTR records to `.nv.info` section content |
+| `sub_44C030` | 10,170 B | callgraph_closure | Alt-call resolution (`-3` name -> address-taken `+4`) + DFS reachability + `$`-prefix root-reach validation |
 | `sub_44D200` | 8,545 B | create_callgraph_section | Creates `.nv.callgraph` section (type `0x70000001`) |
 | `sub_43D2A0` | 5,530 B | dump_verbose_stats | `--verbose` per-function register/memory stats |
 | `sub_459640` | 16,109 B | reloc_vtable_create | Per-arch relocation handler vtable |

@@ -551,6 +551,24 @@ The callgraph vector at `ctx+408` holds one node per function. Each node is 64 b
      +50    address_taken         u8     nonzero if a fn-pointer reloc observed
 ```
 
+### Alt-Call Resolution Pass (`sub_44C030` Phase 1)
+
+Before liveness propagation runs, `sub_44C030` performs an O(N x M x K) resolution pass that ties `-3` alt_call records to their concrete address-taken targets. The structure is three nested loops over the callgraph at `ctx+408`:
+
+```
+for src in callgraph[1 .. node_count]:                       # outer: each potential caller
+    head = *(src + 8)                                         # alt_call_list head built by sub_44BAA0
+    for entry in linked-list(head, next=entry[0]):            # walk -3 entries hung off src
+        name_off = *(u32*)(entry + 8)                         # name-string offset stored by -3 builder
+        for tgt in callgraph[1 .. node_count]:               # inner: every node
+            if *(u8*)(tgt + 50) == 1 and *(u32*)(tgt + 4) == name_off:
+                sub_4644C0(tgt.name_id, src + 4)              # record resolved edge at src
+```
+
+The match key is the interned string-table offset, not a section or symbol index, which is why `sub_44BA60` (the `-2` builder) deliberately stores the name offset at `entry+4` and stamps `address_taken=1` at `entry+50` -- those two fields are exactly what this loop consumes. A node with `+50 == 0` is invisible to the matcher even if its `+4` happens to coincide, so only symbols the front end marked as having their address taken can ever resolve an alt call. Before entering the loop, `sub_44C030` seeds `entry+24 := entry+16` on every node, snapshotting the head of the direct-call list so the subsequent reachability walk can extend the resolved edges without disturbing the original `callee_list`.
+
+The remainder of `sub_44C030` is a DFS over the augmented graph: bytes `+48` (visited) and `+49` (on-stack) flag each node; an `on-stack` hit prints `recursion at function %d` when verbose, and any reachable node has its name index registered in the entry's reachable-set via `sub_4644C0`. A final block walks `elfw+392` looking for entries whose interned name begins with `$` (compiler-emitted markers) and feeds them through a temporary hashset (`sub_465020`/`sub_465720`/`sub_4655C0`) to validate that every `$`-prefixed referent is reachable from the discovered root kernel; unreachable references raise diagnostic 0x24 via `sub_450970`.
+
 For our four functions the post-merge callgraph looks like this (callee edges on the left, caller edges in brackets):
 
 ```
