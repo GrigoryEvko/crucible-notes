@@ -34,7 +34,7 @@ The remainder of this page uses Path B addresses (the `0x12xxxxx` range) as the 
 | `0x126A000`--`0x126BFFF` | Volatile detection, alignment queries | `sub_126A420` (IsVolatileAddress) |
 | `0x1273000`--`0x1275FFF` | Function attribute emission | `sub_12735D0` (EmitFunctionAttrs), `sub_1273F90` (AttributeReader) |
 | `0x127A000`--`0x127CFFF` | Type translation helpers | `sub_127A030` (GetLLVMType), `sub_127B390` (GetSMVersion), `sub_127B420` (IsAddressOfExpr), `sub_127B550` (FatalDiag) |
-| `0x127D000`--`0x127FFFF` | Constants, alloca creation, bool emission | `sub_127D8B0` (EmitConstExpr), `sub_127FC40` (CreateAlloca), `sub_127FEC0` (EmitBoolExpr) |
+| `0x127D000`--`0x127FFFF` | Constants, alloca creation, bool emission | `sub_127D8B0` (EmitConstExpr), `sub_127FC40` (CreateAlloca), `sub_127FEC0` (bool-conversion helper) |
 | `0x1280000`--`0x1285FFF` | Bitfield access, member loads, inline asm | `sub_1282050` (EmitBitfieldStore), `sub_1284570` (EmitBitfieldLoad), `sub_1285290` (EmitAsmCall) |
 | `0x1286000`--`0x128FFFF` | L-value codegen, binary ops, expression dispatch | `sub_1286D80` (EmitAddressOf), `sub_128A450` (EmitCast), `sub_128D0F0` (EmitExpr), `sub_128F9F0` (EmitBinaryArithCmp) |
 | `0x1290000`--`0x129AFFF` | Control flow helpers, inline asm, printf lowering | `sub_1290AF0` (SetInsertPoint), `sub_1292420` (EmitInlineAsm), `sub_12992B0` (LowerPrintfToVprintf) |

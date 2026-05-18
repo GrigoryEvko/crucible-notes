@@ -245,7 +245,7 @@ Intrinsic parameter validators at `sub_6BDB60`--`sub_6BF910` enforce type, sub-o
 
 ## Post-Scheduling Statistics
 
-Eight SM-variant statistics printers at `sub_ABBA50`--`sub_ABEB50` (7,603 bytes each, spaced 0x700 apart) generate `"# [...] "` comments with comprehensive post-codegen metrics: instruction counts, register usage, spill/refill bytes, estimated latency and occupancy, per-functional-unit instruction estimates, MMA counts, and throughput figures. The per-unit instruction counter `sub_ABF590` (17 KB) uses SSE2 operations for batch updates.
+Eight SM-variant statistics printers at `sub_ABBA50`--`sub_ABEB50` (7,603 bytes each, spaced 0x700 apart) generate `"# [...] "` comments with comprehensive post-codegen metrics: instruction counts, register usage, spill/refill bytes, estimated latency and occupancy, per-functional-unit instruction estimates, MMA counts, and throughput figures. The per-unit instruction counter `sub_ABF590` (17 KB) inlines large struct copies as `_mm_loadu_si128` runs (55 16-byte loads in the decompilation) when bulk-copying its per-functional-unit count tables.
 
 ## Operand Legalization
 

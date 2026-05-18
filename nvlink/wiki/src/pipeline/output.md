@@ -211,12 +211,13 @@ The main serialization loop iterates sections 4 through `e_shnum - 1` (skipping 
 
 2. **NOBITS / empty check**: Sections of type `SHT_NOBITS` (8) or NVIDIA no-data types selected by the `is_nobits` bitmask (base `0x70000007`, mask `0x400D` -- `SHT_CUDA_GLOBAL`, `SHT_CUDA_LOCAL`, `SHT_CUDA_SHARED`, `SHT_CUDA_SHARED_RESERVED`; see [`is_nobits`](../elf/program-headers.md#first-pass-compute-segment-extents)) are skipped entirely -- no data bytes emitted, so they contribute to `sh_size` and (when in the code segment) to `p_memsz` but not to `p_filesz` or to the running file cursor. The same bitmask drives the segment-extent first pass in `sub_45BAA0`.
 
-3. **Data fragment traversal**: For sections with data, the content is stored as a linked list of data fragments (rooted at `sec+72`). Each fragment node has:
-   - `node+0`: next pointer
-   - `node+8`: pointer to a fragment descriptor
-   - `descriptor+0`: data pointer
-   - `descriptor+8`: file offset within the section
-   - `descriptor+24`: fragment size
+3. **Data fragment traversal**: For sections with data, the content is stored as a singly-linked list of 16-byte chunk cells rooted at `sec+72`. Each cell has:
+   - `cell+0`: pointer to the next cell (NULL terminates the list)
+   - `cell+8`: pointer to a 32-byte fragment descriptor
+   - `descriptor+0`: data pointer (raw bytes handed to `sub_45B6D0`)
+   - `descriptor+8`: in-section offset (compared against the running per-section cursor, *not* a file offset)
+   - `descriptor+16`: reserved / unused by the writer
+   - `descriptor+24`: fragment size in bytes
 
    The function walks this list, emitting inter-fragment padding when the fragment's offset exceeds the running position, then writing the fragment data:
 

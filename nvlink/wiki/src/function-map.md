@@ -138,10 +138,14 @@ Functions with the highest cross-reference count in the binary. These form the b
 
 | Address | Decompiled | Proposed Name | Size | Confidence | Description |
 |---------|------------|---------------|------|------------|-------------|
-| `0x45C920` | `sub_45C920` | write_elf_to_file | small | HIGH | Wrapper calling `sub_45BF00` to serialize ELF to file. |
-| `0x45C950` | `sub_45C950` | write_elf_to_memory | small | HIGH | Wrapper calling `sub_45BF00` to serialize ELF to buffer. |
-| `0x45BF00` | `sub_45BF00` | write_elf_to_buffer | 13.3KB | HIGH | Serializes ELF header, program headers, section headers, section data. Validates sizes. |
-| `0x45BAA0` | `sub_45BAA0` | write_elf_section | small | HIGH | Writes individual section data to output buffer at computed offset. |
+| `0x45C920` | `sub_45C920` | write_elf_to_file | small | HIGH | Wrapper invoked from `main` after `fopen(out, "wb")`: builds a mode-3 writer via `sub_45B950`, runs `sub_45BF00`, tears down via `sub_45B6A0`. |
+| `0x45C950` | `sub_45C950` | write_elf_to_memory | small | HIGH | Mercury-path wrapper: builds a mode-4 writer via `sub_45BA30`, runs `sub_45BF00`, returns buffer for FNLZR. |
+| `0x45BF00` | `sub_45BF00` | serialize_elf | 13.3KB | HIGH | Generic ELF image serializer. Writes header, shstrtab/strtab, padding, per-section data by walking each section's chunk list at `+72` (cell `{next, desc_ptr}`, desc `{data, sec_offset, _, size}`), section headers, optional phdrs. Validates sizes ("section size mismatch", "Negative size encountered"). |
+| `0x45B6D0` | `sub_45B6D0` | elf_write | small | HIGH | Polymorphic 5-mode write primitive (`fwrite` / `_IO_putc` / `sub_44FC10` vector append / `memcpy` cursor advance / callback at writer+8). All bytes emitted by `sub_45BF00` flow through here. |
+| `0x45B950` | `sub_45B950` | make_file_writer | small | HIGH | Mode-3 writer factory used by `sub_45C920`. |
+| `0x45BA30` | `sub_45BA30` | make_buffer_writer | small | HIGH | Mode-4 writer factory used by `sub_45C950`. |
+| `0x45B6A0` | `sub_45B6A0` | destroy_writer | small | HIGH | Calls writer cleanup_fn at `+24` (if set), then frees the 40-byte writer context. |
+| `0x45BAA0` | `sub_45BAA0` | write_program_headers | small | HIGH | Final phase of `sub_45BF00` for ET_EXEC ELFs: builds the program header table on the stack and emits it via a single `sub_45B6D0` call. |
 
 > **Details**: [Pipeline Output](pipeline/output.md), [ELF Writer](structs/elf-writer.md)
 
@@ -313,9 +317,10 @@ The "MercExpand" instruction expansion pass -- NVIDIA's custom ISel/lowering for
 |---------|------------|---------------|------|------------|-------------|
 | `0x4438F0` | `sub_4438F0` | **elfw_create** | 14.8KB | HIGH | Creates ELF wrapper with initial sections. (Also listed under Input Processing.) |
 | `0x445000` | `sub_445000` | **finalize_elf** | 56KB | VERY HIGH | Final relocation application and ELF finalization. (Also listed under Finalize Phase.) |
-| `0x45BF00` | `sub_45BF00` | write_elf_to_buffer | 13.3KB | HIGH | Serializes ELF header, program headers, section headers, section data. Validates sizes. |
-| `0x45C920` | `sub_45C920` | write_elf_to_file | small | HIGH | Wrapper calling `sub_45BF00` to serialize ELF to file. |
-| `0x45C950` | `sub_45C950` | write_elf_to_memory | small | HIGH | Wrapper calling `sub_45BF00` to serialize ELF to buffer. |
+| `0x45BF00` | `sub_45BF00` | serialize_elf | 13.3KB | HIGH | Generic ELF image serializer; walks each section's chunk list at `+72` and flushes bytes through `sub_45B6D0`. Validates sizes. |
+| `0x45C920` | `sub_45C920` | write_elf_to_file | small | HIGH | Driver invoked from `main`: `sub_45B950` (mode-3 writer) -> `sub_45BF00` -> `sub_45B6A0`. |
+| `0x45C950` | `sub_45C950` | write_elf_to_memory | small | HIGH | Mercury driver: `sub_45BA30` (mode-4 writer) -> `sub_45BF00`; output buffer fed to FNLZR. |
+| `0x45B6D0` | `sub_45B6D0` | elf_write | small | HIGH | Polymorphic 5-mode write primitive; every serialized byte passes through here. |
 | `0x448E70` | `sub_448E70` | elfw_section_table_build | 14.6KB | MEDIUM | Rebuilds section header table, computes offsets/sizes for final layout. |
 
 > **Details**: [Pipeline Output](pipeline/output.md), [ELF Serialization](elf/serialization.md), [ELF Writer](structs/elf-writer.md)
@@ -677,8 +682,12 @@ Quick reference sorted by address for binary navigation. All addresses verified 
 0x450ED0  sub_450ED0  propagate_register_counts
 0x451D80  sub_451D80  compute_entry_properties
 0x459640  sub_459640  reloc_vtable_create
-0x45BAA0  sub_45BAA0  write_elf_section
-0x45BF00  sub_45BF00  write_elf_to_buffer
+0x45B6A0  sub_45B6A0  destroy_writer
+0x45B6D0  sub_45B6D0  elf_write
+0x45B950  sub_45B950  make_file_writer
+0x45BA30  sub_45BA30  make_buffer_writer
+0x45BAA0  sub_45BAA0  write_program_headers
+0x45BF00  sub_45BF00  serialize_elf
 0x45C920  sub_45C920  write_elf_to_file
 0x45C950  sub_45C950  write_elf_to_memory
 0x45CAC0  sub_45CAC0  oom_handler

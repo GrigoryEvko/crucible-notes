@@ -907,7 +907,7 @@ The resource model `sub_A08A00` is called three times per instruction by `sub_8C
 - **Mode 2**: operand release costs (freed resources when an operand reaches last-use)
 - **Mode 3**: combined instruction + BB-level impact (aggregate pressure)
 
-SSE intrinsics (`_mm_add_epi32`, `_mm_loadu_si128`) are used throughout for vectorized resource accumulation and copying.
+The 10-DWORD resource vectors are copied via `_mm_loadu_si128` and accumulated with `_mm_add_epi32` in `sub_8C67A0` (one occurrence each); `sub_A08A00` itself contains no SSE intrinsics — all arithmetic on the resource vector lives in the caller.
 
 ## Register Pressure Tracking
 
@@ -1316,7 +1316,7 @@ Backend C is a complete reimplementation of the list scheduling algorithm using 
 | **Core scheduler** | `sub_1902B70` (19 KB) -- RBT-based list scheduling |
 | **Solution evaluator** | `sub_1904B70` (26 KB) -- constraint check + commit |
 | **Constraint validator** | `sub_19043F0` (10 KB) -- feasibility testing |
-| **Pressure cost model** | `sub_18F3CB0` (16 KB) -- SIMD register pressure |
+| **Pressure cost model** | `sub_18F3CB0` (16 KB) -- register-pressure cost model |
 | **Recursive cost propagation** | `sub_18FFD70` (23 KB) -- call-graph-aware scoring |
 | **Dependency update** | `sub_1902100` (15 KB) -- post-scheduling DAG update |
 | **RBT insert** | `sub_18FD370` -- balanced insertion with 3-key comparison |
@@ -1572,7 +1572,7 @@ This propagation allows scheduling decisions in callee functions to influence ca
 | Ready list structure | Sorted singly-linked list | Binary search tree | Red-black tree |
 | Insertion complexity | O(N) per instruction | O(log N) | O(log N) |
 | Scheduling passes | 3 (ReduceReg / ILP / DynBatch) | 2 (Forward / Backward) | 2 (Pre / Post) |
-| Pressure tracking | Bitvector + popcount | Float slope per register | SIMD bitmap + cost model |
+| Pressure tracking | Bitvector + popcount | Float slope per register | Bitmap + scalar cost model |
 | Weight configuration | Knobs 769--805 (integer) | Options 7200/7560 (double) | Vtable dispatch |
 | Score type | Integer (packed bits) | Double (weighted sum) | Double (accumulated) |
 | Solution search | Greedy (single pass) | Forward + backward | Evaluate + commit |
@@ -1597,7 +1597,7 @@ This propagation allows scheduling decisions in callee functions to influence ca
 | `sub_1904B70` | 26 KB | RBTSolutionEvaluator -- constraint check, score threshold, hash commit | HIGH |
 | `sub_19043F0` | 10 KB | RBTConstraintValidator -- mode 5/6 feasibility | HIGH |
 | `sub_19038E0` | 15 KB | RBTInitialEvaluation -- per-block constraint bootstrapping | MEDIUM |
-| `sub_18F3CB0` | 16 KB | RBTPressureCostModel -- SIMD register pressure computation | HIGH |
+| `sub_18F3CB0` | 16 KB | RBTPressureCostModel -- register-pressure cost model | HIGH |
 | `sub_18FFD70` | 23 KB | RBTRecursiveCostPropagation -- call-graph-aware scoring | HIGH |
 | `sub_1902100` | 15 KB | RBTDependencyUpdate -- post-scheduling DAG maintenance | HIGH |
 | `sub_18FD370` | -- | RBTreeInsert -- 3-key balanced insertion + fix-up | HIGH |

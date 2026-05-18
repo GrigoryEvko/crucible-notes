@@ -535,7 +535,7 @@ The fat-point allocator (`sub_957160`) uses two 512-DWORD (2048-byte) arrays per
 | Primary (`v12[512]`) | Per-physical-register interference count |
 | Secondary (`v225[512]`) | Tie-breaking cost metric |
 
-Both are zeroed with SSE2 vectorized `_mm_store_si128` loops at the start of each round. For each VR being allocated, the pressure builder (`sub_957020`) walks the VR's constraint list and increments the corresponding physical register slots. The threshold (knob 684, default 50) filters out congested slots.
+Both are zeroed with 16-byte `OWORD` stores at the start of each round (compiled from SSE-width zero writes in `sub_957160`, which also uses `_mm_add_epi32` / `_mm_shuffle_epi32` for vectorized count accumulation). For each VR being allocated, the pressure builder (`sub_957020`) walks the VR's constraint list and increments the corresponding physical register slots. The threshold (knob 684, default 50) filters out congested slots.
 
 ## ABI Register Reservations
 

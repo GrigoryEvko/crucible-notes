@@ -11,7 +11,7 @@ Two companion subsystems handle specialized expression domains: **bitfield codeg
 | **Bitfield load** | `sub_1284570` — `EmitBitfieldLoad` (12 args, extract sequence) |
 | **Constant expressions** | `sub_127D8B0` — `EmitConstExpr` (1273 lines, recursive) |
 | **Cast/conversion** | `sub_128A450` — `EmitCast` (669 lines, 11 LLVM opcodes) |
-| **Bool conversion** | `sub_127FEC0` — `EmitBoolExpr` (expr to `i1`) |
+| **Bool conversion** | `sub_127FEC0` — expression-to-`i1` helper |
 | **Literal emission** | `sub_127F650` — `EmitLiteral` (numeric/string constants) |
 
 ## Master Expression Dispatcher
@@ -82,7 +82,7 @@ When the outer kind is `0x01` (operation), the byte at `expr+0x38` selects which
 | `0x19` | Parenthesized `(x)` | Tail-call optimization: `a2 = child`, restart loop | (no IR emitted) |
 | `0x1A` | `sizeof` / `alignof` | `EmitSizeofAlignof` (`sub_128FDE0`) | Constant integer |
 | `0x1C` | Bitwise NOT (`~x`) | `sub_15FB630` (xor with -1) | `%not = xor i32 %x, -1` |
-| `0x1D` | Logical NOT (`!x`) | Two-phase: `EmitBoolExpr` + `zext` | `%lnot = icmp eq ..., 0` / `%lnot.ext = zext i1 ... to i32` |
+| `0x1D` | Logical NOT (`!x`) | Two-phase: bool-conversion (`sub_127FEC0`) + `zext` | `%lnot = icmp eq ..., 0` / `%lnot.ext = zext i1 ... to i32` |
 | `0x1E` | Type-level const | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
 | `0x1F` | Type-level const | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
 | `0x23` | Pre-increment `++x` | `EmitIncDec` (`sub_128C390`): inc=1, isPostfix=0 | `%inc = add ...` / `%ptrincdec = getelementptr ...` |
@@ -102,18 +102,18 @@ When the outer kind is `0x01` (operation), the byte at `expr+0x38` selects which
 | `0x3F` | Rotate | `EmitShiftOrBitwise` (`sub_128F580`): triple `(5, 41, 37)` | `llvm.fshl` / `llvm.fshr` |
 | `0x41`-`0x46` | Type-level consts | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
 | `0x49` | Member access `.`/`->` | See [Member access](#member-access) | `getelementptr` + `load` (or bitfield path) |
-| `0x4A` | `+=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1288F60` | Load + add + store |
-| `0x4B` | `-=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1288370` | Load + sub + store |
-| `0x4C` | `*=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1288770` | Load + mul + store |
-| `0x4D` | `/=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1289D20` | Load + div + store |
-| `0x4E` | `%=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1288DC0` | Load + rem + store |
-| `0x4F` | `&=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1288B70` | Load + and + store |
-| `0x50` | `\|=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1289360` | Load + or + store |
-| `0x51` | `<<=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1288090` | Load + shl + store |
-| `0x52` | `>>=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1287F30` | Load + ashr/lshr + store |
-| `0x53` | `^=` | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_1288230` | Load + xor + store |
-| `0x54` | `,=` (rare) | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_128BE50` | Comma-compound |
-| `0x55` | `[]=` (subscript compound) | `EmitCompoundAssignWrapper` (`sub_12901D0`) + `sub_128B750` | GEP + R-M-W |
+| `0x4A` | `+=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288F60` | Load + add + store |
+| `0x4B` | `-=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288370` | Load + sub + store |
+| `0x4C` | `*=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288770` | Load + mul + store |
+| `0x4D` | `/=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1289D20` | Load + div + store |
+| `0x4E` | `%=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288DC0` | Load + rem + store |
+| `0x4F` | `&=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288B70` | Load + and + store |
+| `0x50` | `\|=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1289360` | Load + or + store |
+| `0x51` | `<<=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288090` | Load + shl + store |
+| `0x52` | `>>=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1287F30` | Load + ashr/lshr + store |
+| `0x53` | `^=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288230` | Load + xor + store |
+| `0x54` | `,=` (rare) | the compound-assign wrapper (`sub_12901D0`) + `sub_128BE50` | Comma-compound |
+| `0x55` | `[]=` (subscript compound) | the compound-assign wrapper (`sub_12901D0`) + `sub_128B750` | GEP + R-M-W |
 | `0x56` | Bitfield assign | See [Bitfield Codegen](#bitfield-codegen) | R-M-W sequence |
 | `0x57` | Logical AND `&&` | See [Logical AND](#logical-and-short-circuit) | `land.rhs`/`land.end` + PHI |
 | `0x58` | Logical OR `\|\|` | See [Logical OR](#logical-or-short-circuit) | `lor.rhs`/`lor.end` + PHI |
@@ -122,7 +122,7 @@ When the outer kind is `0x01` (operation), the byte at `expr+0x38` selects which
 | `0x5C`, `0x5E`, `0x5F` | Compound special | `EmitCompoundAssign` (`sub_1287ED0`) | Read-modify-write |
 | `0x67` | Ternary `?:` | See [Ternary operator](#ternary--conditional-operator) | `cond.true`/`cond.false`/`cond.end` + PHI |
 | `0x68` | Type-level const | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
-| `0x69` | Special const | `EmitSpecialConst` (`sub_1281200`) | Constant materialization |
+| `0x69` | Special const | Special-constant materializer (`sub_1281200`) | Constant materialization |
 | `0x6F` | Label address `&&label` | GCC extension: `sub_12A4D00` (lookup) + `sub_1285E30`(builder, label, 1) | `blockaddress(@fn, %label)` |
 | `0x70` | Label value | `sub_12A4D00` + `sub_12812E0`(builder, label, type) | Indirect goto target |
 | `0x71` | Computed goto `goto *p` | `sub_12A4D00` + `sub_1285E30`(builder, label, 0) | `indirectbr` |
@@ -145,11 +145,11 @@ All paths load the current value, compute the new value, store back, and return 
 
 #### Compound assignment wrapper mechanics
 
-`EmitCompoundAssignWrapper` (`sub_12901D0`) implements the common load-compute-store pattern for all compound assignment operators (`+=`, `-=`, etc.):
+The compound-assign wrapper (`sub_12901D0`) implements the common load-compute-store pattern for all compound assignment operators (`+=`, `-=`, etc.):
 
 ```c
 // sub_12901D0 pseudocode
-Value *EmitCompoundAssignWrapper(ctx, expr, impl_fn, flags) {
+Value *compound_assign_wrapper(ctx, expr, impl_fn, flags) {
     Value *addr = EmitAddressOf(ctx, expr->lhs);     // sub_1286D80
     Value *old_val = EmitLoadFromAddress(ctx, addr);  // sub_1287CD0
     Value *rhs_val = EmitExpr(ctx, expr->rhs);        // sub_128D0F0 (recursive)
@@ -262,7 +262,7 @@ land.end:
 The construction sequence:
 
 1. Create blocks `land.end` and `land.rhs` via `CreateBasicBlock` (`sub_12A4D50`).
-2. Emit LHS as boolean via `EmitBoolExpr` (`sub_127FEC0`).
+2. Emit LHS as boolean via the bool-conversion helper (`sub_127FEC0`).
 3. Conditional branch: `br i1 %lhs, label %land.rhs, label %land.end`.
 4. Switch insertion point to `%land.rhs`.
 5. Emit RHS as boolean.
@@ -324,7 +324,7 @@ The function creates three blocks (`cond.true`, `cond.false`, `cond.end`), recor
 %lnot.ext = zext i1 %lnot to i32      ; Phase 2: extend back to declared type
 ```
 
-Phase 1 calls `EmitBoolExpr` which produces the `icmp eq ... 0` comparison. Phase 2 zero-extends the `i1` back to the expression's target type. If the value is already a compile-time constant, the constant folder handles it directly.
+Phase 1 calls the bool-conversion helper (`sub_127FEC0`) which produces the `icmp eq ... 0` comparison. Phase 2 zero-extends the `i1` back to the expression's target type. If the value is already a compile-time constant, the constant folder handles it directly.
 
 **Bitwise NOT** (opcode `0x1C`) produces `xor` with all-ones:
 
@@ -340,7 +340,7 @@ Opcode `0x05`. Before emitting a load for unary `*`, the function checks if the 
 
 ## Bitfield Codegen
 
-Bitfield loads and stores are lowered to shift/mask/or sequences by two dedicated functions. A path selector `CanUseFastBitfieldPath` (`sub_127F680`) determines whether the bitfield fits within a single naturally-aligned container element (fast path) or must be processed byte-by-byte (general path).
+Bitfield loads and stores are lowered to shift/mask/or sequences by two dedicated functions. A bitfield-fast-path selector (`sub_127F680`) determines whether the bitfield fits within a single naturally-aligned container element (fast path) or must be processed byte-by-byte (general path).
 
 ### EDG bitfield descriptor
 
@@ -819,7 +819,7 @@ if (debugLoc) {
 | `sub_127D8B0` | `EmitConstExpr` | Compile-time constant expressions |
 | `sub_1282050` | `EmitBitfieldStore` | Bitfield write (R-M-W) |
 | `sub_1284570` | `EmitBitfieldLoad` | Bitfield read (extract) |
-| `sub_127FEC0` | `EmitBoolExpr` | Expression to `i1` conversion |
+| `sub_127FEC0` | bool-conversion helper | Expression to `i1` conversion |
 | `sub_127F650` | `EmitLiteral` | Numeric/string literal emission |
 | `sub_1286D80` | `EmitAddressOf` | Compute pointer to lvalue |
 | `sub_1287CD0` | `EmitLoadFromAddress` | Load via computed address |
@@ -829,12 +829,12 @@ if (debugLoc) {
 | `sub_128F580` | `EmitShiftOrBitwise` | Shift and bitwise operators |
 | `sub_128B750` | `EmitSubscriptOp` | Array subscript (GEP + load) |
 | `sub_128FDE0` | `EmitSizeofAlignof` | `sizeof` and `alignof` operators |
-| `sub_12901D0` | `EmitCompoundAssignWrapper` | Wrapper dispatching to per-operator impl |
+| `sub_12901D0` | compound-assign wrapper | Wrapper dispatching to per-operator impl |
 | `sub_1296570` | `EmitCall` | Function call emission |
 | `sub_12897E0` | `EmitBitfieldStore` (inner) | Actual bitfield store logic |
 | `sub_127A030` | `GetLLVMType` | EDG type to LLVM type translation |
-| `sub_127F680` | `CanUseFastBitfieldPath` | Bitfield path selector |
-| `sub_128A3C0` | `EmitIntrinsicConvCall` | `__nv_*_rz` intrinsic call helper |
+| `sub_127F680` | bitfield-fast-path selector | Bitfield path selector |
+| `sub_128A3C0` | `__nv_*_rz` intrinsic-call helper | `__nv_*_rz` intrinsic call helper |
 | `sub_12A4D50` | `CreateBasicBlock` | Create named BB |
 | `sub_12A4DB0` | `EmitCondBranch` | Conditional branch emission |
 | `sub_12909B0` | `EmitUnconditionalBranch` | Unconditional branch emission |
@@ -850,7 +850,7 @@ if (debugLoc) {
 | `sub_1289860` | `ComputeCompositeMemberAddr` | Multi-level GEP for nested fields |
 | `sub_12843D0` | `EmitComplexMemberLoad` | Nested struct/union field load |
 | `sub_127FF60` | `EmitStmtExpr` | Statement expression body emission |
-| `sub_1281200` | `EmitSpecialConst` | Special constant materialization |
+| `sub_1281200` | special-constant materializer | Special constant materialization |
 | `sub_1281220` | `EmitInitExpr` | Init expression emission |
 | `sub_1285E30` | `EmitBlockAddress` | `blockaddress` / indirect branch |
 | `sub_1286000` | `EmitVaArg` | `va_arg` lowering |
