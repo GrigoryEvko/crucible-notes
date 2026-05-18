@@ -18,8 +18,8 @@ The pass is enabled by `--optimize-data-layout` and disabled by `--no-opt`. Thes
 | **64-bit hash function** | `sub_44E1C0` at `0x44E1C0` (shift-xor: `(k>>11) ^ (k>>8) ^ (k>>5)`) |
 | **64-bit xor-fold hash** | `sub_44E150` at `0x44E150` (custom hash: `lo32 ^ hi32`) |
 | **Hash table create** | `sub_4489C0` at `0x4489C0` (allocate 112-byte header, set mode tag) |
-| **CLI enable** | `--optimize-data-layout` (stored in `byte_2A5F2A8`, maps to elfw+83) |
-| **CLI disable** | `--no-opt` (stored in `byte_2A5F2A9`, maps to elfw+90) |
+| **CLI enable** | `--optimize-data-layout` (stored in `byte_2A5F2A8`, OR'd as `merge_flags` bit 14, decoded into `elfw+91`) |
+| **CLI disable** | `--no-opt` (stored in `byte_2A5F2A9`, OR'd as `merge_flags` bit 5, decoded into `elfw+90`) |
 | **Verbose gate** | `elfw+64, bit 1` (debug/verbose flags) |
 
 ## Position in the Pipeline
@@ -104,7 +104,7 @@ for each symbol node in source_section->symbol_list:
         default:  section_data_copy(...)  // no dedup, just copy
 ```
 
-The reachability check `sub_43FB70` determines whether a constant symbol is referenced by any live entry-point function. It checks the EWP mode flag (`elfw+80`) and the merge-constants flag (`elfw+97`). If neither is set, it queries entry-function reachability via the callgraph: for global symbols (binding bit 4 set), it checks against the function set at `elfw+536`; for local symbols, against `elfw+544`. Both queries use `sub_43EB40`, a string-based set membership test on the symbol name.
+The reachability check `sub_43FB70` determines whether a constant symbol is referenced by any live entry-point function. It checks the debug flag (`elfw+80`) and the `kernels-used / variables-used filter-active` flag (`elfw+97`). When neither is set, the call returns the debug flag itself (typically 1, meaning "no DCE -- keep the symbol"). When the filter is active, it queries entry-function reachability via the per-symbol-class used-set: for global symbols (binding bit 4 set), it checks against the function set at `elfw+536`; for local symbols, against `elfw+544`. Both queries use `sub_43EB40`, a string-based set membership test on the symbol name. The `+97` flag is raised by `sub_43F360` / `sub_43F950` (`--kernels-used` / `--variables-used` loaders) and by the auxiliary loaders `sub_43F510` / `sub_43F040` / `sub_43F020`; it is *not* the merge-constants flag.
 
 ### 32-Bit Value Deduplication
 
@@ -511,7 +511,8 @@ These checks are critical for correctness: when multiple translation units contr
 ### Phase 9c: Merge-Constants Mode
 
 ```
-Trigger: elfw+97 (merge-constants flag) is set
+Trigger: elfw+97 (used-set filter active -- set by --kernels-used / --variables-used loaders) is set
+         AND elfw+80 (debug_flag) is clear
 Target section: TEMP_MERGED_CONSTANTS
 Arguments: a13=1, a14=NULL (no reloc list), a15=NULL (no overlap set)
 ```
@@ -838,7 +839,7 @@ The flags propagate to the elfw object during construction:
 | Global | Elfw offset | Effect |
 |---|---|---|
 | `byte_2A5F2A9` | `+90` | no-opt: disables shared memory optimization, constant dedup, forces simple linear layout |
-| `byte_2A5F2A8` | `+83` | optimize-data-layout: forces the "optimize space" pre-pass and OCG constant optimization even when sections are within the bank size limit |
+| `byte_2A5F2A8` | `+91` | optimize-data-layout: forces the "optimize space" pre-pass and OCG constant optimization even when sections are within the bank size limit |
 
 When `--no-opt` is active, the layout phase:
 - Uses simple linear layout for shared memory (skips interference graph optimization).
@@ -847,7 +848,7 @@ When `--no-opt` is active, the layout phase:
 - Produces the assertion `"should only reach here with no opt"` if a zero-alignment symbol is encountered.
 
 When `--optimize-data-layout` is active, the layout phase:
-- Forces the "optimize space" pre-pass (`elfw+83` check at line 1757).
+- Forces the "optimize space" pre-pass (`elfw+91` check at line 1757).
 - Forces OCG constant optimization (`elfw+91` OR size-exceeded check).
 - Enables dead constant elimination via `sub_43FB70` reachability.
 

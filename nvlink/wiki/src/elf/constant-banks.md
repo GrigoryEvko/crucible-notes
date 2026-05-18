@@ -453,7 +453,7 @@ The optimization is orchestrated by the layout phase (`sub_439830`) and executed
 
 ### Phase 9c: Standard Constant Merging
 
-Triggered when the `merge-constants` flag (`elfw+97`) is set. Creates a `TEMP_MERGED_CONSTANTS` temporary section and calls the dedup engine with `copy_all=1`, meaning all constants are copied (even unreferenced ones). This mode deduplicates the standard constant bank (`.nv.constant0`) contents:
+Triggered when the used-set filter is active (`elfw+97`, raised by the `--kernels-used` / `--variables-used` loaders) AND `elfw+80` (debug_flag) is clear. Creates a `TEMP_MERGED_CONSTANTS` temporary section and calls the dedup engine with `copy_all=1`, meaning all constants are copied (even unreferenced ones). This mode deduplicates the standard constant bank (`.nv.constant0`) contents:
 
 ```
 Verbose: "layout and merge section %s"

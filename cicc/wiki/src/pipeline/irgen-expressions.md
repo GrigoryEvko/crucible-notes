@@ -61,7 +61,7 @@ The byte at `expr+0x18` selects the top-level expression category:
 |---|---|---|
 | `0x01` | Operation expression | Inner switch on `expr+0x38` (40+ C operators) |
 | `0x02` | Literal constant | `EmitLiteral` (`sub_127F650`) |
-| `0x03` | Member/field access | `EmitAddressOf` + `EmitLoadFromAddress` |
+| `0x03` | Lvalue-to-rvalue (non-decl-ref form) | `EmitAddressOf` (`sub_1286D80`) + `EmitLoadFromAddress` (`sub_1287CD0`) — structurally identical to `0x14`; member access (`.`/`->`) is inner opcode `0x49`, not this case |
 | `0x11` | Compound-statement expression | `sub_1296570` — statement-list walker, scope push, value of last expression-statement |
 | `0x13` | Init expression | `EmitInitExpr` (`sub_1281220`) |
 | `0x14` | Declaration reference | `EmitAddressOf` + `EmitLoadFromAddress` |

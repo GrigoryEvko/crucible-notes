@@ -87,21 +87,23 @@ The `merge_flags` bitfield `v44` is assembled from multiple option flags:
 
 | Bit | Source | Meaning |
 |---|---|---|
-| 0 | always | base (0x40401) |
-| 1 | `byte_2A5F2CE` | force-rela |
-| 2 | `byte_2A5F2CD` | preserve-relocs |
-| 3 | `byte_2A5F2CC` | reserve-null-pointer |
-| 4 | `byte_2A5F2AA` | allow-undefined-globals |
-| 5 | `byte_2A5F2A9` | disable-smem-reservation |
-| 6 | `byte_2A5F299` | optimize-data-layout |
-| 14 | `byte_2A5F2A8` | syscall-const-offset |
-| 8 | `byte_2A5F289` | extra-warnings |
-| 9 | `byte_2A5F226` | device-stack-protector |
-| 11 | `byte_2A5F216` or `byte_2A5F215` | use-host-info or ignore-host-info |
-| 12 | `byte_2A5F210` | enable-extended-smem |
-| 15 | `byte_2A5F224` | sm > 72 flag |
-| 20 | `byte_2A5F222` | mercury mode |
+| 0 (and 10, 18) | base | always set on the normal link path -- initial value `0x40401` (corresponds to `elfw+84` "callgraph enabled") |
+| 1 | `byte_2A5F2CE` | preserve-relocs (corresponds to `elfw+85`) |
+| 2 | `byte_2A5F2CD` | reserve-null-pointer (derived effective flag; corresponds to `elfw+87`) |
+| 3 | `byte_2A5F2CC` | allow-undefined-globals (corresponds to `elfw+88`) |
+| 4 | `byte_2A5F2AA` | force-rela (corresponds to `elfw+89`, also OR'd with mercury/forced-relocatable) |
+| 5 | `byte_2A5F2A9` | no-opt (corresponds to `elfw+90`) |
+| 6 | `byte_2A5F299` | suppress-stack-size-warning (corresponds to `elfw+92`) |
+| 8 | `byte_2A5F289` | extra-warnings (corresponds to `elfw+93`) |
+| 9 | `byte_2A5F226` | device-stack-protector (corresponds to `elfw+86`) |
+| 11 | `byte_2A5F216` or `byte_2A5F215` | use-host-info or ignore-host-info (corresponds to `elfw+96`) |
+| 12 | `byte_2A5F210` | enable-extended-smem (the *complement* is stored at `elfw+99` as `std_smem_mode`) |
+| 14 | `byte_2A5F2A8` | optimize-data-layout (corresponds to `elfw+91`) |
+| 15 | `byte_2A5F224` | sm > 72 flag (corresponds to `elfw+101` BYTE = `is_device_elf` gate) |
+| 20 | `byte_2A5F222` | mercury mode (also forces relocatable path) |
 | 25 | `byte_2A5F1FD` | fdcmpt |
+
+Bit attribution is recovered from `main_0x409800.c` lines 338--389 -- the consecutive `if (cli_byte) v41 |= bit;` assembly. Earlier wiki revisions reused a stale table that swapped the bit-1/bit-2/bit-4 trio (preserve-relocs / reserve-null / force-rela) and conflated bit 5/6/14 (no-opt / suppress-stack-warn / optimize-data-layout); the wrong mappings propagated through `structs/elf-writer.md`, `structs/linker-context.md`, and `linker/data-layout-opt.md` and have been corrected.
 
 After ELF creation, Mercury mode sets `elfw[104] = 2`; non-Mercury sets it to 0 or 1 based on `byte_2A5F225`. Additional setup:
 

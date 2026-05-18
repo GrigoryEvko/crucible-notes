@@ -244,7 +244,7 @@ This phase handles the CUDA constant memory banks (`.nv.constant0`, `.nv.constan
 
 **Sub-path 9b: Non-OCG constant sections.** If the constant bank type matches the standard constant type (vtable offset 144 -- typically `.nv.constant0`), the section is laid out using `sub_4325A0`, with an optional `syscall-const-offset` value from `elfw+504`. Verbose: `"constant entry %s:"`.
 
-**Sub-path 9c: Constant section merging.** If the `merge-constants` flag (`elfw+97`) is set, the function creates a `TEMP_MERGED_CONSTANTS` temporary section, calls `sub_4339A0` (the constant deduplication engine, 13,199 bytes) to merge all constant data into it, then replaces the original section's contents. This function identifies duplicate 32-bit and 64-bit values and aliases symbols. Verbose: `"layout and merge section %s"`, `"found duplicate value 0x%x, alias %s to %s"`.
+**Sub-path 9c: Constant section merging.** If the used-set filter is active (`elfw+97` set by `--kernels-used` / `--variables-used`) and `elfw+80` (debug_flag) is clear, the function creates a `TEMP_MERGED_CONSTANTS` temporary section, calls `sub_4339A0` (the constant deduplication engine, 13,199 bytes) to merge all constant data into it, then replaces the original section's contents. This function identifies duplicate 32-bit and 64-bit values and aliases symbols. Verbose: `"layout and merge section %s"`, `"found duplicate value 0x%x, alias %s to %s"`.
 
 **Sub-path 9d: OCG constant optimization.** If any OCG constant section exceeds the architecture's constant bank size limit (vtable offset 32), or if the `force-ocg-optimization` flag is set, the function enters the OCG constant optimization path:
 

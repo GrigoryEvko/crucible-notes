@@ -61,21 +61,21 @@ Individual boolean flags are decomposed from `merge_flags` during construction. 
 ```
 Offset  Size  Field                   merge_flags bit    Description
 ------  ----  -----                   ---------------    -----------
- 84      1    preserve_relocs         bit 0              --preserve-relocs
- 85      1    force_rela              bit 1              --force-rela
- 86      1    reserve_null            bit 9              --reserve-null-pointer
- 87      1    disable_smem_res        bit 2              --disable-smem-reservation
- 88      1    allow_undef_globals     bit 3              --allow-undefined-globals
- 89      1    is_relocatable          bit 4 (or forced)  Relocatable link mode
- 90      1    optimize_data           bit 5              --optimize-data-layout
- 91      1    syscall_const_off       bit 14             --syscall-const-offset
- 92      1    no_opt                  bit 6              --no-opt
- 93      1    extra_flag              bit 8              (reserved)
- 94      1    extended_smem           (conditional)      sm_minor > 0x45 && bit 7
- 96      1    dump_callgraph          bit 11             --dump-callgraph
- 99      1    no_warn_dead_code       ~bit 12            !(bit 12)
-100      1    verbose_keep            bit 13             --verbose-keep
-101      1    is_device_elf           (a9 & 0x8000)      Device ELF mode (vs host)
+ 84      1    callgraph_enabled       bit 0              Base bit (`0x40401`) -- always set on the normal path; gates root-kernel scan in sub_44DB00 and callgraph remap in sub_44CA40/sub_44CBC0
+ 85      1    preserve_relocs         bit 1              `--preserve-relocs` (CLI byte `byte_2A5F2CE`)
+ 86      1    stack_protector         bit 9              `--device-stack-protector` (CLI byte `byte_2A5F226`)
+ 87      1    reserve_null            bit 2              `--reserve-null-pointer` effective flag (CLI byte `byte_2A5F2CD`)
+ 88      1    allow_undef_globals     bit 3              `--allow-undefined-globals` (CLI byte `byte_2A5F2CC`)
+ 89      1    is_rela_mode            bit 4 (or forced)  `--force-rela` (CLI byte `byte_2A5F2AA`); also forced to 1 when relocatable parameter `a10` is set or `merge_flags & 0x180000` (mercury / forced-relocatable)
+ 90      1    no_opt                  bit 5              `--no-opt` (CLI byte `byte_2A5F2A9`)
+ 91      1    optimize_data           bit 14             `--optimize-data-layout` (CLI byte `byte_2A5F2A8`)
+ 92      1    suppress_stack_warn     bit 6              `--suppress-stack-size-warning` (CLI byte `byte_2A5F299`)
+ 93      1    extra_warnings          bit 8              extra-warnings flag (CLI byte `byte_2A5F289`)
+ 94      1    extended_smem_sm_gate   (conditional)      sm_minor > 0x45 && bit 7 (sm-gated bit, distinct from the `--enable-extended-smem` CLI bit which lives at bit 12)
+ 96      1    host_info_mode          bit 11             `--use-host-info` or `--ignore-host-info` (CLI bytes `byte_2A5F216` / `byte_2A5F215`)
+ 99      1    std_smem_mode           ~bit 12            Complement of bit 12 -- `1` when `--enable-extended-smem` is *not* set (standard banked-smem layout). Gates `sub_439640` rebase in `sub_445000`. (Corrected: previously mislabeled `no_debug_info` / `no_warn_dead_code`.)
+100      1    flag_bit13              bit 13             merge_flags bit 13 (no confirmed CLI source observed in `main`'s bit assembly)
+101      1    is_device_elf           (a9 & 0x8000)      Bit 15 of merge_flags. Set when `byte_2A5F224` (sm > 72 detector) is true; the constructor uses this bit as the device-ELF gate (OSABI = 0x41, tkinfo/cuinfo notes initialized).
 ```
 
 Tkinfo and cuinfo buffers are initialized by `sub_43E490`:

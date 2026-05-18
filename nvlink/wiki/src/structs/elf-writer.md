@@ -78,22 +78,22 @@ For the full header encoding, see [Device ELF Format -- ELF Identification](../e
 | +72 | 4 | `sm_version` | `a4` | SM major version, also at `elfw+18` as `uint32` |
 | +76 | 4 | `flags_raw` | `a9` | Full merge_flags value |
 | +80 | 1 | `debug_flag` | `a6` | Whether debug sections should be emitted |
-| +83 | 1 | `has_section_names` | computed | Nonzero when `elfw+84` (shstrtab) has entries |
-| +84 | 1 | `preserve_relocs` | `a9 & 1` | `--preserve-relocs` flag |
-| +85 | 1 | `force_rela` | `(a9 & 2) != 0` | `--force-rela` flag |
-| +86 | 1 | `allow_undef_globals` | `(a9 & 0x200) != 0` | `--allow-undefined-globals` |
-| +87 | 1 | `no_opt` | `(a9 & 4) != 0` | `--no-opt` flag |
-| +88 | 1 | `optimize_data` | `(a9 & 8) != 0` | `--optimize-data-layout` |
-| +89 | 1 | `mercury_or_bit4` | `(a9 >> 4) & 1 \|\| mercury` | Mercury mode or specific flag |
-| +90 | 1 | `emit_ptx` | `(a9 & 0x20) != 0` | `--emit-ptx` flag |
-| +91 | 1 | `flag_0x4000` | `(a9 & 0x4000) != 0` | Reserved flag |
-| +92 | 1 | `flag_0x40` | `(a9 & 0x40) != 0` | Reserved flag |
-| +93 | 1 | `flag_0x100` | `BYTE1(a9) & 1` | Bits 8 flag |
-| +94 | 1 | `extended_smem` | `(a5 > 0x45) & ((a9 >> 7) & 1)` | Extended shared memory: sm_minor > 69 AND bit 7 |
-| +96 | 1 | `flag_0x800` | `(a9 & 0x800) != 0` | Reserved flag |
+| +83 | 1 | `has_section_names` | computed | Nonzero when `*((_WORD *)v17 + 42) != 0` (shstrtab section index recorded) |
+| +84 | 1 | `callgraph_enabled` | `a9 & 1` | Base bit 0 of `merge_flags` (`0x40401`). Set on the normal link path and read as the "callgraph built / callgraph operations enabled" gate by `sub_44DB00`, `sub_44C030`, `sub_44CA40`, `sub_44CBC0`. *(Earlier wiki revisions called this `preserve_relocs` -- that label belongs at `+85`.)* |
+| +85 | 1 | `preserve_relocs` | `(a9 & 2) != 0` | `--preserve-relocs` (CLI byte `byte_2A5F2CE`, merge_flags bit 1). Gates the secondary `.nv.resolvedrela` emission loop at `elfw+384`. |
+| +86 | 1 | `stack_protector` | `(a9 & 0x200) != 0` | `--device-stack-protector` (CLI byte `byte_2A5F226`, bit 9). |
+| +87 | 1 | `reserve_null` | `(a9 & 4) != 0` | `--reserve-null-pointer` effective flag (CLI byte `byte_2A5F2CD`, bit 2). |
+| +88 | 1 | `allow_undef_globals` | `(a9 & 8) != 0` | `--allow-undefined-globals` (CLI byte `byte_2A5F2CC`, bit 3). |
+| +89 | 1 | `is_rela_mode` | `(a9 >> 4) & 1 \|\| forced` | `--force-rela` (CLI byte `byte_2A5F2AA`, bit 4); also forced to 1 when the relocatable parameter `a10` is set or `a9 & 0x180000` (mercury / forced-relocatable path). Read in `sub_441AC0` to choose `.rela<sec>` vs `.rel<sec>` naming. |
+| +90 | 1 | `no_opt` | `(a9 & 0x20) != 0` | `--no-opt` (CLI byte `byte_2A5F2A9`, bit 5). Forces simple linear smem layout via `sub_4325A0` and disables constant deduplication. |
+| +91 | 1 | `optimize_data_layout` | `(a9 & 0x4000) != 0` | `--optimize-data-layout` (CLI byte `byte_2A5F2A8`, bit 14). Forces the data-layout pre-pass and OCG constant optimization. |
+| +92 | 1 | `suppress_stack_warn` | `(a9 & 0x40) != 0` | `--suppress-stack-size-warning` (CLI byte `byte_2A5F299`, bit 6). |
+| +93 | 1 | `extra_warnings` | `BYTE1(a9) & 1` | merge_flags bit 8 (CLI byte `byte_2A5F289`, extra-warnings flag). |
+| +94 | 1 | `extended_smem_sm_gate` | `(a5 > 0x45) & ((a9 >> 7) & 1)` | Sm-gated bit 7: requires `sm_minor > 0x45` AND merge_flags bit 7. *Distinct* from the `--enable-extended-smem` flag (which lives at merge_flags bit 12 / `byte_2A5F210`); this byte is a sm-detection gate, not a CLI alias. |
+| +96 | 1 | `host_info_mode` | `(a9 & 0x800) != 0` | merge_flags bit 11: set when `byte_2A5F216` (use-host-info) OR `byte_2A5F215` (ignore-host-info) is true. |
 | +99 | 1 | `std_smem_mode` | `((a9 >> 12) ^ 1) & 1` | Inverted bit 12 of `merge_flags`. `a9` bit 12 is set when `--enable-extended-smem` is passed (entry.md "merge_flags" table, sourced from `byte_2A5F210`); the byte at +99 is therefore the **complement** -- it is 1 when the linker is in **standard shared-memory mode** (i.e. `--enable-extended-smem` was NOT given) and 0 when extended smem is active. Used as a gate by `sub_445000` at line 347 to enable the shared-memory rebasing pass `sub_439640`. |
-| +100 | 1 | `flag_0x2000` | `(a9 & 0x2000) != 0` | Reserved flag |
-| +101 | 1 | `is_device_elf` | `(a9 & 0x8000) != 0` | Whether this is a device ELF (sets OSABI 0x41) |
+| +100 | 1 | `flag_bit13` | `(a9 & 0x2000) != 0` | merge_flags bit 13 (no confirmed CLI source observed in `main`'s bit assembly). |
+| +101 | 1 | `is_device_elf` | `(a9 & 0x8000) != 0` | Bit 15 of merge_flags, set when `byte_2A5F224` (sm > 72 detector) is true. Used by the constructor as the device-ELF gate: triggers OSABI 0x41, allocates tkinfo/cuinfo note buffers, calls `sub_45AC50` for the arch vtable. *(Note: also overwritten at byte word-offset +202 as `symtab_section_idx`; the BYTE at +101 and the WORD at +202 are separate fields -- WORD index 101 = bytes 202..203.)* |
 
 #### Dynamic Array Regions (offsets 108--172)
 

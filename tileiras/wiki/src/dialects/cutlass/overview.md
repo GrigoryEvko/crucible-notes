@@ -6,7 +6,7 @@
 
 ## Abstract
 
-The `cutlass` dialect packs thirty-eight ops across four operation families plus a small MODS sidecar nested under tile_scheduler. It models the structure CUTLASS C++ templates normally generate: asynchronous producer/consumer pipelines, persistent tile schedulers, ordered sequence barriers, and block-striped shared-memory movement. The dialect constructor at `sub_1761D90` registers all thirty-eight ops in a single thunk-chain, then installs two op-level verifiers and the post-verify arrive-count builder.
+The `cutlass` dialect packs thirty-eight ops across five operation families. Four cover the large-scale orchestration concerns (pipeline, tile_scheduler, seq_bar, block_striped); the fifth is the small MODS sidecar whose ops live under the `cutlass.tile_scheduler.mods_*` prefix but register and verify as their own family. It models the structure CUTLASS C++ templates normally generate: asynchronous producer/consumer pipelines, persistent tile schedulers, ordered sequence barriers, and block-striped shared-memory movement. The dialect constructor at `sub_1761D90` registers all thirty-eight ops in a single thunk-chain, then installs two op-level verifiers and the post-verify arrive-count builder.
 
 `cutlass` sits above `cute_nvgpu` and `nv_tileas`. `cute_nvgpu` provides hardware atoms — MMA, TMA. `nv_tileas` provides operational async scheduling. `cutlass` connects the two at a larger granularity: it names which agents participate in the pipeline, how tiles are assigned to CTAs, how producers and consumers synchronise, and how persistent kernels advance through their work.
 
