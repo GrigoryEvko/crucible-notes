@@ -121,7 +121,7 @@ The parser does not seed one scheduler-state structure but two, and the pair is 
 
 | Structure | Offset | Shape | Consumer |
 |---|---|---|---|
-| Disjoint-set forest | `state + 112` | Parent-pointer DSU, `find` with path compression, `union` by rank | Placement arms — fuse and retry consult it to keep group leaders consistent |
+| Disjoint-set forest | `state + 112` | Parent-pointer DSU, `find` with path compression, directional `union(child=gid, parent=leader_gid)` — no rank, no size heuristic | Placement arms — fuse and retry consult it to keep group leaders consistent |
 | Pending-set | `state + 392` | SwissTable, control-byte sentinels `0x80` / `0xFE` / `0xFF`, fmix64 group hash | Cost-based generator's gate G1 |
 
 The DSU records the must-fuse equivalence classes implied by `leader_gid`. Every op whose `leader_gid` differs from its `gid` is unioned with its leader, so the resulting forest's roots are the actual scheduling groups. Placement arms walk the DSU through `find` whenever they need to know whether two candidate ops belong to the same group; the gate-G4 leader-consistency check in [Serial vs Cost-Based Generators — G4: Leader-Group DSU Consistency](serial-vs-cost-based-generators.md#g4-leader-group-dsu-consistency) is the highest-traffic consumer.

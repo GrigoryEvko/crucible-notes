@@ -312,7 +312,7 @@ Walks the entire function's instruction list from `codeObj+272` to the sentinel 
 
 Reads the sequence table at `codeObj->field_99`. If the table count is zero, skips directly to phase 5. Otherwise iterates each 4-byte entry (index into the BB array). For each sequence:
 
-**3a. Resolve sequence extent.** Loads the start BB from `bbArray[seqTable[entry_index]]`. Follows the BB's first instruction's first register operand through `codeObj->field_37` (block index array) to find the containing region pointer `v205`. Resolves the end sentinel `v210`: if the terminal instruction is opcode 97 (`branch`), follows its target field at `instr+24`; otherwise follows the fall-through successor chain.
+**3a. Resolve sequence extent.** Loads the start BB from `bbArray[seqTable[entry_index]]`. Follows the BB's first instruction's first register operand through `codeObj->field_37` (block index array) to find the containing region pointer `v205`. Resolves the end sentinel `v210`: if the terminal instruction is opcode 97 (`STG` in the 322-entry ROT13 SASS name table; used here as the Ori-IR control-flow boundary marker -- the actual SASS `BRA` is opcode 67), follows its target field at `instr+24`; otherwise follows the fall-through successor chain.
 
 **3b. Per-BB instruction walk.** The inner `do`/`while` loop (line 384--1112) walks each instruction in the current BB via `instr = *(QWORD*)(instr+8)`. Per-BB state variables:
 

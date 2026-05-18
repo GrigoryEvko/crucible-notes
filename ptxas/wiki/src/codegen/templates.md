@@ -58,7 +58,11 @@ void DDIV_Handler(template_state *a1, instruction *a2) {
     LegalizeOperand(ctx, a2, 1, ...);         // sub_13A6A10
 
     if (a1->use_template_call) {
-        // Template path: emit BRA-to-template (opcode 168)
+        // Template path: emit BRA-to-template via EmitExtended slot 168
+        // (Slot 168 in sub_934630's internal opcode-to-emitter table is the
+        // BRA-to-named-section variant; this is NOT index 168 in the 322-entry
+        // ROT13 SASS name table, where index 168 = FOOTPRINT. The actual SASS
+        // BRA is opcode 67.)
         EmitExtended(ctx, 168, 0x13, ...);    // sub_934630
     } else {
         // Inline path: emit individual FP ops directly
@@ -114,7 +118,11 @@ void DDIV_Coordinator(template_state *a1, ..., int template_id) {
     DDIV_Part5(a1, template_id, scratch, vreg_array, ...);  // sub_170AE80
     DDIV_Part6(a1, template_id, scratch, vreg_array, ...);  // sub_170CBD0
 
-    // Emit convergence barriers (opcode 0x5D) between code sections
+    // Emit convergence barriers (Ori-IR opcode 0x5D = 93; in the 322-entry
+    // ROT13 SASS name table this is OUT_FINAL/BHG_SVANY, but in the Ori IR
+    // opcode 93 is repurposed as a control-flow terminator/convergence
+    // barrier marker -- see ir/cfg.md for the (opcode & 0xFFFFFFFD == 0x5D)
+    // test that matches both 93 and 95).
     for (each section boundary in static_table) {
         EmitBarrier(ctx, 0x5D, pred_reg, ...);  // sub_92E1B0
     }

@@ -285,7 +285,7 @@ Twenty-three distinct action codes appear in the standard table. The bitmask tes
 | 6 | low 16 bits of 32-bit absolute | `R_CUDA_ABS32_LO_26`, `R_CUDA_32_LO` |
 | 7 | high 16 bits of 32-bit absolute (`aux = 0x20`) | `R_CUDA_ABS32_HI_26`, `R_CUDA_32_HI` |
 | 8 | texture/sampler/surface slot | `R_CUDA_TEX_SLOT`, `R_CUDA_TEX_SLOT9_49` |
-| 9 | bindless / split-field / constant-bank reference | `R_CUDA_TEX_BINDLESSOFF13_32`, `R_CUDA_CONST_FIELD19_28` |
+| 9 | `SHIFTED_2` (`(S + A) >> 2`); reused as the leading slot for split-field bindless / constant-bank / wide-immediate types (`R_CUDA_TEX_BINDLESSOFF13_32`, `R_CUDA_CONST_FIELD19_28`, `R_CUDA_ABS55_16_34`). See [R_CUDA Relocations § Action Types](../linker/r-cuda-relocations.md#action-types) for the engine semantics. | `R_CUDA_TEX_BINDLESSOFF13_32`, `R_CUDA_CONST_FIELD19_28` |
 | 10, 11 | continuation pieces of a split-field reference | seen only in slot1/slot2 of `R_CUDA_CONST_FIELD*` |
 | 12--14 | function-descriptor 32-bit (full / LO / HI) | `R_CUDA_FUNC_DESC32_23`, `..._LO_23`, `..._HI_23` |
 | 15 | function-descriptor 32/64 raw | `R_CUDA_FUNC_DESC_32`, `R_CUDA_FUNC_DESC_64` |
@@ -294,7 +294,7 @@ Twenty-three distinct action codes appear in the standard table. The bitmask tes
 | 18 | YIELD opcode rewrite | `R_CUDA_YIELD_OPCODE9_0` |
 | 19 | YIELD-clear-predicate rewrite | `R_CUDA_YIELD_CLEAR_PRED4_87` |
 | 20 | zero-fill (`UNUSED_CLEAR`) | `R_CUDA_UNUSED_CLEAR32`, `R_CUDA_UNUSED_CLEAR64` |
-| 21 | second piece of `R_CUDA_ABS55_16_34` / `R_CUDA_ABS56_16_34` | -- |
+| 21 (`0x15`) | `piece_cont` -- second piece of a split-field type, pairs with a leading action-9 slot | `R_CUDA_ABS55_16_34`, `R_CUDA_ABS56_16_34` |
 | 22--29 | 8-bit data patches at byte offsets 0, 8, ..., 56 | `R_CUDA_8_0 .. R_CUDA_8_56` |
 | 30--37 | 8-bit global patches | `R_CUDA_G8_0 .. R_CUDA_G8_56` |
 | 38--45 | 8-bit func-desc patches | `R_CUDA_FUNC_DESC_8_0 .. R_CUDA_FUNC_DESC_8_56` |

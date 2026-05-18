@@ -27,7 +27,7 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | je\_malloc\_conf\_init (199 config strings) | `0x12FCDB0` | 15.4KB | VERY HIGH |
 | computeKnownBits / SimplifyDemandedBits | `0x11A7600` | 125KB | VERY HIGH |
 | EDG lgenfe\_main (282-case CLI switch, 737 config macros, EDG 6.6) | `0x617BD0` | 123KB | VERY HIGH |
-| NVVM Builtin Resolution table (post-opt, 770 entries) | `0x126A910` | 123KB | VERY HIGH |
+| NVVM Builtin Resolution table (post-opt, 770 entries) | `0x126A910` | 34KB | VERY HIGH |
 | NVVMPassOptions init (4,786 lines, 221 slots in 4,512-byte struct) | `0x12D6300` | 125KB | VERY HIGH |
 | PassOptionRegistry::lookupOption (hash table at registry+120) | `0x12D6170` | — | HIGH |
 | PassOptionRegistry::getBoolOption (triple: '1'/true, 't'/true) | `0x12D6240` | — | HIGH |
@@ -206,7 +206,7 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | Overload resolution main (43 SM-arch refs — highest) | `0x607B60` | 32KB | HIGH |
 | Expression parsing/semantic ("Parsing Lambda", \_\_nv\_parent) | `0x609F00` | 58KB | HIGH |
 | Declaration processing (9 SM version refs) | `0x5FE9C0` | 28KB | HIGH |
-| Class hierarchy analysis (vtable layout, diamond inheritance) | `0x5F94C0` | 24KB | HIGH |
+| Class hierarchy analysis (vtable layout, diamond inheritance) | `0x5F94C0` | 4KB | HIGH |
 | Conversion function lookup (33 sub\_8D\* calls) | `0x5F4F20` | 21KB | HIGH |
 | Operator overload resolution | `0x5F2920` | 23KB | HIGH |
 | Declaration elaboration (type-spec strings "A;P", "O;F", "I", "B") | `0x84EC30` | 71KB | HIGH |
@@ -264,7 +264,7 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | Class layout emitter (\_\_vptr, \_\_v\_, \_\_b\_ prefixes) | `0x7E3EE0` | 7KB | HIGH |
 | Virtual base offset calculator | `0x7E57B0` | 9KB | HIGH |
 | Virtual call lowering (node\_kind==103) | `0x7E88E0` | 11KB | HIGH |
-| Class definition emitter (vtable, nested types, friends) | `0x7E9AF0` | 13KB | HIGH |
+| Class definition emitter (vtable, nested types, friends) | `0x7E9AF0` | 3KB | HIGH |
 | Statement emission mega-function (largest in class layout zone) | `0x7EE560` | 45KB | HIGH |
 | Class member emission (\_\_cxa\_atexit, \_\_cxa\_vec\_cctor) | `0x7FEC50` | 48KB | HIGH |
 | Function definition emission (ctor initializers, default args) | `0x7FCF80` | 17KB | HIGH |
@@ -306,14 +306,14 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | ctor\_267\_0: MemorySpaceOpt options (18 strings) | `0x4F54D0` | 10KB | HIGH |
 | ctor\_277\_0: Rematerialization options (39 strings, remat-for-occ) | `0x4F7BE0` | 7KB | HIGH |
 | ctor\_335\_0: MASTER codegen pass configuration (88 strings) | `0x507310` | 29KB | VERY HIGH |
-| ctor\_356\_0: NVPTX SM enum + PTX version table (45 entries, sm\_20–sm\_121f) | `0x50C890` | 16KB | VERY HIGH |
+| ctor\_356\_0: NVPTX SM enum + PTX version table (45 entries, sm\_20–sm\_121f) | `0x50C890` | 8KB | VERY HIGH |
 | ctor\_358\_0: NVPTX pass enable/disable (43 strings, usedessa) | `0x50E8D0` | 21KB | HIGH |
 | ctor\_361\_0: NV Remat Machine Block options (30 strings, nv-remat-\*) | `0x5108E0` | 8KB | HIGH |
 | ctor\_376\_0: LTO/bitcode/plugin options | `0x512DF0` | 39KB | HIGH |
 | ctor\_377\_0: PassBuilder pipeline configuration (77 strings) | `0x516190` | 44KB | HIGH |
 | ctor\_388\_0: Optimizer pipeline enables (enable-ml-inliner, etc.) | `0x51B710` | 15KB | HIGH |
 | ctor\_600\_0: CodeGen/TargetMachine mega-options (118 strings) | `0x57F210` | 59KB | HIGH |
-| ctor\_605: SM processor table (45 entries, sm\_20–sm\_121f, PTX version map) | `0x584510` | 3KB | VERY HIGH |
+| ctor\_605: SM processor table (45 entries, sm\_20–sm\_121f, PTX version map) | `0x584510` | 1KB | VERY HIGH |
 | ctor\_609\_0: NVPTX backend options (25+ opts, usedessa, enable-nvvm-peephole) | `0x585D30` | 37KB | HIGH |
 | ctor\_637\_0: disable-\*Pass flag registration (48 flags) | `0x593380` | — | HIGH |
 | ctor\_701: MISSING data blob (likely instruction encoding tables) | `0x5A8850` | ~70KB | MEDIUM |

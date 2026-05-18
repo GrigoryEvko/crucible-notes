@@ -225,7 +225,7 @@ The function also enforces the mutual exclusion rule (warning 7006): `"ABI allow
 
 Registers not reserved by the ABI and not used for parameters or return values may be classified as **scratch** (callee-clobbered). The ABI engine tracks scratch classification per register and validates it against coroutine semantics. At SUSPEND points in coroutine functions, a register marked as scratch must not also appear in the preserved set. Violation triggers warning 7011.
 
-The scratch/preserved classification feeds into the register allocator's spill decisions. Registers marked as scratch across a call boundary must be saved by the caller; preserved registers must be saved by the callee. The spill codegen (`sub_94F150`) adjusts per-vreg spill costs at every CALL instruction (opcode 97) based on this classification:
+The scratch/preserved classification feeds into the register allocator's spill decisions. Registers marked as scratch across a call boundary must be saved by the caller; preserved registers must be saved by the callee. The spill codegen (`sub_94F150`) adjusts per-vreg spill costs at every CALL instruction (opcode 97 used here as an internal CALL-like marker; `STG` in the 322-entry ROT13 SASS name table -- the actual SASS `CALL` is opcode 71) based on this classification:
 
 ```
 function adjust_spill_cost_for_abi(alloc, func, instr):
@@ -302,7 +302,7 @@ Lowers high-level Ori opcodes into ABI-conforming SASS sequences. Entry is gated
 | 185 | ATOMG | `+1105 & 0x20` | `sub_19D5DD0` |
 | 183 | (special) | `+1107 & 0x02` or `+1105 & 0x02` | `sub_7E2670` reclassification to mode 2/3 |
 
-The instruction stream is scanned linearly. For CALL instructions (opcode 109), two sub-phases execute in sequence:
+The instruction stream is scanned linearly. For CALL instructions (Ori opcode 109 in this pass's local opcode-to-handler table -- note this is the table-row index from the lowering table above, not the 322-entry ROT13 SASS name table where index 109 is `CCTLL` and index 71 is the actual SASS `CALL`), two sub-phases execute in sequence:
 
 #### CALL lowering: parameter register fixup (`sub_19D5680`)
 

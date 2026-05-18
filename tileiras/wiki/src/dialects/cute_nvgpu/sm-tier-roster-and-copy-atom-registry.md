@@ -237,7 +237,7 @@ The element-type check happens before the residency check. The `{0}` slot prints
 - `"expects smem_desc_view for operand B, but gets B: {0}."`
 - `"expects memref for operand D, but gets D: {0}."`
 
-UMMA B is always SMEM-descriptor; A is either register-resident (RMEM `memref`) or SMEM-descriptor; D is register-resident. The verifier emits the first mismatched operand and stops.
+UMMA B is always SMEM-descriptor; A is either an RMEM `memref` or an SMEM-descriptor (note: per `verify_sm100_umma` an RMEM A is rejected — A must be either an SMEM descriptor or a TMEM `memref` — see [MMA Atoms SM70-120 — SM100 and SM103 UMMA](mma-atoms-sm70-120.md#sm100-and-sm103-umma)); D is a `memref` in the tensor-memory address space (`result.residency == TENSOR_MEMORY`) — the verifier diagnostic spells the SSA type "memref", but the residency contract pins the accumulator to TMEM, not register memory. The verifier emits the first mismatched operand and stops.
 
 ### Layout composability (UMMA family)
 
