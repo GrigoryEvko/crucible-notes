@@ -77,7 +77,7 @@ The dispatcher builds a 160-byte configuration struct (`v28[0..19]`) on the stac
 | Offset (qword index) | Field | Source |
 |---|---|---|
 | `v28[3]` bits 32..39 | Debug flag | `byte_2A5F310 != 0` (i.e. `-g` was passed) |
-| `v28[3]` bits 40..47 | Line info suppression | `byte_2A5F210 != 0` |
+| `v28[3]` bits 40..47 | Line info suppression | TODO: identify true byte for suppress_line_info -- previous wiki revisions cited `byte_2A5F210`, but `byte_2A5F210` is the `--disable-smem-reservation` CLI byte (feeds `merge_flags` bit 12 per `main:375-379`) and has no documented Mercury subsystem use |
 | `v28[3]` low dword | Optimization level | 4 (normal) or 5 (debug mode with `byte_2A5F2A9`) |
 | `v28[8]` low dword | Fallback opt level | 3 (when neither debug nor `byte_2A5F310`) |
 | `v28[13]` byte 0 | capmerc transform flag | 1 if Mercury mode (`byte_2A5F222`) |
@@ -1969,7 +1969,7 @@ These options can be injected via the `a6` option string parameter to `sub_4748F
 | `byte_2A5F222` | byte | is_mercury | 1 if sm > 99 |
 | `byte_2A5F225` | byte | is_sass_mode | 1 if sm > 89 |
 | `byte_2A5F310` | byte | debug_flag | 1 if `-g` was passed |
-| `byte_2A5F210` | byte | suppress_line_info | Line info suppression |
+| (TODO) | byte | suppress_line_info | TODO: identify true byte for suppress_line_info; `byte_2A5F210` was previously listed here but is the `--disable-smem-reservation` CLI byte that feeds `merge_flags` bit 12, not a Mercury-subsystem flag |
 | `byte_2A5F224` | byte | extended_debug | Extended debug info |
 | `byte_2A5F223` | byte | suppress_debug | Suppress debug info |
 | `byte_2A5F2A9` | byte | ofast_flag | Ofast compilation flag |

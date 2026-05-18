@@ -160,24 +160,26 @@ The constructor extracts individual flag bits from the `merge_flags` parameter (
 
 | Bit in `a9` | `elfw` offset | Meaning |
 |---|---|---|
-| `0x0001` (bit 0) | byte 84 | Debug info present |
-| `0x0002` (bit 1) | byte 85 | Extended debug |
-| `0x0004` (bit 2) | byte 87 | Preserve relocations |
-| `0x0008` (bit 3) | byte 88 | Reserve null pointer |
-| `0x0010` (bit 4) | byte 89 | Force RELA (or set if `a10` relocatable) |
-| `0x0020` (bit 5) | byte 90 | Optimize data layout |
-| `0x0040` (bit 6) | byte 92 | Extra warnings |
-| `0x0080` (bit 7) | byte 94 | Combined with `sm_minor > 0x45` check |
-| `0x0100` (bit 8) | byte 93 | Verbose keep |
-| `0x0200` (bit 9) | byte 86 | Allow undefined globals |
-| `0x0400` (bit 10) | -- | Allocate separate arena for ELF writer |
-| `0x0800` (bit 11) | byte 96 | Suppress debug info |
-| `0x1000` (bit 12) | byte 99 | Inverted: `(flags >> 12) ^ 1) & 1` (legacy mode) |
-| `0x2000` (bit 13) | byte 100 | Stack protector |
-| `0x4000` (bit 14) | byte 91 | Enable extended shared memory |
-| `0x8000` (bit 15) | byte 101 | Device ELF (vs host/32-bit) |
-| `0x70000` (bits 16--18) | dword at offset 68 | Link mode flags (stored as `a9 & 0x70000`) |
-| `0x80000` (bit 19) | dword at offset 76 | Relocatable flag (forced on when `a10` is set) |
+| `0x0001` (bit 0) | byte 84 | `callgraph_enabled` (always-set base bit of seed `0x40401`) |
+| `0x0002` (bit 1) | byte 85 | `preserve_relocs` -- `--preserve-relocs` (`byte_2A5F2CE`) |
+| `0x0004` (bit 2) | byte 87 | `reserve_null` -- reserve-null-pointer (`byte_2A5F2CD`) |
+| `0x0008` (bit 3) | byte 88 | `allow_undef_globals` -- `--allow-undefined-globals` (`byte_2A5F2CC`) |
+| `0x0010` (bit 4) | byte 89 | `force_rela` -- `--force-rela` (`byte_2A5F2AA`); also forced when `a10` (relocatable) or mercury path set |
+| `0x0020` (bit 5) | byte 90 | `no_opt` -- `--no-opt` (`byte_2A5F2A9`) |
+| `0x0040` (bit 6) | byte 92 | `suppress_stack_warn` -- `--suppress-stack-size-warning` (`byte_2A5F299`) |
+| `0x0080` (bit 7) | byte 94 | Sm-gated extended-smem detection: `(sm_minor > 0x45) & ((a9 >> 7) & 1)` -- *distinct* from the bit-25 `--enable-extended-smem` CLI option |
+| `0x0100` (bit 8) | byte 93 | `extra_warnings` -- `byte_2A5F289` (extra-warnings flag) |
+| `0x0200` (bit 9) | byte 86 | `stack_protector` (see [elf-writer.md](../structs/elf-writer.md#metadata-and-flags-offsets-64103) for the byte resolution -- producer is `byte_2A5F226` per `main:365`; the `--device-stack-protector` CLI byte `byte_2A5F1FE` is *not* the merge-flags producer) |
+| `0x0400` (bit 10) | -- | Private-arena seed (part of base value `0x40401`) -- allocates a dedicated "elfw memory space" arena |
+| `0x0800` (bit 11) | byte 96 | `host_info_mode` -- set when `byte_2A5F213` (`--use-host-info`) OR `byte_2A5F212` (`--ignore-host-info`) is true |
+| `0x1000` (bit 12) | byte 99 | `std_smem_mode` -- **inverted** `((a9 >> 12) ^ 1) & 1`. `a9` bit 12 is sourced from `byte_2A5F210` (`--disable-smem-reservation`); the stored byte is therefore 1 in the standard layout and 0 when the user passed `--disable-smem-reservation`. Read by `sub_445000:347` to gate `sub_439640` (shared-memory rebasing). |
+| `0x2000` (bit 13) | byte 100 | `flag_bit13` -- no confirmed CLI source observed in `main`'s bit assembly |
+| `0x4000` (bit 14) | byte 91 | `optimize_data_layout` -- `--optimize-data-layout` (`byte_2A5F2A8`) |
+| `0x8000` (bit 15) | byte 101 | `is_device_elf` -- triggers OSABI 0x41 path; sourced from `byte_2A5F224` (sm > 72 detector) |
+| `0x70000` (bits 16--18) | dword at offset 68 | `link_mode` / cached `e_flags` (stored as `a9 & 0x70000`) |
+| `0x80000` (bit 19) | dword at offset 76 | `relocatable_link` -- forced on when `a10` is set or `a9 & 0x180000` (mercury / forced-relocatable path) |
+| `0x100000` (bit 20) | -- | `mercury_forced_relocatable` -- `byte_2A5F222` (mercury mode); also forces relocatable path |
+| `0x2000000` (bit 25) | -- | `--enable-extended-smem` (`byte_2A5F1FD`) -- distinct CLI option from the bit-12 `--disable-smem-reservation`; raw in `elfw+76` only, no decomposed byte |
 
 ## The `elfw` Struct (672 bytes)
 

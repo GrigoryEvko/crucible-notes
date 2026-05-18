@@ -556,7 +556,7 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | `extra_warnings` at offset 93 (bit 8) | HIGH | `*((_BYTE *)v17 + 93) = BYTE1(v20) & 1` on line 253 |
 | `extended_smem_sm_gate` at offset 94 (bit 7, sm-gated) | HIGH | `*((_BYTE *)v17 + 94) = (a5 > 0x45u) & ((unsigned __int8)v20 >> 7)` on line 260 |
 | `host_info_mode` at offset 96 (bit 11, `0x800`) | HIGH | `*((_BYTE *)v17 + 96) = (v20 & 0x800) != 0` on line 259 |
-| `std_smem_mode` at offset 99 (inverse of bit 12 `--enable-extended-smem`) | HIGH | `*((_BYTE *)v17 + 99) = ((v20 >> 12) ^ 1) & 1` on line 251 |
+| `std_smem_mode` at offset 99 (inverse of bit 12 `--disable-smem-reservation`, `byte_2A5F210`) | HIGH | `*((_BYTE *)v17 + 99) = ((v20 >> 12) ^ 1) & 1` on line 251. Bit 12 is produced from `byte_2A5F210` per `main:375-379`; the stored byte is 1 in the standard layout and 0 when the user passed `--disable-smem-reservation`. (*Historical*: earlier wiki revisions misattributed bit 12 to `--enable-extended-smem`; that CLI option is a distinct flag at bit 25 / `byte_2A5F1FD`. Page line 76 prose already records the correct mapping.) |
 | `flag_bit13` at offset 100 = `(merge_flags & 0x2000) != 0` | HIGH | `*((_BYTE *)v17 + 100) = (v20 & 0x2000) != 0` on line 252 (overwrites earlier word-wide write) |
 | `is_device_elf` at offset 101 | HIGH | `*((_BYTE *)v17 + 101) = (a9 & 0x8000) != 0` on line 144 |
 | ~~`tkinfo_buffer` at offset 108~~ (labeling error) | LOW | `sub_43E490(v17 + 108, 1000)` initializes a 24-byte ELF note header (namesz, descsz, type=1000, "NVIDIA Corp"), not a 1000-byte buffer. Per line 539 `sub_433760(v17, cuinfo_idx, v17+108, 4, 32)`, offset 108 is tied to the cuinfo note, not tkinfo |

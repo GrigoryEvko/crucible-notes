@@ -81,7 +81,7 @@ For the full header encoding, see [Device ELF Format -- ELF Identification](../e
 | +83 | 1 | `has_section_names` | computed | Nonzero when `*((_WORD *)v17 + 42) != 0` (shstrtab section index recorded) |
 | +84 | 1 | `callgraph_enabled` | `a9 & 1` | Base bit 0 of `merge_flags` (`0x40401`). Set on the normal link path and read as the "callgraph built / callgraph operations enabled" gate by `sub_44DB00`, `sub_44C030`, `sub_44CA40`, `sub_44CBC0`. *(Earlier wiki revisions called this `preserve_relocs` -- that label belongs at `+85`.)* |
 | +85 | 1 | `preserve_relocs` | `(a9 & 2) != 0` | `--preserve-relocs` (CLI byte `byte_2A5F2CE`, merge_flags bit 1). Gates the secondary `.nv.resolvedrela` emission loop at `elfw+384`. |
-| +86 | 1 | `stack_protector` | `(a9 & 0x200) != 0` | `--device-stack-protector` (CLI byte `byte_2A5F226`, bit 9). |
+| +86 | 1 | `stack_protector` | `(a9 & 0x200) != 0` | merge_flags bit 9. The byte OR'd into bit 9 by `main:365` is `byte_2A5F226`. **Byte-resolution caveat**: `byte_2A5F226` is registered in `sub_427AE0:258` as `--suppress-debug-info` (it also drives the "no -g" conflict warning at `sub_427AE0:338`), and the *separately* registered `--device-stack-protector` CLI option writes into `byte_2A5F1FE` (`sub_427AE0:268`) which is read by `sub_429BA0:240` but never folded into `merge_flags`. The historical wiki label `stack_protector` reflects the consumer-side bit usage, not the CLI provenance; the byte producer for bit 9 is unambiguously `byte_2A5F226`. |
 | +87 | 1 | `reserve_null` | `(a9 & 4) != 0` | `--reserve-null-pointer` effective flag (CLI byte `byte_2A5F2CD`, bit 2). |
 | +88 | 1 | `allow_undef_globals` | `(a9 & 8) != 0` | `--allow-undefined-globals` (CLI byte `byte_2A5F2CC`, bit 3). |
 | +89 | 1 | `is_rela_mode` | `(a9 >> 4) & 1 \|\| forced` | `--force-rela` (CLI byte `byte_2A5F2AA`, bit 4); also forced to 1 when the relocatable parameter `a10` is set or `a9 & 0x180000` (mercury / forced-relocatable path). Read in `sub_441AC0` to choose `.rela<sec>` vs `.rel<sec>` naming. |
@@ -429,7 +429,7 @@ The `merge_flags` parameter (`a9`) is a 32-bit bitmask that controls the elfw's 
 | 6 | `0x40` | `suppress_stack_warn` | +92 | `--suppress-stack-size-warning` (`byte_2A5F299`) |
 | 7 | `0x80` | `extended_smem_sm_gate` | +94 | Gate for `sm_minor > 0x45` AND bit 7 (sm-detection gate, *not* the `--enable-extended-smem` CLI option) |
 | 8 | `0x100` | `extra_warnings` | +93 | `--extra-warnings` (`byte_2A5F289`) |
-| 9 | `0x200` | `stack_protector` | +86 | `--device-stack-protector` (`byte_2A5F1FE`) |
+| 9 | `0x200` | `stack_protector` | +86 | bit 9 producer is `byte_2A5F226` (`main:365`; registered as `--suppress-debug-info` per `sub_427AE0:258`). The `--device-stack-protector` CLI option (`byte_2A5F1FE`, `sub_427AE0:268`) is read by `sub_429BA0:240` and does **not** feed `merge_flags`. See the +86 row in [Metadata and Flags](#metadata-and-flags-offsets-64103) for the full resolution. |
 | 10 | `0x400` | `private_arena` | -- | Creates dedicated "elfw memory space" arena |
 | 11 | `0x800` | `host_info_mode` | +96 | `--use-host-info` (`byte_2A5F213`) OR `--ignore-host-info` (`byte_2A5F212`) |
 | 12 | `0x1000` | `disable_smem_reservation` (stored inverted at +99) | +99 | `byte+99 = ((a9 >> 12) ^ 1) & 1`. `a9` bit 12 is the `--disable-smem-reservation` option (`byte_2A5F210` per the [cli-options.md global map](../pipeline/cli-options.md#global-variable-map)); the stored byte is the inverse, asserting standard smem mode. Read by `sub_445000:347` to gate `sub_439640` (shared-memory variable rebasing). *(`--enable-extended-smem` is a different CLI option that maps to `byte_2A5F1FD` and feeds bit 25, not bit 12.)* |
@@ -442,6 +442,50 @@ The `merge_flags` parameter (`a9`) is a 32-bit bitmask that controls the elfw's 
 | 25 | `0x2000000` | `enable_extended_smem` | -- | `--enable-extended-smem` (`byte_2A5F1FD`); distinct CLI option from the bit-12 `--disable-smem-reservation` |
 
 When `mercury_flag` is true or bits 19-20 are set, the constructor sets the `mercury_reloc` bit (`a9 |= 0x80000`) in the internal flag word at `+76` and routes through the Mercury initialisation path (`sub_45AC50` arch state). `e_type` itself at `+16` is **not** rewritten by these gates -- it remains the value of the `elf_type` parameter passed in by the caller (set in `main` at line 391 from `(byte_2A5F1E8 == 0) + 1`). The Mercury `0xFF00` `e_type` only appears when the caller passes that value explicitly (e.g. intermediate Mercury serialisations); standard nvlink output is `ET_EXEC=2` or `ET_REL=1` regardless of Mercury flags.
+
+## Bit 12 / `std_smem_mode`: Consumer-Side Trace
+
+The byte at `elfw+99` (`std_smem_mode`, written as the **inverse** of `merge_flags` bit 12 -- see the [Metadata and Flags](#metadata-and-flags-offsets-64103) row for the producer-side derivation) is read by exactly two downstream sites. Both branches treat `+99 == 1` as "standard smem layout" and `+99 == 0` as "user passed `--disable-smem-reservation` (`byte_2A5F210`), so do not reserve smem". Confidence: HIGH (direct decompile cross-reference).
+
+### Reader 1: Shared-Memory Variable Rebasing (`sub_445000:347`)
+
+In `sub_445000_0x445000.c:340-349` the shared-memory finalisation pass guards a call to `sub_439640` with a two-clause predicate:
+
+```c
+v3 = *(_WORD *)(a1 + 16);            // e_type
+if ( v3 == 2 )                        // ET_EXEC only
+{
+    v227 = 0x80000000;
+    if ( *(_BYTE *)(a1 + 7) == 65 )   // OSABI == 0x41 (device ELF)
+        v227 = 1;
+    if ( (v227 & *(_DWORD *)(a1 + 48)) == 0   // e_flags relocatable bit clear
+       && *(_BYTE *)(a1 + 99) )               // std_smem_mode == 1
+        sub_439640(a1);
+}
+```
+
+`sub_439640` walks the linker's symbol list (`a1 + 256`) and rebases every shared-memory symbol's value by the device-side smem segment base produced by an arch-vtable callback at `*(_QWORD *)(a1 + 488) + 584`. The pass exists only for executable device ELFs that are *not* relocatable and where the standard smem layout was requested. When `--disable-smem-reservation` is set, `+99` is 0 and `sub_439640` is skipped -- symbol values remain at their input offsets, which is the behaviour the CLI flag advertises.
+
+### Reader 2: OSABI/std_smem Joint Check (`sub_451D80:2709`)
+
+`sub_451D80_0x451d80.c:2706-2711` reads the byte during a symbol-iteration loop that diagnoses cross-section references:
+
+```c
+v35 = *((_BYTE *)v34 + 1);                              // symbol's section OSABI
+v37 = v35 == 0 || v35 == 38;
+if ( !v37 && v35 == 65 && !*(_BYTE *)(a1 + 99) )        // OSABI=0x41 AND !std_smem_mode
+{
+    v48 = sub_442270(a1, v36);
+    ...
+    sub_467460(dword_2A5B8D0, *(_QWORD *)(v51 + 32));   // emit diagnostic via section name
+}
+```
+
+The diagnostic fires only when the linker is producing a device ELF (`v35 == 65`) **and** `--disable-smem-reservation` was passed (`+99 == 0`). The combined `OSABI=0x41 && !std_smem_mode` gate is the only place in the binary where the inverted-bit-12 semantics flips a *diagnostic* path rather than a *layout* path -- it tells the user that a referenced section is unexpected once smem reservation is opted out.
+
+### Why this matters for the wiki
+
+The producer-side derivation of `+99` (constructor `sub_4438F0_0x4438f0.c:229`) has been documented exhaustively across four audit waves. The consumer side -- the two readers above -- is what actually *gives* bit 12 its meaning; without them, the byte is unobservable. Together with the [Metadata and Flags](#metadata-and-flags-offsets-64103) row and the [Merge-Flags Bitmask Reference](#merge-flags-bitmask-reference) entry, this section closes the producer/consumer loop for bit 12.
 
 ## Function Reference
 

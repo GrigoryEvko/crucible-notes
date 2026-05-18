@@ -201,7 +201,7 @@ The FNLZR (Finalizer) operates on the serialized ELF byte buffer. `sub_4275C0` i
    - `byte_2A5F222` (Mercury mode)
    - `byte_2A5F225` (capmerc mode, controls config word at offset +24: value 4 or 5)
    - `byte_2A5F310` (shared flag)
-   - `byte_2A5F210` (secondary flag)
+   - TODO: identify true byte for `capmerc.secondary_flag` -- previous wiki revisions cited `byte_2A5F210`, but `byte_2A5F210` is the `--disable-smem-reservation` CLI byte (feeds `merge_flags` bit 12) and has no documented capmerc/Mercury use
    - `byte_2A5F224`, `byte_2A5F223` (additional binary properties)
    - `byte_2A5F2A9` (mode selector)
 
@@ -229,7 +229,7 @@ Two FNLZR modes exist:
 | +0 | 8 | `output_elf_ptr` | Set by `sub_4748F0` on return |
 | +24 | 4 | `mode_selector` | `4 + (byte_2A5F310 != 0)` or `5` when `byte_2A5F310 && !byte_2A5F2A9` |
 | +28 | 1 | `shared_flag` | `byte_2A5F310 != 0` |
-| +31 | 1 | `secondary_flag` | `byte_2A5F210 != 0` |
+| +31 | 1 | `secondary_flag` | TODO: identify true byte for `capmerc.secondary_flag`; `byte_2A5F210` was previously listed but is the `--disable-smem-reservation` CLI byte (feeds `merge_flags` bit 12), not a Mercury-subsystem flag |
 | +64 | 4 | `(unknown)` | Set to `3` in some paths |
 | +104 | 1 | `mercury_mode` | `1` when Mercury active (not capmerc) |
 | +105 | 1 | `capmerc_mode` | `1` when `byte_2A5F225` set |
