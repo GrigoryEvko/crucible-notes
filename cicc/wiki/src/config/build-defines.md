@@ -55,7 +55,7 @@ These freeze the C++ ABI shape. The values reflect the Itanium ABI (`IA64_ABI = 
 | `ABI_COMPATIBILITY_VERSION` | **9999** | Tracks latest; see QUIRK 1 |
 | `IA64_ABI` | 1 | Selects Itanium ABI personality |
 | `DRIVER_COMPATIBILITY_VERSION` | 9999 | Mirrors the EDG dial |
-| `DEFAULT_GNU_ABI_VERSION` | (CLI-driven, see DEFAULT_GNU_VERSION) | g++ `-fabi-version` default |
+| `DEFAULT_GNU_ABI_VERSION` | **30200** | g++ `-fabi-version` floor (gcc 3.2 baseline; verified in source) |
 
 ### 2. Target attributes — `TARG_*` (~106 keys)
 
@@ -166,7 +166,7 @@ Distinct from `DEFAULT_*_ENABLED`. A `_POSSIBLE` value of `0` hard-disables the 
 
 | Key | Value | Notes |
 |---|---:|---|
-| `GNU_TARGET_VERSION_NUMBER` | (build-fixed) | Macro `__GNUC__` source |
+| `GNU_TARGET_VERSION_NUMBER` | **100300** | Macro `__GNUC__` source — gcc 10.3.0 emulation target |
 | `MIN_GNU_VERSION` | 30200 | gcc 3.2 floor |
 | `GNU_EXTENSIONS_ALLOWED` | 1 | |
 | `GNU_VECTOR_TYPES_ALLOWED` | 1 | `__attribute__((vector_size))` |
@@ -228,7 +228,7 @@ These instruct the EDG-to-NVVM lowering layer (run before `cicc` hands off to it
 | `LOWER_VARIABLE_LENGTH_ARRAYS` | 1 | VLA → `alloca` |
 | `LOWERING_NORMALIZES_BOOLEAN_CONTROLLING_EXPRESSIONS` | 1 | |
 | `LOWERING_REMOVES_UNNEEDED_CONSTRUCTIONS_AND_DESTRUCTIONS` | 1 | |
-| `IL_VERSION_NUMBER` | (build-fixed) | EDG IL format version |
+| `IL_VERSION_NUMBER` | `"6.6"` (string) | EDG IL format version; emitted with quotes |
 | `IL_SHOULD_BE_WRITTEN_TO_FILE` | 1 | |
 | `IL_WALK_NEEDED` | 1 | |
 
@@ -263,8 +263,8 @@ What the compiler binary runs on — distinct from `TARG_*` (what it generates c
 | `USING_KAI_INLINER` | 0 |
 | `MAKE_FRONT_END_CALLABLE` | 1 |
 | `FRONT_END_SHOULD_BE_CALLED` | (implicit via `MAKE_FRONT_END_CALLABLE`) |
-| `VERSION_NUMBER` | 606 (i.e. 6.6) |
-| `VERSION_NUMBER_FOR_MACRO` | 606 |
+| `VERSION_NUMBER` | `"6.6"` (string-valued: `#define VERSION_NUMBER "6.6"`) |
+| `VERSION_NUMBER_FOR_MACRO` | 606 (integer form for macro arithmetic) |
 
 ### 10. Diagnostics & instrumentation (25 keys)
 
@@ -358,6 +358,8 @@ Highlights from the bulk: path constants, token-handling, generated-C personalit
 > **QUIRK 4 — `DEFAULT_AUTO_TYPE_SPECIFIER_ENABLED = 0`.** C++11's `auto` *type* specifier is off by default in EDG; the runtime driver flips it via `-std=c++11`+ but the raw EDG personality is C++03-shaped. This is harmless in normal nvcc usage because the driver always supplies a `-std=` flag, but it bites anyone embedding `front_end.a` directly.
 
 > **QUIRK 5 — `IMPLEMENTATION_SUPPORTS_MULTIPLE_THREADS = 0`.** Despite NVIDIA's cicc using parallel device compilation pipelines downstream, the EDG front end itself declares *non-threadsafe*. The `--threads` mechanism added in CUDA 11.5 spawns separate cicc processes, not threads inside one cicc, so this flag is structurally correct — but easy to mistake for an indicator of a serial compiler. Cross-reference [infra/concurrent-compilation.md](../infra/concurrent-compilation.md).
+
+> **QUIRK 6 — `VERSION_NUMBER` is a string, not an integer.** The dispatcher emits `#define VERSION_NUMBER "6.6"` (note the embedded quotes — verified at `cicc_full.c:1193119`, format `"#define %s %s\n"`), distinct from the integer-valued `VERSION_NUMBER_FOR_MACRO 606` (line 1193120, format `"#define %s %td\n"`). The two halves of the EDG version dial are *not* interchangeable: code that reads `VERSION_NUMBER` as an integer in preprocessing will see a string-literal token, not a numeric comparator. The companion `GNU_TARGET_VERSION_NUMBER = 100300` and `DEFAULT_GNU_ABI_VERSION = 30200` are integer-valued.
 
 ## Pre-Defined Macro Layer (downstream of `0xE1`)
 

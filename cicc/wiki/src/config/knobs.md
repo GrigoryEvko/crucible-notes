@@ -39,7 +39,7 @@ Constructor: `ctor_165_0` at `0x4D0500` (11,731 bytes). Registers 12 NVIDIA-spec
 
 | Flag | Type | Default | BSS Addr | Purpose |
 |---|---|---|---|---|
-| `split-gep-chain` | bool | false | `0x4F901A8` | Split GEP chains to independent GEPs for better address mode selection |
+| `instcombine-split-gep-chain` | bool | false | `0x4F901A8` | Split GEP chains to independent GEPs for better address mode selection. (The bare `split-gep-chain` shown in `--help` output is documented in the binary only as the legend "Alias for -instcombine-split-gep-chain"; the registered flag string is `instcombine-split-gep-chain`.) |
 | `Disable-Add-to-Or` | bool | true | — | Disable add-to-or transformation (NVIDIA blocks this LLVM combine) |
 | `opt-use-fast-math` | bool | false | — | Enable aggressive FP simplification (set by `-unsafe-math` / `-fast-math`) |
 | `opt-use-prec-div` | bool | true | — | Use precise division (set by `-prec-div=1`; cleared by `-prec-div=0`) |
@@ -137,15 +137,17 @@ Constructor: `ctor_607` at `0x584B60` (13,700 bytes). Core numeric precision and
 | Flag | Type | CLI Default | Purpose |
 |---|---|---|---|
 | `nvptx-sched4reg` | bool | false | Schedule for register pressure (key NVPTX strategy) |
-| `nvptx-fma-level` | int | 1 | FMA contraction: 0=off, **1**=on, 2=aggressive. CLI `-fma=1` is default |
-| `nvptx-prec-divf32` | int | 1 | F32 div precision: 0=approx, **1**=full, 2=IEEE rnd+ftz, 3=IEEE no-ftz |
-| `nvptx-prec-sqrtf32` | int | 1 | Sqrt precision: 0=approx, **1**=rn. CLI `-prec-sqrt=1` is default |
+| `nvptx-fma-level` | int | **2** (cl::opt) / 1 (effective via CLI) | FMA contraction: 0=off, 1=on, **2**=aggressive. cl::opt constructor default is 2; CLI flag catalog injects `-fma=1` so the user-visible default is `nvptx-fma-level=1`. See QUIRK below. |
+| `nvptx-prec-divf32` | int | **2** (cl::opt) / 1 (effective via CLI) | F32 div precision: 0=approx, 1=full, **2**=IEEE rnd+ftz, 3=IEEE no-ftz. cl::opt constructor default is 2; CLI catalog injects `-prec-div=1` |
+| `nvptx-prec-sqrtf32` | int | 1 | Sqrt precision: 0=approx, **1**=rn. cl::opt default 1; CLI `-prec-sqrt=1` matches |
 | `nvptx-approx-log2f32` | bool | false | Use `lg2.approx` for log2 (only set by `-unsafe-math`) |
 | `nvptx-force-min-byval-param-align` | bool | false | Force 4-byte minimum alignment for byval parameters |
 | `nvptx-normalize-select` | bool | false | Override `shouldNormalizeToSelectSequence` in TLI |
 | `enable-bfi64` | bool | false | Enable 64-bit BFI (bit-field insert) instructions |
 
-**Note**: These cl::opt knobs have no explicit default in their constructor (they init to 0/false). The effective defaults come from the CLI flag catalog: `-fma=1` routes `-nvptx-fma-level=1`, `-prec-div=1` routes `-nvptx-prec-divf32=1`, `-prec-sqrt=1` routes `-nvptx-prec-sqrtf32=1`.
+**Note**: Several of these cl::opt knobs *do* have explicit constructor defaults, and the constructor default disagrees with the CLI-effective default. In particular `nvptx-fma-level` and `nvptx-prec-divf32` both initialize to `2` in their `cl::opt<int>` constructor (verified at `sub_C53080` registration sites near `0x1086440` and `0x1086486`), but the CLI flag catalog `sub_9624D0` always injects `-fma=1` / `-prec-div=1` when no user override is supplied, so the *observed* default at pass time is 1 (FMA on, full division). The cl::opt-vs-CLI split matters for anyone driving cicc through libnvvm or with `--passes=` directly: at that layer, the CLI catalog is bypassed and the raw constructor defaults of `2` are what the pipeline sees.
+
+> **QUIRK — cl::opt default vs effective default.** Three CUDA precision dials (`nvptx-fma-level`, `nvptx-prec-divf32`, `nvptx-prec-sqrtf32`) have constructor defaults that differ from what `nvcc` users see, because the flag catalog rewrites every compilation as if `-fma=1 -prec-div=1 -prec-sqrt=1` had been passed. If you bypass the catalog, FMA contraction goes aggressive (`level=2`) and div precision jumps to IEEE-with-ftz (`=2`).
 
 ### Category 8: NVPTX Backend Passes/Features
 
