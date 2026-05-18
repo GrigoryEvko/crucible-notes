@@ -63,7 +63,7 @@ Offset  Size  Field                   merge_flags bit    Description
 ------  ----  -----                   ---------------    -----------
  84      1    callgraph_enabled       bit 0              Base bit (`0x40401`) -- always set on the normal path; gates root-kernel scan in sub_44DB00 and callgraph remap in sub_44CA40/sub_44CBC0
  85      1    preserve_relocs         bit 1              `--preserve-relocs` (CLI byte `byte_2A5F2CE`)
- 86      1    stack_protector         bit 9              `--device-stack-protector` (CLI byte `byte_2A5F1FE` per the [cli-options.md global map](../pipeline/cli-options.md#global-variable-map); `byte_2A5F226` is `suppress-debug-info`, not the stack protector)
+ 86      1    suppress_debug_info     bit 9              `--suppress-debug-info` (CLI byte `byte_2A5F226`, verified at `main_0x409800.c:365-369` and `sub_427AE0_0x427ae0.c:258`). The `--device-stack-protector` CLI option lives at `byte_2A5F1FE` and is consumed by `sub_429BA0:240` without feeding `merge_flags` — the legacy `stack_protector` label on this slot was a misnomer.
  87      1    reserve_null            bit 2              `--reserve-null-pointer` effective flag (CLI byte `byte_2A5F2CD`)
  88      1    allow_undef_globals     bit 3              `--allow-undefined-globals` (CLI byte `byte_2A5F2CC`)
  89      1    is_rela_mode            bit 4 (or forced)  `--force-rela` (CLI byte `byte_2A5F2AA`); also forced to 1 when relocatable parameter `a10` is set or `merge_flags & 0x180000` (mercury / forced-relocatable)
@@ -546,7 +546,7 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | `section_virtualization` flag byte at offset 82 | HIGH | `sub_443260` line 80: `*(_BYTE *)(a1 + 82)` gates virtualization check; same in `sub_443500` line 86 |
 | `callgraph_enabled` at offset 84 (bit 0) | HIGH | `*((_BYTE *)v17 + 84) = v20 & 1` on line 237 (bit 0 is the always-set base `0x40401`) |
 | `preserve_relocs` at offset 85 (bit 1) | HIGH | `*((_BYTE *)v17 + 85) = (v20 & 2) != 0` on line 238 |
-| `stack_protector` at offset 86 (bit 9) | HIGH | `*((_BYTE *)v17 + 86) = (v20 & 0x200) != 0` on line 240 |
+| `suppress_debug_info` at offset 86 (bit 9; CLI `--suppress-debug-info` via `byte_2A5F226`) | HIGH | `*((_BYTE *)v17 + 86) = (v20 & 0x200) != 0` on line 240 |
 | `reserve_null` at offset 87 (bit 2) | HIGH | `*((_BYTE *)v17 + 87) = (v20 & 4) != 0` on line 242 |
 | `allow_undef_globals` at offset 88 (bit 3) | HIGH | `*((_BYTE *)v17 + 88) = (v20 & 8) != 0` on line 243 |
 | Byte at offset 89 = `is_rela_mode` = `(bit 4) \|\| mercury_flag` | HIGH | `v32 = (v20 >> 4) & 1; if (v13) LOBYTE(v32) = 1; *((_BYTE *)v17 + 89) = v32` on lines 246-249 (bit 4 = `--force-rela`) |
