@@ -91,11 +91,11 @@ the range.
 | `cuda_tile.get_global` | 20 | range `0x5785D0..0x57A8E0` | reference module-level global | `dialects/cuda_tile.md` |
 | `cuda_tile.get_index_space_shape` | 31 | range `0x5785D0..0x57A8E0` | shape of the launch index space | `dialects/cuda_tile.md` |
 | `cuda_tile.get_num_tile_blocks` | 29 | range `0x5785D0..0x57A8E0` | tile-block count | `dialects/cuda_tile.md` |
-| `cuda_tile.get_tensor_shape` | 25 | range `0x5785D0..0x57A8E0` | shape of a tensor view | `dialects/cuda_tile.md` |
-| `cuda_tile.get_tile_block_id` | 26 | range `0x5785D0..0x57A8E0` | per-block id | `dialects/cuda_tile.md` |
+| `cuda_tile.get_tensor_shape` | 26 | range `0x5785D0..0x57A8E0` | shape of a tensor view | `dialects/cuda_tile.md` |
+| `cuda_tile.get_tile_block_id` | 27 | range `0x5785D0..0x57A8E0` | per-block id | `dialects/cuda_tile.md` |
 | `cuda_tile.global` | 16 | range `0x5785D0..0x57A8E0` | module-level global declaration | `dialects/cuda_tile.md` |
 | `cuda_tile.if` | 12 | range `0x5785D0..0x57A8E0` | structured conditional (2 regions) | `dialects/cuda_tile.md` |
-| `cuda_tile.int_to_ptr` | 21 | range `0x5785D0..0x57A8E0` | integer-to-pointer cast | `dialects/cuda_tile.md` |
+| `cuda_tile.int_to_ptr` | 20 | range `0x5785D0..0x57A8E0` | integer-to-pointer cast | `dialects/cuda_tile.md` |
 | `cuda_tile.iota` | 14 | range `0x5785D0..0x57A8E0` | sequential-int constant tile | `dialects/cuda_tile.md` |
 | `cuda_tile.itof` | 14 | range `0x5785D0..0x57A8E0` | int-to-float cast | `dialects/cuda_tile.md` |
 | `cuda_tile.join_tokens` | 21 | range `0x5785D0..0x57A8E0` | merge multiple tokens | `dialects/cuda_tile.md` |
@@ -124,8 +124,8 @@ the range.
 | `cuda_tile.permute` | 17 | range `0x5785D0..0x57A8E0` | tile permutation | `dialects/cuda_tile.md` |
 | `cuda_tile.pow` | 13 | range `0x5785D0..0x57A8E0` | power | `dialects/cuda_tile.md` |
 | `cuda_tile.print` | 15 | range `0x5785D0..0x57A8E0` | tile-aware diagnostic print (renamed from OSS `print_tko`) | `dialects/cuda_tile.md` |
-| `cuda_tile.ptr_to_int` | 21 | range `0x5785D0..0x57A8E0` | pointer-to-integer cast | `dialects/cuda_tile.md` |
-| `cuda_tile.ptr_to_ptr` | 21 | range `0x5785D0..0x57A8E0` | pointer recast | `dialects/cuda_tile.md` |
+| `cuda_tile.ptr_to_int` | 20 | range `0x5785D0..0x57A8E0` | pointer-to-integer cast | `dialects/cuda_tile.md` |
+| `cuda_tile.ptr_to_ptr` | 20 | range `0x5785D0..0x57A8E0` | pointer recast | `dialects/cuda_tile.md` |
 | `cuda_tile.reduce` | 16 | range `0x5785D0..0x57A8E0` | reduction (1 region) | `dialects/cuda_tile.md` |
 | `cuda_tile.remf` | 14 | range `0x5785D0..0x57A8E0` | float remainder | `dialects/cuda_tile.md` |
 | `cuda_tile.remi` | 14 | range `0x5785D0..0x57A8E0` | integer remainder | `dialects/cuda_tile.md` |
@@ -195,8 +195,8 @@ The slab anchors below the `nv_tileas` slab.
 | `nv_tileaa.global` | 16 | range `0x5B46D28..0x5B46F68` | module-level global | `dialects/nv_tileaa.md` |
 | `nv_tileaa.histogram` | 19 | range `0x5B46D28..0x5B46F68` | parallel histogram primitive | `dialects/nv_tileaa.md` |
 | `nv_tileaa.inject_ir` | 19 | range `0x5B46D28..0x5B46F68` | embed lowered IR fragment | `dialects/nv_tileaa.md` |
-| `nv_tileaa.int_to_ptr` | 21 | range `0x5B46D28..0x5B46F68` | integer-to-pointer cast | `dialects/nv_tileaa.md` |
-| `nv_tileaa.is_valid_program_id` | 30 | range `0x5B46D28..0x5B46F68` | grid intrinsic predicate | `dialects/nv_tileaa.md` |
+| `nv_tileaa.int_to_ptr` | 20 | range `0x5B46D28..0x5B46F68` | integer-to-pointer cast | `dialects/nv_tileaa.md` |
+| `nv_tileaa.is_valid_program_id` | 29 | range `0x5B46D28..0x5B46F68` | grid intrinsic predicate | `dialects/nv_tileaa.md` |
 | `nv_tileaa.join_mem_token` | 24 | range `0x5B46D28..0x5B46F68` | merge memory tokens | `dialects/nv_tileaa.md` |
 | `nv_tileaa.launch_func` | 21 | range `0x5B46D28..0x5B46F68` | host-side launch op | `dialects/nv_tileaa.md` |
 | `nv_tileaa.load` | 14 | range `0x5B46D28..0x5B46F68` | scalar memory load | `dialects/nv_tileaa.md` |
@@ -211,7 +211,7 @@ The slab anchors below the `nv_tileas` slab.
 | `nv_tileaa.plugin` | 16 | range `0x5B46D28..0x5B46F68` | plugin-injection op | `dialects/nv_tileaa.md` |
 | `nv_tileaa.pragma` | 16 | range `0x5B46D28..0x5B46F68` | pragma carrier | `dialects/nv_tileaa.md` |
 | `nv_tileaa.print` | 15 | range `0x5B46D28..0x5B46F68` | tile-aware print | `dialects/nv_tileaa.md` |
-| `nv_tileaa.ptr_to_int` | 21 | range `0x5B46D28..0x5B46F68` | pointer-to-integer cast | `dialects/nv_tileaa.md` |
+| `nv_tileaa.ptr_to_int` | 20 | range `0x5B46D28..0x5B46F68` | pointer-to-integer cast | `dialects/nv_tileaa.md` |
 | `nv_tileaa.queue.get` | 19 | range `0x5B46D28..0x5B46F68` | typed-queue dequeue | `dialects/nv_tileaa.md` |
 | `nv_tileaa.queue.put` | 19 | range `0x5B46D28..0x5B46F68` | typed-queue enqueue | `dialects/nv_tileaa.md` |
 | `nv_tileaa.queue.yield` | 21 | range `0x5B46D28..0x5B46F68` | typed-queue dataflow yield | `dialects/nv_tileaa.md` |
@@ -245,13 +245,13 @@ dominates the surface area.
 | --- | ---: | --- | --- | --- |
 | `nv_tileas.alloc_tensor` | 22 | anchor `&unk_5B44F08` | tensor buffer allocation | `dialects/nv_tileas.md` |
 | `nv_tileas.async.cancel_next_program_id` | 38 | anchor `&unk_5B44F08` | async cluster cancel | `dialects/nv_tileas.md` |
-| `nv_tileas.async.copy` | 21 | anchor `&unk_5B44F08` | DMA-async copy | `dialects/nv_tileas.md` |
-| `nv_tileas.async.dot` | 20 | anchor `&unk_5B44F08` | async MMA | `dialects/nv_tileas.md` |
-| `nv_tileas.async.extract_slice` | 30 | anchor `&unk_5B44F08` | async sub-slice extract | `dialects/nv_tileas.md` |
-| `nv_tileas.async.future_wait` | 28 | anchor `&unk_5B44F08` | wait on async future | `dialects/nv_tileas.md` |
+| `nv_tileas.async.copy` | 20 | anchor `&unk_5B44F08` | DMA-async copy | `dialects/nv_tileas.md` |
+| `nv_tileas.async.dot` | 19 | anchor `&unk_5B44F08` | async MMA | `dialects/nv_tileas.md` |
+| `nv_tileas.async.extract_slice` | 29 | anchor `&unk_5B44F08` | async sub-slice extract | `dialects/nv_tileas.md` |
+| `nv_tileas.async.future_wait` | 27 | anchor `&unk_5B44F08` | wait on async future | `dialects/nv_tileas.md` |
 | `nv_tileas.async.gather_tma_load` | 31 | anchor `&unk_5B44F08` | TMA gather load | `dialects/nv_tileas.md` |
-| `nv_tileas.async.insert_slice` | 29 | anchor `&unk_5B44F08` | async slice insert | `dialects/nv_tileas.md` |
-| `nv_tileas.async.load` | 21 | anchor `&unk_5B44F08` | async load | `dialects/nv_tileas.md` |
+| `nv_tileas.async.insert_slice` | 28 | anchor `&unk_5B44F08` | async slice insert | `dialects/nv_tileas.md` |
+| `nv_tileas.async.load` | 20 | anchor `&unk_5B44F08` | async load | `dialects/nv_tileas.md` |
 | `nv_tileas.async.pipeline.agent_switch` | 37 | anchor `&unk_5B44F08` | warp-specialized agent boundary | `dialects/nv_tileas.md` |
 | `nv_tileas.async.pipeline.consume_one` | 36 | anchor `&unk_5B44F08` | one-stage consume | `dialects/nv_tileas.md` |
 | `nv_tileas.async.pipeline.consume_one_async` | 42 | anchor `&unk_5B44F08` | one-stage async consume | `dialects/nv_tileas.md` |
@@ -269,40 +269,40 @@ dominates the surface area.
 | `nv_tileas.async.pipeline.producer_write` | 39 | anchor `&unk_5B44F08` | producer protocol write | `dialects/nv_tileas.md` |
 | `nv_tileas.async.pipeline.yield` | 30 | anchor `&unk_5B44F08` | pipeline-region terminator | `dialects/nv_tileas.md` |
 | `nv_tileas.async.scatter_tma_store` | 33 | anchor `&unk_5B44F08` | TMA scatter store | `dialects/nv_tileas.md` |
-| `nv_tileas.async.store` | 22 | anchor `&unk_5B44F08` | async store | `dialects/nv_tileas.md` |
+| `nv_tileas.async.store` | 21 | anchor `&unk_5B44F08` | async store | `dialects/nv_tileas.md` |
 | `nv_tileas.async.tiled_atomic_rmw` | 32 | anchor `&unk_5B44F08` | tile RMW (async) | `dialects/nv_tileas.md` |
-| `nv_tileas.async.tiled_load` | 27 | anchor `&unk_5B44F08` | async tiled load | `dialects/nv_tileas.md` |
+| `nv_tileas.async.tiled_load` | 26 | anchor `&unk_5B44F08` | async tiled load | `dialects/nv_tileas.md` |
 | `nv_tileas.async.tiled_tma_load` | 30 | anchor `&unk_5B44F08` | TMA tile load | `dialects/nv_tileas.md` |
 | `nv_tileas.async.tiled_tma_store` | 31 | anchor `&unk_5B44F08` | TMA tile store | `dialects/nv_tileas.md` |
-| `nv_tileas.async.to_async` | 25 | anchor `&unk_5B44F08` | future conversion | `dialects/nv_tileas.md` |
-| `nv_tileas.async.token_to_async` | 31 | anchor `&unk_5B44F08` | token-to-future conversion | `dialects/nv_tileas.md` |
-| `nv_tileas.async.wait` | 21 | anchor `&unk_5B44F08` | async wait barrier | `dialects/nv_tileas.md` |
+| `nv_tileas.async.to_async` | 24 | anchor `&unk_5B44F08` | future conversion | `dialects/nv_tileas.md` |
+| `nv_tileas.async.token_to_async` | 30 | anchor `&unk_5B44F08` | token-to-future conversion | `dialects/nv_tileas.md` |
+| `nv_tileas.async.wait` | 20 | anchor `&unk_5B44F08` | async wait barrier | `dialects/nv_tileas.md` |
 | `nv_tileas.cancel_next_program_id` | 32 | anchor `&unk_5B44F08` | cluster cancel | `dialects/nv_tileas.md` |
-| `nv_tileas.convert_layout` | 25 | anchor `&unk_5B44F08` | layout conversion (smem ↔ rmem ↔ tmem) | `dialects/nv_tileas.md` |
-| `nv_tileas.copy` | 15 | anchor `&unk_5B44F08` | sync copy | `dialects/nv_tileas.md` |
-| `nv_tileas.create_none` | 22 | anchor `&unk_5B44F08` | null SSA value | `dialects/nv_tileas.md` |
-| `nv_tileas.dot` | 14 | anchor `&unk_5B44F08` | sync matrix dot | `dialects/nv_tileas.md` |
-| `nv_tileas.expand_dims` | 22 | anchor `&unk_5B44F08` | rank lift | `dialects/nv_tileas.md` |
-| `nv_tileas.extract_slice` | 24 | anchor `&unk_5B44F08` | sub-slice extract | `dialects/nv_tileas.md` |
-| `nv_tileas.gather_load` | 22 | anchor `&unk_5B44F08` | indexed gather | `dialects/nv_tileas.md` |
-| `nv_tileas.generate` | 19 | anchor `&unk_5B44F08` | functional generate (region) | `dialects/nv_tileas.md` |
-| `nv_tileas.insert_slice` | 23 | anchor `&unk_5B44F08` | slice insert | `dialects/nv_tileas.md` |
-| `nv_tileas.load` | 15 | anchor `&unk_5B44F08` | scalar load | `dialects/nv_tileas.md` |
+| `nv_tileas.convert_layout` | 24 | anchor `&unk_5B44F08` | layout conversion (smem ↔ rmem ↔ tmem) | `dialects/nv_tileas.md` |
+| `nv_tileas.copy` | 14 | anchor `&unk_5B44F08` | sync copy | `dialects/nv_tileas.md` |
+| `nv_tileas.create_none` | 21 | anchor `&unk_5B44F08` | null SSA value | `dialects/nv_tileas.md` |
+| `nv_tileas.dot` | 13 | anchor `&unk_5B44F08` | sync matrix dot | `dialects/nv_tileas.md` |
+| `nv_tileas.expand_dims` | 21 | anchor `&unk_5B44F08` | rank lift | `dialects/nv_tileas.md` |
+| `nv_tileas.extract_slice` | 23 | anchor `&unk_5B44F08` | sub-slice extract | `dialects/nv_tileas.md` |
+| `nv_tileas.gather_load` | 21 | anchor `&unk_5B44F08` | indexed gather | `dialects/nv_tileas.md` |
+| `nv_tileas.generate` | 18 | anchor `&unk_5B44F08` | functional generate (region) | `dialects/nv_tileas.md` |
+| `nv_tileas.insert_slice` | 22 | anchor `&unk_5B44F08` | slice insert | `dialects/nv_tileas.md` |
+| `nv_tileas.load` | 14 | anchor `&unk_5B44F08` | scalar load | `dialects/nv_tileas.md` |
 | `nv_tileas.make_tiled_tma_desc` | 29 | anchor `&unk_5B44F08` | TMA descriptor builder | `dialects/nv_tileas.md` |
-| `nv_tileas.pragma` | 17 | anchor `&unk_5B44F08` | pragma carrier | `dialects/nv_tileas.md` |
-| `nv_tileas.reduce` | 17 | anchor `&unk_5B44F08` | reduction | `dialects/nv_tileas.md` |
-| `nv_tileas.reinterpret` | 22 | anchor `&unk_5B44F08` | reinterpret cast | `dialects/nv_tileas.md` |
-| `nv_tileas.scan` | 15 | anchor `&unk_5B44F08` | prefix-sum | `dialects/nv_tileas.md` |
-| `nv_tileas.scatter_store` | 24 | anchor `&unk_5B44F08` | indexed scatter | `dialects/nv_tileas.md` |
-| `nv_tileas.shuffle` | 18 | anchor `&unk_5B44F08` | warp shuffle | `dialects/nv_tileas.md` |
-| `nv_tileas.store` | 16 | anchor `&unk_5B44F08` | scalar store | `dialects/nv_tileas.md` |
+| `nv_tileas.pragma` | 16 | anchor `&unk_5B44F08` | pragma carrier | `dialects/nv_tileas.md` |
+| `nv_tileas.reduce` | 16 | anchor `&unk_5B44F08` | reduction | `dialects/nv_tileas.md` |
+| `nv_tileas.reinterpret` | 21 | anchor `&unk_5B44F08` | reinterpret cast | `dialects/nv_tileas.md` |
+| `nv_tileas.scan` | 14 | anchor `&unk_5B44F08` | prefix-sum | `dialects/nv_tileas.md` |
+| `nv_tileas.scatter_store` | 23 | anchor `&unk_5B44F08` | indexed scatter | `dialects/nv_tileas.md` |
+| `nv_tileas.shuffle` | 17 | anchor `&unk_5B44F08` | warp shuffle | `dialects/nv_tileas.md` |
+| `nv_tileas.store` | 15 | anchor `&unk_5B44F08` | scalar store | `dialects/nv_tileas.md` |
 | `nv_tileas.tiled_atomic_rmw` | 26 | anchor `&unk_5B44F08` | tile-wide RMW | `dialects/nv_tileas.md` |
-| `nv_tileas.tiled_load` | 21 | anchor `&unk_5B44F08` | tile load | `dialects/nv_tileas.md` |
-| `nv_tileas.tiled_store` | 22 | anchor `&unk_5B44F08` | tile store | `dialects/nv_tileas.md` |
-| `nv_tileas.view` | 15 | anchor `&unk_5B44F08` | view op | `dialects/nv_tileas.md` |
-| `nv_tileas.yield` | 16 | anchor `&unk_5B44F08` | region terminator | `dialects/nv_tileas.md` |
+| `nv_tileas.tiled_load` | 20 | anchor `&unk_5B44F08` | tile load | `dialects/nv_tileas.md` |
+| `nv_tileas.tiled_store` | 21 | anchor `&unk_5B44F08` | tile store | `dialects/nv_tileas.md` |
+| `nv_tileas.view` | 14 | anchor `&unk_5B44F08` | view op | `dialects/nv_tileas.md` |
+| `nv_tileas.yield` | 15 | anchor `&unk_5B44F08` | region terminator | `dialects/nv_tileas.md` |
 
-## §4 cute.* (60 ops)
+## §4 cute.* (59 ops)
 
 Anchor `&unk_5B496B8`. Hardware-independent CuTe layout algebra.
 
@@ -345,7 +345,6 @@ Anchor `&unk_5B496B8`. Hardware-independent CuTe layout algebra.
 | `cute.memref.store` | 17 | anchor `&unk_5B496B8` | memref store | `dialects/cute.md` |
 | `cute.memref.store_vec` | 21 | anchor `&unk_5B496B8` | vector memref store | `dialects/cute.md` |
 | `cute.mma_atom_call` | 18 | anchor `&unk_5B496B8` | apply MMA atom | `dialects/cute.md` |
-| `cute.name` | 9 | anchor `&unk_5B496B8` | symbol-name op | `dialects/cute.md` |
 | `cute.prefetch` | 13 | anchor `&unk_5B496B8` | prefetch | `dialects/cute.md` |
 | `cute.prefetch_atom_call` | 23 | anchor `&unk_5B496B8` | apply prefetch atom | `dialects/cute.md` |
 | `cute.print` | 10 | anchor `&unk_5B496B8` | diagnostic print | `dialects/cute.md` |
@@ -367,7 +366,7 @@ Anchor `&unk_5B496B8`. Hardware-independent CuTe layout algebra.
 | `cute.tiled.copy.retile` | 22 | anchor `&unk_5B496B8` | tiled-copy retile | `dialects/cute.md` |
 | `cute.tiled.mma.partition` | 24 | anchor `&unk_5B496B8` | tiled-MMA partition | `dialects/cute.md` |
 | `cute.tiled.mma.partition_shape` | 30 | anchor `&unk_5B496B8` | tiled-MMA partition shape | `dialects/cute.md` |
-| `cute.unpack_tuple` | 16 | anchor `&unk_5B496B8` | tuple unpacker | `dialects/cute.md` |
+| `cute.unpack_tuple` | 17 | anchor `&unk_5B496B8` | tuple unpacker | `dialects/cute.md` |
 
 ## §5 cute_nvgpu.* (73 ops)
 
@@ -377,8 +376,8 @@ Anchor `&unk_5B482C8`.
 
 | mnemonic | length | TypeID singleton | brief semantic | primary wiki page |
 | --- | ---: | --- | --- | --- |
-| `cute_nvgpu.arch.alloc_rmem` | 25 | range `0x5B47FF8..0x5B481A8` | rmem allocation | `dialects/cute_nvgpu.md` |
-| `cute_nvgpu.arch.alloc_smem` | 25 | range `0x5B47FF8..0x5B481A8` | smem allocation | `dialects/cute_nvgpu.md` |
+| `cute_nvgpu.arch.alloc_rmem` | 26 | range `0x5B47FF8..0x5B481A8` | rmem allocation | `dialects/cute_nvgpu.md` |
+| `cute_nvgpu.arch.alloc_smem` | 26 | range `0x5B47FF8..0x5B481A8` | smem allocation | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.arch.copy.SM100.copy_s2t` | 35 | range `0x5B47FF8..0x5B481A8` | smem→tmem copy (Blackwell) | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.arch.copy.SM100.tma_load` | 35 | range `0x5B47FF8..0x5B481A8` | TMA load (Blackwell) | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.arch.copy.SM100.tma_reduce` | 37 | range `0x5B47FF8..0x5B481A8` | TMA reduce (Blackwell) | `dialects/cute_nvgpu.md` |
@@ -388,9 +387,9 @@ Anchor `&unk_5B482C8`.
 | `cute_nvgpu.arch.copy.SM80.cp_async` | 34 | range `0x5B47FF8..0x5B481A8` | Ampere `cp.async` | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.arch.copy.ldsm` | 25 | range `0x5B47FF8..0x5B481A8` | `ldmatrix` family | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.arch.copy.stsm` | 25 | range `0x5B47FF8..0x5B481A8` | `stmatrix` family | `dialects/cute_nvgpu.md` |
-| `cute_nvgpu.arch.get_dyn_smem` | 27 | range `0x5B47FF8..0x5B481A8` | dynamic-smem accessor | `dialects/cute_nvgpu.md` |
-| `cute_nvgpu.arch.get_dyn_smem_size` | 32 | range `0x5B47FF8..0x5B481A8` | dynamic-smem size query | `dialects/cute_nvgpu.md` |
-| `cute_nvgpu.arch.make_warp_uniform` | 32 | range `0x5B47FF8..0x5B481A8` | warp-uniform marker | `dialects/cute_nvgpu.md` |
+| `cute_nvgpu.arch.get_dyn_smem` | 28 | range `0x5B47FF8..0x5B481A8` | dynamic-smem accessor | `dialects/cute_nvgpu.md` |
+| `cute_nvgpu.arch.get_dyn_smem_size` | 33 | range `0x5B47FF8..0x5B481A8` | dynamic-smem size query | `dialects/cute_nvgpu.md` |
+| `cute_nvgpu.arch.make_warp_uniform` | 33 | range `0x5B47FF8..0x5B481A8` | warp-uniform marker | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.arch.mma.SM100.umma` | 30 | range `0x5B47FF8..0x5B481A8` | Blackwell UMMA | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.arch.mma.SM100.umma_block_scaled` | 43 | range `0x5B47FF8..0x5B481A8` | Blackwell UMMA block-scaled | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.arch.mma.SM100.umma_block_scaled_sparse` | 50 | range `0x5B47FF8..0x5B481A8` | Blackwell UMMA bs sparse | `dialects/cute_nvgpu.md` |
@@ -400,18 +399,18 @@ Anchor `&unk_5B482C8`.
 | `cute_nvgpu.arch.mma.SM80.sparse` | 31 | range `0x5B47FF8..0x5B481A8` | Ampere MMA sparse | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.arch.mma.SM89` | 24 | range `0x5B47FF8..0x5B481A8` | Ada MMA | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.arch.mma.SM90` | 24 | range `0x5B47FF8..0x5B481A8` | Hopper WGMMA | `dialects/cute_nvgpu.md` |
-| `cute_nvgpu.arch.prefetch_tma_desc` | 32 | range `0x5B47FF8..0x5B481A8` | TMA desc prefetch | `dialects/cute_nvgpu.md` |
+| `cute_nvgpu.arch.prefetch_tma_desc` | 33 | range `0x5B47FF8..0x5B481A8` | TMA desc prefetch | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.arch.sm100.alloc_tmem` | 32 | range `0x5B47FF8..0x5B481A8` | TMEM alloc | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.arch.sm100.dealloc_tmem` | 34 | range `0x5B47FF8..0x5B481A8` | TMEM dealloc | `dialects/cute_nvgpu.md` |
-| `cute_nvgpu.arch.sm100.relinquish_tmem_alloc_permit` | 49 | range `0x5B47FF8..0x5B481A8` | TMEM permit release | `dialects/cute_nvgpu.md` |
-| `cute_nvgpu.arch.sm100.retrieve_tmem_ptr` | 38 | range `0x5B47FF8..0x5B481A8` | TMEM pointer retrieval | `dialects/cute_nvgpu.md` |
-| `cute_nvgpu.atom.get_copy_s2t_smem_desc_view` | 42 | range `0x5B47FF8..0x5B481A8` | atom accessor: s2t smem-desc | `dialects/cute_nvgpu.md` |
+| `cute_nvgpu.arch.sm100.relinquish_tmem_alloc_permit` | 50 | range `0x5B47FF8..0x5B481A8` | TMEM permit release | `dialects/cute_nvgpu.md` |
+| `cute_nvgpu.arch.sm100.retrieve_tmem_ptr` | 39 | range `0x5B47FF8..0x5B481A8` | TMEM pointer retrieval | `dialects/cute_nvgpu.md` |
+| `cute_nvgpu.atom.get_copy_s2t_smem_desc_view` | 43 | range `0x5B47FF8..0x5B481A8` | atom accessor: s2t smem-desc | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.atom.get_value` | 25 | range `0x5B47FF8..0x5B481A8` | atom value accessor | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.atom.ldsm` | 20 | range `0x5B47FF8..0x5B481A8` | `ldmatrix` atom | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.atom.make_exec_tma` | 29 | range `0x5B47FF8..0x5B481A8` | executable TMA atom builder | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.atom.make_non_exec_tiled_tma_load` | 44 | range `0x5B47FF8..0x5B481A8` | non-exec tiled TMA load builder | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.atom.make_non_exec_tiled_tma_reduce` | 46 | range `0x5B47FF8..0x5B481A8` | non-exec tiled TMA reduce builder | `dialects/cute_nvgpu.md` |
-| `cute_nvgpu.atom.make_s2t_copy` | 28 | range `0x5B47FF8..0x5B481A8` | s2t copy atom builder | `dialects/cute_nvgpu.md` |
+| `cute_nvgpu.atom.make_s2t_copy` | 29 | range `0x5B47FF8..0x5B481A8` | s2t copy atom builder | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.atom.make_tma_load` | 29 | range `0x5B47FF8..0x5B481A8` | TMA load atom builder | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.atom.make_tma_reduce` | 31 | range `0x5B47FF8..0x5B481A8` | TMA reduce atom builder | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.atom.make_tma_store` | 30 | range `0x5B47FF8..0x5B481A8` | TMA store atom builder | `dialects/cute_nvgpu.md` |
@@ -419,8 +418,8 @@ Anchor `&unk_5B482C8`.
 | `cute_nvgpu.atom.non_exec_tiled_tma_load` | 39 | range `0x5B47FF8..0x5B481A8` | non-exec tiled TMA load atom | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.atom.non_exec_tiled_tma_reduce` | 41 | range `0x5B47FF8..0x5B481A8` | non-exec tiled TMA reduce atom | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.atom.non_exec_tiled_tma_store` | 40 | range `0x5B47FF8..0x5B481A8` | non-exec tiled TMA store atom | `dialects/cute_nvgpu.md` |
-| `cute_nvgpu.atom.s2t_copy` | 23 | range `0x5B47FF8..0x5B481A8` | s2t copy atom | `dialects/cute_nvgpu.md` |
-| `cute_nvgpu.atom.simt_async_copy` | 30 | range `0x5B47FF8..0x5B481A8` | SIMT async copy atom | `dialects/cute_nvgpu.md` |
+| `cute_nvgpu.atom.s2t_copy` | 24 | range `0x5B47FF8..0x5B481A8` | s2t copy atom | `dialects/cute_nvgpu.md` |
+| `cute_nvgpu.atom.simt_async_copy` | 31 | range `0x5B47FF8..0x5B481A8` | SIMT async copy atom | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.atom.stsm` | 20 | range `0x5B47FF8..0x5B481A8` | `stmatrix` atom | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.atom.tma_load` | 24 | range `0x5B47FF8..0x5B481A8` | TMA load atom | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.atom.tma_reduce` | 26 | range `0x5B47FF8..0x5B481A8` | TMA reduce atom | `dialects/cute_nvgpu.md` |
@@ -448,7 +447,7 @@ Anchor `&unk_5B482C8`.
 | `cute_nvgpu.sm80.sparse_mma` | 26 | range `0x5B47FF8..0x5B481A8` | Ampere sparse MMA | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.sm89.mma` | 19 | range `0x5B47FF8..0x5B481A8` | Ada MMA | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.sm90.mma` | 19 | range `0x5B47FF8..0x5B481A8` | Hopper WGMMA | `dialects/cute_nvgpu.md` |
-| `cute_nvgpu.smem_desc_view` | 24 | range `0x5B47FF8..0x5B481A8` | smem descriptor view | `dialects/cute_nvgpu.md` |
+| `cute_nvgpu.smem_desc_view` | 25 | range `0x5B47FF8..0x5B481A8` | smem descriptor view | `dialects/cute_nvgpu.md` |
 | `cute_nvgpu.update_tma_desc` | 26 | range `0x5B47FF8..0x5B481A8` | TMA desc mutate | `dialects/cute_nvgpu.md` |
 
 ## §6 cutlass.* (84 ops, 38 unique families)
@@ -468,8 +467,8 @@ family (DP, static-persistent, StreamK, MODS-trace).
 | `cutlass.block_striped.store` | 27 | range `0x5B47490..0x5B476A0` | block-striped store | `dialects/cutlass.md` |
 | `cutlass.generic_barrier.arrive_increment` | 40 | range `0x5B47490..0x5B476A0` | generic-barrier arrive-increment | `dialects/cutlass.md` |
 | `cutlass.generic_barrier_sync` | 28 | range `0x5B47490..0x5B476A0` | generic-barrier sync | `dialects/cutlass.md` |
-| `cutlass.generic_barrier.wait_eq` | 32 | range `0x5B47490..0x5B476A0` | generic-barrier wait-eq | `dialects/cutlass.md` |
-| `cutlass.generic_barrier.wait_less_than` | 39 | range `0x5B47490..0x5B476A0` | generic-barrier wait-less-than | `dialects/cutlass.md` |
+| `cutlass.generic_barrier.wait_eq` | 31 | range `0x5B47490..0x5B476A0` | generic-barrier wait-eq | `dialects/cutlass.md` |
+| `cutlass.generic_barrier.wait_less_than` | 38 | range `0x5B47490..0x5B476A0` | generic-barrier wait-less-than | `dialects/cutlass.md` |
 | `cutlass.named_barrier.arrive` | 28 | range `0x5B47490..0x5B476A0` | named-barrier arrive | `dialects/cutlass.md` |
 | `cutlass.named_barrier.arrive_and_wait` | 37 | range `0x5B47490..0x5B476A0` | named-barrier arrive+wait | `dialects/cutlass.md` |
 | `cutlass.pipeline.consume` | 24 | range `0x5B47490..0x5B476A0` | pipeline consume | `dialects/cutlass.md` |
@@ -486,11 +485,11 @@ family (DP, static-persistent, StreamK, MODS-trace).
 | `cutlass.pipeline.producer_commit` | 32 | range `0x5B47490..0x5B476A0` | producer commit | `dialects/cutlass.md` |
 | `cutlass.pipeline.producer_tail` | 30 | range `0x5B47490..0x5B476A0` | producer tail | `dialects/cutlass.md` |
 | `cutlass.pipeline.producer_try_acquire` | 37 | range `0x5B47490..0x5B476A0` | producer try-acquire | `dialects/cutlass.md` |
-| `cutlass.pipeline.state.create` | 30 | range `0x5B47490..0x5B476A0` | state ctor | `dialects/cutlass.md` |
-| `cutlass.pipeline.state.get_count` | 33 | range `0x5B47490..0x5B476A0` | state count accessor | `dialects/cutlass.md` |
-| `cutlass.pipeline.state.get_index` | 33 | range `0x5B47490..0x5B476A0` | state index accessor | `dialects/cutlass.md` |
-| `cutlass.pipeline.state.get_phase` | 33 | range `0x5B47490..0x5B476A0` | state phase accessor | `dialects/cutlass.md` |
-| `cutlass.pipeline.state.increment` | 33 | range `0x5B47490..0x5B476A0` | state increment | `dialects/cutlass.md` |
+| `cutlass.pipeline.state.create` | 29 | range `0x5B47490..0x5B476A0` | state ctor | `dialects/cutlass.md` |
+| `cutlass.pipeline.state.get_count` | 32 | range `0x5B47490..0x5B476A0` | state count accessor | `dialects/cutlass.md` |
+| `cutlass.pipeline.state.get_index` | 32 | range `0x5B47490..0x5B476A0` | state index accessor | `dialects/cutlass.md` |
+| `cutlass.pipeline.state.get_phase` | 32 | range `0x5B47490..0x5B476A0` | state phase accessor | `dialects/cutlass.md` |
+| `cutlass.pipeline.state.increment` | 32 | range `0x5B47490..0x5B476A0` | state increment | `dialects/cutlass.md` |
 | `cutlass.pipeline.switch_by_executor` | 35 | range `0x5B47490..0x5B476A0` | executor-keyed dispatch | `dialects/cutlass.md` |
 | `cutlass.seq_bar.arrive` | 22 | range `0x5B47490..0x5B476A0` | seq-bar arrive | `dialects/cutlass.md` |
 | `cutlass.seq_bar.create` | 22 | range `0x5B47490..0x5B476A0` | seq-bar ctor | `dialects/cutlass.md` |
@@ -500,29 +499,29 @@ family (DP, static-persistent, StreamK, MODS-trace).
 | `cutlass.tile_scheduler.advance_to_next_work` | 43 | range `0x5B47490..0x5B476A0` | scheduler advance | `dialects/cutlass.md` |
 | `cutlass.tile_scheduler.compute_epilogue` | 39 | range `0x5B47490..0x5B476A0` | epilogue trigger | `dialects/cutlass.md` |
 | `cutlass.tile_scheduler.create_dp_params` | 39 | range `0x5B47490..0x5B476A0` | DP scheduler params ctor | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.create_dp_work_tile_info` | 48 | range `0x5B47490..0x5B476A0` | DP work-tile-info ctor | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.create_SM100_scheduler` | 46 | range `0x5B47490..0x5B476A0` | sm_100 scheduler factory | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.create_dp_work_tile_info` | 47 | range `0x5B47490..0x5B476A0` | DP work-tile-info ctor | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.create_SM100_scheduler` | 45 | range `0x5B47490..0x5B476A0` | sm_100 scheduler factory | `dialects/cutlass.md` |
 | `cutlass.tile_scheduler.create_static_persistent_params` | 54 | range `0x5B47490..0x5B476A0` | static-persistent params ctor | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.create_static_persistent_work_tile_info` | 63 | range `0x5B47490..0x5B476A0` | static-persistent work-tile-info ctor | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.create_streamk_params` | 45 | range `0x5B47490..0x5B476A0` | StreamK params ctor | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.create_streamk_work_tile_info` | 53 | range `0x5B47490..0x5B476A0` | StreamK work-tile-info ctor | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.create_static_persistent_work_tile_info` | 62 | range `0x5B47490..0x5B476A0` | static-persistent work-tile-info ctor | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.create_streamk_params` | 44 | range `0x5B47490..0x5B476A0` | StreamK params ctor | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.create_streamk_work_tile_info` | 52 | range `0x5B47490..0x5B476A0` | StreamK work-tile-info ctor | `dialects/cutlass.md` |
 | `cutlass.tile_scheduler.fetch_next_work` | 38 | range `0x5B47490..0x5B476A0` | fetch next work | `dialects/cutlass.md` |
 | `cutlass.tile_scheduler.fixup` | 28 | range `0x5B47490..0x5B476A0` | partial-tile fixup | `dialects/cutlass.md` |
 | `cutlass.tile_scheduler.fixup_increment` | 38 | range `0x5B47490..0x5B476A0` | fixup increment | `dialects/cutlass.md` |
 | `cutlass.tile_scheduler.fixup_wait` | 33 | range `0x5B47490..0x5B476A0` | fixup wait | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.get_current_work` | 40 | range `0x5B47490..0x5B476A0` | current work accessor | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.get_grid_shape` | 38 | range `0x5B47490..0x5B476A0` | grid-shape accessor | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.get_workid_response_ptr` | 47 | range `0x5B47490..0x5B476A0` | workid response ptr | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.get_work_k_tile_count` | 45 | range `0x5B47490..0x5B476A0` | work k-tile count | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.get_work_k_tile_start` | 45 | range `0x5B47490..0x5B476A0` | work k-tile start | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.get_workspace_sizes` | 43 | range `0x5B47490..0x5B476A0` | workspace sizes | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.initial_work_tile_info` | 46 | range `0x5B47490..0x5B476A0` | initial work-tile info | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.initialize_workspace` | 44 | range `0x5B47490..0x5B476A0` | initialize workspace | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.get_current_work` | 39 | range `0x5B47490..0x5B476A0` | current work accessor | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.get_grid_shape` | 37 | range `0x5B47490..0x5B476A0` | grid-shape accessor | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.get_workid_response_ptr` | 46 | range `0x5B47490..0x5B476A0` | workid response ptr | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.get_work_k_tile_count` | 44 | range `0x5B47490..0x5B476A0` | work k-tile count | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.get_work_k_tile_start` | 44 | range `0x5B47490..0x5B476A0` | work k-tile start | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.get_workspace_sizes` | 42 | range `0x5B47490..0x5B476A0` | workspace sizes | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.initial_work_tile_info` | 45 | range `0x5B47490..0x5B476A0` | initial work-tile info | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.initialize_workspace` | 43 | range `0x5B47490..0x5B476A0` | initialize workspace | `dialects/cutlass.md` |
 | `cutlass.tile_scheduler.make_dp_params` | 37 | range `0x5B47490..0x5B476A0` | DP params builder | `dialects/cutlass.md` |
 | `cutlass.tile_scheduler.make_static_persistent_params` | 52 | range `0x5B47490..0x5B476A0` | static-persistent params builder | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.make_streamk_params` | 43 | range `0x5B47490..0x5B476A0` | StreamK params builder | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.mods_report_mainloop_end` | 48 | range `0x5B47490..0x5B476A0` | MODS-trace mainloop end | `dialects/cutlass.md` |
-| `cutlass.tile_scheduler.mods_report_mainloop_start` | 50 | range `0x5B47490..0x5B476A0` | MODS-trace mainloop start | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.make_streamk_params` | 42 | range `0x5B47490..0x5B476A0` | StreamK params builder | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.mods_report_mainloop_end` | 47 | range `0x5B47490..0x5B476A0` | MODS-trace mainloop end | `dialects/cutlass.md` |
+| `cutlass.tile_scheduler.mods_report_mainloop_start` | 49 | range `0x5B47490..0x5B476A0` | MODS-trace mainloop start | `dialects/cutlass.md` |
 | `cutlass.tile_scheduler.mods_report_smid` | 39 | range `0x5B47490..0x5B476A0` | MODS-trace smid report | `dialects/cutlass.md` |
 | `cutlass.tile_scheduler.mods_throttle` | 36 | range `0x5B47490..0x5B476A0` | MODS-trace throttle | `dialects/cutlass.md` |
 | `cutlass.tile_scheduler.params_get_value` | 39 | range `0x5B47490..0x5B476A0` | params accessor | `dialects/cutlass.md` |
@@ -873,9 +872,9 @@ mnemonics emitted by tileiras-driven lowerings. Dialect TypeID anchor is
 | `llvm.global` | 11 | upstream | LLVM global | `dialects/upstream-llvm.md` |
 | `llvm.insertelement` | 18 | upstream | vector element insert | `dialects/upstream-llvm.md` |
 | `llvm.intr.coro.*` | - | upstream | coroutine intrinsics | `dialects/upstream-llvm.md` |
-| `llvm.intr.dbg.declare` | 22 | upstream | debug-info declare | `dialects/upstream-llvm.md` |
-| `llvm.intr.dbg.label` | 20 | upstream | debug-info label | `dialects/upstream-llvm.md` |
-| `llvm.intr.dbg.value` | 20 | upstream | debug-info value | `dialects/upstream-llvm.md` |
+| `llvm.intr.dbg.declare` | 21 | upstream | debug-info declare | `dialects/upstream-llvm.md` |
+| `llvm.intr.dbg.label` | 19 | upstream | debug-info label | `dialects/upstream-llvm.md` |
+| `llvm.intr.dbg.value` | 19 | upstream | debug-info value | `dialects/upstream-llvm.md` |
 | `llvm.inttoptr` | 13 | upstream | int-to-pointer | `dialects/upstream-llvm.md` |
 | `llvm.mlir.constant` | 18 | upstream | MLIR constant for LLVM type | `dialects/upstream-llvm.md` |
 | `llvm.ptrtoint` | 13 | upstream | pointer-to-int | `dialects/upstream-llvm.md` |

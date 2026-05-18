@@ -204,17 +204,27 @@ void encode_immediate(int64_t a1, int64_t a2, int op_idx, int bit_off) {
 
 ### Predicate Encoder -- `sub_7BC5C0`
 
-416 bytes, 1,449 callers. Encodes predicate register operands (PT, P0-P6):
+416 bytes, 1,449 callers. Encodes predicate register operands (PT, P0-P6). The decompiled body packs two inline bitfields into the 1280-bit buffer at `a1+0x220` directly (no nested `sub_7B9B80` call); each is written by an open-coded variant of the bitfield-insertion loop:
 
 ```c
-// sub_7BC5C0(insn, ir_insn, operand_index, bit_offset)
-void encode_predicate(int64_t a1, int64_t a2, int op_idx, int bit_off) {
-    void* operand = *(void**)(a2 + 32) + 32 * op_idx;
-    sub_7B9B80(a1, bit_off, 2, pred_type);       // 2-bit predicate type
-    sub_7B9B80(a1, bit_off + 3, 3, pred_cond);   // 3-bit condition code
-    sub_7B9B80(a1, bit_off + 8, 8, pred_value);  // 8-bit predicate value
+// sub_7BC5C0(insn_buf, ir_insn, operand_index, bit_offset)
+void encode_predicate(int64_t a1, int64_t a2, int op_idx, uint32_t bit_off) {
+    // Field A: 1-bit presence/range flag at [bit_off]
+    //   value = (op_idx < ir_insn->operand_count_at_offset_92)
+    //   -- a Boolean derived from operand index bounds; downstream
+    //      consumers treat 1 = "predicate guard present".
+    bitfield_insert(a1, bit_off,      1, op_idx < *(int*)(a2 + 92));
+
+    // Field B: 5-bit predicate register value at [bit_off+11 .. bit_off+15]
+    //   value = *(int*)(operand_base + 32*op_idx + 4)
+    //   -- 3 bits encode P0..P6/PT (0..7); the 2 high bits select the
+    //      register file (P vs UP) plus the .NOT polarity bit. Reads
+    //      stop at bit_off+16 (width 16-11 = 5).
+    bitfield_insert(a1, bit_off + 11, 5, *(int*)(*(void**)(a2 + 32) + 32*op_idx + 4));
 }
 ```
+
+The 10-bit gap between the presence flag at `bit_off` and the register-value field at `bit_off+11` is filled by other encoder calls (modifier, secondary-operand bits). Earlier wiki revisions described this encoder as "2-bit type + 3-bit cond + 8-bit value"; that decomposition is incorrect -- the decompiled body emits only two fields (1 bit + 5 bits) and never reaches the wider widths.
 
 ### Uniform Register Encoder -- `sub_7BC360`
 

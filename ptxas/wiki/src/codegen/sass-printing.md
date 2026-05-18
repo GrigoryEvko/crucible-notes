@@ -543,12 +543,14 @@ Each 8-byte operand slot encodes:
 | 28--30 | 0 | Operand type tag: 1=register, 4=address, 5=constant buffer, 7=special |
 | 0--23 | 0 | Register/constant index |
 | 24--27 | 0 | Modifier flags |
-| 0 | 1 | Negate |
-| 1 | 1 | Absolute value |
+| 0 | 1 | Negate flag (mirrored from word 1 bit 31) |
+| 1 | 1 | Absolute value flag (mirrored from word 1 bit 30) |
 | 20 | 1 | Constant pool flag (`0x100000`) |
-| 29 | 1 | Sign extension (`0x20000000`) |
-| 30 | 1 | Uniform flag (`0x40000000`) |
-| 31 | 1 | Negation modifier (`0x80000000`) |
+| 29 | 1 | Sign extension / signed-folding flag (`0x20000000`) |
+| 30 | 1 | `.ABS` modifier (`0x40000000`) -- absolute value of source |
+| 31 | 1 | `.NEG` modifier (`0x80000000`) -- arithmetic negation of source |
+
+The polarity is "set means modifier applied". In `sub_9D12F0` the word-1 bit-31 test is `v17 < 0` (sign-bit set means negate); bit-30 is `v17 & 0x40000000` (set means absolute value). These two source-operand modifiers are independent of the **branch predicate guard** sign bit, which lives in the high bit of the guard operand (see `passes/predication.md`) and is decoded by `sub_70B780` via the textual `'!'` prefix at offset `+2120` of the operand descriptor.
 
 ### Global Lookup Tables
 
