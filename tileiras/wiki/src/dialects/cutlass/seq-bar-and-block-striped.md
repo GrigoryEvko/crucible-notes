@@ -38,16 +38,15 @@ SeqBarState seq_bar_advance(SeqBar bar, SeqBarState state) {
 
 ## Seq-Bar Operations
 
-The six seq-bar ops are `cutlass.seq_bar.init`, `cutlass.seq_bar.arrive`, `cutlass.seq_bar.wait`, `cutlass.seq_bar.arrive_relaxed`, `cutlass.seq_bar.try_wait`, and `cutlass.seq_bar.finish`. The init op claims a slot range from the per-CTA NamedBarrier pool via the same barrier-id allocator at `sub_1771850` that `PipelineInitOp::verify` uses. The thirty-two-slot pool serves both `cutlass.pipeline` and `cutlass.seq_bar`, so pipeline-init and seq-bar-init compete for the same physical resource and must agree on allocation order.
+The five seq-bar ops are `cutlass.seq_bar.create`, `cutlass.seq_bar.init`, `cutlass.seq_bar.arrive`, `cutlass.seq_bar.wait`, and the per-state-machine `cutlass.seq_bar.state.create`. The init op claims a slot range from the per-CTA NamedBarrier pool via the same barrier-id allocator at `sub_1771850` that `PipelineInitOp::verify` uses. The thirty-two-slot pool serves both `cutlass.pipeline` and `cutlass.seq_bar`, so pipeline-init and seq-bar-init compete for the same physical resource and must agree on allocation order.
 
 | Operation | Contract |
 |---|---|
+| `cutlass.seq_bar.create` | Allocate the ring's typed handle; lowering attaches the barrier-id range claimed by `init`. |
 | `cutlass.seq_bar.init` | Initialize every barrier slot in the ring; allocates slot IDs from the per-CTA NamedBarrier pool. |
 | `cutlass.seq_bar.arrive` | Arrive on the current slot and advance state. |
 | `cutlass.seq_bar.wait` | Wait for the current slot and phase. |
-| `cutlass.seq_bar.arrive_relaxed` | Arrive without ordering against prior memory accesses. |
-| `cutlass.seq_bar.try_wait` | Probe the current phase without blocking. |
-| `cutlass.seq_bar.finish` | Drain the ring and release the slot range back to the pool. |
+| `cutlass.seq_bar.state.create` | Materialize the per-thread state record (slot index, phase) consumed by `arrive`/`wait`. |
 
 ```c
 void lower_seq_bar_wait(SeqBar bar, SeqBarState state) {

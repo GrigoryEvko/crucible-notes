@@ -36,9 +36,9 @@ The thirty-eight ops split into five families. Pipeline is the largest, covering
 
 | Family | Count | Examples |
 |---|---:|---|
-| pipeline | 12 | `cutlass.pipeline.create_pipeline`, `cutlass.pipeline.init`, `cutlass.pipeline.producer.acquire`, `cutlass.pipeline.producer.commit`, `cutlass.pipeline.producer.tail`, `cutlass.pipeline.consumer.wait`, `cutlass.pipeline.consumer.release`, `cutlass.pipeline.state`, `cutlass.pipeline.state.increment`, `cutlass.pipeline.state.bump`, `cutlass.pipeline.bar`, `cutlass.pipeline.switch_by_executor` |
-| tile_scheduler | 8 | `cutlass.tile_scheduler.streamk`, `cutlass.tile_scheduler.static_persistent`, `cutlass.tile_scheduler.data_parallel`, plus per-variant accessors (work_tile_info, next_iteration, finish, and the SM100 persistent-fixup hooks) |
-| seq_bar | 6 | `cutlass.seq_bar.init`, `cutlass.seq_bar.arrive`, `cutlass.seq_bar.wait`, `cutlass.seq_bar.arrive_relaxed`, `cutlass.seq_bar.try_wait`, `cutlass.seq_bar.finish` |
+| pipeline | 12 | `cutlass.pipeline.create`, `cutlass.pipeline.init`, `cutlass.pipeline.producer_acquire`, `cutlass.pipeline.producer_commit`, `cutlass.pipeline.producer_tail`, `cutlass.pipeline.consumer_wait`, `cutlass.pipeline.consumer_release`, `cutlass.pipeline.state.create`, `cutlass.pipeline.state.increment`, `cutlass.pipeline.consume`, `cutlass.pipeline.produce`, `cutlass.pipeline.switch_by_executor` |
+| tile_scheduler | 8 | `cutlass.tile_scheduler.create_streamk_params`, `cutlass.tile_scheduler.create_static_persistent_params`, `cutlass.tile_scheduler.create_dp_params`, plus per-variant accessors (`work_tile_info_*`, `fetch_next_work`, `advance_to_next_work`, and the SM100 persistent-fixup hooks) |
+| seq_bar | 5 | `cutlass.seq_bar.create`, `cutlass.seq_bar.init`, `cutlass.seq_bar.arrive`, `cutlass.seq_bar.wait`, `cutlass.seq_bar.state.create` |
 | block_striped | 8 | `cutlass.block_striped.load`, `cutlass.block_striped.store`, `cutlass.block_striped.reduce`, plus five type-specialized forms covering the half, bfloat, packed, integer, and float variants |
 | MODS async_dispatch | 4 | `cutlass.mods.async_dispatch.*` (four ops covering the alternate async-call ABI used by the MODS telemetry path) |
 
@@ -138,16 +138,16 @@ The `cutlass` dialect is the IR shape of the orchestration classes living in `cu
 
 | CUTLASS C++ class / template | tileiras IR (`cutlass.*`) |
 |---|---|
-| `PipelineTmaAsync<Stages>`, `PipelineAsync<Stages>` | `cutlass.pipeline.create_pipeline` + `cutlass.pipeline.init` with `numStages`/`numProducers`/`numConsumers` attrs |
+| `PipelineTmaAsync<Stages>`, `PipelineAsync<Stages>` | `cutlass.pipeline.create` + `cutlass.pipeline.init` with `numStages`/`numProducers`/`numConsumers` attrs |
 | `PipelineState<Stages>` member tuple | `!cutlass.pipeline_state` typed value (phase, index, count) |
-| `producer_acquire / commit / tail` | `cutlass.pipeline.producer.{acquire,commit,tail}` ops |
-| `consumer_wait / release` | `cutlass.pipeline.consumer.{wait,release}` ops |
+| `producer_acquire / commit / tail` | `cutlass.pipeline.producer_{acquire,commit,tail}` ops |
+| `consumer_wait / release` | `cutlass.pipeline.consumer_{wait,release}` ops |
 | Warp-specialized executor partition | `cutlass.pipeline.switch_by_executor` |
-| `OrderedSequenceBarrier<Stages, ...>` | `cutlass.seq_bar.{init,arrive,wait,arrive_relaxed,try_wait,finish}` (six-op family) |
+| `OrderedSequenceBarrier<Stages, ...>` | `cutlass.seq_bar.{create,init,arrive,wait,state.create}` (five-op family) |
 | `arch::NamedBarrier::sync(id, threads)` | `cutlass.bar` (warp-cooperative-only; gated by the `BarOpLowering` diagnostic) |
-| `PersistentTileScheduler` | `cutlass.tile_scheduler.static_persistent` |
-| `StreamKScheduler` | `cutlass.tile_scheduler.streamk` (with SM100 variant body `sub_R01`) |
-| `DataParallelScheduler` | `cutlass.tile_scheduler.data_parallel` |
+| `PersistentTileScheduler` | `cutlass.tile_scheduler.create_static_persistent_params` (with companion `create_static_persistent_work_tile_info`) |
+| `StreamKScheduler` | `cutlass.tile_scheduler.create_streamk_params` (with companion `create_streamk_work_tile_info`; SM100 variant body `sub_R01`) |
+| `DataParallelScheduler` | `cutlass.tile_scheduler.create_dp_params` (with companion `create_dp_work_tile_info`) |
 | `BlockStriped<T>::load/store/reduce` | `cutlass.block_striped.{load,store,reduce}` (eight-op family) |
 | `MODS` telemetry hooks (`cutlass::mods::*`) | `cutlass.tile_scheduler.mods_*` ops (side-effecting) |
 

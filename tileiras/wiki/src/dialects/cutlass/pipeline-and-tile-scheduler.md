@@ -123,13 +123,13 @@ For readers fluent in the open-source `cutlass::PipelineTmaAsync<Stages>` and fr
 
 | CUTLASS C++ | tileiras IR |
 |---|---|
-| `PipelineTmaAsync<Stages>::producer_acquire(state)` | `cutlass.pipeline.producer.acquire %pipe, %state` |
-| `PipelineTmaAsync<Stages>::producer_commit(state, bytes)` | `cutlass.pipeline.producer.commit %pipe, %state {transaction_bytes = N}` |
-| `PipelineTmaAsync<Stages>::consumer_wait(state)` | `cutlass.pipeline.consumer.wait %pipe, %state` |
-| `PipelineTmaAsync<Stages>::consumer_release(state)` | `cutlass.pipeline.consumer.release %pipe, %state` |
+| `PipelineTmaAsync<Stages>::producer_acquire(state)` | `cutlass.pipeline.producer_acquire %pipe, %state` |
+| `PipelineTmaAsync<Stages>::producer_commit(state, bytes)` | `cutlass.pipeline.producer_commit %pipe, %state {transaction_bytes = N}` |
+| `PipelineTmaAsync<Stages>::consumer_wait(state)` | `cutlass.pipeline.consumer_wait %pipe, %state` |
+| `PipelineTmaAsync<Stages>::consumer_release(state)` | `cutlass.pipeline.consumer_release %pipe, %state` |
 | `PipelineState<Stages>` member object | `!cutlass.pipeline_state` typed value with phase/index/count |
 | `cutlass::arch::NamedBarrier::sync(id, threads)` | `cutlass.bar` op + warp-cooperative diagnostic |
-| Cluster-wide barrier on Hopper / Blackwell | `cute_nvgpu.arch.cluster.barrier` op |
+| Cluster-wide barrier on Hopper / Blackwell | `nvvm.cluster.arrive` / `nvvm.cluster.wait` pair |
 | Template parameter `Stages` | `numStages` attribute on `cutlass.pipeline.init` |
 | Template parameter `ClusterShape` | `cluster_shape_x/y/z` fields on `CutlassTileSchedulerParams` |
 
@@ -165,7 +165,7 @@ The table below lists each pattern with its `matchAndRewrite` slab address (wher
 
 | Pattern | matchAndRewrite | vtable bank base | Slab size | Emit set |
 |---|---|---|---|---|
-| PipelineInitOpLowering | (varies) | `0x59E4520` | 0x70 | `nvvm.mbarrier.init` + `nvvm.bar.cta.arrive.expect_tx` |
+| PipelineInitOpLowering | (varies) | `0x59E4520` | 0x70 | `nvvm.mbarrier.init` + `nvvm.barrier.cta.arrive` (expect-tx form) |
 | PipelineSwitchByExecutorOpLowering | — | `0x59E4520` | 0x70 | conditional branch on executor mode |
 | PipelineProducerAcquireOpLowering | `sub_15EFAB0` (17 KB) | `0x59E42F0` | 0x70 | 12-op emit set (see task #576) |
 | PipelineProducerCommitOpLowering | — | `0x59E4340` | 0x78 | `nvvm.mbarrier.arrive.expect_tx` + arrives |
@@ -176,7 +176,7 @@ The table below lists each pattern with its `matchAndRewrite` slab address (wher
 | PipelineStateIncrementOpLowering | — | `0x59E45C0` | 0x70 | `arith.addi` plus modulo wrap |
 | PipelineStateBumpOpLowering | — | `0x59E45C0` | 0x70 | sibling of above |
 | BarOpLowering | `sub_15FC250` (~5.5 KB) | `0x59E4610` | 0x78 | named-barrier emission |
-| BarrierInitOpLowering | — | `0x59E4660` | 0x70 | `nvvm.barrier0.init` |
+| BarrierInitOpLowering | — | `0x59E4660` | 0x70 | `nvvm.mbarrier.init` (per-barrier initializer) |
 | AsyncWaitOpConversionMbarrier | — | `off_59D5DD8` | 0x70 | `nvvm.mbarrier.try_wait.parity.shared` |
 | AsyncWaitOpConversionTMASTGAndTMAREDG | — | `off_59D5E28` | 0x70 | TMA store-and-reduce wait |
 | AsyncWaitOpConversionGMMA | — | `off_59D5E78` | 0x70 | `nvvm.wgmma.wait.group.sync.aligned` |
@@ -185,8 +185,8 @@ The table below lists each pattern with its `matchAndRewrite` slab address (wher
 | AsyncFutureWaitMbarrier | — | `off_59D5F68` | 0x70 | `nvvm.mbarrier.try_wait.parity.shared` (different spin form) |
 | AsyncFutureWaitGroup | — | `off_59D5FB8` | 0x70 | `nvvm.cp.async.bulk.wait_group` |
 | TokenToAsyncOpConversion | — | `off_59D6008` | 0x70 | `builtin.unrealized_conversion_cast` |
-| BlockStripedLoadOpLowering | — | (varies) | 0x70 | `cute.block_striped_load` |
-| BlockStripedStoreOpLowering | — | (varies) | 0x70 | `cute.block_striped_store` |
+| BlockStripedLoadOpLowering | — | (varies) | 0x70 | `cutlass.block_striped.load` |
+| BlockStripedStoreOpLowering | — | (varies) | 0x70 | `cutlass.block_striped.store` |
 
 A few details in the table are worth unpacking. The vtable banks cluster patterns that share a base class: the three handshake-side acquire/wait patterns occupy the `0x59E42F0`/`0x59E4570` banks; the commit and tail patterns share `0x59E4340` with a slightly larger 0x78 slab to hold extra emit-set state; and the seven `AsyncWait`/`AsyncFutureWait` patterns occupy the contiguous `off_59D5DD8`–`off_59D6008` range. The 0x70 default slab is the standard `OpRewritePattern` footprint plus one type-converter pointer; the 0x78 patterns carry one extra field — usually a precomputed attribute (transaction byte count for commit, fast/slow-path flag for tail).
 
@@ -362,7 +362,7 @@ The runtime work-distribution layer in Tileiras is not one routine. Six cooperat
 
 The symbols `sub_R01` .. `sub_R06` are the canonical names used throughout this wiki for the six bodies. Each body exposes the same external entry shape — `(Params *params, int linear_id) -> WorkTileInfo` — so the dialect lowering can fix on one indirect call site and dispatch by kind at op-selection time.
 
-Any scheduler that needs cross-CTA coordination state allocates a global buffer in the kernel's parameter space. `sub_R05` computes the workspace size from `(num_ctas, num_stages, tile_count)` and the result lives in the kernel's `nv_tileas.workspace_global_offset` attribute; DataParallel returns zero and the kernel skips the allocation. StaticPersistent needs only a small counter region for the persistent-advance bookkeeping. Both StreamK variants need partial-accumulator plus barrier regions, whose layout is described under StreamK Workspace below.
+Any scheduler that needs cross-CTA coordination state allocates a global buffer in the kernel's parameter space. `sub_R05` computes the workspace size from `(num_ctas, num_stages, tile_count)` and the result lives in the kernel's workspace-global-offset attribute (read back through `cutlass.tile_scheduler.get_workspace_sizes`); DataParallel returns zero and the kernel skips the allocation. StaticPersistent needs only a small counter region for the persistent-advance bookkeeping. Both StreamK variants need partial-accumulator plus barrier regions, whose layout is described under StreamK Workspace below.
 
 The shared `Params` struct, built by `sub_R06` and passed to every body, is a 48-byte record:
 
@@ -382,11 +382,11 @@ typedef struct CutlassTileSchedulerParams {
 } CutlassTileSchedulerParams;
 ```
 
-The struct is passed as an `nv_tileas.grid_constant` argument, which lets the compiler hoist all field loads into scalar registers at kernel entry. `workspace_ptr` is the only 64-bit field — it carries a global address; everything else is a count or shape index and fits in 32 bits. `k_split_count` is zero for DataParallel and StaticPersistent; both StreamK bodies are the only consumers, reading it to decide how many K partials to expect at fixup time. The trailing `reserved` word keeps the struct 8-byte aligned so `workspace_ptr` lands on its natural alignment without a hidden pad.
+The struct is passed as a `cute_nvgpu.grid_constant` argument, which lets the compiler hoist all field loads into scalar registers at kernel entry. `workspace_ptr` is the only 64-bit field — it carries a global address; everything else is a count or shape index and fits in 32 bits. `k_split_count` is zero for DataParallel and StaticPersistent; both StreamK bodies are the only consumers, reading it to decide how many K partials to expect at fixup time. The trailing `reserved` word keeps the struct 8-byte aligned so `workspace_ptr` lands on its natural alignment without a hidden pad.
 
-Scheduler op selection in the `cutlass` dialect happens at lowering time. Each `cutlass.tile_scheduler.*` op declares which scheduler variant it backs. `cutlass.tile_scheduler.streamk` resolves to `sub_R01` on SM100 and `sub_R03` otherwise; `cutlass.tile_scheduler.static_persistent` always resolves to `sub_R02`; `cutlass.tile_scheduler.data_parallel` always resolves to `sub_R04`. The dialect verifier enforces the inverse direction too: SM100 streamk is illegal on `sm_90` (R01 uses Blackwell cluster barriers that do not exist on Hopper), and the generic streamk op is illegal on `sm_100` because R01 supersedes it and a kernel must not link both.
+Scheduler op selection in the `cutlass` dialect happens at lowering time. Each `cutlass.tile_scheduler.*` op declares which scheduler variant it backs. The StreamK family (`cutlass.tile_scheduler.create_streamk_params` / `create_streamk_work_tile_info`) resolves to `sub_R01` on SM100 and `sub_R03` otherwise; the StaticPersistent family (`cutlass.tile_scheduler.create_static_persistent_params` / `create_static_persistent_work_tile_info`) always resolves to `sub_R02`; the DataParallel family (`cutlass.tile_scheduler.create_dp_params` / `create_dp_work_tile_info`) always resolves to `sub_R04`. The dialect verifier enforces the inverse direction too: SM100 streamk is illegal on `sm_90` (R01 uses Blackwell cluster barriers that do not exist on Hopper), and the generic streamk op is illegal on `sm_100` because R01 supersedes it and a kernel must not link both.
 
-The SM100 streamk body (`sub_R01`) is the only one using cluster-level coordination. It emits `cute_nvgpu.arch.cluster.barrier` ops — the [Blackwell 2-CTA and 4-CTA cooperative MMA protocol](../../topics/blackwell-2cta-and-4cta-mma.md#cluster-sibling-pairing) — so each cluster can claim a contiguous range of `(M, N, K)` tiles, distribute them across the cluster's CTAs, and coordinate K-split partial-reductions through an inter-CTA barrier. The generic streamk body (`sub_R03`) reaches the same logical result with per-CTA atomics on the barrier workspace. The SM100 variant exists because the cluster-barrier path is far cheaper on Blackwell — at high cluster counts the atomic path's runtime cost would dominate.
+The SM100 streamk body (`sub_R01`) is the only one using cluster-level coordination. It emits `nvvm.cluster.arrive` / `nvvm.cluster.wait` pairs — the [Blackwell 2-CTA and 4-CTA cooperative MMA protocol](../../topics/blackwell-2cta-and-4cta-mma.md#cluster-sibling-pairing) — so each cluster can claim a contiguous range of `(M, N, K)` tiles, distribute them across the cluster's CTAs, and coordinate K-split partial-reductions through an inter-CTA barrier. The generic streamk body (`sub_R03`) reaches the same logical result with per-CTA atomics on the barrier workspace. The SM100 variant exists because the cluster-barrier path is far cheaper on Blackwell — at high cluster counts the atomic path's runtime cost would dominate.
 
 ## Data-Parallel Scheduler
 

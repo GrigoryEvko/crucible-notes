@@ -40,14 +40,15 @@ The `expect_tx` op is the producer-side handshake for TMA tile loads: the consum
 | `nvvm.mbarrier.arrive` | generic + `.shared` |
 | `nvvm.mbarrier.arrive.nocomplete` | generic + `.shared` |
 | `nvvm.mbarrier.arrive.expect_tx` | generic + `.shared` |
-| `nvvm.mbarrier.arrive.drop` | generic + `.shared` |
 | `nvvm.mbarrier.test.wait` | generic + `.shared` |
-| `nvvm.mbarrier.try_wait` | generic + `.shared` |
-| `nvvm.mbarrier.try_wait.parity` | generic + `.shared` |
+| `nvvm.mbarrier.wait` | (one op) — blocking phase wait |
+| `nvvm.mbarrier.wait.parity` | (one op) — phase-parity blocking wait |
+| `nvvm.mbarrier.try_wait.parity` | generic + `.shared` + `.timelimit` variant |
+| `nvvm.mbarrier.try_wait.timelimit` | (one op) — try-wait with deadline |
 | `nvvm.fence.mbarrier.init` | (one op) — proxy fence before `init` |
-| `nvvm.mbarrier.complete_tx` | (one op) — explicit tx-count bump |
+| `nvvm.mbarrier.txn` / `nvvm.mbarrier.txn.cta` | tx-count transaction handles |
 
-Nine of these eleven ops carry a `.shared` variant (the address-space split adds 9 extra entries); `nvvm.fence.mbarrier.init` and `nvvm.mbarrier.complete_tx` are single-variant. The dialect roster therefore lists 9 + 9 + 2 = 20 entries.
+Most of these ops carry a `.shared` variant (the address-space split adds matching `.shared` entries); the wait family and the transaction-handle ops are single-variant.
 
 ## Operand Tables
 

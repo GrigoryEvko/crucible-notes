@@ -197,7 +197,7 @@ B in GMEM (AS=1) ---|  desc   |---------------------------->| (AS=3)  |
                                           st.global to GMEM
 ```
 
-The TMEM allocator op `nvvm.tcgen05.alloc.shared` returns an `addrspace(6)` handle; every subsequent `tcgen05.mma` op consumes the handle as a 32-bit base address plus row/column descriptor. The handle lifetime is scoped to the enclosing dialect operation — there is no way to pass a TMEM handle out of the function it was allocated in, and the allocator op must dominate every MMA op that uses the handle. See [tcgen05 Tensor Memory Model](tcgen05-tensor-memory-model.md) for the allocator contract and the variant taxonomy.
+The TMEM allocator op `nvvm.tcgen05.alloc` returns an `addrspace(6)` handle; every subsequent `tcgen05.mma` op consumes the handle as a 32-bit base address plus row/column descriptor. The handle lifetime is scoped to the enclosing dialect operation — there is no way to pass a TMEM handle out of the function it was allocated in, and the allocator op must dominate every MMA op that uses the handle. See [tcgen05 Tensor Memory Model](tcgen05-tensor-memory-model.md) for the allocator contract and the variant taxonomy.
 
 The cooperative 2-CTA MMA variant shares TMEM across two CTAs in a cluster: CTA 0 holds rows `[0..M/2)` and CTA 1 holds rows `[M/2..M)`. The two halves never exchange data through TMEM directly — the only inter-CTA path on the data side is through DSMEM (distributed shared memory, `addrspace(7)`) via the `nvvm.mapa` address translation. See [Cluster Sync and DSMEM Handshake](cluster-sync-and-dsmem-handshake.md) for the rendezvous protocol.
 

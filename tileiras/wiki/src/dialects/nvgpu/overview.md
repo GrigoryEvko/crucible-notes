@@ -36,36 +36,29 @@ PTX
 | `nvgpu.device_async_create_group` | `nvvm.cp.async.commit.group` |
 | `nvgpu.device_async_wait` | `nvvm.cp.async.wait.group` |
 | `nvgpu.mbarrier.create` | (no `nvvm.*`; `memref.global` + `memref.get_global`) |
-| `nvgpu.mbarrier.init` | `nvvm.mbarrier.init` |
-| `nvgpu.mbarrier.init.shared` | `nvvm.mbarrier.init.shared` |
-| `nvgpu.mbarrier.arrive` | `nvvm.mbarrier.arrive[.shared]` |
-| `nvgpu.mbarrier.arrive.nocomplete` | `nvvm.mbarrier.arrive.nocomplete[.shared]` |
-| `nvgpu.mbarrier.arrive.expect_tx` | `nvvm.mbarrier.arrive.expect_tx[.shared]` |
-| `nvgpu.mbarrier.test.wait` | `nvvm.mbarrier.test.wait[.shared]` |
-| `nvgpu.mbarrier.try_wait.parity` | `nvvm.mbarrier.try_wait.parity[.shared]` |
-| `nvgpu.mbarrier.inval` | `nvvm.mbarrier.inval[.shared]` |
-| `nvgpu.tma.async.load` | `nvvm.cp.async.bulk.tensor.shared.global` |
-| `nvgpu.tma.async.store` | `nvvm.cp.async.bulk.tensor.global.shared` |
+| `nvgpu.mbarrier.init` | `nvvm.mbarrier.init` / `nvvm.mbarrier.init.shared` (address-space-driven) |
+| `nvgpu.mbarrier.arrive` | `nvvm.mbarrier.arrive` / `.shared` |
+| `nvgpu.mbarrier.arrive.nocomplete` | `nvvm.mbarrier.arrive.nocomplete` / `.shared` |
+| `nvgpu.mbarrier.arrive.expect_tx` | `nvvm.mbarrier.arrive.expect_tx` / `.shared` |
+| `nvgpu.mbarrier.test.wait` | `nvvm.mbarrier.test.wait` / `.shared` |
+| `nvgpu.mbarrier.try_wait.parity` | `nvvm.mbarrier.try_wait.parity.shared` |
+| `nvgpu.tma.async.load` | `nvvm.cp.async.bulk.tensor.shared.cluster.global` |
+| `nvgpu.tma.async.store` | `nvvm.cp.async.bulk.tensor.global.shared.cta` |
 | `nvgpu.tma.prefetch.descriptor` | `nvvm.prefetch.tensormap` |
 | `nvgpu.tma.fence.descriptor` | `nvvm.fence.proxy.acquire` |
-| `nvgpu.tma.async.reduce` | `nvvm.cp.async.bulk.tensor.reduce` |
 | `nvgpu.tma.create.descriptor` | `llvm.alloca` + GEP/store sequence + `llvm.call @cuTensorMapEncodeTiled` |
-| `nvgpu.tensormap.create.descriptor` | `nvvm.tensormap.cp.async.shared` + `tensormap.replace.*` |
-| `nvgpu.tensormap.update.global_address` | `nvvm.tensormap.replace.global_address` |
-| `nvgpu.tensormap.update.box_dim` | `nvvm.tensormap.replace.box_dim` |
-| `nvgpu.tensormap.update.element_stride` | `nvvm.tensormap.replace.element_stride` |
-| `nvgpu.warp.execute_on_lane_0` | `nvvm.shfl.sync` + conditional region |
+| `gpu.warp_execute_on_lane_0` (consumed at this stage) | `nvvm.shfl.sync` + conditional region |
 | `nvgpu.warpgroup.descriptor` (generate) | integer `shl`/`or` chain producing a 64-bit value (see [WGMMA descriptor bit layout](../cute_nvgpu/mma-atoms-sm70-120.md#smem-descriptor-construction)) |
-| `nvgpu.warpgroup.mma` | `nvvm.wgmma.fence.aligned` + N× `nvvm.wgmma.mma_async.sync.aligned` + `nvvm.wgmma.commit.group.sync.aligned` + `nvvm.wgmma.wait.group.sync.aligned` |
+| `nvgpu.warpgroup.mma` | `nvvm.wgmma.fence.aligned` + N× `nvvm.wgmma.mma_async` + `nvvm.wgmma.commit.group.sync.aligned` + `nvvm.wgmma.wait.group.sync.aligned` |
 | `nvgpu.warpgroup.mma.store` | per-thread `llvm.store` decomposition of the accumulator |
 | `nvgpu.warpgroup.mma.init.accumulator` | `llvm.mlir.undef` (or zero) accumulator aggregate |
-| `nvgpu.mma.sync` | `nvvm.wmma.mma.sync.aligned` (sm_70..sm_89) or `nvvm.wgmma.mma_async.sync.aligned` (sm_90+) |
+| `nvgpu.mma.sync` | `nvvm.wmma.mma.sync.aligned` (sm_70..sm_89) or `nvvm.wgmma.mma_async` (sm_90+) |
 | `nvgpu.mma.sp.sync` | `llvm.inline_asm` with `mma.sp.sync.aligned.m...` template |
-| `nvgpu.ldmatrix` | `nvvm.ldmatrix.sync.aligned` + register repack |
-| `nvgpu.stmatrix` | `nvvm.stmatrix.sync.aligned` (when available) or `llvm.inline_asm` |
+| `nvgpu.ldmatrix` | `nvvm.ldmatrix` + register repack |
+| (no nvgpu wrapper; lowered directly to `nvvm.stmatrix`) | `nvvm.stmatrix` (when available) or `llvm.inline_asm` |
 | `nvgpu.rcp` | `nvvm.rcp.approx.ftz.f` family or libdevice call |
 | `nvgpu.cvt_fpext` / `nvgpu.cvt_fptrunc` | `nvvm.cvt.packfloat.f32` family |
-| `nvgpu.fma.packed.f32x2` / `nvgpu.mul.packed.f32x2` | packed `nvvm.fma.rn.f32x2` / `nvvm.mul.f32x2` |
+| `nvgpu.fma.packed.f32x2` / `nvgpu.mul.packed.f32x2` | packed `nvvm.fma.packed.f32x2` / `nvvm.mul.packed.f32x2` |
 
 Patterns are registered at `benefit = 1`. The 64-bit values consumed by `nvgpu.warpgroup.mma`'s `descriptorA` / `descriptorB` operands are the same SMEM descriptor words that flow through `cute_nvgpu` MMA atoms — the [canonical bitfield decode is on the cute_nvgpu MMA atoms page](../cute_nvgpu/mma-atoms-sm70-120.md#smem-descriptor-construction).
 
@@ -276,7 +269,7 @@ Rewriter packs the descriptor bits inline. The result is a `i64` LLVM value buil
 | attribute | `waitGroup` | optional `i32` | controls the wait-group depth |
 | result 0 | `matrixD` | `!nvgpu.warpgroup.accumulator` | output accumulator tile |
 
-Rewriter expands to the canonical four-op WGMMA sequence: `nvvm.wgmma.fence.aligned`, one `nvvm.wgmma.mma_async.sync.aligned` per accumulator tile, `nvvm.wgmma.commit.group.sync.aligned`, then `nvvm.wgmma.wait.group.sync.aligned waitGroup`. See [WGMMA Emission Protocol — The Four-Op Sequence](../../topics/wgmma-emission-protocol.md#the-four-op-sequence) for the timing rules and accumulator lifetime. It validates GMMA layout up front with the canonical "Not a canonical GMMA_MN Layout" wording lifted from CUTLASS's `gmma.hpp`.
+Rewriter expands to the canonical four-op WGMMA sequence: `nvvm.wgmma.fence.aligned`, one `nvvm.wgmma.mma_async` per accumulator tile, `nvvm.wgmma.commit.group.sync.aligned`, then `nvvm.wgmma.wait.group.sync.aligned waitGroup`. See [WGMMA Emission Protocol — The Four-Op Sequence](../../topics/wgmma-emission-protocol.md#the-four-op-sequence) for the timing rules and accumulator lifetime. It validates GMMA layout up front with the canonical "Not a canonical GMMA_MN Layout" wording lifted from CUTLASS's `gmma.hpp`.
 
 ### `nvgpu.warpgroup.mma.store`
 
@@ -306,7 +299,7 @@ Rewriter emits `llvm.mlir.zero` (or `llvm.mlir.undef` followed by per-field zero
 | attribute | `tf32Enabled` | optional `UnitAttr` | enables `tf32` element-type lowering |
 | result 0 | `matrixD` | `vector<...>` register fragment | D = A * B + C |
 
-Rewriter emits `nvvm.wmma.mma.sync.aligned` (Ampere/Ada) or routes through `nvvm.wgmma.mma_async.sync.aligned` (Hopper) based on the active SM.
+Rewriter emits `nvvm.wmma.mma.sync.aligned` (Ampere/Ada) or routes through `nvvm.wgmma.mma_async` (Hopper) based on the active SM.
 
 ### `nvgpu.mma.sp.sync`
 
@@ -390,9 +383,9 @@ What each rewriter emits. The middle column gives the concrete NVVM op (or the e
 | `nvgpu.tensormap.create.descriptor` | `nvvm.tensormap.cp.async.shared` + `tensormap.replace.*` | `tensormap.cp.async.shared::cta.bulk_group [%dst], [%src];` then `tensormap.replace.tile.{global_address,box_dim,elem_stride,...}.[%tmap], ...;` |
 | `nvgpu.warp.execute_on_lane_0` | `nvvm.shfl.sync` + conditional region | `shfl.sync.idx.b32 %r, %v, 0, 0x1f, 0xffffffff;` |
 | `nvgpu.warpgroup.descriptor` | integer `shl`/`or` chain — no NVVM op | (no PTX; the 64-bit [SMEM descriptor](../cute_nvgpu/mma-atoms-sm70-120.md#smem-descriptor-construction) is built by ordinary integer ops; the PTX side sees the materialised `b64` value) |
-| `nvgpu.warpgroup.mma` | `nvvm.wgmma.fence.aligned` → N× `nvvm.wgmma.mma_async.sync.aligned` → `nvvm.wgmma.commit.group.sync.aligned` → `nvvm.wgmma.wait.group.sync.aligned` | `wgmma.fence.sync.aligned;` then `wgmma.mma_async.sync.aligned.m64nXkY.f32.{f16,bf16,e4m3,e5m2}.{f16,bf16,e4m3,e5m2} {...}, %da, %db, p, 1, 1, %la, %lb;` then `wgmma.commit_group.sync.aligned;` then `wgmma.wait_group.sync.aligned N;` |
+| `nvgpu.warpgroup.mma` | `nvvm.wgmma.fence.aligned` → N× `nvvm.wgmma.mma_async` → `nvvm.wgmma.commit.group.sync.aligned` → `nvvm.wgmma.wait.group.sync.aligned` | `wgmma.fence.sync.aligned;` then `wgmma.mma_async.sync.aligned.m64nXkY.f32.{f16,bf16,e4m3,e5m2}.{f16,bf16,e4m3,e5m2} {...}, %da, %db, p, 1, 1, %la, %lb;` then `wgmma.commit_group.sync.aligned;` then `wgmma.wait_group.sync.aligned N;` |
 | `nvgpu.warpgroup.mma.store` | per-thread `llvm.store` decomposition | `st.shared.b32 [%dst+off], %r;` per fragment lane |
-| `nvgpu.mma.sync` | `nvvm.wmma.mma.sync.aligned` (sm_70..sm_89) or `nvvm.wgmma.mma_async.sync.aligned` (sm_90+) | `mma.sync.aligned.m16n8kK.{row,col}.{row,col}.{...} {...}, %a, %b, %c;` |
+| `nvgpu.mma.sync` | `nvvm.wmma.mma.sync.aligned` (sm_70..sm_89) or `nvvm.wgmma.mma_async` (sm_90+) | `mma.sync.aligned.m16n8kK.{row,col}.{row,col}.{...} {...}, %a, %b, %c;` |
 | `nvgpu.mma.sp.sync` | `llvm.inline_asm` with `mma.sp.sync.aligned.m...` template | `mma.sp.sync.aligned.m16n8k{16,32}.row.col.{f16,bf16,...} {...}, %a, %b, %c, %meta, 0x0;` |
 | `nvgpu.ldmatrix` | `nvvm.ldmatrix.sync.aligned` + repack | `ldmatrix.sync.aligned.m8n8.x{1,2,4}{.trans,}.shared::cta.b16 {...}, [%addr];` |
 | `nvgpu.stmatrix` | `nvvm.stmatrix.sync.aligned` or inline asm | `stmatrix.sync.aligned.m8n8.x{1,2,4}{.trans,}.shared::cta.b16 [%addr], {...};` |

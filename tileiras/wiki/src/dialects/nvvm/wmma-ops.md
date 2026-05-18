@@ -59,16 +59,16 @@ Every `nvvm.wmma.*` op lowers to one `call @llvm.nvvm.wmma.mXnYkZ.{op}.{layout}.
 
 | Op | LLVM intrinsic |
 |---|---|
-| `nvvm.wmma.load.a.sync.aligned.m16n16k16.row.f16` | `llvm.nvvm.wmma.m16n16k16.load.a.row.stride.f16` |
-| `nvvm.wmma.load.b.sync.aligned.m16n16k16.col.f16` | `llvm.nvvm.wmma.m16n16k16.load.b.col.stride.f16` |
-| `nvvm.wmma.load.c.sync.aligned.m16n16k16.row.f32` | `llvm.nvvm.wmma.m16n16k16.load.c.row.stride.f32` |
-| `nvvm.wmma.store.d.sync.aligned.m16n16k16.row.f32` | `llvm.nvvm.wmma.m16n16k16.store.d.row.stride.f32` |
-| `nvvm.wmma.mma.sync.aligned.m16n16k16.row.col.f16.f16.f16.f16` | `llvm.nvvm.wmma.m16n16k16.mma.row.col.f16.f16` |
-| `nvvm.wmma.mma.sync.aligned.m16n16k16.row.col.f16.f16.f32.f32` | `llvm.nvvm.wmma.m16n16k16.mma.row.col.f32.f32` |
-| `nvvm.wmma.mma.sync.aligned.m8n8k128.row.col.b1.b1.s32.s32` | `llvm.nvvm.wmma.m8n8k128.mma.row.col.b1` |
-| `nvvm.wmma.mma.sync.aligned.m8n8k32.row.col.s4.s4.s32.s32` | `llvm.nvvm.wmma.m8n8k32.mma.row.col.s4` |
+| `nvvm.wmma.load` (frag = A, m16n16k16, row, f16) | `llvm.nvvm.wmma.m16n16k16.load.a.row.stride.f16` |
+| `nvvm.wmma.load` (frag = B, m16n16k16, col, f16) | `llvm.nvvm.wmma.m16n16k16.load.b.col.stride.f16` |
+| `nvvm.wmma.load` (frag = C, m16n16k16, row, f32) | `llvm.nvvm.wmma.m16n16k16.load.c.row.stride.f32` |
+| `nvvm.wmma.store` (frag = D, m16n16k16, row, f32) | `llvm.nvvm.wmma.m16n16k16.store.d.row.stride.f32` |
+| `nvvm.wmma.mma` (m16n16k16, row, col, f16→f16) | `llvm.nvvm.wmma.m16n16k16.mma.row.col.f16.f16` |
+| `nvvm.wmma.mma` (m16n16k16, row, col, f16→f32) | `llvm.nvvm.wmma.m16n16k16.mma.row.col.f32.f32` |
+| `nvvm.wmma.mma` (m8n8k128, row, col, b1→s32) | `llvm.nvvm.wmma.m8n8k128.mma.row.col.b1` |
+| `nvvm.wmma.mma` (m8n8k32, row, col, s4→s32) | `llvm.nvvm.wmma.m8n8k32.mma.row.col.s4` |
 
-Every `.col.row` / `.col.col` / `.row.row` variant has a matching intrinsic name where the layout tokens after `.mma.` mirror the op's layout pair.
+Shape, fragment, layout pair, and element types all live as attributes on the three canonical dialect ops (`nvvm.wmma.load`, `nvvm.wmma.store`, `nvvm.wmma.mma`); the matching intrinsic name is reconstructed at NVVM-to-LLVM time by concatenating the attribute tokens.
 
 ## PTX Templates
 
@@ -85,7 +85,7 @@ Once the LLVM intrinsic is selected, the NVPTX backend emits one PTX instruction
 | `wmma.mma.sync` (row.col.s8.s8.s32.s32) | `wmma.mma.sync.aligned.m16n16k16.row.col.s8 {%d0..%d7}, {%a0..%a1}, {%b0..%b1}, {%c0..%c7};` |
 | `wmma.mma.sync` (row.col.b1.b1.s32.s32, popc) | `wmma.mma.sync.aligned.m8n8k128.row.col.popc.b1 {%d0..%d1}, {%a0}, {%b0}, {%c0..%c1};` |
 
-The `.popc` and `.and.popc` modifiers on the `b1` form are encoded into the op mnemonic (`nvvm.wmma.mma.sync.aligned.m8n8k128.row.col.popc.b1` vs `.and.popc.b1`). The verifier rejects any combination not listed in the PTX ISA.
+The `.popc` and `.and.popc` modifiers on the `b1` form are encoded as a boolean attribute on `nvvm.wmma.mma` (and selected through the op's element-type discriminator). The verifier rejects any combination not listed in the PTX ISA.
 
 ## Per-Arch Availability
 
@@ -98,7 +98,7 @@ The `.popc` and `.and.popc` modifiers on the `b1` form are encoded into the op m
 | `s4` / `u4` | sm_75 | 6.3 | `m8n8k32` shape only |
 | `b1` (popc / and.popc) | sm_75 | 6.3 | `m8n8k128` shape only |
 
-Hopper (sm_90+) backends accept `nvvm.wmma.*` for backward compatibility but Tileiras prefers [`nvvm.wgmma.mma_async.*`](wgmma-ops.md#nvvmwgmmamma_asyncsyncaligned) once the target hits sm_90a. Blackwell (sm_100+) keeps WMMA legal for short-K tiles only — long-K paths go through [`nvvm.tcgen05.mma.sync`](tcgen05-ops.md#nvvmtcgen05mma-dense). See [Per-SM Emission Templates — SM70 / SM75](../../codegen/per-sm-emission-templates.md#sm70-sm75) for the Volta/Turing PTX templates.
+Hopper (sm_90+) backends accept `nvvm.wmma.*` for backward compatibility but Tileiras prefers [`nvvm.wgmma.mma_async`](wgmma-ops.md#nvvmwgmmamma_async) once the target hits sm_90a. Blackwell (sm_100+) keeps WMMA legal for short-K tiles only — long-K paths go through [`nvvm.tcgen05.mma`](tcgen05-ops.md#nvvmtcgen05mma-dense). See [Per-SM Emission Templates — SM70 / SM75](../../codegen/per-sm-emission-templates.md#sm70-sm75) for the Volta/Turing PTX templates.
 
 ## Verification Invariants
 
@@ -106,4 +106,4 @@ Hopper (sm_90+) backends accept `nvvm.wmma.*` for backward compatibility but Til
 - A and B fragment cardinalities are derived from the shape; the verifier rejects mismatched operand counts.
 - C and D layouts (`row` / `col`) must agree.
 - `.popc` / `.and.popc` are legal only on the `b1` form.
-- `f64` WMMA does not exist in this dialect; the FP64 MMA path uses `nvvm.mma.sync.aligned.m8n8k4.f64`.
+- `f64` WMMA does not exist in this dialect; the FP64 MMA path uses `nvvm.mma.sync` with the `m8n8k4.f64` shape/type attribute combination.

@@ -407,7 +407,7 @@ Resolves the label to its BB via `sub_946C80` and inserts it as the current basi
 
 ### Computed Goto (GCC `&&label` Extension)
 
-Computed goto is handled in the expression codegen layer, not the statement dispatcher. Expression kind `0x71` at `sub_921EA0` calls `EmitBlockAddress` (`sub_1285E30`) to produce an LLVM `blockaddress` constant, and expression kind `0x70` produces the label-as-value. The resulting `indirectbr` instruction is lowered later by `IndirectBrExpandPass` (pipeline parser index 247, `"indirectbr-expand"`) because NVPTX does not natively support indirect branches -- they are expanded into a switch over all possible target labels.
+Computed goto is handled in the expression codegen layer, not the statement dispatcher. Expression kind `0x6F` at `sub_921EA0` calls `EmitBlockAddress` (`sub_1285E30(builder, label, 1)`) to produce an LLVM `blockaddress` constant for the `&&label` GCC extension; expression kind `0x71` calls the same emitter with flag `0` (`sub_1285E30(builder, label, 0)`) to produce the `indirectbr` instruction for `goto *p`; expression kind `0x70` (label-as-value, distinct entry point via `sub_12812E0`) materializes the label reference as a typed value. The resulting `indirectbr` instruction is lowered later by `IndirectBrExpandPass` (pipeline parser index 247, `"indirectbr-expand"`) because NVPTX does not natively support indirect branches -- they are expanded into a switch over all possible target labels.
 
 ---
 

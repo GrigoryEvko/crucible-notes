@@ -1468,7 +1468,7 @@ Memory addressing modes for load/store/atomic instructions are not enumerated as
 | `sub_7DDCA0` | 0.2KB | `Observer::notify` | Walk observer chain and notify |
 | `sub_9253C0` | 0.5KB | `Instruction::remove` | Remove instruction from linked list (634 callers) |
 | `sub_925510` | 0.5KB | `Instruction::insertBefore` | Insert instruction before another (13 callers) |
-| `sub_917A60` | 6.8KB | `InstrInfo::getRegClass` | Opcode-to-register-class mapping (221 callers) |
+| `sub_917A60` | 6.8KB | `packRegClassField` | Bitfield packer keyed on field-ID 91--340; per-field LUT remap then OR into `desc[1]`/`desc[2]`. Not an opcode→regclass table -- see `ir/registers.md` (221 callers) |
 | `sub_91A0F0` | 5.6KB | `InstrInfo::resolveRegClass` | Resolve operand register class with constraints |
 | `sub_9314F0` | 0.4KB | `RegClass::query` | Register class query (1,547 callers) |
 | `sub_738E20` | 10KB | `InstrDescTable::init` | Base instruction descriptor table constructor |

@@ -288,7 +288,7 @@ Dynamic legality for the remaining `arith`, `math`, and `ub.poison` operations i
 | `math.absi`, `math.ctlz`, `math.ctpop`, `math.cttz`, `math.trunc` | `sub_36B50E0(target, op)` per op | inherited from the dialect's default dynamic predicate |
 | `ub.poison` | `sub_36B52E0(target, "ub.poison", 1, …)` | `{sub_115B360, sub_115B250}` |
 
-Those five `math.*` operations are exactly the ones with direct NVVM equivalents (`absi` → `nvvm.abs`, `ctlz`/`cttz` → `nvvm.bfind`, `ctpop` → `nvvm.popc`, `trunc` → integer-truncating cast); the upstream `math` patterns lower them in the cleanup phase only when their operands are already LLVM-typed.
+Those five `math.*` operations are exactly the ones with direct NVPTX equivalents — handled either by direct intrinsics or by short inline-PTX templates (`absi` → integer-abs sequence, `ctlz`/`cttz` → `bfind` PTX, `ctpop` → `popc` PTX, `trunc` → integer-truncating cast); the upstream `math` patterns lower them in the cleanup phase only when their operands are already LLVM-typed.
 
 ```c
 void buildConversionTarget(ConversionTarget *target) {
@@ -356,7 +356,7 @@ Prefer first-class NVVM operations over inline assembly. Inline assembly is appr
 
 ### `async.tiled_tma_load` → `nvvm.cp.async.bulk.tensor.shared.global`
 
-The TileAS TMA-load lowering is a five-step rewrite. The TMA descriptor (an `nv_tileas.tma_desc` value) becomes an `llvm.ptr<1>` to the descriptor's global-memory home, the destination view becomes the shared-memory base address, the per-axis coordinates flow through unchanged as `i32` indices, and the mbarrier slot is the shared-memory address of the completion barrier. The async-token result is the i32 phase carrier the consumer-side `mbarrier.try_wait` will observe:
+The TileAS TMA-load lowering is a five-step rewrite. The TMA descriptor (an `nv_tileas.make_tiled_tma_desc` result, carrying a `!nv_tileas.tma_descriptor_iter` value) becomes an `llvm.ptr<1>` to the descriptor's global-memory home, the destination view becomes the shared-memory base address, the per-axis coordinates flow through unchanged as `i32` indices, and the mbarrier slot is the shared-memory address of the completion barrier. The async-token result is the i32 phase carrier the consumer-side `mbarrier.try_wait` will observe:
 
 ```mlir
 // Before
@@ -364,9 +364,9 @@ The TileAS TMA-load lowering is a five-step rewrite. The TMA descriptor (an `nv_
     %desc, %dst_view[%coord_y, %coord_x], %mbar
     { atom = #nv_tileas<atom tma_load_2d>,
       operandSegmentSizes = array<i32: 1, 1, 2, 1> }
-    : !nv_tileas.tma_desc, !nv_tileas.tiled_view<128x64xf16>,
+    : !nv_tileas.tma_descriptor_iter, !nv_tileaa.tiled_view<128x64xf16>,
       index, index, !nv_tileas.mem_token
-    -> !nv_tileas.AsyncToken
+    -> !nv_tileas.async.token
 
 // After
 %dst_addr = llvm.extractvalue %dst_view_struct[0]
@@ -381,19 +381,19 @@ nvvm.cp.async.bulk.tensor.shared.cluster.global %dst_addr, %desc_addr,
 %tok = llvm.mlir.constant(0 : i32) : i32
 ```
 
-The intrinsic name selection is driven by the `atom` attribute. A 2D tile load with no multicast and no L2 cache hint emits the basic form above; multicast variants append a `multicast_mask` operand and switch to `nvvm.cp.async.bulk.tensor.shared.cluster.global.multicast`. The im2col atom variants pick `nvvm.cp.async.bulk.tensor.shared.cluster.global.im2col` and prepend a per-axis offset vector before the coordinate list.
+The intrinsic name selection is driven by the `atom` attribute and the `mode` attribute on `nvvm.cp.async.bulk.tensor.shared.cluster.global`. A 2D tile load with no multicast and no L2 cache hint emits the basic form above; multicast variants set `multicast = true` and append a `multicast_mask` operand; the im2col atom variants set `mode = #nvvm.tma_load_mode<im2col>` and prepend a per-axis offset vector before the coordinate list.
 
 Coordinate order also flips. The TileAS surface lists coordinates in row-major (outer-axis-first) order to match the way layout-assignment writes them, but `cp.async.bulk.tensor` consumes them in column-major (inner-axis-first) order to match the PTX instruction. The rewrite reverses the coordinate operand list as part of the emission.
 
-The `nv_tileas.AsyncToken` result becomes an i32 zero constant. Async-token values do not carry hardware state — only data-dependence edges in the IR — so the lowering replaces them with a placeholder whose only purpose is keeping the SSA dataflow connected for the consumer pattern. The consumer side (an `nv_tileas.async.pipeline.consumer_wait`) lowers to an `nvvm.mbarrier.try_wait.parity.shared` that reads its phase from the loop iterator's stage index, not from the async-token operand.
+The `!nv_tileas.async.token` result becomes an i32 zero constant. Async-token values do not carry hardware state — only data-dependence edges in the IR — so the lowering replaces them with a placeholder whose only purpose is keeping the SSA dataflow connected for the consumer pattern. The consumer side (an `nv_tileas.async.pipeline.consumer_wait`) lowers to an `nvvm.mbarrier.try_wait.parity.shared` that reads its phase from the loop iterator's stage index, not from the async-token operand.
 
-### `async.wgmma` → Four-Op NVVM Protocol
+### `async.dot` (Hopper WGMMA atom) → Four-Op NVVM Protocol
 
 Hopper warpgroup MMA lowers to a strict four-op NVVM sequence: fence, `mma_async`, commit_group, wait_group. The fence pins the boundary the consumer cannot reorder past, the `mma_async` issues the warpgroup compute, and the commit/wait pair drains the accumulator before the next consumer reads it. The 64-bit SMEM descriptors for A and B are built upstream in the cute_nvgpu lowering and arrive as already-packed `i64` SSA values:
 
 ```mlir
-// Before
-%c_out = nv_tileas.async.wgmma %desc_a, %desc_b, %c_in
+// Before — nv_tileas.async.dot carrying a sm90 WGMMA atom witness
+%c_out = nv_tileas.async.dot %desc_a, %desc_b, %c_in
     { atom = #nv_tileas<atom mma_f16_f16_f32>,
       group_id = 0 : i32 }
     : i64, i64, tile<128x128xf32>
@@ -422,7 +422,7 @@ nvvm.wgmma.wait.group.sync.aligned 0
 
 The accumulator tile becomes an LLVM struct with one element per register lane — for `m64n128.f32` the lane count is 64 per thread, so the struct has 64 `f32` fields, each held in a separate register at runtime. The rewrite splits the tile into per-lane SSA values with `extractvalue`, feeds them into the `mma_async` op as positional operands, and reassembles the result tile with `insertvalue`. NVVM canonicalisation later folds the `extractvalue`/`insertvalue` chain when the accumulator lives in a register for the full WGMMA loop.
 
-The `wait.group 0` waits for every outstanding WGMMA group — the simplest correct lowering. A pipelined variant emits `commit.group` after every `mma_async` and `wait.group N` with `N` equal to the depth of in-flight groups the scheduler tracks; that path is taken when `nv_tileas.async.wgmma` carries a `pipeline_depth` attribute. The four-op protocol is fixed; only the wait-group depth varies.
+The `wait.group 0` waits for every outstanding WGMMA group — the simplest correct lowering. A pipelined variant emits `commit.group` after every `mma_async` and `wait.group N` with `N` equal to the depth of in-flight groups the scheduler tracks; that path is taken when the upstream `nv_tileas.async.dot` (the producer of the WGMMA atom payload) carries a `pipeline_depth` attribute on its atom witness. The four-op protocol is fixed; only the wait-group depth varies.
 
 ### `async.mbarrier_init` → `nvvm.mbarrier.init.shared`
 
@@ -442,7 +442,7 @@ nvvm.mbarrier.init.shared %mbar_addr, %ticks : !llvm.ptr<3>, i32
 
 The TileAS mem-token result is again a placeholder i32 — the actual ordering edge to the matching `nvvm.mbarrier.arrive` / `nvvm.mbarrier.try_wait.parity.shared` pair is carried by the producer/consumer-side pattern that issues those intrinsics, not by an explicit operand chain.
 
-The `nvvm.mbarrier.init.shared` intrinsic is the unconditional emission. There is no `nvvm.mbarrier.init.global` variant — mbarrier storage must be in shared memory on every supported architecture, and the rewrite asserts the source view's address space before emitting. Initialising a global-memory barrier address would produce a PTX error at SASS translation, well after the conversion target has accepted the IR; the assertion catches it at this pass instead.
+The `nvvm.mbarrier.init.shared` intrinsic is the unconditional emission. There is no global-memory init variant — mbarrier storage must be in shared memory on every supported architecture, and the rewrite asserts the source view's address space before emitting. Initialising a global-memory barrier address would produce a PTX error at SASS translation, well after the conversion target has accepted the IR; the assertion catches it at this pass instead.
 
 ## Arith Template Cleanup
 

@@ -1132,8 +1132,8 @@ The encoder selects operand bit offsets based on the instruction format code
 (1=64-bit, 2=128-bit), not by computing them from the format descriptor's
 `slot_sizes` array at runtime. Each of the ~1,086 encoder stubs contains
 hardcoded offset constants passed as the fourth argument to `sub_7BC030`
-(register encoder), `sub_7BC5C0` (immediate encoder), or `sub_7BCF00`
-(predicate encoder).
+(register encoder), `sub_7BC5C0` (predicate encoder), or `sub_7BCF00`
+(immediate / constant-buffer encoder).
 
 The bit layout that produces these offsets:
 
@@ -1180,11 +1180,11 @@ sub_7BC030(a1, a2, 2, 0x60u);   // operand 2 -> bit 96
 sub_7BC030(a1, a2, 3, 0x70u);   // operand 3 -> bit 112
 
 // sub_C86C00: 128-bit, 6-operand mixed (xmmword_23F1DF8, slot_sizes=[10,17])
-sub_7BC5C0(a1, a2, 0, 0x50u);   // immediate  -> bit 80 (modifier zone)
+sub_7BC5C0(a1, a2, 0, 0x50u);   // predicate  -> bit 80 (modifier zone)
 sub_7BC030(a1, a2, 1, 0x60u);   // register 1 -> bit 96
 sub_7BC030(a1, a2, 2, 0x70u);   // register 2 -> bit 112
 sub_7BC030(a1, a2, 3, 0x88u);   // register 3 -> bit 136 (after gap)
-sub_7BCF00(a1, a2, 4, 0x98u);   // predicate  -> bit 152
+sub_7BCF00(a1, a2, 4, 0x98u);   // immediate  -> bit 152
 sub_7BC030(a1, a2, 5, 0xA8u);   // register 5 -> bit 168
 ```
 

@@ -85,10 +85,10 @@ When the outer kind is `0x01` (operation), the byte at `expr+0x38` selects which
 | `0x1D` | Logical NOT (`!x`) | Two-phase: `EmitBoolExpr` + `zext` | `%lnot = icmp eq ..., 0` / `%lnot.ext = zext i1 ... to i32` |
 | `0x1E` | Type-level const | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
 | `0x1F` | Type-level const | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
-| `0x23` | Pre-increment `++x` | `EmitIncDec` (`sub_128C390`): prefix=1, inc=1 | `%inc = add ...` / `%ptrincdec = getelementptr ...` |
-| `0x24` | Pre-decrement `--x` | `EmitIncDec` (`sub_128C390`): prefix=0, inc=0 | `%dec = sub ...` / `%ptrincdec = getelementptr ...` |
-| `0x25` | Post-increment `x++` | `EmitIncDec` (`sub_128C390`): prefix=1, inc=0 | Returns old value; `%inc = add ...` |
-| `0x26` | Post-decrement `x--` | `EmitIncDec` (`sub_128C390`): prefix=0, inc=1 | Returns old value; `%dec = sub ...` |
+| `0x23` | Pre-increment `++x` | `EmitIncDec` (`sub_128C390`): inc=1, isPostfix=0 | `%inc = add ...` / `%ptrincdec = getelementptr ...` |
+| `0x24` | Pre-decrement `--x` | `EmitIncDec` (`sub_128C390`): inc=0, isPostfix=0 | `%dec = sub ...` / `%ptrincdec = getelementptr ...` |
+| `0x25` | Post-increment `x++` | `EmitIncDec` (`sub_128C390`): inc=1, isPostfix=1 | Returns old value; `%inc = add ...` |
+| `0x26` | Post-decrement `x--` | `EmitIncDec` (`sub_128C390`): inc=0, isPostfix=1 | Returns old value; `%dec = sub ...` |
 | `0x27`-`0x2B` | `+`, `-`, `*`, `/`, `%` | `EmitBinaryArithCmp` (`sub_128F9F0`) | `add`/`sub`/`mul`/`sdiv`/`srem` (or `u`/`f` variants) |
 | `0x32` | Comma `(a, b)` | Emit both sides; return RHS | (LHS discarded) |
 | `0x33` | Subscript `a[i]` | `EmitSubscriptOp` (`sub_128B750`): GEP + load | `%arrayidx = getelementptr ...` + `load` |

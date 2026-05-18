@@ -268,7 +268,7 @@ Neither flavor captures host-side `cl::opt` state — a reproducer built against
 
 Four hook points on the instrumentation chain are NVIDIA-private:
 
-1. **`DumpTraceImpl::run`** — Activated by [`schedule-trace-file`](options-mapping.md#scheduler-options). The hook installs itself on the inner `nv_tileas.func` adaptor and writes a per-pass scheduler trace in the Chrome `chrome://tracing` format. Each pass invocation produces one event with name, timestamp, and duration; each scheduler decision produces a child event under its enclosing pass. The trace is closed at process exit through `__cxa_atexit`.
+1. **`DumpTraceImpl::run`** — Activated by [`schedule-trace-file`](options-mapping.md#scheduler-options). The hook installs itself on the inner `gpu.func` (TileAS-stage) adaptor and writes a per-pass scheduler trace in the Chrome `chrome://tracing` format. Each pass invocation produces one event with name, timestamp, and duration; each scheduler decision produces a child event under its enclosing pass. The trace is closed at process exit through `__cxa_atexit`.
 
 2. **`schedule-trace-file` consumer** — Reads the option at pipeline-construction time and refuses to install the hook if the file cannot be opened. The diagnostic `failed to legalizeLoopScheduleForMaterialization` fires when the legalisation phase rejects a loop the scheduler expected to consume; it is the most common visible scheduler-side failure and rides in the same instrumentation tree.
 

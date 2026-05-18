@@ -156,7 +156,7 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 | `0x9714E0` | `regalloc_failure_reporter` | 6 | 1 | "Register allocation failed..." |
 | `0x926A30` | `interference_graph_builder` | 9 | 7 | 22 KB, SSE bitvectors |
 | `0x92C240` | `liveness_bitvector_ops` | 5 | 87 | Set/clear/query with aliasing |
-| `0x917A60` | `opcode_to_regclass_mapping` | 4 | 221 | Massive switch |
+| `0x917A60` | `packRegClassField` | 4 | 221 | Bitfield packer keyed on field-ID (range 91--340): switch dispatches per-field LUT remaps or equality tests, then OR-merges the result into `desc[1]`/`desc[2]`. Companion to `sub_A2FF00`; not an opcode→regclass mapping table |
 | `0x910840` | `ConvertMemoryToRegisterOrUniform` | 5 | 1 | Pass driver |
 
 > **Details**: [RegAlloc Overview](regalloc/overview.md), [RegAlloc Algorithm](regalloc/algorithm.md), [Spilling](regalloc/spilling.md), [ABI](regalloc/abi.md)
@@ -174,7 +174,7 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 | `0x6820B0` | `build_ready_list` | 5 | 1 | Zero-dependency instructions |
 | `0x8CD6E0` | `reverse_scheduling_driver` | 4 | 1 | Reverse post-order iteration |
 | `0x8CEE80` | `register_budget_with_occupancy` | 4 | 1 | Pressure coeff default 0.045 |
-| `0x8E4400` | `hw_profile_table_init` | 6 | 3 | Encoding/latency property tables |
+| `0x8E4400` | `InitHWProfile_Warp` | 6 | 3 | Warp/dispatch geometry initializer keyed on codegen-factory value; writes sched-partition count + dispatch slots into the HW-profile struct |
 | `0xA9CDE0` | `scheduling_metadata_builder` | 6 | 1 | Per-instruction sched metadata |
 | `0xA9CF90` | `scheduling_metadata_accessor` | 5 | many | Sched metadata field queries |
 | `0xAED3C0` | `master_lowering_dispatcher` | 4 | 0 | 28,401 B native (~140 KB decomp); ISel/template lowering, not part of the scheduler -- see [templates.md](codegen/templates.md) |
@@ -211,7 +211,7 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 | `0x7BC030` | `encode_register_operand` | 4 | 6,147 | 1-bit + 4-bit type + 10-bit reg |
 | `0x7B9D60` | `encode_reuse_flags_predicate` | 4 | 2,408 | 1-bit reuse + 5-bit predicate |
 | `0x7BC5C0` | `encode_predicate_operand` | 4 | 1,449 | 1-bit presence + 5-bit predicate value (P0..P6/PT + UP/file + `.NOT`); body is a pair of inline bitfield-insert loops into the 1280-bit instruction buffer at `a1+0x220`. See `codegen/encoding.md` -- earlier wiki labelled this "encode_immediate_const_operand", which is wrong |
-| `0x7BCF00` | `encode_predicate_register` | 4 | 1,657 | PT sentinel = operand byte[0]==14 (matches `sub_B28EB0`); appears wired to a different predicate-operand slot than `sub_7BC5C0` |
+| `0x7BCF00` | `encode_immediate_const_operand` | 4 | 1,657 | Allocates a slot in the constant-buffer table at `a1+468` (initialized by `sub_7B9D30`), stashes the 64-bit immediate from `*(v5+8)`, then writes presence/type/register-index bitfields into the 1280-bit instruction buffer. Matches the `I` slot in `codegen/encoding.md`; not a predicate encoder |
 | `0x10B6180` | `1_bit_boolean_encoder` | 3 | 8,091 | .S/.U, .STRONG, etc. |
 
 > **Details**: [Encoding](codegen/encoding.md), [SASS Printing](codegen/sass-printing.md)
@@ -256,7 +256,7 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 | `0x6765E0` | `target_profile_selector` | 7 | 1 | SM-dependent profile dispatch |
 | `0x607DB0` | `target_feature_query` | 7 | many | SM feature capability checks |
 | `0x896D50` | `sass_mnemonic_table_init` (ROT13) | 4 | 1 | ~400+ SASS instruction names |
-| `0x89FBA0` | `instruction_latency_init` | 4 | 3 | Encoding/latency property tables |
+| `0x89FBA0` | `SetOpcodeLatencies` | 4 | 3 | 85 KB per-opcode classifier; massive switch on `*(instr+72) & 0xFFFFCFFF` assigning scheduling-class IDs that index per-arch latency tables |
 
 > **Details**: [Targets Index](targets/index.md), [Turing-Ampere](targets/turing-ampere.md), [Ada-Hopper](targets/ada-hopper.md), [Blackwell](targets/blackwell.md), [tcgen05](targets/tcgen05.md)
 

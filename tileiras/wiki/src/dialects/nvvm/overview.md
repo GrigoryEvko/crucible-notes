@@ -6,7 +6,7 @@
 
 ## Abstract
 
-Every `nvvm.X` op exists to print one PTX instruction (or one inline-asm template). `nvvm` is the bottom MLIR dialect in TileIR's lowering stack — a typed intrinsic layer, not a programming model. Earlier dialects decide tiling, scheduling, pipeline stages, layouts, and target atoms; `nvvm` preserves those decisions in a form LLVM and the NVPTX backend understand.
+Every `nvvm.*` op exists to print one PTX instruction (or one inline-asm template). `nvvm` is the bottom MLIR dialect in TileIR's lowering stack — a typed intrinsic layer, not a programming model. Earlier dialects decide tiling, scheduling, pipeline stages, layouts, and target atoms; `nvvm` preserves those decisions in a form LLVM and the NVPTX backend understand.
 
 Three lowering paths cover the whole dialect. Most ops become a `call @llvm.nvvm.X` intrinsic that the NVPTX backend prints as the matching PTX instruction. A smaller set lowers to `llvm.inline_asm` with a fixed PTX template — sparse MMA, a handful of TMA replace variants, a few cluster ops. The third path expands into ordinary `llvm` dialect ops (`alloca`, GEP, store, call). No `nvvm.*` op survives NVVM-to-LLVM conversion.
 
@@ -36,18 +36,18 @@ The dialect ships about 213 ops. They split cleanly into eight large families pl
 
 | Family | Count | SM floor | Example op | Page |
 |---|---:|---|---|---|
-| WMMA — warp-synchronous register MMA | 64 | sm_70 | `nvvm.wmma.mma.sync.aligned.m16n16k16.row.col.f16.f16.f16.f16` | [WMMA Ops](wmma-ops.md) |
-| WGMMA — warp-group async MMA (Hopper) | 9 | sm_90a | `nvvm.wgmma.mma_async.sync.aligned` | [WGMMA Ops](wgmma-ops.md) |
-| TMA — bulk tensor copy, prefetch, reduce | 38 | sm_90 | `nvvm.cp.async.bulk.tensor.shared.global` | [TMA Ops](tma-ops.md) |
+| WMMA — warp-synchronous register MMA | 64 | sm_70 | `nvvm.wmma.mma` | [WMMA Ops](wmma-ops.md) |
+| WGMMA — warp-group async MMA (Hopper) | 9 | sm_90a | `nvvm.wgmma.mma_async` | [WGMMA Ops](wgmma-ops.md) |
+| TMA — bulk tensor copy, prefetch, reduce | 38 | sm_90 | `nvvm.cp.async.bulk.tensor.shared.cluster.global` | [TMA Ops](tma-ops.md) |
 | tcgen05 — Blackwell tensor memory + MMA | 14 | sm_100a | `nvvm.tcgen05.mma.block_scale` | [tcgen05 Ops](tcgen05-ops.md) |
 | mbarrier — shared-memory barrier state machine | 21 | sm_80 | `nvvm.mbarrier.arrive.expect_tx.shared` | [mbarrier Ops](mbarrier-ops.md) |
 | Cluster — thread-block cluster sync | 8 | sm_90 | `nvvm.cluster.wait`, `nvvm.mapa` | [Cluster Ops](cluster-ops.md) |
-| Synchronisation — `barrier0`, `bar.sync`, `bar.warp.sync` | 18 | sm_70 | `nvvm.barrier.cta.sync.aligned` | (this page) |
+| Synchronisation — `barrier0`, `barrier.cta.sync`, `bar.warp.sync` | 18 | sm_70 | `nvvm.barrier.cta.sync` | (this page) |
 | `cp.async` (Ampere SM80 async-copy queue) | 12 | sm_80 | `nvvm.cp.async.shared.global` | (this page) |
 | Special registers — `tid`, `ctaid`, `ntid`, etc. | 12 | sm_70 | `nvvm.read.ptx.sreg.tid.x` | (this page) |
 | shfl / vote / elect.sync | 8 | sm_70 | `nvvm.shfl.sync` | (this page) |
-| `bar.{arrive,sync}` barrier-id helpers | 4 | sm_70 | `nvvm.bar.sync` | (this page) |
-| Other (`mapa`, fences, ldmatrix/stmatrix, redux, prefetch) | 5 | varies | `nvvm.ldmatrix.sync.aligned` | (this page) |
+| `barrier.{arrive,sync}` helpers | 4 | sm_70 | `nvvm.barrier.arrive` | (this page) |
+| Other (`mapa`, fences, ldmatrix/stmatrix, redux, prefetch) | 5 | varies | `nvvm.ldmatrix` | (this page) |
 
 The family page is the normative spec: it pins each op to its operand list, LLVM intrinsic, PTX template, constraint string for inline-asm variants, and SM floor. The roster table below covers the smaller families that don't justify their own page.
 
@@ -59,11 +59,11 @@ The family page is the normative spec: it pins each op to its operand list, LLVM
 |---|---|---|
 | `nvvm.barrier0` | `llvm.nvvm.barrier0` | `bar.sync 0;` |
 | `nvvm.bar.warp.sync` | `llvm.nvvm.bar.warp.sync` | `bar.warp.sync %m;` |
-| `nvvm.barrier.cta.sync.aligned` | `llvm.nvvm.barrier.cta.sync.aligned` | `barrier.cta.sync.aligned %b, %n;` |
-| `nvvm.barrier.cta.sync` (non-aligned) | `llvm.nvvm.barrier.cta.sync` | `barrier.cta.sync %b, %n;` |
+| `nvvm.barrier` | `llvm.nvvm.barrier` | `barrier.cta.sync.aligned %b, %n;` |
+| `nvvm.barrier.cta.sync` | `llvm.nvvm.barrier.cta.sync` | `barrier.cta.sync %b, %n;` |
 | `nvvm.barrier.cta.arrive` | `llvm.nvvm.barrier.cta.arrive` | `barrier.cta.arrive %b, %n;` |
-| `nvvm.barrier.cta.arrive.aligned` | `llvm.nvvm.barrier.cta.arrive.aligned` | `barrier.cta.arrive.aligned %b, %n;` |
-| `nvvm.bar.arrive` / `nvvm.bar.sync` | `llvm.nvvm.bar.arrive` / `llvm.nvvm.bar.sync` | `bar.arrive %b, %n;` / `bar.sync %b, %n;` |
+| `nvvm.barrier.cta.red` | `llvm.nvvm.barrier.cta.red` | `barrier.cta.red.{op} %p, %b, %n, %src;` |
+| `nvvm.barrier.arrive` | `llvm.nvvm.barrier.arrive` | `bar.arrive %b, %n;` |
 | `nvvm.elect.sync` | `llvm.nvvm.elect.sync` | `elect.sync %p|%r, %mask;` |
 
 ### Special-register reads
@@ -85,7 +85,7 @@ The family page is the normative spec: it pins each op to its operand list, LLVM
 | `nvvm.cp.async.shared.global` | `llvm.nvvm.cp.async.{ca,cg}.shared.global.{4,8,16}` | `cp.async.{ca,cg}.shared.global [%dst], [%src], N;` |
 | `nvvm.cp.async.commit.group` | `llvm.nvvm.cp.async.commit.group` | `cp.async.commit_group;` |
 | `nvvm.cp.async.wait.group` | `llvm.nvvm.cp.async.wait.group` | `cp.async.wait_group N;` |
-| `nvvm.cp.async.wait.all` | `llvm.nvvm.cp.async.wait.all` | `cp.async.wait_all;` |
+| `nvvm.cp.async.bulk.wait_group` | `llvm.nvvm.cp.async.bulk.wait_group` | `cp.async.bulk.wait_group N;` |
 | `nvvm.cp.async.mbarrier.arrive[.shared]` | `llvm.nvvm.cp.async.mbarrier.arrive[.shared]` | `cp.async.mbarrier.arrive[.shared].b64 [%mbar];` |
 | `nvvm.cp.async.mbarrier.arrive.noinc[.shared]` | `llvm.nvvm.cp.async.mbarrier.arrive.noinc[.shared]` | `cp.async.mbarrier.arrive.noinc[.shared].b64 [%mbar];` |
 
@@ -94,8 +94,8 @@ The family page is the normative spec: it pins each op to its operand list, LLVM
 | Op | LLVM intrinsic | PTX printed |
 |---|---|---|
 | `nvvm.shfl.sync` | `llvm.nvvm.shfl.sync.{idx,up,down,bfly}.{i32,f32}` | `shfl.sync.{idx,up,down,bfly}.b32 %r, %v, %lane, %m, %mask;` |
-| `nvvm.vote.ballot.sync` | `llvm.nvvm.vote.ballot.sync` | `vote.sync.ballot.b32 %r, %p, %mask;` |
-| `nvvm.vote.all.sync` / `.any.sync` / `.uni.sync` | `llvm.nvvm.vote.{all,any,uni}.sync` | `vote.sync.{all,any,uni}.pred %p, %src, %mask;` |
+| `nvvm.vote.sync` (kind `ballot`) | `llvm.nvvm.vote.ballot.sync` | `vote.sync.ballot.b32 %r, %p, %mask;` |
+| `nvvm.vote.sync` (kinds `all`/`any`/`uni`, selected by `nvvm.vote_sync_kind`) | `llvm.nvvm.vote.{all,any,uni}.sync` | `vote.sync.{all,any,uni}.pred %p, %src, %mask;` |
 | `nvvm.match.sync` | `llvm.nvvm.match.{any,all}.sync.{i32,i64}` | `match.{any,all}.sync.b{32,64} %r, %v, %mask;` |
 | `nvvm.redux.sync` | `llvm.nvvm.redux.sync.{op}.{type}` | `redux.sync.{op}.{type} %r, %v, %mask;` |
 
@@ -103,11 +103,11 @@ The family page is the normative spec: it pins each op to its operand list, LLVM
 
 | Op | LLVM intrinsic | PTX printed |
 |---|---|---|
-| `nvvm.ldmatrix.sync.aligned` | `llvm.nvvm.ldmatrix.sync.aligned.m8n8.x{1,2,4}{.trans,}.{b16,b8x16,...}` | `ldmatrix.sync.aligned.m8n8.x{1,2,4}{.trans,}.shared::cta.{b16,b8x16,...} {...}, [%addr];` |
-| `nvvm.stmatrix.sync.aligned` | `llvm.nvvm.stmatrix.sync.aligned.m8n8.x{1,2,4}{.trans,}.{b16,b8x16}` | `stmatrix.sync.aligned.m8n8.x{1,2,4}{.trans,}.shared::cta.{b16,b8x16} [%addr], {...};` |
+| `nvvm.ldmatrix` | `llvm.nvvm.ldmatrix.sync.aligned.m8n8.x{1,2,4}{.trans,}.{b16,b8x16,...}` | `ldmatrix.sync.aligned.m8n8.x{1,2,4}{.trans,}.shared::cta.{b16,b8x16,...} {...}, [%addr];` |
+| `nvvm.stmatrix` | `llvm.nvvm.stmatrix.sync.aligned.m8n8.x{1,2,4}{.trans,}.{b16,b8x16}` | `stmatrix.sync.aligned.m8n8.x{1,2,4}{.trans,}.shared::cta.{b16,b8x16} [%addr], {...};` |
 | `nvvm.prefetch.tensormap` | `llvm.nvvm.prefetch.tensormap` | `prefetch.tensormap [%tmap];` |
-| `nvvm.fence.proxy.acquire.sync.cluster` | `llvm.nvvm.fence.proxy.acquire.sync.cluster` | `fence.proxy.async.shared::cluster;` |
-| `nvvm.fence.mbarrier.init.release.cluster` | `llvm.nvvm.fence.mbarrier.init.release.cluster` | `fence.mbarrier_init.release.cluster;` |
+| `nvvm.fence.proxy.acquire` | `llvm.nvvm.fence.proxy.acquire` | `fence.proxy.async.shared::cluster;` |
+| `nvvm.fence.mbarrier.init` | `llvm.nvvm.fence.mbarrier.init` | `fence.mbarrier_init.release.cluster;` |
 | `nvvm.cvt.packfloat.f32` | `llvm.nvvm.cvt.{rn,rz,rm,rp}.{f16x2,bf16x2,e4m3x2,e5m2x2}.f32` | `cvt.{rnd}.{f16,bf16,e4m3,e5m2}x2.f32 %r, %fhi, %flo;` |
 | `nvvm.mma.sync` (Ampere/Ada dense) | `llvm.nvvm.mma.m{8,16}n{8,16}k{...}.row.col.{...}` | `mma.sync.aligned.m16n8kK.{row,col}.{row,col}.{...} {...}, %a, %b, %c;` |
 | `nvvm.mma.block_scale` | `llvm.nvvm.mma.block_scale.m16n8k.{kind}` | `mma.sync.aligned.m16n8k.{kind}.scale::vec::{16,32} {...}, %a, %b, %c, %sa, %sb;` |

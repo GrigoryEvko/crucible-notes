@@ -2,7 +2,7 @@
 
 ## Abstract
 
-`nvvm.cp.async.bulk.*` covers the Hopper Tensor Memory Accelerator (TMA) surface: tile loads from global to shared, tile stores from shared to global, prefetches, reductions, group commit / wait, and the descriptor-mutation helpers that backfill an in-SMEM `CUtensorMap`. The 38 ops in this family enumerate every legal combination of mode (`tile` vs `im2col` vs `im2col_w` vs `im2col_w_128`), direction, cache-hint presence, multicast presence, and tensor rank. See [TMA Tensormap and cp.async.bulk Codegen](../../codegen/tma-tensormap-and-cp-async-bulk.md) for the per-template emission catalog and [Lowering: nvgpu / gpu to NVVM — TMA Async Load](../../lowering/nvgpu-and-gpu-to-nvvm.md#tma-async-load) for the operand-slot mapping.
+`nvvm.cp.async.bulk.*` covers the Hopper Tensor Memory Accelerator (TMA) surface: tile loads from global to shared, tile stores from shared to global, prefetches, reductions, group commit / wait, and the descriptor-fence helper that pairs with an in-SMEM `CUtensorMap`. Rather than enumerating one op per (mode, direction, cache-hint, multicast, rank) combination, this dialect carries a small set of canonical mnemonics; mode (`tile` / `im2col` / `im2col_w` / `im2col_w_128`), rank, cache-hint presence, and multicast presence are all encoded as attributes the printer reads at PTX emit time. See [TMA Tensormap and cp.async.bulk Codegen](../../codegen/tma-tensormap-and-cp-async-bulk.md) for the per-template emission catalog and [Lowering: nvgpu / gpu to NVVM — TMA Async Load](../../lowering/nvgpu-and-gpu-to-nvvm.md#tma-async-load) for the operand-slot mapping.
 
 TMA descriptors live in global memory as 128-byte `CUtensorMap` structs encoded by the CUDA driver. The device-side ops in this family consume the descriptor as an opaque global pointer, with cache-hint and multicast attributes wiring into optional intrinsic operand slots.
 
@@ -10,20 +10,19 @@ TMA descriptors live in global memory as 128-byte `CUtensorMap` structs encoded 
 
 | Sub-family | Count | Mnemonic stem |
 |---|---:|---|
-| Tile load (global → shared via cluster) | 5 | `nvvm.cp.async.bulk.tensor.{1..5}d.shared.cluster.global.tile` |
-| Tile load (im2col) | 4 | `nvvm.cp.async.bulk.tensor.{3..5}d.shared.cluster.global.im2col` |
-| Tile load (im2col_w / im2col_w_128) | 4 | `nvvm.cp.async.bulk.tensor.{3..5}d.shared.cluster.global.im2col_w[.128]` |
-| Tile store (shared → global) | 5 | `nvvm.cp.async.bulk.tensor.{1..5}d.global.shared.cta.tile` |
-| Reduce | 5 | `nvvm.cp.async.bulk.tensor.{1..5}d.global.shared.cta.tile.reduce` |
-| Prefetch | 5 | `nvvm.cp.async.bulk.tensor.{1..5}d.tile.prefetch` |
-| Group control | 2 | `nvvm.cp.async.bulk.commit.group`, `nvvm.cp.async.bulk.wait.group` |
-| Descriptor copy / replace | 8 | `nvvm.tensormap.cp.async.shared`, `nvvm.tensormap.replace.tile.{global_address,box_dim,element_stride,...}` |
+| Tile load (global → shared via cluster) | 1 op, rank/mode in attributes | `nvvm.cp.async.bulk.tensor.shared.cluster.global` |
+| Tile load (cta-direct) | 1 op, rank/mode in attributes | `nvvm.cp.async.bulk.tensor.shared.cta.global` |
+| Tile store (shared → global) | 2 (base + ext) | `nvvm.cp.async.bulk.tensor.global.shared.cta`, `…ext` |
+| Reduce | 1 op, redop in attribute | `nvvm.cp.async.bulk.tensor.reduce` |
+| Prefetch | 1 op | `nvvm.cp.async.bulk.tensor.prefetch` |
+| Group control | 2 | `nvvm.cp.async.bulk.commit.group`, `nvvm.cp.async.bulk.wait_group` |
+| Descriptor copy / fence | 1 | `nvvm.tensormap.cp_fenceproxy` |
 
-Variants are spelled out explicitly rather than parameterised over `rank` and `mode` attributes — the dialect prefers one op per intrinsic and one intrinsic per PTX instruction.
+Each canonical mnemonic above parameterises rank, mode, cache-hint presence, and multicast presence through op attributes. The NVVM-to-LLVM printer expands a single dialect op into one of the family of `llvm.nvvm.cp.async.bulk.tensor.{1..5}d.<dir>.<mode>` intrinsics at lowering time; the IR layer stays compact.
 
 ## Operand Tables
 
-### `nvvm.cp.async.bulk.tensor.{N}d.shared.cluster.global.tile`
+### `nvvm.cp.async.bulk.tensor.shared.cluster.global` (rank in `rank` attribute, `mode = #tile`)
 
 | Position | Name | Type | Notes |
 |---|---|---|---|
@@ -96,19 +95,14 @@ No barrier — the producer issues the store and continues; the consumer side ob
 
 | Op | LLVM intrinsic |
 |---|---|
-| `nvvm.cp.async.bulk.tensor.2d.shared.cluster.global.tile` | `llvm.nvvm.cp.async.bulk.tensor.2d.shared.cluster.global.tile` |
-| `nvvm.cp.async.bulk.tensor.3d.shared.cluster.global.im2col` | `llvm.nvvm.cp.async.bulk.tensor.3d.shared.cluster.global.im2col` |
-| `nvvm.cp.async.bulk.tensor.2d.global.shared.cta.tile` | `llvm.nvvm.cp.async.bulk.tensor.2d.global.shared.cta.tile` |
-| `nvvm.cp.async.bulk.tensor.2d.global.shared.cta.tile.reduce` | `llvm.nvvm.cp.async.bulk.tensor.2d.global.shared.cta.tile.reduce.{redop}` |
-| `nvvm.cp.async.bulk.tensor.2d.tile.prefetch` | `llvm.nvvm.cp.async.bulk.tensor.prefetch.2d.tile` |
+| `nvvm.cp.async.bulk.tensor.shared.cluster.global` | `llvm.nvvm.cp.async.bulk.tensor.{1..5}d.shared.cluster.global.{tile,im2col,im2col_w,im2col_w_128}` (rank/mode in attrs) |
+| `nvvm.cp.async.bulk.tensor.shared.cta.global` | `llvm.nvvm.cp.async.bulk.tensor.{1..5}d.shared.cta.global.tile` |
+| `nvvm.cp.async.bulk.tensor.global.shared.cta` | `llvm.nvvm.cp.async.bulk.tensor.{1..5}d.global.shared.cta.tile` |
+| `nvvm.cp.async.bulk.tensor.reduce` | `llvm.nvvm.cp.async.bulk.tensor.{1..5}d.global.shared.cta.tile.reduce.{redop}` |
+| `nvvm.cp.async.bulk.tensor.prefetch` | `llvm.nvvm.cp.async.bulk.tensor.{1..5}d.tile.prefetch` |
 | `nvvm.cp.async.bulk.commit.group` | `llvm.nvvm.cp.async.bulk.commit.group` |
-| `nvvm.cp.async.bulk.wait.group` | `llvm.nvvm.cp.async.bulk.wait.group` |
-| `nvvm.tensormap.cp.async.shared` | `llvm.nvvm.cp.async.bulk.tensor.shared.cluster.tensormap.cta` |
-| `nvvm.tensormap.replace.tile.global_address` | `llvm.nvvm.tensormap.replace.tile.global.address` |
-| `nvvm.tensormap.replace.tile.box_dim` | `llvm.nvvm.tensormap.replace.tile.box_dim` |
-| `nvvm.tensormap.replace.tile.element_stride` | `llvm.nvvm.tensormap.replace.tile.element.stride` |
-| `nvvm.tensormap.replace.tile.elem_type` | `llvm.nvvm.tensormap.replace.tile.elemtype` |
-| `nvvm.tensormap.replace.tile.swizzle` | `llvm.nvvm.tensormap.replace.tile.swizzle` |
+| `nvvm.cp.async.bulk.wait_group` | `llvm.nvvm.cp.async.bulk.wait_group` |
+| `nvvm.tensormap.cp_fenceproxy` | `llvm.nvvm.cp.async.bulk.tensor.shared.cluster.tensormap.cta` paired with `llvm.nvvm.fence.proxy.tensormap.generic.release.cta` |
 
 The reduction intrinsic concatenates the `redop` name into the intrinsic ID; eight distinct intrinsics exist per rank.
 

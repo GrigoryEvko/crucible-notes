@@ -6,14 +6,14 @@ Tileiras's pass manager is upstream MLIR's `PassManager` plus a small set of loc
 
 ## Anchor Hierarchy
 
-The pipeline nests three deep, with each level targeting one op type. The outermost level is the driver's `PassManager` itself, anchored on `builtin.module`. The next level is an `OpPassManager` reached through `pm.nest<GpuModuleOp>()`, anchored on `gpu.module`. The innermost level is reached through `gpu_pm.nest<...>()` for each function-shaped op the inner stages operate on; in practice that resolves to one of `nv_tileaa.func`, `nv_tileas.func`, or `llvm.func` depending on the stage of the cascade.
+The pipeline nests three deep, with each level targeting one op type. The outermost level is the driver's `PassManager` itself, anchored on `builtin.module`. The next level is an `OpPassManager` reached through `pm.nest<GpuModuleOp>()`, anchored on `gpu.module`. The innermost level is reached through `gpu_pm.nest<...>()` for each function-shaped op the inner stages operate on; in practice that resolves to one of `nv_tileaa.func`, `gpu.func` (TileAS-stage), or `llvm.func` depending on the stage of the cascade.
 
 | Anchor | Role | Adaptor enters via |
 |---|---|---|
 | `builtin.module` | Driver root; dialect normalization, host-wrapper, gpu.module walk. | `PassManager::run` |
 | `gpu.module` | Device-module lowering, scheduling, codegen preparation. | `OpToOpPassAdaptor` walking `builtin.module` |
 | `nv_tileaa.func` | Per-function TileAA cleanup. | `OpToOpPassAdaptor` walking `gpu.module` |
-| `nv_tileas.func` | Per-function TileAS scheduling and lowering. | `OpToOpPassAdaptor` walking `gpu.module` |
+| `gpu.func` (TileAS-stage) | Per-function TileAS scheduling and lowering. | `OpToOpPassAdaptor` walking `gpu.module` |
 | `llvm.func` | Function-scoped MLIR-LLVM cleanup before translation. | `OpToOpPassAdaptor` walking `gpu.module` |
 
 Adding a pass with a mismatched anchor is rejected at pass-manager construction time rather than at run time. The check uses the anchor `OperationName` already stored on the pass:
@@ -64,7 +64,7 @@ LogicalResult OpToOpPassAdaptor::run(Operation *root) {
 
 ## Analysis Preservation Discipline
 
-Each anchor level owns its own `AnalysisManager`. Analyses computed at the `gpu.module` level (target queries, kernel symbol tables, NVVM target attribute caches) outlive the function-scoped passes that consume them; analyses computed at the `nv_tileas.func` level ([`ScheduleAnalysis`](../scheduler/modulo-scheduler-and-rau.md), register-pressure estimates) live only as long as their function passes do not invalidate them.
+Each anchor level owns its own `AnalysisManager`. Analyses computed at the `gpu.module` level (target queries, kernel symbol tables, NVVM target attribute caches) outlive the function-scoped passes that consume them; analyses computed at the `gpu.func` (TileAS-stage) level ([`ScheduleAnalysis`](../scheduler/modulo-scheduler-and-rau.md), register-pressure estimates) live only as long as their function passes do not invalidate them.
 
 The pass manager invalidates everything not explicitly listed in the `PreservedAnalyses` set the pass returns. Tileiras follows a strict rule for the scheduling pipeline: any pass placed between `tileas-generate-schedule-constraints` and `tileas-materialize-schedule` must declare `ScheduleAnalysis` as preserved or the build is rejected (see [Driver Entry — Schedule Analysis Ordering](driver-and-opt-levels.md#schedule-analysis-ordering)). The check is enforced at pipeline construction:
 

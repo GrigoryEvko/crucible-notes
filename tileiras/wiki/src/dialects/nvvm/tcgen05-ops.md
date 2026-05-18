@@ -141,8 +141,8 @@ The collector modifier controls how the MMA pipeline reuses register-file data a
 
 | Op | LLVM intrinsic |
 |---|---|
-| `nvvm.tcgen05.alloc.shared` | `llvm.nvvm.tcgen05.alloc.cta_group.{1,2}.shared` |
-| `nvvm.tcgen05.alloc` | `llvm.nvvm.tcgen05.alloc.cta_group.{1,2}` |
+| `nvvm.tcgen05.alloc` (addrspace=3, shared SMEM dest) | `llvm.nvvm.tcgen05.alloc.cta_group.{1,2}.shared` |
+| `nvvm.tcgen05.alloc` (addrspace=0/1, generic/global dest) | `llvm.nvvm.tcgen05.alloc.cta_group.{1,2}` |
 | `nvvm.tcgen05.dealloc` | `llvm.nvvm.tcgen05.dealloc.cta_group.{1,2}` |
 | `nvvm.tcgen05.ld` | `llvm.nvvm.tcgen05.ld.{shape}.{num}` |
 | `nvvm.tcgen05.st` | `llvm.nvvm.tcgen05.st.{shape}.{num}` |

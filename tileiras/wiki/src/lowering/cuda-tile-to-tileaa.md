@@ -11,9 +11,9 @@ The conversion is partial. The pass loads six legal dialects, marks `cuda_tile` 
 | Dimension | Specification |
 |---|---|
 | Allowed input ops | every `cuda_tile.*` executable op (whitelisted via `addIllegalDialect<cuda_tile>`); `ub.poison` accepted under a dynamic-legality predicate that requires an `nv_tileaa`-primitive result type |
-| Allowed input types / attributes | `cuda_tile::TileType`, `cuda_tile::PointerType`, `cuda_tile::TokenType`; `cuda_tile.fastmath`, `axis`, `inclusive`, and per-op attribute dictionaries; module-level `--compute-capability` option must parse |
+| Allowed input types / attributes | `cuda_tile::TileType`, `cuda_tile::PointerType`, `cuda_tile::TokenType`; the `arith.fastmath`-shaped fastmath property carried on `cuda_tile` arithmetic ops, plus `axis`, `inclusive`, and per-op attribute dictionaries; module-level `--compute-capability` option must parse |
 | Guaranteed output ops | only ops from `arith`, `nv_tileaa`, `func`, `gpu`, `scf`, `math` (the six legal dialects); no `cuda_tile.*` survives; bridge `builtin.unrealized_conversion_cast` may remain pending downstream reconciliation |
-| Guaranteed output types / attributes | tile → `llvm.struct<...>` descriptor, pointer → `llvm.ptr`, token → `llvm.token` through the materialiser triple; region block-arg types rewritten through the same `TypeConverter`; `#cuda_tile.fastmath<...>` re-keyed as `#nv_tileaa.fastmath<...>` with identical discriminant |
+| Guaranteed output types / attributes | tile → `llvm.struct<...>` descriptor, pointer → `llvm.ptr`, token → `llvm.token` through the materialiser triple; region block-arg types rewritten through the same `TypeConverter`; the fastmath property is propagated unchanged onto the matching `nv_tileaa` arithmetic op |
 | Violation behavior | residual `cuda_tile.*` op → `applyPartialConversion` fails with `"failed to convert cuda_tile to nv_tileaa"`; malformed compute capability → `"invalid or missing --compute-capability option"`; mismatched region block-arg types → next-stage verifier rejects the parent op (no localised diagnostic from this pass) |
 
 ## Pass Driver
@@ -110,13 +110,13 @@ Eight pattern classes register through dedicated singleton adders rather than th
 
 | `cuda_tile` op | Pattern class | Role |
 |---|---|---|
-| `cuda_tile.trunci` | `TruncIOpConversion` | Integer truncation, rewrites to `nv_tileaa.trunci` |
+| `cuda_tile.trunci` | `TruncIOpConversion` | Integer truncation, lowered through `arith.trunci` retyped over `nv_tileaa` operand shapes |
 | `cuda_tile.rsqrt` | `RsqrtOpConversion` | Reciprocal square root, rewrites to `nv_tileaa.rsqrt` |
-| `cuda_tile.maxi` | `MaxIOpConversion` | Signed integer max, rewrites to `nv_tileaa.maxi` |
-| `cuda_tile.itof` | `IToFOpConversion` | Integer-to-float conversion, rewrites to `nv_tileaa.itof` |
+| `cuda_tile.maxi` | `MaxIOpConversion` | Signed integer max, lowered through `arith.maxsi`/`arith.maxui` over `nv_tileaa` operand shapes |
+| `cuda_tile.itof` | `IToFOpConversion` | Integer-to-float conversion, lowered through `arith.sitofp` / `arith.uitofp` over `nv_tileaa` operand shapes |
 | `cuda_tile.global` | `GlobalOpConversion` | Global symbol declaration, rewrites to `nv_tileaa.global` |
 | `cuda_tile.fma` | `FmaOpConversion` | Fused multiply-add, rewrites to `nv_tileaa.fma` |
-| `cuda_tile.constant` | `ConstantOpConversion` | Tile constant, rewrites to `nv_tileaa.constant_tensor` or `nv_tileaa.splat` |
+| `cuda_tile.constant` | `ConstantOpConversion` | Tile constant, rewrites to `nv_tileaa.splat` (with a constant scalar) or to `arith.constant` carrying a dense tensor for static aggregates |
 | `cuda_tile.assume` | `AssumeOpConversion` | Assumption hint, rewrites to `nv_tileaa.assume` |
 
 Each rewrite has the same one-to-one shape:
@@ -293,7 +293,7 @@ Token-aware operations stay explicit in the IR rather than collapsing immediatel
 %t = nv_tileaa.join_mem_token [%t0, %t1, %t2] : !nv_tileaa.token
 ```
 
-Singleton joins skip the `join_mem_token` op and pass the single token through unchanged; empty joins lower to `nv_tileaa.create_null_token` so downstream ops always have a token operand to consume.
+Singleton joins skip the `join_mem_token` op and pass the single token through unchanged; empty joins lower to `nv_tileaa.create_mem_token` (with empty operand list), the same producer the downstream `nv_tileas.async.pipeline.create_null_token` later consumes, so every downstream op still has a token operand to consume.
 
 ## Pipeline Handoff
 

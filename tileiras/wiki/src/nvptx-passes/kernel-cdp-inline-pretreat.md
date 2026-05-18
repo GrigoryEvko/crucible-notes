@@ -142,7 +142,7 @@ void expand_cdp_launches(Function *F) {
 
 ### Input and Output IR Shape
 
-`InlineMustPass` walks every call site and force-inlines callees marked with the `nvvm.always_inline` attribute. The pass exists because parts of the NVPTX ABI can't lower certain helper signatures faithfully: image and sampler arguments must arrive at the kernel boundary as opaque handles, large aggregate arguments can't survive a call boundary, and some helpers exist solely so the frontend has somewhere to attach attributes that must be visible at the use site.
+`InlineMustPass` walks every call site and force-inlines callees marked with the `always_inline` attribute. The pass exists because parts of the NVPTX ABI can't lower certain helper signatures faithfully: image and sampler arguments must arrive at the kernel boundary as opaque handles, large aggregate arguments can't survive a call boundary, and some helpers exist solely so the frontend has somewhere to attach attributes that must be visible at the use site.
 
 ```llvm
 ; before
@@ -169,7 +169,7 @@ define void @kernel(ptr addrspace(1) %p, float %x) {
 
 ### Force-Inline Marker Propagation
 
-Certain callees are unconditionally inlined regardless of whether the front-end marked them: math-library wrappers (the `__nv_*` family that wraps NVPTX intrinsics), the intrinsic-wrappers the frontend emits to attach `convergent` or `noreturn` to a callsite, and any helper whose body contains an NVPTX intrinsic that cannot survive an ABI boundary. The pass detects these by walking the callee's body for a small set of forced-inline-triggering opcodes; on a match it stamps the callee with `nvvm.always_inline` itself before the inlining walk.
+Certain callees are unconditionally inlined regardless of whether the front-end marked them: math-library wrappers (the `__nv_*` family that wraps NVPTX intrinsics), the intrinsic-wrappers the frontend emits to attach `convergent` or `noreturn` to a callsite, and any helper whose body contains an NVPTX intrinsic that cannot survive an ABI boundary. The pass detects these by walking the callee's body for a small set of forced-inline-triggering opcodes; on a match it stamps the callee with `always_inline` itself before the inlining walk.
 
 The propagation step is intentionally idempotent: a second run of the pass over already-marked IR is a no-op for the marker pass and either a no-op or a redundant inline for the inliner. This matters because some pass pipelines run `InlineMustPass` twice — once before CDP expansion and once after — and the marker must survive the first run untouched.
 
@@ -177,12 +177,12 @@ The propagation step is intentionally idempotent: a second run of the pass over 
 
 A call site is forced-inline iff:
 
-1. its callee carries `nvvm.always_inline` (either from the front-end or from the marker-propagation step);
+1. its callee carries `always_inline` (either from the front-end or from the marker-propagation step);
 2. the callee has a body in this module (not an external declaration);
 3. the call is not part of a recursive cycle the inliner cannot break;
 4. the callee is not interposable.
 
-The marker propagation step itself stamps `nvvm.always_inline` on any internal callee whose body contains a forced-inline trigger and whose signature obeys the ABI constraints.
+The marker propagation step itself stamps `always_inline` on any internal callee whose body contains a forced-inline trigger and whose signature obeys the ABI constraints.
 
 ### Algorithm
 
@@ -213,7 +213,7 @@ When the inliner hits a callee it cannot inline — a recursive cycle, an except
 
 ### Failure Modes
 
-- **Recursive always-inline.** Two functions both marked `nvvm.always_inline` that call each other produce an infinite inline chain; the inliner breaks the cycle, emits the Remark, and leaves the cycle in place for later DCE.
+- **Recursive always-inline.** Two functions both marked `always_inline` that call each other produce an infinite inline chain; the inliner breaks the cycle, emits the Remark, and leaves the cycle in place for later DCE.
 - **Marker on a declaration.** An always-inline declaration without a body is unreachable: there is nothing to inline. The inliner emits the Remark and leaves the call.
 - **Marker propagation false positive.** A reimplementation that lists too many opcodes as forced-inline triggers will stamp ordinary library helpers and inflate code size; the trigger set should be exactly the opcodes whose ABI requires inlining, not a heuristic.
 

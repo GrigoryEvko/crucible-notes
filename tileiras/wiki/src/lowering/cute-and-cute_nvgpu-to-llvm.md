@@ -22,10 +22,10 @@ Stage order simplifies high-level CuTe layout manipulation before architectural 
 
 The translation from CuTe layout algebra to LLVM follows a single rule: each `cute` tuple becomes an `llvm.struct`, and each `Layout` becomes a sequence of `llvm.insertvalue` operations on a fresh undef of that struct type. Modes within a tuple — shape, stride, swizzle — translate independently and compose by struct nesting. A rank-2 layout, for example, packs as `!llvm.struct<(struct<(i32, i32)>, struct<(i32, i32)>)>` where the outer struct holds shape and stride and each inner struct holds the per-mode entries.
 
-The descriptor-iterator primitive sits at the heart of this lowering. CuTe represents iteration over a layout via `cute.make_descriptor_iterator`, which the bank rewrites into a four-op LLVM sequence: a `ceildivsi` for the total iteration count, an `alloca` for the iterator state slot, an `undef` to initialise it, and three `insertvalue` operations that populate the base pointer, current index, and stride fields.
+The descriptor-iterator primitive sits at the heart of this lowering. CuTe represents iteration over a layout via `cute.get_iter` (paired with `cute.deref_desc_iter` for dereference), which the bank rewrites into a four-op LLVM sequence: a `ceildivsi` for the total iteration count, an `alloca` for the iterator state slot, an `undef` to initialise it, and three `insertvalue` operations that populate the base pointer, current index, and stride fields.
 
 ```mlir
-%iter = cute.make_descriptor_iterator %base, %extent, %tile_shape, %stride
+%iter = cute.get_iter %base, %extent, %tile_shape, %stride
    ↓
 %count   = arith.ceildivsi %extent, %tile_shape : i32
 %storage = llvm.alloca %c1 x !llvm.struct<(ptr, i32, i32)> : (i32) -> !llvm.ptr
@@ -35,7 +35,7 @@ The descriptor-iterator primitive sits at the heart of this lowering. CuTe repre
 %iter    = llvm.insertvalue %stride, %s1[2]   : !llvm.struct<(ptr, i32, i32)>
 ```
 
-`descriptor.advance` and `descriptor.rewind` work directly on the resulting three-field struct — `extractvalue` to read the index, `add` or `sub` to update it, `insertvalue` to write it back. The iterator is small (24 bytes) and the LLVM optimiser usually eliminates the stack slot through SROA after inlining; emitting the alloca up front gives the optimiser a stable target to fold.
+The companion `cute.deref_desc_iter` and the `cute.add_offset` advance/rewind helpers work directly on the resulting three-field struct — `extractvalue` to read the index, `add` or `sub` to update it, `insertvalue` to write it back. The iterator is small (24 bytes) and the LLVM optimiser usually eliminates the stack slot through SROA after inlining; emitting the alloca up front gives the optimiser a stable target to fold.
 
 Per-shape escape hatches sit at the edges of the bank. `cute.print` desugars to an element-wise loop with coordinate materialisation and a scalar print call. `cute.make_atom` dispatches to atom-interface-specific construction. `cute.filter_zeros`, `cute.group_modes`, `cute.coalesce`, and `cute.complement` carry layout-algebra semantics: they rewrite to layout reconstruction sequences that compute new shape and stride tuples from the input layout.
 
@@ -73,22 +73,22 @@ The sixteen anchor classes:
 
 | Class | Source op | Rewrite target |
 |---|---|---|
-| `MakeDescriptorIteratorOpLowering` | `cute.make_descriptor_iterator` | `alloca` + `undef` + three `insertvalue` (the four-op sequence above) |
-| `DescriptorAdvanceOpLowering` | `cute.descriptor.advance` | `extractvalue` + `add` + `insertvalue` |
-| `DescriptorRewindOpLowering` | `cute.descriptor.rewind` | `extractvalue` + `sub` + `insertvalue` |
+| `MakeDescriptorIteratorOpLowering` | `cute.get_iter` | `alloca` + `undef` + three `insertvalue` (the four-op sequence above) |
+| `DescriptorAdvanceOpLowering` | `cute.add_offset` (advance arm) | `extractvalue` + `add` + `insertvalue` |
+| `DescriptorRewindOpLowering` | `cute.add_offset` (rewind arm) | `extractvalue` + `sub` + `insertvalue` |
 | `MakeLayoutOpLowering` | `cute.make_layout` | `undef` + recursive `insertvalue` over shape and stride |
 | `MakeCoordOpLowering` | `cute.make_coord` | Flat coordinate-tuple construction |
-| `CrdToIdxOpLowering` | `cute.crd_to_idx` | Dot product of coordinate and stride tuples |
-| `TiledDivOpLowering` | `cute.tiled_div` | Per-mode `divsi` |
-| `TiledModOpLowering` | `cute.tiled_mod` | Per-mode `remsi` |
+| `CrdToIdxOpLowering` | `cute.crd2idx` | Dot product of coordinate and stride tuples |
+| `TiledDivOpLowering` | `cute.tiled_divide` | Per-mode `divsi` |
+| `TiledModOpLowering` | `cute.tiled_divide` (remainder arm) | Per-mode `remsi` |
 | `ShapeDivOpLowering` | `cute.shape_div` | Layout reconstruction after shape divide |
-| `CeilDivOpLowering` | `cute.ceildiv` | `ceildivsi` lifted to LLVM scalars |
+| `CeilDivOpLowering` | `cute.ceil_div` | `ceildivsi` lifted to LLVM scalars |
 | `FilterZerosOpLowering` | `cute.filter_zeros` | Layout reconstruction skipping zero-extent modes |
 | `GroupModesOpLowering` | `cute.group_modes` | Layout reconstruction with grouped modes |
 | `CoalesceOpLowering` | `cute.coalesce` | Layout reconstruction with adjacent compatible modes merged |
 | `ComplementOpLowering` | `cute.complement` | Layout-complement construction |
-| `PartitionOpLowering` | `cute.partition` | Pointer-offset GEP plus layout adjustment |
-| `TilePartitionOpLowering` | `cute.tile_partition` | Tiled-partition iteration emission |
+| `PartitionOpLowering` | `cute.local_partition` | Pointer-offset GEP plus layout adjustment |
+| `TilePartitionOpLowering` | `cute.tiled.copy.partition_D` / `partition_S` | Tiled-partition iteration emission |
 
 A secondary registrar runs after the main bank and adds two `DerefineOpLowering` patterns (layout-projection-to-coord and layout-flatten) plus the `ConvertGPUFuncSignature` rewrite that downgrades `gpu.func` signatures to LLVM-compatible `func.func`. Running this registrar second matters: it lets the `cute_nvgpu` helper rewrites assume the primitive CuTe operations are already convertible, so they can compose with the bank's outputs rather than racing them.
 
@@ -153,7 +153,7 @@ The static fold first checks that the cosize of `%l1` (`8` in the example) fits 
 
 The mode count of the result is not always the sum of input mode counts; composition can introduce nested modes when the strides of `%l2` are not divisible by the shape sums of `%l1`. The lowering walks the inputs structurally and synthesises one struct field per leaf in the result tree, so nested-mode composition lowers to nested structs rather than flat ones.
 
-### `cute_nvgpu.atom.sm100.s2t_copy` — SMEM-to-TMEM Copy
+### `cute_nvgpu.arch.copy.SM100.copy_s2t` — SMEM-to-TMEM Copy
 
 The Blackwell shared-to-tensor-memory copy lowers in two stages. First, the CuTe atom packaging stage (`Sm100S2tCopyAtom`) materialises a TMEM destination and any cluster-rank arithmetic, then emits a CuTe atom payload that carries the source SMEM view, destination TMEM pointer, mbarrier, and partition info. Second, the TileAS-to-LLVM lowering converts that payload into a `nvvm.cp.async.bulk.tensor.shared::cluster.shared::cta` intrinsic:
 
@@ -188,11 +188,11 @@ Only the CTA whose rank in the cluster matches the partition selector issues the
 
 The destination address space is `6`, which is the tensor-memory address space in the NVVM dialect's address-space convention (`0 = generic, 1 = global, 3 = shared, 4 = constant, 5 = local, 6 = tmem`). TMEM is not addressable from generic pointers — every TMEM access must go through the cp.async.bulk.tensor or tcgen05 paths, and the address-space sentinel keeps that contract explicit through the entire pipeline.
 
-The `nv_tileas.AsyncToken` again becomes a placeholder i32. Completion observation runs through the mbarrier the `cp.async.bulk.tensor` increments on its way out — the consumer side reads its phase from the matching `nvvm.mbarrier.try_wait.parity.shared`, and the i32 token's only purpose is the IR-level data-dependence edge.
+The `!nv_tileas.async.token` value (produced by ops in the `nv_tileas.async.*` family) again becomes a placeholder i32. Completion observation runs through the mbarrier the `cp.async.bulk.tensor` increments on its way out — the consumer side reads its phase from the matching `nvvm.mbarrier.try_wait.parity.shared`, and the i32 token's only purpose is the IR-level data-dependence edge.
 
-### `cute.tile_partition` Pointer-Offset Walk
+### `cute.tiled.copy.partition_D` Pointer-Offset Walk
 
-`cute.tile_partition` carves a tile-sized window out of a larger layout, producing a GEP and a residual layout for the sub-tile:
+`cute.tiled.copy.partition_D` (and its companion `partition_S`) carves a tile-sized window out of a larger layout, producing a GEP and a residual layout for the sub-tile:
 
 ```mlir
 // Before

@@ -62,8 +62,8 @@ Coming from the open-source `cutlass/cute` C++ headers, the differences are repr
 | `cute::MMA_Atom<MMA_Traits<sm90_64x128x16_F16F16F32_SS>>` | `cute_nvgpu.sm90.mma` op with `shape_MNK`, `a_type`, `b_type`, `c_type` attributes plus operand-residency-typed values |
 | `cute::Layout<Shape, Stride>` template | `!cute.layout` type with hierarchical `(shape, stride)` trees and a 7-kind discriminator (see [cute Verifiers — LayoutTypeInterface Kind Discriminator](../cute/verifiers.md#layouttypeinterface-kind-discriminator)) |
 | `cute::TiledCopy` / `cute::TiledMMA` | `cute.make_tiled_copy` / `cute.make_tiled_mma` builders consuming atom values |
-| `cutlass::PipelineTmaAsync<Stages>` class template | `cutlass.pipeline.create_pipeline` + `cutlass.pipeline.init` ops with explicit producer/consumer participant attributes |
-| `cutlass::PersistentTileScheduler` class template | `cutlass.tile_scheduler.static_persistent` op returning a typed scheduler handle |
+| `cutlass::PipelineTmaAsync<Stages>` class template | `cutlass.pipeline.create` + `cutlass.pipeline.init` ops with explicit producer/consumer participant attributes |
+| `cutlass::PersistentTileScheduler` class template | `cutlass.tile_scheduler.create_static_persistent_params` op returning a typed scheduler handle |
 | WGMMA descriptor packed by `make_smem_desc` | `cute_nvgpu.smem_desc_view` type (see [WGMMA descriptor construction](#smem-descriptor-construction)) |
 | Sparse metadata operand on `mma.sp` | Dedicated `sparse_metadata` value with its own layout, slot 3 of the synthesised layout result |
 | Block-scaled `scale_factor_a`/`b` template arguments | `scale_a`/`scale_b` operands typed as `E8M0` fragments (SM120) or TMEM-resident scale vectors (SM100) |

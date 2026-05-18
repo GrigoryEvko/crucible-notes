@@ -13,7 +13,7 @@ The "Properties slots used" column tracks where each op stores its attribute pay
 | Op | Role | Properties slots used |
 |---|---|---|
 | `nvvm.wgmma.fence.aligned` | producer-side fence before `mma_async` | none |
-| `nvvm.wgmma.mma_async.sync.aligned` | the MMA itself | `typeA`, `b1Op`, `typeB`, `shape`, `typeC`, `scaleIn`, `scaleOut`, `layoutA`, `layoutB` |
+| `nvvm.wgmma.mma_async` | the MMA itself | `typeA`, `b1Op`, `typeB`, `shape`, `typeC`, `scaleIn`, `scaleOut`, `layoutA`, `layoutB` |
 | `nvvm.wgmma.commit.group.sync.aligned` | close the current MMA group | `wgmma_type`, `wgmma_layout` |
 | `nvvm.wgmma.wait.group.sync.aligned` | wait for the group with depth `N` | `wgmma_type`, `wgmma_layout`, shape-N |
 
@@ -25,7 +25,7 @@ The "Properties slots used" column tracks where each op stores its attribute pay
 
 No operands and no result. Lowers to a single PTX `wgmma.fence.sync.aligned;` instruction.
 
-### `nvvm.wgmma.mma_async.sync.aligned`
+### `nvvm.wgmma.mma_async`
 
 | Position | Name | Type | Notes |
 |---|---|---|---|
@@ -84,15 +84,15 @@ typedef union WgmmaDescriptor {
 
 `start_addr` requires 16-byte SMEM alignment because the field stores the offset shifted right by 4. `lbo` and `sbo` together encode the two-dimensional warp-tile stride layout. The swizzle field selects the canonical Hopper 128-byte mode, with 64-byte and 32-byte modes available for sub-tile widths.
 
-The descriptor reaches `nvvm.wgmma.mma_async.sync.aligned` as a plain `i64` operand. The pattern that builds it sits in `nvgpu.warpgroup.descriptor` (see the [nvgpu overview](../nvgpu/overview.md#nvgpuwarpgroupdescriptor-also-spelled-warpgroupgeneratedescriptor)).
+The descriptor reaches `nvvm.wgmma.mma_async` as a plain `i64` operand. The pattern that builds it sits in `nvgpu.warpgroup.descriptor` (see the [nvgpu overview](../nvgpu/overview.md#nvgpuwarpgroupdescriptor-also-spelled-warpgroupgeneratedescriptor)).
 
 ## LLVM Intrinsic Mapping
 
 | Op | LLVM intrinsic |
 |---|---|
 | `nvvm.wgmma.fence.aligned` | `llvm.nvvm.wgmma.fence.sync.aligned` |
-| `nvvm.wgmma.mma_async.sync.aligned` (m64n128k16, f32.f16.f16) | `llvm.nvvm.wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16` |
-| `nvvm.wgmma.mma_async.sync.aligned` (m64n256k32, f32.e4m3.e4m3) | `llvm.nvvm.wgmma.mma_async.sync.aligned.m64n256k32.f32.e4m3.e4m3` |
+| `nvvm.wgmma.mma_async` (m64n128k16, f32.f16.f16) | `llvm.nvvm.wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16` |
+| `nvvm.wgmma.mma_async` (m64n256k32, f32.e4m3.e4m3) | `llvm.nvvm.wgmma.mma_async.sync.aligned.m64n256k32.f32.e4m3.e4m3` |
 | `nvvm.wgmma.commit.group.sync.aligned` | `llvm.nvvm.wgmma.commit.group.sync.aligned` |
 | `nvvm.wgmma.wait.group.sync.aligned` | `llvm.nvvm.wgmma.wait.group.sync.aligned` |
 

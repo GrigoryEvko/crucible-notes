@@ -4,11 +4,11 @@
 
 NVVMIRVerifier enforces NVVM-IR-level invariants the upstream LLVM `Verifier` knows nothing about. It runs after every NVPTX-side pass in the Tileiras pipeline and fires diagnostics on violations such as a kernel launched from a non-kernel function or a parameter buffer that overflows the SM's parameter-space limit. Failure aborts compilation through `signalPassFailure()`. The pass is a regular LLVM `FunctionPass`, not an MLIR `OperationPass`, so it never touches the failure-flag handshake TileAS passes use; the LLVM pass manager picks up its failure through the standard `Pass::run` return path and aborts before the next NVPTX pass starts.
 
-Two principal procedures do the work. The launch-argument address-space checker walks every `nvvm.launch_call` instruction and verifies that arguments live in an address space the child grid can dereference — typically global or constant. The parameter-space sizer walks each kernel's formal parameter list, sums byte sizes per the NVVM ABI, and compares the total to the per-SM parameter-space ceiling.
+Two principal procedures do the work. The launch-argument address-space checker walks every `gpu.launch_func` instruction and verifies that arguments live in an address space the child grid can dereference — typically global or constant. The parameter-space sizer walks each kernel's formal parameter list, sums byte sizes per the NVVM ABI, and compares the total to the per-SM parameter-space ceiling.
 
 ## Launch-Argument Address-Space Check
 
-The launch checker iterates the operands of each `nvvm.launch_call` site and resolves the address space of every pointer-typed argument. Global and constant pointers pass unconditionally. A pointer the child grid cannot legally dereference triggers one of two diagnostics.
+The launch checker iterates the operands of each `gpu.launch_func` site and resolves the address space of every pointer-typed argument. Global and constant pointers pass unconditionally. A pointer the child grid cannot legally dereference triggers one of two diagnostics.
 
 The first diagnostic fires when the launch target itself is not a kernel:
 
@@ -174,7 +174,7 @@ The same check fires for the Blackwell-only `nvvm.tcgen05.mma` intrinsic family 
 call void @llvm.nvvm.launch(ptr @child_kernel, ptr %local)
 ```
 
-The `nvvm.launch_call` operand is a pointer to an `alloca` in the generic address space — the parent thread's local storage. Upstream LLVM's verifier accepts the call: the argument is a well-formed pointer, the launch intrinsic signature accepts a generic-AS pointer, and the def-use chain is consistent. The child grid runs in a different address-space frame, however, and a generic or local-AS pointer the parent passed is undefined to dereference from the child. The NVVM verifier walks each launch call's operand list, resolves the address space of every pointer-typed argument, and emits:
+The `gpu.launch_func` operand is a pointer to an `alloca` in the generic address space — the parent thread's local storage. Upstream LLVM's verifier accepts the call: the argument is a well-formed pointer, the launch intrinsic signature accepts a generic-AS pointer, and the def-use chain is consistent. The child grid runs in a different address-space frame, however, and a generic or local-AS pointer the parent passed is undefined to dereference from the child. The NVVM verifier walks each launch call's operand list, resolves the address space of every pointer-typed argument, and emits:
 
 ```text
 A pointer to local memory or memory in 'addrspace(0)' has been used as a launch argument. Dereferencing this within the launch is undefined
@@ -197,7 +197,7 @@ define void @child(...) {            ; missing nvvm.kernel marker
 %launched = call ... @llvm.nvvm.launch(ptr @child, ...)
 ```
 
-Upstream LLVM accepts both definitions and the call. The NVVM verifier walks every `nvvm.launch_call` site, follows the called-symbol operand to its definition, and consults the `isKernelFunction` predicate documented in [Kernel Identity](kernel-cdp-inline-pretreat.md#kernel-identity). A function the launch reaches that does not satisfy the predicate fails the launch-target check above. The diagnostic carries the call-site location so the user can locate the missing `__global__` declaration in the source.
+Upstream LLVM accepts both definitions and the call. The NVVM verifier walks every `gpu.launch_func` site, follows the called-symbol operand to its definition, and consults the `isKernelFunction` predicate documented in [Kernel Identity](kernel-cdp-inline-pretreat.md#kernel-identity). A function the launch reaches that does not satisfy the predicate fails the launch-target check above. The diagnostic carries the call-site location so the user can locate the missing `__global__` declaration in the source.
 
 ## Driver
 

@@ -4,7 +4,7 @@
 
 `cutlass.tile_scheduler.mods_*` is a four-op sidecar family for the MODS (Multi-Op Dispatch) async-dispatch path used by CUTLASS-style persistent GEMM kernels. The four ops attach to the tile-scheduler boundary of a persistent mainloop: two mark the start and end of the steady-state pipeline, one reads the current SM id, and one inserts a runtime throttle point. None of the four moves data, computes a tile, or participates in producer/consumer synchronisation. They exist to give the persistent-kernel runtime an explicit handshake with the SM hardware that ordinary `cutlass.pipeline.*` and `cutlass.tile_scheduler.*` ops do not provide.
 
-The family is small but the placement is exact. MODS ops appear inside `nv_tileas.async.exec` regions alongside the rest of the persistent mainloop's pipeline plumbing. They lower to single-instruction NVVM intrinsics plus one ABI side effect: the mainloop-start and mainloop-end probes also drop arrive/wait pairs against the cluster-wide barrier that coordinates the alternate async-call ABI MODS uses for cross-CTA progress reporting.
+The family is small but the placement is exact. MODS ops appear inside `cutlass.async.exec` regions alongside the rest of the persistent mainloop's pipeline plumbing. They lower to single-instruction NVVM intrinsics plus one ABI side effect: the mainloop-start and mainloop-end probes also drop arrive/wait pairs against the cluster-wide barrier that coordinates the alternate async-call ABI MODS uses for cross-CTA progress reporting.
 
 ## Position in the cutlass Dialect
 
@@ -52,7 +52,7 @@ The start probe optionally returns the timestamp value the end probe consumes. T
 
 ## Dispatch Model and Producer/Consumer Integration
 
-MODS does not replace the producer/consumer protocol the rest of the cutlass dialect implements. It runs in parallel with it: ordinary `cutlass.pipeline.producer.acquire`, `cutlass.pipeline.producer.commit`, `cutlass.pipeline.consumer.wait`, and `cutlass.pipeline.consumer.release` continue to drive the per-stage mbarrier handshake inside the mainloop. MODS adds one outer layer on top, scoped to the entire mainloop:
+MODS does not replace the producer/consumer protocol the rest of the cutlass dialect implements. It runs in parallel with it: ordinary `cutlass.pipeline.producer_acquire`, `cutlass.pipeline.producer_commit`, `cutlass.pipeline.consumer_wait`, and `cutlass.pipeline.consumer_release` continue to drive the per-stage mbarrier handshake inside the mainloop. MODS adds one outer layer on top, scoped to the entire mainloop:
 
 ```text
 mods_report_mainloop_start                 ─┐
@@ -76,13 +76,13 @@ The mainloop-start probe and mainloop-end probe both touch the cluster barrier, 
 
 This is why removing the probes breaks the kernel rather than just its reporting. The cluster barrier participates in the persistent-kernel progress contract — without the matched arrive/wait pair, late CTAs can re-enter the mainloop while early CTAs have already finished, and the `mods_throttle` hooks downstream observe inconsistent cluster-wide state.
 
-The per-stage mbarrier slots used by `cutlass.pipeline.*` are untouched by MODS. The two synchronization domains are separate by design: one coordinates producer/consumer agents within a CTA, the other coordinates progress across CTAs in a cluster. MODS sits at the cluster-scoped level alongside `cute_nvgpu.arch.cluster.barrier`, not at the per-stage level.
+The per-stage mbarrier slots used by `cutlass.pipeline.*` are untouched by MODS. The two synchronization domains are separate by design: one coordinates producer/consumer agents within a CTA, the other coordinates progress across CTAs in a cluster. MODS sits at the cluster-scoped level alongside the `nvvm.cluster.arrive` / `nvvm.cluster.wait` pair, not at the per-stage level.
 
 ## Verifier Rules
 
 The dialect contract for the MODS family covers four distinct checks:
 
-1. **Matched probe pair.** Every `mods_report_mainloop_start` op must be paired with exactly one `mods_report_mainloop_end` op in the same enclosing `nv_tileas.async.exec` region. The pair must agree on the `is_2cta_mma` flag and on the participant mask.
+1. **Matched probe pair.** Every `mods_report_mainloop_start` op must be paired with exactly one `mods_report_mainloop_end` op in the same enclosing `cutlass.async.exec` region. The pair must agree on the `is_2cta_mma` flag and on the participant mask.
 
 2. **Window enclosure.** Any `mods_throttle` or `mods_report_smid` op appearing inside a region must lie between a matched start/end pair if its operand bundle depends on cluster-wide state. Smid reads (no cluster dependency) can appear anywhere; throttle ops with cluster-aware profiles cannot.
 
@@ -111,11 +111,11 @@ The MODS lowering runs as part of `ConvertPipelineToNVVM` — the same pass that
 | `mods_report_mainloop_start` | `nvvm.cluster.arrive` + optional `nvvm.read.ptx.sreg.globaltimer` |
 | `mods_report_mainloop_end` | `nvvm.cluster.wait` after `cp.async.bulk.wait_group { count = 0 }` drain + optional second `nvvm.read.ptx.sreg.globaltimer` and subtraction |
 | `mods_report_smid` | `nvvm.read.ptx.sreg.smid` |
-| `mods_throttle` | `nvvm.nanosleep` with profile-derived constant, or `nvvm.bar.sync` for the cooperative-throttle profile |
+| `mods_throttle` | `llvm.inline_asm` emitting `nanosleep.u32` with profile-derived constant, or `nvvm.barrier.cta.sync` for the cooperative-throttle profile |
 
-The `mods_report_mainloop_end` lowering is the most intricate. Before it can issue the cluster-barrier wait, it must drain any outstanding TMA stores from the pipeline tail; the lowering inserts a `cp.async.bulk.wait_group { count = 0 }` between the pipeline's `producer.tail` op and the cluster wait. This is one of the few places the cutlass-to-NVVM lowering inserts a wait that does not correspond directly to a `cutlass.pipeline.consumer.wait` op — it exists because the cluster barrier observes the full mainloop, not a single stage, and the tail drain is what makes that observation safe.
+The `mods_report_mainloop_end` lowering is the most intricate. Before it can issue the cluster-barrier wait, it must drain any outstanding TMA stores from the pipeline tail; the lowering inserts a `cp.async.bulk.wait_group { count = 0 }` between the pipeline's `producer.tail` op and the cluster wait. This is one of the few places the cutlass-to-NVVM lowering inserts a wait that does not correspond directly to a `cutlass.pipeline.consumer_wait` op — it exists because the cluster barrier observes the full mainloop, not a single stage, and the tail drain is what makes that observation safe.
 
-The `mods_throttle` lowering picks one of three profiles. Profile 0 is a no-op — the op is dropped during lowering when the surrounding pipeline depth analysis decides the kernel does not need a throttle. Profile 1 emits a fixed-duration `nvvm.nanosleep`. Profile 2 emits a cooperative-throttle path: the throttle becomes a participation point in a per-cluster barrier whose count adapts to current hardware queue pressure measured at runtime.
+The `mods_throttle` lowering picks one of three profiles. Profile 0 is a no-op — the op is dropped during lowering when the surrounding pipeline depth analysis decides the kernel does not need a throttle. Profile 1 emits a fixed-duration `llvm.inline_asm` wrapping the `nanosleep.u32` PTX instruction. Profile 2 emits a cooperative-throttle path: the throttle becomes a participation point in a per-cluster barrier whose count adapts to current hardware queue pressure measured at runtime.
 
 ## Relationship to the cutlass C++ Library
 
