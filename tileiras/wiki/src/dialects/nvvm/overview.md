@@ -32,22 +32,21 @@ PTX
 
 ## Per-Family Pages
 
-The dialect ships about 124 ops. They split cleanly into eight large families plus a long tail of small ones. The bulk of each family is documented on its own page; this overview lists the families, their roster sizes, the SM floor, and one example op so the cross-link table doubles as an index. (WMMA is three ops in MLIR; the PTX shape × layout × element-type cross-product is reached through attributes on `nvvm.wmma.{load,store,mma}` rather than per-combination ops.)
+The dialect ships about 86 dialect ops (the PTX form count is several times larger because most ops carry attribute-driven cross-products: shape × layout × element type for WMMA, rank × mode for TMA, kind × cta_group × collector for tcgen05, generic vs `.shared` splits for mbarrier, and so on). They split cleanly into eight large families plus a long tail of small ones. The bulk of each family is documented on its own page; this overview lists the families, their roster sizes, the SM floor, and one example op so the cross-link table doubles as an index. (WMMA is three ops in MLIR; the PTX shape × layout × element-type cross-product is reached through attributes on `nvvm.wmma.{load,store,mma}` rather than per-combination ops.)
 
 | Family | Count | SM floor | Example op | Page |
 |---|---:|---|---|---|
 | WMMA — warp-synchronous register MMA | 3 | sm_70 | `nvvm.wmma.mma` | [WMMA Ops](wmma-ops.md) |
 | WGMMA — warp-group async MMA (Hopper) | 4 | sm_90a | `nvvm.wgmma.mma_async` | [WGMMA Ops](wgmma-ops.md) |
-| TMA — bulk tensor copy, prefetch, reduce | 12 dialect ops (rank 1..5 and mode in attributes) | sm_90 | `nvvm.cp.async.bulk.tensor.shared.cluster.global` | [TMA Ops](tma-ops.md) |
-| tcgen05 — Blackwell tensor memory + MMA | 18 dialect ops (kind / cta_group / collector / layout / sparsity / block-scale in attributes; the cross-product reaches several thousand PTX forms) | sm_100a | `nvvm.tcgen05.mma.block_scale` | [tcgen05 Ops](tcgen05-ops.md) |
-| mbarrier — shared-memory barrier state machine | 20 dialect ops (generic vs `.shared` address-space split adds the second variant on most ops) | sm_80 | `nvvm.mbarrier.arrive.expect_tx.shared` | [mbarrier Ops](mbarrier-ops.md) |
-| Cluster — thread-block cluster sync | 12 | sm_90 | `nvvm.cluster.wait`, `nvvm.mapa` | [Cluster Ops](cluster-ops.md) |
-| Synchronisation — `barrier0`, `barrier.cta.sync`, `bar.warp.sync` | 18 | sm_70 | `nvvm.barrier.cta.sync` | (this page) |
-| `cp.async` (Ampere SM80 async-copy queue) | 5 dialect ops (vector width `{4,8,16}` and `.ca`/`.cg` cache modifier are attributes on `nvvm.cp.async.shared.global`) | sm_80 | `nvvm.cp.async.shared.global` | (this page) |
-| Special registers — `tid`, `ctaid`, `ntid`, etc. | 15 | sm_70 | `nvvm.read.ptx.sreg.tid.x` | (this page) |
-| shfl / vote / elect.sync | 8 | sm_70 | `nvvm.shfl.sync` | (this page) |
-| `barrier.{arrive,sync}` helpers | 4 | sm_70 | `nvvm.barrier.arrive` | (this page) |
-| Other (`mapa`, fences, ldmatrix/stmatrix, redux, prefetch) | 5 | varies | `nvvm.ldmatrix` | (this page) |
+| TMA — bulk tensor copy, prefetch, reduce | 9 dialect ops (rank 1..5 and mode in attributes) | sm_90 | `nvvm.cp.async.bulk.tensor.shared.cluster.global` | [TMA Ops](tma-ops.md) |
+| tcgen05 — Blackwell tensor memory + MMA | 15 dialect ops (kind / cta_group / collector / layout / sparsity / block-scale in attributes; the cross-product reaches several thousand PTX forms) | sm_100a | `nvvm.tcgen05.mma.block_scale` | [tcgen05 Ops](tcgen05-ops.md) |
+| mbarrier — shared-memory barrier state machine | 12 dialect ops (generic vs `.shared` address-space split adds the second variant on most ops) | sm_80 | `nvvm.mbarrier.arrive.expect_tx.shared` | [mbarrier Ops](mbarrier-ops.md) |
+| Cluster — thread-block cluster sync | 9 | sm_90 | `nvvm.cluster.wait`, `nvvm.mapa` | [Cluster Ops](cluster-ops.md) |
+| Synchronisation — `barrier0`, `barrier.cta.sync`, `bar.warp.sync`, `barrier.{arrive,sync}` helpers | 8 | sm_70 | `nvvm.barrier.cta.sync` | (this page) |
+| `cp.async` (Ampere SM80 async-copy queue) | 6 dialect ops (vector width `{4,8,16}` and `.ca`/`.cg` cache modifier are attributes on `nvvm.cp.async.shared.global`) | sm_80 | `nvvm.cp.async.shared.global` | (this page) |
+| Special registers — `tid`, `ctaid`, `ntid`, etc. | 7 | sm_70 | `nvvm.read.ptx.sreg.tid.x` | (this page) |
+| shfl / vote / elect.sync | 5 | sm_70 | `nvvm.shfl.sync` | (this page) |
+| Other (`mapa`, fences, ldmatrix/stmatrix, redux, prefetch) | 8 | varies | `nvvm.ldmatrix` | (this page) |
 
 The family page is the normative spec: it pins each op to its operand list, LLVM intrinsic, PTX template, constraint string for inline-asm variants, and SM floor. The roster table below covers the smaller families that don't justify their own page.
 

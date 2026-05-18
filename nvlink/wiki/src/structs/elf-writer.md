@@ -91,7 +91,7 @@ For the full header encoding, see [Device ELF Format -- ELF Identification](../e
 | +93 | 1 | `flag_0x100` | `BYTE1(a9) & 1` | Bits 8 flag |
 | +94 | 1 | `extended_smem` | `(a5 > 0x45) & ((a9 >> 7) & 1)` | Extended shared memory: sm_minor > 69 AND bit 7 |
 | +96 | 1 | `flag_0x800` | `(a9 & 0x800) != 0` | Reserved flag |
-| +99 | 1 | `no_debug_info` | `((a9 >> 12) ^ 1) & 1` | Inverted bit 12: suppress debug info |
+| +99 | 1 | `std_smem_mode` | `((a9 >> 12) ^ 1) & 1` | Inverted bit 12 of `merge_flags`. `a9` bit 12 is set when `--enable-extended-smem` is passed (entry.md "merge_flags" table, sourced from `byte_2A5F210`); the byte at +99 is therefore the **complement** -- it is 1 when the linker is in **standard shared-memory mode** (i.e. `--enable-extended-smem` was NOT given) and 0 when extended smem is active. Used as a gate by `sub_445000` at line 347 to enable the shared-memory rebasing pass `sub_439640`. |
 | +100 | 1 | `flag_0x2000` | `(a9 & 0x2000) != 0` | Reserved flag |
 | +101 | 1 | `is_device_elf` | `(a9 & 0x8000) != 0` | Whether this is a device ELF (sets OSABI 0x41) |
 
@@ -432,7 +432,7 @@ The `merge_flags` parameter (`a9`) is a 32-bit bitmask that controls the elfw's 
 | 9 | `0x200` | `allow_undef` | +86 | `--allow-undefined-globals` |
 | 10 | `0x400` | `private_arena` | -- | Creates dedicated "elfw memory space" arena |
 | 11 | `0x800` | `flag_bit11` | +96 | Reserved |
-| 12 | `0x1000` | `no_debug_inverted` | +99 | Inverted: `((flags >> 12) ^ 1) & 1` |
+| 12 | `0x1000` | `enable_extended_smem` (stored inverted at +99) | +99 | `byte+99 = ((a9 >> 12) ^ 1) & 1`. `a9` bit 12 is the `--enable-extended-smem` option (`byte_2A5F210`, see [entry.md merge_flags](../pipeline/entry.md#phase-1-elf-writer-creation-lines-426-593)); the stored byte is the inverse, asserting standard smem mode. Read by `sub_445000:347` to gate `sub_439640` (shared-memory variable rebasing). |
 | 13 | `0x2000` | `flag_bit13` | +100 | Reserved |
 | 14 | `0x4000` | `flag_bit14` | +91 | Reserved |
 | 15 | `0x8000` | `is_device_elf` | +101 | Selects OSABI 0x41 path, enables CUDA-specific sections |
@@ -539,7 +539,7 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | `flag_0x100` at offset 93 | HIGH | `*((_BYTE *)v17 + 93) = BYTE1(v20) & 1` on line 253 |
 | `extended_smem` at offset 94 (`sm_minor > 0x45 & bit 7`) | HIGH | `*((_BYTE *)v17 + 94) = (a5 > 0x45u) & ((unsigned __int8)v20 >> 7)` on line 260 |
 | `flag_0x800` at offset 96 | HIGH | `*((_BYTE *)v17 + 96) = (v20 & 0x800) != 0` on line 259 |
-| `no_debug_info` at offset 99 (`(!bit12) & 1`) | HIGH | `*((_BYTE *)v17 + 99) = ((v20 >> 12) ^ 1) & 1` on line 251 |
+| `std_smem_mode` at offset 99 = inverse of `merge_flags` bit 12 (`--enable-extended-smem`) | HIGH | `*((_BYTE *)v17 + 99) = ((v21 >> 12) ^ 1) & 1` at `sub_4438F0_0x4438f0.c:229`; `a9` bit 12 source documented in `entry.md` merge_flags table (line 101: `byte_2A5F210` -> `enable-extended-smem`); consumed by `sub_445000_0x445000.c:347` as the second clause of the `sub_439640` gate |
 | Byte 100 = `(v20 & 0x2000) != 0` | HIGH | `*((_BYTE *)v17 + 100) = (v20 & 0x2000) != 0` on line 252 (overwrites earlier word-wide write at line 177/221) |
 | `is_device_elf` at offset 101 | HIGH | `*((_BYTE *)v17 + 101) = (a9 & 0x8000) != 0` on line 144 |
 

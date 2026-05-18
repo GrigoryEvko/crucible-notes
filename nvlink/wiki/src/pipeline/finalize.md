@@ -60,7 +60,7 @@ The following is the exact call order within `sub_445000`, with function address
 
 | Step | Address | Function | Description |
 |---|---|---|---|
-| 1 | `0x439640` | `sub_439640` | Shared memory fixup (executable `ET_EXEC` only, when `(e_flags & mask) == 0` and `byte elfw+99` is set) |
+| 1 | `0x439640` | `sub_439640` | Shared memory variable rebase (executable `ET_EXEC` only, when `(e_flags & abi_mask) == 0` and `byte elfw+99 != 0`; `abi_mask = 1` for OSABI 0x41, `0x80000000` otherwise -- both test the "not-yet-finalized" bit in the corresponding `e_flags` layout) |
 | 1b | `0x438BD0` | `sub_438BD0` | Virtual section index remap (Mercury `0xFF00` only) |
 | 2 | `0x44DB00` | `sub_44DB00` | Pre-finalize: root kernel detect, call sub_44C030 |
 | 2a | `0x44C030` | `sub_44C030` | Callgraph closure: alt-call resolution (`-3` name -> address-taken `+4`) + DFS reachability + `$`-prefix validation |
@@ -85,7 +85,33 @@ The following is the exact call order within `sub_445000`, with function address
 
 ### Shared Memory Fixup (Relocatable Mode)
 
-For **executable** links (`elfw+16 == 2`, i.e. `ET_EXEC` -- the default device-link output), `sub_439640` is called to apply a final shared-memory adjustment pass when **both** conditions hold: (a) `(e_flags & mask) == 0` where `mask = 1` if the OSABI byte at `e_ident[7]` is `0x41 ('A', CUDA ABI)` else `mask = 0x80000000` (line 347 of `sub_445000_0x445000.c`), and (b) `byte elfw+99` is set. The `ET_REL` branch is **not** taken here -- relocatable output skips this fixup entirely. Earlier wiki revisions had this gate inverted; the decompiled control flow at lines 342--349 makes it unambiguous (`if ( v3 == 2 ) { ... sub_439640(a1); }`).
+For **executable** links (`elfw+16 == 2`, i.e. `ET_EXEC` -- the default device-link output), `sub_439640` is called to apply a final shared-memory variable rebase when **all three** conditions hold (lines 342--348 of `sub_445000_0x445000.c`):
+
+```c
+v3 = *(_WORD *)(a1 + 16);                       // e_type at elfw+16
+if ( v3 == 2 )                                  // (1) ET_EXEC
+{
+  v227 = 0x80000000;
+  if ( *(_BYTE *)(a1 + 7) == 65 )               // e_ident[7] == 0x41 'A' (CUDA OSABI)
+    v227 = 1;
+  if ( (v227 & *(_DWORD *)(a1 + 48)) == 0       // (2) (e_flags & abi_mask) == 0
+       && *(_BYTE *)(a1 + 99) )                 // (3) byte at elfw+99 is non-zero
+    sub_439640(a1);
+}
+```
+
+The three clauses, decoded:
+
+1. **`e_type == ET_EXEC` (value 2)**: skips both `ET_REL` (`-r` relocatable output) and the Mercury `0xFF00` branch entirely. `e_type` is set once by `elfw_create` from `(byte_2A5F1E8 == 0) + 1` and is never rewritten.
+
+2. **`(e_flags & abi_mask) == 0`** where `abi_mask` depends on `e_ident[EI_OSABI]` at byte 7 of the ELF header:
+   - **OSABI `0x41` ('A', CUDA 64-bit device ELF)** → `abi_mask = 0x00000001`. Under this encoding `e_flags[7:0]` holds `link_state` (1 = not yet finalized, 4 = finalized; see [device-elf-format.md](../elf/device-elf-format.md#e_flags-encoding)), and bit 0 is the relocatable / partial-link indicator. The clause therefore asserts "ELF is fully linked into a real executable, not an intermediate Mercury/capmerc stub".
+   - **OSABI `0x33` (legacy 32-bit, or non-CUDA OSABI)** → `abi_mask = 0x80000000`. Under that encoding `e_flags = sm_major | (sm_minor << 16) | (reloc_bit << 31)`; bit 31 is the same "not-finalized" reloc bit. The clause again asserts a fully-linked executable.
+   - The exact mirror of this dual-mask appears in `sub_45BAA0` / `sub_45C980` (program header emission) and is documented at [program-headers.md](../elf/program-headers.md#mercury-pre-fnlzr-stub-suppression). nvlink uses the same `abi_mask` trick anywhere it must distinguish "real cubin" from "intermediate stub".
+
+3. **`byte elfw+99 != 0`**: this is the `std_smem_mode` byte. `elfw_create` writes it at line 229 of `sub_4438F0_0x4438f0.c` as `((a9 >> 12) ^ 1) & 1`, where `a9` is the `merge_flags` parameter; `merge_flags` bit 12 is the `--enable-extended-smem` option (sourced from global `byte_2A5F210`, see the [merge_flags table in entry.md](entry.md#phase-1-elf-writer-creation-lines-426-593)). The byte is therefore the **complement**: it is **1 when extended shared memory is disabled** (standard 16 KB / 48 KB / 64 KB statically-banked smem layout) and **0 when `--enable-extended-smem` is set** (which routes through a different smem allocator and skips this rebase). See [elf-writer.md offset +99](../structs/elf-writer.md#per-flag-bit-mapping).
+
+In one line: **sub_439640 runs only for fully-linked CUDA executable cubins built in standard shared-memory mode**. The `ET_REL` branch and the Mercury pre-FNLZR stub branch are both **not** taken here. Earlier wiki revisions stated the gate as just "ET_EXEC + e_flags clear" and labelled byte+99 as `no_debug_info`; both were wrong -- the decompiled control flow at lines 342--349 and the bit-12 derivation in `sub_4438F0` make the smem interpretation definitive.
 
 The `e_type` value at `elfw+16` is an **input** to `sub_445000` -- it is read at line 340 of the decompiled function, immediately after entry, and gates the first three branches; it was already written into the wrapper by `elfw_create` via the `a1 = (byte_2A5F1E8 == 0) + 1` argument at `main` line 391.
 
@@ -669,7 +695,7 @@ Textures, surfaces, and samplers are only printed if non-zero. The function list
 | `sub_44CE00` | 3,758 B | propagate_regcount_callgraph | Propagates REGCOUNT through callgraph edges |
 | `sub_450C50` | 3,100 B | propagate_stack_per_entry | Per-entry stack/CRS size propagation |
 | `sub_44CA40` | 2,416 B | callgraph_compat_remap | `.nv.callgraph` symbol index remapping |
-| `sub_439640` | ~2 KB | shared_memory_fixup_exec | Shared memory fixup for executable (`ET_EXEC`) output -- gated on `(e_flags & abi_mask) == 0` and `byte elfw+99`; **not** taken for `ET_REL` |
+| `sub_439640` | ~2 KB (111 decompiled lines) | smem_var_rebase | Walks the shared-variable list at `elfw+256` and the per-section `+72` lists, looking up each entry's target section via `sub_442270` / `sub_440590`, then rewrites field `+8` of each smem variable record by adding a per-arch base offset returned from the arch vtable slot `*(arch_vtable + 584)()` (typically the size of the kernel-private/static smem region). With `(*(elfw+64) & 2)` verbose, prints `"shared variable %s updated offset to %lld\n"` for every rebased entry. Gated by all three clauses above (`ET_EXEC`, `(e_flags & abi_mask) == 0`, `byte elfw+99`); **not** taken for `ET_REL`, Mercury pre-FNLZR stubs, or extended-smem builds. Early-out at line 23 if `e_type == 1` (ET_REL) is a defensive duplicate of the caller's gate. |
 | `sub_44D9D0` | 1,577 B | create_prototype_section | Creates `.nv.prototype` section (type `0x70000002`) |
 | `sub_44DB00` | 1,473 B | pre_finalize_cleanup | Root kernel detection, metadata section creation |
 | `sub_44CBC0` | 1,124 B | prototype_symbol_remap | `.nv.prototype` symbol index remapping |

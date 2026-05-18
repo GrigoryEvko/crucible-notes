@@ -62,7 +62,7 @@ The byte at `expr+0x18` selects the top-level expression category:
 | `0x01` | Operation expression | Inner switch on `expr+0x38` (40+ C operators) |
 | `0x02` | Literal constant | `EmitLiteral` (`sub_127F650`) |
 | `0x03` | Member/field access | `EmitAddressOf` + `EmitLoadFromAddress` |
-| `0x11` | Call expression | `EmitCall` (`sub_1296570`) |
+| `0x11` | Compound-statement expression | `sub_1296570` — statement-list walker, scope push, value of last expression-statement |
 | `0x13` | Init expression | `EmitInitExpr` (`sub_1281220`) |
 | `0x14` | Declaration reference | `EmitAddressOf` + `EmitLoadFromAddress` |
 | default | | Fatal: `"unsupported expression!"` |
@@ -118,7 +118,7 @@ When the outer kind is `0x01` (operation), the byte at `expr+0x38` selects which
 | `0x57` | Logical AND `&&` | See [Logical AND](#logical-and-short-circuit) | `land.rhs`/`land.end` + PHI |
 | `0x58` | Logical OR `\|\|` | See [Logical OR](#logical-or-short-circuit) | `lor.rhs`/`lor.end` + PHI |
 | `0x59`, `0x5A`, `0x5D` | Type-level consts | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
-| `0x5B` | Statement expression `({...})` | `EmitStmtExpr` (`sub_127FF60`); create empty BB if `(*a1)[7] == 0` | Body emission |
+| `0x5B` | Statement expression `({...})` | RValue dispatch (`sub_127FF60`, scalar vs aggregate); create empty BB if `(*a1)[7] == 0` | Body emission |
 | `0x5C`, `0x5E`, `0x5F` | Compound special | `EmitCompoundAssign` (`sub_1287ED0`) | Read-modify-write |
 | `0x67` | Ternary `?:` | See [Ternary operator](#ternary--conditional-operator) | `cond.true`/`cond.false`/`cond.end` + PHI |
 | `0x68` | Type-level const | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
@@ -175,7 +175,7 @@ Opcode `0x49` handles struct field access (`.` and `->`) through a multi-path di
 
 #### Statement expression, label address, and va_arg
 
-**Statement expression** (`0x5B`): Emits the compound statement body via `EmitStmtExpr` (`sub_127FF60`). If no return basic block exists yet (`(*a1)[7] == 0`), creates an anonymous empty BB via `CreateBasicBlock` + `SetInsertPoint` to serve as the fall-through target. The value of the last expression in the block is the statement expression's result.
+**Statement expression** (`0x5B`): Reads the compound body via `sub_127FF60` (scalar/aggregate RValue dispatch — picks `sub_12A6C40` for aggregate or `sub_128F980` for scalar). If no return basic block exists yet (`(*a1)[7] == 0`), creates an anonymous empty BB via `CreateBasicBlock` + `SetInsertPoint` to serve as the fall-through target. The value of the last expression in the block is the statement expression's result.
 
 **Label address** (`0x6F`): Implements the GCC `&&label` extension. Looks up the label via `LookupLabel` (`sub_12A4D00`), then creates a `blockaddress(@current_fn, %label)` constant via `sub_1285E30(builder, label, 1)`. The second argument `1` distinguishes "take address" from "goto to".
 
@@ -822,7 +822,7 @@ if (debugLoc) {
 | `sub_127FEC0` | bool-conversion helper | Expression to `i1` conversion |
 | `sub_127F650` | `EmitLiteral` | Numeric/string literal emission |
 | `sub_1286D80` | `EmitAddressOf` | Compute pointer to lvalue |
-| `sub_1287CD0` | `EmitLoadFromAddress` | Load via computed address |
+| `sub_1287CD0` | lvalue-load workhorse | Loads from computed lvalue with full attribute trimmings (14 args: out-buf, ctx, srcloc, type-info, ...); diagnostic `"unexpected error generating l-value!"` on lvalue-build failure |
 | `sub_1287ED0` | `EmitCompoundAssign` | Generic compound assignment |
 | `sub_128C390` | `EmitIncDec` | Pre/post increment/decrement |
 | `sub_128F9F0` | `EmitBinaryArithCmp` | Binary arithmetic and comparison |
@@ -830,7 +830,7 @@ if (debugLoc) {
 | `sub_128B750` | `EmitSubscriptOp` | Array subscript (GEP + load) |
 | `sub_128FDE0` | `EmitSizeofAlignof` | `sizeof` and `alignof` operators |
 | `sub_12901D0` | compound-assign wrapper | Wrapper dispatching to per-operator impl |
-| `sub_1296570` | `EmitCall` | Function call emission |
+| `sub_1296570` | compound-statement-as-expression emitter | Walks statement chain (`v16 = *(v16+16)`), pushes scope, emits each via `sub_1296350`; diagnostic `"unexpected: last statement in statement expression is notan expression!"` |
 | `sub_12897E0` | `EmitBitfieldStore` (inner) | Actual bitfield store logic |
 | `sub_127A030` | `GetLLVMType` | EDG type to LLVM type translation |
 | `sub_127F680` | bitfield-fast-path selector | Bitfield path selector |
@@ -849,7 +849,7 @@ if (debugLoc) {
 | `sub_128BE50` | `EmitCommaOp` | Comma operator RHS extraction |
 | `sub_1289860` | `ComputeCompositeMemberAddr` | Multi-level GEP for nested fields |
 | `sub_12843D0` | `EmitComplexMemberLoad` | Nested struct/union field load |
-| `sub_127FF60` | `EmitStmtExpr` | Statement expression body emission |
+| `sub_127FF60` | scalar/aggregate RValue dispatch | Branches on aggregate type (`sub_127B420`): aggregate path calls `sub_12A6C40`, scalar path calls `sub_128F980`; writes result into out-buffer struct (offsets 0/8/16) |
 | `sub_1281200` | special-constant materializer | Special constant materialization |
 | `sub_1281220` | `EmitInitExpr` | Init expression emission |
 | `sub_1285E30` | `EmitBlockAddress` | `blockaddress` / indirect branch |
