@@ -40,6 +40,18 @@ PTX source text
        17 expression kinds, recursive descent
 ```
 
+## Confidence Tags for Core Claims
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| `sub_16EAF60` is flex-generated PTX lexer (64,758 bytes) | HIGH | DFA state table at `off_22788C0`; 550+ token actions; error strings `"fatal error - scanner input buffer overflow"`, `"out of dynamic memory in ptx_create_buffer()"` |
+| `sub_16F0E60` is bison/yacc parser (31 KB, 1,172 lines) | HIGH | Companion to flex lexer; standard yacc parser table dispatch pattern in decompiled output |
+| `sub_12AF950` is `ptx_init_compilation_state` (59,874 bytes) | HIGH | Calls `sub_448E70` (hash insert) for each of 85 PTX special-register names listed in declaration order; sets PTX_MAJOR_VERSION=9, PTX_MINOR_VERSION=0 |
+| Builtin type fields for `.texref`/`.samplerref`/`.surfref` | HIGH | Field names emitted as string literals; created via `sub_12AD9E0` |
+| 588 instruction handlers (115 named + 473 hashed) | MEDIUM | Counted from registry build; two-level dispatch at `ctx+808` / `ctx+816` visible in handler-install loop |
+| Expression printer kinds = 17 | MEDIUM | Switch-case count in `sub_12B33A0` recursive printer |
+| Macro nesting limit message `"macro nesting too deep!"` in `sub_16E8310` | HIGH | Direct string xref to the function |
+
 ## Module Initialization
 
 ### sub_12AF950 -- ptx_init_compilation_state (59,874 bytes, 1,440 lines)

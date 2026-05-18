@@ -25,6 +25,18 @@ Register allocation follows a graph-coloring model with iterative spilling, oper
 | SMEM spill knob | `ranoyr_fzrz_fcvyyvat` (ROT13 of `enable_smem_spilling`) |
 | Total regalloc functions | ~120 core + ~55 setmaxnreg + ~120 verification = ~295 |
 
+## Confidence Tags for Core Claims
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| `sub_18988D0` is `AllocateRegisters_main_driver` (70,715 bytes) | HIGH | String `AllocateRegisters` referenced from this function; eight-stage driver matches register-allocator workflow |
+| Graph-coloring core at `sub_189C3E0` (47,807 bytes, self-recursive) | HIGH | Self-recursion visible in decompilation; Chaitin-Briggs-style flow with splitting/coalescing call sites |
+| Three register classes: R-regs, UR-regs, predicates | HIGH | Per-class capacity constants R0..R255, UR0..UR63 (SM75+), P0..P6 hard-coded in classifier `sub_189B2D0` |
+| SMEM-spill knob is ROT13 `ranoyr_fzrz_fcvyyvat` -> `enable_smem_spilling` | HIGH | Knob name appears verbatim as `.rodata` string; ROT13 scheme catalogued in [ROT13-Encoded Pass Names](../reference/rot13-passes.md) |
+| Per-instruction encoder `sub_18AE2D0` = 155,321 bytes (largest in region) | HIGH | Function-size metadata from IDA function table |
+| Operand field encoder has 250-case switch | MEDIUM | Switch-case count inferred from jump-table size at function entry |
+| `setmaxnreg` integration for SM100+ CTA register reconfig | MEDIUM | String `setmaxnreg` referenced by `sub_1912A00`; functionality matches public PTX `setmaxnreg` semantics |
+
 ## Pipeline Overview
 
 The register allocation pipeline proceeds through eight stages. Each stage may iterate multiple times if spilling is required and the initial allocation fails.

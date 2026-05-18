@@ -160,6 +160,22 @@ Type mangling is handled by `sub_69E740` (`mangle_type_encoding`, 177 lines at `
 
 Pointer and reference types are encoded with prefix qualifiers: `P` (pointer), `R` (lvalue reference), `O` (rvalue reference). CV-qualifiers use `K` (const), `V` (volatile), `r` (restrict).
 
+#### Worked Example
+
+A namespace-qualified template function with mixed argument kinds exercises every encoding piece -- the `N..E` namespace wrapper, template-argument brackets `I..E`, builtin type codes, pointer and cv-qualifier prefixes, and substitution references:
+
+```cpp
+namespace ns {
+    template<typename T>
+    void foo(const T* p, int n);
+}
+
+// Instantiation: ns::foo<float>(const float*, int)
+// Mangled:       _ZN2ns3fooIfEEvPKT_i
+```
+
+Decomposition: `_Z` (Itanium prefix) `N 2ns 3foo` (namespace `ns::foo`) `I f E` (template arg `float`) `E` (close namespace) `v` (return `void`) `P K T_` (`const T*` -> pointer-to-const-template-parameter-0) `i` (`int`). Using `T_` instead of re-emitting `f` is a substitution: the template parameter has already been bound, so the back-reference is shorter.
+
 The builtin type mangler at `sub_6A13A0` (396 lines) includes CUDA-specific type detection through `dword_106C2C0` (GPU mode flag) to handle CUDA-extended types.
 
 ### Substitution Mechanism

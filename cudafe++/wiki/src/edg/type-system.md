@@ -159,6 +159,19 @@ In x86-64 machine code, this compiles to a 3-instruction loop:
 .done:
 ```
 
+#### Worked Example: Chasing a Three-Layer Alias
+
+Given a source like:
+
+```cpp
+typedef int            I;            // I    -> int
+using   CI           = const I;      // CI   -> typeref(const, I)
+using   CIPtr        = CI*;          // CIPtr-> ptr -> typeref -> typeref -> int
+CIPtr p;
+```
+
+The type pointer for `p` walks the IL graph as: `kind=6 (tk_pointer)` -> follow `+144` -> `kind=12 (tk_typeref CI)` cv-bits=const -> `+144` -> `kind=12 (tk_typeref I)` -> `+144` -> `kind=2 (tk_integer, int)`. `is_class_or_struct_or_union_type(typeof(p))` calls `skip_typedefs` which stops at the pointer (kind 6, not 12) and returns false in a single iteration -- the typedef layers under the pointer are never touched. By contrast, `type_pointed_to` peels the pointer first, then `skip_typedefs` strips both `tk_typeref` nodes to reach `int` while preserving the accumulated `const` qualifier.
+
 ### Why 130 Separate Functions?
 
 A natural question: why does EDG have 130 individual query functions instead of a single `get_type_kind()` accessor? The answer is the EDG compilation model. Each function in `types.c` is a public API entry point that other source files (`parse.c`, `lower.c`, `templates.c`, etc.) can call without including the full type-system header. This provides:

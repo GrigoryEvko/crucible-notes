@@ -15,6 +15,18 @@ When nvlink performs link-time optimization, it must decide between two fundamen
 | **Option parser (flag extraction + conflict check)** | `sub_427AE0` at `0x427AE0` |
 | **Main dispatch (whole/partial branch)** | `main` at `0x409800`, lines 1155--1202 |
 
+## Confidence Tags for Core Claims
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| `byte_2A5F286` at `0x2A5F286` is the whole-vs-partial decision flag | HIGH | Single-byte global; toggled by both `sub_427AE0` line 1209 and `sub_42A680` line 487; consumed by `main` lines 1155--1202 dispatch |
+| `byte_2A5F284` = `--force-whole-lto`, `byte_2A5F285` = `--force-partial-lto` | HIGH | Direct `option_get_value` registrations in `sub_427AE0` lines 981--982 with the literal option strings |
+| `byte_2A5F288` = `--link-time-opt` (master LTO enable) | HIGH | Same `option_get_value` pattern; help text `"force doing whole program LTO when -dlto"` adjacent |
+| `--force-whole-lto` silently loses to non-cudadevrt native cubin | HIGH | `sub_42A680` lines 485--493 set `byte_2A5F285=1` for any non-cudadevrt native input; `main` line 1070 guard `!byte_2A5F285` then fails |
+| cudadevrt exception checked via `strstr(filename, "cudadevrt")` | HIGH | Direct `strstr` call visible in decompiled `sub_42A680` with literal substring |
+| `nvvmCompileProgram` return value 100 selects whole-program | MEDIUM | Branch in `sub_4BC6F0` lines 393--410: `==100` writes `*a5=0`, `==0` writes `*a5=1`; specific code values inferred from comparison constants |
+| Conflict diagnostic `-force-partial-lto vs -force-whole-lto` | HIGH | Exact format string referenced at `sub_427AE0` line 1194--1202 |
+
 ## Mode Decision Matrix
 
 The following matrix captures every documented path from user input and flag state to the final value of `byte_2A5F286` (the whole-vs-partial decision variable). Rows are tested in the order shown; the first matching row wins. The **Effective mode** column assumes no error is raised; the **Source** column gives the exact decompiled location where the decision is made.

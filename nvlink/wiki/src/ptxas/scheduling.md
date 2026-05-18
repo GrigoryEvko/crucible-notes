@@ -14,6 +14,17 @@ The compilation pipeline invokes scheduling at two distinct points:
 
 The two schedulers communicate indirectly through the register allocation pass: the pre-RA scheduler's instruction ordering influences register pressure, which in turn determines spill/fill counts that the post-RA scheduler must accommodate.
 
+## Confidence Tags for Core Claims
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| `sub_1851DC0` is `ScheduleInstructions_main_driver` (85 KB, 2,938 lines) | HIGH | Three mode-name strings `ScheduleInstructions`, `ScheduleInstructionsReduceReg`, `ScheduleInstructionsDynBatch` referenced from this function's callers; companion-pass strings `HoistInvariants`, `OptimizeNaNOrZero`, `ConvertMemoryToRegisterOrUniform` invoked here |
+| Three pre-RA modes (Default / ReduceReg / DynBatch) | HIGH | Each mode name is a distinct `.rodata` literal; strategy selector at `0x1857990` chooses between them |
+| List-scheduling DAG with RAW/WAR/WAW/memory edges | MEDIUM | Pattern match against standard list-scheduler structure; edge builder at `sub_1850760` has four type tags in its dispatch |
+| 184-byte per-BB scheduling record layout | MEDIUM | Field offsets reconstructed from struct accesses; capacity tracking at +840 and overflow hash at +864 visible in growable-array pattern |
+| Post-RA "tepid" scheduler models hardware pipeline and emits sched control words every 4th instruction | MEDIUM | Stall/yield/scoreboard accessors at fixed offsets in the SASS instruction record; control-word emission cadence matches Volta+ SASS layout known from open driver headers |
+| CUTLASS pattern detector at `0x1866CF0` | LOW | Inferred from pattern-matching shape and call site upstream of `DynBatch` driver; no direct string |
+
 ## Pre-RA Scheduling: ScheduleInstructions
 
 ### Entry Point and Driver Hierarchy

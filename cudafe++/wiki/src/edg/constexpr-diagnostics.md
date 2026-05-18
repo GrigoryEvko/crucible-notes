@@ -26,6 +26,30 @@ The tag identifier is then routed through the diagnostic engine to:
 
 Because the tag is a stable string identifier rather than a raw error number, EDG can renumber message codes between releases without touching call sites. The numeric code is a downstream presentation choice; the tag is the contract between the evaluator and the diagnostic writer.
 
+### Worked Example: Source to Diagnostic
+
+A read past the end of a constexpr array exercises the full pipeline -- evaluator detects the violation, raises `constexpr_out_of_bounds_array_access`, the framing tags wrap it into a report block, and the message router resolves the numeric code:
+
+```cpp
+constexpr int arr[3] = {1, 2, 3};
+constexpr int bad() { return arr[5]; }   // index 5 with bound 3
+static_assert(bad() == 0);
+```
+
+Rendered diagnostic (tags shown in brackets):
+
+```
+error #2692 [constexpr_begin_report]: expression must have a constant value
+    static_assert(bad() == 0);
+                  ^
+note: [constexpr_out_of_bounds_array_access]: subscript value 5 is outside
+      the bounds [0, 3) of array object 'arr'
+note: [constexpr_called_from_rout]: called from 'bad()' at line 2
+note: [constexpr_end_report]
+```
+
+The `_begin_report` / `_end_report` pair frames the block, `_called_from_rout` produces the routine-qualified topmost frame, and the primary `_out_of_bounds_array_access` tag carries the actual violation -- all routed to numeric code 2692.
+
 ## Grouping Methodology
 
 The 112 tags partition naturally by which interpreter sub-system raises them. The groups below follow the structure of `do_constexpr_expression`'s top-level switch and the helper families surrounding it: object access vs. dynamic storage vs. side-effect tracking vs. type-rule enforcement, with framing/header tags pulled out and the constructor / destructor / function-definition policy tags as their own slice.

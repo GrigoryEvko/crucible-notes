@@ -22,6 +22,19 @@ nvlink operates directly on in-memory ELF images. Every input cubin -- whether l
 | String access (Elf64) | `sub_448590` (resolves through `e_shstrndx` strtab) |
 | Symbol access (Elf32) | None -- open-coded in callers |
 
+## Confidence Tags for Core Claims
+
+| Claim | Confidence | Evidence |
+|---|---|---|
+| Class selector at `e_ident[4]`: `2`=Elf64, else=Elf32 | HIGH | Byte-load-and-compare at offset 4 visible at `sub_43D9A0`, `sub_43DD30`, `sub_43DA40`, `sub_43DA80`, and `merge_elf` (`sub_45E7D0`) |
+| ELF magic check tests `*(uint32_t*)base == 0x464C457F` | HIGH | Literal `0x464C457F` in `sub_43D970`; matches `\x7fELF` little-endian |
+| Elf64 section-header size = 64 bytes, program-header size = 56 bytes (checked exactly) | HIGH | `e_shentsize` at +58 compared `== 64`, `e_phentsize` at +54 compared `== 56` in `sub_43DD30` |
+| Elf64 symbol entry stride = 24 bytes (hardcoded, not from `sh_entsize`) | HIGH | Symbol accessors `sub_448600`/`sub_4486A0`/`sub_448750` multiply index by 24 directly |
+| `EI_DATA` (endianness byte) never validated | MEDIUM | Absence is the evidence: search for `e_ident[5]` access in validation paths yields none; only EI_CLASS at +4 is read |
+| File loading via fopen/fseek/ftell/fread in `sub_476BF0`, no `mmap` for ELF input | HIGH | Direct PLT imports for `fopen`/`fread`/`fseek`/`ftell`/`fclose` visible in disassembly of `sub_476BF0`; no `mmap` xref from the same function |
+| `null_terminate` flag distinguishes binary inputs from PTX text input | HIGH | Parameter branch writes `((char*)buf)[size]='\0'` only when flag is set |
+| No size-limit check before arena allocation | HIGH | Result of `ftell` is passed straight to `arena_alloc`; no bounds compare visible |
+
 ## File Loading: `sub_476BF0`
 
 Before any ELF parsing occurs, the file must be loaded into memory. nvlink reads entire files into contiguous arena-allocated buffers using standard C I/O -- there is no `mmap` usage for ELF inputs.

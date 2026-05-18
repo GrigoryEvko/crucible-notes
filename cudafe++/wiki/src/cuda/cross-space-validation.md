@@ -82,6 +82,26 @@ This means:
 
 If either the caller or the callee is implicitly HD, the cross-space check returns immediately without error.
 
+### Worked Example: Source to Diagnostic
+
+A direct host-from-device call against a non-bypassed callee triggers the canonical 3462 path:
+
+```cpp
+__host__   int   make_value();           // host-only
+__device__ int   square(int x) {
+    return make_value() * make_value();  // host call from device context
+}
+```
+
+Expected diagnostic from `sub_505720`:
+
+```
+error: calling a __host__ function ("make_value") from a __device__ function ("square") is not allowed
+       (#3462)
+```
+
+The check unfolds as: `square`'s entity byte `+182 & 0x30 == 0x20` (device), `make_value`'s is `0x10` (host); neither carries the `+177 & 0x10` implicit-HD bypass, neither matches the deleted-defaulted special case, so the gate fails through and `sub_4F8090` emits 3462 with both entity names. Marking `make_value` `__host__ __device__` would set its `+182` to `0x30` and make the same call legal -- the constexpr/relaxed-constexpr flag at `dword_126EFB0` reaches the same result by promoting `square` through the `+177 & 0x10` bit instead.
+
 ## Call-Site Validation: sub_505720
 
 `check_cross_execution_space_call` is called during expression scanning in `scan_expr_full` whenever a function call expression is processed. It takes three parameters:

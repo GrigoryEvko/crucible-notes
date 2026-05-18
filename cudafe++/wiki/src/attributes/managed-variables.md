@@ -36,6 +36,34 @@ This is fundamentally different from the other three memory spaces:
 
 Because managed memory is fundamentally device global memory with runtime-managed migration, the `__managed__` handler always sets the `__device__` bit alongside the `__managed__` bit. This is not redundant -- it ensures that all code paths that check for "device-accessible variable" (error 3483 scope checks, external linkage warning 3648, cross-space reference validation) treat managed variables correctly. A managed variable IS a device variable; it just happens to also be host-accessible through the runtime's page migration.
 
+### Worked Example: Source to Emitted Wrapper
+
+A single managed declaration triggers both the entity flag setup and a `comma-operator` access-wrapper rewrite for every host-side read or write:
+
+```cpp
+// User source
+__managed__ int counter;
+void host_inc() { counter++; }
+```
+
+After cudafe++ processes the file, the host stub in `.cudafe1.stub.c` looks roughly like:
+
+```c
+// Emitted host wrapper (abridged)
+static int __nv_managed_init_done_counter;
+static void __nv_init_managed_counter(void) {
+    if (!__nv_managed_init_done_counter) {
+        __cudaInitModule(&__nv_dummy);   // forces runtime registration
+        __nv_managed_init_done_counter = 1;
+    }
+}
+void host_inc() {
+    (__nv_init_managed_counter(), counter)++;   // comma-op guards every access
+}
+```
+
+The lazy-init guard is what the access wrapper emitters at `sub_4768F0` / `sub_484940` synthesize from the managed-access prefix string at `0x839570`. The same `__device__` flag set in step 1 of `apply_nv_managed_attr` is what lets `counter` survive the `__cudaRegisterVar` table walk later in registration.
+
 ### Why the Constraints Exist
 
 Each validation check enforced by the handler exists for a specific hardware or semantic reason:
