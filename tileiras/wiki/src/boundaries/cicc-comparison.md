@@ -198,6 +198,39 @@ Tileiras is 88 MB despite carrying a full MLIR runtime, a 9-dialect cascade, the
 
 The two pipelines converge at the moment the LLVM module is materialized for the NVPTX backend, and from that point forward they share the same code — passes, ISel, register allocation, scheduling, asm-printer.
 
+## Decision matrix: which compiler does nvcc run?
+
+The two compilers see disjoint inputs, so the routing decision is structural rather than policy-driven. nvcc classifies each input artifact and dispatches once; neither compiler probes the input format the other expects.
+
+| Input artifact | Debug mode | SM target | Compiler chosen | Why |
+|---|---|---|---|---|
+| `.cu` CUDA C++ source | release | any supported | cudafe++ → cicc | only cicc has a C++ frontend |
+| `.cu` CUDA C++ source | `-G` device debug | any supported | cudafe++ → cicc at `-O0` | only cicc accepts source-language debug info |
+| Preprocessed `.cpp1.ii` / `.cudafe1.cpp` | any | any supported | cicc | EDG IL re-entry is a cicc-only path |
+| `.tileir` / `.ctir` / `.ctb` bytecode | release | sm_100, sm_103, sm_110, sm_120, sm_121 | tileiras | only tileiras parses TileIR bytecode |
+| `.tileir` bytecode | `--device-debug` requested | any supported | tileiras at `-O0` | tileiras rejects `-G` above `-O0` |
+| `.tileir` bytecode | release | sm_70 .. sm_90a | (no valid path) | tileiras's GPU whitelist excludes pre-Blackwell SMs |
+| `.ptx` precompiled | n/a | any | neither (ptxas only) | neither device compiler runs on PTX input |
+| `.cubin` precompiled | n/a | any | neither (nvlink/fatbinary only) | both device compilers are upstream of cubin |
+
+Three rows deserve commentary. The pre-Blackwell row is the hard constraint: tileiras's `--gpu-name` enum accepts only `sm_100`, `sm_103`, `sm_110`, `sm_120`, and `sm_121`, so a CUDA build targeting sm_80 or sm_90 cannot use the tileiras path even if the upstream MLIR emitter exists. The `cicc` path remains the only compile route for those targets. The debug row is a softer constraint: both compilers reject the combination of optimization above `-O0` with full device debug, but the wording of the diagnostic and the downstream NVVM options differ. The bytecode rows depend on the upstream emitter — without a CUTLASS-on-MLIR, CuTe-DSL, or Triton-for-CUDA frontend in the build, no `.tileir` ever appears and the tileiras path stays unused.
+
+## Capability split
+
+The clean rule is that tileiras and cicc consume disjoint inputs. CUDA C++ source, with all of its template-instantiation, constexpr-evaluation, lambda-capture, and host/device-split machinery, is cicc's territory; TileIR bytecode, with its already-resolved tile-program structure expressed in the `cuda_tile` dialect family, is tileiras's territory. Neither tool has a backdoor that consumes the other's input.
+
+What they share is the NVPTX backend below the LLVM-dialect/NVVM-IR handoff. Both compilers materialise an `llvm::Module` and hand it to the same NVPTX backend from the same LLVM 21 fork. Below that handoff, the two compilers are byte-for-byte equivalent: same SelectionDAG, same NVVM custom passes, same instruction printer, same libdevice payload. Above the handoff they share almost nothing.
+
+The capability split has a practical consequence for emitters and integrators. Upstream tooling that wants the convenience of CUDA C++ source — including templates, constexpr, lambdas, and the standard CUDA runtime API — must target cicc through cudafe++. Upstream tooling that wants the precision of a tile-shaped program, hand-managed pipelines, explicit CTA mapping, and the `cuda_tile`/`cute`/`cutlass` op surfaces must target tileiras through TileIR bytecode. There is no overlap; the question of "which compiler should this kernel use" reduces to "which input format is the emitter willing to produce".
+
+## Migration trajectory
+
+cicc is the longer-standing compiler and the only path that accepts CUDA C++ source. tileiras is the newer compiler, introduced in CUDA 13.1, that accepts bytecode produced by MLIR-rooted frontends. The two are sibling tools in the same toolkit, not staged replacements.
+
+Three reading signals shape the trajectory. First, the shared NVPTX backend means new SM targets, new MMA shapes, and new fence semantics arrive in both compilers simultaneously through the LLVM fork. Neither compiler is locked to a particular hardware generation. Second, the tileiras-specific dialect cascade (cuda_tile, nv_tileaa, nv_tileas, cute, cute_nvgpu, cutlass) carries operations that have no analogue in cicc's LLVM-IR-only input; those operations encode tile-program structure that source-level CUDA cannot express directly. Third, cicc still ships in CUDA 13.1, with a one-minor-version-newer copy of the same LLVM fork that tileiras links; both tools track upstream NVPTX changes through the same vendor backport pipeline.
+
+A reimplementation does not have to choose between the two tools. The honest model is "two device-code compilers, one shared backend": dispatch by input format, share the backend by linking the same NVPTX library, and treat the dialect cascade and the EDG frontend as independent front-ends that meet at the LLVM-module level.
+
 ## Cross-link recommendations
 
 Everything tileiras inherits unchanged from the LLVM 21 fork is documented in the cicc wiki, and those pages are reusable verbatim for the tileiras NVPTX backend.
@@ -211,7 +244,7 @@ Everything tileiras inherits unchanged from the LLVM 21 fork is documented in th
 - **NVVMIRVerifier** — same verifier role before backend lowering.
 - **IPMSP / SelectKernels / KernelInfo / NVPTXSetFunctionLinkages / NVVMAA / nvvm-reflect-pp** — same backend registration family.
 
-For everything *above* the NVVM-IR boundary, the cicc wiki has nothing to offer; refer to the tileiras-internal pages: [cuda_tile Overview](../dialects/cuda_tile/overview.md), [cute Overview](../dialects/cute/overview.md), [cute_nvgpu Overview](../dialects/cute_nvgpu/overview.md), [cutlass Overview](../dialects/cutlass/overview.md), [nv_tileaa Overview](../dialects/nv_tileaa/overview.md), [nv_tileas Overview](../dialects/nv_tileas/overview.md), the [TileAS Pass Families](../passes/tileas/scheduling-glue.md) series, [Full Pass List by Opt Level](../pipeline/full-pass-list-by-opt-level.md), [Modulo Scheduler and Rau](../scheduler/modulo-scheduler-and-rau.md), [CLI Options](../driver/cli-options.md), and [MLIR Bytecode Format](../bytecode/mlir-bc-format.md).
+For everything *above* the NVVM-IR boundary, the cicc wiki has nothing to offer; refer to the tileiras-internal pages: [cuda_tile Overview](../dialects/cuda_tile/overview.md), [cute Overview](../dialects/cute/overview.md), [cute_nvgpu Overview](../dialects/cute_nvgpu/overview.md), [cutlass Overview](../dialects/cutlass/overview.md), [nv_tileaa Overview](../dialects/nv_tileaa/overview.md), [nv_tileas Overview](../dialects/nv_tileas/overview.md), the [TileAS Pass Families](../passes/tileas/scheduling-glue.md) series, [Full Pass List by Opt Level](../pipeline/full-pass-list-by-opt-level.md), [Modulo Scheduler and Rau](../scheduler/modulo-scheduler-and-rau.md), [CLI Options](../driver/cli-options.md), and [MLIR Bytecode Format](../bytecode/mlir-bc-format.md). The intent behind the cicc-vs-tileiras split — why an MLIR substrate at all, why a four-stage cascade, why a Rau scheduler — is documented in [Architecture Evolution and Design Decisions](../topics/architecture-evolution-and-design-decisions.md).
 
 ## Reimplementation Notes
 

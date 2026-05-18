@@ -251,3 +251,6 @@ documents how the population functions wire Shape C patterns to a shared `TypeCo
 [Operation Layout](operation-layout.md) documents the operation header that pattern matchers read
 through `+0x40`. [ISel DAG and Matcher Table](../codegen/iseldag-and-matchertable.md) covers the
 later backend matcher that reuses the operand-count mask but runs on `SDNode`, not `Operation`.
+[Common Compiler Patterns and Idioms](../topics/common-compiler-patterns-and-idioms.md) places the
+two pattern-vtable shapes in the catalogue of recurring structural moves tileiras uses across every
+subsystem.

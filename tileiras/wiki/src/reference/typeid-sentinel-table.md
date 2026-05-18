@@ -472,6 +472,8 @@ record was never built.
 
 ## Cross-references
 
+The companion table [Op Mnemonic Master Table](op-mnemonic-master-table.md) indexes the same sentinels by op-name rather than by address, with verbatim mnemonics, length bytes, and one-clause semantics for every registered op.
+
 The Cross-references column in the master table points to the canonical wiki page for each sentinel's op or type. Conventions:
 
 - `dialects/<dialect>/<op-mnemonic>.md` for op-info / op-class sentinels

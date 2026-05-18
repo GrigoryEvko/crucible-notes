@@ -304,7 +304,7 @@ heap-interned copy — the ASM printer and the verifier read it back verbatim.
 
 The descriptors sit consecutively in a statically-allocated array. The dialect
 indexes the array by mnemonic hash through the registration helper documented
-in [TypeID Sentinels and Anchors](../../mlir-infra/typeid-sentinels-and-anchors.md#idiom-1--static-pointer-identity-sentinel);
+in [TypeID Sentinels and Anchors](../../mlir-infra/typeid-sentinels-and-anchors.md#idiom-1-static-pointer-identity-sentinel);
 live `Operation*` instances reach the descriptor through their `OperationName`
 slot — the resolution path documented in
 [Operation Layout — Pointer-Identity Dispatch](../../mlir-infra/operation-layout.md#pointer-identity-dispatch). The
@@ -313,6 +313,10 @@ per-op fold-callback assignments for the rest of the roster are catalogued in
 
 ## Cross-links
 
+- [Frontend Contract and Tile IR Emission](../../topics/frontend-contract-and-tile-ir-emission.md) —
+  producer-facing rules for kernel signatures, attribute namespaces, operand-
+  order conventions, and the bytecode-format constraints a conformant frontend
+  must satisfy.
 - [Operation Roster](op-roster.md#operation-families) — operation families, producer contract, and
   version-specific mnemonic notes.
 - [Types and Attributes](types-and-attrs.md#concrete-types) — public types, element predicates,

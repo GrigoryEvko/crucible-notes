@@ -338,7 +338,7 @@ attributes #0 = {
 }
 ```
 
-What looked like a queue in `nv_tileas` is now a flat loop carrying a `stg` index, a `parity` bit, and a vector accumulator phi node. WGMMA descriptors are SSA `i64` values produced by `llvm.nvvm.wgmma.descriptor.encode.smem`, packing the bit fields documented in [WGMMA Emission Protocol — SMEM Descriptor Bit Layout](wgmma-emission-protocol.md#smem-descriptor-bit-layout). The kernel attributes — `nvvm.reqntid=128`, `nvvm.cluster_dim=2`, `nvvm.maxnreg=168` — are the [tileas-to-llvm Phase 3 translations](../lowering/tileas-to-llvm.md#phase-3--kernel-attribute-transfer) of the `nv_tileaa.kernel_spec` block.
+What looked like a queue in `nv_tileas` is now a flat loop carrying a `stg` index, a `parity` bit, and a vector accumulator phi node. WGMMA descriptors are SSA `i64` values produced by `llvm.nvvm.wgmma.descriptor.encode.smem`, packing the bit fields documented in [WGMMA Emission Protocol — SMEM Descriptor Bit Layout](wgmma-emission-protocol.md#smem-descriptor-bit-layout). The kernel attributes — `nvvm.reqntid=128`, `nvvm.cluster_dim=2`, `nvvm.maxnreg=168` — are the [tileas-to-llvm Phase 3 translations](../lowering/tileas-to-llvm.md#phase-3-kernel-attribute-transfer) of the `nv_tileaa.kernel_spec` block.
 
 ## Stage 5: NVPTX MIR
 

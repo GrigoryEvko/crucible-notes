@@ -85,5 +85,5 @@ module load time. The driver-level ABI is documented in [TILEIR_CALLBACKS ABI](.
 
 ## Cross-References
 
-[Driver Entry and Optimization Levels — Serialization Scopes](driver-and-opt-levels.md#serialization-scopes) names the two outer scopes (`CompileNVVM`, `SerializeGPUModule`) that this page enumerates. [Modulo Scheduler and Rau-Style Placement](../scheduler/modulo-scheduler-and-rau.md) is the scheduler whose stages drive most of the inner scopes. [Resource Constraint Builder and RRT](../scheduler/resource-constraint-builder-and-rrt.md) is what `ResourceConstraintBuilder::tryAddConstraintToAvoidRegSpilling` is part of.
+[Driver Entry and Optimization Levels — Serialization Scopes](driver-and-opt-levels.md#serialization-scopes) names the two outer scopes (`CompileNVVM`, `SerializeGPUModule`) that this page enumerates. [Modulo Scheduler and Rau-Style Placement](../scheduler/modulo-scheduler-and-rau.md) is the scheduler whose stages drive most of the inner scopes. [Resource Constraint Builder and RRT](../scheduler/resource-constraint-builder-and-rrt.md) is what `ResourceConstraintBuilder::tryAddConstraintToAvoidRegSpilling` is part of. [Debugging and Introspection](../topics/debugging-and-introspection.md) is the user-facing guide that turns the scope tree and action surface documented here into a workflow for diagnosing pipeline issues.
 

@@ -9,6 +9,8 @@ This wiki is written for two practical readers:
 - If you use or integrate tileiras, the driver, option, bytecode, and subprocess pages explain what inputs the tool accepts, which target modes are valid, which external tools must be available, and how failures should be interpreted.
 - If you are reimplementing compatible tooling, the subsystem pages describe observable contracts: bytecode structure, dialect schemas, pass ordering, scheduler invariants, lowering decisions, diagnostics, and pseudocode-level algorithms.
 
+If you arrive with a specific question rather than wanting a topic tour, jump to [Frequently Asked Questions](topics/frequently-asked-questions.md), which maps common scenarios to a starting page.
+
 ## At a Glance
 
 | Item | Value |

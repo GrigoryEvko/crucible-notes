@@ -98,3 +98,5 @@ Keeping these lifetimes separate matters in practice. `cuda_tile` operations are
 ## Reimplementation Notes
 
 A compatible implementation does not have to reproduce the executable's segment layout. It does have to reproduce the contracts that the layout exists to support: a stable static-init order for dialect, type, attribute, and pass registration; a uniquer that returns the same value for equal operands across the process; a `.rodata`-style discipline that keeps mnemonic pools, diagnostic strings, and printer tables immutable; and a `.bss`-style discipline that scopes all growth-only structures to the compilation that allocated them. The detailed pages under each subsystem describe these contracts as algorithms and invariants rather than as offsets.
+
+For the reader-side view — file identity, the tools the wiki was produced with, and a recipe for verifying any individual wiki claim against the binary — see [Binary Anatomy and RE Methodology](topics/binary-anatomy-and-re-methodology.md).

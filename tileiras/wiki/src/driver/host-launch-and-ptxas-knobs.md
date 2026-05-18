@@ -133,6 +133,72 @@ permits the attributes upstream so a single IR module can lower for
 multiple targets, but the per-target emitter refuses to print them when
 ptxas would reject the result.
 
+## How tileiras chooses each directive
+
+Verifying an attribute is well-formed is not the same as choosing its
+value. The well-formedness rules above guard against malformed PTX;
+the choice of value is what determines whether the kernel runs at all
+and how fast it runs when it does. Each directive has its own input
+channel — the kernel-spec attribute the upstream lowering attaches, a
+user-supplied annotation that survives the front-end, or a constraint
+imposed by an instruction the compiler emitted later. The table below
+walks the policy for each directive.
+
+| Directive | Primary input | Policy |
+| --- | --- | --- |
+| `.entry kernel_name` | `nvvm.kernel` marker on the LLVM function | always emit when the marker is present; the function name is the symbol the cubin exposes |
+| `.maxntid X, Y, Z` | upper-bound hint from kernel-spec or DSL annotation | emitted when the bound is not also a hard contract; lets ptxas size the register fragment without pinning the launch shape |
+| `.reqntid X, Y, Z` | hard contract from kernel-spec — warp-specialized split, warp-group requirement, or named-warp partition | emitted when the lowering depends on an exact thread count (every WGMMA or tcgen05 user, every kernel with named producer/consumer warps) |
+| `.minnctapersm N` | occupancy floor from kernel-spec | emitted when the user requested a minimum residency, usually for kernels whose throughput is sensitive to warp-scheduler latency hiding |
+| `.maxnreg N` | per-thread register budget from kernel-spec | emitted to let ptxas trade registers for occupancy — typical values come from a kernel-specific computation of `accumulator_regs + working_regs + slack` |
+| `.explicitcluster` | implied by `nvvm.cluster_dim` presence | always emitted with `.reqnctapercluster` when the kernel is cluster-shaped on SM90+ |
+| `.reqnctapercluster X, Y, Z` | cluster shape from kernel-spec | emitted on SM90+ when `nvvm.cluster_dim` is present; suppressed wholesale on older targets |
+| `.maxclusterrank N` | portability cap from kernel-spec | emitted on SM90+ when the user wants a portable launch shape, capping cluster size below the device-specific maximum |
+| `.blocksareclusters` | only legal when `.reqntid` and `.cluster_dim` are also present | emitted on SM90+ for kernels that opt into the single-CTA-cluster convention; lets cluster-aware code paths execute on a degenerate cluster shape |
+
+The `.maxntid` versus `.reqntid` distinction is the policy decision
+that affects the most kernels. `.maxntid` is an upper bound the launch
+must respect but does not have to saturate; the driver accepts any
+launch shape with X, Y, Z components no larger than the declared
+maxima. `.reqntid` is a hard contract — the driver rejects any launch
+whose block shape does not match the declared values exactly. Tileiras
+emits `.reqntid` whenever the lowering has already baked in a specific
+thread count: any kernel that emits WGMMA needs 128 threads per CTA
+(four warps form one warp group), any kernel with warp-specialized
+producer/consumer splits needs the exact named warp count, and any
+kernel with named-warp NamedBarrier slots needs the exact thread count
+the slot binding assumed. For kernels that adapt to launch shape —
+elementwise kernels, kernels that use only synchronous `mma.sync`
+forms, kernels with no warp specialization — tileiras emits only
+`.maxntid` so the same cubin works for a range of launch shapes.
+
+The `.maxnreg` choice is similarly central to performance. A
+WGMMA-using kernel must leave room for the accumulator fragment: an
+`m64n256k16` FP32 WGMMA needs 32 FP32 registers per thread just for
+the accumulator, plus the working set for descriptors, loop indices,
+and any other live values. Setting `.maxnreg` too low forces ptxas to
+spill the accumulator to local memory, which silently regresses
+throughput by an order of magnitude. Setting it too high reduces
+occupancy and hurts latency hiding. The kernel-spec carries the
+result of a per-kernel computation that balances both — usually
+`accumulator_regs + descriptor_regs + slack`, with `slack` calibrated
+to the SM's register file size and the desired CTAs per SM.
+
+Cluster-shape directives are an all-or-nothing group. When the
+kernel-spec carries `nvvm.cluster_dim`, the lowering emits
+`.explicitcluster`, `.reqnctapercluster`, and any `nvvm.maxclusterrank`
+or `nvvm.blocksareclusters` markers; when the spec is silent, no
+cluster directive is emitted. The verifier rule that
+`nvvm.blocksareclusters` requires both `nvvm.reqntid` and
+`nvvm.cluster_dim` means the three-directive triple is always coherent
+by the time the emitter sees it.
+
+[GPU Execution Model](../topics/gpu-execution-model.md) is the
+canonical reference for how the five tiers (thread, warp, CTA,
+cluster, grid) consume these directives at runtime, with a worked
+example that traces the directive emission from kernel-spec to PTX
+header for a Hopper GEMM.
+
 ## ptxas Knobs File Format
 
 When both `MLIR_ENABLE_EVO` and `PTX_KNOBS_PATH` are set, `tileiras`
@@ -181,4 +247,8 @@ directives travel into the relocatable object;
 [Driver CLI Options](cli-options.md#pipeline-options) catalogues the
 user-visible flags that map into pipeline options;
 [ptxas Handoff Protocol](../boundaries/ptxas-handoff-protocol.md#knob-file-format)
-documents the ptxas-side knob-file grammar in detail.
+documents the ptxas-side knob-file grammar in detail;
+[Attribute System and Lowering](../topics/attribute-system-and-lowering.md)
+documents the full lifecycle of each launch-shape attribute from frontend
+hint through `nvvm.*` directive carrier, including which transitions
+silently drop the fact and produce a degraded kernel.

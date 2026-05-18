@@ -206,7 +206,7 @@ The two `r` slots are the destination and source TMEM column indices. The shape,
 | `mma.block_scale` / `mma.sp.block_scale` | sm_100a | 8.6 |
 | `commit` / `commit.arrive` / `wait` / `fence` | sm_100a | 8.6 |
 
-`sm_100a` is the architecture-qualified Blackwell target; the family is also legal on `sm_100f` for the few `f`-suffixed copy variants. Datacenter Blackwell (sm_100) is the only sub-arch the dialect exposes; Blackwell Ultra (sm_103) and Jetson Thor (sm_110) reuse the same op surface. See [Per-SM Emission Templates — SM100 / SM103](../../codegen/per-sm-emission-templates.md#sm100--sm103) for the codegen-side templates and [NVPTX Subtarget Feature Matrix](../../codegen/nvptx-subtarget-and-feature-matrix.md) for the feature gating.
+`sm_100a` is the architecture-qualified Blackwell target; the family is also legal on `sm_100f` for the few `f`-suffixed copy variants. Datacenter Blackwell (sm_100) is the only sub-arch the dialect exposes; Blackwell Ultra (sm_103) and Jetson Thor (sm_110) reuse the same op surface. See [Per-SM Emission Templates — SM100 / SM103](../../codegen/per-sm-emission-templates.md#sm100-sm103) for the codegen-side templates and [NVPTX Subtarget Feature Matrix](../../codegen/nvptx-subtarget-and-feature-matrix.md) for the feature gating.
 
 ## Verifier Invariants
 

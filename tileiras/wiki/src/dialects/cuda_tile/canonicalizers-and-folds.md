@@ -274,8 +274,10 @@ constant where there was previously a variable condition.
 
 A private expression simplifier handles repeated scalar, mask, and
 integer-like cleanup. It lowers expression fragments into a compact tree,
-memoizes simplified nodes, and rebuilds canonical operations. The useful
-algorithm is ordinary fixed-point simplification:
+memoizes simplified nodes, and rebuilds canonical operations. The private
+expression IR, kind table, and memoization caches are documented in
+[cuda_tile Simplifier Walker](../../topics/cuda-tile-simplifier-walker.md).
+The useful algorithm is ordinary fixed-point simplification:
 
 ```c
 Value simplify_expr(Node node, Mode mode, int depth) {

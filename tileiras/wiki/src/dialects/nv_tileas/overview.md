@@ -249,7 +249,7 @@ registered-ops boundary is marked by the same null sentinel as `cuda_tile` and `
 lookup helpers stop walking the bank when they hit it.
 
 This is the static-sentinel idiom described in
-[TypeID Sentinels and Anchors](../../mlir-infra/typeid-sentinels-and-anchors.md#idiom-1--static-pointer-identity-sentinel): the bank is
+[TypeID Sentinels and Anchors](../../mlir-infra/typeid-sentinels-and-anchors.md#idiom-1-static-pointer-identity-sentinel): the bank is
 allocated once, lives for the entire process, and is indexed by mnemonic hash from the dialect base. Live
 `Operation*` instances reach this record through their `OperationName` slot, which is the resolution path
 documented in [Operation Layout — Pointer-Identity Dispatch](../../mlir-infra/operation-layout.md#pointer-identity-dispatch). The per-op `vtable`

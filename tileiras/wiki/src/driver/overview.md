@@ -26,7 +26,7 @@ architecture, host architecture, host OS, optimization/debug mode, optional
 memcheck instrumentation, CUDA toolkit root, and output file. The large pass
 inventory hiding behind that surface is catalogued in the
 [Pipeline Overview](../pipeline/overview.md#full-cascade) and the
-[Full Pass List by Opt Level](../pipeline/full-pass-list-by-opt-level.md#o3---full-pipeline).
+[Full Pass List by Opt Level](../pipeline/full-pass-list-by-opt-level.md#o3-full-pipeline).
 
 ## What the driver does
 

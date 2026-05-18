@@ -4,6 +4,8 @@
 
 Tileiras wraps three concentric verifier layers around its pass pipeline. The innermost layer is the `OperationName` verifier, which fires every time an op is built or modified and checks operand counts, result types, region structure, and trait predicates such as `IsolatedFromAbove`. The middle layer is the pass-manager between-pass verifier, which runs the full `verify()` on the anchor operation after each pass when verify-each is enabled and catches the broader class of failures that involve interactions between newly mutated ops. The outermost layer is the explicit module-level verifier suite that runs at fixed pipeline points and checks semantic rules requiring whole-module or target context, including the NVVM kernel-parameter overflow check. Each layer catches a class of bug the others cannot: per-op invariants surface immediately; cross-op invariants surface after the pass that introduced them; cross-pass invariants surface at named checkpoints.
 
+A fourth layer — the NVVM IR verifier — runs after MLIR-to-LLVM conversion and catches NVPTX-specific errors that upstream LLVM's generic verifier ignores; a fifth, ptxas, closes the loop after PTX serialization. The full five-layer model and the bug-class-to-layer table are documented in [Correctness Layers](../topics/correctness-layers.md); this page covers the three in-pipeline layers in the order the pass manager invokes them.
+
 ## Verifier Layers
 
 The three layers run in strict order around each pass invocation. The innermost layer is always active and cannot be disabled because it is part of op construction itself. The middle layer is on by default for non-Release builds and is gated on `verify-each` otherwise. The outermost layer is scheduled as named passes in the pipeline and runs only at the points the pipeline builder places them.
@@ -37,6 +39,30 @@ LogicalResult run_pass_with_three_verifier_layers(
 ```
 
 The single ordering rule that ties the layers together: layer 1 fires before `pass->run` returns; layer 2 fires immediately after; layer 3 only fires when its named pass is reached. A break at any layer halts the pipeline with the originating pass and operation attached to the diagnostic.
+
+## Layer-1 Example: Per-Op Structural Rejection
+
+A builder that constructs `nv_tileas.async.tiled_tma_load` with the wrong coordinate count is rejected immediately by the per-op verifier. The op's verify body reads the descriptor operand's box rank, walks the coordinate operand slot range, and compares counts. The diagnostic is emitted before `OpBuilder::create` returns:
+
+```text
+'nv_tileas.async.tiled_tma_load' op expects 3 coordinates, but got 2
+```
+
+The literal partial string in the binary is `" coordinates, but got "`; the expected count is derived from the view's rank plus an optional `+1` when the view carries a TMA descriptor with a leading offset. The diagnostic surfaces inside the pass that built the op, so the failure points at the rewrite pattern that emitted the wrong shape rather than at a later consumer that would have seen the malformed IR.
+
+## Layer-2 Example: Partial-Rewrite Detection
+
+`MaterializeAsync` rewrites every pipeline op into a pair of producer and consumer regions. The pass-level verifier catches a half-rewritten state — a `consume_one` whose paired `produce_one` was rewritten but whose region block-argument types still match the pre-rewrite producer-type list. The region-op verifier walks the block-argument list against the producer-type attribute and emits:
+
+```text
+'nv_tileas.async.pipeline.consume_one' op expects region arguement types to match with producer types [...], but got: [...]
+```
+
+The typo `arguement` is preserved verbatim — downstream log-scraping infrastructure matches on it. The diagnostic fires at the boundary of `MaterializeAsync`, not at the next pass that would have consumed the inconsistent region. See [nv_tileas Verifiers — Region-Op Verifier Template](../dialects/nv_tileas/verifiers.md#region-op-verifier-template) for the verifier body.
+
+## Layer-3 Example: Missing Kernel Metadata
+
+A late LLVM-tier cleanup pass can strip function attributes after `KernelAttrPass` has stamped `nvvm.kernel` but before the NVVM verifier runs. The module-level verifier walks the function list, sees a kernel-shaped function without the kernel attribute, and rejects the module. The verifier predicate is the canonical `isKernelFunction` four-criteria disjunction documented in [Kernel Identity](../nvptx-passes/kernel-cdp-inline-pretreat.md#kernel-identity); when none of the four criteria fires for a function the rest of the pipeline treats as a kernel, the inconsistency surfaces here rather than as a missing-`.entry` directive in the emitted PTX.
 
 ## Explicit Verifier Passes
 
@@ -95,4 +121,4 @@ The limit is target-dependent. Pre-Hopper SM versions allow 4096 bytes; Hopper a
 
 ## Cross-References
 
-[Pass Manager Internals — Anchor Hierarchy](pass-manager-internals.md#anchor-hierarchy) documents the anchor and dispatch model the verifier layers run inside. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) is where each explicit verifier pass appears in the pipeline. [Pipeline Options Mapping](options-mapping.md) covers the options that enable or disable verify-each behavior. [NVVM IR Verifier](../nvptx-passes/nvvm-ir-verifier.md) is the LLVM-tier sibling that re-checks parameter-space and address-space constraints after the MLIR-to-LLVM translation.
+[Correctness Layers](../topics/correctness-layers.md) is the canonical overview that places the three in-pipeline layers covered here alongside the NVVM IR verifier and ptxas, and gives the bug-class-to-layer table. [Pass Manager Internals — Anchor Hierarchy](pass-manager-internals.md#anchor-hierarchy) documents the anchor and dispatch model the verifier layers run inside. [Pass List by Optimization Level](full-pass-list-by-opt-level.md) is where each explicit verifier pass appears in the pipeline. [Pipeline Options Mapping](options-mapping.md) covers the options that enable or disable verify-each behavior. [NVVM IR Verifier](../nvptx-passes/nvvm-ir-verifier.md) is the LLVM-tier sibling that re-checks parameter-space and address-space constraints after the MLIR-to-LLVM translation.

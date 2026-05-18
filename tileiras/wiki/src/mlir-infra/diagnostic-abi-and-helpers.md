@@ -9,6 +9,11 @@ buffer, and rely on an `InFlightDiagnostic` RAII wrapper to flush through a cont
 The sections below cover the exact body layout, the 24-byte `DiagnosticArg` 3-tuple, the bit-packed severity
 word at `+0x10`, and the constructor / streamer / destructor triad that builds and tears it down.
 
+This page is the body-layout reference. For the end-to-end story of how
+those bodies flow through the three error-handling layers — engine,
+TileAS pass-failure handshake, and driver exit codes — see [Error
+Handling and Diagnostics](../topics/error-handling-and-diagnostics.md).
+
 ## Diagnostic Body
 
 `sub_44A8C20(0xD0)` allocates the heap body, zero-fills it, and hands it off to one of the seeds for
@@ -224,8 +229,14 @@ pattern in its `Schedule.flags |= 4` failure-bit encoding; see
 
 ## Cross-References
 
-[Operation Layout](operation-layout.md) covers the `Operation` header that `emitOpError` reads its
-mnemonic from. [Storage Uniquer and Context Impl](storage-uniquer-and-context-impl.md) documents the
-context that owns the diagnostic engine and its handler chain. [Modulo Scheduler and Rau-Style
+[Error Handling and Diagnostics](../topics/error-handling-and-diagnostics.md)
+is the canonical end-to-end page tying this body layout together with the
+TileAS pass-failure handshake and the driver-level exit codes. [Operation
+Layout](operation-layout.md) covers the `Operation` header that `emitOpError`
+reads its mnemonic from. [Storage Uniquer and Context Impl](storage-uniquer-and-context-impl.md)
+documents the context that owns the diagnostic engine and its handler chain.
+[Pass-Failure Handshake](pass-failure-handshake.md) covers the
+`*(self+40) |= 4` soft-failure convention that pairs with most Error-class
+diagnostics in the TileAS pass family. [Modulo Scheduler and Rau-Style
 Placement](../scheduler/modulo-scheduler-and-rau.md) reuses the same severity-bit pattern in its
 `Schedule.flags |= 4` failure-bit encoding.

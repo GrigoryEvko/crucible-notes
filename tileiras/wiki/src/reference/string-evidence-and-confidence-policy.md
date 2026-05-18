@@ -30,3 +30,5 @@ Page authors are expected to run these checks before merging a claim:
 - When a contradiction surfaces between two analyses of the same construct, prefer the one with the stronger structural anchor regardless of recency, and update the errata log so dependent pages can be restamped.
 
 Errata are tracked in the wiki's errata log alongside the verification passes; page authors propagate fixes by re-reading every page that cites a superseded identification and restamping it with the corrected tag.
+
+The reader-side recipe for verifying a backticked string or a structural anchor against the binary directly is documented on [Binary Anatomy and RE Methodology](../topics/binary-anatomy-and-re-methodology.md).

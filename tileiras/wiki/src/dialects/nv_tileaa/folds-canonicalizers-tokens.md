@@ -366,7 +366,7 @@ pointer-identity dispatch above.
 After hop two completes, the mem_token is fully replaced. The successor `i32` value holds the per-CTA mbarrier
 index; the mbarrier slot itself comes from D-pass buffer-assignment out of the per-CTA 32-mbarrier pool. Each
 `create_mem_token` op claims one slot from that pool — see
-[Buffer Assignment and Mbarriers — Phase 2](../../scheduler/buffer-assignment-and-mbarriers.md#phase-2--assign-named-barriers) for the
+[Buffer Assignment and Mbarriers — Phase 2](../../scheduler/buffer-assignment-and-mbarriers.md#phase-2-assign-named-barriers) for the
 allocation details. Pool exhaustion is a hard failure of the lowering pipeline, never a fallback to software
 ordering.
 
@@ -386,7 +386,7 @@ Value lowerJoinMemToken(Op op, ConversionPatternRewriter &rw, ArrayRef<Value> to
 The cross-reference pages cover the supporting machinery: [Operation Roster — Tokens and Lifetime](op-roster.md#tokens-and-lifetime) for the `create_mem_token`
 and `join_mem_token` op rosters, [Cuda Tile to TileAA — Tokens and Atomics](../../lowering/cuda-tile-to-tileaa.md#tokens-and-atomics) for hop
 one, [TileAA to TileAS — Three Populators](../../lowering/tileaa-to-tileas.md#three-populators) for hop two, and
-[Buffer Assignment and Mbarriers — Phase 2](../../scheduler/buffer-assignment-and-mbarriers.md#phase-2--assign-named-barriers) for mbarrier
+[Buffer Assignment and Mbarriers — Phase 2](../../scheduler/buffer-assignment-and-mbarriers.md#phase-2-assign-named-barriers) for mbarrier
 slot allocation.
 
 ## Plugin and Queue Contract

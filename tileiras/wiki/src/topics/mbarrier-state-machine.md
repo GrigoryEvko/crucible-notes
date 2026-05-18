@@ -130,5 +130,6 @@ The lowering rejects mismatched-address-space combinations before the printer fi
 [WGMMA Emission Protocol — The Four-Op Sequence](wgmma-emission-protocol.md#the-four-op-sequence) is the consumer side of the TMA-transaction kind: the WGMMA wait-group sequence runs after `try_wait.parity` succeeds on the producer's mbarrier.
 [tcgen05 Tensor Memory Model — Tensor Memory](tcgen05-tensor-memory-model.md#tensor-memory) uses cluster-transaction mbarriers to coordinate the 2-CTA and 4-CTA TMEM staging copies that precede each MMA.
 [Cluster Sync and DSMEM Handshake](cluster-sync-and-dsmem-handshake.md) extends the transaction kind across CTA boundaries with peer-CTA address translation and the cluster arrive/wait rendezvous.
+[Concurrency and Sync Semantics](concurrency-and-sync-semantics.md) frames `mbarrier.arrive.expect_tx` and `mbarrier.try_wait.parity` as the implicit `release`/`acquire` pair at the heart of the producer/consumer pipeline ordering story.
 [Atomic, Warp, Sreg, Fence Emission](../codegen/atomic-warp-sreg-fence.md) lists the PTX-print form of every mbarrier op alongside the fence and warp-collective families.
 [tcgen05 / WGMMA / mbarrier / Cluster Emission](../codegen/tcgen05-wgmma-mbarrier-cluster.md) covers the backend-side validation that runs once the NVVM op has been selected.

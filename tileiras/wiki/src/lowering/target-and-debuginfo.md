@@ -195,5 +195,5 @@ Both passes fail the module with diagnostics that name the missing semantic inpu
 
 ## Cross-References
 
-[Conversion / Lowering Overview](overview.md#lowering-stages) places the target-attachment and debug-translation passes in their position at the tail of the pipeline. [TileAS to LLVM — Function Boundary Conversion](tileas-to-llvm.md#function-boundary-conversion) emits the `gpu.module` and `nvvm.kernel` attributes those passes consume. [NVPTX Subtarget and Feature Matrix — The 40 CPU Rows](../codegen/nvptx-subtarget-and-feature-matrix.md#the-40-cpu-rows) lists the chip names the compute-capability normaliser produces.
+[Conversion / Lowering Overview](overview.md#lowering-stages) places the target-attachment and debug-translation passes in their position at the tail of the pipeline. [TileAS to LLVM — Function Boundary Conversion](tileas-to-llvm.md#function-boundary-conversion) emits the `gpu.module` and `nvvm.kernel` attributes those passes consume. [NVPTX Subtarget and Feature Matrix — The 40 CPU Rows](../codegen/nvptx-subtarget-and-feature-matrix.md#the-40-cpu-rows) lists the chip names the compute-capability normaliser produces. [Debugging and Introspection](../topics/debugging-and-introspection.md) is the user-facing guide that frames `--lineinfo` and `--device-debug` against the other four debugging surfaces and documents when to pick each one.
 

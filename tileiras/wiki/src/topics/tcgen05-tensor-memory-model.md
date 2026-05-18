@@ -205,3 +205,4 @@ The practical effect is throughput: weight-stationary mainloops amortise A-side 
 [Mode Pattern Verifiers](../dialects/cute_nvgpu/mode-pattern-verifiers.md) documents the 13-diagnostic ladder that enforces the inter-field consistency rules summarised above.
 [Blackwell 2-CTA and 4-CTA MMA](blackwell-2cta-and-4cta-mma.md) covers the cluster-side copy patterns that stage operands into the cooperating CTAs' TMEM regions.
 [tcgen05 / WGMMA / mbarrier / Cluster Emission](../codegen/tcgen05-wgmma-mbarrier-cluster.md) covers the backend-side machine-form validation.
+[Fast-Math and Numerical Precision](fast-math-and-numerical-precision.md) documents the FP8, MX-FP, and NV-FP4 element-type semantics that the block-scaled MMA dispatcher consumes, including the scale-type rules that distinguish OCP MX-FP4 from NV-FP4.

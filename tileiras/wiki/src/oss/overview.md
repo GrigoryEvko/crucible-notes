@@ -93,3 +93,4 @@ The OSS pages describe behavior and contracts in prose. They do not depend on ra
 - [.td Files Delta](td-files-delta.md) — the TableGen-level deltas across types, attributes, and ops.
 - [Transforms / FuseFMA / SynthDbg](transforms-fusefma-synthdbg.md) — the three OSS transform passes and their tileiras counterparts.
 - [cuda_tile Overview](../dialects/cuda_tile/overview.md) — the dialect as seen from inside tileiras.
+- [Architecture Evolution and Design Decisions](../topics/architecture-evolution-and-design-decisions.md) — why the OSS preview is a subset of one front-end dialect rather than a cross-section of the whole compiler.

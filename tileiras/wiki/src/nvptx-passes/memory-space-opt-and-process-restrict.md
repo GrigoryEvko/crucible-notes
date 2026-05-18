@@ -4,6 +4,8 @@
 
 This cluster prepares pointer provenance for NVPTX codegen. It specializes generic-pointer callees whose callers consistently pass concrete address spaces, rewrites provable generic pointers inside each function, and translates `__restrict__` into alias metadata. The payoff is both correctness and quality — the backend gets to emit direct global, shared, constant, local, tensor-memory, or distributed-shared operations instead of dragging generic conversions through the pipeline.
 
+For an overview of GPU memory spaces and how they appear at each compilation stage, see [Memory Hierarchy and Data Flow](../topics/memory-hierarchy-and-dataflow.md).
+
 Ordering is deliberate. Inter-procedural specialization runs first, function-local memory-space optimization second, and restrict processing last, once pointer forms have become more concrete.
 
 ## Address-Space Lattice

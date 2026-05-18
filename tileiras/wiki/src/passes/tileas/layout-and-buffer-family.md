@@ -35,7 +35,7 @@ The driver dispatches each op in a group on its op kind:
 | `view` | thread existing layout through without new candidates |
 | `convert_layout` | seed register-side candidates from the target encoding |
 
-Each candidate also carries a layout family — one of shared, blocked, dot-operand, or linear — and the cost scorer dispatches its family-specific cost function on this tag. Candidates whose family disagrees with the rest of the group are pruned before scoring rather than penalised, keeping the scoring loop's branch profile flat. The op-kind and layout-family dispatch both use the pointer-identity convention described in [TypeID Sentinels and Anchors — Idiom 1 — Static Pointer-Identity Sentinel](../../mlir-infra/typeid-sentinels-and-anchors.md#idiom-1--static-pointer-identity-sentinel).
+Each candidate also carries a layout family — one of shared, blocked, dot-operand, or linear — and the cost scorer dispatches its family-specific cost function on this tag. Candidates whose family disagrees with the rest of the group are pruned before scoring rather than penalised, keeping the scoring loop's branch profile flat. The op-kind and layout-family dispatch both use the pointer-identity convention described in [TypeID Sentinels and Anchors — Idiom 1 — Static Pointer-Identity Sentinel](../../mlir-infra/typeid-sentinels-and-anchors.md#idiom-1-static-pointer-identity-sentinel).
 
 ```c
 LogicalResult assignLayouts(FunctionOpInterface fn) {
@@ -323,7 +323,7 @@ Iterating in reverse index order matters: erasing argument index `i` shifts ever
 
 ## Resolve Agent Boundaries
 
-`TileASResolveAgentBoundary` runs in this family's ordering window — after layout assignment and buffer canonicalization, before slicing — but its contract and rewriter belong to the CTA/cluster family and are documented under [CTA Cluster Family — D20 aux passes](cta-cluster-family.md#d20-aux-passes). The only invariant the rest of the layout-and-buffer family relies on is the handoff shape: every value crossing an `nv_tileas.async.pipeline.agent_switch` either remains a direct SSA value (when the destination agent can consume it in place) or has been materialised through a shared-memory `alloc_tensor` / `copy` / `convert_layout` chain that delivers it in the destination agent's expected layout. Named-barrier emission stays deferred to [Buffer Assignment and mbarriers — Phase 2 — Assign Named Barriers](../../scheduler/buffer-assignment-and-mbarriers.md#phase-2--assign-named-barriers).
+`TileASResolveAgentBoundary` runs in this family's ordering window — after layout assignment and buffer canonicalization, before slicing — but its contract and rewriter belong to the CTA/cluster family and are documented under [CTA Cluster Family — D20 aux passes](cta-cluster-family.md#d20-aux-passes). The only invariant the rest of the layout-and-buffer family relies on is the handoff shape: every value crossing an `nv_tileas.async.pipeline.agent_switch` either remains a direct SSA value (when the destination agent can consume it in place) or has been materialised through a shared-memory `alloc_tensor` / `copy` / `convert_layout` chain that delivers it in the destination agent's expected layout. Named-barrier emission stays deferred to [Buffer Assignment and mbarriers — Phase 2 — Assign Named Barriers](../../scheduler/buffer-assignment-and-mbarriers.md#phase-2-assign-named-barriers).
 
 ## Slicing
 

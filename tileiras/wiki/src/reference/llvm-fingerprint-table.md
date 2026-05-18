@@ -113,3 +113,5 @@ The producer-string anchor (fingerprint 2) makes this scan trivial; the structur
 | 10. cl::opt machinery | matches | matches | matches | matches |
 
 Two unique LLVM 21 anchors carry the weight: fingerprints 2 (producer string) and 3 (AsmPrinter header). Fingerprints 7 and 8 disambiguate LLVM 21 from LLVM 20. Fingerprints 1, 4, 6, 9, 10 are stable-layout corroborators that exclude earlier/later trees only when read together with the unique anchors. The convergence of these ten independent fingerprints leaves no plausible alternative version; a snapshot from any other LLVM major would disagree on at least one.
+
+The reader-side recipe for opening the binary and reproducing any one of these fingerprints is documented on [Binary Anatomy and RE Methodology](../topics/binary-anatomy-and-re-methodology.md).

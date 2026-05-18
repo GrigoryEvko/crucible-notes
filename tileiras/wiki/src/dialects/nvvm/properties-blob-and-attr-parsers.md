@@ -185,3 +185,7 @@ for op in nvvm_ops:
 ```
 
 The invariants are small. Properties are inline for this op set. Slots start at byte 64 and advance by one pointer. Enum attributes decode through padded 32-bit payloads. Optional enum attributes carry a presence bit separate from the value.
+
+## Position in the cross-stage attribute system
+
+The Properties blob is the terminal carrier for the memory-ordering, cache-modifier, and MMA-shape attributes that ride down from the higher dialects. Earlier stages keep these facts in the op-attribute dictionary; by the time the NVVM dispatcher sees the op, the attribute has folded into a positional slot in the blob. [Attribute System and Lowering](../../topics/attribute-system-and-lowering.md) documents that journey across the full pipeline — which carrier each fact lives in at each stage, which transitions are intentionally lossy, and which silent drops are wrong-output bugs that ptxas will not catch.

@@ -258,4 +258,4 @@ The final materialisation rule: single-predecessor regions reuse the incoming ba
 
 ## Cross-References
 
-[NVPTX Backend Passes Overview](overview.md#pipeline-position) places this pass at the tail of the LLVM-IR middle end, after [MemorySpaceOpt](memory-space-opt-and-process-restrict.md#memoryspaceopt) and before [NVVM IR Verifier](nvvm-ir-verifier.md). [BASR: Base-Address-Slice-Replace](peephole-mir-and-image-handles.md#basr-base-address-slice-replace) is the post-ISel MIR-level peephole that performs the analogous address-arithmetic fusion on selected machine instructions — Common Base Elimination is its IR-level counterpart.
+[NVPTX Backend Passes Overview](overview.md#pipeline-position) places this pass at the tail of the LLVM-IR middle end, after [MemorySpaceOpt](memory-space-opt-and-process-restrict.md#memoryspaceopt) and before [NVVM IR Verifier](nvvm-ir-verifier.md). [BASR: Base-Address-Slice-Replace](peephole-mir-and-image-handles.md#basr-specific-algorithm) is the post-ISel MIR-level peephole that performs the analogous address-arithmetic fusion on selected machine instructions — Common Base Elimination is its IR-level counterpart.

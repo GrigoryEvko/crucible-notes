@@ -2,9 +2,14 @@
 
 ## Abstract
 
-TileAS passes communicate failure through a shared status byte at offset +40 in the per-pass PassObject. Setting bit 2 of that byte (`0x04`) signals a soft failure: the pass completes its walk, the driver inspects the bit once the walk terminates, and dependent downstream passes either short-circuit or skip work that requires output from a failed predecessor. Failure does not throw, does not unwind, and does not abandon the IR. This page documents the convention.
+TileAS passes communicate failure through a shared status byte at offset +40 in the per-pass PassObject. Setting bit 2 of that byte (`0x04`) signals a soft failure: the pass completes its walk, the driver inspects the bit once the walk terminates, and dependent downstream passes either short-circuit or skip work that requires output from a failed predecessor. Failure does not throw, does not unwind, and does not abandon the IR.
 
-The handshake appears across the entire D08-D13 TileAS pass family — async materialization, convert-layout materialization, schedule materialization, the unspecialized pipeline pass, the pipeline-region optimizer, and the convert-tileas-to-LLVM rewriter all set or read the same bit. It is the single most pervasive piece of inter-pass plumbing in TileAS.
+The handshake appears across the entire D08-D13 TileAS pass family — async materialization, convert-layout materialization, schedule materialization, the unspecialized pipeline pass, the pipeline-region optimizer, and the convert-tileas-to-LLVM rewriter all set or read the same bit. It is the central piece of inter-pass plumbing in TileAS.
+
+This page documents the handshake convention specifically. For the broader
+three-layer error-handling architecture — MLIR diagnostic engine,
+pass-failure handshake, and driver-level exit codes — see [Error Handling
+and Diagnostics](../topics/error-handling-and-diagnostics.md).
 
 ## Convention
 
@@ -37,6 +42,40 @@ First, granularity. `signalPassFailure()` is whole-function: once a pass calls i
 Second, downstream readability. When a TileAS pass communicates failure through `signalPassFailure()`, the next pass has no way to discover the reason — the failure is opaque, and the next pass would have to re-do whatever analysis the failed pass performed to decide what to skip. With the handshake bit, the failed pass leaves a clear and inspectable signal, and the dependent pass simply reads the status word and acts accordingly.
 
 The bit is not a replacement for `signalPassFailure()`. Fatal contract violations — malformed IR, missing analyses that should always exist, sentinel pointer dereferences — still trap or call `report_fatal_error`. The handshake is for recoverable cases where one pass produces IR the next pass can either use or sidestep.
+
+## Soft handshake vs hard fatal error
+
+The TileAS pipeline carries three failure paths at three different
+severities. The soft handshake is the lightest; `signalPassFailure()` is
+the middle weight; `report_fatal_error` is the heavy one. The three are
+visually similar inside a pass body — each is a call paired with a
+diagnostic — but their downstream consequences diverge sharply.
+
+| Path                       | Mechanism                                | What stays running                                                                | User outcome                                                  |
+|----------------------------|------------------------------------------|------------------------------------------------------------------------------------|---------------------------------------------------------------|
+| Soft handshake             | `*(self+40) |= 4` after `op->emitRemark` or `op->emitError`; pass returns `success()` | The pass-manager keeps running; downstream passes peek at the bit and skip dependent work | A diagnostic appears on stderr; driver exit code typically remains 0 unless an Error was emitted by another pass |
+| `signalPassFailure()`      | MLIR pass-manager-side failure flag after `op->emitError`               | The current pass completes its walk, then the pass-manager returns `failure()`     | An Error-class diagnostic appears; driver exit code 5         |
+| `llvm::report_fatal_error` | LLVM-tier fatal-error handler                                            | Nothing — the process aborts through the fatal-error handler                       | A bare diagnostic on stderr; process abort, no clean exit code |
+
+The handshake is the only path on which the user can still get a usable
+artifact: a function whose pipelining failed under D11 still compiles
+correctly, just synchronously, and the driver returns 0 if no other pass
+escalated. `signalPassFailure()` always aborts the compile; the difference
+between it and the handshake is whether the next pass gets a chance to run
+at all. `report_fatal_error` skips even the pass-manager's failure
+propagation — the LLVM-side handler runs immediately, the process exits
+through `abort()`, and the driver cannot translate the result into an exit
+code because `main` never returns.
+
+The choice between the three is structural, not stylistic. A reimplementer
+should pick the soft handshake when downstream passes can plausibly run on
+the un-rewritten IR, `signalPassFailure()` when they cannot but the
+pipeline state is still consistent, and `report_fatal_error` only when the
+IR or an internal invariant has been corrupted beyond what subsequent
+passes can describe. The TileAS family uses all three; the canonical
+async-pipeline path uses the soft handshake for unpipelinable loops and
+`report_fatal_error` for the trap that fires when a sentinel pointer
+escapes its expected scope.
 
 ## Propagation
 
@@ -102,7 +141,15 @@ Third, the bit is cumulative within one pass run. Multiple op-level failures ins
 
 ## Cross-References
 
+[Error Handling and Diagnostics](../topics/error-handling-and-diagnostics.md)
+is the canonical end-to-end page tying the handshake together with the
+MLIR diagnostic engine and the driver-level exit codes.
 [TileAS Async and Pipeline Family](../passes/tileas/async-pipeline-family.md) is the canonical example, with the handshake appearing in five of its passes.
 [Pass Manager Internals](../pipeline/pass-manager-internals.md) covers the PassObject layout and the driver-side pass-result lookup the handshake rides on.
 [Diagnostic Helpers](../infra/diagnostic-helpers.md) documents the diagnostic emitter that all these passes call before setting the bit.
+[Diagnostic ABI and Helpers](diagnostic-abi-and-helpers.md) is the
+body-layout reference for the diagnostics that pair with each bit-set.
 [Invariants and Verifiers](../pipeline/invariants-and-verifiers.md) covers the cross-pass invariants the handshake protects.
+[Common Compiler Patterns and Idioms](../topics/common-compiler-patterns-and-idioms.md) places the
+`*(self+40) |= 4` convention in the catalogue of recurring structural moves alongside PIMPL,
+vtable banks, and dispatcher tables.

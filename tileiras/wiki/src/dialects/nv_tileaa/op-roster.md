@@ -107,6 +107,11 @@ structured. The key behavior is not a special address calculation — it is
 preserving padding, activation layout, and tile-blocking facts until the
 memory layout pass can pick the right producer and consumer layouts.
 
+The element-type rules that govern legal `(A, B, C)` tuples — FP8 e4m3 and
+e5m2, block-scaled MX-FP and NV-FP4, and the f32 accumulator requirement on
+narrow-precision inputs — are documented in
+[Fast-Math and Numerical Precision](../../topics/fast-math-and-numerical-precision.md).
+
 ### Shape Operations
 
 Shape operations stay cheap, explicit, and canonicalizable. `view` changes
@@ -272,6 +277,8 @@ LogicalResult verify_memory_op_common(MemoryOp op) {
     return success();
 }
 ```
+
+The `mem_semantic` / `mem_scope` pair on `atomic_cas`, `atomic_rmw`, and `tiled_atomic_rmw` is the user-facing entry point into the layered memory model documented in [Concurrency and Sync Semantics](../../topics/concurrency-and-sync-semantics.md). That page enumerates which `(semantic, scope)` combinations each op family accepts, how the pair survives every lowering stage down to the PTX `.sem` / `.scope` modifiers, and how the implicit release/acquire pair on `mbarrier.arrive.expect_tx` and `mbarrier.try_wait.parity` fits into a producer/consumer pipeline.
 
 
 ```c

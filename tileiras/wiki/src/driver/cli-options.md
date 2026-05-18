@@ -53,6 +53,31 @@ to `100`:
 | `"sm_120"` | 120 | Consumer RTX 50** / Pro |
 | `"sm_121"` | 121 | DGX Spark |
 
+The driver surface accepts only the bare `sm_NN` spelling — `a` and
+`f` variant suffixes are not parsed here. The architecture-specific
+selection happens one level up, on the `nv_tileaa.compute_capability`
+module attribute set by the frontend. A frontend that lowers WGMMA,
+`tcgen05.mma`, or block-scaled `mma.sync` carries the matching
+`target_spec` field on the module; the backend reads both fields
+when constructing the NVPTX target machine, picks `sm_100a` (for
+example) instead of `sm_100`, and emits `.target sm_100a`
+accordingly. `--gpu-name` is therefore a defaulting hint for the
+major SM number, not the final word on the `.target` line. The
+full subtarget-construction mechanism — including how `--gpu-name`
+combines with `+ptxNN` feature flags to drive the
+`.version`/`.target` header — is documented in [PTX Version and
+Target Selection](../topics/ptx-version-and-target-selection.md).
+
+Two practical consequences follow. First, a kernel emitted by a
+frontend that requires arch-conditional instructions cannot be
+redirected to a plain `sm_NN` target by changing `--gpu-name`
+alone — the lowering will fail in the selector when no legal
+MachineInstr is found. Second, this driver does not list `sm_90`:
+its primary deployment surface is Blackwell, and Hopper targets are
+reachable only through the frontend's own attribute writes plus a
+host environment that pins the build to an `sm_90`-capable
+subtarget table.
+
 `--host-arch` defaults to `0`:
 
 | String | int32 code | Notes |
@@ -246,3 +271,15 @@ compile contract; [Driver Program Handle](program-handle.md#public-error-codes)
 defines the public error-code numbering returned through the exit status;
 [Host Launch ABI and ptxas Knobs](host-launch-and-ptxas-knobs.md#ptxas-knobs-file-format)
 covers `--knobs-file=`, the only ptxas-side option the driver forwards.
+[Debugging and Introspection](../topics/debugging-and-introspection.md) is the
+user-facing debugging surface: it ties the four diagnostic options in the
+table above (`--lineinfo`, `emit-line-info`, `schedule-trace-file`,
+`dump-host`) to the MLIR-side print, timing, and stack-trace flags and gives
+a symptom-to-flag decision matrix.
+[Troubleshooting and Known Issues](../topics/troubleshooting-and-known-issues.md)
+catalogs the verbatim rejection strings produced by the validator above
+(`unsupported GPU target`, `invalid optimization level`, `optimized
+debugging is not supported`, `could not find libdevice`), pairs each with
+its root cause, and lists the gotchas that the strict CLI parser surfaces —
+notably that `--gpu-name` does not accept the `a`/`f` arch-conditional
+suffix and that `sm_90` is not in the accept table.

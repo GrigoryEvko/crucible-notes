@@ -152,3 +152,10 @@ is two parallel surfaces -- the `cl::opt`-backed gates that respond to
 both `--flag` and (for a handful) env vars, and the standalone TILEIR /
 TILE\_AS env vars that have no `--flag` equivalent and are reachable only
 by setting the variable.
+
+## Cross-References
+
+[Performance and Cost Model](../topics/performance-and-cost-model.md) lists
+the subset of these tunables that shift cost-model behaviour at compile
+and runtime, including the SMEM ceiling, the TMA-preferred layout bias,
+and the warp-specialisation threshold.

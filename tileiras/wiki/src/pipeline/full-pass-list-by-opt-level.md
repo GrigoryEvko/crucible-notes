@@ -113,5 +113,5 @@ The pass list above ends at the MLIR-to-LLVM/NVVM boundary. After that, the back
 
 ## Cross-References
 
-[Driver Entry and Optimization Levels](driver-and-opt-levels.md) describes how the requested tier turns into the segments listed above. [Pipeline Options Mapping](options-mapping.md) maps each option a user can set to the consuming pass in this list. [Pipeline Invariants and Verifiers](invariants-and-verifiers.md) covers the verifier passes interleaved between the lowerings.
+[Driver Entry and Optimization Levels](driver-and-opt-levels.md) describes how the requested tier turns into the segments listed above. [Pipeline Options Mapping](options-mapping.md) maps each option a user can set to the consuming pass in this list. [Pipeline Invariants and Verifiers](invariants-and-verifiers.md) covers the verifier passes interleaved between the lowerings. [Performance and Cost Model](../topics/performance-and-cost-model.md) explains the compile-time and runtime trade-offs the four levels expose.
 

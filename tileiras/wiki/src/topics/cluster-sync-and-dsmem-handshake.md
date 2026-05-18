@@ -2,6 +2,8 @@
 
 ## Abstract
 
+The cluster tier in the GPU execution model — covered end-to-end in [GPU Execution Model](gpu-execution-model.md) — is the only level above the CTA with hardware sync support. The cluster-side rendezvous protocols tileiras emits to use that hardware are the subject of this page.
+
 A Hopper or Blackwell cluster is a group of cooperating CTAs that share work through a single cluster-level rendezvous. Tileiras lowers cluster-aware barrier operations through two related paths. The plain cluster barrier is a control-flow rendezvous: every participating CTA arrives, then waits, and execution resumes once every participant has reached the same point. The DSMEM transaction handshake is a data-flow rendezvous: a peer CTA publishes its expected transaction byte count on a remote mbarrier before the cluster arrive/wait pair, and the rendezvous completes only when both the arrival count and the transaction-byte count clear.
 
 Both paths share one mechanism. Plain cluster sync is the general primitive every multi-CTA cluster needs; the DSMEM transaction handshake is a specific case where the rendezvous carries a transaction-byte payload because peers are exchanging distributed shared memory through an asynchronous copy. The split matches the CUTLASS distinction between `ClusterBarrier::wait()` and `ClusterTransactionBarrier::arrive_and_expect_tx()`.
@@ -102,7 +104,9 @@ The ordering invariant is: publish the DSMEM transaction expectation before clus
 
 ## Cross-References
 
+[GPU Execution Model](gpu-execution-model.md) places the cluster tier in the five-tier hierarchy (thread / warp / CTA / cluster / grid) and documents the `.cluster_dim` / `.explicitcluster` / `.maxclusterrank` directives that establish the cluster shape this page's rendezvous operates over.
 [mbarrier State Machine](mbarrier-state-machine.md) covers the barrier object itself: arrival semantics, phase parity, and the transaction-byte field this page consumes.
 [Blackwell 2-CTA and 4-CTA MMA](blackwell-2cta-and-4cta-mma.md) is the producer of the multicast S2T copy whose transaction-byte count drives the consumer-side handshake here.
 [tcgen05 Tensor Memory Model](tcgen05-tensor-memory-model.md) describes the TMEM allocator and instructions whose 2-CTA cooperative MMA variant rides on top of this rendezvous.
+[Concurrency and Sync Semantics](concurrency-and-sync-semantics.md) places the cluster-scope `release`/`acquire` pair carried by `mbarrier.expect_tx.cluster` and `mbarrier.try_wait.parity` inside the four-scope, five-semantic matrix that every tileiras memory op participates in.
 [Atomic, Warp, Sreg, Fence Emission](../codegen/atomic-warp-sreg-fence.md) documents the PTX printer for `cluster.arrive`, `cluster.wait`, and `fence.mbarrier_init.release.cluster`.

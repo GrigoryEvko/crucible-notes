@@ -2,6 +2,8 @@
 
 ## Abstract
 
+The cluster tier — covered end-to-end in [GPU Execution Model](gpu-execution-model.md) — is what makes 2-CTA and 4-CTA cooperative MMA legal in the first place. The copy-side fan-out that distributes operand tiles across cluster CTAs before the MMA fires is the subject of this page; the cluster shape it depends on is established by the `.cluster_dim` directive at the kernel header.
+
 Blackwell tensor-core lowering separates the cooperative copy from the matrix instruction that consumes the copied tile. The SMEM-to-TMEM staging copy can be single-CTA, 2-CTA, or 4-CTA. The matching `tcgen05.mma` instruction carries only the MMA-side group encodings it understands; the 4-CTA fan-out lives on the copy side, where the A operand is distributed across a CTA cluster before the MMA consumes each CTA's local slice.
 
 Tileiras lowers the `cute_nvgpu.atom.make_s2t_copy` atom through one shared MLIR rewrite path. That path builds a `cute.tiled.copy`, optionally guards it with an `scf.if`, and later lowers the copy to the `tcgen05.cp` family. The sibling IMMA and WGMMA atom paths do not read the cluster CTA-rank special register; rank-aware partitioning is specific to S2T copy lowering.

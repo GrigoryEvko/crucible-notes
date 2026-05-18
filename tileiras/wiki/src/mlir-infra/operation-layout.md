@@ -226,4 +226,5 @@ Cross-references: [Storage Uniquer and Context Impl](storage-uniquer-and-context
 how `OperationName` slots are interned; [ISel DAG and Matcher Table](../codegen/iseldag-and-matchertable.md)
 for the same `0x7FFFFFF` mask reused on backend `SDNode`; and
 [TypeID Sentinels and Anchors](typeid-sentinels-and-anchors.md) for the slot bank that backs
-`+0x40`.
+`+0x40`; and [Common Compiler Patterns and Idioms](../topics/common-compiler-patterns-and-idioms.md)
+for the `TrailingObjects` shape catalogued alongside the other recurring tileiras idioms.

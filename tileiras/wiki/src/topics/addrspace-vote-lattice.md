@@ -6,6 +6,8 @@ Interprocedural memory-space propagation classifies each generic pointer argumen
 
 The lattice is deliberately tiny — one bottom element, six concrete address spaces, one absorbing poison element. That suffices for the cloner to decide whether a callee can be cloned with a narrower pointer type, and the same partition is reused by the type converter and NVVM alias analysis.
 
+NVIDIA GPUs expose seven memory spaces — global, shared, distributed shared, constant, local, tensor (Blackwell), and parameter — plus a generic encoding that names the union when provenance is unknown. [Memory Hierarchy and Data Flow](memory-hierarchy-and-dataflow.md) is the orientation page for those spaces: it tabulates the PTX state-space names, the LLVM address-space numbers, the MLIR encodings, and the data-flow patterns that move operands between them. This page focuses on the lattice machinery that infers which space a pointer names; the orientation page provides the why.
+
 [Force-Inline and Specialize Callees](force-inline-and-specialize-callees.md) is the data-flow companion: it covers the worklist driver, the kernel/image/size thresholds that decide between inlining and specialization, and the call-site rewrite mechanics. This page covers only the lattice itself, the four red-black trees that hold its working state, and the `"nvvm.as"` attribute that publishes results across passes. NVVMAA uses the same six-way partition for `MayAlias`/`NoAlias`, so the lattice page doubles as the canonical reference for any consumer reasoning about per-pointer NVPTX address spaces.
 
 ## Worker Model

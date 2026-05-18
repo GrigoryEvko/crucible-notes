@@ -37,11 +37,40 @@ The `--input-as-string` choice ties the PTX size to the kernel's `MAX_ARG_STRLEN
 
 Tileiras emits **PTX as ASCII text**, not LLVM bitcode and not NVVM IR. LLVM bitcode, NVVM IR text, and PTX-only output modes all stop before ptxas; only the cubin-producing mode reaches the subprocess launcher. By the time argv is built, the PTX has already passed through the full NVPTX backend pipeline inside tileiras's process. `ptxas` sees a finished PTX program, not an intermediate.
 
+## Subprocess construction
+
+The argv vector flows into the generic POSIX launcher documented in [Subprocess Harness](../driver/subprocess-harness.md#posix-subprocess-launcher). Three decisions are tileiras-specific:
+
+1. **Program path resolution.** The first argv token is the literal string `"ptxas"`. The launcher resolves it through the inherited `PATH`; there is no in-binary table of fallback paths and no hard-coded toolkit prefix. A reimplementation must keep the CUDA `bin/` directory on `PATH` or supply an absolute path through a wrapper.
+2. **Spawn primitive.** ptxas is invoked through the `posix_spawn` fast path because neither `setsid` nor process resource limits are requested. The harness only falls back to `fork`+`exec` for callers that need those facilities, which the ptxas adapter does not.
+3. **Stdio plumbing.** stdin is closed; stdout is piped into a parent-side accumulator that captures the cubin bytes; stderr targets the same accumulator object so the launcher applies the `dup2(stdout, stderr)` merge optimisation described in the subprocess-harness page. The result is one in-memory buffer that carries both the assembled cubin and any ptxas diagnostic text.
+
+The stderr merge is a deliberate consequence of how tileiras consumes ptxas output. ptxas writes the cubin as a binary blob to stdout and writes any diagnostic text to stderr; when the compile succeeds, stderr is empty (or limited to informational notes such as register-spill summaries) and the captured buffer holds only the cubin. When the compile fails, ptxas writes a textual diagnostic to stderr and stdout stays empty; the merged buffer is then pure ASCII text, which tileiras surfaces through its diagnostic callback verbatim.
+
+There is no in-binary `--quiet-ptxas` or similar suppression switch. Stderr forwarding is unconditional, and the only way to filter ptxas chatter is at the harness boundary on the parent side. Reimplementations that want a quiet mode should attach a custom diagnostic callback that inspects the captured buffer before forwarding.
+
 ## Cubin returned via stdout
 
-There is no `-o <out.cubin>` flag in the argv. Instead, the subprocess harness plumbs ptxas's stdout into a parent-side buffer and stores the captured bytes as the cubin payload. No temporary cubin file is named on the parent side for ptxas's output. Stderr is captured separately and forwarded into the driver's diagnostic callback.
+There is no `-o <out.cubin>` flag in the argv. Instead, the subprocess harness plumbs ptxas's stdout into a parent-side buffer and stores the captured bytes as the cubin payload. No temporary cubin file is named on the parent side for ptxas's output. Stderr is merged into the same buffer through the harness's `dup2` optimisation, so a successful compile yields a clean cubin and a failed compile yields a diagnostic string distinguishable by inspecting the leading bytes for the ELF magic.
 
 The harness enforces a wall-clock timeout. On expiry the child is killed, and the diagnostic `"Child timed out"` or `"Child timed out but wouldn't die"` is surfaced through the same stderr pipe. Abnormal exits decode into either `"Program could not be executed"` or a signal-name string with an optional `" (core dumped)"` suffix.
+
+## Exit-code interpretation
+
+The harness decodes the `wait4` status word through the POSIX rules documented in [Subprocess Harness](../driver/subprocess-harness.md#sigalrm-wait4-timeout). tileiras interprets the resulting exit code as follows:
+
+| ptxas exit | Decoded by harness as | tileiras driver response |
+|---|---|---|
+| `0` | normal success | use captured stdout as the cubin payload, append it to the host ELF |
+| `1`..`125` | ptxas internal failure (PTX rejected, knob-file error, codegen abort) | bubble the captured stderr through the diagnostic callback; the outer compile returns code `5` |
+| `126` | program found but could not be executed (permission denied, ENOEXEC) | surface `"Program could not be executed"` and return code `5` |
+| `127` | program not found on `PATH` | same diagnostic shape as `126`; the more usual root cause is a missing toolkit `bin/` on `PATH` |
+| any signal | signal-name string emitted; optional `" (core dumped)"` suffix | return code `5`; tileiras does not retry |
+| timeout | `"Child timed out"` or `"Child timed out but wouldn't die"` | return code `5`; the harness has already sent `SIGKILL` and reaped the child |
+
+tileiras does no automatic retry on a non-zero ptxas exit and treats the captured stderr as opaque text. Knob-file diagnostics, register-spill rejections, mismatched-architecture errors, and PTX-parse failures all collapse into the same return path: code `5` from `tileirasProgramCompile`, the verbatim ptxas stderr forwarded through the diagnostic callback, no partial output on disk.
+
+A reimplementation should preserve two invariants. First, never strip the ptxas stderr before surfacing it; users rely on the verbatim text to diagnose PTX-level issues. Second, never collapse `126`/`127` into a "ptxas crashed" message — the shell-style codes are diagnostic on their own and point to deployment issues (missing binary, wrong `PATH`) rather than compiler bugs.
 
 ## Knob-file format
 

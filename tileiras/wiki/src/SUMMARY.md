@@ -173,18 +173,35 @@
 
 # Specialized Topics
 
+- [Memory Hierarchy and Data Flow](topics/memory-hierarchy-and-dataflow.md)
+- [Performance and Cost Model](topics/performance-and-cost-model.md)
+- [Attribute System and Lowering](topics/attribute-system-and-lowering.md)
 - [AddrSpace Vote Lattice](topics/addrspace-vote-lattice.md)
 - [Blackwell 2-CTA/4-CTA MMA](topics/blackwell-2cta-and-4cta-mma.md)
 - [Cluster Sync and DSMEM Handshake](topics/cluster-sync-and-dsmem-handshake.md)
+- [Concurrency and Sync Semantics](topics/concurrency-and-sync-semantics.md)
+- [Correctness Layers](topics/correctness-layers.md)
+- [Debugging and Introspection](topics/debugging-and-introspection.md)
 - [DSL to PTX End-to-End](topics/dsl-to-ptx-end-to-end.md)
+- [Frontend Contract and Tile IR Emission](topics/frontend-contract-and-tile-ir-emission.md)
+- [Error Handling and Diagnostics](topics/error-handling-and-diagnostics.md)
+- [GPU Execution Model](topics/gpu-execution-model.md)
 - [mbarrier State Machine](topics/mbarrier-state-machine.md)
 - [WGMMA Emission Protocol](topics/wgmma-emission-protocol.md)
 - [tcgen05 Tensor Memory Model](topics/tcgen05-tensor-memory-model.md)
 - [Matmul Progression by SM](topics/matmul-progression-by-sm.md)
+- [PTX Version and Target Selection](topics/ptx-version-and-target-selection.md)
 - [Force-Inline and Specialize Callees](topics/force-inline-and-specialize-callees.md)
 - [cuda_tile Simplifier Walker](topics/cuda-tile-simplifier-walker.md)
 - [LoopIdiom, Vectorize, Divergent](topics/loop-idiom-vectorize-divergent.md)
 - [LowerMatrix and mfadd](topics/lower-matrix-mfadd.md)
+- [Fast-Math and Numerical Precision](topics/fast-math-and-numerical-precision.md)
+- [Common Compiler Patterns and Idioms](topics/common-compiler-patterns-and-idioms.md)
+- [Binary Anatomy and RE Methodology](topics/binary-anatomy-and-re-methodology.md)
+- [Architecture Evolution and Design Decisions](topics/architecture-evolution-and-design-decisions.md)
+- [Troubleshooting and Known Issues](topics/troubleshooting-and-known-issues.md)
+- [Testing and Observability](topics/testing-and-observability.md)
+- [Frequently Asked Questions](topics/frequently-asked-questions.md)
 
 # OSS Cross-Reference
 
@@ -199,6 +216,7 @@
 - [ptxas Handoff Protocol](boundaries/ptxas-handoff-protocol.md)
 - [cudafe++ Non-Relationship](boundaries/cudafe-non-relationship.md)
 - [Position in nvcc 13.1](boundaries/nvcc-13-1-position.md)
+- [Toolchain Integration](boundaries/toolchain-integration.md)
 
 # Reference Catalogs
 
