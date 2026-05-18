@@ -353,20 +353,20 @@ Knobs are registered in two constructors: standard LLVM knobs in `ctor_216_0` at
 | `sub_19B6500` | Special aggressive unroll for tiny kernels |
 | `sub_19B6690` | Trip count analysis helper |
 | `sub_19B78B0` | Diagnostic emission |
-| `simulateLoopBody` | `0x19B9A90` | -- | Dynamic cost simulation with constant folding |
-| `computeUnrollCount` | `0x19BB5C0` | -- | Main decision engine |
-| `tryToUnrollLoop` | `0x19BE360` | -- | Top-level driver |
-| `computePeelCount` | `0x1B0B080` | -- | Loop peeling logic |
-| `computeRuntimeTripCount` | `0x1B18810` | -- | Runtime trip count estimation |
-| `hasCallInLoop` | `0x2A10B40` | -- | Checks for call/invoke in loop body |
-| `createSideExitPHI` | `0x2A10DD0` | -- | PHI nodes for side-exit unrolled loops |
-| `cloneInstructionsInBlock` | `0x2A12AD0` | -- | Instruction-level cloning |
-| `reconcileLoopAfterUnroll` | `0x2A13F00` | -- | Post-unroll SCEV/LoopInfo fixup |
-| `UnrollLoop` | `0x2A15A20` | -- | Main transformation engine |
-| `unrollCostModel` | `0x2A1AA10` | -- | Cost estimation helper |
-| `UnrollAndJamLoop` | `0x2A1CF00` | -- | Unroll-and-jam variant |
-| `generateRemainderLoop` | `0x2A23640` | -- | Remainder loop construction |
-| `UnrollLoopWithRuntimeChecks` | `0x2A25260` | -- | Prologue/epilogue generation |
+| `sub_19B9A90` | Dynamic cost simulation with constant folding |
+| `computeUnrollCount` at `sub_19BB5C0` | Main decision engine (string at `0x42C1523`) |
+| `tryToUnrollLoop` at `sub_19BE360` | Top-level driver (string at `0x42C1CD8`) |
+| `sub_1B0B080` | Loop peeling cost computation |
+| `sub_1B18810` | Runtime trip count estimation |
+| `sub_2A10B40` | Checks for call/invoke in loop body |
+| `sub_2A10DD0` | PHI nodes for side-exit unrolled loops |
+| `sub_2A12AD0` | Instruction-level cloning |
+| `sub_2A13F00` | Post-unroll SCEV/LoopInfo fixup |
+| `sub_2A15A20` | Main transformation engine (`UnrollLoop`) |
+| `sub_2A1AA10` | Cost estimation helper |
+| `sub_2A1CF00` | Unroll-and-jam variant (`UnrollAndJamLoop`; pass string at `0x43721E8`) |
+| `sub_2A23640` | Remainder loop construction |
+| `sub_2A25260` | Prologue/epilogue generation |
 
 
 ## Pass Factory and Object Layout

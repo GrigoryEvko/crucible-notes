@@ -492,32 +492,32 @@ The core SROA algorithm in cicc v13.0 is stock LLVM SROA. No CUDA-specific modif
 | `SROAPass::splitAlloca` | `sub_2930B90` | 80 KB | -- |
 | `buildSlices` (use analysis) | `sub_2927160` | -- | -- |
 | `buildPartitions` (group slices) | `sub_2924690` | -- | -- |
-| `buildPartitionTable` | `sub_2913C40` | -- | -- |
-| `sortSlices` | `sub_2912200` | -- | -- |
-| `compactSlices` (with filter) | `sub_2915A90` | -- | -- |
-| `compactSlices` (simple) | `sub_2914CE0` | -- | -- |
-| `findExistingValue` | `sub_291A860` | -- | -- |
-| `rewritePartition` | `sub_29197E0` | -- | -- |
-| `rewriteCallback` | `sub_2919EF0` | -- | -- |
-| `visitUse` (rewrite one use) | `sub_292A4F0` | 54 KB | -- |
-| `validateRewrite` | `sub_291F660` | -- | -- |
-| `analyzeSlice` | `sub_29150D0` | -- | -- |
-| `addToNewAllocaWorklist` | `sub_2929FB0` | -- | -- |
-| `addToWorklist` | `sub_2928360` | -- | -- |
-| `addOperandToWorklist` | `sub_29220F0` | -- | -- |
-| `clearPendingQueue` | `sub_2921860` | -- | -- |
-| `classifySlice` | `sub_29280E0` | -- | -- |
-| `recordNonSplitAlloca` | `sub_2916C30` | -- | -- |
-| `computeRewrittenValue` | `sub_2916270` | -- | -- |
-| `advancePartitionIterator` | `sub_2912870` | -- | -- |
-| `rewriteGEPChain` | `sub_29348F0` | -- | -- |
-| `replaceAndErase` | `sub_2914800` | -- | -- |
-| `collectUsesForRewrite` (variant) | `sub_2914380` | -- | -- |
-| `collectUsesForRewrite` (original) | `sub_2914550` | -- | -- |
-| Hash table resize | `sub_29222D0` | -- | -- |
-| Alloca rewriting helper | `sub_292D810` | 67 KB | -- |
-| SROA pass metadata | `sub_2912100` | -- | -- |
-| SROA pass registration (`"Scalar Replacement Of Aggregates"`, `"sroa"`) | `sub_2912340` | -- | -- |
+| `sub_2913C40` | -- | -- | Partition-table builder |
+| `sub_2912200` | -- | -- | Slice sorter |
+| `sub_2915A90` | -- | -- | Slice compaction (filtered variant) |
+| `sub_2914CE0` | -- | -- | Slice compaction (simple variant) |
+| `sub_291A860` | -- | -- | Existing-value lookup helper |
+| `sub_29197E0` | -- | -- | Partition rewriter (`rewritePartition`-equivalent) |
+| `sub_2919EF0` | -- | -- | Rewrite-stage callback |
+| `sub_292A4F0` | 54 KB | -- | Per-use rewriter (`visitUse`-equivalent) |
+| `sub_291F660` | -- | -- | Rewrite validation helper |
+| `sub_29150D0` | -- | -- | Slice analyzer |
+| `sub_2929FB0` | -- | -- | New-alloca worklist append |
+| `sub_2928360` | -- | -- | Worklist append |
+| `sub_29220F0` | -- | -- | Operand worklist append |
+| `sub_2921860` | -- | -- | Pending-queue clear |
+| `sub_29280E0` | -- | -- | Slice classifier |
+| `sub_2916C30` | -- | -- | Non-split alloca recorder |
+| `sub_2916270` | -- | -- | Rewritten-value computer |
+| `sub_2912870` | -- | -- | Partition iterator advance |
+| `sub_29348F0` | -- | -- | GEP-chain rewriter |
+| `sub_2914800` | -- | -- | Replace-and-erase helper |
+| `sub_2914380` | -- | -- | Use-collection (variant) |
+| `sub_2914550` | -- | -- | Use-collection (original) |
+| `sub_29222D0` | -- | -- | Hash table resize |
+| `sub_292D810` | 67 KB | -- | Alloca rewriting helper |
+| `sub_2912100` | -- | -- | SROA pass metadata |
+| `sub_2912340` | -- | -- | SROA pass registration (`"Scalar Replacement Of Aggregates"`, `"sroa"`) |
 |  | **Secondary instance (legacy PM)** |  | -- |
 | `SROAPass::runOnAlloca` (legacy) | `sub_1A33E80` | 61 KB | -- |
 | `SROAPass::splitAlloca` (legacy) | `sub_1A37040` | 46 KB | -- |
