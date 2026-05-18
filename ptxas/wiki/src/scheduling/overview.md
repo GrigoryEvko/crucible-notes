@@ -647,20 +647,41 @@ Key behaviors:
   - `scheduler+280`: 48-byte analysis slots (if `opt_level > 2`)
   - `scheduler+248`, `scheduler+256`: register pressure bitvectors sized to `(numRegs+1)` or `(2*numRegs+2)` if knob 420 (`LivenessUseHiLo`, dual-register tracking) is active
 
-## Pre-Scheduling vs Post-Scheduling
+## Pre-RA Scheduling vs Post-RA Scheduling
 
-The scheduler runs at two distinct points in the ptxas pipeline:
+The scheduler runs at two distinct points in the ptxas pipeline, separated by register allocation. The two stages share most of the same machinery (Backend A's unified engine `sub_688DD0`, Backend C's RBT orchestrator `sub_1908D90`) but see fundamentally different inputs and enforce different constraint sets. Phase 110 (`PostSchedule`) is documented in full on [Phase 110 -- PostSchedule](post-schedule.md); this section is the cross-stage summary.
 
-| Aspect | Pre-scheduling | Post-scheduling |
+| Aspect | Pre-RA scheduling (phase 98) | Post-RA scheduling (phase 110) |
 |---|---|---|
-| **Timing** | Before physical register allocation | After physical register allocation |
-| **Register model** | Virtual registers | Physical registers |
-| **Primary goal** | Reduce register pressure, order for regalloc | Hide latencies, minimize stalls |
-| **Phases active** | All 3 (ReduceReg, ILP, DynBatch) | Refinement pass |
-| **Budget source** | Occupancy model estimate | Actual allocation result |
-| **Entry** | `sub_8D0640` | `sub_7F5D50` / `sub_A97600` (42 KB) |
+| **Pipeline phase** | 98 (`ScheduleInstructions`) | 110 (`PostSchedule`) |
+| **Triggers via** | `AdvPhPreSched` [97] Type-A gate -> `sub_8D0640` | `AdvPhPostSched` [106] Type-C thunk -> `sub_C60640` (51 B body) |
+| **Timing** | Before `AllocateRegisters` [102] | After `ApplyPostRegAllocWars` [105] and `OptimizeHotCold` [108--109] |
+| **Register model** | Virtual register IDs, live-range tracker (`sub_69A1A0`, 952 B) | Physical R-regs / UR-regs / P-regs with exact occupancy map |
+| **Primary goal** | Trade ILP against register pressure so RA has headroom | Re-order against real bank conflicts, reuse-cache slots, and spill/reload latency |
+| **Phases active** | All 3 -- ReduceReg (mode 0x39), ILP (0x49), DynBatch (0x41) | Single mode (`mode=0` to Backend C; "post-RA mode" byte to Backend A engine) |
+| **Budget source** | Occupancy model estimate, knob-defaulted target 250/300 | Actual post-RA pressure measured by `RBTPressureCostModel` (`sub_18F3CB0`) |
+| **Engine entry (legacy)** | `sub_8D0640` -> `sub_688DD0` (Backend A 3-phase loop) | `sub_C60640` -> sub-target `vtable[+0x90]` -> `sub_A97600` (`PostSchedulePass::runOnFunction`, 42 KB) |
+| **Engine entry (modern sm\_80+)** | `sub_8D0640` -> `sub_C5FFC0` (`DispatchPreSchedule`) -> `sub_1908D90` (mode 1) | `sub_C60640` -> sub-target `vtable[+0x90]` -> `sub_1908D90` (mode 0); side-channel `sub_C5FFF0` (`DispatchPostSchedule`) reaches the same backend |
+| **Dispatcher pattern** | Direct -- phase calls scheduler; SM gate inside the callee | Sub-target indirect -- `ctx[+0x630] -> [+0x10] -> vtable[+0x90]`; sentinel `nullsub_45` marks "no override" |
+| **SM gate** | All SMs run pre-RA scheduling | `sub_7DDB50(ctx) > 1` -- skipped on sm\_50/52/53, sm\_60/61/62, sm\_70/72/75 (Maxwell--Turing) |
+| **Output IR** | Re-ordered virtual-reg Ori IR; preliminary scoreboard via `sub_8D7760` | Re-ordered physical-reg Ori IR; final scoreboard deferred to phase 115 (`sub_A36360`) |
 
-Post-scheduling uses the actual physical register assignments for precise dependency distances and can make final decisions about stall insertion and scoreboard barrier placement.
+### What Each Stage Can and Cannot See
+
+The two stages are not just "scheduling twice." Each enforces a constraint class the other physically cannot evaluate.
+
+| Constraint | Pre-RA (phase 98) | Post-RA (phase 110) |
+|---|---|---|
+| Register-file bank read-port conflicts | Invisible -- no physical bank assignment yet | Enforced by `sub_19043F0` constraint validator (Backend C); at most 2 sources from one bank per issue |
+| Reuse-cache slot occupancy (6-bit hint) | Invisible -- requires physical source register numbers | Encoded into scheduling decisions; pre-RA reuse hints are placeholders |
+| Spill/reload latency hiding | Invisible -- spills/reloads inserted by phase 102 don't yet exist | Hoists independent instructions between `STL.W spilled` and `LDL.W spilled` (~30/~20 cycle gap on sm\_80+) |
+| Operand-collector WAW timing (sm\_90+) | Invisible -- depends on physical destination register, not live range | Enforced with at-least-one independent slot between back-to-back writes to same phys reg |
+| Dual-issue pairing (Maxwell only) | Decided here -- `sub_8CF5D0` `CheckDualIssueEligibility` after ILP phase | Not re-decided; sm\_70+ post-RA scheduling does not pair |
+| Cross-BB register pressure | Tracked via occupancy estimate | Tracked via `RBTInterBlockScheduling` (`sub_19072F0`, 14 KB) using real liveness |
+| Virtual-register WAR hazards | Resolved by reordering inside ReduceReg/ILP | Already resolved by phase 105 `ApplyPostRegAllocWars` before phase 110 runs |
+| Instruction-distance scoreboards | Preliminary via `sub_8D7760` (41 KB), barrier indices written into operand high words | Recomputed from scratch by phase 115; only the tracking flag bit 23 survives the boundary (see [scoreboards.md](scoreboards.md#barrier-assignment-lifecycle-reconciliation)) |
+
+The asymmetric coverage is why phase 110 is not a no-op even when phase 98 produced what looks like a finished schedule: phase 98's "finished schedule" is finished against a virtual register file. Phase 110 is where the schedule meets hardware.
 
 ## Scheduling Variants
 

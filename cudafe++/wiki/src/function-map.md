@@ -22,7 +22,7 @@ The 2,906 unmapped functions in the EDG region include inlined header expansions
 
 The EDG `.text` region (`0x403300`--`0x7E0000`) has a three-part structure:
 
-1. **Assert stub region** (`0x403300`--`0x408B40`): 235 small `__noreturn` functions, one per assertion site. Each encodes a source file path, line number, and function name, then calls `sub_4F2930` (the internal error handler). These stubs are sorted by source file name -- the linker grouped them from all 52 `.c` files into one contiguous block. 200 stubs map to `.c` files; the remaining 35 are from `.h` files inlined into `.c` compilation units.
+1. **Assert stub region** (`0x403300`--`0x408B40`): 235 small `__noreturn` functions, one per assertion site. Each encodes a source file path, line number, and function name, then calls `sub_4F2930` (the internal error handler). These stubs are sorted by source file name -- the linker grouped them from all 52 `.c` files into one contiguous block. 198 stubs resolve to a single source file (181 to `.c` files, 17 to `.h` files inlined into `.c` compilation units); the remaining 37 are unattributed -- their `__FILE__` argument is either folded into a shared string or supplied by the caller and is not visible as a direct cross-reference.
 
 2. **Constructor region** (`0x408B40`--`0x409350`): 15 C++ static constructor functions (`ctor_001` through `ctor_015`) that initialize global tables at program startup.
 

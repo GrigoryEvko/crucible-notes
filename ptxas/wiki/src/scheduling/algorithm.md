@@ -1311,7 +1311,7 @@ Backend C is a complete reimplementation of the list scheduling algorithm using 
 
 | | |
 |---|---|
-| **Orchestrator** | `sub_1908D90` -- pre/post mode dispatch |
+| **Orchestrator** | `sub_1908D90` -- pre/post mode dispatch (`mode=1` for pre-RA via `sub_C5FFC0`, `mode=0` for post-RA via [phase 110 `PostSchedule`](post-schedule.md) and side-channel `sub_C5FFF0`) |
 | **Driver** | `sub_1906090` -- per-block scheduling loop |
 | **Core scheduler** | `sub_1902B70` (19 KB) -- RBT-based list scheduling |
 | **Solution evaluator** | `sub_1904B70` (26 KB) -- constraint check + commit |
@@ -1591,7 +1591,7 @@ This propagation allows scheduling decisions in callee functions to influence ca
 | `sub_12371D0` | 3.8 KB | CodecInstructionClassifier -- convergence-based property testing | MEDIUM |
 | `sub_123E0D0` | -- | CodecSchedulePreparation -- instruction characterization | MEDIUM |
 | `sub_A112C0` | -- | CodecSchedulePostFixup -- result finalization | MEDIUM |
-| `sub_1908D90` | -- | RBTScheduleOrchestrator -- pre/post mode dispatch | HIGH |
+| `sub_1908D90` | -- | RBTScheduleOrchestrator -- pre/post mode dispatch (mode 1 = pre-RA, mode 0 = post-RA; entered through `sub_C5FFC0`, `sub_C5FFF0`, or sub-target vtable+0x90 at phase 110) | HIGH |
 | `sub_1906090` | -- | RBTScheduleDriver -- per-block loop, 368-byte block stride | HIGH |
 | `sub_1902B70` | 19 KB | RBTCoreListScheduler -- RB-tree priority queue loop | HIGH |
 | `sub_1904B70` | 26 KB | RBTSolutionEvaluator -- constraint check, score threshold, hash commit | HIGH |

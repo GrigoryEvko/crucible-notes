@@ -199,6 +199,10 @@ main() input loop, per-file dispatch (main_0x409800.c line ~612-847)
    without an extension: the chain falls through to `sub_487A90`
    regardless of whether `ext` is `a`, `lib`, or missing entirely.
    This is how `cudadevrt.a` and `libcudadevrt.a` are both picked up.
+   The accepted magics are `!<arch>\n` (regular) and `!<thin>\n`
+   (thin); members are iterated unconditionally with **whole-archive**
+   semantics -- see [Archive Processing](archives.md) for the cursor
+   and long-name table mechanics.
 4. **`.o` is ambiguous and specially handled.** A `.o` file is
    allowed to be either a host ELF (with an embedded `.nv_fatbin`
    section walked by `sub_476E80`) or a plain cubin (if `e_machine`
@@ -241,7 +245,7 @@ the decoding in column three is the resulting byte sequence at offset
 | `0x1EE55A01` @ offset 4 | `00 00 00 00 01 5A E5 1E` | 8 B | NVVM IR wrapper (4-byte zero padding) | `sub_4CE070` second branch |
 | `"!<arch>\n"` | `21 3C 61 72 63 68 3E 0A` | 8 B | Standard ar archive | `sub_487A90` |
 | `"!<thin>\n"` | `21 3C 74 68 69 6E 3E 0A` | 8 B | Thin ar archive (members by path) | `sub_487A90` |
-| `".version"` | `2E 76 65 72 73 69 6F 6E` | 8 B | PTX assembly source (first non-whitespace non-comment token) | `sub_4CDF80` |
+| `".version"` | `2E 76 65 72 73 69 6F 6E` | 8 B | PTX assembly source (first non-whitespace non-comment token) | `sub_4CDF80` (used only by fatbin-member classifier `sub_4CE070`; **not** called from `main`, where PTX is dispatched purely by the `ptx` extension match) |
 
 Notes on the fatbin pair:
 
@@ -577,7 +581,7 @@ diagnostic emitter):
 
 | Error string | Condition | Decompiled site |
 |---|---|---|
-| `link input %s` | `fread` returned zero AND file is not an archive | `main` line 629, xref `0x1d3427b` target |
+| `link input %s` | `fread` returned zero AND file is not an archive | `main` line 629, string at `0x1d3417d`, xref from `0x40a542` |
 | `cubin not an elf?` | Extension `cubin` but `is_elf` false | `main` line 652 |
 | `cubin not a device elf?` | Extension `cubin`, ELF magic OK, but `e_machine != 190` | `main` line 654 |
 | `fatbin wrong format?` | Extension `fatbin` but first u32 != `0xBA55ED50` | `main` line 750 |
@@ -587,7 +591,13 @@ diagnostic emitter):
 
 The `ignore input` path is the only soft failure: nvlink prints it
 to stderr only when the verbose bit `(v55[64] & 1)` is set and
-continues to the next file. All other errors abort the link.
+continues to the next file.
+
+A note on `"Unsupported file type '%s'"` at `0x1d34fab`: this format
+string lives in `.rodata` but has **zero xrefs** in the binary. It is
+a dead diagnostic, never reached by the current dispatch. Real
+unsupported inputs go to the soft `ignore input %s` path. Mention it
+only if you are auditing for residual error-message coverage. All other errors abort the link.
 
 Inside `sub_4CE070`, error recovery uses `_setjmp`/`longjmp` to
 trap any access faults during content inspection:

@@ -156,10 +156,11 @@ The wiki is organized around the compilation pipeline. Every page is written at 
 - [GPU ABI & Calling Convention](./regalloc/abi.md) — Register assignment rules and caller/callee contracts.
 
 **Instruction Scheduling**
-- [Scheduler Architecture](./scheduling/overview.md) — 3-phase scheduler, ReduceReg/DynBatch modes.
-- [Scheduling Algorithm](./scheduling/algorithm.md) — Priority list scheduling with register pressure tracking.
+- [Scheduler Architecture](./scheduling/overview.md) — 3-phase pre-RA scheduler, ReduceReg/ILP/DynBatch modes; pre-RA vs post-RA cross-stage matrix.
+- [Scheduling Algorithm](./scheduling/algorithm.md) — Priority list scheduling with register pressure tracking; Backend A/B/C dispatch.
 - [Latency Model & HW Profiles](./scheduling/latency-model.md) — Per-SM instruction latency tables.
-- [Scoreboards & Dependency Barriers](./scheduling/scoreboards.md) — WAR hazard resolution, barrier allocation.
+- [Scoreboards & Dependency Barriers](./scheduling/scoreboards.md) — WAR hazard resolution, barrier allocation, pre/post reconciliation.
+- [Phase 110 — PostSchedule](./scheduling/post-schedule.md) — Post-RA re-scheduling: bank conflicts, reuse cache, spill/reload, sub-target vtable +0x90 dispatch.
 
 **SASS Code Generation**
 - [Code Generation Overview](./codegen/overview.md) — Instruction selection, encoding, peephole, Mercury.

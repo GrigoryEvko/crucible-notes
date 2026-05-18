@@ -102,7 +102,7 @@ Sorted by main body start address. This ordering reflects the binary layout, whi
 | 50 | `types.c` | EDG | 88 | 5 | 83 | `0x7A4940` | `0x7C02A0` | 112,480 |
 | 51 | `modules.c` | EDG | 22 | 3 | 19 | `0x7C0C60` | `0x7C2560` | 6,400 |
 | 52 | `floating.c` | EDG | 50 | 9 | 41 | `0x7D0EB0` | `0x7D59B0` | 19,200 |
-| | **TOTALS** | | **5,338** | **198** | **5,140** | `0x409350` | `0x7D59B0` | **~3.57 MB** |
+| | **TOTALS** | | **5,338** | **200** | **5,138** | `0x409350` | `0x7D59B0` | **~3.57 MB** |
 
 [^1]: `nv_transforms.c` has only 1 function with an EDG-style `__FILE__` reference, but sweep analysis confirms ~40 functions in the `0x6BAE70`--`0x6BE4A0` region (~22 KB). Most use NVIDIA's own assertion macros instead of EDG's `internal_error` path.
 
@@ -127,6 +127,8 @@ Header files appear in assertion strings when an inline function or macro define
 | 13 | `walk_entry.h` | 51 | 0 | 51 | `0x604170` | `0x618660` | `il_walk.c` |
 | | **TOTALS** | **281** | **17** | **264** | | | |
 
+The stub column sums to 217 across the two tables (200 from `.c` files + 17 from `.h` files). The 198 figure quoted in the narrative counts *distinct* stub functions referencing any source path -- each stub references exactly one file, but 19 stub functions are the target of multiple cross-references (the same stub is reused at multiple assertion call sites that all encode the same source location), inflating column sums above the unique-stub count.
+
 ### Header Distribution Patterns
 
 The 13 headers fall into three distinct patterns:
@@ -149,7 +151,9 @@ The 13 headers fall into three distinct patterns:
 
 ## Assert Stub Region
 
-The region `0x403300`--`0x408B40` contains 198 small `__noreturn` functions. Each encodes a single assertion site: the source file path, line number, and enclosing function name. When the assertion condition fails, the stub calls `sub_4F2930` (EDG's `internal_error` handler) and does not return. Every stub is 29 bytes.
+The region `0x403300`--`0x408B40` contains 235 small `__noreturn` functions. Each encodes a single assertion site: the source file path, line number, and enclosing function name. When the assertion condition fails, the stub calls `sub_4F2930` (EDG's `internal_error` handler) and does not return. Every stub is 29 bytes.
+
+Of the 235 stubs, 198 carry a resolvable source-path reference (181 to `.c` files, 17 to `.h` files); the remaining 37 are unattributed -- their `__FILE__` argument is either folded into a shared string or supplied by the caller, and they do not appear as targets in the per-file cross-reference table below.
 
 ### Stub Distribution by Source File
 
