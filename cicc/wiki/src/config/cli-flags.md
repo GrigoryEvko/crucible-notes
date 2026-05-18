@@ -594,7 +594,7 @@ All error strings follow the pattern `"libnvvm : error: <message>"`:
 
 - [Optimization Levels](./optimization-levels.md) -- O-level pipeline builders and fast-compile tiers
 - [Configuration Knobs](./knobs.md) -- 1,496 `cl::opt` knobs set by the flags documented here
-- [NVVMPassOptions](./nvvm-pass-options.md) -- 222-slot struct that receives CLI-routed values
+- [NVVMPassOptions](./nvvm-pass-options.md) -- 221-slot struct that receives CLI-routed values
 - [Environment Variables](./env-vars.md) -- environment-based configuration (parallel to CLI)
 - [Pipeline Overview](../pipeline/overview.md) -- how the four output vectors feed into pipeline stages
 - [nvcc Interface](../pipeline/nvcc-interface.md) -- how nvcc constructs the argv passed to cicc

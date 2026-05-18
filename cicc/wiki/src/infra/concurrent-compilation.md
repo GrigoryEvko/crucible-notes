@@ -294,7 +294,7 @@ Before submitting each function to the thread pool, `sub_12E1EF0` builds a self-
 
 1. **Bitcode extraction**: `sub_1AB9F40(&buffer, *module_bc, &iterators, sub_12D4BD0, &filter_state)` -- extracts the bitcode for a single function using `sub_12D4BD0` as a filter callback that checks the function name against the work hash table
 2. **Bitcode parsing**: `sub_153BF40(module_data, &context, 0, 0, 0, 0)` -- parses the extracted bitcode into an LLVM Module
-3. **Context copy**: Copies all iterator state (`v391`--`v395`), context/options/error callbacks (`v405`--`v409`), module name string, the full 4,480-byte NVVMPassOptions struct, and module bitcode vectors
+3. **Context copy**: Copies all iterator state (`v391`--`v395`), context/options/error callbacks (`v405`--`v409`), module name string, the full 4,512-byte NVVMPassOptions struct, and module bitcode vectors
 
 Each function gets its own independent copy of the options struct and module -- there is no shared mutable state between worker threads during Phase II.
 
@@ -468,7 +468,7 @@ Upstream LLVM has no two-phase compilation model. The standard LLVM pipeline run
 
 - [Entry Point & CLI](../pipeline/entry.md) -- pipeline dispatch that leads to the optimizer, including `-jobserver` flag routing
 - [Optimizer Pipeline](../pipeline/optimizer.md) -- `sub_12E54A0`, the pipeline function called by both phases
-- [NVVMPassOptions](../config/knobs.md) -- the 222-slot options table including thread count and jobserver slots
+- [NVVMPassOptions](../config/knobs.md) -- the 221-slot options table including thread count and jobserver slots
 - [Environment Variables](../config/env-vars.md) -- `LIBNVVM_DISABLE_CONCURRENT_API` and `MAKEFLAGS`
 - [CLI Flags](../config/cli-flags.md) -- `-jobserver`, `-split-compile`, `-split-compile-extended`
 - [Bitcode I/O](../infra/bitcode-io.md) -- `sub_153BF40` bitcode reader used for per-function module extraction

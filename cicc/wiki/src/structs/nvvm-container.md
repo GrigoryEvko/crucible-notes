@@ -957,7 +957,7 @@ The deserializer switch statement has 103 unique case labels -- the remaining 41
 
 ## Cross-References
 
-- [NVVMPassOptions](../config/nvvm-pass-options.md) -- 222-slot optimization pipeline configuration
+- [NVVMPassOptions](../config/nvvm-pass-options.md) -- 221-slot optimization pipeline configuration
 - [Pipeline Entry](../pipeline/entry.md) -- LibNVVM API and CLI entry points
 - [OptiX IR](../pipeline/optix-ir.md) -- IRLevel=2 OptiX pipeline
 - [LTO Pipeline](../lto/index.md) -- IRLevel=1 link-time optimization

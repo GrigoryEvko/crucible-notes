@@ -13,7 +13,7 @@ CICC is a 60 MB stripped x86-64 ELF binary with no debug symbols, no export tabl
 | Strings extracted | 188,141 |
 | LLVM base version | 20.0.0 (internal fork) |
 | LLVM pass classes identified | ~402 standard + 35 NVIDIA custom |
-| CLI options registered | ~1,689 `cl::opt` + 222 NVVMPassOptions |
+| CLI options registered | ~1,689 `cl::opt` + 221 NVVMPassOptions |
 | NVVM builtins catalogued | 770 (IDs 1-770) |
 
 The 281 functions that Hex-Rays could not decompile are predominantly very small thunks, computed-jump trampolines, or hand-written assembly stubs in the CRT startup and jemalloc fast paths. None are in critical compiler logic.
@@ -67,7 +67,7 @@ The pipeline orchestrator at `sub_12C35D0` (41 KB) is a particularly productive 
 
 ### Size and Structural Fingerprinting (Medium Confidence)
 
-Some functions are identifiable by their size and structural characteristics alone. LLVM's `InstCombine::visitCallInst` is famously enormous (396 KB in this binary) because it handles every LLVM intrinsic. `SelectionDAG::LegalizeTypes` (348 KB) contains a switch with 967 case labels. These mega-functions have no structural equivalents and can be identified by size alone with reasonable confidence.
+Some functions are identifiable by their size and structural characteristics alone. LLVM's InstCombine main visitor is famously enormous (405 KB / 9,258 lines in this binary -- the single largest function) because it inlines the per-opcode dispatch for every LLVM instruction and intrinsic. `SelectionDAG::LegalizeTypes` (348 KB) contains a switch with 967 case labels. These mega-functions have no structural equivalents and can be identified by size alone with reasonable confidence.
 
 Similarly, the EDG frontend's constexpr evaluator (`sub_786210`, 317 KB) is identifiable by its 124 case labels corresponding to C++ operator opcodes -- a characteristic that matches the known EDG evaluator design.
 

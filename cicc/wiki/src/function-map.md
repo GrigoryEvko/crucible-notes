@@ -7,7 +7,7 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | Function | Address | Size | Confidence |
 |---|---|---|---|
 | X86 AutoUpgrade (intrinsic rename, leftover from LLVM x86 target) | `0xA939D0` | 457KB | VERY HIGH |
-| InstCombine::visitCallInst / visitIntrinsic | `0x10EE7A0` | 396KB | HIGH |
+| InstCombine main visitor (`InstCombinerImpl::visitInstruction`, full opcode switch, 9,258 lines -- largest function in the binary) | `0x10EE7A0` | 405KB | VERY HIGH |
 | SelectionDAG LegalizeTypes workhorse (ExpandOp/PromoteOp) | `0x20019C0` | 341KB | HIGH |
 | New PassManager pipeline parser (function-level, 268 pass names) | `0x2368220` | 326KB | VERY HIGH |
 | EDG constexpr expression evaluator core (124 operator opcodes, 9,075 lines) | `0x786210` | 317KB | VERY HIGH |

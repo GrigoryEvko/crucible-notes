@@ -1,11 +1,11 @@
 # Configuration Knobs
 
-Three independent knob systems control compiler behavior: LLVM `cl::opt` flags (~1,496 unique), NVVMPassOptions (222 slots), and NVIDIA codegen knobs (~70).
+Three independent knob systems control compiler behavior: LLVM `cl::opt` flags (~1,496 unique), NVVMPassOptions (221 slots), and NVIDIA codegen knobs (~70).
 
 | | |
 |---|---|
 | **LLVM cl::opt** | 1,496 unique flags across 353 constructor files |
-| **NVVMPassOptions** | 222 slots, initialized by `sub_12D6300` (125KB) |
+| **NVVMPassOptions** | 221 slots, initialized by `sub_12D6300` (125KB) |
 | **Codegen knobs** | ~70, parsed by `sub_1C20170` / `sub_CD9990` from NVVM container |
 | **BSS storage** | `0x4F7FEA0`–`0x4FA5xxx` (cl::opt), `a1+0`–`a1+4464` (PassOptions) |
 | **Dual PM** | Same options registered for both Legacy PM (`sub_C53080`) and New PM (`sub_16B8280`) |
@@ -553,7 +553,7 @@ Two knobs for the New Pass Manager CGSCC inliner at `0x2613930`. See [Inliner Co
 
 ## Knob System 2: NVVMPassOptions
 
-222 pass option slots initialized by `sub_12D6300` (125KB). Each slot is accessed by integer index (1--221) and stored in a ~4,480-byte struct.
+221 pass option slots initialized by `sub_12D6300` (125KB). Each slot is accessed by integer index (1--221) and stored in a 4,512-byte struct (slot block at offsets 16--4479, 32-byte zero sentinel at 4480--4511).
 
 ### Access Functions
 
@@ -565,7 +565,7 @@ Two knobs for the New Pass Manager CGSCC inliner at `0x2613930`. See [Inliner Co
 | `sub_12D6100(a1+offset, ...)` | Store integer-typed option |
 | `sub_12D6240(a1, index, "0")` | Get option with default value |
 
-See [NVVMPassOptions](nvvm-pass-options.md) for the complete 222-slot inventory.
+See [NVVMPassOptions](nvvm-pass-options.md) for the complete 221-slot inventory.
 
 ## Knob System 3: NVIDIA Codegen Knobs
 
@@ -631,7 +631,7 @@ These are effective defaults applied by the flag catalog parser (`sub_9624D0`), 
 
 ## Cross-References
 
-- [NVVMPassOptions](nvvm-pass-options.md) -- 222-slot pass option system
+- [NVVMPassOptions](nvvm-pass-options.md) -- 221-slot pass option system
 - [CLI Flags](cli-flags.md) -- complete flag-to-pipeline routing
 - [Environment Variables](env-vars.md) -- all verified env vars
 - [Optimization Levels](optimization-levels.md) -- O0/O1/O2/O3 and fast-compile pipelines

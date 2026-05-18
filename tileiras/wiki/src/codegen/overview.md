@@ -126,9 +126,13 @@ A reimplementation that keeps these seven stages and their published contracts c
 ## Cross-Links
 
 - [NVPTX Bring-up and Target Init](nvptx-bring-up-and-target-init.md) covers target registration and target-machine construction.
+- [NVPTX Subtarget and Feature Matrix](nvptx-subtarget-and-feature-matrix.md) covers per-SM feature bitsets and subtarget construction.
 - [NVPTX Target Lowering — Calls and Arguments](nvptx-target-lowering-call-and-args.md) covers parameter, call, and custom-node lowering.
 - [ISelDAG and MatcherTable](iseldag-and-matchertable.md) covers instruction selection.
+- [AsmPrinter Monster and Windows](asm-printer-monster-and-windows.md) covers the MC dispatch shape and AsmWriter string pools.
 - [Per-SM Emission Templates](per-sm-emission-templates.md) covers SM-specific opcode families.
+- [Atomic, Warp, Sreg, and Fence Emission](atomic-warp-sreg-fence.md) covers atomic, warp-synchronous, special-register, and fence opcodes.
 - [TMA + Tensormap + cp.async.bulk Emission](tma-tensormap-and-cp-async-bulk.md) covers TMA and tensor-map emission.
 - [tcgen05 / WGMMA / mbarrier / Cluster Emission](tcgen05-wgmma-mbarrier-cluster.md) covers tensor memory, WGMMA, barriers, and cluster features.
+- [ldmatrix / stmatrix and Register-Class Vtables](ldmatrix-stmatrix-and-register-class-vtables.md) covers matrix-load/store opcodes and the register-class vtable banks.
 - [libdevice Overview](../libdevice/overview.md) covers device-library linkage and libdevice behavior.

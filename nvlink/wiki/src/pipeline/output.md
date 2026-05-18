@@ -209,7 +209,7 @@ The main serialization loop iterates sections 4 through `e_shnum - 1` (skipping 
 
 1. **Alignment padding**: Compute gap between the current running offset and the section's `sh_offset`. If positive, emit `0x00` bytes one at a time through `sub_45B6D0`. If negative, fatal error `"Negative size encountered"`. The serializer never emits SASS NOP-sled fill or any non-zero pattern: code-section gaps are zero-filled identically to data-section gaps, and any in-stream NOPs that end up inside `.text*` must already be present in the fragment data produced by the merge / layout phases.
 
-2. **NOBITS / empty check**: Sections of type `SHT_NOBITS` (8) or certain CUDA-specific no-data types (`0x7000000{8,A,B,C}` -- bitmask check `(0x400D >> (type - 0x70000008)) & 1`) are skipped entirely -- no data bytes emitted.
+2. **NOBITS / empty check**: Sections of type `SHT_NOBITS` (8) or NVIDIA no-data types selected by the `is_nobits` bitmask (base `0x70000007`, mask `0x400D` -- `SHT_CUDA_GLOBAL`, `SHT_CUDA_LOCAL`, `SHT_CUDA_SHARED`, `SHT_CUDA_SHARED_RESERVED`; see [`is_nobits`](../elf/program-headers.md#first-pass-compute-segment-extents)) are skipped entirely -- no data bytes emitted, so they contribute to `sh_size` and (when in the code segment) to `p_memsz` but not to `p_filesz` or to the running file cursor. The same bitmask drives the segment-extent first pass in `sub_45BAA0`.
 
 3. **Data fragment traversal**: For sections with data, the content is stored as a linked list of data fragments (rooted at `sec+72`). Each fragment node has:
    - `node+0`: next pointer

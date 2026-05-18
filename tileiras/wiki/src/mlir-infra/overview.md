@@ -17,9 +17,11 @@ The pages below assume each other in roughly the following order. Read the opera
 | Pattern shapes A/B/C/D, FrozenRewritePatternSet, fingerprint hashmap | [Pattern Vtables and Shapes](pattern-vtables-and-shapes.md) |
 | Interface vtables, concept tables, InterfaceMap probing | [Interface Vtables](interface-vtables.md) |
 | TypeID idioms, .bss sentinel bands, Meyers-cached idiom | [TypeID Sentinels and Anchors](typeid-sentinels-and-anchors.md) |
+| TypeID construction idioms (static sentinel and Meyers cache) | [TypeID Construction Idioms](typeid-idioms.md) |
 | DenseMap, SwissTable, SmallVector fingerprints and resize policies | [Container Fingerprints](container-fingerprints.md) |
 | `AsyncValueImpl` 808-byte body backing every `Pipe_` and `Mutex_` value | [AsyncValue and BLAKE3 Interning](asyncvalue-and-blake3-interning.md) |
 | Diagnostic ABI, argument buffer, source-location formatting | [Diagnostic ABI and Helpers](diagnostic-abi-and-helpers.md) |
+| Pass-failure handshake between pass manager and verifiers | [Pass-Failure Handshake](pass-failure-handshake.md) |
 
 ## Substrate Invariants
 
@@ -47,7 +49,9 @@ The TypeID idioms back every dispatch in the binary. [TypeID Sentinels and Ancho
 - [Storage Uniquer and Context Impl](storage-uniquer-and-context-impl.md)
 - [Pattern Vtables and Shapes](pattern-vtables-and-shapes.md)
 - [Interface Vtables](interface-vtables.md)
+- [TypeID Construction Idioms](typeid-idioms.md)
 - [TypeID Sentinels and Anchors](typeid-sentinels-and-anchors.md)
 - [Container Fingerprints](container-fingerprints.md)
 - [AsyncValue and BLAKE3 Interning](asyncvalue-and-blake3-interning.md)
 - [Diagnostic ABI and Helpers](diagnostic-abi-and-helpers.md)
+- [Pass-Failure Handshake](pass-failure-handshake.md)

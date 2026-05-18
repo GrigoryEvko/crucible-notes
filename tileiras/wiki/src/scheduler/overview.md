@@ -101,3 +101,5 @@ The TileAS pipeline invokes the two passes in fixed order. `TileASGenerateSchedu
 - [Pipe/Mutex Value Layout](pipe-mutex-value-layout.md) covers the SSA shape of the coordination values that the materializer emits.
 - [Serial vs Cost-Based Generators](serial-vs-cost-based-generators.md) contrasts the fallback and high-optimization scheduling paths.
 - [Blackwell Pipeline 15-Slot Model](blackwell-pipeline-15-slot-model.md) explains the target-specific slot model used by Blackwell pipeline scheduling.
+- [Schedule Constraint Attributes](schedule-constraint-attributes.md) catalogues the `tileas.schedule.constraint.*` and related attributes the generator consumes.
+- [Buffer Assignment and Named Barriers](buffer-assignment-and-mbarriers.md) bridges schedule output to SMEM/TMEM buffer allocation and named-barrier binding.

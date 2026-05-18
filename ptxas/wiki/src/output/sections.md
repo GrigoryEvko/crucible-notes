@@ -236,20 +236,20 @@ The `.nv.info` section creator (`sub_1CC7FB0`) first searches for an existing se
 
 ## Section Ordering
 
-During finalization, sections are sorted into 8 priority buckets that determine their order in the output ELF:
+During finalization, sections are sorted into 8 priority buckets that determine their order in the output ELF. The bucket assignment is performed against the well-known section name set seeded from the static table at `off_2403A60` (22 entries, terminator `dword_2403B70`); unknown names fall through to a kind-based default. Authoritative table is in [elf-emitter.md → Section Ordering](elf-emitter.md#section-ordering--8-priority-buckets); the abbreviated form below covers the names this catalog discusses.
 
 | Bucket | Priority | Contents |
 |---|---|---|
 | 0 | Highest | ELF header pseudo-section, `.shstrtab` |
-| 1 | | `.strtab`, `.symtab`, `.symtab_shndx` |
-| 2 | | `.note.nv.tkinfo`, `.note.nv.cuinfo` |
+| 1 | | `.strtab`, `.symtab`, `.symtab_shndx`, `.nv.merc.symtab_shndx` |
+| 2 | | `.note.nv.tkinfo`, `.note.nv.cuinfo`, `.note.nv.cuver` |
 | 3 | | `.text.<func>` code sections |
-| 4 | | `.nv.constant0.*`, `.nv.shared.*`, `.nv.local.*` data sections |
-| 5 | | `.rela.*`, `.rel.*` relocation sections |
-| 6 | | `.nv.info.*` EIATTR metadata sections |
-| 7 | Lowest | `.debug_*`, `.nv.merc.*` debug and Mercury metadata |
+| 4 | | `.nv.constant{0..17}.*`, `.nv.constant.{entry_params,driver,optimizer,user,pic,tools_data,entry_image_header_indices}`, `.nv.shared.*`, `.nv.local.*`, `.nv.global`, `.nv.global.init`, `.nv.reservedSmem`, `.nv.callgraph`, `.nv.prototype`, `.nv.compat`, `.nv.uft`, `.nv.uft.entry` |
+| 5 | | `.rela.*`, `.rel.*`, `.nv.rel.action`, `.nv.uft.rel`, `.nv.merc.rela` |
+| 6 | | `.nv.info`, `.nv.info.<func>` EIATTR metadata sections |
+| 7 | Lowest | `.debug_*`, `.nv.merc.debug_*`, `.nv.merc.nv_debug_*`, `.nv.merc.nv.shared.reserved.*`, generic `.nv.merc.*` |
 
-Within each bucket, sections appear in creation order. Section file offsets are assigned by `sub_1C9DC60` walking the sorted list with alignment padding. The `.debug_line` section receives special alignment padding for DWARF line table requirements.
+Within each bucket, sections appear in creation order. Section file offsets are assigned by `sub_1C9DC60` walking the sorted list with alignment padding. The `.debug_line` section receives special alignment padding for DWARF line table requirements. `.nv.constant0.<func>` and `.nv.reservedSmem` are present in the bucket-4 sort order but are skipped during offset assignment -- their file offsets are written by the OCG constant-bank allocator and the shared-memory master allocator (`sub_1CABD60`) respectively.
 
 ### Offset Assignment
 

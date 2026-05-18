@@ -218,10 +218,10 @@ The pipeline assembler constructs the complete LLVM pass pipeline, inserting pas
 |---|---|---|
 | Module split-range helper | `sub_12D3E60` |  |
 | Pass factory: creates NVIDIA custom pass | `sub_12D4560` | 325 B |
-| **NVVMPassOptions initializer** -- populates 222 pass option slots into 4,480-byte struct | `sub_12D6300` | 125 KB |
+| **NVVMPassOptions initializer** -- populates 221 pass option slots in 4,512-byte struct (slot block at offsets 16--4479, 32-byte zero sentinel at 4480--4511) | `sub_12D6300` | 125 KB |
 | **AddPass** -- hash-table-based pass insertion into pipeline | `sub_12DE0B0` | 3.5 KB |
-| **Tier 0** sub-pipeline builder (full optimization, 40 passes) | `sub_12DE330` | 4.8 KB |
-| **Tier 1/2/3** sub-pipeline builder (85-pass superset, tier-gated) | `sub_12DE8F0` |  |
+| **Tier 0** sub-pipeline builder (full optimization, ~40 passes) | `sub_12DE330` | 4.8 KB |
+| **Tier 1/2/3** sub-pipeline builder (phase-conditional, tier-gated) | `sub_12DE8F0` |  |
 | **Codegen dispatch** -- routes to backend machine pass pipeline | `sub_12DFE00` |  |
 | **Master pipeline assembler** -- 1,553 lines, two major pipelines (normal + fast) | `sub_12E54A0` | 49.8 KB |
 | Machine pass assembly (Pipeline B fast path) | `sub_12EB010` |  |
@@ -738,6 +738,6 @@ Given an IDA address, find the row whose `Start <= address < End`. The Subsystem
 - [LLVM Pipeline](llvm/pipeline.md) -- 526-pass registration table and tier execution order
 - [Optimizer](llvm/optimizer.md) -- two-phase model, AddPass mechanism, tier system
 - [Pass Inventory](passes/index.md) -- complete pass catalog with dedicated deep-dive pages
-- [NVVMPassOptions](config/nvvm-pass-options.md) -- 222-slot pass configuration system
+- [NVVMPassOptions](config/nvvm-pass-options.md) -- 221-slot pass configuration system
 - [Function Map](function-map.md) -- address-to-identity lookup table
 - [CLI Flags](config/cli-flags.md) -- flag-to-pipeline routing

@@ -10,7 +10,7 @@ CICC is NVIDIA's CUDA C-to-PTX compiler — the binary that transforms CUDA C++ 
 | **Strings** | 188,141 extracted |
 | **LLVM base** | LLVM 20.0.0 (internal), bitcode producer ID `"LLVM7.0.1"` (NVVM compat) |
 | **LLVM pass classes** | ~402 standard + 35 NVIDIA custom |
-| **CLI options** | ~1,689 registered via `cl::opt` + 222 NVVMPassOptions slots |
+| **CLI options** | ~1,689 registered via `cl::opt` + 221 NVVMPassOptions slots |
 | **NVVM builtins** | 770 (IDs 1–770, wyhash open-addressing table) |
 | **Default target** | `sm_75` (Turing) |
 | **Supported SMs** | sm\_75 through sm\_121f (Turing through Blackwell — sm\_100 datacenter, sm\_103 Blackwell Ultra, sm\_110 Jetson Thor, sm\_120 consumer/RTX 50, sm\_121 DGX Spark) |
@@ -35,7 +35,7 @@ If you only read one paragraph, read this. The findings that most differentiate 
 - **Two-phase compilation.** Phase I optimizes the whole module (inlining, IPMSP, global decisions); Phase II re-optimizes each function independently with a thread pool gated by GNU Jobserver tokens. The split is non-obvious and changes which knobs affect what. See [LLVM Optimizer](./pipeline/optimizer.md) and [Concurrent Compilation](./infra/concurrent-compilation.md).
 - **35 proprietary passes** interleaved with stock LLVM 20.0.0: MemorySpaceOpt, Rematerialization, BranchDist, IPMSP, Sinking2, LoopIndexSplit, IV Demotion, Dead Barrier/Sync Elimination, CSSA, etc. Several have no upstream equivalent. See [NVIDIA Custom Passes](./passes/index.md).
 - **770-entry builtin table.** Wyhash open-addressed lookup at `sub_90AEE0` / `sub_126A910` maps every CUDA builtin to its LLVM intrinsic or lowering routine. See [NVVM Builtins](./builtins/index.md).
-- **Three independent knob systems.** ~1,689 `cl::opt` flags, 222 `NVVMPassOptions` slots, ~70 codegen knobs. Effects overlap and sometimes contradict. See [Configuration](./config/knobs.md).
+- **Three independent knob systems.** ~1,689 `cl::opt` flags, 221 `NVVMPassOptions` slots, ~70 codegen knobs. Effects overlap and sometimes contradict. See [Configuration](./config/knobs.md).
 - **455 KB embedded libdevice bitcode** (twice — once per path) provides the `__nv_*` math library. See [Libdevice Linking](./infra/libdevice-linking.md).
 
 ## Reading This Wiki
@@ -150,7 +150,7 @@ The Quick Start above (Pipeline Overview → Entry & CLI → Custom Passes Overv
 - **[Data Structures](./structs/ir-node.md)** — IR node layout, pattern database, DAG node, symbol table, NVVM container.
 - **[Infrastructure](./infra/alias-analysis.md)** — Alias analysis, MemorySSA, AsmPrinter, debug verification, NVPTX target.
 - **[LTO & Module Optimization](./lto/index.md)** — Cross-TU inlining, devirtualization, GlobalOpt, ThinLTO import.
-- **[Configuration](./config/knobs.md)** — Three knob systems: ~1,689 `cl::opt` flags, 222 NVVMPassOptions slots, ~70 codegen knobs.
+- **[Configuration](./config/knobs.md)** — Three knob systems: ~1,689 `cl::opt` flags, 221 NVVMPassOptions slots, ~70 codegen knobs.
 - **[Reference](./reference/address-spaces.md)** — Address spaces, register classes, NVPTX opcodes, GPU execution model.
 - **[Function Map](./function-map.md)** — Address-to-identity lookup for ~350 key functions with confidence levels.
 - **[Binary Layout](./binary-layout.md)** — Subsystem address map at pass granularity.
@@ -189,7 +189,7 @@ For an **NVIDIA custom pass** (e.g., MemorySpaceOpt, Rematerialization, BranchDi
 
 1. **[NVIDIA Custom Passes — Overview](./passes/index.md)** — Locate the pass in the inventory table. Note its category (module/function/loop/machine), its pipeline position, and its controlling knobs.
 2. **The pass's dedicated page** (e.g., [MemorySpaceOpt](./passes/memory-space-opt.md), [Rematerialization](./passes/rematerialization.md), [Branch Distribution](./passes/branch-distribution.md)). Every dedicated page contains the function address, decompiled algorithm, data flow description, controlling knobs, and diagnostic strings.
-3. **[NVVMPassOptions](./config/nvvm-pass-options.md)** — The 222-slot struct that controls per-pass enable/disable toggles and parametric thresholds. Find which slots your target pass reads.
+3. **[NVVMPassOptions](./config/nvvm-pass-options.md)** — The 221-slot struct that controls per-pass enable/disable toggles and parametric thresholds. Find which slots your target pass reads.
 4. **[Pipeline & Pass Ordering](./llvm/pipeline.md)** — Determine exactly where the pass runs in the pipeline. Identify what analyses it depends on (must run before it) and what passes consume its results (run after it).
 5. **[Optimization Levels](./config/optimization-levels.md)** — Determine at which O-levels the pass is enabled, disabled, or parameterized differently.
 6. **[Function Map](./function-map.md)** — Cross-reference the pass's internal function addresses with the master function map for confidence levels.
@@ -252,7 +252,7 @@ Goal: understand what cicc does at each optimization level, which passes are the
 Start with the tuning infrastructure:
 
 1. **[Optimization Levels](./config/optimization-levels.md)** — The four standard levels (O0--O3) and three fast-compile tiers (Ofcmin/Ofcmid/Ofcmax). This page shows the exact pass pipeline diff between levels, including which passes are added, removed, or reparameterized at each step.
-2. **[NVVMPassOptions](./config/nvvm-pass-options.md)** — The 222-slot per-pass configuration system. This is the primary tuning mechanism. The page documents every slot's type (boolean/integer/string), its default value, and which pass reads it.
+2. **[NVVMPassOptions](./config/nvvm-pass-options.md)** — The 221-slot per-pass configuration system. This is the primary tuning mechanism. The page documents every slot's type (boolean/integer/string), its default value, and which pass reads it.
 3. **[CLI Flags](./config/cli-flags.md)** — The flag-to-pipeline routing tables. Locate flags that control pass thresholds (`--inline-threshold=`, `--unroll-count=`, etc.) and pass enable/disable toggles.
 4. **[LLVM Knobs](./config/knobs.md)** — The ~1,689 `cl::opt` flags with their defaults, types, and controlling constructors.
 5. **[Environment Variables](./config/env-vars.md)** — Runtime environment overrides, including the obfuscated variables.

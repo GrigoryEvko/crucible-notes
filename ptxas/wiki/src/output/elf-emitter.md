@@ -475,18 +475,20 @@ The master ELF emitter at 15,263 binary bytes (97 KB decompiled) is the single l
 
 ### Section Ordering -- 8 Priority Buckets
 
-During finalization, sections are sorted into 8 priority buckets that determine their order in the output ELF. The bucket assignment ensures the correct layout for the CUDA driver's section scanner:
+During finalization, sections are sorted into 8 priority buckets that determine their order in the output ELF. The bucket assignment ensures the correct layout for the CUDA driver's section scanner. Lookup proceeds against the well-known section name set seeded from the static table at `off_2403A60` (22 entries, terminator `dword_2403B70`); names that do not match a well-known entry are bucketed by section kind (`sh_type`, `sh_flags`, and the NVIDIA `SHT_LOPROC` type code).
 
-| Bucket | Typical Contents |
+| Bucket | Contents (full enumeration) |
 |---|---|
 | 0 (highest) | ELF header pseudo-section, `.shstrtab` |
-| 1 | `.strtab`, `.symtab`, `.symtab_shndx` |
-| 2 | `.note.nv.tkinfo`, `.note.nv.cuinfo` |
-| 3 | `.text.<funcname>` (code sections) |
-| 4 | `.nv.constant0.*`, `.nv.shared.*`, `.nv.local.*` (data sections) |
-| 5 | `.rela.*`, `.rel.*` (relocation sections) |
-| 6 | `.nv.info.*`, EIATTR sections |
-| 7 (lowest) | `.debug_*`, `.nv.merc.*` (debug/mercury metadata) |
+| 1 | `.strtab`, `.symtab`, `.symtab_shndx`, `.nv.merc.symtab_shndx` |
+| 2 | `.note.nv.tkinfo`, `.note.nv.cuinfo`, `.note.nv.cuver` |
+| 3 | `.text.<funcname>` (code sections, `SHF_ALLOC \| SHF_EXECINSTR`) |
+| 4 | Data / NVIDIA-info-but-not-EIATTR: `.nv.constant0.<func>`, `.nv.constant{1..17}`, `.nv.constant.{entry_params, driver, optimizer, user, pic, tools_data, entry_image_header_indices}`, `.nv.shared.<func>`, `.nv.local.<func>`, `.nv.global`, `.nv.global.init`, `.nv.reservedSmem`, `.nv.callgraph` (`SHT_CUDA_CALLGRAPH`), `.nv.prototype`, `.nv.compat` (type `0x70000086`), `.nv.uft`, `.nv.uft.entry` |
+| 5 | Relocations: `.rela.*`, `.rel.*`, `.nv.rel.action`, `.nv.uft.rel`, `.nv.merc.rela` |
+| 6 | EIATTR: `.nv.info`, `.nv.info.<funcname>` (`SHT_CUDA_INFO`, type `0x70000000`) |
+| 7 (lowest) | Debug / Mercury: `.debug_info`, `.debug_line`, `.debug_frame`, `.debug_abbrev`, `.debug_aranges`, `.debug_loc`, `.debug_macinfo`, `.debug_pubnames`, `.debug_pubtypes`, `.debug_ranges`, `.debug_str`, `.nv.merc.debug_*`, `.nv.merc.nv_debug_line_sass`, `.nv.merc.nv_debug_info_reg_sass`, `.nv.merc.nv_debug_info_reg_type`, `.nv.merc.nv_debug_ptx_txt`, `.nv.merc.nv.shared.reserved.<func>`, generic `.nv.merc.*` |
+
+Three section names in bucket 4 are sort-ordered alongside data sections but **skipped by the offset-assignment walk** in `sub_1C9DC60`: `.nv.constant0.<func>` (file offset assigned by the OCG constant-bank allocator) and `.nv.reservedSmem` (offset assigned by the shared-memory master allocator `sub_1CABD60`). Virtual sections (`flags & 4`) are likewise skipped -- they carry only metadata.
 
 ### Offset Assignment and Alignment
 
@@ -496,6 +498,9 @@ Each section's file offset is aligned to its `sh_addralign` value. The algorithm
 uint64_t offset = elf_header_size;
 for (int i = 0; i < section_count; i++) {
     section_t* sec = sorted_sections[i];
+    if (sec->flags & 4)               continue;   // virtual section -- no file data
+    if (is_nv_constant0(sec))         continue;   // OCG constant-bank allocator assigns sh_offset
+    if (is_nv_reservedSmem(sec))      continue;   // sub_1CABD60 shared-memory allocator assigns sh_offset
     if (sec->sh_addralign > 1)
         offset = (offset + sec->sh_addralign - 1) & ~(sec->sh_addralign - 1);
     sec->sh_offset = offset;

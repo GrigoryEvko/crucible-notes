@@ -216,7 +216,7 @@ Elf64_Phdr {
 }
 ```
 
-Data sections are marked with `PF_R | PF_X` (5). On a GPU, these flags do not carry the same semantics as on a CPU -- `PF_X` does not mean "executable" in the CPU sense. The CUDA runtime interprets these flags to distinguish read-only metadata (constant banks, global init data) from mutable code segments.
+Data sections are marked with `PF_R | PF_X` (5). On a GPU, these flags do not carry the same semantics as on a CPU -- `PF_X` does not mean "executable" in the CPU sense. The CUDA runtime interprets these flags to distinguish read-only metadata (constant banks, global init data) from mutable code segments. `p_filesz` and `p_memsz` are both set to `data_end` because every section reaching the data branch is `SHT_PROGBITS` (constant banks, `.nv.global.init`, `.nv.host`); NOBITS device-memory sections (`.nv.global`, `.nv.local.*`, `.nv.shared.*`) carry internal flags 0 and never enter this segment, which is why no `data_nobits_sz` accumulator exists.
 
 **Entry 2: PT_LOAD for code (only if `code_base != 0`)**
 
@@ -235,7 +235,7 @@ Elf64_Phdr {
 
 Code sections are marked with `PF_R | PF_W` (6). The write permission reflects the reality that the GPU driver or FNLZR post-link transform may need to patch SASS instruction encodings (control-flow metadata, scheduling bits, instruction addresses) at load time.
 
-The `p_filesz` and `p_memsz` fields differ structurally: `p_filesz` receives `code_offset` (the end of the address range for file-backed sections), while `p_memsz` receives `code_offset + code_nobits_sz` (adding any NOBITS memory contributions). In practice, all code sections (`.text.*`) are `SHT_PROGBITS`, so `code_nobits_sz` is 0 and `p_filesz == p_memsz`.
+The `p_filesz` and `p_memsz` fields differ structurally: `p_filesz` receives `code_offset` (the end of the address range for file-backed `SHT_PROGBITS` sections), while `p_memsz` receives `code_offset + code_nobits_sz` (adding the aligned, accumulated size of any `is_nobits()`-classified sections so the loader reserves device memory the file does not back). In practice, all code sections (`.text.*`) are `SHT_PROGBITS`, so `code_nobits_sz` is 0 and `p_filesz == p_memsz`. The data branch performs no equivalent split: `p_filesz = p_memsz = data_end` unconditionally, which relies on NOBITS variables (`.nv.global`, `.nv.local.*`, `.nv.shared.*`) never being classified into the data segment -- see [Section-to-Segment Mapping](#section-to-segment-mapping) below.
 
 **Entry 3: PT_LOAD for program header table (always present)**
 
@@ -343,7 +343,7 @@ The mapping from sections to segments is determined by the internal flags bitmas
 | N/A | PT_LOAD flags=5 | Program header table itself (always) |
 | N/A | PT_PHDR | Program header table itself (always) |
 
-NOBITS sections (SHT_CUDA_GLOBAL, SHT_CUDA_LOCAL, SHT_CUDA_SHARED, SHT_CUDA_SHARED_RESERVED) that have flag bit 0x1 contribute to the code segment's memory size but not its file size. In practice, these sections are classified as data (flag bit 0x2) or neither, so the NOBITS code path is defensive.
+NOBITS sections (`SHT_NOBITS`, `SHT_CUDA_GLOBAL`, `SHT_CUDA_LOCAL`, `SHT_CUDA_SHARED`, `SHT_CUDA_SHARED_RESERVED`) carry a `sh_size` that reserves memory but is not backed by file bytes -- the data emitter in `sub_45C950` skips them entirely (see [Output Phase 6: NOBITS skip](../pipeline/output.md#phase-6-section-data)). When such a section is in the code segment (internal flag bit 0x1), `sub_45BAA0` accumulates its aligned `sh_size` into `code_nobits_sz` so `p_memsz = code_offset + code_nobits_sz` exceeds `p_filesz = code_offset` by exactly that reservation. The data branch has no symmetric accumulator, so NOBITS variables are kept out of the data segment by classification: `.nv.global` (`SHT_CUDA_GLOBAL`), `.nv.local.*`, `.nv.shared.*`, and `.nv.reservedSmem*` all receive internal flags 0 (neither code nor data), so they appear in the section header table but in no `PT_LOAD`. Only `.nv.global.init` (`SHT_PROGBITS`) and the constant banks reach the data segment, keeping `p_filesz == p_memsz` for it. The NOBITS branch on the code path therefore remains defensive against future reclassification rather than active in any current build.
 
 ## Mercury and Stub Executables
 

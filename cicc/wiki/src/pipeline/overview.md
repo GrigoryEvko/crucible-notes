@@ -80,7 +80,7 @@ A 455,876-byte LLVM bitcode library containing 352 GPU-optimized math functions 
 
 ### 6. LLVM Optimizer
 
-A proprietary two-phase pipeline (`sub_12E54A0`, 49.8KB) runs ~150 passes: Phase I performs module-wide analysis, Phase II performs codegen-oriented transforms with optional per-function parallelism using a jobserver or thread pool. All behavior is controlled by the 222-slot [NVVMPassOptions](../config/nvvm-pass-options.md) system. See [LLVM Optimizer](./optimizer.md) and [Pipeline & Ordering](../llvm/pipeline.md).
+A proprietary two-phase pipeline (`sub_12E54A0`, 49.8KB) runs ~150 passes: Phase I performs module-wide analysis, Phase II performs codegen-oriented transforms with optional per-function parallelism using a jobserver or thread pool. All behavior is controlled by the 221-slot [NVVMPassOptions](../config/nvvm-pass-options.md) system. See [LLVM Optimizer](./optimizer.md) and [Pipeline & Ordering](../llvm/pipeline.md).
 
 ### 7. LTO Pipeline
 

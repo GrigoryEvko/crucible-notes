@@ -735,7 +735,7 @@ Alignment padding events to notice:
 - Section 3 (`.nv.constant0.kernel_a`) at 3200 is 8-aligned already: **no padding**.
 - Section 4 (`.nv.constant0.kernel_b`) at 3224 is 8-aligned: **no padding**.
 - Section 5 (`.nv.constant2`) at 3244 must align to 16: **4 bytes of padding** (3244 -> 3248).
-- Sections 6 and 7 are `SHT_NOBITS`: they occupy zero bytes in the file, so their `sh_offset` is set to the current write position but the cursor does **not** advance past them. Both record `sh_offset = 7232`.
+- Sections 6 and 7 are `SHT_NOBITS`: they occupy zero bytes in the file, so their `sh_offset` is set to the current write position but the cursor does **not** advance past them. Both record `sh_offset = 7232`. The same file-vs-memory asymmetry surfaces at program-header level when the cubin is executable -- NOBITS sections in the code segment add to `p_memsz` (via `code_nobits_sz`) without touching `p_filesz`; see [Program Headers: First Pass](../elf/program-headers.md#first-pass-compute-segment-extents).
 - Section 9 (`.symtab`) aligns 7352 -> 7360: **8 bytes of padding**.
 
 The section content cursor therefore advances: `64 -> 128 -> 2176 -> 3200 -> 3224 -> 3244 -> 3248 -> 7232` (data sections done) `-> 7352 -> 7360 -> ...` (metadata sections). Total file padding: `64 + 4 + 8 = 76` bytes.

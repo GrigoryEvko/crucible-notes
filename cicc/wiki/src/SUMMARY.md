@@ -176,7 +176,7 @@
 
 - [CLI Flags](./config/cli-flags.md)
 - [Optimization Levels](./config/optimization-levels.md)
-- [NVVMPassOptions (222 Slots)](./config/nvvm-pass-options.md)
+- [NVVMPassOptions (221 Slots)](./config/nvvm-pass-options.md)
 - [LLVM Knobs (1,689)](./config/knobs.md)
 - [Environment Variables](./config/env-vars.md)
 - [EDG Build-Time #define Surface (748)](./config/build-defines.md)
