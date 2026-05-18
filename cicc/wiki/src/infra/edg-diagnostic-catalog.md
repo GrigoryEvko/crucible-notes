@@ -147,19 +147,21 @@ The `no_*` family is the inverse of a normal diagnostic family: rather than repo
 
 ## Severity Mapping
 
-EDG severity is stored at offset `+180` of the diagnostic record as a single byte. The identifier name does not directly encode severity — the same identifier can be emitted at different severities depending on context and `-W*` flags. The byte values observed in `sub_6837D0` (the dispatcher caps the value at 7 with `if ((unsigned __int8)a1 <= 7u)` and treats 9..11 as fatal via `(unsigned int)(severity) - 9 <= 2`):
+EDG severity is stored at offset `+180` of the diagnostic record as a single byte. The identifier name does not directly encode severity — the same identifier can be emitted at different severities depending on context and `-W*` flags. The severity byte is written into the record by the allocator `sub_67D610` after passing through a per-diagnostic override hook `sub_67C4B0` that may reduce it (the `if (sev <= 7u)` guard around the hook prevents overrides from touching fatal severities 9..11). The dispatcher `sub_6837D0` then routes on the stored value, treating 9..11 as fatal via `(unsigned int)(severity) - 9 <= 2`:
 
-| Severity Code | Meaning | Default Suppression | Promotable to Error |
-|---|---|---|---|
-| 2 | Remark / note (attached to parent) | Always emitted with parent | No |
-| 4 | Warning | Emitted by default | `-Werror=<id>` → 7 |
-| 5 | Caution (anachronism, deprecation) | Emitted by default | `-Werror=<id>` → 7 |
-| 6 | Severe warning | Always emitted | `-Werror=<id>` → 7 |
-| 7 | Error | Always emitted | Already error |
-| 8 | Error (promoted) | Always emitted | Already error |
-| 9 | Catastrophe (fatal, calls `sub_7235F0(9)`) | Always emitted | Already fatal |
-| 10 | Catastrophe (fatal) | Always emitted | Already fatal |
-| 11 | Internal error (fatal, prefixes `"(internal error) "`) | Always emitted | Already fatal |
+| Severity Code | Meaning | SARIF `level` | Default Suppression | Promotable to Error |
+|---|---|---|---|---|
+| 2 | Sub-note (attached to parent via `note_list`; created by `sub_6855B0`) | filtered (no SARIF case) | Always emitted with parent | No |
+| 4 | Remark | `"remark"` | Emitted by default | `-Werror=<id>` → 7 |
+| 5 | Warning | `"warning"` | Emitted by default | `-Werror=<id>` → 7 |
+| 6 | Severe warning (terminal log char `W`, but no SARIF case → renders as `"error"`) | `"error"` (default fallthrough) | Always emitted | `-Werror=<id>` → 7 |
+| 7 | Error | `"error"` | Always emitted | Already error |
+| 8 | Error (promoted) | `"error"` | Always emitted | Already error |
+| 9 | Catastrophe (fatal, calls `sub_7235F0(9)`) | `"catastrophe"` | Always emitted | Already fatal |
+| 10 | Catastrophe (fatal) | (no SARIF case → `"error"`) | Always emitted | Already fatal |
+| 11 | Internal error (fatal, prefixes `"(internal error) "`) | `"internal_error"` | Always emitted | Already fatal |
+
+The SARIF `level` mapping is the ground truth (switch table inside `sub_6837D0`): `case 4 → "remark"`, `case 5 → "warning"`, `case 9 → "catastrophe"`, `case 11 → "internal_error"`, all other in-range values fall through to `"error"`. Severity 2 records exist only as children attached via `sub_6855B0(diag_num, …)` (which internally calls `sub_67D610(…, 2, …)`); they are emitted alongside their parent but the SARIF emitter has no `case 2u` and `sub_721090()` aborts if a sev-2 record reaches the switch as a top-level diagnostic.
 
 See [Diagnostics](./diagnostics.md#diagnostic-severity-enum) for the SARIF / terminal mapping per value. Severity 9, 10, and 11 force the compiler to abort the current translation unit immediately after rendering. The dispatch logic in `sub_6837D0` increments `qword_4F074B0` (error count) and `qword_4F074B8` (catastrophic count), and when their sum reaches `unk_4F07478` (error limit, set by `--error_limit`), the localized message string at index 1508 (`"error limit reached"`) is printed via `fprintf("%s\n", sub_67C860(1508))` and `sub_7235F0(9)` aborts. The 1508 here is a *string-table index* used by `sub_67C860`, not a diagnostic record number — the error-limit branch fprintfs the rendered message directly and exits without going through `sub_67D610` to allocate a numbered diagnostic.
 
@@ -179,8 +181,8 @@ The `nv_diag_default` pragma resets a previously-modified diagnostic to its comp
 
 Identifiers ending in `_deprecated`, `_ignored`, or starting with `c23_*_deprecated` participate in a uniform deprecation chain. When the parent diagnostic fires:
 
-1. The parent is emitted at severity 4 or 5 (warning / caution) with the deprecation message text.
-2. A child note is enqueued in `note_list` with severity 2 (remark/note) carrying a "use X instead" hint. The child's identifier is derived from the parent by suffix replacement.
+1. The parent is emitted at severity 4 or 5 (remark / warning) with the deprecation message text.
+2. A child note is enqueued in `note_list` with severity 2 (sub-note, attached via `sub_6855B0`) carrying a "use X instead" hint. The child's identifier is derived from the parent by suffix replacement.
 3. If `--Werror=deprecated` is in effect, the parent is promoted to severity 7 (error) *and* the child note remains at severity 2 (notes are not promoted alongside their parent in the current dispatcher).
 
 The `attribute_deprecated_with_message` identifier is special: it accepts a custom message string supplied via `[[deprecated("...")]]` and embeds it into the rendered output via format placeholder `%s`. The identifier itself is fixed; only the message text varies.
@@ -203,7 +205,7 @@ A reimplementation that aims for byte-identical SARIF output must, in order:
 4. **Wire the `ambig_*` ↔ `ambiguous_*` parent-child linkages.** The five abbreviated identifiers must be attached to their long-form parents in `child_list`, not emitted as top-level diagnostics.
 5. **Wire the `_pos` continuation records.** Every `constexpr_*_pos` identifier must be attached as a severity-2 note to the corresponding primary `constexpr_*` diagnostic, carrying only a source location.
 6. **Implement the suppression stack.** All five priority levels (severity floor, dedup, `#pragma diag_suppress`, `-W` flags, error-limit cutoff) must be present and ordered correctly. Missing any level produces visible behavioural differences.
-7. **Honour the deprecation child-emission rule.** Identifiers that emit a deprecation warning must enqueue a severity-2 child note with the matching "use X instead" identifier. The `--Werror=deprecated` promotion lifts the parent from severity 4/5 to severity 7 (error); the child note stays at severity 2 because the dispatcher promotes only the parent record.
+7. **Honour the deprecation child-emission rule.** Identifiers that emit a deprecation warning must enqueue a severity-2 sub-note (via `sub_6855B0`, which internally allocates a severity-2 record through `sub_67D610`) with the matching "use X instead" identifier. The `--Werror=deprecated` promotion lifts the parent from severity 4/5 (remark/warning) to severity 7 (error); the child note stays at severity 2 because the dispatcher promotes only the parent record.
 
 ## Cross-References
 

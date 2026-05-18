@@ -107,7 +107,7 @@ The global `qword_4F07468` controls wrap behavior: the low 32 bits disable wrapp
 
 **Source context display.** After the message text, the renderer displays the source line with caret underlining. `sub_729B10(file_id, ...)` retrieves source line data. Each source position entry is a linked list node with a 24+ byte layout: +0 next pointer, +8 source text pointer, +16 entry type (0 = normal char, 1 = same-position, 2 = 2-byte char, 3 = tab), +24 replacement character. The display renders two lines: the source text and a caret/tilde underline line, where `^` marks the error column and `~` extends the range to `column_end`. Multi-byte character handling uses `sub_721AB0` to determine byte counts.
 
-**Recursive emission.** After the main diagnostic and source context, child diagnostics are emitted recursively in this order: child\_list (+24), note\_list (+56, skipped for severity 2 remarks), context\_list (+72, with parent pointer set before recursion), extra\_child\_list (+40). After all children, a blank line separator is emitted (unless compact mode is active), the output buffer is null-terminated, and the result is written via `fputs` to `qword_4F07510` followed by `fflush`.
+**Recursive emission.** After the main diagnostic and source context, child diagnostics are emitted recursively in this order: child\_list (+24), note\_list (+56, skipped when the current record itself has severity 2 — a sub-note cannot carry further notes), context\_list (+72, with parent pointer set before recursion), extra\_child\_list (+40). After all children, a blank line separator is emitted (unless compact mode is active), the output buffer is null-terminated, and the result is written via `fputs` to `qword_4F07510` followed by `fflush`.
 
 **Machine-readable log.** When `qword_4D04908` (log FILE\*) is set and the diagnostic type is not 3 (continuation), the renderer writes a single-line record:
 
@@ -115,20 +115,20 @@ The global `qword_4F07468` controls wrap behavior: the low 32 bits disable wrapp
 <severity-char> "<filename>" <line> <col> <message>\n
 ```
 
-The severity character is indexed from the string `"rwweeccccCli"` by `(severity - 4)`. For child diagnostics, the character is lowercased.
+The severity character is indexed from the rodata string `"RWWEECCCC++/CLI"` (15 bytes at `0x3A070C0`, IDA-named `aRwweeccccCli`) by `(severity - 4)`, with a bounds check that rejects indices > 7 (i.e., severities outside 4..11 invoke the abort path `sub_721090`). For child diagnostics, the character is lowercased via `tolower`. Severity 2 records do not write a log line at all — they ride along their parent.
 
-| Index | Character | Meaning |
-|-------|-----------|---------|
-| 0 (sev 4) | r | remark |
-| 1 (sev 5) | w | warning |
-| 2 (sev 6) | w | caution (displayed as warning) |
-| 3 (sev 7) | e | error |
-| 4 (sev 8) | e | error (promoted) |
-| 5 (sev 9) | c | catastrophe |
-| 6 (sev 10) | c | catastrophe |
-| 7 (sev 11) | C | catastrophe (alternate) |
-| 8 | l | unknown |
-| 9 | i | internal error |
+| Index | Severity | Parent Char | Child Char | Meaning |
+|-------|----------|-------------|------------|---------|
+| 0 | 4 | R | r | remark |
+| 1 | 5 | W | w | warning |
+| 2 | 6 | W | w | severe warning (rendered as warning in log, error in SARIF) |
+| 3 | 7 | E | e | error |
+| 4 | 8 | E | e | error (promoted) |
+| 5 | 9 | C | c | catastrophe |
+| 6 | 10 | C | c | catastrophe |
+| 7 | 11 | C | c | internal error (terminal also prepends `"(internal error) "`) |
+
+The trailing `"++/CLI"` bytes of the rodata string are unreachable via the `severity - 4 <= 7` bounds check — they are remnants of an older EDG enum and are never indexed at runtime.
 
 ### SARIF JSON Renderer
 
@@ -179,21 +179,21 @@ Filtering happens in `sub_6837D0` before either renderer is invoked:
 
 The severity byte at `diag+180` encodes the following levels, used by both the terminal and SARIF renderers:
 
-| Value | Name | Terminal Color | SARIF Level | Log Char | Label |
-|-------|------|---------------|-------------|----------|-------|
-| 2 | remark | ESC 5 (blue) | `"remark"` | R | R |
-| 4 | warning | ESC 5 (blue) | `"warning"` | r | W |
-| 5 | caution | ESC 3 (yellow) | `"warning"` | w | W (lowercase) |
-| 6 | severe-warning | ESC 3 (yellow) | (falls through to error) | w | E (lowercase) |
-| 7 | error | ESC 2 (red) | `"error"` | e | E |
-| 8 | error (promoted) | ESC 2 (red) | `"error"` | e | E |
-| 9 | catastrophe | ESC 2 (red) | `"catastrophe"` | c | C |
-| 10 | catastrophe | ESC 2 (red) | `"catastrophe"` | c | C |
-| 11 | internal-error | ESC 2 (red) | `"internal_error"` | i | special |
+| Value | Name | Terminal Color | SARIF Level (switch in `sub_6837D0`) | Log Char (sev-4 index into `RWWEECCCC++/CLI`) |
+|-------|------|---------------|--------------------------------------|------------------------------------------------|
+| 2 | sub-note (allocated by `sub_6855B0`, attached via parent's `note_list`) | ESC 5 (blue) | filtered (`case 2u` absent → reaches `default → sub_721090()` if dispatched standalone) | (not written; sub-notes ride parent's log line) |
+| 4 | remark | ESC 5 (blue) | `"remark"` | R / r |
+| 5 | warning | ESC 5 (blue) | `"warning"` | W / w |
+| 6 | severe-warning | ESC 3 (yellow) | (no `case 6u` → falls through to `"error"`) | W / w |
+| 7 | error | ESC 2 (red) | `"error"` (default fallthrough) | E / e |
+| 8 | error (promoted) | ESC 2 (red) | `"error"` (default fallthrough) | E / e |
+| 9 | catastrophe | ESC 2 (red) | `"catastrophe"` | C / c |
+| 10 | catastrophe | ESC 2 (red) | (no `case 10u` → falls through to `"error"`) | C / c |
+| 11 | internal-error | ESC 2 (red) | `"internal_error"` | C / c (terminal also prepends `"(internal error) "`) |
 
 Severity values 9, 10, and 11 are fatal: after emission, `sub_7AFBD0` (`longjmp` / error propagation `[LOW confidence]` -- the function is called on fatal error paths and does not return to its caller, consistent with `longjmp` or `exit`, but could also be a custom `abort`-style handler; no `setjmp`/`longjmp` string evidence found) and `sub_7235F0(severity)` terminate compilation. Internal errors (11) additionally prepend `"(internal error) "` to the log output and use the prefix for error 3709.
 
-Note: severity 2 (remark) is distinct from LLVM optimization remarks -- it is an EDG frontend remark (e.g., template instantiation notes). Remarks at severity 2 suppress their note\_list children during recursive emission.
+Note: severity 2 is the EDG sub-note level — it is the value `sub_6855B0` hard-codes when allocating attached notes via `sub_67D610(diag_num, ptr, 2, …)`. It is distinct from LLVM optimization remarks and from EDG severity-4 *remark* diagnostics. Severity-2 records suppress their own `note_list` children during recursive emission (a note cannot itself have further notes) and never appear as top-level SARIF results — they ride along the parent's `relatedLocations` chain.
 
 > ⚡ **QUIRK — 4,515 EDG diagnostic IDs uncatalogued**
 > The string section exposes ~4,515 lowercase identifier-style strings matching the EDG diagnostic-id convention (`abi_tag_ignored`, `abstract_requires_virtual`, `ambig_literal_operator`, `pragma_*`, etc.). The diagnostic record at `dword[+0x14]` selects which of these template strings is rendered, but the wiki currently documents only the dispatch flow, not the catalogue. Confidence: HIGH (raw extraction; the catalogue itself dwarfs every other table in the binary by string count). Useful precursor work for a future "EDG Diagnostic Catalogue" page that would group by phase (`pragma_*`, `ambiguous_*`, `template_*`, `cuda_*`).
@@ -491,7 +491,7 @@ All three diagnostic systems share the same growable string buffer used for mess
 | `sub_67D2D0` | `0x67D2D0` | -- | EDG: Convert internal diag ID to user-visible number |
 | `sub_67D470` | `0x67D470` | -- | EDG: Record pragma-based suppression |
 | `sub_67D520` | `0x67D520` | -- | EDG: Check pragma-based suppression |
-| `sub_67D610` | `0x67D610` | -- | EDG: Create synthetic diagnostic (warnings-as-errors) |
+| `sub_67D610` | `0x67D610` | -- | EDG: Diagnostic-record allocator — takes `(diag_num, src_pos, severity, …)`, calls `sub_67B9F0` to pool-allocate the record, stores the numeric ID at `+176`, severity at `+180` (capped at 7 via `if (sev <= 7u)` after `sub_67C4B0`), source-position fields at `+96/+104/+128`. Used by every emission path (not only warnings-as-errors). |
 | `sub_681B50` | `0x681B50` | -- | EDG: Populate message text into header buffer |
 | `sub_681D20` | `0x681D20` | 37KB | EDG: Terminal text diagnostic renderer |
 | `sub_683690` | `0x683690` | -- | EDG/SARIF: Emit JSON-escaped `message` object |
