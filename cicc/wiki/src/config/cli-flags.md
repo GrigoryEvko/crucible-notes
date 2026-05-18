@@ -575,6 +575,11 @@ All error strings follow the pattern `"libnvvm : error: <message>"`:
 | `0x8FD0D0` | `sub_8FD0D0` | Key-value parser (used by `sub_900130`) |
 | `0x8FD6D0` | `sub_8FD6D0` | String concatenation builder |
 
+## Raw-Data Gaps (Stub)
+
+> ⚡ **QUIRK — 47 internal `nvptx-*` cl::opt flags absent from the catalog**
+> The binary strings expose 47 distinct hidden NVPTX-backend `cl::opt` flags consumed by the NVPTX LLVM target. Roughly half are referenced by current pages ([scheduling](../llvm/scheduling.md), [alias-analysis](../infra/alias-analysis.md), [nvvm-peephole](../passes/nvvm-peephole.md), [memory-space-opt](../passes/memory-space-opt.md), [knobs](./knobs.md), [nvptx-target](../infra/nvptx-target.md)); the other half remain undocumented. Uncovered: `nvptx-aa-wrapper`, `nvptx-add-scalar-move-for-vector-load`, `nvptx-forward-params`, `nvptx-isel`, `nvptx-emit-init-fini-kernel`, `nvptx-disable-set-shared-array-alignment`, `nvptx-disable-combiner-for-*`, `nvptx-approx-log2f32`, `nvptx-libcall-callee`, `nvptx-mem2reg` (referenced but no dedicated text), `nvptx-normalize-select`, `nvptx-remat-block` (link target exists, no flag entry), `nvptx-trunc-opts`, `nvptx-rsqrt-approx-opt`, `nvptx-traverse-address-aliasing-limit`, `nvptx-proxyreg-erasure`, `nvptx-generate-pack-unpack`, `nvptx-no-f16-math`, `nvptx-nan`. Confidence: HIGH (string extraction).
+
 ## Cross-References
 
 - [Optimization Levels](./optimization-levels.md) -- O-level pipeline builders and fast-compile tiers

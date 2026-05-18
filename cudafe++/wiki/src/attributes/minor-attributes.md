@@ -507,3 +507,4 @@ entity+256  [pointer]:    launch_config_t* (for __local_maxnreg__, __block_size_
 - [Entity Node Layout](../structs/entity-node.md) -- entity+177, +179, +180, +182, +183 field definitions
 - [Cross-Space Validation](../cuda/cross-space-validation.md) -- `__forceinline__` relaxation in cross-space calling
 - [Architecture Feature Gating](../cuda/arch-gating.md) -- `__nv_register_params__` compute_80 requirement
+- [__nv_* Builtin Intrinsic Names](nv-builtin-intrinsics.md) -- companion catalogue of `__nv_*` names that are *not* attributes (intrinsics, lambda machinery)

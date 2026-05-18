@@ -1,5 +1,7 @@
 # Architecture Dispatch (vtables)
 
+> **Note**: This page documents the nvlink-specific 7-vtable SM dispatch table used by the embedded ptxas copy in nvlink v13.0.88. The standalone ptxas binary uses a structurally similar 7-parallel-hash-map design at different addresses; for the per-SM target catalog and CUDA_ARCH macro values, see the standalone wiki: [SM Architecture Map](../../ptxas/targets/index.html), [Turing/Ampere](../../ptxas/targets/turing-ampere.html), [Ada/Hopper](../../ptxas/targets/ada-hopper.html), [Blackwell](../../ptxas/targets/blackwell.html).
+
 The embedded ptxas compiler in nvlink supports 22 architecture strings across 12 distinct silicon targets. Rather than scattering per-SM `if/else` chains throughout 24 MB of code, the compiler concentrates all architecture-dependent selection into a single initialization function (`sub_15C0CE0`) that populates 7 hash-map vtables. Each vtable maps an architecture string (e.g. `"sm_90"`) to a function pointer or data pointer implementing that SM's behavior for one compilation aspect. Callers never check the SM version directly -- they look up the appropriate callback from the correct vtable and call through the function pointer. This page documents the singleton initializer, the 7 vtable maps, the 22 registered architecture strings, pointer sharing between SM variants, the accessor/dispatcher functions, and the related 11-byte ISel mega-hub wrappers at `0x5272D0`--`0x527310`.
 
 ## Key Functions

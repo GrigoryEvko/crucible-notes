@@ -399,7 +399,17 @@ See [Optimization Levels](../config/opt-levels.md) for the confirmed per-phase t
 
 ## Complete 159-Phase Table
 
-> **Coverage status.** 62 of the 159 phases (39 %) currently lack a dedicated detail page — the **Detail Page** column for those rows is blank. Phases without detail pages are documented at the row granularity of the table below plus, for the late-pipeline range 139--158, the [phase-by-phase deep dive](#phase-by-phase-deep-dive-139158). Phases targeted by future hunter-resolver waves: `OriCheckInitialProgram`, `ApplyNvOptRecipes`, `PromoteFP16`, `AnalyzeControlFlow`, `OriCreateMacroInsts`, `OriSanitize`, `OptimizeBindlessHeaderLoads`, `PerformPGO`, `GenerateMovPhi`, `StageAndFence`, `AnalyzeUniformsForSpeculation`, `OriLinearReplacement`, `CompactLocalMemory`, `ExtractShaderConsts{First,Final}`, `EmitPSI`, `ConvertVTGReadWrite`, `DoVirtualCTAExpansion`, `ForwardProgress`, `OptimizeUniformAtomic`, `EnforceArgumentRestrictions`, `OriReplaceEquivMultiDefMov`, `SpeculativeHoistComInsts`, `RemoveASTToDefaultValues`, `DoVTGMultiViewExpansion`, `OriRemoveRedundantMultiDefMov`, `DoKillMovement`, `DoTexMovement`, `LateArchOptimize{First,Second}`, `ExpandJmxComputation`, `OriBackCopyPropagate`, `InsertPseudoUseDefForConvUR`, `OriCalcDependantTex`, `FinalInspectionPass`, `SetAfterLegalization`, `BackPropagateVEC2D`, `OriRemoveNopCode`, `PlaceBlocksInSourceOrder`, `PostFixForMercTargets`, `FixUpTexDepBarAndSync`, `ComputeVCallRegUse`, `CalcRegisterMap`, `UpdateAfter{Optimize,PostRegAlloc,FormatCodeList,ConvertUnsupportedOps}`, `ReportBeforeScheduling`, `MergeEquivalentConditionalFlow`, `LateMergeEquivalentConditionalFlow`. Pages should follow the structure of [Strength Reduction](strength-reduction.md) or [Varying Propagation](varying-propagation.md) (front-matter table, algorithm pseudocode, data flow, function map, cross-refs).
+> **Coverage status.** 62 of the 159 phases (39 %) currently lack a dedicated detail page — the **Detail Page** column for those rows is blank. Phases without detail pages are documented at the row granularity of the table below plus, for the late-pipeline range 139--158, the [phase-by-phase deep dive](#phase-by-phase-deep-dive-139158). Pages should follow the structure of [Strength Reduction](strength-reduction.md) or [Varying Propagation](varying-propagation.md) (front-matter table, algorithm pseudocode, data flow, function map, cross-refs).
+>
+> **Ranked-by-impact targets for the next hunter-resolver wave** (composite score = implementation size in bytes + 100 × outgoing callees, derived by walking the factory `sub_C60D30` jump table at `0x22BBEB8`, reading vtable slot 0 from `0x22BCC78 .. 0x22BEE50`, and cross-referencing `ptxas_functions.json`):
+>
+> 1. **`OriLinearReplacement`** (wiki 31 / bin 35) — impl `sub_7EC4B0`, 7,084 bytes, 241 basic blocks, 1,400 instructions, 71 outgoing callees, frame_size 840, 1 try-block, data-table ref `0x21DBEF8`. The single largest undocumented pass. The row description ("Replaces branch-heavy patterns with linear sequences") is a severe undersell — at 7 KB this is a multi-pattern transformer, likely a dispatch-table-driven peephole replacing select chains / control flow with branchless arithmetic. Confidence: HIGH (raw size/structure).
+> 2. **`ExtractShaderConstsFirst` / `ExtractShaderConstsFinal`** (wiki 34, 51 / bin 39, 59) — **share the same implementation** `sub_1C72640`, 4,582 bytes, 37 callees. Two pipeline positions, one algorithm parameterised by call site; the row descriptions hide the deduplication. Confidence: HIGH (caller table shows both wrappers land on `0x1C72640`).
+> 3. **`DoKillMovement` / `DoTexMovement` / two unnamed siblings** (wiki 67, 68 / bin 78, 79 plus two more) — **four wrappers (`sub_C5FE00`, `sub_C5FE30`, `sub_C5FE60`, `sub_C5FE90`) all tail-call `sub_8FFDE0`** (573 bytes, 9 callees), each passing a different `esi` discriminator. A single "movement" engine parameterised by movement-kind; the wiki currently treats each as an independent pass. Confidence: HIGH (4 callers from `ptxas_functions.json`).
+> 4. **`OriRemoveRedundantMultiDefMov`** (wiki 62 / bin 71) — impl `sub_90A340`, 1,670 bytes, 21 callees. Sibling of `OriReplaceEquivMultiDefMov` (wiki 52, impl `sub_8FBCF0`, 580 bytes). Together they form the multi-def-MOV cleanup subsystem operating on SSA-destruction artefacts. Confidence: HIGH.
+> 5. **`ApplyNvOptRecipes`** (wiki 1 / bin 1) — impl `sub_796D60`, 1,484 bytes, 22 callees, **2 callers** (the phase wrapper at `0xC5F6E0` AND `sub_8F4D80`). The dual-caller pattern means the NvOptRecipe engine is invoked both as a pipeline phase and re-entered later in the pipeline — a quirk the existing one-line description hides entirely. Confidence: HIGH.
+>
+> See SURGICAL FIXES below for additional impl-address breadcrumbs added to the table rows themselves. The translation table in [Numbering Discrepancy](#numbering-discrepancy----complete-wiki-to-binary-mapping) had stale `Bin#` columns for several rows; the main 159-phase table below is authoritative (verified against the static name table at `off_22BD0C0`).
 
 ### Stage 1 -- Initial Setup (Phases 0--13)
 
@@ -408,7 +418,7 @@ Program validation, recipe application, FP16 promotion, control flow analysis, u
 | # | Bin# | Phase Name | Category | O-Level | Description | Detail Page |
 |---|---|---|---|---|---|---|
 | 0 | 0 | `OriCheckInitialProgram` | Validation |  | Validates structural correctness of the initial Ori IR after PTX lowering |  |
-| 1 | 1 | `ApplyNvOptRecipes` | Optimization |  | Applies NvOptRecipe transformations (option 391, 440-byte sub-manager) |  |
+| 1 | 1 | `ApplyNvOptRecipes` | Optimization |  | Applies NvOptRecipe transformations (option 391, 440-byte sub-manager); impl `sub_796D60` (1,484 B, 22 callees). ⚡ **Dual-caller quirk:** the implementation has **two** callers — the phase-1 wrapper at `0xC5F6E0` AND `sub_8F4D80` (mid-pipeline re-entry), so recipes apply both as a phase and as a callable sub-pass. Stub. |  |
 | 2 | 2 | `PromoteFP16` | Lowering |  | Promotes FP16 operations to FP32 where hardware lacks native support |  |
 | 3 | 3 | `AnalyzeControlFlow` | Analysis |  | Builds the CFG: identifies loops, dominators, back edges |  |
 | 4 | 4 | `AdvancedPhaseBeforeConvUnSup` | Gate |  | Type C: `sub_C5F620` writes `ctx+1552 = 1`; pre-legalization boundary |  |
@@ -445,7 +455,7 @@ Branch/switch optimization, loop canonicalization, strength reduction, software 
 | 28 | 31 | `SinkRemat` | Optimization | **> 1 / > 4** | Sinks instructions closer to uses and marks remat candidates; O2+: basic; O5: full cutlass | [Rematerialization](rematerialization.md) |
 | 29 | 33 | `GeneralOptimize` | Optimization |  | Compound pass: copy prop + const fold + algebraic simplify + DCE (mid-early) | [GeneralOptimize](general-optimize.md) |
 | 30 | 34 | `DoSwitchOptSecond` | Optimization | **> 1** | Second switch optimization pass after loop/branch transformations; wrapper `sub_C5FC80` | [Branch & Switch](branch-switch.md) |
-| 31 | 35 | `OriLinearReplacement` | Optimization |  | Replaces branch-heavy patterns with linear (branchless) sequences |  |
+| 31 | 35 | `OriLinearReplacement` | Optimization |  | Replaces branch-heavy patterns with linear (branchless) sequences; impl `sub_7EC4B0` (7,084 B, 241 BBs, 71 callees — the largest undocumented pass; stub) |  |
 | 32 | 36 | `CompactLocalMemory` | Optimization |  | Compacts local memory allocations by eliminating dead slots and reordering |  |
 
 ### Stage 3 -- Mid-Level Optimization (Phases 33--52)
@@ -455,7 +465,7 @@ GVN-CSE, reassociation, shader constant extraction, CTA/VTG expansion, argument 
 | # | Bin# | Phase Name | Category | O-Level | Description | Detail Page |
 |---|---|---|---|---|---|---|
 | 33 | 38 | `OriPerformLiveDeadSecond` | Analysis |  | Full liveness analysis + DCE (2nd instance, post-early-optimization cleanup) | [Liveness](liveness.md) |
-| 34 | 39 | `ExtractShaderConstsFirst` | Optimization |  | Identifies uniform values loadable from constant memory instead of per-thread computation (1st pass) |  |
+| 34 | 39 | `ExtractShaderConstsFirst` | Optimization |  | Identifies uniform values loadable from constant memory instead of per-thread computation (1st pass); impl `sub_1C72640` (4,582 B, 37 callees — **shared with phase 51** `ExtractShaderConstsFinal`; one engine, two pipeline positions; stub) |  |
 | 35 | 40 | `OriHoistInvariantsEarly` | Optimization |  | Loop-invariant code motion: hoists invariant computations out of loops (early) | [Loop Passes](loop-passes.md) |
 | 36 | 42 | `EmitPSI` | Lowering |  | Emits PSI (Pixel Shader Input) interpolation setup for graphics shaders |  |
 | 37 | 43 | `GeneralOptimizeMid` | Optimization |  | Compound pass: copy prop + const fold + algebraic simplify + DCE (mid) | [GeneralOptimize](general-optimize.md) |
@@ -472,7 +482,7 @@ GVN-CSE, reassociation, shader constant extraction, CTA/VTG expansion, argument 
 | 48 | 55 | `EnforceArgumentRestrictions` | Lowering |  | Enforces ABI restrictions on function arguments (register classes, alignment) |  |
 | 49 | 56 | `GvnCse` | Optimization | **> 1** | Global value numbering combined with common subexpression elimination | [Copy Prop & CSE](copy-prop-cse.md) |
 | 50 | 58 | `OriReassociateAndCommon` | Optimization |  | Reassociates expressions for better commoning opportunities, then eliminates commons | [Copy Prop & CSE](copy-prop-cse.md) |
-| 51 | 59 | `ExtractShaderConstsFinal` | Optimization |  | Final shader constant extraction pass (after GVN may expose new constants) |  |
+| 51 | 59 | `ExtractShaderConstsFinal` | Optimization |  | Final shader constant extraction pass (after GVN may expose new constants); impl **shared** with phase 34 = `sub_1C72640` (4,582 B); stub |  |
 | 52 | 60 | `OriReplaceEquivMultiDefMov` | Optimization |  | Eliminates redundant multi-definition move instructions with equivalent sources |  |
 
 ### Stage 4 -- Late Optimization (Phases 53--77)
@@ -495,8 +505,8 @@ Predication, rematerialization, loop fusion, varying propagation, sync optimizat
 | 64 | 74 | `LateOriCommoning` | Optimization |  | Late commoning pass: eliminates common subexpressions exposed by predication | [Copy Prop & CSE](copy-prop-cse.md) |
 | 65 | 75 | `GeneralOptimizeLate2` | Optimization |  | Compound pass: copy prop + const fold + algebraic simplify + DCE (late 2nd) | [GeneralOptimize](general-optimize.md) |
 | 66 | 76 | `OriHoistInvariantsLate` | Optimization |  | LICM: hoists loop-invariant code (late, after predication may expose new invariants) | [Loop Passes](loop-passes.md) |
-| 67 | 78 | `DoKillMovement` | Optimization |  | Moves kill annotations closer to last use to improve register pressure |  |
-| 68 | 79 | `DoTexMovement` | Optimization |  | Moves texture fetch instructions to minimize latency exposure |  |
+| 67 | 78 | `DoKillMovement` | Optimization |  | Moves kill annotations closer to last use to improve register pressure; wrapper `sub_C5FE00` → **shared engine** `sub_8FFDE0` (573 B) with `esi=0`; stub |  |
+| 68 | 79 | `DoTexMovement` | Optimization |  | Moves texture fetch instructions to minimize latency exposure; wrapper `sub_C5FE60` → **shared engine** `sub_8FFDE0` (573 B) with `esi=2`; same engine drives 4 phases (3 wrappers at `0xC5FE30`, `0xC5FE90` are sibling movement passes, not yet named in wiki); stub |  |
 | 69 | 80 | `OriDoRemat` | Optimization | **> 1** | Late rematerialization: recomputes values exposed by predication and fusion | [Rematerialization](rematerialization.md) |
 | 70 | 81 | `OriPropagateVaryingSecond` | Optimization |  | Propagates varying annotations (2nd pass, after predication changes control flow) | [Varying Propagation](varying-propagation.md) |
 | 71 | 82 | `OptimizeSyncInstructions` | Optimization | **> 1** | Eliminates and simplifies synchronization instructions | [Sync & Barriers](sync-barriers.md) |

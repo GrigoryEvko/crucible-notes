@@ -521,6 +521,11 @@ Recovering these ranges requires systematic analysis of the `sub_33B0210` intrin
 | `byte_3F252E0` | `0x3F252E0` | Constraint type classification table |
 | `qword_502A920` | `0x502A920` | SM processor table (45 entries, stride-2) |
 
+## Raw-Data Gaps (Stub)
+
+> ⚡ **QUIRK — 460 NVPTXISD opcodes unindexed**
+> The binary's `getTypeName()` strings expose 460 distinct `NVPTXISD::*` enumerators (BFE, BFI, BrxStart/Item/End, DP2A, DP4A, FSHL_CLAMP, FSHR_CLAMP, IMAD, LDGV2/V4, LDUV2/V4, LoadExt/V2/V4, DeclareParam, DeclareRet, CallArg/Begin/End, DYNAMIC_STACKALLOC, FUN_SHFL_CLAMP, and many more), yet zero of them appear anywhere in the wiki. Confidence: HIGH (extracted from `cicc_strings.json`). This is the SelectionDAG-internal opcode universe that lives between `LowerCall`/`LowerOperation` and ISel pattern matching; documenting it would close the gap between [SelectionDAG](../llvm/selectiondag.md) and the machine-opcode table here.
+
 ## Cross-References
 
 - [Pattern Database](../structs/pattern-db.md) -- detailed constraint descriptor layout and emission sub-functions

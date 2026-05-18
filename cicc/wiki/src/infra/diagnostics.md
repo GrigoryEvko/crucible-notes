@@ -195,6 +195,9 @@ Severity values 9, 10, and 11 are fatal: after emission, `sub_7AFBD0` (`longjmp`
 
 Note: severity 2 (remark) is distinct from LLVM optimization remarks -- it is an EDG frontend remark (e.g., template instantiation notes). Remarks at severity 2 suppress their note\_list children during recursive emission.
 
+> ⚡ **QUIRK — 4,515 EDG diagnostic IDs uncatalogued**
+> The string section exposes ~4,515 lowercase identifier-style strings matching the EDG diagnostic-id convention (`abi_tag_ignored`, `abstract_requires_virtual`, `ambig_literal_operator`, `pragma_*`, etc.). The diagnostic record at `dword[+0x14]` selects which of these template strings is rendered, but the wiki currently documents only the dispatch flow, not the catalogue. Confidence: HIGH (raw extraction; the catalogue itself dwarfs every other table in the binary by string count). Useful precursor work for a future "EDG Diagnostic Catalogue" page that would group by phase (`pragma_*`, `ambiguous_*`, `template_*`, `cuda_*`).
+
 ## LLVM Optimization Remarks
 
 ### Registration and CLI Surface

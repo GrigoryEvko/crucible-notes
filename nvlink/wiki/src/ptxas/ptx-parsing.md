@@ -1,5 +1,7 @@
 # PTX Parsing
 
+> **Note**: This page documents the PTX frontend embedded inside nvlink v13.0.88's ptxas copy -- a flex lexer + bison parser + 588-entry instruction-handler registry + 608-entry CUDA builtin database. The standalone ptxas binary has its own flex/bison frontend with a different LALR grammar (513 productions, 1,099 states) and ~552 lexer rules at different addresses; for that frontend see [ptxas PTX Parser](../../ptxas/pipeline/ptx-parser.html) and [PTX-to-Ori](../../ptxas/pipeline/ptx-to-ori.html).
+
 The embedded ptxas compiler in nvlink v13.0.88 contains a complete PTX assembler frontend: a flex-generated lexer, a bison/yacc-generated parser, a module initialization system that defines every PTX special register and builtin type, an instruction handler registry covering the full PTX ISA 9.0, a CUDA builtin function database of 608 entries, and a recursive expression printer. This page documents each subsystem at the function level, reconstructed from decompiled binary analysis across the `0x12AF000`--`0x12C0000`, `0x1430000`--`0x15C0000`, and `0x16E0000`--`0x16F6000` address ranges.
 
 ## Architecture Overview

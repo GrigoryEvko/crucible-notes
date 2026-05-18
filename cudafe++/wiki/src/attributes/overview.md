@@ -407,6 +407,7 @@ The function `reset_attribute_processing_state` (`sub_4190B0`) zeroes all of the
 - [__grid_constant__](grid-constant.md) -- grid-constant parameter attribute
 - [__managed__ Variables](managed-variables.md) -- managed memory attribute
 - [Minor CUDA Attributes](minor-attributes.md) -- `__noinline__`, `__forceinline__`, `__nv_register_params__`, `__nv_pure__`
+- [__nv_* Builtin Intrinsic Names](nv-builtin-intrinsics.md) -- 110 `__nv_*` identifiers that look like attributes but are intrinsics / lambda machinery
 - [Entity Node Layout](../structs/entity-node.md) -- full entity structure with CUDA field offsets
 - [CUDA Execution Spaces](../cuda/execution-spaces.md) -- how execution space bits drive code generation
 - [CUDA Memory Spaces](../cuda/memory-spaces.md) -- memory space bitfield semantics

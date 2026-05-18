@@ -33,8 +33,8 @@ Two packed 32-bit words travel through tcgen05 lowering: the primary control wor
 
 | Bits | Field | Width | Encoding |
 |---:|---|---:|---|
-| 0-1 | `cta_group` | 2 | 0 = single-CTA, 1 = 2-CTA, 2 = 4-CTA, 3 = reserved |
-| 2-3 | `scale_vec_size` | 2 | 00 = implicit, 01 = 1X, 10 = 2X, 11 = 4X |
+| 0-1 | `cta_group` | 2 | 0 = reserved, 1 = 1-CTA, 2 = 2-CTA, 3 = 4-CTA (matches the Mode Pattern Verifiers kind-word table) |
+| 2-3 | `scale_vec_size` | 2 | 0 = 1X (16-elem scale vector), 1 = 2X (32), 2 = 4X (64), 3 = reserved |
 | 4 | `scale_input_acc` | 1 | enables scale-input-accumulator path |
 | 5 | `block_scale` | 1 | selects the block-scale variants |
 | 6-8 | `mma_kind` | 3 | one of seven kind values for the dense-MMA family |
@@ -96,44 +96,48 @@ void verify_tcgen05_mma(const Tcgen05MmaInst *inst, const NvptxSubtarget *target
     Tcgen05Collector  coll = decode_tcgen05_collector(inst->collector_word);
     SubtargetFeatures sf   = target->features;
 
-    /* INT8 inputs require arch-conditional tcgen05. */
+    /* INT8 inputs require arch-conditional tcgen05. Diagnostic strings here
+     * are verbatim from the binary — see Mode Pattern Verifiers for the
+     * canonical 13-rule table including the preserved "colletor" typo. */
     if (ctrl.mma_kind == TCGEN05_KIND_I8 && !sf.has_arch_conditional)
-        diag("INT8 type is supported only on arch-conditional variants");
+        diag("INT8 type is supported only on arch-conditional variants.");
 
     /* MXF4 sparse variants require arch-conditional tcgen05. */
     if (inst->sparse && (ctrl.mma_kind == TCGEN05_KIND_MXF4NVF4
                          || ctrl.mma_kind == TCGEN05_KIND_MXF4)
                     && !sf.has_arch_conditional)
-        diag("MXF4 sparse variants require an arch-conditional target");
+        diag("MXF4 and MXF4NVF4 types with Sparsity are supported only on arch-conditional variants.");
 
     /* Explicit scale-vector size requires arch-conditional tcgen05. */
     if (ctrl.scale_vec_size != SCALE_VEC_IMPLICIT && !sf.has_arch_conditional)
-        diag("explicit scale vector size requires an arch-conditional target");
+        diag("Explicit scale vector size is supported only on arch-conditional variants.");
 
     /* Scale-input-accumulator requires a hardware feature and f16/tf32 inputs. */
     if (ctrl.scale_input_acc) {
         if (!sf.has_scale_input_accumulator)
-            diag("scale input accumulator is not supported on this architecture");
+            diag("Scale input accumulator is not supported on this architecture.");
         if (ctrl.mma_kind != TCGEN05_KIND_F16 && ctrl.mma_kind != TCGEN05_KIND_TF32)
-            diag("scale input accumulator requires f16 or tf32 inputs");
+            diag("Scale input accumulator can only be used with f16 and tf32 types");
     }
 
     /* Block-scale-only restrictions. */
     if (ctrl.block_scale) {
         if (!block_scale_allows_kind(ctrl.mma_kind))
-            diag("block scale does not support this input type");
+            diag("Block scale is not supported for f16, tf32, f8f6f4, and i8 types");
         if (coll.valid && coll.collector_a /* ashift overlay */ == COLLECTOR_ASHIFT)
-            diag("ashift is not supported with block-scale variants");
+            diag("ashift is not supported with tcgen05.mma.block_scale variants");
     }
 
     /* Cross-field invariants. */
     if (inst->weight_stationary && ctrl.cta_group == CTA_GROUP_2)
-        diag("cta_group::2 is not supported with weight-stationary mode");
+        diag("cta_group::2 is not supported with weight stationary");
     if (inst->weight_stationary && is_fp4_kind(ctrl.mma_kind))
-        diag("weight-stationary mode does not support MX or FP4 input families");
+        diag("Cannot use weight stationary with mxf8f6f4 and fp4 types");
     if (coll.valid && coll.collector_a == COLLECTOR_FILL_USE
                    && coll.collector_a == COLLECTOR_ASHIFT)
-        diag("collector::a use/fill cannot be combined with ashift");
+        diag("Cannot use collector::a::use or colletor::a::fill with ashift");
+    /* "colletor" typo preserved verbatim — required for diagnostic-string
+     * matching test suites. */
     if (!scale_vec_allowed(ctrl.mma_kind, ctrl.scale_vec_size))
         diag("scale vector size is not legal for this input family");
 }

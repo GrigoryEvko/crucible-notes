@@ -23,7 +23,7 @@
 | `check-kernel-functions` | `NVPTXSetFunctionLinkagesPass` | — | Kernel function linkage validation |
 | `check-gep-index` | — | — | GEP index validation |
 | `cnp-launch-check` | `CNPLaunchCheckPass` | — | Cooperative launch validation |
-| [`ipmsp`](./ipmsp.md) | `IPMSPPass` | — | Inter-procedural memory space propagation |
+| [`ipmsp`](./ipmsp.md) | `IPMSPPass` / `NVVMIPMemorySpacePropagationPass` | — | Inter-procedural memory space propagation. The full `getTypeName()` symbol is `llvm::NVVMIPMemorySpacePropagationPass`; see [IPMSP](./ipmsp.md) |
 | `nv-early-inliner` | — | — | NVIDIA early inlining pass |
 | `nv-inline-must` | `InlineMustPass` | — | Force-inline functions marked `__forceinline__` |
 | `select-kernels` | `SelectKernelsPass` | — | Kernel selection for compilation |

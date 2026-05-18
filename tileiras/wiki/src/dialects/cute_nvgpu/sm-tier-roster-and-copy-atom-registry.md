@@ -10,7 +10,7 @@ The dialect uses interface-driven atom records:
 
 | Interface | Implemented by | Purpose |
 |---|---|---|
-| MMA atom | Universal FMA, SM80, SM89, SM90, SM100, SM120 MMA families | Reports MMA shape, operand element types, accumulator type, atom class, and verifier hooks. |
+| MMA atom | Universal FMA, SM80, SM89, SM90, SM100/SM103, SM120/SM121 MMA families | Reports MMA shape, operand element types, accumulator type, atom class, and verifier hooks. |
 | Copy atom | TMEM load/store, S2T copy, universal copy, async copy, LDSM/STSM, TMA atoms | Reports copy shape, value type, memory spaces, vector width, and legality. |
 | Prefetch atom | TMA load, store, reduce, and non-executing tiled TMA atoms | Reports descriptor, prefetch tile, and cache-hint behavior. |
 | Descriptor type | SMEM descriptor views and TMA descriptors | Carries hardware descriptor state as typed IR. |
