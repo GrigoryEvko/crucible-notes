@@ -118,8 +118,8 @@ The 104-byte section record stores the output ELF section header fields plus int
 | 56 | 8 | `sh_entsize` |
 | 64 | 4 | `section_index` (assigned by creation order) |
 | 68 | 4 | padding |
-| 72 | 8 | `symbol_list_head` (linked list of data contributions) |
-| 80 | 8 | `symbol_list_tail` (for O(1) append) |
+| 72 | 8 | `data_list_head` (head of the 16-byte wrapper chain; each wrapper points at a 40-byte data node or a 48-byte symbol record) |
+| 80 | 8 | `data_list_tail` (tail wrapper pointer for O(1) append) |
 | 88 | 8 | reserved |
 | 96 | 8 | `name_ptr` (pointer to section name string) |
 
@@ -211,14 +211,14 @@ node.offset = current_size
 section.sh_size = current_size + data_size
 
 // Append to section's linked list via tail pointer
-if section.symbol_list_head == NULL:
-    list_prepend(node, &section.symbol_list_head)
-    section.symbol_list_tail = section.symbol_list_head
+if section.data_list_head == NULL:
+    list_prepend(node, &section.data_list_head)
+    section.data_list_tail = section.data_list_head
 else:
-    assert(section.symbol_list_tail != NULL,
+    assert(section.data_list_tail != NULL,
            "tail data node not found")
-    list_insert_after(node, section.symbol_list_tail)
-    section.symbol_list_tail = node
+    list_insert_after(node, section.data_list_tail)
+    section.data_list_tail = node
 ```
 
 The linked-list approach means that during the merge phase, the section accumulates an ordered list of data contributions without ever copying bytes. Each node records where the data comes from and at what offset it will land. This is efficient for the common case where hundreds of input objects contribute small fragments to the same section.
@@ -354,10 +354,10 @@ Global variables (`.nv.global`) have a special accumulation path. During the mer
 if ctx->pending_globals is not NULL:
     section = find_or_create(".nv.global", SHT_CUDA_GLOBAL)
 
-    // walk to tail of existing symbol list
-    tail = section.symbol_list_head
+    // walk to tail of existing data list
+    tail = section.data_list_head
     while tail.next: tail = tail.next
-    section.symbol_list_tail = tail
+    section.data_list_tail = tail
 
     // drain pending list
     for each pending in ctx->pending_globals:

@@ -629,7 +629,7 @@ Both symbol hash maps (`ctx+288`, `ctx+296`) are empty. The driver list at `ctx+
     2. Allocates a 48-byte symbol record for `.text.kernel_a` via the local-symbol path, appending to the positive array at `ctx+344`. Assigns positive symbol index **1** (first local after the null symbol). Registers the name in `ctx+288`.
   - Records `map_section_index[1] = 6` via the write-back at `sub_45CD30` / line 1114.
   - Records `map_symbol_index[1] = 1` (positive symbol).
-  - Also copies the input section's data contribution via `sub_432B10` (`merge_overlapping_global_data`), which creates a 40-byte data node pointing at the 384 bytes of SASS, offset 0, and appends it to the section record's `symbol_list_head` (at section+72). `map_section_offset[1] = 0`.
+  - Also copies the input section's data contribution via `sub_432B10` (`merge_overlapping_global_data`), which creates a 40-byte data node pointing at the 384 bytes of SASS, offset 0, and appends it to the section record's `data_list_head` (at section+72). `map_section_offset[1] = 0`.
 
 - **`sym_idx = 2`** (`.nv.constant0.kernel_a`, `STT_SECTION`, `STB_LOCAL`, `st_shndx = 5`):
   - The output section name is looked up -- not found. The name matches the `.nv.constant0` prefix check at lines 1006-1007 and the type is reclassified to `0x70000064` (`SHT_CUDA_CONSTANT0 + 0`).

@@ -307,10 +307,11 @@ The engine reads and writes a single 104-byte record. The field offsets it touch
 | `+4` | `sh_type_ext` | Read | Passed to `arch_vtable->preserves_layout_order` to decide sort policy |
 | `+32` | `sh_size` | Write | Final cursor stored here after the loop |
 | `+48` | `sh_addralign` | Read + Write | Promoted to max contribution alignment after sort |
-| `+64` | `verbose_flag_byte` (on `ctx`, NOT section) | Read | Bit 1 enables the verbose `fprintf` |
-| `+72` | `data_list_head` | Read + Write (via sort) | Linked list of 40-byte data nodes |
+| `+72` | `data_list_head` | Read + Write (via sort) | Head of the 16-byte wrapper chain whose payloads are the 40-byte contribution nodes |
 
-The engine does **not** touch `sh_offset` (+24, ELF file offset), `sh_flags` (+8), `sh_info` (+40), `sh_link` (+44), `sh_entsize` (+56), `section_index` (+64), `symbol_list_tail` (+80), or `name_ptr` (+96). Those are written by the merge phase or the ELF writer.
+The verbose-mode gate at `ctx+64` (`ctx->verbose_flags & 2`) is read on the `ctx` pointer, **not** the section record; it does not appear in the table above to avoid confusing the two bases.
+
+The engine does **not** touch `sh_offset` (+24, ELF file offset), `sh_flags` (+8), `sh_info` (+40), `sh_link` (+44), `sh_entsize` (+56), `section_index` (+64), `data_list_tail` (+80), or `name_ptr` (+96). Those are written by the merge phase or the ELF writer.
 
 > ⚡ **QUIRK — `sh_size` is the cursor, not the byte count**
 > The engine writes `cursor` (the next free offset) into `section->sh_size` at line 82, then returns the *last placed offset* (not the cursor). For a section with three 4-byte contributions starting at offset 0, `sh_size` becomes 12 but the return value is 8. Callers that need the byte count must read `section->sh_size`, not use the return value. The ELF writer uses `sh_size` correctly; only ad-hoc callers that interpret the return value as "size" are at risk.

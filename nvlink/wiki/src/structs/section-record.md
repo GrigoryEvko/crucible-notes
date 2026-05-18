@@ -165,10 +165,11 @@ Offset  Size  Field         Decompiled     Description
   8       8   offset        v15[1]         Byte offset within the merged output section
  16       8   alignment     v15[2]         Alignment requirement for this contribution
  24       8   data_size     v15[3]         Size of this data contribution (arg a5)
- 32       8   next_ptr      v15[4]         Singly-linked list: pointer to next node (or NULL)
+ 32       4   symbol_index  *(_DWORD*)(v15+32)  Signed symbol index for dual write-back; zero-initialized by `sub_433760`, written by upstream callers
+ 36       4   (reserved)    --             Tail of the 40-byte payload; not read on any verified path
 ```
 
-The field at offset 32 is managed by the list insertion functions (`sub_4644C0` for the first node, `sub_464460` for subsequent appends). The descriptor pointer referenced in the task description corresponds to the `source_data` field at offset 0 -- each node is a `[next_ptr, descriptor_ptr]`-style linked list node where the list machinery uses offset 32 for linkage and offset 0 for the payload.
+The linked-list "next" pointer is **not** in this 40-byte payload. Each list element is wrapped by a separate 16-byte node (allocated by `sub_4644C0`) whose layout is `{ next_ptr at +0, payload_ptr at +8 }`. The wrapper's `+0` is the singly-linked-list link; the wrapper's `+8` is the pointer to this 40-byte data node (or, on the `sub_433870` direct-append path, a pointer to a 48-byte symbol record). The layout engine (`sub_4325A0`) reads the payload's `+32` as a 4-byte signed symbol index, feeds it to `sub_440590`, and writes the placed offset back into both the data-node's `+8` and the symbol record's `+8` -- the dual write-back described above.
 
 ### Data Append Algorithm (`sub_433760`)
 
@@ -197,11 +198,11 @@ if alignment > section.sh_addralign:
 
 // Allocate 40-byte data node
 node = arena_alloc(40)                           // sub_4307C0
-node.source_data = source_data                   // offset 0
-node.offset      = 0                             // computed below
-node.alignment   = alignment                     // offset 16
-node.data_size   = data_size                     // offset 24
-node.next_ptr    = 0                             // offset 32
+node.source_data  = source_data                  // offset 0
+node.offset       = 0                            // offset 8, computed below
+node.alignment    = alignment                    // offset 16
+node.data_size    = data_size                    // offset 24
+node.symbol_index = 0                            // offset 32 (DWORD; upstream caller fills it)
 
 // Compute aligned insertion offset
 current_size = section.sh_size                   // offset +32 in section record
@@ -508,7 +509,7 @@ Each claim below was verified against decompiled functions (`sub_441AC0`, `sub_4
 | Data node: offset field at offset 8 (qword) | HIGH | `v15[1] = v16` where `v16` is aligned section size |
 | Data node: alignment at offset 16 (qword) | HIGH | `v15[2] = v7` where `v7 = a4` (alignment arg) |
 | Data node: data_size at offset 24 (qword) | HIGH | `v15[3] = a5` |
-| Data node: next_ptr at offset 32 | HIGH | First OWORD zero-inits bytes 8-23 (offset+alignment), then `*(_OWORD *)(v15 + 3) = 0` clears bytes 24-39. Tail linkage: `sub_4644C0(v15, v9 + 9)` |
+| Data node: symbol_index at offset 32 (DWORD, signed) | HIGH | Layout engine reads `*(_DWORD *)(v7 + 32)` and feeds it to `sub_440590` (signed symbol-index dispatcher). `sub_433760` zero-initializes via `*(_OWORD *)(v15 + 3) = 0`; upstream callers patch this field before layout. List linkage lives in a separate 16-byte wrapper allocated by `sub_4644C0`, not inside the 40-byte payload |
 | Callgraph guard byte at `elfw+81` | HIGH | `if (*(_BYTE *)(a1 + 81) && (v95 & 4) != 0)` in `sub_441AC0` |
 | String `"adding function section after callgraph completed"` | HIGH | Found at line 12357 in `nvlink_strings.json` |
 | Virtual section flag byte at `elfw+82` | HIGH | `if (*(_BYTE *)(a1 + 82))` in both `sub_441AC0` and `sub_442270` |
