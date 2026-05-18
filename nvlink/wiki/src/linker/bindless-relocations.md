@@ -405,8 +405,11 @@ section_desc* process_bindless_references(elfw* elf, section_desc* parent_desc)
             // sign-extended from 24 bits: (sh_link << 8) >> 8
             int func_id = (int)(sec_rec->sh_link << 8) >> 8;
 
-            // sub_44C740 returns the head of a linked list of caller records.
-            // Each record has: { next_ptr, padding, caller_sym_index }
+            // sub_44C740 returns the head of a singly-linked list of caller
+            // records. Each record is a 16-byte node: { next at +0,
+            // caller_sym_index (uint32) at +8 }, with bytes 12..15 as alignment
+            // padding. The list head sits at struct offset +40 of the
+            // callgraph entry returned by sub_464DB0 (`*(_QWORD *)(v3 + 40)`).
             caller_node* caller = callgraph_get_callers(elf, func_id);
             while (caller != NULL) {
                 sym_record* caller_sym = get_symbol_record(elf, caller->sym_index);

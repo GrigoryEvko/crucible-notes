@@ -893,19 +893,19 @@ void PhaseManager::invoke_multi(compilation_unit* cu) {
 | 101 | `AdvancedPhaseAllocReg` | **Hook** -- register allocation |
 | 102 | `ReportAfterRegisterAllocation` | Diagnostic dump after regalloc |
 | 103 | `Get64bRegComponents` | Extract 64-bit register components |
-| 104 | `AdvancedPhasePostExpansion` | **Hook** -- after post-expansion |
+| 104 | `AdvancedPhasePostExpansion` | **Hook** -- before post-RA expansion worker (phase 127) |
 | 105 | `ApplyPostRegAllocWars` | Apply post-regalloc write-after-read fixes |
 
 ### Group 6: Post-Schedule and Code Generation (phases 106--131)
 
 | Index | Phase Name | Purpose |
 |---|---|---|
-| 106 | `AdvancedPhasePostSched` | **Hook** -- after scheduling |
+| 106 | `AdvancedPhasePostSched` | **Hook** -- before post-scheduling worker (phase 110); writes `ctx+1552=14` |
 | 107 | `OriRemoveNopCode` | Remove NOP instructions |
 | 108 | `OptimizeHotColdInLoop` | Hot/cold partitioning within loops |
 | 109 | `OptimizeHotColdFlow` | Hot/cold partitioning across flow |
 | 110 | `PostSchedule` | Post-scheduling fixups |
-| 111 | `AdvancedPhasePostFixUp` | **Hook** -- after post-schedule fixup |
+| 111 | `AdvancedPhasePostFixUp` | **Hook** -- before post-fixup worker (phase 140 `PostFixUp`); writes `ctx+1552=20` |
 | 112 | `PlaceBlocksInSourceOrder` | Reorder blocks to match source order |
 | 113 | `PostFixForMercTargets` | Mercury target-specific fixups |
 | 114 | `FixUpTexDepBarAndSync` | Fix texture dependency barriers and sync |
@@ -978,9 +978,9 @@ The 16 AdvancedPhase entries are insertion points for architecture-specific or o
 | 92 | `AdvancedPhaseAfterSetRegAttr` | After `OriSetRegisterAttr` |
 | 97 | `AdvancedPhasePreSched` | Before scheduling pipeline |
 | 101 | `AdvancedPhaseAllocReg` | Register allocation entry point |
-| 104 | `AdvancedPhasePostExpansion` | After post-regalloc expansion |
-| 106 | `AdvancedPhasePostSched` | After scheduling |
-| 111 | `AdvancedPhasePostFixUp` | After post-schedule fixup |
+| 104 | `AdvancedPhasePostExpansion` | Before post-RA expansion worker (dispatches to phase 127 `PostExpansion`) |
+| 106 | `AdvancedPhasePostSched` | Before post-scheduling worker (Type-C thunk writes `ctx+1552=14`; phase 110 `PostSchedule` follows) |
+| 111 | `AdvancedPhasePostFixUp` | Before post-fixup worker (dispatches to phase 140 `PostFixUp`; Type-C thunk writes `ctx+1552=20`) |
 | 115 | `AdvancedScoreboardsAndOpexes` | Before scoreboard/opex generation |
 | 127 | `AdvancedPhaseOriPhaseEncoding` | Before final instruction encoding |
 | 134 | `AdvancedPhaseAfterMidExpansion` | After mid-level expansion |

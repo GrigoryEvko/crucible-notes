@@ -336,7 +336,7 @@ Sixteen phases serve as conditional extension points. Their `isNoOp()` method re
 | 101 | `AdvancedPhaseAllocReg` | Register allocation driver |
 | 104 | `AdvancedPhasePostExpansion` | Before post-RA expansion (dispatches to worker phase 127 `PostExpansion`) |
 | 106 | `AdvancedPhasePostSched` | Before post-scheduling (gates worker phase 110 `PostSchedule`; writes `ctx+1552=14`) |
-| 111 | `AdvancedPhasePostFixUp` | After post-fixup |
+| 111 | `AdvancedPhasePostFixUp` | Before post-fixup worker (phase 140 `PostFixUp`); writes `ctx+1552=20` |
 | 115 | `AdvancedScoreboardsAndOpexes` | Full scoreboard analysis |
 | 127 | `AdvancedPhaseOriPhaseEncoding` | Phase encoding hook |
 | 134 | `AdvancedPhaseAfterMidExpansion` | After mid-expansion |

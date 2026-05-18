@@ -47,11 +47,18 @@ struct reloc_record {           // 32 bytes total, accessed as two __m128i
     int64_t  addend;            // [0:8]   target addend / offset value
     int64_t  reloc_info;        // [8:16]  low 32 bits = relocation type,
                                 //         high 32 bits = symbol index
-    uint32_t section_idx;       // [16:20] target section index in output ELF
-    uint32_t sym_addend_idx;    // [20:24] symbol index for addend resolution
-    int64_t  extra;             // [24:32] extra data / secondary offset
+    int64_t  extra;             // [16:24] extra data / secondary offset
+                                //         (in-instruction addend accumulator)
+    uint32_t section_idx;       // [24:28] target section index in output ELF
+    uint32_t sym_addend_idx;    // [28:32] symbol index for addend resolution
 };
 ```
+
+The lower half (`v5[0]`) carries the addend and the type/symbol-index packed word;
+the upper half (`v5[1]`) carries the `extra` int64 followed by the two trailing
+uint32 indices. The emitter `sub_46ADC0` accesses these as `*(uint32_t*)(rec+24)`
+for `section_idx` and `*(uint32_t*)(rec+28)` for `sym_addend_idx`, with the
+`extra` accumulator updated via `*(int64_t*)(rec+16) += ...`.
 
 The walk is a simple `while (v4 != NULL)` loop that reads `v4[0]` (next pointer) and `v4[1]` (relocation record pointer) at each step. Nodes are removed from the list in-place when the relocation is fully applied: the predecessor's next pointer is redirected to skip the consumed node, and both the node and its record are freed via `sub_431000` (arena_free).
 
@@ -62,7 +69,7 @@ For each relocation record, `sub_469D60` executes the following steps:
 ### Step 1: Addend Resolution
 
 ```c
-sym_addend_idx = reloc->sym_addend_idx;   // field at byte 20
+sym_addend_idx = reloc->sym_addend_idx;   // field at byte 28 (v5[1].m128i_i32[3])
 if (sym_addend_idx != 0) {
     symbol = sub_440590(ctx, sym_addend_idx);  // resolve symbol by index
     reloc->addend += *(int64_t*)(symbol + 8);  // add symbol value to addend

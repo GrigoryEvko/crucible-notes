@@ -340,13 +340,15 @@ The vector is a 40-byte header at `dest`:
 struct vec_header {
     int64_t   default_chunk_size;  // +0:  minimum allocation for new chunks
     int64_t   total_written;       // +8:  cumulative bytes appended
-    void*     tail_next_ptr;       // +16: pointer to tail node's next field
-    void*     chain_end;           // +24: end-of-chain pointer
+    void*     chain_head;          // +16: first 16-byte wrapper {next, chunk_ptr} (NULL until first append)
+    void**    tail_cursor;         // +24: pointer-to-pointer; init = &chain_head, advances to each new wrapper's next-field
     chunk_t*  current_chunk;       // +32: active chunk being filled
 };
 ```
 
-Each chunk is a 24-byte header:
+Each chunk linked through the chain is held by a separate 16-byte wrapper allocated by `sub_464460` -- `{next at +0, chunk_t* at +8}`. The wrapper's `+0` is the singly-linked-list link; the wrapper's `+8` is the pointer to the 24-byte chunk header. The `chain_head` field at vec_header `+16` is the head of this wrapper list, *not* a field embedded inside any chunk. The `tail_cursor` at `+24` is the standard self-referencing-tail trick: at init it points at the head slot itself (`result + 2`, i.e. vec_header+16), so the first append's `*tail_cursor = new_wrapper` writes the new wrapper pointer directly into the head field; subsequent appends advance `tail_cursor` to the new wrapper, so the next write lands in that wrapper's next-field at offset +0.
+
+Each chunk itself is a 24-byte header:
 
 ```
 struct chunk_t {
@@ -356,7 +358,7 @@ struct chunk_t {
 };
 ```
 
-When a write exceeds the current chunk's remaining capacity, the function fills the current chunk with as many bytes as possible, then allocates a new chunk (sized to the larger of `default_chunk_size` and the remaining write size), copies the rest, and links the new chunk into the chain.
+When a write exceeds the current chunk's remaining capacity, the function fills the current chunk with as many bytes as possible, then allocates a new chunk (sized to the larger of `default_chunk_size` and the remaining write size), copies the rest, and links the new chunk into the chain via a fresh `{next, chunk_t*}` wrapper.
 
 ## How the Writer is Used in the Serialization Pipeline
 
