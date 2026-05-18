@@ -67,6 +67,114 @@ The block has a single entry, a single exit, and a fixed sequence: declarations 
 
 `PrintCall` and `PrintCallUni` are the special case `vprintf` lowering. The CUDA runtime exposes `printf` through a special ABI: the call passes the format string as a `.param` and a pointer to an argument buffer as a second `.param`. The selector can choose between the per-lane `PrintCall` and the warp-uniform `PrintCallUni` based on whether divergence analysis proved the call uniform; the uniform form skips the per-lane mask and emits a single `call.uni vprintf` rather than a predicate-guarded loop. Both are introduced by `LowerCall` and lowered without ever reaching the MatcherTable.
 
+## NVPTXISD Node Roster
+
+The summary above sketches the handful of pseudo-opcodes the rest of this page returns to. The full set the binary still spells by name is wider. `NVPTXTargetLowering::getTargetNodeName` is a giant `switch` that maps each `NVPTXISD::*` enumerator to its string for `-debug` dumps; the cases that ship a string literal survive into the `.rodata` segment as `NVPTXISD::<Name>` C strings. Mining `tileiras_strings.json` for that prefix yields exactly 60 distinct names. These are the tileiras-side surface — the opcodes the NVPTX backend introduces during legalisation and consumes at instruction selection. The cicc-side catalog is larger (its `NVPTXISD` enum has roughly 460 entries spanning every intrinsic family the parser knows about), but most of those never reach the back-end selector because they collapse during early lowering into generic `ISD::*` opcodes or into target-specific machine opcodes inlined as numeric constants.
+
+The roster below groups the 60 named nodes by structural family. The family is what the case body does, not where the opcode sits in the dispatch range; the same family can straddle several numeric brackets because NVIDIA appended new opcodes at the end of the enum across LLVM 17, 18, 19, and the LLVM-21-prerelease the binary fingerprints to.
+
+### Param-space ABI
+
+These are the nodes the [Lowering Formal Arguments](nvptx-target-lowering-call-and-args.md#lowering-formal-arguments) and [Lowering Calls](nvptx-target-lowering-call-and-args.md#lowering-calls) passes inject around every kernel and device-function boundary. They translate the PTX `.param` address space — which has no natural representation in generic LLVM IR — into a chainable SDNode sequence.
+
+| Node | Role | Vector widths |
+|---|---|---|
+| `LoadParam` | Scalar `.param` load on the callee side of an argument | scalar |
+| `LoadParamV2` | Aligned-pair `.param` load (legalised `v2` aggregates) | v2 |
+| `LoadParamV4` | Aligned-quad `.param` load (legalised `v4` aggregates) | v4 |
+| `StoreParam` | Scalar `.param` store on the caller side of an argument | scalar |
+| `StoreParamV2` | Aligned-pair `.param` store | v2 |
+| `StoreParamV4` | Aligned-quad `.param` store | v4 |
+| `MoveParam` | Marker that copies a `.param`-space pointer into a register class without emitting any PTX | scalar |
+| `DeclareParam` | Header marker for an aggregate parameter (emits `.param .align N .b8 _Zarg[<size>]`) | — |
+| `DeclareScalarParam` | Header marker for a scalar parameter (emits `.param .{u32,u64,f32,...} _Zarg`) | — |
+| `DeclareRet` | Header marker for a scalar return value | — |
+| `DeclareRetParam` | Header marker for a struct return (emits `.param .align N .b8 _Zretval[<size>]`) | — |
+
+### Call / control-flow brackets
+
+Nodes that bracket calls and structured indirect branches. PTX requires a single-entry / single-exit `.param` block around every call, and `brx.idx` requires a label-bracketed jump table.
+
+| Node | Role |
+|---|---|
+| `CALL` | The chainable call SDNode itself; carries the callee symbol and the operand sequence between matching `ParamCallStart` / `ParamCallEnd` brackets |
+| `CallPrototype` | Emits the inline `.callprototype` directive for indirect calls whose target signature is not known at link time |
+| `RET_GLUE` | The `ret;` opcode plus the chain glue that pins it after every `StoreRetval` |
+| `ProxyReg` | Pins a source register class across a class-changing copy so `NVPTXProxyRegErasure` can pick the right `mov.*` post-ISel |
+| `BrxStart` | Opens a structured `brx.idx` jump table |
+| `BrxItem` | One label entry inside a `BrxStart` / `BrxEnd` bracket |
+| `BrxEnd` | Closes the structured `brx.idx` jump table |
+
+### Vector load / store
+
+Wide loads and stores. The base `LoadV*` / `StoreV*` family covers ordinary multi-lane access. The `LoadExt*` / `StoreExt*` family carries an additional extension-type operand (sign-extend, zero-extend, or any-extend) that the generic `ISD::LOAD` / `ISD::STORE` would have to encode in a separate field; pinning it on the opcode keeps the MatcherTable patterns one-to-one with PTX `ld.{s,u}{8,16}.<dest>` and `st` mnemonics. The `Ver2` suffix is NVIDIA's post-LLVM-19 alternate encoding that swaps the chain-and-offset operand order so the generic vectoriser can synthesise wider transactions without backtracking through the existing match table.
+
+| Node | Role |
+|---|---|
+| `LoadV2`, `LoadV4`, `LoadV8` | Aligned vector loads of the indicated lane count |
+| `StoreV2`, `StoreV4`, `StoreV8` | Aligned vector stores of the indicated lane count |
+| `LoadExt` | Scalar load with explicit extension type |
+| `LoadExtV2`, `LoadExtV4`, `LoadExtV8` | Vector load with explicit extension type per lane |
+| `StoreExt` | Scalar store with explicit truncation type |
+| `StoreExtV2`, `StoreExtV4`, `StoreExtV8` | Vector store with explicit truncation type per lane |
+| `LoadExtVer2`, `LoadExtVer2V2`, `LoadExtVer2V4`, `LoadExtVer2V8` | Alternate-encoded extension-load variants (post-LLVM-19 surface) |
+| `StoreExtVer2`, `StoreExtVer2V2`, `StoreExtVer2V4`, `StoreExtVer2V8` | Alternate-encoded extension-store variants |
+| `LDUV2`, `LDUV4` | Uniform / cached vector loads from `ldg.*` paths that NVIDIA promoted into a typed pair of pseudo-opcodes |
+
+### Vector synthesis
+
+| Node | Role |
+|---|---|
+| `BUILD_VECTOR` | Assembles a vector from scalar operands; distinct from upstream `ISD::BUILD_VECTOR` so PTX-specific lane-packing patterns can match without colliding with generic vector legalisation |
+| `UNPACK_VECTOR` | Inverse of `BUILD_VECTOR`; explicitly splits a packed PTX vector into per-lane scalars when a later use needs scalar operands |
+
+### Predicate-set
+
+| Node | Role |
+|---|---|
+| `SETP_F16X2` | Packed f16x2 predicate-set; emits `setp.<cmp>.f16x2` and produces a 2-bit predicate pair |
+| `SETP_BF16X2` | Packed bf16x2 predicate-set; emits `setp.<cmp>.bf16x2` and produces a 2-bit predicate pair |
+
+### Arithmetic and bit manipulation
+
+| Node | Role |
+|---|---|
+| `BFI` | Bit-field insert; lowers to PTX `bfi.{b32,b64}` |
+| `PRMT` | Byte permute; lowers to PTX `prmt.b32` (and the SM 8.0+ packed-FP `prmt.f16x2` variants) |
+| `FCOPYSIGN` | Copy-sign that the selector keeps as a target opcode because PTX has no single-instruction generic `copysign` for every type and the lane-by-lane lowering depends on the source MVT |
+| `FSHL_CLAMP` | Funnel-shift left with the shift amount clamped to the operand width; folds the upstream `ISD::FSHL` + clamp idiom into one opcode |
+| `FSHR_CLAMP` | Funnel-shift right with the shift amount clamped |
+| `MUL_WIDE_SIGNED` | 32×32 → 64 signed widening multiply; lowers to `mul.wide.s32` |
+| `MUL_WIDE_UNSIGNED` | 32×32 → 64 unsigned widening multiply; lowers to `mul.wide.u32` |
+
+### Stack / dynamic allocation
+
+| Node | Role |
+|---|---|
+| `DYNAMIC_STACKALLOC` | The chainable `alloca` lowering that turns into `alloca.u64` (or `alloca.u32` on 32-bit) and threads the result through the local-memory bump pointer |
+| `STACKSAVE` | Snapshots the current local-stack pointer for a later `STACKRESTORE` |
+| `STACKRESTORE` | Restores the local-stack pointer to a saved value |
+
+### Cluster launch control
+
+These four opcodes lower the Hopper / Blackwell `clusterlaunchcontrol.query_cancel.*` intrinsic family. They are the only string-table opcodes whose name spells out the PTX mnemonic in full, and they exist because the result selector reads only one field of the returned canceled-query record at a time.
+
+| Node | Role |
+|---|---|
+| `CLUSTERLAUNCHCONTROL_QUERY_CANCEL_IS_CANCELED` | Returns the `is_canceled` predicate from a queried cancel record |
+| `CLUSTERLAUNCHCONTROL_QUERY_CANCEL_GET_FIRST_CTAID_X` | Reads `ctaid.x` of the first CTA whose launch was canceled |
+| `CLUSTERLAUNCHCONTROL_QUERY_CANCEL_GET_FIRST_CTAID_Y` | Reads `ctaid.y` of that CTA |
+| `CLUSTERLAUNCHCONTROL_QUERY_CANCEL_GET_FIRST_CTAID_Z` | Reads `ctaid.z` of that CTA |
+
+> ⚡ **QUIRK — the 60 named opcodes are the *survivors*, not the whole NVPTXISD enum**
+> The cicc-side `NVPTXISD` enum has roughly 460 entries because the parser front-end carries one enumerator per intrinsic family it knows about. Most of those never reach `getTargetNodeName`: they either collapse during early lowering (the TMA descriptor builders, the WGMMA operand marshallers, the `tcgen05.mma` family) into target-specific machine opcodes inlined directly into `SelectLoadStoreVector` and `SelectIntrinsic_W_Chain`, or they live behind numeric constants the matcher table consumes without a debug name. The 60 strings the binary still ships are the subset whose enum case in `getTargetNodeName` had a non-empty `case NVPTXISD::Foo: return "NVPTXISD::Foo";` arm at compile time. A reimplementation that drives off the cicc enum will see node kinds the tileiras selector has no handler for; a reimplementation that drives off this 60-name list will miss every TMA / WGMMA / tcgen05 opcode the selector emits as a numeric constant.
+
+> ⚡ **QUIRK — `LoadExt*Ver2` is not a version-2 of `LoadExt*`; it is the post-LLVM-19 *alternate operand order***
+> The `Ver2` suffix on the eight `LoadExtVer2*` / `StoreExtVer2*` opcodes is a misleading name: it does not mark a newer revision of the same node. It marks NVIDIA's alternate-encoding surface, introduced when the upstream LLVM vectoriser started synthesising wider transactions that bypassed the existing match table. The two variants coexist — both encodings are valid SDNodes the selector still has to handle — and a reimplementation that treats `Ver2` as superseding the unsuffixed form will fail to match nodes the legacy paths still emit. The selector dispatches on the opcode value, not on a versioning predicate; both forms route through the same case bodies in [`SelectLoadStoreVector`](#selectloadstorevector-load-store-vector-dispatcher) with different operand offsets.
+
+> ⚡ **QUIRK — `BUILD_VECTOR` and `UNPACK_VECTOR` shadow upstream `ISD::BUILD_VECTOR`**
+> Generic LLVM already has `ISD::BUILD_VECTOR`. NVPTX could in principle let the upstream patterns handle vector assembly, but PTX's lane-packing rules (two 16-bit lanes packed into one 32-bit register for `v2f16` / `v2bf16` / `v2i16`, four 8-bit lanes for `v4i8`, etc.) do not match the generic legaliser's split-and-recombine sequence. The private `NVPTXISD::BUILD_VECTOR` lets the selector match a single-node pattern that emits the right PTX `mov.b32` packing in one shot; the inverse `NVPTXISD::UNPACK_VECTOR` does the symmetric job on extraction. The two pseudo-opcodes have the same semantic intent as their upstream cousins — the difference is purely about whose pattern table owns the match. Imports of upstream NVPTX tablegen that drop the private opcodes will reintroduce the split-and-recombine sequence and produce PTX with redundant `mov`s the assembler cannot fold.
+
 ## INTRINSIC_W_CHAIN Top-Level Dispatcher
 
 In tileiras, `select_intrinsic_with_chain` materializes as `sub_1A854E0` (`NVPTXDAGToDAGISel::SelectIntrinsic_W_Chain`) — 6 213 B, 509 basic blocks, with a single jump table at instruction `0x1A8551B` driving the body. The dispatch key is not the LLVM intrinsic ID itself. It is the 32-bit overlay at `SDNode + 24`, packing the `NVPTXISD` opcode into the low 16 bits and the SDNode flag word into the high 16 bits. Intrinsic IDs enter only inside delegate handlers, which read `SDNode + 72`.

@@ -65,6 +65,7 @@
 - [Scheduling Algorithm](./scheduling/algorithm.md)
 - [Latency Model & HW Profiles](./scheduling/latency-model.md)
 - [Scoreboards & Dependency Barriers](./scheduling/scoreboards.md)
+- [Phase 110 -- PostSchedule](./scheduling/post-schedule.md)
 
 # SASS Code Generation
 

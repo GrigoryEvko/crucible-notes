@@ -493,6 +493,287 @@ Complete mapping from option name to BSS global variable address, sorted by addr
 | `filename` | 8 | `output-file` | Output file path |
 | `::src` | 8 | `host-ccbin` | Host compiler binary path |
 
+## Option Globals Cross-Reference Matrix
+
+Cross-reference of every BSS global in the option-state region `0x2A5F1FC`--`0x2A5F330`, mined from `nvlink_xrefs.json`. The **Setter** column names the function that issues the write (the CLI extractor `sub_427AE0`, the derivation site, or a runtime updater); the **Top Consumers** column lists the functions that read the global most often, in descending call-count order. Function tags use the short-name conventions already established elsewhere in the wiki: `main` = `0x409800`, `nvlink_parse_options` = `sub_427AE0`, the LTO compile-driver = `sub_426CD0`, the per-module link iterator = `sub_426570`, the inner load loop = `sub_426AE0`, the SASS-mode dispatcher = `sub_4275C0`, the merge consistency tracker = `sub_42AF40`, the tkinfo emitter = `sub_429BA0`, the kernel/variable-keep applier = `sub_42A680`, the arch profile resolver = `sub_42A2D0`, the relocator entry point = `sub_42A190`.
+
+The W/R columns report exact write- and read-site counts from the cross-reference index (call-flow xrefs from `sub_427AE0` that are not data references, such as the `option_get_value` parameter pass, are counted under "Other" in the underlying dataset and excluded here).
+
+| Address | Setter | W | R | Top Consumers |
+|---|---|---|---|---|
+| `byte_2A5F1FC` | `sub_427AE0` (`option_was_specified`) | 1 | 2 | `sub_429BA0` x2 |
+| `byte_2A5F1FD` | `sub_427AE0` (`enable-extended-smem`) | 0* | 1 | `main` |
+| `byte_2A5F1FE` | `sub_427AE0` (`device-stack-protector`) | 0* | 1 | `sub_429BA0` |
+| `byte_2A5F1FF` | `sub_427AE0` (`option_was_specified`) | 1 | 2 | `sub_429BA0` x2 |
+| `qword_2A5F200` | `sub_427AE0` (`option_generate_tkinfo`) | 1 | 1 | `main` |
+| `qword_2A5F208` | `sub_427AE0` (`uidx-file`) | 0* | 2 | `main` x2 |
+| `byte_2A5F210` | `sub_427AE0` (`disable-smem-reservation`) | 0* | 2 | `main`, `sub_4275C0` |
+| `byte_2A5F211` | `sub_426AE0` (runtime: archive flag) | 1 | 2 | `sub_426CD0` x2 |
+| `byte_2A5F212` | `sub_427AE0` + `sub_426AE0` + `main` | 5 | 3 | `sub_427AE0` x2, `sub_426AE0` |
+| `byte_2A5F213` | `sub_427AE0` (`use-host-info`, then re-derived) | 2 | 3 | `sub_427AE0` x2, `sub_42A680` |
+| `byte_2A5F214` | `sub_427AE0` (derived, two branches) | 2 | 3 | `sub_426CD0` x2, `main` |
+| `byte_2A5F215` | `sub_427AE0` (`dump-callgraph-no-demangle`) | 0* | 2 | `main`, `sub_427AE0` |
+| `byte_2A5F216` | `sub_427AE0` (`dump-callgraph`) | 0* | 2 | `main`, `sub_427AE0` |
+| `qword_2A5F218` | `sub_427AE0` (`cuda-api-version`) | 0* | 6 | `sub_429BA0` x4, `sub_427AE0` x2 |
+| `byte_2A5F220` | `sub_426570` (runtime, per-module) | 1 | 1 | `main` |
+| `byte_2A5F221` | `sub_426570` (runtime, per-module) | 1 | 2 | `main`, `sub_426570` |
+| `byte_2A5F222` | `sub_427AE0` (derived, sm > 99) + `sub_426570` (override) | 2 | 8 | `main` x4, `sub_4275C0` x2, `sub_427AE0`, `sub_42A190` |
+| `byte_2A5F223` | `sub_427AE0` (`verbose-tkinfo`, then debug override) | 1 | 3 | `main`, `sub_4275C0`, `sub_427AE0` |
+| `byte_2A5F224` | `sub_427AE0` (derived, sm > 72) | 2 | 6 | `main` x4, `sub_426570`, `sub_4275C0` |
+| `byte_2A5F225` | `sub_427AE0` (derived) + `sub_426570` (override) | 3 | 13 | `main` x7, `sub_427AE0` x2, `sub_42AF40` x2 |
+| `byte_2A5F226` | `sub_427AE0` (`suppress-debug-info`) | 0* | 2 | `main`, `sub_427AE0` |
+| `byte_2A5F227` | `sub_427AE0` (`uumn`) | 0* | 1 | `sub_427AE0` |
+| `byte_2A5F228` | `sub_427AE0` (`fdcmpt`) | 0* | 2 | `main`, `sub_427AE0` |
+| `byte_2A5F229` | `sub_426570` (runtime gate) | 1 | 2 | `main`, `sub_426570` |
+| `dword_2A5F22C` | `main` (post-parse override) | 1 | 6 | `sub_429BA0` x4, `main`, `sub_426CD0` |
+| `qword_2A5F230` | `sub_427AE0` (`Xnvvm`) | 0* | 1 | `sub_426CD0` |
+| `qword_2A5F238` | `sub_427AE0` (`Xptxas`) | 0* | 2 | `sub_429BA0` x2 |
+| `dword_2A5F240` | `sub_42AF40` (merge tracker) | 3 | 1 | `sub_42AF40` |
+| `byte_2A5F244` | `sub_42AF40` (merge tracker) | 1 | 2 | `sub_426CD0` x2 |
+| `dword_2A5F248` | `sub_42AF40` (merge tracker) | 3 | 2 | `main`, `sub_42AF40` |
+| `byte_2A5F24C` | `sub_42AF40` (merge tracker) | 1 | 2 | `sub_426CD0` x2 |
+| `dword_2A5F250` | `sub_42AF40` (merge tracker) | 5 | 3 | `sub_42AF40` x2, `main` |
+| `byte_2A5F254` | `sub_42AF40` (merge tracker) | 2 | 3 | `main` x2, `sub_42AF40` |
+| `qword_2A5F258` | `sub_427AE0` (`Ofast-compile`) | 0* | 12 | `sub_429BA0` x6, `sub_426CD0` x4, `sub_427AE0` x2 |
+| `dword_2A5F260` | `sub_42AF40` (merge tracker) | 5 | 3 | `sub_42AF40` x2, `main` |
+| `dword_2A5F264` | `sub_42AF40` (merge tracker) | 5 | 3 | `sub_42AF40` x2, `main` |
+| `dword_2A5F268` | `sub_42AF40` (merge tracker) | 5 | 3 | `sub_42AF40` x2, `main` |
+| `dword_2A5F26C` | `sub_42AF40` (merge tracker) | 5 | 3 | `sub_42AF40` x2, `main` |
+| `dword_2A5F270` | `sub_42AF40` (merge tracker) | 5 | 3 | `sub_42AF40` x2, `main` |
+| `dword_2A5F274` | `sub_42AF40` (merge tracker) | 2 | 2 | `sub_426CD0`, `sub_42AF40` |
+| `qword_2A5F278` | `sub_427AE0` (`nvvmpath`) | 0* | 2 | `main`, `sub_427AE0` |
+| `dword_2A5F280` | `sub_427A10` + `sub_42AF40` (module counter) | 2 | 1 | `main` |
+| `byte_2A5F284` | `sub_427AE0` (`force-whole-lto`) | 0* | 3 | `sub_427AE0` x2, `main` |
+| `byte_2A5F285` | `sub_427AE0` (`force-partial-lto`) + `sub_42A680` | 2 | 10 | `main` x4, `sub_426CD0` x3, `sub_427AE0` x3 |
+| `byte_2A5F286` | `sub_427AE0` (derived) + `main` (override) + `sub_42A680` | 4 | 5 | `main` x3, `sub_426CD0` x2 |
+| `byte_2A5F287` | `sub_427AE0` (`dlto`) | 0* | 1 | `sub_427AE0` |
+| `byte_2A5F288` | `sub_427AE0` (`link-time-opt`) + `main` (alias propagate) | 2 | 10 | `main` x6, `sub_427A10`, `sub_427AE0`, `sub_42A680`, `sub_42AF40` |
+| `byte_2A5F289` | `sub_427AE0` (`extra-warnings`) | 0* | 1 | `main` |
+| `qword_2A5F290` | `sub_427AE0` (`time`) | 0* | 12 | `main` x9, `sub_42AF40` x3 |
+| `byte_2A5F298` | `sub_427AE0` (`suppress-arch-warning`) | 0* | 3 | `sub_42A2D0` x2, `sub_4297B0` |
+| `byte_2A5F299` | `sub_427AE0` (`suppress-stack-size-warning`) | 0* | 1 | `main` |
+| `byte_2A5F29A` | `sub_427AE0` (`emit-ptx`) | 0* | 6 | `sub_427AE0` x4, `main` x2 |
+| `byte_2A5F29B` | `sub_427AE0` (`verbose-keep`) | 0* | 13 | `main` x8, `sub_42AF40` x3, `sub_427A10` x2 |
+| `byte_2A5F29C` | `sub_427AE0` (`report-arch`) | 0* | 2 | `main`, `sub_427AE0` |
+| `qword_2A5F2A0` | `sub_427AE0` (`cpu-arch`) | 0* | 1 | `sub_42A2D0` |
+| `byte_2A5F2A8` | `sub_427AE0` (`optimize-data-layout`) | 0* | 2 | `main`, `sub_427AE0` |
+| `byte_2A5F2A9` | `sub_427AE0` (`no-opt`) | 0* | 3 | `main`, `sub_4275C0`, `sub_427AE0` |
+| `byte_2A5F2AA` | `sub_427AE0` (`force-rela`) | 0* | 1 | `main` |
+| `qword_2A5F2B0` | `sub_427AE0` (`variables-used`) | 0* | 2 | `main`, `sub_427AE0` |
+| `qword_2A5F2B8` | `sub_427AE0` (`kernels-used`) | 0* | 2 | `main`, `sub_427AE0` |
+| `byte_2A5F2C0` | `sub_427AE0` (derived: `sub_44E4F0(arch)`) | 1 | 7 | `main` x6, `sub_42AF40` |
+| `byte_2A5F2C1` | `sub_427AE0` (derived: `sub_44E490(arch)`) | 1 | 5 | `sub_426570` x2, `sub_427AE0` x2, `main` |
+| `byte_2A5F2C2` | `sub_427AE0` (`keep-system-libraries`) | 0* | 2 | `main` x2 |
+| `byte_2A5F2C3` | `sub_427AE0` (`warning-as-error`) | 0* | 1 | `sub_427AE0` |
+| `byte_2A5F2C4` | `sub_427AE0` (`disable-warnings`) | 0* | 1 | `sub_427AE0` |
+| `byte_2A5F2C5` | `sub_427AE0` (`disable-infos`) | 0* | 1 | `sub_427AE0` |
+| `dword_2A5F2C8` | `sub_427AE0` (`syscall-const-offset`) | 0* | 1 | `main` |
+| `byte_2A5F2CC` | `sub_427AE0` (`allow-undefined-globals`) | 0* | 1 | `main` |
+| `byte_2A5F2CD` | `sub_427AE0` (derived from two locals) | 1 | 1 | `main` |
+| `byte_2A5F2CE` | `sub_427AE0` (`preserve-relocs`) | 0* | 2 | `main`, `sub_427AE0` |
+| `qword_2A5F2D0` | `sub_427AE0` (`dot-file`) | 0* | 2 | `main` x2 |
+| `byte_2A5F2D8` | `sub_427AE0` (`verbose`) | 0* | 3 | `main` x3 |
+| `qword_2A5F2E0` | `sub_427AE0` (`register-link-binaries`) | 0* | 11 | `main` x7, `sub_42A680` x2, `sub_42AF40` x2 |
+| `qword_2A5F2E8` | `sub_427AE0` (`host-linker-options`) | 0* | 1 | `main` |
+| `qword_2A5F2F8` | `sub_427AE0` (`library`) | 0* | 1 | `main` |
+| `qword_2A5F300` | `sub_427AE0` (`library-path`) | 0* | 1 | `main` |
+| `dword_2A5F308` | `sub_427AE0` (`edbg`) | 0* | 13 | `sub_4275C0` x6, `main` x4, `sub_42A680` x2, `sub_42AF40` |
+| `byte_2A5F310` | `sub_427AE0` (`debug`, cleared by suppress) | 1 | 14 | `main` x6, `sub_42AF40` x3, `sub_426CD0` x2, `sub_427AE0` x2, `sub_4275C0` |
+| `dword_2A5F30C` | `sub_427AE0` (`machine`) | 0* | 17 | `main` x9, `sub_42AF40` x4, `sub_427AE0` x2, `sub_426570`, `sub_42A190` |
+| `dword_2A5F314` | `sub_427AE0` (derived: `sub_44E3E0(arch)`) | 1 | 31 | `main` x16, `sub_427AE0` x5, `sub_426570` x4, `sub_42AF40` x4, `sub_426CD0`, `sub_42A190` |
+| `qword_2A5F318` | `sub_427AE0` (`arch`) | 0* | 20 | `sub_427AE0` x7, `main` x5, `sub_426570` x2, `sub_42A2D0` x2, `sub_42AF40` x2, `sub_4297B0`, `sub_42A190` |
+| `qword_2A5F320` | `sub_427AE0` (`output-file`, aka `filename`) | 0* | 18 | `main` x16, `sub_427AE0`, `sub_4299E0` |
+| `qword_2A5F328` | `sub_427AE0` (positional list head, `option_get_value(" ")`) | 0* | 1 | `sub_427AE0` |
+| `qword_2A5F330` | `sub_427AE0` (positional list tail, `sub_4648C0`) | 1 | 5 | `main` x3, `sub_427AE0` x2 |
+
+\* `W=0*` means the CLI extractor writes the global through `option_get_value`'s out-pointer argument (`sub_42E390`), which the xref index records as a call-flow edge rather than a data-write to the global. The corresponding entry in the "Other" category of `nvlink_xrefs.json` covers these stores. Counts shown here are the data-write xrefs proper.
+
+> **QUIRK (multi-source globals).** `byte_2A5F212` (`ignore-host-info`) has the highest write-fan-in of any option global: it is written from `sub_427AE0` (initial CLI extraction), then forced to 1 by the relocatable-link branch in the same function (lines 351-352), again by `main` when `--kernels-used`/`--variables-used` is set, and by `sub_426AE0` from per-module `.nv_info` data (line 121). Five distinct write sites for what looks like a plain boolean option.
+
+> **QUIRK (CLI flag mutated at runtime).** `byte_2A5F225` (SASS output mode) is written three times: once by the CLI as a true derived flag (sm > 99 -> 1, sm > 89 -> 1 via the unset branch), once by the post-extraction recheck, and a third time by `sub_426570` -- the per-module link iterator can *promote* a non-SASS run to SASS mode mid-link based on module attributes. Same pattern with `byte_2A5F222` (mercury mode) and `byte_2A5F220`/`byte_2A5F221` (companion module-scoped state).
+
+> **QUIRK (CLI flag never read by any consumer).** `byte_2A5F227` (`uumn`, undocumented forward-compat helper) has zero reads outside `sub_427AE0` itself. The flag exists solely so that `sub_427AE0` can pair it with `fdcmpt` (`byte_2A5F228`) for the SM <= 69 fatal-error check; once option parsing finishes, no downstream pass observes it. Several other globals (`byte_2A5F2C3`/`byte_2A5F2C4`/`byte_2A5F2C5`) are likewise read only by the parser, because the diagnostic state is forwarded into `sub_468420`/`sub_468430` and the booleans themselves are dead afterward.
+
+## Derived Globals
+
+Twelve globals in the `0x2A5F1FC`--`0x2A5F330` window are computed by `sub_427AE0` after extracting raw option values, plus the runtime-promotion globals owned by `sub_426570`. Their decision trees are listed below in source order. All line numbers refer to `decompiled/sub_427AE0_0x427ae0.c` unless otherwise noted.
+
+### `byte_2A5F1FC` -- *device-stack-protector-frame-size-threshold was specified*
+
+```
+byte_2A5F1FC = option_was_specified(parser, "device-stack-protector-frame-size-threshold")
+```
+
+Pure presence query (`sub_42E580`, line 271). Read by `sub_429BA0` to decide whether to emit the threshold into tkinfo.
+
+### `byte_2A5F1FF` -- *device-stack-protector was specified*
+
+```
+byte_2A5F1FF = option_was_specified(parser, "device-stack-protector")
+```
+
+Same pattern as the frame-size flag (line 270). Read by `sub_429BA0` for the tkinfo entry.
+
+### `qword_2A5F200` -- *tkinfo data pointer*
+
+```
+qword_2A5F200 = (int64)option_generate_tkinfo(parser, ...)            // line 497
+```
+
+Set by the parser's serializer (`sub_42F640`) at the tail end of `sub_427AE0`. Consumed by `main` when the linker emits the `.nv_info` section.
+
+### `byte_2A5F213` and `byte_2A5F214` -- *use-host-info / host-info active*
+
+Three-way decision tree at lines 349-364, after extracting `byte_2A5F212` (`ignore-host-info`) and `byte_2A5F213` (`use-host-info`):
+
+```
+if (use_host_info && ignore_host_info):
+    fatal_error("-use-host-info", "-ignore-host-info")
+
+if (relocatable_link):                            # line 351
+    ignore_host_info = 1                          # force ignore on -r
+
+if (kernels_used || variables_used):              # line 353
+    if (use_host_info):
+        warning("ignore -use-host-info because -kernels-used or -variables-used")
+    byte_2A5F213 = 0                              # clear use-host-info
+    byte_2A5F214 = 1                              # host_info_active = 1
+elif (!ignore_host_info):                         # line 360 (default branch)
+    byte_2A5F213 = 1                              # default use-host-info on
+    byte_2A5F214 = 1                              # host_info_active = 1
+# else: both stay 0 (ignore-host-info wins, host_info_active stays 0)
+```
+
+`byte_2A5F214` is the true "host info is active for this link" signal consumed by `sub_426CD0` (LTO compile-driver) and `main`; `byte_2A5F213` retains the literal CLI intent for diagnostics.
+
+### `byte_2A5F222`, `byte_2A5F224`, `byte_2A5F225` -- *SM-derived output mode triple*
+
+Computed at lines 296-326 after `sub_44E3E0(arch_string)` returns the parsed SM number into `dword_2A5F314`:
+
+```
+sm = dword_2A5F314                                # line 296
+byte_2A5F224 = (sm > 0x48)                        # new-style ELF: sm > 72 (line 302)
+
+if (sm > 0x48 && machine == 32):                  # line 303
+    fatal_error("32-bit not allowed for sm > 72")
+    byte_2A5F224 = 0
+
+if (sm > 0x63):                                   # line 309: sm > 99 (Mercury)
+    byte_2A5F222 = 1                              # mercury mode
+    byte_2A5F225 = 1                              # SASS output
+    byte_2A5B510 = 0
+elif (byte_2A5F222):                              # line 316: mercury pre-flag set
+    byte_2A5F225 = 1                              # SASS output
+elif (!byte_2A5F225):                             # line 320: neither mercury nor SASS
+    byte_2A5B510 = 1                              # use PTX path
+    goto LABEL_28
+# Reaches here only if byte_2A5F225 was already 1 OR mercury triggered
+byte_2A5B510 = 0
+if (sm <= 0x59):                                  # line 326: SASS requires sm > 89
+    fatal_error("SASS mode requires sm >= 90")
+```
+
+Note that `byte_2A5F222` can be set *before* this code path executes -- `sub_426570` flips it during per-module loading when it discovers Mercury-class metadata in an input. That is why the `elif (byte_2A5F222)` branch exists.
+
+### `byte_2A5F2C0` and `byte_2A5F2C1` -- *arch capability / output-is-archive*
+
+```
+byte_2A5F2C1 = sub_44E490(arch_string)            # line 293: output-is-archive flag
+byte_2A5F2C0 = sub_44E4F0(arch_string)            # line 295: arch capability flag
+byte_2A5B52C = sub_44E4D0(arch_string)            # line 294: arch-supported flag
+```
+
+All three are pure functions of the parsed `--arch` string. `byte_2A5F2C1` selects passthrough/archive mode in `dword_2A5B528` (line 367); `byte_2A5F2C0` controls a capability gate consulted by `main` and `sub_42AF40`.
+
+### `byte_2A5F2CD` -- *reserve-null-pointer effective flag*
+
+```
+v15 = 0
+if (src):                                         # line 335: reserve-null-pointer was passed
+    v15 = (v26 == 0)                              # v26 is dont-reserve-null-pointer
+byte_2A5F2CD = v15                                # line 337
+```
+
+The "dont-" form wins outright if specified; reserve-null is only effective when reserve-null is passed *and* dont-reserve-null is not.
+
+### `byte_2A5F286` -- *partial-LTO active*
+
+Set inside the LTO validation cascade at line 427 (LABEL_68):
+
+```
+if (link_time_opt):                               # line 371: byte_2A5F288 == 1
+    if (!nvvmpath): fatal("-nvvmpath should be specified with -lto")
+    if (relocatable_link):                        # line 375
+        force_partial_lto = 1                     # promote -r to partial LTO
+    elif (!force_partial_lto):                    # line 379
+        if (!emit_ptx):
+            goto LABEL_104                        # check Ofast-compile, then mode = LTO
+
+    if (force_whole_lto):                         # line 418
+        fatal("-force-partial-lto", "-force-whole-lto")
+        ...
+    elif (!emit_ptx):
+        # LABEL_68
+        byte_2A5F286 = 1                          # partial-LTO active
+        goto LABEL_104
+```
+
+`byte_2A5F286` is *only* set to 1 in this single branch. It also has separate writers in `main` (LTO alias propagation) and `sub_42A680` (kernel/variable-keep applier forces partial-LTO when keep lists are present).
+
+### `dword_2A5F314` -- *parsed SM number*
+
+```
+sm = sub_44E3E0(qword_2A5F318, 0, ...)            # line 290: parse "sm_75" -> 75
+if (sm <= 0x13):                                  # line 291: sm <= 19 (deprecated)
+    fatal_error("unsupported arch", arch_string)
+dword_2A5F314 = sm                                # line 296
+```
+
+The single most heavily-consumed derived global (31 read sites) -- it drives almost every architecture-conditional code path in the linker, from profile lookup to relocation type selection to ELF flag construction.
+
+### `byte_2A5F220`, `byte_2A5F221`, `byte_2A5F229` -- *runtime-set companion flags*
+
+These three live in the option-globals region but are written by `sub_426570` (the per-module link iterator), not by the CLI parser. Their decision trees fire while ingesting each input object:
+
+```
+# sub_426570 (per-module iteration), lines 93-240
+if (!byte_2A5F221 || !sub_43E610(...) || sub_4709E0(...)):
+    ...
+elif (!byte_2A5F229):
+    byte_2A5F229 = 1                              # first matched module marker
+...
+if (<module exposes target-mode metadata>):
+    byte_2A5F220 = 1                              # at least one module forced target mode
+...
+byte_2A5F221 = 1                                  # marks the first module that flipped state
+```
+
+`byte_2A5F221` and `byte_2A5F229` form a two-stage gate that prevents the iterator from applying a module-derived override more than once. Documented here because they share BSS space and registration semantics with the true CLI globals, even though they are derived from input objects rather than argv.
+
+### `byte_2A5F244`, `byte_2A5F24C`, `dword_2A5F240`..`dword_2A5F274` -- *merge-consistency tracker*
+
+Owned by `sub_42AF40` (the merge-consistency tracker called for each input module). Each `dword_2A5F26C/268/264/260/270` field implements the same state machine used to detect cross-module flag disagreement:
+
+```
+# Per scalar option that must match across all input modules:
+#   state 0: unset
+#   state 1: every module read so far had value V (recorded in companion field)
+#   state 2: at least one module deviated
+#   state 3: cross-module conflict detected
+state = current
+if (module_has_value):
+    if (state == 0):    state, recorded_value = 2, v
+    elif (state == 1):
+        if (v == recorded_value):  state = 3
+        elif (v != recorded_value): state = 4
+    ...
+else:
+    if (state == 2):    state = 3
+    elif (state == 0):  state = 1
+```
+
+The merge tracker reads back into `sub_426CD0` (which feeds it as `--has-global-host-info` / per-module switches to the embedded ptxas). These globals are CLI-shaped only because they share registration prototype with `byte_2A5F244`/`byte_2A5F24C`, but their values come exclusively from runtime aggregation, not argv.
+
 ## Internally-Synthesized Sub-Tool Flags (Not nvlink CLI Surface)
 
 `nvlink_strings.json` contains a number of flag-shaped string literals that are **not** registered with `option_register` and are therefore not part of nvlink's CLI surface. They fall into two groups:
