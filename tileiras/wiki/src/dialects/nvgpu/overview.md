@@ -30,35 +30,41 @@ PTX
 
 `populateNVGPUToNVVMConversionPatterns` installs one `OpConversionPattern` per op. Tileiras links the upstream populator unchanged. The rewriter callbacks branch on source memory space to pick the generic or `.shared` form of the `mbarrier` and `cp.async` intrinsics — address space 3 always selects `.shared`.
 
-| nvgpu op | NVVM op(s) emitted |
-|---|---|
-| `nvgpu.device_async_copy` | `nvvm.cp.async.shared.global` |
-| `nvgpu.device_async_create_group` | `nvvm.cp.async.commit.group` |
-| `nvgpu.device_async_wait` | `nvvm.cp.async.wait.group` |
-| `nvgpu.mbarrier.create` | (no `nvvm.*`; `memref.global` + `memref.get_global`) |
-| `nvgpu.mbarrier.init` | `nvvm.mbarrier.init` / `nvvm.mbarrier.init.shared` (address-space-driven) |
-| `nvgpu.mbarrier.arrive` | `nvvm.mbarrier.arrive` / `.shared` |
-| `nvgpu.mbarrier.arrive.nocomplete` | `nvvm.mbarrier.arrive.nocomplete` / `.shared` |
-| `nvgpu.mbarrier.arrive.expect_tx` | `nvvm.mbarrier.arrive.expect_tx` / `.shared` |
-| `nvgpu.mbarrier.test.wait` | `nvvm.mbarrier.test.wait` / `.shared` |
-| `nvgpu.mbarrier.try_wait.parity` | `nvvm.mbarrier.try_wait.parity.shared` |
-| `nvgpu.tma.async.load` | `nvvm.cp.async.bulk.tensor.shared.cluster.global` |
-| `nvgpu.tma.async.store` | `nvvm.cp.async.bulk.tensor.global.shared.cta` |
-| `nvgpu.tma.prefetch.descriptor` | `nvvm.prefetch.tensormap` |
-| `nvgpu.tma.fence.descriptor` | `nvvm.fence.proxy.acquire` |
-| `nvgpu.tma.create.descriptor` | `llvm.alloca` + GEP/store sequence + `llvm.call @cuTensorMapEncodeTiled` |
-| `gpu.warp_execute_on_lane_0` (consumed at this stage) | `nvvm.shfl.sync` + conditional region |
-| `nvgpu.warpgroup.descriptor` (generate) | integer `shl`/`or` chain producing a 64-bit value (see [WGMMA descriptor bit layout](../cute_nvgpu/mma-atoms-sm70-120.md#smem-descriptor-construction)) |
-| `nvgpu.warpgroup.mma` | `nvvm.wgmma.fence.aligned` + N× `nvvm.wgmma.mma_async` + `nvvm.wgmma.commit.group.sync.aligned` + `nvvm.wgmma.wait.group.sync.aligned` |
-| `nvgpu.warpgroup.mma.store` | per-thread `llvm.store` decomposition of the accumulator |
-| `nvgpu.warpgroup.mma.init.accumulator` | `llvm.mlir.undef` (or zero) accumulator aggregate |
-| `nvgpu.mma.sync` | `nvvm.wmma.mma.sync.aligned` (sm_70..sm_89) or `nvvm.wgmma.mma_async` (sm_90+) |
-| `nvgpu.mma.sp.sync` | `llvm.inline_asm` with `mma.sp.sync.aligned.m...` template |
-| `nvgpu.ldmatrix` | `nvvm.ldmatrix` + register repack |
-| (no nvgpu wrapper; lowered directly to `nvvm.stmatrix`) | `nvvm.stmatrix` (when available) or `llvm.inline_asm` |
-| `nvgpu.rcp` | `nvvm.rcp.approx.ftz.f` family or libdevice call |
-| `nvgpu.cvt_fpext` / `nvgpu.cvt_fptrunc` | `nvvm.cvt.packfloat.f32` family |
-| `nvgpu.fma.packed.f32x2` / `nvgpu.mul.packed.f32x2` | packed `nvvm.fma.packed.f32x2` / `nvvm.mul.packed.f32x2` |
+The "Status" column distinguishes ops whose mnemonic string appears verbatim in this binary's string table from upstream-MLIR patterns that the linked populator carries but whose mnemonic was never interned (either because the op was renamed, dropped, or only reached through `gpu`-dialect routing).
+
+| nvgpu op | NVVM op(s) emitted | Status |
+|---|---|---|
+| `nvgpu.device_async_copy` | `nvvm.cp.async.shared.global` | interned |
+| `nvgpu.device_async_create_group` | `nvvm.cp.async.commit.group` | interned |
+| `nvgpu.device_async_wait` | `nvvm.cp.async.wait.group` | interned |
+| `nvgpu.mbarrier.create` | (no `nvvm.*`; `memref.global` + `memref.get_global`) | interned |
+| `nvgpu.mbarrier.init` | `nvvm.mbarrier.init` / `nvvm.mbarrier.init.shared` (address-space-driven) | interned |
+| `nvgpu.mbarrier.arrive` | `nvvm.mbarrier.arrive` / `.shared` | interned |
+| `nvgpu.mbarrier.arrive.nocomplete` | `nvvm.mbarrier.arrive.nocomplete` / `.shared` | interned |
+| `nvgpu.mbarrier.arrive.expect_tx` | `nvvm.mbarrier.arrive.expect_tx` / `.shared` | interned |
+| `nvgpu.mbarrier.test.wait` | `nvvm.mbarrier.test.wait` / `.shared` | interned |
+| `nvgpu.mbarrier.try_wait.parity` | `nvvm.mbarrier.try_wait.parity.shared` | interned |
+| `nvgpu.mbarrier.inval` | `nvvm.mbarrier.inval[.shared]` | absent from this binary; NVVM `mbarrier.inval.shared` is reached through the lower-level pattern |
+| `nvgpu.tma.async.load` | `nvvm.cp.async.bulk.tensor.shared.cluster.global` | interned |
+| `nvgpu.tma.async.store` | `nvvm.cp.async.bulk.tensor.global.shared.cta` | interned |
+| `nvgpu.tma.async.reduce` | `nvvm.cp.async.bulk.tensor.reduce` | absent from this binary; NVVM reduce intrinsic still ships, but no `nvgpu` wrapper interns the mnemonic |
+| `nvgpu.tma.prefetch.descriptor` | `nvvm.prefetch.tensormap` | interned |
+| `nvgpu.tma.fence.descriptor` | `nvvm.fence.proxy.acquire` | interned |
+| `nvgpu.tma.create.descriptor` | `llvm.alloca` + GEP/store sequence + `llvm.call @cuTensorMapEncodeTiled` | interned |
+| `nvgpu.tensormap.create.descriptor` (device-side replace path) | `nvvm.tensormap.cp.async.shared` + `nvvm.tensormap.replace.*` | absent from this binary; described here for completeness against upstream MLIR |
+| `nvgpu.tensormap.update.{global_address,box_dim,element_stride}` | `nvvm.tensormap.replace.*` per field | absent from this binary; same upstream-only status |
+| `gpu.warp_execute_on_lane_0` (consumed at this stage) | `nvvm.shfl.sync` + conditional region | routed through the upstream `gpu` dialect; no `nvgpu` mnemonic interned |
+| `nvgpu.warpgroup.descriptor` (generate) | integer `shl`/`or` chain producing a 64-bit value (see [WGMMA descriptor bit layout](../cute_nvgpu/mma-atoms-sm70-120.md#smem-descriptor-construction)) | interned (both `nvgpu.warpgroup.descriptor` and `nvgpu.warpgroup.generate.descriptor`) |
+| `nvgpu.warpgroup.mma` | `nvvm.wgmma.fence.aligned` + N× `nvvm.wgmma.mma_async` + `nvvm.wgmma.commit.group.sync.aligned` + `nvvm.wgmma.wait.group.sync.aligned` | interned |
+| `nvgpu.warpgroup.mma.store` | per-thread `llvm.store` decomposition of the accumulator | interned |
+| `nvgpu.warpgroup.mma.init.accumulator` | `llvm.mlir.undef` (or zero) accumulator aggregate | interned |
+| `nvgpu.mma.sync` | `nvvm.wmma.mma.sync.aligned` (sm_70..sm_89) or `nvvm.wgmma.mma_async` (sm_90+) | interned |
+| `nvgpu.mma.sp.sync` | `llvm.inline_asm` with `mma.sp.sync.aligned.m...` template | interned |
+| `nvgpu.ldmatrix` | `nvvm.ldmatrix` + register repack | interned |
+| (no `nvgpu.stmatrix` mnemonic in this binary; the upstream `stmatrix` lowering targets `nvvm.stmatrix` directly) | `nvvm.stmatrix` (when available) or `llvm.inline_asm` | NVVM op present, `nvgpu` wrapper absent |
+| `nvgpu.rcp` | `nvvm.rcp.approx.ftz.f` family or libdevice call | interned |
+| `nvgpu.cvt_fpext` / `nvgpu.cvt_fptrunc` | `nvvm.cvt.packfloat.f32` family | interned |
+| `nvgpu.fma.packed.f32x2` / `nvgpu.mul.packed.f32x2` | packed `nvvm.fma.packed.f32x2` / `nvvm.mul.packed.f32x2` | interned |
 
 Patterns are registered at `benefit = 1`. The 64-bit values consumed by `nvgpu.warpgroup.mma`'s `descriptorA` / `descriptorB` operands are the same SMEM descriptor words that flow through `cute_nvgpu` MMA atoms — the [canonical bitfield decode is on the cute_nvgpu MMA atoms page](../cute_nvgpu/mma-atoms-sm70-120.md#smem-descriptor-construction).
 
@@ -150,14 +156,16 @@ Rewriter emits `nvvm.mbarrier.arrive.expect_tx[.shared]`. No SSA result; the sid
 
 Rewriter emits `nvvm.mbarrier.try_wait.parity.shared` returning an `i1` polled in a loop.
 
-### `nvgpu.mbarrier.inval`
+### `nvgpu.mbarrier.inval` (absent in this binary)
+
+The mnemonic `nvgpu.mbarrier.inval` is not interned in this `tileiras` string table; the inval-side intrinsic (`nvvm.mbarrier.inval.shared`) is still present and is reached through the lower-level NVVM lowering. The operand list below is documented for upstream-MLIR parity and as a reference for reimplementers that choose to surface the wrapper.
 
 | Position | Name | Type | Notes |
 |---|---|---|---|
 | operand 0 | `barriers` | `!nvgpu.mbarrier.group` | mbarrier slot |
 | operand 1 | `mbarId` | `index` | barrier index within the group |
 
-Rewriter emits `nvvm.mbarrier.inval[.shared]`.
+Upstream rewriter shape: emit `nvvm.mbarrier.inval[.shared]`.
 
 ### `nvgpu.tma.async.load`
 
@@ -201,7 +209,9 @@ Rewriter emits `nvvm.prefetch.tensormap [%tmap]`.
 
 Rewriter emits `nvvm.fence.proxy.acquire.sync.cluster` — the proxy-acquire fence that the WGMMA descriptor consumer needs.
 
-### `nvgpu.tma.async.reduce`
+### `nvgpu.tma.async.reduce` (absent in this binary)
+
+The `nvgpu.tma.async.reduce` mnemonic is not interned in this `tileiras` build. The underlying NVVM op (`nvvm.cp.async.bulk.tensor.reduce`) is present and consumed by `cute_nvgpu` lowerings directly; no `nvgpu` wrapper surfaces the reduce variant. The operand layout below documents the upstream wrapper for parity.
 
 | Position | Name | Type | Notes |
 |---|---|---|---|
@@ -211,7 +221,7 @@ Rewriter emits `nvvm.fence.proxy.acquire.sync.cluster` — the proxy-acquire fen
 | operand 7 | `l2CacheHint` | optional `i64` | L2 hint |
 | attribute | `redop` | enum `tma_redux_kind` | `add` / `min` / `max` / `inc` / `dec` / `and` / `or` / `xor` |
 
-Rewriter emits `nvvm.cp.async.bulk.tensor.reduce` with `red_op` decoded from the attribute.
+Upstream rewriter shape: emit `nvvm.cp.async.bulk.tensor.reduce` with `red_op` decoded from the attribute.
 
 ### `nvgpu.tma.create.descriptor`
 
@@ -227,16 +237,20 @@ Rewriter emits `nvvm.cp.async.bulk.tensor.reduce` with `red_op` decoded from the
 
 Rewriter emits no `nvvm.*` op. It allocates a 128-byte `CUtensorMap` on the host stack via `llvm.alloca`, fills it through `llvm.getelementptr` + `llvm.store`, and calls `cuTensorMapEncodeTiled`.
 
-### `nvgpu.tensormap.create.descriptor` (device-side replace path)
+### `nvgpu.tensormap.create.descriptor` (device-side replace path; absent in this binary)
+
+This op family is not interned in this `tileiras` build. The device-side descriptor replace path is reached directly through `cute_nvgpu` -> `nvvm.tensormap.*` without going through an `nvgpu.tensormap.create.descriptor` wrapper. Operand layout documented below for upstream-MLIR parity.
 
 | Position | Name | Type | Notes |
 |---|---|---|---|
 | operand 0 | `dst` | `!nvgpu.tensormap.descriptor` in shared | destination mailbox |
 | operand 1 | `src` | `!nvgpu.tensormap.descriptor` in global | source descriptor |
 
-Rewriter emits `nvvm.tensormap.cp.async.shared` followed by a sequence of `nvvm.tensormap.replace.*` ops that overwrite the per-field slots of the new descriptor.
+Upstream rewriter shape: emit `nvvm.tensormap.cp.async.shared` followed by a sequence of `nvvm.tensormap.replace.*` ops.
 
-### `nvgpu.tensormap.update.global_address` / `box_dim` / `element_stride`
+### `nvgpu.tensormap.update.global_address` / `box_dim` / `element_stride` (absent in this binary)
+
+These per-field update wrappers are also not interned in this build. Field-level descriptor updates lower directly through the `nvvm.tensormap.replace.*` family.
 
 | Position | Name | Type | Notes |
 |---|---|---|---|
@@ -244,7 +258,7 @@ Rewriter emits `nvvm.tensormap.cp.async.shared` followed by a sequence of `nvvm.
 | operand 1 | `value` | `i64` or `i32` | new field value |
 | attribute | `ord` | `i32` | rank index for `box_dim` / `element_stride` |
 
-Each rewrites to the matching `nvvm.tensormap.replace.*` op against the SMEM-resident descriptor.
+Upstream rewriter shape: each maps to the matching `nvvm.tensormap.replace.*` op against the SMEM-resident descriptor.
 
 ### `nvgpu.warpgroup.descriptor` (also spelled `warpgroup.generate.descriptor`)
 
@@ -327,7 +341,9 @@ Rewriter emits `llvm.inline_asm` with the `mma.sp.sync.aligned.m...` template; u
 
 Rewriter emits `nvvm.ldmatrix.sync.aligned` returning an `llvm.struct<(i32, i32, ...)>`, then a `pack-struct-into-vector` repack to match the result type.
 
-### `nvgpu.stmatrix`
+### `nvgpu.stmatrix` (absent in this binary)
+
+There is no `nvgpu.stmatrix` mnemonic in this `tileiras` build's string table. The `stmatrix` store path is reached from the upstream MLIR `vector` / `nvvm` populators directly into `nvvm.stmatrix`. The operand layout below mirrors the upstream wrapper.
 
 | Position | Name | Type | Notes |
 |---|---|---|---|
@@ -336,9 +352,11 @@ Rewriter emits `nvvm.ldmatrix.sync.aligned` returning an `llvm.struct<(i32, i32,
 | operand 2 | `src` | `vector<NxNxi32>` | per-thread fragment |
 | attribute | `transpose` | `UnitAttr` (optional) | selects `.trans` form |
 
-Rewriter emits `nvvm.stmatrix.sync.aligned` on sm_90+ targets, or `llvm.inline_asm` with the matching `stmatrix...` template otherwise.
+Upstream rewriter shape: emit `nvvm.stmatrix.sync.aligned` on sm_90+ targets, or `llvm.inline_asm` with the matching `stmatrix...` template otherwise.
 
-### `nvgpu.warp.execute_on_lane_0`
+### `gpu.warp_execute_on_lane_0` (routed through upstream `gpu` dialect)
+
+There is no `nvgpu.warp.execute_on_lane_0` mnemonic; the corresponding op is the upstream `gpu` dialect's `gpu.warp_execute_on_lane_0`, which `convert-nvgpu-to-nvvm` rewrites in passing.
 
 | Position | Name | Type | Notes |
 |---|---|---|---|
@@ -373,22 +391,22 @@ What each rewriter emits. The middle column gives the concrete NVVM op (or the e
 | `nvgpu.mbarrier.arrive` | `nvvm.mbarrier.arrive[.shared]` | `mbarrier.arrive.shared.b64 %tok, [%mbar];` |
 | `nvgpu.mbarrier.arrive.expect_tx` | `nvvm.mbarrier.arrive.expect_tx[.shared]` | `mbarrier.arrive.expect_tx.shared.b64 %tok, [%mbar], %tx;` |
 | `nvgpu.mbarrier.try_wait.parity` | `nvvm.mbarrier.try_wait.parity.shared` | `mbarrier.try_wait.parity.shared.b64 %p, [%mbar], %ph, %ns;` |
-| `nvgpu.mbarrier.inval` | `nvvm.mbarrier.inval[.shared]` | `mbarrier.inval.shared.b64 [%mbar];` |
+| `nvgpu.mbarrier.inval` (absent in this binary) | `nvvm.mbarrier.inval[.shared]` | `mbarrier.inval.shared.b64 [%mbar];` |
 | `nvgpu.tma.async.load` | `nvvm.cp.async.bulk.tensor.shared.global` | `cp.async.bulk.tensor.{1..5}d.shared::cluster.global.tile.mbarrier::complete_tx::bytes [%dst], [%tmap, {%c0,..}], [%mbar];` |
 | `nvgpu.tma.async.store` | `nvvm.cp.async.bulk.tensor.global.shared` | `cp.async.bulk.tensor.{1..5}d.global.shared::cta.tile [%tmap, {%c0,..}], [%src];` |
-| `nvgpu.tma.async.reduce` | `nvvm.cp.async.bulk.tensor.reduce` | `cp.async.bulk.tensor.{1..5}d.global.shared::cta.tile.{redop}.bulk_group [%tmap, {%c0,..}], [%src];` |
+| `nvgpu.tma.async.reduce` (absent in this binary) | `nvvm.cp.async.bulk.tensor.reduce` | `cp.async.bulk.tensor.{1..5}d.global.shared::cta.tile.{redop}.bulk_group [%tmap, {%c0,..}], [%src];` |
 | `nvgpu.tma.prefetch.descriptor` | `nvvm.prefetch.tensormap` | `prefetch.tensormap [%tmap];` |
 | `nvgpu.tma.fence.descriptor` | `nvvm.fence.proxy.acquire.sync.cluster` | `fence.proxy.async.shared::cluster;` |
 | `nvgpu.tma.create.descriptor` | `llvm.alloca` + GEP/store sequence + `llvm.call @cuTensorMapEncodeTiled` | (no PTX; host-side encode of a 128-byte `CUtensorMap`) |
-| `nvgpu.tensormap.create.descriptor` | `nvvm.tensormap.cp.async.shared` + `tensormap.replace.*` | `tensormap.cp.async.shared::cta.bulk_group [%dst], [%src];` then `tensormap.replace.tile.{global_address,box_dim,elem_stride,...}.[%tmap], ...;` |
-| `nvgpu.warp.execute_on_lane_0` | `nvvm.shfl.sync` + conditional region | `shfl.sync.idx.b32 %r, %v, 0, 0x1f, 0xffffffff;` |
+| `nvgpu.tensormap.create.descriptor` (absent in this binary) | `nvvm.tensormap.cp.async.shared` + `tensormap.replace.*` | `tensormap.cp.async.shared::cta.bulk_group [%dst], [%src];` then `tensormap.replace.tile.{global_address,box_dim,elem_stride,...}.[%tmap], ...;` |
+| `gpu.warp_execute_on_lane_0` (upstream `gpu` dialect; no `nvgpu.warp.execute_on_lane_0` mnemonic) | `nvvm.shfl.sync` + conditional region | `shfl.sync.idx.b32 %r, %v, 0, 0x1f, 0xffffffff;` |
 | `nvgpu.warpgroup.descriptor` | integer `shl`/`or` chain — no NVVM op | (no PTX; the 64-bit [SMEM descriptor](../cute_nvgpu/mma-atoms-sm70-120.md#smem-descriptor-construction) is built by ordinary integer ops; the PTX side sees the materialised `b64` value) |
 | `nvgpu.warpgroup.mma` | `nvvm.wgmma.fence.aligned` → N× `nvvm.wgmma.mma_async` → `nvvm.wgmma.commit.group.sync.aligned` → `nvvm.wgmma.wait.group.sync.aligned` | `wgmma.fence.sync.aligned;` then `wgmma.mma_async.sync.aligned.m64nXkY.f32.{f16,bf16,e4m3,e5m2}.{f16,bf16,e4m3,e5m2} {...}, %da, %db, p, 1, 1, %la, %lb;` then `wgmma.commit_group.sync.aligned;` then `wgmma.wait_group.sync.aligned N;` |
 | `nvgpu.warpgroup.mma.store` | per-thread `llvm.store` decomposition | `st.shared.b32 [%dst+off], %r;` per fragment lane |
 | `nvgpu.mma.sync` | `nvvm.wmma.mma.sync.aligned` (sm_70..sm_89) or `nvvm.wgmma.mma_async` (sm_90+) | `mma.sync.aligned.m16n8kK.{row,col}.{row,col}.{...} {...}, %a, %b, %c;` |
 | `nvgpu.mma.sp.sync` | `llvm.inline_asm` with `mma.sp.sync.aligned.m...` template | `mma.sp.sync.aligned.m16n8k{16,32}.row.col.{f16,bf16,...} {...}, %a, %b, %c, %meta, 0x0;` |
 | `nvgpu.ldmatrix` | `nvvm.ldmatrix.sync.aligned` + repack | `ldmatrix.sync.aligned.m8n8.x{1,2,4}{.trans,}.shared::cta.b16 {...}, [%addr];` |
-| `nvgpu.stmatrix` | `nvvm.stmatrix.sync.aligned` or inline asm | `stmatrix.sync.aligned.m8n8.x{1,2,4}{.trans,}.shared::cta.b16 [%addr], {...};` |
+| `nvgpu.stmatrix` (absent in this binary; upstream wrapper shape) | `nvvm.stmatrix.sync.aligned` or inline asm | `stmatrix.sync.aligned.m8n8.x{1,2,4}{.trans,}.shared::cta.b16 [%addr], {...};` |
 | `nvgpu.cvt_fpext` / `nvgpu.cvt_fptrunc` | `nvvm.cvt.packfloat.f32.*` | `cvt.{rn,rz,...}.{f16,bf16,e4m3,e5m2}.f32 %r, %f;` (per lane) |
 | `nvgpu.fma.packed.f32x2` | `nvvm.fma.rn.f32x2` | `fma.rn.f32x2 %r, %a, %b, %c;` |
 
@@ -405,12 +423,13 @@ The sparse-MMA path reaches PTX through `llvm.inline_asm` because the snapshot's
 | `nvgpu.device_async_wait` | sm_80 | `cp.async.wait_group` | 7.0 |
 | `nvgpu.mbarrier.{create,init,arrive,try_wait.parity,inval}` | sm_80 | shared-memory mbarrier | 7.0 (base set on 7.0; cluster-aware forms 7.8) |
 | `nvgpu.mbarrier.arrive.expect_tx` | sm_90 | `mbarrier.arrive.expect_tx.shared.b64` | 7.8 |
-| `nvgpu.tma.async.{load,store,reduce}` | sm_90 | `cp.async.bulk.tensor.{Nd,shared,global}` | 8.0 |
+| `nvgpu.tma.async.{load,store}` | sm_90 | `cp.async.bulk.tensor.{Nd,shared,global}` | 8.0 |
+| `nvgpu.tma.async.reduce` (absent in this binary) | sm_90 | `cp.async.bulk.tensor.reduce` | 8.0 |
 | `nvgpu.tma.prefetch.descriptor` | sm_90 | `prefetch.tensormap` | 8.0 |
 | `nvgpu.tma.fence.descriptor` | sm_90 | `fence.proxy.async.shared::cluster` | 8.0 |
 | `nvgpu.tma.create.descriptor` | sm_90 | runtime call to `cuTensorMapEncodeTiled` | (host) |
-| `nvgpu.tensormap.create.descriptor` | sm_90 | `tensormap.cp.async.shared` + `tensormap.replace.*` | 8.3 |
-| `nvgpu.tensormap.update.*` | sm_90 | `tensormap.replace.*` | 8.3 |
+| `nvgpu.tensormap.create.descriptor` (absent in this binary) | sm_90 | `tensormap.cp.async.shared` + `tensormap.replace.*` | 8.3 |
+| `nvgpu.tensormap.update.*` (absent in this binary) | sm_90 | `tensormap.replace.*` | 8.3 |
 | `nvgpu.warpgroup.mma` | sm_90a | `wgmma.mma_async.sync.aligned.m64nXkY.*` | 8.0 |
 | `nvgpu.warpgroup.mma.store` | sm_90a | per-thread `st.shared.*` | 8.0 |
 | `nvgpu.warpgroup.mma.init.accumulator` | sm_90a | `llvm.mlir.zero` (no PTX) | 8.0 |
@@ -419,8 +438,8 @@ The sparse-MMA path reaches PTX through `llvm.inline_asm` because the snapshot's
 | `nvgpu.mma.sync` (Hopper path) | sm_90 | redirects through `nvvm.wgmma.mma_async.*` | 8.0 |
 | `nvgpu.mma.sp.sync` | sm_80 | inline `mma.sp.sync.aligned.m16n8k{16,32}.*` | 7.1 |
 | `nvgpu.ldmatrix` | sm_75 | `ldmatrix.sync.aligned.m8n8.x{1,2,4}` | 6.5 |
-| `nvgpu.stmatrix` | sm_90 | `stmatrix.sync.aligned.m8n8.x{1,2,4}` | 8.0 |
-| `nvgpu.warp.execute_on_lane_0` | sm_70 | `shfl.sync.idx.b32` + region predicate | 6.0 |
+| `nvgpu.stmatrix` (absent in this binary) | sm_90 | `stmatrix.sync.aligned.m8n8.x{1,2,4}` | 8.0 |
+| `gpu.warp_execute_on_lane_0` (no `nvgpu.warp.execute_on_lane_0` mnemonic) | sm_70 | `shfl.sync.idx.b32` + region predicate | 6.0 |
 | `nvgpu.cvt_fpext` / `nvgpu.cvt_fptrunc` (FP4 / FP8) | sm_89 (FP8) / sm_100a (FP4) | `cvt.{rn,rz,...}.{e4m3,e5m2}.f32` | 7.8 / 8.6 |
 | `nvgpu.fma.packed.f32x2` / `nvgpu.mul.packed.f32x2` | sm_100a | `fma.rn.f32x2` / `mul.rn.f32x2` | 8.6 |
 | `nvgpu.rcp` | sm_70 | `rcp.approx.ftz.f32` | 6.0 |

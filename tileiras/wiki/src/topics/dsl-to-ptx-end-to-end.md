@@ -44,9 +44,9 @@ cuda_tile.module {
   cuda_tile.entry @gemm(%A: !cuda_tile.ptr<f16>, %B: !cuda_tile.ptr<f16>,
                        %C: !cuda_tile.ptr<f32>, %D: !cuda_tile.ptr<f32>,
                        %M: i32, %N: i32, %K: i32) {
-    %tok0 = cuda_tile.create_null_token : !cuda_tile.token
-    %bm = cuda_tile.program_id { axis = 0 : i32 } : i32
-    %bn = cuda_tile.program_id { axis = 1 : i32 } : i32
+    %tok0 = cuda_tile.make_token : !cuda_tile.token
+    %bm = cuda_tile.get_tile_block_id { axis = 0 : i32 } : i32
+    %bn = cuda_tile.get_tile_block_id { axis = 1 : i32 } : i32
 
     %a_view = cuda_tile.tensor_view %A, shape = [%M, %K], stride = [%K, 1]
             : !cuda_tile.tensor_view<128x64xf16>

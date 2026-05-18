@@ -175,8 +175,9 @@ nvvm.mbarrier.arrive.expect_tx.shared %bar, %tx_count : !llvm.ptr<3>, i32
    ↓
 %t = nvvm.mbarrier.try_wait.parity.shared %bar, %phase, %ticks : !llvm.ptr<3>, i1, i32 -> i1
 
-nvgpu.mbarrier.inval %bar : !nvgpu.mbarrier
-   ↓
+// `nvgpu.mbarrier.inval` is not interned in this binary; the lower-level
+// `nvvm.mbarrier.inval.shared` intrinsic is still emitted directly by
+// callers (e.g. CTAExit cleanup) without an `nvgpu` wrapper.
 nvvm.mbarrier.inval.shared %bar : !llvm.ptr<3>
 ```
 
@@ -265,7 +266,7 @@ Operand mapping (rank N):
 | `src` (SMEM memref, addr-space 3) | slot N+1 — `srcAddr : ptr addrspace(3)` |
 | `l2CacheHint` (optional) | slot N+2 — `cacheHint : i64`, gated by `cacheHintEnable` |
 
-For the reduce variant (`nvgpu.tma.async.reduce`), the `redop` attribute selects the intrinsic ID at registration time — eight distinct intrinsics exist per rank, one per reduction kind. The operand mapping mirrors the store form; the rewriter copies `redop` into the `red_op` slot of the new `nvvm.cp.async.bulk.tensor.reduce` op so verifier and PTX emission see the same enum.
+An `nvgpu.tma.async.reduce` wrapper is not interned in this binary. Reduce-variant lowerings are reached through `cute_nvgpu` straight into `nvvm.cp.async.bulk.tensor.reduce`, where the `red_op` enum selects the intrinsic ID at registration time — eight distinct intrinsics per rank, one per reduction kind. Operand layout mirrors the store form; the upstream wrapper, when present, would copy `redop` into the `red_op` slot verbatim.
 
 The fence pattern `nvgpu.tma.fence.descriptor` rewrites to `nvvm.fence.proxy.acquire.sync` so descriptor updates from the CUDA host become visible to the device proxy before the next async load.
 

@@ -438,7 +438,7 @@ The full 110-row dispatch table follows. Each row gives the decimal opcode, the 
 |  82 | `cuda_tile.ori` | inline | |
 |  83 | `cuda_tile.permute` | `sub_59E060` | |
 |  84 | `cuda_tile.pow` | `sub_597FB0` | |
-|  85 | `cuda_tile.print_tko` | `sub_5AD2C0` | |
+|  85 | `cuda_tile.print` | `sub_5AD2C0` | renamed from upstream `print_tko` |
 |  86 | `cuda_tile.ptr_to_int` | `sub_598290` | |
 |  87 | `cuda_tile.ptr_to_ptr` | `sub_598570` | |
 |  88 | `cuda_tile.reduce` | `sub_5BF2E0` | region-op |

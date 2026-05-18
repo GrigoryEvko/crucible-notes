@@ -41,7 +41,7 @@ The first IR the compiler sees comes out of the frontend's bytecode. The load is
 %a_part  = cuda_tile.partition_view %a_view, tile = [128, 128], dim_map = [0, 1]
          : !cuda_tile.partition_view<128x128xbf16>
 
-%tok0    = cuda_tile.create_null_token : !cuda_tile.token
+%tok0    = cuda_tile.make_token : !cuda_tile.token
 %a_tile, %tok_a = cuda_tile.load_view_tko %a_part, [%bm, %bk], %tok0
                 : !cuda_tile.tile<128x128xbf16>, !cuda_tile.token
 ```

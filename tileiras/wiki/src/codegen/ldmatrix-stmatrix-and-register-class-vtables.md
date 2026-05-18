@@ -25,7 +25,8 @@ The warp-wide matrix-copy path has three layers:
 
 ```text
 cute_nvgpu.arch.copy.{ldsm,stsm}
-    -> nvgpu.ldmatrix / nvgpu.stmatrix
+    -> nvgpu.ldmatrix / (no `nvgpu.stmatrix` mnemonic in this binary;
+                        stsm path lowers straight to `nvvm.stmatrix`)
     -> nvvm.ldmatrix / nvvm.stmatrix / nvvm.movmatrix
     -> llvm.call_intrinsic
 ```
