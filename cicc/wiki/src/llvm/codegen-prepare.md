@@ -212,7 +212,7 @@ By telling SCEV that `threadIdx.x` is bounded by 1024, the analysis can prove th
 
 ### SCEV-CGP Knobs (Complete Reference)
 
-All registered in `ctor_263_0` at `0x4F36F0`. These are NVVMPassOptions values, stored in the 222-slot pass option registry.
+All registered in `ctor_263_0` at `0x4F36F0`. These are NVVMPassOptions values, stored in the 221-slot pass option registry (see [NVVMPassOptions](../config/nvvm-pass-options.md) for the 4,512-byte struct layout).
 
 | Knob | Type | Default | Effect |
 |------|------|---------|--------|

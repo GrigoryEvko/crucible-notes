@@ -1,16 +1,25 @@
 # NVIDIA Custom Passes
 
-25+ proprietary optimization passes not found in upstream LLVM. Registered into the New PM pipeline at `sub_2342890` and into the pipeline assembler at `sub_12E54A0`.
+## Canonical Count
 
-| | |
-|---|---|
-| **Module-level custom** | 16 passes |
-| **Function-level custom** | 9 passes |
-| **Loop-level custom** | 1 pass |
-| **Custom analyses** | 2 analyses |
-| **Machine-level custom** | 13 passes |
-| **Registration** | `sub_2342890` (New PM) + `sub_12E54A0` (pipeline builder) |
-| **Dedicated deep-dive pages** | 22 |
+**35 NVIDIA custom passes** is the headline number used throughout this wiki.
+
+> **Definition.** A *NVIDIA custom pass* is a pass *class* (a `PassInfoMixin` subclass or `MachineFunctionPass` subclass) registered by cicc that has **no upstream LLVM equivalent** -- i.e., its symbol is absent from a stock LLVM 20.0.0 build of `lib/Passes/PassRegistry.def`, `lib/Target/NVPTX`, and the public `llvm::*` namespace dumps. The count is over **pass classes**, not registration entries: a single class registered under multiple `StringMap` keys (e.g., a parameterized variant or a pipeline-shorthand wrapper) is counted once. Pure **analyses** (classes that produce results consumed by other passes but perform no IR/MIR mutation themselves) are counted **separately** and are not part of the 35.
+
+| Category | Count | Notes |
+|---|---|---|
+| IR-level NVIDIA pass classes | 22 | 16 module + 9 function + 1 loop in the tables below, minus 4 parameterized/shorthand re-registrations |
+| Machine-level NVIDIA pass classes | 13 | All 13 entries in the machine table are distinct classes |
+| **Total NVIDIA custom passes** | **35** | Headline number |
+| NVIDIA custom analyses | 2 | `rpa`, `merge-sets` — counted separately |
+| Registration sites | -- | `sub_2342890` (New PM) + `sub_12E54A0` (pipeline assembler) |
+| Dedicated deep-dive pages | 22 | One per major pass |
+
+> **Why 33 also appears.** [`llvm/pipeline.md`](../llvm/pipeline.md) cites **33** when counting the `StringMap` registration entries inserted by `sub_2342890` -- the line that mentions "12 module + 20 function + 1 loop" reflects raw entries, including parameterized variants and short pipeline aliases registered under separate names. Both numbers describe the same code; 35 counts unique pass classes, 33 counts registration-table rows.
+
+> **QUIRK.** The pipeline.md per-scope split ("12 module + 20 function + 1 loop") and this page's per-scope split ("16 module + 9 function + 1 loop") count *different things*. pipeline.md sums `StringMap` keys per scope (and many module-level passes also register a function-scope wrapper key, inflating the "function" bucket). The tables on this page count distinct pass classes by their *primary* scope -- the scope at which the pass's `run()` method actually mutates IR. Neither row-count is wrong; they answer different questions.
+
+> **QUIRK.** Three IR-level pass *names* in the tables below (`nvvm-pretreat`, `check-kernel-functions`, `check-gep-index`) are verifier-shaped: they fail the build on invalid IR rather than transforming it. They are still counted in the canonical 35 because they are pass classes registered as transformations in `sub_2342890`, not as `AnalysisInfoMixin` analyses. The two true analyses (`rpa`, `merge-sets`) sit out.
 
 ## IR-Level Module Passes
 

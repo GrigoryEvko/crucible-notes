@@ -726,6 +726,54 @@ In the default mode, ptxas resolves all internal relocations and writes `.nv.res
 
 Position-independent code mode (`IsPIC` flag) changes the relocation encoding. The ELF flags word at ELFW offset +48 encodes this mode. PIC cubins use additional program-relative relocations and avoid absolute addresses where possible.
 
+## CDP Runtime Symbol Table -- `off_2403A60`
+
+The reference to "CUDA Dynamic Parallelism" (CDP, also spelled "cnp" internally for *CUDA Nested Parallelism*) is preserved as a static 34-entry pointer array at virtual address `0x2403A60` in the `.rodata` segment. Each entry is an 8-byte little-endian pointer to a NUL-terminated symbol name elsewhere in `.rodata`. The array is bracketed by an 8-byte NUL gap at `0x2403A58` and terminated at `0x2403B70` by zero padding followed by the unrelated string `" ERROR "`. When ptxas emits a cubin that calls into the device runtime, these are the symbol names it writes into the `.symtab` as `STB_GLOBAL`/`STT_NOTYPE` undefined references for the CUDA driver's runtime linker to resolve against `libcudadevrt`.
+
+Entries 0--4 are POSIX-style stdio/heap stubs the compiler synthesizes whenever PTX uses `vprintf`, `malloc`, `free`, `vfprintf`, or `assert`. Entries 5--28 are the device-side launch/sync/event/query API. Entries 29--33 are the CUDA Graphs device-launch additions (this group's name strings live in a separate string pool starting at `0x24038C6`, distinct from the `0x21F4F62`-based pool used by entries 0--28; see the "VA" column below). The terminator dword at `0x2403B70` is `0x00000000` and is what the runtime symbol resolver tests against to know it has reached the end of the table.
+
+| # | Entry VA | Points to | Symbol name | Notes |
+|---:|---|---|---|---|
+| 0  | `0x2403A60` | `0x21F4F62` | `vprintf` | stdio stub |
+| 1  | `0x2403A68` | `0x21F4F6A` | `malloc` | heap stub |
+| 2  | `0x2403A70` | `0x21F4F71` | `free` | heap stub |
+| 3  | `0x2403A78` | `0x21F4F76` | `vfprintf` | stdio stub |
+| 4  | `0x2403A80` | `0x21F4F7F` | `__assertfail` | `assert()` lowering |
+| 5  | `0x2403A88` | `0x21F4F8C` | `__profile` | profile counter hook |
+| 6  | `0x2403A90` | `0x21F4F96` | `cnpGetParameterBuffer` | CDP arg buffer alloc |
+| 7  | `0x2403A98` | `0x21F4FAC` | `cnpLaunchDevice` | child kernel launch (v1) |
+| 8  | `0x2403AA0` | `0x21F4FBC` | `cnpCtxSynchronize` | wait on all children |
+| 9  | `0x2403AA8` | `0x21F4FCE` | `cnpFuncGetAttribute` | query kernel attrs |
+| 10 | `0x2403AB0` | `0x21F4FE2` | `cnpStreamCreate` | device-side stream |
+| 11 | `0x2403AB8` | `0x21F4FF2` | `cnpStreamDestroy` | -- |
+| 12 | `0x2403AC0` | `0x21F5003` | `cnpStreamWaitEvent` | -- |
+| 13 | `0x2403AC8` | `0x21F5016` | `cnpEventCreate` | device-side event |
+| 14 | `0x2403AD0` | `0x21F5025` | `cnpEventRecord` | -- |
+| 15 | `0x2403AD8` | `0x21F5034` | `cnpEventDestroy` | -- |
+| 16 | `0x2403AE0` | `0x21F5044` | `cnpDeviceGetName` | device introspection |
+| 17 | `0x2403AE8` | `0x21F5055` | `cnpDeviceGetAttribute` | -- |
+| 18 | `0x2403AF0` | `0x21F506B` | `cnpGetDeviceCount` | -- |
+| 19 | `0x2403AF8` | `0x21F507D` | `cnpGetDevice` | -- |
+| 20 | `0x2403B00` | `0x21F508A` | `cnpGetLastError` | error channel |
+| 21 | `0x2403B08` | `0x21F509A` | `cnpSetLastError` | -- |
+| 22 | `0x2403B10` | `0x21F50AA` | `cnpGetCacheConfig` | -- |
+| 23 | `0x2403B18` | `0x21F50BC` | `cnpGetSharedMemConfig` | -- |
+| 24 | `0x2403B20` | `0x21F50D2` | `cnpGetLimit` | -- |
+| 25 | `0x2403B28` | `0x21F50DE` | `cnpDeviceGetTotalMem` | -- |
+| 26 | `0x2403B30` | `0x21F50F3` | `cnpGetParameterBufferV2` | CDP v2 ABI |
+| 27 | `0x2403B38` | `0x21F510B` | `cnpLaunchDeviceV2` | child kernel launch (v2) |
+| 28 | `0x2403B40` | `0x21F511D` | `cudaGraphLaunch` | device-side graph launch |
+| 29 | `0x2403B48` | `0x24038C6` | `cudaGraphSetConditional` | graph conditional node |
+| 30 | `0x2403B50` | `0x24038DE` | `cudaGraphKernelNodeSetParam` | -- |
+| 31 | `0x2403B58` | `0x24038FA` | `cudaGraphKernelNodeSetGridDim` | -- |
+| 32 | `0x2403B60` | `0x2403918` | `cudaGraphKernelNodeSetEnabled` | -- |
+| 33 | `0x2403B68` | `0x2403960` | `cudaGraphKernelNodeUpdatesApply` | -- |
+| -- | `0x2403B70` | `0x00000000` | *terminator* | dword zero |
+
+QUIRK: the symbol names use the legacy `cnp` prefix (CUDA Nested Parallelism, the project's original 2011-era codename) rather than the public-facing `cudaDevice*` names exposed in `cuda_device_runtime_api.h`. The driver-side `libcudadevrt` exports both spellings as aliases. Mixing a relocatable object emitted by an older ptxas (which only references `cnp*`) with a newer one (which adds the `cudaGraph*` entries 29--33) therefore still links cleanly, since the alias map covers backwards compatibility -- but the reverse, feeding a `cudaGraph*` reference into a pre-Graphs driver, fails at runtime symbol resolution with `CUDA_ERROR_INVALID_PTX`.
+
+QUIRK: entries 29--33 (`cudaGraph*`) point into a *different* string pool (`0x24038C6` and up) than entries 0--28 (`0x21F4F62` and up). The two pools sit roughly 2 MB apart in `.rodata`, indicating the Graphs entries were appended to the table after the original layout was frozen, and the build system did not relocate the older block to keep all 34 strings adjacent. The terminator dword is plain `0x00000000`, not a sentinel pointer -- the resolver's loop reads a qword and stops when the low 8 bytes are zero, which means a hypothetical 35th entry pointing into the address range `0x0000000100000000` and above (where bits 32--63 are nonzero) would *not* be misidentified as the terminator, but any pointer to the first 4 GB of address space happening to be zero would. ASLR loads ptxas above 4 GB, so the constraint holds in practice.
+
 ## Cross-References
 
 - [Custom ELF Emitter](elf-emitter.md) -- ELFW object, header construction, file serialization

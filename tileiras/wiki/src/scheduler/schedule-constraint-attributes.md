@@ -38,6 +38,11 @@ Attribute lookupAttr(Op *op, StringRef key) {
 
 `sub_446DC50` is the inherent-attribute accessor; `sub_440E370` is the discardable one. The parser invokes the pair once per attribute string and takes the first non-null return as the value.
 
+> ⚡ **QUIRK — inherent and discardable can disagree, inherent always wins silently**
+> If an op carries the same constraint key in both its inherent properties slot and its discardable dictionary with different values — which can happen when a pass copies an attribute forward without removing the source — the parser commits the inherent value and never even reads the discardable one. There is no diagnostic, no warning, and the discardable side stays on the op as a dangling shadow that the next dump pretty-prints alongside the value actually in force. A frontend that round-trips IR through textual form and re-parses risks promoting the shadow into the inherent slot on the second pass and silently flipping the scheduler decision.
+
+Integer-valued attributes are unwrapped through the standard `IntegerAttr::getInt()` truncation: any storage width is narrowed to a signed 64-bit value, then reinterpreted as a 32-bit unsigned field when written into the slot. UnitAttr keys are tested for presence only — the parser does not read the unit attribute's content, so a non-UnitAttr value living under one of the unit keys (which the verifier should reject upstream) still trips the flag bit. The five integer fields default to zero when their attribute is absent; the three flag bits default to clear. The parser does not distinguish "explicitly set to zero" from "absent" for the integer fields, so a `max_depth = 0` attribute behaves identically to a missing one — both make the G2 admission gate fire on every retry-arm attempt.
+
 ## ConstraintMap Layout
 
 The `ConstraintMap` keys on the op handle. `sub_94A550(state, op)` returns a pointer to a 16-byte record carrying the placement-driver fields, plus three i32 fields immediately after it for the remat numerics:
@@ -61,6 +66,10 @@ struct ConstraintSlot {
 ```
 
 The placement driver reads `max_depth` via `*((u32*)slot + 2) <= 1` — that direct word load is the G2 admission gate documented in [Serial and Cost-Based Schedule Generators — G2: Max-Depth Viability](serial-vs-cost-based-generators.md#g2-max-depth-viability). All three UnitAttr flags share the same i32 so the driver can probe them with a single masked compare.
+
+The 28-byte stride is not the natural sum of seven `uint32_t` fields rearranged for cache — it is the layout the placement driver hard-codes through direct word indices. `sub_94A550` returns a base pointer and the consumers index it with `*((u32*)slot + n)` for `n ∈ {0..6}`. There is no struct definition shared between parser and consumers; the layout exists only as a calling convention spelled out in word offsets at every read site. A reimplementation that reorders these fields must update every consumer simultaneously or the masked-compare in the placement driver reads `flags` from the `max_depth` slot and gates retry on the wrong word.
+
+The split between the placement-driver words (`+0x00`–`+0x0C`) and the remat-pass words (`+0x10`–`+0x18`) matches the consumer split exactly: the placement driver reads only the first 16 bytes, the remat pass reads only the trailing 12. Neither side ever touches the other's region, and the parser zero-fills the slot before writing, so a placement-driver read of a remat-only-tagged op sees zeroed `gid`/`leader_gid`/`max_depth`/`flags` and falls through every gate to the default behaviour.
 
 ## DSU Seeding at state+112
 
@@ -100,6 +109,12 @@ void parseConstraints(Op *op, void *state, ConstraintMap *map) {
 
 DSU seeding is the parser's only side effect outside the map. It runs once per op during parsing, so the driver sees a fully-built DSU before its first arm fires.
 
+> ⚡ **QUIRK — leader_gid defaults to zero, which is itself a valid gid**
+> When an op carries no `leader_gid` attribute, the zero-fill default leaves `s.leader_gid == 0`. The parser then compares against `s.gid`, and any op whose `gid` is non-zero ends up unioned with the phantom gid-0 root — silently grafted onto whichever real gid-0 group exists in the same scheduler state. A frontend that uses gid 0 for "the entry group" and then forgets to set `leader_gid` on a gid-7 op will see that op fused with the entry group and scheduled as if it belonged there. The fix at the frontend is to always emit `leader_gid` equal to `gid` for ops that lead their own groups, since the parser cannot tell "absent" from "explicitly zero". Tileiras' own emitters do this; ad-hoc IR test inputs frequently do not.
+
+> ⚡ **QUIRK — DSU union direction is gid → leader_gid, not symmetric**
+> `sub_976DE0` takes `(state+112, child, parent)` in that order and grafts the `child` root under the `parent` root before path compression runs. The parser passes `(s.gid, s.leader_gid)`, so the gid root becomes a child of the leader_gid root and every later `find(gid)` returns the leader's root. If two ops in the same intended group disagree on which side is "leader" — `op_a` says `leader_gid = 7, gid = 3` while `op_b` says `leader_gid = 3, gid = 7` — the two unions cancel out into a chain `7 → 3` then `3 → 7` and one of the two roots ends up parenting the other depending on parse order. The placement driver's leader-consistency check at G4 will then occasionally pick the wrong leader and treat the group as split when probed against the third op. There is no diagnostic; the symptom is non-deterministic schedule output across builds with the same input.
+
 ## Twin Seeding: DSU and Pending-Set
 
 The parser does not seed one scheduler-state structure but two, and the pair is the full picture of how the attribute pass primes downstream scheduling. The DSU at `state + 112` is one half; an Abseil-layout SwissTable pending-set at `state + 392` (`49 * 8` bytes past the state base) is the other. The parser fills both in the same walk, and both stay frozen for the rest of the schedule.
@@ -114,6 +129,10 @@ The DSU records the must-fuse equivalence classes implied by `leader_gid`. Every
 The pending-set records ops that have been temporarily removed from consideration — the carry state the cost-based generator uses to hold a candidate over to the next placement attempt without permanently failing it. The gate-G1 membership probe is a single SwissTable `find` against this table; rejection means "skip this op for this iteration, try again next round." The parser populates the table once at scheduler-init time so the very first gate-G1 probe has a fully-built table to consult.
 
 A reimplementation must seed both structures from the same walk. Splitting the seeding into two passes risks the gate-G1 probe seeing a partially-built pending-set or the gate-G4 check seeing a partial DSU, and either bug surfaces only intermittently when the order of pipeline values happens to expose the seam.
+
+## Parse Order and Determinism
+
+The parser is called once per op as the scheduler-init pass walks the region in MLIR's intrinsic block-then-operation order — the same order `Operation::walk` yields. That order determines two things the downstream consumers rely on: the order DSU unions execute (and therefore which gid wins as the root when two ops disagree about leadership, as the second QUIRK above notes), and the order ops are inserted into the `ConstraintMap`. Both surfaces are stable across re-runs on the same input IR because MLIR's walk is deterministic, but they are not stable across IR transformations that reorder ops within a block. A pass that hoists or sinks a constraint-bearing op between the front-end and the scheduler can flip the DSU root for groups whose members carry inconsistent `leader_gid` values, with the symptom that the same source produces different schedules depending on which passes ran upstream. The cure is to enforce `leader_gid == gid` for group leaders at the frontend so the DSU root choice is no longer order-sensitive.
 
 ## Usage and Contract
 

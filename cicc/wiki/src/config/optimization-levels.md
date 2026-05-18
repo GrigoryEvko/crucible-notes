@@ -555,7 +555,7 @@ The codegen dispatch `sub_12DFE00` reads `opts[200]` (the integer optimization l
 
 ## Cross-References
 
-- [NVVMPassOptions System](nvvm-pass-options.md) -- complete 222-slot struct layout
+- [NVVMPassOptions System](nvvm-pass-options.md) -- complete 221-slot, 4,512-byte struct layout
 - [Pipeline Pass Registration](../llvm/pipeline.md) -- 526-pass registration table
 - [Optimizer Architecture](../pipeline/optimizer.md) -- two-phase model, AddPass mechanism
 - [CLI Flags](cli-flags.md) -- `-O#`, `-Ofc=`, `--passes=` routing
