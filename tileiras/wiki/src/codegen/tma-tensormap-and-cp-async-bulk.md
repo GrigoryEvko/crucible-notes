@@ -42,6 +42,46 @@ Rank lives nowhere as an independent mutable field in the device rebind
 path. The operation consuming or mutating the descriptor carries it,
 selecting the lane to update inside the packed fields.
 
+### Inner Bit Packing — Limits of Binary Visibility
+
+Three slots in the eight-slot table multiplex multiple logical fields per
+64-bit word. The binary observes only the lane-index argument the mutator
+templates substitute into PTX text — not the bit-level placement the
+hardware ultimately writes. Specifically:
+
+| Slot | Mutator template | Lane width | Lane count | Bit packing |
+|---|---|---|---|---|
+| `tensor_base_ptr` (slot 0) | `tensormap.replace.tile.global_address.b1024.b64 [$0], $1` | b64 (full slot) | 1 | direct address — no inner packing |
+| `fmt_dim_stride_packed` (slot 1) | `tensormap.replace.tile.global_dim.b1024.b32 [$0], {N}, $1` | b32 | `rank` (0..4) | format bits coexist with `rank` 32-bit dim lanes; per-lane bit layout is PTX-ISA-defined and not observable in the emitter |
+| `box_size_packed` (slot 2) | none in emitted set — see PTX `tensormap.replace.tile.box_size` | n/a | n/a (host-born only) | hardware-internal |
+| `elem_stride_packed` (slot 3) | `tensormap.replace.tile.global_stride.b1024.b64 [$0], {N-1}, $1` | b64 | `rank-1` (0..3) | strides occupy 64-bit lanes; dim-0 stride is implicit element size, never device-written |
+| `load_mode_packed` (slot 4) | none | n/a | n/a | mode enum bits, multicast cardinality — set host-side |
+| `interleave_fill` (slot 5) | none | n/a | n/a | interleave + OOB fill — set host-side |
+| `l2_sector_promo` (slot 6) | none | n/a | n/a | promotion policy — set host-side |
+| `reserved_future` (slot 7) | none | n/a | n/a | observed all-zero in seed templates the binary copies |
+
+The three device-side mutators emitted by tileiras (`global_address`,
+`global_dim`, `global_stride`) touch slots 0, 1, and 3. Slots 2, 4, 5, 6,
+and 7 are immutable on the device path. Anything that would require
+writing them — box-shape changes, swizzle, fill-mode, element-type,
+interleave, paired-CTA layout — has to round-trip through host-side
+`cuTensorMapEncode*` driver entries, which is why im2col descriptors and
+SM100 paired-CTA descriptors are host-born only.
+
+> ⚡ **QUIRK — eight-slot logical view, not eight-slot byte layout**
+> The "eight 64-bit slots" framing is the *device-mutator-visible* logical view. The PTX `b1024` operand class declares the operand is a 1024-bit aligned region; only the lower 64 bytes are live in current tensormap formats. Lane indices in the mutators are *logical* (dim index, stride index), not raw byte offsets — the hardware translates each lane index to the corresponding bit window inside the relevant packed slot. The exact bit-window mapping is not derivable from the binary; the emitter just hands `{N}` to PTX and the assembler/hardware handles placement.
+
+Confidence: HIGH on slot names and per-slot mutator coverage (direct
+evidence: emitted PTX strings at `0x4ce3b40`, `0x4ce3b80`, `0x4ce3bc0` in
+the rodata string table; debug-dump format `"DESC_TMA512: 0x%016lx
+%016lx %016lx %016lx"` at `0x4603ba8` corroborates the 4-of-8 active
+slots). MED on the named "logical roles" for slots 4-7 — derived from
+host-side `cuTensorMapEncodeTiled` parameter ordering and the
+`SeparateHostTMA` pass's host-encoder call sites, not from device-side
+mutators. LOW on inner bit-position claims — the binary does not contain
+the bit-packing logic; consult the PTX ISA `tensormap.replace.*` section
+for the authoritative byte-level layout.
+
 ## Tensormap Init / Update Algorithm
 
 Descriptor birth follows one of two paths.
