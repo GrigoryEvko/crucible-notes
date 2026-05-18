@@ -781,6 +781,7 @@ Key opcodes referenced by the predication pass (after `BYTE1 &= 0xCF` masking to
 ## Cross-References
 
 - [Pass Inventory](index.md) -- phase 63 in the 159-phase table
+- [Varying Propagation](varying-propagation.md) -- phases 53/70 bracket predication; phase 70 refreshes divergence annotations after CFG changes
 - [IR Overview](../ir/overview.md) -- Ori instruction format, operand encoding, register files
 - [Copy Propagation & CSE](copy-prop-cse.md) -- phase 64 (LateOriCommoning) runs immediately after
 - [GeneralOptimize Bundles](general-optimize.md) -- phase 65 cleans up after predication

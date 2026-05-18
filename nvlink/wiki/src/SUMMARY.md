@@ -42,6 +42,7 @@
 - [Dead Code Elimination](linker/dead-code-elimination.md)
 - [Bindless Relocations](linker/bindless-relocations.md)
 - [Data Layout Optimization](linker/data-layout-opt.md)
+- [Sanitizer & Stack-Protector Integration](linker/sanitizer-injection.md)
 
 # Link-Time Optimization
 

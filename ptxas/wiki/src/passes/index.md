@@ -479,7 +479,7 @@ Predication, rematerialization, loop fusion, varying propagation, sync optimizat
 
 | # | Bin# | Phase Name | Category | O-Level | Description | Detail Page |
 |---|---|---|---|---|---|---|
-| 53 | 61 | `OriPropagateVaryingFirst` | Optimization |  | Propagates varying (non-uniform) annotations to identify divergent values (1st pass) |  |
+| 53 | 61 | `OriPropagateVaryingFirst` | Optimization |  | Propagates varying (non-uniform) annotations to identify divergent values (1st pass) | [Varying Propagation](varying-propagation.md) |
 | 54 | 62 | `OriDoRematEarly` | Optimization | **> 1** | Early rematerialization: recomputes cheap values near uses to reduce register pressure | [Rematerialization](rematerialization.md) |
 | 55 | 63 | `LateExpansion` | Lowering |  | Expands operations that must be lowered after high-level optimizations | [Late Legalization](late-legalization.md) |
 | 56 | 64 | `SpeculativeHoistComInsts` | Optimization |  | Speculatively hoists common instructions above branches |  |
@@ -496,7 +496,7 @@ Predication, rematerialization, loop fusion, varying propagation, sync optimizat
 | 67 | 78 | `DoKillMovement` | Optimization |  | Moves kill annotations closer to last use to improve register pressure |  |
 | 68 | 79 | `DoTexMovement` | Optimization |  | Moves texture fetch instructions to minimize latency exposure |  |
 | 69 | 80 | `OriDoRemat` | Optimization | **> 1** | Late rematerialization: recomputes values exposed by predication and fusion | [Rematerialization](rematerialization.md) |
-| 70 | 81 | `OriPropagateVaryingSecond` | Optimization |  | Propagates varying annotations (2nd pass, after predication changes control flow) |  |
+| 70 | 81 | `OriPropagateVaryingSecond` | Optimization |  | Propagates varying annotations (2nd pass, after predication changes control flow) | [Varying Propagation](varying-propagation.md) |
 | 71 | 82 | `OptimizeSyncInstructions` | Optimization | **> 1** | Eliminates and simplifies synchronization instructions | [Sync & Barriers](sync-barriers.md) |
 | 72 | 84 | `LateExpandSyncInstructions` | Lowering | **> 2** | Expands sync pseudo-instructions into final hardware sequences | [Sync & Barriers](sync-barriers.md) |
 | 73 | 85 | `ConvertAllMovPhiToMov` | Lowering |  | Destroys SSA form: converts `MOV.PHI` instructions into plain `MOV` |  |

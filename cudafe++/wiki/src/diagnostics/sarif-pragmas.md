@@ -2,7 +2,7 @@
 
 cudafe++ supports two diagnostic output formats -- traditional text (default) and SARIF v2.1.0 JSON -- controlled by the `--output_mode` flag (flag index 274, stored in `dword_106BBB8`). Alongside the output format, the pragma diagnostic system allows per-error severity overrides at arbitrary source positions through `#pragma nv_diag_*` directives, which record a stack of severity modifications binary-searched at emission time. A companion colorization subsystem adds ANSI escape sequences to text-mode output, governed by environment variables and terminal detection. This page covers the internals of all three subsystems.
 
-For the diagnostic pipeline architecture, severity levels, and error message formatting, see [Diagnostic Overview](./overview.md). For the CUDA error catalog and tag-name suppression, see [CUDA Errors](./cuda-errors.md).
+For the diagnostic pipeline architecture, severity levels, and error message formatting, see [Diagnostic Overview](./overview.md). For the CUDA error catalog and tag-name suppression, see [CUDA Errors](./cuda-errors.md). For the unified registry, lifecycle, and dispatch table that hosts `nv_diag_*` alongside every other `#pragma` and preprocessor directive, see [The Pragma Engine](../edg/pragma-engine.md).
 
 ## SARIF Output Mode
 

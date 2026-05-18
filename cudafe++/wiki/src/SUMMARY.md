@@ -77,6 +77,7 @@
 - [Constexpr Interpreter](./edg/constexpr-interpreter.md)
 - [Name Mangling](./edg/name-mangling.md)
 - [Type System](./edg/type-system.md)
+- [Pragma Engine](./edg/pragma-engine.md)
 
 # Error & Diagnostic System
 

@@ -288,6 +288,88 @@
     font-style: italic;
 }
 
+/* ── QUIRK callouts — unified across nvopen-tools wikis ────────────
+   Convention: a blockquote whose first paragraph opens with a literal
+   ⚡ glyph followed by a bold title.
+
+       > ⚡ **QUIRK — short title**
+       > One paragraph explaining the surprise.
+
+   CommonMark renders this as
+
+       <blockquote><p>⚡ <strong>QUIRK — title</strong>… </p></blockquote>
+
+   The first child of the <p> is a text node ("⚡ "). The <strong> is a
+   *later* child. Ordinary `**Note**` blockquotes have <strong> as the
+   FIRST child, so the :has()/:not() pair below correctly fires only on
+   the quirk shape. Browsers without :has() (Firefox <121, etc.) fall
+   back to default blockquote styling, which remains legible.
+
+   Authors can force the style with `<blockquote class="quirk">…` or
+   suppress it with `<blockquote class="note">…`. */
+
+:root {
+    --quirk-border-light: #d97706;   /* amber-600 — AA on warm bg */
+    --quirk-border-dark:  #f59e0b;   /* amber-500 — punchier on dark */
+    --quirk-bg-light:     rgba(217, 119, 6, 0.07);
+    --quirk-bg-dark:      rgba(245, 158, 11, 0.10);
+    --quirk-title-light:  #b45309;   /* amber-700 */
+    --quirk-title-dark:   #fbbf24;   /* amber-400 */
+}
+
+.content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)),
+.content main blockquote.quirk {
+    border-left: 3px solid var(--quirk-border-light);
+    background: var(--quirk-bg-light);
+    border-radius: 0 3px 3px 0;
+    font-style: normal;
+    padding: 0.5em 1em;
+    margin: 1em 0;
+    color: var(--fg);
+}
+
+.navy .content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)),
+.coal .content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)),
+.ayu  .content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)),
+.navy .content main blockquote.quirk,
+.coal .content main blockquote.quirk,
+.ayu  .content main blockquote.quirk {
+    border-left-color: var(--quirk-border-dark);
+    background: var(--quirk-bg-dark);
+}
+
+.content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)) > p:first-child > strong,
+.content main blockquote.quirk > p:first-child > strong {
+    color: var(--quirk-title-light);
+    font-weight: 700;
+    letter-spacing: 0.005em;
+}
+
+.navy .content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)) > p:first-child > strong,
+.coal .content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)) > p:first-child > strong,
+.ayu  .content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)) > p:first-child > strong,
+.navy .content main blockquote.quirk > p:first-child > strong,
+.coal .content main blockquote.quirk > p:first-child > strong,
+.ayu  .content main blockquote.quirk > p:first-child > strong {
+    color: var(--quirk-title-dark);
+}
+
+.content main blockquote.note {
+    border-left: 3px solid var(--links);
+    background: var(--quote-bg);
+    color: var(--subheading-color);
+    font-style: italic;
+}
+
+@media print {
+    .content main blockquote:has(> p:first-child strong):not(:has(> p:first-child > strong:first-child)),
+    .content main blockquote.quirk {
+        border-left-color: #92400e;
+        background: #fef3c7;
+        color: #000;
+    }
+}
+
 /* ── Print ────────────────────────────────────────────────────────── */
 @media print {
     .content main {

@@ -267,6 +267,8 @@ The single-call checker (`sub_19C6400`) fires when walking the convergent region
 
 ## Varying Propagation (Supporting Analysis)
 
+> The full algorithm, seed table, inter-procedural FNV-1a walk, two-run pipeline rationale, and downstream-consumer map are documented on the dedicated [Varying Propagation](varying-propagation.md) page. This section is a digest aimed at readers who arrived here via UR-conversion concerns and want only the input-data view.
+
 The `OriPropagateVarying` passes (phases 53 and 70) propagate divergence information forward through the IR. They are not part of the four-pass uniform register group, but provide the critical input data: the varying flag at bit 2 of `vreg+49` that `ConvertToUniformReg` checks before promoting a register to UR.
 
 ### Algorithm
@@ -447,6 +449,7 @@ The per-register-class property accessors at `sub_900C50`--`sub_9013F0` (6 nearl
 
 ## Related Pages
 
+- [Varying Propagation](varying-propagation.md) -- the divergence analysis (phases 53, 70) that produces the `vreg+49` bit 2 input this page consumes
 - [Register Model](../ir/registers.md) -- UR file, register descriptor layout, allocator classes
 - [Ori IR Overview](../ir/overview.md) -- instruction format, partial SSA window
 - [Pass Inventory](index.md) -- complete 159-phase table

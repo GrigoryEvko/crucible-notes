@@ -22,6 +22,7 @@
   - [Statement & Control Flow Codegen](./pipeline/irgen-statements.md)
   - [Function, Call & Inline Asm Codegen](./pipeline/irgen-functions.md)
   - [Type Translation, Globals & Special Vars](./pipeline/irgen-types.md)
+- [Pragma & NVVM Annotation Registry](./pipeline/pragma-annotation-registry.md)
 - [Libdevice Linking](./infra/libdevice-linking.md)
 - [LLVM Optimizer](./pipeline/optimizer.md)
 - [OptiX IR Generation](./pipeline/optix-ir.md)

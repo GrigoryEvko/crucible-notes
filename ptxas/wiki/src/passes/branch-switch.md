@@ -754,6 +754,7 @@ All addresses from ptxas v13.0.88. Vtable entries resolved by reading the ELF `.
 - [GeneralOptimize Bundles](general-optimize.md) -- phases 13, 29, 37 that feed constant/copy information to branch passes
 - [Liveness Analysis](liveness.md) -- phase 16 (DCE cleanup after branch/switch optimization)
 - [Predication](predication.md) -- phase 63 (if-conversion, consumes simplified CFG from phases 15 and 38)
+- [Varying Propagation](varying-propagation.md) -- divergence analysis behind `UBRA` (uniform-branch) eligibility and the speculation-safety hand-off in `AnalyzeUniformsForSpeculation`
 - [Hot/Cold Partitioning](hot-cold.md) -- phases 41, 108, 109 (block placement interacts with branch layout)
 - [Synchronization & Barriers](sync-barriers.md) -- BSSY/BSYNC reconvergence mechanism
 - [Data Structures](../ir/data-structures.md) -- SM backend object at +1584 (phase 14 polymorphic dispatch target)
