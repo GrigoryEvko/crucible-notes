@@ -753,6 +753,7 @@ Low confidence / speculation (flagged accordingly):
 - [File Type Detection](file-type-detection.md) -- Magic `0x1EE55A01` detection and extension dispatch
 - [Fatbin Extraction](fatbin-extraction.md) -- Type-8 member extraction and per-module option consensus state machine
 - [PTX Input](ptx-input.md) -- The embedded ptxas driver (`sub_4BD760`, `sub_4CE070`, context layout) shared with LTO PTX emission
+- [168-Byte Input Container](container-struct.md) -- offset table for the shared opaque struct including the NVVM-bound content_type (8) classification
 - [LTO Overview](../lto/overview.md) -- The full LTO pipeline including whole/partial/split dispatch and the thread pool
 - [libNVVM Integration](../lto/libnvvm-integration.md) -- `dlopen`/`dlsym` resolution, `__nvvmHandle` opcode dispatch, error propagation
 - [Split Compilation](../lto/split-compilation.md) -- Thread pool lifecycle and work item queueing for `-split-compile-extended`

@@ -58,6 +58,7 @@
 # LLVM Passes
 
 - [Pipeline & Ordering](./llvm/pipeline.md)
+- [Patch Catalog](./llvm/patch-catalog.md)
 
 ## Scalar
 

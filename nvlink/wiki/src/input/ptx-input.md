@@ -677,5 +677,6 @@ Strings located via `.rodata` cross-references:
 - **Post-processing**: [Mercury Finalizer](../mercury/fnlzr.md) for sm >= 100 output
 - **Backend**: [Embedded ptxas](../ptxas/overview.md) documents the in-process ptxas library internals
 - **Related inputs**: [Fatbin Extraction](fatbin-extraction.md) (shares the 168-byte container object); [LTO Integration](../lto/libnvvm-integration.md) and [LTO Overview](../lto/overview.md) (alternative path for NVVM IR that eventually re-enters here)
+- **Container struct**: [168-Byte Input Container](container-struct.md) -- dedicated page documenting the field-offset table, magic, and lifecycle of the opaque object shared by all four input entry points
 - **Architecture validation**: [Architecture Profiles](../targets/arch-profiles.md) (the `sub_44E530`/`sub_486EA0` arch DB used by `sub_4CE2F0`)
 - **Options surface**: [CLI Options](../pipeline/cli-options.md) covers `-Xptxas`, `-maxrregcount`, `-debug`, `-suppress-debug-info`, `--verbose-keep`

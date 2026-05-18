@@ -736,6 +736,7 @@ Return code 7 receives special treatment in `sub_42AF40`: when the `a5` flag (bi
 
 - [Input File Loop](../pipeline/input-loop.md) -- how fatbin files are dispatched from `main()`'s file-type detection loop
 - [File Type Detection](file-type-detection.md) -- the 56-byte header probe that recognizes the `0xBA55ED50` fatbin magic
+- [168-Byte Input Container](container-struct.md) -- field-offset table, lifecycle, and writer/reader pairing for the opaque struct used by `sub_4BD0A0`
 - [Cubin Loading](cubin-loading.md) -- cubins extracted from fatbin containers follow the same validation path documented here
 - [PTX Input & JIT](ptx-input.md) -- how extracted PTX members (type 1) are compiled via embedded ptxas
 - [NVVM IR / LTO IR Input](nvvm-ir-input.md) -- how extracted NVVM IR members (type 8) are registered for LTO

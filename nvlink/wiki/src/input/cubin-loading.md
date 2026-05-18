@@ -852,6 +852,7 @@ All error messages are emitted through the unified diagnostic function `sub_4674
 
 - [Input File Loop](../pipeline/input-loop.md) -- how cubins are dispatched from the main file loop
 - [Fatbin Extraction](fatbin-extraction.md) -- cubins extracted from fatbin containers follow the same validation path; fatbin LZ4 decompression happens before the cubin bytes reach `sub_426570`
+- [168-Byte Input Container](container-struct.md) -- the shared opaque struct that fatbin-extracted cubins traverse before re-entering this validation path (content_type 3)
 - [ELF Parsing](elf-parsing.md) -- the `sub_448360` / `sub_46B590` ELF header accessor functions; `sub_43DD30` validator documented in both pages
 - [Constant Banks](../elf/constant-banks.md) -- the name-to-index mapping and merge pipeline for sections classified here as `SHT_CUDA_CONSTANTn`
 - [.nv.info Metadata](../elf/nv-info.md) -- the TLV attribute catalog parsed by `sub_4504B0` and `sub_44E8B0` after section classification

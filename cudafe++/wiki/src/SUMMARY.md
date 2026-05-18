@@ -82,6 +82,7 @@
 - [Invalid Diagnostic Tags](./edg/invalid-diagnostics.md)
 - [Name Mangling](./edg/name-mangling.md)
 - [Type System](./edg/type-system.md)
+- [Preprocessor](./edg/preprocessor.md)
 - [Pragma Engine](./edg/pragma-engine.md)
 
 # Error & Diagnostic System

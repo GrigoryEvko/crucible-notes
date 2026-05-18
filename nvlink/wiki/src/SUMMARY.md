@@ -30,6 +30,7 @@
 - [PTX Input & JIT](input/ptx-input.md)
 - [NVVM IR / LTO IR Input](input/nvvm-ir-input.md)
 - [Host ELF Embedding](input/host-elf.md)
+- [168-Byte Input Container](input/container-struct.md)
 
 # Linker Core
 

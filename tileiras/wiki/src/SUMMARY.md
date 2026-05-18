@@ -227,4 +227,5 @@
 - [TypeID Sentinel Table](reference/typeid-sentinel-table.md)
 - [Op Mnemonic Master Table](reference/op-mnemonic-master-table.md)
 - [LLVM Fingerprint Table](reference/llvm-fingerprint-table.md)
+- [Wire-Format Constants](reference/wire-format-constants.md)
 - [String Evidence and Confidence Policy](reference/string-evidence-and-confidence-policy.md)
