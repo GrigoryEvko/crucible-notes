@@ -489,7 +489,7 @@ Note: `sub_2C84BA0` is a second copy of the dead synchronization elimination pas
 | `0x3937240` | 14 KB | **ABI Preserve directive emission** | `.abi_preserve`, `.abi_preserve_after`, `.abi_preserve_uniform`, `.abi_preserve_control` |
 | `0x395CFD0` | 11 KB | **GEP Splitting pass** | "splitGEPI.base", "splitGEPI.replace" |
 | `sub_395DD20` | 66 KB | DAG pattern computation | "dot.res" (dot product) |
-| `0x3970000`-`0x397FFFF` | **AsmPrinter / PTX emission** | `sub_3979400` emitFunctionBody (62KB), `sub_397DF10` emitInlineAsm (30KB) |
+| `0x3970000`-`0x397FFFF` | **AsmPrinter / PTX emission** | `sub_3979400` function-body emitter (62KB), `sub_397DF10` inline-asm emitter (30KB) |
 | `sub_3970E40` | 18 KB | BB print + `.pragma "nounroll"` | NVIDIA mod: emits PTX pragma from `llvm.loop.unroll.disable` metadata |
 | `0x3980000`-`0x3BFFFFF` | MC layer, DWARF, ELF emission | Object file writers, section management |
 

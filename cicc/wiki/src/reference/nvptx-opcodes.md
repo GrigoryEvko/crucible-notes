@@ -416,12 +416,12 @@ Key helper functions:
 
 | Address | Function | Purpose |
 |---------|----------|---------|
-| `sub_A778C0` | `createRegClassConstraint(state, regclass, flags)` | Build input operand constraint for a specific register class |
-| `sub_A77AD0` | `createAnyRegConstraint(state, flags)` | Build an unconstrained ("any register") input constraint |
-| `sub_A79C90` | `composeConstraints(state, desc, N)` | Merge N descriptors into a single composite constraint |
-| `sub_B5BA00` | `createOutputConstraint(state, regclass_id)` | Build the output/result constraint |
-| `sub_A78010` | `emitConstraint(state, desc_array, N)` | Finalize and emit the constraint with N entries |
-| `sub_B612D0` | `emitInstrConstraint(state, opcode)` | Top-level entry: table lookup + switch + emit |
+| `sub_A778C0` | reg-class constraint builder | Build input operand constraint for a specific register class |
+| `sub_A77AD0` | any-register constraint builder | Build an unconstrained ("any register") input constraint |
+| `sub_A79C90` | constraint composer | Merge N descriptors into a single composite constraint |
+| `sub_B5BA00` | output constraint builder | Build the output/result constraint |
+| `sub_A78010` | constraint emitter | Finalize and emit the constraint with N entries |
+| `sub_B612D0` | per-instruction constraint emitter | Top-level entry: table lookup + switch + emit |
 
 The constraint descriptors are purely stack-allocated within `sub_B612D0`'s approximately 0x160-byte frame. No heap allocation occurs during constraint emission.
 
@@ -487,10 +487,10 @@ Recovering these ranges requires systematic analysis of the `sub_33B0210` intrin
 | Constraint emission (179-case switch on `word_3F3E6C0`) | `sub_B612D0` | 38.4 KB | -- |
 | Register class set builder (111 cases) | `sub_B5BA00` | 10.1 KB | -- |
 | Operand type decoder (101 cases) | `sub_B6B200` | 10.2 KB | -- |
-| `createRegClassConstraint(state, regclass, flags)` | `sub_A778C0` | -- | -- |
-| `createAnyRegConstraint(state, flags)` | `sub_A77AD0` | -- | -- |
-| `composeConstraints(state, desc, N)` | `sub_A79C90` | -- | -- |
-| `emitConstraint(state, desc_array, N)` | `sub_A78010` | -- | -- |
+| Reg-class constraint builder | `sub_A778C0` | -- | -- |
+| Any-register constraint builder | `sub_A77AD0` | -- | -- |
+| Constraint composer | `sub_A79C90` | -- | -- |
+| Constraint emitter | `sub_A78010` | -- | -- |
 | Opcode-to-copy-type mapping (switch, families 440--503) | `sub_3494EA0` | 3.1 KB | -- |
 | Operand-type classification (reads `byte_444C4A0`) | `sub_34961A0` | 6.4 KB | -- |
 | Register-pair decomposition (wide/paired registers) | `sub_3497B40` | 4.1 KB | -- |

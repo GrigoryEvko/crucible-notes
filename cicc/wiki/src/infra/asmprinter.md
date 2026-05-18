@@ -5,7 +5,7 @@ The NVPTXAsmPrinter is cicc's final code-generation stage: the component that co
 | | |
 |---|---|
 | **Pass registration** | `sub_214ABE0` -- `"NVPTX Assembly Printer"` |
-| **emitFunctionBody** | `sub_31EC4F0` (12KB, 2565 asm lines) |
+| **Function body emission loop** (overrides `llvm::AsmPrinter::emitFunctionBody`) | `sub_31EC4F0` (12KB, 2565 asm lines) |
 | **Header emission (emitHeader)** | `sub_214F370` (7.2KB) |
 | **Function header orchestrator** | `sub_215A3C0` (10KB) |
 | **Kernel attribute emission** | `sub_214DA90` (8.7KB) |

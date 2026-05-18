@@ -417,4 +417,4 @@ This is the standard LLVM BumpPtrAllocator pattern, consistent with how upstream
 | `parseFunctionBody` (standalone libNVVM path) | `sub_9F2A40` | 185KB | -- |
 | `InstCombinerImpl::visitInstruction` (full opcode switch) | `sub_10EE7A0` | 405KB | -- |
 | InstCombine master visit dispatcher | `sub_F2CFA0` | -- | -- |
-| NVVMModuleVerifier (per-opcode validation) | `sub_2C80C90` | 51KB | -- |
+| NVVM module verifier (per-opcode validation) | `sub_2C80C90` | 51KB | -- |

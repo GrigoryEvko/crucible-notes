@@ -143,11 +143,11 @@ The LVI cache occupies approximately 600 bytes (`0x258`) of local state:
 
 ### Range-Based Threading
 
-For `ICMP_NE` conditions (opcode `0xBA` = 186), the pass calls `sub_11F3070` (`LVI::getPredicateAt`) with the ICmp operand and a comparison predicate of 2, followed by `sub_DFABC0` (`evaluateConditionOnEdge`) to resolve the branch direction along a specific incoming edge.
+For `ICMP_NE` conditions (opcode `0xBA` = 186), the pass calls `sub_11F3070` (`LVI::getPredicateAt`) with the ICmp operand and a comparison predicate of 2, followed by `sub_DFABC0` (per-edge condition resolver) to resolve the branch direction along a specific incoming edge.
 
-For alternate opcode paths (opcode `0x165` = 357), the pass uses `sub_988330` (`getConstantOnEdge`) instead, which returns a concrete constant value if LVI can prove the condition evaluates to a known value along that edge.
+For alternate opcode paths (opcode `0x165` = 357), the pass uses `sub_988330` (per-edge constant resolver) instead, which returns a concrete constant value if LVI can prove the condition evaluates to a known value along that edge.
 
-The virtual dispatch at `0x2DC67D6` (`call qword ptr [rax+78h]`) invokes `LVI::getPredicateOnEdge`. If the vtable matches `sub_920130` (the default implementation), a fallback path calls `sub_AC4810` (`isImpliedCondition`) with predicate `0x27` (39), and if that also fails, `sub_AA93C0` (`SimplifyICmpInst`).
+The virtual dispatch at `0x2DC67D6` (`call qword ptr [rax+78h]`) invokes `LVI::getPredicateOnEdge`. If the vtable matches `sub_920130` (the default implementation), a fallback path calls `sub_AC4810` (implied-condition checker) with predicate `0x27` (39), and if that also fails, `sub_AA93C0` (`SimplifyICmpInst`).
 
 ### Cleanup
 
@@ -213,7 +213,7 @@ The pass contains four specialized threading strategies:
 
 **Single-instruction threading** (`sub_2DC37C0`, 2,288 bytes): For blocks containing exactly one instruction (the terminator), called at `0x2DC6704`. Creates a direct branch bypass.
 
-**Switch threading** (`0x2DC6A76`--`0x2DC6B0C`): When the terminator is a `SwitchInst` (opcode byte `0x37` = 55), calls `sub_2DC40B0` (`tryToUnfoldSelect`). This checks for `SelectInst` (opcode `0x52` = 82) and unfolds the select into explicit branches that can be individually threaded.
+**Switch threading** (`0x2DC6A76`--`0x2DC6B0C`): When the terminator is a `SwitchInst` (opcode byte `0x37` = 55), calls `sub_2DC40B0` (select-unfolder). This checks for `SelectInst` (opcode `0x52` = 82) and unfolds the select into explicit branches that can be individually threaded.
 
 **Implication-based threading** (`0x2DC6E71`--`0x2DC6EB3`): For `ICmpInst` variants (opcode `0x28` = 40), the pass checks whether the predicate implies the branch condition via `sub_B532B0`, creates the threaded edge via `sub_B52EF0`, and wires the new block via `sub_92B530`.
 

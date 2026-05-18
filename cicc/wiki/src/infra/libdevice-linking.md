@@ -148,7 +148,7 @@ For each module, the linker calls `sub_12BFF60` (the version checker -- see next
 
 ```
 for each parsed_module:
-    result = NVVMIRVersionCheck(modules, parsed_module, flags)
+    result = nvvm_ir_version_check(modules, parsed_module, flags)  // sub_12BFF60
     if result != 0:
         error: "<name>: error: incompatible IR detected. "
                "Possible mix of compiler/IR from different releases."

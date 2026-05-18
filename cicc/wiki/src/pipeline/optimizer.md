@@ -232,7 +232,7 @@ The 125KB initialization function is the largest in the optimizer range. Its siz
 | String | 24B | `sub_12D6090` | 114 |
 | Bool (compact) | 16B | `sub_12D6100` | 83 |
 | Bool (inline) | 16B | direct byte write | 17 |
-| Integer | 16B | `sub_16D2BB0` (parseInt) | 6 |
+| Integer | 16B | `sub_16D2BB0` (string-to-int64 parser) | 6 |
 | String pointer | 28B | direct qword write (slot 181 only) | 1 |
 
 ### Pair Organization
@@ -325,7 +325,7 @@ Five distinct slot types exist, each written by a dedicated helper:
 
 ```c
 // TYPE A: String option (114 instances)
-// Written by sub_12D6090 (writeStringOption)
+// Written by sub_12D6090 (pass-option string writer)
 struct StringSlot {        // 24 bytes
     char*   value_ptr;     // +0: pointer to string value
     int32_t option_index;  // +8: 1-based slot index
@@ -335,7 +335,7 @@ struct StringSlot {        // 24 bytes
 };
 
 // TYPE B: Boolean compact (83 instances)
-// Written by sub_12D6100 (writeBoolOption)
+// Written by sub_12D6100 (pass-option boolean writer)
 struct BoolCompactSlot {   // 16 bytes
     uint8_t value;         // +0: 0 or 1
     uint8_t pad[3];        // +1: padding
@@ -355,7 +355,7 @@ struct BoolInlineSlot {    // 16 bytes
 };
 
 // TYPE D: Integer (6 instances)
-// Value parsed by sub_16D2BB0 (parseInt)
+// Value parsed by sub_16D2BB0 (string-to-int64 parser)
 struct IntegerSlot {       // 16 bytes
     int32_t value;         // +0: parsed integer
     int32_t option_index;  // +4
@@ -377,11 +377,11 @@ struct StringPtrSlot {     // 28 bytes
 
 The initialization function `sub_12D6300` populates the struct by iterating all 221 slot indices and calling a chain of helpers for each:
 
-1. **`sub_12D6170` (PassOptionRegistry::lookupOption)** -- looks up a slot index in the hash table at `registry+120`. Returns a pointer to an `OptionNode` struct: `[+40] int16 flags`, `[+48] qword* value_array_ptr`, `[+56] int value_count`. Returns null if the option was not set on the command line.
+1. **`sub_12D6170` (pass-option registry lookup)** -- looks up a slot index in the hash table at `registry+120`. Returns a pointer to an `OptionNode` struct: `[+40] int16 flags`, `[+48] qword* value_array_ptr`, `[+56] int value_count`. Returns null if the option was not set on the command line.
 
-2. **`sub_12D6240` (getBoolOption)** -- resolves a boolean option. Calls `sub_12D6170` to find the option, then if a string value exists, lowercases it via `sub_16D2060` and tests if the first char is `'1'` (0x31) or `'t'` (0x74). If the option was not found, defaults to true (enabled). Returns the boolean packed with the flags in the low 40 bits.
+2. **`sub_12D6240` (pass-option boolean resolver)** -- resolves a boolean option. Calls `sub_12D6170` to find the option, then if a string value exists, lowercases it via `sub_16D2060` and tests if the first char is `'1'` (0x31) or `'t'` (0x74). If the option was not found, defaults to true (enabled). Returns the boolean packed with the flags in the low 40 bits.
 
-3. **`sub_1691920` (PassDefTable::getPassDef)** -- looks up a PassDef entry in a table where each entry is 64 bytes. Computes: `table[0] + (index - 1) * 64`. The PassDef at `[+32]` holds the pass_id, at `[+36]` a `has_overrides` flag, and at `[+40]` an override index.
+3. **`sub_1691920` (pass-definition table getter)** -- looks up a PassDef entry in a table where each entry is 64 bytes. Computes: `table[0] + (index - 1) * 64`. The PassDef at `[+32]` holds the pass_id, at `[+36]` a `has_overrides` flag, and at `[+40]` an override index.
 
 ### Initial Slots (1-6): Global Configuration
 
@@ -1617,13 +1617,13 @@ Total unique pass factory addresses: ~55.
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| NVVMPassOptions::init | `sub_12D6300` | 125KB | Populates 4,512-byte options struct |
-| writeStringOption | `sub_12D6090` | ~100B | Writes 24-byte string slot |
-| writeBoolOption | `sub_12D6100` | ~80B | Writes 16-byte boolean slot |
-| PassOptionRegistry::lookupOption | `sub_12D6170` | ~200B | Hash table lookup |
-| getBoolOption | `sub_12D6240` | ~300B | Boolean resolution with default |
-| PassDefTable::getPassDef | `sub_1691920` | ~50B | 64-byte stride table lookup |
-| parseInt | `sub_16D2BB0` | ~100B | String to int64 |
+| NVVM pass-options init (populates 4,512-byte options struct) | `sub_12D6300` | 125KB | -- |
+| Pass-option string writer (24-byte string slot) | `sub_12D6090` | ~100B | -- |
+| Pass-option boolean writer (16-byte boolean slot) | `sub_12D6100` | ~80B | -- |
+| Pass-option registry lookup (hash-table) | `sub_12D6170` | ~200B | -- |
+| Pass-option boolean resolver (default = true) | `sub_12D6240` | ~300B | -- |
+| Pass-definition table getter (64-byte stride) | `sub_1691920` | ~50B | -- |
+| String-to-int64 parser | `sub_16D2BB0` | ~100B | -- |
 | Pipeline assembler (master) | `sub_12E54A0` | 49.8KB | 8-phase pipeline construction |
 | AddPass | `sub_12DE0B0` | 3.5KB | Hash-table-based insertion |
 | Tier 0 sub-pipeline | `sub_12DE330` | 4.8KB | ~40 passes, full optimization |

@@ -321,13 +321,13 @@ else
 | Use-def chain walker | `sub_1CA5350` | -- | Backward pointer origin tracking |
 | First-time resolver | `sub_1CA2920` | -- | Conservative address space resolution |
 | Second-time resolver | `sub_1CA9E90` | -- | Hash-table-based resolution, isspacep folding |
-| MemorySpaceCloning engine | `sub_2CBBE90` | -- | Inter-procedural function cloning (11.0 KB binary) |
+| Memory-space cloning engine | `sub_2CBBE90` | -- | Inter-procedural function cloning (11.0 KB binary) |
 | IPMSP module pass variant | `sub_1C6A6C0` | -- | LIBNVVM path (10.5 KB binary) |
 | EDG cvta lowering | `sub_94A030` | -- | Address space cast intrinsic generation |
 | EDG decl-side memspace processing | `sub_6582F0` | -- | CUDA attribute to memory space code resolution |
 | EDG def-side memspace processing | `sub_65F400` | -- | Definition validation and initializer handling |
-| NVVMModuleVerifier | `sub_2C80C90` | -- | Data layout and address space validation |
-| NVVMIntrinsicVerifier | `sub_2C7B6A0` | -- | Per-intrinsic address space constraint checking |
+| NVVM module verifier | `sub_2C80C90` | -- | Data layout and address space validation |
+| NVVM intrinsic verifier | `sub_2C7B6A0` | -- | Per-intrinsic address space constraint checking |
 | SelectionDAG intrinsic lowering | `sub_33B0210` | -- | Backend AS mapping for param passing |
 | getPointerAlignmentBits | `sub_BD5420` | -- | Known-bits for address space pointer widths |
 | NVIDIA intrinsic known-bits oracle | `sub_F0C4B0` | -- | Special register ranges |

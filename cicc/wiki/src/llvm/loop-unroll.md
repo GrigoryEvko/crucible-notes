@@ -84,7 +84,7 @@ int computeUnrollCount(Loop *L, SE, TTI, TripCount, MaxTripCount,
                        BodySize, UnrollParams *UP, bool *AllowRuntime) {
 
     // PRIORITY 1: Local array threshold multiplier (NVIDIA-specific)
-    int localSize = computeLocalArraySize(L);  // scans for AS5 allocas
+    int localSize = local_array_size_scan(L);  // sub_19B5DD0, scans for AS5 allocas
     int multiplier = min(max(localSize, 1), 6);
     int effectiveThreshold = multiplier * UP->Threshold;
 
@@ -186,12 +186,12 @@ int computeUnrollCount(Loop *L, SE, TTI, TripCount, MaxTripCount,
 
 ## Local Array Heuristic
 
-The function `sub_19B5DD0` (`computeLocalArraySize`) is entirely NVIDIA-specific. It scans every basic block in the loop for load/store instructions that access address space 5 (GPU local memory). For each such access, it traces back to the underlying `alloca`, determines the array type, and computes the product of array dimensions. If any dimension is unknown at compile time, it substitutes the `unroll-assumed-size` knob (default 4). The returned value is the maximum local-array size found across all accesses.
+The function `sub_19B5DD0` (the local-array size scanner) is entirely NVIDIA-specific. It scans every basic block in the loop for load/store instructions that access address space 5 (GPU local memory). For each such access, it traces back to the underlying `alloca`, determines the array type, and computes the product of array dimensions. If any dimension is unknown at compile time, it substitutes the `unroll-assumed-size` knob (default 4). The returned value is the maximum local-array size found across all accesses.
 
 This value becomes a threshold multiplier, capped at 6:
 
 ```c
-int computeLocalArraySize(Loop *L) {
+int local_array_size_scan(Loop *L) {  // sub_19B5DD0
     int maxSize = 0;
     for (BasicBlock *BB : L->blocks()) {
         for (Instruction &I : *BB) {

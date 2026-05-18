@@ -94,11 +94,11 @@ The constraint emission pipeline involves these collaborating functions:
 
 | Address | Size | Function | Purpose |
 |---------|------|----------|---------|
-| `sub_A778C0` | -- | `createRegClassConstraint(a1, regclass, flags)` | Build a register-class constraint entry; stores class ID in `value` field |
-| `sub_A77AD0` | -- | `createAnyRegConstraint(a1, flags)` | Build an "any register" constraint (unconstrained operand) |
-| `sub_A79C90` | -- | `composeConstraints(a1, &desc, N)` | Compose N descriptor entries into a single constraint record |
-| `sub_A7A6D0` | 7KB | `mergeConstraints(a1, a2)` | Merge/intersect two constraint sets using `byte_3F252E0` classification |
-| `sub_B5BA00` | 21KB | `createOutputConstraint(a1, regclass_id)` | Build the output register constraint; 111-case switch on class ID |
+| `sub_A778C0` | -- | Reg-class constraint builder | Build a register-class constraint entry; stores class ID in `value` field |
+| `sub_A77AD0` | -- | Any-register constraint builder | Build an "any register" constraint (unconstrained operand) |
+| `sub_A79C90` | -- | Constraint composer | Compose N descriptor entries into a single constraint record |
+| `sub_A7A6D0` | 7KB | Constraint merger / intersector | Merge/intersect two constraint sets using `byte_3F252E0` classification |
+| `sub_B5BA00` | 21KB | Output constraint builder | Build the output register constraint; 111-case switch on class ID |
 | `sub_A78010` | -- | `emitConstraint(a1, &desc_array, N)` | Emit the final constraint with N entries to the instruction descriptor |
 | `sub_B612D0` | 104KB | `emitInstrConstraint(a1, opcode)` | Top-level: lookup `word_3F3E6C0`, dispatch on constraint class, build and emit |
 

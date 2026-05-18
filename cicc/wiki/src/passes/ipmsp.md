@@ -10,7 +10,7 @@ Disabling this pass (`-disable-MemorySpaceOptPass`) causes 2--20x performance re
 | **Class** | `llvm::IPMSPPass` |
 | **Scope** | Module pass |
 | **Registration** | New PM slot 125, line 1111 in `sub_2342890` |
-| **Main function** | `sub_2CBBE90` (11 KB native) -- MemorySpaceCloning worklist driver |
+| **Main function** | `sub_2CBBE90` (11 KB native) -- memory-space cloning worklist driver |
 | **LIBNVVM variant** | `sub_1C6A6C0` (11 KB native) |
 | **Inference engine** | `sub_2CE96D0` -> `sub_2CE8530` |
 | **Cloning engine** | `sub_F4BFF0` (CloneFunction) |
@@ -564,7 +564,7 @@ Role labels below are descriptive (not symbol strings); only `sub_<HEX>` address
 
 | Address | Size | Role |
 |---|---|---|
-| `sub_2CBBE90` | 71 KB | MemorySpaceCloning worklist driver (New PM variant) |
+| `sub_2CBBE90` | 71 KB | Memory-space cloning worklist driver (New PM variant) |
 | `sub_1C6A6C0` | 54 KB | IPMSPPass (LIBNVVM variant) |
 | `sub_2CE96D0` | -- | Address-space inference entry point |
 | `sub_2CE8530` | -- | Core dataflow walker (backward analysis) |

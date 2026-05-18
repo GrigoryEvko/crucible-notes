@@ -29,10 +29,10 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | EDG lgenfe\_main (282-case CLI switch, 737 config macros, EDG 6.6) | `0x617BD0` | 36.4KB (native) / 123KB (decomp) | VERY HIGH |
 | NVVM Builtin Resolution table (post-opt, 770 entries) | `0x126A910` | 34.2KB (native) | VERY HIGH |
 | NVVMPassOptions init (4,786 lines, 221 slots in 4,512-byte struct) | `0x12D6300` | 26.8KB (native) / 125KB (decomp) | VERY HIGH |
-| PassOptionRegistry::lookupOption (hash table at registry+120) | `0x12D6170` | — | HIGH |
-| PassOptionRegistry::getBoolOption (triple: '1'/true, 't'/true) | `0x12D6240` | — | HIGH |
-| writeStringOption (24-byte entry to output struct) | `0x12D6090` | — | HIGH |
-| writeBoolOption (16-byte entry to output struct) | `0x12D6100` | — | HIGH |
+| Pass-option registry lookup (hash table at registry+120) | `0x12D6170` | — | HIGH |
+| Pass-option boolean reader (triple: '1'/true, 't'/true) | `0x12D6240` | — | HIGH |
+| Pass-option string writer (24-byte entry to output struct) | `0x12D6090` | — | HIGH |
+| Pass-option boolean writer (16-byte entry to output struct) | `0x12D6100` | — | HIGH |
 | 4-stage pipeline orchestrator (LNK/OPT/OPTIXIR/LLC), nvopt+nvllc objects | `0x12C35D0` | 8.4KB (native) / 41KB (decomp) | VERY HIGH |
 | Bitcode linker: triple validation, IR version check, symbol size matching | `0x12C06E0` | 11.7KB (native) / 63KB (decomp) | VERY HIGH |
 | NVVM IR version checker (nvvmir.version metadata, NVVM_IR_VER_CHK env) | `0x12BFF60` | 1.9KB (native) / 9KB (decomp) | VERY HIGH |
@@ -509,7 +509,7 @@ Each factory creates a pass instance; referenced from `sub_12E54A0`, `sub_12DE33
 
 | Function | Address | Size | Confidence |
 |---|---|---|---|
-| NVVMModuleVerifier (data layout, address space, triple validation) | `0x2C80C90` | 51KB | HIGH |
+| NVVM module verifier (data layout, address space, triple validation) | `0x2C80C90` | 51KB | HIGH |
 | NVVMIntrinsicVerifier (SM gates, types, MMA, atomics, tex/surf) | `0x2C7B6A0` | 143KB | VERY HIGH |
 | Frontend verifier (convergent intrinsic SM-version gating) | `0x1C36530` | — | HIGH |
 | NVVMIntrinsicLowering core engine (2,460 lines) | `0x2C63FB0` | 140KB | HIGH |

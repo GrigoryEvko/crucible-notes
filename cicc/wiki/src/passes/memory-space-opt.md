@@ -220,7 +220,7 @@ Note: The vector atomic messages contain a typo in NVIDIA's source -- `"Cannot t
 | Use-def chain walker | `sub_1CA5350` | 1641 lines | Backward pointer origin tracking |
 | Per-BB scanner | `sub_1CA8CD0` | 898 lines | Instruction scan, bitmask builder |
 | Pass initialization | `sub_1CAB590` | 1040 lines | Global registration, data structure setup |
-| MemorySpaceCloning engine | `sub_2CBBE90` | 71KB | Inter-procedural function cloning |
+| Memory-space cloning engine | `sub_2CBBE90` | 71KB | Inter-procedural function cloning |
 | IPMSPPass variant | `sub_1C6A6C0` | 54KB | LIBNVVM module-pass variant |
 | Address space inference | `sub_2CE96D0` | -- | Dataflow analysis for single argument |
 | CloneFunction | `sub_F4BFF0` | -- | Full function clone with type rewriting |

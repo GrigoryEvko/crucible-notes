@@ -124,7 +124,7 @@ Exceptions to the pair pattern:
 
 ## Helper Functions
 
-### `sub_12D6170` -- `PassOptionRegistry::lookupOption`
+### `sub_12D6170` -- pass-option registry lookup
 
 Looks up an option by its 1-based slot index in the hash table at `registry+120`. Returns a pointer to an `OptionNode` or 0 if the option was not set from the command line:
 
@@ -140,7 +140,7 @@ Looks up an option by its 1-based slot index in the hash table at `registry+120`
 
 The hash table uses open addressing. The lookup computes `hash(option_index)` and probes linearly. When an option is not present in the registry (meaning the user did not supply a CLI override), the caller falls back to the hard-coded default in `sub_12D6300`.
 
-### `sub_12D6240` -- `PassOptionRegistry::getBoolOption`
+### `sub_12D6240` -- pass-option boolean resolver
 
 Resolves a boolean option with a default value. This is the critical function for all 100 boolean slots -- it performs a three-step resolution:
 
@@ -157,7 +157,7 @@ sub_12D6240(registry, option_index, default_string):
 
 The packing convention is significant: the boolean value occupies the low 8 bits and the flags occupy bits 8--39. Callers unpack with `(result & 0xFF)` for the boolean and `(result >> 8)` for the flags.
 
-### `sub_1691920` -- `PassDefTable::getPassDef`
+### `sub_1691920` -- pass-definition table getter
 
 Resolves a 1-based pass index to its PassDef entry in a table with 64-byte stride:
 
@@ -173,7 +173,7 @@ Resolves a 1-based pass index to its PassDef entry in a table with 64-byte strid
 
 The pass_id field is written into every option slot and later used by the pipeline assembler to map configuration back to the pass factory that should receive it.
 
-### `sub_16D2BB0` -- parseInt
+### `sub_16D2BB0` -- string-to-int64 parser
 
 Parses a string to a 64-bit integer. Used for the 6 integer-typed option slots (9, 197, 203, 205, 207, 215).
 

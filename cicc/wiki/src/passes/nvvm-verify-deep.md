@@ -26,7 +26,7 @@ The NVVM IR Verifier (`nvvm-verify`) is NVIDIA's three-layer correctness gate th
 The pass operates as three nested verification functions. The module verifier is the entry point; it calls the function verifier once per function, and the function verifier dispatches to the intrinsic verifier for every intrinsic call instruction.
 
 ```
-sub_2C80C90 (NVVMModuleVerifier)
+sub_2C80C90 (NVVM module verifier)
   |
   +-- Validate data layout string
   +-- Validate target triple against whitelist
@@ -36,7 +36,7 @@ sub_2C80C90 (NVVMModuleVerifier)
   |
   +-- For each function:
   |     |
-  |     +-- sub_2C771D0 (NVVMFunctionVerifier)
+  |     +-- sub_2C771D0 (NVVM function verifier)
   |     |     +-- Cluster dimension validation (Hopper+ gate)
   |     |     +-- Parameter width validation (>=32-bit or sext/zext)
   |     |     +-- Function attribute rejection (17 attributes)
@@ -46,7 +46,7 @@ sub_2C80C90 (NVVMModuleVerifier)
   |           |
   |           +-- Switch on opcode 0x1E..0x60
   |           +-- Opcode 0x55 (intrinsic call) --> sub_2C7B6A0
-  |                 (NVVMIntrinsicVerifier, 143KB)
+  |                 (NVVM intrinsic verifier, 143KB)
   |                 +-- Switch on intrinsic ID
   |                 +-- SM version gate checks
   |                 +-- Type, address space, constant arg validation
@@ -123,7 +123,7 @@ After calling `sub_2C771D0` for function-level checks, the module verifier itera
 | 0x41 | `cmpxchg` | Only i32/i64/i128 types. Pointer must be in generic, global, or shared AS |
 | 0x42 | *(GEP/addrspacecast helper)* | Calls `sub_2C7AF00` |
 | 0x4F | `addrspacecast` | Validates source and target AS are in range. `"Cannot cast non-generic pointer to different non-generic pointer"` -- at least one side must be AS 0 (generic) |
-| 0x55 | `call` (intrinsic) | Dispatches to `sub_2C7B6A0` (NVVMIntrinsicVerifier) |
+| 0x55 | `call` (intrinsic) | Dispatches to `sub_2C7B6A0` (NVVM intrinsic verifier) |
 | 0x5F | `landingpad` | Rejected: `"landingpad"` unsupported |
 
 The unsupported instructions -- `indirectbr`, `invoke`, `resume`, `landingpad` -- are CPU exception-handling features with no GPU equivalent. Their rejection at the IR level prevents downstream passes from encountering them.
